@@ -139,13 +139,19 @@ harmonize_python_ai_bindings() {
     fi
 
     local harmonize_output
-    harmonize_output=$(run_python - "$target_file" <<'PY'
+    harmonize_output=$(TARGET_HOME_NIX="$target_file" run_python <<'PY'
+import os
 import re
 import sys
 import textwrap
 from pathlib import Path
 
-path = Path(sys.argv[1])
+target_path = os.environ.get("TARGET_HOME_NIX")
+if not target_path:
+    print("TARGET_HOME_NIX is not set", file=sys.stderr)
+    sys.exit(1)
+
+path = Path(target_path)
 text = path.read_text(encoding="utf-8")
 changed = False
 messages = []
@@ -218,7 +224,7 @@ interpreter_binding_exists = bool(interpreter_binding_pattern.search(text))
 
 if not env_binding_exists:
     block = textwrap.indent(canonical_block, default_indent) + "\n"
-    text = text[:let_line_end] + block + text[let_line_end:]
+    text = text[:let_line_end] + block + text[let_rootline_end:]
     changed = True
     messages.append("Inserted canonical pythonAiEnv definition in home.nix")
     interpreter_binding_exists = True
@@ -395,194 +401,7 @@ validate_flake_artifact() {
     if [[ ! -s "$artifact_path" ]]; then
         print_error "$artifact_label exists but is empty at $artifact_path"
         return 1
-    firoot@bab08d311396:/workspace/NixOS-Dev-Quick-Deploy# sed -n '200,400p' nixos-quick-deploy.sh
-
-env_binding_exists = bool(env_binding_pattern.search(text))
-interpreter_binding_exists = bool(interpreter_binding_pattern.search(text))
-
-if not env_binding_exists:
-    block = textwrap.indent(canonical_block, default_indent) + "\n"
-    text = text[:let_line_end] + block + text[let_line_end:]
-    changed = True
-    messages.append("Inserted canonical pythonAiEnv definition in home.nix")
-    interpreter_binding_exists = True
-elif not interpreter_binding_exists:
-    block = textwrap.indent("pythonAiInterpreterPath = \"${pythonAiEnv}/bin/python3\";", default_indent) + "\n"
-    text = text[:let_line_end] + block + text[let_line_end:]
-    changed = True
-    messages.append("Added pythonAiInterpreterPath helper binding in home.nix")
-
-legacy_pattern = re.compile(
-    r'(?P<indent>\s*)"python\.defaultInterpreterPath"\s*=\s*"\$\{pythonAiEnv}/bin/python3";(?P<suffix>[^\n]*)'
-)
-if legacy_pattern.search(text):
-    text, count = legacy_pattern.subn(
-        lambda m: (
-            f"{m.group('indent')}\"python.defaultInterpreterPath\" = "
-            f"pythonAiInterpreterPath;{m.group('suffix')}"
-        ),
-        text,
-    )
-    if count > 0:
-        changed = True
-        messages.append("Rewrote python.defaultInterpreterPath to use pythonAiInterpreterPath")
-
-if changed:
-    path.write_text(text, encoding="utf-8")
-    if messages:
-        print("; ".join(messages))
-PY
-    )
-    local status=$?
-
-    if [ $status -ne 0 ]; then
-        print_error "Failed to harmonize python AI environment bindings in $context_label"
-        [[ -n "$harmonize_output" ]] && print_error "$harmonize_output"
-        return 1
-    elif [[ -n "$harmonize_output" ]]; then
-        print_info "$context_label: $harmonize_output"
     fi
-
-    return 0
-}
-
-# Configuration
-DEV_HOME_ROOT="$PRIMARY_HOME/NixOS Dev Home"
-HM_CONFIG_DIR="$DEV_HOME_ROOT/Flake"
-HM_CONFIG_FILE="$HM_CONFIG_DIR/home.nix"
-HW_CONFIG_FILE="$HM_CONFIG_DIR/hardware-configuration.nix"
-HM_CONFIG_CD_COMMAND="cd \"$HM_CONFIG_DIR\""
-
-ensure_flake_workspace() {
-    local created_root=false
-    local created_dir=false
-
-    if [[ ! -d "$DEV_HOME_ROOT" ]]; then
-        if mkdir -p "$DEV_HOME_ROOT"; then
-            created_root=true
-        else
-            print_error "Failed to create flake workspace root: $DEV_HOME_ROOT"
-            return 1
-        fi
-    fi
-
-    if [[ ! -d "$HM_CONFIG_DIR" ]]; then
-        if mkdir -p "$HM_CONFIG_DIR"; then
-            created_dir=true
-        else
-            print_error "Failed to create flake directory: $HM_CONFIG_DIR"
-            return 1
-        fi
-    fi
-
-    if $created_root; then
-        print_success "Created flake workspace root at $DEV_HOME_ROOT"
-    fi
-
-    if $created_dir; then
-        print_success "Created flake configuration directory at $HM_CONFIG_DIR"
-    fi
-
-    return 0
-}
-
-copy_template_to_flake() {
-    local source_file="$1"
-    local destination_file="$2"
-    local description="${3:-$(basename "$destination_file")}"
-
-    ensure_flake_workspace || return 1
-
-    if [[ ! -f "$source_file" ]]; then
-        print_error "Template missing: $source_file"
-        return 1
-    fi
-
-    if [[ -f "$destination_file" ]]; then
-        if grep -q '^<<<<<<< ' "$destination_file" 2>/dev/null; then
-            print_error "Unresolved merge conflict markers detected in $destination_file"
-            print_info "Resolve the conflicts in $description and rerun the script"
-            return 1
-        fi
-
-        if [[ ! -s "$destination_file" ]]; then
-            print_warning "$description exists but is empty; refreshing from template"
-        elif cmp -s "$source_file" "$destination_file"; then
-            chmod 0644 "$destination_file" 2>/dev/null || true
-            return 0
-        elif [[ "$FORCE_UPDATE" = false ]]; then
-            local incoming_file="$destination_file.incoming.$(date +%Y%m%d_%H%M%S)"
-            if cp "$source_file" "$incoming_file" 2>/dev/null; then
-                print_warning "$description differs from the latest template"
-                print_info "Review $incoming_file for template updates or rerun with --force-update"
-            else
-                print_warning "Unable to stage template preview for $description"
-                print_info "Consider rerunning with --force-update after resolving manual edits"
-            fi
-            chmod 0644 "$destination_file" 2>/dev/null || true
-            return 0
-        else
-            local backup_file="$destination_file.backup.$(date +%Y%m%d_%H%M%S)"
-            if cp "$destination_file" "$backup_file" 2>/dev/null; then
-                print_info "Backed up existing $description to $backup_file"
-            fi
-        fi
-    fi
-
-    if ! cp "$source_file" "$destination_file"; then
-        print_error "Failed to copy $description into $destination_file"
-        return 1
-    fi
-
-    if ! chmod 0644 "$destination_file" 2>/dev/null; then
-        print_warning "Could not adjust permissions on $destination_file"
-    fi
-
-    if [[ ! -s "$destination_file" ]]; then
-        print_error "$description was not populated correctly at $destination_file"
-        return 1
-    fi
-
-    return 0
-}
-
-validate_flake_artifact() {
-    local artifact_path="$1"
-    local artifact_label="$2"
-
-    if [[ ! -e "$artifact_path" ]]; then
-        print_error "$artifact_label is missing at $artifact_path"
-        return 1
-    fi
-
-    if [[ ! -s "$artifact_path" ]]; then
-        print_error "$artifact_label exists but is empty at $artifact_path"
-        return 1
-    fi
-
-    return 0
-}
-
-require_flake_artifacts() {
-    ensure_flake_workspace || return 1
-
-    local missing=false
-
-    validate_flake_artifact "$HM_CONFIG_DIR/flake.nix" "flake.nix" || missing=true
-    validate_flake_artifact "$HM_CONFIG_DIR/home.nix" "home.nix" || missing=true
-    validate_flake_artifact "$HM_CONFIG_DIR/configuration.nix" "configuration.nix" || missing=true
-    validate_flake_artifact "$HM_CONFIG_DIR/hardware-configuration.nix" "hardware-configuration.nix" || missing=true
-
-    if $missing; then
-        print_info "Resolve the missing artifacts above and rerun the script with --force-update if needed."
-        return 1
-    fi
-
-    return 0
-}
-
-materialize_hardware_configuration() {
-
 
     return 0
 }
@@ -700,7 +519,8 @@ materialize_hardware_configuration() {
     local refresh_timestamp="$(date '+%Y-%m-%d %H:%M:%S %Z')"
 
     local annotate_output
-    annotate_output=$(AIDB_HW_TIMESTAMP="$refresh_timestamp" \
+    annotate_output=$(TARGET_HW_NIX="$target_file" \
+        AIDB_HW_TIMESTAMP="$refresh_timestamp" \
         AIDB_HW_GPU_TYPE="$detected_gpu" \
         AIDB_HW_GPU_DRIVER="$detected_gpu_driver" \
         AIDB_HW_GPU_PACKAGES="$detected_gpu_packages" \
@@ -710,13 +530,18 @@ materialize_hardware_configuration() {
         AIDB_HW_RAM="$detected_ram" \
         AIDB_HW_ZRAM="$detected_zram" \
         AIDB_HW_CORES="$detected_cores" \
-        run_python - "$target_file" <<'PY'
+        run_python <<'PY'
 import os
 import re
 import sys
 from pathlib import Path
 
-path = Path(sys.argv[1])
+target_path = os.environ.get("TARGET_HW_NIX")
+if not target_path:
+    print("TARGET_HW_NIX is not set", file=sys.stderr)
+    sys.exit(1)
+
+path = Path(target_path)
 text = path.read_text(encoding="utf-8")
 
 def format_value(label, default="unknown"):
@@ -983,7 +808,7 @@ parse_nixos_option_value() {
 load_previous_nixos_metadata() {
     local metadata
 
-    metadata=$(TARGET_USER="$USER" run_python - <<'PY' 2>/dev/null
+    metadata=$(TARGET_USER="$USER" run_python <<'PY' 2>/dev/null
 import base64
 import os
 import re
@@ -1986,45 +1811,55 @@ create_home_manager_config() {
         exit 1
     fi
 
-    DEFAULT_EDITOR_VALUE="$DEFAULT_EDITOR" run_python - "$HM_CONFIG_FILE" <<'PY'
+    DEFAULT_EDITOR_VALUE="$DEFAULT_EDITOR" \
+    TARGET_HOME_NIX="$HM_CONFIG_FILE" run_python <<'PY'
 import os
 import sys
 
-path = sys.argv[1]
+target_path = os.environ.get("TARGET_HOME_NIX")
+if not target_path:
+    print("TARGET_HOME_NIX is not set", file=sys.stderr)
+    sys.exit(1)
+
 editor = os.environ.get("DEFAULT_EDITOR_VALUE", "vim")
 
-with open(path, "r", encoding="utf-8") as f:
+with open(target_path, "r", encoding="utf-8") as f:
     data = f.read()
 
 data = data.replace("DEFAULTEDITOR", editor)
 
-with open(path, "w", encoding="utf-8") as f:
+with open(target_path, "w", encoding="utf-8") as f:
     f.write(data)
 PY
 
     # Some older templates may have left behind stray navigation headings.
     # Clean them up so nix-instantiate parsing does not fail on bare identifiers.
-    CLEANUP_MSG=$(run_python - "$HM_CONFIG_FILE" <<'PY'
+    CLEANUP_MSG=$(TARGET_HOME_NIX="$HM_CONFIG_FILE" run_python <<'PY'
+import os
 import re
 import sys
 
-path = sys.argv[1]
+target_path = os.environ.get("TARGET_HOME_NIX")
+if not target_path:
+    print("TARGET_HOME_NIX is not set", file=sys.stderr)
+    sys.exit(1)
+
 pattern = re.compile(r"^\s*(Actions|Projects|Wiki)\s*$")
 
-with open(path, "r", encoding="utf-8") as f:
+with open(target_path, "r", encoding="utf-8") as f:
     lines = f.readlines()
 
-filtered = []
-removed = False
-for line in lines:
-    if pattern.match(line):
-        removed = True
-    else:
-        filtered.append(line)
+    filtered = []
+    removed = False
+    for line in lines:
+        if pattern.match(line):
+            removed = True
+        else:
+            filtered.append(line)
 
-if removed:
-    with open(path, "w", encoding="utf-8") as f:
-        f.writelines(filtered)
+    if removed:
+        with open(target_path, "w", encoding="utf-8") as f:
+            f.writelines(filtered)
     print("Removed legacy Gitea navigation headings from home.nix")
 PY
     )
@@ -2641,28 +2476,33 @@ EOF
         USER_PASSWORD_BLOCK=$'    # (no password directives detected; update manually if required)\n'
     fi
 
-    SCRIPT_VERSION_VALUE="$SCRIPT_VERSION" \
-    GENERATED_AT="$GENERATED_AT" \
-    HOSTNAME_VALUE="$HOSTNAME" \
-    USER_VALUE="$USER" \
-    CPU_VENDOR_LABEL_VALUE="$CPU_VENDOR_LABEL" \
-    INITRD_KERNEL_MODULES_VALUE="$INITRD_KERNEL_MODULES" \
-    MICROCODE_SECTION_VALUE="$MICROCODE_SECTION" \
-    GPU_HARDWARE_SECTION_VALUE="$gpu_hardware_section" \
-    COSMIC_GPU_BLOCK_VALUE="$cosmic_gpu_block" \
-    SELECTED_TIMEZONE_VALUE="$SELECTED_TIMEZONE" \
-    CURRENT_LOCALE_VALUE="$CURRENT_LOCALE" \
-    NIXOS_VERSION_VALUE="$NIXOS_VERSION" \
-    ZRAM_PERCENT_VALUE="$zram_value" \
-    TOTAL_RAM_GB_VALUE="$total_ram_value" \
-    USERS_MUTABLE_VALUE="$USERS_MUTABLE_SETTING" \
-    USER_PASSWORD_BLOCK_VALUE="$USER_PASSWORD_BLOCK" \
-    run_python - "$GENERATED_CONFIG" <<'PY'
+    TARGET_GENERATED_NIX="$GENERATED_CONFIG" \
+        SCRIPT_VERSION_VALUE="$SCRIPT_VERSION" \
+        GENERATED_AT="$GENERATED_AT" \
+        HOSTNAME_VALUE="$HOSTNAME" \
+        USER_VALUE="$USER" \
+        CPU_VENDOR_LABEL_VALUE="$CPU_VENDOR_LABEL" \
+        INITRD_KERNEL_MODULES_VALUE="$INITRD_KERNEL_MODULES" \
+        MICROCODE_SECTION_VALUE="$MICROCODE_SECTION" \
+        GPU_HARDWARE_SECTION_VALUE="$gpu_hardware_section" \
+        COSMIC_GPU_BLOCK_VALUE="$cosmic_gpu_block" \
+        SELECTED_TIMEZONE_VALUE="$SELECTED_TIMEZONE" \
+        CURRENT_LOCALE_VALUE="$CURRENT_LOCALE" \
+        NIXOS_VERSION_VALUE="$NIXOS_VERSION" \
+        ZRAM_PERCENT_VALUE="$zram_value" \
+        TOTAL_RAM_GB_VALUE="$total_ram_value" \
+        USERS_MUTABLE_VALUE="$USERS_MUTABLE_SETTING" \
+        USER_PASSWORD_BLOCK_VALUE="$USER_PASSWORD_BLOCK" \
+        run_python <<'PY'
 import os
 import sys
 
-path = sys.argv[1]
-with open(path, "r", encoding="utf-8") as f:
+target_path = os.environ.get("TARGET_GENERATED_NIX")
+if not target_path:
+    print("TARGET_GENERATED_NIX is not set", file=sys.stderr)
+    sys.exit(1)
+
+with open(target_path, "r", encoding="utf-8") as f:
     text = f.read()
 
 replacements = {
@@ -2690,7 +2530,7 @@ replacements = {
 for placeholder, value in replacements.items():
     text = text.replace(placeholder, value)
 
-with open(path, "w", encoding="utf-8") as f:
+with open(target_path, "w", encoding="utf-8") as f:
     f.write(text)
 PY
 
