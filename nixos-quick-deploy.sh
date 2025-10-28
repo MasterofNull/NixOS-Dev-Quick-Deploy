@@ -14,6 +14,47 @@
 set -u
 set -o pipefail
 
+# Ensure we target the invoking user's home directory even when executed via sudo
+RESOLVED_USER="${USER:-}"
+RESOLVED_HOME="$HOME"
+
+if [[ -n "${SUDO_USER:-}" && "$EUID" -eq 0 ]]; then
+    RESOLVED_USER="$SUDO_USER"
+    RESOLVED_HOME="$(getent passwd "$RESOLVED_USER" 2>/dev/null | cut -d: -f6)"
+
+    if [[ -z "$RESOLVED_HOME" ]]; then
+        RESOLVED_HOME="$(eval echo "~$RESOLVED_USER" 2>/dev/null || true)"
+    fi
+
+    if [[ -z "$RESOLVED_HOME" ]]; then
+        echo "Error: unable to resolve home directory for invoking user '$RESOLVED_USER'." >&2
+        exit 1
+    fi
+
+    export ORIGINAL_ROOT_HOME="$HOME"
+    export ORIGINAL_ROOT_USER="${USER:-root}"
+    export HOME="$RESOLVED_HOME"
+    export USER="$RESOLVED_USER"
+fi
+
+PRIMARY_USER="$USER"
+PRIMARY_HOME="$HOME"
+PRIMARY_GROUP="$(id -gn "$PRIMARY_USER" 2>/dev/null || id -gn 2>/dev/null || echo "$PRIMARY_USER")"
+
+ensure_path_owner() {
+    local target_path="$1"
+
+    if [[ $EUID -ne 0 ]]; then
+        return 0
+    fi
+
+    if [[ -e "$target_path" ]]; then
+        chown "$PRIMARY_USER:$PRIMARY_GROUP" "$target_path" 2>/dev/null || true
+    fi
+
+    return 0
+}
+
 # Global state tracking
 SYSTEM_CONFIG_BACKUP=""
 HOME_MANAGER_BACKUP=""
@@ -31,7 +72,7 @@ PREVIOUS_USER_PASSWORD_SNIPPET=""
 
 # Script version for change tracking
 SCRIPT_VERSION="2.1.1"
-VERSION_FILE="$HOME/.cache/nixos-quick-deploy-version"
+VERSION_FILE="$PRIMARY_HOME/.cache/nixos-quick-deploy-version"
 
 # Force update flag (set via --force-update)
 FORCE_UPDATE=false
@@ -222,7 +263,191 @@ PY
 }
 
 # Configuration
-DEV_HOME_ROOT="$HOME/NixOS Dev Home"
+DEV_HOME_ROOT="$PRIMARY_HOME/NixOS Dev Home"
+HM_CONFIG_DIR="$DEV_HOME_ROOT/Flake"
+HM_CONFIG_FILE="$HM_CONFIG_DIR/home.nix"
+HW_CONFIG_FILE="$HM_CONFIG_DIR/hardware-configuration.nix"
+HM_CONFIG_CD_COMMAND="cd \"$HM_CONFIG_DIR\""
+
+ensure_flake_workspace() {
+    local created_root=false
+    local created_dir=false
+    local -a owner_args=()
+
+    if [[ $EUID -eq 0 ]]; then
+        owner_args=(-o "$PRIMARY_USER" -g "$PRIMARY_GROUP")
+    fi
+
+    if [[ ! -d "$DEV_HOME_ROOT" ]]; then
+        if install -d -m 0755 "${owner_args[@]}" "$DEV_HOME_ROOT"; then
+            created_root=true
+        else
+            print_error "Failed to create flake workspace root: $DEV_HOME_ROOT"
+            return 1
+        fi
+    else
+        ensure_path_owner "$DEV_HOME_ROOT"
+    fi
+
+    if [[ ! -d "$HM_CONFIG_DIR" ]]; then
+        if install -d -m 0755 "${owner_args[@]}" "$HM_CONFIG_DIR"; then
+            created_dir=true
+        else
+            print_error "Failed to create flake directory: $HM_CONFIG_DIR"
+            return 1
+        fi
+    else
+        ensure_path_owner "$HM_CONFIG_DIR"
+    fi
+
+    if $created_root; then
+        print_success "Created flake workspace root at $DEV_HOME_ROOT"
+    fi
+
+    if $created_dir; then
+        print_success "Created flake configuration directory at $HM_CONFIG_DIR"
+    fi
+
+    return 0
+}
+
+copy_template_to_flake() {
+    local source_file="$1"
+    local destination_file="$2"
+    local description="${3:-$(basename "$destination_file")}"
+
+    ensure_flake_workspace || return 1
+
+    if [[ ! -f "$source_file" ]]; then
+        print_error "Template missing: $source_file"
+        return 1
+    fi
+
+    local -a owner_args=()
+    if [[ $EUID -eq 0 ]]; then
+        owner_args=(-o "$PRIMARY_USER" -g "$PRIMARY_GROUP")
+    fi
+
+    local need_copy=true
+
+    if [[ -f "$destination_file" ]]; then
+        if grep -q '^<<<<<<< ' "$destination_file" 2>/dev/null; then
+            print_error "Unresolved merge conflict markers detected in $destination_file"
+            print_info "Resolve the conflicts in $description and rerun the script"
+            return 1
+        fi
+
+        if [[ ! -s "$destination_file" ]]; then
+            print_warning "$description exists but is empty; refreshing from template"
+        elif cmp -s "$source_file" "$destination_file"; then
+            need_copy=false
+        elif [[ "$FORCE_UPDATE" = false ]]; then
+            local incoming_file="$destination_file.incoming.$(date +%Y%m%d_%H%M%S)"
+            if cp "$source_file" "$incoming_file" 2>/dev/null; then
+                ensure_path_owner "$incoming_file"
+                print_warning "$description differs from the latest template"
+                print_info "Review $incoming_file for template updates or rerun with --force-update"
+            else
+                print_warning "Unable to stage template preview for $description"
+                print_info "Consider rerunning with --force-update after resolving manual edits"
+            fi
+            chmod 0644 "$destination_file" 2>/dev/null || true
+            ensure_path_owner "$destination_file"
+            return 0
+        else
+            local backup_file="$destination_file.backup.$(date +%Y%m%d_%H%M%S)"
+            if cp "$destination_file" "$backup_file" 2>/dev/null; then
+                ensure_path_owner "$backup_file"
+                print_info "Backed up existing $description to $backup_file"
+            fi
+        fi
+    fi
+
+    if $need_copy; then
+        if ! install -m 0644 "${owner_args[@]}" "$source_file" "$destination_file"; then
+            print_error "Failed to copy $description into $destination_file"
+            return 1
+        fi
+    fi
+
+    if ! chmod 0644 "$destination_file" 2>/dev/null; then
+        print_warning "Could not adjust permissions on $destination_file"
+    fi
+    ensure_path_owner "$destination_file"
+
+    if [[ ! -s "$destination_file" ]]; then
+        print_error "$description was not populated correctly at $destination_file"
+        return 1
+    fi
+
+    return 0
+}
+
+validate_flake_artifact() {
+    local artifact_path="$1"
+    local artifact_label="$2"
+
+    if [[ ! -e "$artifact_path" ]]; then
+        print_error "$artifact_label is missing at $artifact_path"
+        return 1
+    fi
+
+    if [[ ! -s "$artifact_path" ]]; then
+        print_error "$artifact_label exists but is empty at $artifact_path"
+        return 1
+    firoot@bab08d311396:/workspace/NixOS-Dev-Quick-Deploy# sed -n '200,400p' nixos-quick-deploy.sh
+
+env_binding_exists = bool(env_binding_pattern.search(text))
+interpreter_binding_exists = bool(interpreter_binding_pattern.search(text))
+
+if not env_binding_exists:
+    block = textwrap.indent(canonical_block, default_indent) + "\n"
+    text = text[:let_line_end] + block + text[let_line_end:]
+    changed = True
+    messages.append("Inserted canonical pythonAiEnv definition in home.nix")
+    interpreter_binding_exists = True
+elif not interpreter_binding_exists:
+    block = textwrap.indent("pythonAiInterpreterPath = \"${pythonAiEnv}/bin/python3\";", default_indent) + "\n"
+    text = text[:let_line_end] + block + text[let_line_end:]
+    changed = True
+    messages.append("Added pythonAiInterpreterPath helper binding in home.nix")
+
+legacy_pattern = re.compile(
+    r'(?P<indent>\s*)"python\.defaultInterpreterPath"\s*=\s*"\$\{pythonAiEnv}/bin/python3";(?P<suffix>[^\n]*)'
+)
+if legacy_pattern.search(text):
+    text, count = legacy_pattern.subn(
+        lambda m: (
+            f"{m.group('indent')}\"python.defaultInterpreterPath\" = "
+            f"pythonAiInterpreterPath;{m.group('suffix')}"
+        ),
+        text,
+    )
+    if count > 0:
+        changed = True
+        messages.append("Rewrote python.defaultInterpreterPath to use pythonAiInterpreterPath")
+
+if changed:
+    path.write_text(text, encoding="utf-8")
+    if messages:
+        print("; ".join(messages))
+PY
+    )
+    local status=$?
+
+    if [ $status -ne 0 ]; then
+        print_error "Failed to harmonize python AI environment bindings in $context_label"
+        [[ -n "$harmonize_output" ]] && print_error "$harmonize_output"
+        return 1
+    elif [[ -n "$harmonize_output" ]]; then
+        print_info "$context_label: $harmonize_output"
+    fi
+
+    return 0
+}
+
+# Configuration
+DEV_HOME_ROOT="$PRIMARY_HOME/NixOS Dev Home"
 HM_CONFIG_DIR="$DEV_HOME_ROOT/Flake"
 HM_CONFIG_FILE="$HM_CONFIG_DIR/home.nix"
 HW_CONFIG_FILE="$HM_CONFIG_DIR/hardware-configuration.nix"
@@ -264,13 +489,44 @@ ensure_flake_workspace() {
 copy_template_to_flake() {
     local source_file="$1"
     local destination_file="$2"
-    local description="${3:-$(basename "$destination_file")}" 
+    local description="${3:-$(basename "$destination_file")}"
 
     ensure_flake_workspace || return 1
 
     if [[ ! -f "$source_file" ]]; then
         print_error "Template missing: $source_file"
         return 1
+    fi
+
+    if [[ -f "$destination_file" ]]; then
+        if grep -q '^<<<<<<< ' "$destination_file" 2>/dev/null; then
+            print_error "Unresolved merge conflict markers detected in $destination_file"
+            print_info "Resolve the conflicts in $description and rerun the script"
+            return 1
+        fi
+
+        if [[ ! -s "$destination_file" ]]; then
+            print_warning "$description exists but is empty; refreshing from template"
+        elif cmp -s "$source_file" "$destination_file"; then
+            chmod 0644 "$destination_file" 2>/dev/null || true
+            return 0
+        elif [[ "$FORCE_UPDATE" = false ]]; then
+            local incoming_file="$destination_file.incoming.$(date +%Y%m%d_%H%M%S)"
+            if cp "$source_file" "$incoming_file" 2>/dev/null; then
+                print_warning "$description differs from the latest template"
+                print_info "Review $incoming_file for template updates or rerun with --force-update"
+            else
+                print_warning "Unable to stage template preview for $description"
+                print_info "Consider rerunning with --force-update after resolving manual edits"
+            fi
+            chmod 0644 "$destination_file" 2>/dev/null || true
+            return 0
+        else
+            local backup_file="$destination_file.backup.$(date +%Y%m%d_%H%M%S)"
+            if cp "$destination_file" "$backup_file" 2>/dev/null; then
+                print_info "Backed up existing $description to $backup_file"
+            fi
+        fi
     fi
 
     if ! cp "$source_file" "$destination_file"; then
@@ -284,6 +540,65 @@ copy_template_to_flake() {
 
     if [[ ! -s "$destination_file" ]]; then
         print_error "$description was not populated correctly at $destination_file"
+        return 1
+    fi
+
+    return 0
+}
+
+validate_flake_artifact() {
+    local artifact_path="$1"
+    local artifact_label="$2"
+
+    if [[ ! -e "$artifact_path" ]]; then
+        print_error "$artifact_label is missing at $artifact_path"
+        return 1
+    fi
+
+    if [[ ! -s "$artifact_path" ]]; then
+        print_error "$artifact_label exists but is empty at $artifact_path"
+        return 1
+    fi
+
+    return 0
+}
+
+require_flake_artifacts() {
+    ensure_flake_workspace || return 1
+
+    local missing=false
+
+    validate_flake_artifact "$HM_CONFIG_DIR/flake.nix" "flake.nix" || missing=true
+    validate_flake_artifact "$HM_CONFIG_DIR/home.nix" "home.nix" || missing=true
+    validate_flake_artifact "$HM_CONFIG_DIR/configuration.nix" "configuration.nix" || missing=true
+    validate_flake_artifact "$HM_CONFIG_DIR/hardware-configuration.nix" "hardware-configuration.nix" || missing=true
+
+    if $missing; then
+        print_info "Resolve the missing artifacts above and rerun the script with --force-update if needed."
+        return 1
+    fi
+
+    return 0
+}
+
+materialize_hardware_configuration() {
+
+
+    return 0
+}
+
+require_flake_artifacts() {
+    ensure_flake_workspace || return 1
+
+    local missing=false
+
+    validate_flake_artifact "$HM_CONFIG_DIR/flake.nix" "flake.nix" || missing=true
+    validate_flake_artifact "$HM_CONFIG_DIR/home.nix" "home.nix" || missing=true
+    validate_flake_artifact "$HM_CONFIG_DIR/configuration.nix" "configuration.nix" || missing=true
+    validate_flake_artifact "$HM_CONFIG_DIR/hardware-configuration.nix" "hardware-configuration.nix" || missing=true
+
+    if $missing; then
+        print_info "Resolve the missing artifacts above and rerun the script with --force-update if needed."
         return 1
     fi
 
@@ -343,11 +658,17 @@ materialize_hardware_configuration() {
     if [[ -f "$target_file" ]]; then
         local backup_file="$target_file.backup.$(date +%Y%m%d_%H%M%S)"
         if cp "$target_file" "$backup_file" 2>/dev/null; then
+            ensure_path_owner "$backup_file"
             print_info "Backed up existing hardware-configuration.nix to $backup_file"
         fi
     fi
 
-    if ! cp "$source_file" "$target_file"; then
+    local -a owner_args=()
+    if [[ $EUID -eq 0 ]]; then
+        owner_args=(-o "$PRIMARY_USER" -g "$PRIMARY_GROUP")
+    fi
+
+    if ! install -m 0644 "${owner_args[@]}" "$source_file" "$target_file"; then
         print_error "Failed to materialize hardware-configuration.nix at $target_file"
         [[ -n "$generated_tmp" ]] && rm -f "$generated_tmp"
         [[ -n "$generator_log" ]] && rm -f "$generator_log"
@@ -358,13 +679,7 @@ materialize_hardware_configuration() {
         print_warning "Unable to adjust permissions on $target_file"
     fi
 
-    if [[ "$(stat -c '%U' "$target_file" 2>/dev/null)" != "$USER" ]]; then
-        if command -v sudo >/dev/null 2>&1; then
-            sudo chown "$USER":"$USER" "$target_file" 2>/dev/null || true
-        else
-            chown "$USER":"$USER" "$target_file" 2>/dev/null || true
-        fi
-    fi
+    ensure_path_owner "$target_file"
 
     if [[ ! -s "$target_file" ]]; then
         print_error "hardware-configuration.nix at $target_file is empty after refresh"
@@ -1585,6 +1900,7 @@ create_home_manager_config() {
     local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     if [ -f "$SCRIPT_DIR/p10k-setup-wizard.sh" ]; then
         cp "$SCRIPT_DIR/p10k-setup-wizard.sh" "$HM_CONFIG_DIR/p10k-setup-wizard.sh"
+        ensure_path_owner "$HM_CONFIG_DIR/p10k-setup-wizard.sh"
         print_success "Copied p10k-setup-wizard.sh into $HM_CONFIG_DIR"
     else
         print_warning "p10k-setup-wizard.sh not found in $SCRIPT_DIR - skipping copy"
@@ -2387,6 +2703,12 @@ PY
     print_success "✓ Complete AIDB configuration generated"
     print_info "Includes: Cosmic Desktop, Podman, Fonts, Audio, ZSH"
     echo ""
+
+    # Verify all required flake assets exist before attempting rebuild
+    if ! require_flake_artifacts; then
+        print_error "Required flake files are missing; aborting rebuild"
+        return 1
+    fi
 
     # Apply the new configuration
     print_section "Applying New Configuration"
