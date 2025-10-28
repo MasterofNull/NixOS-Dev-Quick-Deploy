@@ -830,9 +830,9 @@ create_home_manager_config() {
         HM_CHANNEL_NAME=$(normalize_channel_name "$HOME_MANAGER_CHANNEL_URL")
     elif [[ -n "$HM_CHANNEL" ]]; then
         HM_CHANNEL_NAME=$(normalize_channel_name "$HM_CHANNEL")
-    if [[ -n "$HM_CHANNEL" ]]; then
-        HM_CHANNEL_NAME=$(basename "$HM_CHANNEL")
-    else
+    fi
+
+    if [[ -z "$HM_CHANNEL_NAME" ]]; then
         # Mirror the nixos channel when home-manager is missing
         HM_CHANNEL_NAME="release-${STATE_VERSION}"
         print_warning "Could not detect home-manager channel, defaulting to $HM_CHANNEL_NAME"
