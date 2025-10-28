@@ -1282,6 +1282,49 @@ create_home_manager_config() {
     sed -i "s|HOMEDIR|$HOME|" "$HM_CONFIG_FILE"
     sed -i "s|STATEVERSION_PLACEHOLDER|$STATE_VERSION|" "$HM_CONFIG_FILE"
 
+    local PYTHON_ENV_MSG
+    PYTHON_ENV_MSG=$(run_python - "$HM_CONFIG_FILE" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+changed = False
+
+if "pythonAiEnv =" not in text:
+    print("pythonAiEnv binding missing from template")
+    sys.exit(1)
+
+if "pythonAiInterpreterPath" not in text:
+    match = re.search(r"(  pythonAiEnv =[\s\S]+?\);\n)", text)
+    if match:
+        insertion = '  pythonAiInterpreterPath = "${pythonAiEnv}/bin/python3";\n'
+        text = text[:match.end()] + insertion + text[match.end():]
+        changed = True
+    else:
+        print("unable to locate pythonAiEnv definition for migration")
+        sys.exit(1)
+
+legacy_assignment = '"python.defaultInterpreterPath" = "${pythonAiEnv}/bin/python3";'
+if legacy_assignment in text:
+    text = text.replace(legacy_assignment, '"python.defaultInterpreterPath" = pythonAiInterpreterPath;')
+    changed = True
+
+if changed:
+    path.write_text(text, encoding="utf-8")
+    print("Updated python AI environment references in home.nix")
+PY
+    )
+    PYTHON_ENV_STATUS=$?
+    if [ $PYTHON_ENV_STATUS -ne 0 ]; then
+        print_error "Failed to harmonize python AI environment bindings"
+        [[ -n "$PYTHON_ENV_MSG" ]] && print_error "$PYTHON_ENV_MSG"
+        exit 1
+    elif [ -n "$PYTHON_ENV_MSG" ]; then
+        print_info "$PYTHON_ENV_MSG"
+    fi
+
     DEFAULT_EDITOR_VALUE="$DEFAULT_EDITOR" run_python - "$HM_CONFIG_FILE" <<'PY'
 import os
 import sys
