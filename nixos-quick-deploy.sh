@@ -222,6 +222,23 @@ normalize_channel_name() {
     echo "$raw"
 }
 
+get_home_manager_flake_uri() {
+    local ref="${HOME_MANAGER_CHANNEL_REF:-}"
+    local base="github:nix-community/home-manager"
+
+    if [[ -n "$ref" && "$ref" != "master" ]]; then
+        echo "${base}?ref=${ref}"
+    else
+        echo "$base"
+    fi
+}
+
+get_home_manager_package_ref() {
+    local uri
+    uri=$(get_home_manager_flake_uri)
+    echo "${uri}#home-manager"
+}
+
 confirm() {
     local prompt="$1"
     local default="${2:-n}"
@@ -617,34 +634,46 @@ install_home_manager() {
         echo ""
     fi
 
-    print_info "Installing home-manager (this may take 5-10 minutes)..."
-    if ! nix-shell '<home-manager>' -A install 2>&1 | tee /tmp/home-manager-install.log; then
-        print_error "Failed to install home-manager"
-        print_info "Log saved to: /tmp/home-manager-install.log"
-        echo ""
-        print_warning "Common causes:"
-        echo "  • Network issues during download"
-        echo "  • Insufficient disk space"
-        echo "  • Conflicting Nix configuration"
-        echo ""
-        exit 1
-    fi
+    local hm_pkg_ref
+    hm_pkg_ref=$(get_home_manager_package_ref)
 
-    print_success "home-manager installed successfully"
+    print_info "Installing home-manager CLI via nix profile..."
+    print_info "  Source: ${hm_pkg_ref}"
+
+    local profile_log="/tmp/home-manager-profile-install.log"
+    if nix profile install --accept-flake-config "$hm_pkg_ref" 2>&1 | tee "$profile_log"; then
+        print_success "home-manager CLI installed via nix profile"
+        print_info "Log saved to: $profile_log"
+    else
+        print_warning "nix profile install failed (see $profile_log)"
+        print_info "Falling back to channel-based installer from <home-manager>..."
+
+        if ! nix-shell '<home-manager>' -A install 2>&1 | tee /tmp/home-manager-install.log; then
+            print_error "Failed to install home-manager"
+            print_info "Log saved to: /tmp/home-manager-install.log"
+            echo ""
+            print_warning "Common causes:"
+            echo "  • Network issues during download"
+            echo "  • Insufficient disk space"
+            echo "  • Conflicting Nix configuration"
+            echo ""
+            exit 1
+        fi
+
+        print_success "home-manager installed via channel-based installer"
+        print_info "Log saved to: /tmp/home-manager-install.log"
+    fi
 
     # Update PATH to include newly installed home-manager command
     print_info "Updating PATH to include home-manager..."
     export PATH="$HOME/.nix-profile/bin:$PATH"
-    #nix-shell -p home-manager
 
     # Verify home-manager is now available
     if command -v home-manager &> /dev/null; then
         print_success "home-manager command is now available: $(which home-manager)"
     else
-        print_error "home-manager installed but command not found in PATH"
-        print_info "Expected location: $HOME/.nix-profile/bin/home-manager"
-        print_info "Current PATH: $PATH"
-        exit 1
+        print_warning "home-manager command not found in PATH after installation"
+        print_info "Using 'nix run --accept-flake-config ${hm_pkg_ref} --' as a fallback during this session"
     fi
 }
 
@@ -1005,17 +1034,16 @@ apply_home_manager_config() {
         print_info "Added ~/.nix-profile/bin to PATH for home-manager"
     fi
 
-    # Verify home-manager is available
-    if ! command -v home-manager &> /dev/null; then
-        print_error "home-manager command not found even after PATH update!"
-        print_info "Expected location: $HOME/.nix-profile/bin/home-manager"
-        print_info "Current PATH: $PATH"
-        print_info "Checking if file exists..."
-        ls -la "$HOME/.nix-profile/bin/home-manager" || echo "File does not exist"
-        exit 1
+    local hm_pkg_ref=$(get_home_manager_package_ref)
+    local hm_cli_available=false
+
+    if command -v home-manager &> /dev/null; then
+        hm_cli_available=true
+        print_success "home-manager command available: $(which home-manager)"
+    else
+        print_warning "home-manager command not found in PATH"
+        print_info "Will invoke via: nix run --accept-flake-config ${hm_pkg_ref} -- ..."
     fi
-    print_success "home-manager command available: $(which home-manager)"
-    echo ""
 
     print_info "This will install packages and configure your environment..."
     print_warning "This may take 10-15 minutes on first run"
@@ -1106,7 +1134,16 @@ apply_home_manager_config() {
     local CURRENT_USER=$(whoami)
     #nix-shell -p home-manager
     print_info "Using configuration: homeConfigurations.$CURRENT_USER"
-    if home-manager switch --flake ~/.config/home-manager --show-trace 2>&1 | tee /tmp/home-manager-switch.log; then    #original code 'if home-manager switch --flake ~/.config/home-manager#$CURRENT_USER --show-trace 2>&1 | tee /tmp/home-manager-switch.log; then'
+    local hm_exit_code
+    if $hm_cli_available; then
+        home-manager switch --flake ~/.config/home-manager --show-trace 2>&1 | tee /tmp/home-manager-switch.log
+        hm_exit_code=${PIPESTATUS[0]}
+    else
+        nix run --accept-flake-config "${hm_pkg_ref}" -- switch --flake ~/.config/home-manager --show-trace 2>&1 | tee /tmp/home-manager-switch.log
+        hm_exit_code=${PIPESTATUS[0]}
+    fi
+
+    if [ $hm_exit_code -eq 0 ]; then
         print_success "Home manager configuration applied successfully!"
         echo ""
 
@@ -1140,7 +1177,6 @@ apply_home_manager_config() {
         fi
         echo ""
     else
-        local hm_exit_code=$?
         print_error "home-manager switch failed (exit code: $hm_exit_code)"
         echo ""
         print_warning "Common causes:"
