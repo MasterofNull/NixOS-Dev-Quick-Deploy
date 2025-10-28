@@ -56,7 +56,7 @@ let
         base ++ extras
     );
   pythonAiInterpreterPath = "${pythonAiEnv}/bin/python3";
-  huggingfaceReadme = 
+  huggingfaceReadme = ''
     Hugging Face configuration lives here.
 
     • Store your personal access token in the file "token" within this directory (never commit it).
