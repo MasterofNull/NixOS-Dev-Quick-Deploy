@@ -47,6 +47,43 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# ------------------------------------------------------------------------------
+# Runtime Dependency Helpers
+# ------------------------------------------------------------------------------
+
+PYTHON_BIN=()
+
+ensure_python_runtime() {
+    if [ ${#PYTHON_BIN[@]} -gt 0 ]; then
+        return 0
+    fi
+
+    if command -v python3 >/dev/null 2>&1; then
+        PYTHON_BIN=(python3)
+        return 0
+    fi
+
+    if command -v python >/dev/null 2>&1; then
+        PYTHON_BIN=(python)
+        return 0
+    fi
+
+    if command -v nix >/dev/null 2>&1; then
+        PYTHON_BIN=(nix shell nixpkgs#python3 -c python3)
+        print_warning "python3 not found in PATH – using ephemeral nix shell"
+        return 0
+    fi
+
+    print_error "python3 is required but not available."
+    print_error "Install python3 or ensure it is on PATH before rerunning."
+    return 1
+}
+
+run_python() {
+    ensure_python_runtime || return 1
+    "${PYTHON_BIN[@]}" "$@"
+}
+
 # Configuration
 HM_CONFIG_DIR="$HOME/.config/home-manager"
 HM_CONFIG_FILE="$HM_CONFIG_DIR/home.nix"
@@ -245,7 +282,7 @@ parse_nixos_option_value() {
 load_previous_nixos_metadata() {
     local metadata
 
-    metadata=$(TARGET_USER="$USER" python3 - <<'PY' 2>/dev/null
+    metadata=$(TARGET_USER="$USER" run_python - <<'PY' 2>/dev/null
 import base64
 import os
 import re
@@ -341,14 +378,14 @@ PY
             __USERPW__*)
                 local encoded=${line#__USERPW__:}
                 if [ -n "$encoded" ]; then
-                    PREVIOUS_USER_PASSWORD_SNIPPET=$(printf '%s' "$encoded" | python3 - <<'PY' 2>/dev/null
+                    PREVIOUS_USER_PASSWORD_SNIPPET=$(ENCODED_USER_SNIPPET="$encoded" run_python <<'PY' 2>/dev/null
 import base64
-import sys
+import os
 
-data = sys.stdin.read().strip()
+data = os.environ.get("ENCODED_USER_SNIPPET", "").strip()
 if data:
     try:
-        sys.stdout.write(base64.b64decode(data).decode())
+        print(base64.b64decode(data).decode(), end="")
     except Exception:
         pass
 PY
@@ -656,6 +693,12 @@ check_prerequisites() {
         print_warning "home-manager not found - installing automatically"
         print_info "home-manager is required for this setup"
         install_home_manager
+    fi
+
+    if ! ensure_python_runtime; then
+        print_error "Unable to locate or provision a python interpreter"
+        print_error "Install python3 manually and re-run the deployment"
+        exit 1
     fi
 }
 
@@ -1202,7 +1245,7 @@ create_home_manager_config() {
     sed -i "s|HOMEDIR|$HOME|" "$HM_CONFIG_FILE"
     sed -i "s|STATEVERSION_PLACEHOLDER|$STATE_VERSION|" "$HM_CONFIG_FILE"
 
-    DEFAULT_EDITOR_VALUE="$DEFAULT_EDITOR" python3 - "$HM_CONFIG_FILE" <<'PY'
+    DEFAULT_EDITOR_VALUE="$DEFAULT_EDITOR" run_python - "$HM_CONFIG_FILE" <<'PY'
 import os
 import sys
 
@@ -1220,7 +1263,7 @@ PY
 
     # Some older templates may have left behind stray navigation headings.
     # Clean them up so nix-instantiate parsing does not fail on bare identifiers.
-    CLEANUP_MSG=$(python3 - "$HM_CONFIG_FILE" <<'PY'
+    CLEANUP_MSG=$(run_python - "$HM_CONFIG_FILE" <<'PY'
 import re
 import sys
 
@@ -1892,7 +1935,7 @@ EOF
     TOTAL_RAM_GB_VALUE="$total_ram_value" \
     USERS_MUTABLE_VALUE="$USERS_MUTABLE_SETTING" \
     USER_PASSWORD_BLOCK_VALUE="$USER_PASSWORD_BLOCK" \
-    python3 - "$GENERATED_CONFIG" <<'PY'
+    run_python - "$GENERATED_CONFIG" <<'PY'
 import os
 import sys
 
