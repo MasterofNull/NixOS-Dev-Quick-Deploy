@@ -22,8 +22,16 @@ let
   openWebUiPort = 8081;
   openWebUiUrl = "http://127.0.0.1:${toString openWebUiPort}";
   openWebUiDataDir = ".local/share/open-webui";
+  pythonAi =
+    pkgs.python311.override {
+      packageOverrides = self: super: {
+        markdown = super.markdown.overridePythonAttrs (old: {
+          doCheck = false;
+        });
+      };
+    };
   pythonAiEnv =
-    pkgs.python311.withPackages (ps:
+    pythonAi.withPackages (ps:
       let
         base = with ps; [
           pip
