@@ -224,7 +224,7 @@ interpreter_binding_exists = bool(interpreter_binding_pattern.search(text))
 
 if not env_binding_exists:
     block = textwrap.indent(canonical_block, default_indent) + "\n"
-    text = text[:let_line_end] + block + text[let_rootline_end:]
+    text = text[:let_line_end] + block + text[let_line_end:]
     changed = True
     messages.append("Inserted canonical pythonAiEnv definition in home.nix")
     interpreter_binding_exists = True
@@ -271,8 +271,10 @@ PY
 # Configuration
 DEV_HOME_ROOT="$PRIMARY_HOME/NixOS Dev Home"
 HM_CONFIG_DIR="$DEV_HOME_ROOT/Flake"
-HM_CONFIG_FILE="$HM_CONFIG_DIR/home.nix"
-HW_CONFIG_FILE="$HM_CONFIG_DIR/hardware-configuration.nix"
+FLAKE_FILE="$HM_CONFIG_DIR/flake.nix"
+HOME_MANAGER_FILE="$HM_CONFIG_DIR/home.nix"
+SYSTEM_CONFIG_FILE="$HM_CONFIG_DIR/configuration.nix"
+HARDWARE_CONFIG_FILE="$HM_CONFIG_DIR/hardware-configuration.nix"
 HM_CONFIG_CD_COMMAND="cd \"$HM_CONFIG_DIR\""
 
 ensure_flake_workspace() {
@@ -411,10 +413,10 @@ require_flake_artifacts() {
 
     local missing=false
 
-    validate_flake_artifact "$HM_CONFIG_DIR/flake.nix" "flake.nix" || missing=true
-    validate_flake_artifact "$HM_CONFIG_DIR/home.nix" "home.nix" || missing=true
-    validate_flake_artifact "$HM_CONFIG_DIR/configuration.nix" "configuration.nix" || missing=true
-    validate_flake_artifact "$HM_CONFIG_DIR/hardware-configuration.nix" "hardware-configuration.nix" || missing=true
+    validate_flake_artifact "$FLAKE_FILE" "flake.nix" || missing=true
+    validate_flake_artifact "$HOME_MANAGER_FILE" "home.nix" || missing=true
+    validate_flake_artifact "$SYSTEM_CONFIG_FILE" "configuration.nix" || missing=true
+    validate_flake_artifact "$HARDWARE_CONFIG_FILE" "hardware-configuration.nix" || missing=true
 
     if $missing; then
         print_info "Resolve the missing artifacts above and rerun the script with --force-update if needed."
@@ -427,7 +429,7 @@ require_flake_artifacts() {
 materialize_hardware_configuration() {
     ensure_flake_workspace || return 1
 
-    local target_file="$HW_CONFIG_FILE"
+    local target_file="$HARDWARE_CONFIG_FILE"
     local source_file=""
     local generated_tmp=""
     local generator_log=""
@@ -674,7 +676,7 @@ cleanup_on_failure() {
         echo -e "${BLUE}→${NC} Home-manager backup available at:"
         echo -e "   ${HOME_MANAGER_BACKUP}"
         echo -e "${YELLOW}→${NC} NOT auto-restoring to preserve partial progress"
-        echo -e "${BLUE}ℹ${NC} To manually restore: cp $HOME_MANAGER_BACKUP $HM_CONFIG_FILE"
+        echo -e "${BLUE}ℹ${NC} To manually restore: cp $HOME_MANAGER_BACKUP $HOME_MANAGER_FILE"
     fi
 
     echo ""
@@ -1053,6 +1055,43 @@ print_error() {
     echo -e "${RED}✗${NC} $1"
 }
 
+assert_unique_paths() {
+    declare -A seen=()
+    local name
+    for name in "$@"; do
+        if [[ -z ${!name+x} ]]; then
+            continue
+        fi
+
+        local value="${!name}"
+        if [[ -z "$value" ]]; then
+            continue
+        fi
+
+        local normalized="$value"
+        if command -v readlink >/dev/null 2>&1; then
+            local resolved
+            if resolved=$(readlink -m -- "$value" 2>/dev/null); then
+                normalized="$resolved"
+            fi
+        fi
+
+        if [[ "$normalized" != "/" ]]; then
+            normalized="${normalized%/}"
+        fi
+
+        if [[ -n ${seen[$normalized]+x} ]]; then
+            local other="${seen[$normalized]}"
+            print_error "Path collision detected: $name and ${other} both resolve to $normalized"
+            return 1
+        fi
+
+        seen[$normalized]="$name"
+    done
+
+    return 0
+}
+
 normalize_channel_name() {
     local raw="$1"
 
@@ -1134,6 +1173,13 @@ check_prerequisites() {
         exit 1
     fi
     print_success "Running on NixOS"
+
+    if ! command -v nixos-rebuild >/dev/null 2>&1; then
+        print_error "nixos-rebuild is not available in PATH"
+        print_info "Install the nixos-rebuild tooling and ensure it is accessible before rerunning."
+        exit 1
+    fi
+    print_success "nixos-rebuild command detected"
 
     # Detect and handle old deployment method artifacts
     print_info "Checking for old deployment artifacts..."
@@ -1697,14 +1743,14 @@ create_home_manager_config() {
         mkdir -p "$BACKUP_DIR"
         print_info "Found existing home-manager config, backing up all files..."
 
-        if [[ -f "$HM_CONFIG_FILE" ]]; then
-            HOME_MANAGER_BACKUP="$HM_CONFIG_FILE.backup.$BACKUP_TIMESTAMP"
-            cp "$HM_CONFIG_FILE" "$HOME_MANAGER_BACKUP"
+        if [[ -f "$HOME_MANAGER_FILE" ]]; then
+            HOME_MANAGER_BACKUP="$HOME_MANAGER_FILE.backup.$BACKUP_TIMESTAMP"
+            cp "$HOME_MANAGER_FILE" "$HOME_MANAGER_BACKUP"
             print_success "Backed up home.nix"
         fi
 
-        if [[ -f "$HM_CONFIG_DIR/flake.nix" ]]; then
-            cp "$HM_CONFIG_DIR/flake.nix" "$BACKUP_DIR/flake.nix.backup.$BACKUP_TIMESTAMP"
+        if [[ -f "$FLAKE_FILE" ]]; then
+            cp "$FLAKE_FILE" "$BACKUP_DIR/flake.nix.backup.$BACKUP_TIMESTAMP"
             print_success "Backed up flake.nix"
         fi
 
@@ -1748,7 +1794,6 @@ create_home_manager_config() {
         exit 1
     fi
 
-    local FLAKE_FILE="$HM_CONFIG_DIR/flake.nix"
     local SYSTEM_ARCH=$(nix eval --raw --expr builtins.currentSystem 2>/dev/null || echo "x86_64-linux")
     local CURRENT_HOSTNAME=$(hostname)
 
@@ -1774,7 +1819,7 @@ create_home_manager_config() {
         exit 1
     fi
 
-    if ! copy_template_to_flake "$HOME_TEMPLATE" "$HM_CONFIG_FILE" "home.nix"; then
+    if ! copy_template_to_flake "$HOME_TEMPLATE" "$HOME_MANAGER_FILE" "home.nix"; then
         exit 1
     fi
 
@@ -1798,21 +1843,21 @@ create_home_manager_config() {
     print_info "  Editor: $DEFAULT_EDITOR"
 
     # Replace placeholders in home.nix (using | delimiter to handle special characters in variables)
-    sed -i "s|VERSIONPLACEHOLDER|$SCRIPT_VERSION|" "$HM_CONFIG_FILE"
-    sed -i "s|HASHPLACEHOLDER|$TEMPLATE_HASH|" "$HM_CONFIG_FILE"
+    sed -i "s|VERSIONPLACEHOLDER|$SCRIPT_VERSION|" "$HOME_MANAGER_FILE"
+    sed -i "s|HASHPLACEHOLDER|$TEMPLATE_HASH|" "$HOME_MANAGER_FILE"
 
     # Replace placeholders in flake.nix
-    sed -i "s|HOMEUSERNAME|$USER|g" "$HM_CONFIG_DIR/flake.nix"
-    sed -i "s|HOMEUSERNAME|$USER|" "$HM_CONFIG_FILE"
-    sed -i "s|HOMEDIR|$HOME|" "$HM_CONFIG_FILE"
-    sed -i "s|STATEVERSION_PLACEHOLDER|$STATE_VERSION|" "$HM_CONFIG_FILE"
+    sed -i "s|HOMEUSERNAME|$USER|g" "$FLAKE_FILE"
+    sed -i "s|HOMEUSERNAME|$USER|" "$HOME_MANAGER_FILE"
+    sed -i "s|HOMEDIR|$HOME|" "$HOME_MANAGER_FILE"
+    sed -i "s|STATEVERSION_PLACEHOLDER|$STATE_VERSION|" "$HOME_MANAGER_FILE"
 
-    if ! harmonize_python_ai_bindings "$HM_CONFIG_FILE" "home-manager home.nix"; then
+    if ! harmonize_python_ai_bindings "$HOME_MANAGER_FILE" "home-manager home.nix"; then
         exit 1
     fi
 
     DEFAULT_EDITOR_VALUE="$DEFAULT_EDITOR" \
-    TARGET_HOME_NIX="$HM_CONFIG_FILE" run_python <<'PY'
+    TARGET_HOME_NIX="$HOME_MANAGER_FILE" run_python <<'PY'
 import os
 import sys
 
@@ -1834,7 +1879,7 @@ PY
 
     # Some older templates may have left behind stray navigation headings.
     # Clean them up so nix-instantiate parsing does not fail on bare identifiers.
-    CLEANUP_MSG=$(TARGET_HOME_NIX="$HM_CONFIG_FILE" run_python <<'PY'
+    CLEANUP_MSG=$(TARGET_HOME_NIX="$HOME_MANAGER_FILE" run_python <<'PY'
 import os
 import re
 import sys
@@ -1871,23 +1916,23 @@ PY
         print_info "$CLEANUP_MSG"
     fi
 
-    if [[ ! -s "$HM_CONFIG_FILE" ]]; then
-        print_error "home.nix generation failed - file is empty at $HM_CONFIG_FILE"
+    if [[ ! -s "$HOME_MANAGER_FILE" ]]; then
+        print_error "home.nix generation failed - file is empty at $HOME_MANAGER_FILE"
         exit 1
     fi
 
-    print_success "Home manager configuration created at $HM_CONFIG_FILE"
-    print_info "Configuration includes $(grep -c "^    " "$HM_CONFIG_FILE" || echo 'many') packages"
+    print_success "Home manager configuration created at $HOME_MANAGER_FILE"
+    print_info "Configuration includes $(grep -c "^    " "$HOME_MANAGER_FILE" || echo 'many') packages"
 
     # Verify the generated file is valid Nix syntax
     print_info "Validating generated home.nix syntax..."
-    if nix-instantiate --parse "$HM_CONFIG_FILE" &>/dev/null; then
+    if nix-instantiate --parse "$HOME_MANAGER_FILE" &>/dev/null; then
         print_success "✓ home.nix syntax is valid"
     else
         print_error "✗ home.nix has syntax errors!"
-        print_error "Please check: $HM_CONFIG_FILE"
+        print_error "Please check: $HOME_MANAGER_FILE"
         print_info "Running nix-instantiate for details..."
-        nix-instantiate --parse "$HM_CONFIG_FILE" 2>&1 | tail -20
+        nix-instantiate --parse "$HOME_MANAGER_FILE" 2>&1 | tail -20
         exit 1
     fi
 }
@@ -1979,12 +2024,12 @@ apply_home_manager_config() {
     # Run home-manager switch with flake support for declarative Flatpak management
     # This passes nix-flatpak as an input to home.nix, enabling services.flatpak
     print_info "Applying your custom home-manager configuration..."
-    print_info "Config: $HM_CONFIG_FILE"
+    print_info "Config: $HOME_MANAGER_FILE"
     print_info "Using flake for full Flatpak declarative support..."
     echo ""
 
     # Update flake.lock to ensure we have latest versions of inputs
-    local HM_FLAKE_PATH="$HM_CONFIG_DIR/flake.nix"
+    local HM_FLAKE_PATH="$FLAKE_FILE"
     if [[ ! -f "$HM_FLAKE_PATH" ]]; then
         print_error "home-manager flake manifest missing: $HM_FLAKE_PATH"
         print_info "The configuration step did not complete successfully."
@@ -2328,7 +2373,7 @@ update_nixos_system_config() {
     print_info "Locale: $CURRENT_LOCALE"
     print_info "users.mutableUsers: $USERS_MUTABLE_SETTING"
 
-    harmonize_python_ai_bindings "$HM_CONFIG_DIR/home.nix" "existing flake home.nix" || return 1
+    harmonize_python_ai_bindings "$HOME_MANAGER_FILE" "existing flake home.nix" || return 1
     harmonize_python_ai_bindings "/etc/nixos/home.nix" "/etc/nixos/home.nix" || return 1
 
     # Backup old config
@@ -2350,14 +2395,17 @@ update_nixos_system_config() {
     local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local TEMPLATE_DIR="$SCRIPT_DIR/templates"
     local SYSTEM_TEMPLATE="$TEMPLATE_DIR/configuration.nix"
-    local GENERATED_CONFIG="$HM_CONFIG_DIR/configuration.nix"
+
+    if ! assert_unique_paths HOME_MANAGER_FILE SYSTEM_CONFIG_FILE HARDWARE_CONFIG_FILE; then
+        return 1
+    fi
 
     if [[ ! -f "$SYSTEM_TEMPLATE" ]]; then
         print_error "Missing NixOS configuration template: $SYSTEM_TEMPLATE"
         exit 1
     fi
 
-    if ! copy_template_to_flake "$SYSTEM_TEMPLATE" "$GENERATED_CONFIG" "configuration.nix"; then
+    if ! copy_template_to_flake "$SYSTEM_TEMPLATE" "$SYSTEM_CONFIG_FILE" "configuration.nix"; then
         return 1
     fi
 
@@ -2476,7 +2524,7 @@ EOF
         USER_PASSWORD_BLOCK=$'    # (no password directives detected; update manually if required)\n'
     fi
 
-    TARGET_GENERATED_NIX="$GENERATED_CONFIG" \
+    TARGET_CONFIGURATION_NIX="$SYSTEM_CONFIG_FILE" \
         SCRIPT_VERSION_VALUE="$SCRIPT_VERSION" \
         GENERATED_AT="$GENERATED_AT" \
         HOSTNAME_VALUE="$HOSTNAME" \
@@ -2497,9 +2545,9 @@ EOF
 import os
 import sys
 
-target_path = os.environ.get("TARGET_GENERATED_NIX")
+target_path = os.environ.get("TARGET_CONFIGURATION_NIX")
 if not target_path:
-    print("TARGET_GENERATED_NIX is not set", file=sys.stderr)
+    print("TARGET_CONFIGURATION_NIX is not set", file=sys.stderr)
     sys.exit(1)
 
 with open(target_path, "r", encoding="utf-8") as f:
@@ -2589,8 +2637,8 @@ setup_flake_environment() {
     print_section "Setting Up Flake-based Development Environment"
 
     # Check if flake.nix exists in the NixOS-Quick-Deploy directory
-    FLAKE_DIR="$HM_CONFIG_DIR"
-    FLAKE_FILE="$FLAKE_DIR/flake.nix"
+    local FLAKE_DIR="$HM_CONFIG_DIR"
+    local FLAKE_FILE="$FLAKE_DIR/flake.nix"
 
     if [[ ! -f "$FLAKE_FILE" ]]; then
         print_warning "flake.nix not found at $FLAKE_FILE"
@@ -3229,6 +3277,11 @@ main() {
     if [[ $EUID -eq 0 ]]; then
         print_error "This script should NOT be run as root"
         print_info "It will use sudo when needed for system operations"
+        exit 1
+    fi
+
+    if ! assert_unique_paths HOME_MANAGER_FILE SYSTEM_CONFIG_FILE HARDWARE_CONFIG_FILE; then
+        print_error "Internal configuration path conflict detected."
         exit 1
     fi
 
