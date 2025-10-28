@@ -20,6 +20,15 @@ HOME_MANAGER_BACKUP=""
 HOME_MANAGER_CHANNEL_REF=""
 HOME_MANAGER_CHANNEL_URL=""
 
+# Preserved configuration data
+SELECTED_TIMEZONE=""
+USERS_MUTABLE_SETTING="true"
+USER_PASSWORD_BLOCK=""
+USER_TEMP_PASSWORD=""
+PREVIOUS_TIMEZONE=""
+PREVIOUS_MUTABLE_USERS=""
+PREVIOUS_USER_PASSWORD_SNIPPET=""
+
 # Script version for change tracking
 SCRIPT_VERSION="2.1.1"
 VERSION_FILE="$HOME/.cache/nixos-quick-deploy-version"
@@ -37,6 +46,43 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# ------------------------------------------------------------------------------
+# Runtime Dependency Helpers
+# ------------------------------------------------------------------------------
+
+PYTHON_BIN=()
+
+ensure_python_runtime() {
+    if [ ${#PYTHON_BIN[@]} -gt 0 ]; then
+        return 0
+    fi
+
+    if command -v python3 >/dev/null 2>&1; then
+        PYTHON_BIN=(python3)
+        return 0
+    fi
+
+    if command -v python >/dev/null 2>&1; then
+        PYTHON_BIN=(python)
+        return 0
+    fi
+
+    if command -v nix >/dev/null 2>&1; then
+        PYTHON_BIN=(nix shell nixpkgs#python3 -c python3)
+        print_warning "python3 not found in PATH – using ephemeral nix shell"
+        return 0
+    fi
+
+    print_error "python3 is required but not available."
+    print_error "Install python3 or ensure it is on PATH before rerunning."
+    return 1
+}
+
+run_python() {
+    ensure_python_runtime || return 1
+    "${PYTHON_BIN[@]}" "$@"
+}
 
 # Configuration
 HM_CONFIG_DIR="$HOME/.config/home-manager"
@@ -142,7 +188,8 @@ show_fresh_start_instructions() {
     echo ""
     echo -e "${YELLOW}3. Review available backups (NOT auto-restored):${NC}"
     echo "   ls -lt ~/.config/home-manager/home.nix.backup.*"
-    echo "   ls -lt ~/.config/home-manager/configuration.nix.backup.*"                                       #/etc/nixos/configuration.nix.backup.*"
+    echo "   ls -lt ~/.config/home-manager/configuration.nix.backup.*"
+    echo "   ls -lt /etc/nixos/configuration.nix.backup.*"
     echo ""
     echo -e "${YELLOW}4. Read the recovery guide:${NC}"
     echo "   cat ~/Documents/AI-Opitmizer/NixOS-Quick-Deploy/RECOVERY-GUIDE.md"
@@ -198,6 +245,284 @@ print_warning() {
     echo -e "${YELLOW}⚠${NC} $1"
 }
 
+# ------------------------------------------------------------------------------
+# Configuration Extraction Helpers
+# ------------------------------------------------------------------------------
+
+parse_nixos_option_value() {
+    local option_path="$1"
+
+    if ! command -v nixos-option >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local raw_output
+    if ! raw_output=$(nixos-option "$option_path" 2>/dev/null); then
+        return 0
+    fi
+
+    raw_output=$(echo "$raw_output" | sed '1d' | tr -d '\n')
+    raw_output=$(echo "$raw_output" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+
+    if [ -z "$raw_output" ]; then
+        return 0
+    fi
+
+    if [[ $raw_output == "*" ]]; then
+        raw_output=${raw_output#\"}
+        raw_output=${raw_output%\"}
+    elif [[ $raw_output == '*' ]]; then
+        raw_output=${raw_output#'}
+        raw_output=${raw_output%'}
+    fi
+
+    printf '%s' "$raw_output"
+}
+
+load_previous_nixos_metadata() {
+    local metadata
+
+    metadata=$(TARGET_USER="$USER" run_python - <<'PY' 2>/dev/null
+import base64
+import os
+import re
+from pathlib import Path
+
+target_user = os.environ.get("TARGET_USER", "")
+config_path = Path("/etc/nixos/configuration.nix")
+
+timezone = ""
+mutable_users = ""
+password_snippet = ""
+
+if config_path.exists():
+    text = config_path.read_text(encoding="utf-8", errors="ignore")
+
+    tz_match = re.search(r"time\.timeZone\s*=\s*([^;]+);", text)
+    if tz_match:
+        tz_expr = tz_match.group(1)
+        q_match = re.search(r'"([^"\\]+(?:\\.[^"\\]*)*)"', tz_expr)
+        if not q_match:
+            q_match = re.search(r"'([^'\\]+(?:\\.[^'\\]*)*)'", tz_expr)
+        if q_match:
+            timezone = bytes(q_match.group(1), "utf-8").decode("unicode_escape")
+
+    mutable_match = re.search(r"users\.mutableUsers\s*=\s*([^;]+);", text)
+    if mutable_match:
+        mutable_users = mutable_match.group(1).strip()
+
+    if target_user:
+        user_re = re.escape(target_user)
+        pattern = re.compile(
+            r"users\.users\.(?:\"{0}\"|'{0}'|{0})\s*=\s*\{{".format(user_re),
+            re.MULTILINE,
+        )
+        match = pattern.search(text)
+        if match:
+            start = match.end() - 1  # include opening brace
+            depth = 0
+            in_string = False
+            string_char = ""
+            escape = False
+            for idx in range(start, len(text)):
+                ch = text[idx]
+                if in_string:
+                    if escape:
+                        escape = False
+                    elif ch == '\\':
+                        escape = True
+                    elif ch == string_char:
+                        in_string = False
+                    continue
+                else:
+                    if ch in ('"', "'"):
+                        in_string = True
+                        string_char = ch
+                        continue
+                    if ch == '{':
+                        depth += 1
+                    elif ch == '}':
+                        depth -= 1
+                        if depth == 0:
+                            block = text[match.start():idx + 1]
+                            lines = []
+                            for line in block.splitlines():
+                                if 'password' in line.lower():
+                                    lines.append(line.rstrip())
+                            if lines:
+                                password_snippet = "\n".join(lines)
+                            break
+
+if timezone:
+    print("__TZ__:" + timezone)
+if mutable_users:
+    print("__MUTABLE__:" + mutable_users)
+if password_snippet:
+    encoded = base64.b64encode(password_snippet.encode()).decode()
+    print("__USERPW__:" + encoded)
+PY
+)
+
+    if [ -z "$metadata" ]; then
+        return
+    fi
+
+    while IFS= read -r line; do
+        case "$line" in
+            __TZ__*)
+                PREVIOUS_TIMEZONE=${line#__TZ__:}
+                ;;
+            __MUTABLE__*)
+                PREVIOUS_MUTABLE_USERS=${line#__MUTABLE__:}
+                ;;
+            __USERPW__*)
+                local encoded=${line#__USERPW__:}
+                if [ -n "$encoded" ]; then
+                    PREVIOUS_USER_PASSWORD_SNIPPET=$(ENCODED_USER_SNIPPET="$encoded" run_python <<'PY' 2>/dev/null
+import base64
+import os
+
+data = os.environ.get("ENCODED_USER_SNIPPET", "").strip()
+if data:
+    try:
+        print(base64.b64decode(data).decode(), end="")
+    except Exception:
+        pass
+PY
+)
+                fi
+                ;;
+        esac
+    done <<<"$metadata"
+}
+
+detect_existing_timezone() {
+    local detected=""
+
+    if [ -n "$PREVIOUS_TIMEZONE" ]; then
+        detected="$PREVIOUS_TIMEZONE"
+    else
+        detected=$(parse_nixos_option_value "time.timeZone")
+    fi
+
+    if [ -z "$detected" ]; then
+        detected=$(timedatectl show --property=Timezone --value 2>/dev/null || true)
+    fi
+
+    if [ -z "$detected" ]; then
+        detected="America/New_York"
+    fi
+
+    printf '%s' "$detected"
+}
+
+detect_users_mutable_setting() {
+    local value=""
+
+    if [ -n "$PREVIOUS_MUTABLE_USERS" ]; then
+        value="$PREVIOUS_MUTABLE_USERS"
+    else
+        value=$(parse_nixos_option_value "users.mutableUsers")
+    fi
+
+    if [ -z "$value" ]; then
+        value="true"
+    fi
+
+    printf '%s' "$value"
+}
+
+get_shadow_hash() {
+    local account="$1"
+    local line=""
+
+    if command -v sudo >/dev/null 2>&1; then
+        line=$(sudo grep "^${account}:" /etc/shadow 2>/dev/null || true)
+    else
+        line=$(grep "^${account}:" /etc/shadow 2>/dev/null || true)
+    fi
+
+    if [ -z "$line" ]; then
+        return 0
+    fi
+
+    local hash
+    hash=$(echo "$line" | cut -d: -f2)
+
+    if [ -z "$hash" ] || [ "$hash" = "!" ] || [ "$hash" = "*" ]; then
+        return 0
+    fi
+
+    printf '%s' "$hash"
+}
+
+generate_temporary_password() {
+    LC_ALL=C tr -dc 'A-Za-z0-9!@#$%^&*()_+=-' </dev/urandom | head -c 20
+}
+
+preserve_user_password_directives() {
+    USER_PASSWORD_BLOCK=""
+
+    if [ -n "$PREVIOUS_USER_PASSWORD_SNIPPET" ]; then
+        USER_PASSWORD_BLOCK="$PREVIOUS_USER_PASSWORD_SNIPPET"
+        [[ "$USER_PASSWORD_BLOCK" != *$'\n' ]] && USER_PASSWORD_BLOCK+=$'\n'
+        print_success "Preserved password directives from previous configuration"
+        return
+    fi
+
+    local user_path="users.users.\"$USER\""
+    local hashed
+    local hashed_file
+    local password_file
+    local initial_hashed
+    local initial_plain
+    local force_flag
+
+    hashed=$(parse_nixos_option_value "${user_path}.hashedPassword")
+    hashed_file=$(parse_nixos_option_value "${user_path}.hashedPasswordFile")
+    password_file=$(parse_nixos_option_value "${user_path}.passwordFile")
+    initial_hashed=$(parse_nixos_option_value "${user_path}.initialHashedPassword")
+    initial_plain=$(parse_nixos_option_value "${user_path}.initialPassword")
+    force_flag=$(parse_nixos_option_value "${user_path}.forceInitialPassword")
+
+    local directives=()
+
+    if [ -n "$hashed" ]; then
+        directives+=("    hashedPassword = \"${hashed}\";")
+    elif [ -n "$hashed_file" ]; then
+        directives+=("    hashedPasswordFile = \"${hashed_file}\";")
+    elif [ -n "$password_file" ]; then
+        directives+=("    passwordFile = \"${password_file}\";")
+    elif [ -n "$initial_hashed" ]; then
+        directives+=("    initialHashedPassword = \"${initial_hashed}\";")
+    elif [ -n "$initial_plain" ]; then
+        directives+=("    initialPassword = \"${initial_plain}\";")
+    fi
+
+    if [ ${#directives[@]} -gt 0 ]; then
+        if [ "$force_flag" = "true" ] || [ "$force_flag" = "false" ]; then
+            directives+=("    forceInitialPassword = ${force_flag};")
+        fi
+        USER_PASSWORD_BLOCK=$(printf '%s\n' "${directives[@]}")
+        print_success "Preserved password settings from running system configuration"
+        return
+    fi
+
+    local shadow_hash
+    shadow_hash=$(get_shadow_hash "$USER")
+    if [ -n "$shadow_hash" ]; then
+        printf -v USER_PASSWORD_BLOCK '    hashedPassword = "%s";\n' "$shadow_hash"
+        print_success "Migrated password hash from /etc/shadow"
+        return
+    fi
+
+    local temp_password
+    temp_password=$(generate_temporary_password)
+    USER_TEMP_PASSWORD="$temp_password"
+    printf -v USER_PASSWORD_BLOCK '    initialPassword = "%s";\n    forceInitialPassword = true;\n' "$temp_password"
+    print_warning "No existing password configuration found. Generated temporary password for $USER"
+}
+
 print_error() {
     echo -e "${RED}✗${NC} $1"
 }
@@ -220,6 +545,23 @@ normalize_channel_name() {
     raw="${raw%.zip}"
 
     echo "$raw"
+}
+
+get_home_manager_flake_uri() {
+    local ref="${HOME_MANAGER_CHANNEL_REF:-}"
+    local base="github:nix-community/home-manager"
+
+    if [[ -n "$ref" && "$ref" != "master" ]]; then
+        echo "${base}?ref=${ref}"
+    else
+        echo "$base"
+    fi
+}
+
+get_home_manager_package_ref() {
+    local uri
+    uri=$(get_home_manager_flake_uri)
+    echo "${uri}#home-manager"
 }
 
 confirm() {
@@ -351,6 +693,12 @@ check_prerequisites() {
         print_warning "home-manager not found - installing automatically"
         print_info "home-manager is required for this setup"
         install_home_manager
+    fi
+
+    if ! ensure_python_runtime; then
+        print_error "Unable to locate or provision a python interpreter"
+        print_error "Install python3 manually and re-run the deployment"
+        exit 1
     fi
 }
 
@@ -617,34 +965,46 @@ install_home_manager() {
         echo ""
     fi
 
-    print_info "Installing home-manager (this may take 5-10 minutes)..."
-    if ! nix-shell '<home-manager>' -A install 2>&1 | tee /tmp/home-manager-install.log; then
-        print_error "Failed to install home-manager"
-        print_info "Log saved to: /tmp/home-manager-install.log"
-        echo ""
-        print_warning "Common causes:"
-        echo "  • Network issues during download"
-        echo "  • Insufficient disk space"
-        echo "  • Conflicting Nix configuration"
-        echo ""
-        exit 1
-    fi
+    local hm_pkg_ref
+    hm_pkg_ref=$(get_home_manager_package_ref)
 
-    print_success "home-manager installed successfully"
+    print_info "Installing home-manager CLI via nix profile..."
+    print_info "  Source: ${hm_pkg_ref}"
+
+    local profile_log="/tmp/home-manager-profile-install.log"
+    if nix profile install --accept-flake-config "$hm_pkg_ref" 2>&1 | tee "$profile_log"; then
+        print_success "home-manager CLI installed via nix profile"
+        print_info "Log saved to: $profile_log"
+    else
+        print_warning "nix profile install failed (see $profile_log)"
+        print_info "Falling back to channel-based installer from <home-manager>..."
+
+        if ! nix-shell '<home-manager>' -A install 2>&1 | tee /tmp/home-manager-install.log; then
+            print_error "Failed to install home-manager"
+            print_info "Log saved to: /tmp/home-manager-install.log"
+            echo ""
+            print_warning "Common causes:"
+            echo "  • Network issues during download"
+            echo "  • Insufficient disk space"
+            echo "  • Conflicting Nix configuration"
+            echo ""
+            exit 1
+        fi
+
+        print_success "home-manager installed via channel-based installer"
+        print_info "Log saved to: /tmp/home-manager-install.log"
+    fi
 
     # Update PATH to include newly installed home-manager command
     print_info "Updating PATH to include home-manager..."
     export PATH="$HOME/.nix-profile/bin:$PATH"
-    #nix-shell -p home-manager
 
     # Verify home-manager is now available
     if command -v home-manager &> /dev/null; then
         print_success "home-manager command is now available: $(which home-manager)"
     else
-        print_error "home-manager installed but command not found in PATH"
-        print_info "Expected location: $HOME/.nix-profile/bin/home-manager"
-        print_info "Current PATH: $PATH"
-        exit 1
+        print_warning "home-manager command not found in PATH after installation"
+        print_info "Using 'nix run --accept-flake-config ${hm_pkg_ref} --' as a fallback during this session"
     fi
 }
 
@@ -655,31 +1015,13 @@ install_home_manager() {
 gather_user_info() {
     print_section "Gathering User Preferences"
 
-    # Timezone configuration
-    local CURRENT_TZ=$(timedatectl show --property=Timezone --value 2>/dev/null || echo "America/New_York")
-    print_info "Current timezone: $CURRENT_TZ"
-    echo ""
-    print_info "Common US timezones:"
-    echo "  1) America/Los_Angeles (Pacific)"
-    echo "  2) America/Denver (Mountain)"
-    echo "  3) America/Chicago (Central)"
-    echo "  4) America/New_York (Eastern)"
-    echo "  5) Keep current ($CURRENT_TZ)"
-    echo "  6) Custom (enter manually)"
+    load_previous_nixos_metadata
 
-    TZ_CHOICE=$(prompt_user "Choose timezone (1-6)" "5")
+    SELECTED_TIMEZONE=$(detect_existing_timezone)
+    USERS_MUTABLE_SETTING=$(detect_users_mutable_setting)
 
-    case $TZ_CHOICE in
-        1) SELECTED_TIMEZONE="America/Los_Angeles" ;;
-        2) SELECTED_TIMEZONE="America/Denver" ;;
-        3) SELECTED_TIMEZONE="America/Chicago" ;;
-        4) SELECTED_TIMEZONE="America/New_York" ;;
-        5) SELECTED_TIMEZONE="$CURRENT_TZ" ;;
-        6) SELECTED_TIMEZONE=$(prompt_user "Enter timezone (e.g., America/Los_Angeles)") ;;
-        *) SELECTED_TIMEZONE="$CURRENT_TZ" ;;
-    esac
-
-    print_success "Timezone: $SELECTED_TIMEZONE"
+    print_success "Timezone preserved: $SELECTED_TIMEZONE"
+    print_success "users.mutableUsers: $USERS_MUTABLE_SETTING"
     echo ""
 
     # Editor preference
@@ -687,12 +1029,14 @@ gather_user_info() {
     echo "  1) vim"
     echo "  2) neovim"
     echo "  3) vscodium"
-    EDITOR_CHOICE=$(prompt_user "Choose editor (1-3)" "1")
+    echo "  4) gitea editor"
+    EDITOR_CHOICE=$(prompt_user "Choose editor (1-4)" "1")
 
     case $EDITOR_CHOICE in
         1) DEFAULT_EDITOR="vim" ;;
         2) DEFAULT_EDITOR="nvim" ;;
         3) DEFAULT_EDITOR="code" ;;
+        4) DEFAULT_EDITOR="gitea-editor" ;;
         *) DEFAULT_EDITOR="vim" ;;
     esac
 
@@ -701,87 +1045,14 @@ gather_user_info() {
 
     # Password Migration/Setup
     print_section "Password Configuration"
+    preserve_user_password_directives
 
-    # Check if user already has a password in /etc/shadow
-    local EXISTING_HASH=$(sudo grep "^$USER:" /etc/shadow 2>/dev/null | cut -d: -f2)
-
-    if [ -n "$EXISTING_HASH" ] && [ "$EXISTING_HASH" != "!" ] && [ "$EXISTING_HASH" != "*" ] && [ "$EXISTING_HASH" != "" ]; then
-        # User has existing password - migrate it
-        print_success "Existing password found - will be migrated to new configuration"
-        USER_PASSWORD_HASH="$EXISTING_HASH"
-        PASSWORD_MIGRATION=true
-
-        # Ask if sudo password should be different
-        echo ""
-        print_info "Current setup: User password exists and will be preserved"
-        if confirm "Do you want a DIFFERENT password for sudo operations?" "n"; then
-            print_info "Enter new sudo password (will be required for 'sudo' commands)"
-            read -s -p "$(echo -e ${BLUE}?${NC} New sudo password: )" SUDO_PASS1
-            echo ""
-            read -s -p "$(echo -e ${BLUE}?${NC} Confirm sudo password: )" SUDO_PASS2
-            echo ""
-
-            if [ "$SUDO_PASS1" != "$SUDO_PASS2" ]; then
-                print_error "Passwords don't match!"
-                exit 1
-            fi
-
-            # Generate hash for sudo password
-            SUDO_PASSWORD_HASH=$(echo "$SUDO_PASS1" | mkpasswd -m sha-512 -s)
-            SEPARATE_SUDO_PASSWORD=true
-            print_success "Separate sudo password configured"
-        else
-            SEPARATE_SUDO_PASSWORD=false
-            print_success "User and sudo passwords will be the same"
-        fi
+    if [ -n "$USER_TEMP_PASSWORD" ]; then
+        print_warning "Temporary password generated for $USER"
+        print_info "Temporary password (change after first login): $USER_TEMP_PASSWORD"
     else
-        # No existing password - need to set one
-        print_warning "No existing password found for user: $USER"
-        print_info "Setting up new password for system login"
-        echo ""
-
-        read -s -p "$(echo -e ${BLUE}?${NC} Enter new password: )" USER_PASS1
-        echo ""
-        read -s -p "$(echo -e ${BLUE}?${NC} Confirm password: )" USER_PASS2
-        echo ""
-
-        if [ "$USER_PASS1" != "$USER_PASS2" ]; then
-            print_error "Passwords don't match!"
-            exit 1
-        fi
-
-        # Generate hash for user password
-        USER_PASSWORD_HASH=$(echo "$USER_PASS1" | mkpasswd -m sha-512 -s)
-        PASSWORD_MIGRATION=false
-
-        # Ask if sudo password should be different
-        echo ""
-        if confirm "Do you want a DIFFERENT password for sudo operations?" "n"; then
-            print_info "Enter sudo password (will be required for 'sudo' commands)"
-            read -s -p "$(echo -e ${BLUE}?${NC} New sudo password: )" SUDO_PASS1
-            echo ""
-            read -s -p "$(echo -e ${BLUE}?${NC} Confirm sudo password: )" SUDO_PASS2
-            echo ""
-
-            if [ "$SUDO_PASS1" != "$SUDO_PASS2" ]; then
-                print_error "Passwords don't match!"
-                exit 1
-            fi
-
-            SUDO_PASSWORD_HASH=$(echo "$SUDO_PASS1" | mkpasswd -m sha-512 -s)
-            SEPARATE_SUDO_PASSWORD=true
-            print_success "Separate sudo password configured"
-        else
-            SEPARATE_SUDO_PASSWORD=false
-            SUDO_PASSWORD_HASH="$USER_PASSWORD_HASH"
-            print_success "User and sudo passwords will be the same"
-        fi
-
-        print_success "Password configured successfully"
+        print_success "Password configuration preserved"
     fi
-
-    echo ""
-    print_info "Note: Git can be configured later with 'git config --global'"
 }
 
 # ============================================================================
@@ -897,63 +1168,30 @@ create_home_manager_config() {
         print_info "If you need the prompt wizard, place the script next to nixos-quick-deploy.sh"
     fi
 
+    local TEMPLATE_DIR="$SCRIPT_DIR/templates"
+    if [[ ! -d "$TEMPLATE_DIR" ]]; then
+        print_error "Template directory not found: $TEMPLATE_DIR"
+        print_info "Ensure the repository includes the templates directory"
+        exit 1
+    fi
+
     # Create a flake.nix in the home-manager config directory for proper Flatpak support
     # This enables using: home-manager switch --flake ~/.config/home-manager
     print_info "Creating home-manager flake configuration for Flatpak support..."
+    local FLAKE_TEMPLATE="$TEMPLATE_DIR/flake.nix"
+    if [[ ! -f "$FLAKE_TEMPLATE" ]]; then
+        print_error "Missing flake template: $FLAKE_TEMPLATE"
+        exit 1
+    fi
+
     local FLAKE_FILE="$HM_CONFIG_DIR/flake.nix"
     local SYSTEM_ARCH=$(nix eval --raw --expr builtins.currentSystem 2>/dev/null || echo "x86_64-linux")
     local CURRENT_HOSTNAME=$(hostname)
 
-    cat >> "$FLAKE_FILE" <<'FLAKEEOF'
-{
-  description = "AIDB NixOS and Home Manager configuration";
-
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/NIXPKGS_CHANNEL_PLACEHOLDER";
-    home-manager = {
-      url = "github:nix-community/home-manager?ref=HM_CHANNEL_PLACEHOLDER";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-    #nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
-    nix-flatpak.url = "github:gmodena/nix-flatpak";
-  };
-
-  outputs = { self, nixpkgs, home-manager, nix-flatpak, ... }:
-    let
-      system = "SYSTEM_PLACEHOLDER";
-    in
-    {
-      nixosConfigurations."HOSTNAME_PLACEHOLDER" = nixpkgs.lib.nixosSystem {
-        inherit system;
-        specialArgs = {
-          inherit nix-flatpak;
-        };
-        modules = [
-          ./configuration.nix
-          home-manager.nixosModules.home-manager
-          {
-            home-manager.useGlobalPkgs = true;
-            home-manager.useUserPackages = true;
-            home-manager.users."HOME_USERNAME_PLACEHOLDER" = import ./home.nix;
-          }
-        ];
-      };
-
-      homeConfigurations."HOME_USERNAME_PLACEHOLDER" = home-manager.lib.homeManagerConfiguration {
-        pkgs = nixpkgs.legacyPackages.${system};
-        extraSpecialArgs = {
-          inherit nix-flatpak;
-        };
-        modules = [
-          ./home.nix
-        ];
-      };
-    };
-}
-FLAKEEOF
+    install -Dm644 "$FLAKE_TEMPLATE" "$FLAKE_FILE"
 
     if [[ ! -s "$FLAKE_FILE" ]]; then
-        print_error "Failed to create flake manifest at $FLAKE_FILE"
+        print_error "Failed to copy flake manifest to $FLAKE_FILE"
         print_info "Check filesystem permissions and rerun with --force-update"
         exit 1
     fi
@@ -970,881 +1208,16 @@ FLAKEEOF
     print_info "  home-manager switch --flake ~/.config/home-manager"
     echo ""
 
+    local HOME_TEMPLATE="$TEMPLATE_DIR/home.nix"
+    if [[ ! -f "$HOME_TEMPLATE" ]]; then
+        print_error "Missing home-manager template: $HOME_TEMPLATE"
+        exit 1
+    fi
+
+    install -Dm644 "$HOME_TEMPLATE" "$HM_CONFIG_FILE"
+
     # Calculate template hash for change detection
     local TEMPLATE_HASH=$(echo -n "AIDB-v4.0-packages-v$SCRIPT_VERSION" | sha256sum | cut -d' ' -f1 | cut -c1-16)
-
-    cat >> "$HM_CONFIG_FILE" <<'NIXEOF'
-# NixOS Quick Deploy - Home Manager Configuration
-# Generated by: nixos-quick-deploy.sh vVERSIONPLACEHOLDER
-# Template Hash: HASHPLACEHOLDER
-# This hash is used to detect when the template changes
-# If you edit this file manually, your edits will be preserved
-# until the template itself changes (new packages added to script)
-
-{ config, pkgs, nix-flatpak, ... }:
-
-{
-  # nix-flatpak module is imported in flake.nix as a proper home-manager module
-  # This enables declarative Flatpak management through services.flatpak configuration
-  # No manual import needed here - the module is loaded by home-manager automatically
-
-  imports = [
-    nix-flatpak.homeManagerModules.nix-flatpak
-  ];
-
-  home.username = "HOMEUSERNAME";
-  home.homeDirectory = "HOMEDIR";
-  home.stateVersion = "STATEVERSION_PLACEHOLDER";  # Auto-detected from home-manager channel
-
-  programs.home-manager.enable = true;
-  nixpkgs.config.allowUnfree = true;
-
-  home.packages = with pkgs; [
-    # ========================================================================
-    # AIDB v4.0 Requirements (CRITICAL - Must be installed)
-    # ========================================================================
-
-    podman                  # Container runtime for AIDB
-    podman-compose          # Docker-compose compatibility
-    sqlite                  # Tier 1 Guardian database
-    openssl                 # Cryptographic operations
-    bc                      # Basic calculator
-    inotify-tools           # File watching for Guardian
-
-    # ========================================================================
-    # Core NixOS Development Tools
-    # ========================================================================
-
-    # Nix tools
-    nix-tree                # Visualize Nix dependencies
-    nix-index               # Index Nix packages for fast searching
-    nix-prefetch-git        # Prefetch git repositories
-    nixpkgs-fmt             # Nix code formatter
-    alejandra               # Alternative Nix formatter
-    statix                  # Linter for Nix
-    deadnix                 # Find dead Nix code
-    nix-output-monitor      # Better build output
-    nix-du                  # Disk usage for Nix store
-    nixpkgs-review          # Review nixpkgs PRs
-    nix-diff                # Compare Nix derivations
-
-    # ========================================================================
-    # Development Tools
-    # ========================================================================
-
-    # Version control
-    # Note: git installed via programs.git below (prevents collision)
-    git-crypt               # Transparent file encryption in git
-    tig                     # Text-mode interface for git
-    lazygit                 # Terminal UI for git commands
-
-    # Text editors
-    # Note: vim installed via programs.vim below (prevents collision)
-    neovim                  # Modern Vim fork with async support
-    # Note: vscodium installed via programs.vscode below
-
-    # Web browsers are now installed via Flatpak for better sandboxing:
-    # Firefox: "org.mozilla.firefox" in services.flatpak.packages
-    # Chromium: Available as "com.google.Chrome" if needed
-    # (Both still available in home.packages comments if NixOS versions preferred)
-
-    # Modern CLI tools
-    ripgrep                 # Fast recursive grep (rg)
-    ripgrep-all             # Ripgrep with PDF, archive support
-    fd                      # Fast alternative to find
-    fzf                     # Fuzzy finder for command line
-    bat                     # Cat clone with syntax highlighting
-    eza                     # Modern replacement for ls
-    jq                      # JSON processor
-    yq                      # YAML processor
-    choose                  # Human-friendly cut/awk alternative
-    du-dust                 # Intuitive disk usage (du)
-    duf                     # Disk usage/free utility (df)
-    broot                   # Tree view with navigation
-    dog                     # DNS lookup utility (dig)
-    shellcheck              # Shell script static analysis
-
-    # Terminal tools
-    # Note: alacritty installed via programs.alacritty below (prevents collision)
-    tmux                    # Terminal multiplexer
-    screen                  # Terminal session manager
-    mosh                    # Mobile shell (SSH alternative)
-    asciinema               # Terminal session recorder
-
-    # File management
-    ranger                  # Console file manager with VI bindings
-    dos2unix                # Convert text file line endings
-    unrar                   # Extract RAR archives
-    p7zip                   # 7-Zip file archiver
-    file                    # File type identification
-    rsync                   # Fast incremental file transfer
-    rclone                  # Rsync for cloud storage
-
-    # Network tools
-    wget                    # Network downloader
-    curl                    # Transfer data with URLs
-    netcat-gnu              # Network utility for TCP/UDP
-    socat                   # Multipurpose relay (SOcket CAT)
-    mtr                     # Network diagnostic tool (traceroute/ping)
-    nmap                    # Network exploration and security scanner
-
-    # System tools
-    htop                    # Interactive process viewer
-    btop                    # Resource monitor with modern UI
-    tree                    # Display directory tree structure
-    unzip                   # Extract ZIP archives
-    zip                     # Create ZIP archives
-    bc                      # Arbitrary precision calculator
-    efibootmgr              # Modify EFI Boot Manager variables
-
-    # ========================================================================
-    # Programming Languages & Tools
-    # ========================================================================
-
-    # Python (REQUIRED for AIDB)
-    # Note: python3 includes pip and setuptools by default
-    python3
-
-    # Additional languages
-    go                      # Go programming language
-    rustc                   # Rust compiler
-    cargo                   # Rust package manager
-    ruby                    # Ruby programming language
-
-    # Development utilities
-    gnumake                 # GNU Make build automation
-    gcc                     # GNU C/C++ compiler
-    nodejs_22               # Node.js JavaScript runtime v22
-
-    # ========================================================================
-    # Virtualization & Emulation
-    # ========================================================================
-
-    qemu            # Machine emulator and virtualizer
-    virtiofsd       # VirtIO filesystem daemon
-
-    # ========================================================================
-    # Desktop Environment - Cosmic (Rust-based modern desktop)
-    # ========================================================================
-
-    #cosmic-edit             # Cosmic text editor
-    #cosmic-files            # Cosmic file manager
-    #cosmic-term             # Cosmic terminal
-
-    # ========================================================================
-    # ZSH Configuration
-    # ========================================================================
-
-    # Note: zsh installed via programs.zsh below (prevents collision)
-    zsh-syntax-highlighting # Command syntax highlighting
-    zsh-autosuggestions     # Command suggestions from history
-    zsh-completions         # Additional completion definitions
-    zsh-powerlevel10k       # Powerlevel10k theme
-    grc                     # Generic colorizer for commands
-    pay-respects            # Modern replacement for 'fuck'
-
-    # ========================================================================
-    # Fonts (Required for Powerlevel10k)
-    # ========================================================================
-
-    nerd-fonts.meslo-lg     # MesloLGS Nerd Font (recommended for p10k)
-    nerd-fonts.fira-code    # Fira Code Nerd Font with ligatures
-    nerd-fonts.jetbrains-mono # JetBrains Mono Nerd Font
-    nerd-fonts.hack         # Hack Nerd Font
-    font-awesome            # Font Awesome icon font
-    powerline-fonts         # Powerline-patched fonts
-
-    # ========================================================================
-    # Text Processing
-    # ========================================================================
-
-    tldr                    # Simplified man pages
-    cht-sh                  # Community cheat sheets
-    pandoc                  # Universal document converter
-
-    # ========================================================================
-    # Utilities
-    # ========================================================================
-
-    mcfly           # Command history search
-    navi            # Interactive cheatsheet
-    starship        # Shell prompt
-    hexedit         # Hex editor
-    qrencode        # QR code generator
-  ];
-
-  # ========================================================================
-  # ZSH Configuration
-  # ========================================================================
-
-  programs.zsh = {
-    enable = true;
-    enableCompletion = true;
-    syntaxHighlighting.enable = true;
-    autosuggestion.enable = false;
-
-    history = {
-      size = 100000;
-      path = "${config.xdg.dataHome}/zsh/history";
-    };
-
-    shellAliases = {
-      # Basic modern replacements
-      ll = "eza -l --icons";
-      la = "eza -la --icons";
-      lt = "eza --tree --icons";
-      cat = "bat";
-      du = "dust";
-      df = "duf";
-
-      # NixOS specific
-      nrs = "sudo nixos-rebuild switch";
-      nrt = "sudo nixos-rebuild test";
-      nrb = "sudo nixos-rebuild boot";
-      hms = "home-manager switch";
-      nfu = "nix flake update";
-      nfc = "nix flake check";
-      nfb = "nix build";
-      nfd = "nix develop";
-
-      # Nix development
-      nix-dev = "nix develop -c $SHELL";
-      nix-search = "nix search nixpkgs";
-      nix-shell-pure = "nix-shell --pure";
-
-      # Git shortcuts
-      gs = "git status";
-      ga = "git add";
-      gc = "git commit";
-      gp = "git push";
-      gl = "git pull";
-      gd = "git diff";
-      gco = "git checkout";
-      gb = "git branch";
-
-      # Lazy tools
-      lg = "lazygit";
-
-      # Find shortcuts
-      ff = "fd";
-      rg = "rg --smart-case";
-    };
-
-    # NixOS 25.11+: Use 'initContent' instead of 'initExtra'
-    initContent = ''
-      # Powerlevel10k First-Run Setup Wizard
-      P10K_MARKER="$HOME/.config/p10k/.configured"
-      P10K_WIZARD="$HOME/.local/bin/p10k-setup-wizard.sh"
-
-      # Run setup wizard on first shell launch
-      if [[ ! -f "$P10K_MARKER" && -f "$P10K_WIZARD" ]]; then
-        echo ""
-        echo "╔══════════════════════════════════════════════════════╗"
-        echo "║  Welcome to your new ZSH setup!                     ║"
-        echo "║  Let's configure Powerlevel10k...                   ║"
-        echo "╚══════════════════════════════════════════════════════╝"
-        echo ""
-        "$P10K_WIZARD"
-        echo ""
-        echo "Please restart your shell to see the changes: exec zsh"
-        return
-      fi
-
-      # Powerlevel10k instant prompt
-      if [[ -r "''${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-''${(%):-%n}.zsh" ]]; then
-        source "''${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-''${(%):-%n}.zsh"
-      fi
-
-      # Load Powerlevel10k theme
-      source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme
-
-      # P10k configuration (dynamic - adapts to user preferences)
-      [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
-
-      # Enhanced command history with mcfly
-      if command -v mcfly &> /dev/null; then
-        eval "$(mcfly init zsh)"
-      fi
-
-      # FZF configuration
-      export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
-      export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
-      export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git'
-
-      # Nix-specific environment
-      export NIX_PATH=$HOME/.nix-defexpr/channels''${NIX_PATH:+:}$NIX_PATH
-
-      # Better error messages
-      export NIXPKGS_ALLOW_UNFREE=1
-    '';
-  };
-
-  # ========================================================================
-  # Git Configuration
-  # ========================================================================
-  # Using GitHub no-reply email (username@users.noreply.github.com) to:
-  # - Protect your privacy (email not exposed in commits)
-  # - Comply with GitHub email privacy settings
-  # - Prevent push rejections due to GH007 errors
-
-  programs.git = {
-    enable = true;
-    # Git configuration using settings for NixOS 25.05/25.11 compatibility
-    # Note: 'settings' is only available in newer home-manager versions
-    settings = {
-      # Git user configuration - set these manually after installation:
-      # git config --global user.name "Your Name"
-      # git config --global user.email "you@example.com"
-
-      init.defaultBranch = "main";
-      pull.rebase = false;
-      core = {
-        editor = "DEFAULTEDITOR";
-      };
-      alias = {
-        st = "status";
-        co = "checkout";
-        br = "branch";
-        ci = "commit";
-        unstage = "reset HEAD --";
-        last = "log -1 HEAD";
-        visual = "log --oneline --graph --decorate --all";
-      };
-    };
-  };
-
-  # ========================================================================
-  # Vim Configuration (minimal)
-  # ========================================================================
-
-  programs.vim = {
-    enable = true;
-    defaultEditor = false;  # Use DEFAULTEDITOR instead
-
-    settings = {
-      number = true;
-      relativenumber = true;
-      expandtab = true;
-      tabstop = 2;
-      shiftwidth = 2;
-    };
-  };
-
-  # ========================================================================
-  # VSCodium Configuration (Declarative)
-  # ========================================================================
-
-  programs.vscode = {
-    enable = true;
-    package = pkgs.vscodium;
-
-    # NixOS 25.11: Use profiles.default for extensions and settings
-    profiles.default = {
-      # Extensions installed declaratively
-      extensions = with pkgs.vscode-extensions; [
-        # Nix language support
-        jnoortheen.nix-ide
-        arrterian.nix-env-selector
-
-        # Git tools
-        eamodio.gitlens
-
-        # General development
-        editorconfig.editorconfig
-        esbenp.prettier-vscode
-      ];
-
-      # VSCodium settings (declarative)
-      # Note: Claude Code paths will be added by bash script (dynamic)
-      userSettings = {
-      # Editor Configuration
-      "editor.fontSize" = 14;
-      "editor.fontFamily" = "'Fira Code', 'Droid Sans Mono', 'monospace'";
-      "editor.fontLigatures" = true;
-      "editor.formatOnSave" = true;
-      "editor.formatOnPaste" = true;
-      "editor.tabSize" = 2;
-      "editor.insertSpaces" = true;
-      "editor.detectIndentation" = true;
-      "editor.minimap.enabled" = true;
-      "editor.bracketPairColorization.enabled" = true;
-      "editor.guides.bracketPairs" = true;
-
-      # Nix-specific settings
-      "nix.enableLanguageServer" = true;
-      "nix.serverPath" = "nil";
-      "nix.formatterPath" = "nixpkgs-fmt";
-      "[nix]" = {
-        "editor.defaultFormatter" = "jnoortheen.nix-ide";
-        "editor.tabSize" = 2;
-      };
-
-      # Git configuration
-      "git.enableSmartCommit" = true;
-      "git.autofetch" = true;
-      "gitlens.codeLens.enabled" = true;
-
-      # Terminal
-      "terminal.integrated.defaultProfile.linux" = "zsh";
-      "terminal.integrated.fontSize" = 13;
-
-      # Theme
-      "workbench.colorTheme" = "Default Dark Modern";
-
-      # File associations
-      "files.associations" = {
-        "*.nix" = "nix";
-        "flake.lock" = "json";
-      };
-
-      # Miscellaneous
-      "files.autoSave" = "afterDelay";
-      "files.autoSaveDelay" = 1000;
-      "explorer.confirmDelete" = false;
-      "explorer.confirmDragAndDrop" = false;
-      };
-    };
-  };
-
-  # ========================================================================
-  # Alacritty Terminal Configuration
-  # ========================================================================
-
-  programs.alacritty = {
-    enable = true;
-    settings = {
-      window = {
-        opacity = 0.95;
-        padding = {
-          x = 10;
-          y = 10;
-        };
-      };
-      font = {
-        size = 11.0;
-        normal = {
-          family = "MesloLGS NF";
-        };
-      };
-      colors = {
-        primary = {
-          background = "0x1e1e1e";
-          foreground = "0xd4d4d4";
-        };
-      };
-    };
-  };
-
-  # ========================================================================
-  # Session Variables
-  # ========================================================================
-
-  home.sessionVariables = {
-    EDITOR = "DEFAULTEDITOR";
-    VISUAL = "DEFAULTEDITOR";
-    NIXPKGS_ALLOW_UNFREE = "1";
-  };
-
-  # ========================================================================
-  # Home Files
-  # ========================================================================
-
-  home.file = {
-    # Create local bin directory
-    ".local/bin/.keep".text = "";
-
-    # P10k Setup Wizard
-    ".local/bin/p10k-setup-wizard.sh" = {
-      source = ./p10k-setup-wizard.sh;
-      executable = true;
-    };
-
-    # P10k configuration (dynamic - loads user preferences)
-    ".p10k.zsh".text = ''
-      # Powerlevel10k configuration for NixOS
-      # This config adapts to your preferences set via p10k-setup-wizard
-      # To reconfigure: rm ~/.config/p10k/.configured && exec zsh
-
-      # Load user theme preferences (set by p10k-setup-wizard.sh)
-      THEME_FILE="$HOME/.config/p10k/theme.sh"
-      if [[ -f "$THEME_FILE" ]]; then
-        source "$THEME_FILE"
-      else
-        # Defaults if not configured yet
-        export P10K_STYLE="lean"
-        export P10K_COLORS="dark"
-        export P10K_SHOW_TIME=false
-        export P10K_SHOW_OS=true
-        export P10K_SHOW_CONTEXT=false
-        export P10K_TRANSIENT=true
-      fi
-
-      # Enable instant prompt
-      if [[ -r "''${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-''${(%):-%n}.zsh" ]]; then
-        source "''${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-''${(%):-%n}.zsh"
-      fi
-
-      # Build prompt elements based on user preferences
-      left_elements=(dir vcs prompt_char)
-      [[ "$P10K_SHOW_OS" == "true" ]] && left_elements=(os_icon "''${left_elements[@]}")
-
-      right_elements=(status command_execution_time background_jobs)
-      [[ "$P10K_SHOW_TIME" == "true" ]] && right_elements=(time "''${right_elements[@]}")
-      [[ "$P10K_SHOW_CONTEXT" == "true" ]] && right_elements+=(context)
-
-      typeset -g POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=("''${left_elements[@]}")
-      typeset -g POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=("''${right_elements[@]}")
-
-      # Visual style
-      typeset -g POWERLEVEL9K_MODE=nerdfont-complete
-      typeset -g POWERLEVEL9K_ICON_PADDING=moderate
-
-      # Prompt layout based on style
-      case "$P10K_STYLE" in
-        lean|pure)
-          typeset -g POWERLEVEL9K_PROMPT_ON_NEWLINE=false
-          typeset -g POWERLEVEL9K_RPROMPT_ON_NEWLINE=false
-          typeset -g POWERLEVEL9K_PROMPT_ADD_NEWLINE=true
-          ;;
-        classic|rainbow)
-          typeset -g POWERLEVEL9K_PROMPT_ON_NEWLINE=true
-          typeset -g POWERLEVEL9K_RPROMPT_ON_NEWLINE=false
-          typeset -g POWERLEVEL9K_PROMPT_ADD_NEWLINE=true
-          ;;
-      esac
-
-      # Transient prompt
-      [[ "$P10K_TRANSIENT" == "true" ]] && typeset -g POWERLEVEL9K_TRANSIENT_PROMPT=always
-
-      # Enhanced Color schemes with better contrast
-      case "$P10K_COLORS" in
-        high-contrast-dark)
-          # High contrast bright colors for dark terminals (RECOMMENDED)
-          typeset -g POWERLEVEL9K_DIR_FOREGROUND=51           # Bright cyan
-          typeset -g POWERLEVEL9K_VCS_CLEAN_FOREGROUND=46     # Bright green
-          typeset -g POWERLEVEL9K_VCS_MODIFIED_FOREGROUND=226 # Bright yellow
-          typeset -g POWERLEVEL9K_VCS_UNTRACKED_FOREGROUND=201 # Bright magenta
-          typeset -g POWERLEVEL9K_STATUS_ERROR_FOREGROUND=196 # Bright red
-          typeset -g POWERLEVEL9K_OS_ICON_FOREGROUND=231      # White
-          typeset -g POWERLEVEL9K_PROMPT_CHAR_OK_VIINS_FOREGROUND=46
-          typeset -g POWERLEVEL9K_PROMPT_CHAR_ERROR_VIINS_FOREGROUND=196
-          ;;
-        custom-high-contrast)
-          # Maximum contrast for accessibility
-          typeset -g POWERLEVEL9K_DIR_FOREGROUND=15           # White
-          typeset -g POWERLEVEL9K_VCS_CLEAN_FOREGROUND=10     # Bright green
-          typeset -g POWERLEVEL9K_VCS_MODIFIED_FOREGROUND=11  # Bright yellow
-          typeset -g POWERLEVEL9K_VCS_UNTRACKED_FOREGROUND=13 # Bright magenta
-          typeset -g POWERLEVEL9K_STATUS_ERROR_FOREGROUND=9   # Bright red
-          typeset -g POWERLEVEL9K_OS_ICON_FOREGROUND=15       # White
-          typeset -g POWERLEVEL9K_PROMPT_CHAR_OK_VIINS_FOREGROUND=10
-          typeset -g POWERLEVEL9K_PROMPT_CHAR_ERROR_VIINS_FOREGROUND=9
-          ;;
-        light)
-          # High contrast for light backgrounds
-          typeset -g POWERLEVEL9K_DIR_FOREGROUND=24
-          typeset -g POWERLEVEL9K_VCS_CLEAN_FOREGROUND=28
-          typeset -g POWERLEVEL9K_VCS_MODIFIED_FOREGROUND=130
-          typeset -g POWERLEVEL9K_VCS_UNTRACKED_FOREGROUND=21
-          typeset -g POWERLEVEL9K_STATUS_ERROR_FOREGROUND=124
-          typeset -g POWERLEVEL9K_OS_ICON_FOREGROUND=24
-          ;;
-        solarized)
-          # Solarized Dark colors (enhanced)
-          typeset -g POWERLEVEL9K_DIR_FOREGROUND=81           # Brighter blue
-          typeset -g POWERLEVEL9K_VCS_CLEAN_FOREGROUND=106    # Brighter green
-          typeset -g POWERLEVEL9K_VCS_MODIFIED_FOREGROUND=221 # Brighter yellow
-          typeset -g POWERLEVEL9K_VCS_UNTRACKED_FOREGROUND=125 # Brighter magenta
-          typeset -g POWERLEVEL9K_STATUS_ERROR_FOREGROUND=196 # Bright red
-          typeset -g POWERLEVEL9K_OS_ICON_FOREGROUND=81
-          ;;
-        gruvbox)
-          # Gruvbox colors (enhanced)
-          typeset -g POWERLEVEL9K_DIR_FOREGROUND=214
-          typeset -g POWERLEVEL9K_VCS_CLEAN_FOREGROUND=142
-          typeset -g POWERLEVEL9K_VCS_MODIFIED_FOREGROUND=208
-          typeset -g POWERLEVEL9K_VCS_UNTRACKED_FOREGROUND=175
-          typeset -g POWERLEVEL9K_STATUS_ERROR_FOREGROUND=167
-          typeset -g POWERLEVEL9K_OS_ICON_FOREGROUND=223
-          ;;
-        nord)
-          # Nord colors (enhanced)
-          typeset -g POWERLEVEL9K_DIR_FOREGROUND=111          # Brighter blue
-          typeset -g POWERLEVEL9K_VCS_CLEAN_FOREGROUND=150    # Brighter green
-          typeset -g POWERLEVEL9K_VCS_MODIFIED_FOREGROUND=228 # Bright yellow
-          typeset -g POWERLEVEL9K_VCS_UNTRACKED_FOREGROUND=147 # Brighter purple
-          typeset -g POWERLEVEL9K_STATUS_ERROR_FOREGROUND=210 # Bright red
-          typeset -g POWERLEVEL9K_OS_ICON_FOREGROUND=153
-          ;;
-        dracula)
-          # Dracula colors (enhanced)
-          typeset -g POWERLEVEL9K_DIR_FOREGROUND=141
-          typeset -g POWERLEVEL9K_VCS_CLEAN_FOREGROUND=121    # Brighter green
-          typeset -g POWERLEVEL9K_VCS_MODIFIED_FOREGROUND=228
-          typeset -g POWERLEVEL9K_VCS_UNTRACKED_FOREGROUND=177 # Brighter pink
-          typeset -g POWERLEVEL9K_STATUS_ERROR_FOREGROUND=212
-          typeset -g POWERLEVEL9K_OS_ICON_FOREGROUND=183
-          ;;
-        *)
-          # Dark (default) - bright colors
-          typeset -g POWERLEVEL9K_DIR_FOREGROUND=51           # Bright cyan
-          typeset -g POWERLEVEL9K_VCS_CLEAN_FOREGROUND=46     # Bright green
-          typeset -g POWERLEVEL9K_VCS_MODIFIED_FOREGROUND=226 # Bright yellow
-          typeset -g POWERLEVEL9K_VCS_UNTRACKED_FOREGROUND=201 # Bright magenta
-          typeset -g POWERLEVEL9K_STATUS_ERROR_FOREGROUND=196 # Bright red
-          typeset -g POWERLEVEL9K_OS_ICON_FOREGROUND=231      # White
-          ;;
-      esac
-
-      # Common settings
-      typeset -g POWERLEVEL9K_DIR_SHORTEN_STRATEGY=truncate_to_last
-      typeset -g POWERLEVEL9K_DIR_SHORTEN_DIR_LENGTH=3
-      typeset -g POWERLEVEL9K_STATUS_OK=false
-      typeset -g POWERLEVEL9K_LINUX_NIXOS_ICON='❄️'
-    '';
-  };
-
-  # ========================================================================
-  # Flatpak Integration - Manual Setup Instructions
-  # ========================================================================
-  # NOTE: Flatpak is installed at system level via:
-  #   services.flatpak.enable = true  (in ~/.config/home-manager/configuration.nix)
-  #
-  # INSTALLATION INSTRUCTIONS (Run these once after system setup):
-  #
-  # 1. Add Flathub repository (one-time setup):
-  #    flatpak remote-add --if-not-exists flathub \
-  #      https://dl.flathub.org/repo/flathub.flatpakrepo
-  #
-  # 2. Install Flatpak applications (use commands below):
-  #    # System Tools
-  #    flatpak install -y flathub com.github.flatseal.Flatseal
-  #    flatpak install -y flathub org.gnome.FileRoller
-  #    flatpak install -y flathub net.nokyan.Resources
-  #
-  #    # Media Players
-  #    flatpak install -y flathub org.videolan.VLC
-  #    flatpak install -y flathub io.mpv.Mpv
-  #
-  #    # Web Browser
-  #    flatpak install -y flathub org.mozilla.firefox
-  #
-  #    # Productivity
-  #    flatpak install -y flathub md.obsidian.Obsidian
-  #
-  # 3. OR: Copy the list below and use this command:
-  #    for app in com.github.flatseal.Flatseal org.gnome.FileRoller \
-  #                net.nokyan.Resources org.videolan.VLC io.mpv.Mpv \
-  #                org.mozilla.firefox md.obsidian.Obsidian; do
-  #      flatpak install -y flathub "$app"
-  #    done
-  #
-  # DECLARATIVE FLATPAK APPS (for reference - install manually):
-  # ====================================================================
-  # System Tools
-  # flatpak install -y flathub com.github.flatseal.Flatseal
-  # flatpak install -y flathub org.gnome.FileRoller
-  # flatpak install -y flathub net.nokyan.Resources
-  #
-  # Media Players
-  # flatpak install -y flathub org.videolan.VLC
-  # flatpak install -y flathub io.mpv.Mpv
-  #
-  # Web Browsers
-  # flatpak install -y flathub org.mozilla.firefox
-  #
-  # Productivity & Office
-  # flatpak install -y flathub md.obsidian.Obsidian
-  # # flatpak install -y flathub org.libreoffice.LibreOffice
-  # # flatpak install -y flathub app.standard-notes.StandardNotes
-  # # flatpak install -y flathub org.joplin.Joplin
-  #
-  # Development & Content Tools (GUI Applications)
-  # # flatpak install -y flathub io.github.gitui.gitui
-  # # flatpak install -y flathub fr.handbrake.ghb
-  # # flatpak install -y flathub org.audacityteam.Audacity
-  # # flatpak install -y flathub org.gimp.GIMP
-  # # flatpak install -y flathub org.inkscape.Inkscape
-  # # flatpak install -y flathub org.pitivi.Pitivi
-  # # flatpak install -y flathub org.blender.Blender
-  # # flatpak install -y flathub org.darktable.Darktable
-  #
-  # Additional Web Browsers (If needed)
-  # # flatpak install -y flathub com.google.Chrome
-  #
-  # Internet & Communication (Desktop Apps)
-  # # flatpak install -y flathub org.telegram.desktop
-  # # flatpak install -y flathub com.slack.Slack
-  # # flatpak install -y flathub org.thunderbird.Thunderbird
-  # # flatpak install -y flathub io.Riot.Riot
-  # # flatpak install -y flathub com.obsproject.Studio
-  #
-  # Database & Tools (GUI Applications)
-  # # flatpak install -y flathub org.dbeaver.DBeaverCommunity
-  # # flatpak install -y flathub com.beekeeperstudio.Studio
-  # # flatpak install -y flathub com.mongodb.Compass
-  #
-  # Remote Access & Virtualization (GUI)
-  # # flatpak install -y flathub org.remmina.Remmina
-  # # flatpak install -y flathub com.freerdp.FreeRDP
-  # # flatpak install -y flathub org.virt_manager.virt-manager
-  #
-  # Security & Privacy Tools (GUI Applications)
-  # # flatpak install -y flathub org.gnome.Secrets
-  # # flatpak install -y flathub org.keepassxc.KeePassXC
-  # # flatpak install -y flathub com.github.Eloston.UngoogledChromium
-  # # flatpak install -y flathub com.tutanota.Tutanota
-  #
-  # Entertainment & Gaming
-  # # flatpak install -y flathub com.valvesoftware.Steam
-  # # flatpak install -y flathub org.DolphinEmu.dolphin-emu
-  # # flatpak install -y flathub net.rpcs3.RPCS3
-  # # flatpak install -y flathub org.libretro.RetroArch
-  #
-  # ====================================================================
-  # ALTERNATIVE: Use COSMIC App Store
-  # ====================================================================
-  # Simply open the COSMIC App Store from your application menu
-  # and search for desired applications. Click Install to download
-  # from Flathub. This is the most user-friendly method!
-  #
-  # MANAGE PERMISSIONS:
-  # ====================================================================
-  # flatpak run com.github.flatseal.Flatseal
-  # (or open Flatseal from app menu)
-  #
-  # Then select app from sidebar and toggle permissions as needed.
-
-  # services.flatpak: Declarative Flatpak management via nix-flatpak
-  # When using flakes with nix-flatpak module imported above, this section
-  # defines all Flatpak applications declaratively.
-  # When nix-flatpak is NOT available (channel-based install), this section
-  # is ignored and you can install apps manually via flatpak CLI.
-  #
-  services.flatpak = {
-    enable = true;
-    packages = [
-      # ====================================================================
-      # SYSTEM TOOLS & UTILITIES (Recommended - Essential GUI Tools)
-      # ====================================================================
-      "com.github.flatseal.Flatseal"        # Flatpak permissions manager GUI
-      "org.gnome.FileRoller"                # Archive manager (zip, tar, 7z, rar) - GUI
-      "net.nokyan.Resources"                # System monitor (CPU, GPU, RAM, Network) - GUI
-
-      # ====================================================================
-      # MEDIA PLAYERS (Desktop Applications)
-      # ====================================================================
-      "org.videolan.VLC"                    # VLC media player (universal format support)
-      "io.mpv.Mpv"                          # MPV video player (modern, lightweight)
-
-      # ====================================================================
-      # WEB BROWSERS
-      # ====================================================================
-      "org.mozilla.firefox"                 # Firefox browser (Flatpak, better sandbox isolation)
-
-      # ====================================================================
-      # PRODUCTIVITY & OFFICE (Popular for Work)
-      # ====================================================================
-      "md.obsidian.Obsidian"                # Note-taking with markdown, vault sync, plugins
-      # "org.libreoffice.LibreOffice"         # Full office suite (documents, spreadsheets, presentations)
-      # "app.standard-notes.StandardNotes"    # Encrypted note-taking
-      # "org.joplin.Joplin"                   # Note-taking with sync (active development)
-
-      # ====================================================================
-      # DEVELOPMENT & CONTENT TOOLS (GUI Applications)
-      # ====================================================================
-      # "io.github.gitui.gitui"               # Modern Git client (Rust-based UI)
-      # "fr.handbrake.ghb"                    # HandBrake video converter (GUI)
-      # "org.audacityteam.Audacity"           # Audio recording & editing (GUI)
-      # "org.gimp.GIMP"                       # Image manipulation (Photoshop alternative)
-      # "org.inkscape.Inkscape"               # Vector graphics editor (Illustrator alternative)
-      # "org.pitivi.Pitivi"                   # Video editor (GNOME project)
-      # "org.blender.Blender"                 # 3D modeling & rendering
-      # "org.darktable.Darktable"             # Photo RAW processor
-
-      # ====================================================================
-      # ADDITIONAL WEB BROWSERS (If needed)
-      # ====================================================================
-      # "com.google.Chrome"                   # Google Chrome (proprietary, Flathub only)
-
-      # ====================================================================
-      # INTERNET & COMMUNICATION (Desktop Apps)
-      # ====================================================================
-      # "org.telegram.desktop"                # Telegram messenger (desktop)
-      # "com.slack.Slack"                     # Slack desktop client
-      # "org.thunderbird.Thunderbird"         # Email & calendar client
-      # "io.Riot.Riot"                        # Matrix client for secure messaging
-      # "com.obsproject.Studio"               # OBS Studio for streaming & recording
-
-      # ====================================================================
-      # DATABASE & TOOLS (GUI Applications)
-      # ====================================================================
-      # "org.dbeaver.DBeaverCommunity"        # Universal database client (MySQL, PostgreSQL)
-      # "com.beekeeperstudio.Studio"          # Modern database IDE
-      # "com.mongodb.Compass"                 # MongoDB GUI client
-
-      # ====================================================================
-      # REMOTE ACCESS & VIRTUALIZATION (GUI)
-      # ====================================================================
-      # "org.remmina.Remmina"                 # Remote desktop & SSH client
-      # "com.freerdp.FreeRDP"                 # Remote Desktop Client (RDP)
-      # "org.virt_manager.virt-manager"       # Virtual Machine Manager (KVM GUI)
-
-      # ====================================================================
-      # SECURITY & PRIVACY TOOLS (GUI Applications)
-      # ====================================================================
-      # "org.gnome.Secrets"                   # Password manager (KeePass alternative)
-      # "org.keepassxc.KeePassXC"             # Password manager with sync
-      # "com.github.Eloston.UngoogledChromium" # Privacy-focused Chromium
-      # "com.tutanota.Tutanota"               # Encrypted email service
-
-      # ====================================================================
-      # ENTERTAINMENT & GAMING
-      # ====================================================================
-      # "com.valvesoftware.Steam"             # Steam game platform
-      # "org.DolphinEmu.dolphin-emu"          # GameCube/Wii emulator
-      # "net.rpcs3.RPCS3"                     # PlayStation 3 emulator
-      # "org.libretro.RetroArch"              # Multi-system emulator (NES, SNES, Genesis)
-
-      # ====================================================================
-      # NOTE: CLI TOOLS & DEVELOPMENT PACKAGES
-      # ====================================================================
-      # The following packages are kept in home.packages (NOT Flatpak) for better integration:
-      # - git, neovim, vim (code editors)
-      # - Python, Go, Rust, Node.js (programming languages)
-      # - ripgrep, fd, fzf, bat (modern CLI tools)
-      # - tmux, zsh, starship (shell/terminal tools)
-      # - pandoc (document converter)
-      # - nix tools (nixpkgs-fmt, statix, etc.)
-      # - All other CLI/terminal utilities
-      #
-      # These are better installed via NixOS packages because:
-      # 1. Better shell integration and PATH handling
-      # 2. Faster execution (no Flatpak sandbox overhead)
-      # 3. Direct access to system libraries
-      # 4. Simpler configuration in shell profiles
-      # 5. Most are not available on Flathub anyway
-    ];
-
-    # Optional: Override remotes if using non-Flathub sources
-    # remotes = {
-    #   flathub = "https://dl.flathub.org/repo/flathub.flatpakrepo";
-    # };
-
-    # Optional: Set permissions globally for all Flatpak packages
-    # permissions = {
-    #   "org.freedesktop.Flatpak" = {
-    #     # Grant host filesystem access
-    #     Context.filesystems = [
-    #       "home"
-    #       "/mnt"
-    #     ];
-    #   };
-    # };
-  };
-
-}
-NIXEOF
 
     # Validate all variables are set before replacement
     if [ -z "$USER" ] || [ -z "$HOME" ] || [ -z "$STATE_VERSION" ]; then
@@ -1871,7 +1244,56 @@ NIXEOF
     sed -i "s|HOMEUSERNAME|$USER|" "$HM_CONFIG_FILE"
     sed -i "s|HOMEDIR|$HOME|" "$HM_CONFIG_FILE"
     sed -i "s|STATEVERSION_PLACEHOLDER|$STATE_VERSION|" "$HM_CONFIG_FILE"
-    sed -i "s|DEFAULTEDITOR|$DEFAULT_EDITOR|g" "$HM_CONFIG_FILE"
+
+    DEFAULT_EDITOR_VALUE="$DEFAULT_EDITOR" run_python - "$HM_CONFIG_FILE" <<'PY'
+import os
+import sys
+
+path = sys.argv[1]
+editor = os.environ.get("DEFAULT_EDITOR_VALUE", "vim")
+
+with open(path, "r", encoding="utf-8") as f:
+    data = f.read()
+
+data = data.replace("DEFAULTEDITOR", editor)
+
+with open(path, "w", encoding="utf-8") as f:
+    f.write(data)
+PY
+
+    # Some older templates may have left behind stray navigation headings.
+    # Clean them up so nix-instantiate parsing does not fail on bare identifiers.
+    CLEANUP_MSG=$(run_python - "$HM_CONFIG_FILE" <<'PY'
+import re
+import sys
+
+path = sys.argv[1]
+pattern = re.compile(r"^\s*(Actions|Projects|Wiki)\s*$")
+
+with open(path, "r", encoding="utf-8") as f:
+    lines = f.readlines()
+
+filtered = []
+removed = False
+for line in lines:
+    if pattern.match(line):
+        removed = True
+    else:
+        filtered.append(line)
+
+if removed:
+    with open(path, "w", encoding="utf-8") as f:
+        f.writelines(filtered)
+    print("Removed legacy Gitea navigation headings from home.nix")
+PY
+    )
+    CLEANUP_STATUS=$?
+    if [ $CLEANUP_STATUS -ne 0 ]; then
+        print_error "Failed to sanitize home.nix navigation headings"
+        exit 1
+    elif [ -n "$CLEANUP_MSG" ]; then
+        print_info "$CLEANUP_MSG"
+    fi
 
     print_success "Home manager configuration created at $HM_CONFIG_FILE"
     print_info "Configuration includes $(grep -c "^    " "$HM_CONFIG_FILE" || echo 'many') packages"
@@ -1903,17 +1325,16 @@ apply_home_manager_config() {
         print_info "Added ~/.nix-profile/bin to PATH for home-manager"
     fi
 
-    # Verify home-manager is available
-    if ! command -v home-manager &> /dev/null; then
-        print_error "home-manager command not found even after PATH update!"
-        print_info "Expected location: $HOME/.nix-profile/bin/home-manager"
-        print_info "Current PATH: $PATH"
-        print_info "Checking if file exists..."
-        ls -la "$HOME/.nix-profile/bin/home-manager" || echo "File does not exist"
-        exit 1
+    local hm_pkg_ref=$(get_home_manager_package_ref)
+    local hm_cli_available=false
+
+    if command -v home-manager &> /dev/null; then
+        hm_cli_available=true
+        print_success "home-manager command available: $(which home-manager)"
+    else
+        print_warning "home-manager command not found in PATH"
+        print_info "Will invoke via: nix run --accept-flake-config ${hm_pkg_ref} -- ..."
     fi
-    print_success "home-manager command available: $(which home-manager)"
-    echo ""
 
     print_info "This will install packages and configure your environment..."
     print_warning "This may take 10-15 minutes on first run"
@@ -2004,7 +1425,16 @@ apply_home_manager_config() {
     local CURRENT_USER=$(whoami)
     #nix-shell -p home-manager
     print_info "Using configuration: homeConfigurations.$CURRENT_USER"
-    if home-manager switch --flake ~/.config/home-manager --show-trace 2>&1 | tee /tmp/home-manager-switch.log; then    #original code 'if home-manager switch --flake ~/.config/home-manager#$CURRENT_USER --show-trace 2>&1 | tee /tmp/home-manager-switch.log; then'
+    local hm_exit_code
+    if $hm_cli_available; then
+        home-manager switch --flake ~/.config/home-manager --show-trace 2>&1 | tee /tmp/home-manager-switch.log
+        hm_exit_code=${PIPESTATUS[0]}
+    else
+        nix run --accept-flake-config "${hm_pkg_ref}" -- switch --flake ~/.config/home-manager --show-trace 2>&1 | tee /tmp/home-manager-switch.log
+        hm_exit_code=${PIPESTATUS[0]}
+    fi
+
+    if [ $hm_exit_code -eq 0 ]; then
         print_success "Home manager configuration applied successfully!"
         echo ""
 
@@ -2038,7 +1468,6 @@ apply_home_manager_config() {
         fi
         echo ""
     else
-        local hm_exit_code=$?
         print_error "home-manager switch failed (exit code: $hm_exit_code)"
         echo ""
         print_warning "Common causes:"
@@ -2318,6 +1747,7 @@ update_nixos_system_config() {
     print_info "User: $USER"
     print_info "Timezone: $SELECTED_TIMEZONE"
     print_info "Locale: $CURRENT_LOCALE"
+    print_info "users.mutableUsers: $USERS_MUTABLE_SETTING"
 
     # Backup old config
     if [[ -f "$SYSTEM_CONFIG" ]]; then
@@ -2328,105 +1758,84 @@ update_nixos_system_config() {
 
     if [[ -f "$HARDWARE_CONFIG" ]]; then
         mkdir -p "$HM_CONFIG_DIR"
-        if sudo cp "$HARDWARE_CONFIG" "$HM_CONFIG_DIR/hardware-configuration.nix"; then
-            sudo chown "$USER":"$USER" "$HM_CONFIG_DIR/hardware-configuration.nix" 2>/dev/null || true
-            print_success "Copied hardware-configuration.nix to $HM_CONFIG_DIR for flake builds"
-        else
-            print_warning "Could not copy hardware-configuration.nix to $HM_CONFIG_DIR"
+
+        local TARGET_HARDWARE_CONFIG="$HM_CONFIG_DIR/hardware-configuration.nix"
+
+        # Remove a stale copy so we can replace it with the latest data
+        if [[ -e "$TARGET_HARDWARE_CONFIG" || -L "$TARGET_HARDWARE_CONFIG" ]]; then
+            rm -f "$TARGET_HARDWARE_CONFIG"
         fi
+
+        # Prefer a symlink so updates to /etc/nixos/hardware-configuration.nix are picked up automatically
+        if ln -s "$HARDWARE_CONFIG" "$TARGET_HARDWARE_CONFIG" 2>/dev/null; then
+            print_success "Linked hardware-configuration.nix from /etc/nixos into $HM_CONFIG_DIR"
+        else
+            # Fall back to copying if the symlink cannot be created (e.g. different filesystem)
+            if sudo cp "$HARDWARE_CONFIG" "$TARGET_HARDWARE_CONFIG"; then
+                sudo chown "$USER":"$USER" "$TARGET_HARDWARE_CONFIG" 2>/dev/null || true
+                print_success "Copied hardware-configuration.nix to $HM_CONFIG_DIR for flake builds"
+            else
+                print_warning "Could not copy hardware-configuration.nix to $HM_CONFIG_DIR"
+            fi
+        fi
+    else
+        print_warning "System hardware-configuration.nix not found; run 'sudo nixos-generate-config' if needed"
     fi
+
 
     # Generate complete AIDB configuration
     print_info "Generating complete AIDB development configuration..."
     echo ""
 
-    cat >> "$HM_CONFIG_DIR/configuration.nix"  <<'NEWCONFIG'    #> /dev/null
-# NixOS Configuration - AIDB Development Environment
-# Generated by: nixos-quick-deploy.sh v${SCRIPT_VERSION}
-# Generated: $(date)
-# Hostname: $HOSTNAME | User: $USER
-# Target: NixOS 25.05+ with Wayland-first, security hardening
+    local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local TEMPLATE_DIR="$SCRIPT_DIR/templates"
+    local SYSTEM_TEMPLATE="$TEMPLATE_DIR/configuration.nix"
+    local GENERATED_CONFIG="$HM_CONFIG_DIR/configuration.nix"
 
-{ config, pkgs, lib, ... }:
-
-{
-  imports = [ ./hardware-configuration.nix ];
-
-  # ============================================================================
-  # Boot Configuration (Modern EFI)
-  # ============================================================================
-  boot = {
-    loader = {
-      systemd-boot.enable = lib.mkDefault true;
-      efi.canTouchEfiVariables = lib.mkDefault true;
-      # Security: Timeout for boot menu
-      timeout = lib.mkDefault 3;
-    };
-
-    # CPU Microcode updates (auto-detected: $CPU_VENDOR CPU)
-    # Critical security and performance updates from CPU vendor
-$(
-    if [ "$CPU_VENDOR" == "intel" ]; then
-        echo "    initrd.kernelModules = [ \"i915\" ];  # Intel GPU early KMS"
-    elif [ "$CPU_VENDOR" == "amd" ]; then
-        echo "    initrd.kernelModules = [ \"amdgpu\" ];  # AMD GPU early KMS"
-    fi
-)
-
-    # Security: Enable kernel hardening
-    kernelModules = [ ];  # Additional modules loaded after initial boot
-    kernel.sysctl = {
-      # Security: Disable unprivileged BPF and user namespaces
-      "kernel.unprivileged_bpf_disabled" = 1;
-      "kernel.unprivileged_userns_clone" = 0;
-      "net.core.bpf_jit_harden" = 2;
-
-      # Performance: Network tuning for low latency
-      "net.core.netdev_max_backlog" = 16384;
-      "net.core.somaxconn" = 8192;
-      "net.ipv4.tcp_fastopen" = 3;
-
-      # Security: Harden TCP/IP stack
-      "net.ipv4.tcp_syncookies" = 1;
-      "net.ipv4.conf.default.rp_filter" = 1;
-      "net.ipv4.conf.all.rp_filter" = 1;
-    };
-
-    # Hibernation support (resume from swap)
-    # The resume device is auto-detected from hardware-configuration.nix
-    # To enable hibernation: systemctl hibernate
-    resumeDevice = lib.mkDefault "";  # Auto-detected from swapDevices
-
-    # Kernel parameters for better memory management and performance
-    kernelParams = [
-      # Enable zswap for compressed swap cache (better performance)
-      "zswap.enabled=1"
-      "zswap.compressor=zstd"
-      "zswap.zpool=z3fold"
-
-      # Quiet boot (cleaner boot messages)
-      "quiet"
-      "splash"
-
-      # Performance: Disable CPU security mitigations (OPTIONAL - commented for security)
-      # WARNING: Only enable on trusted systems where performance > security
-      # Uncomment to disable Spectre/Meltdown mitigations for ~10-30% performance gain
-      # "mitigations=off"
-    ];
-  };
-
- 
-$(
-    if [ -n "$CPU_MICROCODE" ]; then
-        cat > HARDWARE_CONFIG #> $HM_CONFIG_DIR/hardware_configuration.nix
-  hardware.cpu.$CPU_VENDOR.updateMicrocode = true;  # Enable $CPU_VENDOR microcode updates
-HARDWARE_CONFIG
+    if [[ ! -f "$SYSTEM_TEMPLATE" ]]; then
+        print_error "Missing NixOS configuration template: $SYSTEM_TEMPLATE"
+        exit 1
     fi
 
-    # Add GPU-specific hardware configuration
-    if [ "$GPU_TYPE" == "intel" ]; then
-        cat > HARDWARE_CONFIG #> $HM_CONFIG_DIR/hardware_configuration.nix
-  hardware.opengl = {
+    install -Dm644 "$SYSTEM_TEMPLATE" "$GENERATED_CONFIG"
+
+    local CONFIG_WRITE_STATUS=$?
+
+    if [ $CONFIG_WRITE_STATUS -ne 0 ]; then
+        print_error "Failed to generate configuration"
+        return 1
+    fi
+
+    local GENERATED_AT
+    GENERATED_AT=$(date '+%Y-%m-%d %H:%M:%S %Z')
+
+    local CPU_VENDOR_LABEL="$CPU_VENDOR"
+    if [[ -z "$CPU_VENDOR_LABEL" || "$CPU_VENDOR_LABEL" == "unknown" ]]; then
+        CPU_VENDOR_LABEL="Unknown"
+    else
+        CPU_VENDOR_LABEL="${CPU_VENDOR_LABEL^}"
+    fi
+
+    local INITRD_KERNEL_MODULES="# initrd.kernelModules handled by hardware-configuration.nix"
+    case "$CPU_VENDOR" in
+        intel)
+            INITRD_KERNEL_MODULES='initrd.kernelModules = [ "i915" ];  # Intel GPU early KMS'
+            ;;
+        amd)
+            INITRD_KERNEL_MODULES='initrd.kernelModules = [ "amdgpu" ];  # AMD GPU early KMS'
+            ;;
+    esac
+
+    local MICROCODE_SECTION="# hardware.cpu microcode updates managed automatically"
+    if [[ -n "$CPU_MICROCODE" && "$CPU_VENDOR" != "unknown" ]]; then
+        MICROCODE_SECTION="hardware.cpu.${CPU_VENDOR}.updateMicrocode = true;  # Enable ${CPU_VENDOR_LABEL} microcode updates"
+    fi
+
+    local gpu_hardware_section
+    case "$GPU_TYPE" in
+        intel)
+            gpu_hardware_section=$(cat <<'EOF'
+hardware.opengl = {
     enable = true;
     extraPackages = with pkgs; [
       intel-media-driver  # VAAPI driver for Broadwell+ (>= 5th gen)
@@ -2437,11 +1846,13 @@ HARDWARE_CONFIG
     ];
     driSupport = true;
     driSupport32Bit = true;  # For 32-bit applications
-  };
-INTEL_GPU
-    elif [ "$GPU_TYPE" == "amd" ]; then
-        cat > HARDWARE_CONFIG #> $HM_CONFIG_DIR/hardware_configuration.nix
-  hardware.opengl = {
+};
+EOF
+)
+            ;;
+        amd)
+            gpu_hardware_section=$(cat <<'EOF'
+hardware.opengl = {
     enable = true;
     extraPackages = with pkgs; [
       mesa              # Open-source AMD drivers
@@ -2450,197 +1861,40 @@ INTEL_GPU
     ];
     driSupport = true;
     driSupport32Bit = true;
-  };
-AMD_GPU
-    elif [ "$GPU_TYPE" == "nvidia" ]; then
-        cat > HARDWARE_CONFIG  #> $HM_CONFIG_DIR/hardware_configuration.nix
-  # NVIDIA GPU configuration (auto-detected)
-  # Note: NVIDIA on Wayland requires additional setup
-  services.xserver.videoDrivers = [ "nvidia" ];
-  hardware.nvidia = {
+};
+EOF
+)
+            ;;
+        nvidia)
+            gpu_hardware_section=$(cat <<'EOF'
+# NVIDIA GPU configuration (auto-detected)
+# Note: NVIDIA on Wayland requires additional setup
+services.xserver.videoDrivers = [ "nvidia" ];
+hardware.nvidia = {
     modesetting.enable = true;  # Required for Wayland
     open = false;  # Use proprietary driver (better performance)
     nvidiaSettings = true;  # Enable nvidia-settings GUI
     # Optional: Power management (for laptops)
     # powerManagement.enable = true;
-  };
-  hardware.opengl = {
+};
+hardware.opengl = {
     enable = true;
     driSupport = true;
     driSupport32Bit = true;
-  };
-NVIDIA_GPU
-    fi
+};
+EOF
 )
+            ;;
+        *)
+            gpu_hardware_section="# No dedicated GPU configuration required (software rendering)"
+            ;;
+    esac
 
-  # ============================================================================
-  # Security Hardening
-  # ============================================================================
-  security = {
-    # Sudo security
-    sudo = {
-      enable = true;
-      execWheelOnly = true;  # Only wheel group can sudo
-      wheelNeedsPassword = true;
-    };
-    # Polkit for privilege escalation (required for GUI apps)
-    polkit.enable = true;
-    # AppArmor for mandatory access control
-    apparmor.enable = true;
-  };
-
-  # ============================================================================
-  # Networking (Secure defaults)
-  # ============================================================================
-  networking = {
-    hostName = "$HOSTNAME";
-    networkmanager.enable = true;
-
-    # Firewall enabled by default with minimal ports
-    firewall = {
-      enable = true;
-      allowedTCPPorts = [
-        # Add ports only when needed:
-        # 8000  # AIDB API
-        # 5432  # PostgreSQL
-      ];
-      # Default: Block all incoming, allow all outgoing
-      # Explicitly log rejected packets for security monitoring
-      logRefusedConnections = lib.mkDefault false;  # Set true for debugging
-    };
-  };
-
-  # ============================================================================
-  # Locale & Time (User-configured during setup)
-  # ============================================================================
-  time.timeZone = "$SELECTED_TIMEZONE";  # Timezone selected during installation
-  i18n.defaultLocale = lib.mkDefault "$CURRENT_LOCALE";  # Auto-detected locale
-
-  # Console configuration (TTY settings)
-  console = {
-    font = "Lat2-Terminus16";
-    keyMap = lib.mkDefault "us";  # Keyboard layout for console
-    # useXkbConfig = true;  # Uncomment to use X11 keymap settings in console
-  };
-
-  # ============================================================================
-  # Users (Secure configuration)
-  # ============================================================================
-
-  # Allow users to change their passwords with passwd command
-  # Set to false for fully declarative (passwords only from config)
-  users.mutableUsers = true;
-
-  users.users.${USER} = {
-    isNormalUser = true;
-    description = "${USER}";
-
-    # Password configuration (migrated from existing system or newly set)
-    hashedPassword = "${USER_PASSWORD_HASH}";
-
-    # Minimal groups: only what's needed
-    extraGroups = [
-      "networkmanager"  # Network configuration
-      "wheel"           # Sudo access
-      "podman"          # Rootless containers
-      "video"           # Hardware video acceleration
-      "audio"           # Audio device access
-      "input"           # Input device access (for Wayland)
-    ];
-    # Note: "docker" group removed - use podman's dockerCompat instead
-    shell = pkgs.zsh;
-
-    # Optional: Auto-login (DISABLED by default for security)
-    # Uncomment to enable auto-login without password prompt
-    # WARNING: Only use on single-user systems with physical security
-    # autoSubUidGidRange = true;  # For rootless podman user namespaces
-  };
-
-  # Enable ZSH system-wide
-  programs.zsh.enable = true;
-
-  # ============================================================================
-  # Home Manager
-  # ============================================================================
-
-  # Home Manager integration is provided by the generated flake (see flake.nix)
-  # The flake adds home-manager.nixosModules.home-manager and imports ./home.nix
-
-  # ============================================================================
-  # Nix Configuration (Modern settings)
-  # ============================================================================
-  nix = {
-    settings = {
-      # Modern features
-      experimental-features = [ "nix-command" "flakes" ];
-
-      # Performance & security
-      auto-optimise-store = true;
-      trusted-users = [ "root" "@wheel" ];
-
-      # Security: Restrict nix-daemon network access
-      allowed-users = [ "@wheel" ];
-    };
-
-    # Automatic garbage collection
-    gc = {
-      automatic = true;
-      dates = "weekly";
-      options = "--delete-older-than 7d";
-    };
-
-    # Optimize store on every build
-    optimise = {
-      automatic = true;
-      dates = [ "weekly" ];
-    };
-  };
-
-  nixpkgs.config.allowUnfree = true;
-
-  # ============================================================================
-  # AIDB: Podman Virtualization (Rootless, secure containers)
-  # ============================================================================
-  # Modern NixOS 25.05+ container configuration
-  virtualisation = {
-    containers.enable = true;
-
-    podman = {
-      enable = true;
-
-      # Docker CLI compatibility (no docker daemon)
-      dockerCompat = true;
-
-      # Enable Podman socket for podman-compose and docker-compose
-      dockerSocket.enable = true;
-
-      # Default network DNS for container name resolution
-      defaultNetwork.settings.dns_enabled = true;
-
-      # Automatic cleanup of unused images/containers
-      autoPrune = {
-        enable = true;
-        dates = "weekly";
-        flags = [ "--all" ];  # Remove all unused images, not just dangling
-      };
-    };
-  };
-
-  # ============================================================================
-  # COSMIC Desktop Environment (Wayland-native)
-  # ============================================================================
-  # NixOS 25.05+ modern configuration
-  # 100% Wayland-native - No X11/XWayland needed for this configuration
-  # All applications configured for native Wayland support
-
-  services.desktopManager.cosmic = {
-    enable = true;
-$(
-    # Generate GPU-specific hardware acceleration configuration
-    if [ "$GPU_TYPE" != "software" ] && [ "$GPU_TYPE" != "unknown" ] && [ -n "$LIBVA_DRIVER" ]; then
-        cat > HARDWARE_CONFIG #> "$HM_CONFIG_DIR"/hardware_configuration.nix
-
-    # Hardware acceleration enabled (auto-detected: $GPU_TYPE GPU)
+    local cosmic_gpu_block
+    if [[ "$GPU_TYPE" != "software" && "$GPU_TYPE" != "unknown" && -n "$LIBVA_DRIVER" ]]; then
+        local gpu_label="${GPU_TYPE^}"
+        cosmic_gpu_block=$(cat <<EOF
+# Hardware acceleration enabled (auto-detected: ${gpu_label} GPU)
     # VA-API driver: $LIBVA_DRIVER for video decode/encode acceleration
     extraSessionCommands = ''
       # Enable hardware video acceleration
@@ -2648,282 +1902,85 @@ $(
       # Enable touch/gesture support for trackpads
       export MOZ_USE_XINPUT2=1
     '';
-GPU_CONFIG
-    else
-        echo ""
-        echo "    # No dedicated GPU detected - using software rendering"
-        echo "    # Hardware acceleration disabled"
-    fi
+EOF
 )
-
-    # Optional: XWayland support for legacy X11 applications (DISABLED)
-    # Uncomment ONLY if you need to run proprietary X11-only software
-    # Examples: Some game launchers, proprietary CAD software, older apps
-    # Note: Adds security risk (X11 less secure than Wayland)
-    # xwayland.enable = false;
-
-    # Optional: Exclude default COSMIC applications (NixOS 25.11+)
-    # COSMIC desktop automatically includes: cosmic-settings, cosmic-notification-daemon,
-    # cosmic-files, cosmic-edit, cosmic-terminal, and other core applications
-    # Uncomment the section below in NixOS 25.11+ to prevent duplicates in application menu
-    #
-    # NOTE: This option is NOT available in NixOS 25.05
-    # If using 25.05 and experiencing duplicate apps, upgrade to 25.11 or later
-    #
-    # excludePackages = with pkgs; [
-    #   cosmic-settings
-    #   cosmic-notification-daemon
-    #   cosmic-launcher
-    #   cosmic-files
-    #   cosmic-edit
-    #   cosmic-terminal
-    # ];
-  };
-
-  services.displayManager = {
-    # COSMIC Greeter (Wayland-native login screen)
-    cosmic-greeter.enable = true;
-
-    # Optional: Set default desktop session (DISABLED - not needed)
-    # Uncomment ONLY if you install multiple desktop environments
-    # Ensures COSMIC loads by default instead of others (GNOME, KDE, etc)
-    # Since only COSMIC is installed, this setting is redundant
-    # defaultSession = "cosmic";
-
-    # Optional: Auto-login to skip password prompt (DISABLED for security)
-    # Uncomment to boot directly to desktop without login screen
-    # WARNING: Only use on single-user systems with physical security!
-    # Bypasses password authentication - creates security risk
-    # autoLogin = {
-    #   enable = true;
-    #   user = "$USER";
-    # };
-  };
-
-  # Wayland-specific optimizations and COSMIC configuration
-  environment.sessionVariables = {
-    # Force Wayland for Qt apps
-    QT_QPA_PLATFORM = "wayland";
-    # Force Wayland for SDL2 apps
-    SDL_VIDEODRIVER = "wayland";
-    # Firefox Wayland
-    MOZ_ENABLE_WAYLAND = "1";
-    # Electron apps (VSCodium, etc)
-    NIXOS_OZONE_WL = "1";
-
-    # COSMIC-specific: Enable clipboard functionality
-    # Required for cosmic-clipboard to work with wl-clipboard
-    COSMIC_DATA_CONTROL_ENABLED = "1";
-  };
-
-  # ============================================================================
-  # System Packages (System-level only)
-  # ============================================================================
-  # Note: Development tools (git, vim, etc.) are installed via home-manager
-  # This prevents package collisions and allows per-user customization
-  #
-  # IMPORTANT: COSMIC desktop apps (cosmic-edit, cosmic-files, cosmic-term, etc.)
-  # are AUTOMATICALLY included when services.desktopManager.cosmic.enable = true
-  # DO NOT add them here - it creates duplicates!
-  environment.systemPackages = with pkgs; [
-    # COSMIC App Store (not auto-included, needs explicit installation)
-    cosmic-store
-
-    # Container tools (system-level for rootless podman)
-    podman
-    podman-compose
-    buildah
-    skopeo
-    crun
-    slirp4netns
-
-    # Essential system utilities only
-    # All other tools installed via home-manager to prevent collisions
-  ];
-
-  # ============================================================================
-  # Fonts (Required for Cosmic and development)
-  # ============================================================================
-  fonts.packages = with pkgs; [
-    nerd-fonts.meslo-lg
-    nerd-fonts.fira-code
-    nerd-fonts.jetbrains-mono
-    nerd-fonts.hack
-    font-awesome
-    powerline-fonts
-  ];
-
-  # ============================================================================
-  # Audio (Modern PipeWire - NixOS 25.05+)
-  # ============================================================================
-  # PipeWire: Modern, low-latency audio/video routing
-  # Replaces PulseAudio and JACK with better Wayland integration
-
-  # Disable legacy audio systems (NixOS 25.05+ uses services.pulseaudio)
-  services.pulseaudio.enable = false;
-
-  # Enable real-time audio scheduling (required for low latency)
-  security.rtkit.enable = true;
-
-  services.pipewire = {
-    enable = true;
-
-    # ALSA support (direct hardware access)
-    alsa = {
-      enable = true;
-      support32Bit = true;  # For 32-bit games/apps
-    };
-
-    # PulseAudio compatibility layer
-    pulse.enable = true;
-
-    # JACK audio (professional audio production)
-    jack.enable = true;
-
-    # WirePlumber: Modern session manager for PipeWire
-    wireplumber.enable = true;
-  };
-
-  # ============================================================================
-  # Printing
-  # ============================================================================
-  services.printing.enable = true;
-
-  # ============================================================================
-  # Flatpak (Required for COSMIC App Store)
-  # ============================================================================
-  services.flatpak.enable = true;
-
-  # Note: After system rebuild, run this command as your user to add Flathub:
-  # flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-
-  # ============================================================================
-  # System Monitoring Tools (GNOME-like Features)
-  # ============================================================================
-  # Resources: Modern system monitor similar to GNOME Settings
-  #   - CPU, GPU, RAM, disk monitoring
-  #   - Network statistics
-  #   - Sensor readings (temperature, fan speed)
-  #   - Process information (like GNOME Task Manager)
-  #   - Clean, modern GTK 4 interface with libadwaita
-  #
-  # Installation: Available via Flatpak home-manager
-  #   Uncomment in ~/.config/home-manager/home.nix:
-  #   "net.nokyan.Resources"  # System resource monitor
-  #
-  # Alternative system monitoring services (optional - commented out):
-
-  # GNOME Shell (for extensions like system monitor bar)
-  # Uncomment if you want GNOME Shell in addition to COSMIC:
-  # services.displayManager.gdm.enable = false;  # Disable if using COSMIC only
-  # services.gnome.core-utilities.enable = false;
-
-  # Dbus (Required for many system services and monitor integration)
-  services.dbus.enable = true;
-
-  # UPower (Power management and battery monitoring - integrated with monitors)
-  services.upower.enable = true;
-
-  # Bluetooth (For wireless device monitoring)
-  services.blueman.enable = true;
-
-  # Thermald (Intel thermal management - auto-thermal throttling)
-  # Enabled automatically on Intel systems for temperature management
-  services.thermald.enable = true;
-
-  # ============================================================================
-  # Geolocation Services (For COSMIC auto day/night theme)
-  # ============================================================================
-  # GeoClue2: Provides geolocation services for automatic timezone/theme
-  # Used by COSMIC for:
-  # - Automatic day/night theme switching based on sunrise/sunset
-  # - Location-aware timezone detection
-  # - Weather information (if installed)
-  services.geoclue2 = {
-    enable = true;
-    enableWifi = true;
-    
-    # Location services can access your geolocation - configure privacy:
-    # Allow only specific applications to access location
-    geoProviderUrl = "https://api.beacondb.net/v1/geolocate";
-    submitData = false;
-    appConfig = {  
-        # Allow COSMIC Settings to access location for theme switching
-        #"cosmic-settings" = {
-        #  isAllowed = true;
-        #  isSystem = true;
-      #};
-    };
-  };
-
-  # ============================================================================
-  # Memory Management & Swap
-  # ============================================================================
-  # Swap configuration is inherited from hardware-configuration.nix
-  # This section adds intelligent swap management and hibernation support
-
-  # Systemd sleep/hibernate configuration
-  systemd.sleep.extraConfig = ''
-    # Hibernate after 2 hours of suspend (saves battery)
-    HibernateDelaySec=2h
-  '';
-
-  # Zram: Compressed RAM swap (faster than disk swap)
-  # This creates a compressed block device in RAM for swap
-  # Auto-configured based on detected RAM: ${TOTAL_RAM_GB}GB
-  # Strategy: More RAM = less zram needed (diminishing returns)
-  zramSwap = {
-    enable = true;
-    algorithm = "zstd";  # Modern, fast compression (better than lz4/lzo)
-    memoryPercent = $ZRAM_PERCENT;  # Auto-tuned: $ZRAM_PERCENT% for ${TOTAL_RAM_GB}GB RAM
-    priority = 10;       # Higher priority than disk swap (use zram first)
-  };
-
-  # System memory management tunables
-  boot.kernel.sysctl = {
-    # Swappiness: How aggressively to swap (0-100)
-    # Lower = prefer RAM, Higher = swap more aggressively
-    # Default: 60, Recommended for desktop: 10
-    "vm.swappiness" = 10;
-
-    # VFS cache pressure: How aggressively to reclaim inode/dentry cache
-    # Lower = keep more cache, Higher = reclaim more aggressively
-    # Default: 100, Recommended: 50
-    "vm.vfs_cache_pressure" = 50;
-
-    # Dirty ratio: Percentage of memory that can be dirty before forced writeback
-    # Helps prevent I/O spikes
-    "vm.dirty_ratio" = 10;
-    "vm.dirty_background_ratio" = 5;
-  };
-
-  # ============================================================================
-  # Power Management (for hibernation support)
-  # ============================================================================
-  powerManagement = {
-    enable = true;
-    # Allow hibernation if swap is configured
-    # Requires: swapDevices with sufficient size (>= RAM size)
-  };
-
-  # ============================================================================
-  # System & Home Manager Version
-  # ============================================================================
-  system.stateVersion = "$NIXOS_VERSION";
-  home.stateVersion = "$NIXOS_VERSION";
-}
-NEWCONFIG
-
-    local CONFIG_WRITE_STATUS=$?
-
-    if [ $CONFIG_WRITE_STATUS -eq 0 ]; then
-        print_success "✓ Complete AIDB configuration generated"
-        print_info "Includes: Cosmic Desktop, Podman, Fonts, Audio, ZSH"
-        echo ""
     else
-        print_error "Failed to generate configuration"
+        cosmic_gpu_block=$(cat <<'EOF'
+# No dedicated GPU detected - using software rendering
+    # Hardware acceleration disabled
+EOF
+)
+    fi
+
+    local total_ram_value="${TOTAL_RAM_GB:-0}"
+    local zram_value="${ZRAM_PERCENT:-50}"
+
+    if [ -z "$USER_PASSWORD_BLOCK" ]; then
+        USER_PASSWORD_BLOCK=$'    # (no password directives detected; update manually if required)\n'
+    fi
+
+    SCRIPT_VERSION_VALUE="$SCRIPT_VERSION" \
+    GENERATED_AT="$GENERATED_AT" \
+    HOSTNAME_VALUE="$HOSTNAME" \
+    USER_VALUE="$USER" \
+    CPU_VENDOR_LABEL_VALUE="$CPU_VENDOR_LABEL" \
+    INITRD_KERNEL_MODULES_VALUE="$INITRD_KERNEL_MODULES" \
+    MICROCODE_SECTION_VALUE="$MICROCODE_SECTION" \
+    GPU_HARDWARE_SECTION_VALUE="$gpu_hardware_section" \
+    COSMIC_GPU_BLOCK_VALUE="$cosmic_gpu_block" \
+    SELECTED_TIMEZONE_VALUE="$SELECTED_TIMEZONE" \
+    CURRENT_LOCALE_VALUE="$CURRENT_LOCALE" \
+    NIXOS_VERSION_VALUE="$NIXOS_VERSION" \
+    ZRAM_PERCENT_VALUE="$zram_value" \
+    TOTAL_RAM_GB_VALUE="$total_ram_value" \
+    USERS_MUTABLE_VALUE="$USERS_MUTABLE_SETTING" \
+    USER_PASSWORD_BLOCK_VALUE="$USER_PASSWORD_BLOCK" \
+    run_python - "$GENERATED_CONFIG" <<'PY'
+import os
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as f:
+    text = f.read()
+
+replacements = {
+    "@SCRIPT_VERSION@": os.environ.get("SCRIPT_VERSION_VALUE", ""),
+    "@GENERATED_AT@": os.environ.get("GENERATED_AT", ""),
+    "@HOSTNAME@": os.environ.get("HOSTNAME_VALUE", ""),
+    "@USER@": os.environ.get("USER_VALUE", ""),
+    "@CPU_VENDOR_LABEL@": os.environ.get("CPU_VENDOR_LABEL_VALUE", "Unknown"),
+    "@INITRD_KERNEL_MODULES@": os.environ.get("INITRD_KERNEL_MODULES_VALUE", ""),
+    "@MICROCODE_SECTION@": os.environ.get("MICROCODE_SECTION_VALUE", ""),
+    "@GPU_HARDWARE_SECTION@": os.environ.get("GPU_HARDWARE_SECTION_VALUE", ""),
+    "@COSMIC_GPU_BLOCK@": os.environ.get("COSMIC_GPU_BLOCK_VALUE", ""),
+    "@SELECTED_TIMEZONE@": os.environ.get("SELECTED_TIMEZONE_VALUE", "UTC"),
+    "@CURRENT_LOCALE@": os.environ.get("CURRENT_LOCALE_VALUE", "en_US.UTF-8"),
+    "@NIXOS_VERSION@": os.environ.get("NIXOS_VERSION_VALUE", "23.11"),
+    "@ZRAM_PERCENT@": os.environ.get("ZRAM_PERCENT_VALUE", "50"),
+    "@TOTAL_RAM_GB@": os.environ.get("TOTAL_RAM_GB_VALUE", "0"),
+    "@USERS_MUTABLE@": os.environ.get("USERS_MUTABLE_VALUE", "true"),
+    "@USER_PASSWORD_BLOCK@": os.environ.get(
+        "USER_PASSWORD_BLOCK_VALUE",
+        "    # (no password directives detected; update manually if required)\n",
+    ),
+}
+
+for placeholder, value in replacements.items():
+    text = text.replace(placeholder, value)
+
+with open(path, "w", encoding="utf-8") as f:
+    f.write(text)
+PY
+
+    local render_status=$?
+    if [ $render_status -ne 0 ]; then
+        print_error "Failed to render configuration template"
         return 1
     fi
+
+    print_success "✓ Complete AIDB configuration generated"
+    print_info "Includes: Cosmic Desktop, Podman, Fonts, Audio, ZSH"
+    echo ""
 
     # Apply the new configuration
     print_section "Applying New Configuration"
@@ -3438,6 +2495,14 @@ install_vscodium_extensions() {
 
     # Install additional helpful extensions not in nixpkgs
     print_info "Installing additional development extensions..."
+    install_ext "ms-python.python" "Python"
+    install_ext "ms-python.vscode-pylance" "Pylance"
+    install_ext "ms-python.black-formatter" "Black Formatter"
+    install_ext "ms-toolsai.jupyter" "Jupyter"
+    install_ext "ms-toolsai.jupyter-keymap" "Jupyter Keymap"
+    install_ext "ms-toolsai.jupyter-renderers" "Jupyter Renderers"
+    install_ext "HuggingFace.huggingface-vscode" "Hugging Face"
+    install_ext "Continue.continue" "Continue AI"
     install_ext "dbaeumer.vscode-eslint" "ESLint"
     install_ext "mhutchie.git-graph" "Git Graph"
     install_ext "golang.go" "Go"
@@ -3480,13 +2545,20 @@ print_post_install() {
     echo ""
     echo -e "  ${GREEN}NixOS Development Tools:${NC}"
     echo "    • Nix tools (nix-tree, nixpkgs-fmt, alejandra, statix, etc.)"
-    echo "    • VSCodium with NixOS + Claude Code extensions"
+    echo "    • VSCodium with NixOS + AI tooling extensions"
     echo ""
     echo -e "  ${GREEN}Claude Code Integration:${NC}"
     echo "    • Claude Code CLI installed globally"
     echo "    • Smart Node.js wrapper (fixes Error 127)"
     echo "    • VSCodium fully configured for Claude Code"
     echo "    • All required extensions installed"
+    echo ""
+    echo -e "  ${GREEN}Local AI Runtime:${NC}"
+    echo "    • Hugging Face TGI service (podman-based systemd unit)"
+    echo "    • hf-tgi helper for managing the local inference server"
+    echo "    • Open WebUI podman helpers: open-webui-run/open-webui-stop"
+    echo "    • hf-model-sync script for downloading Hugging Face models"
+    echo "    • Optional Ollama CLI installed when available"
     echo ""
     echo -e "  ${GREEN}Modern CLI & Terminal:${NC}"
     echo "    • ZSH with Powerlevel10k theme"
