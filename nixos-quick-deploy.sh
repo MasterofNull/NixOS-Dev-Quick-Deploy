@@ -1816,7 +1816,13 @@ update_nixos_system_config() {
             print_success "Copied hardware-configuration.nix into $HM_CONFIG_DIR for flake evaluation"
             print_info "Hardware updates will be refreshed each time the deploy script runs"
         else
-            print_warning "Could not copy hardware-configuration.nix to $HM_CONFIG_DIR"
+            # Fall back to copying if the symlink cannot be created (e.g. different filesystem)
+            if sudo cp "$HARDWARE_CONFIG" "$TARGET_HARDWARE_CONFIG"; then
+                sudo chown "$USER":"$USER" "$TARGET_HARDWARE_CONFIG" 2>/dev/null || true
+                print_success "Copied hardware-configuration.nix to $HM_CONFIG_DIR for flake builds"
+            else
+                print_warning "Could not copy hardware-configuration.nix to $HM_CONFIG_DIR"
+            fi
         fi
     else
         print_warning "System hardware-configuration.nix not found; run 'sudo nixos-generate-config' if needed"
