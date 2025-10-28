@@ -32,6 +32,19 @@ let
   openWebUiReadme = ''
     Persistent storage for Open WebUI when launched with the open-webui-run helper.
 
+Actions
+Projects
+Wiki
+Security
+Insights
+
+    Settings
+
+Auto-detect timezone and preserve existing user credentials #8
+Open
+MasterofNull wants to merge 1 commit into main from codex/refactor-script-to-improve-file-writing-oaj3r1
++2,590 −1,594
+
     • All chat history, uploads, and custom prompts are written here.
     • The helper binds this directory into the container at /app/backend/data.
     • Remove this directory to reset the Open WebUI state safely.
@@ -104,6 +117,19 @@ let
   '';
   giteaAiIntegrations = ''
     {
+Actions
+Projects
+Wiki
+Security
+Insights
+
+    Settings
+
+Auto-detect timezone and preserve existing user credentials #8
+Open
+MasterofNull wants to merge 1 commit into main from codex/refactor-script-to-improve-file-writing-oaj3r1
++2,590 −1,594
+
       "agents": [
         {
           "name": "aider-openai",
@@ -151,6 +177,19 @@ in
   imports = [
     nix-flatpak.homeManagerModules.nix-flatpak
   ];
+Actions
+Projects
+Wiki
+Security
+Insights
+
+    Settings
+
+Auto-detect timezone and preserve existing user credentials #8
+Open
+MasterofNull wants to merge 1 commit into main from codex/refactor-script-to-improve-file-writing-oaj3r1
++2,590 −1,594
+
 
   home.username = "HOMEUSERNAME";
   home.homeDirectory = "HOMEDIR";
@@ -297,6 +336,19 @@ in
 
         # ========================================================================
         # Programming Languages & Tools
+Actions
+Projects
+Wiki
+Security
+Insights
+
+    Settings
+
+Auto-detect timezone and preserve existing user credentials #8
+Open
+MasterofNull wants to merge 1 commit into main from codex/refactor-script-to-improve-file-writing-oaj3r1
++2,590 −1,594
+
         # ========================================================================
 
         # Python (REQUIRED for AIDB and AI model tooling)
@@ -805,6 +857,19 @@ in
         if [[ -z "$log_dir" ]]; then
           log_dir="$HOME/.local/share/aider/logs"
         fi
+Actions
+Projects
+Wiki
+Security
+Insights
+
+    Settings
+
+Auto-detect timezone and preserve existing user credentials #8
+Open
+MasterofNull wants to merge 1 commit into main from codex/refactor-script-to-improve-file-writing-oaj3r1
++2,590 −1,594
+
         mkdir -p "$log_dir"
 
         model="$AIDER_DEFAULT_MODEL"
