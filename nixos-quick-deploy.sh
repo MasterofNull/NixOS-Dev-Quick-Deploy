@@ -898,37 +898,74 @@ update_nixos_channels() {
 
     # Verify synchronization
     print_info "Verifying channel synchronization..."
-    local NIXPKGS_VERSION=$(nix-instantiate --eval -E '(import <nixpkgs> {}).lib.version' 2>/dev/null | tr -d '"' || echo "unknown")
-    local HM_VERSION=$(nix-instantiate --eval -E '(import <home-manager> {}).home-manager.version' 2>/dev/null | tr -d '"' || echo "unknown")
 
-    if [ "$NIXPKGS_VERSION" != "unknown" ] && [ "$HM_VERSION" != "unknown" ]; then
-        print_info "  nixpkgs version:      $NIXPKGS_VERSION"
-        print_info "  home-manager version: $HM_VERSION"
+    local SYSTEM_CHANNEL
+    SYSTEM_CHANNEL=$(sudo nix-channel --list | awk '/^nixos\s/ { print $2 }' | tail -n1)
+    local USER_CHANNEL
+    USER_CHANNEL=$(nix-channel --list | awk '/^home-manager\s/ { print $2 }' | tail -n1)
 
-        # Extract major.minor for comparison
-        local NIXPKGS_MAJ_MIN=$(echo "$NIXPKGS_VERSION" | grep -oP '^\d+\.\d+' || echo "$NIXPKGS_VERSION")
-        local HM_MAJ_MIN=$(echo "$HM_VERSION" | grep -oP '^\d+\.\d+' || echo "$HM_VERSION")
+    if [[ -z "$SYSTEM_CHANNEL" ]]; then
+        print_warning "Unable to determine current nixos channel"
+    else
+        print_info "  nixos channel:        $(basename "$SYSTEM_CHANNEL")"
+    fi
 
-        if [ "$NIXPKGS_MAJ_MIN" = "$HM_MAJ_MIN" ]; then
-            print_success "✓ Channels synchronized: both on $NIXPKGS_MAJ_MIN"
+    if [[ -z "$USER_CHANNEL" ]]; then
+        print_warning "Unable to determine current home-manager channel"
+    else
+        print_info "  home-manager channel: $(normalize_channel_name "$USER_CHANNEL")"
+    fi
+
+    if [[ -z "$SYSTEM_CHANNEL" || -z "$USER_CHANNEL" ]]; then
+        print_warning "Could not verify channel versions"
+        print_info "Will proceed but may encounter compatibility issues"
+    else
+        local SYSTEM_NAME="$(basename "$SYSTEM_CHANNEL")"
+        local EXPECTED_HM=""
+        local HUMAN_VERSION_LABEL=""
+
+        if [[ "$SYSTEM_NAME" == "nixos-unstable" ]]; then
+            EXPECTED_HM="master"
+            HUMAN_VERSION_LABEL="unstable"
+        elif [[ "$SYSTEM_NAME" =~ nixos-([0-9]+\.[0-9]+) ]]; then
+            HUMAN_VERSION_LABEL="${BASH_REMATCH[1]}"
+            EXPECTED_HM="release-${HUMAN_VERSION_LABEL}"
+        fi
+
+        local ACTUAL_HM="$(normalize_channel_name "$USER_CHANNEL")"
+
+        if [[ -z "$EXPECTED_HM" ]]; then
+            print_warning "Unable to derive expected home-manager channel from $SYSTEM_NAME"
+            print_warning "Proceed with caution and verify channels manually"
+        elif [[ "$ACTUAL_HM" == "$EXPECTED_HM" ]]; then
+            if [[ -n "$HUMAN_VERSION_LABEL" ]]; then
+                print_success "✓ Channels synchronized: NixOS ${HUMAN_VERSION_LABEL} ↔ home-manager ${EXPECTED_HM}"
+            else
+                print_success "✓ Channels synchronized: nixos-unstable ↔ home-manager master"
+            fi
         else
-            print_error "✗ CRITICAL: Version mismatch detected!"
-            print_error "  nixpkgs:      $NIXPKGS_MAJ_MIN"
-            print_error "  home-manager: $HM_MAJ_MIN"
+            print_error "✗ CRITICAL: Channel mismatch detected!"
+            print_error "  nixos channel:        $SYSTEM_NAME"
+            print_error "  home-manager channel: $ACTUAL_HM (expected ${EXPECTED_HM})"
             print_error "This WILL cause compatibility issues and build failures"
             echo ""
             print_info "Attempting to fix by re-synchronizing channels..."
 
-            # Force re-add the correct home-manager channel
             nix-channel --remove home-manager 2>/dev/null || true
-            nix-channel --add "https://github.com/nix-community/home-manager/archive/release-${NIXPKGS_MAJ_MIN}.tar.gz" home-manager
+            local RESYNC_URL
+            if [[ "$EXPECTED_HM" == "master" ]]; then
+                RESYNC_URL="https://github.com/nix-community/home-manager/archive/master.tar.gz"
+            else
+                RESYNC_URL="https://github.com/nix-community/home-manager/archive/${EXPECTED_HM}.tar.gz"
+            fi
+            nix-channel --add "$RESYNC_URL" home-manager
             nix-channel --update
 
-            print_success "Channels re-synchronized to $NIXPKGS_MAJ_MIN"
+            HOME_MANAGER_CHANNEL_REF="$EXPECTED_HM"
+            HOME_MANAGER_CHANNEL_URL="$RESYNC_URL"
+
+            print_success "Channels re-synchronized to expected versions"
         fi
-    else
-        print_warning "Could not verify channel versions"
-        print_info "Will proceed but may encounter compatibility issues"
     fi
     echo ""
 }

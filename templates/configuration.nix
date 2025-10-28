@@ -158,9 +158,9 @@ in
   # Set to false for fully declarative (passwords only from config)
   users.mutableUsers = @USERS_MUTABLE@;
 
-  users.users.${USER} = {
+  users.users."@USER@" = {
     isNormalUser = true;
-    description = "${USER}";
+    description = "@USER@";
 
     # Password configuration (migrated from existing system or preserved automatically)
 @USER_PASSWORD_BLOCK@
