@@ -2415,11 +2415,10 @@ $(
     ];
   };
 
-  # Hardware-specific configuration (auto-detected)
-  cp $HARDWARE_CONFIG $HM_CONFIG_DIR/hardware_configuration.nix
+ 
 $(
     if [ -n "$CPU_MICROCODE" ]; then
-        cat > HARDWARE_CONFIG> $HM_CONFIG_DIR/hardware_configuration.nix
+        cat < HARDWARE_CONFIG> $HM_CONFIG_DIR/hardware_configuration.nix
   hardware.cpu.$CPU_VENDOR.updateMicrocode = true;  # Enable $CPU_VENDOR microcode updates
 HARDWARE_CONFIG
     fi
@@ -2473,7 +2472,6 @@ AMD_GPU
 NVIDIA_GPU
     fi
 )
-
 
   # ============================================================================
   # Security Hardening
