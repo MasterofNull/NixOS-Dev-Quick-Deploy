@@ -6,6 +6,37 @@
 
 { config, pkgs, lib, ... }:
 
+let
+  huggingfaceDataDir = "/var/lib/huggingface";
+  huggingfaceCacheDir = "${huggingfaceDataDir}/cache";
+  huggingfaceModelId = "meta-llama/Meta-Llama-3-8B-Instruct";
+  huggingfaceImage = "ghcr.io/huggingface/text-generation-inference:latest";
+  huggingfacePrepScript = pkgs.writeShellScript "huggingface-tgi-prep" ''
+    set -euo pipefail
+    ${pkgs.coreutils}/bin/mkdir -p ${huggingfaceCacheDir}
+    ${pkgs.podman}/bin/podman rm -f huggingface-tgi >/dev/null 2>&1 || true
+    ${pkgs.podman}/bin/podman pull ${huggingfaceImage}
+  '';
+  huggingfaceStartScript = pkgs.writeShellScript "huggingface-tgi-start" ''
+    set -euo pipefail
+    exec ${pkgs.podman}/bin/podman run \
+      --rm \
+      --name huggingface-tgi \
+      --net host \
+      -v ${huggingfaceDataDir}:/data \
+      -e HF_HOME=/data \
+      -e HUGGINGFACE_HUB_CACHE=/data/cache \
+      -e TRANSFORMERS_CACHE=/data/cache \
+      ${huggingfaceImage} \
+      --model-id ${huggingfaceModelId} \
+      --port 8080 \
+      --num-shard 1
+  '';
+  huggingfaceStopScript = pkgs.writeShellScript "huggingface-tgi-stop" ''
+    ${pkgs.podman}/bin/podman stop huggingface-tgi >/dev/null 2>&1 || true
+  '';
+in
+
 {
   imports = [ ./hardware-configuration.nix ];
 
@@ -125,14 +156,14 @@
 
   # Allow users to change their passwords with passwd command
   # Set to false for fully declarative (passwords only from config)
-  users.mutableUsers = true;
+  users.mutableUsers = @USERS_MUTABLE@;
 
   users.users.${USER} = {
     isNormalUser = true;
     description = "${USER}";
 
-    # Password configuration (migrated from existing system or newly set)
-    hashedPassword = "${USER_PASSWORD_HASH}";
+    # Password configuration (migrated from existing system or preserved automatically)
+@USER_PASSWORD_BLOCK@
 
     # Minimal groups: only what's needed
     extraGroups = [
@@ -221,6 +252,48 @@
       };
     };
   };
+
+  # ========================================================================
+  # Local AI Runtime (Hugging Face & Ollama)
+  # ========================================================================
+
+  services.ollama = lib.mkIf (pkgs ? ollama) {
+    enable = true;
+    package = pkgs.ollama;
+  };
+
+  systemd.services.ollama = lib.mkIf (pkgs ? ollama) {
+    environment = {
+      HF_HOME = huggingfaceDataDir;
+      HUGGINGFACE_HUB_CACHE = huggingfaceCacheDir;
+      TRANSFORMERS_CACHE = huggingfaceCacheDir;
+    };
+  };
+
+  systemd.services.huggingface-tgi = {
+    description = "Hugging Face Text Generation Inference";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "network-online.target" ];
+    requires = [ "network-online.target" ];
+    serviceConfig = {
+      Type = "simple";
+      ExecStartPre = [ huggingfacePrepScript ];
+      ExecStart = huggingfaceStartScript;
+      ExecStop = huggingfaceStopScript;
+      Restart = "on-failure";
+      RestartSec = 15;
+    };
+    environment = {
+      HF_HOME = huggingfaceDataDir;
+      HUGGINGFACE_HUB_CACHE = huggingfaceCacheDir;
+      TRANSFORMERS_CACHE = huggingfaceCacheDir;
+    };
+  };
+
+  systemd.tmpfiles.rules = lib.mkAfter [
+    "d ${huggingfaceDataDir} 0755 root root -"
+    "d ${huggingfaceCacheDir} 0755 root root -"
+  ];
 
   # ============================================================================
   # COSMIC Desktop Environment (Wayland-native)
