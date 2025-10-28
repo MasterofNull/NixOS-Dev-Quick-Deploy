@@ -20,6 +20,15 @@ HOME_MANAGER_BACKUP=""
 HOME_MANAGER_CHANNEL_REF=""
 HOME_MANAGER_CHANNEL_URL=""
 
+# Preserved configuration data
+SELECTED_TIMEZONE=""
+USERS_MUTABLE_SETTING="true"
+USER_PASSWORD_BLOCK=""
+USER_TEMP_PASSWORD=""
+PREVIOUS_TIMEZONE=""
+PREVIOUS_MUTABLE_USERS=""
+PREVIOUS_USER_PASSWORD_SNIPPET=""
+
 # Script version for change tracking
 SCRIPT_VERSION="2.1.1"
 VERSION_FILE="$HOME/.cache/nixos-quick-deploy-version"
@@ -142,7 +151,8 @@ show_fresh_start_instructions() {
     echo ""
     echo -e "${YELLOW}3. Review available backups (NOT auto-restored):${NC}"
     echo "   ls -lt ~/.config/home-manager/home.nix.backup.*"
-    echo "   ls -lt ~/.config/home-manager/configuration.nix.backup.*"                                       #/etc/nixos/configuration.nix.backup.*"
+    echo "   ls -lt ~/.config/home-manager/configuration.nix.backup.*"
+    echo "   ls -lt /etc/nixos/configuration.nix.backup.*"
     echo ""
     echo -e "${YELLOW}4. Read the recovery guide:${NC}"
     echo "   cat ~/Documents/AI-Opitmizer/NixOS-Quick-Deploy/RECOVERY-GUIDE.md"
@@ -196,6 +206,284 @@ print_success() {
 
 print_warning() {
     echo -e "${YELLOW}⚠${NC} $1"
+}
+
+# ------------------------------------------------------------------------------
+# Configuration Extraction Helpers
+# ------------------------------------------------------------------------------
+
+parse_nixos_option_value() {
+    local option_path="$1"
+
+    if ! command -v nixos-option >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local raw_output
+    if ! raw_output=$(nixos-option "$option_path" 2>/dev/null); then
+        return 0
+    fi
+
+    raw_output=$(echo "$raw_output" | sed '1d' | tr -d '\n')
+    raw_output=$(echo "$raw_output" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+
+    if [ -z "$raw_output" ]; then
+        return 0
+    fi
+
+    if [[ $raw_output == "*" ]]; then
+        raw_output=${raw_output#\"}
+        raw_output=${raw_output%\"}
+    elif [[ $raw_output == '*' ]]; then
+        raw_output=${raw_output#'}
+        raw_output=${raw_output%'}
+    fi
+
+    printf '%s' "$raw_output"
+}
+
+load_previous_nixos_metadata() {
+    local metadata
+
+    metadata=$(TARGET_USER="$USER" python3 - <<'PY' 2>/dev/null
+import base64
+import os
+import re
+from pathlib import Path
+
+target_user = os.environ.get("TARGET_USER", "")
+config_path = Path("/etc/nixos/configuration.nix")
+
+timezone = ""
+mutable_users = ""
+password_snippet = ""
+
+if config_path.exists():
+    text = config_path.read_text(encoding="utf-8", errors="ignore")
+
+    tz_match = re.search(r"time\.timeZone\s*=\s*([^;]+);", text)
+    if tz_match:
+        tz_expr = tz_match.group(1)
+        q_match = re.search(r'"([^"\\]+(?:\\.[^"\\]*)*)"', tz_expr)
+        if not q_match:
+            q_match = re.search(r"'([^'\\]+(?:\\.[^'\\]*)*)'", tz_expr)
+        if q_match:
+            timezone = bytes(q_match.group(1), "utf-8").decode("unicode_escape")
+
+    mutable_match = re.search(r"users\.mutableUsers\s*=\s*([^;]+);", text)
+    if mutable_match:
+        mutable_users = mutable_match.group(1).strip()
+
+    if target_user:
+        user_re = re.escape(target_user)
+        pattern = re.compile(
+            r"users\.users\.(?:\"{0}\"|'{0}'|{0})\s*=\s*\{{".format(user_re),
+            re.MULTILINE,
+        )
+        match = pattern.search(text)
+        if match:
+            start = match.end() - 1  # include opening brace
+            depth = 0
+            in_string = False
+            string_char = ""
+            escape = False
+            for idx in range(start, len(text)):
+                ch = text[idx]
+                if in_string:
+                    if escape:
+                        escape = False
+                    elif ch == '\\':
+                        escape = True
+                    elif ch == string_char:
+                        in_string = False
+                    continue
+                else:
+                    if ch in ('"', "'"):
+                        in_string = True
+                        string_char = ch
+                        continue
+                    if ch == '{':
+                        depth += 1
+                    elif ch == '}':
+                        depth -= 1
+                        if depth == 0:
+                            block = text[match.start():idx + 1]
+                            lines = []
+                            for line in block.splitlines():
+                                if 'password' in line.lower():
+                                    lines.append(line.rstrip())
+                            if lines:
+                                password_snippet = "\n".join(lines)
+                            break
+
+if timezone:
+    print("__TZ__:" + timezone)
+if mutable_users:
+    print("__MUTABLE__:" + mutable_users)
+if password_snippet:
+    encoded = base64.b64encode(password_snippet.encode()).decode()
+    print("__USERPW__:" + encoded)
+PY
+)
+
+    if [ -z "$metadata" ]; then
+        return
+    fi
+
+    while IFS= read -r line; do
+        case "$line" in
+            __TZ__*)
+                PREVIOUS_TIMEZONE=${line#__TZ__:}
+                ;;
+            __MUTABLE__*)
+                PREVIOUS_MUTABLE_USERS=${line#__MUTABLE__:}
+                ;;
+            __USERPW__*)
+                local encoded=${line#__USERPW__:}
+                if [ -n "$encoded" ]; then
+                    PREVIOUS_USER_PASSWORD_SNIPPET=$(printf '%s' "$encoded" | python3 - <<'PY' 2>/dev/null
+import base64
+import sys
+
+data = sys.stdin.read().strip()
+if data:
+    try:
+        sys.stdout.write(base64.b64decode(data).decode())
+    except Exception:
+        pass
+PY
+)
+                fi
+                ;;
+        esac
+    done <<<"$metadata"
+}
+
+detect_existing_timezone() {
+    local detected=""
+
+    if [ -n "$PREVIOUS_TIMEZONE" ]; then
+        detected="$PREVIOUS_TIMEZONE"
+    else
+        detected=$(parse_nixos_option_value "time.timeZone")
+    fi
+
+    if [ -z "$detected" ]; then
+        detected=$(timedatectl show --property=Timezone --value 2>/dev/null || true)
+    fi
+
+    if [ -z "$detected" ]; then
+        detected="America/New_York"
+    fi
+
+    printf '%s' "$detected"
+}
+
+detect_users_mutable_setting() {
+    local value=""
+
+    if [ -n "$PREVIOUS_MUTABLE_USERS" ]; then
+        value="$PREVIOUS_MUTABLE_USERS"
+    else
+        value=$(parse_nixos_option_value "users.mutableUsers")
+    fi
+
+    if [ -z "$value" ]; then
+        value="true"
+    fi
+
+    printf '%s' "$value"
+}
+
+get_shadow_hash() {
+    local account="$1"
+    local line=""
+
+    if command -v sudo >/dev/null 2>&1; then
+        line=$(sudo grep "^${account}:" /etc/shadow 2>/dev/null || true)
+    else
+        line=$(grep "^${account}:" /etc/shadow 2>/dev/null || true)
+    fi
+
+    if [ -z "$line" ]; then
+        return 0
+    fi
+
+    local hash
+    hash=$(echo "$line" | cut -d: -f2)
+
+    if [ -z "$hash" ] || [ "$hash" = "!" ] || [ "$hash" = "*" ]; then
+        return 0
+    fi
+
+    printf '%s' "$hash"
+}
+
+generate_temporary_password() {
+    LC_ALL=C tr -dc 'A-Za-z0-9!@#$%^&*()_+=-' </dev/urandom | head -c 20
+}
+
+preserve_user_password_directives() {
+    USER_PASSWORD_BLOCK=""
+
+    if [ -n "$PREVIOUS_USER_PASSWORD_SNIPPET" ]; then
+        USER_PASSWORD_BLOCK="$PREVIOUS_USER_PASSWORD_SNIPPET"
+        [[ "$USER_PASSWORD_BLOCK" != *$'\n' ]] && USER_PASSWORD_BLOCK+=$'\n'
+        print_success "Preserved password directives from previous configuration"
+        return
+    fi
+
+    local user_path="users.users.\"$USER\""
+    local hashed
+    local hashed_file
+    local password_file
+    local initial_hashed
+    local initial_plain
+    local force_flag
+
+    hashed=$(parse_nixos_option_value "${user_path}.hashedPassword")
+    hashed_file=$(parse_nixos_option_value "${user_path}.hashedPasswordFile")
+    password_file=$(parse_nixos_option_value "${user_path}.passwordFile")
+    initial_hashed=$(parse_nixos_option_value "${user_path}.initialHashedPassword")
+    initial_plain=$(parse_nixos_option_value "${user_path}.initialPassword")
+    force_flag=$(parse_nixos_option_value "${user_path}.forceInitialPassword")
+
+    local directives=()
+
+    if [ -n "$hashed" ]; then
+        directives+=("    hashedPassword = \"${hashed}\";")
+    elif [ -n "$hashed_file" ]; then
+        directives+=("    hashedPasswordFile = \"${hashed_file}\";")
+    elif [ -n "$password_file" ]; then
+        directives+=("    passwordFile = \"${password_file}\";")
+    elif [ -n "$initial_hashed" ]; then
+        directives+=("    initialHashedPassword = \"${initial_hashed}\";")
+    elif [ -n "$initial_plain" ]; then
+        directives+=("    initialPassword = \"${initial_plain}\";")
+    fi
+
+    if [ ${#directives[@]} -gt 0 ]; then
+        if [ "$force_flag" = "true" ] || [ "$force_flag" = "false" ]; then
+            directives+=("    forceInitialPassword = ${force_flag};")
+        fi
+        USER_PASSWORD_BLOCK=$(printf '%s\n' "${directives[@]}")
+        print_success "Preserved password settings from running system configuration"
+        return
+    fi
+
+    local shadow_hash
+    shadow_hash=$(get_shadow_hash "$USER")
+    if [ -n "$shadow_hash" ]; then
+        printf -v USER_PASSWORD_BLOCK '    hashedPassword = "%s";\n' "$shadow_hash"
+        print_success "Migrated password hash from /etc/shadow"
+        return
+    fi
+
+    local temp_password
+    temp_password=$(generate_temporary_password)
+    USER_TEMP_PASSWORD="$temp_password"
+    printf -v USER_PASSWORD_BLOCK '    initialPassword = "%s";\n    forceInitialPassword = true;\n' "$temp_password"
+    print_warning "No existing password configuration found. Generated temporary password for $USER"
 }
 
 print_error() {
@@ -684,31 +972,13 @@ install_home_manager() {
 gather_user_info() {
     print_section "Gathering User Preferences"
 
-    # Timezone configuration
-    local CURRENT_TZ=$(timedatectl show --property=Timezone --value 2>/dev/null || echo "America/New_York")
-    print_info "Current timezone: $CURRENT_TZ"
-    echo ""
-    print_info "Common US timezones:"
-    echo "  1) America/Los_Angeles (Pacific)"
-    echo "  2) America/Denver (Mountain)"
-    echo "  3) America/Chicago (Central)"
-    echo "  4) America/New_York (Eastern)"
-    echo "  5) Keep current ($CURRENT_TZ)"
-    echo "  6) Custom (enter manually)"
+    load_previous_nixos_metadata
 
-    TZ_CHOICE=$(prompt_user "Choose timezone (1-6)" "5")
+    SELECTED_TIMEZONE=$(detect_existing_timezone)
+    USERS_MUTABLE_SETTING=$(detect_users_mutable_setting)
 
-    case $TZ_CHOICE in
-        1) SELECTED_TIMEZONE="America/Los_Angeles" ;;
-        2) SELECTED_TIMEZONE="America/Denver" ;;
-        3) SELECTED_TIMEZONE="America/Chicago" ;;
-        4) SELECTED_TIMEZONE="America/New_York" ;;
-        5) SELECTED_TIMEZONE="$CURRENT_TZ" ;;
-        6) SELECTED_TIMEZONE=$(prompt_user "Enter timezone (e.g., America/Los_Angeles)") ;;
-        *) SELECTED_TIMEZONE="$CURRENT_TZ" ;;
-    esac
-
-    print_success "Timezone: $SELECTED_TIMEZONE"
+    print_success "Timezone preserved: $SELECTED_TIMEZONE"
+    print_success "users.mutableUsers: $USERS_MUTABLE_SETTING"
     echo ""
 
     # Editor preference
@@ -716,12 +986,14 @@ gather_user_info() {
     echo "  1) vim"
     echo "  2) neovim"
     echo "  3) vscodium"
-    EDITOR_CHOICE=$(prompt_user "Choose editor (1-3)" "1")
+    echo "  4) gitea editor"
+    EDITOR_CHOICE=$(prompt_user "Choose editor (1-4)" "1")
 
     case $EDITOR_CHOICE in
         1) DEFAULT_EDITOR="vim" ;;
         2) DEFAULT_EDITOR="nvim" ;;
         3) DEFAULT_EDITOR="code" ;;
+        4) DEFAULT_EDITOR="gitea-editor" ;;
         *) DEFAULT_EDITOR="vim" ;;
     esac
 
@@ -730,87 +1002,14 @@ gather_user_info() {
 
     # Password Migration/Setup
     print_section "Password Configuration"
+    preserve_user_password_directives
 
-    # Check if user already has a password in /etc/shadow
-    local EXISTING_HASH=$(sudo grep "^$USER:" /etc/shadow 2>/dev/null | cut -d: -f2)
-
-    if [ -n "$EXISTING_HASH" ] && [ "$EXISTING_HASH" != "!" ] && [ "$EXISTING_HASH" != "*" ] && [ "$EXISTING_HASH" != "" ]; then
-        # User has existing password - migrate it
-        print_success "Existing password found - will be migrated to new configuration"
-        USER_PASSWORD_HASH="$EXISTING_HASH"
-        PASSWORD_MIGRATION=true
-
-        # Ask if sudo password should be different
-        echo ""
-        print_info "Current setup: User password exists and will be preserved"
-        if confirm "Do you want a DIFFERENT password for sudo operations?" "n"; then
-            print_info "Enter new sudo password (will be required for 'sudo' commands)"
-            read -s -p "$(echo -e ${BLUE}?${NC} New sudo password: )" SUDO_PASS1
-            echo ""
-            read -s -p "$(echo -e ${BLUE}?${NC} Confirm sudo password: )" SUDO_PASS2
-            echo ""
-
-            if [ "$SUDO_PASS1" != "$SUDO_PASS2" ]; then
-                print_error "Passwords don't match!"
-                exit 1
-            fi
-
-            # Generate hash for sudo password
-            SUDO_PASSWORD_HASH=$(echo "$SUDO_PASS1" | mkpasswd -m sha-512 -s)
-            SEPARATE_SUDO_PASSWORD=true
-            print_success "Separate sudo password configured"
-        else
-            SEPARATE_SUDO_PASSWORD=false
-            print_success "User and sudo passwords will be the same"
-        fi
+    if [ -n "$USER_TEMP_PASSWORD" ]; then
+        print_warning "Temporary password generated for $USER"
+        print_info "Temporary password (change after first login): $USER_TEMP_PASSWORD"
     else
-        # No existing password - need to set one
-        print_warning "No existing password found for user: $USER"
-        print_info "Setting up new password for system login"
-        echo ""
-
-        read -s -p "$(echo -e ${BLUE}?${NC} Enter new password: )" USER_PASS1
-        echo ""
-        read -s -p "$(echo -e ${BLUE}?${NC} Confirm password: )" USER_PASS2
-        echo ""
-
-        if [ "$USER_PASS1" != "$USER_PASS2" ]; then
-            print_error "Passwords don't match!"
-            exit 1
-        fi
-
-        # Generate hash for user password
-        USER_PASSWORD_HASH=$(echo "$USER_PASS1" | mkpasswd -m sha-512 -s)
-        PASSWORD_MIGRATION=false
-
-        # Ask if sudo password should be different
-        echo ""
-        if confirm "Do you want a DIFFERENT password for sudo operations?" "n"; then
-            print_info "Enter sudo password (will be required for 'sudo' commands)"
-            read -s -p "$(echo -e ${BLUE}?${NC} New sudo password: )" SUDO_PASS1
-            echo ""
-            read -s -p "$(echo -e ${BLUE}?${NC} Confirm sudo password: )" SUDO_PASS2
-            echo ""
-
-            if [ "$SUDO_PASS1" != "$SUDO_PASS2" ]; then
-                print_error "Passwords don't match!"
-                exit 1
-            fi
-
-            SUDO_PASSWORD_HASH=$(echo "$SUDO_PASS1" | mkpasswd -m sha-512 -s)
-            SEPARATE_SUDO_PASSWORD=true
-            print_success "Separate sudo password configured"
-        else
-            SEPARATE_SUDO_PASSWORD=false
-            SUDO_PASSWORD_HASH="$USER_PASSWORD_HASH"
-            print_success "User and sudo passwords will be the same"
-        fi
-
-        print_success "Password configured successfully"
+        print_success "Password configuration preserved"
     fi
-
-    echo ""
-    print_info "Note: Git can be configured later with 'git config --global'"
 }
 
 # ============================================================================
@@ -1002,7 +1201,22 @@ create_home_manager_config() {
     sed -i "s|HOMEUSERNAME|$USER|" "$HM_CONFIG_FILE"
     sed -i "s|HOMEDIR|$HOME|" "$HM_CONFIG_FILE"
     sed -i "s|STATEVERSION_PLACEHOLDER|$STATE_VERSION|" "$HM_CONFIG_FILE"
-    sed -i "s|DEFAULTEDITOR|$DEFAULT_EDITOR|g" "$HM_CONFIG_FILE"
+
+    DEFAULT_EDITOR_VALUE="$DEFAULT_EDITOR" python3 - "$HM_CONFIG_FILE" <<'PY'
+import os
+import sys
+
+path = sys.argv[1]
+editor = os.environ.get("DEFAULT_EDITOR_VALUE", "vim")
+
+with open(path, "r", encoding="utf-8") as f:
+    data = f.read()
+
+data = data.replace("DEFAULTEDITOR", editor)
+
+with open(path, "w", encoding="utf-8") as f:
+    f.write(data)
+PY
 
     print_success "Home manager configuration created at $HM_CONFIG_FILE"
     print_info "Configuration includes $(grep -c "^    " "$HM_CONFIG_FILE" || echo 'many') packages"
@@ -1456,6 +1670,7 @@ update_nixos_system_config() {
     print_info "User: $USER"
     print_info "Timezone: $SELECTED_TIMEZONE"
     print_info "Locale: $CURRENT_LOCALE"
+    print_info "users.mutableUsers: $USERS_MUTABLE_SETTING"
 
     # Backup old config
     if [[ -f "$SYSTEM_CONFIG" ]]; then
@@ -1623,6 +1838,10 @@ EOF
     local total_ram_value="${TOTAL_RAM_GB:-0}"
     local zram_value="${ZRAM_PERCENT:-50}"
 
+    if [ -z "$USER_PASSWORD_BLOCK" ]; then
+        USER_PASSWORD_BLOCK=$'    # (no password directives detected; update manually if required)\n'
+    fi
+
     SCRIPT_VERSION_VALUE="$SCRIPT_VERSION" \
     GENERATED_AT="$GENERATED_AT" \
     HOSTNAME_VALUE="$HOSTNAME" \
@@ -1637,6 +1856,8 @@ EOF
     NIXOS_VERSION_VALUE="$NIXOS_VERSION" \
     ZRAM_PERCENT_VALUE="$zram_value" \
     TOTAL_RAM_GB_VALUE="$total_ram_value" \
+    USERS_MUTABLE_VALUE="$USERS_MUTABLE_SETTING" \
+    USER_PASSWORD_BLOCK_VALUE="$USER_PASSWORD_BLOCK" \
     python3 - "$GENERATED_CONFIG" <<'PY'
 import os
 import sys
@@ -1660,6 +1881,11 @@ replacements = {
     "@NIXOS_VERSION@": os.environ.get("NIXOS_VERSION_VALUE", "23.11"),
     "@ZRAM_PERCENT@": os.environ.get("ZRAM_PERCENT_VALUE", "50"),
     "@TOTAL_RAM_GB@": os.environ.get("TOTAL_RAM_GB_VALUE", "0"),
+    "@USERS_MUTABLE@": os.environ.get("USERS_MUTABLE_VALUE", "true"),
+    "@USER_PASSWORD_BLOCK@": os.environ.get(
+        "USER_PASSWORD_BLOCK_VALUE",
+        "    # (no password directives detected; update manually if required)\n",
+    ),
 }
 
 for placeholder, value in replacements.items():
@@ -2192,6 +2418,14 @@ install_vscodium_extensions() {
 
     # Install additional helpful extensions not in nixpkgs
     print_info "Installing additional development extensions..."
+    install_ext "ms-python.python" "Python"
+    install_ext "ms-python.vscode-pylance" "Pylance"
+    install_ext "ms-python.black-formatter" "Black Formatter"
+    install_ext "ms-toolsai.jupyter" "Jupyter"
+    install_ext "ms-toolsai.jupyter-keymap" "Jupyter Keymap"
+    install_ext "ms-toolsai.jupyter-renderers" "Jupyter Renderers"
+    install_ext "HuggingFace.huggingface-vscode" "Hugging Face"
+    install_ext "Continue.continue" "Continue AI"
     install_ext "dbaeumer.vscode-eslint" "ESLint"
     install_ext "mhutchie.git-graph" "Git Graph"
     install_ext "golang.go" "Go"
@@ -2234,13 +2468,20 @@ print_post_install() {
     echo ""
     echo -e "  ${GREEN}NixOS Development Tools:${NC}"
     echo "    • Nix tools (nix-tree, nixpkgs-fmt, alejandra, statix, etc.)"
-    echo "    • VSCodium with NixOS + Claude Code extensions"
+    echo "    • VSCodium with NixOS + AI tooling extensions"
     echo ""
     echo -e "  ${GREEN}Claude Code Integration:${NC}"
     echo "    • Claude Code CLI installed globally"
     echo "    • Smart Node.js wrapper (fixes Error 127)"
     echo "    • VSCodium fully configured for Claude Code"
     echo "    • All required extensions installed"
+    echo ""
+    echo -e "  ${GREEN}Local AI Runtime:${NC}"
+    echo "    • Hugging Face TGI service (podman-based systemd unit)"
+    echo "    • hf-tgi helper for managing the local inference server"
+    echo "    • Open WebUI podman helpers: open-webui-run/open-webui-stop"
+    echo "    • hf-model-sync script for downloading Hugging Face models"
+    echo "    • Optional Ollama CLI installed when available"
     echo ""
     echo -e "  ${GREEN}Modern CLI & Terminal:${NC}"
     echo "    • ZSH with Powerlevel10k theme"

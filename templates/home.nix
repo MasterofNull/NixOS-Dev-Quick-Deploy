@@ -7,6 +7,168 @@
 
 { config, pkgs, nix-flatpak, ... }:
 
+let
+  lib = pkgs.lib;
+  giteaFlatpakAppId = "io.gitea.Gitea";
+  giteaFlatpakConfigDir = ".var/app/${giteaFlatpakAppId}/config/gitea";
+  giteaFlatpakDataDir = ".var/app/${giteaFlatpakAppId}/data/gitea";
+  giteaNativeConfigDir = ".config/gitea";
+  giteaNativeDataDir = ".local/share/gitea";
+  giteaAiConfigFile = "ai-agents.json";
+  huggingfaceCacheDir = ".cache/huggingface";
+  huggingfaceModelId = "meta-llama/Meta-Llama-3-8B-Instruct";
+  huggingfaceTgiEndpoint = "http://127.0.0.1:8080";
+  ollamaHost = "http://127.0.0.1:11434";
+  openWebUiPort = 8081;
+  openWebUiUrl = "http://127.0.0.1:${toString openWebUiPort}";
+  openWebUiDataDir = ".local/share/open-webui";
+  huggingfaceReadme = ''
+    Hugging Face configuration lives here.
+
+    • Store your personal access token in the file "token" within this directory (never commit it).
+    • CLI caches and credentials are isolated from Git repositories.
+    • The hf-model-sync helper will reuse this token and cache when downloading models.
+  '';
+  openWebUiReadme = ''
+    Persistent storage for Open WebUI when launched with the open-webui-run helper.
+
+Actions
+Projects
+Wiki
+Security
+Insights
+
+    Settings
+
+Auto-detect timezone and preserve existing user credentials #8
+Open
+MasterofNull wants to merge 1 commit into main from codex/refactor-script-to-improve-file-writing-oaj3r1
++2,590 −1,594
+
+    • All chat history, uploads, and custom prompts are written here.
+    • The helper binds this directory into the container at /app/backend/data.
+    • Remove this directory to reset the Open WebUI state safely.
+  '';
+  giteaSharedAppIni = ''
+    [server]
+    PROTOCOL = http
+    DOMAIN = localhost
+    HTTP_ADDR = 127.0.0.1
+    HTTP_PORT = 3000
+    ROOT_URL = http://localhost:3000/
+    STATIC_ROOT_PATH = %(APP_DATA_PATH)s/public
+    ENABLE_GZIP = true
+    LFS_START_SERVER = true
+    LFS_JWT_SECRET = auto-generated-change-me
+    DISABLE_SSH = false
+    SSH_DOMAIN = localhost
+    SSH_PORT = 2222
+    SSH_LISTEN_PORT = 2222
+    START_SSH_SERVER = true
+
+    [database]
+    DB_TYPE = sqlite3
+    PATH = %(GITEA_WORK_DIR)s/gitea.db
+    LOG_SQL = false
+
+    [repository]
+    ROOT = %(GITEA_WORK_DIR)s/repositories
+    FORCE_PRIVATE = false
+
+    [packages]
+    ENABLED = true
+
+    [actions]
+    ENABLED = true
+    DEFAULT_ACTIONS_URL = https://gitea.com
+
+    [indexer]
+    ISSUE_INDEXER_TYPE = bleve
+    ISSUE_INDEXER_PATH = %(GITEA_WORK_DIR)s/indexers/issues.bleve
+    REPO_INDEXER_ENABLED = true
+    REPO_INDEXER_PATH = %(GITEA_WORK_DIR)s/indexers/repos.bleve
+
+    [ui]
+    DEFAULT_THEME = arc-green
+    THEMES = arc-green,auto,github
+    DEFAULT_SHOW_FULL_NAME = true
+
+    [service]
+    REGISTER_EMAIL_CONFIRM = false
+    DISABLE_REGISTRATION = false
+    REQUIRE_SIGNIN_VIEW = false
+    ENABLE_NOTIFY_MAIL = false
+
+    [security]
+    INSTALL_LOCK = true
+    PASSWORD_HASH_ALGO = argon2
+    SECRET_KEY = change-me-secret-key
+
+    [oauth2]
+    JWT_SECRET = change-me-oauth-secret
+
+    [log]
+    MODE = console
+    LEVEL = info
+
+    [lfs]
+    STORAGE_TYPE = local
+    PATH = %(GITEA_WORK_DIR)s/lfs
+  '';
+  giteaAiIntegrations = ''
+    {
+Actions
+Projects
+Wiki
+Security
+Insights
+
+    Settings
+
+Auto-detect timezone and preserve existing user credentials #8
+Open
+MasterofNull wants to merge 1 commit into main from codex/refactor-script-to-improve-file-writing-oaj3r1
++2,590 −1,594
+
+      "agents": [
+        {
+          "name": "aider-openai",
+          "command": [
+            "aider",
+            "--model",
+            "gpt-4o-mini",
+            "--repo",
+            "%REPO_PATH%",
+            "--no-auto-commits"
+          ],
+          "environment": {
+            "OPENAI_API_KEY": "ENV[OPENAI_API_KEY]",
+            "AIDER_LOG_DIR": "%HOME%/.local/share/aider/logs"
+          },
+          "description": "Use aider to provide AI pair-programming suggestions for the current Gitea repository."
+        },
+        {
+          "name": "tea-commit-summarizer",
+          "command": [
+            "tea",
+            "ai",
+            "summarize",
+            "--repo",
+            "%REPO_PATH%",
+            "--model",
+            "gpt-4o-mini"
+          ],
+          "environment": {
+            "TEA_TOKEN": "ENV[TEA_TOKEN]"
+          },
+          "description": "Generate commit summaries with the Tea CLI leveraging configured AI providers."
+        }
+      ],
+      "notes": "Populate the referenced environment variables with the appropriate API tokens to enable AI workflows."
+    }
+  '';
+in
+
 {
   # nix-flatpak module is imported in flake.nix as a proper home-manager module
   # This enables declarative Flatpak management through services.flatpak configuration
@@ -15,6 +177,19 @@
   imports = [
     nix-flatpak.homeManagerModules.nix-flatpak
   ];
+Actions
+Projects
+Wiki
+Security
+Insights
+
+    Settings
+
+Auto-detect timezone and preserve existing user credentials #8
+Open
+MasterofNull wants to merge 1 commit into main from codex/refactor-script-to-improve-file-writing-oaj3r1
++2,590 −1,594
+
 
   home.username = "HOMEUSERNAME";
   home.homeDirectory = "HOMEDIR";
@@ -23,179 +198,250 @@
   programs.home-manager.enable = true;
   nixpkgs.config.allowUnfree = true;
 
-  home.packages = with pkgs; [
-    # ========================================================================
-    # AIDB v4.0 Requirements (CRITICAL - Must be installed)
-    # ========================================================================
+  home.packages =
+    let
+      pythonAiEnv =
+        pkgs.python311.withPackages (ps:
+          let
+            base = with ps; [
+              pip
+              setuptools
+              wheel
+              accelerate
+              datasets
+              diffusers
+              peft
+              safetensors
+              sentencepiece
+              tokenizers
+              transformers
+              evaluate
+              gradio
+              jupyterlab
+              ipykernel
+              pandas
+              scikit-learn
+              black
+              ipython
+              ipywidgets
+            ];
+            extras =
+              lib.optionals (ps ? bitsandbytes) [ ps.bitsandbytes ]
+              ++ lib.optionals (ps ? torch) [ ps.torch ]
+              ++ lib.optionals (ps ? torchaudio) [ ps.torchaudio ]
+              ++ lib.optionals (ps ? torchvision) [ ps.torchvision ];
+          in
+            base ++ extras
+        );
+      aiCommandLinePackages =
+        lib.optionals (pkgs ? ollama) [ pkgs.ollama ];
+      basePackages = with pkgs; [
+        # ========================================================================
+        # AIDB v4.0 Requirements (CRITICAL - Must be installed)
+        # ========================================================================
 
-    podman                  # Container runtime for AIDB
-    podman-compose          # Docker-compose compatibility
-    sqlite                  # Tier 1 Guardian database
-    openssl                 # Cryptographic operations
-    bc                      # Basic calculator
-    inotify-tools           # File watching for Guardian
+        podman                  # Container runtime for AIDB
+        podman-compose          # Docker-compose compatibility
+        sqlite                  # Tier 1 Guardian database
+        openssl                 # Cryptographic operations
+        bc                      # Basic calculator
+        inotify-tools           # File watching for Guardian
 
-    # ========================================================================
-    # Core NixOS Development Tools
-    # ========================================================================
+        # ========================================================================
+        # Core NixOS Development Tools
+        # ========================================================================
 
-    # Nix tools
-    nix-tree                # Visualize Nix dependencies
-    nix-index               # Index Nix packages for fast searching
-    nix-prefetch-git        # Prefetch git repositories
-    nixpkgs-fmt             # Nix code formatter
-    alejandra               # Alternative Nix formatter
-    statix                  # Linter for Nix
-    deadnix                 # Find dead Nix code
-    nix-output-monitor      # Better build output
-    nix-du                  # Disk usage for Nix store
-    nixpkgs-review          # Review nixpkgs PRs
-    nix-diff                # Compare Nix derivations
+        # Nix tools
+        nix-tree                # Visualize Nix dependencies
+        nix-index               # Index Nix packages for fast searching
+        nix-prefetch-git        # Prefetch git repositories
+        nixpkgs-fmt             # Nix code formatter
+        alejandra               # Alternative Nix formatter
+        statix                  # Linter for Nix
+        deadnix                 # Find dead Nix code
+        nix-output-monitor      # Better build output
+        nix-du                  # Disk usage for Nix store
+        nixpkgs-review          # Review nixpkgs PRs
+        nix-diff                # Compare Nix derivations
 
-    # ========================================================================
-    # Development Tools
-    # ========================================================================
+        # ========================================================================
+        # Development Tools
+        # ========================================================================
 
-    # Version control
-    # Note: git installed via programs.git below (prevents collision)
-    git-crypt               # Transparent file encryption in git
-    tig                     # Text-mode interface for git
-    lazygit                 # Terminal UI for git commands
+        # Version control
+        # Note: git installed via programs.git below (prevents collision)
+        git-crypt               # Transparent file encryption in git
+        tig                     # Text-mode interface for git
+        lazygit                 # Terminal UI for git commands
+        git-lfs                 # Large file storage (required for Hugging Face repos)
 
-    # Text editors
-    # Note: vim installed via programs.vim below (prevents collision)
-    neovim                  # Modern Vim fork with async support
-    # Note: vscodium installed via programs.vscode below
+        # Text editors
+        # Note: vim installed via programs.vim below (prevents collision)
+        neovim                  # Modern Vim fork with async support
+        # Note: vscodium installed via programs.vscode below
 
-    # Web browsers are now installed via Flatpak for better sandboxing:
-    # Firefox: "org.mozilla.firefox" in services.flatpak.packages
-    # Chromium: Available as "com.google.Chrome" if needed
-    # (Both still available in home.packages comments if NixOS versions preferred)
+        # Web browsers are now installed via Flatpak for better sandboxing:
+        # Firefox: "org.mozilla.firefox" in services.flatpak.packages
+        # Chromium: Available as "com.google.Chrome" if needed
+        # (Both still available in home.packages comments if NixOS versions preferred)
 
-    # Modern CLI tools
-    ripgrep                 # Fast recursive grep (rg)
-    ripgrep-all             # Ripgrep with PDF, archive support
-    fd                      # Fast alternative to find
-    fzf                     # Fuzzy finder for command line
-    bat                     # Cat clone with syntax highlighting
-    eza                     # Modern replacement for ls
-    jq                      # JSON processor
-    yq                      # YAML processor
-    choose                  # Human-friendly cut/awk alternative
-    du-dust                 # Intuitive disk usage (du)
-    duf                     # Disk usage/free utility (df)
-    broot                   # Tree view with navigation
-    dog                     # DNS lookup utility (dig)
-    shellcheck              # Shell script static analysis
+        # Modern CLI tools
+        ripgrep                 # Fast recursive grep (rg)
+        ripgrep-all             # Ripgrep with PDF, archive support
+        fd                      # Fast alternative to find
+        fzf                     # Fuzzy finder for command line
+        bat                     # Cat clone with syntax highlighting
+        eza                     # Modern replacement for ls
+        jq                      # JSON processor
+        yq                      # YAML processor
+        choose                  # Human-friendly cut/awk alternative
+        du-dust                 # Intuitive disk usage (du)
+        duf                     # Disk usage/free utility (df)
+        broot                   # Tree view with navigation
+        dog                     # DNS lookup utility (dig)
+        shellcheck              # Shell script static analysis
 
-    # Terminal tools
-    # Note: alacritty installed via programs.alacritty below (prevents collision)
-    tmux                    # Terminal multiplexer
-    screen                  # Terminal session manager
-    mosh                    # Mobile shell (SSH alternative)
-    asciinema               # Terminal session recorder
+        # Terminal tools
+        # Note: alacritty installed via programs.alacritty below (prevents collision)
+        tmux                    # Terminal multiplexer
+        screen                  # Terminal session manager
+        mosh                    # Mobile shell (SSH alternative)
+        asciinema               # Terminal session recorder
 
-    # File management
-    ranger                  # Console file manager with VI bindings
-    dos2unix                # Convert text file line endings
-    unrar                   # Extract RAR archives
-    p7zip                   # 7-Zip file archiver
-    file                    # File type identification
-    rsync                   # Fast incremental file transfer
-    rclone                  # Rsync for cloud storage
+        # File management
+        ranger                  # Console file manager with VI bindings
+        dos2unix                # Convert text file line endings
+        unrar                   # Extract RAR archives
+        p7zip                   # 7-Zip file archiver
+        file                    # File type identification
+        rsync                   # Fast incremental file transfer
+        rclone                  # Rsync for cloud storage
 
-    # Network tools
-    wget                    # Network downloader
-    curl                    # Transfer data with URLs
-    netcat-gnu              # Network utility for TCP/UDP
-    socat                   # Multipurpose relay (SOcket CAT)
-    mtr                     # Network diagnostic tool (traceroute/ping)
-    nmap                    # Network exploration and security scanner
+        # Network tools
+        wget                    # Network downloader
+        curl                    # Transfer data with URLs
+        netcat-gnu              # Network utility for TCP/UDP
+        socat                   # Multipurpose relay (SOcket CAT)
+        mtr                     # Network diagnostic tool (traceroute/ping)
+        nmap                    # Network exploration and security scanner
 
-    # System tools
-    htop                    # Interactive process viewer
-    btop                    # Resource monitor with modern UI
-    tree                    # Display directory tree structure
-    unzip                   # Extract ZIP archives
-    zip                     # Create ZIP archives
-    bc                      # Arbitrary precision calculator
-    efibootmgr              # Modify EFI Boot Manager variables
+        # System tools
+        htop                    # Interactive process viewer
+        btop                    # Resource monitor with modern UI
+        tree                    # Display directory tree structure
+        unzip                   # Extract ZIP archives
+        zip                     # Create ZIP archives
+        bc                      # Arbitrary precision calculator
+        efibootmgr              # Modify EFI Boot Manager variables
 
-    # ========================================================================
-    # Programming Languages & Tools
-    # ========================================================================
+        # ========================================================================
+        # Programming Languages & Tools
+Actions
+Projects
+Wiki
+Security
+Insights
 
-    # Python (REQUIRED for AIDB)
-    # Note: python3 includes pip and setuptools by default
-    python3
+    Settings
 
-    # Additional languages
-    go                      # Go programming language
-    rustc                   # Rust compiler
-    cargo                   # Rust package manager
-    ruby                    # Ruby programming language
+Auto-detect timezone and preserve existing user credentials #8
+Open
+MasterofNull wants to merge 1 commit into main from codex/refactor-script-to-improve-file-writing-oaj3r1
++2,590 −1,594
 
-    # Development utilities
-    gnumake                 # GNU Make build automation
-    gcc                     # GNU C/C++ compiler
-    nodejs_22               # Node.js JavaScript runtime v22
+        # ========================================================================
 
-    # ========================================================================
-    # Virtualization & Emulation
-    # ========================================================================
+        # Python (REQUIRED for AIDB and AI model tooling)
+        pythonAiEnv
 
-    qemu            # Machine emulator and virtualizer
-    virtiofsd       # VirtIO filesystem daemon
+        # Additional languages
+        go                      # Go programming language
+        rustc                   # Rust compiler
+        cargo                   # Rust package manager
+        ruby                    # Ruby programming language
 
-    # ========================================================================
-    # Desktop Environment - Cosmic (Rust-based modern desktop)
-    # ========================================================================
+        # Development utilities
+        gnumake                 # GNU Make build automation
+        gcc                     # GNU C/C++ compiler
+        nodejs_22               # Node.js JavaScript runtime v22
 
-    #cosmic-edit             # Cosmic text editor
-    #cosmic-files            # Cosmic file manager
-    #cosmic-term             # Cosmic terminal
+        # ========================================================================
+        # Virtualization & Emulation
+        # ========================================================================
 
-    # ========================================================================
-    # ZSH Configuration
-    # ========================================================================
+        qemu            # Machine emulator and virtualizer
+        virtiofsd       # VirtIO filesystem daemon
 
-    # Note: zsh installed via programs.zsh below (prevents collision)
-    zsh-syntax-highlighting # Command syntax highlighting
-    zsh-autosuggestions     # Command suggestions from history
-    zsh-completions         # Additional completion definitions
-    zsh-powerlevel10k       # Powerlevel10k theme
-    grc                     # Generic colorizer for commands
-    pay-respects            # Modern replacement for 'fuck'
+        # ========================================================================
+        # Desktop Environment - Cosmic (Rust-based modern desktop)
+        # ========================================================================
 
-    # ========================================================================
-    # Fonts (Required for Powerlevel10k)
-    # ========================================================================
+        #cosmic-edit             # Cosmic text editor
+        #cosmic-files            # Cosmic file manager
+        #cosmic-term             # Cosmic terminal
 
-    nerd-fonts.meslo-lg     # MesloLGS Nerd Font (recommended for p10k)
-    nerd-fonts.fira-code    # Fira Code Nerd Font with ligatures
-    nerd-fonts.jetbrains-mono # JetBrains Mono Nerd Font
-    nerd-fonts.hack         # Hack Nerd Font
-    font-awesome            # Font Awesome icon font
-    powerline-fonts         # Powerline-patched fonts
+        # ========================================================================
+        # ZSH Configuration
+        # ========================================================================
 
-    # ========================================================================
-    # Text Processing
-    # ========================================================================
+        # Note: zsh installed via programs.zsh below (prevents collision)
+        zsh-syntax-highlighting # Command syntax highlighting
+        zsh-autosuggestions     # Command suggestions from history
+        zsh-completions         # Additional completion definitions
+        zsh-powerlevel10k       # Powerlevel10k theme
+        grc                     # Generic colorizer for commands
+        pay-respects            # Modern replacement for 'fuck'
 
-    tldr                    # Simplified man pages
-    cht-sh                  # Community cheat sheets
-    pandoc                  # Universal document converter
+        # ========================================================================
+        # Fonts (Required for Powerlevel10k)
+        # ========================================================================
 
-    # ========================================================================
-    # Utilities
-    # ========================================================================
+        nerd-fonts.meslo-lg     # MesloLGS Nerd Font (recommended for p10k)
+        nerd-fonts.fira-code    # Fira Code Nerd Font with ligatures
+        nerd-fonts.jetbrains-mono # JetBrains Mono Nerd Font
+        nerd-fonts.hack         # Hack Nerd Font
+        font-awesome            # Font Awesome icon font
+        powerline-fonts         # Powerline-patched fonts
 
-    mcfly           # Command history search
-    navi            # Interactive cheatsheet
-    starship        # Shell prompt
-    hexedit         # Hex editor
-    qrencode        # QR code generator
-  ];
+        # ========================================================================
+        # Text Processing
+        # ========================================================================
+
+        tldr                    # Simplified man pages
+        cht-sh                  # Community cheat sheets
+        pandoc                  # Universal document converter
+
+        # ========================================================================
+        # Utilities
+        # ========================================================================
+
+        mcfly           # Command history search
+        navi            # Interactive cheatsheet
+        starship        # Shell prompt
+        hexedit         # Hex editor
+        qrencode        # QR code generator
+      ];
+      giteaFallbackPackages =
+        lib.optionals (!config.services.flatpak.enable) [
+          pkgs.gitea             # Native deployment when Flatpak is unavailable
+        ];
+      giteaDevAiPackages =
+        let
+          aiderPackage =
+            if pkgs ? aider-chat then
+              [ pkgs.aider-chat ]
+            else if pkgs ? aider then
+              [ pkgs.aider ]
+            else
+              [ ];
+        in
+        [
+          pkgs.tea                     # Official Gitea CLI for automation and AI workflows
+          pkgs.python311Packages.openai # Python SDK for OpenAI-compatible AI providers
+        ]
+        ++ aiderPackage;
+    in
+    basePackages ++ giteaFallbackPackages ++ giteaDevAiPackages ++ aiCommandLinePackages;
 
   # ========================================================================
   # ZSH Configuration
@@ -205,7 +451,7 @@
     enable = true;
     enableCompletion = true;
     syntaxHighlighting.enable = true;
-    autosuggestion.enable = false;
+    autosuggestions.enable = false;
 
     history = {
       size = 100000;
@@ -248,6 +494,14 @@
 
       # Lazy tools
       lg = "lazygit";
+      hf-sync = "hf-model-sync";
+      hf-start = "sudo systemctl start huggingface-tgi.service";
+      hf-stop = "sudo systemctl stop huggingface-tgi.service";
+      hf-restart = "sudo systemctl restart huggingface-tgi.service";
+      hf-logs = "journalctl -u huggingface-tgi.service -f";
+      open-webui-up = "open-webui-run";
+      open-webui-down = "open-webui-stop";
+      ollama-list = "ollama list";
 
       # Find shortcuts
       ff = "fd";
@@ -313,27 +567,26 @@
 
   programs.git = {
     enable = true;
-    # Git configuration using settings for NixOS 25.05/25.11 compatibility
-    # Note: 'settings' is only available in newer home-manager versions
-    settings = {
-      # Git user configuration - set these manually after installation:
-      # git config --global user.name "Your Name"
-      # git config --global user.email "you@example.com"
+    package = pkgs.git;
 
+    # Git user configuration - set these manually after installation:
+    # git config --global user.name "Your Name"
+    # git config --global user.email "you@example.com"
+
+    extraConfig = {
       init.defaultBranch = "main";
       pull.rebase = false;
-      core = {
-        editor = "DEFAULTEDITOR";
-      };
-      alias = {
-        st = "status";
-        co = "checkout";
-        br = "branch";
-        ci = "commit";
-        unstage = "reset HEAD --";
-        last = "log -1 HEAD";
-        visual = "log --oneline --graph --decorate --all";
-      };
+      core.editor = "DEFAULTEDITOR";
+    };
+
+    aliases = {
+      st = "status";
+      co = "checkout";
+      br = "branch";
+      ci = "commit";
+      unstage = "reset HEAD --";
+      last = "log -1 HEAD";
+      visual = "log --oneline --graph --decorate --all";
     };
   };
 
@@ -403,6 +656,48 @@
         "editor.tabSize" = 2;
       };
 
+      # Python & Jupyter integration
+      "python.defaultInterpreterPath" = "${pythonAiEnv}/bin/python3";
+      "python.terminal.activateEnvironment" = true;
+      "python.languageServer" = "Pylance";
+      "python.analysis.typeCheckingMode" = "basic";
+      "python.analysis.autoImportCompletions" = true;
+      "python.formatting.provider" = "black";
+      "python.testing.pytestEnabled" = true;
+      "python.testing.unittestEnabled" = false;
+      "python.dataScience.jupyterServerURI" = "local";
+      "jupyter.askForKernelRestart" = false;
+      "jupyter.jupyterServerType" = "local";
+      "jupyter.notebookFileRoot" = "${config.home.homeDirectory}";
+      "[python]" = {
+        "editor.defaultFormatter" = "ms-python.black-formatter";
+        "editor.formatOnSave" = true;
+      };
+      "[jupyter]" = {
+        "editor.defaultFormatter" = "ms-toolsai.jupyter";
+      };
+
+      # Local AI endpoints
+      "huggingface.endpoint" = "${huggingfaceTgiEndpoint}";
+      "huggingface.defaultModel" = "${huggingfaceModelId}";
+      "huggingface.telemetry.enableTelemetry" = false;
+      "continue.defaultModel" = "Ollama (Llama 3)";
+      "continue.enableTelemetry" = false;
+      "continue.models" = [
+        {
+          title = "Ollama (Llama 3)";
+          provider = "ollama";
+          model = "llama3";
+          baseUrl = ollamaHost;
+        }
+        {
+          title = "Hugging Face TGI";
+          provider = "openai";
+          model = huggingfaceModelId;
+          baseUrl = "${huggingfaceTgiEndpoint}/v1";
+        }
+      ];
+
       # Git configuration
       "git.enableSmartCommit" = true;
       "git.autofetch" = true;
@@ -463,17 +758,39 @@
   # Session Variables
   # ========================================================================
 
-  home.sessionVariables = {
-    EDITOR = "DEFAULTEDITOR";
-    VISUAL = "DEFAULTEDITOR";
-    NIXPKGS_ALLOW_UNFREE = "1";
-  };
+  home.sessionVariables =
+    {
+      EDITOR = "DEFAULTEDITOR";
+      VISUAL = "DEFAULTEDITOR";
+      NIXPKGS_ALLOW_UNFREE = "1";
+      AIDER_DEFAULT_MODEL = "gpt-4o-mini";
+      AIDER_LOG_DIR = "$HOME/.local/share/aider/logs";
+      TEA_AI_MODEL = "gpt-4o-mini";
+      HF_HOME = "$HOME/${huggingfaceCacheDir}";
+      HUGGINGFACE_HUB_CACHE = "$HOME/${huggingfaceCacheDir}";
+      TRANSFORMERS_CACHE = "$HOME/${huggingfaceCacheDir}";
+      HUGGINGFACE_TGI_ENDPOINT = "${huggingfaceTgiEndpoint}";
+      HUGGINGFACE_MODEL_ID = "${huggingfaceModelId}";
+      HUGGINGFACE_TOKEN_PATH = "$HOME/.config/huggingface/token";
+      HF_HUB_ENABLE_HF_TRANSFER = "1";
+      OLLAMA_HOST = "${ollamaHost}";
+      OPEN_WEBUI_URL = "${openWebUiUrl}";
+    }
+    // lib.optionalAttrs config.services.flatpak.enable {
+      GITEA_WORK_DIR = "$HOME/${giteaFlatpakDataDir}";
+      GITEA_CUSTOM = "$HOME/${giteaFlatpakConfigDir}";
+    }
+    // lib.optionalAttrs (!config.services.flatpak.enable) {
+      GITEA_WORK_DIR = "$HOME/${giteaNativeDataDir}";
+      GITEA_CUSTOM = "$HOME/${giteaNativeConfigDir}";
+    };
 
   # ========================================================================
   # Home Files
   # ========================================================================
 
-  home.file = {
+  home.file =
+    {
     # Create local bin directory
     ".local/bin/.keep".text = "";
 
@@ -482,6 +799,228 @@
       source = ./p10k-setup-wizard.sh;
       executable = true;
     };
+
+    # Launcher for the Gitea editor that prefers Flatpak but falls back to native binaries
+    ".local/bin/gitea-editor" = {
+      text = ''
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        if command -v flatpak >/dev/null 2>&1 && flatpak info ${giteaFlatpakAppId} >/dev/null 2>&1; then
+          exec flatpak run ${giteaFlatpakAppId} "$@"
+        elif command -v gitea >/dev/null 2>&1; then
+          exec gitea "$@"
+        elif command -v tea >/dev/null 2>&1; then
+          exec tea "$@"
+        else
+          echo "error: gitea editor is not installed. Install via Flatpak or enable the native package." >&2
+          exit 127
+        fi
+      '';
+      executable = true;
+    };
+
+    # Helper to bridge local repositories with aider for AI-driven workflows
+    ".local/bin/gitea-ai-assistant" = {
+      text = ''
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        usage() {
+          echo "Usage: gitea-ai-assistant <repository-path> [-- <aider-args>...]" >&2
+          exit 1
+        }
+
+        if [[ $# -lt 1 ]]; then
+          usage
+        fi
+
+        repo_path="$1"
+        shift
+
+        if [[ "$repo_path" == "--" ]]; then
+          usage
+        fi
+
+        if [[ ! -d "$repo_path/.git" ]]; then
+          echo "error: $repo_path is not a git repository" >&2
+          exit 2
+        fi
+
+        repo_path="$(realpath "$repo_path")"
+
+        if [[ $# -gt 0 && "$1" == "--" ]]; then
+          shift
+        fi
+
+        log_dir="$AIDER_LOG_DIR"
+        if [[ -z "$log_dir" ]]; then
+          log_dir="$HOME/.local/share/aider/logs"
+        fi
+Actions
+Projects
+Wiki
+Security
+Insights
+
+    Settings
+
+Auto-detect timezone and preserve existing user credentials #8
+Open
+MasterofNull wants to merge 1 commit into main from codex/refactor-script-to-improve-file-writing-oaj3r1
++2,590 −1,594
+
+        mkdir -p "$log_dir"
+
+        model="$AIDER_DEFAULT_MODEL"
+        if [[ -z "$model" ]]; then
+          model="gpt-4o-mini"
+        fi
+
+        exec aider --model "$model" --repo "$repo_path" "$@"
+      '';
+      executable = true;
+    };
+
+    # Hugging Face configuration and cache keepers
+    ".config/huggingface/.keep".text = "";
+    ".config/huggingface/README".text = huggingfaceReadme;
+    "${huggingfaceCacheDir}/.keep".text = "";
+    "${openWebUiDataDir}/.keep".text = "";
+    "${openWebUiDataDir}/README".text = openWebUiReadme;
+
+    # Helper to sync Hugging Face models into the local cache
+    ".local/bin/hf-model-sync" = {
+      text = ''
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        if [[ $# -lt 1 ]]; then
+          echo "Usage: hf-model-sync <model-id> [-- <extra-args>]" >&2
+          exit 1
+        fi
+
+        model="$1"
+        shift
+
+        cache_root="''${HF_HOME:-$HOME/${huggingfaceCacheDir}}"
+        mkdir -p "''${cache_root}/models"
+
+        exec ${pythonAiEnv}/bin/huggingface-cli download "''${model}" "$@" \
+          --local-dir "''${cache_root}/models/''${model}" \
+          --cache-dir "''${cache_root}"
+      '';
+      executable = true;
+    };
+
+    # Manage the systemd Hugging Face Text Generation Inference service
+    ".local/bin/hf-tgi" = {
+      text = ''
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        usage() {
+          echo "Usage: hf-tgi {start|stop|restart|status|logs} [journalctl-args]" >&2
+          exit 1
+        }
+
+        [[ $# -gt 0 ]] || usage
+
+        case "$1" in
+          start|stop|restart)
+            exec sudo systemctl "$1" huggingface-tgi.service
+            ;;
+          status)
+            exec systemctl status huggingface-tgi.service
+            ;;
+          logs)
+            shift
+            exec journalctl -u huggingface-tgi.service "$@"
+            ;;
+          *)
+            usage
+            ;;
+        esac
+      '';
+      executable = true;
+    };
+
+    # Launch Open WebUI via Podman for local AI experimentation
+    ".local/bin/open-webui-run" = {
+      text = ''
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        container_name="''${OPEN_WEBUI_CONTAINER_NAME:-open-webui-dev}"
+        image="''${OPEN_WEBUI_IMAGE:-ghcr.io/open-webui/open-webui:latest}"
+        port="''${OPEN_WEBUI_PORT:-${toString openWebUiPort}}"
+        data_dir="''${OPEN_WEBUI_DATA_DIR:-$HOME/${openWebUiDataDir}}"
+
+        mkdir -p "''${data_dir}"
+
+        if ${pkgs.podman}/bin/podman ps --format '{{.Names}}' | grep -q "^''${container_name}$"; then
+          echo "Open WebUI container '""''${container_name}""' is already running" >&2
+          exit 0
+        fi
+
+        exec ${pkgs.podman}/bin/podman run --rm \
+          --name "''${container_name}" \
+          -p "''${port}:8080" \
+          -v "''${data_dir}:/app/backend/data" \
+          -e "OLLAMA_BASE_URL=${ollamaHost}" \
+          -e "OPENAI_API_BASE=${huggingfaceTgiEndpoint}/v1" \
+          -e "HF_HOME=''${HF_HOME:-$HOME/${huggingfaceCacheDir}}" \
+          "''${image}"
+      '';
+      executable = true;
+    };
+
+    # Stop the Open WebUI container gracefully
+    ".local/bin/open-webui-stop" = {
+      text = ''
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        container_name="''${OPEN_WEBUI_CONTAINER_NAME:-open-webui-dev}"
+
+        if ${pkgs.podman}/bin/podman ps --format '{{.Names}}' | grep -q "^''${container_name}$"; then
+          exec ${pkgs.podman}/bin/podman stop "''${container_name}"
+        else
+          echo "Open WebUI container '""''${container_name}""' is not running" >&2
+          exit 0
+        fi
+      '';
+      executable = true;
+    };
+
+    # Default configuration for aider so it respects repository structure
+    ".config/aider/config.toml".text = ''
+      # Aider configuration tailored for NixOS & Gitea workflows
+      [core]
+      auto_commits = false
+      detect_language = true
+      use_git = true
+
+      [files]
+      include = ["flake.nix", "home.nix", "configuration.nix", "**/*.nix", "**/*.md"]
+
+      [editor]
+      command = "DEFAULTEDITOR"
+    '';
+
+    # Tea CLI configuration pointing to the generated AI agent catalog
+    ".config/tea/config.yml".text = ''
+      default:
+        host: http://localhost:3000
+        user: gitea-admin
+
+      ai:
+        model: gpt-4o-mini
+        agent_catalog: "$GITEA_CUSTOM/ai-agents.json"
+        editor_command:
+          - "$HOME/.local/bin/gitea-ai-assistant"
+          - "%REPO%"
+    '';
 
     # P10k configuration (dynamic - loads user preferences)
     ".p10k.zsh".text = ''
@@ -626,7 +1165,50 @@
       typeset -g POWERLEVEL9K_STATUS_OK=false
       typeset -g POWERLEVEL9K_LINUX_NIXOS_ICON='❄️'
     '';
-  };
+    }
+    // lib.optionalAttrs config.services.flatpak.enable {
+      "${giteaFlatpakConfigDir}/app.ini".text = giteaSharedAppIni;
+      "${giteaFlatpakConfigDir}/${giteaAiConfigFile}".text = giteaAiIntegrations;
+      "${giteaFlatpakDataDir}/README".text = ''
+        This directory stores repositories, logs, and AI agent state for the Gitea Flatpak deployment.
+        It is managed declaratively by Home Manager; manual changes may be overwritten on switch.
+      '';
+    }
+    // lib.optionalAttrs (!config.services.flatpak.enable) {
+      "${giteaNativeConfigDir}/app.ini".text = giteaSharedAppIni;
+      "${giteaNativeConfigDir}/${giteaAiConfigFile}".text = giteaAiIntegrations;
+      "${giteaNativeDataDir}/README".text = ''
+        This directory stores repositories, logs, and AI agent state for the native Gitea deployment.
+        It is managed declaratively by Home Manager; manual changes may be overwritten on switch.
+      '';
+    };
+
+  # ========================================================================
+  # Gitea Native Service (Fallback when Flatpak is unavailable)
+  # ========================================================================
+
+  systemd.user.services =
+    lib.optionalAttrs (!config.services.flatpak.enable) {
+      "gitea-dev" = {
+        Unit = {
+          Description = "Gitea development forge (user)";
+          After = [ "network.target" ];
+        };
+        Service = {
+          Environment = [
+            "GITEA_WORK_DIR=%h/${giteaNativeDataDir}"
+            "GITEA_CUSTOM=%h/${giteaNativeConfigDir}"
+          ];
+          ExecStart = "${pkgs.gitea}/bin/gitea web --config %h/${giteaNativeConfigDir}/app.ini";
+          WorkingDirectory = "%h/${giteaNativeDataDir}";
+          Restart = "on-failure";
+          RestartSec = 3;
+        };
+        Install = {
+          WantedBy = [ "default.target" ];
+        };
+      };
+    };
 
   # ========================================================================
   # Flatpak Integration - Manual Setup Instructions
@@ -773,6 +1355,11 @@
       # "org.libreoffice.LibreOffice"         # Full office suite (documents, spreadsheets, presentations)
       # "app.standard-notes.StandardNotes"    # Encrypted note-taking
       # "org.joplin.Joplin"                   # Note-taking with sync (active development)
+
+      # ====================================================================
+      # SELF-HOSTED DEVELOPMENT TOOLS
+      # ====================================================================
+      giteaFlatpakAppId                     # Gitea forge with built-in editor and AI integration hooks
 
       # ====================================================================
       # DEVELOPMENT & CONTENT TOOLS (GUI Applications)
