@@ -1803,9 +1803,18 @@ update_nixos_system_config() {
             rm -f "$TARGET_HARDWARE_CONFIG"
         fi
 
-        # Prefer a symlink so updates to /etc/nixos/hardware-configuration.nix are picked up automatically
-        if ln -s "$HARDWARE_CONFIG" "$TARGET_HARDWARE_CONFIG" 2>/dev/null; then
-            print_success "Linked hardware-configuration.nix from /etc/nixos into $HM_CONFIG_DIR"
+        # Always copy the hardware configuration locally so flakes can evaluate in pure mode
+        # (symlinks into /etc cause nixos-rebuild to fail with "access to absolute path '/etc'")
+        if cp "$HARDWARE_CONFIG" "$TARGET_HARDWARE_CONFIG"; then
+            if [ "$(stat -c '%U' "$TARGET_HARDWARE_CONFIG" 2>/dev/null || echo "$USER")" != "$USER" ]; then
+                if command -v sudo >/dev/null 2>&1; then
+                    sudo chown "$USER":"$USER" "$TARGET_HARDWARE_CONFIG" 2>/dev/null || true
+                else
+                    chown "$USER":"$USER" "$TARGET_HARDWARE_CONFIG" 2>/dev/null || true
+                fi
+            fi
+            print_success "Copied hardware-configuration.nix into $HM_CONFIG_DIR for flake evaluation"
+            print_info "Hardware updates will be refreshed each time the deploy script runs"
         else
             # Fall back to copying if the symlink cannot be created (e.g. different filesystem)
             if sudo cp "$HARDWARE_CONFIG" "$TARGET_HARDWARE_CONFIG"; then
