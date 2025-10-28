@@ -1286,34 +1286,132 @@ create_home_manager_config() {
     PYTHON_ENV_MSG=$(run_python - "$HM_CONFIG_FILE" <<'PY'
 import re
 import sys
+import textwrap
 from pathlib import Path
 
 path = Path(sys.argv[1])
 text = path.read_text(encoding="utf-8")
 changed = False
+messages = []
 
-if "pythonAiEnv =" not in text:
-    print("pythonAiEnv binding missing from template")
+let_match = re.search(r"(?m)^\s*let\b", text)
+if not let_match:
+    print("unable to locate let binding block in home.nix for python AI environment insertion")
     sys.exit(1)
 
-if "pythonAiInterpreterPath" not in text:
-    match = re.search(r"(  pythonAiEnv =[\s\S]+?\);\n)", text)
-    if match:
-        insertion = '  pythonAiInterpreterPath = "${pythonAiEnv}/bin/python3";\n'
-        text = text[:match.end()] + insertion + text[match.end():]
-        changed = True
-    else:
-        print("unable to locate pythonAiEnv definition for migration")
-        sys.exit(1)
+let_line_end = text.find("\n", let_match.end())
+if let_line_end == -1:
+    let_line_end = len(text)
+else:
+    let_line_end += 1
 
-legacy_assignment = '"python.defaultInterpreterPath" = "${pythonAiEnv}/bin/python3";'
-if legacy_assignment in text:
-    text = text.replace(legacy_assignment, '"python.defaultInterpreterPath" = pythonAiInterpreterPath;')
+indent_match = re.search(r"(?m)^(?P<indent>\s+)\S", text[let_line_end:])
+default_indent = indent_match.group("indent") if indent_match else "  "
+
+env_binding_pattern = re.compile(r"(?m)^[ \t]*pythonAiEnv\s*=")
+interpreter_binding_pattern = re.compile(r"(?m)^[ \t]*pythonAiInterpreterPath\s*=")
+
+python_env_definition = textwrap.dedent(
+    """
+    pythonAiEnv =
+      pkgs.python311.withPackages (ps:
+        let
+          base = with ps; [
+            pip
+            setuptools
+            wheel
+            accelerate
+            datasets
+            diffusers
+            peft
+            safetensors
+            sentencepiece
+            tokenizers
+            transformers
+            evaluate
+            gradio
+            jupyterlab
+            ipykernel
+            pandas
+            scikit-learn
+            black
+            ipython
+            ipywidgets
+          ];
+          extras =
+            lib.optionals (ps ? bitsandbytes) [ ps.bitsandbytes ]
+            ++ lib.optionals (ps ? torch) [ ps.torch ]
+            ++ lib.optionals (ps ? torchaudio) [ ps.torchaudio ]
+            ++ lib.optionals (ps ? torchvision) [ ps.torchvision ];
+        in
+          base ++ extras
+      );
+    """
+).strip("\n")
+
+python_env_definition = textwrap.indent(python_env_definition, default_indent)
+interpreter_binding_line = (
+    f"{default_indent}pythonAiInterpreterPath = \"${{pythonAiEnv}}/bin/python3\";\n"
+)
+
+env_binding_exists = bool(env_binding_pattern.search(text))
+interpreter_binding_exists = bool(interpreter_binding_pattern.search(text))
+
+if not env_binding_exists:
+    insertion = (
+        text[:let_line_end]
+        + python_env_definition
+        + "\n"
+        + interpreter_binding_line
+        + text[let_line_end:]
+    )
+    text = insertion
     changed = True
+    messages.append("Inserted canonical pythonAiEnv definition in home.nix")
+    interpreter_binding_exists = True
+elif not interpreter_binding_exists:
+    # Attempt to place the helper binding immediately after the existing env block.
+    env_block_pattern = re.compile(
+        r"(?ms)^(?P<indent>[ \t]*)pythonAiEnv\s*=[\s\S]*?\n(?P=indent)[ \t]*\)?;\s*\n"
+    )
+    env_block_match = env_block_pattern.search(text)
+    if env_block_match:
+        insertion_point = env_block_match.end()
+        text = (
+            text[:insertion_point]
+            + interpreter_binding_line
+            + text[insertion_point:]
+        )
+    else:
+        text = (
+            text[:let_line_end]
+            + interpreter_binding_line
+            + text[let_line_end:]
+        )
+    changed = True
+    messages.append("Added pythonAiInterpreterPath helper binding in home.nix")
+
+legacy_pattern = re.compile(
+    r'(?P<indent>\s*)"python\.defaultInterpreterPath"\s*=\s*"\$\{pythonAiEnv}/bin/python3";(?P<suffix>[^\n]*)'
+)
+if legacy_pattern.search(text):
+    text, count = legacy_pattern.subn(
+        lambda m: (
+            f'{m.group("indent")}"python.defaultInterpreterPath" = '
+            f'pythonAiInterpreterPath;{m.group("suffix")}'
+        ),
+        text,
+    )
+    if count > 0:
+        changed = True
+        messages.append(
+            "Rewrote python.defaultInterpreterPath to use pythonAiInterpreterPath"
+        )
 
 if changed:
     path.write_text(text, encoding="utf-8")
-    print("Updated python AI environment references in home.nix")
+    if messages:
+        print("; ".join(messages))
 PY
     )
     PYTHON_ENV_STATUS=$?
