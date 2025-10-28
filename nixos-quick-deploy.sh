@@ -1297,19 +1297,36 @@ if "pythonAiEnv =" not in text:
     sys.exit(1)
 
 if "pythonAiInterpreterPath" not in text:
-    match = re.search(r"(  pythonAiEnv =[\s\S]+?\);\n)", text)
+    match = re.search(
+        r"(?P<env_block>^[ \t]*pythonAiEnv\s*=[\s\S]+?\);\n)",
+        text,
+        flags=re.MULTILINE,
+    )
     if match:
-        insertion = '  pythonAiInterpreterPath = "${pythonAiEnv}/bin/python3";\n'
-        text = text[:match.end()] + insertion + text[match.end():]
+        insertion_point = match.end("env_block")
+        text = (
+            text[:insertion_point]
+            + '  pythonAiInterpreterPath = "${pythonAiEnv}/bin/python3";\n'
+            + text[insertion_point:]
+        )
         changed = True
     else:
         print("unable to locate pythonAiEnv definition for migration")
         sys.exit(1)
 
-legacy_assignment = '"python.defaultInterpreterPath" = "${pythonAiEnv}/bin/python3";'
-if legacy_assignment in text:
-    text = text.replace(legacy_assignment, '"python.defaultInterpreterPath" = pythonAiInterpreterPath;')
-    changed = True
+legacy_pattern = re.compile(
+    r'(?P<indent>\s*)"python\.defaultInterpreterPath"\s*=\s*"\$\{pythonAiEnv}/bin/python3";(?P<suffix>[^\n]*)'
+)
+if legacy_pattern.search(text):
+    text, count = legacy_pattern.subn(
+        lambda m: (
+            f'{m.group("indent")}"python.defaultInterpreterPath" = '
+            f'pythonAiInterpreterPath;{m.group("suffix")}'
+        ),
+        text,
+    )
+    if count > 0:
+        changed = True
 
 if changed:
     path.write_text(text, encoding="utf-8")
