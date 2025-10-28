@@ -55,7 +55,8 @@ let
       in
         base ++ extras
     );
-  huggingfaceReadme = ''
+  pythonAiInterpreterPath = "${pythonAiEnv}/bin/python3";
+  huggingfaceReadme = 
     Hugging Face configuration lives here.
 
     • Store your personal access token in the file "token" within this directory (never commit it).
@@ -196,179 +197,182 @@ in
     let
       aiCommandLinePackages =
         lib.optionals (pkgs ? ollama) [ pkgs.ollama ];
-      basePackages = with pkgs; [
-        # ========================================================================
-        # AIDB v4.0 Requirements (CRITICAL - Must be installed)
-        # ========================================================================
+      basePackages =
+        [
+          # Python (REQUIRED for AIDB and AI model tooling)
+          pythonAiEnv
+        ]
+        ++ (with pkgs; [
+          # ========================================================================
+          # AIDB v4.0 Requirements (CRITICAL - Must be installed)
+          # ========================================================================
 
-        podman                  # Container runtime for AIDB
-        podman-compose          # Docker-compose compatibility
-        sqlite                  # Tier 1 Guardian database
-        openssl                 # Cryptographic operations
-        bc                      # Basic calculator
-        inotify-tools           # File watching for Guardian
+          podman                  # Container runtime for AIDB
+          podman-compose          # Docker-compose compatibility
+          sqlite                  # Tier 1 Guardian database
+          openssl                 # Cryptographic operations
+          bc                      # Basic calculator
+          inotify-tools           # File watching for Guardian
 
-        # ========================================================================
-        # Core NixOS Development Tools
-        # ========================================================================
+          # ========================================================================
+          # Core NixOS Development Tools
+          # ========================================================================
 
-        # Nix tools
-        nix-tree                # Visualize Nix dependencies
-        nix-index               # Index Nix packages for fast searching
-        nix-prefetch-git        # Prefetch git repositories
-        nixpkgs-fmt             # Nix code formatter
-        alejandra               # Alternative Nix formatter
-        statix                  # Linter for Nix
-        deadnix                 # Find dead Nix code
-        nix-output-monitor      # Better build output
-        nix-du                  # Disk usage for Nix store
-        nixpkgs-review          # Review nixpkgs PRs
-        nix-diff                # Compare Nix derivations
+          # Nix tools
+          nix-tree                # Visualize Nix dependencies
+          nix-index               # Index Nix packages for fast searching
+          nix-prefetch-git        # Prefetch git repositories
+          nixpkgs-fmt             # Nix code formatter
+          alejandra               # Alternative Nix formatter
+          statix                  # Linter for Nix
+          deadnix                 # Find dead Nix code
+          nix-output-monitor      # Better build output
+          nix-du                  # Disk usage for Nix store
+          nixpkgs-review          # Review nixpkgs PRs
+          nix-diff                # Compare Nix derivations
 
-        # ========================================================================
-        # Development Tools
-        # ========================================================================
+          # ========================================================================
+          # Development Tools
+          # ========================================================================
 
-        # Version control
-        # Note: git installed via programs.git below (prevents collision)
-        git-crypt               # Transparent file encryption in git
-        tig                     # Text-mode interface for git
-        lazygit                 # Terminal UI for git commands
-        git-lfs                 # Large file storage (required for Hugging Face repos)
+          # Version control
+          # Note: git installed via programs.git below (prevents collision)
+          git-crypt               # Transparent file encryption in git
+          tig                     # Text-mode interface for git
+          lazygit                 # Terminal UI for git commands
+          git-lfs                 # Large file storage (required for Hugging Face repos)
 
-        # Text editors
-        # Note: vim installed via programs.vim below (prevents collision)
-        neovim                  # Modern Vim fork with async support
-        # Note: vscodium installed via programs.vscode below
+          # Text editors
+          # Note: vim installed via programs.vim below (prevents collision)
+          neovim                  # Modern Vim fork with async support
+          # Note: vscodium installed via programs.vscode below
 
-        # Web browsers are now installed via Flatpak for better sandboxing:
-        # Firefox: "org.mozilla.firefox" in services.flatpak.packages
-        # Chromium: Available as "com.google.Chrome" if needed
-        # (Both still available in home.packages comments if NixOS versions preferred)
+          # Web browsers are now installed via Flatpak for better sandboxing:
+          # Firefox: "org.mozilla.firefox" in services.flatpak.packages
+          # Chromium: Available as "com.google.Chrome" if needed
+          # (Both still available in home.packages comments if NixOS versions preferred)
 
-        # Modern CLI tools
-        ripgrep                 # Fast recursive grep (rg)
-        ripgrep-all             # Ripgrep with PDF, archive support
-        fd                      # Fast alternative to find
-        fzf                     # Fuzzy finder for command line
-        bat                     # Cat clone with syntax highlighting
-        eza                     # Modern replacement for ls
-        jq                      # JSON processor
-        yq                      # YAML processor
-        choose                  # Human-friendly cut/awk alternative
-        du-dust                 # Intuitive disk usage (du)
-        duf                     # Disk usage/free utility (df)
-        broot                   # Tree view with navigation
-        dog                     # DNS lookup utility (dig)
-        shellcheck              # Shell script static analysis
+          # Modern CLI tools
+          ripgrep                 # Fast recursive grep (rg)
+          ripgrep-all             # Ripgrep with PDF, archive support
+          fd                      # Fast alternative to find
+          fzf                     # Fuzzy finder for command line
+          bat                     # Cat clone with syntax highlightingerofNull/NixOS-Dev-Quick-Deploy/pull/15
+          eza                     # Modern replacement for ls
+          jq                      # JSON processor
+          yq                      # YAML processor
+          choose                  # Human-friendly cut/awk alternative
+          du-dust                 # Intuitive disk usage (du)
+          duf                     # Disk usage/free utility (df)
+          broot                   # Tree view with navigation
+          dog                     # DNS lookup utility (dig)
+          shellcheck              # Shell script static analysis
 
-        # Terminal tools
-        # Note: alacritty installed via programs.alacritty below (prevents collision)
-        tmux                    # Terminal multiplexer
-        screen                  # Terminal session manager
-        mosh                    # Mobile shell (SSH alternative)
-        asciinema               # Terminal session recorder
+          # Terminal tools
+          # Note: alacritty installed via programs.alacritty below (prevents collision)
+          tmux                    # Terminal multiplexer
+          screen                  # Terminal session manager
+          mosh                    # Mobile shell (SSH alternative)
+          asciinema               # Terminal session recorder
 
-        # File management
-        ranger                  # Console file manager with VI bindings
-        dos2unix                # Convert text file line endings
-        unrar                   # Extract RAR archives
-        p7zip                   # 7-Zip file archiver
-        file                    # File type identification
-        rsync                   # Fast incremental file transfer
-        rclone                  # Rsync for cloud storage
+          # File management
+          ranger                  # Console file manager with VI bindings
+          dos2unix                # Convert text file line endings
+          unrar                   # Extract RAR archives
+          p7zip                   # 7-Zip file archiver
+          file                    # File type identification
+          rsync                   # Fast incremental file transfer
+          rclone                  # Rsync for cloud storage
 
-        # Network tools
-        wget                    # Network downloader
-        curl                    # Transfer data with URLs
-        netcat-gnu              # Network utility for TCP/UDP
-        socat                   # Multipurpose relay (SOcket CAT)
-        mtr                     # Network diagnostic tool (traceroute/ping)
-        nmap                    # Network exploration and security scanner
+          # Network tools
+          wget                    # Network downloader
+          curl                    # Transfer data with URLs
+          netcat-gnu              # Network utility for TCP/UDP
+          socat                   # Multipurpose relay (SOcket CAT)
+          mtr                     # Network diagnostic tool (traceroute/ping)
+          nmap                    # Network exploration and security scanner
 
-        # System tools
-        htop                    # Interactive process viewer
-        btop                    # Resource monitor with modern UI
-        tree                    # Display directory tree structure
-        unzip                   # Extract ZIP archives
-        zip                     # Create ZIP archives
-        bc                      # Arbitrary precision calculator
-        efibootmgr              # Modify EFI Boot Manager variables
+          # System tools
+          htop                    # Interactive process viewer
+          btop                    # Resource monitor with modern UI
+          tree                    # Display directory tree structure
+          unzip                   # Extract ZIP archives
+          zip                     # Create ZIP archives
+          bc                      # Arbitrary precision calculator
+          efibootmgr              # Modify EFI Boot Manager variables
 
-        # ========================================================================
-        # Programming Languages & Tools
-        # ========================================================================
+          # ========================================================================
+          # Programming Languages & Tools
+          # ========================================================================erofNull/NixOS-Dev-Quick-Deploy/pull/15
 
-        # Python (REQUIRED for AIDB and AI model tooling)
-        pythonAiEnv
 
-        # Additional languages
-        go                      # Go programming language
-        rustc                   # Rust compiler
-        cargo                   # Rust package manager
-        ruby                    # Ruby programming language
+          # Additional languages
+          go                      # Go programming language
+          rustc                   # Rust compiler
+          cargo                   # Rust package manager
+          ruby                    # Ruby programming language
 
-        # Development utilities
-        gnumake                 # GNU Make build automation
-        gcc                     # GNU C/C++ compiler
-        nodejs_22               # Node.js JavaScript runtime v22
+          # Development utilities
+          gnumake                 # GNU Make build automation
+          gcc                     # GNU C/C++ compiler
+          nodejs_22               # Node.js JavaScript runtime v22
 
-        # ========================================================================
-        # Virtualization & Emulation
-        # ========================================================================
+          # ========================================================================
+          # Virtualization & Emulation
+          # ========================================================================
 
-        qemu            # Machine emulator and virtualizer
-        virtiofsd       # VirtIO filesystem daemon
+          qemu            # Machine emulator and virtualizer
+          virtiofsd       # VirtIO filesystem daemon
 
-        # ========================================================================
-        # Desktop Environment - Cosmic (Rust-based modern desktop)
-        # ========================================================================
+          # ========================================================================
+          # Desktop Environment - Cosmic (Rust-based modern desktop)
+          # ========================================================================
 
-        #cosmic-edit             # Cosmic text editor
-        #cosmic-files            # Cosmic file manager
-        #cosmic-term             # Cosmic terminal
+          #cosmic-edit             # Cosmic text editor
+          #cosmic-files            # Cosmic file manager
+          #cosmic-term             # Cosmic terminal
 
-        # ========================================================================
-        # ZSH Configuration
-        # ========================================================================
+          # ========================================================================
+          # ZSH Configuration
+          # ========================================================================
 
-        # Note: zsh installed via programs.zsh below (prevents collision)
-        zsh-syntax-highlighting # Command syntax highlighting
-        zsh-autosuggestions     # Command suggestions from history
-        zsh-completions         # Additional completion definitions
-        zsh-powerlevel10k       # Powerlevel10k theme
-        grc                     # Generic colorizer for commands
-        pay-respects            # Modern replacement for 'fuck'
+          # Note: zsh installed via programs.zsh below (prevents collision)
+          zsh-syntax-highlighting # Command syntax highlighting
+          zsh-autosuggestions     # Command suggestions from history
+          zsh-completions         # Additional completion definitions
+          zsh-powerlevel10k       # Powerlevel10k theme
+          grc                     # Generic colorizer for commands
+          pay-respects            # Modern replacement for 'fuck'
 
-        # ========================================================================
-        # Fonts (Required for Powerlevel10k)
-        # ========================================================================
+          # ========================================================================
+          # Fonts (Required for Powerlevel10k)
+          # ========================================================================
 
-        nerd-fonts.meslo-lg     # MesloLGS Nerd Font (recommended for p10k)
-        nerd-fonts.fira-code    # Fira Code Nerd Font with ligatures
-        nerd-fonts.jetbrains-mono # JetBrains Mono Nerd Font
-        nerd-fonts.hack         # Hack Nerd Font
-        font-awesome            # Font Awesome icon font
-        powerline-fonts         # Powerline-patched fonts
+          nerd-fonts.meslo-lg     # MesloLGS Nerd Font (recommended for p10k)
+          nerd-fonts.fira-code    # Fira Code Nerd Font with ligatures
+          nerd-fonts.jetbrains-mono # JetBrains Mono Nerd FonterofNull/NixOS-Dev-Quick-Deploy/pull/15
+          nerd-fonts.hack         # Hack Nerd Font
+          font-awesome            # Font Awesome icon font
+          powerline-fonts         # Powerline-patched fonts
 
-        # ========================================================================
-        # Text Processing
-        # ========================================================================
+          # ========================================================================
+          # Text Processing
+          # ========================================================================
 
-        tldr                    # Simplified man pages
-        cht-sh                  # Community cheat sheets
-        pandoc                  # Universal document converter
+          tldr                    # Simplified man pages
+          cht-sh                  # Community cheat sheets
+          pandoc                  # Universal document converter
 
-        # ========================================================================
-        # Utilities
-        # ========================================================================
+          # ========================================================================
+          # Utilities
+          # ========================================================================
 
-        mcfly           # Command history search
-        navi            # Interactive cheatsheet
-        starship        # Shell prompt
-        hexedit         # Hex editor
-        qrencode        # QR code generator
-      ];
+          mcfly           # Command history search
+          navi            # Interactive cheatsheet
+          starship        # Shell prompt
+          hexedit         # Hex editor
+          qrencode        # QR code generator
+        ]);
       giteaFallbackPackages =
         lib.optionals (!config.services.flatpak.enable) [
           pkgs.gitea             # Native deployment when Flatpak is unavailable
@@ -605,7 +609,7 @@ in
       };
 
       # Python & Jupyter integration
-      "python.defaultInterpreterPath" = "${pythonAiEnv}/bin/python3";
+      "python.defaultInterpreterPath" = pythonAiInterpreterPath;
       "python.terminal.activateEnvironment" = true;
       "python.languageServer" = "Pylance";
       "python.analysis.typeCheckingMode" = "basic";
