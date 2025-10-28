@@ -224,7 +224,7 @@ interpreter_binding_exists = bool(interpreter_binding_pattern.search(text))
 
 if not env_binding_exists:
     block = textwrap.indent(canonical_block, default_indent) + "\n"
-    text = text[:let_line_end] + block + text[let_line_end:]
+    text = text[:let_line_end] + block + text[let_rootline_end:]
     changed = True
     messages.append("Inserted canonical pythonAiEnv definition in home.nix")
     interpreter_binding_exists = True
