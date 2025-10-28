@@ -73,8 +73,7 @@ interrupt_handler() {
 
     cleanup_on_failure
     show_fresh_start_instructions
-    #exit 130
-    exit $exit_code
+    exit 130
 }
 
 cleanup_on_failure() {
@@ -313,8 +312,8 @@ check_prerequisites() {
         exit 1
     fi
 
-    # Update NixOS channels to 25.11 before proceeding
-    print_section "Updating NixOS Channels to 25.05"
+    # Update NixOS channels before proceeding
+    print_section "Updating NixOS Channels"
     update_nixos_channels
 
     # Check home-manager (required - auto-install if missing)
@@ -763,6 +762,8 @@ create_home_manager_config() {
     local HM_CHANNEL=$(nix-channel --list | grep 'home-manager' | awk '{print $2}')
     local NIXOS_CHANNEL=$(sudo nix-channel --list | grep '^nixos' | awk '{print $2}')
     local STATE_VERSION
+    local NIXOS_CHANNEL_NAME=""
+    local HM_CHANNEL_NAME=""
 
     # Extract version from nixos channel (source of truth)
     if [[ "$NIXOS_CHANNEL" =~ nixos-([0-9]+\.[0-9]+) ]]; then
@@ -782,10 +783,28 @@ create_home_manager_config() {
         print_warning "Could not detect from channels, using system version: $STATE_VERSION"
     fi
 
+    if [[ -n "$NIXOS_CHANNEL" ]]; then
+        NIXOS_CHANNEL_NAME=$(basename "$NIXOS_CHANNEL")
+    else
+        NIXOS_CHANNEL_NAME="nixos-${STATE_VERSION}"
+        print_warning "Could not detect nixos channel name, defaulting to $NIXOS_CHANNEL_NAME"
+    fi
+
+    if [[ -n "$HM_CHANNEL" ]]; then
+        HM_CHANNEL_NAME=$(basename "$HM_CHANNEL")
+        HM_CHANNEL_NAME=${HM_CHANNEL_NAME%%\?*}
+        HM_CHANNEL_NAME=${HM_CHANNEL_NAME%.tar.gz}
+        HM_CHANNEL_NAME=${HM_CHANNEL_NAME%.tgz}
+    else
+        # Mirror the nixos channel when home-manager is missing
+        HM_CHANNEL_NAME="release-${STATE_VERSION}"
+        print_warning "Could not detect home-manager channel, defaulting to $HM_CHANNEL_NAME"
+    fi
+
     print_success "Configuration versions:"
     print_info "  stateVersion:     $STATE_VERSION"
-    print_info "  NixOS channel:    $(basename "$NIXOS_CHANNEL")"
-    print_info "  home-manager:     $(basename "$HM_CHANNEL")"
+    print_info "  NixOS channel:    $NIXOS_CHANNEL_NAME"
+    print_info "  home-manager:     $HM_CHANNEL_NAME"
     echo ""
 
     # Backup existing config if it exists
@@ -824,23 +843,25 @@ create_home_manager_config() {
         cp "$SCRIPT_DIR/p10k-setup-wizard.sh" "$HM_CONFIG_DIR/p10k-setup-wizard.sh"
         print_success "Copied p10k-setup-wizard.sh to home-manager config directory"
     else
-        print_error "p10k-setup-wizard.sh not found in $SCRIPT_DIR"
-        exit 1
+        print_warning "p10k-setup-wizard.sh not found in $SCRIPT_DIR - skipping copy"
+        print_info "If you need the prompt wizard, place the script next to nixos-quick-deploy.sh"
     fi
 
     # Create a flake.nix in the home-manager config directory for proper Flatpak support
     # This enables using: home-manager switch --flake ~/.config/home-manager
     print_info "Creating home-manager flake configuration for Flatpak support..."
-    cat > "$HM_CONFIG_DIR/flake.nix" <<'FLAKEEOF'
+    local FLAKE_FILE="$HM_CONFIG_DIR/flake.nix"
+
+    cat > "$FLAKE_FILE" <<'FLAKEEOF'
 {
   description = "Home Manager Configuration with Flatpak Support";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/NIXPKGS_CHANNEL_PLACEHOLDER";
     #nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
-    
+
     home-manager = {
-      url = "github:nix-community/home-manager/master";
+      url = "github:nix-community/home-manager/HM_CHANNEL_PLACEHOLDER";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     nix-flatpak.url = "github:gmodena/nix-flatpak";
@@ -890,6 +911,10 @@ create_home_manager_config() {
     #};
 }
 FLAKEEOF
+    # Align flake inputs with the synchronized channels
+    sed -i "s|NIXPKGS_CHANNEL_PLACEHOLDER|$NIXOS_CHANNEL_NAME|" "$FLAKE_FILE"
+    sed -i "s|HM_CHANNEL_PLACEHOLDER|$HM_CHANNEL_NAME|" "$FLAKE_FILE"
+
     print_success "Created flake.nix in home-manager config directory"
 
     print_info "To use Flatpak declarative management:"
@@ -2175,8 +2200,8 @@ detect_gpu_and_cpu() {
 update_nixos_system_config() {
     print_section "Generating Fresh NixOS Configuration"
 
-    local SYSTEM_CONFIG= "/etc/nixos/configuration.nix"
-    local HARDWARE_CONFIG= "/etc/nixos/hardware-configuration.nix"
+    local SYSTEM_CONFIG="/etc/nixos/configuration.nix"
+    local HARDWARE_CONFIG="/etc/nixos/hardware-configuration.nix"
 
     # Detect system info
     local HOSTNAME=$(hostname)
@@ -3548,10 +3573,6 @@ main() {
     echo ""
     echo -e "${YELLOW}Remember: ${NC}Reboot manually when ready: ${YELLOW}sudo reboot${NC}"
     echo ""
-
-    nix-channel --update
-    #home-manager switch #--flake #path: "$FLAKE_DIR"#"$USER"
-    nixos-rebuild switch --flake "$FLAKE_DIR"#"$USER" #--upgrade
 }
 
 main "$@"
