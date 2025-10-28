@@ -257,7 +257,7 @@ in
           ripgrep-all             # Ripgrep with PDF, archive support
           fd                      # Fast alternative to find
           fzf                     # Fuzzy finder for command line
-          bat                     # Cat clone with syntax highlightingerofNull/NixOS-Dev-Quick-Deploy/pull/15
+          bat                     # Cat clone with syntax highlighting
           eza                     # Modern replacement for ls
           jq                      # JSON processor
           yq                      # YAML processor
@@ -303,7 +303,7 @@ in
 
           # ========================================================================
           # Programming Languages & Tools
-          # ========================================================================erofNull/NixOS-Dev-Quick-Deploy/pull/15
+          # ========================================================================
 
 
           # Additional languages
@@ -350,7 +350,7 @@ in
 
           nerd-fonts.meslo-lg     # MesloLGS Nerd Font (recommended for p10k)
           nerd-fonts.fira-code    # Fira Code Nerd Font with ligatures
-          nerd-fonts.jetbrains-mono # JetBrains Mono Nerd FonterofNull/NixOS-Dev-Quick-Deploy/pull/15
+          nerd-fonts.jetbrains-mono # JetBrains Mono Nerd Font
           nerd-fonts.hack         # Hack Nerd Font
           font-awesome            # Font Awesome icon font
           powerline-fonts         # Powerline-patched fonts
