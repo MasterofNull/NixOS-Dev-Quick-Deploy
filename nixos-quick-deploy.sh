@@ -225,7 +225,254 @@ PY
 DEV_HOME_ROOT="$HOME/NixOS Dev Home"
 HM_CONFIG_DIR="$DEV_HOME_ROOT/Flake"
 HM_CONFIG_FILE="$HM_CONFIG_DIR/home.nix"
+HW_CONFIG_FILE="$HM_CONFIG_DIR/hardware-configuration.nix"
 HM_CONFIG_CD_COMMAND="cd \"$HM_CONFIG_DIR\""
+
+ensure_flake_workspace() {
+    local created_root=false
+    local created_dir=false
+
+    if [[ ! -d "$DEV_HOME_ROOT" ]]; then
+        if mkdir -p "$DEV_HOME_ROOT"; then
+            created_root=true
+        else
+            print_error "Failed to create flake workspace root: $DEV_HOME_ROOT"
+            return 1
+        fi
+    fi
+
+    if [[ ! -d "$HM_CONFIG_DIR" ]]; then
+        if mkdir -p "$HM_CONFIG_DIR"; then
+            created_dir=true
+        else
+            print_error "Failed to create flake directory: $HM_CONFIG_DIR"
+            return 1
+        fi
+    fi
+
+    if $created_root; then
+        print_success "Created flake workspace root at $DEV_HOME_ROOT"
+    fi
+
+    if $created_dir; then
+        print_success "Created flake configuration directory at $HM_CONFIG_DIR"
+    fi
+
+    return 0
+}
+
+copy_template_to_flake() {
+    local source_file="$1"
+    local destination_file="$2"
+    local description="${3:-$(basename "$destination_file")}" 
+
+    ensure_flake_workspace || return 1
+
+    if [[ ! -f "$source_file" ]]; then
+        print_error "Template missing: $source_file"
+        return 1
+    fi
+
+    if ! cp "$source_file" "$destination_file"; then
+        print_error "Failed to copy $description into $destination_file"
+        return 1
+    fi
+
+    if ! chmod 0644 "$destination_file" 2>/dev/null; then
+        print_warning "Could not adjust permissions on $destination_file"
+    fi
+
+    if [[ ! -s "$destination_file" ]]; then
+        print_error "$description was not populated correctly at $destination_file"
+        return 1
+    fi
+
+    return 0
+}
+
+materialize_hardware_configuration() {
+    ensure_flake_workspace || return 1
+
+    local target_file="$HW_CONFIG_FILE"
+    local source_file=""
+    local generated_tmp=""
+    local generator_log=""
+    local generator_used=false
+
+    if command -v nixos-generate-config >/dev/null 2>&1; then
+        generated_tmp=$(mktemp)
+        generator_log=$(mktemp)
+        local -a generator_cmd=(nixos-generate-config --no-filesystems --show-hardware-config)
+
+        if command -v sudo >/dev/null 2>&1; then
+            generator_cmd=(sudo "${generator_cmd[@]}")
+        fi
+
+        if "${generator_cmd[@]}" >"$generated_tmp" 2>"$generator_log"; then
+            if [[ -s "$generated_tmp" ]]; then
+                source_file="$generated_tmp"
+                generator_used=true
+                print_success "Captured host hardware profile via nixos-generate-config"
+            else
+                print_warning "Generated hardware profile was empty; falling back to system copy"
+            fi
+        else
+            local status=$?
+            print_warning "nixos-generate-config failed to produce hardware profile (exit $status); falling back to system copy"
+            if [[ -s "$generator_log" ]]; then
+                print_info "nixos-generate-config output:" 
+                sed 's/^/  /' "$generator_log"
+            fi
+        fi
+    fi
+
+    if [[ -z "$source_file" ]]; then
+        local system_hardware="/etc/nixos/hardware-configuration.nix"
+        if [[ -f "$system_hardware" ]]; then
+            source_file="$system_hardware"
+            print_info "Using system hardware-configuration.nix as source"
+        else
+            print_error "hardware-configuration.nix is missing and nixos-generate-config could not create one"
+            [[ -n "$generated_tmp" ]] && rm -f "$generated_tmp"
+            [[ -n "$generator_log" ]] && rm -f "$generator_log"
+            print_info "Run 'sudo nixos-generate-config' and rerun this script"
+            return 1
+        fi
+    fi
+
+    if [[ -f "$target_file" ]]; then
+        local backup_file="$target_file.backup.$(date +%Y%m%d_%H%M%S)"
+        if cp "$target_file" "$backup_file" 2>/dev/null; then
+            print_info "Backed up existing hardware-configuration.nix to $backup_file"
+        fi
+    fi
+
+    if ! cp "$source_file" "$target_file"; then
+        print_error "Failed to materialize hardware-configuration.nix at $target_file"
+        [[ -n "$generated_tmp" ]] && rm -f "$generated_tmp"
+        [[ -n "$generator_log" ]] && rm -f "$generator_log"
+        return 1
+    fi
+
+    if ! chmod 0644 "$target_file" 2>/dev/null; then
+        print_warning "Unable to adjust permissions on $target_file"
+    fi
+
+    if [[ "$(stat -c '%U' "$target_file" 2>/dev/null)" != "$USER" ]]; then
+        if command -v sudo >/dev/null 2>&1; then
+            sudo chown "$USER":"$USER" "$target_file" 2>/dev/null || true
+        else
+            chown "$USER":"$USER" "$target_file" 2>/dev/null || true
+        fi
+    fi
+
+    if [[ ! -s "$target_file" ]]; then
+        print_error "hardware-configuration.nix at $target_file is empty after refresh"
+        [[ -n "$generated_tmp" ]] && rm -f "$generated_tmp"
+        [[ -n "$generator_log" ]] && rm -f "$generator_log"
+        return 1
+    fi
+
+    local detected_gpu="${GPU_TYPE:-unknown}"
+    local detected_gpu_driver="${GPU_DRIVER:-}"
+    local detected_gpu_packages="${GPU_PACKAGES:-}"
+    local detected_libva="${LIBVA_DRIVER:-}"
+    local detected_cpu="${CPU_VENDOR:-unknown}"
+    local detected_microcode="${CPU_MICROCODE:-}"
+    local detected_ram="${TOTAL_RAM_GB:-0}"
+    local detected_zram="${ZRAM_PERCENT:-0}"
+    local detected_cores="${CPU_CORES:-}"
+    local refresh_timestamp="$(date '+%Y-%m-%d %H:%M:%S %Z')"
+
+    local annotate_output
+    annotate_output=$(AIDB_HW_TIMESTAMP="$refresh_timestamp" \
+        AIDB_HW_GPU_TYPE="$detected_gpu" \
+        AIDB_HW_GPU_DRIVER="$detected_gpu_driver" \
+        AIDB_HW_GPU_PACKAGES="$detected_gpu_packages" \
+        AIDB_HW_LIBVA="$detected_libva" \
+        AIDB_HW_CPU="$detected_cpu" \
+        AIDB_HW_MICROCODE="$detected_microcode" \
+        AIDB_HW_RAM="$detected_ram" \
+        AIDB_HW_ZRAM="$detected_zram" \
+        AIDB_HW_CORES="$detected_cores" \
+        run_python - "$target_file" <<'PY'
+import os
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+
+def format_value(label, default="unknown"):
+    value = os.environ.get(label, "")
+    value = value.strip()
+    return value if value else default
+
+timestamp = format_value("AIDB_HW_TIMESTAMP", "unknown")
+gpu_type = format_value("AIDB_HW_GPU_TYPE")
+gpu_driver = format_value("AIDB_HW_GPU_DRIVER", "n/a")
+gpu_packages = format_value("AIDB_HW_GPU_PACKAGES", "n/a")
+libva = format_value("AIDB_HW_LIBVA", "n/a")
+cpu_vendor = format_value("AIDB_HW_CPU", "unknown")
+microcode = format_value("AIDB_HW_MICROCODE", "auto")
+ram = format_value("AIDB_HW_RAM", "0")
+zram = format_value("AIDB_HW_ZRAM", "0")
+cores = format_value("AIDB_HW_CORES", "?")
+
+header_lines = [
+    "# BEGIN AIDB-HARDWARE-PROFILE",
+    f"# Last refresh: {timestamp}",
+    f"# CPU vendor: {cpu_vendor} (microcode: {microcode})",
+    f"# CPU cores: {cores}",
+    f"# RAM detected: {ram}GB (zram target: {zram}% of RAM)",
+    f"# GPU type: {gpu_type} (driver: {gpu_driver}, VA-API: {libva})",
+    f"# GPU packages: {gpu_packages}",
+    "# END AIDB-HARDWARE-PROFILE",
+    "",
+]
+
+header_block = "\n".join(header_lines)
+
+pattern = re.compile(r"# BEGIN AIDB-HARDWARE-PROFILE.*?# END AIDB-HARDWARE-PROFILE\n?", re.S)
+
+if pattern.search(text):
+    new_text, count = pattern.subn(header_block, text, count=1)
+    text = new_text
+    changed = count > 0
+else:
+    text = header_block + text.lstrip("\n")
+    changed = True
+
+if changed:
+    path.write_text(text, encoding="utf-8")
+    print("Updated AIDB hardware profile header")
+PY
+    )
+
+    local annotate_status=$?
+    if [[ $annotate_status -ne 0 ]]; then
+        print_warning "Unable to annotate hardware-configuration.nix with hardware profile"
+        [[ -n "$annotate_output" ]] && print_warning "$annotate_output"
+    elif [[ -n "$annotate_output" ]]; then
+        print_info "$annotate_output"
+    fi
+
+    if [[ -n "$generated_tmp" ]]; then
+        rm -f "$generated_tmp"
+    fi
+    if [[ -n "$generator_log" ]]; then
+        rm -f "$generator_log"
+    fi
+
+    if $generator_used; then
+        print_success "hardware-configuration.nix refreshed from latest hardware snapshot"
+    else
+        print_success "hardware-configuration.nix synchronized with system copy"
+    fi
+
+    return 0
+}
 
 # ============================================================================
 # Error Handling & Cleanup Functions
@@ -1332,7 +1579,7 @@ create_home_manager_config() {
 
     print_info "Creating new home-manager configuration..."
 
-    mkdir -p "$HM_CONFIG_DIR"
+    ensure_flake_workspace || exit 1
 
     # Copy p10k-setup-wizard.sh to home-manager config dir so home.nix can reference it
     local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -1364,11 +1611,9 @@ create_home_manager_config() {
     local SYSTEM_ARCH=$(nix eval --raw --expr builtins.currentSystem 2>/dev/null || echo "x86_64-linux")
     local CURRENT_HOSTNAME=$(hostname)
 
-    install -Dm644 "$FLAKE_TEMPLATE" "$FLAKE_FILE"
-
-    if [[ ! -s "$FLAKE_FILE" ]]; then
-        print_error "Failed to copy flake manifest to $FLAKE_FILE"
-        print_info "Check filesystem permissions and rerun with --force-update"
+    if copy_template_to_flake "$FLAKE_TEMPLATE" "$FLAKE_FILE" "flake.nix"; then
+        print_success "Created flake.nix in $HM_CONFIG_DIR"
+    else
         exit 1
     fi
     # Align flake inputs with the synchronized channels
@@ -1377,8 +1622,6 @@ create_home_manager_config() {
     sed -i "s|HOSTNAME_PLACEHOLDER|$CURRENT_HOSTNAME|" "$FLAKE_FILE"
     sed -i "s|HOME_USERNAME_PLACEHOLDER|$USER|" "$FLAKE_FILE"
     sed -i "s|SYSTEM_PLACEHOLDER|$SYSTEM_ARCH|" "$FLAKE_FILE"
-
-    print_success "Created flake.nix in $HM_CONFIG_DIR"
 
     print_info "To use Flatpak declarative management:"
     print_info "  home-manager switch --flake \"$HM_CONFIG_DIR\""
@@ -1390,7 +1633,9 @@ create_home_manager_config() {
         exit 1
     fi
 
-    install -Dm644 "$HOME_TEMPLATE" "$HM_CONFIG_FILE"
+    if ! copy_template_to_flake "$HOME_TEMPLATE" "$HM_CONFIG_FILE" "home.nix"; then
+        exit 1
+    fi
 
     # Calculate template hash for change detection
     local TEMPLATE_HASH=$(echo -n "AIDB-v4.0-packages-v$SCRIPT_VERSION" | sha256sum | cut -d' ' -f1 | cut -c1-16)
@@ -1421,142 +1666,7 @@ create_home_manager_config() {
     sed -i "s|HOMEDIR|$HOME|" "$HM_CONFIG_FILE"
     sed -i "s|STATEVERSION_PLACEHOLDER|$STATE_VERSION|" "$HM_CONFIG_FILE"
 
-    local PYTHON_ENV_MSG
-    PYTHON_ENV_MSG=$(run_python - "$HM_CONFIG_FILE" <<'PY'
-import re
-import sys
-import textwrap
-from pathlib import Path
-
-path = Path(sys.argv[1])
-text = path.read_text(encoding="utf-8")
-changed = False
-messages = []
-
-let_match = re.search(r"(?m)^\s*let\b", text)
-if not let_match:
-    print("unable to locate let binding block in home.nix for python AI environment insertion")
-    sys.exit(1)
-
-let_line_end = text.find("\n", let_match.end())
-if let_line_end == -1:
-    let_line_end = len(text)
-else:
-    let_line_end += 1
-
-indent_match = re.search(r"(?m)^(?P<indent>\s+)\S", text[let_line_end:])
-default_indent = indent_match.group("indent") if indent_match else "  "
-
-env_binding_pattern = re.compile(r"(?m)^[ \t]*pythonAiEnv\s*=")
-interpreter_binding_pattern = re.compile(r"(?m)^[ \t]*pythonAiInterpreterPath\s*=")
-
-python_env_definition = textwrap.dedent(
-    """
-    pythonAiEnv =
-      pkgs.python311.withPackages (ps:
-        let
-          base = with ps; [
-            pip
-            setuptools
-            wheel
-            accelerate
-            datasets
-            diffusers
-            peft
-            safetensors
-            sentencepiece
-            tokenizers
-            transformers
-            evaluate
-            gradio
-            jupyterlab
-            ipykernel
-            pandas
-            scikit-learn
-            black
-            ipython
-            ipywidgets
-          ];
-          extras =
-            lib.optionals (ps ? bitsandbytes) [ ps.bitsandbytes ]
-            ++ lib.optionals (ps ? torch) [ ps.torch ]
-            ++ lib.optionals (ps ? torchaudio) [ ps.torchaudio ]
-            ++ lib.optionals (ps ? torchvision) [ ps.torchvision ];
-        in
-          base ++ extras
-      );
-    """
-).strip("\n")
-
-python_env_definition = textwrap.indent(python_env_definition, default_indent)
-interpreter_binding_line = (
-    f"{default_indent}pythonAiInterpreterPath = \"${{pythonAiEnv}}/bin/python3\";\n"
-)
-
-env_binding_exists = bool(env_binding_pattern.search(text))
-interpreter_binding_exists = bool(interpreter_binding_pattern.search(text))
-
-if not env_binding_exists:
-    insertion = (
-        text[:let_line_end]
-        + python_env_definition
-        + "\n"
-        + interpreter_binding_line
-        + text[let_line_end:]
-    )
-    text = insertion
-    changed = True
-    messages.append("Inserted canonical pythonAiEnv definition in home.nix")
-    interpreter_binding_exists = True
-elif not interpreter_binding_exists:
-    # Attempt to place the helper binding immediately after the existing env block.
-    env_block_pattern = re.compile(
-        r"(?ms)^(?P<indent>[ \t]*)pythonAiEnv\s*=[\s\S]*?\n(?P=indent)[ \t]*\)?;\s*\n"
-    )
-    env_block_match = env_block_pattern.search(text)
-    if env_block_match:
-        insertion_point = env_block_match.end()
-        text = (
-            text[:insertion_point]
-            + interpreter_binding_line
-            + text[insertion_point:]
-        )
-    else:
-        text = (
-            text[:let_line_end]
-            + interpreter_binding_line
-            + text[let_line_end:]
-        )
-    changed = True
-    messages.append("Added pythonAiInterpreterPath helper binding in home.nix")
-
-legacy_pattern = re.compile(
-    r'(?P<indent>\s*)"python\.defaultInterpreterPath"\s*=\s*"\$\{pythonAiEnv}/bin/python3";(?P<suffix>[^\n]*)'
-)
-if legacy_pattern.search(text):
-    text, count = legacy_pattern.subn(
-        lambda m: (
-            f'{m.group("indent")}"python.defaultInterpreterPath" = '
-            f'pythonAiInterpreterPath;{m.group("suffix")}'
-        ),
-        text,
-    )
-    if count > 0:
-        changed = True
-        messages.append(
-            "Rewrote python.defaultInterpreterPath to use pythonAiInterpreterPath"
-        )
-
-if changed:
-    path.write_text(text, encoding="utf-8")
-    if messages:
-        print("; ".join(messages))
-PY
-    )
-    PYTHON_ENV_STATUS=$?
-    if [ $PYTHON_ENV_STATUS -ne 0 ]; then
-        print_error "Failed to harmonize python AI environment bindings"
-        [[ -n "$PYTHON_ENV_MSG" ]] && print_error "$PYTHON_ENV_MSG"
+    if ! harmonize_python_ai_bindings "$HM_CONFIG_FILE" "home-manager home.nix"; then
         exit 1
     fi
 
@@ -1608,6 +1718,11 @@ PY
         exit 1
     elif [ -n "$CLEANUP_MSG" ]; then
         print_info "$CLEANUP_MSG"
+    fi
+
+    if [[ ! -s "$HM_CONFIG_FILE" ]]; then
+        print_error "home.nix generation failed - file is empty at $HM_CONFIG_FILE"
+        exit 1
     fi
 
     print_success "Home manager configuration created at $HM_CONFIG_FILE"
@@ -2002,8 +2117,6 @@ update_nixos_system_config() {
     print_section "Generating Fresh NixOS Configuration"
 
     local SYSTEM_CONFIG="/etc/nixos/configuration.nix"
-    local HARDWARE_CONFIG="/etc/nixos/hardware-configuration.nix"
-
     # Detect system info
     local HOSTNAME=$(hostname)
     local NIXOS_VERSION=$(nixos-version | cut -d'.' -f1-2)
@@ -2074,39 +2187,8 @@ update_nixos_system_config() {
         print_success "✓ Backed up: $SYSTEM_CONFIG_BACKUP"
     fi
 
-    if [[ -f "$HARDWARE_CONFIG" ]]; then
-        mkdir -p "$HM_CONFIG_DIR"
-
-        local TARGET_HARDWARE_CONFIG="$HM_CONFIG_DIR/hardware-configuration.nix"
-
-        # Remove a stale copy so we can replace it with the latest data
-        if [[ -e "$TARGET_HARDWARE_CONFIG" || -L "$TARGET_HARDWARE_CONFIG" ]]; then
-            rm -f "$TARGET_HARDWARE_CONFIG"
-        fi
-
-        # Always copy the hardware configuration locally so flakes can evaluate in pure mode
-        # (symlinks into /etc cause nixos-rebuild to fail with "access to absolute path '/etc'")
-        if cp "$HARDWARE_CONFIG" "$TARGET_HARDWARE_CONFIG"; then
-            if [ "$(stat -c '%U' "$TARGET_HARDWARE_CONFIG" 2>/dev/null || echo "$USER")" != "$USER" ]; then
-                if command -v sudo >/dev/null 2>&1; then
-                    sudo chown "$USER":"$USER" "$TARGET_HARDWARE_CONFIG" 2>/dev/null || true
-                else
-                    chown "$USER":"$USER" "$TARGET_HARDWARE_CONFIG" 2>/dev/null || true
-                fi
-            fi
-            print_success "Copied hardware-configuration.nix into $HM_CONFIG_DIR for flake evaluation"
-            print_info "Hardware updates will be refreshed each time the deploy script runs"
-        else
-            # Fall back to copying if the symlink cannot be created (e.g. different filesystem)
-            if sudo cp "$HARDWARE_CONFIG" "$TARGET_HARDWARE_CONFIG"; then
-                sudo chown "$USER":"$USER" "$TARGET_HARDWARE_CONFIG" 2>/dev/null || true
-                print_success "Copied hardware-configuration.nix to $HM_CONFIG_DIR for flake builds"
-            else
-                print_warning "Could not copy hardware-configuration.nix to $HM_CONFIG_DIR"
-            fi
-        fi
-    else
-        print_warning "System hardware-configuration.nix not found; run 'sudo nixos-generate-config' if needed"
+    if ! materialize_hardware_configuration; then
+        return 1
     fi
 
 
@@ -2124,14 +2206,11 @@ update_nixos_system_config() {
         exit 1
     fi
 
-    install -Dm644 "$SYSTEM_TEMPLATE" "$GENERATED_CONFIG"
-
-    local CONFIG_WRITE_STATUS=$?
-
-    if [ $CONFIG_WRITE_STATUS -ne 0 ]; then
-        print_error "Failed to generate configuration"
+    if ! copy_template_to_flake "$SYSTEM_TEMPLATE" "$GENERATED_CONFIG" "configuration.nix"; then
         return 1
     fi
+
+    print_success "Generated configuration.nix in $HM_CONFIG_DIR"
 
     local GENERATED_AT
     GENERATED_AT=$(date '+%Y-%m-%d %H:%M:%S %Z')
