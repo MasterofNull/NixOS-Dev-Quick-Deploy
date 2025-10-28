@@ -395,7 +395,194 @@ validate_flake_artifact() {
     if [[ ! -s "$artifact_path" ]]; then
         print_error "$artifact_label exists but is empty at $artifact_path"
         return 1
+    firoot@bab08d311396:/workspace/NixOS-Dev-Quick-Deploy# sed -n '200,400p' nixos-quick-deploy.sh
+
+env_binding_exists = bool(env_binding_pattern.search(text))
+interpreter_binding_exists = bool(interpreter_binding_pattern.search(text))
+
+if not env_binding_exists:
+    block = textwrap.indent(canonical_block, default_indent) + "\n"
+    text = text[:let_line_end] + block + text[let_line_end:]
+    changed = True
+    messages.append("Inserted canonical pythonAiEnv definition in home.nix")
+    interpreter_binding_exists = True
+elif not interpreter_binding_exists:
+    block = textwrap.indent("pythonAiInterpreterPath = \"${pythonAiEnv}/bin/python3\";", default_indent) + "\n"
+    text = text[:let_line_end] + block + text[let_line_end:]
+    changed = True
+    messages.append("Added pythonAiInterpreterPath helper binding in home.nix")
+
+legacy_pattern = re.compile(
+    r'(?P<indent>\s*)"python\.defaultInterpreterPath"\s*=\s*"\$\{pythonAiEnv}/bin/python3";(?P<suffix>[^\n]*)'
+)
+if legacy_pattern.search(text):
+    text, count = legacy_pattern.subn(
+        lambda m: (
+            f"{m.group('indent')}\"python.defaultInterpreterPath\" = "
+            f"pythonAiInterpreterPath;{m.group('suffix')}"
+        ),
+        text,
+    )
+    if count > 0:
+        changed = True
+        messages.append("Rewrote python.defaultInterpreterPath to use pythonAiInterpreterPath")
+
+if changed:
+    path.write_text(text, encoding="utf-8")
+    if messages:
+        print("; ".join(messages))
+PY
+    )
+    local status=$?
+
+    if [ $status -ne 0 ]; then
+        print_error "Failed to harmonize python AI environment bindings in $context_label"
+        [[ -n "$harmonize_output" ]] && print_error "$harmonize_output"
+        return 1
+    elif [[ -n "$harmonize_output" ]]; then
+        print_info "$context_label: $harmonize_output"
     fi
+
+    return 0
+}
+
+# Configuration
+DEV_HOME_ROOT="$PRIMARY_HOME/NixOS Dev Home"
+HM_CONFIG_DIR="$DEV_HOME_ROOT/Flake"
+HM_CONFIG_FILE="$HM_CONFIG_DIR/home.nix"
+HW_CONFIG_FILE="$HM_CONFIG_DIR/hardware-configuration.nix"
+HM_CONFIG_CD_COMMAND="cd \"$HM_CONFIG_DIR\""
+
+ensure_flake_workspace() {
+    local created_root=false
+    local created_dir=false
+
+    if [[ ! -d "$DEV_HOME_ROOT" ]]; then
+        if mkdir -p "$DEV_HOME_ROOT"; then
+            created_root=true
+        else
+            print_error "Failed to create flake workspace root: $DEV_HOME_ROOT"
+            return 1
+        fi
+    fi
+
+    if [[ ! -d "$HM_CONFIG_DIR" ]]; then
+        if mkdir -p "$HM_CONFIG_DIR"; then
+            created_dir=true
+        else
+            print_error "Failed to create flake directory: $HM_CONFIG_DIR"
+            return 1
+        fi
+    fi
+
+    if $created_root; then
+        print_success "Created flake workspace root at $DEV_HOME_ROOT"
+    fi
+
+    if $created_dir; then
+        print_success "Created flake configuration directory at $HM_CONFIG_DIR"
+    fi
+
+    return 0
+}
+
+copy_template_to_flake() {
+    local source_file="$1"
+    local destination_file="$2"
+    local description="${3:-$(basename "$destination_file")}"
+
+    ensure_flake_workspace || return 1
+
+    if [[ ! -f "$source_file" ]]; then
+        print_error "Template missing: $source_file"
+        return 1
+    fi
+
+    if [[ -f "$destination_file" ]]; then
+        if grep -q '^<<<<<<< ' "$destination_file" 2>/dev/null; then
+            print_error "Unresolved merge conflict markers detected in $destination_file"
+            print_info "Resolve the conflicts in $description and rerun the script"
+            return 1
+        fi
+
+        if [[ ! -s "$destination_file" ]]; then
+            print_warning "$description exists but is empty; refreshing from template"
+        elif cmp -s "$source_file" "$destination_file"; then
+            chmod 0644 "$destination_file" 2>/dev/null || true
+            return 0
+        elif [[ "$FORCE_UPDATE" = false ]]; then
+            local incoming_file="$destination_file.incoming.$(date +%Y%m%d_%H%M%S)"
+            if cp "$source_file" "$incoming_file" 2>/dev/null; then
+                print_warning "$description differs from the latest template"
+                print_info "Review $incoming_file for template updates or rerun with --force-update"
+            else
+                print_warning "Unable to stage template preview for $description"
+                print_info "Consider rerunning with --force-update after resolving manual edits"
+            fi
+            chmod 0644 "$destination_file" 2>/dev/null || true
+            return 0
+        else
+            local backup_file="$destination_file.backup.$(date +%Y%m%d_%H%M%S)"
+            if cp "$destination_file" "$backup_file" 2>/dev/null; then
+                print_info "Backed up existing $description to $backup_file"
+            fi
+        fi
+    fi
+
+    if ! cp "$source_file" "$destination_file"; then
+        print_error "Failed to copy $description into $destination_file"
+        return 1
+    fi
+
+    if ! chmod 0644 "$destination_file" 2>/dev/null; then
+        print_warning "Could not adjust permissions on $destination_file"
+    fi
+
+    if [[ ! -s "$destination_file" ]]; then
+        print_error "$description was not populated correctly at $destination_file"
+        return 1
+    fi
+
+    return 0
+}
+
+validate_flake_artifact() {
+    local artifact_path="$1"
+    local artifact_label="$2"
+
+    if [[ ! -e "$artifact_path" ]]; then
+        print_error "$artifact_label is missing at $artifact_path"
+        return 1
+    fi
+
+    if [[ ! -s "$artifact_path" ]]; then
+        print_error "$artifact_label exists but is empty at $artifact_path"
+        return 1
+    fi
+
+    return 0
+}
+
+require_flake_artifacts() {
+    ensure_flake_workspace || return 1
+
+    local missing=false
+
+    validate_flake_artifact "$HM_CONFIG_DIR/flake.nix" "flake.nix" || missing=true
+    validate_flake_artifact "$HM_CONFIG_DIR/home.nix" "home.nix" || missing=true
+    validate_flake_artifact "$HM_CONFIG_DIR/configuration.nix" "configuration.nix" || missing=true
+    validate_flake_artifact "$HM_CONFIG_DIR/hardware-configuration.nix" "hardware-configuration.nix" || missing=true
+
+    if $missing; then
+        print_info "Resolve the missing artifacts above and rerun the script with --force-update if needed."
+        return 1
+    fi
+
+    return 0
+}
+
+materialize_hardware_configuration() {
+
 
     return 0
 }
