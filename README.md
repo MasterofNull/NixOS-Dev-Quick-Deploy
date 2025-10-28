@@ -5,7 +5,7 @@ Complete automated setup for NixOS with home-manager, COSMIC desktop, Flatpak, a
 ## Quick Start - One Command
 
 ```bash
-cd ~/Documents/AI-Opitmizer/NixOS-Quick-Deploy
+cd ~/NixOS-Dev-Quick-Deploy
 ./nixos-quick-deploy.sh
 ```
 
