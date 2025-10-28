@@ -1218,6 +1218,40 @@ with open(path, "w", encoding="utf-8") as f:
     f.write(data)
 PY
 
+    # Some older templates may have left behind stray navigation headings.
+    # Clean them up so nix-instantiate parsing does not fail on bare identifiers.
+    CLEANUP_MSG=$(python3 - "$HM_CONFIG_FILE" <<'PY'
+import re
+import sys
+
+path = sys.argv[1]
+pattern = re.compile(r"^\s*(Actions|Projects|Wiki)\s*$")
+
+with open(path, "r", encoding="utf-8") as f:
+    lines = f.readlines()
+
+filtered = []
+removed = False
+for line in lines:
+    if pattern.match(line):
+        removed = True
+    else:
+        filtered.append(line)
+
+if removed:
+    with open(path, "w", encoding="utf-8") as f:
+        f.writelines(filtered)
+    print("Removed legacy Gitea navigation headings from home.nix")
+PY
+    )
+    CLEANUP_STATUS=$?
+    if [ $CLEANUP_STATUS -ne 0 ]; then
+        print_error "Failed to sanitize home.nix navigation headings"
+        exit 1
+    elif [ -n "$CLEANUP_MSG" ]; then
+        print_info "$CLEANUP_MSG"
+    fi
+
     print_success "Home manager configuration created at $HM_CONFIG_FILE"
     print_info "Configuration includes $(grep -c "^    " "$HM_CONFIG_FILE" || echo 'many') packages"
 
