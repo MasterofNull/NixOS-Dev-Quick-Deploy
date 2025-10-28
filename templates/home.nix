@@ -22,6 +22,39 @@ let
   openWebUiPort = 8081;
   openWebUiUrl = "http://127.0.0.1:${toString openWebUiPort}";
   openWebUiDataDir = ".local/share/open-webui";
+  pythonAiEnv =
+    pkgs.python311.withPackages (ps:
+      let
+        base = with ps; [
+          pip
+          setuptools
+          wheel
+          accelerate
+          datasets
+          diffusers
+          peft
+          safetensors
+          sentencepiece
+          tokenizers
+          transformers
+          evaluate
+          gradio
+          jupyterlab
+          ipykernel
+          pandas
+          scikit-learn
+          black
+          ipython
+          ipywidgets
+        ];
+        extras =
+          lib.optionals (ps ? bitsandbytes) [ ps.bitsandbytes ]
+          ++ lib.optionals (ps ? torch) [ ps.torch ]
+          ++ lib.optionals (ps ? torchaudio) [ ps.torchaudio ]
+          ++ lib.optionals (ps ? torchvision) [ ps.torchvision ];
+      in
+        base ++ extras
+    );
   huggingfaceReadme = ''
     Hugging Face configuration lives here.
 
@@ -161,39 +194,6 @@ in
 
   home.packages =
     let
-      pythonAiEnv =
-        pkgs.python311.withPackages (ps:
-          let
-            base = with ps; [
-              pip
-              setuptools
-              wheel
-              accelerate
-              datasets
-              diffusers
-              peft
-              safetensors
-              sentencepiece
-              tokenizers
-              transformers
-              evaluate
-              gradio
-              jupyterlab
-              ipykernel
-              pandas
-              scikit-learn
-              black
-              ipython
-              ipywidgets
-            ];
-            extras =
-              lib.optionals (ps ? bitsandbytes) [ ps.bitsandbytes ]
-              ++ lib.optionals (ps ? torch) [ ps.torch ]
-              ++ lib.optionals (ps ? torchaudio) [ ps.torchaudio ]
-              ++ lib.optionals (ps ? torchvision) [ ps.torchvision ];
-          in
-            base ++ extras
-        );
       aiCommandLinePackages =
         lib.optionals (pkgs ? ollama) [ pkgs.ollama ];
       basePackages = with pkgs; [
