@@ -792,9 +792,6 @@ create_home_manager_config() {
 
     if [[ -n "$HM_CHANNEL" ]]; then
         HM_CHANNEL_NAME=$(basename "$HM_CHANNEL")
-        HM_CHANNEL_NAME=${HM_CHANNEL_NAME%%\?*}
-        HM_CHANNEL_NAME=${HM_CHANNEL_NAME%.tar.gz}
-        HM_CHANNEL_NAME=${HM_CHANNEL_NAME%.tgz}
     else
         # Mirror the nixos channel when home-manager is missing
         HM_CHANNEL_NAME="release-${STATE_VERSION}"
