@@ -859,6 +859,8 @@ create_home_manager_config() {
     # Backup ALL existing home-manager config files before overwriting
     if [[ -d "$HM_CONFIG_DIR" ]]; then
         local BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        local BACKUP_DIR="$HM_CONFIG_DIR/backup"
+        mkdir -p "$BACKUP_DIR"
         print_info "Found existing home-manager config, backing up all files..."
 
         if [[ -f "$HM_CONFIG_FILE" ]]; then
@@ -868,12 +870,12 @@ create_home_manager_config() {
         fi
 
         if [[ -f "$HM_CONFIG_DIR/flake.nix" ]]; then
-            cp "$HM_CONFIG_DIR/flake.nix" "$HM_CONFIG_DIR/backup/flake.nix.backup.$BACKUP_TIMESTAMP"
+            cp "$HM_CONFIG_DIR/flake.nix" "$BACKUP_DIR/flake.nix.backup.$BACKUP_TIMESTAMP"
             print_success "Backed up flake.nix"
         fi
 
         if [[ -f "$HM_CONFIG_DIR/flake.lock" ]]; then
-            cp "$HM_CONFIG_DIR/flake.lock" "$HM_CONFIG_DIR/backup/flake.lock.backup.$BACKUP_TIMESTAMP"
+            cp "$HM_CONFIG_DIR/flake.lock" "$BACKUP_DIR/flake.lock.backup.$BACKUP_TIMESTAMP"
             print_success "Backed up flake.lock"
         fi
 
@@ -910,12 +912,9 @@ create_home_manager_config() {
     nixpkgs.url = "github:NixOS/nixpkgs/NIXPKGS_CHANNEL_PLACEHOLDER";
     home-manager = {
       url = "github:nix-community/home-manager?ref=HM_CHANNEL_PLACEHOLDER";
-    #nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
-
-    home-manager = {
-      url = "github:nix-community/home-manager/HM_CHANNEL_PLACEHOLDER";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    #nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
     nix-flatpak.url = "github:gmodena/nix-flatpak";
   };
 
@@ -952,6 +951,12 @@ create_home_manager_config() {
     };
 }
 FLAKEEOF
+
+    if [[ ! -s "$FLAKE_FILE" ]]; then
+        print_error "Failed to create flake manifest at $FLAKE_FILE"
+        print_info "Check filesystem permissions and rerun with --force-update"
+        exit 1
+    fi
     # Align flake inputs with the synchronized channels
     sed -i "s|NIXPKGS_CHANNEL_PLACEHOLDER|$NIXOS_CHANNEL_NAME|" "$FLAKE_FILE"
     sed -i "s|HM_CHANNEL_PLACEHOLDER|$HM_CHANNEL_NAME|" "$FLAKE_FILE"
@@ -1977,6 +1982,14 @@ apply_home_manager_config() {
     echo ""
 
     # Update flake.lock to ensure we have latest versions of inputs
+    local HM_FLAKE_PATH="$HM_CONFIG_DIR/flake.nix"
+    if [[ ! -f "$HM_FLAKE_PATH" ]]; then
+        print_error "home-manager flake manifest missing: $HM_FLAKE_PATH"
+        print_info "The configuration step did not complete successfully."
+        print_info "Re-run this script with --force-update after fixing the issue."
+        exit 1
+    fi
+
     print_info "Updating flake inputs (nix-flatpak, home-manager, nixpkgs)..."
     if (cd ~/.config/home-manager && nix flake update) 2>&1 | tee /tmp/flake-update.log; then
         print_success "Flake inputs updated successfully"
