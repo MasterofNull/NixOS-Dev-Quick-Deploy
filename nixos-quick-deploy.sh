@@ -830,6 +830,8 @@ create_home_manager_config() {
         HM_CHANNEL_NAME=$(normalize_channel_name "$HOME_MANAGER_CHANNEL_URL")
     elif [[ -n "$HM_CHANNEL" ]]; then
         HM_CHANNEL_NAME=$(normalize_channel_name "$HM_CHANNEL")
+    if [[ -n "$HM_CHANNEL" ]]; then
+        HM_CHANNEL_NAME=$(basename "$HM_CHANNEL")
     else
         # Mirror the nixos channel when home-manager is missing
         HM_CHANNEL_NAME="release-${STATE_VERSION}"
@@ -908,6 +910,10 @@ create_home_manager_config() {
     nixpkgs.url = "github:NixOS/nixpkgs/NIXPKGS_CHANNEL_PLACEHOLDER";
     home-manager = {
       url = "github:nix-community/home-manager?ref=HM_CHANNEL_PLACEHOLDER";
+    #nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
+
+    home-manager = {
+      url = "github:nix-community/home-manager/HM_CHANNEL_PLACEHOLDER";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     nix-flatpak.url = "github:gmodena/nix-flatpak";
