@@ -84,9 +84,148 @@ run_python() {
     "${PYTHON_BIN[@]}" "$@"
 }
 
+harmonize_python_ai_bindings() {
+    local target_file="$1"
+    local context_label="${2:-$1}"
+
+    if [[ ! -f "$target_file" ]]; then
+        return 0
+    fi
+
+    if [[ ! -w "$target_file" ]]; then
+        print_warning "Skipping $context_label - file not writable"
+        return 0
+    fi
+
+    local harmonize_output
+    harmonize_output=$(run_python - "$target_file" <<'PY'
+import re
+import sys
+import textwrap
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+changed = False
+messages = []
+
+canonical_block = textwrap.dedent(
+    """
+    pythonAiEnv =
+      pkgs.python311.withPackages (ps:
+        let
+          base = with ps; [
+            pip
+            setuptools
+            wheel
+            accelerate
+            datasets
+            diffusers
+            peft
+            safetensors
+            sentencepiece
+            tokenizers
+            transformers
+            evaluate
+            gradio
+            jupyterlab
+            ipykernel
+            pandas
+            scikit-learn
+            black
+            ipython
+            ipywidgets
+          ];
+          extras =
+            lib.optionals (ps ? bitsandbytes) [ ps.bitsandbytes ]
+            ++ lib.optionals (ps ? torch) [ ps.torch ]
+            ++ lib.optionals (ps ? torchaudio) [ ps.torchaudio ]
+            ++ lib.optionals (ps ? torchvision) [ ps.torchvision ];
+        in
+          base ++ extras
+      );
+    pythonAiInterpreterPath = "${pythonAiEnv}/bin/python3";
+    """
+).strip("\n")
+
+let_match = re.search(r"(?m)^\s*let\b", text)
+
+if not let_match:
+    text = "let\n" + textwrap.indent(canonical_block, "  ") + "\n\nin\n" + text.lstrip("\n")
+    changed = True
+    messages.append("Created let binding with canonical pythonAiEnv definitions")
+    let_match = re.search(r"(?m)^\s*let\b", text)
+    if not let_match:
+        path.write_text(text, encoding="utf-8")
+        print("Created let binding with canonical pythonAiEnv definitions")
+        sys.exit(0)
+
+let_line_end = text.find("\n", let_match.end())
+if let_line_end == -1:
+    let_line_end = len(text)
+else:
+    let_line_end += 1
+
+indent_match = re.search(r"(?m)^(?P<indent>\s+)\S", text[let_line_end:])
+default_indent = indent_match.group("indent") if indent_match else "  "
+
+env_binding_pattern = re.compile(r"(?m)^[ \t]*pythonAiEnv\s*=")
+interpreter_binding_pattern = re.compile(r"(?m)^[ \t]*pythonAiInterpreterPath\s*=")
+
+env_binding_exists = bool(env_binding_pattern.search(text))
+interpreter_binding_exists = bool(interpreter_binding_pattern.search(text))
+
+if not env_binding_exists:
+    block = textwrap.indent(canonical_block, default_indent) + "\n"
+    text = text[:let_line_end] + block + text[let_line_end:]
+    changed = True
+    messages.append("Inserted canonical pythonAiEnv definition in home.nix")
+    interpreter_binding_exists = True
+elif not interpreter_binding_exists:
+    block = textwrap.indent("pythonAiInterpreterPath = \"${pythonAiEnv}/bin/python3\";", default_indent) + "\n"
+    text = text[:let_line_end] + block + text[let_line_end:]
+    changed = True
+    messages.append("Added pythonAiInterpreterPath helper binding in home.nix")
+
+legacy_pattern = re.compile(
+    r'(?P<indent>\s*)"python\.defaultInterpreterPath"\s*=\s*"\$\{pythonAiEnv}/bin/python3";(?P<suffix>[^\n]*)'
+)
+if legacy_pattern.search(text):
+    text, count = legacy_pattern.subn(
+        lambda m: (
+            f"{m.group('indent')}\"python.defaultInterpreterPath\" = "
+            f"pythonAiInterpreterPath;{m.group('suffix')}"
+        ),
+        text,
+    )
+    if count > 0:
+        changed = True
+        messages.append("Rewrote python.defaultInterpreterPath to use pythonAiInterpreterPath")
+
+if changed:
+    path.write_text(text, encoding="utf-8")
+    if messages:
+        print("; ".join(messages))
+PY
+    )
+    local status=$?
+
+    if [ $status -ne 0 ]; then
+        print_error "Failed to harmonize python AI environment bindings in $context_label"
+        [[ -n "$harmonize_output" ]] && print_error "$harmonize_output"
+        return 1
+    elif [[ -n "$harmonize_output" ]]; then
+        print_info "$context_label: $harmonize_output"
+    fi
+
+    return 0
+}
+
 # Configuration
-HM_CONFIG_DIR="$HOME/.config/home-manager"
+DEV_HOME_ROOT="$HOME/NixOS Dev Home"
+HM_CONFIG_DIR="$DEV_HOME_ROOT/Flake"
 HM_CONFIG_FILE="$HM_CONFIG_DIR/home.nix"
+HM_CONFIG_CD_COMMAND="cd \"$HM_CONFIG_DIR\""
 
 # ============================================================================
 # Error Handling & Cleanup Functions
@@ -187,8 +326,8 @@ show_fresh_start_instructions() {
     echo "   nix-env -e '.*' --remove-all"
     echo ""
     echo -e "${YELLOW}3. Review available backups (NOT auto-restored):${NC}"
-    echo "   ls -lt ~/.config/home-manager/home.nix.backup.*"
-    echo "   ls -lt ~/.config/home-manager/configuration.nix.backup.*"
+    echo "   ls -lt \"$HM_CONFIG_DIR\"/home.nix.backup.*"
+    echo "   ls -lt \"$HM_CONFIG_DIR\"/configuration.nix.backup.*"
     echo "   ls -lt /etc/nixos/configuration.nix.backup.*"
     echo ""
     echo -e "${YELLOW}4. Read the recovery guide:${NC}"
@@ -1199,7 +1338,7 @@ create_home_manager_config() {
     local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     if [ -f "$SCRIPT_DIR/p10k-setup-wizard.sh" ]; then
         cp "$SCRIPT_DIR/p10k-setup-wizard.sh" "$HM_CONFIG_DIR/p10k-setup-wizard.sh"
-        print_success "Copied p10k-setup-wizard.sh to home-manager config directory"
+        print_success "Copied p10k-setup-wizard.sh into $HM_CONFIG_DIR"
     else
         print_warning "p10k-setup-wizard.sh not found in $SCRIPT_DIR - skipping copy"
         print_info "If you need the prompt wizard, place the script next to nixos-quick-deploy.sh"
@@ -1213,7 +1352,7 @@ create_home_manager_config() {
     fi
 
     # Create a flake.nix in the home-manager config directory for proper Flatpak support
-    # This enables using: home-manager switch --flake ~/.config/home-manager
+    # This enables using: home-manager switch --flake "$HOME/NixOS Dev Home/Flake"
     print_info "Creating home-manager flake configuration for Flatpak support..."
     local FLAKE_TEMPLATE="$TEMPLATE_DIR/flake.nix"
     if [[ ! -f "$FLAKE_TEMPLATE" ]]; then
@@ -1239,10 +1378,10 @@ create_home_manager_config() {
     sed -i "s|HOME_USERNAME_PLACEHOLDER|$USER|" "$FLAKE_FILE"
     sed -i "s|SYSTEM_PLACEHOLDER|$SYSTEM_ARCH|" "$FLAKE_FILE"
 
-    print_success "Created flake.nix in home-manager config directory"
+    print_success "Created flake.nix in $HM_CONFIG_DIR"
 
     print_info "To use Flatpak declarative management:"
-    print_info "  home-manager switch --flake ~/.config/home-manager"
+    print_info "  home-manager switch --flake \"$HM_CONFIG_DIR\""
     echo ""
 
     local HOME_TEMPLATE="$TEMPLATE_DIR/home.nix"
@@ -1419,8 +1558,6 @@ PY
         print_error "Failed to harmonize python AI environment bindings"
         [[ -n "$PYTHON_ENV_MSG" ]] && print_error "$PYTHON_ENV_MSG"
         exit 1
-    elif [ -n "$PYTHON_ENV_MSG" ]; then
-        print_info "$PYTHON_ENV_MSG"
     fi
 
     DEFAULT_EDITOR_VALUE="$DEFAULT_EDITOR" run_python - "$HM_CONFIG_FILE" <<'PY'
@@ -1576,7 +1713,7 @@ apply_home_manager_config() {
     # Run home-manager switch with flake support for declarative Flatpak management
     # This passes nix-flatpak as an input to home.nix, enabling services.flatpak
     print_info "Applying your custom home-manager configuration..."
-    print_info "Config: ~/.config/home-manager/home.nix"
+    print_info "Config: $HM_CONFIG_FILE"
     print_info "Using flake for full Flatpak declarative support..."
     echo ""
 
@@ -1590,7 +1727,7 @@ apply_home_manager_config() {
     fi
 
     print_info "Updating flake inputs (nix-flatpak, home-manager, nixpkgs)..."
-    if (cd ~/.config/home-manager && nix flake update) 2>&1 | tee /tmp/flake-update.log; then
+    if (cd "$HM_CONFIG_DIR" && nix flake update) 2>&1 | tee /tmp/flake-update.log; then
         print_success "Flake inputs updated successfully"
     else
         print_warning "Flake update failed, continuing with existing lock file..."
@@ -1605,10 +1742,10 @@ apply_home_manager_config() {
     print_info "Using configuration: homeConfigurations.$CURRENT_USER"
     local hm_exit_code
     if $hm_cli_available; then
-        home-manager switch --flake ~/.config/home-manager --show-trace 2>&1 | tee /tmp/home-manager-switch.log
+        home-manager switch --flake "$HM_CONFIG_DIR" --show-trace 2>&1 | tee /tmp/home-manager-switch.log
         hm_exit_code=${PIPESTATUS[0]}
     else
-        nix run --accept-flake-config "${hm_pkg_ref}" -- switch --flake ~/.config/home-manager --show-trace 2>&1 | tee /tmp/home-manager-switch.log
+        nix run --accept-flake-config "${hm_pkg_ref}" -- switch --flake "$HM_CONFIG_DIR" --show-trace 2>&1 | tee /tmp/home-manager-switch.log
         hm_exit_code=${PIPESTATUS[0]}
     fi
 
@@ -1927,6 +2064,9 @@ update_nixos_system_config() {
     print_info "Locale: $CURRENT_LOCALE"
     print_info "users.mutableUsers: $USERS_MUTABLE_SETTING"
 
+    harmonize_python_ai_bindings "$HM_CONFIG_DIR/home.nix" "existing flake home.nix" || return 1
+    harmonize_python_ai_bindings "/etc/nixos/home.nix" "/etc/nixos/home.nix" || return 1
+
     # Backup old config
     if [[ -f "$SYSTEM_CONFIG" ]]; then
         SYSTEM_CONFIG_BACKUP="$SYSTEM_CONFIG.backup.$(date +%Y%m%d_%H%M%S)"
@@ -2171,7 +2311,7 @@ PY
 
     # Apply the new configuration
     print_section "Applying New Configuration"
-    print_warning "Running: sudo nixos-rebuild switch --flake $HM_CONFIG_DIR#$HOSTNAME"
+    print_warning "Running: sudo nixos-rebuild switch --flake \"$HM_CONFIG_DIR#$HOSTNAME\""
     print_info "This will download and install all AIDB components using the generated flake..."
     print_info "May take 10-20 minutes on first run"
     echo ""
@@ -2262,7 +2402,7 @@ NIXCONF
         echo "  • Flakes not enabled in system configuration"
         echo ""
         print_info "Full log saved to: /tmp/flake-build.log"
-        print_info "You can manually build it later with: cd $FLAKE_DIR && nix develop"
+        print_info "You can manually build it later with: $HM_CONFIG_CD_COMMAND && nix develop"
         echo ""
         print_warning "This is not critical - continuing without flake environment"
         echo ""
@@ -2270,24 +2410,22 @@ NIXCONF
 
     # Create a convenient activation script
     print_info "Creating flake activation script..."
-    cat > "$HOME/.local/bin/aidb-dev-env" <<'DEVENV'
+    cat > "$HOME/.local/bin/aidb-dev-env" <<DEVENV
 #!/usr/bin/env bash
 # AIDB Development Environment Activator
 # Enters the flake development shell with all AIDB tools
 
-FLAKE_DIR="/home/$USER/.config/home-manager/"
+FLAKE_DIR="$HM_CONFIG_DIR"
 
-if [[ ! -f "$FLAKE_DIR/flake.nix" ]]; then
-    echo "Error: flake.nix not found at $FLAKE_DIR"
+if [[ ! -f "\$FLAKE_DIR/flake.nix" ]]; then
+    echo "Error: flake.nix not found at \$FLAKE_DIR"
     exit 1
 fi
 
 echo "Entering AIDB development environment..."
-cd "$FLAKE_DIR" && exec nix develop
+cd "\$FLAKE_DIR" && exec nix develop
 DEVENV
 
-    # Fix the $USER variable in the script
-    sed -i "s|\$USER|$USER|g" "$HOME/.local/bin/aidb-dev-env"
     chmod +x "$HOME/.local/bin/aidb-dev-env"
     print_success "Created aidb-dev-env activation script"
 
@@ -2300,13 +2438,13 @@ DEVENV
 # Quick access to AIDB development environment
 
 alias aidb-dev='aidb-dev-env'
-alias aidb-shell='cd ~/.config/home-manager/ && nix develop'
-alias aidb-update='cd ~/.config/home-manager/ && nix flake update'
+alias aidb-shell='cd "$HOME/NixOS Dev Home/Flake" && nix develop'
+alias aidb-update='cd "$HOME/NixOS Dev Home/Flake" && nix flake update'
 
 # Show AIDB development environment info
 aidb-info() {
     echo "AIDB Development Environment"
-    echo "  Flake location: ~/.config/home-manager/flake.nix"
+    echo "  Flake location: $HOME/NixOS Dev Home/Flake/flake.nix"
     echo "  Enter dev env:  aidb-dev or aidb-shell"
     echo "  Update flake:   aidb-update"
     echo ""
