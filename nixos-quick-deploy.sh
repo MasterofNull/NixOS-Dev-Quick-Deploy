@@ -3033,7 +3033,7 @@ NIXCONF
 # AIDB Development Environment Activator
 # Enters the flake development shell with all AIDB tools
 
-FLAKE_DIR="/home/$USER/Documents/AI-Opitmizer/NixOS-Quick-Deploy"
+FLAKE_DIR="/home/$USER/.config/home-manager/"
 
 if [[ ! -f "$FLAKE_DIR/flake.nix" ]]; then
     echo "Error: flake.nix not found at $FLAKE_DIR"
@@ -3058,13 +3058,13 @@ DEVENV
 # Quick access to AIDB development environment
 
 alias aidb-dev='aidb-dev-env'
-alias aidb-shell='cd ~/Documents/AI-Opitmizer/NixOS-Quick-Deploy && nix develop'
-alias aidb-update='cd ~/Documents/AI-Opitmizer/NixOS-Quick-Deploy && nix flake update'
+alias aidb-shell='cd ~/.config/home-manager/ && nix develop'
+alias aidb-update='cd ~/.config/home-manager/ && nix flake update'
 
 # Show AIDB development environment info
 aidb-info() {
     echo "AIDB Development Environment"
-    echo "  Flake location: ~/Documents/AI-Opitmizer/NixOS-Quick-Deploy/flake.nix"
+    echo "  Flake location: ~/.config/home-manager/flake.nix"
     echo "  Enter dev env:  aidb-dev or aidb-shell"
     echo "  Update flake:   aidb-update"
     echo ""
