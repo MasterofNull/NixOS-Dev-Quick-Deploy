@@ -14,6 +14,47 @@
 set -u
 set -o pipefail
 
+# Ensure we target the invoking user's home directory even when executed via sudo
+RESOLVED_USER="${USER:-}"
+RESOLVED_HOME="$HOME"
+
+if [[ -n "${SUDO_USER:-}" && "$EUID" -eq 0 ]]; then
+    RESOLVED_USER="$SUDO_USER"
+    RESOLVED_HOME="$(getent passwd "$RESOLVED_USER" 2>/dev/null | cut -d: -f6)"
+
+    if [[ -z "$RESOLVED_HOME" ]]; then
+        RESOLVED_HOME="$(eval echo "~$RESOLVED_USER" 2>/dev/null || true)"
+    fi
+
+    if [[ -z "$RESOLVED_HOME" ]]; then
+        echo "Error: unable to resolve home directory for invoking user '$RESOLVED_USER'." >&2
+        exit 1
+    fi
+
+    export ORIGINAL_ROOT_HOME="$HOME"
+    export ORIGINAL_ROOT_USER="${USER:-root}"
+    export HOME="$RESOLVED_HOME"
+    export USER="$RESOLVED_USER"
+fi
+
+PRIMARY_USER="$USER"
+PRIMARY_HOME="$HOME"
+PRIMARY_GROUP="$(id -gn "$PRIMARY_USER" 2>/dev/null || id -gn 2>/dev/null || echo "$PRIMARY_USER")"
+
+ensure_path_owner() {
+    local target_path="$1"
+
+    if [[ $EUID -ne 0 ]]; then
+        return 0
+    fi
+
+    if [[ -e "$target_path" ]]; then
+        chown "$PRIMARY_USER:$PRIMARY_GROUP" "$target_path" 2>/dev/null || true
+    fi
+
+    return 0
+}
+
 # Global state tracking
 SYSTEM_CONFIG_BACKUP=""
 HOME_MANAGER_BACKUP=""
@@ -31,7 +72,7 @@ PREVIOUS_USER_PASSWORD_SNIPPET=""
 
 # Script version for change tracking
 SCRIPT_VERSION="2.1.1"
-VERSION_FILE="$HOME/.cache/nixos-quick-deploy-version"
+VERSION_FILE="$PRIMARY_HOME/.cache/nixos-quick-deploy-version"
 
 # Force update flag (set via --force-update)
 FORCE_UPDATE=false
@@ -84,9 +125,495 @@ run_python() {
     "${PYTHON_BIN[@]}" "$@"
 }
 
+harmonize_python_ai_bindings() {
+    local target_file="$1"
+    local context_label="${2:-$1}"
+
+    if [[ ! -f "$target_file" ]]; then
+        return 0
+    fi
+
+    if [[ ! -w "$target_file" ]]; then
+        print_warning "Skipping $context_label - file not writable"
+        return 0
+    fi
+
+    local harmonize_output
+    harmonize_output=$(TARGET_HOME_NIX="$target_file" run_python <<'PY'
+import os
+import re
+import sys
+import textwrap
+from pathlib import Path
+
+target_path = os.environ.get("TARGET_HOME_NIX")
+if not target_path:
+    print("TARGET_HOME_NIX is not set", file=sys.stderr)
+    sys.exit(1)
+
+path = Path(target_path)
+text = path.read_text(encoding="utf-8")
+changed = False
+messages = []
+
+canonical_block = textwrap.dedent(
+    """
+    pythonAiEnv =
+      pkgs.python311.withPackages (ps:
+        let
+          base = with ps; [
+            pip
+            setuptools
+            wheel
+            accelerate
+            datasets
+            diffusers
+            peft
+            safetensors
+            sentencepiece
+            tokenizers
+            transformers
+            evaluate
+            gradio
+            jupyterlab
+            ipykernel
+            pandas
+            scikit-learn
+            black
+            ipython
+            ipywidgets
+          ];
+          extras =
+            lib.optionals (ps ? bitsandbytes) [ ps.bitsandbytes ]
+            ++ lib.optionals (ps ? torch) [ ps.torch ]
+            ++ lib.optionals (ps ? torchaudio) [ ps.torchaudio ]
+            ++ lib.optionals (ps ? torchvision) [ ps.torchvision ];
+        in
+          base ++ extras
+      );
+    pythonAiInterpreterPath = "${pythonAiEnv}/bin/python3";
+    """
+).strip("\n")
+
+let_match = re.search(r"(?m)^\s*let\b", text)
+
+if not let_match:
+    text = "let\n" + textwrap.indent(canonical_block, "  ") + "\n\nin\n" + text.lstrip("\n")
+    changed = True
+    messages.append("Created let binding with canonical pythonAiEnv definitions")
+    let_match = re.search(r"(?m)^\s*let\b", text)
+    if not let_match:
+        path.write_text(text, encoding="utf-8")
+        print("Created let binding with canonical pythonAiEnv definitions")
+        sys.exit(0)
+
+let_line_end = text.find("\n", let_match.end())
+if let_line_end == -1:
+    let_line_end = len(text)
+else:
+    let_line_end += 1
+
+indent_match = re.search(r"(?m)^(?P<indent>\s+)\S", text[let_line_end:])
+default_indent = indent_match.group("indent") if indent_match else "  "
+
+env_binding_pattern = re.compile(r"(?m)^[ \t]*pythonAiEnv\s*=")
+interpreter_binding_pattern = re.compile(r"(?m)^[ \t]*pythonAiInterpreterPath\s*=")
+
+env_binding_exists = bool(env_binding_pattern.search(text))
+interpreter_binding_exists = bool(interpreter_binding_pattern.search(text))
+
+if not env_binding_exists:
+    block = textwrap.indent(canonical_block, default_indent) + "\n"
+    text = text[:let_line_end] + block + text[let_line_end:]
+    changed = True
+    messages.append("Inserted canonical pythonAiEnv definition in home.nix")
+    interpreter_binding_exists = True
+elif not interpreter_binding_exists:
+    block = textwrap.indent("pythonAiInterpreterPath = \"${pythonAiEnv}/bin/python3\";", default_indent) + "\n"
+    text = text[:let_line_end] + block + text[let_line_end:]
+    changed = True
+    messages.append("Added pythonAiInterpreterPath helper binding in home.nix")
+
+legacy_pattern = re.compile(
+    r'(?P<indent>\s*)"python\.defaultInterpreterPath"\s*=\s*"\$\{pythonAiEnv}/bin/python3";(?P<suffix>[^\n]*)'
+)
+if legacy_pattern.search(text):
+    text, count = legacy_pattern.subn(
+        lambda m: (
+            f"{m.group('indent')}\"python.defaultInterpreterPath\" = "
+            f"pythonAiInterpreterPath;{m.group('suffix')}"
+        ),
+        text,
+    )
+    if count > 0:
+        changed = True
+        messages.append("Rewrote python.defaultInterpreterPath to use pythonAiInterpreterPath")
+
+if changed:
+    path.write_text(text, encoding="utf-8")
+    if messages:
+        print("; ".join(messages))
+PY
+    )
+    local status=$?
+
+    if [ $status -ne 0 ]; then
+        print_error "Failed to harmonize python AI environment bindings in $context_label"
+        [[ -n "$harmonize_output" ]] && print_error "$harmonize_output"
+        return 1
+    elif [[ -n "$harmonize_output" ]]; then
+        print_info "$context_label: $harmonize_output"
+    fi
+
+    return 0
+}
+
 # Configuration
-HM_CONFIG_DIR="$HOME/.config/home-manager"
+DEV_HOME_ROOT="$PRIMARY_HOME/NixOS Dev Home"
+HM_CONFIG_DIR="$DEV_HOME_ROOT/Flake"
 HM_CONFIG_FILE="$HM_CONFIG_DIR/home.nix"
+SYSTEM_CONFIG_FILE="$HM_CONFIG_DIR/configuration.nix"
+HW_CONFIG_FILE="$HM_CONFIG_DIR/hardware-configuration.nix"
+HM_CONFIG_CD_COMMAND="cd \"$HM_CONFIG_DIR\""
+
+ensure_flake_workspace() {
+    local created_root=false
+    local created_dir=false
+    local -a owner_args=()
+
+    if [[ $EUID -eq 0 ]]; then
+        owner_args=(-o "$PRIMARY_USER" -g "$PRIMARY_GROUP")
+    fi
+
+    if [[ ! -d "$DEV_HOME_ROOT" ]]; then
+        if install -d -m 0755 "${owner_args[@]}" "$DEV_HOME_ROOT"; then
+            created_root=true
+        else
+            print_error "Failed to create flake workspace root: $DEV_HOME_ROOT"
+            return 1
+        fi
+    else
+        ensure_path_owner "$DEV_HOME_ROOT"
+    fi
+
+    if [[ ! -d "$HM_CONFIG_DIR" ]]; then
+        if install -d -m 0755 "${owner_args[@]}" "$HM_CONFIG_DIR"; then
+            created_dir=true
+        else
+            print_error "Failed to create flake directory: $HM_CONFIG_DIR"
+            return 1
+        fi
+    else
+        ensure_path_owner "$HM_CONFIG_DIR"
+    fi
+
+    if $created_root; then
+        print_success "Created flake workspace root at $DEV_HOME_ROOT"
+    fi
+
+    if $created_dir; then
+        print_success "Created flake configuration directory at $HM_CONFIG_DIR"
+    fi
+
+    return 0
+}
+
+copy_template_to_flake() {
+    local source_file="$1"
+    local destination_file="$2"
+    local description="${3:-$(basename "$destination_file")}"
+
+    ensure_flake_workspace || return 1
+
+    if [[ ! -f "$source_file" ]]; then
+        print_error "Template missing: $source_file"
+        return 1
+    fi
+
+    local -a owner_args=()
+    if [[ $EUID -eq 0 ]]; then
+        owner_args=(-o "$PRIMARY_USER" -g "$PRIMARY_GROUP")
+    fi
+
+    local need_copy=true
+
+    if [[ -f "$destination_file" ]]; then
+        if grep -q '^<<<<<<< ' "$destination_file" 2>/dev/null; then
+            print_error "Unresolved merge conflict markers detected in $destination_file"
+            print_info "Resolve the conflicts in $description and rerun the script"
+            return 1
+        fi
+
+        if [[ ! -s "$destination_file" ]]; then
+            print_warning "$description exists but is empty; refreshing from template"
+        elif cmp -s "$source_file" "$destination_file"; then
+            need_copy=false
+        elif [[ "$FORCE_UPDATE" = false ]]; then
+            local incoming_file="$destination_file.incoming.$(date +%Y%m%d_%H%M%S)"
+            if cp "$source_file" "$incoming_file" 2>/dev/null; then
+                ensure_path_owner "$incoming_file"
+                print_warning "$description differs from the latest template"
+                print_info "Review $incoming_file for template updates or rerun with --force-update"
+            else
+                print_warning "Unable to stage template preview for $description"
+                print_info "Consider rerunning with --force-update after resolving manual edits"
+            fi
+            chmod 0644 "$destination_file" 2>/dev/null || true
+            ensure_path_owner "$destination_file"
+            return 0
+        else
+            local backup_file="$destination_file.backup.$(date +%Y%m%d_%H%M%S)"
+            if cp "$destination_file" "$backup_file" 2>/dev/null; then
+                ensure_path_owner "$backup_file"
+                print_info "Backed up existing $description to $backup_file"
+            fi
+        fi
+    fi
+
+    if $need_copy; then
+        if ! install -m 0644 "${owner_args[@]}" "$source_file" "$destination_file"; then
+            print_error "Failed to copy $description into $destination_file"
+            return 1
+        fi
+    fi
+
+    if ! chmod 0644 "$destination_file" 2>/dev/null; then
+        print_warning "Could not adjust permissions on $destination_file"
+    fi
+    ensure_path_owner "$destination_file"
+
+    if [[ ! -s "$destination_file" ]]; then
+        print_error "$description was not populated correctly at $destination_file"
+        return 1
+    fi
+
+    return 0
+}
+
+validate_flake_artifact() {
+    local artifact_path="$1"
+    local artifact_label="$2"
+
+    if [[ ! -e "$artifact_path" ]]; then
+        print_error "$artifact_label is missing at $artifact_path"
+        return 1
+    fi
+
+    if [[ ! -s "$artifact_path" ]]; then
+        print_error "$artifact_label exists but is empty at $artifact_path"
+        return 1
+    fi
+
+    return 0
+}
+
+require_flake_artifacts() {
+    ensure_flake_workspace || return 1
+
+    local missing=false
+
+    validate_flake_artifact "$HM_CONFIG_DIR/flake.nix" "flake.nix" || missing=true
+    validate_flake_artifact "$HM_CONFIG_FILE" "home.nix" || missing=true
+    validate_flake_artifact "$SYSTEM_CONFIG_FILE" "configuration.nix" || missing=true
+    validate_flake_artifact "$HW_CONFIG_FILE" "hardware-configuration.nix" || missing=true
+
+    if $missing; then
+        print_info "Resolve the missing artifacts above and rerun the script with --force-update if needed."
+        return 1
+    fi
+
+    return 0
+}
+
+materialize_hardware_configuration() {
+    ensure_flake_workspace || return 1
+
+    local target_file="$HW_CONFIG_FILE"
+    local source_file=""
+    local generated_tmp=""
+    local generator_log=""
+    local generator_used=false
+
+    if command -v nixos-generate-config >/dev/null 2>&1; then
+        generated_tmp=$(mktemp)
+        generator_log=$(mktemp)
+        local -a generator_cmd=(nixos-generate-config --no-filesystems --show-hardware-config)
+
+        if command -v sudo >/dev/null 2>&1; then
+            generator_cmd=(sudo "${generator_cmd[@]}")
+        fi
+
+        if "${generator_cmd[@]}" >"$generated_tmp" 2>"$generator_log"; then
+            if [[ -s "$generated_tmp" ]]; then
+                source_file="$generated_tmp"
+                generator_used=true
+                print_success "Captured host hardware profile via nixos-generate-config"
+            else
+                print_warning "Generated hardware profile was empty; falling back to system copy"
+            fi
+        else
+            local status=$?
+            print_warning "nixos-generate-config failed to produce hardware profile (exit $status); falling back to system copy"
+            if [[ -s "$generator_log" ]]; then
+                print_info "nixos-generate-config output:" 
+                sed 's/^/  /' "$generator_log"
+            fi
+        fi
+    fi
+
+    if [[ -z "$source_file" ]]; then
+        local system_hardware="/etc/nixos/hardware-configuration.nix"
+        if [[ -f "$system_hardware" ]]; then
+            source_file="$system_hardware"
+            print_info "Using system hardware-configuration.nix as source"
+        else
+            print_error "hardware-configuration.nix is missing and nixos-generate-config could not create one"
+            [[ -n "$generated_tmp" ]] && rm -f "$generated_tmp"
+            [[ -n "$generator_log" ]] && rm -f "$generator_log"
+            print_info "Run 'sudo nixos-generate-config' and rerun this script"
+            return 1
+        fi
+    fi
+
+    if [[ -f "$target_file" ]]; then
+        local backup_file="$target_file.backup.$(date +%Y%m%d_%H%M%S)"
+        if cp "$target_file" "$backup_file" 2>/dev/null; then
+            ensure_path_owner "$backup_file"
+            print_info "Backed up existing hardware-configuration.nix to $backup_file"
+        fi
+    fi
+
+    local -a owner_args=()
+    if [[ $EUID -eq 0 ]]; then
+        owner_args=(-o "$PRIMARY_USER" -g "$PRIMARY_GROUP")
+    fi
+
+    if ! install -m 0644 "${owner_args[@]}" "$source_file" "$target_file"; then
+        print_error "Failed to materialize hardware-configuration.nix at $target_file"
+        [[ -n "$generated_tmp" ]] && rm -f "$generated_tmp"
+        [[ -n "$generator_log" ]] && rm -f "$generator_log"
+        return 1
+    fi
+
+    if ! chmod 0644 "$target_file" 2>/dev/null; then
+        print_warning "Unable to adjust permissions on $target_file"
+    fi
+
+    ensure_path_owner "$target_file"
+
+    if [[ ! -s "$target_file" ]]; then
+        print_error "hardware-configuration.nix at $target_file is empty after refresh"
+        [[ -n "$generated_tmp" ]] && rm -f "$generated_tmp"
+        [[ -n "$generator_log" ]] && rm -f "$generator_log"
+        return 1
+    fi
+
+    local detected_gpu="${GPU_TYPE:-unknown}"
+    local detected_gpu_driver="${GPU_DRIVER:-}"
+    local detected_gpu_packages="${GPU_PACKAGES:-}"
+    local detected_libva="${LIBVA_DRIVER:-}"
+    local detected_cpu="${CPU_VENDOR:-unknown}"
+    local detected_microcode="${CPU_MICROCODE:-}"
+    local detected_ram="${TOTAL_RAM_GB:-0}"
+    local detected_zram="${ZRAM_PERCENT:-0}"
+    local detected_cores="${CPU_CORES:-}"
+    local refresh_timestamp="$(date '+%Y-%m-%d %H:%M:%S %Z')"
+
+    local annotate_output
+    annotate_output=$(TARGET_HW_NIX="$target_file" \
+        AIDB_HW_TIMESTAMP="$refresh_timestamp" \
+        AIDB_HW_GPU_TYPE="$detected_gpu" \
+        AIDB_HW_GPU_DRIVER="$detected_gpu_driver" \
+        AIDB_HW_GPU_PACKAGES="$detected_gpu_packages" \
+        AIDB_HW_LIBVA="$detected_libva" \
+        AIDB_HW_CPU="$detected_cpu" \
+        AIDB_HW_MICROCODE="$detected_microcode" \
+        AIDB_HW_RAM="$detected_ram" \
+        AIDB_HW_ZRAM="$detected_zram" \
+        AIDB_HW_CORES="$detected_cores" \
+        run_python <<'PY'
+import os
+import re
+import sys
+from pathlib import Path
+
+target_path = os.environ.get("TARGET_HW_NIX")
+if not target_path:
+    print("TARGET_HW_NIX is not set", file=sys.stderr)
+    sys.exit(1)
+
+path = Path(target_path)
+text = path.read_text(encoding="utf-8")
+
+def format_value(label, default="unknown"):
+    value = os.environ.get(label, "")
+    value = value.strip()
+    return value if value else default
+
+timestamp = format_value("AIDB_HW_TIMESTAMP", "unknown")
+gpu_type = format_value("AIDB_HW_GPU_TYPE")
+gpu_driver = format_value("AIDB_HW_GPU_DRIVER", "n/a")
+gpu_packages = format_value("AIDB_HW_GPU_PACKAGES", "n/a")
+libva = format_value("AIDB_HW_LIBVA", "n/a")
+cpu_vendor = format_value("AIDB_HW_CPU", "unknown")
+microcode = format_value("AIDB_HW_MICROCODE", "auto")
+ram = format_value("AIDB_HW_RAM", "0")
+zram = format_value("AIDB_HW_ZRAM", "0")
+cores = format_value("AIDB_HW_CORES", "?")
+
+header_lines = [
+    "# BEGIN AIDB-HARDWARE-PROFILE",
+    f"# Last refresh: {timestamp}",
+    f"# CPU vendor: {cpu_vendor} (microcode: {microcode})",
+    f"# CPU cores: {cores}",
+    f"# RAM detected: {ram}GB (zram target: {zram}% of RAM)",
+    f"# GPU type: {gpu_type} (driver: {gpu_driver}, VA-API: {libva})",
+    f"# GPU packages: {gpu_packages}",
+    "# END AIDB-HARDWARE-PROFILE",
+    "",
+]
+
+header_block = "\n".join(header_lines)
+
+pattern = re.compile(r"# BEGIN AIDB-HARDWARE-PROFILE.*?# END AIDB-HARDWARE-PROFILE\n?", re.S)
+
+if pattern.search(text):
+    new_text, count = pattern.subn(header_block, text, count=1)
+    text = new_text
+    changed = count > 0
+else:
+    text = header_block + text.lstrip("\n")
+    changed = True
+
+if changed:
+    path.write_text(text, encoding="utf-8")
+    print("Updated AIDB hardware profile header")
+PY
+    )
+
+    local annotate_status=$?
+    if [[ $annotate_status -ne 0 ]]; then
+        print_warning "Unable to annotate hardware-configuration.nix with hardware profile"
+        [[ -n "$annotate_output" ]] && print_warning "$annotate_output"
+    elif [[ -n "$annotate_output" ]]; then
+        print_info "$annotate_output"
+    fi
+
+    if [[ -n "$generated_tmp" ]]; then
+        rm -f "$generated_tmp"
+    fi
+    if [[ -n "$generator_log" ]]; then
+        rm -f "$generator_log"
+    fi
+
+    if $generator_used; then
+        print_success "hardware-configuration.nix refreshed from latest hardware snapshot"
+    else
+        print_success "hardware-configuration.nix synchronized with system copy"
+    fi
+
+    return 0
+}
 
 # ============================================================================
 # Error Handling & Cleanup Functions
@@ -187,8 +714,8 @@ show_fresh_start_instructions() {
     echo "   nix-env -e '.*' --remove-all"
     echo ""
     echo -e "${YELLOW}3. Review available backups (NOT auto-restored):${NC}"
-    echo "   ls -lt ~/.config/home-manager/home.nix.backup.*"
-    echo "   ls -lt ~/.config/home-manager/configuration.nix.backup.*"
+    echo "   ls -lt \"$HM_CONFIG_DIR\"/home.nix.backup.*"
+    echo "   ls -lt \"$HM_CONFIG_DIR\"/configuration.nix.backup.*"
     echo "   ls -lt /etc/nixos/configuration.nix.backup.*"
     echo ""
     echo -e "${YELLOW}4. Read the recovery guide:${NC}"
@@ -282,7 +809,7 @@ parse_nixos_option_value() {
 load_previous_nixos_metadata() {
     local metadata
 
-    metadata=$(TARGET_USER="$USER" run_python - <<'PY' 2>/dev/null
+    metadata=$(TARGET_USER="$USER" run_python <<'PY' 2>/dev/null
 import base64
 import os
 import re
@@ -527,6 +1054,43 @@ print_error() {
     echo -e "${RED}✗${NC} $1"
 }
 
+assert_unique_paths() {
+    declare -A seen=()
+    local name
+    for name in "$@"; do
+        if [[ -z ${!name+x} ]]; then
+            continue
+        fi
+
+        local value="${!name}"
+        if [[ -z "$value" ]]; then
+            continue
+        fi
+
+        local normalized="$value"
+        if command -v readlink >/dev/null 2>&1; then
+            local resolved
+            if resolved=$(readlink -m -- "$value" 2>/dev/null); then
+                normalized="$resolved"
+            fi
+        fi
+
+        if [[ "$normalized" != "/" ]]; then
+            normalized="${normalized%/}"
+        fi
+
+        if [[ -n ${seen[$normalized]+x} ]]; then
+            local other="${seen[$normalized]}"
+            print_error "Path collision detected: $name and ${other} both resolve to $normalized"
+            return 1
+        fi
+
+        seen[$normalized]="$name"
+    done
+
+    return 0
+}
+
 normalize_channel_name() {
     local raw="$1"
 
@@ -608,6 +1172,13 @@ check_prerequisites() {
         exit 1
     fi
     print_success "Running on NixOS"
+
+    if ! command -v nixos-rebuild >/dev/null 2>&1; then
+        print_error "nixos-rebuild is not available in PATH"
+        print_info "Install the nixos-rebuild tooling and ensure it is accessible before rerunning."
+        exit 1
+    fi
+    print_success "nixos-rebuild command detected"
 
     # Detect and handle old deployment method artifacts
     print_info "Checking for old deployment artifacts..."
@@ -1193,13 +1764,14 @@ create_home_manager_config() {
 
     print_info "Creating new home-manager configuration..."
 
-    mkdir -p "$HM_CONFIG_DIR"
+    ensure_flake_workspace || exit 1
 
     # Copy p10k-setup-wizard.sh to home-manager config dir so home.nix can reference it
     local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     if [ -f "$SCRIPT_DIR/p10k-setup-wizard.sh" ]; then
         cp "$SCRIPT_DIR/p10k-setup-wizard.sh" "$HM_CONFIG_DIR/p10k-setup-wizard.sh"
-        print_success "Copied p10k-setup-wizard.sh to home-manager config directory"
+        ensure_path_owner "$HM_CONFIG_DIR/p10k-setup-wizard.sh"
+        print_success "Copied p10k-setup-wizard.sh into $HM_CONFIG_DIR"
     else
         print_warning "p10k-setup-wizard.sh not found in $SCRIPT_DIR - skipping copy"
         print_info "If you need the prompt wizard, place the script next to nixos-quick-deploy.sh"
@@ -1213,7 +1785,7 @@ create_home_manager_config() {
     fi
 
     # Create a flake.nix in the home-manager config directory for proper Flatpak support
-    # This enables using: home-manager switch --flake ~/.config/home-manager
+    # This enables using: home-manager switch --flake "$HOME/NixOS Dev Home/Flake"
     print_info "Creating home-manager flake configuration for Flatpak support..."
     local FLAKE_TEMPLATE="$TEMPLATE_DIR/flake.nix"
     if [[ ! -f "$FLAKE_TEMPLATE" ]]; then
@@ -1225,11 +1797,9 @@ create_home_manager_config() {
     local SYSTEM_ARCH=$(nix eval --raw --expr builtins.currentSystem 2>/dev/null || echo "x86_64-linux")
     local CURRENT_HOSTNAME=$(hostname)
 
-    install -Dm644 "$FLAKE_TEMPLATE" "$FLAKE_FILE"
-
-    if [[ ! -s "$FLAKE_FILE" ]]; then
-        print_error "Failed to copy flake manifest to $FLAKE_FILE"
-        print_info "Check filesystem permissions and rerun with --force-update"
+    if copy_template_to_flake "$FLAKE_TEMPLATE" "$FLAKE_FILE" "flake.nix"; then
+        print_success "Created flake.nix in $HM_CONFIG_DIR"
+    else
         exit 1
     fi
     # Align flake inputs with the synchronized channels
@@ -1239,10 +1809,8 @@ create_home_manager_config() {
     sed -i "s|HOME_USERNAME_PLACEHOLDER|$USER|" "$FLAKE_FILE"
     sed -i "s|SYSTEM_PLACEHOLDER|$SYSTEM_ARCH|" "$FLAKE_FILE"
 
-    print_success "Created flake.nix in home-manager config directory"
-
     print_info "To use Flatpak declarative management:"
-    print_info "  home-manager switch --flake ~/.config/home-manager"
+    print_info "  home-manager switch --flake \"$HM_CONFIG_DIR\""
     echo ""
 
     local HOME_TEMPLATE="$TEMPLATE_DIR/home.nix"
@@ -1251,7 +1819,9 @@ create_home_manager_config() {
         exit 1
     fi
 
-    install -Dm644 "$HOME_TEMPLATE" "$HM_CONFIG_FILE"
+    if ! copy_template_to_flake "$HOME_TEMPLATE" "$HM_CONFIG_FILE" "home.nix"; then
+        exit 1
+    fi
 
     # Calculate template hash for change detection
     local TEMPLATE_HASH=$(echo -n "AIDB-v4.0-packages-v$SCRIPT_VERSION" | sha256sum | cut -d' ' -f1 | cut -c1-16)
@@ -1282,88 +1852,59 @@ create_home_manager_config() {
     sed -i "s|HOMEDIR|$HOME|" "$HM_CONFIG_FILE"
     sed -i "s|STATEVERSION_PLACEHOLDER|$STATE_VERSION|" "$HM_CONFIG_FILE"
 
-    local PYTHON_ENV_MSG
-    PYTHON_ENV_MSG=$(run_python - "$HM_CONFIG_FILE" <<'PY'
-import re
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-text = path.read_text(encoding="utf-8")
-changed = False
-
-if "pythonAiEnv =" not in text:
-    print("pythonAiEnv binding missing from template")
-    sys.exit(1)
-
-if "pythonAiInterpreterPath" not in text:
-    match = re.search(r"(  pythonAiEnv =[\s\S]+?\);\n)", text)
-    if match:
-        insertion = '  pythonAiInterpreterPath = "${pythonAiEnv}/bin/python3";\n'
-        text = text[:match.end()] + insertion + text[match.end():]
-        changed = True
-    else:
-        print("unable to locate pythonAiEnv definition for migration")
-        sys.exit(1)
-
-legacy_assignment = '"python.defaultInterpreterPath" = "${pythonAiEnv}/bin/python3";'
-if legacy_assignment in text:
-    text = text.replace(legacy_assignment, '"python.defaultInterpreterPath" = pythonAiInterpreterPath;')
-    changed = True
-
-if changed:
-    path.write_text(text, encoding="utf-8")
-    print("Updated python AI environment references in home.nix")
-PY
-    )
-    PYTHON_ENV_STATUS=$?
-    if [ $PYTHON_ENV_STATUS -ne 0 ]; then
-        print_error "Failed to harmonize python AI environment bindings"
-        [[ -n "$PYTHON_ENV_MSG" ]] && print_error "$PYTHON_ENV_MSG"
+    if ! harmonize_python_ai_bindings "$HM_CONFIG_FILE" "home-manager home.nix"; then
         exit 1
-    elif [ -n "$PYTHON_ENV_MSG" ]; then
-        print_info "$PYTHON_ENV_MSG"
     fi
 
-    DEFAULT_EDITOR_VALUE="$DEFAULT_EDITOR" run_python - "$HM_CONFIG_FILE" <<'PY'
+    DEFAULT_EDITOR_VALUE="$DEFAULT_EDITOR" \
+    TARGET_HOME_NIX="$HM_CONFIG_FILE" run_python <<'PY'
 import os
 import sys
 
-path = sys.argv[1]
+target_path = os.environ.get("TARGET_HOME_NIX")
+if not target_path:
+    print("TARGET_HOME_NIX is not set", file=sys.stderr)
+    sys.exit(1)
+
 editor = os.environ.get("DEFAULT_EDITOR_VALUE", "vim")
 
-with open(path, "r", encoding="utf-8") as f:
+with open(target_path, "r", encoding="utf-8") as f:
     data = f.read()
 
 data = data.replace("DEFAULTEDITOR", editor)
 
-with open(path, "w", encoding="utf-8") as f:
+with open(target_path, "w", encoding="utf-8") as f:
     f.write(data)
 PY
 
     # Some older templates may have left behind stray navigation headings.
     # Clean them up so nix-instantiate parsing does not fail on bare identifiers.
-    CLEANUP_MSG=$(run_python - "$HM_CONFIG_FILE" <<'PY'
+    CLEANUP_MSG=$(TARGET_HOME_NIX="$HM_CONFIG_FILE" run_python <<'PY'
+import os
 import re
 import sys
 
-path = sys.argv[1]
+target_path = os.environ.get("TARGET_HOME_NIX")
+if not target_path:
+    print("TARGET_HOME_NIX is not set", file=sys.stderr)
+    sys.exit(1)
+
 pattern = re.compile(r"^\s*(Actions|Projects|Wiki)\s*$")
 
-with open(path, "r", encoding="utf-8") as f:
+with open(target_path, "r", encoding="utf-8") as f:
     lines = f.readlines()
 
-filtered = []
-removed = False
-for line in lines:
-    if pattern.match(line):
-        removed = True
-    else:
-        filtered.append(line)
+    filtered = []
+    removed = False
+    for line in lines:
+        if pattern.match(line):
+            removed = True
+        else:
+            filtered.append(line)
 
-if removed:
-    with open(path, "w", encoding="utf-8") as f:
-        f.writelines(filtered)
+    if removed:
+        with open(target_path, "w", encoding="utf-8") as f:
+            f.writelines(filtered)
     print("Removed legacy Gitea navigation headings from home.nix")
 PY
     )
@@ -1373,6 +1914,11 @@ PY
         exit 1
     elif [ -n "$CLEANUP_MSG" ]; then
         print_info "$CLEANUP_MSG"
+    fi
+
+    if [[ ! -s "$HM_CONFIG_FILE" ]]; then
+        print_error "home.nix generation failed - file is empty at $HM_CONFIG_FILE"
+        exit 1
     fi
 
     print_success "Home manager configuration created at $HM_CONFIG_FILE"
@@ -1478,7 +2024,7 @@ apply_home_manager_config() {
     # Run home-manager switch with flake support for declarative Flatpak management
     # This passes nix-flatpak as an input to home.nix, enabling services.flatpak
     print_info "Applying your custom home-manager configuration..."
-    print_info "Config: ~/.config/home-manager/home.nix"
+    print_info "Config: $HM_CONFIG_FILE"
     print_info "Using flake for full Flatpak declarative support..."
     echo ""
 
@@ -1492,7 +2038,7 @@ apply_home_manager_config() {
     fi
 
     print_info "Updating flake inputs (nix-flatpak, home-manager, nixpkgs)..."
-    if (cd ~/.config/home-manager && nix flake update) 2>&1 | tee /tmp/flake-update.log; then
+    if (cd "$HM_CONFIG_DIR" && nix flake update) 2>&1 | tee /tmp/flake-update.log; then
         print_success "Flake inputs updated successfully"
     else
         print_warning "Flake update failed, continuing with existing lock file..."
@@ -1507,10 +2053,10 @@ apply_home_manager_config() {
     print_info "Using configuration: homeConfigurations.$CURRENT_USER"
     local hm_exit_code
     if $hm_cli_available; then
-        home-manager switch --flake ~/.config/home-manager --show-trace 2>&1 | tee /tmp/home-manager-switch.log
+        home-manager switch --flake "$HM_CONFIG_DIR" --show-trace 2>&1 | tee /tmp/home-manager-switch.log
         hm_exit_code=${PIPESTATUS[0]}
     else
-        nix run --accept-flake-config "${hm_pkg_ref}" -- switch --flake ~/.config/home-manager --show-trace 2>&1 | tee /tmp/home-manager-switch.log
+        nix run --accept-flake-config "${hm_pkg_ref}" -- switch --flake "$HM_CONFIG_DIR" --show-trace 2>&1 | tee /tmp/home-manager-switch.log
         hm_exit_code=${PIPESTATUS[0]}
     fi
 
@@ -1767,8 +2313,6 @@ update_nixos_system_config() {
     print_section "Generating Fresh NixOS Configuration"
 
     local SYSTEM_CONFIG="/etc/nixos/configuration.nix"
-    local HARDWARE_CONFIG="/etc/nixos/hardware-configuration.nix"
-
     # Detect system info
     local HOSTNAME=$(hostname)
     local NIXOS_VERSION=$(nixos-version | cut -d'.' -f1-2)
@@ -1829,6 +2373,9 @@ update_nixos_system_config() {
     print_info "Locale: $CURRENT_LOCALE"
     print_info "users.mutableUsers: $USERS_MUTABLE_SETTING"
 
+    harmonize_python_ai_bindings "$HM_CONFIG_FILE" "existing flake home.nix" || return 1
+    harmonize_python_ai_bindings "/etc/nixos/home.nix" "/etc/nixos/home.nix" || return 1
+
     # Backup old config
     if [[ -f "$SYSTEM_CONFIG" ]]; then
         SYSTEM_CONFIG_BACKUP="$SYSTEM_CONFIG.backup.$(date +%Y%m%d_%H%M%S)"
@@ -1836,39 +2383,8 @@ update_nixos_system_config() {
         print_success "✓ Backed up: $SYSTEM_CONFIG_BACKUP"
     fi
 
-    if [[ -f "$HARDWARE_CONFIG" ]]; then
-        mkdir -p "$HM_CONFIG_DIR"
-
-        local TARGET_HARDWARE_CONFIG="$HM_CONFIG_DIR/hardware-configuration.nix"
-
-        # Remove a stale copy so we can replace it with the latest data
-        if [[ -e "$TARGET_HARDWARE_CONFIG" || -L "$TARGET_HARDWARE_CONFIG" ]]; then
-            rm -f "$TARGET_HARDWARE_CONFIG"
-        fi
-
-        # Always copy the hardware configuration locally so flakes can evaluate in pure mode
-        # (symlinks into /etc cause nixos-rebuild to fail with "access to absolute path '/etc'")
-        if cp "$HARDWARE_CONFIG" "$TARGET_HARDWARE_CONFIG"; then
-            if [ "$(stat -c '%U' "$TARGET_HARDWARE_CONFIG" 2>/dev/null || echo "$USER")" != "$USER" ]; then
-                if command -v sudo >/dev/null 2>&1; then
-                    sudo chown "$USER":"$USER" "$TARGET_HARDWARE_CONFIG" 2>/dev/null || true
-                else
-                    chown "$USER":"$USER" "$TARGET_HARDWARE_CONFIG" 2>/dev/null || true
-                fi
-            fi
-            print_success "Copied hardware-configuration.nix into $HM_CONFIG_DIR for flake evaluation"
-            print_info "Hardware updates will be refreshed each time the deploy script runs"
-        else
-            # Fall back to copying if the symlink cannot be created (e.g. different filesystem)
-            if sudo cp "$HARDWARE_CONFIG" "$TARGET_HARDWARE_CONFIG"; then
-                sudo chown "$USER":"$USER" "$TARGET_HARDWARE_CONFIG" 2>/dev/null || true
-                print_success "Copied hardware-configuration.nix to $HM_CONFIG_DIR for flake builds"
-            else
-                print_warning "Could not copy hardware-configuration.nix to $HM_CONFIG_DIR"
-            fi
-        fi
-    else
-        print_warning "System hardware-configuration.nix not found; run 'sudo nixos-generate-config' if needed"
+    if ! materialize_hardware_configuration; then
+        return 1
     fi
 
 
@@ -1879,21 +2395,21 @@ update_nixos_system_config() {
     local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local TEMPLATE_DIR="$SCRIPT_DIR/templates"
     local SYSTEM_TEMPLATE="$TEMPLATE_DIR/configuration.nix"
-    local GENERATED_CONFIG="$HM_CONFIG_DIR/configuration.nix"
+
+    if ! assert_unique_paths HM_CONFIG_FILE SYSTEM_CONFIG_FILE HW_CONFIG_FILE; then
+        return 1
+    fi
 
     if [[ ! -f "$SYSTEM_TEMPLATE" ]]; then
         print_error "Missing NixOS configuration template: $SYSTEM_TEMPLATE"
         exit 1
     fi
 
-    install -Dm644 "$SYSTEM_TEMPLATE" "$GENERATED_CONFIG"
-
-    local CONFIG_WRITE_STATUS=$?
-
-    if [ $CONFIG_WRITE_STATUS -ne 0 ]; then
-        print_error "Failed to generate configuration"
+    if ! copy_template_to_flake "$SYSTEM_TEMPLATE" "$SYSTEM_CONFIG_FILE" "configuration.nix"; then
         return 1
     fi
+
+    print_success "Generated configuration.nix in $HM_CONFIG_DIR"
 
     local GENERATED_AT
     GENERATED_AT=$(date '+%Y-%m-%d %H:%M:%S %Z')
@@ -2008,28 +2524,33 @@ EOF
         USER_PASSWORD_BLOCK=$'    # (no password directives detected; update manually if required)\n'
     fi
 
-    SCRIPT_VERSION_VALUE="$SCRIPT_VERSION" \
-    GENERATED_AT="$GENERATED_AT" \
-    HOSTNAME_VALUE="$HOSTNAME" \
-    USER_VALUE="$USER" \
-    CPU_VENDOR_LABEL_VALUE="$CPU_VENDOR_LABEL" \
-    INITRD_KERNEL_MODULES_VALUE="$INITRD_KERNEL_MODULES" \
-    MICROCODE_SECTION_VALUE="$MICROCODE_SECTION" \
-    GPU_HARDWARE_SECTION_VALUE="$gpu_hardware_section" \
-    COSMIC_GPU_BLOCK_VALUE="$cosmic_gpu_block" \
-    SELECTED_TIMEZONE_VALUE="$SELECTED_TIMEZONE" \
-    CURRENT_LOCALE_VALUE="$CURRENT_LOCALE" \
-    NIXOS_VERSION_VALUE="$NIXOS_VERSION" \
-    ZRAM_PERCENT_VALUE="$zram_value" \
-    TOTAL_RAM_GB_VALUE="$total_ram_value" \
-    USERS_MUTABLE_VALUE="$USERS_MUTABLE_SETTING" \
-    USER_PASSWORD_BLOCK_VALUE="$USER_PASSWORD_BLOCK" \
-    run_python - "$GENERATED_CONFIG" <<'PY'
+    TARGET_CONFIGURATION_NIX="$SYSTEM_CONFIG_FILE" \
+        SCRIPT_VERSION_VALUE="$SCRIPT_VERSION" \
+        GENERATED_AT="$GENERATED_AT" \
+        HOSTNAME_VALUE="$HOSTNAME" \
+        USER_VALUE="$USER" \
+        CPU_VENDOR_LABEL_VALUE="$CPU_VENDOR_LABEL" \
+        INITRD_KERNEL_MODULES_VALUE="$INITRD_KERNEL_MODULES" \
+        MICROCODE_SECTION_VALUE="$MICROCODE_SECTION" \
+        GPU_HARDWARE_SECTION_VALUE="$gpu_hardware_section" \
+        COSMIC_GPU_BLOCK_VALUE="$cosmic_gpu_block" \
+        SELECTED_TIMEZONE_VALUE="$SELECTED_TIMEZONE" \
+        CURRENT_LOCALE_VALUE="$CURRENT_LOCALE" \
+        NIXOS_VERSION_VALUE="$NIXOS_VERSION" \
+        ZRAM_PERCENT_VALUE="$zram_value" \
+        TOTAL_RAM_GB_VALUE="$total_ram_value" \
+        USERS_MUTABLE_VALUE="$USERS_MUTABLE_SETTING" \
+        USER_PASSWORD_BLOCK_VALUE="$USER_PASSWORD_BLOCK" \
+        run_python <<'PY'
 import os
 import sys
 
-path = sys.argv[1]
-with open(path, "r", encoding="utf-8") as f:
+target_path = os.environ.get("TARGET_CONFIGURATION_NIX")
+if not target_path:
+    print("TARGET_CONFIGURATION_NIX is not set", file=sys.stderr)
+    sys.exit(1)
+
+with open(target_path, "r", encoding="utf-8") as f:
     text = f.read()
 
 replacements = {
@@ -2057,7 +2578,7 @@ replacements = {
 for placeholder, value in replacements.items():
     text = text.replace(placeholder, value)
 
-with open(path, "w", encoding="utf-8") as f:
+with open(target_path, "w", encoding="utf-8") as f:
     f.write(text)
 PY
 
@@ -2071,9 +2592,15 @@ PY
     print_info "Includes: Cosmic Desktop, Podman, Fonts, Audio, ZSH"
     echo ""
 
+    # Verify all required flake assets exist before attempting rebuild
+    if ! require_flake_artifacts; then
+        print_error "Required flake files are missing; aborting rebuild"
+        return 1
+    fi
+
     # Apply the new configuration
     print_section "Applying New Configuration"
-    print_warning "Running: sudo nixos-rebuild switch --flake $HM_CONFIG_DIR#$HOSTNAME"
+    print_warning "Running: sudo nixos-rebuild switch --flake \"$HM_CONFIG_DIR#$HOSTNAME\""
     print_info "This will download and install all AIDB components using the generated flake..."
     print_info "May take 10-20 minutes on first run"
     echo ""
@@ -2164,7 +2691,7 @@ NIXCONF
         echo "  • Flakes not enabled in system configuration"
         echo ""
         print_info "Full log saved to: /tmp/flake-build.log"
-        print_info "You can manually build it later with: cd $FLAKE_DIR && nix develop"
+        print_info "You can manually build it later with: $HM_CONFIG_CD_COMMAND && nix develop"
         echo ""
         print_warning "This is not critical - continuing without flake environment"
         echo ""
@@ -2172,24 +2699,22 @@ NIXCONF
 
     # Create a convenient activation script
     print_info "Creating flake activation script..."
-    cat > "$HOME/.local/bin/aidb-dev-env" <<'DEVENV'
+    cat > "$HOME/.local/bin/aidb-dev-env" <<DEVENV
 #!/usr/bin/env bash
 # AIDB Development Environment Activator
 # Enters the flake development shell with all AIDB tools
 
-FLAKE_DIR="/home/$USER/.config/home-manager/"
+FLAKE_DIR="$HM_CONFIG_DIR"
 
-if [[ ! -f "$FLAKE_DIR/flake.nix" ]]; then
-    echo "Error: flake.nix not found at $FLAKE_DIR"
+if [[ ! -f "\$FLAKE_DIR/flake.nix" ]]; then
+    echo "Error: flake.nix not found at \$FLAKE_DIR"
     exit 1
 fi
 
 echo "Entering AIDB development environment..."
-cd "$FLAKE_DIR" && exec nix develop
+cd "\$FLAKE_DIR" && exec nix develop
 DEVENV
 
-    # Fix the $USER variable in the script
-    sed -i "s|\$USER|$USER|g" "$HOME/.local/bin/aidb-dev-env"
     chmod +x "$HOME/.local/bin/aidb-dev-env"
     print_success "Created aidb-dev-env activation script"
 
@@ -2202,13 +2727,13 @@ DEVENV
 # Quick access to AIDB development environment
 
 alias aidb-dev='aidb-dev-env'
-alias aidb-shell='cd ~/.config/home-manager/ && nix develop'
-alias aidb-update='cd ~/.config/home-manager/ && nix flake update'
+alias aidb-shell='cd "$HOME/NixOS Dev Home/Flake" && nix develop'
+alias aidb-update='cd "$HOME/NixOS Dev Home/Flake" && nix flake update'
 
 # Show AIDB development environment info
 aidb-info() {
     echo "AIDB Development Environment"
-    echo "  Flake location: ~/.config/home-manager/flake.nix"
+    echo "  Flake location: $HOME/NixOS Dev Home/Flake/flake.nix"
     echo "  Enter dev env:  aidb-dev or aidb-shell"
     echo "  Update flake:   aidb-update"
     echo ""
@@ -2752,6 +3277,11 @@ main() {
     if [[ $EUID -eq 0 ]]; then
         print_error "This script should NOT be run as root"
         print_info "It will use sudo when needed for system operations"
+        exit 1
+    fi
+
+    if ! assert_unique_paths HM_CONFIG_FILE SYSTEM_CONFIG_FILE HW_CONFIG_FILE; then
+        print_error "Internal configuration path conflict detected."
         exit 1
     fi
 
