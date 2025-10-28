@@ -560,5 +560,4 @@ in
   # System & Home Manager Version
   # ============================================================================
   system.stateVersion = "@NIXOS_VERSION@";
-  home.stateVersion = "@NIXOS_VERSION@";
 }
