@@ -59,16 +59,16 @@ let
   huggingfaceReadme = ''
     Hugging Face configuration lives here.
 
-    • Store your personal access token in the file "token" within this directory (never commit it).
-    • CLI caches and credentials are isolated from Git repositories.
-    • The hf-model-sync helper will reuse this token and cache when downloading models.
+    - Store your personal access token in the file "token" within this directory (never commit it).
+    - CLI caches and credentials are isolated from Git repositories.
+    - The hf-model-sync helper will reuse this token and cache when downloading models.
   '';
   openWebUiReadme = ''
     Persistent storage for Open WebUI when launched with the open-webui-run helper.
 
-    • All chat history, uploads, and custom prompts are written here.
-    • The helper binds this directory into the container at /app/backend/data.
-    • Remove this directory to reset the Open WebUI state safely.
+    - All chat history, uploads, and custom prompts are written here.
+    - The helper binds this directory into the container at /app/backend/data.
+    - Remove this directory to reset the Open WebUI state safely.
   '';
   giteaSharedAppIni = ''
     [server]
