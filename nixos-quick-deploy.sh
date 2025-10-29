@@ -55,6 +55,105 @@ ensure_path_owner() {
     return 0
 }
 
+# ---------------------------------------------------------------------------
+# Backup helpers for clearing paths managed by home-manager
+# ---------------------------------------------------------------------------
+
+backup_path_if_exists() {
+    local target_path="$1"
+    local backup_dir="$2"
+    local label="$3"
+
+    if [[ ! -e "$target_path" && ! -L "$target_path" ]]; then
+        return 1
+    fi
+
+    mkdir -p "$backup_dir"
+
+    local rel_path
+    if [[ "$target_path" == "$HOME" ]]; then
+        rel_path="home-root"
+    elif [[ "$target_path" == "$HOME"/* ]]; then
+        rel_path="${target_path#$HOME/}"
+    else
+        rel_path="${target_path#/}"
+    fi
+
+    local dest_path="$backup_dir/$rel_path"
+    mkdir -p "$(dirname "$dest_path")"
+
+    if cp -a "$target_path" "$dest_path" 2>/dev/null; then
+        if [[ -d "$target_path" && ! -L "$target_path" ]]; then
+            rm -rf "$target_path"
+        else
+            rm -f "$target_path"
+        fi
+
+        local display_label
+        display_label="${label:-$rel_path}"
+        print_success "Backed up and removed $display_label"
+        print_info "  → Backup saved to: $dest_path"
+        return 0
+    fi
+
+    print_warning "Failed to back up $label at $target_path"
+    return 2
+}
+
+clean_home_manager_targets() {
+    local phase_tag="${1:-pre-switch}"
+    local timestamp
+    timestamp="$(date +%Y%m%d_%H%M%S)"
+    local backup_dir="$HOME/.config-backups/${phase_tag}-${timestamp}"
+    local cleaned_any=false
+    local encountered_error=false
+
+    local -a targets=(
+        "$HOME/.config/VSCodium/User/settings.json::VSCodium settings.json"
+        "$HOME/.bashrc::.bashrc"
+        "$HOME/.zshrc::.zshrc"
+        "$HOME/.p10k.zsh::.p10k.zsh"
+    )
+
+    for entry in "${targets[@]}"; do
+        local path="${entry%%::*}"
+        local label="${entry##*::}"
+
+        backup_path_if_exists "$path" "$backup_dir" "$label"
+        local result=$?
+        if [[ $result -eq 0 ]]; then
+            cleaned_any=true
+        elif [[ $result -eq 2 ]]; then
+            encountered_error=true
+        fi
+    done
+
+    local vscodium_user_dir="$HOME/.config/VSCodium/User"
+    if [[ -d "$vscodium_user_dir" && ! -L "$vscodium_user_dir" ]]; then
+        if find "$vscodium_user_dir" -mindepth 1 -maxdepth 1 ! -type l 2>/dev/null | grep -q .; then
+            backup_path_if_exists "$vscodium_user_dir" "$backup_dir" "VSCodium User directory"
+            local dir_result=$?
+            if [[ $dir_result -eq 0 ]]; then
+                cleaned_any=true
+            elif [[ $dir_result -eq 2 ]]; then
+                encountered_error=true
+            fi
+        fi
+    fi
+
+    if [[ "$cleaned_any" == true ]]; then
+        print_success "All conflicting configs backed up to: $backup_dir"
+        print_info "Home-manager will now create managed symlinks"
+    else
+        rm -rf "$backup_dir"
+        print_info "No conflicting configuration files required backup."
+    fi
+
+    if [[ "$encountered_error" == true ]]; then
+        print_warning "Some configuration paths could not be backed up automatically (see messages above)."
+    fi
+}
+
 cleanup_conflicting_home_manager_profile() {
     if ! command -v nix >/dev/null 2>&1; then
         return 0
@@ -2382,53 +2481,7 @@ apply_home_manager_config() {
 
 backup_existing_configs() {
     print_info "Backing up and removing conflicting configuration files..."
-    local BACKUP_DIR="$HOME/.config-backups/$(date +%Y%m%d_%H%M%S)"
-    mkdir -p "$BACKUP_DIR"
-
-    # Backup and remove VSCodium settings.json to prevent collision
-    VSCODIUM_SETTINGS="$HOME/.config/VSCodium/User/settings.json"
-    if [ -f "$VSCODIUM_SETTINGS" ] && [ ! -L "$VSCODIUM_SETTINGS" ]; then
-        cp "$VSCODIUM_SETTINGS" "$BACKUP_DIR/vscodium-settings.json"
-        rm "$VSCODIUM_SETTINGS"
-        print_success "Backed up and removed VSCodium settings"
-    fi
-
-    # Backup and remove .bashrc if it exists to prevent collision
-    if [ -f "$HOME/.bashrc" ] && [ ! -L "$HOME/.bashrc" ]; then
-        cp "$HOME/.bashrc" "$BACKUP_DIR/.bashrc"
-        rm "$HOME/.bashrc"
-        print_success "Backed up and removed .bashrc"
-    fi
-
-    # Backup and remove existing .zshrc
-    if [ -f "$HOME/.zshrc" ] && [ ! -L "$HOME/.zshrc" ]; then
-        cp "$HOME/.zshrc" "$BACKUP_DIR/.zshrc"
-        rm "$HOME/.zshrc"
-        print_success "Backed up and removed .zshrc"
-    fi
-
-    # Backup and remove existing .p10k.zsh
-    if [ -f "$HOME/.p10k.zsh" ] && [ ! -L "$HOME/.p10k.zsh" ]; then
-        cp "$HOME/.p10k.zsh" "$BACKUP_DIR/.p10k.zsh"
-        rm "$HOME/.p10k.zsh"
-        print_success "Backed up and removed .p10k.zsh"
-    fi
-
-    # Also check for VSCodium User directory conflict
-    VSCODIUM_USER_DIR="$HOME/.config/VSCodium/User"
-    if [ -d "$VSCODIUM_USER_DIR" ] && [ ! -L "$VSCODIUM_USER_DIR" ]; then
-        # Only back up the directory if it has files we care about
-        if [ -n "$(ls -A "$VSCODIUM_USER_DIR" 2>/dev/null)" ]; then
-            mkdir -p "$BACKUP_DIR/VSCodium-User"
-            cp -r "$VSCODIUM_USER_DIR"/* "$BACKUP_DIR/VSCodium-User/" 2>/dev/null || true
-            print_info "Backed up VSCodium User directory contents"
-        fi
-    fi
-
-    if [ -d "$BACKUP_DIR" ] && [ -n "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then
-        print_success "All conflicting configs backed up to: $BACKUP_DIR"
-    fi
-    print_info "Home-manager will now create managed symlinks"
+    clean_home_manager_targets "pre-switch"
 }
 
 apply_system_changes() {
@@ -3237,6 +3290,14 @@ configure_vscodium_for_claude() {
 
     SETTINGS_FILE="$HOME/.config/VSCodium/User/settings.json"
 
+    if [ -L "$SETTINGS_FILE" ]; then
+        print_info "VSCodium settings.json is managed by home-manager (symlink detected)."
+        print_info "Skipping manual Claude Code configuration to avoid breaking the managed state."
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$SETTINGS_FILE")"
+
     # Check if Claude Code settings already configured (IDEMPOTENCY CHECK)
     if [ -f "$SETTINGS_FILE" ]; then
         if jq -e '."claude-code.executablePath"' "$SETTINGS_FILE" >/dev/null 2>&1; then
@@ -3419,6 +3480,7 @@ finalize_configuration_activation() {
     fi
 
     if confirm "$hm_prompt" "y"; then
+        clean_home_manager_targets "final-activation"
         local HM_SWITCH_LOG="/tmp/home-manager-switch-final.log"
         if run_home_manager_switch "$HM_SWITCH_LOG"; then
             HOME_MANAGER_APPLIED=true
