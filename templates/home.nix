@@ -330,6 +330,7 @@ in
           # System tools
           htop                    # Interactive process viewer
           btop                    # Resource monitor with modern UI
+          flatpak                 # Flatpak CLI for sandboxed desktop apps
           tree                    # Display directory tree structure
           unzip                   # Extract ZIP archives
           zip                     # Create ZIP archives
