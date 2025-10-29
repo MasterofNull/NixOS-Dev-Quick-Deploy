@@ -55,6 +55,105 @@ ensure_path_owner() {
     return 0
 }
 
+# ---------------------------------------------------------------------------
+# Backup helpers for clearing paths managed by home-manager
+# ---------------------------------------------------------------------------
+
+backup_path_if_exists() {
+    local target_path="$1"
+    local backup_dir="$2"
+    local label="$3"
+
+    if [[ ! -e "$target_path" && ! -L "$target_path" ]]; then
+        return 1
+    fi
+
+    mkdir -p "$backup_dir"
+
+    local rel_path
+    if [[ "$target_path" == "$HOME" ]]; then
+        rel_path="home-root"
+    elif [[ "$target_path" == "$HOME"/* ]]; then
+        rel_path="${target_path#$HOME/}"
+    else
+        rel_path="${target_path#/}"
+    fi
+
+    local dest_path="$backup_dir/$rel_path"
+    mkdir -p "$(dirname "$dest_path")"
+
+    if cp -a "$target_path" "$dest_path" 2>/dev/null; then
+        if [[ -d "$target_path" && ! -L "$target_path" ]]; then
+            rm -rf "$target_path"
+        else
+            rm -f "$target_path"
+        fi
+
+        local display_label
+        display_label="${label:-$rel_path}"
+        print_success "Backed up and removed $display_label"
+        print_info "  → Backup saved to: $dest_path"
+        return 0
+    fi
+
+    print_warning "Failed to back up $label at $target_path"
+    return 2
+}
+
+clean_home_manager_targets() {
+    local phase_tag="${1:-pre-switch}"
+    local timestamp
+    timestamp="$(date +%Y%m%d_%H%M%S)"
+    local backup_dir="$HOME/.config-backups/${phase_tag}-${timestamp}"
+    local cleaned_any=false
+    local encountered_error=false
+
+    local -a targets=(
+        "$HOME/.config/VSCodium/User/settings.json::VSCodium settings.json"
+        "$HOME/.bashrc::.bashrc"
+        "$HOME/.zshrc::.zshrc"
+        "$HOME/.p10k.zsh::.p10k.zsh"
+    )
+
+    for entry in "${targets[@]}"; do
+        local path="${entry%%::*}"
+        local label="${entry##*::}"
+
+        backup_path_if_exists "$path" "$backup_dir" "$label"
+        local result=$?
+        if [[ $result -eq 0 ]]; then
+            cleaned_any=true
+        elif [[ $result -eq 2 ]]; then
+            encountered_error=true
+        fi
+    done
+
+    local vscodium_user_dir="$HOME/.config/VSCodium/User"
+    if [[ -d "$vscodium_user_dir" && ! -L "$vscodium_user_dir" ]]; then
+        if find "$vscodium_user_dir" -mindepth 1 -maxdepth 1 ! -type l 2>/dev/null | grep -q .; then
+            backup_path_if_exists "$vscodium_user_dir" "$backup_dir" "VSCodium User directory"
+            local dir_result=$?
+            if [[ $dir_result -eq 0 ]]; then
+                cleaned_any=true
+            elif [[ $dir_result -eq 2 ]]; then
+                encountered_error=true
+            fi
+        fi
+    fi
+
+    if [[ "$cleaned_any" == true ]]; then
+        print_success "All conflicting configs backed up to: $backup_dir"
+        print_info "Home-manager will now create managed symlinks"
+    else
+        rm -rf "$backup_dir"
+        print_info "No conflicting configuration files required backup."
+    fi
+
+    if [[ "$encountered_error" == true ]]; then
+        print_warning "Some configuration paths could not be backed up automatically (see messages above)."
+    fi
+}
+
 cleanup_conflicting_home_manager_profile() {
     if ! command -v nix >/dev/null 2>&1; then
         return 0
@@ -229,6 +328,9 @@ SYSTEM_CONFIG_BACKUP=""
 HOME_MANAGER_BACKUP=""
 HOME_MANAGER_CHANNEL_REF=""
 HOME_MANAGER_CHANNEL_URL=""
+
+HOME_MANAGER_APPLIED=false
+SYSTEM_REBUILD_APPLIED=false
 
 # Preserved configuration data
 SELECTED_TIMEZONE=""
@@ -2173,6 +2275,48 @@ PY
 # Apply Configuration
 # ============================================================================
 
+run_home_manager_switch() {
+    local log_path="${1:-/tmp/home-manager-switch.log}"
+    local hm_pkg_ref
+    hm_pkg_ref=$(get_home_manager_package_ref)
+
+    local hm_cli_available=false
+    if command -v home-manager &> /dev/null; then
+        hm_cli_available=true
+        print_success "home-manager command available: $(which home-manager)"
+    else
+        print_warning "home-manager command not found in PATH"
+        print_info "Will invoke via: nix run --accept-flake-config ${hm_pkg_ref} -- ..."
+    fi
+
+    print_info "Applying your custom home-manager configuration..."
+    print_info "Config: $HOME_MANAGER_FILE"
+    print_info "Using flake for full Flatpak declarative support..."
+    echo ""
+
+    if $hm_cli_available; then
+        home-manager switch --flake "$HM_CONFIG_DIR" --show-trace 2>&1 | tee "$log_path"
+        return ${PIPESTATUS[0]}
+    fi
+
+    nix run --accept-flake-config "${hm_pkg_ref}" -- switch --flake "$HM_CONFIG_DIR" --show-trace 2>&1 | tee "$log_path"
+    return ${PIPESTATUS[0]}
+}
+
+run_nixos_rebuild_switch() {
+    local log_path="${1:-/tmp/nixos-rebuild.log}"
+    local target_host
+    target_host=$(hostname)
+
+    print_warning "Running: sudo nixos-rebuild switch --flake \"$HM_CONFIG_DIR#$target_host\""
+    print_info "This will download and install all AIDB components using the generated flake..."
+    print_info "May take 10-20 minutes on first run"
+    echo ""
+
+    sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" 2>&1 | tee "$log_path"
+    return ${PIPESTATUS[0]}
+}
+
 apply_home_manager_config() {
     print_section "Applying Home Manager Configuration"
 
@@ -2181,17 +2325,6 @@ apply_home_manager_config() {
     if [[ ":$PATH:" != *":$HOME/.nix-profile/bin:"* ]]; then
         export PATH="$HOME/.nix-profile/bin:$PATH"
         print_info "Added ~/.nix-profile/bin to PATH for home-manager"
-    fi
-
-    local hm_pkg_ref=$(get_home_manager_package_ref)
-    local hm_cli_available=false
-
-    if command -v home-manager &> /dev/null; then
-        hm_cli_available=true
-        print_success "home-manager command available: $(which home-manager)"
-    else
-        print_warning "home-manager command not found in PATH"
-        print_info "Will invoke via: nix run --accept-flake-config ${hm_pkg_ref} -- ..."
     fi
 
     print_info "This will install packages and configure your environment..."
@@ -2250,14 +2383,7 @@ apply_home_manager_config() {
     # Backup existing configuration files
     backup_existing_configs
 
-    print_info "Running home-manager switch (automatic, no confirmation needed)..."
-    echo ""
-
-    # Run home-manager switch with flake support for declarative Flatpak management
-    # The flake already imports the nix-flatpak module for services.flatpak support
-    print_info "Applying your custom home-manager configuration..."
-    print_info "Config: $HOME_MANAGER_FILE"
-    print_info "Using flake for full Flatpak declarative support..."
+    print_info "Home-manager activation can now be applied using your generated flake."
     echo ""
 
     # Update flake.lock to ensure we have latest versions of inputs
@@ -2283,17 +2409,19 @@ apply_home_manager_config() {
     local CURRENT_USER=$(whoami)
     #nix-shell -p home-manager
     print_info "Using configuration: homeConfigurations.$CURRENT_USER"
-    local hm_exit_code
-    if $hm_cli_available; then
-        home-manager switch --flake "$HM_CONFIG_DIR" --show-trace 2>&1 | tee /tmp/home-manager-switch.log
-        hm_exit_code=${PIPESTATUS[0]}
-    else
-        nix run --accept-flake-config "${hm_pkg_ref}" -- switch --flake "$HM_CONFIG_DIR" --show-trace 2>&1 | tee /tmp/home-manager-switch.log
-        hm_exit_code=${PIPESTATUS[0]}
+    echo ""
+
+    if ! confirm "Run home-manager switch now to activate your user environment?" "y"; then
+        print_warning "home-manager switch skipped at this stage. Run 'home-manager switch --flake "$HM_CONFIG_DIR"' later to apply the configuration."
+        print_warning "Some later steps may require the home-manager packages to be available."
+        echo ""
+        return 0
     fi
 
-    if [ $hm_exit_code -eq 0 ]; then
+    local HM_SWITCH_LOG="/tmp/home-manager-switch.log"
+    if run_home_manager_switch "$HM_SWITCH_LOG"; then
         print_success "Home manager configuration applied successfully!"
+        HOME_MANAGER_APPLIED=true
         echo ""
 
         # Source the home-manager session vars to update PATH immediately
@@ -2326,6 +2454,7 @@ apply_home_manager_config() {
         fi
         echo ""
     else
+        local hm_exit_code=$?
         print_error "home-manager switch failed (exit code: $hm_exit_code)"
         echo ""
         print_warning "Common causes:"
@@ -2334,9 +2463,10 @@ apply_home_manager_config() {
         echo "  • Network issues downloading packages"
         echo "  • Package conflicts or missing dependencies"
         echo ""
-        print_info "Full log saved to: /tmp/home-manager-switch.log"
+        print_info "Full log saved to: $HM_SWITCH_LOG"
         print_info "Backup is at: $HOME_MANAGER_BACKUP"
         echo ""
+
         print_error "Automatic rollback will restore your previous configuration."
         print_error "Fix the issue above, then run this script again for a fresh start."
         echo ""
@@ -2351,53 +2481,7 @@ apply_home_manager_config() {
 
 backup_existing_configs() {
     print_info "Backing up and removing conflicting configuration files..."
-    local BACKUP_DIR="$HOME/.config-backups/$(date +%Y%m%d_%H%M%S)"
-    mkdir -p "$BACKUP_DIR"
-
-    # Backup and remove VSCodium settings.json to prevent collision
-    VSCODIUM_SETTINGS="$HOME/.config/VSCodium/User/settings.json"
-    if [ -f "$VSCODIUM_SETTINGS" ] && [ ! -L "$VSCODIUM_SETTINGS" ]; then
-        cp "$VSCODIUM_SETTINGS" "$BACKUP_DIR/vscodium-settings.json"
-        rm "$VSCODIUM_SETTINGS"
-        print_success "Backed up and removed VSCodium settings"
-    fi
-
-    # Backup and remove .bashrc if it exists to prevent collision
-    if [ -f "$HOME/.bashrc" ] && [ ! -L "$HOME/.bashrc" ]; then
-        cp "$HOME/.bashrc" "$BACKUP_DIR/.bashrc"
-        rm "$HOME/.bashrc"
-        print_success "Backed up and removed .bashrc"
-    fi
-
-    # Backup and remove existing .zshrc
-    if [ -f "$HOME/.zshrc" ] && [ ! -L "$HOME/.zshrc" ]; then
-        cp "$HOME/.zshrc" "$BACKUP_DIR/.zshrc"
-        rm "$HOME/.zshrc"
-        print_success "Backed up and removed .zshrc"
-    fi
-
-    # Backup and remove existing .p10k.zsh
-    if [ -f "$HOME/.p10k.zsh" ] && [ ! -L "$HOME/.p10k.zsh" ]; then
-        cp "$HOME/.p10k.zsh" "$BACKUP_DIR/.p10k.zsh"
-        rm "$HOME/.p10k.zsh"
-        print_success "Backed up and removed .p10k.zsh"
-    fi
-
-    # Also check for VSCodium User directory conflict
-    VSCODIUM_USER_DIR="$HOME/.config/VSCodium/User"
-    if [ -d "$VSCODIUM_USER_DIR" ] && [ ! -L "$VSCODIUM_USER_DIR" ]; then
-        # Only back up the directory if it has files we care about
-        if [ -n "$(ls -A "$VSCODIUM_USER_DIR" 2>/dev/null)" ]; then
-            mkdir -p "$BACKUP_DIR/VSCodium-User"
-            cp -r "$VSCODIUM_USER_DIR"/* "$BACKUP_DIR/VSCodium-User/" 2>/dev/null || true
-            print_info "Backed up VSCodium User directory contents"
-        fi
-    fi
-
-    if [ -d "$BACKUP_DIR" ] && [ -n "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then
-        print_success "All conflicting configs backed up to: $BACKUP_DIR"
-    fi
-    print_info "Home-manager will now create managed symlinks"
+    clean_home_manager_targets "pre-switch"
 }
 
 apply_system_changes() {
@@ -2832,12 +2916,18 @@ PY
 
     # Apply the new configuration
     print_section "Applying New Configuration"
-    print_warning "Running: sudo nixos-rebuild switch --flake \"$HM_CONFIG_DIR#$HOSTNAME\""
-    print_info "This will download and install all AIDB components using the generated flake..."
-    print_info "May take 10-20 minutes on first run"
-    echo ""
 
-    if sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$HOSTNAME" 2>&1 | tee /tmp/nixos-rebuild.log; then
+    if ! confirm "Run 'sudo nixos-rebuild switch' now to activate the system configuration?" "y"; then
+        local target_host=$(hostname)
+        print_warning "nixos-rebuild switch skipped at this stage. Run 'sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host"' later to apply system changes."
+        print_warning "Without switching, some packages and services may remain unavailable until you rebuild."
+        echo ""
+        return 0
+    fi
+
+    local NIXOS_REBUILD_LOG="/tmp/nixos-rebuild.log"
+    if run_nixos_rebuild_switch "$NIXOS_REBUILD_LOG"; then
+        SYSTEM_REBUILD_APPLIED=true
         print_success "✓ NixOS system configured successfully!"
         print_success "✓ AIDB development environment ready"
         echo ""
@@ -2853,9 +2943,10 @@ PY
         fi
         echo ""
     else
+        local rebuild_exit_code=$?
         print_error "nixos-rebuild failed - restoring backup"
         sudo cp "$SYSTEM_CONFIG_BACKUP" "$SYSTEM_CONFIG"
-        print_info "Backup restored. Check: /tmp/nixos-rebuild.log"
+        print_info "Backup restored. Check: $NIXOS_REBUILD_LOG"
         exit 1
     fi
 }
@@ -3199,6 +3290,14 @@ configure_vscodium_for_claude() {
 
     SETTINGS_FILE="$HOME/.config/VSCodium/User/settings.json"
 
+    if [ -L "$SETTINGS_FILE" ]; then
+        print_info "VSCodium settings.json is managed by home-manager (symlink detected)."
+        print_info "Skipping manual Claude Code configuration to avoid breaking the managed state."
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$SETTINGS_FILE")"
+
     # Check if Claude Code settings already configured (IDEMPOTENCY CHECK)
     if [ -f "$SETTINGS_FILE" ]; then
         if jq -e '."claude-code.executablePath"' "$SETTINGS_FILE" >/dev/null 2>&1; then
@@ -3368,6 +3467,70 @@ install_vscodium_extensions() {
 # ============================================================================
 # Post-Install Instructions
 # ============================================================================
+
+finalize_configuration_activation() {
+    print_section "Final Activation"
+
+    local hm_was_applied="$HOME_MANAGER_APPLIED"
+    local hm_prompt
+    if [[ "$HOME_MANAGER_APPLIED" == true ]]; then
+        hm_prompt="Re-run home-manager switch now to ensure all user-level changes are active?"
+    else
+        hm_prompt="Run home-manager switch now to activate your user environment?"
+    fi
+
+    if confirm "$hm_prompt" "y"; then
+        clean_home_manager_targets "final-activation"
+        local HM_SWITCH_LOG="/tmp/home-manager-switch-final.log"
+        if run_home_manager_switch "$HM_SWITCH_LOG"; then
+            HOME_MANAGER_APPLIED=true
+            if [[ "$hm_was_applied" == true ]]; then
+                print_success "Home-manager switch completed during finalization"
+            else
+                apply_system_changes
+                print_success "Home-manager configuration activated during finalization"
+            fi
+            echo ""
+        else
+            local hm_exit_code=$?
+            print_error "home-manager switch during finalization failed (exit code: $hm_exit_code)"
+            print_info "Review the log: $HM_SWITCH_LOG"
+            exit 1
+        fi
+    else
+        print_info "Skipping home-manager switch during finalization."
+    fi
+
+    echo ""
+
+    local rebuild_was_applied="$SYSTEM_REBUILD_APPLIED"
+    local rebuild_prompt
+    if [[ "$SYSTEM_REBUILD_APPLIED" == true ]]; then
+        rebuild_prompt="Re-run 'sudo nixos-rebuild switch' now to ensure system configuration is current?"
+    else
+        rebuild_prompt="Run 'sudo nixos-rebuild switch' now to activate the system configuration?"
+    fi
+
+    if confirm "$rebuild_prompt" "y"; then
+        local NIXOS_REBUILD_LOG="/tmp/nixos-rebuild-final.log"
+        if run_nixos_rebuild_switch "$NIXOS_REBUILD_LOG"; then
+            SYSTEM_REBUILD_APPLIED=true
+            if [[ "$rebuild_was_applied" == true ]]; then
+                print_success "System rebuild completed again during finalization"
+            else
+                print_success "System configuration activated during finalization"
+            fi
+            echo ""
+        else
+            local rebuild_exit_code=$?
+            print_error "nixos-rebuild switch during finalization failed (exit code: $rebuild_exit_code)"
+            print_info "Review the log: $NIXOS_REBUILD_LOG"
+            exit 1
+        fi
+    else
+        print_info "Skipping nixos-rebuild switch during finalization."
+    fi
+}
 
 print_post_install() {
     print_section "Installation Complete!"
@@ -3556,6 +3719,7 @@ main() {
         echo ""
     fi
 
+    finalize_configuration_activation
 
     print_post_install
 
