@@ -5,7 +5,7 @@
 # If you edit this file manually, your edits will be preserved
 # until the template itself changes (new packages added to script)
 
-{ config, pkgs, nix-flatpak, ... }:
+{ config, pkgs, options, nix-flatpak, ... }:
 
 let
   lib = pkgs.lib;
@@ -1295,6 +1295,19 @@ in
   #
   services.flatpak =
     let
+      flatpakPackageOptions =
+        # The nix-flatpak module follows the Home Manager/NixOS option schema
+        # documented in the NixOS manual. In recent releases it renamed the
+        # `remote` attribute to `origin`, so we inspect the option metadata to
+        # stay compatible with both variants when generating package entries.
+        lib.attrByPath [ "services" "flatpak" "packages" "type" "elemType" "options" ] options { };
+      supportsOrigin = flatpakPackageOptions ? origin;
+      supportsRemote = flatpakPackageOptions ? remote;
+      mkFlathubPackage =
+        appId:
+          { inherit appId; }
+          // lib.optionalAttrs supportsOrigin { origin = "flathub"; }
+          // lib.optionalAttrs supportsRemote { remote = "flathub"; };
       flathubPackages = [
       # ====================================================================
       # SYSTEM TOOLS & UTILITIES (Recommended - Essential GUI Tools)
@@ -1409,10 +1422,7 @@ in
           url = "https://dl.flathub.org/repo/flathub.flatpakrepo";
         };
       };
-      packages = map (appId: {
-        inherit appId;
-        remote = "flathub";
-      }) flathubPackages;
+      packages = map mkFlathubPackage flathubPackages;
 
       # Optional: Set permissions globally for all Flatpak packages
       # permissions = {
