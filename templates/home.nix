@@ -1404,15 +1404,14 @@ in
     ];
     in {
       enable = true;
-      remotes = [
-        {
-          name = "flathub";
+      remotes = {
+        flathub = {
           url = "https://dl.flathub.org/repo/flathub.flatpakrepo";
-        }
-      ];
+        };
+      };
       packages = map (appId: {
         inherit appId;
-        origin = "flathub";
+        remote = "flathub";
       }) flathubPackages;
 
       # Optional: Set permissions globally for all Flatpak packages
