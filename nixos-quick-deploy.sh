@@ -1496,6 +1496,9 @@ check_prerequisites() {
         print_info "Added ~/.nix-profile/bin to PATH"
     fi
 
+    print_info "Scanning nix profile for legacy home-manager entries..."
+    cleanup_conflicting_home_manager_profile
+
     if command -v home-manager &> /dev/null; then
         print_success "home-manager is installed: $(which home-manager)"
     else
@@ -1816,8 +1819,6 @@ install_home_manager() {
 
     print_info "Preparing home-manager CLI for dotfiles workflow..."
     print_info "  Source: ${hm_pkg_ref}"
-
-    cleanup_conflicting_home_manager_profile
 
     if command -v home-manager &> /dev/null; then
         print_success "home-manager command already available: $(which home-manager)"
