@@ -1430,6 +1430,7 @@ in
     ];
     in {
       enable = true;
+      package = pkgs.flatpak;
       remotes = [ mkFlathubRemote ];
       packages = map mkFlathubPackage flathubPackages;
 
