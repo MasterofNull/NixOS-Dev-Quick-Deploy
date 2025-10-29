@@ -28,6 +28,12 @@ let
         markdown = super.markdown.overridePythonAttrs (old: {
           doCheck = false;
         });
+        "pytest-doctestplus" = super."pytest-doctestplus".overridePythonAttrs (old: {
+          doCheck = false;
+        });
+        "google-api-core" = super."google-api-core".overridePythonAttrs (old: {
+          doCheck = false;
+        });
       };
     };
   pythonAiEnv =
