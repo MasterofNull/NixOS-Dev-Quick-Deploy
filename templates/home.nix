@@ -1303,11 +1303,20 @@ in
         lib.attrByPath [ "services" "flatpak" "packages" "type" "elemType" "options" ] options { };
       supportsOrigin = flatpakPackageOptions ? origin;
       supportsRemote = flatpakPackageOptions ? remote;
+      flatpakRemoteOptions =
+        lib.attrByPath [ "services" "flatpak" "remotes" "type" "elemType" "options" ] options { };
+      supportsLocation = flatpakRemoteOptions ? location;
+      supportsUrl = flatpakRemoteOptions ? url;
       mkFlathubPackage =
         appId:
           { inherit appId; }
           // lib.optionalAttrs supportsOrigin { origin = "flathub"; }
           // lib.optionalAttrs supportsRemote { remote = "flathub"; };
+      flathubRemoteUrl = "https://dl.flathub.org/repo/flathub.flatpakrepo";
+      mkFlathubRemote =
+        { name = "flathub"; }
+        // lib.optionalAttrs (supportsLocation || !supportsUrl) { location = flathubRemoteUrl; }
+        // lib.optionalAttrs (supportsUrl && !supportsLocation) { url = flathubRemoteUrl; };
       flathubPackages = [
       # ====================================================================
       # SYSTEM TOOLS & UTILITIES (Recommended - Essential GUI Tools)
@@ -1417,11 +1426,7 @@ in
     ];
     in {
       enable = true;
-      remotes = {
-        flathub = {
-          url = "https://dl.flathub.org/repo/flathub.flatpakrepo";
-        };
-      };
+      remotes = [ mkFlathubRemote ];
       packages = map mkFlathubPackage flathubPackages;
 
       # Optional: Set permissions globally for all Flatpak packages
