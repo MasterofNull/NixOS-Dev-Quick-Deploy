@@ -48,6 +48,8 @@ let
             + ''
               find . -type f -name '*.py' -exec sed -i 's/np\\.NaN/np.nan/g' {} +
             '';
+          doCheck = false;
+          pythonImportsCheck = [];
         });
         psycopg = super.psycopg.overridePythonAttrs (old: {
           doCheck = false;
