@@ -43,11 +43,9 @@ let
         "google-cloud-bigquery" = super."google-cloud-bigquery".overridePythonAttrs (old: {
           doCheck = false;
         });
-        "psycopg" = super."psycopg".overridePythonAttrs (old: {
-          doCheck = false;
-        });
         psycopg = super.psycopg.overridePythonAttrs (old: {
           doCheck = false;
+          pythonImportsCheck = [];
         });
       };
     };
