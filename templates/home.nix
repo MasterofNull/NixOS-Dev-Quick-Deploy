@@ -1412,7 +1412,6 @@ in
       packages = map (appId: {
         inherit appId;
         origin = "flathub";
-        installation = "user";
       }) flathubPackages;
 
       # Optional: Set permissions globally for all Flatpak packages
