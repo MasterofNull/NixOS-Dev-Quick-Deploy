@@ -60,6 +60,10 @@ cleanup_conflicting_home_manager_profile() {
         return 0
     fi
 
+    if nix profile remove home-manager >/dev/null 2>&1; then
+        print_success "Preemptively removed default 'home-manager' profile entry"
+    fi
+
     local removal_indices=""
     local conflict_detected=false
 
@@ -675,7 +679,7 @@ materialize_hardware_configuration() {
     if command -v nixos-generate-config >/dev/null 2>&1; then
         generated_tmp=$(mktemp)
         generator_log=$(mktemp)
-        local -a generator_cmd=(nixos-generate-config --no-filesystems --show-hardware-config)
+        local -a generator_cmd=(nixos-generate-config --show-hardware-config)
 
         if command -v sudo >/dev/null 2>&1; then
             generator_cmd=(sudo "${generator_cmd[@]}")
@@ -744,6 +748,11 @@ materialize_hardware_configuration() {
         [[ -n "$generated_tmp" ]] && rm -f "$generated_tmp"
         [[ -n "$generator_log" ]] && rm -f "$generator_log"
         return 1
+    fi
+
+    if ! grep -Eq 'fileSystems\\.\"/\"' "$target_file"; then
+        print_warning "hardware-configuration.nix is missing the fileSystems.\"/\" root definition"
+        print_warning "Ensure your hardware profile defines a root filesystem before rebuilding"
     fi
 
     local detected_gpu="${GPU_TYPE:-unknown}"
