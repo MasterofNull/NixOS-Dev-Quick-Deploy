@@ -43,6 +43,12 @@ let
         "google-cloud-bigquery" = super."google-cloud-bigquery".overridePythonAttrs (old: {
           doCheck = false;
         });
+        sqlframe = super.sqlframe.overridePythonAttrs (old: {
+          postPatch = (old.postPatch or "")
+            + ''
+              find . -type f -name '*.py' -exec sed -i 's/np\\.NaN/np.nan/g' {} +
+            '';
+        });
         psycopg = super.psycopg.overridePythonAttrs (old: {
           doCheck = false;
           pythonImportsCheck = [];
