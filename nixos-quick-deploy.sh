@@ -462,20 +462,32 @@ path = Path(target_path)
 if not path.exists():
     sys.exit(0)
 
-pattern = re.compile(r"^\s*installation\s*=\s*\".*\";\s*(#.*)?$")
+patterns = [
+    ("installation", re.compile(r"^\s*installation\s*=\s*\".*\";\s*(#.*)?$")),
+    (
+        "package",
+        re.compile(r"^\s*package\s*=\s*.*flatpak.*;\s*(#.*)?$", re.IGNORECASE),
+    ),
+]
+
 lines = path.read_text(encoding="utf-8").splitlines()
 
 filtered = []
-removed = False
+removed_attrs = set()
 for line in lines:
-    if pattern.match(line):
-        removed = True
-        continue
-    filtered.append(line)
+    matched = False
+    for attr, pattern in patterns:
+        if pattern.match(line):
+            removed_attrs.add(attr)
+            matched = True
+            break
+    if not matched:
+        filtered.append(line)
 
-if removed:
+if removed_attrs:
     path.write_text("\n".join(filtered) + "\n", encoding="utf-8")
-    print("Removed deprecated services.flatpak package installation attribute")
+    attrs = ", ".join(sorted(removed_attrs))
+    print(f"Removed deprecated services.flatpak attributes: {attrs}")
 PY
     )
     local status=$?
