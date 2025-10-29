@@ -2232,7 +2232,7 @@ apply_home_manager_config() {
     echo ""
 
     # Run home-manager switch with flake support for declarative Flatpak management
-    # This passes nix-flatpak as an input to home.nix, enabling services.flatpak
+    # The flake already imports the nix-flatpak module for services.flatpak support
     print_info "Applying your custom home-manager configuration..."
     print_info "Config: $HOME_MANAGER_FILE"
     print_info "Using flake for full Flatpak declarative support..."
