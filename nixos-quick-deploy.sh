@@ -60,6 +60,10 @@ cleanup_conflicting_home_manager_profile() {
         return 0
     fi
 
+    if nix profile remove home-manager >/dev/null 2>&1; then
+        print_success "Preemptively removed default 'home-manager' profile entry"
+    fi
+
     local removal_indices=""
     local conflict_detected=false
 
@@ -162,11 +166,55 @@ PY
 
     if [[ "$removed_any" == false ]]; then
         for name in home-manager home-manager-path; do
-            if nix profile remove "$name" >/dev/null 2>&1; then
-                print_success "Removed existing '$name' profile entry"
-                removed_any=true
-            fi
+            local attempt=0
+            while nix profile list 2>/dev/null | tail -n +2 | grep -q "$name"; do
+                if nix profile remove "$name" >/dev/null 2>&1; then
+                    print_success "Removed existing '$name' profile entry"
+                    removed_any=true
+                else
+                    break
+                fi
+                attempt=$((attempt + 1))
+                if (( attempt >= 5 )); then
+                    break
+                fi
+            done
         done
+    fi
+
+    if [[ "$removed_any" == false && ensure_python_runtime ]]; then
+        local store_removals
+        store_removals=$(
+            nix profile list --json 2>/dev/null \
+            | "${PYTHON_BIN[@]}" - <<'PY'
+import json
+import sys
+
+try:
+    entries = json.load(sys.stdin)
+except Exception:
+    entries = []
+
+paths = []
+for entry in entries or []:
+    store_paths = entry.get("storePaths") or []
+    for path in store_paths:
+        if isinstance(path, str) and "home-manager" in path:
+            paths.append(path)
+
+if paths:
+    print("\n".join(paths))
+PY
+        )
+        if [[ -n "$store_removals" ]]; then
+            while IFS= read -r store_path; do
+                [[ -z "$store_path" ]] && continue
+                if nix profile remove "$store_path" >/dev/null 2>&1; then
+                    print_success "Removed home-manager store path: $store_path"
+                    removed_any=true
+                fi
+            done <<< "$store_removals"
+        fi
     fi
 
     if [[ "$removed_any" == false ]]; then
@@ -418,20 +466,32 @@ path = Path(target_path)
 if not path.exists():
     sys.exit(0)
 
-pattern = re.compile(r"^\s*installation\s*=\s*\".*\";\s*(#.*)?$")
+patterns = [
+    ("installation", re.compile(r"^\s*installation\s*=\s*\".*\";\s*(#.*)?$")),
+    (
+        "package",
+        re.compile(r"^\s*package\s*=\s*.*flatpak.*;\s*(#.*)?$", re.IGNORECASE),
+    ),
+]
+
 lines = path.read_text(encoding="utf-8").splitlines()
 
 filtered = []
-removed = False
+removed_attrs = set()
 for line in lines:
-    if pattern.match(line):
-        removed = True
-        continue
-    filtered.append(line)
+    matched = False
+    for attr, pattern in patterns:
+        if pattern.match(line):
+            removed_attrs.add(attr)
+            matched = True
+            break
+    if not matched:
+        filtered.append(line)
 
-if removed:
+if removed_attrs:
     path.write_text("\n".join(filtered) + "\n", encoding="utf-8")
-    print("Removed deprecated services.flatpak package installation attribute")
+    attrs = ", ".join(sorted(removed_attrs))
+    print(f"Removed deprecated services.flatpak attributes: {attrs}")
 PY
     )
     local status=$?
@@ -449,8 +509,9 @@ PY
 }
 
 # Configuration
-DEV_HOME_ROOT="$PRIMARY_HOME/NixOS Dev Home"
-HM_CONFIG_DIR="$DEV_HOME_ROOT/Flake"
+DOTFILES_ROOT="$PRIMARY_HOME/.dotfiles"
+DEV_HOME_ROOT="$DOTFILES_ROOT"
+HM_CONFIG_DIR="$DOTFILES_ROOT/home-manager"
 FLAKE_FILE="$HM_CONFIG_DIR/flake.nix"
 HOME_MANAGER_FILE="$HM_CONFIG_DIR/home.nix"
 SYSTEM_CONFIG_FILE="$HM_CONFIG_DIR/configuration.nix"
@@ -618,7 +679,7 @@ materialize_hardware_configuration() {
     if command -v nixos-generate-config >/dev/null 2>&1; then
         generated_tmp=$(mktemp)
         generator_log=$(mktemp)
-        local -a generator_cmd=(nixos-generate-config --no-filesystems --show-hardware-config)
+        local -a generator_cmd=(nixos-generate-config --show-hardware-config)
 
         if command -v sudo >/dev/null 2>&1; then
             generator_cmd=(sudo "${generator_cmd[@]}")
@@ -687,6 +748,11 @@ materialize_hardware_configuration() {
         [[ -n "$generated_tmp" ]] && rm -f "$generated_tmp"
         [[ -n "$generator_log" ]] && rm -f "$generator_log"
         return 1
+    fi
+
+    if ! grep -Eq 'fileSystems\\.\"/\"' "$target_file"; then
+        print_warning "hardware-configuration.nix is missing the fileSystems.\"/\" root definition"
+        print_warning "Ensure your hardware profile defines a root filesystem before rebuilding"
     fi
 
     local detected_gpu="${GPU_TYPE:-unknown}"
@@ -1439,6 +1505,9 @@ check_prerequisites() {
         print_info "Added ~/.nix-profile/bin to PATH"
     fi
 
+    print_info "Scanning nix profile for legacy home-manager entries..."
+    cleanup_conflicting_home_manager_profile
+
     if command -v home-manager &> /dev/null; then
         print_success "home-manager is installed: $(which home-manager)"
     else
@@ -1757,45 +1826,22 @@ install_home_manager() {
     local hm_pkg_ref
     hm_pkg_ref=$(get_home_manager_package_ref)
 
-    print_info "Installing home-manager CLI via nix profile..."
+    print_info "Preparing home-manager CLI for dotfiles workflow..."
     print_info "  Source: ${hm_pkg_ref}"
 
-    cleanup_conflicting_home_manager_profile
-
-    local profile_log="/tmp/home-manager-profile-install.log"
-    if nix profile install --accept-flake-config "$hm_pkg_ref" 2>&1 | tee "$profile_log"; then
-        print_success "home-manager CLI installed via nix profile"
-        print_info "Log saved to: $profile_log"
-    else
-        print_warning "nix profile install failed (see $profile_log)"
-        print_info "Falling back to channel-based installer from <home-manager>..."
-
-        if ! nix-shell '<home-manager>' -A install 2>&1 | tee /tmp/home-manager-install.log; then
-            print_error "Failed to install home-manager"
-            print_info "Log saved to: /tmp/home-manager-install.log"
-            echo ""
-            print_warning "Common causes:"
-            echo "  • Network issues during download"
-            echo "  • Insufficient disk space"
-            echo "  • Conflicting Nix configuration"
-            echo ""
-            exit 1
-        fi
-
-        print_success "home-manager installed via channel-based installer"
-        print_info "Log saved to: /tmp/home-manager-install.log"
-    fi
-
-    # Update PATH to include newly installed home-manager command
-    print_info "Updating PATH to include home-manager..."
-    export PATH="$HOME/.nix-profile/bin:$PATH"
-
-    # Verify home-manager is now available
     if command -v home-manager &> /dev/null; then
-        print_success "home-manager command is now available: $(which home-manager)"
+        print_success "home-manager command already available: $(which home-manager)"
     else
-        print_warning "home-manager command not found in PATH after installation"
-        print_info "Using 'nix run --accept-flake-config ${hm_pkg_ref} --' as a fallback during this session"
+        local bootstrap_log="/tmp/home-manager-bootstrap.log"
+        print_info "Pre-fetching home-manager CLI via nix run (no profile install)..."
+        if nix run --accept-flake-config "$hm_pkg_ref" -- --version 2>&1 | tee "$bootstrap_log"; then
+            print_success "home-manager CLI accessible via nix run"
+            print_info "Log saved to: $bootstrap_log"
+        else
+            print_warning "Unable to pre-fetch home-manager CLI (see $bootstrap_log)"
+            print_info "Will invoke home-manager through nix run during activation"
+        fi
+        print_info "Home-manager will be provided permanently by programs.home-manager.enable"
     fi
 }
 
@@ -1968,7 +2014,7 @@ create_home_manager_config() {
     fi
 
     # Create a flake.nix in the home-manager config directory for proper Flatpak support
-    # This enables using: home-manager switch --flake "$HOME/NixOS Dev Home/Flake"
+    # This enables using: home-manager switch --flake "$HOME/.dotfiles/home-manager"
     print_info "Creating home-manager flake configuration for Flatpak support..."
     local FLAKE_TEMPLATE="$TEMPLATE_DIR/flake.nix"
     if [[ ! -f "$FLAKE_TEMPLATE" ]]; then
@@ -2208,7 +2254,7 @@ apply_home_manager_config() {
     echo ""
 
     # Run home-manager switch with flake support for declarative Flatpak management
-    # This passes nix-flatpak as an input to home.nix, enabling services.flatpak
+    # The flake already imports the nix-flatpak module for services.flatpak support
     print_info "Applying your custom home-manager configuration..."
     print_info "Config: $HOME_MANAGER_FILE"
     print_info "Using flake for full Flatpak declarative support..."
@@ -2913,13 +2959,13 @@ DEVENV
 # Quick access to AIDB development environment
 
 alias aidb-dev='aidb-dev-env'
-alias aidb-shell='cd "$HOME/NixOS Dev Home/Flake" && nix develop'
-alias aidb-update='cd "$HOME/NixOS Dev Home/Flake" && nix flake update'
+alias aidb-shell='cd "$HOME/.dotfiles/home-manager" && nix develop'
+alias aidb-update='cd "$HOME/.dotfiles/home-manager" && nix flake update'
 
 # Show AIDB development environment info
 aidb-info() {
     echo "AIDB Development Environment"
-    echo "  Flake location: $HOME/NixOS Dev Home/Flake/flake.nix"
+    echo "  Flake location: $HOME/.dotfiles/home-manager/flake.nix"
     echo "  Enter dev env:  aidb-dev or aidb-shell"
     echo "  Update flake:   aidb-update"
     echo ""

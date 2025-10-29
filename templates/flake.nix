@@ -18,26 +18,26 @@
     {
       nixosConfigurations."HOSTNAME_PLACEHOLDER" = nixpkgs.lib.nixosSystem {
         inherit system;
-        specialArgs = {
-          inherit nix-flatpak;
-        };
         modules = [
           ./configuration.nix
           home-manager.nixosModules.home-manager
           {
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
-            home-manager.users."HOME_USERNAME_PLACEHOLDER" = import ./home.nix;
+            home-manager.users."HOME_USERNAME_PLACEHOLDER" = {
+              imports = [
+                nix-flatpak.homeManagerModules.nix-flatpak
+                ./home.nix
+              ];
+            };
           }
         ];
       };
 
       homeConfigurations."HOME_USERNAME_PLACEHOLDER" = home-manager.lib.homeManagerConfiguration {
         pkgs = nixpkgs.legacyPackages.${system};
-        extraSpecialArgs = {
-          inherit nix-flatpak;
-        };
         modules = [
+          nix-flatpak.homeManagerModules.nix-flatpak
           ./home.nix
         ];
       };
