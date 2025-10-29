@@ -85,14 +85,14 @@ The **`nixos-quick-deploy.sh`** script automatically:
 **To Enable:**
 ```bash
 # Edit your config
-nano ~/.config/home-manager/home.nix
+nano ~/.dotfiles/home-manager/home.nix
 
 # Uncomment apps you want (remove the # symbol)
 # "org.libreoffice.LibreOffice"
 # "org.gimp.GIMP"
 
 # Apply changes
-home-manager switch --flake ~/.config/home-manager
+home-manager switch --flake ~/.dotfiles/home-manager
 ```
 
 ---
@@ -381,8 +381,8 @@ exec zsh
 |------|---------|-----------|
 | System config update | Edit `/etc/nixos/configuration.nix` | ✅ Yes |
 | NixOS rebuild | `sudo nixos-rebuild switch` | ✅ Yes |
-| Home-manager config | Create `~/.config/home-manager/home.nix` | ✅ Yes |
-| Home-manager switch | `home-manager switch` | ✅ Yes |
+| Home-manager config | Create `~/.dotfiles/home-manager/home.nix` | ✅ Yes |
+| Home-manager switch | `home-manager switch --flake ~/.dotfiles/home-manager` | ✅ Yes |
 | Flake build | `nix develop` | ✅ Yes |
 | PATH update | Source session vars | ✅ Yes |
 | Package verification | Check `which` for each package | ✅ Yes |
@@ -402,8 +402,8 @@ exec zsh
 |------|-------|
 | System config | `/etc/nixos/configuration.nix` |
 | System backup | `/etc/nixos/configuration.nix.backup.TIMESTAMP` |
-| Home-manager config | `~/.config/home-manager/home.nix` |
-| Home-manager backup | `~/.config/home-manager/home.nix.backup.TIMESTAMP` |
+| Home-manager config | `~/.dotfiles/home-manager/home.nix` |
+| Home-manager backup | `~/.dotfiles/home-manager/home.nix.backup.TIMESTAMP` |
 | Config backups | `~/.config-backups/TIMESTAMP/` |
 | P10k configuration | `~/.config/p10k/theme.sh` |
 | ZSH config | `~/.zshrc` (managed by home-manager) |
@@ -430,7 +430,7 @@ The other files are either:
 |-------------|----------------------------|
 | Run `./nixos-quick-deploy.sh` | Updates `/etc/nixos/configuration.nix` |
 | Answer 4 questions | Runs `sudo nixos-rebuild switch` |
-| Wait 20-35 minutes | Creates `~/.config/home-manager/home.nix` |
+| Wait 20-35 minutes | Creates `~/.dotfiles/home-manager/home.nix` |
 | Reboot when done | Runs `home-manager switch` |
 | Launch ZSH (P10k wizard auto-runs) | Builds `nix develop` environment |
 | | Installs Claude Code + VSCodium |
