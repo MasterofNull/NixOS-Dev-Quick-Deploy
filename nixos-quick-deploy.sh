@@ -55,6 +55,57 @@ ensure_path_owner() {
     return 0
 }
 
+cleanup_conflicting_home_manager_profile() {
+    if ! command -v nix >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local profile_output
+    profile_output=$(nix profile list 2>/dev/null || true)
+    if [[ -z "$profile_output" ]]; then
+        return 0
+    fi
+
+    local profile_lines
+    profile_lines=$(echo "$profile_output" | tail -n +2 2>/dev/null || true)
+    if [[ -z "$profile_lines" ]]; then
+        return 0
+    fi
+
+    local conflict_lines
+    conflict_lines=$(echo "$profile_lines" | grep -E 'home-manager' || true)
+    if [[ -z "$conflict_lines" ]]; then
+        return 0
+    fi
+
+    print_warning "Existing home-manager profile entries detected (avoiding package conflict)"
+
+    if nix profile remove home-manager >/dev/null 2>&1; then
+        print_success "Removed existing 'home-manager' profile entry"
+        return 0
+    fi
+
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+
+        local idx
+        idx=$(echo "$line" | awk '{print $1}')
+        idx="${idx%:}"
+
+        if [[ -z "$idx" ]]; then
+            continue
+        fi
+
+        if nix profile remove "$idx" >/dev/null 2>&1; then
+            print_success "Removed home-manager profile entry at index $idx"
+        else
+            print_warning "Failed to remove home-manager profile entry at index $idx"
+        fi
+    done <<< "$conflict_lines"
+
+    return 0
+}
+
 # Global state tracking
 SYSTEM_CONFIG_BACKUP=""
 HOME_MANAGER_BACKUP=""
@@ -1579,6 +1630,8 @@ install_home_manager() {
 
     print_info "Installing home-manager CLI via nix profile..."
     print_info "  Source: ${hm_pkg_ref}"
+
+    cleanup_conflicting_home_manager_profile
 
     local profile_log="/tmp/home-manager-profile-install.log"
     if nix profile install --accept-flake-config "$hm_pkg_ref" 2>&1 | tee "$profile_log"; then
