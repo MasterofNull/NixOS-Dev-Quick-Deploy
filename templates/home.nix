@@ -5,7 +5,7 @@
 # If you edit this file manually, your edits will be preserved
 # until the template itself changes (new packages added to script)
 
-{ config, pkgs, options, nix-flatpak, ... }:
+{ config, pkgs, options, ... }:
 
 let
   lib = pkgs.lib;
@@ -213,13 +213,8 @@ let
 in
 
 {
-  # nix-flatpak module is imported in flake.nix as a proper home-manager module
-  # This enables declarative Flatpak management through services.flatpak configuration
-  # No manual import needed here - the module is loaded by home-manager automatically
-
-  imports = [
-    nix-flatpak.homeManagerModules.nix-flatpak
-  ];
+  # Declarative Flatpak management is enabled via nix-flatpak in flake.nix
+  # The module is already included in the flake's module list, so no manual import is required here
 
   home.username = "HOMEUSERNAME";
   home.homeDirectory = "HOMEDIR";
@@ -1297,7 +1292,7 @@ in
   # Then select app from sidebar and toggle permissions as needed.
 
   # services.flatpak: Declarative Flatpak management via nix-flatpak
-  # When using flakes with nix-flatpak module imported above, this section
+  # When using flakes with the nix-flatpak module provided via flake imports, this section
   # defines all Flatpak applications declaratively.
   # When nix-flatpak is NOT available (channel-based install), this section
   # is ignored and you can install apps manually via flatpak CLI.
