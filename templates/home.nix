@@ -1293,9 +1293,9 @@ in
   # When nix-flatpak is NOT available (channel-based install), this section
   # is ignored and you can install apps manually via flatpak CLI.
   #
-  services.flatpak = {
-    enable = true;
-    packages = [
+  services.flatpak =
+    let
+      flathubPackages = [
       # ====================================================================
       # SYSTEM TOOLS & UTILITIES (Recommended - Essential GUI Tools)
       # ====================================================================
@@ -1325,7 +1325,7 @@ in
       # ====================================================================
       # SELF-HOSTED DEVELOPMENT TOOLS
       # ====================================================================
-      giteaFlatpakAppId                     # Gitea forge with built-in editor and AI integration hooks
+      # giteaFlatpakAppId                    # Gitea forge (enable when an official Flatpak is available)
 
       # ====================================================================
       # DEVELOPMENT & CONTENT TOOLS (GUI Applications)
@@ -1402,22 +1402,28 @@ in
       # 4. Simpler configuration in shell profiles
       # 5. Most are not available on Flathub anyway
     ];
+    in {
+      enable = true;
+      remotes = {
+        flathub = {
+          url = "https://dl.flathub.org/repo/flathub.flatpakrepo";
+        };
+      };
+      packages = map (appId: {
+        inherit appId;
+        origin = "flathub";
+      }) flathubPackages;
 
-    # Optional: Override remotes if using non-Flathub sources
-    # remotes = {
-    #   flathub = "https://dl.flathub.org/repo/flathub.flatpakrepo";
-    # };
-
-    # Optional: Set permissions globally for all Flatpak packages
-    # permissions = {
-    #   "org.freedesktop.Flatpak" = {
-    #     # Grant host filesystem access
-    #     Context.filesystems = [
-    #       "home"
-    #       "/mnt"
-    #     ];
-    #   };
-    # };
-  };
+      # Optional: Set permissions globally for all Flatpak packages
+      # permissions = {
+      #   "org.freedesktop.Flatpak" = {
+      #     # Grant host filesystem access
+      #     Context.filesystems = [
+      #       "home"
+      #       "/mnt"
+      #     ];
+      #   };
+      # };
+    };
 
 }
