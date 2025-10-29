@@ -346,7 +346,7 @@ in
 
           # Note: zsh installed via programs.zsh below (prevents collision)
           zsh-syntax-highlighting # Command syntax highlighting
-          zsh-autosuggestions     # Command suggestions from history
+          #zsh-autosuggestions     # Command suggestions from history
           zsh-completions         # Additional completion definitions
           zsh-powerlevel10k       # Powerlevel10k theme
           grc                     # Generic colorizer for commands
@@ -411,7 +411,7 @@ in
     enable = true;
     enableCompletion = true;
     syntaxHighlighting.enable = true;
-    autosuggestions.enable = false;
+    #autosuggestions.enable = false;
 
     history = {
       size = 100000;
