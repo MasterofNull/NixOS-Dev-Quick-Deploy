@@ -7,7 +7,7 @@
 # What it does NOT do: Initialize AIDB database or start containers
 # Author: AI Agent
 # Created: 2025-10-23
-# Version: 2.1.1 - Fixed Flatpak integration + automatic flake.lock updates
+# Version: 2.1.2 - Strip deprecated Flatpak installation attribute automatically
 #
 
 # Error handling: Exit on undefined variable, catch errors in pipes
@@ -122,7 +122,7 @@ PREVIOUS_MUTABLE_USERS=""
 PREVIOUS_USER_PASSWORD_SNIPPET=""
 
 # Script version for change tracking
-SCRIPT_VERSION="2.1.1"
+SCRIPT_VERSION="2.1.2"
 VERSION_FILE="$PRIMARY_HOME/.cache/nixos-quick-deploy-version"
 
 # Force update flag (set via --force-update)
@@ -314,6 +314,65 @@ PY
         return 1
     elif [[ -n "$harmonize_output" ]]; then
         print_info "$context_label: $harmonize_output"
+    fi
+
+    return 0
+}
+
+remove_deprecated_flatpak_installation_attribute() {
+    local target_file="$1"
+    local context_label="${2:-$1}"
+
+    if [[ ! -f "$target_file" ]]; then
+        return 0
+    fi
+
+    if [[ ! -w "$target_file" ]]; then
+        print_warning "Skipping $context_label - file not writable"
+        return 0
+    fi
+
+    local sanitize_output
+    sanitize_output=$(TARGET_HOME_NIX="$target_file" run_python <<'PY'
+import os
+import re
+import sys
+from pathlib import Path
+
+target_path = os.environ.get("TARGET_HOME_NIX")
+if not target_path:
+    print("TARGET_HOME_NIX is not set", file=sys.stderr)
+    sys.exit(1)
+
+path = Path(target_path)
+if not path.exists():
+    sys.exit(0)
+
+pattern = re.compile(r"^\s*installation\s*=\s*\".*\";\s*(#.*)?$")
+lines = path.read_text(encoding="utf-8").splitlines()
+
+filtered = []
+removed = False
+for line in lines:
+    if pattern.match(line):
+        removed = True
+        continue
+    filtered.append(line)
+
+if removed:
+    path.write_text("\n".join(filtered) + "\n", encoding="utf-8")
+    print("Removed deprecated services.flatpak package installation attribute")
+PY
+    )
+    local status=$?
+
+    if [[ $status -ne 0 ]]; then
+        print_error "Failed to sanitize Flatpak installation attribute in $context_label"
+        return 1
+    fi
+
+    if [[ -n "$sanitize_output" ]]; then
+        print_info "$sanitize_output"
     fi
 
     return 0
@@ -1906,6 +1965,10 @@ create_home_manager_config() {
     sed -i "s|STATEVERSION_PLACEHOLDER|$STATE_VERSION|" "$HOME_MANAGER_FILE"
 
     if ! harmonize_python_ai_bindings "$HOME_MANAGER_FILE" "home-manager home.nix"; then
+        exit 1
+    fi
+
+    if ! remove_deprecated_flatpak_installation_attribute "$HOME_MANAGER_FILE" "home-manager home.nix"; then
         exit 1
     fi
 
