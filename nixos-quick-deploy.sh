@@ -60,48 +60,118 @@ cleanup_conflicting_home_manager_profile() {
         return 0
     fi
 
-    local profile_output
-    profile_output=$(nix profile list 2>/dev/null || true)
-    if [[ -z "$profile_output" ]]; then
-        return 0
+    local removal_indices=""
+    local conflict_detected=false
+
+    local profile_json
+    profile_json=$(nix profile list --json 2>/dev/null || true)
+
+    if [[ -n "$profile_json" && "$profile_json" != "[]" ]]; then
+        if ensure_python_runtime; then
+            local parsed_indices
+            parsed_indices=$(printf '%s' "$profile_json" | "${PYTHON_BIN[@]}" - <<'PY'
+import json
+import sys
+
+try:
+    entries = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+
+seen = set()
+for entry in entries or []:
+    text_parts = []
+    for key in ("name", "attrPath", "description", "originalRef"):
+        value = entry.get(key)
+        if isinstance(value, str):
+            text_parts.append(value)
+    store_paths = entry.get("storePaths") or []
+    for path in store_paths:
+        if isinstance(path, str):
+            text_parts.append(path)
+    combined = " ".join(text_parts)
+    if "home-manager" not in combined:
+        continue
+    idx = entry.get("index")
+    if isinstance(idx, int):
+        seen.add(str(idx))
+    elif isinstance(idx, str) and idx:
+        seen.add(idx)
+
+if seen:
+    print("\n".join(sorted(seen, key=lambda value: int(value) if value.isdigit() else value)))
+PY
+            )
+
+            if [[ -n "$parsed_indices" ]]; then
+                removal_indices+="$parsed_indices"$'\n'
+                conflict_detected=true
+            fi
+        else
+            print_warning "Python runtime unavailable; skipping JSON profile cleanup"
+        fi
     fi
 
-    local profile_lines
-    profile_lines=$(echo "$profile_output" | tail -n +2 2>/dev/null || true)
-    if [[ -z "$profile_lines" ]]; then
-        return 0
+    if [[ "$conflict_detected" == false ]]; then
+        local profile_output
+        profile_output=$(nix profile list 2>/dev/null || true)
+        if [[ -n "$profile_output" ]]; then
+            local profile_lines
+            profile_lines=$(echo "$profile_output" | tail -n +2 2>/dev/null || true)
+            if [[ -n "$profile_lines" ]]; then
+                local conflict_lines
+                conflict_lines=$(echo "$profile_lines" | grep -E 'home-manager' || true)
+                if [[ -n "$conflict_lines" ]]; then
+                    conflict_detected=true
+                    while IFS= read -r line; do
+                        [[ -z "$line" ]] && continue
+                        local idx
+                        idx=$(echo "$line" | awk '{print $1}')
+                        idx="${idx%:}"
+                        [[ -z "$idx" ]] && continue
+                        removal_indices+="$idx"$'\n'
+                    done <<< "$conflict_lines"
+                fi
+            fi
+        fi
     fi
 
-    local conflict_lines
-    conflict_lines=$(echo "$profile_lines" | grep -E 'home-manager' || true)
-    if [[ -z "$conflict_lines" ]]; then
+    if [[ "$conflict_detected" == false ]]; then
         return 0
     fi
 
     print_warning "Existing home-manager profile entries detected (avoiding package conflict)"
 
-    if nix profile remove home-manager >/dev/null 2>&1; then
-        print_success "Removed existing 'home-manager' profile entry"
-        return 0
+    if [[ -n "$removal_indices" ]]; then
+        removal_indices=$(printf '%s' "$removal_indices" | awk 'NF { if (!seen[$0]++) print $0 }' 2>/dev/null || printf '')
     fi
 
-    while IFS= read -r line; do
-        [[ -z "$line" ]] && continue
+    local removed_any=false
 
-        local idx
-        idx=$(echo "$line" | awk '{print $1}')
-        idx="${idx%:}"
+    if [[ -n "$removal_indices" ]]; then
+        while IFS= read -r idx; do
+            [[ -z "$idx" ]] && continue
+            if nix profile remove "$idx" >/dev/null 2>&1; then
+                print_success "Removed home-manager profile entry at index $idx"
+                removed_any=true
+            else
+                print_warning "Failed to remove home-manager profile entry at index $idx"
+            fi
+        done <<< "$removal_indices"
+    fi
 
-        if [[ -z "$idx" ]]; then
-            continue
-        fi
+    if [[ "$removed_any" == false ]]; then
+        for name in home-manager home-manager-path; do
+            if nix profile remove "$name" >/dev/null 2>&1; then
+                print_success "Removed existing '$name' profile entry"
+                removed_any=true
+            fi
+        done
+    fi
 
-        if nix profile remove "$idx" >/dev/null 2>&1; then
-            print_success "Removed home-manager profile entry at index $idx"
-        else
-            print_warning "Failed to remove home-manager profile entry at index $idx"
-        fi
-    done <<< "$conflict_lines"
+    if [[ "$removed_any" == false ]]; then
+        print_warning "No home-manager profile entries were removed; manual cleanup may be required"
+    fi
 
     return 0
 }
