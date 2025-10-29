@@ -221,8 +221,6 @@ in
   home.stateVersion = "STATEVERSION_PLACEHOLDER";  # Auto-detected from home-manager channel
 
   programs.home-manager.enable = true;
-  nixpkgs.config.allowUnfree = true;
-
   home.packages =
     let
       aiCommandLinePackages =
