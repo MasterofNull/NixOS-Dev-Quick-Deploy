@@ -28,6 +28,25 @@ let
         markdown = super.markdown.overridePythonAttrs (old: {
           doCheck = false;
         });
+        "pytest-doctestplus" = super."pytest-doctestplus".overridePythonAttrs (old: {
+          doCheck = false;
+        });
+        "google-api-core" = super."google-api-core".overridePythonAttrs (old: {
+          doCheck = false;
+        });
+        "google-cloud-core" = super."google-cloud-core".overridePythonAttrs (old: {
+          doCheck = false;
+        });
+        "google-cloud-storage" = super."google-cloud-storage".overridePythonAttrs (old: {
+          doCheck = false;
+        });
+        "google-cloud-bigquery" = super."google-cloud-bigquery".overridePythonAttrs (old: {
+          doCheck = false;
+        });
+        psycopg = super.psycopg.overridePythonAttrs (old: {
+          doCheck = false;
+          pythonImportsCheck = [];
+        });
       };
     };
   pythonAiEnv =
