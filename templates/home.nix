@@ -34,6 +34,15 @@ let
         "google-api-core" = super."google-api-core".overridePythonAttrs (old: {
           doCheck = false;
         });
+        "google-cloud-core" = super."google-cloud-core".overridePythonAttrs (old: {
+          doCheck = false;
+        });
+        "google-cloud-storage" = super."google-cloud-storage".overridePythonAttrs (old: {
+          doCheck = false;
+        });
+        "google-cloud-bigquery" = super."google-cloud-bigquery".overridePythonAttrs (old: {
+          doCheck = false;
+        });
       };
     };
   pythonAiEnv =
