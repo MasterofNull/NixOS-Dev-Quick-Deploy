@@ -548,7 +548,6 @@ backup_legacy_flatpak_configs() {
         "$PRIMARY_HOME/.config/flatpak"
         "$PRIMARY_HOME/.local/share/flatpak/overrides"
         "$PRIMARY_HOME/.local/share/flatpak/remotes.d"
-        "$PRIMARY_HOME/.local/share/flatpak/repo/config"
     )
     local backup_root="$PRIMARY_HOME/.cache/nixos-quick-deploy/flatpak/legacy-backups"
     local timestamp
@@ -635,6 +634,24 @@ fi
     return 0
 }
 
+reset_flatpak_repo_if_corrupted() {
+    local repo_dir="$PRIMARY_HOME/.local/share/flatpak/repo"
+    local repo_config="$repo_dir/config"
+
+    run_as_primary_user install -d -m 700 "$PRIMARY_HOME/.local/share/flatpak" >/dev/null 2>&1 || true
+
+    if run_as_primary_user test -f "$repo_config"; then
+        return 0
+    fi
+
+    if run_as_primary_user test -e "$repo_dir"; then
+        print_warning "Flatpak repository metadata missing; resetting $repo_dir"
+        run_as_primary_user rm -rf "$repo_dir" >/dev/null 2>&1 || true
+    fi
+
+    return 0
+}
+
 preflight_flatpak_environment() {
     local stage="${1:-preflight}"
 
@@ -645,6 +662,8 @@ preflight_flatpak_environment() {
     if ! backup_legacy_flatpak_configs; then
         (( issues++ ))
     fi
+
+    reset_flatpak_repo_if_corrupted || true
 
     if ! flatpak_cli_available; then
         print_warning "Flatpak CLI unavailable during $stage checks"
@@ -873,7 +892,6 @@ clean_home_manager_targets() {
         "$HOME/.config/flatpak::Flatpak configuration directory"
         "$HOME/.local/share/flatpak/overrides::Flatpak overrides directory"
         "$HOME/.local/share/flatpak/remotes.d::Flatpak remotes directory"
-        "$HOME/.local/share/flatpak/repo/config::Flatpak repo configuration"
         "$AIDER_CONFIG_DIR::Aider configuration directory"
         "$TEA_CONFIG_DIR::Tea configuration directory"
         "$HUGGINGFACE_CONFIG_DIR::Hugging Face configuration directory"
