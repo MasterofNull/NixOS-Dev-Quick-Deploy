@@ -788,7 +788,8 @@ in
             # Security & privacy tooling
             clamav                  # Antivirus engine and CLI scanner
             clamtk                  # GTK frontend for ClamAV scanning
-            rkhunter                # Rootkit hunter integrity scanner
+            # rkhunter is currently unavailable in nixpkgs; re-enable once restored upstream
+            # rkhunter                # Rootkit hunter integrity scanner
             lynis                   # Auditing tool for UNIX-based systems
             chkrootkit              # Rootkit detection utility
             keepassxc               # Cross-platform password manager (GUI)
@@ -1037,7 +1038,7 @@ in
     enableExtraSocket = true;
     defaultCacheTtl = 3600;
     defaultCacheTtlSsh = 3600;
-    pinentryPackage = pkgs.pinentry-gnome3;
+    pinentry.package = pkgs.pinentry-gnome3;
   };
 
   programs.password-store = {
