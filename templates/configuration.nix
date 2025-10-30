@@ -12,13 +12,25 @@ let
   huggingfaceCacheDir = "${huggingfaceDataDir}/cache";
   huggingfaceModelId = "meta-llama/Meta-Llama-3-8B-Instruct";
   huggingfaceImage = "ghcr.io/huggingface/text-generation-inference:latest";
+  huggingfaceTokenSource = "/home/@USER@/.config/huggingface/token";
   huggingfacePrepScript = pkgs.writeShellScript "huggingface-tgi-prep" ''
     set -euo pipefail
     state_root="''${STATE_DIRECTORY:-${huggingfaceDataDir}}"
     cache_root="''${CACHE_DIRECTORY:-${huggingfaceCacheDir}}"
+    token_source=${lib.escapeShellArg huggingfaceTokenSource}
+    token_dest="''${state_root}/token"
 
     ${pkgs.coreutils}/bin/mkdir -p "${huggingfaceDataDir}" "${huggingfaceCacheDir}"
-    ${pkgs.coreutils}/bin/mkdir -p "${state_root}" "${cache_root}"
+    ${pkgs.coreutils}/bin/mkdir -p "''${state_root}" "''${cache_root}"
+
+    if [ -f "${token_source}" ]; then
+      ${pkgs.coreutils}/bin/install -m600 -D "${token_source}" "${token_dest}"
+    fi
+
+    if [ ! -f "${token_dest}" ]; then
+      ${pkgs.util-linux}/bin/logger -t huggingface-tgi "Missing Hugging Face token. Create ${huggingfaceTokenSource} to start the service."
+      exit 1
+    fi
 
     ${pkgs.podman}/bin/podman rm -f huggingface-tgi >/dev/null 2>&1 || true
     ${pkgs.podman}/bin/podman pull ${lib.escapeShellArg huggingfaceImage}
@@ -29,13 +41,13 @@ let
     cache_root="''${CACHE_DIRECTORY:-${huggingfaceCacheDir}}"
 
     ${pkgs.coreutils}/bin/mkdir -p "${huggingfaceDataDir}" "${huggingfaceCacheDir}"
-    ${pkgs.coreutils}/bin/mkdir -p "${state_root}" "${cache_root}"
+    ${pkgs.coreutils}/bin/mkdir -p "''${state_root}" "''${cache_root}"
 
     exec ${pkgs.podman}/bin/podman run \
       --rm \
       --name huggingface-tgi \
       --net host \
-      -v "${state_root}:/data" \
+      -v "''${state_root}:/data" \
       -e HF_HOME=/data \
       -e HUGGINGFACE_HUB_CACHE=/data/cache \
       -e TRANSFORMERS_CACHE=/data/cache \
@@ -295,6 +307,7 @@ in
     unitConfig = {
       StartLimitBurst = 3;
       StartLimitIntervalSec = 300;
+      ConditionPathExists = huggingfaceTokenSource;
     };
     serviceConfig = {
       Type = "simple";
