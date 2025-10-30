@@ -226,11 +226,28 @@ let
 
         local attempt=1
         while (( attempt <= 3 )); do
-          if flatpak --noninteractive --user install "$remote_name" "$app_id"; then
+          local install_output=""
+          if install_output=$(flatpak --noninteractive --user install "$remote_name" "$app_id" 2>&1); then
             log "Installed $app_id"
             return 0
           fi
+
+          if printf '%s\n' "$install_output" | grep -Eiq 'No remote refs found similar|No entry for|Nothing matches'; then
+            log "Flatpak $app_id not available on $remote_name; skipping"
+            if [[ -n "$install_output" ]]; then
+              while IFS= read -r line; do
+                log "  ↳ $line"
+              done <<<"$install_output"
+            fi
+            return 0
+          fi
+
           log "Attempt $attempt failed for $app_id" >&2
+          if [[ -n "$install_output" ]]; then
+            while IFS= read -r line; do
+              log "  ↳ $line" >&2
+            done <<<"$install_output"
+          fi
           sleep $(( attempt * 2 ))
           (( attempt += 1 ))
         done
