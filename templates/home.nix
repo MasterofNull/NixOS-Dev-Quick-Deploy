@@ -179,12 +179,12 @@ let
         fi
 
         log "Adding Flatpak remote $remote_name ($remote_url)"
-        if flatpak --noninteractive --user remote-add --if-not-exists "$remote_name" "$remote_url"; then
+        if flatpak --user remote-add --if-not-exists "$remote_name" "$remote_url"; then
           log "Remote $remote_name added"
           return 0
         fi
 
-        if flatpak --noninteractive --user remote-add --if-not-exists --from "$remote_name" "$remote_url"; then
+        if flatpak --user remote-add --if-not-exists --from "$remote_name" "$remote_url"; then
           log "Remote $remote_name added via --from"
           return 0
         fi
