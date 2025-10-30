@@ -33,22 +33,6 @@ let
     "org.pop_os.CosmicSettings.desktop"
     "cosmic-settings.desktop"
   ];
-  cosmicSettingsHiddenDesktopEntry = ''
-    [Desktop Entry]
-    Type=Application
-    Hidden=true
-  '';
-  cosmicSettingsVisibleDesktopEntry = ''
-    [Desktop Entry]
-    Type=Application
-    Name=COSMIC Settings
-    Exec=cosmic-settings
-    Icon=cosmic-settings
-    Terminal=false
-    Categories=Settings;System;
-    OnlyShowIn=COSMIC;
-    StartupNotify=true
-  '';
   flathubPackages = [
     # Keep DEFAULT_FLATPAK_APPS in nixos-quick-deploy.sh synchronized with the defaults below.
     # ====================================================================
@@ -87,335 +71,333 @@ let
     "io.podman_desktop.PodmanDesktop"     # Podman Desktop GUI for managing containers
     "org.sqlitebrowser.sqlitebrowser"     # GUI browser for SQLite databases used by AIDB
   ];
-  flatpakInstallerBinPath =
-    lib.makeBinPath [
-      pkgs.coreutils
-      pkgs.gawk
-      pkgs.gnugrep
-      pkgs.gnused
-      pkgs.findutils
-      pkgs.util-linux
-      pkgs.flatpak
-    ];
+  flatpakManagedInstallRuntimeInputs = [
+    pkgs.coreutils
+    pkgs.gawk
+    pkgs.gnugrep
+    pkgs.gnused
+    pkgs.findutils
+    pkgs.util-linux
+    pkgs.flatpak
+    pkgs.ostree
+  ];
   flatpakManagedInstallScript =
     let
       packageArgs = lib.concatMapStringsSep " " (appId: lib.escapeShellArg appId) flathubPackages;
     in
-    pkgs.writeShellScript "aidb-flatpak-managed-install" ''
-      set -euo pipefail
+    pkgs.writeShellApplication {
+      name = "aidb-flatpak-managed-install";
+      runtimeInputs = flatpakManagedInstallRuntimeInputs;
+      text = ''
+        set -euo pipefail
 
-      export PATH=${flatpakInstallerBinPath}:$PATH
-
-      remote_name=${flathubRemoteName}
-      remote_url=${flathubRemoteUrl}
-      remote_fallback_url=${flathubRemoteFallbackUrl}
-      availability_message=""
-
-      log() {
-        printf '[%s] %s\n' "$(date --iso-8601=seconds)" "$*"
-      }
-
-      backup_legacy_flatpak_configs() {
-        local -a targets=(
-          "$HOME/.config/flatpak"
-          "$HOME/.local/share/flatpak/overrides"
-          "$HOME/.local/share/flatpak/remotes.d"
-        )
-        local backup_root="$HOME/.local/share/flatpak/managed-backups"
-        local timestamp
-        local performed=false
-        local encountered_error=false
-
-        timestamp="$(date +%Y%m%d_%H%M%S)"
-
-        for path in "''${targets[@]}"; do
-          if [[ ! -e "$path" && ! -L "$path" ]]; then
-            continue
-          fi
-
-          if [[ -d "$path" && ! -L "$path" ]]; then
-            if [[ -z "$(find "$path" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
-              continue
-            fi
-          fi
-
-          local relative="''${path#$HOME/}"
-          if [[ "$relative" == "$path" ]]; then
-            relative="$(basename "$path")"
-          fi
-
-          local relative_dir="''${relative%/*}"
-          if [[ "$relative_dir" == "$relative" ]]; then
-            relative_dir="."
-          fi
-
-          local dest_dir="$backup_root/$timestamp/$relative_dir"
-          local dest_path="$dest_dir/$(basename "$path")"
-
-          if mkdir -p "$dest_dir" 2>/dev/null \
-            && cp -a "$path" "$dest_path" 2>/dev/null; then
-            rm -rf "$path" 2>/dev/null || true
-            performed=true
-            log "Backed up legacy Flatpak path $path -> $dest_path"
-          else
-            encountered_error=true
-            log "Failed to back up legacy Flatpak path $path" >&2
-          fi
-        done
-
-        mkdir -p "$HOME/.config/flatpak" 2>/dev/null || true
-
-        if [[ "$performed" == true ]]; then
-          log "Legacy Flatpak configuration preserved under $backup_root/$timestamp"
-        fi
-
-        if [[ "$encountered_error" == true ]]; then
-          return 1
-        fi
-
-        return 0
-      }
-
-      reset_flatpak_repo_if_corrupted() {
-        local repo_dir="$HOME/.local/share/flatpak/repo"
-        local repo_config="$repo_dir/config"
-        local repo_parent="$HOME/.local/share/flatpak"
-        local repair_output=""
-
-        mkdir -p "$repo_parent" 2>/dev/null || true
-
-        if [[ -f "$repo_config" ]]; then
-          return 0
-        fi
-
-        if ! command -v flatpak >/dev/null 2>&1; then
-          log "Flatpak CLI unavailable; deferring repository repair" >&2
-          return 1
-        fi
-
-        if [[ -e "$repo_dir" ]]; then
-          log "Flatpak repository metadata missing; resetting $repo_dir"
-          rm -rf "$repo_dir" 2>/dev/null || true
-        else
-          log "Initializing Flatpak repository under ''${repo_dir#$HOME/}"
-        fi
-
-        if ! mkdir -p "$repo_dir" 2>/dev/null; then
-          log "Unable to recreate $repo_dir" >&2
-          return 1
-        fi
-
-        repair_output="$(
-          flatpak --user repair --noninteractive 2>&1
-        )"
-        local repair_status=$?
-
-        if [[ -n "$repair_output" ]]; then
-          while IFS= read -r line; do
-            log "  ↳ $line"
-          done <<<"$repair_output"
-        fi
-
-        if [[ $repair_status -ne 0 ]]; then
-          log "flatpak repair reported an error while attempting to recover the repository" >&2
-        fi
-
-        if [[ -f "$repo_config" ]]; then
-          log "Flatpak repository reinitialized"
-          return 0
-        fi
-
-        if command -v ostree >/dev/null 2>&1; then
-          local ostree_output=""
-          ostree_output="$(
-            ostree --repo="$repo_dir" init --mode=bare-user-only 2>&1 || true
-          )"
-          if [[ -n "$ostree_output" ]]; then
-            while IFS= read -r line; do
-              log "  ↳ $line"
-            done <<<"$ostree_output"
-          fi
-        fi
-
-        if [[ -f "$repo_config" ]]; then
-          log "Flatpak repository initialized via ostree"
-          return 0
-        fi
-
-        log "Flatpak repository configuration still missing after recovery attempts" >&2
-        return 1
-      }
-
-      check_app_availability() {
-        local app_id="$1"
-        local user_output
-        local user_status
-        local system_output
-        local system_status
-
+        remote_name=${flathubRemoteName}
+        remote_url=${flathubRemoteUrl}
+        remote_fallback_url=${flathubRemoteFallbackUrl}
         availability_message=""
 
-        user_output="$(flatpak --user remote-info "$remote_name" "$app_id" 2>&1 || true)"
-        user_status=$?
-        if [[ $user_status -eq 0 ]]; then
+        log() {
+          printf '[%s] %s\n' "$(date --iso-8601=seconds)" "$*"
+        }
+
+        backup_legacy_flatpak_configs() {
+          local -a targets=(
+            "$HOME/.config/flatpak"
+            "$HOME/.local/share/flatpak/overrides"
+            "$HOME/.local/share/flatpak/remotes.d"
+          )
+          local backup_root="$HOME/.local/share/flatpak/managed-backups"
+          local timestamp
+          local performed=false
+          local encountered_error=false
+
+          timestamp="$(date +%Y%m%d_%H%M%S)"
+
+          for path in "''${targets[@]}"; do
+            if [[ ! -e "$path" && ! -L "$path" ]]; then
+              continue
+            fi
+
+            if [[ -d "$path" && ! -L "$path" ]]; then
+              if [[ -z "$(find "$path" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
+                continue
+              fi
+            fi
+
+            local relative="''${path#$HOME/}"
+            if [[ "$relative" == "$path" ]]; then
+              relative="$(basename "$path")"
+            fi
+
+            local relative_dir="''${relative%/*}"
+            if [[ "$relative_dir" == "$relative" ]]; then
+              relative_dir="."
+            fi
+
+            local dest_dir="$backup_root/$timestamp/$relative_dir"
+            local dest_path="$dest_dir/$(basename "$path")"
+
+            if mkdir -p "$dest_dir" 2>/dev/null \
+              && cp -a "$path" "$dest_path" 2>/dev/null; then
+              rm -rf "$path" 2>/dev/null || true
+              performed=true
+              log "Backed up legacy Flatpak path $path -> $dest_path"
+            else
+              encountered_error=true
+              log "Failed to back up legacy Flatpak path $path" >&2
+            fi
+          done
+
+          mkdir -p "$HOME/.config/flatpak" 2>/dev/null || true
+
+          if [[ "$performed" == true ]]; then
+            log "Legacy Flatpak configuration preserved under $backup_root/$timestamp"
+          fi
+
+          if [[ "$encountered_error" == true ]]; then
+            return 1
+          fi
+
           return 0
-        fi
+        }
 
-        system_output="$(flatpak remote-info "$remote_name" "$app_id" 2>&1 || true)"
-        system_status=$?
-        if [[ $system_status -eq 0 ]]; then
-          return 0
-        fi
+        reset_flatpak_repo_if_corrupted() {
+          local repo_dir="$HOME/.local/share/flatpak/repo"
+          local repo_config="$repo_dir/config"
+          local repo_parent="$HOME/.local/share/flatpak"
+          local repair_output=""
 
-        availability_message="$user_output"
-        if [[ -n "$availability_message" && -n "$system_output" ]]; then
-          availability_message+=$'\n'
-        fi
-        availability_message+="$system_output"
+          mkdir -p "$repo_parent" 2>/dev/null || true
 
-        if printf '%s\n' "$availability_message" | grep -Eiq 'No remote refs found similar|No entry for|Nothing matches'; then
-          return 3
-        fi
-
-        return 1
-      }
-
-      ensure_remote() {
-        if flatpak --user remotes --columns=name | awk 'NR == 1 && $1 == "Name" { next } { print $1 }' | grep -Fxq "$remote_name"; then
-          log "Remote $remote_name already configured"
-          return 0
-        fi
-
-        local -a remote_sources=()
-        remote_sources+=("$remote_url")
-        if [[ -n "$remote_fallback_url" && "$remote_fallback_url" != "$remote_url" ]]; then
-          remote_sources+=("$remote_fallback_url")
-        fi
-
-        log "Adding Flatpak remote $remote_name"
-
-        local source=""
-        for source in "''${remote_sources[@]}"; do
-          local from_output=""
-          if from_output=$(flatpak --user remote-add --if-not-exists --from "$remote_name" "$source" 2>&1); then
-            log "Remote $remote_name added from $source (--from)"
+          if [[ -f "$repo_config" ]]; then
             return 0
           fi
 
-          if [[ -n "$from_output" ]]; then
-            while IFS= read -r line; do
-              log "  ↳ $line" >&2
-            done <<<"$from_output"
+          if [[ ! -e "$repo_dir" ]]; then
+            log "Initializing Flatpak repository under ''${repo_dir#$HOME/}"
           fi
 
-          local direct_output=""
-          if direct_output=$(flatpak --user remote-add --if-not-exists "$remote_name" "$source" 2>&1); then
-            log "Remote $remote_name added from $source"
+          if ! mkdir -p "$repo_dir" 2>/dev/null; then
+            log "Unable to recreate $repo_dir" >&2
+            return 1
+          fi
+
+          repair_output="$(
+            flatpak --user repair --noninteractive 2>&1
+          )"
+          local repair_status=$?
+
+          if [[ -n "$repair_output" ]]; then
+            while IFS= read -r line; do
+              log "  ↳ $line"
+            done <<<"$repair_output"
+          fi
+
+          if [[ $repair_status -ne 0 ]]; then
+            log "flatpak repair reported an error while attempting to recover the repository" >&2
+          fi
+
+          if [[ -f "$repo_config" ]]; then
+            log "Flatpak repository reinitialized"
             return 0
           fi
 
-          if [[ -n "$direct_output" ]]; then
-            while IFS= read -r line; do
-              log "  ↳ $line" >&2
-            done <<<"$direct_output"
+          if command -v ostree >/dev/null 2>&1; then
+            local ostree_output=""
+            ostree_output="$(
+              ostree --repo="$repo_dir" init --mode=bare-user-only 2>&1 || true
+            )"
+            if [[ -n "$ostree_output" ]]; then
+              while IFS= read -r line; do
+                log "  ↳ $line"
+              done <<<"$ostree_output"
+            fi
           fi
-        done
 
-        log "Failed to add remote $remote_name after trying: ''${remote_sources[*]}" >&2
-        return 1
-      }
+          if [[ -f "$repo_config" ]]; then
+            log "Flatpak repository initialized via ostree"
+            return 0
+          fi
 
-      install_app() {
-        local app_id="$1"
+          log "Flatpak repository configuration still missing after recovery attempts" >&2
+          return 1
+        }
 
-        if flatpak --user info "$app_id" >/dev/null 2>&1; then
-          log "Flatpak $app_id already installed"
-          return 0
-        fi
+        check_app_availability() {
+          local app_id="$1"
+          local user_output
+          local user_status
+          local system_output
+          local system_status
 
-        local availability_status=0
-        check_app_availability "$app_id"
-        availability_status=$?
-        if [[ $availability_status -ne 0 ]]; then
-          if [[ $availability_status -eq 3 ]]; then
-            log "Flatpak $app_id not available on $remote_name for this architecture; skipping"
+          availability_message=""
+
+          user_output="$(flatpak --user remote-info "$remote_name" "$app_id" 2>&1 || true)"
+          user_status=$?
+          if [[ $user_status -eq 0 ]]; then
+            return 0
+          fi
+
+          system_output="$(flatpak remote-info "$remote_name" "$app_id" 2>&1 || true)"
+          system_status=$?
+          if [[ $system_status -eq 0 ]]; then
+            return 0
+          fi
+
+          availability_message="$user_output"
+          if [[ -n "$availability_message" && -n "$system_output" ]]; then
+            availability_message+=$'
+'
+          fi
+          availability_message+="$system_output"
+
+          if printf '%s
+' "$availability_message" | grep -Eiq 'No remote refs found similar|No entry for|Nothing matches'; then
+            return 3
+          fi
+
+          return 1
+        }
+
+        ensure_remote() {
+          if flatpak --user remotes --columns=name | awk 'NR == 1 && $1 == "Name" { next } { print $1 }' | grep -Fxq "$remote_name"; then
+            log "Remote $remote_name already configured"
+            return 0
+          fi
+
+          local -a remote_sources=()
+          remote_sources+=("$remote_url")
+          if [[ -n "$remote_fallback_url" && "$remote_fallback_url" != "$remote_url" ]]; then
+            remote_sources+=("$remote_fallback_url")
+          fi
+
+          log "Adding Flatpak remote $remote_name"
+
+          local source=""
+          for source in "''${remote_sources[@]}"; do
+            local from_output=""
+            if from_output=$(flatpak --user remote-add --if-not-exists --from "$remote_name" "$source" 2>&1); then
+              log "Remote $remote_name added from $source (--from)"
+              return 0
+            fi
+
+            if [[ -n "$from_output" ]]; then
+              while IFS= read -r line; do
+                log "  ↳ $line" >&2
+              done <<<"$from_output"
+            fi
+
+            local direct_output=""
+            if direct_output=$(flatpak --user remote-add --if-not-exists "$remote_name" "$source" 2>&1); then
+              log "Remote $remote_name added from $source"
+              return 0
+            fi
+
+            if [[ -n "$direct_output" ]]; then
+              while IFS= read -r line; do
+                log "  ↳ $line" >&2
+              done <<<"$direct_output"
+            fi
+          done
+
+          log "Failed to add remote $remote_name after trying: ''${remote_sources[*]}" >&2
+          return 1
+        }
+
+        install_app() {
+          local app_id="$1"
+
+          if flatpak --user info "$app_id" >/dev/null 2>&1; then
+            log "Flatpak $app_id already installed"
+            return 0
+          fi
+
+          local availability_status=0
+          check_app_availability "$app_id"
+          availability_status=$?
+          if [[ $availability_status -ne 0 ]]; then
+            if [[ $availability_status -eq 3 ]]; then
+              log "Flatpak $app_id not available on $remote_name for this architecture; skipping"
+              if [[ -n "$availability_message" ]]; then
+                while IFS= read -r line; do
+                  log "  ↳ $line"
+                done <<<"$availability_message"
+              fi
+              return 0
+            fi
+
+            log "Unable to query metadata for $app_id prior to installation" >&2
             if [[ -n "$availability_message" ]]; then
               while IFS= read -r line; do
-                log "  ↳ $line"
+                log "  ↳ $line" >&2
               done <<<"$availability_message"
             fi
-            return 0
+            return 1
           fi
 
-          log "Unable to query metadata for $app_id prior to installation" >&2
-          if [[ -n "$availability_message" ]]; then
-            while IFS= read -r line; do
-              log "  ↳ $line" >&2
-            done <<<"$availability_message"
-          fi
-          return 1
-        fi
+          local attempt=1
+          while (( attempt <= 3 )); do
+            local install_output=""
+            if install_output=$(flatpak --noninteractive --user install "$remote_name" "$app_id" 2>&1); then
+              log "Installed $app_id"
+              return 0
+            fi
 
-        local attempt=1
-        while (( attempt <= 3 )); do
-          local install_output=""
-          if install_output=$(flatpak --noninteractive --user install "$remote_name" "$app_id" 2>&1); then
-            log "Installed $app_id"
-            return 0
-          fi
+            if printf '%s
+' "$install_output" | grep -Eiq 'No remote refs found similar|No entry for|Nothing matches'; then
+              log "Flatpak $app_id not available on $remote_name; skipping"
+              if [[ -n "$install_output" ]]; then
+                while IFS= read -r line; do
+                  log "  ↳ $line"
+                done <<<"$install_output"
+              fi
+              return 0
+            fi
 
-          if printf '%s\n' "$install_output" | grep -Eiq 'No remote refs found similar|No entry for|Nothing matches'; then
-            log "Flatpak $app_id not available on $remote_name; skipping"
+            log "Attempt $attempt failed for $app_id" >&2
             if [[ -n "$install_output" ]]; then
               while IFS= read -r line; do
-                log "  ↳ $line"
+                log "  ↳ $line" >&2
               done <<<"$install_output"
             fi
-            return 0
-          fi
+            sleep $(( attempt * 2 ))
+            (( attempt += 1 ))
+          done
 
-          log "Attempt $attempt failed for $app_id" >&2
-          if [[ -n "$install_output" ]]; then
-            while IFS= read -r line; do
-              log "  ↳ $line" >&2
-            done <<<"$install_output"
+          log "Giving up on $app_id after repeated failures" >&2
+          return 1
+        }
+
+        backup_legacy_flatpak_configs || true
+
+        if ! reset_flatpak_repo_if_corrupted; then
+          log "Flatpak repository recovery failed" >&2
+          exit 1
+        fi
+
+        ensure_remote || exit 1
+
+        # shellcheck disable=SC2206
+        packages=( ${packageArgs} )
+        if [ ''${#packages[@]} -eq 0 ]; then
+          log "No Flatpak packages declared; exiting"
+          exit 0
+        fi
+
+        failures=0
+        for app_id in "''${packages[@]}"; do
+          if ! install_app "$app_id"; then
+            failures=1
           fi
-          sleep $(( attempt * 2 ))
-          (( attempt += 1 ))
         done
 
-        log "Giving up on $app_id after repeated failures" >&2
-        return 1
-      }
+        flatpak --user update --noninteractive --appstream || log "Appstream refresh failed (continuing)" >&2
+        flatpak --user update --noninteractive || log "Flatpak update failed (continuing)" >&2
 
-      backup_legacy_flatpak_configs || true
-
-      if ! reset_flatpak_repo_if_corrupted; then
-        log "Flatpak repository recovery failed" >&2
-        exit 1
-      fi
-
-      ensure_remote || exit 1
-
-      # shellcheck disable=SC2206
-      packages=( ${packageArgs} )
-      if [ ''${#packages[@]} -eq 0 ]; then
-        log "No Flatpak packages declared; exiting"
-        exit 0
-      fi
-
-      failures=0
-      for app_id in "''${packages[@]}"; do
-        if ! install_app "$app_id"; then
-          failures=1
-        fi
-      done
-
-      flatpak --user update --noninteractive --appstream || log "Appstream refresh failed (continuing)" >&2
-      flatpak --user update --noninteractive || log "Flatpak update failed (continuing)" >&2
-
-      exit $failures
-    '';
+        exit $failures
+      '';
+    };
+  flatpakManagedInstallScriptExe = lib.getExe flatpakManagedInstallScript;
   pythonAi =
     pkgs.python311.override {
       packageOverrides = self: super: {
@@ -707,6 +689,35 @@ let
     - The helper links plugins to Open WebUI or remote OpenAI-compatible endpoints configured on this system.
     - You can drop additional plugin ZIP files in this directory and rerun the helper to install them declaratively.
   '';
+  systemdStartServicesDefault =
+    let
+      startServicesOption = options.systemd.user.startServices or null;
+      allowedValues =
+        let
+          rawValues =
+            if startServicesOption == null || !(startServicesOption ? type) then
+              [ ]
+            else if lib.isAttrs startServicesOption.type && startServicesOption.type ? enum then
+              startServicesOption.type.enum
+            else
+              [ ];
+          attempt = builtins.tryEval rawValues;
+        in
+        if attempt.success && lib.isList attempt.value then attempt.value else [ ];
+      optionDefault =
+        if startServicesOption != null && startServicesOption ? default then
+          startServicesOption.default
+        else
+          null;
+    in
+    if lib.elem "legacy" allowedValues then
+      "legacy"
+    else if optionDefault != null then
+      optionDefault
+    else if allowedValues != [ ] then
+      lib.head allowedValues
+    else
+      "legacy";
 in
 
 {
@@ -718,6 +729,42 @@ in
   home.stateVersion = "STATEVERSION_PLACEHOLDER";  # Auto-detected from home-manager channel
 
   programs.home-manager.enable = true;
+
+  # Newer Home Manager releases default to the sd-switch activator, which
+  # relies on systemd's notification channel remaining responsive.  During the
+  # NixOS deployment performed by nixos-quick-deploy.sh this runs outside of an
+  # interactive login session, so the generated home-manager-hyperd.service can
+  # hang waiting on that channel and ultimately time out.  Probe the available
+  # startServices choices so we can prefer the more forgiving legacy activator
+  # whenever it is still supported, while falling back to the upstream default
+  # automatically as future Home Manager releases drop the legacy backend.
+  systemd.user.startServices = lib.mkDefault systemdStartServicesDefault;
+  xdg.desktopEntries =
+    let
+      hiddenCosmicEntry = {
+        type = "Application";
+        name = "COSMIC Settings";
+        exec = "cosmic-settings";
+        icon = "cosmic-settings";
+        categories = [ "Settings" "System" ];
+        onlyShowIn = [ "COSMIC" ];
+        hidden = true;
+      };
+    in
+    lib.mkMerge [
+      (lib.genAttrs cosmicSettingsDesktopFileNames (_: hiddenCosmicEntry))
+      {
+        "aidb-cosmic-settings" = {
+          name = "COSMIC Settings";
+          type = "Application";
+          exec = "cosmic-settings";
+          icon = "cosmic-settings";
+          categories = [ "Settings" "System" ];
+          onlyShowIn = [ "COSMIC" ];
+          startupNotify = true;
+        };
+      }
+    ];
   home.packages =
     let
       aiCommandLinePackages =
@@ -1364,19 +1411,7 @@ in
   # ========================================================================
 
   home.file =
-    let
-      cosmicSettingsHiddenDesktopFiles =
-        builtins.listToAttrs
-          (map
-            (desktopFile: {
-              name = ".local/share/applications/${desktopFile}";
-              value = {
-                text = cosmicSettingsHiddenDesktopEntry;
-              };
-            })
-            cosmicSettingsDesktopFileNames);
-    in
-      {
+    {
     # Create local bin directory
     ".local/bin/.keep".text = "";
 
@@ -2116,12 +2151,6 @@ PLUGINCFG
       typeset -g POWERLEVEL9K_LINUX_NIXOS_ICON='❄️'
     '';
     }
-    // cosmicSettingsHiddenDesktopFiles
-    // {
-      ".local/share/applications/aidb-cosmic-settings.desktop" = {
-        text = cosmicSettingsVisibleDesktopEntry;
-      };
-    }
     // lib.optionalAttrs config.services.flatpak.enable {
       "${giteaFlatpakConfigDir}/app.ini".text = giteaSharedAppIni;
       "${giteaFlatpakConfigDir}/${giteaAiConfigFile}".text = giteaAiIntegrations;
@@ -2143,57 +2172,69 @@ PLUGINCFG
   # Gitea Native Service (runs alongside Flatpak when present)
   # ========================================================================
 
-  systemd.user.services = {
-    "flatpak-managed-install" = {
-      Unit = lib.mkIf config.services.flatpak.enable {
-        Description = "Declarative Flatpak managed installer";
-        After = [ "graphical-session.target" "network-online.target" ];
-        Wants = [ "graphical-session.target" "network-online.target" ];
-        PartOf = [ "graphical-session.target" ];
-      };
-      Service = lib.mkIf config.services.flatpak.enable {
-        Type = lib.mkForce "oneshot";
-        ExecStart = lib.mkForce flatpakManagedInstallScript;
-        ExecCondition = lib.mkForce "${pkgs.coreutils}/bin/test -x ${pkgs.flatpak}/bin/flatpak";
-        ExecStartPre = [
-          "${pkgs.coreutils}/bin/mkdir -p %h/.local/share/flatpak"
-          "${pkgs.coreutils}/bin/mkdir -p %h/.config/flatpak"
-          "${pkgs.coreutils}/bin/mkdir -p %h/.var/app"
-        ];
-        Environment = [
-          "HOME=%h"
-          "XDG_RUNTIME_DIR=%t"
-          "DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus"
-        ];
-        TimeoutStartSec = 600;
-        Restart = lib.mkForce "no";
-        StandardOutput = "journal";
-        StandardError = "journal";
-      };
-      Install = lib.mkIf config.services.flatpak.enable {
-        WantedBy = [ "default.target" ];
-      };
-    };
-    "gitea-dev" = {
-      Unit = {
-        Description = "Gitea development forge (user)";
-        After = [ "network.target" ];
-      };
-      Service = {
-        Environment = [
-          "GITEA_WORK_DIR=%h/${giteaNativeDataDir}"
-          "GITEA_CUSTOM=%h/${giteaNativeConfigDir}"
-        ];
-        ExecStart = "${pkgs.gitea}/bin/gitea web --config %h/${giteaNativeConfigDir}/app.ini";
-        WorkingDirectory = "%h/${giteaNativeDataDir}";
-        Restart = "on-failure";
-        RestartSec = 3;
-      };
-      Install = {
-        WantedBy = [ "default.target" ];
-      };
-    };
-  };
+  systemd.user.services =
+    lib.mkMerge [
+      (lib.mkIf config.services.flatpak.enable {
+        "flatpak-managed-install" = {
+          Unit = {
+            Description = "Declarative Flatpak managed installer";
+            Documentation = [
+              "https://nix-community.github.io/nix-flatpak/"
+              "man:flatpak(1)"
+            ];
+            After = [ "graphical-session.target" "network-online.target" ];
+            Wants = [ "graphical-session.target" "network-online.target" ];
+            PartOf = [ "graphical-session.target" ];
+          };
+          Service = {
+            Type = "oneshot";
+            Path = flatpakManagedInstallRuntimeInputs;
+            ExecStart = lib.mkForce flatpakManagedInstallScriptExe;
+            ExecCondition = "${pkgs.coreutils}/bin/test -x ${pkgs.flatpak}/bin/flatpak";
+            ExecStartPre = [
+              "${pkgs.coreutils}/bin/mkdir -p %h/.local/share/flatpak"
+              "${pkgs.coreutils}/bin/mkdir -p %h/.config/flatpak"
+              "${pkgs.coreutils}/bin/mkdir -p %h/.var/app"
+            ];
+            Environment = {
+              HOME = "%h";
+              XDG_RUNTIME_DIR = "%t";
+              DBUS_SESSION_BUS_ADDRESS = "unix:path=%t/bus";
+            };
+            TimeoutStartSec = 600;
+            Restart = "no";
+            StandardOutput = "journal";
+            StandardError = "journal";
+          };
+          Install = {
+            WantedBy = [ "default.target" ];
+          };
+        };
+      })
+      {
+        "gitea-dev" = {
+          Unit = {
+            Description = "Gitea development forge (user)";
+            After = [ "network.target" ];
+            PartOf = [ "default.target" ];
+          };
+          Service = {
+            Environment = [
+              "GITEA_WORK_DIR=%h/${giteaNativeDataDir}"
+              "GITEA_CUSTOM=%h/${giteaNativeConfigDir}"
+            ];
+            ExecStart = "${pkgs.gitea}/bin/gitea web --config %h/${giteaNativeConfigDir}/app.ini";
+            WorkingDirectory = "%h/${giteaNativeDataDir}";
+            Restart = "on-failure";
+            RestartSec = 3;
+            TimeoutStopSec = 60;
+          };
+          Install = {
+            WantedBy = [ "default.target" ];
+          };
+        };
+      }
+    ];
 
   # ========================================================================
   # Flatpak Integration - Manual Setup Instructions
