@@ -18,7 +18,7 @@ let
     cache_root="''${CACHE_DIRECTORY:-${huggingfaceCacheDir}}"
 
     ${pkgs.coreutils}/bin/mkdir -p "${huggingfaceDataDir}" "${huggingfaceCacheDir}"
-    ${pkgs.coreutils}/bin/mkdir -p "${state_root}" "${cache_root}"
+    ${pkgs.coreutils}/bin/mkdir -p "''${state_root}" "''${cache_root}"
 
     ${pkgs.podman}/bin/podman rm -f huggingface-tgi >/dev/null 2>&1 || true
     ${pkgs.podman}/bin/podman pull ${lib.escapeShellArg huggingfaceImage}
@@ -29,13 +29,13 @@ let
     cache_root="''${CACHE_DIRECTORY:-${huggingfaceCacheDir}}"
 
     ${pkgs.coreutils}/bin/mkdir -p "${huggingfaceDataDir}" "${huggingfaceCacheDir}"
-    ${pkgs.coreutils}/bin/mkdir -p "${state_root}" "${cache_root}"
+    ${pkgs.coreutils}/bin/mkdir -p "''${state_root}" "''${cache_root}"
 
     exec ${pkgs.podman}/bin/podman run \
       --rm \
       --name huggingface-tgi \
       --net host \
-      -v "${state_root}:/data" \
+      -v "''${state_root}:/data" \
       -e HF_HOME=/data \
       -e HUGGINGFACE_HUB_CACHE=/data/cache \
       -e TRANSFORMERS_CACHE=/data/cache \
