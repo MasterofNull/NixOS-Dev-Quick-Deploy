@@ -130,7 +130,7 @@ let
               fi
             fi
 
-            local relative="''${path#$HOME/}"
+            local relative="''${path#"$HOME"/}"
             if [[ "$relative" == "$path" ]]; then
               relative="$(basename "$path")"
             fi
@@ -141,7 +141,8 @@ let
             fi
 
             local dest_dir="$backup_root/$timestamp/$relative_dir"
-            local dest_path="$dest_dir/$(basename "$path")"
+            local dest_path
+            dest_path="$dest_dir/$(basename "$path")"
 
             if mkdir -p "$dest_dir" 2>/dev/null \
               && cp -a "$path" "$dest_path" 2>/dev/null; then
@@ -180,7 +181,7 @@ let
           fi
 
           if [[ ! -e "$repo_dir" ]]; then
-            log "Initializing Flatpak repository under ''${repo_dir#$HOME/}"
+            log "Initializing Flatpak repository under ''${repo_dir#"$HOME"/}"
           fi
 
           if ! mkdir -p "$repo_dir" 2>/dev/null; then
