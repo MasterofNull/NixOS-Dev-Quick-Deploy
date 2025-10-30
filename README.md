@@ -21,11 +21,12 @@ The **`nixos-quick-deploy.sh`** script automatically:
 2. ✅ **Runs `sudo nixos-rebuild switch`** automatically
 3. ✅ **Creates home-manager configuration** (~100 packages)
 4. ✅ **Runs `home-manager switch`** automatically
-5. ✅ **Builds flake development environment** for AIDB
-6. ✅ **Installs Claude Code** with VSCodium integration
-7. ✅ **Configures Powerlevel10k** with high-contrast colors
-8. ✅ **Verifies all packages** are in PATH
-9. ✅ **Offers optional reboot**
+5. ✅ **Seeds Flatpak (Flathub remote + core desktop apps)**
+6. ✅ **Builds flake development environment** for AIDB
+7. ✅ **Installs Claude Code** with VSCodium integration
+8. ✅ **Configures Powerlevel10k** with high-contrast colors
+9. ✅ **Verifies all packages** are in PATH
+10. ✅ **Offers optional reboot**
 
 **Total time:** 20-35 minutes (mostly downloading packages)
 
@@ -132,6 +133,8 @@ At login, select **"Cosmic"** desktop
 podman --version    # ✓ Works
 python3 --version   # ✓ Works
 ripgrep --version   # ✓ Works
+home-manager --version  # ✓ CLI available from PATH
+flatpak list --user --columns=application # ✓ Default desktop apps installed
 aidb-dev           # ✓ Enters AIDB environment
 codium             # ✓ Opens VSCodium with Claude Code
 ```
