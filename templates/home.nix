@@ -465,6 +465,16 @@ let
             ]
           );
         });
+        "llama-cloud-services" = super."llama-cloud-services".overridePythonAttrs (old: {
+          postInstall = lib.concatStringsSep "\n" (
+            lib.filter (s: s != "") [
+              (old.postInstall or "")
+              ''
+                rm -f "$out/bin/llama-parse" "$out/bin/.llama-parse-wrapped"
+              ''
+            ]
+          );
+        });
       };
     };
   pythonAiEnv =
