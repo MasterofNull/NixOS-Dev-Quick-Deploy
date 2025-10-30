@@ -49,92 +49,96 @@ let
     # ====================================================================
     "md.obsidian.Obsidian"                # Note-taking with markdown, vault sync, plugins
   ];
+  flatpakInstallerBinPath =
+    lib.makeBinPath [
+      pkgs.coreutils
+      pkgs.gawk
+      pkgs.gnugrep
+      pkgs.gnused
+      pkgs.util-linux
+      pkgs.flatpak
+    ];
   flatpakManagedInstallScript =
     let
       packageArgs = lib.concatMapStringsSep " " (appId: lib.escapeShellArg appId) flathubPackages;
-      binPath = lib.makeBinPath [ pkgs.coreutils pkgs.gawk pkgs.gnugrep pkgs.gnused pkgs.flatpak pkgs.util-linux ];
     in
-    pkgs.writeTextFile {
-      name = "aidb-flatpak-managed-install.sh";
-      executable = true;
-      text = ''
-        #!${pkgs.bash}/bin/bash
-        set -euo pipefail
+    pkgs.writeShellScript "aidb-flatpak-managed-install" ''
+      set -euo pipefail
 
-        export PATH=${binPath}:$PATH
+      export PATH=${flatpakInstallerBinPath}:$PATH
 
-        remote_name=${lib.escapeShellArg flathubRemoteName}
-        remote_url=${lib.escapeShellArg flathubRemoteUrl}
+      remote_name=${lib.escapeShellArg flathubRemoteName}
+      remote_url=${lib.escapeShellArg flathubRemoteUrl}
 
-        log() {
-          printf '[%s] %s\n' "$(date --iso-8601=seconds)" "$*"
-        }
+      log() {
+        printf '[%s] %s\n' "$(date --iso-8601=seconds)" "$*"
+      }
 
-        ensure_remote() {
-          if flatpak --user remotes --columns=name | awk 'NR == 1 && $1 == "Name" { next } { print $1 }' | grep -Fxq "$remote_name"; then
-            log "Remote $remote_name already configured"
-            return 0
-          fi
-
-          log "Adding Flatpak remote $remote_name ($remote_url)"
-          if flatpak --noninteractive --user remote-add --if-not-exists "$remote_name" "$remote_url"; then
-            log "Remote $remote_name added"
-            return 0
-          fi
-
-          if flatpak --noninteractive --user remote-add --if-not-exists --from "$remote_name" "$remote_url"; then
-            log "Remote $remote_name added via --from"
-            return 0
-          fi
-
-          log "Failed to add remote $remote_name" >&2
-          return 1
-        }
-
-        install_app() {
-          local app_id="$1"
-
-          if flatpak --user info "$app_id" >/dev/null 2>&1; then
-            log "Flatpak $app_id already installed"
-            return 0
-          fi
-
-          local attempt=1
-          while (( attempt <= 3 )); do
-            if flatpak --noninteractive --user install "$remote_name" "$app_id"; then
-              log "Installed $app_id"
-              return 0
-            fi
-            log "Attempt $attempt failed for $app_id" >&2
-            sleep $(( attempt * 2 ))
-            (( attempt += 1 ))
-          done
-
-          log "Giving up on $app_id after repeated failures" >&2
-          return 1
-        }
-
-        ensure_remote || exit 1
-
-        packages=( ${packageArgs} )
-        if [ ${#packages[@]} -eq 0 ]; then
-          log "No Flatpak packages declared; exiting"
-          exit 0
+      ensure_remote() {
+        if flatpak --user remotes --columns=name | awk 'NR == 1 && $1 == "Name" { next } { print $1 }' | grep -Fxq "$remote_name"; then
+          log "Remote $remote_name already configured"
+          return 0
         fi
 
-        failures=0
-        for app_id in "${packages[@]}"; do
-          if ! install_app "$app_id"; then
-            failures=1
+        log "Adding Flatpak remote $remote_name ($remote_url)"
+        if flatpak --noninteractive --user remote-add --if-not-exists "$remote_name" "$remote_url"; then
+          log "Remote $remote_name added"
+          return 0
+        fi
+
+        if flatpak --noninteractive --user remote-add --if-not-exists --from "$remote_name" "$remote_url"; then
+          log "Remote $remote_name added via --from"
+          return 0
+        fi
+
+        log "Failed to add remote $remote_name" >&2
+        return 1
+      }
+
+      install_app() {
+        local app_id="$1"
+
+        if flatpak --user info "$app_id" >/dev/null 2>&1; then
+          log "Flatpak $app_id already installed"
+          return 0
+        fi
+
+        local attempt=1
+        while (( attempt <= 3 )); do
+          if flatpak --noninteractive --user install "$remote_name" "$app_id"; then
+            log "Installed $app_id"
+            return 0
           fi
+          log "Attempt $attempt failed for $app_id" >&2
+          sleep $(( attempt * 2 ))
+          (( attempt += 1 ))
         done
 
-        flatpak --user update --noninteractive --appstream || log "Appstream refresh failed (continuing)" >&2
-        flatpak --user update --noninteractive || log "Flatpak update failed (continuing)" >&2
+        log "Giving up on $app_id after repeated failures" >&2
+        return 1
+      }
 
-        exit $failures
-      '';
-    };
+      ensure_remote || exit 1
+
+      # shellcheck disable=SC2206
+      packages=( ${packageArgs} )
+      if [ ${#packages[@]} -eq 0 ]; then
+        log "No Flatpak packages declared; exiting"
+        exit 0
+      fi
+
+      failures=0
+      for app_id in "${packages[@]}"; do
+        if ! install_app "$app_id"; then
+          failures=1
+        fi
+      done
+
+      flatpak --user update --noninteractive --appstream || log "Appstream refresh failed (continuing)" >&2
+      flatpak --user update --noninteractive || log "Flatpak update failed (continuing)" >&2
+
+      exit $failures
+    '';
   pythonAi =
     pkgs.python311.override {
       packageOverrides = self: super: {
@@ -1265,9 +1269,34 @@ in
 
   systemd.user.services = {
     "flatpak-managed-install" = {
+      Unit = lib.mkIf config.services.flatpak.enable {
+        Description = "Declarative Flatpak managed installer";
+        After = [ "graphical-session.target" "network-online.target" ];
+        Wants = [ "graphical-session.target" "network-online.target" ];
+        PartOf = [ "graphical-session.target" ];
+        StartLimitIntervalSec = 0;
+      };
       Service = lib.mkIf config.services.flatpak.enable {
-        ExecStart = lib.mkForce flatpakManagedInstallScript;
         Type = lib.mkForce "oneshot";
+        ExecStart = lib.mkForce flatpakManagedInstallScript;
+        ExecCondition = lib.mkForce "${pkgs.coreutils}/bin/test -x ${pkgs.flatpak}/bin/flatpak";
+        ExecStartPre = [
+          "${pkgs.coreutils}/bin/mkdir -p %h/.local/share/flatpak"
+          "${pkgs.coreutils}/bin/mkdir -p %h/.var/app"
+        ];
+        Environment = [
+          "HOME=%h"
+          "XDG_RUNTIME_DIR=%t"
+          "DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus"
+        ];
+        TimeoutStartSec = 600;
+        Restart = "on-failure";
+        RestartSec = 10;
+        StandardOutput = "journal";
+        StandardError = "journal";
+      };
+      Install = lib.mkIf config.services.flatpak.enable {
+        WantedBy = [ "default.target" ];
       };
     };
     "gitea-dev" = {
