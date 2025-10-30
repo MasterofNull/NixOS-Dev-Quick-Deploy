@@ -1682,7 +1682,7 @@ in
         mindsdb_gui_port="''${MINDSDB_GUI_PORT:-7735}"
 
         usage() {
-          cat <<'USAGE' >&2
+          cat <<USAGE >&2
 Usage: podman-ai-stack <command>
 
 Commands:
@@ -1726,7 +1726,7 @@ USAGE
         start_container() {
           local name="$1"
           shift
-          if podman ps --filter "name=$name" --format '{{.Names}}' | grep -Fxq "$name"; then
+          if podman ps --filter "name=$name" --format "{{.Names}}" | grep -Fxq "$name"; then
             return
           fi
           podman run -d --pod "$pod" --name "$name" "$@" >/dev/null
@@ -1759,7 +1759,7 @@ USAGE
               -v "${data_root}/mindsdb:/var/lib/mindsdb" \
               "$mindsdb_image"
 
-            echo "podman-ai-stack: all services running in pod '$pod'"
+            echo "podman-ai-stack: all services running in pod \"$pod\""
             ;;
           down)
             if podman pod exists "$pod" >/dev/null 2>&1; then
@@ -1813,14 +1813,14 @@ USAGE
         plugin_url="''${OBSIDIAN_AI_PLUGIN_URL:-https://github.com/nhaouari/obsidian-textgenerator-plugin/releases/latest/download/obsidian-textgenerator-plugin.zip}"
 
         if [[ "$vault" == "--help" || "$vault" == "-h" ]]; then
-          cat <<'USAGE'
+          cat <<USAGE
 Usage: obsidian-ai-bootstrap [vault-path] [plugin-directory]
 
 Install AI-centric community plugins (Text Generator by default) into an Obsidian vault.
 
 Environment variables:
   OBSIDIAN_AI_PLUGIN_URL   Override plugin bundle URL (zip file)
-  OBSIDIAN_AI_BACKEND_URL  Override API endpoint (defaults to $OPEN_WEBUI_URL)
+  OBSIDIAN_AI_BACKEND_URL  Override API endpoint (defaults to \$OPEN_WEBUI_URL)
 USAGE
           exit 0
         fi
@@ -1832,7 +1832,7 @@ USAGE
 
         backend_url="''${OBSIDIAN_AI_BACKEND_URL:-${openWebUiUrl}}"
         tmp_zip="$(mktemp -t obsidian-plugin.XXXXXX.zip)"
-        trap 'rm -f "$tmp_zip"' EXIT
+        trap "rm -f \"$tmp_zip\"" EXIT
 
         mkdir -p "$vault/.obsidian/plugins/$plugin_dir"
 
