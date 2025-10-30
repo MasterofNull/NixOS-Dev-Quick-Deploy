@@ -437,6 +437,12 @@ let
         "google-cloud-bigquery" = super."google-cloud-bigquery".overridePythonAttrs (old: {
           doCheck = false;
         });
+        "moto" = super."moto".overridePythonAttrs (old: {
+          # The upstream test suite attempts to reach AWS endpoints and fails in
+          # the hermetic Nix build sandbox. Disable checks so builds complete.
+          doCheck = false;
+          pythonImportsCheck = [];
+        });
         sqlframe = super.sqlframe.overridePythonAttrs (old: {
           postPatch = (old.postPatch or "")
             + ''
