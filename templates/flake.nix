@@ -35,7 +35,10 @@
       };
 
       homeConfigurations."HOME_USERNAME_PLACEHOLDER" = home-manager.lib.homeManagerConfiguration {
-        pkgs = nixpkgs.legacyPackages.${system};
+        pkgs = import nixpkgs {
+          inherit system;
+          config.allowUnfree = true;
+        };
         modules = [
           nix-flatpak.homeManagerModules.nix-flatpak
           ./home.nix
