@@ -1290,8 +1290,8 @@ in
           "DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus"
         ];
         TimeoutStartSec = 600;
-        Restart = "on-failure";
-        RestartSec = 10;
+        Restart = lib.mkForce "on-failure";
+        RestartSec = lib.mkForce "10s";
         StandardOutput = "journal";
         StandardError = "journal";
       };
