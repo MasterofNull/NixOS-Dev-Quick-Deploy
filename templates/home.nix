@@ -142,19 +142,71 @@ let
       reset_flatpak_repo_if_corrupted() {
         local repo_dir="$HOME/.local/share/flatpak/repo"
         local repo_config="$repo_dir/config"
+        local repo_parent="$HOME/.local/share/flatpak"
+        local repair_output=""
 
-        mkdir -p "$HOME/.local/share/flatpak" 2>/dev/null || true
+        mkdir -p "$repo_parent" 2>/dev/null || true
 
         if [[ -f "$repo_config" ]]; then
           return 0
         fi
 
+        if ! command -v flatpak >/dev/null 2>&1; then
+          log "Flatpak CLI unavailable; deferring repository repair" >&2
+          return 1
+        fi
+
         if [[ -e "$repo_dir" ]]; then
           log "Flatpak repository metadata missing; resetting $repo_dir"
           rm -rf "$repo_dir" 2>/dev/null || true
+        else
+          log "Initializing Flatpak repository under ${repo_dir#$HOME/}"
         fi
 
-        return 0
+        if ! mkdir -p "$repo_dir" 2>/dev/null; then
+          log "Unable to recreate $repo_dir" >&2
+          return 1
+        fi
+
+        repair_output="$(
+          flatpak --user repair --noninteractive 2>&1
+        )"
+        local repair_status=$?
+
+        if [[ -n "$repair_output" ]]; then
+          while IFS= read -r line; do
+            log "  ↳ $line"
+          done <<<"$repair_output"
+        fi
+
+        if [[ $repair_status -ne 0 ]]; then
+          log "flatpak repair reported an error while attempting to recover the repository" >&2
+        fi
+
+        if [[ -f "$repo_config" ]]; then
+          log "Flatpak repository reinitialized"
+          return 0
+        fi
+
+        if command -v ostree >/dev/null 2>&1; then
+          local ostree_output=""
+          ostree_output="$(
+            ostree --repo="$repo_dir" init --mode=bare-user-only 2>&1 || true
+          )"
+          if [[ -n "$ostree_output" ]]; then
+            while IFS= read -r line; do
+              log "  ↳ $line"
+            done <<<"$ostree_output"
+          fi
+        fi
+
+        if [[ -f "$repo_config" ]]; then
+          log "Flatpak repository initialized via ostree"
+          return 0
+        fi
+
+        log "Flatpak repository configuration still missing after recovery attempts" >&2
+        return 1
       }
 
       check_app_availability() {
@@ -301,7 +353,10 @@ let
 
       backup_legacy_flatpak_configs || true
 
-      reset_flatpak_repo_if_corrupted || true
+      if ! reset_flatpak_repo_if_corrupted; then
+        log "Flatpak repository recovery failed" >&2
+        exit 1
+      fi
 
       ensure_remote || exit 1
 
