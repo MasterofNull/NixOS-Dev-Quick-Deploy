@@ -59,6 +59,48 @@ if [[ -n "$PRIMARY_UID" && -d "/run/user/$PRIMARY_UID" ]]; then
     PRIMARY_RUNTIME_DIR="/run/user/$PRIMARY_UID"
 fi
 
+PRIMARY_PROFILE_BIN="$PRIMARY_HOME/.nix-profile/bin"
+PRIMARY_ETC_PROFILE_BIN="/etc/profiles/per-user/$PRIMARY_USER/bin"
+PRIMARY_LOCAL_BIN="$PRIMARY_HOME/.local/bin"
+
+build_primary_user_path() {
+    local -a path_parts=()
+
+    if [[ -d "$PRIMARY_PROFILE_BIN" ]]; then
+        path_parts+=("$PRIMARY_PROFILE_BIN")
+    fi
+
+    if [[ -d "$PRIMARY_ETC_PROFILE_BIN" ]]; then
+        path_parts+=("$PRIMARY_ETC_PROFILE_BIN")
+    fi
+
+    if [[ -d "$PRIMARY_LOCAL_BIN" ]]; then
+        path_parts+=("$PRIMARY_LOCAL_BIN")
+    fi
+
+    local -a CURRENT_PATH_PARTS=()
+    local IFS=':'
+    read -ra CURRENT_PATH_PARTS <<< "$PATH"
+    for segment in "${CURRENT_PATH_PARTS[@]}"; do
+        if [[ -n "$segment" ]]; then
+            local duplicate=false
+            for existing in "${path_parts[@]}"; do
+                if [[ "$existing" == "$segment" ]]; then
+                    duplicate=true
+                    break
+                fi
+            done
+            if [[ "$duplicate" == false ]]; then
+                path_parts+=("$segment")
+            fi
+        fi
+    done
+
+    local combined_path
+    IFS=':' combined_path="${path_parts[*]}"
+    printf '%s' "$combined_path"
+}
+
 run_as_primary_user() {
     local -a cmd=("$@")
     local -a env_args=()
@@ -70,7 +112,7 @@ run_as_primary_user() {
         fi
     fi
 
-    env_args+=("PATH=$PATH")
+    env_args+=("PATH=$(build_primary_user_path)")
 
     if [[ $EUID -eq 0 && "$PRIMARY_USER" != "root" ]]; then
         if (( ${#env_args[@]} > 0 )); then
@@ -2577,7 +2619,7 @@ apply_home_manager_config() {
         # Verify critical packages are now in PATH
         print_info "Verifying package installation..."
         MISSING_COUNT=0
-        for pkg in podman python3 ripgrep bat eza fd git flatpak home-manager; do
+        for pkg in podman python3 ripgrep bat eza fd git flatpak gitea tea home-manager; do
             if command -v "$pkg" &>/dev/null; then
                 print_success "$pkg found at $(command -v $pkg)"
             else
