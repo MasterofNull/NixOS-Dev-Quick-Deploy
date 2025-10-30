@@ -30,7 +30,7 @@ let
     # ====================================================================
     # SYSTEM TOOLS & UTILITIES (Recommended - Essential GUI Tools)
     # ====================================================================
-    "com.github.flatseal.Flatseal"        # Flatpak permissions manager GUI
+    "com.github.tchx84.Flatseal"         # Flatpak permissions manager GUI
     "org.gnome.FileRoller"                # Archive manager (zip, tar, 7z, rar) - GUI
     "net.nokyan.Resources"                # System monitor (CPU, GPU, RAM, Network) - GUI
 
@@ -1573,7 +1573,7 @@ in
   #
   # 2. Install Flatpak applications (use commands below):
   #    # System Tools
-  #    flatpak install -y flathub com.github.flatseal.Flatseal
+  #    flatpak install -y flathub com.github.tchx84.Flatseal
   #    flatpak install -y flathub org.gnome.FileRoller
   #    flatpak install -y flathub net.nokyan.Resources
   #
@@ -1588,7 +1588,7 @@ in
   #    flatpak install -y flathub md.obsidian.Obsidian
   #
   # 3. OR: Copy the list below and use this command:
-  #    for app in com.github.flatseal.Flatseal org.gnome.FileRoller \
+  #    for app in com.github.tchx84.Flatseal org.gnome.FileRoller \
   #                net.nokyan.Resources org.videolan.VLC io.mpv.Mpv \
   #                org.mozilla.firefox md.obsidian.Obsidian; do
   #      flatpak install -y flathub "$app"
@@ -1597,7 +1597,7 @@ in
   # DECLARATIVE FLATPAK APPS (for reference - install manually):
   # ====================================================================
   # System Tools
-  # flatpak install -y flathub com.github.flatseal.Flatseal
+  # flatpak install -y flathub com.github.tchx84.Flatseal
   # flatpak install -y flathub org.gnome.FileRoller
   # flatpak install -y flathub net.nokyan.Resources
   #
@@ -1665,7 +1665,7 @@ in
   #
   # MANAGE PERMISSIONS:
   # ====================================================================
-  # flatpak run com.github.flatseal.Flatseal
+  # flatpak run com.github.tchx84.Flatseal
   # (or open Flatseal from app menu)
   #
   # Then select app from sidebar and toggle permissions as needed.

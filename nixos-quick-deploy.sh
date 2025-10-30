@@ -18,7 +18,7 @@ FLATHUB_REMOTE_NAME="flathub"
 FLATHUB_REMOTE_URL="https://dl.flathub.org/repo/flathub.flatpakrepo"
 FLATHUB_REMOTE_FALLBACK_URL="https://flathub.org/repo/flathub.flatpakrepo"
 DEFAULT_FLATPAK_APPS=(
-    "com.github.flatseal.Flatseal"
+    "com.github.tchx84.Flatseal"
     "org.gnome.FileRoller"
     "net.nokyan.Resources"
     "org.videolan.VLC"
