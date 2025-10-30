@@ -160,7 +160,7 @@ let
           log "Flatpak repository metadata missing; resetting $repo_dir"
           rm -rf "$repo_dir" 2>/dev/null || true
         else
-          log "Initializing Flatpak repository under ${repo_dir#$HOME/}"
+          log "Initializing Flatpak repository under ''${repo_dir#$HOME/}"
         fi
 
         if ! mkdir -p "$repo_dir" 2>/dev/null; then
