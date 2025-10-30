@@ -1291,28 +1291,43 @@ in
   #
   services.flatpak =
     let
-      flatpakPackageOptions =
-        # The nix-flatpak module follows the Home Manager/NixOS option schema
-        # documented in the NixOS manual. In recent releases it renamed the
-        # `remote` attribute to `origin`, so we inspect the option metadata to
-        # stay compatible with both variants when generating package entries.
-        lib.attrByPath [ "services" "flatpak" "packages" "type" "elemType" "options" ] options { };
-      supportsOrigin = flatpakPackageOptions ? origin;
-      supportsRemote = flatpakPackageOptions ? remote;
-      flatpakRemoteOptions =
-        lib.attrByPath [ "services" "flatpak" "remotes" "type" "elemType" "options" ] options { };
-      supportsLocation = flatpakRemoteOptions ? location;
-      supportsUrl = flatpakRemoteOptions ? url;
-      mkFlathubPackage =
-        appId:
-          { inherit appId; }
-          // lib.optionalAttrs supportsOrigin { origin = "flathub"; }
-          // lib.optionalAttrs supportsRemote { remote = "flathub"; };
+      packageTypePath = [ "services" "flatpak" "packages" "type" "elemType" ];
+      remoteTypePath = [ "services" "flatpak" "remotes" "type" "elemType" ];
+      flatpakPackageType =
+        if lib.hasAttrByPath packageTypePath options then
+          lib.attrByPath packageTypePath options null
+        else
+          null;
+      flatpakRemoteType =
+        if lib.hasAttrByPath remoteTypePath options then
+          lib.attrByPath remoteTypePath options null
+        else
+          null;
+      checkCandidate = type: candidate:
+        if type == null then true else (builtins.tryEval (type.check candidate)).success;
+      selectCandidate = type: defaultCandidate: candidates:
+        let
+          found = lib.findFirst (candidate: checkCandidate type candidate) null candidates;
+        in
+          if found != null then found else defaultCandidate;
       flathubRemoteUrl = "https://dl.flathub.org/repo/flathub.flatpakrepo";
       mkFlathubRemote =
-        { name = "flathub"; }
-        // lib.optionalAttrs (supportsLocation || !supportsUrl) { location = flathubRemoteUrl; }
-        // lib.optionalAttrs (supportsUrl && !supportsLocation) { url = flathubRemoteUrl; };
+        selectCandidate
+          flatpakRemoteType
+          { name = "flathub"; location = flathubRemoteUrl; }
+          [
+            { name = "flathub"; location = flathubRemoteUrl; }
+            { name = "flathub"; url = flathubRemoteUrl; }
+          ];
+      mkFlathubPackage =
+        appId:
+          selectCandidate
+            flatpakPackageType
+            { inherit appId; origin = "flathub"; }
+            [
+              { inherit appId; origin = "flathub"; }
+              { inherit appId; remote = "flathub"; }
+            ];
       flathubPackages = [
       # Keep DEFAULT_FLATPAK_APPS in nixos-quick-deploy.sh synchronized with the defaults below.
       # ====================================================================
