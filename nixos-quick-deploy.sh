@@ -62,6 +62,7 @@ fi
 PRIMARY_PROFILE_BIN="$PRIMARY_HOME/.nix-profile/bin"
 PRIMARY_ETC_PROFILE_BIN="/etc/profiles/per-user/$PRIMARY_USER/bin"
 PRIMARY_LOCAL_BIN="$PRIMARY_HOME/.local/bin"
+FLATPAK_DIAGNOSTIC_ROOT="$PRIMARY_HOME/.cache/nixos-quick-deploy/flatpak"
 
 build_primary_user_path() {
     local -a path_parts=()
@@ -131,6 +132,54 @@ run_as_primary_user() {
 
 flatpak_cli_available() {
     run_as_primary_user flatpak --version >/dev/null 2>&1
+}
+
+prepare_flatpak_diagnostic_dir() {
+    local dir="$FLATPAK_DIAGNOSTIC_ROOT"
+
+    if [[ -z "$dir" ]]; then
+        return
+    fi
+
+    if ! run_as_primary_user install -d -m 700 "$dir" >/dev/null 2>&1; then
+        mkdir -p "$dir" 2>/dev/null || true
+        ensure_path_owner "$dir"
+    fi
+
+    printf '%s' "$dir"
+}
+
+gather_flatpak_diagnostics() {
+    local service_name="$1"
+    local stage="${2:-snapshot}"
+
+    if [[ -z "$service_name" ]]; then
+        return 0
+    fi
+
+    local diag_dir
+    diag_dir=$(prepare_flatpak_diagnostic_dir)
+
+    if [[ -z "$diag_dir" ]]; then
+        return 0
+    fi
+
+    local timestamp
+    timestamp=$(date +%Y%m%d_%H%M%S)
+
+    local status_log="$diag_dir/${stage}-${timestamp}-status.log"
+    local journal_log="$diag_dir/${stage}-${timestamp}-journal.log"
+
+    local quoted_service
+    printf -v quoted_service '%q' "$service_name"
+
+    run_as_primary_user bash -c "systemctl --user status ${quoted_service} --no-pager" >"$status_log" 2>&1 || true
+    run_as_primary_user bash -c "journalctl --user -u ${quoted_service} --no-pager --since '1 hour ago'" >"$journal_log" 2>&1 || true
+
+    ensure_path_owner "$status_log"
+    ensure_path_owner "$journal_log"
+
+    print_info "Flatpak diagnostics captured under $diag_dir"
 }
 
 ensure_user_systemd_ready() {
@@ -249,6 +298,8 @@ flatpak_install_app_list() {
     local -a apps=("$@")
     local failure=false
 
+    run_as_primary_user flatpak --user repair --noninteractive >/dev/null 2>&1 || true
+
     for app_id in "${apps[@]}"; do
         if run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
             print_info "  • $app_id already present"
@@ -277,6 +328,28 @@ flatpak_install_app_list() {
         return 1
     fi
 
+    return 0
+}
+
+validate_flatpak_application_state() {
+    if ! flatpak_cli_available; then
+        return 1
+    fi
+
+    local -a missing=()
+
+    for app_id in "${DEFAULT_FLATPAK_APPS[@]}"; do
+        if ! run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
+            missing+=("$app_id")
+        fi
+    done
+
+    if (( ${#missing[@]} > 0 )); then
+        print_warning "Missing Flatpak applications: ${missing[*]}"
+        return 1
+    fi
+
+    print_success "All declarative Flatpak applications are installed"
     return 0
 }
 
@@ -317,6 +390,41 @@ ensure_flathub_remote() {
     fi
 
     print_warning "Unable to configure Flathub repository automatically"
+    return 1
+}
+
+preflight_flatpak_environment() {
+    local stage="${1:-preflight}"
+
+    ensure_user_systemd_ready
+
+    local issues=0
+
+    if ! flatpak_cli_available; then
+        print_warning "Flatpak CLI unavailable during $stage checks"
+        (( issues++ ))
+    fi
+
+    if [[ -n "$PRIMARY_RUNTIME_DIR" && ! -S "$PRIMARY_RUNTIME_DIR/bus" ]]; then
+        run_as_primary_user systemctl --user start dbus.socket >/dev/null 2>&1 || true
+        sleep 1
+        if [[ ! -S "$PRIMARY_RUNTIME_DIR/bus" ]]; then
+            print_warning "DBus session bus not detected for user services"
+            (( issues++ ))
+        fi
+    fi
+
+    if ! ensure_flathub_remote; then
+        (( issues++ ))
+    fi
+
+    run_as_primary_user install -d -m 700 "$PRIMARY_HOME/.local/share/flatpak" >/dev/null 2>&1 || true
+    run_as_primary_user install -d -m 700 "$PRIMARY_HOME/.var/app" >/dev/null 2>&1 || true
+
+    if (( issues == 0 )); then
+        return 0
+    fi
+
     return 1
 }
 
@@ -368,23 +476,33 @@ recover_flatpak_managed_install_service() {
     fi
 
     print_info "Attempting manual Flatpak recovery..."
+    preflight_flatpak_environment "manual-recovery" || true
+
     if ! ensure_flathub_remote; then
         print_warning "Flathub remote is unavailable; manual recovery skipped"
         return 1
     fi
 
+    run_as_primary_user flatpak --user repair --noninteractive >/dev/null 2>&1 || true
+
     if ! flatpak_install_app_list "${DEFAULT_FLATPAK_APPS[@]}"; then
         print_warning "Manual Flatpak installation encountered errors"
+        gather_flatpak_diagnostics "$service_name" "recovery-failure"
         return 1
     fi
 
     run_as_primary_user flatpak --user update --noninteractive --appstream >/dev/null 2>&1 || true
     run_as_primary_user flatpak --user update --noninteractive >/dev/null 2>&1 || true
 
+    if ! validate_flatpak_application_state; then
+        gather_flatpak_diagnostics "$service_name" "validation-failure"
+        return 1
+    fi
+
     if [[ -n "$service_name" ]]; then
         run_as_primary_user systemctl --user reset-failed "$service_name" >/dev/null 2>&1 || true
         if run_as_primary_user systemctl --user start "$service_name" >/dev/null 2>&1; then
-            wait_for_systemd_user_service "$service_name" 90 >/dev/null 2>&1 || true
+            wait_for_systemd_user_service "$service_name" 180 >/dev/null 2>&1 || true
         fi
     fi
 
@@ -399,7 +517,7 @@ ensure_flatpak_managed_install_service() {
 
     local service_name="flatpak-managed-install.service"
 
-    ensure_user_systemd_ready
+    preflight_flatpak_environment "service-start" || true
 
     if ! run_as_primary_user systemctl --user list-unit-files "$service_name" >/dev/null 2>&1; then
         return
@@ -410,13 +528,24 @@ ensure_flatpak_managed_install_service() {
     if ! run_as_primary_user systemctl --user start "$service_name" >/dev/null 2>&1; then
         print_warning "Unable to start flatpak-managed-install service automatically"
         run_as_primary_user journalctl --user -u "$service_name" -n 25 || true
+        gather_flatpak_diagnostics "$service_name" "start-failure"
         recover_flatpak_managed_install_service "$service_name" || true
         return
     fi
 
     local wait_result
-    if wait_for_systemd_user_service "$service_name" 180; then
-        print_success "flatpak-managed-install service completed successfully"
+    if wait_for_systemd_user_service "$service_name" 300; then
+        if validate_flatpak_application_state; then
+            print_success "flatpak-managed-install service completed successfully"
+            return
+        fi
+        print_warning "flatpak-managed-install service finished but validation detected missing apps"
+        gather_flatpak_diagnostics "$service_name" "post-success-validation"
+        if recover_flatpak_managed_install_service "$service_name"; then
+            print_success "Flatpak state corrected after validation retry"
+        else
+            print_warning "Manual Flatpak recovery could not fully resolve the issue. Review the logs above."
+        fi
         return
     fi
 
@@ -428,6 +557,7 @@ ensure_flatpak_managed_install_service() {
     fi
 
     run_as_primary_user journalctl --user -u "$service_name" -n 40 || true
+    gather_flatpak_diagnostics "$service_name" "service-failure"
 
     if recover_flatpak_managed_install_service "$service_name"; then
         print_success "Flatpak packages restored via manual recovery"
