@@ -90,7 +90,7 @@ let
 
         timestamp="$(date +%Y%m%d_%H%M%S)"
 
-        for path in "${targets[@]}"; do
+        for path in "''${targets[@]}"; do
           if [[ ! -e "$path" && ! -L "$path" ]]; then
             continue
           fi
@@ -101,12 +101,12 @@ let
             fi
           fi
 
-          local relative="${path#$HOME/}"
+          local relative="''${path#$HOME/}"
           if [[ "$relative" == "$path" ]]; then
             relative="$(basename "$path")"
           fi
 
-          local relative_dir="${relative%/*}"
+          local relative_dir="''${relative%/*}"
           if [[ "$relative_dir" == "$relative" ]]; then
             relative_dir="."
           fi
