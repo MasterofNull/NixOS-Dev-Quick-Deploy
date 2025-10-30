@@ -890,7 +890,7 @@ in
         exec = "cosmic-settings";
         icon = "cosmic-settings";
         categories = [ "Settings" "System" ];
-        hidden = true;
+        noDisplay = true;
         settings =
           lib.optionalAttrs (cosmicOnlyShowInValue != "") {
             OnlyShowIn = cosmicOnlyShowInValue;
