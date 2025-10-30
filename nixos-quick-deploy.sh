@@ -867,6 +867,9 @@ ensure_flatpak_managed_install_service() {
     wait_result=$?
     if [[ $wait_result -eq 2 ]]; then
         print_warning "flatpak-managed-install service did not report completion within the timeout window"
+        print_info "This usually means the Flatpak installer is still downloading large runtimes or waiting on network access."
+        print_info "Home-manager marks the unit as failed once the wait times out, even though the service may still be running."
+        print_info "Check journalctl --user -u $service_name for progress and re-run the installer once connectivity is restored."
     else
         print_warning "flatpak-managed-install service reported a failure; collecting logs"
     fi
