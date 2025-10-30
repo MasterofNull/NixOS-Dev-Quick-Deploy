@@ -2352,7 +2352,7 @@ PLUGINCFG
               "DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus"
             ];
             TimeoutStartSec = 600;
-            Restart = "no";
+            Restart = lib.mkForce "no";
             StandardOutput = "journal";
             StandardError = "journal";
           };
