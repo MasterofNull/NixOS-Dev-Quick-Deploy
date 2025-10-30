@@ -24,6 +24,7 @@ let
   openWebUiDataDir = ".local/share/open-webui";
   flathubRemoteName = "flathub";
   flathubRemoteUrl = "https://dl.flathub.org/repo/flathub.flatpakrepo";
+  flathubRemoteFallbackUrl = "https://flathub.org/repo/flathub.flatpakrepo";
   flathubPackages = [
     # Keep DEFAULT_FLATPAK_APPS in nixos-quick-deploy.sh synchronized with the defaults below.
     # ====================================================================
@@ -178,18 +179,42 @@ let
           return 0
         fi
 
-        log "Adding Flatpak remote $remote_name ($remote_url)"
-        if flatpak --user remote-add --if-not-exists "$remote_name" "$remote_url"; then
-          log "Remote $remote_name added"
-          return 0
+        local -a remote_sources=()
+        remote_sources+=("$remote_url")
+        if [[ "$flathubRemoteFallbackUrl" != "$remote_url" ]]; then
+          remote_sources+=("$flathubRemoteFallbackUrl")
         fi
 
-        if flatpak --user remote-add --if-not-exists --from "$remote_name" "$remote_url"; then
-          log "Remote $remote_name added via --from"
-          return 0
-        fi
+        log "Adding Flatpak remote $remote_name"
 
-        log "Failed to add remote $remote_name" >&2
+        local source=""
+        for source in "''${remote_sources[@]}"; do
+          local from_output=""
+          if from_output=$(flatpak --user remote-add --if-not-exists --from "$remote_name" "$source" 2>&1); then
+            log "Remote $remote_name added from $source (--from)"
+            return 0
+          fi
+
+          if [[ -n "$from_output" ]]; then
+            while IFS= read -r line; do
+              log "  ↳ $line" >&2
+            done <<<"$from_output"
+          fi
+
+          local direct_output=""
+          if direct_output=$(flatpak --user remote-add --if-not-exists "$remote_name" "$source" 2>&1); then
+            log "Remote $remote_name added from $source"
+            return 0
+          fi
+
+          if [[ -n "$direct_output" ]]; then
+            while IFS= read -r line; do
+              log "  ↳ $line" >&2
+            done <<<"$direct_output"
+          fi
+        done
+
+        log "Failed to add remote $remote_name after trying: ${remote_sources[*]}" >&2
         return 1
       }
 
