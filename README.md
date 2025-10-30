@@ -13,6 +13,18 @@ cd ~/NixOS-Dev-Quick-Deploy
 
 ---
 
+## AI Workspace Overview
+
+| Integration | Where it lives | What you get |
+|-------------|----------------|--------------|
+| **Cursor** | Flatpak (`ai.cursor.Cursor`) + `code-cursor` launcher | Launch Cursor from the terminal, Gitea task runners, or the desktop menu with local model defaults wired in. |
+| **GPT Codex / OpenAI** | VSCodium Continue + aider/gpt-cli helpers | Ship a single OpenAI key to power Continue, aider, and `gpt-cli` for Codex/GPT-4 style completions against local or remote endpoints. |
+| **Claude** | VSCodium Claude Code extension + managed Node wrapper | Use Claude instantly inside VSCodium; the script installs the CLI, wrapper, and settings so prompts work out of the box. |
+
+Gitea inherits the same trio through its AI agent manifest: repository tasks can launch Cursor sessions, call aider with OpenAI/GPT Codex models, or hand work over to the Podman AI stack for local model workflows.
+
+---
+
 ## What the Script Does Automatically
 
 The **`nixos-quick-deploy.sh`** script automatically:
@@ -23,7 +35,7 @@ The **`nixos-quick-deploy.sh`** script automatically:
 4. ✅ **Runs `home-manager switch`** automatically
 5. ✅ **Seeds Flatpak (Flathub remote + core desktop apps)**
 6. ✅ **Builds flake development environment** for AIDB
-7. ✅ **Installs Claude Code** with VSCodium integration
+7. ✅ **Publishes Cursor/GPT Codex/Claude workflows** across VSCodium & Gitea
 8. ✅ **Configures Powerlevel10k** with high-contrast colors
 9. ✅ **Verifies all packages** are in PATH
 10. ✅ **Offers optional reboot**
@@ -53,6 +65,10 @@ The **`nixos-quick-deploy.sh`** script automatically:
 
 **Modern CLI Tools:**
 - ripgrep, bat, eza, fd, fzf, jq, yq, lazygit, htop, btop
+- gpt-cli (talk to local Ollama, GPT Codex, or any OpenAI-compatible endpoint)
+- podman-ai-stack (spin up Ollama, Open WebUI, Qdrant, MindsDB via Podman)
+- obsidian-ai-bootstrap (install AI plugins into an Obsidian vault)
+- hf-model-sync & hf-tgi (download models + run Hugging Face TGI locally)
 
 **Terminal & Fonts:**
 - ZSH with Powerlevel10k (high-contrast colors)
@@ -62,12 +78,18 @@ The **`nixos-quick-deploy.sh`** script automatically:
 **Desktop Apps:**
 - cosmic-edit, cosmic-files, cosmic-term
 
+### AI IDE & Forge Integrations (Declarative)
+- **Cursor launcher & workspace glue** – `code-cursor` prefers the Flatpak, falls back to native binaries, and is exposed to the Gitea agent runner.
+- **GPT Codex helpers** – aider, `gpt-cli`, Continue, Codeium, and ChatGPT extensions are pre-wired to OpenAI-style endpoints (local Hugging Face by default, OpenAI/Anthropic once tokens are set).
+- **Claude Code** – CLI installed globally, wrapper fixes Node pathing, and VSCodium settings/extensions are merged so Claude prompts just work.
+- **Gitea AI agent manifest** – ships with tasks for Cursor launches, aider OpenAI runs, GPT CLI completions, and Podman AI stack status checks inside the forge UI.
+
 ### Development Environment (via flake)
 - AIDB-specific packages cached
 - Python 3.11 environment ready
 - Convenient commands: `aidb-dev`, `aidb-shell`, `aidb-info`
 
-### Flatpak Applications (7 Pre-Enabled, 50+ Optional)
+### Flatpak Applications (12 Pre-Enabled, 50+ Optional)
 **Pre-Installed & Ready:**
 - Flatseal (permissions manager)
 - FileRoller (archive manager)
@@ -75,6 +97,11 @@ The **`nixos-quick-deploy.sh`** script automatically:
 - VLC & MPV (media players)
 - Firefox (web browser - sandboxed)
 - Obsidian (note-taking)
+- Cursor (AI-assisted IDE / Code-Cursor)
+- LM Studio (local LLM orchestration UI)
+- Gitea (desktop UI for local forge & AI workflows)
+- Podman Desktop (container dashboard for Podman/buildah)
+- DB Browser for SQLite (GUI management for the bundled SQLite DB)
 
 **Optional (One-Line Setup):**
 - LibreOffice, GIMP, Inkscape, Blender, OBS Studio, Audacity
@@ -137,6 +164,8 @@ home-manager --version  # ✓ CLI available from PATH
 flatpak list --user --columns=application # ✓ Default desktop apps installed
 aidb-dev           # ✓ Enters AIDB environment
 codium             # ✓ Opens VSCodium with Claude Code
+code-cursor        # ✓ Launches Cursor (Flatpak wrapper)
+tea ai summarize   # ✓ Calls GPT Codex/OpenAI via aider + Tea CLI
 ```
 
 **All done!** Everything is installed and configured.
@@ -151,6 +180,15 @@ aidb-dev         # Enter flake dev environment with all tools
 aidb-shell       # Alternative way to enter dev environment
 aidb-info        # Show AIDB environment information
 aidb-update      # Update flake dependencies
+```
+
+### AI Stack Management
+```bash
+podman-ai-stack up        # Launch local LLM + vector DB + AI database services
+podman-ai-stack status    # Check pod, container, and port health
+podman-ai-stack logs      # Follow aggregated container logs
+gpt-cli "plan this sprint" # Query local Hugging Face TGI, GPT Codex, or Ollama providers
+obsidian-ai-bootstrap     # Install AI plugins into the default Obsidian vault
 ```
 
 ### NixOS Management
@@ -233,7 +271,7 @@ Building flake development environment (may take a few minutes)...
   ✓ Added AIDB flake aliases to .zshrc
 ```
 
-### 4. Claude Code Integration (Automatic)
+### 4. AI IDE Integration (Automatic)
 ```
 Installing Claude Code...
   ✓ Claude Code npm package installed
@@ -244,6 +282,8 @@ Installing Additional VSCodium Extensions...
   ✓ Claude Code installed
   ✓ Additional extensions installation complete
 ```
+
+> Home-manager provisions the rest of the AI toolchain during this stage—Cursor's launcher, aider/gpt-cli bindings, Continue/Codeium settings, and the declarative Gitea AI agent manifest all land alongside the Claude update.
 
 ### 5. Completion
 ```
