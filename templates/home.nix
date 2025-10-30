@@ -22,9 +22,33 @@ let
   openWebUiPort = 8081;
   openWebUiUrl = "http://127.0.0.1:${toString openWebUiPort}";
   openWebUiDataDir = ".local/share/open-webui";
+  podmanAiStackDataDir = ".local/share/podman-ai-stack";
   flathubRemoteName = "flathub";
   flathubRemoteUrl = "https://dl.flathub.org/repo/flathub.flatpakrepo";
   flathubRemoteFallbackUrl = "https://flathub.org/repo/flathub.flatpakrepo";
+  # Duplicate desktop entries for COSMIC Settings appear on some releases.
+  # Hide upstream variants and publish a single consistent launcher.
+  cosmicSettingsDesktopFileNames = [
+    "com.system76.CosmicSettings.desktop"
+    "org.pop_os.CosmicSettings.desktop"
+    "cosmic-settings.desktop"
+  ];
+  cosmicSettingsHiddenDesktopEntry = ''
+    [Desktop Entry]
+    Type=Application
+    Hidden=true
+  '';
+  cosmicSettingsVisibleDesktopEntry = ''
+    [Desktop Entry]
+    Type=Application
+    Name=COSMIC Settings
+    Exec=cosmic-settings
+    Icon=cosmic-settings
+    Terminal=false
+    Categories=Settings;System;
+    OnlyShowIn=COSMIC;
+    StartupNotify=true
+  '';
   flathubPackages = [
     # Keep DEFAULT_FLATPAK_APPS in nixos-quick-deploy.sh synchronized with the defaults below.
     # ====================================================================
@@ -49,6 +73,19 @@ let
     # PRODUCTIVITY & OFFICE (Popular for Work)
     # ====================================================================
     "md.obsidian.Obsidian"                # Note-taking with markdown, vault sync, plugins
+
+    # ====================================================================
+    # AI & LLM WORKBENCHES (Graphical tooling for local + cloud models)
+    # ====================================================================
+    "ai.cursor.Cursor"                    # Cursor / Code-Cursor AI pair-programming IDE
+    "com.lmstudio.LMStudio"               # LM Studio for managing local LLM weights & servers
+
+    # ====================================================================
+    # DEVELOPMENT PLATFORM MANAGEMENT
+    # ====================================================================
+    "io.gitea.Gitea"                      # Gitea desktop (web UI) for Git/AIDB workflows
+    "io.podman_desktop.PodmanDesktop"     # Podman Desktop GUI for managing containers
+    "org.sqlitebrowser.sqlitebrowser"     # GUI browser for SQLite databases used by AIDB
   ];
   flatpakInstallerBinPath =
     lib.makeBinPath [
@@ -443,7 +480,18 @@ let
           lib.optionals (ps ? bitsandbytes) [ ps.bitsandbytes ]
           ++ lib.optionals (ps ? torch) [ ps.torch ]
           ++ lib.optionals (ps ? torchaudio) [ ps.torchaudio ]
-          ++ lib.optionals (ps ? torchvision) [ ps.torchvision ];
+          ++ lib.optionals (ps ? torchvision) [ ps.torchvision ]
+          ++ lib.optionals (ps ? langchain) [ ps.langchain ]
+          ++ lib.optionals (ps ? "langchain-openai") [ ps."langchain-openai" ]
+          ++ lib.optionals (ps ? "langchain-community") [ ps."langchain-community" ]
+          ++ lib.optionals (ps ? "llama-index") [ ps."llama-index" ]
+          ++ lib.optionals (ps ? chromadb) [ ps.chromadb ]
+          ++ lib.optionals (ps ? "qdrant-client") [ ps."qdrant-client" ]
+          ++ lib.optionals (ps ? "weaviate-client") [ ps."weaviate-client" ]
+          ++ lib.optionals (ps ? "pinecone-client") [ ps."pinecone-client" ]
+          ++ lib.optionals (ps ? "mindsdb") [ ps."mindsdb" ]
+          ++ lib.optionals (ps ? "llama-cpp-python") [ ps."llama-cpp-python" ]
+          ++ lib.optionals (ps ? "sentence-transformers") [ ps."sentence-transformers" ];
       in
         base ++ extras
     );
@@ -461,6 +509,18 @@ let
     - All chat history, uploads, and custom prompts are written here.
     - The helper binds this directory into the container at /app/backend/data.
     - Remove this directory to reset the Open WebUI state safely.
+    - When using podman-ai-stack, this path is shared with the Open WebUI service inside the stack pod.
+  '';
+  podmanAiStackReadme = ''
+    Podman AI Stack shared storage.
+
+    - ollama/: persistent model cache for the Ollama container.
+    - open-webui/: shared chat history for the Open WebUI container.
+    - qdrant/: vector database state for embeddings and RAG pipelines.
+    - mindsdb/: MindsDB database files for AI-assisted SQL workflows.
+
+    Use the podman-ai-stack helper to manage the lifecycle of the stack.
+    The helper keeps this directory synchronized with container volumes.
   '';
   giteaSharedAppIni = ''
     [server]
@@ -562,10 +622,51 @@ let
             "TEA_TOKEN": "ENV[TEA_TOKEN]"
           },
           "description": "Generate commit summaries with the Tea CLI leveraging configured AI providers."
+        },
+        {
+          "name": "gpt-cli-local",
+          "command": [
+            "%HOME%/.local/bin/gpt-cli",
+            "--provider",
+            "openai",
+            "--model",
+            "${huggingfaceModelId}",
+            "--base-url",
+            "${huggingfaceTgiEndpoint}/v1"
+          ],
+          "environment": {
+            "OPENAI_API_KEY": "ENV[OPENAI_API_KEY]",
+            "GPT_CLI_DEFAULT_PROVIDER": "openai"
+          },
+          "description": "Run ad-hoc completions against the bundled Hugging Face Text Generation Inference endpoint via gpt-cli."
+        },
+        {
+          "name": "podman-ai-stack-status",
+          "command": [
+            "%HOME%/.local/bin/podman-ai-stack",
+            "status"
+          ],
+          "environment": {},
+          "description": "Inspect the health of the local Podman AI stack (Ollama, Open WebUI, Qdrant, MindsDB)."
+        },
+        {
+          "name": "launch-cursor",
+          "command": [
+            "%HOME%/.local/bin/code-cursor"
+          ],
+          "environment": {},
+          "description": "Open the Cursor IDE configured for local model development sessions."
         }
       ],
-      "notes": "Populate the referenced environment variables with the appropriate API tokens to enable AI workflows."
+      "notes": "Populate the referenced environment variables with the appropriate API tokens to enable AI workflows. The helpers bridge local containers, Cursor, and CLI tooling."
     }
+  '';
+  obsidianAiReadme = ''
+    Obsidian AI integrations bootstrap directory.
+
+    - Run `obsidian-ai-bootstrap` to install the Text Generator and other AI plugins.
+    - The helper links plugins to Open WebUI or remote OpenAI-compatible endpoints configured on this system.
+    - You can drop additional plugin ZIP files in this directory and rerun the helper to install them declaratively.
   '';
 in
 
@@ -581,7 +682,11 @@ in
   home.packages =
     let
       aiCommandLinePackages =
-        lib.optionals (pkgs ? ollama) [ pkgs.ollama ];
+        lib.optionals (pkgs ? ollama) [ pkgs.ollama ]
+        ++ lib.optionals (pkgs ? gpt4all) [ pkgs.gpt4all ]
+        ++ lib.optionals (pkgs ? llama-cpp) [ pkgs.llama-cpp ]
+        ++ lib.optionals (pkgs ? "text-generation-inference") [ pkgs."text-generation-inference" ]
+        ++ lib.optionals (pkgs ? "mindsdb") [ pkgs."mindsdb" ];
       basePackages =
         [
           # Python (REQUIRED for AIDB and AI model tooling)
@@ -594,6 +699,7 @@ in
 
           podman                  # Container runtime for AIDB
           podman-compose          # Docker-compose compatibility
+          podman-tui              # Terminal dashboard for Podman and containers
           sqlite                  # Tier 1 Guardian database
           openssl                 # Cryptographic operations
           bc                      # Basic calculator
@@ -686,6 +792,15 @@ in
           zip                     # Create ZIP archives
           bc                      # Arbitrary precision calculator
           efibootmgr              # Modify EFI Boot Manager variables
+
+          # Observability & monitoring stack
+          glances                 # System dashboard with sensor, process, network metrics
+          grafana                 # Metrics visualization web UI
+          prometheus              # Metrics collection server
+          loki                    # Log aggregation backend
+          promtail                # Promtail agent for Loki pipelines
+          vector                  # Data pipeline for logs and metrics
+          cockpit                 # Web-based host management and reporting
 
           # ========================================================================
           # Programming Languages & Tools
@@ -835,6 +950,10 @@ in
       open-webui-up = "open-webui-run";
       open-webui-down = "open-webui-stop";
       ollama-list = "ollama list";
+      ai-stack = "podman-ai-stack";
+      gpt = "gpt-cli";
+      cursor = "code-cursor";
+      obsidian-ai = "obsidian-ai-bootstrap";
 
       # Find shortcuts
       ff = "fd";
@@ -951,18 +1070,41 @@ in
     # NixOS 25.11: Use profiles.default for extensions and settings
     profiles.default = {
       # Extensions installed declaratively
-      extensions = with pkgs.vscode-extensions; [
-        # Nix language support
-        jnoortheen.nix-ide
-        arrterian.nix-env-selector
-
-        # Git tools
-        eamodio.gitlens
-
-        # General development
-        editorconfig.editorconfig
-        esbenp.prettier-vscode
-      ];
+      extensions =
+        let
+          fetchExtension = name:
+            let
+              path = lib.splitString "." name;
+            in
+              if lib.hasAttrByPath path pkgs.vscode-extensions then
+                lib.getAttrFromPath path pkgs.vscode-extensions
+              else
+                null;
+          extensionNames = [
+            "jnoortheen.nix-ide"
+            "arrterian.nix-env-selector"
+            "eamodio.gitlens"
+            "editorconfig.editorconfig"
+            "esbenp.prettier-vscode"
+            "ms-python.python"
+            "ms-python.black-formatter"
+            "ms-python.vscode-pylance"
+            "ms-toolsai.jupyter"
+            "ms-toolsai.jupyter-keymap"
+            "ms-toolsai.jupyter-renderers"
+            "continue.continue"
+            "codeium.codeium"
+          ];
+          curated = lib.filter (pkg: pkg != null) (map fetchExtension extensionNames);
+          marketplaceExtensions =
+            if pkgs ? vscode-marketplace then
+              with pkgs.vscode-marketplace; [
+                gencay.vscode-chatgpt
+              ]
+            else
+              [];
+        in
+          curated ++ marketplaceExtensions;
 
       # VSCodium settings (declarative)
       # Note: Claude Code paths will be added by bash script (dynamic)
@@ -1016,6 +1158,8 @@ in
       "huggingface.telemetry.enableTelemetry" = false;
       "continue.defaultModel" = "Ollama (Llama 3)";
       "continue.enableTelemetry" = false;
+      "continue.telemetryEnabled" = false;
+      "continue.serverUrl" = "${openWebUiUrl}";
       "continue.models" = [
         {
           title = "Ollama (Llama 3)";
@@ -1030,6 +1174,10 @@ in
           baseUrl = "${huggingfaceTgiEndpoint}/v1";
         }
       ];
+      "codeium.enableTelemetry" = false;
+      "chatgpt.gpt3.apiBaseUrl" = "${huggingfaceTgiEndpoint}/v1";
+      "chatgpt.gpt3.model" = "${huggingfaceModelId}";
+      "chatgpt.response.showNotification" = false;
 
       # Git configuration
       "git.enableSmartCommit" = true;
@@ -1039,6 +1187,11 @@ in
       # Terminal
       "terminal.integrated.defaultProfile.linux" = "zsh";
       "terminal.integrated.fontSize" = 13;
+      "terminal.integrated.env.linux" = {
+        "OPENAI_API_BASE" = "${huggingfaceTgiEndpoint}/v1";
+        "OLLAMA_HOST" = ollamaHost;
+        "GPT_CLI_BASE_URL" = "${huggingfaceTgiEndpoint}/v1";
+      };
 
       # Theme
       "workbench.colorTheme" = "Default Dark Modern";
@@ -1108,6 +1261,12 @@ in
       HF_HUB_ENABLE_HF_TRANSFER = "1";
       OLLAMA_HOST = "${ollamaHost}";
       OPEN_WEBUI_URL = "${openWebUiUrl}";
+      GPT_CLI_DEFAULT_MODEL = "${huggingfaceModelId}";
+      GPT_CLI_DEFAULT_PROVIDER = "openai";
+      GPT_CLI_BASE_URL = "${huggingfaceTgiEndpoint}/v1";
+      PODMAN_AI_STACK_POD = "local-ai-stack";
+      PODMAN_AI_STACK_NETWORK = "local-ai";
+      PODMAN_AI_STACK_DATA_ROOT = "$HOME/${podmanAiStackDataDir}";
     }
     // lib.optionalAttrs config.services.flatpak.enable {
       GITEA_WORK_DIR = "$HOME/${giteaFlatpakDataDir}";
@@ -1123,7 +1282,19 @@ in
   # ========================================================================
 
   home.file =
-    {
+    let
+      cosmicSettingsHiddenDesktopFiles =
+        builtins.listToAttrs
+          (map
+            (desktopFile: {
+              name = ".local/share/applications/${desktopFile}";
+              value = {
+                text = cosmicSettingsHiddenDesktopEntry;
+              };
+            })
+            cosmicSettingsDesktopFileNames);
+    in
+      {
     # Create local bin directory
     ".local/bin/.keep".text = "";
 
@@ -1208,6 +1379,10 @@ in
     "${huggingfaceCacheDir}/.keep".text = "";
     "${openWebUiDataDir}/.keep".text = "";
     "${openWebUiDataDir}/README".text = openWebUiReadme;
+    "${podmanAiStackDataDir}/.keep".text = "";
+    "${podmanAiStackDataDir}/README".text = podmanAiStackReadme;
+    ".config/obsidian/ai-integrations/.keep".text = "";
+    ".config/obsidian/ai-integrations/README".text = obsidianAiReadme;
 
     # Helper to sync Hugging Face models into the local cache
     ".local/bin/hf-model-sync" = {
@@ -1275,8 +1450,13 @@ in
         image="''${OPEN_WEBUI_IMAGE:-ghcr.io/open-webui/open-webui:latest}"
         port="''${OPEN_WEBUI_PORT:-${toString openWebUiPort}}"
         data_dir="''${OPEN_WEBUI_DATA_DIR:-$HOME/${openWebUiDataDir}}"
+        network="''${PODMAN_AI_STACK_NETWORK:-local-ai}"
 
         mkdir -p "''${data_dir}"
+
+        if ! ${pkgs.podman}/bin/podman network exists "''${network}" >/dev/null 2>&1; then
+          ${pkgs.podman}/bin/podman network create "''${network}" >/dev/null
+        fi
 
         if ${pkgs.podman}/bin/podman ps --format '{{.Names}}' | grep -q "^''${container_name}$"; then
           echo "Open WebUI container '""''${container_name}""' is already running" >&2
@@ -1285,6 +1465,7 @@ in
 
         exec ${pkgs.podman}/bin/podman run --rm \
           --name "''${container_name}" \
+          --network "''${network}" \
           -p "''${port}:8080" \
           -v "''${data_dir}:/app/backend/data" \
           -e "OLLAMA_BASE_URL=${ollamaHost}" \
@@ -1309,6 +1490,369 @@ in
           echo "Open WebUI container '""''${container_name}""' is not running" >&2
           exit 0
         fi
+      '';
+      executable = true;
+    };
+
+    ".local/bin/gpt-cli" = {
+      text = ''
+        #!${pythonAiInterpreterPath}
+        import argparse
+        import json
+        import os
+        import sys
+        import textwrap
+        import urllib.error
+        import urllib.request
+
+        try:
+          from openai import OpenAI
+        except Exception:
+          OpenAI = None  # type: ignore
+
+
+        def _read_prompt(args: argparse.Namespace) -> str:
+          if args.prompt:
+            return " ".join(args.prompt)
+
+          data = sys.stdin.read()
+          if not data.strip():
+            raise SystemExit("gpt-cli: provide a prompt as arguments or via stdin")
+          return data
+
+
+        def _stream_openai(client, model: str, system_prompt: str, user_prompt: str, temperature: float) -> None:
+          stream = client.chat.completions.create(
+            model=model,
+            temperature=temperature,
+            messages=[
+              {"role": "system", "content": system_prompt},
+              {"role": "user", "content": user_prompt},
+            ],
+            stream=True,
+          )
+
+          for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+              sys.stdout.write(chunk.choices[0].delta.content)
+              sys.stdout.flush()
+          print()
+
+
+        def _complete_openai(client, model: str, system_prompt: str, user_prompt: str, temperature: float) -> None:
+          completion = client.chat.completions.create(
+            model=model,
+            temperature=temperature,
+            messages=[
+              {"role": "system", "content": system_prompt},
+              {"role": "user", "content": user_prompt},
+            ],
+          )
+          print(completion.choices[0].message.content.strip())
+
+
+        def _ollama_request(base_url: str, payload: dict[str, object]) -> urllib.request.Request:
+          data = json.dumps(payload).encode("utf-8")
+          headers = {"Content-Type": "application/json"}
+          return urllib.request.Request(base_url, data=data, headers=headers)
+
+
+        def _ollama_stream(url: str, payload: dict[str, object]) -> None:
+          request = _ollama_request(url, payload | {"stream": True})
+          with urllib.request.urlopen(request) as response:
+            for raw in response:
+              line = raw.decode("utf-8").strip()
+              if not line:
+                continue
+              event = json.loads(line)
+              message = event.get("message") or {}
+              content = message.get("content")
+              if content:
+                sys.stdout.write(content)
+                sys.stdout.flush()
+            print()
+
+
+        def _ollama_complete(url: str, payload: dict[str, object]) -> None:
+          request = _ollama_request(url, payload | {"stream": False})
+          with urllib.request.urlopen(request) as response:
+            body = json.load(response)
+          message = body.get("message") or {}
+          content = message.get("content", "")
+          print(content.strip())
+
+
+        def main() -> None:
+          parser = argparse.ArgumentParser(
+            prog="gpt-cli",
+            description="Talk to local Ollama models or any OpenAI-compatible endpoint.",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog=textwrap.dedent(
+              """
+              Examples:
+                gpt-cli "summarize the latest git commits"
+                gpt-cli --provider ollama --model llama3 "write unit tests for foo()"
+                gpt-cli --system "You are a SQL assistant" < query.sql
+              """
+            ),
+          )
+          parser.add_argument("prompt", nargs=argparse.REMAINDER, help="Prompt text or leave empty to read stdin")
+          parser.add_argument("--model", "-m", default=os.environ.get("GPT_CLI_DEFAULT_MODEL", "gpt-4o-mini"))
+          parser.add_argument(
+            "--provider",
+            choices=["openai", "ollama"],
+            default=os.environ.get("GPT_CLI_DEFAULT_PROVIDER", "openai"),
+            help="Select backend provider (default: openai)",
+          )
+          parser.add_argument(
+            "--base-url",
+            default=os.environ.get("GPT_CLI_BASE_URL", os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")),
+            help="Override the OpenAI/Ollama base URL",
+          )
+          parser.add_argument("--system", default=os.environ.get("GPT_CLI_SYSTEM", "You are a helpful AI assistant."))
+          parser.add_argument("--temperature", type=float, default=float(os.environ.get("GPT_CLI_TEMPERATURE", "0.2")))
+          parser.add_argument("--stream", action="store_true", help="Stream tokens as they arrive")
+
+          args = parser.parse_args()
+          prompt = _read_prompt(args)
+
+          if args.provider == "openai":
+            if OpenAI is None:
+              raise SystemExit("gpt-cli: openai python package is unavailable in the current environment")
+            api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACEHUB_API_TOKEN")
+            if not api_key:
+              raise SystemExit("gpt-cli: set OPENAI_API_KEY or HUGGINGFACEHUB_API_TOKEN for OpenAI-compatible backends")
+
+            client = OpenAI(base_url=args.base_url.rstrip("/"), api_key=api_key)
+            if args.stream:
+              _stream_openai(client, args.model, args.system, prompt, args.temperature)
+            else:
+              _complete_openai(client, args.model, args.system, prompt, args.temperature)
+            return
+
+          base = args.base_url.rstrip("/") or os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
+          url = f"{base}/api/chat"
+          payload: dict[str, object] = {
+            "model": args.model,
+            "messages": [
+              {"role": "system", "content": args.system},
+              {"role": "user", "content": prompt},
+            ],
+            "stream": args.stream,
+            "options": {"temperature": args.temperature},
+          }
+
+          try:
+            if args.stream:
+              _ollama_stream(url, payload)
+            else:
+              _ollama_complete(url, payload)
+          except urllib.error.URLError as exc:
+            raise SystemExit(f"gpt-cli: failed to reach Ollama at {base}: {exc}")
+
+
+        if __name__ == "__main__":
+          main()
+      '';
+      executable = true;
+    };
+
+    ".local/bin/podman-ai-stack" = {
+      text = ''
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        if ! command -v podman >/dev/null 2>&1; then
+          echo "podman-ai-stack: podman CLI is required" >&2
+          exit 127
+        fi
+
+        pod="''${PODMAN_AI_STACK_POD:-local-ai-stack}"
+        network="''${PODMAN_AI_STACK_NETWORK:-local-ai}"
+        data_root="''${PODMAN_AI_STACK_DATA_ROOT:-$HOME/${podmanAiStackDataDir}}"
+        ollama_image="''${PODMAN_AI_STACK_OLLAMA_IMAGE:-docker.io/ollama/ollama:latest}"
+        open_webui_image="''${OPEN_WEBUI_IMAGE:-ghcr.io/open-webui/open-webui:latest}"
+        qdrant_image="''${PODMAN_AI_STACK_QDRANT_IMAGE:-docker.io/qdrant/qdrant:latest}"
+        mindsdb_image="''${PODMAN_AI_STACK_MINDSDB_IMAGE:-docker.io/mindsdb/mindsdb:latest}"
+        open_webui_port="''${OPEN_WEBUI_PORT:-${toString openWebUiPort}}"
+        ollama_port="''${OLLAMA_PORT:-11434}"
+        qdrant_port="''${QDRANT_PORT:-6333}"
+        qdrant_grpc_port="''${QDRANT_GRPC_PORT:-6334}"
+        mindsdb_api_port="''${MINDSDB_API_PORT:-47334}"
+        mindsdb_gui_port="''${MINDSDB_GUI_PORT:-7735}"
+
+        usage() {
+          cat <<'USAGE' >&2
+Usage: podman-ai-stack <command>
+
+Commands:
+  up         Create the pod, network, and start all AI services
+  down       Stop and remove the pod and containers (volumes kept)
+  restart    Recreate the stack (down + up)
+  status     Show pod and container status
+  logs       Stream combined logs from all services
+
+Environment overrides:
+  PODMAN_AI_STACK_DATA_ROOT  Base directory for persistent volumes
+  PODMAN_AI_STACK_NETWORK    Custom network name (default: local-ai)
+  PODMAN_AI_STACK_POD        Pod name (default: local-ai-stack)
+USAGE
+        }
+
+        ensure_directories() {
+          mkdir -p "${data_root}/ollama" "${data_root}/open-webui" "${data_root}/qdrant" "${data_root}/mindsdb"
+        }
+
+        ensure_network() {
+          if ! podman network exists "$network" >/dev/null 2>&1; then
+            podman network create "$network" >/dev/null
+          fi
+        }
+
+        ensure_pod() {
+          if ! podman pod exists "$pod" >/dev/null 2>&1; then
+            podman pod create \
+              --name "$pod" \
+              --network "$network" \
+              -p "$ollama_port:11434" \
+              -p "$open_webui_port:8080" \
+              -p "$qdrant_port:6333" \
+              -p "$qdrant_grpc_port:6334" \
+              -p "$mindsdb_api_port:47334" \
+              -p "$mindsdb_gui_port:7735" >/dev/null
+          fi
+        }
+
+        start_container() {
+          local name="$1"
+          shift
+          if podman ps --filter "name=$name" --format '{{.Names}}' | grep -Fxq "$name"; then
+            return
+          fi
+          podman run -d --pod "$pod" --name "$name" "$@" >/dev/null
+        }
+
+        cmd="${1:-}"
+        [[ -n "$cmd" ]] || { usage; exit 1; }
+
+        case "$cmd" in
+          up)
+            ensure_directories
+            ensure_network
+            ensure_pod
+
+            start_container "$pod-ollama" \
+              -v "${data_root}/ollama:/root/.ollama" \
+              "$ollama_image"
+
+            start_container "$pod-open-webui" \
+              -v "${data_root}/open-webui:/app/backend/data" \
+              -e "OLLAMA_BASE_URL=http://127.0.0.1:11434" \
+              -e "OPENAI_API_BASE=${huggingfaceTgiEndpoint}/v1" \
+              "$open_webui_image"
+
+            start_container "$pod-qdrant" \
+              -v "${data_root}/qdrant:/qdrant/storage" \
+              "$qdrant_image"
+
+            start_container "$pod-mindsdb" \
+              -v "${data_root}/mindsdb:/var/lib/mindsdb" \
+              "$mindsdb_image"
+
+            echo "podman-ai-stack: all services running in pod '$pod'"
+            ;;
+          down)
+            if podman pod exists "$pod" >/dev/null 2>&1; then
+              podman pod stop "$pod" >/dev/null || true
+              podman pod rm "$pod" >/dev/null || true
+            fi
+            ;;
+          restart)
+            "$0" down
+            "$0" up
+            ;;
+          status)
+            podman pod ps --filter "name=$pod"
+            echo
+            podman ps --filter "pod=$pod"
+            ;;
+          logs)
+            podman pod logs -f "$pod"
+            ;;
+          *)
+            usage
+            exit 1
+            ;;
+        esac
+      '';
+      executable = true;
+    };
+
+    ".local/bin/code-cursor" = {
+      text = ''
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        if command -v flatpak >/dev/null 2>&1 && flatpak info ai.cursor.Cursor >/dev/null 2>&1; then
+          exec flatpak run ai.cursor.Cursor "$@"
+        fi
+
+        echo "code-cursor: install the Cursor Flatpak (ai.cursor.Cursor) to use this helper" >&2
+        exit 127
+      '';
+      executable = true;
+    };
+
+    ".local/bin/obsidian-ai-bootstrap" = {
+      text = ''
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        vault="''${1:-$HOME/Documents/ObsidianVault}"
+        plugin_dir="''${2:-textgenerator}"
+        plugin_url="''${OBSIDIAN_AI_PLUGIN_URL:-https://github.com/nhaouari/obsidian-textgenerator-plugin/releases/latest/download/obsidian-textgenerator-plugin.zip}"
+
+        if [[ "$vault" == "--help" || "$vault" == "-h" ]]; then
+          cat <<'USAGE'
+Usage: obsidian-ai-bootstrap [vault-path] [plugin-directory]
+
+Install AI-centric community plugins (Text Generator by default) into an Obsidian vault.
+
+Environment variables:
+  OBSIDIAN_AI_PLUGIN_URL   Override plugin bundle URL (zip file)
+  OBSIDIAN_AI_BACKEND_URL  Override API endpoint (defaults to $OPEN_WEBUI_URL)
+USAGE
+          exit 0
+        fi
+
+        if [[ -z "$vault" ]]; then
+          echo "obsidian-ai-bootstrap: missing vault path" >&2
+          exit 1
+        fi
+
+        backend_url="''${OBSIDIAN_AI_BACKEND_URL:-${openWebUiUrl}}"
+        tmp_zip="$(mktemp -t obsidian-plugin.XXXXXX.zip)"
+        trap 'rm -f "$tmp_zip"' EXIT
+
+        mkdir -p "$vault/.obsidian/plugins/$plugin_dir"
+
+        echo "Downloading Obsidian AI plugin bundle..."
+        curl -fsSL "$plugin_url" -o "$tmp_zip"
+
+        unzip -qo "$tmp_zip" -d "$vault/.obsidian/plugins/$plugin_dir"
+
+        cat >"$vault/.obsidian/plugins/$plugin_dir/data.json" <<PLUGINCFG
+{
+  "openAiBaseUrl": "${huggingfaceTgiEndpoint}/v1",
+  "openAiKey": "",
+  "defaultModel": "${huggingfaceModelId}",
+  "stream": true,
+  "useCustomEndpoint": true,
+  "customEndpoint": "$backend_url"
+}
+PLUGINCFG
+
+        echo "Obsidian AI plugins ready in: $vault/.obsidian/plugins/$plugin_dir"
       '';
       executable = true;
     };
@@ -1485,6 +2029,12 @@ in
       typeset -g POWERLEVEL9K_STATUS_OK=false
       typeset -g POWERLEVEL9K_LINUX_NIXOS_ICON='❄️'
     '';
+    }
+    // cosmicSettingsHiddenDesktopFiles
+    // {
+      ".local/share/applications/aidb-cosmic-settings.desktop" = {
+        text = cosmicSettingsVisibleDesktopEntry;
+      };
     }
     // lib.optionalAttrs config.services.flatpak.enable {
       "${giteaFlatpakConfigDir}/app.ini".text = giteaSharedAppIni;
