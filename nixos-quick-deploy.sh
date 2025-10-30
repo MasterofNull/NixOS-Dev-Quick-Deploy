@@ -495,12 +495,12 @@ ensure_flathub_remote() {
     fi
 
     print_info "Adding Flathub Flatpak remote..."
-    if run_as_primary_user flatpak --noninteractive remote-add --user --if-not-exists "$FLATHUB_REMOTE_NAME" "$FLATHUB_REMOTE_URL" >/dev/null 2>&1; then
+    if run_as_primary_user flatpak remote-add --user --if-not-exists "$FLATHUB_REMOTE_NAME" "$FLATHUB_REMOTE_URL" >/dev/null 2>&1; then
         print_success "Flathub repository added"
         return 0
     fi
 
-    if run_as_primary_user flatpak --noninteractive remote-add --user --if-not-exists --from "$FLATHUB_REMOTE_NAME" "$FLATHUB_REMOTE_URL" >/dev/null 2>&1; then
+    if run_as_primary_user flatpak remote-add --user --if-not-exists --from "$FLATHUB_REMOTE_NAME" "$FLATHUB_REMOTE_URL" >/dev/null 2>&1; then
         print_success "Flathub repository added via --from"
         return 0
     fi
