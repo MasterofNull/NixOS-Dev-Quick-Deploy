@@ -221,8 +221,6 @@ in
   home.stateVersion = "STATEVERSION_PLACEHOLDER";  # Auto-detected from home-manager channel
 
   programs.home-manager.enable = true;
-  nixpkgs.config.allowUnfree = true;
-
   home.packages =
     let
       aiCommandLinePackages =
@@ -404,27 +402,22 @@ in
           hexedit         # Hex editor
           qrencode        # QR code generator
         ]);
-      giteaFallbackPackages =
-        lib.optionals (!config.services.flatpak.enable) [
-          pkgs.gitea             # Native deployment when Flatpak is unavailable
-        ];
+      aiderPackage =
+        if pkgs ? aider-chat then
+          [ pkgs.aider-chat ]
+        else if pkgs ? aider then
+          [ pkgs.aider ]
+        else
+          [ ];
       giteaDevAiPackages =
-        let
-          aiderPackage =
-            if pkgs ? aider-chat then
-              [ pkgs.aider-chat ]
-            else if pkgs ? aider then
-              [ pkgs.aider ]
-            else
-              [ ];
-        in
         [
+          pkgs.gitea                   # Native Gitea server and CLI for local development
           pkgs.tea                     # Official Gitea CLI for automation and AI workflows
           pkgs.python311Packages.openai # Python SDK for OpenAI-compatible AI providers
         ]
         ++ aiderPackage;
     in
-    basePackages ++ giteaFallbackPackages ++ giteaDevAiPackages ++ aiCommandLinePackages;
+    basePackages ++ giteaDevAiPackages ++ aiCommandLinePackages;
 
   # ========================================================================
   # ZSH Configuration
@@ -1144,7 +1137,7 @@ in
         It is managed declaratively by Home Manager; manual changes may be overwritten on switch.
       '';
     }
-    // lib.optionalAttrs (!config.services.flatpak.enable) {
+    // {
       "${giteaNativeConfigDir}/app.ini".text = giteaSharedAppIni;
       "${giteaNativeConfigDir}/${giteaAiConfigFile}".text = giteaAiIntegrations;
       "${giteaNativeDataDir}/README".text = ''
@@ -1154,31 +1147,30 @@ in
     };
 
   # ========================================================================
-  # Gitea Native Service (Fallback when Flatpak is unavailable)
+  # Gitea Native Service (runs alongside Flatpak when present)
   # ========================================================================
 
-  systemd.user.services =
-    lib.optionalAttrs (!config.services.flatpak.enable) {
-      "gitea-dev" = {
-        Unit = {
-          Description = "Gitea development forge (user)";
-          After = [ "network.target" ];
-        };
-        Service = {
-          Environment = [
-            "GITEA_WORK_DIR=%h/${giteaNativeDataDir}"
-            "GITEA_CUSTOM=%h/${giteaNativeConfigDir}"
-          ];
-          ExecStart = "${pkgs.gitea}/bin/gitea web --config %h/${giteaNativeConfigDir}/app.ini";
-          WorkingDirectory = "%h/${giteaNativeDataDir}";
-          Restart = "on-failure";
-          RestartSec = 3;
-        };
-        Install = {
-          WantedBy = [ "default.target" ];
-        };
+  systemd.user.services = {
+    "gitea-dev" = {
+      Unit = {
+        Description = "Gitea development forge (user)";
+        After = [ "network.target" ];
+      };
+      Service = {
+        Environment = [
+          "GITEA_WORK_DIR=%h/${giteaNativeDataDir}"
+          "GITEA_CUSTOM=%h/${giteaNativeConfigDir}"
+        ];
+        ExecStart = "${pkgs.gitea}/bin/gitea web --config %h/${giteaNativeConfigDir}/app.ini";
+        WorkingDirectory = "%h/${giteaNativeDataDir}";
+        Restart = "on-failure";
+        RestartSec = 3;
+      };
+      Install = {
+        WantedBy = [ "default.target" ];
       };
     };
+  };
 
   # ========================================================================
   # Flatpak Integration - Manual Setup Instructions
@@ -1299,29 +1291,45 @@ in
   #
   services.flatpak =
     let
-      flatpakPackageOptions =
-        # The nix-flatpak module follows the Home Manager/NixOS option schema
-        # documented in the NixOS manual. In recent releases it renamed the
-        # `remote` attribute to `origin`, so we inspect the option metadata to
-        # stay compatible with both variants when generating package entries.
-        lib.attrByPath [ "services" "flatpak" "packages" "type" "elemType" "options" ] options { };
-      supportsOrigin = flatpakPackageOptions ? origin;
-      supportsRemote = flatpakPackageOptions ? remote;
-      flatpakRemoteOptions =
-        lib.attrByPath [ "services" "flatpak" "remotes" "type" "elemType" "options" ] options { };
-      supportsLocation = flatpakRemoteOptions ? location;
-      supportsUrl = flatpakRemoteOptions ? url;
-      mkFlathubPackage =
-        appId:
-          { inherit appId; }
-          // lib.optionalAttrs supportsOrigin { origin = "flathub"; }
-          // lib.optionalAttrs supportsRemote { remote = "flathub"; };
+      packageTypePath = [ "services" "flatpak" "packages" "type" "elemType" ];
+      remoteTypePath = [ "services" "flatpak" "remotes" "type" "elemType" ];
+      flatpakPackageType =
+        if lib.hasAttrByPath packageTypePath options then
+          lib.attrByPath packageTypePath options null
+        else
+          null;
+      flatpakRemoteType =
+        if lib.hasAttrByPath remoteTypePath options then
+          lib.attrByPath remoteTypePath options null
+        else
+          null;
+      checkCandidate = type: candidate:
+        if type == null then true else (builtins.tryEval (type.check candidate)).success;
+      selectCandidate = type: defaultCandidate: candidates:
+        let
+          found = lib.findFirst (candidate: checkCandidate type candidate) null candidates;
+        in
+          if found != null then found else defaultCandidate;
       flathubRemoteUrl = "https://dl.flathub.org/repo/flathub.flatpakrepo";
       mkFlathubRemote =
-        { name = "flathub"; }
-        // lib.optionalAttrs (supportsLocation || !supportsUrl) { location = flathubRemoteUrl; }
-        // lib.optionalAttrs (supportsUrl && !supportsLocation) { url = flathubRemoteUrl; };
+        selectCandidate
+          flatpakRemoteType
+          { name = "flathub"; location = flathubRemoteUrl; }
+          [
+            { name = "flathub"; location = flathubRemoteUrl; }
+            { name = "flathub"; url = flathubRemoteUrl; }
+          ];
+      mkFlathubPackage =
+        appId:
+          selectCandidate
+            flatpakPackageType
+            { inherit appId; origin = "flathub"; }
+            [
+              { inherit appId; origin = "flathub"; }
+              { inherit appId; remote = "flathub"; }
+            ];
       flathubPackages = [
+      # Keep DEFAULT_FLATPAK_APPS in nixos-quick-deploy.sh synchronized with the defaults below.
       # ====================================================================
       # SYSTEM TOOLS & UTILITIES (Recommended - Essential GUI Tools)
       # ====================================================================
