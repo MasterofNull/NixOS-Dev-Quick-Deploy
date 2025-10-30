@@ -84,6 +84,9 @@ AIDER_CONFIG_DIR="$PRIMARY_HOME/.config/aider"
 TEA_CONFIG_DIR="$PRIMARY_HOME/.config/tea"
 LATEST_CONFIG_BACKUP_DIR=""
 
+USER_SYSTEMD_CHANNEL_STATUS="unknown"
+USER_SYSTEMD_CHANNEL_MESSAGE=""
+
 build_primary_user_path() {
     local -a path_parts=()
 
@@ -248,6 +251,53 @@ ensure_user_systemd_ready() {
     fi
 
     return 0
+}
+
+user_systemd_channel_ready() {
+    if [[ "$USER_SYSTEMD_CHANNEL_STATUS" == "available" ]]; then
+        return 0
+    fi
+
+    if [[ "$USER_SYSTEMD_CHANNEL_STATUS" == "unavailable" ]]; then
+        return 1
+    fi
+
+    ensure_user_systemd_ready || true
+
+    if ! command -v systemctl >/dev/null 2>&1; then
+        USER_SYSTEMD_CHANNEL_STATUS="unavailable"
+        USER_SYSTEMD_CHANNEL_MESSAGE="systemctl command not available"
+        return 1
+    fi
+
+    local timeout_bin
+    timeout_bin=$(command -v timeout || true)
+    if [[ -z "$timeout_bin" ]]; then
+        USER_SYSTEMD_CHANNEL_STATUS="unavailable"
+        USER_SYSTEMD_CHANNEL_MESSAGE="timeout command not available"
+        return 1
+    fi
+
+    local output
+    output=$(run_as_primary_user "$timeout_bin" 5s systemctl --user show-environment 2>&1)
+    local status=$?
+
+    if (( status == 0 )); then
+        USER_SYSTEMD_CHANNEL_STATUS="available"
+        USER_SYSTEMD_CHANNEL_MESSAGE=""
+        return 0
+    fi
+
+    USER_SYSTEMD_CHANNEL_STATUS="unavailable"
+    if (( status == 124 )); then
+        USER_SYSTEMD_CHANNEL_MESSAGE="systemctl --user show-environment timed out (user systemd session not detected)"
+    elif [[ "$output" == *"Failed to connect to bus"* ]]; then
+        USER_SYSTEMD_CHANNEL_MESSAGE="$output"
+    else
+        USER_SYSTEMD_CHANNEL_MESSAGE="${output:-systemctl --user show-environment exited with status $status}"
+    fi
+
+    return 1
 }
 
 wait_for_systemd_user_service() {
@@ -819,7 +869,7 @@ recover_flatpak_managed_install_service() {
         return 1
     fi
 
-    if [[ -n "$service_name" ]]; then
+    if [[ -n "$service_name" ]] && user_systemd_channel_ready; then
         run_as_primary_user systemctl --user reset-failed "$service_name" >/dev/null 2>&1 || true
         if run_as_primary_user systemctl --user start "$service_name" >/dev/null 2>&1; then
             wait_for_systemd_user_service "$service_name" 180 >/dev/null 2>&1 || true
@@ -836,6 +886,16 @@ ensure_flatpak_managed_install_service() {
     fi
 
     local service_name="flatpak-managed-install.service"
+
+    if ! user_systemd_channel_ready; then
+        print_warning "User systemd session is unavailable; skipping $service_name management"
+        if [[ -n "$USER_SYSTEMD_CHANNEL_MESSAGE" ]]; then
+            local detail
+            detail=$(printf '%s' "$USER_SYSTEMD_CHANNEL_MESSAGE" | head -n1)
+            print_info "  Details: $detail"
+        fi
+        return
+    fi
 
     preflight_flatpak_environment "service-start" || true
 
@@ -1661,7 +1721,7 @@ copy_template_to_flake() {
 
     local need_copy=true
 
-    if [[ -f "$destination_file" ]]; then
+    if [[ -e "$destination_file" || -L "$destination_file" ]]; then
         if grep -q '^<<<<<<< ' "$destination_file" 2>/dev/null; then
             print_error "Unresolved merge conflict markers detected in $destination_file"
             print_info "Resolve the conflicts in $description and rerun the script"
@@ -1672,24 +1732,20 @@ copy_template_to_flake() {
             print_warning "$description exists but is empty; refreshing from template"
         elif cmp -s "$source_file" "$destination_file"; then
             need_copy=false
-        elif [[ "$FORCE_UPDATE" = false ]]; then
-            local incoming_file="$destination_file.incoming.$(date +%Y%m%d_%H%M%S)"
-            if cp "$source_file" "$incoming_file" 2>/dev/null; then
-                ensure_path_owner "$incoming_file"
-                print_warning "$description differs from the latest template"
-                print_info "Review $incoming_file for template updates or rerun with --force-update"
-            else
-                print_warning "Unable to stage template preview for $description"
-                print_info "Consider rerunning with --force-update after resolving manual edits"
-            fi
-            chmod 0644 "$destination_file" 2>/dev/null || true
-            ensure_path_owner "$destination_file"
-            return 0
         else
             local backup_file="$destination_file.backup.$(date +%Y%m%d_%H%M%S)"
-            if cp "$destination_file" "$backup_file" 2>/dev/null; then
+            if cp -a "$destination_file" "$backup_file" 2>/dev/null; then
                 ensure_path_owner "$backup_file"
                 print_info "Backed up existing $description to $backup_file"
+                if [[ -d "$destination_file" && ! -L "$destination_file" ]]; then
+                    rm -rf "$destination_file"
+                else
+                    rm -f "$destination_file"
+                fi
+            else
+                print_error "Failed to back up existing $description at $destination_file"
+                print_info "Create a manual backup or remove the file before rerunning the script."
+                return 1
             fi
         fi
     fi
@@ -3274,12 +3330,24 @@ run_home_manager_switch() {
     print_info "Using flake for full Flatpak declarative support..."
     echo ""
 
+    local -a hm_args=("switch" "--flake" "$HM_CONFIG_DIR")
+    if ! user_systemd_channel_ready; then
+        if [[ -n "$USER_SYSTEMD_CHANNEL_MESSAGE" ]]; then
+            local detail
+            detail=$(printf '%s' "$USER_SYSTEMD_CHANNEL_MESSAGE" | head -n1)
+            print_warning "$detail"
+        fi
+        print_warning "User systemd session is unavailable; running home-manager with --no-user-systemd"
+        hm_args+=("--no-user-systemd")
+    fi
+    hm_args+=("--show-trace")
+
     if $hm_cli_available; then
-        run_as_primary_user home-manager switch --flake "$HM_CONFIG_DIR" --show-trace 2>&1 | tee "$log_path"
+        run_as_primary_user home-manager "${hm_args[@]}" 2>&1 | tee "$log_path"
         return ${PIPESTATUS[0]}
     fi
 
-    run_as_primary_user nix run --accept-flake-config "${hm_pkg_ref}" -- switch --flake "$HM_CONFIG_DIR" --show-trace 2>&1 | tee "$log_path"
+    run_as_primary_user nix run --accept-flake-config "${hm_pkg_ref}" -- "${hm_args[@]}" 2>&1 | tee "$log_path"
     return ${PIPESTATUS[0]}
 }
 
