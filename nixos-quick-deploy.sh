@@ -25,6 +25,7 @@ DEFAULT_FLATPAK_APPS=(
     "org.mozilla.firefox"
     "md.obsidian.Obsidian"
 )
+LAST_FLATPAK_QUERY_MESSAGE=""
 
 # Ensure we target the invoking user's home directory even when executed via sudo
 RESOLVED_USER="${USER:-}"
@@ -285,6 +286,45 @@ flatpak_remote_exists() {
         | grep -Fxq "$FLATHUB_REMOTE_NAME"
 }
 
+flatpak_query_application_support() {
+    if ! flatpak_cli_available; then
+        LAST_FLATPAK_QUERY_MESSAGE="Flatpak CLI not available"
+        return 2
+    fi
+
+    local app_id="$1"
+    local user_output
+    local user_status
+    local system_output
+    local system_status
+
+    LAST_FLATPAK_QUERY_MESSAGE=""
+
+    user_output=$(run_as_primary_user flatpak --user remote-info "$FLATHUB_REMOTE_NAME" "$app_id" 2>&1 || true)
+    user_status=$?
+    if [[ $user_status -eq 0 ]]; then
+        return 0
+    fi
+
+    system_output=$(run_as_primary_user flatpak remote-info "$FLATHUB_REMOTE_NAME" "$app_id" 2>&1 || true)
+    system_status=$?
+    if [[ $system_status -eq 0 ]]; then
+        return 0
+    fi
+
+    LAST_FLATPAK_QUERY_MESSAGE="$user_output"
+    if [[ -n "$LAST_FLATPAK_QUERY_MESSAGE" && -n "$system_output" ]]; then
+        LAST_FLATPAK_QUERY_MESSAGE+=$'\n'
+    fi
+    LAST_FLATPAK_QUERY_MESSAGE+="$system_output"
+
+    if printf '%s\n' "$LAST_FLATPAK_QUERY_MESSAGE" | grep -Eiq 'No remote refs found similar|No entry for|Nothing matches'; then
+        return 3
+    fi
+
+    return 1
+}
+
 flatpak_install_app_list() {
     if [[ $# -eq 0 ]]; then
         return 0
@@ -303,6 +343,29 @@ flatpak_install_app_list() {
     for app_id in "${apps[@]}"; do
         if run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
             print_info "  • $app_id already present"
+            continue
+        fi
+
+        local support_status=0
+        if ! flatpak_query_application_support "$app_id"; then
+            support_status=$?
+            if [[ $support_status -eq 3 ]]; then
+                print_warning "  ⚠ $app_id is not available on $FLATHUB_REMOTE_NAME for this architecture; skipping"
+                if [[ -n "$LAST_FLATPAK_QUERY_MESSAGE" ]]; then
+                    while IFS= read -r line; do
+                        print_info "    ↳ $line"
+                    done <<<"$LAST_FLATPAK_QUERY_MESSAGE"
+                fi
+                continue
+            fi
+
+            print_error "  ✗ Unable to query metadata for $app_id prior to installation"
+            if [[ -n "$LAST_FLATPAK_QUERY_MESSAGE" ]]; then
+                while IFS= read -r line; do
+                    print_info "    ↳ $line"
+                done <<<"$LAST_FLATPAK_QUERY_MESSAGE"
+            fi
+            failure=true
             continue
         fi
 
@@ -337,12 +400,32 @@ validate_flatpak_application_state() {
     fi
 
     local -a missing=()
+    local -a unsupported=()
 
     for app_id in "${DEFAULT_FLATPAK_APPS[@]}"; do
+        local support_status=0
+        if ! flatpak_query_application_support "$app_id"; then
+            support_status=$?
+            if [[ $support_status -eq 3 ]]; then
+                unsupported+=("$app_id")
+                continue
+            fi
+
+            if [[ -n "$LAST_FLATPAK_QUERY_MESSAGE" ]]; then
+                while IFS= read -r line; do
+                    print_info "  ↳ $line"
+                done <<<"$LAST_FLATPAK_QUERY_MESSAGE"
+            fi
+        fi
+
         if ! run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
             missing+=("$app_id")
         fi
     done
+
+    if (( ${#unsupported[@]} > 0 )); then
+        print_info "Skipping Flatpak apps unsupported on this architecture: ${unsupported[*]}"
+    fi
 
     if (( ${#missing[@]} > 0 )); then
         print_warning "Missing Flatpak applications: ${missing[*]}"

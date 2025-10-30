@@ -69,9 +69,44 @@ let
 
       remote_name=${lib.escapeShellArg flathubRemoteName}
       remote_url=${lib.escapeShellArg flathubRemoteUrl}
+      availability_message=""
 
       log() {
         printf '[%s] %s\n' "$(date --iso-8601=seconds)" "$*"
+      }
+
+      check_app_availability() {
+        local app_id="$1"
+        local user_output
+        local user_status
+        local system_output
+        local system_status
+
+        availability_message=""
+
+        user_output="$(flatpak --user remote-info "$remote_name" "$app_id" 2>&1 || true)"
+        user_status=$?
+        if [[ $user_status -eq 0 ]]; then
+          return 0
+        fi
+
+        system_output="$(flatpak remote-info "$remote_name" "$app_id" 2>&1 || true)"
+        system_status=$?
+        if [[ $system_status -eq 0 ]]; then
+          return 0
+        fi
+
+        availability_message="$user_output"
+        if [[ -n "$availability_message" && -n "$system_output" ]]; then
+          availability_message+=$'\n'
+        fi
+        availability_message+="$system_output"
+
+        if printf '%s\n' "$availability_message" | grep -Eiq 'No remote refs found similar|No entry for|Nothing matches'; then
+          return 3
+        fi
+
+        return 1
       }
 
       ensure_remote() {
@@ -101,6 +136,28 @@ let
         if flatpak --user info "$app_id" >/dev/null 2>&1; then
           log "Flatpak $app_id already installed"
           return 0
+        fi
+
+        local availability_status
+        if ! check_app_availability "$app_id"; then
+          availability_status=$?
+          if [[ $availability_status -eq 3 ]]; then
+            log "Flatpak $app_id not available on $remote_name for this architecture; skipping"
+            if [[ -n "$availability_message" ]]; then
+              while IFS= read -r line; do
+                log "  ↳ $line"
+              done <<<"$availability_message"
+            fi
+            return 0
+          fi
+
+          log "Unable to query metadata for $app_id prior to installation" >&2
+          if [[ -n "$availability_message" ]]; then
+            while IFS= read -r line; do
+              log "  ↳ $line" >&2
+            done <<<"$availability_message"
+          fi
+          return 1
         fi
 
         local attempt=1
