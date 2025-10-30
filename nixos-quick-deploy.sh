@@ -3381,6 +3381,18 @@ ensure_home_manager_cli_available() {
     return 1
 }
 
+run_nixos_rebuild_dry_run() {
+    local log_path="${1:-/tmp/nixos-rebuild-dry-run.log}"
+    local target_host
+    target_host=$(hostname)
+
+    print_info "Performing dry run: sudo nixos-rebuild switch --flake \"$HM_CONFIG_DIR#$target_host\" --dry-run"
+    print_info "Validating system rebuild without applying changes..."
+
+    sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" --dry-run 2>&1 | tee "$log_path"
+    return ${PIPESTATUS[0]}
+}
+
 run_nixos_rebuild_switch() {
     local log_path="${1:-/tmp/nixos-rebuild.log}"
     local target_host
@@ -4007,7 +4019,19 @@ PY
     # Apply the new configuration
     print_section "Applying New Configuration"
 
-    if ! confirm "Run 'sudo nixos-rebuild switch' now to activate the system configuration?" "y"; then
+    local NIXOS_REBUILD_DRY_LOG="/tmp/nixos-rebuild-dry-run.log"
+    if run_nixos_rebuild_dry_run "$NIXOS_REBUILD_DRY_LOG"; then
+        print_success "Dry run completed successfully (no changes applied)"
+        print_info "Log saved to: $NIXOS_REBUILD_DRY_LOG"
+    else
+        local dry_exit_code=$?
+        print_error "Dry run failed (exit code: $dry_exit_code)"
+        print_info "Review the log: $NIXOS_REBUILD_DRY_LOG"
+        print_info "Fix the issues above before attempting a full switch."
+        return 1
+    fi
+
+    if ! confirm "Proceed with 'sudo nixos-rebuild switch' to apply the system configuration?" "y"; then
         local target_host=$(hostname)
         print_warning "nixos-rebuild switch skipped at this stage. Run 'sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host"' later to apply system changes."
         print_warning "Without switching, some packages and services may remain unavailable until you rebuild."
@@ -4590,26 +4614,17 @@ install_vscodium_extensions() {
 finalize_configuration_activation() {
     print_section "Final Activation"
 
-    local hm_was_applied="$HOME_MANAGER_APPLIED"
-    local hm_prompt
     if [[ "$HOME_MANAGER_APPLIED" == true ]]; then
-        hm_prompt="Re-run home-manager switch now to ensure all user-level changes are active?"
-    else
-        hm_prompt="Run home-manager switch now to activate your user environment?"
-    fi
-
-    if confirm "$hm_prompt" "y"; then
+        print_info "Home-manager switch already completed earlier; skipping automatic re-run."
+        print_info "Run 'home-manager switch --flake \"$HM_CONFIG_DIR\"' later if you need to reapply changes."
+    elif confirm "Run home-manager switch now to activate your user environment?" "y"; then
         clean_home_manager_targets "final-activation"
         prepare_managed_config_paths
         local HM_SWITCH_LOG="/tmp/home-manager-switch-final.log"
         if run_home_manager_switch "$HM_SWITCH_LOG"; then
             HOME_MANAGER_APPLIED=true
-            if [[ "$hm_was_applied" == true ]]; then
-                print_success "Home-manager switch completed during finalization"
-            else
-                apply_system_changes
-                print_success "Home-manager configuration activated during finalization"
-            fi
+            apply_system_changes
+            print_success "Home-manager configuration activated during finalization"
             ensure_home_manager_cli_available || true
             ensure_flatpak_managed_install_service
             ensure_default_flatpak_apps_installed
@@ -4626,32 +4641,14 @@ finalize_configuration_activation() {
 
     echo ""
 
-    local rebuild_was_applied="$SYSTEM_REBUILD_APPLIED"
-    local rebuild_prompt
     if [[ "$SYSTEM_REBUILD_APPLIED" == true ]]; then
-        rebuild_prompt="Re-run 'sudo nixos-rebuild switch' now to ensure system configuration is current?"
+        print_info "System configuration already activated earlier; skipping additional nixos-rebuild."
+        local target_host=$(hostname)
+        print_info "Run 'sudo nixos-rebuild switch --flake \"$HM_CONFIG_DIR#$target_host\"' later if you need to rebuild."
     else
-        rebuild_prompt="Run 'sudo nixos-rebuild switch' now to activate the system configuration?"
-    fi
-
-    if confirm "$rebuild_prompt" "y"; then
-        local NIXOS_REBUILD_LOG="/tmp/nixos-rebuild-final.log"
-        if run_nixos_rebuild_switch "$NIXOS_REBUILD_LOG"; then
-            SYSTEM_REBUILD_APPLIED=true
-            if [[ "$rebuild_was_applied" == true ]]; then
-                print_success "System rebuild completed again during finalization"
-            else
-                print_success "System configuration activated during finalization"
-            fi
-            echo ""
-        else
-            local rebuild_exit_code=$?
-            print_error "nixos-rebuild switch during finalization failed (exit code: $rebuild_exit_code)"
-            print_info "Review the log: $NIXOS_REBUILD_LOG"
-            exit 1
-        fi
-    else
-        print_info "Skipping nixos-rebuild switch during finalization."
+        local target_host=$(hostname)
+        print_info "System configuration has not been activated yet during this run."
+        print_warning "Run 'sudo nixos-rebuild switch --flake \"$HM_CONFIG_DIR#$target_host\"' when you are ready to apply system changes."
     fi
 }
 
