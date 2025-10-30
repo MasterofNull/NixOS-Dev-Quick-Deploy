@@ -475,6 +475,16 @@ let
             ]
           );
         });
+        "openai" = super."openai".overridePythonAttrs (old: {
+          postInstall = lib.concatStringsSep "\n" (
+            lib.filter (s: s != "") [
+              (old.postInstall or "")
+              ''
+                rm -f "$out/bin/openai" "$out/bin/.openai-wrapped"
+              ''
+            ]
+          );
+        });
       };
     };
   pythonAiEnv =
