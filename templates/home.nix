@@ -796,7 +796,8 @@ in
             gnupg                   # GNU Privacy Guard for encryption workflows
             seahorse                # GNOME credential manager for GnuPG/SSH
             pinentry-gnome3         # Pinentry dialog compatible with COSMIC/GNOME
-            yubikey-manager-qt      # YubiKey management GUI
+            # YubiKey Manager Qt was removed because upstream marked it EOL and nixpkgs flags it insecure.
+            # Install `yubikey-manager` (CLI) or `yubioath-flutter` manually if YubiKey support is required.
 
             # System tools
             htop                    # Interactive process viewer
@@ -1309,7 +1310,7 @@ in
       PODMAN_AI_STACK_POD = "local-ai-stack";
       PODMAN_AI_STACK_NETWORK = "local-ai";
       PODMAN_AI_STACK_DATA_ROOT = "$HOME/${podmanAiStackDataDir}";
-      GNUPGHOME = "$HOME/.gnupg";
+      GNUPGHOME = "${config.home.homeDirectory}/.gnupg";
       PASSWORD_STORE_DIR = "$HOME/.local/share/password-store";
     }
     // lib.optionalAttrs config.services.flatpak.enable {
