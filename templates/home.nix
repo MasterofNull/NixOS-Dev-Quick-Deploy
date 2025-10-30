@@ -1274,7 +1274,6 @@ in
         After = [ "graphical-session.target" "network-online.target" ];
         Wants = [ "graphical-session.target" "network-online.target" ];
         PartOf = [ "graphical-session.target" ];
-        StartLimitIntervalSec = 0;
       };
       Service = lib.mkIf config.services.flatpak.enable {
         Type = lib.mkForce "oneshot";
@@ -1290,8 +1289,7 @@ in
           "DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus"
         ];
         TimeoutStartSec = 600;
-        Restart = lib.mkForce "on-failure";
-        RestartSec = lib.mkForce "10s";
+        Restart = lib.mkForce "no";
         StandardOutput = "journal";
         StandardError = "journal";
       };

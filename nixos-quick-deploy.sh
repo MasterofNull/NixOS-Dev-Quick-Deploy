@@ -882,13 +882,23 @@ ensure_python_runtime() {
     fi
 
     if command -v python3 >/dev/null 2>&1; then
-        PYTHON_BIN=(python3)
-        return 0
+        local python3_path
+        python3_path=$(command -v python3)
+        if [ -x "$python3_path" ]; then
+            PYTHON_BIN=(python3)
+            return 0
+        fi
+        hash -r 2>/dev/null || true
     fi
 
     if command -v python >/dev/null 2>&1; then
-        PYTHON_BIN=(python)
-        return 0
+        local python_path
+        python_path=$(command -v python)
+        if [ -x "$python_path" ]; then
+            PYTHON_BIN=(python)
+            return 0
+        fi
+        hash -r 2>/dev/null || true
     fi
 
     if command -v nix >/dev/null 2>&1; then
@@ -940,8 +950,43 @@ messages = []
 
 canonical_block = textwrap.dedent(
     """
+    pythonAi =
+      pkgs.python311.override {
+        packageOverrides = self: super: {
+          markdown = super.markdown.overridePythonAttrs (old: {
+            doCheck = false;
+          });
+          "pytest-doctestplus" = super."pytest-doctestplus".overridePythonAttrs (old: {
+            doCheck = false;
+          });
+          "google-api-core" = super."google-api-core".overridePythonAttrs (old: {
+            doCheck = false;
+          });
+          "google-cloud-core" = super."google-cloud-core".overridePythonAttrs (old: {
+            doCheck = false;
+          });
+          "google-cloud-storage" = super."google-cloud-storage".overridePythonAttrs (old: {
+            doCheck = false;
+          });
+          "google-cloud-bigquery" = super."google-cloud-bigquery".overridePythonAttrs (old: {
+            doCheck = false;
+          });
+          sqlframe = super.sqlframe.overridePythonAttrs (old: {
+            postPatch = (old.postPatch or "")
+              + ''
+                find . -type f -name '*.py' -exec sed -i 's/np\\.NaN/np.nan/g' {} +
+              '';
+            doCheck = false;
+            pythonImportsCheck = [];
+          });
+          psycopg = super.psycopg.overridePythonAttrs (old: {
+            doCheck = false;
+            pythonImportsCheck = [];
+          });
+        };
+      };
     pythonAiEnv =
-      pkgs.python311.withPackages (ps:
+      pythonAi.withPackages (ps:
         let
           base = with ps; [
             pip
