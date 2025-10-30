@@ -221,8 +221,6 @@ in
   home.stateVersion = "STATEVERSION_PLACEHOLDER";  # Auto-detected from home-manager channel
 
   programs.home-manager.enable = true;
-  nixpkgs.config.allowUnfree = true;
-
   home.packages =
     let
       aiCommandLinePackages =
@@ -404,27 +402,22 @@ in
           hexedit         # Hex editor
           qrencode        # QR code generator
         ]);
-      giteaFallbackPackages =
-        lib.optionals (!config.services.flatpak.enable) [
-          pkgs.gitea             # Native deployment when Flatpak is unavailable
-        ];
+      aiderPackage =
+        if pkgs ? aider-chat then
+          [ pkgs.aider-chat ]
+        else if pkgs ? aider then
+          [ pkgs.aider ]
+        else
+          [ ];
       giteaDevAiPackages =
-        let
-          aiderPackage =
-            if pkgs ? aider-chat then
-              [ pkgs.aider-chat ]
-            else if pkgs ? aider then
-              [ pkgs.aider ]
-            else
-              [ ];
-        in
         [
+          pkgs.gitea                   # Native Gitea server and CLI for local development
           pkgs.tea                     # Official Gitea CLI for automation and AI workflows
           pkgs.python311Packages.openai # Python SDK for OpenAI-compatible AI providers
         ]
         ++ aiderPackage;
     in
-    basePackages ++ giteaFallbackPackages ++ giteaDevAiPackages ++ aiCommandLinePackages;
+    basePackages ++ giteaDevAiPackages ++ aiCommandLinePackages;
 
   # ========================================================================
   # ZSH Configuration
@@ -1144,7 +1137,7 @@ in
         It is managed declaratively by Home Manager; manual changes may be overwritten on switch.
       '';
     }
-    // lib.optionalAttrs (!config.services.flatpak.enable) {
+    // {
       "${giteaNativeConfigDir}/app.ini".text = giteaSharedAppIni;
       "${giteaNativeConfigDir}/${giteaAiConfigFile}".text = giteaAiIntegrations;
       "${giteaNativeDataDir}/README".text = ''
@@ -1154,31 +1147,30 @@ in
     };
 
   # ========================================================================
-  # Gitea Native Service (Fallback when Flatpak is unavailable)
+  # Gitea Native Service (runs alongside Flatpak when present)
   # ========================================================================
 
-  systemd.user.services =
-    lib.optionalAttrs (!config.services.flatpak.enable) {
-      "gitea-dev" = {
-        Unit = {
-          Description = "Gitea development forge (user)";
-          After = [ "network.target" ];
-        };
-        Service = {
-          Environment = [
-            "GITEA_WORK_DIR=%h/${giteaNativeDataDir}"
-            "GITEA_CUSTOM=%h/${giteaNativeConfigDir}"
-          ];
-          ExecStart = "${pkgs.gitea}/bin/gitea web --config %h/${giteaNativeConfigDir}/app.ini";
-          WorkingDirectory = "%h/${giteaNativeDataDir}";
-          Restart = "on-failure";
-          RestartSec = 3;
-        };
-        Install = {
-          WantedBy = [ "default.target" ];
-        };
+  systemd.user.services = {
+    "gitea-dev" = {
+      Unit = {
+        Description = "Gitea development forge (user)";
+        After = [ "network.target" ];
+      };
+      Service = {
+        Environment = [
+          "GITEA_WORK_DIR=%h/${giteaNativeDataDir}"
+          "GITEA_CUSTOM=%h/${giteaNativeConfigDir}"
+        ];
+        ExecStart = "${pkgs.gitea}/bin/gitea web --config %h/${giteaNativeConfigDir}/app.ini";
+        WorkingDirectory = "%h/${giteaNativeDataDir}";
+        Restart = "on-failure";
+        RestartSec = 3;
+      };
+      Install = {
+        WantedBy = [ "default.target" ];
       };
     };
+  };
 
   # ========================================================================
   # Flatpak Integration - Manual Setup Instructions
@@ -1322,6 +1314,7 @@ in
         // lib.optionalAttrs (supportsLocation || !supportsUrl) { location = flathubRemoteUrl; }
         // lib.optionalAttrs (supportsUrl && !supportsLocation) { url = flathubRemoteUrl; };
       flathubPackages = [
+      # Keep DEFAULT_FLATPAK_APPS in nixos-quick-deploy.sh synchronized with the defaults below.
       # ====================================================================
       # SYSTEM TOOLS & UTILITIES (Recommended - Essential GUI Tools)
       # ====================================================================
