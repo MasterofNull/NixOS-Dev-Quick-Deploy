@@ -517,6 +517,7 @@ let
           ++ lib.optionals (ps ? torch) [ ps.torch ]
           ++ lib.optionals (ps ? torchaudio) [ ps.torchaudio ]
           ++ lib.optionals (ps ? torchvision) [ ps.torchvision ]
+          ++ lib.optionals (ps ? openai) [ ps.openai ]
           ++ lib.optionals (ps ? langchain) [ ps.langchain ]
           ++ lib.optionals (ps ? "langchain-openai") [ ps."langchain-openai" ]
           ++ lib.optionals (ps ? "langchain-community") [ ps."langchain-community" ]
@@ -935,9 +936,9 @@ in
           [ ];
       giteaDevAiPackages =
         [
-          pkgs.gitea                   # Native Gitea server and CLI for local development
-          pkgs.tea                     # Official Gitea CLI for automation and AI workflows
-          pkgs.python311Packages.openai # Python SDK for OpenAI-compatible AI providers
+          pkgs.gitea               # Native Gitea server and CLI for local development
+          pkgs.tea                 # Official Gitea CLI for automation and AI workflows
+          # The OpenAI Python SDK is bundled via pythonAiEnv to avoid duplicate store paths.
         ]
         ++ aiderPackage;
     in
