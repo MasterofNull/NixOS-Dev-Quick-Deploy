@@ -794,7 +794,7 @@ in
             chkrootkit              # Rootkit detection utility
             keepassxc               # Cross-platform password manager (GUI)
             gnupg                   # GNU Privacy Guard for encryption workflows
-            gnome.seahorse          # GNOME credential manager for GnuPG/SSH
+            seahorse                # GNOME credential manager for GnuPG/SSH
             pinentry-gnome3         # Pinentry dialog compatible with COSMIC/GNOME
             yubikey-manager-qt      # YubiKey management GUI
 
