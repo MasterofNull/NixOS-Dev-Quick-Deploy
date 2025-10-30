@@ -83,7 +83,6 @@ let
           "$HOME/.config/flatpak"
           "$HOME/.local/share/flatpak/overrides"
           "$HOME/.local/share/flatpak/remotes.d"
-          "$HOME/.local/share/flatpak/repo/config"
         )
         local backup_root="$HOME/.local/share/flatpak/managed-backups"
         local timestamp
@@ -135,6 +134,24 @@ let
 
         if [[ "$encountered_error" == true ]]; then
           return 1
+        fi
+
+        return 0
+      }
+
+      reset_flatpak_repo_if_corrupted() {
+        local repo_dir="$HOME/.local/share/flatpak/repo"
+        local repo_config="$repo_dir/config"
+
+        mkdir -p "$HOME/.local/share/flatpak" 2>/dev/null || true
+
+        if [[ -f "$repo_config" ]]; then
+          return 0
+        fi
+
+        if [[ -e "$repo_dir" ]]; then
+          log "Flatpak repository metadata missing; resetting $repo_dir"
+          rm -rf "$repo_dir" 2>/dev/null || true
         fi
 
         return 0
@@ -283,6 +300,8 @@ let
       }
 
       backup_legacy_flatpak_configs || true
+
+      reset_flatpak_repo_if_corrupted || true
 
       ensure_remote || exit 1
 
