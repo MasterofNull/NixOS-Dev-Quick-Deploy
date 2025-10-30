@@ -23,6 +23,11 @@ let
   openWebUiUrl = "http://127.0.0.1:${toString openWebUiPort}";
   openWebUiDataDir = ".local/share/open-webui";
   podmanAiStackDataDir = ".local/share/podman-ai-stack";
+  claudeWrapperPath = "${config.home.homeDirectory}/.npm-global/bin/claude-wrapper";
+  claudeNodeModulesPath = "${config.home.homeDirectory}/.npm-global/lib/node_modules";
+  nixProfileBinPath = "${config.home.homeDirectory}/.nix-profile/bin";
+  nodeExecutablePath = lib.makeBinPath [ pkgs.nodejs_22 ];
+  claudePathValue = "${nixProfileBinPath}:${nodeExecutablePath}:/run/current-system/sw/bin:\${env:PATH}";
   flathubRemoteName = "flathub";
   flathubRemoteUrl = "https://dl.flathub.org/repo/flathub.flatpakrepo";
   flathubRemoteFallbackUrl = "https://flathub.org/repo/flathub.flatpakrepo";
@@ -687,72 +692,76 @@ RESOURCES
     Use the podman-ai-stack helper to manage the lifecycle of the stack.
     The helper keeps this directory synchronized with container volumes.
   '';
-  giteaSharedAppIni = ''
-    [server]
-    PROTOCOL = http
-    DOMAIN = localhost
-    HTTP_ADDR = 127.0.0.1
-    HTTP_PORT = 3000
-    ROOT_URL = http://localhost:3000/
-    STATIC_ROOT_PATH = %(APP_DATA_PATH)s/public
-    ENABLE_GZIP = true
-    LFS_START_SERVER = true
-    LFS_JWT_SECRET = auto-generated-change-me
-    DISABLE_SSH = false
-    SSH_DOMAIN = localhost
-    SSH_PORT = 2222
-    SSH_LISTEN_PORT = 2222
-    START_SSH_SERVER = true
-
-    [database]
-    DB_TYPE = sqlite3
-    PATH = %(GITEA_WORK_DIR)s/gitea.db
-    LOG_SQL = false
-
-    [repository]
-    ROOT = %(GITEA_WORK_DIR)s/repositories
-    FORCE_PRIVATE = false
-
-    [packages]
-    ENABLED = true
-
-    [actions]
-    ENABLED = true
-    DEFAULT_ACTIONS_URL = https://gitea.com
-
-    [indexer]
-    ISSUE_INDEXER_TYPE = bleve
-    ISSUE_INDEXER_PATH = %(GITEA_WORK_DIR)s/indexers/issues.bleve
-    REPO_INDEXER_ENABLED = true
-    REPO_INDEXER_PATH = %(GITEA_WORK_DIR)s/indexers/repos.bleve
-
-    [ui]
-    DEFAULT_THEME = arc-green
-    THEMES = arc-green,auto,github
-    DEFAULT_SHOW_FULL_NAME = true
-
-    [service]
-    REGISTER_EMAIL_CONFIRM = false
-    DISABLE_REGISTRATION = false
-    REQUIRE_SIGNIN_VIEW = false
-    ENABLE_NOTIFY_MAIL = false
-
-    [security]
-    INSTALL_LOCK = true
-    PASSWORD_HASH_ALGO = argon2
-    SECRET_KEY = change-me-secret-key
-
-    [oauth2]
-    JWT_SECRET = change-me-oauth-secret
-
-    [log]
-    MODE = console
-    LEVEL = info
-
-    [lfs]
-    STORAGE_TYPE = local
-    PATH = %(GITEA_WORK_DIR)s/lfs
-  '';
+  giteaDomain = "@HOSTNAME@";
+  giteaHttpPort = 3000;
+  giteaSshPort = 2222;
+  giteaRootUrl = "http://${giteaDomain}:${toString giteaHttpPort}/";
+  giteaSharedSettings = {
+    server = {
+      PROTOCOL = "http";
+      DOMAIN = giteaDomain;
+      HTTP_ADDR = "0.0.0.0";
+      HTTP_PORT = giteaHttpPort;
+      ROOT_URL = giteaRootUrl;
+      STATIC_ROOT_PATH = "%(APP_DATA_PATH)s/public";
+      ENABLE_GZIP = true;
+      LFS_START_SERVER = true;
+      LFS_JWT_SECRET = "@GITEA_LFS_JWT_SECRET@";
+      DISABLE_SSH = false;
+      SSH_DOMAIN = giteaDomain;
+      SSH_PORT = giteaSshPort;
+      SSH_LISTEN_PORT = giteaSshPort;
+      START_SSH_SERVER = true;
+      LANDING_PAGE = "explore";
+    };
+    database = {
+      DB_TYPE = "sqlite3";
+      PATH = "%(GITEA_WORK_DIR)s/gitea.db";
+      LOG_SQL = false;
+    };
+    repository = {
+      ROOT = "%(GITEA_WORK_DIR)s/repositories";
+      FORCE_PRIVATE = false;
+    };
+    packages.ENABLED = true;
+    actions = {
+      ENABLED = true;
+      DEFAULT_ACTIONS_URL = "https://gitea.com";
+    };
+    indexer = {
+      ISSUE_INDEXER_TYPE = "bleve";
+      ISSUE_INDEXER_PATH = "%(GITEA_WORK_DIR)s/indexers/issues.bleve";
+      REPO_INDEXER_ENABLED = true;
+      REPO_INDEXER_PATH = "%(GITEA_WORK_DIR)s/indexers/repos.bleve";
+    };
+    ui = {
+      DEFAULT_THEME = "arc-green";
+      THEMES = "arc-green,auto,github";
+      DEFAULT_SHOW_FULL_NAME = true;
+    };
+    service = {
+      REGISTER_EMAIL_CONFIRM = false;
+      DISABLE_REGISTRATION = false;
+      REQUIRE_SIGNIN_VIEW = false;
+      ENABLE_NOTIFY_MAIL = false;
+    };
+    security = {
+      INSTALL_LOCK = true;
+      PASSWORD_HASH_ALGO = "argon2";
+      SECRET_KEY = "@GITEA_SECRET_KEY@";
+      INTERNAL_TOKEN = "@GITEA_INTERNAL_TOKEN@";
+    };
+    oauth2.JWT_SECRET = "@GITEA_JWT_SECRET@";
+    log = {
+      MODE = "console";
+      LEVEL = "info";
+    };
+    lfs = {
+      STORAGE_TYPE = "local";
+      PATH = "%(GITEA_WORK_DIR)s/lfs";
+    };
+  };
+  giteaSharedAppIni = lib.generators.toINI { } giteaSharedSettings;
   giteaAiIntegrations = ''
     {
       "agents": [
@@ -1471,6 +1480,34 @@ in
         "GPT_CLI_BASE_URL" = "${huggingfaceTgiEndpoint}/v1";
       };
 
+      # Claude Code integration (managed declaratively so the wrapper path is always correct)
+      "claude-code.executablePath" = claudeWrapperPath;
+      "claude-code.claudeProcessWrapper" = claudeWrapperPath;
+      "claude-code.environmentVariables" = [
+        {
+          name = "PATH";
+          value = claudePathValue;
+        }
+        {
+          name = "NODE_PATH";
+          value = claudeNodeModulesPath;
+        }
+      ];
+      "claude-code.autoStart" = false;
+      "claudeCode.executablePath" = claudeWrapperPath;
+      "claudeCode.claudeProcessWrapper" = claudeWrapperPath;
+      "claudeCode.environmentVariables" = [
+        {
+          name = "PATH";
+          value = claudePathValue;
+        }
+        {
+          name = "NODE_PATH";
+          value = claudeNodeModulesPath;
+        }
+      ];
+      "claudeCode.autoStart" = false;
+
       # Theme
       "workbench.colorTheme" = "Default Dark Modern";
 
@@ -1565,6 +1602,20 @@ in
     {
     # Create local bin directory
     ".local/bin/.keep".text = "";
+
+    # Declarative VSCodium wrapper so the Claude CLI stays on PATH
+    ".local/bin/codium-wrapped" = {
+      text = ''
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        export NPM_CONFIG_PREFIX="$HOME/.npm-global"
+        export PATH="$HOME/.npm-global/bin:$HOME/.local/bin:$PATH"
+
+        exec codium "$@"
+      '';
+      executable = true;
+    };
 
     # P10k Setup Wizard
     ".local/bin/p10k-setup-wizard.sh" = {
