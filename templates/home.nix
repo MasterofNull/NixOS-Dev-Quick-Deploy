@@ -69,8 +69,9 @@ let
 
       export PATH=${flatpakInstallerBinPath}:$PATH
 
-      remote_name=${lib.escapeShellArg flathubRemoteName}
-      remote_url=${lib.escapeShellArg flathubRemoteUrl}
+      remote_name=${flathubRemoteName}
+      remote_url=${flathubRemoteUrl}
+      remote_fallback_url=${flathubRemoteFallbackUrl}
       availability_message=""
 
       log() {
@@ -181,8 +182,8 @@ let
 
         local -a remote_sources=()
         remote_sources+=("$remote_url")
-        if [[ "$flathubRemoteFallbackUrl" != "$remote_url" ]]; then
-          remote_sources+=("$flathubRemoteFallbackUrl")
+        if [[ -n "$remote_fallback_url" && "$remote_fallback_url" != "$remote_url" ]]; then
+          remote_sources+=("$remote_fallback_url")
         fi
 
         log "Adding Flatpak remote $remote_name"
@@ -214,7 +215,7 @@ let
           fi
         done
 
-        log "Failed to add remote $remote_name after trying: ${remote_sources[*]}" >&2
+        log "Failed to add remote $remote_name after trying: ''${remote_sources[*]}" >&2
         return 1
       }
 
