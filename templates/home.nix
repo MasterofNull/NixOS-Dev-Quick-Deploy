@@ -711,18 +711,22 @@ let
     let
       startServicesOption = options.systemd.user.startServices or null;
       allowedValues =
-        if startServicesOption == null then
-          [ ]
-        else
-          let
-            attempt = builtins.tryEval startServicesOption.type.enum;
-          in
-          if attempt.success then
-            attempt.value
-          else
-            [ ];
+        let
+          rawValues =
+            if startServicesOption == null || !(startServicesOption ? type) then
+              [ ]
+            else if lib.isAttrs startServicesOption.type && startServicesOption.type ? enum then
+              startServicesOption.type.enum
+            else
+              [ ];
+          attempt = builtins.tryEval rawValues;
+        in
+        if attempt.success && lib.isList attempt.value then attempt.value else [ ];
       optionDefault =
-        if startServicesOption == null then null else (startServicesOption.default or null);
+        if startServicesOption != null && startServicesOption ? default then
+          startServicesOption.default
+        else
+          null;
     in
     if lib.elem "legacy" allowedValues then
       "legacy"
