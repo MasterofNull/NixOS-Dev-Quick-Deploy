@@ -122,13 +122,13 @@ let
 
       # shellcheck disable=SC2206
       packages=( ${packageArgs} )
-      if [ ${#packages[@]} -eq 0 ]; then
+      if [ ''${#packages[@]} -eq 0 ]; then
         log "No Flatpak packages declared; exiting"
         exit 0
       fi
 
       failures=0
-      for app_id in "${packages[@]}"; do
+      for app_id in "''${packages[@]}"; do
         if ! install_app "$app_id"; then
           failures=1
         fi
@@ -1274,7 +1274,6 @@ in
         After = [ "graphical-session.target" "network-online.target" ];
         Wants = [ "graphical-session.target" "network-online.target" ];
         PartOf = [ "graphical-session.target" ];
-        StartLimitIntervalSec = 0;
       };
       Service = lib.mkIf config.services.flatpak.enable {
         Type = lib.mkForce "oneshot";
@@ -1290,8 +1289,7 @@ in
           "DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus"
         ];
         TimeoutStartSec = 600;
-        Restart = "on-failure";
-        RestartSec = 10;
+        Restart = lib.mkForce "no";
         StandardOutput = "journal";
         StandardError = "journal";
       };
