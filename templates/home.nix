@@ -775,18 +775,30 @@ in
           rsync                   # Fast incremental file transfer
           rclone                  # Rsync for cloud storage
 
-          # Network tools
-          wget                    # Network downloader
-          curl                    # Transfer data with URLs
-          netcat-gnu              # Network utility for TCP/UDP
-          socat                   # Multipurpose relay (SOcket CAT)
-          mtr                     # Network diagnostic tool (traceroute/ping)
-          nmap                    # Network exploration and security scanner
+            # Network tools
+            wget                    # Network downloader
+            curl                    # Transfer data with URLs
+            netcat-gnu              # Network utility for TCP/UDP
+            socat                   # Multipurpose relay (SOcket CAT)
+            mtr                     # Network diagnostic tool (traceroute/ping)
+            nmap                    # Network exploration and security scanner
 
-          # System tools
-          htop                    # Interactive process viewer
-          btop                    # Resource monitor with modern UI
-          flatpak                 # Flatpak CLI for sandboxed desktop apps
+            # Security & privacy tooling
+            clamav                  # Antivirus engine and CLI scanner
+            clamtk                  # GTK frontend for ClamAV scanning
+            rkhunter                # Rootkit hunter integrity scanner
+            lynis                   # Auditing tool for UNIX-based systems
+            chkrootkit              # Rootkit detection utility
+            keepassxc               # Cross-platform password manager (GUI)
+            gnupg                   # GNU Privacy Guard for encryption workflows
+            gnome.seahorse          # GNOME credential manager for GnuPG/SSH
+            pinentry-gnome3         # Pinentry dialog compatible with COSMIC/GNOME
+            yubikey-manager-qt      # YubiKey management GUI
+
+            # System tools
+            htop                    # Interactive process viewer
+            btop                    # Resource monitor with modern UI
+            flatpak                 # Flatpak CLI for sandboxed desktop apps
           tree                    # Display directory tree structure
           unzip                   # Extract ZIP archives
           zip                     # Create ZIP archives
@@ -1006,7 +1018,34 @@ in
 
       # Better error messages
       export NIXPKGS_ALLOW_UNFREE=1
-    '';
+      '';
+  };
+
+  # ========================================================================
+  # Cryptography & Secret Management
+  # ========================================================================
+
+  programs.gpg = {
+    enable = true;
+  };
+
+  services.gpg-agent = {
+    enable = true;
+    enableSshSupport = true;
+    enableExtraSocket = true;
+    defaultCacheTtl = 3600;
+    defaultCacheTtlSsh = 3600;
+    pinentryPackage = pkgs.pinentry-gnome3;
+  };
+
+  programs.password-store = {
+    enable = true;
+    package = pkgs.pass;
+  };
+
+  services.gnome-keyring = {
+    enable = true;
+    components = [ "secrets" "pkcs11" ];
   };
 
   # ========================================================================
@@ -1267,6 +1306,8 @@ in
       PODMAN_AI_STACK_POD = "local-ai-stack";
       PODMAN_AI_STACK_NETWORK = "local-ai";
       PODMAN_AI_STACK_DATA_ROOT = "$HOME/${podmanAiStackDataDir}";
+      GNUPGHOME = "$HOME/.gnupg";
+      PASSWORD_STORE_DIR = "$HOME/.local/share/password-store";
     }
     // lib.optionalAttrs config.services.flatpak.enable {
       GITEA_WORK_DIR = "$HOME/${giteaFlatpakDataDir}";
@@ -1700,7 +1741,7 @@ USAGE
         }
 
         ensure_directories() {
-          mkdir -p "${data_root}/ollama" "${data_root}/open-webui" "${data_root}/qdrant" "${data_root}/mindsdb"
+          mkdir -p "''${data_root}/ollama" "''${data_root}/open-webui" "''${data_root}/qdrant" "''${data_root}/mindsdb"
         }
 
         ensure_network() {
@@ -1732,7 +1773,11 @@ USAGE
           podman run -d --pod "$pod" --name "$name" "$@" >/dev/null
         }
 
-        cmd="${1:-}"
+        cmd=""
+        if [[ $# -gt 0 ]]; then
+          cmd="$1"
+        fi
+
         [[ -n "$cmd" ]] || { usage; exit 1; }
 
         case "$cmd" in
@@ -1742,21 +1787,21 @@ USAGE
             ensure_pod
 
             start_container "$pod-ollama" \
-              -v "${data_root}/ollama:/root/.ollama" \
+              -v "''${data_root}/ollama:/root/.ollama" \
               "$ollama_image"
 
             start_container "$pod-open-webui" \
-              -v "${data_root}/open-webui:/app/backend/data" \
+              -v "''${data_root}/open-webui:/app/backend/data" \
               -e "OLLAMA_BASE_URL=http://127.0.0.1:11434" \
               -e "OPENAI_API_BASE=${huggingfaceTgiEndpoint}/v1" \
               "$open_webui_image"
 
             start_container "$pod-qdrant" \
-              -v "${data_root}/qdrant:/qdrant/storage" \
+              -v "''${data_root}/qdrant:/qdrant/storage" \
               "$qdrant_image"
 
             start_container "$pod-mindsdb" \
-              -v "${data_root}/mindsdb:/var/lib/mindsdb" \
+              -v "''${data_root}/mindsdb:/var/lib/mindsdb" \
               "$mindsdb_image"
 
             echo "podman-ai-stack: all services running in pod \"$pod\""
