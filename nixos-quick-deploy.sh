@@ -548,7 +548,6 @@ backup_legacy_flatpak_configs() {
         "$PRIMARY_HOME/.config/flatpak"
         "$PRIMARY_HOME/.local/share/flatpak/overrides"
         "$PRIMARY_HOME/.local/share/flatpak/remotes.d"
-        "$PRIMARY_HOME/.local/share/flatpak/repo/config"
     )
     local backup_root="$PRIMARY_HOME/.cache/nixos-quick-deploy/flatpak/legacy-backups"
     local timestamp
@@ -635,6 +634,72 @@ fi
     return 0
 }
 
+reset_flatpak_repo_if_corrupted() {
+    local repo_dir="$PRIMARY_HOME/.local/share/flatpak/repo"
+    local repo_config="$repo_dir/config"
+    local repo_parent="$PRIMARY_HOME/.local/share/flatpak"
+    local repair_output=""
+
+    run_as_primary_user install -d -m 700 "$repo_parent" >/dev/null 2>&1 || true
+
+    if run_as_primary_user test -f "$repo_config"; then
+        return 0
+    fi
+
+    if ! flatpak_cli_available; then
+        print_warning "Flatpak CLI unavailable; deferring repository repair"
+        return 1
+    fi
+
+    if run_as_primary_user test -e "$repo_dir"; then
+        print_warning "Flatpak repository metadata missing; resetting $repo_dir"
+        run_as_primary_user rm -rf "$repo_dir" >/dev/null 2>&1 || true
+    else
+        print_info "Initializing Flatpak repository under ${repo_dir#$PRIMARY_HOME/}"
+    fi
+
+    if ! run_as_primary_user install -d -m 700 "$repo_dir" >/dev/null 2>&1; then
+        print_warning "Unable to recreate $repo_dir"
+        return 1
+    fi
+
+    repair_output=$(run_as_primary_user flatpak --user repair --noninteractive 2>&1)
+    local repair_status=$?
+
+    if [[ -n "$repair_output" ]]; then
+        while IFS= read -r line; do
+            print_info "    $line"
+        done <<<"$repair_output"
+    fi
+
+    if (( repair_status != 0 )); then
+        print_warning "flatpak repair reported an error while attempting to recover the repository"
+    fi
+
+    if run_as_primary_user test -f "$repo_config"; then
+        print_success "Flatpak repository reinitialized"
+        return 0
+    fi
+
+    if run_as_primary_user command -v ostree >/dev/null 2>&1; then
+        local ostree_output=""
+        ostree_output=$(run_as_primary_user ostree --repo="$repo_dir" init --mode=bare-user-only 2>&1 || true)
+        if [[ -n "$ostree_output" ]]; then
+            while IFS= read -r line; do
+                print_info "    $line"
+            done <<<"$ostree_output"
+        fi
+    fi
+
+    if run_as_primary_user test -f "$repo_config"; then
+        print_success "Flatpak repository initialized via ostree"
+        return 0
+    fi
+
+    print_warning "Flatpak repository configuration still missing after recovery attempts"
+    return 1
+}
+
 preflight_flatpak_environment() {
     local stage="${1:-preflight}"
 
@@ -643,6 +708,10 @@ preflight_flatpak_environment() {
     local issues=0
 
     if ! backup_legacy_flatpak_configs; then
+        (( issues++ ))
+    fi
+
+    if ! reset_flatpak_repo_if_corrupted; then
         (( issues++ ))
     fi
 
@@ -873,7 +942,6 @@ clean_home_manager_targets() {
         "$HOME/.config/flatpak::Flatpak configuration directory"
         "$HOME/.local/share/flatpak/overrides::Flatpak overrides directory"
         "$HOME/.local/share/flatpak/remotes.d::Flatpak remotes directory"
-        "$HOME/.local/share/flatpak/repo/config::Flatpak repo configuration"
         "$AIDER_CONFIG_DIR::Aider configuration directory"
         "$TEA_CONFIG_DIR::Tea configuration directory"
         "$HUGGINGFACE_CONFIG_DIR::Hugging Face configuration directory"
