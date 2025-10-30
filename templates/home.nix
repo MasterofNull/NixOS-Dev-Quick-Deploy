@@ -1311,7 +1311,7 @@ in
       PODMAN_AI_STACK_NETWORK = "local-ai";
       PODMAN_AI_STACK_DATA_ROOT = "$HOME/${podmanAiStackDataDir}";
       GNUPGHOME = "${config.home.homeDirectory}/.gnupg";
-      PASSWORD_STORE_DIR = "$HOME/.local/share/password-store";
+      PASSWORD_STORE_DIR = "${config.home.homeDirectory}/.local/share/password-store";
     }
     // lib.optionalAttrs config.services.flatpak.enable {
       GITEA_WORK_DIR = "$HOME/${giteaFlatpakDataDir}";
