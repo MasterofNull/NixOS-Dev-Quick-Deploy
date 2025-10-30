@@ -455,6 +455,16 @@ let
           doCheck = false;
           pythonImportsCheck = [];
         });
+        "llama-index" = super."llama-index".overridePythonAttrs (old: {
+          postInstall = lib.concatStringsSep "\n" (
+            lib.filter (s: s != "") [
+              (old.postInstall or "")
+              ''
+                rm -f "$out/bin/llamaindex-cli" "$out/bin/.llamaindex-cli-wrapped"
+              ''
+            ]
+          );
+        });
       };
     };
   pythonAiEnv =
