@@ -437,6 +437,12 @@ let
         "google-cloud-bigquery" = super."google-cloud-bigquery".overridePythonAttrs (old: {
           doCheck = false;
         });
+        "moto" = super."moto".overridePythonAttrs (old: {
+          # The upstream test suite attempts to reach AWS endpoints and fails in
+          # the hermetic Nix build sandbox. Disable checks so builds complete.
+          doCheck = false;
+          pythonImportsCheck = [];
+        });
         sqlframe = super.sqlframe.overridePythonAttrs (old: {
           postPatch = (old.postPatch or "")
             + ''
@@ -448,6 +454,36 @@ let
         psycopg = super.psycopg.overridePythonAttrs (old: {
           doCheck = false;
           pythonImportsCheck = [];
+        });
+        "llama-index" = super."llama-index".overridePythonAttrs (old: {
+          postInstall = lib.concatStringsSep "\n" (
+            lib.filter (s: s != "") [
+              (old.postInstall or "")
+              ''
+                rm -f "$out/bin/llamaindex-cli" "$out/bin/.llamaindex-cli-wrapped"
+              ''
+            ]
+          );
+        });
+        "llama-cloud-services" = super."llama-cloud-services".overridePythonAttrs (old: {
+          postInstall = lib.concatStringsSep "\n" (
+            lib.filter (s: s != "") [
+              (old.postInstall or "")
+              ''
+                rm -f "$out/bin/llama-parse" "$out/bin/.llama-parse-wrapped"
+              ''
+            ]
+          );
+        });
+        "openai" = super."openai".overridePythonAttrs (old: {
+          postInstall = lib.concatStringsSep "\n" (
+            lib.filter (s: s != "") [
+              (old.postInstall or "")
+              ''
+                rm -f "$out/bin/openai" "$out/bin/.openai-wrapped"
+              ''
+            ]
+          );
         });
       };
     };
@@ -481,6 +517,7 @@ let
           ++ lib.optionals (ps ? torch) [ ps.torch ]
           ++ lib.optionals (ps ? torchaudio) [ ps.torchaudio ]
           ++ lib.optionals (ps ? torchvision) [ ps.torchvision ]
+          ++ lib.optionals (ps ? openai) [ ps.openai ]
           ++ lib.optionals (ps ? langchain) [ ps.langchain ]
           ++ lib.optionals (ps ? "langchain-openai") [ ps."langchain-openai" ]
           ++ lib.optionals (ps ? "langchain-community") [ ps."langchain-community" ]
@@ -899,9 +936,9 @@ in
           [ ];
       giteaDevAiPackages =
         [
-          pkgs.gitea                   # Native Gitea server and CLI for local development
-          pkgs.tea                     # Official Gitea CLI for automation and AI workflows
-          pkgs.python311Packages.openai # Python SDK for OpenAI-compatible AI providers
+          pkgs.gitea               # Native Gitea server and CLI for local development
+          pkgs.tea                 # Official Gitea CLI for automation and AI workflows
+          # The OpenAI Python SDK is bundled via pythonAiEnv to avoid duplicate store paths.
         ]
         ++ aiderPackage;
     in
