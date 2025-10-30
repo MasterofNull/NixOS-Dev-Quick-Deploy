@@ -207,6 +207,46 @@ ensure_default_flatpak_apps_installed() {
     echo ""
 }
 
+ensure_flatpak_managed_install_service() {
+    if ! command -v systemctl >/dev/null 2>&1; then
+        return
+    fi
+
+    local service_name="flatpak-managed-install.service"
+
+    if ! run_as_primary_user systemctl --user list-unit-files "$service_name" >/dev/null 2>&1; then
+        return
+    fi
+
+    local service_failed=false
+    if run_as_primary_user systemctl --user is-failed "$service_name" >/dev/null 2>&1; then
+        service_failed=true
+    fi
+
+    if [[ "$service_failed" == true ]]; then
+        print_warning "flatpak-managed-install service reported a failure; attempting recovery"
+        run_as_primary_user systemctl --user reset-failed "$service_name" >/dev/null 2>&1 || true
+        if run_as_primary_user systemctl --user start "$service_name" >/dev/null 2>&1; then
+            print_success "flatpak-managed-install service restarted successfully"
+        else
+            print_error "flatpak-managed-install service is still failing. Recent logs:"
+            run_as_primary_user journalctl --user -u "$service_name" -n 25 || true
+        fi
+        return
+    fi
+
+    if run_as_primary_user systemctl --user is-active "$service_name" >/dev/null 2>&1; then
+        print_success "flatpak-managed-install service is active"
+        return
+    fi
+
+    if run_as_primary_user systemctl --user start "$service_name" >/dev/null 2>&1; then
+        print_success "flatpak-managed-install service started"
+    else
+        print_warning "Unable to start flatpak-managed-install service automatically"
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # Backup helpers for clearing paths managed by home-manager
 # ---------------------------------------------------------------------------
@@ -2638,6 +2678,7 @@ apply_home_manager_config() {
         echo ""
 
         ensure_default_flatpak_apps_installed
+        ensure_flatpak_managed_install_service
     else
         local hm_exit_code=$?
         print_error "home-manager switch failed (exit code: $hm_exit_code)"
@@ -3674,6 +3715,7 @@ finalize_configuration_activation() {
                 print_success "Home-manager configuration activated during finalization"
             fi
             ensure_home_manager_cli_available || true
+            ensure_flatpak_managed_install_service
             echo ""
         else
             local hm_exit_code=$?
