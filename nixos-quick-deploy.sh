@@ -14,6 +14,18 @@
 set -u
 set -o pipefail
 
+FLATHUB_REMOTE_NAME="flathub"
+FLATHUB_REMOTE_URL="https://dl.flathub.org/repo/flathub.flatpakrepo"
+DEFAULT_FLATPAK_APPS=(
+    "com.github.flatseal.Flatseal"
+    "org.gnome.FileRoller"
+    "net.nokyan.Resources"
+    "org.videolan.VLC"
+    "io.mpv.Mpv"
+    "org.mozilla.firefox"
+    "md.obsidian.Obsidian"
+)
+
 # Ensure we target the invoking user's home directory even when executed via sudo
 RESOLVED_USER="${USER:-}"
 RESOLVED_HOME="$HOME"
@@ -40,6 +52,82 @@ fi
 PRIMARY_USER="$USER"
 PRIMARY_HOME="$HOME"
 PRIMARY_GROUP="$(id -gn "$PRIMARY_USER" 2>/dev/null || id -gn 2>/dev/null || echo "$PRIMARY_USER")"
+PRIMARY_UID="$(id -u "$PRIMARY_USER" 2>/dev/null || echo "$EUID")"
+PRIMARY_RUNTIME_DIR=""
+
+if [[ -n "$PRIMARY_UID" && -d "/run/user/$PRIMARY_UID" ]]; then
+    PRIMARY_RUNTIME_DIR="/run/user/$PRIMARY_UID"
+fi
+
+PRIMARY_PROFILE_BIN="$PRIMARY_HOME/.nix-profile/bin"
+PRIMARY_ETC_PROFILE_BIN="/etc/profiles/per-user/$PRIMARY_USER/bin"
+PRIMARY_LOCAL_BIN="$PRIMARY_HOME/.local/bin"
+
+build_primary_user_path() {
+    local -a path_parts=()
+
+    if [[ -d "$PRIMARY_PROFILE_BIN" ]]; then
+        path_parts+=("$PRIMARY_PROFILE_BIN")
+    fi
+
+    if [[ -d "$PRIMARY_ETC_PROFILE_BIN" ]]; then
+        path_parts+=("$PRIMARY_ETC_PROFILE_BIN")
+    fi
+
+    if [[ -d "$PRIMARY_LOCAL_BIN" ]]; then
+        path_parts+=("$PRIMARY_LOCAL_BIN")
+    fi
+
+    local -a CURRENT_PATH_PARTS=()
+    local IFS=':'
+    read -ra CURRENT_PATH_PARTS <<< "$PATH"
+    for segment in "${CURRENT_PATH_PARTS[@]}"; do
+        if [[ -n "$segment" ]]; then
+            local duplicate=false
+            for existing in "${path_parts[@]}"; do
+                if [[ "$existing" == "$segment" ]]; then
+                    duplicate=true
+                    break
+                fi
+            done
+            if [[ "$duplicate" == false ]]; then
+                path_parts+=("$segment")
+            fi
+        fi
+    done
+
+    local combined_path
+    IFS=':' combined_path="${path_parts[*]}"
+    printf '%s' "$combined_path"
+}
+
+run_as_primary_user() {
+    local -a cmd=("$@")
+    local -a env_args=()
+
+    if [[ -n "$PRIMARY_RUNTIME_DIR" ]]; then
+        env_args+=("XDG_RUNTIME_DIR=$PRIMARY_RUNTIME_DIR")
+        if [[ -S "$PRIMARY_RUNTIME_DIR/bus" ]]; then
+            env_args+=("DBUS_SESSION_BUS_ADDRESS=unix:path=$PRIMARY_RUNTIME_DIR/bus")
+        fi
+    fi
+
+    env_args+=("PATH=$(build_primary_user_path)")
+
+    if [[ $EUID -eq 0 && "$PRIMARY_USER" != "root" ]]; then
+        if (( ${#env_args[@]} > 0 )); then
+            sudo -H -u "$PRIMARY_USER" env "${env_args[@]}" "${cmd[@]}"
+        else
+            sudo -H -u "$PRIMARY_USER" "${cmd[@]}"
+        fi
+    else
+        if (( ${#env_args[@]} > 0 )); then
+            env "${env_args[@]}" "${cmd[@]}"
+        else
+            "${cmd[@]}"
+        fi
+    fi
+}
 
 ensure_path_owner() {
     local target_path="$1"
@@ -53,6 +141,110 @@ ensure_path_owner() {
     fi
 
     return 0
+}
+
+ensure_flathub_remote() {
+    if ! run_as_primary_user flatpak --version >/dev/null 2>&1; then
+        print_warning "Flatpak CLI not available; skipping Flathub repository configuration for now"
+        return 1
+    fi
+
+    local remote_output
+    remote_output=$(run_as_primary_user flatpak remotes --user --columns=name 2>/dev/null || true)
+    local remote_names
+    remote_names=$(printf '%s\n' "$remote_output" | awk 'NR == 1 && $1 == "Name" { next } { print $1 }')
+
+    if printf '%s\n' "$remote_names" | grep -Fxq "$FLATHUB_REMOTE_NAME"; then
+        print_info "Flathub repository already configured"
+        return 0
+    fi
+
+    if run_as_primary_user flatpak remote-add --user --if-not-exists "$FLATHUB_REMOTE_NAME" "$FLATHUB_REMOTE_URL" >/dev/null 2>&1; then
+        print_success "Flathub repository added"
+        return 0
+    fi
+
+    print_warning "Unable to configure Flathub repository automatically"
+    return 1
+}
+
+ensure_default_flatpak_apps_installed() {
+    if ! run_as_primary_user flatpak --version >/dev/null 2>&1; then
+        print_warning "Flatpak CLI not available; skipping Flatpak application installation"
+        return
+    fi
+
+    print_section "Ensuring default Flatpak applications are installed"
+    ensure_flathub_remote
+
+    local installed_any=false
+    local failed_any=false
+
+    for app_id in "${DEFAULT_FLATPAK_APPS[@]}"; do
+        if run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
+            print_info "  • $app_id already present"
+            continue
+        fi
+
+        print_info "  Installing $app_id from $FLATHUB_REMOTE_NAME..."
+        if run_as_primary_user flatpak install --user -y "$FLATHUB_REMOTE_NAME" "$app_id" >/dev/null 2>&1; then
+            print_success "  ✓ Installed $app_id"
+            installed_any=true
+        else
+            print_warning "  ⚠ Failed to install $app_id automatically"
+            failed_any=true
+        fi
+    done
+
+    if [[ "$failed_any" == true ]]; then
+        print_warning "Some Flatpak applications could not be installed. Install manually with: flatpak install --user $FLATHUB_REMOTE_NAME <app-id>"
+    elif [[ "$installed_any" == true ]]; then
+        print_success "Default Flatpak applications are now installed and ready"
+    else
+        print_info "All default Flatpak applications were already installed"
+    fi
+
+    echo ""
+}
+
+ensure_flatpak_managed_install_service() {
+    if ! command -v systemctl >/dev/null 2>&1; then
+        return
+    fi
+
+    local service_name="flatpak-managed-install.service"
+
+    if ! run_as_primary_user systemctl --user list-unit-files "$service_name" >/dev/null 2>&1; then
+        return
+    fi
+
+    local service_failed=false
+    if run_as_primary_user systemctl --user is-failed "$service_name" >/dev/null 2>&1; then
+        service_failed=true
+    fi
+
+    if [[ "$service_failed" == true ]]; then
+        print_warning "flatpak-managed-install service reported a failure; attempting recovery"
+        run_as_primary_user systemctl --user reset-failed "$service_name" >/dev/null 2>&1 || true
+        if run_as_primary_user systemctl --user start "$service_name" >/dev/null 2>&1; then
+            print_success "flatpak-managed-install service restarted successfully"
+        else
+            print_error "flatpak-managed-install service is still failing. Recent logs:"
+            run_as_primary_user journalctl --user -u "$service_name" -n 25 || true
+        fi
+        return
+    fi
+
+    if run_as_primary_user systemctl --user is-active "$service_name" >/dev/null 2>&1; then
+        print_success "flatpak-managed-install service is active"
+        return
+    fi
+
+    if run_as_primary_user systemctl --user start "$service_name" >/dev/null 2>&1; then
+        print_success "flatpak-managed-install service started"
+    else
+        print_warning "Unable to start flatpak-managed-install service automatically"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -2295,12 +2487,42 @@ run_home_manager_switch() {
     echo ""
 
     if $hm_cli_available; then
-        home-manager switch --flake "$HM_CONFIG_DIR" --show-trace 2>&1 | tee "$log_path"
+        run_as_primary_user home-manager switch --flake "$HM_CONFIG_DIR" --show-trace 2>&1 | tee "$log_path"
         return ${PIPESTATUS[0]}
     fi
 
-    nix run --accept-flake-config "${hm_pkg_ref}" -- switch --flake "$HM_CONFIG_DIR" --show-trace 2>&1 | tee "$log_path"
+    run_as_primary_user nix run --accept-flake-config "${hm_pkg_ref}" -- switch --flake "$HM_CONFIG_DIR" --show-trace 2>&1 | tee "$log_path"
     return ${PIPESTATUS[0]}
+}
+
+ensure_home_manager_cli_available() {
+    local hm_pkg_ref
+    hm_pkg_ref=$(get_home_manager_package_ref)
+    local install_log="/tmp/home-manager-cli-install.log"
+
+    local cli_path
+    cli_path=$(run_as_primary_user bash -lc 'command -v home-manager' 2>/dev/null || true)
+    if [[ -n "$cli_path" ]]; then
+        print_success "home-manager CLI available at $cli_path"
+        return 0
+    fi
+
+    print_warning "home-manager CLI not found in user PATH"
+    print_info "Installing home-manager CLI into the user profile via nix profile install..."
+
+    if run_as_primary_user nix profile install --accept-flake-config --name home-manager "$hm_pkg_ref" >"$install_log" 2>&1; then
+        cli_path=$(run_as_primary_user bash -lc 'command -v home-manager' 2>/dev/null || true)
+        if [[ -n "$cli_path" ]]; then
+            print_success "home-manager CLI installed at $cli_path"
+        else
+            print_success "home-manager CLI installed successfully"
+        fi
+        return 0
+    fi
+
+    print_error "Failed to install home-manager CLI automatically"
+    print_info "Review the log for details: $install_log"
+    return 1
 }
 
 run_nixos_rebuild_switch() {
@@ -2437,7 +2659,7 @@ apply_home_manager_config() {
         # Verify critical packages are now in PATH
         print_info "Verifying package installation..."
         MISSING_COUNT=0
-        for pkg in podman python3 ripgrep bat eza fd git; do
+        for pkg in podman python3 ripgrep bat eza fd git flatpak gitea tea home-manager; do
             if command -v "$pkg" &>/dev/null; then
                 print_success "$pkg found at $(command -v $pkg)"
             else
@@ -2449,10 +2671,14 @@ apply_home_manager_config() {
         if [ $MISSING_COUNT -gt 0 ]; then
             print_warning "$MISSING_COUNT packages not yet in PATH"
             print_info "Restart your shell to load all packages: exec zsh"
+            ensure_home_manager_cli_available || true
         else
             print_success "All critical packages are in PATH!"
         fi
         echo ""
+
+        ensure_default_flatpak_apps_installed
+        ensure_flatpak_managed_install_service
     else
         local hm_exit_code=$?
         print_error "home-manager switch failed (exit code: $hm_exit_code)"
@@ -2934,12 +3160,10 @@ PY
 
         # Configure Flatpak for COSMIC Store
         print_section "Configuring Flatpak for COSMIC App Store"
-        print_info "Adding Flathub repository for user..."
-        if flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo 2>/dev/null; then
-            print_success "✓ Flathub repository added"
+        if ensure_flathub_remote; then
             print_info "COSMIC Store can now install Flatpak applications"
         else
-            print_warning "Flatpak repository setup skipped (may already exist)"
+            print_warning "Add Flathub manually with: flatpak remote-add --user $FLATHUB_REMOTE_NAME $FLATHUB_REMOTE_URL"
         fi
         echo ""
     else
@@ -3490,6 +3714,8 @@ finalize_configuration_activation() {
                 apply_system_changes
                 print_success "Home-manager configuration activated during finalization"
             fi
+            ensure_home_manager_cli_available || true
+            ensure_flatpak_managed_install_service
             echo ""
         else
             local hm_exit_code=$?
