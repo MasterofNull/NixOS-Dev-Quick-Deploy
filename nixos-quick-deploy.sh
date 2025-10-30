@@ -83,6 +83,18 @@ OPEN_WEBUI_DATA_DIR="$PRIMARY_HOME/.local/share/open-webui"
 AIDER_CONFIG_DIR="$PRIMARY_HOME/.config/aider"
 TEA_CONFIG_DIR="$PRIMARY_HOME/.config/tea"
 LATEST_CONFIG_BACKUP_DIR=""
+GITEA_SECRETS_CACHE_DIR="$PRIMARY_HOME/.config/nixos-quick-deploy"
+GITEA_SECRETS_CACHE_FILE="$GITEA_SECRETS_CACHE_DIR/gitea-secrets.env"
+GITEA_SECRET_KEY=""
+GITEA_INTERNAL_TOKEN=""
+GITEA_LFS_JWT_SECRET=""
+GITEA_JWT_SECRET=""
+GITEA_ADMIN_PASSWORD=""
+GITEA_ADMIN_USER=""
+GITEA_ADMIN_EMAIL=""
+GITEA_BOOTSTRAP_ADMIN="false"
+GITEA_ADMIN_PROMPTED="false"
+GITEA_PROMPT_CHANGED="false"
 
 USER_SYSTEMD_CHANNEL_STATUS="unknown"
 USER_SYSTEMD_CHANNEL_MESSAGE=""
@@ -1401,6 +1413,290 @@ run_python() {
     "${PYTHON_BIN[@]}" "$@"
 }
 
+generate_hex_secret() {
+    local bytes="${1:-32}"
+
+    if ! ensure_python_runtime; then
+        return 1
+    fi
+
+    "${PYTHON_BIN[@]}" - "$bytes" <<'PY'
+import secrets
+import sys
+
+try:
+    bytes_count = int(sys.argv[1])
+except (IndexError, ValueError):
+    bytes_count = 32
+
+if bytes_count < 1:
+    bytes_count = 32
+
+print(secrets.token_hex(bytes_count))
+PY
+}
+
+generate_password() {
+    local length="${1:-20}"
+
+    if ! ensure_python_runtime; then
+        return 1
+    fi
+
+    "${PYTHON_BIN[@]}" - "$length" <<'PY'
+import secrets
+import string
+import sys
+
+try:
+    length = int(sys.argv[1])
+except (IndexError, ValueError):
+    length = 20
+
+alphabet = string.ascii_letters + string.digits
+if length < 12:
+    length = 12
+
+print(''.join(secrets.choice(alphabet) for _ in range(length)))
+PY
+}
+
+nix_quote_string() {
+    local input="$1"
+
+    input=${input//\\/\\\\}
+    input=${input//"/\\"}
+    input=${input//$'\n'/\\n}
+    input=${input//$'\r'/\\r}
+    input=${input//$'\t'/\\t}
+    input=${input//\$/\\\$}
+
+    printf '"%s"' "$input"
+}
+
+prompt_configure_gitea_admin() {
+    local changed=false
+    local default_choice="n"
+
+    if [[ "${GITEA_BOOTSTRAP_ADMIN,,}" == "true" ]]; then
+        default_choice="y"
+        GITEA_BOOTSTRAP_ADMIN="true"
+    else
+        GITEA_BOOTSTRAP_ADMIN="false"
+    fi
+
+    if confirm "Do you want to bootstrap a Gitea admin account now?" "$default_choice"; then
+        if [[ "$GITEA_BOOTSTRAP_ADMIN" != "true" ]]; then
+            changed=true
+        fi
+
+        GITEA_BOOTSTRAP_ADMIN="true"
+
+        local default_user="${GITEA_ADMIN_USER:-gitea-admin}"
+        local admin_user
+        admin_user=$(prompt_user "Gitea admin username" "$default_user")
+        if [[ -z "$admin_user" ]]; then
+            admin_user="$default_user"
+        fi
+        if [[ "$admin_user" != "$GITEA_ADMIN_USER" ]]; then
+            GITEA_ADMIN_USER="$admin_user"
+            changed=true
+        fi
+
+        local detected_domain="${HOSTNAME:-}"
+        if [[ -z "$detected_domain" ]]; then
+            detected_domain=$(hostname 2>/dev/null || echo "localhost")
+        fi
+
+        local default_email
+        if [[ -n "$GITEA_ADMIN_EMAIL" ]]; then
+            default_email="$GITEA_ADMIN_EMAIL"
+        else
+            default_email="${GITEA_ADMIN_USER}@${detected_domain}"
+        fi
+
+        local admin_email
+        admin_email=$(prompt_user "Gitea admin email" "$default_email")
+        if [[ -z "$admin_email" ]]; then
+            admin_email="$default_email"
+        fi
+        if [[ "$admin_email" != "$GITEA_ADMIN_EMAIL" ]]; then
+            GITEA_ADMIN_EMAIL="$admin_email"
+            changed=true
+        fi
+
+        local password_note
+        if [[ -n "$GITEA_ADMIN_PASSWORD" ]]; then
+            password_note="leave blank to keep the existing password"
+        else
+            password_note="leave blank to generate a secure random password"
+        fi
+
+        local password_input
+        password_input=$(prompt_secret "Gitea admin password" "$password_note")
+
+        if [[ -z "$password_input" ]]; then
+            if [[ -n "$GITEA_ADMIN_PASSWORD" ]]; then
+                print_info "Keeping the previously cached Gitea admin password"
+            else
+                if ! GITEA_ADMIN_PASSWORD=$(generate_password 20); then
+                    print_error "Failed to generate Gitea admin password"
+                    return 1
+                fi
+                changed=true
+                print_success "Generated a new random Gitea admin password"
+            fi
+        else
+            if [[ "$password_input" != "$GITEA_ADMIN_PASSWORD" ]]; then
+                GITEA_ADMIN_PASSWORD="$password_input"
+                changed=true
+            fi
+        fi
+
+        if [[ "$changed" == true ]]; then
+            print_info "Gitea admin bootstrap will run after the next system switch"
+        else
+            print_info "Reusing existing Gitea admin bootstrap settings"
+        fi
+
+        if [[ -n "$GITEA_SECRETS_CACHE_FILE" ]]; then
+            print_info "Secrets cache will be written to: $GITEA_SECRETS_CACHE_FILE"
+        fi
+    else
+        if [[ "$GITEA_BOOTSTRAP_ADMIN" != "false" ]]; then
+            changed=true
+        fi
+        GITEA_BOOTSTRAP_ADMIN="false"
+        print_info "Skipping declarative Gitea admin bootstrap for this run"
+        if [[ -n "$GITEA_SECRETS_CACHE_FILE" ]]; then
+            print_info "You can enable it later by rerunning the installer and opting into the admin bootstrap"
+        fi
+    fi
+
+    if [[ "$changed" == true ]]; then
+        GITEA_PROMPT_CHANGED="true"
+    else
+        GITEA_PROMPT_CHANGED="false"
+    fi
+
+    return 0
+}
+
+load_or_generate_gitea_secrets() {
+    if [[ -z "${GITEA_SECRET_KEY:-}" || -z "${GITEA_INTERNAL_TOKEN:-}" || -z "${GITEA_LFS_JWT_SECRET:-}" || -z "${GITEA_JWT_SECRET:-}" || -f "$GITEA_SECRETS_CACHE_FILE" ]]; then
+        if [[ -f "$GITEA_SECRETS_CACHE_FILE" ]]; then
+            # shellcheck disable=SC1090
+            . "$GITEA_SECRETS_CACHE_FILE"
+        fi
+    fi
+
+    local updated=false
+
+    if [[ -z "${GITEA_SECRET_KEY:-}" ]]; then
+        if ! GITEA_SECRET_KEY=$(generate_hex_secret 32); then
+            print_error "Failed to generate Gitea secret key"
+            return 1
+        fi
+        updated=true
+    fi
+
+    if [[ -z "${GITEA_INTERNAL_TOKEN:-}" ]]; then
+        if ! GITEA_INTERNAL_TOKEN=$(generate_hex_secret 32); then
+            print_error "Failed to generate Gitea internal token"
+            return 1
+        fi
+        updated=true
+    fi
+
+    if [[ -z "${GITEA_LFS_JWT_SECRET:-}" ]]; then
+        if ! GITEA_LFS_JWT_SECRET=$(generate_hex_secret 32); then
+            print_error "Failed to generate Gitea LFS JWT secret"
+            return 1
+        fi
+        updated=true
+    fi
+
+    if [[ -z "${GITEA_JWT_SECRET:-}" ]]; then
+        if ! GITEA_JWT_SECRET=$(generate_hex_secret 32); then
+            print_error "Failed to generate Gitea OAuth2 secret"
+            return 1
+        fi
+        updated=true
+    fi
+
+    if [[ "${GITEA_ADMIN_PROMPTED}" != "true" ]]; then
+        GITEA_PROMPT_CHANGED="false"
+        if ! prompt_configure_gitea_admin; then
+            return 1
+        fi
+        GITEA_ADMIN_PROMPTED="true"
+        if [[ "$GITEA_PROMPT_CHANGED" == "true" ]]; then
+            updated=true
+        fi
+    fi
+
+    if [[ "$GITEA_BOOTSTRAP_ADMIN" == "true" ]]; then
+        if [[ -z "${GITEA_ADMIN_USER:-}" ]]; then
+            GITEA_ADMIN_USER="gitea-admin"
+            updated=true
+        fi
+
+        if [[ -z "${GITEA_ADMIN_EMAIL:-}" ]]; then
+            local detected_domain
+            detected_domain=${HOSTNAME:-}
+            if [[ -z "$detected_domain" ]]; then
+                detected_domain=$(hostname 2>/dev/null || echo "localhost")
+            fi
+            GITEA_ADMIN_EMAIL="${GITEA_ADMIN_USER}@${detected_domain}"
+            updated=true
+        fi
+
+        if [[ -z "${GITEA_ADMIN_PASSWORD:-}" ]]; then
+            if ! GITEA_ADMIN_PASSWORD=$(generate_password 20); then
+                print_error "Failed to generate Gitea admin password"
+                return 1
+            fi
+            updated=true
+        fi
+    fi
+
+    if $updated; then
+        if [[ ! -d "$GITEA_SECRETS_CACHE_DIR" ]]; then
+            if ! install -d -m 0700 "$GITEA_SECRETS_CACHE_DIR" 2>/dev/null; then
+                mkdir -p "$GITEA_SECRETS_CACHE_DIR"
+                chmod 700 "$GITEA_SECRETS_CACHE_DIR" 2>/dev/null || true
+            fi
+        fi
+
+        chmod 700 "$GITEA_SECRETS_CACHE_DIR" 2>/dev/null || true
+
+        cat >"$GITEA_SECRETS_CACHE_FILE" <<EOF
+GITEA_SECRET_KEY=$GITEA_SECRET_KEY
+GITEA_INTERNAL_TOKEN=$GITEA_INTERNAL_TOKEN
+GITEA_LFS_JWT_SECRET=$GITEA_LFS_JWT_SECRET
+GITEA_JWT_SECRET=$GITEA_JWT_SECRET
+GITEA_ADMIN_USER=$GITEA_ADMIN_USER
+GITEA_ADMIN_EMAIL=$GITEA_ADMIN_EMAIL
+GITEA_ADMIN_PASSWORD=$GITEA_ADMIN_PASSWORD
+GITEA_BOOTSTRAP_ADMIN=$GITEA_BOOTSTRAP_ADMIN
+EOF
+
+        chmod 600 "$GITEA_SECRETS_CACHE_FILE" 2>/dev/null || true
+        ensure_path_owner "$GITEA_SECRETS_CACHE_DIR"
+        ensure_path_owner "$GITEA_SECRETS_CACHE_FILE"
+
+        print_success "Updated cached Gitea secrets for declarative setup"
+        print_info "Stored secrets at: $GITEA_SECRETS_CACHE_FILE"
+        if [[ "$GITEA_BOOTSTRAP_ADMIN" == "true" ]]; then
+            print_info "Admin user: $GITEA_ADMIN_USER"
+            print_warning "Admin password stored in secrets file under GITEA_ADMIN_PASSWORD"
+            print_info "View securely with: grep GITEA_ADMIN_PASSWORD $GITEA_SECRETS_CACHE_FILE"
+        fi
+    fi
+
+    return 0
+}
+
 harmonize_python_ai_bindings() {
     local target_file="$1"
     local context_label="${2:-$1}"
@@ -2544,6 +2840,21 @@ prompt_user() {
     fi
 }
 
+prompt_secret() {
+    local prompt="$1"
+    local note="${2:-}"
+    local message="$prompt"
+
+    if [[ -n "$note" ]]; then
+        message="$message ($note)"
+    fi
+
+    local response=""
+    read -s -p "$(echo -e ${BLUE}?${NC} $message: )" response
+    echo ""
+    echo "$response"
+}
+
 # ============================================================================
 # Prerequisites Check
 # ============================================================================
@@ -3208,6 +3519,11 @@ create_home_manager_config() {
     print_info "  State Version: $STATE_VERSION"
     print_info "  Editor: $DEFAULT_EDITOR"
 
+    if ! load_or_generate_gitea_secrets; then
+        print_error "Failed to prepare Gitea secrets"
+        exit 1
+    fi
+
     # Replace placeholders in home.nix (using | delimiter to handle special characters in variables)
     sed -i "s|VERSIONPLACEHOLDER|$SCRIPT_VERSION|" "$HOME_MANAGER_FILE"
     sed -i "s|HASHPLACEHOLDER|$TEMPLATE_HASH|" "$HOME_MANAGER_FILE"
@@ -3217,6 +3533,11 @@ create_home_manager_config() {
     sed -i "s|HOMEUSERNAME|$USER|" "$HOME_MANAGER_FILE"
     sed -i "s|HOMEDIR|$HOME|" "$HOME_MANAGER_FILE"
     sed -i "s|STATEVERSION_PLACEHOLDER|$STATE_VERSION|" "$HOME_MANAGER_FILE"
+    sed -i "s|@GITEA_SECRET_KEY@|$GITEA_SECRET_KEY|g" "$HOME_MANAGER_FILE"
+    sed -i "s|@GITEA_INTERNAL_TOKEN@|$GITEA_INTERNAL_TOKEN|g" "$HOME_MANAGER_FILE"
+    sed -i "s|@GITEA_LFS_JWT_SECRET@|$GITEA_LFS_JWT_SECRET|g" "$HOME_MANAGER_FILE"
+    sed -i "s|@GITEA_JWT_SECRET@|$GITEA_JWT_SECRET|g" "$HOME_MANAGER_FILE"
+    sed -i "s|@HOSTNAME@|$CURRENT_HOSTNAME|g" "$HOME_MANAGER_FILE"
 
     if ! harmonize_python_ai_bindings "$HOME_MANAGER_FILE" "home-manager home.nix"; then
         exit 1
@@ -3379,6 +3700,18 @@ ensure_home_manager_cli_available() {
     print_error "Failed to install home-manager CLI automatically"
     print_info "Review the log for details: $install_log"
     return 1
+}
+
+run_nixos_rebuild_dry_run() {
+    local log_path="${1:-/tmp/nixos-rebuild-dry-run.log}"
+    local target_host
+    target_host=$(hostname)
+
+    print_info "Performing dry run: sudo nixos-rebuild switch --flake \"$HM_CONFIG_DIR#$target_host\" --dry-run"
+    print_info "Validating system rebuild without applying changes..."
+
+    sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" --dry-run 2>&1 | tee "$log_path"
+    return ${PIPESTATUS[0]}
 }
 
 run_nixos_rebuild_switch() {
@@ -3779,6 +4112,11 @@ update_nixos_system_config() {
     print_info "Locale: $CURRENT_LOCALE"
     print_info "users.mutableUsers: $USERS_MUTABLE_SETTING"
 
+    if ! load_or_generate_gitea_secrets; then
+        print_error "Failed to prepare Gitea secrets"
+        return 1
+    fi
+
     harmonize_python_ai_bindings "$HOME_MANAGER_FILE" "existing flake home.nix" || return 1
     harmonize_python_ai_bindings "/etc/nixos/home.nix" "/etc/nixos/home.nix" || return 1
 
@@ -3930,6 +4268,126 @@ EOF
         USER_PASSWORD_BLOCK=$'    # (no password directives detected; update manually if required)\n'
     fi
 
+    local gitea_admin_secrets_set
+    local gitea_admin_variables_block
+    local gitea_admin_service_block
+    local gitea_admin_user_literal=""
+    local gitea_admin_email_literal=""
+    local gitea_admin_password_literal=""
+
+    if [[ "$GITEA_BOOTSTRAP_ADMIN" == "true" ]]; then
+        gitea_admin_secrets_set=$(cat <<'EOF'
+{
+    adminPassword = @GITEA_ADMIN_PASSWORD@;
+}
+EOF
+)
+        gitea_admin_variables_block=$(cat <<'EOF'
+  giteaAdminUser = @GITEA_ADMIN_USER@;
+  giteaAdminEmail = @GITEA_ADMIN_EMAIL@;
+  giteaAdminUserPattern = lib.escapeRegex giteaAdminUser;
+  giteaAdminBootstrapScript = pkgs.writeShellScript "gitea-admin-bootstrap" ''
+    set -euo pipefail
+
+    export HOME=${lib.escapeShellArg giteaStateDir}
+    export GITEA_WORK_DIR=${lib.escapeShellArg giteaStateDir}
+    export GITEA_CUSTOM=${lib.escapeShellArg ("${giteaStateDir}/custom")}
+    export GITEA_APP_INI=${lib.escapeShellArg ("${giteaStateDir}/custom/conf/app.ini")}
+
+    attempts=0
+    while true; do
+      if output=$(${pkgs.gitea}/bin/gitea admin user list --admin 2>/dev/null); then
+        if printf '%s\n' "$output" | ${pkgs.gnugrep}/bin/grep -q '^${giteaAdminUserPattern}\\b'; then
+          exit 0
+        fi
+        break
+      fi
+
+      attempts=$((attempts + 1))
+      if [ "$attempts" -ge 30 ]; then
+        echo "gitea-admin-bootstrap: timed out waiting for gitea admin CLI" >&2
+        exit 1
+      fi
+      ${pkgs.coreutils}/bin/sleep 2
+    done
+
+    ${pkgs.gitea}/bin/gitea admin user create \
+      --username ${lib.escapeShellArg giteaAdminUser} \
+      --password ${lib.escapeShellArg giteaAdminSecrets.adminPassword} \
+      --email ${lib.escapeShellArg giteaAdminEmail} \
+      --must-change-password=false \
+      --admin
+  '';
+EOF
+)
+        gitea_admin_service_block=$(cat <<'EOF'
+  systemd.services.gitea-admin-bootstrap = {
+    description = "Bootstrap default Gitea administrator";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "gitea.service" ];
+    requires = [ "gitea.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      User = "gitea";
+      Group = "gitea";
+      ExecStart = giteaAdminBootstrapScript;
+    };
+  };
+EOF
+)
+        gitea_admin_user_literal=$(nix_quote_string "$GITEA_ADMIN_USER")
+        gitea_admin_email_literal=$(nix_quote_string "$GITEA_ADMIN_EMAIL")
+        gitea_admin_password_literal=$(nix_quote_string "$GITEA_ADMIN_PASSWORD")
+    else
+        gitea_admin_secrets_set=$(cat <<'EOF'
+{
+  # Add `adminPassword = "your-strong-password";` to enable declarative admin bootstrapping.
+}
+EOF
+)
+        gitea_admin_variables_block=$(cat <<'EOF'
+  # Gitea admin bootstrap is disabled by the installer.
+  # Uncomment and customize the block below to create an admin automatically.
+  # giteaAdminUser = "gitea-admin";
+  # giteaAdminEmail = "gitea-admin@example.local";
+  # giteaAdminUserPattern = lib.escapeRegex giteaAdminUser;
+  # giteaAdminBootstrapScript = pkgs.writeShellScript "gitea-admin-bootstrap" ''
+  #   set -euo pipefail
+  #
+  #   export HOME=${lib.escapeShellArg giteaStateDir}
+  #   export GITEA_WORK_DIR=${lib.escapeShellArg giteaStateDir}
+  #   export GITEA_CUSTOM=${lib.escapeShellArg ("${giteaStateDir}/custom")}
+  #   export GITEA_APP_INI=${lib.escapeShellArg ("${giteaStateDir}/custom/conf/app.ini")}
+  #
+  #   ${pkgs.gitea}/bin/gitea admin user create \
+  #     --username ${lib.escapeShellArg giteaAdminUser} \
+  #     --password ${lib.escapeShellArg "<replace-with-password>"} \
+  #     --email ${lib.escapeShellArg giteaAdminEmail} \
+  #     --must-change-password=false \
+  #     --admin
+  # '';
+EOF
+)
+        gitea_admin_service_block=$(cat <<'EOF'
+  # systemd.services.gitea-admin-bootstrap = {
+  #   description = "Bootstrap default Gitea administrator";
+  #   wantedBy = [ "multi-user.target" ];
+  #   after = [ "gitea.service" ];
+  #   requires = [ "gitea.service" ];
+  #   serviceConfig = {
+  #     Type = "oneshot";
+  #     User = "gitea";
+  #     Group = "gitea";
+  #     ExecStart = giteaAdminBootstrapScript;
+  #   };
+  # };
+EOF
+)
+        gitea_admin_user_literal=""
+        gitea_admin_email_literal=""
+        gitea_admin_password_literal=""
+    fi
+
     TARGET_CONFIGURATION_NIX="$SYSTEM_CONFIG_FILE" \
         SCRIPT_VERSION_VALUE="$SCRIPT_VERSION" \
         GENERATED_AT="$GENERATED_AT" \
@@ -3947,6 +4405,16 @@ EOF
         TOTAL_RAM_GB_VALUE="$total_ram_value" \
         USERS_MUTABLE_VALUE="$USERS_MUTABLE_SETTING" \
         USER_PASSWORD_BLOCK_VALUE="$USER_PASSWORD_BLOCK" \
+        GITEA_SECRET_KEY_VALUE="$GITEA_SECRET_KEY" \
+        GITEA_INTERNAL_TOKEN_VALUE="$GITEA_INTERNAL_TOKEN" \
+        GITEA_LFS_JWT_SECRET_VALUE="$GITEA_LFS_JWT_SECRET" \
+        GITEA_JWT_SECRET_VALUE="$GITEA_JWT_SECRET" \
+        GITEA_ADMIN_SECRETS_SET_VALUE="$gitea_admin_secrets_set" \
+        GITEA_ADMIN_VARIABLES_BLOCK_VALUE="$gitea_admin_variables_block" \
+        GITEA_ADMIN_SERVICE_BLOCK_VALUE="$gitea_admin_service_block" \
+        GITEA_ADMIN_PASSWORD_VALUE="$gitea_admin_password_literal" \
+        GITEA_ADMIN_USER_VALUE="$gitea_admin_user_literal" \
+        GITEA_ADMIN_EMAIL_VALUE="$gitea_admin_email_literal" \
         run_python <<'PY'
 import os
 import sys
@@ -3979,6 +4447,16 @@ replacements = {
         "USER_PASSWORD_BLOCK_VALUE",
         "    # (no password directives detected; update manually if required)\n",
     ),
+    "@GITEA_SECRET_KEY@": os.environ.get("GITEA_SECRET_KEY_VALUE", ""),
+    "@GITEA_INTERNAL_TOKEN@": os.environ.get("GITEA_INTERNAL_TOKEN_VALUE", ""),
+    "@GITEA_LFS_JWT_SECRET@": os.environ.get("GITEA_LFS_JWT_SECRET_VALUE", ""),
+    "@GITEA_JWT_SECRET@": os.environ.get("GITEA_JWT_SECRET_VALUE", ""),
+    "@GITEA_ADMIN_SECRETS_SET@": os.environ.get("GITEA_ADMIN_SECRETS_SET_VALUE", "{}"),
+    "@GITEA_ADMIN_VARIABLES_BLOCK@": os.environ.get("GITEA_ADMIN_VARIABLES_BLOCK_VALUE", ""),
+    "@GITEA_ADMIN_SERVICE_BLOCK@": os.environ.get("GITEA_ADMIN_SERVICE_BLOCK_VALUE", ""),
+    "@GITEA_ADMIN_PASSWORD@": os.environ.get("GITEA_ADMIN_PASSWORD_VALUE", ""),
+    "@GITEA_ADMIN_USER@": os.environ.get("GITEA_ADMIN_USER_VALUE", ""),
+    "@GITEA_ADMIN_EMAIL@": os.environ.get("GITEA_ADMIN_EMAIL_VALUE", ""),
 }
 
 for placeholder, value in replacements.items():
@@ -4007,7 +4485,19 @@ PY
     # Apply the new configuration
     print_section "Applying New Configuration"
 
-    if ! confirm "Run 'sudo nixos-rebuild switch' now to activate the system configuration?" "y"; then
+    local NIXOS_REBUILD_DRY_LOG="/tmp/nixos-rebuild-dry-run.log"
+    if run_nixos_rebuild_dry_run "$NIXOS_REBUILD_DRY_LOG"; then
+        print_success "Dry run completed successfully (no changes applied)"
+        print_info "Log saved to: $NIXOS_REBUILD_DRY_LOG"
+    else
+        local dry_exit_code=$?
+        print_error "Dry run failed (exit code: $dry_exit_code)"
+        print_info "Review the log: $NIXOS_REBUILD_DRY_LOG"
+        print_info "Fix the issues above before attempting a full switch."
+        return 1
+    fi
+
+    if ! confirm "Proceed with 'sudo nixos-rebuild switch' to apply the system configuration?" "y"; then
         local target_host=$(hostname)
         print_warning "nixos-rebuild switch skipped at this stage. Run 'sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host"' later to apply system changes."
         print_warning "Without switching, some packages and services may remain unavailable until you rebuild."
@@ -4411,7 +4901,17 @@ configure_vscodium_for_claude() {
 
     if [ -L "$SETTINGS_FILE" ]; then
         print_info "VSCodium settings.json is managed by home-manager (symlink detected)."
-        print_info "Skipping manual Claude Code configuration to avoid breaking the managed state."
+
+        if command -v jq >/dev/null 2>&1 && [ -f "$SETTINGS_FILE" ]; then
+            if jq -e '."claude-code.executablePath" != null or ."claudeCode.executablePath" != null' "$SETTINGS_FILE" >/dev/null 2>&1; then
+                print_success "Claude Code settings detected in home-manager managed configuration."
+            else
+                print_warning "Claude Code settings not found in managed settings.json. Update your home-manager template to include the claude wrapper paths."
+            fi
+        else
+            print_info "Skipping verification because jq is unavailable."
+        fi
+
         return 0
     fi
 
@@ -4590,26 +5090,17 @@ install_vscodium_extensions() {
 finalize_configuration_activation() {
     print_section "Final Activation"
 
-    local hm_was_applied="$HOME_MANAGER_APPLIED"
-    local hm_prompt
     if [[ "$HOME_MANAGER_APPLIED" == true ]]; then
-        hm_prompt="Re-run home-manager switch now to ensure all user-level changes are active?"
-    else
-        hm_prompt="Run home-manager switch now to activate your user environment?"
-    fi
-
-    if confirm "$hm_prompt" "y"; then
+        print_info "Home-manager switch already completed earlier; skipping automatic re-run."
+        print_info "Run 'home-manager switch --flake \"$HM_CONFIG_DIR\"' later if you need to reapply changes."
+    elif confirm "Run home-manager switch now to activate your user environment?" "y"; then
         clean_home_manager_targets "final-activation"
         prepare_managed_config_paths
         local HM_SWITCH_LOG="/tmp/home-manager-switch-final.log"
         if run_home_manager_switch "$HM_SWITCH_LOG"; then
             HOME_MANAGER_APPLIED=true
-            if [[ "$hm_was_applied" == true ]]; then
-                print_success "Home-manager switch completed during finalization"
-            else
-                apply_system_changes
-                print_success "Home-manager configuration activated during finalization"
-            fi
+            apply_system_changes
+            print_success "Home-manager configuration activated during finalization"
             ensure_home_manager_cli_available || true
             ensure_flatpak_managed_install_service
             ensure_default_flatpak_apps_installed
@@ -4626,32 +5117,14 @@ finalize_configuration_activation() {
 
     echo ""
 
-    local rebuild_was_applied="$SYSTEM_REBUILD_APPLIED"
-    local rebuild_prompt
     if [[ "$SYSTEM_REBUILD_APPLIED" == true ]]; then
-        rebuild_prompt="Re-run 'sudo nixos-rebuild switch' now to ensure system configuration is current?"
+        print_info "System configuration already activated earlier; skipping additional nixos-rebuild."
+        local target_host=$(hostname)
+        print_info "Run 'sudo nixos-rebuild switch --flake \"$HM_CONFIG_DIR#$target_host\"' later if you need to rebuild."
     else
-        rebuild_prompt="Run 'sudo nixos-rebuild switch' now to activate the system configuration?"
-    fi
-
-    if confirm "$rebuild_prompt" "y"; then
-        local NIXOS_REBUILD_LOG="/tmp/nixos-rebuild-final.log"
-        if run_nixos_rebuild_switch "$NIXOS_REBUILD_LOG"; then
-            SYSTEM_REBUILD_APPLIED=true
-            if [[ "$rebuild_was_applied" == true ]]; then
-                print_success "System rebuild completed again during finalization"
-            else
-                print_success "System configuration activated during finalization"
-            fi
-            echo ""
-        else
-            local rebuild_exit_code=$?
-            print_error "nixos-rebuild switch during finalization failed (exit code: $rebuild_exit_code)"
-            print_info "Review the log: $NIXOS_REBUILD_LOG"
-            exit 1
-        fi
-    else
-        print_info "Skipping nixos-rebuild switch during finalization."
+        local target_host=$(hostname)
+        print_info "System configuration has not been activated yet during this run."
+        print_warning "Run 'sudo nixos-rebuild switch --flake \"$HM_CONFIG_DIR#$target_host\"' when you are ready to apply system changes."
     fi
 }
 

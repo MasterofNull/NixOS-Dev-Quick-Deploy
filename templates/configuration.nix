@@ -47,6 +47,92 @@ let
   huggingfaceStopScript = pkgs.writeShellScript "huggingface-tgi-stop" ''
     ${pkgs.podman}/bin/podman stop huggingface-tgi >/dev/null 2>&1 || true
   '';
+  giteaStateDir = "/var/lib/gitea";
+  giteaAppDataDir = "${giteaStateDir}/data";
+  giteaRepositoriesDir = "${giteaAppDataDir}/repositories";
+  giteaLfsDir = "${giteaAppDataDir}/lfs";
+  giteaIssuesIndexerPath = "${giteaAppDataDir}/indexers/issues.bleve";
+  giteaRepoIndexerPath = "${giteaAppDataDir}/indexers/repos.bleve";
+  giteaDatabasePath = "${giteaAppDataDir}/gitea.db";
+  giteaDomain = "@HOSTNAME@";
+  giteaHttpPort = 3000;
+  giteaSshPort = 2222;
+  giteaRootUrl = "http://${giteaDomain}:${toString giteaHttpPort}/";
+  giteaAdminSecrets = @GITEA_ADMIN_SECRETS_SET@;
+  giteaSecrets = {
+    secretKey = "@GITEA_SECRET_KEY@";
+    internalToken = "@GITEA_INTERNAL_TOKEN@";
+    lfsJwtSecret = "@GITEA_LFS_JWT_SECRET@";
+    oauthJwtSecret = "@GITEA_JWT_SECRET@";
+  } // giteaAdminSecrets;
+  giteaSharedSettings = {
+    server = {
+      PROTOCOL = "http";
+      DOMAIN = giteaDomain;
+      HTTP_ADDR = "0.0.0.0";
+      HTTP_PORT = giteaHttpPort;
+      ROOT_URL = giteaRootUrl;
+      APP_DATA_PATH = giteaAppDataDir;
+      STATIC_ROOT_PATH = "${giteaAppDataDir}/public";
+      ENABLE_GZIP = true;
+      LFS_START_SERVER = true;
+      LFS_JWT_SECRET = giteaSecrets.lfsJwtSecret;
+      DISABLE_SSH = false;
+      SSH_DOMAIN = giteaDomain;
+      SSH_PORT = giteaSshPort;
+      SSH_LISTEN_PORT = giteaSshPort;
+      START_SSH_SERVER = true;
+      LANDING_PAGE = "explore";
+    };
+    database = {
+      DB_TYPE = "sqlite3";
+      PATH = giteaDatabasePath;
+      LOG_SQL = false;
+    };
+    repository = {
+      ROOT = giteaRepositoriesDir;
+      FORCE_PRIVATE = false;
+    };
+    packages.ENABLED = true;
+    actions = {
+      ENABLED = true;
+      DEFAULT_ACTIONS_URL = "https://gitea.com";
+    };
+    indexer = {
+      ISSUE_INDEXER_TYPE = "bleve";
+      ISSUE_INDEXER_PATH = giteaIssuesIndexerPath;
+      REPO_INDEXER_ENABLED = true;
+      REPO_INDEXER_PATH = giteaRepoIndexerPath;
+    };
+    ui = {
+      DEFAULT_THEME = "arc-green";
+      THEMES = "arc-green,auto,github";
+      DEFAULT_SHOW_FULL_NAME = true;
+    };
+    service = {
+      REGISTER_EMAIL_CONFIRM = false;
+      DISABLE_REGISTRATION = false;
+      REQUIRE_SIGNIN_VIEW = false;
+      ENABLE_NOTIFY_MAIL = false;
+    };
+    security = {
+      INSTALL_LOCK = true;
+      PASSWORD_HASH_ALGO = "argon2";
+      SECRET_KEY = giteaSecrets.secretKey;
+      INTERNAL_TOKEN = giteaSecrets.internalToken;
+    };
+    oauth2.JWT_SECRET = giteaSecrets.oauthJwtSecret;
+    log = {
+      MODE = "console";
+      LEVEL = "info";
+    };
+    lfs = {
+      STORAGE_TYPE = "local";
+      PATH = giteaLfsDir;
+    };
+  };
+  # Optional Gitea admin bootstrap (populated by installer)
+  @GITEA_ADMIN_VARIABLES_BLOCK@
 in
 
 {
@@ -139,6 +225,8 @@ in
     firewall = {
       enable = true;
       allowedTCPPorts = [
+        3000  # Gitea HTTP interface
+        2222  # Gitea built-in SSH server
         # Add ports only when needed:
         # 8000  # AIDB API
         # 5432  # PostgreSQL
@@ -314,6 +402,41 @@ in
       TRANSFORMERS_CACHE = "%S/${huggingfaceStateDirName}/cache";
     };
   };
+
+  # ========================================================================
+  # Self-hosted Git Service (Gitea)
+  # ========================================================================
+
+  services.gitea = {
+    enable = true;
+    appName = "AIDB Gitea";
+    package = pkgs.gitea;
+    user = "gitea";
+    group = "gitea";
+    stateDir = giteaStateDir;
+    database = {
+      type = "sqlite3";
+      path = giteaDatabasePath;
+    };
+    repositoryRoot = giteaRepositoriesDir;
+    rootUrl = giteaRootUrl;
+    httpAddress = "0.0.0.0";
+    httpPort = giteaHttpPort;
+    ssh = {
+      enable = true;
+      domain = giteaDomain;
+      listenAddress = "0.0.0.0";
+      port = giteaSshPort;
+    };
+    lfs = {
+      enable = true;
+      contentDir = giteaLfsDir;
+    };
+    disableRegistration = false;
+    settings = giteaSharedSettings;
+  };
+
+  @GITEA_ADMIN_SERVICE_BLOCK@
 
   # ============================================================================
   # COSMIC Desktop Environment (Wayland-native)
