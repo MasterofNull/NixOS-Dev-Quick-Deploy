@@ -16,6 +16,7 @@ set -o pipefail
 
 FLATHUB_REMOTE_NAME="flathub"
 FLATHUB_REMOTE_URL="https://dl.flathub.org/repo/flathub.flatpakrepo"
+FLATHUB_REMOTE_FALLBACK_URL="https://flathub.org/repo/flathub.flatpakrepo"
 DEFAULT_FLATPAK_APPS=(
     "com.github.flatseal.Flatseal"
     "org.gnome.FileRoller"
@@ -495,17 +496,50 @@ ensure_flathub_remote() {
     fi
 
     print_info "Adding Flathub Flatpak remote..."
-    if run_as_primary_user flatpak --noninteractive remote-add --user --if-not-exists "$FLATHUB_REMOTE_NAME" "$FLATHUB_REMOTE_URL" >/dev/null 2>&1; then
-        print_success "Flathub repository added"
-        return 0
+
+    local -a remote_sources=("$FLATHUB_REMOTE_URL")
+    if [[ -n "$FLATHUB_REMOTE_FALLBACK_URL" && "$FLATHUB_REMOTE_FALLBACK_URL" != "$FLATHUB_REMOTE_URL" ]]; then
+        remote_sources+=("$FLATHUB_REMOTE_FALLBACK_URL")
     fi
 
-    if run_as_primary_user flatpak --noninteractive remote-add --user --if-not-exists --from "$FLATHUB_REMOTE_NAME" "$FLATHUB_REMOTE_URL" >/dev/null 2>&1; then
-        print_success "Flathub repository added via --from"
-        return 0
-    fi
+    local source=""
+    for source in "${remote_sources[@]}"; do
+        local from_output=""
+        if from_output=$(run_as_primary_user flatpak remote-add --user --if-not-exists --from "$FLATHUB_REMOTE_NAME" "$source" 2>&1); then
+            if [[ "$source" == "$FLATHUB_REMOTE_URL" ]]; then
+                print_success "Flathub repository added"
+            else
+                print_success "Flathub repository added via fallback source ($source)"
+            fi
+            return 0
+        fi
 
-    print_warning "Unable to configure Flathub repository automatically"
+        if [[ -n "$from_output" ]]; then
+            print_warning "  ↳ Failed to add Flathub via --from ($source)"
+            while IFS= read -r line; do
+                print_info "     $line"
+            done <<<"$from_output"
+        fi
+
+        local direct_output=""
+        if direct_output=$(run_as_primary_user flatpak remote-add --user --if-not-exists "$FLATHUB_REMOTE_NAME" "$source" 2>&1); then
+            if [[ "$source" == "$FLATHUB_REMOTE_URL" ]]; then
+                print_success "Flathub repository added"
+            else
+                print_success "Flathub repository added via fallback source ($source)"
+            fi
+            return 0
+        fi
+
+        if [[ -n "$direct_output" ]]; then
+            print_warning "  ↳ Failed to add Flathub directly ($source)"
+            while IFS= read -r line; do
+                print_info "     $line"
+            done <<<"$direct_output"
+        fi
+    done
+
+    print_warning "Unable to configure Flathub repository automatically (sources tried: ${remote_sources[*]})"
     return 1
 }
 
