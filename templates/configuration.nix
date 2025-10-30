@@ -7,28 +7,40 @@
 { config, pkgs, lib, ... }:
 
 let
-  huggingfaceDataDir = "/var/lib/huggingface";
+  huggingfaceStateDirName = "huggingface";
+  huggingfaceDataDir = "/var/lib/${huggingfaceStateDirName}";
   huggingfaceCacheDir = "${huggingfaceDataDir}/cache";
   huggingfaceModelId = "meta-llama/Meta-Llama-3-8B-Instruct";
   huggingfaceImage = "ghcr.io/huggingface/text-generation-inference:latest";
   huggingfacePrepScript = pkgs.writeShellScript "huggingface-tgi-prep" ''
     set -euo pipefail
-    ${pkgs.coreutils}/bin/mkdir -p ${huggingfaceCacheDir}
+    state_root="''${STATE_DIRECTORY:-${huggingfaceDataDir}}"
+    cache_root="''${CACHE_DIRECTORY:-${huggingfaceCacheDir}}"
+
+    ${pkgs.coreutils}/bin/mkdir -p "${huggingfaceDataDir}" "${huggingfaceCacheDir}"
+    ${pkgs.coreutils}/bin/mkdir -p "${state_root}" "${cache_root}"
+
     ${pkgs.podman}/bin/podman rm -f huggingface-tgi >/dev/null 2>&1 || true
-    ${pkgs.podman}/bin/podman pull ${huggingfaceImage}
+    ${pkgs.podman}/bin/podman pull ${lib.escapeShellArg huggingfaceImage}
   '';
   huggingfaceStartScript = pkgs.writeShellScript "huggingface-tgi-start" ''
     set -euo pipefail
+    state_root="''${STATE_DIRECTORY:-${huggingfaceDataDir}}"
+    cache_root="''${CACHE_DIRECTORY:-${huggingfaceCacheDir}}"
+
+    ${pkgs.coreutils}/bin/mkdir -p "${huggingfaceDataDir}" "${huggingfaceCacheDir}"
+    ${pkgs.coreutils}/bin/mkdir -p "${state_root}" "${cache_root}"
+
     exec ${pkgs.podman}/bin/podman run \
       --rm \
       --name huggingface-tgi \
       --net host \
-      -v ${huggingfaceDataDir}:/data \
+      -v "${state_root}:/data" \
       -e HF_HOME=/data \
       -e HUGGINGFACE_HUB_CACHE=/data/cache \
       -e TRANSFORMERS_CACHE=/data/cache \
-      ${huggingfaceImage} \
-      --model-id ${huggingfaceModelId} \
+      ${lib.escapeShellArg huggingfaceImage} \
+      --model-id ${lib.escapeShellArg huggingfaceModelId} \
       --port 8080 \
       --num-shard 1
   '';
@@ -272,9 +284,18 @@ in
 
   systemd.services.huggingface-tgi = {
     description = "Hugging Face Text Generation Inference";
+    documentation = [
+      "https://huggingface.co/docs/text-generation-inference/en/index"
+      "https://search.nixos.org/options?channel=25.05&show=systemd.services"
+    ];
     wantedBy = [ "multi-user.target" ];
-    after = [ "network-online.target" ];
-    requires = [ "network-online.target" ];
+    wants = [ "network-online.target" "podman.service" "podman.socket" ];
+    after = [ "network-online.target" "podman.service" "podman.socket" ];
+    restartTriggers = [ huggingfaceStartScript huggingfacePrepScript huggingfaceStopScript ];
+    unitConfig = {
+      StartLimitBurst = 3;
+      StartLimitIntervalSec = 300;
+    };
     serviceConfig = {
       Type = "simple";
       ExecStartPre = [ huggingfacePrepScript ];
@@ -282,18 +303,17 @@ in
       ExecStop = huggingfaceStopScript;
       Restart = "on-failure";
       RestartSec = 15;
+      TimeoutStartSec = 600;
+      TimeoutStopSec = 90;
+      WorkingDirectory = "%S/${huggingfaceStateDirName}";
+      StateDirectory = huggingfaceStateDirName;
     };
     environment = {
-      HF_HOME = huggingfaceDataDir;
-      HUGGINGFACE_HUB_CACHE = huggingfaceCacheDir;
-      TRANSFORMERS_CACHE = huggingfaceCacheDir;
+      HF_HOME = "%S/${huggingfaceStateDirName}";
+      HUGGINGFACE_HUB_CACHE = "%S/${huggingfaceStateDirName}/cache";
+      TRANSFORMERS_CACHE = "%S/${huggingfaceStateDirName}/cache";
     };
   };
-
-  systemd.tmpfiles.rules = lib.mkAfter [
-    "d ${huggingfaceDataDir} 0755 root root -"
-    "d ${huggingfaceCacheDir} 0755 root root -"
-  ];
 
   # ============================================================================
   # COSMIC Desktop Environment (Wayland-native)

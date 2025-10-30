@@ -707,6 +707,31 @@ let
     - The helper links plugins to Open WebUI or remote OpenAI-compatible endpoints configured on this system.
     - You can drop additional plugin ZIP files in this directory and rerun the helper to install them declaratively.
   '';
+  systemdStartServicesDefault =
+    let
+      startServicesOption = options.systemd.user.startServices or null;
+      allowedValues =
+        if startServicesOption == null then
+          [ ]
+        else
+          let
+            attempt = builtins.tryEval startServicesOption.type.enum;
+          in
+          if attempt.success then
+            attempt.value
+          else
+            [ ];
+      optionDefault =
+        if startServicesOption == null then null else (startServicesOption.default or null);
+    in
+    if lib.elem "legacy" allowedValues then
+      "legacy"
+    else if optionDefault != null then
+      optionDefault
+    else if allowedValues != [ ] then
+      lib.head allowedValues
+    else
+      "legacy";
 in
 
 {
@@ -718,6 +743,16 @@ in
   home.stateVersion = "STATEVERSION_PLACEHOLDER";  # Auto-detected from home-manager channel
 
   programs.home-manager.enable = true;
+
+  # Newer Home Manager releases default to the sd-switch activator, which
+  # relies on systemd's notification channel remaining responsive.  During the
+  # NixOS deployment performed by nixos-quick-deploy.sh this runs outside of an
+  # interactive login session, so the generated home-manager-hyperd.service can
+  # hang waiting on that channel and ultimately time out.  Probe the available
+  # startServices choices so we can prefer the more forgiving legacy activator
+  # whenever it is still supported, while falling back to the upstream default
+  # automatically as future Home Manager releases drop the legacy backend.
+  systemd.user.startServices = lib.mkDefault systemdStartServicesDefault;
   home.packages =
     let
       aiCommandLinePackages =
@@ -2143,57 +2178,68 @@ PLUGINCFG
   # Gitea Native Service (runs alongside Flatpak when present)
   # ========================================================================
 
-  systemd.user.services = {
-    "flatpak-managed-install" = {
-      Unit = lib.mkIf config.services.flatpak.enable {
-        Description = "Declarative Flatpak managed installer";
-        After = [ "graphical-session.target" "network-online.target" ];
-        Wants = [ "graphical-session.target" "network-online.target" ];
-        PartOf = [ "graphical-session.target" ];
-      };
-      Service = lib.mkIf config.services.flatpak.enable {
-        Type = lib.mkForce "oneshot";
-        ExecStart = lib.mkForce flatpakManagedInstallScript;
-        ExecCondition = lib.mkForce "${pkgs.coreutils}/bin/test -x ${pkgs.flatpak}/bin/flatpak";
-        ExecStartPre = [
-          "${pkgs.coreutils}/bin/mkdir -p %h/.local/share/flatpak"
-          "${pkgs.coreutils}/bin/mkdir -p %h/.config/flatpak"
-          "${pkgs.coreutils}/bin/mkdir -p %h/.var/app"
-        ];
-        Environment = [
-          "HOME=%h"
-          "XDG_RUNTIME_DIR=%t"
-          "DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus"
-        ];
-        TimeoutStartSec = 600;
-        Restart = lib.mkForce "no";
-        StandardOutput = "journal";
-        StandardError = "journal";
-      };
-      Install = lib.mkIf config.services.flatpak.enable {
-        WantedBy = [ "default.target" ];
-      };
-    };
-    "gitea-dev" = {
-      Unit = {
-        Description = "Gitea development forge (user)";
-        After = [ "network.target" ];
-      };
-      Service = {
-        Environment = [
-          "GITEA_WORK_DIR=%h/${giteaNativeDataDir}"
-          "GITEA_CUSTOM=%h/${giteaNativeConfigDir}"
-        ];
-        ExecStart = "${pkgs.gitea}/bin/gitea web --config %h/${giteaNativeConfigDir}/app.ini";
-        WorkingDirectory = "%h/${giteaNativeDataDir}";
-        Restart = "on-failure";
-        RestartSec = 3;
-      };
-      Install = {
-        WantedBy = [ "default.target" ];
-      };
-    };
-  };
+  systemd.user.services =
+    lib.mkMerge [
+      (lib.optionalAttrs config.services.flatpak.enable {
+        "flatpak-managed-install" = {
+          Unit = {
+            Description = "Declarative Flatpak managed installer";
+            Documentation = [
+              "https://nix-community.github.io/nix-flatpak/"
+              "man:flatpak(1)"
+            ];
+            After = [ "graphical-session.target" "network-online.target" ];
+            Wants = [ "graphical-session.target" "network-online.target" ];
+            PartOf = [ "graphical-session.target" ];
+          };
+          Service = {
+            Type = "oneshot";
+            ExecStart = flatpakManagedInstallScript;
+            ExecCondition = "${pkgs.coreutils}/bin/test -x ${pkgs.flatpak}/bin/flatpak";
+            ExecStartPre = [
+              "${pkgs.coreutils}/bin/mkdir -p %h/.local/share/flatpak"
+              "${pkgs.coreutils}/bin/mkdir -p %h/.config/flatpak"
+              "${pkgs.coreutils}/bin/mkdir -p %h/.var/app"
+            ];
+            Environment = [
+              "HOME=%h"
+              "XDG_RUNTIME_DIR=%t"
+              "DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus"
+            ];
+            TimeoutStartSec = 600;
+            Restart = "no";
+            StandardOutput = "journal";
+            StandardError = "journal";
+          };
+          Install = {
+            WantedBy = [ "default.target" ];
+          };
+        };
+      })
+      {
+        "gitea-dev" = {
+          Unit = {
+            Description = "Gitea development forge (user)";
+            After = [ "network.target" ];
+            PartOf = [ "default.target" ];
+          };
+          Service = {
+            Environment = [
+              "GITEA_WORK_DIR=%h/${giteaNativeDataDir}"
+              "GITEA_CUSTOM=%h/${giteaNativeConfigDir}"
+            ];
+            ExecStart = "${pkgs.gitea}/bin/gitea web --config %h/${giteaNativeConfigDir}/app.ini";
+            WorkingDirectory = "%h/${giteaNativeDataDir}";
+            Restart = "on-failure";
+            RestartSec = 3;
+            TimeoutStopSec = 60;
+          };
+          Install = {
+            WantedBy = [ "default.target" ];
+          };
+        };
+      }
+    ];
 
   # ========================================================================
   # Flatpak Integration - Manual Setup Instructions
