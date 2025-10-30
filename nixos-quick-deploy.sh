@@ -63,6 +63,7 @@ fi
 PRIMARY_PROFILE_BIN="$PRIMARY_HOME/.nix-profile/bin"
 PRIMARY_ETC_PROFILE_BIN="/etc/profiles/per-user/$PRIMARY_USER/bin"
 PRIMARY_LOCAL_BIN="$PRIMARY_HOME/.local/bin"
+LOCAL_BIN_DIR="$PRIMARY_LOCAL_BIN"
 FLATPAK_DIAGNOSTIC_ROOT="$PRIMARY_HOME/.cache/nixos-quick-deploy/flatpak"
 
 GITEA_FLATPAK_APP_ID="io.gitea.Gitea"
@@ -3863,6 +3864,7 @@ setup_flake_environment() {
     # Check if flake.nix exists in the NixOS-Quick-Deploy directory
     local FLAKE_DIR="$HM_CONFIG_DIR"
     local FLAKE_FILE="$FLAKE_DIR/flake.nix"
+    local flake_backup_dir=""
 
     if [[ ! -f "$FLAKE_FILE" ]]; then
         print_warning "flake.nix not found at $FLAKE_FILE"
@@ -3873,7 +3875,7 @@ setup_flake_environment() {
     print_success "Found flake.nix at $FLAKE_FILE"
 
     # Check if activation script already exists (IDEMPOTENCY CHECK)
-    if [ -f "$HOME/.local/bin/aidb-dev-env" ] && [ -f "$HOME/.config/zsh/aidb-flake.zsh" ]; then
+    if [ "$FORCE_UPDATE" = false ] && [ -f "$HOME/.local/bin/aidb-dev-env" ] && [ -f "$HOME/.config/zsh/aidb-flake.zsh" ]; then
         print_success "✓ Flake activation scripts already configured"
         print_info "Skipping flake setup (idempotent)"
 
@@ -3890,11 +3892,22 @@ setup_flake_environment() {
 
     # Enable experimental features for flakes
     print_info "Ensuring Nix flakes are enabled..."
-    mkdir -p "$HOME/.config/nix"
+    if ! run_as_primary_user install -d -m 755 "$HOME/.config/nix" >/dev/null 2>&1; then
+        mkdir -p "$HOME/.config/nix"
+    fi
+    ensure_path_owner "$HOME/.config/nix"
+
+    if [[ -f "$HOME/.config/nix/nix.conf" || -L "$HOME/.config/nix/nix.conf" ]]; then
+        if [[ -z "$flake_backup_dir" ]]; then
+            flake_backup_dir="$HOME/.config-backups/flake-setup-$(date +%Y%m%d_%H%M%S)"
+        fi
+        backup_path_if_exists "$HOME/.config/nix/nix.conf" "$flake_backup_dir" "Nix flakes configuration" || true
+    fi
     cat > "$HOME/.config/nix/nix.conf" <<'NIXCONF'
 experimental-features = nix-command flakes
 NIXCONF
     print_success "Nix flakes enabled"
+    ensure_path_owner "$HOME/.config/nix/nix.conf"
 
     # Build the flake development shell to ensure all packages are available
     print_info "Building flake development environment (this may take a few minutes)..."
@@ -3923,6 +3936,12 @@ NIXCONF
 
     # Create a convenient activation script
     print_info "Creating flake activation script..."
+    if [[ -f "$HOME/.local/bin/aidb-dev-env" || -L "$HOME/.local/bin/aidb-dev-env" ]]; then
+        if [[ -z "$flake_backup_dir" ]]; then
+            flake_backup_dir="$HOME/.config-backups/flake-setup-$(date +%Y%m%d_%H%M%S)"
+        fi
+        backup_path_if_exists "$HOME/.local/bin/aidb-dev-env" "$flake_backup_dir" "aidb-dev-env helper" || true
+    fi
     cat > "$HOME/.local/bin/aidb-dev-env" <<DEVENV
 #!/usr/bin/env bash
 # AIDB Development Environment Activator
@@ -3940,11 +3959,22 @@ cd "\$FLAKE_DIR" && exec nix develop
 DEVENV
 
     chmod +x "$HOME/.local/bin/aidb-dev-env"
+    ensure_path_owner "$HOME/.local/bin/aidb-dev-env"
     print_success "Created aidb-dev-env activation script"
 
     # Add flake information to shell profile
     print_info "Adding flake information to ZSH profile..."
-    mkdir -p "$HOME/.config/zsh"
+    if ! run_as_primary_user install -d -m 755 "$HOME/.config/zsh" >/dev/null 2>&1; then
+        mkdir -p "$HOME/.config/zsh"
+    fi
+    ensure_path_owner "$HOME/.config/zsh"
+
+    if [[ -f "$HOME/.config/zsh/aidb-flake.zsh" || -L "$HOME/.config/zsh/aidb-flake.zsh" ]]; then
+        if [[ -z "$flake_backup_dir" ]]; then
+            flake_backup_dir="$HOME/.config-backups/flake-setup-$(date +%Y%m%d_%H%M%S)"
+        fi
+        backup_path_if_exists "$HOME/.config/zsh/aidb-flake.zsh" "$flake_backup_dir" "aidb-flake.zsh profile" || true
+    fi
     cat > "$HOME/.config/zsh/aidb-flake.zsh" <<'ZSHFLAKE'
 
 # AIDB Flake Integration
@@ -3968,11 +3998,13 @@ aidb-info() {
     echo "  - inotify-tools (for Guardian file watching)"
 }
 ZSHFLAKE
+    ensure_path_owner "$HOME/.config/zsh/aidb-flake.zsh"
 
     # Source this in .zshrc if not already done
     if ! grep -q "aidb-flake.zsh" "$HOME/.zshrc" 2>/dev/null; then
         echo 'source ~/.config/zsh/aidb-flake.zsh' >> "$HOME/.zshrc"
         print_success "Added AIDB flake aliases to .zshrc"
+        ensure_path_owner "$HOME/.zshrc"
     fi
 
     print_success "Flake environment setup complete!"
