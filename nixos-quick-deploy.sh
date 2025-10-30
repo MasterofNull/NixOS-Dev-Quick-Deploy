@@ -25,6 +25,11 @@ DEFAULT_FLATPAK_APPS=(
     "io.mpv.Mpv"
     "org.mozilla.firefox"
     "md.obsidian.Obsidian"
+    "ai.cursor.Cursor"
+    "com.lmstudio.LMStudio"
+    "io.gitea.Gitea"
+    "io.podman_desktop.PodmanDesktop"
+    "org.sqlitebrowser.sqlitebrowser"
 )
 LAST_FLATPAK_QUERY_MESSAGE=""
 
@@ -950,10 +955,12 @@ clean_home_manager_targets() {
         "$HUGGINGFACE_CONFIG_DIR::Hugging Face configuration directory"
         "$HUGGINGFACE_CACHE_DIR::Hugging Face cache directory"
         "$OPEN_WEBUI_DATA_DIR::Open WebUI data directory"
+        "$PRIMARY_HOME/.local/share/podman-ai-stack::Podman AI stack data directory"
         "$GITEA_NATIVE_CONFIG_DIR::Gitea native configuration directory"
         "$GITEA_NATIVE_DATA_DIR::Gitea native data directory"
         "$GITEA_FLATPAK_CONFIG_DIR::Gitea Flatpak configuration directory"
         "$GITEA_FLATPAK_DATA_DIR::Gitea Flatpak data directory"
+        "$PRIMARY_HOME/.config/obsidian/ai-integrations::Obsidian AI integration bootstrap data"
     )
     local -a file_targets=(
         "$HOME/.config/VSCodium/User/settings.json::VSCodium settings.json"
@@ -967,6 +974,10 @@ clean_home_manager_targets() {
         "$LOCAL_BIN_DIR/hf-tgi::Hugging Face TGI helper"
         "$LOCAL_BIN_DIR/open-webui-run::Open WebUI launcher"
         "$LOCAL_BIN_DIR/open-webui-stop::Open WebUI stop helper"
+        "$LOCAL_BIN_DIR/gpt-cli::GPT CLI helper"
+        "$LOCAL_BIN_DIR/podman-ai-stack::Podman AI stack orchestrator"
+        "$LOCAL_BIN_DIR/code-cursor::Cursor IDE launcher"
+        "$LOCAL_BIN_DIR/obsidian-ai-bootstrap::Obsidian AI bootstrap helper"
     )
 
     local entry path label result
@@ -1033,6 +1044,7 @@ prepare_managed_config_paths() {
         "$HUGGINGFACE_CONFIG_DIR::700"
         "$HUGGINGFACE_CACHE_DIR::700"
         "$OPEN_WEBUI_DATA_DIR::750"
+        "$PRIMARY_HOME/.local/share/podman-ai-stack::750"
         "$GITEA_NATIVE_CONFIG_DIR::700"
         "$GITEA_NATIVE_DATA_DIR::750"
         "$PRIMARY_HOME/.var/app::755"
@@ -1040,6 +1052,7 @@ prepare_managed_config_paths() {
         "$GITEA_FLATPAK_DATA_DIR::750"
         "$PRIMARY_HOME/.config/flatpak::700"
         "$PRIMARY_HOME/.local/share/flatpak::750"
+        "$PRIMARY_HOME/.config/obsidian/ai-integrations::700"
     )
 
     local spec path mode before_exists created_any=false
@@ -4608,18 +4621,23 @@ print_post_install() {
     echo "    • Hugging Face TGI service (podman-based systemd unit)"
     echo "    • hf-tgi helper for managing the local inference server"
     echo "    • Open WebUI podman helpers: open-webui-run/open-webui-stop"
+    echo "    • podman-ai-stack helper to launch Ollama, Open WebUI, Qdrant, MindsDB"
+    echo "    • gpt-cli for OpenAI-compatible and Ollama chat completions"
+    echo "    • obsidian-ai-bootstrap to seed AI plugins in Obsidian vaults"
     echo "    • hf-model-sync script for downloading Hugging Face models"
     echo "    • Optional Ollama CLI installed when available"
     echo ""
     echo -e "  ${GREEN}Modern CLI & Terminal:${NC}"
     echo "    • ZSH with Powerlevel10k theme"
     echo "    • Modern tools (ripgrep, bat, eza, fzf, fd, etc.)"
+    echo "    • Observability stack (Grafana, Prometheus, Loki, Promtail, Vector, Glances, Cockpit)"
     echo "    • Alacritty terminal"
     echo "    • Git with aliases"
     echo ""
     echo -e "  ${GREEN}Desktop Environment:${NC}"
     echo "    • Cosmic desktop components (cosmic-edit, cosmic-files, cosmic-term)"
     echo "    • Modern Rust-based desktop environment"
+    echo "    • Cursor IDE and LM Studio Flatpaks ready for AI workflows"
     echo ""
     echo -e "  ${GREEN}Flake-based AIDB Environment:${NC}"
     echo "    • Development shell with all AIDB dependencies"
