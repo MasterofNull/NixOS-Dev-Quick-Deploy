@@ -347,8 +347,9 @@ flatpak_install_app_list() {
         fi
 
         local support_status=0
-        if ! flatpak_query_application_support "$app_id"; then
-            support_status=$?
+        flatpak_query_application_support "$app_id"
+        support_status=$?
+        if [[ $support_status -ne 0 ]]; then
             if [[ $support_status -eq 3 ]]; then
                 print_warning "  ⚠ $app_id is not available on $FLATHUB_REMOTE_NAME for this architecture; skipping"
                 if [[ -n "$LAST_FLATPAK_QUERY_MESSAGE" ]]; then
@@ -404,8 +405,9 @@ validate_flatpak_application_state() {
 
     for app_id in "${DEFAULT_FLATPAK_APPS[@]}"; do
         local support_status=0
-        if ! flatpak_query_application_support "$app_id"; then
-            support_status=$?
+        flatpak_query_application_support "$app_id"
+        support_status=$?
+        if [[ $support_status -ne 0 ]]; then
             if [[ $support_status -eq 3 ]]; then
                 unsupported+=("$app_id")
                 continue
@@ -476,12 +478,108 @@ ensure_flathub_remote() {
     return 1
 }
 
+backup_legacy_flatpak_configs() {
+    local -a targets=(
+        "$PRIMARY_HOME/.config/flatpak"
+        "$PRIMARY_HOME/.local/share/flatpak/overrides"
+        "$PRIMARY_HOME/.local/share/flatpak/remotes.d"
+        "$PRIMARY_HOME/.local/share/flatpak/repo/config"
+    )
+    local backup_root="$PRIMARY_HOME/.cache/nixos-quick-deploy/flatpak/legacy-backups"
+    local timestamp
+    local performed=false
+    local encountered_error=false
+    local backup_dir=""
+
+    timestamp="$(date +%Y%m%d_%H%M%S)"
+
+    for path in "${targets[@]}"; do
+        if run_as_primary_user test ! -e "$path" && run_as_primary_user test ! -L "$path"; then
+            continue
+        fi
+
+        if run_as_primary_user test -d "$path" && ! run_as_primary_user test -L "$path"; then
+            local entry_output=""
+            entry_output=$(run_as_primary_user bash -c "find \"$path\" -mindepth 1 -print -quit 2>/dev/null" || true)
+            if [[ -z "$entry_output" ]]; then
+                continue
+            fi
+        fi
+
+        local dest_output=""
+        dest_output=$(run_as_primary_user bash -c '
+set -euo pipefail
+path="$1"
+backup_root="$2"
+timestamp="$3"
+relative="${path#$HOME/}"
+if [ "$relative" = "$path" ]; then
+  relative="$(basename "$path")"
+fi
+if [ "$relative" = "$path" ]; then
+  rel_dir="."
+else
+  rel_dir="$(dirname "$relative")"
+fi
+if [ "$rel_dir" = "." ]; then
+  dest_dir="$backup_root/$timestamp"
+else
+  dest_dir="$backup_root/$timestamp/$rel_dir"
+fi
+mkdir -p "$dest_dir"
+dest_path="$dest_dir/$(basename "$path")"
+if cp -a "$path" "$dest_path"; then
+  rm -rf "$path"
+  printf "%s" "$dest_path"
+fi
+' backup-script "$path" "$backup_root" "$timestamp")
+        local backup_status=$?
+
+        if [[ $backup_status -eq 0 && -n "$dest_output" ]]; then
+            local display_path="$path"
+            if [[ "$display_path" == "$PRIMARY_HOME"/* ]]; then
+                display_path="${display_path#$PRIMARY_HOME/}"
+            fi
+            local display_dest="$dest_output"
+            if [[ "$display_dest" == "$PRIMARY_HOME"/* ]]; then
+                display_dest="${display_dest#$PRIMARY_HOME/}"
+            fi
+            print_info "  ↳ Backed up legacy Flatpak path: $display_path -> $display_dest"
+            performed=true
+            backup_dir="$backup_root/$timestamp"
+        else
+            encountered_error=true
+            print_warning "  ↳ Failed to back up legacy Flatpak path: $path"
+        fi
+    done
+
+    run_as_primary_user mkdir -p "$PRIMARY_HOME/.config/flatpak" >/dev/null 2>&1 || true
+
+    if [[ "$performed" == true && -n "$backup_dir" ]]; then
+        local display_backup="$backup_dir"
+        if [[ "$display_backup" == "$PRIMARY_HOME"/* ]]; then
+            display_backup="${display_backup#$PRIMARY_HOME/}"
+        fi
+        print_success "Legacy Flatpak configuration archived under $display_backup"
+    fi
+
+    if [[ "$encountered_error" == true ]]; then
+        return 1
+    fi
+
+    return 0
+}
+
 preflight_flatpak_environment() {
     local stage="${1:-preflight}"
 
     ensure_user_systemd_ready
 
     local issues=0
+
+    if ! backup_legacy_flatpak_configs; then
+        (( issues++ ))
+    fi
 
     if ! flatpak_cli_available; then
         print_warning "Flatpak CLI unavailable during $stage checks"
@@ -707,6 +805,10 @@ clean_home_manager_targets() {
         "$HOME/.bashrc::.bashrc"
         "$HOME/.zshrc::.zshrc"
         "$HOME/.p10k.zsh::.p10k.zsh"
+        "$HOME/.config/flatpak::Flatpak configuration directory"
+        "$HOME/.local/share/flatpak/overrides::Flatpak overrides directory"
+        "$HOME/.local/share/flatpak/remotes.d::Flatpak remotes directory"
+        "$HOME/.local/share/flatpak/repo/config::Flatpak repo configuration"
     )
 
     for entry in "${targets[@]}"; do
