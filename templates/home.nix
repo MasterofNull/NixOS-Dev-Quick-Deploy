@@ -22,6 +22,119 @@ let
   openWebUiPort = 8081;
   openWebUiUrl = "http://127.0.0.1:${toString openWebUiPort}";
   openWebUiDataDir = ".local/share/open-webui";
+  flathubRemoteName = "flathub";
+  flathubRemoteUrl = "https://dl.flathub.org/repo/flathub.flatpakrepo";
+  flathubPackages = [
+    # Keep DEFAULT_FLATPAK_APPS in nixos-quick-deploy.sh synchronized with the defaults below.
+    # ====================================================================
+    # SYSTEM TOOLS & UTILITIES (Recommended - Essential GUI Tools)
+    # ====================================================================
+    "com.github.flatseal.Flatseal"        # Flatpak permissions manager GUI
+    "org.gnome.FileRoller"                # Archive manager (zip, tar, 7z, rar) - GUI
+    "net.nokyan.Resources"                # System monitor (CPU, GPU, RAM, Network) - GUI
+
+    # ====================================================================
+    # MEDIA PLAYERS (Desktop Applications)
+    # ====================================================================
+    "org.videolan.VLC"                    # VLC media player (universal format support)
+    "io.mpv.Mpv"                          # MPV video player (modern, lightweight)
+
+    # ====================================================================
+    # WEB BROWSERS
+    # ====================================================================
+    "org.mozilla.firefox"                 # Firefox browser (Flatpak, better sandbox isolation)
+
+    # ====================================================================
+    # PRODUCTIVITY & OFFICE (Popular for Work)
+    # ====================================================================
+    "md.obsidian.Obsidian"                # Note-taking with markdown, vault sync, plugins
+  ];
+  flatpakManagedInstallScript =
+    let
+      packageArgs = lib.concatMapStringsSep " " (appId: lib.escapeShellArg appId) flathubPackages;
+      binPath = lib.makeBinPath [ pkgs.coreutils pkgs.gawk pkgs.gnugrep pkgs.gnused pkgs.flatpak pkgs.util-linux ];
+    in
+    pkgs.writeTextFile {
+      name = "aidb-flatpak-managed-install.sh";
+      executable = true;
+      text = ''
+        #!${pkgs.bash}/bin/bash
+        set -euo pipefail
+
+        export PATH=${binPath}:$PATH
+
+        remote_name=${lib.escapeShellArg flathubRemoteName}
+        remote_url=${lib.escapeShellArg flathubRemoteUrl}
+
+        log() {
+          printf '[%s] %s\n' "$(date --iso-8601=seconds)" "$*"
+        }
+
+        ensure_remote() {
+          if flatpak --user remotes --columns=name | awk 'NR == 1 && $1 == "Name" { next } { print $1 }' | grep -Fxq "$remote_name"; then
+            log "Remote $remote_name already configured"
+            return 0
+          fi
+
+          log "Adding Flatpak remote $remote_name ($remote_url)"
+          if flatpak --noninteractive --user remote-add --if-not-exists "$remote_name" "$remote_url"; then
+            log "Remote $remote_name added"
+            return 0
+          fi
+
+          if flatpak --noninteractive --user remote-add --if-not-exists --from "$remote_name" "$remote_url"; then
+            log "Remote $remote_name added via --from"
+            return 0
+          fi
+
+          log "Failed to add remote $remote_name" >&2
+          return 1
+        }
+
+        install_app() {
+          local app_id="$1"
+
+          if flatpak --user info "$app_id" >/dev/null 2>&1; then
+            log "Flatpak $app_id already installed"
+            return 0
+          fi
+
+          local attempt=1
+          while (( attempt <= 3 )); do
+            if flatpak --noninteractive --user install "$remote_name" "$app_id"; then
+              log "Installed $app_id"
+              return 0
+            fi
+            log "Attempt $attempt failed for $app_id" >&2
+            sleep $(( attempt * 2 ))
+            (( attempt += 1 ))
+          done
+
+          log "Giving up on $app_id after repeated failures" >&2
+          return 1
+        }
+
+        ensure_remote || exit 1
+
+        packages=( ${packageArgs} )
+        if [ ${#packages[@]} -eq 0 ]; then
+          log "No Flatpak packages declared; exiting"
+          exit 0
+        fi
+
+        failures=0
+        for app_id in "${packages[@]}"; do
+          if ! install_app "$app_id"; then
+            failures=1
+          fi
+        done
+
+        flatpak --user update --noninteractive --appstream || log "Appstream refresh failed (continuing)" >&2
+        flatpak --user update --noninteractive || log "Flatpak update failed (continuing)" >&2
+
+        exit $failures
+      '';
+    };
   pythonAi =
     pkgs.python311.override {
       packageOverrides = self: super: {
@@ -221,8 +334,6 @@ in
   home.stateVersion = "STATEVERSION_PLACEHOLDER";  # Auto-detected from home-manager channel
 
   programs.home-manager.enable = true;
-  nixpkgs.config.allowUnfree = true;
-
   home.packages =
     let
       aiCommandLinePackages =
@@ -404,27 +515,22 @@ in
           hexedit         # Hex editor
           qrencode        # QR code generator
         ]);
-      giteaFallbackPackages =
-        lib.optionals (!config.services.flatpak.enable) [
-          pkgs.gitea             # Native deployment when Flatpak is unavailable
-        ];
+      aiderPackage =
+        if pkgs ? aider-chat then
+          [ pkgs.aider-chat ]
+        else if pkgs ? aider then
+          [ pkgs.aider ]
+        else
+          [ ];
       giteaDevAiPackages =
-        let
-          aiderPackage =
-            if pkgs ? aider-chat then
-              [ pkgs.aider-chat ]
-            else if pkgs ? aider then
-              [ pkgs.aider ]
-            else
-              [ ];
-        in
         [
+          pkgs.gitea                   # Native Gitea server and CLI for local development
           pkgs.tea                     # Official Gitea CLI for automation and AI workflows
           pkgs.python311Packages.openai # Python SDK for OpenAI-compatible AI providers
         ]
         ++ aiderPackage;
     in
-    basePackages ++ giteaFallbackPackages ++ giteaDevAiPackages ++ aiCommandLinePackages;
+    basePackages ++ giteaDevAiPackages ++ aiCommandLinePackages;
 
   # ========================================================================
   # ZSH Configuration
@@ -1144,7 +1250,7 @@ in
         It is managed declaratively by Home Manager; manual changes may be overwritten on switch.
       '';
     }
-    // lib.optionalAttrs (!config.services.flatpak.enable) {
+    // {
       "${giteaNativeConfigDir}/app.ini".text = giteaSharedAppIni;
       "${giteaNativeConfigDir}/${giteaAiConfigFile}".text = giteaAiIntegrations;
       "${giteaNativeDataDir}/README".text = ''
@@ -1154,31 +1260,36 @@ in
     };
 
   # ========================================================================
-  # Gitea Native Service (Fallback when Flatpak is unavailable)
+  # Gitea Native Service (runs alongside Flatpak when present)
   # ========================================================================
 
-  systemd.user.services =
-    lib.optionalAttrs (!config.services.flatpak.enable) {
-      "gitea-dev" = {
-        Unit = {
-          Description = "Gitea development forge (user)";
-          After = [ "network.target" ];
-        };
-        Service = {
-          Environment = [
-            "GITEA_WORK_DIR=%h/${giteaNativeDataDir}"
-            "GITEA_CUSTOM=%h/${giteaNativeConfigDir}"
-          ];
-          ExecStart = "${pkgs.gitea}/bin/gitea web --config %h/${giteaNativeConfigDir}/app.ini";
-          WorkingDirectory = "%h/${giteaNativeDataDir}";
-          Restart = "on-failure";
-          RestartSec = 3;
-        };
-        Install = {
-          WantedBy = [ "default.target" ];
-        };
+  systemd.user.services = {
+    "flatpak-managed-install" = {
+      Service = lib.mkIf config.services.flatpak.enable {
+        ExecStart = lib.mkForce flatpakManagedInstallScript;
+        Type = lib.mkForce "oneshot";
       };
     };
+    "gitea-dev" = {
+      Unit = {
+        Description = "Gitea development forge (user)";
+        After = [ "network.target" ];
+      };
+      Service = {
+        Environment = [
+          "GITEA_WORK_DIR=%h/${giteaNativeDataDir}"
+          "GITEA_CUSTOM=%h/${giteaNativeConfigDir}"
+        ];
+        ExecStart = "${pkgs.gitea}/bin/gitea web --config %h/${giteaNativeConfigDir}/app.ini";
+        WorkingDirectory = "%h/${giteaNativeDataDir}";
+        Restart = "on-failure";
+        RestartSec = 3;
+      };
+      Install = {
+        WantedBy = [ "default.target" ];
+      };
+    };
+  };
 
   # ========================================================================
   # Flatpak Integration - Manual Setup Instructions
@@ -1299,135 +1410,43 @@ in
   #
   services.flatpak =
     let
-      flatpakPackageOptions =
-        # The nix-flatpak module follows the Home Manager/NixOS option schema
-        # documented in the NixOS manual. In recent releases it renamed the
-        # `remote` attribute to `origin`, so we inspect the option metadata to
-        # stay compatible with both variants when generating package entries.
-        lib.attrByPath [ "services" "flatpak" "packages" "type" "elemType" "options" ] options { };
-      supportsOrigin = flatpakPackageOptions ? origin;
-      supportsRemote = flatpakPackageOptions ? remote;
-      flatpakRemoteOptions =
-        lib.attrByPath [ "services" "flatpak" "remotes" "type" "elemType" "options" ] options { };
-      supportsLocation = flatpakRemoteOptions ? location;
-      supportsUrl = flatpakRemoteOptions ? url;
+      packageTypePath = [ "services" "flatpak" "packages" "type" "elemType" ];
+      remoteTypePath = [ "services" "flatpak" "remotes" "type" "elemType" ];
+      flatpakPackageType =
+        if lib.hasAttrByPath packageTypePath options then
+          lib.attrByPath packageTypePath options null
+        else
+          null;
+      flatpakRemoteType =
+        if lib.hasAttrByPath remoteTypePath options then
+          lib.attrByPath remoteTypePath options null
+        else
+          null;
+      checkCandidate = type: candidate:
+        if type == null then true else (builtins.tryEval (type.check candidate)).success;
+      selectCandidate = type: defaultCandidate: candidates:
+        let
+          found = lib.findFirst (candidate: checkCandidate type candidate) null candidates;
+        in
+          if found != null then found else defaultCandidate;
+      mkFlathubRemote =
+        selectCandidate
+          flatpakRemoteType
+          { name = flathubRemoteName; location = flathubRemoteUrl; }
+          [
+            { name = flathubRemoteName; location = flathubRemoteUrl; }
+            { name = flathubRemoteName; url = flathubRemoteUrl; }
+          ];
       mkFlathubPackage =
         appId:
-          { inherit appId; }
-          // lib.optionalAttrs supportsOrigin { origin = "flathub"; }
-          // lib.optionalAttrs supportsRemote { remote = "flathub"; };
-      flathubRemoteUrl = "https://dl.flathub.org/repo/flathub.flatpakrepo";
-      mkFlathubRemote =
-        { name = "flathub"; }
-        // lib.optionalAttrs (supportsLocation || !supportsUrl) { location = flathubRemoteUrl; }
-        // lib.optionalAttrs (supportsUrl && !supportsLocation) { url = flathubRemoteUrl; };
-      flathubPackages = [
-      # ====================================================================
-      # SYSTEM TOOLS & UTILITIES (Recommended - Essential GUI Tools)
-      # ====================================================================
-      "com.github.flatseal.Flatseal"        # Flatpak permissions manager GUI
-      "org.gnome.FileRoller"                # Archive manager (zip, tar, 7z, rar) - GUI
-      "net.nokyan.Resources"                # System monitor (CPU, GPU, RAM, Network) - GUI
+          selectCandidate
+            flatpakPackageType
+            { inherit appId; origin = flathubRemoteName; }
+            [
+              { inherit appId; origin = flathubRemoteName; }
+              { inherit appId; remote = flathubRemoteName; }
+            ];
 
-      # ====================================================================
-      # MEDIA PLAYERS (Desktop Applications)
-      # ====================================================================
-      "org.videolan.VLC"                    # VLC media player (universal format support)
-      "io.mpv.Mpv"                          # MPV video player (modern, lightweight)
-
-      # ====================================================================
-      # WEB BROWSERS
-      # ====================================================================
-      "org.mozilla.firefox"                 # Firefox browser (Flatpak, better sandbox isolation)
-
-      # ====================================================================
-      # PRODUCTIVITY & OFFICE (Popular for Work)
-      # ====================================================================
-      "md.obsidian.Obsidian"                # Note-taking with markdown, vault sync, plugins
-      # "org.libreoffice.LibreOffice"         # Full office suite (documents, spreadsheets, presentations)
-      # "app.standard-notes.StandardNotes"    # Encrypted note-taking
-      # "org.joplin.Joplin"                   # Note-taking with sync (active development)
-
-      # ====================================================================
-      # SELF-HOSTED DEVELOPMENT TOOLS
-      # ====================================================================
-      # giteaFlatpakAppId                    # Gitea forge (enable when an official Flatpak is available)
-
-      # ====================================================================
-      # DEVELOPMENT & CONTENT TOOLS (GUI Applications)
-      # ====================================================================
-      # "io.github.gitui.gitui"               # Modern Git client (Rust-based UI)
-      # "fr.handbrake.ghb"                    # HandBrake video converter (GUI)
-      # "org.audacityteam.Audacity"           # Audio recording & editing (GUI)
-      # "org.gimp.GIMP"                       # Image manipulation (Photoshop alternative)
-      # "org.inkscape.Inkscape"               # Vector graphics editor (Illustrator alternative)
-      # "org.pitivi.Pitivi"                   # Video editor (GNOME project)
-      # "org.blender.Blender"                 # 3D modeling & rendering
-      # "org.darktable.Darktable"             # Photo RAW processor
-
-      # ====================================================================
-      # ADDITIONAL WEB BROWSERS (If needed)
-      # ====================================================================
-      # "com.google.Chrome"                   # Google Chrome (proprietary, Flathub only)
-
-      # ====================================================================
-      # INTERNET & COMMUNICATION (Desktop Apps)
-      # ====================================================================
-      # "org.telegram.desktop"                # Telegram messenger (desktop)
-      # "com.slack.Slack"                     # Slack desktop client
-      # "org.thunderbird.Thunderbird"         # Email & calendar client
-      # "io.Riot.Riot"                        # Matrix client for secure messaging
-      # "com.obsproject.Studio"               # OBS Studio for streaming & recording
-
-      # ====================================================================
-      # DATABASE & TOOLS (GUI Applications)
-      # ====================================================================
-      # "org.dbeaver.DBeaverCommunity"        # Universal database client (MySQL, PostgreSQL)
-      # "com.beekeeperstudio.Studio"          # Modern database IDE
-      # "com.mongodb.Compass"                 # MongoDB GUI client
-
-      # ====================================================================
-      # REMOTE ACCESS & VIRTUALIZATION (GUI)
-      # ====================================================================
-      # "org.remmina.Remmina"                 # Remote desktop & SSH client
-      # "com.freerdp.FreeRDP"                 # Remote Desktop Client (RDP)
-      # "org.virt_manager.virt-manager"       # Virtual Machine Manager (KVM GUI)
-
-      # ====================================================================
-      # SECURITY & PRIVACY TOOLS (GUI Applications)
-      # ====================================================================
-      # "org.gnome.Secrets"                   # Password manager (KeePass alternative)
-      # "org.keepassxc.KeePassXC"             # Password manager with sync
-      # "com.github.Eloston.UngoogledChromium" # Privacy-focused Chromium
-      # "com.tutanota.Tutanota"               # Encrypted email service
-
-      # ====================================================================
-      # ENTERTAINMENT & GAMING
-      # ====================================================================
-      # "com.valvesoftware.Steam"             # Steam game platform
-      # "org.DolphinEmu.dolphin-emu"          # GameCube/Wii emulator
-      # "net.rpcs3.RPCS3"                     # PlayStation 3 emulator
-      # "org.libretro.RetroArch"              # Multi-system emulator (NES, SNES, Genesis)
-
-      # ====================================================================
-      # NOTE: CLI TOOLS & DEVELOPMENT PACKAGES
-      # ====================================================================
-      # The following packages are kept in home.packages (NOT Flatpak) for better integration:
-      # - git, neovim, vim (code editors)
-      # - Python, Go, Rust, Node.js (programming languages)
-      # - ripgrep, fd, fzf, bat (modern CLI tools)
-      # - tmux, zsh, starship (shell/terminal tools)
-      # - pandoc (document converter)
-      # - nix tools (nixpkgs-fmt, statix, etc.)
-      # - All other CLI/terminal utilities
-      #
-      # These are better installed via NixOS packages because:
-      # 1. Better shell integration and PATH handling
-      # 2. Faster execution (no Flatpak sandbox overhead)
-      # 3. Direct access to system libraries
-      # 4. Simpler configuration in shell profiles
-      # 5. Most are not available on Flathub anyway
-    ];
     in {
       enable = true;
       package = pkgs.flatpak;
