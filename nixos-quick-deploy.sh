@@ -25,6 +25,7 @@ DEFAULT_FLATPAK_APPS=(
     "org.mozilla.firefox"
     "md.obsidian.Obsidian"
 )
+LAST_FLATPAK_QUERY_MESSAGE=""
 
 # Ensure we target the invoking user's home directory even when executed via sudo
 RESOLVED_USER="${USER:-}"
@@ -62,7 +63,20 @@ fi
 PRIMARY_PROFILE_BIN="$PRIMARY_HOME/.nix-profile/bin"
 PRIMARY_ETC_PROFILE_BIN="/etc/profiles/per-user/$PRIMARY_USER/bin"
 PRIMARY_LOCAL_BIN="$PRIMARY_HOME/.local/bin"
+LOCAL_BIN_DIR="$PRIMARY_LOCAL_BIN"
 FLATPAK_DIAGNOSTIC_ROOT="$PRIMARY_HOME/.cache/nixos-quick-deploy/flatpak"
+
+GITEA_FLATPAK_APP_ID="io.gitea.Gitea"
+GITEA_FLATPAK_CONFIG_DIR="$PRIMARY_HOME/.var/app/$GITEA_FLATPAK_APP_ID/config/gitea"
+GITEA_FLATPAK_DATA_DIR="$PRIMARY_HOME/.var/app/$GITEA_FLATPAK_APP_ID/data/gitea"
+GITEA_NATIVE_CONFIG_DIR="$PRIMARY_HOME/.config/gitea"
+GITEA_NATIVE_DATA_DIR="$PRIMARY_HOME/.local/share/gitea"
+HUGGINGFACE_CONFIG_DIR="$PRIMARY_HOME/.config/huggingface"
+HUGGINGFACE_CACHE_DIR="$PRIMARY_HOME/.cache/huggingface"
+OPEN_WEBUI_DATA_DIR="$PRIMARY_HOME/.local/share/open-webui"
+AIDER_CONFIG_DIR="$PRIMARY_HOME/.config/aider"
+TEA_CONFIG_DIR="$PRIMARY_HOME/.config/tea"
+LATEST_CONFIG_BACKUP_DIR=""
 
 build_primary_user_path() {
     local -a path_parts=()
@@ -285,6 +299,45 @@ flatpak_remote_exists() {
         | grep -Fxq "$FLATHUB_REMOTE_NAME"
 }
 
+flatpak_query_application_support() {
+    if ! flatpak_cli_available; then
+        LAST_FLATPAK_QUERY_MESSAGE="Flatpak CLI not available"
+        return 2
+    fi
+
+    local app_id="$1"
+    local user_output
+    local user_status
+    local system_output
+    local system_status
+
+    LAST_FLATPAK_QUERY_MESSAGE=""
+
+    user_output=$(run_as_primary_user flatpak --user remote-info "$FLATHUB_REMOTE_NAME" "$app_id" 2>&1 || true)
+    user_status=$?
+    if [[ $user_status -eq 0 ]]; then
+        return 0
+    fi
+
+    system_output=$(run_as_primary_user flatpak remote-info "$FLATHUB_REMOTE_NAME" "$app_id" 2>&1 || true)
+    system_status=$?
+    if [[ $system_status -eq 0 ]]; then
+        return 0
+    fi
+
+    LAST_FLATPAK_QUERY_MESSAGE="$user_output"
+    if [[ -n "$LAST_FLATPAK_QUERY_MESSAGE" && -n "$system_output" ]]; then
+        LAST_FLATPAK_QUERY_MESSAGE+=$'\n'
+    fi
+    LAST_FLATPAK_QUERY_MESSAGE+="$system_output"
+
+    if printf '%s\n' "$LAST_FLATPAK_QUERY_MESSAGE" | grep -Eiq 'No remote refs found similar|No entry for|Nothing matches'; then
+        return 3
+    fi
+
+    return 1
+}
+
 flatpak_install_app_list() {
     if [[ $# -eq 0 ]]; then
         return 0
@@ -306,19 +359,61 @@ flatpak_install_app_list() {
             continue
         fi
 
+        local support_status=0
+        flatpak_query_application_support "$app_id"
+        support_status=$?
+        if [[ $support_status -ne 0 ]]; then
+            if [[ $support_status -eq 3 ]]; then
+                print_warning "  ⚠ $app_id is not available on $FLATHUB_REMOTE_NAME for this architecture; skipping"
+                if [[ -n "$LAST_FLATPAK_QUERY_MESSAGE" ]]; then
+                    while IFS= read -r line; do
+                        print_info "    ↳ $line"
+                    done <<<"$LAST_FLATPAK_QUERY_MESSAGE"
+                fi
+                continue
+            fi
+
+            print_error "  ✗ Unable to query metadata for $app_id prior to installation"
+            if [[ -n "$LAST_FLATPAK_QUERY_MESSAGE" ]]; then
+                while IFS= read -r line; do
+                    print_info "    ↳ $line"
+                done <<<"$LAST_FLATPAK_QUERY_MESSAGE"
+            fi
+            failure=true
+            continue
+        fi
+
         print_info "  Installing $app_id from $FLATHUB_REMOTE_NAME..."
-        local installed=false
+        local handled=false
         for attempt in 1 2 3; do
-            if run_as_primary_user flatpak --noninteractive install --user "$FLATHUB_REMOTE_NAME" "$app_id" >/dev/null 2>&1; then
+            local install_output=""
+            if install_output=$(run_as_primary_user flatpak --noninteractive install --user "$FLATHUB_REMOTE_NAME" "$app_id" 2>&1); then
                 print_success "  ✓ Installed $app_id"
-                installed=true
+                handled=true
                 break
             fi
+
+            if printf '%s\n' "$install_output" | grep -Eiq 'No remote refs found similar|No entry for|Nothing matches'; then
+                print_warning "  ⚠ $app_id is not available on $FLATHUB_REMOTE_NAME for this architecture; skipping"
+                if [[ -n "$install_output" ]]; then
+                    while IFS= read -r line; do
+                        print_info "    ↳ $line"
+                    done <<<"$install_output"
+                fi
+                handled=true
+                break
+            fi
+
             print_warning "  ⚠ Attempt $attempt failed for $app_id"
+            if [[ -n "$install_output" ]]; then
+                while IFS= read -r line; do
+                    print_info "    ↳ $line"
+                done <<<"$install_output"
+            fi
             sleep $(( attempt * 2 ))
         done
 
-        if [[ "$installed" == false ]]; then
+        if [[ "$handled" == false ]]; then
             print_error "  ✗ Failed to install $app_id after retries"
             failure=true
         fi
@@ -337,12 +432,33 @@ validate_flatpak_application_state() {
     fi
 
     local -a missing=()
+    local -a unsupported=()
 
     for app_id in "${DEFAULT_FLATPAK_APPS[@]}"; do
+        local support_status=0
+        flatpak_query_application_support "$app_id"
+        support_status=$?
+        if [[ $support_status -ne 0 ]]; then
+            if [[ $support_status -eq 3 ]]; then
+                unsupported+=("$app_id")
+                continue
+            fi
+
+            if [[ -n "$LAST_FLATPAK_QUERY_MESSAGE" ]]; then
+                while IFS= read -r line; do
+                    print_info "  ↳ $line"
+                done <<<"$LAST_FLATPAK_QUERY_MESSAGE"
+            fi
+        fi
+
         if ! run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
             missing+=("$app_id")
         fi
     done
+
+    if (( ${#unsupported[@]} > 0 )); then
+        print_info "Skipping Flatpak apps unsupported on this architecture: ${unsupported[*]}"
+    fi
 
     if (( ${#missing[@]} > 0 )); then
         print_warning "Missing Flatpak applications: ${missing[*]}"
@@ -393,12 +509,108 @@ ensure_flathub_remote() {
     return 1
 }
 
+backup_legacy_flatpak_configs() {
+    local -a targets=(
+        "$PRIMARY_HOME/.config/flatpak"
+        "$PRIMARY_HOME/.local/share/flatpak/overrides"
+        "$PRIMARY_HOME/.local/share/flatpak/remotes.d"
+        "$PRIMARY_HOME/.local/share/flatpak/repo/config"
+    )
+    local backup_root="$PRIMARY_HOME/.cache/nixos-quick-deploy/flatpak/legacy-backups"
+    local timestamp
+    local performed=false
+    local encountered_error=false
+    local backup_dir=""
+
+    timestamp="$(date +%Y%m%d_%H%M%S)"
+
+    for path in "${targets[@]}"; do
+        if run_as_primary_user test ! -e "$path" && run_as_primary_user test ! -L "$path"; then
+            continue
+        fi
+
+        if run_as_primary_user test -d "$path" && ! run_as_primary_user test -L "$path"; then
+            local entry_output=""
+            entry_output=$(run_as_primary_user bash -c "find \"$path\" -mindepth 1 -print -quit 2>/dev/null" || true)
+            if [[ -z "$entry_output" ]]; then
+                continue
+            fi
+        fi
+
+        local dest_output=""
+        dest_output=$(run_as_primary_user bash -c '
+set -euo pipefail
+path="$1"
+backup_root="$2"
+timestamp="$3"
+relative="${path#$HOME/}"
+if [ "$relative" = "$path" ]; then
+  relative="$(basename "$path")"
+fi
+if [ "$relative" = "$path" ]; then
+  rel_dir="."
+else
+  rel_dir="$(dirname "$relative")"
+fi
+if [ "$rel_dir" = "." ]; then
+  dest_dir="$backup_root/$timestamp"
+else
+  dest_dir="$backup_root/$timestamp/$rel_dir"
+fi
+mkdir -p "$dest_dir"
+dest_path="$dest_dir/$(basename "$path")"
+if cp -a "$path" "$dest_path"; then
+  rm -rf "$path"
+  printf "%s" "$dest_path"
+fi
+' backup-script "$path" "$backup_root" "$timestamp")
+        local backup_status=$?
+
+        if [[ $backup_status -eq 0 && -n "$dest_output" ]]; then
+            local display_path="$path"
+            if [[ "$display_path" == "$PRIMARY_HOME"/* ]]; then
+                display_path="${display_path#$PRIMARY_HOME/}"
+            fi
+            local display_dest="$dest_output"
+            if [[ "$display_dest" == "$PRIMARY_HOME"/* ]]; then
+                display_dest="${display_dest#$PRIMARY_HOME/}"
+            fi
+            print_info "  ↳ Backed up legacy Flatpak path: $display_path -> $display_dest"
+            performed=true
+            backup_dir="$backup_root/$timestamp"
+        else
+            encountered_error=true
+            print_warning "  ↳ Failed to back up legacy Flatpak path: $path"
+        fi
+    done
+
+    run_as_primary_user mkdir -p "$PRIMARY_HOME/.config/flatpak" >/dev/null 2>&1 || true
+
+    if [[ "$performed" == true && -n "$backup_dir" ]]; then
+        local display_backup="$backup_dir"
+        if [[ "$display_backup" == "$PRIMARY_HOME"/* ]]; then
+            display_backup="${display_backup#$PRIMARY_HOME/}"
+        fi
+        print_success "Legacy Flatpak configuration archived under $display_backup"
+    fi
+
+    if [[ "$encountered_error" == true ]]; then
+        return 1
+    fi
+
+    return 0
+}
+
 preflight_flatpak_environment() {
     local stage="${1:-preflight}"
 
     ensure_user_systemd_ready
 
     local issues=0
+
+    if ! backup_legacy_flatpak_configs; then
+        (( issues++ ))
+    fi
 
     if ! flatpak_cli_available; then
         print_warning "Flatpak CLI unavailable during $stage checks"
@@ -580,6 +792,7 @@ backup_path_if_exists() {
     fi
 
     mkdir -p "$backup_dir"
+    ensure_path_owner "$backup_dir"
 
     local rel_path
     if [[ "$target_path" == "$HOME" ]]; then
@@ -592,6 +805,7 @@ backup_path_if_exists() {
 
     local dest_path="$backup_dir/$rel_path"
     mkdir -p "$(dirname "$dest_path")"
+    ensure_path_owner "$(dirname "$dest_path")"
 
     if cp -a "$target_path" "$dest_path" 2>/dev/null; then
         if [[ -d "$target_path" && ! -L "$target_path" ]]; then
@@ -599,6 +813,8 @@ backup_path_if_exists() {
         else
             rm -f "$target_path"
         fi
+
+        ensure_path_owner "$dest_path"
 
         local display_label
         display_label="${label:-$rel_path}"
@@ -619,19 +835,56 @@ clean_home_manager_targets() {
     local cleaned_any=false
     local encountered_error=false
 
-    local -a targets=(
+    local -a directory_targets=(
+        "$HOME/.config/flatpak::Flatpak configuration directory"
+        "$HOME/.local/share/flatpak/overrides::Flatpak overrides directory"
+        "$HOME/.local/share/flatpak/remotes.d::Flatpak remotes directory"
+        "$HOME/.local/share/flatpak/repo/config::Flatpak repo configuration"
+        "$AIDER_CONFIG_DIR::Aider configuration directory"
+        "$TEA_CONFIG_DIR::Tea configuration directory"
+        "$HUGGINGFACE_CONFIG_DIR::Hugging Face configuration directory"
+        "$HUGGINGFACE_CACHE_DIR::Hugging Face cache directory"
+        "$OPEN_WEBUI_DATA_DIR::Open WebUI data directory"
+        "$GITEA_NATIVE_CONFIG_DIR::Gitea native configuration directory"
+        "$GITEA_NATIVE_DATA_DIR::Gitea native data directory"
+        "$GITEA_FLATPAK_CONFIG_DIR::Gitea Flatpak configuration directory"
+        "$GITEA_FLATPAK_DATA_DIR::Gitea Flatpak data directory"
+    )
+    local -a file_targets=(
         "$HOME/.config/VSCodium/User/settings.json::VSCodium settings.json"
         "$HOME/.bashrc::.bashrc"
         "$HOME/.zshrc::.zshrc"
         "$HOME/.p10k.zsh::.p10k.zsh"
+        "$LOCAL_BIN_DIR/p10k-setup-wizard.sh::p10k setup wizard script"
+        "$LOCAL_BIN_DIR/gitea-editor::gitea editor helper"
+        "$LOCAL_BIN_DIR/gitea-ai-assistant::gitea AI assistant helper"
+        "$LOCAL_BIN_DIR/hf-model-sync::Hugging Face model sync helper"
+        "$LOCAL_BIN_DIR/hf-tgi::Hugging Face TGI helper"
+        "$LOCAL_BIN_DIR/open-webui-run::Open WebUI launcher"
+        "$LOCAL_BIN_DIR/open-webui-stop::Open WebUI stop helper"
     )
 
-    for entry in "${targets[@]}"; do
-        local path="${entry%%::*}"
-        local label="${entry##*::}"
+    local entry path label result
+
+    for entry in "${directory_targets[@]}"; do
+        path="${entry%%::*}"
+        label="${entry##*::}"
 
         backup_path_if_exists "$path" "$backup_dir" "$label"
-        local result=$?
+        result=$?
+        if [[ $result -eq 0 ]]; then
+            cleaned_any=true
+        elif [[ $result -eq 2 ]]; then
+            encountered_error=true
+        fi
+    done
+
+    for entry in "${file_targets[@]}"; do
+        path="${entry%%::*}"
+        label="${entry##*::}"
+
+        backup_path_if_exists "$path" "$backup_dir" "$label"
+        result=$?
         if [[ $result -eq 0 ]]; then
             cleaned_any=true
         elif [[ $result -eq 2 ]]; then
@@ -643,25 +896,78 @@ clean_home_manager_targets() {
     if [[ -d "$vscodium_user_dir" && ! -L "$vscodium_user_dir" ]]; then
         if find "$vscodium_user_dir" -mindepth 1 -maxdepth 1 ! -type l 2>/dev/null | grep -q .; then
             backup_path_if_exists "$vscodium_user_dir" "$backup_dir" "VSCodium User directory"
-            local dir_result=$?
-            if [[ $dir_result -eq 0 ]]; then
+            result=$?
+            if [[ $result -eq 0 ]]; then
                 cleaned_any=true
-            elif [[ $dir_result -eq 2 ]]; then
+            elif [[ $result -eq 2 ]]; then
                 encountered_error=true
             fi
         fi
     fi
 
     if [[ "$cleaned_any" == true ]]; then
+        LATEST_CONFIG_BACKUP_DIR="$backup_dir"
         print_success "All conflicting configs backed up to: $backup_dir"
         print_info "Home-manager will now create managed symlinks"
     else
         rm -rf "$backup_dir"
+        LATEST_CONFIG_BACKUP_DIR=""
         print_info "No conflicting configuration files required backup."
     fi
 
     if [[ "$encountered_error" == true ]]; then
         print_warning "Some configuration paths could not be backed up automatically (see messages above)."
+    fi
+}
+
+prepare_managed_config_paths() {
+    local -a dir_specs=(
+        "$LOCAL_BIN_DIR::755"
+        "$AIDER_CONFIG_DIR::700"
+        "$TEA_CONFIG_DIR::700"
+        "$HUGGINGFACE_CONFIG_DIR::700"
+        "$HUGGINGFACE_CACHE_DIR::700"
+        "$OPEN_WEBUI_DATA_DIR::750"
+        "$GITEA_NATIVE_CONFIG_DIR::700"
+        "$GITEA_NATIVE_DATA_DIR::750"
+        "$PRIMARY_HOME/.var/app::755"
+        "$GITEA_FLATPAK_CONFIG_DIR::700"
+        "$GITEA_FLATPAK_DATA_DIR::750"
+        "$PRIMARY_HOME/.config/flatpak::700"
+        "$PRIMARY_HOME/.local/share/flatpak::750"
+    )
+
+    local spec path mode before_exists created_any=false
+
+    for spec in "${dir_specs[@]}"; do
+        path="${spec%%::*}"
+        mode="${spec##*::}"
+        if [[ "$mode" == "$path" ]]; then
+            mode="755"
+        fi
+
+        before_exists=false
+        if [[ -d "$path" ]]; then
+            before_exists=true
+        fi
+
+        if run_as_primary_user install -d -m "$mode" "$path" >/dev/null 2>&1; then
+            :
+        else
+            mkdir -p "$path" 2>/dev/null || true
+            chmod "$mode" "$path" 2>/dev/null || true
+        fi
+        ensure_path_owner "$path"
+
+        if [[ "$before_exists" == false && -d "$path" ]]; then
+            created_any=true
+        fi
+    done
+
+    if [[ "$created_any" == true ]]; then
+        print_success "Prepared directories for managed configuration files"
+    else
+        print_info "Managed configuration directories already present."
     fi
 }
 
@@ -3055,6 +3361,10 @@ apply_home_manager_config() {
         echo ""
         print_info "Full log saved to: $HM_SWITCH_LOG"
         print_info "Backup is at: $HOME_MANAGER_BACKUP"
+        if [[ -n "$LATEST_CONFIG_BACKUP_DIR" ]]; then
+            print_info "Previous configuration files archived under: $LATEST_CONFIG_BACKUP_DIR"
+            print_info "Restore with: cp -a \"$LATEST_CONFIG_BACKUP_DIR/.\" \"$HOME/\""
+        fi
         echo ""
 
         print_error "Automatic rollback will restore your previous configuration."
@@ -3072,6 +3382,10 @@ apply_home_manager_config() {
 backup_existing_configs() {
     print_info "Backing up and removing conflicting configuration files..."
     clean_home_manager_targets "pre-switch"
+    if [[ -n "$LATEST_CONFIG_BACKUP_DIR" ]]; then
+        print_info "To restore previous configs: cp -a \"$LATEST_CONFIG_BACKUP_DIR/.\" \"$HOME/\""
+    fi
+    prepare_managed_config_paths
 }
 
 apply_system_changes() {
@@ -3550,6 +3864,7 @@ setup_flake_environment() {
     # Check if flake.nix exists in the NixOS-Quick-Deploy directory
     local FLAKE_DIR="$HM_CONFIG_DIR"
     local FLAKE_FILE="$FLAKE_DIR/flake.nix"
+    local flake_backup_dir=""
 
     if [[ ! -f "$FLAKE_FILE" ]]; then
         print_warning "flake.nix not found at $FLAKE_FILE"
@@ -3560,7 +3875,7 @@ setup_flake_environment() {
     print_success "Found flake.nix at $FLAKE_FILE"
 
     # Check if activation script already exists (IDEMPOTENCY CHECK)
-    if [ -f "$HOME/.local/bin/aidb-dev-env" ] && [ -f "$HOME/.config/zsh/aidb-flake.zsh" ]; then
+    if [ "$FORCE_UPDATE" = false ] && [ -f "$HOME/.local/bin/aidb-dev-env" ] && [ -f "$HOME/.config/zsh/aidb-flake.zsh" ]; then
         print_success "✓ Flake activation scripts already configured"
         print_info "Skipping flake setup (idempotent)"
 
@@ -3577,11 +3892,22 @@ setup_flake_environment() {
 
     # Enable experimental features for flakes
     print_info "Ensuring Nix flakes are enabled..."
-    mkdir -p "$HOME/.config/nix"
+    if ! run_as_primary_user install -d -m 755 "$HOME/.config/nix" >/dev/null 2>&1; then
+        mkdir -p "$HOME/.config/nix"
+    fi
+    ensure_path_owner "$HOME/.config/nix"
+
+    if [[ -f "$HOME/.config/nix/nix.conf" || -L "$HOME/.config/nix/nix.conf" ]]; then
+        if [[ -z "$flake_backup_dir" ]]; then
+            flake_backup_dir="$HOME/.config-backups/flake-setup-$(date +%Y%m%d_%H%M%S)"
+        fi
+        backup_path_if_exists "$HOME/.config/nix/nix.conf" "$flake_backup_dir" "Nix flakes configuration" || true
+    fi
     cat > "$HOME/.config/nix/nix.conf" <<'NIXCONF'
 experimental-features = nix-command flakes
 NIXCONF
     print_success "Nix flakes enabled"
+    ensure_path_owner "$HOME/.config/nix/nix.conf"
 
     # Build the flake development shell to ensure all packages are available
     print_info "Building flake development environment (this may take a few minutes)..."
@@ -3610,6 +3936,12 @@ NIXCONF
 
     # Create a convenient activation script
     print_info "Creating flake activation script..."
+    if [[ -f "$HOME/.local/bin/aidb-dev-env" || -L "$HOME/.local/bin/aidb-dev-env" ]]; then
+        if [[ -z "$flake_backup_dir" ]]; then
+            flake_backup_dir="$HOME/.config-backups/flake-setup-$(date +%Y%m%d_%H%M%S)"
+        fi
+        backup_path_if_exists "$HOME/.local/bin/aidb-dev-env" "$flake_backup_dir" "aidb-dev-env helper" || true
+    fi
     cat > "$HOME/.local/bin/aidb-dev-env" <<DEVENV
 #!/usr/bin/env bash
 # AIDB Development Environment Activator
@@ -3627,11 +3959,22 @@ cd "\$FLAKE_DIR" && exec nix develop
 DEVENV
 
     chmod +x "$HOME/.local/bin/aidb-dev-env"
+    ensure_path_owner "$HOME/.local/bin/aidb-dev-env"
     print_success "Created aidb-dev-env activation script"
 
     # Add flake information to shell profile
     print_info "Adding flake information to ZSH profile..."
-    mkdir -p "$HOME/.config/zsh"
+    if ! run_as_primary_user install -d -m 755 "$HOME/.config/zsh" >/dev/null 2>&1; then
+        mkdir -p "$HOME/.config/zsh"
+    fi
+    ensure_path_owner "$HOME/.config/zsh"
+
+    if [[ -f "$HOME/.config/zsh/aidb-flake.zsh" || -L "$HOME/.config/zsh/aidb-flake.zsh" ]]; then
+        if [[ -z "$flake_backup_dir" ]]; then
+            flake_backup_dir="$HOME/.config-backups/flake-setup-$(date +%Y%m%d_%H%M%S)"
+        fi
+        backup_path_if_exists "$HOME/.config/zsh/aidb-flake.zsh" "$flake_backup_dir" "aidb-flake.zsh profile" || true
+    fi
     cat > "$HOME/.config/zsh/aidb-flake.zsh" <<'ZSHFLAKE'
 
 # AIDB Flake Integration
@@ -3655,11 +3998,13 @@ aidb-info() {
     echo "  - inotify-tools (for Guardian file watching)"
 }
 ZSHFLAKE
+    ensure_path_owner "$HOME/.config/zsh/aidb-flake.zsh"
 
     # Source this in .zshrc if not already done
     if ! grep -q "aidb-flake.zsh" "$HOME/.zshrc" 2>/dev/null; then
         echo 'source ~/.config/zsh/aidb-flake.zsh' >> "$HOME/.zshrc"
         print_success "Added AIDB flake aliases to .zshrc"
+        ensure_path_owner "$HOME/.zshrc"
     fi
 
     print_success "Flake environment setup complete!"
@@ -4069,6 +4414,7 @@ finalize_configuration_activation() {
 
     if confirm "$hm_prompt" "y"; then
         clean_home_manager_targets "final-activation"
+        prepare_managed_config_paths
         local HM_SWITCH_LOG="/tmp/home-manager-switch-final.log"
         if run_home_manager_switch "$HM_SWITCH_LOG"; then
             HOME_MANAGER_APPLIED=true

@@ -55,6 +55,7 @@ let
       pkgs.gawk
       pkgs.gnugrep
       pkgs.gnused
+      pkgs.findutils
       pkgs.util-linux
       pkgs.flatpak
     ];
@@ -69,9 +70,106 @@ let
 
       remote_name=${lib.escapeShellArg flathubRemoteName}
       remote_url=${lib.escapeShellArg flathubRemoteUrl}
+      availability_message=""
 
       log() {
         printf '[%s] %s\n' "$(date --iso-8601=seconds)" "$*"
+      }
+
+      backup_legacy_flatpak_configs() {
+        local -a targets=(
+          "$HOME/.config/flatpak"
+          "$HOME/.local/share/flatpak/overrides"
+          "$HOME/.local/share/flatpak/remotes.d"
+          "$HOME/.local/share/flatpak/repo/config"
+        )
+        local backup_root="$HOME/.local/share/flatpak/managed-backups"
+        local timestamp
+        local performed=false
+        local encountered_error=false
+
+        timestamp="$(date +%Y%m%d_%H%M%S)"
+
+        for path in "${targets[@]}"; do
+          if [[ ! -e "$path" && ! -L "$path" ]]; then
+            continue
+          fi
+
+          if [[ -d "$path" && ! -L "$path" ]]; then
+            if [[ -z "$(find "$path" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
+              continue
+            fi
+          fi
+
+          local relative="${path#$HOME/}"
+          if [[ "$relative" == "$path" ]]; then
+            relative="$(basename "$path")"
+          fi
+
+          local relative_dir="${relative%/*}"
+          if [[ "$relative_dir" == "$relative" ]]; then
+            relative_dir="."
+          fi
+
+          local dest_dir="$backup_root/$timestamp/$relative_dir"
+          local dest_path="$dest_dir/$(basename "$path")"
+
+          if mkdir -p "$dest_dir" 2>/dev/null \
+            && cp -a "$path" "$dest_path" 2>/dev/null; then
+            rm -rf "$path" 2>/dev/null || true
+            performed=true
+            log "Backed up legacy Flatpak path $path -> $dest_path"
+          else
+            encountered_error=true
+            log "Failed to back up legacy Flatpak path $path" >&2
+          fi
+        done
+
+        mkdir -p "$HOME/.config/flatpak" 2>/dev/null || true
+
+        if [[ "$performed" == true ]]; then
+          log "Legacy Flatpak configuration preserved under $backup_root/$timestamp"
+        fi
+
+        if [[ "$encountered_error" == true ]]; then
+          return 1
+        fi
+
+        return 0
+      }
+
+      check_app_availability() {
+        local app_id="$1"
+        local user_output
+        local user_status
+        local system_output
+        local system_status
+
+        availability_message=""
+
+        user_output="$(flatpak --user remote-info "$remote_name" "$app_id" 2>&1 || true)"
+        user_status=$?
+        if [[ $user_status -eq 0 ]]; then
+          return 0
+        fi
+
+        system_output="$(flatpak remote-info "$remote_name" "$app_id" 2>&1 || true)"
+        system_status=$?
+        if [[ $system_status -eq 0 ]]; then
+          return 0
+        fi
+
+        availability_message="$user_output"
+        if [[ -n "$availability_message" && -n "$system_output" ]]; then
+          availability_message+=$'\n'
+        fi
+        availability_message+="$system_output"
+
+        if printf '%s\n' "$availability_message" | grep -Eiq 'No remote refs found similar|No entry for|Nothing matches'; then
+          return 3
+        fi
+
+        return 1
       }
 
       ensure_remote() {
@@ -103,13 +201,53 @@ let
           return 0
         fi
 
+        local availability_status=0
+        check_app_availability "$app_id"
+        availability_status=$?
+        if [[ $availability_status -ne 0 ]]; then
+          if [[ $availability_status -eq 3 ]]; then
+            log "Flatpak $app_id not available on $remote_name for this architecture; skipping"
+            if [[ -n "$availability_message" ]]; then
+              while IFS= read -r line; do
+                log "  ↳ $line"
+              done <<<"$availability_message"
+            fi
+            return 0
+          fi
+
+          log "Unable to query metadata for $app_id prior to installation" >&2
+          if [[ -n "$availability_message" ]]; then
+            while IFS= read -r line; do
+              log "  ↳ $line" >&2
+            done <<<"$availability_message"
+          fi
+          return 1
+        fi
+
         local attempt=1
         while (( attempt <= 3 )); do
-          if flatpak --noninteractive --user install "$remote_name" "$app_id"; then
+          local install_output=""
+          if install_output=$(flatpak --noninteractive --user install "$remote_name" "$app_id" 2>&1); then
             log "Installed $app_id"
             return 0
           fi
+
+          if printf '%s\n' "$install_output" | grep -Eiq 'No remote refs found similar|No entry for|Nothing matches'; then
+            log "Flatpak $app_id not available on $remote_name; skipping"
+            if [[ -n "$install_output" ]]; then
+              while IFS= read -r line; do
+                log "  ↳ $line"
+              done <<<"$install_output"
+            fi
+            return 0
+          fi
+
           log "Attempt $attempt failed for $app_id" >&2
+          if [[ -n "$install_output" ]]; then
+            while IFS= read -r line; do
+              log "  ↳ $line" >&2
+            done <<<"$install_output"
+          fi
           sleep $(( attempt * 2 ))
           (( attempt += 1 ))
         done
@@ -117,6 +255,8 @@ let
         log "Giving up on $app_id after repeated failures" >&2
         return 1
       }
+
+      backup_legacy_flatpak_configs || true
 
       ensure_remote || exit 1
 
@@ -1281,6 +1421,7 @@ in
         ExecCondition = lib.mkForce "${pkgs.coreutils}/bin/test -x ${pkgs.flatpak}/bin/flatpak";
         ExecStartPre = [
           "${pkgs.coreutils}/bin/mkdir -p %h/.local/share/flatpak"
+          "${pkgs.coreutils}/bin/mkdir -p %h/.config/flatpak"
           "${pkgs.coreutils}/bin/mkdir -p %h/.var/app"
         ];
         Environment = [
