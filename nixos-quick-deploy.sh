@@ -7,12 +7,24 @@
 # What it does NOT do: Initialize AIDB database or start containers
 # Author: AI Agent
 # Created: 2025-10-23
-# Version: 2.1.2 - Strip deprecated Flatpak installation attribute automatically
+# Version: 2.2.0 - Harden declarative Flatpak installation handling
 #
 
 # Error handling: Exit on undefined variable, catch errors in pipes
 set -u
 set -o pipefail
+
+FLATHUB_REMOTE_NAME="flathub"
+FLATHUB_REMOTE_URL="https://dl.flathub.org/repo/flathub.flatpakrepo"
+DEFAULT_FLATPAK_APPS=(
+    "com.github.flatseal.Flatseal"
+    "org.gnome.FileRoller"
+    "net.nokyan.Resources"
+    "org.videolan.VLC"
+    "io.mpv.Mpv"
+    "org.mozilla.firefox"
+    "md.obsidian.Obsidian"
+)
 
 # Ensure we target the invoking user's home directory even when executed via sudo
 RESOLVED_USER="${USER:-}"
@@ -40,6 +52,306 @@ fi
 PRIMARY_USER="$USER"
 PRIMARY_HOME="$HOME"
 PRIMARY_GROUP="$(id -gn "$PRIMARY_USER" 2>/dev/null || id -gn 2>/dev/null || echo "$PRIMARY_USER")"
+PRIMARY_UID="$(id -u "$PRIMARY_USER" 2>/dev/null || echo "$EUID")"
+PRIMARY_RUNTIME_DIR=""
+
+if [[ -n "$PRIMARY_UID" && -d "/run/user/$PRIMARY_UID" ]]; then
+    PRIMARY_RUNTIME_DIR="/run/user/$PRIMARY_UID"
+fi
+
+PRIMARY_PROFILE_BIN="$PRIMARY_HOME/.nix-profile/bin"
+PRIMARY_ETC_PROFILE_BIN="/etc/profiles/per-user/$PRIMARY_USER/bin"
+PRIMARY_LOCAL_BIN="$PRIMARY_HOME/.local/bin"
+FLATPAK_DIAGNOSTIC_ROOT="$PRIMARY_HOME/.cache/nixos-quick-deploy/flatpak"
+
+build_primary_user_path() {
+    local -a path_parts=()
+
+    if [[ -d "$PRIMARY_PROFILE_BIN" ]]; then
+        path_parts+=("$PRIMARY_PROFILE_BIN")
+    fi
+
+    if [[ -d "$PRIMARY_ETC_PROFILE_BIN" ]]; then
+        path_parts+=("$PRIMARY_ETC_PROFILE_BIN")
+    fi
+
+    if [[ -d "$PRIMARY_LOCAL_BIN" ]]; then
+        path_parts+=("$PRIMARY_LOCAL_BIN")
+    fi
+
+    local -a CURRENT_PATH_PARTS=()
+    local IFS=':'
+    read -ra CURRENT_PATH_PARTS <<< "$PATH"
+    for segment in "${CURRENT_PATH_PARTS[@]}"; do
+        if [[ -n "$segment" ]]; then
+            local duplicate=false
+            for existing in "${path_parts[@]}"; do
+                if [[ "$existing" == "$segment" ]]; then
+                    duplicate=true
+                    break
+                fi
+            done
+            if [[ "$duplicate" == false ]]; then
+                path_parts+=("$segment")
+            fi
+        fi
+    done
+
+    local combined_path
+    IFS=':' combined_path="${path_parts[*]}"
+    printf '%s' "$combined_path"
+}
+
+run_as_primary_user() {
+    local -a cmd=("$@")
+    local -a env_args=()
+
+    if [[ -n "$PRIMARY_RUNTIME_DIR" ]]; then
+        env_args+=("XDG_RUNTIME_DIR=$PRIMARY_RUNTIME_DIR")
+        if [[ -S "$PRIMARY_RUNTIME_DIR/bus" ]]; then
+            env_args+=("DBUS_SESSION_BUS_ADDRESS=unix:path=$PRIMARY_RUNTIME_DIR/bus")
+        fi
+    fi
+
+    env_args+=("PATH=$(build_primary_user_path)")
+
+    if [[ $EUID -eq 0 && "$PRIMARY_USER" != "root" ]]; then
+        if (( ${#env_args[@]} > 0 )); then
+            sudo -H -u "$PRIMARY_USER" env "${env_args[@]}" "${cmd[@]}"
+        else
+            sudo -H -u "$PRIMARY_USER" "${cmd[@]}"
+        fi
+    else
+        if (( ${#env_args[@]} > 0 )); then
+            env "${env_args[@]}" "${cmd[@]}"
+        else
+            "${cmd[@]}"
+        fi
+    fi
+}
+
+flatpak_cli_available() {
+    run_as_primary_user flatpak --version >/dev/null 2>&1
+}
+
+prepare_flatpak_diagnostic_dir() {
+    local dir="$FLATPAK_DIAGNOSTIC_ROOT"
+
+    if [[ -z "$dir" ]]; then
+        return
+    fi
+
+    if ! run_as_primary_user install -d -m 700 "$dir" >/dev/null 2>&1; then
+        mkdir -p "$dir" 2>/dev/null || true
+        ensure_path_owner "$dir"
+    fi
+
+    printf '%s' "$dir"
+}
+
+gather_flatpak_diagnostics() {
+    local service_name="$1"
+    local stage="${2:-snapshot}"
+
+    if [[ -z "$service_name" ]]; then
+        return 0
+    fi
+
+    local diag_dir
+    diag_dir=$(prepare_flatpak_diagnostic_dir)
+
+    if [[ -z "$diag_dir" ]]; then
+        return 0
+    fi
+
+    local timestamp
+    timestamp=$(date +%Y%m%d_%H%M%S)
+
+    local status_log="$diag_dir/${stage}-${timestamp}-status.log"
+    local journal_log="$diag_dir/${stage}-${timestamp}-journal.log"
+
+    local quoted_service
+    printf -v quoted_service '%q' "$service_name"
+
+    run_as_primary_user bash -c "systemctl --user status ${quoted_service} --no-pager" >"$status_log" 2>&1 || true
+    run_as_primary_user bash -c "journalctl --user -u ${quoted_service} --no-pager --since '1 hour ago'" >"$journal_log" 2>&1 || true
+
+    ensure_path_owner "$status_log"
+    ensure_path_owner "$journal_log"
+
+    print_info "Flatpak diagnostics captured under $diag_dir"
+}
+
+ensure_user_systemd_ready() {
+    if ! command -v loginctl >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local user="$PRIMARY_USER"
+    if [[ -z "$user" ]]; then
+        return 0
+    fi
+
+    local user_info=""
+    user_info=$(loginctl show-user "$user" 2>/dev/null || true)
+
+    if [[ -z "$user_info" && $EUID -eq 0 ]]; then
+        loginctl enable-linger "$user" >/dev/null 2>&1 || true
+        user_info=$(loginctl show-user "$user" 2>/dev/null || true)
+    fi
+
+    local runtime_path=""
+    runtime_path=$(printf '%s\n' "$user_info" | awk -F= '/^RuntimePath=/{print $2}' | tail -n1)
+
+    if [[ -z "$runtime_path" ]]; then
+        runtime_path="/run/user/$PRIMARY_UID"
+    fi
+
+    if [[ ! -d "$runtime_path" && $EUID -eq 0 ]]; then
+        install -d -m 700 -o "$PRIMARY_USER" -g "$PRIMARY_GROUP" "$runtime_path" 2>/dev/null || true
+    fi
+
+    if [[ -d "$runtime_path" ]]; then
+        PRIMARY_RUNTIME_DIR="$runtime_path"
+    fi
+
+    local linger_state=""
+    linger_state=$(printf '%s\n' "$user_info" | awk -F= '/^Linger=/{print $2}' | tail -n1)
+    if [[ "$linger_state" != "yes" && $EUID -eq 0 ]]; then
+        if loginctl enable-linger "$user" >/dev/null 2>&1; then
+            print_info "Enabled lingering for $user to keep user services active"
+        fi
+    fi
+
+    if [[ -n "$PRIMARY_RUNTIME_DIR" && ! -S "$PRIMARY_RUNTIME_DIR/bus" ]]; then
+        run_as_primary_user systemctl --user daemon-reload >/dev/null 2>&1 || true
+    fi
+
+    return 0
+}
+
+wait_for_systemd_user_service() {
+    local service_name="$1"
+    local timeout="${2:-180}"
+    local interval=3
+    local waited=0
+
+    while (( waited < timeout )); do
+        local show_output
+        show_output=$(run_as_primary_user systemctl --user show "$service_name" -p Result -p ActiveState -p SubState 2>/dev/null || true)
+
+        if [[ -z "$show_output" ]]; then
+            sleep "$interval"
+            (( waited += interval ))
+            continue
+        fi
+
+        local result
+        local active
+        local substate
+        result=$(printf '%s\n' "$show_output" | awk -F= '/^Result=/{print $2}' | tail -n1)
+        active=$(printf '%s\n' "$show_output" | awk -F= '/^ActiveState=/{print $2}' | tail -n1)
+        substate=$(printf '%s\n' "$show_output" | awk -F= '/^SubState=/{print $2}' | tail -n1)
+
+        if [[ "$result" == "success" ]]; then
+            return 0
+        fi
+
+        if [[ "$result" == "failure" || "$active" == "failed" || "$substate" == "failed" ]]; then
+            return 1
+        fi
+
+        if [[ "$active" == "inactive" && "$substate" == "dead" && -z "$result" ]]; then
+            return 0
+        fi
+
+        sleep "$interval"
+        (( waited += interval ))
+    done
+
+    return 2
+}
+
+flatpak_remote_exists() {
+    if ! flatpak_cli_available; then
+        return 1
+    fi
+
+    local remote_output
+    remote_output=$(run_as_primary_user flatpak remotes --user --columns=name 2>/dev/null || true)
+
+    printf '%s\n' "$remote_output" \
+        | awk 'NR == 1 && $1 == "Name" { next } { print $1 }' \
+        | grep -Fxq "$FLATHUB_REMOTE_NAME"
+}
+
+flatpak_install_app_list() {
+    if [[ $# -eq 0 ]]; then
+        return 0
+    fi
+
+    if ! flatpak_cli_available; then
+        print_warning "Flatpak CLI not available; cannot install applications"
+        return 1
+    fi
+
+    local -a apps=("$@")
+    local failure=false
+
+    run_as_primary_user flatpak --user repair --noninteractive >/dev/null 2>&1 || true
+
+    for app_id in "${apps[@]}"; do
+        if run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
+            print_info "  • $app_id already present"
+            continue
+        fi
+
+        print_info "  Installing $app_id from $FLATHUB_REMOTE_NAME..."
+        local installed=false
+        for attempt in 1 2 3; do
+            if run_as_primary_user flatpak --noninteractive install --user "$FLATHUB_REMOTE_NAME" "$app_id" >/dev/null 2>&1; then
+                print_success "  ✓ Installed $app_id"
+                installed=true
+                break
+            fi
+            print_warning "  ⚠ Attempt $attempt failed for $app_id"
+            sleep $(( attempt * 2 ))
+        done
+
+        if [[ "$installed" == false ]]; then
+            print_error "  ✗ Failed to install $app_id after retries"
+            failure=true
+        fi
+    done
+
+    if [[ "$failure" == true ]]; then
+        return 1
+    fi
+
+    return 0
+}
+
+validate_flatpak_application_state() {
+    if ! flatpak_cli_available; then
+        return 1
+    fi
+
+    local -a missing=()
+
+    for app_id in "${DEFAULT_FLATPAK_APPS[@]}"; do
+        if ! run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
+            missing+=("$app_id")
+        fi
+    done
+
+    if (( ${#missing[@]} > 0 )); then
+        print_warning "Missing Flatpak applications: ${missing[*]}"
+        return 1
+    fi
+
+    print_success "All declarative Flatpak applications are installed"
+    return 0
+}
 
 ensure_path_owner() {
     local target_path="$1"
@@ -53,6 +365,205 @@ ensure_path_owner() {
     fi
 
     return 0
+}
+
+ensure_flathub_remote() {
+    if ! flatpak_cli_available; then
+        print_warning "Flatpak CLI not available; skipping Flathub repository configuration for now"
+        return 1
+    fi
+
+    if flatpak_remote_exists; then
+        print_info "Flathub repository already configured"
+        return 0
+    fi
+
+    print_info "Adding Flathub Flatpak remote..."
+    if run_as_primary_user flatpak --noninteractive remote-add --user --if-not-exists "$FLATHUB_REMOTE_NAME" "$FLATHUB_REMOTE_URL" >/dev/null 2>&1; then
+        print_success "Flathub repository added"
+        return 0
+    fi
+
+    if run_as_primary_user flatpak --noninteractive remote-add --user --if-not-exists --from "$FLATHUB_REMOTE_NAME" "$FLATHUB_REMOTE_URL" >/dev/null 2>&1; then
+        print_success "Flathub repository added via --from"
+        return 0
+    fi
+
+    print_warning "Unable to configure Flathub repository automatically"
+    return 1
+}
+
+preflight_flatpak_environment() {
+    local stage="${1:-preflight}"
+
+    ensure_user_systemd_ready
+
+    local issues=0
+
+    if ! flatpak_cli_available; then
+        print_warning "Flatpak CLI unavailable during $stage checks"
+        (( issues++ ))
+    fi
+
+    if [[ -n "$PRIMARY_RUNTIME_DIR" && ! -S "$PRIMARY_RUNTIME_DIR/bus" ]]; then
+        run_as_primary_user systemctl --user start dbus.socket >/dev/null 2>&1 || true
+        sleep 1
+        if [[ ! -S "$PRIMARY_RUNTIME_DIR/bus" ]]; then
+            print_warning "DBus session bus not detected for user services"
+            (( issues++ ))
+        fi
+    fi
+
+    if ! ensure_flathub_remote; then
+        (( issues++ ))
+    fi
+
+    run_as_primary_user install -d -m 700 "$PRIMARY_HOME/.local/share/flatpak" >/dev/null 2>&1 || true
+    run_as_primary_user install -d -m 700 "$PRIMARY_HOME/.var/app" >/dev/null 2>&1 || true
+
+    if (( issues == 0 )); then
+        return 0
+    fi
+
+    return 1
+}
+
+ensure_default_flatpak_apps_installed() {
+    if ! flatpak_cli_available; then
+        print_warning "Flatpak CLI not available; skipping Flatpak application installation"
+        return
+    fi
+
+    print_section "Ensuring default Flatpak applications are installed"
+    if ! ensure_flathub_remote; then
+        print_warning "Skipping Flatpak installation because Flathub remote could not be configured"
+        echo ""
+        return
+    fi
+
+    local -a missing=()
+    for app_id in "${DEFAULT_FLATPAK_APPS[@]}"; do
+        if run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
+            print_info "  • $app_id already present"
+        else
+            missing+=("$app_id")
+        fi
+    done
+
+    if (( ${#missing[@]} == 0 )); then
+        print_success "All default Flatpak applications are already installed"
+        echo ""
+        return
+    fi
+
+    if flatpak_install_app_list "${missing[@]}"; then
+        print_success "Default Flatpak applications are now installed and ready"
+    else
+        print_warning "Some Flatpak applications could not be installed automatically. Try running: flatpak install --user $FLATHUB_REMOTE_NAME <app-id>"
+    fi
+
+    run_as_primary_user flatpak --user update --noninteractive --appstream >/dev/null 2>&1 || true
+    run_as_primary_user flatpak --user update --noninteractive >/dev/null 2>&1 || true
+
+    echo ""
+}
+
+recover_flatpak_managed_install_service() {
+    local service_name="$1"
+
+    if ! flatpak_cli_available; then
+        return 1
+    fi
+
+    print_info "Attempting manual Flatpak recovery..."
+    preflight_flatpak_environment "manual-recovery" || true
+
+    if ! ensure_flathub_remote; then
+        print_warning "Flathub remote is unavailable; manual recovery skipped"
+        return 1
+    fi
+
+    run_as_primary_user flatpak --user repair --noninteractive >/dev/null 2>&1 || true
+
+    if ! flatpak_install_app_list "${DEFAULT_FLATPAK_APPS[@]}"; then
+        print_warning "Manual Flatpak installation encountered errors"
+        gather_flatpak_diagnostics "$service_name" "recovery-failure"
+        return 1
+    fi
+
+    run_as_primary_user flatpak --user update --noninteractive --appstream >/dev/null 2>&1 || true
+    run_as_primary_user flatpak --user update --noninteractive >/dev/null 2>&1 || true
+
+    if ! validate_flatpak_application_state; then
+        gather_flatpak_diagnostics "$service_name" "validation-failure"
+        return 1
+    fi
+
+    if [[ -n "$service_name" ]]; then
+        run_as_primary_user systemctl --user reset-failed "$service_name" >/dev/null 2>&1 || true
+        if run_as_primary_user systemctl --user start "$service_name" >/dev/null 2>&1; then
+            wait_for_systemd_user_service "$service_name" 180 >/dev/null 2>&1 || true
+        fi
+    fi
+
+    print_success "Flatpak packages installed via manual recovery"
+    return 0
+}
+
+ensure_flatpak_managed_install_service() {
+    if ! command -v systemctl >/dev/null 2>&1; then
+        return
+    fi
+
+    local service_name="flatpak-managed-install.service"
+
+    preflight_flatpak_environment "service-start" || true
+
+    if ! run_as_primary_user systemctl --user list-unit-files "$service_name" >/dev/null 2>&1; then
+        return
+    fi
+
+    run_as_primary_user systemctl --user reset-failed "$service_name" >/dev/null 2>&1 || true
+
+    if ! run_as_primary_user systemctl --user start "$service_name" >/dev/null 2>&1; then
+        print_warning "Unable to start flatpak-managed-install service automatically"
+        run_as_primary_user journalctl --user -u "$service_name" -n 25 || true
+        gather_flatpak_diagnostics "$service_name" "start-failure"
+        recover_flatpak_managed_install_service "$service_name" || true
+        return
+    fi
+
+    local wait_result
+    if wait_for_systemd_user_service "$service_name" 300; then
+        if validate_flatpak_application_state; then
+            print_success "flatpak-managed-install service completed successfully"
+            return
+        fi
+        print_warning "flatpak-managed-install service finished but validation detected missing apps"
+        gather_flatpak_diagnostics "$service_name" "post-success-validation"
+        if recover_flatpak_managed_install_service "$service_name"; then
+            print_success "Flatpak state corrected after validation retry"
+        else
+            print_warning "Manual Flatpak recovery could not fully resolve the issue. Review the logs above."
+        fi
+        return
+    fi
+
+    wait_result=$?
+    if [[ $wait_result -eq 2 ]]; then
+        print_warning "flatpak-managed-install service did not report completion within the timeout window"
+    else
+        print_warning "flatpak-managed-install service reported a failure; collecting logs"
+    fi
+
+    run_as_primary_user journalctl --user -u "$service_name" -n 40 || true
+    gather_flatpak_diagnostics "$service_name" "service-failure"
+
+    if recover_flatpak_managed_install_service "$service_name"; then
+        print_success "Flatpak packages restored via manual recovery"
+    else
+        print_warning "Manual Flatpak recovery could not fully resolve the issue. Review the logs above."
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -342,7 +853,7 @@ PREVIOUS_MUTABLE_USERS=""
 PREVIOUS_USER_PASSWORD_SNIPPET=""
 
 # Script version for change tracking
-SCRIPT_VERSION="2.1.2"
+SCRIPT_VERSION="2.2.0"
 VERSION_FILE="$PRIMARY_HOME/.cache/nixos-quick-deploy-version"
 
 # Force update flag (set via --force-update)
@@ -2295,12 +2806,42 @@ run_home_manager_switch() {
     echo ""
 
     if $hm_cli_available; then
-        home-manager switch --flake "$HM_CONFIG_DIR" --show-trace 2>&1 | tee "$log_path"
+        run_as_primary_user home-manager switch --flake "$HM_CONFIG_DIR" --show-trace 2>&1 | tee "$log_path"
         return ${PIPESTATUS[0]}
     fi
 
-    nix run --accept-flake-config "${hm_pkg_ref}" -- switch --flake "$HM_CONFIG_DIR" --show-trace 2>&1 | tee "$log_path"
+    run_as_primary_user nix run --accept-flake-config "${hm_pkg_ref}" -- switch --flake "$HM_CONFIG_DIR" --show-trace 2>&1 | tee "$log_path"
     return ${PIPESTATUS[0]}
+}
+
+ensure_home_manager_cli_available() {
+    local hm_pkg_ref
+    hm_pkg_ref=$(get_home_manager_package_ref)
+    local install_log="/tmp/home-manager-cli-install.log"
+
+    local cli_path
+    cli_path=$(run_as_primary_user bash -lc 'command -v home-manager' 2>/dev/null || true)
+    if [[ -n "$cli_path" ]]; then
+        print_success "home-manager CLI available at $cli_path"
+        return 0
+    fi
+
+    print_warning "home-manager CLI not found in user PATH"
+    print_info "Installing home-manager CLI into the user profile via nix profile install..."
+
+    if run_as_primary_user nix profile install --accept-flake-config --name home-manager "$hm_pkg_ref" >"$install_log" 2>&1; then
+        cli_path=$(run_as_primary_user bash -lc 'command -v home-manager' 2>/dev/null || true)
+        if [[ -n "$cli_path" ]]; then
+            print_success "home-manager CLI installed at $cli_path"
+        else
+            print_success "home-manager CLI installed successfully"
+        fi
+        return 0
+    fi
+
+    print_error "Failed to install home-manager CLI automatically"
+    print_info "Review the log for details: $install_log"
+    return 1
 }
 
 run_nixos_rebuild_switch() {
@@ -2437,7 +2978,7 @@ apply_home_manager_config() {
         # Verify critical packages are now in PATH
         print_info "Verifying package installation..."
         MISSING_COUNT=0
-        for pkg in podman python3 ripgrep bat eza fd git; do
+        for pkg in podman python3 ripgrep bat eza fd git flatpak gitea tea home-manager; do
             if command -v "$pkg" &>/dev/null; then
                 print_success "$pkg found at $(command -v $pkg)"
             else
@@ -2449,10 +2990,14 @@ apply_home_manager_config() {
         if [ $MISSING_COUNT -gt 0 ]; then
             print_warning "$MISSING_COUNT packages not yet in PATH"
             print_info "Restart your shell to load all packages: exec zsh"
+            ensure_home_manager_cli_available || true
         else
             print_success "All critical packages are in PATH!"
         fi
         echo ""
+
+        ensure_flatpak_managed_install_service
+        ensure_default_flatpak_apps_installed
     else
         local hm_exit_code=$?
         print_error "home-manager switch failed (exit code: $hm_exit_code)"
@@ -2934,12 +3479,10 @@ PY
 
         # Configure Flatpak for COSMIC Store
         print_section "Configuring Flatpak for COSMIC App Store"
-        print_info "Adding Flathub repository for user..."
-        if flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo 2>/dev/null; then
-            print_success "✓ Flathub repository added"
+        if ensure_flathub_remote; then
             print_info "COSMIC Store can now install Flatpak applications"
         else
-            print_warning "Flatpak repository setup skipped (may already exist)"
+            print_warning "Add Flathub manually with: flatpak remote-add --user $FLATHUB_REMOTE_NAME $FLATHUB_REMOTE_URL"
         fi
         echo ""
     else
@@ -3490,6 +4033,9 @@ finalize_configuration_activation() {
                 apply_system_changes
                 print_success "Home-manager configuration activated during finalization"
             fi
+            ensure_home_manager_cli_available || true
+            ensure_flatpak_managed_install_service
+            ensure_default_flatpak_apps_installed
             echo ""
         else
             local hm_exit_code=$?
