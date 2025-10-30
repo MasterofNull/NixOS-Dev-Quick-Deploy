@@ -221,8 +221,6 @@ in
   home.stateVersion = "STATEVERSION_PLACEHOLDER";  # Auto-detected from home-manager channel
 
   programs.home-manager.enable = true;
-  nixpkgs.config.allowUnfree = true;
-
   home.packages =
     let
       aiCommandLinePackages =
@@ -1322,6 +1320,7 @@ in
         // lib.optionalAttrs (supportsLocation || !supportsUrl) { location = flathubRemoteUrl; }
         // lib.optionalAttrs (supportsUrl && !supportsLocation) { url = flathubRemoteUrl; };
       flathubPackages = [
+      # Keep DEFAULT_FLATPAK_APPS in nixos-quick-deploy.sh synchronized with the defaults below.
       # ====================================================================
       # SYSTEM TOOLS & UTILITIES (Recommended - Essential GUI Tools)
       # ====================================================================
