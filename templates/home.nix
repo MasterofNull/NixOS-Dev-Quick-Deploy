@@ -33,6 +33,12 @@ let
     "org.pop_os.CosmicSettings.desktop"
     "cosmic-settings.desktop"
   ];
+  cosmicOnlyShowInEnvironments = [ "COSMIC" ];
+  cosmicOnlyShowInValue =
+    let
+      joined = lib.concatStringsSep ";" cosmicOnlyShowInEnvironments;
+    in
+    if cosmicOnlyShowInEnvironments == [ ] then "" else "${joined};";
   flathubPackages = [
     # Keep DEFAULT_FLATPAK_APPS in nixos-quick-deploy.sh synchronized with the defaults below.
     # ====================================================================
@@ -397,6 +403,143 @@ let
         exit $failures
       '';
     };
+  nixAiHelpScript =
+    pkgs.writeShellApplication {
+      name = "nix-ai-help";
+      text = ''
+        set -euo pipefail
+
+        usage() {
+          cat <<'USAGE'
+Usage: nix-ai-help [topic]
+
+Topics:
+  overview        High-level deployment summary and workflow guidance (default)
+  flakes          Flake management, updates, and switch best practices
+  home-manager    Home Manager integration details and troubleshooting tips
+  flatpak         Declarative Flatpak management overview
+  security        Hardening reminders tailored to AIDB developer workstations
+  options         Discovering module options and documenting overrides
+  resources       Curated references for deeper reading
+  help            Display this help message
+USAGE
+        }
+
+        print_overview() {
+          cat <<'OVERVIEW'
+NixOS Quick Deploy provisions a reproducible AIDB workstation using:
+  • A NixOS flake that stitches together system modules and Home Manager
+  • Declarative user configuration driven by home-manager from nix-community
+  • nix-flatpak to install GUI tooling under ~/.local/share/flatpak declaratively
+
+Recommended workflow:
+  1. Track all customisations inside configuration.nix and home.nix
+  2. Apply system changes with: sudo nixos-rebuild switch --flake .#HOSTNAME
+  3. Update user profiles with: home-manager switch --flake .#USERNAME
+  4. Review build plans using nix flake check before activating major upgrades
+OVERVIEW
+        }
+
+        print_flakes() {
+          cat <<'FLAKES'
+Flake hygiene tips inspired by https://wiki.nixos.org/wiki/Flakes:
+  • Pin channels through the flake inputs block and use follows= for reuse
+  • Refresh inputs routinely: nix flake update --commit-lock-file
+  • Validate changes locally: nix flake check and nixos-rebuild test --flake
+  • For experimental packages, add an overlay or extra input such as nixpkgs-unstable
+FLAKES
+        }
+
+        print_home_manager() {
+          cat <<'HM'
+Home Manager integration (https://github.com/nix-community/home-manager):
+  • Enable programs via home-manager.users.<name>.imports in the flake outputs
+  • Prefer systemd.user.startServices = lib.mkDefault ... to cooperate with sd-switch
+  • Inspect generated options: home-manager help or home-manager options
+  • Keep home.stateVersion aligned with the target channel before upgrades
+HM
+        }
+
+        print_flatpak() {
+          cat <<'FLATPAK'
+Flatpak automation via nix-flatpak (https://github.com/gmodena/nix-flatpak):
+  • Packages listed under xdg.portal.enable and xdg.desktopEntries stay in sync
+  • Use aidb-flatpak-managed-install to mirror declarative packages on legacy setups
+  • Inspect user services with systemctl --user status flatpak-managed-install.service
+FLATPAK
+        }
+
+        print_security() {
+          cat <<'SECURITY'
+Security checklist (see https://wiki.nixos.org/wiki/Security):
+  • Harden shells with pam configuration and consider enabling security.apparmor
+  • Audit services enabled by configuration.nix using nixos-rebuild test --flake
+  • Rotate secrets in ~/.config/gitea and ~/.config/huggingface regularly
+  • Track upstream advisories via https://nixos.org/manual/nixos/stable/#sec-upgrading
+SECURITY
+        }
+
+        print_options() {
+          cat <<'OPTIONS'
+Discovering options quickly:
+  • nix search nixpkgs <pattern> for package discovery
+  • nixos-option <path> --json | jq '.' to inspect live system values
+  • home-manager option search '<pattern>' to explore user-level modules
+  • Web catalogue: https://search.nixos.org/options?channel=25.05
+OPTIONS
+        }
+
+        print_resources() {
+          cat <<'RESOURCES'
+Essential references leveraged by this environment:
+  • nix-community/home-manager – authoritative module documentation
+  • NixOS manual – https://nixos.org/manual/nixos/stable/
+  • Populated examples: github.com/nomadics9/NixOS-Flake and github.com/novoid/nixos-config
+  • Declarative desktop apps: github.com/gmodena/nix-flatpak and github.com/fufexan/dotfiles
+  • Security hardening: https://wiki.nixos.org/wiki/Security
+  • COSMIC-focused setups: github.com/rascal999/maxos
+RESOURCES
+        }
+
+        if [ "$#" -eq 0 ]; then
+          topic="overview"
+        else
+          topic="$1"
+        fi
+
+        case "$topic" in
+          overview)
+            print_overview
+            ;;
+          flakes)
+            print_flakes
+            ;;
+          home-manager|homemanager)
+            print_home_manager
+            ;;
+          flatpak)
+            print_flatpak
+            ;;
+          security)
+            print_security
+            ;;
+          options)
+            print_options
+            ;;
+          resources)
+            print_resources
+            ;;
+          help|-h|--help)
+            usage
+            ;;
+          *)
+            printf 'Unknown topic: %s\n\n' "$topic" >&2
+            usage >&2
+            exit 1
+            ;;
+        esac
+      '';
+    };
   flatpakManagedInstallScriptExe = lib.getExe flatpakManagedInstallScript;
   pythonAi =
     pkgs.python311.override {
@@ -747,8 +890,11 @@ in
         exec = "cosmic-settings";
         icon = "cosmic-settings";
         categories = [ "Settings" "System" ];
-        onlyShowIn = [ "COSMIC" ];
-        hidden = true;
+        noDisplay = true;
+        settings =
+          lib.optionalAttrs (cosmicOnlyShowInValue != "") {
+            OnlyShowIn = cosmicOnlyShowInValue;
+          };
       };
     in
     lib.mkMerge [
@@ -760,8 +906,11 @@ in
           exec = "cosmic-settings";
           icon = "cosmic-settings";
           categories = [ "Settings" "System" ];
-          onlyShowIn = [ "COSMIC" ];
           startupNotify = true;
+          settings =
+            lib.optionalAttrs (cosmicOnlyShowInValue != "") {
+              OnlyShowIn = cosmicOnlyShowInValue;
+            };
         };
       }
     ];
@@ -775,6 +924,7 @@ in
         ++ lib.optionals (pkgs ? "mindsdb") [ pkgs."mindsdb" ];
       basePackages =
         [
+          nixAiHelpScript
           # Python (REQUIRED for AIDB and AI model tooling)
           pythonAiEnv
         ]
