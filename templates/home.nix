@@ -122,13 +122,13 @@ let
 
       # shellcheck disable=SC2206
       packages=( ${packageArgs} )
-      if [ ${#packages[@]} -eq 0 ]; then
+      if [ ''${#packages[@]} -eq 0 ]; then
         log "No Flatpak packages declared; exiting"
         exit 0
       fi
 
       failures=0
-      for app_id in "${packages[@]}"; do
+      for app_id in "''${packages[@]}"; do
         if ! install_app "$app_id"; then
           failures=1
         fi
