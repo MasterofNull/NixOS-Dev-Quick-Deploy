@@ -2346,11 +2346,11 @@ PLUGINCFG
               "${pkgs.coreutils}/bin/mkdir -p %h/.config/flatpak"
               "${pkgs.coreutils}/bin/mkdir -p %h/.var/app"
             ];
-            Environment = {
-              HOME = "%h";
-              XDG_RUNTIME_DIR = "%t";
-              DBUS_SESSION_BUS_ADDRESS = "unix:path=%t/bus";
-            };
+            Environment = [
+              "HOME=%h"
+              "XDG_RUNTIME_DIR=%t"
+              "DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus"
+            ];
             TimeoutStartSec = 600;
             Restart = "no";
             StandardOutput = "journal";
