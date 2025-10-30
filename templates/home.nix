@@ -55,6 +55,7 @@ let
       pkgs.gawk
       pkgs.gnugrep
       pkgs.gnused
+      pkgs.findutils
       pkgs.util-linux
       pkgs.flatpak
     ];
@@ -73,6 +74,68 @@ let
 
       log() {
         printf '[%s] %s\n' "$(date --iso-8601=seconds)" "$*"
+      }
+
+      backup_legacy_flatpak_configs() {
+        local -a targets=(
+          "$HOME/.config/flatpak"
+          "$HOME/.local/share/flatpak/overrides"
+          "$HOME/.local/share/flatpak/remotes.d"
+          "$HOME/.local/share/flatpak/repo/config"
+        )
+        local backup_root="$HOME/.local/share/flatpak/managed-backups"
+        local timestamp
+        local performed=false
+        local encountered_error=false
+
+        timestamp="$(date +%Y%m%d_%H%M%S)"
+
+        for path in "${targets[@]}"; do
+          if [[ ! -e "$path" && ! -L "$path" ]]; then
+            continue
+          fi
+
+          if [[ -d "$path" && ! -L "$path" ]]; then
+            if [[ -z "$(find "$path" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
+              continue
+            fi
+          fi
+
+          local relative="${path#$HOME/}"
+          if [[ "$relative" == "$path" ]]; then
+            relative="$(basename "$path")"
+          fi
+
+          local relative_dir="${relative%/*}"
+          if [[ "$relative_dir" == "$relative" ]]; then
+            relative_dir="."
+          fi
+
+          local dest_dir="$backup_root/$timestamp/$relative_dir"
+          local dest_path="$dest_dir/$(basename "$path")"
+
+          if mkdir -p "$dest_dir" 2>/dev/null \
+            && cp -a "$path" "$dest_path" 2>/dev/null; then
+            rm -rf "$path" 2>/dev/null || true
+            performed=true
+            log "Backed up legacy Flatpak path $path -> $dest_path"
+          else
+            encountered_error=true
+            log "Failed to back up legacy Flatpak path $path" >&2
+          fi
+        done
+
+        mkdir -p "$HOME/.config/flatpak" 2>/dev/null || true
+
+        if [[ "$performed" == true ]]; then
+          log "Legacy Flatpak configuration preserved under $backup_root/$timestamp"
+        fi
+
+        if [[ "$encountered_error" == true ]]; then
+          return 1
+        fi
+
+        return 0
       }
 
       check_app_availability() {
@@ -138,9 +201,10 @@ let
           return 0
         fi
 
-        local availability_status
-        if ! check_app_availability "$app_id"; then
-          availability_status=$?
+        local availability_status=0
+        check_app_availability "$app_id"
+        availability_status=$?
+        if [[ $availability_status -ne 0 ]]; then
           if [[ $availability_status -eq 3 ]]; then
             log "Flatpak $app_id not available on $remote_name for this architecture; skipping"
             if [[ -n "$availability_message" ]]; then
@@ -174,6 +238,8 @@ let
         log "Giving up on $app_id after repeated failures" >&2
         return 1
       }
+
+      backup_legacy_flatpak_configs || true
 
       ensure_remote || exit 1
 
@@ -1338,6 +1404,7 @@ in
         ExecCondition = lib.mkForce "${pkgs.coreutils}/bin/test -x ${pkgs.flatpak}/bin/flatpak";
         ExecStartPre = [
           "${pkgs.coreutils}/bin/mkdir -p %h/.local/share/flatpak"
+          "${pkgs.coreutils}/bin/mkdir -p %h/.config/flatpak"
           "${pkgs.coreutils}/bin/mkdir -p %h/.var/app"
         ];
         Environment = [
