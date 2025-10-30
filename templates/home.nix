@@ -122,13 +122,13 @@ let
 
       # shellcheck disable=SC2206
       packages=( ${packageArgs} )
-      if [ ${#packages[@]} -eq 0 ]; then
+      if [ ''${#packages[@]} -eq 0 ]; then
         log "No Flatpak packages declared; exiting"
         exit 0
       fi
 
       failures=0
-      for app_id in "${packages[@]}"; do
+      for app_id in "''${packages[@]}"; do
         if ! install_app "$app_id"; then
           failures=1
         fi
@@ -1290,8 +1290,8 @@ in
           "DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus"
         ];
         TimeoutStartSec = 600;
-        Restart = "on-failure";
-        RestartSec = 10;
+        Restart = lib.mkForce "on-failure";
+        RestartSec = lib.mkForce "10s";
         StandardOutput = "journal";
         StandardError = "journal";
       };
