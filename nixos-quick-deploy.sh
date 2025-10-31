@@ -3995,11 +3995,8 @@ apply_system_changes() {
         print_info "Configuration file: $HOME/.zshrc"
     fi
 
-    # Ensure p10k wizard script is executable
-    if [ -f "$HOME/.local/bin/p10k-setup-wizard.sh" ]; then
-        chmod +x "$HOME/.local/bin/p10k-setup-wizard.sh"
-        print_success "Made p10k setup wizard executable"
-    fi
+    # Note: p10k-setup-wizard.sh is managed by home-manager with executable permissions
+    # No need to chmod - home-manager handles permissions declaratively
 
     # Set ZSH as default shell if not already
     # This matches the NixOS configuration which sets shell = pkgs.zsh
@@ -5204,7 +5201,8 @@ install_vscodium_extensions() {
     install_ext "ms-toolsai.jupyter-keymap" "Jupyter Keymap"
     install_ext "ms-toolsai.jupyter-renderers" "Jupyter Renderers"
     install_ext "HuggingFace.huggingface-vscode" "Hugging Face"
-    install_ext "Continue.continue" "Continue AI"
+    # Note: Continue AI is already installed declaratively via home-manager (templates/home.nix:1420)
+    # Removed duplicate installation to prevent activation errors
     install_ext "dbaeumer.vscode-eslint" "ESLint"
     install_ext "mhutchie.git-graph" "Git Graph"
     install_ext "golang.go" "Go"
