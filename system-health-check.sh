@@ -335,6 +335,83 @@ check_path_variable() {
     fi
 }
 
+check_python_package() {
+    local package=$1
+    local description=$2
+    local required=${3:-false}
+
+    print_check "Python: $description"
+
+    if python3 -c "import $package" &> /dev/null; then
+        # Try to get version
+        local version=$(python3 -c "import $package; print(getattr($package, '__version__', 'installed'))" 2>/dev/null || echo "installed")
+        print_success "$description ($version)"
+        return 0
+    else
+        if [ "$required" = true ]; then
+            print_fail "$description not found"
+            return 1
+        else
+            print_warning "$description not found (optional)"
+            return 2
+        fi
+    fi
+}
+
+check_systemd_service() {
+    local service=$1
+    local description=$2
+    local check_running=${3:-false}
+
+    print_check "$description"
+
+    # Check if service unit exists
+    if ! systemctl --user list-unit-files | grep -q "^${service}.service"; then
+        print_fail "$description service not configured"
+        return 1
+    fi
+
+    # Check if service is enabled
+    local enabled="disabled"
+    if systemctl --user is-enabled "$service" &> /dev/null; then
+        enabled="enabled"
+    fi
+
+    # Check if service is running
+    if systemctl --user is-active "$service" &> /dev/null; then
+        print_success "$description (running, $enabled)"
+        print_detail "Status: Active"
+        return 0
+    else
+        if [ "$check_running" = true ]; then
+            print_warning "$description (not running, $enabled)"
+            print_detail "Start with: systemctl --user start $service"
+        else
+            print_success "$description (configured, $enabled)"
+            print_detail "Enable with: systemctl --user enable --now $service"
+        fi
+        return 2
+    fi
+}
+
+check_systemd_service_port() {
+    local service=$1
+    local port=$2
+    local description=$3
+
+    # Only check port if service is running
+    if systemctl --user is-active "$service" &> /dev/null; then
+        if curl -s "http://localhost:$port" &> /dev/null || nc -z localhost "$port" 2>/dev/null; then
+            print_detail "Service accessible on port $port"
+            return 0
+        else
+            print_detail "Service running but port $port not accessible"
+            return 1
+        fi
+    fi
+    return 0
+}
+
 # Main checks
 run_all_checks() {
     print_header "NixOS Dev Quick Deploy - System Health Check"
@@ -402,6 +479,45 @@ run_all_checks() {
     check_command "aider" "Aider" true
 
     # ==========================================================================
+    # Python AI/ML Packages
+    # ==========================================================================
+    print_section "Python AI/ML Packages"
+
+    # Core Data Science
+    check_python_package "pandas" "Pandas (DataFrames)" true
+    check_python_package "numpy" "NumPy (numerical computing)" true
+    check_python_package "sklearn" "Scikit-learn (machine learning)" true
+
+    # Deep Learning Frameworks
+    check_python_package "torch" "PyTorch" false
+    check_python_package "tensorflow" "TensorFlow" false
+
+    # LLM & AI Frameworks
+    check_python_package "openai" "OpenAI client" false
+    check_python_package "anthropic" "Anthropic client" false
+    check_python_package "langchain" "LangChain" false
+    check_python_package "llama_index" "LlamaIndex" false
+
+    # Vector Databases & Embeddings
+    check_python_package "chromadb" "ChromaDB" false
+    check_python_package "qdrant_client" "Qdrant client" false
+    check_python_package "sentence_transformers" "Sentence Transformers" false
+    check_python_package "faiss" "FAISS" false
+
+    # Modern Data Processing
+    check_python_package "polars" "Polars (fast DataFrames)" false
+    check_python_package "dask" "Dask (parallel computing)" false
+
+    # Code Quality Tools
+    check_python_package "black" "Black (formatter)" false
+    check_python_package "ruff" "Ruff (linter)" false
+    check_python_package "mypy" "Mypy (type checker)" false
+
+    # Jupyter
+    check_python_package "jupyterlab" "Jupyter Lab" false
+    check_python_package "notebook" "Jupyter Notebook" false
+
+    # ==========================================================================
     # Editors & IDEs
     # ==========================================================================
     print_section "Editors & IDEs"
@@ -467,6 +583,10 @@ run_all_checks() {
         check_flatpak_app "org.videolan.VLC" "VLC" false
         check_flatpak_app "io.mpv.Mpv" "MPV" false
 
+        # Database Tools
+        check_flatpak_app "com.dbeaver.DBeaverCommunity" "DBeaver Community" false
+        check_flatpak_app "org.sqlitebrowser.sqlitebrowser" "SQLite Browser" false
+
         # Check for duplicate runtimes
         print_check "Flatpak runtime versions"
         local runtime_count=$(flatpak list --user --runtime 2>/dev/null | grep -c "org.freedesktop.Platform" || echo "0")
@@ -500,6 +620,32 @@ run_all_checks() {
     else
         print_warning "EDITOR not set"
     fi
+
+    # ==========================================================================
+    # AI Systemd Services
+    # ==========================================================================
+    print_section "AI Systemd Services (Optional)"
+
+    # Qdrant vector database
+    check_systemd_service "qdrant" "Qdrant (vector database)" false
+    if systemctl --user is-active qdrant &> /dev/null; then
+        check_systemd_service_port "qdrant" "6333" "Qdrant API"
+    fi
+
+    # Hugging Face TGI
+    check_systemd_service "huggingface-tgi" "Hugging Face TGI (LLM inference)" false
+    if systemctl --user is-active huggingface-tgi &> /dev/null; then
+        check_systemd_service_port "huggingface-tgi" "8080" "TGI API"
+    fi
+
+    # Jupyter Lab
+    check_systemd_service "jupyter-lab" "Jupyter Lab (notebooks)" false
+    if systemctl --user is-active jupyter-lab &> /dev/null; then
+        check_systemd_service_port "jupyter-lab" "8888" "Jupyter Lab"
+    fi
+
+    # Gitea development forge
+    check_systemd_service "gitea-dev" "Gitea (development forge)" false
 
     # ==========================================================================
     # Network Services

@@ -52,7 +52,32 @@ Before setting up AIDB components, ensure you have completed the NixOS Quick Dep
 
 ## Quick Start
 
-### 1. Enter the AIDB Development Environment
+### 1. Verify Installation
+
+**Run the comprehensive health check:**
+
+```bash
+cd ~/NixOS-Dev-Quick-Deploy
+./system-health-check.sh
+```
+
+This verifies:
+- All 60+ Python AI/ML packages
+- AI systemd services (Qdrant, TGI, Jupyter Lab)
+- Flatpak applications (DBeaver, Cursor, etc.)
+- All development tools
+
+**Expected output:**
+```
+✓ Python: PyTorch (2.x.x)
+✓ Python: TensorFlow (2.x.x)
+✓ Python: LangChain (0.x.x)
+✓ Qdrant (vector database) (configured, disabled)
+✓ Hugging Face TGI (LLM inference) (configured, disabled)
+✓ Jupyter Lab (notebooks) (configured, disabled)
+```
+
+### 2. Enter the AIDB Development Environment
 
 The NixOS Quick Deploy script creates several aliases for working with AIDB:
 
@@ -80,12 +105,31 @@ source ~/.zshrc
 exec zsh
 ```
 
-### 2. Start Local AI Services
+### 3. Start AI Services
 
 ```bash
+# Enable Qdrant vector database
+systemctl --user enable --now qdrant
+# Access at http://localhost:6333
+
+# Enable Hugging Face TGI (LLM inference)
+systemctl --user enable --now huggingface-tgi
+# API at http://localhost:8080
+
+# Enable Jupyter Lab
+systemctl --user enable --now jupyter-lab
+# Access at http://localhost:8888
+
 # Start Ollama (local LLM runtime)
 systemctl --user start ollama
 
+# Verify services
+./system-health-check.sh
+```
+
+### 4. Start Ollama and Download Models
+
+```bash
 # Verify Ollama is running
 ollama list
 
@@ -96,7 +140,7 @@ ollama pull llama3.2
 ollama run llama3.2 "Hello, how are you?"
 ```
 
-### 3. Start Open WebUI (Optional)
+### 5. Start Open WebUI (Optional)
 
 Open WebUI provides a ChatGPT-like interface for your local models:
 
