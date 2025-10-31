@@ -49,8 +49,17 @@ chmod +x nixos-quick-deploy.sh
 | **LM Studio** | Flatpak app | Desktop LLM manager |
 
 ### Pre-Installed Development Tools
+
 **Languages & Runtimes:**
-- Python 3.11, Node.js 22, Go, Rust, Ruby
+- Python 3.11 with 60+ AI/ML packages (PyTorch, TensorFlow, LangChain, etc.)
+- Node.js 22, Go, Rust, Ruby
+
+**AI/ML Python Packages (Built-in):**
+- **Deep Learning:** PyTorch, TensorFlow, Transformers, Diffusers
+- **LLM Frameworks:** LangChain, LlamaIndex, OpenAI, Anthropic clients
+- **Vector DBs:** ChromaDB, Qdrant client, FAISS, Sentence Transformers
+- **Data Science:** Pandas, Polars, Dask, Jupyter Lab, Matplotlib
+- **Code Quality:** Black, Ruff, Mypy, Pylint
 
 **Editors & IDEs:**
 - VSCodium (VS Code without telemetry)
@@ -79,13 +88,19 @@ chmod +x nixos-quick-deploy.sh
 - Buildah, Skopeo
 - Podman Desktop (Flatpak GUI)
 
+**AI Services (Systemd - Disabled by Default):**
+- Qdrant (vector database)
+- Hugging Face TGI (LLM inference server)
+- Jupyter Lab (web-based notebooks)
+
 ### Flatpak Applications
 
-**Pre-Installed (12 apps):**
+**Pre-Installed (14 apps):**
 - Firefox, Obsidian, Cursor
 - LM Studio, Podman Desktop
 - Flatseal, Resources, FileRoller
-- VLC, MPV, DB Browser for SQLite
+- VLC, MPV
+- DB Browser for SQLite, DBeaver Community
 - Gitea (forge UI with AI workflows)
 
 **Optional (50+ apps available):**
@@ -146,6 +161,31 @@ When you open a terminal, **Powerlevel10k wizard runs automatically**:
 
 ### Step 6: Verify Everything Works
 
+**Run the automated health check:**
+
+```bash
+cd ~/NixOS-Dev-Quick-Deploy
+./system-health-check.sh
+```
+
+This will verify:
+- ✅ All core tools (podman, python3, node, etc.)
+- ✅ Nix ecosystem (home-manager, flakes)
+- ✅ AI tools (claude-wrapper, ollama, aider)
+- ✅ **Python AI/ML packages (60+ packages)**:
+  - Deep Learning: PyTorch, TensorFlow
+  - LLM Frameworks: LangChain, LlamaIndex, OpenAI, Anthropic
+  - Vector DBs: ChromaDB, Qdrant client, FAISS, Sentence Transformers
+  - Data Science: Pandas, Polars, Dask, Jupyter Lab
+  - Code Quality: Black, Ruff, Mypy
+- ✅ Editors (VSCodium, Cursor, Neovim)
+- ✅ Shell configuration (aliases, functions)
+- ✅ Flatpak applications (including DBeaver)
+- ✅ **AI Systemd Services** (Qdrant, Hugging Face TGI, Jupyter Lab, Gitea)
+- ✅ Environment variables & PATH
+
+**Or verify manually:**
+
 ```bash
 # Check core tools
 podman --version
@@ -175,11 +215,50 @@ aidb-dev
 flatpak list --user
 ```
 
+**If any checks fail:**
+
+```bash
+# Attempt automatic fixes
+./system-health-check.sh --fix
+
+# Reload shell environment
+source ~/.zshrc
+
+# Or restart shell
+exec zsh
+
+# Re-apply home-manager config
+cd ~/.dotfiles/home-manager
+home-manager switch --flake .
+```
+
 **All done!** Everything is installed and ready to use.
 
 ---
 
 ## 🛠️ Useful Commands
+
+### System Health & Diagnostics
+
+**Comprehensive health check for all packages and services:**
+
+```bash
+./system-health-check.sh           # Run full system health check
+./system-health-check.sh --detailed  # Show detailed output with versions
+./system-health-check.sh --fix     # Attempt automatic fixes
+```
+
+**Checks include:**
+- Core system tools (podman, git, curl, etc.)
+- Programming languages (Python, Node.js, Go, Rust)
+- Nix ecosystem (home-manager, flakes)
+- AI tools (Claude Code, Ollama, Aider)
+- **60+ Python AI/ML packages** (PyTorch, TensorFlow, LangChain, etc.)
+- Editors and IDEs (VSCodium, Neovim, Cursor)
+- Shell configuration (ZSH, aliases, functions)
+- Flatpak applications (Firefox, Obsidian, DBeaver, etc.)
+- **AI systemd services** (Qdrant, Hugging Face TGI, Jupyter Lab)
+- Environment variables and PATH configuration
 
 ### System Management
 ```bash
@@ -196,22 +275,48 @@ aidb-info        # Show environment information
 aidb-update      # Update flake dependencies
 ```
 
-### AI Stack Management
+**Note:** If `aidb-dev` is not found, reload your shell:
 ```bash
-# Start local AI services (Ollama, Open WebUI, Qdrant, etc.)
-podman-ai-stack up
+source ~/.zshrc  # Or: exec zsh
+```
+
+### AI Stack Management
+
+**Systemd Services (Enable as needed):**
+```bash
+# Enable Qdrant vector database
+systemctl --user enable --now qdrant
+# Access at http://localhost:6333
+
+# Enable Hugging Face TGI (LLM inference)
+systemctl --user enable --now huggingface-tgi
+# API at http://localhost:8080
+
+# Enable Jupyter Lab
+systemctl --user enable --now jupyter-lab
+# Access at http://localhost:8888
 
 # Check service status
-podman-ai-stack status
+systemctl --user status qdrant
+systemctl --user status huggingface-tgi
+systemctl --user status jupyter-lab
 
-# View logs
-podman-ai-stack logs
+# View service logs
+journalctl --user -u qdrant -f
+journalctl --user -u huggingface-tgi -f
+journalctl --user -u jupyter-lab -f
+```
 
+**CLI Tools:**
+```bash
 # Query LLMs from command line
 gpt-cli "explain this code"
 
 # Run aider (AI coding assistant)
 aider
+
+# Start Jupyter Lab manually
+jupyter-lab
 
 # Install Obsidian AI plugins
 obsidian-ai-bootstrap
@@ -225,6 +330,14 @@ podman-compose up   # Start services from compose file
 ```
 
 ### VSCodium / Claude Code
+
+**VSCodium Version Compatibility:**
+- VSCodium 1.85.0+ (installed by this script)
+- Claude Code extension works with VSCodium and VS Code 1.85.0+
+- The `claude-wrapper` ensures Node.js is found correctly
+
+**Usage:**
+
 ```bash
 # Launch VSCodium with Claude integration
 codium
@@ -246,6 +359,11 @@ code-cursor
 
 # Launch specific project
 code-cursor /path/to/project
+```
+
+**Note:** Cursor must be installed via Flatpak:
+```bash
+flatpak install flathub ai.cursor.Cursor
 ```
 
 ---
@@ -270,12 +388,14 @@ code-cursor /path/to/project
 ```
 NixOS-Dev-Quick-Deploy/
 ├── nixos-quick-deploy.sh          # Main deployment script (run this)
+├── system-health-check.sh         # System health verification and repair tool
 ├── templates/
 │   ├── configuration.nix          # NixOS system config template
 │   ├── home.nix                   # Home-manager config template
 │   └── flake.nix                  # Development flake template
 ├── p10k-setup-wizard.sh           # Powerlevel10k configuration wizard
 ├── README.md                      # This file
+├── AIDB_SETUP.md                  # AIDB setup and configuration guide
 ├── AGENTS.md                      # AI agent workflow documentation
 └── LICENSE                        # MIT License
 ```
@@ -437,10 +557,13 @@ Next steps:
 
 ### Packages Not in PATH
 
-**Issue:** `podman: command not found` after installation
+**Issue:** `podman: command not found`, `home-manager: command not found`, or `claude-wrapper: command not found` after installation
 
 **Solution:**
 ```bash
+# Run health check with automatic fixes
+./system-health-check.sh --fix
+
 # Restart shell to load new PATH
 exec zsh
 
@@ -449,6 +572,18 @@ source ~/.nix-profile/etc/profile.d/hm-session-vars.sh
 
 # Verify
 which podman
+which home-manager
+which claude-wrapper
+```
+
+**If still not working:**
+```bash
+# Re-apply home-manager configuration
+cd ~/.dotfiles/home-manager
+home-manager switch --flake .
+
+# Restart shell
+exec zsh
 ```
 
 ### COSMIC Desktop Not Appearing
@@ -497,6 +632,26 @@ flatpak run org.mozilla.firefox
 flatpak uninstall org.mozilla.firefox
 flatpak install flathub org.mozilla.firefox
 ```
+
+### Multiple Flatpak Platform Runtimes
+
+**Issue:** `flatpak list --user` shows multiple versions of Freedesktop Platform (24.08, 25.08, etc.)
+
+**This is NORMAL!** Different Flatpak applications depend on different runtime versions. For example:
+- Firefox might need Platform 24.08
+- Cursor might need Platform 25.08
+- Some apps need both stable and extra codecs
+
+**Cleanup unused runtimes:**
+```bash
+# See what would be removed (safe, dry-run)
+flatpak uninstall --unused
+
+# Actually remove unused runtimes
+flatpak uninstall --unused -y
+```
+
+**Note:** Only runtimes not needed by any installed app will be removed.
 
 ### Powerlevel10k Prompt Hard to Read
 
@@ -746,6 +901,11 @@ Already installed but worth highlighting:
 
 ## 📚 Documentation & Resources
 
+### This Repository
+- [AIDB Setup Guide](AIDB_SETUP.md) - Complete AIDB configuration walkthrough
+- [Agent Workflows](AGENTS.md) - AI agent integration documentation
+- [System Health Check](system-health-check.sh) - Verify and fix installation
+
 ### Official Docs
 - [NixOS Manual](https://nixos.org/manual/nixos/stable/)
 - [Home Manager Manual](https://nix-community.github.io/home-manager/)
@@ -757,6 +917,7 @@ Already installed but worth highlighting:
 - [Cursor Docs](https://docs.cursor.sh/)
 - [Continue Docs](https://continue.dev/docs)
 - [Aider Docs](https://aider.chat/)
+- [Ollama Docs](https://ollama.ai/docs)
 
 ### Learning Resources
 - [Zero to Nix](https://zero-to-nix.com/) - Beginner-friendly Nix tutorial
