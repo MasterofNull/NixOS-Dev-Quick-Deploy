@@ -2455,8 +2455,11 @@ PLUGINCFG
             ];
             TimeoutStartSec = 600;
             Restart = lib.mkForce "no";
+            RemainAfterExit = false;
             StandardOutput = "journal";
             StandardError = "journal";
+            # Ignore failure on ExecCondition to prevent blocking
+            SuccessExitStatus = "0 1";
           };
           # Install section removed to prevent auto-start on home-manager activation.
           # The nixos-quick-deploy.sh script handles starting this service explicitly
