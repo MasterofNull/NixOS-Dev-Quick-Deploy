@@ -2435,8 +2435,10 @@ PLUGINCFG
               "man:flatpak(1)"
             ];
             After = [ "graphical-session.target" "network-online.target" ];
-            Wants = [ "graphical-session.target" "network-online.target" ];
-            PartOf = [ "graphical-session.target" ];
+            Wants = [ "network-online.target" ];
+            # PartOf removed - service should only be started explicitly by the deployment
+            # script, not automatically during systemd reloads or graphical-session.target
+            # activation, to prevent blocking home-manager activation if it fails.
           };
           Service = {
             Type = "oneshot";
