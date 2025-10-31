@@ -559,6 +559,81 @@ Next steps:
    ```
    Should show `executablePath` pointing to `~/.npm-global/bin/claude-wrapper`
 
+### VSCodium Settings Read-Only Error
+
+**Symptom:** VSCodium shows error when trying to save settings:
+```
+Failed to save 'settings.json': Unable to write file (EROFS: read-only file system)
+```
+
+**Cause:** In NixOS with Home Manager, configuration files are managed declaratively and are read-only symlinks from `/nix/store`. This is by design to ensure reproducibility.
+
+**Understanding NixOS Configuration:**
+
+In NixOS, your entire system and user configuration is managed through `.nix` files:
+- `~/.config/VSCodium/User/settings.json` is a **read-only symlink** to `/nix/store/...`
+- This ensures your configuration is reproducible and version-controlled
+- Changes must be made in the source `.nix` file, not directly in VSCodium
+
+**Solution - Edit Home Manager Configuration:**
+
+1. **Edit your home.nix template:**
+   ```bash
+   cd ~/NixOS-Dev-Quick-Deploy
+   nano templates/home.nix
+   ```
+
+2. **Find the VSCodium settings section** (around line 1388-1550):
+   ```nix
+   # VSCodium Configuration (Declarative)
+   programs.vscode = {
+     enable = true;
+     package = pkgs.vscodium;
+     userSettings = {
+       # Add your settings here in Nix format
+       "editor.fontSize" = 14;
+       "editor.tabSize" = 2;
+       # ... etc
+     };
+   };
+   ```
+
+3. **Apply the changes:**
+   ```bash
+   # Rebuild NixOS system
+   sudo nixos-rebuild switch --flake /etc/nixos
+
+   # Rebuild home-manager (if separate)
+   home-manager switch --flake ~/.dotfiles/home-manager
+   ```
+
+4. **Restart VSCodium** to load the new configuration
+
+**Converting JSON to Nix Format:**
+
+If you have existing settings you want to preserve:
+
+```bash
+# View your current settings
+cat ~/.config/VSCodium/User/settings.json
+
+# Example conversion:
+# JSON:  "editor.fontSize": 14
+# Nix:   "editor.fontSize" = 14;
+
+# JSON:  "editor.formatOnSave": true
+# Nix:   "editor.formatOnSave" = true;
+
+# JSON:  "files.exclude": { "**/.git": true }
+# Nix:   "files.exclude" = { "**/.git" = true; };
+```
+
+**Quick Reference:**
+- JSON `{ "key": "value" }` → Nix `{ "key" = "value"; }`
+- JSON `:` → Nix `=`
+- Nix requires `;` at end of each line
+- Both use `true`/`false`, numbers, and strings the same way
+
 ### Packages Not in PATH
 
 **Issue:** `podman: command not found`, `home-manager: command not found`, or `claude-wrapper: command not found` after installation
