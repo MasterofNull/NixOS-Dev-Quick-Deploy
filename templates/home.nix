@@ -72,13 +72,16 @@ let
     # ====================================================================
     # AI & LLM WORKBENCHES (Graphical tooling for local + cloud models)
     # ====================================================================
-    "ai.cursor.Cursor"                    # Cursor / Code-Cursor AI pair-programming IDE
-    "com.lmstudio.LMStudio"               # LM Studio for managing local LLM weights & servers
+    # NOTE: The following apps are not available for all architectures
+    # If you're on x86_64, you can uncomment these:
+    # "ai.cursor.Cursor"                    # Cursor / Code-Cursor AI pair-programming IDE
+    # "com.lmstudio.LMStudio"               # LM Studio for managing local LLM weights & servers
 
     # ====================================================================
     # DEVELOPMENT PLATFORM MANAGEMENT
     # ====================================================================
-    "io.gitea.Gitea"                      # Gitea desktop (web UI) for Git/AIDB workflows
+    # NOTE: Gitea Flatpak not available for all architectures (use system service instead)
+    # "io.gitea.Gitea"                      # Gitea desktop (web UI) for Git/AIDB workflows
     "io.podman_desktop.PodmanDesktop"     # Podman Desktop GUI for managing containers
     "org.sqlitebrowser.sqlitebrowser"     # GUI browser for SQLite databases used by AIDB
 
