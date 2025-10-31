@@ -341,135 +341,155 @@ These packages are installed automatically by the NixOS Quick Deploy script:
 - `bat` - Enhanced cat
 - `jq` - JSON processor
 
-### Future AIDB Packages (Recommended)
+### Installed AIDB Packages
 
-These packages are not yet installed but are recommended for AIDB workflows. Add them to `~/.dotfiles/home-manager/home.nix`:
+**✅ The following packages are NOW INSTALLED** by default in the latest version:
 
-#### Via Home Manager (Nix)
+#### Python AI/ML Packages (via pythonAiEnv)
 
-Add to the `home.packages` section in `~/.dotfiles/home-manager/home.nix`:
+All these packages are available in your Python environment:
 
-```nix
-home.packages = with pkgs; [
-  # Existing packages...
+**Deep Learning Frameworks:**
+- PyTorch (torch, torchaudio, torchvision)
+- TensorFlow
+- Accelerate, Diffusers, PEFT
 
-  # ====================================================================
-  # AIDB Future Packages
-  # ====================================================================
+**LLM APIs & Frameworks:**
+- OpenAI Python client
+- Anthropic Python client
+- LangChain (langchain, langchain-openai, langchain-community, langchain-core)
+- LlamaIndex (llama-index, llama-index-core)
 
-  # AI/ML Development
-  jupyter                 # Jupyter notebooks for AI experiments
-  jupyterlab              # JupyterLab interface
+**Vector Databases & Embeddings:**
+- ChromaDB
+- Qdrant client
+- Pinecone client
+- FAISS (Facebook AI Similarity Search)
+- Sentence Transformers
 
-  # Vector Databases & Search
-  # Note: qdrant available as container, not in nixpkgs
+**Data Science & Processing:**
+- Jupyter Lab, Notebook, IPython
+- Pandas, NumPy, Matplotlib, Seaborn
+- Polars (fast Rust-based DataFrame library)
+- Dask (parallel computing)
+- Scikit-learn
 
-  # Python AI/ML Libraries (via python3.withPackages)
-  (python3.withPackages (ps: with ps; [
-    # Already included: numpy pandas matplotlib seaborn scikit-learn
+**Code Quality Tools:**
+- Black (Python formatter)
+- Ruff (fast Python linter)
+- Mypy (type checker)
+- Pylint
 
-    # Additional AI/ML packages
-    torch                 # PyTorch
-    tensorflow            # TensorFlow
-    transformers          # Hugging Face transformers
-    sentence-transformers # Sentence embeddings
-    langchain             # LangChain framework
-    openai                # OpenAI Python client
-    anthropic             # Anthropic Python client
-    faiss-cpu             # Facebook AI Similarity Search
-    chromadb              # Chroma vector database
-    pinecone-client       # Pinecone vector database
+**Usage:**
 
-    # Data processing
-    polars                # Fast DataFrame library
-    dask                  # Parallel computing
+```bash
+# Access the Python environment
+python3
 
-    # NLP
-    spacy                 # Industrial NLP
-    nltk                  # Natural Language Toolkit
+# All packages are available
+python3 -c "import torch; import tensorflow; import langchain; print('All packages ready!')"
 
-    # Visualization
-    plotly                # Interactive plots
-    dash                  # Plotly dashboards
-  ]))
+# Start Jupyter Lab
+jupyter-lab
 
-  # Code Quality & Analysis
-  ruff                    # Fast Python linter (Rust-based)
-  black                   # Python code formatter
-  mypy                    # Python type checker
-
-  # Database Tools
-  sqlite                  # SQLite CLI
-  postgresql              # PostgreSQL client
-
-  # Documentation
-  mdbook                  # Create books from markdown
-  hugo                    # Static site generator
-];
+# Or use the systemd service (see below)
 ```
+
+#### Flatpak Applications
+
+**✅ DBeaver Community** is now included:
+- Universal database tool for PostgreSQL, MySQL, SQLite, MongoDB, etc.
+- Perfect for managing AI/ML training databases
+
+Launch with:
+```bash
+flatpak run com.dbeaver.DBeaverCommunity
+```
+
+#### Systemd Services (Disabled by Default)
+
+**✅ Three new systemd services are configured** and ready to enable:
+
+1. **Qdrant** - Vector database for embeddings and RAG
+2. **Hugging Face TGI** - High-performance LLM inference server
+3. **Jupyter Lab** - Web-based interactive development
+
+**Enable services:**
+
+```bash
+# Enable and start Qdrant
+systemctl --user enable --now qdrant
+
+# Enable and start Hugging Face TGI
+# Note: Set HF_TOKEN first for gated models
+systemctl --user edit huggingface-tgi
+# Add: Environment="HF_TOKEN=your_token_here"
+systemctl --user enable --now huggingface-tgi
+
+# Enable and start Jupyter Lab
+systemctl --user enable --now jupyter-lab
+```
+
+**Service Details:**
+
+**Qdrant:**
+- Ports: 6333 (API), 6334 (gRPC)
+- Data: `~/.local/share/qdrant/storage`
+- Web UI: http://localhost:6333/dashboard
+
+**Hugging Face TGI:**
+- Port: 8080
+- Model: meta-llama/Meta-Llama-3-8B-Instruct (default)
+- Cache: `~/.cache/huggingface`
+- API: http://localhost:8080/docs
+
+**Jupyter Lab:**
+- Port: 8888
+- Notebooks: `~/notebooks`
+- Access: http://localhost:8888 (token shown in `journalctl`)
+
+**Manage services:**
+
+```bash
+# Check status
+systemctl --user status qdrant
+systemctl --user status huggingface-tgi
+systemctl --user status jupyter-lab
+
+# View logs
+journalctl --user -u qdrant -f
+journalctl --user -u huggingface-tgi -f
+journalctl --user -u jupyter-lab -f
+
+# Stop services
+systemctl --user stop qdrant
+systemctl --user stop huggingface-tgi
+systemctl --user stop jupyter-lab
+
+# Disable services
+systemctl --user disable qdrant
+systemctl --user disable huggingface-tgi
+systemctl --user disable jupyter-lab
+```
+
+### Additional Packages (Optional)
+
+You can add more packages by editing `~/.dotfiles/home-manager/home.nix`:
+
+**Additional Python packages:**
+- spacy (industrial NLP)
+- nltk (natural language toolkit)
+- plotly, dash (interactive visualizations)
+
+**Additional tools:**
+- postgresql (PostgreSQL client)
+- mdbook, hugo (documentation generators)
 
 Then apply changes:
 
 ```bash
 cd ~/.dotfiles/home-manager
 home-manager switch --flake .
-```
-
-#### Via Flatpak
-
-Some AIDB tools are better installed via Flatpak. Add to `services.flatpak.packages` in `home.nix`:
-
-```nix
-services.flatpak.packages = [
-  # Existing packages...
-
-  # ====================================================================
-  # AIDB Future Flatpak Packages
-  # ====================================================================
-
-  # Development
-  "com.github.marhkb.Pods"              # Podman containers GUI (alternative to Podman Desktop)
-
-  # Data Science & Analysis
-  "org.gnome.Calculator"                # Calculator app
-  "io.github.nokse22.asciidraw"         # ASCII diagrams
-
-  # Database Management
-  "com.dbeaver.DBeaverCommunity"        # Universal database tool
-
-  # AI-Specific
-  # Note: Most AI tools run as containers or CLI, not Flatpak
-];
-```
-
-#### Via Podman Containers
-
-These AI services run best as containers:
-
-```bash
-# Qdrant - Vector Database
-podman run -d \
-  --name qdrant \
-  -p 6333:6333 \
-  -p 6334:6334 \
-  -v $HOME/.local/share/qdrant:/qdrant/storage:z \
-  qdrant/qdrant
-
-# Jupyter Lab
-podman run -d \
-  --name jupyter \
-  -p 8888:8888 \
-  -v $HOME/notebooks:/home/jovyan/work \
-  jupyter/scipy-notebook
-
-# Hugging Face TGI (Text Generation Inference)
-podman run -d \
-  --name tgi \
-  -p 8080:80 \
-  -v $HOME/.cache/huggingface:/data \
-  --env HF_TOKEN=your_token_here \
-  ghcr.io/huggingface/text-generation-inference:latest \
-  --model-id meta-llama/Meta-Llama-3-8B-Instruct
 ```
 
 ---

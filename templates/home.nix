@@ -81,6 +81,11 @@ let
     "io.gitea.Gitea"                      # Gitea desktop (web UI) for Git/AIDB workflows
     "io.podman_desktop.PodmanDesktop"     # Podman Desktop GUI for managing containers
     "org.sqlitebrowser.sqlitebrowser"     # GUI browser for SQLite databases used by AIDB
+
+    # ====================================================================
+    # DATABASE TOOLS (AI/ML Data Management)
+    # ====================================================================
+    "com.dbeaver.DBeaverCommunity"        # Universal database tool (PostgreSQL, MySQL, SQLite, etc.)
   ];
   flatpakManagedInstallRuntimeInputs = [
     pkgs.coreutils
@@ -621,10 +626,29 @@ RESOURCES
   pythonAiEnv =
     pythonAi.withPackages (ps:
       let
+        # Core Python packages that should always be available
         base = with ps; [
           pip
           setuptools
           wheel
+          # Jupyter and Interactive Development
+          jupyterlab
+          ipykernel
+          ipython
+          ipywidgets
+          notebook
+          # Data Science Core
+          pandas
+          numpy
+          scikit-learn
+          matplotlib
+          seaborn
+          # Code Quality Tools
+          black
+          ruff
+          mypy
+          pylint
+          # AI/ML Fundamentals
           accelerate
           datasets
           diffusers
@@ -635,35 +659,46 @@ RESOURCES
           transformers
           evaluate
           gradio
-          jupyterlab
-          ipykernel
-          pandas
-          scikit-learn
-          black
-          ipython
-          ipywidgets
+          # Data Processing (Modern Alternatives)
+          polars               # Fast DataFrame library (Rust-based)
+          # Note: dask often causes build issues, added conditionally below
         ];
-        extras =
-          lib.optionals (ps ? bitsandbytes) [ ps.bitsandbytes ]
-          ++ lib.optionals (ps ? torch) [ ps.torch ]
+        # AI/ML packages that may not be available in all nixpkgs versions
+        # Using lib.optionals ensures the build doesn't fail if packages are missing
+        aiExtras =
+          # Deep Learning Frameworks
+          lib.optionals (ps ? torch) [ ps.torch ]
           ++ lib.optionals (ps ? torchaudio) [ ps.torchaudio ]
           ++ lib.optionals (ps ? torchvision) [ ps.torchvision ]
+          ++ lib.optionals (ps ? tensorflow) [ ps.tensorflow ]
+          ++ lib.optionals (ps ? bitsandbytes) [ ps.bitsandbytes ]
+          # LLM & AI APIs
           ++ lib.optionals (ps ? openai) [ ps.openai ]
+          ++ lib.optionals (ps ? anthropic) [ ps.anthropic ]
+          # LangChain Ecosystem
           ++ lib.optionals (ps ? langchain) [ ps.langchain ]
           ++ lib.optionals (ps ? "langchain-openai") [ ps."langchain-openai" ]
           ++ lib.optionals (ps ? "langchain-community") [ ps."langchain-community" ]
+          ++ lib.optionals (ps ? "langchain-core") [ ps."langchain-core" ]
+          # LlamaIndex Ecosystem
           ++ lib.optionals (ps ? "llama-index") [ ps."llama-index" ]
+          ++ lib.optionals (ps ? "llama-index-core") [ ps."llama-index-core" ]
+          # Vector Databases & Embeddings
           ++ lib.optionals (ps ? chromadb) [ ps.chromadb ]
           ++ lib.optionals (ps ? "qdrant-client") [ ps."qdrant-client" ]
-          # weaviate-client is currently incompatible with python311; omit it by default
-          # so evaluation succeeds even when the attribute exists but is disabled.
-          # Users can add it back manually once upstream gains support.
           ++ lib.optionals (ps ? "pinecone-client") [ ps."pinecone-client" ]
-          ++ lib.optionals (ps ? "mindsdb") [ ps."mindsdb" ]
+          ++ lib.optionals (ps ? faiss) [ ps.faiss ]
+          ++ lib.optionals (ps ? "sentence-transformers") [ ps."sentence-transformers" ]
+          # Specialized AI Tools
           ++ lib.optionals (ps ? "llama-cpp-python") [ ps."llama-cpp-python" ]
-          ++ lib.optionals (ps ? "sentence-transformers") [ ps."sentence-transformers" ];
+          ++ lib.optionals (ps ? "mindsdb") [ ps."mindsdb" ]
+          # Data Processing (conditional)
+          ++ lib.optionals (ps ? dask) [ ps.dask ]
+          ++ lib.optionals (ps ? "dask-ml") [ ps."dask-ml" ];
+        # Note: weaviate-client is currently incompatible with python311
+        # Users can add it manually once upstream gains support
       in
-        base ++ extras
+        base ++ aiExtras
     );
   pythonAiInterpreterPath = "${pythonAiEnv}/bin/python3";
   huggingfaceReadme = ''
@@ -2445,6 +2480,130 @@ PLUGINCFG
           };
           Install = {
             WantedBy = [ "default.target" ];
+          };
+        };
+        # Qdrant vector database service
+        # Enable with: systemctl --user enable --now qdrant
+        "qdrant" = {
+          Unit = {
+            Description = "Qdrant vector database for AI embeddings and RAG";
+            Documentation = [ "https://qdrant.tech/documentation/" ];
+            After = [ "network-online.target" ];
+            Wants = [ "network-online.target" ];
+          };
+          Service = {
+            Type = "simple";
+            Environment = [
+              "QDRANT_DATA_DIR=%h/.local/share/qdrant/storage"
+              "QDRANT_SNAPSHOTS_DIR=%h/.local/share/qdrant/snapshots"
+            ];
+            ExecStartPre = [
+              "${pkgs.coreutils}/bin/mkdir -p %h/.local/share/qdrant/storage"
+              "${pkgs.coreutils}/bin/mkdir -p %h/.local/share/qdrant/snapshots"
+            ];
+            ExecStart = ''
+              ${pkgs.podman}/bin/podman run --rm \
+                --name qdrant \
+                -p 6333:6333 \
+                -p 6334:6334 \
+                -v %h/.local/share/qdrant/storage:/qdrant/storage:z \
+                -v %h/.local/share/qdrant/snapshots:/qdrant/snapshots:z \
+                docker.io/qdrant/qdrant:latest
+            '';
+            ExecStop = "${pkgs.podman}/bin/podman stop -t 10 qdrant";
+            Restart = "on-failure";
+            RestartSec = 5;
+            TimeoutStartSec = 300;
+            TimeoutStopSec = 60;
+          };
+          Install = {
+            # Not enabled by default - users must enable manually
+            # WantedBy = [ "default.target" ];
+          };
+        };
+        # Hugging Face Text Generation Inference (TGI) service
+        # Enable with: systemctl --user enable --now huggingface-tgi
+        # Note: Requires HF_TOKEN environment variable for gated models
+        "huggingface-tgi" = {
+          Unit = {
+            Description = "Hugging Face Text Generation Inference server";
+            Documentation = [ "https://github.com/huggingface/text-generation-inference" ];
+            After = [ "network-online.target" ];
+            Wants = [ "network-online.target" ];
+          };
+          Service = {
+            Type = "simple";
+            Environment = [
+              "HF_HOME=%h/${huggingfaceCacheDir}"
+              "HUGGINGFACE_HUB_CACHE=%h/${huggingfaceCacheDir}"
+              "MODEL_ID=${huggingfaceModelId}"
+              "TGI_PORT=8080"
+            ];
+            ExecStartPre = [
+              "${pkgs.coreutils}/bin/mkdir -p %h/${huggingfaceCacheDir}"
+            ];
+            # Note: Users should set HF_TOKEN via environment override or systemctl edit
+            # Example: systemctl --user edit huggingface-tgi
+            # [Service]
+            # Environment="HF_TOKEN=your_token_here"
+            ExecStart = ''
+              ${pkgs.podman}/bin/podman run --rm \
+                --name huggingface-tgi \
+                -p 8080:80 \
+                -v %h/${huggingfaceCacheDir}:/data:z \
+                -e MODEL_ID=''${MODEL_ID} \
+                -e HF_TOKEN=''${HF_TOKEN:-} \
+                -e MAX_TOTAL_TOKENS=4096 \
+                -e MAX_INPUT_LENGTH=2048 \
+                ghcr.io/huggingface/text-generation-inference:latest \
+                --model-id ''${MODEL_ID}
+            '';
+            ExecStop = "${pkgs.podman}/bin/podman stop -t 30 huggingface-tgi";
+            Restart = "on-failure";
+            RestartSec = 10;
+            TimeoutStartSec = 600;  # Model download can take time
+            TimeoutStopSec = 60;
+          };
+          Install = {
+            # Not enabled by default - users must enable manually
+            # WantedBy = [ "default.target" ];
+          };
+        };
+        # Jupyter Lab server (alternative to running in Python environment)
+        # Enable with: systemctl --user enable --now jupyter-lab
+        "jupyter-lab" = {
+          Unit = {
+            Description = "Jupyter Lab server for interactive AI/ML development";
+            Documentation = [ "https://jupyter.org/documentation" ];
+            After = [ "network.target" ];
+          };
+          Service = {
+            Type = "simple";
+            Environment = [
+              "JUPYTER_DATA_DIR=%h/.local/share/jupyter"
+              "JUPYTER_CONFIG_DIR=%h/.config/jupyter"
+              "JUPYTER_RUNTIME_DIR=%h/.local/share/jupyter/runtime"
+            ];
+            ExecStartPre = [
+              "${pkgs.coreutils}/bin/mkdir -p %h/.local/share/jupyter"
+              "${pkgs.coreutils}/bin/mkdir -p %h/.config/jupyter"
+              "${pkgs.coreutils}/bin/mkdir -p %h/notebooks"
+            ];
+            ExecStart = ''
+              ${pythonAiEnv}/bin/jupyter-lab \
+                --ip=127.0.0.1 \
+                --port=8888 \
+                --no-browser \
+                --notebook-dir=%h/notebooks
+            '';
+            WorkingDirectory = "%h/notebooks";
+            Restart = "on-failure";
+            RestartSec = 5;
+            TimeoutStopSec = 30;
+          };
+          Install = {
+            # Not enabled by default - users must enable manually
+            # WantedBy = [ "default.target" ];
           };
         };
       }
