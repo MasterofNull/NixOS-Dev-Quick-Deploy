@@ -709,7 +709,8 @@ reset_flatpak_repo_if_corrupted() {
 
     run_as_primary_user install -d -m 700 "$repo_parent" >/dev/null 2>&1 || true
 
-    if run_as_primary_user test -f "$repo_config"; then
+    # Check if repository is valid and complete
+    if run_as_primary_user test -f "$repo_config" && run_as_primary_user test -d "$repo_dir/objects"; then
         return 0
     fi
 
@@ -718,10 +719,15 @@ reset_flatpak_repo_if_corrupted() {
         return 1
     fi
 
+    # Detect corrupted repository (exists but missing essential directories)
     if run_as_primary_user test -e "$repo_dir"; then
-        print_warning "Flatpak repository metadata missing; resetting $repo_dir"
-        run_as_primary_user rm -rf "$repo_dir" >/dev/null 2>&1 || true
-    else
+        if ! run_as_primary_user test -f "$repo_config" || ! run_as_primary_user test -d "$repo_dir/objects"; then
+            print_warning "Detected corrupted Flatpak repository, removing and reinitializing..."
+            run_as_primary_user rm -rf "$repo_dir" >/dev/null 2>&1 || true
+        fi
+    fi
+
+    if ! run_as_primary_user test -e "$repo_dir"; then
         print_info "Initializing Flatpak repository under ${repo_dir#$PRIMARY_HOME/}"
     fi
 
@@ -751,20 +757,28 @@ reset_flatpak_repo_if_corrupted() {
 
         # ostree init failed - manually create essential directory structure
         print_info "ostree init failed, creating repository structure manually..."
-        run_as_primary_user install -d -m 755 "$repo_dir/objects" >/dev/null 2>&1 || true
-        run_as_primary_user install -d -m 755 "$repo_dir/tmp" >/dev/null 2>&1 || true
-        run_as_primary_user install -d -m 755 "$repo_dir/refs/heads" >/dev/null 2>&1 || true
-        run_as_primary_user install -d -m 755 "$repo_dir/refs/remotes" >/dev/null 2>&1 || true
-        run_as_primary_user install -d -m 755 "$repo_dir/state" >/dev/null 2>&1 || true
+
+        # Remove any partial initialization and start fresh
+        run_as_primary_user rm -rf "$repo_dir" >/dev/null 2>&1 || true
+        run_as_primary_user install -d -m 700 "$repo_dir" >/dev/null 2>&1 || true
+
+        # Create essential directories
+        if ! (run_as_primary_user bash -c "mkdir -p \"$repo_dir/objects\" \"$repo_dir/tmp\" \
+              \"$repo_dir/refs/heads\" \"$repo_dir/refs/remotes\" \
+              \"$repo_dir/state\" 2>/dev/null"); then
+            print_warning "Failed to create repository directory structure"
+            return 1
+        fi
 
         # Create minimal config file for bare-user-only mode
-        if run_as_primary_user test ! -f "$repo_config"; then
-            run_as_primary_user bash -c "cat > \"$repo_config\" <<'OSTREE_CONFIG'
+        if ! run_as_primary_user bash -c "cat > \"$repo_config\" 2>/dev/null <<'OSTREE_CONFIG'
 [core]
 repo_version=1
 mode=bare-user-only
 OSTREE_CONFIG
-" || true
+"; then
+            print_warning "Failed to create repository config file"
+            return 1
         fi
 
         # Verify the manual structure was created
@@ -773,6 +787,9 @@ OSTREE_CONFIG
             # Run flatpak repair to finalize and validate the repo
             run_as_primary_user flatpak --user repair >/dev/null 2>&1 || true
             return 0
+        else
+            print_warning "Repository structure verification failed"
+            return 1
         fi
     fi
 
