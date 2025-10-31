@@ -915,6 +915,11 @@ ensure_flatpak_managed_install_service() {
         return
     fi
 
+    # Create condition flag file to allow the service to run
+    # This prevents the service from starting during home-manager activation
+    local condition_file="/run/user/$(id -u "$PRIMARY_USER")/allow-flatpak-managed-install"
+    run_as_primary_user touch "$condition_file" 2>/dev/null || true
+
     run_as_primary_user systemctl --user reset-failed "$service_name" >/dev/null 2>&1 || true
 
     if ! run_as_primary_user systemctl --user start "$service_name" >/dev/null 2>&1; then
@@ -922,6 +927,8 @@ ensure_flatpak_managed_install_service() {
         run_as_primary_user journalctl --user -u "$service_name" -n 25 || true
         gather_flatpak_diagnostics "$service_name" "start-failure"
         recover_flatpak_managed_install_service "$service_name" || true
+        # Clean up condition file before returning
+        run_as_primary_user rm -f "$condition_file" 2>/dev/null || true
         return
     fi
 
@@ -929,6 +936,8 @@ ensure_flatpak_managed_install_service() {
     if wait_for_systemd_user_service "$service_name" 300; then
         if validate_flatpak_application_state; then
             print_success "flatpak-managed-install service completed successfully"
+            # Clean up condition file before returning
+            run_as_primary_user rm -f "$condition_file" 2>/dev/null || true
             return
         fi
         print_warning "flatpak-managed-install service finished but validation detected missing apps"
@@ -938,6 +947,8 @@ ensure_flatpak_managed_install_service() {
         else
             print_warning "Manual Flatpak recovery could not fully resolve the issue. Review the logs above."
         fi
+        # Clean up condition file before returning
+        run_as_primary_user rm -f "$condition_file" 2>/dev/null || true
         return
     fi
 
@@ -959,6 +970,9 @@ ensure_flatpak_managed_install_service() {
     else
         print_warning "Manual Flatpak recovery could not fully resolve the issue. Review the logs above."
     fi
+
+    # Clean up condition file at end of function
+    run_as_primary_user rm -f "$condition_file" 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------
@@ -3839,9 +3853,6 @@ apply_home_manager_config() {
     if run_home_manager_switch "$HM_SWITCH_LOG"; then
         print_success "Home manager configuration applied successfully!"
         HOME_MANAGER_APPLIED=true
-
-        # Unmask services that were masked before activation
-        restore_systemd_after_activation
         echo ""
 
         # Source the home-manager session vars to update PATH immediately
@@ -3909,7 +3920,7 @@ apply_home_manager_config() {
 
 cleanup_systemd_before_activation() {
     # Clean up any failed systemd services that might cause home-manager activation warnings
-    # This prevents "degraded session" errors and systemd channel timeouts during the reloadSystemd phase
+    # Service auto-start is prevented via ConditionPathExists in the service definition
 
     if ! command -v systemctl >/dev/null 2>&1; then
         return 0
@@ -3923,7 +3934,7 @@ cleanup_systemd_before_activation() {
         "flatpak-managed-install.service"
     )
 
-    local service reset_count=0 mask_count=0
+    local service reset_count=0
     for service in "${services_to_reset[@]}"; do
         # Check if service exists
         if ! run_as_primary_user systemctl --user list-unit-files "$service" >/dev/null 2>&1; then
@@ -3950,62 +3961,10 @@ cleanup_systemd_before_activation() {
                 ((reset_count++)) || true
             fi
         fi
-
-        # CRITICAL FIX: Mask the service to prevent systemd channel timeout
-        # This prevents the service from interfering with home-manager's systemd reload
-        print_info "Masking $service to prevent activation timeout..."
-        if run_as_primary_user systemctl --user mask "$service" 2>/dev/null; then
-            ((mask_count++)) || true
-        fi
     done
-
-    if [[ $mask_count -gt 0 ]]; then
-        print_success "Masked $mask_count service(s) to prevent systemd channel timeout"
-    fi
 
     if [[ $reset_count -gt 0 ]]; then
         print_success "Reset $reset_count failed service(s)"
-    fi
-
-    return 0
-}
-
-restore_systemd_after_activation() {
-    # Unmask services that were masked before activation so they can be used normally
-
-    if ! command -v systemctl >/dev/null 2>&1; then
-        return 0
-    fi
-
-    if ! user_systemd_channel_ready; then
-        return 0
-    fi
-
-    local -a services_to_restore=(
-        "flatpak-managed-install.service"
-    )
-
-    local service unmask_count=0
-    for service in "${services_to_restore[@]}"; do
-        # Check if service exists
-        if ! run_as_primary_user systemctl --user list-unit-files "$service" >/dev/null 2>&1; then
-            continue
-        fi
-
-        # Check if service is masked
-        local mask_state
-        mask_state=$(run_as_primary_user systemctl --user is-enabled "$service" 2>/dev/null || echo "unknown")
-
-        if [[ "$mask_state" == "masked" ]]; then
-            print_info "Unmasking $service after activation..."
-            if run_as_primary_user systemctl --user unmask "$service" 2>/dev/null; then
-                ((unmask_count++)) || true
-            fi
-        fi
-    done
-
-    if [[ $unmask_count -gt 0 ]]; then
-        print_success "Unmasked $unmask_count service(s) - services can now be used normally"
     fi
 
     return 0
@@ -5347,9 +5306,6 @@ finalize_configuration_activation() {
         local HM_SWITCH_LOG="/tmp/home-manager-switch-final.log"
         if run_home_manager_switch "$HM_SWITCH_LOG"; then
             HOME_MANAGER_APPLIED=true
-
-            # Unmask services that were masked before activation
-            restore_systemd_after_activation
 
             apply_system_changes
             print_success "Home-manager configuration activated during finalization"
