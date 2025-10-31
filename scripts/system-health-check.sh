@@ -13,7 +13,7 @@
 #   --fix         Attempt to fix common issues automatically
 # =============================================================================
 
-set -euo pipefail
+set -uo pipefail
 
 # Colors for output
 RED='\033[0;31m'
