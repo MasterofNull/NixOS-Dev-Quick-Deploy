@@ -222,6 +222,31 @@ let
               flatpak --user repair >/dev/null 2>&1 || true
               return 0
             fi
+
+            # ostree init failed - manually create essential directory structure
+            log "ostree init failed, creating repository structure manually..."
+            install -d -m 755 "$repo_dir/objects" >/dev/null 2>&1 || true
+            install -d -m 755 "$repo_dir/tmp" >/dev/null 2>&1 || true
+            install -d -m 755 "$repo_dir/refs/heads" >/dev/null 2>&1 || true
+            install -d -m 755 "$repo_dir/refs/remotes" >/dev/null 2>&1 || true
+            install -d -m 755 "$repo_dir/state" >/dev/null 2>&1 || true
+
+            # Create minimal config file for bare-user-only mode
+            if [[ ! -f "$repo_config" ]]; then
+              cat > "$repo_config" <<'OSTREE_CONFIG'
+[core]
+repo_version=1
+mode=bare-user-only
+OSTREE_CONFIG
+            fi
+
+            # Verify the manual structure was created
+            if [[ -f "$repo_config" && -d "$repo_dir/objects" ]]; then
+              log "Flatpak repository structure created manually"
+              # Run flatpak repair to finalize and validate the repo
+              flatpak --user repair >/dev/null 2>&1 || true
+              return 0
+            fi
           fi
 
           # Fall back to flatpak repair
