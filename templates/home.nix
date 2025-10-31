@@ -189,8 +189,17 @@ let
 
           mkdir -p "$repo_parent" 2>/dev/null || true
 
-          if [[ -f "$repo_config" ]]; then
+          # Check if repository is valid and complete
+          if [[ -f "$repo_config" && -d "$repo_dir/objects" ]]; then
             return 0
+          fi
+
+          # Detect corrupted repository (exists but missing essential directories)
+          if [[ -e "$repo_dir" ]]; then
+            if [[ ! -f "$repo_config" || ! -d "$repo_dir/objects" ]]; then
+              log "Detected corrupted Flatpak repository, removing and reinitializing..." >&2
+              rm -rf "$repo_dir" 2>/dev/null || true
+            fi
           fi
 
           if [[ ! -e "$repo_dir" ]]; then
@@ -225,19 +234,28 @@ let
 
             # ostree init failed - manually create essential directory structure
             log "ostree init failed, creating repository structure manually..."
-            install -d -m 755 "$repo_dir/objects" >/dev/null 2>&1 || true
-            install -d -m 755 "$repo_dir/tmp" >/dev/null 2>&1 || true
-            install -d -m 755 "$repo_dir/refs/heads" >/dev/null 2>&1 || true
-            install -d -m 755 "$repo_dir/refs/remotes" >/dev/null 2>&1 || true
-            install -d -m 755 "$repo_dir/state" >/dev/null 2>&1 || true
+
+            # Remove any partial initialization and start fresh
+            rm -rf "$repo_dir" 2>/dev/null || true
+            mkdir -p "$repo_dir" 2>/dev/null || true
+
+            # Create essential directories
+            if ! (mkdir -p "$repo_dir/objects" "$repo_dir/tmp" \
+                  "$repo_dir/refs/heads" "$repo_dir/refs/remotes" \
+                  "$repo_dir/state" 2>/dev/null); then
+              log "Failed to create repository directory structure" >&2
+              return 1
+            fi
 
             # Create minimal config file for bare-user-only mode
-            if [[ ! -f "$repo_config" ]]; then
-              cat > "$repo_config" <<'OSTREE_CONFIG'
+            if ! cat > "$repo_config" 2>/dev/null <<'OSTREE_CONFIG'
 [core]
 repo_version=1
 mode=bare-user-only
 OSTREE_CONFIG
+            then
+              log "Failed to create repository config file" >&2
+              return 1
             fi
 
             # Verify the manual structure was created
@@ -246,6 +264,9 @@ OSTREE_CONFIG
               # Run flatpak repair to finalize and validate the repo
               flatpak --user repair >/dev/null 2>&1 || true
               return 0
+            else
+              log "Repository structure verification failed" >&2
+              return 1
             fi
           fi
 
