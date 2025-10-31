@@ -49,8 +49,17 @@ chmod +x nixos-quick-deploy.sh
 | **LM Studio** | Flatpak app | Desktop LLM manager |
 
 ### Pre-Installed Development Tools
+
 **Languages & Runtimes:**
-- Python 3.11, Node.js 22, Go, Rust, Ruby
+- Python 3.11 with 60+ AI/ML packages (PyTorch, TensorFlow, LangChain, etc.)
+- Node.js 22, Go, Rust, Ruby
+
+**AI/ML Python Packages (Built-in):**
+- **Deep Learning:** PyTorch, TensorFlow, Transformers, Diffusers
+- **LLM Frameworks:** LangChain, LlamaIndex, OpenAI, Anthropic clients
+- **Vector DBs:** ChromaDB, Qdrant client, FAISS, Sentence Transformers
+- **Data Science:** Pandas, Polars, Dask, Jupyter Lab, Matplotlib
+- **Code Quality:** Black, Ruff, Mypy, Pylint
 
 **Editors & IDEs:**
 - VSCodium (VS Code without telemetry)
@@ -79,13 +88,19 @@ chmod +x nixos-quick-deploy.sh
 - Buildah, Skopeo
 - Podman Desktop (Flatpak GUI)
 
+**AI Services (Systemd - Disabled by Default):**
+- Qdrant (vector database)
+- Hugging Face TGI (LLM inference server)
+- Jupyter Lab (web-based notebooks)
+
 ### Flatpak Applications
 
-**Pre-Installed (12 apps):**
+**Pre-Installed (14 apps):**
 - Firefox, Obsidian, Cursor
 - LM Studio, Podman Desktop
 - Flatseal, Resources, FileRoller
-- VLC, MPV, DB Browser for SQLite
+- VLC, MPV
+- DB Browser for SQLite, DBeaver Community
 - Gitea (forge UI with AI workflows)
 
 **Optional (50+ apps available):**
@@ -244,21 +259,42 @@ source ~/.zshrc  # Or: exec zsh
 ```
 
 ### AI Stack Management
+
+**Systemd Services (Enable as needed):**
 ```bash
-# Start local AI services (Ollama, Open WebUI, Qdrant, etc.)
-podman-ai-stack up
+# Enable Qdrant vector database
+systemctl --user enable --now qdrant
+# Access at http://localhost:6333
+
+# Enable Hugging Face TGI (LLM inference)
+systemctl --user enable --now huggingface-tgi
+# API at http://localhost:8080
+
+# Enable Jupyter Lab
+systemctl --user enable --now jupyter-lab
+# Access at http://localhost:8888
 
 # Check service status
-podman-ai-stack status
+systemctl --user status qdrant
+systemctl --user status huggingface-tgi
+systemctl --user status jupyter-lab
 
-# View logs
-podman-ai-stack logs
+# View service logs
+journalctl --user -u qdrant -f
+journalctl --user -u huggingface-tgi -f
+journalctl --user -u jupyter-lab -f
+```
 
+**CLI Tools:**
+```bash
 # Query LLMs from command line
 gpt-cli "explain this code"
 
 # Run aider (AI coding assistant)
 aider
+
+# Start Jupyter Lab manually
+jupyter-lab
 
 # Install Obsidian AI plugins
 obsidian-ai-bootstrap
