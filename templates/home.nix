@@ -2448,6 +2448,9 @@ PLUGINCFG
             # PartOf removed - service should only be started explicitly by the deployment
             # script, not automatically during systemd reloads or graphical-session.target
             # activation, to prevent blocking home-manager activation if it fails.
+            # X-SwitchMethod prevents home-manager from attempting to start/stop/restart
+            # this service during activation, avoiding "timed out waiting on channel" errors
+            X-SwitchMethod = "keep-old";
           };
           Service = {
             Type = "oneshot";
