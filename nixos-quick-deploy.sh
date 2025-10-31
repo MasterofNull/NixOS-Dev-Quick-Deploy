@@ -3839,6 +3839,9 @@ apply_home_manager_config() {
     if run_home_manager_switch "$HM_SWITCH_LOG"; then
         print_success "Home manager configuration applied successfully!"
         HOME_MANAGER_APPLIED=true
+
+        # Unmask services that were masked before activation
+        restore_systemd_after_activation
         echo ""
 
         # Source the home-manager session vars to update PATH immediately
@@ -3906,7 +3909,7 @@ apply_home_manager_config() {
 
 cleanup_systemd_before_activation() {
     # Clean up any failed systemd services that might cause home-manager activation warnings
-    # This prevents "degraded session" errors during the reloadSystemd phase
+    # This prevents "degraded session" errors and systemd channel timeouts during the reloadSystemd phase
 
     if ! command -v systemctl >/dev/null 2>&1; then
         return 0
@@ -3920,36 +3923,89 @@ cleanup_systemd_before_activation() {
         "flatpak-managed-install.service"
     )
 
-    local service reset_count=0
+    local service reset_count=0 mask_count=0
     for service in "${services_to_reset[@]}"; do
         # Check if service exists
         if ! run_as_primary_user systemctl --user list-unit-files "$service" >/dev/null 2>&1; then
             continue
         fi
 
-        # Check if service is in failed state
-        local state
-        state=$(run_as_primary_user systemctl --user is-failed "$service" 2>/dev/null || echo "unknown")
-
-        if [[ "$state" == "failed" ]]; then
-            print_info "Resetting failed state for $service before activation..."
-            if run_as_primary_user systemctl --user reset-failed "$service" 2>/dev/null; then
-                ((reset_count++)) || true
-            fi
-        fi
-
-        # Stop the service if it's running (we'll restart it after activation)
+        # Stop the service if it's running
         local active_state
         active_state=$(run_as_primary_user systemctl --user is-active "$service" 2>/dev/null || echo "unknown")
 
         if [[ "$active_state" == "active" || "$active_state" == "activating" ]]; then
             print_info "Stopping $service before activation..."
             run_as_primary_user systemctl --user stop "$service" 2>/dev/null || true
+            sleep 1
+        fi
+
+        # Check if service is in failed state and reset it
+        local state
+        state=$(run_as_primary_user systemctl --user is-failed "$service" 2>/dev/null || echo "unknown")
+
+        if [[ "$state" == "failed" ]]; then
+            print_info "Resetting failed state for $service..."
+            if run_as_primary_user systemctl --user reset-failed "$service" 2>/dev/null; then
+                ((reset_count++)) || true
+            fi
+        fi
+
+        # CRITICAL FIX: Mask the service to prevent systemd channel timeout
+        # This prevents the service from interfering with home-manager's systemd reload
+        print_info "Masking $service to prevent activation timeout..."
+        if run_as_primary_user systemctl --user mask "$service" 2>/dev/null; then
+            ((mask_count++)) || true
         fi
     done
 
+    if [[ $mask_count -gt 0 ]]; then
+        print_success "Masked $mask_count service(s) to prevent systemd channel timeout"
+    fi
+
     if [[ $reset_count -gt 0 ]]; then
-        print_success "Reset $reset_count failed service(s) before activation"
+        print_success "Reset $reset_count failed service(s)"
+    fi
+
+    return 0
+}
+
+restore_systemd_after_activation() {
+    # Unmask services that were masked before activation so they can be used normally
+
+    if ! command -v systemctl >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if ! user_systemd_channel_ready; then
+        return 0
+    fi
+
+    local -a services_to_restore=(
+        "flatpak-managed-install.service"
+    )
+
+    local service unmask_count=0
+    for service in "${services_to_restore[@]}"; do
+        # Check if service exists
+        if ! run_as_primary_user systemctl --user list-unit-files "$service" >/dev/null 2>&1; then
+            continue
+        fi
+
+        # Check if service is masked
+        local mask_state
+        mask_state=$(run_as_primary_user systemctl --user is-enabled "$service" 2>/dev/null || echo "unknown")
+
+        if [[ "$mask_state" == "masked" ]]; then
+            print_info "Unmasking $service after activation..."
+            if run_as_primary_user systemctl --user unmask "$service" 2>/dev/null; then
+                ((unmask_count++)) || true
+            fi
+        fi
+    done
+
+    if [[ $unmask_count -gt 0 ]]; then
+        print_success "Unmasked $unmask_count service(s) - services can now be used normally"
     fi
 
     return 0
@@ -5291,6 +5347,10 @@ finalize_configuration_activation() {
         local HM_SWITCH_LOG="/tmp/home-manager-switch-final.log"
         if run_home_manager_switch "$HM_SWITCH_LOG"; then
             HOME_MANAGER_APPLIED=true
+
+            # Unmask services that were masked before activation
+            restore_systemd_after_activation
+
             apply_system_changes
             print_success "Home-manager configuration activated during finalization"
             ensure_home_manager_cli_available || true
