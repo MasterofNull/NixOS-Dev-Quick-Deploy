@@ -5122,7 +5122,8 @@ install_vscodium_extensions() {
     install_ext "ms-toolsai.jupyter-keymap" "Jupyter Keymap"
     install_ext "ms-toolsai.jupyter-renderers" "Jupyter Renderers"
     install_ext "HuggingFace.huggingface-vscode" "Hugging Face"
-    install_ext "Continue.continue" "Continue AI"
+    # Note: Continue AI is already installed declaratively via home-manager (templates/home.nix:1420)
+    # Removed duplicate installation to prevent activation errors
     install_ext "dbaeumer.vscode-eslint" "ESLint"
     install_ext "mhutchie.git-graph" "Git Graph"
     install_ext "golang.go" "Go"
