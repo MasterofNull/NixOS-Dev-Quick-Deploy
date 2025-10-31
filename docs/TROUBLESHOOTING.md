@@ -240,6 +240,29 @@ journalctl --user -u flatpak-managed-install.service
 flatpak remotes --user
 ```
 
+### Degraded Systemd Session Warning
+
+If you see "The user systemd session is degraded" during home-manager activation, this is typically caused by a previous failed service run. The script automatically handles this by:
+
+1. **Automatic cleanup**: Before each home-manager activation, the script resets any failed service states
+2. **Improved resilience**: The service now uses `RemainAfterExit=false` to prevent lingering failed states
+3. **No auto-start**: The service only runs when explicitly triggered by the deployment script
+
+If the warning persists, manually reset the service:
+
+```bash
+# Reset failed state
+systemctl --user reset-failed flatpak-managed-install.service
+
+# Verify session health
+systemctl --user status
+
+# If needed, manually start the service
+systemctl --user start flatpak-managed-install.service
+```
+
+This issue has been resolved in recent updates. If you continue to see degraded session warnings, ensure you're running the latest version of the deployment script.
+
 ### Manual Installation
 
 If the service fails, install apps manually:
