@@ -172,9 +172,16 @@ This will verify:
 - ✅ All core tools (podman, python3, node, etc.)
 - ✅ Nix ecosystem (home-manager, flakes)
 - ✅ AI tools (claude-wrapper, ollama, aider)
+- ✅ **Python AI/ML packages (60+ packages)**:
+  - Deep Learning: PyTorch, TensorFlow
+  - LLM Frameworks: LangChain, LlamaIndex, OpenAI, Anthropic
+  - Vector DBs: ChromaDB, Qdrant client, FAISS, Sentence Transformers
+  - Data Science: Pandas, Polars, Dask, Jupyter Lab
+  - Code Quality: Black, Ruff, Mypy
 - ✅ Editors (VSCodium, Cursor, Neovim)
 - ✅ Shell configuration (aliases, functions)
-- ✅ Flatpak applications
+- ✅ Flatpak applications (including DBeaver)
+- ✅ **AI Systemd Services** (Qdrant, Hugging Face TGI, Jupyter Lab, Gitea)
 - ✅ Environment variables & PATH
 
 **Or verify manually:**
@@ -232,11 +239,26 @@ home-manager switch --flake .
 ## 🛠️ Useful Commands
 
 ### System Health & Diagnostics
+
+**Comprehensive health check for all packages and services:**
+
 ```bash
 ./system-health-check.sh           # Run full system health check
-./system-health-check.sh --detailed  # Show detailed output
+./system-health-check.sh --detailed  # Show detailed output with versions
 ./system-health-check.sh --fix     # Attempt automatic fixes
 ```
+
+**Checks include:**
+- Core system tools (podman, git, curl, etc.)
+- Programming languages (Python, Node.js, Go, Rust)
+- Nix ecosystem (home-manager, flakes)
+- AI tools (Claude Code, Ollama, Aider)
+- **60+ Python AI/ML packages** (PyTorch, TensorFlow, LangChain, etc.)
+- Editors and IDEs (VSCodium, Neovim, Cursor)
+- Shell configuration (ZSH, aliases, functions)
+- Flatpak applications (Firefox, Obsidian, DBeaver, etc.)
+- **AI systemd services** (Qdrant, Hugging Face TGI, Jupyter Lab)
+- Environment variables and PATH configuration
 
 ### System Management
 ```bash
