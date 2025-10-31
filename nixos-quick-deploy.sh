@@ -921,6 +921,11 @@ ensure_flatpak_managed_install_service() {
         return
     fi
 
+    # Unmask the service if it was masked during cleanup_systemd_before_activation
+    # This allows the service to be started now that home-manager activation is complete
+    print_info "Unmasking $service_name after successful home-manager activation..."
+    run_as_primary_user systemctl --user unmask "$service_name" 2>/dev/null || true
+
     # Create condition flag file to allow the service to run
     # This prevents the service from starting during home-manager activation
     local condition_file="/run/user/$(id -u "$PRIMARY_USER")/allow-flatpak-managed-install"
@@ -3936,6 +3941,15 @@ cleanup_systemd_before_activation() {
         return 0
     fi
 
+    # CRITICAL: Remove the condition file to prevent the service from starting during activation
+    # This ensures that even if home-manager's sd-switch tries to start the service,
+    # the ConditionPathExists check will fail and it won't actually execute
+    local condition_file="/run/user/$(id -u "$PRIMARY_USER")/allow-flatpak-managed-install"
+    if [[ -f "$condition_file" ]]; then
+        print_info "Removing flatpak condition file to prevent activation during home-manager switch..."
+        run_as_primary_user rm -f "$condition_file" 2>/dev/null || true
+    fi
+
     local -a services_to_reset=(
         "flatpak-managed-install.service"
     )
@@ -3967,12 +3981,18 @@ cleanup_systemd_before_activation() {
                 ((reset_count++)) || true
             fi
         fi
+
+        # Mask the service temporarily to prevent ANY activation attempts during home-manager switch
+        # This is an extra safeguard in addition to removing the condition file
+        print_info "Temporarily masking $service to prevent activation during switch..."
+        run_as_primary_user systemctl --user mask "$service" 2>/dev/null || true
     done
 
     if [[ $reset_count -gt 0 ]]; then
         print_success "Reset $reset_count failed service(s)"
     fi
 
+    print_success "Services cleaned up and masked - safe to run home-manager switch"
     return 0
 }
 
