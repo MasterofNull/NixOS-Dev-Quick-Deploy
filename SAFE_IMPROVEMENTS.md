@@ -15,10 +15,10 @@
 **Files to update:**
 ```bash
 # Fix in nixos-quick-deploy.sh
-sed -i 's/AI-Opitmizer/AI-Optimizer/g' nixos-quick-deploy.sh
+sed -i 's/AI-Opitmizer/NixOS-Dev-Quick-Deploy/g' nixos-quick-deploy.sh
 
 # Verify changes
-grep -n "AI-Optimizer" nixos-quick-deploy.sh
+grep -n "NixOS-Dev-Quick-Deploy" nixos-quick-deploy.sh
 ```
 
 **Changes:**
@@ -67,7 +67,7 @@ sed -i '1357s|.*|    # NixOS 25.11+ REQUIRED: Use profiles.default for extension
 cat > AIDB_SETUP.md <<'EOF'
 # AIDB Development Setup Guide
 
-After successfully running `nixos-quick-deploy.sh`, follow these steps to set up the AIDB (AI-Optimizer) project.
+After successfully running `nixos-quick-deploy.sh`, follow these steps to set up the AIDB (NixOS-Dev-Quick-Deploy) project.
 
 ## Prerequisites Check
 
@@ -94,8 +94,8 @@ cd ~/NixOS-Dev-Quick-Deploy
 
 ```bash
 # Clone to standard location
-git clone <your-aidb-repo-url> ~/Documents/AI-Optimizer
-cd ~/Documents/AI-Optimizer
+git clone <your-aidb-repo-url> ~/NixOS-Dev-Quick-Deploy
+cd ~/NixOS-Dev-Quick-Deploy
 ```
 
 **Note:** Update `<your-aidb-repo-url>` with your actual repository URL.
@@ -144,7 +144,7 @@ aidb-info
 
 ```bash
 # If AIDB uses Podman containers
-cd ~/Documents/AI-Optimizer/.aidb/deployment/
+cd ~/NixOS-Dev-Quick-Deploy/.aidb/deployment/
 ./scripts/start.sh
 
 # Or if using podman-compose
@@ -220,7 +220,7 @@ podman info
 systemctl --user status postgresql  # if using systemd user service
 
 # Or check SQLite database file exists
-ls -la ~/Documents/AI-Optimizer/.aidb/data/
+ls -la ~/NixOS-Dev-Quick-Deploy/.aidb/data/
 ```
 
 ## Next Steps
@@ -233,7 +233,7 @@ ls -la ~/Documents/AI-Optimizer/.aidb/data/
 
 ## Getting Help
 
-- AIDB Issues: https://github.com/MasterofNull/AI-Optimizer/issues
+- AIDB Issues: https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy/issues
 - NixOS Deploy Issues: https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy/issues
 - NixOS Wiki: https://nixos.wiki/
 - Home Manager Manual: https://nix-community.github.io/home-manager/
@@ -539,7 +539,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 1. **Documentation fixes** (no rebuild needed)
    ```bash
    # Fix typos
-   sed -i 's/AI-Opitmizer/AI-Optimizer/g' nixos-quick-deploy.sh
+   sed -i 's/AI-Opitmizer/NixOS-Dev-Quick-Deploy/g' nixos-quick-deploy.sh
 
    # Add .gitignore
    cat > .gitignore <<'EOF'
