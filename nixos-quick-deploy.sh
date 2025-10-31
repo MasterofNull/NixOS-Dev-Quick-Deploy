@@ -961,6 +961,29 @@ ensure_flatpak_managed_install_service() {
     fi
 }
 
+reset_failed_flatpak_service() {
+    # Reset any failed flatpak-managed-install service state before home-manager activation
+    # This prevents home-manager from reporting a degraded systemd session during reloadSystemd
+    if ! command -v systemctl >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local service_name="flatpak-managed-install.service"
+
+    if ! user_systemd_channel_ready; then
+        return 0
+    fi
+
+    # Check if the service exists and is in failed state
+    if run_as_primary_user systemctl --user list-units --all --state=failed "$service_name" 2>/dev/null | grep -q "$service_name"; then
+        print_info "Resetting failed $service_name to prevent degraded state during activation..."
+        run_as_primary_user systemctl --user reset-failed "$service_name" 2>/dev/null || true
+        print_success "Service state cleared"
+    fi
+
+    return 0
+}
+
 # ---------------------------------------------------------------------------
 # Backup helpers for clearing paths managed by home-manager
 # ---------------------------------------------------------------------------
@@ -3832,6 +3855,9 @@ apply_home_manager_config() {
         return 0
     fi
 
+    # Reset any failed flatpak service state to prevent degraded systemd warnings
+    reset_failed_flatpak_service
+
     local HM_SWITCH_LOG="/tmp/home-manager-switch.log"
     if run_home_manager_switch "$HM_SWITCH_LOG"; then
         print_success "Home manager configuration applied successfully!"
@@ -5232,6 +5258,8 @@ finalize_configuration_activation() {
     elif confirm "Run home-manager switch now to activate your user environment?" "y"; then
         clean_home_manager_targets "final-activation"
         prepare_managed_config_paths
+        # Reset any failed flatpak service state to prevent degraded systemd warnings
+        reset_failed_flatpak_service
         local HM_SWITCH_LOG="/tmp/home-manager-switch-final.log"
         if run_home_manager_switch "$HM_SWITCH_LOG"; then
             HOME_MANAGER_APPLIED=true
