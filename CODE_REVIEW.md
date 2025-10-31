@@ -97,7 +97,7 @@ programs.vscode = {
 
 **Location:** Multiple files
 
-**Issue:** Consistent typo "AI-Opitmizer" instead of "AI-Optimizer"
+**Issue:** Consistent typo "AI-Opitmizer" instead of "NixOS-Dev-Quick-Deploy"
 
 **Files affected:**
 - `nixos-quick-deploy.sh:2403` (path reference)
@@ -107,7 +107,7 @@ programs.vscode = {
 
 **Recommendation:**
 - If "AI-Opitmizer" is intentional branding, document it
-- If it's a typo, fix to "AI-Optimizer" for clarity
+- If it's a typo, fix to "NixOS-Dev-Quick-Deploy" for clarity
 
 #### 2. Missing Input Validation *(Low Priority)*
 
@@ -149,7 +149,7 @@ validate_username() {
 **Recommendation:**
 Define at top of script:
 ```bash
-AI_OPTIMIZER_DIR="${AI_OPTIMIZER_DIR:-$HOME/Documents/AI-Optimizer}"
+PROJECT_DIR="${PROJECT_DIR:-$HOME/Documents/NixOS-Dev-Quick-Deploy}"
 NPM_GLOBAL_DIR="${NPM_GLOBAL_DIR:-$HOME/.npm-global}"
 ```
 
@@ -456,8 +456,8 @@ After running `nixos-quick-deploy.sh`, follow these steps to set up AIDB:
 
 ## 1. Clone AIDB Repository
 \```bash
-git clone https://github.com/MasterofNull/AI-Optimizer.git ~/Documents/AI-Optimizer
-cd ~/Documents/AI-Optimizer
+git clone https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy.git ~/NixOS-Dev-Quick-Deploy
+cd ~/NixOS-Dev-Quick-Deploy
 \```
 
 ## 2. Enter Development Environment
