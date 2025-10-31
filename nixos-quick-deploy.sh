@@ -748,6 +748,32 @@ reset_flatpak_repo_if_corrupted() {
             run_as_primary_user flatpak --user repair >/dev/null 2>&1 || true
             return 0
         fi
+
+        # ostree init failed - manually create essential directory structure
+        print_info "ostree init failed, creating repository structure manually..."
+        run_as_primary_user install -d -m 755 "$repo_dir/objects" >/dev/null 2>&1 || true
+        run_as_primary_user install -d -m 755 "$repo_dir/tmp" >/dev/null 2>&1 || true
+        run_as_primary_user install -d -m 755 "$repo_dir/refs/heads" >/dev/null 2>&1 || true
+        run_as_primary_user install -d -m 755 "$repo_dir/refs/remotes" >/dev/null 2>&1 || true
+        run_as_primary_user install -d -m 755 "$repo_dir/state" >/dev/null 2>&1 || true
+
+        # Create minimal config file for bare-user-only mode
+        if run_as_primary_user test ! -f "$repo_config"; then
+            run_as_primary_user bash -c "cat > \"$repo_config\" <<'OSTREE_CONFIG'
+[core]
+repo_version=1
+mode=bare-user-only
+OSTREE_CONFIG
+" || true
+        fi
+
+        # Verify the manual structure was created
+        if run_as_primary_user test -f "$repo_config" && run_as_primary_user test -d "$repo_dir/objects"; then
+            print_success "Flatpak repository structure created manually"
+            # Run flatpak repair to finalize and validate the repo
+            run_as_primary_user flatpak --user repair >/dev/null 2>&1 || true
+            return 0
+        fi
     fi
 
     # Fall back to flatpak repair
