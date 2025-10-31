@@ -2458,9 +2458,10 @@ PLUGINCFG
             StandardOutput = "journal";
             StandardError = "journal";
           };
-          Install = {
-            WantedBy = [ "default.target" ];
-          };
+          # Install section removed to prevent auto-start on home-manager activation.
+          # The nixos-quick-deploy.sh script handles starting this service explicitly
+          # via ensure_flatpak_managed_install_service() when appropriate.
+          # This prevents the service from blocking home-manager activation if it fails.
         };
       })
       {
