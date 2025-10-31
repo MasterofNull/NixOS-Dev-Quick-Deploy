@@ -1595,6 +1595,18 @@ in
     };
 
   # ========================================================================
+  # Session Path
+  # ========================================================================
+  # Ensure critical directories are in PATH for all shells and desktop sessions
+  # This fixes issues where home-manager, claude-wrapper, and custom scripts
+  # are not accessible after login or in new terminal sessions
+
+  home.sessionPath = [
+    "$HOME/.local/bin"           # Custom user scripts and wrappers
+    "$HOME/.npm-global/bin"      # NPM global packages (claude-wrapper, etc.)
+  ];
+
+  # ========================================================================
   # Home Files
   # ========================================================================
 
