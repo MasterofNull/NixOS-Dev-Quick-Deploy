@@ -3832,6 +3832,9 @@ apply_home_manager_config() {
         return 0
     fi
 
+    # Clean up any failed systemd services before activation to prevent degraded session warnings
+    cleanup_systemd_before_activation
+
     local HM_SWITCH_LOG="/tmp/home-manager-switch.log"
     if run_home_manager_switch "$HM_SWITCH_LOG"; then
         print_success "Home manager configuration applied successfully!"
@@ -3899,6 +3902,57 @@ apply_home_manager_config() {
 
     # Apply system-wide changes
     apply_system_changes
+}
+
+cleanup_systemd_before_activation() {
+    # Clean up any failed systemd services that might cause home-manager activation warnings
+    # This prevents "degraded session" errors during the reloadSystemd phase
+
+    if ! command -v systemctl >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if ! user_systemd_channel_ready; then
+        return 0
+    fi
+
+    local -a services_to_reset=(
+        "flatpak-managed-install.service"
+    )
+
+    local service reset_count=0
+    for service in "${services_to_reset[@]}"; do
+        # Check if service exists
+        if ! run_as_primary_user systemctl --user list-unit-files "$service" >/dev/null 2>&1; then
+            continue
+        fi
+
+        # Check if service is in failed state
+        local state
+        state=$(run_as_primary_user systemctl --user is-failed "$service" 2>/dev/null || echo "unknown")
+
+        if [[ "$state" == "failed" ]]; then
+            print_info "Resetting failed state for $service before activation..."
+            if run_as_primary_user systemctl --user reset-failed "$service" 2>/dev/null; then
+                ((reset_count++)) || true
+            fi
+        fi
+
+        # Stop the service if it's running (we'll restart it after activation)
+        local active_state
+        active_state=$(run_as_primary_user systemctl --user is-active "$service" 2>/dev/null || echo "unknown")
+
+        if [[ "$active_state" == "active" || "$active_state" == "activating" ]]; then
+            print_info "Stopping $service before activation..."
+            run_as_primary_user systemctl --user stop "$service" 2>/dev/null || true
+        fi
+    done
+
+    if [[ $reset_count -gt 0 ]]; then
+        print_success "Reset $reset_count failed service(s) before activation"
+    fi
+
+    return 0
 }
 
 backup_existing_configs() {
@@ -5232,6 +5286,8 @@ finalize_configuration_activation() {
     elif confirm "Run home-manager switch now to activate your user environment?" "y"; then
         clean_home_manager_targets "final-activation"
         prepare_managed_config_paths
+        # Clean up any failed systemd services before activation to prevent degraded session warnings
+        cleanup_systemd_before_activation
         local HM_SWITCH_LOG="/tmp/home-manager-switch-final.log"
         if run_home_manager_switch "$HM_SWITCH_LOG"; then
             HOME_MANAGER_APPLIED=true
