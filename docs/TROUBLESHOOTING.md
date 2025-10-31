@@ -134,30 +134,39 @@ This minimizes duplicates by ensuring clean state before each installation.
 
 ---
 
-## Home Manager Not Replacing Configs
+## Home Manager and Flatpak Not Replacing Configs
 
 ### Issue
 
-Running the quick deploy script multiple times doesn't replace existing configurations.
+Running the quick deploy script multiple times doesn't replace existing configurations or flatpak environment.
 
 ### Solution (Already Fixed)
 
-The latest version of the script includes `force_clean_environment_setup()` which:
+The latest version of the script includes `force_clean_environment_setup()` which performs **complete environment replacement**:
 
+#### Home Manager Replacement
 1. **Backs up** all existing configurations to `~/.config-backups/`
-2. **Removes** old home-manager generations
-3. **Uninstalls** existing flatpak applications
-4. **Cleans** nix profile garbage
-5. **Replaces** all configs with fresh versions
+2. **Removes** ALL old home-manager generations
+3. **Cleans** nix profile garbage
+4. **Replaces** all configs with fresh versions
 
-Every run of the script now performs a clean installation while preserving backups.
+#### Complete Flatpak Environment Replacement
+1. **Backs up** list of installed apps to `~/.cache/nixos-quick-deploy/flatpak-backup-*.txt`
+2. **Backs up** entire flatpak directory to `~/.cache/nixos-quick-deploy/flatpak-environment-backup-*/`
+3. **Uninstalls** ALL flatpak apps and runtimes (`flatpak uninstall --user --all`)
+4. **Removes** entire `~/.local/share/flatpak/` directory:
+   - Apps, runtimes, repo, overrides, remotes.d - everything
+5. **Removes** `~/.config/flatpak/` configuration directory
+6. **Rebuilds** complete flatpak environment from scratch via home-manager
+
+Every run of the script now performs a **complete clean installation** of both home-manager and flatpak while preserving backups.
 
 ### Restore Previous Configs
 
 If you need to restore previous configurations:
 
 ```bash
-# Find your backup
+# Find your home-manager config backups
 ls -lt ~/.config-backups/
 
 # Restore from specific backup
@@ -165,6 +174,16 @@ cp -a ~/.config-backups/pre-switch-20251031_123456/. ~/
 
 # Or restore just specific files
 cp ~/.config-backups/pre-switch-20251031_123456/.zshrc ~/
+
+# Find flatpak environment backups
+ls -lt ~/.cache/nixos-quick-deploy/
+
+# Restore complete flatpak environment (if needed)
+rm -rf ~/.local/share/flatpak
+cp -a ~/.cache/nixos-quick-deploy/flatpak-environment-backup-20251031_123456 ~/.local/share/flatpak
+
+# Or just check what apps were installed
+cat ~/.cache/nixos-quick-deploy/flatpak-backup-20251031_123456.txt
 ```
 
 ---

@@ -3924,29 +3924,51 @@ force_clean_environment_setup() {
         fi
     fi
 
-    # Clear flatpak state to force reinstallation
+    # COMPLETE flatpak environment replacement
     if command -v flatpak &>/dev/null; then
-        print_info "Removing flatpak user installations to ensure fresh setup..."
+        print_info "Removing complete flatpak user environment for clean setup..."
 
-        # Get list of installed user apps
+        # Get list of installed user apps for backup record
         local installed_apps=$(flatpak list --user --app --columns=application 2>/dev/null || echo "")
         if [ -n "$installed_apps" ]; then
-            print_info "Backing up list of installed flatpak apps..."
-            echo "$installed_apps" > "$HOME/.cache/nixos-quick-deploy/flatpak-backup-$(date +%Y%m%d_%H%M%S).txt"
-
-            # Uninstall all user flatpak apps
-            while IFS= read -r app; do
-                [ -z "$app" ] && continue
-                print_info "Removing flatpak app: $app"
-                run_as_primary_user flatpak uninstall --user --noninteractive "$app" 2>/dev/null || true
-            done <<< "$installed_apps"
-            print_success "Flatpak apps removed for clean reinstall"
-        else
-            print_info "No flatpak apps to remove"
+            local flatpak_backup_file="$HOME/.cache/nixos-quick-deploy/flatpak-backup-$(date +%Y%m%d_%H%M%S).txt"
+            mkdir -p "$(dirname "$flatpak_backup_file")"
+            echo "$installed_apps" > "$flatpak_backup_file"
+            print_info "Backed up list of installed flatpak apps to $flatpak_backup_file"
         fi
 
-        # Clean up unused runtimes
-        run_as_primary_user flatpak uninstall --user --unused --noninteractive 2>/dev/null || true
+        # Uninstall ALL user flatpak apps (not just apps, but runtimes too)
+        print_info "Uninstalling all flatpak apps and runtimes..."
+        run_as_primary_user flatpak uninstall --user --all --noninteractive 2>/dev/null || true
+
+        # Remove the entire flatpak installation directory for complete clean slate
+        # This includes: apps, runtimes, repo, overrides, remotes.d, etc.
+        local flatpak_dir="$HOME/.local/share/flatpak"
+        if [ -d "$flatpak_dir" ]; then
+            local flatpak_backup_dir="$HOME/.cache/nixos-quick-deploy/flatpak-environment-backup-$(date +%Y%m%d_%H%M%S)"
+            print_info "Backing up entire flatpak directory structure..."
+            mkdir -p "$(dirname "$flatpak_backup_dir")"
+            if cp -a "$flatpak_dir" "$flatpak_backup_dir" 2>/dev/null; then
+                print_success "Flatpak environment backed up to: $flatpak_backup_dir"
+                print_info "Removing flatpak directory for clean reinstall..."
+                rm -rf "$flatpak_dir"
+                print_success "Flatpak environment directory removed"
+            else
+                print_warning "Could not backup flatpak directory, skipping removal"
+            fi
+        else
+            print_info "No existing flatpak directory to remove"
+        fi
+
+        # Also clear flatpak configuration
+        local flatpak_config="$HOME/.config/flatpak"
+        if [ -d "$flatpak_config" ]; then
+            print_info "Removing flatpak configuration directory..."
+            rm -rf "$flatpak_config"
+        fi
+
+        print_success "Complete flatpak environment removed for clean reinstall"
+        print_info "Flatpak will be completely rebuilt by home-manager"
     fi
 
     # Remove VSCodium symlinks if they exist (will be recreated by home-manager)
