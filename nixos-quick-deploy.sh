@@ -419,7 +419,7 @@ flatpak_install_app_list() {
     local -a apps=("$@")
     local failure=false
 
-    run_as_primary_user flatpak --user repair --noninteractive >/dev/null 2>&1 || true
+    run_as_primary_user flatpak --user repair >/dev/null 2>&1 || true
 
     for app_id in "${apps[@]}"; do
         if run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
@@ -730,7 +730,28 @@ reset_flatpak_repo_if_corrupted() {
         return 1
     fi
 
-    repair_output=$(run_as_primary_user flatpak --user repair --noninteractive 2>&1)
+    # Try ostree initialization first (more reliable for fresh repos)
+    if run_as_primary_user command -v ostree >/dev/null 2>&1; then
+        local ostree_output=""
+        ostree_output=$(run_as_primary_user ostree --repo="$repo_dir" init --mode=bare-user-only 2>&1)
+        local ostree_status=$?
+
+        if [[ -n "$ostree_output" ]]; then
+            while IFS= read -r line; do
+                print_info "    $line"
+            done <<<"$ostree_output"
+        fi
+
+        if (( ostree_status == 0 )) && run_as_primary_user test -f "$repo_config"; then
+            print_success "Flatpak repository initialized via ostree"
+            # Run flatpak repair to finalize the repo
+            run_as_primary_user flatpak --user repair >/dev/null 2>&1 || true
+            return 0
+        fi
+    fi
+
+    # Fall back to flatpak repair
+    repair_output=$(run_as_primary_user flatpak --user repair 2>&1)
     local repair_status=$?
 
     if [[ -n "$repair_output" ]]; then
@@ -744,22 +765,7 @@ reset_flatpak_repo_if_corrupted() {
     fi
 
     if run_as_primary_user test -f "$repo_config"; then
-        print_success "Flatpak repository reinitialized"
-        return 0
-    fi
-
-    if run_as_primary_user command -v ostree >/dev/null 2>&1; then
-        local ostree_output=""
-        ostree_output=$(run_as_primary_user ostree --repo="$repo_dir" init --mode=bare-user-only 2>&1 || true)
-        if [[ -n "$ostree_output" ]]; then
-            while IFS= read -r line; do
-                print_info "    $line"
-            done <<<"$ostree_output"
-        fi
-    fi
-
-    if run_as_primary_user test -f "$repo_config"; then
-        print_success "Flatpak repository initialized via ostree"
+        print_success "Flatpak repository initialized"
         return 0
     fi
 
@@ -865,7 +871,7 @@ recover_flatpak_managed_install_service() {
         return 1
     fi
 
-    run_as_primary_user flatpak --user repair --noninteractive >/dev/null 2>&1 || true
+    run_as_primary_user flatpak --user repair >/dev/null 2>&1 || true
 
     if ! flatpak_install_app_list "${DEFAULT_FLATPAK_APPS[@]}"; then
         print_warning "Manual Flatpak installation encountered errors"
