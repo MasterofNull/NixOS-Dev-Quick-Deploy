@@ -2436,6 +2436,9 @@ PLUGINCFG
             ];
             After = [ "graphical-session.target" "network-online.target" ];
             Wants = [ "network-online.target" ];
+            # Condition prevents auto-start during home-manager activation
+            # The deployment script creates this flag file only when it's safe to run
+            ConditionPathExists = "/run/user/%U/allow-flatpak-managed-install";
             # PartOf removed - service should only be started explicitly by the deployment
             # script, not automatically during systemd reloads or graphical-session.target
             # activation, to prevent blocking home-manager activation if it fails.
