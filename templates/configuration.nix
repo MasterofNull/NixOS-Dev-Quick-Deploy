@@ -530,8 +530,20 @@ in
     crun
     slirp4netns
 
+    # Hardware detection tools (for GPU detection in deployment script)
+    pciutils  # Provides lspci for hardware detection
+
     # Essential system utilities only
     # All other tools installed via home-manager to prevent collisions
+  ];
+
+  # ============================================================================
+  # Shell Configuration
+  # ============================================================================
+  # Add shells to /etc/shells to allow chsh to set them as login shells
+  environment.shells = with pkgs; [
+    bash
+    zsh
   ];
 
   # ============================================================================
