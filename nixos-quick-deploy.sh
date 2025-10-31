@@ -3446,13 +3446,13 @@ create_home_manager_config() {
 
     # Copy p10k-setup-wizard.sh to home-manager config dir so home.nix can reference it
     local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    if [ -f "$SCRIPT_DIR/p10k-setup-wizard.sh" ]; then
-        cp "$SCRIPT_DIR/p10k-setup-wizard.sh" "$HM_CONFIG_DIR/p10k-setup-wizard.sh"
+    if [ -f "$SCRIPT_DIR/scripts/p10k-setup-wizard.sh" ]; then
+        cp "$SCRIPT_DIR/scripts/p10k-setup-wizard.sh" "$HM_CONFIG_DIR/p10k-setup-wizard.sh"
         ensure_path_owner "$HM_CONFIG_DIR/p10k-setup-wizard.sh"
         print_success "Copied p10k-setup-wizard.sh into $HM_CONFIG_DIR"
     else
-        print_warning "p10k-setup-wizard.sh not found in $SCRIPT_DIR - skipping copy"
-        print_info "If you need the prompt wizard, place the script next to nixos-quick-deploy.sh"
+        print_warning "p10k-setup-wizard.sh not found in $SCRIPT_DIR/scripts - skipping copy"
+        print_info "If you need the prompt wizard, place the script in the scripts directory"
     fi
 
     local TEMPLATE_DIR="$SCRIPT_DIR/templates"
@@ -3794,6 +3794,9 @@ apply_home_manager_config() {
     # Backup existing configuration files
     backup_existing_configs
 
+    # Force clean environment setup - remove old generations to ensure fresh install
+    force_clean_environment_setup
+
     print_info "Home-manager activation can now be applied using your generated flake."
     echo ""
 
@@ -3905,6 +3908,82 @@ backup_existing_configs() {
         print_info "To restore previous configs: cp -a \"$LATEST_CONFIG_BACKUP_DIR/.\" \"$HOME/\""
     fi
     prepare_managed_config_paths
+}
+
+force_clean_environment_setup() {
+    print_section "Forcing Clean Environment Setup"
+    print_info "Ensuring fresh installation by removing old generations and state..."
+
+    # Remove all home-manager generations to force fresh install
+    if command -v home-manager &>/dev/null; then
+        local generation_count=$(home-manager generations 2>/dev/null | wc -l || echo "0")
+        if [ "$generation_count" -gt 0 ]; then
+            print_info "Removing $generation_count home-manager generation(s) to ensure fresh install..."
+            run_as_primary_user home-manager expire-generations "-0 days" 2>/dev/null || true
+            print_success "Old home-manager generations removed"
+        fi
+    fi
+
+    # COMPLETE flatpak environment replacement
+    if command -v flatpak &>/dev/null; then
+        print_info "Removing complete flatpak user environment for clean setup..."
+
+        # Get list of installed user apps for backup record
+        local installed_apps=$(flatpak list --user --app --columns=application 2>/dev/null || echo "")
+        if [ -n "$installed_apps" ]; then
+            local flatpak_backup_file="$HOME/.cache/nixos-quick-deploy/flatpak-backup-$(date +%Y%m%d_%H%M%S).txt"
+            mkdir -p "$(dirname "$flatpak_backup_file")"
+            echo "$installed_apps" > "$flatpak_backup_file"
+            print_info "Backed up list of installed flatpak apps to $flatpak_backup_file"
+        fi
+
+        # Uninstall ALL user flatpak apps (not just apps, but runtimes too)
+        print_info "Uninstalling all flatpak apps and runtimes..."
+        run_as_primary_user flatpak uninstall --user --all --noninteractive 2>/dev/null || true
+
+        # Remove the entire flatpak installation directory for complete clean slate
+        # This includes: apps, runtimes, repo, overrides, remotes.d, etc.
+        local flatpak_dir="$HOME/.local/share/flatpak"
+        if [ -d "$flatpak_dir" ]; then
+            local flatpak_backup_dir="$HOME/.cache/nixos-quick-deploy/flatpak-environment-backup-$(date +%Y%m%d_%H%M%S)"
+            print_info "Backing up entire flatpak directory structure..."
+            mkdir -p "$(dirname "$flatpak_backup_dir")"
+            if cp -a "$flatpak_dir" "$flatpak_backup_dir" 2>/dev/null; then
+                print_success "Flatpak environment backed up to: $flatpak_backup_dir"
+                print_info "Removing flatpak directory for clean reinstall..."
+                rm -rf "$flatpak_dir"
+                print_success "Flatpak environment directory removed"
+            else
+                print_warning "Could not backup flatpak directory, skipping removal"
+            fi
+        else
+            print_info "No existing flatpak directory to remove"
+        fi
+
+        # Also clear flatpak configuration
+        local flatpak_config="$HOME/.config/flatpak"
+        if [ -d "$flatpak_config" ]; then
+            print_info "Removing flatpak configuration directory..."
+            rm -rf "$flatpak_config"
+        fi
+
+        print_success "Complete flatpak environment removed for clean reinstall"
+        print_info "Flatpak will be completely rebuilt by home-manager"
+    fi
+
+    # Remove VSCodium symlinks if they exist (will be recreated by home-manager)
+    if [ -L "$HOME/.config/VSCodium/User/settings.json" ]; then
+        print_info "Removing existing VSCodium settings symlink for fresh setup..."
+        rm -f "$HOME/.config/VSCodium/User/settings.json"
+    fi
+
+    # Ensure nix profile is clean for fresh home-manager installation
+    print_info "Cleaning nix profile for fresh home-manager state..."
+    run_as_primary_user nix-collect-garbage -d 2>/dev/null || true
+
+    print_success "Environment prepared for clean installation"
+    print_info "All previous settings have been backed up and will be replaced with new configuration"
+    echo ""
 }
 
 apply_system_changes() {
@@ -5254,7 +5333,7 @@ print_post_install() {
     echo -e "${BLUE}Next Steps:${NC}"
     echo -e "  ${GREEN}1. Verify Installation:${NC}"
     echo "     cd ~/NixOS-Dev-Quick-Deploy"
-    echo "     ./system-health-check.sh"
+    echo "     ./scripts/system-health-check.sh"
     echo ""
     echo -e "  ${GREEN}2. Enable AI Services (optional):${NC}"
     echo "     systemctl --user enable --now qdrant"
@@ -5293,9 +5372,9 @@ print_post_install() {
     echo ""
     echo -e "${BLUE}Documentation:${NC}"
     echo "  • Setup guide: ~/NixOS-Dev-Quick-Deploy/README.md"
-    echo "  • AIDB guide: ~/NixOS-Dev-Quick-Deploy/AIDB_SETUP.md"
+    echo "  • AIDB guide: ~/NixOS-Dev-Quick-Deploy/docs/AIDB_SETUP.md"
     echo "  • Home manager: https://nix-community.github.io/home-manager/"
-    echo "  • Health check: ~/NixOS-Dev-Quick-Deploy/system-health-check.sh"
+    echo "  • Health check: ~/NixOS-Dev-Quick-Deploy/scripts/system-health-check.sh"
     echo ""
     echo -e "${GREEN}System is ready! All packages and services are configured.${NC}"
     echo ""
