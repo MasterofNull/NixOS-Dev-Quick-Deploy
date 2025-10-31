@@ -202,8 +202,31 @@ let
             return 1
           fi
 
+          # Try ostree initialization first (more reliable for fresh repos)
+          if command -v ostree >/dev/null 2>&1; then
+            local ostree_output=""
+            ostree_output="$(
+              ostree --repo="$repo_dir" init --mode=bare-user-only 2>&1
+            )"
+            local ostree_status=$?
+
+            if [[ -n "$ostree_output" ]]; then
+              while IFS= read -r line; do
+                log "  ↳ $line"
+              done <<<"$ostree_output"
+            fi
+
+            if [[ $ostree_status -eq 0 && -f "$repo_config" ]]; then
+              log "Flatpak repository initialized via ostree"
+              # Run flatpak repair to finalize the repo
+              flatpak --user repair >/dev/null 2>&1 || true
+              return 0
+            fi
+          fi
+
+          # Fall back to flatpak repair
           repair_output="$(
-            flatpak --user repair --noninteractive 2>&1
+            flatpak --user repair 2>&1
           )"
           local repair_status=$?
 
@@ -218,24 +241,7 @@ let
           fi
 
           if [[ -f "$repo_config" ]]; then
-            log "Flatpak repository reinitialized"
-            return 0
-          fi
-
-          if command -v ostree >/dev/null 2>&1; then
-            local ostree_output=""
-            ostree_output="$(
-              ostree --repo="$repo_dir" init --mode=bare-user-only 2>&1 || true
-            )"
-            if [[ -n "$ostree_output" ]]; then
-              while IFS= read -r line; do
-                log "  ↳ $line"
-              done <<<"$ostree_output"
-            fi
-          fi
-
-          if [[ -f "$repo_config" ]]; then
-            log "Flatpak repository initialized via ostree"
+            log "Flatpak repository initialized"
             return 0
           fi
 
