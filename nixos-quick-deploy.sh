@@ -4793,55 +4793,114 @@ install_claude_code() {
 #!/usr/bin/env bash
 # Smart Claude Code Wrapper - Finds Node.js dynamically
 # Works across Node.js updates and NixOS rebuilds
+# Enhanced error handling and debugging for NixOS
+
+set -euo pipefail
+
+# Debug mode: Set CLAUDE_DEBUG=1 to see diagnostic output
+DEBUG="${CLAUDE_DEBUG:-0}"
+
+debug_log() {
+    if [ "$DEBUG" = "1" ]; then
+        echo "[DEBUG] $*" >&2
+    fi
+}
+
+debug_log "Claude wrapper starting..."
 
 # Strategy 1: Try common Nix profile locations (fastest)
 NODE_LOCATIONS=(
     "$HOME/.nix-profile/bin/node"
     "/run/current-system/sw/bin/node"
     "/nix/var/nix/profiles/default/bin/node"
-    "$(which node 2>/dev/null)"
 )
 
 NODE_BIN=""
 for node_path in "${NODE_LOCATIONS[@]}"; do
+    debug_log "Trying: $node_path"
     # Resolve symlinks to get actual Nix store path
     if [ -n "$node_path" ] && [ -x "$node_path" ]; then
         NODE_BIN=$(readlink -f "$node_path" 2>/dev/null || echo "$node_path")
         if [ -x "$NODE_BIN" ]; then
+            debug_log "Found Node.js at: $NODE_BIN"
             break
         fi
     fi
 done
 
-# Strategy 2: Search PATH if not found
+# Strategy 2: Search PATH using 'command -v' (works better in NixOS)
 if [ -z "$NODE_BIN" ] || [ ! -x "$NODE_BIN" ]; then
-    NODE_BIN=$(command -v node 2>/dev/null)
+    debug_log "Searching PATH for node..."
+    NODE_BIN=$(command -v node 2>/dev/null || echo "")
     if [ -n "$NODE_BIN" ]; then
-        NODE_BIN=$(readlink -f "$NODE_BIN")
+        NODE_BIN=$(readlink -f "$NODE_BIN" 2>/dev/null || echo "$NODE_BIN")
+        debug_log "Found via command: $NODE_BIN"
     fi
 fi
 
-# Strategy 3: Find in Nix store directly (last resort)
+# Strategy 3: Check if node is in PATH but not resolved yet
 if [ -z "$NODE_BIN" ] || [ ! -x "$NODE_BIN" ]; then
+    debug_log "Trying which..."
+    NODE_BIN=$(which node 2>/dev/null || echo "")
+    if [ -n "$NODE_BIN" ]; then
+        NODE_BIN=$(readlink -f "$NODE_BIN" 2>/dev/null || echo "$NODE_BIN")
+        debug_log "Found via which: $NODE_BIN"
+    fi
+fi
+
+# Strategy 4: Find in Nix store directly (last resort, slow)
+if [ -z "$NODE_BIN" ] || [ ! -x "$NODE_BIN" ]; then
+    debug_log "Searching Nix store (this may take a moment)..."
     NODE_BIN=$(find /nix/store -maxdepth 2 -name "node" -type f -executable 2>/dev/null | grep -m1 "nodejs.*bin/node" || echo "")
+    if [ -n "$NODE_BIN" ]; then
+        debug_log "Found in Nix store: $NODE_BIN"
+    fi
 fi
 
 # Fail if still not found
 if [ -z "$NODE_BIN" ] || [ ! -x "$NODE_BIN" ]; then
-    echo "Error: Could not find Node.js executable" >&2
+    echo "========================================" >&2
+    echo "ERROR: Could not find Node.js executable" >&2
+    echo "========================================" >&2
+    echo "" >&2
     echo "Searched locations:" >&2
-    printf '%s\n' "${NODE_LOCATIONS[@]}" >&2
-    echo "PATH: $PATH" >&2
+    printf '  - %s\n' "${NODE_LOCATIONS[@]}" >&2
+    echo "" >&2
+    echo "Current PATH: $PATH" >&2
+    echo "" >&2
+    echo "Troubleshooting steps:" >&2
+    echo "  1. Verify Node.js is installed: which node" >&2
+    echo "  2. Check if home-manager was applied: home-manager --version" >&2
+    echo "  3. Restart your shell: exec zsh" >&2
+    echo "  4. Re-run the deployment script: cd ~/NixOS-Dev-Quick-Deploy && ./nixos-quick-deploy.sh" >&2
+    echo "" >&2
+    echo "For debugging, run: CLAUDE_DEBUG=1 ~/.npm-global/bin/claude-wrapper --version" >&2
+    echo "" >&2
     exit 127
 fi
 
 # Path to Claude Code CLI
 CLAUDE_CLI="$HOME/.npm-global/lib/node_modules/@anthropic-ai/claude-code/cli.js"
 
+debug_log "Looking for Claude CLI at: $CLAUDE_CLI"
+
 if [ ! -f "$CLAUDE_CLI" ]; then
-    echo "Error: Claude Code CLI not found at $CLAUDE_CLI" >&2
+    echo "========================================" >&2
+    echo "ERROR: Claude Code CLI not found" >&2
+    echo "========================================" >&2
+    echo "" >&2
+    echo "Expected location: $CLAUDE_CLI" >&2
+    echo "" >&2
+    echo "This usually means Claude Code wasn't installed properly." >&2
+    echo "" >&2
+    echo "To fix:" >&2
+    echo "  export NPM_CONFIG_PREFIX=~/.npm-global" >&2
+    echo "  npm install -g @anthropic-ai/claude-code" >&2
+    echo "" >&2
     exit 127
 fi
+
+debug_log "Executing: $NODE_BIN $CLAUDE_CLI $*"
 
 # Execute with Node.js
 exec "$NODE_BIN" "$CLAUDE_CLI" "$@"
