@@ -1,1 +1,26 @@
-# (Copy from SAFE_IMPROVEMENTS.md section 6)
+# Generated files
+*.log
+*.backup.*
+.cache/
+.config-backups/
+
+# User-specific files
+.vscode/
+.idea/
+
+# Nix build artifacts
+result
+result-*
+.direnv/
+
+# MacOS
+.DS_Store
+
+# Temporary files
+*.tmp
+*.swp
+*~
+
+# Version tracking
+.nixos-quick-deploy-version
+.nixos-deploy-last-backup
