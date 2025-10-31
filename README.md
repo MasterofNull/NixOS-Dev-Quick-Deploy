@@ -388,15 +388,19 @@ flatpak install flathub ai.cursor.Cursor
 ```
 NixOS-Dev-Quick-Deploy/
 ├── nixos-quick-deploy.sh          # Main deployment script (run this)
-├── system-health-check.sh         # System health verification and repair tool
+├── scripts/
+│   ├── system-health-check.sh     # System health verification and repair tool
+│   └── p10k-setup-wizard.sh       # Powerlevel10k configuration wizard
 ├── templates/
 │   ├── configuration.nix          # NixOS system config template
 │   ├── home.nix                   # Home-manager config template
 │   └── flake.nix                  # Development flake template
-├── p10k-setup-wizard.sh           # Powerlevel10k configuration wizard
+├── docs/
+│   ├── AIDB_SETUP.md              # AIDB setup and configuration guide
+│   ├── AGENTS.md                  # AI agent workflow documentation
+│   ├── CODE_REVIEW.md             # Code review and quality documentation
+│   └── SAFE_IMPROVEMENTS.md       # Safe improvement guidelines
 ├── README.md                      # This file
-├── AIDB_SETUP.md                  # AIDB setup and configuration guide
-├── AGENTS.md                      # AI agent workflow documentation
 └── LICENSE                        # MIT License
 ```
 
@@ -902,9 +906,12 @@ Already installed but worth highlighting:
 ## 📚 Documentation & Resources
 
 ### This Repository
-- [AIDB Setup Guide](AIDB_SETUP.md) - Complete AIDB configuration walkthrough
-- [Agent Workflows](AGENTS.md) - AI agent integration documentation
-- [System Health Check](system-health-check.sh) - Verify and fix installation
+- [AIDB Setup Guide](docs/AIDB_SETUP.md) - Complete AIDB configuration walkthrough
+- [Agent Workflows](docs/AGENTS.md) - AI agent integration documentation
+- [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and solutions
+- [Code Review Guide](docs/CODE_REVIEW.md) - Code quality and review process
+- [Safe Improvements](docs/SAFE_IMPROVEMENTS.md) - Guidelines for safe changes
+- [System Health Check](scripts/system-health-check.sh) - Verify and fix installation
 
 ### Official Docs
 - [NixOS Manual](https://nixos.org/manual/nixos/stable/)
