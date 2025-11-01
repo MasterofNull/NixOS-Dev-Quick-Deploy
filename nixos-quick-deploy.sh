@@ -5124,13 +5124,32 @@ WRAPPER_EOF
     print_success "Created claude-wrapper"
 
     # Test the wrapper
+    print_info "Testing Claude Code wrapper..."
     if ~/.npm-global/bin/claude-wrapper --version >/dev/null 2>&1; then
         CLAUDE_VERSION=$(~/.npm-global/bin/claude-wrapper --version 2>/dev/null | head -n1)
         print_success "Claude Code wrapper works! Version: ${CLAUDE_VERSION}"
         CLAUDE_EXEC_PATH="$HOME/.npm-global/bin/claude-wrapper"
+
+        # Verify it's in PATH
+        if command -v claude-wrapper &>/dev/null; then
+            print_success "claude-wrapper is in PATH: $(which claude-wrapper)"
+        else
+            print_warning "claude-wrapper not in PATH yet"
+            print_info "It will be available after sourcing session variables or reboot"
+        fi
     else
         print_warning "Wrapper test inconclusive, but created"
+        print_info "This may be because Node.js path changed - wrapper will work after reboot"
         CLAUDE_EXEC_PATH="$HOME/.npm-global/bin/claude-wrapper"
+    fi
+
+    # Verify NPM_CONFIG_PREFIX is set
+    print_info "Verifying NPM configuration..."
+    if [ -f "$HOME/.npmrc" ] && grep -q "prefix=" "$HOME/.npmrc"; then
+        print_success "~/.npmrc configured correctly"
+    else
+        print_warning "~/.npmrc may need configuration"
+        print_info "home-manager will set NPM_CONFIG_PREFIX via session variables"
     fi
 
     # Create VSCodium wrapper
@@ -5466,15 +5485,20 @@ print_post_install() {
     echo -e "  1. ${YELLOW}REBOOT REQUIRED:${NC} System configuration changed (Cosmic desktop added)"
     echo -e "     Run: ${GREEN}sudo reboot${NC}"
     echo -e "  2. ${YELLOW}After reboot:${NC} Select \"Cosmic\" from the session menu at login"
-    echo -e "  3. ${YELLOW}Restart your terminal:${NC} exec zsh (or after reboot)"
+    echo -e "  3. ${YELLOW}Environment Variables:${NC} If packages aren't in PATH after reboot:"
+    echo -e "     ${GREEN}source ~/.nix-profile/etc/profile.d/hm-session-vars.sh${NC}"
+    echo -e "     ${GREEN}exec zsh${NC}  # Reload shell with new environment"
     echo -e "  4. VSCodium command: ${GREEN}codium${NC} or ${GREEN}codium-wrapped${NC}"
     echo -e "  5. Claude Code wrapper: ${GREEN}~/.npm-global/bin/claude-wrapper${NC}"
     echo -e "  6. ${GREEN}All configurations applied automatically!${NC}"
     echo ""
     echo -e "${BLUE}Next Steps:${NC}"
-    echo -e "  ${GREEN}1. Verify Installation:${NC}"
+    echo -e "  ${GREEN}1. Verify Installation (RECOMMENDED):${NC}"
     echo "     cd ~/NixOS-Dev-Quick-Deploy"
     echo "     ./scripts/system-health-check.sh"
+    echo ""
+    echo -e "     ${YELLOW}If health check fails:${NC}"
+    echo "     ./scripts/system-health-check.sh --fix  # Auto-repair common issues"
     echo ""
     echo -e "  ${GREEN}2. Enable AI Services (optional):${NC}"
     echo "     systemctl --user enable --now qdrant"
@@ -5625,11 +5649,32 @@ main() {
     echo ""
     echo -e "${BLUE}After reboot:${NC}"
     echo -e "  ${GREEN}•${NC} Select 'Cosmic' from the session menu at login"
-    echo -e "  ${GREEN}•${NC} Open a terminal and verify: ${YELLOW}which claude-wrapper${NC}"
+    echo -e "  ${GREEN}•${NC} Open a terminal and run: ${YELLOW}~/NixOS-Dev-Quick-Deploy/scripts/system-health-check.sh${NC}"
+    echo -e "  ${GREEN}•${NC} Verify Claude Code: ${YELLOW}which claude-wrapper${NC}"
     echo -e "  ${GREEN}•${NC} Launch VSCodium: ${YELLOW}codium${NC}"
     echo ""
     echo -e "${GREEN}✓ Deployment complete! All configurations applied successfully.${NC}"
     echo -e "${GREEN}✓ Claude Code and VSCodium are fully configured and will persist.${NC}"
+    echo ""
+
+    # Show current environment status for diagnostics
+    echo -e "${BLUE}Current Environment Status (for debugging if needed):${NC}"
+    echo -e "  PATH includes:"
+    if [[ ":$PATH:" == *":$HOME/.npm-global/bin:"* ]]; then
+        echo -e "    ${GREEN}✓${NC} $HOME/.npm-global/bin"
+    else
+        echo -e "    ${YELLOW}○${NC} $HOME/.npm-global/bin (will be available after reboot)"
+    fi
+    if [[ ":$PATH:" == *":$HOME/.local/bin:"* ]]; then
+        echo -e "    ${GREEN}✓${NC} $HOME/.local/bin"
+    else
+        echo -e "    ${YELLOW}○${NC} $HOME/.local/bin (will be available after reboot)"
+    fi
+    if [ -n "${NPM_CONFIG_PREFIX:-}" ]; then
+        echo -e "  NPM_CONFIG_PREFIX: ${GREEN}$NPM_CONFIG_PREFIX${NC}"
+    else
+        echo -e "  NPM_CONFIG_PREFIX: ${YELLOW}Not set yet (will be available after reboot)${NC}"
+    fi
     echo ""
     echo -e "${YELLOW}Remember: ${NC}Reboot manually when ready: ${YELLOW}sudo reboot${NC}"
     echo ""
