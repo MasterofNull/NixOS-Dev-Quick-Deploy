@@ -522,6 +522,10 @@ in
     # COSMIC App Store (not auto-included, needs explicit installation)
     cosmic-store
 
+    # COSMIC Settings (explicitly included to ensure settings daemon is available)
+    # This fixes issues with cosmic-settings-daemon not being found during startup
+  ] ++ lib.optionals (pkgs ? cosmic-settings) [ pkgs.cosmic-settings ]
+  ++ [
     # Container tools (system-level for rootless podman)
     podman
     podman-compose
