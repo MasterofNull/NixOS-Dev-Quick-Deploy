@@ -153,6 +153,56 @@ fix_npm_packages() {
     print_detail "Reinstalling @anthropic-ai/claude-code"
     if npm install -g @anthropic-ai/claude-code 2>&1 | tee /tmp/npm-fix.log; then
         print_success "Reinstalled Claude Code npm package"
+
+        # Recreate wrapper if needed
+        if [ ! -f "$HOME/.npm-global/bin/claude-wrapper" ] || [ ! -x "$HOME/.npm-global/bin/claude-wrapper" ]; then
+            print_detail "Creating claude-wrapper script"
+            cat > "$HOME/.npm-global/bin/claude-wrapper" << 'WRAPPER_EOF'
+#!/usr/bin/env bash
+# Smart Claude Code Wrapper - Finds Node.js dynamically
+set -euo pipefail
+
+# Try common Nix profile locations
+NODE_LOCATIONS=(
+    "$HOME/.nix-profile/bin/node"
+    "/run/current-system/sw/bin/node"
+    "/nix/var/nix/profiles/default/bin/node"
+)
+
+NODE_BIN=""
+for node_path in "${NODE_LOCATIONS[@]}"; do
+    if [ -n "$node_path" ] && [ -x "$node_path" ]; then
+        NODE_BIN="$node_path"
+        break
+    fi
+done
+
+# Fallback to system PATH
+if [ -z "$NODE_BIN" ] && command -v node &> /dev/null; then
+    NODE_BIN=$(command -v node)
+fi
+
+if [ -z "$NODE_BIN" ]; then
+    echo "ERROR: Node.js not found" >&2
+    echo "Install Node.js with: home-manager switch --flake ~/.dotfiles/home-manager" >&2
+    exit 127
+fi
+
+# Path to Claude Code CLI
+CLAUDE_CLI="$HOME/.npm-global/lib/node_modules/@anthropic-ai/claude-code/cli.js"
+
+if [ ! -f "$CLAUDE_CLI" ]; then
+    echo "ERROR: Claude Code CLI not found at $CLAUDE_CLI" >&2
+    echo "Install with: npm install -g @anthropic-ai/claude-code" >&2
+    exit 127
+fi
+
+# Execute with Node.js
+exec "$NODE_BIN" "$CLAUDE_CLI" "$@"
+WRAPPER_EOF
+            chmod +x "$HOME/.npm-global/bin/claude-wrapper"
+            print_success "Created claude-wrapper"
+        fi
     else
         print_fail "Failed to reinstall Claude Code"
         echo "  See /tmp/npm-fix.log for details"
@@ -170,7 +220,10 @@ check_command() {
     if command -v "$cmd" &> /dev/null; then
         local version
         case $cmd in
-            podman|python3|node|go|cargo|ollama|aider|nvim)
+            go)
+                version=$($cmd version 2>&1 | head -n1)
+                ;;
+            podman|python3|node|cargo|ollama|aider|nvim)
                 version=$($cmd --version 2>&1 | head -n1)
                 ;;
             home-manager)
@@ -450,7 +503,25 @@ run_all_checks() {
 
     check_command "nix" "Nix package manager" true
     check_command "nix-env" "nix-env" true
-    check_command "home-manager" "Home Manager" true
+
+    # Home Manager check with helpful context
+    print_check "Home Manager"
+    if command -v home-manager &> /dev/null; then
+        local version=$(home-manager --version 2>&1 | head -n1)
+        print_success "Home Manager ($version)"
+        print_detail "Location: $(which home-manager)"
+    else
+        # Check if it's available via nix run
+        if nix run home-manager/master -- --version &> /dev/null 2>&1; then
+            print_success "Home Manager (available via 'nix run home-manager')"
+            print_detail "Not in PATH but accessible via Nix flakes"
+        else
+            print_warning "Home Manager not found"
+            print_detail "May need to run: home-manager switch --flake ~/.dotfiles/home-manager"
+            ((WARNING_CHECKS++))
+            ((TOTAL_CHECKS++))
+        fi
+    fi
 
     # Check Nix flakes
     print_check "Nix flakes"
@@ -470,9 +541,40 @@ run_all_checks() {
     # ==========================================================================
     print_section "AI Development Tools"
 
-    # Claude Code
-    check_file_exists "$HOME/.npm-global/bin/claude-wrapper" "Claude Code wrapper" true
-    check_command "claude-wrapper" "Claude Code (in PATH)" true
+    # Claude Code - comprehensive check
+    print_check "Claude Code installation"
+    if [ -f "$HOME/.npm-global/bin/claude-wrapper" ]; then
+        if command -v claude-wrapper &> /dev/null; then
+            print_success "Claude Code (wrapper and PATH configured)"
+            print_detail "Wrapper: $HOME/.npm-global/bin/claude-wrapper"
+            print_detail "In PATH: $(which claude-wrapper)"
+        else
+            print_warning "Claude Code wrapper exists but not in PATH"
+            print_detail "Wrapper: $HOME/.npm-global/bin/claude-wrapper"
+            print_detail "Add to PATH: export PATH=\"\$HOME/.npm-global/bin:\$PATH\""
+            ((WARNING_CHECKS++))
+        fi
+        ((TOTAL_CHECKS++))
+    else
+        print_fail "Claude Code wrapper not found"
+        print_detail "Expected at: $HOME/.npm-global/bin/claude-wrapper"
+        print_detail "Install with: npm install -g @anthropic-ai/claude-code"
+        ((FAILED_CHECKS++))
+        ((TOTAL_CHECKS++))
+    fi
+
+    # Check underlying npm package
+    print_check "Claude Code npm package"
+    if [ -f "$HOME/.npm-global/lib/node_modules/@anthropic-ai/claude-code/cli.js" ]; then
+        local pkg_version=$(node -e "console.log(require('$HOME/.npm-global/lib/node_modules/@anthropic-ai/claude-code/package.json').version)" 2>/dev/null || echo "unknown")
+        print_success "Claude Code npm package (v$pkg_version)"
+        print_detail "Location: $HOME/.npm-global/lib/node_modules/@anthropic-ai/claude-code"
+    else
+        print_fail "Claude Code npm package not found"
+        print_detail "Install with: npm install -g @anthropic-ai/claude-code"
+        ((FAILED_CHECKS++))
+    fi
+    ((TOTAL_CHECKS++))
 
     # Other AI tools
     check_command "ollama" "Ollama" true
@@ -489,33 +591,39 @@ run_all_checks() {
     check_python_package "sklearn" "Scikit-learn (machine learning)" true
 
     # Deep Learning Frameworks
-    check_python_package "torch" "PyTorch" false
+    check_python_package "torch" "PyTorch" true
     check_python_package "tensorflow" "TensorFlow" false
 
     # LLM & AI Frameworks
-    check_python_package "openai" "OpenAI client" false
-    check_python_package "anthropic" "Anthropic client" false
-    check_python_package "langchain" "LangChain" false
-    check_python_package "llama_index" "LlamaIndex" false
+    check_python_package "openai" "OpenAI client" true
+    check_python_package "anthropic" "Anthropic client" true
+    check_python_package "langchain" "LangChain" true
+    check_python_package "llama_index" "LlamaIndex" true
 
     # Vector Databases & Embeddings
-    check_python_package "chromadb" "ChromaDB" false
-    check_python_package "qdrant_client" "Qdrant client" false
-    check_python_package "sentence_transformers" "Sentence Transformers" false
+    check_python_package "chromadb" "ChromaDB" true
+    check_python_package "qdrant_client" "Qdrant client" true
+    check_python_package "sentence_transformers" "Sentence Transformers" true
     check_python_package "faiss" "FAISS" false
 
     # Modern Data Processing
-    check_python_package "polars" "Polars (fast DataFrames)" false
+    check_python_package "polars" "Polars (fast DataFrames)" true
     check_python_package "dask" "Dask (parallel computing)" false
 
     # Code Quality Tools
-    check_python_package "black" "Black (formatter)" false
-    check_python_package "ruff" "Ruff (linter)" false
-    check_python_package "mypy" "Mypy (type checker)" false
+    check_python_package "black" "Black (formatter)" true
+    check_python_package "ruff" "Ruff (linter)" true
+    check_python_package "mypy" "Mypy (type checker)" true
 
     # Jupyter
-    check_python_package "jupyterlab" "Jupyter Lab" false
+    check_python_package "jupyterlab" "Jupyter Lab" true
     check_python_package "notebook" "Jupyter Notebook" false
+
+    # Additional AI/ML packages
+    check_python_package "transformers" "Transformers (Hugging Face)" true
+    check_python_package "accelerate" "Accelerate" false
+    check_python_package "datasets" "Datasets (Hugging Face)" false
+    check_python_package "gradio" "Gradio" false
 
     # ==========================================================================
     # Editors & IDEs
@@ -539,7 +647,7 @@ run_all_checks() {
     check_command "zsh" "ZSH shell" true
 
     # Check aliases and functions
-    if [ -n "$ZSH_VERSION" ] || [ "$SHELL" = "/bin/zsh" ] || [ "$SHELL" = "$HOME/.nix-profile/bin/zsh" ]; then
+    if [ -n "${ZSH_VERSION:-}" ] || [ "$SHELL" = "/bin/zsh" ] || [ "$SHELL" = "$HOME/.nix-profile/bin/zsh" ]; then
         # Source zshrc to get aliases
         source "$HOME/.zshrc" 2>/dev/null || true
 
@@ -663,6 +771,83 @@ run_all_checks() {
     fi
 
     # ==========================================================================
+    # Nix Store & Profile Health
+    # ==========================================================================
+    print_section "Nix Store & Profile Health"
+
+    # Check nix store
+    print_check "Nix store"
+    if [ -d "/nix/store" ]; then
+        local store_size=$(du -sh /nix/store 2>/dev/null | awk '{print $1}')
+        print_success "Nix store ($store_size)"
+        print_detail "Location: /nix/store"
+    else
+        print_fail "Nix store not found"
+    fi
+
+    # Check nix profile
+    print_check "Nix profile"
+    if [ -d "$HOME/.nix-profile" ]; then
+        local profile_generation=$(nix-env --list-generations 2>/dev/null | tail -n1 | awk '{print $1}')
+        print_success "Nix profile (generation $profile_generation)"
+        print_detail "Location: $HOME/.nix-profile"
+    else
+        print_warning "Nix profile not found"
+    fi
+
+    # Check for broken symlinks in PATH
+    print_check "Broken symlinks in PATH"
+    local broken_count=0
+    for path_dir in $(echo "$PATH" | tr ':' '\n'); do
+        if [ -d "$path_dir" ]; then
+            while IFS= read -r -d '' symlink; do
+                if [ ! -e "$symlink" ]; then
+                    ((broken_count++))
+                    if [ "$DETAILED" = true ]; then
+                        print_detail "Broken: $symlink"
+                    fi
+                fi
+            done < <(find "$path_dir" -maxdepth 1 -type l -print0 2>/dev/null)
+        fi
+    done
+    if [ $broken_count -eq 0 ]; then
+        print_success "No broken symlinks in PATH"
+    else
+        print_warning "Found $broken_count broken symlinks in PATH"
+        print_detail "Run 'nix-collect-garbage' to clean up"
+    fi
+
+    # ==========================================================================
+    # Configuration Files Health
+    # ==========================================================================
+    print_section "Configuration Files Health"
+
+    # Check npmrc
+    print_check "NPM configuration (~/.npmrc)"
+    if [ -f "$HOME/.npmrc" ]; then
+        if grep -q "prefix=" "$HOME/.npmrc" 2>/dev/null; then
+            local npm_prefix=$(grep "prefix=" "$HOME/.npmrc" | cut -d= -f2)
+            print_success "NPM config (prefix: $npm_prefix)"
+        else
+            print_warning "NPM config exists but no prefix set"
+        fi
+    else
+        print_warning "NPM config not found"
+        print_detail "Create with: echo 'prefix=\$HOME/.npm-global' > ~/.npmrc"
+    fi
+
+    # Check gitconfig
+    print_check "Git configuration (~/.gitconfig)"
+    if [ -f "$HOME/.gitconfig" ]; then
+        local git_user=$(git config --global user.name 2>/dev/null || echo "not set")
+        local git_email=$(git config --global user.email 2>/dev/null || echo "not set")
+        print_success "Git config (user: $git_user)"
+        print_detail "Email: $git_email"
+    else
+        print_warning "Git config not found"
+    fi
+
+    # ==========================================================================
     # Summary
     # ==========================================================================
     echo ""
@@ -695,30 +880,53 @@ run_all_checks() {
         echo ""
 
         if [ "$FIX_ISSUES" = false ]; then
-            echo "Suggested fixes:"
+            echo "Suggested fixes (try these in order):"
             echo ""
 
+            # Check for common issues and provide specific guidance
             if ! command -v home-manager &> /dev/null; then
-                echo "  1. Fix home-manager:"
-                echo "     $0 --fix"
+                echo "  ${YELLOW}1. Home Manager not in PATH:${NC}"
+                echo "     • Source session variables:"
+                echo "       source ~/.nix-profile/etc/profile.d/hm-session-vars.sh"
+                echo "     • Then reload shell:"
+                echo "       exec zsh"
+                echo "     • If still missing, re-apply home-manager:"
+                echo "       cd ~/.dotfiles/home-manager"
+                echo "       nix run home-manager/master -- switch --flake ."
                 echo ""
             fi
 
             if [ ! -f "$HOME/.npm-global/bin/claude-wrapper" ]; then
-                echo "  2. Fix NPM packages:"
-                echo "     $0 --fix"
+                echo "  ${YELLOW}2. Claude Code not installed:${NC}"
+                echo "     • Install via NPM:"
+                echo "       export NPM_CONFIG_PREFIX=~/.npm-global"
+                echo "       npm install -g @anthropic-ai/claude-code"
+                echo "     • Or use auto-fix:"
+                echo "       $0 --fix"
                 echo ""
             fi
 
-            echo "  3. Reload shell environment:"
-            echo "     source ~/.zshrc"
-            echo "     # or"
-            echo "     exec zsh"
+            if ! python3 -c "import torch" &> /dev/null || \
+               ! python3 -c "import pandas" &> /dev/null || \
+               ! python3 -c "import anthropic" &> /dev/null; then
+                echo "  ${YELLOW}3. Python packages missing:${NC}"
+                echo "     • These should be installed via home-manager"
+                echo "     • If home-manager was just applied, reload your shell:"
+                echo "       exec zsh"
+                echo "     • If still missing, check if packages built successfully:"
+                echo "       nix-store --verify-path ~/.nix-profile"
+                echo "     • Re-apply home-manager to rebuild Python environment:"
+                echo "       cd ~/.dotfiles/home-manager && home-manager switch --flake ."
+                echo ""
+            fi
+
+            echo "  ${YELLOW}Quick fix (attempts all repairs automatically):${NC}"
+            echo "     $0 --fix"
             echo ""
 
-            echo "  4. Re-apply home-manager configuration:"
-            echo "     cd ~/.dotfiles/home-manager"
-            echo "     home-manager switch --flake ."
+            echo "  ${YELLOW}Manual verification after fixes:${NC}"
+            echo "     • Reload shell: exec zsh"
+            echo "     • Run health check again: $0"
             echo ""
         fi
 
