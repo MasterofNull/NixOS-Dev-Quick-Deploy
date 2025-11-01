@@ -721,6 +721,9 @@ RESOURCES
           gradio
           # Data Processing (Modern Alternatives)
           polars               # Fast DataFrame library (Rust-based)
+          # LLM & AI APIs (Required)
+          openai               # OpenAI API client
+          anthropic            # Anthropic API client
           # Note: dask often causes build issues, added conditionally below
         ];
         # AI/ML packages that may not be available in all nixpkgs versions
@@ -732,9 +735,6 @@ RESOURCES
           ++ lib.optionals (ps ? torchvision) [ ps.torchvision ]
           ++ lib.optionals (ps ? tensorflow) [ ps.tensorflow ]
           ++ lib.optionals (ps ? bitsandbytes) [ ps.bitsandbytes ]
-          # LLM & AI APIs
-          ++ lib.optionals (ps ? openai) [ ps.openai ]
-          ++ lib.optionals (ps ? anthropic) [ ps.anthropic ]
           # LangChain Ecosystem
           ++ lib.optionals (ps ? langchain) [ ps.langchain ]
           ++ lib.optionals (ps ? "langchain-openai") [ ps."langchain-openai" ]
@@ -1805,6 +1805,40 @@ in
       '';
       executable = true;
     };
+
+    # NPM Configuration
+    ".npmrc".text = ''
+      prefix=''${HOME}/.npm-global
+    '';
+
+    # Git configuration template
+    # Note: Set your name and email with:
+    #   git config --global user.name "Your Name"
+    #   git config --global user.email "you@example.com"
+    ".gitconfig".text = ''
+      [user]
+      	# TODO: Set your name and email
+      	# name = Your Name
+      	# email = you@example.com
+
+      [init]
+      	defaultBranch = main
+
+      [pull]
+      	rebase = false
+
+      [core]
+      	editor = ${if (config.home.sessionVariables.EDITOR or "") != "" then config.home.sessionVariables.EDITOR else "vim"}
+
+      [alias]
+      	st = status
+      	co = checkout
+      	br = branch
+      	ci = commit
+      	unstage = reset HEAD --
+      	last = log -1 HEAD
+      	visual = log --oneline --graph --decorate --all
+    '';
 
     # Hugging Face configuration and cache keepers
     ".config/huggingface/.keep".text = "";
