@@ -1654,9 +1654,13 @@ in
       EDITOR = "DEFAULTEDITOR";
       VISUAL = "DEFAULTEDITOR";
       NIXPKGS_ALLOW_UNFREE = "1";
+      # NPM Configuration
+      NPM_CONFIG_PREFIX = "$HOME/.npm-global";
+      # AI Development Tools
       AIDER_DEFAULT_MODEL = "gpt-4o-mini";
       AIDER_LOG_DIR = "$HOME/.local/share/aider/logs";
       TEA_AI_MODEL = "gpt-4o-mini";
+      # Hugging Face Configuration
       HF_HOME = "$HOME/${huggingfaceCacheDir}";
       HUGGINGFACE_HUB_CACHE = "$HOME/${huggingfaceCacheDir}";
       TRANSFORMERS_CACHE = "$HOME/${huggingfaceCacheDir}";
@@ -1664,14 +1668,17 @@ in
       HUGGINGFACE_MODEL_ID = "${huggingfaceModelId}";
       HUGGINGFACE_TOKEN_PATH = "$HOME/.config/huggingface/token";
       HF_HUB_ENABLE_HF_TRANSFER = "1";
+      # LLM Service Endpoints
       OLLAMA_HOST = "${ollamaHost}";
       OPEN_WEBUI_URL = "${openWebUiUrl}";
       GPT_CLI_DEFAULT_MODEL = "${huggingfaceModelId}";
       GPT_CLI_DEFAULT_PROVIDER = "openai";
       GPT_CLI_BASE_URL = "${huggingfaceTgiEndpoint}/v1";
+      # Podman AI Stack
       PODMAN_AI_STACK_POD = "local-ai-stack";
       PODMAN_AI_STACK_NETWORK = "local-ai";
       PODMAN_AI_STACK_DATA_ROOT = "$HOME/${podmanAiStackDataDir}";
+      # Security & Credentials
       GNUPGHOME = "${config.home.homeDirectory}/.gnupg";
       PASSWORD_STORE_DIR = "${config.home.homeDirectory}/.local/share/password-store";
     }
