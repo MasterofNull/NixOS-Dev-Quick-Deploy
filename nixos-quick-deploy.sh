@@ -5029,8 +5029,9 @@ generate_nixos_system_config() {
     case "$GPU_TYPE" in
         intel)
             gpu_hardware_section=$(cat <<'EOF'
-hardware.opengl = {
+hardware.graphics = {
     enable = true;
+    enable32Bit = true;  # For 32-bit applications
     extraPackages = with pkgs; [
       intel-media-driver  # VAAPI driver for Broadwell+ (>= 5th gen)
       vaapiIntel          # Older VAAPI driver for Haswell and older
@@ -5038,23 +5039,20 @@ hardware.opengl = {
       libvdpau-va-gl
       intel-compute-runtime  # OpenCL support
     ];
-    driSupport = true;
-    driSupport32Bit = true;  # For 32-bit applications
 };
 EOF
 )
             ;;
         amd)
             gpu_hardware_section=$(cat <<'EOF'
-hardware.opengl = {
+hardware.graphics = {
     enable = true;
+    enable32Bit = true;
     extraPackages = with pkgs; [
       mesa              # Open-source AMD drivers
       amdvlk            # AMD Vulkan driver
       rocm-opencl-icd   # AMD OpenCL support
     ];
-    driSupport = true;
-    driSupport32Bit = true;
 };
 EOF
 )
@@ -5071,10 +5069,9 @@ hardware.nvidia = {
     # Optional: Power management (for laptops)
     # powerManagement.enable = true;
 };
-hardware.opengl = {
+hardware.graphics = {
     enable = true;
-    driSupport = true;
-    driSupport32Bit = true;
+    enable32Bit = true;
 };
 EOF
 )
