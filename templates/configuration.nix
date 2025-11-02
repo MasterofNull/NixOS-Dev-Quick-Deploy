@@ -125,7 +125,7 @@ let
     oauth2.JWT_SECRET = giteaSecrets.oauthJwtSecret;
     log = {
       MODE = "console";
-      LEVEL = "info";
+      LEVEL = "Info";
     };
     lfs = {
       STORAGE_TYPE = "local";
