@@ -376,7 +376,6 @@ in
   # ========================================================================
   services.qdrant = {
     enable = true;
-    package = pkgs.qdrant;
     settings = {
       storage = {
         storage_path = "/var/lib/qdrant/storage";
