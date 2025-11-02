@@ -467,16 +467,15 @@ in
       path = giteaDatabasePath;
     };
     repositoryRoot = giteaRepositoriesDir;
-    rootUrl = giteaRootUrl;
-    httpAddress = "0.0.0.0";
-    httpPort = giteaHttpPort;
+    # NixOS 25.05+: Use settings.server for HTTP configuration (see giteaSharedSettings)
+    # Deprecated options removed: rootUrl, httpAddress, httpPort, disableRegistration
     # SSH configuration moved to settings.server (see giteaSharedSettings above)
     # NixOS 25.05+ uses freeform settings instead of structured ssh block
     lfs = {
       enable = true;
       contentDir = giteaLfsDir;
     };
-    disableRegistration = false;
+    # All service settings configured via settings attribute (see giteaSharedSettings)
     settings = giteaSharedSettings;
   };
 
