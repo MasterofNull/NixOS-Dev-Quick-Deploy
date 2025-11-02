@@ -80,6 +80,7 @@ let
       DISABLE_SSH = false;
       SSH_DOMAIN = giteaDomain;
       SSH_PORT = giteaSshPort;
+      SSH_LISTEN_HOST = "0.0.0.0";
       SSH_LISTEN_PORT = giteaSshPort;
       START_SSH_SERVER = true;
       LANDING_PAGE = "explore";
@@ -442,12 +443,8 @@ in
     rootUrl = giteaRootUrl;
     httpAddress = "0.0.0.0";
     httpPort = giteaHttpPort;
-    ssh = {
-      enable = true;
-      domain = giteaDomain;
-      listenAddress = "0.0.0.0";
-      port = giteaSshPort;
-    };
+    # SSH configuration moved to settings.server (see giteaSharedSettings above)
+    # NixOS 25.05+ uses freeform settings instead of structured ssh block
     lfs = {
       enable = true;
       contentDir = giteaLfsDir;
