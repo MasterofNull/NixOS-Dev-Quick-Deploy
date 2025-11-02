@@ -1968,8 +1968,6 @@ PREVIOUS_TIMEZONE=""
 PREVIOUS_MUTABLE_USERS=""
 PREVIOUS_USER_PASSWORD_SNIPPET=""
 
-# Script version for change tracking
-SCRIPT_VERSION="2.2.0"
 VERSION_FILE="$PRIMARY_HOME/.cache/nixos-quick-deploy-version"
 
 # Force update flag (set via --force-update)
@@ -5102,23 +5100,22 @@ EOF
             ;;
     esac
 
-    local cosmic_gpu_block
+    local gpu_session_variables
     if [[ "$GPU_TYPE" != "software" && "$GPU_TYPE" != "unknown" && -n "$LIBVA_DRIVER" ]]; then
         local gpu_label="${GPU_TYPE^}"
-        cosmic_gpu_block=$(cat <<EOF
-# Hardware acceleration enabled (auto-detected: ${gpu_label} GPU)
+        gpu_session_variables=$(cat <<EOF
+
+    # Hardware acceleration enabled (auto-detected: ${gpu_label} GPU)
     # VA-API driver: $LIBVA_DRIVER for video decode/encode acceleration
-    extraSessionCommands = ''
-      # Enable hardware video acceleration
-      export LIBVA_DRIVER_NAME=$LIBVA_DRIVER
-      # Enable touch/gesture support for trackpads
-      export MOZ_USE_XINPUT2=1
-    '';
+    LIBVA_DRIVER_NAME = "$LIBVA_DRIVER";
+    # Enable touch/gesture support for trackpads
+    MOZ_USE_XINPUT2 = "1";
 EOF
 )
     else
-        cosmic_gpu_block=$(cat <<'EOF'
-# No dedicated GPU detected - using software rendering
+        gpu_session_variables=$(cat <<'EOF'
+
+    # No dedicated GPU detected - using software rendering
     # Hardware acceleration disabled
 EOF
 )
@@ -5260,7 +5257,7 @@ EOF
         INITRD_KERNEL_MODULES_VALUE="$INITRD_KERNEL_MODULES" \
         MICROCODE_SECTION_VALUE="$MICROCODE_SECTION" \
         GPU_HARDWARE_SECTION_VALUE="$gpu_hardware_section" \
-        COSMIC_GPU_BLOCK_VALUE="$cosmic_gpu_block" \
+        GPU_SESSION_VARIABLES_VALUE="$gpu_session_variables" \
         GPU_DRIVER_PACKAGES_BLOCK_VALUE="$gpu_driver_packages_block" \
         SELECTED_TIMEZONE_VALUE="$SELECTED_TIMEZONE" \
         CURRENT_LOCALE_VALUE="$CURRENT_LOCALE" \
@@ -5300,7 +5297,7 @@ replacements = {
     "@INITRD_KERNEL_MODULES@": os.environ.get("INITRD_KERNEL_MODULES_VALUE", ""),
     "@MICROCODE_SECTION@": os.environ.get("MICROCODE_SECTION_VALUE", ""),
     "@GPU_HARDWARE_SECTION@": os.environ.get("GPU_HARDWARE_SECTION_VALUE", ""),
-    "@COSMIC_GPU_BLOCK@": os.environ.get("COSMIC_GPU_BLOCK_VALUE", ""),
+    "@GPU_SESSION_VARIABLES@": os.environ.get("GPU_SESSION_VARIABLES_VALUE", ""),
     "@GPU_DRIVER_PACKAGES@": os.environ.get("GPU_DRIVER_PACKAGES_BLOCK_VALUE", "[]"),
     "@SELECTED_TIMEZONE@": os.environ.get("SELECTED_TIMEZONE_VALUE", "UTC"),
     "@CURRENT_LOCALE@": os.environ.get("CURRENT_LOCALE_VALUE", "en_US.UTF-8"),
