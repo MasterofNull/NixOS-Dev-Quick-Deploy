@@ -76,7 +76,7 @@ let
       STATIC_ROOT_PATH = "${giteaAppDataDir}/public";
       ENABLE_GZIP = true;
       LFS_START_SERVER = true;
-      LFS_JWT_SECRET = giteaSecrets.lfsJwtSecret;
+      LFS_JWT_SECRET = lib.mkForce giteaSecrets.lfsJwtSecret;
       DISABLE_SSH = false;
       SSH_DOMAIN = giteaDomain;
       SSH_PORT = giteaSshPort;
@@ -119,13 +119,13 @@ let
     security = {
       INSTALL_LOCK = true;
       PASSWORD_HASH_ALGO = "argon2";
-      SECRET_KEY = giteaSecrets.secretKey;
-      INTERNAL_TOKEN = giteaSecrets.internalToken;
+      SECRET_KEY = lib.mkForce giteaSecrets.secretKey;
+      INTERNAL_TOKEN = lib.mkForce giteaSecrets.internalToken;
     };
-    oauth2.JWT_SECRET = giteaSecrets.oauthJwtSecret;
+    oauth2.JWT_SECRET = lib.mkForce giteaSecrets.oauthJwtSecret;
     log = {
       MODE = "console";
-      LEVEL = "info";
+      LEVEL = "Info";
     };
     lfs = {
       STORAGE_TYPE = "local";
