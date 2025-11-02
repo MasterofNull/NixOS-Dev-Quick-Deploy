@@ -1088,6 +1088,8 @@ in
           eza                     # Modern replacement for ls
           jq                      # JSON processor
           yq                      # YAML processor
+          direnv                  # Automatic per-directory environment loading
+          nix-direnv              # Direnv integration with Nix flakes
           choose                  # Human-friendly cut/awk alternative
           du-dust                 # Intuitive disk usage (du)
           duf                     # Disk usage/free utility (df)
