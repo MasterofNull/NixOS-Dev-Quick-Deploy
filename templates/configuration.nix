@@ -357,16 +357,36 @@ in
   # Local AI Runtime (Hugging Face & Ollama)
   # ========================================================================
 
-  services.ollama = lib.mkIf (pkgs ? ollama) {
+  services.ollama = {
     enable = true;
     package = pkgs.ollama;
   };
 
-  systemd.services.ollama = lib.mkIf (pkgs ? ollama) {
+  systemd.services.ollama = {
     environment = {
       HF_HOME = huggingfaceDataDir;
       HUGGINGFACE_HUB_CACHE = huggingfaceCacheDir;
       TRANSFORMERS_CACHE = huggingfaceCacheDir;
+    };
+  };
+
+  # ========================================================================
+  # Qdrant Vector Database Service
+  # ========================================================================
+  services.qdrant = {
+    enable = true;
+    package = pkgs.qdrant;
+    settings = {
+      storage = {
+        storage_path = "/var/lib/qdrant/storage";
+        snapshots_path = "/var/lib/qdrant/snapshots";
+      };
+      service = {
+        host = "127.0.0.1";
+        http_port = 6333;
+        grpc_port = 6334;
+      };
+      telemetry_disabled = true;
     };
   };
 
