@@ -164,15 +164,16 @@ Hardware acceleration is automatically configured based on GPU detection:
 
 **Intel GPUs:**
 ```nix
-hardware.opengl = {
+hardware.graphics = {
   enable = true;
+  enable32Bit = true;
   extraPackages = with pkgs; [
     intel-media-driver  # VAAPI driver for Broadwell+ (>= 5th gen)
     vaapiIntel          # Older VAAPI driver for Haswell and older
+    vaapiVdpau
+    libvdpau-va-gl
     intel-compute-runtime  # OpenCL support
   ];
-  driSupport = true;
-  driSupport32Bit = true;
 };
 
 # In COSMIC config:
@@ -183,15 +184,14 @@ extraSessionCommands = ''
 
 **AMD GPUs:**
 ```nix
-hardware.opengl = {
+hardware.graphics = {
   enable = true;
+  enable32Bit = true;
   extraPackages = with pkgs; [
     mesa              # Open-source AMD drivers
     amdvlk            # AMD Vulkan driver
     rocm-opencl-icd   # AMD OpenCL support
   ];
-  driSupport = true;
-  driSupport32Bit = true;
 };
 
 # In COSMIC config:
@@ -208,10 +208,9 @@ hardware.nvidia = {
   open = false;  # Use proprietary driver
   nvidiaSettings = true;
 };
-hardware.opengl = {
+hardware.graphics = {
   enable = true;
-  driSupport = true;
-  driSupport32Bit = true;
+  enable32Bit = true;
 };
 ```
 
