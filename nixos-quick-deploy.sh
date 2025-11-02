@@ -1777,12 +1777,14 @@ cleanup_conflicting_home_manager_profile() {
     if [[ -n "$profile_json" && "$profile_json" != "[]" ]]; then
         if ensure_python_runtime; then
             local parsed_indices
-            parsed_indices=$(printf '%s' "$profile_json" | "${PYTHON_BIN[@]}" - <<'PY'
+            parsed_indices=$(PROFILE_JSON="$profile_json" "${PYTHON_BIN[@]}" - <<'PY'
 import json
 import sys
+import os
 
 try:
-    entries = json.load(sys.stdin)
+    profile_json_str = os.environ.get('PROFILE_JSON', '[]')
+    entries = json.loads(profile_json_str)
 except Exception:
     sys.exit(1)
 
@@ -1888,14 +1890,17 @@ PY
 
     if [[ "$removed_any" == false && ensure_python_runtime ]]; then
         local store_removals
+        local profile_list_json
+        profile_list_json=$(nix profile list --json 2>/dev/null || echo '[]')
         store_removals=$(
-            nix profile list --json 2>/dev/null \
-            | "${PYTHON_BIN[@]}" - <<'PY'
+            PROFILE_JSON="$profile_list_json" "${PYTHON_BIN[@]}" - <<'PY'
 import json
 import sys
+import os
 
 try:
-    entries = json.load(sys.stdin)
+    profile_json_str = os.environ.get('PROFILE_JSON', '[]')
+    entries = json.loads(profile_json_str)
 except Exception:
     entries = []
 
