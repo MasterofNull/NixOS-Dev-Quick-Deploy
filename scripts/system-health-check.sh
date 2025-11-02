@@ -492,9 +492,9 @@ run_all_checks() {
     check_command "python3" "Python 3" true
     check_command "node" "Node.js" true
     check_command "npm" "NPM" true
-    check_command "go" "Go" false
-    check_command "cargo" "Rust (cargo)" false
-    check_command "ruby" "Ruby" false
+    check_command "go" "Go" true
+    check_command "cargo" "Rust (cargo)" true
+    check_command "ruby" "Ruby" true
 
     # ==========================================================================
     # Nix Ecosystem
@@ -621,9 +621,9 @@ run_all_checks() {
 
     # Additional AI/ML packages
     check_python_package "transformers" "Transformers (Hugging Face)" true
-    check_python_package "accelerate" "Accelerate" false
-    check_python_package "datasets" "Datasets (Hugging Face)" false
-    check_python_package "gradio" "Gradio" false
+    check_python_package "accelerate" "Accelerate" true
+    check_python_package "datasets" "Datasets (Hugging Face)" true
+    check_python_package "gradio" "Gradio" true
 
     # ==========================================================================
     # Editors & IDEs
@@ -732,28 +732,28 @@ run_all_checks() {
     # ==========================================================================
     # AI Systemd Services
     # ==========================================================================
-    print_section "AI Systemd Services (Optional)"
+    print_section "AI Systemd Services"
 
     # Qdrant vector database
-    check_systemd_service "qdrant" "Qdrant (vector database)" false
+    check_systemd_service "qdrant" "Qdrant (vector database)" true
     if systemctl --user is-active qdrant &> /dev/null; then
         check_systemd_service_port "qdrant" "6333" "Qdrant API"
     fi
 
     # Hugging Face TGI
-    check_systemd_service "huggingface-tgi" "Hugging Face TGI (LLM inference)" false
+    check_systemd_service "huggingface-tgi" "Hugging Face TGI (LLM inference)" true
     if systemctl --user is-active huggingface-tgi &> /dev/null; then
         check_systemd_service_port "huggingface-tgi" "8080" "TGI API"
     fi
 
     # Jupyter Lab
-    check_systemd_service "jupyter-lab" "Jupyter Lab (notebooks)" false
+    check_systemd_service "jupyter-lab" "Jupyter Lab (notebooks)" true
     if systemctl --user is-active jupyter-lab &> /dev/null; then
         check_systemd_service_port "jupyter-lab" "8888" "Jupyter Lab"
     fi
 
     # Gitea development forge
-    check_systemd_service "gitea-dev" "Gitea (development forge)" false
+    check_systemd_service "gitea-dev" "Gitea (development forge)" true
 
     # ==========================================================================
     # Network Services
