@@ -672,7 +672,7 @@ services.postgresql = {
 };
 
 # Redis for caching and queues
-services.redis.servers."" = {
+services.redis.servers."default" = {
   enable = true;
   port = 6379;
   bind = "127.0.0.1";
