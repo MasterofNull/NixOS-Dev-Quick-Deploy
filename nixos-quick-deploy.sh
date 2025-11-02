@@ -1443,8 +1443,15 @@ NC='\033[0m' # No Color
 PYTHON_BIN=()
 
 ensure_python_runtime() {
+    # If PYTHON_BIN is cached, verify it's still accessible before using it
     if [ ${#PYTHON_BIN[@]} -gt 0 ]; then
-        return 0
+        # Test if the cached python is still working
+        if "${PYTHON_BIN[@]}" --version >/dev/null 2>&1; then
+            return 0
+        fi
+        # Cached python is no longer valid, reset and re-detect
+        PYTHON_BIN=()
+        hash -r 2>/dev/null || true
     fi
 
     if command -v python3 >/dev/null 2>&1; then
