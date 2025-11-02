@@ -5806,3 +5806,15 @@ main() {
 }
 
 main "$@"
+
+# Automatically reload shell to apply all environment changes
+# This ensures PATH, environment variables, and aliases are immediately available
+if [[ $? -eq 0 ]]; then
+    echo ""
+    echo -e "${BLUE}════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}✓ Reloading shell to apply all environment changes...${NC}"
+    echo -e "${BLUE}════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    sleep 1
+    exec zsh
+fi
