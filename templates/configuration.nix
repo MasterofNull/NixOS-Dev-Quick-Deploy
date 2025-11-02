@@ -760,6 +760,154 @@ in
   };
 
   # ============================================================================
+  # Additional Services (Code Review Recommendations)
+  # ============================================================================
+
+  # PostgreSQL for production-grade AI applications
+  # Disabled by default - enable with: sudo systemctl enable --now postgresql
+  services.postgresql = {
+    enable = false;  # Set to true to enable
+    package = pkgs.postgresql_16;
+    enableTCPIP = true;
+    authentication = pkgs.lib.mkOverride 10 ''
+      local all all trust
+      host all all 127.0.0.1/32 scram-sha-256
+      host all all ::1/128 scram-sha-256
+    '';
+    settings = {
+      shared_buffers = "256MB";
+      effective_cache_size = "1GB";
+      work_mem = "16MB";
+      maintenance_work_mem = "128MB";
+      max_connections = 100;
+    };
+    initialScript = pkgs.writeText "postgres-init.sql" ''
+      CREATE DATABASE aidb;
+      CREATE USER aidb WITH PASSWORD 'changeme';
+      GRANT ALL PRIVILEGES ON DATABASE aidb TO aidb;
+    '';
+  };
+
+  # Redis for caching and message queues
+  # Disabled by default - enable with: sudo systemctl enable --now redis
+  services.redis.servers."" = {
+    enable = false;  # Set to true to enable
+    port = 6379;
+    bind = "127.0.0.1";
+    maxmemory = "512mb";
+    maxmemory-policy = "allkeys-lru";
+    save = [
+      [900 1]    # Save after 900 sec if at least 1 key changed
+      [300 10]   # Save after 300 sec if at least 10 keys changed
+      [60 10000] # Save after 60 sec if at least 10000 keys changed
+    ];
+  };
+
+  # Nginx for reverse proxy and static file serving
+  # Disabled by default - configure as needed for your AI services
+  services.nginx = {
+    enable = false;  # Set to true to enable
+    recommendedProxySettings = true;
+    recommendedTlsSettings = true;
+    recommendedOptimisation = true;
+    recommendedGzipSettings = true;
+
+    # Example configuration for proxying AI services
+    virtualHosts."localhost" = {
+      locations."/" = {
+        proxyPass = "http://127.0.0.1:8000";  # Example: Your AI API
+        proxyWebsockets = true;
+      };
+      # locations."/ollama/" = {
+      #   proxyPass = "http://127.0.0.1:11434";
+      # };
+    };
+  };
+
+  # Prometheus for monitoring
+  # Disabled by default - enable for production monitoring
+  services.prometheus = {
+    enable = false;  # Set to true to enable
+    port = 9090;
+    exporters = {
+      node = {
+        enable = false;  # Set to true to enable
+        enabledCollectors = [ "systemd" "processes" "cpu" "meminfo" "diskstats" ];
+        port = 9100;
+      };
+    };
+    scrapeConfigs = [
+      {
+        job_name = "node";
+        static_configs = [{
+          targets = [ "localhost:9100" ];
+        }];
+      }
+    ];
+  };
+
+  # Grafana for metrics visualization
+  # Disabled by default - enable for monitoring dashboards
+  services.grafana = {
+    enable = false;  # Set to true to enable
+    settings = {
+      server = {
+        http_addr = "127.0.0.1";
+        http_port = 3001;  # Gitea uses 3000
+        domain = "localhost";
+      };
+      analytics.reporting_enabled = false;
+      security = {
+        admin_user = "admin";
+        admin_password = "changeme";  # Change this!
+      };
+    };
+    provision = {
+      enable = true;
+      datasources.settings.datasources = [
+        {
+          name = "Prometheus";
+          type = "prometheus";
+          url = "http://localhost:9090";
+          isDefault = true;
+        }
+      ];
+    };
+  };
+
+  # Fail2ban for SSH protection
+  # Disabled by default - enable for enhanced security
+  services.fail2ban = {
+    enable = false;  # Set to true to enable
+    maxretry = 3;
+    bantime = "1h";
+    ignoreIP = [
+      "127.0.0.1"
+      "::1"
+      "192.168.1.0/24"  # Adjust for your local network
+    ];
+    jails = {
+      sshd = ''
+        enabled = true
+        port = ssh
+        filter = sshd
+        logpath = /var/log/auth.log
+        maxretry = 3
+      '';
+    };
+  };
+
+  # Automatic system updates
+  # Disabled by default - enable for automatic security updates
+  system.autoUpgrade = {
+    enable = false;  # Set to true to enable
+    allowReboot = false;  # Set to true for servers
+    channel = "https://nixos.org/channels/nixos-@NIXOS_VERSION@";
+    dates = "weekly";
+    randomizedDelaySec = "1h";
+  };
+
+  # ============================================================================
   # System & Home Manager Version
   # ============================================================================
   system.stateVersion = "@NIXOS_VERSION@";
