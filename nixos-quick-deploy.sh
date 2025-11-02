@@ -1408,6 +1408,9 @@ HOME_MANAGER_CHANNEL_URL=""
 
 HOME_MANAGER_APPLIED=false
 SYSTEM_REBUILD_APPLIED=false
+SYSTEM_BUILD_VALIDATED=false
+INSTALLATION_APPROVED=false
+SYSTEM_BUILD_DRY_RUN_LOG=""
 
 # Preserved configuration data
 SELECTED_TIMEZONE=""
@@ -3857,12 +3860,25 @@ apply_home_manager_config() {
     # Clean up ALL packages installed via nix-env to prevent conflicts
     # We manage everything declaratively through home-manager now
     print_info "Checking for packages installed via nix-env (imperative method)..."
-    local IMPERATIVE_PKGS=$(nix-env -q 2>/dev/null)
+    local IMPERATIVE_PKGS
+    IMPERATIVE_PKGS=$(nix-env -q 2>/dev/null || true)
     if [ -n "$IMPERATIVE_PKGS" ]; then
-        print_warning "Found packages installed via nix-env (will cause conflicts):"
+        print_warning "Found packages installed via nix-env (will cause conflicts if left in place):"
         echo "$IMPERATIVE_PKGS" | sed 's/^/    /'
         echo ""
+    else
+        print_success "No nix-env packages found - clean state!"
+        echo ""
+    fi
 
+    if ! confirm "Proceed with home-manager activation (will remove legacy configs and apply the new user environment)?" "y"; then
+        print_warning "home-manager switch skipped at this stage. Run 'home-manager switch --flake "$HM_CONFIG_DIR"' later to apply the configuration."
+        print_warning "Existing Flatpak/user configuration files were left untouched."
+        echo ""
+        return 0
+    fi
+
+    if [ -n "$IMPERATIVE_PKGS" ]; then
         print_info "Removing ALL nix-env packages (switching to declarative home-manager)..."
         print_info "This prevents package collisions and ensures reproducibility"
 
@@ -3873,7 +3889,8 @@ apply_home_manager_config() {
             # Fallback: Try removing packages one by one
             print_warning "Batch removal failed, trying individual package removal..."
             while IFS= read -r pkg; do
-                local pkg_name=$(echo "$pkg" | awk '{print $1}')
+                local pkg_name
+                pkg_name=$(echo "$pkg" | awk '{print $1}')
                 if [ -n "$pkg_name" ]; then
                     print_info "Removing: $pkg_name"
                     nix-env -e "$pkg_name" 2>/dev/null && print_success "  Removed: $pkg_name" || print_warning "  Failed: $pkg_name"
@@ -3882,7 +3899,8 @@ apply_home_manager_config() {
         fi
 
         # Verify all removed
-        local REMAINING=$(nix-env -q 2>/dev/null)
+        local REMAINING
+        REMAINING=$(nix-env -q 2>/dev/null || true)
         if [ -n "$REMAINING" ]; then
             print_warning "Some packages remain in nix-env:"
             echo "$REMAINING" | sed 's/^/    /'
@@ -3891,10 +3909,8 @@ apply_home_manager_config() {
             print_success "All nix-env packages successfully removed"
             print_success "All packages now managed declaratively via home-manager"
         fi
-    else
-        print_success "No nix-env packages found - clean state!"
+        echo ""
     fi
-    echo ""
 
     # Backup existing configuration files
     backup_existing_configs
@@ -3925,17 +3941,10 @@ apply_home_manager_config() {
 
     # Use home-manager with flakes to enable nix-flatpak module and declarative Flatpak
     # Must specify the configuration name: #username
-    local CURRENT_USER=$(whoami)
-    #nix-shell -p home-manager
+    local CURRENT_USER
+    CURRENT_USER=$(whoami)
     print_info "Using configuration: homeConfigurations.$CURRENT_USER"
     echo ""
-
-    if ! confirm "Run home-manager switch now to activate your user environment?" "y"; then
-        print_warning "home-manager switch skipped at this stage. Run 'home-manager switch --flake "$HM_CONFIG_DIR"' later to apply the configuration."
-        print_warning "Some later steps may require the home-manager packages to be available."
-        echo ""
-        return 0
-    fi
 
     # Clean up any failed systemd services before activation to prevent degraded session warnings
     cleanup_systemd_before_activation
@@ -4005,8 +4014,7 @@ apply_home_manager_config() {
         exit 1
     fi
 
-    # Apply system-wide changes
-    apply_system_changes
+    # System-wide changes are applied later in the workflow after the system rebuild
 }
 
 cleanup_systemd_before_activation() {
@@ -4533,6 +4541,22 @@ EOF
             ;;
     esac
 
+    local gpu_driver_packages_block="[]"
+    case "$GPU_TYPE" in
+        intel)
+            gpu_driver_packages_block="(lib.optionals (pkgs ? intel-media-driver) [ intel-media-driver ] ++ lib.optionals (pkgs ? vaapiIntel) [ vaapiIntel ])"
+            ;;
+        amd)
+            gpu_driver_packages_block="(lib.optionals (pkgs ? mesa) [ mesa ] ++ lib.optionals (pkgs ? amdvlk) [ amdvlk ] ++ lib.optionals (pkgs ? rocm-opencl-icd) [ rocm-opencl-icd ])"
+            ;;
+        nvidia)
+            gpu_driver_packages_block="(lib.optionals (pkgs ? nvidia-vaapi-driver) [ nvidia-vaapi-driver ])"
+            ;;
+        *)
+            gpu_driver_packages_block="[]"
+            ;;
+    esac
+
     local cosmic_gpu_block
     if [[ "$GPU_TYPE" != "software" && "$GPU_TYPE" != "unknown" && -n "$LIBVA_DRIVER" ]]; then
         local gpu_label="${GPU_TYPE^}"
@@ -4692,6 +4716,7 @@ EOF
         MICROCODE_SECTION_VALUE="$MICROCODE_SECTION" \
         GPU_HARDWARE_SECTION_VALUE="$gpu_hardware_section" \
         COSMIC_GPU_BLOCK_VALUE="$cosmic_gpu_block" \
+        GPU_DRIVER_PACKAGES_BLOCK_VALUE="$gpu_driver_packages_block" \
         SELECTED_TIMEZONE_VALUE="$SELECTED_TIMEZONE" \
         CURRENT_LOCALE_VALUE="$CURRENT_LOCALE" \
         NIXOS_VERSION_VALUE="$NIXOS_VERSION" \
@@ -4731,6 +4756,7 @@ replacements = {
     "@MICROCODE_SECTION@": os.environ.get("MICROCODE_SECTION_VALUE", ""),
     "@GPU_HARDWARE_SECTION@": os.environ.get("GPU_HARDWARE_SECTION_VALUE", ""),
     "@COSMIC_GPU_BLOCK@": os.environ.get("COSMIC_GPU_BLOCK_VALUE", ""),
+    "@GPU_DRIVER_PACKAGES@": os.environ.get("GPU_DRIVER_PACKAGES_BLOCK_VALUE", "[]"),
     "@SELECTED_TIMEZONE@": os.environ.get("SELECTED_TIMEZONE_VALUE", "UTC"),
     "@CURRENT_LOCALE@": os.environ.get("CURRENT_LOCALE_VALUE", "en_US.UTF-8"),
     "@NIXOS_VERSION@": os.environ.get("NIXOS_VERSION_VALUE", "23.11"),
@@ -4819,15 +4845,26 @@ apply_nixos_system_config() {
     print_section "Applying New Configuration"
 
     local NIXOS_REBUILD_DRY_LOG="/tmp/nixos-rebuild-dry-run.log"
-    if run_nixos_rebuild_dry_run "$NIXOS_REBUILD_DRY_LOG"; then
-        print_success "Dry run completed successfully (no changes applied)"
-        print_info "Log saved to: $NIXOS_REBUILD_DRY_LOG"
+    if [[ "$SYSTEM_BUILD_VALIDATED" != true ]]; then
+        if run_nixos_rebuild_dry_run "$NIXOS_REBUILD_DRY_LOG"; then
+            SYSTEM_BUILD_VALIDATED=true
+            SYSTEM_BUILD_DRY_RUN_LOG="$NIXOS_REBUILD_DRY_LOG"
+            print_success "Dry run completed successfully (no changes applied)"
+            print_info "Log saved to: $NIXOS_REBUILD_DRY_LOG"
+        else
+            local dry_exit_code=$?
+            print_error "Dry run failed (exit code: $dry_exit_code)"
+            print_info "Review the log: $NIXOS_REBUILD_DRY_LOG"
+            print_info "Fix the issues above before attempting a full switch."
+            return 1
+        fi
     else
-        local dry_exit_code=$?
-        print_error "Dry run failed (exit code: $dry_exit_code)"
-        print_info "Review the log: $NIXOS_REBUILD_DRY_LOG"
-        print_info "Fix the issues above before attempting a full switch."
-        return 1
+        if [[ -n "$SYSTEM_BUILD_DRY_RUN_LOG" ]]; then
+            NIXOS_REBUILD_DRY_LOG="$SYSTEM_BUILD_DRY_RUN_LOG"
+            print_info "Dry run already completed earlier (log: $SYSTEM_BUILD_DRY_RUN_LOG)"
+        else
+            print_info "Dry run previously completed - skipping rebuild validation"
+        fi
     fi
 
     # CRITICAL: This prompt happens BEFORE any home-manager/flatpak/flake backups
@@ -4867,6 +4904,102 @@ apply_nixos_system_config() {
 # ============================================================================
 # Flake Integration & AIDB Development Environment
 # ============================================================================
+
+configure_direnv_integration() {
+    local backup_dir="${1:-}"
+    local direnv_config_dir="$HOME/.config/direnv"
+    local direnvrc_path="$direnv_config_dir/direnvrc"
+    local envrc_path="$HM_CONFIG_DIR/.envrc"
+    local desired_direnvrc_content
+    local desired_envrc_content
+    local update_direnvrc=true
+    local update_envrc=true
+
+    if ! command -v direnv >/dev/null 2>&1; then
+        print_warning "direnv not found in PATH. Install direnv via home-manager before enabling integration."
+        return 1
+    fi
+
+    desired_direnvrc_content=$(cat <<'EOF'
+# nix-direnv integration (managed by nixos-quick-deploy)
+if [ -d "$HOME/.nix-profile/share/nix-direnv" ]; then
+  source "$HOME/.nix-profile/share/nix-direnv/direnvrc"
+elif [ -d "/etc/profiles/per-user/$USER/share/nix-direnv" ]; then
+  source "/etc/profiles/per-user/$USER/share/nix-direnv/direnvrc"
+elif [ -d "/nix/var/nix/profiles/per-user/$USER/share/nix-direnv" ]; then
+  source "/nix/var/nix/profiles/per-user/$USER/share/nix-direnv/direnvrc"
+fi
+EOF
+)
+
+    desired_envrc_content=$(cat <<'EOF'
+# AIDB flake direnv activation (managed by nixos-quick-deploy)
+if [ -f flake.nix ]; then
+  use flake
+fi
+EOF
+)
+
+    if [[ -z "$backup_dir" ]]; then
+        backup_dir="$HOME/.config-backups/flake-setup-$(date +%Y%m%d_%H%M%S)"
+    fi
+
+    if ! run_as_primary_user install -d -m 755 "$direnv_config_dir" >/dev/null 2>&1; then
+        mkdir -p "$direnv_config_dir"
+    fi
+    ensure_path_owner "$direnv_config_dir"
+
+    if [[ -f "$direnvrc_path" || -L "$direnvrc_path" ]]; then
+        if printf '%s\n' "$desired_direnvrc_content" | cmp -s - "$direnvrc_path" 2>/dev/null; then
+            update_direnvrc=false
+        fi
+    fi
+
+    if [[ "$update_direnvrc" == true ]]; then
+        backup_path_if_exists "$direnvrc_path" "$backup_dir" "direnv configuration" || true
+        printf '%s\n' "$desired_direnvrc_content" > "$direnvrc_path"
+        ensure_path_owner "$direnvrc_path"
+        print_success "Configured nix-direnv integration at $direnvrc_path"
+    else
+        print_info "direnvrc already configured for nix-direnv integration"
+    fi
+
+    if [[ -f "$envrc_path" || -L "$envrc_path" ]]; then
+        if printf '%s\n' "$desired_envrc_content" | cmp -s - "$envrc_path" 2>/dev/null; then
+            update_envrc=false
+        fi
+    fi
+
+    if [[ "$update_envrc" == true ]]; then
+        backup_path_if_exists "$envrc_path" "$backup_dir" "flake .envrc" || true
+        printf '%s\n' "$desired_envrc_content" > "$envrc_path"
+        ensure_path_owner "$envrc_path"
+        print_success "Created direnv .envrc in $HM_CONFIG_DIR"
+    else
+        print_info ".envrc already enables flake activation"
+    fi
+
+    if [[ ! -e "$HOME/.zshrc" ]]; then
+        : > "$HOME/.zshrc"
+    fi
+
+    local direnv_hook='eval "$(direnv hook zsh)"'
+    if ! grep -Fq "$direnv_hook" "$HOME/.zshrc" 2>/dev/null; then
+        echo "$direnv_hook" >> "$HOME/.zshrc"
+        ensure_path_owner "$HOME/.zshrc"
+        print_success "Added direnv hook to .zshrc"
+    else
+        print_info "direnv hook already present in .zshrc"
+    fi
+
+    if (cd "$HM_CONFIG_DIR" && direnv allow >/dev/null 2>&1); then
+        print_success "direnv allowed for $HM_CONFIG_DIR"
+    else
+        print_warning "direnv allow failed for $HM_CONFIG_DIR (run manually if needed)"
+    fi
+
+    return 0
+}
 
 setup_flake_environment() {
     print_section "Setting Up Flake-based Development Environment"
@@ -5015,6 +5148,24 @@ ZSHFLAKE
         echo 'source ~/.config/zsh/aidb-flake.zsh' >> "$HOME/.zshrc"
         print_success "Added AIDB flake aliases to .zshrc"
         ensure_path_owner "$HOME/.zshrc"
+    fi
+
+    echo ""
+    if command -v direnv >/dev/null 2>&1; then
+        if confirm "Enable automatic direnv activation for the AIDB flake when entering $HM_CONFIG_DIR?" "y"; then
+            if configure_direnv_integration "$flake_backup_dir"; then
+                print_success "direnv integration enabled for the flake directory"
+            else
+                print_warning "direnv integration step encountered issues (see messages above)"
+            fi
+            echo ""
+        else
+            print_info "Direnv integration skipped. Run configure_direnv_integration later to enable it."
+            echo ""
+        fi
+    else
+        print_info "direnv is not currently in PATH; skipping automatic direnv integration. Install direnv and rerun configure_direnv_integration when ready."
+        echo ""
     fi
 
     print_success "Flake environment setup complete!"
@@ -5666,6 +5817,118 @@ print_post_install() {
 }
 
 # ============================================================================
+# Workflow Stages
+# ============================================================================
+
+preflight_checks_stage() {
+    print_section "Preflight Checks"
+    check_prerequisites
+    gather_user_info
+    select_nixos_version
+}
+
+validate_system_build_stage() {
+    print_section "Validating NixOS Rebuild"
+    local log_path="/tmp/nixos-rebuild-dry-run.log"
+
+    if run_nixos_rebuild_dry_run "$log_path"; then
+        SYSTEM_BUILD_VALIDATED=true
+        SYSTEM_BUILD_DRY_RUN_LOG="$log_path"
+        print_success "Dry run completed successfully (no changes applied)"
+        print_info "Log saved to: $log_path"
+    else
+        local exit_code=$?
+        print_error "Dry run failed (exit code: $exit_code)"
+        print_info "Review the log: $log_path"
+        print_info "Fix the issues above before attempting a full switch."
+        exit 1
+    fi
+}
+
+prompt_installation_stage() {
+    echo ""
+    if confirm "Continue with the installation workflow (Flatpak, home-manager, flake, and services)?" "y"; then
+        INSTALLATION_APPROVED=true
+        print_success "Continuing with installation workflow"
+        echo ""
+        return 0
+    fi
+
+    print_warning "Installation workflow cancelled at user request."
+    print_info "You can rerun the script when you are ready to continue."
+    echo ""
+    return 1
+}
+
+install_flatpak_stage() {
+    print_section "Flatpak Preparation"
+
+    if preflight_flatpak_environment "workflow-preflight"; then
+        print_success "Flatpak environment looks healthy"
+    else
+        print_warning "Flatpak preflight checks reported issues (see messages above)"
+    fi
+
+    ensure_default_flatpak_apps_installed
+}
+
+apply_final_system_configuration() {
+    apply_nixos_system_config
+
+    if [[ "$HOME_MANAGER_APPLIED" == true || -f "$HOME/.zshrc" ]]; then
+        apply_system_changes
+    fi
+}
+
+run_system_health_check_stage() {
+    print_section "Running System Health Check"
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local health_check="$script_dir/scripts/system-health-check.sh"
+
+    if [[ ! -x "$health_check" ]]; then
+        print_warning "System health check script not found or not executable: $health_check"
+        print_info "Skipping automated health verification."
+        echo ""
+        return 0
+    fi
+
+    local run_fix_message=""
+    local run_fix_default="n"
+
+    if "$health_check" --detailed; then
+        print_success "System health check completed successfully"
+        run_fix_message="Run the health check again with --fix to apply optional maintenance tasks?"
+        run_fix_default="n"
+    else
+        local exit_code=$?
+        print_warning "System health check reported issues (exit code: $exit_code)"
+        print_info "Review the output above for details."
+        run_fix_message="Attempt to auto-fix the reported issues by running the health check with --fix now?"
+        run_fix_default="y"
+    fi
+
+    if [[ -n "$run_fix_message" ]] && confirm "$run_fix_message" "$run_fix_default"; then
+        echo ""
+        print_warning "The --fix option may restart services and modify configuration files."
+        if confirm "Proceed with '$health_check --fix' now?" "y"; then
+            echo ""
+            if "$health_check" --fix; then
+                print_success "System health remediation completed successfully"
+            else
+                local fix_exit_code=$?
+                print_warning "Health check --fix exited with code: $fix_exit_code"
+                print_info "Review the output above to resolve remaining issues manually."
+            fi
+        else
+            print_info "Skipping '--fix' run at user request."
+        fi
+    fi
+
+    echo ""
+}
+
+# ============================================================================
 # Main
 # ============================================================================
 
@@ -5708,34 +5971,27 @@ main() {
         echo ""
     fi
 
-    check_prerequisites
-    gather_user_info
+    preflight_checks_stage
 
-    # Step 0: Select NixOS version (25.11 or current)
-    # This must run before updating channels
-    select_nixos_version
-
-    # ========================================================================
-    # CRITICAL FLOW REORGANIZATION:
-    # 1. Generate system config (no prompt, no destructive operations)
-    # 2. Prompt user for system rebuild (BEFORE any backups/deletions)
-    # 3. If user accepts, apply system config, THEN backup/apply home-manager
-    # This ensures the user can cancel BEFORE we delete/backup any files
-    # ========================================================================
-
-    # Step 1: Generate NixOS system configuration (no prompt yet)
+    # Generate configuration files needed for validation and later activation
     generate_nixos_system_config
 
-    # Step 2: Prompt and apply system configuration (BEFORE home-manager backups)
-    # This is where the user decides whether to proceed with the rebuild
-    apply_nixos_system_config
+    # Validate the build before performing any destructive actions
+    validate_system_build_stage
 
-    # Step 3: Create and apply home-manager configuration (user packages)
+    if ! prompt_installation_stage; then
+        return 0
+    fi
+
+    # Install Flatpak prerequisites before switching user environments
+    install_flatpak_stage
+
+    # Create and apply home-manager configuration (user packages)
     # This is when backups and deletions happen (flatpak, flake, home-manager files)
     create_home_manager_config
     apply_home_manager_config
 
-    # Step 3: Flake integration (runs after home-manager to use packages for AIDB development)
+    # Flake integration (runs after home-manager to use packages for AIDB development)
     # Non-critical - errors won't stop deployment
     if ! setup_flake_environment; then
         print_warning "Flake environment setup had issues (see above)"
@@ -5743,8 +5999,7 @@ main() {
         echo ""
     fi
 
-    # Step 4: Claude Code integration (runs after home-manager so Node.js is available)
-    # Non-critical - errors won't stop deployment
+    # Remaining developer tooling and services (requires home-manager packages)
     if install_claude_code; then
         configure_vscodium_for_claude || print_warning "VSCodium configuration had issues"
         install_vscodium_extensions || print_warning "Some VSCodium extensions may not have installed"
@@ -5753,6 +6008,12 @@ main() {
         print_info "You can install it manually later if needed"
         echo ""
     fi
+
+    # Apply the system configuration and ensure shell defaults are updated
+    apply_final_system_configuration
+
+    # Run health verification before presenting post-install guidance
+    run_system_health_check_stage
 
     finalize_configuration_activation
 
@@ -5789,7 +6050,7 @@ main() {
     fi
 
     echo -e "${BLUE}Next steps:${NC}"
-    echo -e "  ${GREEN}1.${NC} Run health check: ${YELLOW}~/NixOS-Dev-Quick-Deploy/scripts/system-health-check.sh${NC}"
+    echo -e "  ${GREEN}1.${NC} Re-run health check as needed: ${YELLOW}~/NixOS-Dev-Quick-Deploy/scripts/system-health-check.sh${NC}"
     echo -e "  ${GREEN}2.${NC} Verify services: ${YELLOW}systemctl status ollama qdrant gitea huggingface-tgi${NC}"
     echo -e "  ${GREEN}3.${NC} Check Jupyter Lab: ${YELLOW}systemctl --user status jupyter-lab${NC}"
     echo -e "  ${GREEN}4.${NC} Test Claude Code: ${YELLOW}which claude-wrapper${NC}"
