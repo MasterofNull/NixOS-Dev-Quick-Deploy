@@ -568,6 +568,7 @@ in
     # COSMIC Settings (explicitly included to ensure settings daemon is available)
     # This fixes issues with cosmic-settings-daemon not being found during startup
   ] ++ lib.optionals (pkgs ? cosmic-settings) [ pkgs.cosmic-settings ]
+  ++ @GPU_DRIVER_PACKAGES@
   ++ [
     # Container tools (system-level for rootless podman)
     podman
