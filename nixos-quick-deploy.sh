@@ -4105,7 +4105,21 @@ force_clean_environment_setup() {
             rm -rf "$flatpak_config"
         fi
 
-        print_success "Complete flatpak environment removed for clean reinstall"
+        # CRITICAL FIX: Re-initialize Flatpak repository structure after removal
+        # Without this, Flatpak will have a corrupted repository
+        print_info "Re-initializing Flatpak repository structure..."
+        mkdir -p "$flatpak_dir/repo"
+        mkdir -p "$flatpak_config"
+
+        # Add Flathub remote to prevent repository corruption
+        print_info "Adding Flathub remote to new Flatpak installation..."
+        if run_as_primary_user flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo 2>/dev/null || true; then
+            print_success "Flathub remote added successfully"
+        else
+            print_warning "Could not add Flathub remote (will be added later by home-manager)"
+        fi
+
+        print_success "Complete flatpak environment removed and re-initialized for clean reinstall"
         print_info "Flatpak will be completely rebuilt by home-manager"
     fi
 
@@ -4140,8 +4154,13 @@ apply_system_changes() {
     # This matches the NixOS configuration which sets shell = pkgs.zsh
     if [ "$SHELL" != "$(which zsh)" ]; then
         print_info "Setting ZSH as default shell (configured in NixOS)"
-        chsh -s "$(which zsh)"
-        print_success "Default shell set to ZSH (restart terminal to apply)"
+        # FIXED: Use sudo to avoid PAM authentication failure
+        if sudo chsh -s "$(which zsh)" "$USER" 2>/dev/null; then
+            print_success "Default shell set to ZSH (restart terminal to apply)"
+        else
+            print_warning "Could not set ZSH as default shell automatically"
+            print_info "Set it manually later with: sudo chsh -s \$(which zsh) $USER"
+        fi
     else
         print_success "ZSH is already your default shell"
     fi
@@ -4262,7 +4281,14 @@ detect_gpu_and_cpu() {
 # NixOS System Configuration Updates
 # ============================================================================
 
-update_nixos_system_config() {
+# ============================================================================
+# NixOS System Configuration - Part 1: Generation
+# ============================================================================
+# This function generates the NixOS system configuration files but does NOT
+# prompt the user or apply the configuration. This allows the main() flow to
+# prompt BEFORE any destructive operations (backups/deletions) occur.
+# ============================================================================
+generate_nixos_system_config() {
     print_section "Generating Fresh NixOS Configuration"
 
     local SYSTEM_CONFIG="/etc/nixos/configuration.nix"
@@ -4695,7 +4721,16 @@ PY
         print_error "Required flake files are missing; aborting rebuild"
         return 1
     fi
+}
 
+# ============================================================================
+# NixOS System Configuration - Part 2: Application
+# ============================================================================
+# This function prompts the user and applies the NixOS system configuration.
+# It should be called AFTER generate_nixos_system_config() and BEFORE any
+# destructive operations like backups or deletions of user files.
+# ============================================================================
+apply_nixos_system_config() {
     # Apply the new configuration
     print_section "Applying New Configuration"
 
@@ -4711,6 +4746,7 @@ PY
         return 1
     fi
 
+    # CRITICAL: This prompt happens BEFORE any home-manager/flatpak/flake backups
     if ! confirm "Proceed with 'sudo nixos-rebuild switch' to apply the system configuration?" "y"; then
         local target_host=$(hostname)
         print_warning "nixos-rebuild switch skipped at this stage. Run 'sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host"' later to apply system changes."
@@ -5595,11 +5631,23 @@ main() {
     # This must run before updating channels
     select_nixos_version
 
-    # Step 1: Update NixOS system configuration (Cosmic, Podman, Flakes)
-    # This runs first so system-level packages are available
-    update_nixos_system_config
+    # ========================================================================
+    # CRITICAL FLOW REORGANIZATION:
+    # 1. Generate system config (no prompt, no destructive operations)
+    # 2. Prompt user for system rebuild (BEFORE any backups/deletions)
+    # 3. If user accepts, apply system config, THEN backup/apply home-manager
+    # This ensures the user can cancel BEFORE we delete/backup any files
+    # ========================================================================
 
-    # Step 2: Create and apply home-manager configuration (user packages)
+    # Step 1: Generate NixOS system configuration (no prompt yet)
+    generate_nixos_system_config
+
+    # Step 2: Prompt and apply system configuration (BEFORE home-manager backups)
+    # This is where the user decides whether to proceed with the rebuild
+    apply_nixos_system_config
+
+    # Step 3: Create and apply home-manager configuration (user packages)
+    # This is when backups and deletions happen (flatpak, flake, home-manager files)
     create_home_manager_config
     apply_home_manager_config
 
