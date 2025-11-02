@@ -447,6 +447,43 @@ check_systemd_service() {
     fi
 }
 
+check_system_service() {
+    local service=$1
+    local description=$2
+    local check_running=${3:-false}
+
+    print_check "$description"
+
+    # Check if service unit exists (system-level)
+    if ! systemctl list-unit-files | grep -q "^${service}.service"; then
+        print_fail "$description service not configured"
+        return 1
+    fi
+
+    # Check if service is enabled
+    local enabled="disabled"
+    if systemctl is-enabled "$service" &> /dev/null; then
+        enabled="enabled"
+    fi
+
+    # Check if service is running
+    if systemctl is-active "$service" &> /dev/null; then
+        print_success "$description (running, $enabled)"
+        print_detail "Status: Active"
+        return 0
+    else
+        if [ "$check_running" = true ]; then
+            print_fail "$description (not running, $enabled)"
+            print_detail "Check logs: journalctl -u $service"
+            print_detail "Start with: sudo systemctl start $service"
+        else
+            print_success "$description (configured, $enabled)"
+            print_detail "Enable with: sudo systemctl enable --now $service"
+        fi
+        return 2
+    fi
+}
+
 check_systemd_service_port() {
     local service=$1
     local port=$2
@@ -734,25 +771,29 @@ run_all_checks() {
     # ==========================================================================
     print_section "AI Systemd Services"
 
-    # Qdrant vector database
-    check_systemd_service "qdrant" "Qdrant (vector database)" true
-    if systemctl --user is-active qdrant &> /dev/null; then
-        check_systemd_service_port "qdrant" "6333" "Qdrant API"
+    # Qdrant vector database (system service)
+    check_system_service "qdrant" "Qdrant (vector database)" true
+    if systemctl is-active qdrant &> /dev/null; then
+        if curl -s "http://localhost:6333" &> /dev/null || nc -z localhost 6333 2>/dev/null; then
+            print_detail "Qdrant API accessible on port 6333"
+        fi
     fi
 
-    # Hugging Face TGI
-    check_systemd_service "huggingface-tgi" "Hugging Face TGI (LLM inference)" true
-    if systemctl --user is-active huggingface-tgi &> /dev/null; then
-        check_systemd_service_port "huggingface-tgi" "8080" "TGI API"
+    # Hugging Face TGI (system service)
+    check_system_service "huggingface-tgi" "Hugging Face TGI (LLM inference)" true
+    if systemctl is-active huggingface-tgi &> /dev/null; then
+        if curl -s "http://localhost:8080" &> /dev/null || nc -z localhost 8080 2>/dev/null; then
+            print_detail "TGI API accessible on port 8080"
+        fi
     fi
 
-    # Jupyter Lab
+    # Jupyter Lab (user service)
     check_systemd_service "jupyter-lab" "Jupyter Lab (notebooks)" true
     if systemctl --user is-active jupyter-lab &> /dev/null; then
         check_systemd_service_port "jupyter-lab" "8888" "Jupyter Lab"
     fi
 
-    # Gitea development forge
+    # Gitea development forge (user service)
     check_systemd_service "gitea-dev" "Gitea (development forge)" true
 
     # ==========================================================================
