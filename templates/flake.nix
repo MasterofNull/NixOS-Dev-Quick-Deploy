@@ -20,17 +20,8 @@
         inherit system;
         modules = [
           ./configuration.nix
-          home-manager.nixosModules.home-manager
-          {
-            home-manager.useGlobalPkgs = true;
-            home-manager.useUserPackages = true;
-            home-manager.users."HOME_USERNAME_PLACEHOLDER" = {
-              imports = [
-                nix-flatpak.homeManagerModules.nix-flatpak
-                ./home.nix
-              ];
-            };
-          }
+          # Note: home-manager is used standalone (via homeConfigurations below)
+          # Not as a NixOS module to avoid dependency issues during nixos-rebuild
         ];
       };
 

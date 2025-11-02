@@ -772,7 +772,8 @@ run_all_checks() {
     print_section "AI Systemd Services"
 
     # Qdrant vector database (system service)
-    check_system_service "qdrant" "Qdrant (vector database)" true
+    # These services are disabled by default to prevent startup issues during deployment
+    check_system_service "qdrant" "Qdrant (vector database)" false
     if systemctl is-active qdrant &> /dev/null; then
         if curl -s "http://localhost:6333" &> /dev/null || nc -z localhost 6333 2>/dev/null; then
             print_detail "Qdrant API accessible on port 6333"
@@ -780,7 +781,7 @@ run_all_checks() {
     fi
 
     # Hugging Face TGI (system service)
-    check_system_service "huggingface-tgi" "Hugging Face TGI (LLM inference)" true
+    check_system_service "huggingface-tgi" "Hugging Face TGI (LLM inference)" false
     if systemctl is-active huggingface-tgi &> /dev/null; then
         if curl -s "http://localhost:8080" &> /dev/null || nc -z localhost 8080 2>/dev/null; then
             print_detail "TGI API accessible on port 8080"
@@ -788,13 +789,13 @@ run_all_checks() {
     fi
 
     # Jupyter Lab (user service)
-    check_systemd_service "jupyter-lab" "Jupyter Lab (notebooks)" true
+    check_systemd_service "jupyter-lab" "Jupyter Lab (notebooks)" false
     if systemctl --user is-active jupyter-lab &> /dev/null; then
         check_systemd_service_port "jupyter-lab" "8888" "Jupyter Lab"
     fi
 
-    # Gitea development forge (user service)
-    check_systemd_service "gitea-dev" "Gitea (development forge)" true
+    # Gitea development forge (system service)
+    check_system_service "gitea" "Gitea (development forge)" true
 
     # ==========================================================================
     # Network Services
