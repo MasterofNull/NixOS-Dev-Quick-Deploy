@@ -2590,11 +2590,14 @@ PLUGINCFG
             WantedBy = [ "default.target" ];
           };
         };
-        # Note: Qdrant and Hugging Face TGI are now configured as system services
-        # in configuration.nix and are automatically started by systemd
+        # Note: Qdrant and Hugging Face TGI are configured as system services in configuration.nix
+        # They are disabled by default to prevent startup issues during deployment.
+        # Enable them manually after deployment:
+        #   sudo systemctl enable --now qdrant
+        #   sudo systemctl enable --now huggingface-tgi
         #
         # Jupyter Lab server (user service for interactive development)
-        # Automatically started when user logs in
+        # Disabled by default - enable manually with: systemctl --user enable --now jupyter-lab
         "jupyter-lab" = {
           Unit = {
             Description = "Jupyter Lab server for interactive AI/ML development";
@@ -2626,8 +2629,8 @@ PLUGINCFG
             TimeoutStopSec = 30;
           };
           Install = {
-            # Enabled by default for full AI development environment
-            WantedBy = [ "default.target" ];
+            # Disabled by default to avoid startup issues during deployment
+            # WantedBy = [ "default.target" ];
           };
         };
       }
