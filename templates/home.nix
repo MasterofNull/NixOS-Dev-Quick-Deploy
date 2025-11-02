@@ -725,40 +725,32 @@ RESOURCES
           openai               # OpenAI API client
           anthropic            # Anthropic API client
           # Note: dask often causes build issues, added conditionally below
-        ];
-        # AI/ML packages that may not be available in all nixpkgs versions
-        # Using lib.optionals ensures the build doesn't fail if packages are missing
-        aiExtras =
-          # Deep Learning Frameworks
-          lib.optionals (ps ? torch) [ ps.torch ]
-          ++ lib.optionals (ps ? torchaudio) [ ps.torchaudio ]
-          ++ lib.optionals (ps ? torchvision) [ ps.torchvision ]
-          ++ lib.optionals (ps ? tensorflow) [ ps.tensorflow ]
-          ++ lib.optionals (ps ? bitsandbytes) [ ps.bitsandbytes ]
+          # Deep Learning Frameworks (ALL REQUIRED - NOT OPTIONAL)
+          torch
+          torchaudio
+          torchvision
+          tensorflow
+          bitsandbytes
           # LangChain Ecosystem
-          ++ lib.optionals (ps ? langchain) [ ps.langchain ]
-          ++ lib.optionals (ps ? "langchain-openai") [ ps."langchain-openai" ]
-          ++ lib.optionals (ps ? "langchain-community") [ ps."langchain-community" ]
-          ++ lib.optionals (ps ? "langchain-core") [ ps."langchain-core" ]
+          langchain
+          langchain-openai
+          langchain-community
+          langchain-core
           # LlamaIndex Ecosystem
-          ++ lib.optionals (ps ? "llama-index") [ ps."llama-index" ]
-          ++ lib.optionals (ps ? "llama-index-core") [ ps."llama-index-core" ]
+          llama-index
+          llama-index-core
           # Vector Databases & Embeddings
-          ++ lib.optionals (ps ? chromadb) [ ps.chromadb ]
-          ++ lib.optionals (ps ? "qdrant-client") [ ps."qdrant-client" ]
-          ++ lib.optionals (ps ? "pinecone-client") [ ps."pinecone-client" ]
-          ++ lib.optionals (ps ? faiss) [ ps.faiss ]
-          ++ lib.optionals (ps ? "sentence-transformers") [ ps."sentence-transformers" ]
+          chromadb
+          qdrant-client
+          pinecone-client
+          faiss
+          sentence-transformers
           # Specialized AI Tools
-          ++ lib.optionals (ps ? "llama-cpp-python") [ ps."llama-cpp-python" ]
-          ++ lib.optionals (ps ? "mindsdb") [ ps."mindsdb" ]
-          # Data Processing (conditional)
-          ++ lib.optionals (ps ? dask) [ ps.dask ]
-          ++ lib.optionals (ps ? "dask-ml") [ ps."dask-ml" ];
-        # Note: weaviate-client is currently incompatible with python311
-        # Users can add it manually once upstream gains support
-      in
-        base ++ aiExtras
+          llama-cpp-python
+          # Data Processing
+          dask
+          dask-ml
+        ]
     );
   pythonAiInterpreterPath = "${pythonAiEnv}/bin/python3";
   huggingfaceReadme = ''
@@ -1021,12 +1013,12 @@ in
     ];
   home.packages =
     let
-      aiCommandLinePackages =
-        lib.optionals (pkgs ? ollama) [ pkgs.ollama ]
-        ++ lib.optionals (pkgs ? gpt4all) [ pkgs.gpt4all ]
-        ++ lib.optionals (pkgs ? llama-cpp) [ pkgs.llama-cpp ]
-        ++ lib.optionals (pkgs ? "text-generation-inference") [ pkgs."text-generation-inference" ]
-        ++ lib.optionals (pkgs ? "mindsdb") [ pkgs."mindsdb" ];
+      # ALL AI command-line packages are REQUIRED (not optional)
+      aiCommandLinePackages = with pkgs; [
+        ollama
+        gpt4all
+        llama-cpp
+      ];
       basePackages =
         [
           nixAiHelpScript
@@ -1078,6 +1070,7 @@ in
           # Note: vim installed via programs.vim below (prevents collision)
           neovim                  # Modern Vim fork with async support
           # Note: vscodium installed via programs.vscode below
+          code-cursor             # Cursor IDE (AI-powered editor)
 
           # Web browsers are now installed via Flatpak for better sandboxing:
           # Firefox: "org.mozilla.firefox" in services.flatpak.packages
@@ -2595,95 +2588,11 @@ PLUGINCFG
             WantedBy = [ "default.target" ];
           };
         };
-        # Qdrant vector database service
-        # Enable with: systemctl --user enable --now qdrant
-        "qdrant" = {
-          Unit = {
-            Description = "Qdrant vector database for AI embeddings and RAG";
-            Documentation = [ "https://qdrant.tech/documentation/" ];
-            After = [ "network-online.target" ];
-            Wants = [ "network-online.target" ];
-          };
-          Service = {
-            Type = "simple";
-            Environment = [
-              "QDRANT_DATA_DIR=%h/.local/share/qdrant/storage"
-              "QDRANT_SNAPSHOTS_DIR=%h/.local/share/qdrant/snapshots"
-            ];
-            ExecStartPre = [
-              "${pkgs.coreutils}/bin/mkdir -p %h/.local/share/qdrant/storage"
-              "${pkgs.coreutils}/bin/mkdir -p %h/.local/share/qdrant/snapshots"
-            ];
-            ExecStart = ''
-              ${pkgs.podman}/bin/podman run --rm \
-                --name qdrant \
-                -p 6333:6333 \
-                -p 6334:6334 \
-                -v %h/.local/share/qdrant/storage:/qdrant/storage:z \
-                -v %h/.local/share/qdrant/snapshots:/qdrant/snapshots:z \
-                docker.io/qdrant/qdrant:latest
-            '';
-            ExecStop = "${pkgs.podman}/bin/podman stop -t 10 qdrant";
-            Restart = "on-failure";
-            RestartSec = 5;
-            TimeoutStartSec = 300;
-            TimeoutStopSec = 60;
-          };
-          Install = {
-            # Enabled by default for full AI development environment
-            WantedBy = [ "default.target" ];
-          };
-        };
-        # Hugging Face Text Generation Inference (TGI) service
-        # Enable with: systemctl --user enable --now huggingface-tgi
-        # Note: Requires HF_TOKEN environment variable for gated models
-        "huggingface-tgi" = {
-          Unit = {
-            Description = "Hugging Face Text Generation Inference server";
-            Documentation = [ "https://github.com/huggingface/text-generation-inference" ];
-            After = [ "network-online.target" ];
-            Wants = [ "network-online.target" ];
-          };
-          Service = {
-            Type = "simple";
-            Environment = [
-              "HF_HOME=%h/${huggingfaceCacheDir}"
-              "HUGGINGFACE_HUB_CACHE=%h/${huggingfaceCacheDir}"
-              "MODEL_ID=${huggingfaceModelId}"
-              "TGI_PORT=8080"
-            ];
-            ExecStartPre = [
-              "${pkgs.coreutils}/bin/mkdir -p %h/${huggingfaceCacheDir}"
-            ];
-            # Note: Users should set HF_TOKEN via environment override or systemctl edit
-            # Example: systemctl --user edit huggingface-tgi
-            # [Service]
-            # Environment="HF_TOKEN=your_token_here"
-            ExecStart = ''
-              ${pkgs.podman}/bin/podman run --rm \
-                --name huggingface-tgi \
-                -p 8080:80 \
-                -v %h/${huggingfaceCacheDir}:/data:z \
-                -e MODEL_ID=''${MODEL_ID} \
-                -e HF_TOKEN=''${HF_TOKEN:-} \
-                -e MAX_TOTAL_TOKENS=4096 \
-                -e MAX_INPUT_LENGTH=2048 \
-                ghcr.io/huggingface/text-generation-inference:latest \
-                --model-id ''${MODEL_ID}
-            '';
-            ExecStop = "${pkgs.podman}/bin/podman stop -t 30 huggingface-tgi";
-            Restart = "on-failure";
-            RestartSec = 10;
-            TimeoutStartSec = 600;  # Model download can take time
-            TimeoutStopSec = 60;
-          };
-          Install = {
-            # Enabled by default for full AI development environment
-            WantedBy = [ "default.target" ];
-          };
-        };
-        # Jupyter Lab server (alternative to running in Python environment)
-        # Enable with: systemctl --user enable --now jupyter-lab
+        # Note: Qdrant and Hugging Face TGI are now configured as system services
+        # in configuration.nix and are automatically started by systemd
+        #
+        # Jupyter Lab server (user service for interactive development)
+        # Automatically started when user logs in
         "jupyter-lab" = {
           Unit = {
             Description = "Jupyter Lab server for interactive AI/ML development";

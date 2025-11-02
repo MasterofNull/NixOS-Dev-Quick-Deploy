@@ -25,12 +25,14 @@ DEFAULT_FLATPAK_APPS=(
     "io.mpv.Mpv"
     "org.mozilla.firefox"
     "md.obsidian.Obsidian"
-    "ai.cursor.Cursor"
-    "com.lmstudio.LMStudio"
-    "io.gitea.Gitea"
     "io.podman_desktop.PodmanDesktop"
     "org.sqlitebrowser.sqlitebrowser"
 )
+# Note: Cursor IDE, LM Studio, and Gitea are not available on Flathub
+# These are installed via home-manager instead:
+#   - Cursor IDE: pkgs.code-cursor (in home.packages)
+#   - LM Studio: Not available/broken in nixpkgs, use Ollama instead (already installed)
+#   - Gitea: Configured as system service in configuration.nix
 LAST_FLATPAK_QUERY_MESSAGE=""
 
 # Ensure we target the invoking user's home directory even when executed via sudo
@@ -2151,7 +2153,27 @@ validate_flake_artifact() {
     return 0
 }
 
+require_system_config_artifacts() {
+    # Only validate system configuration files (not home-manager/flake files)
+    # Used during system configuration generation phase
+    ensure_flake_workspace || return 1
+
+    local missing=false
+
+    validate_flake_artifact "$SYSTEM_CONFIG_FILE" "configuration.nix" || missing=true
+    validate_flake_artifact "$HARDWARE_CONFIG_FILE" "hardware-configuration.nix" || missing=true
+
+    if $missing; then
+        print_info "Resolve the missing artifacts above and rerun the script with --force-update if needed."
+        return 1
+    fi
+
+    return 0
+}
+
 require_flake_artifacts() {
+    # Validate all flake artifacts including home-manager files
+    # Used before applying configurations via flake
     ensure_flake_workspace || return 1
 
     local missing=false
@@ -3389,7 +3411,7 @@ gather_user_info() {
     case $EDITOR_CHOICE in
         1) DEFAULT_EDITOR="vim" ;;
         2) DEFAULT_EDITOR="nvim" ;;
-        3) DEFAULT_EDITOR="code" ;;
+        3) DEFAULT_EDITOR="codium" ;;
         4) DEFAULT_EDITOR="gitea-editor" ;;
         *) DEFAULT_EDITOR="vim" ;;
     esac
@@ -3775,10 +3797,12 @@ run_nixos_rebuild_dry_run() {
     local target_host
     target_host=$(hostname)
 
-    print_info "Performing dry run: sudo nixos-rebuild switch --flake \"$HM_CONFIG_DIR#$target_host\" --dry-run"
+    print_info "Performing dry run: sudo nixos-rebuild build --flake \"$HM_CONFIG_DIR#$target_host\""
     print_info "Validating system rebuild without applying changes..."
 
-    sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" --dry-run 2>&1 | tee "$log_path"
+    # Note: NixOS 25.05 doesn't support --dry-run flag
+    # Use 'build' instead which builds but doesn't activate the configuration
+    sudo nixos-rebuild build --flake "$HM_CONFIG_DIR#$target_host" 2>&1 | tee "$log_path"
     return ${PIPESTATUS[0]}
 }
 
@@ -4716,9 +4740,10 @@ PY
     print_info "Includes: Cosmic Desktop, Podman, Fonts, Audio, ZSH"
     echo ""
 
-    # Verify all required flake assets exist before attempting rebuild
-    if ! require_flake_artifacts; then
-        print_error "Required flake files are missing; aborting rebuild"
+    # Verify system configuration files exist
+    # Note: flake.nix and home.nix will be created later by create_home_manager_config
+    if ! require_system_config_artifacts; then
+        print_error "Required system configuration files are missing; aborting"
         return 1
     fi
 }
@@ -5674,57 +5699,57 @@ main() {
 
     print_post_install
 
-    # NEVER auto-reboot - just provide clear instructions
     echo ""
     print_section "Setup Complete!"
     echo ""
-    print_warning "IMPORTANT: System reboot required"
-    echo ""
-    echo -e "${YELLOW}╔════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${YELLOW}║${NC}  MANUAL REBOOT REQUIRED                                       ${YELLOW}║${NC}"
-    echo -e "${YELLOW}╚════════════════════════════════════════════════════════════════╝${NC}"
-    echo ""
-    echo -e "${BLUE}A reboot is required to:${NC}"
-    echo -e "  ${GREEN}•${NC} Load Cosmic desktop environment"
-    echo -e "  ${GREEN}•${NC} Ensure all system services start properly"
-    echo -e "  ${GREEN}•${NC} Apply kernel-level changes"
-    echo -e "  ${GREEN}•${NC} Load all home-manager packages into PATH"
-    echo ""
-    echo -e "${BLUE}When you're ready to reboot:${NC}"
-    echo -e "  ${GREEN}1.${NC} Save all your work"
-    echo -e "  ${GREEN}2.${NC} Close all applications"
-    echo -e "  ${GREEN}3.${NC} Run: ${YELLOW}sudo reboot${NC}"
-    echo ""
-    echo -e "${BLUE}After reboot:${NC}"
-    echo -e "  ${GREEN}•${NC} Select 'Cosmic' from the session menu at login"
-    echo -e "  ${GREEN}•${NC} Open a terminal and run: ${YELLOW}~/NixOS-Dev-Quick-Deploy/scripts/system-health-check.sh${NC}"
-    echo -e "  ${GREEN}•${NC} Verify Claude Code: ${YELLOW}which claude-wrapper${NC}"
-    echo -e "  ${GREEN}•${NC} Launch VSCodium: ${YELLOW}codium${NC}"
-    echo ""
-    echo -e "${GREEN}✓ Deployment complete! All configurations applied successfully.${NC}"
-    echo -e "${GREEN}✓ Claude Code and VSCodium are fully configured and will persist.${NC}"
+
+    # Check if a reboot is actually needed
+    if [[ -L "/run/booted-system" && -L "/run/current-system" ]]; then
+        if [[ "$(readlink /run/booted-system)" != "$(readlink /run/current-system)" ]]; then
+            print_info "Configuration is active! System services are running."
+            echo ""
+            print_warning "NOTE: Reboot recommended for kernel/init system updates"
+            echo ""
+            echo -e "${BLUE}A reboot is recommended if:${NC}"
+            echo -e "  ${YELLOW}•${NC} The kernel was updated (check: ${YELLOW}uname -r${NC})"
+            echo -e "  ${YELLOW}•${NC} You want to ensure Cosmic desktop loads properly"
+            echo -e "  ${YELLOW}•${NC} Some hardware drivers were updated"
+            echo ""
+            echo -e "${GREEN}Already active (no reboot needed):${NC}"
+            echo -e "  ${GREEN}✓${NC} All system services (Ollama, Qdrant, Gitea, TGI)"
+            echo -e "  ${GREEN}✓${NC} All packages and tools"
+            echo -e "  ${GREEN}✓${NC} Home-manager configuration"
+            echo ""
+        else
+            print_success "Configuration is active! No changes to boot configuration."
+            echo ""
+            echo -e "${GREEN}✓ All services are running${NC}"
+            echo -e "${GREEN}✓ All packages are available${NC}"
+            echo ""
+        fi
+    fi
+
+    echo -e "${BLUE}Next steps:${NC}"
+    echo -e "  ${GREEN}1.${NC} Run health check: ${YELLOW}~/NixOS-Dev-Quick-Deploy/scripts/system-health-check.sh${NC}"
+    echo -e "  ${GREEN}2.${NC} Verify services: ${YELLOW}systemctl status ollama qdrant gitea huggingface-tgi${NC}"
+    echo -e "  ${GREEN}3.${NC} Check Jupyter Lab: ${YELLOW}systemctl --user status jupyter-lab${NC}"
+    echo -e "  ${GREEN}4.${NC} Test Claude Code: ${YELLOW}which claude-wrapper${NC}"
     echo ""
 
-    # Show current environment status for diagnostics
-    echo -e "${BLUE}Current Environment Status (for debugging if needed):${NC}"
-    echo -e "  PATH includes:"
-    if [[ ":$PATH:" == *":$HOME/.npm-global/bin:"* ]]; then
-        echo -e "    ${GREEN}✓${NC} $HOME/.npm-global/bin"
-    else
-        echo -e "    ${YELLOW}○${NC} $HOME/.npm-global/bin (will be available after reboot)"
+    # Only show reboot instructions if booted and current systems differ
+    if [[ -L "/run/booted-system" && -L "/run/current-system" ]]; then
+        if [[ "$(readlink /run/booted-system)" != "$(readlink /run/current-system)" ]]; then
+            echo -e "${YELLOW}To reboot when ready:${NC}"
+            echo -e "  ${YELLOW}sudo reboot${NC}"
+            echo ""
+            echo -e "${BLUE}After reboot:${NC}"
+            echo -e "  ${GREEN}•${NC} Select 'Cosmic' from the session menu at login"
+            echo ""
+        fi
     fi
-    if [[ ":$PATH:" == *":$HOME/.local/bin:"* ]]; then
-        echo -e "    ${GREEN}✓${NC} $HOME/.local/bin"
-    else
-        echo -e "    ${YELLOW}○${NC} $HOME/.local/bin (will be available after reboot)"
-    fi
-    if [ -n "${NPM_CONFIG_PREFIX:-}" ]; then
-        echo -e "  NPM_CONFIG_PREFIX: ${GREEN}$NPM_CONFIG_PREFIX${NC}"
-    else
-        echo -e "  NPM_CONFIG_PREFIX: ${YELLOW}Not set yet (will be available after reboot)${NC}"
-    fi
-    echo ""
-    echo -e "${YELLOW}Remember: ${NC}Reboot manually when ready: ${YELLOW}sudo reboot${NC}"
+
+    echo -e "${GREEN}✓ Deployment complete! All configurations are active.${NC}"
+    echo -e "${GREEN}✓ All services should be running now.${NC}"
     echo ""
 }
 
