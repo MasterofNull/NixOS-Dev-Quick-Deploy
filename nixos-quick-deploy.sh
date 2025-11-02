@@ -1790,6 +1790,13 @@ except Exception:
 
 seen = set()
 for entry in entries or []:
+    if isinstance(entry, str):
+        try:
+            entry = json.loads(entry)
+        except Exception:
+            continue
+    if not isinstance(entry, dict):
+        continue
     text_parts = []
     for key in ("name", "attrPath", "description", "originalRef"):
         value = entry.get(key)
@@ -1906,6 +1913,13 @@ except Exception:
 
 paths = []
 for entry in entries or []:
+    if isinstance(entry, str):
+        try:
+            entry = json.loads(entry)
+        except Exception:
+            continue
+    if not isinstance(entry, dict):
+        continue
     store_paths = entry.get("storePaths") or []
     for path in store_paths:
         if isinstance(path, str) and "home-manager" in path:
