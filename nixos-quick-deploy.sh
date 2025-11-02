@@ -4092,7 +4092,6 @@ create_home_manager_config() {
     ensure_flake_workspace || exit 1
 
     # Copy p10k-setup-wizard.sh to home-manager config dir so home.nix can reference it
-    local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     if [ -f "$SCRIPT_DIR/scripts/p10k-setup-wizard.sh" ]; then
         cp "$SCRIPT_DIR/scripts/p10k-setup-wizard.sh" "$HM_CONFIG_DIR/p10k-setup-wizard.sh"
         ensure_path_owner "$HM_CONFIG_DIR/p10k-setup-wizard.sh"
@@ -4985,7 +4984,6 @@ generate_nixos_system_config() {
     print_info "Generating complete AIDB development configuration..."
     echo ""
 
-    local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local TEMPLATE_DIR="$SCRIPT_DIR/templates"
     local SYSTEM_TEMPLATE="$TEMPLATE_DIR/configuration.nix"
 
