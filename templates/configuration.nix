@@ -374,19 +374,46 @@ in
   # ========================================================================
   # Qdrant Vector Database Service
   # ========================================================================
-  services.qdrant = {
-    enable = true;
-    settings = {
-      storage = {
-        storage_path = "/var/lib/qdrant/storage";
-        snapshots_path = "/var/lib/qdrant/snapshots";
-      };
-      service = {
-        host = "127.0.0.1";
-        http_port = 6333;
-        grpc_port = 6334;
-      };
-      telemetry_disabled = true;
+  # Qdrant service module doesn't exist in NixOS 25.05, so we create a custom systemd service
+  systemd.services.qdrant = {
+    description = "Qdrant Vector Database";
+    documentation = [
+      "https://qdrant.tech/documentation/"
+      "https://search.nixos.org/options?channel=25.05&show=systemd.services"
+    ];
+    # Disabled by default - enable manually with: sudo systemctl enable --now qdrant
+    # wantedBy = [ "multi-user.target" ];
+    wants = [ "network-online.target" "podman.service" "podman.socket" ];
+    after = [ "network-online.target" "podman.service" "podman.socket" ];
+    unitConfig = {
+      StartLimitBurst = 3;
+      StartLimitIntervalSec = 300;
+    };
+    serviceConfig = {
+      Type = "simple";
+      ExecStartPre = [
+        "${pkgs.podman}/bin/podman rm -f qdrant || true"
+        "${pkgs.podman}/bin/podman pull docker.io/qdrant/qdrant:latest"
+      ];
+      ExecStart = ''
+        ${pkgs.podman}/bin/podman run \
+          --rm \
+          --name qdrant \
+          --net host \
+          -v %S/qdrant/storage:/qdrant/storage \
+          -e QDRANT__SERVICE__HOST=127.0.0.1 \
+          -e QDRANT__SERVICE__HTTP_PORT=6333 \
+          -e QDRANT__SERVICE__GRPC_PORT=6334 \
+          -e QDRANT__TELEMETRY_DISABLED=true \
+          docker.io/qdrant/qdrant:latest
+      '';
+      ExecStop = "${pkgs.podman}/bin/podman stop qdrant || true";
+      Restart = "on-failure";
+      RestartSec = 15;
+      TimeoutStartSec = 120;
+      TimeoutStopSec = 30;
+      WorkingDirectory = "%S/qdrant";
+      StateDirectory = "qdrant";
     };
   };
 
@@ -396,7 +423,8 @@ in
       "https://huggingface.co/docs/text-generation-inference/en/index"
       "https://search.nixos.org/options?channel=25.05&show=systemd.services"
     ];
-    wantedBy = [ "multi-user.target" ];
+    # Disabled by default - enable manually with: sudo systemctl enable --now huggingface-tgi
+    # wantedBy = [ "multi-user.target" ];
     wants = [ "network-online.target" "podman.service" "podman.socket" ];
     after = [ "network-online.target" "podman.service" "podman.socket" ];
     restartTriggers = [ huggingfaceStartScript huggingfacePrepScript huggingfaceStopScript ];
