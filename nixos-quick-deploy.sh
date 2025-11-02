@@ -3552,29 +3552,34 @@ create_home_manager_config() {
         exit 1
     fi
 
-    # Create a flake.nix in the home-manager config directory for proper Flatpak support
-    # This enables using: home-manager switch --flake "$HOME/.dotfiles/home-manager"
-    print_info "Creating home-manager flake configuration for Flatpak support..."
-    local FLAKE_TEMPLATE="$TEMPLATE_DIR/flake.nix"
-    if [[ ! -f "$FLAKE_TEMPLATE" ]]; then
-        print_error "Missing flake template: $FLAKE_TEMPLATE"
-        exit 1
-    fi
+    # Create flake.nix if it doesn't already exist
+    # NOTE: flake.nix should already exist if created by generate_nixos_system_config()
+    # This ensures we have a flake even if only running home-manager setup standalone
+    if [[ ! -f "$FLAKE_FILE" ]]; then
+        print_info "Creating home-manager flake configuration for Flatpak support..."
+        local FLAKE_TEMPLATE="$TEMPLATE_DIR/flake.nix"
+        if [[ ! -f "$FLAKE_TEMPLATE" ]]; then
+            print_error "Missing flake template: $FLAKE_TEMPLATE"
+            exit 1
+        fi
 
-    local SYSTEM_ARCH=$(nix eval --raw --expr builtins.currentSystem 2>/dev/null || echo "x86_64-linux")
-    local CURRENT_HOSTNAME=$(hostname)
+        local SYSTEM_ARCH=$(nix eval --raw --expr builtins.currentSystem 2>/dev/null || echo "x86_64-linux")
+        local CURRENT_HOSTNAME=$(hostname)
 
-    if copy_template_to_flake "$FLAKE_TEMPLATE" "$FLAKE_FILE" "flake.nix"; then
-        print_success "Created flake.nix in $HM_CONFIG_DIR"
+        if copy_template_to_flake "$FLAKE_TEMPLATE" "$FLAKE_FILE" "flake.nix"; then
+            print_success "Created flake.nix in $HM_CONFIG_DIR"
+        else
+            exit 1
+        fi
+        # Align flake inputs with the synchronized channels
+        sed -i "s|NIXPKGS_CHANNEL_PLACEHOLDER|$NIXOS_CHANNEL_NAME|" "$FLAKE_FILE"
+        sed -i "s|HM_CHANNEL_PLACEHOLDER|$HM_CHANNEL_NAME|" "$FLAKE_FILE"
+        sed -i "s|HOSTNAME_PLACEHOLDER|$CURRENT_HOSTNAME|" "$FLAKE_FILE"
+        sed -i "s|HOME_USERNAME_PLACEHOLDER|$USER|" "$FLAKE_FILE"
+        sed -i "s|SYSTEM_PLACEHOLDER|$SYSTEM_ARCH|" "$FLAKE_FILE"
     else
-        exit 1
+        print_success "flake.nix already exists (created earlier), skipping recreation"
     fi
-    # Align flake inputs with the synchronized channels
-    sed -i "s|NIXPKGS_CHANNEL_PLACEHOLDER|$NIXOS_CHANNEL_NAME|" "$FLAKE_FILE"
-    sed -i "s|HM_CHANNEL_PLACEHOLDER|$HM_CHANNEL_NAME|" "$FLAKE_FILE"
-    sed -i "s|HOSTNAME_PLACEHOLDER|$CURRENT_HOSTNAME|" "$FLAKE_FILE"
-    sed -i "s|HOME_USERNAME_PLACEHOLDER|$USER|" "$FLAKE_FILE"
-    sed -i "s|SYSTEM_PLACEHOLDER|$SYSTEM_ARCH|" "$FLAKE_FILE"
 
     print_info "To use Flatpak declarative management:"
     print_info "  home-manager switch --flake \"$HM_CONFIG_DIR\""
@@ -4129,18 +4134,26 @@ force_clean_environment_setup() {
             rm -rf "$flatpak_config"
         fi
 
-        # CRITICAL FIX: Re-initialize Flatpak repository structure after removal
-        # Without this, Flatpak will have a corrupted repository
+        # CRITICAL FIX: Let Flatpak initialize the repository structure automatically
+        # DO NOT manually create the repo directory - it needs proper ostree initialization
+        # The flatpak remote-add command will create and initialize everything correctly
         print_info "Re-initializing Flatpak repository structure..."
-        mkdir -p "$flatpak_dir/repo"
+        # Only create the parent directories, not the repo itself
+        mkdir -p "$flatpak_dir"
         mkdir -p "$flatpak_config"
 
-        # Add Flathub remote to prevent repository corruption
+        # Add Flathub remote - this will automatically create and initialize the repo
         print_info "Adding Flathub remote to new Flatpak installation..."
-        if run_as_primary_user flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo 2>/dev/null || true; then
+        if run_as_primary_user flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo 2>&1 | grep -v "Warning\|already exists"; then
             print_success "Flathub remote added successfully"
         else
-            print_warning "Could not add Flathub remote (will be added later by home-manager)"
+            # If that fails, try the fallback URL
+            print_info "Trying fallback Flathub URL..."
+            if run_as_primary_user flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo 2>&1 | grep -v "Warning\|already exists"; then
+                print_success "Flathub remote added successfully (fallback URL)"
+            else
+                print_warning "Could not add Flathub remote (will be added later by home-manager)"
+            fi
         fi
 
         print_success "Complete flatpak environment removed and re-initialized for clean reinstall"
@@ -4749,8 +4762,37 @@ PY
     print_info "Includes: Cosmic Desktop, Podman, Fonts, Audio, ZSH"
     echo ""
 
-    # Verify system configuration files exist
-    # Note: flake.nix and home.nix will be created later by create_home_manager_config
+    # Create flake.nix NOW before nixos-rebuild attempts to use it
+    # This must happen before apply_nixos_system_config() which runs nixos-rebuild --flake
+    print_info "Creating flake.nix for NixOS rebuild..."
+    local FLAKE_TEMPLATE="$TEMPLATE_DIR/flake.nix"
+    if [[ ! -f "$FLAKE_TEMPLATE" ]]; then
+        print_error "Missing flake template: $FLAKE_TEMPLATE"
+        return 1
+    fi
+
+    local SYSTEM_ARCH=$(nix eval --raw --expr builtins.currentSystem 2>/dev/null || echo "x86_64-linux")
+    local CURRENT_HOSTNAME=$(hostname)
+
+    # Construct nixpkgs channel name from NIXOS_VERSION (e.g., "25.05" -> "nixos-25.05")
+    local NIXPKGS_CHANNEL="nixos-${NIXOS_VERSION}"
+
+    if copy_template_to_flake "$FLAKE_TEMPLATE" "$FLAKE_FILE" "flake.nix"; then
+        print_success "Created flake.nix in $HM_CONFIG_DIR"
+    else
+        print_error "Failed to create flake.nix"
+        return 1
+    fi
+
+    # Align flake inputs with the synchronized channels
+    sed -i "s|NIXPKGS_CHANNEL_PLACEHOLDER|$NIXPKGS_CHANNEL|" "$FLAKE_FILE"
+    sed -i "s|HM_CHANNEL_PLACEHOLDER|$HM_CHANNEL_NAME|" "$FLAKE_FILE"
+    sed -i "s|HOSTNAME_PLACEHOLDER|$CURRENT_HOSTNAME|" "$FLAKE_FILE"
+    sed -i "s|HOME_USERNAME_PLACEHOLDER|$USER|" "$FLAKE_FILE"
+    sed -i "s|SYSTEM_PLACEHOLDER|$SYSTEM_ARCH|" "$FLAKE_FILE"
+
+    # Verify system configuration files exist (including flake.nix which was just created)
+    # Note: home.nix will still be created later by create_home_manager_config
     if ! require_system_config_artifacts; then
         print_error "Required system configuration files are missing; aborting"
         return 1
