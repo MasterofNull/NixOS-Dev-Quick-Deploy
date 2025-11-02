@@ -1656,8 +1656,8 @@ clean_home_manager_targets() {
         path="${entry%%::*}"
         label="${entry##*::}"
 
-        backup_path_if_exists "$path" "$backup_dir" "$label"
-        result=$?
+        result=0
+        backup_path_if_exists "$path" "$backup_dir" "$label" || result=$?
         if [[ $result -eq 0 ]]; then
             cleaned_any=true
         elif [[ $result -eq 2 ]]; then
@@ -1669,8 +1669,8 @@ clean_home_manager_targets() {
         path="${entry%%::*}"
         label="${entry##*::}"
 
-        backup_path_if_exists "$path" "$backup_dir" "$label"
-        result=$?
+        result=0
+        backup_path_if_exists "$path" "$backup_dir" "$label" || result=$?
         if [[ $result -eq 0 ]]; then
             cleaned_any=true
         elif [[ $result -eq 2 ]]; then
@@ -1681,8 +1681,8 @@ clean_home_manager_targets() {
     local vscodium_user_dir="$HOME/.config/VSCodium/User"
     if [[ -d "$vscodium_user_dir" && ! -L "$vscodium_user_dir" ]]; then
         if find "$vscodium_user_dir" -mindepth 1 -maxdepth 1 ! -type l 2>/dev/null | grep -q .; then
-            backup_path_if_exists "$vscodium_user_dir" "$backup_dir" "VSCodium User directory"
-            result=$?
+            result=0
+            backup_path_if_exists "$vscodium_user_dir" "$backup_dir" "VSCodium User directory" || result=$?
             if [[ $result -eq 0 ]]; then
                 cleaned_any=true
             elif [[ $result -eq 2 ]]; then
