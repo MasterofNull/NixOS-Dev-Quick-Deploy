@@ -25,12 +25,14 @@ DEFAULT_FLATPAK_APPS=(
     "io.mpv.Mpv"
     "org.mozilla.firefox"
     "md.obsidian.Obsidian"
-    "ai.cursor.Cursor"
-    "com.lmstudio.LMStudio"
-    "io.gitea.Gitea"
     "io.podman_desktop.PodmanDesktop"
     "org.sqlitebrowser.sqlitebrowser"
 )
+# Note: Cursor IDE, LM Studio, and Gitea are not available on Flathub
+# These are installed via home-manager instead:
+#   - Cursor IDE: pkgs.code-cursor (in home.packages)
+#   - LM Studio: Not available/broken in nixpkgs, use Ollama instead (already installed)
+#   - Gitea: Configured as system service in configuration.nix
 LAST_FLATPAK_QUERY_MESSAGE=""
 
 # Ensure we target the invoking user's home directory even when executed via sudo
@@ -2151,7 +2153,27 @@ validate_flake_artifact() {
     return 0
 }
 
+require_system_config_artifacts() {
+    # Only validate system configuration files (not home-manager/flake files)
+    # Used during system configuration generation phase
+    ensure_flake_workspace || return 1
+
+    local missing=false
+
+    validate_flake_artifact "$SYSTEM_CONFIG_FILE" "configuration.nix" || missing=true
+    validate_flake_artifact "$HARDWARE_CONFIG_FILE" "hardware-configuration.nix" || missing=true
+
+    if $missing; then
+        print_info "Resolve the missing artifacts above and rerun the script with --force-update if needed."
+        return 1
+    fi
+
+    return 0
+}
+
 require_flake_artifacts() {
+    # Validate all flake artifacts including home-manager files
+    # Used before applying configurations via flake
     ensure_flake_workspace || return 1
 
     local missing=false
@@ -3389,7 +3411,7 @@ gather_user_info() {
     case $EDITOR_CHOICE in
         1) DEFAULT_EDITOR="vim" ;;
         2) DEFAULT_EDITOR="nvim" ;;
-        3) DEFAULT_EDITOR="code" ;;
+        3) DEFAULT_EDITOR="codium" ;;
         4) DEFAULT_EDITOR="gitea-editor" ;;
         *) DEFAULT_EDITOR="vim" ;;
     esac
@@ -3775,10 +3797,12 @@ run_nixos_rebuild_dry_run() {
     local target_host
     target_host=$(hostname)
 
-    print_info "Performing dry run: sudo nixos-rebuild switch --flake \"$HM_CONFIG_DIR#$target_host\" --dry-run"
+    print_info "Performing dry run: sudo nixos-rebuild build --flake \"$HM_CONFIG_DIR#$target_host\""
     print_info "Validating system rebuild without applying changes..."
 
-    sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" --dry-run 2>&1 | tee "$log_path"
+    # Note: NixOS 25.05 doesn't support --dry-run flag
+    # Use 'build' instead which builds but doesn't activate the configuration
+    sudo nixos-rebuild build --flake "$HM_CONFIG_DIR#$target_host" 2>&1 | tee "$log_path"
     return ${PIPESTATUS[0]}
 }
 
@@ -4716,9 +4740,10 @@ PY
     print_info "Includes: Cosmic Desktop, Podman, Fonts, Audio, ZSH"
     echo ""
 
-    # Verify all required flake assets exist before attempting rebuild
-    if ! require_flake_artifacts; then
-        print_error "Required flake files are missing; aborting rebuild"
+    # Verify system configuration files exist
+    # Note: flake.nix and home.nix will be created later by create_home_manager_config
+    if ! require_system_config_artifacts; then
+        print_error "Required system configuration files are missing; aborting"
         return 1
     fi
 }

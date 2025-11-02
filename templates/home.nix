@@ -1078,6 +1078,9 @@ in
           # Note: vim installed via programs.vim below (prevents collision)
           neovim                  # Modern Vim fork with async support
           # Note: vscodium installed via programs.vscode below
+        ]
+        ++ lib.optionals (pkgs ? code-cursor) [ pkgs.code-cursor ]  # Cursor IDE (AI-powered editor)
+        ++ (with pkgs; [
 
           # Web browsers are now installed via Flatpak for better sandboxing:
           # Firefox: "org.mozilla.firefox" in services.flatpak.packages
