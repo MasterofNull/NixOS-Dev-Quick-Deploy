@@ -1217,6 +1217,61 @@ in
           pandoc                  # Universal document converter
 
           # ========================================================================
+          # AI/ML Development Tools (Code Review Recommendations)
+          # ========================================================================
+
+          # Vector Search & Databases
+          #meilisearch             # Fast, typo-tolerant search engine (requires service)
+          #typesense               # Open-source alternative to Algolia (requires service)
+          #weaviate                # Vector search engine with ML models (requires service)
+
+          # ML Ops & Experimentation
+          #mlflow                  # ML lifecycle management (use service instead)
+          dvc                     # Data version control for ML projects
+
+          # Data Processing & ETL
+          #apache-arrow            # Columnar data format (included in Python env)
+          duckdb                  # Analytical database (SQL analytics on Parquet)
+
+          # Code Quality for AI Projects
+          #bandit                  # Security linter for Python (in Python env)
+          #vulture                 # Find dead Python code (in Python env)
+          #radon                   # Code complexity metrics (in Python env)
+
+          # API Development & Testing
+          httpie                  # Modern HTTP client (better than curl for APIs)
+          grpcurl                 # Like curl for gRPC
+          k6                      # Load testing tool
+
+          # Documentation & Visualization
+          mermaid-cli             # Generate diagrams from markdown
+          graphviz                # Graph visualization
+          plantuml                # UML diagrams
+
+          # Database Tools
+          sqlite-utils            # CLI tool for manipulating SQLite databases
+          litecli                 # SQLite CLI with autocomplete
+          pgcli                   # PostgreSQL CLI with autocomplete
+
+          # Performance Profiling
+          #py-spy                  # Sampling profiler for Python (in Python env)
+          hyperfine               # Command-line benchmarking tool
+
+          # Container Security
+          trivy                   # Vulnerability scanner for containers
+          cosign                  # Container signing and verification
+
+          # Kubernetes (Optional - for model deployment)
+          # Uncomment if deploying ML models to Kubernetes
+          #kubectl                 # Kubernetes CLI
+          #k9s                     # Kubernetes TUI
+          #helm                    # Kubernetes package manager
+
+          # Monitoring & Observability (Enhanced)
+          #prometheus-node-exporter  # System metrics (use system service)
+          #grafana-agent             # Metrics collector (use system service)
+
+          # ========================================================================
           # Utilities
           # ========================================================================
 
@@ -1225,6 +1280,8 @@ in
           starship        # Shell prompt
           hexedit         # Hex editor
           qrencode        # QR code generator
+          age             # Modern encryption tool (for secrets management)
+          sops            # Secrets operations (encrypted config files)
         ]);
       aiderPackage =
         if pkgs ? aider-chat then
