@@ -790,7 +790,7 @@ in
 
   # Redis for caching and message queues
   # Disabled by default - enable with: sudo systemctl enable --now redis
-  services.redis.servers."" = {
+  services.redis.servers."default" = {
     enable = false;  # Set to true to enable
     port = 6379;
     bind = "127.0.0.1";
