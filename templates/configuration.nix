@@ -122,7 +122,7 @@ let
       SECRET_KEY = giteaSecrets.secretKey;
       INTERNAL_TOKEN = giteaSecrets.internalToken;
     };
-    oauth2.JWT_SECRET = giteaSecrets.oauthJwtSecret;
+    oauth2.JWT_SECRET = lib.mkForce giteaSecrets.oauthJwtSecret;
     log = {
       MODE = "console";
       LEVEL = "Info";
