@@ -794,13 +794,15 @@ in
     enable = false;  # Set to true to enable
     port = 6379;
     bind = "127.0.0.1";
-    maxmemory = "512mb";
-    maxmemory-policy = "allkeys-lru";
     save = [
       [900 1]    # Save after 900 sec if at least 1 key changed
       [300 10]   # Save after 300 sec if at least 10 keys changed
       [60 10000] # Save after 60 sec if at least 10000 keys changed
     ];
+    settings = {
+      maxmemory = "512mb";
+      maxmemory-policy = "allkeys-lru";
+    };
   };
 
   # Nginx for reverse proxy and static file serving
