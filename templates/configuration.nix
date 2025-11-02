@@ -490,7 +490,6 @@ in
 
   services.desktopManager.cosmic = {
     enable = true;
-    @COSMIC_GPU_BLOCK@
 
     # Optional: XWayland support for legacy X11 applications (DISABLED)
     # Uncomment ONLY if you need to run proprietary X11-only software
@@ -550,6 +549,7 @@ in
     # COSMIC-specific: Enable clipboard functionality
     # Required for cosmic-clipboard to work with wl-clipboard
     COSMIC_DATA_CONTROL_ENABLED = "1";
+    @GPU_SESSION_VARIABLES@
   };
 
   # ============================================================================
