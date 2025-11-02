@@ -3552,6 +3552,10 @@ create_home_manager_config() {
         exit 1
     fi
 
+    # Declare hostname and system architecture outside the if block for later use
+    local SYSTEM_ARCH=$(nix eval --raw --expr builtins.currentSystem 2>/dev/null || echo "x86_64-linux")
+    local CURRENT_HOSTNAME=$(hostname)
+
     # Create flake.nix if it doesn't already exist
     # NOTE: flake.nix should already exist if created by generate_nixos_system_config()
     # This ensures we have a flake even if only running home-manager setup standalone
@@ -3562,9 +3566,6 @@ create_home_manager_config() {
             print_error "Missing flake template: $FLAKE_TEMPLATE"
             exit 1
         fi
-
-        local SYSTEM_ARCH=$(nix eval --raw --expr builtins.currentSystem 2>/dev/null || echo "x86_64-linux")
-        local CURRENT_HOSTNAME=$(hostname)
 
         if copy_template_to_flake "$FLAKE_TEMPLATE" "$FLAKE_FILE" "flake.nix"; then
             print_success "Created flake.nix in $HM_CONFIG_DIR"
