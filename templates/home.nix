@@ -2630,8 +2630,8 @@ PLUGINCFG
             TimeoutStopSec = 60;
           };
           Install = {
-            # Not enabled by default - users must enable manually
-            # WantedBy = [ "default.target" ];
+            # Enabled by default for full AI development environment
+            WantedBy = [ "default.target" ];
           };
         };
         # Hugging Face Text Generation Inference (TGI) service
@@ -2678,8 +2678,8 @@ PLUGINCFG
             TimeoutStopSec = 60;
           };
           Install = {
-            # Not enabled by default - users must enable manually
-            # WantedBy = [ "default.target" ];
+            # Enabled by default for full AI development environment
+            WantedBy = [ "default.target" ];
           };
         };
         # Jupyter Lab server (alternative to running in Python environment)
@@ -2715,8 +2715,8 @@ PLUGINCFG
             TimeoutStopSec = 30;
           };
           Install = {
-            # Not enabled by default - users must enable manually
-            # WantedBy = [ "default.target" ];
+            # Enabled by default for full AI development environment
+            WantedBy = [ "default.target" ];
           };
         };
       }
