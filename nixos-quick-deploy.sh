@@ -2274,7 +2274,7 @@ materialize_hardware_configuration() {
         return 1
     fi
 
-    if ! grep -Eq 'fileSystems\\.\"/\"' "$target_file"; then
+    if ! grep -Eq 'fileSystems\."/"' "$target_file"; then
         print_warning "hardware-configuration.nix is missing the fileSystems.\"/\" root definition"
         print_warning "Ensure your hardware profile defines a root filesystem before rebuilding"
     fi
@@ -4212,41 +4212,50 @@ detect_gpu_and_cpu() {
     GPU_PACKAGES=""
     LIBVA_DRIVER=""
 
-    # Check for Intel GPU
-    if lspci | grep -iE "VGA|3D|Display" | grep -iq "Intel"; then
-        GPU_TYPE="intel"
-        GPU_DRIVER="intel"
-        LIBVA_DRIVER="iHD"  # Intel iHD for Gen 8+ (Broadwell+), or "i965" for older
-        GPU_PACKAGES="intel-media-driver vaapiIntel"
-        print_success "Detected: Intel GPU"
-    fi
-
-    # Check for AMD GPU
-    if lspci | grep -iE "VGA|3D|Display" | grep -iq "AMD\|ATI"; then
-        GPU_TYPE="amd"
-        GPU_DRIVER="amdgpu"
-        LIBVA_DRIVER="radeonsi"
-        GPU_PACKAGES="mesa amdvlk rocm-opencl-icd"
-        print_success "Detected: AMD GPU"
-    fi
-
-    # Check for NVIDIA GPU
-    if lspci | grep -iE "VGA|3D|Display" | grep -iq "NVIDIA"; then
-        GPU_TYPE="nvidia"
-        GPU_DRIVER="nvidia"
-        LIBVA_DRIVER="nvidia"  # NVIDIA uses different VA-API backend
-        GPU_PACKAGES="nvidia-vaapi-driver"
-        print_success "Detected: NVIDIA GPU"
-        print_warning "NVIDIA on Wayland requires additional configuration"
-        print_info "Consider enabling: hardware.nvidia.modesetting.enable = true"
-    fi
-
-    # Fallback for systems with no dedicated GPU
-    if [ "$GPU_TYPE" == "unknown" ]; then
-        print_warning "No dedicated GPU detected - using software rendering"
+    # Check if lspci is available
+    if ! command -v lspci >/dev/null 2>&1; then
+        print_warning "lspci not found - skipping GPU detection"
+        print_info "Install pciutils for automatic GPU detection"
         GPU_TYPE="software"
         LIBVA_DRIVER=""
         GPU_PACKAGES=""
+    else
+        # Check for Intel GPU
+        if lspci | grep -iE "VGA|3D|Display" | grep -iq "Intel"; then
+            GPU_TYPE="intel"
+            GPU_DRIVER="intel"
+            LIBVA_DRIVER="iHD"  # Intel iHD for Gen 8+ (Broadwell+), or "i965" for older
+            GPU_PACKAGES="intel-media-driver vaapiIntel"
+            print_success "Detected: Intel GPU"
+        fi
+
+        # Check for AMD GPU
+        if lspci | grep -iE "VGA|3D|Display" | grep -iq "AMD\|ATI"; then
+            GPU_TYPE="amd"
+            GPU_DRIVER="amdgpu"
+            LIBVA_DRIVER="radeonsi"
+            GPU_PACKAGES="mesa amdvlk rocm-opencl-icd"
+            print_success "Detected: AMD GPU"
+        fi
+
+        # Check for NVIDIA GPU
+        if lspci | grep -iE "VGA|3D|Display" | grep -iq "NVIDIA"; then
+            GPU_TYPE="nvidia"
+            GPU_DRIVER="nvidia"
+            LIBVA_DRIVER="nvidia"  # NVIDIA uses different VA-API backend
+            GPU_PACKAGES="nvidia-vaapi-driver"
+            print_success "Detected: NVIDIA GPU"
+            print_warning "NVIDIA on Wayland requires additional configuration"
+            print_info "Consider enabling: hardware.nvidia.modesetting.enable = true"
+        fi
+
+        # Fallback for systems with no dedicated GPU
+        if [ "$GPU_TYPE" == "unknown" ]; then
+            print_warning "No dedicated GPU detected - using software rendering"
+            GPU_TYPE="software"
+            LIBVA_DRIVER=""
+            GPU_PACKAGES=""
+        fi
     fi
 
     print_info "GPU Type: $GPU_TYPE"
