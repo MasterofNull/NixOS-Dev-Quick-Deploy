@@ -750,7 +750,9 @@ RESOURCES
           # Data Processing
           dask
           dask-ml
-        ]
+        ];
+      in
+        base
     );
   pythonAiInterpreterPath = "${pythonAiEnv}/bin/python3";
   huggingfaceReadme = ''
