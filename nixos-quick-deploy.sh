@@ -5048,11 +5048,21 @@ EOF
 hardware.graphics = {
     enable = true;
     enable32Bit = true;
-    extraPackages = with pkgs; [
-      mesa              # Open-source AMD drivers
-      amdvlk            # AMD Vulkan driver
-      rocm-opencl-icd   # AMD OpenCL support
-    ];
+    extraPackages =
+      let
+        rocmOpenclPackages =
+          lib.optionals (pkgs ? rocm-opencl-icd) [ pkgs.rocm-opencl-icd ]
+          ++ lib.optionals (
+            pkgs ? rocmPackages
+            && builtins.hasAttr "clr" pkgs.rocmPackages
+            && builtins.hasAttr "icd" pkgs.rocmPackages.clr
+          ) [ pkgs.rocmPackages.clr.icd ];
+      in
+      (with pkgs; [
+        mesa              # Open-source AMD drivers
+        amdvlk            # AMD Vulkan driver
+      ])
+      ++ rocmOpenclPackages;
 };
 EOF
 )
@@ -5087,7 +5097,7 @@ EOF
             gpu_driver_packages_block="(lib.optionals (pkgs ? intel-media-driver) [ intel-media-driver ] ++ lib.optionals (pkgs ? vaapiIntel) [ vaapiIntel ])"
             ;;
         amd)
-            gpu_driver_packages_block="(lib.optionals (pkgs ? mesa) [ mesa ] ++ lib.optionals (pkgs ? amdvlk) [ amdvlk ] ++ lib.optionals (pkgs ? rocm-opencl-icd) [ rocm-opencl-icd ])"
+            gpu_driver_packages_block="(lib.optionals (pkgs ? mesa) [ mesa ] ++ lib.optionals (pkgs ? amdvlk) [ amdvlk ] ++ lib.optionals (pkgs ? rocm-opencl-icd) [ pkgs.rocm-opencl-icd ] ++ lib.optionals (pkgs ? rocmPackages && builtins.hasAttr \"clr\" pkgs.rocmPackages && builtins.hasAttr \"icd\" pkgs.rocmPackages.clr) [ pkgs.rocmPackages.clr.icd ])"
             ;;
         nvidia)
             gpu_driver_packages_block="(lib.optionals (pkgs ? nvidia-vaapi-driver) [ nvidia-vaapi-driver ])"
