@@ -315,7 +315,7 @@ retry_with_backoff() {
             log WARNING "Retry attempt $attempt failed for command: $*"
             sleep $timeout
             timeout=$((timeout * RETRY_BACKOFF_MULTIPLIER))
-            ((attempt++))
+            attempt=$((attempt + 1))
         else
             log ERROR "All retry attempts failed for command: $*"
             return $exit_code
@@ -854,7 +854,7 @@ wait_for_systemd_user_service() {
 
         if [[ -z "$show_output" ]]; then
             sleep "$interval"
-            (( waited += interval ))
+            waited=$((waited + interval))
             continue
         fi
 
@@ -878,7 +878,7 @@ wait_for_systemd_user_service() {
         fi
 
         sleep "$interval"
-        (( waited += interval ))
+        waited=$((waited + interval))
     done
 
     return 2
@@ -1354,16 +1354,16 @@ preflight_flatpak_environment() {
     local issues=0
 
     if ! backup_legacy_flatpak_configs; then
-        (( issues++ ))
+        issues=$((issues + 1))
     fi
 
     if ! reset_flatpak_repo_if_corrupted; then
-        (( issues++ ))
+        issues=$((issues + 1))
     fi
 
     if ! flatpak_cli_available; then
         print_warning "Flatpak CLI unavailable during $stage checks"
-        (( issues++ ))
+        issues=$((issues + 1))
     fi
 
     if [[ -n "$PRIMARY_RUNTIME_DIR" && ! -S "$PRIMARY_RUNTIME_DIR/bus" ]]; then
@@ -1371,12 +1371,12 @@ preflight_flatpak_environment() {
         sleep 1
         if [[ ! -S "$PRIMARY_RUNTIME_DIR/bus" ]]; then
             print_warning "DBus session bus not detected for user services"
-            (( issues++ ))
+            issues=$((issues + 1))
         fi
     fi
 
     if ! ensure_flathub_remote; then
-        (( issues++ ))
+        issues=$((issues + 1))
     fi
 
     run_as_primary_user install -d -m 700 "$PRIMARY_HOME/.local/share/flatpak" >/dev/null 2>&1 || true
@@ -4474,9 +4474,21 @@ apply_home_manager_config() {
         exit 1
     fi
 
+    # Ensure flake directory and files have proper ownership before update
+    ensure_path_owner "$HM_CONFIG_DIR"
+    ensure_path_owner "$HM_FLAKE_PATH"
+    if [[ -f "$HM_CONFIG_DIR/flake.lock" ]]; then
+        ensure_path_owner "$HM_CONFIG_DIR/flake.lock"
+        chmod 644 "$HM_CONFIG_DIR/flake.lock" 2>/dev/null || true
+    fi
+
     print_info "Updating flake inputs (nix-flatpak, home-manager, nixpkgs)..."
     if (cd "$HM_CONFIG_DIR" && nix flake update) 2>&1 | tee /tmp/flake-update.log; then
         print_success "Flake inputs updated successfully"
+        # Ensure the newly created/updated flake.lock has proper ownership
+        if [[ -f "$HM_CONFIG_DIR/flake.lock" ]]; then
+            ensure_path_owner "$HM_CONFIG_DIR/flake.lock"
+        fi
     else
         print_warning "Flake update failed, continuing with existing lock file..."
         print_info "This is usually fine for first-time installations"
@@ -4517,7 +4529,7 @@ apply_home_manager_config() {
                 print_success "$pkg found at $(command -v $pkg)"
             else
                 print_warning "$pkg not found in PATH yet"
-                ((MISSING_COUNT++))
+                MISSING_COUNT=$((MISSING_COUNT + 1))
             fi
         done
 
