@@ -5,10 +5,21 @@
 # If you edit this file manually, your edits will be preserved
 # until the template itself changes (new packages added to script)
 
-{ config, pkgs, options, ... }:
+{ config, pkgs, options, nixAiToolsPackages ? {}, ... }:
 
 let
   lib = pkgs.lib;
+  # Collect available derivations from the external nix-ai-tools flake so the
+  # generated configuration gracefully degrades if certain outputs are missing.
+  nixAiToolsPackageList =
+    let
+      candidateNames = [ "default" "nix-ai-tools" ];
+    in
+    lib.concatMap
+      (name:
+        lib.optional (lib.hasAttr name nixAiToolsPackages)
+          (lib.getAttr name nixAiToolsPackages))
+      candidateNames;
   giteaFlatpakAppId = "io.gitea.Gitea";
   giteaFlatpakConfigDir = ".var/app/${giteaFlatpakAppId}/config/gitea";
   giteaFlatpakDataDir = ".var/app/${giteaFlatpakAppId}/data/gitea";
@@ -44,6 +55,9 @@ let
       joined = lib.concatStringsSep ";" cosmicOnlyShowInEnvironments;
     in
     if cosmicOnlyShowInEnvironments == [ ] then "" else "${joined};";
+  gpuMonitoringPackages =
+    # Populated by nixos-quick-deploy.sh to enable vendor-specific GPU monitors.
+    with pkgs; @GPU_MONITORING_PACKAGES@;
   flathubPackages = [
     # Keep DEFAULT_FLATPAK_APPS in nixos-quick-deploy.sh synchronized with the defaults below.
     # ====================================================================
@@ -1053,6 +1067,7 @@ in
           # Python (REQUIRED for AIDB and AI model tooling)
           pythonAiEnv
         ]
+        ++ nixAiToolsPackageList  # Install helper binaries exported by numtide/nix-ai-tools when available
         ++ (with pkgs; [
           # ========================================================================
           # AIDB v4.0 Requirements (CRITICAL - Must be installed)
@@ -1117,7 +1132,7 @@ in
           direnv                  # Automatic per-directory environment loading
           nix-direnv              # Direnv integration with Nix flakes
           choose                  # Human-friendly cut/awk alternative
-          du-dust                 # Intuitive disk usage (du)
+          dust                    # Intuitive disk usage (du)
           duf                     # Disk usage/free utility (df)
           broot                   # Tree view with navigation
           dog                     # DNS lookup utility (dig)
@@ -1166,8 +1181,8 @@ in
             htop                    # Interactive process viewer
             btop                    # Resource monitor with modern UI
             nvtop                   # GPU monitor (supports AMD, NVIDIA, Intel)
-            radeontop               # AMD GPU specific monitoring tool
-            amdgpu_top              # Modern AMD GPU monitoring (Rust-based)
+            gnome.gnome-disk-utility # GUI disk manager and formatter
+            parted                  # Command-line partitioning utility
             flatpak                 # Flatpak CLI for sandboxed desktop apps
           tree                    # Display directory tree structure
           unzip                   # Extract ZIP archives
@@ -1312,7 +1327,8 @@ in
           qrencode        # QR code generator
           age             # Modern encryption tool (for secrets management)
           sops            # Secrets operations (encrypted config files)
-        ]);
+        ])
+        ++ gpuMonitoringPackages;
       aiderPackage =
         if pkgs ? aider-chat then
           [ pkgs.aider-chat ]
@@ -1491,20 +1507,19 @@ in
     # git config --global user.name "Your Name"
     # git config --global user.email "you@example.com"
 
-    extraConfig = {
+    settings = {
       init.defaultBranch = "main";
       pull.rebase = false;
       core.editor = "DEFAULTEDITOR";
-    };
-
-    aliases = {
-      st = "status";
-      co = "checkout";
-      br = "branch";
-      ci = "commit";
-      unstage = "reset HEAD --";
-      last = "log -1 HEAD";
-      visual = "log --oneline --graph --decorate --all";
+      alias = {
+        st = "status";
+        co = "checkout";
+        br = "branch";
+        ci = "commit";
+        unstage = "reset HEAD --";
+        last = "log -1 HEAD";
+        visual = "log --oneline --graph --decorate --all";
+      };
     };
   };
 
