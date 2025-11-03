@@ -1068,7 +1068,7 @@ in
       # ALL AI command-line packages are REQUIRED (not optional)
       aiCommandLinePackages = with pkgs; [
         ollama
-        gpt4all
+        # gpt4all  # Temporarily disabled due to Qt6::GuiPrivate build failure in nixpkgs (qt6-base 6.10.0+)
         llama-cpp
       ];
       basePackages =
