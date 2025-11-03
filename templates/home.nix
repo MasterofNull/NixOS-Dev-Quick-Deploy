@@ -1168,8 +1168,10 @@ in
             clamtk                  # GTK frontend for ClamAV scanning
             # rkhunter is currently unavailable in nixpkgs; re-enable once restored upstream
             # rkhunter                # Rootkit hunter integrity scanner
-            lynis                   # Auditing tool for UNIX-based systems
-            chkrootkit              # Rootkit detection utility
+            lynis                   # Auditing tool for UNIX-based systems (includes rootkit detection)
+            # chkrootkit has been removed from nixpkgs (unmaintained/archived upstream, didn't work on NixOS)
+            # Use lynis for comprehensive security auditing including rootkit detection, or aide for file integrity
+            aide                    # Advanced Intrusion Detection Environment (file integrity & rootkit detection)
             keepassxc               # Cross-platform password manager (GUI)
             gnupg                   # GNU Privacy Guard for encryption workflows
             seahorse                # GNOME credential manager for GnuPG/SSH
