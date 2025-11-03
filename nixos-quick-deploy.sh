@@ -3329,8 +3329,17 @@ parse_nixos_option_value() {
 
 load_previous_nixos_metadata() {
     local metadata
+    local py_errors
 
-    metadata=$(TARGET_USER="$USER" run_python <<'PY' 2>/dev/null
+    # Ensure Python runtime is available before attempting to run
+    if ! ensure_python_runtime; then
+        print_warning "Python runtime unavailable - skipping metadata extraction"
+        return 1
+    fi
+
+    # Capture both stdout and stderr separately
+    py_errors=$(mktemp)
+    metadata=$(TARGET_USER="$USER" run_python 2>"$py_errors" <<'PY'
 import base64
 import os
 import re
@@ -3411,6 +3420,15 @@ if password_snippet:
 PY
 )
 
+    # Check for Python errors
+    if [ -s "$py_errors" ]; then
+        print_warning "Python errors during metadata extraction:"
+        cat "$py_errors" >&2
+        rm -f "$py_errors"
+        return 1
+    fi
+    rm -f "$py_errors"
+
     if [ -z "$metadata" ]; then
         return
     fi
@@ -3426,15 +3444,18 @@ PY
             __USERPW__*)
                 local encoded=${line#__USERPW__:}
                 if [ -n "$encoded" ]; then
-                    PREVIOUS_USER_PASSWORD_SNIPPET=$(ENCODED_USER_SNIPPET="$encoded" run_python <<'PY' 2>/dev/null
+                    # Python runtime already verified, decode the password snippet
+                    PREVIOUS_USER_PASSWORD_SNIPPET=$(ENCODED_USER_SNIPPET="$encoded" run_python 2>&1 <<'PY'
 import base64
 import os
+import sys
 
 data = os.environ.get("ENCODED_USER_SNIPPET", "").strip()
 if data:
     try:
         print(base64.b64decode(data).decode(), end="")
-    except Exception:
+    except Exception as e:
+        # Silent failure - this is expected if encoding is corrupted
         pass
 PY
 )
@@ -3824,10 +3845,19 @@ check_prerequisites() {
         install_home_manager
     fi
 
+    # Check Python runtime and provide clear feedback
+    print_info "Checking Python runtime..."
     if ! ensure_python_runtime; then
         print_error "Unable to locate or provision a python interpreter"
         print_error "Install python3 manually and re-run the deployment"
         exit 1
+    fi
+
+    # Provide feedback about which Python is being used
+    if [[ "${PYTHON_BIN[0]}" == "nix" ]]; then
+        print_success "Python runtime: ephemeral Nix shell (python3 not in PATH)"
+    else
+        print_success "Python runtime: ${PYTHON_BIN[0]} ($(${PYTHON_BIN[@]} --version 2>&1))"
     fi
 }
 
