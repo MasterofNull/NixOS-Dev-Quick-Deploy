@@ -1155,37 +1155,37 @@ in
           rsync                   # Fast incremental file transfer
           rclone                  # Rsync for cloud storage
 
-            # Network tools
-            wget                    # Network downloader
-            curl                    # Transfer data with URLs
-            netcat-gnu              # Network utility for TCP/UDP
-            socat                   # Multipurpose relay (SOcket CAT)
-            mtr                     # Network diagnostic tool (traceroute/ping)
-            nmap                    # Network exploration and security scanner
+          # Network tools
+          wget                    # Network downloader
+          curl                    # Transfer data with URLs
+          netcat-gnu              # Network utility for TCP/UDP
+          socat                   # Multipurpose relay (SOcket CAT)
+          mtr                     # Network diagnostic tool (traceroute/ping)
+          nmap                    # Network exploration and security scanner
 
-            # Security & privacy tooling
-            clamav                  # Antivirus engine and CLI scanner
-            clamtk                  # GTK frontend for ClamAV scanning
-            # rkhunter is currently unavailable in nixpkgs; re-enable once restored upstream
-            # rkhunter                # Rootkit hunter integrity scanner
-            lynis                   # Auditing tool for UNIX-based systems (includes rootkit detection)
-            # chkrootkit has been removed from nixpkgs (unmaintained/archived upstream, didn't work on NixOS)
-            # Use lynis for comprehensive security auditing including rootkit detection, or aide for file integrity
-            aide                    # Advanced Intrusion Detection Environment (file integrity & rootkit detection)
-            keepassxc               # Cross-platform password manager (GUI)
-            gnupg                   # GNU Privacy Guard for encryption workflows
-            seahorse                # GNOME credential manager for GnuPG/SSH
-            pinentry-gnome3         # Pinentry dialog compatible with COSMIC/GNOME
-            # YubiKey Manager Qt was removed because upstream marked it EOL and nixpkgs flags it insecure.
-            # Install `yubikey-manager` (CLI) or `yubioath-flutter` manually if YubiKey support is required.
+          # Security & privacy tooling
+          clamav                  # Antivirus engine and CLI scanner
+          clamtk                  # GTK frontend for ClamAV scanning
+          # rkhunter is currently unavailable in nixpkgs; re-enable once restored upstream
+          # rkhunter                # Rootkit hunter integrity scanner
+          lynis                   # Auditing tool for UNIX-based systems (includes rootkit detection)
+          # chkrootkit has been removed from nixpkgs (unmaintained/archived upstream, didn't work on NixOS)
+          # Use lynis for comprehensive security auditing including rootkit detection, or aide for file integrity
+          aide                    # Advanced Intrusion Detection Environment (file integrity & rootkit detection)
+          keepassxc               # Cross-platform password manager (GUI)
+          gnupg                   # GNU Privacy Guard for encryption workflows
+          seahorse                # GNOME credential manager for GnuPG/SSH
+          pinentry-gnome3         # Pinentry dialog compatible with COSMIC/GNOME
+          # YubiKey Manager Qt was removed because upstream marked it EOL and nixpkgs flags it insecure.
+          # Install `yubikey-manager` (CLI) or `yubioath-flutter` manually if YubiKey support is required.
 
-            # System tools
-            htop                    # Interactive process viewer
-            btop                    # Resource monitor with modern UI
-            nvtop                   # GPU monitor (supports AMD, NVIDIA, Intel)
-            gnome.gnome-disk-utility # GUI disk manager and formatter
-            parted                  # Command-line partitioning utility
-            flatpak                 # Flatpak CLI for sandboxed desktop apps
+          # System tools
+          htop                    # Interactive process viewer
+          btop                    # Resource monitor with modern UI
+          nvtop                   # GPU monitor (supports AMD, NVIDIA, Intel)
+          gnome.gnome-disk-utility # GUI disk manager and formatter
+          parted                  # Command-line partitioning utility
+          flatpak                 # Flatpak CLI for sandboxed desktop apps
           tree                    # Display directory tree structure
           unzip                   # Extract ZIP archives
           zip                     # Create ZIP archives
