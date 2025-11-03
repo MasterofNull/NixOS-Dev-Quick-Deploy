@@ -238,6 +238,7 @@ in
       allowedTCPPorts = [
         3000  # Gitea HTTP interface
         2222  # Gitea built-in SSH server
+        19999 # Netdata monitoring dashboard
         # Add ports only when needed:
         # 8000  # AIDB API
         # 5432  # PostgreSQL
@@ -296,6 +297,46 @@ in
 
   # Enable ZSH system-wide
   programs.zsh.enable = true;
+
+  # ============================================================================
+  # FHS Compatibility - nix-ld
+  # ============================================================================
+  # nix-ld enables running non-NixOS binaries (like pre-built AI models,
+  # proprietary ML frameworks, etc.) without modification
+  # Essential for AI development where many tools distribute pre-compiled binaries
+  #
+  # Benefits:
+  # - Run pre-built LLM inference engines
+  # - Use proprietary AI frameworks without patches
+  # - Simpler than Docker for single binaries
+  # - Transparent to applications (no wrapper needed)
+  #
+  # Usage: Just run the binary normally - nix-ld handles library loading
+
+  programs.nix-ld = {
+    enable = true;
+
+    # Automatically include common libraries that AI/ML tools need
+    libraries = with pkgs; [
+      # C/C++ standard libraries
+      stdenv.cc.cc.lib
+      zlib
+
+      # Common dependencies for AI/ML binaries
+      glibc
+      gcc-unwrapped.lib
+
+      # Graphics and compute (for GPU-accelerated AI)
+      mesa
+      libglvnd
+
+      # Additional common libraries
+      openssl
+      curl
+      libxml2
+      libxcrypt
+    ];
+  };
 
   # ============================================================================
   # Home Manager
@@ -758,6 +799,27 @@ in
     # Helps prevent I/O spikes
     "vm.dirty_ratio" = 10;
     "vm.dirty_background_ratio" = 5;
+
+    # ========================================================================
+    # AI/ML Development Optimizations
+    # ========================================================================
+
+    # Memory-mapped files for large ML datasets
+    # Increase limit for applications that use mmap (PyTorch, TensorFlow, etc.)
+    # Default: 65530, Recommended for AI/ML: 262144
+    "vm.max_map_count" = 262144;
+
+    # File system watchers for development tools
+    # Increase for IDEs, dev servers, and hot-reload tools
+    # Essential for VSCode, Jupyter, and container development
+    "fs.inotify.max_user_watches" = 524288;
+    "fs.inotify.max_user_instances" = 512;
+    "fs.inotify.max_queued_events" = 32768;
+
+    # Shared memory for distributed AI training
+    # Increase for multi-GPU setups and distributed frameworks
+    "kernel.shmmax" = 17179869184;  # 16GB
+    "kernel.shmall" = 4194304;      # 16GB in pages (4KB pages)
   };
 
   # ============================================================================
@@ -772,6 +834,51 @@ in
   # ============================================================================
   # Additional Services (Code Review Recommendations)
   # ============================================================================
+
+  # Netdata - Real-time Performance Monitoring
+  # Lightweight, zero-config monitoring with beautiful dashboards
+  # Resource usage: ~100-150MB RAM, <3% CPU
+  # Features: Auto-discovery, ML anomaly detection, built-in alerts
+  # Access: http://localhost:19999 (after enabling)
+  services.netdata = {
+    enable = true;
+    package = pkgs.netdata;
+
+    config = {
+      global = {
+        # Memory mode: Use dbengine for persistent metrics storage
+        "memory mode" = "dbengine";
+
+        # Database engine settings (optimized for development workstation)
+        "page cache size" = "32";           # RAM cache in MB (32MB is good for single node)
+        "dbengine disk space" = "256";      # Disk space for metrics in MB (256MB = ~1 day retention)
+
+        # Update frequency (1 second = real-time monitoring)
+        "update every" = "1";
+
+        # History retention in RAM (3600 seconds = 1 hour)
+        "history" = "3600";
+      };
+
+      web = {
+        # Bind to localhost only (change to 0.0.0.0 if accessing from network)
+        "bind to" = "127.0.0.1";
+
+        # Default port
+        "default port" = "19999";
+      };
+
+      # Plugin configuration
+      plugins = {
+        # Enable all plugins for comprehensive monitoring
+        "checks" = "yes";
+        "apps" = "yes";
+        "cgroups" = "yes";
+        "proc" = "yes";
+        "diskspace" = "yes";
+      };
+    };
+  };
 
   # PostgreSQL for production-grade AI applications
   # Disabled by default - enable with: sudo systemctl enable --now postgresql
