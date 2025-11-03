@@ -1192,7 +1192,7 @@ in
           # System tools
           htop                    # Interactive process viewer
           btop                    # Resource monitor with modern UI
-          gnome.gnome-disk-utility # GUI disk manager and formatter
+          gnome-disk-utility # GUI disk manager and formatter
           parted                  # Command-line partitioning utility
           flatpak                 # Flatpak CLI for sandboxed desktop apps
           tree                    # Display directory tree structure
