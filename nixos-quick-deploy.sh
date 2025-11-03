@@ -5070,8 +5070,8 @@ detect_gpu_and_cpu() {
             GPU_TYPE="amd"
             GPU_DRIVER="amdgpu"
             LIBVA_DRIVER="radeonsi"
-            GPU_PACKAGES="mesa amdvlk rocm-opencl-icd"
-            print_success "Detected: AMD GPU"
+            GPU_PACKAGES="mesa rocm-opencl-icd"
+            print_success "Detected: AMD GPU (using RADV - modern default driver)"
         fi
 
         # Check for NVIDIA GPU
@@ -5344,8 +5344,7 @@ hardware.graphics = {
           ) [ pkgs.rocmPackages.clr.icd ];
       in
       (with pkgs; [
-        mesa              # Open-source AMD drivers
-        amdvlk            # AMD Vulkan driver
+        mesa              # Open-source AMD drivers (includes RADV Vulkan)
       ])
       ++ rocmOpenclPackages;
 };
@@ -5382,7 +5381,7 @@ EOF
             gpu_driver_packages_block="(lib.optionals (pkgs ? intel-media-driver) [ intel-media-driver ] ++ lib.optionals (pkgs ? vaapiIntel) [ vaapiIntel ])"
             ;;
         amd)
-            gpu_driver_packages_block="(lib.optionals (pkgs ? mesa) [ mesa ] ++ lib.optionals (pkgs ? amdvlk) [ amdvlk ] ++ lib.optionals (pkgs ? rocm-opencl-icd) [ pkgs.rocm-opencl-icd ] ++ lib.optionals (pkgs ? rocmPackages && builtins.hasAttr \"clr\" pkgs.rocmPackages && builtins.hasAttr \"icd\" pkgs.rocmPackages.clr) [ pkgs.rocmPackages.clr.icd ])"
+            gpu_driver_packages_block="(lib.optionals (pkgs ? mesa) [ mesa ] ++ lib.optionals (pkgs ? rocm-opencl-icd) [ pkgs.rocm-opencl-icd ] ++ lib.optionals (pkgs ? rocmPackages && builtins.hasAttr \"clr\" pkgs.rocmPackages && builtins.hasAttr \"icd\" pkgs.rocmPackages.clr) [ pkgs.rocmPackages.clr.icd ])"
             ;;
         nvidia)
             gpu_driver_packages_block="(lib.optionals (pkgs ? nvidia-vaapi-driver) [ nvidia-vaapi-driver ])"
