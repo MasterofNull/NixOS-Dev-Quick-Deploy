@@ -302,6 +302,64 @@ check_directory_exists() {
     fi
 }
 
+normalize_channel_basename() {
+    local raw=$1
+
+    raw=${raw##*/}
+    raw=${raw%%\?*}
+    raw=${raw%.tar.gz}
+    raw=${raw%.tar.xz}
+    raw=${raw%.tar.bz2}
+    raw=${raw%.tar}
+    raw=${raw%.tgz}
+    raw=${raw%.zip}
+
+    echo "$raw"
+}
+
+check_nix_channel() {
+    local profile=$1
+    local alias=$2
+    local expected=$3
+    local description=$4
+
+    print_check "$description"
+
+    local list_output=""
+    if [ -n "$profile" ]; then
+        if ! list_output=$(nix-channel --list --profile "$profile" 2>/dev/null); then
+            print_warning "Unable to query $alias channel (permission denied or profile missing)"
+            return 1
+        fi
+    else
+        if ! list_output=$(nix-channel --list 2>/dev/null); then
+            print_warning "Unable to query $alias channel"
+            return 1
+        fi
+    fi
+
+    local actual_url=""
+    actual_url=$(printf '%s\n' "$list_output" | awk -v target="$alias" '$1 == target {print $2}' | tail -n1)
+
+    if [ -z "$actual_url" ]; then
+        print_fail "$alias channel not configured"
+        return 1
+    fi
+
+    local actual_name
+    actual_name=$(normalize_channel_basename "$actual_url")
+
+    if [ "$actual_name" = "$expected" ]; then
+        print_success "$alias channel set to $actual_name"
+        print_detail "Source: $actual_url"
+        return 0
+    fi
+
+    print_warning "$alias channel points to $actual_name (expected $expected)"
+    print_detail "Source: $actual_url"
+    return 1
+}
+
 check_flatpak_app() {
     local app_id=$1
     local app_name=$2
@@ -328,6 +386,46 @@ check_flatpak_app() {
             return 2
         fi
     fi
+}
+
+check_flatpak_remote() {
+    local remote_name=$1
+    local description=$2
+    local required=${3:-true}
+
+    print_check "$description"
+
+    if ! command -v flatpak &> /dev/null; then
+        if [ "$required" = true ]; then
+            print_fail "Flatpak command not available"
+        else
+            print_warning "Flatpak command not available"
+        fi
+        return 1
+    fi
+
+    local remote_output
+    remote_output=$(flatpak remotes --user --columns=name,url 2>/dev/null || true)
+    local remote_line
+    remote_line=$(printf '%s\n' "$remote_output" | awk -v name="$remote_name" 'NR == 1 {next} $1 == name {print $0}' | head -n1)
+
+    if [ -z "$remote_line" ]; then
+        if [ "$required" = true ]; then
+            print_fail "$remote_name remote not configured"
+        else
+            print_warning "$remote_name remote not configured"
+        fi
+        return 1
+    fi
+
+    local remote_url
+    remote_url=$(printf '%s\n' "$remote_line" | awk '{print $2}')
+    print_success "$remote_name remote present"
+    if [ -n "$remote_url" ]; then
+        print_detail "Source: $remote_url"
+    fi
+
+    return 0
 }
 
 check_shell_alias() {
@@ -574,6 +672,15 @@ run_all_checks() {
     check_file_exists "$HOME/.dotfiles/home-manager/home.nix" "Home Manager home.nix" true
 
     # ==========================================================================
+    # Channel Alignment
+    # ==========================================================================
+    print_section "Channel Alignment"
+
+    check_nix_channel "/nix/var/nix/profiles/per-user/root/channels" "nixos" "nixos-unstable" "System nixos channel"
+    check_nix_channel "" "nixpkgs" "nixos-unstable" "User nixpkgs channel"
+    check_nix_channel "" "home-manager" "master" "Home Manager channel"
+
+    # ==========================================================================
     # AI Development Tools
     # ==========================================================================
     print_section "AI Development Tools"
@@ -636,6 +743,7 @@ run_all_checks() {
     check_python_package "anthropic" "Anthropic client" true
     check_python_package "langchain" "LangChain" true
     check_python_package "llama_index" "LlamaIndex" true
+    check_python_package "openskills" "OpenSkills automation toolkit" true
 
     # Vector Databases & Embeddings
     check_python_package "chromadb" "ChromaDB" true
@@ -712,6 +820,9 @@ run_all_checks() {
         ((TOTAL_CHECKS++))
         ((FAILED_CHECKS++))
     else
+        check_flatpak_remote "flathub" "Flathub remote" true
+        check_flatpak_remote "flathub-beta" "Flathub Beta remote" true
+
         # Core applications
         check_flatpak_app "org.mozilla.firefox" "Firefox" true
         check_flatpak_app "md.obsidian.Obsidian" "Obsidian" true

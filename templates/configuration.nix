@@ -150,6 +150,16 @@ in
       timeout = lib.mkDefault 3;
     };
 
+    # Prefer performance-tuned kernels when available.
+    # Order of preference: TKG → XanMod → Liquorix → Zen → Latest upstream.
+    kernelPackages = lib.mkDefault (
+      if pkgs ? linuxPackages_tkg then pkgs.linuxPackages_tkg
+      else if pkgs ? linuxPackages_xanmod then pkgs.linuxPackages_xanmod
+      else if pkgs ? linuxPackages_lqx then pkgs.linuxPackages_lqx
+      else if pkgs ? linuxPackages_zen then pkgs.linuxPackages_zen
+      else pkgs.linuxPackages_latest
+    );
+
     # CPU Microcode updates (auto-detected: @CPU_VENDOR_LABEL@ CPU)
     # Critical security and performance updates from CPU vendor
     @INITRD_KERNEL_MODULES@
