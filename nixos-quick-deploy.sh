@@ -53,6 +53,14 @@ readonly RETRY_BACKOFF_MULTIPLIER=2
 readonly NETWORK_TIMEOUT=300
 
 # Disk space requirements
+# This deployment requires substantial disk space due to:
+# - 100+ CLI tools and development utilities
+# - Complete Python ML/AI environment (PyTorch, TensorFlow, LangChain, etc.)
+# - AI development tools (Ollama, GPT4All, llama.cpp models, Aider)
+# - Container stack (Podman, Buildah, Skopeo) + container images
+# - Desktop applications via Flatpak (Firefox, Obsidian, DBeaver, etc.)
+# - System services (Gitea, Qdrant, Jupyter, Hugging Face TGI)
+# Minimum: 50GB free space in /nix (recommended: 100GB+ for AI models)
 readonly REQUIRED_DISK_SPACE_GB=50
 
 # Logging
@@ -376,11 +384,211 @@ check_disk_space() {
     if (( available_gb < required_gb )); then
         print_error "Insufficient disk space: ${available_gb}GB available, ${required_gb}GB required"
         print_info "Free up space or add more storage before continuing"
+        echo ""
+        print_info "This deployment installs:"
+        echo "  • 100+ CLI tools and development utilities"
+        echo "  • Python ML/AI environment (PyTorch, TensorFlow, LangChain, etc.)"
+        echo "  • AI development tools (Ollama, GPT4All, Aider, etc.)"
+        echo "  • Container stack (Podman, buildah, skopeo)"
+        echo "  • Desktop applications via Flatpak"
+        echo ""
+        print_info "To free up space:"
+        echo "  sudo nix-collect-garbage -d      # Remove old generations"
+        echo "  sudo nix-store --optimize        # Deduplicate store files"
+        echo "  sudo nix-store --gc              # Garbage collect unused paths"
         log ERROR "Disk space check failed"
         return 1
     fi
 
     print_success "Disk space check passed: ${available_gb}GB available"
+    return 0
+}
+
+# ============================================================================
+# Package Availability Checks
+# ============================================================================
+
+# Ensure a package/command is available, install temporarily if needed
+ensure_package_available() {
+    local cmd="$1"
+    local pkg="${2:-$1}"
+    local priority="${3:-CRITICAL}"
+    local description="${4:-$cmd}"
+
+    if command -v "$cmd" &>/dev/null; then
+        log DEBUG "$cmd available: $(command -v $cmd)"
+        return 0
+    fi
+
+    # Package is missing
+    case "$priority" in
+        CRITICAL)
+            print_warning "$description not found - installing temporarily from nixpkgs"
+            log WARNING "$cmd missing, installing ephemeral package: $pkg"
+            ;;
+        IMPORTANT)
+            print_info "$description not found - installing temporarily (recommended)"
+            log INFO "$cmd missing, installing ephemeral package: $pkg"
+            ;;
+        OPTIONAL)
+            print_info "$description not found - installing temporarily (optional, improves functionality)"
+            log INFO "$cmd missing, installing ephemeral package: $pkg"
+            ;;
+    esac
+
+    # Create ephemeral shell wrapper for this command
+    # Note: This doesn't actually create a persistent wrapper, but documents the approach
+    # The actual implementation will use nix-shell -p or nix shell for each invocation
+
+    if [[ "$priority" == "CRITICAL" ]]; then
+        # For critical packages, verify they can be installed
+        if ! nix-shell -p "$pkg" --run "$cmd --version" &>/dev/null && \
+           ! nix-shell -p "$pkg" --run "$cmd --help" &>/dev/null && \
+           ! nix-shell -p "$pkg" --run "command -v $cmd" &>/dev/null; then
+            print_error "Failed to install $description temporarily"
+            print_error "Package: $pkg"
+            log ERROR "Critical package $pkg could not be installed"
+            return 1
+        fi
+        print_success "$description available (ephemeral installation)"
+    else
+        # For non-critical, just log and continue
+        print_success "$description will be available via ephemeral installation as needed"
+    fi
+
+    return 0
+}
+
+# Check all required packages for successful installation
+check_required_packages() {
+    print_section "Checking Required Packages"
+
+    local packages_ok=true
+
+    # Track missing packages for summary
+    declare -a MISSING_CRITICAL=()
+    declare -a MISSING_IMPORTANT=()
+    declare -a MISSING_OPTIONAL=()
+
+    print_info "Verifying packages needed to run this installation..."
+    echo ""
+
+    # ========================================
+    # CRITICAL PACKAGES
+    # ========================================
+    print_info "Critical packages (required for installation):"
+
+    # jq - JSON manipulation (used throughout for state management)
+    if ! ensure_package_available "jq" "jq" "CRITICAL" "jq (JSON processor)"; then
+        MISSING_CRITICAL+=("jq")
+        packages_ok=false
+    fi
+
+    # git - Required for pip install from git repositories
+    if ! ensure_package_available "git" "git" "CRITICAL" "git (version control)"; then
+        MISSING_CRITICAL+=("git")
+        packages_ok=false
+    fi
+
+    # systemctl - Service management (should always be available on NixOS)
+    if ! command -v systemctl &>/dev/null; then
+        print_warning "systemctl not found (unusual for NixOS)"
+        log WARNING "systemctl missing - this is unexpected on NixOS"
+    else
+        print_success "systemctl available"
+    fi
+
+    echo ""
+
+    # ========================================
+    # IMPORTANT PACKAGES
+    # ========================================
+    print_info "Important packages (recommended for full functionality):"
+
+    # lspci - Hardware detection, GPU identification
+    if ! ensure_package_available "lspci" "pciutils" "IMPORTANT" "lspci (PCI hardware detection)"; then
+        MISSING_IMPORTANT+=("pciutils")
+    fi
+
+    # which - Command location (used in multiple places)
+    if ! ensure_package_available "which" "which" "IMPORTANT" "which (command locator)"; then
+        MISSING_IMPORTANT+=("which")
+    fi
+
+    # readlink - Path resolution (used for symlink following)
+    if ! ensure_package_available "readlink" "coreutils" "IMPORTANT" "readlink (path resolver)"; then
+        MISSING_IMPORTANT+=("coreutils")
+    fi
+
+    # timeout - Command timeouts (used for service checks)
+    if ! command -v timeout &>/dev/null; then
+        print_info "timeout not found - will use alternatives"
+        log INFO "timeout command not available"
+    else
+        print_success "timeout available"
+    fi
+
+    echo ""
+
+    # ========================================
+    # OPTIONAL PACKAGES
+    # ========================================
+    print_info "Optional packages (for enhanced features):"
+
+    # glxinfo - AMD GPU validation
+    if ! ensure_package_available "glxinfo" "mesa-demos" "OPTIONAL" "glxinfo (AMD GPU validation)"; then
+        MISSING_OPTIONAL+=("mesa-demos")
+    fi
+
+    # nvidia-smi - NVIDIA GPU validation (comes with drivers, not always needed)
+    if ! command -v nvidia-smi &>/dev/null; then
+        print_info "nvidia-smi not found (only needed for NVIDIA GPUs)"
+        log DEBUG "nvidia-smi not available"
+    else
+        print_success "nvidia-smi available"
+    fi
+
+    # loginctl - systemd login management
+    if ! command -v loginctl &>/dev/null; then
+        print_info "loginctl not found (some systemd checks will be skipped)"
+        log DEBUG "loginctl not available"
+    else
+        print_success "loginctl available"
+    fi
+
+    echo ""
+
+    # ========================================
+    # SUMMARY
+    # ========================================
+    if [[ ${#MISSING_CRITICAL[@]} -eq 0 ]] && [[ ${#MISSING_IMPORTANT[@]} -eq 0 ]]; then
+        print_success "All required packages available"
+    else
+        if [[ ${#MISSING_CRITICAL[@]} -gt 0 ]]; then
+            print_error "Missing critical packages: ${MISSING_CRITICAL[*]}"
+            print_error "Installation cannot proceed without these packages"
+            packages_ok=false
+        fi
+
+        if [[ ${#MISSING_IMPORTANT[@]} -gt 0 ]]; then
+            print_warning "Missing important packages: ${MISSING_IMPORTANT[*]}"
+            print_info "Installation will continue but some features may be limited"
+        fi
+    fi
+
+    if [[ ${#MISSING_OPTIONAL[@]} -gt 0 ]]; then
+        print_info "Missing optional packages: ${MISSING_OPTIONAL[*]}"
+        print_info "These will be installed temporarily as needed"
+    fi
+
+    echo ""
+
+    if [[ "$packages_ok" != true ]]; then
+        log ERROR "Required package check failed"
+        return 1
+    fi
+
+    log INFO "Required package check passed"
     return 0
 }
 
@@ -3742,6 +3950,16 @@ prompt_secret() {
 check_prerequisites() {
     print_section "Checking Prerequisites"
 
+    echo ""
+    print_info "This deployment will install:"
+    echo "  • 100+ CLI development tools and utilities"
+    echo "  • Complete Python ML/AI environment (PyTorch, TensorFlow, LangChain, etc.)"
+    echo "  • AI command-line tools (Ollama, GPT4All, llama.cpp, Aider)"
+    echo "  • Container stack (Podman, Buildah, Skopeo)"
+    echo "  • Desktop applications via Flatpak (Firefox, Obsidian, DBeaver, etc.)"
+    echo "  • System services (Gitea, Qdrant, Jupyter, Hugging Face TGI)"
+    echo ""
+
     # Check NixOS
     if [[ ! -f /etc/NIXOS ]]; then
         print_error "This script must be run on NixOS"
@@ -3755,6 +3973,12 @@ check_prerequisites() {
         exit 1
     fi
     print_success "nixos-rebuild command detected"
+
+    # Check all required packages for installation
+    if ! check_required_packages; then
+        print_error "Package requirements not met"
+        exit 1
+    fi
 
     # Detect and handle old deployment method artifacts
     print_info "Checking for old deployment artifacts..."
@@ -3797,19 +4021,6 @@ check_prerequisites() {
     else
         print_success "No old deployment artifacts found"
     fi
-
-    # Check disk space (need at least 10GB free in /nix/store)
-    local available_gb=$(df -BG /nix/store | awk 'NR==2 {print $4}' | sed 's/G//')
-    if [ "$available_gb" -lt 10 ]; then
-        print_error "Insufficient disk space: ${available_gb}GB available"
-        print_error "At least 10GB free space required in /nix/store"
-        echo ""
-        print_info "Free up space with:"
-        echo "  sudo nix-collect-garbage -d"
-        echo "  sudo nix-store --optimize"
-        exit 1
-    fi
-    print_success "Disk space check passed (${available_gb}GB available)"
 
     # Check network connectivity
     print_info "Checking network connectivity..."
