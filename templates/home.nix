@@ -685,6 +685,30 @@ RESOURCES
         });
       };
     };
+  # ========================================================================
+  # Python AI/ML Environment
+  # ========================================================================
+  # Comprehensive Python environment for AI/ML development including:
+  # - Deep Learning: PyTorch, TensorFlow with GPU support
+  # - Transformers: HuggingFace transformers, tokenizers, datasets
+  # - LLM Frameworks: LangChain, LlamaIndex with all integrations
+  # - Vector DBs: Chromadb, Qdrant, Pinecone, FAISS
+  # - Data Science: NumPy, Pandas, Polars, Scikit-learn
+  # - Visualization: Matplotlib, Seaborn, Gradio
+  # - Development: JupyterLab, IPython, Black, Ruff, MyPy
+  #
+  # Optional packages to add if needed:
+  # - jupyter-ai              # Jupyter AI chatbot (requires API keys)
+  # - keras                   # High-level neural networks API
+  # - xgboost                 # Gradient boosting framework
+  # - lightgbm                # Light gradient boosting machine
+  # - catboost                # Categorical gradient boosting
+  # - optuna                  # Hyperparameter optimization
+  # - mlflow                  # ML experiment tracking
+  # - wandb                   # Weights & Biases tracking
+  # - ray                     # Distributed computing framework
+  # - streamlit               # Web app framework for ML
+
   pythonAiEnv =
     pythonAi.withPackages (ps:
       let
@@ -1102,6 +1126,7 @@ in
           # Terminal tools
           # Note: alacritty installed via programs.alacritty below (prevents collision)
           tmux                    # Terminal multiplexer
+          zellij                  # Modern terminal workspace (Rust alternative to tmux)
           screen                  # Terminal session manager
           mosh                    # Mobile shell (SSH alternative)
           asciinema               # Terminal session recorder
@@ -1140,6 +1165,9 @@ in
             # System tools
             htop                    # Interactive process viewer
             btop                    # Resource monitor with modern UI
+            nvtop                   # GPU monitor (supports AMD, NVIDIA, Intel)
+            radeontop               # AMD GPU specific monitoring tool
+            amdgpu_top              # Modern AMD GPU monitoring (Rust-based)
             flatpak                 # Flatpak CLI for sandboxed desktop apps
           tree                    # Display directory tree structure
           unzip                   # Extract ZIP archives
@@ -1477,6 +1505,88 @@ in
       unstage = "reset HEAD --";
       last = "log -1 HEAD";
       visual = "log --oneline --graph --decorate --all";
+    };
+  };
+
+  # ========================================================================
+  # Direnv - Automatic Development Environment Loading
+  # ========================================================================
+  # direnv automatically loads and unloads environment variables when entering
+  # and leaving project directories. Combined with nix-direnv, it provides:
+  # - Automatic activation of nix shells when cd'ing into projects
+  # - Persistent dev shells (prevents garbage collection)
+  # - Integration with VSCode and other editors
+  # - No need to manually run 'nix develop' every time
+  #
+  # Usage: Add .envrc to your project with:
+  #   use flake
+  # Then run: direnv allow
+
+  programs.direnv = {
+    enable = true;
+    nix-direnv.enable = true;
+
+    # Silent mode - reduce terminal output noise
+    enableBashIntegration = true;
+    enableZshIntegration = true;
+
+    # Configuration
+    config = {
+      global = {
+        # Warn if direnv takes longer than 5 seconds to load
+        warn_timeout = "5s";
+      };
+    };
+  };
+
+  # ========================================================================
+  # Zellij - Modern Terminal Workspace
+  # ========================================================================
+  # Zellij is a modern terminal multiplexer (alternative to tmux) with:
+  # - Floating panes and intuitive UI
+  # - Client-server architecture (reconnect to sessions)
+  # - Visual hints and discoverable keybindings
+  # - Written in Rust for performance
+  #
+  # Usage:
+  #   zellij           # Start new session
+  #   zellij attach    # Reconnect to last session
+  #   zellij ls        # List sessions
+  #
+  # Default keybindings (after Ctrl+g):
+  #   Ctrl+g → p   # Panes mode (split, move, etc.)
+  #   Ctrl+g → t   # Tabs mode
+  #   Ctrl+g → s   # Scroll mode
+  #   Ctrl+g → q   # Quit
+
+  programs.zellij = {
+    enable = true;
+
+    # Configuration
+    settings = {
+      # Theme
+      theme = "default";
+
+      # Simplified mode (fewer modes for easier learning)
+      simplified_ui = false;
+
+      # Pane frames (borders around panes)
+      pane_frames = true;
+
+      # Default shell
+      default_shell = "zsh";
+
+      # Mouse support
+      mouse_mode = true;
+
+      # Copy on select
+      copy_on_select = true;
+
+      # Session serialization (save session layout)
+      session_serialization = true;
+
+      # Scroll buffer size (lines)
+      scroll_buffer_size = 10000;
     };
   };
 
