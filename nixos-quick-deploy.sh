@@ -75,6 +75,11 @@ FORCE_UPDATE=false
 SKIP_HEALTH_CHECK=false
 ENABLE_DEBUG=false
 
+# Channel preferences
+DEFAULT_CHANNEL_TRACK="${DEFAULT_CHANNEL_TRACK:-unstable}"
+SYNCHRONIZED_NIXOS_CHANNEL=""
+SYNCHRONIZED_HOME_MANAGER_CHANNEL=""
+
 # ============================================================================
 # Logging Framework
 # ============================================================================
@@ -545,6 +550,8 @@ perform_rollback() {
 FLATHUB_REMOTE_NAME="flathub"
 FLATHUB_REMOTE_URL="https://dl.flathub.org/repo/flathub.flatpakrepo"
 FLATHUB_REMOTE_FALLBACK_URL="https://flathub.org/repo/flathub.flatpakrepo"
+FLATHUB_BETA_REMOTE_NAME="flathub-beta"
+FLATHUB_BETA_REMOTE_URL="https://flathub.org/beta-repo/flathub-beta.flatpakrepo"
 DEFAULT_FLATPAK_APPS=(
     "com.github.tchx84.Flatseal"
     "org.gnome.FileRoller"
@@ -897,6 +904,62 @@ flatpak_remote_exists() {
         | grep -Fxq "$FLATHUB_REMOTE_NAME"
 }
 
+flatpak_beta_remote_exists() {
+    if ! flatpak_cli_available; then
+        return 1
+    fi
+
+    local remote_output
+    remote_output=$(run_as_primary_user flatpak remotes --user --columns=name 2>/dev/null || true)
+
+    printf '%s\n' "$remote_output" \
+        | awk 'NR == 1 && $1 == "Name" { next } { print $1 }' \
+        | grep -Fxq "$FLATHUB_BETA_REMOTE_NAME"
+}
+
+ensure_flathub_beta_remote() {
+    if ! flatpak_cli_available; then
+        print_warning "Flatpak CLI not available; skipping Flathub Beta configuration"
+        return 1
+    fi
+
+    if flatpak_beta_remote_exists; then
+        print_info "Flathub Beta repository already configured"
+        return 0
+    fi
+
+    print_info "Adding Flathub Beta Flatpak remote for bleeding-edge AI builds..."
+
+    local from_output=""
+    if from_output=$(run_as_primary_user flatpak remote-add --user --if-not-exists --from "$FLATHUB_BETA_REMOTE_NAME" "$FLATHUB_BETA_REMOTE_URL" 2>&1); then
+        print_success "Flathub Beta repository added"
+        return 0
+    fi
+
+    if [[ -n "$from_output" ]]; then
+        print_warning "  ↳ Failed to add Flathub Beta via --from"
+        while IFS= read -r line; do
+            print_info "     $line"
+        done <<<"$from_output"
+    fi
+
+    local direct_output=""
+    if direct_output=$(run_as_primary_user flatpak remote-add --user --if-not-exists "$FLATHUB_BETA_REMOTE_NAME" "$FLATHUB_BETA_REMOTE_URL" 2>&1); then
+        print_success "Flathub Beta repository added"
+        return 0
+    fi
+
+    if [[ -n "$direct_output" ]]; then
+        print_warning "  ↳ Failed to add Flathub Beta via direct URL"
+        while IFS= read -r line; do
+            print_info "     $line"
+        done <<<"$direct_output"
+    fi
+
+    print_warning "Flathub Beta remote could not be configured"
+    return 1
+}
+
 flatpak_query_application_support() {
     if ! flatpak_cli_available; then
         LAST_FLATPAK_QUERY_MESSAGE="Flatpak CLI not available"
@@ -1089,7 +1152,8 @@ ensure_flathub_remote() {
 
     if flatpak_remote_exists; then
         print_info "Flathub repository already configured"
-        return 0
+        ensure_flathub_beta_remote
+        return $?
     fi
 
     print_info "Adding Flathub Flatpak remote..."
@@ -1108,7 +1172,8 @@ ensure_flathub_remote() {
             else
                 print_success "Flathub repository added via fallback source ($source)"
             fi
-            return 0
+            ensure_flathub_beta_remote
+            return $?
         fi
 
         if [[ -n "$from_output" ]]; then
@@ -1125,7 +1190,8 @@ ensure_flathub_remote() {
             else
                 print_success "Flathub repository added via fallback source ($source)"
             fi
-            return 0
+            ensure_flathub_beta_remote
+            return $?
         fi
 
         if [[ -n "$direct_output" ]]; then
@@ -2384,6 +2450,18 @@ canonical_block = textwrap.dedent(
             doCheck = false;
             pythonImportsCheck = [];
           });
+          "openai" = super."openai".overridePythonAttrs (old: {
+            doCheck = false;
+            pythonImportsCheck = [];
+            postInstall = lib.concatStringsSep "\n" (
+              lib.filter (s: s != "") [
+                (old.postInstall or "")
+                ''
+                  rm -f "$out/bin/openai" "$out/bin/.openai-wrapped"
+                ''
+              ]
+            );
+          });
           psycopg = super.psycopg.overridePythonAttrs (old: {
             doCheck = false;
             pythonImportsCheck = [];
@@ -2495,6 +2573,123 @@ PY
         return 1
     elif [[ -n "$harmonize_output" ]]; then
         print_info "$context_label: $harmonize_output"
+    fi
+
+    return 0
+}
+
+install_openskills_tooling() {
+    print_section "Installing OpenSkills Automation Toolkit"
+
+    if [[ "$DRY_RUN" == true ]]; then
+        print_info "Dry-run mode enabled – skipping OpenSkills installation"
+        return 0
+    fi
+
+    if ! ensure_python_runtime; then
+        print_warning "Python runtime unavailable; skipping OpenSkills installation"
+        return 0
+    fi
+
+    if ! run_python -m pip --version >/dev/null 2>&1; then
+        print_warning "pip module is unavailable; install python3-pip to manage OpenSkills"
+        return 0
+    fi
+
+    local repo_url="https://github.com/numman-ali/openskills.git"
+    local log_file="/tmp/openskills-install.log"
+    rm -f "$log_file"
+
+    local current_version
+    current_version=$(run_python <<'PY' 2>/dev/null
+import importlib.metadata
+
+try:
+    dist = importlib.metadata.distribution("openskills")
+except importlib.metadata.PackageNotFoundError:
+    pass
+else:
+    print(dist.version or "")
+PY
+)
+
+    current_version="${current_version//$'\r'/}"
+
+    if [[ -n "$current_version" && "$FORCE_UPDATE" = false ]]; then
+        print_success "✓ OpenSkills already installed (v$current_version)"
+        print_info "Use --force-update to reinstall from upstream"
+    else
+        if [[ -n "$current_version" ]]; then
+            print_info "Updating OpenSkills (current version: $current_version)"
+        else
+            print_info "Installing OpenSkills from upstream Git repository..."
+        fi
+
+        if run_python -m pip install --user --upgrade "git+${repo_url}" 2>&1 | tee "$log_file"; then
+            local pip_status=${PIPESTATUS[0]}
+            if [[ $pip_status -ne 0 ]]; then
+                print_error "OpenSkills installation command exited with status $pip_status"
+                print_info "Review pip logs: $log_file"
+                return 1
+            fi
+
+            local new_version
+            new_version=$(run_python <<'PY' 2>/dev/null
+import importlib.metadata
+
+try:
+    dist = importlib.metadata.distribution("openskills")
+except importlib.metadata.PackageNotFoundError:
+    print("")
+else:
+    print(dist.version or "")
+PY
+)
+            new_version="${new_version//$'\r'/}"
+
+            if [[ -n "$new_version" ]]; then
+                print_success "✓ OpenSkills ready (v$new_version)"
+            else
+                print_success "✓ OpenSkills installation completed"
+            fi
+        else
+            local pip_status=${PIPESTATUS[0]}
+            print_error "Failed to install OpenSkills (exit code: $pip_status)"
+            print_warning "Check $log_file for pip output and ensure GitHub is reachable"
+            return 1
+        fi
+    fi
+
+    local missing_toolkits
+    missing_toolkits=$(run_python <<'PY' 2>/dev/null
+import importlib.metadata
+
+candidates = [
+    ("crewai", "CrewAI (collaborative agents)"),
+    ("autogen", "Microsoft AutoGen (multi-agent automation)"),
+    ("smolagents", "Hugging Face Smolagents (tool-calling agents)"),
+]
+
+lines = []
+for package, label in candidates:
+    try:
+        importlib.metadata.distribution(package)
+    except importlib.metadata.PackageNotFoundError:
+        lines.append(f"{package}:{label}")
+
+if lines:
+    print("\n".join(lines))
+PY
+)
+
+    if [[ -n "$missing_toolkits" ]]; then
+        print_info "Additional agent frameworks you may want to install:"
+        while IFS=":" read -r package label; do
+            [[ -z "$package" ]] && continue
+            print_info "  • $label → python3 -m pip install --user $package"
+        done <<< "$missing_toolkits"
+    else
+        print_info "CrewAI, AutoGen, and Smolagents are already present in this environment"
     fi
 
     return 0
@@ -3437,6 +3632,25 @@ normalize_channel_name() {
     echo "$raw"
 }
 
+derive_system_release_version() {
+    local raw
+
+    if ! raw=$(nixos-version 2>/dev/null); then
+        echo "25.05"
+        return 0
+    fi
+
+    raw=$(printf '%s' "$raw" | cut -d'.' -f1-2)
+    raw=${raw%%pre*}
+    raw=${raw%%-*}
+
+    if [[ -z "$raw" ]]; then
+        echo "25.05"
+    else
+        echo "$raw"
+    fi
+}
+
 get_home_manager_flake_uri() {
     local ref="${HOME_MANAGER_CHANNEL_REF:-}"
     local base="github:nix-community/home-manager"
@@ -3624,8 +3838,18 @@ check_prerequisites() {
 select_nixos_version() {
     print_section "NixOS Version Selection"
 
+    local track_preference="${DEFAULT_CHANNEL_TRACK,,}"
+    local CURRENT_VERSION=$(derive_system_release_version)
+
+    if [[ "$track_preference" == "unstable" ]]; then
+        print_info "Channel preference is set to unstable; automatically tracking nixos-unstable for latest AI tooling."
+        print_info "Detected current system release: $CURRENT_VERSION"
+        echo ""
+        export SELECTED_NIXOS_VERSION="unstable"
+        return 0
+    fi
+
     # Get current system version
-    local CURRENT_VERSION=$(nixos-version | cut -d'.' -f1-2)
     local LATEST_STABLE="25.05"
 
     echo ""
@@ -3686,14 +3910,24 @@ update_nixos_channels() {
 
     # Use selected version if available, otherwise auto-detect
     local TARGET_VERSION="${SELECTED_NIXOS_VERSION:-}"
+    local track_preference="${DEFAULT_CHANNEL_TRACK,,}"
 
     if [ -z "$TARGET_VERSION" ]; then
-        # Auto-detect from current system if no selection was made
-        TARGET_VERSION=$(nixos-version | cut -d'.' -f1-2)
-        print_info "Auto-detected NixOS version: $TARGET_VERSION"
+        if [[ "$track_preference" == "unstable" ]]; then
+            TARGET_VERSION="unstable"
+            print_info "Auto-selecting nixos-unstable to keep AI toolchain packages current"
+        else
+            TARGET_VERSION=$(derive_system_release_version)
+            print_info "Auto-detected NixOS version: $TARGET_VERSION"
+        fi
+    elif [[ "$track_preference" == "unstable" && "$TARGET_VERSION" != "unstable" ]]; then
+        print_warning "Overriding requested NixOS version '$TARGET_VERSION' with nixos-unstable per channel preference"
+        TARGET_VERSION="unstable"
     else
         print_info "Using selected NixOS version: $TARGET_VERSION"
     fi
+
+    SELECTED_NIXOS_VERSION="$TARGET_VERSION"
 
     # Set the target channel URL
     local CURRENT_NIXOS_CHANNEL="https://nixos.org/channels/nixos-${TARGET_VERSION}"
@@ -3721,6 +3955,7 @@ update_nixos_channels() {
     #   https://nixos.org/channels/nixos-unstable → nixos-unstable
     local NIXOS_CHANNEL_NAME=$(basename "$CURRENT_NIXOS_CHANNEL")
     print_info "Current NixOS channel: $NIXOS_CHANNEL_NAME"
+    SYNCHRONIZED_NIXOS_CHANNEL="$NIXOS_CHANNEL_NAME"
 
     # Determine matching home-manager channel
     local HM_CHANNEL_NAME
@@ -3754,6 +3989,8 @@ update_nixos_channels() {
         HOME_MANAGER_CHANNEL_URL="$HM_CHANNEL_URL"
     fi
 
+    SYNCHRONIZED_HOME_MANAGER_CHANNEL="$HM_CHANNEL_NAME"
+
     print_success "Channel synchronization plan:"
     print_info "  NixOS:        $NIXOS_CHANNEL_NAME"
     print_info "  home-manager: $HM_CHANNEL_NAME"
@@ -3771,6 +4008,12 @@ update_nixos_channels() {
 
     # Set user nixpkgs channel to MATCH system NixOS version
     print_info "Setting user nixpkgs channel to match system NixOS..."
+    local USER_NIXPKGS_CHANNEL
+    USER_NIXPKGS_CHANNEL=$(nix-channel --list | awk '/^nixpkgs\s/ {print $2}' | tail -n1)
+    if [[ -n "$USER_NIXPKGS_CHANNEL" && "$USER_NIXPKGS_CHANNEL" != "$CURRENT_NIXOS_CHANNEL" ]]; then
+        print_warning "Removing mismatched user nixpkgs channel ($(normalize_channel_name "$USER_NIXPKGS_CHANNEL"))"
+        nix-channel --remove nixpkgs 2>/dev/null || true
+    fi
     if nix-channel --add "$CURRENT_NIXOS_CHANNEL" nixpkgs; then
         print_success "User nixpkgs channel set to $NIXOS_CHANNEL_NAME"
     else
@@ -3780,6 +4023,12 @@ update_nixos_channels() {
 
     # Set home-manager channel to MATCH nixos version
     print_info "Setting home-manager channel to match NixOS..."
+    local USER_HOME_MANAGER_CHANNEL
+    USER_HOME_MANAGER_CHANNEL=$(nix-channel --list | awk '/^home-manager\s/ {print $2}' | tail -n1)
+    if [[ -n "$USER_HOME_MANAGER_CHANNEL" && "$USER_HOME_MANAGER_CHANNEL" != "$HM_CHANNEL_URL" ]]; then
+        print_warning "Removing mismatched home-manager channel ($(normalize_channel_name "$USER_HOME_MANAGER_CHANNEL"))"
+        nix-channel --remove home-manager 2>/dev/null || true
+    fi
     if nix-channel --add "$HM_CHANNEL_URL" home-manager; then
         print_success "home-manager channel set to $HM_CHANNEL_NAME"
     else
@@ -3822,7 +4071,7 @@ update_nixos_channels() {
     if [[ -z "$SYSTEM_CHANNEL" ]]; then
         print_warning "Unable to determine current nixos channel"
     else
-        print_info "  nixos channel:        $(basename "$SYSTEM_CHANNEL")"
+        print_info "  nixos channel:        $(normalize_channel_name "$SYSTEM_CHANNEL")"
     fi
 
     if [[ -z "$USER_CHANNEL" ]]; then
@@ -3835,7 +4084,7 @@ update_nixos_channels() {
         print_warning "Could not verify channel versions"
         print_info "Will proceed but may encounter compatibility issues"
     else
-        local SYSTEM_NAME="$(basename "$SYSTEM_CHANNEL")"
+        local SYSTEM_NAME="$(normalize_channel_name "$SYSTEM_CHANNEL")"
         local EXPECTED_HM=""
         local HUMAN_VERSION_LABEL=""
 
@@ -3878,6 +4127,8 @@ update_nixos_channels() {
 
             HOME_MANAGER_CHANNEL_REF="$EXPECTED_HM"
             HOME_MANAGER_CHANNEL_URL="$RESYNC_URL"
+            SYNCHRONIZED_HOME_MANAGER_CHANNEL="$EXPECTED_HM"
+            SYNCHRONIZED_NIXOS_CHANNEL="$SYSTEM_NAME"
 
             print_success "Channels re-synchronized to expected versions"
         fi
@@ -4011,11 +4262,11 @@ create_home_manager_config() {
         print_info "Detected stateVersion from home-manager: $STATE_VERSION"
     elif [[ "$HM_CHANNEL" == *"master"* ]] || [[ "$NIXOS_CHANNEL" == *"unstable"* ]]; then
         # Unstable/master: Use current system version (don't hardcode!)
-        STATE_VERSION=$(nixos-version | cut -d'.' -f1-2)
+        STATE_VERSION=$(derive_system_release_version)
         print_info "Using unstable channel, stateVersion from system: $STATE_VERSION"
     else
         # Final fallback: system version
-        STATE_VERSION=$(nixos-version | cut -d'.' -f1-2)
+        STATE_VERSION=$(derive_system_release_version)
         print_warning "Could not detect from channels, using system version: $STATE_VERSION"
     fi
 
@@ -4127,7 +4378,7 @@ create_home_manager_config() {
             exit 1
         fi
         # Align flake inputs with the synchronized channels
-        sed -i "s|NIXPKGS_CHANNEL_PLACEHOLDER|$NIXOS_CHANNEL_NAME|" "$FLAKE_FILE"
+        sed -i "s|NIXPKGS_CHANNEL_PLACEHOLDER|${SYNCHRONIZED_NIXOS_CHANNEL:-nixos-${STATE_VERSION}}|" "$FLAKE_FILE"
         sed -i "s|HM_CHANNEL_PLACEHOLDER|$HM_CHANNEL_NAME|" "$FLAKE_FILE"
         sed -i "s|HOSTNAME_PLACEHOLDER|$CURRENT_HOSTNAME|" "$FLAKE_FILE"
         sed -i "s|HOME_USERNAME_PLACEHOLDER|$USER|" "$FLAKE_FILE"
@@ -4912,10 +5163,12 @@ generate_nixos_system_config() {
     local SYSTEM_CONFIG="/etc/nixos/configuration.nix"
     # Detect system info
     local HOSTNAME=$(hostname)
-    local NIXOS_VERSION=$(nixos-version | cut -d'.' -f1-2)
+    local NIXOS_VERSION=$(derive_system_release_version)
     local HM_CHANNEL_NAME=""
     local HM_FETCH_URL=""
     local DETECTED_HM_CHANNEL=""
+    local NIXOS_CHANNEL_LABEL="${SYNCHRONIZED_NIXOS_CHANNEL:-nixos-${NIXOS_VERSION}}"
+    SYNCHRONIZED_NIXOS_CHANNEL="$NIXOS_CHANNEL_LABEL"
 
     # Use timezone selected by user (from gather_user_info)
     # If not set, detect current timezone
@@ -4927,6 +5180,9 @@ generate_nixos_system_config() {
     local CURRENT_LOCALE=$(localectl status | grep "LANG=" | cut -d= -f2 | tr -d ' ' 2>/dev/null || echo "en_US.UTF-8")
 
     # Resolve the home-manager channel reference for templating
+    if [[ -z "$HOME_MANAGER_CHANNEL_REF" && -n "$SYNCHRONIZED_HOME_MANAGER_CHANNEL" ]]; then
+        HOME_MANAGER_CHANNEL_REF="$SYNCHRONIZED_HOME_MANAGER_CHANNEL"
+    fi
     if [[ -n "$HOME_MANAGER_CHANNEL_REF" ]]; then
         HM_CHANNEL_NAME="$HOME_MANAGER_CHANNEL_REF"
     fi
@@ -4953,6 +5209,7 @@ generate_nixos_system_config() {
     HM_FETCH_URL="https://github.com/nix-community/home-manager/archive/${HM_CHANNEL_NAME}.tar.gz"
     HOME_MANAGER_CHANNEL_REF="$HM_CHANNEL_NAME"
     HOME_MANAGER_CHANNEL_URL="$HM_FETCH_URL"
+    SYNCHRONIZED_HOME_MANAGER_CHANNEL="$HM_CHANNEL_NAME"
 
     if [[ -z "$HM_FETCH_URL" ]]; then
         print_error "Failed to resolve home-manager tarball URL"
@@ -4964,7 +5221,7 @@ generate_nixos_system_config() {
     # Detect hardware for optimization
     detect_gpu_and_cpu
 
-    print_info "System: $HOSTNAME (NixOS $NIXOS_VERSION)"
+    print_info "System: $HOSTNAME (channel ${NIXOS_CHANNEL_LABEL}, release $NIXOS_VERSION)"
     print_info "User: $USER"
     print_info "Timezone: $SELECTED_TIMEZONE"
     print_info "Locale: $CURRENT_LOCALE"
@@ -5011,6 +5268,22 @@ generate_nixos_system_config() {
     fi
 
     print_success "Generated configuration.nix in $HM_CONFIG_DIR"
+
+    print_info "Kernel preference: linuxPackages_tkg → linuxPackages_xanmod → linuxPackages_lqx → linuxPackages_zen → linuxPackages_latest"
+
+    if command -v nix >/dev/null 2>&1; then
+        local kernel_expr='let pkgs = import <nixpkgs> {}; names = ["linuxPackages_tkg" "linuxPackages_xanmod" "linuxPackages_lqx" "linuxPackages_zen"]; available = builtins.filter (name: builtins.hasAttr name pkgs) names; in builtins.concatStringsSep ", " available'
+        local available_kernel_output
+        available_kernel_output=$(nix --extra-experimental-features 'nix-command' eval --raw --expr "$kernel_expr" 2>/dev/null || nix eval --raw --expr "$kernel_expr" 2>/dev/null || true)
+
+        if [[ -n "$available_kernel_output" ]]; then
+            print_info "Performance kernels available in current channel: $available_kernel_output"
+        else
+            print_warning "Could not confirm performance kernel availability via nix; falling back to preference order above"
+        fi
+    else
+        print_warning "nix command not found in PATH; skipping kernel availability probe"
+    fi
 
     local GENERATED_AT
     GENERATED_AT=$(date '+%Y-%m-%d %H:%M:%S %Z')
@@ -5370,7 +5643,7 @@ PY
     local CURRENT_HOSTNAME=$(hostname)
 
     # Construct nixpkgs channel name from NIXOS_VERSION (e.g., "25.05" -> "nixos-25.05")
-    local NIXPKGS_CHANNEL="nixos-${NIXOS_VERSION}"
+    local NIXPKGS_CHANNEL="${SYNCHRONIZED_NIXOS_CHANNEL:-nixos-${NIXOS_VERSION}}"
 
     if copy_template_to_flake "$FLAKE_TEMPLATE" "$FLAKE_FILE" "flake.nix"; then
         print_success "Created flake.nix in $HM_CONFIG_DIR"
@@ -6613,6 +6886,11 @@ main() {
     else
         print_warning "Claude Code installation skipped due to errors"
         print_info "You can install it manually later if needed"
+        echo ""
+    fi
+
+    if ! install_openskills_tooling; then
+        print_warning "OpenSkills installation encountered issues (see above)"
         echo ""
     fi
 
