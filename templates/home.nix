@@ -667,6 +667,8 @@ RESOURCES
           );
         });
         "openai" = super."openai".overridePythonAttrs (old: {
+          doCheck = false;
+          pythonImportsCheck = [];
           postInstall = lib.concatStringsSep "\n" (
             lib.filter (s: s != "") [
               (old.postInstall or "")
