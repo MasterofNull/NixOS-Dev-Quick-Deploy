@@ -1315,7 +1315,7 @@ in
 
           # Container Security
           trivy                   # Vulnerability scanner for containers
-          cosign                  # Container signing and verification
+          (pkgs.cosign.overrideAttrs (old: { doCheck = false; }))  # Container signing and verification (tests disabled due to nil pointer issue in test suite)
 
           # Kubernetes (Optional - for model deployment)
           # Uncomment if deploying ML models to Kubernetes
