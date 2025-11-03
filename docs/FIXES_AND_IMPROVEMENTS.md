@@ -6,6 +6,11 @@
 
 This document describes the fixes applied to the NixOS Quick Deploy script to address errors, warnings, and improve the user experience.
 
+- Added default disk management utilities (GNOME Disks and `parted`) so newly provisioned environments include user-friendly formatting and partitioning tools.
+- Retained the full observability stack (Glances, Grafana, Prometheus, Loki, Promtail, Vector, Cockpit) while keeping AMD-specific monitors (`radeontop`, `amdgpu_top`) conditional on detected hardware.
+- Updated the Home Manager Git module configuration to the new `programs.git.settings` structure (with nested `alias`) required by the latest unstable release.
+- Replaced the deprecated `du-dust` package name with the upstream-supported `dust` derivation to keep the toolkit compatible with nixos-unstable.
+
 ## Critical Fixes
 
 ### 1. System Rebuild Prompt Timing (CRITICAL)
@@ -269,22 +274,26 @@ services.geoclue2 = {
 #### System Packages
 
 ```nix
-environment.systemPackages = with pkgs; [
-  # COSMIC App Store (not auto-included)
-  cosmic-store
+environment.systemPackages = with pkgs;
+  [
+    # COSMIC App Store (not auto-included)
+    cosmic-store
 
-  # COSMIC Settings (explicitly included)
-  # Ensures settings daemon is available
-] ++ lib.optionals (pkgs ? cosmic-settings) [ pkgs.cosmic-settings ]
-++ [
-  # Container tools
-  podman
-  podman-compose
-  buildah
-  skopeo
-  crun
-  slirp4netns
-];
+    # COSMIC Settings (explicitly included)
+    # Ensures settings daemon is available
+  ]
+  ++ lib.optionals (pkgs ? cosmic-settings) [ pkgs.cosmic-settings ]
+  ++ lib.optional (lib.hasAttr "default" nixAiToolsPackages)
+    nixAiToolsPackages.default
+  ++ [
+    # Container tools
+    podman
+    podman-compose
+    buildah
+    skopeo
+    crun
+    slirp4netns
+  ];
 ```
 
 **Note:** COSMIC desktop applications (cosmic-edit, cosmic-files, cosmic-term, etc.) are automatically included when `services.desktopManager.cosmic.enable = true`. Do NOT add them to systemPackages - it creates duplicates!

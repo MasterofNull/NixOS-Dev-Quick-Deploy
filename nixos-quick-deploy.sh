@@ -4413,6 +4413,10 @@ create_home_manager_config() {
 
     # Set defaults for optional variables if not set
     DEFAULT_EDITOR="${DEFAULT_EDITOR:-vim}"
+    local GPU_MONITORING_PACKAGES_BLOCK="[]"
+    if [[ "$GPU_TYPE" == "amd" ]]; then
+        GPU_MONITORING_PACKAGES_BLOCK="[ radeontop amdgpu_top ]"
+    fi
 
     print_info "Using configuration:"
     print_info "  User: $USER"
@@ -4434,6 +4438,7 @@ create_home_manager_config() {
     sed -i "s|HOMEUSERNAME|$USER|" "$HOME_MANAGER_FILE"
     sed -i "s|HOMEDIR|$HOME|" "$HOME_MANAGER_FILE"
     sed -i "s|STATEVERSION_PLACEHOLDER|$STATE_VERSION|" "$HOME_MANAGER_FILE"
+    sed -i "s|@GPU_MONITORING_PACKAGES@|$GPU_MONITORING_PACKAGES_BLOCK|" "$HOME_MANAGER_FILE"
     sed -i "s|@GITEA_SECRET_KEY@|$GITEA_SECRET_KEY|g" "$HOME_MANAGER_FILE"
     sed -i "s|@GITEA_INTERNAL_TOKEN@|$GITEA_INTERNAL_TOKEN|g" "$HOME_MANAGER_FILE"
     sed -i "s|@GITEA_LFS_JWT_SECRET@|$GITEA_LFS_JWT_SECRET|g" "$HOME_MANAGER_FILE"
@@ -6694,7 +6699,7 @@ prompt_installation_stage() {
 }
 
 install_flatpak_stage() {
-    print_section "Flatpak Preparation"
+    print_section "Flatpak Provisioning"
 
     if preflight_flatpak_environment "workflow-preflight"; then
         print_success "Flatpak environment looks healthy"
@@ -6862,13 +6867,13 @@ main() {
         return 0
     fi
 
-    # Install Flatpak prerequisites before switching user environments
-    install_flatpak_stage
-
     # Create and apply home-manager configuration (user packages)
     # This is when backups and deletions happen (flatpak, flake, home-manager files)
     create_home_manager_config
     apply_home_manager_config
+
+    # Finalize Flatpak tooling after the user environment has been activated
+    install_flatpak_stage
 
     # Flake integration (runs after home-manager to use packages for AIDB development)
     # Non-critical - errors won't stop deployment
