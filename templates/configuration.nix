@@ -4,7 +4,7 @@
 # Hostname: @HOSTNAME@ | User: @USER@
 # Target: NixOS 25.05+ with Wayland-first, security hardening
 
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, nixAiToolsPackages ? {}, ... }:
 
 let
   huggingfaceStateDirName = "huggingface";
@@ -612,29 +612,33 @@ in
   # IMPORTANT: COSMIC desktop apps (cosmic-edit, cosmic-files, cosmic-term, etc.)
   # are AUTOMATICALLY included when services.desktopManager.cosmic.enable = true
   # DO NOT add them here - it creates duplicates!
-  environment.systemPackages = with pkgs; [
-    # COSMIC App Store (not auto-included, needs explicit installation)
-    cosmic-store
+  environment.systemPackages = with pkgs;
+    [
+      # COSMIC App Store (not auto-included, needs explicit installation)
+      cosmic-store
 
-    # COSMIC Settings (explicitly included to ensure settings daemon is available)
-    # This fixes issues with cosmic-settings-daemon not being found during startup
-  ] ++ lib.optionals (pkgs ? cosmic-settings) [ pkgs.cosmic-settings ]
-  ++ @GPU_DRIVER_PACKAGES@
-  ++ [
-    # Container tools (system-level for rootless podman)
-    podman
-    podman-compose
-    buildah
-    skopeo
-    crun
-    slirp4netns
+      # COSMIC Settings (explicitly included to ensure settings daemon is available)
+      # This fixes issues with cosmic-settings-daemon not being found during startup
+    ]
+    ++ lib.optionals (pkgs ? cosmic-settings) [ pkgs.cosmic-settings ]
+    ++ lib.optional (lib.hasAttr "default" nixAiToolsPackages)
+      nixAiToolsPackages.default  # Provide CLI helpers from numtide/nix-ai-tools when available
+    ++ @GPU_DRIVER_PACKAGES@
+    ++ [
+      # Container tools (system-level for rootless podman)
+      podman
+      podman-compose
+      buildah
+      skopeo
+      crun
+      slirp4netns
 
-    # Hardware detection tools (for GPU detection in deployment script)
-    pciutils  # Provides lspci for hardware detection
+      # Hardware detection tools (for GPU detection in deployment script)
+      pciutils  # Provides lspci for hardware detection
 
-    # Essential system utilities only
-    # All other tools installed via home-manager to prevent collisions
-  ];
+      # Essential system utilities only
+      # All other tools installed via home-manager to prevent collisions
+    ];
 
   # ============================================================================
   # Shell Configuration

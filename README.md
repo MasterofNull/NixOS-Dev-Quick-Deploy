@@ -74,7 +74,9 @@ chmod +x nixos-quick-deploy.sh
 - `ripgrep`, `fd`, `fzf` - Fast search tools
 - `bat`, `eza` - Enhanced cat/ls with syntax highlighting
 - `jq`, `yq` - JSON/YAML processors
-- `htop`, `btop` - System monitors
+- `htop`, `btop`, `nvtop` - System and GPU monitoring dashboards (AMD-specific tools auto-installed when detected)
+- `Glances`, `Grafana`, `Prometheus`, `Loki`, `Promtail`, `Vector`, `Cockpit` - Full observability and logging stack
+- `gnome-disk-utility`, `parted` - Disk formatting and partitioning
 - `lazygit` - Terminal UI for Git
 
 **Nix Ecosystem:**
