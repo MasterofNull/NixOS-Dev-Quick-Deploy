@@ -58,6 +58,16 @@ let
   gpuMonitoringPackages =
     # Populated by nixos-quick-deploy.sh to enable vendor-specific GPU monitors.
     with pkgs; @GPU_MONITORING_PACKAGES@;
+  nvtopPackagesAttr = if pkgs ? nvtopPackages then pkgs.nvtopPackages else { };
+  fallbackNvtopPackages =
+    if gpuMonitoringPackages != [ ] then
+      [ ]
+    else
+      (lib.optionals (pkgs ? nvtop) [ pkgs.nvtop ])
+      ++ (lib.optionals (nvtopPackagesAttr ? default) [ nvtopPackagesAttr.default ])
+      ++ (lib.optionals (nvtopPackagesAttr ? nvidia) [ nvtopPackagesAttr.nvidia ])
+      ++ (lib.optionals (nvtopPackagesAttr ? amd) [ nvtopPackagesAttr.amd ])
+      ++ (lib.optionals (nvtopPackagesAttr ? intel) [ nvtopPackagesAttr.intel ]);
   flathubPackages = [
     # Keep DEFAULT_FLATPAK_APPS in nixos-quick-deploy.sh synchronized with the defaults below.
     # ====================================================================
@@ -1182,7 +1192,6 @@ in
           # System tools
           htop                    # Interactive process viewer
           btop                    # Resource monitor with modern UI
-          nvtop                   # GPU monitor (supports AMD, NVIDIA, Intel)
           gnome.gnome-disk-utility # GUI disk manager and formatter
           parted                  # Command-line partitioning utility
           flatpak                 # Flatpak CLI for sandboxed desktop apps
@@ -1330,6 +1339,7 @@ in
           age             # Modern encryption tool (for secrets management)
           sops            # Secrets operations (encrypted config files)
         ])
+        ++ fallbackNvtopPackages
         ++ gpuMonitoringPackages;
       aiderPackage =
         if pkgs ? aider-chat then
