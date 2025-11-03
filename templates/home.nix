@@ -1065,10 +1065,20 @@ in
     ];
   home.packages =
     let
+      # Fix gpt4all to work with Qt6 6.10+ where GuiPrivate requires explicit find_package
+      gpt4all-fixed = pkgs.gpt4all.overrideAttrs (oldAttrs: {
+        postPatch = (oldAttrs.postPatch or "") + ''
+          # Fix Qt6::GuiPrivate CMake target for Qt 6.10+
+          # Qt 6.10 requires explicit find_package for private modules
+          sed -i '/find_package(Qt6/a \
+find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' gpt4all-chat/CMakeLists.txt
+        '';
+      });
+
       # ALL AI command-line packages are REQUIRED (not optional)
       aiCommandLinePackages = with pkgs; [
         ollama
-        # gpt4all  # Temporarily disabled due to Qt6::GuiPrivate build failure in nixpkgs (qt6-base 6.10.0+)
+        gpt4all-fixed  # Fixed for Qt6 6.10+ GuiPrivate compatibility
         llama-cpp
       ];
       basePackages =
