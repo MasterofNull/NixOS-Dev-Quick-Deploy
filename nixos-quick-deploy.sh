@@ -459,6 +459,70 @@ ensure_package_available() {
     return 0
 }
 
+# Install a prerequisite package into the user's profile if missing
+ensure_prerequisite_installed() {
+    local cmd="$1"
+    local pkg_ref="$2"
+    local description="$3"
+    local install_log="$LOG_DIR/preflight-${cmd}-install.log"
+
+    if command -v "$cmd" >/dev/null 2>&1; then
+        local existing_path
+        existing_path=$(command -v "$cmd" 2>/dev/null)
+        print_success "$description already available: $existing_path"
+        log INFO "Prerequisite $cmd present at $existing_path"
+        return 0
+    fi
+
+    if [[ "$DRY_RUN" == true ]]; then
+        print_warning "$description not found – would install via 'nix profile install $pkg_ref' (dry-run)"
+        log INFO "Dry-run: would install prerequisite $cmd from $pkg_ref"
+        return 0
+    fi
+
+    print_warning "$description not found – installing via nix profile ($pkg_ref)"
+    log WARNING "Installing prerequisite $cmd using nix profile ($pkg_ref)"
+
+    rm -f "$install_log"
+    if run_as_primary_user nix profile install "$pkg_ref" >"$install_log" 2>&1; then
+        hash -r 2>/dev/null || true
+        local new_path
+        new_path=$(command -v "$cmd" 2>/dev/null || run_as_primary_user bash -lc "command -v $cmd" 2>/dev/null || true)
+
+        if [[ -n "$new_path" ]]; then
+            print_success "$description installed: $new_path"
+            log INFO "Prerequisite $cmd installed successfully at $new_path"
+        else
+            print_warning "$description installation completed but command not yet on current PATH"
+            print_info "Open a new shell or source ~/.nix-profile/etc/profile.d/nix.sh to refresh the environment."
+            log WARNING "Prerequisite $cmd installed but not immediately visible on PATH"
+        fi
+
+        print_info "Installation log: $install_log"
+        return 0
+    else
+        local exit_code=$?
+        print_error "Failed to install $description via nix profile"
+        print_info "Review the log for details: $install_log"
+        log ERROR "Failed to install prerequisite $cmd from $pkg_ref (exit code: $exit_code)"
+        return 1
+    fi
+}
+
+ensure_preflight_core_packages() {
+    print_info "Ensuring core prerequisite packages are installed..."
+
+    if ! ensure_prerequisite_installed "git" "nixpkgs#git" "git (version control)"; then
+        return 1
+    fi
+
+    if ! ensure_prerequisite_installed "python3" "nixpkgs#python3" "python3 (Python interpreter)"; then
+        return 1
+    fi
+
+    return 0
+}
+
 # Check all required packages for successful installation
 check_required_packages() {
     print_section "Checking Required Packages"
@@ -3520,8 +3584,18 @@ parse_nixos_option_value() {
         return 0
     fi
 
-    raw_output=$(echo "$raw_output" | sed '1d' | tr -d '\n')
-    raw_output=$(echo "$raw_output" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    raw_output=$(printf '%s\n' "$raw_output" | sed '1d')
+    raw_output=$(printf '%s\n' "$raw_output" | awk '
+        /^[[:space:]]*$/ { next }
+        /^Default:/ { exit }
+        /^Type:/ { exit }
+        /^Description:/ { exit }
+        /^Declared by:/ { exit }
+        /^Defined by:/ { exit }
+        { print }
+    ')
+
+    raw_output=$(printf '%s' "$raw_output" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
 
     if [ -z "$raw_output" ]; then
         return 0
@@ -4034,6 +4108,11 @@ check_prerequisites() {
         print_error "Internet connection required to download packages"
         echo ""
         print_info "Check your network and try again"
+        exit 1
+    fi
+
+    if ! ensure_preflight_core_packages; then
+        print_error "Failed to install core prerequisite packages"
         exit 1
     fi
 
