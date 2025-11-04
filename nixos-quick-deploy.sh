@@ -4474,12 +4474,24 @@ gather_user_info() {
     echo ""
     print_info "Choose your build strategy:"
     echo ""
+    local -a recommended_caches=()
+    mapfile -t recommended_caches < <(get_binary_cache_sources)
+    local recommended_cache_message=""
+    if [[ "${#recommended_caches[@]}" -gt 0 ]]; then
+        recommended_cache_message="${recommended_caches[0]}"
+        for cache_url in "${recommended_caches[@]:1}"; do
+            recommended_cache_message+=", ${cache_url}"
+        done
+    fi
+
     echo -e "  ${GREEN}1) Use Binary Caches (RECOMMENDED)${NC}"
     echo "     - Downloads pre-built packages from trusted sources"
     echo -e "     - ${GREEN}Estimated time: 20-40 minutes${NC}"
     echo "     - Requires good internet connection (~2-4 GB download)"
     echo "     - Lower CPU and memory usage"
-    echo "     - Caches: NixOS official, nix-community, CUDA, devenv"
+    if [[ -n "$recommended_cache_message" ]]; then
+        echo "     - Caches: ${recommended_cache_message}"
+    fi
     echo ""
     echo -e "  ${YELLOW}2) Build from Source${NC}"
     echo "     - Compiles all packages locally from source code"
@@ -4891,6 +4903,183 @@ ensure_home_manager_cli_available() {
     return 1
 }
 
+# ============================================================================
+# Build Optimization Helpers
+# ============================================================================
+
+get_binary_cache_sources() {
+    local -a caches=(
+        "https://cache.nixos.org"
+        "https://nix-community.cachix.org"
+        "https://devenv.cachix.org"
+    )
+
+    if [[ "${GPU_TYPE:-}" == "nvidia" ]]; then
+        caches+=("https://cuda-maintainers.cachix.org")
+    fi
+
+    printf '%s\n' "${caches[@]}"
+}
+
+get_binary_cache_public_keys() {
+    local -a keys=(
+        "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
+        "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+        "devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw="
+    )
+
+    if [[ "${GPU_TYPE:-}" == "nvidia" ]]; then
+        keys+=("cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E=")
+    fi
+
+    printf '%s\n' "${keys[@]}"
+}
+
+compose_nixos_rebuild_options() {
+    local use_caches="${1:-true}"
+    local -a opts=(
+        "--option" "max-jobs" "auto"
+        "--option" "cores" "0"
+        "--option" "keep-outputs" "true"
+        "--option" "keep-derivations" "true"
+        "--option" "builders-use-substitutes" "true"
+        "--option" "fallback" "true"
+    )
+
+    if [[ "$use_caches" == "true" ]]; then
+        local -a substituters=()
+        local -a keys=()
+        mapfile -t substituters < <(get_binary_cache_sources)
+        mapfile -t keys < <(get_binary_cache_public_keys)
+
+        if [[ "${#substituters[@]}" -gt 0 ]]; then
+            local substituters_list
+            substituters_list=$(printf '%s ' "${substituters[@]}")
+            substituters_list=${substituters_list% }
+            opts+=("--option" "substituters" "$substituters_list")
+        fi
+
+        if [[ "${#keys[@]}" -gt 0 ]]; then
+            local keys_list
+            keys_list=$(printf '%s ' "${keys[@]}")
+            keys_list=${keys_list% }
+            opts+=("--option" "trusted-public-keys" "$keys_list")
+        fi
+
+        opts+=("--option" "connect-timeout" "10")
+        opts+=("--option" "stalled-download-timeout" "300")
+    fi
+
+    printf '%s\n' "${opts[@]}"
+}
+
+describe_binary_cache_usage() {
+    local context="${1:-operation}"
+
+    if [[ "$USE_BINARY_CACHES" != "true" ]]; then
+        return 0
+    fi
+
+    local -a local_substituters=()
+    mapfile -t local_substituters < <(get_binary_cache_sources)
+    if [[ "${#local_substituters[@]}" -eq 0 ]]; then
+        return 0
+    fi
+
+    local joined=""
+    local index=0
+    for url in "${local_substituters[@]}"; do
+        if (( index > 0 )); then
+            joined+=", "
+        fi
+        joined+="$url"
+        ((index+=1))
+    done
+
+    print_info "Binary caches enabled for ${context}: ${joined}"
+}
+
+generate_binary_cache_settings() {
+    local use_caches="${1:-true}"
+    local binary_cache_settings
+
+    if [[ "$use_caches" == "true" ]]; then
+        local -a substituters=()
+        local -a keys=()
+        mapfile -t substituters < <(get_binary_cache_sources)
+        mapfile -t keys < <(get_binary_cache_public_keys)
+
+        local substituters_block=$'      substituters = [\n'
+        local url
+        for url in "${substituters[@]}"; do
+            substituters_block+=$'        "'
+            substituters_block+="$url"
+            substituters_block+=$'"\n'
+        done
+        substituters_block+=$'      ];'
+
+        local keys_block=$'      trusted-public-keys = [\n'
+        local key
+        for key in "${keys[@]}"; do
+            keys_block+=$'        "'
+            keys_block+="$key"
+            keys_block+=$'"\n'
+        done
+        keys_block+=$'      ];'
+
+        binary_cache_settings=$'\n      # ======================================================================\n'
+        binary_cache_settings+=$'      # Build Performance Optimizations\n'
+        binary_cache_settings+=$'      # ======================================================================\n\n'
+        binary_cache_settings+=$'      # Parallel builds: Use all available CPU cores\n'
+        binary_cache_settings+=$'      # max-jobs: Number of builds that can run in parallel\n'
+        binary_cache_settings+=$'      # cores: Number of CPU cores each build can use (0 = all available)\n'
+        binary_cache_settings+=$'      max-jobs = "auto";  # Automatically detect CPU count\n'
+        binary_cache_settings+=$'      cores = 0;          # Use all cores for each build\n\n'
+        binary_cache_settings+=$'      # Binary caches: Download pre-built packages instead of building from source\n'
+        binary_cache_settings+=$'      # This dramatically reduces build times (from hours to minutes)\n'
+        binary_cache_settings+="$substituters_block"
+        binary_cache_settings+=$'\n\n'
+        binary_cache_settings+=$'      # Public keys for verifying binary cache signatures\n'
+        binary_cache_settings+="$keys_block"
+        binary_cache_settings+=$'\n\n'
+        binary_cache_settings+=$'      # Download pre-built dependencies during builds\n'
+        binary_cache_settings+=$'      builders-use-substitutes = true;\n\n'
+        binary_cache_settings+=$'      # Retain build artifacts to speed up future rebuilds\n'
+        binary_cache_settings+=$'      keep-outputs = true;\n'
+        binary_cache_settings+=$'      keep-derivations = true;\n\n'
+        binary_cache_settings+=$'      # Fallback to building from source if binary not available\n'
+        binary_cache_settings+=$'      fallback = true;\n\n'
+        binary_cache_settings+=$'      # Network timeout settings for binary cache downloads\n'
+        binary_cache_settings+=$'      # Increase timeouts to handle large packages and slower connections\n'
+        binary_cache_settings+=$'      connect-timeout = 10;         # Connection timeout in seconds (default: 5)\n'
+        binary_cache_settings+=$'      stalled-download-timeout = 300;  # Stalled download timeout in seconds (default: 300)\n\n'
+        binary_cache_settings+=$'      # Warn about dirty git trees in flakes\n'
+        binary_cache_settings+=$'      warn-dirty = false;\n'
+    else
+        binary_cache_settings=$'\n      # ======================================================================\n'
+        binary_cache_settings+=$'      # Build from Source Configuration\n'
+        binary_cache_settings+=$'      # ======================================================================\n\n'
+        binary_cache_settings+=$'      # Parallel builds: Use all available CPU cores\n'
+        binary_cache_settings+=$'      # Building from source is slower but gives you full control\n'
+        binary_cache_settings+=$'      max-jobs = "auto";  # Automatically detect CPU count\n'
+        binary_cache_settings+=$'      cores = 0;          # Use all cores for each build\n\n'
+        binary_cache_settings+=$'      # Only use official NixOS cache for base system packages\n'
+        binary_cache_settings+=$'      substituters = [ "https://cache.nixos.org" ];\n'
+        binary_cache_settings+=$'      trusted-public-keys = [ "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" ];\n\n'
+        binary_cache_settings+=$'      # Preserve build artifacts for incremental rebuilds\n'
+        binary_cache_settings+=$'      keep-outputs = true;\n'
+        binary_cache_settings+=$'      keep-derivations = true;\n\n'
+        binary_cache_settings+=$'      # Allow downloading dependencies during evaluation/builds\n'
+        binary_cache_settings+=$'      builders-use-substitutes = true;\n\n'
+        binary_cache_settings+=$'      # Allow falling back to local builds if a binary is unavailable\n'
+        binary_cache_settings+=$'      fallback = true;\n\n'
+        binary_cache_settings+=$'      # Warn about dirty git trees in flakes\n'
+        binary_cache_settings+=$'      warn-dirty = false;\n'
+    fi
+
+    printf '%s' "$binary_cache_settings"
+}
+
 run_nixos_rebuild_dry_run() {
     local log_path="${1:-/tmp/nixos-rebuild-dry-run.log}"
     local target_host
@@ -4904,29 +5093,9 @@ run_nixos_rebuild_dry_run() {
 
     # CRITICAL: Pass build optimization flags directly to nixos-rebuild
     # These flags apply DURING the build, before the configuration takes effect
-    local nix_opts=()
-
-    # Always enable parallel builds for maximum performance
-    nix_opts+=(--option max-jobs auto)
-    nix_opts+=(--option cores 0)
-
-    # Retain build artifacts for faster subsequent rebuilds
-    nix_opts+=(--option keep-outputs true)
-    nix_opts+=(--option keep-derivations true)
-
-    # Allow nix to download substitutes during builds and fall back to source when unavailable
-    nix_opts+=(--option builders-use-substitutes true)
-    nix_opts+=(--option fallback true)
-
-    # If user chose binary caches, enable them for THIS build
-    if [[ "$USE_BINARY_CACHES" == "true" ]]; then
-        nix_opts+=(--option substituters "https://cache.nixos.org https://nix-community.cachix.org https://cuda-maintainers.cachix.org https://devenv.cachix.org")
-        nix_opts+=(--option trusted-public-keys "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E= devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=")
-        # Increase timeouts for large downloads from binary caches
-        nix_opts+=(--option connect-timeout 10)
-        nix_opts+=(--option stalled-download-timeout 300)
-        print_info "Binary caches enabled for build: cache.nixos.org, nix-community, cuda-maintainers, devenv"
-    fi
+    local -a nix_opts=()
+    mapfile -t nix_opts < <(compose_nixos_rebuild_options "$USE_BINARY_CACHES")
+    describe_binary_cache_usage "nixos-rebuild build"
 
     sudo nixos-rebuild build --flake "$HM_CONFIG_DIR#$target_host" "${nix_opts[@]}" 2>&1 | tee "$log_path"
     return ${PIPESTATUS[0]}
@@ -4944,29 +5113,9 @@ run_nixos_rebuild_switch() {
 
     # CRITICAL: Pass build optimization flags directly to nixos-rebuild
     # These flags apply DURING the build, before the configuration takes effect
-    local nix_opts=()
-
-    # Always enable parallel builds for maximum performance
-    nix_opts+=(--option max-jobs auto)
-    nix_opts+=(--option cores 0)
-
-    # Retain build artifacts for faster subsequent rebuilds
-    nix_opts+=(--option keep-outputs true)
-    nix_opts+=(--option keep-derivations true)
-
-    # Allow nix to download substitutes during builds and fall back to source when unavailable
-    nix_opts+=(--option builders-use-substitutes true)
-    nix_opts+=(--option fallback true)
-
-    # If user chose binary caches, enable them for THIS build
-    if [[ "$USE_BINARY_CACHES" == "true" ]]; then
-        nix_opts+=(--option substituters "https://cache.nixos.org https://nix-community.cachix.org https://cuda-maintainers.cachix.org https://devenv.cachix.org")
-        nix_opts+=(--option trusted-public-keys "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E= devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=")
-        # Increase timeouts for large downloads from binary caches
-        nix_opts+=(--option connect-timeout 10)
-        nix_opts+=(--option stalled-download-timeout 300)
-        print_info "Binary caches enabled for build: cache.nixos.org, nix-community, cuda-maintainers, devenv"
-    fi
+    local -a nix_opts=()
+    mapfile -t nix_opts < <(compose_nixos_rebuild_options "$USE_BINARY_CACHES")
+    describe_binary_cache_usage "nixos-rebuild switch"
 
     sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" "${nix_opts[@]}" 2>&1 | tee "$log_path"
     return ${PIPESTATUS[0]}
@@ -5653,87 +5802,7 @@ generate_nixos_system_config() {
 
     # Binary cache configuration based on user preference
     local binary_cache_settings
-    if [[ "$USE_BINARY_CACHES" == "true" ]]; then
-        binary_cache_settings=$(cat <<'EOF'
-
-      # ======================================================================
-      # Build Performance Optimizations
-      # ======================================================================
-
-      # Parallel builds: Use all available CPU cores
-      # max-jobs: Number of builds that can run in parallel
-      # cores: Number of CPU cores each build can use (0 = all available)
-      max-jobs = "auto";  # Automatically detect CPU count
-      cores = 0;          # Use all cores for each build
-
-      # Binary caches: Download pre-built packages instead of building from source
-      # This dramatically reduces build times (from hours to minutes)
-      substituters = [
-        "https://cache.nixos.org"           # Official NixOS cache (always first)
-        "https://nix-community.cachix.org"  # Community packages (COSMIC, AI tools)
-        "https://cuda-maintainers.cachix.org"  # CUDA packages (if using NVIDIA)
-        "https://devenv.cachix.org"         # Development environments
-      ];
-
-      # Public keys for verifying binary cache signatures
-      trusted-public-keys = [
-        "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
-        "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
-        "cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E="
-        "devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw="
-      ];
-
-      # Download pre-built packages even during builds
-      builders-use-substitutes = true;
-
-      # Retain build artifacts to speed up future rebuilds
-      keep-outputs = true;
-      keep-derivations = true;
-
-      # Fallback to building from source if binary not available
-      fallback = true;
-
-      # Network timeout settings for binary cache downloads
-      # Increase timeouts to handle large packages and slower connections
-      connect-timeout = 10;         # Connection timeout in seconds (default: 5)
-      stalled-download-timeout = 300;  # Stalled download timeout in seconds (default: 300)
-
-      # Warn about dirty git trees in flakes
-      warn-dirty = false;
-EOF
-)
-    else
-        # Build from source - minimal settings (still enable parallelism)
-        binary_cache_settings=$(cat <<'EOF'
-
-      # ======================================================================
-      # Build from Source Configuration
-      # ======================================================================
-
-      # Parallel builds: Use all available CPU cores
-      # Building from source is slower but gives you full control
-      max-jobs = "auto";  # Automatically detect CPU count
-      cores = 0;          # Use all cores for each build
-
-      # Only use official NixOS cache for base system packages
-      substituters = [ "https://cache.nixos.org" ];
-      trusted-public-keys = [ "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" ];
-
-      # Preserve build artifacts for incremental rebuilds
-      keep-outputs = true;
-      keep-derivations = true;
-
-      # Allow downloading dependencies during evaluation/builds
-      builders-use-substitutes = true;
-
-      # Allow falling back to local builds if a binary is unavailable
-      fallback = true;
-
-      # Warn about dirty git trees in flakes
-      warn-dirty = false;
-EOF
-)
-    fi
+    binary_cache_settings=$(generate_binary_cache_settings "$USE_BINARY_CACHES")
 
     local gpu_hardware_section
     case "$GPU_TYPE" in

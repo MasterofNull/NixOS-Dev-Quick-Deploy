@@ -392,6 +392,11 @@ in
           # Keep the original checkInputs for documentation
           checkInputs = oldAttrs.checkInputs or [];
         });
+        tenacity = python-super.tenacity.overridePythonAttrs (_: {
+          # Upstream test suite relies on real timing and fails under
+          # virtualized builders (observed assertion in test_sleeps).
+          doCheck = false;
+        });
       };
     };
   };

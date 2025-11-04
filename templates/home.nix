@@ -707,6 +707,11 @@ RESOURCES
           doCheck = false;
           pythonImportsCheck = [];
         });
+        tenacity = super.tenacity.overridePythonAttrs (_: {
+          # Disable tests that rely on precise wall-clock timing; they fail
+          # under virtualized builders (test_asyncio::test_sleeps).
+          doCheck = false;
+        });
       };
     };
   # ========================================================================
