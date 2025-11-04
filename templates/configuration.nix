@@ -359,6 +359,46 @@ in
 
       # Security: Restrict nix-daemon network access
       allowed-users = [ "@wheel" ];
+
+      # ======================================================================
+      # Build Performance Optimizations
+      # ======================================================================
+
+      # Parallel builds: Use all available CPU cores
+      # max-jobs: Number of builds that can run in parallel
+      # cores: Number of CPU cores each build can use (0 = all available)
+      max-jobs = "auto";  # Automatically detect CPU count
+      cores = 0;          # Use all cores for each build
+
+      # Binary caches: Download pre-built packages instead of building from source
+      # This dramatically reduces build times (from hours to minutes)
+      substituters = [
+        "https://cache.nixos.org"           # Official NixOS cache (always first)
+        "https://nix-community.cachix.org"  # Community packages (COSMIC, AI tools)
+        "https://cuda-maintainers.cachix.org"  # CUDA packages (if using NVIDIA)
+        "https://devenv.cachix.org"         # Development environments
+      ];
+
+      # Public keys for verifying binary cache signatures
+      trusted-public-keys = [
+        "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
+        "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+        "cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E="
+        "devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw="
+      ];
+
+      # Download pre-built packages even during builds
+      builders-use-substitutes = true;
+
+      # Keep build logs for debugging
+      keep-outputs = true;
+      keep-derivations = true;
+
+      # Fallback to building from source if binary not available
+      fallback = true;
+
+      # Warn about dirty git trees in flakes
+      warn-dirty = false;
     };
 
     # Automatic garbage collection

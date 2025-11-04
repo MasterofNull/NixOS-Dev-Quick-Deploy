@@ -983,6 +983,7 @@ Already installed but worth highlighting:
 ## 📚 Documentation & Resources
 
 ### This Repository
+- [Build Optimization Guide](docs/BUILD_OPTIMIZATION.md) - Speed up builds from 60+ min to 20-30 min
 - [AIDB Setup Guide](docs/AIDB_SETUP.md) - Complete AIDB configuration walkthrough
 - [Agent Workflows](docs/AGENTS.md) - AI agent integration documentation
 - [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and solutions
