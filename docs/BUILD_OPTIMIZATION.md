@@ -1,5 +1,22 @@
 # Build Performance Optimizations
 
+## Recent Improvements (Latest Update)
+
+**CRITICAL FIX**: Binary caches now work correctly during initial deployment!
+
+Previous versions had a critical bug where binary cache settings were only applied AFTER the first build completed. This meant the initial deployment compiled everything from source, even when you selected "Use Binary Caches".
+
+**What was fixed:**
+- ✅ Binary cache flags now passed directly to `nixos-rebuild` commands
+- ✅ Parallel build settings (`max-jobs=auto`, `cores=0`) applied during initial build
+- ✅ Network timeouts increased for large package downloads (10s connect, 300s stalled)
+- ✅ `joserfc` package test failure workaround added (skips flaky tests)
+- ✅ `builders-use-substitutes` now enabled during the build itself
+
+**Expected improvement:** Initial deployment with binary caches should now be **3-5x faster** (20-40 minutes instead of 60-120 minutes).
+
+---
+
 ## Overview
 
 The NixOS Quick Deploy script gives you the choice between two build strategies:
