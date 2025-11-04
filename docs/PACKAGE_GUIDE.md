@@ -41,22 +41,26 @@
 
 After deploying your NixOS system with `nixos-quick-deploy.sh`, complete these setup steps:
 
+> **Note**: Flathub repository is **automatically configured** during deployment. Flatpak apps are installed via Home Manager on first login.
+
 1. **Configure Git Identity**
    ```bash
    git config --global user.name "Your Name"
    git config --global user.email "you@example.com"
    ```
 
-2. **Add Flathub Repository** (for Flatpak apps)
-   ```bash
-   flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-   ```
-
-3. **Configure Hugging Face** (optional, for model downloads)
+2. **Configure Hugging Face** (optional, for model downloads)
    ```bash
    # Get your token from https://huggingface.co/settings/tokens
    mkdir -p ~/.config/huggingface
    echo "YOUR_TOKEN_HERE" > ~/.config/huggingface/token
+   ```
+
+3. **Verify Flatpak Setup** (optional)
+   ```bash
+   # Check that Flathub remote was added automatically
+   flatpak remotes --user
+   # Should show: flathub and flathub-beta
    ```
 
 4. **Start AI Services** (optional)
