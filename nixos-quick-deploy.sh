@@ -4901,7 +4901,28 @@ run_nixos_rebuild_dry_run() {
 
     # Note: NixOS 25.05 doesn't support --dry-run flag
     # Use 'build' instead which builds but doesn't activate the configuration
-    sudo nixos-rebuild build --flake "$HM_CONFIG_DIR#$target_host" 2>&1 | tee "$log_path"
+
+    # CRITICAL: Pass build optimization flags directly to nixos-rebuild
+    # These flags apply DURING the build, before the configuration takes effect
+    local nix_opts=()
+
+    # Always enable parallel builds for maximum performance
+    nix_opts+=(--option max-jobs auto)
+    nix_opts+=(--option cores 0)
+
+    # If user chose binary caches, enable them for THIS build
+    if [[ "$USE_BINARY_CACHES" == "true" ]]; then
+        nix_opts+=(--option substituters "https://cache.nixos.org https://nix-community.cachix.org https://cuda-maintainers.cachix.org https://devenv.cachix.org")
+        nix_opts+=(--option trusted-public-keys "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E= devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=")
+        nix_opts+=(--option builders-use-substitutes true)
+        nix_opts+=(--option fallback true)
+        # Increase timeouts for large downloads from binary caches
+        nix_opts+=(--option connect-timeout 10)
+        nix_opts+=(--option stalled-download-timeout 300)
+        print_info "Binary caches enabled for build: cache.nixos.org, nix-community, cuda-maintainers, devenv"
+    fi
+
+    sudo nixos-rebuild build --flake "$HM_CONFIG_DIR#$target_host" "${nix_opts[@]}" 2>&1 | tee "$log_path"
     return ${PIPESTATUS[0]}
 }
 
@@ -4915,7 +4936,27 @@ run_nixos_rebuild_switch() {
     print_info "May take 10-20 minutes on first run"
     echo ""
 
-    sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" 2>&1 | tee "$log_path"
+    # CRITICAL: Pass build optimization flags directly to nixos-rebuild
+    # These flags apply DURING the build, before the configuration takes effect
+    local nix_opts=()
+
+    # Always enable parallel builds for maximum performance
+    nix_opts+=(--option max-jobs auto)
+    nix_opts+=(--option cores 0)
+
+    # If user chose binary caches, enable them for THIS build
+    if [[ "$USE_BINARY_CACHES" == "true" ]]; then
+        nix_opts+=(--option substituters "https://cache.nixos.org https://nix-community.cachix.org https://cuda-maintainers.cachix.org https://devenv.cachix.org")
+        nix_opts+=(--option trusted-public-keys "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E= devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=")
+        nix_opts+=(--option builders-use-substitutes true)
+        nix_opts+=(--option fallback true)
+        # Increase timeouts for large downloads from binary caches
+        nix_opts+=(--option connect-timeout 10)
+        nix_opts+=(--option stalled-download-timeout 300)
+        print_info "Binary caches enabled for build: cache.nixos.org, nix-community, cuda-maintainers, devenv"
+    fi
+
+    sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" "${nix_opts[@]}" 2>&1 | tee "$log_path"
     return ${PIPESTATUS[0]}
 }
 
@@ -5639,6 +5680,11 @@ generate_nixos_system_config() {
 
       # Fallback to building from source if binary not available
       fallback = true;
+
+      # Network timeout settings for binary cache downloads
+      # Increase timeouts to handle large packages and slower connections
+      connect-timeout = 10;         # Connection timeout in seconds (default: 5)
+      stalled-download-timeout = 300;  # Stalled download timeout in seconds (default: 300)
 
       # Warn about dirty git trees in flakes
       warn-dirty = false;
