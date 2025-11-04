@@ -4910,12 +4910,18 @@ run_nixos_rebuild_dry_run() {
     nix_opts+=(--option max-jobs auto)
     nix_opts+=(--option cores 0)
 
+    # Retain build artifacts for faster subsequent rebuilds
+    nix_opts+=(--option keep-outputs true)
+    nix_opts+=(--option keep-derivations true)
+
+    # Allow nix to download substitutes during builds and fall back to source when unavailable
+    nix_opts+=(--option builders-use-substitutes true)
+    nix_opts+=(--option fallback true)
+
     # If user chose binary caches, enable them for THIS build
     if [[ "$USE_BINARY_CACHES" == "true" ]]; then
         nix_opts+=(--option substituters "https://cache.nixos.org https://nix-community.cachix.org https://cuda-maintainers.cachix.org https://devenv.cachix.org")
         nix_opts+=(--option trusted-public-keys "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E= devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=")
-        nix_opts+=(--option builders-use-substitutes true)
-        nix_opts+=(--option fallback true)
         # Increase timeouts for large downloads from binary caches
         nix_opts+=(--option connect-timeout 10)
         nix_opts+=(--option stalled-download-timeout 300)
@@ -4944,12 +4950,18 @@ run_nixos_rebuild_switch() {
     nix_opts+=(--option max-jobs auto)
     nix_opts+=(--option cores 0)
 
+    # Retain build artifacts for faster subsequent rebuilds
+    nix_opts+=(--option keep-outputs true)
+    nix_opts+=(--option keep-derivations true)
+
+    # Allow nix to download substitutes during builds and fall back to source when unavailable
+    nix_opts+=(--option builders-use-substitutes true)
+    nix_opts+=(--option fallback true)
+
     # If user chose binary caches, enable them for THIS build
     if [[ "$USE_BINARY_CACHES" == "true" ]]; then
         nix_opts+=(--option substituters "https://cache.nixos.org https://nix-community.cachix.org https://cuda-maintainers.cachix.org https://devenv.cachix.org")
         nix_opts+=(--option trusted-public-keys "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E= devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=")
-        nix_opts+=(--option builders-use-substitutes true)
-        nix_opts+=(--option fallback true)
         # Increase timeouts for large downloads from binary caches
         nix_opts+=(--option connect-timeout 10)
         nix_opts+=(--option stalled-download-timeout 300)
@@ -5674,7 +5686,7 @@ generate_nixos_system_config() {
       # Download pre-built packages even during builds
       builders-use-substitutes = true;
 
-      # Keep build logs for debugging
+      # Retain build artifacts to speed up future rebuilds
       keep-outputs = true;
       keep-derivations = true;
 
@@ -5706,6 +5718,16 @@ EOF
       # Only use official NixOS cache for base system packages
       substituters = [ "https://cache.nixos.org" ];
       trusted-public-keys = [ "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" ];
+
+      # Preserve build artifacts for incremental rebuilds
+      keep-outputs = true;
+      keep-derivations = true;
+
+      # Allow downloading dependencies during evaluation/builds
+      builders-use-substitutes = true;
+
+      # Allow falling back to local builds if a binary is unavailable
+      fallback = true;
 
       # Warn about dirty git trees in flakes
       warn-dirty = false;
