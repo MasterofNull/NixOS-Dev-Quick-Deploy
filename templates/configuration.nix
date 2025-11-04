@@ -359,6 +359,7 @@ in
 
       # Security: Restrict nix-daemon network access
       allowed-users = [ "@wheel" ];
+@BINARY_CACHE_SETTINGS@
     };
 
     # Automatic garbage collection

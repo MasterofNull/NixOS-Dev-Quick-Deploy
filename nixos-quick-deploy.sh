@@ -2242,6 +2242,9 @@ PREVIOUS_TIMEZONE=""
 PREVIOUS_MUTABLE_USERS=""
 PREVIOUS_USER_PASSWORD_SNIPPET=""
 
+# Build performance preference
+USE_BINARY_CACHES="true"  # Default to using binary caches for faster builds
+
 VERSION_FILE="$PRIMARY_HOME/.cache/nixos-quick-deploy-version"
 
 # Force update flag (set via --force-update)
@@ -4466,6 +4469,45 @@ gather_user_info() {
     print_success "Editor preference: $DEFAULT_EDITOR"
     echo ""
 
+    # Build Performance Preference
+    print_section "Build Performance Strategy"
+    echo ""
+    print_info "Choose your build strategy:"
+    echo ""
+    echo "  ${GREEN}1) Use Binary Caches (RECOMMENDED)${NC}"
+    echo "     - Downloads pre-built packages from trusted sources"
+    echo "     - ${GREEN}Estimated time: 20-40 minutes${NC}"
+    echo "     - Requires good internet connection (~2-4 GB download)"
+    echo "     - Lower CPU and memory usage"
+    echo "     - Caches: NixOS official, nix-community, CUDA, devenv"
+    echo ""
+    echo "  ${YELLOW}2) Build from Source${NC}"
+    echo "     - Compiles all packages locally from source code"
+    echo "     - ${YELLOW}Estimated time: 60-120 minutes${NC}"
+    echo "     - Minimal downloads (~500 MB source code)"
+    echo "     - High CPU and memory usage during compilation"
+    echo "     - Full control over build process"
+    echo ""
+
+    BUILD_CHOICE=$(prompt_user "Choose build strategy (1-2)" "1")
+
+    case $BUILD_CHOICE in
+        1)
+            USE_BINARY_CACHES="true"
+            print_success "Using binary caches for faster deployment (20-40 min)"
+            ;;
+        2)
+            USE_BINARY_CACHES="false"
+            print_warning "Building from source - this will take 60-120 minutes"
+            print_warning "Ensure you have sufficient CPU/RAM and time available"
+            ;;
+        *)
+            USE_BINARY_CACHES="true"
+            print_success "Using binary caches (default)"
+            ;;
+    esac
+    echo ""
+
     # Password Migration/Setup
     print_section "Password Configuration"
     preserve_user_password_directives
@@ -5556,6 +5598,75 @@ generate_nixos_system_config() {
         MICROCODE_SECTION="hardware.cpu.${CPU_VENDOR}.updateMicrocode = true;  # Enable ${CPU_VENDOR_LABEL} microcode updates"
     fi
 
+    # Binary cache configuration based on user preference
+    local binary_cache_settings
+    if [[ "$USE_BINARY_CACHES" == "true" ]]; then
+        binary_cache_settings=$(cat <<'EOF'
+
+      # ======================================================================
+      # Build Performance Optimizations
+      # ======================================================================
+
+      # Parallel builds: Use all available CPU cores
+      # max-jobs: Number of builds that can run in parallel
+      # cores: Number of CPU cores each build can use (0 = all available)
+      max-jobs = "auto";  # Automatically detect CPU count
+      cores = 0;          # Use all cores for each build
+
+      # Binary caches: Download pre-built packages instead of building from source
+      # This dramatically reduces build times (from hours to minutes)
+      substituters = [
+        "https://cache.nixos.org"           # Official NixOS cache (always first)
+        "https://nix-community.cachix.org"  # Community packages (COSMIC, AI tools)
+        "https://cuda-maintainers.cachix.org"  # CUDA packages (if using NVIDIA)
+        "https://devenv.cachix.org"         # Development environments
+      ];
+
+      # Public keys for verifying binary cache signatures
+      trusted-public-keys = [
+        "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
+        "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+        "cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E="
+        "devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw="
+      ];
+
+      # Download pre-built packages even during builds
+      builders-use-substitutes = true;
+
+      # Keep build logs for debugging
+      keep-outputs = true;
+      keep-derivations = true;
+
+      # Fallback to building from source if binary not available
+      fallback = true;
+
+      # Warn about dirty git trees in flakes
+      warn-dirty = false;
+EOF
+)
+    else
+        # Build from source - minimal settings (still enable parallelism)
+        binary_cache_settings=$(cat <<'EOF'
+
+      # ======================================================================
+      # Build from Source Configuration
+      # ======================================================================
+
+      # Parallel builds: Use all available CPU cores
+      # Building from source is slower but gives you full control
+      max-jobs = "auto";  # Automatically detect CPU count
+      cores = 0;          # Use all cores for each build
+
+      # Only use official NixOS cache for base system packages
+      substituters = [ "https://cache.nixos.org" ];
+      trusted-public-keys = [ "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" ];
+
+      # Warn about dirty git trees in flakes
+      warn-dirty = false;
+EOF
+)
+    fi
+
     local gpu_hardware_section
     case "$GPU_TYPE" in
         intel)
@@ -5793,6 +5904,7 @@ EOF
         CPU_VENDOR_LABEL_VALUE="$CPU_VENDOR_LABEL" \
         INITRD_KERNEL_MODULES_VALUE="$INITRD_KERNEL_MODULES" \
         MICROCODE_SECTION_VALUE="$MICROCODE_SECTION" \
+        BINARY_CACHE_SETTINGS_VALUE="$binary_cache_settings" \
         GPU_HARDWARE_SECTION_VALUE="$gpu_hardware_section" \
         GPU_SESSION_VARIABLES_VALUE="$gpu_session_variables" \
         GPU_DRIVER_PACKAGES_BLOCK_VALUE="$gpu_driver_packages_block" \
@@ -5833,6 +5945,7 @@ replacements = {
     "@CPU_VENDOR_LABEL@": os.environ.get("CPU_VENDOR_LABEL_VALUE", "Unknown"),
     "@INITRD_KERNEL_MODULES@": os.environ.get("INITRD_KERNEL_MODULES_VALUE", ""),
     "@MICROCODE_SECTION@": os.environ.get("MICROCODE_SECTION_VALUE", ""),
+    "@BINARY_CACHE_SETTINGS@": os.environ.get("BINARY_CACHE_SETTINGS_VALUE", ""),
     "@GPU_HARDWARE_SECTION@": os.environ.get("GPU_HARDWARE_SECTION_VALUE", ""),
     "@GPU_SESSION_VARIABLES@": os.environ.get("GPU_SESSION_VARIABLES_VALUE", ""),
     "@GPU_DRIVER_PACKAGES@": os.environ.get("GPU_DRIVER_PACKAGES_BLOCK_VALUE", "[]"),

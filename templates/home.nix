@@ -1071,7 +1071,7 @@ in
           # Fix Qt6::GuiPrivate CMake target for Qt 6.10+
           # Qt 6.10 requires explicit find_package for private modules
           sed -i '/find_package(Qt6/a \
-find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' gpt4all-chat/CMakeLists.txt
+find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
         '';
       });
 
