@@ -2,11 +2,56 @@
 
 ## Overview
 
-The NixOS Quick Deploy script has been optimized to dramatically reduce build times from **1+ hours to 15-30 minutes** (or even faster with good internet connection and binary cache availability).
+The NixOS Quick Deploy script gives you the choice between two build strategies:
+
+1. **Binary Caches (Recommended)** - Downloads pre-built packages: **20-40 minutes**
+2. **Build from Source** - Compiles locally: **60-120 minutes**
+
+You'll be prompted to choose during installation. This guide explains both options and their trade-offs.
+
+## Making Your Choice
+
+During the deployment, you'll see this prompt:
+
+```
+Build Performance Strategy
+
+Choose your build strategy:
+
+  1) Use Binary Caches (RECOMMENDED)
+     - Downloads pre-built packages from trusted sources
+     - Estimated time: 20-40 minutes
+     - Requires good internet connection (~2-4 GB download)
+     - Lower CPU and memory usage
+     - Caches: NixOS official, nix-community, CUDA, devenv
+
+  2) Build from Source
+     - Compiles all packages locally from source code
+     - Estimated time: 60-120 minutes
+     - Minimal downloads (~500 MB source code)
+     - High CPU and memory usage during compilation
+     - Full control over build process
+
+Choose build strategy (1-2) [1]:
+```
+
+**When to choose Binary Caches:**
+- You have decent internet (25+ Mbps recommended)
+- You want the fastest deployment
+- You trust the NixOS community caches
+- You're on a laptop or limited resources
+
+**When to choose Build from Source:**
+- You have slow/metered internet
+- You want full control over compilation
+- You have a powerful CPU and time to spare
+- You're building for security-critical applications
 
 ## Optimizations Applied
 
 ### 1. Binary Caches (Substituters)
+
+**Applies when:** You choose option 1 during deployment
 
 **What it does:** Downloads pre-built packages instead of compiling from source
 
@@ -266,22 +311,89 @@ nix-store -r /nix/store/$(nix-instantiate '<nixpkgs>' -A system)
 nix-build '<nixpkgs>' -A gpt4all --dry-run
 ```
 
-## Comparison: Default vs Optimized
+## Changing Your Choice Later
 
-### Default Configuration (Before)
+If you want to switch between binary caches and source builds after installation:
+
+### Enable Binary Caches (if you chose source builds)
+
+Edit your configuration:
+```bash
+sudo nano ~/.dotfiles/home-manager/configuration.nix
+```
+
+Find the `nix.settings` section and replace it with:
 ```nix
 nix.settings = {
   experimental-features = [ "nix-command" "flakes" ];
   auto-optimise-store = true;
+  trusted-users = [ "root" "@wheel" ];
+  allowed-users = [ "@wheel" ];
+
+  # Enable binary caches
+  max-jobs = "auto";
+  cores = 0;
+  substituters = [
+    "https://cache.nixos.org"
+    "https://nix-community.cachix.org"
+    "https://cuda-maintainers.cachix.org"
+    "https://devenv.cachix.org"
+  ];
+  trusted-public-keys = [
+    "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
+    "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+    "cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E="
+    "devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw="
+  ];
+  builders-use-substitutes = true;
+  keep-outputs = true;
+  keep-derivations = true;
+  fallback = true;
+  warn-dirty = false;
 };
-# No parallel builds configured
-# No binary caches configured
-# No build retention
 ```
 
-**Result:** Everything builds from source sequentially
+Then rebuild:
+```bash
+sudo nixos-rebuild switch --flake ~/.dotfiles/home-manager
+```
 
-### Optimized Configuration (After)
+### Disable Binary Caches (switch to source builds)
+
+Edit the same file and simplify to:
+```nix
+nix.settings = {
+  experimental-features = [ "nix-command" "flakes" ];
+  auto-optimise-store = true;
+  trusted-users = [ "root" "@wheel" ];
+  allowed-users = [ "@wheel" ];
+
+  # Build from source (with parallelism)
+  max-jobs = "auto";
+  cores = 0;
+  substituters = [ "https://cache.nixos.org" ];  # Only official cache
+  trusted-public-keys = [ "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" ];
+  warn-dirty = false;
+};
+```
+
+## Comparison: Source vs Binary Caches
+
+### Build from Source Configuration
+```nix
+nix.settings = {
+  experimental-features = [ "nix-command" "flakes" ];
+  auto-optimise-store = true;
+  max-jobs = "auto";
+  cores = 0;
+  substituters = [ "https://cache.nixos.org" ];  # Only official cache
+  trusted-public-keys = [ "cache.nixos.org-1:..." ];
+};
+```
+
+**Result:** Most packages build from source, only core NixOS packages use cache
+
+### Binary Cache Configuration
 ```nix
 nix.settings = {
   experimental-features = [ "nix-command" "flakes" ];
