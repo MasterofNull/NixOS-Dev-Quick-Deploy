@@ -1,6 +1,6 @@
 # NixOS Dev Quick Deploy
 
-**Transform a fresh NixOS installation into a fully-configured AI development powerhouse in 20-35 minutes.**
+**Transform a fresh NixOS installation into a fully-configured AI development powerhouse in 20-40 minutes** (or 60-120 minutes if building from source).
 
 ---
 
@@ -19,7 +19,7 @@ chmod +x nixos-quick-deploy.sh
 ./nixos-quick-deploy.sh
 ```
 
-**That's it!** Answer 4 simple questions, wait 20-35 minutes, reboot, and you're done.
+**That's it!** Answer a few simple questions (including choosing between fast binary cache downloads or building from source), wait 20-120 minutes depending on your choice, reboot, and you're done.
 
 ---
 
@@ -983,7 +983,7 @@ Already installed but worth highlighting:
 ## 📚 Documentation & Resources
 
 ### This Repository
-- [Build Optimization Guide](docs/BUILD_OPTIMIZATION.md) - Speed up builds from 60+ min to 20-30 min
+- [Build Optimization Guide](docs/BUILD_OPTIMIZATION.md) - Choose between binary caches (20-40 min) or source builds (60-120 min)
 - [AIDB Setup Guide](docs/AIDB_SETUP.md) - Complete AIDB configuration walkthrough
 - [Agent Workflows](docs/AGENTS.md) - AI agent integration documentation
 - [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and solutions
