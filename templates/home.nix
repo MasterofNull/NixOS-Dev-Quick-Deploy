@@ -712,6 +712,12 @@ RESOURCES
           # under virtualized builders (test_asyncio::test_sleeps).
           doCheck = false;
         });
+        terminado = super.terminado.overridePythonAttrs (old: {
+          # Upstream test suite spawns multiple pseudo terminals and fails in
+          # constrained build sandboxes (MaxTerminalsReached errors).
+          doCheck = false;
+          pythonImportsCheck = old.pythonImportsCheck or [];
+        });
       };
     };
   # ========================================================================
