@@ -520,6 +520,10 @@ ensure_preflight_core_packages() {
         return 1
     fi
 
+    if ! ensure_prerequisite_installed "shellcheck" "nixpkgs#shellcheck" "shellcheck (shell script linter)"; then
+        return 1
+    fi
+
     return 0
 }
 
@@ -3601,12 +3605,15 @@ parse_nixos_option_value() {
         return 0
     fi
 
-    if [[ $raw_output == "*" ]]; then
-        raw_output=${raw_output#\"}
-        raw_output=${raw_output%\"}
-    elif [[ $raw_output == '*' ]]; then
-        raw_output=${raw_output#'}
-        raw_output=${raw_output%'}
+    if [ "${#raw_output}" -ge 2 ]; then
+        case "${raw_output:0:1}${raw_output: -1}" in
+            "\"\"")
+                raw_output=${raw_output:1:-1}
+                ;;
+            "''")
+                raw_output=${raw_output:1:-1}
+                ;;
+        esac
     fi
 
     printf '%s' "$raw_output"
