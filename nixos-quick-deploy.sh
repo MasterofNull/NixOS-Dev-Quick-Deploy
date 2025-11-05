@@ -414,49 +414,70 @@ ensure_package_available() {
     local pkg="${2:-$1}"
     local priority="${3:-CRITICAL}"
     local description="${4:-$cmd}"
+    local pkg_ref=""
 
     if command -v "$cmd" &>/dev/null; then
-        log DEBUG "$cmd available: $(command -v $cmd)"
+        local existing_path
+        existing_path=$(command -v "$cmd" 2>/dev/null)
+        print_success "$description available: $existing_path"
+        log DEBUG "$cmd available: $existing_path"
         return 0
     fi
 
-    # Package is missing
+    local log_level="INFO"
+
     case "$priority" in
         CRITICAL)
-            print_warning "$description not found - installing temporarily from nixpkgs"
-            log WARNING "$cmd missing, installing ephemeral package: $pkg"
+            print_warning "$description not found - installing from nixpkgs"
+            log_level="WARNING"
             ;;
         IMPORTANT)
-            print_info "$description not found - installing temporarily (recommended)"
-            log INFO "$cmd missing, installing ephemeral package: $pkg"
+            print_info "$description not found - installing automatically (recommended)"
+            log_level="INFO"
             ;;
         OPTIONAL)
-            print_info "$description not found - installing temporarily (optional, improves functionality)"
-            log INFO "$cmd missing, installing ephemeral package: $pkg"
+            print_info "$description not found - installing automatically (optional, improves functionality)"
+            log_level="INFO"
             ;;
     esac
 
-    # Create ephemeral shell wrapper for this command
-    # Note: This doesn't actually create a persistent wrapper, but documents the approach
-    # The actual implementation will use nix-shell -p or nix shell for each invocation
+    log "$log_level" "$cmd missing, attempting installation via $pkg"
 
-    if [[ "$priority" == "CRITICAL" ]]; then
-        # For critical packages, verify they can be installed
-        if ! nix-shell -p "$pkg" --run "$cmd --version" &>/dev/null && \
-           ! nix-shell -p "$pkg" --run "$cmd --help" &>/dev/null && \
-           ! nix-shell -p "$pkg" --run "command -v $cmd" &>/dev/null; then
-            print_error "Failed to install $description temporarily"
-            print_error "Package: $pkg"
-            log ERROR "Critical package $pkg could not be installed"
-            return 1
-        fi
-        print_success "$description available (ephemeral installation)"
-    else
-        # For non-critical, just log and continue
-        print_success "$description will be available via ephemeral installation as needed"
+    if [[ -z "$pkg" ]]; then
+        log ERROR "No package mapping provided for $cmd"
+        return 1
     fi
 
-    return 0
+    if [[ "$pkg" == *"#"* ]]; then
+        pkg_ref="$pkg"
+    else
+        pkg_ref="nixpkgs#$pkg"
+    fi
+
+    if ! ensure_prerequisite_installed "$cmd" "$pkg_ref" "$description"; then
+        case "$priority" in
+            CRITICAL)
+                print_error "Failed to install $description"
+                ;;
+            IMPORTANT)
+                print_warning "Failed to install $description"
+                ;;
+            OPTIONAL)
+                print_info "$description could not be installed automatically"
+                ;;
+        esac
+        return 1
+    fi
+
+    if command -v "$cmd" &>/dev/null; then
+        local installed_path
+        installed_path=$(command -v "$cmd" 2>/dev/null)
+        log INFO "$cmd installed and available at $installed_path"
+        return 0
+    fi
+
+    log ERROR "$cmd installation reported success but command remains unavailable"
+    return 1
 }
 
 # Install a prerequisite package into the user's profile if missing
@@ -739,24 +760,25 @@ check_required_packages() {
     # lspci - Hardware detection, GPU identification
     if ! ensure_package_available "lspci" "pciutils" "IMPORTANT" "lspci (PCI hardware detection)"; then
         MISSING_IMPORTANT+=("pciutils")
+        packages_ok=false
     fi
 
     # which - Command location (used in multiple places)
     if ! ensure_package_available "which" "which" "IMPORTANT" "which (command locator)"; then
         MISSING_IMPORTANT+=("which")
+        packages_ok=false
     fi
 
     # readlink - Path resolution (used for symlink following)
     if ! ensure_package_available "readlink" "coreutils" "IMPORTANT" "readlink (path resolver)"; then
         MISSING_IMPORTANT+=("coreutils")
+        packages_ok=false
     fi
 
     # timeout - Command timeouts (used for service checks)
-    if ! command -v timeout &>/dev/null; then
-        print_info "timeout not found - will use alternatives"
-        log INFO "timeout command not available"
-    else
-        print_success "timeout available"
+    if ! ensure_package_available "timeout" "coreutils" "IMPORTANT" "timeout (command timeout utility)"; then
+        MISSING_IMPORTANT+=("coreutils (timeout)")
+        packages_ok=false
     fi
 
     echo ""
@@ -769,22 +791,19 @@ check_required_packages() {
     # glxinfo - AMD GPU validation
     if ! ensure_package_available "glxinfo" "mesa-demos" "OPTIONAL" "glxinfo (AMD GPU validation)"; then
         MISSING_OPTIONAL+=("mesa-demos")
+        packages_ok=false
     fi
 
     # nvidia-smi - NVIDIA GPU validation (comes with drivers, not always needed)
-    if ! command -v nvidia-smi &>/dev/null; then
-        print_info "nvidia-smi not found (only needed for NVIDIA GPUs)"
-        log DEBUG "nvidia-smi not available"
-    else
-        print_success "nvidia-smi available"
+    if ! ensure_package_available "nvidia-smi" "nvidiaPackages.latest.bin" "OPTIONAL" "nvidia-smi (NVIDIA GPU validation)"; then
+        MISSING_OPTIONAL+=("nvidiaPackages.latest.bin")
+        packages_ok=false
     fi
 
     # loginctl - systemd login management
-    if ! command -v loginctl &>/dev/null; then
-        print_info "loginctl not found (some systemd checks will be skipped)"
-        log DEBUG "loginctl not available"
-    else
-        print_success "loginctl available"
+    if ! ensure_package_available "loginctl" "systemd" "OPTIONAL" "loginctl (systemd login manager)"; then
+        MISSING_OPTIONAL+=("systemd")
+        packages_ok=false
     fi
 
     echo ""
@@ -792,7 +811,7 @@ check_required_packages() {
     # ========================================
     # SUMMARY
     # ========================================
-    if [[ ${#MISSING_CRITICAL[@]} -eq 0 ]] && [[ ${#MISSING_IMPORTANT[@]} -eq 0 ]]; then
+    if [[ ${#MISSING_CRITICAL[@]} -eq 0 ]] && [[ ${#MISSING_IMPORTANT[@]} -eq 0 ]] && [[ ${#MISSING_OPTIONAL[@]} -eq 0 ]]; then
         print_success "All required packages available"
     else
         if [[ ${#MISSING_CRITICAL[@]} -gt 0 ]]; then
@@ -802,14 +821,12 @@ check_required_packages() {
         fi
 
         if [[ ${#MISSING_IMPORTANT[@]} -gt 0 ]]; then
-            print_warning "Missing important packages: ${MISSING_IMPORTANT[*]}"
-            print_info "Installation will continue but some features may be limited"
+            print_error "Missing important packages: ${MISSING_IMPORTANT[*]}"
         fi
-    fi
-
-    if [[ ${#MISSING_OPTIONAL[@]} -gt 0 ]]; then
-        print_info "Missing optional packages: ${MISSING_OPTIONAL[*]}"
-        print_info "These will be installed temporarily as needed"
+        
+        if [[ ${#MISSING_OPTIONAL[@]} -gt 0 ]]; then
+            print_error "Missing optional packages required for enhanced features: ${MISSING_OPTIONAL[*]}"
+        fi
     fi
 
     echo ""
@@ -1125,6 +1142,10 @@ run_as_primary_user() {
     fi
 
     env_args+=("PATH=$(build_primary_user_path)")
+
+    if [[ -n "${NIX_CONFIG:-}" ]]; then
+        env_args+=("NIX_CONFIG=$NIX_CONFIG")
+    fi
 
     if [[ $EUID -eq 0 && "$PRIMARY_USER" != "root" ]]; then
         if (( ${#env_args[@]} > 0 )); then
@@ -2491,6 +2512,53 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# ------------------------------------------------------------------------------
+# Nix Experimental Feature Management
+# ------------------------------------------------------------------------------
+
+ensure_nix_experimental_features_env() {
+    local required_features="nix-command flakes"
+    local addition="experimental-features = ${required_features}"
+    local newline=$'\n'
+    local current_config="${NIX_CONFIG:-}"
+
+    if [[ -z "$current_config" ]]; then
+        export NIX_CONFIG="$addition"
+        log INFO "NIX_CONFIG initialized with experimental features: $required_features"
+        return
+    fi
+
+    if printf '%s\n' "$current_config" | grep -q '^[[:space:]]*experimental-features[[:space:]]*='; then
+        local existing_line
+        existing_line=$(printf '%s\n' "$current_config" | grep '^[[:space:]]*experimental-features[[:space:]]*=' | head -n1)
+        local features
+        features=$(printf '%s' "${existing_line#*=}" | xargs)
+
+        local feature
+        local updated_features="$features"
+        for feature in nix-command flakes; do
+            if [[ " $updated_features " != *" $feature "* ]]; then
+                updated_features+=" $feature"
+            fi
+        done
+        updated_features=$(printf '%s' "$updated_features" | xargs)
+
+        if [[ "$features" != "$updated_features" ]]; then
+            local new_line="experimental-features = $updated_features"
+            local updated_config
+            updated_config=$(printf '%s\n' "$current_config" | sed "0,/^[[:space:]]*experimental-features[[:space:]]*=.*/s//${new_line}/")
+            export NIX_CONFIG="$updated_config"
+            log INFO "Updated NIX_CONFIG experimental features: $updated_features"
+        else
+            export NIX_CONFIG="$current_config"
+            log DEBUG "NIX_CONFIG already contains required experimental features"
+        fi
+    else
+        export NIX_CONFIG="${current_config}${newline}${addition}"
+        log INFO "Appended experimental features to NIX_CONFIG: $required_features"
+    fi
+}
 
 # ------------------------------------------------------------------------------
 # Runtime Dependency Helpers
@@ -7704,6 +7772,7 @@ main() {
 
 # Initialize infrastructure before running main
 init_logging
+ensure_nix_experimental_features_env
 init_state
 
 # Run main function
