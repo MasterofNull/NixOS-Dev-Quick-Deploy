@@ -147,6 +147,12 @@ DEFAULT_CHANNEL_TRACK="${DEFAULT_CHANNEL_TRACK:-unstable}"
 SYNCHRONIZED_NIXOS_CHANNEL=""
 SYNCHRONIZED_HOME_MANAGER_CHANNEL=""
 
+# GPU-related variables (defaults - will be set by detect_gpu_hardware)
+GPU_TYPE="${GPU_TYPE:-unknown}"
+GPU_DRIVER="${GPU_DRIVER:-}"
+GPU_PACKAGES="${GPU_PACKAGES:-}"
+LIBVA_DRIVER="${LIBVA_DRIVER:-}"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -7551,22 +7557,26 @@ detect_gpu_hardware() {
 # PHASE 1: Preparation & Validation
 comprehensive_preflight_checks() {
     local phase_name="preparation_validation"
-    
+
+    # Always run GPU detection even if phase is complete (needed for resumed runs)
+    # This is a quick operation and ensures GPU variables are properly set
+    detect_gpu_hardware
+
     if is_step_complete "$phase_name"; then
-        print_info "Phase 1 already completed (skipping)"
+        print_info "Phase 1 already completed (skipping remaining checks)"
         return 0
     fi
-    
+
     print_section "Phase 1/10: Preparation & Validation"
     echo ""
-    
+
     # Check if running on NixOS
     if [[ ! -f /etc/NIXOS ]]; then
         print_error "This script must be run on NixOS"
         exit 1
     fi
     print_success "Running on NixOS"
-    
+
     # Check permissions
     if [[ $EUID -eq 0 ]]; then
         print_error "This script should NOT be run as root"
@@ -7574,7 +7584,7 @@ comprehensive_preflight_checks() {
         exit 1
     fi
     print_success "Running with correct permissions (non-root)"
-    
+
     # Ensure required commands are available
     local -a critical_commands=("nixos-rebuild" "nix-env" "nix-channel")
     for cmd in "${critical_commands[@]}"; do
@@ -7584,13 +7594,13 @@ comprehensive_preflight_checks() {
         fi
     done
     print_success "Critical NixOS commands available"
-    
+
     # Check disk space
     if ! check_disk_space; then
         print_error "Insufficient disk space"
         exit 1
     fi
-    
+
     # Validate network connectivity
     print_info "Checking network connectivity..."
     if ping -c 1 -W 5 cache.nixos.org &>/dev/null || ping -c 1 -W 5 8.8.8.8 &>/dev/null; then
@@ -7600,13 +7610,13 @@ comprehensive_preflight_checks() {
         print_error "Internet connection required to download packages"
         exit 1
     fi
-    
+
     # Validate path uniqueness
     if ! assert_unique_paths HOME_MANAGER_FILE SYSTEM_CONFIG_FILE HARDWARE_CONFIG_FILE; then
         print_error "Internal configuration path conflict detected"
         exit 1
     fi
-    
+
     # Check for old deployment artifacts
     print_info "Checking for old deployment artifacts..."
     local OLD_SCRIPT="/home/$USER/Documents/nixos-quick-deploy.sh"
@@ -7614,20 +7624,17 @@ comprehensive_preflight_checks() {
         print_warning "Found old deployment script: $OLD_SCRIPT"
         print_info "This can be safely ignored or archived"
     fi
-    
+
     # Validate entire dependency chain
     print_info "Validating dependency chain..."
     check_required_packages || {
         print_error "Required packages not available"
         exit 1
     }
-    
-    # GPU hardware detection
-    detect_gpu_hardware
-    
+
     # CPU and memory detection
     detect_gpu_and_cpu
-    
+
     mark_step_complete "$phase_name"
     print_success "Phase 1: Preparation & Validation - COMPLETE"
     echo ""
@@ -8110,18 +8117,86 @@ main() {
     done
     
     print_header
-    
+
     # Dry-run mode notification
     if [[ "$DRY_RUN" == true ]]; then
         print_section "DRY RUN MODE - No changes will be applied"
         echo ""
     fi
-    
+
     if [[ "$FORCE_UPDATE" == true ]]; then
         print_warning "Force update mode enabled - will recreate all configurations"
         echo ""
     fi
-    
+
+    # ========================================================================
+    # RESUME OR RESTART PROMPT
+    # ========================================================================
+    # Check if there's a previous installation state
+    if [[ -f "$STATE_FILE" ]] && [[ "$FORCE_UPDATE" != true ]]; then
+        echo ""
+        print_section "Previous Installation Detected"
+        echo ""
+        print_info "A previous installation state was found."
+        print_info "State file: $STATE_FILE"
+        echo ""
+
+        # Show completed steps if jq is available
+        if command -v jq &>/dev/null; then
+            local completed_count=$(jq -r '.completed_steps | length' "$STATE_FILE" 2>/dev/null || echo "0")
+            if [[ "$completed_count" -gt 0 ]]; then
+                print_info "Completed steps: $completed_count"
+                print_info "Completed phases:"
+                jq -r '.completed_steps[] | "  - \(.step) (completed at \(.completed_at))"' "$STATE_FILE" 2>/dev/null || true
+                echo ""
+            fi
+        fi
+
+        print_warning "Choose an option:"
+        echo "  1) Resume from last checkpoint (recommended if previous run failed)"
+        echo "  2) Start fresh (this will delete state and regenerate all files)"
+        echo "  3) Cancel and exit"
+        echo ""
+
+        local choice
+        read -r -p "Enter your choice [1-3]: " choice
+
+        case "$choice" in
+            1)
+                print_success "Resuming from last checkpoint..."
+                echo ""
+                ;;
+            2)
+                print_warning "Starting fresh installation..."
+                echo ""
+
+                # Ask user to confirm deletion
+                print_warning "This will:"
+                echo "  - Delete state file: $STATE_FILE"
+                echo "  - Allow regeneration of .dotfiles and configuration files"
+                echo "  - Start installation from the beginning"
+                echo ""
+
+                if confirm "Are you sure you want to start fresh?" "n"; then
+                    reset_state
+                    print_success "State cleared. Starting fresh installation..."
+                    echo ""
+                else
+                    print_info "Cancelled. Resuming from last checkpoint instead..."
+                    echo ""
+                fi
+                ;;
+            3)
+                print_info "Installation cancelled by user"
+                exit 0
+                ;;
+            *)
+                print_error "Invalid choice. Exiting."
+                exit 1
+                ;;
+        esac
+    fi
+
     # ========================================================================
     # 10-PHASE DEPLOYMENT WORKFLOW
     # ========================================================================
