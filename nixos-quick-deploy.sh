@@ -6404,6 +6404,8 @@ EOF
       User = "gitea";
       Group = "gitea";
       ExecStart = giteaAdminBootstrapScript;
+      # Increase timeout to handle large system changes
+      TimeoutStartSec = 300;  # Allow up to 5 minutes for bootstrap
     };
   };
 EOF
