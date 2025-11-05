@@ -481,112 +481,6 @@ ensure_package_available() {
 }
 
 # Install a prerequisite package into the user's profile if missing
-create_nix_shell_shim() {
-    local cmd="$1"
-    local attr_path="$2"
-    local shim_dir="$PRIMARY_LOCAL_BIN"
-    local shim_path="$shim_dir/$cmd"
-    local tmp_file=""
-    local -a owner_args=()
-
-    if [[ -z "$cmd" || -z "$attr_path" ]]; then
-        log ERROR "create_nix_shell_shim requires command and attribute path"
-        return 1
-    fi
-
-    if [[ $EUID -eq 0 ]]; then
-        owner_args=(-o "$PRIMARY_USER" -g "$PRIMARY_GROUP")
-    fi
-
-    if ! install -d -m 755 "${owner_args[@]}" "$shim_dir" >/dev/null 2>&1; then
-        log ERROR "Failed to ensure shim directory $shim_dir for $cmd"
-        return 1
-    fi
-
-    if ! tmp_file=$(mktemp 2>/dev/null); then
-        log ERROR "Unable to allocate temporary file for $cmd shim"
-        return 1
-    fi
-
-    cat >"$tmp_file" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-cmd_name='__CMD__'
-attr_path='__ATTR__'
-
-build_command() {
-    if [[ $# -eq 0 ]]; then
-        printf '%s' "$cmd_name"
-        return
-    fi
-
-    local -a quoted=()
-    local arg
-    for arg in "$@"; do
-        quoted+=("$(printf '%q' "$arg")")
-    done
-
-    printf '%s %s' "$cmd_name" "${quoted[*]}"
-}
-
-nix_shell_cmd="$(build_command "$@")"
-exec nix-shell -p "$attr_path" --run "$nix_shell_cmd"
-EOF
-
-    if ! sed -e "s|__CMD__|$cmd|g" -e "s|__ATTR__|$attr_path|g" -i "$tmp_file"; then
-        log ERROR "Failed to template nix-shell shim for $cmd"
-        rm -f "$tmp_file"
-        return 1
-    fi
-
-    if ! install -m 755 "${owner_args[@]}" "$tmp_file" "$shim_path" >/dev/null 2>&1; then
-        log ERROR "Failed to install nix-shell shim for $cmd into $shim_path"
-        rm -f "$tmp_file"
-        return 1
-    fi
-
-    rm -f "$tmp_file"
-    ensure_path_owner "$shim_path"
-
-    log INFO "Created nix-shell shim for $cmd at $shim_path using attribute $attr_path"
-    printf '%s' "$shim_path"
-}
-
-provide_prerequisite_via_nix_shell() {
-    local cmd="$1"
-    local attr_path="$2"
-    local install_log="$3"
-
-    if [[ -z "$cmd" || -z "$attr_path" ]]; then
-        return 1
-    fi
-
-    if ! command -v nix-shell >/dev/null 2>&1; then
-        log INFO "nix-shell not available; cannot provide $cmd via shim"
-        return 1
-    fi
-
-    print_warning "$cmd not found – providing via nix-shell -p $attr_path"
-    log WARNING "Attempting to provide $cmd using nix-shell -p $attr_path"
-
-    if ! run_as_primary_user nix-shell -p "$attr_path" --run "command -v $cmd >/dev/null" >"$install_log" 2>&1; then
-        local exit_code=$?
-        log ERROR "nix-shell -p $attr_path did not make $cmd available (exit code: $exit_code)"
-        return 1
-    fi
-
-    local shim_path
-    shim_path=$(create_nix_shell_shim "$cmd" "$attr_path") || return 1
-
-    if [[ -n "$shim_path" ]]; then
-        print_success "$cmd available via nix-shell shim: $shim_path"
-        log INFO "nix-shell shim for $cmd ready at $shim_path"
-    fi
-
-    return 0
-}
-
 ensure_prerequisite_installed() {
     local cmd="$1"
     local pkg_ref="$2"
@@ -607,13 +501,15 @@ ensure_prerequisite_installed() {
     fi
 
     if [[ "$DRY_RUN" == true ]]; then
-        if [[ -n "$attr_path" ]]; then
-            print_warning "$description not found – would provide via 'nix-shell -p $attr_path' (dry-run)"
-        else
-            print_warning "$description not found – would install via 'nix profile install $pkg_ref' (dry-run)"
-        fi
+        print_warning "$description not found – would install via 'nix-env' (dry-run)"
         log INFO "Dry-run: would install prerequisite $cmd from $pkg_ref"
         return 0
+    fi
+
+    if [[ -z "$attr_path" ]]; then
+        log ERROR "Unable to derive attribute path from $pkg_ref for $cmd"
+        print_error "Failed to install $description – invalid package reference"
+        return 1
     fi
 
     rm -f "$install_log"
@@ -621,79 +517,42 @@ ensure_prerequisite_installed() {
     local install_method=""
     local exit_code=0
 
-    if [[ -n "$attr_path" ]]; then
-        if provide_prerequisite_via_nix_shell "$cmd" "$attr_path" "$install_log"; then
-            install_succeeded=true
-            install_method="nix-shell -p"
-        else
-            log WARNING "nix-shell shim provisioning for $cmd failed; attempting profile or nix-env installation"
-        fi
-    else
-        log ERROR "Unable to derive attribute path from $pkg_ref for $cmd"
-    fi
+    # Try nix-env with nixos channel first (primary method)
+    if command -v nix-env >/dev/null 2>&1; then
+        print_warning "$description not found – installing via nix-env -iA nixos.$attr_path"
+        log INFO "Attempting nix-env installation for $cmd using nixos channel"
 
-    if [[ "$install_succeeded" == false ]] && command -v nix >/dev/null 2>&1 && nix profile --help >/dev/null 2>&1; then
-        print_warning "$description not found – installing via nix profile ($pkg_ref)"
-        log WARNING "Installing prerequisite $cmd using nix profile ($pkg_ref)"
-
-        if run_as_primary_user nix profile install "$pkg_ref" >"$install_log" 2>&1; then
+        if run_as_primary_user nix-env -iA "nixos.$attr_path" >"$install_log" 2>&1; then
             install_succeeded=true
-            install_method="nix profile"
+            install_method="nix-env (nixos channel)"
         else
             exit_code=$?
-            log WARNING "nix profile install for $cmd failed with exit code $exit_code, attempting fallback if available"
-        fi
-    elif [[ "$install_succeeded" == false ]]; then
-        log INFO "'nix profile' command not available or nix-shell provisioning already attempted for $cmd"
-    fi
+            log WARNING "nix-env -iA nixos.$attr_path for $cmd failed with exit code $exit_code, trying nixpkgs fallback"
 
-    if [[ "$install_succeeded" == false ]] && command -v nix-env >/dev/null 2>&1 && [[ -n "$attr_path" ]]; then
-        local -a nix_env_attempts=("nixos.$attr_path" "<nixpkgs>.$attr_path")
-        local attempt
+            # Fallback to nixpkgs if nixos channel fails
+            print_warning "$description installation retry via nix-env -f '<nixpkgs>' -iA $attr_path"
+            log INFO "Attempting nix-env installation for $cmd using nixpkgs"
 
-        for attempt in "${nix_env_attempts[@]}"; do
-            if [[ "$attempt" == nixos.* ]]; then
-                if [[ "$install_method" == "" ]]; then
-                    print_warning "$description not found – installing via nix-env -iA $attempt"
-                else
-                    print_warning "$description installation retry via nix-env -iA $attempt"
-                fi
-                log WARNING "Attempting nix-env installation for $cmd using channel target $attempt"
-
-                if run_as_primary_user nix-env -iA "$attempt" >"$install_log" 2>&1; then
-                    install_succeeded=true
-                    install_method="nix-env"
-                    break
-                else
-                    exit_code=$?
-                    log WARNING "nix-env -iA $attempt for $cmd failed with exit code $exit_code"
-                fi
+            if run_as_primary_user nix-env -f '<nixpkgs>' -iA "$attr_path" >>"$install_log" 2>&1; then
+                install_succeeded=true
+                install_method="nix-env (nixpkgs)"
             else
-                if [[ "$install_succeeded" == true ]]; then
-                    break
-                fi
-
-                if [[ "$install_method" == "" ]]; then
-                    print_warning "$description not found – installing via nix-env -f '<nixpkgs>' -iA $attr_path"
-                else
-                    print_warning "$description installation retry via nix-env -f '<nixpkgs>' -iA $attr_path"
-                fi
-                log WARNING "Attempting nix-env installation for $cmd using <nixpkgs>"
-
-                if run_as_primary_user nix-env -f '<nixpkgs>' -iA "$attr_path" >>"$install_log" 2>&1; then
-                    install_succeeded=true
-                    install_method="nix-env"
-                    break
-                else
-                    exit_code=$?
-                    log ERROR "nix-env -f '<nixpkgs>' -iA $attr_path for $cmd failed with exit code $exit_code"
-                fi
+                exit_code=$?
+                log ERROR "nix-env -f '<nixpkgs>' -iA $attr_path for $cmd failed with exit code $exit_code"
             fi
-        done
+        fi
+    else
+        log ERROR "nix-env command not available"
+        print_error "Failed to install $description – nix-env not found"
+        return 1
     fi
 
     if [[ "$install_succeeded" == true ]]; then
         hash -r 2>/dev/null || true
+
+        # Ensure PATH includes nix profile directories
+        export PATH="$HOME/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$PATH"
+
         local new_path
         new_path=$(command -v "$cmd" 2>/dev/null || run_as_primary_user bash -lc "command -v $cmd" 2>/dev/null || true)
 
@@ -702,20 +561,28 @@ ensure_prerequisite_installed() {
             log INFO "Prerequisite $cmd installed successfully via $install_method at $new_path"
         else
             print_warning "$description installation completed but command not yet on current PATH"
-            print_info "Open a new shell or source ~/.nix-profile/etc/profile.d/nix.sh to refresh the environment."
+            print_info "Refreshing shell environment..."
             log WARNING "Prerequisite $cmd installed but not immediately visible on PATH"
+
+            # Try reloading the environment
+            if [[ -f "$HOME/.nix-profile/etc/profile.d/nix.sh" ]]; then
+                # shellcheck disable=SC1091
+                source "$HOME/.nix-profile/etc/profile.d/nix.sh" 2>/dev/null || true
+            fi
+
+            # Check again after reloading
+            new_path=$(command -v "$cmd" 2>/dev/null || true)
+            if [[ -n "$new_path" ]]; then
+                print_success "$description now available: $new_path"
+                log INFO "Prerequisite $cmd available after environment refresh at $new_path"
+            fi
         fi
 
         print_info "Installation log: $install_log"
         return 0
     else
-        if [[ "$install_method" == "" ]]; then
-            print_error "Failed to install $description – no supported nix installation method available"
-            log ERROR "Failed to install prerequisite $cmd: none of nix-shell, 'nix profile', or 'nix-env' succeeded or were available"
-        else
-            print_error "Failed to install $description via $install_method"
-            log ERROR "Failed to install prerequisite $cmd via $install_method (exit code: $exit_code)"
-        fi
+        print_error "Failed to install $description via nix-env"
+        log ERROR "Failed to install prerequisite $cmd via nix-env (exit code: $exit_code)"
         print_info "Review the log for details: $install_log"
         return 1
     fi
@@ -945,7 +812,7 @@ validate_gpu_driver() {
                 fi
             else
                 print_info "glxinfo not available for AMD GPU validation"
-                print_info "Install mesa-demos to validate: nix-shell -p mesa-demos"
+                print_info "Install mesa-demos to validate: nix-env -iA nixos.mesa-demos"
                 log INFO "AMD GPU detected but glxinfo not available for validation"
             fi
             ;;
