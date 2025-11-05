@@ -6487,6 +6487,7 @@ apply_nixos_system_config() {
     # Apply the new configuration
     print_section "Applying New Configuration"
 
+    local SYSTEM_CONFIG="/etc/nixos/configuration.nix"
     local NIXOS_REBUILD_DRY_LOG="/tmp/nixos-rebuild-dry-run.log"
     if [[ "$SYSTEM_BUILD_VALIDATED" != true ]]; then
         if run_nixos_rebuild_dry_run "$NIXOS_REBUILD_DRY_LOG"; then
