@@ -7843,7 +7843,7 @@ deploy_configurations_phase() {
     fi
     
     # Apply system configuration
-    prompt_installation_stage
+    apply_nixos_system_config
     
     # Create and apply home-manager configuration
     create_home_manager_config
