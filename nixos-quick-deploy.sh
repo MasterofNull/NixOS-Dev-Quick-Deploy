@@ -7843,7 +7843,7 @@ deploy_configurations_phase() {
     fi
     
     # Apply system configuration
-    prompt_installation_stage
+    apply_nixos_system_config
     
     # Create and apply home-manager configuration
     create_home_manager_config
@@ -7868,7 +7868,7 @@ install_tools_and_services_phase() {
     
     # Flatpak installation (can run in parallel with other installations)
     print_info "Installing Flatpak applications..."
-    install_flatpak_stage &
+    ensure_default_flatpak_apps_installed &
     local flatpak_pid=$!
     
     # Claude Code installation
@@ -7918,12 +7918,7 @@ post_install_validation_phase() {
     if [[ "$GPU_TYPE" != "software" && "$GPU_TYPE" != "unknown" ]]; then
         validate_gpu_driver || print_warning "GPU driver validation had issues (non-critical)"
     fi
-    
-    # System health check
-    if [[ "$SKIP_HEALTH_CHECK" != true ]]; then
-        run_system_health_check_stage || print_warning "Health check found issues (review above)"
-    fi
-    
+
     # Verify critical packages are available
     print_info "Verifying critical packages..."
     local missing_count=0
@@ -7959,10 +7954,7 @@ post_install_finalization_phase() {
     
     print_section "Phase 9/10: Post-Install Scripts & Finalization"
     echo ""
-    
-    # Apply final system configuration
-    apply_final_system_configuration
-    
+
     # Finalize configuration activation
     finalize_configuration_activation
     
