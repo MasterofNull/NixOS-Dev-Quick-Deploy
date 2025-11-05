@@ -143,6 +143,23 @@ SKIP_HEALTH_CHECK=false
 # Set by: -h or --help flags
 SHOW_HELP=false
 
+# SHOW_VERSION: Display version information and exit
+# Default: false
+# Set by: -v or --version flags
+SHOW_VERSION=false
+
+# QUIET_MODE: Suppress non-essential output
+# Default: false (normal output)
+# Set by: -q or --quiet flag
+# Effect: Only show warnings, errors, and critical messages
+QUIET_MODE=false
+
+# VERBOSE_MODE: Show detailed output
+# Default: false (normal output)
+# Set by: --verbose flag
+# Effect: Show debug messages, command details, and progress info
+VERBOSE_MODE=false
+
 # LIST_PHASES: Show all phases with current status
 # Default: false
 # Set by: --list-phases flag
@@ -419,6 +436,26 @@ load_configuration() {
 # HELP AND USAGE
 # ============================================================================
 
+print_version() {
+    cat << EOF
+NixOS Quick Deploy - Modular Bootstrap Loader
+Version: $SCRIPT_VERSION
+Architecture: 10-phase modular deployment system
+
+Components:
+  - 10 library files (colors, logging, error-handling, state, etc.)
+  - 2 config files (variables, defaults)
+  - 10 phase modules (preparation through reporting)
+  - 1 bootstrap orchestrator (this script)
+
+Copyright (c) 2025
+License: MIT
+Repository: https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy
+
+For help: $(basename "$0") --help
+EOF
+}
+
 print_usage() {
     cat << 'EOF'
 NixOS Quick Deploy - Modular Bootstrap Loader v3.2.0
@@ -428,7 +465,10 @@ USAGE:
 
 BASIC OPTIONS:
     -h, --help                  Show this help message
-    -d, --debug                 Enable debug mode (verbose output)
+    -v, --version               Show version information
+    -q, --quiet                 Quiet mode (only warnings and errors)
+        --verbose               Verbose mode (detailed output)
+    -d, --debug                 Enable debug mode (trace execution)
     -f, --force-update          Force recreation of configurations
         --dry-run               Preview changes without applying
         --rollback              Rollback to previous state
@@ -509,6 +549,18 @@ parse_arguments() {
         case $1 in
             -h|--help)
                 SHOW_HELP=true
+                shift
+                ;;
+            -v|--version)
+                SHOW_VERSION=true
+                shift
+                ;;
+            -q|--quiet)
+                QUIET_MODE=true
+                shift
+                ;;
+            --verbose)
+                VERBOSE_MODE=true
                 shift
                 ;;
             -d|--debug)
@@ -993,6 +1045,24 @@ main() {
     fi
 
     # ========================================================================
+    # Step 2b: Configure Logging Level (based on quiet/verbose flags)
+    # ========================================================================
+    # Logging levels: DEBUG < INFO < WARNING < ERROR
+    # Quiet mode: Only show WARNING and ERROR
+    # Verbose mode: Show DEBUG, INFO, WARNING, ERROR
+    # Normal mode: Show INFO, WARNING, ERROR
+    #
+    # Note: LOG_LEVEL is used by logging.sh
+    # Set as environment variable before loading config
+    if [[ "$QUIET_MODE" == true ]]; then
+        export LOG_LEVEL="WARNING"
+    elif [[ "$VERBOSE_MODE" == true ]]; then
+        export LOG_LEVEL="DEBUG"
+    else
+        export LOG_LEVEL="INFO"
+    fi
+
+    # ========================================================================
     # Step 3: Handle Help (early exit)
     # ========================================================================
     # Why early: Don't load libraries just to show help
@@ -1000,6 +1070,17 @@ main() {
     # exit 0: Success exit (help was shown successfully)
     if [[ "$SHOW_HELP" == true ]]; then
         print_usage
+        exit 0
+    fi
+
+    # ========================================================================
+    # Step 3b: Handle Version Display (early exit)
+    # ========================================================================
+    # Version: Display script version and component info
+    # Why early: Doesn't require any libraries loaded
+    # exit 0: Success exit (version was shown successfully)
+    if [[ "$SHOW_VERSION" == true ]]; then
+        print_version
         exit 0
     fi
 

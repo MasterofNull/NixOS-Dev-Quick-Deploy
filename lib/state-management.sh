@@ -175,13 +175,24 @@ mark_step_complete() {
         # - If jq fails, original file is untouched
         # - mv is atomic on most filesystems (single inode update)
         # - No partial writes can corrupt the state file
-        jq --arg step "$step" \
+        if jq --arg step "$step" \
            --arg timestamp "$(date -Iseconds)" \
            '.completed_steps += [{"step": $step, "completed_at": $timestamp}]' \
-           "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
-
-        # Log successful state update
-        log INFO "Marked step complete: $step"
+           "$STATE_FILE" > "$STATE_FILE.tmp" 2>/dev/null; then
+            # jq succeeded, now atomically move temp to actual file
+            if mv "$STATE_FILE.tmp" "$STATE_FILE" 2>/dev/null; then
+                # Log successful state update
+                log INFO "Marked step complete: $step"
+            else
+                # mv failed - log warning and cleanup
+                log WARNING "Failed to atomically update state file"
+                rm -f "$STATE_FILE.tmp" 2>/dev/null || true
+            fi
+        else
+            # jq failed - log warning and cleanup
+            log WARNING "jq failed to update state file"
+            rm -f "$STATE_FILE.tmp" 2>/dev/null || true
+        fi
     else
         # ====================================================================
         # Fallback: jq not available
