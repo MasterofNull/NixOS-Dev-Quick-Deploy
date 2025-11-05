@@ -7558,12 +7558,8 @@ detect_gpu_hardware() {
 comprehensive_preflight_checks() {
     local phase_name="preparation_validation"
 
-    # Always run GPU detection even if phase is complete (needed for resumed runs)
-    # This is a quick operation and ensures GPU variables are properly set
-    detect_gpu_hardware
-
     if is_step_complete "$phase_name"; then
-        print_info "Phase 1 already completed (skipping remaining checks)"
+        print_info "Phase 1 already completed (skipping)"
         return 0
     fi
 
@@ -7631,6 +7627,9 @@ comprehensive_preflight_checks() {
         print_error "Required packages not available"
         exit 1
     }
+
+    # GPU hardware detection
+    detect_gpu_hardware
 
     # CPU and memory detection
     detect_gpu_and_cpu
@@ -8178,8 +8177,36 @@ main() {
                 echo ""
 
                 if confirm "Are you sure you want to start fresh?" "n"; then
+                    print_info "Cleaning up previous installation files..."
+                    echo ""
+
+                    # Delete/backup .dotfiles directory
+                    if [[ -d "$HOME/.dotfiles" ]]; then
+                        local backup_dotfiles="$HOME/.dotfiles.backup.$(date +%s)"
+                        print_info "Backing up .dotfiles to: $backup_dotfiles"
+                        mv "$HOME/.dotfiles" "$backup_dotfiles" 2>/dev/null || {
+                            print_warning "Could not move .dotfiles, attempting to remove..."
+                            rm -rf "$HOME/.dotfiles" 2>/dev/null || true
+                        }
+                        print_success "Removed .dotfiles directory"
+                    fi
+
+                    # Remove home-manager generations
+                    if [[ -d "$HOME/.local/state/nix/profiles" ]]; then
+                        print_info "Cleaning home-manager profiles..."
+                        rm -rf "$HOME/.local/state/nix/profiles/home-manager"* 2>/dev/null || true
+                    fi
+
+                    # Remove state files
                     reset_state
-                    print_success "State cleared. Starting fresh installation..."
+
+                    # Remove cached secrets (will be regenerated)
+                    if [[ -d "$STATE_DIR/secrets" ]]; then
+                        print_info "Removing cached secrets (will be regenerated)..."
+                        rm -rf "$STATE_DIR/secrets" 2>/dev/null || true
+                    fi
+
+                    print_success "Cleanup complete. Starting fresh installation..."
                     echo ""
                 else
                     print_info "Cancelled. Resuming from last checkpoint instead..."
