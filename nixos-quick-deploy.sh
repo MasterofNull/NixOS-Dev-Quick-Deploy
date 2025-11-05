@@ -239,6 +239,17 @@ error_handler() {
         echo ""
     fi
 
+    # Check for removed packages that can be restored
+    local removed_pkgs_file
+    removed_pkgs_file=$(ls -t "$STATE_DIR"/removed-packages-*.txt 2>/dev/null | head -1)
+    if [[ -n "$removed_pkgs_file" && -f "$removed_pkgs_file" ]]; then
+        echo ""
+        print_info "Removed packages can be restored. To restore:"
+        echo "  Run: restore_removed_packages"
+        echo "  Or manually reinstall from: $removed_pkgs_file"
+        echo ""
+    fi
+
     exit "$exit_code"
 }
 
@@ -972,6 +983,63 @@ perform_rollback() {
 
     print_success "Rollback completed"
     log INFO "Rollback completed"
+}
+
+restore_removed_packages() {
+    print_section "Package Recovery"
+
+    # Find the most recent removed packages file
+    local removed_pkgs_file
+    removed_pkgs_file=$(ls -t "$STATE_DIR"/removed-packages-*.txt 2>/dev/null | head -1)
+
+    if [[ -z "$removed_pkgs_file" || ! -f "$removed_pkgs_file" ]]; then
+        print_info "No removed package list found - nothing to restore"
+        return 0
+    fi
+
+    print_info "Found removed package list: $removed_pkgs_file"
+
+    local pkg_count
+    pkg_count=$(wc -l < "$removed_pkgs_file")
+
+    print_info "Found $pkg_count package(s) that were removed"
+    echo ""
+    print_warning "Removed packages:"
+    cat "$removed_pkgs_file" | sed 's/^/  /'
+    echo ""
+
+    if ! confirm "Do you want to restore these packages?" "n"; then
+        print_info "Package restoration skipped"
+        return 0
+    fi
+
+    print_info "Restoring removed packages..."
+    local restored=0
+    local failed=0
+
+    while IFS= read -r pkg; do
+        local pkg_name
+        pkg_name=$(echo "$pkg" | awk '{print $1}')
+        if [[ -n "$pkg_name" ]]; then
+            print_info "Restoring: $pkg_name"
+            if nix-env -iA "nixpkgs.$pkg_name" 2>/dev/null; then
+                print_success "  ✓ Restored: $pkg_name"
+                ((restored++))
+            else
+                print_warning "  ✗ Failed: $pkg_name"
+                ((failed++))
+            fi
+        fi
+    done < "$removed_pkgs_file"
+
+    echo ""
+    print_success "Package restoration complete"
+    print_info "  Restored: $restored package(s)"
+    if [[ $failed -gt 0 ]]; then
+        print_warning "  Failed: $failed package(s)"
+    fi
+
+    log INFO "Package restoration completed: $restored restored, $failed failed"
 }
 
 # ============================================================================
@@ -3744,13 +3812,21 @@ print_usage() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  -f, --force-update    Force recreation of all configurations"
-    echo "                        (ignores existing configs and applies updates)"
-    echo "  -h, --help           Show this help message"
+    echo "  -f, --force-update       Force recreation of all configurations"
+    echo "                           (ignores existing configs and applies updates)"
+    echo "  --rollback               Rollback to previous system state"
+    echo "  --restore-packages       Restore packages that were removed for conflict resolution"
+    echo "  --reset-state            Reset deployment state and start fresh"
+    echo "  --dry-run                Show what would be done without making changes"
+    echo "  -d, --debug              Enable debug mode with verbose output"
+    echo "  --skip-health-check      Skip the post-deployment health check"
+    echo "  -h, --help               Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0                    # Normal run (smart change detection)"
-    echo "  $0 --force-update     # Force update all configs"
+    echo "  $0                       # Normal run (smart change detection)"
+    echo "  $0 --force-update        # Force update all configs"
+    echo "  $0 --rollback            # Rollback to previous state"
+    echo "  $0 --restore-packages    # Restore removed packages"
     echo ""
 }
 
@@ -5156,13 +5232,25 @@ run_home_manager_switch() {
     fi
     hm_args+=("--show-trace")
 
+    # Change to home directory to avoid path resolution issues
+    # This prevents relative paths from being resolved against script location
+    local original_dir="$PWD"
+    cd "$HOME" || {
+        print_error "Failed to change to home directory"
+        return 1
+    }
+
     if $hm_cli_available; then
         run_as_primary_user home-manager "${hm_args[@]}" 2>&1 | tee "$log_path"
-        return ${PIPESTATUS[0]}
+        local result=${PIPESTATUS[0]}
+        cd "$original_dir" || true
+        return $result
     fi
 
     run_as_primary_user nix run --accept-flake-config "${hm_pkg_ref}" -- "${hm_args[@]}" 2>&1 | tee "$log_path"
-    return ${PIPESTATUS[0]}
+    local result=${PIPESTATUS[0]}
+    cd "$original_dir" || true
+    return $result
 }
 
 ensure_home_manager_cli_available() {
@@ -5486,6 +5574,12 @@ apply_home_manager_config() {
     if [ -n "$IMPERATIVE_PKGS" ]; then
         print_info "Removing ALL nix-env packages (switching to declarative home-manager)..."
         print_info "This prevents package collisions and ensures reproducibility"
+
+        # Save list of removed packages for potential recovery
+        local removed_pkgs_file="$STATE_DIR/removed-packages-$(date +%s).txt"
+        mkdir -p "$STATE_DIR"
+        echo "$IMPERATIVE_PKGS" > "$removed_pkgs_file"
+        print_info "Saved package list for recovery: $removed_pkgs_file"
 
         # Remove all packages installed via nix-env
         if nix-env -e '.*' --remove-all 2>&1 | tee /tmp/nix-env-cleanup.log; then
@@ -6009,7 +6103,21 @@ generate_nixos_system_config() {
         HM_CHANNEL_NAME=$(normalize_channel_name "$DETECTED_HM_CHANNEL")
     fi
 
-    HM_CHANNEL_NAME=$(normalize_channel_name "$HM_CHANNEL_NAME")
+    # Only normalize if HM_CHANNEL_NAME looks like a URL (contains / or .)
+    # This prevents incorrectly normalizing already-normalized names
+    if [[ "$HM_CHANNEL_NAME" == *"/"* || "$HM_CHANNEL_NAME" == *".tar"* || "$HM_CHANNEL_NAME" == *".gz"* ]]; then
+        HM_CHANNEL_NAME=$(normalize_channel_name "$HM_CHANNEL_NAME")
+    fi
+
+    # Validate that HM_CHANNEL_NAME looks like a valid channel reference
+    # Valid formats: "master", "release-24.05", "release-24.11", etc.
+    if [[ -n "$HM_CHANNEL_NAME" ]]; then
+        if [[ ! "$HM_CHANNEL_NAME" =~ ^(master|release-[0-9]+\.[0-9]+)$ ]]; then
+            print_warning "Invalid home-manager channel name detected: $HM_CHANNEL_NAME"
+            print_warning "This may be from a corrupted nix-channel entry"
+            HM_CHANNEL_NAME=""  # Reset to force default
+        fi
+    fi
 
     if [[ -z "$HM_CHANNEL_NAME" ]]; then
         HM_CHANNEL_NAME="release-${NIXOS_VERSION}"
@@ -8089,6 +8197,10 @@ main() {
                 perform_rollback
                 exit $?
                 ;;
+            --restore-packages)
+                restore_removed_packages
+                exit $?
+                ;;
             --reset-state)
                 reset_state
                 print_success "State reset successfully"
@@ -8131,13 +8243,25 @@ main() {
     # ========================================================================
     # RESUME OR RESTART PROMPT
     # ========================================================================
-    # Check if there's a previous installation state
-    if [[ -f "$STATE_FILE" ]] && [[ "$FORCE_UPDATE" != true ]]; then
+    # Check if there's a previous installation state AND actual deployment files exist
+    # Only show restart/resume prompt if we have evidence of a previous deployment
+    local has_deployment_files=false
+    if [[ -d "$HOME/.dotfiles" ]] || [[ -d "$HOME/.config-backups" ]] || \
+       [[ -d "$HOME/.local/state/nix/profiles/home-manager"* ]] || \
+       [[ -d "$HOME/.local/state/home-manager" ]]; then
+        has_deployment_files=true
+    fi
+
+    if [[ -f "$STATE_FILE" ]] && [[ "$has_deployment_files" == true ]] && [[ "$FORCE_UPDATE" != true ]]; then
         echo ""
-        print_section "Previous Installation Detected"
+        print_section "Previous Deployment Detected"
         echo ""
-        print_info "A previous installation state was found."
+        print_info "Found existing deployment files from a previous run."
         print_info "State file: $STATE_FILE"
+
+        # Show what was found
+        [[ -d "$HOME/.dotfiles" ]] && print_info "  • .dotfiles directory exists"
+        [[ -d "$HOME/.config-backups" ]] && print_info "  • Configuration backups exist"
         echo ""
 
         # Show completed steps if jq is available
