@@ -4,51 +4,220 @@
 # Version: 3.2.0
 # Purpose: Orchestrate modular deployment phases with advanced execution control
 #
-# Architecture: Modular design with separate phase modules
-# - lib/: Shared libraries
-# - config/: Configuration files
-# - phases/: Phase execution modules (10 phases)
+# ============================================================================
+# ARCHITECTURE OVERVIEW
+# ============================================================================
+# This is the bootstrap loader - the main entry point that orchestrates
+# the entire 10-phase deployment workflow. It's called "bootstrap" because
+# it loads and executes all the modular components.
+#
+# Why modular architecture:
+# - Separation of concerns: Each phase has single responsibility
+# - Maintainability: Easier to update individual phases
+# - Testability: Can test phases in isolation
+# - Debuggability: Clear phase boundaries for troubleshooting
+# - Flexibility: Can skip, restart, or test individual phases
+#
+# Directory structure:
+# nixos-quick-deploy-modular.sh (this file) - Orchestrator
+# ├── config/                                - Configuration files
+# │   ├── variables.sh                       - Global variables
+# │   └── defaults.sh                        - Default values
+# ├── lib/                                   - Shared libraries
+# │   ├── colors.sh                          - Terminal colors
+# │   ├── logging.sh                         - Logging functions
+# │   ├── error-handling.sh                  - Error management
+# │   ├── state-management.sh                - State tracking
+# │   └── ... (30+ library files)
+# └── phases/                                - Phase implementations
+#     ├── phase-01-preparation.sh            - System validation
+#     ├── phase-02-prerequisites.sh          - Package installation
+#     ├── ... (phases 03-09)
+#     └── phase-10-reporting.sh              - Final report
+#
+# Execution flow:
+# 1. Parse command-line arguments
+# 2. Load libraries (order matters - dependencies)
+# 3. Load configuration files
+# 4. Initialize logging and state management
+# 5. Execute phases in sequence (1-10)
+# 6. Handle errors with rollback capability
+# 7. Generate final report
+#
+# Advanced features:
+# - Resume from failure: Automatically continue from last failed phase
+# - Phase control: Skip, restart, or test individual phases
+# - Dry-run mode: Preview changes without applying
+# - Rollback: Revert to previous system state
+# - State tracking: Remember what's been completed
 #
 # ============================================================================
 # SCRIPT CONFIGURATION
 # ============================================================================
 
-set -o pipefail     # Exit on pipe failures
-set -E              # Inherit ERR trap
+# Bash strict mode configuration:
+# -o pipefail: If any command in a pipeline fails, the whole pipeline fails
+#              Example: false | true returns 1 (not 0)
+#              Why: Catch errors in middle of pipelines
+set -o pipefail
 
-# Note: set -u is enabled after configuration loading to avoid conflicts
+# -E: ERR trap is inherited by shell functions
+#     Why: Error handler catches failures in all functions
+#     Without: ERR trap only catches errors in main script
+set -E
 
+# Note about set -u (undefined variable checking):
+# We enable it AFTER loading configuration to avoid issues with
+# optional variables that might be unset. This allows config files
+# to use ${VAR:-default} syntax safely.
+
+# ============================================================================
+# READONLY CONSTANTS
+# ============================================================================
+# These values never change during execution - defined once at script start
+# readonly: Prevents accidental modification (immutable)
+
+# Script version - semantic versioning (MAJOR.MINOR.PATCH)
+# Used in: Reports, logs, error messages
 readonly SCRIPT_VERSION="3.2.0"
+
+# Script directory detection:
+# ${BASH_SOURCE[0]}: Path to this script file
+# dirname: Get directory containing the script
+# cd + pwd: Convert to absolute path (resolve symlinks)
+# $(cmd): Command substitution - run cmd and capture output
+# Why absolute path: Ensures we can find lib/config/phases regardless of cwd
 readonly BOOTSTRAP_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Component directories:
+# $BOOTSTRAP_SCRIPT_DIR/lib: Shared library functions
+# $BOOTSTRAP_SCRIPT_DIR/config: Configuration files
+# $BOOTSTRAP_SCRIPT_DIR/phases: Phase implementations
 readonly LIB_DIR="$BOOTSTRAP_SCRIPT_DIR/lib"
 readonly CONFIG_DIR="$BOOTSTRAP_SCRIPT_DIR/config"
 readonly PHASES_DIR="$BOOTSTRAP_SCRIPT_DIR/phases"
 
 # ============================================================================
-# GLOBAL VARIABLES
+# GLOBAL VARIABLES - CLI Flags
 # ============================================================================
+# These variables are set by command-line arguments parsed in parse_arguments()
+# Default values assume normal deployment mode
+# Can be overridden via CLI flags (--dry-run, --debug, etc.)
 
-# CLI flags
+# DRY_RUN: Preview mode - show what would happen without making changes
+# Default: false (make real changes)
+# Set by: --dry-run flag
 DRY_RUN=false
+
+# FORCE_UPDATE: Force recreation of configurations even if they exist
+# Default: false (use existing configs if present)
+# Set by: --force-update flag
 FORCE_UPDATE=false
+
+# ENABLE_DEBUG: Verbose debug output (set -x)
+# Default: false (normal output)
+# Set by: --debug flag
+# Effect: Shows every command before execution
 ENABLE_DEBUG=false
+
+# ROLLBACK: Rollback to previous system state
+# Default: false (normal deployment)
+# Set by: --rollback flag
+# Effect: Reverts to last working generation
 ROLLBACK=false
+
+# RESET_STATE: Clear state file for fresh deployment
+# Default: false (resume from last state)
+# Set by: --reset-state flag
+# Effect: Deletes state.json, starts from phase 1
 RESET_STATE=false
+
+# SKIP_HEALTH_CHECK: Skip comprehensive health validation
+# Default: false (run health check)
+# Set by: --skip-health-check flag
+# Saves: 2-5 minutes of validation time
 SKIP_HEALTH_CHECK=false
+
+# SHOW_HELP: Display help message and exit
+# Default: false
+# Set by: -h or --help flags
 SHOW_HELP=false
+
+# LIST_PHASES: Show all phases with current status
+# Default: false
+# Set by: --list-phases flag
 LIST_PHASES=false
+
+# RESUME: Resume from last incomplete phase
+# Default: true (auto-resume on script restart)
+# Set by: --resume flag (explicit)
+# Note: This is the default behavior
 RESUME=true
+
+# RESTART_FAILED: Restart the last failed phase from beginning
+# Default: false
+# Set by: --restart-failed flag
 RESTART_FAILED=false
+
+# RESTART_FROM_SAFE_POINT: Restart from last safe checkpoint
+# Default: false
+# Set by: --restart-from-safe-point flag
+# Safe points: Phases 1, 3, 8 (no mid-operation state)
 RESTART_FROM_SAFE_POINT=false
 
-# Phase control
+# ============================================================================
+# GLOBAL VARIABLES - Phase Control
+# ============================================================================
+# These variables control which phases execute and in what order
+
+# SKIP_PHASES: Array of phase numbers to skip
+# Type: Bash array
+# Set by: --skip-phase N (can be used multiple times)
+# Example: --skip-phase 5 --skip-phase 7 → SKIP_PHASES=(5 7)
+# declare -a: Declare as array variable
 declare -a SKIP_PHASES=()
+
+# START_FROM_PHASE: Phase number to start execution from
+# Default: Empty (start from phase 1 or resume point)
+# Set by: --start-from-phase N
+# Example: --start-from-phase 4 → Skip phases 1-3, start at 4
 START_FROM_PHASE=""
+
+# RESTART_PHASE: Phase to restart execution from
+# Default: Empty (normal execution)
+# Set by: --restart-phase N
+# Effect: Marks phase N as incomplete, starts from there
 RESTART_PHASE=""
+
+# TEST_PHASE: Run single phase in isolation
+# Default: Empty (run all phases)
+# Set by: --test-phase N
+# Effect: Only run phase N, exit after completion
 TEST_PHASE=""
+
+# SHOW_PHASE_INFO_NUM: Phase number to show detailed info about
+# Default: Empty (don't show phase info)
+# Set by: --show-phase-info N
+# Effect: Display phase details and exit
 SHOW_PHASE_INFO_NUM=""
 
-# Safe restart points (phases that can be safely restarted)
+# ============================================================================
+# READONLY CONSTANTS - Safe Restart Points
+# ============================================================================
+# Safe restart phases are entry points where deployment can safely restart
+# without leaving the system in an inconsistent state
+#
+# Why these phases are safe:
+# - Phase 1: No system changes yet, just validation
+# - Phase 3: Backups created, but no modifications applied
+# - Phase 8: Deployment complete, just validation phase
+#
+# Unsafe restart points (not in this list):
+# - Phase 6: Mid-deployment (system partially modified)
+# - Phase 7: Tools partially installed
+# - Phase 9: Finalization in progress
+#
+# Usage: --restart-from-safe-point finds last completed safe phase
 readonly SAFE_RESTART_PHASES=(1 3 8)
 
 # ============================================================================
@@ -106,33 +275,108 @@ get_phase_dependencies() {
 # ============================================================================
 # LIBRARY LOADING
 # ============================================================================
+# Libraries must be loaded in specific order due to dependencies.
+# Think of this like a dependency graph:
+# colors.sh → logging.sh → error-handling.sh → everything else
+#
+# Why order matters:
+# - logging.sh uses colors.sh functions (print in color)
+# - error-handling.sh uses logging.sh functions (log errors)
+# - state-management.sh uses logging.sh functions (log state changes)
+# - All other libs may use any of the above
+#
+# Loading process:
+# 1. Check library file exists
+# 2. Source (execute) the library file
+# 3. Verify loading succeeded
+# 4. Continue to next library
+#
+# Why fail on missing library:
+# - Can't continue without core functions
+# - Better to fail early with clear message
+# - Prevents cryptic "command not found" errors later
+#
+# ============================================================================
 
 load_libraries() {
+    # ========================================================================
+    # Library Load Order (CRITICAL - Do not reorder without testing!)
+    # ========================================================================
+    # This array defines the exact order libraries are loaded.
+    # Dependencies must be loaded before dependents.
+    #
+    # Dependency chain:
+    # 1. colors.sh → FIRST (no dependencies, provides color codes)
+    # 2. logging.sh → Uses colors.sh for colored output
+    # 3. error-handling.sh → Uses logging.sh to log errors
+    # 4. state-management.sh → Uses logging.sh to log state changes
+    # 5. user-interaction.sh → Uses logging.sh and colors.sh
+    # 6. validation.sh → Uses logging.sh for validation messages
+    # 7. retry.sh → Uses logging.sh for retry messages
+    # 8. backup.sh → Uses logging.sh for backup messages
+    # 9. gpu-detection.sh → Uses logging.sh for detection messages
+    # 10. common.sh → LAST (aggregates functions from all above)
+    #
+    # local: Function-scoped variable (not global)
+    # array syntax: libs=("item1" "item2" ...)
     local libs=(
-        "colors.sh"
-        "logging.sh"
-        "error-handling.sh"
-        "state-management.sh"
-        "user-interaction.sh"
-        "validation.sh"
-        "retry.sh"
-        "backup.sh"
-        "gpu-detection.sh"
-        "common.sh"
+        "colors.sh"              # Terminal color codes (MUST be first)
+        "logging.sh"             # Logging functions (depends on colors)
+        "error-handling.sh"      # Error management (depends on logging)
+        "state-management.sh"    # State tracking (depends on logging)
+        "user-interaction.sh"    # User prompts (depends on logging/colors)
+        "validation.sh"          # Validation functions (depends on logging)
+        "retry.sh"               # Retry logic (depends on logging)
+        "backup.sh"              # Backup functions (depends on logging)
+        "gpu-detection.sh"       # GPU detection (depends on logging)
+        "common.sh"              # Common utilities (depends on all above)
     )
 
     echo "Loading libraries..."
+
+    # ========================================================================
+    # Load Each Library in Sequence
+    # ========================================================================
+    # for lib in "${libs[@]}": Iterate through library array
+    # "${libs[@]}": Expand to all array elements (quoted preserves spaces)
     for lib in "${libs[@]}"; do
+        # Construct full path to library file
+        # $LIB_DIR/filename.sh
         local lib_path="$LIB_DIR/$lib"
+
+        # --------------------------------------------------------------------
+        # Check Library Exists
+        # --------------------------------------------------------------------
+        # [[ ! -f ... ]]: Check if file does NOT exist
+        # -f: Test for regular file (not directory or symlink)
+        # Why check: Better error message than "command not found"
         if [[ ! -f "$lib_path" ]]; then
+            # Print to stderr (>&2): Error messages go to stderr
+            # Why stderr: Separates errors from normal output
+            # exit 1: Fatal error - can't continue without libraries
             echo "FATAL: Library not found: $lib_path" >&2
             exit 1
         fi
 
+        # --------------------------------------------------------------------
+        # Source (Load) Library
+        # --------------------------------------------------------------------
+        # source: Execute script in current shell context
+        # Effect: Functions/variables from library become available
+        # Alternative: . (dot) does same thing
+        #
+        # || { ... }: If source fails, execute error block
+        # Why might it fail:
+        # - Syntax error in library
+        # - Permission denied
+        # - Circular dependency
         source "$lib_path" || {
             echo "FATAL: Failed to load library: $lib" >&2
             exit 1
         }
+
+        # Success feedback for user
+        # ✓ (checkmark): Unicode U+2713 for visual confirmation
         echo "  ✓ Loaded: $lib"
     done
     echo ""
@@ -690,23 +934,92 @@ ensure_nix_experimental_features_env() {
 # ============================================================================
 # MAIN FUNCTION
 # ============================================================================
+# This is the orchestrator - the central control function that manages
+# the entire deployment lifecycle from start to finish.
+#
+# Execution order (critical):
+# 1. Parse CLI arguments (before loading anything)
+# 2. Handle early-exit commands (help, list phases, etc.)
+# 3. Load libraries and configuration
+# 4. Initialize logging and state management
+# 5. Handle special modes (rollback, reset, test)
+# 6. Determine starting phase (resume or fresh)
+# 7. Execute phases sequentially
+# 8. Handle errors and generate report
+#
+# Why this order:
+# - Parse args first: Need to know what mode we're in
+# - Early-exit commands: Don't load everything if just showing help
+# - Load libs/config: Need functions before using them
+# - Initialize systems: Logging and state tracking required
+# - Determine start: Resume from failure or start fresh
+# - Execute phases: Main deployment workflow
+#
+# Error handling:
+# - set -E ensures error trap catches all failures
+# - Each phase can fail independently
+# - Failures offer retry/skip/rollback options
+# - State tracking enables resume from failure
+#
+# ============================================================================
 
 main() {
-    # Parse arguments first (before loading libraries)
+    # ========================================================================
+    # Step 1: Parse Command-Line Arguments
+    # ========================================================================
+    # Why first: Need to know user's intent before loading anything
+    # "$@": All arguments passed to script
+    # Must happen before loading libraries (--help shouldn't load everything)
+    #
+    # What parse_arguments() does:
+    # - Processes all flags (--dry-run, --debug, etc.)
+    # - Sets global variables (DRY_RUN, ENABLE_DEBUG, etc.)
+    # - Validates argument values
+    # - Handles unknown arguments with error message
     parse_arguments "$@"
 
-    # Enable debug mode if requested
+    # ========================================================================
+    # Step 2: Enable Debug Mode (if requested)
+    # ========================================================================
+    # set -x: Print each command before executing
+    # Effect: Shows detailed trace of script execution
+    # Use: Troubleshooting, understanding script flow
+    # Performance: Slightly slower due to extra output
+    #
+    # When to use: --debug flag for verbose troubleshooting
+    # Output format: + command arguments (plus sign prefix)
     if [[ "$ENABLE_DEBUG" == true ]]; then
         set -x
     fi
 
-    # Handle help
+    # ========================================================================
+    # Step 3: Handle Help (early exit)
+    # ========================================================================
+    # Why early: Don't load libraries just to show help
+    # print_usage: Displays help message (defined later in script)
+    # exit 0: Success exit (help was shown successfully)
     if [[ "$SHOW_HELP" == true ]]; then
         print_usage
         exit 0
     fi
 
-    # Handle informational commands (before loading libraries to avoid initialization)
+    # ========================================================================
+    # Step 4: Handle List Phases (early exit with minimal loading)
+    # ========================================================================
+    # Why minimal loading: Only need colors and variables for phase list
+    # Don't need: Full library suite, just basic display functions
+    #
+    # Minimal library loading:
+    # - colors.sh: For colored output
+    # - variables.sh: For STATE_FILE location
+    # 2>/dev/null: Suppress errors if files missing
+    # || true: Don't exit if source fails
+    # grep -v "readonly variable": Filter out readonly warnings
+    #
+    # Why filter readonly warnings:
+    # - variables.sh might be loaded multiple times in different contexts
+    # - Bash warns when trying to re-declare readonly variables
+    # - These warnings are harmless and just clutter output
     if [[ "$LIST_PHASES" == true ]]; then
         # Load minimal libraries for list_phases
         source "$LIB_DIR/colors.sh" 2>/dev/null || true
@@ -715,6 +1028,12 @@ main() {
         exit 0
     fi
 
+    # ========================================================================
+    # Step 5: Handle Show Phase Info (early exit)
+    # ========================================================================
+    # Same minimal loading approach as list_phases
+    # [[ -n "$VAR" ]]: Check if variable is non-empty
+    # Why check: SHOW_PHASE_INFO_NUM is empty string by default
     if [[ -n "$SHOW_PHASE_INFO_NUM" ]]; then
         # Load minimal libraries for show_phase_info
         source "$LIB_DIR/colors.sh" 2>/dev/null || true
@@ -723,90 +1042,228 @@ main() {
         exit 0
     fi
 
-    # Load core components
+    # ========================================================================
+    # Step 6: Load Core Components (full loading)
+    # ========================================================================
+    # Now that early-exit commands are handled, load everything
+    # load_libraries: Source all library files in dependency order
+    # load_configuration: Source config files (variables, defaults)
+    #
+    # Why now: All subsequent steps need full library suite
+    # Order: Libraries before config (config might use library functions)
     load_libraries
     load_configuration
 
-    # Enable strict undefined variable checking now that config is loaded
+    # ========================================================================
+    # Step 7: Enable Strict Undefined Variable Checking
+    # ========================================================================
+    # set -u: Error on undefined variable reference
+    # Why now: Config loaded, all variables should be defined
+    # Why not earlier: Config files might have optional variables
+    #
+    # Effect: ${UNDEFINED_VAR} will cause script to exit
+    # Safety: Catches typos in variable names
+    # Example: $PHAE instead of $PHASE would exit with error
     set -u
 
-    # Handle rollback
+    # ========================================================================
+    # Step 8: Handle Rollback Mode
+    # ========================================================================
+    # Rollback: Revert to previous NixOS generation
+    # perform_rollback: Function that executes nixos-rebuild --rollback
+    # exit $?: Exit with rollback function's exit code
+    #
+    # Why separate mode: Rollback is destructive, shouldn't mix with deployment
+    # When to use: Deployment failed and broke system, need to undo
     if [[ "$ROLLBACK" == true ]]; then
         perform_rollback
         exit $?
     fi
 
-    # Handle reset state
+    # ========================================================================
+    # Step 9: Handle State Reset
+    # ========================================================================
+    # Reset state: Delete state.json and start fresh
+    # reset_state: Function that removes state file
+    # Use case: Want to re-run entire deployment from scratch
+    #
+    # Difference from --restart-phase 1:
+    # - --restart-phase: Keeps state, marks phase incomplete
+    # - --reset-state: Deletes state entirely, fresh start
     if [[ "$RESET_STATE" == true ]]; then
         reset_state
         print_success "State reset successfully"
         exit 0
     fi
 
-    # Initialize core systems
+    # ========================================================================
+    # Step 10: Initialize Core Systems
+    # ========================================================================
+    # Three initializations required before deployment:
+    # 1. Logging: File logging for audit trail
+    # 2. Nix experimental features: Enable flakes and nix-command
+    # 3. State management: Load or create state.json
+    #
+    # init_logging: Creates log file, redirects output
+    # ensure_nix_experimental_features_env: Sets NIX_CONFIG env var
+    # init_state: Loads existing state or creates new state file
     init_logging
     ensure_nix_experimental_features_env
     init_state
 
-    # Print header
+    # ========================================================================
+    # Step 11: Print Deployment Header
+    # ========================================================================
+    # Visual header showing:
+    # - Script version
+    # - Mode (dry-run, debug, normal)
+    # - Start time
     print_header
 
-    # Handle test phase (isolated testing)
+    # ========================================================================
+    # Step 12: Handle Test Phase Mode (isolated testing)
+    # ========================================================================
+    # Test phase: Run single phase in isolation
+    # Use case: Debugging specific phase, testing changes
+    # [[ -n "$VAR" ]]: Check if variable non-empty
+    #
+    # Isolation means:
+    # - Only run specified phase
+    # - Don't run other phases
+    # - Don't check dependencies
+    # - Exit after completion
     if [[ -n "$TEST_PHASE" ]]; then
         log INFO "Testing phase $TEST_PHASE in isolation"
         print_section "Testing Phase $TEST_PHASE"
         execute_phase "$TEST_PHASE"
-        exit $?
+        exit $?  # Exit with phase's exit code
     fi
 
-    # Determine starting phase
+    # ========================================================================
+    # Step 13: Determine Starting Phase
+    # ========================================================================
+    # Three scenarios:
+    # 1. User specified: --start-from-phase N
+    # 2. Resume mode: Auto-detect last incomplete phase
+    # 3. Fresh start: Begin at phase 1
+    #
+    # local: Function-scoped variable
+    # Default: 1 (first phase)
     local start_phase=1
+
+    # Scenario 1: User explicitly specified starting phase
     if [[ -n "$START_FROM_PHASE" ]]; then
         start_phase=$START_FROM_PHASE
         log INFO "Starting from phase $start_phase (user specified)"
+
+    # Scenario 2: Resume mode (default) or no explicit start phase
+    # get_resume_phase: Checks state.json for last incomplete phase
     elif [[ "$RESUME" == true ]] || [[ -z "$START_FROM_PHASE" ]]; then
         start_phase=$(get_resume_phase)
+
+        # If resuming from middle (not phase 1), inform user
+        # -gt: Greater than
         if [[ $start_phase -gt 1 ]]; then
             log INFO "Resuming from phase $start_phase"
             print_info "Resuming from phase $start_phase"
         fi
     fi
 
-    # Validate starting phase
+    # ========================================================================
+    # Step 14: Validate Starting Phase Number
+    # ========================================================================
+    # Validation checks:
+    # 1. Is numeric: =~ ^[0-9]+$ (regex match)
+    # 2. In range: 1-10 (we have exactly 10 phases)
+    #
+    # [[ ! ... ]]: NOT operator (invert condition)
+    # =~ regex: Regex match operator
+    # ^[0-9]+$: Start (^) one-or-more digits ([0-9]+) end ($)
+    # -lt: Less than, -gt: Greater than
+    #
+    # Why validate: Invalid phase number would cause cryptic errors later
     if [[ ! "$start_phase" =~ ^[0-9]+$ ]] || [[ "$start_phase" -lt 1 ]] || [[ "$start_phase" -gt 10 ]]; then
         print_error "Invalid starting phase: $start_phase"
         exit 1
     fi
 
-    # Create rollback point if starting from beginning
+    # ========================================================================
+    # Step 15: Create Rollback Point (if fresh start)
+    # ========================================================================
+    # Only create rollback point when:
+    # - NOT in dry-run mode (can't rollback dry-run)
+    # - Starting from phase 1 (fresh deployment)
+    #
+    # Why check phase 1: If resuming from phase 5, rollback point already exists
+    # create_rollback_point: Records current NixOS generation
+    # Timestamp: Labeled with current date/time for identification
     if [[ "$DRY_RUN" == false && $start_phase -eq 1 ]]; then
         log INFO "Creating rollback point"
         create_rollback_point "Before deployment $(date +%Y-%m-%d_%H:%M:%S)"
     fi
 
-    # Execute phases
+    # ========================================================================
+    # Step 16: Execute Phases Sequentially
+    # ========================================================================
+    # Main deployment loop - this is where the actual work happens
+    #
+    # Phase execution workflow:
+    # for each phase from start_phase to 10:
+    #   1. Check if should skip (--skip-phase)
+    #   2. Execute phase script
+    #   3. Handle failure (retry/skip/rollback)
+    #   4. Continue to next phase
+    #
+    # seq: Generate sequence of numbers
+    # Example: seq 3 10 → 3 4 5 6 7 8 9 10
     echo ""
     print_section "Starting 10-Phase Deployment Workflow"
     log INFO "Starting deployment from phase $start_phase"
     echo ""
 
+    # Loop through phases from start_phase to 10
     for phase_num in $(seq $start_phase 10); do
-        # Check if phase should be skipped
+        # --------------------------------------------------------------------
+        # Check if Phase Should Be Skipped
+        # --------------------------------------------------------------------
+        # should_skip_phase: Checks SKIP_PHASES array
+        # User can skip with: --skip-phase N
+        # Use case: Skip non-critical phase (like health check)
         if should_skip_phase "$phase_num"; then
             log INFO "Skipping phase $phase_num (user requested)"
             print_info "Skipping Phase $phase_num (--skip-phase)"
-            continue
+            continue  # Skip to next iteration of loop
         fi
 
-        # Execute phase
+        # --------------------------------------------------------------------
+        # Execute Phase
+        # --------------------------------------------------------------------
+        # execute_phase: Runs phase script from phases/ directory
+        # Returns: 0 on success, non-zero on failure
+        # ! operator: Invert return code (true if phase failed)
+        #
+        # Error handling:
+        # - If phase succeeds: Continue to next phase
+        # - If phase fails: handle_phase_failure offers options
+        #   - Retry: Re-run failed phase
+        #   - Skip: Continue to next phase (risky)
+        #   - Rollback: Revert system to pre-deployment state
+        #   - Exit: Abort deployment
         if ! execute_phase "$phase_num"; then
+            # Phase failed - let user decide what to do
+            # || exit 1: If user chooses exit, abort deployment
             handle_phase_failure "$phase_num" || exit 1
         fi
 
+        # Blank line between phases for readability
         echo ""
     done
 
-    # Success!
+    # ========================================================================
+    # Step 17: Deployment Success!
+    # ========================================================================
+    # All phases completed successfully if we reach here
+    # Log success and display final message
     log INFO "All phases completed successfully"
     echo ""
     echo "============================================"
@@ -816,6 +1273,9 @@ main() {
     echo "Log file: $LOG_FILE"
     echo ""
 
+    # Return success
+    # 0: Success exit code
+    # Bash convention: 0 = success, non-zero = failure
     return 0
 }
 
