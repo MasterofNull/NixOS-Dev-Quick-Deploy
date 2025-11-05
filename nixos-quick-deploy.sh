@@ -648,20 +648,48 @@ ensure_prerequisite_installed() {
     fi
 
     if [[ "$install_succeeded" == false ]] && command -v nix-env >/dev/null 2>&1 && [[ -n "$attr_path" ]]; then
-        if [[ "$install_method" == "" ]]; then
-            print_warning "$description not found – installing via nix-env (<nixpkgs>.$attr_path)"
-        else
-            print_warning "$description installation retry via nix-env (<nixpkgs>.$attr_path)"
-        fi
-        log WARNING "Attempting nix-env installation for $cmd using attribute $attr_path"
+        local -a nix_env_attempts=("nixos.$attr_path" "<nixpkgs>.$attr_path")
+        local attempt
 
-        if run_as_primary_user nix-env -f '<nixpkgs>' -iA "$attr_path" >"$install_log" 2>&1; then
-            install_succeeded=true
-            install_method="nix-env"
-        else
-            exit_code=$?
-            log ERROR "nix-env installation for $cmd failed with exit code $exit_code"
-        fi
+        for attempt in "${nix_env_attempts[@]}"; do
+            if [[ "$attempt" == nixos.* ]]; then
+                if [[ "$install_method" == "" ]]; then
+                    print_warning "$description not found – installing via nix-env -iA $attempt"
+                else
+                    print_warning "$description installation retry via nix-env -iA $attempt"
+                fi
+                log WARNING "Attempting nix-env installation for $cmd using channel target $attempt"
+
+                if run_as_primary_user nix-env -iA "$attempt" >"$install_log" 2>&1; then
+                    install_succeeded=true
+                    install_method="nix-env"
+                    break
+                else
+                    exit_code=$?
+                    log WARNING "nix-env -iA $attempt for $cmd failed with exit code $exit_code"
+                fi
+            else
+                if [[ "$install_succeeded" == true ]]; then
+                    break
+                fi
+
+                if [[ "$install_method" == "" ]]; then
+                    print_warning "$description not found – installing via nix-env -f '<nixpkgs>' -iA $attr_path"
+                else
+                    print_warning "$description installation retry via nix-env -f '<nixpkgs>' -iA $attr_path"
+                fi
+                log WARNING "Attempting nix-env installation for $cmd using <nixpkgs>"
+
+                if run_as_primary_user nix-env -f '<nixpkgs>' -iA "$attr_path" >>"$install_log" 2>&1; then
+                    install_succeeded=true
+                    install_method="nix-env"
+                    break
+                else
+                    exit_code=$?
+                    log ERROR "nix-env -f '<nixpkgs>' -iA $attr_path for $cmd failed with exit code $exit_code"
+                fi
+            fi
+        done
     fi
 
     if [[ "$install_succeeded" == true ]]; then
