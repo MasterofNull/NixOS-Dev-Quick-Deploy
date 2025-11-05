@@ -822,6 +822,7 @@ RESOURCES
     - Store your personal access token in the file "token" within this directory (never commit it).
     - CLI caches and credentials are isolated from Git repositories.
     - The hf-model-sync helper will reuse this token and cache when downloading models.
+    - The systemd huggingface-tgi service will not start until this token file exists.
   '';
   openWebUiReadme = ''
     Persistent storage for Open WebUI when launched with the open-webui-run helper.
