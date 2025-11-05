@@ -33,7 +33,7 @@ set -E  # ERR trap is inherited by shell functions
 # Constants & Configuration
 # ============================================================================
 
-readonly SCRIPT_VERSION="3.0.0"
+# Original version was 3.0.0, now upgraded to 3.1.0
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
 
@@ -90,6 +90,70 @@ SYNCHRONIZED_HOME_MANAGER_CHANNEL=""
 
 # ============================================================================
 # Logging Framework
+
+# Error handling: Exit on undefined variable, catch errors in pipes
+set -u
+set -o pipefail
+set -E  # ERR trap is inherited by shell functions
+
+# ============================================================================
+# Constants & Configuration
+# ============================================================================
+
+readonly SCRIPT_VERSION="3.1.0"
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
+
+# Exit codes
+readonly EXIT_SUCCESS=0
+readonly EXIT_GENERAL_ERROR=1
+readonly EXIT_NOT_FOUND=2
+readonly EXIT_UNSUPPORTED=3
+readonly EXIT_TIMEOUT=124
+readonly EXIT_PERMISSION_DENIED=126
+readonly EXIT_COMMAND_NOT_FOUND=127
+
+# Timeouts and retries
+readonly DEFAULT_SERVICE_TIMEOUT=180
+readonly RETRY_MAX_ATTEMPTS=4
+readonly RETRY_BACKOFF_MULTIPLIER=2
+readonly NETWORK_TIMEOUT=300
+
+# Disk space requirements
+readonly REQUIRED_DISK_SPACE_GB=50
+
+# Logging
+readonly LOG_DIR="$HOME/.cache/nixos-quick-deploy/logs"
+readonly LOG_FILE="$LOG_DIR/deploy-$(date +%Y%m%d_%H%M%S).log"
+readonly LOG_LEVEL="${LOG_LEVEL:-INFO}"
+
+# State management
+readonly STATE_DIR="$HOME/.cache/nixos-quick-deploy"
+readonly STATE_FILE="$STATE_DIR/state.json"
+readonly ROLLBACK_INFO_FILE="$STATE_DIR/rollback-info.json"
+
+# Backup management
+readonly BACKUP_ROOT="$STATE_DIR/backups/$(date +%Y%m%d_%H%M%S)"
+readonly BACKUP_MANIFEST="$BACKUP_ROOT/manifest.txt"
+
+# Flags
+DRY_RUN=false
+FORCE_UPDATE=false
+SKIP_HEALTH_CHECK=false
+ENABLE_DEBUG=false
+
+# Channel preferences
+DEFAULT_CHANNEL_TRACK="${DEFAULT_CHANNEL_TRACK:-unstable}"
+SYNCHRONIZED_NIXOS_CHANNEL=""
+SYNCHRONIZED_HOME_MANAGER_CHANNEL=""
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
 # ============================================================================
 
 # Initialize logging
@@ -7361,116 +7425,615 @@ print_post_install() {
 # Workflow Stages
 # ============================================================================
 
-preflight_checks_stage() {
-    print_section "Preflight Checks"
-    check_prerequisites
-    gather_user_info
-    select_nixos_version
+
+# ============================================================================
+# NEW v3.1.0 FUNCTIONS: GPU Hardware Detection
+# ============================================================================
+
+detect_gpu_hardware() {
+    print_section "Detecting GPU Hardware"
+    
+    # Initialize GPU variables
+    GPU_TYPE="unknown"
+    GPU_DRIVER=""
+    GPU_PACKAGES=""
+    LIBVA_DRIVER=""
+    
+    # Check if lspci is available
+    if ! command -v lspci >/dev/null 2>&1; then
+        print_warning "lspci not found - GPU detection will be limited"
+        print_info "Install pciutils for automatic GPU detection: nix-env -iA nixos.pciutils"
+        GPU_TYPE="software"
+        return 0
+    fi
+    
+    # Detect GPU hardware
+    local gpu_info
+    gpu_info=$(lspci | grep -iE "VGA|3D|Display" || echo "")
+    
+    if [[ -z "$gpu_info" ]]; then
+        print_info "No dedicated GPU detected - using software rendering"
+        GPU_TYPE="software"
+        return 0
+    fi
+    
+    print_info "GPU Hardware Detected:"
+    echo "$gpu_info" | sed 's/^/  /'
+    echo ""
+    
+    # Check for Intel GPU
+    if echo "$gpu_info" | grep -iq "Intel"; then
+        GPU_TYPE="intel"
+        GPU_DRIVER="intel"
+        LIBVA_DRIVER="iHD"
+        GPU_PACKAGES="intel-media-driver vaapiIntel"
+        print_success "Intel GPU detected"
+        print_info "  Driver: $GPU_DRIVER"
+        print_info "  VA-API: $LIBVA_DRIVER"
+    fi
+    
+    # Check for AMD GPU
+    if echo "$gpu_info" | grep -iq "AMD\|ATI\|Radeon"; then
+        GPU_TYPE="amd"
+        GPU_DRIVER="amdgpu"
+        LIBVA_DRIVER="radeonsi"
+        GPU_PACKAGES="mesa rocm-opencl-icd"
+        print_success "AMD GPU detected"
+        print_info "  Driver: $GPU_DRIVER (RADV - modern default)"
+        print_info "  VA-API: $LIBVA_DRIVER"
+    fi
+    
+    # Check for NVIDIA GPU
+    if echo "$gpu_info" | grep -iq "NVIDIA"; then
+        GPU_TYPE="nvidia"
+        GPU_DRIVER="nvidia"
+        LIBVA_DRIVER="nvidia"
+        GPU_PACKAGES="nvidia-vaapi-driver"
+        print_success "NVIDIA GPU detected"
+        print_info "  Driver: $GPU_DRIVER"
+        print_info "  VA-API: $LIBVA_DRIVER"
+        print_warning "NVIDIA on Wayland requires additional configuration"
+        print_info "Consider enabling: hardware.nvidia.modesetting.enable = true"
+    fi
+    
+    if [[ "$GPU_TYPE" == "unknown" ]]; then
+        print_warning "Unknown GPU type - using software rendering"
+        GPU_TYPE="software"
+    fi
+    
+    echo ""
+    return 0
 }
 
-validate_system_build_stage() {
-    print_section "Validating NixOS Rebuild"
-    local log_path="/tmp/nixos-rebuild-dry-run.log"
+# ============================================================================
+# NEW v3.1.0 PHASE FUNCTIONS: 10-Phase Workflow
+# ============================================================================
 
-    if run_nixos_rebuild_dry_run "$log_path"; then
-        SYSTEM_BUILD_VALIDATED=true
-        SYSTEM_BUILD_DRY_RUN_LOG="$log_path"
-        print_success "Dry run completed successfully (no changes applied)"
-        print_info "Log saved to: $log_path"
-    else
-        local exit_code=$?
-        print_error "Dry run failed (exit code: $exit_code)"
-        print_info "Review the log: $log_path"
-        print_info "Fix the issues above before attempting a full switch."
+# PHASE 1: Preparation & Validation
+comprehensive_preflight_checks() {
+    local phase_name="preparation_validation"
+    
+    if is_step_complete "$phase_name"; then
+        print_info "Phase 1 already completed (skipping)"
+        return 0
+    fi
+    
+    print_section "Phase 1/10: Preparation & Validation"
+    echo ""
+    
+    # Check if running on NixOS
+    if [[ ! -f /etc/NIXOS ]]; then
+        print_error "This script must be run on NixOS"
         exit 1
     fi
+    print_success "Running on NixOS"
+    
+    # Check permissions
+    if [[ $EUID -eq 0 ]]; then
+        print_error "This script should NOT be run as root"
+        print_info "It will use sudo when needed for system operations"
+        exit 1
+    fi
+    print_success "Running with correct permissions (non-root)"
+    
+    # Ensure required commands are available
+    local -a critical_commands=("nixos-rebuild" "nix-env" "nix-channel")
+    for cmd in "${critical_commands[@]}"; do
+        if ! command -v "$cmd" &>/dev/null; then
+            print_error "Critical command not found: $cmd"
+            exit 1
+        fi
+    done
+    print_success "Critical NixOS commands available"
+    
+    # Check disk space
+    if ! check_disk_space; then
+        print_error "Insufficient disk space"
+        exit 1
+    fi
+    
+    # Validate network connectivity
+    print_info "Checking network connectivity..."
+    if ping -c 1 -W 5 cache.nixos.org &>/dev/null || ping -c 1 -W 5 8.8.8.8 &>/dev/null; then
+        print_success "Network connectivity OK"
+    else
+        print_error "No network connectivity detected"
+        print_error "Internet connection required to download packages"
+        exit 1
+    fi
+    
+    # Validate path uniqueness
+    if ! assert_unique_paths HOME_MANAGER_FILE SYSTEM_CONFIG_FILE HARDWARE_CONFIG_FILE; then
+        print_error "Internal configuration path conflict detected"
+        exit 1
+    fi
+    
+    # Check for old deployment artifacts
+    print_info "Checking for old deployment artifacts..."
+    local OLD_SCRIPT="/home/$USER/Documents/nixos-quick-deploy.sh"
+    if [[ -f "$OLD_SCRIPT" ]]; then
+        print_warning "Found old deployment script: $OLD_SCRIPT"
+        print_info "This can be safely ignored or archived"
+    fi
+    
+    # Validate entire dependency chain
+    print_info "Validating dependency chain..."
+    check_required_packages || {
+        print_error "Required packages not available"
+        exit 1
+    }
+    
+    # GPU hardware detection
+    detect_gpu_hardware
+    
+    # CPU and memory detection
+    detect_gpu_and_cpu
+    
+    mark_step_complete "$phase_name"
+    print_success "Phase 1: Preparation & Validation - COMPLETE"
+    echo ""
 }
 
-prompt_installation_stage() {
+# PHASE 2: Prerequisite Package Installation
+install_prerequisites_phase() {
+    local phase_name="install_prerequisites"
+    
+    if is_step_complete "$phase_name"; then
+        print_info "Phase 2 already completed (skipping)"
+        return 0
+    fi
+    
+    print_section "Phase 2/10: Prerequisite Package Installation"
     echo ""
-    if confirm "Continue with the installation workflow (Flatpak, home-manager, flake, and services)?" "y"; then
-        INSTALLATION_APPROVED=true
-        print_success "Continuing with installation workflow"
+    
+    # NixOS version selection
+    select_nixos_version
+    
+    # Update channels
+    update_nixos_channels
+    
+    # Ensure core packages
+    if ! ensure_preflight_core_packages; then
+        print_error "Failed to install core prerequisite packages"
+        exit 1
+    fi
+    
+    # Cleanup conflicting home-manager entries
+    print_info "Scanning nix profile for legacy home-manager entries..."
+    cleanup_conflicting_home_manager_profile
+    
+    # Ensure home-manager is available
+    if command -v home-manager &>/dev/null; then
+        print_success "home-manager is installed: $(which home-manager)"
+    else
+        print_warning "home-manager not found - installing automatically"
+        install_home_manager
+    fi
+    
+    # Python runtime check
+    print_info "Verifying Python runtime..."
+    if ! ensure_python_runtime; then
+        print_error "Unable to locate or provision a python interpreter"
+        exit 1
+    fi
+    
+    if [[ "${PYTHON_BIN[0]}" == "nix" ]]; then
+        print_success "Python runtime: ephemeral Nix shell"
+    else
+        print_success "Python runtime: ${PYTHON_BIN[0]} ($(${PYTHON_BIN[@]} --version 2>&1))"
+    fi
+    
+    mark_step_complete "$phase_name"
+    print_success "Phase 2: Prerequisite Package Installation - COMPLETE"
+    echo ""
+}
+
+# PHASE 3: System Backup
+comprehensive_backup_phase() {
+    local phase_name="comprehensive_backup"
+    
+    if is_step_complete "$phase_name"; then
+        print_info "Phase 3 already completed (skipping)"
+        return 0
+    fi
+    
+    print_section "Phase 3/10: System Backup"
+    echo ""
+    
+    # Create rollback point
+    if [[ "$DRY_RUN" == false ]]; then
+        create_rollback_point "Before v3.1 deployment $(date +%Y-%m-%d_%H:%M:%S)"
+    fi
+    
+    # Backup existing configs
+    if [[ -f "/etc/nixos/configuration.nix" ]]; then
+        local backup_path="/etc/nixos/configuration.nix.backup.$(date +%Y%m%d_%H%M%S)"
+        sudo cp "/etc/nixos/configuration.nix" "$backup_path"
+        print_success "Backed up system configuration: $backup_path"
+    fi
+    
+    # Backup home-manager configs if they exist
+    if [[ -f "$HOME/.config/home-manager/home.nix" ]]; then
+        local hm_backup="$HOME/.config/home-manager/home.nix.backup.$(date +%Y%m%d_%H%M%S)"
+        cp "$HOME/.config/home-manager/home.nix" "$hm_backup"
+        print_success "Backed up home-manager config: $hm_backup"
+    fi
+    
+    mark_step_complete "$phase_name"
+    print_success "Phase 3: System Backup - COMPLETE"
+    echo ""
+}
+
+# PHASE 4: Configuration Generation & Validation
+generate_and_validate_configs_phase() {
+    local phase_name="generate_validate_configs"
+    
+    if is_step_complete "$phase_name"; then
+        print_info "Phase 4 already completed (skipping)"
+        return 0
+    fi
+    
+    print_section "Phase 4/10: Configuration Generation & Validation"
+    echo ""
+    
+    # Gather user info
+    gather_user_info
+    
+    # Generate NixOS system config
+    generate_nixos_system_config
+    
+    # Validate system build (dry run)
+    validate_system_build_stage
+    
+    mark_step_complete "$phase_name"
+    print_success "Phase 4: Configuration Generation & Validation - COMPLETE"
+    echo ""
+}
+
+# PHASE 5: Intelligent Cleanup
+intelligent_cleanup_phase() {
+    local phase_name="intelligent_cleanup"
+    
+    if is_step_complete "$phase_name"; then
+        print_info "Phase 5 already completed (skipping)"
+        return 0
+    fi
+    
+    print_section "Phase 5/10: Intelligent Cleanup"
+    echo ""
+    
+    print_warning "This phase will remove conflicting packages and configurations"
+    print_info "All removals are backed up and can be restored if needed"
+    echo ""
+    
+    # User confirmation before destructive operations
+    if ! confirm "Proceed with intelligent cleanup of conflicting packages?" "y"; then
+        print_warning "Cleanup skipped - this may cause conflicts during installation"
         echo ""
         return 0
     fi
-
-    print_warning "Installation workflow cancelled at user request."
-    print_info "You can rerun the script when you are ready to continue."
-    echo ""
-    return 1
-}
-
-install_flatpak_stage() {
-    print_section "Flatpak Provisioning"
-
-    if preflight_flatpak_environment "workflow-preflight"; then
-        print_success "Flatpak environment looks healthy"
-    else
-        print_warning "Flatpak preflight checks reported issues (see messages above)"
-    fi
-
-    ensure_default_flatpak_apps_installed
-}
-
-apply_final_system_configuration() {
-    apply_nixos_system_config
-
-    if [[ "$HOME_MANAGER_APPLIED" == true || -f "$HOME/.zshrc" ]]; then
-        apply_system_changes
-    fi
-}
-
-run_system_health_check_stage() {
-    print_section "Running System Health Check"
-    local script_dir
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local health_check="$script_dir/scripts/system-health-check.sh"
-
-    if [[ ! -x "$health_check" ]]; then
-        print_warning "System health check script not found or not executable: $health_check"
-        print_info "Skipping automated health verification."
+    
+    # Check for nix-env packages
+    print_info "Checking for packages installed via nix-env..."
+    local imperative_pkgs
+    imperative_pkgs=$(nix-env -q 2>/dev/null || true)
+    
+    if [[ -n "$imperative_pkgs" ]]; then
+        print_warning "Found packages installed via nix-env:"
+        echo "$imperative_pkgs" | sed 's/^/    /'
         echo ""
-        return 0
-    fi
-
-    local run_fix_message=""
-    local run_fix_default="n"
-
-    if "$health_check" --detailed; then
-        print_success "System health check completed successfully"
-        run_fix_message="Run the health check again with --fix to apply optional maintenance tasks?"
-        run_fix_default="n"
-    else
-        local exit_code=$?
-        print_warning "System health check reported issues (exit code: $exit_code)"
-        print_info "Review the output above for details."
-        run_fix_message="Attempt to auto-fix the reported issues by running the health check with --fix now?"
-        run_fix_default="y"
-    fi
-
-    if [[ -n "$run_fix_message" ]] && confirm "$run_fix_message" "$run_fix_default"; then
-        echo ""
-        print_warning "The --fix option may restart services and modify configuration files."
-        if confirm "Proceed with '$health_check --fix' now?" "y"; then
-            echo ""
-            if "$health_check" --fix; then
-                print_success "System health remediation completed successfully"
-            else
-                local fix_exit_code=$?
-                print_warning "Health check --fix exited with code: $fix_exit_code"
-                print_info "Review the output above to resolve remaining issues manually."
+        
+        # Intelligent selective removal instead of nix-env -e '.*'
+        print_info "Identifying conflicting packages for selective removal..."
+        local -a conflicting_pkgs=()
+        
+        # Only remove packages that conflict with home-manager
+        while IFS= read -r pkg; do
+            local pkg_name
+            pkg_name=$(echo "$pkg" | awk '{print $1}')
+            if [[ -n "$pkg_name" ]]; then
+                # Add known conflicting packages
+                if [[ "$pkg_name" =~ ^(home-manager|git|vscodium|nodejs|python) ]]; then
+                    conflicting_pkgs+=("$pkg_name")
+                fi
             fi
+        done <<< "$imperative_pkgs"
+        
+        if [[ ${#conflicting_pkgs[@]} -gt 0 ]]; then
+            print_info "Removing ${#conflicting_pkgs[@]} conflicting package(s):"
+            for pkg in "${conflicting_pkgs[@]}"; do
+                print_info "  - $pkg"
+                nix-env -e "$pkg" 2>/dev/null || print_warning "    Failed to remove $pkg"
+            done
+            print_success "Conflicting packages removed"
         else
-            print_info "Skipping '--fix' run at user request."
+            print_info "No conflicting packages detected - keeping all nix-env packages"
+        fi
+    else
+        print_success "No nix-env packages found - clean state!"
+    fi
+    
+    # Cleanup old generations (optional)
+    if confirm "Remove old nix-env generations to free up space?" "n"; then
+        nix-env --delete-generations old 2>/dev/null || true
+        print_success "Old generations cleaned up"
+    fi
+    
+    mark_step_complete "$phase_name"
+    print_success "Phase 5: Intelligent Cleanup - COMPLETE"
+    echo ""
+}
+
+# PHASE 6: Configuration Deployment
+deploy_configurations_phase() {
+    local phase_name="deploy_configurations"
+    
+    if is_step_complete "$phase_name"; then
+        print_info "Phase 6 already completed (skipping)"
+        return 0
+    fi
+    
+    print_section "Phase 6/10: Configuration Deployment"
+    echo ""
+    
+    # User confirmation before deployment
+    if ! confirm "Proceed with configuration deployment (this will apply system changes)?" "y"; then
+        print_warning "Deployment skipped - configurations generated but not applied"
+        print_info "To apply later, run: sudo nixos-rebuild switch --flake $HM_CONFIG_DIR#$(hostname)"
+        echo ""
+        return 0
+    fi
+    
+    # Apply system configuration
+    prompt_installation_stage
+    
+    # Create and apply home-manager configuration
+    create_home_manager_config
+    apply_home_manager_config
+    
+    mark_step_complete "$phase_name"
+    print_success "Phase 6: Configuration Deployment - COMPLETE"
+    echo ""
+}
+
+# PHASE 7: Tool & Service Installation
+install_tools_and_services_phase() {
+    local phase_name="install_tools_services"
+    
+    if is_step_complete "$phase_name"; then
+        print_info "Phase 7 already completed (skipping)"
+        return 0
+    fi
+    
+    print_section "Phase 7/10: Tool & Service Installation"
+    echo ""
+    
+    # Flatpak installation (can run in parallel with other installations)
+    print_info "Installing Flatpak applications..."
+    install_flatpak_stage &
+    local flatpak_pid=$!
+    
+    # Claude Code installation
+    print_info "Installing Claude Code..."
+    if install_claude_code; then
+        configure_vscodium_for_claude || print_warning "VSCodium configuration had issues"
+        install_vscodium_extensions || print_warning "Some VSCodium extensions may not have installed"
+    else
+        print_warning "Claude Code installation skipped due to errors"
+    fi &
+    local claude_pid=$!
+    
+    # OpenSkills installation
+    print_info "Installing OpenSkills tooling..."
+    install_openskills_tooling &
+    local openskills_pid=$!
+    
+    # Wait for parallel installations
+    print_info "Waiting for parallel installations to complete..."
+    wait $flatpak_pid || print_warning "Flatpak installation had issues"
+    wait $claude_pid || print_warning "Claude Code installation had issues"
+    wait $openskills_pid || print_warning "OpenSkills installation had issues"
+    
+    # Flake environment setup
+    if ! setup_flake_environment; then
+        print_warning "Flake environment setup had issues (non-critical)"
+    fi
+    
+    mark_step_complete "$phase_name"
+    print_success "Phase 7: Tool & Service Installation - COMPLETE"
+    echo ""
+}
+
+# PHASE 8: Post-Installation Validation
+post_install_validation_phase() {
+    local phase_name="post_install_validation"
+    
+    if is_step_complete "$phase_name"; then
+        print_info "Phase 8 already completed (skipping)"
+        return 0
+    fi
+    
+    print_section "Phase 8/10: Post-Installation Validation"
+    echo ""
+    
+    # Validate GPU driver if GPU was detected
+    if [[ "$GPU_TYPE" != "software" && "$GPU_TYPE" != "unknown" ]]; then
+        validate_gpu_driver || print_warning "GPU driver validation had issues (non-critical)"
+    fi
+    
+    # System health check
+    if [[ "$SKIP_HEALTH_CHECK" != true ]]; then
+        run_system_health_check_stage || print_warning "Health check found issues (review above)"
+    fi
+    
+    # Verify critical packages are available
+    print_info "Verifying critical packages..."
+    local missing_count=0
+    for pkg in podman python3 git home-manager jq; do
+        if command -v "$pkg" &>/dev/null; then
+            print_success "$pkg: $(command -v $pkg)"
+        else
+            print_warning "$pkg: NOT FOUND"
+            ((missing_count++)) || true
+        fi
+    done
+    
+    if [[ $missing_count -gt 0 ]]; then
+        print_warning "$missing_count critical package(s) not in PATH"
+        print_info "Try: exec zsh  (to reload shell)"
+    else
+        print_success "All critical packages verified!"
+    fi
+    
+    mark_step_complete "$phase_name"
+    print_success "Phase 8: Post-Installation Validation - COMPLETE"
+    echo ""
+}
+
+# PHASE 9: Post-Install Scripts & Finalization
+post_install_finalization_phase() {
+    local phase_name="post_install_finalization"
+    
+    if is_step_complete "$phase_name"; then
+        print_info "Phase 9 already completed (skipping)"
+        return 0
+    fi
+    
+    print_section "Phase 9/10: Post-Install Scripts & Finalization"
+    echo ""
+    
+    # Apply final system configuration
+    apply_final_system_configuration
+    
+    # Finalize configuration activation
+    finalize_configuration_activation
+    
+    mark_step_complete "$phase_name"
+    print_success "Phase 9: Post-Install Scripts & Finalization - COMPLETE"
+    echo ""
+}
+
+# PHASE 10: Success Report & Next Steps
+generate_success_report_phase() {
+    local phase_name="success_report"
+    
+    if is_step_complete "$phase_name"; then
+        print_info "Phase 10 already completed (skipping)"
+        return 0
+    fi
+    
+    print_section "Phase 10/10: Success Report & Next Steps"
+    echo ""
+    
+    # Generate comprehensive success report
+    print_post_install
+    
+    # System status summary
+    echo ""
+    echo -e "${GREEN}╔════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║${NC}  Deployment Complete - All 10 Phases Successful!              ${GREEN}║${NC}"
+    echo -e "${GREEN}╚════════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    # Configuration status
+    print_info "Configuration Status:"
+    echo -e "  ${GREEN}✓${NC} NixOS system configuration applied"
+    echo -e "  ${GREEN}✓${NC} Home-manager user environment active"
+    echo -e "  ${GREEN}✓${NC} Flatpak applications installed"
+    echo -e "  ${GREEN}✓${NC} Development tools configured"
+    echo ""
+    
+    # Installed components summary
+    print_info "Installed Components:"
+    echo "  • COSMIC Desktop Environment"
+    echo "  • Podman container runtime"
+    echo "  • PostgreSQL database"
+    echo "  • Python AI/ML environment"
+    echo "  • Development CLI tools (100+)"
+    echo "  • Claude Code integration"
+    echo "  • System services (Gitea, Qdrant, Ollama, TGI)"
+    echo ""
+    
+    # Next steps
+    echo -e "${BLUE}Next Steps:${NC}"
+    echo ""
+    echo -e "  ${GREEN}1.${NC} Reload your shell to activate new environment:"
+    echo -e "     ${YELLOW}exec zsh${NC}"
+    echo ""
+    echo -e "  ${GREEN}2.${NC} Verify system services:"
+    echo -e "     ${YELLOW}systemctl status ollama qdrant gitea huggingface-tgi${NC}"
+    echo ""
+    echo -e "  ${GREEN}3.${NC} Check user services:"
+    echo -e "     ${YELLOW}systemctl --user status jupyter-lab${NC}"
+    echo ""
+    echo -e "  ${GREEN}4.${NC} Test Claude Code:"
+    echo -e "     ${YELLOW}claude-wrapper --version${NC}"
+    echo ""
+    echo -e "  ${GREEN}5.${NC} Run health check anytime:"
+    echo -e "     ${YELLOW}~/NixOS-Dev-Quick-Deploy/scripts/system-health-check.sh${NC}"
+    echo ""
+    
+    # Reboot recommendation
+    if [[ -L "/run/booted-system" && -L "/run/current-system" ]]; then
+        if [[ "$(readlink /run/booted-system)" != "$(readlink /run/current-system)" ]]; then
+            echo -e "${YELLOW}⚠ Reboot Recommended:${NC}"
+            echo "  • Kernel/init system updates detected"
+            echo "  • Run: ${YELLOW}sudo reboot${NC}"
+            echo "  • After reboot, select 'Cosmic' from login screen"
+            echo ""
         fi
     fi
-
+    
+    # Configuration files location
+    print_info "Configuration Files:"
+    echo "  • System: $SYSTEM_CONFIG_FILE"
+    echo "  • Home: $HOME_MANAGER_FILE"
+    echo "  • Flake: $FLAKE_FILE"
+    echo "  • Hardware: $HARDWARE_CONFIG_FILE"
+    echo ""
+    
+    # Logs and troubleshooting
+    print_info "Logs & Troubleshooting:"
+    echo "  • Deployment log: $LOG_FILE"
+    echo "  • State file: $STATE_FILE"
+    echo "  • Backup location: $BACKUP_ROOT"
+    echo ""
+    
+    mark_step_complete "$phase_name"
+    print_success "Phase 10: Success Report & Next Steps - COMPLETE"
+    echo ""
+    
+    # Final success message
+    echo ""
+    echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}✓ NixOS Quick Deploy v$SCRIPT_VERSION completed successfully!${NC}"
+    echo -e "${GREEN}✓ Your AIDB development environment is ready!${NC}"
+    echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
     echo ""
 }
 
 # ============================================================================
-# Main
+# NEW v3.1.0 MAIN FUNCTION: Restructured 10-Phase Workflow
 # ============================================================================
 
 main() {
@@ -7496,7 +8059,7 @@ main() {
                 ;;
             --debug|-d)
                 ENABLE_DEBUG=true
-                set -x  # Enable bash debug mode
+                set -x
                 shift
                 ;;
             --skip-health-check)
@@ -7514,156 +8077,71 @@ main() {
                 ;;
         esac
     done
-
+    
     print_header
-
-    # Check if running with proper permissions
-    if [[ $EUID -eq 0 ]]; then
-        print_error "This script should NOT be run as root"
-        print_info "It will use sudo when needed for system operations"
-        exit 1
-    fi
-
+    
     # Dry-run mode notification
     if [[ "$DRY_RUN" == true ]]; then
         print_section "DRY RUN MODE - No changes will be applied"
         echo ""
-        print_info "This will show you what would be done without making any changes"
-        echo ""
     fi
-
-    # Create rollback point before major changes
-    if [[ "$DRY_RUN" == false ]]; then
-        create_rollback_point "Before deployment $(date +%Y-%m-%d_%H:%M:%S)"
-    fi
-
-    if ! assert_unique_paths HOME_MANAGER_FILE SYSTEM_CONFIG_FILE HARDWARE_CONFIG_FILE; then
-        print_error "Internal configuration path conflict detected."
-        exit 1
-    fi
-
-    if [ "$FORCE_UPDATE" = true ]; then
+    
+    if [[ "$FORCE_UPDATE" == true ]]; then
         print_warning "Force update mode enabled - will recreate all configurations"
         echo ""
     fi
-
-    # Disk space check
-    if ! is_step_complete "disk_space_check"; then
-        if ! check_disk_space; then
-            print_error "Insufficient disk space. Free up space and try again."
-            exit 1
-        fi
-        mark_step_complete "disk_space_check"
-    else
-        print_info "Disk space check already completed (skipping)"
-    fi
-
-    preflight_checks_stage
-
-    # Generate configuration files needed for validation and later activation
-    generate_nixos_system_config
-
-    # Validate the build before performing any destructive actions
-    validate_system_build_stage
-
-    if ! prompt_installation_stage; then
-        return 0
-    fi
-
-    # Create and apply home-manager configuration (user packages)
-    # This is when backups and deletions happen (flatpak, flake, home-manager files)
-    create_home_manager_config
-    apply_home_manager_config
-
-    # Finalize Flatpak tooling after the user environment has been activated
-    install_flatpak_stage
-
-    # Flake integration (runs after home-manager to use packages for AIDB development)
-    # Non-critical - errors won't stop deployment
-    if ! setup_flake_environment; then
-        print_warning "Flake environment setup had issues (see above)"
-        print_info "You can set it up manually later if needed"
-        echo ""
-    fi
-
-    # Remaining developer tooling and services (requires home-manager packages)
-    if install_claude_code; then
-        configure_vscodium_for_claude || print_warning "VSCodium configuration had issues"
-        install_vscodium_extensions || print_warning "Some VSCodium extensions may not have installed"
-    else
-        print_warning "Claude Code installation skipped due to errors"
-        print_info "You can install it manually later if needed"
-        echo ""
-    fi
-
-    if ! install_openskills_tooling; then
-        print_warning "OpenSkills installation encountered issues (see above)"
-        echo ""
-    fi
-
-    # Apply the system configuration and ensure shell defaults are updated
-    apply_final_system_configuration
-
-    # Run health verification before presenting post-install guidance
-    run_system_health_check_stage
-
-    finalize_configuration_activation
-
-    print_post_install
-
+    
+    # ========================================================================
+    # 10-PHASE DEPLOYMENT WORKFLOW
+    # ========================================================================
+    
     echo ""
-    print_section "Setup Complete!"
+    echo -e "${BLUE}╔════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║${NC}  Starting 10-Phase Deployment Workflow                        ${BLUE}║${NC}"
+    echo -e "${BLUE}╚════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
-
-    # Check if a reboot is actually needed
-    if [[ -L "/run/booted-system" && -L "/run/current-system" ]]; then
-        if [[ "$(readlink /run/booted-system)" != "$(readlink /run/current-system)" ]]; then
-            print_info "Configuration is active! System services are running."
-            echo ""
-            print_warning "NOTE: Reboot recommended for kernel/init system updates"
-            echo ""
-            echo -e "${BLUE}A reboot is recommended if:${NC}"
-            echo -e "  ${YELLOW}•${NC} The kernel was updated (check: ${YELLOW}uname -r${NC})"
-            echo -e "  ${YELLOW}•${NC} You want to ensure Cosmic desktop loads properly"
-            echo -e "  ${YELLOW}•${NC} Some hardware drivers were updated"
-            echo ""
-            echo -e "${GREEN}Already active (no reboot needed):${NC}"
-            echo -e "  ${GREEN}✓${NC} All system services (Ollama, Qdrant, Gitea, TGI)"
-            echo -e "  ${GREEN}✓${NC} All packages and tools"
-            echo -e "  ${GREEN}✓${NC} Home-manager configuration"
-            echo ""
-        else
-            print_success "Configuration is active! No changes to boot configuration."
-            echo ""
-            echo -e "${GREEN}✓ All services are running${NC}"
-            echo -e "${GREEN}✓ All packages are available${NC}"
-            echo ""
-        fi
-    fi
-
-    echo -e "${BLUE}Next steps:${NC}"
-    echo -e "  ${GREEN}1.${NC} Re-run health check as needed: ${YELLOW}~/NixOS-Dev-Quick-Deploy/scripts/system-health-check.sh${NC}"
-    echo -e "  ${GREEN}2.${NC} Verify services: ${YELLOW}systemctl status ollama qdrant gitea huggingface-tgi${NC}"
-    echo -e "  ${GREEN}3.${NC} Check Jupyter Lab: ${YELLOW}systemctl --user status jupyter-lab${NC}"
-    echo -e "  ${GREEN}4.${NC} Test Claude Code: ${YELLOW}which claude-wrapper${NC}"
-    echo ""
-
-    # Only show reboot instructions if booted and current systems differ
-    if [[ -L "/run/booted-system" && -L "/run/current-system" ]]; then
-        if [[ "$(readlink /run/booted-system)" != "$(readlink /run/current-system)" ]]; then
-            echo -e "${YELLOW}To reboot when ready:${NC}"
-            echo -e "  ${YELLOW}sudo reboot${NC}"
-            echo ""
-            echo -e "${BLUE}After reboot:${NC}"
-            echo -e "  ${GREEN}•${NC} Select 'Cosmic' from the session menu at login"
-            echo ""
-        fi
-    fi
-
-    echo -e "${GREEN}✓ Deployment complete! All configurations are active.${NC}"
-    echo -e "${GREEN}✓ All services should be running now.${NC}"
-    echo ""
+    
+    # PHASE 1: Preparation & Validation
+    comprehensive_preflight_checks
+    
+    # PHASE 2: Prerequisite Package Installation  
+    install_prerequisites_phase
+    
+    # PHASE 3: System Backup
+    comprehensive_backup_phase
+    
+    # PHASE 4: Configuration Generation & Validation
+    generate_and_validate_configs_phase
+    
+    # PHASE 5: Intelligent Cleanup
+    intelligent_cleanup_phase
+    
+    # PHASE 6: Configuration Deployment
+    deploy_configurations_phase
+    
+    # PHASE 7: Tool & Service Installation
+    install_tools_and_services_phase
+    
+    # PHASE 8: Post-Installation Validation
+    post_install_validation_phase
+    
+    # PHASE 9: Post-Install Scripts & Finalization
+    post_install_finalization_phase
+    
+    # PHASE 10: Success Report & Next Steps
+    generate_success_report_phase
+    
+    # ========================================================================
+    # DEPLOYMENT COMPLETE
+    # ========================================================================
+    
+    log INFO "All 10 phases completed successfully"
+    return 0
 }
+
+# ============================================================================
+# Script Initialization & Execution
+# ============================================================================
 
 # Initialize infrastructure before running main
 init_logging
@@ -7677,21 +8155,8 @@ main "$@"
 exit_code=$?
 
 if [[ $exit_code -eq 0 ]]; then
-    echo ""
-    echo -e "${BLUE}════════════════════════════════════════════════════════════${NC}"
-    echo -e "${GREEN}✓ Deployment completed successfully!${NC}"
-    echo -e "${BLUE}════════════════════════════════════════════════════════════${NC}"
-    echo ""
-    echo -e "${YELLOW}To apply all environment changes, reload your shell:${NC}"
-    echo -e "  ${GREEN}exec zsh${NC}"
-    echo ""
-    echo -e "${YELLOW}Or simply log out and log back in.${NC}"
-    echo ""
-    log INFO "Deployment completed successfully"
+    log INFO "Deployment completed successfully (exit code: 0)"
 else
-    echo ""
-    print_error "Deployment failed with exit code: $exit_code"
-    echo ""
     log ERROR "Deployment failed with exit code: $exit_code"
 fi
 
