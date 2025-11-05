@@ -270,25 +270,21 @@ check_required_packages() {
     # lspci - Hardware detection, GPU identification
     if ! ensure_package_available "lspci" "pciutils" "IMPORTANT" "lspci (PCI hardware detection)"; then
         MISSING_IMPORTANT+=("pciutils")
-        packages_ok=false
     fi
 
     # which - Command location (used in multiple places)
     if ! ensure_package_available "which" "which" "IMPORTANT" "which (command locator)"; then
         MISSING_IMPORTANT+=("which")
-        packages_ok=false
     fi
 
     # readlink - Path resolution (used for symlink following)
     if ! ensure_package_available "readlink" "coreutils" "IMPORTANT" "readlink (path resolver)"; then
         MISSING_IMPORTANT+=("coreutils")
-        packages_ok=false
     fi
 
     # timeout - Command timeouts (used for service checks)
     if ! ensure_package_available "timeout" "coreutils" "IMPORTANT" "timeout (command timeout utility)"; then
         MISSING_IMPORTANT+=("coreutils (timeout)")
-        packages_ok=false
     fi
 
     echo ""
@@ -301,19 +297,25 @@ check_required_packages() {
     # glxinfo - AMD GPU validation
     if ! ensure_package_available "glxinfo" "mesa-demos" "OPTIONAL" "glxinfo (AMD GPU validation)"; then
         MISSING_OPTIONAL+=("mesa-demos")
-        packages_ok=false
+        # Note: OPTIONAL packages don't set packages_ok=false
     fi
 
-    # nvidia-smi - NVIDIA GPU validation (comes with drivers, not always needed)
-    if ! ensure_package_available "nvidia-smi" "nvidiaPackages.latest.bin" "OPTIONAL" "nvidia-smi (NVIDIA GPU validation)"; then
-        MISSING_OPTIONAL+=("nvidiaPackages.latest.bin")
-        packages_ok=false
+    # nvidia-smi - NVIDIA GPU validation (only check if not on system yet)
+    # Note: nvidia-smi comes with NVIDIA drivers, so it won't be available until after
+    # the drivers are installed. We'll validate it in the post-deployment phase instead.
+    if command -v nvidia-smi &>/dev/null; then
+        local nvidia_path
+        nvidia_path=$(command -v nvidia-smi 2>/dev/null)
+        print_success "nvidia-smi (NVIDIA GPU validation) available: $nvidia_path"
+    else
+        print_info "nvidia-smi (NVIDIA GPU validation) not found - will be installed with NVIDIA drivers if needed"
+        log INFO "nvidia-smi not present - expected to be installed with NVIDIA drivers during deployment"
     fi
 
     # loginctl - systemd login management
     if ! ensure_package_available "loginctl" "systemd" "OPTIONAL" "loginctl (systemd login manager)"; then
         MISSING_OPTIONAL+=("systemd")
-        packages_ok=false
+        # Note: OPTIONAL packages don't set packages_ok=false
     fi
 
     echo ""
@@ -332,17 +334,21 @@ check_required_packages() {
 
         if [[ ${#MISSING_IMPORTANT[@]} -gt 0 ]]; then
             print_error "Missing important packages: ${MISSING_IMPORTANT[*]}"
+            print_info "These packages are needed for full functionality"
+            packages_ok=false
         fi
 
         if [[ ${#MISSING_OPTIONAL[@]} -gt 0 ]]; then
-            print_error "Missing optional packages required for enhanced features: ${MISSING_OPTIONAL[*]}"
+            print_info "Missing optional packages: ${MISSING_OPTIONAL[*]}"
+            print_info "These packages provide enhanced features but are not required"
         fi
     fi
 
     echo ""
 
+    # Only fail if CRITICAL or IMPORTANT packages are missing
     if [[ "$packages_ok" != true ]]; then
-        log ERROR "Required package check failed"
+        log ERROR "Required package check failed - critical or important packages missing"
         return 1
     fi
 
