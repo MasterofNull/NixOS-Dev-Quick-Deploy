@@ -108,14 +108,19 @@ error_handler() {
         # jq can't safely write to the same file it's reading from
         # Pattern: read input file → write to temp → move temp to original
         #
-        # Why || true at the end?
+        # Improved error handling: Log failures but don't let error handler fail
         # If jq fails, we don't want error_handler itself to fail
-        # The || true ensures this command always returns success
         # This prevents infinite error loops
-        jq --arg error "Failed at line $line_number: ${BASH_COMMAND}" \
+        if jq --arg error "Failed at line $line_number: ${BASH_COMMAND}" \
            --arg exit_code "$exit_code" \
            '.last_error = $error | .last_exit_code = $exit_code' \
-           "$STATE_FILE" > "$STATE_FILE.tmp" 2>/dev/null && mv "$STATE_FILE.tmp" "$STATE_FILE" || true
+           "$STATE_FILE" > "$STATE_FILE.tmp" 2>/dev/null && mv "$STATE_FILE.tmp" "$STATE_FILE" 2>/dev/null; then
+            : # Success - state saved for resume capability
+        else
+            # Log warning but don't fail (we're in error handler handling an error)
+            echo "[WARNING] Failed to save error state to file" >&2 || true
+            rm -f "$STATE_FILE.tmp" 2>/dev/null || true
+        fi
     fi
 
     # Print blank line for visual separation

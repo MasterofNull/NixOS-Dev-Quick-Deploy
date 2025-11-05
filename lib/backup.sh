@@ -125,7 +125,8 @@ centralized_backup() {
         # $(date -Iseconds) produces ISO 8601 timestamp
         # >> appends to manifest file (doesn't overwrite)
         # Using pipe (|) as field separator (easier to parse than spaces)
-        echo "$(date -Iseconds) | $source -> $backup_path | $description" >> "$BACKUP_MANIFEST"
+        # Quote paths in case they contain spaces or special characters
+        echo "$(date -Iseconds) | \"$source\" -> \"$backup_path\" | $description" >> "$BACKUP_MANIFEST"
 
         # Display success message to user
         print_success "Backed up: $description"
@@ -231,7 +232,13 @@ create_rollback_point() {
     # Why tail -1?
     # Last line is the current (most recent) generation
     # That's the one we want to record for rollback
-    local nix_generation=$(nix-env --list-generations 2>/dev/null | tail -1 | awk '{print $1}' || echo "unknown")
+    local nix_generation
+    if command -v nix-env >/dev/null 2>&1; then
+        nix_generation=$(nix-env --list-generations 2>/dev/null | tail -1 | awk '{print $1}' || echo "unknown")
+    else
+        nix_generation="unavailable"
+        log WARNING "nix-env command not found, cannot query generation"
+    fi
 
     # ========================================================================
     # Query current Home Manager generation
@@ -251,7 +258,13 @@ create_rollback_point() {
     #
     # Why head -1?
     # home-manager shows newest first, so first line is current
-    local hm_generation=$(home-manager generations 2>/dev/null | head -1 | awk '{print $NF}' || echo "unknown")
+    local hm_generation
+    if command -v home-manager >/dev/null 2>&1; then
+        hm_generation=$(home-manager generations 2>/dev/null | head -1 | awk '{print $NF}' || echo "unknown")
+    else
+        hm_generation="unavailable"
+        log WARNING "home-manager command not found, cannot query generation"
+    fi
 
     # ========================================================================
     # Write rollback info to JSON file
