@@ -91,7 +91,7 @@ let
       LOG_SQL = false;
     };
     repository = {
-      ROOT = giteaRepositoriesDir;
+      ROOT = lib.mkForce giteaRepositoriesDir;
       FORCE_PRIVATE = false;
     };
     packages.ENABLED = true;
