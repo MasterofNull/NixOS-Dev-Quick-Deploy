@@ -536,14 +536,15 @@ in
     package = pkgs.gitea;
     user = "gitea";
     group = "gitea";
-    stateDir = giteaStateDir;
+    # NixOS 25.05+: stateDir is managed automatically, don't set it explicitly
+    # The state directory will be /var/lib/gitea by default
     database = {
       type = "sqlite3";
       path = giteaDatabasePath;
     };
-    repositoryRoot = giteaRepositoriesDir;
+    # NixOS 25.05+: repositoryRoot is deprecated, use settings.repository.ROOT instead
     # NixOS 25.05+: Use settings.server for HTTP configuration (see giteaSharedSettings)
-    # Deprecated options removed: rootUrl, httpAddress, httpPort, disableRegistration
+    # Deprecated options removed: rootUrl, httpAddress, httpPort, disableRegistration, stateDir, repositoryRoot
     # SSH configuration moved to settings.server (see giteaSharedSettings above)
     # NixOS 25.05+ uses freeform settings instead of structured ssh block
     lfs = {
