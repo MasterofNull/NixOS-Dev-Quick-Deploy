@@ -80,6 +80,7 @@ readonly BACKUP_MANIFEST="$BACKUP_ROOT/manifest.txt"
 # Flags
 DRY_RUN=false
 FORCE_UPDATE=false
+REGENERATE_CONFIGS=false
 SKIP_HEALTH_CHECK=false
 ENABLE_DEBUG=false
 
@@ -139,6 +140,7 @@ readonly BACKUP_MANIFEST="$BACKUP_ROOT/manifest.txt"
 # Flags
 DRY_RUN=false
 FORCE_UPDATE=false
+REGENERATE_CONFIGS=false
 SKIP_HEALTH_CHECK=false
 ENABLE_DEBUG=false
 
@@ -3814,6 +3816,8 @@ print_usage() {
     echo "Options:"
     echo "  -f, --force-update       Force recreation of all configurations"
     echo "                           (ignores existing configs and applies updates)"
+    echo "  --regenerate-configs     Regenerate config files from templates when resuming"
+    echo "                           (applies template updates without losing phase state)"
     echo "  --rollback               Rollback to previous system state"
     echo "  --restore-packages       Restore packages that were removed for conflict resolution"
     echo "  --reset-state            Reset deployment state and start fresh"
@@ -3825,6 +3829,7 @@ print_usage() {
     echo "Examples:"
     echo "  $0                       # Normal run (smart change detection)"
     echo "  $0 --force-update        # Force update all configs"
+    echo "  $0 --regenerate-configs  # Apply template updates when resuming"
     echo "  $0 --rollback            # Rollback to previous state"
     echo "  $0 --restore-packages    # Restore removed packages"
     echo ""
@@ -6404,6 +6409,8 @@ EOF
       User = "gitea";
       Group = "gitea";
       ExecStart = giteaAdminBootstrapScript;
+      # Increase timeout to handle large system changes
+      TimeoutStartSec = 300;  # Allow up to 5 minutes for bootstrap
     };
   };
 EOF
@@ -7840,24 +7847,29 @@ comprehensive_backup_phase() {
 # PHASE 4: Configuration Generation & Validation
 generate_and_validate_configs_phase() {
     local phase_name="generate_validate_configs"
-    
-    if is_step_complete "$phase_name"; then
+
+    if is_step_complete "$phase_name" && [[ "$REGENERATE_CONFIGS" != true ]]; then
         print_info "Phase 4 already completed (skipping)"
         return 0
     fi
-    
+
+    if [[ "$REGENERATE_CONFIGS" == true ]]; then
+        print_warning "Forcing configuration regeneration (--regenerate-configs)"
+        echo ""
+    fi
+
     print_section "Phase 4/10: Configuration Generation & Validation"
     echo ""
-    
+
     # Gather user info
     gather_user_info
-    
+
     # Generate NixOS system config
     generate_nixos_system_config
-    
+
     # Validate system build (dry run)
     validate_system_build_stage
-    
+
     mark_step_complete "$phase_name"
     print_success "Phase 4: Configuration Generation & Validation - COMPLETE"
     echo ""
@@ -8189,6 +8201,10 @@ main() {
                 FORCE_UPDATE=true
                 shift
                 ;;
+            --regenerate-configs)
+                REGENERATE_CONFIGS=true
+                shift
+                ;;
             --dry-run)
                 DRY_RUN=true
                 shift
@@ -8237,6 +8253,11 @@ main() {
 
     if [[ "$FORCE_UPDATE" == true ]]; then
         print_warning "Force update mode enabled - will recreate all configurations"
+        echo ""
+    fi
+
+    if [[ "$REGENERATE_CONFIGS" == true ]]; then
+        print_warning "Config regeneration enabled - will regenerate configs from templates"
         echo ""
     fi
 
