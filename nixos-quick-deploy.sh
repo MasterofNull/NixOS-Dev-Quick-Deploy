@@ -5407,6 +5407,34 @@ run_nixos_rebuild_switch() {
     return ${PIPESTATUS[0]}
 }
 
+validate_system_build_stage() {
+    local NIXOS_REBUILD_DRY_LOG="/tmp/nixos-rebuild-dry-run.log"
+
+    if [[ "$SYSTEM_BUILD_VALIDATED" != true ]]; then
+        print_info "Validating system build (dry run)..."
+        if run_nixos_rebuild_dry_run "$NIXOS_REBUILD_DRY_LOG"; then
+            SYSTEM_BUILD_VALIDATED=true
+            SYSTEM_BUILD_DRY_RUN_LOG="$NIXOS_REBUILD_DRY_LOG"
+            print_success "Dry run completed successfully (no changes applied)"
+            print_info "Log saved to: $NIXOS_REBUILD_DRY_LOG"
+        else
+            local dry_exit_code=$?
+            print_error "Dry run failed (exit code: $dry_exit_code)"
+            print_info "Review the log: $NIXOS_REBUILD_DRY_LOG"
+            print_info "Fix the issues above before continuing."
+            return 1
+        fi
+    else
+        if [[ -n "$SYSTEM_BUILD_DRY_RUN_LOG" ]]; then
+            print_info "Dry run already completed earlier (log: $SYSTEM_BUILD_DRY_RUN_LOG)"
+        else
+            print_info "Dry run previously completed - skipping rebuild validation"
+        fi
+    fi
+
+    return 0
+}
+
 apply_home_manager_config() {
     print_section "Applying Home Manager Configuration"
 
