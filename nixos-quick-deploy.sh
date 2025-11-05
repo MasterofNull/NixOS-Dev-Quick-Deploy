@@ -5327,11 +5327,13 @@ compose_nixos_rebuild_options() {
         "--option" "cores" "0"
         "--option" "keep-outputs" "true"
         "--option" "keep-derivations" "true"
-        "--option" "builders-use-substitutes" "true"
         "--option" "fallback" "true"
     )
 
     if [[ "$use_caches" == "true" ]]; then
+        # Enable binary caches and substitution
+        opts+=("--option" "builders-use-substitutes" "true")
+
         local -a substituters=()
         local -a keys=()
         mapfile -t substituters < <(get_binary_cache_sources)
@@ -5353,6 +5355,12 @@ compose_nixos_rebuild_options() {
 
         opts+=("--option" "connect-timeout" "10")
         opts+=("--option" "stalled-download-timeout" "300")
+    else
+        # Build from source: disable all binary cache substitution
+        opts+=("--option" "substitute" "false")
+        opts+=("--option" "builders-use-substitutes" "false")
+        # Explicitly set empty substituters list
+        opts+=("--option" "substituters" "")
     fi
 
     printf '%s\n' "${opts[@]}"
@@ -5448,15 +5456,18 @@ generate_binary_cache_settings() {
         binary_cache_settings+=$'      # Building from source is slower but gives you full control\n'
         binary_cache_settings+=$'      max-jobs = "auto";  # Automatically detect CPU count\n'
         binary_cache_settings+=$'      cores = 0;          # Use all cores for each build\n\n'
-        binary_cache_settings+=$'      # Only use official NixOS cache for base system packages\n'
-        binary_cache_settings+=$'      substituters = [ "https://cache.nixos.org" ];\n'
-        binary_cache_settings+=$'      trusted-public-keys = [ "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" ];\n\n'
+        binary_cache_settings+=$'      # Disable all binary caches - build everything from source\n'
+        binary_cache_settings+=$'      # This ensures complete reproducibility and control over all packages\n'
+        binary_cache_settings+=$'      substituters = [ ];  # Empty list = no binary caches\n'
+        binary_cache_settings+=$'      trusted-public-keys = [ ];\n\n'
+        binary_cache_settings+=$'      # Disable binary cache substitution completely\n'
+        binary_cache_settings+=$'      # This forces all packages to be built locally from source\n'
+        binary_cache_settings+=$'      substitute = false;\n'
+        binary_cache_settings+=$'      builders-use-substitutes = false;\n\n'
         binary_cache_settings+=$'      # Preserve build artifacts for incremental rebuilds\n'
         binary_cache_settings+=$'      keep-outputs = true;\n'
         binary_cache_settings+=$'      keep-derivations = true;\n\n'
-        binary_cache_settings+=$'      # Allow downloading dependencies during evaluation/builds\n'
-        binary_cache_settings+=$'      builders-use-substitutes = true;\n\n'
-        binary_cache_settings+=$'      # Allow falling back to local builds if a binary is unavailable\n'
+        binary_cache_settings+=$'      # Fallback is irrelevant when substitution is disabled\n'
         binary_cache_settings+=$'      fallback = true;\n\n'
         binary_cache_settings+=$'      # Warn about dirty git trees in flakes\n'
         binary_cache_settings+=$'      warn-dirty = false;\n'
