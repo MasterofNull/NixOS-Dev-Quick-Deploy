@@ -444,6 +444,16 @@ in
       HUGGINGFACE_HUB_CACHE = huggingfaceCacheDir;
       TRANSFORMERS_CACHE = huggingfaceCacheDir;
     };
+    unitConfig = {
+      # Increase restart limits for large system changes
+      StartLimitBurst = 10;
+      StartLimitIntervalSec = 900;  # 15 minutes
+    };
+    serviceConfig = {
+      # Increase timeouts to handle slow starts during system changes
+      RestartSec = 30;
+      TimeoutStartSec = 300;  # 5 minutes
+    };
   };
 
   # ========================================================================
@@ -461,8 +471,9 @@ in
     wants = [ "network-online.target" "podman.service" "podman.socket" ];
     after = [ "network-online.target" "podman.service" "podman.socket" ];
     unitConfig = {
-      StartLimitBurst = 3;
-      StartLimitIntervalSec = 300;
+      # Increase restart limits for large system changes
+      StartLimitBurst = 10;
+      StartLimitIntervalSec = 900;  # 15 minutes
     };
     serviceConfig = {
       Type = "simple";
@@ -484,9 +495,9 @@ in
       '';
       ExecStop = "${pkgs.podman}/bin/podman stop qdrant || true";
       Restart = "on-failure";
-      RestartSec = 15;
-      TimeoutStartSec = 120;
-      TimeoutStopSec = 30;
+      RestartSec = 30;  # Increased from 15
+      TimeoutStartSec = 300;  # Increased from 120 (5 minutes)
+      TimeoutStopSec = 60;  # Increased from 30
       WorkingDirectory = "%S/qdrant";
       StateDirectory = "qdrant";
     };
@@ -504,8 +515,9 @@ in
     after = [ "network-online.target" "podman.service" "podman.socket" ];
     restartTriggers = [ huggingfaceStartScript huggingfacePrepScript huggingfaceStopScript ];
     unitConfig = {
-      StartLimitBurst = 3;
-      StartLimitIntervalSec = 300;
+      # Increase restart limits for large system changes
+      StartLimitBurst = 10;
+      StartLimitIntervalSec = 900;  # 15 minutes
     };
     serviceConfig = {
       Type = "simple";
@@ -513,9 +525,9 @@ in
       ExecStart = huggingfaceStartScript;
       ExecStop = huggingfaceStopScript;
       Restart = "on-failure";
-      RestartSec = 15;
-      TimeoutStartSec = 600;
-      TimeoutStopSec = 90;
+      RestartSec = 30;  # Increased from 15
+      TimeoutStartSec = 900;  # Increased from 600 (15 minutes for large models)
+      TimeoutStopSec = 120;  # Increased from 90
       WorkingDirectory = "%S/${huggingfaceStateDirName}";
       StateDirectory = huggingfaceStateDirName;
     };
@@ -553,6 +565,22 @@ in
     };
     # All service settings configured via settings attribute (see giteaSharedSettings)
     settings = giteaSharedSettings;
+  };
+
+  # Systemd service overrides for gitea to handle large system changes
+  systemd.services.gitea = {
+    unitConfig = {
+      # Increase restart limits for large system changes
+      # Gitea may need multiple restart attempts after major system updates
+      StartLimitBurst = 10;
+      StartLimitIntervalSec = 900;  # 15 minutes
+    };
+    serviceConfig = {
+      # Increase timeouts to handle slow starts during system changes
+      RestartSec = 30;  # Wait 30 seconds between restart attempts
+      TimeoutStartSec = 300;  # Allow up to 5 minutes for service to start
+      TimeoutStopSec = 60;  # Allow up to 1 minute for service to stop
+    };
   };
 
   @GITEA_ADMIN_SERVICE_BLOCK@
