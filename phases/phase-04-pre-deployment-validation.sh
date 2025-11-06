@@ -61,6 +61,13 @@ phase_04_pre_deployment_validation() {
     print_section "Phase 4/8: Pre-Deployment Validation"
     echo ""
 
+    if ! ensure_flake_workspace; then
+        print_error "Unable to prepare Home Manager flake workspace at $HM_CONFIG_DIR"
+        print_info "Phase 3 (Configuration Generation) must be completed before validation."
+        echo ""
+        return 1
+    fi
+
     # ========================================================================
     # Step 5.1: Check for nix-env Installed Packages
     # ========================================================================
@@ -84,23 +91,13 @@ phase_04_pre_deployment_validation() {
     # ========================================================================
     print_info "Validating generated configuration files..."
 
-    # Check if home.nix exists
-    if [[ ! -f "$HM_CONFIG_DIR/home.nix" ]]; then
-        print_error "home.nix not found at: $HM_CONFIG_DIR/home.nix"
-        print_error "Phase 3 (Configuration Generation) may not have completed successfully"
+    if ! verify_home_manager_flake_ready; then
+        echo ""
         return 1
-    else
-        print_success "home.nix found and ready"
     fi
 
-    # Check if flake.nix exists
-    if [[ ! -f "$HM_CONFIG_DIR/flake.nix" ]]; then
-        print_error "flake.nix not found at: $HM_CONFIG_DIR/flake.nix"
-        print_error "Phase 3 (Configuration Generation) may not have completed successfully"
-        return 1
-    else
-        print_success "flake.nix found and ready"
-    fi
+    print_success "home.nix found and ready"
+    print_success "flake.nix found and ready"
 
     # Check if configuration.nix exists
     if [[ ! -f "/etc/nixos/configuration.nix" ]]; then
