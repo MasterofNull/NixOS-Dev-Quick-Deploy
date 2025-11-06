@@ -375,3 +375,236 @@ check_disk_space() {
 # - Uniqueness validation: Check for conflicts
 # - Permission validation: Check access rights
 # ============================================================================
+
+# ============================================================================
+# Validate GPU Driver
+# ============================================================================
+# Purpose: Validate GPU driver installation and functionality
+# Returns:
+#   0 - GPU driver validated successfully
+#   1 - GPU driver validation failed (non-critical)
+# ============================================================================
+validate_gpu_driver() {
+    print_section "Validating GPU Driver"
+
+    # Check GPU type
+    if [[ -z "$GPU_TYPE" ]]; then
+        print_warning "GPU_TYPE not set, skipping validation"
+        return 1
+    fi
+
+    print_info "Detected GPU type: $GPU_TYPE"
+
+    case "$GPU_TYPE" in
+        nvidia)
+            print_info "Validating NVIDIA driver..."
+            
+            # Check if nvidia-smi is available
+            if command -v nvidia-smi &>/dev/null; then
+                print_success "nvidia-smi found"
+                
+                # Try to run nvidia-smi
+                if nvidia-smi &>/dev/null; then
+                    print_success "NVIDIA driver is functional"
+                    print_info "GPU information:"
+                    nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader 2>/dev/null | sed 's/^/  /'
+                    return 0
+                else
+                    print_warning "nvidia-smi command failed"
+                    return 1
+                fi
+            else
+                print_warning "nvidia-smi not found in PATH"
+                return 1
+            fi
+            ;;
+            
+        amd)
+            print_info "Validating AMD driver..."
+            
+            # Check for amdgpu kernel module
+            if lsmod | grep -q amdgpu; then
+                print_success "amdgpu kernel module loaded"
+            else
+                print_warning "amdgpu kernel module not loaded"
+                return 1
+            fi
+            
+            # Check for ROCm if available
+            if command -v rocm-smi &>/dev/null; then
+                print_success "rocm-smi found"
+                if rocm-smi &>/dev/null; then
+                    print_success "AMD driver is functional"
+                    return 0
+                fi
+            fi
+            
+            # Check for VA-API support
+            if command -v vainfo &>/dev/null; then
+                print_info "Checking VA-API hardware acceleration..."
+                if vainfo &>/dev/null; then
+                    print_success "VA-API hardware acceleration available"
+                    return 0
+                fi
+            fi
+            
+            print_info "AMD GPU detected, basic driver loaded"
+            return 0
+            ;;
+            
+        intel)
+            print_info "Validating Intel driver..."
+            
+            # Check for i915 or xe kernel module
+            if lsmod | grep -qE 'i915|xe'; then
+                print_success "Intel GPU kernel module loaded"
+            else
+                print_warning "Intel GPU kernel module not found"
+                return 1
+            fi
+            
+            # Check for VA-API support
+            if command -v vainfo &>/dev/null; then
+                print_info "Checking VA-API hardware acceleration..."
+                if vainfo &>/dev/null; then
+                    print_success "VA-API hardware acceleration available"
+                    return 0
+                fi
+            fi
+            
+            print_info "Intel GPU detected, basic driver loaded"
+            return 0
+            ;;
+            
+        software|unknown)
+            print_info "Software rendering mode, no driver validation needed"
+            return 0
+            ;;
+            
+        *)
+            print_warning "Unknown GPU type: $GPU_TYPE"
+            return 1
+            ;;
+    esac
+}
+
+# ============================================================================
+# Run System Health Check
+# ============================================================================
+# Purpose: Comprehensive system health validation
+# Returns:
+#   0 - All health checks passed
+#   1 - Some health checks failed (warnings shown)
+# ============================================================================
+run_system_health_check_stage() {
+    print_section "System Health Check"
+
+    local issues_found=0
+
+    # ========================================================================
+    # 1. System Services Check
+    # ========================================================================
+    print_info "Checking system services..."
+    
+    local system_services=(
+        "postgresql"
+        "ollama"
+        "gitea"
+    )
+    
+    for service in "${system_services[@]}"; do
+        if systemctl is-active --quiet "$service" 2>/dev/null; then
+            print_success "  $service: running"
+        elif systemctl list-unit-files | grep -q "^${service}.service"; then
+            print_warning "  $service: installed but not running"
+            ((issues_found++))
+        else
+            print_info "  $service: not installed (optional)"
+        fi
+    done
+    echo ""
+
+    # ========================================================================
+    # 2. Resource Checks
+    # ========================================================================
+    print_info "Checking system resources..."
+    
+    # CPU usage
+    local cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)
+    print_info "  CPU usage: ${cpu_usage}%"
+    
+    # Memory usage
+    local mem_available=$(free -m | awk '/^Mem:/ {print $7}')
+    if [[ $mem_available -lt 500 ]]; then
+        print_warning "  Low memory: ${mem_available}MB available"
+        ((issues_found++))
+    else
+        print_success "  Memory available: ${mem_available}MB"
+    fi
+    
+    # Disk space
+    local nix_available=$(df -BG /nix | tail -1 | awk '{print $4}' | tr -d 'G')
+    if [[ $nix_available -lt 5 ]]; then
+        print_warning "  Low disk space on /nix: ${nix_available}GB"
+        print_info "  Run: nix-collect-garbage -d"
+        ((issues_found++))
+    else
+        print_success "  Disk space on /nix: ${nix_available}GB available"
+    fi
+    echo ""
+
+    # ========================================================================
+    # 3. Network Connectivity
+    # ========================================================================
+    print_info "Checking network connectivity..."
+    
+    # Check internet connectivity
+    if ping -c 1 -W 2 8.8.8.8 &>/dev/null; then
+        print_success "  Internet connectivity: OK"
+    else
+        print_warning "  Internet connectivity: failed"
+        ((issues_found++))
+    fi
+    
+    # Check DNS resolution
+    if ping -c 1 -W 2 cache.nixos.org &>/dev/null; then
+        print_success "  DNS resolution: OK"
+    else
+        print_warning "  DNS resolution: failed"
+        ((issues_found++))
+    fi
+    echo ""
+
+    # ========================================================================
+    # 4. Container Runtime Check
+    # ========================================================================
+    print_info "Checking container runtime..."
+    
+    if command -v podman &>/dev/null; then
+        print_success "  Podman: installed"
+        
+        # Try to pull a small image
+        if podman pull --quiet alpine:latest &>/dev/null; then
+            print_success "  Container image pull: OK"
+            podman rmi alpine:latest &>/dev/null || true
+        else
+            print_warning "  Container image pull: failed"
+            ((issues_found++))
+        fi
+    else
+        print_info "  Podman: not installed (optional)"
+    fi
+    echo ""
+
+    # ========================================================================
+    # Summary
+    # ========================================================================
+    if [[ $issues_found -eq 0 ]]; then
+        print_success "All health checks passed!"
+        return 0
+    else
+        print_warning "Found $issues_found issue(s) (see above)"
+        print_info "System is functional but may benefit from attention"
+        return 1
+    fi
+}
