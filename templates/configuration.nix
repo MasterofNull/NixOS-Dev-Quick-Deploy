@@ -54,16 +54,17 @@ let
   giteaIssuesIndexerPath = "${giteaAppDataDir}/indexers/issues.bleve";
   giteaRepoIndexerPath = "${giteaAppDataDir}/indexers/repos.bleve";
   giteaDatabasePath = "${giteaAppDataDir}/gitea.db";
+  giteaEnabled = @GITEA_ENABLE_FLAG@;
   giteaDomain = "@HOSTNAME@";
   giteaHttpPort = 3000;
   giteaSshPort = 2222;
   giteaRootUrl = "http://${giteaDomain}:${toString giteaHttpPort}/";
   giteaAdminSecrets = @GITEA_ADMIN_SECRETS_SET@;
   giteaSecrets = {
-    secretKey = "@GITEA_SECRET_KEY@";
-    internalToken = "@GITEA_INTERNAL_TOKEN@";
-    lfsJwtSecret = "@GITEA_LFS_JWT_SECRET@";
-    oauthJwtSecret = "@GITEA_JWT_SECRET@";
+    secretKey = @GITEA_SECRET_KEY@;
+    internalToken = @GITEA_INTERNAL_TOKEN@;
+    lfsJwtSecret = @GITEA_LFS_JWT_SECRET@;
+    oauthJwtSecret = @GITEA_JWT_SECRET@;
   } // giteaAdminSecrets;
   giteaSharedSettings = {
     server = {
@@ -547,7 +548,7 @@ in
   # Self-hosted Git Service (Gitea)
   # ========================================================================
 
-  services.gitea = {
+  services.gitea = lib.mkIf giteaEnabled {
     enable = true;
     appName = "AIDB Gitea";
     package = pkgs.gitea;
@@ -573,7 +574,7 @@ in
   };
 
   # Systemd service overrides for gitea to handle large system changes
-  systemd.services.gitea = {
+  systemd.services.gitea = lib.mkIf giteaEnabled {
     unitConfig = {
       # Increase restart limits for large system changes
       # Gitea may need multiple restart attempts after major system updates
