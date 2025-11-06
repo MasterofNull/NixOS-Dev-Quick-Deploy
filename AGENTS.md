@@ -5,4 +5,5 @@
 - Maintain descriptive logging for long-running operations and keep user-facing messages actionable.
 - Preserve template placeholders (e.g., `VERSIONPLACEHOLDER`, `HASHPLACEHOLDER`) and comments that explain synchronization requirements.
 - Update accompanying helper scripts when modifying template logic so behaviour stays consistent between generated files and runtime tooling.
+- Use the Python-based placeholder utilities (e.g., `replace_placeholder`) instead of in-place `sed` edits when mutating generated configuration files.
 - When adding documentation files like this one, keep the tone concise and future-oriented.
