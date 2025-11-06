@@ -777,6 +777,16 @@ RESOURCES
           # Remove broken passthru that tries to call gradio.override before it exists
           passthru = builtins.removeAttrs (old.passthru or {}) ["sans-reverse-dependencies"];
         });
+        # Fix gradio-client to not reference the removed sans-reverse-dependencies
+        gradio-client = super.gradio-client.overridePythonAttrs (old: {
+          doCheck = false;
+          pythonImportsCheck = [];
+          # Replace nativeCheckInputs to exclude gradio.sans-reverse-dependencies
+          nativeCheckInputs = lib.filter (pkg: pkg != null)
+            (map (pkg: if (builtins.typeOf pkg == "set" && pkg ? pname && pkg.pname or "" == "gradio")
+                       then null else pkg)
+                 (old.nativeCheckInputs or []));
+        });
         # Disable transformers tests - may download models during tests
         transformers = super.transformers.overridePythonAttrs (old: {
           doCheck = false;

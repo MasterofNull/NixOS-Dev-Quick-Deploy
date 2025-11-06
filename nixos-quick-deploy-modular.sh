@@ -263,8 +263,8 @@ get_phase_description() {
         2) echo "Install prerequisites and validate system" ;;
         3) echo "Backup current configuration" ;;
         4) echo "Generate NixOS configurations" ;;
-        5) echo "Cleanup temporary files and caches" ;;
-        6) echo "Deploy configuration to system" ;;
+        5) echo "Pre-deployment validation and environment check" ;;
+        6) echo "Deploy all configurations (backup, clean, apply)" ;;
         7) echo "Install additional tools" ;;
         8) echo "Validate deployment success" ;;
         9) echo "Finalize and apply system changes" ;;
@@ -494,8 +494,8 @@ PHASE OVERVIEW:
     Phase 2:  Prerequisites        - Install prerequisites and validate system
     Phase 3:  Backup              - Backup current configuration
     Phase 4:  Config Generation   - Generate NixOS configurations
-    Phase 5:  Cleanup             - Cleanup temporary files and caches
-    Phase 6:  Deployment          - Deploy configuration to system
+    Phase 5:  Validation          - Pre-deployment validation and environment check
+    Phase 6:  Deployment          - Deploy all configurations (backup, clean, apply)
     Phase 7:  Tools Installation  - Install additional tools
     Phase 8:  Validation          - Validate deployment success
     Phase 9:  Finalization        - Finalize and apply system changes
