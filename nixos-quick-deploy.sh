@@ -191,6 +191,9 @@ load_libraries() {
         "home-manager.sh"
         "user.sh"
         "config.sh"
+        "tools.sh"
+        "finalization.sh"
+        "reporting.sh"
         "common.sh"
     )
 
