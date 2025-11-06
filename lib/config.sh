@@ -95,7 +95,7 @@ get_binary_cache_public_keys() {
     printf '%s\n' "${keys[@]}"
 }
 
-compose_nixos_rebuild_options() { 
+compose_nixos_rebuild_options() {
     local use_caches="${1:-${USE_BINARY_CACHES:-true}}"
     local -a opts=(
         "--option" "max-jobs" "auto"
@@ -136,6 +136,77 @@ compose_nixos_rebuild_options() {
     fi
 
     printf '%s\n' "${opts[@]}"
+}
+
+# ============================================================================
+# Workspace Preparation Helpers
+# ============================================================================
+
+ensure_flake_workspace() {
+    local created_root=false
+    local created_dir=false
+
+    if [[ -z "${DEV_HOME_ROOT:-}" || -z "${HM_CONFIG_DIR:-}" ]]; then
+        print_error "ensure_flake_workspace: workspace paths are not defined"
+        return 1
+    fi
+
+    if [[ ! -d "$DEV_HOME_ROOT" ]]; then
+        if safe_mkdir "$DEV_HOME_ROOT"; then
+            created_root=true
+        else
+            print_error "Failed to create flake workspace root: $DEV_HOME_ROOT"
+            return 1
+        fi
+    fi
+
+    safe_chown_user_dir "$DEV_HOME_ROOT" || true
+
+    if [[ ! -d "$HM_CONFIG_DIR" ]]; then
+        if safe_mkdir "$HM_CONFIG_DIR"; then
+            created_dir=true
+        else
+            print_error "Failed to create flake directory: $HM_CONFIG_DIR"
+            return 1
+        fi
+    fi
+
+    safe_chown_user_dir "$HM_CONFIG_DIR" || true
+
+    if $created_root; then
+        print_success "Created flake workspace root at $DEV_HOME_ROOT"
+    fi
+
+    if $created_dir; then
+        print_success "Created flake configuration directory at $HM_CONFIG_DIR"
+    fi
+
+    return 0
+}
+
+verify_home_manager_flake_ready() {
+    local missing=()
+
+    if [[ ! -d "$HM_CONFIG_DIR" ]]; then
+        missing+=("directory $HM_CONFIG_DIR")
+    fi
+
+    if [[ ! -f "$HM_CONFIG_DIR/flake.nix" ]]; then
+        missing+=("flake.nix")
+    fi
+
+    if [[ ! -f "$HM_CONFIG_DIR/home.nix" ]]; then
+        missing+=("home.nix")
+    fi
+
+    if (( ${#missing[@]} > 0 )); then
+        print_error "Home Manager flake is incomplete: ${missing[*]}"
+        print_info "Phase 3 (Configuration Generation) should create these files."
+        print_info "Re-run Phase 3 or restore the flake directory before continuing."
+        return 1
+    fi
+
+    return 0
 }
 
 describe_binary_cache_usage() {
@@ -1297,13 +1368,40 @@ validate_system_build_stage() {
     local target_host=$(hostname)
     local log_path="/tmp/nixos-rebuild-dry-build.log"
 
+    if ! ensure_flake_workspace; then
+        print_error "Unable to prepare Home Manager flake workspace at $HM_CONFIG_DIR"
+        print_info "Phase 3 (Configuration Generation) must complete successfully before validation."
+        echo ""
+        return 1
+    fi
+
+    if ! verify_home_manager_flake_ready; then
+        echo ""
+        return 1
+    fi
+
     print_info "Performing dry-run build validation..."
     print_info "This checks for syntax errors and missing dependencies"
-    print_info "Command: sudo nixos-rebuild dry-build --flake \"$HM_CONFIG_DIR#$target_host\""
+
+    local -a nixos_rebuild_opts=()
+    if declare -F compose_nixos_rebuild_options >/dev/null 2>&1; then
+        mapfile -t nixos_rebuild_opts < <(compose_nixos_rebuild_options "${USE_BINARY_CACHES:-true}")
+    fi
+
+    local dry_build_display="sudo nixos-rebuild dry-build --flake \"$HM_CONFIG_DIR#$target_host\""
+    if (( ${#nixos_rebuild_opts[@]} > 0 )); then
+        dry_build_display+=" ${nixos_rebuild_opts[*]}"
+    fi
+
+    print_info "Command: $dry_build_display"
     echo ""
 
+    if declare -F describe_binary_cache_usage >/dev/null 2>&1; then
+        describe_binary_cache_usage "nixos-rebuild dry-build"
+    fi
+
     # Run dry-build (doesn't actually build, just evaluates)
-    if sudo nixos-rebuild dry-build --flake "$HM_CONFIG_DIR#$target_host" 2>&1 | tee "$log_path"; then
+    if sudo nixos-rebuild dry-build --flake "$HM_CONFIG_DIR#$target_host" "${nixos_rebuild_opts[@]}" 2>&1 | tee "$log_path"; then
         print_success "Configuration validation passed!"
         print_info "Log saved to: $log_path"
         echo ""
@@ -1314,6 +1412,17 @@ validate_system_build_stage() {
         print_info "Log saved to: $log_path"
         print_info "Review the log for details"
         echo ""
+
+        if [[ ! -d "$HM_CONFIG_DIR" ]]; then
+            print_error "Home Manager flake directory is missing: $HM_CONFIG_DIR"
+            print_info "Run Phase 3 to regenerate the configuration or restore your dotfiles."
+        elif [[ ! -f "$HM_CONFIG_DIR/flake.nix" ]]; then
+            print_error "flake.nix is missing from: $HM_CONFIG_DIR"
+            print_info "Regenerate the configuration with Phase 3 or restore from backup."
+        elif [[ ! -f "$HM_CONFIG_DIR/home.nix" ]]; then
+            print_error "home.nix is missing from: $HM_CONFIG_DIR"
+            print_info "Regenerate the configuration with Phase 3 or restore from backup."
+        fi
 
         # Check if it's a critical error or just warnings
         if grep -qi "error:" "$log_path"; then
