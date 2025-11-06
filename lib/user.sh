@@ -73,7 +73,7 @@ gather_user_info() {
     # ========================================================================
     if [ -z "$SELECTED_EDITOR" ]; then
         # Check if user has EDITOR set
-        if [ -n "$EDITOR" ]; then
+        if [ -n "${EDITOR:-}" ]; then
             SELECTED_EDITOR="$EDITOR"
             print_info "Using existing EDITOR: $SELECTED_EDITOR"
         else
