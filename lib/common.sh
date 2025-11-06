@@ -554,6 +554,192 @@ flatpak_cli_available() {
 }
 
 # ============================================================================
+# Safe File System Operations
+# ============================================================================
+# Purpose: Provide consistent, safe wrappers for common file operations
+# Benefits:
+#   - Centralized error handling
+#   - Consistent sudo/permission handling
+#   - DRY principle (Don't Repeat Yourself)
+#   - Easier to test and maintain
+#   - Prevents silent failures
+#
+# These functions replace direct use of mkdir, chown, cp with verified
+# versions that:
+#   - Check for errors
+#   - Provide clear error messages
+#   - Handle sudo/root scenarios correctly
+#   - Verify operations succeeded
+# ============================================================================
+
+safe_mkdir() {
+    # Create directory with error checking and proper permissions
+    # Args: $1 = directory path
+    # Returns: 0 on success, 1 on failure
+    # Usage: safe_mkdir "/path/to/dir" || return 1
+    local dir="$1"
+
+    if [[ -z "$dir" ]]; then
+        print_error "safe_mkdir: No directory specified"
+        return 1
+    fi
+
+    # Already exists is success
+    if [[ -d "$dir" ]]; then
+        return 0
+    fi
+
+    # Attempt to create with parents
+    if ! mkdir -p "$dir" 2>/dev/null; then
+        print_error "Failed to create directory: $dir"
+        print_error "Check permissions and available disk space"
+        return 1
+    fi
+
+    # Verify directory was created
+    if [[ ! -d "$dir" ]]; then
+        print_error "Directory was not created: $dir"
+        return 1
+    fi
+
+    return 0
+}
+
+safe_chown_user_dir() {
+    # Set ownership to appropriate user with sudo handling
+    # Args: $1 = directory/file path
+    # Returns: 0 on success, 1 on failure (warnings don't fail)
+    # Usage: safe_chown_user_dir "/path/to/dir"
+    #
+    # Handles three scenarios:
+    # 1. Running with sudo (SUDO_USER exists): chown to original user
+    # 2. Running as root without sudo: chown to PRIMARY_USER
+    # 3. Running as normal user: no-op (ownership already correct)
+    local target="$1"
+
+    if [[ -z "$target" ]]; then
+        print_error "safe_chown_user_dir: No target specified"
+        return 1
+    fi
+
+    if [[ ! -e "$target" ]]; then
+        print_error "safe_chown_user_dir: Target does not exist: $target"
+        return 1
+    fi
+
+    # Running as normal user - ownership already correct
+    if [[ "$EUID" -ne 0 ]]; then
+        return 0
+    fi
+
+    # Determine correct ownership
+    local owner
+    if [[ -n "$SUDO_USER" ]]; then
+        # Running with sudo - set ownership to original user
+        owner="$SUDO_USER:$(id -gn "$SUDO_USER" 2>/dev/null || echo "users")"
+    else
+        # Running as root without sudo - use PRIMARY_USER
+        owner="${PRIMARY_USER:-$USER}:$(id -gn "${PRIMARY_USER:-$USER}" 2>/dev/null || echo "users")"
+    fi
+
+    # Attempt to set ownership
+    if ! chown -R "$owner" "$target" 2>/dev/null; then
+        print_warning "Could not set ownership of $target to $owner"
+        # Don't fail - this is often not critical
+        return 0
+    fi
+
+    return 0
+}
+
+safe_copy_file() {
+    # Copy file with verification
+    # Args: $1 = source, $2 = destination
+    # Returns: 0 on success, 1 on failure
+    # Usage: safe_copy_file "/src/file" "/dest/file" || return 1
+    local src="$1"
+    local dest="$2"
+
+    if [[ -z "$src" ]] || [[ -z "$dest" ]]; then
+        print_error "safe_copy_file: Source and destination required"
+        return 1
+    fi
+
+    if [[ ! -f "$src" ]]; then
+        print_error "safe_copy_file: Source file not found: $src"
+        return 1
+    fi
+
+    # Ensure destination directory exists
+    local dest_dir=$(dirname "$dest")
+    if ! safe_mkdir "$dest_dir"; then
+        return 1
+    fi
+
+    # Attempt to copy
+    if ! cp "$src" "$dest" 2>/dev/null; then
+        print_error "Failed to copy file"
+        print_error "  Source: $src"
+        print_error "  Destination: $dest"
+        return 1
+    fi
+
+    # Verify file was created
+    if [[ ! -f "$dest" ]]; then
+        print_error "Verification failed: File not created at $dest"
+        return 1
+    fi
+
+    return 0
+}
+
+safe_copy_file_silent() {
+    # Copy file silently (for backups where failure is non-critical)
+    # Args: $1 = source, $2 = destination
+    # Returns: 0 on success, 1 on failure (but doesn't print errors)
+    # Usage: safe_copy_file_silent "/src/file" "/dest/file" || true
+    local src="$1"
+    local dest="$2"
+
+    [[ -f "$src" ]] || return 1
+
+    local dest_dir=$(dirname "$dest")
+    mkdir -p "$dest_dir" 2>/dev/null || return 1
+
+    cp "$src" "$dest" 2>/dev/null || return 1
+    [[ -f "$dest" ]] || return 1
+
+    return 0
+}
+
+verify_file_created() {
+    # Verify file exists, is readable, and has content
+    # Args: $1 = file path, $2 = description (optional)
+    # Returns: 0 on success, 1 on failure
+    # Usage: verify_file_created "/path/file" "config file" || return 1
+    local file="$1"
+    local desc="${2:-File}"
+
+    if [[ ! -f "$file" ]]; then
+        print_error "$desc does not exist: $file"
+        return 1
+    fi
+
+    if [[ ! -r "$file" ]]; then
+        print_error "$desc is not readable: $file"
+        return 1
+    fi
+
+    local size=$(stat -c%s "$file" 2>/dev/null || echo "0")
+    if [[ "$size" -eq 0 ]]; then
+        print_error "$desc is empty: $file"
+        return 1
+    fi
+
+    return 0
+}
+
+# ============================================================================
 # NOTE: Additional utility functions should be extracted from the main
 # script and added here, including:
 # - Flatpak management functions
