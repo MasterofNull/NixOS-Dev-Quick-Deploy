@@ -55,7 +55,11 @@ phase_02_backup() {
 
     # Create backup root directory with timestamp
     local BACKUP_ROOT="$HOME/.config-backups/pre-deployment-$(date +%Y%m%d_%H%M%S)"
-    mkdir -p "$BACKUP_ROOT"
+    if ! safe_mkdir "$BACKUP_ROOT"; then
+        print_error "Failed to create backup directory: $BACKUP_ROOT"
+        return 1
+    fi
+    safe_chown_user_dir "$BACKUP_ROOT" || true
     print_info "Backup directory: $BACKUP_ROOT"
     echo ""
 
@@ -130,14 +134,14 @@ phase_02_backup() {
 
     # Backup home-manager configs
     if [[ -f "$HOME/.config/home-manager/home.nix" ]]; then
-        mkdir -p "$BACKUP_ROOT/home-manager"
-        cp "$HOME/.config/home-manager/home.nix" "$BACKUP_ROOT/home-manager/" 2>/dev/null
-        print_success "✓ Backed up: ~/.config/home-manager/home.nix"
+        safe_mkdir "$BACKUP_ROOT/home-manager" || print_warning "Could not create home-manager backup dir"
+        safe_copy_file_silent "$HOME/.config/home-manager/home.nix" "$BACKUP_ROOT/home-manager/home.nix" && \
+            print_success "✓ Backed up: ~/.config/home-manager/home.nix"
     fi
 
     if [[ -f "$HOME/.config/home-manager/flake.nix" ]]; then
-        cp "$HOME/.config/home-manager/flake.nix" "$BACKUP_ROOT/home-manager/" 2>/dev/null
-        print_success "✓ Backed up: ~/.config/home-manager/flake.nix"
+        safe_copy_file_silent "$HOME/.config/home-manager/flake.nix" "$BACKUP_ROOT/home-manager/flake.nix" && \
+            print_success "✓ Backed up: ~/.config/home-manager/flake.nix"
     fi
 
     # Backup important user configs (non-destructive - just copy for reference)
@@ -156,9 +160,10 @@ phase_02_backup() {
             # Only backup if < 100MB (avoid huge caches)
             local dir_name=$(basename "$config_dir")
             local parent=$(dirname "$config_dir")
-            mkdir -p "$BACKUP_ROOT/$parent"
-            cp -a "$full_path" "$BACKUP_ROOT/$parent/" 2>/dev/null && \
-                print_success "✓ Backed up: ~/$config_dir"
+            if safe_mkdir "$BACKUP_ROOT/$parent"; then
+                cp -a "$full_path" "$BACKUP_ROOT/$parent/" 2>/dev/null && \
+                    print_success "✓ Backed up: ~/$config_dir"
+            fi
         fi
     done
 
