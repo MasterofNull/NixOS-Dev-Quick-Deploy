@@ -768,11 +768,10 @@ RESOURCES
           doCheck = false;
           pythonImportsCheck = [];
         });
-        # Disable gradio tests - web framework requiring server for tests
-        gradio = super.gradio.overridePythonAttrs (old: {
-          doCheck = false;
-          pythonImportsCheck = [];
-        });
+        # Note: gradio override removed due to circular dependency in nixpkgs package definition
+        # The package itself has a broken passthru.sans-reverse-dependencies attribute
+        # that causes "attribute 'override' missing" error during evaluation
+        # Gradio can be installed separately if needed: nix-shell -p python3Packages.gradio
         # Disable transformers tests - may download models during tests
         transformers = super.transformers.overridePythonAttrs (old: {
           doCheck = false;
@@ -909,7 +908,9 @@ RESOURCES
           tokenizers
           transformers
           evaluate
-          gradio
+          # Note: gradio temporarily removed due to circular dependency in nixpkgs
+          # Install manually with: nix-shell -p python3Packages.gradio
+          # gradio
           # Data Processing (Modern Alternatives)
           polars               # Fast DataFrame library (Rust-based)
           # LLM & AI APIs (Required)
