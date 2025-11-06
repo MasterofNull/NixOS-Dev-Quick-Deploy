@@ -59,13 +59,49 @@ readonly LIB_DIR="$BOOTSTRAP_SCRIPT_DIR/lib"
 readonly CONFIG_DIR="$BOOTSTRAP_SCRIPT_DIR/config"
 readonly PHASES_DIR="$BOOTSTRAP_SCRIPT_DIR/phases"
 
+# Export SCRIPT_DIR for compatibility with libraries that expect it
+readonly SCRIPT_DIR="$BOOTSTRAP_SCRIPT_DIR"
+export SCRIPT_DIR
+
+# ============================================================================
+# EARLY ENVIRONMENT SETUP
+# ============================================================================
+# Ensure critical environment variables are set before any library loading
+# USER might not be set in some environments (e.g., cron, systemd)
+USER="${USER:-$(whoami 2>/dev/null || id -un 2>/dev/null || echo 'unknown')}"
+export USER
+
+# EUID is a bash built-in, but export it for consistency
+export EUID
+
+# ============================================================================
+# EARLY LOGGING CONFIGURATION
+# ============================================================================
+# These variables must be defined BEFORE loading libraries (especially logging.sh)
+# because logging.sh uses them immediately when init_logging() is called
+
+# Create log directory path in user cache
+readonly LOG_DIR="${HOME}/.cache/nixos-quick-deploy/logs"
+# Create unique log file with timestamp
+readonly LOG_FILE="${LOG_DIR}/deploy-$(date +%Y%m%d_%H%M%S).log"
+# Set default log level (can be overridden by CLI args)
+LOG_LEVEL="${LOG_LEVEL:-INFO}"
+# Debug flag (can be overridden by CLI args)
+ENABLE_DEBUG=false
+
+# Export critical variables so they're available to all sourced files
+export SCRIPT_VERSION
+export LOG_DIR
+export LOG_FILE
+export LOG_LEVEL
+
 # ============================================================================
 # GLOBAL VARIABLES - CLI Flags
 # ============================================================================
 
 DRY_RUN=false
 FORCE_UPDATE=false
-ENABLE_DEBUG=false
+# ENABLE_DEBUG defined above in EARLY LOGGING CONFIGURATION
 ROLLBACK=false
 RESET_STATE=false
 SKIP_HEALTH_CHECK=false
@@ -195,14 +231,16 @@ load_configuration() {
             exit 1
         fi
 
-        # Source config files with relaxed error handling
-        {
-            set +e +u
-            source "$config_path"
-            set -e -u
-        } 2>&1 | grep -v "readonly variable" >&2 || true
-
-        echo "  ✓ Loaded: $config"
+        # Source config files
+        # Note: set -u is not yet enabled at this point, so undefined variables
+        # won't cause errors. Critical variables like LOG_DIR, LOG_FILE, and
+        # SCRIPT_VERSION are already defined in main script before this runs.
+        if source "$config_path" 2>/dev/null; then
+            echo "  ✓ Loaded: $config"
+        else
+            echo "FATAL: Failed to load configuration: $config" >&2
+            exit 1
+        fi
     done
 
     echo ""
