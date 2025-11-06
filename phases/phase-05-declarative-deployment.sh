@@ -59,6 +59,19 @@ phase_05_declarative_deployment() {
     print_section "Phase 5/8: Declarative Deployment"
     echo ""
 
+    if ! ensure_flake_workspace; then
+        print_error "Unable to prepare Home Manager flake workspace at $HM_CONFIG_DIR"
+        print_info "Phase 3 (Configuration Generation) should establish this directory."
+        print_info "Re-run that phase or restore your dotfiles before continuing."
+        echo ""
+        return 1
+    fi
+
+    if ! verify_home_manager_flake_ready; then
+        echo ""
+        return 1
+    fi
+
     # ========================================================================
     # Step 6.1: Check for nix-env Packages
     # ========================================================================
@@ -232,6 +245,13 @@ phase_05_declarative_deployment() {
     else
         local exit_code=${PIPESTATUS[0]}
         print_error "nixos-rebuild failed (exit code: $exit_code)"
+        if [[ ! -d "$HM_CONFIG_DIR" ]]; then
+            print_error "Home Manager flake directory is missing: $HM_CONFIG_DIR"
+            print_info "Restore the directory or rerun Phase 3 before retrying."
+        elif [[ ! -f "$HM_CONFIG_DIR/flake.nix" ]]; then
+            print_error "flake.nix is missing from: $HM_CONFIG_DIR"
+            print_info "Regenerate the configuration with Phase 3 or restore from backup."
+        fi
         print_info "Log: /tmp/nixos-rebuild.log"
         print_info "Rollback: sudo nixos-rebuild --rollback"
         echo ""
