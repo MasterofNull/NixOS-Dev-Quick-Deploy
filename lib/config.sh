@@ -28,6 +28,336 @@
 # ============================================================================
 
 # ============================================================================
+# Internal helpers
+# ============================================================================
+
+# Replace placeholder tokens in template files using a Python helper to safely
+# handle multi-line replacements.
+replace_placeholder() {
+    local target_file="$1"
+    local placeholder="$2"
+    local replacement="$3"
+
+    if [[ -z "$target_file" || -z "$placeholder" ]]; then
+        return 1
+    fi
+
+    if [[ ! -f "$target_file" ]]; then
+        print_error "Template file not found for replacement: $target_file"
+        return 1
+    fi
+
+    if ! grep -Fq "$placeholder" "$target_file"; then
+        return 0
+    fi
+
+    PLACEHOLDER_VALUE="$replacement" python3 - "$target_file" "$placeholder" <<'PY'
+import pathlib
+import sys
+import os
+
+target = pathlib.Path(sys.argv[1])
+placeholder = sys.argv[2]
+value = os.environ.get("PLACEHOLDER_VALUE", "")
+
+text = target.read_text(encoding="utf-8")
+text = text.replace(placeholder, value)
+target.write_text(text, encoding="utf-8")
+PY
+}
+
+# Verify that no template markers remain in a rendered file.
+# Additional regex patterns can be provided to catch non-@ tokens
+# such as *_PLACEHOLDER or HOMEUSERNAME style markers.
+nix_verify_no_placeholders() {
+    local target_file="$1"
+    local context_label="$2"
+    shift 2 || true
+
+    if [[ -z "$target_file" || -z "$context_label" ]]; then
+        return 1
+    fi
+
+    if [[ ! -f "$target_file" ]]; then
+        print_error "Placeholder verification failed: $target_file does not exist"
+        return 1
+    fi
+
+    local -a patterns=("@[A-Z0-9_]+@")
+    if [[ $# -gt 0 ]]; then
+        patterns+=("$@")
+    fi
+
+    local unresolved=""
+    local pattern
+    for pattern in "${patterns[@]}"; do
+        local matches
+        matches=$(grep -nE "$pattern" "$target_file" 2>/dev/null || true)
+        if [[ -n "$matches" ]]; then
+            if [[ -n "$unresolved" ]]; then
+                unresolved+=$'\n'
+            fi
+            unresolved+="$matches"
+        fi
+    done
+
+    if [[ -n "$unresolved" ]]; then
+        print_error "Unresolved template placeholders detected in $context_label ($target_file):"
+        while IFS= read -r line; do
+            [[ -n "$line" ]] && print_error "  $line"
+        done <<<"$unresolved"
+        return 1
+    fi
+
+    return 0
+}
+
+nix_quote_string() {
+    local input="$1"
+
+    input=${input//\\/\\\\}
+    input=${input//"/\\"}
+    input=${input//$'\n'/\\n}
+    input=${input//$'\r'/\\r}
+    input=${input//$'\t'/\\t}
+    input=${input//\$/\\\$}
+
+    printf '"%s"' "$input"
+}
+
+prompt_configure_gitea_admin() {
+    local changed="false"
+    local default_choice="n"
+
+    if [[ "${GITEA_BOOTSTRAP_ADMIN,,}" == "true" ]]; then
+        default_choice="y"
+        GITEA_BOOTSTRAP_ADMIN="true"
+    else
+        GITEA_BOOTSTRAP_ADMIN="false"
+    fi
+
+    if confirm "Do you want to bootstrap a Gitea admin account now?" "$default_choice"; then
+        if [[ "$GITEA_BOOTSTRAP_ADMIN" != "true" ]]; then
+            changed="true"
+        fi
+
+        GITEA_BOOTSTRAP_ADMIN="true"
+
+        local default_user="${GITEA_ADMIN_USER:-gitea-admin}"
+        local admin_user
+        admin_user=$(prompt_user "Gitea admin username" "$default_user")
+        if [[ -z "$admin_user" ]]; then
+            admin_user="$default_user"
+        fi
+        if [[ "$admin_user" != "$GITEA_ADMIN_USER" ]]; then
+            GITEA_ADMIN_USER="$admin_user"
+            changed="true"
+        fi
+
+        local detected_domain="${HOSTNAME:-}"
+        if [[ -z "$detected_domain" ]]; then
+            detected_domain=$(hostname 2>/dev/null || echo "localhost")
+        fi
+
+        local default_email
+        if [[ -n "$GITEA_ADMIN_EMAIL" ]]; then
+            default_email="$GITEA_ADMIN_EMAIL"
+        else
+            default_email="${GITEA_ADMIN_USER}@${detected_domain}"
+        fi
+
+        local admin_email
+        admin_email=$(prompt_user "Gitea admin email" "$default_email")
+        if [[ -z "$admin_email" ]]; then
+            admin_email="$default_email"
+        fi
+        if [[ "$admin_email" != "$GITEA_ADMIN_EMAIL" ]]; then
+            GITEA_ADMIN_EMAIL="$admin_email"
+            changed="true"
+        fi
+
+        local password_note
+        if [[ -n "$GITEA_ADMIN_PASSWORD" ]]; then
+            password_note="leave blank to keep the existing password"
+        else
+            password_note="leave blank to generate a secure random password"
+        fi
+
+        local password_input
+        password_input=$(prompt_secret "Gitea admin password" "$password_note")
+
+        if [[ -z "$password_input" ]]; then
+            if [[ -n "$GITEA_ADMIN_PASSWORD" ]]; then
+                print_info "Keeping the previously cached Gitea admin password"
+            else
+                local generated_password
+                if ! generated_password=$(generate_password 20); then
+                    print_error "Failed to generate Gitea admin password"
+                    return 1
+                fi
+                GITEA_ADMIN_PASSWORD="$generated_password"
+                changed="true"
+                print_success "Generated a new random Gitea admin password"
+            fi
+        else
+            if [[ "$password_input" != "$GITEA_ADMIN_PASSWORD" ]]; then
+                GITEA_ADMIN_PASSWORD="$password_input"
+                changed="true"
+            fi
+        fi
+
+        if [[ "$changed" == "true" ]]; then
+            print_info "Gitea admin bootstrap will run after the next system switch"
+        else
+            print_info "Reusing existing Gitea admin bootstrap settings"
+        fi
+
+        if [[ -n "$GITEA_SECRETS_CACHE_FILE" ]]; then
+            print_info "Secrets cache will be written to: $GITEA_SECRETS_CACHE_FILE"
+        fi
+    else
+        if [[ "$GITEA_BOOTSTRAP_ADMIN" != "false" ]]; then
+            changed="true"
+        fi
+        GITEA_BOOTSTRAP_ADMIN="false"
+        print_info "Skipping declarative Gitea admin bootstrap for this run"
+        if [[ -n "$GITEA_SECRETS_CACHE_FILE" ]]; then
+            print_info "You can enable it later by rerunning the installer and opting into the admin bootstrap"
+        fi
+    fi
+
+    if [[ "$changed" == "true" ]]; then
+        GITEA_PROMPT_CHANGED="true"
+    else
+        GITEA_PROMPT_CHANGED="false"
+    fi
+
+    return 0
+}
+
+ensure_gitea_secrets_ready() {
+    local updated="false"
+
+    if [[ -n "$GITEA_SECRETS_CACHE_FILE" && -f "$GITEA_SECRETS_CACHE_FILE" ]]; then
+        # shellcheck disable=SC1090
+        . "$GITEA_SECRETS_CACHE_FILE"
+    fi
+
+    if [[ -z "${GITEA_SECRET_KEY:-}" ]]; then
+        local generated_secret
+        if ! generated_secret=$(generate_hex_secret 32); then
+            print_error "Failed to generate Gitea secret key"
+            return 1
+        fi
+        GITEA_SECRET_KEY="$generated_secret"
+        updated="true"
+    fi
+
+    if [[ -z "${GITEA_INTERNAL_TOKEN:-}" ]]; then
+        local internal_token
+        if ! internal_token=$(generate_hex_secret 32); then
+            print_error "Failed to generate Gitea internal token"
+            return 1
+        fi
+        GITEA_INTERNAL_TOKEN="$internal_token"
+        updated="true"
+    fi
+
+    if [[ -z "${GITEA_LFS_JWT_SECRET:-}" ]]; then
+        local lfs_jwt_secret
+        if ! lfs_jwt_secret=$(generate_hex_secret 32); then
+            print_error "Failed to generate Gitea LFS JWT secret"
+            return 1
+        fi
+        GITEA_LFS_JWT_SECRET="$lfs_jwt_secret"
+        updated="true"
+    fi
+
+    if [[ -z "${GITEA_JWT_SECRET:-}" ]]; then
+        local oauth_secret
+        if ! oauth_secret=$(generate_hex_secret 32); then
+            print_error "Failed to generate Gitea OAuth2 secret"
+            return 1
+        fi
+        GITEA_JWT_SECRET="$oauth_secret"
+        updated="true"
+    fi
+
+    if [[ "${GITEA_ADMIN_PROMPTED,,}" != "true" ]]; then
+        GITEA_PROMPT_CHANGED="false"
+        if ! prompt_configure_gitea_admin; then
+            return 1
+        fi
+        GITEA_ADMIN_PROMPTED="true"
+        if [[ "$GITEA_PROMPT_CHANGED" == "true" ]]; then
+            updated="true"
+        fi
+    fi
+
+    if [[ "${GITEA_BOOTSTRAP_ADMIN,,}" == "true" ]]; then
+        if [[ -z "${GITEA_ADMIN_USER:-}" ]]; then
+            GITEA_ADMIN_USER="gitea-admin"
+            updated="true"
+        fi
+
+        if [[ -z "${GITEA_ADMIN_EMAIL:-}" ]]; then
+            local fallback_domain="${HOSTNAME:-}"
+            if [[ -z "$fallback_domain" ]]; then
+                fallback_domain=$(hostname 2>/dev/null || echo "localhost")
+            fi
+            GITEA_ADMIN_EMAIL="${GITEA_ADMIN_USER}@${fallback_domain}"
+            updated="true"
+        fi
+
+        if [[ -z "${GITEA_ADMIN_PASSWORD:-}" ]]; then
+            local bootstrap_password
+            if ! bootstrap_password=$(generate_password 20); then
+                print_error "Failed to generate Gitea admin password"
+                return 1
+            fi
+            GITEA_ADMIN_PASSWORD="$bootstrap_password"
+            updated="true"
+            print_success "Generated a new random Gitea admin password"
+        fi
+    fi
+
+    if [[ "$updated" == "true" && -n "$GITEA_SECRETS_CACHE_FILE" ]]; then
+        local cache_dir
+        cache_dir=$(dirname "$GITEA_SECRETS_CACHE_FILE")
+        if safe_mkdir "$cache_dir"; then
+            chmod 700 "$cache_dir" 2>/dev/null || true
+            if cat >"$GITEA_SECRETS_CACHE_FILE" <<EOF
+GITEA_SECRET_KEY=$GITEA_SECRET_KEY
+GITEA_INTERNAL_TOKEN=$GITEA_INTERNAL_TOKEN
+GITEA_LFS_JWT_SECRET=$GITEA_LFS_JWT_SECRET
+GITEA_JWT_SECRET=$GITEA_JWT_SECRET
+GITEA_ADMIN_USER=$GITEA_ADMIN_USER
+GITEA_ADMIN_EMAIL=$GITEA_ADMIN_EMAIL
+GITEA_ADMIN_PASSWORD=$GITEA_ADMIN_PASSWORD
+GITEA_BOOTSTRAP_ADMIN=$GITEA_BOOTSTRAP_ADMIN
+EOF
+            then
+                chmod 600 "$GITEA_SECRETS_CACHE_FILE" 2>/dev/null || true
+                safe_chown_user_dir "$cache_dir" || true
+                safe_chown_user_dir "$GITEA_SECRETS_CACHE_FILE" || true
+                print_success "Updated cached Gitea secrets for declarative setup"
+                print_info "Stored secrets at: $GITEA_SECRETS_CACHE_FILE"
+                if [[ "${GITEA_BOOTSTRAP_ADMIN,,}" == "true" ]]; then
+                    print_info "Admin user: $GITEA_ADMIN_USER"
+                    print_warning "Admin password stored in secrets file under GITEA_ADMIN_PASSWORD"
+                fi
+            else
+                print_warning "Failed to write Gitea secrets cache file: $GITEA_SECRETS_CACHE_FILE"
+            fi
+        else
+            print_warning "Unable to create Gitea secrets cache directory: $cache_dir"
+        fi
+    fi
+
+    return 0
+}
+
+# ============================================================================
 # Generate NixOS System Configuration
 # ============================================================================
 # Purpose: Generate NixOS configuration files from templates
@@ -182,13 +512,311 @@ generate_nixos_system_config() {
         GPU_MONITORING_PACKAGES="[ pkgs.nvtop ]"
     fi
 
-    # Use sed to replace placeholders
-    sed -i "s|HOSTNAME_PLACEHOLDER|$HOSTNAME|g" "$SYSTEM_CONFIG_FILE"
-    sed -i "s|TIMEZONE_PLACEHOLDER|$TIMEZONE|g" "$SYSTEM_CONFIG_FILE"
-    sed -i "s|LOCALE_PLACEHOLDER|$LOCALE|g" "$SYSTEM_CONFIG_FILE"
-    sed -i "s|STATEVERSION_PLACEHOLDER|$STATE_VERSION|g" "$SYSTEM_CONFIG_FILE"
-    sed -i "s|USERNAME_PLACEHOLDER|$USER|g" "$SYSTEM_CONFIG_FILE"
-    sed -i "s|@GPU_MONITORING_PACKAGES@|$GPU_MONITORING_PACKAGES|g" "$SYSTEM_CONFIG_FILE"
+    local generated_at
+    generated_at=$(date --iso-8601=seconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)
+
+    local primary_user="${PRIMARY_USER:-$USER}"
+    local cpu_vendor_label="Unknown"
+    case "${CPU_VENDOR:-unknown}" in
+        intel) cpu_vendor_label="Intel" ;;
+        amd) cpu_vendor_label="AMD" ;;
+    esac
+
+    local initrd_kernel_modules="# initrd.kernelModules handled by hardware-configuration.nix"
+    case "${CPU_VENDOR:-}" in
+        intel)
+            initrd_kernel_modules='initrd.kernelModules = [ "i915" ];  # Intel GPU early KMS'
+            ;;
+        amd)
+            initrd_kernel_modules='initrd.kernelModules = [ "amdgpu" ];  # AMD GPU early KMS'
+            ;;
+    esac
+
+    local microcode_section="# hardware.cpu microcode updates managed automatically"
+    if [[ -n "${CPU_MICROCODE:-}" && "${CPU_VENDOR:-unknown}" != "unknown" ]]; then
+        microcode_section="hardware.cpu.${CPU_VENDOR}.updateMicrocode = true;  # Enable ${cpu_vendor_label} microcode updates"
+    fi
+
+    local binary_cache_settings=$(cat <<'EOF'
+
+      # Binary cache configuration managed by nixos-quick-deploy
+      # Customize via deployment script if additional caches are required.
+      substituters = [ "https://cache.nixos.org" ];
+      trusted-public-keys = [ "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" ];
+      max-jobs = "auto";
+      cores = 0;
+      builders-use-substitutes = true;
+      keep-outputs = true;
+      keep-derivations = true;
+      fallback = true;
+EOF
+)
+
+    local gpu_hardware_section
+    case "${GPU_TYPE:-software}" in
+        intel)
+            gpu_hardware_section=$(cat <<'EOF'
+  hardware.graphics = {
+    enable = true;
+    enable32Bit = true;  # For 32-bit applications
+    extraPackages = with pkgs; [
+      intel-media-driver  # VAAPI driver for Broadwell+ (>= 5th gen)
+      vaapiIntel          # Older VAAPI driver for Haswell and older
+      vaapiVdpau
+      libvdpau-va-gl
+      intel-compute-runtime  # OpenCL support
+    ];
+  };
+EOF
+)
+            ;;
+        amd)
+            gpu_hardware_section=$(cat <<'EOF'
+  hardware.graphics = {
+    enable = true;
+    enable32Bit = true;
+    extraPackages =
+      let
+        rocmOpenclPackages =
+          lib.optionals (pkgs ? rocm-opencl-icd) [ pkgs.rocm-opencl-icd ]
+          ++ lib.optionals (
+            pkgs ? rocmPackages
+            && builtins.hasAttr "clr" pkgs.rocmPackages
+            && builtins.hasAttr "icd" pkgs.rocmPackages.clr
+          ) [ pkgs.rocmPackages.clr.icd ];
+      in
+      (with pkgs; [
+        mesa              # Open-source AMD drivers (includes RADV Vulkan)
+      ])
+      ++ rocmOpenclPackages;
+  };
+EOF
+)
+            ;;
+        nvidia)
+            gpu_hardware_section=$(cat <<'EOF'
+  # NVIDIA GPU configuration (auto-detected)
+  # Note: NVIDIA on Wayland requires additional setup
+  services.xserver.videoDrivers = [ "nvidia" ];
+  hardware.nvidia = {
+    modesetting.enable = true;  # Required for Wayland
+    open = false;  # Use proprietary driver (better performance)
+    nvidiaSettings = true;  # Enable nvidia-settings GUI
+  };
+  hardware.graphics = {
+    enable = true;
+    enable32Bit = true;
+  };
+EOF
+)
+            ;;
+        *)
+            gpu_hardware_section="# No dedicated GPU configuration required (software rendering)"
+            ;;
+    esac
+
+    local gpu_driver_packages_block="[]"
+    case "${GPU_TYPE:-software}" in
+        intel)
+            gpu_driver_packages_block="(lib.optionals (pkgs ? intel-media-driver) [ intel-media-driver ] ++ lib.optionals (pkgs ? vaapiIntel) [ vaapiIntel ])"
+            ;;
+        amd)
+            gpu_driver_packages_block="(lib.optionals (pkgs ? mesa) [ mesa ] ++ lib.optionals (pkgs ? rocm-opencl-icd) [ pkgs.rocm-opencl-icd ] ++ lib.optionals (pkgs ? rocmPackages && builtins.hasAttr \"clr\" pkgs.rocmPackages && builtins.hasAttr \"icd\" pkgs.rocmPackages.clr) [ pkgs.rocmPackages.clr.icd ])"
+            ;;
+        nvidia)
+            gpu_driver_packages_block="(lib.optionals (pkgs ? nvidia-vaapi-driver) [ nvidia-vaapi-driver ])"
+            ;;
+    esac
+
+    local gpu_session_variables
+    if [[ "${GPU_TYPE:-software}" != "software" && "${GPU_TYPE:-unknown}" != "unknown" && -n "${LIBVA_DRIVER:-}" ]]; then
+        local gpu_label="${GPU_TYPE^}"
+        gpu_session_variables=$(cat <<EOF
+
+    # Hardware acceleration enabled (auto-detected: ${gpu_label} GPU)
+    # VA-API driver: ${LIBVA_DRIVER} for video decode/encode acceleration
+    LIBVA_DRIVER_NAME = "${LIBVA_DRIVER}";
+    # Enable touch/gesture support for trackpads
+    MOZ_USE_XINPUT2 = "1";
+EOF
+)
+    else
+        gpu_session_variables=$(cat <<'EOF'
+
+    # No dedicated GPU detected - using software rendering
+    # Hardware acceleration disabled
+EOF
+)
+    fi
+
+    local total_ram_value="${TOTAL_RAM_GB:-0}"
+    local zram_value="${ZRAM_PERCENT:-50}"
+
+    local user_password_block
+    if [[ -n "${USER_PASSWORD_BLOCK:-}" ]]; then
+        user_password_block="$USER_PASSWORD_BLOCK"
+    else
+        user_password_block=$'    # (no password directives detected; update manually if required)\n'
+    fi
+
+    if ! ensure_gitea_secrets_ready; then
+        return 1
+    fi
+
+    local gitea_admin_secrets_set
+    local gitea_admin_variables_block
+    local gitea_admin_service_block
+
+    if [[ "${GITEA_BOOTSTRAP_ADMIN,,}" == "true" ]]; then
+        gitea_admin_secrets_set=$(cat <<'EOF'
+{
+    adminPassword = @GITEA_ADMIN_PASSWORD@;
+  }
+EOF
+)
+        gitea_admin_variables_block=$(cat <<'EOF'
+  giteaAdminUser = @GITEA_ADMIN_USER@;
+  giteaAdminEmail = @GITEA_ADMIN_EMAIL@;
+  giteaAdminUserPattern = lib.escapeRegex giteaAdminUser;
+  giteaAdminBootstrapScript = pkgs.writeShellScript "gitea-admin-bootstrap" ''
+    set -euo pipefail
+
+    export HOME=${lib.escapeShellArg giteaStateDir}
+    export GITEA_WORK_DIR=${lib.escapeShellArg giteaStateDir}
+    export GITEA_CUSTOM=${lib.escapeShellArg ("${giteaStateDir}/custom")}
+    export GITEA_APP_INI=${lib.escapeShellArg ("${giteaStateDir}/custom/conf/app.ini")}
+
+    attempts=0
+    while true; do
+      if output=$(${pkgs.gitea}/bin/gitea admin user list --admin 2>/dev/null); then
+        if printf '%s\n' "$output" | ${pkgs.gnugrep}/bin/grep -q '^${giteaAdminUserPattern}\\b'; then
+          exit 0
+        fi
+        break
+      fi
+
+      attempts=$((attempts + 1))
+      if [ "$attempts" -ge 30 ]; then
+        echo "gitea-admin-bootstrap: timed out waiting for gitea admin CLI" >&2
+        exit 1
+      fi
+      ${pkgs.coreutils}/bin/sleep 2
+    done
+
+    ${pkgs.gitea}/bin/gitea admin user create \
+      --username ${lib.escapeShellArg giteaAdminUser} \
+      --password ${lib.escapeShellArg giteaAdminSecrets.adminPassword} \
+      --email ${lib.escapeShellArg giteaAdminEmail} \
+      --must-change-password=false \
+      --admin
+  '';
+EOF
+)
+        gitea_admin_service_block=$(cat <<'EOF'
+  systemd.services.gitea-admin-bootstrap = {
+    description = "Bootstrap default Gitea administrator";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "gitea.service" ];
+    requires = [ "gitea.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      User = "gitea";
+      Group = "gitea";
+      ExecStart = giteaAdminBootstrapScript;
+    };
+  };
+EOF
+)
+    else
+        gitea_admin_secrets_set=$(cat <<'EOF'
+{
+  # Add `adminPassword = "your-strong-password";` to enable declarative admin bootstrapping.
+}
+EOF
+)
+        gitea_admin_variables_block=$(cat <<'EOF'
+  # Gitea admin bootstrap is disabled by the installer.
+  # Uncomment and customize the block below to create an admin automatically.
+  # giteaAdminUser = "gitea-admin";
+  # giteaAdminEmail = "gitea-admin@example.local";
+  # giteaAdminUserPattern = lib.escapeRegex giteaAdminUser;
+  # giteaAdminBootstrapScript = pkgs.writeShellScript "gitea-admin-bootstrap" ''
+  #   set -euo pipefail
+  #
+  #   export HOME=${lib.escapeShellArg giteaStateDir}
+  #   export GITEA_WORK_DIR=${lib.escapeShellArg giteaStateDir}
+  #   export GITEA_CUSTOM=${lib.escapeShellArg ("${giteaStateDir}/custom")}
+  #   export GITEA_APP_INI=${lib.escapeShellArg ("${giteaStateDir}/custom/conf/app.ini")}
+  #
+  #   ${pkgs.gitea}/bin/gitea admin user create \
+  #     --username ${lib.escapeShellArg "<gitea-admin>"} \
+  #     --password ${lib.escapeShellArg "<replace-with-password>"} \
+  #     --email ${lib.escapeShellArg "gitea-admin@example.local"} \
+  #     --must-change-password=false \
+  #     --admin
+  # '';
+EOF
+)
+        gitea_admin_service_block=$(cat <<'EOF'
+  # systemd.services.gitea-admin-bootstrap = {
+  #   description = "Bootstrap default Gitea administrator";
+  #   wantedBy = [ "multi-user.target" ];
+  #   after = [ "gitea.service" ];
+  #   requires = [ "gitea.service" ];
+  #   serviceConfig = {
+  #     Type = "oneshot";
+  #     User = "gitea";
+  #     Group = "gitea";
+  #     ExecStart = giteaAdminBootstrapScript;
+  #   };
+  # };
+EOF
+)
+    fi
+
+    local gitea_admin_user_literal=""
+    local gitea_admin_email_literal=""
+    local gitea_admin_password_literal=""
+
+    if [[ "${GITEA_BOOTSTRAP_ADMIN,,}" == "true" ]]; then
+        gitea_admin_user_literal=$(nix_quote_string "$GITEA_ADMIN_USER")
+        gitea_admin_email_literal=$(nix_quote_string "$GITEA_ADMIN_EMAIL")
+        gitea_admin_password_literal=$(nix_quote_string "$GITEA_ADMIN_PASSWORD")
+    fi
+
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@SCRIPT_VERSION@" "$SCRIPT_VERSION"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GENERATED_AT@" "$generated_at"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@HOSTNAME@" "$HOSTNAME"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@USER@" "$primary_user"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@CPU_VENDOR_LABEL@" "$cpu_vendor_label"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@INITRD_KERNEL_MODULES@" "$initrd_kernel_modules"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@MICROCODE_SECTION@" "$microcode_section"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@BINARY_CACHE_SETTINGS@" "$binary_cache_settings"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GPU_HARDWARE_SECTION@" "$gpu_hardware_section"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GPU_SESSION_VARIABLES@" "$gpu_session_variables"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GPU_DRIVER_PACKAGES@" "$gpu_driver_packages_block"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@SELECTED_TIMEZONE@" "$TIMEZONE"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@CURRENT_LOCALE@" "$LOCALE"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@NIXOS_VERSION@" "$NIXOS_VERSION"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@TOTAL_RAM_GB@" "$total_ram_value"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@ZRAM_PERCENT@" "$zram_value"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@USERS_MUTABLE@" "${USERS_MUTABLE_SETTING:-true}"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@USER_PASSWORD_BLOCK@" "$user_password_block"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_ADMIN_SECRETS_SET@" "$gitea_admin_secrets_set"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_ADMIN_VARIABLES_BLOCK@" "$gitea_admin_variables_block"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_ADMIN_SERVICE_BLOCK@" "$gitea_admin_service_block"
+
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_SECRET_KEY@" "$(nix_quote_string "$GITEA_SECRET_KEY")"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_INTERNAL_TOKEN@" "$(nix_quote_string "$GITEA_INTERNAL_TOKEN")"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_LFS_JWT_SECRET@" "$(nix_quote_string "$GITEA_LFS_JWT_SECRET")"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_JWT_SECRET@" "$(nix_quote_string "$GITEA_JWT_SECRET")"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_ADMIN_PASSWORD@" "$gitea_admin_password_literal"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_ADMIN_USER@" "$gitea_admin_user_literal"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_ADMIN_EMAIL@" "$gitea_admin_email_literal"
+
+    if ! nix_verify_no_placeholders "$SYSTEM_CONFIG_FILE" "configuration.nix"; then
+        return 1
+    fi
 
     print_success "Generated configuration.nix"
     echo ""
@@ -210,11 +838,15 @@ generate_nixos_system_config() {
     fi
 
     # Replace flake placeholders
-    sed -i "s|NIXPKGS_CHANNEL_PLACEHOLDER|$NIXOS_CHANNEL_NAME|g" "$FLAKE_FILE"
-    sed -i "s|HM_CHANNEL_PLACEHOLDER|$HM_CHANNEL_NAME|g" "$FLAKE_FILE"
-    sed -i "s|HOSTNAME_PLACEHOLDER|$HOSTNAME|g" "$FLAKE_FILE"
-    sed -i "s|HOME_USERNAME_PLACEHOLDER|$USER|g" "$FLAKE_FILE"
-    sed -i "s|SYSTEM_PLACEHOLDER|$SYSTEM_ARCH|g" "$FLAKE_FILE"
+    replace_placeholder "$FLAKE_FILE" "NIXPKGS_CHANNEL_PLACEHOLDER" "$NIXOS_CHANNEL_NAME"
+    replace_placeholder "$FLAKE_FILE" "HM_CHANNEL_PLACEHOLDER" "$HM_CHANNEL_NAME"
+    replace_placeholder "$FLAKE_FILE" "HOSTNAME_PLACEHOLDER" "$HOSTNAME"
+    replace_placeholder "$FLAKE_FILE" "HOME_USERNAME_PLACEHOLDER" "$USER"
+    replace_placeholder "$FLAKE_FILE" "SYSTEM_PLACEHOLDER" "$SYSTEM_ARCH"
+
+    if ! nix_verify_no_placeholders "$FLAKE_FILE" "flake.nix" '\\b[A-Z0-9_]*PLACEHOLDER\\b'; then
+        return 1
+    fi
 
     print_success "Generated flake.nix"
     echo ""
@@ -359,16 +991,35 @@ create_home_manager_config() {
     fi
 
     print_info "Customizing home.nix..."
-    sed -i "s|VERSIONPLACEHOLDER|${SCRIPT_VERSION:-4.0.0}|g" "$HOME_MANAGER_FILE"
-    sed -i "s|HASHPLACEHOLDER|$TEMPLATE_HASH|g" "$HOME_MANAGER_FILE"
-    sed -i "s|HOMEUSERNAME|$USER|g" "$HOME_MANAGER_FILE"
-    sed -i "s|HOMEDIR|$HOME|g" "$HOME_MANAGER_FILE"
-    sed -i "s|STATEVERSION_PLACEHOLDER|$STATE_VERSION|g" "$HOME_MANAGER_FILE"
-    sed -i "s|@GPU_MONITORING_PACKAGES@|$GPU_MONITORING_PACKAGES|g" "$HOME_MANAGER_FILE"
+
+    if ! ensure_gitea_secrets_ready; then
+        return 1
+    fi
+
+    replace_placeholder "$HOME_MANAGER_FILE" "VERSIONPLACEHOLDER" "${SCRIPT_VERSION:-4.0.0}"
+    replace_placeholder "$HOME_MANAGER_FILE" "HASHPLACEHOLDER" "$TEMPLATE_HASH"
+    replace_placeholder "$HOME_MANAGER_FILE" "HOMEUSERNAME" "$USER"
+    replace_placeholder "$HOME_MANAGER_FILE" "HOMEDIR" "$HOME"
+    replace_placeholder "$HOME_MANAGER_FILE" "STATEVERSION_PLACEHOLDER" "$STATE_VERSION"
+    replace_placeholder "$HOME_MANAGER_FILE" "@GPU_MONITORING_PACKAGES@" "$GPU_MONITORING_PACKAGES"
+
+    local HOME_HOSTNAME=$(hostname)
+    replace_placeholder "$HOME_MANAGER_FILE" "@HOSTNAME@" "$HOME_HOSTNAME"
+    replace_placeholder "$HOME_MANAGER_FILE" "@GITEA_SECRET_KEY@" "$(nix_quote_string "$GITEA_SECRET_KEY")"
+    replace_placeholder "$HOME_MANAGER_FILE" "@GITEA_INTERNAL_TOKEN@" "$(nix_quote_string "$GITEA_INTERNAL_TOKEN")"
+    replace_placeholder "$HOME_MANAGER_FILE" "@GITEA_LFS_JWT_SECRET@" "$(nix_quote_string "$GITEA_LFS_JWT_SECRET")"
+    replace_placeholder "$HOME_MANAGER_FILE" "@GITEA_JWT_SECRET@" "$(nix_quote_string "$GITEA_JWT_SECRET")"
+
+    if ! nix_verify_no_placeholders "$HOME_MANAGER_FILE" "home.nix" '\\b[A-Z0-9_]*PLACEHOLDER\\b' '\\b(HOMEUSERNAME|HOMEDIR)\\b'; then
+        return 1
+    fi
 
     # Ensure flake.nix is updated if it exists (may have been created by generate_nixos_system_config)
     if [[ -f "$FLAKE_FILE" ]]; then
-        sed -i "s|HOME_USERNAME_PLACEHOLDER|$USER|g" "$FLAKE_FILE"
+        replace_placeholder "$FLAKE_FILE" "HOME_USERNAME_PLACEHOLDER" "$USER"
+        if ! nix_verify_no_placeholders "$FLAKE_FILE" "flake.nix" '\\b[A-Z0-9_]*PLACEHOLDER\\b'; then
+            return 1
+        fi
         print_success "Updated flake.nix with username"
     fi
 
