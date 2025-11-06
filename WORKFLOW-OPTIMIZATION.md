@@ -192,13 +192,13 @@ This assumes:
 5. Merge phase-06 + phase-08 → phase-05-declarative-deployment.sh
 6. Move phase-10 → phase-06-deployment-report.sh
 7. Remove phase-07, phase-09 (make declarative instead)
-8. Update nixos-quick-deploy-modular.sh phase count and descriptions
+8. Update nixos-quick-deploy.sh phase count and descriptions
 9. Update all documentation
 
 **If choosing 10-phase rename:**
 1. Rename all phase files as listed above
 2. Update function names inside files
-3. Update nixos-quick-deploy-modular.sh descriptions
+3. Update nixos-quick-deploy.sh descriptions
 4. Update documentation
 
 ---
@@ -286,7 +286,7 @@ This assumes:
 
 ### Bootstrap Updates
 
-**nixos-quick-deploy-modular.sh** updated:
+**nixos-quick-deploy.sh** updated:
 - `get_phase_name()` - Updated for new filenames
 - `get_phase_description()` - Updated with clear 8-phase descriptions
 - `get_phase_dependencies()` - Updated for 8-phase chain
