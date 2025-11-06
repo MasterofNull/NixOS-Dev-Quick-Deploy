@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Phase 03: System Backup
-# Purpose: Create comprehensive backup of system state before changes
-# Version: 3.2.0
+# Phase 03: Comprehensive System Backup
+# Purpose: ONE complete backup of all system and user state before ANY changes
+# Version: 3.3.0
 #
 # ============================================================================
 # DEPENDENCIES
@@ -16,21 +16,7 @@
 # Required Variables (from config/variables.sh):
 #   - DRY_RUN → Whether running in dry-run mode
 #   - HOME → User home directory
-#
-# Required Functions (from lib/common.sh):
-#   - is_step_complete() → Check if phase already completed
-#   - mark_step_complete() → Mark phase as completed
-#   - print_section() → Print section header
-#   - create_rollback_point() → Create system rollback point
-#
-# Requires Phases (must complete before this):
-#   - Phase 2: Prerequisites must be installed
-#
-# Produces (for later phases):
-#   - BACKUP_ROOT → Root directory for backups
-#   - NIX_GEN_BEFORE → NixOS generation before deployment
-#   - HM_GEN_BEFORE → Home-manager generation before deployment
-#   - State: "comprehensive_backup" → Marked complete in state.json
+#   - STATE_DIR → State directory for tracking
 #
 # Exit Codes:
 #   0 → Success (phase completed or already complete)
@@ -42,27 +28,16 @@
 
 phase_03_backup() {
     # ========================================================================
-    # Phase 3: System Backup
+    # Phase 3: Comprehensive System Backup
     # ========================================================================
-    # This is the "safety net" phase - create comprehensive backups BEFORE
-    # making ANY system changes. This enables rollback if deployment fails.
+    # This is the ONE AND ONLY backup phase. Everything gets backed up here
+    # BEFORE making ANY changes to the system.
     #
-    # NixOS philosophy: "Declarative + Atomic + Rollback"
-    # - Every system change creates a new "generation"
-    # - Each generation is a complete system snapshot
-    # - Can rollback to any previous generation at boot
-    # - Generations stored in /nix/var/nix/profiles/
-    #
-    # This phase creates THREE types of backups:
-    # 1. NixOS generation snapshot (rollback point)
-    # 2. Configuration file backup (manual restore)
-    # 3. Home-manager config backup (user environment)
-    #
-    # Why backup even with NixOS generations:
-    # - Generations track installed packages, not config files
-    # - Manual config edits might not be in version control
-    # - Provides extra safety layer for troubleshooting
-    # - Enables comparing old vs new configs
+    # Following NixOS Best Practices:
+    # - NixOS generations provide system-level rollback
+    # - We backup configs for manual inspection/restoration
+    # - We document current state for comparison
+    # - This enables informed rollback decisions
     # ========================================================================
 
     local phase_name="comprehensive_backup"
@@ -75,118 +50,187 @@ phase_03_backup() {
         return 0
     fi
 
-    print_section "Phase 3/10: System Backup"
+    print_section "Phase 3/10: Comprehensive System Backup"
+    echo ""
+
+    # Create backup root directory with timestamp
+    local BACKUP_ROOT="$HOME/.config-backups/pre-deployment-$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$BACKUP_ROOT"
+    print_info "Backup directory: $BACKUP_ROOT"
     echo ""
 
     # ========================================================================
-    # Step 3.1: Create NixOS Rollback Point
+    # Step 3.1: Record Current System State
     # ========================================================================
-    # Why: Create a labeled generation snapshot for easy identification
-    # How: create_rollback_point() does:
-    #      1. Records current generation number
-    #      2. Creates labeled snapshot in NixOS boot menu
-    #      3. Saves generation info to rollback.json
-    # Result: Can rollback via: sudo nixos-rebuild --rollback
-    #
-    # NixOS generation management:
-    # - Each nixos-rebuild creates a new generation
-    # - Generations numbered sequentially: 1, 2, 3, ...
-    # - Current generation: /run/current-system
-    # - All generations: /nix/var/nix/profiles/system-*-link
-    # - Boot menu shows last 5 generations by default
-    #
-    # Rollback methods:
-    # - At boot: Select previous generation in GRUB/systemd-boot
-    # - Live system: sudo nixos-rebuild --rollback
-    # - Specific gen: sudo nixos-rebuild switch --rollback-to N
-    #
-    # DRY_RUN check: Skip actual backup in dry-run mode
+    print_info "Recording current system state..."
+
+    # Record current NixOS generation
+    local current_gen
+    current_gen=$(readlink /run/current-system | grep -oP 'system-\K[0-9]+-link' | grep -oP '[0-9]+' || echo "unknown")
+    echo "NixOS Generation: $current_gen" > "$BACKUP_ROOT/system-state.txt"
+    print_success "Current NixOS generation: $current_gen"
+
+    # Record current home-manager generation (if exists)
+    if [[ -d "$HOME/.local/state/nix/profiles" ]]; then
+        local hm_gen
+        hm_gen=$(readlink "$HOME/.local/state/nix/profiles/home-manager" | grep -oP 'home-manager-\K[0-9]+-link' | grep -oP '[0-9]+' 2>/dev/null || echo "none")
+        echo "Home-Manager Generation: $hm_gen" >> "$BACKUP_ROOT/system-state.txt"
+        print_success "Current home-manager generation: $hm_gen"
+    fi
+
+    # List nix-env packages (for reference - we'll only remove script-generated ones)
+    if command -v nix-env &>/dev/null; then
+        print_info "Listing current nix-env packages..."
+        nix-env -q > "$BACKUP_ROOT/nix-env-packages.txt" 2>/dev/null || true
+        local pkg_count=$(wc -l < "$BACKUP_ROOT/nix-env-packages.txt" 2>/dev/null || echo "0")
+        if [[ "$pkg_count" -gt 0 ]]; then
+            print_info "Found $pkg_count nix-env packages (saved for reference)"
+        else
+            print_success "No nix-env packages installed"
+        fi
+    fi
+
+    echo ""
+
+    # ========================================================================
+    # Step 3.2: Create NixOS Rollback Point
+    # ========================================================================
+    print_info "Creating NixOS generation rollback point..."
     if [[ "$DRY_RUN" == false ]]; then
-        # $(date +%Y-%m-%d_%H:%M:%S): Current timestamp in ISO-like format
-        # Example label: "Before v3.1 deployment 2025-11-05_14:30:45"
-        create_rollback_point "Before v3.1 deployment $(date +%Y-%m-%d_%H:%M:%S)"
+        create_rollback_point "Before deployment $(date +%Y-%m-%d_%H:%M:%S)"
+        print_success "NixOS rollback point created"
+    else
+        print_info "[DRY RUN] Would create NixOS rollback point"
     fi
+    echo ""
 
     # ========================================================================
-    # Step 3.2: Backup System Configuration File
+    # Step 3.3: Backup System Configurations
     # ========================================================================
-    # Why: Preserve existing /etc/nixos/configuration.nix before overwriting
-    # How: Copy to timestamped backup in same directory
-    # When: Only if file exists (fresh install might not have it)
-    #
-    # File location: /etc/nixos/configuration.nix
-    # - Main NixOS system configuration
-    # - Root-owned, requires sudo to modify
-    # - Defines: boot, networking, services, packages, users
-    # - Generated during NixOS installation
-    #
-    # Backup naming: configuration.nix.backup.YYYYMMDD_HHMMSS
-    # - Timestamp: Unique identifier for this backup
-    # - Format: YYYYMMDD_HHMMSS (e.g., 20251105_143045)
-    # - Kept in same dir for easy discovery
-    #
-    # Why sudo cp: /etc/nixos owned by root, need elevation
-    # Why check existence: Fresh installs might not have this file yet
+    print_info "Backing up system configuration files..."
+
+    # Backup /etc/nixos/configuration.nix
     if [[ -f "/etc/nixos/configuration.nix" ]]; then
-        # local: Function-scoped variable (not global)
-        # $(date +%Y%m%d_%H%M%S): Timestamp without hyphens/colons
-        local backup_path="/etc/nixos/configuration.nix.backup.$(date +%Y%m%d_%H%M%S)"
-
-        # sudo: Need root to read/write /etc/nixos
-        # cp: Copy preserving permissions and timestamps
-        sudo cp "/etc/nixos/configuration.nix" "$backup_path"
-        print_success "Backed up system configuration: $backup_path"
+        sudo cp "/etc/nixos/configuration.nix" "$BACKUP_ROOT/configuration.nix" 2>/dev/null
+        print_success "✓ Backed up: /etc/nixos/configuration.nix"
     fi
 
+    # Backup /etc/nixos/flake.nix (if exists)
+    if [[ -f "/etc/nixos/flake.nix" ]]; then
+        sudo cp "/etc/nixos/flake.nix" "$BACKUP_ROOT/nixos-flake.nix" 2>/dev/null
+        print_success "✓ Backed up: /etc/nixos/flake.nix"
+    fi
+
+    echo ""
+
     # ========================================================================
-    # Step 3.3: Backup Home-Manager Configuration File
+    # Step 3.4: Backup User Configurations
     # ========================================================================
-    # Why: Preserve user environment config before home-manager changes
-    # How: Copy to timestamped backup in same directory
-    # When: Only if file exists (might be first-time setup)
-    #
-    # File location: ~/.config/home-manager/home.nix
-    # - Main home-manager user configuration
-    # - User-owned, no sudo needed
-    # - Defines: packages, dotfiles, services, programs
-    # - Created by home-manager init or manually
-    #
-    # Home-manager concept:
-    # - NixOS manages system: kernel, drivers, system services
-    # - Home-manager manages user: dotfiles, user packages, user services
-    # - Separation of concerns: system admin vs user preferences
-    # - User can manage their own environment without sudo
-    #
-    # Backup naming: home.nix.backup.YYYYMMDD_HHMMSS
-    # - Same timestamp format as system config
-    # - Keeps versioned history of user config
-    # - Easy to compare changes: diff home.nix home.nix.backup.XXX
-    #
-    # Why no sudo: ~/.config/home-manager owned by user, not root
-    # $HOME variable: User home directory (e.g., /home/alice)
+    print_info "Backing up user configuration files..."
+
+    # Backup home-manager configs
     if [[ -f "$HOME/.config/home-manager/home.nix" ]]; then
-        # User files don't need sudo
-        local hm_backup="$HOME/.config/home-manager/home.nix.backup.$(date +%Y%m%d_%H%M%S)"
-
-        # cp: Regular copy (user has permission to source and destination)
-        cp "$HOME/.config/home-manager/home.nix" "$hm_backup"
-        print_success "Backed up home-manager config: $hm_backup"
+        mkdir -p "$BACKUP_ROOT/home-manager"
+        cp "$HOME/.config/home-manager/home.nix" "$BACKUP_ROOT/home-manager/" 2>/dev/null
+        print_success "✓ Backed up: ~/.config/home-manager/home.nix"
     fi
+
+    if [[ -f "$HOME/.config/home-manager/flake.nix" ]]; then
+        cp "$HOME/.config/home-manager/flake.nix" "$BACKUP_ROOT/home-manager/" 2>/dev/null
+        print_success "✓ Backed up: ~/.config/home-manager/flake.nix"
+    fi
+
+    # Backup important user configs (non-destructive - just copy for reference)
+    local user_configs=(
+        ".config/flatpak"
+        ".config/aider"
+        ".config/tea"
+        ".config/huggingface"
+        ".config/gitea"
+        ".config/obsidian"
+    )
+
+    for config_dir in "${user_configs[@]}"; do
+        local full_path="$HOME/$config_dir"
+        if [[ -d "$full_path" ]] && [[ $(du -s "$full_path" 2>/dev/null | cut -f1) -lt 102400 ]]; then
+            # Only backup if < 100MB (avoid huge caches)
+            local dir_name=$(basename "$config_dir")
+            local parent=$(dirname "$config_dir")
+            mkdir -p "$BACKUP_ROOT/$parent"
+            cp -a "$full_path" "$BACKUP_ROOT/$parent/" 2>/dev/null && \
+                print_success "✓ Backed up: ~/$config_dir"
+        fi
+    done
+
+    echo ""
+
+    # ========================================================================
+    # Step 3.5: Save Recovery Instructions
+    # ========================================================================
+    print_info "Creating recovery instructions..."
+
+    cat > "$BACKUP_ROOT/RECOVERY-README.txt" << EOF
+NixOS Quick Deploy - Backup Recovery Instructions
+Created: $(date)
+Backup Location: $BACKUP_ROOT
+
+=================================================================
+AUTOMATIC ROLLBACK (Recommended)
+=================================================================
+
+1. Rollback NixOS system (if deployment failed):
+   sudo nixos-rebuild --rollback
+
+2. Rollback home-manager (if user environment broken):
+   home-manager --rollback
+
+=================================================================
+MANUAL RECOVERY (If needed)
+=================================================================
+
+1. Restore system configuration:
+   sudo cp $BACKUP_ROOT/configuration.nix /etc/nixos/configuration.nix
+   sudo nixos-rebuild switch
+
+2. Restore home-manager configuration:
+   cp $BACKUP_ROOT/home-manager/home.nix ~/.config/home-manager/home.nix
+   home-manager switch
+
+3. Restore user configs:
+   cp -a $BACKUP_ROOT/.config/. ~/.config/
+
+=================================================================
+SYSTEM STATE AT BACKUP
+=================================================================
+
+EOF
+    cat "$BACKUP_ROOT/system-state.txt" >> "$BACKUP_ROOT/RECOVERY-README.txt"
+
+    print_success "Recovery instructions saved to: $BACKUP_ROOT/RECOVERY-README.txt"
+    echo ""
+
+    # ========================================================================
+    # Summary
+    # ========================================================================
+    print_section "Backup Summary"
+    echo "✓ NixOS generation rollback point created"
+    echo "✓ System configurations backed up"
+    echo "✓ User configurations backed up"
+    echo "✓ Current state documented"
+    echo "✓ Recovery instructions created"
+    echo ""
+    echo "Backup location: $BACKUP_ROOT"
+    echo "Recovery guide: $BACKUP_ROOT/RECOVERY-README.txt"
+    echo ""
+
+    # Save backup location for other phases to reference
+    echo "$BACKUP_ROOT" > "$STATE_DIR/last-backup-location.txt"
 
     # ------------------------------------------------------------------------
     # Mark Phase Complete
     # ------------------------------------------------------------------------
-    # All backups created successfully.
-    # System is now safe to modify - we have rollback points.
-    #
-    # Recovery methods available after this phase:
-    # 1. NixOS generation rollback (system-level)
-    # 2. Manual config restore from backup files
-    # 3. Home-manager generation rollback (user-level)
-    #
-    # State tracking: "comprehensive_backup" marked complete
     mark_step_complete "$phase_name"
-    print_success "Phase 3: System Backup - COMPLETE"
+    print_success "Phase 3: Comprehensive System Backup - COMPLETE"
     echo ""
 }
 
