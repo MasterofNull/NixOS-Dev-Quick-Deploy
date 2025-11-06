@@ -205,19 +205,93 @@ phase_01_system_initialization() {
     # ========================================================================
 
     # ========================================================================
-    # Step 1.11: NixOS Version Selection
+    # Step 1.11: Select Build Strategy for Initial Deployment
+    # ========================================================================
+    print_section "Build Strategy Selection"
+    echo ""
+    print_info "Choose how nixos-rebuild should source packages during the initial switch."
+    echo ""
+
+    local -a recommended_caches=()
+    if declare -F get_binary_cache_sources >/dev/null 2>&1; then
+        mapfile -t recommended_caches < <(get_binary_cache_sources)
+    fi
+
+    echo "  1) Use pre-built binary caches (recommended)"
+    echo "     - Downloads trusted substitutes for faster deployment"
+    echo "     - Minimal local compilation workload"
+    echo "     - Requires reliable internet access"
+    if (( ${#recommended_caches[@]} > 0 )); then
+        local cache_overview=""
+        local cache
+        for cache in "${recommended_caches[@]}"; do
+            if [[ -n "$cache_overview" ]]; then
+                cache_overview+="; "
+            fi
+            cache_overview+="$cache"
+        done
+        echo "     - Caches: ${cache_overview}"
+    fi
+    echo ""
+    echo "  2) Build every package locally"
+    echo "     - Disables binary caches for a reproducible source build"
+    echo "     - Significantly longer build times (hours on slower systems)"
+    echo "     - High CPU and memory usage during compilation"
+    echo ""
+
+    local build_choice
+    local default_choice="1"
+    if [[ "${USE_BINARY_CACHES:-true}" != "true" ]]; then
+        default_choice="2"
+    fi
+    build_choice=$(prompt_user "Choose build strategy (1-2)" "$default_choice")
+
+    case "$build_choice" in
+        2)
+            USE_BINARY_CACHES="false"
+            print_warning "Binary caches disabled – all packages will be built from source."
+            print_info "Ensure adequate time, CPU resources, and thermal management before continuing."
+            ;;
+        1|*)
+            USE_BINARY_CACHES="true"
+            print_success "Binary caches enabled – leveraging trusted substitutes for faster deployment."
+            ;;
+    esac
+
+    if [[ -n "${BINARY_CACHE_PREFERENCE_FILE:-}" ]]; then
+        local preference_dir
+        preference_dir=$(dirname "$BINARY_CACHE_PREFERENCE_FILE")
+        if safe_mkdir "$preference_dir"; then
+            if cat >"$BINARY_CACHE_PREFERENCE_FILE" <<EOF
+# Stored deployment preference – automatically updated by phase 1
+USE_BINARY_CACHES=$USE_BINARY_CACHES
+EOF
+            then
+                chmod 600 "$BINARY_CACHE_PREFERENCE_FILE" 2>/dev/null || true
+                safe_chown_user_dir "$BINARY_CACHE_PREFERENCE_FILE" || true
+                print_info "Saved build strategy preference for future runs."
+            else
+                print_warning "Unable to persist build strategy preference (continuing with current session setting)."
+            fi
+        else
+            print_warning "Could not prepare preference directory at $preference_dir; preference will not be cached."
+        fi
+    fi
+
+    # ========================================================================
+    # Step 1.12: NixOS Version Selection
     # ========================================================================
     # Let user choose stable (24.05) or unstable (rolling)
     select_nixos_version
 
     # ========================================================================
-    # Step 1.12: Update NixOS Channels
+    # Step 1.13: Update NixOS Channels
     # ========================================================================
     # Fetch latest package metadata and security updates
     update_nixos_channels
 
     # ========================================================================
-    # Step 1.13: Install Core Prerequisite Packages
+    # Step 1.14: Install Core Prerequisite Packages
     # ========================================================================
     # Install git, jq, curl, wget via nix-env for immediate availability
     # These are temporary and will be removed in Phase 5
@@ -227,14 +301,14 @@ phase_01_system_initialization() {
     fi
 
     # ========================================================================
-    # Step 1.14: Cleanup Conflicting Home-Manager Profiles
+    # Step 1.15: Cleanup Conflicting Home-Manager Profiles
     # ========================================================================
     # Remove legacy home-manager installations that could conflict
     print_info "Scanning nix profile for legacy home-manager entries..."
     cleanup_conflicting_home_manager_profile
 
     # ========================================================================
-    # Step 1.15: Ensure Home-Manager is Available
+    # Step 1.16: Ensure Home-Manager is Available
     # ========================================================================
     # home-manager manages user environment (dotfiles, packages, services)
     if command -v home-manager &>/dev/null; then
@@ -245,7 +319,7 @@ phase_01_system_initialization() {
     fi
 
     # ========================================================================
-    # Step 1.16: Verify Python Runtime Available
+    # Step 1.17: Verify Python Runtime Available
     # ========================================================================
     # Python needed for configuration generation scripts
     print_info "Verifying Python runtime..."

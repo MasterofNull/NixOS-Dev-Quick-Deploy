@@ -108,6 +108,13 @@ readonly BACKUP_ROOT="$STATE_DIR/backups/$(date +%Y%m%d_%H%M%S)"
 readonly BACKUP_MANIFEST="$BACKUP_ROOT/manifest.txt"
 
 # ============================================================================
+# Preference Cache Paths
+# ============================================================================
+
+readonly DEPLOYMENT_PREFERENCES_DIR="$STATE_DIR/preferences"
+readonly BINARY_CACHE_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/binary-cache-preference.env"
+
+# ============================================================================
 # Mutable Flags
 # ============================================================================
 
@@ -115,6 +122,27 @@ DRY_RUN=false
 FORCE_UPDATE=false
 SKIP_HEALTH_CHECK=false
 ENABLE_DEBUG=false
+
+_use_binary_caches_default="true"
+if [[ -n "${USE_BINARY_CACHES:-}" ]]; then
+    _use_binary_caches_default="$USE_BINARY_CACHES"
+fi
+
+if [[ -z "${USE_BINARY_CACHES:-}" && -f "$BINARY_CACHE_PREFERENCE_FILE" ]]; then
+    _persisted_preference=$(awk -F'=' '/^USE_BINARY_CACHES=/{print $2}' "$BINARY_CACHE_PREFERENCE_FILE" 2>/dev/null | tail -n1 | tr -d '\r')
+    case "$_persisted_preference" in
+        true|false)
+            USE_BINARY_CACHES="$_persisted_preference"
+            ;;
+    esac
+fi
+
+if [[ -z "${USE_BINARY_CACHES:-}" ]]; then
+    USE_BINARY_CACHES="$_use_binary_caches_default"
+fi
+
+unset _use_binary_caches_default
+unset _persisted_preference
 
 # ============================================================================
 # Channel Preferences
