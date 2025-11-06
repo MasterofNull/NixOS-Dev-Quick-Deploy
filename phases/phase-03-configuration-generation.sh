@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Phase 04: Configuration Generation & Validation
-# Purpose: Generate all configuration files and validate with dry-run
-# Version: 3.2.0
+# Phase 03: Configuration Generation
+# Purpose: Generate all declarative NixOS and home-manager configurations
+# Version: 4.0.0
 #
 # ============================================================================
 # DEPENDENCIES
@@ -45,9 +45,9 @@
 # PHASE IMPLEMENTATION
 # ============================================================================
 
-phase_04_config_generation() {
+phase_03_config_generation() {
     # ========================================================================
-    # Phase 4: Configuration Generation & Validation
+    # Phase 3: Configuration Generation
     # ========================================================================
     # This is the "blueprint creation" phase - generate ALL NixOS configuration
     # files that define the system, then validate them BEFORE applying.
@@ -97,11 +97,11 @@ phase_04_config_generation() {
     # Resume Check: Skip if already completed
     # ------------------------------------------------------------------------
     if is_step_complete "$phase_name"; then
-        print_info "Phase 4 already completed (skipping)"
+        print_info "Phase 3 already completed (skipping)"
         return 0
     fi
 
-    print_section "Phase 4/10: Configuration Generation & Validation"
+    print_section "Phase 3/8: Configuration Generation"
     echo ""
 
     # ========================================================================
@@ -226,9 +226,9 @@ phase_04_config_generation() {
     # State: "generate_validate_configs" marked complete
     # Next: Phase 5 will clean up conflicts before deployment
     mark_step_complete "$phase_name"
-    print_success "Phase 4: Configuration Generation & Validation - COMPLETE"
+    print_success "Phase 3: Configuration Generation - COMPLETE"
     echo ""
 }
 
 # Execute phase
-phase_04_config_generation
+phase_03_config_generation

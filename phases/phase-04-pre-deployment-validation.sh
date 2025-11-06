@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Phase 05: Pre-Deployment Validation
+# Phase 04: Pre-Deployment Validation
 # Purpose: Validate environment and identify potential conflicts before deployment
-# Version: 3.2.1
+# Version: 4.0.0
 #
 # ============================================================================
 # DEPENDENCIES
@@ -34,17 +34,17 @@
 # PHASE IMPLEMENTATION
 # ============================================================================
 
-phase_05_cleanup() {
+phase_04_pre_deployment_validation() {
     # ========================================================================
-    # Phase 5: Pre-Deployment Validation
+    # Phase 4: Pre-Deployment Validation
     # ========================================================================
     # This phase validates the environment before deployment:
-    # 1. Check for nix-env packages (will be cleaned in Phase 6)
+    # 1. Check for nix-env packages (will be cleaned in Phase 5)
     # 2. Validate generated configurations
     # 3. Check disk space
     # 4. Verify prerequisites
     #
-    # Note: Actual package removal and backups happen in Phase 6
+    # Note: Actual package removal and backups happen in Phase 5
     # This phase is non-destructive - it only identifies potential issues
     # ========================================================================
 
@@ -54,11 +54,11 @@ phase_05_cleanup() {
     # Resume Check: Skip if already completed
     # ------------------------------------------------------------------------
     if is_step_complete "$phase_name"; then
-        print_info "Phase 5 already completed (skipping)"
+        print_info "Phase 4 already completed (skipping)"
         return 0
     fi
 
-    print_section "Phase 5/10: Pre-Deployment Validation"
+    print_section "Phase 4/8: Pre-Deployment Validation"
     echo ""
 
     # ========================================================================
@@ -205,9 +205,9 @@ phase_05_cleanup() {
     # Mark Phase Complete
     # ------------------------------------------------------------------------
     mark_step_complete "$phase_name"
-    print_success "Phase 5: Pre-Deployment Validation - COMPLETE"
+    print_success "Phase 4: Pre-Deployment Validation - COMPLETE"
     echo ""
 }
 
 # Execute phase
-phase_05_cleanup
+phase_04_pre_deployment_validation

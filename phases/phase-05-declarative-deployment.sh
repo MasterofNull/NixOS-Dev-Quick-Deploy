@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Phase 06: Configuration Deployment
+# Phase 05: Declarative Deployment
 # Purpose: Apply NixOS and home-manager configurations
-# Version: 3.3.1
+# Version: 4.0.0
 #
 # ============================================================================
 # DEPENDENCIES
@@ -26,9 +26,9 @@
 # PHASE IMPLEMENTATION
 # ============================================================================
 
-phase_06_deployment() {
+phase_05_declarative_deployment() {
     # ========================================================================
-    # Phase 6: Configuration Deployment
+    # Phase 5: Declarative Deployment
     # ========================================================================
     # Switching from Imperative to Declarative Package Management:
     #
@@ -52,11 +52,11 @@ phase_06_deployment() {
     # Resume Check: Skip if already completed
     # ------------------------------------------------------------------------
     if is_step_complete "$phase_name"; then
-        print_info "Phase 6 already completed (skipping)"
+        print_info "Phase 5 already completed (skipping)"
         return 0
     fi
 
-    print_section "Phase 6/10: Configuration Deployment"
+    print_section "Phase 5/8: Declarative Deployment"
     echo ""
 
     # ========================================================================
@@ -304,9 +304,9 @@ phase_06_deployment() {
     # Mark Phase Complete
     # ------------------------------------------------------------------------
     mark_step_complete "$phase_name"
-    print_success "Phase 6: Configuration Deployment - COMPLETE"
+    print_success "Phase 5: Declarative Deployment - COMPLETE"
     echo ""
 }
 
 # Execute phase
-phase_06_deployment
+phase_05_declarative_deployment
