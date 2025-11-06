@@ -3118,11 +3118,17 @@ PLUGINCFG
   #
   services.flatpak =
     let
-      packageTypePath = [ "services" "flatpak" "packages" "type" "elemType" ];
+      packagesElemTypePath = [ "services" "flatpak" "packages" "type" "elemType" ];
+      packageOptionTypePath = [ "services" "flatpak" "package" "type" ];
       remoteTypePath = [ "services" "flatpak" "remotes" "type" "elemType" ];
-      flatpakPackageType =
-        if lib.hasAttrByPath packageTypePath options then
-          lib.attrByPath packageTypePath options null
+      flatpakPackagesElemType =
+        if lib.hasAttrByPath packagesElemTypePath options then
+          lib.attrByPath packagesElemTypePath options null
+        else
+          null;
+      flatpakPackageOptionType =
+        if lib.hasAttrByPath packageOptionTypePath options then
+          lib.attrByPath packageOptionTypePath options null
         else
           null;
       flatpakRemoteType =
@@ -3148,29 +3154,32 @@ PLUGINCFG
       mkFlathubPackage =
         appId:
           selectCandidate
-            flatpakPackageType
+            flatpakPackagesElemType
             { inherit appId; origin = flathubRemoteName; }
             [
               { inherit appId; origin = flathubRemoteName; }
               { inherit appId; remote = flathubRemoteName; }
             ];
 
-    in {
-      enable = true;
-      package = pkgs.flatpak;
-      remotes = [ mkFlathubRemote ];
-      packages = map mkFlathubPackage flathubPackages;
+    in
+      {
+        enable = true;
+        remotes = [ mkFlathubRemote ];
+        packages = map mkFlathubPackage flathubPackages;
 
-      # Optional: Set permissions globally for all Flatpak packages
-      # permissions = {
-      #   "org.freedesktop.Flatpak" = {
-      #     # Grant host filesystem access
-      #     Context.filesystems = [
-      #       "home"
-      #       "/mnt"
-      #     ];
-      #   };
-      # };
-    };
+        # Optional: Set permissions globally for all Flatpak packages
+        # permissions = {
+        #   "org.freedesktop.Flatpak" = {
+        #     # Grant host filesystem access
+        #     Context.filesystems = [
+        #       "home"
+        #       "/mnt"
+        #     ];
+        #   };
+        # };
+      }
+      // lib.optionalAttrs (flatpakPackageOptionType != null) {
+        package = selectCandidate flatpakPackageOptionType pkgs.flatpak [ pkgs.flatpak ];
+      };
 
 }
