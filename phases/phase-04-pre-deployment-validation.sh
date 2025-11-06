@@ -19,8 +19,8 @@
 #   - print_section() → Print section header
 #
 # Requires Phases (must complete before this):
-#   - Phase 3: BACKUP_ROOT must be set for safety
-#   - Phase 4: Configs must be generated
+#   - Phase 2: BACKUP_ROOT must be set for safety
+#   - Phase 3: Configs must be generated
 #
 # Produces (for later phases):
 #   - VALIDATION_COMPLETE → Flag indicating validation done
@@ -87,7 +87,7 @@ phase_04_pre_deployment_validation() {
     # Check if home.nix exists
     if [[ ! -f "$HM_CONFIG_DIR/home.nix" ]]; then
         print_error "home.nix not found at: $HM_CONFIG_DIR/home.nix"
-        print_error "Phase 4 (Config Generation) may not have completed successfully"
+        print_error "Phase 3 (Configuration Generation) may not have completed successfully"
         return 1
     else
         print_success "home.nix found and ready"
@@ -96,7 +96,7 @@ phase_04_pre_deployment_validation() {
     # Check if flake.nix exists
     if [[ ! -f "$HM_CONFIG_DIR/flake.nix" ]]; then
         print_error "flake.nix not found at: $HM_CONFIG_DIR/flake.nix"
-        print_error "Phase 4 (Config Generation) may not have completed successfully"
+        print_error "Phase 3 (Configuration Generation) may not have completed successfully"
         return 1
     else
         print_success "flake.nix found and ready"
