@@ -340,6 +340,10 @@ load_libraries() {
         "retry.sh"               # Retry logic (depends on logging)
         "backup.sh"              # Backup functions (depends on logging)
         "gpu-detection.sh"       # GPU detection (depends on logging)
+        "python.sh"              # Python runtime management (depends on logging)
+        "nixos.sh"               # NixOS channel management (depends on logging)
+        "packages.sh"            # Package installation (depends on logging, python)
+        "home-manager.sh"        # Home manager setup (depends on logging, nixos)
         "common.sh"              # Common utilities (depends on all above)
     )
 
