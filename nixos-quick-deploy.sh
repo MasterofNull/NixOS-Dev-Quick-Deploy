@@ -3792,7 +3792,7 @@ show_fresh_start_instructions() {
     echo "   nix-env -q"
     echo ""
     echo "   # Remove all nix-env packages"
-    echo "   nix-env -e '.*' --remove-all"
+    echo "   nix-env -e '.*'"
     echo ""
     echo -e "${YELLOW}3. Review available backups (NOT auto-restored):${NC}"
     echo "   ls -lt \"$HM_CONFIG_DIR\"/home.nix.backup.*"
@@ -4112,7 +4112,14 @@ get_shadow_hash() {
     local hash
     hash=$(echo "$line" | cut -d: -f2)
 
-    if [ -z "$hash" ] || [ "$hash" = "!" ] || [ "$hash" = "*" ]; then
+    if [ -z "$hash" ] || [ "$hash" = "!" ] || [ "$hash" = "*" ] || [ "$hash" = "!!" ]; then
+        return 0
+    fi
+
+    # Validate hash format: should start with $ and have proper structure ($id$salt$hash)
+    # Valid hash types: $1$ (MD5), $2$ (Blowfish), $5$ (SHA-256), $6$ (SHA-512), $y$ (yescrypt)
+    if [[ ! "$hash" =~ ^\$[1256y]\$ ]]; then
+        log WARNING "Invalid password hash format for user $account: does not match expected pattern"
         return 0
     fi
 
@@ -7968,7 +7975,7 @@ remove_conflicting_packages() {
     print_info "Saved package list for recovery: $removed_pkgs_file"
 
     # Remove all packages installed via nix-env
-    if nix-env -e '.*' --remove-all 2>&1 | tee /tmp/nix-env-cleanup.log; then
+    if nix-env -e '.*' 2>&1 | tee /tmp/nix-env-cleanup.log; then
         print_success "All nix-env packages removed successfully"
     else
         # Fallback: Try removing packages one by one
