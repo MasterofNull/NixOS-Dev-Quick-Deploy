@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # Phase 06: Configuration Deployment
-# Purpose: Apply NixOS and home-manager configurations
-# Version: 3.2.1
+# Purpose: Apply NixOS and home-manager configurations (trust declarative migration)
+# Version: 3.3.0
 #
 # ============================================================================
 # DEPENDENCIES
@@ -30,14 +30,22 @@ phase_06_deployment() {
     # ========================================================================
     # Phase 6: Configuration Deployment
     # ========================================================================
-    # This phase consolidates all deployment operations:
-    # 1. Find and list nix-env packages
-    # 2. Backup all system files
-    # 3. Clean environment setup
-    # 4. Remove conflicting packages
-    # 5. Configure Flatpak
-    # 6. Apply NixOS system configuration
-    # 7. Apply home-manager configuration
+    # Following NixOS Best Practices:
+    # - Trust nixos-rebuild switch to handle declarative migration
+    # - Only remove packages that THIS SCRIPT installed
+    # - Let NixOS handle package conflicts automatically
+    # - Minimal manual intervention
+    #
+    # What NixOS handles automatically:
+    # - Package conflicts resolution
+    # - System state migration
+    # - Generation management
+    # - Rollback capability
+    #
+    # What we handle:
+    # - Confirm deployment
+    # - Remove script-installed packages (if tracked)
+    # - Apply configurations
     # ========================================================================
 
     local phase_name="deploy_configurations"
@@ -54,311 +62,199 @@ phase_06_deployment() {
     echo ""
 
     # ========================================================================
-    # Step 6.1: Pre-Deployment Check - Find Environment Packages
+    # Step 6.1: Check for Script-Installed Packages
     # ========================================================================
-    print_info "Checking for packages installed via nix-env (imperative method)..."
-    local IMPERATIVE_PKGS
-    IMPERATIVE_PKGS=$(nix-env -q 2>/dev/null || true)
+    # We only remove packages that THIS SCRIPT installed during prerequisites
+    # Not ALL nix-env packages - user might have their own
+    print_info "Checking for script-installed packages..."
 
-    if [[ -n "$IMPERATIVE_PKGS" ]]; then
-        print_warning "Found packages installed via nix-env:"
-        echo "$IMPERATIVE_PKGS" | sed 's/^/    /'
-        echo ""
-        print_info "These will be removed in Phase 6 before system deployment to prevent conflicts"
+    local script_pkg_list="$STATE_DIR/script-installed-packages.txt"
+    local script_pkgs=""
+
+    if [[ -f "$script_pkg_list" ]]; then
+        script_pkgs=$(cat "$script_pkg_list")
+        if [[ -n "$script_pkgs" ]]; then
+            print_warning "Found packages installed by this script:"
+            echo "$script_pkgs" | sed 's/^/    /'
+            echo ""
+            print_info "These will be removed before deployment (declarative management)"
+        fi
     else
-        print_success "No nix-env packages found - clean state!"
+        print_success "No script-installed packages to remove"
     fi
+
     echo ""
 
     # ========================================================================
-    # Step 6.2: Final User Confirmation (SINGLE PROMPT FOR ENTIRE DEPLOYMENT)
+    # Step 6.2: Final Deployment Confirmation
     # ========================================================================
-    # This is the only confirmation prompt - consolidates all operations
-    print_warning "The following operations will be performed:"
-    echo "  1. Backup existing configuration files"
-    echo "  2. Remove conflicting nix-env packages (if any)"
-    echo "  3. Clean environment for fresh installation"
-    echo "  4. Configure Flatpak repositories"
-    echo "  5. Apply NixOS system configuration (sudo nixos-rebuild switch)"
-    echo "  6. Apply home-manager user configuration"
+    print_warning "Ready to deploy declarative NixOS configuration"
+    echo ""
+    echo "This will:"
+    echo "  1. Remove script-installed packages (if any)"
+    echo "  2. Apply NixOS system configuration"
+    echo "  3. Apply home-manager user configuration"
+    echo ""
+    echo "NixOS will handle:"
+    echo "  • Package conflict resolution"
+    echo "  • System state migration"
+    echo "  • Generation management"
+    echo "  • Automatic rollback capability"
     echo ""
 
-    if ! confirm "Proceed with configuration deployment (this will apply system changes)?" "y"; then
-        print_warning "Deployment skipped - configurations generated but not applied"
-        print_info "To apply later, run: sudo nixos-rebuild switch --flake $HM_CONFIG_DIR#$(hostname)"
+    if ! confirm "Proceed with deployment?" "y"; then
+        print_warning "Deployment cancelled"
+        print_info "To apply later, run:"
+        print_info "  sudo nixos-rebuild switch --flake $HM_CONFIG_DIR#$(hostname)"
+        print_info "  home-manager switch --flake $HM_CONFIG_DIR"
         echo ""
         return 0
     fi
 
-    # ========================================================================
-    # Step 6.3: Backup Existing Configuration Files
-    # ========================================================================
-    print_section "Backing Up Configuration Files"
-    local backup_dir="$HOME/.config-backups/pre-switch-$(date +%Y%m%d_%H%M%S)"
-    mkdir -p "$backup_dir"
-
-    # Backup config directories that home-manager will manage
-    local config_dirs=(
-        ".config/flatpak"
-        ".config/aider"
-        ".config/tea"
-        ".config/huggingface"
-        ".cache/huggingface"
-        ".local/share/open-webui"
-        ".local/share/podman-ai-stack"
-        ".config/gitea"
-        ".local/share/gitea"
-        ".var/app/io.gitea.Gitea/config/gitea"
-        ".var/app/io.gitea.Gitea/data/gitea"
-        ".config/obsidian/ai-integrations"
-    )
-
-    for config_dir in "${config_dirs[@]}"; do
-        local full_path="$HOME/$config_dir"
-        if [[ -e "$full_path" ]]; then
-            local dir_name=$(basename "$config_dir")
-            local parent_dir=$(dirname "$config_dir")
-
-            # Create parent directory structure in backup
-            mkdir -p "$backup_dir/$parent_dir"
-
-            # Backup and remove
-            if cp -a "$full_path" "$backup_dir/$parent_dir/" 2>/dev/null; then
-                rm -rf "$full_path"
-                print_success "Backed up and removed $(basename $config_dir) configuration directory"
-                print_info "  → Backup saved to: $backup_dir/$config_dir"
-            fi
-        fi
-    done
-
-    print_success "All conflicting configs backed up to: $backup_dir"
-    print_info "Home-manager will now create managed symlinks"
-    print_info "To restore previous configs: cp -a \"$backup_dir/.\" \"$HOME/\""
-    print_success "Prepared directories for managed configuration files"
     echo ""
 
     # ========================================================================
-    # Step 6.4: Force Clean Environment Setup
+    # Step 6.3: Remove Script-Installed Packages
     # ========================================================================
-    print_section "Forcing Clean Environment Setup"
-    print_info "Ensuring fresh installation by removing old generations and state..."
-
-    # Clean flatpak environment
-    if command -v flatpak >/dev/null 2>&1; then
-        print_info "Removing complete flatpak user environment for clean setup..."
-
-        # Backup entire flatpak directory
-        local flatpak_backup="$STATE_DIR/flatpak-environment-backup-$(date +%Y%m%d_%H%M%S)"
-        if [[ -d "$HOME/.local/share/flatpak" ]]; then
-            print_info "Backing up entire flatpak directory structure..."
-            mkdir -p "$flatpak_backup"
-            cp -a "$HOME/.local/share/flatpak" "$flatpak_backup/" 2>/dev/null || true
-            print_success "Flatpak environment backed up to: $flatpak_backup"
-
-            print_info "Removing flatpak directory for clean reinstall..."
-            rm -rf "$HOME/.local/share/flatpak"
-            print_success "Flatpak environment directory removed"
-        fi
-
-        # Remove flatpak config
-        if [[ -d "$HOME/.config/flatpak" ]]; then
-            print_info "Removing flatpak configuration directory..."
-            rm -rf "$HOME/.config/flatpak"
-        fi
-
-        # Re-initialize flatpak
-        print_info "Re-initializing Flatpak repository structure..."
-        flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo 2>/dev/null || \
-            flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo 2>/dev/null || \
-            print_warning "Could not add Flathub remote (will be added later by home-manager)"
-
-        print_success "Complete flatpak environment removed and re-initialized for clean reinstall"
-        print_info "Flatpak will be completely rebuilt by home-manager"
-    fi
-
-    # Clean nix profile
-    print_info "Cleaning nix profile for fresh home-manager state..."
-    nix-collect-garbage -d 2>/dev/null || true
-    print_success "Environment prepared for clean installation"
-    print_info "All previous settings have been backed up and will be replaced with new configuration"
-    echo ""
-
-    # ========================================================================
-    # Step 6.5: Remove Conflicting Packages
-    # ========================================================================
-    if [[ -n "$IMPERATIVE_PKGS" ]]; then
-        print_section "Removing Conflicting Packages"
-        print_info "Cleaning up nix-env packages to prevent conflicts with declarative management"
+    # Only remove packages we installed, not user's packages
+    if [[ -n "$script_pkgs" ]]; then
+        print_section "Removing Script-Installed Packages"
+        print_info "Removing packages installed by this script..."
         echo ""
 
-        print_warning "Found packages installed via nix-env (will cause conflicts):"
-        echo "$IMPERATIVE_PKGS" | sed 's/^/    /'
-        echo ""
-
-        print_info "Removing ALL nix-env packages (switching to declarative management)..."
-        print_info "This prevents package collisions and ensures reproducibility"
-
-        # Save list of removed packages for potential recovery
-        local removed_pkgs_file="$STATE_DIR/removed-packages-$(date +%s).txt"
-        mkdir -p "$STATE_DIR"
-        echo "$IMPERATIVE_PKGS" > "$removed_pkgs_file"
-        print_info "Saved package list for recovery: $removed_pkgs_file"
-
-        # Remove all packages installed via nix-env
-        if nix-env -e '.*' 2>&1 | tee /tmp/nix-env-cleanup.log; then
-            print_success "All nix-env packages removed successfully"
-        else
-            # Fallback: Try removing packages one by one
-            print_warning "Batch removal failed, trying individual package removal..."
-            while IFS= read -r pkg; do
-                local pkg_name
-                pkg_name=$(echo "$pkg" | awk '{print $1}')
-                if [[ -n "$pkg_name" ]]; then
-                    print_info "Removing: $pkg_name"
-                    nix-env -e "$pkg_name" 2>/dev/null && print_success "  Removed: $pkg_name" || print_warning "  Failed: $pkg_name"
+        while IFS= read -r pkg; do
+            if [[ -n "$pkg" ]]; then
+                print_info "  Removing: $pkg"
+                if nix-env -e "$pkg" 2>/dev/null; then
+                    print_success "    ✓ Removed"
+                else
+                    print_warning "    ⚠ Already removed or not found"
                 fi
-            done <<< "$IMPERATIVE_PKGS"
-        fi
+            fi
+        done <<< "$script_pkgs"
 
-        # Verify all removed
-        local REMAINING
-        REMAINING=$(nix-env -q 2>/dev/null || true)
-        if [[ -n "$REMAINING" ]]; then
-            print_warning "Some packages remain in nix-env:"
-            echo "$REMAINING" | sed 's/^/    /'
-            print_warning "These may cause conflicts with home-manager"
-        else
-            print_success "All nix-env packages successfully removed"
-            print_success "All packages now managed declaratively"
-        fi
+        print_success "Script-installed packages removed"
         echo ""
     fi
 
     # ========================================================================
-    # Step 6.6: Apply NixOS System Configuration
+    # Step 6.4: Apply NixOS System Configuration
     # ========================================================================
-    print_section "Applying New Configuration"
+    print_section "Applying NixOS System Configuration"
     local target_host=$(hostname)
-    local NIXOS_REBUILD_DRY_LOG="/tmp/nixos-rebuild-dry-run.log"
 
-    # Run dry-run first if not already done
-    if [[ ! -f "$NIXOS_REBUILD_DRY_LOG" ]] || [[ "$FORCE_UPDATE" == true ]]; then
-        print_info "Dry run already completed earlier (log: $NIXOS_REBUILD_DRY_LOG)"
-    fi
-
-    print_warning "Running: sudo nixos-rebuild switch --flake \"$HM_CONFIG_DIR#$target_host\""
-    print_info "This will download and install all AIDB components using the generated flake..."
-    print_info "May take 10-20 minutes on first run"
+    print_info "Running: sudo nixos-rebuild switch --flake \"$HM_CONFIG_DIR#$target_host\""
+    print_info "This will apply the declarative system configuration..."
+    print_info "NixOS will handle package migration automatically"
     echo ""
-
-    print_info "Binary caches enabled for nixos-rebuild switch: https://cache.nixos.org, https://nix-community.cachix.org, https://devenv.cachix.org"
 
     if sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" 2>&1 | tee /tmp/nixos-rebuild.log; then
-        print_success "✓ NixOS system configured successfully!"
-        print_success "✓ AIDB development environment ready"
+        print_success "✓ NixOS system configuration applied successfully!"
+        print_success "✓ New generation created with rollback capability"
         echo ""
     else
-        print_error "nixos-rebuild failed - check log: /tmp/nixos-rebuild.log"
+        local exit_code=${PIPESTATUS[0]}
+        print_error "nixos-rebuild failed (exit code: $exit_code)"
+        print_info "Log: /tmp/nixos-rebuild.log"
+        print_info "Rollback: sudo nixos-rebuild --rollback"
+        echo ""
         return 1
     fi
 
     # ========================================================================
-    # Step 6.7: Configure Flatpak for COSMIC App Store
+    # Step 6.5: Configure Flatpak (if available)
     # ========================================================================
-    print_section "Configuring Flatpak for COSMIC App Store"
-    if flatpak remote-list --user 2>/dev/null | grep -q "flathub"; then
-        print_info "Flathub repository already configured"
-    else
-        print_info "Adding Flathub Flatpak remote..."
-        if flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo 2>/dev/null; then
-            print_success "Flathub repository added"
+    if command -v flatpak &>/dev/null; then
+        print_section "Configuring Flatpak"
+
+        # Add Flathub if not present
+        if ! flatpak remote-list --user 2>/dev/null | grep -q "^flathub"; then
+            print_info "Adding Flathub repository..."
+            if flatpak remote-add --user --if-not-exists flathub \
+                https://dl.flathub.org/repo/flathub.flatpakrepo 2>/dev/null; then
+                print_success "✓ Flathub repository added"
+            else
+                print_info "Trying alternate Flathub URL..."
+                flatpak remote-add --user --if-not-exists flathub \
+                    https://flathub.org/repo/flathub.flatpakrepo 2>/dev/null || \
+                    print_warning "⚠ Could not add Flathub (add manually if needed)"
+            fi
         else
-            print_info "Trying fallback Flathub URL..."
-            flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo 2>/dev/null || true
+            print_success "✓ Flathub repository already configured"
         fi
-    fi
 
-    # Add beta repo for bleeding-edge packages
-    if ! flatpak remote-list --user 2>/dev/null | grep -q "flathub-beta"; then
-        print_info "Adding Flathub Beta Flatpak remote for bleeding-edge AI builds..."
-        flatpak remote-add --user --if-not-exists flathub-beta https://flathub.org/beta-repo/flathub-beta.flatpakrepo 2>/dev/null || true
-        if flatpak remote-list --user 2>/dev/null | grep -q "flathub-beta"; then
-            print_success "Flathub Beta repository added"
+        # Add Flathub Beta (optional)
+        if ! flatpak remote-list --user 2>/dev/null | grep -q "^flathub-beta"; then
+            print_info "Adding Flathub Beta repository (optional)..."
+            flatpak remote-add --user --if-not-exists flathub-beta \
+                https://flathub.org/beta-repo/flathub-beta.flatpakrepo 2>/dev/null && \
+                print_success "✓ Flathub Beta added" || \
+                print_info "  Flathub Beta not added (not required)"
         fi
-    fi
 
-    print_info "COSMIC Store can now install Flatpak applications"
-    echo ""
+        echo ""
+    fi
 
     # ========================================================================
-    # Step 6.8: Apply Home Manager Configuration
+    # Step 6.6: Apply Home Manager Configuration
     # ========================================================================
     print_section "Applying Home Manager Configuration"
-    print_info "This will install packages and configure your environment..."
-    print_warning "This may take 10-15 minutes on first run"
-    echo ""
-
-    print_info "Flatpak Integration:"
-    print_info "  Your home.nix includes declarative Flatpak configuration via nix-flatpak"
-    print_info "  Edit the services.flatpak.packages section in home.nix to add/remove Flatpak apps"
-    print_info "  Uncomment desired Flatpak apps and re-run: home-manager switch"
+    print_info "This will configure your user environment..."
     echo ""
 
     # Update flake inputs
-    local HM_FLAKE_PATH="$HM_CONFIG_DIR/flake.nix"
-    if [[ -f "$HM_FLAKE_PATH" ]]; then
-        print_info "Updating flake inputs (nix-flatpak, home-manager, nixpkgs)..."
-        if (cd "$HM_CONFIG_DIR" && nix flake update 2>/dev/null); then
-            print_success "Flake inputs updated successfully"
-        else
-            print_warning "Flake update had issues, continuing anyway..."
-        fi
+    print_info "Updating flake inputs..."
+    if (cd "$HM_CONFIG_DIR" && nix flake update 2>&1 | grep -E '(Updated|Warning|Error)'); then
+        print_success "✓ Flake inputs updated"
+    else
+        print_warning "⚠ Flake update had issues (continuing anyway)"
     fi
-
-    print_info "Using configuration: homeConfigurations.$USER"
     echo ""
 
-    # Clean up and mask any conflicting services
-    systemctl --user stop home-manager-* 2>/dev/null || true
-    systemctl --user mask home-manager-*.service 2>/dev/null || true
-    print_success "Services cleaned up and masked - safe to run home-manager switch"
-
-    # Check if home-manager command is available
-    local hm_cmd=""
+    # Determine home-manager command
+    local hm_cmd
     if command -v home-manager &>/dev/null; then
         hm_cmd="home-manager"
+        print_info "Using: home-manager switch --flake $HM_CONFIG_DIR"
     else
-        print_warning "home-manager command not found in PATH"
-        print_info "Will invoke via: nix run --accept-flake-config github:nix-community/home-manager#home-manager -- ..."
-        hm_cmd="nix run --accept-flake-config github:nix-community/home-manager#home-manager --"
+        hm_cmd="nix run github:nix-community/home-manager#home-manager --"
+        print_info "Using: nix run github:nix-community/home-manager -- switch --flake $HM_CONFIG_DIR"
     fi
-
-    print_info "Applying your custom home-manager configuration..."
-    print_info "Config: $HM_CONFIG_DIR/home.nix"
-    print_info "Using flake for full Flatpak declarative support..."
     echo ""
 
-    # Apply home-manager configuration
+    # Apply home-manager
     if $hm_cmd switch --flake "$HM_CONFIG_DIR" 2>&1 | tee /tmp/home-manager-switch.log; then
-        print_success "✓ home-manager applied successfully!"
+        print_success "✓ Home manager configuration applied successfully!"
         print_success "✓ User environment configured"
         echo ""
     else
-        print_error "home-manager switch failed (exit code: ${PIPESTATUS[0]})"
+        local hm_exit_code=${PIPESTATUS[0]}
+        print_error "home-manager switch failed (exit code: $hm_exit_code)"
+        print_info "Log: /tmp/home-manager-switch.log"
+        print_info "Rollback: home-manager --rollback"
         echo ""
         print_warning "Common causes:"
-        print_info "  • Conflicting files (check ~/.config collisions)"
         print_info "  • Syntax errors in home.nix"
         print_info "  • Network issues downloading packages"
-        print_info "  • Package conflicts or missing dependencies"
-        echo ""
-        print_info "Full log saved to: /tmp/home-manager-switch.log"
-        print_info "Backup is at: $backup_dir"
-        print_info "Previous configuration files archived under: $backup_dir"
-        print_info "Restore with: cp -a \"$backup_dir/.\" \"$HOME/\""
+        print_info "  • Package conflicts (check log)"
         echo ""
         return 1
     fi
+
+    # ========================================================================
+    # Deployment Summary
+    # ========================================================================
+    print_section "Deployment Complete"
+    echo "✓ NixOS system configuration applied"
+    echo "✓ Home manager user environment configured"
+    echo "✓ New generations created (rollback available)"
+    echo "✓ Flatpak configured"
+    echo ""
+    echo "Rollback commands (if needed):"
+    echo "  System:  sudo nixos-rebuild --rollback"
+    echo "  User:    home-manager --rollback"
+    echo "  Boot:    Select previous generation in boot menu"
+    echo ""
 
     # ------------------------------------------------------------------------
     # Mark Phase Complete
