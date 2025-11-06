@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Phase 03: Comprehensive System Backup
+# Phase 02: System Backup
 # Purpose: ONE complete backup of all system and user state before ANY changes
-# Version: 3.3.0
+# Version: 4.0.0
 #
 # ============================================================================
 # DEPENDENCIES
@@ -26,9 +26,9 @@
 # PHASE IMPLEMENTATION
 # ============================================================================
 
-phase_03_backup() {
+phase_02_backup() {
     # ========================================================================
-    # Phase 3: Comprehensive System Backup
+    # Phase 2: System Backup
     # ========================================================================
     # This is the ONE AND ONLY backup phase. Everything gets backed up here
     # BEFORE making ANY changes to the system.
@@ -46,11 +46,11 @@ phase_03_backup() {
     # Resume Check: Skip if already completed
     # ------------------------------------------------------------------------
     if is_step_complete "$phase_name"; then
-        print_info "Phase 3 already completed (skipping)"
+        print_info "Phase 2 already completed (skipping)"
         return 0
     fi
 
-    print_section "Phase 3/10: Comprehensive System Backup"
+    print_section "Phase 2/8: System Backup"
     echo ""
 
     # Create backup root directory with timestamp
@@ -230,9 +230,9 @@ EOF
     # Mark Phase Complete
     # ------------------------------------------------------------------------
     mark_step_complete "$phase_name"
-    print_success "Phase 3: Comprehensive System Backup - COMPLETE"
+    print_success "Phase 2: System Backup - COMPLETE"
     echo ""
 }
 
 # Execute phase
-phase_03_backup
+phase_02_backup
