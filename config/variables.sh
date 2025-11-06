@@ -31,9 +31,12 @@
 # - Works regardless of where script is invoked from
 # - Prevents issues with relative paths when changing directories
 # - Makes debugging easier (clear where files are located)
+#
+# NOTE: SCRIPT_VERSION is now defined in main script (nixos-quick-deploy.sh)
+# to ensure version consistency across the entire deployment system
 # ============================================================================
 
-readonly SCRIPT_VERSION="3.2.0"  # Semantic versioning: MAJOR.MINOR.PATCH
+# SCRIPT_VERSION now defined in main script - DO NOT redefine
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"  # Project root directory
 readonly SCRIPT_NAME="nixos-quick-deploy.sh"  # Main script filename
 
@@ -79,10 +82,15 @@ readonly REQUIRED_DISK_SPACE_GB=50
 # ============================================================================
 # Logging Configuration
 # ============================================================================
+# NOTE: LOG_DIR, LOG_FILE, and LOG_LEVEL are now defined in main script
+# (nixos-quick-deploy.sh) BEFORE any libraries are loaded. This ensures
+# that logging.sh has access to these variables immediately when sourced.
+#
+# These variables were moved to prevent "unbound variable" errors that
+# occurred when logging.sh tried to use them before they were defined.
+# ============================================================================
 
-readonly LOG_DIR="$HOME/.cache/nixos-quick-deploy/logs"
-readonly LOG_FILE="$LOG_DIR/deploy-$(date +%Y%m%d_%H%M%S).log"
-readonly LOG_LEVEL="${LOG_LEVEL:-INFO}"  # DEBUG, INFO, WARNING, ERROR
+# LOG_DIR, LOG_FILE, and LOG_LEVEL now defined in main script - DO NOT redefine
 
 # ============================================================================
 # State Management

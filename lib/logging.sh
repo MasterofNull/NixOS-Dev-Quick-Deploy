@@ -68,8 +68,10 @@ init_logging() {
     log INFO "Logging to: $LOG_FILE"
 
     # Record who is running the script and with what privileges
-    # $USER = username, $EUID = effective user ID (0 = root)
-    log INFO "Script executed by: $USER (UID: $EUID)"
+    # $USER = username (may not be set in some environments, fallback to whoami)
+    # $EUID = effective user ID (0 = root)
+    local current_user="${USER:-$(whoami 2>/dev/null || echo 'unknown')}"
+    log INFO "Script executed by: $current_user (UID: ${EUID:-unknown})"
 
     # Record starting directory for context
     # $(pwd) is executed in a subshell and its output is logged
