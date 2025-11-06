@@ -3814,24 +3814,34 @@ print_usage() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  -f, --force-update       Force recreation of all configurations"
-    echo "                           (ignores existing configs and applies updates)"
+    echo "  -f, --force-update       Force recreation of all configurations and reset state"
+    echo "                           (completely fresh install, clears all state)"
     echo "  --regenerate-configs     Regenerate config files from templates when resuming"
-    echo "                           (applies template updates without losing phase state)"
-    echo "  --rollback               Rollback to previous system state"
+    echo "                           (applies template updates, preserves phase state)"
+    echo "  --rollback               Rollback to previous NixOS system generation"
+    echo "                           (restores system to last working state)"
     echo "  --restore-packages       Restore packages that were removed for conflict resolution"
-    echo "  --reset-state            Reset deployment state and start fresh"
+    echo "  --reset-state            Reset deployment state file only"
+    echo "                           (clears phase tracking, keeps generated files)"
     echo "  --dry-run                Show what would be done without making changes"
     echo "  -d, --debug              Enable debug mode with verbose output"
     echo "  --skip-health-check      Skip the post-deployment health check"
     echo "  -h, --help               Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0                       # Normal run (smart change detection)"
-    echo "  $0 --force-update        # Force update all configs"
-    echo "  $0 --regenerate-configs  # Apply template updates when resuming"
-    echo "  $0 --rollback            # Rollback to previous state"
-    echo "  $0 --restore-packages    # Restore removed packages"
+    echo "  $0                       # Normal run (resume from last checkpoint if available)"
+    echo "  $0 --force-update        # Fresh install (clears state and regenerates everything)"
+    echo "  $0 --regenerate-configs  # Apply template updates when resuming after template changes"
+    echo "  $0 --reset-state         # Clear state tracking and restart phases"
+    echo "  $0 --rollback            # Rollback to previous working system state"
+    echo "  $0 --restore-packages    # Restore packages removed during conflict resolution"
+    echo ""
+    echo "When to use which option:"
+    echo "  • First time install:           Just run $0"
+    echo "  • Resume after failure:         Just run $0 (auto-detects)"
+    echo "  • Templates updated:            $0 --regenerate-configs"
+    echo "  • Start completely fresh:       $0 --force-update"
+    echo "  • System broken after deploy:   $0 --rollback"
     echo ""
 }
 
@@ -4111,13 +4121,24 @@ generate_temporary_password() {
 preserve_user_password_directives() {
     USER_PASSWORD_BLOCK=""
 
+    log INFO "Starting password migration for user: $USER"
+
+    # Priority 1: Use password directives from previous config file (highest priority)
+    # This preserves whatever was explicitly set in the config, including:
+    # - initialPassword / initialHashedPassword (from ISO installer)
+    # - hashedPassword / hashedPasswordFile (from manual config)
+    # - passwordFile (from secrets management)
     if [ -n "$PREVIOUS_USER_PASSWORD_SNIPPET" ]; then
         USER_PASSWORD_BLOCK="$PREVIOUS_USER_PASSWORD_SNIPPET"
         [[ "$USER_PASSWORD_BLOCK" != *$'\n' ]] && USER_PASSWORD_BLOCK+=$'\n'
+        log INFO "Using password directives from previous configuration file"
         print_success "Preserved password directives from previous configuration"
         return
     fi
+    log INFO "No password snippet found in previous config, checking running system"
 
+    # Priority 2: Query running system for password configuration
+    # This handles cases where the system is already configured but we're regenerating
     local user_path="users.users.\"$USER\""
     local hashed
     local hashed_file
@@ -4126,6 +4147,7 @@ preserve_user_password_directives() {
     local initial_plain
     local force_flag
 
+    log INFO "Querying nixos-option for password configuration..."
     hashed=$(parse_nixos_option_value "${user_path}.hashedPassword")
     hashed_file=$(parse_nixos_option_value "${user_path}.hashedPasswordFile")
     password_file=$(parse_nixos_option_value "${user_path}.passwordFile")
@@ -4133,42 +4155,72 @@ preserve_user_password_directives() {
     initial_plain=$(parse_nixos_option_value "${user_path}.initialPassword")
     force_flag=$(parse_nixos_option_value "${user_path}.forceInitialPassword")
 
+    log DEBUG "Password query results: hashed=${hashed:0:20}..., hashed_file=$hashed_file, password_file=$password_file"
+    log DEBUG "Initial password results: initial_hashed=${initial_hashed:0:20}..., initial_plain=${initial_plain:+<set>}, force_flag=$force_flag"
+
     local directives=()
 
+    # Check all password options in priority order:
+    # 1. hashedPassword - explicit password hash
+    # 2. hashedPasswordFile - password hash from file (secrets management)
+    # 3. passwordFile - plaintext password from file
+    # 4. initialHashedPassword - initial password hash (from ISO installer)
+    # 5. initialPassword - initial plaintext password (from ISO installer)
     if [ -n "$hashed" ]; then
         directives+=("    hashedPassword = \"${hashed}\";")
+        log INFO "Found hashedPassword in running system"
     elif [ -n "$hashed_file" ]; then
         directives+=("    hashedPasswordFile = \"${hashed_file}\";")
+        log INFO "Found hashedPasswordFile in running system"
     elif [ -n "$password_file" ]; then
         directives+=("    passwordFile = \"${password_file}\";")
+        log INFO "Found passwordFile in running system"
     elif [ -n "$initial_hashed" ]; then
         directives+=("    initialHashedPassword = \"${initial_hashed}\";")
+        log INFO "Found initialHashedPassword in running system (likely from ISO installer)"
     elif [ -n "$initial_plain" ]; then
         directives+=("    initialPassword = \"${initial_plain}\";")
+        log INFO "Found initialPassword in running system"
     fi
 
+    # Add forceInitialPassword flag if it was set
     if [ ${#directives[@]} -gt 0 ]; then
         if [ "$force_flag" = "true" ] || [ "$force_flag" = "false" ]; then
             directives+=("    forceInitialPassword = ${force_flag};")
+            log INFO "Including forceInitialPassword flag: $force_flag"
         fi
         USER_PASSWORD_BLOCK=$(printf '%s\n' "${directives[@]}")
         print_success "Preserved password settings from running system configuration"
         return
     fi
+    log INFO "No password configuration found in running system, checking /etc/shadow"
 
+    # Priority 3: Extract password hash from /etc/shadow
+    # This is the fallback for systems where the user has logged in but
+    # the password isn't in the NixOS configuration (mutableUsers=true)
     local shadow_hash
     shadow_hash=$(get_shadow_hash "$USER")
     if [ -n "$shadow_hash" ]; then
         printf -v USER_PASSWORD_BLOCK '    hashedPassword = "%s";\n' "$shadow_hash"
+        log INFO "Successfully extracted password hash from /etc/shadow"
         print_success "Migrated password hash from /etc/shadow"
         return
     fi
+    log WARNING "No password hash found in /etc/shadow for user: $USER"
 
+    # Priority 4 (Last resort): Generate temporary password
+    # This only happens if:
+    # - No password in config file
+    # - No password in running system
+    # - No hash in /etc/shadow
+    # User will be forced to change password on first login
     local temp_password
     temp_password=$(generate_temporary_password)
     USER_TEMP_PASSWORD="$temp_password"
     printf -v USER_PASSWORD_BLOCK '    initialPassword = "%s";\n    forceInitialPassword = true;\n' "$temp_password"
+    log WARNING "No existing password found anywhere - generated temporary password"
     print_warning "No existing password configuration found. Generated temporary password for $USER"
+    print_warning "Temporary password will be shown in the final report. You must change it on first login."
 }
 
 print_error() {
@@ -8265,10 +8317,18 @@ main() {
     if [[ "$FORCE_UPDATE" == true ]]; then
         print_warning "Force update mode enabled - will recreate all configurations"
         echo ""
+
+        # When forcing update, automatically clean state to avoid confusion
+        if [[ -f "$STATE_FILE" ]]; then
+            print_info "Resetting state file for fresh installation..."
+            reset_state
+        fi
     fi
 
     if [[ "$REGENERATE_CONFIGS" == true ]]; then
         print_warning "Config regeneration enabled - will regenerate configs from templates"
+        print_info "Note: This will regenerate configs but preserve completed step tracking"
+        print_info "      To start completely fresh, use: $0 --reset-state"
         echo ""
     fi
 
