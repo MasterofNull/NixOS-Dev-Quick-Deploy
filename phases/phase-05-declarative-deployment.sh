@@ -1,0 +1,312 @@
+#!/usr/bin/env bash
+#
+# Phase 05: Declarative Deployment
+# Purpose: Apply NixOS and home-manager configurations
+# Version: 4.0.0
+#
+# ============================================================================
+# DEPENDENCIES
+# ============================================================================
+#
+# Required Libraries (must be loaded by bootstrap):
+#   - lib/logging.sh → print_info(), print_success(), print_error(), print_warning()
+#   - lib/state.sh → is_step_complete(), mark_step_complete()
+#   - lib/user-interaction.sh → confirm()
+#
+# Required Variables (from config/variables.sh):
+#   - HM_CONFIG_DIR → Home-manager configuration directory
+#   - STATE_DIR → State directory for logs
+#   - USER → Primary user
+#
+# Exit Codes:
+#   0 → Success (phase completed or already complete)
+#   1 → Fatal error (stops deployment)
+#
+# ============================================================================
+# PHASE IMPLEMENTATION
+# ============================================================================
+
+phase_05_declarative_deployment() {
+    # ========================================================================
+    # Phase 5: Declarative Deployment
+    # ========================================================================
+    # Switching from Imperative to Declarative Package Management:
+    #
+    # The Problem:
+    # - nix-env packages (imperative) persist in user profile
+    # - Declarative packages (configuration.nix/home.nix) are separate
+    # - Having the SAME package in both locations causes conflicts
+    # - nixos-rebuild DOES NOT automatically remove nix-env packages
+    #
+    # The Solution:
+    # - Remove ALL nix-env packages before switching to declarative
+    # - Save the list so user can add them back declaratively if wanted
+    # - Apply declarative configurations
+    #
+    # Reference: NixOS Manual - Chapter on Declarative Package Management
+    # ========================================================================
+
+    local phase_name="deploy_configurations"
+
+    # ------------------------------------------------------------------------
+    # Resume Check: Skip if already completed
+    # ------------------------------------------------------------------------
+    if is_step_complete "$phase_name"; then
+        print_info "Phase 5 already completed (skipping)"
+        return 0
+    fi
+
+    print_section "Phase 5/8: Declarative Deployment"
+    echo ""
+
+    # ========================================================================
+    # Step 6.1: Check for nix-env Packages
+    # ========================================================================
+    print_info "Checking for nix-env packages (imperative management)..."
+    local IMPERATIVE_PKGS
+    IMPERATIVE_PKGS=$(nix-env -q 2>/dev/null || true)
+
+    if [[ -n "$IMPERATIVE_PKGS" ]]; then
+        print_warning "Found packages installed via nix-env:"
+        echo "$IMPERATIVE_PKGS" | sed 's/^/    /'
+        echo ""
+        print_warning "These MUST be removed to switch to declarative management"
+        print_info "They will conflict with packages in configuration.nix/home.nix"
+    else
+        print_success "No nix-env packages found - ready for declarative management"
+    fi
+
+    echo ""
+
+    # ========================================================================
+    # Step 6.2: Final Deployment Confirmation
+    # ========================================================================
+    print_section "Ready to Deploy Declarative Configuration"
+    echo ""
+    echo "This deployment will:"
+    echo "  1. Remove ALL nix-env packages (saved to backup for reference)"
+    echo "  2. Apply NixOS system configuration (declarative)"
+    echo "  3. Apply home-manager user configuration (declarative)"
+    echo "  4. Configure Flatpak repositories"
+    echo ""
+    echo "After deployment:"
+    echo "  • All packages managed declaratively via configuration files"
+    echo "  • Add/remove packages by editing configuration.nix or home.nix"
+    echo "  • No more 'nix-env -i' needed (use declarative configs instead)"
+    echo ""
+
+    if [[ -n "$IMPERATIVE_PKGS" ]]; then
+        echo "Packages to be removed:"
+        echo "$IMPERATIVE_PKGS" | sed 's/^/    /'
+        echo ""
+        echo "To keep these packages, add them to configuration.nix or home.nix"
+    fi
+
+    echo ""
+
+    if ! confirm "Proceed with deployment (removes nix-env packages, applies declarative config)?" "y"; then
+        print_warning "Deployment cancelled"
+        print_info "To apply later:"
+        print_info "  1. Manually remove nix-env packages: nix-env -e '.*'"
+        print_info "  2. Apply system config: sudo nixos-rebuild switch --flake $HM_CONFIG_DIR#$(hostname)"
+        print_info "  3. Apply user config: home-manager switch --flake $HM_CONFIG_DIR"
+        echo ""
+        return 0
+    fi
+
+    echo ""
+
+    # ========================================================================
+    # Step 6.3: Remove ALL nix-env Packages
+    # ========================================================================
+    # This is REQUIRED for declarative management to work properly
+    # nix-env packages persist and conflict with declarative packages
+    if [[ -n "$IMPERATIVE_PKGS" ]]; then
+        print_section "Removing nix-env Packages"
+        print_info "Switching to declarative package management..."
+        echo ""
+
+        # Save package list for user reference
+        local removed_pkgs_file="$STATE_DIR/removed-nix-env-packages-$(date +%s).txt"
+        mkdir -p "$STATE_DIR"
+        echo "$IMPERATIVE_PKGS" > "$removed_pkgs_file"
+        print_info "Package list saved to: $removed_pkgs_file"
+        print_info "Add these to configuration.nix or home.nix if you want them back"
+        echo ""
+
+        # Remove all nix-env packages
+        print_info "Removing ALL nix-env packages..."
+        if nix-env -e '.*' 2>&1 | tee /tmp/nix-env-cleanup.log; then
+            print_success "✓ All nix-env packages removed successfully"
+        else
+            # Fallback: Remove packages one by one
+            print_warning "Batch removal failed, trying individual removal..."
+            while IFS= read -r pkg; do
+                local pkg_name
+                pkg_name=$(echo "$pkg" | awk '{print $1}')
+                if [[ -n "$pkg_name" ]]; then
+                    print_info "  Removing: $pkg_name"
+                    if nix-env -e "$pkg_name" 2>/dev/null; then
+                        print_success "    ✓ Removed"
+                    else
+                        print_warning "    ⚠ Could not remove (may already be gone)"
+                    fi
+                fi
+            done <<< "$IMPERATIVE_PKGS"
+        fi
+
+        # Verify all removed
+        local REMAINING
+        REMAINING=$(nix-env -q 2>/dev/null || true)
+        if [[ -n "$REMAINING" ]]; then
+            print_warning "Some packages remain in nix-env:"
+            echo "$REMAINING" | sed 's/^/    /'
+            print_warning "These may cause conflicts - remove manually: nix-env -e <package>"
+        else
+            print_success "✓ All nix-env packages removed"
+            print_success "✓ Ready for declarative management"
+        fi
+
+        echo ""
+    fi
+
+    # ========================================================================
+    # Step 6.4: Apply NixOS System Configuration
+    # ========================================================================
+    print_section "Applying NixOS System Configuration"
+    local target_host=$(hostname)
+
+    print_info "Running: sudo nixos-rebuild switch --flake \"$HM_CONFIG_DIR#$target_host\""
+    print_info "This applies the declarative system configuration..."
+    echo ""
+
+    if sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" 2>&1 | tee /tmp/nixos-rebuild.log; then
+        print_success "✓ NixOS system configuration applied!"
+        print_success "✓ System packages now managed declaratively"
+        echo ""
+    else
+        local exit_code=${PIPESTATUS[0]}
+        print_error "nixos-rebuild failed (exit code: $exit_code)"
+        print_info "Log: /tmp/nixos-rebuild.log"
+        print_info "Rollback: sudo nixos-rebuild --rollback"
+        echo ""
+        return 1
+    fi
+
+    # ========================================================================
+    # Step 6.5: Configure Flatpak (if available)
+    # ========================================================================
+    if command -v flatpak &>/dev/null; then
+        print_section "Configuring Flatpak"
+
+        # Add Flathub if not present
+        if ! flatpak remote-list --user 2>/dev/null | grep -q "^flathub"; then
+            print_info "Adding Flathub repository..."
+            if flatpak remote-add --user --if-not-exists flathub \
+                https://dl.flathub.org/repo/flathub.flatpakrepo 2>/dev/null; then
+                print_success "✓ Flathub repository added"
+            else
+                print_info "Trying alternate Flathub URL..."
+                flatpak remote-add --user --if-not-exists flathub \
+                    https://flathub.org/repo/flathub.flatpakrepo 2>/dev/null || \
+                    print_warning "⚠ Could not add Flathub (add manually if needed)"
+            fi
+        else
+            print_success "✓ Flathub repository already configured"
+        fi
+
+        # Add Flathub Beta (optional)
+        if ! flatpak remote-list --user 2>/dev/null | grep -q "^flathub-beta"; then
+            print_info "Adding Flathub Beta repository (optional)..."
+            flatpak remote-add --user --if-not-exists flathub-beta \
+                https://flathub.org/beta-repo/flathub-beta.flatpakrepo 2>/dev/null && \
+                print_success "✓ Flathub Beta added" || \
+                print_info "  Flathub Beta not added (not required)"
+        fi
+
+        echo ""
+    fi
+
+    # ========================================================================
+    # Step 6.6: Apply Home Manager Configuration
+    # ========================================================================
+    print_section "Applying Home Manager Configuration"
+    print_info "This configures your user environment declaratively..."
+    echo ""
+
+    # Update flake inputs
+    print_info "Updating flake inputs..."
+    if (cd "$HM_CONFIG_DIR" && nix flake update 2>&1 | grep -E '(Updated|Warning|Error)'); then
+        print_success "✓ Flake inputs updated"
+    else
+        print_warning "⚠ Flake update had issues (continuing anyway)"
+    fi
+    echo ""
+
+    # Determine home-manager command
+    local hm_cmd
+    if command -v home-manager &>/dev/null; then
+        hm_cmd="home-manager"
+        print_info "Using: home-manager switch --flake $HM_CONFIG_DIR"
+    else
+        hm_cmd="nix run github:nix-community/home-manager#home-manager --"
+        print_info "Using: nix run github:nix-community/home-manager -- switch --flake $HM_CONFIG_DIR"
+    fi
+    echo ""
+
+    # Apply home-manager
+    if $hm_cmd switch --flake "$HM_CONFIG_DIR" 2>&1 | tee /tmp/home-manager-switch.log; then
+        print_success "✓ Home manager configuration applied!"
+        print_success "✓ User packages now managed declaratively"
+        echo ""
+    else
+        local hm_exit_code=${PIPESTATUS[0]}
+        print_error "home-manager switch failed (exit code: $hm_exit_code)"
+        print_info "Log: /tmp/home-manager-switch.log"
+        print_info "Rollback: home-manager --rollback"
+        echo ""
+        print_warning "Common causes:"
+        print_info "  • Syntax errors in home.nix"
+        print_info "  • Network issues downloading packages"
+        print_info "  • Package conflicts (check log)"
+        echo ""
+        return 1
+    fi
+
+    # ========================================================================
+    # Deployment Summary
+    # ========================================================================
+    print_section "Deployment Complete - Now Fully Declarative"
+    echo "✓ All nix-env packages removed"
+    echo "✓ NixOS system configuration applied"
+    echo "✓ Home manager user environment configured"
+    echo "✓ All packages now managed declaratively"
+    echo "✓ Flatpak configured"
+    echo ""
+    echo "Package Management (Declarative):"
+    echo "  • System packages: Edit /etc/nixos/configuration.nix"
+    echo "  • User packages: Edit ~/.config/home-manager/home.nix"
+    echo "  • Apply changes: nixos-rebuild switch / home-manager switch"
+    echo "  • NO MORE: nix-env -i (use declarative configs instead)"
+    echo ""
+    echo "Rollback (if needed):"
+    echo "  • System:  sudo nixos-rebuild --rollback"
+    echo "  • User:    home-manager --rollback"
+    echo "  • Boot:    Select previous generation in boot menu"
+    echo ""
+    if [[ -n "$IMPERATIVE_PKGS" ]]; then
+        echo "Removed packages list: $removed_pkgs_file"
+        echo "Add them to configs if you want them back"
+        echo ""
+    fi
+
+    # ------------------------------------------------------------------------
+    # Mark Phase Complete
+    # ------------------------------------------------------------------------
+    mark_step_complete "$phase_name"
+    print_success "Phase 5: Declarative Deployment - COMPLETE"
+    echo ""
+}
+
+# Execute phase
+phase_05_declarative_deployment
