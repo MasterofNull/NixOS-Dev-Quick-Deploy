@@ -285,4 +285,13 @@ USER_SYSTEMD_CHANNEL_MESSAGE=""
 LATEST_CONFIG_BACKUP_DIR=""
 
 # Home Manager Configuration
-HM_CONFIG_DIR=""
+DOTFILES_ROOT="$PRIMARY_HOME/.dotfiles"
+DEV_HOME_ROOT="$DOTFILES_ROOT"
+HM_CONFIG_DIR="$DOTFILES_ROOT/home-manager"
+FLAKE_FILE="$HM_CONFIG_DIR/flake.nix"
+HOME_MANAGER_FILE="$HM_CONFIG_DIR/home.nix"
+SYSTEM_CONFIG_FILE="$HM_CONFIG_DIR/configuration.nix"
+HARDWARE_CONFIG_FILE="$HM_CONFIG_DIR/hardware-configuration.nix"
+
+# Python Runtime (initialized as array, populated during execution)
+PYTHON_BIN=()
