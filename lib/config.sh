@@ -66,6 +66,188 @@ target.write_text(text, encoding="utf-8")
 PY
 }
 
+# Binary cache helpers keep runtime tooling and rendered configuration aligned.
+get_binary_cache_sources() {
+    local -a caches=(
+        "https://cache.nixos.org"
+        "https://nix-community.cachix.org"
+        "https://devenv.cachix.org"
+    )
+
+    if [[ "${GPU_TYPE:-}" == "nvidia" ]]; then
+        caches+=("https://cuda-maintainers.cachix.org")
+    fi
+
+    printf '%s\n' "${caches[@]}"
+}
+
+get_binary_cache_public_keys() {
+    local -a keys=(
+        "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
+        "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+        "devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw="
+    )
+
+    if [[ "${GPU_TYPE:-}" == "nvidia" ]]; then
+        keys+=("cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E=")
+    fi
+
+    printf '%s\n' "${keys[@]}"
+}
+
+compose_nixos_rebuild_options() { 
+    local use_caches="${1:-${USE_BINARY_CACHES:-true}}"
+    local -a opts=(
+        "--option" "max-jobs" "auto"
+        "--option" "cores" "0"
+        "--option" "keep-outputs" "true"
+        "--option" "keep-derivations" "true"
+    )
+
+    if [[ "$use_caches" == "true" ]]; then
+        opts+=("--option" "builders-use-substitutes" "true")
+        opts+=("--option" "fallback" "true")
+
+        local -a substituters=()
+        local -a keys=()
+        mapfile -t substituters < <(get_binary_cache_sources)
+        mapfile -t keys < <(get_binary_cache_public_keys)
+
+        if (( ${#substituters[@]} > 0 )); then
+            local substituters_list
+            substituters_list=$(printf '%s ' "${substituters[@]}")
+            substituters_list=${substituters_list% }
+            opts+=("--option" "substituters" "$substituters_list")
+        fi
+
+        if (( ${#keys[@]} > 0 )); then
+            local keys_list
+            keys_list=$(printf '%s ' "${keys[@]}")
+            keys_list=${keys_list% }
+            opts+=("--option" "trusted-public-keys" "$keys_list")
+        fi
+
+        opts+=("--option" "connect-timeout" "10")
+        opts+=("--option" "stalled-download-timeout" "300")
+    else
+        opts+=("--option" "builders-use-substitutes" "false")
+        opts+=("--option" "substitute" "false")
+        opts+=("--option" "fallback" "false")
+    fi
+
+    printf '%s\n' "${opts[@]}"
+}
+
+describe_binary_cache_usage() {
+    local context="${1:-operation}"
+
+    if [[ "${USE_BINARY_CACHES:-true}" != "true" ]]; then
+        print_info "Binary caches disabled for ${context}; packages will be built from source."
+        return 0
+    fi
+
+    local -a substituters=()
+    mapfile -t substituters < <(get_binary_cache_sources)
+    if (( ${#substituters[@]} == 0 )); then
+        return 0
+    fi
+
+    local joined=""
+    local index=0
+    local url
+    for url in "${substituters[@]}"; do
+        if (( index > 0 )); then
+            joined+=", "
+        fi
+        joined+="$url"
+        ((index+=1))
+    done
+
+    print_info "Binary caches enabled for ${context}: ${joined}"
+}
+
+generate_binary_cache_settings() {
+    local use_caches="${1:-${USE_BINARY_CACHES:-true}}"
+    local -a substituters=()
+    local -a keys=()
+
+    if [[ "$use_caches" == "true" ]]; then
+        mapfile -t substituters < <(get_binary_cache_sources)
+        mapfile -t keys < <(get_binary_cache_public_keys)
+    fi
+
+    local binary_cache_settings=$'\n      # ======================================================================\n'
+    binary_cache_settings+=$'      # Build Performance Optimizations\n'
+    binary_cache_settings+=$'      # ======================================================================\n\n'
+    binary_cache_settings+=$'      # Parallel builds: Use all available CPU cores\n'
+    binary_cache_settings+=$'      # max-jobs: Number of builds that can run in parallel\n'
+    binary_cache_settings+=$'      # cores: Number of CPU cores each build can use (0 = all available)\n'
+    binary_cache_settings+=$'      max-jobs = "auto";\n'
+    binary_cache_settings+=$'      cores = 0;\n\n'
+
+    if [[ "$use_caches" == "true" ]]; then
+        binary_cache_settings+=$'      # Binary caches: Download pre-built packages instead of building from source\n'
+        binary_cache_settings+=$'      # This dramatically reduces build times on the first deployment\n'
+    else
+        binary_cache_settings+=$'      # Binary caches disabled: build every package from source during deployment\n'
+        binary_cache_settings+=$'      # Expect significantly longer build times depending on system resources\n'
+    fi
+
+    binary_cache_settings+=$'      substituters = [\n'
+
+    local url
+    for url in "${substituters[@]}"; do
+        binary_cache_settings+=$'        "'
+        binary_cache_settings+="$url"
+        binary_cache_settings+=$'"\n'
+    done
+
+    binary_cache_settings+=$'      ];\n\n'
+    binary_cache_settings+=$'      # Public keys for verifying binary cache signatures\n'
+    binary_cache_settings+=$'      trusted-public-keys = [\n'
+
+    local key
+    for key in "${keys[@]}"; do
+        binary_cache_settings+=$'        "'
+        binary_cache_settings+="$key"
+        binary_cache_settings+=$'"\n'
+    done
+
+    binary_cache_settings+=$'      ];\n\n'
+
+    if [[ "$use_caches" == "true" ]]; then
+        binary_cache_settings+=$'      # Download pre-built dependencies during builds\n'
+        binary_cache_settings+=$'      builders-use-substitutes = true;\n'
+        binary_cache_settings+=$'      substitute = true;\n'
+    else
+        binary_cache_settings+=$'      # Force local builds for all derivations\n'
+        binary_cache_settings+=$'      builders-use-substitutes = false;\n'
+        binary_cache_settings+=$'      substitute = false;\n'
+    fi
+    binary_cache_settings+=$'\n'
+
+    binary_cache_settings+=$'      # Retain build artifacts to speed up future rebuilds\n'
+    binary_cache_settings+=$'      keep-outputs = true;\n'
+    binary_cache_settings+=$'      keep-derivations = true;\n\n'
+
+    if [[ "$use_caches" == "true" ]]; then
+        binary_cache_settings+=$'      # Fallback to building from source if a binary is unavailable\n'
+        binary_cache_settings+=$'      fallback = true;\n'
+        binary_cache_settings+=$'\n'
+        binary_cache_settings+=$'      # Network timeout settings for binary cache downloads\n'
+        binary_cache_settings+=$'      connect-timeout = 10;\n'
+        binary_cache_settings+=$'      stalled-download-timeout = 300;\n'
+    else
+        binary_cache_settings+=$'      # Fallback disabled because all builds are already local\n'
+        binary_cache_settings+=$'      fallback = false;\n'
+    fi
+
+    binary_cache_settings+=$'\n      # Warn about dirty git trees in flakes\n'
+    binary_cache_settings+=$'      warn-dirty = false;\n'
+
+    printf '%s' "$binary_cache_settings"
+}
+
 # Verify that no template markers remain in a rendered file.
 # Additional regex patterns can be provided to catch non-@ tokens
 # such as *_PLACEHOLDER or HOMEUSERNAME style markers.
@@ -543,20 +725,8 @@ generate_nixos_system_config() {
         microcode_section="hardware.cpu.${CPU_VENDOR}.updateMicrocode = true;  # Enable ${cpu_vendor_label} microcode updates"
     fi
 
-    local binary_cache_settings=$(cat <<'EOF'
-
-      # Binary cache configuration managed by nixos-quick-deploy
-      # Customize via deployment script if additional caches are required.
-      substituters = [ "https://cache.nixos.org" ];
-      trusted-public-keys = [ "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" ];
-      max-jobs = "auto";
-      cores = 0;
-      builders-use-substitutes = true;
-      keep-outputs = true;
-      keep-derivations = true;
-      fallback = true;
-EOF
-)
+    local binary_cache_settings
+    binary_cache_settings=$(generate_binary_cache_settings "${USE_BINARY_CACHES:-true}")
 
     local gpu_hardware_section
     case "${GPU_TYPE:-software}" in

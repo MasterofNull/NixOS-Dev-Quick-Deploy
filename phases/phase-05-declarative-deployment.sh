@@ -207,11 +207,25 @@ phase_05_declarative_deployment() {
     print_section "Applying NixOS System Configuration"
     local target_host=$(hostname)
 
-    print_info "Running: sudo nixos-rebuild switch --flake \"$HM_CONFIG_DIR#$target_host\""
+    local -a nixos_rebuild_opts=()
+    if declare -F compose_nixos_rebuild_options >/dev/null 2>&1; then
+        mapfile -t nixos_rebuild_opts < <(compose_nixos_rebuild_options "${USE_BINARY_CACHES:-true}")
+    fi
+
+    local rebuild_display="sudo nixos-rebuild switch --flake \"$HM_CONFIG_DIR#$target_host\""
+    if (( ${#nixos_rebuild_opts[@]} > 0 )); then
+        rebuild_display+=" ${nixos_rebuild_opts[*]}"
+    fi
+
+    print_info "Running: $rebuild_display"
     print_info "This applies the declarative system configuration..."
     echo ""
 
-    if sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" 2>&1 | tee /tmp/nixos-rebuild.log; then
+    if declare -F describe_binary_cache_usage >/dev/null 2>&1; then
+        describe_binary_cache_usage "nixos-rebuild switch"
+    fi
+
+    if sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" "${nixos_rebuild_opts[@]}" 2>&1 | tee /tmp/nixos-rebuild.log; then
         print_success "✓ NixOS system configuration applied!"
         print_success "✓ System packages now managed declaratively"
         echo ""
