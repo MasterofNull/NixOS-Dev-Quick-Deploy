@@ -180,9 +180,22 @@ phase_05_declarative_deployment() {
     print_info "Ensuring all configurations use the pinned revisions before switching..."
     echo ""
 
-    if (cd "$HM_CONFIG_DIR" && nix flake update 2>&1 | grep -E '(Updated|Warning|Error)'); then
+    local flake_update_output=""
+    local flake_update_status=0
+
+    if ! flake_update_output=$(cd "$HM_CONFIG_DIR" && nix flake update 2>&1); then
+        flake_update_status=$?
+    fi
+
+    if (( flake_update_status == 0 )); then
+        if [[ -n "$flake_update_output" ]]; then
+            echo "$flake_update_output"
+        fi
         print_success "✓ Flake inputs updated"
     else
+        if [[ -n "$flake_update_output" ]]; then
+            echo "$flake_update_output" | sed 's/^/  /'
+        fi
         print_warning "⚠ Flake update had issues (continuing anyway)"
     fi
 
@@ -216,6 +229,31 @@ phase_05_declarative_deployment() {
     # ========================================================================
     print_section "Applying Home Manager Configuration"
     print_info "This configures your user environment declaratively..."
+    echo ""
+
+    # Ensure supporting scripts referenced by the flake are available
+    local p10k_source="$BOOTSTRAP_SCRIPT_DIR/scripts/p10k-setup-wizard.sh"
+    local p10k_destination="$HM_CONFIG_DIR/p10k-setup-wizard.sh"
+
+    print_info "Ensuring Powerlevel10k setup wizard is available for Home Manager"
+    if [[ -f "$p10k_source" ]]; then
+        if [[ ! -d "$HM_CONFIG_DIR" ]]; then
+            if mkdir -p "$HM_CONFIG_DIR"; then
+                print_info "  Created Home Manager config directory at $HM_CONFIG_DIR"
+            else
+                print_warning "  ⚠ Unable to create $HM_CONFIG_DIR (continuing, but Home Manager may fail)"
+            fi
+        fi
+
+        if cp "$p10k_source" "$p10k_destination"; then
+            chmod +x "$p10k_destination" 2>/dev/null || true
+            print_success "  ✓ Synced p10k-setup-wizard.sh to Home Manager flake"
+        else
+            print_warning "  ⚠ Failed to sync p10k-setup-wizard.sh (continuing, but Home Manager may fail)"
+        fi
+    else
+        print_warning "  ⚠ Source p10k-setup-wizard.sh not found at $p10k_source"
+    fi
     echo ""
 
     # Determine home-manager command
