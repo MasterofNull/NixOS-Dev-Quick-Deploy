@@ -124,7 +124,10 @@ phase_03_config_generation() {
     # Why gather now: Prevents mid-deployment prompts
     # Validation: Ensures required info is present
     # Defaults: Sensible defaults if user skips prompts
-    gather_user_info
+    if ! gather_user_info; then
+        print_error "Failed to gather user information"
+        return 1
+    fi
 
     # ========================================================================
     # Step 4.2: Generate NixOS System Configuration
@@ -165,7 +168,10 @@ phase_03_config_generation() {
     # File ownership:
     # - /etc/nixos/*: Owned by root (requires sudo)
     # - ~/.config/home-manager/*: Owned by user (no sudo)
-    generate_nixos_system_config
+    if ! generate_nixos_system_config; then
+        print_error "Failed to generate NixOS system configuration"
+        return 1
+    fi
 
     # ========================================================================
     # Step 4.2.5: Create Home Manager Configuration
@@ -174,7 +180,10 @@ phase_03_config_generation() {
     # How: create_home_manager_config() reads templates and generates files
     # Note: This was moved from Phase 6 to ensure all configs exist before
     #       Phase 5 validation checks for them.
-    create_home_manager_config
+    if ! create_home_manager_config; then
+        print_error "Failed to create home-manager configuration"
+        return 1
+    fi
 
     # ========================================================================
     # Step 4.3: Validate System Build (Dry Run)
@@ -215,7 +224,10 @@ phase_03_config_generation() {
     # - No system changes yet (safe to fail)
     # - Can fix config and retry
     # - Prevents wasted time on broken configs
-    validate_system_build_stage
+    if ! validate_system_build_stage; then
+        print_error "Configuration validation failed"
+        return 1
+    fi
 
     # ------------------------------------------------------------------------
     # Mark Phase Complete
