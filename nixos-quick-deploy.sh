@@ -487,7 +487,7 @@ list_phases() {
 
         # Check if state file exists and get status
         if [[ -f "${STATE_FILE:-}" ]]; then
-            if jq -e ".completed_steps[] | select(. == \"phase-$(printf '%02d' $phase_num)\")" "$STATE_FILE" &>/dev/null; then
+            if jq -e --arg step "phase-$(printf '%02d' $phase_num)" '.completed_steps[] | select(.step == $step)' "$STATE_FILE" &>/dev/null; then
                 status="COMPLETED"
             fi
         fi
@@ -545,7 +545,7 @@ show_phase_info() {
     # Check current status
     source "$CONFIG_DIR/variables.sh" 2>/dev/null || true
     if [[ -f "${STATE_FILE:-}" ]]; then
-        if jq -e ".completed_steps[] | select(. == \"phase-$(printf '%02d' $phase_num)\")" "$STATE_FILE" &>/dev/null; then
+        if jq -e --arg step "phase-$(printf '%02d' $phase_num)" '.completed_steps[] | select(.step == $step)' "$STATE_FILE" &>/dev/null; then
             echo "Current Status: COMPLETED"
         else
             echo "Current Status: PENDING"
@@ -578,7 +578,7 @@ get_resume_phase() {
         local last_safe_phase=1
         if [[ -f "$STATE_FILE" ]]; then
             for safe_phase in "${SAFE_RESTART_PHASES[@]}"; do
-                if jq -e ".completed_steps[] | select(. == \"phase-$(printf '%02d' $safe_phase)\")" "$STATE_FILE" &>/dev/null; then
+                if jq -e --arg step "phase-$(printf '%02d' $safe_phase)" '.completed_steps[] | select(.step == $step)' "$STATE_FILE" &>/dev/null; then
                     last_safe_phase=$safe_phase
                 fi
             done
@@ -594,7 +594,7 @@ get_resume_phase() {
     fi
 
     for phase_num in {1..8}; do
-        if ! jq -e ".completed_steps[] | select(. == \"phase-$(printf '%02d' $phase_num)\")" "$STATE_FILE" &>/dev/null; then
+        if ! jq -e --arg step "phase-$(printf '%02d' $phase_num)" '.completed_steps[] | select(.step == $step)' "$STATE_FILE" &>/dev/null; then
             echo "$phase_num"
             return
         fi
@@ -620,7 +620,7 @@ validate_phase_dependencies() {
     local missing_deps=()
     IFS=',' read -ra DEP_ARRAY <<< "$deps"
     for dep in "${DEP_ARRAY[@]}"; do
-        if ! jq -e ".completed_steps[] | select(. == \"phase-$(printf '%02d' $dep)\")" "$STATE_FILE" &>/dev/null; then
+        if ! jq -e --arg step "phase-$(printf '%02d' $dep)" '.completed_steps[] | select(.step == $step)' "$STATE_FILE" &>/dev/null; then
             missing_deps+=("$dep")
         fi
     done
