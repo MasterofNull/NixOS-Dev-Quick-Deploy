@@ -1,7 +1,7 @@
 # Quick Start Guide
 ## NixOS Quick Deploy - Get Started in 5 Minutes
 
-**Version**: 3.2.0
+**Version**: 4.0.0
 **Last Updated**: January 2025
 
 ---
@@ -28,13 +28,13 @@ cd NixOS-Dev-Quick-Deploy
 ### 2. Make the Script Executable
 
 ```bash
-chmod +x nixos-quick-deploy-modular.sh
+chmod +x nixos-quick-deploy.sh
 ```
 
 ### 3. Run Your First Deployment
 
 ```bash
-./nixos-quick-deploy-modular.sh
+./nixos-quick-deploy.sh
 ```
 
 That's it! The script will automatically:
@@ -54,7 +54,7 @@ That's it! The script will automatically:
 
 ```bash
 # Run normal deployment (will resume if interrupted)
-./nixos-quick-deploy-modular.sh
+./nixos-quick-deploy.sh
 ```
 
 **What happens:**
@@ -72,7 +72,7 @@ If deployment fails or is interrupted:
 
 ```bash
 # Automatically resumes from last completed phase
-./nixos-quick-deploy-modular.sh
+./nixos-quick-deploy.sh
 ```
 
 The script automatically detects where it left off and continues!
@@ -83,7 +83,7 @@ Want to see what will happen without making changes?
 
 ```bash
 # Preview mode - no actual changes
-./nixos-quick-deploy-modular.sh --dry-run
+./nixos-quick-deploy.sh --dry-run
 ```
 
 ### Scenario 4: Start Fresh
@@ -92,7 +92,7 @@ Starting over from scratch:
 
 ```bash
 # Clear state and start from beginning
-./nixos-quick-deploy-modular.sh --reset-state
+./nixos-quick-deploy.sh --reset-state
 ```
 
 ### Scenario 5: Something Went Wrong - Rollback
@@ -101,7 +101,7 @@ If deployment breaks your system:
 
 ```bash
 # Rollback to previous working state
-./nixos-quick-deploy-modular.sh --rollback
+./nixos-quick-deploy.sh --rollback
 ```
 
 This instantly reverts to your last working NixOS generation!
@@ -114,48 +114,48 @@ This instantly reverts to your last working NixOS generation!
 
 ```bash
 # Show help
-./nixos-quick-deploy-modular.sh --help
+./nixos-quick-deploy.sh --help
 
 # Show version
-./nixos-quick-deploy-modular.sh --version
+./nixos-quick-deploy.sh --version
 
 # Normal deployment
-./nixos-quick-deploy-modular.sh
+./nixos-quick-deploy.sh
 
 # Quiet mode (only errors/warnings)
-./nixos-quick-deploy-modular.sh --quiet
+./nixos-quick-deploy.sh --quiet
 
 # Verbose mode (detailed output)
-./nixos-quick-deploy-modular.sh --verbose
+./nixos-quick-deploy.sh --verbose
 ```
 
 ### Phase Control
 
 ```bash
 # List all phases with status
-./nixos-quick-deploy-modular.sh --list-phases
+./nixos-quick-deploy.sh --list-phases
 
 # Start from specific phase (skip phases 1-3)
-./nixos-quick-deploy-modular.sh --start-from-phase 4
+./nixos-quick-deploy.sh --start-from-phase 4
 
 # Skip specific phases
-./nixos-quick-deploy-modular.sh --skip-phase 5 --skip-phase 7
+./nixos-quick-deploy.sh --skip-phase 5 --skip-phase 7
 
 # Test a single phase
-./nixos-quick-deploy-modular.sh --test-phase 4
+./nixos-quick-deploy.sh --test-phase 4
 ```
 
 ### Troubleshooting
 
 ```bash
 # Debug mode (trace execution)
-./nixos-quick-deploy-modular.sh --debug
+./nixos-quick-deploy.sh --debug
 
 # Skip health check (faster, less safe)
-./nixos-quick-deploy-modular.sh --skip-health-check
+./nixos-quick-deploy.sh --skip-health-check
 
 # Show detailed phase info
-./nixos-quick-deploy-modular.sh --show-phase-info 6
+./nixos-quick-deploy.sh --show-phase-info 6
 ```
 
 ---
@@ -219,7 +219,7 @@ sudo nix-store --optimize
 sudo nix-store --gc
 
 # Then retry
-./nixos-quick-deploy-modular.sh
+./nixos-quick-deploy.sh
 ```
 
 ### Problem: "Package not found"
@@ -231,7 +231,7 @@ sudo nix-channel --update
 nixos-rebuild switch
 
 # Then retry
-./nixos-quick-deploy-modular.sh
+./nixos-quick-deploy.sh
 ```
 
 ### Problem: "Phase X failed"
@@ -242,10 +242,10 @@ nixos-rebuild switch
 cat ~/.config/nixos-quick-deploy/logs/deploy-*.log
 
 # Restart failed phase
-./nixos-quick-deploy-modular.sh --restart-failed
+./nixos-quick-deploy.sh --restart-failed
 
 # Or restart from safe point
-./nixos-quick-deploy-modular.sh --restart-from-safe-point
+./nixos-quick-deploy.sh --restart-from-safe-point
 ```
 
 ### Problem: "System is broken after deployment"
@@ -253,7 +253,7 @@ cat ~/.config/nixos-quick-deploy/logs/deploy-*.log
 **Solution:**
 ```bash
 # Immediate rollback
-./nixos-quick-deploy-modular.sh --rollback
+./nixos-quick-deploy.sh --rollback
 
 # Or manually rollback
 sudo nixos-rebuild switch --rollback
@@ -273,7 +273,7 @@ sudo nixos-rebuild switch --rollback
 ### Script Files
 ```
 NixOS-Dev-Quick-Deploy/
-├── nixos-quick-deploy-modular.sh  # Main script
+├── nixos-quick-deploy.sh  # Main script
 ├── lib/                           # 10 library files
 ├── config/                        # 2 config files
 ├── phases/                        # 10 phase modules
@@ -402,26 +402,26 @@ A: Use the rollback feature, then delete the cloned directory.
 
 ```bash
 # ====== BASIC OPERATIONS ======
-./nixos-quick-deploy-modular.sh                    # Normal run
-./nixos-quick-deploy-modular.sh --help             # Show help
-./nixos-quick-deploy-modular.sh --version          # Show version
-./nixos-quick-deploy-modular.sh --dry-run          # Preview only
+./nixos-quick-deploy.sh                    # Normal run
+./nixos-quick-deploy.sh --help             # Show help
+./nixos-quick-deploy.sh --version          # Show version
+./nixos-quick-deploy.sh --dry-run          # Preview only
 
 # ====== CONTROL ======
-./nixos-quick-deploy-modular.sh --reset-state      # Start fresh
-./nixos-quick-deploy-modular.sh --rollback         # Undo deployment
-./nixos-quick-deploy-modular.sh --restart-failed   # Restart failed phase
+./nixos-quick-deploy.sh --reset-state      # Start fresh
+./nixos-quick-deploy.sh --rollback         # Undo deployment
+./nixos-quick-deploy.sh --restart-failed   # Restart failed phase
 
 # ====== PHASE MANAGEMENT ======
-./nixos-quick-deploy-modular.sh --list-phases      # List all phases
-./nixos-quick-deploy-modular.sh --test-phase 4     # Test phase 4 only
-./nixos-quick-deploy-modular.sh --skip-phase 5     # Skip phase 5
-./nixos-quick-deploy-modular.sh --start-from-phase 6   # Start from phase 6
+./nixos-quick-deploy.sh --list-phases      # List all phases
+./nixos-quick-deploy.sh --test-phase 4     # Test phase 4 only
+./nixos-quick-deploy.sh --skip-phase 5     # Skip phase 5
+./nixos-quick-deploy.sh --start-from-phase 6   # Start from phase 6
 
 # ====== OUTPUT CONTROL ======
-./nixos-quick-deploy-modular.sh --quiet            # Quiet mode
-./nixos-quick-deploy-modular.sh --verbose          # Verbose mode
-./nixos-quick-deploy-modular.sh --debug            # Debug trace
+./nixos-quick-deploy.sh --quiet            # Quiet mode
+./nixos-quick-deploy.sh --verbose          # Verbose mode
+./nixos-quick-deploy.sh --debug            # Debug trace
 ```
 
 ---
@@ -451,7 +451,7 @@ You'll know deployment succeeded when you see:
 
 ```bash
 cd NixOS-Dev-Quick-Deploy
-./nixos-quick-deploy-modular.sh
+./nixos-quick-deploy.sh
 ```
 
 Good luck! 🚀
