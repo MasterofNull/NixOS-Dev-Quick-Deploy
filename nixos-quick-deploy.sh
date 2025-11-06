@@ -149,6 +149,10 @@ load_libraries() {
         "retry.sh"
         "backup.sh"
         "gpu-detection.sh"
+        "python.sh"
+        "nixos.sh"
+        "packages.sh"
+        "home-manager.sh"
         "common.sh"
     )
 
