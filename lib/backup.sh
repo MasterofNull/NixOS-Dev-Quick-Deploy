@@ -350,32 +350,44 @@ EOF
 # ============================================================================
 perform_rollback() {
     # ========================================================================
+    # Display section header
+    # ========================================================================
+    print_section "Rolling Back to Previous State"
+
+    # ========================================================================
+    # List available NixOS system generations
+    # ========================================================================
+    print_info "Listing available system generations..."
+
+    # Check if we can list generations
+    if command -v nixos-rebuild >/dev/null 2>&1; then
+        # List system generations
+        sudo nix-env --list-generations -p /nix/var/nix/profiles/system 2>/dev/null || \
+            print_warning "Could not list system generations"
+    fi
+
+    # ========================================================================
     # Check if rollback point exists
     # ========================================================================
     # -f tests for regular file existence
     if [[ ! -f "$ROLLBACK_INFO_FILE" ]]; then
-        # No rollback point available
-        # This happens if script hasn't been run before
-        # or if rollback file was deleted
-        print_error "No rollback point available"
-        log ERROR "Rollback info file not found: $ROLLBACK_INFO_FILE"
-        return 1  # Return failure
+        # No rollback point available from our script
+        # But we can still try to rollback using NixOS generations
+        print_warning "No rollback point file found from this script"
+        print_info "Attempting to rollback using NixOS generation system..."
+    else
+        # ========================================================================
+        # Read rollback point information
+        # ========================================================================
+        # Use jq to extract description from JSON
+        # jq -r = raw output (no JSON quotes)
+        # '.description' = extract description field
+        # || echo "unknown" = fallback if jq fails
+        local description=$(jq -r '.description' "$ROLLBACK_INFO_FILE" 2>/dev/null || echo "unknown")
+
+        # Show user what rollback point they're reverting to
+        print_info "Rollback point: $description"
     fi
-
-    # Display section header
-    print_section "Rolling Back to Previous State"
-
-    # ========================================================================
-    # Read rollback point information
-    # ========================================================================
-    # Use jq to extract description from JSON
-    # jq -r = raw output (no JSON quotes)
-    # '.description' = extract description field
-    # || echo "unknown" = fallback if jq fails
-    local description=$(jq -r '.description' "$ROLLBACK_INFO_FILE" 2>/dev/null || echo "unknown")
-
-    # Show user what rollback point they're reverting to
-    print_info "Rollback point: $description"
 
     # ========================================================================
     # Get user confirmation before proceeding
@@ -387,6 +399,46 @@ perform_rollback() {
         # User cancelled rollback
         print_info "Rollback cancelled"
         return 0  # Return success (user chose to cancel, not an error)
+    fi
+
+    # ========================================================================
+    # Rollback NixOS system configuration (system-wide) - DO THIS FIRST
+    # ========================================================================
+    # System rollback affects ALL users and requires sudo
+    # We do this FIRST because it's the most critical operation
+    print_info "Rolling back NixOS system..."
+
+    # Confirm system rollback
+    # Default to "y" since user already confirmed overall rollback
+    if confirm "Rollback NixOS system configuration to previous generation?" "y"; then
+        # Try nixos-rebuild switch --rollback first
+        if sudo nixos-rebuild switch --rollback 2>/dev/null; then
+            print_success "System rolled back successfully using nixos-rebuild"
+        else
+            # If that fails, try switching to a specific previous generation
+            print_warning "nixos-rebuild --rollback failed, trying generation-based rollback..."
+
+            # Get the previous generation number
+            local prev_gen
+            prev_gen=$(sudo nix-env --list-generations -p /nix/var/nix/profiles/system 2>/dev/null | \
+                grep -v current | tail -2 | head -1 | awk '{print $1}')
+
+            if [[ -n "$prev_gen" ]]; then
+                print_info "Switching to generation $prev_gen..."
+                if sudo nix-env --switch-generation "$prev_gen" -p /nix/var/nix/profiles/system && \
+                   sudo /nix/var/nix/profiles/system/bin/switch-to-configuration switch; then
+                    print_success "Successfully switched to generation $prev_gen"
+                else
+                    print_error "Failed to switch to generation $prev_gen"
+                    print_info "You can manually switch using: sudo nixos-rebuild switch --rollback"
+                    print_info "Or: sudo nix-env --switch-generation <number> -p /nix/var/nix/profiles/system"
+                fi
+            else
+                print_error "Could not find previous generation"
+                print_info "Available generations:"
+                sudo nix-env --list-generations -p /nix/var/nix/profiles/system 2>/dev/null || true
+            fi
+        fi
     fi
 
     # ========================================================================
@@ -402,59 +454,38 @@ perform_rollback() {
     #
     # || print_warning allows rollback to continue even if this fails
     # Some systems might not have a previous nix-env generation
-    print_info "Rolling back Nix environment..."
-    nix-env --rollback || print_warning "Nix rollback had issues"
+    print_info "Rolling back Nix user environment..."
+    if nix-env --list-generations 2>/dev/null | grep -q .; then
+        nix-env --rollback || print_warning "Nix environment rollback had issues"
+    else
+        print_info "No user environment generations found, skipping"
+    fi
 
     # ========================================================================
     # Rollback Home Manager (user dotfiles and config)
     # ========================================================================
-    print_info "Rolling back Home Manager..."
+    if [[ -f "$ROLLBACK_INFO_FILE" ]]; then
+        print_info "Rolling back Home Manager..."
 
-    # Extract Home Manager generation path from rollback info
-    # This is a path like: /nix/store/...-home-manager-generation
-    local hm_gen=$(jq -r '.home_manager_generation' "$ROLLBACK_INFO_FILE" 2>/dev/null)
+        # Extract Home Manager generation path from rollback info
+        # This is a path like: /nix/store/...-home-manager-generation
+        local hm_gen=$(jq -r '.home_manager_generation' "$ROLLBACK_INFO_FILE" 2>/dev/null)
 
-    # Check if we have a valid Home Manager generation to rollback to
-    # Multiple conditions checked with &&:
-    # 1. -n "$hm_gen" → generation path is not empty
-    # 2. "$hm_gen" != "unknown" → we successfully queried the generation
-    # 3. -x "$hm_gen/activate" → activation script exists and is executable
-    if [[ -n "$hm_gen" && "$hm_gen" != "unknown" && -x "$hm_gen/activate" ]]; then
-        # Activate the previous Home Manager generation
-        # The activate script updates symlinks and applies configuration
-        # This changes dotfiles, shell config, etc. to previous state
-        #
-        # || print_warning allows continuing even if activation fails
-        "$hm_gen/activate" || print_warning "Home Manager rollback had issues"
-    fi
-
-    # ========================================================================
-    # Rollback NixOS system configuration (system-wide)
-    # ========================================================================
-    # System rollback affects ALL users and requires sudo
-    # Ask for separate confirmation because this is more impactful
-    print_info "Rolling back NixOS system..."
-
-    # Confirm system rollback separately
-    # Default to "n" (safe default)
-    if confirm "Rollback NixOS system configuration?" "n"; then
-        # Perform system rollback using nixos-rebuild
-        # nixos-rebuild switch --rollback:
-        # 1. Finds previous system generation
-        # 2. Builds system (or uses cached build)
-        # 3. Activates previous generation
-        # 4. Updates bootloader to boot previous generation
-        #
-        # This changes:
-        # - System services
-        # - Kernel and boot config
-        # - System packages
-        # - Network configuration
-        # - All system-wide settings
-        #
-        # || print_warning allows script to continue even if rollback fails
-        # Rollback failure is logged but doesn't stop the script
-        sudo nixos-rebuild switch --rollback || print_warning "NixOS rollback had issues"
+        # Check if we have a valid Home Manager generation to rollback to
+        # Multiple conditions checked with &&:
+        # 1. -n "$hm_gen" → generation path is not empty
+        # 2. "$hm_gen" != "unknown" → we successfully queried the generation
+        # 3. -x "$hm_gen/activate" → activation script exists and is executable
+        if [[ -n "$hm_gen" && "$hm_gen" != "unknown" && "$hm_gen" != "unavailable" && -x "$hm_gen/activate" ]]; then
+            # Activate the previous Home Manager generation
+            # The activate script updates symlinks and applies configuration
+            # This changes dotfiles, shell config, etc. to previous state
+            #
+            # || print_warning allows continuing even if activation fails
+            "$hm_gen/activate" || print_warning "Home Manager rollback had issues"
+        else
+            print_info "No valid Home Manager generation found in rollback info"
+        fi
     fi
 
     # ========================================================================
@@ -463,9 +494,118 @@ perform_rollback() {
     print_success "Rollback completed"
     log INFO "Rollback completed"
 
+    print_info ""
+    print_info "System has been rolled back. Please verify your system state."
+    print_info "You may need to reboot for all changes to take effect."
+    print_info ""
+    print_info "To see all available generations:"
+    print_info "  sudo nix-env --list-generations -p /nix/var/nix/profiles/system"
+    print_info ""
+    print_info "To switch to a specific generation:"
+    print_info "  sudo nix-env --switch-generation <number> -p /nix/var/nix/profiles/system"
+    print_info "  sudo /nix/var/nix/profiles/system/bin/switch-to-configuration switch"
+
     # Note: We don't delete the rollback info file
     # User might want to know what they rolled back from
     # They can manually delete it or create a new rollback point
+}
+
+# ============================================================================
+# Rollback to Specific Generation Function
+# ============================================================================
+# Purpose: Rollback system to a specific generation number
+# Parameters:
+#   $1 - Generation number to rollback to
+# Returns:
+#   0 - Rollback succeeded
+#   1 - Rollback failed
+#
+# Usage:
+#   rollback_to_generation 123
+#
+# This function is useful when:
+# - The automatic rollback didn't work
+# - You want to rollback to a specific known-good generation
+# - You need fine-grained control over which generation to use
+# ============================================================================
+rollback_to_generation() {
+    local target_gen="$1"
+
+    if [[ -z "$target_gen" ]]; then
+        print_error "No generation number specified"
+        print_info "Available generations:"
+        sudo nix-env --list-generations -p /nix/var/nix/profiles/system 2>/dev/null || true
+        return 1
+    fi
+
+    print_section "Rolling Back to Generation $target_gen"
+
+    # Verify the generation exists
+    if ! sudo nix-env --list-generations -p /nix/var/nix/profiles/system 2>/dev/null | grep -q "^[[:space:]]*$target_gen[[:space:]]"; then
+        print_error "Generation $target_gen not found"
+        print_info "Available generations:"
+        sudo nix-env --list-generations -p /nix/var/nix/profiles/system 2>/dev/null || true
+        return 1
+    fi
+
+    # Confirm with user
+    if ! confirm "Rollback to generation $target_gen?" "n"; then
+        print_info "Rollback cancelled"
+        return 0
+    fi
+
+    # Switch to the specified generation
+    print_info "Switching to generation $target_gen..."
+    if sudo nix-env --switch-generation "$target_gen" -p /nix/var/nix/profiles/system; then
+        print_success "Switched to generation $target_gen"
+
+        # Activate the generation
+        print_info "Activating generation $target_gen..."
+        if sudo /nix/var/nix/profiles/system/bin/switch-to-configuration switch; then
+            print_success "Successfully activated generation $target_gen"
+            print_info ""
+            print_info "System has been rolled back to generation $target_gen"
+            print_info "You may need to reboot for all changes to take effect."
+            return 0
+        else
+            print_error "Failed to activate generation $target_gen"
+            print_info "The generation was switched but activation failed."
+            print_info "Try rebooting and selecting the generation from the boot menu."
+            return 1
+        fi
+    else
+        print_error "Failed to switch to generation $target_gen"
+        return 1
+    fi
+}
+
+# ============================================================================
+# List Available Generations Function
+# ============================================================================
+# Purpose: List all available NixOS system generations
+# Parameters: None
+# Returns: 0
+#
+# This function displays all available system generations with details
+# ============================================================================
+list_generations() {
+    print_section "Available NixOS System Generations"
+    echo ""
+
+    if ! command -v nix-env >/dev/null 2>&1; then
+        print_error "nix-env command not found"
+        return 1
+    fi
+
+    sudo nix-env --list-generations -p /nix/var/nix/profiles/system 2>/dev/null || {
+        print_error "Could not list system generations"
+        return 1
+    }
+
+    echo ""
+    print_info "To rollback to a specific generation, run:"
+    print_info "  $0 --rollback-to-generation <number>"
+    echo ""
 }
 
 # ============================================================================
