@@ -89,14 +89,33 @@ generate_nixos_system_config() {
     # ========================================================================
     if [[ ! -d "$HM_CONFIG_DIR" ]]; then
         print_info "Creating configuration directory: $HM_CONFIG_DIR"
+
+        # Create parent directory first if it doesn't exist
+        local PARENT_DIR=$(dirname "$HM_CONFIG_DIR")
+        if [[ ! -d "$PARENT_DIR" ]]; then
+            if ! mkdir -p "$PARENT_DIR"; then
+                print_error "Failed to create parent directory: $PARENT_DIR"
+                return 1
+            fi
+        fi
+
+        # Create the config directory
         if ! mkdir -p "$HM_CONFIG_DIR"; then
             print_error "Failed to create directory: $HM_CONFIG_DIR"
             return 1
         fi
+
         # Set ownership to current user
-        if ! chown -R "$USER:$(id -gn)" "$HM_CONFIG_DIR" 2>/dev/null; then
-            print_warning "Could not set ownership of $HM_CONFIG_DIR"
+        # Use sudo if we're running as root but need to set ownership to a non-root user
+        if [[ "$EUID" -eq 0 ]] && [[ -n "$SUDO_USER" ]]; then
+            # Running with sudo - set ownership to the original user
+            chown -R "$SUDO_USER:$(id -gn "$SUDO_USER")" "$HM_CONFIG_DIR" || print_warning "Could not set ownership of $HM_CONFIG_DIR"
+        elif [[ "$EUID" -eq 0 ]]; then
+            # Running as root without sudo - set to PRIMARY_USER
+            chown -R "$PRIMARY_USER:$(id -gn "$PRIMARY_USER" 2>/dev/null || echo "users")" "$HM_CONFIG_DIR" || print_warning "Could not set ownership of $HM_CONFIG_DIR"
         fi
+        # If running as normal user, ownership is already correct from mkdir
+
         print_success "Created configuration directory"
     else
         print_success "Configuration directory exists: $HM_CONFIG_DIR"
@@ -254,11 +273,34 @@ create_home_manager_config() {
     # ========================================================================
     if [[ ! -d "$HM_CONFIG_DIR" ]]; then
         print_info "Creating home-manager directory: $HM_CONFIG_DIR"
+
+        # Create parent directory first if it doesn't exist
+        local PARENT_DIR=$(dirname "$HM_CONFIG_DIR")
+        if [[ ! -d "$PARENT_DIR" ]]; then
+            if ! mkdir -p "$PARENT_DIR"; then
+                print_error "Failed to create parent directory: $PARENT_DIR"
+                return 1
+            fi
+        fi
+
+        # Create the config directory
         if ! mkdir -p "$HM_CONFIG_DIR"; then
             print_error "Failed to create directory: $HM_CONFIG_DIR"
             return 1
         fi
-        chown -R "$USER:$(id -gn)" "$HM_CONFIG_DIR" 2>/dev/null || true
+
+        # Set ownership to current user
+        # Use sudo if we're running as root but need to set ownership to a non-root user
+        if [[ "$EUID" -eq 0 ]] && [[ -n "$SUDO_USER" ]]; then
+            # Running with sudo - set ownership to the original user
+            chown -R "$SUDO_USER:$(id -gn "$SUDO_USER")" "$HM_CONFIG_DIR" || print_warning "Could not set ownership of $HM_CONFIG_DIR"
+        elif [[ "$EUID" -eq 0 ]]; then
+            # Running as root without sudo - set to PRIMARY_USER
+            chown -R "$PRIMARY_USER:$(id -gn "$PRIMARY_USER" 2>/dev/null || echo "users")" "$HM_CONFIG_DIR" || print_warning "Could not set ownership of $HM_CONFIG_DIR"
+        fi
+        # If running as normal user, ownership is already correct from mkdir
+
+        print_success "Created home-manager directory"
     fi
 
     # ========================================================================
@@ -285,8 +327,20 @@ create_home_manager_config() {
     fi
 
     print_info "Creating home.nix from template..."
+    print_info "  Source: $HOME_TEMPLATE"
+    print_info "  Destination: $HOME_MANAGER_FILE"
+
     if ! cp "$HOME_TEMPLATE" "$HOME_MANAGER_FILE"; then
         print_error "Failed to copy home template"
+        print_error "  Check if source exists: $([ -f "$HOME_TEMPLATE" ] && echo 'YES' || echo 'NO')"
+        print_error "  Check if destination dir exists: $([ -d "$(dirname "$HOME_MANAGER_FILE")" ] && echo 'YES' || echo 'NO')"
+        print_error "  Check if destination dir is writable: $([ -w "$(dirname "$HOME_MANAGER_FILE")" ] && echo 'YES' || echo 'NO')"
+        return 1
+    fi
+
+    # Verify the file was actually created
+    if [[ ! -f "$HOME_MANAGER_FILE" ]]; then
+        print_error "home.nix was not created at: $HOME_MANAGER_FILE"
         return 1
     fi
 
@@ -318,8 +372,31 @@ create_home_manager_config() {
         print_success "Updated flake.nix with username"
     fi
 
+    # ========================================================================
+    # Final Verification
+    # ========================================================================
+    if [[ ! -f "$HOME_MANAGER_FILE" ]]; then
+        print_error "VERIFICATION FAILED: home.nix does not exist after creation"
+        print_error "Expected location: $HOME_MANAGER_FILE"
+        return 1
+    fi
+
+    # Check file is readable
+    if [[ ! -r "$HOME_MANAGER_FILE" ]]; then
+        print_error "VERIFICATION FAILED: home.nix exists but is not readable"
+        return 1
+    fi
+
+    # Check file has content
+    local file_size=$(stat -c%s "$HOME_MANAGER_FILE" 2>/dev/null || echo "0")
+    if [[ "$file_size" -eq 0 ]]; then
+        print_error "VERIFICATION FAILED: home.nix is empty"
+        return 1
+    fi
+
     print_success "Created home.nix"
     print_info "Location: $HOME_MANAGER_FILE"
+    print_info "File size: $file_size bytes"
     echo ""
 
     return 0
