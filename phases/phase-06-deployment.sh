@@ -11,7 +11,7 @@
 # Required Libraries (must be loaded by bootstrap):
 #   - lib/logging.sh → print_info(), print_success(), print_error(), print_warning()
 #   - lib/state.sh → is_step_complete(), mark_step_complete()
-#   - lib/deployment.sh → prompt_installation_stage(), create_home_manager_config(), apply_home_manager_config()
+#   - lib/deployment.sh → prompt_installation_stage(), apply_home_manager_config()
 #   - lib/ui.sh → confirm()
 #
 # Required Variables (from config/variables.sh):
@@ -23,8 +23,8 @@
 #   - print_section() → Print section header
 #   - confirm() → Get user confirmation
 #   - prompt_installation_stage() → Apply system config
-#   - create_home_manager_config() → Create home-manager config
 #   - apply_home_manager_config() → Apply home-manager config
+#   - Note: create_home_manager_config() now called in Phase 4
 #
 # Requires Phases (must complete before this):
 #   - Phase 4: CONFIGS_GENERATED must be true
@@ -215,10 +215,11 @@ phase_06_deployment() {
     # - Git required: Flakes need git repository
     #
     # File ownership: All files created with user permissions (no sudo)
-    create_home_manager_config
+    # NOTE: create_home_manager_config was moved to Phase 4 (config generation)
+    # This ensures home.nix exists before Phase 5 validation checks for it
 
     # ========================================================================
-    # Step 6.4: Apply Home-Manager Configuration
+    # Step 6.3: Apply Home-Manager Configuration
     # ========================================================================
     # Why: Activate user environment changes
     # How: apply_home_manager_config() executes:
