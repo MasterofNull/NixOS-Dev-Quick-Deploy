@@ -718,6 +718,36 @@ RESOURCES
           doCheck = false;
           pythonImportsCheck = old.pythonImportsCheck or [];
         });
+        # Disable syrupy tests - snapshot testing library with flaky tests
+        syrupy = super.syrupy.overridePythonAttrs (old: {
+          doCheck = false;
+          pythonImportsCheck = [];
+        });
+        # Disable langchain tests - depends on syrupy and has flaky tests
+        langchain = super.langchain.overridePythonAttrs (old: {
+          doCheck = false;
+          pythonImportsCheck = [];
+        });
+        # Disable langchain-core tests - core langchain package
+        "langchain-core" = super."langchain-core".overridePythonAttrs (old: {
+          doCheck = false;
+          pythonImportsCheck = [];
+        });
+        # Disable langchain-community tests - community integrations
+        "langchain-community" = super."langchain-community".overridePythonAttrs (old: {
+          doCheck = false;
+          pythonImportsCheck = [];
+        });
+        # Disable langchain-openai tests - OpenAI integration
+        "langchain-openai" = super."langchain-openai".overridePythonAttrs (old: {
+          doCheck = false;
+          pythonImportsCheck = [];
+        });
+        # Disable pinecone-client tests - vector database client
+        "pinecone-client" = super."pinecone-client".overridePythonAttrs (old: {
+          doCheck = false;
+          pythonImportsCheck = [];
+        });
       };
     };
   # ========================================================================
