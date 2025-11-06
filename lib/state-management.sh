@@ -58,7 +58,13 @@
 init_state() {
     # Create state directory with parents if needed
     # -p flag makes this idempotent (safe to run multiple times)
-    mkdir -p "$STATE_DIR"
+    if ! safe_mkdir "$STATE_DIR"; then
+        echo "FATAL: Cannot create state directory: $STATE_DIR" >&2
+        exit 1
+    fi
+
+    # Set ownership of state directory
+    safe_chown_user_dir "$STATE_DIR" || true
 
     # Check if state file already exists
     # -f tests for regular file (not directory or special file)
