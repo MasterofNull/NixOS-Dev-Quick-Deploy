@@ -174,7 +174,22 @@ phase_05_declarative_deployment() {
     fi
 
     # ========================================================================
-    # Step 6.4: Apply NixOS System Configuration
+    # Step 6.4: Update Flake Inputs (System + Home Manager)
+    # ========================================================================
+    print_section "Updating Flake Inputs"
+    print_info "Ensuring all configurations use the pinned revisions before switching..."
+    echo ""
+
+    if (cd "$HM_CONFIG_DIR" && nix flake update 2>&1 | grep -E '(Updated|Warning|Error)'); then
+        print_success "✓ Flake inputs updated"
+    else
+        print_warning "⚠ Flake update had issues (continuing anyway)"
+    fi
+
+    echo ""
+
+    # ========================================================================
+    # Step 6.5: Apply NixOS System Configuration
     # ========================================================================
     print_section "Applying NixOS System Configuration"
     local target_host=$(hostname)
@@ -197,53 +212,10 @@ phase_05_declarative_deployment() {
     fi
 
     # ========================================================================
-    # Step 6.5: Configure Flatpak (if available)
-    # ========================================================================
-    if command -v flatpak &>/dev/null; then
-        print_section "Configuring Flatpak"
-
-        # Add Flathub if not present
-        if ! flatpak remote-list --user 2>/dev/null | grep -q "^flathub"; then
-            print_info "Adding Flathub repository..."
-            if flatpak remote-add --user --if-not-exists flathub \
-                https://dl.flathub.org/repo/flathub.flatpakrepo 2>/dev/null; then
-                print_success "✓ Flathub repository added"
-            else
-                print_info "Trying alternate Flathub URL..."
-                flatpak remote-add --user --if-not-exists flathub \
-                    https://flathub.org/repo/flathub.flatpakrepo 2>/dev/null || \
-                    print_warning "⚠ Could not add Flathub (add manually if needed)"
-            fi
-        else
-            print_success "✓ Flathub repository already configured"
-        fi
-
-        # Add Flathub Beta (optional)
-        if ! flatpak remote-list --user 2>/dev/null | grep -q "^flathub-beta"; then
-            print_info "Adding Flathub Beta repository (optional)..."
-            flatpak remote-add --user --if-not-exists flathub-beta \
-                https://flathub.org/beta-repo/flathub-beta.flatpakrepo 2>/dev/null && \
-                print_success "✓ Flathub Beta added" || \
-                print_info "  Flathub Beta not added (not required)"
-        fi
-
-        echo ""
-    fi
-
-    # ========================================================================
     # Step 6.6: Apply Home Manager Configuration
     # ========================================================================
     print_section "Applying Home Manager Configuration"
     print_info "This configures your user environment declaratively..."
-    echo ""
-
-    # Update flake inputs
-    print_info "Updating flake inputs..."
-    if (cd "$HM_CONFIG_DIR" && nix flake update 2>&1 | grep -E '(Updated|Warning|Error)'); then
-        print_success "✓ Flake inputs updated"
-    else
-        print_warning "⚠ Flake update had issues (continuing anyway)"
-    fi
     echo ""
 
     # Determine home-manager command
@@ -277,6 +249,43 @@ phase_05_declarative_deployment() {
     fi
 
     # ========================================================================
+    # Step 6.7: Configure Flatpak Remotes (if available)
+    # ========================================================================
+    local flatpak_configured=false
+    if command -v flatpak &>/dev/null; then
+        flatpak_configured=true
+        print_section "Configuring Flatpak"
+
+        # Add Flathub if not present
+        if ! flatpak remote-list --user 2>/dev/null | grep -q "^flathub"; then
+            print_info "Adding Flathub repository..."
+            if flatpak remote-add --user --if-not-exists flathub \
+                https://dl.flathub.org/repo/flathub.flatpakrepo 2>/dev/null; then
+                print_success "✓ Flathub repository added"
+            else
+                print_info "Trying alternate Flathub URL..."
+                flatpak remote-add --user --if-not-exists flathub \
+                    https://flathub.org/repo/flathub.flatpakrepo 2>/dev/null || \
+                    print_warning "⚠ Could not add Flathub (add manually if needed)"
+            fi
+        else
+            print_success "✓ Flathub repository already configured"
+        fi
+
+        # Add Flathub Beta (optional)
+        if ! flatpak remote-list --user 2>/dev/null | grep -q "^flathub-beta"; then
+            print_info "Adding Flathub Beta repository (optional)..."
+            flatpak remote-add --user --if-not-exists flathub-beta \
+                https://flathub.org/beta-repo/flathub-beta.flatpakrepo 2>/dev/null && \
+                print_success "✓ Flathub Beta added" || \
+                print_info "  Flathub Beta not added (not required)"
+        fi
+
+        print_info "Flatpak application installs remain manual to avoid blocking systemd during switch"
+        echo ""
+    fi
+
+    # ========================================================================
     # Deployment Summary
     # ========================================================================
     print_section "Deployment Complete - Now Fully Declarative"
@@ -284,7 +293,12 @@ phase_05_declarative_deployment() {
     echo "✓ NixOS system configuration applied"
     echo "✓ Home manager user environment configured"
     echo "✓ All packages now managed declaratively"
-    echo "✓ Flatpak configured"
+    if [[ "$flatpak_configured" == true ]]; then
+        echo "✓ Flatpak repositories configured"
+        echo "  • Install declared Flatpak applications after the switch to avoid service timeouts"
+    else
+        echo "• Flatpak not available - skipped repository configuration"
+    fi
     echo ""
     echo "Package Management (Declarative):"
     echo "  • System packages: Edit /etc/nixos/configuration.nix"
