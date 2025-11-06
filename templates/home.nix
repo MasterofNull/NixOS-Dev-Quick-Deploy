@@ -1000,7 +1000,7 @@ RESOURCES
       STATIC_ROOT_PATH = "%(APP_DATA_PATH)s/public";
       ENABLE_GZIP = true;
       LFS_START_SERVER = true;
-      LFS_JWT_SECRET = "@GITEA_LFS_JWT_SECRET@";
+      LFS_JWT_SECRET = @GITEA_LFS_JWT_SECRET@;
       DISABLE_SSH = false;
       SSH_DOMAIN = giteaDomain;
       SSH_PORT = giteaSshPort;
@@ -1042,10 +1042,10 @@ RESOURCES
     security = {
       INSTALL_LOCK = true;
       PASSWORD_HASH_ALGO = "argon2";
-      SECRET_KEY = "@GITEA_SECRET_KEY@";
-      INTERNAL_TOKEN = "@GITEA_INTERNAL_TOKEN@";
+      SECRET_KEY = @GITEA_SECRET_KEY@;
+      INTERNAL_TOKEN = @GITEA_INTERNAL_TOKEN@;
     };
-    oauth2.JWT_SECRET = "@GITEA_JWT_SECRET@";
+    oauth2.JWT_SECRET = @GITEA_JWT_SECRET@;
     log = {
       MODE = "console";
       LEVEL = "info";

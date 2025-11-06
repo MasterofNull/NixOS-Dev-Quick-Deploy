@@ -243,6 +243,12 @@ ensure_gitea_secrets_ready() {
         . "$GITEA_SECRETS_CACHE_FILE"
     fi
 
+    if [[ "${GITEA_ENABLE,,}" != "true" ]]; then
+        GITEA_ADMIN_PROMPTED="true"
+        GITEA_PROMPT_CHANGED="false"
+        return 0
+    fi
+
     if [[ -z "${GITEA_SECRET_KEY:-}" ]]; then
         local generated_secret
         if ! generated_secret=$(generate_hex_secret 32); then
@@ -663,11 +669,16 @@ EOF
         return 1
     fi
 
+    local gitea_enabled_literal="true"
+    if [[ "${GITEA_ENABLE,,}" != "true" ]]; then
+        gitea_enabled_literal="false"
+    fi
+
     local gitea_admin_secrets_set
     local gitea_admin_variables_block
     local gitea_admin_service_block
 
-    if [[ "${GITEA_BOOTSTRAP_ADMIN,,}" == "true" ]]; then
+    if [[ "$gitea_enabled_literal" == "true" && "${GITEA_BOOTSTRAP_ADMIN,,}" == "true" ]]; then
         gitea_admin_secrets_set=$(cat <<'EOF'
 {
     adminPassword = @GITEA_ADMIN_PASSWORD@;
@@ -713,7 +724,7 @@ EOF
 EOF
 )
         gitea_admin_service_block=$(cat <<'EOF'
-  systemd.services.gitea-admin-bootstrap = {
+  systemd.services.gitea-admin-bootstrap = lib.mkIf giteaEnabled {
     description = "Bootstrap default Gitea administrator";
     wantedBy = [ "multi-user.target" ];
     after = [ "gitea.service" ];
@@ -727,7 +738,7 @@ EOF
   };
 EOF
 )
-    else
+    elif [[ "$gitea_enabled_literal" == "true" ]]; then
         gitea_admin_secrets_set=$(cat <<'EOF'
 {
   # Add `adminPassword = "your-strong-password";` to enable declarative admin bootstrapping.
@@ -758,7 +769,7 @@ EOF
 EOF
 )
         gitea_admin_service_block=$(cat <<'EOF'
-  # systemd.services.gitea-admin-bootstrap = {
+  # systemd.services.gitea-admin-bootstrap = lib.mkIf giteaEnabled {
   #   description = "Bootstrap default Gitea administrator";
   #   wantedBy = [ "multi-user.target" ];
   #   after = [ "gitea.service" ];
@@ -772,13 +783,28 @@ EOF
   # };
 EOF
 )
+    else
+        gitea_admin_secrets_set=$(cat <<'EOF'
+{
+  # Gitea admin bootstrap disabled because the service is not enabled.
+}
+EOF
+)
+        gitea_admin_variables_block=$(cat <<'EOF'
+  # Gitea service is disabled. Enable it to configure admin bootstrap values.
+EOF
+)
+        gitea_admin_service_block=$(cat <<'EOF'
+  # Gitea service disabled; no admin bootstrap unit generated.
+EOF
+)
     fi
 
     local gitea_admin_user_literal=""
     local gitea_admin_email_literal=""
     local gitea_admin_password_literal=""
 
-    if [[ "${GITEA_BOOTSTRAP_ADMIN,,}" == "true" ]]; then
+    if [[ "$gitea_enabled_literal" == "true" && "${GITEA_BOOTSTRAP_ADMIN,,}" == "true" ]]; then
         gitea_admin_user_literal=$(nix_quote_string "$GITEA_ADMIN_USER")
         gitea_admin_email_literal=$(nix_quote_string "$GITEA_ADMIN_EMAIL")
         gitea_admin_password_literal=$(nix_quote_string "$GITEA_ADMIN_PASSWORD")
@@ -802,6 +828,7 @@ EOF
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@ZRAM_PERCENT@" "$zram_value"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@USERS_MUTABLE@" "${USERS_MUTABLE_SETTING:-true}"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@USER_PASSWORD_BLOCK@" "$user_password_block"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_ENABLE_FLAG@" "$gitea_enabled_literal"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_ADMIN_SECRETS_SET@" "$gitea_admin_secrets_set"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_ADMIN_VARIABLES_BLOCK@" "$gitea_admin_variables_block"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_ADMIN_SERVICE_BLOCK@" "$gitea_admin_service_block"
