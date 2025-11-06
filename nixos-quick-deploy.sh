@@ -189,6 +189,8 @@ load_libraries() {
         "nixos.sh"
         "packages.sh"
         "home-manager.sh"
+        "user.sh"
+        "config.sh"
         "common.sh"
     )
 
