@@ -340,6 +340,11 @@ reset_state() {
         log INFO "Reset state file"
     fi
     init_state
+
+    # Also clear dry run status and logs when resetting state
+    SYSTEM_BUILD_DRY_RUN_LOG=""
+    rm -f /tmp/nixos-rebuild-dry-run.log 2>/dev/null || true
+    log INFO "Cleared dry run status for fresh validation"
 }
 
 # ============================================================================
@@ -5618,65 +5623,14 @@ apply_home_manager_config() {
     print_info "  Uncomment desired Flatpak apps and re-run: home-manager switch"
     echo ""
 
-    # Clean up ALL packages installed via nix-env to prevent conflicts
-    # We manage everything declaratively through home-manager now
-    print_info "Checking for packages installed via nix-env (imperative method)..."
-    local IMPERATIVE_PKGS
-    IMPERATIVE_PKGS=$(nix-env -q 2>/dev/null || true)
-    if [ -n "$IMPERATIVE_PKGS" ]; then
-        print_warning "Found packages installed via nix-env (will cause conflicts if left in place):"
-        echo "$IMPERATIVE_PKGS" | sed 's/^/    /'
-        echo ""
-    else
-        print_success "No nix-env packages found - clean state!"
-        echo ""
-    fi
+    # Note: Package removal now happens in Phase 6 before system switches
+    # This ensures packages are removed right before deployment, not earlier
 
-    if ! confirm "Proceed with home-manager activation (will remove legacy configs and apply the new user environment)?" "y"; then
+    if ! confirm "Proceed with home-manager activation (will apply the new user environment)?" "y"; then
         print_warning "home-manager switch skipped at this stage. Run 'home-manager switch --flake "$HM_CONFIG_DIR"' later to apply the configuration."
         print_warning "Existing Flatpak/user configuration files were left untouched."
         echo ""
         return 0
-    fi
-
-    if [ -n "$IMPERATIVE_PKGS" ]; then
-        print_info "Removing ALL nix-env packages (switching to declarative home-manager)..."
-        print_info "This prevents package collisions and ensures reproducibility"
-
-        # Save list of removed packages for potential recovery
-        local removed_pkgs_file="$STATE_DIR/removed-packages-$(date +%s).txt"
-        mkdir -p "$STATE_DIR"
-        echo "$IMPERATIVE_PKGS" > "$removed_pkgs_file"
-        print_info "Saved package list for recovery: $removed_pkgs_file"
-
-        # Remove all packages installed via nix-env
-        if nix-env -e '.*' --remove-all 2>&1 | tee /tmp/nix-env-cleanup.log; then
-            print_success "All nix-env packages removed successfully"
-        else
-            # Fallback: Try removing packages one by one
-            print_warning "Batch removal failed, trying individual package removal..."
-            while IFS= read -r pkg; do
-                local pkg_name
-                pkg_name=$(echo "$pkg" | awk '{print $1}')
-                if [ -n "$pkg_name" ]; then
-                    print_info "Removing: $pkg_name"
-                    nix-env -e "$pkg_name" 2>/dev/null && print_success "  Removed: $pkg_name" || print_warning "  Failed: $pkg_name"
-                fi
-            done <<< "$IMPERATIVE_PKGS"
-        fi
-
-        # Verify all removed
-        local REMAINING
-        REMAINING=$(nix-env -q 2>/dev/null || true)
-        if [ -n "$REMAINING" ]; then
-            print_warning "Some packages remain in nix-env:"
-            echo "$REMAINING" | sed 's/^/    /'
-            print_warning "These may cause conflicts with home-manager"
-        else
-            print_success "All nix-env packages successfully removed"
-            print_success "All packages now managed declaratively via home-manager"
-        fi
-        echo ""
     fi
 
     # Backup existing configuration files
@@ -7806,6 +7760,13 @@ comprehensive_preflight_checks() {
         exit 1
     }
 
+    # Install core prerequisite packages (git, python3, shellcheck)
+    print_info "Ensuring core prerequisite packages..."
+    if ! ensure_preflight_core_packages; then
+        print_error "Failed to install core prerequisite packages"
+        exit 1
+    fi
+
     # GPU hardware detection
     detect_gpu_hardware
 
@@ -7826,21 +7787,18 @@ install_prerequisites_phase() {
         return 0
     fi
     
-    print_section "Phase 2/10: Prerequisite Package Installation"
+    print_section "Phase 2/10: Channel Updates & Home Manager Setup"
     echo ""
-    
+
     # NixOS version selection
     select_nixos_version
-    
+
     # Update channels
     update_nixos_channels
-    
-    # Ensure core packages
-    if ! ensure_preflight_core_packages; then
-        print_error "Failed to install core prerequisite packages"
-        exit 1
-    fi
-    
+
+    # Note: Core packages are now installed in Phase 1 (Preflight Checks)
+    # This prevents duplicate package lookups and installations
+
     # Cleanup conflicting home-manager entries
     print_info "Scanning nix profile for legacy home-manager entries..."
     cleanup_conflicting_home_manager_profile
@@ -7867,7 +7825,7 @@ install_prerequisites_phase() {
     fi
     
     mark_step_complete "$phase_name"
-    print_success "Phase 2: Prerequisite Package Installation - COMPLETE"
+    print_success "Phase 2: Channel Updates & Home Manager Setup - COMPLETE"
     echo ""
 }
 
@@ -7938,92 +7896,116 @@ generate_and_validate_configs_phase() {
     echo ""
 }
 
-# PHASE 5: Intelligent Cleanup
-intelligent_cleanup_phase() {
-    local phase_name="intelligent_cleanup"
-    
+# PHASE 5: Pre-Deployment Validation
+pre_deployment_validation_phase() {
+    local phase_name="pre_deployment_validation"
+
     if is_step_complete "$phase_name"; then
         print_info "Phase 5 already completed (skipping)"
         return 0
     fi
-    
-    print_section "Phase 5/10: Intelligent Cleanup"
+
+    print_section "Phase 5/10: Pre-Deployment Validation"
     echo ""
-    
-    print_warning "This phase will remove conflicting packages and configurations"
-    print_info "All removals are backed up and can be restored if needed"
-    echo ""
-    
-    # User confirmation before destructive operations
-    if ! confirm "Proceed with intelligent cleanup of conflicting packages?" "y"; then
-        print_warning "Cleanup skipped - this may cause conflicts during installation"
-        echo ""
-        return 0
-    fi
-    
-    # Check for nix-env packages
-    print_info "Checking for packages installed via nix-env..."
+
+    # Check for nix-env packages and warn user
+    print_info "Checking for packages installed via nix-env (imperative method)..."
     local imperative_pkgs
     imperative_pkgs=$(nix-env -q 2>/dev/null || true)
-    
+
     if [[ -n "$imperative_pkgs" ]]; then
         print_warning "Found packages installed via nix-env:"
         echo "$imperative_pkgs" | sed 's/^/    /'
         echo ""
-        
-        # Intelligent selective removal instead of nix-env -e '.*'
-        print_info "Identifying conflicting packages for selective removal..."
-        local -a conflicting_pkgs=()
-        
-        # Only remove packages that conflict with home-manager
+        print_info "These will be removed in Phase 6 before system deployment to prevent conflicts"
+    else
+        print_success "No nix-env packages found - clean state!"
+    fi
+    echo ""
+
+    # Verify configurations are ready
+    if [[ ! -f "$HOME_MANAGER_FILE" ]]; then
+        print_error "home-manager configuration not found: $HOME_MANAGER_FILE"
+        exit 1
+    fi
+    print_success "Configuration files validated and ready for deployment"
+
+    mark_step_complete "$phase_name"
+    print_success "Phase 5: Pre-Deployment Validation - COMPLETE"
+    echo ""
+}
+
+# Consolidated package removal function - called right before system switches
+remove_conflicting_packages() {
+    print_section "Removing Conflicting Packages"
+    print_info "Cleaning up nix-env packages to prevent conflicts with declarative management"
+    echo ""
+
+    # Check for nix-env packages
+    local IMPERATIVE_PKGS
+    IMPERATIVE_PKGS=$(nix-env -q 2>/dev/null || true)
+
+    if [[ -z "$IMPERATIVE_PKGS" ]]; then
+        print_success "No nix-env packages found - clean state!"
+        echo ""
+        return 0
+    fi
+
+    print_warning "Found packages installed via nix-env (will cause conflicts):"
+    echo "$IMPERATIVE_PKGS" | sed 's/^/    /'
+    echo ""
+
+    print_info "Removing ALL nix-env packages (switching to declarative management)..."
+    print_info "This prevents package collisions and ensures reproducibility"
+
+    # Save list of removed packages for potential recovery
+    local removed_pkgs_file="$STATE_DIR/removed-packages-$(date +%s).txt"
+    mkdir -p "$STATE_DIR"
+    echo "$IMPERATIVE_PKGS" > "$removed_pkgs_file"
+    print_info "Saved package list for recovery: $removed_pkgs_file"
+
+    # Remove all packages installed via nix-env
+    if nix-env -e '.*' --remove-all 2>&1 | tee /tmp/nix-env-cleanup.log; then
+        print_success "All nix-env packages removed successfully"
+    else
+        # Fallback: Try removing packages one by one
+        print_warning "Batch removal failed, trying individual package removal..."
         while IFS= read -r pkg; do
             local pkg_name
             pkg_name=$(echo "$pkg" | awk '{print $1}')
             if [[ -n "$pkg_name" ]]; then
-                # Add known conflicting packages
-                if [[ "$pkg_name" =~ ^(home-manager|git|vscodium|nodejs|python) ]]; then
-                    conflicting_pkgs+=("$pkg_name")
-                fi
+                print_info "Removing: $pkg_name"
+                nix-env -e "$pkg_name" 2>/dev/null && print_success "  Removed: $pkg_name" || print_warning "  Failed: $pkg_name"
             fi
-        done <<< "$imperative_pkgs"
-        
-        if [[ ${#conflicting_pkgs[@]} -gt 0 ]]; then
-            print_info "Removing ${#conflicting_pkgs[@]} conflicting package(s):"
-            for pkg in "${conflicting_pkgs[@]}"; do
-                print_info "  - $pkg"
-                nix-env -e "$pkg" 2>/dev/null || print_warning "    Failed to remove $pkg"
-            done
-            print_success "Conflicting packages removed"
-        else
-            print_info "No conflicting packages detected - keeping all nix-env packages"
-        fi
+        done <<< "$IMPERATIVE_PKGS"
+    fi
+
+    # Verify all removed
+    local REMAINING
+    REMAINING=$(nix-env -q 2>/dev/null || true)
+    if [[ -n "$REMAINING" ]]; then
+        print_warning "Some packages remain in nix-env:"
+        echo "$REMAINING" | sed 's/^/    /'
+        print_warning "These may cause conflicts with home-manager"
     else
-        print_success "No nix-env packages found - clean state!"
+        print_success "All nix-env packages successfully removed"
+        print_success "All packages now managed declaratively"
     fi
-    
-    # Cleanup old generations (optional)
-    if confirm "Remove old nix-env generations to free up space?" "n"; then
-        nix-env --delete-generations old 2>/dev/null || true
-        print_success "Old generations cleaned up"
-    fi
-    
-    mark_step_complete "$phase_name"
-    print_success "Phase 5: Intelligent Cleanup - COMPLETE"
     echo ""
 }
 
 # PHASE 6: Configuration Deployment
 deploy_configurations_phase() {
     local phase_name="deploy_configurations"
-    
+
     if is_step_complete "$phase_name"; then
         print_info "Phase 6 already completed (skipping)"
         return 0
     fi
-    
+
     print_section "Phase 6/10: Configuration Deployment"
     echo ""
-    
+
     # User confirmation before deployment
     if ! confirm "Proceed with configuration deployment (this will apply system changes)?" "y"; then
         print_warning "Deployment skipped - configurations generated but not applied"
@@ -8031,14 +8013,18 @@ deploy_configurations_phase() {
         echo ""
         return 0
     fi
-    
+
+    # CRITICAL: Remove all conflicting packages RIGHT BEFORE system switches
+    # This prevents conflicts during nixos-rebuild and home-manager switch
+    remove_conflicting_packages
+
     # Apply system configuration
     apply_nixos_system_config
-    
+
     # Create and apply home-manager configuration
     create_home_manager_config
     apply_home_manager_config
-    
+
     mark_step_complete "$phase_name"
     print_success "Phase 6: Configuration Deployment - COMPLETE"
     echo ""
@@ -8323,6 +8309,11 @@ main() {
             print_info "Resetting state file for fresh installation..."
             reset_state
         fi
+
+        # Clear dry run status so it will be re-executed
+        SYSTEM_BUILD_DRY_RUN_LOG=""
+        rm -f /tmp/nixos-rebuild-dry-run.log 2>/dev/null || true
+        print_info "Dry run status cleared - will re-validate system build"
     fi
 
     if [[ "$REGENERATE_CONFIGS" == true ]]; then
@@ -8422,6 +8413,13 @@ main() {
                         rm -rf "$STATE_DIR/secrets" 2>/dev/null || true
                     fi
 
+                    # Clear dry run status so it will be re-executed
+                    SYSTEM_BUILD_DRY_RUN_LOG=""
+                    print_info "Dry run status cleared - will re-validate system build"
+
+                    # Remove any cached dry run logs
+                    rm -f /tmp/nixos-rebuild-dry-run.log 2>/dev/null || true
+
                     print_success "Cleanup complete. Starting fresh installation..."
                     echo ""
                 else
@@ -8462,8 +8460,8 @@ main() {
     # PHASE 4: Configuration Generation & Validation
     generate_and_validate_configs_phase
     
-    # PHASE 5: Intelligent Cleanup
-    intelligent_cleanup_phase
+    # PHASE 5: Pre-Deployment Validation
+    pre_deployment_validation_phase
     
     # PHASE 6: Configuration Deployment
     deploy_configurations_phase
