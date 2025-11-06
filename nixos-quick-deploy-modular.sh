@@ -243,32 +243,28 @@ readonly SAFE_RESTART_PHASES=(1 3 8)
 
 get_phase_name() {
     case $1 in
-        1) echo "preparation" ;;
-        2) echo "prerequisites" ;;
-        3) echo "backup" ;;
-        4) echo "config-generation" ;;
-        5) echo "cleanup" ;;
-        6) echo "deployment" ;;
-        7) echo "tools-installation" ;;
-        8) echo "validation" ;;
-        9) echo "finalization" ;;
-        10) echo "reporting" ;;
+        1) echo "system-initialization" ;;
+        2) echo "system-backup" ;;
+        3) echo "configuration-generation" ;;
+        4) echo "pre-deployment-validation" ;;
+        5) echo "declarative-deployment" ;;
+        6) echo "additional-tooling" ;;
+        7) echo "post-deployment-validation" ;;
+        8) echo "finalization-and-report" ;;
         *) echo "unknown" ;;
     esac
 }
 
 get_phase_description() {
     case $1 in
-        1) echo "System preparation and environment setup" ;;
-        2) echo "Install prerequisites and validate system" ;;
-        3) echo "Backup current configuration" ;;
-        4) echo "Generate NixOS configurations" ;;
-        5) echo "Cleanup temporary files and caches" ;;
-        6) echo "Deploy configuration to system" ;;
-        7) echo "Install additional tools" ;;
-        8) echo "Validate deployment success" ;;
-        9) echo "Finalize and apply system changes" ;;
-        10) echo "Generate deployment report" ;;
+        1) echo "System initialization - validate requirements and install temporary tools" ;;
+        2) echo "System backup - comprehensive backup of all system and user state" ;;
+        3) echo "Configuration generation - generate all declarative NixOS configs" ;;
+        4) echo "Pre-deployment validation - validate configs and check for conflicts" ;;
+        5) echo "Declarative deployment - remove nix-env packages and apply configs" ;;
+        6) echo "Additional tooling - install non-declarative tools (Claude Code, etc.)" ;;
+        7) echo "Post-deployment validation - verify packages and services running" ;;
+        8) echo "Finalization and report - complete setup and generate deployment report" ;;
         *) echo "Unknown phase" ;;
     esac
 }
@@ -283,8 +279,6 @@ get_phase_dependencies() {
         6) echo "1,2,3,4,5" ;;
         7) echo "1,2,3,4,5,6" ;;
         8) echo "1,2,3,4,5,6,7" ;;
-        9) echo "1,2,3,4,5,6,7,8" ;;
-        10) echo "1,2,3,4,5,6,7,8,9" ;;
         *) echo "" ;;
     esac
 }
@@ -494,8 +488,8 @@ PHASE OVERVIEW:
     Phase 2:  Prerequisites        - Install prerequisites and validate system
     Phase 3:  Backup              - Backup current configuration
     Phase 4:  Config Generation   - Generate NixOS configurations
-    Phase 5:  Cleanup             - Cleanup temporary files and caches
-    Phase 6:  Deployment          - Deploy configuration to system
+    Phase 5:  Validation          - Pre-deployment validation and environment check
+    Phase 6:  Deployment          - Deploy all configurations (backup, clean, apply)
     Phase 7:  Tools Installation  - Install additional tools
     Phase 8:  Validation          - Validate deployment success
     Phase 9:  Finalization        - Finalize and apply system changes
@@ -1298,12 +1292,12 @@ main() {
     # seq: Generate sequence of numbers
     # Example: seq 3 10 → 3 4 5 6 7 8 9 10
     echo ""
-    print_section "Starting 10-Phase Deployment Workflow"
+    print_section "Starting 8-Phase Deployment Workflow"
     log INFO "Starting deployment from phase $start_phase"
     echo ""
 
-    # Loop through phases from start_phase to 10
-    for phase_num in $(seq $start_phase 10); do
+    # Loop through phases from start_phase to 8
+    for phase_num in $(seq $start_phase 8); do
         # --------------------------------------------------------------------
         # Check if Phase Should Be Skipped
         # --------------------------------------------------------------------
