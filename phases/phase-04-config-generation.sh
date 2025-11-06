@@ -168,6 +168,15 @@ phase_04_config_generation() {
     generate_nixos_system_config
 
     # ========================================================================
+    # Step 4.2.5: Create Home Manager Configuration
+    # ========================================================================
+    # Why: Create home-manager configuration files (home.nix)
+    # How: create_home_manager_config() reads templates and generates files
+    # Note: This was moved from Phase 6 to ensure all configs exist before
+    #       Phase 5 validation checks for them.
+    create_home_manager_config
+
+    # ========================================================================
     # Step 4.3: Validate System Build (Dry Run)
     # ========================================================================
     # Why: Catch configuration errors BEFORE applying to live system

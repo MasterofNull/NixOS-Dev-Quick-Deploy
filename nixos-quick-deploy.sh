@@ -7888,6 +7888,9 @@ generate_and_validate_configs_phase() {
     # Generate NixOS system config
     generate_nixos_system_config
 
+    # Create home-manager config (moved from Phase 6 to ensure all configs exist before validation)
+    create_home_manager_config
+
     # Validate system build (dry run)
     validate_system_build_stage
 
@@ -8021,8 +8024,7 @@ deploy_configurations_phase() {
     # Apply system configuration
     apply_nixos_system_config
 
-    # Create and apply home-manager configuration
-    create_home_manager_config
+    # Apply home-manager configuration (config was created in Phase 4)
     apply_home_manager_config
 
     mark_step_complete "$phase_name"
