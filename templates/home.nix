@@ -768,10 +768,14 @@ RESOURCES
           doCheck = false;
           pythonImportsCheck = [];
         });
-        # Disable gradio tests - web framework requiring server for tests
+        # Fix gradio circular dependency by removing broken passthru
+        # The nixpkgs gradio package has a passthru.sans-reverse-dependencies that causes
+        # "attribute 'override' missing" error. We remove it to fix the build.
         gradio = super.gradio.overridePythonAttrs (old: {
           doCheck = false;
           pythonImportsCheck = [];
+          # Remove broken passthru that tries to call gradio.override before it exists
+          passthru = builtins.removeAttrs (old.passthru or {}) ["sans-reverse-dependencies"];
         });
         # Disable transformers tests - may download models during tests
         transformers = super.transformers.overridePythonAttrs (old: {
