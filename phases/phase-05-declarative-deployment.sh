@@ -128,10 +128,13 @@ phase_05_declarative_deployment() {
 
         # Save package list for user reference
         local removed_pkgs_file="$STATE_DIR/removed-nix-env-packages-$(date +%s).txt"
-        mkdir -p "$STATE_DIR"
-        echo "$IMPERATIVE_PKGS" > "$removed_pkgs_file"
-        print_info "Package list saved to: $removed_pkgs_file"
-        print_info "Add these to configuration.nix or home.nix if you want them back"
+        if safe_mkdir "$STATE_DIR"; then
+            echo "$IMPERATIVE_PKGS" > "$removed_pkgs_file"
+            print_info "Package list saved to: $removed_pkgs_file"
+            print_info "Add these to configuration.nix or home.nix if you want them back"
+        else
+            print_warning "Could not save package list"
+        fi
         echo ""
 
         # Remove all nix-env packages

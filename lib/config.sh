@@ -134,9 +134,9 @@ generate_nixos_system_config() {
     fi
 
     if [[ -f "$FLAKE_FILE" ]]; then
-        mkdir -p "$HM_CONFIG_DIR/backup"
-        cp "$FLAKE_FILE" "$HM_CONFIG_DIR/backup/flake.nix.backup.$BACKUP_TIMESTAMP" 2>/dev/null || true
-        print_success "Backed up flake.nix"
+        safe_mkdir "$HM_CONFIG_DIR/backup" || print_warning "Could not create backup directory"
+        safe_copy_file_silent "$FLAKE_FILE" "$HM_CONFIG_DIR/backup/flake.nix.backup.$BACKUP_TIMESTAMP" && \
+            print_success "Backed up flake.nix"
     fi
 
     # ========================================================================
@@ -309,10 +309,10 @@ create_home_manager_config() {
     if [[ -f "$HOME_MANAGER_FILE" ]]; then
         local BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
         local BACKUP_DIR="$HM_CONFIG_DIR/backup"
-        mkdir -p "$BACKUP_DIR"
+        safe_mkdir "$BACKUP_DIR" || print_warning "Could not create backup directory"
 
-        cp "$HOME_MANAGER_FILE" "$BACKUP_DIR/home.nix.backup.$BACKUP_TIMESTAMP" 2>/dev/null || true
-        print_success "Backed up existing home.nix"
+        safe_copy_file_silent "$HOME_MANAGER_FILE" "$BACKUP_DIR/home.nix.backup.$BACKUP_TIMESTAMP" && \
+            print_success "Backed up existing home.nix"
     fi
 
     # ========================================================================
@@ -424,7 +424,7 @@ materialize_hardware_configuration() {
     local TEMP_DIR=$(mktemp -d)
 
     if sudo nixos-generate-config --dir "$TEMP_DIR" --show-hardware-config > "$HARDWARE_CONFIG" 2>/dev/null; then
-        chown "$USER:$(id -gn)" "$HARDWARE_CONFIG" 2>/dev/null || true
+        safe_chown_user_dir "$HARDWARE_CONFIG"
         print_success "Generated hardware-configuration.nix"
         rm -rf "$TEMP_DIR"
         return 0

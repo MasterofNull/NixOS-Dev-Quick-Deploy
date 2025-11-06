@@ -48,19 +48,33 @@ init_logging() {
     # Create log directory with parents (-p flag)
     # -p = --parents: create parent directories as needed, no error if existing
     # This is safe to run multiple times (idempotent operation)
-    mkdir -p "$LOG_DIR"
+    if ! safe_mkdir "$LOG_DIR"; then
+        echo "FATAL: Cannot create log directory: $LOG_DIR" >&2
+        echo "Check permissions and available disk space" >&2
+        exit 1
+    fi
+
+    # Set ownership of log directory
+    safe_chown_user_dir "$LOG_DIR" || true
 
     # Create the log file if it doesn't exist
     # touch updates the timestamp if file exists, creates if it doesn't
     # Using touch instead of > to avoid truncating an existing file
-    touch "$LOG_FILE"
+    if ! touch "$LOG_FILE" 2>/dev/null; then
+        echo "FATAL: Cannot create log file: $LOG_FILE" >&2
+        echo "Check permissions on log directory: $LOG_DIR" >&2
+        exit 1
+    fi
 
     # Set secure permissions: owner read/write only (rw-------)
     # 6 = read(4) + write(2) for owner
     # 0 = no permissions for group
     # 0 = no permissions for others
     # This protects potentially sensitive deployment information
-    chmod 600 "$LOG_FILE"
+    if ! chmod 600 "$LOG_FILE" 2>/dev/null; then
+        echo "WARNING: Cannot set log file permissions: $LOG_FILE" >&2
+        # Don't fail - logging can still work
+    fi
 
     # Write session header to log file
     # Using log() function to ensure consistent formatting
