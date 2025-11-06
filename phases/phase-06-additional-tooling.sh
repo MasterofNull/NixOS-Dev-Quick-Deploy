@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Phase 07: Tool & Service Installation
+# Phase 06: Additional Tooling
 # Purpose: Install additional tools (Flatpak, Claude Code, etc.) in parallel
-# Version: 3.2.0
+# Version: 4.0.0
 #
 # ============================================================================
 # DEPENDENCIES
@@ -43,9 +43,9 @@
 # PHASE IMPLEMENTATION
 # ============================================================================
 
-phase_07_tools_installation() {
+phase_06_additional_tooling() {
     # ========================================================================
-    # Phase 7: Tool & Service Installation
+    # Phase 6: Additional Tooling
     # ========================================================================
     # This is the "extras" phase - install additional tools and services
     # that enhance the development environment but aren't part of core NixOS.
@@ -98,11 +98,11 @@ phase_07_tools_installation() {
     # Resume Check: Skip if already completed
     # ------------------------------------------------------------------------
     if is_step_complete "$phase_name"; then
-        print_info "Phase 7 already completed (skipping)"
+        print_info "Phase 6 already completed (skipping)"
         return 0
     fi
 
-    print_section "Phase 7/10: Tool & Service Installation"
+    print_section "Phase 6/8: Additional Tooling"
     echo ""
 
     # ========================================================================
@@ -283,9 +283,9 @@ phase_07_tools_installation() {
     # State: "install_tools_services" marked complete
     # Next: Phase 8 will validate everything is working
     mark_step_complete "$phase_name"
-    print_success "Phase 7: Tool & Service Installation - COMPLETE"
+    print_success "Phase 6: Additional Tooling - COMPLETE"
     echo ""
 }
 
 # Execute phase
-phase_07_tools_installation
+phase_06_additional_tooling
