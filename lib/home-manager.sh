@@ -46,22 +46,25 @@ install_home_manager() {
     if [ -d "$HOME/.config/home-manager" ]; then
         print_info "Found existing home-manager config, backing up..."
         local BACKUP_DIR="$HOME/.config-backups/pre-install-$(date +%Y%m%d_%H%M%S)"
-        mkdir -p "$BACKUP_DIR"
 
-        # Backup existing files
-        if [ -f "$HOME/.config/home-manager/home.nix" ]; then
-            cp "$HOME/.config/home-manager/home.nix" "$BACKUP_DIR/home.nix"
-            print_success "Backed up old home.nix"
-        fi
+        if ! safe_mkdir "$BACKUP_DIR"; then
+            print_warning "Could not create backup directory, skipping backup"
+        else
+            # Backup existing files
+            if [ -f "$HOME/.config/home-manager/home.nix" ]; then
+                safe_copy_file_silent "$HOME/.config/home-manager/home.nix" "$BACKUP_DIR/home.nix" && \
+                    print_success "Backed up old home.nix"
+            fi
 
-        if [ -f "$HOME/.config/home-manager/flake.nix" ]; then
-            cp "$HOME/.config/home-manager/flake.nix" "$BACKUP_DIR/flake.nix"
-            print_success "Backed up old flake.nix"
-        fi
+            if [ -f "$HOME/.config/home-manager/flake.nix" ]; then
+                safe_copy_file_silent "$HOME/.config/home-manager/flake.nix" "$BACKUP_DIR/flake.nix" && \
+                    print_success "Backed up old flake.nix"
+            fi
 
-        if [ -f "$HOME/.config/home-manager/flake.lock" ]; then
-            cp "$HOME/.config/home-manager/flake.lock" "$BACKUP_DIR/flake.lock"
-            print_success "Backed up old flake.lock"
+            if [ -f "$HOME/.config/home-manager/flake.lock" ]; then
+                safe_copy_file_silent "$HOME/.config/home-manager/flake.lock" "$BACKUP_DIR/flake.lock" && \
+                    print_success "Backed up old flake.lock"
+            fi
         fi
 
         # Remove the old config directory to start fresh

@@ -106,8 +106,10 @@ apply_final_system_configuration() {
     # Ensure user owns their home directory configurations
     if [[ -d "$HOME/.config" ]]; then
         # Only fix if not already owned by user
-        if [[ "$(stat -c %U "$HOME/.config" 2>/dev/null)" != "$USER" ]]; then
-            if chown -R "$USER:$(id -gn)" "$HOME/.config" 2>/dev/null; then
+        local current_owner=$(stat -c %U "$HOME/.config" 2>/dev/null || echo "unknown")
+        local expected_owner="${SUDO_USER:-${PRIMARY_USER:-$USER}}"
+        if [[ "$current_owner" != "$expected_owner" ]]; then
+            if safe_chown_user_dir "$HOME/.config"; then
                 print_success "Fixed .config ownership"
             else
                 print_warning "Could not fix .config ownership (may require sudo)"
@@ -119,8 +121,10 @@ apply_final_system_configuration() {
 
     # Ensure dotfiles directory has correct ownership
     if [[ -d "$DOTFILES_ROOT" ]]; then
-        if [[ "$(stat -c %U "$DOTFILES_ROOT" 2>/dev/null)" != "$USER" ]]; then
-            if chown -R "$USER:$(id -gn)" "$DOTFILES_ROOT" 2>/dev/null; then
+        local current_owner=$(stat -c %U "$DOTFILES_ROOT" 2>/dev/null || echo "unknown")
+        local expected_owner="${SUDO_USER:-${PRIMARY_USER:-$USER}}"
+        if [[ "$current_owner" != "$expected_owner" ]]; then
+            if safe_chown_user_dir "$DOTFILES_ROOT"; then
                 print_success "Fixed dotfiles ownership"
             else
                 print_warning "Could not fix dotfiles ownership"
