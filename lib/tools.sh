@@ -21,6 +21,78 @@
 #   - setup_flake_environment() → Setup Nix flakes dev environment
 
 declare -a AI_VSCODE_EXTENSIONS=()
+declare -A AI_VSCODE_EXTENSION_CACHE=()
+
+LAST_OPEN_VSX_URL=""
+LAST_OPEN_VSX_STATUS=""
+
+ai_cli_manual_url() {
+    local package="$1"
+
+    if declare -p NPM_AI_PACKAGE_MANUAL_URLS >/dev/null 2>&1; then
+        printf '%s' "${NPM_AI_PACKAGE_MANUAL_URLS[$package]:-}"
+        return 0
+    fi
+
+    printf '%s' ""
+}
+
+vscode_extension_manual_url() {
+    local extension_id="$1"
+
+    if declare -p VSCODE_AI_EXTENSION_FALLBACK_URLS >/dev/null 2>&1; then
+        printf '%s' "${VSCODE_AI_EXTENSION_FALLBACK_URLS[$extension_id]:-}"
+        return 0
+    fi
+
+    printf '%s' ""
+}
+
+open_vsx_extension_available() {
+    local extension_id="$1"
+
+    LAST_OPEN_VSX_URL=""
+    LAST_OPEN_VSX_STATUS=""
+
+    if [[ -z "$extension_id" ]]; then
+        return 0
+    fi
+
+    # Extension identifiers must contain a namespace and a name separated by a dot
+    if [[ "$extension_id" != *.* ]]; then
+        return 0
+    fi
+
+    if [[ -n "${AI_VSCODE_EXTENSION_CACHE[$extension_id]:-}" ]]; then
+        local cached="${AI_VSCODE_EXTENSION_CACHE[$extension_id]}"
+        LAST_OPEN_VSX_STATUS="${cached%%|*}"
+        LAST_OPEN_VSX_URL="${cached#*|}"
+        [[ "$LAST_OPEN_VSX_STATUS" == "200" ]] && return 0
+        return 1
+    fi
+
+    local namespace="${extension_id%%.*}"
+    local name="${extension_id#*.}"
+    local url="https://open-vsx.org/api/$namespace/$name"
+
+    LAST_OPEN_VSX_URL="$url"
+
+    local status
+    status=$(curl -sS --max-time 8 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || echo "000")
+    LAST_OPEN_VSX_STATUS="$status"
+
+    if [[ "$status" == "000" ]]; then
+        return 0
+    fi
+
+    AI_VSCODE_EXTENSION_CACHE[$extension_id]="${status}|$url"
+
+    if [[ "$status" == "200" ]]; then
+        return 0
+    fi
+
+    return 1
+}
 
 # ============================================================================
 # Flatpak Helpers
@@ -448,6 +520,387 @@ EOF
     chmod +x "$wrapper_path"
 }
 
+create_goose_cli_wrapper() {
+    local wrapper_path="$1"
+    local cli_path="$2"
+    local display_name="$3"
+    local debug_env_var="${4:-}"
+
+    cat >"$wrapper_path" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+DEBUG_FLAG="\${AI_TOOL_DEBUG:-0}"
+DEBUG_ENV_VAR="${debug_env_var}"
+
+if [ -n "\${DEBUG_ENV_VAR}" ]; then
+    DEBUG_ENV_VALUE="\${!DEBUG_ENV_VAR:-}"
+    if [ -n "\${DEBUG_ENV_VALUE}" ]; then
+        DEBUG_FLAG="\${DEBUG_ENV_VALUE}"
+    fi
+fi
+
+if [ "\${DEBUG_FLAG}" = "1" ]; then
+    echo "[DEBUG] Wrapper starting for $display_name" >&2
+    echo "[DEBUG] CLI path: $cli_path" >&2
+fi
+
+if [ ! -x "$cli_path" ]; then
+    echo "[$display_name] CLI binary missing: $cli_path" >&2
+    echo "Re-run the deployment to reinstall Goose." >&2
+    exit 127
+fi
+
+exec "$cli_path" "\$@"
+EOF
+
+    chmod +x "$wrapper_path"
+}
+
+create_goose_install_stub() {
+    local wrapper_path="$1"
+    local display_name="$2"
+    local manual_url="$3"
+
+    if [ -z "$manual_url" ]; then
+        manual_url="https://block.github.io/goose/docs/getting-started/installation/"
+    fi
+
+    cat >"$wrapper_path" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "[$display_name] Goose CLI is not currently installed." >&2
+echo "Refer to the official installation guide:" >&2
+echo "  $manual_url" >&2
+exit 127
+EOF
+
+    chmod +x "$wrapper_path"
+}
+
+fetch_latest_goose_release() {
+    local api_url="https://api.github.com/repos/block/goose/releases/latest"
+    local release_json
+
+    release_json=$(curl -fsSL "$api_url" 2>/dev/null) || return 1
+
+    if [ -z "$release_json" ] || [ "$release_json" = "null" ]; then
+        return 1
+    fi
+
+    printf '%s' "$release_json"
+}
+
+install_goose_cli_from_release() {
+    local release_json="$1"
+    local wrapper_path="$2"
+    local display="$3"
+    local debug_env="$4"
+
+    local arch asset_name cli_url release_tag version
+    arch=$(uname -m)
+
+    case "$arch" in
+        x86_64|amd64)
+            asset_name="goose-x86_64-unknown-linux-gnu.tar.bz2"
+            ;;
+        aarch64|arm64)
+            asset_name="goose-aarch64-unknown-linux-gnu.tar.bz2"
+            ;;
+        *)
+            print_warning "$display is not published for architecture $arch"
+            return 1
+            ;;
+    esac
+
+    release_tag=$(printf '%s' "$release_json" | jq -r '.tag_name // empty' 2>/dev/null)
+    if [ -z "$release_tag" ] || [ "$release_tag" = "null" ]; then
+        print_warning "Unable to determine latest Goose release tag"
+        return 1
+    fi
+
+    version="${release_tag#v}"
+
+    cli_url=$(printf '%s' "$release_json" | jq -r --arg name "$asset_name" '.assets[] | select(.name == $name) | .browser_download_url' 2>/dev/null | head -n1)
+    if [ -z "$cli_url" ] || [ "$cli_url" = "null" ]; then
+        print_warning "Unable to locate $display download for $arch"
+        return 1
+    fi
+
+    local user_home install_root cli_path version_file
+    user_home="${PRIMARY_HOME:-$HOME}"
+    install_root="$user_home/.local/share/goose-cli"
+    cli_path="$install_root/goose"
+    version_file="$install_root/.release_tag"
+
+    local current_tag
+    current_tag=$(run_as_primary_user bash -lc "cat '$version_file'" 2>/dev/null || true)
+
+    if run_as_primary_user test -x "$cli_path" && [ "$current_tag" = "$release_tag" ]; then
+        print_success "$display already up-to-date ($release_tag)"
+        create_goose_cli_wrapper "$wrapper_path" "$cli_path" "$display" "$debug_env"
+        run_as_primary_user install -d -m 755 "$user_home/.local/bin" >/dev/null 2>&1 || true
+        run_as_primary_user ln -sf "$cli_path" "$user_home/.local/bin/goose" >/dev/null 2>&1 || true
+        GOOSE_CLI_BIN_PATH="$cli_path"
+        return 0
+    fi
+
+    print_info "Downloading Goose CLI $release_tag for $arch"
+
+    local tmp_dir archive_path
+    tmp_dir=$(mktemp -d) || {
+        print_warning "Unable to allocate temporary directory for $display download"
+        return 1
+    }
+    archive_path="$tmp_dir/$asset_name"
+
+    if ! curl -fsSL "$cli_url" -o "$archive_path"; then
+        rm -rf "$tmp_dir"
+        print_warning "Failed to download $display from $cli_url"
+        return 1
+    fi
+
+    if ! tar -xjf "$archive_path" -C "$tmp_dir"; then
+        rm -rf "$tmp_dir"
+        print_warning "Failed to extract Goose CLI archive"
+        return 1
+    fi
+
+    if [ ! -f "$tmp_dir/goose" ]; then
+        rm -rf "$tmp_dir"
+        print_warning "Goose CLI archive did not contain expected binary"
+        return 1
+    fi
+
+    run_as_primary_user install -d -m 755 "$install_root" >/dev/null 2>&1 || true
+    if ! tar -C "$tmp_dir" -cf - goose | run_as_primary_user tar -C "$install_root" -xf - >/dev/null 2>&1; then
+        rm -rf "$tmp_dir"
+        print_warning "Failed to install Goose CLI binary"
+        return 1
+    fi
+
+    run_as_primary_user install -d -m 755 "$user_home/.local/bin" >/dev/null 2>&1 || true
+    run_as_primary_user ln -sf "$cli_path" "$user_home/.local/bin/goose" >/dev/null 2>&1 || true
+    run_as_primary_user bash -c "printf '%s\n' '$release_tag' >'$version_file'" >/dev/null 2>&1 || true
+
+    create_goose_cli_wrapper "$wrapper_path" "$cli_path" "$display" "$debug_env"
+    rm -rf "$tmp_dir"
+
+    print_success "$display installed ($release_tag)"
+    GOOSE_CLI_BIN_PATH="$cli_path"
+    return 0
+}
+
+install_goose_desktop_from_release() {
+    local release_json="$1"
+    local release_tag="$2"
+
+    local arch
+    arch=$(uname -m)
+    case "$arch" in
+        x86_64|amd64)
+            ;;
+        *)
+            print_warning "Goose Desktop packages are currently published for x86_64 only (detected $arch)"
+            return 1
+            ;;
+    esac
+
+    if ! command -v dpkg-deb >/dev/null 2>&1; then
+        print_warning "dpkg-deb not available; skipping Goose Desktop installation"
+        return 1
+    fi
+
+    local desktop_url desktop_name
+    desktop_url=$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name | test("goose_.*_amd64\\.deb$")) | .browser_download_url' 2>/dev/null | head -n1)
+    desktop_name=$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name | test("goose_.*_amd64\\.deb$")) | .name' 2>/dev/null | head -n1)
+
+    if [ -z "$desktop_url" ] || [ "$desktop_url" = "null" ]; then
+        print_warning "Unable to locate Goose Desktop Debian package in latest release"
+        return 1
+    fi
+
+    local user_home app_dir version_file
+    user_home="${PRIMARY_HOME:-$HOME}"
+    app_dir="$user_home/.local/share/goose-desktop"
+    version_file="$app_dir/.release_tag"
+
+    local current_tag
+    current_tag=$(run_as_primary_user bash -lc "cat '$version_file'" 2>/dev/null || true)
+    if [ -d "$app_dir" ] && [ "$current_tag" = "$release_tag" ]; then
+        ensure_goose_desktop_shortcuts "$app_dir"
+        print_success "Goose Desktop already up-to-date ($release_tag)"
+        return 0
+    fi
+
+    print_info "Downloading Goose Desktop $release_tag (Debian package)"
+
+    local tmp_dir deb_path extract_dir
+    tmp_dir=$(mktemp -d) || {
+        print_warning "Unable to allocate temporary directory for Goose Desktop"
+        return 1
+    }
+
+    deb_path="$tmp_dir/${desktop_name:-goose-desktop.deb}"
+    extract_dir="$tmp_dir/extracted"
+
+    if ! curl -fsSL "$desktop_url" -o "$deb_path"; then
+        rm -rf "$tmp_dir"
+        print_warning "Failed to download Goose Desktop from $desktop_url"
+        return 1
+    fi
+
+    if ! dpkg-deb -x "$deb_path" "$extract_dir" >/dev/null 2>&1; then
+        rm -rf "$tmp_dir"
+        print_warning "Failed to extract Goose Desktop package"
+        return 1
+    fi
+
+    local source_dir="$extract_dir/usr/lib/goose"
+    if [ ! -d "$source_dir" ]; then
+        rm -rf "$tmp_dir"
+        print_warning "Goose Desktop package did not contain expected files"
+        return 1
+    fi
+
+    run_as_primary_user rm -rf "$app_dir" >/dev/null 2>&1 || true
+    run_as_primary_user install -d -m 755 "$app_dir" >/dev/null 2>&1 || true
+    if ! tar -C "$source_dir" -cf - . | run_as_primary_user tar -C "$app_dir" -xf - >/dev/null 2>&1; then
+        rm -rf "$tmp_dir"
+        print_warning "Failed to install Goose Desktop resources"
+        return 1
+    fi
+
+    ensure_goose_desktop_shortcuts "$app_dir" "$extract_dir/usr"
+
+    run_as_primary_user bash -c "printf '%s\n' '$release_tag' >'$version_file'" >/dev/null 2>&1 || true
+
+    rm -rf "$tmp_dir"
+    print_success "Goose Desktop installed ($release_tag)"
+    return 0
+}
+
+ensure_goose_desktop_shortcuts() {
+    local app_dir="$1"
+    local package_root="${2:-}"
+    local user_home="${PRIMARY_HOME:-$HOME}"
+    local bin_dir="$user_home/.local/bin"
+    local wrapper_path="$bin_dir/goose-desktop"
+    local icon_dest="$user_home/.local/share/icons/goose.png"
+    local desktop_dir="$user_home/.local/share/applications"
+    local desktop_path="$desktop_dir/goose.desktop"
+    local desktop_source=""
+
+    if [ -n "$package_root" ] && [ -f "$package_root/share/applications/goose.desktop" ]; then
+        desktop_source="$package_root/share/applications/goose.desktop"
+    elif [ -f "$app_dir/goose.desktop" ]; then
+        desktop_source="$app_dir/goose.desktop"
+    fi
+
+    run_as_primary_user install -d -m 755 "$bin_dir" "$desktop_dir" "$user_home/.local/share/icons" >/dev/null 2>&1 || true
+
+    run_as_primary_user bash -c "cat >'$wrapper_path' <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+exec '$app_dir/Goose' "\$@"
+EOF" >/dev/null 2>&1
+    run_as_primary_user chmod +x "$wrapper_path" >/dev/null 2>&1 || true
+
+    if [ -n "$package_root" ] && [ -f "$package_root/share/pixmaps/goose.png" ]; then
+        tar -C "$package_root/share/pixmaps" -cf - goose.png | run_as_primary_user tar -C "$user_home/.local/share/icons" -xf - >/dev/null 2>&1 || true
+    elif [ -f "$app_dir/resources/app.asar.unpacked/static/icon.png" ]; then
+        tar -C "$app_dir/resources/app.asar.unpacked/static" -cf - icon.png | run_as_primary_user tar -C "$user_home/.local/share/icons" -xf - >/dev/null 2>&1 || true
+    fi
+
+    if [ ! -f "$icon_dest" ] && [ -f "$app_dir/resources/app/static/icon.png" ]; then
+        icon_dest="$app_dir/resources/app/static/icon.png"
+    fi
+
+    if [ -f "$desktop_source" ]; then
+        run_as_primary_user python - "$desktop_source" "$desktop_path" "$wrapper_path" "$icon_dest" <<'PY'
+import sys
+src, dest, exec_path, icon_path = sys.argv[1:5]
+
+lines = []
+exec_written = False
+icon_written = False
+
+with open(src, 'r', encoding='utf-8') as handle:
+    for raw in handle:
+        line = raw.rstrip('\n')
+        if line.startswith('Exec='):
+            lines.append(f'Exec={exec_path}')
+            exec_written = True
+        elif line.startswith('Icon='):
+            lines.append(f'Icon={icon_path}')
+            icon_written = True
+        else:
+            lines.append(line)
+
+if not exec_written:
+    lines.append(f'Exec={exec_path}')
+if not icon_written:
+    lines.append(f'Icon={icon_path}')
+
+with open(dest, 'w', encoding='utf-8') as handle:
+    handle.write('\n'.join(lines) + '\n')
+PY
+        run_as_primary_user chmod 644 "$desktop_path" >/dev/null 2>&1 || true
+    fi
+}
+
+install_goose_toolchain() {
+    local wrapper_path="$1"
+    local display="$2"
+    local extension_id="$3"
+    local debug_env="$4"
+
+    local release_json
+    release_json=$(fetch_latest_goose_release)
+    if [ -z "$release_json" ]; then
+        print_warning "Unable to retrieve latest Goose release information"
+        local manual_url
+        manual_url=$(ai_cli_manual_url "@gooseai/cli")
+        if [ -n "$manual_url" ]; then
+            create_goose_install_stub "$wrapper_path" "$display" "$manual_url"
+        fi
+        return 1
+    fi
+
+    local release_tag
+    release_tag=$(printf '%s' "$release_json" | jq -r '.tag_name // empty' 2>/dev/null)
+    if [ -z "$release_tag" ] || [ "$release_tag" = "null" ]; then
+        print_warning "Goose release data missing tag information"
+        local manual_url
+        manual_url=$(ai_cli_manual_url "@gooseai/cli")
+        if [ -n "$manual_url" ]; then
+            create_goose_install_stub "$wrapper_path" "$display" "$manual_url"
+        fi
+        return 1
+    fi
+
+    local cli_status=0
+    if ! install_goose_cli_from_release "$release_json" "$wrapper_path" "$display" "$debug_env"; then
+        cli_status=1
+        local manual_url
+        manual_url=$(ai_cli_manual_url "@gooseai/cli")
+        if [ -n "$manual_url" ]; then
+            create_goose_install_stub "$wrapper_path" "$display" "$manual_url"
+        fi
+    fi
+
+    if ! install_goose_desktop_from_release "$release_json" "$release_tag"; then
+        print_warning "Goose Desktop installation skipped (see above for details)"
+    fi
+
+    if [ $cli_status -eq 0 ] && [ -n "$extension_id" ]; then
+        AI_VSCODE_EXTENSIONS+=("$extension_id")
+    fi
+
+    return $cli_status
+}
+
 install_single_ai_cli() {
     local descriptor="$1"
     local package display bin_command wrapper_name extension_id debug_env
@@ -465,6 +918,14 @@ install_single_ai_cli() {
     local npm_modules="$npm_prefix/lib/node_modules"
     local package_dir="$npm_modules/$package"
     local wrapper_path="$npm_prefix/bin/$wrapper_name"
+
+    if [ "$package" = "@gooseai/cli" ]; then
+        if install_goose_toolchain "$wrapper_path" "$display" "$extension_id" "$debug_env"; then
+            return 0
+        fi
+        return 1
+    fi
+
     local install_needed=false
     local current_version=""
     local latest_version=""
@@ -490,6 +951,7 @@ install_single_ai_cli() {
         local max_attempts=$RETRY_MAX_ATTEMPTS
         local timeout=2
         local install_exit=0
+        local not_found=0
         print_info "Installing $display via npm..."
 
         while (( attempt <= max_attempts )); do
@@ -499,6 +961,11 @@ install_single_ai_cli() {
 
             if (( install_exit == 0 )); then
                 print_success "$display npm package installed"
+                break
+            fi
+
+            if grep -qiE 'E404|Not Found' "$log_file" 2>/dev/null; then
+                not_found=1
                 break
             fi
 
@@ -512,9 +979,10 @@ install_single_ai_cli() {
         done
 
         if (( install_exit != 0 )); then
-            local not_found=0
-            if grep -qiE 'E404|Not Found' "$log_file" 2>/dev/null; then
-                not_found=1
+            local manual_url
+            manual_url=$(ai_cli_manual_url "$package")
+
+            if (( not_found == 1 )); then
                 print_warning "$display is not available from the npm registry (HTTP 404) – skipping"
                 print_detail "Package $package was not found upstream"
             else
@@ -522,13 +990,19 @@ install_single_ai_cli() {
             fi
             print_detail "See $log_file for details"
             print_detail "Manual install: npm install -g $package"
+            if [[ -n "$manual_url" ]]; then
+                print_detail "Reference: $manual_url"
+            fi
             if (( not_found == 1 )); then
-                cat >"$wrapper_path" <<EOF
-#!/usr/bin/env bash
-echo "[$display] npm package $package is not currently available." >&2
-echo "Install it manually once published: npm install -g $package" >&2
-exit 127
-EOF
+                {
+                    echo "#!/usr/bin/env bash"
+                    echo "echo \"[$display] npm package $package is not currently available.\" >&2"
+                    echo "echo \"Install it manually once published: npm install -g $package\" >&2"
+                    if [[ -n "$manual_url" ]]; then
+                        echo "echo \"See $manual_url for the latest guidance.\" >&2"
+                    fi
+                    echo "exit 127"
+                } >"$wrapper_path"
                 chmod +x "$wrapper_path"
                 return 0
             fi
@@ -704,11 +1178,12 @@ configure_vscodium_for_claude() {
                 keys=("claude-code" "claudeCode")
                 extra=("claude-code.claudeProcessWrapper" "claudeCode.claudeProcessWrapper")
                 ;;
-            "@openai/gpt-codex")
-                keys=("gpt-codex" "gptCodex")
-                ;;
             "@openai/codex")
-                keys=("codex" "codexIDE" "codexIde")
+                if [[ "$wrapper_name" == "gpt-codex-wrapper" ]]; then
+                    keys=("gpt-codex" "gptCodex")
+                else
+                    keys=("codex" "codexIDE" "codexIde")
+                fi
                 ;;
             "openai")
                 keys=("openai")
@@ -782,9 +1257,7 @@ install_vscodium_extensions() {
 
     local extensions=(
         "Anthropic.claude-code|Claude Code"
-        "OpenAI.gpt-codex|GPT CodeX"
         "OpenAI.codex-ide|Codex IDE"
-        "GooseAI.gooseai-vscode|GooseAI"
         "jnoortheen.nix-ide|Nix IDE"
         "eamodio.gitlens|GitLens"
         "editorconfig.editorconfig|EditorConfig"
@@ -854,6 +1327,19 @@ install_vscodium_extensions() {
             continue
         fi
         seen[$ext_id]=1
+        if ! open_vsx_extension_available "$ext_id"; then
+            local status="${LAST_OPEN_VSX_STATUS:-unknown}"
+            print_warning "$name extension not available on Open VSX (HTTP $status)"
+            if [ -n "$LAST_OPEN_VSX_URL" ]; then
+                print_detail "Checked: $LAST_OPEN_VSX_URL"
+            fi
+            local manual_url
+            manual_url=$(vscode_extension_manual_url "$ext_id")
+            if [ -n "$manual_url" ]; then
+                print_detail "Manual download: $manual_url"
+            fi
+            continue
+        fi
         install_ext "$ext_id" "$name"
     done
 
