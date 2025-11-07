@@ -57,6 +57,22 @@ ensure_package_available() {
     fi
 
     # Determine log level based on priority
+    if [[ "${IMPERATIVE_INSTALLS_ALLOWED:-false}" != "true" ]]; then
+        case "$priority" in
+            CRITICAL)
+                print_error "$description not found and imperative installs are disabled. Declare it in configuration.nix or home.nix and rerun."
+                ;;
+            IMPORTANT)
+                print_warning "$description not found and imperative installs are disabled. Add it to configuration.nix or home.nix."
+                ;;
+            OPTIONAL)
+                print_info "$description not found and imperative installs are disabled. Add it declaratively if desired."
+                ;;
+        esac
+        log INFO "Skipping imperative installation for $cmd because IMPERATIVE_INSTALLS_ALLOWED is not true"
+        return 1
+    fi
+
     local log_level="INFO"
 
     case "$priority" in
@@ -148,6 +164,12 @@ ensure_prerequisite_installed() {
     # Extract attribute path from reference
     if [[ "$pkg_ref" =~ ^[^#]+#(.+)$ ]]; then
         attr_path="${BASH_REMATCH[1]}"
+    fi
+
+    if [[ "${IMPERATIVE_INSTALLS_ALLOWED:-false}" != "true" ]]; then
+        print_error "$description cannot be installed automatically because imperative installs are disabled. Declare it in configuration.nix or home.nix."
+        log INFO "Skipping nix-env install for $cmd because IMPERATIVE_INSTALLS_ALLOWED is not true"
+        return 1
     fi
 
     # Handle dry-run
