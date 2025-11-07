@@ -68,25 +68,25 @@ phase_08_finalization_and_report() {
     # - Display logs and troubleshooting resources
     # ========================================================================
 
-    local phase_name="finalization_and_report"
+    local phase_name="finalization_and_report"  # State tracking identifier for this phase
 
     # ------------------------------------------------------------------------
     # Resume Check: Skip if already completed
     # ------------------------------------------------------------------------
-    if is_step_complete "$phase_name"; then
+    if is_step_complete "$phase_name"; then  # Check state.json for completion marker
         print_info "Phase 8 already completed (skipping)"
-        return 0
+            return 0  # Skip to completion
     fi
 
-    print_section "Phase 8/8: System Finalization & Deployment Report"
-    echo ""
+    print_section "Phase 8/8: System Finalization & Deployment Report"  # Display phase header
+        echo ""
 
     # ========================================================================
     # PART 1: SYSTEM FINALIZATION
     # ========================================================================
 
     print_section "Part 1: Final System Configuration"
-    echo ""
+        echo ""
 
     # ========================================================================
     # Step 8.1: Apply Final System Configuration
@@ -96,7 +96,7 @@ phase_08_finalization_and_report() {
     # - Service configuration (Gitea, Ollama, Qdrant, HuggingFace TGI)
     # - Integration setup (service-to-service authentication)
     # - Permission finalization (service directory ownership)
-    apply_final_system_configuration
+    apply_final_system_configuration  # Complete post-deployment service configuration
 
     # ========================================================================
     # Step 8.2: Finalize Configuration Activation
@@ -107,42 +107,47 @@ phase_08_finalization_and_report() {
     # - Enable user services (systemctl --user enable)
     # - Verify service dependencies
     # - Clean up temporary files
-    finalize_configuration_activation
+    finalize_configuration_activation  # Activate final configurations and reload services
 
     echo ""
-    print_success "System finalization complete"
+        print_success "System finalization complete"
     echo ""
 
-    if [[ "${TEMP_SWAP_CREATED:-false}" == true && -n "${TEMP_SWAP_FILE:-}" ]]; then
+    # Clean up temporary swapfile created in Phase 5 (if permanent swap now available)
+    if [[ "${TEMP_SWAP_CREATED:-false}" == true && -n "${TEMP_SWAP_FILE:-}" ]]; then  # Temp swap was created
         print_section "Cleaning Up Temporary Swapfile"
 
-        local -a active_swap_devices=()
-        mapfile -t active_swap_devices < <(swapon --show=NAME --noheadings 2>/dev/null || true)
+        # Get list of all active swap devices
+        local -a active_swap_devices=()  # Array to hold swap device paths
+            mapfile -t active_swap_devices < <(swapon --show=NAME --noheadings 2>/dev/null || true)  # Query active swap
 
-        local has_alternative_swap=false
-        local device
-        for device in "${active_swap_devices[@]}"; do
-            if [[ -n "$device" && "$device" != "$TEMP_SWAP_FILE" ]]; then
-                has_alternative_swap=true
-                break
+        # Check if there's swap other than our temporary file
+        local has_alternative_swap=false  # Flag for permanent swap detection
+            local device  # Loop variable for swap devices
+        for device in "${active_swap_devices[@]}"; do  # Iterate through swap devices
+            if [[ -n "$device" && "$device" != "$TEMP_SWAP_FILE" ]]; then  # Found non-temp swap
+                has_alternative_swap=true  # Permanent swap detected
+                    break  # Stop searching
             fi
         done
 
-        if [[ "$has_alternative_swap" == true ]]; then
+        # Remove temporary swap if permanent swap is available
+        if [[ "$has_alternative_swap" == true ]]; then  # Have permanent swap now
             print_info "Permanent swap detected; removing temporary swapfile $TEMP_SWAP_FILE."
-            if sudo swapoff "$TEMP_SWAP_FILE" 2>/dev/null; then
+                if sudo swapoff "$TEMP_SWAP_FILE" 2>/dev/null; then  # Deactivate temp swap
                 print_success "Temporary swapfile deactivated."
-            else
+            else  # Deactivation failed
                 print_warning "Unable to deactivate temporary swapfile $TEMP_SWAP_FILE automatically."
             fi
 
-            if sudo rm -f "$TEMP_SWAP_FILE" 2>/dev/null; then
+            # Delete the temporary swapfile
+            if sudo rm -f "$TEMP_SWAP_FILE" 2>/dev/null; then  # Remove file
                 print_success "Temporary swapfile removed."
-                unset TEMP_SWAP_CREATED TEMP_SWAP_FILE TEMP_SWAP_SIZE_GB
-            else
+                    unset TEMP_SWAP_CREATED TEMP_SWAP_FILE TEMP_SWAP_SIZE_GB  # Clean up variables
+            else  # Deletion failed
                 print_warning "Failed to delete $TEMP_SWAP_FILE. Remove manually with: sudo rm -f $TEMP_SWAP_FILE"
             fi
-        else
+        else  # No permanent swap yet - keep temporary
             print_info "Temporary swapfile $TEMP_SWAP_FILE remains active because no alternative swap device is present. Remove manually once permanent swap is configured: sudo swapoff $TEMP_SWAP_FILE && sudo rm -f $TEMP_SWAP_FILE"
         fi
 
@@ -154,7 +159,7 @@ phase_08_finalization_and_report() {
     # ========================================================================
 
     print_section "Part 2: Deployment Report"
-    echo ""
+        echo ""
 
     # ========================================================================
     # Step 8.3: Generate Comprehensive Post-Install Report
@@ -165,7 +170,7 @@ phase_08_finalization_and_report() {
     # - Installed package counts
     # - Service status summary
     # - Hardware configuration summary
-    print_post_install
+    print_post_install  # Generate and display comprehensive deployment report
 
     # ========================================================================
     # Step 8.4: Display Success Banner
@@ -229,12 +234,14 @@ phase_08_finalization_and_report() {
     # Step 8.8: Reboot Recommendation (Conditional)
     # ========================================================================
     # Recommend reboot if kernel/init system updated
-    if [[ -L "/run/booted-system" && -L "/run/current-system" ]]; then
-        if [[ "$(readlink /run/booted-system)" != "$(readlink /run/current-system)" ]]; then
-            echo -e "${YELLOW}⚠ Reboot Recommended:${NC}"
-            echo "  • Kernel/init system updates detected"
+    # Why: Kernel updates require reboot to take effect
+    # Check: Compare booted system vs current system symlinks
+    if [[ -L "/run/booted-system" && -L "/run/current-system" ]]; then  # Both symlinks exist
+        if [[ "$(readlink /run/booted-system)" != "$(readlink /run/current-system)" ]]; then  # Different generations
+            echo -e "${YELLOW}⚠ Reboot Recommended:${NC}"  # Kernel/init changed since boot
+                echo "  • Kernel/init system updates detected"
             echo "  • Run: ${YELLOW}sudo reboot${NC}"
-            echo "  • After reboot, select 'Cosmic' from login screen"
+                echo "  • After reboot, select 'Cosmic' from login screen"
             echo ""
         fi
     fi
@@ -261,20 +268,23 @@ phase_08_finalization_and_report() {
     # ------------------------------------------------------------------------
     # Mark Phase Complete
     # ------------------------------------------------------------------------
-    mark_step_complete "$phase_name"
-    print_success "Phase 8: System Finalization & Deployment Report - COMPLETE"
+    # Final phase complete - entire deployment succeeded!
+    # All 8 phases executed successfully
+    mark_step_complete "$phase_name"  # Update state.json with completion marker
+        print_success "Phase 8: System Finalization & Deployment Report - COMPLETE"
     echo ""
 
     # ========================================================================
     # Final Success Banner
     # ========================================================================
+    # Display celebratory banner for successful deployment
     echo ""
-    echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
+        echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
     echo -e "${GREEN}✓ NixOS Quick Deploy v$SCRIPT_VERSION completed successfully!${NC}"
-    echo -e "${GREEN}✓ Your AIDB development environment is ready!${NC}"
+        echo -e "${GREEN}✓ Your AIDB development environment is ready!${NC}"
     echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
-    echo ""
+        echo ""
 }
 
-# Execute phase
-phase_08_finalization_and_report
+# Execute phase function (called when this script is sourced by main orchestrator)
+phase_08_finalization_and_report  # Run finalization and generate deployment report
