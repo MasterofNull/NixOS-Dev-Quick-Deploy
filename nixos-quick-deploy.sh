@@ -45,105 +45,109 @@
 # SCRIPT CONFIGURATION
 # ============================================================================
 
-# Bash strict mode
-set -o pipefail  # Catch errors in pipelines
-set -E           # ERR trap inherited by functions
+# Bash strict mode - configure shell behavior for safer execution
+set -o pipefail  # Catch errors in pipelines (e.g., "cmd1 | cmd2" fails if cmd1 fails)
+    set -E           # ERR trap inherited by functions (error handling propagates to called functions)
 
 # ============================================================================
 # READONLY CONSTANTS
 # ============================================================================
 
-readonly SCRIPT_VERSION="4.0.0"
-readonly BOOTSTRAP_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly LIB_DIR="$BOOTSTRAP_SCRIPT_DIR/lib"
-readonly CONFIG_DIR="$BOOTSTRAP_SCRIPT_DIR/config"
-readonly PHASES_DIR="$BOOTSTRAP_SCRIPT_DIR/phases"
+readonly SCRIPT_VERSION="4.0.0"  # Current version of deployment framework
+    readonly BOOTSTRAP_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"  # Get absolute path of script directory
+readonly LIB_DIR="$BOOTSTRAP_SCRIPT_DIR/lib"  # Shared library functions location
+    readonly CONFIG_DIR="$BOOTSTRAP_SCRIPT_DIR/config"  # Configuration files location
+readonly PHASES_DIR="$BOOTSTRAP_SCRIPT_DIR/phases"  # Phase script implementations location
 
 # Export SCRIPT_DIR for compatibility with libraries that expect it
-readonly SCRIPT_DIR="$BOOTSTRAP_SCRIPT_DIR"
-export SCRIPT_DIR
+readonly SCRIPT_DIR="$BOOTSTRAP_SCRIPT_DIR"  # Alias for backwards compatibility
+    export SCRIPT_DIR  # Make available to all child processes and sourced files
 
 # ============================================================================
 # EARLY ENVIRONMENT SETUP
 # ============================================================================
-# Ensure critical environment variables are set before any library loading
-# USER might not be set in some environments (e.g., cron, systemd)
-USER="${USER:-$(whoami 2>/dev/null || id -un 2>/dev/null || echo 'unknown')}"
-export USER
+# Ensure critical environment variables are set before any library loading.
+# USER might not be set in some environments (e.g., cron, systemd).
+USER="${USER:-$(whoami 2>/dev/null || id -un 2>/dev/null || echo 'unknown')}"  # Try multiple methods to get username
+    export USER  # Make USER available to all child processes
 
 # EUID is a bash built-in, but export it for consistency
-export EUID
+export EUID  # Export effective user ID (0 = root, >0 = regular user)
 
 # ============================================================================
 # EARLY LOGGING CONFIGURATION
 # ============================================================================
 # These variables must be defined BEFORE loading libraries (especially logging.sh)
-# because logging.sh uses them immediately when init_logging() is called
+# because logging.sh uses them immediately when init_logging() is called.
 
 # Create log directory path in user cache
-readonly LOG_DIR="${HOME}/.cache/nixos-quick-deploy/logs"
-# Create unique log file with timestamp
-readonly LOG_FILE="${LOG_DIR}/deploy-$(date +%Y%m%d_%H%M%S).log"
+readonly LOG_DIR="${HOME}/.cache/nixos-quick-deploy/logs"  # Store logs in XDG cache directory
+    # Create unique log file with timestamp
+    readonly LOG_FILE="${LOG_DIR}/deploy-$(date +%Y%m%d_%H%M%S).log"  # Format: deploy-20250107_143022.log
 # Set default log level (can be overridden by CLI args)
-LOG_LEVEL="${LOG_LEVEL:-INFO}"
-# Debug flag (can be overridden by CLI args)
-ENABLE_DEBUG=false
+LOG_LEVEL="${LOG_LEVEL:-INFO}"  # Options: DEBUG, INFO, WARNING, ERROR
+    # Debug flag (can be overridden by CLI args)
+    ENABLE_DEBUG=false  # When true, enables bash -x tracing
 
 # Export critical variables so they're available to all sourced files
-export SCRIPT_VERSION
-export LOG_DIR
-export LOG_FILE
-export LOG_LEVEL
+export SCRIPT_VERSION  # Version info for logging
+    export LOG_DIR  # Log directory path
+export LOG_FILE  # Current log file path
+    export LOG_LEVEL  # Logging verbosity level
 
 # ============================================================================
 # GLOBAL VARIABLES - CLI Flags
 # ============================================================================
+# These flags are set by command-line argument parsing and control deployment behavior.
 
-DRY_RUN=false
-FORCE_UPDATE=false
+DRY_RUN=false  # Preview changes without applying them
+    FORCE_UPDATE=false  # Force recreation of configuration files even if they exist
 # ENABLE_DEBUG defined above in EARLY LOGGING CONFIGURATION
-ROLLBACK=false
-RESET_STATE=false
-SKIP_HEALTH_CHECK=false
-SHOW_HELP=false
-SHOW_VERSION=false
-QUIET_MODE=false
-VERBOSE_MODE=false
-LIST_PHASES=false
-RESUME=true
-RESTART_FAILED=false
-RESTART_FROM_SAFE_POINT=false
-ZSWAP_CONFIGURATION_OVERRIDE_REQUEST=""
+ROLLBACK=false  # Rollback to previous NixOS generation
+    RESET_STATE=false  # Clear state file for fresh deployment start
+SKIP_HEALTH_CHECK=false  # Skip final system health validation
+    SHOW_HELP=false  # Display usage help and exit
+SHOW_VERSION=false  # Display version information and exit
+    QUIET_MODE=false  # Show only warnings and errors
+VERBOSE_MODE=false  # Show detailed debug output
+    LIST_PHASES=false  # List all phases with status and exit
+RESUME=true  # Resume from last completed phase (default behavior)
+    RESTART_FAILED=false  # Restart the failed phase from beginning
+RESTART_FROM_SAFE_POINT=false  # Restart from last safe entry point (phases 1, 3, or 8)
+    ZSWAP_CONFIGURATION_OVERRIDE_REQUEST=""  # User request for zswap config: "enable", "disable", or "auto"
 
-# Phase control
-declare -a SKIP_PHASES=()
-START_FROM_PHASE=""
-RESTART_PHASE=""
-TEST_PHASE=""
-SHOW_PHASE_INFO_NUM=""
+# Phase control - fine-grained execution control
+declare -a SKIP_PHASES=()  # Array of phase numbers to skip during execution
+    START_FROM_PHASE=""  # Start execution from this phase number
+RESTART_PHASE=""  # Restart this specific phase (ignores completion status)
+    TEST_PHASE=""  # Run only this phase in isolation
+SHOW_PHASE_INFO_NUM=""  # Show detailed information about this phase number
 
-# Safe restart phases (can safely restart from these)
-readonly SAFE_RESTART_PHASES=(1 3 8)
+# Safe restart phases (can safely restart from these without dependency issues)
+readonly SAFE_RESTART_PHASES=(1 3 8)  # Phase 1=init, 3=config-gen, 8=finalization
 
 # ============================================================================
 # PHASE NAME MAPPING
 # ============================================================================
+# These functions provide metadata about each phase for display and validation.
 
 get_phase_name() {
+    # Return the canonical kebab-case name for a phase number
     case $1 in
-        1) echo "system-initialization" ;;
-        2) echo "system-backup" ;;
-        3) echo "configuration-generation" ;;
-        4) echo "pre-deployment-validation" ;;
-        5) echo "declarative-deployment" ;;
-        6) echo "additional-tooling" ;;
-        7) echo "post-deployment-validation" ;;
-        8) echo "finalization-and-report" ;;
-        *) echo "unknown" ;;
+        1) echo "system-initialization" ;;  # Initial validation and setup
+        2) echo "system-backup" ;;  # Backup existing configs
+        3) echo "configuration-generation" ;;  # Generate Nix configs from templates
+        4) echo "pre-deployment-validation" ;;  # Validate generated configs
+        5) echo "declarative-deployment" ;;  # Apply NixOS and Home Manager configs
+        6) echo "additional-tooling" ;;  # Install npm/flatpak packages
+        7) echo "post-deployment-validation" ;;  # Verify deployment success
+        8) echo "finalization-and-report" ;;  # Cleanup and generate report
+        *) echo "unknown" ;;  # Invalid phase number
     esac
 }
 
 get_phase_description() {
+    # Return a human-readable description for a phase number
     case $1 in
         1) echo "System initialization - validate requirements and install temporary tools" ;;
         2) echo "System backup - comprehensive backup of all system and user state" ;;
@@ -158,62 +162,66 @@ get_phase_description() {
 }
 
 get_phase_dependencies() {
+    # Return comma-separated list of phase numbers that must complete before this phase
     case $1 in
-        1) echo "" ;;
-        2) echo "1" ;;
-        3) echo "1,2" ;;
-        4) echo "1,2,3" ;;
-        5) echo "1,2,3,4" ;;
-        6) echo "1,2,3,4,5" ;;
-        7) echo "1,2,3,4,5,6" ;;
-        8) echo "1,2,3,4,5,6,7" ;;
-        *) echo "" ;;
+        1) echo "" ;;  # No dependencies - entry point
+        2) echo "1" ;;  # Requires initialization
+        3) echo "1,2" ;;  # Requires init and backup
+        4) echo "1,2,3" ;;  # Requires config generation
+        5) echo "1,2,3,4" ;;  # Requires validation before deployment
+        6) echo "1,2,3,4,5" ;;  # Requires declarative deployment
+        7) echo "1,2,3,4,5,6" ;;  # Requires all installations
+        8) echo "1,2,3,4,5,6,7" ;;  # Requires everything before finalization
+        *) echo "" ;;  # Unknown phase has no dependencies
     esac
 }
 
 # ============================================================================
 # LIBRARY LOADING
 # ============================================================================
+# Load all shared libraries in dependency order. Libraries provide reusable functions
+# for logging, error handling, GPU detection, package management, and more.
 
 load_libraries() {
+    # Array of library files to load (order matters for dependencies)
     local libs=(
-        "colors.sh"
-        "logging.sh"
-        "error-handling.sh"
-        "state-management.sh"
-        "user-interaction.sh"
-        "validation.sh"
-        "retry.sh"
-        "backup.sh"
-        "gpu-detection.sh"
-        "python.sh"
-        "nixos.sh"
-        "packages.sh"
-        "home-manager.sh"
-        "user.sh"
-        "config.sh"
-        "tools.sh"
-        "finalization.sh"
-        "reporting.sh"
-        "common.sh"
+        "colors.sh"  # Terminal color codes (must load first)
+        "logging.sh"  # Logging functions (depends on colors)
+        "error-handling.sh"  # Error trap and cleanup functions
+        "state-management.sh"  # Phase completion tracking
+        "user-interaction.sh"  # Prompts and confirmations
+        "validation.sh"  # System validation checks
+        "retry.sh"  # Retry logic for flaky operations
+        "backup.sh"  # Backup and restore functions
+        "gpu-detection.sh"  # Hardware detection (NVIDIA/AMD/Intel)
+        "python.sh"  # Python package management
+        "nixos.sh"  # NixOS-specific operations
+        "packages.sh"  # Package installation helpers
+        "home-manager.sh"  # Home Manager integration
+        "user.sh"  # User account operations
+        "config.sh"  # Configuration file generation
+        "tools.sh"  # External tool installation
+        "finalization.sh"  # Cleanup and finalization
+        "reporting.sh"  # Deployment report generation
+        "common.sh"  # Common utility functions
     )
 
     echo "Loading libraries..."
 
     for lib in "${libs[@]}"; do
-        local lib_path="$LIB_DIR/$lib"
+        local lib_path="$LIB_DIR/$lib"  # Build full path to library
 
-        if [[ ! -f "$lib_path" ]]; then
+        if [[ ! -f "$lib_path" ]]; then  # Verify library file exists
             echo "FATAL: Library not found: $lib_path" >&2
-            exit 1
+                exit 1
         fi
 
-        source "$lib_path" || {
+        source "$lib_path" || {  # Source library into current shell
             echo "FATAL: Failed to load library: $lib" >&2
-            exit 1
+                exit 1
         }
 
-        echo "  ✓ Loaded: $lib"
+        echo "  ✓ Loaded: $lib"  # Confirm successful load
     done
     echo ""
 }
@@ -221,31 +229,33 @@ load_libraries() {
 # ============================================================================
 # CONFIGURATION LOADING
 # ============================================================================
+# Load global configuration files that define deployment parameters and defaults.
 
 load_configuration() {
+    # Array of config files to load
     local configs=(
-        "variables.sh"
-        "defaults.sh"
+        "variables.sh"  # Global variables (paths, URLs, package lists)
+        "defaults.sh"  # Default values for configuration generation
     )
 
     echo "Loading configuration..."
 
     for config in "${configs[@]}"; do
-        local config_path="$CONFIG_DIR/$config"
-        if [[ ! -f "$config_path" ]]; then
+        local config_path="$CONFIG_DIR/$config"  # Build full path to config file
+            if [[ ! -f "$config_path" ]]; then  # Verify config file exists
             echo "FATAL: Configuration not found: $config_path" >&2
-            exit 1
+                exit 1
         fi
 
         # Source config files
         # Note: set -u is not yet enabled at this point, so undefined variables
         # won't cause errors. Critical variables like LOG_DIR, LOG_FILE, and
         # SCRIPT_VERSION are already defined in main script before this runs.
-        if source "$config_path" 2>/dev/null; then
-            echo "  ✓ Loaded: $config"
+        if source "$config_path" 2>/dev/null; then  # Source config into current shell
+            echo "  ✓ Loaded: $config"  # Confirm successful load
         else
             echo "FATAL: Failed to load configuration: $config" >&2
-            exit 1
+                exit 1
         fi
     done
 
@@ -366,120 +376,121 @@ EOF
 # ============================================================================
 
 parse_arguments() {
+    # Parse command-line arguments and set global flags
     while [[ $# -gt 0 ]]; do
         case $1 in
-            -h|--help)
+            -h|--help)  # Display usage help
                 SHOW_HELP=true
-                shift
+                    shift  # Consume this argument
                 ;;
-            -v|--version)
+            -v|--version)  # Display version info
                 SHOW_VERSION=true
-                shift
+                    shift
                 ;;
-            -q|--quiet)
+            -q|--quiet)  # Enable quiet mode (warnings/errors only)
                 QUIET_MODE=true
-                shift
+                    shift
                 ;;
-            --verbose)
+            --verbose)  # Enable verbose mode (detailed output)
                 VERBOSE_MODE=true
-                shift
+                    shift
                 ;;
-            -d|--debug)
+            -d|--debug)  # Enable debug tracing (bash -x)
                 ENABLE_DEBUG=true
-                shift
+                    shift
                 ;;
-            -f|--force-update)
+            -f|--force-update)  # Force recreation of config files
                 FORCE_UPDATE=true
-                shift
+                    shift
                 ;;
-            --dry-run)
+            --dry-run)  # Preview changes without applying
                 DRY_RUN=true
-                shift
+                    shift
                 ;;
-            --rollback)
+            --rollback)  # Rollback to previous generation
                 ROLLBACK=true
-                shift
+                    shift
                 ;;
-            --reset-state)
+            --reset-state)  # Clear state for fresh start
                 RESET_STATE=true
-                shift
+                    shift
                 ;;
-            --skip-health-check)
+            --skip-health-check)  # Skip final health validation
                 SKIP_HEALTH_CHECK=true
-                shift
+                    shift
                 ;;
-            --enable-zswap)
+            --enable-zswap)  # Force-enable zswap configuration
                 ZSWAP_CONFIGURATION_OVERRIDE_REQUEST="enable"
-                shift
+                    shift
                 ;;
-            --disable-zswap)
+            --disable-zswap)  # Force-disable zswap configuration
                 ZSWAP_CONFIGURATION_OVERRIDE_REQUEST="disable"
-                shift
+                    shift
                 ;;
-            --zswap-auto)
+            --zswap-auto)  # Return to automatic zswap detection
                 ZSWAP_CONFIGURATION_OVERRIDE_REQUEST="auto"
-                shift
+                    shift
                 ;;
-            --skip-phase)
-                if [[ -z "${2:-}" ]] || [[ "$2" =~ ^- ]]; then
+            --skip-phase)  # Skip specific phase number
+                if [[ -z "${2:-}" ]] || [[ "$2" =~ ^- ]]; then  # Validate arg exists and isn't a flag
                     echo "ERROR: --skip-phase requires a phase number" >&2
-                    exit 1
+                        exit 1
                 fi
-                SKIP_PHASES+=("$2")
-                shift 2
+                SKIP_PHASES+=("$2")  # Add to skip list
+                    shift 2  # Consume flag and value
                 ;;
-            --start-from-phase)
+            --start-from-phase)  # Start from specific phase
                 if [[ -z "${2:-}" ]] || [[ "$2" =~ ^- ]]; then
                     echo "ERROR: --start-from-phase requires a phase number" >&2
-                    exit 1
+                        exit 1
                 fi
                 START_FROM_PHASE="$2"
-                shift 2
+                    shift 2
                 ;;
-            --restart-phase)
+            --restart-phase)  # Restart specific phase from beginning
                 if [[ -z "${2:-}" ]] || [[ "$2" =~ ^- ]]; then
                     echo "ERROR: --restart-phase requires a phase number" >&2
-                    exit 1
+                        exit 1
                 fi
-                RESTART_PHASE="$2"
-                START_FROM_PHASE="$2"
+                RESTART_PHASE="$2"  # Phase to restart
+                    START_FROM_PHASE="$2"  # Also set as starting point
                 shift 2
                 ;;
-            --test-phase)
+            --test-phase)  # Test specific phase in isolation
                 if [[ -z "${2:-}" ]] || [[ "$2" =~ ^- ]]; then
                     echo "ERROR: --test-phase requires a phase number" >&2
-                    exit 1
+                        exit 1
                 fi
                 TEST_PHASE="$2"
-                shift 2
+                    shift 2
                 ;;
-            --list-phases)
+            --list-phases)  # List all phases with status
                 LIST_PHASES=true
-                shift
+                    shift
                 ;;
-            --show-phase-info)
+            --show-phase-info)  # Show detailed phase information
                 if [[ -z "${2:-}" ]] || [[ "$2" =~ ^- ]]; then
                     echo "ERROR: --show-phase-info requires a phase number" >&2
-                    exit 1
+                        exit 1
                 fi
                 SHOW_PHASE_INFO_NUM="$2"
-                shift 2
+                    shift 2
                 ;;
-            --resume)
+            --resume)  # Resume from last completed phase
                 RESUME=true
-                shift
+                    shift
                 ;;
-            --restart-failed)
+            --restart-failed)  # Restart failed phase from beginning
                 RESTART_FAILED=true
-                shift
+                    shift
                 ;;
-            --restart-from-safe-point)
+            --restart-from-safe-point)  # Restart from last safe entry point
                 RESTART_FROM_SAFE_POINT=true
-                shift
+                    shift
                 ;;
-            *)
+            *)  # Unknown argument
                 echo "ERROR: Unknown option: $1" >&2
-                echo "Run with --help for usage information" >&2
+                    echo "Run with --help for usage information" >&2
                 exit 1
                 ;;
         esac
@@ -491,6 +502,7 @@ parse_arguments() {
 # ============================================================================
 
 list_phases() {
+    # Display a formatted list of all phases with their current status
     echo ""
     echo "============================================"
     echo "  NixOS Quick Deploy - Phase Overview"
@@ -498,23 +510,24 @@ list_phases() {
     echo ""
 
     # Load libraries minimally to get state
-    source "$LIB_DIR/colors.sh" 2>/dev/null || true
-    source "$CONFIG_DIR/variables.sh" 2>/dev/null || true
+    source "$LIB_DIR/colors.sh" 2>/dev/null || true  # Load colors for formatting
+        source "$CONFIG_DIR/variables.sh" 2>/dev/null || true  # Load STATE_FILE location
 
-    for phase_num in {1..8}; do
-        local phase_name=$(get_phase_name "$phase_num")
-        local phase_desc=$(get_phase_description "$phase_num")
-        local status="PENDING"
+    for phase_num in {1..8}; do  # Iterate through all 8 phases
+        local phase_name=$(get_phase_name "$phase_num")  # Get phase name
+            local phase_desc=$(get_phase_description "$phase_num")  # Get phase description
+        local status="PENDING"  # Default status
 
         # Check if state file exists and get status
-        if [[ -f "${STATE_FILE:-}" ]]; then
+        if [[ -f "${STATE_FILE:-}" ]]; then  # If state file exists
+            # Check if this phase is marked complete in state
             if jq -e --arg step "phase-$(printf '%02d' $phase_num)" '.completed_steps[] | select(.step == $step)' "$STATE_FILE" &>/dev/null; then
-                status="COMPLETED"
+                status="COMPLETED"  # Phase has been completed
             fi
         fi
 
-        printf "Phase %2d: %-30s [%s]\n" "$phase_num" "$phase_name" "$status"
-        printf "          %s\n\n" "$phase_desc"
+        printf "Phase %2d: %-30s [%s]\n" "$phase_num" "$phase_name" "$status"  # Print phase info
+            printf "          %s\n\n" "$phase_desc"  # Print description indented
     done
 
     echo "============================================"
@@ -522,57 +535,63 @@ list_phases() {
 }
 
 show_phase_info() {
-    local phase_num="$1"
+    # Display detailed information about a specific phase
+    local phase_num="$1"  # Phase number to display
 
+    # Validate phase number is in range 1-8
     if [[ ! "$phase_num" =~ ^[0-9]+$ ]] || [[ "$phase_num" -lt 1 ]] || [[ "$phase_num" -gt 8 ]]; then
         echo "ERROR: Invalid phase number. Must be 1-8" >&2
-        exit 1
+            exit 1
     fi
 
-    local phase_name=$(get_phase_name "$phase_num")
-    local phase_desc=$(get_phase_description "$phase_num")
-    local phase_deps=$(get_phase_dependencies "$phase_num")
-    local phase_script="$PHASES_DIR/phase-$(printf '%02d' $phase_num)-$phase_name.sh"
+    # Get phase metadata
+    local phase_name=$(get_phase_name "$phase_num")  # Kebab-case name
+        local phase_desc=$(get_phase_description "$phase_num")  # Human-readable description
+    local phase_deps=$(get_phase_dependencies "$phase_num")  # Comma-separated dependency list
+        local phase_script="$PHASES_DIR/phase-$(printf '%02d' $phase_num)-$phase_name.sh"  # Full path to phase script
 
+    # Print formatted phase information
     echo ""
     echo "============================================"
     echo "  Phase $phase_num: $phase_name"
     echo "============================================"
     echo ""
     echo "Description:"
-    echo "  $phase_desc"
+        echo "  $phase_desc"  # Indented description
     echo ""
     echo "Script Location:"
-    echo "  $phase_script"
+        echo "  $phase_script"  # Indented path
     echo ""
 
+    # Display dependencies (if any)
     if [[ -n "$phase_deps" ]]; then
         echo "Dependencies:"
-        echo "  Requires phases: $phase_deps"
+            echo "  Requires phases: $phase_deps"  # List required phases
     else
         echo "Dependencies:"
-        echo "  None (entry point phase)"
+            echo "  None (entry point phase)"  # No dependencies
     fi
     echo ""
 
     # Check if phase is safe restart point
-    if [[ " ${SAFE_RESTART_PHASES[@]} " =~ " ${phase_num} " ]]; then
-        echo "Safe Restart Point: YES"
+    if [[ " ${SAFE_RESTART_PHASES[@]} " =~ " ${phase_num} " ]]; then  # Check if in safe restart list
+        echo "Safe Restart Point: YES"  # Can safely restart from this phase
     else
-        echo "Safe Restart Point: NO (requires dependency validation)"
+        echo "Safe Restart Point: NO (requires dependency validation)"  # Must validate deps before restart
     fi
     echo ""
 
-    # Check current status
-    source "$CONFIG_DIR/variables.sh" 2>/dev/null || true
-    if [[ -f "${STATE_FILE:-}" ]]; then
+    # Check current status from state file
+    source "$CONFIG_DIR/variables.sh" 2>/dev/null || true  # Load STATE_FILE path
+    if [[ -f "${STATE_FILE:-}" ]]; then  # If state file exists
+        # Check if phase is marked complete
         if jq -e --arg step "phase-$(printf '%02d' $phase_num)" '.completed_steps[] | select(.step == $step)' "$STATE_FILE" &>/dev/null; then
-            echo "Current Status: COMPLETED"
+            echo "Current Status: COMPLETED"  # Phase has been completed
         else
-            echo "Current Status: PENDING"
+            echo "Current Status: PENDING"  # Phase not yet completed
         fi
     else
-        echo "Current Status: PENDING (no state file)"
+        echo "Current Status: PENDING (no state file)"  # No state tracking yet
     fi
     echo ""
     echo "============================================"
@@ -582,170 +601,189 @@ show_phase_info() {
 # ============================================================================
 # PHASE CONTROL
 # ============================================================================
+# Functions for managing phase execution: skipping, resuming, and dependency validation.
 
 should_skip_phase() {
-    local phase_num="$1"
-    for skip_phase in "${SKIP_PHASES[@]}"; do
-        if [[ "$skip_phase" == "$phase_num" ]]; then
-            return 0
+    # Check if a phase should be skipped based on user request
+    local phase_num="$1"  # Phase number to check
+    for skip_phase in "${SKIP_PHASES[@]}"; do  # Iterate through skip list
+        if [[ "$skip_phase" == "$phase_num" ]]; then  # Match found
+            return 0  # True - should skip
         fi
     done
-    return 1
+    return 1  # False - don't skip
 }
 
 get_resume_phase() {
+    # Determine which phase to start from based on state and user preferences
+
     # If restart-from-safe-point is set, find last safe point
     if [[ "$RESTART_FROM_SAFE_POINT" == true ]]; then
-        local last_safe_phase=1
-        if [[ -f "$STATE_FILE" ]]; then
-            for safe_phase in "${SAFE_RESTART_PHASES[@]}"; do
+        local last_safe_phase=1  # Default to phase 1
+            if [[ -f "$STATE_FILE" ]]; then  # If state file exists
+            # Find the last completed safe restart phase
+            for safe_phase in "${SAFE_RESTART_PHASES[@]}"; do  # Check phases 1, 3, 8
+                # Check if this safe phase is completed
                 if jq -e --arg step "phase-$(printf '%02d' $safe_phase)" '.completed_steps[] | select(.step == $step)' "$STATE_FILE" &>/dev/null; then
-                    last_safe_phase=$safe_phase
+                    last_safe_phase=$safe_phase  # Update to this safe phase
                 fi
             done
         fi
-        echo "$last_safe_phase"
-        return
+        echo "$last_safe_phase"  # Return the safe phase number
+            return
     fi
 
     # Otherwise, find the next incomplete phase
-    if [[ ! -f "$STATE_FILE" ]]; then
-        echo "1"
-        return
+    if [[ ! -f "$STATE_FILE" ]]; then  # No state file exists
+        echo "1"  # Start from beginning
+            return
     fi
 
-    for phase_num in {1..8}; do
+    # Find first incomplete phase
+    for phase_num in {1..8}; do  # Check each phase in order
+        # Check if phase is NOT marked complete
         if ! jq -e --arg step "phase-$(printf '%02d' $phase_num)" '.completed_steps[] | select(.step == $step)' "$STATE_FILE" &>/dev/null; then
-            echo "$phase_num"
-            return
+            echo "$phase_num"  # Return first incomplete phase
+                return
         fi
     done
 
     # All phases complete
-    echo "1"
+    echo "1"  # Return to phase 1 (no incomplete phases)
 }
 
 validate_phase_dependencies() {
-    local phase_num="$1"
-    local deps=$(get_phase_dependencies "$phase_num")
+    # Verify that all required dependency phases have been completed
+    local phase_num="$1"  # Phase to validate
+        local deps=$(get_phase_dependencies "$phase_num")  # Get comma-separated dependency list
 
+    # No dependencies means this is an entry point phase
     if [[ -z "$deps" ]]; then
-        return 0
+        return 0  # Always valid
     fi
 
+    # State file must exist to validate dependencies
     if [[ ! -f "$STATE_FILE" ]]; then
         log ERROR "Cannot validate dependencies: state file not found"
-        return 1
+            return 1  # Cannot validate without state
     fi
 
-    local missing_deps=()
-    IFS=',' read -ra DEP_ARRAY <<< "$deps"
-    for dep in "${DEP_ARRAY[@]}"; do
+    # Check each dependency
+    local missing_deps=()  # Track missing dependencies
+        IFS=',' read -ra DEP_ARRAY <<< "$deps"  # Split comma-separated list into array
+    for dep in "${DEP_ARRAY[@]}"; do  # Check each required dependency
+        # Check if dependency phase is marked complete in state
         if ! jq -e --arg step "phase-$(printf '%02d' $dep)" '.completed_steps[] | select(.step == $step)' "$STATE_FILE" &>/dev/null; then
-            missing_deps+=("$dep")
+            missing_deps+=("$dep")  # Add to missing list
         fi
     done
 
-    if [[ ${#missing_deps[@]} -gt 0 ]]; then
+    # Report missing dependencies
+    if [[ ${#missing_deps[@]} -gt 0 ]]; then  # If any dependencies are missing
         log ERROR "Phase $phase_num has missing dependencies: ${missing_deps[*]}"
-        print_error "Cannot execute phase $phase_num: missing dependencies ${missing_deps[*]}"
-        return 1
+            print_error "Cannot execute phase $phase_num: missing dependencies ${missing_deps[*]}"
+        return 1  # Validation failed
     fi
 
-    return 0
+    return 0  # All dependencies satisfied
 }
 
 execute_phase() {
-    local phase_num="$1"
-    local phase_name=$(get_phase_name "$phase_num")
-    local phase_script="$PHASES_DIR/phase-$(printf '%02d' $phase_num)-$phase_name.sh"
-    local phase_step="phase-$(printf '%02d' $phase_num)"
+    # Execute a single phase: validate, run script, mark complete
+    local phase_num="$1"  # Phase number to execute
+        local phase_name=$(get_phase_name "$phase_num")  # Get phase name
+    local phase_script="$PHASES_DIR/phase-$(printf '%02d' $phase_num)-$phase_name.sh"  # Build script path
+        local phase_step="phase-$(printf '%02d' $phase_num)"  # Format for state tracking
 
     # Check if phase script exists
-    if [[ ! -f "$phase_script" ]]; then
+    if [[ ! -f "$phase_script" ]]; then  # Script file not found
         log ERROR "Phase script not found: $phase_script"
-        print_error "Phase $phase_num script not found"
+            print_error "Phase $phase_num script not found"
         return 1
     fi
 
     # Check if already completed (skip if not restart)
-    if [[ -z "$RESTART_PHASE" ]] && is_step_complete "$phase_step"; then
+    if [[ -z "$RESTART_PHASE" ]] && is_step_complete "$phase_step"; then  # Phase complete and not restarting
         log INFO "Phase $phase_num already completed (skipping)"
-        print_info "Phase $phase_num: $phase_name [ALREADY COMPLETED]"
+            print_info "Phase $phase_num: $phase_name [ALREADY COMPLETED]"
         return 0
     fi
 
     # Validate dependencies
-    if ! validate_phase_dependencies "$phase_num"; then
-        return 1
+    if ! validate_phase_dependencies "$phase_num"; then  # Dependency check failed
+        return 1  # Cannot proceed without dependencies
     fi
 
     # Execute phase
-    print_section "Phase $phase_num: $phase_name"
-    log INFO "Executing phase $phase_num: $phase_name"
+    print_section "Phase $phase_num: $phase_name"  # Print section header
+        log INFO "Executing phase $phase_num: $phase_name"  # Log execution start
 
-    if [[ "$DRY_RUN" == true ]]; then
-        print_info "[DRY RUN] Would execute: $phase_script"
-        log INFO "[DRY RUN] Phase $phase_num skipped"
+    # Handle dry-run mode
+    if [[ "$DRY_RUN" == true ]]; then  # Preview mode enabled
+        print_info "[DRY RUN] Would execute: $phase_script"  # Show what would run
+            log INFO "[DRY RUN] Phase $phase_num skipped"
         return 0
     fi
 
     # Source and execute the phase script
-    if source "$phase_script"; then
-        mark_step_complete "$phase_step"
-        log INFO "Phase $phase_num completed successfully"
-        print_success "Phase $phase_num completed"
-        return 0
+    if source "$phase_script"; then  # Execute phase script by sourcing it
+        mark_step_complete "$phase_step"  # Mark phase as complete in state
+            log INFO "Phase $phase_num completed successfully"
+        print_success "Phase $phase_num completed"  # Display success message
+            return 0  # Success
     else
-        local exit_code=$?
-        log ERROR "Phase $phase_num failed with exit code $exit_code"
-        return $exit_code
+        local exit_code=$?  # Capture exit code
+            log ERROR "Phase $phase_num failed with exit code $exit_code"
+        return $exit_code  # Propagate failure code
     fi
 }
 
 handle_phase_failure() {
-    local phase_num="$1"
-    local phase_name=$(get_phase_name "$phase_num")
+    # Interactive failure handling - let user decide how to proceed after phase failure
+    local phase_num="$1"  # Failed phase number
+        local phase_name=$(get_phase_name "$phase_num")  # Get phase name for display
 
+    # Display failure message
     echo ""
     print_error "Phase $phase_num ($phase_name) failed!"
     echo ""
 
+    # In dry-run mode, continue despite failures
     if [[ "$DRY_RUN" == true ]]; then
         log INFO "Dry run mode: continuing despite failure"
-        return 0
+            return 0  # Don't stop in preview mode
     fi
 
-    # Interactive failure handling
+    # Interactive failure handling - present options to user
     echo "What would you like to do?"
-    echo "  1) Retry this phase"
-    echo "  2) Skip and continue"
-    echo "  3) Rollback"
-    echo "  4) Exit"
+    echo "  1) Retry this phase"  # Try again immediately
+        echo "  2) Skip and continue"  # Ignore failure and proceed
+    echo "  3) Rollback"  # Revert to previous state
+        echo "  4) Exit"  # Abort deployment
     echo ""
-    read -p "Choice [1-4]: " choice
+    read -p "Choice [1-4]: " choice  # Get user input
 
     case "$choice" in
-        1)
+        1)  # Retry the failed phase
             log INFO "User chose to retry phase $phase_num"
-            execute_phase "$phase_num"
-            return $?
+                execute_phase "$phase_num"  # Re-execute phase
+            return $?  # Return result of retry
             ;;
-        2)
+        2)  # Skip this phase and continue
             log WARNING "User chose to skip phase $phase_num"
-            print_warning "Skipping phase $phase_num"
-            return 0
+                print_warning "Skipping phase $phase_num"
+            return 0  # Return success to continue workflow
             ;;
-        3)
+        3)  # Rollback to previous generation
             log INFO "User chose to rollback"
-            ROLLBACK_IN_PROGRESS=true
-            export ROLLBACK_IN_PROGRESS
-            perform_rollback
-            exit $?
+                ROLLBACK_IN_PROGRESS=true  # Set rollback flag
+            export ROLLBACK_IN_PROGRESS  # Make flag available to cleanup handlers
+                perform_rollback  # Execute rollback procedure
+            exit $?  # Exit with rollback result
             ;;
-        4|*)
+        4|*)  # Exit deployment (default for invalid input)
             log INFO "User chose to exit"
-            exit 1
+                exit 1  # Terminate with failure code
             ;;
     esac
 }
@@ -753,275 +791,291 @@ handle_phase_failure() {
 # ============================================================================
 # ROLLBACK
 # ============================================================================
+# Restore system to the NixOS generation that existed before deployment started.
 
 perform_rollback() {
+    # Rollback to the previous NixOS generation using rollback info file
     log INFO "Performing rollback"
-    print_section "Rolling back to previous state"
+        print_section "Rolling back to previous state"
 
-    if [[ ! -f "$ROLLBACK_INFO_FILE" ]]; then
+    # Verify rollback info file exists
+    if [[ ! -f "$ROLLBACK_INFO_FILE" ]]; then  # No rollback info saved
         print_error "No rollback information found"
-        log ERROR "Rollback info file not found: $ROLLBACK_INFO_FILE"
+            log ERROR "Rollback info file not found: $ROLLBACK_INFO_FILE"
         return 1
     fi
 
-    # Read rollback generation
-    local rollback_gen=$(cat "$ROLLBACK_INFO_FILE" 2>/dev/null || echo "")
-    if [[ -z "$rollback_gen" ]]; then
+    # Read rollback generation from file
+    local rollback_gen=$(cat "$ROLLBACK_INFO_FILE" 2>/dev/null || echo "")  # Get generation number
+        if [[ -z "$rollback_gen" ]]; then  # File empty or read failed
         print_error "Invalid rollback information"
-        return 1
+            return 1
     fi
 
+    # Display rollback target
     print_info "Rolling back to generation: $rollback_gen"
-    log INFO "Rolling back to generation: $rollback_gen"
+        log INFO "Rolling back to generation: $rollback_gen"
 
-    if [[ "$DRY_RUN" == true ]]; then
+    # Handle dry-run mode
+    if [[ "$DRY_RUN" == true ]]; then  # Preview mode
         print_info "[DRY RUN] Would execute: sudo nixos-rebuild switch --rollback"
-        return 0
+            return 0  # Don't actually rollback in dry-run
     fi
 
-    if sudo nixos-rebuild switch --rollback; then
+    # Execute rollback
+    if sudo nixos-rebuild switch --rollback; then  # Switch to previous generation
         print_success "Rollback completed successfully"
-        log INFO "Rollback completed successfully"
-        return 0
+            log INFO "Rollback completed successfully"
+        return 0  # Success
     else
         print_error "Rollback failed"
-        log ERROR "Rollback failed"
-        return 1
+            log ERROR "Rollback failed"
+        return 1  # Failure
     fi
 }
 
 # ============================================================================
 # MAIN INITIALIZATION
 # ============================================================================
+# Functions called during main() initialization before phase execution.
 
 print_header() {
+    # Display deployment banner with version and mode information
     echo ""
     echo "============================================"
-    echo "  NixOS Quick Deploy v$SCRIPT_VERSION"
-    echo "  8-Phase Modular Deployment"
+    echo "  NixOS Quick Deploy v$SCRIPT_VERSION"  # Show current version
+        echo "  8-Phase Modular Deployment"  # Architecture description
     echo "============================================"
     echo ""
 
-    if [[ "$DRY_RUN" == true ]]; then
+    # Display special mode indicators
+    if [[ "$DRY_RUN" == true ]]; then  # Preview mode active
         echo "  MODE: DRY RUN (no changes will be made)"
-        echo ""
+            echo ""
     fi
 
-    if [[ "$ENABLE_DEBUG" == true ]]; then
+    if [[ "$ENABLE_DEBUG" == true ]]; then  # Debug tracing active
         echo "  DEBUG: Enabled"
-        echo ""
+            echo ""
     fi
 }
 
 ensure_nix_experimental_features_env() {
-    # Ensure flakes and nix-command are enabled
-    export NIX_CONFIG="experimental-features = nix-command flakes"
+    # Enable Nix experimental features required for flakes and modern Nix commands
+    export NIX_CONFIG="experimental-features = nix-command flakes"  # Enable flakes globally for this process
 }
 
 # ============================================================================
 # MAIN FUNCTION
 # ============================================================================
+# Main entry point that orchestrates the entire deployment workflow.
 
 main() {
-    # Parse arguments
-    parse_arguments "$@"
+    # Parse command-line arguments and set global flags
+    parse_arguments "$@"  # Process CLI args into global variables
 
-    # Enable debug mode if requested
+    # Enable debug mode if requested (bash -x tracing)
     if [[ "$ENABLE_DEBUG" == true ]]; then
-        set -x
+        set -x  # Print each command before execution
     fi
 
-    # Configure logging level
-    if [[ "$QUIET_MODE" == true ]]; then
-        export LOG_LEVEL="WARNING"
-    elif [[ "$VERBOSE_MODE" == true ]]; then
-        export LOG_LEVEL="DEBUG"
-    else
-        export LOG_LEVEL="INFO"
+    # Configure logging level based on verbosity flags
+    if [[ "$QUIET_MODE" == true ]]; then  # Minimal output
+        export LOG_LEVEL="WARNING"  # Only warnings and errors
+            elif [[ "$VERBOSE_MODE" == true ]]; then  # Detailed output
+        export LOG_LEVEL="DEBUG"  # All debug messages
+    else  # Normal mode
+        export LOG_LEVEL="INFO"  # Standard informational messages
     fi
 
-    # Handle early-exit commands
-    if [[ "$SHOW_HELP" == true ]]; then
-        print_usage
-        exit 0
+    # Handle early-exit commands (info display, no deployment)
+    if [[ "$SHOW_HELP" == true ]]; then  # User requested help
+        print_usage  # Display usage information
+            exit 0  # Exit successfully
     fi
 
-    if [[ "$SHOW_VERSION" == true ]]; then
-        print_version
-        exit 0
+    if [[ "$SHOW_VERSION" == true ]]; then  # User requested version
+        print_version  # Display version and component info
+            exit 0
     fi
 
-    if [[ "$LIST_PHASES" == true ]]; then
-        source "$LIB_DIR/colors.sh" 2>/dev/null || true
-        source "$CONFIG_DIR/variables.sh" 2>&1 | grep -v "readonly variable" >&2 || true
-        list_phases
-        exit 0
+    if [[ "$LIST_PHASES" == true ]]; then  # User requested phase list
+        source "$LIB_DIR/colors.sh" 2>/dev/null || true  # Load colors for display
+            source "$CONFIG_DIR/variables.sh" 2>&1 | grep -v "readonly variable" >&2 || true  # Load STATE_FILE path
+        list_phases  # Display all phases with status
+            exit 0
     fi
 
-    if [[ -n "$SHOW_PHASE_INFO_NUM" ]]; then
-        source "$LIB_DIR/colors.sh" 2>/dev/null || true
-        source "$CONFIG_DIR/variables.sh" 2>&1 | grep -v "readonly variable" >&2 || true
-        show_phase_info "$SHOW_PHASE_INFO_NUM"
-        exit 0
+    if [[ -n "$SHOW_PHASE_INFO_NUM" ]]; then  # User requested specific phase info
+        source "$LIB_DIR/colors.sh" 2>/dev/null || true  # Load colors
+            source "$CONFIG_DIR/variables.sh" 2>&1 | grep -v "readonly variable" >&2 || true  # Load variables
+        show_phase_info "$SHOW_PHASE_INFO_NUM"  # Display phase details
+            exit 0
     fi
 
-    # Load core components
-    load_libraries
-    load_configuration
+    # Load core components (libraries and configuration)
+    load_libraries  # Source all library files
+        load_configuration  # Source all config files
 
-    if [[ -n "$ZSWAP_CONFIGURATION_OVERRIDE_REQUEST" ]]; then
+    # Handle zswap configuration override request (if provided via CLI)
+    if [[ -n "$ZSWAP_CONFIGURATION_OVERRIDE_REQUEST" ]]; then  # User provided zswap override
         case "$ZSWAP_CONFIGURATION_OVERRIDE_REQUEST" in
-            enable|disable|auto)
-                ZSWAP_CONFIGURATION_OVERRIDE="$ZSWAP_CONFIGURATION_OVERRIDE_REQUEST"
-                export ZSWAP_CONFIGURATION_OVERRIDE
-                if declare -F persist_zswap_configuration_override >/dev/null 2>&1; then
-                    persist_zswap_configuration_override "$ZSWAP_CONFIGURATION_OVERRIDE" || true
+            enable|disable|auto)  # Valid override values
+                ZSWAP_CONFIGURATION_OVERRIDE="$ZSWAP_CONFIGURATION_OVERRIDE_REQUEST"  # Set override
+                    export ZSWAP_CONFIGURATION_OVERRIDE  # Make available to all phases
+                # Persist override to file if function available
+                if declare -F persist_zswap_configuration_override >/dev/null 2>&1; then  # Function exists
+                    persist_zswap_configuration_override "$ZSWAP_CONFIGURATION_OVERRIDE" || true  # Save preference
                 fi
+                # Display confirmation message
                 case "$ZSWAP_CONFIGURATION_OVERRIDE" in
-                    enable)
+                    enable)  # Force-enable zswap
                         print_info "Zswap override set to ENABLE; prompts will appear even if detection fails."
-                        ;;
-                    disable)
+                            ;;
+                    disable)  # Force-disable zswap
                         print_info "Zswap override set to DISABLE; swap-backed hibernation will be skipped."
-                        ;;
-                    auto)
+                            ;;
+                    auto)  # Return to automatic detection
                         print_info "Zswap override cleared; automatic detection restored."
-                        ;;
+                            ;;
                 esac
                 ;;
         esac
     fi
 
-    # Enable strict undefined variable checking
-    set -u
+    # Enable strict undefined variable checking (after all variables are set)
+    set -u  # Exit if undefined variable is referenced
 
-    # Handle rollback mode
-    if [[ "$ROLLBACK" == true ]]; then
-        ROLLBACK_IN_PROGRESS=true
-        export ROLLBACK_IN_PROGRESS
-        perform_rollback
-        exit $?
+    # Handle rollback mode (revert to previous generation)
+    if [[ "$ROLLBACK" == true ]]; then  # User requested rollback
+        ROLLBACK_IN_PROGRESS=true  # Set rollback flag
+            export ROLLBACK_IN_PROGRESS  # Make available to cleanup handlers
+        perform_rollback  # Execute rollback procedure
+            exit $?  # Exit with rollback result
     fi
 
-    # Handle state reset
-    if [[ "$RESET_STATE" == true ]]; then
-        reset_state
-        print_success "State reset successfully"
-        exit 0
+    # Handle state reset (clear for fresh start)
+    if [[ "$RESET_STATE" == true ]]; then  # User requested state reset
+        reset_state  # Clear state file
+            print_success "State reset successfully"
+        exit 0  # Exit after reset
     fi
 
     # Initialize core systems
-    init_logging
-    ensure_nix_experimental_features_env
-    init_state
+    init_logging  # Set up logging to file and console
+        ensure_nix_experimental_features_env  # Enable Nix flakes
+    init_state  # Initialize or load state tracking
 
     # Print deployment header
-    print_header
+    print_header  # Display banner with version and mode info
 
-    # Handle test phase mode
-    if [[ -n "$TEST_PHASE" ]]; then
+    # Handle test phase mode (run single phase in isolation)
+    if [[ -n "$TEST_PHASE" ]]; then  # User requested single phase test
         log INFO "Testing phase $TEST_PHASE in isolation"
-        print_section "Testing Phase $TEST_PHASE"
-        execute_phase "$TEST_PHASE"
-        exit $?
+            print_section "Testing Phase $TEST_PHASE"
+        execute_phase "$TEST_PHASE"  # Run only this phase
+            exit $?  # Exit with phase result
     fi
 
-    # Determine starting phase
-    local start_phase=1
+    # Determine starting phase (user-specified, resume, or from beginning)
+    local start_phase=1  # Default to phase 1
 
-    if [[ -n "$START_FROM_PHASE" ]]; then
-        start_phase=$START_FROM_PHASE
-        log INFO "Starting from phase $start_phase (user specified)"
-    elif [[ "$RESUME" == true ]] || [[ -z "$START_FROM_PHASE" ]]; then
-        start_phase=$(get_resume_phase)
-        if [[ $start_phase -gt 1 ]]; then
+    if [[ -n "$START_FROM_PHASE" ]]; then  # User specified starting phase
+        start_phase=$START_FROM_PHASE  # Use user's choice
+            log INFO "Starting from phase $start_phase (user specified)"
+    elif [[ "$RESUME" == true ]] || [[ -z "$START_FROM_PHASE" ]]; then  # Resume mode or no override
+        start_phase=$(get_resume_phase)  # Find next incomplete phase from state
+            if [[ $start_phase -gt 1 ]]; then  # Not starting from beginning
             log INFO "Resuming from phase $start_phase"
-            print_info "Resuming from phase $start_phase"
+                print_info "Resuming from phase $start_phase"
         fi
     fi
 
-    # Validate starting phase number
+    # Validate starting phase number is in valid range
     if [[ ! "$start_phase" =~ ^[0-9]+$ ]] || [[ "$start_phase" -lt 1 ]] || [[ "$start_phase" -gt 8 ]]; then
-        print_error "Invalid starting phase: $start_phase"
-        exit 1
+        print_error "Invalid starting phase: $start_phase"  # Invalid phase number
+            exit 1
     fi
 
-    # Create rollback point
-    if [[ "$DRY_RUN" == false && $start_phase -eq 1 ]]; then
+    # Create rollback point (save current generation for potential rollback)
+    if [[ "$DRY_RUN" == false && $start_phase -eq 1 ]]; then  # Not dry-run and starting from beginning
         log INFO "Creating rollback point"
-        create_rollback_point "Before deployment $(date +%Y-%m-%d_%H:%M:%S)"
+            create_rollback_point "Before deployment $(date +%Y-%m-%d_%H:%M:%S)"  # Save generation with timestamp
     fi
 
-    # Execute phases sequentially
+    # Execute phases sequentially from start_phase to phase 8
     echo ""
-    print_section "Starting 8-Phase Deployment Workflow"
-    log INFO "Starting deployment from phase $start_phase"
+    print_section "Starting 8-Phase Deployment Workflow"  # Display workflow header
+        log INFO "Starting deployment from phase $start_phase"
     echo ""
 
-    for phase_num in $(seq $start_phase 8); do
+    for phase_num in $(seq $start_phase 8); do  # Loop through phases
         # Check if phase should be skipped
-        if should_skip_phase "$phase_num"; then
+        if should_skip_phase "$phase_num"; then  # User requested skip via --skip-phase
             log INFO "Skipping phase $phase_num (user requested)"
-            print_info "Skipping Phase $phase_num (--skip-phase)"
-            continue
+                print_info "Skipping Phase $phase_num (--skip-phase)"
+            continue  # Skip to next phase
         fi
 
-        # Execute phase
-        if ! execute_phase "$phase_num"; then
-            handle_phase_failure "$phase_num" || exit 1
+        # Execute phase and handle failure
+        if ! execute_phase "$phase_num"; then  # Phase execution failed
+            handle_phase_failure "$phase_num" || exit 1  # Interactive failure handling or exit
         fi
 
-        echo ""
+        echo ""  # Blank line between phases
     done
 
-    # Deployment success
+    # Deployment success - all phases completed
     log INFO "All phases completed successfully"
-    echo ""
+        echo ""
 
-    local health_exit=0
-    if [[ "$SKIP_HEALTH_CHECK" != true ]]; then
-        local health_script="$SCRIPT_DIR/scripts/system-health-check.sh"
-        if [[ -x "$health_script" ]]; then
+    # Final system health check
+    local health_exit=0  # Track health check result
+        if [[ "$SKIP_HEALTH_CHECK" != true ]]; then  # Health check not skipped
+        local health_script="$SCRIPT_DIR/scripts/system-health-check.sh"  # Path to health check script
+            if [[ -x "$health_script" ]]; then  # Script exists and is executable
             print_section "Final System Health Check"
-            log INFO "Running final system health check via $health_script"
+                log INFO "Running final system health check via $health_script"
             echo ""
-            if "$health_script" --detailed; then
-                print_success "System health check passed"
-                echo ""
+                if "$health_script" --detailed; then  # Run health check with detailed output
+                print_success "System health check passed"  # All checks passed
+                    echo ""
             else
-                health_exit=$?
-                print_warning "System health check reported issues. Review the output above and rerun with --fix if needed."
+                health_exit=$?  # Capture failure code
+                    print_warning "System health check reported issues. Review the output above and rerun with --fix if needed."
                 echo ""
             fi
-        else
+        else  # Health check script not found
             log WARNING "Health check script missing at $health_script"
-            print_warning "Health check script not found at $health_script"
+                print_warning "Health check script not found at $health_script"
             print_info "Run git pull to restore scripts or download manually."
-            echo ""
+                echo ""
         fi
-    else
+    else  # Health check explicitly skipped
         log INFO "Skipping final health check (flag)"
-        print_info "Skipping final health check (--skip-health-check)"
+            print_info "Skipping final health check (--skip-health-check)"
     fi
 
+    # Print final status summary
     echo "============================================"
-    if [[ $health_exit -eq 0 ]]; then
-        print_success "Deployment completed successfully!"
-    else
+    if [[ $health_exit -eq 0 ]]; then  # Health check passed or skipped
+        print_success "Deployment completed successfully!"  # Everything succeeded
+    else  # Health check reported issues
         print_warning "Deployment completed with follow-up actions required."
-        print_info "Review the health check summary above. You can rerun fixes with: $health_script --fix"
+            print_info "Review the health check summary above. You can rerun fixes with: $health_script --fix"
     fi
     echo "============================================"
     echo ""
-    echo "Log file: $LOG_FILE"
-    echo ""
+    echo "Log file: $LOG_FILE"  # Show where logs are stored
+        echo ""
 
-    return $health_exit
+    return $health_exit  # Return health check result (0 = success, non-zero = issues)
 }
 
 # ============================================================================
 # SCRIPT EXECUTION
 # ============================================================================
+# Entry point: call main() with all command-line arguments passed to script.
 
-# Run main function
-main "$@"
+# Run main function with all CLI arguments
+main "$@"  # Execute main deployment orchestration with user-provided arguments

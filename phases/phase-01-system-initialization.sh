@@ -70,21 +70,22 @@ phase_01_system_initialization() {
     # - Streamlines workflow from 10 → 8 phases
     # ========================================================================
 
-    local phase_name="system_initialization"
+    local phase_name="system_initialization"  # State tracking identifier for this phase
 
     # ------------------------------------------------------------------------
     # Resume Check: Skip if already completed
     # ------------------------------------------------------------------------
-    if is_step_complete "$phase_name"; then
+    if is_step_complete "$phase_name"; then  # Check state file for completion marker
         print_info "Phase 1 already completed (skipping)"
-        return 0
+            return 0  # Skip phase execution
     fi
 
-    print_section "Phase 1/8: System Initialization"
-    echo ""
+    print_section "Phase 1/8: System Initialization"  # Display phase header
+        echo ""
 
-    local previous_imperative_flag="${IMPERATIVE_INSTALLS_ALLOWED:-false}"
-    export IMPERATIVE_INSTALLS_ALLOWED=true
+    # Allow temporary imperative package installs for this phase
+    local previous_imperative_flag="${IMPERATIVE_INSTALLS_ALLOWED:-false}"  # Save previous state
+        export IMPERATIVE_INSTALLS_ALLOWED=true  # Enable nix-env usage temporarily
 
     # ========================================================================
     # PART 1: SYSTEM VALIDATION
@@ -95,9 +96,9 @@ phase_01_system_initialization() {
     # ========================================================================
     # Why: This script uses NixOS-specific commands (nixos-rebuild, etc.)
     # How: Check for /etc/NIXOS file which exists only on NixOS
-    if [[ ! -f /etc/NIXOS ]]; then
+    if [[ ! -f /etc/NIXOS ]]; then  # /etc/NIXOS marker file missing
         print_error "This script must be run on NixOS"
-        exit 1
+            exit 1  # Fatal - cannot proceed on non-NixOS
     fi
     print_success "Running on NixOS"
 
@@ -106,10 +107,10 @@ phase_01_system_initialization() {
     # ========================================================================
     # Why: Running as root causes permission issues (files owned by root)
     # Script will use 'sudo' when needed for specific commands
-    if [[ $EUID -eq 0 ]]; then
+    if [[ $EUID -eq 0 ]]; then  # Effective UID is 0 (root user)
         print_error "This script should NOT be run as root"
-        print_info "It will use sudo when needed for system operations"
-        exit 1
+            print_info "It will use sudo when needed for system operations"
+        exit 1  # Fatal - prevents root-owned file creation
     fi
     print_success "Running with correct permissions (non-root)"
 
@@ -117,11 +118,11 @@ phase_01_system_initialization() {
     # Step 1.3: Verify Critical NixOS Commands Available
     # ========================================================================
     # Essential commands: nixos-rebuild, nix-env, nix-channel
-    local -a critical_commands=("nixos-rebuild" "nix-env" "nix-channel")
-    for cmd in "${critical_commands[@]}"; do
-        if ! command -v "$cmd" &>/dev/null; then
+    local -a critical_commands=("nixos-rebuild" "nix-env" "nix-channel")  # Required NixOS tools
+        for cmd in "${critical_commands[@]}"; do  # Check each command
+        if ! command -v "$cmd" &>/dev/null; then  # Command not in PATH
             print_error "Critical command not found: $cmd"
-            exit 1
+                exit 1  # Fatal - cannot deploy without these tools
         fi
     done
     print_success "Critical NixOS commands available"
@@ -131,9 +132,9 @@ phase_01_system_initialization() {
     # ========================================================================
     # NixOS deployment requires significant disk space for packages,
     # builds, and multiple system generations
-    if ! check_disk_space; then
+    if ! check_disk_space; then  # Disk space check failed (defined in lib/validation.sh)
         print_error "Insufficient disk space"
-        exit 1
+            exit 1  # Fatal - need space for packages and generations
     fi
 
     # ========================================================================
@@ -141,21 +142,21 @@ phase_01_system_initialization() {
     # ========================================================================
     # Need internet to download packages from NixOS binary cache
     print_info "Checking network connectivity..."
-    if ping -c 1 -W 5 cache.nixos.org &>/dev/null || ping -c 1 -W 5 8.8.8.8 &>/dev/null; then
+    if ping -c 1 -W 5 cache.nixos.org &>/dev/null || ping -c 1 -W 5 8.8.8.8 &>/dev/null; then  # Try NixOS cache, fallback to Google DNS
         print_success "Network connectivity OK"
     else
         print_error "No network connectivity detected"
-        print_error "Internet connection required to download packages"
-        exit 1
+            print_error "Internet connection required to download packages"
+        exit 1  # Fatal - cannot download packages without network
     fi
 
     # ========================================================================
     # Step 1.6: Validate Configuration Path Uniqueness
     # ========================================================================
     # Ensure no two config files try to use the same path
-    if ! assert_unique_paths HOME_MANAGER_FILE SYSTEM_CONFIG_FILE HARDWARE_CONFIG_FILE; then
+    if ! assert_unique_paths HOME_MANAGER_FILE SYSTEM_CONFIG_FILE HARDWARE_CONFIG_FILE; then  # Check for path conflicts
         print_error "Internal configuration path conflict detected"
-        exit 1
+            exit 1  # Fatal - would cause file collisions
     fi
 
     # ========================================================================
