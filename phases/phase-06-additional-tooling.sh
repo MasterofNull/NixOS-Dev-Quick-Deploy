@@ -105,6 +105,33 @@ phase_06_additional_tooling() {
     print_section "Phase 6/8: Additional Tooling"
     echo ""
 
+    # ------------------------------------------------------------------------
+    # Declarative Prerequisite Validation (jq must already be present)
+    # ------------------------------------------------------------------------
+    if ! command -v jq >/dev/null 2>&1; then
+        print_section "Validating declarative toolchain prerequisites"
+        print_warning "jq not detected on PATH. Phase 6 relies on declarative jq availability."
+
+        local health_script="$SCRIPT_DIR/scripts/system-health-check.sh"
+
+        if [ -x "$health_script" ]; then
+            print_info "Running system health check before continuing Phase 6..."
+            if ! "$health_script" --detailed; then
+                print_error "System health check reported issues. Ensure jq is declared in your configuration and rerun the deploy."
+                return 1
+            fi
+        else
+            print_error "Unable to locate system health check script at $health_script"
+            print_error "Add jq to the declarative package set before rerunning Phase 6."
+            return 1
+        fi
+
+        if ! command -v jq >/dev/null 2>&1; then
+            print_error "jq is still missing after health check. Update configuration.nix/home.nix to include jq declaratively."
+            return 1
+        fi
+    fi
+
     # ========================================================================
     # Parallel Installation: Flatpak Applications
     # ========================================================================

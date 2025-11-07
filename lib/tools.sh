@@ -19,6 +19,8 @@
 #   - install_vscodium_extensions() → Install VSCodium extensions
 #   - install_openskills_tooling() → Install OpenSkills tools
 #   - setup_flake_environment() → Setup Nix flakes dev environment
+
+declare -a AI_VSCODE_EXTENSIONS=()
 #
 # ============================================================================
 
@@ -58,67 +60,415 @@ install_flatpak_stage() {
 }
 
 # ============================================================================
-# Install Claude Code CLI
+# Install AI Coding CLIs (Claude, GPT CodeX, OpenAI, GooseAI)
 # ============================================================================
-# Purpose: Install Claude Code CLI for AI assistance
+# Purpose: Install fast-moving AI CLI packages from npm and wire wrappers
 # Returns:
 #   0 - Success
 #   1 - Failure (non-critical)
 # ============================================================================
-install_claude_code() {
-    print_section "Installing Claude Code CLI"
+ensure_npm_global_prefix() {
+    local npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
 
-    # Check if already installed
-    if command -v claude &>/dev/null; then
-        print_success "Claude Code CLI already installed: $(which claude)"
+    export NPM_CONFIG_PREFIX="$npm_prefix"
+    mkdir -p "$npm_prefix/bin" "$npm_prefix/lib" "$npm_prefix/lib/node_modules"
+
+    if [ ! -f "$HOME/.npmrc" ] || ! grep -q '^prefix=' "$HOME/.npmrc" 2>/dev/null; then
+        echo "prefix=$npm_prefix" >"$HOME/.npmrc"
+    fi
+
+    case ":$PATH:" in
+        *":$npm_prefix/bin:"*) ;;
+        *) export PATH="$npm_prefix/bin:$PATH" ;;
+    esac
+}
+
+ai_cli_manifest_path() {
+    local lib_dir
+    lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local repo_root
+    repo_root="$(cd "$lib_dir/.." && pwd)"
+    local manifest_dir="${CONFIG_DIR:-$repo_root/config}"
+    echo "$manifest_dir/npm-packages.sh"
+}
+
+resolve_ai_cli_path() {
+    local package_dir="$1"
+    local bin_command="$2"
+
+    node - "$package_dir" "$bin_command" <<'NODE'
+const fs = require('fs');
+const path = require('path');
+
+const pkgDir = process.argv[2];
+const desired = process.argv[3];
+const pkgJson = path.join(pkgDir, 'package.json');
+
+try {
+  const pkg = JSON.parse(fs.readFileSync(pkgJson, 'utf8'));
+  let bin = pkg.bin;
+
+  if (!bin) {
+    process.exit(1);
+  }
+
+  let relative;
+  if (typeof bin === 'string') {
+    relative = bin;
+  } else if (bin[desired]) {
+    relative = bin[desired];
+  } else {
+    const keys = Object.keys(bin);
+    if (keys.length === 0) {
+      process.exit(2);
+    }
+    relative = bin[keys[0]];
+  }
+
+  const absolute = path.resolve(pkgDir, relative);
+  process.stdout.write(absolute);
+} catch (error) {
+  process.exit(3);
+}
+NODE
+}
+
+create_ai_cli_wrapper() {
+    local wrapper_path="$1"
+    local cli_path="$2"
+    local display_name="$3"
+    local debug_env_var="${4:-}"
+    local npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
+    local npm_modules="$npm_prefix/lib/node_modules"
+
+    cat >"$wrapper_path" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+DEBUG_FLAG="\${AI_TOOL_DEBUG:-0}"
+DEBUG_ENV_VAR="${debug_env_var}"
+
+if [ -n "\${DEBUG_ENV_VAR}" ]; then
+    DEBUG_ENV_VALUE=""
+    # shellcheck disable=SC2086
+    eval "DEBUG_ENV_VALUE=\"\\${${debug_env_var}:-}\""
+    if [ -n "\${DEBUG_ENV_VALUE}" ]; then
+        DEBUG_FLAG="\${DEBUG_ENV_VALUE}"
+    fi
+fi
+
+if [ "\${DEBUG_FLAG}" = "1" ]; then
+    echo "[DEBUG] Wrapper starting for $display_name" >&2
+    echo "[DEBUG] CLI path: $cli_path" >&2
+fi
+
+CLI_PATH="$cli_path"
+
+if [ ! -f "\${CLI_PATH}" ]; then
+    echo "[$display_name] CLI entry point missing: \${CLI_PATH}" >&2
+    echo "Reinstall with: npm install -g" >&2
+    exit 127
+fi
+
+NODE_CANDIDATES=(
+    "\${HOME}/.nix-profile/bin/node"
+    "/run/current-system/sw/bin/node"
+    "/nix/var/nix/profiles/default/bin/node"
+)
+
+if command -v node >/dev/null 2>&1; then
+    NODE_CANDIDATES+=("\$(command -v node)")
+fi
+
+NODE_BIN=""
+for candidate in "\${NODE_CANDIDATES[@]}"; do
+    if [ -n "\${candidate}" ] && [ -x "\${candidate}" ]; then
+        NODE_BIN="\${candidate}"
+        break
+    fi
+fi
+
+if [ -z "\${NODE_BIN}" ]; then
+    echo "[$display_name] Unable to locate Node.js runtime" >&2
+    echo "Ensure Node.js 22 is installed via home-manager" >&2
+    exit 127
+fi
+
+export PATH="$npm_prefix/bin:\${PATH}"
+export NODE_PATH="$npm_modules"
+
+if [ "\${DEBUG_FLAG}" = "1" ]; then
+    echo "[DEBUG] Using Node runtime: \${NODE_BIN}" >&2
+fi
+
+exec "\${NODE_BIN}" "\${CLI_PATH}" "\$@"
+EOF
+
+    chmod +x "$wrapper_path"
+}
+
+install_single_ai_cli() {
+    local descriptor="$1"
+    local package display bin_command wrapper_name extension_id debug_env
+
+    IFS='|' read -r package display bin_command wrapper_name extension_id debug_env <<<"$descriptor"
+
+    if [ -z "$package" ] || [ -z "$display" ] || [ -z "$bin_command" ] || [ -z "$wrapper_name" ]; then
+        print_warning "Invalid manifest entry: $descriptor"
+        return 1
+    fi
+
+    local npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
+    local npm_modules="$npm_prefix/lib/node_modules"
+    local package_dir="$npm_modules/$package"
+    local wrapper_path="$npm_prefix/bin/$wrapper_name"
+    local install_needed=false
+    local current_version=""
+    local latest_version=""
+
+    if [ -f "$package_dir/package.json" ]; then
+        current_version=$(node -e "const pkg=require(process.argv[1]); if(pkg && pkg.version){console.log(pkg.version);}" "$package_dir/package.json" 2>/dev/null || echo "")
+    fi
+
+    latest_version=$(npm view "$package" version 2>/dev/null || echo "")
+
+    if [ "$FORCE_UPDATE" = true ]; then
+        install_needed=true
+    elif [ -z "$current_version" ]; then
+        install_needed=true
+    elif [ -n "$latest_version" ] && [ "$current_version" != "$latest_version" ]; then
+        print_info "$display update available: $current_version → $latest_version"
+        install_needed=true
+    fi
+
+    if [ "$install_needed" = true ]; then
+        local log_file="/tmp/${wrapper_name}-npm-install.log"
+        print_info "Installing $display via npm..."
+        if npm install -g "$package" 2>&1 | tee "$log_file"; then
+            print_success "$display npm package installed"
+        else
+            local exit_code=$?
+            print_warning "$display installation failed (exit code $exit_code)"
+            print_detail "See $log_file for details"
+            return 1
+        fi
+    else
+        print_success "$display already up-to-date (v${current_version:-unknown})"
+    fi
+
+    local cli_path
+    cli_path=$(resolve_ai_cli_path "$package_dir" "$bin_command") || {
+        print_warning "Unable to locate CLI entry for $display"
+        print_detail "Check package.json in $package_dir"
+        return 1
+    }
+
+    if [ ! -f "$cli_path" ]; then
+        print_warning "Resolved CLI path missing for $display: $cli_path"
+        return 1
+    fi
+
+    create_ai_cli_wrapper "$wrapper_path" "$cli_path" "$display" "$debug_env"
+    print_success "Created wrapper: $wrapper_path"
+
+    if [ -n "$extension_id" ]; then
+        AI_VSCODE_EXTENSIONS+=("$extension_id")
+    fi
+
+    return 0
+}
+
+install_claude_code() {
+    print_section "Installing AI Coding CLIs"
+
+    if ! command -v npm >/dev/null 2>&1; then
+        print_warning "npm not available – skipping AI CLI installation"
+        return 1
+    fi
+
+    if ! command -v node >/dev/null 2>&1; then
+        print_warning "Node.js not available – skipping AI CLI installation"
+        return 1
+    fi
+
+    ensure_npm_global_prefix
+
+    local manifest
+    manifest=$(ai_cli_manifest_path)
+
+    if [ ! -f "$manifest" ]; then
+        print_warning "AI CLI manifest not found at $manifest"
+        return 1
+    fi
+
+    # shellcheck disable=SC1090
+    source "$manifest"
+
+    if [ ${#NPM_AI_PACKAGE_MANIFEST[@]} -eq 0 ]; then
+        print_info "No AI CLI packages defined in manifest"
         return 0
     fi
 
-    print_info "Claude Code CLI installation is currently optional"
-    print_info "To install manually:"
-    print_info "  1. Visit: https://github.com/anthropics/claude-code"
-    print_info "  2. Follow installation instructions"
-    print_info "  3. Set up API key in configuration"
+    AI_VSCODE_EXTENSIONS=()
 
-    # TODO: Implement actual Claude Code installation
-    # This would typically involve:
-    # 1. Download latest release from GitHub
-    # 2. Extract binary to ~/.local/bin or /usr/local/bin
-    # 3. Make executable
-    # 4. Create config file
-    # 5. Prompt for API key (or use existing)
+    local overall_status=0
+    local entry
+    for entry in "${NPM_AI_PACKAGE_MANIFEST[@]}"; do
+        if ! install_single_ai_cli "$entry"; then
+            overall_status=1
+        fi
+    done
 
-    return 1  # Return failure to skip dependent steps
+    return $overall_status
 }
 
 # ============================================================================
-# Configure VSCodium for Claude
+# Configure VSCodium for Claude and other AI CLIs
 # ============================================================================
-# Purpose: Configure VSCodium editor for Claude integration
+# Purpose: Ensure VSCodium extensions know where wrappers live
 # Returns:
 #   0 - Success
 #   1 - Failure (non-critical)
 # ============================================================================
 configure_vscodium_for_claude() {
-    print_section "Configuring VSCodium for Claude"
+    print_section "Configuring VSCodium for AI assistants"
 
-    # Check if VSCodium is installed
-    if ! command -v codium &>/dev/null; then
+    if ! command -v codium >/dev/null 2>&1; then
         print_info "VSCodium not found in PATH"
-        print_info "VSCodium may be installed via Flatpak or will be available after relogin"
+        print_info "Configuration will be applied after VSCodium is installed"
         return 0
     fi
 
-    print_info "VSCodium Claude configuration is optional"
-    print_info "Extension can be installed manually from Open VSX Registry"
+    if ! command -v jq >/dev/null 2>&1; then
+        print_warning "jq unavailable – skipping automatic VSCodium settings merge"
+        return 0
+    fi
 
-    # TODO: Implement VSCodium configuration
-    # This would typically involve:
-    # 1. Install Claude extension via codium --install-extension
-    # 2. Create/modify settings.json
-    # 3. Set up keybindings
-    # 4. Configure extension settings
+    local settings_dir="$HOME/.config/VSCodium/User"
+    local settings_file="$settings_dir/settings.json"
+    mkdir -p "$settings_dir"
 
+    if [ ! -f "$settings_file" ]; then
+        echo "{}" >"$settings_file"
+    fi
+
+    local manifest
+    manifest=$(ai_cli_manifest_path)
+
+    if [ ! -f "$manifest" ]; then
+        print_warning "AI CLI manifest not found, skipping VSCodium settings update"
+        return 0
+    fi
+
+    # shellcheck disable=SC1090
+    source "$manifest"
+
+    local npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
+    local wrapper_dir="$npm_prefix/bin"
+    local npm_modules="$npm_prefix/lib/node_modules"
+
+    local path_entries=("$wrapper_dir" "$HOME/.nix-profile/bin")
+    if command -v node >/dev/null 2>&1; then
+        local node_bin
+        node_bin=$(command -v node)
+        if [ -n "$node_bin" ]; then
+            local node_dir
+            node_dir=$(dirname "$node_bin")
+            if [ -n "$node_dir" ]; then
+                path_entries+=("$node_dir")
+            fi
+        fi
+    fi
+    path_entries+=("/run/current-system/sw/bin")
+
+    local path_value
+    local IFS=:
+    path_value="${path_entries[*]}"
+    IFS=$' \t\n'
+    path_value="$path_value:\${env:PATH}"
+
+    local env_json
+    env_json=$(jq -n \
+        --arg path "$path_value" \
+        --arg nodePath "$npm_modules" \
+        '[
+            {"name": "PATH", "value": $path},
+            {"name": "NODE_PATH", "value": $nodePath}
+        ]'
+    )
+
+    apply_jq() {
+        local filter="$1"
+        shift
+        local temp
+        temp=$(mktemp)
+        if jq "$@" "$filter" "$settings_file" >"$temp"; then
+            mv "$temp" "$settings_file"
+            return 0
+        fi
+        rm -f "$temp"
+        return 1
+    }
+
+    local entry package display bin_command wrapper_name extension_id debug_env
+    local overall_status=0
+    for entry in "${NPM_AI_PACKAGE_MANIFEST[@]}"; do
+        IFS='|' read -r package display bin_command wrapper_name extension_id debug_env <<<"$entry"
+        local wrapper_path="$wrapper_dir/$wrapper_name"
+        local keys=()
+        local extra=()
+        case "$package" in
+            "@anthropic-ai/claude-code")
+                keys=("claude-code" "claudeCode")
+                extra=("claude-code.claudeProcessWrapper" "claudeCode.claudeProcessWrapper")
+                ;;
+            "@openai/gpt-codex")
+                keys=("gpt-codex" "gptCodex")
+                ;;
+            "@openai/codex")
+                keys=("codex" "codexIDE" "codexIde")
+                ;;
+            "openai")
+                keys=("openai")
+                ;;
+            "@gooseai/cli")
+                keys=("gooseai")
+                ;;
+            *)
+                keys=()
+                ;;
+        esac
+
+        local key
+        for key in "${keys[@]}"; do
+            if ! apply_jq '.[ $base ] = (.[ $base ] // {}) | .[ $base ].executablePath = $wrapper | .[ $base ].environmentVariables = $env | .[ $base ].autoStart = false' \
+                --arg base "$key" \
+                --arg wrapper "$wrapper_path" \
+                --argjson env "$env_json"; then
+                overall_status=1
+            fi
+        done
+
+        local extra_key
+        for extra_key in "${extra[@]}"; do
+            IFS='.' read -r extra_base extra_prop <<<"$extra_key"
+            if [ -z "$extra_base" ] || [ -z "$extra_prop" ]; then
+                continue
+            fi
+            if ! apply_jq '.[ $base ] = (.[ $base ] // {}) | .[ $base ][ $prop ] = $wrapper' \
+                --arg base "$extra_base" \
+                --arg prop "$extra_prop" \
+                --arg wrapper "$wrapper_path"; then
+                overall_status=1
+            fi
+        done
+    done
+
+    if [ "$overall_status" -eq 0 ]; then
+        print_success "Updated VSCodium settings for AI wrappers"
+    else
+        print_warning "Encountered issues while updating VSCodium AI settings"
+    fi
     return 0
 }
 
@@ -131,37 +481,99 @@ configure_vscodium_for_claude() {
 #   1 - Failure (non-critical)
 # ============================================================================
 install_vscodium_extensions() {
-    print_section "Installing VSCodium Extensions"
+    print_section "Installing VSCodium extensions"
 
-    # Check if VSCodium is installed
-    if ! command -v codium &>/dev/null; then
+    if ! command -v codium >/dev/null 2>&1; then
         print_info "VSCodium not found, skipping extension installation"
         return 0
     fi
 
-    # List of recommended extensions
+    local manifest
+    manifest=$(ai_cli_manifest_path)
+
+    if [ -f "$manifest" ]; then
+        # shellcheck disable=SC1090
+        source "$manifest"
+    else
+        NPM_AI_PACKAGE_MANIFEST=()
+    fi
+
     local extensions=(
-        "bbenoist.nix"                    # Nix language support
-        "jnoortheen.nix-ide"              # Nix IDE
-        "ms-python.python"                # Python support
-        "rust-lang.rust-analyzer"         # Rust support
-        "eamodio.gitlens"                 # Git integration
-        "esbenp.prettier-vscode"          # Code formatter
+        "Anthropic.claude-code|Claude Code"
+        "OpenAI.gpt-codex|GPT CodeX"
+        "OpenAI.codex-ide|Codex IDE"
+        "GooseAI.gooseai-vscode|GooseAI"
+        "jnoortheen.nix-ide|Nix IDE"
+        "eamodio.gitlens|GitLens"
+        "editorconfig.editorconfig|EditorConfig"
+        "esbenp.prettier-vscode|Prettier"
+        "ms-python.python|Python"
+        "ms-python.black-formatter|Black Formatter"
+        "ms-python.vscode-pylance|Pylance"
+        "ms-toolsai.jupyter|Jupyter"
+        "ms-toolsai.jupyter-keymap|Jupyter Keymap"
+        "ms-toolsai.jupyter-renderers|Jupyter Renderers"
+        "continue.continue|Continue"
+        "codeium.codeium|Codeium"
+        "ms-azuretools.vscode-docker|Docker"
+        "rust-lang.rust-analyzer|Rust Analyzer"
+        "dbaeumer.vscode-eslint|ESLint"
+        "golang.go|Go"
+        "usernamehw.errorlens|Error Lens"
+        "tamasfe.even-better-toml|Even Better TOML"
+        "redhat.vscode-yaml|YAML"
+        "mechatroner.rainbow-csv|Rainbow CSV"
+        "mhutchie.git-graph|Git Graph"
     )
 
-    print_info "Recommended extensions for VSCodium:"
-    for ext in "${extensions[@]}"; do
-        echo "  - $ext"
+    if [ -n "${AI_VSCODE_EXTENSIONS[*]:-}" ]; then
+        local ext
+        for ext in "${AI_VSCODE_EXTENSIONS[@]}"; do
+            extensions+=("$ext|AI Tool")
+        done
+    else
+        local entry package display bin_command wrapper_name extension_id debug_env
+        for entry in "${NPM_AI_PACKAGE_MANIFEST[@]}"; do
+            IFS='|' read -r package display bin_command wrapper_name extension_id debug_env <<<"$entry"
+            if [ -n "$extension_id" ]; then
+                extensions+=("$extension_id|$display")
+            fi
+        done
+    fi
+
+    local install_ext
+    install_ext() {
+        local ext_id="$1"
+        local name="$2"
+        local attempt
+
+        print_info "Installing: $name ($ext_id)"
+        for attempt in 1 2 3; do
+            if codium --install-extension "$ext_id" >/dev/null 2>&1; then
+                print_success "$name extension installed"
+                return 0
+            fi
+            sleep 2
+        done
+
+        print_warning "$name extension could not be installed automatically"
+        print_detail "Install manually: codium --install-extension $ext_id"
+        return 1
+    }
+
+    declare -A seen=()
+    local descriptor ext_id name
+    for descriptor in "${extensions[@]}"; do
+        IFS='|' read -r ext_id name <<<"$descriptor"
+        if [ -z "$ext_id" ]; then
+            continue
+        fi
+        if [ -n "${seen[$ext_id]:-}" ]; then
+            continue
+        fi
+        seen[$ext_id]=1
+        install_ext "$ext_id" "$name"
     done
-
-    print_info "Extensions can be installed via VSCodium extension marketplace"
-    print_info "Or manually: codium --install-extension <extension-id>"
-
-    # TODO: Implement extension installation
-    # This would loop through extensions and install:
-    # for ext in "${extensions[@]}"; do
-    #     codium --install-extension "$ext" 2>&1 | grep -v "already installed" || true
-    # done
 
     return 0
 }

@@ -36,9 +36,15 @@ let
   podmanAiStackDataDir = ".local/share/podman-ai-stack";
   claudeWrapperPath = "${config.home.homeDirectory}/.npm-global/bin/claude-wrapper";
   claudeNodeModulesPath = "${config.home.homeDirectory}/.npm-global/lib/node_modules";
+  gptCodexWrapperPath = "${config.home.homeDirectory}/.npm-global/bin/gpt-codex-wrapper";
+  codexWrapperPath = "${config.home.homeDirectory}/.npm-global/bin/codex-wrapper";
+  openaiWrapperPath = "${config.home.homeDirectory}/.npm-global/bin/openai-wrapper";
+  gooseAiWrapperPath = "${config.home.homeDirectory}/.npm-global/bin/gooseai-wrapper";
   nixProfileBinPath = "${config.home.homeDirectory}/.nix-profile/bin";
   nodeExecutablePath = lib.makeBinPath [ pkgs.nodejs_22 ];
   claudePathValue = "${nixProfileBinPath}:${nodeExecutablePath}:/run/current-system/sw/bin:\${env:PATH}";
+  aiPathValue = claudePathValue;
+  aiNodeModulesPath = claudeNodeModulesPath;
   flathubRemoteName = "flathub";
   flathubRemoteUrl = "https://dl.flathub.org/repo/flathub.flatpakrepo";
   flathubRemoteFallbackUrl = "https://flathub.org/repo/flathub.flatpakrepo";
@@ -69,8 +75,13 @@ let
       ++ (lib.optionals (nvtopPackagesAttr ? nvidia) [ nvtopPackagesAttr.nvidia ])
       ++ (lib.optionals (nvtopPackagesAttr ? amd) [ nvtopPackagesAttr.amd ])
       ++ (lib.optionals (nvtopPackagesAttr ? intel) [ nvtopPackagesAttr.intel ]);
+  # ============================================================================
+  # Flatpak Applications (USER CUSTOMIZATION ENTRY POINT)
+  # ============================================================================
+  # Edit the list below to tailor the default Flatpak apps.
+  # Comment out entries you do not need or append new App IDs.
+  # Keep the DEFAULT_FLATPAK_APPS array in nixos-quick-deploy.sh in sync.
   flathubPackages = [
-    # Keep DEFAULT_FLATPAK_APPS in nixos-quick-deploy.sh synchronized with the defaults below.
     # ====================================================================
     # SYSTEM TOOLS & UTILITIES (Recommended - Essential GUI Tools)
     # ====================================================================
@@ -990,6 +1001,11 @@ in
         };
       }
     ];
+  # ============================================================================
+  # Home Packages (USER CUSTOMIZATION ENTRY POINT)
+  # ============================================================================
+  # Adjust the lists below to tailor developer tooling.
+  # Preflight/runtime critical tools (e.g., podman, jq, curl) should remain enabled.
   home.packages =
     let
       # Fix gpt4all to work with Qt6 6.10+ where GuiPrivate requires explicit find_package
@@ -1608,13 +1624,21 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
             "codeium.codeium"
           ];
           curated = lib.filter (pkg: pkg != null) (map fetchExtension extensionNames);
-          marketplaceExtensions =
-            if pkgs ? vscode-marketplace then
-              with pkgs.vscode-marketplace; [
-                gencay.vscode-chatgpt
-              ]
-            else
-              [];
+          marketplaceExtensionNames = [
+            "gencay.vscode-chatgpt"
+            "OpenAI.gpt-codex"
+            "OpenAI.codex-ide"
+            "GooseAI.gooseai-vscode"
+          ];
+          fetchMarketplaceExtension = name:
+            let
+              path = lib.splitString "." name;
+            in
+              if pkgs ? vscode-marketplace && lib.hasAttrByPath path pkgs.vscode-marketplace then
+                lib.getAttrFromPath path pkgs.vscode-marketplace
+              else
+                null;
+          marketplaceExtensions = lib.filter (pkg: pkg != null) (map fetchMarketplaceExtension marketplaceExtensionNames);
         in
           curated ++ marketplaceExtensions;
 
@@ -1732,6 +1756,92 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
         }
       ];
       "claudeCode.autoStart" = false;
+
+      # Additional AI CLI wrappers
+      "gpt-codex.executablePath" = gptCodexWrapperPath;
+      "gpt-codex.environmentVariables" = [
+        {
+          name = "PATH";
+          value = aiPathValue;
+        }
+        {
+          name = "NODE_PATH";
+          value = aiNodeModulesPath;
+        }
+      ];
+      "gpt-codex.autoStart" = false;
+      "gptCodex.executablePath" = gptCodexWrapperPath;
+      "gptCodex.environmentVariables" = [
+        {
+          name = "PATH";
+          value = aiPathValue;
+        }
+        {
+          name = "NODE_PATH";
+          value = aiNodeModulesPath;
+        }
+      ];
+      "gptCodex.autoStart" = false;
+      "codex.executablePath" = codexWrapperPath;
+      "codex.environmentVariables" = [
+        {
+          name = "PATH";
+          value = aiPathValue;
+        }
+        {
+          name = "NODE_PATH";
+          value = aiNodeModulesPath;
+        }
+      ];
+      "codex.autoStart" = false;
+      "codexIDE.executablePath" = codexWrapperPath;
+      "codexIDE.environmentVariables" = [
+        {
+          name = "PATH";
+          value = aiPathValue;
+        }
+        {
+          name = "NODE_PATH";
+          value = aiNodeModulesPath;
+        }
+      ];
+      "codexIDE.autoStart" = false;
+      "codexIde.executablePath" = codexWrapperPath;
+      "codexIde.environmentVariables" = [
+        {
+          name = "PATH";
+          value = aiPathValue;
+        }
+        {
+          name = "NODE_PATH";
+          value = aiNodeModulesPath;
+        }
+      ];
+      "codexIde.autoStart" = false;
+      "openai.executablePath" = openaiWrapperPath;
+      "openai.environmentVariables" = [
+        {
+          name = "PATH";
+          value = aiPathValue;
+        }
+        {
+          name = "NODE_PATH";
+          value = aiNodeModulesPath;
+        }
+      ];
+      "openai.autoStart" = false;
+      "gooseai.executablePath" = gooseAiWrapperPath;
+      "gooseai.environmentVariables" = [
+        {
+          name = "PATH";
+          value = aiPathValue;
+        }
+        {
+          name = "NODE_PATH";
+          value = aiNodeModulesPath;
+        }
+      ];
+      "gooseai.autoStart" = false;
 
       # Theme
       "workbench.colorTheme" = "Default Dark Modern";
