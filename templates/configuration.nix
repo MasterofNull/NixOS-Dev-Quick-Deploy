@@ -821,74 +821,7 @@ in
   # ============================================================================
   # Memory Management & Swap
   # ============================================================================
-  # Swap configuration is inherited from hardware-configuration.nix
-  # This section adds intelligent swap management and hibernation support
-
-  # Systemd sleep/hibernate configuration
-  systemd.sleep.extraConfig = ''
-    # Hibernate after 2 hours of suspend (saves battery)
-    HibernateDelaySec=2h
-  '';
-
-  # Zram: Compressed RAM swap (faster than disk swap)
-  # This creates a compressed block device in RAM for swap
-  # Auto-configured based on detected RAM: @TOTAL_RAM_GB@GB
-  # Target capacity for hibernation-friendly swap: ~@HIBERNATION_SWAP_SIZE_GB@GB
-  # Strategy: More RAM = less zram needed (diminishing returns)
-  zramSwap = {
-    enable = true;
-    algorithm = "zstd";  # Modern, fast compression (better than lz4/lzo)
-    memoryPercent = @ZRAM_PERCENT@;  # Auto-tuned: @ZRAM_PERCENT@% for @TOTAL_RAM_GB@GB RAM
-    priority = 10;       # Higher priority than disk swap (use zram first)
-  };
-
-  # System memory management tunables
-  boot.kernel.sysctl = {
-    # Swappiness: How aggressively to swap (0-100)
-    # Lower = prefer RAM, Higher = swap more aggressively
-    # Default: 60, Recommended for desktop: 10
-    "vm.swappiness" = 10;
-
-    # VFS cache pressure: How aggressively to reclaim inode/dentry cache
-    # Lower = keep more cache, Higher = reclaim more aggressively
-    # Default: 100, Recommended: 50
-    "vm.vfs_cache_pressure" = 50;
-
-    # Dirty ratio: Percentage of memory that can be dirty before forced writeback
-    # Helps prevent I/O spikes
-    "vm.dirty_ratio" = 10;
-    "vm.dirty_background_ratio" = 5;
-
-    # ========================================================================
-    # AI/ML Development Optimizations
-    # ========================================================================
-
-    # Memory-mapped files for large ML datasets
-    # Increase limit for applications that use mmap (PyTorch, TensorFlow, etc.)
-    # Default: 65530, Recommended for AI/ML: 262144
-    "vm.max_map_count" = 262144;
-
-    # File system watchers for development tools
-    # Increase for IDEs, dev servers, and hot-reload tools
-    # Essential for VSCode, Jupyter, and container development
-    "fs.inotify.max_user_watches" = 524288;
-    "fs.inotify.max_user_instances" = 512;
-    "fs.inotify.max_queued_events" = 32768;
-
-    # Shared memory for distributed AI training
-    # Increase for multi-GPU setups and distributed frameworks
-    "kernel.shmmax" = 17179869184;  # 16GB
-    "kernel.shmall" = 4194304;      # 16GB in pages (4KB pages)
-  };
-
-  # ============================================================================
-  # Power Management (for hibernation support)
-  # ============================================================================
-  powerManagement = {
-    enable = true;
-    # Allow hibernation if swap is configured
-    # Requires: swapDevices with sufficient size (>= RAM size)
-  };
+@SWAP_AND_HIBERNATION_BLOCK@
 
   # ============================================================================
   # Additional Services (Code Review Recommendations)
