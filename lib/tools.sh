@@ -101,17 +101,21 @@ open_vsx_extension_available() {
 flatpak_remote_exists() {
     local remote_name="${FLATHUB_REMOTE_NAME:-flathub}"
 
-    if run_as_primary_user flatpak --user remote-list --columns=name 2>/dev/null | grep -Fxq "$remote_name"; then
-        return 0
-    fi
+    local -a scopes=("--user" "--system" "")
+    local scope
+    for scope in "${scopes[@]}"; do
+        local -a cmd=(flatpak remotes)
+        if [[ -n "$scope" ]]; then
+            cmd+=("$scope")
+        fi
+        cmd+=("--columns=name")
 
-    if run_as_primary_user flatpak --system remote-list --columns=name 2>/dev/null | grep -Fxq "$remote_name"; then
-        return 0
-    fi
-
-    if run_as_primary_user flatpak remote-list --columns=name 2>/dev/null | grep -Fxq "$remote_name"; then
-        return 0
-    fi
+        local remote_output=""
+        remote_output=$(run_as_primary_user "${cmd[@]}" 2>/dev/null || true)
+        if printf '%s\n' "$remote_output" | sed '1d' | grep -Fxq "$remote_name"; then
+            return 0
+        fi
+    done
 
     return 1
 }
@@ -149,32 +153,39 @@ ensure_flathub_remote() {
         sources+=("$FLATHUB_REMOTE_FALLBACK_URL")
     fi
 
-    local source output
+    local source scope output status
+    local -a scopes=("--user" "")
+
     for source in "${sources[@]}"; do
-        output=$(run_as_primary_user flatpak remote-add --user --if-not-exists --from "$remote_name" "$source" 2>&1)
-        if [[ $? -eq 0 ]]; then
-            if [[ "$source" == "${sources[0]}" ]]; then
-                print_success "Flathub repository added"
-            else
-                print_success "Flathub repository added via fallback source ($source)"
+        for scope in "${scopes[@]}"; do
+            local -a cmd=(flatpak remote-add)
+            if [[ -n "$scope" ]]; then
+                cmd+=("$scope")
             fi
-            return 0
-        fi
+            cmd+=("--if-not-exists" "$remote_name" "$source")
 
-        print_flatpak_details "$output"
+            output=$(run_as_primary_user "${cmd[@]}" 2>&1)
+            status=$?
 
-        output=$(run_as_primary_user flatpak remote-add --user --if-not-exists "$remote_name" "$source" 2>&1)
-        if [[ $? -eq 0 ]]; then
-            if [[ "$source" == "${sources[0]}" ]]; then
-                print_success "Flathub repository added"
+            if [[ $status -eq 0 ]]; then
+                if flatpak_remote_exists; then
+                    if [[ "$source" == "${sources[0]}" ]]; then
+                        print_success "Flathub repository added"
+                    else
+                        print_success "Flathub repository added via fallback source ($source)"
+                    fi
+                    return 0
+                fi
             else
-                print_success "Flathub repository added via fallback source ($source)"
+                print_flatpak_details "$output"
             fi
-            return 0
-        fi
-
-        print_flatpak_details "$output"
+        done
     done
+
+    if flatpak_remote_exists; then
+        print_success "Flathub repository already configured"
+        return 0
+    fi
 
     print_warning "Unable to configure Flathub repository automatically"
     return 1

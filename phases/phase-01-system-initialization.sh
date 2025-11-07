@@ -260,6 +260,15 @@ phase_01_system_initialization() {
         fi
     fi
 
+    if [[ "$ENABLE_ZSWAP_CONFIGURATION" != "true" && "$zswap_override_mode" == "auto" ]]; then
+        if confirm "Enable zswap-backed swap with hibernation support for this deployment?" "y"; then
+            ENABLE_ZSWAP_CONFIGURATION="true"
+            print_success "Zswap-backed swap configuration enabled."
+        else
+            print_info "Zswap-backed swap configuration skipped per user choice."
+        fi
+    fi
+
     export ENABLE_ZSWAP_CONFIGURATION
 
     if [[ "$ENABLE_ZSWAP_CONFIGURATION" == "true" ]]; then

@@ -385,16 +385,27 @@ check_required_packages() {
 build_primary_user_path() {
     local -a path_parts=()
 
-    if [[ -d "$PRIMARY_PROFILE_BIN" ]]; then
-        path_parts+=("$PRIMARY_PROFILE_BIN")
+    local primary_profile_bin="${PRIMARY_PROFILE_BIN:-${PRIMARY_HOME:-$HOME}/.nix-profile/bin}"
+    local primary_etc_profile_bin="${PRIMARY_ETC_PROFILE_BIN:-/etc/profiles/per-user/${PRIMARY_USER:-$USER}/bin}"
+    local primary_local_bin="${PRIMARY_LOCAL_BIN:-${PRIMARY_HOME:-$HOME}/.local/bin}"
+    local primary_npm_bin="${PRIMARY_NPM_BIN:-${PRIMARY_HOME:-$HOME}/.npm-global/bin}"
+
+    if [[ -d "$primary_profile_bin" ]]; then
+        path_parts+=("$primary_profile_bin")
     fi
 
-    if [[ -d "$PRIMARY_ETC_PROFILE_BIN" ]]; then
-        path_parts+=("$PRIMARY_ETC_PROFILE_BIN")
+    if [[ -d "$primary_etc_profile_bin" ]]; then
+        path_parts+=("$primary_etc_profile_bin")
     fi
 
-    if [[ -d "$PRIMARY_LOCAL_BIN" ]]; then
-        path_parts+=("$PRIMARY_LOCAL_BIN")
+    if [[ -n "$primary_local_bin" ]]; then
+        install -d -m 755 "$primary_local_bin" >/dev/null 2>&1 || true
+        path_parts+=("$primary_local_bin")
+    fi
+
+    if [[ -n "$primary_npm_bin" ]]; then
+        install -d -m 755 "$primary_npm_bin" >/dev/null 2>&1 || true
+        path_parts+=("$primary_npm_bin")
     fi
 
     local -a CURRENT_PATH_PARTS=()
@@ -420,6 +431,14 @@ build_primary_user_path() {
     printf '%s' "$combined_path"
 }
 
+synchronize_primary_user_path() {
+    local combined_path
+    combined_path=$(build_primary_user_path)
+    if [[ -n "$combined_path" ]]; then
+        export PATH="$combined_path"
+    fi
+}
+
 run_as_primary_user() {
     local -a cmd=("$@")
     local -a env_args=()
@@ -432,6 +451,10 @@ run_as_primary_user() {
     fi
 
     env_args+=("PATH=$(build_primary_user_path)")
+
+    if [[ -n "${NPM_CONFIG_PREFIX:-}" ]]; then
+        env_args+=("NPM_CONFIG_PREFIX=$NPM_CONFIG_PREFIX")
+    fi
 
     if [[ -n "${NIX_CONFIG:-}" ]]; then
         env_args+=("NIX_CONFIG=$NIX_CONFIG")

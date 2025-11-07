@@ -285,6 +285,19 @@ PRIMARY_LOCAL_BIN="$PRIMARY_HOME/.local/bin"
 LOCAL_BIN_DIR="$PRIMARY_LOCAL_BIN"
 
 # ============================================================================
+# Node.js / NPM Paths
+# ============================================================================
+
+PRIMARY_NPM_PREFIX="$PRIMARY_HOME/.npm-global"
+PRIMARY_NPM_BIN="$PRIMARY_NPM_PREFIX/bin"
+
+if [[ -z "${NPM_CONFIG_PREFIX:-}" ]]; then
+    NPM_CONFIG_PREFIX="$PRIMARY_NPM_PREFIX"
+fi
+
+export NPM_CONFIG_PREFIX
+
+# ============================================================================
 # Application Directories
 # ============================================================================
 
