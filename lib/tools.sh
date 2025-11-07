@@ -63,8 +63,8 @@ open_vsx_extension_available() {
         return 0
     fi
 
-    if [[ -n "${AI_VSCODE_EXTENSION_CACHE[$extension_id]:-}" ]]; then
-        local cached="${AI_VSCODE_EXTENSION_CACHE[$extension_id]}"
+    if [[ -n "${AI_VSCODE_EXTENSION_CACHE["$extension_id"]:-}" ]]; then
+        local cached="${AI_VSCODE_EXTENSION_CACHE["$extension_id"]}"
         LAST_OPEN_VSX_STATUS="${cached%%|*}"
         LAST_OPEN_VSX_URL="${cached#*|}"
         [[ "$LAST_OPEN_VSX_STATUS" == "200" ]] && return 0
@@ -85,7 +85,7 @@ open_vsx_extension_available() {
         return 0
     fi
 
-    AI_VSCODE_EXTENSION_CACHE[$extension_id]="${status}|$url"
+    AI_VSCODE_EXTENSION_CACHE["$extension_id"]="${status}|$url"
 
     if [[ "$status" == "200" ]]; then
         return 0
