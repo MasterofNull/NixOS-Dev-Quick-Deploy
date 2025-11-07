@@ -1245,6 +1245,30 @@ create_home_manager_config() {
     fi
 
     # ========================================================================
+    # Deploy Support Modules
+    # ========================================================================
+    local support_module
+    for support_module in "python-overrides.nix"; do
+        local module_source="$TEMPLATE_DIR/$support_module"
+        local module_destination="$HM_CONFIG_DIR/$support_module"
+
+        print_info "Syncing $support_module into Home Manager workspace..."
+
+        if [[ ! -f "$module_source" ]]; then
+            print_error "Required template missing: $module_source"
+            return 1
+        fi
+
+        if ! safe_copy_file "$module_source" "$module_destination"; then
+            print_error "Failed to install $support_module into $HM_CONFIG_DIR"
+            return 1
+        fi
+
+        safe_chown_user_dir "$module_destination" || true
+        print_success "Installed $support_module"
+    done
+
+    # ========================================================================
     # Replace Placeholders
     # ========================================================================
     local TEMPLATE_HASH=$(echo -n "AIDB-v4.0-packages-v${SCRIPT_VERSION:-4.0.0}" | sha256sum | cut -d' ' -f1 | cut -c1-16)
