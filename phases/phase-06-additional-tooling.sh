@@ -92,43 +92,48 @@ phase_06_additional_tooling() {
     # - User can manually install failed components later
     # ========================================================================
 
-    local phase_name="install_tools_services"
+    local phase_name="install_tools_services"  # State tracking identifier for this phase
 
     # ------------------------------------------------------------------------
     # Resume Check: Skip if already completed
     # ------------------------------------------------------------------------
-    if is_step_complete "$phase_name"; then
+    if is_step_complete "$phase_name"; then  # Check state.json for completion marker
         print_info "Phase 6 already completed (skipping)"
-        return 0
+            return 0  # Skip to next phase
     fi
 
-    print_section "Phase 6/8: Additional Tooling"
-    echo ""
+    print_section "Phase 6/8: Additional Tooling"  # Display phase header
+        echo ""
 
     # ------------------------------------------------------------------------
     # Declarative Prerequisite Validation (jq must already be present)
     # ------------------------------------------------------------------------
-    if ! command -v jq >/dev/null 2>&1; then
+    # Why: jq needed for JSON processing in installation scripts
+    # Expected: Should be installed via declarative config in Phase 5
+    # Action: Validate availability, run health check if missing
+    if ! command -v jq >/dev/null 2>&1; then  # jq not found in PATH
         print_section "Validating declarative toolchain prerequisites"
-        print_warning "jq not detected on PATH. Phase 6 relies on declarative jq availability."
+            print_warning "jq not detected on PATH. Phase 6 relies on declarative jq availability."
 
-        local health_script="$SCRIPT_DIR/scripts/system-health-check.sh"
+        local health_script="$SCRIPT_DIR/scripts/system-health-check.sh"  # Health check path
 
-        if [ -x "$health_script" ]; then
+        # Try running health check to diagnose missing jq
+        if [ -x "$health_script" ]; then  # Health check script exists and is executable
             print_info "Running system health check before continuing Phase 6..."
-            if ! "$health_script" --detailed; then
+                if ! "$health_script" --detailed; then  # Health check failed
                 print_error "System health check reported issues. Ensure jq is declared in your configuration and rerun the deploy."
-                return 1
+                    return 1  # Fatal - jq required
             fi
-        else
+        else  # Health check script missing
             print_error "Unable to locate system health check script at $health_script"
-            print_error "Add jq to the declarative package set before rerunning Phase 6."
-            return 1
+                print_error "Add jq to the declarative package set before rerunning Phase 6."
+            return 1  # Fatal - can't proceed without jq
         fi
 
-        if ! command -v jq >/dev/null 2>&1; then
+        # Verify jq is now available after health check
+        if ! command -v jq >/dev/null 2>&1; then  # Still missing
             print_error "jq is still missing after health check. Update configuration.nix/home.nix to include jq declaratively."
-            return 1
+                return 1  # Fatal - jq required for this phase
         fi
     fi
 
@@ -158,8 +163,8 @@ phase_06_additional_tooling() {
     # $!: PID of last background job
     # Purpose: Continue to next installation while this runs
     print_info "Installing Flatpak applications..."
-    install_flatpak_stage &
-    local flatpak_pid=$!  # Save PID to wait for later
+        install_flatpak_stage &  # Run in background for parallel execution
+    local flatpak_pid=$!  # Save PID to wait for completion later
 
     # ========================================================================
     # Parallel Installation: Claude Code CLI
@@ -198,13 +203,13 @@ phase_06_additional_tooling() {
     # & at end of compound command: Entire block runs in background
     # local claude_pid=$!: Save PID for later wait
     print_info "Installing Claude Code..."
-    if install_claude_code; then
-        configure_vscodium_for_claude || print_warning "VSCodium configuration had issues"
-        install_vscodium_extensions || print_warning "Some VSCodium extensions may not have installed"
-    else
-        print_warning "Claude Code installation skipped due to errors"
-    fi &
-    local claude_pid=$!  # Save PID
+        if install_claude_code; then  # Claude Code installation succeeded
+        configure_vscodium_for_claude || print_warning "VSCodium configuration had issues"  # Configure editor integration
+            install_vscodium_extensions || print_warning "Some VSCodium extensions may not have installed"  # Install extensions
+    else  # Installation failed
+        print_warning "Claude Code installation skipped due to errors"  # Non-fatal warning
+    fi &  # Run entire block in background
+    local claude_pid=$!  # Save PID for later synchronization
 
     # ========================================================================
     # Parallel Installation: OpenSkills Tooling
@@ -223,8 +228,8 @@ phase_06_additional_tooling() {
     #
     # Background execution: Same pattern as above
     print_info "Installing OpenSkills tooling..."
-    install_openskills_tooling &
-    local openskills_pid=$!  # Save PID
+        install_openskills_tooling &  # Run in background for parallel execution
+    local openskills_pid=$!  # Save PID for later synchronization
 
     # ========================================================================
     # Synchronization Point: Wait for Parallel Installations
@@ -250,15 +255,15 @@ phase_06_additional_tooling() {
     # - Distinguish which installation failed
     print_info "Waiting for parallel installations to complete..."
 
-    # Wait for Flatpak installation
+    # Wait for Flatpak installation to complete
     # If it fails (returns non-zero), show warning but continue
-    wait $flatpak_pid || print_warning "Flatpak installation had issues"
+    wait $flatpak_pid || print_warning "Flatpak installation had issues"  # Block until Flatpak done
 
-    # Wait for Claude Code installation
-    wait $claude_pid || print_warning "Claude Code installation had issues"
+    # Wait for Claude Code installation to complete
+    wait $claude_pid || print_warning "Claude Code installation had issues"  # Block until Claude done
 
-    # Wait for OpenSkills installation
-    wait $openskills_pid || print_warning "OpenSkills installation had issues"
+    # Wait for OpenSkills installation to complete
+    wait $openskills_pid || print_warning "OpenSkills installation had issues"  # Block until OpenSkills done
 
     # ========================================================================
     # Flake Environment Setup
@@ -291,7 +296,7 @@ phase_06_additional_tooling() {
     # - ! inverts exit code (! false = true)
     # - if ! ...: If command fails...
     # - print_warning but continue
-    if ! setup_flake_environment; then
+    if ! setup_flake_environment; then  # Flake setup failed (non-fatal)
         print_warning "Flake environment setup had issues (non-critical)"
     fi
 
@@ -308,11 +313,11 @@ phase_06_additional_tooling() {
     # - Flake dev environments (project isolation)
     #
     # State: "install_tools_services" marked complete
-    # Next: Phase 8 will validate everything is working
-    mark_step_complete "$phase_name"
-    print_success "Phase 6: Additional Tooling - COMPLETE"
+    # Next: Phase 7 will validate everything is working
+    mark_step_complete "$phase_name"  # Update state.json with completion marker
+        print_success "Phase 6: Additional Tooling - COMPLETE"
     echo ""
 }
 
-# Execute phase
-phase_06_additional_tooling
+# Execute phase function (called when this script is sourced by main orchestrator)
+phase_06_additional_tooling  # Run all additional tooling installations
