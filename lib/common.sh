@@ -552,15 +552,22 @@ detect_gpu_and_cpu() {
     TOTAL_RAM_GB=$(free -g | awk '/^Mem:/{print $2}')
     print_info "Total RAM: ${TOTAL_RAM_GB}GB"
 
-    # Set zramSwap memory percentage based on available RAM
-    if [ "$TOTAL_RAM_GB" -ge 16 ]; then
-        ZRAM_PERCENT=25
-    elif [ "$TOTAL_RAM_GB" -ge 8 ]; then
-        ZRAM_PERCENT=50
-    else
-        ZRAM_PERCENT=75
+    # Heuristic for zswap pool usage (percentage of RAM kept for compressed pages)
+    local zswap_percent=20
+    if [[ "$TOTAL_RAM_GB" =~ ^[0-9]+$ ]]; then
+        if (( TOTAL_RAM_GB >= 64 )); then
+            zswap_percent=15
+        elif (( TOTAL_RAM_GB >= 16 )); then
+            zswap_percent=20
+        elif (( TOTAL_RAM_GB >= 8 )); then
+            zswap_percent=25
+        else
+            zswap_percent=30
+        fi
     fi
-    print_info "Zram percentage: $ZRAM_PERCENT%"
+
+    ZSWAP_MAX_POOL_PERCENT="$zswap_percent"
+    print_info "Zswap pool limit: ${ZSWAP_MAX_POOL_PERCENT}% of RAM"
 
     echo ""
     print_success "Hardware detection complete"
@@ -573,7 +580,7 @@ detect_gpu_and_cpu() {
 
 suggest_hibernation_swap_size() {
     # Compute a suggested swap size (in GiB) suitable for hibernation when using
-    # zram-backed swap. Returns a conservative value of roughly 125% of RAM with
+    # zswap-backed swap. Returns a conservative value of roughly 125% of RAM with
     # an additional buffer to accommodate kernel overhead.
     # Args: $1 = total RAM in GiB (integer)
     local ram_gb="${1:-0}"
@@ -619,29 +626,281 @@ calculate_active_swap_total_gb() {
     echo "$gib"
 }
 
-compute_zram_percent_for_swap() {
-    # Convert a desired swap capacity (GiB) into a zram memoryPercent value.
-    # Args: $1 = target swap GiB, $2 = total RAM GiB
-    local target_swap_gb="${1:-0}"
-    local ram_gb="${2:-0}"
+load_cached_hibernation_swap_size() {
+    local cached_value=""
 
-    if ! [[ "$target_swap_gb" =~ ^[0-9]+$ ]] || (( target_swap_gb <= 0 )); then
-        echo 0
-        return
+    if [[ -n "${HIBERNATION_SWAP_SIZE_GB:-}" && "${HIBERNATION_SWAP_SIZE_GB}" =~ ^[0-9]+$ ]]; then
+        if (( HIBERNATION_SWAP_SIZE_GB > 0 )); then
+            echo "$HIBERNATION_SWAP_SIZE_GB"
+            return 0
+        fi
     fi
 
-    if ! [[ "$ram_gb" =~ ^[0-9]+$ ]] || (( ram_gb <= 0 )); then
-        echo 0
-        return
+    if [[ -n "${HIBERNATION_SWAP_PREFERENCE_FILE:-}" && -f "$HIBERNATION_SWAP_PREFERENCE_FILE" ]]; then
+        cached_value=$(awk -F'=' '/^HIBERNATION_SWAP_SIZE_GB=/{print $2}' "$HIBERNATION_SWAP_PREFERENCE_FILE" 2>/dev/null | tr -d '\r[:space:]')
+        if [[ "$cached_value" =~ ^[0-9]+$ ]]; then
+            if (( cached_value > 0 )); then
+                echo "$cached_value"
+                return 0
+            fi
+        fi
     fi
 
-    local percent=$(( (target_swap_gb * 100 + ram_gb - 1) / ram_gb ))
+    if [[ -n "${SYSTEM_CONFIG_FILE:-}" && -f "$SYSTEM_CONFIG_FILE" ]]; then
+        cached_value=$(awk '
+            /Target disk-backed swap capacity:/ {
+                for (i = 1; i <= NF; i++) {
+                    if ($i ~ /^~[0-9]+GB$/) {
+                        gsub("^~", "", $i)
+                        gsub("GB$", "", $i)
+                        print $i
+                        exit
+                    }
+                }
+            }
+        ' "$SYSTEM_CONFIG_FILE" 2>/dev/null | head -n1)
 
-    if (( percent < 1 )); then
-        percent=1
+        if [[ "$cached_value" =~ ^[0-9]+$ ]]; then
+            if (( cached_value > 0 )); then
+                echo "$cached_value"
+                return 0
+            fi
+        fi
     fi
 
-    echo "$percent"
+    return 1
+}
+
+persist_hibernation_swap_size() {
+    local swap_value="$1"
+
+    if [[ -z "$swap_value" || ! "$swap_value" =~ ^[0-9]+$ ]]; then
+        return 1
+    fi
+
+    if (( swap_value <= 0 )); then
+        return 1
+    fi
+
+    if [[ -z "${HIBERNATION_SWAP_PREFERENCE_FILE:-}" ]]; then
+        return 1
+    fi
+
+    if ! safe_mkdir "$DEPLOYMENT_PREFERENCES_DIR"; then
+        log WARNING "Unable to persist swap preference: could not prepare $DEPLOYMENT_PREFERENCES_DIR"
+        return 1
+    fi
+
+    local tmp_file
+    tmp_file=$(mktemp "${HIBERNATION_SWAP_PREFERENCE_FILE}.XXXXXX" 2>/dev/null || echo "${HIBERNATION_SWAP_PREFERENCE_FILE}.tmp")
+
+    if cat >"$tmp_file" <<EOF
+HIBERNATION_SWAP_SIZE_GB=$swap_value
+EOF
+    then
+        if mv "$tmp_file" "$HIBERNATION_SWAP_PREFERENCE_FILE" 2>/dev/null; then
+            chmod 600 "$HIBERNATION_SWAP_PREFERENCE_FILE" 2>/dev/null || true
+            safe_chown_user_dir "$HIBERNATION_SWAP_PREFERENCE_FILE" || true
+            log INFO "Persisted hibernation swap size preference: ${swap_value}GB"
+            return 0
+        fi
+    fi
+
+    rm -f "$tmp_file" 2>/dev/null || true
+    log WARNING "Failed to persist hibernation swap size preference at $HIBERNATION_SWAP_PREFERENCE_FILE"
+    return 1
+}
+
+persist_zswap_configuration_override() {
+    local override_value="$1"
+
+    if [[ -z "${ZSWAP_OVERRIDE_PREFERENCE_FILE:-}" ]]; then
+        return 1
+    fi
+
+    if [[ -z "$override_value" ]]; then
+        return 1
+    fi
+
+    case "$override_value" in
+        enable|disable)
+            if ! safe_mkdir "$DEPLOYMENT_PREFERENCES_DIR"; then
+                log WARNING "Unable to persist zswap override preference: could not prepare $DEPLOYMENT_PREFERENCES_DIR"
+                return 1
+            fi
+
+            local tmp_file
+            tmp_file=$(mktemp "${ZSWAP_OVERRIDE_PREFERENCE_FILE}.XXXXXX" 2>/dev/null || echo "${ZSWAP_OVERRIDE_PREFERENCE_FILE}.tmp")
+
+            if cat >"$tmp_file" <<EOF
+ZSWAP_CONFIGURATION_OVERRIDE=$override_value
+EOF
+            then
+                if mv "$tmp_file" "$ZSWAP_OVERRIDE_PREFERENCE_FILE" 2>/dev/null; then
+                    chmod 600 "$ZSWAP_OVERRIDE_PREFERENCE_FILE" 2>/dev/null || true
+                    safe_chown_user_dir "$ZSWAP_OVERRIDE_PREFERENCE_FILE" || true
+                    log INFO "Persisted zswap override preference: $override_value"
+                    return 0
+                fi
+            fi
+
+            rm -f "$tmp_file" 2>/dev/null || true
+            log WARNING "Failed to persist zswap override preference at $ZSWAP_OVERRIDE_PREFERENCE_FILE"
+            return 1
+            ;;
+        auto)
+            if [[ -f "$ZSWAP_OVERRIDE_PREFERENCE_FILE" ]]; then
+                if rm -f "$ZSWAP_OVERRIDE_PREFERENCE_FILE" 2>/dev/null; then
+                    log INFO "Cleared persisted zswap override preference (auto detection enabled)"
+                    return 0
+                fi
+                log WARNING "Unable to remove $ZSWAP_OVERRIDE_PREFERENCE_FILE while resetting zswap override"
+                return 1
+            fi
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+discover_resume_device_hint() {
+    local resume_value=""
+
+    if [[ -r /sys/power/resume ]]; then
+        resume_value=$(tr -d '\r\n[:space:]' </sys/power/resume 2>/dev/null || echo "")
+        if [[ "$resume_value" =~ ^[0-9]+:[0-9]+$ ]]; then
+            local sysfs_node="/sys/dev/block/$resume_value"
+            if [[ -r "$sysfs_node/uevent" ]]; then
+                local devname
+                devname=$(awk -F'=' '/^DEVNAME=/{print $2}' "$sysfs_node/uevent" 2>/dev/null | head -n1 | tr -d '\r')
+                if [[ -n "$devname" ]]; then
+                    echo "/dev/$devname"
+                    return 0
+                fi
+            fi
+
+            if [[ -L "$sysfs_node" ]]; then
+                local resolved
+                resolved=$(readlink -f "$sysfs_node" 2>/dev/null || echo "")
+                if [[ -n "$resolved" && -r "$resolved/uevent" ]]; then
+                    local devname_resolved
+                    devname_resolved=$(awk -F'=' '/^DEVNAME=/{print $2}' "$resolved/uevent" 2>/dev/null | head -n1 | tr -d '\r')
+                    if [[ -n "$devname_resolved" ]]; then
+                        echo "/dev/$devname_resolved"
+                        return 0
+                    fi
+                fi
+            fi
+        elif [[ -n "$resume_value" && "$resume_value" == /* ]]; then
+            echo "$resume_value"
+            return 0
+        fi
+    fi
+
+    local resume_paths=(
+        "${SYSTEM_CONFIG_FILE:-}"
+        "/etc/nixos/configuration.nix"
+        "/etc/nixos/hardware-configuration.nix"
+    )
+
+    local path
+    for path in "${resume_paths[@]}"; do
+        if [[ -f "$path" ]]; then
+            local candidate
+            candidate=$(awk -F'"' '/resumeDevice[[:space:]]*=/ { for (i = 2; i <= NF; i += 2) { if ($i ~ /^\//) { print $i; exit } } }' "$path" 2>/dev/null | head -n1)
+            if [[ -n "$candidate" ]]; then
+                echo "$candidate"
+                return 0
+            fi
+        fi
+    done
+
+    return 1
+}
+
+detect_previous_swap_configuration() {
+    # Return success when the host already has swap configured.
+    local active_swap
+    active_swap=$(calculate_active_swap_total_gb 2>/dev/null || echo 0)
+
+    if [[ "$active_swap" =~ ^[0-9]+$ ]] && (( active_swap > 0 )); then
+        log DEBUG "Detected active swap devices totaling ${active_swap}GiB"
+        return 0
+    fi
+
+    if command -v lsblk >/dev/null 2>&1; then
+        if lsblk -nr -o TYPE | grep -q '^swap$'; then
+            log DEBUG "Detected swap-capable block device via lsblk"
+            return 0
+        fi
+    fi
+
+    local swap_paths=(
+        "/etc/nixos/configuration.nix"
+        "/etc/nixos/hardware-configuration.nix"
+        "/etc/fstab"
+    )
+
+    local path
+    for path in "${swap_paths[@]}"; do
+        if [[ -f "$path" ]]; then
+            if grep -Eqs 'swapDevices\s*=\s*\[' "$path"; then
+                log DEBUG "Detected swapDevices declaration in $path"
+                return 0
+            fi
+            if grep -Eqs 'type\s*=\s*"swap"' "$path"; then
+                log DEBUG "Detected swap type declaration in $path"
+                return 0
+            fi
+            if grep -Eqi '\bswapfile\b' "$path"; then
+                log DEBUG "Detected swapfile reference in $path"
+                return 0
+            fi
+        fi
+    done
+
+    log DEBUG "No existing swap configuration detected"
+    return 1
+}
+
+detect_previous_hibernation_configuration() {
+    # Return success when the host previously enabled hibernation.
+    if [[ -r /sys/power/resume ]]; then
+        local resume_value
+        resume_value=$(tr -d '\r\n[:space:]' </sys/power/resume 2>/dev/null || echo "")
+        if [[ -n "$resume_value" && "$resume_value" != "0:0" ]]; then
+            log DEBUG "Resume device configured via /sys/power/resume: $resume_value"
+            return 0
+        fi
+    fi
+
+    if command -v systemctl >/dev/null 2>&1; then
+        local can_hibernate
+        can_hibernate=$(systemctl show --property=CanHibernate --value systemd-logind 2>/dev/null | tr '[:upper:]' '[:lower:]')
+        if [[ "$can_hibernate" == "yes" ]]; then
+            log DEBUG "systemd-logind reports hibernation capability"
+            return 0
+        fi
+    fi
+
+    local hint_paths=(
+        "/etc/systemd/logind.conf"
+        "/etc/systemd/sleep.conf"
+        "/etc/nixos/configuration.nix"
+    )
+
+    local config_path
+    for config_path in "${hint_paths[@]}"; do
+        if [[ -f "$config_path" ]] && grep -Eqi 'hibernate|resumeDevice' "$config_path"; then
+            log DEBUG "Detected hibernation hints in $config_path"
+            return 0
+        fi
+    done
+
+    log DEBUG "No previous hibernation configuration detected"
+    return 1
 }
 
 # ===========================================================================
@@ -809,6 +1068,284 @@ safe_copy_file_silent() {
     [[ -f "$dest" ]] || return 1
 
     return 0
+}
+
+backup_path_if_exists() {
+    local target_path="$1"
+    local backup_root="$2"
+    local label="$3"
+
+    if [[ -z "$target_path" || -z "$backup_root" ]]; then
+        return 1
+    fi
+
+    if [[ ! -e "$target_path" && ! -L "$target_path" ]]; then
+        return 1
+    fi
+
+    if ! safe_mkdir "$backup_root"; then
+        print_warning "Unable to create backup directory: $backup_root"
+        return 2
+    fi
+    safe_chown_user_dir "$backup_root" || true
+
+    local relative_path=""
+    if [[ "$target_path" == "$HOME" ]]; then
+        relative_path="home-root"
+    elif [[ "$target_path" == "$HOME"/* ]]; then
+        relative_path="${target_path#$HOME/}"
+    else
+        relative_path="${target_path#/}"
+    fi
+
+    local destination="$backup_root/$relative_path"
+    local destination_parent
+    destination_parent=$(dirname "$destination")
+    if ! safe_mkdir "$destination_parent"; then
+        print_warning "Failed to prepare backup destination for ${label:-$relative_path}"
+        return 2
+    fi
+    safe_chown_user_dir "$destination_parent" || true
+
+    if cp -a "$target_path" "$destination" 2>/dev/null; then
+        safe_chown_user_dir "$destination" || true
+        if [[ -d "$target_path" && ! -L "$target_path" ]]; then
+            rm -rf "$target_path" 2>/dev/null || true
+        else
+            rm -f "$target_path" 2>/dev/null || true
+        fi
+
+        local display_label="${label:-$relative_path}"
+        print_success "Backed up and removed $display_label"
+        print_info "  → Backup saved to: $destination"
+        return 0
+    fi
+
+    print_warning "Failed to back up ${label:-$target_path}"
+    return 2
+}
+
+prepare_home_manager_targets() {
+    local phase_tag="${1:-pre-switch}"
+    local timestamp
+    timestamp="$(date +%Y%m%d_%H%M%S)"
+    local backup_dir="$HOME/.config-backups/${phase_tag}-${timestamp}"
+    local cleaned_any=false
+    local encountered_error=false
+
+    local -a directory_targets=(
+        "$HOME/.config/flatpak::Flatpak configuration directory"
+        "$HOME/.local/share/flatpak/overrides::Flatpak overrides directory"
+        "$HOME/.local/share/flatpak/remotes.d::Flatpak remotes directory"
+        "$AIDER_CONFIG_DIR::Aider configuration directory"
+        "$TEA_CONFIG_DIR::Tea configuration directory"
+        "$HUGGINGFACE_CONFIG_DIR::Hugging Face configuration directory"
+        "$HUGGINGFACE_CACHE_DIR::Hugging Face cache directory"
+        "$OPEN_WEBUI_DATA_DIR::Open WebUI data directory"
+        "$PRIMARY_HOME/.local/share/podman-ai-stack::Podman AI stack data directory"
+        "$GITEA_NATIVE_CONFIG_DIR::Gitea native configuration directory"
+        "$GITEA_NATIVE_DATA_DIR::Gitea native data directory"
+        "$GITEA_FLATPAK_CONFIG_DIR::Gitea Flatpak configuration directory"
+        "$GITEA_FLATPAK_DATA_DIR::Gitea Flatpak data directory"
+        "$PRIMARY_HOME/.config/obsidian/ai-integrations::Obsidian AI integration bootstrap data"
+    )
+
+    local -a file_targets=(
+        "$HOME/.config/VSCodium/User/settings.json::VSCodium settings.json"
+        "$HOME/.bashrc::.bashrc"
+        "$HOME/.zshrc::.zshrc"
+        "$HOME/.p10k.zsh::.p10k.zsh"
+        "$LOCAL_BIN_DIR/p10k-setup-wizard.sh::p10k setup wizard script"
+        "$LOCAL_BIN_DIR/gitea-editor::gitea editor helper"
+        "$LOCAL_BIN_DIR/gitea-ai-assistant::gitea AI assistant helper"
+        "$LOCAL_BIN_DIR/hf-model-sync::Hugging Face model sync helper"
+        "$LOCAL_BIN_DIR/hf-tgi::Hugging Face TGI helper"
+        "$LOCAL_BIN_DIR/open-webui-run::Open WebUI launcher"
+        "$LOCAL_BIN_DIR/open-webui-stop::Open WebUI stop helper"
+        "$LOCAL_BIN_DIR/gpt-cli::GPT CLI helper"
+        "$LOCAL_BIN_DIR/podman-ai-stack::Podman AI stack orchestrator"
+        "$LOCAL_BIN_DIR/code-cursor::Cursor IDE launcher"
+        "$LOCAL_BIN_DIR/obsidian-ai-bootstrap::Obsidian AI bootstrap helper"
+        "$HOME/.npmrc::.npmrc"
+    )
+
+    local entry path label result
+
+    for entry in "${directory_targets[@]}"; do
+        path="${entry%%::*}"
+        label="${entry##*::}"
+        result=0
+        backup_path_if_exists "$path" "$backup_dir" "$label" || result=$?
+        if [[ $result -eq 0 ]]; then
+            cleaned_any=true
+        elif [[ $result -eq 2 ]]; then
+            encountered_error=true
+        fi
+    done
+
+    for entry in "${file_targets[@]}"; do
+        path="${entry%%::*}"
+        label="${entry##*::}"
+        result=0
+        backup_path_if_exists "$path" "$backup_dir" "$label" || result=$?
+        if [[ $result -eq 0 ]]; then
+            cleaned_any=true
+        elif [[ $result -eq 2 ]]; then
+            encountered_error=true
+        fi
+    done
+
+    local vscodium_user_dir="$HOME/.config/VSCodium/User"
+    if [[ -d "$vscodium_user_dir" && ! -L "$vscodium_user_dir" ]]; then
+        if find "$vscodium_user_dir" -mindepth 1 -maxdepth 1 ! -type l 2>/dev/null | grep -q .; then
+            result=0
+            backup_path_if_exists "$vscodium_user_dir" "$backup_dir" "VSCodium User directory" || result=$?
+            if [[ $result -eq 0 ]]; then
+                cleaned_any=true
+            elif [[ $result -eq 2 ]]; then
+                encountered_error=true
+            fi
+        fi
+    fi
+
+    if [[ "$cleaned_any" == true ]]; then
+        LATEST_CONFIG_BACKUP_DIR="$backup_dir"
+        export LATEST_CONFIG_BACKUP_DIR
+        persist_config_backup_hint "$backup_dir"
+        print_success "Archived conflicting configuration to: $backup_dir"
+        print_info "Restore with: cp -a \"$backup_dir/.\" \"$HOME/\""
+    else
+        rm -rf "$backup_dir" 2>/dev/null || true
+        LATEST_CONFIG_BACKUP_DIR=""
+        export LATEST_CONFIG_BACKUP_DIR
+        persist_config_backup_hint ""
+        print_info "No pre-existing configuration files required backup."
+    fi
+
+    if [[ "$encountered_error" == true ]]; then
+        print_warning "Some configuration paths could not be backed up automatically (see messages above)."
+    fi
+
+    local -a dir_specs=(
+        "$LOCAL_BIN_DIR::755"
+        "$AIDER_CONFIG_DIR::700"
+        "$TEA_CONFIG_DIR::700"
+        "$HUGGINGFACE_CONFIG_DIR::700"
+        "$HUGGINGFACE_CACHE_DIR::700"
+        "$OPEN_WEBUI_DATA_DIR::750"
+        "$PRIMARY_HOME/.local/share/podman-ai-stack::750"
+        "$GITEA_NATIVE_CONFIG_DIR::700"
+        "$GITEA_NATIVE_DATA_DIR::750"
+        "$PRIMARY_HOME/.var/app::755"
+        "$GITEA_FLATPAK_CONFIG_DIR::700"
+        "$GITEA_FLATPAK_DATA_DIR::750"
+        "$PRIMARY_HOME/.config/flatpak::700"
+        "$PRIMARY_HOME/.local/share/flatpak::750"
+        "$PRIMARY_HOME/.config/obsidian/ai-integrations::700"
+    )
+
+    local created_any=false
+    for entry in "${dir_specs[@]}"; do
+        path="${entry%%::*}"
+        local mode="${entry##*::}"
+        if [[ "$mode" == "$path" ]]; then
+            mode="755"
+        fi
+
+        local created_here=false
+        if [[ ! -d "$path" ]]; then
+            if safe_mkdir "$path"; then
+                created_here=true
+            else
+                print_warning "Unable to create directory: $path"
+                continue
+            fi
+        fi
+
+        if ! chmod "$mode" "$path" 2>/dev/null; then
+            print_warning "Unable to set permissions $mode on $path"
+        fi
+        safe_chown_user_dir "$path" || true
+
+        if [[ "$created_here" == true ]]; then
+            created_any=true
+        fi
+    done
+
+    if [[ "$created_any" == true ]]; then
+        print_success "Prepared directories for managed configuration files"
+    fi
+
+    if [[ "$encountered_error" == true ]]; then
+        return 1
+    fi
+
+    return 0
+}
+
+persist_config_backup_hint() {
+    local backup_dir="$1"
+
+    if [[ -z "${ROLLBACK_INFO_FILE:-}" || ! -f "$ROLLBACK_INFO_FILE" ]]; then
+        return 0
+    fi
+
+    if ! command -v jq >/dev/null 2>&1; then
+        log DEBUG "jq unavailable – skipping rollback hint update for configuration backup"
+        return 0
+    fi
+
+    local tmp_file
+    tmp_file=$(mktemp "${ROLLBACK_INFO_FILE}.XXXXXX" 2>/dev/null || echo "${ROLLBACK_INFO_FILE}.tmp")
+
+    if [[ -z "$backup_dir" ]]; then
+        if jq 'del(.config_backup_dir)' "$ROLLBACK_INFO_FILE" >"$tmp_file" 2>/dev/null && \
+           mv "$tmp_file" "$ROLLBACK_INFO_FILE" 2>/dev/null; then
+            return 0
+        fi
+    else
+        if jq --arg dir "$backup_dir" '.config_backup_dir = $dir' "$ROLLBACK_INFO_FILE" >"$tmp_file" 2>/dev/null && \
+           mv "$tmp_file" "$ROLLBACK_INFO_FILE" 2>/dev/null; then
+            return 0
+        fi
+    fi
+
+    rm -f "$tmp_file" 2>/dev/null || true
+    log WARNING "Failed to update rollback info with configuration backup hint"
+    return 1
+}
+
+restore_latest_config_backup() {
+    local backup_dir="$1"
+    local target_dir="${2:-$HOME}"
+
+    if [[ -z "$backup_dir" ]]; then
+        return 1
+    fi
+
+    if [[ ! -d "$backup_dir" ]]; then
+        print_warning "Configuration backup directory not found: $backup_dir"
+        log WARNING "Configuration backup directory missing: $backup_dir"
+        return 1
+    fi
+
+    if [[ -z "$target_dir" || ! -d "$target_dir" ]]; then
+        print_warning "Cannot restore backup – target directory missing: ${target_dir:-unknown}"
+        log WARNING "Restore skipped: target directory missing (${target_dir:-unset})"
+        return 1
+    fi
+
+    print_info "Restoring configuration backup from $backup_dir"
+    if cp -a "$backup_dir/." "$target_dir/" 2>/dev/null; then
+        safe_chown_user_dir "$target_dir" || true
+        print_success "Restored configuration backup from $backup_dir"
+        log INFO "Restored configuration backup from $backup_dir to $target_dir"
+        return 0
+    fi
+
+    print_warning "Failed to restore configuration backup from $backup_dir"
+    log WARNING "Failed to restore configuration backup from $backup_dir to $target_dir"
+    return 1
 }
 
 verify_file_created() {

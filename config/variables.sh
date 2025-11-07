@@ -113,6 +113,8 @@ readonly BACKUP_MANIFEST="$BACKUP_ROOT/manifest.txt"
 
 readonly DEPLOYMENT_PREFERENCES_DIR="$STATE_DIR/preferences"
 readonly BINARY_CACHE_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/binary-cache-preference.env"
+readonly HIBERNATION_SWAP_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/hibernation-swap-size.env"
+readonly ZSWAP_OVERRIDE_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/zswap-override.env"
 
 # ============================================================================
 # Mutable Flags
@@ -122,6 +124,10 @@ DRY_RUN=false
 FORCE_UPDATE=false
 SKIP_HEALTH_CHECK=false
 ENABLE_DEBUG=false
+AUTO_ROLLBACK_ENABLED=true
+AUTO_ROLLBACK_REQUESTED=false
+ROLLBACK_IN_PROGRESS=false
+RESUME_DEVICE_HINT=""
 
 _use_binary_caches_default="true"
 if [[ -n "${USE_BINARY_CACHES:-}" ]]; then
@@ -143,6 +149,23 @@ fi
 
 unset _use_binary_caches_default
 unset _persisted_preference
+
+ZSWAP_CONFIGURATION_OVERRIDE="${ZSWAP_CONFIGURATION_OVERRIDE:-}"
+if [[ -z "$ZSWAP_CONFIGURATION_OVERRIDE" && -f "$ZSWAP_OVERRIDE_PREFERENCE_FILE" ]]; then
+    _persisted_zswap_override=$(awk -F'=' '/^ZSWAP_CONFIGURATION_OVERRIDE=/{print $2}' "$ZSWAP_OVERRIDE_PREFERENCE_FILE" 2>/dev/null | tail -n1 | tr -d '\r')
+    case "$_persisted_zswap_override" in
+        enable|disable|auto)
+            ZSWAP_CONFIGURATION_OVERRIDE="$_persisted_zswap_override"
+            ;;
+    esac
+fi
+
+if [[ -z "$ZSWAP_CONFIGURATION_OVERRIDE" ]]; then
+    ZSWAP_CONFIGURATION_OVERRIDE="auto"
+fi
+
+export ZSWAP_CONFIGURATION_OVERRIDE
+unset _persisted_zswap_override
 
 # ============================================================================
 # Channel Preferences
@@ -311,8 +334,11 @@ CPU_VENDOR=""
 CPU_MICROCODE=""
 CPU_CORES=""
 TOTAL_RAM_GB=""
-ZRAM_PERCENT=""
+ZSWAP_MAX_POOL_PERCENT="20"
+ZSWAP_COMPRESSOR="zstd"
+ZSWAP_ZPOOL="z3fold"
 HIBERNATION_SWAP_SIZE_GB=""
+ENABLE_ZSWAP_CONFIGURATION="false"
 
 # User Information
 SELECTED_TIMEZONE=""
