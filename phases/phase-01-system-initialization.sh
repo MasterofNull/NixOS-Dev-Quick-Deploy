@@ -374,49 +374,56 @@ phase_01_system_initialization() {
 
         # Persist user's choice to cache file for future runs
         if declare -F persist_hibernation_swap_size >/dev/null 2>&1; then  # Cache function exists
-            persist_hibernation_swap_size "$HIBERNATION_SWAP_SIZE_GB" || true
+            persist_hibernation_swap_size "$HIBERNATION_SWAP_SIZE_GB" || true  # Save to cache file
         fi
 
-        if [[ -z "$RESUME_DEVICE_HINT" ]]; then
+        # Check if resume device was detected from previous config
+        if [[ -z "$RESUME_DEVICE_HINT" ]]; then  # No resume device found
             print_warning "No resume device hint detected; verify boot.resumeDevice after generation."
         fi
 
-        local default_zswap="${ZSWAP_MAX_POOL_PERCENT:-20}"
-        print_info "Zswap keeps a compressed cache of swapped pages in RAM to reduce disk thrashing."
+        # Prompt for zswap pool size (percentage of RAM used for compressed swap cache)
+        local default_zswap="${ZSWAP_MAX_POOL_PERCENT:-20}"  # Default to 20% of RAM
+            print_info "Zswap keeps a compressed cache of swapped pages in RAM to reduce disk thrashing."
         print_info "Current heuristic pool limit: ${default_zswap}% of RAM."
-        print_info "Larger values retain more compressed pages (using more RAM); smaller values fall back to disk swap sooner."
+            print_info "Larger values retain more compressed pages (using more RAM); smaller values fall back to disk swap sooner."
 
-        local zswap_input=""
-        while true; do
+        # Interactive prompt loop for zswap pool percentage
+        local zswap_input=""  # User input
+            while true; do  # Loop until valid input
             zswap_input=$(prompt_user "Maximum zswap pool percent (5-40)" "$default_zswap")
 
-            if [[ "${zswap_input,,}" == "auto" ]]; then
-                ZSWAP_MAX_POOL_PERCENT="$default_zswap"
-                print_success "Keeping recommended zswap pool limit of ${ZSWAP_MAX_POOL_PERCENT}% of RAM."
-                break
+            # Handle "auto" keyword
+            if [[ "${zswap_input,,}" == "auto" ]]; then  # User typed "auto" (case-insensitive)
+                ZSWAP_MAX_POOL_PERCENT="$default_zswap"  # Use default value
+                    print_success "Keeping recommended zswap pool limit of ${ZSWAP_MAX_POOL_PERCENT}% of RAM."
+                break  # Exit prompt loop
             fi
 
-            if [[ "$zswap_input" =~ ^[0-9]+$ ]]; then
-                if (( zswap_input < 5 || zswap_input > 40 )); then
+            # Validate numeric input
+            if [[ "$zswap_input" =~ ^[0-9]+$ ]]; then  # Valid integer
+                if (( zswap_input < 5 || zswap_input > 40 )); then  # Out of valid range
                     print_warning "Enter a value between 5 and 40, or type 'auto' to keep ${default_zswap}%."
-                    continue
+                        continue  # Re-prompt
                 fi
 
-                ZSWAP_MAX_POOL_PERCENT="$zswap_input"
-                if [[ "$ZSWAP_MAX_POOL_PERCENT" == "$default_zswap" ]]; then
+                # Accept valid value
+                ZSWAP_MAX_POOL_PERCENT="$zswap_input"  # Store user's choice
+                    if [[ "$ZSWAP_MAX_POOL_PERCENT" == "$default_zswap" ]]; then  # User chose recommended value
                     print_success "Using recommended zswap pool limit of ${ZSWAP_MAX_POOL_PERCENT}% of RAM."
-                else
+                else  # User chose custom value
                     print_success "Zswap pool limit set to ${ZSWAP_MAX_POOL_PERCENT}% of RAM."
                 fi
-                break
+                break  # Exit prompt loop
             fi
 
+            # Invalid input - re-prompt
             print_warning "Invalid input. Enter a whole number between 5 and 40 or type 'auto'."
         done
-        export ZSWAP_MAX_POOL_PERCENT
-    else
-        HIBERNATION_SWAP_SIZE_GB=""
-        export HIBERNATION_SWAP_SIZE_GB
+        export ZSWAP_MAX_POOL_PERCENT  # Make available to config generation
+    else  # Zswap configuration disabled
+        HIBERNATION_SWAP_SIZE_GB=""  # Clear swap size
+            export HIBERNATION_SWAP_SIZE_GB  # Export empty value
     fi
 
     echo ""
@@ -434,73 +441,84 @@ phase_01_system_initialization() {
     # ========================================================================
     # Step 1.12: Select Build Strategy for Initial Deployment
     # ========================================================================
+    # User chooses between fast binary cache deployment or slow local builds.
+    # Binary caches: 20-40 min deployment time, requires internet
+    # Local builds: 60-120 min deployment time, fully reproducible from source
     print_section "Build Strategy Selection"
     echo ""
     print_info "Choose how nixos-rebuild should source packages during the initial switch."
     echo ""
 
-    local -a recommended_caches=()
-    if declare -F get_binary_cache_sources >/dev/null 2>&1; then
-        mapfile -t recommended_caches < <(get_binary_cache_sources)
+    # Get list of recommended binary cache sources
+    local -a recommended_caches=()  # Array of cache URLs
+        if declare -F get_binary_cache_sources >/dev/null 2>&1; then  # Function exists
+        mapfile -t recommended_caches < <(get_binary_cache_sources)  # Fill array from function output
     fi
 
+    # Display Option 1: Binary Caches (fast)
     echo "  1) Use pre-built binary caches (recommended)"
     echo "     - Downloads trusted substitutes for faster deployment"
-    echo "     - Minimal local compilation workload"
+        echo "     - Minimal local compilation workload"
     echo "     - Requires reliable internet access"
-    if (( ${#recommended_caches[@]} > 0 )); then
-        local cache_overview=""
-        local cache
-        for cache in "${recommended_caches[@]}"; do
-            if [[ -n "$cache_overview" ]]; then
-                cache_overview+="; "
+        # Show which caches will be used
+        if (( ${#recommended_caches[@]} > 0 )); then  # Caches found
+        local cache_overview=""  # Build semicolon-separated list
+            local cache
+        for cache in "${recommended_caches[@]}"; do  # Iterate through caches
+            if [[ -n "$cache_overview" ]]; then  # Not first item
+                cache_overview+="; "  # Add separator
             fi
-            cache_overview+="$cache"
+            cache_overview+="$cache"  # Append cache URL
         done
-        echo "     - Caches: ${cache_overview}"
+        echo "     - Caches: ${cache_overview}"  # Display cache list
     fi
     echo ""
+    # Display Option 2: Local Builds (slow but reproducible)
     echo "  2) Build every package locally"
     echo "     - Disables binary caches for a reproducible source build"
-    echo "     - Significantly longer build times (hours on slower systems)"
+        echo "     - Significantly longer build times (hours on slower systems)"
     echo "     - High CPU and memory usage during compilation"
     echo ""
 
-    local build_choice
-    local default_choice="1"
-    if [[ "${USE_BINARY_CACHES:-true}" != "true" ]]; then
-        default_choice="2"
+    # Prompt user for build strategy
+    local build_choice  # Will be "1" or "2"
+        local default_choice="1"  # Default to binary caches
+    if [[ "${USE_BINARY_CACHES:-true}" != "true" ]]; then  # Environment override set
+        default_choice="2"  # Default to local builds
     fi
-    build_choice=$(prompt_user "Choose build strategy (1-2)" "$default_choice")
+    build_choice=$(prompt_user "Choose build strategy (1-2)" "$default_choice")  # Get user input
 
+    # Handle user's build strategy choice
     case "$build_choice" in
-        2)
-            USE_BINARY_CACHES="false"
-            print_warning "Binary caches disabled – all packages will be built from source."
+        2)  # Local builds from source
+            USE_BINARY_CACHES="false"  # Disable binary caches
+                print_warning "Binary caches disabled – all packages will be built from source."
             print_info "Ensure adequate time, CPU resources, and thermal management before continuing."
             ;;
-        1|*)
-            USE_BINARY_CACHES="true"
-            print_success "Binary caches enabled – leveraging trusted substitutes for faster deployment."
+        1|*)  # Binary caches (default for invalid input)
+            USE_BINARY_CACHES="true"  # Enable binary caches
+                print_success "Binary caches enabled – leveraging trusted substitutes for faster deployment."
             ;;
     esac
 
-    if [[ -n "${BINARY_CACHE_PREFERENCE_FILE:-}" ]]; then
-        local preference_dir
-        preference_dir=$(dirname "$BINARY_CACHE_PREFERENCE_FILE")
-        if safe_mkdir "$preference_dir"; then
-            if cat >"$BINARY_CACHE_PREFERENCE_FILE" <<EOF
+    # Persist user's build strategy preference to cache file for future runs
+    if [[ -n "${BINARY_CACHE_PREFERENCE_FILE:-}" ]]; then  # Preference file path defined
+        local preference_dir  # Parent directory for preference file
+            preference_dir=$(dirname "$BINARY_CACHE_PREFERENCE_FILE")  # Get directory path
+        if safe_mkdir "$preference_dir"; then  # Create directory if needed
+            # Write preference to file
+            if cat >"$BINARY_CACHE_PREFERENCE_FILE" <<EOF  # Create/overwrite file
 # Stored deployment preference – automatically updated by phase 1
 USE_BINARY_CACHES=$USE_BINARY_CACHES
 EOF
-            then
-                chmod 600 "$BINARY_CACHE_PREFERENCE_FILE" 2>/dev/null || true
-                safe_chown_user_dir "$BINARY_CACHE_PREFERENCE_FILE" || true
+            then  # Write successful
+                chmod 600 "$BINARY_CACHE_PREFERENCE_FILE" 2>/dev/null || true  # Secure permissions (user only)
+                    safe_chown_user_dir "$BINARY_CACHE_PREFERENCE_FILE" || true  # Ensure user ownership
                 print_info "Saved build strategy preference for future runs."
-            else
+            else  # Write failed
                 print_warning "Unable to persist build strategy preference (continuing with current session setting)."
             fi
-        else
+        else  # Directory creation failed
             print_warning "Could not prepare preference directory at $preference_dir; preference will not be cached."
         fi
     fi
@@ -509,22 +527,22 @@ EOF
     # Step 1.13: NixOS Version Selection
     # ========================================================================
     # Let user choose stable (24.05) or unstable (rolling)
-    select_nixos_version
+    select_nixos_version  # Interactive prompt defined in lib/nixos.sh
 
     # ========================================================================
     # Step 1.14: Update NixOS Channels
     # ========================================================================
     # Fetch latest package metadata and security updates
-    update_nixos_channels
+    update_nixos_channels  # nix-channel --update (defined in lib/nixos.sh)
 
     # ========================================================================
     # Step 1.15: Install Core Prerequisite Packages
     # ========================================================================
     # Install git, jq, curl, wget via nix-env for immediate availability
     # These are temporary and will be removed in Phase 5
-    if ! ensure_preflight_core_packages; then
+    if ! ensure_preflight_core_packages; then  # Install temp packages (from lib/packages.sh)
         print_error "Failed to install core prerequisite packages"
-        exit 1
+            exit 1  # Fatal - need these tools for deployment
     fi
 
     # ========================================================================
@@ -532,45 +550,46 @@ EOF
     # ========================================================================
     # Remove legacy home-manager installations that could conflict
     print_info "Scanning nix profile for legacy home-manager entries..."
-    cleanup_conflicting_home_manager_profile
+    cleanup_conflicting_home_manager_profile  # Remove old profiles (from lib/home-manager.sh)
 
     # ========================================================================
     # Step 1.17: Ensure Home-Manager is Available
     # ========================================================================
     # home-manager manages user environment (dotfiles, packages, services)
-    if command -v home-manager &>/dev/null; then
+    if command -v home-manager &>/dev/null; then  # home-manager already installed
         print_success "home-manager is installed: $(which home-manager)"
-    else
+    else  # home-manager not found
         print_warning "home-manager not found - installing automatically"
-        install_home_manager
+            install_home_manager  # Install via nix-channel (from lib/home-manager.sh)
     fi
 
     # ========================================================================
     # Step 1.18: Verify Python Runtime Available
     # ========================================================================
-    # Python needed for configuration generation scripts
+    # Python needed for configuration generation scripts in Phase 3
     print_info "Verifying Python runtime..."
-    if ! ensure_python_runtime; then
+    if ! ensure_python_runtime; then  # Find or provision Python (from lib/python.sh)
         print_error "Unable to locate or provision a python interpreter"
-        exit 1
+            exit 1  # Fatal - need Python for config generation
     fi
 
     # Display Python runtime information
-    if [[ "${PYTHON_BIN[0]}" == "nix" ]]; then
+    if [[ "${PYTHON_BIN[0]}" == "nix" ]]; then  # Using ephemeral nix-shell python
         print_success "Python runtime: ephemeral Nix shell"
-    else
+    else  # Using system or nix-env python
         print_success "Python runtime: ${PYTHON_BIN[0]} ($(${PYTHON_BIN[@]} --version 2>&1))"
     fi
 
-    export IMPERATIVE_INSTALLS_ALLOWED="$previous_imperative_flag"
+    # Restore previous imperative installs flag
+    export IMPERATIVE_INSTALLS_ALLOWED="$previous_imperative_flag"  # Restore original state
 
     # ------------------------------------------------------------------------
     # Mark Phase Complete
     # ------------------------------------------------------------------------
-    mark_step_complete "$phase_name"
-    print_success "Phase 1: System Initialization - COMPLETE"
+    mark_step_complete "$phase_name"  # Update state.json with completion status
+        print_success "Phase 1: System Initialization - COMPLETE"
     echo ""
 }
 
-# Execute phase
-phase_01_system_initialization
+# Execute phase function (called when this script is sourced by main orchestrator)
+phase_01_system_initialization  # Run all validation and initialization steps
