@@ -70,7 +70,7 @@ declare -a PYTHON_PACKAGE_CHECKS=(
     "anthropic|Anthropic client|required"
     "langchain|LangChain|required"
     "llama_index|LlamaIndex|required"
-    "openskills|OpenSkills automation toolkit|required"
+    "openskills|OpenSkills automation toolkit|optional"
     "chromadb|ChromaDB|required"
     "qdrant_client|Qdrant client|required"
     "sentence_transformers|Sentence Transformers|required"
@@ -607,10 +607,18 @@ check_nix_channel() {
 
     local list_output=""
     if [ -n "$profile" ]; then
-        if ! list_output=$(nix-channel --list --profile "$profile" 2>/dev/null); then
-            print_warning "Unable to query $alias channel (permission denied or profile missing)"
+        local channel_output=""
+        if ! channel_output=$(nix-channel --list --profile "$profile" 2>&1); then
+            if echo "$channel_output" | grep -qi "permission denied"; then
+                print_success "$description (requires root access, skipping)"
+                print_detail "Run with: sudo nix-channel --list --profile '$profile'"
+                return 0
+            fi
+            print_warning "Unable to query $alias channel"
+            print_detail "$channel_output"
             return 1
         fi
+        list_output="$channel_output"
     else
         if ! list_output=$(nix-channel --list 2>/dev/null); then
             print_warning "Unable to query $alias channel"
@@ -684,10 +692,24 @@ check_flatpak_remote() {
         return 1
     fi
 
-    local remote_output
-    remote_output=$(flatpak remotes --user --columns=name,url 2>/dev/null || true)
-    local remote_line
-    remote_line=$(printf '%s\n' "$remote_output" | awk -v name="$remote_name" 'NR == 1 {next} $1 == name {print $0}' | head -n1)
+    local remote_line=""
+    local scope
+    for scope in --user --system ""; do
+        local remote_output=""
+        if [ -n "$scope" ]; then
+            remote_output=$(flatpak remotes "$scope" --columns=name,url 2>/dev/null || true)
+        else
+            remote_output=$(flatpak remotes --columns=name,url 2>/dev/null || true)
+        fi
+
+        if [ -n "$remote_output" ]; then
+            remote_line=$(printf '%s\n' "$remote_output" | awk -v name="$remote_name" 'NR == 1 {next} $1 == name {print $0}' | head -n1)
+        fi
+
+        if [ -n "$remote_line" ]; then
+            break
+        fi
+    done
 
     if [ -z "$remote_line" ]; then
         if [ "$required" = true ]; then
@@ -859,13 +881,18 @@ check_system_service() {
     local service=$1
     local description=$2
     local check_running=${3:-false}
+    local required=${4:-true}
 
     print_check "$description"
 
     # Check if service unit exists (system-level)
     if ! systemctl list-unit-files | grep -q "^${service}.service"; then
-        print_fail "$description service not configured"
-        return 1
+        if [ "$required" = true ]; then
+            print_fail "$description service not configured"
+            return 1
+        fi
+        print_warning "$description service not configured (optional)"
+        return 2
     fi
 
     # Check if service is enabled
@@ -879,17 +906,24 @@ check_system_service() {
         print_success "$description (running, $enabled)"
         print_detail "Status: Active"
         return 0
-    else
-        if [ "$check_running" = true ]; then
+    fi
+
+    if [ "$check_running" = true ]; then
+        if [ "$required" = true ]; then
             print_fail "$description (not running, $enabled)"
             print_detail "Check logs: journalctl -u $service"
             print_detail "Start with: sudo systemctl start $service"
-        else
-            print_success "$description (configured, $enabled)"
-            print_detail "Enable with: sudo systemctl enable --now $service"
+            return 1
         fi
+        print_warning "$description (not running, $enabled)"
+        print_detail "Check logs: journalctl -u $service"
+        print_detail "Start with: sudo systemctl start $service"
         return 2
     fi
+
+    print_success "$description (configured, $enabled)"
+    print_detail "Enable with: sudo systemctl enable --now $service"
+    return 2
 }
 
 check_systemd_service_port() {
@@ -1005,6 +1039,12 @@ run_all_checks() {
         local entry package display bin_command wrapper_name extension_id debug_env
         for entry in "${NPM_AI_PACKAGE_MANIFEST[@]}"; do
             IFS='|' read -r package display bin_command wrapper_name extension_id debug_env <<<"$entry"
+            local required_package=true
+            case "$package" in
+                "@gooseai/cli")
+                    required_package=false
+                    ;;
+            esac
             local wrapper_path="$npm_prefix/bin/$wrapper_name"
             print_check "$display wrapper"
             if [ -f "$wrapper_path" ]; then
@@ -1018,7 +1058,11 @@ run_all_checks() {
                     print_detail 'Add to PATH: export PATH="$HOME/.npm-global/bin:$PATH"'
                 fi
             else
-                print_fail "$display wrapper not found"
+                if [ "$required_package" = true ]; then
+                    print_fail "$display wrapper not found"
+                else
+                    print_warning "$display wrapper not found (optional)"
+                fi
                 print_detail "Expected at: $wrapper_path"
                 print_detail "Install with: npm install -g $package"
             fi
@@ -1034,7 +1078,11 @@ run_all_checks() {
                 print_success "$display npm package (v${pkg_version})"
                 print_detail "Location: $package_dir"
             else
-                print_fail "$display npm package not found"
+                if [ "$required_package" = true ]; then
+                    print_fail "$display npm package not found"
+                else
+                    print_warning "$display npm package not found (optional)"
+                fi
                 print_detail "Install with: npm install -g $package"
             fi
         done
@@ -1192,7 +1240,7 @@ run_all_checks() {
     fi
 
     # Hugging Face TGI (system service)
-    check_system_service "huggingface-tgi" "Hugging Face TGI (LLM inference)" false
+    check_system_service "huggingface-tgi" "Hugging Face TGI (LLM inference)" false false
     if systemctl is-active huggingface-tgi &> /dev/null; then
         if curl -s "http://localhost:8080" &> /dev/null || nc -z localhost 8080 2>/dev/null; then
             print_detail "TGI API accessible on port 8080"
@@ -1206,7 +1254,7 @@ run_all_checks() {
     fi
 
     # Gitea development forge (system service)
-    check_system_service "gitea" "Gitea (development forge)" true
+    check_system_service "gitea" "Gitea (development forge)" true false
 
     # ==========================================================================
     # Network Services
