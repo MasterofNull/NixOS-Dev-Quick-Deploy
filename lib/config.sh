@@ -1073,7 +1073,6 @@ EOF
     {
       device = ${swap_device_literal};
 ${swap_size_directive}
-      fileMode = "600";
       priority = 100;  # Prefer the dedicated hibernation swapfile
     }
   ];
