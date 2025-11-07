@@ -26,6 +26,76 @@
 # PHASE IMPLEMENTATION
 # ============================================================================
 
+ensure_low_memory_swap() {
+    local detected_ram="${TOTAL_RAM_GB:-}"
+    local ram_value
+
+    if [[ "$detected_ram" =~ ^[0-9]+$ ]]; then
+        ram_value="$detected_ram"
+    else
+        ram_value=0
+    fi
+
+    # No extra swap needed on well-provisioned systems
+    if (( ram_value >= 16 )); then
+        return 0
+    fi
+
+    local swap_total_kb
+    swap_total_kb=$(awk '/^SwapTotal:/ { print $2 }' /proc/meminfo 2>/dev/null || echo "0")
+    local swap_total_gb=$(( swap_total_kb / 1024 / 1024 ))
+
+    local min_swap_gb=4
+    if (( swap_total_gb >= min_swap_gb )); then
+        print_info "Detected ${swap_total_gb}GB swap space — temporary swap guardrail not required."
+        return 0
+    fi
+
+    local swapfile_path="/swapfile.nixos-quick-deploy"
+    if [[ -e "$swapfile_path" ]]; then
+        print_warning "Temporary swapfile already present at $swapfile_path; skipping automatic provisioning."
+        return 0
+    fi
+
+    local additional_swap_gb=$(( min_swap_gb - swap_total_gb ))
+    if (( additional_swap_gb < 1 )); then
+        additional_swap_gb=1
+    fi
+
+    print_info "Provisioning temporary ${additional_swap_gb}GB swapfile at $swapfile_path (RAM: ${ram_value}GB, existing swap: ${swap_total_gb}GB)."
+
+    local block_count=$(( additional_swap_gb * 1024 ))
+    if ! sudo dd if=/dev/zero of="$swapfile_path" bs=1M count="$block_count" status=none; then
+        print_warning "Failed to allocate temporary swapfile at $swapfile_path. Continuing without additional swap."
+        sudo rm -f "$swapfile_path" >/dev/null 2>&1 || true
+        return 0
+    fi
+
+    if ! sudo chmod 600 "$swapfile_path"; then
+        print_warning "Unable to set secure permissions on $swapfile_path. Removing temporary swapfile."
+        sudo rm -f "$swapfile_path" >/dev/null 2>&1 || true
+        return 0
+    fi
+
+    if ! sudo mkswap "$swapfile_path" >/dev/null 2>&1; then
+        print_warning "mkswap failed for $swapfile_path. Removing temporary swapfile."
+        sudo rm -f "$swapfile_path" >/dev/null 2>&1 || true
+        return 0
+    fi
+
+    if sudo swapon "$swapfile_path"; then
+        print_success "Temporary swapfile enabled: $swapfile_path (${additional_swap_gb}GB)."
+        print_info "It will be removed automatically during finalization when permanent swap is detected. Manual cleanup: sudo swapoff $swapfile_path && sudo rm -f $swapfile_path"
+        TEMP_SWAP_CREATED=true
+        TEMP_SWAP_FILE="$swapfile_path"
+        TEMP_SWAP_SIZE_GB="$additional_swap_gb"
+        export TEMP_SWAP_CREATED TEMP_SWAP_FILE TEMP_SWAP_SIZE_GB
+    else
+        print_warning "Failed to activate temporary swapfile at $swapfile_path."
+        sudo rm -f "$swapfile_path" >/dev/null 2>&1 || true
+    fi
+}
+
 phase_05_declarative_deployment() {
     # ========================================================================
     # Phase 5: Declarative Deployment
@@ -217,6 +287,8 @@ phase_05_declarative_deployment() {
     # ========================================================================
     # Step 6.5: Apply NixOS System Configuration
     # ========================================================================
+    ensure_low_memory_swap
+
     print_section "Applying NixOS System Configuration"
     local target_host=$(hostname)
 
