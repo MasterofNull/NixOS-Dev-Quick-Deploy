@@ -66,30 +66,31 @@ phase_02_backup() {
     # ========================================================================
     # Step 3.1: Record Current System State
     # ========================================================================
+    # Document current generation numbers for rollback reference
     print_info "Recording current system state..."
 
-    # Record current NixOS generation
-    local current_gen
-    current_gen=$(readlink /run/current-system | grep -oP 'system-\K[0-9]+-link' | grep -oP '[0-9]+' || echo "unknown")
-    echo "NixOS Generation: $current_gen" > "$BACKUP_ROOT/system-state.txt"
-    print_success "Current NixOS generation: $current_gen"
+    # Record current NixOS generation number
+    local current_gen  # System generation number
+        current_gen=$(readlink /run/current-system | grep -oP 'system-\K[0-9]+-link' | grep -oP '[0-9]+' || echo "unknown")  # Extract generation from symlink
+    echo "NixOS Generation: $current_gen" > "$BACKUP_ROOT/system-state.txt"  # Save to file
+        print_success "Current NixOS generation: $current_gen"
 
-    # Record current home-manager generation (if exists)
-    if [[ -d "$HOME/.local/state/nix/profiles" ]]; then
-        local hm_gen
-        hm_gen=$(readlink "$HOME/.local/state/nix/profiles/home-manager" | grep -oP 'home-manager-\K[0-9]+-link' | grep -oP '[0-9]+' 2>/dev/null || echo "none")
-        echo "Home-Manager Generation: $hm_gen" >> "$BACKUP_ROOT/system-state.txt"
-        print_success "Current home-manager generation: $hm_gen"
+    # Record current home-manager generation (if home-manager is installed)
+    if [[ -d "$HOME/.local/state/nix/profiles" ]]; then  # Profile directory exists
+        local hm_gen  # Home-manager generation number
+            hm_gen=$(readlink "$HOME/.local/state/nix/profiles/home-manager" | grep -oP 'home-manager-\K[0-9]+-link' | grep -oP '[0-9]+' 2>/dev/null || echo "none")  # Extract from symlink
+        echo "Home-Manager Generation: $hm_gen" >> "$BACKUP_ROOT/system-state.txt"  # Append to file
+            print_success "Current home-manager generation: $hm_gen"
     fi
 
-    # List nix-env packages (for reference - we'll only remove script-generated ones)
-    if command -v nix-env &>/dev/null; then
+    # List nix-env packages (for reference - we'll only remove script-generated ones in Phase 5)
+    if command -v nix-env &>/dev/null; then  # nix-env command available
         print_info "Listing current nix-env packages..."
-        nix-env -q > "$BACKUP_ROOT/nix-env-packages.txt" 2>/dev/null || true
-        local pkg_count=$(wc -l < "$BACKUP_ROOT/nix-env-packages.txt" 2>/dev/null || echo "0")
-        if [[ "$pkg_count" -gt 0 ]]; then
+            nix-env -q > "$BACKUP_ROOT/nix-env-packages.txt" 2>/dev/null || true  # Query installed packages
+        local pkg_count=$(wc -l < "$BACKUP_ROOT/nix-env-packages.txt" 2>/dev/null || echo "0")  # Count lines
+            if [[ "$pkg_count" -gt 0 ]]; then  # Packages found
             print_info "Found $pkg_count nix-env packages (saved for reference)"
-        else
+        else  # No packages installed
             print_success "No nix-env packages installed"
         fi
     fi
@@ -99,11 +100,12 @@ phase_02_backup() {
     # ========================================================================
     # Step 3.2: Create NixOS Rollback Point
     # ========================================================================
+    # Save current NixOS generation as a named rollback point
     print_info "Creating NixOS generation rollback point..."
-    if [[ "$DRY_RUN" == false ]]; then
-        create_rollback_point "Before deployment $(date +%Y-%m-%d_%H:%M:%S)"
-        print_success "NixOS rollback point created"
-    else
+    if [[ "$DRY_RUN" == false ]]; then  # Not in preview mode
+        create_rollback_point "Before deployment $(date +%Y-%m-%d_%H:%M:%S)"  # Create named generation
+            print_success "NixOS rollback point created"
+    else  # Dry-run mode
         print_info "[DRY RUN] Would create NixOS rollback point"
     fi
     echo ""
@@ -111,18 +113,19 @@ phase_02_backup() {
     # ========================================================================
     # Step 3.3: Backup System Configurations
     # ========================================================================
+    # Copy system-level config files from /etc/nixos to backup directory
     print_info "Backing up system configuration files..."
 
-    # Backup /etc/nixos/configuration.nix
-    if [[ -f "/etc/nixos/configuration.nix" ]]; then
-        sudo cp "/etc/nixos/configuration.nix" "$BACKUP_ROOT/configuration.nix" 2>/dev/null
-        print_success "✓ Backed up: /etc/nixos/configuration.nix"
+    # Backup /etc/nixos/configuration.nix (main system config)
+    if [[ -f "/etc/nixos/configuration.nix" ]]; then  # Config file exists
+        sudo cp "/etc/nixos/configuration.nix" "$BACKUP_ROOT/configuration.nix" 2>/dev/null  # Copy with sudo (owned by root)
+            print_success "✓ Backed up: /etc/nixos/configuration.nix"
     fi
 
-    # Backup /etc/nixos/flake.nix (if exists)
-    if [[ -f "/etc/nixos/flake.nix" ]]; then
-        sudo cp "/etc/nixos/flake.nix" "$BACKUP_ROOT/nixos-flake.nix" 2>/dev/null
-        print_success "✓ Backed up: /etc/nixos/flake.nix"
+    # Backup /etc/nixos/flake.nix (if using flakes)
+    if [[ -f "/etc/nixos/flake.nix" ]]; then  # Flake file exists
+        sudo cp "/etc/nixos/flake.nix" "$BACKUP_ROOT/nixos-flake.nix" 2>/dev/null  # Copy with sudo
+            print_success "✓ Backed up: /etc/nixos/flake.nix"
     fi
 
     echo ""
@@ -130,39 +133,41 @@ phase_02_backup() {
     # ========================================================================
     # Step 3.4: Backup User Configurations
     # ========================================================================
+    # Copy user-level config files from home directory to backup
     print_info "Backing up user configuration files..."
 
-    # Backup home-manager configs
-    if [[ -f "$HOME/.config/home-manager/home.nix" ]]; then
-        safe_mkdir "$BACKUP_ROOT/home-manager" || print_warning "Could not create home-manager backup dir"
-        safe_copy_file_silent "$HOME/.config/home-manager/home.nix" "$BACKUP_ROOT/home-manager/home.nix" && \
+    # Backup home-manager configs (user environment management)
+    if [[ -f "$HOME/.config/home-manager/home.nix" ]]; then  # home.nix exists
+        safe_mkdir "$BACKUP_ROOT/home-manager" || print_warning "Could not create home-manager backup dir"  # Create subdirectory
+            safe_copy_file_silent "$HOME/.config/home-manager/home.nix" "$BACKUP_ROOT/home-manager/home.nix" && \  # Copy file
             print_success "✓ Backed up: ~/.config/home-manager/home.nix"
     fi
 
-    if [[ -f "$HOME/.config/home-manager/flake.nix" ]]; then
-        safe_copy_file_silent "$HOME/.config/home-manager/flake.nix" "$BACKUP_ROOT/home-manager/flake.nix" && \
-            print_success "✓ Backed up: ~/.config/home-manager/flake.nix"
+    if [[ -f "$HOME/.config/home-manager/flake.nix" ]]; then  # home-manager flake exists
+        safe_copy_file_silent "$HOME/.config/home-manager/flake.nix" "$BACKUP_ROOT/home-manager/flake.nix" && \  # Copy file
+                print_success "✓ Backed up: ~/.config/home-manager/flake.nix"
     fi
 
     # Backup important user configs (non-destructive - just copy for reference)
-    local user_configs=(
-        ".config/flatpak"
-        ".config/aider"
-        ".config/tea"
-        ".config/huggingface"
-        ".config/gitea"
-        ".config/obsidian"
+    local user_configs=(  # Array of config directories to backup
+        ".config/flatpak"  # Flatpak app configs
+            ".config/aider"  # Aider AI coding assistant settings
+        ".config/tea"  # Gitea CLI config
+            ".config/huggingface"  # Hugging Face credentials
+        ".config/gitea"  # Gitea config
+            ".config/obsidian"  # Obsidian notes app settings
     )
 
-    for config_dir in "${user_configs[@]}"; do
-        local full_path="$HOME/$config_dir"
-        if [[ -d "$full_path" ]] && [[ $(du -s "$full_path" 2>/dev/null | cut -f1) -lt 102400 ]]; then
+    # Iterate through config directories and backup if reasonable size
+    for config_dir in "${user_configs[@]}"; do  # Check each config directory
+        local full_path="$HOME/$config_dir"  # Build full path
+            if [[ -d "$full_path" ]] && [[ $(du -s "$full_path" 2>/dev/null | cut -f1) -lt 102400 ]]; then  # Directory exists and < 100MB
             # Only backup if < 100MB (avoid huge caches)
-            local dir_name=$(basename "$config_dir")
-            local parent=$(dirname "$config_dir")
-            if safe_mkdir "$BACKUP_ROOT/$parent"; then
-                cp -a "$full_path" "$BACKUP_ROOT/$parent/" 2>/dev/null && \
-                    print_success "✓ Backed up: ~/$config_dir"
+            local dir_name=$(basename "$config_dir")  # Get directory name
+                local parent=$(dirname "$config_dir")  # Get parent path (.config)
+            if safe_mkdir "$BACKUP_ROOT/$parent"; then  # Create parent directory in backup
+                cp -a "$full_path" "$BACKUP_ROOT/$parent/" 2>/dev/null && \  # Copy directory recursively (preserve attributes)
+                        print_success "✓ Backed up: ~/$config_dir"
             fi
         fi
     done
@@ -172,9 +177,11 @@ phase_02_backup() {
     # ========================================================================
     # Step 3.5: Save Recovery Instructions
     # ========================================================================
+    # Create a README file with step-by-step recovery instructions
     print_info "Creating recovery instructions..."
 
-    cat > "$BACKUP_ROOT/RECOVERY-README.txt" << EOF
+    # Write recovery README with heredoc
+    cat > "$BACKUP_ROOT/RECOVERY-README.txt" << EOF  # Create file with instructions
 NixOS Quick Deploy - Backup Recovery Instructions
 Created: $(date)
 Backup Location: $BACKUP_ROOT
@@ -209,7 +216,7 @@ SYSTEM STATE AT BACKUP
 =================================================================
 
 EOF
-    cat "$BACKUP_ROOT/system-state.txt" >> "$BACKUP_ROOT/RECOVERY-README.txt"
+    cat "$BACKUP_ROOT/system-state.txt" >> "$BACKUP_ROOT/RECOVERY-README.txt"  # Append system state info
 
     print_success "Recovery instructions saved to: $BACKUP_ROOT/RECOVERY-README.txt"
     echo ""
@@ -217,27 +224,28 @@ EOF
     # ========================================================================
     # Summary
     # ========================================================================
+    # Display backup completion summary
     print_section "Backup Summary"
     echo "✓ NixOS generation rollback point created"
-    echo "✓ System configurations backed up"
+        echo "✓ System configurations backed up"
     echo "✓ User configurations backed up"
-    echo "✓ Current state documented"
+        echo "✓ Current state documented"
     echo "✓ Recovery instructions created"
     echo ""
-    echo "Backup location: $BACKUP_ROOT"
-    echo "Recovery guide: $BACKUP_ROOT/RECOVERY-README.txt"
+    echo "Backup location: $BACKUP_ROOT"  # Show where backups are stored
+        echo "Recovery guide: $BACKUP_ROOT/RECOVERY-README.txt"
     echo ""
 
     # Save backup location for other phases to reference
-    echo "$BACKUP_ROOT" > "$STATE_DIR/last-backup-location.txt"
+    echo "$BACKUP_ROOT" > "$STATE_DIR/last-backup-location.txt"  # Store path in state directory
 
     # ------------------------------------------------------------------------
     # Mark Phase Complete
     # ------------------------------------------------------------------------
-    mark_step_complete "$phase_name"
-    print_success "Phase 2: System Backup - COMPLETE"
+    mark_step_complete "$phase_name"  # Update state.json with completion
+        print_success "Phase 2: System Backup - COMPLETE"
     echo ""
 }
 
-# Execute phase
-phase_02_backup
+# Execute phase function (called when this script is sourced by main orchestrator)
+phase_02_backup  # Run all backup operations
