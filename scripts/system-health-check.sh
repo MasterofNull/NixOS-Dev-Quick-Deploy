@@ -54,6 +54,12 @@ for arg in "$@"; do
     esac
 done
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+NPM_MANIFEST_FILE="$REPO_ROOT/config/npm-packages.sh"
+
+declare -a NPM_AI_PACKAGE_MANIFEST=()
+
 # Logging functions
 print_header() {
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -132,81 +138,181 @@ fix_home_manager() {
     fi
 }
 
-fix_npm_packages() {
-    print_section "Attempting to fix NPM packages..."
+load_npm_manifest() {
+    NPM_AI_PACKAGE_MANIFEST=()
+    if [ -f "$NPM_MANIFEST_FILE" ]; then
+        # shellcheck disable=SC1090
+        source "$NPM_MANIFEST_FILE"
+    fi
+}
 
-    # Ensure NPM prefix is set
-    export NPM_CONFIG_PREFIX="$HOME/.npm-global"
+ensure_npm_environment() {
+    export NPM_CONFIG_PREFIX="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
+    mkdir -p "$NPM_CONFIG_PREFIX/bin" "$NPM_CONFIG_PREFIX/lib" "$NPM_CONFIG_PREFIX/lib/node_modules"
 
-    # Create directories
-    mkdir -p "$HOME/.npm-global/bin"
-    mkdir -p "$HOME/.npm-global/lib"
-
-    # Check npmrc
-    if ! grep -q "prefix=" "$HOME/.npmrc" 2>/dev/null; then
+    if ! grep -q '^prefix=' "$HOME/.npmrc" 2>/dev/null; then
         print_detail "Creating ~/.npmrc with correct prefix"
-        echo "prefix=$HOME/.npm-global" > "$HOME/.npmrc"
+        echo "prefix=$NPM_CONFIG_PREFIX" > "$HOME/.npmrc"
         print_success "Created ~/.npmrc"
     fi
+}
 
-    # Reinstall Claude Code
-    print_detail "Reinstalling @anthropic-ai/claude-code"
-    if npm install -g @anthropic-ai/claude-code 2>&1 | tee /tmp/npm-fix.log; then
-        print_success "Reinstalled Claude Code npm package"
+resolve_manifest_cli_path() {
+    local package_dir="$1"
+    local bin_command="$2"
 
-        # Recreate wrapper if needed
-        if [ ! -f "$HOME/.npm-global/bin/claude-wrapper" ] || [ ! -x "$HOME/.npm-global/bin/claude-wrapper" ]; then
-            print_detail "Creating claude-wrapper script"
-            cat > "$HOME/.npm-global/bin/claude-wrapper" << 'WRAPPER_EOF'
+    node - "$package_dir" "$bin_command" <<'NODE'
+const fs = require('fs');
+const path = require('path');
+
+const pkgDir = process.argv[2];
+const desired = process.argv[3];
+const pkgJson = path.join(pkgDir, 'package.json');
+
+try {
+  const pkg = JSON.parse(fs.readFileSync(pkgJson, 'utf8'));
+  let bin = pkg.bin;
+
+  if (!bin) {
+    process.exit(1);
+  }
+
+  let relative;
+  if (typeof bin === 'string') {
+    relative = bin;
+  } else if (bin[desired]) {
+    relative = bin[desired];
+  } else {
+    const keys = Object.keys(bin);
+    if (keys.length === 0) {
+      process.exit(2);
+    }
+    relative = bin[keys[0]];
+  }
+
+  const absolute = path.resolve(pkgDir, relative);
+  process.stdout.write(absolute);
+} catch (error) {
+  process.exit(3);
+}
+NODE
+}
+
+write_ai_wrapper() {
+    local wrapper_path="$1"
+    local cli_path="$2"
+    local display_name="$3"
+    local debug_env_var="${4:-}"
+    local npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
+    local npm_modules="$npm_prefix/lib/node_modules"
+
+    cat > "$wrapper_path" <<EOF
 #!/usr/bin/env bash
-# Smart Claude Code Wrapper - Finds Node.js dynamically
 set -euo pipefail
 
-# Try common Nix profile locations
-NODE_LOCATIONS=(
-    "$HOME/.nix-profile/bin/node"
+DEBUG_FLAG="\${AI_TOOL_DEBUG:-0}"
+DEBUG_ENV_VAR="${debug_env_var}"
+
+if [ -n "\${DEBUG_ENV_VAR}" ]; then
+    DEBUG_ENV_VALUE=""
+    # shellcheck disable=SC2086
+    eval "DEBUG_ENV_VALUE=\"\\${${debug_env_var}:-}\""
+    if [ -n "\${DEBUG_ENV_VALUE}" ]; then
+        DEBUG_FLAG="\${DEBUG_ENV_VALUE}"
+    fi
+fi
+
+if [ "\${DEBUG_FLAG}" = "1" ]; then
+    echo "[DEBUG] Wrapper starting for $display_name" >&2
+    echo "[DEBUG] CLI path: $cli_path" >&2
+fi
+
+CLI_PATH="$cli_path"
+
+if [ ! -f "\${CLI_PATH}" ]; then
+    echo "[$display_name] CLI entry point missing: \${CLI_PATH}" >&2
+    echo "Reinstall with: npm install -g" >&2
+    exit 127
+fi
+
+NODE_CANDIDATES=(
+    "\${HOME}/.nix-profile/bin/node"
     "/run/current-system/sw/bin/node"
     "/nix/var/nix/profiles/default/bin/node"
 )
 
+if command -v node >/dev/null 2>&1; then
+    NODE_CANDIDATES+=("\$(command -v node)")
+fi
+
 NODE_BIN=""
-for node_path in "${NODE_LOCATIONS[@]}"; do
-    if [ -n "$node_path" ] && [ -x "$node_path" ]; then
-        NODE_BIN="$node_path"
+for candidate in "\${NODE_CANDIDATES[@]}"; do
+    if [ -n "\${candidate}" ] && [ -x "\${candidate}" ]; then
+        NODE_BIN="\${candidate}"
         break
     fi
-done
+}
 
-# Fallback to system PATH
-if [ -z "$NODE_BIN" ] && command -v node &> /dev/null; then
-    NODE_BIN=$(command -v node)
-fi
-
-if [ -z "$NODE_BIN" ]; then
-    echo "ERROR: Node.js not found" >&2
-    echo "Install Node.js with: home-manager switch --flake ~/.dotfiles/home-manager" >&2
+if [ -z "\${NODE_BIN}" ]; then
+    echo "[$display_name] Unable to locate Node.js runtime" >&2
+    echo "Ensure Node.js 22 is installed via home-manager" >&2
     exit 127
 fi
 
-# Path to Claude Code CLI
-CLAUDE_CLI="$HOME/.npm-global/lib/node_modules/@anthropic-ai/claude-code/cli.js"
+export PATH="$npm_prefix/bin:\${PATH}"
+export NODE_PATH="$npm_modules"
 
-if [ ! -f "$CLAUDE_CLI" ]; then
-    echo "ERROR: Claude Code CLI not found at $CLAUDE_CLI" >&2
-    echo "Install with: npm install -g @anthropic-ai/claude-code" >&2
-    exit 127
+if [ "\${DEBUG_FLAG}" = "1" ]; then
+    echo "[DEBUG] Using Node runtime: \${NODE_BIN}" >&2
 fi
 
-# Execute with Node.js
-exec "$NODE_BIN" "$CLAUDE_CLI" "$@"
-WRAPPER_EOF
-            chmod +x "$HOME/.npm-global/bin/claude-wrapper"
-            print_success "Created claude-wrapper"
-        fi
-    else
-        print_fail "Failed to reinstall Claude Code"
-        echo "  See /tmp/npm-fix.log for details"
+exec "\${NODE_BIN}" "\${CLI_PATH}" "\$@"
+EOF
+
+    chmod +x "$wrapper_path"
+}
+
+
+fix_npm_packages() {
+    print_section "Attempting to fix NPM packages..."
+
+    ensure_npm_environment
+    load_npm_manifest
+
+    if [ ${#NPM_AI_PACKAGE_MANIFEST[@]} -eq 0 ]; then
+        print_info "No AI CLI packages defined in manifest"
+        return
     fi
+
+    local npm_prefix="$NPM_CONFIG_PREFIX"
+    local npm_modules="$npm_prefix/lib/node_modules"
+    local entry package display bin_command wrapper_name extension_id debug_env
+
+    for entry in "${NPM_AI_PACKAGE_MANIFEST[@]}"; do
+        IFS='|' read -r package display bin_command wrapper_name extension_id debug_env <<<"$entry"
+        local log_file="/tmp/${wrapper_name}-npm-fix.log"
+        print_detail "Reinstalling $package"
+
+        if npm install -g "$package" 2>&1 | tee "$log_file"; then
+            print_success "$display npm package installed"
+
+            local package_dir="$npm_modules/$package"
+            local cli_path
+            cli_path=$(resolve_manifest_cli_path "$package_dir" "$bin_command") || cli_path=""
+
+            if [ -n "$cli_path" ] && [ -f "$cli_path" ]; then
+                local wrapper_path="$npm_prefix/bin/$wrapper_name"
+                write_ai_wrapper "$wrapper_path" "$cli_path" "$display" "$debug_env"
+                print_success "Updated wrapper: $wrapper_path"
+            else
+                print_warning "Unable to locate CLI entry for $display"
+                print_detail "Check $log_file for npm output"
+            fi
+        else
+            print_fail "Failed to reinstall $display"
+            echo "  See $log_file for details"
+        fi
+    done
 }
 
 # Check functions
@@ -609,6 +715,8 @@ run_all_checks() {
     echo "Start time: $(date)"
     echo ""
 
+    load_npm_manifest
+
     # ==========================================================================
     # Core System Tools
     # ==========================================================================
@@ -685,46 +793,53 @@ run_all_checks() {
     # ==========================================================================
     print_section "AI Development Tools"
 
-    # Claude Code - comprehensive check
-    print_check "Claude Code installation"
-    if [ -f "$HOME/.npm-global/bin/claude-wrapper" ]; then
-        if command -v claude-wrapper &> /dev/null; then
-            print_success "Claude Code (wrapper and PATH configured)"
-            print_detail "Wrapper: $HOME/.npm-global/bin/claude-wrapper"
-            print_detail "In PATH: $(which claude-wrapper)"
-        else
-            print_warning "Claude Code wrapper exists but not in PATH"
-            print_detail "Wrapper: $HOME/.npm-global/bin/claude-wrapper"
-            print_detail "Add to PATH: export PATH=\"\$HOME/.npm-global/bin:\$PATH\""
-            ((WARNING_CHECKS++))
-        fi
-        ((TOTAL_CHECKS++))
+    if [ ${#NPM_AI_PACKAGE_MANIFEST[@]} -eq 0 ]; then
+        print_info "No npm-based AI CLIs defined in manifest"
     else
-        print_fail "Claude Code wrapper not found"
-        print_detail "Expected at: $HOME/.npm-global/bin/claude-wrapper"
-        print_detail "Install with: npm install -g @anthropic-ai/claude-code"
-        ((FAILED_CHECKS++))
-        ((TOTAL_CHECKS++))
-    fi
+        local npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
+        local npm_modules="$npm_prefix/lib/node_modules"
+        local entry package display bin_command wrapper_name extension_id debug_env
+        for entry in "${NPM_AI_PACKAGE_MANIFEST[@]}"; do
+            IFS='|' read -r package display bin_command wrapper_name extension_id debug_env <<<"$entry"
+            local wrapper_path="$npm_prefix/bin/$wrapper_name"
+            print_check "$display wrapper"
+            if [ -f "$wrapper_path" ]; then
+                if command -v "$wrapper_name" >/dev/null 2>&1; then
+                    print_success "$display wrapper available"
+                    print_detail "Wrapper: $wrapper_path"
+                    print_detail "In PATH: $(which "$wrapper_name")"
+                else
+                    print_warning "$display wrapper exists but is not on PATH"
+                    print_detail "Wrapper: $wrapper_path"
+                    print_detail 'Add to PATH: export PATH="$HOME/.npm-global/bin:$PATH"'
+                fi
+            else
+                print_fail "$display wrapper not found"
+                print_detail "Expected at: $wrapper_path"
+                print_detail "Install with: npm install -g $package"
+            fi
 
-    # Check underlying npm package
-    print_check "Claude Code npm package"
-    if [ -f "$HOME/.npm-global/lib/node_modules/@anthropic-ai/claude-code/cli.js" ]; then
-        local pkg_version=$(node -e "console.log(require('$HOME/.npm-global/lib/node_modules/@anthropic-ai/claude-code/package.json').version)" 2>/dev/null || echo "unknown")
-        print_success "Claude Code npm package (v$pkg_version)"
-        print_detail "Location: $HOME/.npm-global/lib/node_modules/@anthropic-ai/claude-code"
-    else
-        print_fail "Claude Code npm package not found"
-        print_detail "Install with: npm install -g @anthropic-ai/claude-code"
-        ((FAILED_CHECKS++))
+            print_check "$display npm package"
+            local package_dir="$npm_modules/$package"
+            if [ -d "$package_dir" ]; then
+                local pkg_json="$package_dir/package.json"
+                local pkg_version="unknown"
+                if [ -f "$pkg_json" ]; then
+                    pkg_version=$(node -e "console.log(require(process.argv[1]).version)" "$pkg_json" 2>/dev/null || echo "unknown")
+                fi
+                print_success "$display npm package (v${pkg_version})"
+                print_detail "Location: $package_dir"
+            else
+                print_fail "$display npm package not found"
+                print_detail "Install with: npm install -g $package"
+            fi
+        done
     fi
-    ((TOTAL_CHECKS++))
 
     # Other AI tools
     check_command "ollama" "Ollama" true
     check_command "aider" "Aider" true
 
-    # ==========================================================================
     # Python AI/ML Packages
     # ==========================================================================
     print_section "Python AI/ML Packages"
@@ -1037,8 +1152,10 @@ run_all_checks() {
             echo ""
 
             # Check for common issues and provide specific guidance
+            local suggestion_index=1
+
             if ! command -v home-manager &> /dev/null; then
-                echo "  ${YELLOW}1. Home Manager not in PATH:${NC}"
+                echo "  ${YELLOW}${suggestion_index}. Home Manager not in PATH:${NC}"
                 echo "     • Source session variables:"
                 echo "       source ~/.nix-profile/etc/profile.d/hm-session-vars.sh"
                 echo "     • Then reload shell:"
@@ -1047,22 +1164,38 @@ run_all_checks() {
                 echo "       cd ~/.dotfiles/home-manager"
                 echo "       nix run home-manager/master -- switch --flake ."
                 echo ""
+                suggestion_index=$((suggestion_index + 1))
             fi
 
-            if [ ! -f "$HOME/.npm-global/bin/claude-wrapper" ]; then
-                echo "  ${YELLOW}2. Claude Code not installed:${NC}"
+            load_npm_manifest
+            local missing_ai_tools=()
+            if [ ${#NPM_AI_PACKAGE_MANIFEST[@]} -gt 0 ]; then
+                local entry package display bin_command wrapper_name extension_id debug_env
+                for entry in "${NPM_AI_PACKAGE_MANIFEST[@]}"; do
+                    IFS='|' read -r package display bin_command wrapper_name extension_id debug_env <<<"$entry"
+                    if [ ! -f "$HOME/.npm-global/bin/$wrapper_name" ]; then
+                        missing_ai_tools+=("$display|$package")
+                    fi
+                done
+            fi
+
+            if [ ${#missing_ai_tools[@]} -gt 0 ]; then
+                echo "  ${YELLOW}${suggestion_index}. AI CLI tools missing:${NC}"
                 echo "     • Install via NPM:"
                 echo "       export NPM_CONFIG_PREFIX=~/.npm-global"
-                echo "       npm install -g @anthropic-ai/claude-code"
+                local tool
+                for tool in "${missing_ai_tools[@]}"; do
+                    IFS='|' read -r display package <<<"$tool"
+                    echo "       npm install -g $package    # $display"
+                done
                 echo "     • Or use auto-fix:"
                 echo "       $0 --fix"
                 echo ""
+                suggestion_index=$((suggestion_index + 1))
             fi
 
-            if ! python3 -c "import torch" &> /dev/null || \
-               ! python3 -c "import pandas" &> /dev/null || \
-               ! python3 -c "import anthropic" &> /dev/null; then
-                echo "  ${YELLOW}3. Python packages missing:${NC}"
+            if ! python3 -c "import torch" &> /dev/null ||                ! python3 -c "import pandas" &> /dev/null ||                ! python3 -c "import anthropic" &> /dev/null; then
+                echo "  ${YELLOW}${suggestion_index}. Python packages missing:${NC}"
                 echo "     • These should be installed via home-manager"
                 echo "     • If home-manager was just applied, reload your shell:"
                 echo "       exec zsh"
@@ -1101,7 +1234,21 @@ main() {
             fix_home_manager
         fi
 
-        if [ ! -f "$HOME/.npm-global/bin/claude-wrapper" ]; then
+        load_npm_manifest
+        local npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
+        local ai_fix_needed=false
+        if [ ${#NPM_AI_PACKAGE_MANIFEST[@]} -gt 0 ]; then
+            local entry package display bin_command wrapper_name extension_id debug_env
+            for entry in "${NPM_AI_PACKAGE_MANIFEST[@]}"; do
+                IFS='|' read -r package display bin_command wrapper_name extension_id debug_env <<<"$entry"
+                if [ ! -f "$npm_prefix/bin/$wrapper_name" ]; then
+                    ai_fix_needed=true
+                    break
+                fi
+            done
+        fi
+
+        if [ "$ai_fix_needed" = true ]; then
             fix_npm_packages
         fi
 

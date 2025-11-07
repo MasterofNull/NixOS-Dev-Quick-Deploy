@@ -226,6 +226,16 @@ which claude-wrapper
 # Test wrapper
 claude-wrapper --version
 
+# Additional wrappers installed by quick deploy
+which gpt-codex-wrapper
+which codex-wrapper
+which openai-wrapper
+which gooseai-wrapper
+~/.npm-global/bin/gpt-codex-wrapper --version
+~/.npm-global/bin/codex-wrapper --version
+~/.npm-global/bin/openai-wrapper --version
+~/.npm-global/bin/gooseai-wrapper --version
+
 # If not found, run health check
 ./system-health-check.sh --fix
 ```
@@ -255,7 +265,7 @@ The Claude Code extension works with:
 - **VS Code** 1.85.0+ (Microsoft version with telemetry)
 - **Cursor** (has built-in Claude support, extension not needed)
 
-The `claude-wrapper` ensures the Claude CLI works correctly regardless of which editor you use.
+The AI wrappers (`claude-wrapper`, `gpt-codex-wrapper`, `codex-wrapper`, `openai-wrapper`, and `gooseai-wrapper`) ensure each CLI works correctly regardless of which editor you use.
 
 ### Cursor - AI-First IDE
 
@@ -641,7 +651,7 @@ exec zsh
 type aidb-dev
 ```
 
-#### "claude-wrapper: command not found"
+#### "AI wrapper (claude-wrapper, gpt-codex-wrapper, codex-wrapper, openai-wrapper, gooseai-wrapper) not found"
 
 **Cause:** NPM global bin not in PATH.
 
@@ -720,6 +730,10 @@ journalctl --user -u ollama
 
 # Claude wrapper debug
 CLAUDE_DEBUG=1 claude-wrapper --version
+GPT_CODEX_DEBUG=1 gpt-codex-wrapper --version
+CODEX_DEBUG=1 codex-wrapper --version
+OPENAI_DEBUG=1 openai-wrapper --version
+GOOSEAI_DEBUG=1 gooseai-wrapper --version
 ```
 
 **Report Issues:**
