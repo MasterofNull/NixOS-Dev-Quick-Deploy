@@ -934,14 +934,46 @@ main() {
     # Deployment success
     log INFO "All phases completed successfully"
     echo ""
+
+    local health_exit=0
+    if [[ "$SKIP_HEALTH_CHECK" != true ]]; then
+        local health_script="$SCRIPT_DIR/scripts/system-health-check.sh"
+        if [[ -x "$health_script" ]]; then
+            print_section "Final System Health Check"
+            log INFO "Running final system health check via $health_script"
+            echo ""
+            if "$health_script" --detailed; then
+                print_success "System health check passed"
+                echo ""
+            else
+                health_exit=$?
+                print_warning "System health check reported issues. Review the output above and rerun with --fix if needed."
+                echo ""
+            fi
+        else
+            log WARNING "Health check script missing at $health_script"
+            print_warning "Health check script not found at $health_script"
+            print_info "Run git pull to restore scripts or download manually."
+            echo ""
+        fi
+    else
+        log INFO "Skipping final health check (flag)"
+        print_info "Skipping final health check (--skip-health-check)"
+    fi
+
     echo "============================================"
-    print_success "Deployment completed successfully!"
+    if [[ $health_exit -eq 0 ]]; then
+        print_success "Deployment completed successfully!"
+    else
+        print_warning "Deployment completed with follow-up actions required."
+        print_info "Review the health check summary above. You can rerun fixes with: $health_script --fix"
+    fi
     echo "============================================"
     echo ""
     echo "Log file: $LOG_FILE"
     echo ""
 
-    return 0
+    return $health_exit
 }
 
 # ============================================================================
