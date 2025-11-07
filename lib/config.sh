@@ -95,11 +95,75 @@ get_binary_cache_public_keys() {
     printf '%s\n' "${keys[@]}"
 }
 
+determine_nixos_parallelism() {
+    local detected_ram="${TOTAL_RAM_GB:-}"
+    local detected_cores="${CPU_CORES:-}"
+    local available_cores
+
+    if [[ "$detected_cores" =~ ^[0-9]+$ && "$detected_cores" -ge 1 ]]; then
+        available_cores="$detected_cores"
+    elif command -v nproc >/dev/null 2>&1; then
+        available_cores=$(nproc 2>/dev/null || printf '1')
+    else
+        available_cores=1
+    fi
+
+    local max_jobs="auto"
+    local core_limit=0
+    local message=""
+    local ram_value
+
+    if [[ "$detected_ram" =~ ^[0-9]+$ ]]; then
+        ram_value="$detected_ram"
+    else
+        ram_value=0
+    fi
+
+    if (( ram_value < 8 )); then
+        max_jobs="1"
+        core_limit=1
+    elif (( ram_value < 16 )); then
+        max_jobs="2"
+        core_limit=2
+    fi
+
+    if [[ "$core_limit" != "0" ]]; then
+        if (( core_limit > available_cores )); then
+            core_limit="$available_cores"
+        fi
+
+        if (( core_limit < 1 )); then
+            core_limit=1
+        fi
+
+        if [[ "$max_jobs" != "auto" ]] && (( max_jobs > core_limit )); then
+            max_jobs="$core_limit"
+        fi
+
+        message="Detected ${ram_value}GB RAM and ${available_cores} CPU core(s); limiting nixos-rebuild to ${max_jobs} parallel job(s) across ${core_limit} core(s) to avoid out-of-memory conditions."
+    fi
+
+    printf '%s\n' "$max_jobs"
+    printf '%s\n' "$core_limit"
+    printf '%s\n' "$message"
+}
+
 compose_nixos_rebuild_options() {
     local use_caches="${1:-${USE_BINARY_CACHES:-true}}"
+    local -a parallelism
+    mapfile -t parallelism < <(determine_nixos_parallelism)
+
+    local computed_max_jobs="${parallelism[0]:-auto}"
+    local computed_core_limit="${parallelism[1]:-0}"
+    local throttle_message="${parallelism[2]:-}"
+
+    if [[ -n "$throttle_message" ]]; then
+        print_info "$throttle_message"
+    fi
+
     local -a opts=(
-        "--option" "max-jobs" "auto"
-        "--option" "cores" "0"
+        "--option" "max-jobs" "$computed_max_jobs"
+        "--option" "cores" "$computed_core_limit"
         "--option" "keep-outputs" "true"
         "--option" "keep-derivations" "true"
     )
@@ -898,6 +962,29 @@ EOF
 
     local total_ram_value="${TOTAL_RAM_GB:-0}"
     local zram_value="${ZRAM_PERCENT:-50}"
+    local hibernation_swap_value="${HIBERNATION_SWAP_SIZE_GB:-$total_ram_value}"
+
+    local -a nix_parallelism_settings
+    mapfile -t nix_parallelism_settings < <(determine_nixos_parallelism)
+    local nix_max_jobs_value="${nix_parallelism_settings[0]:-auto}"
+    local nix_core_limit_value="${nix_parallelism_settings[1]:-0}"
+    local nix_throttle_message="${nix_parallelism_settings[2]:-}"
+
+    local nix_max_jobs_literal
+    if [[ "$nix_max_jobs_value" == "auto" ]]; then
+        nix_max_jobs_literal='"auto"'
+    else
+        nix_max_jobs_literal="$nix_max_jobs_value"
+    fi
+
+    local nix_cores_literal="$nix_core_limit_value"
+
+    local nix_parallel_comment
+    if [[ -n "$nix_throttle_message" ]]; then
+        nix_parallel_comment="capped at ${nix_max_jobs_value} job(s) / ${nix_core_limit_value} core(s) for ${total_ram_value}GB RAM"
+    else
+        nix_parallel_comment="using upstream defaults (auto jobs, 0 cores)"
+    fi
 
     local user_password_block
     if [[ -n "${USER_PASSWORD_BLOCK:-}" ]]; then
@@ -1067,6 +1154,10 @@ EOF
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@NIXOS_VERSION@" "$NIXOS_VERSION"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@TOTAL_RAM_GB@" "$total_ram_value"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@ZRAM_PERCENT@" "$zram_value"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@HIBERNATION_SWAP_SIZE_GB@" "$hibernation_swap_value"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@NIX_MAX_JOBS@" "$nix_max_jobs_literal"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@NIX_BUILD_CORES@" "$nix_cores_literal"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@NIX_PARALLEL_COMMENT@" "$nix_parallel_comment"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@USERS_MUTABLE@" "${USERS_MUTABLE_SETTING:-true}"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@USER_PASSWORD_BLOCK@" "$user_password_block"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_ENABLE_FLAG@" "$gitea_enabled_literal"

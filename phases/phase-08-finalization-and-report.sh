@@ -113,6 +113,42 @@ phase_08_finalization_and_report() {
     print_success "System finalization complete"
     echo ""
 
+    if [[ "${TEMP_SWAP_CREATED:-false}" == true && -n "${TEMP_SWAP_FILE:-}" ]]; then
+        print_section "Cleaning Up Temporary Swapfile"
+
+        local -a active_swap_devices=()
+        mapfile -t active_swap_devices < <(swapon --show=NAME --noheadings 2>/dev/null || true)
+
+        local has_alternative_swap=false
+        local device
+        for device in "${active_swap_devices[@]}"; do
+            if [[ -n "$device" && "$device" != "$TEMP_SWAP_FILE" ]]; then
+                has_alternative_swap=true
+                break
+            fi
+        done
+
+        if [[ "$has_alternative_swap" == true ]]; then
+            print_info "Permanent swap detected; removing temporary swapfile $TEMP_SWAP_FILE."
+            if sudo swapoff "$TEMP_SWAP_FILE" 2>/dev/null; then
+                print_success "Temporary swapfile deactivated."
+            else
+                print_warning "Unable to deactivate temporary swapfile $TEMP_SWAP_FILE automatically."
+            fi
+
+            if sudo rm -f "$TEMP_SWAP_FILE" 2>/dev/null; then
+                print_success "Temporary swapfile removed."
+                unset TEMP_SWAP_CREATED TEMP_SWAP_FILE TEMP_SWAP_SIZE_GB
+            else
+                print_warning "Failed to delete $TEMP_SWAP_FILE. Remove manually with: sudo rm -f $TEMP_SWAP_FILE"
+            fi
+        else
+            print_info "Temporary swapfile $TEMP_SWAP_FILE remains active because no alternative swap device is present. Remove manually once permanent swap is configured: sudo swapoff $TEMP_SWAP_FILE && sudo rm -f $TEMP_SWAP_FILE"
+        fi
+
+        echo ""
+    fi
+
     # ========================================================================
     # PART 2: DEPLOYMENT REPORT
     # ========================================================================

@@ -192,6 +192,96 @@ phase_01_system_initialization() {
     # Optimize configuration based on available resources
     detect_gpu_and_cpu
 
+    # ========================================================================
+    # Step 1.11: Plan Swap and Hibernation Capacity
+    # ========================================================================
+    print_section "Swap & Hibernation Planning"
+    echo ""
+
+    local current_swap_gb
+    current_swap_gb=$(calculate_active_swap_total_gb)
+
+    local recommended_swap_gb
+    recommended_swap_gb=$(suggest_hibernation_swap_size "${TOTAL_RAM_GB:-0}")
+    if ! [[ "$recommended_swap_gb" =~ ^[0-9]+$ ]] || (( recommended_swap_gb <= 0 )); then
+        recommended_swap_gb=8
+    fi
+
+    if [[ "${TOTAL_RAM_GB:-}" =~ ^[0-9]+$ && ${TOTAL_RAM_GB} -gt 0 ]]; then
+        print_info "Detected system memory: ${TOTAL_RAM_GB}GB."
+    else
+        print_warning "Unable to determine total system memory; swap sizing suggestions may be inaccurate."
+    fi
+
+    if (( current_swap_gb > 0 )); then
+        print_info "Active swap currently configured: ${current_swap_gb}GB."
+    else
+        print_warning "No active swap space detected on this system."
+    fi
+
+    print_info "Recommended zram-backed swap size for reliable hibernation: ${recommended_swap_gb}GB."
+    if (( current_swap_gb > 0 )); then
+        print_info "Press Enter to accept ${recommended_swap_gb}GB, type 'current' to keep ${current_swap_gb}GB, or enter a new size in GB."
+    else
+        print_info "Press Enter to accept ${recommended_swap_gb}GB or enter a new size in GB."
+    fi
+
+    local raw_swap_input=""
+    while true; do
+        raw_swap_input=$(prompt_user "Desired swap size in GB for zram-backed hibernation" "$recommended_swap_gb")
+
+        if [[ -z "$raw_swap_input" ]]; then
+            raw_swap_input="$recommended_swap_gb"
+        fi
+
+        if [[ "${raw_swap_input,,}" == "current" ]]; then
+            if (( current_swap_gb > 0 )); then
+                HIBERNATION_SWAP_SIZE_GB="$current_swap_gb"
+                print_success "Keeping current swap allocation (${current_swap_gb}GB)."
+                break
+            else
+                print_warning "No active swap detected. Please enter a numeric size."
+                continue
+            fi
+        fi
+
+        if [[ "$raw_swap_input" =~ ^[0-9]+$ ]]; then
+            if (( raw_swap_input <= 0 )); then
+                print_warning "Swap size must be greater than zero to support hibernation."
+                continue
+            fi
+            HIBERNATION_SWAP_SIZE_GB="$raw_swap_input"
+            if (( raw_swap_input == recommended_swap_gb )); then
+                print_success "Using recommended swap size of ${raw_swap_input}GB."
+            else
+                print_success "Using custom swap size of ${raw_swap_input}GB."
+            fi
+            break
+        fi
+
+        print_warning "Invalid input. Enter a whole number of gigabytes or type 'current'."
+    done
+
+    export HIBERNATION_SWAP_SIZE_GB
+
+    local zram_percent_override
+    zram_percent_override=$(compute_zram_percent_for_swap "$HIBERNATION_SWAP_SIZE_GB" "${TOTAL_RAM_GB:-0}")
+    if [[ "$zram_percent_override" =~ ^[0-9]+$ && "$zram_percent_override" -gt 0 ]]; then
+        if (( zram_percent_override > 400 )); then
+            print_warning "Requested swap size is very large; capping zram allocation at 400% of RAM to avoid exhaustion."
+            zram_percent_override=400
+        fi
+        if [[ "$zram_percent_override" != "${ZRAM_PERCENT:-}" ]]; then
+            ZRAM_PERCENT="$zram_percent_override"
+            print_info "Configuring zram swap to target approximately ${HIBERNATION_SWAP_SIZE_GB}GB (~${ZRAM_PERCENT}% of RAM)."
+        else
+            print_info "Retaining auto-detected zram target of ${ZRAM_PERCENT}% (~${HIBERNATION_SWAP_SIZE_GB}GB)."
+        fi
+    else
+        print_warning "Unable to compute a zram allocation from the provided size; keeping default ${ZRAM_PERCENT}% target."
+    fi
+    export ZRAM_PERCENT
+
     echo ""
     print_section "Part 2: Temporary Tool Installation"
     echo ""
@@ -205,7 +295,7 @@ phase_01_system_initialization() {
     # ========================================================================
 
     # ========================================================================
-    # Step 1.11: Select Build Strategy for Initial Deployment
+    # Step 1.12: Select Build Strategy for Initial Deployment
     # ========================================================================
     print_section "Build Strategy Selection"
     echo ""
@@ -279,19 +369,19 @@ EOF
     fi
 
     # ========================================================================
-    # Step 1.12: NixOS Version Selection
+    # Step 1.13: NixOS Version Selection
     # ========================================================================
     # Let user choose stable (24.05) or unstable (rolling)
     select_nixos_version
 
     # ========================================================================
-    # Step 1.13: Update NixOS Channels
+    # Step 1.14: Update NixOS Channels
     # ========================================================================
     # Fetch latest package metadata and security updates
     update_nixos_channels
 
     # ========================================================================
-    # Step 1.14: Install Core Prerequisite Packages
+    # Step 1.15: Install Core Prerequisite Packages
     # ========================================================================
     # Install git, jq, curl, wget via nix-env for immediate availability
     # These are temporary and will be removed in Phase 5
@@ -301,14 +391,14 @@ EOF
     fi
 
     # ========================================================================
-    # Step 1.15: Cleanup Conflicting Home-Manager Profiles
+    # Step 1.16: Cleanup Conflicting Home-Manager Profiles
     # ========================================================================
     # Remove legacy home-manager installations that could conflict
     print_info "Scanning nix profile for legacy home-manager entries..."
     cleanup_conflicting_home_manager_profile
 
     # ========================================================================
-    # Step 1.16: Ensure Home-Manager is Available
+    # Step 1.17: Ensure Home-Manager is Available
     # ========================================================================
     # home-manager manages user environment (dotfiles, packages, services)
     if command -v home-manager &>/dev/null; then
@@ -319,7 +409,7 @@ EOF
     fi
 
     # ========================================================================
-    # Step 1.17: Verify Python Runtime Available
+    # Step 1.18: Verify Python Runtime Available
     # ========================================================================
     # Python needed for configuration generation scripts
     print_info "Verifying Python runtime..."

@@ -355,6 +355,10 @@ in
       # Modern features
       experimental-features = [ "nix-command" "flakes" ];
 
+      # Build parallelism guardrail: @NIX_PARALLEL_COMMENT@
+      max-jobs = @NIX_MAX_JOBS@;
+      cores = @NIX_BUILD_CORES@;
+
       # Performance & security
       auto-optimise-store = true;
       trusted-users = [ "root" "@wheel" ];
@@ -821,6 +825,7 @@ in
   # Zram: Compressed RAM swap (faster than disk swap)
   # This creates a compressed block device in RAM for swap
   # Auto-configured based on detected RAM: @TOTAL_RAM_GB@GB
+  # Target capacity for hibernation-friendly swap: ~@HIBERNATION_SWAP_SIZE_GB@GB
   # Strategy: More RAM = less zram needed (diminishing returns)
   zramSwap = {
     enable = true;
