@@ -846,7 +846,7 @@ detect_previous_swap_configuration() {
     local path
     for path in "${swap_paths[@]}"; do
         if [[ -f "$path" ]]; then
-            if grep -Eqs 'swapDevices\s*=\s*\[' "$path"; then
+            if grep -Eqs 'swapDevices\s*=\s*(lib\.mkForce\s*)?\[' "$path"; then
                 log DEBUG "Detected swapDevices declaration in $path"
                 return 0
             fi
