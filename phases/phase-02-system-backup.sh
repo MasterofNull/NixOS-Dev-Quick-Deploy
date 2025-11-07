@@ -40,27 +40,27 @@ phase_02_backup() {
     # - This enables informed rollback decisions
     # ========================================================================
 
-    local phase_name="comprehensive_backup"
+    local phase_name="comprehensive_backup"  # State tracking identifier
 
     # ------------------------------------------------------------------------
     # Resume Check: Skip if already completed
     # ------------------------------------------------------------------------
-    if is_step_complete "$phase_name"; then
+    if is_step_complete "$phase_name"; then  # Check state file
         print_info "Phase 2 already completed (skipping)"
-        return 0
+            return 0  # Skip to next phase
     fi
 
-    print_section "Phase 2/8: System Backup"
-    echo ""
+    print_section "Phase 2/8: System Backup"  # Display phase header
+        echo ""
 
-    # Create backup root directory with timestamp
-    local BACKUP_ROOT="$HOME/.config-backups/pre-deployment-$(date +%Y%m%d_%H%M%S)"
-    if ! safe_mkdir "$BACKUP_ROOT"; then
+    # Create backup root directory with timestamp for unique identification
+    local BACKUP_ROOT="$HOME/.config-backups/pre-deployment-$(date +%Y%m%d_%H%M%S)"  # Format: pre-deployment-20250107_152030
+        if ! safe_mkdir "$BACKUP_ROOT"; then  # Create directory with safe permissions
         print_error "Failed to create backup directory: $BACKUP_ROOT"
-        return 1
+            return 1  # Fatal - can't proceed without backup
     fi
-    safe_chown_user_dir "$BACKUP_ROOT" || true
-    print_info "Backup directory: $BACKUP_ROOT"
+    safe_chown_user_dir "$BACKUP_ROOT" || true  # Ensure user ownership (not root)
+        print_info "Backup directory: $BACKUP_ROOT"
     echo ""
 
     # ========================================================================
