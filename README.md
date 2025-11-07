@@ -359,6 +359,10 @@ CODIUM_DEBUG=1 codium
 ~/.npm-global/bin/codex-wrapper --version
 ~/.npm-global/bin/openai-wrapper --version
 ~/.npm-global/bin/gooseai-wrapper --version
+~/.local/share/goose-cli/goose --version
+
+# Launch Goose Desktop
+~/.local/bin/goose-desktop &
 
 # Debug Claude wrapper
 CLAUDE_DEBUG=1 ~/.npm-global/bin/claude-wrapper --version
@@ -496,13 +500,15 @@ Building flake development environment...
 ### 7. AI CLI Integration
 ```
 ✓ Installing @anthropic-ai/claude-code via npm
-✓ Installing @openai/gpt-codex via npm
+✓ Installing @openai/codex (GPT CodeX CLI) via npm
 ✓ Installing openai via npm
-✓ Installing @gooseai/cli via npm
+ℹ Downloading Goose CLI v1.13.1 for x86_64
 ✓ Claude Code npm package installed
-✓ GPT CodeX npm package installed
+✓ GPT CodeX wrapper created from @openai/codex
 ✓ OpenAI CLI npm package installed
-✓ GooseAI CLI npm package installed
+✓ Goose CLI installed (v1.13.1)
+ℹ Downloading Goose Desktop v1.13.1 (Debian package)
+✓ Goose Desktop installed (v1.13.1)
 ✓ Created smart Node.js wrapper at ~/.npm-global/bin/claude-wrapper
 ✓ Created smart Node.js wrapper at ~/.npm-global/bin/gpt-codex-wrapper
 ✓ Created smart Node.js wrapper at ~/.npm-global/bin/codex-wrapper
@@ -518,12 +524,13 @@ Building flake development environment...
 Installing Claude Code extension...
 ✓ Anthropic.claude-code installed
 Installing additional extensions...
+⚠ GPT CodeX and GooseAI extensions unavailable on Open VSX (manual links printed during install)
 ✓ Python, Pylance, Black Formatter
 ✓ Jupyter, Continue, Codeium
 ✓ GitLens, Git Graph, Error Lens
 ✓ Go, Rust Analyzer, YAML, TOML
 ✓ Docker, Terraform
-✓ All extensions installed!
+✓ Remaining extensions installed!
 ```
 
 ### 9. Completion
@@ -536,7 +543,7 @@ Next steps:
   1. Reboot: sudo reboot
   2. Select "Cosmic" at login
   3. Open terminal (P10k wizard auto-runs)
-  4. Verify: codium, claude-wrapper --version, gpt-codex-wrapper --version, codex-wrapper --version, openai-wrapper --version, gooseai-wrapper --version
+  4. Verify: codium, claude-wrapper --version, gpt-codex-wrapper --version, codex-wrapper --version, openai-wrapper --version, gooseai-wrapper --version, goose --version
 ```
 
 </details>

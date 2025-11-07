@@ -267,6 +267,8 @@ The Claude Code extension works with:
 
 The AI wrappers (`claude-wrapper`, `gpt-codex-wrapper`, `codex-wrapper`, `openai-wrapper`, and `gooseai-wrapper`) ensure each CLI works correctly regardless of which editor you use.
 
+> **Heads up:** `gpt-codex-wrapper` reuses the `@openai/codex` CLI binary so it stays up to date, and `gooseai-wrapper` calls the Goose CLI installed from the official release tarball at `~/.local/share/goose-cli/goose`.
+
 ### Cursor - AI-First IDE
 
 Cursor is installed via Flatpak and provides deep AI integration.

@@ -433,7 +433,7 @@ phase_05_declarative_deployment() {
                 print_info "  Flathub Beta not added (not required)"
         fi
 
-        print_info "Flatpak application installs remain manual to avoid blocking systemd during switch"
+        print_info "Flatpak application installs will run in Phase 6 to avoid blocking systemd during switch"
         echo ""
     fi
 

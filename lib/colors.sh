@@ -64,6 +64,10 @@ YELLOW='\033[1;33m'
 # Normal intensity (0;34) for casual information display
 BLUE='\033[0;34m'
 
+# Gray color - Used for neutral informational states (e.g., "not configured")
+# Bright black (0;90) provides contrast without appearing disabled/hidden
+GRAY='\033[0;90m'
+
 # No Color - Resets all text formatting attributes
 # CRITICAL: Always use this after colored text to prevent color bleeding
 # into subsequent output. Without this, all following text stays colored.
