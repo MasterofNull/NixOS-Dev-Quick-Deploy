@@ -164,10 +164,10 @@ phase_01_system_initialization() {
     # ========================================================================
     # Warn about old monolithic script from v2.x
     print_info "Checking for old deployment artifacts..."
-    local OLD_SCRIPT="/home/$USER/Documents/nixos-quick-deploy.sh"
-    if [[ -f "$OLD_SCRIPT" ]]; then
+    local OLD_SCRIPT="/home/$USER/Documents/nixos-quick-deploy.sh"  # Path to v2.x monolithic script
+        if [[ -f "$OLD_SCRIPT" ]]; then  # Old script found
         print_warning "Found old deployment script: $OLD_SCRIPT"
-        print_info "This can be safely ignored or archived"
+            print_info "This can be safely ignored or archived"  # Not a fatal issue
     fi
 
     # ========================================================================
@@ -175,9 +175,9 @@ phase_01_system_initialization() {
     # ========================================================================
     # Ensure all required packages available in Nix channels
     print_info "Validating dependency chain..."
-    check_required_packages || {
+    check_required_packages || {  # Validate packages available (from lib/validation.sh)
         print_error "Required packages not available"
-        exit 1
+            exit 1  # Fatal - need packages for deployment
     }
 
     # ========================================================================
@@ -188,166 +188,192 @@ phase_01_system_initialization() {
     # - AMD: Mesa + AMDGPU drivers + ROCm
     # - Intel: Mesa + i915/Xe drivers + oneAPI
     # - Software: No GPU, CPU-only rendering
-    detect_gpu_hardware
+    detect_gpu_hardware  # Sets GPU_TYPE, GPU_DRIVER, GPU_PACKAGES, LIBVA_DRIVER
 
     # ========================================================================
     # Step 1.10: Hardware Detection - CPU and Memory
     # ========================================================================
     # Optimize configuration based on available resources
-    detect_gpu_and_cpu
+    detect_gpu_and_cpu  # Sets CPU_COUNT, MEMORY_GB for tuning
 
     # ========================================================================
     # Step 1.11: Plan Swap and Hibernation Capacity
     # ========================================================================
+    # Detect if previous deployment used swap-backed hibernation with zswap.
+    # If found, carry forward the config. User can override with CLI flags.
     print_section "Swap & Hibernation Planning"
     echo ""
 
-    ENABLE_ZSWAP_CONFIGURATION="false"
-    local previous_swap_detected="false"
-    local previous_hibernation_detected="false"
-    local zswap_override_mode="${ZSWAP_CONFIGURATION_OVERRIDE:-auto}"
+    # Initialize swap/hibernation detection flags
+    ENABLE_ZSWAP_CONFIGURATION="false"  # Default: don't configure zswap
+        local previous_swap_detected="false"  # Was swap configured in previous deployment?
+    local previous_hibernation_detected="false"  # Was hibernation configured previously?
+        local zswap_override_mode="${ZSWAP_CONFIGURATION_OVERRIDE:-auto}"  # User override: enable/disable/auto
 
+    # Detect previous swap configuration from existing config files
     if declare -F detect_previous_swap_configuration >/dev/null 2>&1 && detect_previous_swap_configuration; then
-        previous_swap_detected="true"
+        previous_swap_detected="true"  # Found swap devices in previous config
     fi
 
+    # Detect previous hibernation configuration from boot parameters
     if declare -F detect_previous_hibernation_configuration >/dev/null 2>&1 && detect_previous_hibernation_configuration; then
-        previous_hibernation_detected="true"
+        previous_hibernation_detected="true"  # Found resume= kernel parameter
     fi
 
-    if [[ "$previous_swap_detected" == "true" && "$previous_hibernation_detected" == "true" ]]; then
-        ENABLE_ZSWAP_CONFIGURATION="true"
-        print_success "Detected existing swap-backed hibernation; carrying the configuration forward with zswap."
-    else
+    # Decide whether to enable zswap configuration based on detection
+    if [[ "$previous_swap_detected" == "true" && "$previous_hibernation_detected" == "true" ]]; then  # Both swap and hibernation found
+        ENABLE_ZSWAP_CONFIGURATION="true"  # Carry forward existing configuration
+            print_success "Detected existing swap-backed hibernation; carrying the configuration forward with zswap."
+    else  # Missing swap or hibernation config
         print_info "Previous deployment lacked hibernation-ready swap; leaving swap and zswap settings unchanged."
-        if [[ "$previous_swap_detected" == "true" && "$previous_hibernation_detected" != "true" ]]; then
+            # Provide diagnostic info about what was missing
+            if [[ "$previous_swap_detected" == "true" && "$previous_hibernation_detected" != "true" ]]; then
             print_info "Swap was present but hibernation support was not detected."
         elif [[ "$previous_swap_detected" != "true" && "$previous_hibernation_detected" == "true" ]]; then
             print_info "Hibernation hints were found but no active swap device is available."
         fi
+        # Suggest manual override if in auto mode
         if [[ "$zswap_override_mode" == "auto" ]]; then
             print_info "Re-run with --enable-zswap to carry swap-backed hibernation forward manually."
         fi
     fi
 
+    # Handle user override flags (--enable-zswap, --disable-zswap, --zswap-auto)
     case "$zswap_override_mode" in
-        enable)
-            if [[ "$ENABLE_ZSWAP_CONFIGURATION" != "true" ]]; then
+        enable)  # Force-enable zswap configuration
+            if [[ "$ENABLE_ZSWAP_CONFIGURATION" != "true" ]]; then  # Override detection result
                 print_warning "Manual zswap override requested; enabling configuration despite missing legacy detection."
-            else
+            else  # Confirming existing detection
                 print_info "Manual zswap override requested; detection already confirmed compatibility."
             fi
-            ENABLE_ZSWAP_CONFIGURATION="true"
+            ENABLE_ZSWAP_CONFIGURATION="true"  # Force enable
             ;;
-        disable)
-            if [[ "$ENABLE_ZSWAP_CONFIGURATION" == "true" ]]; then
+        disable)  # Force-disable zswap configuration
+            if [[ "$ENABLE_ZSWAP_CONFIGURATION" == "true" ]]; then  # Override detection result
                 print_warning "Manual zswap override disabled swap prompts for this run."
-            else
+            else  # Already disabled
                 print_info "Manual zswap override set to disable; leaving swap configuration unchanged."
             fi
-            ENABLE_ZSWAP_CONFIGURATION="false"
+            ENABLE_ZSWAP_CONFIGURATION="false"  # Force disable
             ;;
     esac
 
-    local resume_device_hint=""
-    if declare -F discover_resume_device_hint >/dev/null 2>&1; then
-        resume_device_hint=$(discover_resume_device_hint 2>/dev/null || echo "")
-        if [[ -n "$resume_device_hint" ]]; then
-            RESUME_DEVICE_HINT="$resume_device_hint"
-            export RESUME_DEVICE_HINT
-            if [[ "$ENABLE_ZSWAP_CONFIGURATION" == "true" ]]; then
+    # Try to discover resume device from previous deployment
+    local resume_device_hint=""  # Will store /dev/XXX path
+        if declare -F discover_resume_device_hint >/dev/null 2>&1; then  # Function exists
+        resume_device_hint=$(discover_resume_device_hint 2>/dev/null || echo "")  # Get resume device path
+            if [[ -n "$resume_device_hint" ]]; then  # Resume device found
+            RESUME_DEVICE_HINT="$resume_device_hint"  # Store for config generation
+                export RESUME_DEVICE_HINT  # Make available to all phases
+            if [[ "$ENABLE_ZSWAP_CONFIGURATION" == "true" ]]; then  # Only show if zswap enabled
                 print_info "Detected resume device from previous deployment: $RESUME_DEVICE_HINT"
             fi
         fi
     fi
 
-    export ENABLE_ZSWAP_CONFIGURATION
+    export ENABLE_ZSWAP_CONFIGURATION  # Make flag available to config generation phases
 
+    # If zswap configuration is enabled, prompt user for swap size
     if [[ "$ENABLE_ZSWAP_CONFIGURATION" == "true" ]]; then
-        local current_swap_gb
-        current_swap_gb=$(calculate_active_swap_total_gb)
+        # Calculate current active swap size
+        local current_swap_gb  # Size of currently active swap in GB
+            current_swap_gb=$(calculate_active_swap_total_gb)  # Parse from swapon output
 
-        local recommended_swap_gb
-        recommended_swap_gb=$(suggest_hibernation_swap_size "${TOTAL_RAM_GB:-0}")
-        if ! [[ "$recommended_swap_gb" =~ ^[0-9]+$ ]] || (( recommended_swap_gb <= 0 )); then
-            recommended_swap_gb=8
+        # Calculate recommended swap size based on RAM
+        local recommended_swap_gb  # Recommended size = RAM + buffer for hibernation
+            recommended_swap_gb=$(suggest_hibernation_swap_size "${TOTAL_RAM_GB:-0}")  # Function from lib/
+        if ! [[ "$recommended_swap_gb" =~ ^[0-9]+$ ]] || (( recommended_swap_gb <= 0 )); then  # Invalid or zero
+            recommended_swap_gb=8  # Fallback to 8GB default
         fi
 
-        if [[ "${TOTAL_RAM_GB:-}" =~ ^[0-9]+$ && ${TOTAL_RAM_GB} -gt 0 ]]; then
+        # Display system memory information to user
+        if [[ "${TOTAL_RAM_GB:-}" =~ ^[0-9]+$ && ${TOTAL_RAM_GB} -gt 0 ]]; then  # Valid RAM detection
             print_info "Detected system memory: ${TOTAL_RAM_GB}GB."
-        else
+        else  # RAM detection failed
             print_warning "Unable to determine total system memory; swap sizing suggestions may be inaccurate."
         fi
 
-        if (( current_swap_gb > 0 )); then
+        # Display current swap information
+        if (( current_swap_gb > 0 )); then  # Swap is active
             print_info "Active swap currently configured: ${current_swap_gb}GB."
-        else
+        else  # No swap detected
             print_warning "No active swap space detected on this system."
         fi
 
+        # Show recommended size and load previous user preference (if any)
         print_info "Recommended zswap-backed swap size for reliable hibernation: ${recommended_swap_gb}GB."
-        local previous_swap_pref=""
-        if declare -F load_cached_hibernation_swap_size >/dev/null 2>&1; then
-            previous_swap_pref=$(load_cached_hibernation_swap_size 2>/dev/null || echo "")
+        local previous_swap_pref=""  # Previously configured swap size from cache
+            if declare -F load_cached_hibernation_swap_size >/dev/null 2>&1; then  # Cache function exists
+            previous_swap_pref=$(load_cached_hibernation_swap_size 2>/dev/null || echo "")  # Load from cache file
         fi
 
-        local swap_prompt_default="$recommended_swap_gb"
-        if [[ "$previous_swap_pref" =~ ^[0-9]+$ && $previous_swap_pref -gt 0 ]]; then
-            swap_prompt_default="$previous_swap_pref"
-            if (( current_swap_gb > 0 && current_swap_gb != previous_swap_pref )); then
+        # Determine default value for swap size prompt
+        local swap_prompt_default="$recommended_swap_gb"  # Start with recommendation
+            if [[ "$previous_swap_pref" =~ ^[0-9]+$ && $previous_swap_pref -gt 0 ]]; then  # Previous preference found
+            swap_prompt_default="$previous_swap_pref"  # Use previous choice as default
+                if (( current_swap_gb > 0 && current_swap_gb != previous_swap_pref )); then  # Active swap differs from previous
                 print_info "Previously configured swap size detected: ${previous_swap_pref}GB (active swap: ${current_swap_gb}GB)."
-            else
+            else  # Previous matches active or no active swap
                 print_info "Previously configured swap size detected: ${previous_swap_pref}GB."
             fi
-        elif (( current_swap_gb > 0 )); then
-            swap_prompt_default="$current_swap_gb"
+        elif (( current_swap_gb > 0 )); then  # No previous pref, but active swap exists
+            swap_prompt_default="$current_swap_gb"  # Default to current active size
         fi
 
-        if (( current_swap_gb > 0 )); then
+        # Display prompt instructions based on whether swap exists
+        if (( current_swap_gb > 0 )); then  # Active swap exists
             print_info "Press Enter to keep ${swap_prompt_default}GB, type 'current' to use ${current_swap_gb}GB, or enter a new size in GB."
-        else
+        else  # No active swap
             print_info "Press Enter to keep ${swap_prompt_default}GB or enter a new size in GB."
         fi
 
-        local raw_swap_input=""
-        while true; do
+        # Interactive prompt loop for swap size input
+        local raw_swap_input=""  # User's input string
+            while true; do  # Loop until valid input received
+            # Prompt user for swap size with default value
             raw_swap_input=$(prompt_user "Desired swap size in GB for zswap-backed hibernation" "$swap_prompt_default")
 
-            if [[ -z "$raw_swap_input" ]]; then
-                raw_swap_input="$swap_prompt_default"
+            # Handle empty input (user pressed Enter)
+            if [[ -z "$raw_swap_input" ]]; then  # Empty input
+                raw_swap_input="$swap_prompt_default"  # Use default value
             fi
 
-            if [[ "${raw_swap_input,,}" == "current" ]]; then
-                if (( current_swap_gb > 0 )); then
-                    HIBERNATION_SWAP_SIZE_GB="$current_swap_gb"
-                    print_success "Keeping current swap allocation (${current_swap_gb}GB)."
-                    break
-                else
+            # Handle "current" keyword to use active swap size
+            if [[ "${raw_swap_input,,}" == "current" ]]; then  # User typed "current" (case-insensitive)
+                if (( current_swap_gb > 0 )); then  # Active swap exists
+                    HIBERNATION_SWAP_SIZE_GB="$current_swap_gb"  # Use current active size
+                        print_success "Keeping current swap allocation (${current_swap_gb}GB)."
+                    break  # Exit prompt loop
+                else  # No active swap to use
                     print_warning "No active swap detected. Please enter a numeric size."
-                    continue
+                        continue  # Re-prompt
                 fi
             fi
 
-            if [[ "$raw_swap_input" =~ ^[0-9]+$ ]]; then
-                if (( raw_swap_input <= 0 )); then
+            # Validate numeric input
+            if [[ "$raw_swap_input" =~ ^[0-9]+$ ]]; then  # Valid integer
+                if (( raw_swap_input <= 0 )); then  # Zero or negative
                     print_warning "Swap size must be greater than zero to support hibernation."
-                    continue
+                        continue  # Re-prompt
                 fi
-                HIBERNATION_SWAP_SIZE_GB="$raw_swap_input"
-                if (( raw_swap_input == recommended_swap_gb )); then
+                # Accept valid size
+                HIBERNATION_SWAP_SIZE_GB="$raw_swap_input"  # Store user's choice
+                    if (( raw_swap_input == recommended_swap_gb )); then  # User chose recommended size
                     print_success "Using recommended swap size of ${raw_swap_input}GB."
-                else
+                else  # User chose custom size
                     print_success "Using custom swap size of ${raw_swap_input}GB."
                 fi
-                break
+                break  # Exit prompt loop
             fi
 
+            # Invalid input - re-prompt
             print_warning "Invalid input. Enter a whole number of gigabytes or type 'current'."
         done
 
-        export HIBERNATION_SWAP_SIZE_GB
+        export HIBERNATION_SWAP_SIZE_GB  # Make available to config generation
 
-        if declare -F persist_hibernation_swap_size >/dev/null 2>&1; then
+        # Persist user's choice to cache file for future runs
+        if declare -F persist_hibernation_swap_size >/dev/null 2>&1; then  # Cache function exists
             persist_hibernation_swap_size "$HIBERNATION_SWAP_SIZE_GB" || true
         fi
 
