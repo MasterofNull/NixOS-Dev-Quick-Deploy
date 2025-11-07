@@ -131,6 +131,13 @@ in
     pythonImportsCheck = getAttrOr "pythonImportsCheck" [] old;
   });
 
+  watchfiles = python-super.watchfiles.overridePythonAttrs (_: {
+    # The permission-denied watcher test relies on /proc pseudo files that
+    # hang under the Nix sandbox and regularly trigger pytest-timeout.
+    doCheck = false;
+    pythonImportsCheck = [];
+  });
+
   syrupy = python-super.syrupy.overridePythonAttrs (_: {
     # Disable syrupy tests - snapshot testing library with flaky tests.
     doCheck = false;
