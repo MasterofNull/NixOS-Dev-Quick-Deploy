@@ -91,18 +91,18 @@ phase_03_config_generation() {
     # - Fail fast before making system changes
     # ========================================================================
 
-    local phase_name="generate_validate_configs"
+    local phase_name="generate_validate_configs"  # State tracking identifier for this phase
 
     # ------------------------------------------------------------------------
     # Resume Check: Skip if already completed
     # ------------------------------------------------------------------------
-    if is_step_complete "$phase_name"; then
+    if is_step_complete "$phase_name"; then  # Check state.json for completion marker
         print_info "Phase 3 already completed (skipping)"
-        return 0
+            return 0  # Skip to next phase
     fi
 
-    print_section "Phase 3/8: Configuration Generation"
-    echo ""
+    print_section "Phase 3/8: Configuration Generation"  # Display phase header
+        echo ""
 
     # ========================================================================
     # Step 4.1: Gather User Information
@@ -124,9 +124,9 @@ phase_03_config_generation() {
     # Why gather now: Prevents mid-deployment prompts
     # Validation: Ensures required info is present
     # Defaults: Sensible defaults if user skips prompts
-    if ! gather_user_info; then
+    if ! gather_user_info; then  # Collect user preferences interactively
         print_error "Failed to gather user information"
-        return 1
+            return 1  # Fatal - can't generate configs without user info
     fi
 
     # ========================================================================
@@ -168,9 +168,9 @@ phase_03_config_generation() {
     # File ownership:
     # - /etc/nixos/*: Owned by root (requires sudo)
     # - ~/.config/home-manager/*: Owned by user (no sudo)
-    if ! generate_nixos_system_config; then
+    if ! generate_nixos_system_config; then  # Generate system configs from templates
         print_error "Failed to generate NixOS system configuration"
-        return 1
+            return 1  # Fatal - can't proceed without system config
     fi
 
     # ========================================================================
@@ -180,9 +180,9 @@ phase_03_config_generation() {
     # How: create_home_manager_config() reads templates and generates files
     # Note: This was moved from Phase 6 to ensure all configs exist before
     #       Phase 5 validation checks for them.
-    if ! create_home_manager_config; then
+    if ! create_home_manager_config; then  # Generate home-manager user environment config
         print_error "Failed to create home-manager configuration"
-        return 1
+            return 1  # Fatal - user environment config required for deployment
     fi
 
     # ========================================================================
@@ -224,9 +224,9 @@ phase_03_config_generation() {
     # - No system changes yet (safe to fail)
     # - Can fix config and retry
     # - Prevents wasted time on broken configs
-    if ! validate_system_build_stage; then
+    if ! validate_system_build_stage; then  # Run dry-build to validate all generated configs
         print_error "Configuration validation failed"
-        return 1
+            return 1  # Fatal - broken config detected, can't proceed
     fi
 
     # ------------------------------------------------------------------------
@@ -237,10 +237,10 @@ phase_03_config_generation() {
     #
     # State: "generate_validate_configs" marked complete
     # Next: Phase 5 will clean up conflicts before deployment
-    mark_step_complete "$phase_name"
-    print_success "Phase 3: Configuration Generation - COMPLETE"
+    mark_step_complete "$phase_name"  # Update state.json with completion marker
+        print_success "Phase 3: Configuration Generation - COMPLETE"
     echo ""
 }
 
-# Execute phase
-phase_03_config_generation
+# Execute phase function (called when this script is sourced by main orchestrator)
+phase_03_config_generation  # Run all configuration generation operations
