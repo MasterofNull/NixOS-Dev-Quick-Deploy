@@ -545,7 +545,84 @@ detect_gpu_and_cpu() {
     echo ""
 }
 
-# ============================================================================
+# ===========================================================================
+# Swap Sizing Helpers
+# ===========================================================================
+
+suggest_hibernation_swap_size() {
+    # Compute a suggested swap size (in GiB) suitable for hibernation when using
+    # zram-backed swap. Returns a conservative value of roughly 125% of RAM with
+    # an additional buffer to accommodate kernel overhead.
+    # Args: $1 = total RAM in GiB (integer)
+    local ram_gb="${1:-0}"
+
+    if ! [[ "$ram_gb" =~ ^[0-9]+$ ]] || (( ram_gb <= 0 )); then
+        echo 8
+        return
+    fi
+
+    local extra_buffer=$(( ram_gb + 4 ))
+    local scaled=$(( (ram_gb * 125 + 99) / 100 ))  # ceil(ram * 1.25)
+
+    if (( scaled > extra_buffer )); then
+        echo "$scaled"
+    else
+        echo "$extra_buffer"
+    fi
+}
+
+calculate_active_swap_total_gb() {
+    # Sum active swap devices (in GiB, rounded up) using /proc/swaps.
+    if [[ ! -r /proc/swaps ]]; then
+        echo 0
+        return
+    fi
+
+    local total_kib=0
+    local filename type size_kib used_kib priority
+
+    while read -r filename type size_kib used_kib priority; do
+        if [[ "$filename" == "Filename" ]]; then
+            continue
+        fi
+        total_kib=$(( total_kib + size_kib ))
+    done < /proc/swaps
+
+    if (( total_kib <= 0 )); then
+        echo 0
+        return
+    fi
+
+    local gib=$(( (total_kib + 1024 * 1024 - 1) / (1024 * 1024) ))
+    echo "$gib"
+}
+
+compute_zram_percent_for_swap() {
+    # Convert a desired swap capacity (GiB) into a zram memoryPercent value.
+    # Args: $1 = target swap GiB, $2 = total RAM GiB
+    local target_swap_gb="${1:-0}"
+    local ram_gb="${2:-0}"
+
+    if ! [[ "$target_swap_gb" =~ ^[0-9]+$ ]] || (( target_swap_gb <= 0 )); then
+        echo 0
+        return
+    fi
+
+    if ! [[ "$ram_gb" =~ ^[0-9]+$ ]] || (( ram_gb <= 0 )); then
+        echo 0
+        return
+    fi
+
+    local percent=$(( (target_swap_gb * 100 + ram_gb - 1) / ram_gb ))
+
+    if (( percent < 1 )); then
+        percent=1
+    fi
+
+    echo "$percent"
+}
+
+# ===========================================================================
 # Flatpak Helper Functions
 # ============================================================================
 
