@@ -1067,11 +1067,12 @@ EOF
         swap_and_hibernation_block=$(cat <<EOF
   # Declarative swap provisioning for zswap-backed hibernation
   # NixOS manages the lifecycle of the swapfile below on every rebuild.
-  swapDevices = [
+  # mkForce ensures we replace any swapDevices defined by hardware-configuration.nix,
+  # matching the override semantics recommended in the NixOS manual for managing swap.
+  swapDevices = lib.mkForce [
     {
       device = ${swap_device_literal};
 ${swap_size_directive}
-      autoResize = true;
       fileMode = "600";
       priority = 100;  # Prefer the dedicated hibernation swapfile
     }
