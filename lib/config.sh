@@ -315,10 +315,8 @@ generate_binary_cache_settings() {
     binary_cache_settings+=$'      # Build Performance Optimizations\n'
     binary_cache_settings+=$'      # ======================================================================\n\n'
     binary_cache_settings+=$'      # Parallel builds: Use all available CPU cores\n'
-    binary_cache_settings+=$'      # max-jobs: Number of builds that can run in parallel\n'
-    binary_cache_settings+=$'      # cores: Number of CPU cores each build can use (0 = all available)\n'
-    binary_cache_settings+=$'      max-jobs = "auto";\n'
-    binary_cache_settings+=$'      cores = 0;\n\n'
+    binary_cache_settings+=$'      # max-jobs and cores are defined in the main configuration.\n'
+    binary_cache_settings+=$'      # Override them here only when necessary to avoid duplicate definitions.\n\n'
 
     if [[ "$use_caches" == "true" ]]; then
         binary_cache_settings+=$'      # Binary caches: Download pre-built packages instead of building from source\n'
