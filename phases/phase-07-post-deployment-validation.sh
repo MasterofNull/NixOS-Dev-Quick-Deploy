@@ -71,18 +71,18 @@ phase_07_post_deployment_validation() {
     # - User has rollback option if system broken
     # ========================================================================
 
-    local phase_name="post_install_validation"
+    local phase_name="post_install_validation"  # State tracking identifier for this phase
 
     # ------------------------------------------------------------------------
     # Resume Check: Skip if already completed
     # ------------------------------------------------------------------------
-    if is_step_complete "$phase_name"; then
+    if is_step_complete "$phase_name"; then  # Check state.json for completion marker
         print_info "Phase 7 already completed (skipping)"
-        return 0
+            return 0  # Skip to next phase
     fi
 
-    print_section "Phase 7/8: Post-Deployment Validation"
-    echo ""
+    print_section "Phase 7/8: Post-Deployment Validation"  # Display phase header
+        echo ""
 
     # ========================================================================
     # Step 8.1: GPU Driver Validation
@@ -118,8 +118,8 @@ phase_07_post_deployment_validation() {
     #
     # Non-critical: System works without GPU, just no hardware acceleration
     # || print_warning: Show warning if validation fails, continue
-    if [[ "$GPU_TYPE" != "software" && "$GPU_TYPE" != "unknown" ]]; then
-        validate_gpu_driver || print_warning "GPU driver validation had issues (non-critical)"
+    if [[ "$GPU_TYPE" != "software" && "$GPU_TYPE" != "unknown" ]]; then  # Have hardware GPU
+        validate_gpu_driver || print_warning "GPU driver validation had issues (non-critical)"  # Validate driver loaded
     fi
 
     # ========================================================================
@@ -179,8 +179,8 @@ phase_07_post_deployment_validation() {
     # - Set via --skip-health-check CLI flag
     # - Default: false (run health check)
     # - != true: Check if NOT explicitly true (covers unset/false/empty)
-    if [[ "$SKIP_HEALTH_CHECK" != true ]]; then
-        run_system_health_check_stage || print_warning "Health check found issues (review above)"
+    if [[ "$SKIP_HEALTH_CHECK" != true ]]; then  # User wants health check
+        run_system_health_check_stage || print_warning "Health check found issues (review above)"  # Run comprehensive validation
     fi
 
     # ========================================================================
@@ -216,37 +216,37 @@ phase_07_post_deployment_validation() {
     #   Why: set -e would exit on ((missing_count++)) when count is 0
     #        in some bash versions, because ++ returns old value
     print_info "Verifying critical packages..."
-    local missing_count=0
+        local missing_count=0  # Counter for missing packages
 
-    # Loop through critical packages
-    for pkg in podman python3 git home-manager jq; do
+    # Loop through critical packages to verify each is in PATH
+    for pkg in podman python3 git home-manager jq; do  # Essential development tools
         # command -v: Find command in PATH, return path or empty
         # &>/dev/null: Suppress output (just checking existence)
-        if command -v "$pkg" &>/dev/null; then
+        if command -v "$pkg" &>/dev/null; then  # Package found in PATH
             # Package found - show where it's located
             # $(command -v $pkg): Get full path to package
-            print_success "$pkg: $(command -v $pkg)"
-        else
+            print_success "$pkg: $(command -v $pkg)"  # Display package location
+        else  # Package not found
             # Package not found - warn and count
-            print_warning "$pkg: NOT FOUND"
+            print_warning "$pkg: NOT FOUND"  # Alert user
 
-            # Increment counter
+            # Increment counter for missing packages
             # ((expr)): Arithmetic expansion
             # || true: Prevent exit on failure (set -e safety)
-            ((missing_count++)) || true
+            ((missing_count++)) || true  # Count this missing package
         fi
     done
 
-    # Check if any packages were missing
+    # Check if any packages were missing and provide guidance
     # -gt 0: Greater than zero
-    if [[ $missing_count -gt 0 ]]; then
+    if [[ $missing_count -gt 0 ]]; then  # Some packages not accessible
         # Some packages not in PATH
         print_warning "$missing_count critical package(s) not in PATH"
-        print_info "Try: exec zsh  (to reload shell)"
+            print_info "Try: exec zsh  (to reload shell)"  # Suggest shell reload
         # Note: Not exiting - user can fix by reloading shell
-    else
+    else  # All packages found successfully
         # All packages found - deployment successful!
-        print_success "All critical packages verified!"
+        print_success "All critical packages verified!"  # Success message
     fi
 
     # ------------------------------------------------------------------------
@@ -261,11 +261,11 @@ phase_07_post_deployment_validation() {
     # - Critical packages accessible
     #
     # State: "post_install_validation" marked complete
-    # Next: Phase 9 will finalize system configuration
-    mark_step_complete "$phase_name"
-    print_success "Phase 7: Post-Deployment Validation - COMPLETE"
+    # Next: Phase 8 will finalize system configuration
+    mark_step_complete "$phase_name"  # Update state.json with completion marker
+        print_success "Phase 7: Post-Deployment Validation - COMPLETE"
     echo ""
 }
 
-# Execute phase
-phase_07_post_deployment_validation
+# Execute phase function (called when this script is sourced by main orchestrator)
+phase_07_post_deployment_validation  # Run all validation checks
