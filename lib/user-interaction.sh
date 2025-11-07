@@ -84,6 +84,28 @@ print_info() {
 }
 
 # ============================================================================
+# Print Detail Message Function
+# ============================================================================
+# Purpose: Print a secondary detail message (indented blue arrow)
+# Parameters:
+#   $1 - Detail message text
+# Returns: 0
+#
+# Visual format:
+#     → Message text (in blue, indented)
+#
+# Usage: print_detail "See /tmp/install.log for details"
+#
+# When to use:
+# - Follow-up information after a warning/error
+# - Command suggestions or log file pointers
+# - Nested output underneath a parent message
+# ============================================================================
+print_detail() {
+    echo -e "    ${BLUE}→${NC} $1"
+}
+
+# ============================================================================
 # Print Success Message Function
 # ============================================================================
 # Purpose: Print a success/completion message (green checkmark)
