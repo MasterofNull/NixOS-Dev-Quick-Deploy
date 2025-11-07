@@ -354,6 +354,24 @@ perform_rollback() {
     # ========================================================================
     print_section "Rolling Back to Previous State"
 
+    local auto_requested=false
+    if [[ "${AUTO_ROLLBACK_REQUESTED:-false}" == true ]]; then
+        auto_requested=true
+        print_info "Automatic rollback requested – proceeding without manual confirmations."
+    fi
+
+    local config_backup_hint="${LATEST_CONFIG_BACKUP_DIR:-}"
+    if [[ -z "$config_backup_hint" && -f "$ROLLBACK_INFO_FILE" ]]; then
+        if command -v jq >/dev/null 2>&1; then
+            config_backup_hint=$(jq -r '.config_backup_dir // empty' "$ROLLBACK_INFO_FILE" 2>/dev/null || echo "")
+        fi
+    fi
+
+    if [[ -n "$config_backup_hint" ]]; then
+        LATEST_CONFIG_BACKUP_DIR="$config_backup_hint"
+        export LATEST_CONFIG_BACKUP_DIR
+    fi
+
     # ========================================================================
     # List available NixOS system generations
     # ========================================================================
@@ -395,10 +413,14 @@ perform_rollback() {
     # Rollback is destructive (reverts changes)
     # Always confirm with user before rolling back
     # Default to "n" (safe default - don't accidentally rollback)
-    if ! confirm "Are you sure you want to rollback?" "n"; then
-        # User cancelled rollback
-        print_info "Rollback cancelled"
-        return 0  # Return success (user chose to cancel, not an error)
+    if [[ "$auto_requested" == true ]]; then
+        print_info "Automatic rollback confirmation accepted."
+    else
+        if ! confirm "Are you sure you want to rollback?" "n"; then
+            # User cancelled rollback
+            print_info "Rollback cancelled"
+            return 0  # Return success (user chose to cancel, not an error)
+        fi
     fi
 
     # ========================================================================
@@ -406,11 +428,15 @@ perform_rollback() {
     # ========================================================================
     # System rollback affects ALL users and requires sudo
     # We do this FIRST because it's the most critical operation
-    print_info "Rolling back NixOS system..."
+    local run_system_rollback=false
+    if [[ "$auto_requested" == true ]]; then
+        run_system_rollback=true
+    elif confirm "Rollback NixOS system configuration to previous generation?" "y"; then
+        run_system_rollback=true
+    fi
 
-    # Confirm system rollback
-    # Default to "y" since user already confirmed overall rollback
-    if confirm "Rollback NixOS system configuration to previous generation?" "y"; then
+    if [[ "$run_system_rollback" == true ]]; then
+        print_info "Rolling back NixOS system..."
         # Try nixos-rebuild switch --rollback first
         if sudo nixos-rebuild switch --rollback 2>/dev/null; then
             print_success "System rolled back successfully using nixos-rebuild"
@@ -439,6 +465,8 @@ perform_rollback() {
                 sudo nix-env --list-generations -p /nix/var/nix/profiles/system 2>/dev/null || true
             fi
         fi
+    else
+        print_info "Skipping NixOS system rollback."
     fi
 
     # ========================================================================
@@ -485,6 +513,18 @@ perform_rollback() {
             "$hm_gen/activate" || print_warning "Home Manager rollback had issues"
         else
             print_info "No valid Home Manager generation found in rollback info"
+        fi
+    fi
+
+    if [[ -n "$config_backup_hint" ]]; then
+        if [[ "$auto_requested" == true ]]; then
+            restore_latest_config_backup "$config_backup_hint" "$HOME" || print_warning "Automatic restoration of configuration backup encountered issues."
+        else
+            if confirm "Restore configuration backup from $config_backup_hint?" "y"; then
+                restore_latest_config_backup "$config_backup_hint" "$HOME" || print_warning "Configuration backup restoration encountered issues."
+            else
+                print_info "Skipped restoring configuration backup from $config_backup_hint."
+            fi
         fi
     fi
 
