@@ -135,6 +135,7 @@ let
   };
   # Optional Gitea admin bootstrap (populated by installer)
   @GITEA_ADMIN_VARIABLES_BLOCK@
+  commonPythonOverrides = import ./python-overrides.nix;
 in
 
 {
@@ -383,27 +384,9 @@ in
   # Package Overrides (Fix build issues)
   # ============================================================================
   nixpkgs.config.packageOverrides = pkgs: {
-    # Fix joserfc test failure (flaky test with multiple keys for same kid)
-    # This allows smart-open and other dependencies to build successfully
+    # Apply common Python overrides that disable flaky build-time tests.
     python311 = pkgs.python311.override {
-      packageOverrides = python-self: python-super: {
-        joserfc = python-super.joserfc.overridePythonAttrs (oldAttrs: {
-          # Skip tests to avoid flaky test failures
-          doCheck = false;
-          # Keep the original checkInputs for documentation
-          checkInputs = oldAttrs.checkInputs or[];
-        });
-        tenacity = python-super.tenacity.overridePythonAttrs (_: {
-          # Upstream test suite relies on real timing and fails under
-          # virtualized builders (observed assertion in test_sleeps).
-          doCheck = false;
-        });
-        inline-snapshot = python-super.inline-snapshot.overridePythonAttrs (_: {
-          # Skip tests that fail due to snapshot validation errors
-          # The package works correctly at runtime despite test failures
-          doCheck = false;
-        });
-      };
+      packageOverrides = commonPythonOverrides;
     };
   };
 
