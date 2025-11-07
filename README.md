@@ -170,10 +170,12 @@ cd ~/NixOS-Dev-Quick-Deploy
 ./system-health-check.sh
 ```
 
+The quick deploy runs this automatically after Phase 8, but you can rerun it anytime to confirm your setup.
+
 This will verify:
 - ✅ All core tools (podman, python3, node, etc.)
 - ✅ Nix ecosystem (home-manager, flakes)
-- ✅ AI tools (claude-wrapper, ollama, aider)
+- ✅ AI tools (claude-wrapper, gpt-codex-wrapper, codex-wrapper, openai-wrapper, gooseai-wrapper, ollama, aider)
 - ✅ **Python AI/ML packages (60+ packages)**:
   - Deep Learning: PyTorch, TensorFlow
   - LLM Frameworks: LangChain, LlamaIndex, OpenAI, Anthropic
@@ -202,6 +204,10 @@ nix flake --help
 
 # Check AI tools
 which claude-wrapper
+which gpt-codex-wrapper
+which codex-wrapper
+which openai-wrapper
+which gooseai-wrapper
 ollama --version
 aider --version
 
@@ -331,12 +337,12 @@ podman ps           # List running containers
 podman-compose up   # Start services from compose file
 ```
 
-### VSCodium / Claude Code
+### VSCodium / AI CLI wrappers
 
 **VSCodium Version Compatibility:**
 - VSCodium 1.85.0+ (installed by this script)
 - Claude Code extension works with VSCodium and VS Code 1.85.0+
-- The `claude-wrapper` ensures Node.js is found correctly
+- Smart wrappers ensure Node.js is found correctly for each CLI
 
 **Usage:**
 
@@ -347,11 +353,23 @@ codium
 # Launch with environment debugging
 CODIUM_DEBUG=1 codium
 
-# Test Claude wrapper directly
+# Test wrappers directly
 ~/.npm-global/bin/claude-wrapper --version
+~/.npm-global/bin/gpt-codex-wrapper --version
+~/.npm-global/bin/codex-wrapper --version
+~/.npm-global/bin/openai-wrapper --version
+~/.npm-global/bin/gooseai-wrapper --version
 
 # Debug Claude wrapper
 CLAUDE_DEBUG=1 ~/.npm-global/bin/claude-wrapper --version
+# Debug GPT CodeX wrapper
+GPT_CODEX_DEBUG=1 ~/.npm-global/bin/gpt-codex-wrapper --version
+# Debug Codex wrapper
+CODEX_DEBUG=1 ~/.npm-global/bin/codex-wrapper --version
+# Debug OpenAI wrapper
+OPENAI_DEBUG=1 ~/.npm-global/bin/openai-wrapper --version
+# Debug GooseAI wrapper
+GOOSEAI_DEBUG=1 ~/.npm-global/bin/gooseai-wrapper --version
 ```
 
 ### Cursor IDE
@@ -381,7 +399,7 @@ flatpak install flathub ai.cursor.Cursor
 | `~/.config/p10k/theme.sh` | Powerlevel10k theme | Wizard auto-generates |
 | `~/.zshrc` | ZSH configuration | Home-manager (declarative) |
 | `~/.npmrc` | NPM configuration | Script auto-creates |
-| `~/.npm-global/` | Global NPM packages | Claude Code installed here |
+| `~/.npm-global/` | Global NPM packages | AI CLI wrappers installed here (Claude, GPT CodeX, Codex IDE, OpenAI, GooseAI) |
 
 ---
 
@@ -475,14 +493,23 @@ Building flake development environment...
 ✓ Added AIDB flake aliases to .zshrc
 ```
 
-### 7. Claude Code Integration
+### 7. AI CLI Integration
 ```
 ✓ Installing @anthropic-ai/claude-code via npm
+✓ Installing @openai/gpt-codex via npm
+✓ Installing openai via npm
+✓ Installing @gooseai/cli via npm
 ✓ Claude Code npm package installed
+✓ GPT CodeX npm package installed
+✓ OpenAI CLI npm package installed
+✓ GooseAI CLI npm package installed
 ✓ Created smart Node.js wrapper at ~/.npm-global/bin/claude-wrapper
-✓ Testing wrapper: Claude Code v1.x.x
-✓ VSCodium wrapper created
-✓ Merging Claude Code settings with VSCodium config
+✓ Created smart Node.js wrapper at ~/.npm-global/bin/gpt-codex-wrapper
+✓ Created smart Node.js wrapper at ~/.npm-global/bin/codex-wrapper
+✓ Created smart Node.js wrapper at ~/.npm-global/bin/openai-wrapper
+✓ Created smart Node.js wrapper at ~/.npm-global/bin/gooseai-wrapper
+✓ Testing wrappers succeeded
+✓ VSCodium wrapper configuration updated
 ✓ Claude Code configured in VSCodium
 ```
 
@@ -509,7 +536,7 @@ Next steps:
   1. Reboot: sudo reboot
   2. Select "Cosmic" at login
   3. Open terminal (P10k wizard auto-runs)
-  4. Verify: codium, claude-wrapper --version
+  4. Verify: codium, claude-wrapper --version, gpt-codex-wrapper --version, codex-wrapper --version, openai-wrapper --version, gooseai-wrapper --version
 ```
 
 </details>
@@ -638,7 +665,7 @@ cat ~/.config/VSCodium/User/settings.json
 
 ### Packages Not in PATH
 
-**Issue:** `podman: command not found`, `home-manager: command not found`, or `claude-wrapper: command not found` after installation
+**Issue:** `podman: command not found`, `home-manager: command not found`, or AI CLI wrappers (claude/gpt-codex/openai/gooseai) not found after installation
 
 **Solution:**
 ```bash
@@ -655,6 +682,10 @@ source ~/.nix-profile/etc/profile.d/hm-session-vars.sh
 which podman
 which home-manager
 which claude-wrapper
+which gpt-codex-wrapper
+which codex-wrapper
+which openai-wrapper
+which gooseai-wrapper
 ```
 
 **If still not working:**

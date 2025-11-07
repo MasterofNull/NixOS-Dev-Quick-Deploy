@@ -83,6 +83,9 @@ phase_01_system_initialization() {
     print_section "Phase 1/8: System Initialization"
     echo ""
 
+    local previous_imperative_flag="${IMPERATIVE_INSTALLS_ALLOWED:-false}"
+    export IMPERATIVE_INSTALLS_ALLOWED=true
+
     # ========================================================================
     # PART 1: SYSTEM VALIDATION
     # ========================================================================
@@ -424,6 +427,8 @@ EOF
     else
         print_success "Python runtime: ${PYTHON_BIN[0]} ($(${PYTHON_BIN[@]} --version 2>&1))"
     fi
+
+    export IMPERATIVE_INSTALLS_ALLOWED="$previous_imperative_flag"
 
     # ------------------------------------------------------------------------
     # Mark Phase Complete

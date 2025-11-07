@@ -658,6 +658,11 @@ in
   # IMPORTANT: COSMIC desktop apps (cosmic-edit, cosmic-files, cosmic-term, etc.)
   # are AUTOMATICALLY included when services.desktopManager.cosmic.enable = true
   # DO NOT add them here - it creates duplicates!
+  #
+  # USER CUSTOMIZATION ENTRY POINT:
+  #   - Adjust the lists below to tailor global system packages
+  #   - Keep GUI/desktop apps in home-manager or Flatpak unless required system-wide
+  #   - Leave jq (and other preflight CLIs) enabled so deployment phases succeed
   environment.systemPackages = with pkgs;
     [
       # COSMIC App Store (not auto-included, needs explicit installation)
@@ -671,6 +676,9 @@ in
       nixAiToolsPackages.default  # Provide CLI helpers from numtide/nix-ai-tools when available
     ++ @GPU_DRIVER_PACKAGES@
     ++ [
+      # Preflight CLI dependencies (available before Home Manager activation)
+      jq
+
       # Container tools (system-level for rootless podman)
       podman
       podman-compose
