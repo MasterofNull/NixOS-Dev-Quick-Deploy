@@ -21,8 +21,229 @@
 #   - setup_flake_environment() → Setup Nix flakes dev environment
 
 declare -a AI_VSCODE_EXTENSIONS=()
-#
+
 # ============================================================================
+# Flatpak Helpers
+# ============================================================================
+
+flatpak_remote_exists() {
+    local remote_name="${FLATHUB_REMOTE_NAME:-flathub}"
+
+    if run_as_primary_user flatpak --user remote-list --columns=name 2>/dev/null | grep -Fxq "$remote_name"; then
+        return 0
+    fi
+
+    if run_as_primary_user flatpak --system remote-list --columns=name 2>/dev/null | grep -Fxq "$remote_name"; then
+        return 0
+    fi
+
+    if run_as_primary_user flatpak remote-list --columns=name 2>/dev/null | grep -Fxq "$remote_name"; then
+        return 0
+    fi
+
+    return 1
+}
+
+print_flatpak_details() {
+    local message="$1"
+
+    if [[ -z "$message" ]]; then
+        return 0
+    fi
+
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        print_detail "$line"
+    done <<<"$message"
+}
+
+ensure_flathub_remote() {
+    if ! flatpak_cli_available; then
+        print_warning "Flatpak CLI not available; skipping Flathub repository configuration"
+        return 1
+    fi
+
+    if flatpak_remote_exists; then
+        print_success "Flathub repository already configured"
+        return 0
+    fi
+
+    print_info "Adding Flathub Flatpak remote..."
+
+    local remote_name="${FLATHUB_REMOTE_NAME:-flathub}"
+    local -a sources=("${FLATHUB_REMOTE_URL:-https://dl.flathub.org/repo/flathub.flatpakrepo}")
+
+    if [[ -n "${FLATHUB_REMOTE_FALLBACK_URL:-}" && "${FLATHUB_REMOTE_FALLBACK_URL}" != "${sources[0]}" ]]; then
+        sources+=("$FLATHUB_REMOTE_FALLBACK_URL")
+    fi
+
+    local source output
+    for source in "${sources[@]}"; do
+        output=$(run_as_primary_user flatpak remote-add --user --if-not-exists --from "$remote_name" "$source" 2>&1)
+        if [[ $? -eq 0 ]]; then
+            if [[ "$source" == "${sources[0]}" ]]; then
+                print_success "Flathub repository added"
+            else
+                print_success "Flathub repository added via fallback source ($source)"
+            fi
+            return 0
+        fi
+
+        print_flatpak_details "$output"
+
+        output=$(run_as_primary_user flatpak remote-add --user --if-not-exists "$remote_name" "$source" 2>&1)
+        if [[ $? -eq 0 ]]; then
+            if [[ "$source" == "${sources[0]}" ]]; then
+                print_success "Flathub repository added"
+            else
+                print_success "Flathub repository added via fallback source ($source)"
+            fi
+            return 0
+        fi
+
+        print_flatpak_details "$output"
+    done
+
+    print_warning "Unable to configure Flathub repository automatically"
+    return 1
+}
+
+flatpak_query_application_support() {
+    local app_id="$1"
+
+    LAST_FLATPAK_QUERY_MESSAGE=""
+
+    local remote_name="${FLATHUB_REMOTE_NAME:-flathub}"
+    local user_output system_output user_status system_status
+
+    user_output=$(run_as_primary_user flatpak --user remote-info "$remote_name" "$app_id" 2>&1 || true)
+    user_status=$?
+    if [[ $user_status -eq 0 ]]; then
+        return 0
+    fi
+
+    system_output=$(run_as_primary_user flatpak remote-info "$remote_name" "$app_id" 2>&1 || true)
+    system_status=$?
+    if [[ $system_status -eq 0 ]]; then
+        return 0
+    fi
+
+    LAST_FLATPAK_QUERY_MESSAGE="$user_output"
+    if [[ -n "$LAST_FLATPAK_QUERY_MESSAGE" && -n "$system_output" ]]; then
+        LAST_FLATPAK_QUERY_MESSAGE+=$'\n'
+    fi
+    LAST_FLATPAK_QUERY_MESSAGE+="$system_output"
+
+    if printf '%s\n' "$LAST_FLATPAK_QUERY_MESSAGE" | grep -Eiq 'No remote refs found similar|No entry for|Nothing matches'; then
+        return 3
+    fi
+
+    return 1
+}
+
+flatpak_install_app_list() {
+    if [[ $# -eq 0 ]]; then
+        return 0
+    fi
+
+    if ! flatpak_cli_available; then
+        print_warning "Flatpak CLI not available; cannot install applications"
+        return 1
+    fi
+
+    local remote_name="${FLATHUB_REMOTE_NAME:-flathub}"
+    local failure=0
+    local app_id
+
+    run_as_primary_user flatpak --user repair >/dev/null 2>&1 || true
+
+    for app_id in "$@"; do
+        if run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
+            print_info "  • $app_id already present"
+            continue
+        fi
+
+        flatpak_query_application_support "$app_id"
+        local support_status=$?
+
+        if [[ $support_status -ne 0 ]]; then
+            if [[ $support_status -eq 3 ]]; then
+                print_warning "  ⚠ $app_id is not available on $remote_name for this architecture; skipping"
+            else
+                print_warning "  ⚠ Unable to query metadata for $app_id prior to installation"
+            fi
+            print_flatpak_details "$LAST_FLATPAK_QUERY_MESSAGE"
+            [[ $support_status -eq 3 ]] && continue
+            failure=1
+            continue
+        fi
+
+        print_info "  Installing $app_id from $remote_name..."
+        local attempt
+        local installed=0
+        for attempt in 1 2 3; do
+            local install_output
+            install_output=$(run_as_primary_user flatpak --noninteractive --assumeyes install --user "$remote_name" "$app_id" 2>&1)
+            if [[ $? -eq 0 ]]; then
+                print_success "  ✓ Installed $app_id"
+                installed=1
+                break
+            fi
+
+            if printf '%s\n' "$install_output" | grep -Eiq 'No remote refs found similar|No entry for|Nothing matches'; then
+                print_warning "  ⚠ $app_id is not available on $remote_name for this architecture; skipping"
+                print_flatpak_details "$install_output"
+                installed=1
+                break
+            fi
+
+            print_warning "  ⚠ Attempt $attempt failed for $app_id"
+            print_flatpak_details "$install_output"
+            sleep $(( attempt * 2 ))
+        done
+
+        if [[ $installed -ne 1 ]]; then
+            print_warning "  ⚠ Failed to install $app_id after retries"
+            failure=1
+        fi
+    done
+
+    return $failure
+}
+
+ensure_default_flatpak_apps_installed() {
+    if [[ ${#DEFAULT_FLATPAK_APPS[@]} -eq 0 ]]; then
+        print_info "No default Flatpak applications defined"
+        return 0
+    fi
+
+    local -a missing=()
+    local app_id
+
+    for app_id in "${DEFAULT_FLATPAK_APPS[@]}"; do
+        if run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
+            print_info "  • $app_id already present"
+        else
+            missing+=("$app_id")
+        fi
+    done
+
+    if (( ${#missing[@]} == 0 )); then
+        print_success "All default Flatpak applications are already installed"
+        return 0
+    fi
+
+    if flatpak_install_app_list "${missing[@]}"; then
+        print_success "Default Flatpak applications are now installed and ready"
+        run_as_primary_user flatpak --user update --noninteractive --appstream >/dev/null 2>&1 || true
+        run_as_primary_user flatpak --user update --noninteractive >/dev/null 2>&1 || true
+        return 0
+    fi
+
+    print_warning "Some Flatpak applications could not be installed automatically"
+    print_info "You can retry manually with: flatpak install --user ${FLATHUB_REMOTE_NAME:-flathub} <app-id>"
+    return 1
+}
 
 # ============================================================================
 # Install Flatpak Applications
@@ -35,28 +256,22 @@ declare -a AI_VSCODE_EXTENSIONS=()
 install_flatpak_stage() {
     print_section "Installing Flatpak Applications"
 
-    # Check if Flatpak is available
-    if ! command -v flatpak &>/dev/null; then
-        print_warning "Flatpak not found in PATH"
-        print_info "Flatpak applications are managed declaratively via home-manager"
-        print_info "After home-manager switch, Flatpak apps will be available"
+    if ! command -v flatpak >/dev/null 2>&1; then
+        print_warning "Flatpak CLI not found in PATH"
+        print_info "Install Flatpak or re-run home-manager switch to enable declarative apps"
+        return 1
+    fi
+
+    if ! ensure_flathub_remote; then
+        print_warning "Flatpak applications will need to be installed manually once Flathub is available"
+        return 1
+    fi
+
+    if ensure_default_flatpak_apps_installed; then
         return 0
     fi
 
-    # Flatpak apps are now managed declaratively via nix-flatpak in home.nix
-    # This function ensures the Flatpak environment is ready
-    print_info "Flatpak applications are managed declaratively"
-    print_info "They should already be installed via home-manager switch"
-
-    # Verify some flatpaks are installed
-    local installed_count=$(flatpak list --app 2>/dev/null | wc -l)
-    if [[ $installed_count -gt 0 ]]; then
-        print_success "Found $installed_count Flatpak applications installed"
-    else
-        print_info "No Flatpak applications found (may install after next home-manager switch)"
-    fi
-
-    return 0
+    return 1
 }
 
 # ============================================================================
@@ -68,14 +283,42 @@ install_flatpak_stage() {
 #   1 - Failure (non-critical)
 # ============================================================================
 ensure_npm_global_prefix() {
-    local npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
+    local default_prefix
+    default_prefix="${PRIMARY_HOME:-$HOME}/.npm-global"
+    local npm_prefix="${NPM_CONFIG_PREFIX:-$default_prefix}"
 
     export NPM_CONFIG_PREFIX="$npm_prefix"
-    mkdir -p "$npm_prefix/bin" "$npm_prefix/lib" "$npm_prefix/lib/node_modules"
 
-    if [ ! -f "$HOME/.npmrc" ] || ! grep -q '^prefix=' "$HOME/.npmrc" 2>/dev/null; then
-        echo "prefix=$npm_prefix" >"$HOME/.npmrc"
+    if ! run_as_primary_user install -d -m 755 "$npm_prefix" "$npm_prefix/bin" \
+        "$npm_prefix/lib" "$npm_prefix/lib/node_modules" >/dev/null 2>&1; then
+        install -d -m 755 "$npm_prefix" "$npm_prefix/bin" "$npm_prefix/lib" \
+            "$npm_prefix/lib/node_modules" >/dev/null 2>&1 || true
+        safe_chown_user_dir "$npm_prefix" >/dev/null 2>&1 || true
     fi
+
+    run_as_primary_user env NPM_PREFIX="$npm_prefix" bash <<'EOS' >/dev/null 2>&1 || true
+set -euo pipefail
+npmrc="$HOME/.npmrc"
+tmp_file="${npmrc}.tmp"
+
+if [ ! -f "$npmrc" ]; then
+    printf 'prefix=%s\n' "$NPM_PREFIX" >"$npmrc"
+    exit 0
+fi
+
+if grep -q '^prefix=' "$npmrc" 2>/dev/null; then
+    awk -v prefix="$NPM_PREFIX" '
+        BEGIN { updated = 0 }
+        /^prefix=/ { print "prefix=" prefix; updated = 1; next }
+        { print }
+        END { if (!updated) print "prefix=" prefix }
+    ' "$npmrc" >"$tmp_file"
+    mv "$tmp_file" "$npmrc"
+    exit 0
+fi
+
+printf '\n# Added by NixOS Quick Deploy\nprefix=%s\n' "$NPM_PREFIX" >>"$npmrc"
+EOS
 
     case ":$PATH:" in
         *":$npm_prefix/bin:"*) ;;
@@ -149,9 +392,7 @@ DEBUG_FLAG="\${AI_TOOL_DEBUG:-0}"
 DEBUG_ENV_VAR="${debug_env_var}"
 
 if [ -n "\${DEBUG_ENV_VAR}" ]; then
-    DEBUG_ENV_VALUE=""
-    # shellcheck disable=SC2086
-    eval "DEBUG_ENV_VALUE=\"\\${${debug_env_var}:-}\""
+    DEBUG_ENV_VALUE="\${!DEBUG_ENV_VAR:-}"
     if [ -n "\${DEBUG_ENV_VALUE}" ]; then
         DEBUG_FLAG="\${DEBUG_ENV_VALUE}"
     fi
@@ -218,7 +459,9 @@ install_single_ai_cli() {
         return 1
     fi
 
-    local npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
+    local default_prefix
+    default_prefix="${PRIMARY_HOME:-$HOME}/.npm-global"
+    local npm_prefix="${NPM_CONFIG_PREFIX:-$default_prefix}"
     local npm_modules="$npm_prefix/lib/node_modules"
     local package_dir="$npm_modules/$package"
     local wrapper_path="$npm_prefix/bin/$wrapper_name"
@@ -230,7 +473,7 @@ install_single_ai_cli() {
         current_version=$(node -e "const pkg=require(process.argv[1]); if(pkg && pkg.version){console.log(pkg.version);}" "$package_dir/package.json" 2>/dev/null || echo "")
     fi
 
-    latest_version=$(npm view "$package" version 2>/dev/null || echo "")
+    latest_version=$(run_as_primary_user npm view "$package" version 2>/dev/null || echo "")
 
     if [ "$FORCE_UPDATE" = true ]; then
         install_needed=true
@@ -243,13 +486,52 @@ install_single_ai_cli() {
 
     if [ "$install_needed" = true ]; then
         local log_file="/tmp/${wrapper_name}-npm-install.log"
+        local attempt=1
+        local max_attempts=$RETRY_MAX_ATTEMPTS
+        local timeout=2
+        local install_exit=0
         print_info "Installing $display via npm..."
-        if npm install -g "$package" 2>&1 | tee "$log_file"; then
-            print_success "$display npm package installed"
-        else
-            local exit_code=$?
-            print_warning "$display installation failed (exit code $exit_code)"
+
+        while (( attempt <= max_attempts )); do
+            run_as_primary_user env NPM_CONFIG_PREFIX="$npm_prefix" npm install -g "$package" \
+                2>&1 | tee "$log_file"
+            install_exit=${PIPESTATUS[0]}
+
+            if (( install_exit == 0 )); then
+                print_success "$display npm package installed"
+                break
+            fi
+
+            if (( attempt < max_attempts )); then
+                print_warning "$display install attempt $attempt/$max_attempts failed; retrying in ${timeout}s"
+                sleep "$timeout"
+                timeout=$(( timeout * RETRY_BACKOFF_MULTIPLIER ))
+            fi
+
+            attempt=$(( attempt + 1 ))
+        done
+
+        if (( install_exit != 0 )); then
+            local not_found=0
+            if grep -qiE 'E404|Not Found' "$log_file" 2>/dev/null; then
+                not_found=1
+                print_warning "$display is not available from the npm registry (HTTP 404) – skipping"
+                print_detail "Package $package was not found upstream"
+            else
+                print_warning "$display installation failed after $max_attempts attempts (exit code $install_exit)"
+            fi
             print_detail "See $log_file for details"
+            print_detail "Manual install: npm install -g $package"
+            if (( not_found == 1 )); then
+                cat >"$wrapper_path" <<EOF
+#!/usr/bin/env bash
+echo "[$display] npm package $package is not currently available." >&2
+echo "Install it manually once published: npm install -g $package" >&2
+exit 127
+EOF
+                chmod +x "$wrapper_path"
+                return 0
+            fi
             return 1
         fi
     else
