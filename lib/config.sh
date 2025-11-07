@@ -1010,6 +1010,19 @@ EOF
     local swap_and_hibernation_block
     local hibernation_swap_value="${HIBERNATION_SWAP_SIZE_GB:-$total_ram_value}"
     if [[ "${enable_zswap,,}" == "true" ]]; then
+        local swap_device_path="/swapfile.nixos-zswap"
+        local swap_device_literal
+        swap_device_literal=$(nix_quote_string "$swap_device_path")
+
+        local swap_size_directive
+        if [[ "$hibernation_swap_value" =~ ^[0-9]+$ && "$hibernation_swap_value" -gt 0 ]]; then
+            local swap_size_mb
+            swap_size_mb=$(( hibernation_swap_value * 1024 ))
+            printf -v swap_size_directive '      size = %s;  # %sGB target\n' "$swap_size_mb" "$hibernation_swap_value"
+        else
+            printf -v swap_size_directive '      # size omitted: invalid swap size input (%s)\n' "$hibernation_swap_value"
+        fi
+
         kernel_modules_placeholder=$(cat <<EOF
       # Zswap allocator module required for compressed swap
       "${zswap_zpool}"
@@ -1052,8 +1065,18 @@ EOF
 )
 
         swap_and_hibernation_block=$(cat <<EOF
-  # Swap configuration is inherited from hardware-configuration.nix
-  # This system enables intelligent swap management and hibernation support.
+  # Declarative swap provisioning for zswap-backed hibernation
+  # NixOS manages the lifecycle of the swapfile below on every rebuild.
+  swapDevices = [
+    {
+      device = ${swap_device_literal};
+${swap_size_directive}
+      autoResize = true;
+      fileMode = "600";
+      priority = 100;  # Prefer the dedicated hibernation swapfile
+    }
+  ];
+
   # Target disk-backed swap capacity: ~${hibernation_swap_value}GB
 
   # Systemd sleep/hibernate configuration
