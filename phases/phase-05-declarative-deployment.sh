@@ -409,7 +409,7 @@ phase_05_declarative_deployment() {
         print_section "Configuring Flatpak"
 
         # Add Flathub if not present
-        if ! flatpak remote-list --user 2>/dev/null | grep -q "^flathub"; then
+        if ! flatpak remotes --user 2>/dev/null | grep -q "^flathub"; then
             print_info "Adding Flathub repository..."
             if flatpak remote-add --user --if-not-exists flathub \
                 https://dl.flathub.org/repo/flathub.flatpakrepo 2>/dev/null; then
@@ -425,7 +425,7 @@ phase_05_declarative_deployment() {
         fi
 
         # Add Flathub Beta (optional)
-        if ! flatpak remote-list --user 2>/dev/null | grep -q "^flathub-beta"; then
+        if ! flatpak remotes --user 2>/dev/null | grep -q "^flathub-beta"; then
             print_info "Adding Flathub Beta repository (optional)..."
             flatpak remote-add --user --if-not-exists flathub-beta \
                 https://flathub.org/beta-repo/flathub-beta.flatpakrepo 2>/dev/null && \
