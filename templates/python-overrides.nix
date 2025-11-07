@@ -46,9 +46,17 @@ in
     doCheck = false;
   });
 
-  "inline-snapshot" = python-super."inline-snapshot".overridePythonAttrs (_: {
+  "inline-snapshot" = python-super."inline-snapshot".overridePythonAttrs (old: {
     # Skip tests that fail due to snapshot validation errors that require manual approval.
     doCheck = false;
+
+    # The upstream package declares a runtime dependency on pytest so the
+    # plugin entry points are available when the library is imported. Ensure it
+    # is propagated so pythonRuntimeDepsCheck succeeds while still allowing the
+    # tests to remain disabled.
+    propagatedBuildInputs = getAttrOr "propagatedBuildInputs" [] old ++ [
+      python-self.pytest
+    ];
   });
 
   markdown = python-super.markdown.overridePythonAttrs (_: {
