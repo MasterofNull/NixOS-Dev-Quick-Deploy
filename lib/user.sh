@@ -72,15 +72,77 @@ gather_user_info() {
     # Editor Selection
     # ========================================================================
     if [ -z "$SELECTED_EDITOR" ]; then
-        # Check if user has EDITOR set
-        if [ -n "${EDITOR:-}" ]; then
-            SELECTED_EDITOR="$EDITOR"
-            print_info "Using existing EDITOR: $SELECTED_EDITOR"
-        else
-            SELECTED_EDITOR="nano"
-            print_info "Default editor: $SELECTED_EDITOR"
+        local detected_editor="${EDITOR:-}"
+
+        if [ -n "$detected_editor" ]; then
+            print_info "Detected existing EDITOR: $detected_editor"
+            if confirm "Keep $detected_editor as your default editor?" "y"; then
+                SELECTED_EDITOR="$detected_editor"
+            fi
+        fi
+
+        if [ -z "$SELECTED_EDITOR" ]; then
+            local -a editor_choices=(
+                "vim"
+                "nvim"
+                "codium"
+                "gitea-editor"
+            )
+
+            local -a editor_descriptions=(
+                "vim - Vi IMproved (terminal)"
+                "nvim - Neovim (modern terminal editor)"
+                "codium - VSCodium (graphical IDE)"
+                "gitea-editor - Lightweight browser editor"
+            )
+
+            print_info "Select your preferred default editor:"
+
+            local idx
+            for idx in "${!editor_choices[@]}"; do
+                local option_number=$((idx + 1))
+                local availability="available"
+                if ! command -v "${editor_choices[$idx]}" >/dev/null 2>&1; then
+                    availability="will be installed"
+                fi
+                print_detail "$option_number) ${editor_descriptions[$idx]} (${availability})"
+            done
+
+            local default_choice="1"
+            if [ -n "$detected_editor" ]; then
+                for idx in "${!editor_choices[@]}"; do
+                    if [ "$detected_editor" = "${editor_choices[$idx]}" ]; then
+                        default_choice=$((idx + 1))
+                        break
+                    fi
+                done
+            fi
+
+            local selection=""
+            while true; do
+                selection=$(prompt_user "Choose editor (1-${#editor_choices[@]})" "$default_choice")
+                case "$selection" in
+                    1) SELECTED_EDITOR="${editor_choices[0]}"; break ;;
+                    2) SELECTED_EDITOR="${editor_choices[1]}"; break ;;
+                    3) SELECTED_EDITOR="${editor_choices[2]}"; break ;;
+                    4) SELECTED_EDITOR="${editor_choices[3]}"; break ;;
+                    *)
+                        print_warning "Invalid selection. Enter a number between 1 and ${#editor_choices[@]}."
+                        ;;
+                esac
+            done
         fi
     fi
+
+    if [ -z "$SELECTED_EDITOR" ]; then
+        SELECTED_EDITOR="${DEFAULT_EDITOR:-vim}"
+        print_info "Default editor: $SELECTED_EDITOR"
+    fi
+
+    DEFAULT_EDITOR="$SELECTED_EDITOR"
+    export SELECTED_EDITOR DEFAULT_EDITOR
+
+    print_success "Editor preference: $SELECTED_EDITOR"
 
     echo ""
     print_success "User configuration collected"

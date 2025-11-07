@@ -868,6 +868,7 @@ main() {
     # Load core components
     load_libraries
     load_configuration
+    synchronize_primary_user_path
 
     if [[ -n "$ZSWAP_CONFIGURATION_OVERRIDE_REQUEST" ]]; then
         case "$ZSWAP_CONFIGURATION_OVERRIDE_REQUEST" in
