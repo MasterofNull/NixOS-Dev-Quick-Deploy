@@ -167,7 +167,10 @@ in
     @INITRD_KERNEL_MODULES@
 
     # Security: Enable kernel hardening
-    kernelModules = [ ];  # Additional modules loaded after initial boot
+    kernelModules = [
+      # Additional modules loaded after initial boot
+@KERNEL_MODULES_PLACEHOLDER@
+    ];
     kernel.sysctl = {
       # Security: Disable unprivileged BPF and user namespaces
       "kernel.unprivileged_bpf_disabled" = 1;
@@ -183,29 +186,15 @@ in
       "net.ipv4.tcp_syncookies" = 1;
       "net.ipv4.conf.default.rp_filter" = 1;
       "net.ipv4.conf.all.rp_filter" = 1;
+@KERNEL_SYSCTL_TUNABLES@
     };
 
     # Hibernation support (resume from swap)
-    # The resume device is auto-detected from hardware-configuration.nix
-    # To enable hibernation: systemctl hibernate
-    resumeDevice = lib.mkDefault "";  # Auto-detected from swapDevices
+    # Populated automatically by the generator when swap-backed hibernation is enabled.
+    @RESUME_DEVICE_DIRECTIVE@
 
     # Kernel parameters for better memory management and performance
-    kernelParams = [
-      # Enable zswap for compressed swap cache (better performance)
-      "zswap.enabled=1"
-      "zswap.compressor=zstd"
-      "zswap.zpool=z3fold"
-
-      # Quiet boot (cleaner boot messages)
-      "quiet"
-      "splash"
-
-      # Performance: Disable CPU security mitigations (OPTIONAL - commented for security)
-      # WARNING: Only enable on trusted systems where performance > security
-      # Uncomment to disable Spectre/Meltdown mitigations for ~10-30% performance gain
-      # "mitigations=off"
-    ];
+    @BOOT_KERNEL_PARAMETERS_BLOCK@
   };
   @MICROCODE_SECTION@
 
