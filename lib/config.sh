@@ -962,7 +962,6 @@ EOF
     local zswap_percent="${ZSWAP_MAX_POOL_PERCENT:-20}"
     local zswap_compressor="${ZSWAP_COMPRESSOR:-zstd}"
     local zswap_zpool="${ZSWAP_ZPOOL:-z3fold}"
-    local hibernation_swap_value="${HIBERNATION_SWAP_SIZE_GB:-$total_ram_value}"
     local enable_zswap="${ENABLE_ZSWAP_CONFIGURATION:-false}"
     local resume_device_hint="${RESUME_DEVICE_HINT:-}"
     local resume_device_literal=""
@@ -971,82 +970,97 @@ EOF
         resume_device_literal=$(nix_quote_string "$resume_device_hint")
     fi
 
+    local resume_device_directive
+    if [[ -n "$resume_device_literal" ]]; then
+        resume_device_directive=$(cat <<EOF
+    # Resume device reused from previous deployment
+    resumeDevice = ${resume_device_literal};
+EOF
+)
+    else
+        resume_device_directive=$(cat <<'EOF'
+    # Resume device will be detected automatically via hardware-configuration.nix
+    resumeDevice = lib.mkDefault "";  # Auto-detected from swapDevices
+EOF
+)
+    fi
+
+    local kernel_modules_placeholder
+    kernel_modules_placeholder=$(cat <<'EOF'
+      # No additional kernel modules configured by the generator
+EOF
+)
+
+    local kernel_sysctl_tunables=""
+
+    local kernel_params_block
+    kernel_params_block=$(cat <<'EOF'
+    kernelParams = [
+      # Quiet boot (cleaner boot messages)
+      "quiet"
+      "splash"
+
+      # Performance: Disable CPU security mitigations (OPTIONAL - commented for security)
+      # WARNING: Only enable on trusted systems where performance > security
+      # "mitigations=off"
+    ];
+EOF
+)
+
     local swap_and_hibernation_block
+    local hibernation_swap_value="${HIBERNATION_SWAP_SIZE_GB:-$total_ram_value}"
     if [[ "${enable_zswap,,}" == "true" ]]; then
+        kernel_modules_placeholder=$(cat <<EOF
+      # Zswap allocator module required for compressed swap
+      "${zswap_zpool}"
+EOF
+)
+
+        kernel_sysctl_tunables=$(cat <<EOF
+
+      # Memory management tunables for swap-backed hibernation (auto-tuned)
+      "vm.swappiness" = 10;
+      "vm.vfs_cache_pressure" = 50;
+      "vm.dirty_ratio" = 10;
+      "vm.dirty_background_ratio" = 5;
+      "vm.max_map_count" = 262144;
+      "fs.inotify.max_user_watches" = 524288;
+      "fs.inotify.max_user_instances" = 512;
+      "fs.inotify.max_queued_events" = 32768;
+      "kernel.shmmax" = 17179869184;  # 16GB
+      "kernel.shmall" = 4194304;      # 16GB in pages (4KB pages)
+EOF
+)
+
+        kernel_params_block=$(cat <<EOF
+    kernelParams = [
+      # Zswap: Compressed swap cache tuned for ${total_ram_value}GB RAM systems
+      "zswap.enabled=1"
+      "zswap.compressor=${zswap_compressor}"
+      "zswap.max_pool_percent=${zswap_percent}"
+      "zswap.zpool=${zswap_zpool}"
+
+      # Quiet boot (cleaner boot messages)
+      "quiet"
+      "splash"
+
+      # Performance: Disable CPU security mitigations (OPTIONAL - commented for security)
+      # WARNING: Only enable on trusted systems where performance > security
+      # "mitigations=off"
+    ];
+EOF
+)
+
         swap_and_hibernation_block=$(cat <<EOF
   # Swap configuration is inherited from hardware-configuration.nix
-  # This section adds intelligent swap management and hibernation support
-
-$( if [[ -n "$resume_device_literal" ]]; then
-cat <<RESUME
-  # Resume device reused from previous deployment
-  boot.resumeDevice = ${resume_device_literal};
-RESUME
-else
-cat <<'RESUME'
-  # Resume device will be detected automatically via hardware-configuration.nix
-  # Update boot.resumeDevice manually if the generated configuration does not match.
-RESUME
-fi
-)
+  # This system enables intelligent swap management and hibernation support.
+  # Target disk-backed swap capacity: ~${hibernation_swap_value}GB
 
   # Systemd sleep/hibernate configuration
   systemd.sleep.extraConfig = ''
     # Hibernate after 2 hours of suspend (saves battery)
     HibernateDelaySec=2h
   '';
-
-  # Zswap: Compressed swap cache in RAM backed by disk swap
-  # Auto-configured based on detected RAM: ${total_ram_value}GB
-  # Target disk-backed swap capacity: ~${hibernation_swap_value}GB
-  boot.kernelParams = [
-    "zswap.enabled=1"
-    "zswap.compressor=${zswap_compressor}"
-    "zswap.max_pool_percent=${zswap_percent}"
-    "zswap.zpool=${zswap_zpool}"
-  ];
-
-  # Ensure the chosen zswap pool allocator module is available
-  boot.kernelModules = [ "${zswap_zpool}" ];
-
-  # System memory management tunables
-  boot.kernel.sysctl = {
-    # Swappiness: How aggressively to swap (0-100)
-    # Lower = prefer RAM, Higher = swap more aggressively
-    # Default: 60, Recommended for desktop: 10
-    "vm.swappiness" = 10;
-
-    # VFS cache pressure: How aggressively to reclaim inode/dentry cache
-    # Lower = keep more cache, Higher = reclaim more aggressively
-    # Default: 100, Recommended: 50
-    "vm.vfs_cache_pressure" = 50;
-
-    # Dirty ratio: Percentage of memory that can be dirty before forced writeback
-    # Helps prevent I/O spikes
-    "vm.dirty_ratio" = 10;
-    "vm.dirty_background_ratio" = 5;
-
-    # ========================================================================
-    # AI/ML Development Optimizations
-    # ========================================================================
-
-    # Memory-mapped files for large ML datasets
-    # Increase limit for applications that use mmap (PyTorch, TensorFlow, etc.)
-    # Default: 65530, Recommended for AI/ML: 262144
-    "vm.max_map_count" = 262144;
-
-    # File system watchers for development tools
-    # Increase for IDEs, dev servers, and hot-reload tools
-    # Essential for VSCode, Jupyter, and container development
-    "fs.inotify.max_user_watches" = 524288;
-    "fs.inotify.max_user_instances" = 512;
-    "fs.inotify.max_queued_events" = 32768;
-
-    # Shared memory for distributed AI training
-    # Increase for multi-GPU setups and distributed frameworks
-    "kernel.shmmax" = 17179869184;  # 16GB
-    "kernel.shmall" = 4194304;      # 16GB in pages (4KB pages)
-  };
 
   # Power Management (for hibernation support)
   powerManagement = {
@@ -1244,6 +1258,10 @@ EOF
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@USER@" "$primary_user"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@CPU_VENDOR_LABEL@" "$cpu_vendor_label"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@INITRD_KERNEL_MODULES@" "$initrd_kernel_modules"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@KERNEL_MODULES_PLACEHOLDER@" "$kernel_modules_placeholder"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@KERNEL_SYSCTL_TUNABLES@" "$kernel_sysctl_tunables"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@RESUME_DEVICE_DIRECTIVE@" "$resume_device_directive"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@BOOT_KERNEL_PARAMETERS_BLOCK@" "$kernel_params_block"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@MICROCODE_SECTION@" "$microcode_section"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@BINARY_CACHE_SETTINGS@" "$binary_cache_settings"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GPU_HARDWARE_SECTION@" "$gpu_hardware_section"
