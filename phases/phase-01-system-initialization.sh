@@ -201,89 +201,196 @@ phase_01_system_initialization() {
     print_section "Swap & Hibernation Planning"
     echo ""
 
-    local current_swap_gb
-    current_swap_gb=$(calculate_active_swap_total_gb)
+    ENABLE_ZSWAP_CONFIGURATION="false"
+    local previous_swap_detected="false"
+    local previous_hibernation_detected="false"
+    local zswap_override_mode="${ZSWAP_CONFIGURATION_OVERRIDE:-auto}"
 
-    local recommended_swap_gb
-    recommended_swap_gb=$(suggest_hibernation_swap_size "${TOTAL_RAM_GB:-0}")
-    if ! [[ "$recommended_swap_gb" =~ ^[0-9]+$ ]] || (( recommended_swap_gb <= 0 )); then
-        recommended_swap_gb=8
+    if declare -F detect_previous_swap_configuration >/dev/null 2>&1 && detect_previous_swap_configuration; then
+        previous_swap_detected="true"
     fi
 
-    if [[ "${TOTAL_RAM_GB:-}" =~ ^[0-9]+$ && ${TOTAL_RAM_GB} -gt 0 ]]; then
-        print_info "Detected system memory: ${TOTAL_RAM_GB}GB."
+    if declare -F detect_previous_hibernation_configuration >/dev/null 2>&1 && detect_previous_hibernation_configuration; then
+        previous_hibernation_detected="true"
+    fi
+
+    if [[ "$previous_swap_detected" == "true" && "$previous_hibernation_detected" == "true" ]]; then
+        ENABLE_ZSWAP_CONFIGURATION="true"
+        print_success "Detected existing swap-backed hibernation; carrying the configuration forward with zswap."
     else
-        print_warning "Unable to determine total system memory; swap sizing suggestions may be inaccurate."
-    fi
-
-    if (( current_swap_gb > 0 )); then
-        print_info "Active swap currently configured: ${current_swap_gb}GB."
-    else
-        print_warning "No active swap space detected on this system."
-    fi
-
-    print_info "Recommended zram-backed swap size for reliable hibernation: ${recommended_swap_gb}GB."
-    if (( current_swap_gb > 0 )); then
-        print_info "Press Enter to accept ${recommended_swap_gb}GB, type 'current' to keep ${current_swap_gb}GB, or enter a new size in GB."
-    else
-        print_info "Press Enter to accept ${recommended_swap_gb}GB or enter a new size in GB."
-    fi
-
-    local raw_swap_input=""
-    while true; do
-        raw_swap_input=$(prompt_user "Desired swap size in GB for zram-backed hibernation" "$recommended_swap_gb")
-
-        if [[ -z "$raw_swap_input" ]]; then
-            raw_swap_input="$recommended_swap_gb"
+        print_info "Previous deployment lacked hibernation-ready swap; leaving swap and zswap settings unchanged."
+        if [[ "$previous_swap_detected" == "true" && "$previous_hibernation_detected" != "true" ]]; then
+            print_info "Swap was present but hibernation support was not detected."
+        elif [[ "$previous_swap_detected" != "true" && "$previous_hibernation_detected" == "true" ]]; then
+            print_info "Hibernation hints were found but no active swap device is available."
         fi
+        if [[ "$zswap_override_mode" == "auto" ]]; then
+            print_info "Re-run with --enable-zswap to carry swap-backed hibernation forward manually."
+        fi
+    fi
 
-        if [[ "${raw_swap_input,,}" == "current" ]]; then
-            if (( current_swap_gb > 0 )); then
-                HIBERNATION_SWAP_SIZE_GB="$current_swap_gb"
-                print_success "Keeping current swap allocation (${current_swap_gb}GB)."
-                break
+    case "$zswap_override_mode" in
+        enable)
+            if [[ "$ENABLE_ZSWAP_CONFIGURATION" != "true" ]]; then
+                print_warning "Manual zswap override requested; enabling configuration despite missing legacy detection."
             else
-                print_warning "No active swap detected. Please enter a numeric size."
-                continue
+                print_info "Manual zswap override requested; detection already confirmed compatibility."
             fi
-        fi
-
-        if [[ "$raw_swap_input" =~ ^[0-9]+$ ]]; then
-            if (( raw_swap_input <= 0 )); then
-                print_warning "Swap size must be greater than zero to support hibernation."
-                continue
-            fi
-            HIBERNATION_SWAP_SIZE_GB="$raw_swap_input"
-            if (( raw_swap_input == recommended_swap_gb )); then
-                print_success "Using recommended swap size of ${raw_swap_input}GB."
+            ENABLE_ZSWAP_CONFIGURATION="true"
+            ;;
+        disable)
+            if [[ "$ENABLE_ZSWAP_CONFIGURATION" == "true" ]]; then
+                print_warning "Manual zswap override disabled swap prompts for this run."
             else
-                print_success "Using custom swap size of ${raw_swap_input}GB."
+                print_info "Manual zswap override set to disable; leaving swap configuration unchanged."
             fi
-            break
+            ENABLE_ZSWAP_CONFIGURATION="false"
+            ;;
+    esac
+
+    local resume_device_hint=""
+    if declare -F discover_resume_device_hint >/dev/null 2>&1; then
+        resume_device_hint=$(discover_resume_device_hint 2>/dev/null || echo "")
+        if [[ -n "$resume_device_hint" ]]; then
+            RESUME_DEVICE_HINT="$resume_device_hint"
+            export RESUME_DEVICE_HINT
+            if [[ "$ENABLE_ZSWAP_CONFIGURATION" == "true" ]]; then
+                print_info "Detected resume device from previous deployment: $RESUME_DEVICE_HINT"
+            fi
+        fi
+    fi
+
+    export ENABLE_ZSWAP_CONFIGURATION
+
+    if [[ "$ENABLE_ZSWAP_CONFIGURATION" == "true" ]]; then
+        local current_swap_gb
+        current_swap_gb=$(calculate_active_swap_total_gb)
+
+        local recommended_swap_gb
+        recommended_swap_gb=$(suggest_hibernation_swap_size "${TOTAL_RAM_GB:-0}")
+        if ! [[ "$recommended_swap_gb" =~ ^[0-9]+$ ]] || (( recommended_swap_gb <= 0 )); then
+            recommended_swap_gb=8
         fi
 
-        print_warning "Invalid input. Enter a whole number of gigabytes or type 'current'."
-    done
-
-    export HIBERNATION_SWAP_SIZE_GB
-
-    local zram_percent_override
-    zram_percent_override=$(compute_zram_percent_for_swap "$HIBERNATION_SWAP_SIZE_GB" "${TOTAL_RAM_GB:-0}")
-    if [[ "$zram_percent_override" =~ ^[0-9]+$ && "$zram_percent_override" -gt 0 ]]; then
-        if (( zram_percent_override > 400 )); then
-            print_warning "Requested swap size is very large; capping zram allocation at 400% of RAM to avoid exhaustion."
-            zram_percent_override=400
-        fi
-        if [[ "$zram_percent_override" != "${ZRAM_PERCENT:-}" ]]; then
-            ZRAM_PERCENT="$zram_percent_override"
-            print_info "Configuring zram swap to target approximately ${HIBERNATION_SWAP_SIZE_GB}GB (~${ZRAM_PERCENT}% of RAM)."
+        if [[ "${TOTAL_RAM_GB:-}" =~ ^[0-9]+$ && ${TOTAL_RAM_GB} -gt 0 ]]; then
+            print_info "Detected system memory: ${TOTAL_RAM_GB}GB."
         else
-            print_info "Retaining auto-detected zram target of ${ZRAM_PERCENT}% (~${HIBERNATION_SWAP_SIZE_GB}GB)."
+            print_warning "Unable to determine total system memory; swap sizing suggestions may be inaccurate."
         fi
+
+        if (( current_swap_gb > 0 )); then
+            print_info "Active swap currently configured: ${current_swap_gb}GB."
+        else
+            print_warning "No active swap space detected on this system."
+        fi
+
+        print_info "Recommended zswap-backed swap size for reliable hibernation: ${recommended_swap_gb}GB."
+        local previous_swap_pref=""
+        if declare -F load_cached_hibernation_swap_size >/dev/null 2>&1; then
+            previous_swap_pref=$(load_cached_hibernation_swap_size 2>/dev/null || echo "")
+        fi
+
+        local swap_prompt_default="$recommended_swap_gb"
+        if [[ "$previous_swap_pref" =~ ^[0-9]+$ && $previous_swap_pref -gt 0 ]]; then
+            swap_prompt_default="$previous_swap_pref"
+            if (( current_swap_gb > 0 && current_swap_gb != previous_swap_pref )); then
+                print_info "Previously configured swap size detected: ${previous_swap_pref}GB (active swap: ${current_swap_gb}GB)."
+            else
+                print_info "Previously configured swap size detected: ${previous_swap_pref}GB."
+            fi
+        elif (( current_swap_gb > 0 )); then
+            swap_prompt_default="$current_swap_gb"
+        fi
+
+        if (( current_swap_gb > 0 )); then
+            print_info "Press Enter to keep ${swap_prompt_default}GB, type 'current' to use ${current_swap_gb}GB, or enter a new size in GB."
+        else
+            print_info "Press Enter to keep ${swap_prompt_default}GB or enter a new size in GB."
+        fi
+
+        local raw_swap_input=""
+        while true; do
+            raw_swap_input=$(prompt_user "Desired swap size in GB for zswap-backed hibernation" "$swap_prompt_default")
+
+            if [[ -z "$raw_swap_input" ]]; then
+                raw_swap_input="$swap_prompt_default"
+            fi
+
+            if [[ "${raw_swap_input,,}" == "current" ]]; then
+                if (( current_swap_gb > 0 )); then
+                    HIBERNATION_SWAP_SIZE_GB="$current_swap_gb"
+                    print_success "Keeping current swap allocation (${current_swap_gb}GB)."
+                    break
+                else
+                    print_warning "No active swap detected. Please enter a numeric size."
+                    continue
+                fi
+            fi
+
+            if [[ "$raw_swap_input" =~ ^[0-9]+$ ]]; then
+                if (( raw_swap_input <= 0 )); then
+                    print_warning "Swap size must be greater than zero to support hibernation."
+                    continue
+                fi
+                HIBERNATION_SWAP_SIZE_GB="$raw_swap_input"
+                if (( raw_swap_input == recommended_swap_gb )); then
+                    print_success "Using recommended swap size of ${raw_swap_input}GB."
+                else
+                    print_success "Using custom swap size of ${raw_swap_input}GB."
+                fi
+                break
+            fi
+
+            print_warning "Invalid input. Enter a whole number of gigabytes or type 'current'."
+        done
+
+        export HIBERNATION_SWAP_SIZE_GB
+
+        if declare -F persist_hibernation_swap_size >/dev/null 2>&1; then
+            persist_hibernation_swap_size "$HIBERNATION_SWAP_SIZE_GB" || true
+        fi
+
+        if [[ -z "$RESUME_DEVICE_HINT" ]]; then
+            print_warning "No resume device hint detected; verify boot.resumeDevice after generation."
+        fi
+
+        local default_zswap="${ZSWAP_MAX_POOL_PERCENT:-20}"
+        print_info "Zswap keeps a compressed cache of swapped pages in RAM to reduce disk thrashing."
+        print_info "Current heuristic pool limit: ${default_zswap}% of RAM."
+        print_info "Larger values retain more compressed pages (using more RAM); smaller values fall back to disk swap sooner."
+
+        local zswap_input=""
+        while true; do
+            zswap_input=$(prompt_user "Maximum zswap pool percent (5-40)" "$default_zswap")
+
+            if [[ "${zswap_input,,}" == "auto" ]]; then
+                ZSWAP_MAX_POOL_PERCENT="$default_zswap"
+                print_success "Keeping recommended zswap pool limit of ${ZSWAP_MAX_POOL_PERCENT}% of RAM."
+                break
+            fi
+
+            if [[ "$zswap_input" =~ ^[0-9]+$ ]]; then
+                if (( zswap_input < 5 || zswap_input > 40 )); then
+                    print_warning "Enter a value between 5 and 40, or type 'auto' to keep ${default_zswap}%."
+                    continue
+                fi
+
+                ZSWAP_MAX_POOL_PERCENT="$zswap_input"
+                if [[ "$ZSWAP_MAX_POOL_PERCENT" == "$default_zswap" ]]; then
+                    print_success "Using recommended zswap pool limit of ${ZSWAP_MAX_POOL_PERCENT}% of RAM."
+                else
+                    print_success "Zswap pool limit set to ${ZSWAP_MAX_POOL_PERCENT}% of RAM."
+                fi
+                break
+            fi
+
+            print_warning "Invalid input. Enter a whole number between 5 and 40 or type 'auto'."
+        done
+        export ZSWAP_MAX_POOL_PERCENT
     else
-        print_warning "Unable to compute a zram allocation from the provided size; keeping default ${ZRAM_PERCENT}% target."
+        HIBERNATION_SWAP_SIZE_GB=""
+        export HIBERNATION_SWAP_SIZE_GB
     fi
-    export ZRAM_PERCENT
 
     echo ""
     print_section "Part 2: Temporary Tool Installation"

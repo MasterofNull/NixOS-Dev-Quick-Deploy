@@ -331,7 +331,15 @@ phase_05_declarative_deployment() {
     fi
 
     # ========================================================================
-    # Step 6.6: Apply Home Manager Configuration
+    # Step 6.6: Prepare Home Manager Targets
+    # ========================================================================
+    if ! prepare_home_manager_targets "pre-switch"; then
+        print_warning "Encountered issues while archiving existing configuration files. Review the messages above before continuing."
+    fi
+    echo ""
+
+    # ========================================================================
+    # Step 6.7: Apply Home Manager Configuration
     # ========================================================================
     print_section "Applying Home Manager Configuration"
     print_info "This configures your user environment declaratively..."
@@ -393,7 +401,7 @@ phase_05_declarative_deployment() {
     fi
 
     # ========================================================================
-    # Step 6.7: Configure Flatpak Remotes (if available)
+    # Step 6.8: Configure Flatpak Remotes (if available)
     # ========================================================================
     local flatpak_configured=false
     if command -v flatpak &>/dev/null; then
@@ -458,6 +466,12 @@ phase_05_declarative_deployment() {
     if [[ -n "$IMPERATIVE_PKGS" ]]; then
         echo "Removed packages list: $removed_pkgs_file"
         echo "Add them to configs if you want them back"
+        echo ""
+    fi
+
+    if [[ -n "${LATEST_CONFIG_BACKUP_DIR:-}" ]]; then
+        echo "Previous configuration backups archived at: ${LATEST_CONFIG_BACKUP_DIR}"
+        echo "Restore with: cp -a \"${LATEST_CONFIG_BACKUP_DIR}/.\" \"$HOME/\""
         echo ""
     fi
 

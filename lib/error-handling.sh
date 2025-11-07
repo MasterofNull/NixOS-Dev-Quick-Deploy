@@ -142,10 +142,48 @@ error_handler() {
     # ========================================================================
     # Check if a rollback point was created before the error
     # Rollback points are created at safe checkpoints during deployment
+    local rollback_available=false
     if [[ -f "$ROLLBACK_INFO_FILE" ]]; then
+        rollback_available=true
+    fi
+
+    local auto_rollback_attempted=false
+    if [[ "$rollback_available" == true && "${AUTO_ROLLBACK_ENABLED:-true}" == true && "${ROLLBACK_IN_PROGRESS:-false}" != true ]]; then
+        if declare -F perform_rollback >/dev/null 2>&1; then
+            echo ""
+            print_warning "Automatic rollback initiated to restore previous state..."
+
+            local previous_trap
+            previous_trap=$(trap -p ERR)
+
+            AUTO_ROLLBACK_REQUESTED=true
+            export AUTO_ROLLBACK_REQUESTED
+            ROLLBACK_IN_PROGRESS=true
+            export ROLLBACK_IN_PROGRESS
+
+            trap - ERR
+            if perform_rollback; then
+                print_success "Automatic rollback completed."
+            else
+                print_warning "Automatic rollback encountered issues. Review the messages above and rerun '$SCRIPT_DIR/nixos-quick-deploy.sh --rollback' if needed."
+            fi
+            auto_rollback_attempted=true
+
+            ROLLBACK_IN_PROGRESS=false
+            export ROLLBACK_IN_PROGRESS
+            AUTO_ROLLBACK_REQUESTED=false
+            export AUTO_ROLLBACK_REQUESTED
+
+            if [[ -n "$previous_trap" ]]; then
+                eval "$previous_trap"
+            else
+                trap 'error_handler $LINENO' ERR
+            fi
+        fi
+    fi
+
+    if [[ "$rollback_available" == true && "$auto_rollback_attempted" != true ]]; then
         echo ""
-        # Provide rollback command with full path
-        # Using SCRIPT_DIR to construct the full path to the script
         print_warning "A rollback point is available. To rollback:"
         echo "  $SCRIPT_DIR/nixos-quick-deploy.sh --rollback"
         echo ""

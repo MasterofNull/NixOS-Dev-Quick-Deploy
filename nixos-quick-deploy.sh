@@ -113,6 +113,7 @@ LIST_PHASES=false
 RESUME=true
 RESTART_FAILED=false
 RESTART_FROM_SAFE_POINT=false
+ZSWAP_CONFIGURATION_OVERRIDE_REQUEST=""
 
 # Phase control
 declare -a SKIP_PHASES=()
@@ -293,6 +294,9 @@ BASIC OPTIONS:
         --rollback              Rollback to previous state
         --reset-state           Clear state for fresh start
         --skip-health-check     Skip health check validation
+        --enable-zswap          Force-enable zswap-backed hibernation setup (persists)
+        --disable-zswap         Force-disable zswap-backed hibernation setup (persists)
+        --zswap-auto            Return to automatic zswap detection (clears override)
 
 PHASE CONTROL OPTIONS:
         --skip-phase N          Skip specific phase number (1-8)
@@ -402,6 +406,18 @@ parse_arguments() {
                 ;;
             --skip-health-check)
                 SKIP_HEALTH_CHECK=true
+                shift
+                ;;
+            --enable-zswap)
+                ZSWAP_CONFIGURATION_OVERRIDE_REQUEST="enable"
+                shift
+                ;;
+            --disable-zswap)
+                ZSWAP_CONFIGURATION_OVERRIDE_REQUEST="disable"
+                shift
+                ;;
+            --zswap-auto)
+                ZSWAP_CONFIGURATION_OVERRIDE_REQUEST="auto"
                 shift
                 ;;
             --skip-phase)
@@ -722,6 +738,8 @@ handle_phase_failure() {
             ;;
         3)
             log INFO "User chose to rollback"
+            ROLLBACK_IN_PROGRESS=true
+            export ROLLBACK_IN_PROGRESS
             perform_rollback
             exit $?
             ;;
@@ -851,11 +869,36 @@ main() {
     load_libraries
     load_configuration
 
+    if [[ -n "$ZSWAP_CONFIGURATION_OVERRIDE_REQUEST" ]]; then
+        case "$ZSWAP_CONFIGURATION_OVERRIDE_REQUEST" in
+            enable|disable|auto)
+                ZSWAP_CONFIGURATION_OVERRIDE="$ZSWAP_CONFIGURATION_OVERRIDE_REQUEST"
+                export ZSWAP_CONFIGURATION_OVERRIDE
+                if declare -F persist_zswap_configuration_override >/dev/null 2>&1; then
+                    persist_zswap_configuration_override "$ZSWAP_CONFIGURATION_OVERRIDE" || true
+                fi
+                case "$ZSWAP_CONFIGURATION_OVERRIDE" in
+                    enable)
+                        print_info "Zswap override set to ENABLE; prompts will appear even if detection fails."
+                        ;;
+                    disable)
+                        print_info "Zswap override set to DISABLE; swap-backed hibernation will be skipped."
+                        ;;
+                    auto)
+                        print_info "Zswap override cleared; automatic detection restored."
+                        ;;
+                esac
+                ;;
+        esac
+    fi
+
     # Enable strict undefined variable checking
     set -u
 
     # Handle rollback mode
     if [[ "$ROLLBACK" == true ]]; then
+        ROLLBACK_IN_PROGRESS=true
+        export ROLLBACK_IN_PROGRESS
         perform_rollback
         exit $?
     fi
