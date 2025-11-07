@@ -263,6 +263,11 @@ in
     pythonImportsCheck = [];
   });
 
+  "jupyter-server" = python-super."jupyter-server".overridePythonAttrs (_: {
+    doCheck = false;
+    pythonImportsCheck = [];
+  });
+
   torch = python-super.torch.overridePythonAttrs (_: {
     doCheck = false;
     pythonImportsCheck = [];
