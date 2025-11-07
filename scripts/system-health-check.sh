@@ -60,6 +60,38 @@ NPM_MANIFEST_FILE="$REPO_ROOT/config/npm-packages.sh"
 
 declare -a NPM_AI_PACKAGE_MANIFEST=()
 
+declare -a PYTHON_PACKAGE_CHECKS=(
+    "pandas|Pandas (DataFrames)|required"
+    "numpy|NumPy (numerical computing)|required"
+    "sklearn|Scikit-learn (machine learning)|required"
+    "torch|PyTorch|required"
+    "tensorflow|TensorFlow|optional"
+    "openai|OpenAI client|required"
+    "anthropic|Anthropic client|required"
+    "langchain|LangChain|required"
+    "llama_index|LlamaIndex|required"
+    "openskills|OpenSkills automation toolkit|required"
+    "chromadb|ChromaDB|required"
+    "qdrant_client|Qdrant client|required"
+    "sentence_transformers|Sentence Transformers|required"
+    "faiss|FAISS|optional"
+    "polars|Polars (fast DataFrames)|required"
+    "dask|Dask (parallel computing)|optional"
+    "black|Black (formatter)|required"
+    "ruff|Ruff (linter)|required"
+    "mypy|Mypy (type checker)|required"
+    "jupyterlab|Jupyter Lab|required"
+    "notebook|Jupyter Notebook|optional"
+    "transformers|Transformers (Hugging Face)|required"
+    "accelerate|Accelerate|required"
+    "datasets|Datasets (Hugging Face)|required"
+    "gradio|Gradio|required"
+)
+
+PYTHON_INTERPRETER=""
+PYTHON_INTERPRETER_VERSION=""
+PYTHON_INTERPRETER_NOTE_EMITTED=false
+
 # Logging functions
 print_header() {
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -91,6 +123,10 @@ print_warning() {
     echo -e "${YELLOW}⚠${NC} $1"
     ((WARNING_CHECKS++))
     ((TOTAL_CHECKS++))
+}
+
+print_info() {
+    echo -e "  ${BLUE}•${NC} $1"
 }
 
 print_detail() {
@@ -316,6 +352,144 @@ fix_npm_packages() {
 }
 
 # Check functions
+detect_python_interpreter() {
+    if [ -n "$PYTHON_INTERPRETER" ] && [ -x "$PYTHON_INTERPRETER" ]; then
+        return 0
+    fi
+
+    local candidates=()
+
+    if [ -n "${PYTHON_AI_INTERPRETER:-}" ]; then
+        candidates+=("$PYTHON_AI_INTERPRETER")
+    fi
+
+    candidates+=(
+        "$HOME/.nix-profile/bin/python3"
+        "$HOME/.nix-profile/bin/python"
+        "/run/current-system/sw/bin/python3"
+        "/run/current-system/sw/bin/python"
+    )
+
+    if command -v python3 >/dev/null 2>&1; then
+        candidates+=("$(command -v python3)")
+    fi
+
+    if command -v python >/dev/null 2>&1; then
+        candidates+=("$(command -v python)")
+    fi
+
+    for candidate in "${candidates[@]}"; do
+        if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+            PYTHON_INTERPRETER="$candidate"
+            PYTHON_INTERPRETER_VERSION="$($candidate --version 2>&1 | tr -d '\r')"
+            return 0
+        fi
+    done
+
+    PYTHON_INTERPRETER=""
+    PYTHON_INTERPRETER_VERSION=""
+    return 1
+}
+
+python_module_available() {
+    local module=$1
+
+    if [ -z "$PYTHON_INTERPRETER" ]; then
+        return 1
+    fi
+
+    "$PYTHON_INTERPRETER" -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('$module') else 1)" \
+        >/dev/null 2>&1
+}
+
+python_module_version() {
+    local module=$1
+
+    if [ -z "$PYTHON_INTERPRETER" ]; then
+        return 1
+    fi
+
+    "$PYTHON_INTERPRETER" -c "import importlib; mod = importlib.import_module('$module'); print(getattr(mod, '__version__', 'installed'))" \
+        2>/dev/null
+}
+
+get_missing_python_packages() {
+    local scope=${1:-required}
+    local entry module description requirement include
+
+    for entry in "${PYTHON_PACKAGE_CHECKS[@]}"; do
+        IFS='|' read -r module description requirement <<<"$entry"
+        include=false
+
+        case "$scope" in
+            required)
+                if [ "$requirement" = "required" ] || [ "$requirement" = "true" ]; then
+                    include=true
+                fi
+                ;;
+            optional)
+                if [ "$requirement" != "required" ] && [ "$requirement" != "true" ]; then
+                    include=true
+                fi
+                ;;
+            all)
+                include=true
+                ;;
+        esac
+
+        if [ "$include" = false ]; then
+            continue
+        fi
+
+        if [ -z "$PYTHON_INTERPRETER" ] || ! python_module_available "$module"; then
+            printf '%s|%s|%s\n' "$module" "$description" "$requirement"
+        fi
+    done
+}
+
+fix_python_environment() {
+    print_section "Attempting to fix Python environment..."
+
+    detect_python_interpreter >/dev/null 2>&1 || true
+
+    mapfile -t missing_required_python < <(get_missing_python_packages "required")
+
+    if [ ${#missing_required_python[@]} -eq 0 ]; then
+        print_success "Required Python packages already present"
+        if [ -n "$PYTHON_INTERPRETER" ] && [ "$DETAILED" = true ]; then
+            print_detail "Interpreter: $PYTHON_INTERPRETER"
+        fi
+        return
+    fi
+
+    if [ "$DETAILED" = true ]; then
+        for missing_entry in "${missing_required_python[@]}"; do
+            IFS='|' read -r _module missing_desc _requirement <<<"$missing_entry"
+            print_detail "Missing: $missing_desc"
+        done
+    fi
+
+    if command -v home-manager >/dev/null 2>&1 && [ -d "$HOME/.dotfiles/home-manager" ]; then
+        print_detail "Reapplying home-manager configuration to rebuild Python environment"
+        if home-manager switch --flake "$HOME/.dotfiles/home-manager" 2>&1 | tee /tmp/hm-python-fix.log; then
+            print_success "Reapplied home-manager configuration"
+            detect_python_interpreter >/dev/null 2>&1 || true
+
+            mapfile -t missing_required_python < <(get_missing_python_packages "required")
+            if [ ${#missing_required_python[@]} -eq 0 ]; then
+                print_success "Verified required Python packages after rebuild"
+            else
+                print_warning "Some Python packages are still missing after rebuild"
+            fi
+        else
+            print_fail "Failed to apply home-manager configuration"
+            echo "  See /tmp/hm-python-fix.log for details"
+        fi
+    else
+        print_warning "Home-manager configuration unavailable; install Python packages manually"
+    fi
+}
+
 check_command() {
     local cmd=$1
     local package_name=$2
@@ -596,16 +770,46 @@ check_python_package() {
     local package=$1
     local description=$2
     local required=${3:-false}
+    local required_flag=false
+
+    if [ "$required" = true ] || [ "$required" = "required" ]; then
+        required_flag=true
+    fi
 
     print_check "Python: $description"
 
-    if python3 -c "import $package" &> /dev/null; then
-        # Try to get version
-        local version=$(python3 -c "import $package; print(getattr($package, '__version__', 'installed'))" 2>/dev/null || echo "installed")
+    if [ -z "$PYTHON_INTERPRETER" ]; then
+        if [ "$PYTHON_INTERPRETER_NOTE_EMITTED" = false ] && [ "$DETAILED" = true ]; then
+            print_detail "Python interpreter not detected; set PYTHON_AI_INTERPRETER to override"
+            PYTHON_INTERPRETER_NOTE_EMITTED=true
+        fi
+
+        if [ "$required_flag" = true ]; then
+            print_fail "$description cannot be verified (no Python interpreter)"
+            return 1
+        else
+            print_warning "$description check skipped (no Python interpreter)"
+            return 2
+        fi
+    fi
+
+    if python_module_available "$package"; then
+        local version
+        version=$(python_module_version "$package" || echo "installed")
+        if [ -z "$version" ]; then
+            version="installed"
+        fi
         print_success "$description ($version)"
+        if [ "$DETAILED" = true ] && [ "$PYTHON_INTERPRETER_NOTE_EMITTED" = false ]; then
+            print_detail "Interpreter: $PYTHON_INTERPRETER"
+            if [ -n "$PYTHON_INTERPRETER_VERSION" ]; then
+                print_detail "Python version: $PYTHON_INTERPRETER_VERSION"
+            fi
+            PYTHON_INTERPRETER_NOTE_EMITTED=true
+        fi
         return 0
     else
-        if [ "$required" = true ]; then
+        if [ "$required_flag" = true ]; then
             print_fail "$description not found"
             return 1
         else
@@ -844,46 +1048,26 @@ run_all_checks() {
     # ==========================================================================
     print_section "Python AI/ML Packages"
 
-    # Core Data Science
-    check_python_package "pandas" "Pandas (DataFrames)" true
-    check_python_package "numpy" "NumPy (numerical computing)" true
-    check_python_package "sklearn" "Scikit-learn (machine learning)" true
+    PYTHON_INTERPRETER_NOTE_EMITTED=false
+    detect_python_interpreter >/dev/null 2>&1 || true
 
-    # Deep Learning Frameworks
-    check_python_package "torch" "PyTorch" true
-    check_python_package "tensorflow" "TensorFlow" false
+    if [ -n "$PYTHON_INTERPRETER" ] && [ "$DETAILED" = true ]; then
+        print_detail "Using Python interpreter: $PYTHON_INTERPRETER"
+        if [ -n "$PYTHON_INTERPRETER_VERSION" ]; then
+            print_detail "Interpreter version: $PYTHON_INTERPRETER_VERSION"
+        fi
+        PYTHON_INTERPRETER_NOTE_EMITTED=true
+    fi
 
-    # LLM & AI Frameworks
-    check_python_package "openai" "OpenAI client" true
-    check_python_package "anthropic" "Anthropic client" true
-    check_python_package "langchain" "LangChain" true
-    check_python_package "llama_index" "LlamaIndex" true
-    check_python_package "openskills" "OpenSkills automation toolkit" true
-
-    # Vector Databases & Embeddings
-    check_python_package "chromadb" "ChromaDB" true
-    check_python_package "qdrant_client" "Qdrant client" true
-    check_python_package "sentence_transformers" "Sentence Transformers" true
-    check_python_package "faiss" "FAISS" false
-
-    # Modern Data Processing
-    check_python_package "polars" "Polars (fast DataFrames)" true
-    check_python_package "dask" "Dask (parallel computing)" false
-
-    # Code Quality Tools
-    check_python_package "black" "Black (formatter)" true
-    check_python_package "ruff" "Ruff (linter)" true
-    check_python_package "mypy" "Mypy (type checker)" true
-
-    # Jupyter
-    check_python_package "jupyterlab" "Jupyter Lab" true
-    check_python_package "notebook" "Jupyter Notebook" false
-
-    # Additional AI/ML packages
-    check_python_package "transformers" "Transformers (Hugging Face)" true
-    check_python_package "accelerate" "Accelerate" true
-    check_python_package "datasets" "Datasets (Hugging Face)" true
-    check_python_package "gradio" "Gradio" true
+    local python_entry module description requirement required_flag
+    for python_entry in "${PYTHON_PACKAGE_CHECKS[@]}"; do
+        IFS='|' read -r module description requirement <<<"$python_entry"
+        required_flag=false
+        if [ "$requirement" = "required" ] || [ "$requirement" = "true" ]; then
+            required_flag=true
+        fi
+        check_python_package "$module" "$description" "$required_flag"
+    done
 
     # ==========================================================================
     # Editors & IDEs
@@ -939,6 +1123,7 @@ run_all_checks() {
         check_flatpak_remote "flathub-beta" "Flathub Beta remote" true
 
         # Core applications
+        check_flatpak_app "com.google.Chrome" "Google Chrome" true
         check_flatpak_app "org.mozilla.firefox" "Firefox" true
         check_flatpak_app "md.obsidian.Obsidian" "Obsidian" true
         check_flatpak_app "ai.cursor.Cursor" "Cursor IDE" false
@@ -1194,7 +1379,11 @@ run_all_checks() {
                 suggestion_index=$((suggestion_index + 1))
             fi
 
-            if ! python3 -c "import torch" &> /dev/null ||                ! python3 -c "import pandas" &> /dev/null ||                ! python3 -c "import anthropic" &> /dev/null; then
+            detect_python_interpreter >/dev/null 2>&1 || true
+            local -a missing_required_python=()
+            mapfile -t missing_required_python < <(get_missing_python_packages "required")
+
+            if [ ${#missing_required_python[@]} -gt 0 ]; then
                 echo "  ${YELLOW}${suggestion_index}. Python packages missing:${NC}"
                 echo "     • These should be installed via home-manager"
                 echo "     • If home-manager was just applied, reload your shell:"
@@ -1203,9 +1392,13 @@ run_all_checks() {
                 echo "       nix-store --verify-path ~/.nix-profile"
                 echo "     • Re-apply home-manager to rebuild Python environment:"
                 echo "       cd ~/.dotfiles/home-manager && home-manager switch --flake ."
+                echo "     • Missing modules detected:"
+                for missing_entry in "${missing_required_python[@]}"; do
+                    IFS='|' read -r _module missing_desc _requirement <<<"$missing_entry"
+                    echo "       - $missing_desc"
+                done
                 echo ""
             fi
-
             echo "  ${YELLOW}Quick fix (attempts all repairs automatically):${NC}"
             echo "     $0 --fix"
             echo ""
@@ -1233,6 +1426,8 @@ main() {
         if ! command -v home-manager &> /dev/null; then
             fix_home_manager
         fi
+
+        fix_python_environment
 
         load_npm_manifest
         local npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"

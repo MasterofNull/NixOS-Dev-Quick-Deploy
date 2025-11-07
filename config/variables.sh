@@ -193,6 +193,7 @@ DEFAULT_FLATPAK_APPS=(
     "net.nokyan.Resources"
     "org.videolan.VLC"
     "io.mpv.Mpv"
+    "com.google.Chrome"
     "org.mozilla.firefox"
     "md.obsidian.Obsidian"
     "io.podman_desktop.PodmanDesktop"
