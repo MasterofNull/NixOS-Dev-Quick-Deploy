@@ -13,6 +13,7 @@
 #   - lib/state.sh → is_step_complete(), mark_step_complete()
 #   - lib/finalization.sh → apply_final_system_configuration(), finalize_configuration_activation()
 #   - lib/reporting.sh → print_post_install()
+#   - lib/validation.sh → run_system_health_check_stage()
 #
 # Required Variables (from config/variables.sh):
 #   - SCRIPT_VERSION → Current script version
@@ -48,24 +49,17 @@ phase_08_finalization_and_report() {
     # This is the final phase - complete post-install configuration and
     # generate comprehensive deployment report.
     #
-    # Part 1: System Finalization (from old Phase 9)
-    # - Apply final system configuration requiring services running
-    # - Initialize databases (PostgreSQL for Gitea, etc.)
-    # - Configure services (Ollama, Qdrant, HuggingFace TGI)
-    # - Set up integrations and service-to-service authentication
-    # - Finalize permissions on service directories
-    # - Reload/restart services with final configs
-    # - Enable user services
-    # - Clean up temporary files
+    # Part 1: System Health Check
+    # - Run comprehensive validation of services, resources, and connectivity
+    # - Respect --skip-health-check for faster deployments
     #
-    # Part 2: Deployment Report (from old Phase 10)
+    # Part 2: Final System Configuration
+    # - Apply final service configuration that requires live services
+    # - Finalize permissions and remove temporary resources
+    #
+    # Part 3: Deployment Report
     # - Generate comprehensive post-install report
-    # - Display success banner
-    # - Show configuration status
-    # - List installed components
-    # - Provide next steps guide
-    # - Show configuration file locations
-    # - Display logs and troubleshooting resources
+    # - Display configuration status, next steps, and troubleshooting info
     # ========================================================================
 
     local phase_name="finalization_and_report"
@@ -82,14 +76,56 @@ phase_08_finalization_and_report() {
     echo ""
 
     # ========================================================================
-    # PART 1: SYSTEM FINALIZATION
+    # PART 1: SYSTEM HEALTH CHECK
     # ========================================================================
 
-    print_section "Part 1: Final System Configuration"
+    print_section "Part 1: System Health Check"
     echo ""
 
     # ========================================================================
-    # Step 8.1: Apply Final System Configuration
+    # Step 8.1: Run Comprehensive Health Check
+    # ========================================================================
+    if [[ "$SKIP_HEALTH_CHECK" == true ]]; then
+        print_info "Skipping system health check (--skip-health-check flag detected)"
+    else
+        local health_script="$SCRIPT_DIR/scripts/system-health-check.sh"
+        local health_status=0
+
+        if [[ -x "$health_script" ]]; then
+            print_info "Running detailed health check via $health_script"
+            set +e
+            "$health_script" --detailed
+            health_status=$?
+            set -e
+        else
+            print_warning "Health check script not found at $health_script; running internal validation fallback"
+            set +e
+            run_system_health_check_stage
+            health_status=$?
+            set -e
+        fi
+
+        if [[ $health_status -eq 0 ]]; then
+            print_success "System health check completed"
+        else
+            print_warning "System health check reported issues (review output above)"
+        fi
+
+        FINAL_PHASE_HEALTH_CHECK_COMPLETED=true
+        export FINAL_PHASE_HEALTH_CHECK_COMPLETED
+    fi
+
+    echo ""
+
+    # ========================================================================
+    # PART 2: FINAL SYSTEM CONFIGURATION
+    # ========================================================================
+
+    print_section "Part 2: Final System Configuration"
+    echo ""
+
+    # ========================================================================
+    # Step 8.2: Apply Final System Configuration
     # ========================================================================
     # Complete system configuration that requires services running:
     # - Database initialization (PostgreSQL databases for Gitea)
@@ -99,7 +135,7 @@ phase_08_finalization_and_report() {
     apply_final_system_configuration
 
     # ========================================================================
-    # Step 8.2: Finalize Configuration Activation
+    # Step 8.3: Finalize Configuration Activation
     # ========================================================================
     # Ensure all configurations active and services using them:
     # - Reload service configurations (systemctl daemon-reload)
@@ -150,14 +186,14 @@ phase_08_finalization_and_report() {
     fi
 
     # ========================================================================
-    # PART 2: DEPLOYMENT REPORT
+    # PART 3: DEPLOYMENT REPORT
     # ========================================================================
 
-    print_section "Part 2: Deployment Report"
+    print_section "Part 3: Deployment Report"
     echo ""
 
     # ========================================================================
-    # Step 8.3: Generate Comprehensive Post-Install Report
+    # Step 8.4: Generate Comprehensive Post-Install Report
     # ========================================================================
     # Detailed information about what was installed:
     # - NixOS generation information
@@ -168,7 +204,7 @@ phase_08_finalization_and_report() {
     print_post_install
 
     # ========================================================================
-    # Step 8.4: Display Success Banner
+    # Step 8.5: Display Success Banner
     # ========================================================================
     echo ""
     echo -e "${GREEN}╔════════════════════════════════════════════════════════════════╗${NC}"
@@ -177,7 +213,7 @@ phase_08_finalization_and_report() {
     echo ""
 
     # ========================================================================
-    # Step 8.5: Configuration Status Summary
+    # Step 8.6: Configuration Status Summary
     # ========================================================================
     print_info "Configuration Status:"
     echo -e "  ${GREEN}✓${NC} NixOS system configuration applied"
@@ -187,7 +223,7 @@ phase_08_finalization_and_report() {
     echo ""
 
     # ========================================================================
-    # Step 8.6: Installed Components List
+    # Step 8.7: Installed Components List
     # ========================================================================
     print_info "Installed Components:"
     echo "  • COSMIC Desktop Environment"
@@ -200,7 +236,7 @@ phase_08_finalization_and_report() {
     echo ""
 
     # ========================================================================
-    # Step 8.7: Next Steps Guide
+    # Step 8.8: Next Steps Guide
     # ========================================================================
     echo -e "${BLUE}Next Steps:${NC}"
     echo ""
@@ -226,7 +262,7 @@ phase_08_finalization_and_report() {
     echo ""
 
     # ========================================================================
-    # Step 8.8: Reboot Recommendation (Conditional)
+    # Step 8.9: Reboot Recommendation (Conditional)
     # ========================================================================
     # Recommend reboot if kernel/init system updated
     if [[ -L "/run/booted-system" && -L "/run/current-system" ]]; then
@@ -240,7 +276,7 @@ phase_08_finalization_and_report() {
     fi
 
     # ========================================================================
-    # Step 8.9: Configuration File Locations
+    # Step 8.10: Configuration File Locations
     # ========================================================================
     print_info "Configuration Files:"
     echo "  • System: $SYSTEM_CONFIG_FILE"
@@ -250,7 +286,7 @@ phase_08_finalization_and_report() {
     echo ""
 
     # ========================================================================
-    # Step 8.10: Logs and Troubleshooting Resources
+    # Step 8.11: Logs and Troubleshooting Resources
     # ========================================================================
     print_info "Logs & Troubleshooting:"
     echo "  • Deployment log: $LOG_FILE"

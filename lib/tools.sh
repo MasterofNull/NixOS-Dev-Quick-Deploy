@@ -21,7 +21,6 @@
 #   - setup_flake_environment() → Setup Nix flakes dev environment
 
 declare -a AI_VSCODE_EXTENSIONS=()
-declare -A AI_VSCODE_EXTENSION_CACHE=()
 
 LAST_OPEN_VSX_URL=""
 LAST_OPEN_VSX_STATUS=""
@@ -35,6 +34,27 @@ ai_cli_manual_url() {
     fi
 
     printf '%s' ""
+}
+
+ai_vscode_cache_var() {
+    local raw="$1"
+    local sanitized="${raw//[^A-Za-z0-9]/_}"
+    if [[ -z "$sanitized" ]]; then
+        sanitized="EXT"
+    fi
+    printf 'AI_VSCODE_EXTENSION_CACHE_%s' "$sanitized"
+}
+
+ai_vscode_cache_get() {
+    local var
+    var=$(ai_vscode_cache_var "$1")
+    printf '%s' "${!var:-}"
+}
+
+ai_vscode_cache_set() {
+    local var
+    var=$(ai_vscode_cache_var "$1")
+    printf -v "$var" '%s' "$2"
 }
 
 vscode_extension_manual_url() {
@@ -63,8 +83,9 @@ open_vsx_extension_available() {
         return 0
     fi
 
-    if [[ -n "${AI_VSCODE_EXTENSION_CACHE["$extension_id"]:-}" ]]; then
-        local cached="${AI_VSCODE_EXTENSION_CACHE["$extension_id"]}"
+    local cached
+    cached=$(ai_vscode_cache_get "$extension_id")
+    if [[ -n "$cached" ]]; then
         LAST_OPEN_VSX_STATUS="${cached%%|*}"
         LAST_OPEN_VSX_URL="${cached#*|}"
         [[ "$LAST_OPEN_VSX_STATUS" == "200" ]] && return 0
@@ -85,7 +106,7 @@ open_vsx_extension_available() {
         return 0
     fi
 
-    AI_VSCODE_EXTENSION_CACHE["$extension_id"]="${status}|$url"
+    ai_vscode_cache_set "$extension_id" "${status}|$url"
 
     if [[ "$status" == "200" ]]; then
         return 0
@@ -1134,7 +1155,7 @@ configure_vscodium_for_claude() {
     local wrapper_dir="$npm_prefix/bin"
     local npm_modules="$npm_prefix/lib/node_modules"
 
-    local verify_declarative_vscodium_settings() {
+    verify_declarative_vscodium_settings() {
         if [ ! -f "$settings_file" ]; then
             print_warning "Declarative VSCodium settings not found – rerun home-manager to generate settings.json"
             return

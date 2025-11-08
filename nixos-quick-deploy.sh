@@ -981,24 +981,29 @@ main() {
 
     local health_exit=0
     if [[ "$SKIP_HEALTH_CHECK" != true ]]; then
-        local health_script="$SCRIPT_DIR/scripts/system-health-check.sh"
-        if [[ -x "$health_script" ]]; then
-            print_section "Final System Health Check"
-            log INFO "Running final system health check via $health_script"
-            echo ""
-            if "$health_script" --detailed; then
-                print_success "System health check passed"
+        if [[ "${FINAL_PHASE_HEALTH_CHECK_COMPLETED:-false}" == true ]]; then
+            log INFO "Skipping redundant final health check (already run in Phase 8)"
+            print_info "Final health check already completed during Phase 8"
+        else
+            local health_script="$SCRIPT_DIR/scripts/system-health-check.sh"
+            if [[ -x "$health_script" ]]; then
+                print_section "Final System Health Check"
+                log INFO "Running final system health check via $health_script"
                 echo ""
+                if "$health_script" --detailed; then
+                    print_success "System health check passed"
+                    echo ""
+                else
+                    health_exit=$?
+                    print_warning "System health check reported issues. Review the output above and rerun with --fix if needed."
+                    echo ""
+                fi
             else
-                health_exit=$?
-                print_warning "System health check reported issues. Review the output above and rerun with --fix if needed."
+                log WARNING "Health check script missing at $health_script"
+                print_warning "Health check script not found at $health_script"
+                print_info "Run git pull to restore scripts or download manually."
                 echo ""
             fi
-        else
-            log WARNING "Health check script missing at $health_script"
-            print_warning "Health check script not found at $health_script"
-            print_info "Run git pull to restore scripts or download manually."
-            echo ""
         fi
     else
         log INFO "Skipping final health check (flag)"
