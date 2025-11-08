@@ -592,9 +592,72 @@ detect_gpu_and_cpu() {
     ZSWAP_MAX_POOL_PERCENT="$zswap_percent"
     print_info "Zswap pool limit: ${ZSWAP_MAX_POOL_PERCENT}% of RAM"
 
+    select_zswap_memory_pool
+
     echo ""
     print_success "Hardware detection complete"
     echo ""
+}
+
+# ==========================================================================
+# Kernel feature detection helpers
+# ==========================================================================
+
+kernel_module_available() {
+    local module="$1"
+
+    if [[ -z "$module" ]]; then
+        return 1
+    fi
+
+    # Module already loaded
+    if [[ -d "/sys/module/$module" ]]; then
+        return 0
+    fi
+
+    local uname_r
+    uname_r=$(uname -r 2>/dev/null || echo "")
+    if [[ -n "$uname_r" ]]; then
+        if grep -qw "$module" "/lib/modules/${uname_r}/modules.builtin" 2>/dev/null; then
+            return 0
+        fi
+        if grep -qw "$module" "/lib/modules/${uname_r}/modules.builtin.modinfo" 2>/dev/null; then
+            return 0
+        fi
+    fi
+
+    if command -v modinfo >/dev/null 2>&1; then
+        if modinfo "$module" >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+select_zswap_memory_pool() {
+    # Decide which zswap zpool implementation to use based on kernel support.
+    # Preference order matches upstream guidance: z3fold → zbud → zsmalloc.
+    local -a zpools=("z3fold" "zbud" "zsmalloc")
+    local selected=""
+
+    for candidate in "${zpools[@]}"; do
+        if kernel_module_available "$candidate"; then
+            selected="$candidate"
+            break
+        fi
+    done
+
+    if [[ -z "$selected" ]]; then
+        selected="zsmalloc"
+    fi
+
+    if [[ "$selected" != "${ZSWAP_ZPOOL:-}" ]]; then
+        ZSWAP_ZPOOL="$selected"
+        print_info "Detected zswap zpool support: using ${ZSWAP_ZPOOL}."
+    else
+        print_info "Using previously selected zswap zpool: ${ZSWAP_ZPOOL}."
+    fi
 }
 
 # ===========================================================================
