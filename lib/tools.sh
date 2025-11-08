@@ -1237,10 +1237,32 @@ configure_vscodium_for_claude() {
         managed_declaratively=1
     fi
 
+    local converted_to_mutable=0
+    if [ "$managed_declaratively" -eq 1 ] && [ -f "$resolved_settings" ] && [[ "$resolved_settings" == /nix/store/* ]]; then
+        local tmp_settings="${settings_file}.tmp"
+        if cp "$resolved_settings" "$tmp_settings" 2>/dev/null; then
+            if rm -f "$settings_file" 2>/dev/null && mv "$tmp_settings" "$settings_file" 2>/dev/null; then
+                chmod u+rw "$settings_file" 2>/dev/null || true
+                managed_declaratively=0
+                converted_to_mutable=1
+                print_warning "Converted declarative VSCodium settings to a mutable copy (source: $resolved_settings)"
+                print_info "Future home-manager runs may reapply declarative settings; rerun deploy script afterwards if needed."
+            else
+                rm -f "$tmp_settings" 2>/dev/null || true
+            fi
+        else
+            rm -f "$tmp_settings" 2>/dev/null || true
+        fi
+    fi
+
     if [ "$managed_declaratively" -eq 1 ]; then
         print_info "VSCodium settings.json is managed declaratively (read-only symlink detected)"
         verify_declarative_vscodium_settings
         return 0
+    fi
+
+    if [ "$converted_to_mutable" -eq 1 ]; then
+        print_success "VSCodium settings.json converted to writable file"
     fi
 
     local path_entries=("$wrapper_dir" "$HOME/.nix-profile/bin")
