@@ -733,9 +733,20 @@ RESOURCES
           pinecone-client
           faiss
           sentence-transformers
+          # MCP & Agent Tooling
+          litellm
+          tiktoken
+          fastapi
+          uvicorn
+          httpx
+          pydantic
+          typer
+          rich
+          sqlalchemy
           # Specialized AI Tools
           llama-cpp-python
           # Data Processing
+          duckdb
           dask
           dask-ml
         ];
