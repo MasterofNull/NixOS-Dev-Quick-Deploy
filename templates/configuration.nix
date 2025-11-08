@@ -458,19 +458,25 @@ in
       StartLimitIntervalSec = 900;  # 15 minutes
     };
     environment = {
+      PODMAN_SYSTEMD_UNIT = "%n";
       XDG_RUNTIME_DIR = "/run/podman";
     };
     preStart = ''
+      ${pkgs.coreutils}/bin/install -d -m 0755 /run/podman
       ${pkgs.coreutils}/bin/install -d -m 0770 %S/qdrant/storage
     '';
     serviceConfig = {
       Type = "simple";
       ExecStartPre = [
-        "${pkgs.podman}/bin/podman rm -f qdrant || true"
-        "${pkgs.podman}/bin/podman pull docker.io/qdrant/qdrant:latest"
+        "${pkgs.podman}/bin/podman stop --ignore --time 10 qdrant"
+        "${pkgs.podman}/bin/podman rm --ignore -f qdrant"
+        "${pkgs.podman}/bin/podman pull --quiet docker.io/qdrant/qdrant:latest"
       ];
       ExecStart = ''
         ${pkgs.podman}/bin/podman run \
+          --replace \
+          --cidfile=%t/qdrant.cid \
+          --conmon-pidfile=%t/qdrant.pid \
           --rm \
           --name qdrant \
           --net host \
@@ -481,7 +487,8 @@ in
           -e QDRANT__TELEMETRY_DISABLED=true \
           docker.io/qdrant/qdrant:latest
       '';
-      ExecStop = "${pkgs.podman}/bin/podman stop qdrant || true";
+      ExecStop = "${pkgs.podman}/bin/podman stop --ignore --time 10 qdrant";
+      ExecStopPost = "${pkgs.podman}/bin/podman rm --ignore -f qdrant";
       Restart = "on-failure";
       RestartSec = 30;  # Increased from 15
       TimeoutStartSec = 300;  # Increased from 120 (5 minutes)
