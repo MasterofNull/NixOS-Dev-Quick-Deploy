@@ -21,7 +21,6 @@
 #   - setup_flake_environment() → Setup Nix flakes dev environment
 
 declare -a AI_VSCODE_EXTENSIONS=()
-declare -A AI_VSCODE_EXTENSION_CACHE=()
 
 LAST_OPEN_VSX_URL=""
 LAST_OPEN_VSX_STATUS=""
@@ -35,6 +34,27 @@ ai_cli_manual_url() {
     fi
 
     printf '%s' ""
+}
+
+ai_vscode_cache_var() {
+    local raw="$1"
+    local sanitized="${raw//[^A-Za-z0-9]/_}"
+    if [[ -z "$sanitized" ]]; then
+        sanitized="EXT"
+    fi
+    printf 'AI_VSCODE_EXTENSION_CACHE_%s' "$sanitized"
+}
+
+ai_vscode_cache_get() {
+    local var
+    var=$(ai_vscode_cache_var "$1")
+    printf '%s' "${!var:-}"
+}
+
+ai_vscode_cache_set() {
+    local var
+    var=$(ai_vscode_cache_var "$1")
+    printf -v "$var" '%s' "$2"
 }
 
 vscode_extension_manual_url() {
@@ -63,8 +83,9 @@ open_vsx_extension_available() {
         return 0
     fi
 
-    if [[ -n "${AI_VSCODE_EXTENSION_CACHE["$extension_id"]:-}" ]]; then
-        local cached="${AI_VSCODE_EXTENSION_CACHE["$extension_id"]}"
+    local cached
+    cached=$(ai_vscode_cache_get "$extension_id")
+    if [[ -n "$cached" ]]; then
         LAST_OPEN_VSX_STATUS="${cached%%|*}"
         LAST_OPEN_VSX_URL="${cached#*|}"
         [[ "$LAST_OPEN_VSX_STATUS" == "200" ]] && return 0
@@ -85,7 +106,7 @@ open_vsx_extension_available() {
         return 0
     fi
 
-    AI_VSCODE_EXTENSION_CACHE["$extension_id"]="${status}|$url"
+    ai_vscode_cache_set "$extension_id" "${status}|$url"
 
     if [[ "$status" == "200" ]]; then
         return 0
@@ -1115,7 +1136,7 @@ configure_vscodium_for_claude() {
     local settings_file="$settings_dir/settings.json"
     mkdir -p "$settings_dir"
 
-    if [ ! -f "$settings_file" ]; then
+    if [ ! -e "$settings_file" ]; then
         echo "{}" >"$settings_file"
     fi
 
@@ -1133,6 +1154,94 @@ configure_vscodium_for_claude() {
     local npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
     local wrapper_dir="$npm_prefix/bin"
     local npm_modules="$npm_prefix/lib/node_modules"
+
+    verify_declarative_vscodium_settings() {
+        if [ ! -f "$settings_file" ]; then
+            print_warning "Declarative VSCodium settings not found – rerun home-manager to generate settings.json"
+            return
+        fi
+
+        declare -A missing_keys=()
+
+        __vscodium_check_flat_key() {
+            local candidate="$1"
+            if [ -z "$candidate" ]; then
+                return
+            fi
+            if ! jq -e --arg key "$candidate" 'has($key) and .[$key] != null' "$settings_file" >/dev/null 2>&1; then
+                missing_keys["$candidate"]=1
+            fi
+        }
+
+        local entry package display bin_command wrapper_name extension_id debug_env
+        for entry in "${NPM_AI_PACKAGE_MANIFEST[@]}"; do
+            IFS='|' read -r package display bin_command wrapper_name extension_id debug_env <<<"$entry"
+            local keys=()
+            local extra=()
+            case "$package" in
+                "@anthropic-ai/claude-code")
+                    keys=("claude-code" "claudeCode")
+                    extra=("claude-code.claudeProcessWrapper" "claudeCode.claudeProcessWrapper")
+                    ;;
+                "@openai/codex")
+                    if [[ "$wrapper_name" == "gpt-codex-wrapper" ]]; then
+                        keys=("gpt-codex" "gptCodex")
+                    else
+                        keys=("codex" "codexIDE" "codexIde")
+                    fi
+                    ;;
+                "openai")
+                    keys=("openai")
+                    ;;
+                "@gooseai/cli")
+                    keys=("gooseai")
+                    ;;
+                *)
+                    keys=()
+                    ;;
+            esac
+
+            local key
+            for key in "${keys[@]}"; do
+                __vscodium_check_flat_key "${key}.executablePath"
+                __vscodium_check_flat_key "${key}.environmentVariables"
+                __vscodium_check_flat_key "${key}.autoStart"
+            done
+
+            local extra_key
+            for extra_key in "${extra[@]}"; do
+                __vscodium_check_flat_key "$extra_key"
+            done
+        done
+
+        if [ "${#missing_keys[@]}" -eq 0 ]; then
+            print_success "Declarative VSCodium settings already contain AI wrapper configuration"
+            return
+        fi
+
+        local missing_list=("${!missing_keys[@]}")
+        local joined_missing
+        joined_missing=$(printf '%s, ' "${missing_list[@]}")
+        joined_missing=${joined_missing%, }
+
+        print_warning "Declarative VSCodium settings missing keys: ${joined_missing}"
+        print_info "Add them to templates/home.nix → programs.vscode.profiles.default.userSettings to keep settings.json writable by Nix"
+    }
+
+    local resolved_settings
+    resolved_settings=$(readlink -f "$settings_file" 2>/dev/null || true)
+    local managed_declaratively=0
+    if [ -L "$settings_file" ] && [[ "$resolved_settings" == /nix/store/* ]]; then
+        managed_declaratively=1
+    elif [ -e "$settings_file" ] && [ ! -w "$settings_file" ]; then
+        managed_declaratively=1
+    fi
+
+    if [ "$managed_declaratively" -eq 1 ]; then
+        print_info "VSCodium settings.json is managed declaratively (read-only symlink detected)"
+        verify_declarative_vscodium_settings
+        return 0
+    fi
 
     local path_entries=("$wrapper_dir" "$HOME/.nix-profile/bin")
     if command -v node >/dev/null 2>&1; then
@@ -1209,8 +1318,13 @@ configure_vscodium_for_claude() {
 
         local key
         for key in "${keys[@]}"; do
-            if ! apply_jq '.[ $base ] = (.[ $base ] // {}) | .[ $base ].executablePath = $wrapper | .[ $base ].environmentVariables = $env | .[ $base ].autoStart = false' \
-                --arg base "$key" \
+            local exec_key="${key}.executablePath"
+            local env_key="${key}.environmentVariables"
+            local auto_key="${key}.autoStart"
+            if ! apply_jq '. + { ($exec_key): $wrapper, ($env_key): $env, ($auto_key): false }' \
+                --arg exec_key "$exec_key" \
+                --arg env_key "$env_key" \
+                --arg auto_key "$auto_key" \
                 --arg wrapper "$wrapper_path" \
                 --argjson env "$env_json"; then
                 overall_status=1
@@ -1219,13 +1333,11 @@ configure_vscodium_for_claude() {
 
         local extra_key
         for extra_key in "${extra[@]}"; do
-            IFS='.' read -r extra_base extra_prop <<<"$extra_key"
-            if [ -z "$extra_base" ] || [ -z "$extra_prop" ]; then
+            if [ -z "$extra_key" ]; then
                 continue
             fi
-            if ! apply_jq '.[ $base ] = (.[ $base ] // {}) | .[ $base ][ $prop ] = $wrapper' \
-                --arg base "$extra_base" \
-                --arg prop "$extra_prop" \
+            if ! apply_jq '. + { ($flat_key): $wrapper }' \
+                --arg flat_key "$extra_key" \
                 --arg wrapper "$wrapper_path"; then
                 overall_status=1
             fi

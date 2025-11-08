@@ -123,68 +123,7 @@ phase_07_post_deployment_validation() {
     fi
 
     # ========================================================================
-    # Step 8.2: System Health Check
-    # ========================================================================
-    # Why: Comprehensive system validation
-    # When: Unless user specified --skip-health-check
-    # How: run_system_health_check_stage() performs:
-    #      1. Service status checks
-    #      2. Resource utilization checks
-    #      3. Disk space verification
-    #      4. Network connectivity tests
-    #      5. Database accessibility
-    #      6. Container runtime status
-    #
-    # Services checked:
-    # System services (systemctl status):
-    #   - postgresql: Database server
-    #   - ollama: Local AI model server
-    #   - gitea: Git hosting server
-    #   - huggingface-tgi: Text generation inference
-    #   - qdrant: Vector database
-    #
-    # User services (systemctl --user status):
-    #   - jupyter-lab: Interactive notebooks
-    #   - Custom user daemons
-    #
-    # Resource checks:
-    # - CPU usage (warn if >90%)
-    # - Memory usage (warn if <500MB free)
-    # - Disk space (warn if <5GB free)
-    # - Load average (warn if >CPU count)
-    #
-    # Network checks:
-    # - Can reach internet
-    # - DNS resolution working
-    # - Cache.nixos.org accessible
-    #
-    # Container checks:
-    # - podman command available
-    # - Can pull images
-    # - Network configured
-    # - Storage driver working
-    #
-    # Exit behavior:
-    # - Returns 0 if all checks pass
-    # - Returns 1 if any check fails (warnings shown)
-    # - || print_warning: Show summary warning, continue
-    #
-    # Why allow skip:
-    # - Time-consuming (2-5 minutes)
-    # - User might want faster deployment
-    # - Can run health check manually later
-    #   Command: ~/NixOS-Dev-Quick-Deploy/scripts/system-health-check.sh
-    #
-    # SKIP_HEALTH_CHECK variable:
-    # - Set via --skip-health-check CLI flag
-    # - Default: false (run health check)
-    # - != true: Check if NOT explicitly true (covers unset/false/empty)
-    if [[ "$SKIP_HEALTH_CHECK" != true ]]; then
-        run_system_health_check_stage || print_warning "Health check found issues (review above)"
-    fi
-
-    # ========================================================================
-    # Step 8.3: Critical Package Verification
+    # Step 8.2: Critical Package Verification
     # ========================================================================
     # Why: Ensure essential development tools are accessible
     # How: Check each package with command -v
