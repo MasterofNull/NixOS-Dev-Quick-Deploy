@@ -464,6 +464,9 @@ in
     preStart = ''
       ${pkgs.coreutils}/bin/install -d -m 0755 /run/podman
       ${pkgs.coreutils}/bin/install -d -m 0770 %S/qdrant/storage
+      # Remove stale runtime files from previous runs; podman exits with code 125 if
+      # the cidfile or pidfile already exists.
+      ${pkgs.coreutils}/bin/rm -f %t/qdrant.cid %t/qdrant.pid
     '';
     serviceConfig = {
       Type = "simple";
@@ -474,7 +477,6 @@ in
       ];
       ExecStart = ''
         ${pkgs.podman}/bin/podman run \
-          --replace \
           --cidfile=%t/qdrant.cid \
           --conmon-pidfile=%t/qdrant.pid \
           --rm \
