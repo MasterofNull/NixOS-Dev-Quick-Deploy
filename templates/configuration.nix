@@ -12,6 +12,27 @@ let
   huggingfaceCacheDir = "${huggingfaceDataDir}/cache";
   huggingfaceModelId = "meta-llama/Meta-Llama-3-8B-Instruct";
   huggingfaceImage = "ghcr.io/huggingface/text-generation-inference:latest";
+  qdrantStateDirName = "qdrant";
+  qdrantStateDir = "/var/lib/${qdrantStateDirName}";
+  qdrantStartScript = pkgs.writeShellScript "qdrant-start" ''
+    set -euo pipefail
+
+    state_root="''${STATE_DIRECTORY:-${qdrantStateDir}}"
+    runtime_root="''${RUNTIME_DIRECTORY:-/run}"
+
+    exec ${pkgs.podman}/bin/podman run \
+      --cidfile="''${runtime_root}/qdrant.cid" \
+      --conmon-pidfile="''${runtime_root}/qdrant.pid" \
+      --rm \
+      --name qdrant \
+      --net host \
+      -v "''${state_root}/storage:/qdrant/storage:U" \
+      -e QDRANT__SERVICE__HOST=127.0.0.1 \
+      -e QDRANT__SERVICE__HTTP_PORT=6333 \
+      -e QDRANT__SERVICE__GRPC_PORT=6334 \
+      -e QDRANT__TELEMETRY_DISABLED=true \
+      docker.io/qdrant/qdrant:latest
+  '';
   huggingfacePrepScript = pkgs.writeShellScript "huggingface-tgi-prep" ''
     set -euo pipefail
     state_root="''${STATE_DIRECTORY:-${huggingfaceDataDir}}"
@@ -462,11 +483,16 @@ in
       XDG_RUNTIME_DIR = "/run/podman";
     };
     preStart = ''
+      set -euo pipefail
+
+      state_root="''${STATE_DIRECTORY:-${qdrantStateDir}}"
+      runtime_root="''${RUNTIME_DIRECTORY:-/run}"
+
       ${pkgs.coreutils}/bin/install -d -m 0755 /run/podman
-      ${pkgs.coreutils}/bin/install -d -m 0770 %S/qdrant/storage
+      ${pkgs.coreutils}/bin/install -d -m 0770 "''${state_root}/storage"
       # Remove stale runtime files from previous runs; podman exits with code 125 if
       # the cidfile or pidfile already exists.
-      ${pkgs.coreutils}/bin/rm -f %t/qdrant.cid %t/qdrant.pid
+      ${pkgs.coreutils}/bin/rm -f "''${runtime_root}/qdrant.cid" "''${runtime_root}/qdrant.pid"
     '';
     serviceConfig = {
       Type = "simple";
@@ -475,28 +501,15 @@ in
         "${pkgs.podman}/bin/podman rm --ignore -f qdrant"
         "${pkgs.podman}/bin/podman pull --quiet docker.io/qdrant/qdrant:latest"
       ];
-      ExecStart = ''
-        ${pkgs.podman}/bin/podman run \
-          --cidfile=%t/qdrant.cid \
-          --conmon-pidfile=%t/qdrant.pid \
-          --rm \
-          --name qdrant \
-          --net host \
-          -v %S/qdrant/storage:/qdrant/storage:U \
-          -e QDRANT__SERVICE__HOST=127.0.0.1 \
-          -e QDRANT__SERVICE__HTTP_PORT=6333 \
-          -e QDRANT__SERVICE__GRPC_PORT=6334 \
-          -e QDRANT__TELEMETRY_DISABLED=true \
-          docker.io/qdrant/qdrant:latest
-      '';
+      ExecStart = qdrantStartScript;
       ExecStop = "${pkgs.podman}/bin/podman stop --ignore --time 10 qdrant";
       ExecStopPost = "${pkgs.podman}/bin/podman rm --ignore -f qdrant";
       Restart = "on-failure";
       RestartSec = 30;  # Increased from 15
       TimeoutStartSec = 300;  # Increased from 120 (5 minutes)
       TimeoutStopSec = 60;  # Increased from 30
-      WorkingDirectory = "%S/qdrant";
-      StateDirectory = "qdrant";
+      WorkingDirectory = qdrantStateDir;
+      StateDirectory = qdrantStateDirName;
     };
   };
 
