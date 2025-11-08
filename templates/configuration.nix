@@ -197,7 +197,8 @@ in
     kernel.sysctl = {
       # Security: Disable unprivileged BPF and user namespaces
       "kernel.unprivileged_bpf_disabled" = 1;
-      "kernel.unprivileged_userns_clone" = 0;
+      # Rootless containers (Podman) require unprivileged user namespaces
+      "kernel.unprivileged_userns_clone" = 1;
       "net.core.bpf_jit_harden" = 2;
 
       # Performance: Network tuning for low latency
