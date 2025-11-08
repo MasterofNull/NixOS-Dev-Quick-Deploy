@@ -448,14 +448,17 @@ in
       "https://qdrant.tech/documentation/"
       "https://search.nixos.org/options?channel=25.05&show=systemd.services"
     ];
-    # Disabled by default - enable manually with: sudo systemctl enable --now qdrant
-    # wantedBy = [ "multi-user.target" ];
+    # Enabled by default so vector search is available immediately after rebuilds
+    wantedBy = [ "multi-user.target" ];
     wants = [ "network-online.target" "podman.service" "podman.socket" ];
     after = [ "network-online.target" "podman.service" "podman.socket" ];
     unitConfig = {
       # Increase restart limits for large system changes
       StartLimitBurst = 10;
       StartLimitIntervalSec = 900;  # 15 minutes
+    };
+    environment = {
+      XDG_RUNTIME_DIR = "/run/podman";
     };
     serviceConfig = {
       Type = "simple";

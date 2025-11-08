@@ -108,12 +108,14 @@ exec zsh
 ### 3. Start AI Services
 
 ```bash
-# Enable Qdrant vector database
-systemctl --user enable --now qdrant
+# Qdrant vector database (auto-starts)
+sudo systemctl status qdrant
+# Optional restart if you need a clean slate
+sudo systemctl restart qdrant
 # Access at http://localhost:6333
 
 # Enable Hugging Face TGI (LLM inference)
-systemctl --user enable --now huggingface-tgi
+sudo systemctl enable --now huggingface-tgi
 # API at http://localhost:8080
 
 # Enable Jupyter Lab
@@ -462,27 +464,29 @@ Launch with:
 flatpak run com.dbeaver.DBeaverCommunity
 ```
 
-#### Systemd Services (Disabled by Default)
+#### Systemd Services (Preconfigured)
 
-**✅ Three new systemd services are configured** and ready to enable:
+**✅ Three systemd services are configured** for AI workloads:
 
-1. **Qdrant** - Vector database for embeddings and RAG
-2. **Hugging Face TGI** - High-performance LLM inference server
-3. **Jupyter Lab** - Web-based interactive development
+1. **Qdrant** - Vector database for embeddings and RAG (auto-starts)
+2. **Hugging Face TGI** - High-performance LLM inference server (manual)
+3. **Jupyter Lab** - Web-based interactive development (manual)
 
-**Enable services:**
+**Manage services:**
 
 ```bash
-# Enable and start Qdrant
-systemctl --user enable --now qdrant
+# Qdrant is already active after deployment
+sudo systemctl status qdrant
+# Optional: restart to clear state
+sudo systemctl restart qdrant
 
 # Enable and start Hugging Face TGI
 # Note: Set HF_TOKEN first for gated models
-systemctl --user edit huggingface-tgi
+sudo systemctl edit huggingface-tgi
 # Add: Environment="HF_TOKEN=your_token_here"
-systemctl --user enable --now huggingface-tgi
+sudo systemctl enable --now huggingface-tgi
 
-# Enable and start Jupyter Lab
+# Enable and start Jupyter Lab (user service)
 systemctl --user enable --now jupyter-lab
 ```
 
@@ -490,7 +494,7 @@ systemctl --user enable --now jupyter-lab
 
 **Qdrant:**
 - Ports: 6333 (API), 6334 (gRPC)
-- Data: `~/.local/share/qdrant/storage`
+- Data: `/var/lib/qdrant/storage`
 - Web UI: http://localhost:6333/dashboard
 
 **Hugging Face TGI:**
@@ -508,23 +512,23 @@ systemctl --user enable --now jupyter-lab
 
 ```bash
 # Check status
-systemctl --user status qdrant
-systemctl --user status huggingface-tgi
+sudo systemctl status qdrant
+sudo systemctl status huggingface-tgi
 systemctl --user status jupyter-lab
 
 # View logs
-journalctl --user -u qdrant -f
-journalctl --user -u huggingface-tgi -f
+journalctl -u qdrant -f
+journalctl -u huggingface-tgi -f
 journalctl --user -u jupyter-lab -f
 
 # Stop services
-systemctl --user stop qdrant
-systemctl --user stop huggingface-tgi
+sudo systemctl stop qdrant
+sudo systemctl stop huggingface-tgi
 systemctl --user stop jupyter-lab
 
 # Disable services
-systemctl --user disable qdrant
-systemctl --user disable huggingface-tgi
+sudo systemctl disable qdrant
+sudo systemctl disable huggingface-tgi
 systemctl --user disable jupyter-lab
 ```
 
