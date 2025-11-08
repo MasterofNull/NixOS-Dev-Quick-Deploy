@@ -1492,10 +1492,13 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
     package = pkgs.git;
 
     # Git user configuration - set these manually after installation:
-    # git config --global user.name "Your Name"
-    # git config --global user.email "you@example.com"
+      # Uncomment the fields below and replace examples with your git user name and email.
+      # Then run "home-manager switch -b backup --flake ~/.dotfiles/home-manager".
+      # To apply these changes.
 
     settings = {
+      #user.name = "Your Name";
+      #user.email = "you@example.com";
       init.defaultBranch = "main";
       pull.rebase = false;
       core.editor = "DEFAULTEDITOR";
