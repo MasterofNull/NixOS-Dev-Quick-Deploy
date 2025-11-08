@@ -95,6 +95,57 @@ get_binary_cache_public_keys() {
     printf '%s\n' "${keys[@]}"
 }
 
+format_kernel_preference_string() {
+    # Helper to render the configured kernel preference order using arrows.
+    # Args: $@ → kernel attribute names in preference order.
+    if (( $# == 0 )); then
+        echo ""
+        return
+    fi
+
+    local joined=""
+    local first=true
+
+    for kernel in "$@"; do
+        if $first; then
+            joined="$kernel"
+            first=false
+        else
+            joined+=$' → '
+            joined+="$kernel"
+        fi
+    done
+
+    printf '%s' "$joined"
+}
+
+probe_performance_kernel_availability() {
+    # Determine which performance kernel packages are available in the current
+    # nixpkgs channel by probing the provided attribute names. The function
+    # returns a comma-separated list of detected attributes. If the `nix`
+    # command is unavailable or the probe fails, an empty string is returned.
+    # Args: $@ → kernel attribute names to probe.
+    if (( $# == 0 )); then
+        return
+    fi
+
+    if ! command -v nix >/dev/null 2>&1; then
+        return
+    fi
+
+    local -a kernel_names=("$@")
+    local quoted_names
+    quoted_names=$(printf '"%s" ' "${kernel_names[@]}")
+    quoted_names=${quoted_names% }
+
+    local probe_expr
+    probe_expr="let pkgs = import <nixpkgs> {}; names = [ ${quoted_names} ]; available = builtins.filter (name: builtins.hasAttr name pkgs) names; in builtins.concatStringsSep \"\\n\" available"
+
+    nix --extra-experimental-features 'nix-command' eval --raw --expr "$probe_expr" 2>/dev/null \
+        || nix eval --raw --expr "$probe_expr" 2>/dev/null \
+        || true
+}
+
 determine_nixos_parallelism() {
     local detected_ram="${TOTAL_RAM_GB:-}"
     local detected_cores="${CPU_CORES:-}"
@@ -825,6 +876,40 @@ generate_nixos_system_config() {
     # ========================================================================
     print_info "Customizing configuration..."
 
+    if [[ -z "${ZSWAP_ZPOOL:-}" ]] && declare -F select_zswap_memory_pool >/dev/null 2>&1; then
+        select_zswap_memory_pool
+    fi
+
+    local -a performance_kernel_preference=(
+        "linuxPackages_tkg"
+        "linuxPackages_xanmod"
+        "linuxPackages_lqx"
+        "linuxPackages_zen"
+        "linuxPackages_latest"
+    )
+
+    local kernel_preference_string
+    kernel_preference_string=$(format_kernel_preference_string "${performance_kernel_preference[@]}")
+
+    if [[ -n "$kernel_preference_string" ]]; then
+        print_info "Kernel preference: ${kernel_preference_string}"
+    fi
+
+    local available_performance_kernels=""
+    if command -v nix >/dev/null 2>&1; then
+        available_performance_kernels=$(probe_performance_kernel_availability "${performance_kernel_preference[@]:0:4}")
+        if [[ -n "$available_performance_kernels" ]]; then
+            available_performance_kernels=${available_performance_kernels//$'\n'/', '}
+            print_success "Performance kernels available in current channel: ${available_performance_kernels}"
+        else
+            print_warning "Could not confirm performance kernel availability via nix; falling back to preference order above"
+        fi
+    else
+        print_warning "nix command not found in PATH; skipping kernel availability probe"
+    fi
+
+    print_info "configuration.nix will select the first available kernelPackages attribute from that order."
+
     # GPU monitoring packages
     local GPU_MONITORING_PACKAGES="[]"
     if [[ "$GPU_TYPE" == "amd" ]]; then
@@ -857,6 +942,26 @@ generate_nixos_system_config() {
     if [[ -n "${CPU_MICROCODE:-}" && "${CPU_VENDOR:-unknown}" != "unknown" ]]; then
         microcode_section="hardware.cpu.${CPU_VENDOR}.updateMicrocode = true;  # Enable ${cpu_vendor_label} microcode updates"
     fi
+
+    case "${CPU_VENDOR:-unknown}" in
+        intel)
+            if [[ -n "${CPU_MICROCODE:-}" ]]; then
+                print_success "Enabling Intel microcode updates and initrd i915 early KMS."
+            else
+                print_warning "Intel CPU detected but microcode package unavailable; leaving microcode settings unchanged."
+            fi
+            ;;
+        amd)
+            if [[ -n "${CPU_MICROCODE:-}" ]]; then
+                print_success "Enabling AMD microcode updates and initrd amdgpu early KMS."
+            else
+                print_warning "AMD CPU detected but microcode package unavailable; leaving microcode settings unchanged."
+            fi
+            ;;
+        *)
+            print_info "CPU vendor unknown; microcode updates and early KMS stay at distro defaults."
+            ;;
+    esac
 
     local binary_cache_settings
     binary_cache_settings=$(generate_binary_cache_settings "${USE_BINARY_CACHES:-true}")
@@ -921,6 +1026,24 @@ EOF
             ;;
         *)
             gpu_hardware_section="# No dedicated GPU configuration required (software rendering)"
+            ;;
+    esac
+
+    case "${GPU_TYPE:-software}" in
+        intel)
+            print_success "Applying Intel GPU acceleration block with VA-API and compute runtime packages."
+            ;;
+        amd)
+            print_success "Applying AMD GPU acceleration block with Mesa and ROCm OpenCL support."
+            ;;
+        nvidia)
+            print_success "Applying NVIDIA GPU configuration with proprietary driver and VA-API shim."
+            ;;
+        software)
+            print_info "No dedicated GPU detected; configuration keeps software rendering defaults."
+            ;;
+        *)
+            print_warning "Unrecognized GPU type '${GPU_TYPE:-unknown}'; falling back to software rendering settings."
             ;;
     esac
 
@@ -992,6 +1115,52 @@ EOF
 )
 
     local kernel_sysctl_tunables=""
+    local kernel_sysctl_hardening
+    kernel_sysctl_hardening=$(cat <<'EOF'
+
+      # Kernel hardening defaults preserved from the deprecated quick-deploy script
+      "kernel.kptr_restrict" = 2;
+      "kernel.dmesg_restrict" = 1;
+      "kernel.kexec_load_disabled" = 1;
+      "kernel.perf_event_paranoid" = 3;
+      "kernel.yama.ptrace_scope" = 1;
+      "fs.protected_fifos" = 2;
+      "fs.protected_regular" = 2;
+      "dev.tty.ldisc_autoload" = 0;
+EOF
+)
+
+    local kernel_sysctl_network
+    kernel_sysctl_network=$(cat <<'EOF'
+
+      # Network stack tuning carried over from the legacy deployment flow
+      "net.core.default_qdisc" = "fq";
+      "net.core.rmem_default" = 16777216;
+      "net.core.wmem_default" = 16777216;
+      "net.core.rmem_max" = 134217728;
+      "net.core.wmem_max" = 134217728;
+      "net.ipv4.tcp_congestion_control" = "bbr";
+      "net.ipv4.tcp_low_latency" = 1;
+      "net.ipv4.tcp_mtu_probing" = 1;
+      "net.ipv4.tcp_no_metrics_save" = 1;
+      "net.ipv4.tcp_slow_start_after_idle" = 0;
+      "net.ipv4.tcp_fin_timeout" = 15;
+      "net.ipv4.tcp_keepalive_time" = 600;
+      "net.ipv4.tcp_keepalive_intvl" = 30;
+      "net.ipv4.tcp_keepalive_probes" = 5;
+      "net.ipv4.ip_local_port_range" = "1024 65535";
+      "net.ipv4.conf.all.accept_redirects" = 0;
+      "net.ipv4.conf.default.accept_redirects" = 0;
+      "net.ipv4.conf.all.send_redirects" = 0;
+      "net.ipv6.conf.all.accept_redirects" = 0;
+      "net.ipv6.conf.default.accept_redirects" = 0;
+EOF
+)
+
+    kernel_sysctl_tunables="${kernel_sysctl_hardening}${kernel_sysctl_network}"
+
+    print_info "Preserving legacy kernel hardening sysctl overrides."
+    print_info "Preserving legacy network performance sysctl overrides."
 
     local kernel_params_block
     kernel_params_block=$(cat <<'EOF'
@@ -1023,13 +1192,21 @@ EOF
             printf -v swap_size_directive '      # size omitted: invalid swap size input (%s)\n' "$hibernation_swap_value"
         fi
 
-        kernel_modules_placeholder=$(cat <<EOF
+        if [[ "${zswap_zpool}" != "zsmalloc" ]]; then
+            kernel_modules_placeholder=$(cat <<EOF
       # Zswap allocator module required for compressed swap
       "${zswap_zpool}"
 EOF
 )
+        else
+            kernel_modules_placeholder=$(cat <<'EOF'
+      # Zswap allocator uses built-in zsmalloc backend (no extra modules required)
+EOF
+)
+        fi
 
-        kernel_sysctl_tunables=$(cat <<EOF
+        local kernel_sysctl_memory
+        kernel_sysctl_memory=$(cat <<EOF
 
       # Memory management tunables for swap-backed hibernation (auto-tuned)
       "vm.swappiness" = 10;
@@ -1044,6 +1221,9 @@ EOF
       "kernel.shmall" = 4194304;      # 16GB in pages (4KB pages)
 EOF
 )
+
+        kernel_sysctl_tunables+="$kernel_sysctl_memory"
+        print_info "Applying legacy memory management sysctl overrides for zswap-backed hibernation."
 
         kernel_params_block=$(cat <<EOF
     kernelParams = [
@@ -1099,6 +1279,7 @@ EOF
   # Previous deployment did not enable swap-backed hibernation; leaving defaults unchanged.
 EOF
 )
+        print_info "Legacy memory management sysctl overrides skipped (zswap disabled)."
     fi
 
     local -a nix_parallelism_settings
