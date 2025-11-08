@@ -60,6 +60,7 @@ chmod +x nixos-quick-deploy.sh
 - **Vector DBs:** ChromaDB, Qdrant client, FAISS, Sentence Transformers
 - **Data Science:** Pandas, Polars, Dask, Jupyter Lab, Matplotlib
 - **Code Quality:** Black, Ruff, Mypy, Pylint
+- **Agent Ops & MCP:** LiteLLM, Tiktoken, FastAPI, Uvicorn, HTTPX, Pydantic, Typer, Rich, SQLAlchemy, DuckDB
 
 **Editors & IDEs:**
 - VSCodium (VS Code without telemetry)
@@ -90,10 +91,10 @@ chmod +x nixos-quick-deploy.sh
 - Buildah, Skopeo
 - Podman Desktop (Flatpak GUI)
 
-**AI Services (Systemd - Disabled by Default):**
-- Qdrant (vector database)
-- Hugging Face TGI (LLM inference server)
-- Jupyter Lab (web-based notebooks)
+**AI Services (Systemd):**
+- Qdrant (vector database, enabled by default)
+- Hugging Face TGI (LLM inference server, manual enable)
+- Jupyter Lab (web-based notebooks, user service)
 
 ### Flatpak Applications
 
@@ -292,8 +293,11 @@ source ~/.zshrc  # Or: exec zsh
 
 **Systemd Services (Enable as needed):**
 ```bash
-# Enable Qdrant vector database
-systemctl --user enable --now qdrant
+# Qdrant vector database (auto-starts after deploy)
+sudo systemctl status qdrant
+# Restart or stop if needed
+sudo systemctl restart qdrant
+sudo systemctl stop qdrant
 # Access at http://localhost:6333
 
 # Enable Hugging Face TGI (LLM inference)
@@ -305,12 +309,12 @@ systemctl --user enable --now jupyter-lab
 # Access at http://localhost:8888
 
 # Check service status
-systemctl --user status qdrant
+sudo systemctl status qdrant
 systemctl --user status huggingface-tgi
 systemctl --user status jupyter-lab
 
 # View service logs
-journalctl --user -u qdrant -f
+journalctl -u qdrant -f
 journalctl --user -u huggingface-tgi -f
 journalctl --user -u jupyter-lab -f
 ```
