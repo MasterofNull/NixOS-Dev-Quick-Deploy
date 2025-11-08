@@ -1,0 +1,110 @@
+#!/usr/bin/env sh
+# Validate the MCP database stack (PostgreSQL, Redis, Qdrant).
+#
+# This helper verifies that each service is reachable, the expected databases
+# exist, and connection credentials are ready for MCP tooling.  It matches the
+# deployment architecture described in Anthropic's MCP engineering article.
+
+set -eu
+
+log() {
+  printf '%s %s\n' "$(date -Iseconds)" "$*"
+}
+
+command_exists() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+service_status() {
+  service="$1"
+  start_hint="$2"
+
+  if ! command_exists systemctl; then
+    log "[WARN] systemctl not available; skipping ${service} status check"
+    return 0
+  fi
+
+  if sudo systemctl is-active --quiet "$service"; then
+    log "[OK] ${service} service is active"
+  else
+    log "[WARN] ${service} is not running"
+    log "      Start with: ${start_hint}"
+  fi
+}
+
+check_postgres() {
+  log "Checking PostgreSQL (mcp, mcp_tools, mcp_logs)"
+  if ! command_exists psql; then
+    log "[ERROR] psql command not found. Install postgresql client tools."
+    return 1
+  fi
+
+  status=0
+  for db in mcp mcp_tools mcp_logs; do
+    if PGPASSWORD="${PGPASSWORD:-}" psql "postgresql://mcp@localhost:5432/${db}" -c 'SELECT 1;' >/dev/null 2>&1; then
+      log "[OK] Connected to database '${db}' as user mcp"
+    else
+      log "[ERROR] Unable to connect to database '${db}' as user mcp"
+      status=1
+    fi
+  done
+  return $status
+}
+
+check_redis() {
+  log "Checking Redis (localhost:6379, 512MB LRU)"
+  if ! command_exists redis-cli; then
+    log "[ERROR] redis-cli command not found. Install redis client tools."
+    return 1
+  fi
+
+  if redis-cli -h localhost -p 6379 PING >/dev/null 2>&1; then
+    log "[OK] Redis responded to PING"
+  else
+    log "[ERROR] Unable to reach Redis at localhost:6379"
+    return 1
+  fi
+
+  maxmemory="$(redis-cli -h localhost -p 6379 CONFIG GET maxmemory | awk 'NR==2 {print}')"
+  policy="$(redis-cli -h localhost -p 6379 CONFIG GET maxmemory-policy | awk 'NR==2 {print}')"
+  log "      maxmemory=${maxmemory:-unknown} bytes policy=${policy:-unknown}"
+  return 0
+}
+
+check_qdrant() {
+  log "Checking Qdrant (http://localhost:6333/readyz)"
+  if ! command_exists curl; then
+    log "[ERROR] curl command not found. Install curl to verify Qdrant."
+    return 1
+  fi
+
+  if response="$(curl -fsS http://localhost:6333/readyz 2>/dev/null)"; then
+    log "[OK] Qdrant readiness: ${response}"
+  else
+    log "[ERROR] Unable to reach Qdrant on port 6333"
+    return 1
+  fi
+  return 0
+}
+
+main() {
+  log "Model Context Protocol database validation started"
+
+  service_status postgresql "sudo systemctl start postgresql"
+  service_status redis-mcp "sudo systemctl start redis-mcp"
+  service_status qdrant "sudo systemctl start qdrant"
+
+  rc=0
+  check_postgres || rc=1
+  check_redis || rc=1
+  check_qdrant || rc=1
+
+  if [ "$rc" -eq 0 ]; then
+    log "All MCP data services are healthy"
+  else
+    log "One or more MCP data services reported issues"
+  fi
+  return $rc
+}
+
+main "$@"
