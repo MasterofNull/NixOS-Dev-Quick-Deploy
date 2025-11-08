@@ -261,6 +261,11 @@ phase_08_finalization_and_report() {
     echo -e "     ${YELLOW}~/NixOS-Dev-Quick-Deploy/scripts/system-health-check.sh${NC}"
     echo ""
 
+    echo -e "  ${GREEN}5.${NC} Apply Git Credentials:"
+    echo -e "     ${YELLOW}Edit ~/.dotfiles/home-manager/home.nix programs.git follow the instructions provided.${NC}"
+    echo ""
+
+
     # ========================================================================
     # Step 8.9: Reboot Recommendation (Conditional)
     # ========================================================================
@@ -269,7 +274,7 @@ phase_08_finalization_and_report() {
         if [[ "$(readlink /run/booted-system)" != "$(readlink /run/current-system)" ]]; then
             echo -e "${YELLOW}⚠ Reboot Recommended:${NC}"
             echo "  • Kernel/init system updates detected"
-            echo "  • Run: ${YELLOW}sudo reboot${NC}"
+            echo -e "  • Run: ${YELLOW}sudo reboot${NC}"
             echo "  • After reboot, select 'Cosmic' from login screen"
             echo ""
         fi
