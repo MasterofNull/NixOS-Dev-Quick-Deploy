@@ -1211,6 +1211,65 @@ backup_path_if_exists() {
     return 2
 }
 
+ensure_path_symlink() {
+    # Ensure a symlink exists from link_path to target_path, replacing any existing
+    # directory or link at the destination.
+    # Args: $1 = target path (dotfiles location), $2 = link path (home location)
+    # Returns: 0 on success, 1 on failure
+    ENSURE_PATH_SYMLINK_STATUS="unchanged"
+
+    local target_path="$1"
+    local link_path="$2"
+
+    if [[ -z "$target_path" || -z "$link_path" ]]; then
+        print_error "ensure_path_symlink: target and link paths are required"
+        ENSURE_PATH_SYMLINK_STATUS="failed"
+        return 1
+    fi
+
+    if [[ ! -e "$target_path" ]]; then
+        print_error "ensure_path_symlink: target does not exist: $target_path"
+        ENSURE_PATH_SYMLINK_STATUS="failed"
+        return 1
+    fi
+
+    if [[ -L "$link_path" ]]; then
+        local current_target
+        current_target=$(readlink "$link_path" 2>/dev/null || true)
+        if [[ "$current_target" == "$target_path" ]]; then
+            return 0
+        fi
+
+        if ! rm -f "$link_path" 2>/dev/null; then
+            print_error "Failed to remove existing symlink: $link_path"
+            ENSURE_PATH_SYMLINK_STATUS="failed"
+            return 1
+        fi
+    elif [[ -e "$link_path" ]]; then
+        if ! rm -rf "$link_path" 2>/dev/null; then
+            print_error "Failed to replace existing path: $link_path"
+            ENSURE_PATH_SYMLINK_STATUS="failed"
+            return 1
+        fi
+    fi
+
+    local parent_dir
+    parent_dir=$(dirname "$link_path")
+    if ! safe_mkdir "$parent_dir"; then
+        ENSURE_PATH_SYMLINK_STATUS="failed"
+        return 1
+    fi
+
+    if ln -s "$target_path" "$link_path" 2>/dev/null; then
+        ENSURE_PATH_SYMLINK_STATUS="created"
+        return 0
+    fi
+
+    print_error "Failed to create symlink: $link_path -> $target_path"
+    ENSURE_PATH_SYMLINK_STATUS="failed"
+    return 1
+}
+
 prepare_home_manager_targets() {
     local phase_tag="${1:-pre-switch}"
     local timestamp
@@ -1312,8 +1371,10 @@ prepare_home_manager_targets() {
         print_warning "Some configuration paths could not be backed up automatically (see messages above)."
     fi
 
-    local -a dir_specs=(
+    local -a symlink_targets=(
         "$LOCAL_BIN_DIR::755"
+        "$PRIMARY_HOME/.config/flatpak::700"
+        "$PRIMARY_HOME/.local/share/flatpak::750"
         "$AIDER_CONFIG_DIR::700"
         "$TEA_CONFIG_DIR::700"
         "$HUGGINGFACE_CONFIG_DIR::700"
@@ -1322,28 +1383,80 @@ prepare_home_manager_targets() {
         "$PRIMARY_HOME/.local/share/podman-ai-stack::750"
         "$GITEA_NATIVE_CONFIG_DIR::700"
         "$GITEA_NATIVE_DATA_DIR::750"
-        "$PRIMARY_HOME/.var/app::755"
-        "$GITEA_FLATPAK_CONFIG_DIR::700"
-        "$GITEA_FLATPAK_DATA_DIR::750"
-        "$PRIMARY_HOME/.config/flatpak::700"
-        "$PRIMARY_HOME/.local/share/flatpak::750"
+        "$GITEA_SECRETS_CACHE_DIR::700"
         "$PRIMARY_HOME/.config/obsidian/ai-integrations::700"
+        "$PRIMARY_HOME/.var/app::755"
     )
 
-    local created_any=false
-    for entry in "${dir_specs[@]}"; do
+    local dotfiles_created=false
+    local symlinks_created=false
+
+    for entry in "${symlink_targets[@]}"; do
         path="${entry%%::*}"
         local mode="${entry##*::}"
         if [[ "$mode" == "$path" ]]; then
             mode="755"
         fi
 
+        if [[ "$path" != "$PRIMARY_HOME"/* ]]; then
+            continue
+        fi
+
+        local relative="${path#"$PRIMARY_HOME/"}"
+        local dotfiles_path="$DOTFILES_ROOT/$relative"
+
         local created_here=false
-        if [[ ! -d "$path" ]]; then
-            if safe_mkdir "$path"; then
+        if [[ ! -d "$dotfiles_path" ]]; then
+            if safe_mkdir "$dotfiles_path"; then
                 created_here=true
             else
+                print_warning "Unable to create directory: $dotfiles_path"
+                encountered_error=true
+                continue
+            fi
+        fi
+
+        if ! chmod "$mode" "$dotfiles_path" 2>/dev/null; then
+            print_warning "Unable to set permissions $mode on $dotfiles_path"
+        fi
+        safe_chown_user_dir "$dotfiles_path" || true
+
+        if [[ "$created_here" == true ]]; then
+            dotfiles_created=true
+        fi
+
+        if ! ensure_path_symlink "$dotfiles_path" "$path"; then
+            encountered_error=true
+            print_warning "Unable to link $path to managed dotfiles directory"
+            continue
+        fi
+
+        if [[ "${ENSURE_PATH_SYMLINK_STATUS:-unchanged}" == "created" ]]; then
+            symlinks_created=true
+            print_success "Linked $path → $dotfiles_path"
+        fi
+    done
+
+    local -a nested_dotfiles_dirs=(
+        "$DOTFILES_ROOT/.local/share/flatpak/overrides::750"
+        "$DOTFILES_ROOT/.local/share/flatpak/remotes.d::750"
+        "$DOTFILES_ROOT/.var/app/$GITEA_FLATPAK_APP_ID/config/gitea::700"
+        "$DOTFILES_ROOT/.var/app/$GITEA_FLATPAK_APP_ID/data/gitea::750"
+    )
+
+    for entry in "${nested_dotfiles_dirs[@]}"; do
+        path="${entry%%::*}"
+        local mode="${entry##*::}"
+        if [[ "$mode" == "$path" ]]; then
+            mode="755"
+        fi
+
+        if [[ ! -d "$path" ]]; then
+            if safe_mkdir "$path"; then
+                dotfiles_created=true
+            else
                 print_warning "Unable to create directory: $path"
+                encountered_error=true
                 continue
             fi
         fi
@@ -1352,14 +1465,14 @@ prepare_home_manager_targets() {
             print_warning "Unable to set permissions $mode on $path"
         fi
         safe_chown_user_dir "$path" || true
-
-        if [[ "$created_here" == true ]]; then
-            created_any=true
-        fi
     done
 
-    if [[ "$created_any" == true ]]; then
-        print_success "Prepared directories for managed configuration files"
+    if [[ "$dotfiles_created" == true ]]; then
+        print_success "Prepared dotfiles workspace for managed configuration files"
+    fi
+
+    if [[ "$symlinks_created" == true ]]; then
+        print_success "Linked managed configuration directories into $PRIMARY_HOME"
     fi
 
     if [[ "$encountered_error" == true ]]; then
