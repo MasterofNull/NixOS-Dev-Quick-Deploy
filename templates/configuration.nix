@@ -460,6 +460,9 @@ in
     environment = {
       XDG_RUNTIME_DIR = "/run/podman";
     };
+    preStart = ''
+      ${pkgs.coreutils}/bin/install -d -m 0770 %S/qdrant/storage
+    '';
     serviceConfig = {
       Type = "simple";
       ExecStartPre = [
@@ -471,7 +474,7 @@ in
           --rm \
           --name qdrant \
           --net host \
-          -v %S/qdrant/storage:/qdrant/storage \
+          -v %S/qdrant/storage:/qdrant/storage:U \
           -e QDRANT__SERVICE__HOST=127.0.0.1 \
           -e QDRANT__SERVICE__HTTP_PORT=6333 \
           -e QDRANT__SERVICE__GRPC_PORT=6334 \
