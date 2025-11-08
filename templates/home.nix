@@ -1462,7 +1462,8 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
 
   services.gpg-agent = {
     enable = true;
-    enableSshSupport = true;
+    # COSMIC relies on GNOME Keyring for SSH agent duties so we keep gpg-agent scoped to GPG only.
+    enableSshSupport = false;
     enableExtraSocket = true;
     defaultCacheTtl = 3600;
     defaultCacheTtlSsh = 3600;
@@ -1476,7 +1477,12 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
 
   services.gnome-keyring = {
     enable = true;
-    components = [ "secrets" "pkcs11" ];
+    # Secrets + PKCS#11 back up COSMIC's keyring UI while ssh replaces the vanilla agent we disabled above.
+    components = [
+      "secrets"
+      "ssh"
+      "pkcs11"
+    ];
   };
 
   # ========================================================================
@@ -1954,6 +1960,9 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       # Security & Credentials
       GNUPGHOME = "${config.home.homeDirectory}/.gnupg";
       PASSWORD_STORE_DIR = "${config.home.homeDirectory}/.local/share/password-store";
+      # Ensure COSMIC sessions find the GNOME Keyring sockets started via systemd --user.
+      GNOME_KEYRING_CONTROL = "$XDG_RUNTIME_DIR/keyring";
+      SSH_AUTH_SOCK = "$XDG_RUNTIME_DIR/keyring/ssh";
     }
     // lib.optionalAttrs config.services.flatpak.enable {
       GITEA_WORK_DIR = "$HOME/${giteaFlatpakDataDir}";
