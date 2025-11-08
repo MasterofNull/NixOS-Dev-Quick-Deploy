@@ -739,10 +739,15 @@ RESOURCES
           fastapi
           uvicorn
           httpx
+          aiohttp
+          websockets
           pydantic
           typer
           rich
           sqlalchemy
+          psycopg2
+          redis
+          alembic
           # Specialized AI Tools
           llama-cpp-python
           # Data Processing
@@ -1098,6 +1103,13 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           ripgrep                 # Fast recursive grep (rg)
           ripgrep-all             # Ripgrep with PDF, archive support
           fd                      # Fast alternative to find
+          deno                    # Secure TypeScript runtime for MCP tooling
+          bun                     # High-performance JavaScript runtime
+          bubblewrap              # Sandboxing utility for tool execution
+          firejail                # Sandbox profiles for desktop/CLI apps
+          criu                    # Checkpoint/restore utilities
+          postgresql              # PostgreSQL client tools (psql)
+          redis                   # Redis CLI tools
           fzf                     # Fuzzy finder for command line
           bat                     # Cat clone with syntax highlighting
           eza                     # Modern replacement for ls
