@@ -14,6 +14,8 @@ let
   huggingfaceImage = "ghcr.io/huggingface/text-generation-inference:latest";
   qdrantStateDirName = "qdrant";
   qdrantStateDir = "/var/lib/${qdrantStateDirName}";
+  qdrantContainerUid = "1000";
+  qdrantContainerGid = "1000";
   qdrantStartScript = pkgs.writeShellScript "qdrant-start" ''
     set -euo pipefail
 
@@ -489,7 +491,8 @@ in
       runtime_root="''${RUNTIME_DIRECTORY:-/run}"
 
       ${pkgs.coreutils}/bin/install -d -m 0755 /run/podman
-      ${pkgs.coreutils}/bin/install -d -m 0770 "''${state_root}/storage"
+      ${pkgs.coreutils}/bin/install -d -m 0775 "''${state_root}/storage"
+      ${pkgs.coreutils}/bin/chown -R ${qdrantContainerUid}:${qdrantContainerGid} "''${state_root}/storage"
       # Remove stale runtime files from previous runs; podman exits with code 125 if
       # the cidfile or pidfile already exists.
       ${pkgs.coreutils}/bin/rm -f "''${runtime_root}/qdrant.cid" "''${runtime_root}/qdrant.pid"
@@ -510,6 +513,8 @@ in
       TimeoutStopSec = 60;  # Increased from 30
       WorkingDirectory = qdrantStateDir;
       StateDirectory = qdrantStateDirName;
+      StateDirectoryMode = "0775";
+      RuntimeDirectory = "qdrant";
     };
   };
 
