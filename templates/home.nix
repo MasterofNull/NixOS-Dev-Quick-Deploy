@@ -1648,7 +1648,9 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           ];
           curated = lib.filter (pkg: pkg != null) (map fetchExtension extensionNames);
           marketplaceExtensionNames = [
+            "Anthropic.claude-code"
             "gencay.vscode-chatgpt"
+            "openai.chatgpt"
             "OpenAI.gpt-codex"
             "OpenAI.codex-ide"
             "GooseAI.gooseai-vscode"
