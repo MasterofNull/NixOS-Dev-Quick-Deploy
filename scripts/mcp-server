@@ -1,0 +1,257 @@
+#!/usr/bin/env sh
+# Lifecycle manager for MCP servers scaffolded from this repository.
+
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
+TEMPLATE_DIR=${MCP_TEMPLATE_DIR:-${REPO_ROOT}/templates}
+SERVER_HOME=${MCP_SERVER_HOME:-${REPO_ROOT}/mcp-servers}
+DEFAULT_MODE=${MCP_SERVER_MODE:-minimal}
+
+log() {
+  printf '%s %s\n' "$(date -Iseconds)" "$*"
+}
+
+die() {
+  log "[ERROR] $*"
+  exit 1
+}
+
+ensure_directory() {
+  path="$1"
+  if [ ! -d "$path" ]; then
+    mkdir -p "$path"
+  fi
+}
+
+load_config() {
+  config_file="$1"
+  [ -f "$config_file" ] || die "Missing server configuration: ${config_file}"
+  SERVER_TEMPLATE=
+  SERVER_ENTRY=
+  SERVER_DEFAULT_MODE=
+  while IFS='=' read -r key value; do
+    case "$key" in
+      template) SERVER_TEMPLATE="$value" ;;
+      entry) SERVER_ENTRY="$value" ;;
+      default_mode) SERVER_DEFAULT_MODE="$value" ;;
+    esac
+  done < "$config_file"
+  SERVER_TEMPLATE=${SERVER_TEMPLATE:-}
+  SERVER_ENTRY=${SERVER_ENTRY:-}
+  SERVER_DEFAULT_MODE=${SERVER_DEFAULT_MODE:-$DEFAULT_MODE}
+  [ -n "$SERVER_TEMPLATE" ] || die "template not defined in ${config_file}"
+  [ -n "$SERVER_ENTRY" ] || die "entry not defined in ${config_file}"
+}
+
+cmd_init() {
+  template="python"
+  OPTIND=1
+  while getopts "t:" opt; do
+    case "$opt" in
+      t) template="$OPTARG" ;;
+      *) die "Unknown option for init" ;;
+    esac
+  done
+  shift $((OPTIND - 1))
+
+  name=${1:-}
+  [ -n "$name" ] || die "Usage: mcp-server init [-t python|deno] <name>"
+
+  case "$template" in
+    python) template_file="${TEMPLATE_DIR}/mcp-server-template.py"; entry="server.py" ;;
+    deno|typescript) template_file="${TEMPLATE_DIR}/mcp-server-template.ts"; entry="server.ts"; template="deno" ;;
+    *) die "Unsupported template: ${template}" ;;
+  esac
+
+  [ -f "$template_file" ] || die "Template file not found: ${template_file}"
+
+  server_dir="${SERVER_HOME}/${name}"
+  if [ -e "$server_dir" ]; then
+    die "Server directory already exists: ${server_dir}"
+  fi
+
+  ensure_directory "$server_dir"
+  ensure_directory "${server_dir}/logs"
+
+  cp "$template_file" "${server_dir}/${entry}"
+  chmod +x "${server_dir}/${entry}"
+
+  cat >"${server_dir}/server.conf" <<CFG
+name=${name}
+template=${template}
+entry=${entry}
+default_mode=${DEFAULT_MODE}
+CFG
+
+  cat >"${server_dir}/README.md" <<README
+# ${name} MCP Server
+
+Generated with the `mcp-server` helper. Key paths:
+
+- Template: ${template_file}
+- Entry point: ${entry}
+- Logs: logs/server.log
+
+Use `mcp-server start ${name}` to launch the server and `mcp-server stop ${name}` to stop it.
+README
+
+  log "[OK] Created MCP server '${name}' from ${template} template"
+}
+
+cmd_start() {
+  OPTIND=1
+  mode_override=""
+  while getopts "m:" opt; do
+    case "$opt" in
+      m) mode_override="$OPTARG" ;;
+      *) die "Unknown option for start" ;;
+    esac
+  done
+  shift $((OPTIND - 1))
+
+  name=${1:-}
+  [ -n "$name" ] || die "Usage: mcp-server start [-m mode] <name>"
+  server_dir="${SERVER_HOME}/${name}"
+  config_file="${server_dir}/server.conf"
+  load_config "$config_file"
+
+  pid_file="${server_dir}/run.pid"
+  if [ -f "$pid_file" ] && kill -0 "$(cat "$pid_file")" 2>/dev/null; then
+    die "Server '${name}' is already running"
+  fi
+
+  log_file="${server_dir}/logs/server.log"
+  ensure_directory "${server_dir}/logs"
+  mode=${mode_override:-$SERVER_DEFAULT_MODE}
+
+  case "$SERVER_TEMPLATE" in
+    python)
+      runtime=${PYTHON_BIN:-python3}
+      command="$runtime ${server_dir}/${SERVER_ENTRY} --mode ${mode}"
+      ;;
+    deno)
+      runtime=${DENO_BIN:-deno}
+      command="$runtime run --allow-net --allow-env --allow-read --allow-write ${server_dir}/${SERVER_ENTRY} --mode ${mode}"
+      ;;
+    *)
+      die "Unknown server template '${SERVER_TEMPLATE}'"
+      ;;
+  esac
+
+  log "Starting ${SERVER_TEMPLATE} server '${name}' (mode=${mode})"
+  nohup sh -c "$command" >>"$log_file" 2>&1 &
+  echo $! >"$pid_file"
+  log "[OK] Server '${name}' started with PID $(cat "$pid_file")"
+}
+
+cmd_stop() {
+  name=${1:-}
+  [ -n "$name" ] || die "Usage: mcp-server stop <name>"
+  server_dir="${SERVER_HOME}/${name}"
+  pid_file="${server_dir}/run.pid"
+  if [ ! -f "$pid_file" ]; then
+    die "Server '${name}' is not running (no pid file)"
+  fi
+  pid=$(cat "$pid_file")
+  if kill "$pid" 2>/dev/null; then
+    rm -f "$pid_file"
+    log "[OK] Stopped server '${name}'"
+  else
+    die "Failed to stop server '${name}'"
+  fi
+}
+
+cmd_logs() {
+  OPTIND=1
+  follow="false"
+  while getopts "f" opt; do
+    case "$opt" in
+      f) follow="true" ;;
+      *) die "Unknown option for logs" ;;
+    esac
+  done
+  shift $((OPTIND - 1))
+
+  name=${1:-}
+  [ -n "$name" ] || die "Usage: mcp-server logs [-f] <name>"
+  log_file="${SERVER_HOME}/${name}/logs/server.log"
+  [ -f "$log_file" ] || die "Log file not found: ${log_file}"
+
+  if [ "$follow" = "true" ]; then
+    tail -f "$log_file"
+  else
+    tail -n 200 "$log_file"
+  fi
+}
+
+cmd_list() {
+  ensure_directory "$SERVER_HOME"
+  for dir in "$SERVER_HOME"/*; do
+    [ -d "$dir" ] || continue
+    name=$(basename "$dir")
+    pid_file="${dir}/run.pid"
+    status="stopped"
+    if [ -f "$pid_file" ] && kill -0 "$(cat "$pid_file")" 2>/dev/null; then
+      status="running"
+    fi
+    printf '%-20s %s\n' "$name" "$status"
+  done
+}
+
+cmd_test() {
+  name=${1:-}
+  [ -n "$name" ] || die "Usage: mcp-server test <name>"
+  server_dir="${SERVER_HOME}/${name}"
+  config_file="${server_dir}/server.conf"
+  load_config "$config_file"
+
+  case "$SERVER_TEMPLATE" in
+    python)
+      runtime=${PYTHON_BIN:-python3}
+      cmd="$runtime ${server_dir}/${SERVER_ENTRY} --self-test"
+      ;;
+    deno)
+      runtime=${DENO_BIN:-deno}
+      cmd="$runtime run --allow-net --allow-env --allow-read --allow-write ${server_dir}/${SERVER_ENTRY} --self-test"
+      ;;
+    *)
+      die "Unknown server template '${SERVER_TEMPLATE}'"
+      ;;
+  esac
+
+  log "Running self-test for '${name}'"
+  sh -c "$cmd"
+}
+
+usage() {
+  cat <<USAGE
+Usage: mcp-server <command> [options]
+
+Commands:
+  init   [-t python|deno] <name>   Scaffold a new MCP server project
+  start  [-m mode] <name>          Start a server in minimal or full mode
+  stop   <name>                    Stop a running server
+  logs   [-f] <name>               View or follow server logs
+  list                            List all known servers with status
+  test   <name>                    Run the built-in --self-test command
+USAGE
+}
+
+main() {
+  ensure_directory "$SERVER_HOME"
+  command=${1:-}
+  case "$command" in
+    init) shift; cmd_init "$@" ;;
+    start) shift; cmd_start "$@" ;;
+    stop) shift; cmd_stop "$@" ;;
+    logs) shift; cmd_logs "$@" ;;
+    list) shift; cmd_list "$@" ;;
+    test) shift; cmd_test "$@" ;;
+    ""|help|-h|--help) usage ;;
+    *) usage; exit 1 ;;
+  esac
+}
+
+main "$@"
