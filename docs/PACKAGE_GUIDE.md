@@ -71,8 +71,9 @@ After deploying your NixOS system with `nixos-quick-deploy.sh`, complete these s
    # Enable Hugging Face TGI (disabled by default)
    sudo systemctl enable --now huggingface-tgi
 
-   # Enable Qdrant Vector DB (disabled by default)
-   sudo systemctl enable --now qdrant
+   # Qdrant Vector DB (auto-starts; verify status or restart)
+   sudo systemctl status qdrant
+   sudo systemctl restart qdrant
    ```
 
 5. **Restart Your Shell**
@@ -145,11 +146,12 @@ High-performance text generation server for deploying LLMs.
 #### **Qdrant Vector Database**
 High-performance vector similarity search engine for AI applications.
 
-- **Status**: Disabled by default
+- **Status**: Enabled by default (starts on rebuild)
 - **Ports**: 6333 (HTTP), 6334 (gRPC)
-- **Enable**:
+- **Manage**:
   ```bash
-  sudo systemctl enable --now qdrant
+  sudo systemctl status qdrant
+  sudo systemctl restart qdrant
   ```
 - **Access**: `http://localhost:6333/dashboard`
 - **Storage**: `/var/lib/qdrant/storage`
@@ -574,6 +576,21 @@ ipython                   # Interactive Python shell
 |---------|-------------|---------------|
 | **openai** | OpenAI API client | [platform.openai.com](https://platform.openai.com/docs/api-reference) |
 | **anthropic** | Anthropic (Claude) API | [docs.anthropic.com](https://docs.anthropic.com/) |
+
+#### **Agent Orchestration & MCP**
+
+| Library | Purpose | Documentation |
+|---------|---------|---------------|
+| **litellm** | Unified LLM router with cost controls | [docs.litellm.ai](https://docs.litellm.ai/) |
+| **tiktoken** | Fast token counting utilities | [github.com/openai/tiktoken](https://github.com/openai/tiktoken) |
+| **fastapi** | Async API framework for tool servers | [fastapi.tiangolo.com](https://fastapi.tiangolo.com/) |
+| **uvicorn** | ASGI server for FastAPI apps | [www.uvicorn.org](https://www.uvicorn.org/) |
+| **httpx** | Async HTTP client for integrations | [www.python-httpx.org](https://www.python-httpx.org/) |
+| **pydantic** | Data validation for tool schemas | [docs.pydantic.dev](https://docs.pydantic.dev/) |
+| **typer** | CLI interface builder for agents | [typer.tiangolo.com](https://typer.tiangolo.com/) |
+| **rich** | Terminal formatting for agent logs | [rich.readthedocs.io](https://rich.readthedocs.io/) |
+| **sqlalchemy** | Structured data storage backend | [docs.sqlalchemy.org](https://docs.sqlalchemy.org/) |
+| **duckdb** | In-process analytics database | [duckdb.org/docs](https://duckdb.org/docs/) |
 
 #### **Code Quality & Formatting**
 
@@ -1326,7 +1343,8 @@ sudo systemctl start huggingface-tgi
 journalctl -u huggingface-tgi -f
 
 # Qdrant
-sudo systemctl start qdrant
+sudo systemctl status qdrant
+sudo systemctl restart qdrant
 curl http://localhost:6333/dashboard
 ```
 

@@ -187,6 +187,16 @@ in
     pythonImportsCheck = [];
   });
 
+  litellm = python-super.litellm.overridePythonAttrs (_: {
+    doCheck = false;
+    pythonImportsCheck = [];
+  });
+
+  tiktoken = python-super.tiktoken.overridePythonAttrs (_: {
+    doCheck = false;
+    pythonImportsCheck = [];
+  });
+
   dask = python-super.dask.overridePythonAttrs (_: {
     doCheck = false;
     pythonImportsCheck = [];
