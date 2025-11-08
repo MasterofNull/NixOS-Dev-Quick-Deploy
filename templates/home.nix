@@ -735,6 +735,15 @@ RESOURCES
           sentence-transformers
           # Specialized AI Tools
           llama-cpp-python
+          # MCP (Model Context Protocol) Support
+          httpx                # Modern HTTP client for MCP
+          aiohttp              # Async HTTP for MCP servers
+          websockets           # WebSocket support for MCP
+          pydantic             # Data validation for MCP tools
+          psycopg2             # PostgreSQL client for MCP data storage
+          redis                # Redis client for MCP caching/state
+          sqlalchemy           # ORM for database interactions
+          alembic              # Database migrations
           # Data Processing
           dask
           dask-ml
@@ -1178,6 +1187,23 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           gnumake                 # GNU Make build automation
           gcc                     # GNU C/C++ compiler
           nodejs_22               # Node.js JavaScript runtime v22
+          deno                    # Secure TypeScript/JavaScript runtime (recommended for MCP)
+          bun                     # Fast JavaScript runtime and bundler
+
+          # ========================================================================
+          # MCP (Model Context Protocol) Development Tools
+          # ========================================================================
+
+          # Code execution sandboxing
+          bubblewrap              # Lightweight sandboxing tool (used by Flatpak)
+          firejail                # Security sandbox for applications
+
+          # Process monitoring and resource limits
+          criu                    # Checkpoint/Restore in Userspace
+
+          # Database clients for MCP
+          postgresql              # PostgreSQL client tools (psql, etc.)
+          redis                   # Redis CLI client
 
           # ========================================================================
           # Virtualization & Emulation
@@ -2489,6 +2515,347 @@ USAGE
             ;;
           logs)
             podman pod logs -f "$pod"
+            ;;
+          *)
+            usage
+            exit 1
+            ;;
+        esac
+      '';
+      executable = true;
+    };
+
+    # ========================================================================
+    # MCP (Model Context Protocol) Helper Scripts
+    # ========================================================================
+
+    ".local/bin/mcp-db-setup" = {
+      text = ''
+        #!/usr/bin/env bash
+        # MCP Database Setup Helper
+        # Initializes PostgreSQL, Redis, and Qdrant for MCP development
+        set -euo pipefail
+
+        echo "==================================================================="
+        echo "MCP Database Setup"
+        echo "==================================================================="
+        echo
+
+        # Check PostgreSQL
+        echo "→ Checking PostgreSQL..."
+        if systemctl is-active --quiet postgresql.service; then
+          echo "  ✓ PostgreSQL is running"
+        else
+          echo "  ✗ PostgreSQL is not running"
+          echo "    Start with: sudo systemctl start postgresql"
+          exit 1
+        fi
+
+        # Check Redis
+        echo "→ Checking Redis..."
+        if systemctl is-active --quiet redis-mcp.service; then
+          echo "  ✓ Redis is running"
+        else
+          echo "  ✗ Redis is not running"
+          echo "    Start with: sudo systemctl start redis-mcp"
+          exit 1
+        fi
+
+        # Check Qdrant (optional)
+        echo "→ Checking Qdrant..."
+        if systemctl is-active --quiet qdrant.service 2>/dev/null; then
+          echo "  ✓ Qdrant is running"
+        else
+          echo "  ⚠ Qdrant is not running (optional)"
+          echo "    Start with: sudo systemctl start qdrant"
+        fi
+
+        # Test PostgreSQL connection
+        echo
+        echo "→ Testing PostgreSQL connection..."
+        if ${pkgs.postgresql}/bin/psql -h 127.0.0.1 -U mcp -d mcp -c "SELECT 1;" >/dev/null 2>&1; then
+          echo "  ✓ PostgreSQL connection successful"
+        else
+          echo "  ✗ PostgreSQL connection failed"
+          exit 1
+        fi
+
+        # Test Redis connection
+        echo "→ Testing Redis connection..."
+        if ${pkgs.redis}/bin/redis-cli -h 127.0.0.1 -p 6379 -a "mcp-dev-password-change-in-production" PING >/dev/null 2>&1; then
+          echo "  ✓ Redis connection successful"
+        else
+          echo "  ✗ Redis connection failed"
+          exit 1
+        fi
+
+        echo
+        echo "==================================================================="
+        echo "✓ All MCP databases are ready!"
+        echo "==================================================================="
+        echo
+        echo "Connection details:"
+        echo "  PostgreSQL: postgresql://mcp@127.0.0.1:5432/mcp"
+        echo "  Redis:      redis://:mcp-dev-password-change-in-production@127.0.0.1:6379"
+        echo "  Qdrant:     http://127.0.0.1:6333"
+        echo
+      '';
+      executable = true;
+    };
+
+    ".local/bin/mcp-server" = {
+      text = ''
+        #!/usr/bin/env bash
+        # MCP Server Management Helper
+        set -euo pipefail
+
+        MCP_DIR="''${MCP_DIR:-$HOME/mcp-servers}"
+        TEMPLATE_DIR="/etc/nixos/templates"
+
+        usage() {
+          cat <<USAGE
+        MCP Server Management
+
+        Usage: mcp-server <command> [options]
+
+        Commands:
+          init <name>        Create new MCP server from template
+          start <name>       Start MCP server
+          stop <name>        Stop MCP server
+          logs <name>        View MCP server logs
+          list               List all MCP servers
+          test <name>        Test MCP server
+
+        Environment Variables:
+          MCP_DIR            MCP servers directory (default: ~/mcp-servers)
+
+        Examples:
+          mcp-server init my-tools
+          mcp-server start my-tools
+          mcp-server logs my-tools
+        USAGE
+        }
+
+        init_server() {
+          local name="$1"
+          local server_dir="$MCP_DIR/$name"
+
+          if [ -d "$server_dir" ]; then
+            echo "Error: Server '$name' already exists at $server_dir" >&2
+            exit 1
+          fi
+
+          echo "Creating MCP server: $name"
+          mkdir -p "$server_dir"
+          mkdir -p "$server_dir/servers"
+          mkdir -p "$server_dir/state"
+
+          # Copy templates
+          if [ -f "${TEMPLATE_DIR}/mcp-server-template.py" ]; then
+            cp "${TEMPLATE_DIR}/mcp-server-template.py" "$server_dir/server.py"
+            echo "  ✓ Created server.py (Python)"
+          fi
+
+          if [ -f "${TEMPLATE_DIR}/mcp-server-template.ts" ]; then
+            cp "${TEMPLATE_DIR}/mcp-server-template.ts" "$server_dir/server.ts"
+            echo "  ✓ Created server.ts (TypeScript/Deno)"
+          fi
+
+          # Create example tool
+          cat > "$server_dir/servers/example.py" <<'EOF'
+        """Example MCP Tool"""
+
+        name = "example"
+        description = "Example tool that returns a greeting"
+
+        input_schema = {
+            "name": {"type": "string", "description": "Name to greet"}
+        }
+
+        output_schema = {
+            "greeting": {"type": "string"}
+        }
+
+        def execute(params):
+            name = params.get("name", "World")
+            return {"greeting": f"Hello, {name}!"}
+        EOF
+
+          echo "  ✓ Created example tool"
+
+          # Create README
+          cat > "$server_dir/README.md" <<EOF
+        # MCP Server: $name
+
+        Created: $(date)
+
+        ## Directory Structure
+
+        - \`servers/\` - MCP tools (one file per tool)
+        - \`state/\` - Persistent state storage
+        - \`server.py\` - Python MCP server
+        - \`server.ts\` - TypeScript/Deno MCP server
+
+        ## Usage
+
+        Start server:
+        \`\`\`bash
+        mcp-server start $name
+        \`\`\`
+
+        View logs:
+        \`\`\`bash
+        mcp-server logs $name
+        \`\`\`
+
+        ## Adding Tools
+
+        Add new tools to the \`servers/\` directory. Each tool should export:
+        - \`name\`: Tool name
+        - \`description\`: Tool description
+        - \`input_schema\`: Input validation schema
+        - \`output_schema\`: Output schema
+        - \`execute(params)\`: Tool execution function
+        EOF
+
+          echo
+          echo "✓ MCP server created at: $server_dir"
+          echo
+          echo "Next steps:"
+          echo "  1. cd $server_dir"
+          echo "  2. Add tools to servers/"
+          echo "  3. mcp-server start $name"
+        }
+
+        start_server() {
+          local name="$1"
+          local server_dir="$MCP_DIR/$name"
+
+          if [ ! -d "$server_dir" ]; then
+            echo "Error: Server '$name' not found" >&2
+            exit 1
+          fi
+
+          echo "Starting MCP server: $name"
+
+          cd "$server_dir"
+
+          # Run Python server by default
+          MCP_SERVER_PORT=8000 \
+          MCP_TOOLS_DIR="$server_dir/servers" \
+          MCP_STATE_DIR="$server_dir/state" \
+          ${pythonAiEnv}/bin/python3 server.py &
+
+          echo "$!" > "$server_dir/.pid"
+          echo "  ✓ Server started (PID: $(cat "$server_dir/.pid"))"
+          echo "  ✓ Listening on http://127.0.0.1:8000/mcp"
+        }
+
+        stop_server() {
+          local name="$1"
+          local server_dir="$MCP_DIR/$name"
+
+          if [ ! -f "$server_dir/.pid" ]; then
+            echo "Error: Server '$name' is not running" >&2
+            exit 1
+          fi
+
+          local pid=$(cat "$server_dir/.pid")
+          echo "Stopping MCP server: $name (PID: $pid)"
+
+          kill "$pid" 2>/dev/null || true
+          rm -f "$server_dir/.pid"
+
+          echo "  ✓ Server stopped"
+        }
+
+        logs_server() {
+          local name="$1"
+          local server_dir="$MCP_DIR/$name"
+
+          if [ ! -d "$server_dir" ]; then
+            echo "Error: Server '$name' not found" >&2
+            exit 1
+          fi
+
+          if [ -f "$server_dir/server.log" ]; then
+            tail -f "$server_dir/server.log"
+          else
+            echo "No logs found for server '$name'"
+          fi
+        }
+
+        list_servers() {
+          echo "MCP Servers:"
+          echo
+
+          if [ ! -d "$MCP_DIR" ]; then
+            echo "  No servers found (directory doesn't exist: $MCP_DIR)"
+            return
+          fi
+
+          for server in "$MCP_DIR"/*; do
+            if [ -d "$server" ]; then
+              local name=$(basename "$server")
+              local status="stopped"
+
+              if [ -f "$server/.pid" ]; then
+                local pid=$(cat "$server/.pid")
+                if kill -0 "$pid" 2>/dev/null; then
+                  status="running (PID: $pid)"
+                else
+                  status="stopped (stale PID)"
+                fi
+              fi
+
+              echo "  - $name [$status]"
+            fi
+          done
+        }
+
+        test_server() {
+          local name="$1"
+
+          echo "Testing MCP server: $name"
+          echo
+
+          # Test list_tools
+          echo "→ Testing list_tools..."
+          curl -s -X POST http://127.0.0.1:8000/mcp \
+            -H "Content-Type: application/json" \
+            -d '{"action": "list_tools", "params": {"detail_level": "minimal"}}' | ${pkgs.jq}/bin/jq
+
+          echo
+          echo "→ Testing search_tools..."
+          curl -s -X POST http://127.0.0.1:8000/mcp \
+            -H "Content-Type: application/json" \
+            -d '{"action": "search_tools", "params": {"query": "example"}}' | ${pkgs.jq}/bin/jq
+        }
+
+        # Main
+        case "''${1:-}" in
+          init)
+            [ -z "''${2:-}" ] && usage && exit 1
+            init_server "$2"
+            ;;
+          start)
+            [ -z "''${2:-}" ] && usage && exit 1
+            start_server "$2"
+            ;;
+          stop)
+            [ -z "''${2:-}" ] && usage && exit 1
+            stop_server "$2"
+            ;;
+          logs)
+            [ -z "''${2:-}" ] && usage && exit 1
+            logs_server "$2"
+            ;;
+          list)
+            list_servers
+            ;;
+          test)
+            [ -z "''${2:-}" ] && usage && exit 1
+            test_server "$2"
             ;;
           *)
             usage

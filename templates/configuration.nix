@@ -485,6 +485,64 @@ in
     };
   };
 
+  # ========================================================================
+  # PostgreSQL Database Service
+  # ========================================================================
+  # PostgreSQL for MCP structured data, tool metadata, and execution logs
+  services.postgresql = {
+    enable = true;
+    package = pkgs.postgresql_16;
+    enableTCPIP = true;
+    settings = {
+      # Security: only listen on localhost for MCP
+      listen_addresses = "127.0.0.1";
+      port = 5432;
+      # Performance tuning for MCP workloads
+      shared_buffers = "256MB";
+      effective_cache_size = "1GB";
+      work_mem = "16MB";
+      maintenance_work_mem = "128MB";
+      # Connection limits
+      max_connections = 100;
+    };
+    authentication = pkgs.lib.mkOverride 10 ''
+      # TYPE  DATABASE        USER            ADDRESS                 METHOD
+      local   all             all                                     trust
+      host    all             all             127.0.0.1/32            md5
+      host    all             all             ::1/128                 md5
+    '';
+    ensureDatabases = [ "mcp" "mcp_tools" "mcp_logs" ];
+    ensureUsers = [
+      {
+        name = "mcp";
+        ensureDBOwnership = true;
+      }
+    ];
+  };
+
+  # ========================================================================
+  # Redis Cache Service
+  # ========================================================================
+  # Redis for MCP high-speed caching, state management, and job queues
+  services.redis.servers.mcp = {
+    enable = true;
+    port = 6379;
+    bind = "127.0.0.1";
+    # Security
+    requirePass = "mcp-dev-password-change-in-production";
+    # Performance
+    save = [
+      [900 1]    # Save after 900 sec (15 min) if at least 1 key changed
+      [300 10]   # Save after 300 sec (5 min) if at least 10 keys changed
+      [60 10000] # Save after 60 sec if at least 10000 keys changed
+    ];
+    # Memory management
+    maxmemory = "512mb";
+    maxmemoryPolicy = "allkeys-lru";
+    # Logging
+    logLevel = "notice";
+  };
+
   systemd.services.huggingface-tgi = {
     description = "Hugging Face Text Generation Inference";
     documentation = [
