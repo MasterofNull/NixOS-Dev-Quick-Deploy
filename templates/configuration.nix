@@ -159,10 +159,68 @@ let
   # Optional Gitea admin bootstrap (populated by installer)
   @GITEA_ADMIN_VARIABLES_BLOCK@
   commonPythonOverrides = import ./python-overrides.nix;
+  glfMangoHudPresets = {
+    disabled = "";
+    light = ''control=mangohud,legacy_layout=0,horizontal,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,ram,vram,ps,fps,fps_metrics=AVG,0.001,font_scale=1.05'';
+    full = ''control=mangohud,legacy_layout=0,vertical,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,core_load,ram,vram,fps,fps_metrics=AVG,0.001,frametime,refresh_rate,resolution,vulkan_driver,wine'';
+  };
+  glfMangoHudProfile = "full";
+  glfMangoHudConfig = glfMangoHudPresets.${glfMangoHudProfile};
+  glfLutrisWithGtk = pkgs.lutris.override { extraLibraries = p: [ p.libadwaita p.gtk4 ]; };
+  glfGamingPackages = [
+    glfLutrisWithGtk
+    pkgs.heroic
+    pkgs.joystickwake
+    pkgs.mangohud
+    pkgs.mesa-demos
+    pkgs.oversteer
+    pkgs.umu-launcher
+    pkgs.wineWowPackages.staging
+    pkgs.winetricks
+  ];
+  glfSteamPackage = pkgs.steam.override {
+    extraEnv = {
+      MANGOHUD = if glfMangoHudConfig != "" then "1" else "0";
+      OBS_VKCAPTURE = "1";
+    };
+  };
+  glfSteamCompatPackages =
+    lib.optionals (pkgs ? proton-ge-bin) [ pkgs.proton-ge-bin ];
+  glfSystemUtilities = with pkgs; [
+    exfatprogs
+    fastfetch
+    ffmpeg
+    ffmpegthumbnailer
+    libva-utils
+    usbutils
+    hunspell
+    hunspellDicts.fr-any
+    hyphen
+    texlivePackages.hyphen-french
+  ];
 in
 
 {
   imports = [ ./hardware-configuration.nix ];
+
+  nixpkgs.overlays = lib.mkAfter [
+    (final: prev: {
+      linuxPackages = prev.linuxPackages // {
+        kernel = prev.linuxPackages.kernel.override {
+          structuredExtraConfig = with lib.kernel; {
+            HZ_1000 = yes;
+            HZ = 1000;
+            PREEMPT_FULL = yes;
+            IOSCHED_BFQ = yes;
+            DEFAULT_BFQ = yes;
+            DEFAULT_IOSCHED = "bfq";
+            V4L2_LOOPBACK = module;
+            HID = yes;
+          };
+        };
+      };
+    })
+  ];
 
   # ============================================================================
   # Boot Configuration (Modern EFI)
@@ -176,9 +234,10 @@ in
     };
 
     # Prefer performance-tuned kernels when available.
-    # Order of preference: TKG → XanMod → Liquorix → Zen → Latest upstream.
+    # Order of preference: 6.17 gaming → TKG → XanMod → Liquorix → Zen → Latest upstream.
     kernelPackages = lib.mkDefault (
-      if pkgs ? linuxPackages_tkg then pkgs.linuxPackages_tkg
+      if pkgs ? linuxPackages_6_17 then pkgs.linuxPackages_6_17
+      else if pkgs ? linuxPackages_tkg then pkgs.linuxPackages_tkg
       else if pkgs ? linuxPackages_xanmod then pkgs.linuxPackages_xanmod
       else if pkgs ? linuxPackages_lqx then pkgs.linuxPackages_lqx
       else if pkgs ? linuxPackages_zen then pkgs.linuxPackages_zen
@@ -201,6 +260,19 @@ in
       "kernel.unprivileged_userns_clone" = 1;
       "net.core.bpf_jit_harden" = 2;
 
+      # GLF OS: Low-latency scheduling and memory tuning
+      "kernel.split_lock_mitigate" = 0;
+      "kernel.nmi_watchdog" = 0;
+      "kernel.printk" = "3 3 3 3";
+      "kernel.kptr_restrict" = 2;
+      "kernel.kexec_load_disabled" = 1;
+      "vm.swappiness" = 10;
+      "vm.vfs_cache_pressure" = 50;
+      "vm.dirty_bytes" = 268435456;
+      "vm.dirty_background_bytes" = 67108864;
+      "vm.dirty_writeback_centisecs" = 1500;
+      "vm.max_map_count" = 16777216;
+
       # Performance: Network tuning for low latency
       "net.core.netdev_max_backlog" = 16384;
       "net.core.somaxconn" = 8192;
@@ -219,10 +291,49 @@ in
 
     # Kernel parameters for better memory management and performance
     @BOOT_KERNEL_PARAMETERS_BLOCK@
+    kernelParams = lib.mkAfter (
+      (lib.optional (lib.elem "kvm-amd" config.boot.kernelModules) "amd_pstate=active")
+      ++ [
+        "nosplit_lock_mitigate"
+        "clearcpuid=514"
+      ]
+    );
   };
   @MICROCODE_SECTION@
 
   @GPU_HARDWARE_SECTION@
+
+  # ===========================================================================
+  # System Optimizations & Storage Maintenance (GLF OS inspired)
+  # ===========================================================================
+  zramSwap = {
+    enable = true;
+    algorithm = "zstd";
+    memoryPercent = 25;
+    priority = 5;
+  };
+
+  services.fstrim = {
+    enable = true;
+    interval = "daily";
+  };
+
+  programs.appimage = {
+    enable = true;
+    binfmt = true;
+  };
+
+  services.udev.extraRules = lib.mkAfter ''
+    ACTION=="add|change", SUBSYSTEM=="block", ATTR{queue/scheduler}="bfq"
+
+    # Ignore DualSense/DualShock touchpads so they do not wake the desktop
+    ATTRS{name}=="Sony Interactive Entertainment Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"
+    ATTRS{name}=="Sony Interactive Entertainment DualSense Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"
+    ATTRS{name}=="Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"
+    ATTRS{name}=="DualSense Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"
+  '';
+
+  services.udev.packages = lib.mkAfter [ pkgs.oversteer ];
 
   # ============================================================================
   # Security Hardening
@@ -431,6 +542,30 @@ in
         flags = [ "--all" ];  # Remove all unused images, not just dangling
       };
     };
+  };
+
+  # ===========================================================================
+  # Gaming Stack (GLF OS integration)
+  # ===========================================================================
+  hardware.steam-hardware.enable = true;
+  hardware.xone.enable = true;
+  hardware.xpadneo.enable = true;
+  hardware.opentabletdriver.enable = true;
+
+  programs.gamemode.enable = true;
+
+  programs.gamescope = {
+    enable = true;
+    capSysNice = true;
+  };
+
+  programs.steam = {
+    enable = true;
+    gamescopeSession.enable = true;
+    package = glfSteamPackage;
+    remotePlay.openFirewall = true;
+    localNetworkGameTransfers.openFirewall = true;
+    extraCompatPackages = glfSteamCompatPackages;
   };
 
   # ========================================================================
@@ -667,6 +802,8 @@ in
     # COSMIC-specific: Enable clipboard functionality
     # Required for cosmic-clipboard to work with wl-clipboard
     COSMIC_DATA_CONTROL_ENABLED = "1";
+    STEAM_EXTRA_COMPAT_TOOLS_PATHS = "$HOME/.steam/root/compatibilitytools.d";
+    MANGOHUD_CONFIG = glfMangoHudConfig;
     @GPU_SESSION_VARIABLES@
   };
 
@@ -696,6 +833,8 @@ in
     ++ lib.optional (lib.hasAttr "default" nixAiToolsPackages)
       nixAiToolsPackages.default  # Provide CLI helpers from numtide/nix-ai-tools when available
     ++ @GPU_DRIVER_PACKAGES@
+    ++ glfSystemUtilities
+    ++ glfGamingPackages
     ++ [
       # Preflight CLI dependencies (available before Home Manager activation)
       jq

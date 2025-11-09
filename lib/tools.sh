@@ -212,6 +212,157 @@ ensure_flathub_remote() {
     return 1
 }
 
+flatpak_profile_apps() {
+    local profile="${1:-${SELECTED_FLATPAK_PROFILE:-$DEFAULT_FLATPAK_PROFILE}}"
+    local array_name="${FLATPAK_PROFILE_APPSETS[$profile]:-}"
+
+    if [[ -z "$array_name" ]]; then
+        return 1
+    fi
+
+    local -n profile_ref="$array_name"
+    printf '%s\n' "${profile_ref[@]}"
+}
+
+flatpak_profile_digest() {
+    if (( $# == 0 )); then
+        echo ""
+        return 0
+    fi
+
+    local sorted
+    sorted=$(printf '%s\n' "$@" | LC_ALL=C sort -u)
+    printf '%s' "$sorted" | sha256sum | awk '{print $1}'
+}
+
+flatpak_profile_state_valid() {
+    local digest="$1"
+    local profile="${SELECTED_FLATPAK_PROFILE:-$DEFAULT_FLATPAK_PROFILE}"
+
+    if [[ -z "$digest" || -z "$profile" ]]; then
+        return 1
+    fi
+
+    if [[ -z "$FLATPAK_PROFILE_STATE_FILE" || ! -f "$FLATPAK_PROFILE_STATE_FILE" ]]; then
+        return 1
+    fi
+
+    local saved_profile=""
+    local saved_digest=""
+
+    while IFS='=' read -r key value; do
+        value=$(printf '%s' "$value" | tr -d '\r')
+        case "$key" in
+            PROFILE) saved_profile="$value" ;;
+            DIGEST) saved_digest="$value" ;;
+        esac
+    done <"$FLATPAK_PROFILE_STATE_FILE"
+
+    [[ "$saved_profile" == "$profile" && "$saved_digest" == "$digest" ]]
+}
+
+update_flatpak_profile_state() {
+    local digest="$1"
+    local profile="${SELECTED_FLATPAK_PROFILE:-$DEFAULT_FLATPAK_PROFILE}"
+
+    if [[ -z "$digest" || -z "$profile" || -z "$FLATPAK_PROFILE_STATE_FILE" ]]; then
+        return 0
+    fi
+
+    local pref_dir
+    pref_dir=$(dirname "$FLATPAK_PROFILE_STATE_FILE")
+    if ! safe_mkdir "$pref_dir"; then
+        return 0
+    fi
+
+    if cat >"$FLATPAK_PROFILE_STATE_FILE" <<EOF
+PROFILE=$profile
+DIGEST=$digest
+COUNT=${#DEFAULT_FLATPAK_APPS[@]}
+UPDATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+EOF
+    then
+        chmod 600 "$FLATPAK_PROFILE_STATE_FILE" 2>/dev/null || true
+        safe_chown_user_dir "$FLATPAK_PROFILE_STATE_FILE" || true
+    fi
+}
+
+select_flatpak_profile() {
+    local profile="${SELECTED_FLATPAK_PROFILE:-}"
+
+    if [[ -z "$profile" && -f "$FLATPAK_PROFILE_PREFERENCE_FILE" ]]; then
+        profile=$(awk -F'=' '/^SELECTED_FLATPAK_PROFILE=/{print $2}' "$FLATPAK_PROFILE_PREFERENCE_FILE" 2>/dev/null | tail -n1 | tr -d '\r')
+    fi
+
+    if [[ -z "$profile" ]]; then
+        local -a profile_order=("core" "ai_workstation" "minimal")
+        local -a profile_keys=()
+        local index=1
+        print_info "Available Flatpak provisioning profiles:"
+        local key
+        for key in "${profile_order[@]}"; do
+            local label="${FLATPAK_PROFILE_LABELS[$key]:-$key}"
+            local array_name="${FLATPAK_PROFILE_APPSETS[$key]:-}"
+            local count=0
+            if [[ -n "$array_name" ]]; then
+                local -n ref="$array_name"
+                count=${#ref[@]}
+            fi
+            echo "  ${index}) ${label} (${count} apps)"
+            profile_keys+=("$key")
+            ((index++))
+        done
+
+        local default_index=1
+        local i
+        for i in "${!profile_keys[@]}"; do
+            if [[ "${profile_keys[$i]}" == "${DEFAULT_FLATPAK_PROFILE:-core}" ]]; then
+                default_index=$((i + 1))
+                break
+            fi
+        done
+
+        local selection
+        selection=$(prompt_user "Select Flatpak profile (1-${#profile_keys[@]})" "$default_index")
+
+        if [[ "$selection" =~ ^[0-9]+$ ]] && (( selection >= 1 && selection <= ${#profile_keys[@]} )); then
+            profile="${profile_keys[$((selection - 1))]}"
+        else
+            print_warning "Invalid selection; using default profile '${DEFAULT_FLATPAK_PROFILE}'"
+            profile="${DEFAULT_FLATPAK_PROFILE:-core}"
+        fi
+    fi
+
+    if [[ -z "${FLATPAK_PROFILE_APPSETS[$profile]:-}" ]]; then
+        print_warning "Unknown Flatpak profile '${profile}', falling back to 'core'"
+        profile="core"
+    fi
+
+    SELECTED_FLATPAK_PROFILE="$profile"
+
+    local array_name="${FLATPAK_PROFILE_APPSETS[$profile]}"
+    local -n chosen="$array_name"
+    DEFAULT_FLATPAK_APPS=("${chosen[@]}")
+
+    print_info "Selected Flatpak profile '${profile}' (${#DEFAULT_FLATPAK_APPS[@]} apps)"
+
+    if [[ -n "$FLATPAK_PROFILE_PREFERENCE_FILE" ]]; then
+        local pref_dir
+        pref_dir=$(dirname "$FLATPAK_PROFILE_PREFERENCE_FILE")
+        if safe_mkdir "$pref_dir"; then
+            if cat >"$FLATPAK_PROFILE_PREFERENCE_FILE" <<EOF
+SELECTED_FLATPAK_PROFILE=$profile
+EOF
+            then
+                chmod 600 "$FLATPAK_PROFILE_PREFERENCE_FILE" 2>/dev/null || true
+                safe_chown_user_dir "$FLATPAK_PROFILE_PREFERENCE_FILE" || true
+            fi
+        fi
+    fi
+
+    return 0
+}
+
 flatpak_query_application_support() {
     local app_id="$1"
 
@@ -316,9 +467,21 @@ flatpak_install_app_list() {
 }
 
 ensure_default_flatpak_apps_installed() {
+    if declare -F select_flatpak_profile >/dev/null 2>&1 && [[ -z "${SELECTED_FLATPAK_PROFILE:-}" ]]; then
+        select_flatpak_profile || true
+    fi
+
     if [[ ${#DEFAULT_FLATPAK_APPS[@]} -eq 0 ]]; then
         print_info "No default Flatpak applications defined"
         return 0
+    fi
+
+    local profile_name="${SELECTED_FLATPAK_PROFILE:-$DEFAULT_FLATPAK_PROFILE}"
+    local profile_digest
+    profile_digest=$(flatpak_profile_digest "${DEFAULT_FLATPAK_APPS[@]}")
+    local profile_current=false
+    if flatpak_profile_state_valid "$profile_digest"; then
+        profile_current=true
     fi
 
     local -a missing=()
@@ -333,7 +496,14 @@ ensure_default_flatpak_apps_installed() {
     done
 
     if (( ${#missing[@]} == 0 )); then
-        print_success "All default Flatpak applications are already installed"
+        if $profile_current; then
+            print_success "Flatpak profile '${profile_name}' already satisfied (${#DEFAULT_FLATPAK_APPS[@]} apps)"
+        else
+            print_info "All Flatpak applications for profile '${profile_name}' are present"
+            update_flatpak_profile_state "$profile_digest"
+            run_as_primary_user flatpak --user update --noninteractive --appstream >/dev/null 2>&1 || true
+            run_as_primary_user flatpak --user update --noninteractive >/dev/null 2>&1 || true
+        fi
         return 0
     fi
 
@@ -341,6 +511,7 @@ ensure_default_flatpak_apps_installed() {
         print_success "Default Flatpak applications are now installed and ready"
         run_as_primary_user flatpak --user update --noninteractive --appstream >/dev/null 2>&1 || true
         run_as_primary_user flatpak --user update --noninteractive >/dev/null 2>&1 || true
+        update_flatpak_profile_state "$profile_digest"
         return 0
     fi
 
@@ -369,6 +540,10 @@ install_flatpak_stage() {
     if ! ensure_flathub_remote; then
         print_warning "Flatpak applications will need to be installed manually once Flathub is available"
         return 1
+    fi
+
+    if declare -F select_flatpak_profile >/dev/null 2>&1; then
+        select_flatpak_profile || true
     fi
 
     if ensure_default_flatpak_apps_installed; then
@@ -515,6 +690,38 @@ if [ ! -f "\${CLI_PATH}" ]; then
     exit 127
 fi
 
+# Normalize and strip wrapper arguments added by editor integrations before
+# invoking the real CLI so they don't leak into the process invocation.
+normalize_cli_arg() {
+    local candidate="\$1"
+    if command -v readlink >/dev/null 2>&1; then
+        readlink -f "\$candidate" 2>/dev/null || printf '%s\n' "\$candidate"
+    else
+        printf '%s\n' "\$candidate"
+    fi
+}
+
+CANONICAL_CLI_PATH="\${CLI_PATH}"
+if command -v readlink >/dev/null 2>&1; then
+    CANONICAL_CLI_PATH="\$(readlink -f "\${CLI_PATH}" 2>/dev/null || printf '%s\n' "\${CLI_PATH}")"
+fi
+
+if [ "\$#" -ge 2 ] && [ "\$1" = "node" ]; then
+    maybe_cli="\$2"
+    normalized="\$(normalize_cli_arg "\$maybe_cli")"
+    if [ "\$maybe_cli" = "\$CLI_PATH" ] || [ "\$normalized" = "\$CANONICAL_CLI_PATH" ]; then
+        shift 2
+    fi
+fi
+
+if [ "\$#" -ge 1 ]; then
+    first_arg="\$1"
+    normalized_first="\$(normalize_cli_arg "\$first_arg")"
+    if [ "\$first_arg" = "\$CLI_PATH" ] || [ "\$normalized_first" = "\$CANONICAL_CLI_PATH" ]; then
+        shift
+    fi
+fi
+
 NODE_CANDIDATES=(
     "\${HOME}/.nix-profile/bin/node"
     "/run/current-system/sw/bin/node"
@@ -531,7 +738,7 @@ for candidate in "\${NODE_CANDIDATES[@]}"; do
         NODE_BIN="\${candidate}"
         break
     fi
-fi
+done
 
 if [ -z "\${NODE_BIN}" ]; then
     echo "[$display_name] Unable to locate Node.js runtime" >&2
@@ -1230,39 +1437,106 @@ configure_vscodium_for_claude() {
 
     local resolved_settings
     resolved_settings=$(readlink -f "$settings_file" 2>/dev/null || true)
-    local managed_declaratively=0
-    if [ -L "$settings_file" ] && [[ "$resolved_settings" == /nix/store/* ]]; then
-        managed_declaratively=1
-    elif [ -e "$settings_file" ] && [ ! -w "$settings_file" ]; then
-        managed_declaratively=1
-    fi
 
-    local converted_to_mutable=0
-    if [ "$managed_declaratively" -eq 1 ] && [ -f "$resolved_settings" ] && [[ "$resolved_settings" == /nix/store/* ]]; then
-        local tmp_settings="${settings_file}.tmp"
-        if cp "$resolved_settings" "$tmp_settings" 2>/dev/null; then
-            if rm -f "$settings_file" 2>/dev/null && mv "$tmp_settings" "$settings_file" 2>/dev/null; then
-                chmod u+rw "$settings_file" 2>/dev/null || true
-                managed_declaratively=0
-                converted_to_mutable=1
-                print_warning "Converted declarative VSCodium settings to a mutable copy (source: $resolved_settings)"
-                print_info "Future home-manager runs may reapply declarative settings; rerun deploy script afterwards if needed."
+    local conversion_result=""
+    if [ -L "$settings_file" ] && [[ "$resolved_settings" == /nix/store/* ]]; then
+        if [ -f "$resolved_settings" ]; then
+            local tmp_settings="${settings_file}.tmp"
+            if cp "$resolved_settings" "$tmp_settings" 2>/dev/null; then
+                if rm -f "$settings_file" 2>/dev/null && mv "$tmp_settings" "$settings_file" 2>/dev/null; then
+                    chmod u+rw "$settings_file" 2>/dev/null || true
+                    conversion_result="copied"
+                    print_warning "Converted declarative VSCodium settings to a mutable copy (source: $resolved_settings)"
+                    print_info "Future home-manager runs may reapply declarative settings; rerun deploy script afterwards if needed."
+                else
+                    rm -f "$tmp_settings" 2>/dev/null || true
+                fi
             else
                 rm -f "$tmp_settings" 2>/dev/null || true
             fi
-        else
-            rm -f "$tmp_settings" 2>/dev/null || true
+        fi
+
+        if [ "$conversion_result" != "copied" ]; then
+            print_info "VSCodium settings.json is managed declaratively (read-only symlink detected)"
+            verify_declarative_vscodium_settings
+            return 0
+        fi
+    elif [ -e "$settings_file" ]; then
+        local settings_writable=1
+        local stat_mode owner_uid owner_gid
+        if read -r stat_mode owner_uid owner_gid < <(stat -c '%a %u %g' "$settings_file" 2>/dev/null); then
+            local target_user="${PRIMARY_USER:-${SUDO_USER:-${USER:-}}}"
+            if [ -z "$target_user" ]; then
+                target_user="root"
+            fi
+            local target_uid=""
+            local target_gid=""
+            local target_groups=""
+            if command -v id >/dev/null 2>&1; then
+                target_uid=$(id -u "$target_user" 2>/dev/null || echo '')
+                target_gid=$(id -g "$target_user" 2>/dev/null || echo '')
+                target_groups=$(id -G "$target_user" 2>/dev/null || echo '')
+            fi
+            if [ -z "$target_uid" ]; then
+                if [ -n "${PRIMARY_UID:-}" ]; then
+                    target_uid="$PRIMARY_UID"
+                else
+                    target_uid="$EUID"
+                fi
+            fi
+            if [ -z "$target_gid" ]; then
+                if [ -n "${PRIMARY_GID:-}" ]; then
+                    target_gid="$PRIMARY_GID"
+                elif command -v id >/dev/null 2>&1; then
+                    target_gid=$(id -g 2>/dev/null || echo '')
+                fi
+            fi
+
+            local mode_value=$((10#$stat_mode))
+            local owner_bits=$(( mode_value / 100 ))
+            local group_bits=$(( (mode_value / 10) % 10 ))
+            local other_bits=$(( mode_value % 10 ))
+
+            settings_writable=0
+
+            if [ -n "$target_uid" ] && [ "$target_uid" = "$owner_uid" ]; then
+                if (( owner_bits & 2 )); then
+                    settings_writable=1
+                fi
+            elif [ -n "$target_groups" ] && [ -n "$owner_gid" ]; then
+                local gid
+                for gid in $target_groups; do
+                    if [ "$gid" = "$owner_gid" ] && (( group_bits & 2 )); then
+                        settings_writable=1
+                        break
+                    fi
+                done
+            fi
+
+            if [ "$settings_writable" -eq 0 ] && (( other_bits & 2 )); then
+                settings_writable=1
+            fi
+        elif [ ! -w "$settings_file" ]; then
+            settings_writable=0
+        fi
+
+        if [ "$settings_writable" -eq 0 ]; then
+            if chmod u+rw "$settings_file" 2>/dev/null && [ -w "$settings_file" ]; then
+                conversion_result="chmod"
+                print_warning "Adjusted VSCodium settings.json permissions to restore writability"
+                print_info "Future declarative runs may reset permissions; rerun deploy script afterwards if needed."
+            else
+                print_info "VSCodium settings.json is managed declaratively (read-only file detected)"
+                verify_declarative_vscodium_settings
+                return 0
+            fi
         fi
     fi
 
-    if [ "$managed_declaratively" -eq 1 ]; then
-        print_info "VSCodium settings.json is managed declaratively (read-only symlink detected)"
-        verify_declarative_vscodium_settings
-        return 0
-    fi
-
-    if [ "$converted_to_mutable" -eq 1 ]; then
+    if [ "$conversion_result" = "copied" ]; then
         print_success "VSCodium settings.json converted to writable file"
+    elif [ "$conversion_result" = "chmod" ]; then
+        print_success "VSCodium settings.json permissions updated to allow edits"
     fi
 
     local path_entries=("$wrapper_dir" "$HOME/.nix-profile/bin")

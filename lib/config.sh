@@ -78,6 +78,10 @@ get_binary_cache_sources() {
         caches+=("https://cuda-maintainers.cachix.org")
     fi
 
+    if (( ${#ADDITIONAL_BINARY_CACHES[@]} > 0 )); then
+        caches+=("${ADDITIONAL_BINARY_CACHES[@]}")
+    fi
+
     printf '%s\n' "${caches[@]}"
 }
 
@@ -90,6 +94,10 @@ get_binary_cache_public_keys() {
 
     if [[ "${GPU_TYPE:-}" == "nvidia" ]]; then
         keys+=("cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E=")
+    fi
+
+    if (( ${#ADDITIONAL_BINARY_CACHE_KEYS[@]} > 0 )); then
+        keys+=("${ADDITIONAL_BINARY_CACHE_KEYS[@]}")
     fi
 
     printf '%s\n' "${keys[@]}"
@@ -117,6 +125,39 @@ format_kernel_preference_string() {
     done
 
     printf '%s' "$joined"
+}
+
+append_unique_value() {
+    local -n target_array="$1"
+    local value="$2"
+
+    if [[ -z "$value" ]]; then
+        return 0
+    fi
+
+    local existing
+    for existing in "${target_array[@]}"; do
+        if [[ "$existing" == "$value" ]]; then
+            return 0
+        fi
+    done
+
+    target_array+=("$value")
+}
+
+register_additional_binary_cache() {
+    append_unique_value ADDITIONAL_BINARY_CACHES "$1"
+}
+
+register_additional_binary_cache_key() {
+    append_unique_value ADDITIONAL_BINARY_CACHE_KEYS "$1"
+}
+
+register_remote_builder_spec() {
+    append_unique_value REMOTE_BUILDER_SPECS "$1"
+    if (( ${#REMOTE_BUILDER_SPECS[@]} > 0 )); then
+        REMOTE_BUILDERS_ENABLED=true
+    fi
 }
 
 probe_performance_kernel_availability() {
@@ -250,7 +291,183 @@ compose_nixos_rebuild_options() {
         opts+=("--option" "fallback" "false")
     fi
 
+    if [[ "${REMOTE_BUILDERS_ENABLED:-false}" == "true" && ${#REMOTE_BUILDER_SPECS[@]} -gt 0 ]]; then
+        local builder_payload
+        builder_payload=$(printf '%s\n' "${REMOTE_BUILDER_SPECS[@]}")
+        builder_payload=${builder_payload%$'\n'}
+        if [[ -n "$builder_payload" ]]; then
+            opts+=("--option" "builders" "$builder_payload")
+        fi
+    fi
+
     printf '%s\n' "${opts[@]}"
+}
+
+activate_build_acceleration_context() {
+    if [[ "${REMOTE_BUILDERS_ENABLED:-false}" == "true" ]]; then
+        if [[ -n "${REMOTE_BUILDER_SSH_KEY:-}" && -f "$REMOTE_BUILDER_SSH_KEY" ]]; then
+            local ssh_fragment="-i ${REMOTE_BUILDER_SSH_KEY}"
+            if [[ -n "${REMOTE_BUILDER_SSH_OPTIONS:-}" ]]; then
+                ssh_fragment+=" ${REMOTE_BUILDER_SSH_OPTIONS}"
+            fi
+
+            if [[ -n "${NIX_SSHOPTS:-}" ]]; then
+                if [[ " $NIX_SSHOPTS " != *" ${ssh_fragment} "* ]]; then
+                    export NIX_SSHOPTS="$NIX_SSHOPTS $ssh_fragment"
+                fi
+            else
+                export NIX_SSHOPTS="$ssh_fragment"
+            fi
+        fi
+    fi
+
+    if [[ -n "${CACHIX_AUTH_TOKEN:-}" ]]; then
+        export CACHIX_AUTH_TOKEN
+    fi
+}
+
+describe_remote_build_context() {
+    if [[ "${REMOTE_BUILDERS_ENABLED:-false}" == "true" && ${#REMOTE_BUILDER_SPECS[@]} -gt 0 ]]; then
+        print_info "Remote builders enabled (${#REMOTE_BUILDER_SPECS[@]} target(s))"
+    fi
+
+    if (( ${#CACHIX_CACHE_NAMES[@]} > 0 )); then
+        local joined_caches
+        joined_caches=$(printf '%s, ' "${CACHIX_CACHE_NAMES[@]}")
+        joined_caches=${joined_caches%%, }
+        print_info "Cachix caches configured: ${joined_caches}"
+    fi
+}
+
+gather_remote_build_acceleration_preferences() {
+    print_section "Remote Builder & Cachix Configuration"
+    echo ""
+
+    local builder_specs_added=0
+
+    if confirm "Register SSH remote builders for this deployment?" "y"; then
+        while true; do
+            local spec
+            spec=$(prompt_user "Remote builder spec (ssh://host platform - jobs speed). Leave blank when done" "")
+            if [[ -z "$spec" ]]; then
+                break
+            fi
+
+            register_remote_builder_spec "$spec"
+            ((builder_specs_added++))
+            print_success "Registered remote builder: $spec"
+        done
+
+        if (( builder_specs_added > 0 )); then
+            local key_candidate
+            key_candidate=$(prompt_user "SSH private key for remote builders" "${REMOTE_BUILDER_SSH_KEY:-}")
+            if [[ -n "$key_candidate" ]]; then
+                if [[ -f "$key_candidate" ]]; then
+                    REMOTE_BUILDER_SSH_KEY="$key_candidate"
+                    print_info "Using SSH key: $REMOTE_BUILDER_SSH_KEY"
+                else
+                    print_warning "SSH key path $key_candidate does not exist; using default agent configuration"
+                fi
+            fi
+
+            local extra_opts
+            extra_opts=$(prompt_user "Additional ssh options for remote builders" "${REMOTE_BUILDER_SSH_OPTIONS:-}")
+            if [[ -n "$extra_opts" ]]; then
+                REMOTE_BUILDER_SSH_OPTIONS="$extra_opts"
+            fi
+        else
+            print_warning "No remote builder definitions provided; skipping SSH builder registration"
+            REMOTE_BUILDERS_ENABLED=false
+        fi
+    fi
+
+    local -a selected_caches=()
+    if confirm "Configure private or custom Cachix caches?" "n"; then
+        while true; do
+            local cache_name
+            cache_name=$(prompt_user "Cachix cache name (blank to finish)" "")
+            if [[ -z "$cache_name" ]]; then
+                break
+            fi
+            append_unique_value selected_caches "$cache_name"
+        done
+
+        if (( ${#selected_caches[@]} > 0 )); then
+            CACHIX_CACHE_NAMES=("${selected_caches[@]}")
+            print_info "Selected Cachix caches: ${CACHIX_CACHE_NAMES[*]}"
+
+            local supplied_token
+            supplied_token=$(prompt_secret "Cachix auth token" "leave blank for read-only caches")
+            if [[ -n "$supplied_token" ]]; then
+                CACHIX_AUTH_TOKEN="$supplied_token"
+                CACHIX_AUTH_ENABLED=true
+            else
+                CACHIX_AUTH_ENABLED=false
+            fi
+
+            if ! command -v cachix >/dev/null 2>&1; then
+                if declare -F ensure_prerequisite_installed >/dev/null 2>&1; then
+                    ensure_prerequisite_installed "cachix" "nixpkgs#cachix" "cachix CLI" || true
+                fi
+            fi
+
+            if command -v cachix >/dev/null 2>&1 && [[ -n "$CACHIX_AUTH_TOKEN" ]]; then
+                if run_as_primary_user cachix authtoken "$CACHIX_AUTH_TOKEN" >/dev/null 2>&1; then
+                    print_success "Stored Cachix auth token for current user"
+                else
+                    print_warning "Failed to register Cachix auth token automatically"
+                fi
+            elif [[ -n "$CACHIX_AUTH_TOKEN" ]]; then
+                print_warning "cachix CLI not available; unable to register auth token automatically"
+            fi
+
+            local cache
+            for cache in "${CACHIX_CACHE_NAMES[@]}"; do
+                local substituter="https://${cache}.cachix.org"
+                register_additional_binary_cache "$substituter"
+
+                local signing_key=""
+                if command -v cachix >/dev/null 2>&1; then
+                    local show_output
+                    show_output=$(run_as_primary_user cachix show "$cache" 2>/dev/null || cachix show "$cache" 2>/dev/null || true)
+                    signing_key=$(printf '%s\n' "$show_output" | awk -F': ' '/Public key/ {print $2}' | head -n1 | tr -d '\r')
+                fi
+
+                if [[ -z "$signing_key" ]]; then
+                    signing_key=$(prompt_user "Public signing key for ${cache}" "")
+                fi
+
+                if [[ -n "$signing_key" ]]; then
+                    register_additional_binary_cache_key "$signing_key"
+                else
+                    print_warning "No public key recorded for Cachix cache '${cache}'"
+                fi
+            done
+        else
+            print_info "No Cachix caches selected"
+        fi
+    fi
+
+    if (( builder_specs_added == 0 )) && (( ${#CACHIX_CACHE_NAMES[@]} == 0 )); then
+        print_info "Remote acceleration unchanged"
+    fi
+
+    if [[ -n "$REMOTE_BUILDERS_PREFERENCE_FILE" ]]; then
+        local pref_dir
+        pref_dir=$(dirname "$REMOTE_BUILDERS_PREFERENCE_FILE")
+        if safe_mkdir "$pref_dir"; then
+            if cat >"$REMOTE_BUILDERS_PREFERENCE_FILE" <<EOF
+REMOTE_BUILDERS_ENABLED=${REMOTE_BUILDERS_ENABLED}
+REMOTE_BUILDER_COUNT=${#REMOTE_BUILDER_SPECS[@]}
+EOF
+            then
+                chmod 600 "$REMOTE_BUILDERS_PREFERENCE_FILE" 2>/dev/null || true
+                safe_chown_user_dir "$REMOTE_BUILDERS_PREFERENCE_FILE" || true
+            fi
+        fi
+    fi
+
+    echo ""
 }
 
 # ============================================================================
@@ -725,6 +942,107 @@ EOF
             print_warning "Unable to create Gitea secrets cache directory: $cache_dir"
         fi
     fi
+
+    return 0
+}
+
+# ============================================================================
+# Password Provisioning Helpers
+# ============================================================================
+
+generate_password_hash() {
+    local password="$1"
+
+    if [[ -z "$password" ]]; then
+        return 1
+    fi
+
+    if command -v python3 >/dev/null 2>&1; then
+        PASSWORD_INPUT="$password" python3 - <<'PY'
+import crypt
+import os
+password = os.environ.get("PASSWORD_INPUT", "")
+if not password:
+    raise SystemExit(1)
+print(crypt.crypt(password, crypt.mksalt(crypt.METHOD_SHA512)))
+PY
+        return $?
+    fi
+
+    if command -v openssl >/dev/null 2>&1; then
+        printf '%s' "$password" | openssl passwd -6 -stdin 2>/dev/null
+        return $?
+    fi
+
+    return 1
+}
+
+provision_primary_user_password() {
+    if [[ -n "${USER_PASSWORD_BLOCK:-}" ]]; then
+        return 0
+    fi
+
+    print_info "No existing password directives detected for $PRIMARY_USER"
+    echo "  1) Generate a salted password hash now (recommended)"
+    echo "  2) Provide an existing hashed password string"
+    echo "  3) Skip (retain manual placeholder in configuration.nix)"
+
+    local choice
+    choice=$(prompt_user "Select password provisioning option (1-3)" "1")
+
+    case "$choice" in
+        2)
+            local hashed_value
+            hashed_value=$(prompt_user "Paste hashed password" "")
+            if [[ -n "$hashed_value" ]]; then
+                printf -v USER_PASSWORD_BLOCK '    hashedPassword = "%s";\n' "$hashed_value"
+                print_success "Captured hashed password for $PRIMARY_USER"
+            else
+                USER_PASSWORD_BLOCK=$'    # (no password directives detected; update manually if required)\n'
+                print_warning "No hashed password supplied; manual update still required"
+            fi
+            ;;
+        3)
+            USER_PASSWORD_BLOCK=$'    # (no password directives detected; update manually if required)\n'
+            print_warning "Leaving password configuration unchanged"
+            ;;
+        *)
+            local attempt
+            for attempt in 1 2 3; do
+                local first
+                local second
+                first=$(prompt_secret "Enter new password for $PRIMARY_USER")
+                second=$(prompt_secret "Confirm password")
+
+                if [[ -z "$first" ]]; then
+                    print_warning "Empty password provided; try again"
+                    continue
+                fi
+
+                if [[ "$first" != "$second" ]]; then
+                    print_warning "Passwords did not match (attempt $attempt of 3)"
+                    continue
+                fi
+
+                local hashed
+                hashed=$(generate_password_hash "$first")
+                unset first second
+
+                if [[ -n "$hashed" ]]; then
+                    printf -v USER_PASSWORD_BLOCK '    hashedPassword = "%s";\n' "$hashed"
+                    print_success "Stored hashed password directive for $PRIMARY_USER"
+                    return 0
+                fi
+
+                print_error "Unable to generate password hash automatically"
+                break
+            done
+
+            if [[ -z "${USER_PASSWORD_BLOCK:-}" ]]; then
+                USER_PASSWORD_BLOCK=$'    # (no password directives detected; update manually if required)\n'
+            fi
+            ;;
+    esac
 
     return 0
 }
@@ -1320,6 +1638,10 @@ EOF
         nix_parallel_comment="using upstream defaults (auto jobs, 0 cores)"
     fi
 
+    if [[ -z "${USER_PASSWORD_BLOCK:-}" ]]; then
+        provision_primary_user_password || true
+    fi
+
     local user_password_block
     if [[ -n "${USER_PASSWORD_BLOCK:-}" ]]; then
         user_password_block="$USER_PASSWORD_BLOCK"
@@ -1835,6 +2157,10 @@ validate_system_build_stage() {
     print_info "This checks for syntax errors and missing dependencies"
 
     local -a nixos_rebuild_opts=()
+    if declare -F activate_build_acceleration_context >/dev/null 2>&1; then
+        activate_build_acceleration_context
+    fi
+
     if declare -F compose_nixos_rebuild_options >/dev/null 2>&1; then
         mapfile -t nixos_rebuild_opts < <(compose_nixos_rebuild_options "${USE_BINARY_CACHES:-true}")
     fi
@@ -1849,6 +2175,10 @@ validate_system_build_stage() {
 
     if declare -F describe_binary_cache_usage >/dev/null 2>&1; then
         describe_binary_cache_usage "nixos-rebuild dry-build"
+    fi
+
+    if declare -F describe_remote_build_context >/dev/null 2>&1; then
+        describe_remote_build_context
     fi
 
     # Run dry-build (doesn't actually build, just evaluates)

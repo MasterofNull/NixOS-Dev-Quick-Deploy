@@ -115,6 +115,9 @@ readonly DEPLOYMENT_PREFERENCES_DIR="$STATE_DIR/preferences"
 readonly BINARY_CACHE_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/binary-cache-preference.env"
 readonly HIBERNATION_SWAP_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/hibernation-swap-size.env"
 readonly ZSWAP_OVERRIDE_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/zswap-override.env"
+readonly REMOTE_BUILDERS_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/remote-builders.env"
+readonly FLATPAK_PROFILE_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/flatpak-profile.env"
+readonly FLATPAK_PROFILE_STATE_FILE="$DEPLOYMENT_PREFERENCES_DIR/flatpak-profile-state.env"
 
 # ============================================================================
 # Mutable Flags
@@ -178,6 +181,23 @@ HOME_MANAGER_CHANNEL_REF=""
 HOME_MANAGER_CHANNEL_URL=""
 
 # ============================================================================
+# Build Acceleration Preferences
+# ============================================================================
+
+declare -ag REMOTE_BUILDER_SPECS=()
+REMOTE_BUILDERS_ENABLED=false
+REMOTE_BUILDER_SSH_KEY=""
+REMOTE_BUILDER_SSH_OPTIONS=""
+REMOTE_BUILD_ACCELERATION_MODE=""
+
+declare -ag ADDITIONAL_BINARY_CACHES=()
+declare -ag ADDITIONAL_BINARY_CACHE_KEYS=()
+
+declare -ag CACHIX_CACHE_NAMES=()
+CACHIX_AUTH_ENABLED=false
+CACHIX_AUTH_TOKEN=""
+
+# ============================================================================
 # Flatpak Configuration
 # ============================================================================
 
@@ -187,7 +207,7 @@ FLATHUB_REMOTE_FALLBACK_URL="https://flathub.org/repo/flathub.flatpakrepo"
 FLATHUB_BETA_REMOTE_NAME="flathub-beta"
 FLATHUB_BETA_REMOTE_URL="https://flathub.org/beta-repo/flathub-beta.flatpakrepo"
 
-DEFAULT_FLATPAK_APPS=(
+declare -ag FLATPAK_PROFILE_CORE_APPS=(
     "com.github.tchx84.Flatseal"
     "org.gnome.FileRoller"
     "net.nokyan.Resources"
@@ -199,6 +219,39 @@ DEFAULT_FLATPAK_APPS=(
     "io.podman_desktop.PodmanDesktop"
     "org.sqlitebrowser.sqlitebrowser"
 )
+
+declare -ag FLATPAK_PROFILE_AI_WORKSTATION_APPS=()
+FLATPAK_PROFILE_AI_WORKSTATION_APPS+=("${FLATPAK_PROFILE_CORE_APPS[@]}")
+FLATPAK_PROFILE_AI_WORKSTATION_APPS+=(
+    "com.getpostman.Postman"
+    "io.dbeaver.DBeaverCommunity"
+    "com.visualstudio.code"
+    "io.github.Qalculate.Qalculate"
+    "com.bitwarden.desktop"
+)
+
+declare -ag FLATPAK_PROFILE_MINIMAL_APPS=(
+    "org.mozilla.firefox"
+    "md.obsidian.Obsidian"
+    "com.github.tchx84.Flatseal"
+    "io.podman_desktop.PodmanDesktop"
+)
+
+declare -Ag FLATPAK_PROFILE_LABELS=(
+    [core]="Core desktop (browser, media, developer essentials)"
+    [ai_workstation]="AI workstation (core plus tooling and data clients)"
+    [minimal]="Minimal (lean stack for recovery and remote shells)"
+)
+
+declare -Ag FLATPAK_PROFILE_APPSETS=(
+    [core]="FLATPAK_PROFILE_CORE_APPS"
+    [ai_workstation]="FLATPAK_PROFILE_AI_WORKSTATION_APPS"
+    [minimal]="FLATPAK_PROFILE_MINIMAL_APPS"
+)
+
+DEFAULT_FLATPAK_PROFILE="${DEFAULT_FLATPAK_PROFILE:-core}"
+SELECTED_FLATPAK_PROFILE=""
+DEFAULT_FLATPAK_APPS=("${FLATPAK_PROFILE_CORE_APPS[@]}")
 
 LAST_FLATPAK_QUERY_MESSAGE=""
 
@@ -317,6 +370,9 @@ HUGGINGFACE_CACHE_DIR="$PRIMARY_HOME/.cache/huggingface"
 OPEN_WEBUI_DATA_DIR="$PRIMARY_HOME/.local/share/open-webui"
 AIDER_CONFIG_DIR="$PRIMARY_HOME/.config/aider"
 TEA_CONFIG_DIR="$PRIMARY_HOME/.config/tea"
+
+# Cached secrets and provisioning artifacts
+USER_PASSWORD_BLOCK=""
 
 # ============================================================================
 # Gitea Secrets (initialized empty, populated during runtime)
