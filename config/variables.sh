@@ -37,7 +37,14 @@
 # ============================================================================
 
 # SCRIPT_VERSION now defined in main script - DO NOT redefine
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"  # Project root directory
+# SCRIPT_DIR is defined by the bootstrap loader before sourcing configuration.
+# Avoid re-declaring the readonly variable to prevent noisy "readonly variable"
+# warnings when the configuration is loaded multiple times. Only define it when
+# the main script has not set the variable yet (for example, when the file is
+# sourced in isolation during tests).
+if [[ -z "${SCRIPT_DIR:-}" ]]; then
+    readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"  # Project root directory
+fi
 readonly SCRIPT_NAME="nixos-quick-deploy.sh"  # Main script filename
 
 # ============================================================================
