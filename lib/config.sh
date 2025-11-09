@@ -828,16 +828,20 @@ generate_nixos_system_config() {
     # Backup Existing Configurations
     # ========================================================================
     local BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    local BACKUP_DIR="$HM_CONFIG_DIR/backup"
+
+    if [[ -f "$SYSTEM_CONFIG_FILE" || -f "$FLAKE_FILE" ]]; then
+        safe_mkdir "$BACKUP_DIR" || print_warning "Could not create backup directory"
+    fi
 
     if [[ -f "$SYSTEM_CONFIG_FILE" ]]; then
-        local BACKUP_FILE="$SYSTEM_CONFIG_FILE.backup.$BACKUP_TIMESTAMP"
-        cp "$SYSTEM_CONFIG_FILE" "$BACKUP_FILE" 2>/dev/null || true
-        print_success "Backed up configuration.nix"
+        local BACKUP_FILE="$BACKUP_DIR/configuration.nix.backup.$BACKUP_TIMESTAMP"
+        safe_copy_file_silent "$SYSTEM_CONFIG_FILE" "$BACKUP_FILE" && \
+            print_success "Backed up configuration.nix"
     fi
 
     if [[ -f "$FLAKE_FILE" ]]; then
-        safe_mkdir "$HM_CONFIG_DIR/backup" || print_warning "Could not create backup directory"
-        safe_copy_file_silent "$FLAKE_FILE" "$HM_CONFIG_DIR/backup/flake.nix.backup.$BACKUP_TIMESTAMP" && \
+        safe_copy_file_silent "$FLAKE_FILE" "$BACKUP_DIR/flake.nix.backup.$BACKUP_TIMESTAMP" && \
             print_success "Backed up flake.nix"
     fi
 
