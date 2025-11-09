@@ -62,6 +62,7 @@ That's it! The script will automatically:
 - Prerequisites installation (5-10 minutes)
 - Backup creation (1-2 minutes)
 - Configuration generation (2-3 minutes)
+- Build acceleration survey (pick binary caches, remote builders/private Cachix, or local compilation)
 - System deployment (10-20 minutes)
 - Tools installation (5-15 minutes)
 - Total time: ~30-60 minutes
