@@ -187,8 +187,55 @@ probe_performance_kernel_availability() {
         || true
 }
 
+resolve_total_ram_gb() {
+    local cached="${TOTAL_RAM_GB:-}"
+    if [[ "$cached" =~ ^[0-9]+$ && "$cached" -gt 0 ]]; then
+        echo "$cached"
+        return 0
+    fi
+
+    local mem_kib=""
+    if [[ -r /proc/meminfo ]]; then
+        mem_kib=$(awk '/MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null)
+    fi
+
+    if [[ "$mem_kib" =~ ^[0-9]+$ && "$mem_kib" -gt 0 ]]; then
+        local computed=$(( (mem_kib + 1048575) / 1048576 ))
+        if (( computed < 1 )); then
+            computed=1
+        fi
+        TOTAL_RAM_GB="$computed"
+        export TOTAL_RAM_GB
+        echo "$computed"
+        return 0
+    fi
+
+    if command -v free >/dev/null 2>&1; then
+        local mem_mb=""
+        mem_mb=$(free -m | awk '/^Mem:/ {print $2}' 2>/dev/null)
+        if [[ "$mem_mb" =~ ^[0-9]+$ && "$mem_mb" -gt 0 ]]; then
+            local computed=$(( (mem_mb + 1023) / 1024 ))
+            if (( computed < 1 )); then
+                computed=1
+            fi
+            TOTAL_RAM_GB="$computed"
+            export TOTAL_RAM_GB
+            echo "$computed"
+            return 0
+        fi
+    fi
+
+    echo "0"
+}
+
 determine_nixos_parallelism() {
     local detected_ram="${TOTAL_RAM_GB:-}"
+    if [[ ! "$detected_ram" =~ ^[0-9]+$ ]]; then
+        detected_ram=$(resolve_total_ram_gb)
+    elif (( detected_ram <= 0 )); then
+        detected_ram=$(resolve_total_ram_gb)
+    fi
+
     local detected_cores="${CPU_CORES:-}"
     local available_cores
 
@@ -250,7 +297,7 @@ compose_nixos_rebuild_options() {
     local throttle_message="${parallelism[2]:-}"
 
     if [[ -n "$throttle_message" ]]; then
-        print_info "$throttle_message"
+        print_info "$throttle_message" >&2
     fi
 
     local -a opts=(
@@ -1062,7 +1109,8 @@ generate_nixos_system_config() {
     # Detect System Information
     # ========================================================================
     local HOSTNAME=$(hostname)
-    local NIXOS_VERSION=$(derive_system_release_version)
+    local DETECTED_NIXOS_VERSION=$(derive_system_release_version)
+    local NIXOS_VERSION="${SELECTED_NIXOS_VERSION:-$DETECTED_NIXOS_VERSION}"
     local STATE_VERSION="$NIXOS_VERSION"
     local SYSTEM_ARCH=$(uname -m)
 
@@ -1072,6 +1120,18 @@ generate_nixos_system_config() {
         aarch64) SYSTEM_ARCH="aarch64-linux" ;;
         *) SYSTEM_ARCH="x86_64-linux" ;;
     esac
+
+    if [[ "$NIXOS_VERSION" != "unstable" ]]; then
+        local resolved_state_version
+        resolved_state_version=$(resolve_nixos_release_version "$NIXOS_VERSION")
+        emit_nixos_channel_fallback_notice
+        NIXOS_VERSION="$resolved_state_version"
+        STATE_VERSION="$resolved_state_version"
+    else
+        # When tracking unstable, keep detected release information for templates
+        NIXOS_VERSION="$DETECTED_NIXOS_VERSION"
+        STATE_VERSION="$DETECTED_NIXOS_VERSION"
+    fi
 
     print_info "System: $HOSTNAME"
     print_info "Architecture: $SYSTEM_ARCH"
@@ -1083,7 +1143,17 @@ generate_nixos_system_config() {
     # Determine Channels
     # ========================================================================
     local NIXOS_CHANNEL_NAME="${SYNCHRONIZED_NIXOS_CHANNEL:-nixos-${NIXOS_VERSION}}"
-    local HM_CHANNEL_NAME="${SYNCHRONIZED_HOME_MANAGER_CHANNEL:-release-${NIXOS_VERSION}}"
+    local HM_CHANNEL_NAME="${SYNCHRONIZED_HOME_MANAGER_CHANNEL:-}"
+    local resolved_hm_version=""
+
+    if [[ -z "$HM_CHANNEL_NAME" ]]; then
+        resolved_hm_version=$(resolve_home_manager_release_version "$NIXOS_VERSION")
+        HM_CHANNEL_NAME="release-${resolved_hm_version}"
+    elif [[ "$HM_CHANNEL_NAME" =~ ^release-([0-9]+\.[0-9]+)$ ]]; then
+        resolved_hm_version=$(resolve_home_manager_release_version "${BASH_REMATCH[1]}")
+        HM_CHANNEL_NAME="release-${resolved_hm_version}"
+    fi
+    emit_home_manager_fallback_notice
 
     # If using unstable, adjust home-manager channel
     if [[ "$NIXOS_CHANNEL_NAME" == "nixos-unstable" ]]; then
@@ -1288,6 +1358,78 @@ generate_nixos_system_config() {
     local binary_cache_settings
     binary_cache_settings=$(generate_binary_cache_settings "${USE_BINARY_CACHES:-true}")
 
+    local glf_os_definitions
+    glf_os_definitions=$(cat <<'EOF'
+  glfMangoHudPresets = {
+    disabled = "";
+    light = ''control=mangohud,legacy_layout=0,horizontal,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,ram,vram,ps,fps,fps_metrics=AVG,0.001,font_scale=1.05'';
+    full = ''control=mangohud,legacy_layout=0,vertical,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,core_load,ram,vram,fps,fps_metrics=AVG,0.001,frametime,refresh_rate,resolution,vulkan_driver,wine'';
+  };
+  glfMangoHudProfile = "full";
+  glfMangoHudConfig = glfMangoHudPresets.${glfMangoHudProfile};
+  glfLutrisWithGtk = pkgs.lutris.override { extraLibraries = p: [ p.libadwaita p.gtk4 ]; };
+  glfGamingPackages = [
+    glfLutrisWithGtk
+    pkgs.heroic
+    pkgs.joystickwake
+    pkgs.mangohud
+    pkgs.mesa-demos
+    pkgs.oversteer
+    pkgs.umu-launcher
+    pkgs.wineWowPackages.staging
+    pkgs.winetricks
+  ];
+  glfSteamPackage = pkgs.steam.override {
+    extraEnv = {
+      MANGOHUD = if glfMangoHudConfig != "" then "1" else "0";
+      OBS_VKCAPTURE = "1";
+    };
+  };
+  glfSteamCompatPackages =
+    lib.optionals (pkgs ? proton-ge-bin) [ pkgs.proton-ge-bin ];
+  glfSystemUtilities = with pkgs; [
+    exfatprogs
+    fastfetch
+    ffmpeg
+    ffmpegthumbnailer
+    libva-utils
+    usbutils
+    hunspell
+    hunspellDicts.fr-any
+    hyphen
+    texlivePackages.hyphen-french
+  ];
+EOF
+)
+
+    local glf_gaming_stack_section
+    glf_gaming_stack_section=$(cat <<'EOF'
+  # ===========================================================================
+  # Gaming Stack (GLF OS integration)
+  # ===========================================================================
+  hardware.steam-hardware.enable = true;
+  hardware.xone.enable = true;
+  hardware.xpadneo.enable = true;
+  hardware.opentabletdriver.enable = true;
+
+  programs.gamemode.enable = true;
+
+  programs.gamescope = {
+    enable = true;
+    capSysNice = true;
+  };
+
+  programs.steam = {
+    enable = true;
+    gamescopeSession.enable = true;
+    package = glfSteamPackage;
+    remotePlay.openFirewall = true;
+    localNetworkGameTransfers.openFirewall = true;
+    extraCompatPackages = glfSteamCompatPackages;
+  };
+EOF
+)
+
     local gpu_hardware_section
     case "${GPU_TYPE:-software}" in
         intel)
@@ -1491,15 +1633,21 @@ EOF
 
     local kernel_params_block
     kernel_params_block=$(cat <<'EOF'
-    kernelParams = [
-      # Quiet boot (cleaner boot messages)
-      "quiet"
-      "splash"
+    kernelParams = lib.mkAfter (
+      (lib.optional (lib.elem "kvm-amd" config.boot.kernelModules) "amd_pstate=active")
+      ++ [
+        "nosplit_lock_mitigate"
+        "clearcpuid=514"
 
-      # Performance: Disable CPU security mitigations (OPTIONAL - commented for security)
-      # WARNING: Only enable on trusted systems where performance > security
-      # "mitigations=off"
-    ];
+        # Quiet boot (cleaner boot messages)
+        "quiet"
+        "splash"
+
+        # Performance: Disable CPU security mitigations (OPTIONAL - commented for security)
+        # WARNING: Only enable on trusted systems where performance > security
+        # "mitigations=off"
+      ]
+    );
 EOF
 )
 
@@ -1534,11 +1682,8 @@ EOF
         kernel_sysctl_memory=$(cat <<EOF
 
       # Memory management tunables for swap-backed hibernation (auto-tuned)
-      "vm.swappiness" = 10;
-      "vm.vfs_cache_pressure" = 50;
       "vm.dirty_ratio" = 10;
       "vm.dirty_background_ratio" = 5;
-      "vm.max_map_count" = 262144;
       "fs.inotify.max_user_watches" = 524288;
       "fs.inotify.max_user_instances" = 512;
       "fs.inotify.max_queued_events" = 32768;
@@ -1551,21 +1696,27 @@ EOF
         print_info "Applying legacy memory management sysctl overrides for zswap-backed hibernation."
 
         kernel_params_block=$(cat <<EOF
-    kernelParams = [
-      # Zswap: Compressed swap cache tuned for ${total_ram_value}GB RAM systems
-      "zswap.enabled=1"
-      "zswap.compressor=${zswap_compressor}"
-      "zswap.max_pool_percent=${zswap_percent}"
-      "zswap.zpool=${zswap_zpool}"
+    kernelParams = lib.mkAfter (
+      (lib.optional (lib.elem "kvm-amd" config.boot.kernelModules) "amd_pstate=active")
+      ++ [
+        "nosplit_lock_mitigate"
+        "clearcpuid=514"
 
-      # Quiet boot (cleaner boot messages)
-      "quiet"
-      "splash"
+        # Zswap: Compressed swap cache tuned for ${total_ram_value}GB RAM systems
+        "zswap.enabled=1"
+        "zswap.compressor=${zswap_compressor}"
+        "zswap.max_pool_percent=${zswap_percent}"
+        "zswap.zpool=${zswap_zpool}"
 
-      # Performance: Disable CPU security mitigations (OPTIONAL - commented for security)
-      # WARNING: Only enable on trusted systems where performance > security
-      # "mitigations=off"
-    ];
+        # Quiet boot (cleaner boot messages)
+        "quiet"
+        "splash"
+
+        # Performance: Disable CPU security mitigations (OPTIONAL - commented for security)
+        # WARNING: Only enable on trusted systems where performance > security
+        # "mitigations=off"
+      ]
+    );
 EOF
 )
 
@@ -1807,6 +1958,8 @@ EOF
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GPU_HARDWARE_SECTION@" "$gpu_hardware_section"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GPU_SESSION_VARIABLES@" "$gpu_session_variables"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GPU_DRIVER_PACKAGES@" "$gpu_driver_packages_block"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GLF_OS_DEFINITIONS@" "$glf_os_definitions"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GLF_GAMING_STACK_SECTION@" "$glf_gaming_stack_section"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@SELECTED_TIMEZONE@" "$TIMEZONE"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@CURRENT_LOCALE@" "$LOCALE"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@NIXOS_VERSION@" "$NIXOS_VERSION"
@@ -1904,12 +2057,27 @@ create_home_manager_config() {
         print_warning "Using system version: $STATE_VERSION"
     fi
 
-    local NIXOS_CHANNEL_NAME=$(basename "$NIXOS_CHANNEL" 2>/dev/null || echo "nixos-${STATE_VERSION}")
+    local NIXOS_CHANNEL_NAME="${SYNCHRONIZED_NIXOS_CHANNEL:-$(basename "$NIXOS_CHANNEL" 2>/dev/null)}"
+    if [[ -z "$NIXOS_CHANNEL_NAME" ]]; then
+        NIXOS_CHANNEL_NAME="nixos-${STATE_VERSION}"
+    fi
+
+    local selected_state="${SELECTED_NIXOS_VERSION:-$STATE_VERSION}"
+    if [[ "$selected_state" != "unstable" ]]; then
+        STATE_VERSION=$(resolve_nixos_release_version "$selected_state")
+        emit_nixos_channel_fallback_notice
+    fi
     local HM_CHANNEL_NAME="${HOME_MANAGER_CHANNEL_REF:-$(normalize_channel_name "$HM_CHANNEL")}"
+    local resolved_hm_version=""
 
     if [[ -z "$HM_CHANNEL_NAME" ]]; then
-        HM_CHANNEL_NAME="release-${STATE_VERSION}"
+        resolved_hm_version=$(resolve_home_manager_release_version "$STATE_VERSION")
+        HM_CHANNEL_NAME="release-${resolved_hm_version}"
+    elif [[ "$HM_CHANNEL_NAME" =~ ^release-([0-9]+\.[0-9]+)$ ]]; then
+        resolved_hm_version=$(resolve_home_manager_release_version "${BASH_REMATCH[1]}")
+        HM_CHANNEL_NAME="release-${resolved_hm_version}"
     fi
+    emit_home_manager_fallback_notice
 
     print_info "NixOS channel: $NIXOS_CHANNEL_NAME"
     print_info "Home-manager channel: $HM_CHANNEL_NAME"
@@ -2029,6 +2197,55 @@ create_home_manager_config() {
         GPU_MONITORING_PACKAGES="[ nvtop ]"
     fi
 
+    local glf_home_definitions
+    glf_home_definitions=$(cat <<'EOF'
+  glfMangoHudPresets = {
+    disabled = "";
+    light = ''control=mangohud,legacy_layout=0,horizontal,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,ram,vram,ps,fps,fps_metrics=AVG,0.001,font_scale=1.05'';
+    full = ''control=mangohud,legacy_layout=0,vertical,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,core_load,ram,vram,fps,fps_metrics=AVG,0.001,frametime,refresh_rate,resolution,vulkan_driver,wine'';
+  };
+  glfMangoHudProfile = "full";
+  glfMangoHudConfig = glfMangoHudPresets.${glfMangoHudProfile};
+  glfMangoHudConfigFileContents =
+    let
+      entries = lib.filter (entry: entry != "") (lib.splitString "," glfMangoHudConfig);
+    in
+    lib.concatStringsSep "\n" entries;
+  glfLutrisWithGtk = pkgs.lutris.override { extraLibraries = p: [ p.libadwaita p.gtk4 ]; };
+  glfGamingPackages = [
+    glfLutrisWithGtk
+    pkgs.heroic
+    pkgs.joystickwake
+    pkgs.mangohud
+    pkgs.mesa-demos
+    pkgs.oversteer
+    pkgs.umu-launcher
+    pkgs.wineWowPackages.staging
+    pkgs.winetricks
+  ];
+  glfSteamPackage = pkgs.steam.override {
+    extraEnv = {
+      MANGOHUD = if glfMangoHudConfig != "" then "1" else "0";
+      OBS_VKCAPTURE = "1";
+    };
+  };
+  glfSteamCompatPackages =
+    lib.optionals (pkgs ? proton-ge-bin) [ pkgs.proton-ge-bin ];
+  glfSystemUtilities = with pkgs; [
+    exfatprogs
+    fastfetch
+    ffmpeg
+    ffmpegthumbnailer
+    libva-utils
+    usbutils
+    hunspell
+    hunspellDicts.fr-any
+    hyphen
+    texlivePackages.hyphen-french
+  ];
+EOF
+)
+
     print_info "Customizing home.nix..."
 
     if ! ensure_gitea_secrets_ready; then
@@ -2041,6 +2258,7 @@ create_home_manager_config() {
     replace_placeholder "$HOME_MANAGER_FILE" "HOMEDIR" "$HOME"
     replace_placeholder "$HOME_MANAGER_FILE" "STATEVERSION_PLACEHOLDER" "$STATE_VERSION"
     replace_placeholder "$HOME_MANAGER_FILE" "@GPU_MONITORING_PACKAGES@" "$GPU_MONITORING_PACKAGES"
+    replace_placeholder "$HOME_MANAGER_FILE" "@GLF_HOME_DEFINITIONS@" "$glf_home_definitions"
 
     local HOME_HOSTNAME=$(hostname)
     replace_placeholder "$HOME_MANAGER_FILE" "@HOSTNAME@" "$HOME_HOSTNAME"
