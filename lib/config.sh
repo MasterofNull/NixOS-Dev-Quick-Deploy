@@ -1448,9 +1448,7 @@ EOF
     kernel_sysctl_hardening=$(cat <<'EOF'
 
       # Kernel hardening defaults preserved from the deprecated quick-deploy script
-      "kernel.kptr_restrict" = 2;
       "kernel.dmesg_restrict" = 1;
-      "kernel.kexec_load_disabled" = 1;
       "kernel.perf_event_paranoid" = 3;
       "kernel.yama.ptrace_scope" = 1;
       "fs.protected_fifos" = 2;
