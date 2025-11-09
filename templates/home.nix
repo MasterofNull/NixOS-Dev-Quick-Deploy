@@ -62,18 +62,7 @@ let
     in
     if cosmicOnlyShowInEnvironments == [ ] then "" else "${joined};";
   commonPythonOverrides = import ./python-overrides.nix;
-  glfMangoHudPresets = {
-    disabled = "";
-    light = ''control=mangohud,legacy_layout=0,horizontal,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,ram,vram,ps,fps,fps_metrics=AVG,0.001,font_scale=1.05'';
-    full = ''control=mangohud,legacy_layout=0,vertical,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,core_load,ram,vram,fps,fps_metrics=AVG,0.001,frametime,refresh_rate,resolution,vulkan_driver,wine'';
-  };
-  glfMangoHudProfile = "full";
-  glfMangoHudConfig = glfMangoHudPresets.${glfMangoHudProfile};
-  glfMangoHudConfigFileContents =
-    let
-      entries = lib.filter (entry: entry != "") (lib.splitString "," glfMangoHudConfig);
-    in
-    lib.concatStringsSep "\n" entries;
+  @GLF_HOME_DEFINITIONS@
   gpuMonitoringPackages =
     # Populated by nixos-quick-deploy.sh to enable vendor-specific GPU monitors.
     with pkgs; @GPU_MONITORING_PACKAGES@;
@@ -1510,17 +1499,19 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
     package = pkgs.git;
 
     # Git user configuration - set these manually after installation:
-      # Uncomment the fields below and replace examples with your git user name and email.
-      # Then run "home-manager switch -b backup --flake ~/.dotfiles/home-manager".
-      # To apply these changes.
+    # Uncomment the fields below and replace examples with your git user name and email.
+    # Then run "home-manager switch -b backup --flake ~/.dotfiles/home-manager"
+    # to apply these changes.
+    # userName = "Your Name";
+    # userEmail = "you@example.com";
 
-    settings = {
-      #user.name = "Your Name";
-      #user.email = "you@example.com";
+    extraConfig = {
       init.defaultBranch = "main";
       pull.rebase = false;
       core.editor = "DEFAULTEDITOR";
-      alias = {
+    };
+
+    aliases = {
         st = "status";
         co = "checkout";
         br = "branch";
@@ -1529,7 +1520,6 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
         last = "log -1 HEAD";
         visual = "log --oneline --graph --decorate --all";
       };
-    };
   };
 
   # ========================================================================
