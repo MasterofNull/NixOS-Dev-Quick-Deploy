@@ -24,3 +24,7 @@ result-*
 # Version tracking
 .nixos-quick-deploy-version
 .nixos-deploy-last-backup
+
+# Git metadata that should not be versioned
+.github/
+.githooks/
