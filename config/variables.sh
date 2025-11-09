@@ -125,6 +125,7 @@ readonly ZSWAP_OVERRIDE_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/zswap-overr
 readonly REMOTE_BUILDERS_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/remote-builders.env"
 readonly FLATPAK_PROFILE_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/flatpak-profile.env"
 readonly FLATPAK_PROFILE_STATE_FILE="$DEPLOYMENT_PREFERENCES_DIR/flatpak-profile-state.env"
+readonly GIT_IDENTITY_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/git-identity.env"
 
 # ============================================================================
 # Mutable Flags
@@ -261,6 +262,17 @@ SELECTED_FLATPAK_PROFILE=""
 DEFAULT_FLATPAK_APPS=("${FLATPAK_PROFILE_CORE_APPS[@]}")
 
 LAST_FLATPAK_QUERY_MESSAGE=""
+
+# ============================================================================
+# Git Identity Preferences
+# ============================================================================
+GIT_USER_NAME=""
+GIT_USER_EMAIL=""
+GIT_IDENTITY_SKIP="false"
+GIT_IDENTITY_PREFS_LOADED="false"
+
+# Track whether user-facing prompts already ran this session
+USER_SETTINGS_INITIALIZED="false"
 
 # ============================================================================
 # User Resolution (handle sudo invocation)

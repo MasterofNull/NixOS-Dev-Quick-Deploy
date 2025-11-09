@@ -2097,7 +2097,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
     #   git config --global user.email "you@example.com"
     ".gitconfig".text = ''
       [user]
-      	# TODO: Set your name and email
+      	# TODO: Set your name and email then run this command in the terminal: home-manager switch -b backup --flake ~/.dotfiles/home-manager
       	# name = Your Name
       	# email = you@example.com
 

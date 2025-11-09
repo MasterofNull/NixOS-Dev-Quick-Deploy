@@ -561,6 +561,16 @@ EOF
         print_success "Python runtime: ${PYTHON_BIN[0]} ($(${PYTHON_BIN[@]} --version 2>&1))"
     fi
 
+    # ========================================================================
+    # Step 1.19: Collect User Preferences & App Selections
+    # ========================================================================
+    print_section "User Preferences & Integrations"
+    echo ""
+    if ! ensure_user_settings_ready; then
+        print_error "Failed to collect user preferences and integrations"
+        exit 1
+    fi
+
     export IMPERATIVE_INSTALLS_ALLOWED="$previous_imperative_flag"
 
     # ------------------------------------------------------------------------
