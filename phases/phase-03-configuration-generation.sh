@@ -105,27 +105,17 @@ phase_03_config_generation() {
     echo ""
 
     # ========================================================================
-    # Step 4.1: Gather User Information
+    # Step 4.1: Confirm User Settings
     # ========================================================================
-    # Why: Need user preferences to customize configuration:
-    #      - Username and description (for user account creation)
-    #      - Shell preference (bash/zsh/fish)
-    #      - Editor preference (vim/emacs/nano)
-    #      - Desktop environment options
-    # How: gather_user_info() prompts for user input
-    # Sets: Global variables used by config generation
-    #
-    # Interactive prompts:
-    # - User description: For account full name
-    # - Default shell: Which shell to use (affects dotfiles)
-    # - Text editor: Default EDITOR environment variable
-    # - Optional features: Enable/disable specific components
-    #
-    # Why gather now: Prevents mid-deployment prompts
-    # Validation: Ensures required info is present
-    # Defaults: Sensible defaults if user skips prompts
-    if ! gather_user_info; then
-        print_error "Failed to gather user information"
+    # Why: Templates rely on previously captured user preferences (shell,
+    #      editor, git identity, Flatpak profile, optional Gitea settings).
+    # How: ensure_user_settings_ready() verifies the Phase 1 survey ran and
+    #      rehydrates cached selections when resuming mid-deployment.
+    # Behavior:
+    # - No new prompts during normal runs (everything asked in Phase 1)
+    # - Resume workflows reload cached answers or prompt only if missing
+    if ! ensure_user_settings_ready; then
+        print_error "Failed to confirm user settings"
         return 1
     fi
 

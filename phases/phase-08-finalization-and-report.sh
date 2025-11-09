@@ -238,6 +238,9 @@ phase_08_finalization_and_report() {
     # ========================================================================
     # Step 8.8: Next Steps Guide
     # ========================================================================
+    local git_identity_hint="${GIT_IDENTITY_PREFERENCE_FILE:-$DEPLOYMENT_PREFERENCES_DIR/git-identity.env}"
+    local gitea_secrets_hint="${GITEA_SECRETS_CACHE_FILE:-$PRIMARY_HOME/.config/nixos-quick-deploy/gitea-secrets.env}"
+
     echo -e "${BLUE}Next Steps:${NC}"
     echo ""
 
@@ -261,8 +264,19 @@ phase_08_finalization_and_report() {
     echo -e "     ${YELLOW}~/NixOS-Dev-Quick-Deploy/scripts/system-health-check.sh${NC}"
     echo ""
 
-    echo -e "  ${GREEN}5.${NC} Apply Git Credentials:"
-    echo -e "     ${YELLOW}Edit ~/.dotfiles/home-manager/home.nix programs.git follow the instructions provided.${NC}"
+    echo -e "  ${GREEN}6.${NC} Adjust git identity later if needed:"
+    echo -e "     ${YELLOW}git config --global user.name \"Your Name\"${NC}"
+    echo -e "     ${YELLOW}git config --global user.email \"you@example.com\"${NC}"
+    if [[ -n "$git_identity_hint" ]]; then
+        echo -e "     or edit ${YELLOW}$git_identity_hint${NC} and rerun Phase 1."
+    fi
+    echo ""
+
+    echo -e "  ${GREEN}7.${NC} Update Gitea admin bootstrap settings:"
+    echo -e "     ${YELLOW}./nixos-quick-deploy.sh --resume 1${NC} and opt into the Gitea prompt"
+    if [[ -n "$gitea_secrets_hint" ]]; then
+        echo -e "     or edit ${YELLOW}$gitea_secrets_hint${NC} (values are shell quoted)."
+    fi
     echo ""
 
 
