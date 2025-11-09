@@ -159,45 +159,7 @@ let
   # Optional Gitea admin bootstrap (populated by installer)
   @GITEA_ADMIN_VARIABLES_BLOCK@
   commonPythonOverrides = import ./python-overrides.nix;
-  glfMangoHudPresets = {
-    disabled = "";
-    light = ''control=mangohud,legacy_layout=0,horizontal,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,ram,vram,ps,fps,fps_metrics=AVG,0.001,font_scale=1.05'';
-    full = ''control=mangohud,legacy_layout=0,vertical,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,core_load,ram,vram,fps,fps_metrics=AVG,0.001,frametime,refresh_rate,resolution,vulkan_driver,wine'';
-  };
-  glfMangoHudProfile = "full";
-  glfMangoHudConfig = glfMangoHudPresets.${glfMangoHudProfile};
-  glfLutrisWithGtk = pkgs.lutris.override { extraLibraries = p: [ p.libadwaita p.gtk4 ]; };
-  glfGamingPackages = [
-    glfLutrisWithGtk
-    pkgs.heroic
-    pkgs.joystickwake
-    pkgs.mangohud
-    pkgs.mesa-demos
-    pkgs.oversteer
-    pkgs.umu-launcher
-    pkgs.wineWowPackages.staging
-    pkgs.winetricks
-  ];
-  glfSteamPackage = pkgs.steam.override {
-    extraEnv = {
-      MANGOHUD = if glfMangoHudConfig != "" then "1" else "0";
-      OBS_VKCAPTURE = "1";
-    };
-  };
-  glfSteamCompatPackages =
-    lib.optionals (pkgs ? proton-ge-bin) [ pkgs.proton-ge-bin ];
-  glfSystemUtilities = with pkgs; [
-    exfatprogs
-    fastfetch
-    ffmpeg
-    ffmpegthumbnailer
-    libva-utils
-    usbutils
-    hunspell
-    hunspellDicts.fr-any
-    hyphen
-    texlivePackages.hyphen-french
-  ];
+  @GLF_OS_DEFINITIONS@
 in
 
 {
@@ -291,13 +253,6 @@ in
 
     # Kernel parameters for better memory management and performance
     @BOOT_KERNEL_PARAMETERS_BLOCK@
-    kernelParams = lib.mkAfter (
-      (lib.optional (lib.elem "kvm-amd" config.boot.kernelModules) "amd_pstate=active")
-      ++ [
-        "nosplit_lock_mitigate"
-        "clearcpuid=514"
-      ]
-    );
   };
   @MICROCODE_SECTION@
 
@@ -544,29 +499,7 @@ in
     };
   };
 
-  # ===========================================================================
-  # Gaming Stack (GLF OS integration)
-  # ===========================================================================
-  hardware.steam-hardware.enable = true;
-  hardware.xone.enable = true;
-  hardware.xpadneo.enable = true;
-  hardware.opentabletdriver.enable = true;
-
-  programs.gamemode.enable = true;
-
-  programs.gamescope = {
-    enable = true;
-    capSysNice = true;
-  };
-
-  programs.steam = {
-    enable = true;
-    gamescopeSession.enable = true;
-    package = glfSteamPackage;
-    remotePlay.openFirewall = true;
-    localNetworkGameTransfers.openFirewall = true;
-    extraCompatPackages = glfSteamCompatPackages;
-  };
+  @GLF_GAMING_STACK_SECTION@
 
   # ========================================================================
   # Local AI Runtime (Hugging Face & Ollama)
@@ -1182,5 +1115,5 @@ in
   # ============================================================================
   # System & Home Manager Version
   # ============================================================================
-  system.stateVersion = "@NIXOS_VERSION@";
+  system.stateVersion = "@STATE_VERSION@";
 }
