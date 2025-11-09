@@ -1108,11 +1108,18 @@ EOF
 )
     fi
 
-    local kernel_modules_placeholder
-    kernel_modules_placeholder=$(cat <<'EOF'
-      # No additional kernel modules configured by the generator
-EOF
-)
+    local kernel_modules_placeholder=""
+    local kernel_modules_header="      # Kernel modules automatically loaded for generated services"
+    local -a kernel_module_lines=()
+
+    if kernel_module_available overlay; then
+        kernel_module_lines+=(
+            "      # OverlayFS for Podman container storage"
+            "      \"overlay\""
+        )
+    else
+        print_warning "OverlayFS kernel module not detected; Podman will fall back to fuse-overlayfs."
+    fi
 
     local kernel_sysctl_tunables=""
     local kernel_sysctl_hardening
@@ -1193,16 +1200,14 @@ EOF
         fi
 
         if [[ "${zswap_zpool}" != "zsmalloc" ]]; then
-            kernel_modules_placeholder=$(cat <<EOF
-      # Zswap allocator module required for compressed swap
-      "${zswap_zpool}"
-EOF
-)
+            kernel_module_lines+=(
+                "      # Zswap allocator module required for compressed swap"
+                "      \"${zswap_zpool}\""
+            )
         else
-            kernel_modules_placeholder=$(cat <<'EOF'
-      # Zswap allocator uses built-in zsmalloc backend (no extra modules required)
-EOF
-)
+            kernel_module_lines+=(
+                "      # Zswap allocator uses built-in zsmalloc backend (no extra modules required)"
+            )
         fi
 
         local kernel_sysctl_memory
@@ -1280,6 +1285,13 @@ EOF
 EOF
 )
         print_info "Legacy memory management sysctl overrides skipped (zswap disabled)."
+    fi
+
+    if ((${#kernel_module_lines[@]} > 0)); then
+        printf -v kernel_modules_placeholder "%s\n" "$kernel_modules_header" "${kernel_module_lines[@]}"
+        kernel_modules_placeholder=${kernel_modules_placeholder%$'\n'}
+    else
+        kernel_modules_placeholder="      # No additional kernel modules configured by the generator"
     fi
 
     local -a nix_parallelism_settings
