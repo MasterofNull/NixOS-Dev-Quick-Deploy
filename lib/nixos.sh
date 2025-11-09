@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #
+#!/usr/bin/env bash
+#
 # NixOS Channel and Version Management
 # Purpose: Manage NixOS channels and version selection
 # Version: 4.0.0
@@ -19,12 +21,27 @@
 # Exports:
 #   - derive_system_release_version() → Get current NixOS version
 #   - normalize_channel_name() → Extract channel name from URL
+#   - resolve_nixos_release_version() → Map requested versions to a supported NixOS release channel
+#   - emit_nixos_channel_fallback_notice() → Display fallback messaging when NixOS channel downgrades
+#   - resolve_home_manager_release_version() → Map requested versions to a supported home-manager release
 #   - get_home_manager_flake_uri() → Get home-manager flake URI
 #   - get_home_manager_package_ref() → Get home-manager package ref
 #   - select_nixos_version() → Prompt user for NixOS version
+#   - emit_home_manager_fallback_notice() → Display fallback messaging when release mapping downgrades
 #   - update_nixos_channels() → Update and synchronize channels
 #
 # ============================================================================
+
+# Supported release list (descending order) shared by both NixOS and home-manager
+SUPPORTED_NIX_RELEASES=("25.05" "24.11" "24.05" "23.11")
+
+# Track fallback context so callers can emit user-facing notices without
+# polluting resolver stdout (which is frequently used inside command
+# substitutions).
+: "${NIXOS_CHANNEL_FALLBACK_REQUESTED:=}"
+: "${NIXOS_CHANNEL_FALLBACK_RESOLVED:=}"
+: "${HOME_MANAGER_FALLBACK_REQUESTED:=}"
+: "${HOME_MANAGER_FALLBACK_RESOLVED:=}"
 
 # ============================================================================
 # Derive System Release Version
@@ -87,6 +104,145 @@ normalize_channel_name() {
     raw="${raw%.zip}"
 
     echo "$raw"
+}
+
+# ============================================================================
+# Resolve NixOS Release Version
+# ============================================================================
+# Purpose: Map requested NixOS versions to an existing release channel.
+# Returns:
+#   Matching release version (e.g., "25.05") or closest supported entry.
+# ============================================================================
+resolve_nixos_release_version() {
+    local requested="$1"
+    local normalized="$requested"
+
+    if [[ -z "$normalized" ]]; then
+        normalized="${SUPPORTED_NIX_RELEASES[0]}"
+    fi
+
+    if [[ "$normalized" == "unstable" || "$normalized" == "nixos-unstable" ]]; then
+        NIXOS_CHANNEL_FALLBACK_REQUESTED=""
+        NIXOS_CHANNEL_FALLBACK_RESOLVED=""
+        echo "unstable"
+        return 0
+    fi
+
+    normalized="${normalized#nixos-}"
+    normalized="${normalized#release-}"
+
+    local -a supported_releases=("${SUPPORTED_NIX_RELEASES[@]}")
+    local newest="${supported_releases[0]}"
+    local oldest="${supported_releases[${#supported_releases[@]}-1]}"
+    local resolved=""
+
+    if [[ "$normalized" =~ ^[0-9]+\.[0-9]+$ ]]; then
+        for version in "${supported_releases[@]}"; do
+            if [[ "$version" == "$normalized" ]]; then
+                resolved="$version"
+                break
+            fi
+        done
+
+        if [[ -z "$resolved" ]]; then
+            local requested_num="${normalized//./}"
+            for version in "${supported_releases[@]}"; do
+                local version_num="${version//./}"
+                if (( version_num <= requested_num )); then
+                    resolved="$version"
+                    break
+                fi
+            done
+        fi
+    fi
+
+    if [[ -z "$resolved" ]]; then
+        resolved="$oldest"
+    fi
+
+    NIXOS_CHANNEL_FALLBACK_REQUESTED=""
+    NIXOS_CHANNEL_FALLBACK_RESOLVED=""
+
+    if [[ "$normalized" != "$resolved" ]]; then
+        NIXOS_CHANNEL_FALLBACK_REQUESTED="$normalized"
+        NIXOS_CHANNEL_FALLBACK_RESOLVED="$resolved"
+    fi
+
+    echo "$resolved"
+}
+
+emit_nixos_channel_fallback_notice() {
+    if [[ -n "${NIXOS_CHANNEL_FALLBACK_REQUESTED:-}" && -n "${NIXOS_CHANNEL_FALLBACK_RESOLVED:-}" ]]; then
+        print_warning "nixos-${NIXOS_CHANNEL_FALLBACK_REQUESTED} channel not yet available upstream."
+        print_info "Using nixos-${NIXOS_CHANNEL_FALLBACK_RESOLVED} until the requested release is published."
+        NIXOS_CHANNEL_FALLBACK_REQUESTED=""
+        NIXOS_CHANNEL_FALLBACK_RESOLVED=""
+    fi
+}
+
+# ============================================================================
+# Resolve Home Manager Release Version
+# ============================================================================
+# Purpose: Map requested NixOS versions to an existing home-manager release.
+# Rationale: Home Manager occasionally lags behind new NixOS releases (e.g.,
+# 25.11). Without this guard, we generate flake references to branches that
+# do not exist upstream, which causes nixos-rebuild dry runs to fail before
+# any real validation happens.
+# Returns:
+#   Matching release version (e.g., "25.05") or the closest supported entry.
+# ============================================================================
+resolve_home_manager_release_version() {
+    local requested="$1"
+    local -a supported_releases=("${SUPPORTED_NIX_RELEASES[@]}")
+    local newest="${supported_releases[0]}"
+    local oldest="${supported_releases[${#supported_releases[@]}-1]}"
+    local resolved=""
+
+    if [[ -z "$requested" ]]; then
+        echo "$newest"
+        return 0
+    fi
+
+    for version in "${supported_releases[@]}"; do
+        if [[ "$version" == "$requested" ]]; then
+            resolved="$version"
+            break
+        fi
+    done
+
+    if [[ -z "$resolved" ]]; then
+        local requested_num="${requested//./}"
+        for version in "${supported_releases[@]}"; do
+            local version_num="${version//./}"
+            if (( version_num <= requested_num )); then
+                resolved="$version"
+                break
+            fi
+        done
+    fi
+
+    if [[ -z "$resolved" ]]; then
+        resolved="$oldest"
+    fi
+
+    HOME_MANAGER_FALLBACK_REQUESTED=""
+    HOME_MANAGER_FALLBACK_RESOLVED=""
+
+    if [[ -n "$requested" && "$resolved" != "$requested" ]]; then
+        HOME_MANAGER_FALLBACK_REQUESTED="$requested"
+        HOME_MANAGER_FALLBACK_RESOLVED="$resolved"
+    fi
+
+    echo "$resolved"
+}
+
+emit_home_manager_fallback_notice() {
+    if [[ -n "${HOME_MANAGER_FALLBACK_REQUESTED:-}" && -n "${HOME_MANAGER_FALLBACK_RESOLVED:-}" ]]; then
+        print_warning "home-manager release-${HOME_MANAGER_FALLBACK_REQUESTED} not available upstream."
+        print_info "Falling back to release-${HOME_MANAGER_FALLBACK_RESOLVED} until a matching branch is published."
+        HOME_MANAGER_FALLBACK_REQUESTED=""
+        HOME_MANAGER_FALLBACK_RESOLVED=""
+    fi
 }
 
 # ============================================================================
@@ -230,10 +386,19 @@ update_nixos_channels() {
         print_info "Using selected NixOS version: $TARGET_VERSION"
     fi
 
+    local resolved_target
+    resolved_target=$(resolve_nixos_release_version "$TARGET_VERSION")
+    emit_nixos_channel_fallback_notice
+    TARGET_VERSION="$resolved_target"
     SELECTED_NIXOS_VERSION="$TARGET_VERSION"
 
     # Set the target channel URL
-    local CURRENT_NIXOS_CHANNEL="https://nixos.org/channels/nixos-${TARGET_VERSION}"
+    local CURRENT_NIXOS_CHANNEL
+    if [[ "$TARGET_VERSION" == "unstable" ]]; then
+        CURRENT_NIXOS_CHANNEL="https://nixos.org/channels/nixos-unstable"
+    else
+        CURRENT_NIXOS_CHANNEL="https://nixos.org/channels/nixos-${TARGET_VERSION}"
+    fi
 
     # Check if we need to upgrade channels
     local EXISTING_CHANNEL=$(sudo nix-channel --list | grep '^nixos' | awk '{print $2}')
@@ -271,11 +436,18 @@ update_nixos_channels() {
     elif [[ "$NIXOS_CHANNEL_NAME" =~ nixos-([0-9]+\.[0-9]+) ]]; then
         # Extract version number (e.g., "24.11" from "nixos-24.11")
         local VERSION="${BASH_REMATCH[1]}"
-        HM_CHANNEL_URL="https://github.com/nix-community/home-manager/archive/release-${VERSION}.tar.gz"
+        local HM_RELEASE_VERSION
+        HM_RELEASE_VERSION=$(resolve_home_manager_release_version "$VERSION")
+        HM_CHANNEL_URL="https://github.com/nix-community/home-manager/archive/release-${HM_RELEASE_VERSION}.tar.gz"
         HM_CHANNEL_NAME=$(normalize_channel_name "$HM_CHANNEL_URL")
         HOME_MANAGER_CHANNEL_URL="$HM_CHANNEL_URL"
         HOME_MANAGER_CHANNEL_REF="$HM_CHANNEL_NAME"
-        print_info "Using home-manager ${HM_CHANNEL_NAME} (matches nixos-${VERSION})"
+        if [[ "$HM_RELEASE_VERSION" == "$VERSION" ]]; then
+            print_info "Using home-manager ${HM_CHANNEL_NAME} (matches nixos-${VERSION})"
+        else
+            print_info "Using home-manager ${HM_CHANNEL_NAME} (closest available for nixos-${VERSION})"
+        fi
+        emit_home_manager_fallback_notice
     else
         print_error "Could not parse NixOS channel name: $NIXOS_CHANNEL_NAME"
         exit 1
