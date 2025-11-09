@@ -19,7 +19,7 @@ chmod +x nixos-quick-deploy.sh
 ./nixos-quick-deploy.sh
 ```
 
-**That's it!** Answer a few simple questions (including choosing between fast binary cache downloads or building from source), wait 20-120 minutes depending on your choice, reboot, and you're done.
+**That's it!** Answer a few simple questions (including choosing between binary caches, remote builders/private Cachix, or local source builds), wait 20-120 minutes depending on your choice, reboot, and you're done.
 
 ---
 
@@ -30,7 +30,7 @@ chmod +x nixos-quick-deploy.sh
 - **800+ Packages** - Development tools, CLI utilities, and applications
 - **Nix Flakes** - Enabled and configured for reproducible builds
 - **Podman** - Rootless container runtime for local AI services
-- **Flatpak** - Sandboxed desktop applications (12 pre-installed, 50+ optional)
+- **Flatpak** - Sandboxed desktop applications with profile-aware provisioning and incremental updates
 - **Home Manager** - Declarative user environment configuration
 - **ZSH + Powerlevel10k** - Beautiful, fast terminal with auto-configuration
 
@@ -98,19 +98,15 @@ chmod +x nixos-quick-deploy.sh
 
 ### Flatpak Applications
 
-**Pre-Installed (14 apps):**
-- Firefox, Obsidian, Cursor
-- LM Studio, Podman Desktop
-- Flatseal, Resources, FileRoller
-- VLC, MPV
-- DB Browser for SQLite, DBeaver Community
-- Gitea (forge UI with AI workflows)
+Pick the profile that matches your workflow during Phase 6:
 
-**Optional (50+ apps available):**
-- LibreOffice, GIMP, Inkscape, Blender
-- OBS Studio, Audacity, Kdenlive
-- Steam, Discord, Telegram, Slack
-- DBeaver, GitUI, and more...
+- **Core** – Balanced desktop with browsers, media tools, and developer essentials.
+- **AI Workstation** – Core profile plus Postman, DBeaver, VS Code, Bitwarden, and other data tooling.
+- **Minimal** – Lean recovery environment with Firefox, Obsidian, Flatseal, and Podman Desktop.
+
+The installer records your selection in `$STATE_DIR/preferences/flatpak-profile.env` and only applies deltas on future runs, dramatically cutting repeat deployment time. You can switch profiles any time—state is cached in `$STATE_DIR/preferences/flatpak-profile-state.env` so already-installed apps are preserved when possible.
+
+**Need more?** Over 50 additional apps remain available on Flathub, and the provisioning service respects manual changes—only diverging packages in the active profile are synced.
 
 ---
 
@@ -123,12 +119,20 @@ cd ~/NixOS-Dev-Quick-Deploy
 ./nixos-quick-deploy.sh
 ```
 
-### Step 2: Answer 4 Questions
+### Step 2: Answer 4 Questions (plus build acceleration prompts)
 
 1. **GitHub username** → For git config
 2. **GitHub email** → For git config
 3. **Editor preference** → vim/neovim/vscodium (choose 1-3)
 4. **Replace config?** → Press Enter (yes)
+
+After the initial survey, Phase 1 now asks how you want to accelerate builds:
+
+1. **Binary caches** *(default)* – Fastest path, uses NixOS/nix-community/CUDA caches.
+2. **Build locally** – Compile everything on the target host for maximal control.
+3. **Remote builders or private Cachix** – Layer SSH build farm(s) and/or authenticated Cachix caches on top of the binary caches option.
+
+If you choose option 3, be ready to paste builder strings (e.g., `ssh://nix@builder.example.com x86_64-linux - 4 1`) and any Cachix cache names/keys. Secrets are stored under `$STATE_DIR/preferences/remote-builders.env` for reuse later.
 
 ### Step 3: Wait (20-35 minutes)
 
@@ -137,7 +141,7 @@ The script automatically:
 - ✅ Runs `sudo nixos-rebuild switch`
 - ✅ Creates home-manager configuration (~100 packages)
 - ✅ Runs `home-manager switch`
-- ✅ Installs Flatpak apps (Flathub remote + 12 apps)
+- ✅ Installs Flatpak apps (Flathub remote + selected profile)
 - ✅ Builds flake development environment
 - ✅ Installs Claude Code CLI + wrapper
 - ✅ Configures VSCodium for AI development
