@@ -1093,12 +1093,21 @@ safe_chown_user_dir() {
 
     # Determine correct ownership
     local owner
-    if [[ -n "$SUDO_USER" ]]; then
+    local sudo_user="${SUDO_USER:-}"
+    if [[ -n "$sudo_user" ]]; then
         # Running with sudo - set ownership to original user
-        owner="$SUDO_USER:$(id -gn "$SUDO_USER" 2>/dev/null || echo "users")"
+        local sudo_group
+        sudo_group=$(id -gn "$sudo_user" 2>/dev/null || echo "users")
+        owner="$sudo_user:$sudo_group"
     else
-        # Running as root without sudo - use PRIMARY_USER
-        owner="${PRIMARY_USER:-$USER}:$(id -gn "${PRIMARY_USER:-$USER}" 2>/dev/null || echo "users")"
+        # Running as root without sudo - use PRIMARY_USER (fallback to USER)
+        local target_user="${PRIMARY_USER:-${USER:-}}"
+        if [[ -z "$target_user" ]]; then
+            target_user="$(id -un 2>/dev/null || echo "root")"
+        fi
+        local target_group
+        target_group=$(id -gn "$target_user" 2>/dev/null || echo "users")
+        owner="$target_user:$target_group"
     fi
 
     # Attempt to set ownership
