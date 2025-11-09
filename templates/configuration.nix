@@ -412,8 +412,6 @@ in
   # ============================================================================
   # Modern NixOS 25.05+ container configuration
   virtualisation = {
-    containers.enable = true;
-
     podman = {
       enable = true;
 
