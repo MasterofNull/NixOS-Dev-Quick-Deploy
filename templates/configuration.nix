@@ -803,6 +803,7 @@ in
     # Required for cosmic-clipboard to work with wl-clipboard
     COSMIC_DATA_CONTROL_ENABLED = "1";
     STEAM_EXTRA_COMPAT_TOOLS_PATHS = "$HOME/.steam/root/compatibilitytools.d";
+    MANGOHUD = if glfMangoHudConfig != "" then "1" else "0";
     MANGOHUD_CONFIG = glfMangoHudConfig;
     @GPU_SESSION_VARIABLES@
   };
