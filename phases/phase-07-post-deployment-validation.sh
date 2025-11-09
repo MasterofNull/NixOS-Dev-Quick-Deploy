@@ -39,6 +39,92 @@
 # PHASE IMPLEMENTATION
 # ============================================================================
 
+check_required_service_active() {
+    local unit="$1"
+    local label="$2"
+
+    if ! command -v systemctl >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if ! systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}' | grep -Fxq "${unit}.service"; then
+        return 0
+    fi
+
+    if systemctl is-active --quiet "$unit" 2>/dev/null; then
+        print_success "$label service is active"
+        return 0
+    fi
+
+    local unit_state
+    unit_state=$(systemctl show "$unit" --property=UnitFileState --value 2>/dev/null | tr -d '\r')
+    if [[ "$unit_state" =~ ^(enabled|enabled-runtime|linked)$ ]]; then
+        print_error "$label service is enabled but not running"
+        return 1
+    fi
+
+    print_warning "$label service installed but disabled"
+    return 0
+}
+
+check_optional_service_active() {
+    local unit="$1"
+    local label="$2"
+
+    if ! command -v systemctl >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if ! systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}' | grep -Fxq "${unit}.service"; then
+        return 0
+    fi
+
+    if systemctl is-active --quiet "$unit" 2>/dev/null; then
+        print_success "$label service is active"
+        return 0
+    fi
+
+    local unit_state
+    unit_state=$(systemctl show "$unit" --property=UnitFileState --value 2>/dev/null | tr -d '\r')
+    if [[ "$unit_state" =~ ^(enabled|enabled-runtime|linked)$ ]]; then
+        print_warning "$label service is enabled but not running"
+        return 1
+    fi
+
+    print_info "$label service is installed but disabled"
+    return 0
+}
+
+check_flatpak_remote_health() {
+    if ! command -v flatpak >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if flatpak_remote_exists; then
+        print_success "Flathub remote is configured"
+        return 0
+    fi
+
+    print_error "Flathub remote is missing"
+    return 1
+}
+
+check_podman_network_health() {
+    if ! command -v podman >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local network="${PODMAN_AI_STACK_NETWORK:-local-ai}"
+    if podman network exists "$network" >/dev/null 2>&1; then
+        print_success "Podman network '$network' available"
+        return 0
+    fi
+
+    print_warning "Podman network '$network' not found (it will be created on-demand by Open WebUI scripts)"
+    return 1
+}
+
+
 phase_07_post_deployment_validation() {
     # ========================================================================
     # Phase 7: Post-Deployment Validation
@@ -84,6 +170,9 @@ phase_07_post_deployment_validation() {
     print_section "Phase 7/8: Post-Deployment Validation"
     echo ""
 
+    local fatal_failures=0
+    local warning_failures=0
+
     # ========================================================================
     # Step 8.1: GPU Driver Validation
     # ========================================================================
@@ -122,6 +211,49 @@ phase_07_post_deployment_validation() {
         validate_gpu_driver || print_warning "GPU driver validation had issues (non-critical)"
     fi
 
+    local -a critical_services=(
+        "gitea:Gitea"
+        "ollama:Ollama"
+        "huggingface-tgi:HuggingFace TGI"
+    )
+
+    local entry service label
+    for entry in "${critical_services[@]}"; do
+        service="${entry%%:*}"
+        label="${entry#*:}"
+        if ! check_required_service_active "$service" "$label"; then
+            ((fatal_failures++))
+        fi
+    done
+
+    local -a advisory_services=(
+        "postgresql:PostgreSQL"
+    )
+
+    for entry in "${advisory_services[@]}"; do
+        service="${entry%%:*}"
+        label="${entry#*:}"
+        if ! check_optional_service_active "$service" "$label"; then
+            ((warning_failures++))
+        fi
+    done
+
+    if ! check_flatpak_remote_health; then
+        ((fatal_failures++))
+    fi
+
+    if ! check_podman_network_health; then
+        ((warning_failures++))
+    fi
+
+    if [[ "${SKIP_HEALTH_CHECK:-false}" == "true" ]]; then
+        print_warning "System health check skipped via flag"
+    else
+        if ! run_system_health_check_stage; then
+            ((warning_failures++))
+        fi
+    fi
+
     # ========================================================================
     # Step 8.2: Critical Package Verification
     # ========================================================================
@@ -158,7 +290,9 @@ phase_07_post_deployment_validation() {
     local missing_count=0
 
     # Loop through critical packages
-    for pkg in podman python3 git home-manager jq; do
+    local -a package_checks=(podman python3 git home-manager jq flatpak)
+
+    for pkg in "${package_checks[@]}"; do
         # command -v: Find command in PATH, return path or empty
         # &>/dev/null: Suppress output (just checking existence)
         if command -v "$pkg" &>/dev/null; then
@@ -186,6 +320,15 @@ phase_07_post_deployment_validation() {
     else
         # All packages found - deployment successful!
         print_success "All critical packages verified!"
+    fi
+
+    if (( fatal_failures > 0 )); then
+        print_error "Critical validation checks failed (${fatal_failures})"
+        return 1
+    fi
+
+    if (( warning_failures > 0 )); then
+        print_warning "${warning_failures} validation warning(s) recorded"
     fi
 
     # ------------------------------------------------------------------------

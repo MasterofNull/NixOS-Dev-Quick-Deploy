@@ -19,10 +19,11 @@ Previous versions had a critical bug where binary cache settings were only appli
 
 ## Overview
 
-The NixOS Quick Deploy script gives you the choice between two build strategies:
+The NixOS Quick Deploy script gives you the choice between three build strategies:
 
 1. **Binary Caches (Recommended)** - Downloads pre-built packages: **20-40 minutes**
 2. **Build from Source** - Compiles locally: **60-120 minutes**
+3. **Remote Builders / Private Cachix** - Inherits the binary cache defaults and layers in your own SSH build farm definitions and authenticated Cachix caches.
 
 You'll be prompted to choose during installation. This guide explains both options and their trade-offs.
 
@@ -49,7 +50,13 @@ Choose your build strategy:
      - High CPU and memory usage during compilation
      - Full control over build process
 
-Choose build strategy (1-2) [1]:
+  3) Remote Builders or Private Cachix
+     - Starts with the binary cache defaults
+     - Lets you register SSH build machines (e.g., `ssh://nix@builder x86_64-linux - 6 1`)
+     - Optionally enables authenticated Cachix caches (requires token)
+     - Ideal for low-power devices that can offload builds
+
+Choose build strategy (1-3) [1]:
 ```
 
 **When to choose Binary Caches:**
@@ -63,6 +70,22 @@ Choose build strategy (1-2) [1]:
 - You want full control over compilation
 - You have a powerful CPU and time to spare
 - You're building for security-critical applications
+
+**When to choose Remote Builders / Private Cachix:**
+- You maintain trusted build machines reachable over SSH
+- You already operate private Cachix caches and want to reuse them
+- The target host is resource-constrained but has reliable network access
+- You need to keep sensitive derivations out of public caches
+
+After selecting option 3, the script will prompt for:
+
+- One or more **builder specifications** (format: `ssh://user@host system - max-jobs speed`). Paste each builder line and press Enter on an empty line to finish.
+- Optional **SSH private key path** (defaults to `~/.ssh/id_ed25519`).
+- Additional `ssh` options (for non-standard ports, jump hosts, etc.).
+- A list of **private Cachix cache names** and whether to authenticate them.
+- A **Cachix auth token** when authentication is requested.
+
+Inputs are stored in `$STATE_DIR/preferences/remote-builders.env` so you only have to enter them once per machine. Subsequent runs will reuse the saved configuration automatically.
 
 ## Optimizations Applied
 

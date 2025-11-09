@@ -447,15 +447,28 @@ phase_01_system_initialization() {
     echo "     - Significantly longer build times (hours on slower systems)"
     echo "     - High CPU and memory usage during compilation"
     echo ""
+    echo "  3) Offload builds to remote builders or private Cachix caches"
+    echo "     - Keeps binary caches enabled while layering SSH builders"
+    echo "     - Optionally authenticates against private Cachix substituters"
+    echo "     - Ideal for low-power hardware or centralized build farms"
+    echo ""
 
     local build_choice
     local default_choice="1"
     if [[ "${USE_BINARY_CACHES:-true}" != "true" ]]; then
         default_choice="2"
     fi
-    build_choice=$(prompt_user "Choose build strategy (1-2)" "$default_choice")
+    build_choice=$(prompt_user "Choose build strategy (1-3)" "$default_choice")
 
     case "$build_choice" in
+        3)
+            USE_BINARY_CACHES="true"
+            REMOTE_BUILD_ACCELERATION_MODE="remote-builders"
+            print_success "Remote build acceleration selected – binary caches plus remote builders"
+            if declare -F gather_remote_build_acceleration_preferences >/dev/null 2>&1; then
+                gather_remote_build_acceleration_preferences
+            fi
+            ;;
         2)
             USE_BINARY_CACHES="false"
             print_warning "Binary caches disabled – all packages will be built from source."
@@ -466,6 +479,10 @@ phase_01_system_initialization() {
             print_success "Binary caches enabled – leveraging trusted substitutes for faster deployment."
             ;;
     esac
+
+    if declare -F describe_remote_build_context >/dev/null 2>&1; then
+        describe_remote_build_context
+    fi
 
     if [[ -n "${BINARY_CACHE_PREFERENCE_FILE:-}" ]]; then
         local preference_dir

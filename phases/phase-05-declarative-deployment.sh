@@ -293,6 +293,10 @@ phase_05_declarative_deployment() {
     local target_host=$(hostname)
 
     local -a nixos_rebuild_opts=()
+    if declare -F activate_build_acceleration_context >/dev/null 2>&1; then
+        activate_build_acceleration_context
+    fi
+
     if declare -F compose_nixos_rebuild_options >/dev/null 2>&1; then
         mapfile -t nixos_rebuild_opts < <(compose_nixos_rebuild_options "${USE_BINARY_CACHES:-true}")
     fi
@@ -308,6 +312,10 @@ phase_05_declarative_deployment() {
 
     if declare -F describe_binary_cache_usage >/dev/null 2>&1; then
         describe_binary_cache_usage "nixos-rebuild switch"
+    fi
+
+    if declare -F describe_remote_build_context >/dev/null 2>&1; then
+        describe_remote_build_context
     fi
 
     if sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" "${nixos_rebuild_opts[@]}" 2>&1 | tee /tmp/nixos-rebuild.log; then
