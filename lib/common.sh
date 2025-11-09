@@ -615,13 +615,28 @@ kernel_module_available() {
         return 0
     fi
 
+    # Prefer modprobe's dry-run because it accounts for builtin modules, aliases,
+    # and compressed module formats.
+    if command -v modprobe >/dev/null 2>&1; then
+        if modprobe --dry-run --first-time "$module" >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+
     local uname_r
     uname_r=$(uname -r 2>/dev/null || echo "")
     if [[ -n "$uname_r" ]]; then
+        # Check for builtin modules recorded by the running kernel.
         if grep -qw "$module" "/lib/modules/${uname_r}/modules.builtin" 2>/dev/null; then
             return 0
         fi
         if grep -qw "$module" "/lib/modules/${uname_r}/modules.builtin.modinfo" 2>/dev/null; then
+            return 0
+        fi
+
+        # Look for loadable modules (including compressed .ko files).
+        if find "/lib/modules/${uname_r}" \( -name "${module}.ko" -o -name "${module}.ko.*" \) -print -quit 2>/dev/null |
+            grep -q .; then
             return 0
         fi
     fi
