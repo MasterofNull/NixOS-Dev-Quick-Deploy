@@ -1115,5 +1115,5 @@ in
   # ============================================================================
   # System & Home Manager Version
   # ============================================================================
-  system.stateVersion = "@NIXOS_VERSION@";
+  system.stateVersion = "@STATE_VERSION@";
 }

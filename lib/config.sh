@@ -1108,8 +1108,10 @@ generate_nixos_system_config() {
     # ========================================================================
     # Detect System Information
     # ========================================================================
-    local HOSTNAME=$(hostname)
-    local DETECTED_NIXOS_VERSION=$(derive_system_release_version)
+    local HOSTNAME
+    HOSTNAME=$(hostname)
+    local DETECTED_NIXOS_VERSION
+    DETECTED_NIXOS_VERSION=$(derive_system_release_version)
     local NIXOS_VERSION="${SELECTED_NIXOS_VERSION:-$DETECTED_NIXOS_VERSION}"
     local STATE_VERSION="$NIXOS_VERSION"
     local SYSTEM_ARCH=$(uname -m)
@@ -1128,8 +1130,7 @@ generate_nixos_system_config() {
         NIXOS_VERSION="$resolved_state_version"
         STATE_VERSION="$resolved_state_version"
     else
-        # When tracking unstable, keep detected release information for templates
-        NIXOS_VERSION="$DETECTED_NIXOS_VERSION"
+        # When tracking unstable, keep detected release information for templates/stateVersion
         STATE_VERSION="$DETECTED_NIXOS_VERSION"
     fi
 
@@ -1147,7 +1148,7 @@ generate_nixos_system_config() {
     local resolved_hm_version=""
 
     if [[ -z "$HM_CHANNEL_NAME" ]]; then
-        resolved_hm_version=$(resolve_home_manager_release_version "$NIXOS_VERSION")
+        resolved_hm_version=$(resolve_home_manager_release_version "$STATE_VERSION")
         HM_CHANNEL_NAME="release-${resolved_hm_version}"
     elif [[ "$HM_CHANNEL_NAME" =~ ^release-([0-9]+\.[0-9]+)$ ]]; then
         resolved_hm_version=$(resolve_home_manager_release_version "${BASH_REMATCH[1]}")
@@ -1963,6 +1964,7 @@ EOF
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@SELECTED_TIMEZONE@" "$TIMEZONE"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@CURRENT_LOCALE@" "$LOCALE"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@NIXOS_VERSION@" "$NIXOS_VERSION"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@STATE_VERSION@" "$STATE_VERSION"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@SWAP_AND_HIBERNATION_BLOCK@" "$swap_and_hibernation_block"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@NIX_MAX_JOBS@" "$nix_max_jobs_literal"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@NIX_BUILD_CORES@" "$nix_cores_literal"
