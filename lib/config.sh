@@ -236,6 +236,9 @@ build_rootless_podman_storage_block() {
     comment=${comment//$'\n'/ }
     comment=${comment//\'/}
 
+    local overlay_mount_options
+    overlay_mount_options=$(compose_overlay_mount_options)
+
     local options_block
     if [[ "$driver_choice" == "overlay" ]]; then
         options_block=$(cat <<'EOF'
@@ -245,9 +248,10 @@ build_rootless_podman_storage_block() {
       ignore_chown_errors = "true"
 
     [storage.options.overlay]
-      mountopt = "nodev,metacopy=on"
+      mountopt = "__OVERLAY_MOUNT_OPTIONS__"
 EOF
 )
+        options_block=${options_block//__OVERLAY_MOUNT_OPTIONS__/$overlay_mount_options}
     else
         options_block=$(cat <<'EOF'
 
@@ -1612,8 +1616,11 @@ EOF
     podman_storage_comment=${podman_storage_comment//$'\n'/ }
     podman_storage_comment=${podman_storage_comment//\'/}
 
+    local overlay_mount_options
+    overlay_mount_options=$(compose_overlay_mount_options)
+
     local podman_storage_block
-    podman_storage_block=$(cat <<EOF
+    podman_storage_block=$(cat <<'EOF'
   # ===========================================================================
   # Container storage backend (auto-detected)
   # ===========================================================================
@@ -1633,11 +1640,12 @@ EOF
     };
 
     storage."options.overlay" = {
-      mountopt = "nodev,metacopy=on";
+      mountopt = "__OVERLAY_MOUNT_OPTIONS__";
     };
   };
 EOF
 )
+    podman_storage_block=${podman_storage_block//__OVERLAY_MOUNT_OPTIONS__/$overlay_mount_options}
 
     local gpu_hardware_section
     case "${GPU_TYPE:-software}" in
