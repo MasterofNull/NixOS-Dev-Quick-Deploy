@@ -937,16 +937,48 @@ run_rootless_podman_diagnostics() {
         local storage_root="${home_dir}/.local/share/containers/storage"
         local overlay_dir="${storage_root}/overlay"
         if [[ -d "$overlay_dir" ]]; then
-            local -a merged_dirs=()
+            local -a mounted_merged_dirs=()
+            local -A merged_mtime_map=()
+
             while IFS= read -r merged_path; do
-                merged_dirs+=("$merged_path")
+                if is_path_mounted "$merged_path"; then
+                    mounted_merged_dirs+=("$merged_path")
+
+                    if command -v stat >/dev/null 2>&1; then
+                        local mtime
+                        mtime=$(stat -c '%Y' "$merged_path" 2>/dev/null || true)
+                        if [[ -n "$mtime" ]]; then
+                            merged_mtime_map["$merged_path"]="$mtime"
+                        fi
+                    fi
+                fi
             done < <(find "$overlay_dir" -maxdepth 2 -type d -name merged -print 2>/dev/null || true)
 
-            if (( ${#merged_dirs[@]} > 0 )); then
-                print_warning "Detected ${#merged_dirs[@]} rootless overlay 'merged' directories under ${overlay_dir}; stale mounts can block nixos-rebuild."
-                print_info "  -> Oldest entry: ${merged_dirs[0]}"
+            if (( ${#mounted_merged_dirs[@]} > 0 )); then
+                local oldest_entry="${mounted_merged_dirs[0]}"
+
+                if (( ${#merged_mtime_map[@]} > 0 )); then
+                    local candidate
+                    local oldest_mtime=""
+
+                    for candidate in "${mounted_merged_dirs[@]}"; do
+                        local candidate_mtime="${merged_mtime_map[$candidate]:-}"
+
+                        if [[ -z "$candidate_mtime" ]]; then
+                            continue
+                        fi
+
+                        if [[ -z "$oldest_mtime" || "$candidate_mtime" -lt "$oldest_mtime" ]]; then
+                            oldest_mtime="$candidate_mtime"
+                            oldest_entry="$candidate"
+                        fi
+                    done
+                fi
+
+                print_warning "Detected ${#mounted_merged_dirs[@]} rootless overlay mounts under ${overlay_dir}; stale mounts can block nixos-rebuild."
+                print_info "  -> Oldest entry: ${oldest_entry}"
             else
-                print_success "No stale rootless overlay 'merged' directories found under ${overlay_dir}."
+                print_success "No active rootless overlay mounts found under ${overlay_dir}."
             fi
         else
             print_info "Rootless storage directory not initialized at ${storage_root}; containers have not been run yet."
@@ -963,6 +995,28 @@ run_rootless_podman_diagnostics() {
     done
 
     return $status
+}
+
+is_path_mounted() {
+    local target_path="$1"
+
+    if [[ -z "$target_path" ]]; then
+        return 1
+    fi
+
+    if command -v findmnt >/dev/null 2>&1; then
+        if findmnt -rn --target "$target_path" >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+
+    if [[ -r /proc/self/mountinfo ]]; then
+        if awk -v target="$target_path" '$5 == target {found=1; exit} END {exit !found}' /proc/self/mountinfo 2>/dev/null; then
+            return 0
+        fi
+    fi
+
+    return 1
 }
 
 
