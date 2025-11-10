@@ -168,9 +168,9 @@ phase_05_declarative_deployment() {
     echo ""
     echo "This deployment will:"
     echo "  1. Remove ALL nix-env packages (saved to backup for reference)"
-    echo "  2. Apply NixOS system configuration (declarative)"
-    echo "  3. Apply home-manager user configuration (declarative)"
-    echo "  4. Configure Flatpak repositories"
+    echo "  2. Apply home-manager user configuration (declarative)"
+    echo "  3. Configure Flatpak repositories"
+    echo "  4. Apply NixOS system configuration (declarative)"
     echo ""
     echo "After deployment:"
     echo "  • All packages managed declaratively via configuration files"
@@ -285,82 +285,7 @@ phase_05_declarative_deployment() {
     echo ""
 
     # ========================================================================
-    # Step 6.5: Apply NixOS System Configuration
-    # ========================================================================
-    ensure_low_memory_swap
-
-    print_section "Applying NixOS System Configuration"
-    local target_host=$(hostname)
-
-    local -a nixos_rebuild_opts=()
-    if declare -F activate_build_acceleration_context >/dev/null 2>&1; then
-        activate_build_acceleration_context
-    fi
-
-    if declare -F compose_nixos_rebuild_options >/dev/null 2>&1; then
-        mapfile -t nixos_rebuild_opts < <(compose_nixos_rebuild_options "${USE_BINARY_CACHES:-true}")
-    fi
-
-    local rebuild_display="sudo nixos-rebuild switch --flake \"$HM_CONFIG_DIR#$target_host\""
-    if (( ${#nixos_rebuild_opts[@]} > 0 )); then
-        rebuild_display+=" ${nixos_rebuild_opts[*]}"
-    fi
-
-    local perform_system_switch=true
-    if [[ "${AUTO_APPLY_SYSTEM_CONFIGURATION,,}" != "true" ]]; then
-        perform_system_switch=false
-        SYSTEM_SWITCH_SKIPPED_REASON="Automatic system switch disabled via flag"
-    elif [[ "${PROMPT_BEFORE_SYSTEM_SWITCH,,}" == "true" ]]; then
-        if ! confirm "Apply system configuration now via nixos-rebuild switch?" "y"; then
-            perform_system_switch=false
-            SYSTEM_SWITCH_SKIPPED_REASON="User skipped system switch prompt"
-        fi
-    fi
-
-    if [[ "$perform_system_switch" == true ]]; then
-        print_info "Running: $rebuild_display"
-        print_info "This applies the declarative system configuration..."
-        echo ""
-
-        if declare -F describe_binary_cache_usage >/dev/null 2>&1; then
-            describe_binary_cache_usage "nixos-rebuild switch"
-        fi
-
-        if declare -F describe_remote_build_context >/dev/null 2>&1; then
-            describe_remote_build_context
-        fi
-
-        if sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" "${nixos_rebuild_opts[@]}" 2>&1 | tee /tmp/nixos-rebuild.log; then
-            print_success "✓ NixOS system configuration applied!"
-            print_success "✓ System packages now managed declaratively"
-            SYSTEM_CONFIGURATION_APPLIED="true"
-            SYSTEM_SWITCH_SKIPPED_REASON=""
-            echo ""
-        else
-            local exit_code=${PIPESTATUS[0]}
-            print_error "nixos-rebuild failed (exit code: $exit_code)"
-            if [[ ! -d "$HM_CONFIG_DIR" ]]; then
-                print_error "Home Manager flake directory is missing: $HM_CONFIG_DIR"
-                print_info "Restore the directory or rerun Phase 3 before retrying."
-            elif [[ ! -f "$HM_CONFIG_DIR/flake.nix" ]]; then
-                print_error "flake.nix is missing from: $HM_CONFIG_DIR"
-                print_info "Regenerate the configuration with Phase 3 or restore from backup."
-            fi
-            print_info "Log: /tmp/nixos-rebuild.log"
-            print_info "Rollback: sudo nixos-rebuild --rollback"
-            echo ""
-            return 1
-        fi
-    else
-        print_warning "Skipping automatic NixOS activation"
-        print_info "Run manually when ready: $rebuild_display"
-        echo ""
-    fi
-
-    export SYSTEM_CONFIGURATION_APPLIED SYSTEM_SWITCH_SKIPPED_REASON
-
-    # ========================================================================
-    # Step 6.6: Prepare Home Manager Targets
+    # Step 6.5: Prepare Home Manager Targets
     # ========================================================================
     if ! prepare_home_manager_targets "pre-switch"; then
         print_warning "Encountered issues while archiving existing configuration files. Review the messages above before continuing."
@@ -368,7 +293,7 @@ phase_05_declarative_deployment() {
     echo ""
 
     # ========================================================================
-    # Step 6.7: Apply Home Manager Configuration
+    # Step 6.6: Apply Home Manager Configuration
     # ========================================================================
     print_section "Applying Home Manager Configuration"
     print_info "This configures your user environment declaratively..."
@@ -451,7 +376,7 @@ phase_05_declarative_deployment() {
     export HOME_CONFIGURATION_APPLIED HOME_SWITCH_SKIPPED_REASON
 
     # ========================================================================
-    # Step 6.8: Configure Flatpak Remotes (if available)
+    # Step 6.7: Configure Flatpak Remotes (if available)
     # ========================================================================
     local flatpak_configured=false
     if command -v flatpak &>/dev/null; then
@@ -483,24 +408,99 @@ phase_05_declarative_deployment() {
                 print_info "  Flathub Beta not added (not required)"
         fi
 
-        print_info "Flatpak application installs will run in Phase 6 to avoid blocking systemd during switch"
+        print_info "Flatpak application installs will run in Phase 6 after the system activation to avoid blocking systemd"
         echo ""
     fi
+
+    # ========================================================================
+    # Step 6.8: Apply NixOS System Configuration
+    # ========================================================================
+    ensure_low_memory_swap
+
+    print_section "Applying NixOS System Configuration"
+    local target_host=$(hostname)
+
+    local -a nixos_rebuild_opts=()
+    if declare -F activate_build_acceleration_context >/dev/null 2>&1; then
+        activate_build_acceleration_context
+    fi
+
+    if declare -F compose_nixos_rebuild_options >/dev/null 2>&1; then
+        mapfile -t nixos_rebuild_opts < <(compose_nixos_rebuild_options "${USE_BINARY_CACHES:-true}")
+    fi
+
+    local rebuild_display="sudo nixos-rebuild switch --flake \"$HM_CONFIG_DIR#$target_host\""
+    if (( ${#nixos_rebuild_opts[@]} > 0 )); then
+        rebuild_display+=" ${nixos_rebuild_opts[*]}"
+    fi
+
+    local perform_system_switch=true
+    if [[ "${AUTO_APPLY_SYSTEM_CONFIGURATION,,}" != "true" ]]; then
+        perform_system_switch=false
+        SYSTEM_SWITCH_SKIPPED_REASON="Automatic system switch disabled via flag"
+    elif [[ "${PROMPT_BEFORE_SYSTEM_SWITCH,,}" == "true" ]]; then
+        if ! confirm "Apply system configuration now via nixos-rebuild switch?" "y"; then
+            perform_system_switch=false
+            SYSTEM_SWITCH_SKIPPED_REASON="User skipped system switch prompt"
+        fi
+    fi
+
+    if [[ "$perform_system_switch" == true ]]; then
+        print_info "Running: $rebuild_display"
+        print_info "This applies the declarative system configuration..."
+        echo ""
+
+        if declare -F describe_binary_cache_usage >/dev/null 2>&1; then
+            describe_binary_cache_usage "nixos-rebuild switch"
+        fi
+
+        if declare -F describe_remote_build_context >/dev/null 2>&1; then
+            describe_remote_build_context
+        fi
+
+        if sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" "${nixos_rebuild_opts[@]}" 2>&1 | tee /tmp/nixos-rebuild.log; then
+            print_success "✓ NixOS system configuration applied!"
+            print_success "✓ System packages now managed declaratively"
+            SYSTEM_CONFIGURATION_APPLIED="true"
+            SYSTEM_SWITCH_SKIPPED_REASON=""
+            echo ""
+        else
+            local exit_code=${PIPESTATUS[0]}
+            print_error "nixos-rebuild failed (exit code: $exit_code)"
+            if [[ ! -d "$HM_CONFIG_DIR" ]]; then
+                print_error "Home Manager flake directory is missing: $HM_CONFIG_DIR"
+                print_info "Restore the directory or rerun Phase 3 before retrying."
+            elif [[ ! -f "$HM_CONFIG_DIR/flake.nix" ]]; then
+                print_error "flake.nix is missing from: $HM_CONFIG_DIR"
+                print_info "Regenerate the configuration with Phase 3 or restore from backup."
+            fi
+            print_info "Log: /tmp/nixos-rebuild.log"
+            print_info "Rollback: sudo nixos-rebuild --rollback"
+            echo ""
+            return 1
+        fi
+    else
+        print_warning "Skipping automatic NixOS activation"
+        print_info "Run manually when ready: $rebuild_display"
+        echo ""
+    fi
+
+    export SYSTEM_CONFIGURATION_APPLIED SYSTEM_SWITCH_SKIPPED_REASON
 
     # ========================================================================
     # Deployment Summary
     # ========================================================================
     print_section "Deployment Complete - Now Fully Declarative"
     echo "✓ All nix-env packages removed"
-    echo "✓ NixOS system configuration applied"
     echo "✓ Home manager user environment configured"
-    echo "✓ All packages now managed declaratively"
     if [[ "$flatpak_configured" == true ]]; then
         echo "✓ Flatpak repositories configured"
         echo "  • Install declared Flatpak applications after the switch to avoid service timeouts"
     else
         echo "• Flatpak not available - skipped repository configuration"
     fi
+    echo "✓ NixOS system configuration applied"
+    echo "✓ All packages now managed declaratively"
     echo ""
     echo "Package Management (Declarative):"
     echo "  • System packages: Edit /etc/nixos/configuration.nix"
