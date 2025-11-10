@@ -1626,8 +1626,8 @@ EOF
   # ===========================================================================
   virtualisation.containers.storage.settings = {
     storage = {
-      # ${podman_storage_comment}
-      driver = "${podman_storage_driver}";
+      # __PODMAN_STORAGE_COMMENT__
+      driver = "__PODMAN_STORAGE_DRIVER__";
       graphroot = "/var/lib/containers/storage";
       runroot = "/run/containers/storage";
     };
@@ -1645,6 +1645,8 @@ EOF
   };
 EOF
 )
+    podman_storage_block=${podman_storage_block//__PODMAN_STORAGE_COMMENT__/$podman_storage_comment}
+    podman_storage_block=${podman_storage_block//__PODMAN_STORAGE_DRIVER__/$podman_storage_driver}
     podman_storage_block=${podman_storage_block//__OVERLAY_MOUNT_OPTIONS__/$overlay_mount_options}
 
     local gpu_hardware_section
