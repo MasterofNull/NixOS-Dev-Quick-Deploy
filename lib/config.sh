@@ -1290,6 +1290,19 @@ generate_nixos_system_config() {
         return 1
     fi
 
+    if declare -F detect_container_storage_backend >/dev/null 2>&1; then
+        if [[ "${FORCE_CONTAINER_STORAGE_REDETECT:-false}" == true ]]; then
+            print_info "Forcing container storage backend re-detection (FORCE_CONTAINER_STORAGE_REDETECT=true)"
+            detect_container_storage_backend
+        elif [[ "${PODMAN_STORAGE_DETECTION_RUN:-false}" != true ]]; then
+            print_info "Detecting container storage backend compatibility..."
+            detect_container_storage_backend
+        elif [[ -n "${PODMAN_STORAGE_DRIVER:-}" ]]; then
+            local cached_comment="${PODMAN_STORAGE_COMMENT:-Using previously detected container storage driver.}"
+            print_info "Using cached container storage backend: ${PODMAN_STORAGE_DRIVER} (${cached_comment})"
+        fi
+    fi
+
     # ========================================================================
     # Replace Placeholders in configuration.nix
     # ========================================================================

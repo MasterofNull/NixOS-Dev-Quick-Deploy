@@ -604,6 +604,17 @@ detect_gpu_and_cpu() {
 # ==========================================================================
 
 detect_container_storage_backend() {
+    if [[ -n "${PODMAN_STORAGE_DRIVER_OVERRIDE:-}" ]]; then
+        local override_driver="$PODMAN_STORAGE_DRIVER_OVERRIDE"
+        PODMAN_STORAGE_DRIVER="$override_driver"
+        PODMAN_STORAGE_COMMENT="Container storage driver forced via PODMAN_STORAGE_DRIVER_OVERRIDE=${override_driver}"
+        PODMAN_STORAGE_COMMENT=${PODMAN_STORAGE_COMMENT//$'\n'/ }
+        PODMAN_STORAGE_COMMENT=${PODMAN_STORAGE_COMMENT//\'/}
+        PODMAN_STORAGE_DETECTION_RUN=true
+        print_warning "${PODMAN_STORAGE_COMMENT}"
+        return 0
+    fi
+
     # Determine which filesystem backs the Podman graphroot so we can
     # automatically select a compatible storage driver.
     local preferred_path="/var/lib/containers"
@@ -656,12 +667,17 @@ detect_container_storage_backend() {
             driver="zfs"
             comment="$detail; overlayfs unsupported so the zfs storage driver will be used."
             ;;
+        btrfs)
+            driver="btrfs"
+            comment="$detail; using Podman's native btrfs storage driver."
+            ;;
     esac
 
     PODMAN_STORAGE_DRIVER="$driver"
     PODMAN_STORAGE_COMMENT="$comment"
     PODMAN_STORAGE_COMMENT=${PODMAN_STORAGE_COMMENT//$'\n'/ }
     PODMAN_STORAGE_COMMENT=${PODMAN_STORAGE_COMMENT//\'/}
+    PODMAN_STORAGE_DETECTION_RUN=true
 
     if [[ "$driver" == "zfs" ]]; then
         print_warning "$comment"
