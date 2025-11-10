@@ -1183,7 +1183,7 @@ detect_container_storage_backend() {
     CONTAINER_STORAGE_FS_TYPE="$fstype"
     CONTAINER_STORAGE_SOURCE="${source:-unknown}"
 
-    local default_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-overlay}"
+    local default_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-vfs}"
     local driver="$default_driver"
     local detail="Detected ${CONTAINER_STORAGE_FS_TYPE} filesystem backing ${probe_target}"
     if [[ -n "$CONTAINER_STORAGE_SOURCE" && "$CONTAINER_STORAGE_SOURCE" != "unknown" ]]; then
