@@ -373,7 +373,9 @@ in
     # Optional: Auto-login (DISABLED by default for security)
     # Uncomment to enable auto-login without password prompt
     # WARNING: Only use on single-user systems with physical security
-    # autoSubUidGidRange = true;  # For rootless podman user namespaces
+
+    # Allocate subordinate UID/GID ranges automatically (required for rootless Podman per the NixOS wiki)
+    autoSubUidGidRange = true;
   };
 
   # Enable ZSH system-wide
@@ -478,6 +480,7 @@ in
   # ============================================================================
   # Modern NixOS 25.05+ container configuration
   virtualisation = {
+    containers.enable = true;  # Required for Podman per https://wiki.nixos.org/wiki/Podman
     podman = {
       enable = true;
 
@@ -496,6 +499,12 @@ in
         dates = "weekly";
         flags = [ "--all" ];  # Remove all unused images, not just dangling
       };
+
+      # Rootless helpers recommended by the NixOS Podman guide
+      extraPackages = with pkgs; [
+        slirp4netns
+        fuse-overlayfs
+      ];
     };
   };
 
