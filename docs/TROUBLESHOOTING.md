@@ -221,6 +221,27 @@ You should now see all checks running:
 
 ---
 
+## Podman Overlay Mount Failures or `/merged` Artifacts
+
+### Symptoms
+
+- `nixos-rebuild switch` aborts with `overlay: mount: invalid argument`.
+- `/var/lib/containers/storage/overlay/*/merged` (or the user equivalent under
+  `~/.local/share/containers/`) remains after a failed deployment.
+- Rootless Podman containers refuse to start after a reboot.
+
+### Resolution
+
+1. Re-run Phase 4 (Pre-Deployment Validation) so the new
+   `run_rootless_podman_diagnostics` helper reports kernel, filesystem, and
+   namespace issues before the switch.
+2. Follow the step-by-step fixes in
+   [`docs/ROOTLESS_PODMAN.md`](ROOTLESS_PODMAN.md) to correct filesystem
+   formatting, reinstall helper binaries, and clean stale overlay directories.
+3. After applying the fixes, re-run `nixos-rebuild switch`.
+
+---
+
 ## Flatpak Apps Not Installing
 
 ### Issue
