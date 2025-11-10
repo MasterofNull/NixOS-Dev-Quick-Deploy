@@ -526,8 +526,9 @@ EOF
     # ========================================================================
     # Step 1.15: Install Core Prerequisite Packages
     # ========================================================================
-    # Install git, jq, curl, wget via nix-env for immediate availability
-    # These are temporary and will be removed in Phase 5
+    # Install git, python, shellcheck, and rootless container helpers via nix-env
+    # for immediate availability. These are temporary and will be removed in
+    # Phase 5 once declarative packages take over.
     if ! ensure_preflight_core_packages; then
         print_error "Failed to install core prerequisite packages"
         exit 1
@@ -559,6 +560,21 @@ EOF
     if ! ensure_python_runtime; then
         print_error "Unable to locate or provision a python interpreter"
         exit 1
+    fi
+
+    # ========================================================================
+    # Step 1.19: Rootless Podman Diagnostics
+    # ========================================================================
+    print_info "Evaluating Podman rootless storage and namespace prerequisites..."
+    if declare -F run_rootless_podman_diagnostics >/dev/null 2>&1; then
+        if run_rootless_podman_diagnostics; then
+            print_success "Podman rootless diagnostics completed without blocking issues"
+        else
+            print_error "Podman diagnostics detected blocking issues; review the messages above."
+            exit 1
+        fi
+    else
+        print_warning "run_rootless_podman_diagnostics helper not available; ensure libraries are up to date."
     fi
 
     # Display Python runtime information
