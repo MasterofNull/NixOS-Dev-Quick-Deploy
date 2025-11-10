@@ -114,7 +114,7 @@ phase_03_config_generation() {
     # Behavior:
     # - No new prompts during normal runs (everything asked in Phase 1)
     # - Resume workflows reload cached answers or prompt only if missing
-    if ! ensure_user_settings_ready; then
+    if ! ensure_user_settings_ready --noninteractive; then
         print_error "Failed to confirm user settings"
         return 1
     fi

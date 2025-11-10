@@ -600,6 +600,77 @@ detect_gpu_and_cpu() {
 }
 
 # ==========================================================================
+# Container storage assessment
+# ==========================================================================
+
+detect_container_storage_backend() {
+    # Determine which filesystem backs the Podman graphroot so we can
+    # automatically select a compatible storage driver.
+    local preferred_path="/var/lib/containers"
+    local probe_target="$preferred_path"
+
+    if [[ ! -e "$probe_target" ]]; then
+        probe_target="/var/lib"
+    fi
+    if [[ ! -e "$probe_target" ]]; then
+        probe_target="/"
+    fi
+
+    local fstype=""
+    local source=""
+
+    if command -v findmnt >/dev/null 2>&1; then
+        fstype=$(findmnt -n -o FSTYPE --target "$probe_target" 2>/dev/null || true)
+        source=$(findmnt -n -o SOURCE --target "$probe_target" 2>/dev/null || true)
+    fi
+
+    if [[ -z "$fstype" ]] && command -v df >/dev/null 2>&1; then
+        local df_line
+        df_line=$(df -PT "$probe_target" 2>/dev/null | awk 'NR==2 {print $2 "::" $1}')
+        if [[ -n "$df_line" ]]; then
+            fstype="${df_line%%::*}"
+            source="${df_line##*::}"
+        fi
+    fi
+
+    if [[ -z "$fstype" ]] && [[ -r /proc/mounts ]]; then
+        fstype=$(awk -v target="$probe_target" '$2 == target {print $3; exit}' /proc/mounts 2>/dev/null)
+    fi
+
+    if [[ -z "$fstype" ]]; then
+        fstype="unknown"
+    fi
+
+    CONTAINER_STORAGE_FS_TYPE="$fstype"
+    CONTAINER_STORAGE_SOURCE="${source:-unknown}"
+
+    local driver="overlay"
+    local detail="Detected ${CONTAINER_STORAGE_FS_TYPE} filesystem backing ${probe_target}"
+    if [[ -n "$CONTAINER_STORAGE_SOURCE" && "$CONTAINER_STORAGE_SOURCE" != "unknown" ]]; then
+        detail+=" (device ${CONTAINER_STORAGE_SOURCE})"
+    fi
+
+    local comment="$detail; overlay driver remains default."
+    case "$CONTAINER_STORAGE_FS_TYPE" in
+        zfs|zfs_member)
+            driver="zfs"
+            comment="$detail; overlayfs unsupported so the zfs storage driver will be used."
+            ;;
+    esac
+
+    PODMAN_STORAGE_DRIVER="$driver"
+    PODMAN_STORAGE_COMMENT="$comment"
+    PODMAN_STORAGE_COMMENT=${PODMAN_STORAGE_COMMENT//$'\n'/ }
+    PODMAN_STORAGE_COMMENT=${PODMAN_STORAGE_COMMENT//\'/}
+
+    if [[ "$driver" == "zfs" ]]; then
+        print_warning "$comment"
+    else
+        print_success "$comment"
+    fi
+}
+
+# ==========================================================================
 # Kernel feature detection helpers
 # ==========================================================================
 
