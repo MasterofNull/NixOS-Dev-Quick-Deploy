@@ -8,8 +8,10 @@ common issues they surface.
 
 ## What the new validator does
 
-* **Phase 4 pre-flight checks** call `run_rootless_podman_diagnostics` to ensure
-  user namespaces, subordinate ID ranges, and Podman helpers are all in place.
+* **Phase 1 system-initialisation pre-flight checks** call
+  `run_rootless_podman_diagnostics` to ensure user namespaces, subordinate ID
+  ranges, and Podman helpers are all in place before configuration generation
+  begins.
 * Kernel support for OverlayFS `metacopy` is detected automatically. When the
   feature is missing the configuration falls back to `nodev` mount options and
   logs an actionable warning instead of attempting an unsupported mount.
@@ -67,7 +69,7 @@ sudo umount /var/lib/containers/storage/overlay/<hash>/merged
 
 * `lib/common.sh` now exports `run_rootless_podman_diagnostics` together with
   storage helper utilities.
-* `phases/phase-04-pre-deployment-validation.sh` runs the validator so a failed
+* `phases/phase-01-system-initialization.sh` runs the validator so a failed
   pre-flight stops the deployment before `nixos-rebuild switch` is attempted.
 * `templates/configuration.nix` and `templates/home.nix` generate storage
   configuration that respects the detected OverlayFS capabilities.
