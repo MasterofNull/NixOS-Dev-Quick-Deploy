@@ -483,6 +483,41 @@ run_as_primary_user() {
     fi
 }
 
+resolve_user_runtime_directory() {
+    local target_user="$1"
+
+    if [[ -z "$target_user" ]]; then
+        return 1
+    fi
+
+    if [[ -n "$PRIMARY_USER" && -n "$PRIMARY_RUNTIME_DIR" && "$target_user" == "$PRIMARY_USER" ]]; then
+        printf '%s' "$PRIMARY_RUNTIME_DIR"
+        return 0
+    fi
+
+    local user_uid=""
+
+    if command -v getent >/dev/null 2>&1; then
+        user_uid=$(getent passwd "$target_user" 2>/dev/null | cut -d: -f3)
+    fi
+
+    if [[ -z "$user_uid" ]]; then
+        user_uid=$(id -u "$target_user" 2>/dev/null || echo "")
+    fi
+
+    if [[ -z "$user_uid" ]]; then
+        return 1
+    fi
+
+    local candidate="/run/user/$user_uid"
+    if [[ -d "$candidate" ]]; then
+        printf '%s' "$candidate"
+        return 0
+    fi
+
+    return 1
+}
+
 run_as_user() {
     local user="$1"
     shift || true
@@ -492,8 +527,36 @@ run_as_user() {
         return 1
     fi
 
+    local -a env_args=("PATH=$PATH")
+
+    local runtime_dir=""
+    if [[ -n "$user" ]]; then
+        runtime_dir=$(resolve_user_runtime_directory "$user" 2>/dev/null || echo "")
+    fi
+
+    if [[ -z "$runtime_dir" && -n "$XDG_RUNTIME_DIR" ]]; then
+        if command -v stat >/dev/null 2>&1; then
+            local runtime_owner=""
+            runtime_owner=$(stat -c '%U' "$XDG_RUNTIME_DIR" 2>/dev/null || echo "")
+            if [[ -n "$runtime_owner" && -n "$user" && "$runtime_owner" == "$user" ]]; then
+                runtime_dir="$XDG_RUNTIME_DIR"
+            fi
+        fi
+    fi
+
+    if [[ -n "$runtime_dir" ]]; then
+        env_args+=("XDG_RUNTIME_DIR=$runtime_dir")
+        if [[ -S "$runtime_dir/bus" ]]; then
+            env_args+=("DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime_dir/bus")
+        fi
+    fi
+
     if [[ -z "$user" ]]; then
-        "${cmd[@]}"
+        if (( ${#env_args[@]} > 0 )); then
+            env "${env_args[@]}" "${cmd[@]}"
+        else
+            "${cmd[@]}"
+        fi
         return $?
     fi
 
@@ -501,17 +564,29 @@ run_as_user() {
     current_user=$(id -un 2>/dev/null || echo "")
 
     if [[ -n "$current_user" && "$current_user" == "$user" ]]; then
-        "${cmd[@]}"
+        if (( ${#env_args[@]} > 0 )); then
+            env "${env_args[@]}" "${cmd[@]}"
+        else
+            "${cmd[@]}"
+        fi
         return $?
     fi
 
     if command -v sudo >/dev/null 2>&1; then
-        sudo -H -u "$user" env "PATH=$PATH" "${cmd[@]}"
+        if (( ${#env_args[@]} > 0 )); then
+            sudo -H -u "$user" env "${env_args[@]}" "${cmd[@]}"
+        else
+            sudo -H -u "$user" "${cmd[@]}"
+        fi
         return $?
     fi
 
     if command -v runuser >/dev/null 2>&1; then
-        runuser -u "$user" -- env "PATH=$PATH" "${cmd[@]}"
+        if (( ${#env_args[@]} > 0 )); then
+            runuser -u "$user" -- env "${env_args[@]}" "${cmd[@]}"
+        else
+            runuser -u "$user" -- "${cmd[@]}"
+        fi
         return $?
     fi
 
