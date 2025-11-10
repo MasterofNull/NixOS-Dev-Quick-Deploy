@@ -891,8 +891,18 @@ run_rootless_podman_diagnostics() {
     if command -v fuse-overlayfs >/dev/null 2>&1; then
         print_success "fuse-overlayfs available: $(command -v fuse-overlayfs)"
     else
-        print_error "fuse-overlayfs missing; add pkgs.fuse-overlayfs to virtualisation.podman.extraPackages."
-        status=1
+        local declared_in_configs=false
+
+        if fuse_overlayfs_declared_in_generated_configs; then
+            declared_in_configs=true
+        fi
+
+        if [[ "$declared_in_configs" == true ]]; then
+            print_warning "fuse-overlayfs missing from PATH; the generated configuration declares pkgs.fuse-overlayfs and will install it during the next switch."
+        else
+            print_error "fuse-overlayfs missing; add pkgs.fuse-overlayfs to virtualisation.podman.extraPackages."
+            status=1
+        fi
     fi
 
     if command -v slirp4netns >/dev/null 2>&1; then
@@ -995,6 +1005,37 @@ run_rootless_podman_diagnostics() {
     done
 
     return $status
+}
+
+fuse_overlayfs_declared_in_generated_configs() {
+    local -a search_paths=()
+
+    if [[ -n "${SYSTEM_CONFIG_FILE:-}" ]]; then
+        search_paths+=("$SYSTEM_CONFIG_FILE")
+    fi
+
+    if [[ -n "${HOME_MANAGER_FILE:-}" ]]; then
+        search_paths+=("$HOME_MANAGER_FILE")
+    fi
+
+    if [[ -n "${HM_CONFIG_DIR:-}" ]]; then
+        search_paths+=(
+            "$HM_CONFIG_DIR/configuration.nix"
+            "$HM_CONFIG_DIR/home.nix"
+            "$HM_CONFIG_DIR/flake.nix"
+        )
+    fi
+
+    local path
+    for path in "${search_paths[@]}"; do
+        if [[ -n "$path" && -f "$path" ]]; then
+            if grep -E '^[[:space:]]*[^#]*fuse-overlayfs' "$path" >/dev/null 2>&1; then
+                return 0
+            fi
+        fi
+    done
+
+    return 1
 }
 
 is_path_mounted() {
