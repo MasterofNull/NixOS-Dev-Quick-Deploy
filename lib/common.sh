@@ -1023,7 +1023,7 @@ reset_podman_storage_scope() {
     return 1
 }
 
-auto_heal_podman_overlay_storage() {
+auto_heal_podman_overlay_storage() { 
     local scope="$1"
     local storage_root="$2"
     shift 2
@@ -1032,6 +1032,11 @@ auto_heal_podman_overlay_storage() {
 
     if (( ${#merged_paths[@]} == 0 )); then
         return 0
+    fi
+
+    local overlay_dir=""
+    if [[ -n "$storage_root" ]]; then
+        overlay_dir="${storage_root%/}/overlay"
     fi
 
     local storage_owner=""
@@ -1051,6 +1056,25 @@ auto_heal_podman_overlay_storage() {
 
     local cleanup_failed=false
     local cleaned_count=0
+
+    if command -v podman >/dev/null 2>&1; then
+        if reset_podman_storage_scope "$scope"; then
+
+            if [[ -n "$overlay_dir" ]]; then
+                local -a refreshed_paths=()
+                local refreshed_oldest=""
+                collect_mounted_overlay_dirs "$overlay_dir" refreshed_paths refreshed_oldest
+                : "${refreshed_oldest:-}"
+
+                if (( ${#refreshed_paths[@]} == 0 )); then
+                    print_success "Podman storage reset cleared stale ${scope} overlay mounts automatically."
+                    return 0
+                fi
+
+                merged_paths=("${refreshed_paths[@]}")
+            fi
+        fi
+    fi
 
     local merged_path
     for merged_path in "${merged_paths[@]}"; do
