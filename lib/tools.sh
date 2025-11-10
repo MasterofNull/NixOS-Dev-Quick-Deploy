@@ -492,6 +492,46 @@ flatpak_install_app_list() {
     return $failure
 }
 
+filter_vscodium_conflicting_flatpaks() {
+    if [[ ${#DEFAULT_FLATPAK_APPS[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    if ! declare -p FLATPAK_VSCODIUM_CONFLICT_IDS >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local -a filtered=()
+    local -a removed=()
+    local app conflict
+
+    for app in "${DEFAULT_FLATPAK_APPS[@]}"; do
+        local skip=false
+        for conflict in "${FLATPAK_VSCODIUM_CONFLICT_IDS[@]}"; do
+            if [[ "$app" == "$conflict" ]]; then
+                skip=true
+                removed+=("$app")
+                break
+            fi
+        done
+
+        if [[ "$skip" == false ]]; then
+            filtered+=("$app")
+        fi
+    done
+
+    if [[ ${#removed[@]} -gt 0 ]]; then
+        DEFAULT_FLATPAK_APPS=("${filtered[@]}")
+        local removed_list
+        removed_list=$(printf '%s, ' "${removed[@]}")
+        removed_list=${removed_list%, }
+        print_warning "Removed conflicting Flatpak apps from selected profile: ${removed_list}"
+        print_info "Visual Studio Code and VSCodium should remain managed declaratively via programs.vscode."
+    fi
+
+    return 0
+}
+
 ensure_default_flatpak_apps_installed() {
     if declare -F select_flatpak_profile >/dev/null 2>&1 && [[ -z "${SELECTED_FLATPAK_PROFILE:-}" ]]; then
         select_flatpak_profile --noninteractive || true
@@ -501,6 +541,8 @@ ensure_default_flatpak_apps_installed() {
         print_info "No default Flatpak applications defined"
         return 0
     fi
+
+    filter_vscodium_conflicting_flatpaks
 
     local profile_name="${SELECTED_FLATPAK_PROFILE:-$DEFAULT_FLATPAK_PROFILE}"
     local profile_digest
@@ -1353,6 +1395,53 @@ install_claude_code() {
 # ============================================================================
 configure_vscodium_for_claude() {
     print_section "Configuring VSCodium for AI assistants"
+
+    detect_flatpak_vscodium_conflicts() {
+        if ! flatpak_cli_available; then
+            return 0
+        fi
+
+        local -a conflict_ids=()
+        if declare -p FLATPAK_VSCODIUM_CONFLICT_IDS >/dev/null 2>&1; then
+            conflict_ids=("${FLATPAK_VSCODIUM_CONFLICT_IDS[@]}")
+        else
+            conflict_ids=(
+                "com.visualstudio.code"
+                "com.visualstudio.code.insiders"
+                "com.vscodium.codium"
+                "com.vscodium.codium.insiders"
+            )
+        fi
+
+        local -a installed=()
+        local app_id
+        for app_id in "${conflict_ids[@]}"; do
+            if run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
+                installed+=("$app_id (user)")
+                continue
+            fi
+
+            if run_as_primary_user flatpak info "$app_id" >/dev/null 2>&1; then
+                installed+=("$app_id (system)")
+            fi
+        done
+
+        if [[ ${#installed[@]} -gt 0 ]]; then
+            local joined
+            joined=$(printf '%s, ' "${installed[@]}")
+            joined=${joined%, }
+            print_error "Detected Flatpak Visual Studio Code variants that override declarative VSCodium: ${joined}"
+            print_info "Remove them with 'flatpak uninstall --user <app-id>' (or omit --user for system installs)."
+            print_info "Keeping only the declarative programs.vscode package prevents settings and wrappers from being replaced."
+            return 1
+        fi
+
+        return 0
+    }
+
+    if ! detect_flatpak_vscodium_conflicts; then
+        return 1
+    fi
 
     if ! command -v codium >/dev/null 2>&1; then
         print_info "VSCodium not found in PATH"
