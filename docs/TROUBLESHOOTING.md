@@ -232,7 +232,7 @@ You should now see all checks running:
 
 ### Resolution
 
-1. Re-run Phase 4 (Pre-Deployment Validation) so the new
+1. Re-run Phase 1 (System Initialization) so the new
    `run_rootless_podman_diagnostics` helper reports kernel, filesystem, and
    namespace issues before the switch.
 2. Follow the step-by-step fixes in
@@ -263,7 +263,7 @@ it finds mounted `overlay/*/merged` directories:
   driver that NixOS writes into `storage.conf`. The helper examines the
   filesystem behind `/var/lib/containers` and picks a compatible driver instead
   of leaving the overlay default in place on ZFS or Btrfs hosts: `./nixos-quick-deploy.sh --resume`. 【F:lib/common.sh†L721-L812】
-- Run the automated rootless diagnostics (included in Phase 4 and exposed via
+- Run the automated rootless diagnostics (included in Phase 1 and exposed via
   `./scripts/system-health-check.sh --detailed`) to confirm user namespaces,
   subordinate ID ranges, `fuse-overlayfs`, and stale `overlay/*/merged`
   directories are handled before the switch is attempted. 【F:lib/common.sh†L867-L1014】
