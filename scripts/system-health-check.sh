@@ -58,6 +58,32 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 NPM_MANIFEST_FILE="$REPO_ROOT/config/npm-packages.sh"
 
+: "${LOG_DIR:=$REPO_ROOT/logs}"
+
+if ! declare -F log >/dev/null 2>&1; then
+    log() {
+        return 0
+    }
+fi
+
+if [ -z "${PRIMARY_USER:-}" ]; then
+    if [ -n "${USER:-}" ]; then
+        PRIMARY_USER="$USER"
+    else
+        PRIMARY_USER="$(id -un 2>/dev/null || true)"
+    fi
+fi
+
+if [ -z "$PRIMARY_USER" ]; then
+    PRIMARY_USER="root"
+fi
+
+COMMON_LIB="$REPO_ROOT/lib/common.sh"
+if [ -f "$COMMON_LIB" ]; then
+    # shellcheck disable=SC1091
+    source "$COMMON_LIB"
+fi
+
 declare -a NPM_AI_PACKAGE_MANIFEST=()
 
 declare -a PYTHON_PACKAGE_CHECKS=(
@@ -961,6 +987,17 @@ run_all_checks() {
     print_section "Core System Tools"
 
     check_command "podman" "Podman" true
+
+    print_section "Rootless Podman Diagnostics"
+    if declare -F run_rootless_podman_diagnostics >/dev/null 2>&1; then
+        if run_rootless_podman_diagnostics "$PRIMARY_USER"; then
+            print_info "Rootless Podman diagnostics completed."
+        else
+            print_info "Rootless Podman diagnostics detected issues; review the messages above."
+        fi
+    else
+        print_warning "Podman diagnostics helper unavailable; update the repository to enable automatic checks."
+    fi
     check_command "git" "Git" true
     check_command "curl" "cURL" true
     check_command "wget" "wget" true
