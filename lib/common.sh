@@ -1385,6 +1385,18 @@ run_rootless_podman_diagnostics() {
         fi
     fi
 
+    if [[ -e /dev/fuse ]]; then
+        if [[ -r /dev/fuse && -w /dev/fuse ]]; then
+            print_success "/dev/fuse ready for fuse-overlayfs mounts"
+        else
+            local fuse_mode="$(ls -l /dev/fuse 2>/dev/null | awk '{print $1" "$3":"$4}')"
+            print_warning "/dev/fuse present but lacks rw permissions for the current user (${fuse_mode:-unknown mode}); rootless containers may fail (see https://github.com/containers/fuse-overlayfs)."
+        fi
+    else
+        print_error "/dev/fuse is missing; install fuse3 or load the fuse kernel module so fuse-overlayfs can operate (see https://github.com/containers/fuse-overlayfs)."
+        status=1
+    fi
+
     if command -v slirp4netns >/dev/null 2>&1; then
         print_success "slirp4netns available: $(command -v slirp4netns)"
     else
