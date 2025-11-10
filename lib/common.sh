@@ -38,6 +38,14 @@
 # ============================================================================
 
 # ============================================================================
+# Podman diagnostics state
+# ============================================================================
+
+declare -a PODMAN_STORAGE_WARNINGS=()
+declare -a PODMAN_STORAGE_ERRORS=()
+OVERLAY_METACOPY_SUPPORTED_CACHE=""
+
+# ============================================================================
 # Package Management Functions
 # ============================================================================
 
@@ -603,7 +611,116 @@ detect_gpu_and_cpu() {
 # Container storage assessment
 # ==========================================================================
 
+reset_podman_storage_messages() {
+    PODMAN_STORAGE_WARNINGS=()
+    PODMAN_STORAGE_ERRORS=()
+}
+
+record_podman_storage_warning() {
+    local message="$1"
+
+    if [[ -z "$message" ]]; then
+        return 0
+    fi
+
+    local existing
+    for existing in "${PODMAN_STORAGE_WARNINGS[@]}"; do
+        if [[ "$existing" == "$message" ]]; then
+            return 0
+        fi
+    done
+
+    PODMAN_STORAGE_WARNINGS+=("$message")
+}
+
+record_podman_storage_error() {
+    local message="$1"
+
+    if [[ -z "$message" ]]; then
+        return 0
+    fi
+
+    local existing
+    for existing in "${PODMAN_STORAGE_ERRORS[@]}"; do
+        if [[ "$existing" == "$message" ]]; then
+            return 0
+        fi
+    done
+
+    PODMAN_STORAGE_ERRORS+=("$message")
+}
+
+overlay_metacopy_supported() {
+    if [[ -n "$OVERLAY_METACOPY_SUPPORTED_CACHE" ]]; then
+        [[ "$OVERLAY_METACOPY_SUPPORTED_CACHE" == "1" ]]
+        return
+    fi
+
+    local support_flag=0
+
+    if [[ -f /sys/module/overlay/parameters/metacopy ]]; then
+        support_flag=1
+    else
+        if [[ -r /proc/config.gz ]]; then
+            if zgrep -q '^CONFIG_OVERLAY_FS_METACOPY=y' /proc/config.gz 2>/dev/null; then
+                support_flag=1
+            fi
+        fi
+
+        if (( support_flag == 0 )) && [[ -r /run/booted-system/kernel-config ]]; then
+            if grep -q '^CONFIG_OVERLAY_FS_METACOPY=y' /run/booted-system/kernel-config 2>/dev/null; then
+                support_flag=1
+            fi
+        fi
+    fi
+
+    OVERLAY_METACOPY_SUPPORTED_CACHE="$support_flag"
+    [[ "$support_flag" == "1" ]]
+}
+
+compose_overlay_mount_options() {
+    local mountopt="nodev"
+
+    if overlay_metacopy_supported; then
+        mountopt+=",metacopy=on"
+    else
+        record_podman_storage_warning \
+            "Kernel overlayfs module does not expose the metacopy parameter; using mount options '${mountopt}'."
+    fi
+
+    printf '%s' "$mountopt"
+}
+
+resolve_user_home_directory() {
+    local target_user="$1"
+
+    if [[ -z "$target_user" ]]; then
+        return 1
+    fi
+
+    local passwd_entry
+    passwd_entry=$(getent passwd "$target_user" 2>/dev/null || true)
+
+    if [[ -n "$passwd_entry" ]]; then
+        local home_path
+        home_path=$(printf '%s' "$passwd_entry" | cut -d: -f6)
+        if [[ -n "$home_path" ]]; then
+            printf '%s' "$home_path"
+            return 0
+        fi
+    fi
+
+    if [[ "$target_user" == "${USER:-}" && -n "$HOME" ]]; then
+        printf '%s' "$HOME"
+        return 0
+    fi
+
+    return 1
+}
+
 detect_container_storage_backend() {
+    reset_podman_storage_messages
+
     if [[ -n "${PODMAN_STORAGE_DRIVER_OVERRIDE:-}" ]]; then
         local override_driver="$PODMAN_STORAGE_DRIVER_OVERRIDE"
         PODMAN_STORAGE_DRIVER="$override_driver"
@@ -673,6 +790,27 @@ detect_container_storage_backend() {
             ;;
     esac
 
+    if [[ "$CONTAINER_STORAGE_FS_TYPE" == "xfs" ]]; then
+        local xfs_info_output=""
+
+        if command -v xfs_info >/dev/null 2>&1; then
+            xfs_info_output=$(xfs_info "$probe_target" 2>/dev/null || true)
+            if [[ -n "$xfs_info_output" && "$xfs_info_output" == *"ftype=0"* ]]; then
+                record_podman_storage_error \
+                    "XFS volume backing ${probe_target} reports ftype=0; recreate the filesystem with 'mkfs.xfs -n ftype=1' before running Podman."
+            elif [[ -z "$xfs_info_output" ]]; then
+                record_podman_storage_warning \
+                    "Unable to inspect XFS metadata for ${probe_target}; ensure the filesystem was created with ftype=1."
+            fi
+        else
+            record_podman_storage_warning \
+                "xfs_info unavailable; manually confirm that the XFS filesystem for ${probe_target} uses ftype=1."
+        fi
+    elif [[ "$CONTAINER_STORAGE_FS_TYPE" == "tmpfs" ]]; then
+        record_podman_storage_error \
+            "Detected tmpfs backing ${probe_target}; Podman overlay storage requires a persistent filesystem."
+    fi
+
     PODMAN_STORAGE_DRIVER="$driver"
     PODMAN_STORAGE_COMMENT="$comment"
     PODMAN_STORAGE_COMMENT=${PODMAN_STORAGE_COMMENT//$'\n'/ }
@@ -685,6 +823,116 @@ detect_container_storage_backend() {
         print_success "$comment"
     fi
 }
+
+run_rootless_podman_diagnostics() {
+    local target_user="${1:-${PRIMARY_USER:-$USER}}"
+    local status=0
+
+    if [[ "${PODMAN_STORAGE_DETECTION_RUN:-false}" != true ]]; then
+        detect_container_storage_backend
+    fi
+
+    local overlay_opts
+    overlay_opts=$(compose_overlay_mount_options)
+
+    print_info "Podman storage backend: ${PODMAN_STORAGE_DRIVER:-unknown} on ${CONTAINER_STORAGE_FS_TYPE:-unknown}"
+    print_info "Recommended overlay mount options: ${overlay_opts}"
+
+    local sysctl_value
+    sysctl_value=$(sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || echo "")
+    if [[ "$sysctl_value" == "1" ]]; then
+        print_success "kernel.unprivileged_userns_clone=1"
+    else
+        print_error "kernel.unprivileged_userns_clone is ${sysctl_value:-unset}; rootless Podman requires it set to 1."
+        status=1
+    fi
+
+    if command -v podman >/dev/null 2>&1; then
+        print_success "Podman CLI available: $(command -v podman)"
+    else
+        print_warning "Podman CLI not found on PATH; ensure virtualisation.podman.enable is applied."
+    fi
+
+    if command -v fuse-overlayfs >/dev/null 2>&1; then
+        print_success "fuse-overlayfs available: $(command -v fuse-overlayfs)"
+    else
+        print_error "fuse-overlayfs missing; add pkgs.fuse-overlayfs to virtualisation.podman.extraPackages."
+        status=1
+    fi
+
+    if command -v slirp4netns >/dev/null 2>&1; then
+        print_success "slirp4netns available: $(command -v slirp4netns)"
+    else
+        print_warning "slirp4netns not found; rootless container networking may be degraded."
+    fi
+
+    if getent group podman >/dev/null 2>&1; then
+        if id -nG "$target_user" 2>/dev/null | tr ' ' '\n' | grep -Fxq podman; then
+            print_success "User ${target_user} belongs to the podman group."
+        else
+            print_error "User ${target_user} is missing from the podman group; update users.users.${target_user}.extraGroups."
+            status=1
+        fi
+    else
+        print_error "System group 'podman' not found; declare users.groups.podman."
+        status=1
+    fi
+
+    local subuid_entry
+    subuid_entry=$(getent subuid "$target_user" 2>/dev/null || true)
+    if [[ -n "$subuid_entry" ]]; then
+        print_success "Subordinate UID range: $subuid_entry"
+    else
+        print_error "No subordinate UID range configured for ${target_user}; enable autoSubUidGidRange or define users.users.${target_user}.subUidRanges."
+        status=1
+    fi
+
+    local subgid_entry
+    subgid_entry=$(getent subgid "$target_user" 2>/dev/null || true)
+    if [[ -n "$subgid_entry" ]]; then
+        print_success "Subordinate GID range: $subgid_entry"
+    else
+        print_error "No subordinate GID range configured for ${target_user}; enable autoSubUidGidRange or define users.users.${target_user}.subGidRanges."
+        status=1
+    fi
+
+    local home_dir
+    home_dir=$(resolve_user_home_directory "$target_user" 2>/dev/null || true)
+    if [[ -z "$home_dir" ]]; then
+        print_warning "Unable to resolve home directory for ${target_user}; skipping rootless storage inspection."
+    else
+        local storage_root="${home_dir}/.local/share/containers/storage"
+        local overlay_dir="${storage_root}/overlay"
+        if [[ -d "$overlay_dir" ]]; then
+            local -a merged_dirs=()
+            while IFS= read -r merged_path; do
+                merged_dirs+=("$merged_path")
+            done < <(find "$overlay_dir" -maxdepth 2 -type d -name merged -print 2>/dev/null || true)
+
+            if (( ${#merged_dirs[@]} > 0 )); then
+                print_warning "Detected ${#merged_dirs[@]} rootless overlay 'merged' directories under ${overlay_dir}; stale mounts can block nixos-rebuild."
+                print_info "  -> Oldest entry: ${merged_dirs[0]}"
+            else
+                print_success "No stale rootless overlay 'merged' directories found under ${overlay_dir}."
+            fi
+        else
+            print_info "Rootless storage directory not initialized at ${storage_root}; containers have not been run yet."
+        fi
+    fi
+
+    local message
+    for message in "${PODMAN_STORAGE_WARNINGS[@]}"; do
+        print_warning "$message"
+    done
+    for message in "${PODMAN_STORAGE_ERRORS[@]}"; do
+        print_error "$message"
+        status=1
+    done
+
+    return $status
+}
+
+
 
 # ===========================================================================
 # Filesystem helpers
