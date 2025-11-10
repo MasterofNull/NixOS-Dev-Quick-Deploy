@@ -165,7 +165,7 @@ register_remote_builder_spec() {
 # ==========================================================================
 
 build_rootless_podman_storage_block() {
-    local default_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-overlay}"
+    local default_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-vfs}"
     local system_driver="${PODMAN_STORAGE_DRIVER:-$default_driver}"
 
     if [[ "${PODMAN_STORAGE_DETECTION_RUN:-false}" != true ]] \
@@ -1726,7 +1726,7 @@ EOF
 )
     fi
 
-    local default_podman_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-overlay}"
+    local default_podman_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-vfs}"
     local podman_storage_driver="${PODMAN_STORAGE_DRIVER:-$default_podman_driver}"
     local podman_storage_comment="${PODMAN_STORAGE_COMMENT:-Using ${podman_storage_driver} driver on detected filesystem.}"
     podman_storage_comment=${podman_storage_comment//$'\n'/ }

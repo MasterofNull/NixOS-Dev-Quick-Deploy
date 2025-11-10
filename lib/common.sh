@@ -45,6 +45,33 @@ declare -a PODMAN_STORAGE_WARNINGS=()
 declare -a PODMAN_STORAGE_ERRORS=()
 OVERLAY_METACOPY_SUPPORTED_CACHE=""
 
+extract_storage_driver_from_conf() {
+    local conf_path="$1"
+
+    if [[ -z "$conf_path" || ! -r "$conf_path" ]]; then
+        return 1
+    fi
+
+    local parsed_driver
+    parsed_driver=$(awk -F= '
+        /^[[:space:]]*#/ { next }
+        /^[[:space:]]*driver[[:space:]]*=/ {
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2)
+            gsub(/"/, "", $2)
+            gsub(/;.*/, "", $2)
+            print $2
+            exit
+        }
+    ' "$conf_path" 2>/dev/null || true)
+
+    if [[ -n "$parsed_driver" ]]; then
+        printf '%s' "$parsed_driver"
+        return 0
+    fi
+
+    return 1
+}
+
 # ============================================================================
 # Package Management Functions
 # ============================================================================
@@ -1183,7 +1210,7 @@ detect_container_storage_backend() {
     CONTAINER_STORAGE_FS_TYPE="$fstype"
     CONTAINER_STORAGE_SOURCE="${source:-unknown}"
 
-    local default_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-overlay}"
+    local default_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-vfs}"
     local driver="$default_driver"
     local detail="Detected ${CONTAINER_STORAGE_FS_TYPE} filesystem backing ${probe_target}"
     if [[ -n "$CONTAINER_STORAGE_SOURCE" && "$CONTAINER_STORAGE_SOURCE" != "unknown" ]]; then
@@ -1251,6 +1278,15 @@ detect_container_storage_backend() {
             record_podman_storage_warning \
                 "${CONTAINER_STORAGE_FS_TYPE} typically uses the ${recommended_driver} storage driver, but ${forced_source} forces ${forced_driver}. Ensure this override is intentional."
         fi
+    fi
+
+    local existing_system_driver=""
+    existing_system_driver=$(extract_storage_driver_from_conf \
+        "/etc/containers/storage.conf" 2>/dev/null || true)
+
+    if [[ -n "$existing_system_driver" && "$existing_system_driver" != "$driver" ]]; then
+        record_podman_storage_warning \
+            "Existing /etc/containers/storage.conf still sets driver=${existing_system_driver}; regenerate the configuration so it matches ${driver} before the next reboot."
     fi
 
     PODMAN_STORAGE_DRIVER="$driver"

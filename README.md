@@ -716,7 +716,7 @@ which gpt-codex-wrapper
 
 **Cause:** Upstream Podman (and earlier revisions of this deploy script) defaulted to the kernel overlay driver, which is unsupported on filesystems such as ZFS. If an older configuration or manual override still points at `overlay`, systemd attempts to mount it during boot and fails before `local-fs.target` completes. Current releases fall back to the more conservative `vfs` driver when no filesystem-specific driver is detected, but lingering `overlay` entries from prior runs can still trigger the failure until the configuration is regenerated.
 
-**Fix:** The generator now inspects the filesystem that backs `/var/lib/containers` and sets `virtualisation.containers.storage.settings.storage.driver` (for example `zfs`) so NixOS renders a compatible `/etc/containers/storage.conf`. Regenerate your configuration and rebuild:
+**Fix:** The generator now inspects the filesystem that backs `/var/lib/containers` and sets `virtualisation.containers.storage.settings.storage.driver` (for example `zfs`) so NixOS renders a compatible `/etc/containers/storage.conf`. When the existing file still pins a conflicting driver (for example a legacy `overlay` entry) the detector prints a warning so you remember to regenerate before rebooting. Regenerate your configuration and rebuild:
 
 1. Confirm the backing filesystem (optional):
    ```bash
