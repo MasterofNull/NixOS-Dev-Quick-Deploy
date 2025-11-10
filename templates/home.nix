@@ -2015,6 +2015,8 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       GITEA_CUSTOM = "$HOME/${giteaNativeConfigDir}";
     };
 
+@PODMAN_ROOTLESS_STORAGE@
+
   # ========================================================================
   # Session Path
   # ========================================================================
