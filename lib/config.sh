@@ -160,6 +160,103 @@ register_remote_builder_spec() {
     fi
 }
 
+# ==========================================================================
+# Podman rootless storage helper
+# ==========================================================================
+
+build_rootless_podman_storage_block() {
+    local system_driver="${PODMAN_STORAGE_DRIVER:-overlay}"
+
+    if [[ "${PODMAN_STORAGE_DETECTION_RUN:-false}" != true ]] \
+        && declare -F detect_container_storage_backend >/dev/null 2>&1; then
+        detect_container_storage_backend
+        system_driver="${PODMAN_STORAGE_DRIVER:-$system_driver}"
+    fi
+
+    local rootless_home="${PRIMARY_HOME:-$HOME}"
+    local home_fs
+    home_fs=$(get_filesystem_type_for_path "$rootless_home" "unknown")
+    local home_fs_display="${home_fs:-unknown}"
+
+    local driver_choice="overlay"
+    local comment=""
+
+    case "$system_driver" in
+        btrfs)
+            if [[ "$home_fs" == "btrfs" ]]; then
+                driver_choice="btrfs"
+                comment="Home directory resides on btrfs; matching rootless Podman storage driver."
+            else
+                driver_choice="overlay"
+                if [[ "$home_fs_display" == "unknown" ]]; then
+                    comment="System Podman uses btrfs but the home directory filesystem could not be detected; forcing overlay for rootless compatibility."
+                else
+                    comment="System Podman uses btrfs but ${rootless_home} resides on ${home_fs_display}; forcing overlay for rootless compatibility."
+                fi
+            fi
+            ;;
+        zfs|zfs_member)
+            if [[ "$home_fs" == "zfs" || "$home_fs" == "zfs_member" ]]; then
+                driver_choice="zfs"
+                comment="Home directory resides on ZFS; matching rootless Podman storage driver."
+            else
+                driver_choice="overlay"
+                if [[ "$home_fs_display" == "unknown" ]]; then
+                    comment="System Podman uses ZFS but the home directory filesystem could not be detected; forcing fuse-overlayfs for rootless compatibility."
+                else
+                    comment="System Podman uses ZFS but ${rootless_home} resides on ${home_fs_display}; forcing fuse-overlayfs for rootless compatibility."
+                fi
+            fi
+            ;;
+        *)
+            driver_choice="overlay"
+            if [[ "$home_fs_display" == "unknown" ]]; then
+                comment="Using overlay driver for rootless Podman storage."
+            else
+                comment="Rootless storage path on ${home_fs_display}; using overlay driver."
+            fi
+            ;;
+    esac
+
+    comment=${comment//$'\n'/ }
+    comment=${comment//\'/}
+
+    local options_block
+    if [[ "$driver_choice" == "overlay" ]]; then
+        options_block=$(cat <<'EOF'
+
+    [storage.options]
+      mount_program = "${pkgs.fuse-overlayfs}/bin/fuse-overlayfs"
+      ignore_chown_errors = "true"
+
+    [storage.options.overlay]
+      mountopt = "nodev,metacopy=on"
+EOF
+)
+    else
+        options_block=$(cat <<'EOF'
+
+    [storage.options]
+      ignore_chown_errors = "true"
+EOF
+)
+    fi
+
+    PODMAN_ROOTLESS_STORAGE_BLOCK=$(cat <<EOF
+  # ==========================================================================
+  # Rootless Podman storage (per-user override)
+  # ==========================================================================
+  xdg.configFile."containers/storage.conf".text = ''
+    # ${comment}
+    [storage]
+      driver = "${driver_choice}"
+      runroot = "/run/user/\${toString config.home.uidNumber}/containers"
+      graphroot = "\${config.home.homeDirectory}/.local/share/containers/storage"${options_block}
+  '';
+EOF
+)
+}
+
 probe_performance_kernel_availability() {
     # Determine which performance kernel packages are available in the current
     # nixpkgs channel by probing the provided attribute names. The function
@@ -2340,6 +2437,8 @@ EOF
         return 1
     fi
 
+    build_rootless_podman_storage_block
+
     replace_placeholder "$HOME_MANAGER_FILE" "VERSIONPLACEHOLDER" "${SCRIPT_VERSION:-4.0.0}"
     replace_placeholder "$HOME_MANAGER_FILE" "HASHPLACEHOLDER" "$TEMPLATE_HASH"
     replace_placeholder "$HOME_MANAGER_FILE" "HOMEUSERNAME" "$USER"
@@ -2347,6 +2446,7 @@ EOF
     replace_placeholder "$HOME_MANAGER_FILE" "STATEVERSION_PLACEHOLDER" "$STATE_VERSION"
     replace_placeholder "$HOME_MANAGER_FILE" "@GPU_MONITORING_PACKAGES@" "$GPU_MONITORING_PACKAGES"
     replace_placeholder "$HOME_MANAGER_FILE" "@GLF_HOME_DEFINITIONS@" "$glf_home_definitions"
+    replace_placeholder "$HOME_MANAGER_FILE" "@PODMAN_ROOTLESS_STORAGE@" "${PODMAN_ROOTLESS_STORAGE_BLOCK:-}"
 
     local HOME_HOSTNAME=$(hostname)
     replace_placeholder "$HOME_MANAGER_FILE" "@HOSTNAME@" "$HOME_HOSTNAME"
