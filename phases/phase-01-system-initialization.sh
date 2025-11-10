@@ -14,8 +14,7 @@
 #   - lib/validation.sh → check_disk_space(), check_required_packages(), assert_unique_paths()
 #   - lib/hardware.sh → detect_gpu_hardware(), detect_gpu_and_cpu()
 #   - lib/nixos.sh → select_nixos_version(), update_nixos_channels()
-#   - lib/packages.sh → ensure_preflight_core_packages(), cleanup_conflicting_home_manager_profile()
-#   - lib/home-manager.sh → install_home_manager()
+#   - lib/packages.sh → ensure_preflight_core_packages()
 #   - lib/python.sh → ensure_python_runtime()
 #
 # Required Variables (from config/variables.sh):
@@ -535,46 +534,13 @@ EOF
     fi
 
     # ========================================================================
-    # Step 1.16: Cleanup Conflicting Home-Manager Profiles
-    # ========================================================================
-    # Remove legacy home-manager installations that could conflict
-    print_info "Scanning nix profile for legacy home-manager entries..."
-    cleanup_conflicting_home_manager_profile
-
-    # ========================================================================
-    # Step 1.17: Ensure Home-Manager is Available
-    # ========================================================================
-    # home-manager manages user environment (dotfiles, packages, services)
-    if command -v home-manager &>/dev/null; then
-        print_success "home-manager is installed: $(which home-manager)"
-    else
-        print_warning "home-manager not found - installing automatically"
-        install_home_manager
-    fi
-
-    # ========================================================================
-    # Step 1.18: Verify Python Runtime Available
+    # Step 1.16: Verify Python Runtime Available
     # ========================================================================
     # Python needed for configuration generation scripts
     print_info "Verifying Python runtime..."
     if ! ensure_python_runtime; then
         print_error "Unable to locate or provision a python interpreter"
         exit 1
-    fi
-
-    # ========================================================================
-    # Step 1.19: Rootless Podman Diagnostics
-    # ========================================================================
-    print_info "Evaluating Podman rootless storage and namespace prerequisites..."
-    if declare -F run_rootless_podman_diagnostics >/dev/null 2>&1; then
-        if run_rootless_podman_diagnostics; then
-            print_success "Podman rootless diagnostics completed without blocking issues"
-        else
-            print_error "Podman diagnostics detected blocking issues; review the messages above."
-            exit 1
-        fi
-    else
-        print_warning "run_rootless_podman_diagnostics helper not available; ensure libraries are up to date."
     fi
 
     # Display Python runtime information
@@ -585,7 +551,7 @@ EOF
     fi
 
     # ========================================================================
-    # Step 1.19: Collect User Preferences & App Selections
+    # Step 1.17: Collect User Preferences & App Selections
     # ========================================================================
     print_section "User Preferences & Integrations"
     echo ""

@@ -13,6 +13,9 @@
 #   - lib/state.sh → is_step_complete(), mark_step_complete()
 #   - lib/config.sh → generate_nixos_system_config(), validate_system_build_stage()
 #   - lib/user.sh → gather_user_info()
+#   - lib/packages.sh → cleanup_conflicting_home_manager_profile()
+#   - lib/home-manager.sh → install_home_manager()
+#   - lib/common.sh → run_rootless_podman_diagnostics()
 #
 # Required Variables (from config/variables.sh):
 #   - GPU_TYPE → Detected GPU type (from Phase 1)
@@ -217,6 +220,43 @@ phase_03_config_generation() {
     if ! validate_system_build_stage; then
         print_error "Configuration validation failed"
         return 1
+    fi
+
+    # ========================================================================
+    # Step 4.4: Prepare Rootless Podman Environment
+    # ========================================================================
+    print_section "Container Runtime Preparation"
+    echo ""
+
+    print_info "Evaluating Podman rootless storage and namespace prerequisites..."
+    if declare -F run_rootless_podman_diagnostics >/dev/null 2>&1; then
+        if run_rootless_podman_diagnostics; then
+            print_success "Podman rootless diagnostics completed without blocking issues"
+        else
+            print_error "Podman diagnostics detected blocking issues; review the messages above."
+            return 1
+        fi
+    else
+        print_warning "run_rootless_podman_diagnostics helper not available; ensure libraries are up to date."
+    fi
+
+    # ========================================================================
+    # Step 4.5: Cleanup Conflicting Home-Manager Profiles
+    # ========================================================================
+    print_section "Home Manager Provisioning"
+    echo ""
+
+    print_info "Scanning nix profile for legacy home-manager entries..."
+    cleanup_conflicting_home_manager_profile
+
+    # ========================================================================
+    # Step 4.6: Ensure Home-Manager is Available
+    # ========================================================================
+    if command -v home-manager &>/dev/null; then
+        print_success "home-manager is installed: $(which home-manager)"
+    else
+        print_warning "home-manager not found - installing automatically"
+        install_home_manager
     fi
 
     # ------------------------------------------------------------------------
