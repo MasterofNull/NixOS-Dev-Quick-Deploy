@@ -686,6 +686,60 @@ detect_container_storage_backend() {
     fi
 }
 
+# ===========================================================================
+# Filesystem helpers
+# ===========================================================================
+
+# Determine the filesystem type for a given path. Falls back to "unknown"
+# when detection fails so callers can decide how to react.
+get_filesystem_type_for_path() {
+    local probe_path="$1"
+    local fallback="${2:-unknown}"
+
+    if [[ -z "$probe_path" ]]; then
+        echo "$fallback"
+        return 1
+    fi
+
+    local target="$probe_path"
+
+    # Walk up the directory tree until we find an existing path. This allows
+    # callers to pass paths that may not exist yet (e.g., future storage roots).
+    while [[ ! -e "$target" ]]; do
+        local parent
+        parent=$(dirname "$target")
+
+        if [[ -z "$parent" || "$parent" == "$target" ]]; then
+            target="/"
+            break
+        fi
+
+        target="$parent"
+    done
+
+    local fstype=""
+
+    if command -v findmnt >/dev/null 2>&1; then
+        fstype=$(findmnt -n -o FSTYPE --target "$target" 2>/dev/null || true)
+    fi
+
+    if [[ -z "$fstype" ]] && [[ -r /proc/mounts ]]; then
+        fstype=$(awk -v target="$target" '$2 == target {print $3; exit}' /proc/mounts 2>/dev/null)
+    fi
+
+    if [[ -z "$fstype" ]] && command -v df >/dev/null 2>&1; then
+        fstype=$(df -PT "$target" 2>/dev/null | awk 'NR==2 {print $2}' 2>/dev/null)
+    fi
+
+    if [[ -z "$fstype" ]]; then
+        echo "$fallback"
+        return 1
+    fi
+
+    echo "$fstype"
+    return 0
+}
+
 # ==========================================================================
 # Kernel feature detection helpers
 # ==========================================================================
