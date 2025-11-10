@@ -23,7 +23,10 @@ common issues they surface.
 * Rootless storage trees are scanned for stale `overlay/.../merged` directories
   that usually accompany interrupted container clean-ups. The validator prints
   the first path it finds so that you can clean the mount manually or by using
-  `podman system prune`.
+  `podman system prune`. When mounted entries are detected the validator now
+  attempts to unmount them automatically, remove the hashed overlay directory,
+  and run `podman system reset --force` (with sudo for the system store) to
+  rebuild the Podman storage metadata.
 
 ## Required fixes when the validator fails
 
