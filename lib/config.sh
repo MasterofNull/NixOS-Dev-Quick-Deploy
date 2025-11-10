@@ -1442,6 +1442,27 @@ generate_nixos_system_config() {
         return 1
     fi
 
+    local support_module
+    for support_module in overlays.nix python-overrides.nix; do
+        local module_source="$TEMPLATE_DIR/$support_module"
+        local module_destination="$HM_CONFIG_DIR/$support_module"
+
+        print_info "Syncing $support_module into system configuration workspace..."
+
+        if [[ ! -f "$module_source" ]]; then
+            print_error "Required template missing: $module_source"
+            return 1
+        fi
+
+        if ! safe_copy_file "$module_source" "$module_destination"; then
+            print_error "Failed to install $support_module into $HM_CONFIG_DIR"
+            return 1
+        fi
+
+        safe_chown_user_dir "$module_destination" || true
+        print_success "Installed $support_module"
+    done
+
     if declare -F detect_container_storage_backend >/dev/null 2>&1; then
         if [[ "${FORCE_CONTAINER_STORAGE_REDETECT:-false}" == true ]]; then
             print_info "Forcing container storage backend re-detection (FORCE_CONTAINER_STORAGE_REDETECT=true)"
