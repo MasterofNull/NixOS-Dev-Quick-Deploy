@@ -306,37 +306,58 @@ phase_05_declarative_deployment() {
         rebuild_display+=" ${nixos_rebuild_opts[*]}"
     fi
 
-    print_info "Running: $rebuild_display"
-    print_info "This applies the declarative system configuration..."
-    echo ""
-
-    if declare -F describe_binary_cache_usage >/dev/null 2>&1; then
-        describe_binary_cache_usage "nixos-rebuild switch"
-    fi
-
-    if declare -F describe_remote_build_context >/dev/null 2>&1; then
-        describe_remote_build_context
-    fi
-
-    if sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" "${nixos_rebuild_opts[@]}" 2>&1 | tee /tmp/nixos-rebuild.log; then
-        print_success "✓ NixOS system configuration applied!"
-        print_success "✓ System packages now managed declaratively"
-        echo ""
-    else
-        local exit_code=${PIPESTATUS[0]}
-        print_error "nixos-rebuild failed (exit code: $exit_code)"
-        if [[ ! -d "$HM_CONFIG_DIR" ]]; then
-            print_error "Home Manager flake directory is missing: $HM_CONFIG_DIR"
-            print_info "Restore the directory or rerun Phase 3 before retrying."
-        elif [[ ! -f "$HM_CONFIG_DIR/flake.nix" ]]; then
-            print_error "flake.nix is missing from: $HM_CONFIG_DIR"
-            print_info "Regenerate the configuration with Phase 3 or restore from backup."
+    local perform_system_switch=true
+    if [[ "${AUTO_APPLY_SYSTEM_CONFIGURATION,,}" != "true" ]]; then
+        perform_system_switch=false
+        SYSTEM_SWITCH_SKIPPED_REASON="Automatic system switch disabled via flag"
+    elif [[ "${PROMPT_BEFORE_SYSTEM_SWITCH,,}" == "true" ]]; then
+        if ! confirm "Apply system configuration now via nixos-rebuild switch?" "y"; then
+            perform_system_switch=false
+            SYSTEM_SWITCH_SKIPPED_REASON="User skipped system switch prompt"
         fi
-        print_info "Log: /tmp/nixos-rebuild.log"
-        print_info "Rollback: sudo nixos-rebuild --rollback"
-        echo ""
-        return 1
     fi
+
+    if [[ "$perform_system_switch" == true ]]; then
+        print_info "Running: $rebuild_display"
+        print_info "This applies the declarative system configuration..."
+        echo ""
+
+        if declare -F describe_binary_cache_usage >/dev/null 2>&1; then
+            describe_binary_cache_usage "nixos-rebuild switch"
+        fi
+
+        if declare -F describe_remote_build_context >/dev/null 2>&1; then
+            describe_remote_build_context
+        fi
+
+        if sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" "${nixos_rebuild_opts[@]}" 2>&1 | tee /tmp/nixos-rebuild.log; then
+            print_success "✓ NixOS system configuration applied!"
+            print_success "✓ System packages now managed declaratively"
+            SYSTEM_CONFIGURATION_APPLIED="true"
+            SYSTEM_SWITCH_SKIPPED_REASON=""
+            echo ""
+        else
+            local exit_code=${PIPESTATUS[0]}
+            print_error "nixos-rebuild failed (exit code: $exit_code)"
+            if [[ ! -d "$HM_CONFIG_DIR" ]]; then
+                print_error "Home Manager flake directory is missing: $HM_CONFIG_DIR"
+                print_info "Restore the directory or rerun Phase 3 before retrying."
+            elif [[ ! -f "$HM_CONFIG_DIR/flake.nix" ]]; then
+                print_error "flake.nix is missing from: $HM_CONFIG_DIR"
+                print_info "Regenerate the configuration with Phase 3 or restore from backup."
+            fi
+            print_info "Log: /tmp/nixos-rebuild.log"
+            print_info "Rollback: sudo nixos-rebuild --rollback"
+            echo ""
+            return 1
+        fi
+    else
+        print_warning "Skipping automatic NixOS activation"
+        print_info "Run manually when ready: $rebuild_display"
+        echo ""
+    fi
+
+    export SYSTEM_CONFIGURATION_APPLIED SYSTEM_SWITCH_SKIPPED_REASON
 
     # ========================================================================
     # Step 6.6: Prepare Home Manager Targets
@@ -389,24 +410,45 @@ phase_05_declarative_deployment() {
     fi
     echo ""
 
-    # Apply home-manager
-    if $hm_cmd switch --flake "$HM_CONFIG_DIR" 2>&1 | tee /tmp/home-manager-switch.log; then
-        print_success "✓ Home manager configuration applied!"
-        print_success "✓ User packages now managed declaratively"
-        echo ""
-    else
-        local hm_exit_code=${PIPESTATUS[0]}
-        print_error "home-manager switch failed (exit code: $hm_exit_code)"
-        print_info "Log: /tmp/home-manager-switch.log"
-        print_info "Rollback: home-manager --rollback"
-        echo ""
-        print_warning "Common causes:"
-        print_info "  • Syntax errors in home.nix"
-        print_info "  • Network issues downloading packages"
-        print_info "  • Package conflicts (check log)"
-        echo ""
-        return 1
+    local home_switch_display="$hm_cmd switch --flake $HM_CONFIG_DIR"
+    local perform_home_switch=true
+    if [[ "${AUTO_APPLY_HOME_CONFIGURATION,,}" != "true" ]]; then
+        perform_home_switch=false
+        HOME_SWITCH_SKIPPED_REASON="Automatic home-manager switch disabled via flag"
+    elif [[ "${PROMPT_BEFORE_HOME_SWITCH,,}" == "true" ]]; then
+        if ! confirm "Apply home-manager configuration now?" "y"; then
+            perform_home_switch=false
+            HOME_SWITCH_SKIPPED_REASON="User skipped home-manager switch prompt"
+        fi
     fi
+
+    if [[ "$perform_home_switch" == true ]]; then
+        if $hm_cmd switch --flake "$HM_CONFIG_DIR" 2>&1 | tee /tmp/home-manager-switch.log; then
+            print_success "✓ Home manager configuration applied!"
+            print_success "✓ User packages now managed declaratively"
+            HOME_CONFIGURATION_APPLIED="true"
+            HOME_SWITCH_SKIPPED_REASON=""
+            echo ""
+        else
+            local hm_exit_code=${PIPESTATUS[0]}
+            print_error "home-manager switch failed (exit code: $hm_exit_code)"
+            print_info "Log: /tmp/home-manager-switch.log"
+            print_info "Rollback: home-manager --rollback"
+            echo ""
+            print_warning "Common causes:"
+            print_info "  • Syntax errors in home.nix"
+            print_info "  • Network issues downloading packages"
+            print_info "  • Package conflicts (check log)"
+            echo ""
+            return 1
+        fi
+    else
+        print_warning "Skipping automatic Home Manager activation"
+        print_info "Run manually when ready: $home_switch_display"
+        echo ""
+    fi
+
+    export HOME_CONFIGURATION_APPLIED HOME_SWITCH_SKIPPED_REASON
 
     # ========================================================================
     # Step 6.8: Configure Flatpak Remotes (if available)

@@ -80,7 +80,7 @@ derive_system_release_version() {
 #   Normalized channel name
 #
 # Examples:
-#   "https://nixos.org/channels/nixos-24.11" → "nixos-24.11"
+#   "https://channels.nixos.org/nixos-24.11" → "nixos-24.11"
 #   "https://github.com/nix-community/home-manager/archive/master.tar.gz" → "master"
 # ============================================================================
 normalize_channel_name() {
@@ -104,6 +104,59 @@ normalize_channel_name() {
     raw="${raw%.zip}"
 
     echo "$raw"
+}
+
+# ============================================================================
+# Extract URL Host
+# ============================================================================
+# Purpose: Return the hostname component of a URL. Helps preflight DNS
+#          resolution before invoking network-heavy commands.
+# ============================================================================
+extract_url_host() {
+    local url="$1"
+
+    if [[ -z "$url" ]]; then
+        echo ""
+        return 0
+    fi
+
+    url="${url#*://}"
+    url="${url%%/*}"
+
+    echo "$url"
+}
+
+# ============================================================================
+# Check Host Resolution
+# ============================================================================
+# Purpose: Best-effort DNS lookup before attempting large downloads.
+# Returns:
+#   0 when the host resolves via getent/dig/ping, non-zero otherwise.
+# ============================================================================
+channel_host_is_resolvable() {
+    local host="$1"
+
+    if [[ -z "$host" ]]; then
+        return 1
+    fi
+
+    if getent hosts "$host" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if command -v dig >/dev/null 2>&1; then
+        if dig +tries=1 +time=2 "$host" >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+
+    if command -v ping >/dev/null 2>&1; then
+        if ping -c 1 -W 1 "$host" >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+
+    return 1
 }
 
 # ============================================================================
@@ -395,9 +448,9 @@ update_nixos_channels() {
     # Set the target channel URL
     local CURRENT_NIXOS_CHANNEL
     if [[ "$TARGET_VERSION" == "unstable" ]]; then
-        CURRENT_NIXOS_CHANNEL="https://nixos.org/channels/nixos-unstable"
+        CURRENT_NIXOS_CHANNEL="https://channels.nixos.org/nixos-unstable"
     else
-        CURRENT_NIXOS_CHANNEL="https://nixos.org/channels/nixos-${TARGET_VERSION}"
+        CURRENT_NIXOS_CHANNEL="https://channels.nixos.org/nixos-${TARGET_VERSION}"
     fi
 
     # Check if we need to upgrade channels
@@ -419,6 +472,8 @@ update_nixos_channels() {
 
     # Extract channel name from URL
     local NIXOS_CHANNEL_NAME=$(basename "$CURRENT_NIXOS_CHANNEL")
+    local NIXOS_CHANNEL_HOST
+    NIXOS_CHANNEL_HOST=$(extract_url_host "$CURRENT_NIXOS_CHANNEL")
     print_info "Current NixOS channel: $NIXOS_CHANNEL_NAME"
     SYNCHRONIZED_NIXOS_CHANNEL="$NIXOS_CHANNEL_NAME"
 
@@ -462,6 +517,8 @@ update_nixos_channels() {
     fi
 
     SYNCHRONIZED_HOME_MANAGER_CHANNEL="$HM_CHANNEL_NAME"
+    local HOME_MANAGER_CHANNEL_HOST
+    HOME_MANAGER_CHANNEL_HOST=$(extract_url_host "$HOME_MANAGER_CHANNEL_URL")
 
     print_success "Channel synchronization plan:"
     print_info "  NixOS:        $NIXOS_CHANNEL_NAME"
@@ -509,28 +566,52 @@ update_nixos_channels() {
     fi
 
     # Update system channels (root) FIRST
-    print_info "Updating system channels (this may take a few minutes)..."
-    echo ""
-    if sudo nix-channel --update 2>&1 | tee /tmp/nixos-channel-update.log; then
-        print_success "NixOS system channels updated"
-    else
-        print_error "System channel update failed"
-        print_info "Log saved to: /tmp/nixos-channel-update.log"
-        exit 1
-    fi
-    echo ""
+    local channel_updates_skipped=false
+    local -a channel_hosts_to_check=()
+    declare -A seen_channel_hosts=()
+    local candidate_host
+    for candidate_host in "$NIXOS_CHANNEL_HOST" "$HOME_MANAGER_CHANNEL_HOST"; do
+        if [[ -n "$candidate_host" && -z "${seen_channel_hosts[$candidate_host]+_}" ]]; then
+            seen_channel_hosts["$candidate_host"]=1
+            channel_hosts_to_check+=("$candidate_host")
+        fi
+    done
 
-    # Update user channels (home-manager)
-    print_info "Updating user channels (home-manager)..."
-    echo ""
-    if nix-channel --update 2>&1 | tee /tmp/home-manager-channel-update.log; then
-        print_success "User channels updated successfully"
+    local -a unresolved_channel_hosts=()
+    for candidate_host in "${channel_hosts_to_check[@]}"; do
+        if ! channel_host_is_resolvable "$candidate_host"; then
+            unresolved_channel_hosts+=("$candidate_host")
+        fi
+    done
+
+    if (( ${#unresolved_channel_hosts[@]} > 0 )); then
+        channel_updates_skipped=true
+        print_warning "Skipping nix-channel updates: unable to resolve ${unresolved_channel_hosts[*]}"
+        print_info "Cached channel metadata will be used; rerun the updates once connectivity is restored."
     else
-        print_error "User channel update failed"
-        print_info "Log saved to: /tmp/home-manager-channel-update.log"
-        exit 1
+        print_info "Updating system channels (this may take a few minutes)..."
+        echo ""
+        if sudo nix-channel --update 2>&1 | tee /tmp/nixos-channel-update.log; then
+            print_success "NixOS system channels updated"
+        else
+            print_error "System channel update failed"
+            print_info "Log saved to: /tmp/nixos-channel-update.log"
+            exit 1
+        fi
+        echo ""
+
+        # Update user channels (home-manager)
+        print_info "Updating user channels (home-manager)..."
+        echo ""
+        if nix-channel --update 2>&1 | tee /tmp/home-manager-channel-update.log; then
+            print_success "User channels updated successfully"
+        else
+            print_error "User channel update failed"
+            print_info "Log saved to: /tmp/home-manager-channel-update.log"
+            exit 1
+        fi
+        echo ""
     fi
-    echo ""
 
     # Verify synchronization
     print_info "Verifying channel synchronization..."
@@ -555,6 +636,11 @@ update_nixos_channels() {
     if [[ -z "$SYSTEM_CHANNEL" || -z "$USER_CHANNEL" ]]; then
         print_warning "Could not verify channel versions"
         print_info "Will proceed but may encounter compatibility issues"
+    fi
+
+    if [[ "$channel_updates_skipped" == true ]]; then
+        print_warning "Channel updates deferred due to missing network connectivity."
+        print_info "Run 'sudo nix-channel --update' and 'nix-channel --update' once network access is restored."
     fi
 
     echo ""
