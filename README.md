@@ -744,6 +744,40 @@ which openai-wrapper
 which gooseai-wrapper
 ```
 
+### Rootless Podman Reports Driver Mismatch or Overlay Failures
+
+**Symptom:** Running `podman ps` or `podman info` as a non-root user prints messages such as:
+
+```
+ERRO[0000] User-selected graph driver "overlay" overwritten by graph driver "btrfs" from database
+Error: configure storage: "/home/<user>/.local/share/containers/storage/btrfs" is not on a btrfs filesystem
+```
+
+**Cause:** Earlier versions mirrored the system storage driver (for example `btrfs` or `zfs`) into `/etc/containers/storage.conf`. Rootless Podman reuses that driver for `~/.local/share/containers`, so a home directory on ext4/xfs would hit catastrophic overlay errors.
+
+**Fix:** The generator now writes `~/.config/containers/storage.conf` via Home Manager. It compares the home filesystem with the system driver and falls back to fuse-overlayfs when they differ. Regenerate your configuration and reset the rootless store so the new override takes effect:
+
+1. Render the updated configs:
+   ```bash
+   cd ~/NixOS-Dev-Quick-Deploy
+   ./nixos-quick-deploy.sh --resume
+   ```
+2. Remove stale rootless storage metadata (only affects the current user's Podman images):
+   ```bash
+   rm -rf ~/.local/share/containers/storage ~/.local/share/containers/cache
+   ```
+   # or: podman system reset --force
+3. Apply the Home Manager profile and restart the shell to pick up the new `storage.conf`:
+   ```bash
+   cd ~/.dotfiles/home-manager
+   home-manager switch --flake .
+   exec zsh
+   ```
+4. Confirm the driver now matches the override:
+   ```bash
+   podman info --format '{{.Store.GraphDriverName}}'
+   ```
+
 **If still not working:**
 ```bash
 # Re-apply home-manager configuration
