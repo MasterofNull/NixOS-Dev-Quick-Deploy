@@ -240,7 +240,60 @@ You should now see all checks running:
    formatting, reinstall helper binaries, and clean stale overlay directories.
 3. After applying the fixes, re-run `nixos-rebuild switch`.
 
+### Automated recovery (v4.0.0+)
+
+The validator now attempts to clean corrupted Podman storage automatically when
+it finds mounted `overlay/*/merged` directories:
+
+- **System scope:** `run_rootless_podman_diagnostics` unmounts any overlay mounts
+  left under `/var/lib/containers/storage/overlay/`, removes the hashed layer
+  directories, and executes `sudo podman system reset --force` so the rootful
+  storage database and overlay metadata are regenerated. See the Podman manual
+  for details on `podman system reset`. [link](https://docs.podman.io/en/v5.0.3/markdown/podman-system-reset.1.html)
+- **Rootless scope:** The helper repeats the same process for
+  `~/.local/share/containers/storage/overlay/` using `fusermount3`/`fusermount`
+  for unprivileged mounts and runs `podman system reset --force` without sudo to
+  rebuild the per-user store.
+- If either cleanup step still reports mounted entries after the automated run,
+  the deployment halts so you can manually inspect the affected directories.
+
+### Additional gating checks
+
+- Re-run the deployment generator so container storage probing can refresh the
+  driver that NixOS writes into `storage.conf`. The helper examines the
+  filesystem behind `/var/lib/containers` and picks a compatible driver instead
+  of leaving the overlay default in place on ZFS or Btrfs hosts: `./nixos-quick-deploy.sh --resume`. 【F:lib/common.sh†L721-L812】
+- Run the automated rootless diagnostics (included in Phase 4 and exposed via
+  `./scripts/system-health-check.sh --detailed`) to confirm user namespaces,
+  subordinate ID ranges, `fuse-overlayfs`, and stale `overlay/*/merged`
+  directories are handled before the switch is attempted. 【F:lib/common.sh†L867-L1014】
+- If stale overlay directories remain, clean them with Podman (`podman rm --force --all`
+  followed by `podman system prune --volumes`) or unmount them manually with
+  `findmnt`/`umount` as described below. 【F:docs/ROOTLESS_PODMAN.md†L37-L67】
+
 ---
+
+## Zswap zpool Module Unavailable During Boot
+
+### Symptoms
+
+- Boot logs print `zswap: zpool z3fold not available` and the kernel falls back
+  to an uncompressed swap backend.
+- Hibernation swap provisioning created by the quick deploy script does not
+  engage compression even though zswap was enabled previously.
+
+### Resolution
+
+1. Regenerate the configuration so the zswap helper can re-probe the available
+   zpools and select the first kernel-supported option (z3fold → zbud →
+   zsmalloc). `./nixos-quick-deploy.sh --resume` runs
+   `select_zswap_memory_pool` automatically before templating the NixOS config. 【F:lib/config.sh†L1406-L1434】【F:lib/common.sh†L1213-L1231】
+2. Rebuild the system profile (`sudo nixos-rebuild switch --flake ~/.dotfiles/home-manager`)
+   and reboot. Inspect `/proc/cmdline` to confirm that the regenerated kernel
+   parameters now point at the detected zswap zpool.
+3. If you need to override zswap entirely (for troubleshooting hardware with
+   unstable compression support), re-run the deploy script with `--disable-zswap`
+   or restore automatic detection with `--zswap-auto`. 【F:nixos-quick-deploy.sh†L301-L456】
 
 ## Flatpak Apps Not Installing
 
