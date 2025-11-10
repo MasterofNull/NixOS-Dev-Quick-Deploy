@@ -824,6 +824,41 @@ detect_container_storage_backend() {
     fi
 }
 
+resolve_subid_entry() {
+    local database="$1"
+    local target_user="$2"
+
+    case "$database" in
+        subuid|subgid)
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+
+    local entry=""
+
+    if command -v getent >/dev/null 2>&1; then
+        if entry=$(getent "$database" "$target_user" 2>/dev/null); then
+            if [[ -n "$entry" ]]; then
+                printf '%s\n' "$entry"
+                return 0
+            fi
+        fi
+    fi
+
+    local fallback_path="/etc/${database}"
+    if [[ -r "$fallback_path" ]]; then
+        entry=$(awk -F: -v user="$target_user" '$1 == user {print $0}' "$fallback_path")
+        if [[ -n "$entry" ]]; then
+            printf '%s\n' "$entry"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
 run_rootless_podman_diagnostics() {
     local target_user="${1:-${PRIMARY_USER:-$USER}}"
     local status=0
@@ -878,18 +913,16 @@ run_rootless_podman_diagnostics() {
         status=1
     fi
 
-    local subuid_entry
-    subuid_entry=$(getent subuid "$target_user" 2>/dev/null || true)
-    if [[ -n "$subuid_entry" ]]; then
+    local subuid_entry=""
+    if subuid_entry=$(resolve_subid_entry subuid "$target_user"); then
         print_success "Subordinate UID range: $subuid_entry"
     else
         print_error "No subordinate UID range configured for ${target_user}; enable autoSubUidGidRange or define users.users.${target_user}.subUidRanges."
         status=1
     fi
 
-    local subgid_entry
-    subgid_entry=$(getent subgid "$target_user" 2>/dev/null || true)
-    if [[ -n "$subgid_entry" ]]; then
+    local subgid_entry=""
+    if subgid_entry=$(resolve_subid_entry subgid "$target_user"); then
         print_success "Subordinate GID range: $subgid_entry"
     else
         print_error "No subordinate GID range configured for ${target_user}; enable autoSubUidGidRange or define users.users.${target_user}.subGidRanges."
