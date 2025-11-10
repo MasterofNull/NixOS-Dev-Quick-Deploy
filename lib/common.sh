@@ -1132,15 +1132,15 @@ resolve_user_home_directory() {
 detect_container_storage_backend() {
     reset_podman_storage_messages
 
+    local forced_driver=""
+    local forced_source=""
+
     if [[ -n "${PODMAN_STORAGE_DRIVER_OVERRIDE:-}" ]]; then
-        local override_driver="$PODMAN_STORAGE_DRIVER_OVERRIDE"
-        PODMAN_STORAGE_DRIVER="$override_driver"
-        PODMAN_STORAGE_COMMENT="Container storage driver forced via PODMAN_STORAGE_DRIVER_OVERRIDE=${override_driver}"
-        PODMAN_STORAGE_COMMENT=${PODMAN_STORAGE_COMMENT//$'\n'/ }
-        PODMAN_STORAGE_COMMENT=${PODMAN_STORAGE_COMMENT//\'/}
-        PODMAN_STORAGE_DETECTION_RUN=true
-        print_warning "${PODMAN_STORAGE_COMMENT}"
-        return 0
+        forced_driver="$PODMAN_STORAGE_DRIVER_OVERRIDE"
+        forced_source="PODMAN_STORAGE_DRIVER_OVERRIDE"
+    elif [[ "${PODMAN_STORAGE_DRIVER_PRESET:-false}" == true && -n "${PODMAN_STORAGE_DRIVER:-}" ]]; then
+        forced_driver="$PODMAN_STORAGE_DRIVER"
+        forced_source="PODMAN_STORAGE_DRIVER"
     fi
 
     # Determine which filesystem backs the Podman graphroot so we can
@@ -1189,17 +1189,24 @@ detect_container_storage_backend() {
         detail+=" (device ${CONTAINER_STORAGE_SOURCE})"
     fi
 
-    local comment="$detail; overlay driver remains default."
-    case "$CONTAINER_STORAGE_FS_TYPE" in
-        zfs|zfs_member)
-            driver="zfs"
-            comment="$detail; overlayfs unsupported so the zfs storage driver will be used."
-            ;;
-        btrfs)
-            driver="btrfs"
-            comment="$detail; using Podman's native btrfs storage driver."
-            ;;
-    esac
+    local comment=""
+
+    if [[ -n "$forced_driver" ]]; then
+        driver="$forced_driver"
+        comment="$detail; container storage driver forced via ${forced_source}=${forced_driver}."
+    else
+        comment="$detail; overlay driver remains default."
+        case "$CONTAINER_STORAGE_FS_TYPE" in
+            zfs|zfs_member)
+                driver="zfs"
+                comment="$detail; overlayfs unsupported so the zfs storage driver will be used."
+                ;;
+            btrfs)
+                driver="btrfs"
+                comment="$detail; using Podman's native btrfs storage driver."
+                ;;
+        esac
+    fi
 
     if [[ "$CONTAINER_STORAGE_FS_TYPE" == "xfs" ]]; then
         local xfs_info_output=""
@@ -1222,13 +1229,38 @@ detect_container_storage_backend() {
             "Detected tmpfs backing ${probe_target}; Podman overlay storage requires a persistent filesystem."
     fi
 
+    if [[ -n "$forced_driver" ]]; then
+        local recommended_driver=""
+        case "$CONTAINER_STORAGE_FS_TYPE" in
+            zfs|zfs_member)
+                recommended_driver="zfs"
+                ;;
+            btrfs)
+                recommended_driver="btrfs"
+                ;;
+            unknown)
+                recommended_driver=""
+                ;;
+            *)
+                recommended_driver="overlay"
+                ;;
+        esac
+
+        if [[ -n "$recommended_driver" && "$forced_driver" != "$recommended_driver" ]]; then
+            record_podman_storage_warning \
+                "${CONTAINER_STORAGE_FS_TYPE} typically uses the ${recommended_driver} storage driver, but ${forced_source} forces ${forced_driver}. Ensure this override is intentional."
+        fi
+    fi
+
     PODMAN_STORAGE_DRIVER="$driver"
     PODMAN_STORAGE_COMMENT="$comment"
     PODMAN_STORAGE_COMMENT=${PODMAN_STORAGE_COMMENT//$'\n'/ }
     PODMAN_STORAGE_COMMENT=${PODMAN_STORAGE_COMMENT//\'/}
     PODMAN_STORAGE_DETECTION_RUN=true
 
-    if [[ "$driver" == "zfs" ]]; then
+    if [[ -n "$forced_driver" ]]; then
+        print_warning "$comment"
+    elif [[ "$driver" == "zfs" ]]; then
         print_warning "$comment"
     else
         print_success "$comment"
