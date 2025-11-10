@@ -288,13 +288,30 @@ EOF
 }
 
 select_flatpak_profile() {
+    local mode="${1:---interactive}"
+    local interactive="true"
+
+    case "$mode" in
+        --noninteractive|--hydrate)
+            interactive="false"
+            ;;
+        --interactive)
+            interactive="true"
+            ;;
+        *)
+            interactive="true"
+            ;;
+    esac
+
     local profile="${SELECTED_FLATPAK_PROFILE:-}"
 
     if [[ -z "$profile" && -f "$FLATPAK_PROFILE_PREFERENCE_FILE" ]]; then
         profile=$(awk -F'=' '/^SELECTED_FLATPAK_PROFILE=/{print $2}' "$FLATPAK_PROFILE_PREFERENCE_FILE" 2>/dev/null | tail -n1 | tr -d '\r')
     fi
 
-    if [[ -z "$profile" ]]; then
+    local persist_choice="true"
+
+    if [[ "$interactive" == "true" ]]; then
         local -a profile_order=("core" "ai_workstation" "minimal")
         local -a profile_keys=()
         local index=1
@@ -313,10 +330,11 @@ select_flatpak_profile() {
             ((index++))
         done
 
+        local desired_default="${profile:-${DEFAULT_FLATPAK_PROFILE:-core}}"
         local default_index=1
         local i
         for i in "${!profile_keys[@]}"; do
-            if [[ "${profile_keys[$i]}" == "${DEFAULT_FLATPAK_PROFILE:-core}" ]]; then
+            if [[ "${profile_keys[$i]}" == "$desired_default" ]]; then
                 default_index=$((i + 1))
                 break
             fi
@@ -331,10 +349,18 @@ select_flatpak_profile() {
             print_warning "Invalid selection; using default profile '${DEFAULT_FLATPAK_PROFILE}'"
             profile="${DEFAULT_FLATPAK_PROFILE:-core}"
         fi
+    else
+        if [[ -z "$profile" ]]; then
+            profile="${DEFAULT_FLATPAK_PROFILE:-core}"
+            persist_choice="false"
+            print_info "Flatpak profile not set; defaulting to '$profile'. Run Phase 1 to choose a different profile."
+        else
+            print_info "Using cached Flatpak profile '$profile'"
+        fi
     fi
 
     if [[ -z "${FLATPAK_PROFILE_APPSETS[$profile]:-}" ]]; then
-        print_warning "Unknown Flatpak profile '${profile}', falling back to 'core'"
+        print_warning "Unknown Flatpak profile '$profile', falling back to 'core'"
         profile="core"
     fi
 
@@ -344,9 +370,9 @@ select_flatpak_profile() {
     local -n chosen="$array_name"
     DEFAULT_FLATPAK_APPS=("${chosen[@]}")
 
-    print_info "Selected Flatpak profile '${profile}' (${#DEFAULT_FLATPAK_APPS[@]} apps)"
+    print_info "Selected Flatpak profile '$profile' (${#DEFAULT_FLATPAK_APPS[@]} apps)"
 
-    if [[ -n "$FLATPAK_PROFILE_PREFERENCE_FILE" ]]; then
+    if [[ "$persist_choice" == "true" && -n "$FLATPAK_PROFILE_PREFERENCE_FILE" ]]; then
         local pref_dir
         pref_dir=$(dirname "$FLATPAK_PROFILE_PREFERENCE_FILE")
         if safe_mkdir "$pref_dir"; then
@@ -468,7 +494,7 @@ flatpak_install_app_list() {
 
 ensure_default_flatpak_apps_installed() {
     if declare -F select_flatpak_profile >/dev/null 2>&1 && [[ -z "${SELECTED_FLATPAK_PROFILE:-}" ]]; then
-        select_flatpak_profile || true
+        select_flatpak_profile --noninteractive || true
     fi
 
     if [[ ${#DEFAULT_FLATPAK_APPS[@]} -eq 0 ]]; then
@@ -543,7 +569,7 @@ install_flatpak_stage() {
     fi
 
     if declare -F select_flatpak_profile >/dev/null 2>&1; then
-        select_flatpak_profile || true
+        select_flatpak_profile --noninteractive || true
     fi
 
     if ensure_default_flatpak_apps_installed; then

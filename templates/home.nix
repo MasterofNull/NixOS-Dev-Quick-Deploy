@@ -62,7 +62,46 @@ let
     in
     if cosmicOnlyShowInEnvironments == [ ] then "" else "${joined};";
   commonPythonOverrides = import ./python-overrides.nix;
-  @GLF_HOME_DEFINITIONS@
+
+  # --------------------------------------------------------------------------
+  # GLF (Gaming/Lifestyle Features) defaults. The deployment script injects
+  # @GLF_HOME_DEFINITIONS@ with tuned values, but we fall back to safe
+  # placeholders so the template remains evaluatable on its own.
+  glfDefaultValues = {
+    glfMangoHudPresets = {
+      disabled = "";
+      light = "";
+      full = "";
+    };
+    glfMangoHudProfile = "disabled";
+    glfMangoHudConfig = "";
+    glfMangoHudConfigFileContents = "";
+    glfLutrisWithGtk = pkgs.lutris;
+    glfGamingPackages = [ ];
+    glfSteamPackage = pkgs.steam;
+    glfSteamCompatPackages = [ ];
+    glfSystemUtilities = [ ];
+  };
+
+  glfOverrideValues =
+    let
+      overrides = rec {
+        @GLF_HOME_DEFINITIONS@
+      };
+    in overrides;
+
+  glfHomeValues = glfDefaultValues // glfOverrideValues;
+
+  inherit (glfHomeValues)
+    glfMangoHudPresets
+    glfMangoHudProfile
+    glfMangoHudConfig
+    glfMangoHudConfigFileContents
+    glfLutrisWithGtk
+    glfGamingPackages
+    glfSteamPackage
+    glfSteamCompatPackages
+    glfSystemUtilities;
   gpuMonitoringPackages =
     # Populated by nixos-quick-deploy.sh to enable vendor-specific GPU monitors.
     with pkgs; @GPU_MONITORING_PACKAGES@;
@@ -2123,8 +2162,14 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
     # Hugging Face configuration and cache keepers
     ".config/MangoHud/.keep".text = "";
     ".config/MangoHud/MangoHud.conf".text =
-      if glfMangoHudConfigFileContents != "" then
-        glfMangoHudConfigFileContents + "\n"
+      let
+        mangoHudEntries =
+          lib.filter (entry: entry != "")
+            (lib.splitString "," glfMangoHudConfig);
+        mangoHudConfig = lib.concatStringsSep "\n" mangoHudEntries;
+      in
+      if mangoHudConfig != "" then
+        mangoHudConfig + "\n"
       else
         "";
     ".config/huggingface/.keep".text = "";
