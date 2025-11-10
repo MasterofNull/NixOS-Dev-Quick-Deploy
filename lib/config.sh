@@ -165,7 +165,8 @@ register_remote_builder_spec() {
 # ==========================================================================
 
 build_rootless_podman_storage_block() {
-    local system_driver="${PODMAN_STORAGE_DRIVER:-overlay}"
+    local default_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-overlay}"
+    local system_driver="${PODMAN_STORAGE_DRIVER:-$default_driver}"
 
     if [[ "${PODMAN_STORAGE_DETECTION_RUN:-false}" != true ]] \
         && declare -F detect_container_storage_backend >/dev/null 2>&1; then
@@ -178,7 +179,8 @@ build_rootless_podman_storage_block() {
     home_fs=$(get_filesystem_type_for_path "$rootless_home" "unknown")
     local home_fs_display="${home_fs:-unknown}"
 
-    local driver_choice="overlay"
+    local driver_choice="$system_driver"
+    local fallback_driver="$default_driver"
     local comment=""
 
     case "$system_driver" in
@@ -187,60 +189,94 @@ build_rootless_podman_storage_block() {
                 driver_choice="btrfs"
                 comment="Home directory resides on btrfs; matching rootless Podman storage driver."
             else
-                driver_choice="overlay"
-                if [[ "$home_fs_display" == "unknown" ]]; then
-                    comment="System Podman uses btrfs but the home directory filesystem could not be detected; forcing overlay for rootless compatibility."
+                driver_choice="$fallback_driver"
+                if [[ "$fallback_driver" == "overlay" ]]; then
+                    if [[ "$home_fs_display" == "unknown" ]]; then
+                        comment="System Podman uses btrfs but the home directory filesystem could not be detected; forcing overlay for rootless compatibility."
+                    else
+                        comment="System Podman uses btrfs but ${rootless_home} resides on ${home_fs_display}; forcing overlay for rootless compatibility."
+                    fi
                 else
-                    comment="System Podman uses btrfs but ${rootless_home} resides on ${home_fs_display}; forcing overlay for rootless compatibility."
+                    if [[ "$home_fs_display" == "unknown" ]]; then
+                        comment="System Podman uses btrfs; falling back to ${fallback_driver} for rootless compatibility on an undetected home filesystem."
+                    else
+                        comment="System Podman uses btrfs but ${rootless_home} resides on ${home_fs_display}; using ${fallback_driver} driver for rootless compatibility."
+                    fi
                 fi
             fi
             ;;
         zfs|zfs_member)
-            driver_choice="overlay"
-            if [[ "$home_fs" == "zfs" || "$home_fs" == "zfs_member" ]]; then
-                comment="Home directory resides on ZFS; rootless Podman uses fuse-overlayfs. Ensure acltype=posixacl per the NixOS Podman guide."
+            if [[ "$fallback_driver" == "overlay" ]]; then
+                driver_choice="overlay"
+                if [[ "$home_fs" == "zfs" || "$home_fs" == "zfs_member" ]]; then
+                    comment="Home directory resides on ZFS; rootless Podman uses fuse-overlayfs. Ensure acltype=posixacl per the NixOS Podman guide."
 
-                if command -v zfs >/dev/null 2>&1; then
-                    local zfs_dataset=""
-                    if zfs_dataset=$(get_zfs_dataset_for_path "$rootless_home" 2>/dev/null); then
-                        local acltype=""
-                        acltype=$(zfs get -H -o value acltype "$zfs_dataset" 2>/dev/null | head -n1)
-                        if [[ "$acltype" != "posixacl" ]]; then
-                            comment+=" Dataset ${zfs_dataset} currently reports acltype=${acltype:-unknown}; set acltype=posixacl for rootless containers."
-                            print_warning "Rootless Podman requires acltype=posixacl on ZFS dataset ${zfs_dataset} (see https://wiki.nixos.org/wiki/Podman)."
+                    if command -v zfs >/dev/null 2>&1; then
+                        local zfs_dataset=""
+                        if zfs_dataset=$(get_zfs_dataset_for_path "$rootless_home" 2>/dev/null); then
+                            local acltype=""
+                            acltype=$(zfs get -H -o value acltype "$zfs_dataset" 2>/dev/null | head -n1)
+                            if [[ "$acltype" != "posixacl" ]]; then
+                                comment+=" Dataset ${zfs_dataset} currently reports acltype=${acltype:-unknown}; set acltype=posixacl for rootless containers."
+                                print_warning "Rootless Podman requires acltype=posixacl on ZFS dataset ${zfs_dataset} (see https://wiki.nixos.org/wiki/Podman)."
+                            else
+                                comment+=" Dataset ${zfs_dataset} already uses acltype=posixacl."
+                            fi
                         else
-                            comment+=" Dataset ${zfs_dataset} already uses acltype=posixacl."
+                            comment+=" Enable acltype=posixacl on the dataset backing ${rootless_home}."
                         fi
+                    fi
+                else
+                    if [[ "$home_fs_display" == "unknown" ]]; then
+                        comment="System Podman uses ZFS but the home directory filesystem could not be detected; forcing fuse-overlayfs for rootless compatibility."
                     else
-                        comment+=" Enable acltype=posixacl on the dataset backing ${rootless_home}."
+                        comment="System Podman uses ZFS but ${rootless_home} resides on ${home_fs_display}; forcing fuse-overlayfs for rootless compatibility."
                     fi
                 fi
             else
-                if [[ "$home_fs_display" == "unknown" ]]; then
-                    comment="System Podman uses ZFS but the home directory filesystem could not be detected; forcing fuse-overlayfs for rootless compatibility."
+                driver_choice="$fallback_driver"
+                if [[ "$home_fs" == "zfs" || "$home_fs" == "zfs_member" ]]; then
+                    comment="Home directory resides on ZFS; using ${driver_choice} driver for rootless compatibility without overlay."
                 else
-                    comment="System Podman uses ZFS but ${rootless_home} resides on ${home_fs_display}; forcing fuse-overlayfs for rootless compatibility."
+                    if [[ "$home_fs_display" == "unknown" ]]; then
+                        comment="System Podman uses ZFS but the home directory filesystem could not be detected; using ${driver_choice} driver for rootless compatibility."
+                    else
+                        comment="System Podman uses ZFS but ${rootless_home} resides on ${home_fs_display}; using ${driver_choice} driver for rootless compatibility."
+                    fi
                 fi
             fi
             ;;
         *)
-            driver_choice="overlay"
+            driver_choice="$system_driver"
+            if [[ -z "$driver_choice" ]]; then
+                driver_choice="$fallback_driver"
+            fi
+            ;;
+    esac
+
+    if [[ -z "$comment" ]]; then
+        if [[ "$driver_choice" == "overlay" ]]; then
             if [[ "$home_fs_display" == "unknown" ]]; then
                 comment="Using overlay driver for rootless Podman storage."
             else
                 comment="Rootless storage path on ${home_fs_display}; using overlay driver."
             fi
-            ;;
-    esac
+        else
+            if [[ "$home_fs_display" == "unknown" ]]; then
+                comment="Using ${driver_choice} driver for rootless Podman storage."
+            else
+                comment="Rootless storage path on ${home_fs_display}; using ${driver_choice} driver."
+            fi
+        fi
+    fi
 
     comment=${comment//$'\n'/ }
     comment=${comment//\'/}
 
-    local overlay_mount_options
-    overlay_mount_options=$(compose_overlay_mount_options)
-
     local options_block
     if [[ "$driver_choice" == "overlay" ]]; then
+        local overlay_mount_options
+        overlay_mount_options=$(compose_overlay_mount_options)
         options_block=$(cat <<'EOF'
 
     [storage.options]
@@ -1514,9 +1550,26 @@ generate_nixos_system_config() {
     local binary_cache_settings
     binary_cache_settings=$(generate_binary_cache_settings "${USE_BINARY_CACHES:-true}")
 
+    local enable_gaming_value
+    enable_gaming_value=$(printf '%s' "${ENABLE_GAMING_STACK:-false}" | tr '[:upper:]' '[:lower:]')
+    local gaming_stack_enabled=false
+    case "$enable_gaming_value" in
+        true|1|yes|on)
+            gaming_stack_enabled=true
+            ;;
+    esac
+
     local mangohud_profile_origin="defaults"
     local mangohud_profile_candidate=""
-    local mangohud_profile="full"
+    local mangohud_profile
+
+    local glf_os_definitions
+
+    if [[ "$gaming_stack_enabled" == true ]]; then
+        mangohud_profile="full"
+    else
+        mangohud_profile="disabled"
+    fi
 
     if [[ -n "${MANGOHUD_PROFILE_OVERRIDE:-}" ]]; then
         mangohud_profile_candidate="$MANGOHUD_PROFILE_OVERRIDE"
@@ -1537,10 +1590,10 @@ generate_nixos_system_config() {
         esac
     fi
 
-    print_info "Applying MangoHud overlay profile: $mangohud_profile (${mangohud_profile_origin})"
+    if [[ "$gaming_stack_enabled" == true ]]; then
+        print_info "Applying MangoHud overlay profile: $mangohud_profile (${mangohud_profile_origin})"
 
-    local glf_os_definitions
-    glf_os_definitions=$(cat <<EOF
+        glf_os_definitions=$(cat <<EOF
   glfMangoHudPresets = {
     disabled = "";
     light = ''control=mangohud,legacy_layout=0,horizontal,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,ram,vram,ps,fps,fps_metrics=AVG,0.001,font_scale=1.05'';
@@ -1588,9 +1641,25 @@ generate_nixos_system_config() {
     ) [ pkgs.texlivePackages.hyphen-french ];
 EOF
 )
+    else
+        print_info "Gaming stack disabled; MangoHud profile set to $mangohud_profile (${mangohud_profile_origin})."
+
+        glf_os_definitions=$(cat <<'EOF'
+  glfMangoHudPresets = { disabled = ""; };
+  glfMangoHudProfile = "disabled";
+  glfMangoHudConfig = "";
+  glfLutrisWithGtk = if pkgs ? lutris then pkgs.lutris else null;
+  glfGamingPackages = [];
+  glfSteamPackage = if pkgs ? steam then pkgs.steam else null;
+  glfSteamCompatPackages = [];
+  glfSystemUtilities = [];
+EOF
+)
+    fi
 
     local glf_gaming_stack_section
-    glf_gaming_stack_section=$(cat <<'EOF'
+    if [[ "$gaming_stack_enabled" == true ]]; then
+        glf_gaming_stack_section=$(cat <<'EOF'
   # ===========================================================================
   # Gaming Stack (GLF OS integration)
   # ===========================================================================
@@ -1650,14 +1719,45 @@ EOF
   '';
 EOF
 )
+    else
+        glf_gaming_stack_section=$(cat <<'EOF'
+  # Gaming stack disabled via ENABLE_GAMING_STACK; gamemode, gamescope, steam, and zram overrides are omitted.
+EOF
+)
+    fi
 
-    local podman_storage_driver="${PODMAN_STORAGE_DRIVER:-overlay}"
-    local podman_storage_comment="${PODMAN_STORAGE_COMMENT:-Using overlay driver on detected filesystem.}"
+    local default_podman_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-overlay}"
+    local podman_storage_driver="${PODMAN_STORAGE_DRIVER:-$default_podman_driver}"
+    local podman_storage_comment="${PODMAN_STORAGE_COMMENT:-Using ${podman_storage_driver} driver on detected filesystem.}"
     podman_storage_comment=${podman_storage_comment//$'\n'/ }
     podman_storage_comment=${podman_storage_comment//\'/}
 
-    local overlay_mount_options
-    overlay_mount_options=$(compose_overlay_mount_options)
+    local storage_options_block
+    if [[ "$podman_storage_driver" == "overlay" ]]; then
+        local overlay_mount_options
+        overlay_mount_options=$(compose_overlay_mount_options)
+        storage_options_block=$(cat <<'EOF'
+    # Fuse overlayfs provides reliable rootless storage on kernels without
+    # native overlayfs features (see https://nixos.wiki/wiki/Podman).
+    storage.options = {
+      mount_program = "${pkgs.fuse-overlayfs}/bin/fuse-overlayfs";
+      ignore_chown_errors = "true";
+    };
+
+    storage."options.overlay" = {
+      mountopt = "__OVERLAY_MOUNT_OPTIONS__";
+    };
+EOF
+)
+        storage_options_block=${storage_options_block//__OVERLAY_MOUNT_OPTIONS__/$overlay_mount_options}
+    else
+        storage_options_block=$(cat <<'EOF'
+    storage.options = {
+      ignore_chown_errors = "true";
+    };
+EOF
+)
+    fi
 
     local podman_storage_block
     podman_storage_block=$(cat <<'EOF'
@@ -1672,22 +1772,13 @@ EOF
       runroot = "/run/containers/storage";
     };
 
-    # Fuse overlayfs provides reliable rootless storage on kernels without
-    # native overlayfs features (see https://nixos.wiki/wiki/Podman).
-    storage.options = {
-      mount_program = "${pkgs.fuse-overlayfs}/bin/fuse-overlayfs";
-      ignore_chown_errors = "true";
-    };
-
-    storage."options.overlay" = {
-      mountopt = "__OVERLAY_MOUNT_OPTIONS__";
-    };
+__PODMAN_STORAGE_OPTIONS__
   };
 EOF
 )
     podman_storage_block=${podman_storage_block//__PODMAN_STORAGE_COMMENT__/$podman_storage_comment}
     podman_storage_block=${podman_storage_block//__PODMAN_STORAGE_DRIVER__/$podman_storage_driver}
-    podman_storage_block=${podman_storage_block//__OVERLAY_MOUNT_OPTIONS__/$overlay_mount_options}
+    podman_storage_block=${podman_storage_block//__PODMAN_STORAGE_OPTIONS__/$storage_options_block}
 
     local gpu_hardware_section
     case "${GPU_TYPE:-software}" in
