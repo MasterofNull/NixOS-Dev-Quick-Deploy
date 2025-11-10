@@ -738,7 +738,7 @@ which gpt-codex-wrapper
 
 On the next reboot the mount units no longer reference overlay paths, so the system reaches the login screen normally.
 
-**New in v4.0.0:** Phase 4's `run_rootless_podman_diagnostics` step now unmounts
+**New in v4.0.0:** Phase 1's `run_rootless_podman_diagnostics` step now unmounts
 stale overlay mounts under `/var/lib/containers/storage/overlay/`, removes the
 affected layer directories, and runs `sudo podman system reset --force` to reset
 the storage database automatically. Check the validation log for `System Podman
