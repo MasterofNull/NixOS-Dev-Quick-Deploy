@@ -165,24 +165,17 @@ in
 {
   imports = [ ./hardware-configuration.nix ];
 
-  nixpkgs.overlays = lib.mkAfter [
-    (final: prev: {
-      linuxPackages = prev.linuxPackages // {
-        kernel = prev.linuxPackages.kernel.override {
-          structuredExtraConfig = with lib.kernel; {
-            HZ_1000 = yes;
-            HZ = 1000;
-            PREEMPT_FULL = yes;
-            IOSCHED_BFQ = yes;
-            DEFAULT_BFQ = yes;
-            DEFAULT_IOSCHED = "bfq";
-            V4L2_LOOPBACK = module;
-            HID = yes;
-          };
-        };
-      };
-    })
+  nixpkgs.overlays = lib.mkAfter (import ./overlays.nix);
+
+  # Ensure CLI tooling sees the same overlays declared via nixpkgs.overlays.
+  # See https://wiki.nixos.org/wiki/Overlays for the compatibility overlay pattern.
+  nix.nixPath = lib.mkAfter [
+    "nixpkgs-overlays=/etc/nixos/overlays-compat"
   ];
+
+  # Provide overlay files for nix tooling outside of flakes.
+  environment.etc."nixos/overlays.nix".source = ./overlays.nix;
+  environment.etc."nixos/overlays-compat/default.nix".source = ./overlays.nix;
 
   # ============================================================================
   # Boot Configuration (Modern EFI)
