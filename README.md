@@ -745,7 +745,9 @@ the storage database automatically. Check the validation log for `System Podman
 overlay storage cleaned automatically.` to confirm the remediation succeeded. If
 cleanup fails, follow the manual steps below.
 
-**Tip:** The deployment script now re-checks the container storage backend each time it regenerates `configuration.nix`, so resumed runs or flake edits pick up the correct driver automatically. Set `FORCE_CONTAINER_STORAGE_REDETECT=true` if you want to force a fresh probe, or export `PODMAN_STORAGE_DRIVER_OVERRIDE=<driver>` to bypass auto-detection entirely.
+**Tip:** The deployment script now re-checks the container storage backend each time it regenerates `configuration.nix`, so resumed runs or flake edits pick up the correct driver automatically. Set `FORCE_CONTAINER_STORAGE_REDETECT=true` if you want to force a fresh probe, or export `PODMAN_STORAGE_DRIVER_OVERRIDE=<driver>` (or the legacy `PODMAN_STORAGE_DRIVER=<driver>`) to bypass auto-detection intentionally.
+
+When you force a driver, the detector still reports the filesystem that backs `/var/lib/containers` and warns if the override does not match the recommended driver for that filesystem. Review the warning output before rebuilding so you do not carry an incompatible combination into the generated configuration.
 which codex-wrapper
 which openai-wrapper
 which gooseai-wrapper
