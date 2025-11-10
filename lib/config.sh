@@ -1549,17 +1549,19 @@ generate_nixos_system_config() {
   glfMangoHudProfile = "${mangohud_profile}";
   glfMangoHudConfig = glfMangoHudPresets.\${glfMangoHudProfile};
   glfLutrisWithGtk = pkgs.lutris.override { extraLibraries = p: [ p.libadwaita p.gtk4 ]; };
-  glfGamingPackages = [
-    glfLutrisWithGtk
-    pkgs.heroic
-    pkgs.joystickwake
-    pkgs.mangohud
-    pkgs.mesa-demos
-    pkgs.oversteer
-    pkgs.umu-launcher
-    pkgs.wineWowPackages.staging
-    pkgs.winetricks
-  ];
+  glfGamingPackages =
+    [ glfLutrisWithGtk ]
+    ++ lib.optionals (pkgs ? heroic) [ pkgs.heroic ]
+    ++ lib.optionals (pkgs ? joystickwake) [ pkgs.joystickwake ]
+    ++ lib.optionals (pkgs ? mangohud) [ pkgs.mangohud ]
+    ++ lib.optionals (pkgs ? mesa-demos) [ pkgs.mesa-demos ]
+    ++ lib.optionals (pkgs ? oversteer) [ pkgs.oversteer ]
+    ++ lib.optionals (builtins.hasAttr "umu-launcher" pkgs) [ pkgs."umu-launcher" ]
+    ++ lib.optionals (pkgs ? wineWowPackages && pkgs.wineWowPackages ? staging)
+      [ pkgs.wineWowPackages.staging ]
+    ++ lib.optionals (pkgs ? winetricks) [ pkgs.winetricks ]
+    ++ lib.optionals (lib.hasAttr "linux_6_17" pkgs.linuxKernel.packages)
+      [ pkgs.linuxKernel.packages.linux_6_17.hid-tmff2 ];
   glfSteamPackage = pkgs.steam.override {
     extraEnv = {
       MANGOHUD = if glfMangoHudConfig != "" then "1" else "0";
@@ -1568,18 +1570,22 @@ generate_nixos_system_config() {
   };
   glfSteamCompatPackages =
     lib.optionals (pkgs ? proton-ge-bin) [ pkgs.proton-ge-bin ];
-  glfSystemUtilities = with pkgs; [
-    exfatprogs
-    fastfetch
-    ffmpeg
-    ffmpegthumbnailer
-    libva-utils
-    usbutils
-    hunspell
-    hunspellDicts.fr-any
-    hyphen
-    texlivePackages.hyphen-french
-  ];
+  glfSystemUtilities =
+    lib.optionals (pkgs ? exfatprogs) [ pkgs.exfatprogs ]
+    ++ lib.optionals (pkgs ? fastfetch) [ pkgs.fastfetch ]
+    ++ lib.optionals (pkgs ? ffmpeg) [ pkgs.ffmpeg ]
+    ++ lib.optionals (pkgs ? ffmpegthumbnailer) [ pkgs.ffmpegthumbnailer ]
+    ++ lib.optionals (pkgs ? libva-utils) [ pkgs.libva-utils ]
+    ++ lib.optionals (pkgs ? usbutils) [ pkgs.usbutils ]
+    ++ lib.optionals (pkgs ? hunspell) [ pkgs.hunspell ]
+    ++ lib.optionals (
+      pkgs ? hunspellDicts && builtins.hasAttr "fr-any" pkgs.hunspellDicts
+    ) [ pkgs.hunspellDicts.fr-any ]
+    ++ lib.optionals (pkgs ? hyphen) [ pkgs.hyphen ]
+    ++ lib.optionals (
+      pkgs ? texlivePackages
+      && builtins.hasAttr "hyphen-french" pkgs.texlivePackages
+    ) [ pkgs.texlivePackages.hyphen-french ];
 EOF
 )
 
@@ -1592,6 +1598,18 @@ EOF
   hardware.xone.enable = true;
   hardware.xpadneo.enable = true;
   hardware.opentabletdriver.enable = true;
+
+  services.udev = {
+    extraRules = ''
+      ATTRS{name}=="Sony Interactive Entertainment Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"
+      ATTRS{name}=="Sony Interactive Entertainment DualSense Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"
+      ATTRS{name}=="Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"
+      ATTRS{name}=="DualSense Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"
+    '';
+    packages = lib.mkAfter (
+      lib.optionals (pkgs ? oversteer) [ pkgs.oversteer ]
+    );
+  };
 
   programs.gamemode.enable = true;
 
@@ -1608,6 +1626,25 @@ EOF
     localNetworkGameTransfers.openFirewall = true;
     extraCompatPackages = glfSteamCompatPackages;
   };
+
+  environment.etc."gamemode.ini".text = lib.mkForce ''
+    [general]
+    inhibit_screensaver=1
+    renice=10
+    softrealtime=on
+    ioprio=0
+
+    [gpu]
+    apply_gpu_optimisations=auto
+  '';
+
+  environment.etc."systemd/zram-generator.conf".text = lib.mkForce ''
+    [zram0]
+    zram-size = ram / 4
+    compression-algorithm = zstd
+    swap-priority = 5
+    max-parallel = 0
+  '';
 EOF
 )
 
@@ -2433,17 +2470,17 @@ create_home_manager_config() {
     in
     lib.concatStringsSep "\n" entries;
   glfLutrisWithGtk = pkgs.lutris.override { extraLibraries = p: [ p.libadwaita p.gtk4 ]; };
-  glfGamingPackages = [
-    glfLutrisWithGtk
-    pkgs.heroic
-    pkgs.joystickwake
-    pkgs.mangohud
-    pkgs.mesa-demos
-    pkgs.oversteer
-    pkgs.umu-launcher
-    pkgs.wineWowPackages.staging
-    pkgs.winetricks
-  ];
+  glfGamingPackages =
+    [ glfLutrisWithGtk ]
+    ++ lib.optionals (pkgs ? heroic) [ pkgs.heroic ]
+    ++ lib.optionals (pkgs ? joystickwake) [ pkgs.joystickwake ]
+    ++ lib.optionals (pkgs ? mangohud) [ pkgs.mangohud ]
+    ++ lib.optionals (pkgs ? mesa-demos) [ pkgs.mesa-demos ]
+    ++ lib.optionals (pkgs ? oversteer) [ pkgs.oversteer ]
+    ++ lib.optionals (builtins.hasAttr "umu-launcher" pkgs) [ pkgs."umu-launcher" ]
+    ++ lib.optionals (pkgs ? wineWowPackages && pkgs.wineWowPackages ? staging)
+      [ pkgs.wineWowPackages.staging ]
+    ++ lib.optionals (pkgs ? winetricks) [ pkgs.winetricks ];
   glfSteamPackage = pkgs.steam.override {
     extraEnv = {
       MANGOHUD = if glfMangoHudConfig != "" then "1" else "0";
@@ -2452,18 +2489,22 @@ create_home_manager_config() {
   };
   glfSteamCompatPackages =
     lib.optionals (pkgs ? proton-ge-bin) [ pkgs.proton-ge-bin ];
-  glfSystemUtilities = with pkgs; [
-    exfatprogs
-    fastfetch
-    ffmpeg
-    ffmpegthumbnailer
-    libva-utils
-    usbutils
-    hunspell
-    hunspellDicts.fr-any
-    hyphen
-    texlivePackages.hyphen-french
-  ];
+  glfSystemUtilities =
+    lib.optionals (pkgs ? exfatprogs) [ pkgs.exfatprogs ]
+    ++ lib.optionals (pkgs ? fastfetch) [ pkgs.fastfetch ]
+    ++ lib.optionals (pkgs ? ffmpeg) [ pkgs.ffmpeg ]
+    ++ lib.optionals (pkgs ? ffmpegthumbnailer) [ pkgs.ffmpegthumbnailer ]
+    ++ lib.optionals (pkgs ? libva-utils) [ pkgs.libva-utils ]
+    ++ lib.optionals (pkgs ? usbutils) [ pkgs.usbutils ]
+    ++ lib.optionals (pkgs ? hunspell) [ pkgs.hunspell ]
+    ++ lib.optionals (
+      pkgs ? hunspellDicts && builtins.hasAttr "fr-any" pkgs.hunspellDicts
+    ) [ pkgs.hunspellDicts.fr-any ]
+    ++ lib.optionals (pkgs ? hyphen) [ pkgs.hyphen ]
+    ++ lib.optionals (
+      pkgs ? texlivePackages
+      && builtins.hasAttr "hyphen-french" pkgs.texlivePackages
+    ) [ pkgs.texlivePackages.hyphen-french ];
 EOF
 )
 
