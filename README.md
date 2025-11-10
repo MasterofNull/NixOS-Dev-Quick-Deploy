@@ -738,6 +738,13 @@ which gpt-codex-wrapper
 
 On the next reboot the mount units no longer reference overlay paths, so the system reaches the login screen normally.
 
+**New in v4.0.0:** Phase 4's `run_rootless_podman_diagnostics` step now unmounts
+stale overlay mounts under `/var/lib/containers/storage/overlay/`, removes the
+affected layer directories, and runs `sudo podman system reset --force` to reset
+the storage database automatically. Check the validation log for `System Podman
+overlay storage cleaned automatically.` to confirm the remediation succeeded. If
+cleanup fails, follow the manual steps below.
+
 **Tip:** The deployment script now re-checks the container storage backend each time it regenerates `configuration.nix`, so resumed runs or flake edits pick up the correct driver automatically. Set `FORCE_CONTAINER_STORAGE_REDETECT=true` if you want to force a fresh probe, or export `PODMAN_STORAGE_DRIVER_OVERRIDE=<driver>` to bypass auto-detection entirely.
 which codex-wrapper
 which openai-wrapper

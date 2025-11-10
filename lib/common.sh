@@ -691,6 +691,223 @@ compose_overlay_mount_options() {
     printf '%s' "$mountopt"
 }
 
+collect_mounted_overlay_dirs() {
+    local overlay_dir="$1"
+    local result_var="$2"
+    local oldest_var="$3"
+
+    if [[ -z "$overlay_dir" || -z "$result_var" || -z "$oldest_var" ]]; then
+        return 1
+    fi
+
+    local -n result_ref="$result_var"
+    local -n oldest_ref="$oldest_var"
+
+    result_ref=()
+    oldest_ref=""
+
+    if [[ ! -d "$overlay_dir" ]]; then
+        return 0
+    fi
+
+    local -A mtime_map=()
+
+    while IFS= read -r merged_path; do
+        if is_path_mounted "$merged_path"; then
+            result_ref+=("$merged_path")
+
+            if command -v stat >/dev/null 2>&1; then
+                local mtime
+                mtime=$(stat -c '%Y' "$merged_path" 2>/dev/null || true)
+                if [[ -n "$mtime" ]]; then
+                    mtime_map["$merged_path"]="$mtime"
+                fi
+            fi
+        fi
+    done < <(find "$overlay_dir" -maxdepth 2 -type d -name merged -print 2>/dev/null || true)
+
+    if (( ${#result_ref[@]} == 0 )); then
+        return 0
+    fi
+
+    oldest_ref="${result_ref[0]}"
+    local oldest_mtime="${mtime_map[$oldest_ref]:-}"
+
+    local candidate
+    for candidate in "${result_ref[@]}"; do
+        local candidate_mtime="${mtime_map[$candidate]:-}"
+        if [[ -z "$candidate_mtime" ]]; then
+            continue
+        fi
+
+        if [[ -z "$oldest_mtime" || "$candidate_mtime" -lt "$oldest_mtime" ]]; then
+            oldest_mtime="$candidate_mtime"
+            oldest_ref="$candidate"
+        fi
+    done
+
+    return 0
+}
+
+attempt_overlay_unmount() {
+    local scope="$1"
+    local merged_path="$2"
+
+    if [[ -z "$merged_path" ]]; then
+        return 1
+    fi
+
+    print_info "Unmounting stale overlay mount: ${merged_path}"
+
+    if [[ "$scope" == "system" && "$EUID" -ne 0 ]]; then
+        if ! command -v sudo >/dev/null 2>&1; then
+            print_warning "sudo unavailable; cannot unmount ${merged_path} automatically."
+            return 1
+        fi
+
+        if sudo umount "$merged_path" >/dev/null 2>&1; then
+            print_success "Unmounted ${merged_path}"
+            return 0
+        fi
+    else
+        if umount "$merged_path" >/dev/null 2>&1; then
+            print_success "Unmounted ${merged_path}"
+            return 0
+        fi
+    fi
+
+    if [[ "$scope" == "rootless" ]]; then
+        if command -v fusermount3 >/dev/null 2>&1; then
+            if fusermount3 -u "$merged_path" >/dev/null 2>&1; then
+                print_success "Unmounted ${merged_path} using fusermount3"
+                return 0
+            fi
+        fi
+
+        if command -v fusermount >/dev/null 2>&1; then
+            if fusermount -u "$merged_path" >/dev/null 2>&1; then
+                print_success "Unmounted ${merged_path} using fusermount"
+                return 0
+            fi
+        fi
+    fi
+
+    print_warning "Failed to unmount ${merged_path}; manual cleanup required."
+    return 1
+}
+
+remove_overlay_tree() {
+    local scope="$1"
+    local merged_path="$2"
+
+    if [[ -z "$merged_path" ]]; then
+        return 1
+    fi
+
+    local overlay_dir
+    overlay_dir=$(dirname "$merged_path")
+
+    if [[ -z "$overlay_dir" || "$overlay_dir" == "/" ]]; then
+        return 1
+    fi
+
+    print_info "Removing overlay directory ${overlay_dir}"
+
+    if [[ "$scope" == "system" && "$EUID" -ne 0 ]]; then
+        if ! command -v sudo >/dev/null 2>&1; then
+            print_warning "sudo unavailable; cannot remove ${overlay_dir} automatically."
+            return 1
+        fi
+
+        if sudo rm -rf "$overlay_dir" >/dev/null 2>&1; then
+            print_success "Removed ${overlay_dir}"
+            return 0
+        fi
+    else
+        if rm -rf "$overlay_dir" >/dev/null 2>&1; then
+            print_success "Removed ${overlay_dir}"
+            return 0
+        fi
+    fi
+
+    print_warning "Failed to remove ${overlay_dir}; manual cleanup required."
+    return 1
+}
+
+reset_podman_storage_scope() {
+    local scope="$1"
+
+    if ! command -v podman >/dev/null 2>&1; then
+        print_warning "Podman CLI unavailable; skipping ${scope} storage reset."
+        return 0
+    fi
+
+    local description
+    description="podman system reset --force (${scope} scope)"
+
+    if [[ "$scope" == "system" && "$EUID" -ne 0 ]]; then
+        if ! command -v sudo >/dev/null 2>&1; then
+            print_warning "sudo unavailable; cannot run ${description}."
+            return 1
+        fi
+
+        if sudo podman system reset --force >/dev/null 2>&1; then
+            print_success "${description} completed"
+            return 0
+        fi
+    else
+        if podman system reset --force >/dev/null 2>&1; then
+            print_success "${description} completed"
+            return 0
+        fi
+    fi
+
+    print_warning "${description} failed; manual intervention may be required."
+    return 1
+}
+
+auto_heal_podman_overlay_storage() {
+    local scope="$1"
+    local storage_root="$2"
+    shift 2
+
+    local -a merged_paths=("$@")
+
+    if (( ${#merged_paths[@]} == 0 )); then
+        return 0
+    fi
+
+    print_info "Attempting ${scope} Podman overlay recovery at ${storage_root}"
+
+    local cleanup_failed=false
+    local cleaned_count=0
+
+    local merged_path
+    for merged_path in "${merged_paths[@]}"; do
+        if attempt_overlay_unmount "$scope" "$merged_path"; then
+            if remove_overlay_tree "$scope" "$merged_path"; then
+                ((cleaned_count++))
+            else
+                cleanup_failed=true
+            fi
+        else
+            cleanup_failed=true
+        fi
+    done
+
+    if (( cleaned_count > 0 )); then
+        if ! reset_podman_storage_scope "$scope"; then
+            cleanup_failed=true
+        fi
+    fi
+
+    if [[ "$cleanup_failed" == true ]]; then
+        return 1
+    fi
+
+    return 0
+}
+
 resolve_user_home_directory() {
     local target_user="$1"
 
@@ -911,6 +1128,41 @@ run_rootless_podman_diagnostics() {
         print_warning "slirp4netns not found; rootless container networking may be degraded."
     fi
 
+    local system_storage_root="/var/lib/containers/storage"
+    local system_overlay_dir="${system_storage_root}/overlay"
+    if [[ -d "$system_overlay_dir" ]]; then
+        local -a system_mounted_dirs=()
+        local system_oldest=""
+        collect_mounted_overlay_dirs "$system_overlay_dir" system_mounted_dirs system_oldest
+
+        if (( ${#system_mounted_dirs[@]} > 0 )); then
+            print_warning "Detected ${#system_mounted_dirs[@]} system overlay mounts under ${system_overlay_dir}; stale mounts block boot."
+            if [[ -n "$system_oldest" ]]; then
+                print_info "  -> Oldest entry: ${system_oldest}"
+            fi
+
+            if auto_heal_podman_overlay_storage system "$system_storage_root" "${system_mounted_dirs[@]}"; then
+                local -a post_system_dirs=()
+                local post_system_oldest=""
+                collect_mounted_overlay_dirs "$system_overlay_dir" post_system_dirs post_system_oldest
+
+                if (( ${#post_system_dirs[@]} == 0 )); then
+                    print_success "System Podman overlay storage cleaned automatically."
+                else
+                    print_warning "System overlay mounts still detected after cleanup; manual intervention required."
+                    status=1
+                fi
+            else
+                print_warning "Automatic cleanup of system Podman overlay storage failed; manual intervention required."
+                status=1
+            fi
+        else
+            print_success "No active system overlay mounts found under ${system_overlay_dir}."
+        fi
+    else
+        print_info "System Podman storage directory ${system_storage_root} not initialized; skipping overlay inspection."
+    fi
+
     if getent group podman >/dev/null 2>&1; then
         if id -nG "$target_user" 2>/dev/null | tr ' ' '\n' | grep -Fxq podman; then
             print_success "User ${target_user} belongs to the podman group."
@@ -948,45 +1200,30 @@ run_rootless_podman_diagnostics() {
         local overlay_dir="${storage_root}/overlay"
         if [[ -d "$overlay_dir" ]]; then
             local -a mounted_merged_dirs=()
-            local -A merged_mtime_map=()
-
-            while IFS= read -r merged_path; do
-                if is_path_mounted "$merged_path"; then
-                    mounted_merged_dirs+=("$merged_path")
-
-                    if command -v stat >/dev/null 2>&1; then
-                        local mtime
-                        mtime=$(stat -c '%Y' "$merged_path" 2>/dev/null || true)
-                        if [[ -n "$mtime" ]]; then
-                            merged_mtime_map["$merged_path"]="$mtime"
-                        fi
-                    fi
-                fi
-            done < <(find "$overlay_dir" -maxdepth 2 -type d -name merged -print 2>/dev/null || true)
+            local oldest_entry=""
+            collect_mounted_overlay_dirs "$overlay_dir" mounted_merged_dirs oldest_entry
 
             if (( ${#mounted_merged_dirs[@]} > 0 )); then
-                local oldest_entry="${mounted_merged_dirs[0]}"
-
-                if (( ${#merged_mtime_map[@]} > 0 )); then
-                    local candidate
-                    local oldest_mtime=""
-
-                    for candidate in "${mounted_merged_dirs[@]}"; do
-                        local candidate_mtime="${merged_mtime_map[$candidate]:-}"
-
-                        if [[ -z "$candidate_mtime" ]]; then
-                            continue
-                        fi
-
-                        if [[ -z "$oldest_mtime" || "$candidate_mtime" -lt "$oldest_mtime" ]]; then
-                            oldest_mtime="$candidate_mtime"
-                            oldest_entry="$candidate"
-                        fi
-                    done
+                print_warning "Detected ${#mounted_merged_dirs[@]} rootless overlay mounts under ${overlay_dir}; stale mounts can block nixos-rebuild."
+                if [[ -n "$oldest_entry" ]]; then
+                    print_info "  -> Oldest entry: ${oldest_entry}"
                 fi
 
-                print_warning "Detected ${#mounted_merged_dirs[@]} rootless overlay mounts under ${overlay_dir}; stale mounts can block nixos-rebuild."
-                print_info "  -> Oldest entry: ${oldest_entry}"
+                if auto_heal_podman_overlay_storage rootless "$storage_root" "${mounted_merged_dirs[@]}"; then
+                    local -a post_cleanup_dirs=()
+                    local post_cleanup_oldest=""
+                    collect_mounted_overlay_dirs "$overlay_dir" post_cleanup_dirs post_cleanup_oldest
+
+                    if (( ${#post_cleanup_dirs[@]} == 0 )); then
+                        print_success "Rootless Podman overlay storage cleaned automatically."
+                    else
+                        print_warning "Rootless overlay mounts still detected after cleanup; manual cleanup may be required."
+                        status=1
+                    fi
+                else
+                    print_warning "Automatic cleanup of rootless Podman overlay storage failed; manual cleanup may be required."
+                    status=1
+                fi
             else
                 print_success "No active rootless overlay mounts found under ${overlay_dir}."
             fi
