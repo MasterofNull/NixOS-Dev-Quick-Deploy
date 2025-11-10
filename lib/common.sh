@@ -483,6 +483,41 @@ run_as_primary_user() {
     fi
 }
 
+run_as_user() {
+    local user="$1"
+    shift || true
+    local -a cmd=("$@")
+
+    if [[ ${#cmd[@]} -eq 0 ]]; then
+        return 1
+    fi
+
+    if [[ -z "$user" ]]; then
+        "${cmd[@]}"
+        return $?
+    fi
+
+    local current_user
+    current_user=$(id -un 2>/dev/null || echo "")
+
+    if [[ -n "$current_user" && "$current_user" == "$user" ]]; then
+        "${cmd[@]}"
+        return $?
+    fi
+
+    if command -v sudo >/dev/null 2>&1; then
+        sudo -H -u "$user" env "PATH=$PATH" "${cmd[@]}"
+        return $?
+    fi
+
+    if command -v runuser >/dev/null 2>&1; then
+        runuser -u "$user" -- env "PATH=$PATH" "${cmd[@]}"
+        return $?
+    fi
+
+    return 1
+}
+
 # ============================================================================
 # Hardware Detection
 # ============================================================================
@@ -752,6 +787,7 @@ collect_mounted_overlay_dirs() {
 attempt_overlay_unmount() {
     local scope="$1"
     local merged_path="$2"
+    local owner="${3:-}"
 
     if [[ -z "$merged_path" ]]; then
         return 1
@@ -769,26 +805,72 @@ attempt_overlay_unmount() {
             print_success "Unmounted ${merged_path}"
             return 0
         fi
+
+        if sudo umount -l "$merged_path" >/dev/null 2>&1; then
+            print_success "Unmounted ${merged_path} using lazy umount"
+            return 0
+        fi
     else
         if umount "$merged_path" >/dev/null 2>&1; then
             print_success "Unmounted ${merged_path}"
             return 0
         fi
+
+        if umount -l "$merged_path" >/dev/null 2>&1; then
+            print_success "Unmounted ${merged_path} using lazy umount"
+            return 0
+        fi
     fi
 
     if [[ "$scope" == "rootless" ]]; then
-        if command -v fusermount3 >/dev/null 2>&1; then
-            if fusermount3 -u "$merged_path" >/dev/null 2>&1; then
-                print_success "Unmounted ${merged_path} using fusermount3"
-                return 0
-            fi
+        if run_as_user "$owner" podman unshare fusermount3 -u "$merged_path" >/dev/null 2>&1; then
+            print_success "Unmounted ${merged_path} using podman unshare fusermount3"
+            return 0
         fi
 
-        if command -v fusermount >/dev/null 2>&1; then
-            if fusermount -u "$merged_path" >/dev/null 2>&1; then
-                print_success "Unmounted ${merged_path} using fusermount"
-                return 0
-            fi
+        if run_as_user "$owner" podman unshare fusermount3 -uz "$merged_path" >/dev/null 2>&1; then
+            print_success "Unmounted ${merged_path} using podman unshare fusermount3 (lazy)"
+            return 0
+        fi
+
+        if run_as_user "$owner" podman unshare fusermount -u "$merged_path" >/dev/null 2>&1; then
+            print_success "Unmounted ${merged_path} using podman unshare fusermount"
+            return 0
+        fi
+
+        if run_as_user "$owner" podman unshare fusermount -uz "$merged_path" >/dev/null 2>&1; then
+            print_success "Unmounted ${merged_path} using podman unshare fusermount (lazy)"
+            return 0
+        fi
+
+        if run_as_user "$owner" podman unshare umount "$merged_path" >/dev/null 2>&1; then
+            print_success "Unmounted ${merged_path} using podman unshare umount"
+            return 0
+        fi
+
+        if run_as_user "$owner" podman unshare umount -l "$merged_path" >/dev/null 2>&1; then
+            print_success "Unmounted ${merged_path} using podman unshare lazy umount"
+            return 0
+        fi
+
+        if run_as_user "$owner" fusermount3 -u "$merged_path" >/dev/null 2>&1; then
+            print_success "Unmounted ${merged_path} using fusermount3"
+            return 0
+        fi
+
+        if run_as_user "$owner" fusermount3 -uz "$merged_path" >/dev/null 2>&1; then
+            print_success "Unmounted ${merged_path} using fusermount3 (lazy)"
+            return 0
+        fi
+
+        if run_as_user "$owner" fusermount -u "$merged_path" >/dev/null 2>&1; then
+            print_success "Unmounted ${merged_path} using fusermount"
+            return 0
+        fi
+
+        if run_as_user "$owner" fusermount -uz "$merged_path" >/dev/null 2>&1; then
+            print_success "Unmounted ${merged_path} using fusermount (lazy)"
+            return 0
         fi
     fi
 
@@ -877,6 +959,19 @@ auto_heal_podman_overlay_storage() {
         return 0
     fi
 
+    local storage_owner=""
+    if [[ -n "$storage_root" ]] && command -v stat >/dev/null 2>&1; then
+        storage_owner=$(stat -c '%U' "$storage_root" 2>/dev/null || echo "")
+    fi
+
+    if [[ -z "$storage_owner" && "$scope" == "rootless" ]]; then
+        if [[ -n "${PRIMARY_USER:-}" && "${PRIMARY_USER}" != "root" ]]; then
+            storage_owner="$PRIMARY_USER"
+        elif [[ -n "${SUDO_USER:-}" ]]; then
+            storage_owner="$SUDO_USER"
+        fi
+    fi
+
     print_info "Attempting ${scope} Podman overlay recovery at ${storage_root}"
 
     local cleanup_failed=false
@@ -884,7 +979,7 @@ auto_heal_podman_overlay_storage() {
 
     local merged_path
     for merged_path in "${merged_paths[@]}"; do
-        if attempt_overlay_unmount "$scope" "$merged_path"; then
+        if attempt_overlay_unmount "$scope" "$merged_path" "$storage_owner"; then
             if remove_overlay_tree "$scope" "$merged_path"; then
                 ((cleaned_count++))
             else
