@@ -305,7 +305,23 @@ EOF
     # ${comment}
     [storage]
       driver = "${driver_choice}"
-      runroot = "/run/user/\${toString config.home.uidNumber}/containers"
+      runroot = "/run/user/\${let
+        hmUid = if config.home ? uidNumber then config.home.uidNumber else null;
+        osUsers =
+          if config ? users && config.users ? users then config.users.users else {};
+        osUser = osUsers.\${config.home.username} or null;
+        osUserUid = if osUser != null && osUser ? uid then osUser.uid else null;
+        accountUsers =
+          if config ? accounts && config.accounts ? users then config.accounts.users else {};
+        accountUser = accountUsers.\${config.home.username} or null;
+        accountUid =
+          if accountUser != null && accountUser ? uid then accountUser.uid else null;
+        resolvedUid =
+          if hmUid != null then hmUid
+          else if osUserUid != null then osUserUid
+          else if accountUid != null then accountUid
+          else 1000;
+      in toString resolvedUid}/containers"
       graphroot = "\${config.home.homeDirectory}/.local/share/containers/storage"${options_block}
   '';
 EOF
