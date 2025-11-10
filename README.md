@@ -603,6 +603,12 @@ Next steps:
    ```
    Should show `executablePath` pointing to `~/.npm-global/bin/claude-wrapper`
 
+7. **Verify no Flatpak overrides exist:**
+   ```bash
+   flatpak info com.visualstudio.code 2>/dev/null || echo "No conflicting Flatpak"
+   ```
+   Remove any `com.visualstudio.code*` or `com.vscodium.codium*` Flatpak apps—they replace the declarative `programs.vscode` package and undo the managed settings/extensions.
+
 ### VSCodium Settings Read-Only Error
 
 **Symptom:** VSCodium shows error when trying to save settings:
@@ -731,6 +737,8 @@ which gpt-codex-wrapper
    ```
 
 On the next reboot the mount units no longer reference overlay paths, so the system reaches the login screen normally.
+
+**Tip:** The deployment script now re-checks the container storage backend each time it regenerates `configuration.nix`, so resumed runs or flake edits pick up the correct driver automatically. Set `FORCE_CONTAINER_STORAGE_REDETECT=true` if you want to force a fresh probe, or export `PODMAN_STORAGE_DRIVER_OVERRIDE=<driver>` to bypass auto-detection entirely.
 which codex-wrapper
 which openai-wrapper
 which gooseai-wrapper
