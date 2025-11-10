@@ -740,6 +740,47 @@ get_filesystem_type_for_path() {
     return 0
 }
 
+# Determine the ZFS dataset backing a given path. Returns the dataset name
+# or an empty string when the path is not on ZFS or the command is
+# unavailable. Prefers the dataset with the longest matching mountpoint so
+# nested datasets resolve correctly.
+get_zfs_dataset_for_path() {
+    local probe_path="$1"
+
+    if [[ -z "$probe_path" ]] || ! command -v zfs >/dev/null 2>&1; then
+        return 1
+    fi
+
+    local best_dataset=""
+    local best_mount=""
+
+    while IFS=$'\t' read -r dataset mountpoint; do
+        if [[ -z "$dataset" || -z "$mountpoint" ]]; then
+            continue
+        fi
+
+        case "$mountpoint" in
+            -|legacy)
+                continue
+                ;;
+        esac
+
+        if [[ "$probe_path" == "$mountpoint" || "$probe_path" == "$mountpoint"/* ]]; then
+            if (( ${#mountpoint} > ${#best_mount} )); then
+                best_dataset="$dataset"
+                best_mount="$mountpoint"
+            fi
+        fi
+    done < <(zfs list -H -o name,mountpoint 2>/dev/null)
+
+    if [[ -n "$best_dataset" ]]; then
+        printf '%s\n' "$best_dataset"
+        return 0
+    fi
+
+    return 1
+}
+
 # ==========================================================================
 # Kernel feature detection helpers
 # ==========================================================================

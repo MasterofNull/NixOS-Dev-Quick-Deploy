@@ -196,11 +196,26 @@ build_rootless_podman_storage_block() {
             fi
             ;;
         zfs|zfs_member)
+            driver_choice="overlay"
             if [[ "$home_fs" == "zfs" || "$home_fs" == "zfs_member" ]]; then
-                driver_choice="zfs"
-                comment="Home directory resides on ZFS; matching rootless Podman storage driver."
+                comment="Home directory resides on ZFS; rootless Podman uses fuse-overlayfs. Ensure acltype=posixacl per the NixOS Podman guide."
+
+                if command -v zfs >/dev/null 2>&1; then
+                    local zfs_dataset=""
+                    if zfs_dataset=$(get_zfs_dataset_for_path "$rootless_home" 2>/dev/null); then
+                        local acltype=""
+                        acltype=$(zfs get -H -o value acltype "$zfs_dataset" 2>/dev/null | head -n1)
+                        if [[ "$acltype" != "posixacl" ]]; then
+                            comment+=" Dataset ${zfs_dataset} currently reports acltype=${acltype:-unknown}; set acltype=posixacl for rootless containers."
+                            print_warning "Rootless Podman requires acltype=posixacl on ZFS dataset ${zfs_dataset} (see https://wiki.nixos.org/wiki/Podman)."
+                        else
+                            comment+=" Dataset ${zfs_dataset} already uses acltype=posixacl."
+                        fi
+                    else
+                        comment+=" Enable acltype=posixacl on the dataset backing ${rootless_home}."
+                    fi
+                fi
             else
-                driver_choice="overlay"
                 if [[ "$home_fs_display" == "unknown" ]]; then
                     comment="System Podman uses ZFS but the home directory filesystem could not be detected; forcing fuse-overlayfs for rootless compatibility."
                 else
