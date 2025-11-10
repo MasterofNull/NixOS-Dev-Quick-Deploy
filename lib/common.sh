@@ -1183,7 +1183,8 @@ detect_container_storage_backend() {
     CONTAINER_STORAGE_FS_TYPE="$fstype"
     CONTAINER_STORAGE_SOURCE="${source:-unknown}"
 
-    local driver="overlay"
+    local default_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-overlay}"
+    local driver="$default_driver"
     local detail="Detected ${CONTAINER_STORAGE_FS_TYPE} filesystem backing ${probe_target}"
     if [[ -n "$CONTAINER_STORAGE_SOURCE" && "$CONTAINER_STORAGE_SOURCE" != "unknown" ]]; then
         detail+=" (device ${CONTAINER_STORAGE_SOURCE})"
@@ -1195,7 +1196,7 @@ detect_container_storage_backend() {
         driver="$forced_driver"
         comment="$detail; container storage driver forced via ${forced_source}=${forced_driver}."
     else
-        comment="$detail; overlay driver remains default."
+        comment="$detail; using ${driver} storage driver by default."
         case "$CONTAINER_STORAGE_FS_TYPE" in
             zfs|zfs_member)
                 driver="zfs"
@@ -1226,7 +1227,7 @@ detect_container_storage_backend() {
         fi
     elif [[ "$CONTAINER_STORAGE_FS_TYPE" == "tmpfs" ]]; then
         record_podman_storage_error \
-            "Detected tmpfs backing ${probe_target}; Podman overlay storage requires a persistent filesystem."
+            "Detected tmpfs backing ${probe_target}; container storage requires a persistent filesystem."
     fi
 
     if [[ -n "$forced_driver" ]]; then
@@ -1242,7 +1243,7 @@ detect_container_storage_backend() {
                 recommended_driver=""
                 ;;
             *)
-                recommended_driver="overlay"
+                recommended_driver="$default_driver"
                 ;;
         esac
 
