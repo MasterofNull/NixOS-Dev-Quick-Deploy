@@ -1617,12 +1617,23 @@ EOF
   # ===========================================================================
   # Container storage backend (auto-detected)
   # ===========================================================================
-  virtualisation.containers = {
-    storage.settings.storage = {
+  virtualisation.containers.storage.settings = {
+    storage = {
       # ${podman_storage_comment}
       driver = "${podman_storage_driver}";
       graphroot = "/var/lib/containers/storage";
       runroot = "/run/containers/storage";
+    };
+
+    # Fuse overlayfs provides reliable rootless storage on kernels without
+    # native overlayfs features (see https://nixos.wiki/wiki/Podman).
+    storage.options = {
+      mount_program = "${pkgs.fuse-overlayfs}/bin/fuse-overlayfs";
+      ignore_chown_errors = "true";
+    };
+
+    storage."options.overlay" = {
+      mountopt = "nodev,metacopy=on";
     };
   };
 EOF
