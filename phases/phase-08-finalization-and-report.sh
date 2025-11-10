@@ -265,17 +265,18 @@ phase_08_finalization_and_report() {
     echo ""
 
     echo -e "  ${GREEN}6.${NC} Adjust git identity later if needed:"
+    echo -e "     ${YELLOW}./nixos-quick-deploy.sh --resume 1${NC} to rerun Phase 1 prompts"
     echo -e "     ${YELLOW}git config --global user.name \"Your Name\"${NC}"
     echo -e "     ${YELLOW}git config --global user.email \"you@example.com\"${NC}"
     if [[ -n "$git_identity_hint" ]]; then
-        echo -e "     or edit ${YELLOW}$git_identity_hint${NC} and rerun Phase 1."
+        echo -e "     or edit ${YELLOW}$git_identity_hint${NC} (user.name/user.email) and rerun Phase 1."
     fi
     echo ""
 
     echo -e "  ${GREEN}7.${NC} Update Gitea admin bootstrap settings:"
     echo -e "     ${YELLOW}./nixos-quick-deploy.sh --resume 1${NC} and opt into the Gitea prompt"
     if [[ -n "$gitea_secrets_hint" ]]; then
-        echo -e "     or edit ${YELLOW}$gitea_secrets_hint${NC} (values are shell quoted)."
+        echo -e "     or edit ${YELLOW}$gitea_secrets_hint${NC} (shell-quoted secrets) then rerun Phase 1."
     fi
     echo ""
 

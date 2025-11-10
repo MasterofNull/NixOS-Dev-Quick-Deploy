@@ -126,6 +126,8 @@ readonly REMOTE_BUILDERS_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/remote-bui
 readonly FLATPAK_PROFILE_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/flatpak-profile.env"
 readonly FLATPAK_PROFILE_STATE_FILE="$DEPLOYMENT_PREFERENCES_DIR/flatpak-profile-state.env"
 readonly GIT_IDENTITY_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/git-identity.env"
+readonly MANGOHUD_PROFILE_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/mangohud-profile.env"
+readonly USER_PROFILE_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/user-profile.env"
 
 # ============================================================================
 # Mutable Flags
@@ -233,7 +235,7 @@ FLATPAK_PROFILE_AI_WORKSTATION_APPS+=("${FLATPAK_PROFILE_CORE_APPS[@]}")
 FLATPAK_PROFILE_AI_WORKSTATION_APPS+=(
     "com.getpostman.Postman"
     "io.dbeaver.DBeaverCommunity"
-    "com.visualstudio.code"
+    #"com.visualstudio.code"
     "io.github.Qalculate.Qalculate"
     "com.bitwarden.desktop"
 )
@@ -273,6 +275,7 @@ GIT_IDENTITY_PREFS_LOADED="false"
 
 # Track whether user-facing prompts already ran this session
 USER_SETTINGS_INITIALIZED="false"
+USER_PROFILE_PREFS_LOADED="false"
 
 # ============================================================================
 # User Resolution (handle sudo invocation)
@@ -428,6 +431,18 @@ ZSWAP_COMPRESSOR="zstd"
 ZSWAP_ZPOOL="z3fold"
 HIBERNATION_SWAP_SIZE_GB=""
 ENABLE_ZSWAP_CONFIGURATION="false"
+CONTAINER_STORAGE_FS_TYPE="unknown"
+CONTAINER_STORAGE_SOURCE=""
+PODMAN_STORAGE_DRIVER="overlay"
+PODMAN_STORAGE_COMMENT="Using overlay driver on detected filesystem."
+AUTO_APPLY_SYSTEM_CONFIGURATION="${AUTO_APPLY_SYSTEM_CONFIGURATION:-true}"
+AUTO_APPLY_HOME_CONFIGURATION="${AUTO_APPLY_HOME_CONFIGURATION:-true}"
+PROMPT_BEFORE_SYSTEM_SWITCH="${PROMPT_BEFORE_SYSTEM_SWITCH:-false}"
+PROMPT_BEFORE_HOME_SWITCH="${PROMPT_BEFORE_HOME_SWITCH:-false}"
+SYSTEM_CONFIGURATION_APPLIED="false"
+HOME_CONFIGURATION_APPLIED="false"
+SYSTEM_SWITCH_SKIPPED_REASON=""
+HOME_SWITCH_SKIPPED_REASON=""
 
 # User Information
 SELECTED_TIMEZONE=""
