@@ -259,6 +259,13 @@ declare -Ag FLATPAK_PROFILE_APPSETS=(
     [minimal]="FLATPAK_PROFILE_MINIMAL_APPS"
 )
 
+declare -ag FLATPAK_VSCODIUM_CONFLICT_IDS=(
+    "com.visualstudio.code"
+    "com.visualstudio.code.insiders"
+    "com.vscodium.codium"
+    "com.vscodium.codium.insiders"
+)
+
 DEFAULT_FLATPAK_PROFILE="${DEFAULT_FLATPAK_PROFILE:-core}"
 SELECTED_FLATPAK_PROFILE=""
 DEFAULT_FLATPAK_APPS=("${FLATPAK_PROFILE_CORE_APPS[@]}")
