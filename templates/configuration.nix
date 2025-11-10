@@ -278,18 +278,6 @@ in
     binfmt = true;
   };
 
-  services.udev.extraRules = lib.mkAfter ''
-    ACTION=="add|change", SUBSYSTEM=="block", ATTR{queue/scheduler}="bfq"
-
-    # Ignore DualSense/DualShock touchpads so they do not wake the desktop
-    ATTRS{name}=="Sony Interactive Entertainment Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"
-    ATTRS{name}=="Sony Interactive Entertainment DualSense Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"
-    ATTRS{name}=="Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"
-    ATTRS{name}=="DualSense Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"
-  '';
-
-  services.udev.packages = lib.mkAfter [ pkgs.oversteer ];
-
   # ============================================================================
   # Security Hardening
   # ============================================================================
