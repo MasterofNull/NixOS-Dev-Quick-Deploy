@@ -114,6 +114,10 @@ RESUME=true
 RESTART_FAILED=false
 RESTART_FROM_SAFE_POINT=false
 ZSWAP_CONFIGURATION_OVERRIDE_REQUEST=""
+AUTO_APPLY_SYSTEM_CONFIGURATION=true
+AUTO_APPLY_HOME_CONFIGURATION=true
+PROMPT_BEFORE_SYSTEM_SWITCH=false
+PROMPT_BEFORE_HOME_SWITCH=false
 
 # Phase control
 declare -a SKIP_PHASES=()
@@ -297,6 +301,12 @@ BASIC OPTIONS:
         --enable-zswap          Force-enable zswap-backed hibernation setup (persists)
         --disable-zswap         Force-disable zswap-backed hibernation setup (persists)
         --zswap-auto            Return to automatic zswap detection (clears override)
+        --skip-switch           Skip automatic nixos/home-manager switch steps
+        --skip-system-switch    Skip automatic nixos-rebuild switch
+        --skip-home-switch      Skip automatic home-manager switch
+        --prompt-switch         Prompt before running system/home switches
+        --prompt-system-switch  Prompt before running nixos-rebuild switch
+        --prompt-home-switch    Prompt before running home-manager switch
 
 PHASE CONTROL OPTIONS:
         --skip-phase N          Skip specific phase number (1-8)
@@ -406,6 +416,32 @@ parse_arguments() {
                 ;;
             --skip-health-check)
                 SKIP_HEALTH_CHECK=true
+                shift
+                ;;
+            --skip-switch)
+                AUTO_APPLY_SYSTEM_CONFIGURATION=false
+                AUTO_APPLY_HOME_CONFIGURATION=false
+                shift
+                ;;
+            --skip-system-switch)
+                AUTO_APPLY_SYSTEM_CONFIGURATION=false
+                shift
+                ;;
+            --skip-home-switch)
+                AUTO_APPLY_HOME_CONFIGURATION=false
+                shift
+                ;;
+            --prompt-switch)
+                PROMPT_BEFORE_SYSTEM_SWITCH=true
+                PROMPT_BEFORE_HOME_SWITCH=true
+                shift
+                ;;
+            --prompt-system-switch)
+                PROMPT_BEFORE_SYSTEM_SWITCH=true
+                shift
+                ;;
+            --prompt-home-switch)
+                PROMPT_BEFORE_HOME_SWITCH=true
                 shift
                 ;;
             --enable-zswap)

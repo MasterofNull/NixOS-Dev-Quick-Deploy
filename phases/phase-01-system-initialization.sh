@@ -196,6 +196,13 @@ phase_01_system_initialization() {
     detect_gpu_and_cpu
 
     # ========================================================================
+    # Step 1.10a: Container Storage Detection
+    # ========================================================================
+    if declare -F detect_container_storage_backend >/dev/null 2>&1; then
+        detect_container_storage_backend
+    fi
+
+    # ========================================================================
     # Step 1.11: Plan Swap and Hibernation Capacity
     # ========================================================================
     print_section "Swap & Hibernation Planning"
@@ -566,7 +573,7 @@ EOF
     # ========================================================================
     print_section "User Preferences & Integrations"
     echo ""
-    if ! ensure_user_settings_ready; then
+    if ! ensure_user_settings_ready --interactive; then
         print_error "Failed to collect user preferences and integrations"
         exit 1
     fi
