@@ -778,6 +778,15 @@ Error: configure storage: "/home/<user>/.local/share/containers/storage/btrfs" i
    podman info --format '{{.Store.GraphDriverName}}'
    ```
 
+**If your home directory is on ZFS:** Rootless Podman cannot use the ZFS storage driver directly. Enable POSIX ACLs on the dataset backing your home directory so `fuse-overlayfs` can mount layers:
+
+```bash
+sudo zfs set acltype=posixacl <pool>/<dataset>
+sudo zfs get acltype <pool>/<dataset>
+```
+
+Replace `<pool>/<dataset>` with the dataset whose mountpoint matches your home directory. The deployment script now warns when it detects a ZFS dataset without `acltype=posixacl` and forces the rootless driver to `fuse-overlayfs` automatically.
+
 **If still not working:**
 ```bash
 # Re-apply home-manager configuration
