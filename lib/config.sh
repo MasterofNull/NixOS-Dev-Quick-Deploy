@@ -1600,7 +1600,10 @@ EOF
   hardware.opentabletdriver.enable = true;
 
   services.udev = {
-    extraRules = ''
+    extraRules = lib.mkAfter ''
+      ACTION=="add|change", SUBSYSTEM=="block", ATTR{queue/scheduler}="bfq"
+
+      # Ignore DualSense/DualShock touchpads so they do not wake the desktop
       ATTRS{name}=="Sony Interactive Entertainment Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"
       ATTRS{name}=="Sony Interactive Entertainment DualSense Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"
       ATTRS{name}=="Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"
