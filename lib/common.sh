@@ -50,7 +50,7 @@ extract_storage_driver_from_conf() {
 
     if [[ -z "$conf_path" || ! -r "$conf_path" ]]; then
         return 1
-    }
+    fi
 
     local parsed_driver
     parsed_driver=$(awk -F= '
