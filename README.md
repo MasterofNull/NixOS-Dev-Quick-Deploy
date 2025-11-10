@@ -698,6 +698,39 @@ which podman
 which home-manager
 which claude-wrapper
 which gpt-codex-wrapper
+
+### Boot Fails With "Failed to mount /var/lib/containers/storage/overlay/..."
+
+**Symptom:** System drops into emergency mode during boot with messages such as:
+
+```
+[FAILED] Failed to mount /var/lib/containers/storage/overlay/df4bd49...
+[DEPEND] Dependency failed for Local File Systems
+```
+
+**Cause:** Podman defaults to the kernel overlay driver, which is unsupported on filesystems such as ZFS. When systemd starts Podman-managed services during boot, the overlay mount fails before `local-fs.target` completes.
+
+**Fix:** The generator now inspects the filesystem that backs `/var/lib/containers` and sets `virtualisation.containers.storage.settings.storage.driver` (for example `zfs`) so NixOS renders a compatible `/etc/containers/storage.conf`. Regenerate your configuration and rebuild:
+
+1. Confirm the backing filesystem (optional):
+   ```bash
+   findmnt -no FSTYPE,SOURCE /var/lib/containers
+   ```
+2. Regenerate configs so the new storage detection runs:
+   ```bash
+   cd ~/NixOS-Dev-Quick-Deploy
+   ./nixos-quick-deploy.sh --resume
+   ```
+3. Rebuild and activate the system profile:
+   ```bash
+   sudo nixos-rebuild switch --flake ~/.dotfiles/home-manager
+   ```
+4. Verify Podman is using the new driver:
+   ```bash
+   sudo podman info --format '{{.Store.GraphDriverName}}'
+   ```
+
+On the next reboot the mount units no longer reference overlay paths, so the system reaches the login screen normally.
 which codex-wrapper
 which openai-wrapper
 which gooseai-wrapper
@@ -793,6 +826,22 @@ exec zsh
 # Choose option 1: High Contrast Dark
 # Or option 7: Custom High Contrast
 ```
+
+### MangoHud Overlay Appears Everywhere
+
+**Issue:** MangoHud injects into every GUI/terminal session, covering windows you do not want to benchmark.
+
+**Solution:**
+```bash
+# Run the interactive selector and pick option 1 to disable the global overlay
+./scripts/mangohud-profile.sh
+
+# Re-apply your Home Manager config so the new preference is enforced
+cd ~/.dotfiles/home-manager
+home-manager switch -b backup --flake .
+```
+
+The selected profile is cached at `~/.cache/nixos-quick-deploy/preferences/mangohud-profile.env`, so future deploy runs reuse your preference automatically.
 
 ---
 

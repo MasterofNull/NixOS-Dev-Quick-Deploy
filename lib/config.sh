@@ -866,7 +866,21 @@ prompt_configure_gitea_admin() {
 }
 
 ensure_gitea_secrets_ready() {
+    local mode="${1:---interactive}"
+    local interactive="true"
     local updated="false"
+
+    case "$mode" in
+        --noninteractive|--hydrate)
+            interactive="false"
+            ;;
+        --interactive)
+            interactive="true"
+            ;;
+        *)
+            interactive="true"
+            ;;
+    esac
 
     if [[ -n "$GITEA_SECRETS_CACHE_FILE" && -f "$GITEA_SECRETS_CACHE_FILE" ]]; then
         # shellcheck disable=SC1090
@@ -919,7 +933,18 @@ ensure_gitea_secrets_ready() {
         updated="true"
     fi
 
-    if [[ "${GITEA_ADMIN_PROMPTED,,}" != "true" ]]; then
+    local needs_prompt="false"
+    if [[ "$interactive" == "true" ]]; then
+        needs_prompt="true"
+    elif [[ "${GITEA_ADMIN_PROMPTED,,}" != "true" ]]; then
+        needs_prompt="true"
+    fi
+
+    if [[ "$needs_prompt" == "true" ]]; then
+        if [[ "$interactive" != "true" ]]; then
+            print_info "Gitea admin bootstrap settings not initialized; rerun Phase 1 to configure."
+            return 1
+        fi
         GITEA_PROMPT_CHANGED="false"
         if ! prompt_configure_gitea_admin; then
             return 1
@@ -971,6 +996,7 @@ GITEA_ADMIN_USER=$GITEA_ADMIN_USER
 GITEA_ADMIN_EMAIL=$GITEA_ADMIN_EMAIL
 GITEA_ADMIN_PASSWORD=$GITEA_ADMIN_PASSWORD
 GITEA_BOOTSTRAP_ADMIN=$GITEA_BOOTSTRAP_ADMIN
+GITEA_ADMIN_PROMPTED=$GITEA_ADMIN_PROMPTED
 EOF
             then
                 chmod 600 "$GITEA_SECRETS_CACHE_FILE" 2>/dev/null || true
@@ -1359,15 +1385,40 @@ generate_nixos_system_config() {
     local binary_cache_settings
     binary_cache_settings=$(generate_binary_cache_settings "${USE_BINARY_CACHES:-true}")
 
+    local mangohud_profile_origin="defaults"
+    local mangohud_profile_candidate=""
+    local mangohud_profile="full"
+
+    if [[ -n "${MANGOHUD_PROFILE_OVERRIDE:-}" ]]; then
+        mangohud_profile_candidate="$MANGOHUD_PROFILE_OVERRIDE"
+        mangohud_profile_origin="environment override"
+    elif [[ -n "${MANGOHUD_PROFILE_PREFERENCE_FILE:-}" && -f "$MANGOHUD_PROFILE_PREFERENCE_FILE" ]]; then
+        mangohud_profile_candidate=$(awk -F'=' '/^MANGOHUD_PROFILE=/{print $2}' "$MANGOHUD_PROFILE_PREFERENCE_FILE" 2>/dev/null | tail -n1 | tr -d '\r')
+        mangohud_profile_origin="preference file"
+    fi
+
+    if [[ -n "$mangohud_profile_candidate" ]]; then
+        case "$mangohud_profile_candidate" in
+            disabled|light|full)
+                mangohud_profile="$mangohud_profile_candidate"
+                ;;
+            *)
+                print_warning "Unsupported MangoHud profile '$mangohud_profile_candidate'; expected disabled, light, or full. Using default profile '$mangohud_profile'."
+                ;;
+        esac
+    fi
+
+    print_info "Applying MangoHud overlay profile: $mangohud_profile (${mangohud_profile_origin})"
+
     local glf_os_definitions
-    glf_os_definitions=$(cat <<'EOF'
+    glf_os_definitions=$(cat <<EOF
   glfMangoHudPresets = {
     disabled = "";
     light = ''control=mangohud,legacy_layout=0,horizontal,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,ram,vram,ps,fps,fps_metrics=AVG,0.001,font_scale=1.05'';
     full = ''control=mangohud,legacy_layout=0,vertical,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,core_load,ram,vram,fps,fps_metrics=AVG,0.001,frametime,refresh_rate,resolution,vulkan_driver,wine'';
   };
-  glfMangoHudProfile = "full";
-  glfMangoHudConfig = glfMangoHudPresets.${glfMangoHudProfile};
+  glfMangoHudProfile = "${mangohud_profile}";
+  glfMangoHudConfig = glfMangoHudPresets.\${glfMangoHudProfile};
   glfLutrisWithGtk = pkgs.lutris.override { extraLibraries = p: [ p.libadwaita p.gtk4 ]; };
   glfGamingPackages = [
     glfLutrisWithGtk
@@ -1427,6 +1478,27 @@ EOF
     remotePlay.openFirewall = true;
     localNetworkGameTransfers.openFirewall = true;
     extraCompatPackages = glfSteamCompatPackages;
+  };
+EOF
+)
+
+    local podman_storage_driver="${PODMAN_STORAGE_DRIVER:-overlay}"
+    local podman_storage_comment="${PODMAN_STORAGE_COMMENT:-Using overlay driver on detected filesystem.}"
+    podman_storage_comment=${podman_storage_comment//$'\n'/ }
+    podman_storage_comment=${podman_storage_comment//\'/}
+
+    local podman_storage_block
+    podman_storage_block=$(cat <<EOF
+  # ===========================================================================
+  # Container storage backend (auto-detected)
+  # ===========================================================================
+  virtualisation.containers = {
+    storage.settings.storage = {
+      # ${podman_storage_comment}
+      driver = "${podman_storage_driver}";
+      graphroot = "/var/lib/containers/storage";
+      runroot = "/run/containers/storage";
+    };
   };
 EOF
 )
@@ -1799,7 +1871,7 @@ EOF
         user_password_block=$'    # (no password directives detected; update manually if required)\n'
     fi
 
-    if ! ensure_gitea_secrets_ready; then
+    if ! ensure_gitea_secrets_ready --noninteractive; then
         return 1
     fi
 
@@ -1961,6 +2033,7 @@ EOF
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GPU_DRIVER_PACKAGES@" "$gpu_driver_packages_block"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GLF_OS_DEFINITIONS@" "$glf_os_definitions"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GLF_GAMING_STACK_SECTION@" "$glf_gaming_stack_section"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@PODMAN_STORAGE_BLOCK@" "$podman_storage_block"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@SELECTED_TIMEZONE@" "$TIMEZONE"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@CURRENT_LOCALE@" "$LOCALE"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@NIXOS_VERSION@" "$NIXOS_VERSION"
@@ -2200,14 +2273,14 @@ create_home_manager_config() {
     fi
 
     local glf_home_definitions
-    glf_home_definitions=$(cat <<'EOF'
+    glf_home_definitions=$(cat <<EOF
   glfMangoHudPresets = {
     disabled = "";
     light = ''control=mangohud,legacy_layout=0,horizontal,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,ram,vram,ps,fps,fps_metrics=AVG,0.001,font_scale=1.05'';
     full = ''control=mangohud,legacy_layout=0,vertical,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,core_load,ram,vram,fps,fps_metrics=AVG,0.001,frametime,refresh_rate,resolution,vulkan_driver,wine'';
   };
-  glfMangoHudProfile = "full";
-  glfMangoHudConfig = glfMangoHudPresets.${glfMangoHudProfile};
+  glfMangoHudProfile = "${mangohud_profile}";
+  glfMangoHudConfig = glfMangoHudPresets.\${glfMangoHudProfile};
   glfMangoHudConfigFileContents =
     let
       entries = lib.filter (entry: entry != "") (lib.splitString "," glfMangoHudConfig);
@@ -2250,7 +2323,7 @@ EOF
 
     print_info "Customizing home.nix..."
 
-    if ! ensure_gitea_secrets_ready; then
+    if ! ensure_gitea_secrets_ready --noninteractive; then
         return 1
     fi
 
