@@ -202,6 +202,22 @@ phase_01_system_initialization() {
     fi
 
     # ========================================================================
+    # Step 1.10b: Rootless Podman Diagnostics
+    # ========================================================================
+    if declare -F run_rootless_podman_diagnostics >/dev/null 2>&1; then
+        print_section "Rootless Podman Diagnostics"
+        echo ""
+
+        if run_rootless_podman_diagnostics; then
+            print_info "Rootless Podman diagnostics completed."
+        else
+            print_warning "Rootless Podman diagnostics reported issues; review the output above before continuing."
+        fi
+    else
+        print_warning "Podman diagnostics helper unavailable; ensure library updates are applied."
+    fi
+
+    # ========================================================================
     # Step 1.11: Plan Swap and Hibernation Capacity
     # ========================================================================
     print_section "Swap & Hibernation Planning"
