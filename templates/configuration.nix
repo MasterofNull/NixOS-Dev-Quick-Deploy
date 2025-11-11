@@ -961,6 +961,23 @@ in
     };
   };
 
+  systemd.services."accounts-daemon".serviceConfig = {
+    StateDirectory = "AccountsService";
+    RuntimeDirectory = "AccountsService";
+  };
+
+  systemd.services.netdata.serviceConfig = {
+    StateDirectory = "netdata";
+    RuntimeDirectory = "netdata";
+    CacheDirectory = "netdata";
+    LogsDirectory = "netdata";
+  };
+
+  systemd.tmpfiles.rules = lib.mkAfter [
+    "d /run/podman 0755 root root -"
+    "d /var/lib/AccountsService/icons 0750 accounts-daemon accounts-daemon -"
+  ];
+
   # PostgreSQL for production-grade AI applications
   # Disabled by default - enable with: sudo systemctl enable --now postgresql
   services.postgresql = {
