@@ -1302,9 +1302,6 @@ detect_container_storage_backend() {
     if [[ -n "${PODMAN_STORAGE_DRIVER_OVERRIDE:-}" ]]; then
         forced_driver="$PODMAN_STORAGE_DRIVER_OVERRIDE"
         forced_source="PODMAN_STORAGE_DRIVER_OVERRIDE"
-    elif [[ "${PODMAN_STORAGE_DRIVER_PRESET:-false}" == true && -n "${PODMAN_STORAGE_DRIVER:-}" ]]; then
-        forced_driver="$PODMAN_STORAGE_DRIVER"
-        forced_source="PODMAN_STORAGE_DRIVER"
     fi
 
     # Determine which filesystem backs the Podman graphroot so we can
