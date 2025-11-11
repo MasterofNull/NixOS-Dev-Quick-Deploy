@@ -952,6 +952,7 @@ collect_mounted_overlay_dirs() {
     local overlay_dir="$1"
     local result_var="$2"
     local oldest_var="$3"
+    local scope="${4:-}"
 
     if [[ -z "$overlay_dir" || -z "$result_var" || -z "$oldest_var" ]]; then
         return 1
@@ -968,6 +969,16 @@ collect_mounted_overlay_dirs() {
     fi
 
     local -A mtime_map=()
+    local -a find_cmd=(find)
+
+    if [[ "$scope" == "system" && "$EUID" -ne 0 ]]; then
+        if command -v sudo >/dev/null 2>&1; then
+            find_cmd=(sudo find)
+        else
+            print_warning "sudo unavailable; cannot inspect ${overlay_dir} for stale overlay mounts."
+            return 1
+        fi
+    fi
 
     while IFS= read -r merged_path; do
         if is_path_mounted "$merged_path"; then
@@ -981,7 +992,7 @@ collect_mounted_overlay_dirs() {
                 fi
             fi
         fi
-    done < <(find "$overlay_dir" -maxdepth 2 -type d -name merged -print 2>/dev/null || true)
+    done < <("${find_cmd[@]}" "$overlay_dir" -maxdepth 2 -type d -name merged -print 2>/dev/null || true)
 
     if (( ${#result_ref[@]} == 0 )); then
         return 0
@@ -1210,15 +1221,21 @@ auto_heal_podman_overlay_storage() {
             if [[ -n "$overlay_dir" ]]; then
                 local -a refreshed_paths=()
                 local refreshed_oldest=""
-                collect_mounted_overlay_dirs "$overlay_dir" refreshed_paths refreshed_oldest
+                local refresh_scan_ok=true
+                if ! collect_mounted_overlay_dirs "$overlay_dir" refreshed_paths refreshed_oldest "$scope"; then
+                    refresh_scan_ok=false
+                fi
                 : "${refreshed_oldest:-}"
 
-                if (( ${#refreshed_paths[@]} == 0 )); then
+                if [[ "$refresh_scan_ok" != true ]]; then
+                    print_warning "Unable to rescan ${overlay_dir}; manual ${scope} overlay cleanup may be required."
+                    cleanup_failed=true
+                elif (( ${#refreshed_paths[@]} == 0 )); then
                     print_success "Podman storage reset cleared stale ${scope} overlay mounts automatically."
                     return 0
+                else
+                    merged_paths=("${refreshed_paths[@]}")
                 fi
-
-                merged_paths=("${refreshed_paths[@]}")
             fi
         fi
     fi
@@ -1543,9 +1560,15 @@ run_rootless_podman_diagnostics() {
     if [[ -d "$system_overlay_dir" ]]; then
         local -a system_mounted_dirs=()
         local system_oldest=""
-        collect_mounted_overlay_dirs "$system_overlay_dir" system_mounted_dirs system_oldest
+        local system_scan_ok=true
+        if ! collect_mounted_overlay_dirs "$system_overlay_dir" system_mounted_dirs system_oldest "system"; then
+            system_scan_ok=false
+        fi
 
-        if (( ${#system_mounted_dirs[@]} > 0 )); then
+        if [[ "$system_scan_ok" != true ]]; then
+            print_warning "Unable to inspect ${system_overlay_dir}; ensure sudo is available so stale mounts can be cleaned."
+            status=1
+        elif (( ${#system_mounted_dirs[@]} > 0 )); then
             print_warning "Detected ${#system_mounted_dirs[@]} system overlay mounts under ${system_overlay_dir}; stale mounts block boot."
             if [[ -n "$system_oldest" ]]; then
                 print_info "  -> Oldest entry: ${system_oldest}"
@@ -1554,9 +1577,15 @@ run_rootless_podman_diagnostics() {
             if auto_heal_podman_overlay_storage system "$system_storage_root" "${system_mounted_dirs[@]}"; then
                 local -a post_system_dirs=()
                 local post_system_oldest=""
-                collect_mounted_overlay_dirs "$system_overlay_dir" post_system_dirs post_system_oldest
+                local post_system_scan_ok=true
+                if ! collect_mounted_overlay_dirs "$system_overlay_dir" post_system_dirs post_system_oldest "system"; then
+                    post_system_scan_ok=false
+                fi
 
-                if (( ${#post_system_dirs[@]} == 0 )); then
+                if [[ "$post_system_scan_ok" != true ]]; then
+                    print_warning "Unable to verify system overlay cleanup; rerun diagnostics with sudo access."
+                    status=1
+                elif (( ${#post_system_dirs[@]} == 0 )); then
                     print_success "System Podman overlay storage cleaned automatically."
                 else
                     print_warning "System overlay mounts still detected after cleanup; manual intervention required."
@@ -1611,9 +1640,15 @@ run_rootless_podman_diagnostics() {
         if [[ -d "$overlay_dir" ]]; then
             local -a mounted_merged_dirs=()
             local oldest_entry=""
-            collect_mounted_overlay_dirs "$overlay_dir" mounted_merged_dirs oldest_entry
+            local rootless_scan_ok=true
+            if ! collect_mounted_overlay_dirs "$overlay_dir" mounted_merged_dirs oldest_entry "rootless"; then
+                rootless_scan_ok=false
+            fi
 
-            if (( ${#mounted_merged_dirs[@]} > 0 )); then
+            if [[ "$rootless_scan_ok" != true ]]; then
+                print_warning "Unable to inspect rootless overlay directory ${overlay_dir}; check permissions on your home directory."
+                status=1
+            elif (( ${#mounted_merged_dirs[@]} > 0 )); then
                 print_warning "Detected ${#mounted_merged_dirs[@]} rootless overlay mounts under ${overlay_dir}; stale mounts can block nixos-rebuild."
                 if [[ -n "$oldest_entry" ]]; then
                     print_info "  -> Oldest entry: ${oldest_entry}"
@@ -1622,9 +1657,15 @@ run_rootless_podman_diagnostics() {
                 if auto_heal_podman_overlay_storage rootless "$storage_root" "${mounted_merged_dirs[@]}"; then
                     local -a post_cleanup_dirs=()
                     local post_cleanup_oldest=""
-                    collect_mounted_overlay_dirs "$overlay_dir" post_cleanup_dirs post_cleanup_oldest
+                    local post_cleanup_scan_ok=true
+                    if ! collect_mounted_overlay_dirs "$overlay_dir" post_cleanup_dirs post_cleanup_oldest "rootless"; then
+                        post_cleanup_scan_ok=false
+                    fi
 
-                    if (( ${#post_cleanup_dirs[@]} == 0 )); then
+                    if [[ "$post_cleanup_scan_ok" != true ]]; then
+                        print_warning "Unable to verify rootless overlay cleanup; rerun diagnostics after fixing permissions."
+                        status=1
+                    elif (( ${#post_cleanup_dirs[@]} == 0 )); then
                         print_success "Rootless Podman overlay storage cleaned automatically."
                     else
                         print_warning "Rootless overlay mounts still detected after cleanup; manual cleanup may be required."

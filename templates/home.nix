@@ -1949,6 +1949,66 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
     };
   };
 
+  home.activation.vscodiumPersistSettings =
+    lib.hm.dag.entryBefore [ "linkGeneration" ] ''
+      set -eu
+
+      settings="$HOME/.config/VSCodium/User/settings.json"
+      backup_dir="$HOME/.local/share/nixos-quick-deploy/state/vscodium"
+      backup="$backup_dir/settings.json"
+
+      if [ -f "$settings" ] && [ ! -L "$settings" ]; then
+        mkdir -p "$backup_dir"
+        cp "$settings" "$backup" 2>/dev/null || true
+      fi
+    '';
+
+  home.activation.vscodiumMakeSettingsMutable =
+    lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+      set -eu
+
+      settings="$HOME/.config/VSCodium/User/settings.json"
+      settings_dir="$(dirname "$settings")"
+      backup_dir="$HOME/.local/share/nixos-quick-deploy/state/vscodium"
+      backup="$backup_dir/settings.json"
+      mkdir -p "$settings_dir"
+
+      restore_from_backup() {
+        if [ -f "$backup" ]; then
+          cp "$backup" "$settings" 2>/dev/null
+          return 0
+        fi
+        return 1
+      }
+
+      if [ -L "$settings" ]; then
+        target="$(readlink -f "$settings" 2>/dev/null || true)"
+        rm -f "$settings"
+        if ! restore_from_backup; then
+          case "$target" in
+            /nix/store/*)
+              if [ -n "$target" ] && [ -f "$target" ]; then
+                cp "$target" "$settings" 2>/dev/null || printf '{}' >"$settings"
+              else
+                printf '{}' >"$settings"
+              fi
+              ;;
+            *)
+              printf '{}' >"$settings"
+              ;;
+          esac
+        fi
+      elif [ ! -e "$settings" ]; then
+        restore_from_backup || printf '{}' >"$settings"
+      fi
+
+      if [ -f "$settings" ]; then
+        chmod u+rw "$settings" 2>/dev/null || true
+        mkdir -p "$backup_dir"
+        cp "$settings" "$backup" 2>/dev/null || true
+      fi
+    '';
+
   # ========================================================================
   # Alacritty Terminal Configuration
   # ========================================================================
