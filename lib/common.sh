@@ -787,6 +787,126 @@ record_podman_storage_error() {
     PODMAN_STORAGE_ERRORS+=("$message")
 }
 
+repair_system_storage_conf_driver() {
+    local desired_driver="$1"
+    local current_driver="$2"
+    local config_path="/etc/containers/storage.conf"
+    local central_backup_path=""
+    local central_backup_status=""
+
+    PODMAN_SYSTEM_STORAGE_REPAIR_NOTE=""
+
+    if [[ "${PODMAN_AUTO_REPAIR_SYSTEM_STORAGE_CONF:-true}" != true ]]; then
+        return 1
+    fi
+
+    if [[ -z "$desired_driver" || ! -e "$config_path" ]]; then
+        return 1
+    fi
+
+    if [[ -n "${BACKUP_ROOT:-}" ]] && [[ -n "${BACKUP_MANIFEST:-}" ]]; then
+        if [[ "$(type -t centralized_backup 2>/dev/null)" == "function" ]]; then
+            if centralized_backup "$config_path" "${config_path} (pre-driver repair)" >/dev/null 2>&1; then
+                local sanitized_path
+                sanitized_path="${config_path#/}"
+                central_backup_path="${BACKUP_ROOT%/}/${sanitized_path}"
+                central_backup_status="Archived pre-repair copy under ${central_backup_path}."
+                log INFO "Backed up ${config_path} to ${central_backup_path} before repair"
+            else
+                central_backup_status="Failed to archive ${config_path} under ${BACKUP_ROOT}."
+                log WARNING "Failed to archive ${config_path} under ${BACKUP_ROOT}"
+            fi
+        fi
+    fi
+
+    local python_script
+    python_script=$(cat <<'PY'
+import os
+import re
+import shutil
+import sys
+import tempfile
+import time
+
+config_path = sys.argv[1]
+desired = sys.argv[2]
+current = sys.argv[3] if len(sys.argv) > 3 else ""
+
+if not os.path.exists(config_path):
+    sys.stderr.write(f"{config_path} missing; unable to update storage driver to {desired}.\n")
+    sys.exit(1)
+
+with open(config_path, "r", encoding="utf-8") as handle:
+    original = handle.read()
+
+patterns = [
+    re.compile(r'^(\s*driver\s*=\s*")(.*?)(".*)$', re.MULTILINE),
+    re.compile(r'^(\s*driver\s*=\s*)(\S+)(.*)$', re.MULTILINE),
+]
+
+new_content = None
+for pattern in patterns:
+    candidate, count = pattern.subn(lambda match: f"{match.group(1)}{desired}{match.group(3)}", original, count=1)
+    if count:
+        new_content = candidate
+        break
+
+if new_content is None:
+    sys.stderr.write("Unable to locate driver entry in storage.conf; no changes made.\n")
+    sys.exit(1)
+
+timestamp = time.strftime("%Y%m%d%H%M%S")
+backup_path = f"{config_path}.bak.{timestamp}"
+shutil.copy2(config_path, backup_path)
+
+tmp_fd, tmp_path = tempfile.mkstemp(
+    prefix=f"{os.path.basename(config_path)}.tmp.",
+    dir=os.path.dirname(config_path) or ".",
+    text=True,
+)
+
+with os.fdopen(tmp_fd, "w", encoding="utf-8") as handle:
+    handle.write(new_content)
+
+shutil.copystat(config_path, tmp_path, follow_symlinks=False)
+os.replace(tmp_path, config_path)
+
+note = f"Patched driver from {current or 'unknown'} to {desired}; backup at {backup_path}."
+sys.stdout.write(note)
+PY
+)
+
+    local python_cmd=(python3)
+
+    if [[ ! -w "$config_path" ]]; then
+        local uid
+        uid=$(id -u 2>/dev/null || echo "")
+        if [[ "${uid:-}" != "0" ]]; then
+            if command -v sudo >/dev/null 2>&1; then
+                python_cmd=(sudo python3)
+            else
+                PODMAN_SYSTEM_STORAGE_REPAIR_NOTE="Unable to update ${config_path}; insufficient permissions and sudo not available."
+                return 1
+            fi
+        fi
+    fi
+
+    local python_output
+    if python_output=$(printf '%s\n' "$python_script" | "${python_cmd[@]}" - "$config_path" "$desired_driver" "$current_driver" 2>&1); then
+        if [[ -n "$central_backup_status" ]]; then
+            python_output+=" ${central_backup_status}"
+        fi
+        PODMAN_SYSTEM_STORAGE_REPAIR_NOTE="$python_output"
+        return 0
+    fi
+
+    if [[ -n "$central_backup_status" ]]; then
+        python_output=$(printf '%s\n%s' "$python_output" "$central_backup_status")
+    fi
+    PODMAN_SYSTEM_STORAGE_REPAIR_NOTE="$python_output"
+    return 1
+}
+
 overlay_metacopy_supported() {
     if [[ -n "$OVERLAY_METACOPY_SUPPORTED_CACHE" ]]; then
         [[ "$OVERLAY_METACOPY_SUPPORTED_CACHE" == "1" ]]
@@ -1285,8 +1405,23 @@ detect_container_storage_backend() {
         "/etc/containers/storage.conf" 2>/dev/null || true)
 
     if [[ -n "$existing_system_driver" && "$existing_system_driver" != "$driver" ]]; then
-        record_podman_storage_warning \
-            "Existing /etc/containers/storage.conf still sets driver=${existing_system_driver}; regenerate the configuration so it matches ${driver} before the next reboot."
+        if repair_system_storage_conf_driver "$driver" "$existing_system_driver"; then
+            local repair_note="${PODMAN_SYSTEM_STORAGE_REPAIR_NOTE:-}"
+            if [[ -n "$repair_note" ]]; then
+                print_success "$repair_note"
+            else
+                print_success "Updated /etc/containers/storage.conf driver from ${existing_system_driver} to ${driver}."
+            fi
+            PODMAN_SYSTEM_STORAGE_REPAIR_NOTE=""
+        else
+            record_podman_storage_warning \
+                "Existing /etc/containers/storage.conf still sets driver=${existing_system_driver}; regenerate the configuration so it matches ${driver} before the next reboot."
+
+            if [[ -n "${PODMAN_SYSTEM_STORAGE_REPAIR_NOTE:-}" ]]; then
+                record_podman_storage_warning "$PODMAN_SYSTEM_STORAGE_REPAIR_NOTE"
+            fi
+            PODMAN_SYSTEM_STORAGE_REPAIR_NOTE=""
+        fi
     fi
 
     PODMAN_STORAGE_DRIVER="$driver"
@@ -2405,6 +2540,7 @@ prepare_home_manager_targets() {
         "$LOCAL_BIN_DIR/podman-ai-stack::Podman AI stack orchestrator"
         "$LOCAL_BIN_DIR/code-cursor::Cursor IDE launcher"
         "$LOCAL_BIN_DIR/obsidian-ai-bootstrap::Obsidian AI bootstrap helper"
+        "$HOME/.config/containers/storage.conf::Rootless Podman storage.conf"
         "$HOME/.npmrc::.npmrc"
     )
 
