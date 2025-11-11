@@ -27,7 +27,6 @@ prompt_podman_storage_driver_selection() {
     echo ""
     echo "  Options:"
     echo "    - vfs      → Portable default without overlay mounts (larger disk usage)."
-    echo "    - overlay  → fuse-overlayfs layers for faster image reuse on compatible filesystems."
     echo "    - btrfs    → Native driver; requires the storage path on a Btrfs filesystem."
     echo "    - zfs      → Native driver; requires POSIX ACLs on the backing dataset."
     echo "    - auto     → Keep the detected driver above."
@@ -35,7 +34,7 @@ prompt_podman_storage_driver_selection() {
 
     local selection=""
     while true; do
-        selection=$(prompt_user "Select Podman storage driver [vfs/overlay/btrfs/zfs/auto]" "$default_driver")
+        selection=$(prompt_user "Select Podman storage driver [vfs/btrfs/zfs/auto]" "$default_driver")
         selection="${selection,,}"
 
         if [[ -z "$selection" ]]; then
@@ -52,7 +51,7 @@ prompt_podman_storage_driver_selection() {
                 fi
                 break
                 ;;
-            vfs|overlay|btrfs|zfs)
+            vfs|btrfs|zfs)
                 PODMAN_STORAGE_DRIVER_OVERRIDE="$selection"
                 export PODMAN_STORAGE_DRIVER_OVERRIDE
                 print_success "Podman storage driver set to ${selection} for this run."
@@ -62,7 +61,7 @@ prompt_podman_storage_driver_selection() {
                 break
                 ;;
             *)
-                print_warning "Invalid selection. Enter vfs, overlay, btrfs, zfs, or auto."
+                print_warning "Invalid selection. Enter vfs, btrfs, zfs, or auto."
                 ;;
         esac
     done

@@ -240,22 +240,24 @@ You should now see all checks running:
    formatting, reinstall helper binaries, and clean stale overlay directories.
 3. After applying the fixes, re-run `nixos-rebuild switch`.
 
-### Automated recovery (v4.0.0+)
+### Manual cleanup (v4.1.0+)
 
-The validator now attempts to clean corrupted Podman storage automatically when
-it finds mounted `overlay/*/merged` directories:
+Overlay-based recovery was removed together with the overlay driver. Reset the
+stores once and regenerate the configuration so only `vfs`, `btrfs`, or `zfs`
+drivers appear in `storage.conf`:
 
-- **System scope:** `run_rootless_podman_diagnostics` unmounts any overlay mounts
-  left under `/var/lib/containers/storage/overlay/`, removes the hashed layer
-  directories, and executes `sudo podman system reset --force` so the rootful
-  storage database and overlay metadata are regenerated. See the Podman manual
-  for details on `podman system reset`. [link](https://docs.podman.io/en/v5.0.3/markdown/podman-system-reset.1.html)
-- **Rootless scope:** The helper repeats the same process for
-  `~/.local/share/containers/storage/overlay/` using `fusermount3`/`fusermount`
-  for unprivileged mounts and runs `podman system reset --force` without sudo to
-  rebuild the per-user store.
-- If either cleanup step still reports mounted entries after the automated run,
-  the deployment halts so you can manually inspect the affected directories.
+```bash
+# Per-user store
+podman system reset --force
+rm -rf ~/.local/share/containers/storage ~/.local/share/containers/cache
+
+# System store
+sudo podman system reset --force
+sudo rm -rf /var/lib/containers/storage
+```
+
+After cleaning the stores, run `./nixos-quick-deploy.sh --resume` and rebuild so
+the generated configuration removes the legacy overlay entries.
 
 ### Additional gating checks
 
@@ -268,14 +270,14 @@ it finds mounted `overlay/*/merged` directories:
   archiving another copy under `~/.cache/nixos-quick-deploy/backups/<timestamp>/etc/containers/storage.conf`.
   If permissions block the repair you still see the warning so you can finish the regeneration
   manually: `./nixos-quick-deploy.sh --resume`.
-  【F:lib/common.sh†L1213-L1304】
+  【F:lib/common.sh†L937-L1114】
 - Run the automated rootless diagnostics (included in Phase 1 and exposed via
   `./scripts/system-health-check.sh --detailed`) to confirm user namespaces,
-  subordinate ID ranges, `fuse-overlayfs`, and stale `overlay/*/merged`
-  directories are handled before the switch is attempted. 【F:lib/common.sh†L867-L1014】
-- If stale overlay directories remain, clean them with Podman (`podman rm --force --all`
-  followed by `podman system prune --volumes`) or unmount them manually with
-  `findmnt`/`umount` as described below. 【F:docs/ROOTLESS_PODMAN.md†L37-L67】
+  subordinate ID ranges, `slirp4netns`, and supported storage drivers are
+  configured before the switch is attempted. 【F:lib/common.sh†L1156-L1219】
+- If stale directories remain after the resets above, repeat the cleanup
+  commands from [`docs/ROOTLESS_PODMAN.md`](ROOTLESS_PODMAN.md) or inspect the
+  mountpoints manually with `findmnt`/`umount`.
 
 ---
 
@@ -293,7 +295,7 @@ it finds mounted `overlay/*/merged` directories:
 1. Regenerate the configuration so the zswap helper can re-probe the available
    zpools and select the first kernel-supported option (z3fold → zbud →
    zsmalloc). `./nixos-quick-deploy.sh --resume` runs
-   `select_zswap_memory_pool` automatically before templating the NixOS config. 【F:lib/config.sh†L1406-L1434】【F:lib/common.sh†L1213-L1231】
+   `select_zswap_memory_pool` automatically before templating the NixOS config. 【F:lib/config.sh†L1406-L1434】【F:lib/common.sh†L1371-L1442】
 2. Rebuild the system profile (`sudo nixos-rebuild switch --flake ~/.dotfiles/home-manager`)
    and reboot. Inspect `/proc/cmdline` to confirm that the regenerated kernel
    parameters now point at the detected zswap zpool.
