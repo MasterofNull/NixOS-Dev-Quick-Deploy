@@ -2493,7 +2493,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
         data_root="''${PODMAN_AI_STACK_DATA_ROOT:-$HOME/${podmanAiStackDataDir}}"
         label_key="${podmanAiStackLabelKey}"
         label_value="${podmanAiStackLabelValue}"
-        network_unit="podman-${network}.network"
+        network_unit="podman-''${network}.network"
 
         mapfile -t container_names <<'EOCONTAINERS'
 ${podmanAiStackOllamaContainerName}
@@ -2503,8 +2503,8 @@ ${podmanAiStackMindsdbContainerName}
 EOCONTAINERS
 
         container_units=()
-        for name in "${container_names[@]}"; do
-          container_units+=("podman-${name}.service")
+        for name in "''${container_names[@]}"; do
+          container_units+=("podman-''${name}.service")
         done
 
         usage() {
@@ -2554,11 +2554,11 @@ USAGE
           up)
             ensure_directories
             start_units "$network_unit"
-            start_units "${container_units[@]}"
+            start_units "''${container_units[@]}"
             echo "podman-ai-stack: started services: ${podmanAiStackOllamaContainerName}, ${podmanAiStackOpenWebUiContainerName}, ${podmanAiStackQdrantContainerName}, ${podmanAiStackMindsdbContainerName}"
             ;;
           down)
-            stop_units "${container_units[@]}"
+            stop_units "''${container_units[@]}"
             stop_units "$network_unit"
             ;;
           restart)
@@ -2567,7 +2567,7 @@ USAGE
             ;;
           status)
             echo "-- systemd unit status --"
-            for unit in "$network_unit" "${container_units[@]}"; do
+            for unit in "$network_unit" "''${container_units[@]}"; do
               echo "[$unit]"
               systemctl --user --no-pager status "$unit" || true
               echo
@@ -2581,10 +2581,10 @@ USAGE
             ;;
           logs)
             log_args=()
-            for unit in "$network_unit" "${container_units[@]}"; do
+            for unit in "$network_unit" "''${container_units[@]}"; do
               log_args+=("-u" "$unit")
             done
-            exec journalctl --user -f "${log_args[@]}" "$@"
+            exec journalctl --user -f "''${log_args[@]}" "$@"
             ;;
           *)
             usage
