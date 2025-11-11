@@ -343,6 +343,29 @@ systemctl --user start flatpak-managed-install.service
 
 This issue has been resolved in recent updates. If you continue to see degraded session warnings, ensure you're running the latest version of the deployment script.
 
+### systemd reports `Unknown lvalue 'Path'`
+
+**Error message**
+
+```
+systemd[1234]: /etc/systemd/user/flatpak-managed-install.service:15: Unknown lvalue 'Path' in section 'Service'
+```
+
+**Cause**
+
+Older revisions of the deployment template injected a `Path=` directive into the `flatpak-managed-install` user service. systemd does not support `Path=` within the `[Service]` section, so the daemon logs this error during every reload and ignores the directive.
+
+**Fix**
+
+- Update to the latest version of the repository (the service now relies on the wrapped script's runtime inputs to populate `PATH`).
+- If you maintain local overrides, remove the `Path = flatpakManagedInstallRuntimeInputs;` assignment from `templates/home.nix` and rebuild your Home Manager configuration.
+- Reload the user daemon to clear the warning:
+
+  ```bash
+  systemctl --user daemon-reload
+  systemctl --user reset-failed flatpak-managed-install.service
+  ```
+
 ### Manual Installation
 
 If the service fails, install apps manually:
