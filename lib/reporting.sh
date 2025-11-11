@@ -19,20 +19,633 @@
 # ============================================================================
 
 # ============================================================================
+# Summarize nixos-rebuild Service Activity
+# ============================================================================
+# Purpose: Inspect nixos-rebuild logs to identify service restarts
+# Returns:
+#   0 - Always succeeds (pure reporting utility)
+# Parameters:
+#   $1 - Path to nixos-rebuild log (default: /tmp/nixos-rebuild.log)
+# ============================================================================
+summarize_nixos_rebuild_services() {
+    local log_path="${1:-/tmp/nixos-rebuild.log}"
+
+    if [[ ! -f "$log_path" ]]; then
+        print_info "nixos-rebuild log not found at $log_path; skipping service summary."
+        return 0
+    fi
+
+    if [[ ! -s "$log_path" ]]; then
+        print_info "nixos-rebuild log at $log_path is empty; skipping service summary."
+        return 0
+    fi
+
+    local parsed
+    parsed=$(awk '
+function flush()
+{
+    if (state == "") {
+        return
+    }
+
+    gsub(/[[:space:]]+$/, "", units)
+    gsub(/\.$/, "", units)
+    gsub(/ and /, ", ", units)
+
+    n = split(units, arr, /, */)
+    for (i = 1; i <= n; i++) {
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", arr[i])
+        if (arr[i] != "") {
+            printf("%s|%s\n", state, arr[i])
+        }
+    }
+
+    state = ""
+    units = ""
+}
+
+BEGIN {
+    IGNORECASE = 1
+    state = ""
+    units = ""
+}
+
+/^stopping the following units:/ {
+    flush()
+    state = "stopped"
+    units = $0
+    sub(/^.*: */, "", units)
+    next
+}
+
+/^starting the following units:/ {
+    flush()
+    state = "started"
+    units = $0
+    sub(/^.*: */, "", units)
+    next
+}
+
+/^restarting the following units:/ {
+    flush()
+    state = "restarted"
+    units = $0
+    sub(/^.*: */, "", units)
+    next
+}
+
+/^reloading the following units:/ {
+    flush()
+    state = "reloaded"
+    units = $0
+    sub(/^.*: */, "", units)
+    next
+}
+
+/^warning: the following units failed:/ {
+    flush()
+    state = "failed"
+    units = $0
+    sub(/^.*: */, "", units)
+    next
+}
+
+state != "" && $0 ~ /^[[:space:]]+/ {
+    more = $0
+    sub(/^[[:space:]]*/, "", more)
+    units = units " " more
+    next
+}
+
+state != "" {
+    flush()
+}
+
+END {
+    flush()
+}
+' "$log_path")
+
+    if [[ -z "$parsed" ]]; then
+        print_info "nixos-rebuild log did not record any service stop/start events."
+        return 0
+    fi
+
+    print_info "Analyzing nixos-rebuild service activity from $log_path"
+
+    local -a stopped_units=()
+    local -a started_units=()
+    local -a restarted_units=()
+    local -a reloaded_units=()
+    local -a failed_units=()
+    local -a all_units=()
+
+    declare -A seen_stopped=()
+    declare -A seen_started=()
+    declare -A seen_restarted=()
+    declare -A seen_reloaded=()
+    declare -A seen_failed=()
+    declare -A seen_unit=()
+
+    local action
+    local unit
+
+    while IFS='|' read -r action unit; do
+        case "$action" in
+            stopped)
+                if [[ -z "${seen_stopped[$unit]:-}" ]]; then
+                    stopped_units+=("$unit")
+                    seen_stopped[$unit]=1
+                fi
+                ;;
+            started)
+                if [[ -z "${seen_started[$unit]:-}" ]]; then
+                    started_units+=("$unit")
+                    seen_started[$unit]=1
+                fi
+                ;;
+            restarted)
+                if [[ -z "${seen_restarted[$unit]:-}" ]]; then
+                    restarted_units+=("$unit")
+                    seen_restarted[$unit]=1
+                fi
+                ;;
+            reloaded)
+                if [[ -z "${seen_reloaded[$unit]:-}" ]]; then
+                    reloaded_units+=("$unit")
+                    seen_reloaded[$unit]=1
+                fi
+                ;;
+            failed)
+                if [[ -z "${seen_failed[$unit]:-}" ]]; then
+                    failed_units+=("$unit")
+                    seen_failed[$unit]=1
+                fi
+                ;;
+        esac
+
+        if [[ -z "${seen_unit[$unit]:-}" ]]; then
+            all_units+=("$unit")
+            seen_unit[$unit]=1
+        fi
+    done <<< "$parsed"
+
+    local summary_printed=false
+
+    if (( ${#stopped_units[@]} > 0 )); then
+        summary_printed=true
+        print_info "Stopped services during nixos-rebuild:"
+        local stopped
+        for stopped in "${stopped_units[@]}"; do
+            print_detail "$stopped"
+        done
+    fi
+
+    if (( ${#started_units[@]} > 0 )); then
+        summary_printed=true
+        print_info "Started services during nixos-rebuild:"
+        local started
+        for started in "${started_units[@]}"; do
+            print_detail "$started"
+        done
+    fi
+
+    if (( ${#restarted_units[@]} > 0 )); then
+        summary_printed=true
+        print_info "Restarted services during nixos-rebuild:"
+        local restarted
+        for restarted in "${restarted_units[@]}"; do
+            print_detail "$restarted"
+        done
+    fi
+
+    if (( ${#reloaded_units[@]} > 0 )); then
+        summary_printed=true
+        print_info "Reloaded services during nixos-rebuild:"
+        local reloaded
+        for reloaded in "${reloaded_units[@]}"; do
+            print_detail "$reloaded"
+        done
+    fi
+
+    if (( ${#failed_units[@]} > 0 )); then
+        summary_printed=true
+        print_warning "Units reported as failed during nixos-rebuild:"
+        local failed
+        for failed in "${failed_units[@]}"; do
+            print_detail "$failed"
+        done
+    fi
+
+    if ! $summary_printed; then
+        print_info "No service changes were recorded in the nixos-rebuild log."
+    fi
+
+    if (( ${#all_units[@]} > 0 )); then
+        inspect_service_units_configuration "${all_units[@]}"
+    fi
+
+    return 0
+}
+
+# ============================================================================
+# Inspect Service Configuration for Impacted Units
+# ============================================================================
+# Purpose: Review systemd metadata for units touched during nixos-rebuild
+# Parameters:
+#   $@ - Systemd unit names to inspect
+# ============================================================================
+inspect_service_units_configuration() {
+    if (( $# == 0 )); then
+        return 0
+    fi
+
+    if ! command -v systemctl >/dev/null 2>&1; then
+        print_warning "systemctl not available; skipping service configuration inspection."
+        return 0
+    fi
+
+    print_info "Reviewing configuration for impacted systemd units:"
+
+    local has_nixos_option=false
+    if command -v nixos-option >/dev/null 2>&1; then
+        has_nixos_option=true
+    else
+        print_detail "nixos-option command not found; skipping declarative definition lookup."
+    fi
+
+    local has_journalctl=false
+    if command -v journalctl >/dev/null 2>&1; then
+        has_journalctl=true
+    fi
+
+    local has_systemd_analyze=false
+    if command -v systemd-analyze >/dev/null 2>&1; then
+        has_systemd_analyze=true
+    else
+        print_detail "systemd-analyze command not found; skipping systemd verification checks."
+    fi
+
+    local unit
+    for unit in "$@"; do
+        inspect_single_service_unit "$unit" "$has_nixos_option" "$has_journalctl" "$has_systemd_analyze"
+    done
+
+    return 0
+}
+
+# ============================================================================
+# Unit Definition Analysis Helpers
+# ============================================================================
+
+_trim_whitespace() {
+    local value="$1"
+    # shellcheck disable=SC2001
+    value=$(printf '%s' "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    printf '%s' "$value"
+}
+
+_strip_exec_prefix() {
+    local command="$1"
+    while [[ "$command" == [-@+!]* ]]; do
+        command="${command:1}"
+    done
+    printf '%s' "$command"
+}
+
+_print_unit_relationships() {
+    local label="$1"
+    local relationships="$2"
+
+    if [[ -z "$relationships" || "$relationships" == "-" ]]; then
+        return
+    fi
+
+    # systemctl show renders relationships as a space-delimited list that may span
+    # multiple lines. Normalizing via read -a handles both cases without invoking
+    # external tools.
+    local -a items=()
+    read -r -a items <<< "$relationships"
+
+    if (( ${#items[@]} == 0 )); then
+        return
+    fi
+
+    print_detail "$label:"
+    local dep
+    for dep in "${items[@]}"; do
+        print_detail "  - $dep"
+    done
+}
+
+_sanitize_quoted_path() {
+    local path="$1"
+    path="${path%\"}"
+    path="${path#\"}"
+    path="${path%\'}"
+    path="${path#\'}"
+    printf '%s' "$path"
+}
+
+_analyze_unit_definition() {
+    local unit="$1"
+    local definition="$2"
+
+    local line
+    local trimmed
+    local working_directory=""
+    local service_user=""
+    local service_group=""
+    local -a env_files=()
+    local -a exec_entries=()
+
+    while IFS= read -r line; do
+        trimmed=$(_trim_whitespace "$line")
+        if [[ -z "$trimmed" || "$trimmed" == \#* ]]; then
+            continue
+        fi
+
+        case "$trimmed" in
+            WorkingDirectory=*)
+                working_directory="${trimmed#WorkingDirectory=}"
+                ;;
+            EnvironmentFile=*)
+                env_files+=("${trimmed#EnvironmentFile=}")
+                ;;
+            User=*)
+                service_user="${trimmed#User=}"
+                ;;
+            Group=*)
+                service_group="${trimmed#Group=}"
+                ;;
+            ExecStart=*|ExecStartPre=*|ExecStartPost=*|ExecStop=*|ExecStopPost=*|ExecReload=*)
+                exec_entries+=("${trimmed#*=}")
+                ;;
+        esac
+    done <<< "$definition"
+
+    if [[ -n "$service_user" ]]; then
+        if [[ "$service_user" == *%* ]]; then
+            print_detail "Service user uses template specifiers: $service_user"
+        elif command -v id >/dev/null 2>&1; then
+            if id "$service_user" >/dev/null 2>&1; then
+                print_detail "Runs as user: $service_user"
+            else
+                print_warning "Configured user '$service_user' for $unit does not exist on this system."
+            fi
+        else
+            print_detail "Unable to verify user $service_user (id command unavailable)."
+        fi
+    fi
+
+    if [[ -n "$service_group" ]]; then
+        if [[ "$service_group" == *%* ]]; then
+            print_detail "Service group uses template specifiers: $service_group"
+        elif command -v getent >/dev/null 2>&1; then
+            if getent group "$service_group" >/dev/null 2>&1; then
+                print_detail "Runs as group: $service_group"
+            else
+                print_warning "Configured group '$service_group' for $unit does not exist on this system."
+            fi
+        else
+            print_detail "Unable to verify group $service_group (getent unavailable)."
+        fi
+    fi
+
+    if [[ -n "$working_directory" ]]; then
+        local dir_path="$working_directory"
+        dir_path=$(_sanitize_quoted_path "$dir_path")
+        if [[ -d "$dir_path" ]]; then
+            print_detail "Working directory: $dir_path"
+        else
+            print_warning "Working directory $dir_path does not exist; service may fail to start."
+        fi
+    fi
+
+    local env_file
+    for env_file in "${env_files[@]}"; do
+        local optional=false
+        if [[ "$env_file" == -* ]]; then
+            optional=true
+            env_file="${env_file#-}"
+        fi
+        env_file=$(_sanitize_quoted_path "$env_file")
+        if [[ "$env_file" == *%* ]]; then
+            print_detail "Environment file path uses template specifiers: $env_file"
+        elif [[ -f "$env_file" ]]; then
+            print_detail "Environment file present: $env_file"
+        elif [[ "$optional" == true ]]; then
+            print_detail "Optional environment file missing (allowed): $env_file"
+        else
+            print_warning "Environment file $env_file missing; variables may be undefined."
+        fi
+    done
+
+    local exec_entry
+    for exec_entry in "${exec_entries[@]}"; do
+        local command_block
+        IFS=';' read -r -a command_block <<< "$exec_entry"
+        local command
+        for command in "${command_block[@]}"; do
+            command=$(_trim_whitespace "$command")
+            if [[ -z "$command" ]]; then
+                continue
+            fi
+            command=$(_strip_exec_prefix "$command")
+            if [[ -z "$command" ]]; then
+                continue
+            fi
+            local executable _rest
+            read -r executable _rest <<< "$command"
+            executable=$(_sanitize_quoted_path "$executable")
+            if [[ "$executable" == *%* ]]; then
+                print_detail "Executable path uses template specifiers: $executable"
+                continue
+            fi
+            if [[ "$executable" == /* ]]; then
+                if [[ ! -x "$executable" && ! -f "$executable" ]]; then
+                    print_warning "Executable referenced by unit is missing or not executable: $executable"
+                fi
+            fi
+        done
+    done
+}
+
+# ============================================================================
+# Inspect Individual Service Unit
+# ============================================================================
+# Purpose: Gather diagnostic metadata for a specific systemd unit
+# Parameters:
+#   $1 - Unit name (e.g., postgresql.service)
+#   $2 - Whether nixos-option is available (true/false)
+#   $3 - Whether journalctl is available (true/false)
+#   $4 - Whether systemd-analyze is available (true/false)
+# ============================================================================
+inspect_single_service_unit() {
+    local unit="$1"
+    local has_nixos_option="$2"
+    local has_journalctl="$3"
+    local has_systemd_analyze="$4"
+
+    echo ""
+    print_info "Service diagnostics: $unit"
+
+    local show_output
+    if ! show_output=$(systemctl show "$unit" \
+        -p LoadState \
+        -p ActiveState \
+        -p SubState \
+        -p UnitFileState \
+        -p FragmentPath \
+        -p Description \
+        -p Result \
+        -p ExecMainStatus \
+        -p ConditionResult \
+        -p AssertResult \
+        -p Type \
+        -p Restart \
+        -p Wants \
+        -p Requires \
+        -p WantedBy \
+        -p RequiredBy \
+        -p Before \
+        -p After \
+        -p PartOf \
+        -p Conflicts \
+        -p Triggers \
+        -p TriggeredBy 2>/dev/null); then
+        print_warning "systemd does not recognize $unit; verify the unit name and configuration."
+        return 0
+    fi
+
+    declare -A props=()
+    local line
+    while IFS='=' read -r key value; do
+        if [[ -z "$key" ]]; then
+            continue
+        fi
+        props[$key]="$value"
+    done <<< "$show_output"
+
+    local description="${props[Description]:-N/A}"
+    local load_state="${props[LoadState]:-unknown}"
+    local active_state="${props[ActiveState]:-unknown}"
+    local sub_state="${props[SubState]:-unknown}"
+    local unit_file_state="${props[UnitFileState]:-unknown}"
+    local fragment_path="${props[FragmentPath]:-unknown}"
+    local result="${props[Result]:-unknown}"
+    local exec_status="${props[ExecMainStatus]:--}"
+    local condition_result="${props[ConditionResult]:-unknown}"
+    local assert_result="${props[AssertResult]:-unknown}"
+    local unit_type="${props[Type]:-unknown}"
+    local restart_policy="${props[Restart]:-unknown}"
+
+    print_detail "Description: $description"
+    print_detail "Load state: $load_state"
+    print_detail "Active state: $active_state (sub: $sub_state)"
+    print_detail "Unit file state: $unit_file_state"
+    if [[ -n "$fragment_path" && "$fragment_path" != "unknown" ]]; then
+        print_detail "Fragment path: $fragment_path"
+    fi
+    if [[ -n "$unit_type" && "$unit_type" != "unknown" ]]; then
+        print_detail "Unit type: $unit_type"
+    fi
+    if [[ -n "$restart_policy" && "$restart_policy" != "unknown" ]]; then
+        print_detail "Restart policy: $restart_policy"
+    fi
+
+    _print_unit_relationships "Requires units" "${props[Requires]:-}"
+    _print_unit_relationships "Wants units" "${props[Wants]:-}"
+    _print_unit_relationships "Part of" "${props[PartOf]:-}"
+    _print_unit_relationships "Conflicts with" "${props[Conflicts]:-}"
+    _print_unit_relationships "After units" "${props[After]:-}"
+    _print_unit_relationships "Before units" "${props[Before]:-}"
+    _print_unit_relationships "Triggered by" "${props[TriggeredBy]:-}"
+    _print_unit_relationships "Triggers units" "${props[Triggers]:-}"
+    _print_unit_relationships "Wanted by" "${props[WantedBy]:-}"
+    _print_unit_relationships "Required by" "${props[RequiredBy]:-}"
+
+    local enabled_output
+    enabled_output=$(systemctl is-enabled "$unit" 2>&1)
+    local enabled_rc=$?
+    if [[ $enabled_rc -le 1 ]]; then
+        print_detail "Enabled: $enabled_output"
+    else
+        print_detail "Enabled: unknown ($enabled_output)"
+    fi
+
+    if [[ "$load_state" != "loaded" ]]; then
+        print_warning "$unit load state is '$load_state'; confirm that the unit file is present."
+    fi
+
+    if [[ "$active_state" == "failed" || "$result" == "failure" ]]; then
+        print_warning "$unit reported a failure state (result: $result)."
+    elif [[ "$active_state" != "active" && "$active_state" != "inactive" && "$active_state" != "activating" ]]; then
+        print_warning "$unit active state is '$active_state'; review the service behaviour."
+    fi
+
+    if [[ -n "$exec_status" && "$exec_status" != "0" && "$exec_status" != "-" ]]; then
+        print_warning "$unit exited with status $exec_status; inspect recent logs for details."
+    fi
+
+    if [[ "$condition_result" == "no" ]]; then
+        print_warning "$unit failed one of its start conditions; inspect Condition directives in the unit file."
+    fi
+
+    if [[ "$assert_result" == "no" ]]; then
+        print_warning "$unit failed one of its assertions; verify Assert directives."
+    fi
+
+    if [[ "$has_nixos_option" == true && "$unit" == *.service && "$unit" != *@* ]]; then
+        local option_path
+        option_path=$(printf 'systemd.services."%s"' "${unit%.service}")
+        if nixos-option --json "$option_path" >/dev/null 2>&1; then
+            print_detail "Declarative service definition detected: $option_path"
+        else
+            print_warning "No declarative service definition found at $option_path; ensure the service is managed declaratively or documented."
+        fi
+    fi
+
+    if [[ "$has_journalctl" == true && ( "$active_state" == "failed" || "$result" == "failure" || ( "$exec_status" != "0" && "$exec_status" != "-" ) ) ]]; then
+        local journal_output
+        journal_output=$(journalctl -u "$unit" -n 5 --no-pager 2>/dev/null || true)
+        if [[ -n "$journal_output" ]]; then
+            print_detail "Recent journal entries:"
+            while IFS= read -r line; do
+                print_detail "  $line"
+            done <<< "$journal_output"
+        else
+            print_detail "No recent journal entries available for $unit."
+        fi
+    fi
+
+    local unit_definition
+    if unit_definition=$(systemctl cat "$unit" 2>/dev/null); then
+        _analyze_unit_definition "$unit" "$unit_definition"
+    else
+        print_detail "Unable to retrieve unit definition for $unit; skipping file-level checks."
+    fi
+
+    if [[ "$has_systemd_analyze" == true ]]; then
+        local verify_output
+        verify_output=$(systemd-analyze verify "$unit" 2>&1 || true)
+        if [[ -n "$verify_output" ]]; then
+            print_warning "systemd-analyze verify reported potential issues for $unit:"
+            while IFS= read -r line; do
+                print_detail "  $line"
+            done <<< "$verify_output"
+        else
+            print_detail "systemd-analyze verify did not report issues for $unit."
+        fi
+    fi
+
+    return 0
+}
+
+# ============================================================================
 # Print Post-Install Report
 # ============================================================================
 # Purpose: Generate comprehensive post-installation report
-# Returns:
-#   0 - Always succeeds
-#
-# Report includes:
-# - NixOS generation information
-# - Home-manager generation information
-# - Installed package counts
-# - Service status summary
-# - Hardware configuration summary
-# - Next steps and recommendations
-# ============================================================================
 print_post_install() {
     print_section "Deployment Report"
     echo ""
