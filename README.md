@@ -616,73 +616,24 @@ Next steps:
 Failed to save 'settings.json': Unable to write file (EROFS: read-only file system)
 ```
 
-**Cause:** In NixOS with Home Manager, configuration files are managed declaratively and are read-only symlinks from `/nix/store`. This is by design to ensure reproducibility.
+**Cause:** Home Manager renders `settings.json` inside `/nix/store` so it can symlink the file into `~/.config/VSCodium`. Editors therefore see a read-only filesystem and refuse to save.
 
-**Understanding NixOS Configuration:**
+**Fix (v4.0.0+):** The deployment now snapshots `~/.config/VSCodium/User/settings.json` before each Home Manager switch, reapplies the snapshot afterwards, and ensures the final file is a writable copy stored in:
 
-In NixOS, your entire system and user configuration is managed through `.nix` files:
-- `~/.config/VSCodium/User/settings.json` is a **read-only symlink** to `/nix/store/...`
-- This ensures your configuration is reproducible and version-controlled
-- Changes must be made in the source `.nix` file, not directly in VSCodium
-
-**Solution - Edit Home Manager Configuration:**
-
-1. **Edit your home.nix template:**
-   ```bash
-   cd ~/NixOS-Dev-Quick-Deploy
-   nano templates/home.nix
-   ```
-
-2. **Find the VSCodium settings section** (around line 1388-1550):
-   ```nix
-   # VSCodium Configuration (Declarative)
-   programs.vscode = {
-     enable = true;
-     package = pkgs.vscodium;
-     userSettings = {
-       # Add your settings here in Nix format
-       "editor.fontSize" = 14;
-       "editor.tabSize" = 2;
-       # ... etc
-     };
-   };
-   ```
-
-3. **Apply the changes:**
-   ```bash
-   # Rebuild NixOS system
-   sudo nixos-rebuild switch --flake /etc/nixos
-
-   # Rebuild home-manager (if separate)
-   home-manager switch --flake ~/.dotfiles/home-manager
-   ```
-
-4. **Restart VSCodium** to load the new configuration
-
-**Converting JSON to Nix Format:**
-
-If you have existing settings you want to preserve:
-
-```bash
-# View your current settings
-cat ~/.config/VSCodium/User/settings.json
-
-# Example conversion:
-# JSON:  "editor.fontSize": 14
-# Nix:   "editor.fontSize" = 14;
-
-# JSON:  "editor.formatOnSave": true
-# Nix:   "editor.formatOnSave" = true;
-
-# JSON:  "files.exclude": { "**/.git": true }
-# Nix:   "files.exclude" = { "**/.git" = true; };
+```
+~/.config/VSCodium/User/settings.json
+~/.local/share/nixos-quick-deploy/state/vscodium/settings.json  # backup copy
 ```
 
-**Quick Reference:**
-- JSON `{ "key": "value" }` → Nix `{ "key" = "value"; }`
-- JSON `:` → Nix `=`
-- Nix requires `;` at end of each line
-- Both use `true`/`false`, numbers, and strings the same way
+VSCodium can now edit `settings.json` normally and your changes persist across rebuilds because the activation hook restores the snapshot after Home Manager finishes linking.
+
+**Need reproducible settings?**
+
+You can still keep long-term configuration in `templates/home.nix → programs.vscode.profiles.default.userSettings`. The declarative defaults are written into the store, and the activation hook will seed your mutable copy with those defaults whenever the backup is missing. A suggested workflow:
+
+1. Make quick edits directly inside VSCodium (they land in the mutable file).
+2. Periodically copy the keys you care about back into `templates/home.nix` so future machines inherit them.
+3. Rerun the deploy script so the declarative defaults and your mutable copy stay in sync.
 
 ### Packages Not in PATH
 
