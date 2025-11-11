@@ -29,11 +29,24 @@ let
   huggingfaceCacheDir = ".cache/huggingface";
   huggingfaceModelId = "meta-llama/Meta-Llama-3-8B-Instruct";
   huggingfaceTgiEndpoint = "http://127.0.0.1:8080";
-  ollamaHost = "http://127.0.0.1:11434";
+  huggingfaceTgiContainerEndpoint = "http://host.containers.internal:8080";
+  ollamaPort = 11434;
+  ollamaHost = "http://127.0.0.1:${toString ollamaPort}";
   openWebUiPort = 8081;
   openWebUiUrl = "http://127.0.0.1:${toString openWebUiPort}";
   openWebUiDataDir = ".local/share/open-webui";
   podmanAiStackDataDir = ".local/share/podman-ai-stack";
+  podmanAiStackNetworkName = "local-ai";
+  podmanAiStackLabelKey = "nixos.quick-deploy.ai-stack";
+  podmanAiStackLabelValue = "true";
+  podmanAiStackOllamaContainerName = "${podmanAiStackNetworkName}-ollama";
+  podmanAiStackOpenWebUiContainerName = "${podmanAiStackNetworkName}-open-webui";
+  podmanAiStackQdrantContainerName = "${podmanAiStackNetworkName}-qdrant";
+  podmanAiStackMindsdbContainerName = "${podmanAiStackNetworkName}-mindsdb";
+  qdrantHttpPort = 6333;
+  qdrantGrpcPort = 6334;
+  mindsdbApiPort = 47334;
+  mindsdbGuiPort = 7735;
   claudeWrapperPath = "${config.home.homeDirectory}/.npm-global/bin/claude-wrapper";
   claudeNodeModulesPath = "${config.home.homeDirectory}/.npm-global/lib/node_modules";
   gptCodexWrapperPath = "${config.home.homeDirectory}/.npm-global/bin/gpt-codex-wrapper";
@@ -812,7 +825,7 @@ RESOURCES
     - All chat history, uploads, and custom prompts are written here.
     - The helper binds this directory into the container at /app/backend/data.
     - Remove this directory to reset the Open WebUI state safely.
-    - When using podman-ai-stack, this path is shared with the Open WebUI service inside the stack pod.
+    - When using podman-ai-stack, this path is shared with the Open WebUI container managed by the stack.
   '';
   podmanAiStackReadme = ''
     Podman AI Stack shared storage.
@@ -823,7 +836,8 @@ RESOURCES
     - mindsdb/: MindsDB database files for AI-assisted SQL workflows.
 
     Use the podman-ai-stack helper to manage the lifecycle of the stack.
-    The helper keeps this directory synchronized with container volumes.
+    The helper orchestrates Home Manager's services.podman quadlets and keeps
+    this directory synchronized with container volumes.
   '';
   giteaDomain = "@HOSTNAME@";
   giteaHttpPort = 3000;
@@ -1996,7 +2010,6 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       GPT_CLI_DEFAULT_PROVIDER = "openai";
       GPT_CLI_BASE_URL = "${huggingfaceTgiEndpoint}/v1";
       # Podman AI Stack
-      PODMAN_AI_STACK_POD = "local-ai-stack";
       PODMAN_AI_STACK_NETWORK = "local-ai";
       PODMAN_AI_STACK_DATA_ROOT = "$HOME/${podmanAiStackDataDir}";
       # Security & Credentials
@@ -2181,6 +2194,10 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
     "${openWebUiDataDir}/README".text = openWebUiReadme;
     "${podmanAiStackDataDir}/.keep".text = "";
     "${podmanAiStackDataDir}/README".text = podmanAiStackReadme;
+    "${podmanAiStackDataDir}/ollama/.keep".text = "";
+    "${podmanAiStackDataDir}/open-webui/.keep".text = "";
+    "${podmanAiStackDataDir}/qdrant/.keep".text = "";
+    "${podmanAiStackDataDir}/mindsdb/.keep".text = "";
     ".config/obsidian/ai-integrations/.keep".text = "";
     ".config/obsidian/ai-integrations/README".text = obsidianAiReadme;
 
@@ -2268,8 +2285,8 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           --network "''${network}" \
           -p "''${port}:8080" \
           -v "''${data_dir}:/app/backend/data" \
-          -e "OLLAMA_BASE_URL=${ollamaHost}" \
-          -e "OPENAI_API_BASE=${huggingfaceTgiEndpoint}/v1" \
+          -e "OLLAMA_BASE_URL=http://host.containers.internal:${toString ollamaPort}" \
+          -e "OPENAI_API_BASE=${huggingfaceTgiContainerEndpoint}/v1" \
           -e "HF_HOME=''${HF_HOME:-$HOME/${huggingfaceCacheDir}}" \
           "''${image}"
       '';
@@ -2467,35 +2484,43 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           exit 127
         fi
 
-        pod="''${PODMAN_AI_STACK_POD:-local-ai-stack}"
-        network="''${PODMAN_AI_STACK_NETWORK:-local-ai}"
+        if ! systemctl --user --help >/dev/null 2>&1; then
+          echo "podman-ai-stack: systemd --user is unavailable; log in to a graphical or linger-enabled session" >&2
+          exit 1
+        fi
+
+        network="''${PODMAN_AI_STACK_NETWORK:-${podmanAiStackNetworkName}}"
         data_root="''${PODMAN_AI_STACK_DATA_ROOT:-$HOME/${podmanAiStackDataDir}}"
-        ollama_image="''${PODMAN_AI_STACK_OLLAMA_IMAGE:-docker.io/ollama/ollama:latest}"
-        open_webui_image="''${OPEN_WEBUI_IMAGE:-ghcr.io/open-webui/open-webui:latest}"
-        qdrant_image="''${PODMAN_AI_STACK_QDRANT_IMAGE:-docker.io/qdrant/qdrant:latest}"
-        mindsdb_image="''${PODMAN_AI_STACK_MINDSDB_IMAGE:-docker.io/mindsdb/mindsdb:latest}"
-        open_webui_port="''${OPEN_WEBUI_PORT:-${toString openWebUiPort}}"
-        ollama_port="''${OLLAMA_PORT:-11434}"
-        qdrant_port="''${QDRANT_PORT:-6333}"
-        qdrant_grpc_port="''${QDRANT_GRPC_PORT:-6334}"
-        mindsdb_api_port="''${MINDSDB_API_PORT:-47334}"
-        mindsdb_gui_port="''${MINDSDB_GUI_PORT:-7735}"
+        label_key="${podmanAiStackLabelKey}"
+        label_value="${podmanAiStackLabelValue}"
+        network_unit="podman-${network}.network"
+
+        mapfile -t container_names <<'EOCONTAINERS'
+${podmanAiStackOllamaContainerName}
+${podmanAiStackOpenWebUiContainerName}
+${podmanAiStackQdrantContainerName}
+${podmanAiStackMindsdbContainerName}
+EOCONTAINERS
+
+        container_units=()
+        for name in "${container_names[@]}"; do
+          container_units+=("podman-${name}.service")
+        done
 
         usage() {
           cat <<USAGE >&2
 Usage: podman-ai-stack <command>
 
 Commands:
-  up         Create the pod, network, and start all AI services
-  down       Stop and remove the pod and containers (volumes kept)
-  restart    Recreate the stack (down + up)
-  status     Show pod and container status
-  logs       Stream combined logs from all services
+  up         Start the Podman network and all AI services
+  down       Stop the managed containers and network (volumes kept)
+  restart    Restart all services (down + up)
+  status     Show systemd and Podman status information
+  logs       Stream journald logs from the managed units
 
 Environment overrides:
-  PODMAN_AI_STACK_DATA_ROOT  Base directory for persistent volumes
-  PODMAN_AI_STACK_NETWORK    Custom network name (default: local-ai)
-  PODMAN_AI_STACK_POD        Pod name (default: local-ai-stack)
+  PODMAN_AI_STACK_DATA_ROOT  Base directory for persistent bind mounts
+  PODMAN_AI_STACK_NETWORK    Custom network name (default: ${podmanAiStackNetworkName})
 USAGE
         }
 
@@ -2503,38 +2528,24 @@ USAGE
           mkdir -p "''${data_root}/ollama" "''${data_root}/open-webui" "''${data_root}/qdrant" "''${data_root}/mindsdb"
         }
 
-        ensure_network() {
-          if ! podman network exists "$network" >/dev/null 2>&1; then
-            podman network create "$network" >/dev/null
-          fi
+        start_units() {
+          local unit
+          for unit in "$@"; do
+            systemctl --user start "$unit"
+          done
         }
 
-        ensure_pod() {
-          if ! podman pod exists "$pod" >/dev/null 2>&1; then
-            podman pod create \
-              --name "$pod" \
-              --network "$network" \
-              -p "$ollama_port:11434" \
-              -p "$open_webui_port:8080" \
-              -p "$qdrant_port:6333" \
-              -p "$qdrant_grpc_port:6334" \
-              -p "$mindsdb_api_port:47334" \
-              -p "$mindsdb_gui_port:7735" >/dev/null
-          fi
-        }
-
-        start_container() {
-          local name="$1"
-          shift
-          if podman ps --filter "name=$name" --format "{{.Names}}" | grep -Fxq "$name"; then
-            return
-          fi
-          podman run -d --pod "$pod" --name "$name" "$@" >/dev/null
+        stop_units() {
+          local unit
+          for unit in "$@"; do
+            systemctl --user stop "$unit" || true
+          done
         }
 
         cmd=""
         if [[ $# -gt 0 ]]; then
           cmd="$1"
+          shift
         fi
 
         [[ -n "$cmd" ]] || { usage; exit 1; }
@@ -2542,46 +2553,38 @@ USAGE
         case "$cmd" in
           up)
             ensure_directories
-            ensure_network
-            ensure_pod
-
-            start_container "$pod-ollama" \
-              -v "''${data_root}/ollama:/root/.ollama" \
-              "$ollama_image"
-
-            start_container "$pod-open-webui" \
-              -v "''${data_root}/open-webui:/app/backend/data" \
-              -e "OLLAMA_BASE_URL=http://127.0.0.1:11434" \
-              -e "OPENAI_API_BASE=${huggingfaceTgiEndpoint}/v1" \
-              "$open_webui_image"
-
-            start_container "$pod-qdrant" \
-              -v "''${data_root}/qdrant:/qdrant/storage" \
-              "$qdrant_image"
-
-            start_container "$pod-mindsdb" \
-              -v "''${data_root}/mindsdb:/var/lib/mindsdb" \
-              "$mindsdb_image"
-
-            echo "podman-ai-stack: all services running in pod \"$pod\""
+            start_units "$network_unit"
+            start_units "${container_units[@]}"
+            echo "podman-ai-stack: started services: ${podmanAiStackOllamaContainerName}, ${podmanAiStackOpenWebUiContainerName}, ${podmanAiStackQdrantContainerName}, ${podmanAiStackMindsdbContainerName}"
             ;;
           down)
-            if podman pod exists "$pod" >/dev/null 2>&1; then
-              podman pod stop "$pod" >/dev/null || true
-              podman pod rm "$pod" >/dev/null || true
-            fi
+            stop_units "${container_units[@]}"
+            stop_units "$network_unit"
             ;;
           restart)
             "$0" down
             "$0" up
             ;;
           status)
-            podman pod ps --filter "name=$pod"
+            echo "-- systemd unit status --"
+            for unit in "$network_unit" "${container_units[@]}"; do
+              echo "[$unit]"
+              systemctl --user --no-pager status "$unit" || true
+              echo
+            done
+
+            echo "-- podman ps (running) --"
+            podman ps --filter "label=$label_key=$label_value" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
             echo
-            podman ps --filter "pod=$pod"
+            echo "-- podman ps -a (all managed containers) --"
+            podman ps -a --filter "label=$label_key=$label_value" --format "table {{.Names}}\t{{.Status}}\t{{.CreatedAt}}"
             ;;
           logs)
-            podman pod logs -f "$pod"
+            log_args=()
+            for unit in "$network_unit" "${container_units[@]}"; do
+              log_args+=("-u" "$unit")
+            done
+            exec journalctl --user -f "${log_args[@]}" "$@"
             ;;
           *)
             usage
@@ -2850,6 +2853,97 @@ PLUGINCFG
         It is managed declaratively by Home Manager; manual changes may be overwritten on switch.
       '';
     };
+
+  services.podman = {
+    enable = true;
+
+    networks."${podmanAiStackNetworkName}" = {
+      description = "Isolated network for the local AI development stack";
+      autoStart = false;
+      labels = {
+        "${podmanAiStackLabelKey}" = podmanAiStackLabelValue;
+      };
+    };
+
+    containers = {
+      "${podmanAiStackOllamaContainerName}" = {
+        image = "docker.io/ollama/ollama:latest";
+        description = "Ollama inference runtime (rootless Podman)";
+        autoStart = false;
+        autoUpdate = "registry";
+        network = [ "${podmanAiStackNetworkName}.network" ];
+        networkAlias = [ "ollama" ];
+        ports = [ "${toString ollamaPort}:11434" ];
+        volumes = [
+          "${config.home.homeDirectory}/${podmanAiStackDataDir}/ollama:/root/.ollama"
+        ];
+        environment = {
+          OLLAMA_HOST = "0.0.0.0";
+        };
+        labels = {
+          "${podmanAiStackLabelKey}" = podmanAiStackLabelValue;
+        };
+      };
+
+      "${podmanAiStackOpenWebUiContainerName}" = {
+        image = "ghcr.io/open-webui/open-webui:latest";
+        description = "Open WebUI interface for the local AI stack";
+        autoStart = false;
+        autoUpdate = "registry";
+        network = [ "${podmanAiStackNetworkName}.network" ];
+        networkAlias = [ "open-webui" ];
+        ports = [ "${toString openWebUiPort}:8080" ];
+        volumes = [
+          "${config.home.homeDirectory}/${podmanAiStackDataDir}/open-webui:/app/backend/data"
+        ];
+        environment = {
+          OLLAMA_BASE_URL = "http://ollama:${toString ollamaPort}";
+          OPENAI_API_BASE = "${huggingfaceTgiContainerEndpoint}/v1";
+        };
+        labels = {
+          "${podmanAiStackLabelKey}" = podmanAiStackLabelValue;
+        };
+      };
+
+      "${podmanAiStackQdrantContainerName}" = {
+        image = "docker.io/qdrant/qdrant:latest";
+        description = "Qdrant vector database for embeddings";
+        autoStart = false;
+        autoUpdate = "registry";
+        network = [ "${podmanAiStackNetworkName}.network" ];
+        networkAlias = [ "qdrant" ];
+        ports = [
+          "${toString qdrantHttpPort}:6333"
+          "${toString qdrantGrpcPort}:6334"
+        ];
+        volumes = [
+          "${config.home.homeDirectory}/${podmanAiStackDataDir}/qdrant:/qdrant/storage"
+        ];
+        labels = {
+          "${podmanAiStackLabelKey}" = podmanAiStackLabelValue;
+        };
+      };
+
+      "${podmanAiStackMindsdbContainerName}" = {
+        image = "docker.io/mindsdb/mindsdb:latest";
+        description = "MindsDB orchestration layer for AI workflows";
+        autoStart = false;
+        autoUpdate = "registry";
+        network = [ "${podmanAiStackNetworkName}.network" ];
+        networkAlias = [ "mindsdb" ];
+        ports = [
+          "${toString mindsdbApiPort}:47334"
+          "${toString mindsdbGuiPort}:7735"
+        ];
+        volumes = [
+          "${config.home.homeDirectory}/${podmanAiStackDataDir}/mindsdb:/var/lib/mindsdb"
+        ];
+        labels = {
+          "${podmanAiStackLabelKey}" = podmanAiStackLabelValue;
+        };
+      };
+    };
+  };
 
   # ========================================================================
   # Gitea Native Service (runs alongside Flatpak when present)
