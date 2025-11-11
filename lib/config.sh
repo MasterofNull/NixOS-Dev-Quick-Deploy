@@ -1972,6 +1972,41 @@ EOF
         print_warning "OverlayFS kernel module not detected; Podman will fall back to fuse-overlayfs."
     fi
 
+    filter_supported_sysctl_entries() {
+        local block="$1"
+        local filtered=""
+
+        if [[ -z "$block" ]]; then
+            printf '%s' ""
+            return
+        fi
+
+        while IFS= read -r line || [ -n "$line" ]; do
+            local trimmed
+            trimmed=$(printf '%s' "$line" | sed -e 's/^[[:space:]]*//')
+
+            if [[ -z "$trimmed" || "$trimmed" == \#* ]]; then
+                filtered+="$line"$'\n'
+                continue
+            fi
+
+            if [[ "$trimmed" == "\""*"\""* ]]; then
+                local key="${trimmed#\"}"
+                key="${key%%\"*}"
+                local path="/proc/sys/${key//./\/}"
+                if [[ -e "$path" ]]; then
+                    filtered+="$line"$'\n'
+                else
+                    print_warning "Skipping unsupported sysctl '$key' (no /proc/sys entry present)."
+                fi
+            else
+                filtered+="$line"$'\n'
+            fi
+        done <<< "$block"
+
+        printf '%s' "$filtered"
+    }
+
     local kernel_sysctl_tunables=""
     local kernel_sysctl_hardening
     kernel_sysctl_hardening=$(cat <<'EOF'
@@ -1985,6 +2020,7 @@ EOF
       "dev.tty.ldisc_autoload" = 0;
 EOF
 )
+    kernel_sysctl_hardening=$(filter_supported_sysctl_entries "$kernel_sysctl_hardening")
 
     local kernel_sysctl_network
     kernel_sysctl_network=$(cat <<'EOF'
@@ -2012,6 +2048,7 @@ EOF
       "net.ipv6.conf.default.accept_redirects" = 0;
 EOF
 )
+    kernel_sysctl_network=$(filter_supported_sysctl_entries "$kernel_sysctl_network")
 
     kernel_sysctl_tunables="${kernel_sysctl_hardening}${kernel_sysctl_network}"
 
@@ -2078,6 +2115,8 @@ EOF
       "kernel.shmall" = 4194304;      # 16GB in pages (4KB pages)
 EOF
 )
+
+        kernel_sysctl_memory=$(filter_supported_sysctl_entries "$kernel_sysctl_memory")
 
         kernel_sysctl_tunables+="$kernel_sysctl_memory"
         print_info "Applying legacy memory management sysctl overrides for zswap-backed hibernation."
