@@ -262,10 +262,12 @@ it finds mounted `overlay/*/merged` directories:
 - Re-run the deployment generator so container storage probing can refresh the
   driver that NixOS writes into `storage.conf`. The helper examines the
   filesystem behind `/var/lib/containers`, falls back to the safer `vfs`
-  default when no specialised driver applies, and emits a warning when the
-  existing file still pins an incompatible value such as `overlay`. This keeps
-  the deprecated configuration's behaviour while surfacing stale entries before
-  they trigger emergency mode: `./nixos-quick-deploy.sh --resume`.
+  default when no specialised driver applies, and, when it detects an
+  incompatible driver in `/etc/containers/storage.conf`, attempts to rewrite
+  the file immediately while stashing a timestamped backup next to the file and
+  archiving another copy under `~/.cache/nixos-quick-deploy/backups/<timestamp>/etc/containers/storage.conf`.
+  If permissions block the repair you still see the warning so you can finish the regeneration
+  manually: `./nixos-quick-deploy.sh --resume`.
   【F:lib/common.sh†L1213-L1304】
 - Run the automated rootless diagnostics (included in Phase 1 and exposed via
   `./scripts/system-health-check.sh --detailed`) to confirm user namespaces,
