@@ -5,10 +5,9 @@
 # If you edit this file manually, your edits will be preserved
 # until the template itself changes (new packages added to script)
 
-{ config, pkgs, options, nixAiToolsPackages ? {}, ... }:
+{ config, pkgs, lib, options, nixAiToolsPackages ? {}, ... }:
 
 let
-  lib = pkgs.lib;
   # Collect available derivations from the external nix-ai-tools flake so the
   # generated configuration gracefully degrades if certain outputs are missing.
   nixAiToolsPackageList =
