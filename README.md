@@ -27,6 +27,8 @@ chmod +x nixos-quick-deploy.sh
 
 ### Complete System Setup
 - **COSMIC Desktop** - Modern, fast desktop environment from System76
+- **Hyprland Wayland Session** - Latest Hyprland compositor alongside COSMIC for tiling workflows
+- **Latest Linux Kernel Track** - Boots with `linuxPackages_latest` for the newest drivers and firmware
 - **800+ Packages** - Development tools, CLI utilities, and applications
 - **Nix Flakes** - Enabled and configured for reproducible builds
 - **Podman** - Rootless container runtime for local AI services
@@ -843,7 +845,7 @@ home-manager switch -b backup --flake .
 
 The selected profile is cached at `~/.cache/nixos-quick-deploy/preferences/mangohud-profile.env`, so future deploy runs reuse your preference automatically.
 
-> **Need the full gaming stack?** Export `ENABLE_GAMING_STACK=true` before running the deploy script to reinstate Gamemode, Gamescope, Steam, and their supporting configuration. The default `false` value keeps `/etc/gamemode.ini` and the zram generator drop-in out of the rendered system configuration so boot logs stay quiet on workstations that do not need those services.
+> **Need a lean workstation build instead?** Set `ENABLE_GAMING_STACK=false` before running the deploy script to skip Gamemode, Gamescope, Steam, and the auxiliary tuning (zram overrides, `/etc/gamemode.ini`, etc.). The default `true` value keeps the full GLF gaming stack enabled so MangoHud, Steam, and Gamescope are ready immediately after install.
 
 ---
 

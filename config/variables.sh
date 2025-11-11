@@ -227,6 +227,7 @@ declare -ag FLATPAK_PROFILE_CORE_APPS=(
     "org.mozilla.firefox"
     "md.obsidian.Obsidian"
     "io.podman_desktop.PodmanDesktop"
+    "org.prismlauncher.PrismLauncher"
     "org.sqlitebrowser.sqlitebrowser"
 )
 
@@ -452,7 +453,7 @@ if [[ -z "${PODMAN_STORAGE_COMMENT:-}" ]]; then
     PODMAN_STORAGE_COMMENT="Using ${PODMAN_STORAGE_DRIVER:-$DEFAULT_PODMAN_STORAGE_DRIVER} driver on detected filesystem."
 fi
 
-ENABLE_GAMING_STACK="${ENABLE_GAMING_STACK:-false}"
+ENABLE_GAMING_STACK="${ENABLE_GAMING_STACK:-true}"
 AUTO_APPLY_SYSTEM_CONFIGURATION="${AUTO_APPLY_SYSTEM_CONFIGURATION:-true}"
 AUTO_APPLY_HOME_CONFIGURATION="${AUTO_APPLY_HOME_CONFIGURATION:-true}"
 PROMPT_BEFORE_SYSTEM_SWITCH="${PROMPT_BEFORE_SYSTEM_SWITCH:-false}"
