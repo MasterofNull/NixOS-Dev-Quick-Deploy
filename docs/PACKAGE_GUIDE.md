@@ -1139,6 +1139,19 @@ GUI for managing Podman containers.
   - Extension system
 - **Links**: [podman-desktop.io](https://podman-desktop.io/)
 
+### Gaming
+
+#### **Prism Launcher**
+Modern Minecraft launcher with multi-instance support.
+
+- **App ID**: `org.prismlauncher.PrismLauncher`
+- **Features**:
+  - Manage multiple profiles with isolated mods and resource packs
+  - Download any official Minecraft version, including snapshots
+  - Built-in modrinth/CurseForge browser and automatic dependency resolution
+  - Export and import curated instances for quick sharing
+- **Links**: [prismlauncher.org](https://prismlauncher.org/)
+
 ### Database Tools
 
 #### **SQLite Browser**

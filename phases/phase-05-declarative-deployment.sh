@@ -446,6 +446,20 @@ phase_05_declarative_deployment() {
     fi
 
     if [[ "$perform_system_switch" == true ]]; then
+        if declare -F ensure_gitea_state_directory_ready >/dev/null 2>&1; then
+            if ! ensure_gitea_state_directory_ready; then
+                print_error "Gitea state directory preparation failed; fix the permissions mentioned above and rerun Phase 5."
+                return 1
+            fi
+        fi
+
+        if declare -F verify_podman_storage_cleanliness >/dev/null 2>&1; then
+            if ! verify_podman_storage_cleanliness; then
+                print_error "Container storage health check failed. Reset the Podman stores using docs/ROOTLESS_PODMAN.md, then rerun Phase 5."
+                return 1
+            fi
+        fi
+
         print_info "Running: $rebuild_display"
         print_info "This applies the declarative system configuration..."
         echo ""

@@ -1723,7 +1723,7 @@ generate_nixos_system_config() {
     binary_cache_settings=$(generate_binary_cache_settings "${USE_BINARY_CACHES:-true}")
 
     local enable_gaming_value
-    enable_gaming_value=$(printf '%s' "${ENABLE_GAMING_STACK:-false}" | tr '[:upper:]' '[:lower:]')
+    enable_gaming_value=$(printf '%s' "${ENABLE_GAMING_STACK:-true}" | tr '[:upper:]' '[:lower:]')
     local gaming_stack_enabled=false
     case "$enable_gaming_value" in
         true|1|yes|on)
@@ -1762,10 +1762,8 @@ generate_nixos_system_config() {
         esac
     fi
 
-    if [[ "$gaming_stack_enabled" == true ]]; then
-        print_info "Applying MangoHud overlay profile: $mangohud_profile (${mangohud_profile_origin})"
-
-        glf_os_definitions=$(cat <<EOF
+    local mangohud_definition
+    mangohud_definition=$(cat <<EOF
   glfMangoHudPresets = {
     disabled = "";
     light = ''control=mangohud,legacy_layout=0,horizontal,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,ram,vram,ps,fps,fps_metrics=AVG,0.001,font_scale=1.05'';
@@ -1773,6 +1771,14 @@ generate_nixos_system_config() {
   };
   glfMangoHudProfile = "${mangohud_profile}";
   glfMangoHudConfig = glfMangoHudPresets.\${glfMangoHudProfile};
+EOF
+)
+
+    if [[ "$gaming_stack_enabled" == true ]]; then
+        print_info "Applying MangoHud overlay profile: $mangohud_profile (${mangohud_profile_origin})"
+
+        glf_os_definitions=$(cat <<EOF
+${mangohud_definition}
   glfLutrisWithGtk = pkgs.lutris.override { extraLibraries = p: [ p.libadwaita p.gtk4 ]; };
   glfGamingPackages =
     [ glfLutrisWithGtk ]
@@ -1816,15 +1822,14 @@ EOF
     else
         print_info "Gaming stack disabled; MangoHud profile set to $mangohud_profile (${mangohud_profile_origin})."
 
-        glf_os_definitions=$(cat <<'EOF'
-  glfMangoHudPresets = { disabled = ""; };
-  glfMangoHudProfile = "disabled";
-  glfMangoHudConfig = "";
+        glf_os_definitions=$(cat <<EOF
+${mangohud_definition}
   glfLutrisWithGtk = if pkgs ? lutris then pkgs.lutris else null;
   glfGamingPackages = [];
   glfSteamPackage = if pkgs ? steam then pkgs.steam else null;
   glfSteamCompatPackages = [];
-  glfSystemUtilities = [];
+  glfSystemUtilities =
+    lib.optionals (pkgs ? mangohud) [ pkgs.mangohud ];
 EOF
 )
     fi
@@ -2382,7 +2387,7 @@ EOF
     attempts=0
     while true; do
       if output=$(${pkgs.gitea}/bin/gitea admin user list --admin 2>/dev/null); then
-        if printf '%s\n' "$output" | ${pkgs.gnugrep}/bin/grep -q '^${giteaAdminUserPattern}\\b'; then
+        if printf '%s\n' "$output" | ${pkgs.gnugrep}/bin/grep -Eq '(^|[[:space:]])${giteaAdminUserPattern}\\b'; then
           exit 0
         fi
         break
@@ -2396,12 +2401,19 @@ EOF
       ${pkgs.coreutils}/bin/sleep 2
     done
 
-    ${pkgs.gitea}/bin/gitea admin user create \
+    if ! create_output=$(${pkgs.gitea}/bin/gitea admin user create \
       --username ${lib.escapeShellArg giteaAdminUser} \
       --password ${lib.escapeShellArg giteaAdminSecrets.adminPassword} \
       --email ${lib.escapeShellArg giteaAdminEmail} \
       --must-change-password=false \
-      --admin
+      --admin 2>&1); then
+      create_rc=$?
+      if printf '%s\n' "$create_output" | ${pkgs.gnugrep}/bin/grep -qi 'user already exists'; then
+        exit 0
+      fi
+      printf '%s\n' "$create_output" >&2
+      exit "$create_rc"
+    fi
   '';
 EOF
 )

@@ -282,6 +282,10 @@ phase_01_system_initialization() {
         print_warning "Podman diagnostics helper unavailable; ensure library updates are applied."
     fi
 
+    if declare -F verify_podman_storage_cleanliness >/dev/null 2>&1; then
+        verify_podman_storage_cleanliness "--warn-only"
+    fi
+
     # ========================================================================
     # Step 1.11: Plan Swap and Hibernation Capacity
     # ========================================================================
