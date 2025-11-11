@@ -492,6 +492,57 @@ flatpak_install_app_list() {
     return $failure
 }
 
+purge_vscodium_flatpak_conflicts() {
+    if ! flatpak_cli_available; then
+        return 0
+    fi
+
+    if ! declare -p FLATPAK_VSCODIUM_CONFLICT_IDS >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local -a user_removed=()
+    local -a system_installed=()
+    local app_id
+    local removal_failed=0
+
+    for app_id in "${FLATPAK_VSCODIUM_CONFLICT_IDS[@]}"; do
+        if run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
+            print_info "Removing conflicting Flatpak $app_id (user scope)..."
+            local uninstall_output=""
+            if uninstall_output=$(run_as_primary_user flatpak --noninteractive --assumeyes --user uninstall "$app_id" 2>&1); then
+                print_success "  • Removed $app_id (user scope)"
+                user_removed+=("$app_id")
+            else
+                print_warning "  ⚠ Failed to remove $app_id (user scope)"
+                print_flatpak_details "$uninstall_output"
+                removal_failed=1
+            fi
+        fi
+
+        if run_as_primary_user flatpak info --system "$app_id" >/dev/null 2>&1; then
+            system_installed+=("$app_id")
+        fi
+    done
+
+    if [[ ${#user_removed[@]} -gt 0 ]]; then
+        local removed_list
+        removed_list=$(printf '%s, ' "${user_removed[@]}")
+        removed_list=${removed_list%, }
+        print_info "User-level Visual Studio Code Flatpaks removed: ${removed_list}"
+    fi
+
+    if [[ ${#system_installed[@]} -gt 0 ]]; then
+        local system_list
+        system_list=$(printf '%s, ' "${system_installed[@]}")
+        system_list=${system_list%, }
+        print_warning "System-wide Flatpak installs still include Visual Studio Code variants: ${system_list}"
+        print_info "Remove them manually with: sudo flatpak uninstall --system <app-id>"
+    fi
+
+    return $removal_failed
+}
+
 filter_vscodium_conflicting_flatpaks() {
     if [[ ${#DEFAULT_FLATPAK_APPS[@]} -eq 0 ]]; then
         return 0
@@ -540,6 +591,10 @@ ensure_default_flatpak_apps_installed() {
     if [[ ${#DEFAULT_FLATPAK_APPS[@]} -eq 0 ]]; then
         print_info "No default Flatpak applications defined"
         return 0
+    fi
+
+    if ! purge_vscodium_flatpak_conflicts; then
+        print_warning "Some conflicting Visual Studio Code Flatpaks could not be removed automatically"
     fi
 
     filter_vscodium_conflicting_flatpaks
@@ -1413,15 +1468,16 @@ configure_vscodium_for_claude() {
             )
         fi
 
+        purge_vscodium_flatpak_conflicts || true
+
         local -a installed=()
         local app_id
         for app_id in "${conflict_ids[@]}"; do
             if run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
                 installed+=("$app_id (user)")
-                continue
             fi
 
-            if run_as_primary_user flatpak info "$app_id" >/dev/null 2>&1; then
+            if run_as_primary_user flatpak info --system "$app_id" >/dev/null 2>&1; then
                 installed+=("$app_id (system)")
             fi
         done

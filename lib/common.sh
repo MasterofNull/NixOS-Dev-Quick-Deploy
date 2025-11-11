@@ -1118,6 +1118,102 @@ detect_container_storage_backend() {
     fi
 }
 
+ensure_gitea_state_directory_ready() {
+    if [[ "${GITEA_ENABLE,,}" != "true" ]]; then
+        return 0
+    fi
+
+    if ! command -v sudo >/dev/null 2>&1; then
+        print_error "sudo is required to prepare /var/lib/gitea but is not available."
+        return 1
+    fi
+
+    local state_root="/var/lib/gitea"
+    local -a required_dirs=(
+        "$state_root"
+        "$state_root/custom"
+        "$state_root/custom/conf"
+        "$state_root/data"
+        "$state_root/log"
+    )
+
+    local dir
+    for dir in "${required_dirs[@]}"; do
+        if ! sudo install -d -m 0750 -o gitea -g gitea "$dir" 2>/dev/null; then
+            print_error "Failed to provision Gitea state directory: $dir"
+            return 1
+        fi
+    done
+
+    local app_ini="$state_root/custom/conf/app.ini"
+    if [[ ! -f "$app_ini" ]]; then
+        if ! sudo touch "$app_ini" 2>/dev/null; then
+            print_error "Unable to create $app_ini"
+            return 1
+        fi
+    fi
+
+    if ! sudo chown gitea:gitea "$app_ini" 2>/dev/null || ! sudo chmod 0640 "$app_ini" 2>/dev/null; then
+        print_error "Failed to set ownership or permissions on $app_ini"
+        return 1
+    fi
+
+    return 0
+}
+
+verify_podman_storage_cleanliness() {
+    local mode="${1:-enforce}"
+    local warn_only="false"
+    if [[ "$mode" == "--warn-only" ]]; then
+        warn_only="true"
+    fi
+
+    if [[ "${PODMAN_STORAGE_DETECTION_RUN:-false}" != true ]] \
+        && declare -F detect_container_storage_backend >/dev/null 2>&1; then
+        detect_container_storage_backend
+    fi
+
+    local configured_driver="${PODMAN_STORAGE_DRIVER:-}"
+    if [[ -z "$configured_driver" || "$configured_driver" == "overlay" ]]; then
+        return 0
+    fi
+
+    local -a overlay_paths=()
+    local system_overlay="/var/lib/containers/storage/overlay"
+    local user_root="${PRIMARY_HOME:-$HOME}/.local/share/containers/storage/overlay"
+
+    if [[ -d "$system_overlay" ]] && find "$system_overlay" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
+        overlay_paths+=("$system_overlay")
+    fi
+
+    if [[ -d "$user_root" ]] && find "$user_root" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
+        overlay_paths+=("$user_root")
+    fi
+
+    if (( ${#overlay_paths[@]} == 0 )); then
+        return 0
+    fi
+
+    local joined_paths shell_hint
+    joined_paths=$(printf '%s, ' "${overlay_paths[@]}")
+    joined_paths=${joined_paths%%, }
+    shell_hint="podman system reset --force && rm -rf ~/.local/share/containers/storage ~/.local/share/containers/cache"
+
+    if [[ "$warn_only" == "true" ]]; then
+        print_warning "Detected legacy overlay data under: ${joined_paths}. Clean the stores before applying the declarative Podman (driver=${configured_driver}) configuration."
+        print_detail "User store cleanup: ${shell_hint}"
+        print_detail "System store cleanup: sudo podman system reset --force && sudo rm -rf /var/lib/containers/storage"
+        print_detail "Refer to docs/ROOTLESS_PODMAN.md for full instructions."
+        return 0
+    fi
+
+    print_error "Podman storage check failed: legacy overlay data still exists under ${joined_paths} while the generated configuration uses driver '${configured_driver}'."
+    print_detail "User cleanup: ${shell_hint}"
+    print_detail "System cleanup: sudo podman system reset --force && sudo rm -rf /var/lib/containers/storage"
+    print_detail "See docs/ROOTLESS_PODMAN.md for recovery steps, then rerun the deployer."
+    return 1
+}
+
 resolve_subid_entry() {
     local database="$1"
     local target_user="$2"
