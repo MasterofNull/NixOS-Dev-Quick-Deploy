@@ -1,75 +1,103 @@
-# Rootless Podman Diagnostics and OverlayFS Recovery
+# Rootless Podman Storage
 
-The deployment flow now includes automated checks for rootless Podman so that
-`nixos-rebuild switch` is no longer blocked by overlay mount failures such as
-`overlay: mount: invalid argument` or stuck directories ending in `/merged`.
-This document summarises what the new diagnostics cover and how to remediate the
-common issues they surface.
+Overlay-based Podman storage is no longer part of the deployment workflow. The
+quick deploy script locks the driver to `vfs`, `btrfs`, or `zfs` during Phase 1,
+and the diagnostics phase refuses to continue if an older overlay override is
+still active. This keeps `nixos-rebuild` and `systemd` from mounting
+`/var/lib/containers/storage/overlay` entries during boot.
 
-## What the new validator does
+## Current behaviour
 
-* **Phase 1 system-initialisation pre-flight checks** call
-  `run_rootless_podman_diagnostics` to ensure user namespaces, subordinate ID
-  ranges, and Podman helpers are all in place before configuration generation
-  begins.
-* Kernel support for OverlayFS `metacopy` is detected automatically. When the
-  feature is missing the configuration falls back to `nodev` mount options and
-  logs an actionable warning instead of attempting an unsupported mount.
-* System storage (`/var/lib/containers`) and user storage
-  (`~/.local/share/containers`) are inspected for incompatible filesystems:
-  - XFS volumes with `ftype=0` are flagged as blocking errors because OverlayFS
-    cannot operate on them.
-  - `tmpfs` mounts are rejected for persistent storage.
-  - ZFS volumes that do not expose `acltype=posixacl` are highlighted with
-    remediation guidance.
-* Rootless storage trees are scanned for stale `overlay/.../merged` directories
-  that usually accompany interrupted container clean-ups. The validator prints
-  the first path it finds so that you can clean the mount manually or by using
-  `podman system prune`. When mounted entries are detected the validator now
-  attempts to unmount them automatically, remove the hashed overlay directory,
-  and run `podman system reset --force` (with sudo for the system store) to
-  rebuild the Podman storage metadata.
+- `/etc/containers/storage.conf` is regenerated automatically so the system
+  scope uses the filesystem-appropriate driver (typically `vfs` when no native
+  driver is available).
+- `~/.config/containers/storage.conf` is rendered by Home Manager so rootless
+  Podman inherits the same decision, but silently falls back to `vfs` if the
+  home directory cannot host the requested driver.
+- Phase 1 diagnostics print the detected driver and block if an overlay driver
+  is forced through overrides.
 
-## Required fixes when the validator fails
+## Cleaning legacy overlay directories
 
-| Failure | Why it matters | How to fix |
-| --- | --- | --- |
-| `kernel.unprivileged_userns_clone` ≠ 1 | User namespaces are disabled, preventing any rootless containers | The generated `configuration.nix` enables the sysctl, but ensure the value is not overridden elsewhere. |
-| Missing `fuse-overlayfs` | Podman falls back to the kernel overlay driver, which fails for rootless setups on NixOS | Keep `virtualisation.podman.extraPackages = [ slirp4netns fuse-overlayfs ];` and rebuild. |
-| `podman` group absent or user not a member | Rootless socket activation cannot drop privileges | Regenerate configs so `users.groups.podman` exists and your user stays in `extraGroups`. |
-| No subordinate UID/GID ranges | User namespaces cannot map container IDs | Leave `autoSubUidGidRange = true;` enabled or add explicit `subUidRanges`/`subGidRanges`. |
-| XFS `ftype=0` | OverlayFS cannot create upper layers, leading to `/merged` remnants | Reformat the filesystem with `mkfs.xfs -n ftype=1` and restore data from backup. |
-| ZFS `acltype` not `posixacl` | Fuse OverlayFS needs POSIX ACL support | Run `zfs set acltype=posixacl <dataset>` on the dataset that backs your home. |
+If an older configuration left overlay layers behind, reset the stores once and
+rebuild with the new templates applied:
 
-## Cleaning up `/merged` directories
+```bash
+# Rootless store (per user)
+podman system reset --force
+rm -rf ~/.local/share/containers/storage ~/.local/share/containers/cache
 
-Stale overlay trees typically live under one of these paths:
-
-```
-/var/lib/containers/storage/overlay/*/merged
-~/.local/share/containers/storage/overlay/*/merged
+# System store (requires sudo)
+sudo podman system reset --force
+sudo rm -rf /var/lib/containers/storage
 ```
 
-You can safely remove a stale mount with Podman:
+Re-run `./nixos-quick-deploy.sh --resume` afterwards so the regenerated
+configuration keeps the supported driver. Once the rebuild completes you should
+no longer see overlay mount units during boot or `podman info` output.
+
+### Reset refuses to touch `/etc/containers/storage.conf`
+
+`podman system reset --force` prints the warning shown below whenever a
+manually edited `/etc/containers/storage.conf` exists:
 
 ```
-podman rm --force --all
-podman system prune --volumes
+A "/etc/containers/storage.conf" config file exists.
+Remove this file if you did not modify the configuration.
 ```
 
-If Podman refuses to clean the directory because the mount is still active, use
-`findmnt` to identify the mount point and unmount it manually:
+The quick deploy workflow manages this file automatically, so it is safe to
+move it out of the way and let Phase&nbsp;1 regenerate the driver settings:
 
+```bash
+if [ -f /etc/containers/storage.conf ]; then
+    backup="/etc/containers/storage.conf.pre-reset.$(date +%Y%m%d-%H%M%S)"
+    sudo mv /etc/containers/storage.conf "$backup"
+fi
+sudo podman system reset --force
 ```
-sudo findmnt --target /var/lib/containers/storage/overlay/<hash>/merged
-sudo umount /var/lib/containers/storage/overlay/<hash>/merged
-```
 
-## Related files
+After the reset completes re-run `./nixos-quick-deploy.sh --resume` so the
+template logic writes a fresh `storage.conf`.
 
-* `lib/common.sh` now exports `run_rootless_podman_diagnostics` together with
-  storage helper utilities.
-* `phases/phase-01-system-initialization.sh` runs the validator so a failed
-  pre-flight stops the deployment before `nixos-rebuild switch` is attempted.
-* `templates/configuration.nix` and `templates/home.nix` generate storage
-  configuration that respects the detected OverlayFS capabilities.
+### `/var/lib/containers/storage/overlay` cannot be removed (`Device or resource busy`)
+
+The `rm -rf /var/lib/containers/storage` step fails when overlay mountpoints are
+still active. Unmount them before retrying the cleanup:
+
+1. Stop Podman services and any quadlet units that may be holding references:
+
+   ```bash
+   for svc in podman podman.socket podman-auto-update.service; do
+       sudo systemctl stop "$svc" 2>/dev/null || true
+   done
+   sudo systemctl list-units 'podman-*.service'
+   ```
+
+   Stop any remaining `podman-quadlet@<name>.service` instances reported by the
+   final command.
+
+2. Use `findmnt` to locate stale overlay mounts and detach them:
+
+   ```bash
+   sudo findmnt -rn -t overlay -o TARGET |
+   while IFS= read -r target; do
+       case "$target" in
+           /var/lib/containers/storage/overlay/*/merged)
+               sudo umount -lf "$target"
+               ;;
+       esac
+   done
+   ```
+
+   Re-run the `findmnt` command until it no longer prints any
+   `/var/lib/containers/storage/overlay/.../merged` paths.
+
+3. Remove the storage directory once all mounts have been detached:
+
+   ```bash
+   sudo rm -rf /var/lib/containers/storage
+   ```
+
+With the directory removed, repeat `./nixos-quick-deploy.sh --resume` so the
+generated NixOS configuration keeps the supported storage driver.
