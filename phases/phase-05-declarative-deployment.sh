@@ -463,6 +463,9 @@ phase_05_declarative_deployment() {
             print_success "✓ System packages now managed declaratively"
             SYSTEM_CONFIGURATION_APPLIED="true"
             SYSTEM_SWITCH_SKIPPED_REASON=""
+            if declare -F summarize_nixos_rebuild_services >/dev/null 2>&1; then
+                summarize_nixos_rebuild_services "/tmp/nixos-rebuild.log"
+            fi
             echo ""
         else
             local exit_code=${PIPESTATUS[0]}
