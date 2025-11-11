@@ -1218,6 +1218,183 @@ PY
     return 1
 }
 
+get_shadow_password_hash() {
+    local account="$1"
+    local entry=""
+
+    if [[ -z "$account" ]]; then
+        return 1
+    fi
+
+    if command -v sudo >/dev/null 2>&1; then
+        entry=$(sudo grep "^${account}:" /etc/shadow 2>/dev/null || true)
+    else
+        entry=$(grep "^${account}:" /etc/shadow 2>/dev/null || true)
+    fi
+
+    if [[ -z "$entry" ]]; then
+        return 0
+    fi
+
+    local hash
+    hash=$(printf '%s' "$entry" | cut -d: -f2)
+
+    if [[ -z "$hash" || "$hash" == "!" || "$hash" == "*" ]]; then
+        return 0
+    fi
+
+    printf '%s' "$hash"
+}
+
+extract_user_password_snippet_from_config() {
+    local config_path="$1"
+    local target_user="$2"
+
+    if [[ -z "$config_path" || -z "$target_user" ]]; then
+        return 1
+    fi
+
+    if [[ ! -f "$config_path" ]]; then
+        return 0
+    fi
+
+    local snippet=""
+    if ! snippet=$(
+        CONFIG_PATH="$config_path" TARGET_USER="$target_user" run_python - <<'PY'
+import os
+import re
+import sys
+from pathlib import Path
+
+config_path = Path(os.environ.get("CONFIG_PATH", ""))
+target_user = os.environ.get("TARGET_USER", "")
+
+if not target_user or not config_path.is_file():
+    raise SystemExit(0)
+
+text = config_path.read_text(encoding="utf-8", errors="ignore")
+pattern = re.compile(
+    r"users\.users\.(?:\"{0}\"|'{0}'|{0})\s*=\s*\{{".format(re.escape(target_user)),
+    re.MULTILINE,
+)
+
+match = pattern.search(text)
+if not match:
+    raise SystemExit(0)
+
+idx = match.end()
+depth = 0
+snippet_chars = []
+in_string = False
+string_char = ""
+escape = False
+
+while idx < len(text):
+    ch = text[idx]
+    if in_string:
+        snippet_chars.append(ch)
+        if escape:
+            escape = False
+        elif ch == "\\":
+            escape = True
+        elif ch == string_char:
+            in_string = False
+    else:
+        if ch in ('"', "'"):
+            if depth > 0:
+                snippet_chars.append(ch)
+            in_string = True
+            string_char = ch
+        elif ch == '{':
+            depth += 1
+            if depth > 1:
+                snippet_chars.append(ch)
+        elif ch == '}':
+            if depth <= 0:
+                break
+            depth -= 1
+            if depth > 0:
+                snippet_chars.append(ch)
+            else:
+                break
+        else:
+            if depth > 0:
+                snippet_chars.append(ch)
+    idx += 1
+
+block = ''.join(snippet_chars)
+lines = []
+for raw in block.splitlines():
+    stripped = raw.strip()
+    if not stripped or '=' not in stripped:
+        continue
+    if re.search(r'(hashedPassword|hashedPasswordFile|passwordFile|initialHashedPassword|initialPassword|forceInitialPassword)', stripped):
+        lines.append(raw.rstrip())
+
+if lines:
+    print('\n'.join(lines))
+PY
+    ); then
+        return 1
+    fi
+
+    if [[ -n "$snippet" ]]; then
+        printf '%s' "$snippet"
+    fi
+
+    return 0
+}
+
+hydrate_primary_user_password_block() {
+    if [[ -n "${USER_PASSWORD_BLOCK:-}" ]]; then
+        return 0
+    fi
+
+    local -a search_paths=()
+
+    if [[ -n "${SYSTEM_CONFIG_FILE:-}" && -f "$SYSTEM_CONFIG_FILE" ]]; then
+        search_paths+=("$SYSTEM_CONFIG_FILE")
+    fi
+
+    search_paths+=("/etc/nixos/configuration.nix")
+
+    local candidate
+    for candidate in "${search_paths[@]}"; do
+        local snippet=""
+        if snippet=$(extract_user_password_snippet_from_config "$candidate" "$PRIMARY_USER"); then
+            if [[ -n "$snippet" ]]; then
+                USER_PASSWORD_BLOCK="$snippet"
+                [[ "$USER_PASSWORD_BLOCK" != *$'\n' ]] && USER_PASSWORD_BLOCK+=$'\n'
+                print_success "Preserved password directives for $PRIMARY_USER from ${candidate}"
+                return 0
+            fi
+        else
+            print_warning "Failed to inspect password directives in ${candidate}"
+        fi
+    done
+
+    local shadow_hash=""
+    if shadow_hash=$(get_shadow_password_hash "$PRIMARY_USER"); then
+        if [[ -n "$shadow_hash" ]]; then
+            printf -v USER_PASSWORD_BLOCK '    hashedPassword = "%s";\n' "$shadow_hash"
+            print_success "Migrated password hash for $PRIMARY_USER from /etc/shadow"
+            return 0
+        fi
+    fi
+
+    local temp_password=""
+    if temp_password=$(generate_password 20); then
+        USER_TEMP_PASSWORD="$temp_password"
+        printf -v USER_PASSWORD_BLOCK '    initialPassword = "%s";\n    forceInitialPassword = true;\n' "$temp_password"
+        print_warning "No existing password configuration found. Generated temporary password for $PRIMARY_USER."
+        print_info "Temporary password (change after first login): $USER_TEMP_PASSWORD"
+        return 0
+    fi
+
+    print_warning "Unable to derive password settings automatically for $PRIMARY_USER."
+    return 1
+}
+
 provision_primary_user_password() {
     if [[ -n "${USER_PASSWORD_BLOCK:-}" ]]; then
         return 0
@@ -2211,6 +2388,10 @@ EOF
         nix_parallel_comment="capped at ${nix_max_jobs_value} job(s) / ${nix_core_limit_value} core(s) for ${total_ram_value}GB RAM"
     else
         nix_parallel_comment="using upstream defaults (auto jobs, 0 cores)"
+    fi
+
+    if ! hydrate_primary_user_password_block; then
+        print_warning "Automatic password detection failed; prompting for manual configuration."
     fi
 
     if [[ -z "${USER_PASSWORD_BLOCK:-}" ]]; then
