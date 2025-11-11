@@ -481,10 +481,9 @@ in
         flags = [ "--all" ];  # Remove all unused images, not just dangling
       };
 
-      # Rootless helpers recommended by the NixOS Podman guide
+      # Rootless networking helper (vfs storage by default)
       extraPackages = with pkgs; [
         slirp4netns
-        fuse-overlayfs
       ];
     };
   };

@@ -907,365 +907,6 @@ PY
     return 1
 }
 
-overlay_metacopy_supported() {
-    if [[ -n "$OVERLAY_METACOPY_SUPPORTED_CACHE" ]]; then
-        [[ "$OVERLAY_METACOPY_SUPPORTED_CACHE" == "1" ]]
-        return
-    fi
-
-    local support_flag=0
-
-    if [[ -f /sys/module/overlay/parameters/metacopy ]]; then
-        support_flag=1
-    else
-        if [[ -r /proc/config.gz ]]; then
-            if zgrep -q '^CONFIG_OVERLAY_FS_METACOPY=y' /proc/config.gz 2>/dev/null; then
-                support_flag=1
-            fi
-        fi
-
-        if (( support_flag == 0 )) && [[ -r /run/booted-system/kernel-config ]]; then
-            if grep -q '^CONFIG_OVERLAY_FS_METACOPY=y' /run/booted-system/kernel-config 2>/dev/null; then
-                support_flag=1
-            fi
-        fi
-    fi
-
-    OVERLAY_METACOPY_SUPPORTED_CACHE="$support_flag"
-    [[ "$support_flag" == "1" ]]
-}
-
-compose_overlay_mount_options() {
-    local mountopt="nodev"
-
-    if overlay_metacopy_supported; then
-        mountopt+=",metacopy=on"
-    else
-        record_podman_storage_warning \
-            "Kernel overlayfs module does not expose the metacopy parameter; using mount options '${mountopt}'."
-    fi
-
-    printf '%s' "$mountopt"
-}
-
-collect_mounted_overlay_dirs() {
-    local overlay_dir="$1"
-    local result_var="$2"
-    local oldest_var="$3"
-    local scope="${4:-}"
-
-    if [[ -z "$overlay_dir" || -z "$result_var" || -z "$oldest_var" ]]; then
-        return 1
-    fi
-
-    local -n result_ref="$result_var"
-    local -n oldest_ref="$oldest_var"
-
-    result_ref=()
-    oldest_ref=""
-
-    if [[ ! -d "$overlay_dir" ]]; then
-        return 0
-    fi
-
-    local -A mtime_map=()
-    local -a find_cmd=(find)
-
-    if [[ "$scope" == "system" && "$EUID" -ne 0 ]]; then
-        if command -v sudo >/dev/null 2>&1; then
-            find_cmd=(sudo find)
-        else
-            print_warning "sudo unavailable; cannot inspect ${overlay_dir} for stale overlay mounts."
-            return 1
-        fi
-    fi
-
-    while IFS= read -r merged_path; do
-        if is_path_mounted "$merged_path"; then
-            result_ref+=("$merged_path")
-
-            if command -v stat >/dev/null 2>&1; then
-                local mtime
-                mtime=$(stat -c '%Y' "$merged_path" 2>/dev/null || true)
-                if [[ -n "$mtime" ]]; then
-                    mtime_map["$merged_path"]="$mtime"
-                fi
-            fi
-        fi
-    done < <("${find_cmd[@]}" "$overlay_dir" -maxdepth 2 -type d -name merged -print 2>/dev/null || true)
-
-    if (( ${#result_ref[@]} == 0 )); then
-        return 0
-    fi
-
-    oldest_ref="${result_ref[0]}"
-    local oldest_mtime="${mtime_map[$oldest_ref]:-}"
-
-    local candidate
-    for candidate in "${result_ref[@]}"; do
-        local candidate_mtime="${mtime_map[$candidate]:-}"
-        if [[ -z "$candidate_mtime" ]]; then
-            continue
-        fi
-
-        if [[ -z "$oldest_mtime" || "$candidate_mtime" -lt "$oldest_mtime" ]]; then
-            oldest_mtime="$candidate_mtime"
-            oldest_ref="$candidate"
-        fi
-    done
-
-    return 0
-}
-
-attempt_overlay_unmount() {
-    local scope="$1"
-    local merged_path="$2"
-    local owner="${3:-}"
-
-    if [[ -z "$merged_path" ]]; then
-        return 1
-    fi
-
-    print_info "Unmounting stale overlay mount: ${merged_path}"
-
-    if [[ "$scope" == "system" && "$EUID" -ne 0 ]]; then
-        if ! command -v sudo >/dev/null 2>&1; then
-            print_warning "sudo unavailable; cannot unmount ${merged_path} automatically."
-            return 1
-        fi
-
-        if sudo umount "$merged_path" >/dev/null 2>&1; then
-            print_success "Unmounted ${merged_path}"
-            return 0
-        fi
-
-        if sudo umount -l "$merged_path" >/dev/null 2>&1; then
-            print_success "Unmounted ${merged_path} using lazy umount"
-            return 0
-        fi
-    else
-        if umount "$merged_path" >/dev/null 2>&1; then
-            print_success "Unmounted ${merged_path}"
-            return 0
-        fi
-
-        if umount -l "$merged_path" >/dev/null 2>&1; then
-            print_success "Unmounted ${merged_path} using lazy umount"
-            return 0
-        fi
-    fi
-
-    if [[ "$scope" == "rootless" ]]; then
-        if run_as_user "$owner" podman unshare fusermount3 -u "$merged_path" >/dev/null 2>&1; then
-            print_success "Unmounted ${merged_path} using podman unshare fusermount3"
-            return 0
-        fi
-
-        if run_as_user "$owner" podman unshare fusermount3 -uz "$merged_path" >/dev/null 2>&1; then
-            print_success "Unmounted ${merged_path} using podman unshare fusermount3 (lazy)"
-            return 0
-        fi
-
-        if run_as_user "$owner" podman unshare fusermount -u "$merged_path" >/dev/null 2>&1; then
-            print_success "Unmounted ${merged_path} using podman unshare fusermount"
-            return 0
-        fi
-
-        if run_as_user "$owner" podman unshare fusermount -uz "$merged_path" >/dev/null 2>&1; then
-            print_success "Unmounted ${merged_path} using podman unshare fusermount (lazy)"
-            return 0
-        fi
-
-        if run_as_user "$owner" podman unshare umount "$merged_path" >/dev/null 2>&1; then
-            print_success "Unmounted ${merged_path} using podman unshare umount"
-            return 0
-        fi
-
-        if run_as_user "$owner" podman unshare umount -l "$merged_path" >/dev/null 2>&1; then
-            print_success "Unmounted ${merged_path} using podman unshare lazy umount"
-            return 0
-        fi
-
-        if run_as_user "$owner" fusermount3 -u "$merged_path" >/dev/null 2>&1; then
-            print_success "Unmounted ${merged_path} using fusermount3"
-            return 0
-        fi
-
-        if run_as_user "$owner" fusermount3 -uz "$merged_path" >/dev/null 2>&1; then
-            print_success "Unmounted ${merged_path} using fusermount3 (lazy)"
-            return 0
-        fi
-
-        if run_as_user "$owner" fusermount -u "$merged_path" >/dev/null 2>&1; then
-            print_success "Unmounted ${merged_path} using fusermount"
-            return 0
-        fi
-
-        if run_as_user "$owner" fusermount -uz "$merged_path" >/dev/null 2>&1; then
-            print_success "Unmounted ${merged_path} using fusermount (lazy)"
-            return 0
-        fi
-    fi
-
-    print_warning "Failed to unmount ${merged_path}; manual cleanup required."
-    return 1
-}
-
-remove_overlay_tree() {
-    local scope="$1"
-    local merged_path="$2"
-
-    if [[ -z "$merged_path" ]]; then
-        return 1
-    fi
-
-    local overlay_dir
-    overlay_dir=$(dirname "$merged_path")
-
-    if [[ -z "$overlay_dir" || "$overlay_dir" == "/" ]]; then
-        return 1
-    fi
-
-    print_info "Removing overlay directory ${overlay_dir}"
-
-    if [[ "$scope" == "system" && "$EUID" -ne 0 ]]; then
-        if ! command -v sudo >/dev/null 2>&1; then
-            print_warning "sudo unavailable; cannot remove ${overlay_dir} automatically."
-            return 1
-        fi
-
-        if sudo rm -rf "$overlay_dir" >/dev/null 2>&1; then
-            print_success "Removed ${overlay_dir}"
-            return 0
-        fi
-    else
-        if rm -rf "$overlay_dir" >/dev/null 2>&1; then
-            print_success "Removed ${overlay_dir}"
-            return 0
-        fi
-    fi
-
-    print_warning "Failed to remove ${overlay_dir}; manual cleanup required."
-    return 1
-}
-
-reset_podman_storage_scope() {
-    local scope="$1"
-
-    if ! command -v podman >/dev/null 2>&1; then
-        print_warning "Podman CLI unavailable; skipping ${scope} storage reset."
-        return 0
-    fi
-
-    local description
-    description="podman system reset --force (${scope} scope)"
-
-    if [[ "$scope" == "system" && "$EUID" -ne 0 ]]; then
-        if ! command -v sudo >/dev/null 2>&1; then
-            print_warning "sudo unavailable; cannot run ${description}."
-            return 1
-        fi
-
-        if sudo podman system reset --force >/dev/null 2>&1; then
-            print_success "${description} completed"
-            return 0
-        fi
-    else
-        if podman system reset --force >/dev/null 2>&1; then
-            print_success "${description} completed"
-            return 0
-        fi
-    fi
-
-    print_warning "${description} failed; manual intervention may be required."
-    return 1
-}
-
-auto_heal_podman_overlay_storage() { 
-    local scope="$1"
-    local storage_root="$2"
-    shift 2
-
-    local -a merged_paths=("$@")
-
-    if (( ${#merged_paths[@]} == 0 )); then
-        return 0
-    fi
-
-    local overlay_dir=""
-    if [[ -n "$storage_root" ]]; then
-        overlay_dir="${storage_root%/}/overlay"
-    fi
-
-    local storage_owner=""
-    if [[ -n "$storage_root" ]] && command -v stat >/dev/null 2>&1; then
-        storage_owner=$(stat -c '%U' "$storage_root" 2>/dev/null || echo "")
-    fi
-
-    if [[ -z "$storage_owner" && "$scope" == "rootless" ]]; then
-        if [[ -n "${PRIMARY_USER:-}" && "${PRIMARY_USER}" != "root" ]]; then
-            storage_owner="$PRIMARY_USER"
-        elif [[ -n "${SUDO_USER:-}" ]]; then
-            storage_owner="$SUDO_USER"
-        fi
-    fi
-
-    print_info "Attempting ${scope} Podman overlay recovery at ${storage_root}"
-
-    local cleanup_failed=false
-    local cleaned_count=0
-
-    if command -v podman >/dev/null 2>&1; then
-        if reset_podman_storage_scope "$scope"; then
-
-            if [[ -n "$overlay_dir" ]]; then
-                local -a refreshed_paths=()
-                local refreshed_oldest=""
-                local refresh_scan_ok=true
-                if ! collect_mounted_overlay_dirs "$overlay_dir" refreshed_paths refreshed_oldest "$scope"; then
-                    refresh_scan_ok=false
-                fi
-                : "${refreshed_oldest:-}"
-
-                if [[ "$refresh_scan_ok" != true ]]; then
-                    print_warning "Unable to rescan ${overlay_dir}; manual ${scope} overlay cleanup may be required."
-                    cleanup_failed=true
-                elif (( ${#refreshed_paths[@]} == 0 )); then
-                    print_success "Podman storage reset cleared stale ${scope} overlay mounts automatically."
-                    return 0
-                else
-                    merged_paths=("${refreshed_paths[@]}")
-                fi
-            fi
-        fi
-    fi
-
-    local merged_path
-    for merged_path in "${merged_paths[@]}"; do
-        if attempt_overlay_unmount "$scope" "$merged_path" "$storage_owner"; then
-            if remove_overlay_tree "$scope" "$merged_path"; then
-                ((cleaned_count++))
-            else
-                cleanup_failed=true
-            fi
-        else
-            cleanup_failed=true
-        fi
-    done
-
-    if (( cleaned_count > 0 )); then
-        if ! reset_podman_storage_scope "$scope"; then
-            cleanup_failed=true
-        fi
-    fi
-
-    if [[ "$cleanup_failed" == true ]]; then
-        return 1
-    fi
-
-    return 0
-}
-
 resolve_user_home_directory() {
     local target_user="$1"
 
@@ -1298,10 +939,35 @@ detect_container_storage_backend() {
 
     local forced_driver=""
     local forced_source=""
+    local default_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-vfs}"
 
     if [[ -n "${PODMAN_STORAGE_DRIVER_OVERRIDE:-}" ]]; then
         forced_driver="$PODMAN_STORAGE_DRIVER_OVERRIDE"
         forced_source="PODMAN_STORAGE_DRIVER_OVERRIDE"
+    fi
+
+    case "$default_driver" in
+        vfs|btrfs|zfs)
+            ;;
+        ""|auto)
+            default_driver="vfs"
+            ;;
+        *)
+            print_warning "DEFAULT_PODMAN_STORAGE_DRIVER=${default_driver} unsupported; falling back to vfs."
+            default_driver="vfs"
+            ;;
+    esac
+
+    if [[ -n "$forced_driver" ]]; then
+        case "$forced_driver" in
+            vfs|btrfs|zfs)
+                ;;
+            *)
+                print_warning "PODMAN_STORAGE_DRIVER_OVERRIDE=${forced_driver} unsupported; ignoring and reverting to ${default_driver}."
+                forced_driver=""
+                forced_source=""
+                ;;
+        esac
     fi
 
     # Determine which filesystem backs the Podman graphroot so we can
@@ -1344,7 +1010,6 @@ detect_container_storage_backend() {
     CONTAINER_STORAGE_FS_TYPE="$fstype"
     CONTAINER_STORAGE_SOURCE="${source:-unknown}"
 
-    local default_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-vfs}"
     local driver="$default_driver"
     local detail="Detected ${CONTAINER_STORAGE_FS_TYPE} filesystem backing ${probe_target}"
     if [[ -n "$CONTAINER_STORAGE_SOURCE" && "$CONTAINER_STORAGE_SOURCE" != "unknown" ]]; then
@@ -1496,11 +1161,13 @@ run_rootless_podman_diagnostics() {
         detect_container_storage_backend
     fi
 
-    local overlay_opts
-    overlay_opts=$(compose_overlay_mount_options)
-
+    local effective_driver="${PODMAN_STORAGE_DRIVER:-${DEFAULT_PODMAN_STORAGE_DRIVER:-vfs}}"
     print_info "Podman storage backend: ${PODMAN_STORAGE_DRIVER:-unknown} on ${CONTAINER_STORAGE_FS_TYPE:-unknown}"
-    print_info "Recommended overlay mount options: ${overlay_opts}"
+
+    if [[ "$effective_driver" == "overlay" ]]; then
+        print_error "Overlay storage driver support has been removed; rerun the deployer with DEFAULT_PODMAN_STORAGE_DRIVER=vfs."
+        status=1
+    fi
 
     local sysctl_value
     sysctl_value=$(sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || echo "")
@@ -1517,98 +1184,10 @@ run_rootless_podman_diagnostics() {
         print_warning "Podman CLI not found on PATH; ensure virtualisation.podman.enable is applied."
     fi
 
-    if command -v fuse-overlayfs >/dev/null 2>&1; then
-        print_success "fuse-overlayfs available: $(command -v fuse-overlayfs)"
-    else
-        local declared_in_configs=false
-
-        if fuse_overlayfs_declared_in_generated_configs; then
-            declared_in_configs=true
-        fi
-
-        if [[ "$declared_in_configs" == true ]]; then
-            print_warning "fuse-overlayfs missing from PATH; the generated configuration declares pkgs.fuse-overlayfs and will install it during the next switch."
-        else
-            print_error "fuse-overlayfs missing; add pkgs.fuse-overlayfs to virtualisation.podman.extraPackages."
-            status=1
-        fi
-    fi
-
-    if [[ -e /dev/fuse ]]; then
-        if [[ -r /dev/fuse && -w /dev/fuse ]]; then
-            print_success "/dev/fuse ready for fuse-overlayfs mounts"
-        else
-            local fuse_mode="$(ls -l /dev/fuse 2>/dev/null | awk '{print $1" "$3":"$4}')"
-            print_warning "/dev/fuse present but lacks rw permissions for the current user (${fuse_mode:-unknown mode}); rootless containers may fail (see https://github.com/containers/fuse-overlayfs)."
-        fi
-    else
-        print_error "/dev/fuse is missing; install fuse3 or load the fuse kernel module so fuse-overlayfs can operate (see https://github.com/containers/fuse-overlayfs)."
-        status=1
-    fi
-
     if command -v slirp4netns >/dev/null 2>&1; then
         print_success "slirp4netns available: $(command -v slirp4netns)"
     else
         print_warning "slirp4netns not found; rootless container networking may be degraded."
-    fi
-
-    local system_storage_root="/var/lib/containers/storage"
-    local system_overlay_dir="${system_storage_root}/overlay"
-    if [[ -d "$system_overlay_dir" ]]; then
-        local -a system_mounted_dirs=()
-        local system_oldest=""
-        local system_scan_ok=true
-        if ! collect_mounted_overlay_dirs "$system_overlay_dir" system_mounted_dirs system_oldest "system"; then
-            system_scan_ok=false
-        fi
-
-        if [[ "$system_scan_ok" != true ]]; then
-            print_warning "Unable to inspect ${system_overlay_dir}; ensure sudo is available so stale mounts can be cleaned."
-            status=1
-        elif (( ${#system_mounted_dirs[@]} > 0 )); then
-            print_warning "Detected ${#system_mounted_dirs[@]} system overlay mounts under ${system_overlay_dir}; stale mounts block boot."
-            if [[ -n "$system_oldest" ]]; then
-                print_info "  -> Oldest entry: ${system_oldest}"
-            fi
-
-            if auto_heal_podman_overlay_storage system "$system_storage_root" "${system_mounted_dirs[@]}"; then
-                local -a post_system_dirs=()
-                local post_system_oldest=""
-                local post_system_scan_ok=true
-                if ! collect_mounted_overlay_dirs "$system_overlay_dir" post_system_dirs post_system_oldest "system"; then
-                    post_system_scan_ok=false
-                fi
-
-                if [[ "$post_system_scan_ok" != true ]]; then
-                    print_warning "Unable to verify system overlay cleanup; rerun diagnostics with sudo access."
-                    status=1
-                elif (( ${#post_system_dirs[@]} == 0 )); then
-                    print_success "System Podman overlay storage cleaned automatically."
-                else
-                    print_warning "System overlay mounts still detected after cleanup; manual intervention required."
-                    status=1
-                fi
-            else
-                print_warning "Automatic cleanup of system Podman overlay storage failed; manual intervention required."
-                status=1
-            fi
-        else
-            print_success "No active system overlay mounts found under ${system_overlay_dir}."
-        fi
-    else
-        print_info "System Podman storage directory ${system_storage_root} not initialized; skipping overlay inspection."
-    fi
-
-    if getent group podman >/dev/null 2>&1; then
-        if id -nG "$target_user" 2>/dev/null | tr ' ' '\n' | grep -Fxq podman; then
-            print_success "User ${target_user} belongs to the podman group."
-        else
-            print_error "User ${target_user} is missing from the podman group; update users.users.${target_user}.extraGroups."
-            status=1
-        fi
-    else
-        print_error "System group 'podman' not found; declare users.groups.podman."
-        status=1
     fi
 
     local subuid_entry=""
@@ -1627,59 +1206,6 @@ run_rootless_podman_diagnostics() {
         status=1
     fi
 
-    local home_dir
-    home_dir=$(resolve_user_home_directory "$target_user" 2>/dev/null || true)
-    if [[ -z "$home_dir" ]]; then
-        print_warning "Unable to resolve home directory for ${target_user}; skipping rootless storage inspection."
-    else
-        local storage_root="${home_dir}/.local/share/containers/storage"
-        local overlay_dir="${storage_root}/overlay"
-        if [[ -d "$overlay_dir" ]]; then
-            local -a mounted_merged_dirs=()
-            local oldest_entry=""
-            local rootless_scan_ok=true
-            if ! collect_mounted_overlay_dirs "$overlay_dir" mounted_merged_dirs oldest_entry "rootless"; then
-                rootless_scan_ok=false
-            fi
-
-            if [[ "$rootless_scan_ok" != true ]]; then
-                print_warning "Unable to inspect rootless overlay directory ${overlay_dir}; check permissions on your home directory."
-                status=1
-            elif (( ${#mounted_merged_dirs[@]} > 0 )); then
-                print_warning "Detected ${#mounted_merged_dirs[@]} rootless overlay mounts under ${overlay_dir}; stale mounts can block nixos-rebuild."
-                if [[ -n "$oldest_entry" ]]; then
-                    print_info "  -> Oldest entry: ${oldest_entry}"
-                fi
-
-                if auto_heal_podman_overlay_storage rootless "$storage_root" "${mounted_merged_dirs[@]}"; then
-                    local -a post_cleanup_dirs=()
-                    local post_cleanup_oldest=""
-                    local post_cleanup_scan_ok=true
-                    if ! collect_mounted_overlay_dirs "$overlay_dir" post_cleanup_dirs post_cleanup_oldest "rootless"; then
-                        post_cleanup_scan_ok=false
-                    fi
-
-                    if [[ "$post_cleanup_scan_ok" != true ]]; then
-                        print_warning "Unable to verify rootless overlay cleanup; rerun diagnostics after fixing permissions."
-                        status=1
-                    elif (( ${#post_cleanup_dirs[@]} == 0 )); then
-                        print_success "Rootless Podman overlay storage cleaned automatically."
-                    else
-                        print_warning "Rootless overlay mounts still detected after cleanup; manual cleanup may be required."
-                        status=1
-                    fi
-                else
-                    print_warning "Automatic cleanup of rootless Podman overlay storage failed; manual cleanup may be required."
-                    status=1
-                fi
-            else
-                print_success "No active rootless overlay mounts found under ${overlay_dir}."
-            fi
-        else
-            print_info "Rootless storage directory not initialized at ${storage_root}; containers have not been run yet."
-        fi
-    fi
-
     local message
     for message in "${PODMAN_STORAGE_WARNINGS[@]}"; do
         print_warning "$message"
@@ -1692,58 +1218,7 @@ run_rootless_podman_diagnostics() {
     return $status
 }
 
-fuse_overlayfs_declared_in_generated_configs() {
-    local -a search_paths=()
 
-    if [[ -n "${SYSTEM_CONFIG_FILE:-}" ]]; then
-        search_paths+=("$SYSTEM_CONFIG_FILE")
-    fi
-
-    if [[ -n "${HOME_MANAGER_FILE:-}" ]]; then
-        search_paths+=("$HOME_MANAGER_FILE")
-    fi
-
-    if [[ -n "${HM_CONFIG_DIR:-}" ]]; then
-        search_paths+=(
-            "$HM_CONFIG_DIR/configuration.nix"
-            "$HM_CONFIG_DIR/home.nix"
-            "$HM_CONFIG_DIR/flake.nix"
-        )
-    fi
-
-    local path
-    for path in "${search_paths[@]}"; do
-        if [[ -n "$path" && -f "$path" ]]; then
-            if grep -E '^[[:space:]]*[^#]*fuse-overlayfs' "$path" >/dev/null 2>&1; then
-                return 0
-            fi
-        fi
-    done
-
-    return 1
-}
-
-is_path_mounted() {
-    local target_path="$1"
-
-    if [[ -z "$target_path" ]]; then
-        return 1
-    fi
-
-    if command -v findmnt >/dev/null 2>&1; then
-        if findmnt -rn --target "$target_path" >/dev/null 2>&1; then
-            return 0
-        fi
-    fi
-
-    if [[ -r /proc/self/mountinfo ]]; then
-        if awk -v target="$target_path" '$5 == target {found=1; exit} END {exit !found}' /proc/self/mountinfo 2>/dev/null; then
-            return 0
-        fi
-    fi
-
-    return 1
-}
 
 
 

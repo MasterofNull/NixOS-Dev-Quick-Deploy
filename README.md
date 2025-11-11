@@ -689,14 +689,12 @@ which gpt-codex-wrapper
 
 On the next reboot the mount units no longer reference overlay paths, so the system reaches the login screen normally.
 
-**New in v4.0.0:** Phase 1's `run_rootless_podman_diagnostics` step now unmounts
-stale overlay mounts under `/var/lib/containers/storage/overlay/`, removes the
-affected layer directories, and runs `sudo podman system reset --force` to reset
-the storage database automatically. Check the validation log for `System Podman
-overlay storage cleaned automatically.` to confirm the remediation succeeded. If
-cleanup fails, follow the manual steps below.
+**Update:** Overlay storage support has been removed from the generator. Phase 1
+now enforces `vfs`, `btrfs`, or `zfs` and refuses to reintroduce legacy overlay
+entries, so regenerated configurations stop creating overlay mount units and
+systemd boots normally after the next rebuild.
 
-**Tip:** The deployment script now re-checks the container storage backend each time it regenerates `configuration.nix`, so resumed runs or flake edits pick up the correct driver automatically. Set `FORCE_CONTAINER_STORAGE_REDETECT=true` if you want to force a fresh probe, adjust the fallback with `DEFAULT_PODMAN_STORAGE_DRIVER=<driver>`, or export `PODMAN_STORAGE_DRIVER_OVERRIDE=<driver>` to bypass auto-detection intentionally. Set `PODMAN_AUTO_REPAIR_SYSTEM_STORAGE_CONF=false` to skip the automatic `/etc/containers/storage.conf` rewrite and keep the warning-only behaviour. Phase 1 now prompts for the Podman storage driver (default: `vfs`) so you can pick `overlay`, `btrfs`, `zfs`, or `auto` on each run without persisting the choice.
+**Tip:** The deployment script now re-checks the container storage backend each time it regenerates `configuration.nix`, so resumed runs or flake edits pick up the correct driver automatically. Set `FORCE_CONTAINER_STORAGE_REDETECT=true` if you want to force a fresh probe, adjust the fallback with `DEFAULT_PODMAN_STORAGE_DRIVER=<driver>`, or export `PODMAN_STORAGE_DRIVER_OVERRIDE=<driver>` to bypass auto-detection intentionally. Set `PODMAN_AUTO_REPAIR_SYSTEM_STORAGE_CONF=false` to skip the automatic `/etc/containers/storage.conf` rewrite and keep the warning-only behaviour. Phase 1 now prompts for the Podman storage driver (default: `vfs`) so you can pick `vfs`, `btrfs`, `zfs`, or `auto` on each run without persisting the choice.
 
 When you force a driver, the detector still reports the filesystem that backs `/var/lib/containers` and warns if the override does not match the recommended driver for that filesystem. Review the warning output before rebuilding so you do not carry an incompatible combination into the generated configuration.
 which codex-wrapper
@@ -713,9 +711,9 @@ ERRO[0000] User-selected graph driver "overlay" overwritten by graph driver "btr
 Error: configure storage: "/home/<user>/.local/share/containers/storage/btrfs" is not on a btrfs filesystem
 ```
 
-**Cause:** Earlier versions mirrored the system storage driver (for example `btrfs` or `zfs`) into `/etc/containers/storage.conf`. Rootless Podman reuses that driver for `~/.local/share/containers`, so a home directory on ext4/xfs would hit catastrophic overlay errors.
+**Cause:** Earlier versions mirrored the system storage driver (for example `btrfs` or `zfs`) into `/etc/containers/storage.conf`. Rootless Podman reuses that driver for `~/.local/share/containers`, so a home directory on ext4/xfs would hit catastrophic driver mismatches.
 
-**Fix:** The generator now writes `~/.config/containers/storage.conf` via Home Manager. It compares the home filesystem with the system driver and falls back to fuse-overlayfs when they differ. Regenerate your configuration and reset the rootless store so the new override takes effect:
+**Fix:** The generator now writes `~/.config/containers/storage.conf` via Home Manager. It compares the home filesystem with the system driver and falls back to `vfs` whenever the filesystem cannot host the selected native driver. Regenerate your configuration and reset the rootless store so the new override takes effect:
 
 1. Render the updated configs:
    ```bash
@@ -733,19 +731,10 @@ Error: configure storage: "/home/<user>/.local/share/containers/storage/btrfs" i
    home-manager switch --flake .
    exec zsh
    ```
-4. Confirm the driver now matches the override:
+4. Confirm the driver now matches the override or the enforced fallback:
    ```bash
    podman info --format '{{.Store.GraphDriverName}}'
    ```
-
-**If your home directory is on ZFS:** Rootless Podman cannot use the ZFS storage driver directly. Enable POSIX ACLs on the dataset backing your home directory so `fuse-overlayfs` can mount layers:
-
-```bash
-sudo zfs set acltype=posixacl <pool>/<dataset>
-sudo zfs get acltype <pool>/<dataset>
-```
-
-Replace `<pool>/<dataset>` with the dataset whose mountpoint matches your home directory. The deployment script now warns when it detects a ZFS dataset without `acltype=posixacl` and forces the rootless driver to `fuse-overlayfs` automatically.
 
 **If still not working:**
 ```bash
