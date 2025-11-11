@@ -291,10 +291,6 @@ ensure_preflight_core_packages() {
         return 1
     fi
 
-    if ! ensure_prerequisite_installed "fuse-overlayfs" "nixpkgs#fuse-overlayfs" "fuse-overlayfs (rootless overlay backend)"; then
-        return 1
-    fi
-
     if ! ensure_prerequisite_installed "slirp4netns" "nixpkgs#slirp4netns" "slirp4netns (rootless networking helper)"; then
         return 1
     fi
