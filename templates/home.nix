@@ -2973,7 +2973,8 @@ PLUGINCFG
           };
           Service = {
             Type = "oneshot";
-            Path = flatpakManagedInstallRuntimeInputs;
+            # flatpakManagedInstallScriptExe is a writeShellApplication wrapper, so
+            # PATH already includes flatpakManagedInstallRuntimeInputs.
             ExecStart = lib.mkForce flatpakManagedInstallScriptExe;
             ExecCondition = "${pkgs.coreutils}/bin/test -x ${pkgs.flatpak}/bin/flatpak";
             ExecStartPre = [
