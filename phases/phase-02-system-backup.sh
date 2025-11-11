@@ -54,13 +54,13 @@ phase_02_backup() {
     echo ""
 
     # Create backup root directory with timestamp
-    local BACKUP_ROOT="$HOME/.config-backups/pre-deployment-$(date +%Y%m%d_%H%M%S)"
-    if ! safe_mkdir "$BACKUP_ROOT"; then
-        print_error "Failed to create backup directory: $BACKUP_ROOT"
+    local backup_root_path="$HOME/.config-backups/pre-deployment-$(date +%Y%m%d_%H%M%S)"
+    if ! safe_mkdir "$backup_root_path"; then
+        print_error "Failed to create backup directory: $backup_root_path"
         return 1
     fi
-    safe_chown_user_dir "$BACKUP_ROOT" || true
-    print_info "Backup directory: $BACKUP_ROOT"
+    safe_chown_user_dir "$backup_root_path" || true
+    print_info "Backup directory: $backup_root_path"
     echo ""
 
     # ========================================================================
@@ -71,22 +71,22 @@ phase_02_backup() {
     # Record current NixOS generation
     local current_gen
     current_gen=$(readlink /run/current-system | grep -oP 'system-\K[0-9]+-link' | grep -oP '[0-9]+' || echo "unknown")
-    echo "NixOS Generation: $current_gen" > "$BACKUP_ROOT/system-state.txt"
+    echo "NixOS Generation: $current_gen" > "$backup_root_path/system-state.txt"
     print_success "Current NixOS generation: $current_gen"
 
     # Record current home-manager generation (if exists)
     if [[ -d "$HOME/.local/state/nix/profiles" ]]; then
         local hm_gen
         hm_gen=$(readlink "$HOME/.local/state/nix/profiles/home-manager" | grep -oP 'home-manager-\K[0-9]+-link' | grep -oP '[0-9]+' 2>/dev/null || echo "none")
-        echo "Home-Manager Generation: $hm_gen" >> "$BACKUP_ROOT/system-state.txt"
+        echo "Home-Manager Generation: $hm_gen" >> "$backup_root_path/system-state.txt"
         print_success "Current home-manager generation: $hm_gen"
     fi
 
     # List nix-env packages (for reference - we'll only remove script-generated ones)
     if command -v nix-env &>/dev/null; then
         print_info "Listing current nix-env packages..."
-        nix-env -q > "$BACKUP_ROOT/nix-env-packages.txt" 2>/dev/null || true
-        local pkg_count=$(wc -l < "$BACKUP_ROOT/nix-env-packages.txt" 2>/dev/null || echo "0")
+        nix-env -q > "$backup_root_path/nix-env-packages.txt" 2>/dev/null || true
+        local pkg_count=$(wc -l < "$backup_root_path/nix-env-packages.txt" 2>/dev/null || echo "0")
         if [[ "$pkg_count" -gt 0 ]]; then
             print_info "Found $pkg_count nix-env packages (saved for reference)"
         else
@@ -115,13 +115,13 @@ phase_02_backup() {
 
     # Backup /etc/nixos/configuration.nix
     if [[ -f "/etc/nixos/configuration.nix" ]]; then
-        sudo cp "/etc/nixos/configuration.nix" "$BACKUP_ROOT/configuration.nix" 2>/dev/null
+        sudo cp "/etc/nixos/configuration.nix" "$backup_root_path/configuration.nix" 2>/dev/null
         print_success "✓ Backed up: /etc/nixos/configuration.nix"
     fi
 
     # Backup /etc/nixos/flake.nix (if exists)
     if [[ -f "/etc/nixos/flake.nix" ]]; then
-        sudo cp "/etc/nixos/flake.nix" "$BACKUP_ROOT/nixos-flake.nix" 2>/dev/null
+        sudo cp "/etc/nixos/flake.nix" "$backup_root_path/nixos-flake.nix" 2>/dev/null
         print_success "✓ Backed up: /etc/nixos/flake.nix"
     fi
 
@@ -134,13 +134,13 @@ phase_02_backup() {
 
     # Backup home-manager configs
     if [[ -f "$HOME/.config/home-manager/home.nix" ]]; then
-        safe_mkdir "$BACKUP_ROOT/home-manager" || print_warning "Could not create home-manager backup dir"
-        safe_copy_file_silent "$HOME/.config/home-manager/home.nix" "$BACKUP_ROOT/home-manager/home.nix" && \
+        safe_mkdir "$backup_root_path/home-manager" || print_warning "Could not create home-manager backup dir"
+        safe_copy_file_silent "$HOME/.config/home-manager/home.nix" "$backup_root_path/home-manager/home.nix" && \
             print_success "✓ Backed up: ~/.config/home-manager/home.nix"
     fi
 
     if [[ -f "$HOME/.config/home-manager/flake.nix" ]]; then
-        safe_copy_file_silent "$HOME/.config/home-manager/flake.nix" "$BACKUP_ROOT/home-manager/flake.nix" && \
+        safe_copy_file_silent "$HOME/.config/home-manager/flake.nix" "$backup_root_path/home-manager/flake.nix" && \
             print_success "✓ Backed up: ~/.config/home-manager/flake.nix"
     fi
 
@@ -160,8 +160,8 @@ phase_02_backup() {
             # Only backup if < 100MB (avoid huge caches)
             local dir_name=$(basename "$config_dir")
             local parent=$(dirname "$config_dir")
-            if safe_mkdir "$BACKUP_ROOT/$parent"; then
-                cp -a "$full_path" "$BACKUP_ROOT/$parent/" 2>/dev/null && \
+            if safe_mkdir "$backup_root_path/$parent"; then
+                cp -a "$full_path" "$backup_root_path/$parent/" 2>/dev/null && \
                     print_success "✓ Backed up: ~/$config_dir"
             fi
         fi
@@ -174,10 +174,10 @@ phase_02_backup() {
     # ========================================================================
     print_info "Creating recovery instructions..."
 
-    cat > "$BACKUP_ROOT/RECOVERY-README.txt" << EOF
+    cat > "$backup_root_path/RECOVERY-README.txt" << EOF
 NixOS Quick Deploy - Backup Recovery Instructions
 Created: $(date)
-Backup Location: $BACKUP_ROOT
+Backup Location: $backup_root_path
 
 =================================================================
 AUTOMATIC ROLLBACK (Recommended)
@@ -194,24 +194,24 @@ MANUAL RECOVERY (If needed)
 =================================================================
 
 1. Restore system configuration:
-   sudo cp $BACKUP_ROOT/configuration.nix /etc/nixos/configuration.nix
+   sudo cp $backup_root_path/configuration.nix /etc/nixos/configuration.nix
    sudo nixos-rebuild switch
 
 2. Restore home-manager configuration:
-   cp $BACKUP_ROOT/home-manager/home.nix ~/.config/home-manager/home.nix
+   cp $backup_root_path/home-manager/home.nix ~/.config/home-manager/home.nix
    home-manager switch
 
 3. Restore user configs:
-   cp -a $BACKUP_ROOT/.config/. ~/.config/
+   cp -a $backup_root_path/.config/. ~/.config/
 
 =================================================================
 SYSTEM STATE AT BACKUP
 =================================================================
 
 EOF
-    cat "$BACKUP_ROOT/system-state.txt" >> "$BACKUP_ROOT/RECOVERY-README.txt"
+    cat "$backup_root_path/system-state.txt" >> "$backup_root_path/RECOVERY-README.txt"
 
-    print_success "Recovery instructions saved to: $BACKUP_ROOT/RECOVERY-README.txt"
+    print_success "Recovery instructions saved to: $backup_root_path/RECOVERY-README.txt"
     echo ""
 
     # ========================================================================
@@ -224,12 +224,12 @@ EOF
     echo "✓ Current state documented"
     echo "✓ Recovery instructions created"
     echo ""
-    echo "Backup location: $BACKUP_ROOT"
-    echo "Recovery guide: $BACKUP_ROOT/RECOVERY-README.txt"
+    echo "Backup location: $backup_root_path"
+    echo "Recovery guide: $backup_root_path/RECOVERY-README.txt"
     echo ""
 
     # Save backup location for other phases to reference
-    echo "$BACKUP_ROOT" > "$STATE_DIR/last-backup-location.txt"
+    echo "$backup_root_path" > "$STATE_DIR/last-backup-location.txt"
 
     # ------------------------------------------------------------------------
     # Mark Phase Complete
