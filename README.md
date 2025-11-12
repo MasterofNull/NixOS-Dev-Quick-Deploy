@@ -27,6 +27,8 @@ chmod +x nixos-quick-deploy.sh
 
 ### Complete System Setup
 - **COSMIC Desktop** - Modern, fast desktop environment from System76
+- **Hyprland Wayland Session** - Latest Hyprland compositor alongside COSMIC for tiling workflows
+- **Performance Kernel Track** - Prefers the tuned `linuxPackages_6_17` build, then falls back to TKG, XanMod, Liquorix, Zen, and finally `linuxPackages_latest`
 - **800+ Packages** - Development tools, CLI utilities, and applications
 - **Nix Flakes** - Enabled and configured for reproducible builds
 - **Podman** - Rootless container runtime for local AI services
@@ -702,6 +704,30 @@ which openai-wrapper
 which gooseai-wrapper
 ```
 
+### Podman Service Fails With `overlay: unknown option vfs.ignore_chown_errors`
+
+**Symptom:** `nixos-rebuild switch` aborts while restarting `podman.service` and logs:
+
+```
+ERRO[0000] User-selected graph driver "vfs" overwritten by graph driver "overlay" from database
+Error: configure storage: overlay: unknown option vfs.ignore_chown_errors
+```
+
+**Cause:** Earlier deployments may have initialized `/var/lib/containers/storage` with the kernel `overlay` driver. Even after the generator switches to `vfs`, Podman keeps the old driver recorded in its BoltDB metadata and refuses to start because the VFS-only `ignore_chown_errors` option now appears alongside the overlay runtime.
+
+**Fix (current builds):** Phase 5 now runs `sudo podman info --format '{{.Store.GraphDriverName}}'` before `nixos-rebuild`. If the probe fails or reports a driver that differs from the generated value, the phase aborts early, runs the automated cleanup (`podman system reset --force`, `sudo podman system reset --force`, and `/var/lib/containers/storage` purges), and prints explicit remediation commands instead of letting `switch-to-configuration` hit the opaque systemd failure.
+
+**Manual reset (if the automated pass still reports a mismatch):**
+
+```bash
+sudo systemctl stop podman.service podman.socket || true
+podman system reset --force && rm -rf ~/.local/share/containers/storage ~/.local/share/containers/cache
+sudo podman system reset --force
+sudo rm -rf /var/lib/containers/storage
+```
+
+Rerun `./nixos-quick-deploy.sh --resume` afterwards so Phase 5 re-probes the driver. Once the probe and configuration agree on `vfs`, Podman restarts cleanly and the generator re-adds the `ignore_chown_errors` flag only when the driver is actually `vfs`.
+
 ### Rootless Podman Reports Driver Mismatch or Overlay Failures
 
 **Symptom:** Running `podman ps` or `podman info` as a non-root user prints messages such as:
@@ -843,7 +869,7 @@ home-manager switch -b backup --flake .
 
 The selected profile is cached at `~/.cache/nixos-quick-deploy/preferences/mangohud-profile.env`, so future deploy runs reuse your preference automatically.
 
-> **Need the full gaming stack?** Export `ENABLE_GAMING_STACK=true` before running the deploy script to reinstate Gamemode, Gamescope, Steam, and their supporting configuration. The default `false` value keeps `/etc/gamemode.ini` and the zram generator drop-in out of the rendered system configuration so boot logs stay quiet on workstations that do not need those services.
+> **Need a lean workstation build instead?** Set `ENABLE_GAMING_STACK=false` before running the deploy script to skip Gamemode, Gamescope, Steam, and the auxiliary tuning (zram overrides, `/etc/gamemode.ini`, etc.). The default `true` value keeps the full GLF gaming stack enabled so MangoHud, Steam, and Gamescope are ready immediately after install.
 
 ---
 
@@ -949,8 +975,12 @@ lg     # lazygit
 
 ### 2. Quick Container AI Stack
 ```bash
-# Start all AI services at once
-podman-ai-stack up
+# Start all AI services at once (system + stack containers)
+ai-servicectl start all
+
+# Or focus on the user-space Podman stack only
+ai-servicectl start stack
+# (equivalent to podman-ai-stack up for advanced workflows)
 
 # Access Open WebUI at http://localhost:8081
 # Access Ollama API at http://localhost:11434
@@ -983,6 +1013,31 @@ home-manager switch --flake ~/.dotfiles/home-manager
 # Update Flatpak apps
 flatpak update
 ```
+
+---
+
+## 🧭 Command Cheat Sheet
+
+### Deployment & Maintenance
+- `./nixos-quick-deploy.sh --resume` &mdash; continue the multi-phase installer from the last checkpoint.
+- `./nixos-quick-deploy.sh --resume --phase 5` &mdash; rerun the declarative deployment phase after editing templates.
+- `nrs` (`sudo nixos-rebuild switch`) &mdash; manual system rebuild; the deployer now pauses container services automatically when it runs this step.
+- `hms` (`home-manager switch --flake ~/.dotfiles/home-manager`) &mdash; apply user environment changes.
+- `nfu` (`nix flake update`) &mdash; refresh flake inputs before rebuilding.
+
+### AI Runtime Orchestration
+- `ai-servicectl start|stop|restart all` &mdash; manage Ollama, Qdrant, Hugging Face TGI, system Gitea, and the Podman AI stack in one shot.
+- `ai-servicectl start stack` &mdash; bring up only the user-space Podman network (Ollama/Open WebUI/Qdrant/MindsDB).
+- `ai-servicectl status system` &mdash; quick health summary for the declarative services without scrolling through `systemctl`.
+- `ai-servicectl logs stack` &mdash; stream Podman AI stack logs from journald via one command.
+- `podman-ai-stack up|down|status|logs` &mdash; raw helper for advanced Podman scenarios; `ai-servicectl` wraps it for most workflows.
+
+### Diagnostics & Recovery
+- `ai-servicectl stop all && ai-servicectl start all` &mdash; bounce every AI-centric service after changing models or GPU drivers.
+- `podman system reset --force` / `sudo podman system reset --force` &mdash; manual fallback for storage corruption (the deployer now attempts this automatically when stale overlay layers are detected).
+- `journalctl -u qdrant -f`, `journalctl -u ollama -f`, etc. &mdash; detailed logs for individual services when `ai-servicectl status` reports a failure.
+
+> ℹ️ **Automation note:** During Phase&nbsp;5 the deployer pauses managed services (systemd units and user-level Podman quadlets), cleans stale Podman storage if needed, applies `nixos-rebuild switch`, and then restores everything it stopped. You no longer need to stop the AI stack manually before a rebuild.
 
 ---
 

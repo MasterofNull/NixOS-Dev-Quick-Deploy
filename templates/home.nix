@@ -2046,8 +2046,8 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       EDITOR = "DEFAULTEDITOR";
       VISUAL = "DEFAULTEDITOR";
       NIXPKGS_ALLOW_UNFREE = "1";
-      MANGOHUD = if glfMangoHudConfig != "" then "1" else "0";
       MANGOHUD_CONFIG = glfMangoHudConfig;
+      MANGOHUD_CONFIGFILE = "${config.home.homeDirectory}/.config/MangoHud/MangoHud.conf";
       # NPM Configuration
       NPM_CONFIG_PREFIX = "$HOME/.npm-global";
       # AI Development Tools
@@ -2654,6 +2654,179 @@ USAGE
       executable = true;
     };
 
+    ".local/bin/ai-servicectl" = {
+      text = ''
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        declare -a SYSTEM_COMPONENTS=(ollama qdrant huggingface gitea)
+        declare -a ALL_COMPONENTS=(ollama qdrant huggingface gitea stack)
+        declare -A SYSTEM_UNITS=(
+          [ollama]="ollama.service"
+          [qdrant]="qdrant.service"
+          [huggingface]="huggingface-tgi.service"
+          [gitea]="gitea.service"
+        )
+
+        usage() {
+          cat <<'USAGE'
+usage: ai-servicectl <command> [component...]
+
+Commands:
+  start     Start one or more components (defaults to 'all')
+  stop      Stop one or more components (defaults to 'all')
+  restart   Restart one or more components (defaults to 'all')
+  status    Show a concise status summary (defaults to 'all')
+  logs      Stream logs for a single component
+  list      Show available components
+  help      Show this message
+
+Components:
+  ollama, qdrant, huggingface, gitea, stack
+  Groups: all, system, stack
+USAGE
+        }
+
+        expand_components() {
+          local -a input=("$@")
+          local -a expanded=()
+          local item
+          for item in "''${input[@]}"; do
+            case "$item" in
+              all)
+                expanded+=("''${ALL_COMPONENTS[@]}")
+                ;;
+              system)
+                expanded+=("''${SYSTEM_COMPONENTS[@]}")
+                ;;
+              stack)
+                expanded+=("stack")
+                ;;
+              *)
+                expanded+=("$item")
+                ;;
+            esac
+          done
+
+          declare -A seen=()
+          local -a deduped=()
+          for item in "''${expanded[@]}"; do
+            if [[ -n "$item" && -z "''${seen[$item]:-}" ]]; then
+              seen[$item]=1
+              deduped+=("$item")
+            fi
+          done
+
+          printf '%s\n' "''${deduped[@]}"
+        }
+
+        ensure_stack_helper() {
+          if ! command -v podman-ai-stack >/dev/null 2>&1; then
+            echo "ai-servicectl: podman-ai-stack helper is not installed" >&2
+            exit 1
+          fi
+        }
+
+        system_unit_for() {
+          local component="$1"
+          local unit="''${SYSTEM_UNITS[$component]:-}"
+          if [[ -z "$unit" ]]; then
+            echo "ai-servicectl: unknown component '$component'" >&2
+            exit 1
+          fi
+          printf '%s\n' "$unit"
+        }
+
+        run_action() {
+          local action="$1"
+          local component="$2"
+          case "$component" in
+            stack)
+              ensure_stack_helper
+              case "$action" in
+                start) podman-ai-stack up ;;
+                stop) podman-ai-stack down ;;
+                restart) podman-ai-stack restart ;;
+                status) podman-ai-stack status ;;
+                logs) podman-ai-stack logs ;;
+                *) echo "ai-servicectl: unsupported action '$action' for stack" >&2; exit 1 ;;
+              esac
+              ;;
+            *)
+              local unit
+              unit=$(system_unit_for "$component")
+              case "$action" in
+                start) sudo systemctl start "$unit" ;;
+                stop) sudo systemctl stop "$unit" ;;
+                restart) sudo systemctl restart "$unit" ;;
+                status)
+                  if systemctl is-active --quiet "$unit"; then
+                    echo "$component: active"
+                  else
+                    echo "$component: inactive"
+                  fi
+                  ;;
+                logs) sudo journalctl -u "$unit" -f ;;
+                *)
+                  echo "ai-servicectl: unsupported action '$action'" >&2
+                  exit 1
+                  ;;
+              esac
+              ;;
+          esac
+        }
+
+        cmd="''${1:-}"
+        shift || true
+
+        case "$cmd" in
+          start|stop|restart)
+            if [[ "$#" -eq 0 ]]; then
+              set -- all
+            fi
+            mapfile -t components < <(expand_components "$@")
+            for component in "''${components[@]}"; do
+              run_action "$cmd" "$component"
+            done
+            ;;
+          status)
+            if [[ "$#" -eq 0 ]]; then
+              set -- all
+            fi
+            mapfile -t components < <(expand_components "$@")
+            for component in "''${components[@]}"; do
+              run_action status "$component"
+            done
+            ;;
+          logs)
+            if [[ "$#" -eq 0 ]]; then
+              echo "ai-servicectl: specify a component for logs" >&2
+              exit 1
+            fi
+            if [[ "$#" -gt 1 ]]; then
+              echo "ai-servicectl: logs supports exactly one component" >&2
+              exit 1
+            fi
+            mapfile -t components < <(expand_components "$@")
+            run_action logs "''${components[0]}"
+            ;;
+          list)
+            echo "Available components:"
+            printf '  - %s\n' "''${ALL_COMPONENTS[@]}"
+            ;;
+          help|-h|--help|"")
+            usage
+            ;;
+          *)
+            echo "ai-servicectl: unknown command '$cmd'" >&2
+            usage
+            exit 1
+            ;;
+        esac
+      '';
+      executable = true;
+    };
+
     ".local/bin/code-cursor" = {
       text = ''
         #!/usr/bin/env bash
@@ -3058,6 +3231,33 @@ PLUGINCFG
           # The nixos-quick-deploy.sh script handles starting this service explicitly
           # via ensure_flatpak_managed_install_service() when appropriate.
           # This prevents the service from blocking home-manager activation if it fails.
+        };
+      })
+      (lib.mkIf (glfMangoHudConfig != "" && pkgs ? mangohud) {
+        "mangohud-desktop" = {
+          Unit = {
+            Description = "MangoHud desktop overlay";
+            Documentation = [ "https://github.com/flightlessmango/MangoHud" ];
+            After = [ "graphical-session.target" ];
+            PartOf = [ "graphical-session.target" ];
+            ConditionPathExists = "%h/.config/MangoHud/MangoHud.conf";
+          };
+          Service = {
+            Type = "simple";
+            Environment = [
+              "MANGOHUD=1"
+              "MANGOHUD_CONFIG=${glfMangoHudConfig}"
+              "MANGOHUD_CONFIGFILE=%h/.config/MangoHud/MangoHud.conf"
+            ];
+            ExecStart = "${pkgs.mangohud}/bin/mangoapp";
+            Restart = "on-failure";
+            RestartSec = 5;
+            StandardOutput = "journal";
+            StandardError = "journal";
+          };
+          Install = {
+            WantedBy = [ "graphical-session.target" ];
+          };
         };
       })
       {

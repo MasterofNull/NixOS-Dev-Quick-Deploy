@@ -446,6 +446,35 @@ phase_05_declarative_deployment() {
     fi
 
     if [[ "$perform_system_switch" == true ]]; then
+        if declare -F ensure_gitea_state_directory_ready >/dev/null 2>&1; then
+            if ! ensure_gitea_state_directory_ready; then
+                print_error "Gitea state directory preparation failed; fix the permissions mentioned above and rerun Phase 5."
+                return 1
+            fi
+        fi
+
+        if declare -F stop_managed_services_before_switch >/dev/null 2>&1; then
+            stop_managed_services_before_switch
+        fi
+
+        if declare -F ensure_podman_storage_ready >/dev/null 2>&1; then
+            if ! ensure_podman_storage_ready; then
+                print_error "Container storage health check failed even after automated cleanup. See docs/ROOTLESS_PODMAN.md for manual recovery."
+                if declare -F restart_managed_services_after_switch >/dev/null 2>&1; then
+                    restart_managed_services_after_switch
+                fi
+                return 1
+            fi
+        elif declare -F verify_podman_storage_cleanliness >/dev/null 2>&1; then
+            if ! verify_podman_storage_cleanliness; then
+                print_error "Container storage health check failed. Reset the Podman stores using docs/ROOTLESS_PODMAN.md, then rerun Phase 5."
+                if declare -F restart_managed_services_after_switch >/dev/null 2>&1; then
+                    restart_managed_services_after_switch
+                fi
+                return 1
+            fi
+        fi
+
         print_info "Running: $rebuild_display"
         print_info "This applies the declarative system configuration..."
         echo ""
@@ -458,7 +487,16 @@ phase_05_declarative_deployment() {
             describe_remote_build_context
         fi
 
-        if sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" "${nixos_rebuild_opts[@]}" 2>&1 | tee /tmp/nixos-rebuild.log; then
+        local rebuild_exit_code=0
+        if ! sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" "${nixos_rebuild_opts[@]}" 2>&1 | tee /tmp/nixos-rebuild.log; then
+            rebuild_exit_code=${PIPESTATUS[0]}
+        fi
+
+        if declare -F restart_managed_services_after_switch >/dev/null 2>&1; then
+            restart_managed_services_after_switch
+        fi
+
+        if (( rebuild_exit_code == 0 )); then
             print_success "✓ NixOS system configuration applied!"
             print_success "✓ System packages now managed declaratively"
             SYSTEM_CONFIGURATION_APPLIED="true"
@@ -468,8 +506,7 @@ phase_05_declarative_deployment() {
             fi
             echo ""
         else
-            local exit_code=${PIPESTATUS[0]}
-            print_error "nixos-rebuild failed (exit code: $exit_code)"
+            print_error "nixos-rebuild failed (exit code: $rebuild_exit_code)"
             if [[ ! -d "$HM_CONFIG_DIR" ]]; then
                 print_error "Home Manager flake directory is missing: $HM_CONFIG_DIR"
                 print_info "Restore the directory or rerun Phase 3 before retrying."
