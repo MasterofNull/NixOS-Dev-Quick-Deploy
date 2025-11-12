@@ -259,11 +259,11 @@ create_rollback_point() {
     # Why head -1?
     # home-manager shows newest first, so first line is current
     local hm_generation
-    if command -v home-manager >/dev/null 2>&1; then
-        hm_generation=$(home-manager generations 2>/dev/null | head -1 | awk '{print $NF}' || echo "unknown")
+    if hm_generation=$(get_home_manager_generation_path 2>/dev/null); then
+        hm_generation="${hm_generation:-unknown}"
     else
         hm_generation="unavailable"
-        log WARNING "home-manager command not found, cannot query generation"
+        log WARNING "home-manager CLI unavailable; cannot record current generation in rollback metadata"
     fi
 
     # ========================================================================

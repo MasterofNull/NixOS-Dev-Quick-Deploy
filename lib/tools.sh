@@ -115,6 +115,94 @@ open_vsx_extension_available() {
     return 1
 }
 
+resolve_marketplace_vsix_url() {
+    local extension_id="$1"
+
+    if ! command -v jq >/dev/null 2>&1; then
+        return 1
+    fi
+
+    if [[ "$extension_id" != *.* ]]; then
+        return 1
+    fi
+
+    local publisher="${extension_id%%.*}"
+    local name="${extension_id#*.}"
+
+    local payload
+    payload=$(cat <<EOF
+{
+  "filters": [
+    {
+      "criteria": [
+        { "filterType": 7, "value": "${publisher}.${name}" }
+      ],
+      "pageNumber": 1,
+      "pageSize": 1,
+      "sortBy": 0,
+      "sortOrder": 0
+    }
+  ],
+  "assetTypes": [
+    "Microsoft.VisualStudio.Services.VSIXPackage"
+  ],
+  "flags": 914
+}
+EOF
+)
+
+    local response
+    response=$(curl -fsSL \
+        -H "Content-Type: application/json" \
+        -H "Accept: application/json;api-version=7.1-preview.1" \
+        -X POST \
+        --data "$payload" \
+        "https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery" 2>/dev/null) || return 1
+
+    local vsix_url version
+    version=$(printf '%s' "$response" | jq -r '.results[0].extensions[0].versions[0].version // empty')
+    vsix_url=$(printf '%s' "$response" | jq -r '.results[0].extensions[0].versions[0].files[] | select(.assetType == "Microsoft.VisualStudio.Services.VSIXPackage") | .source' | head -n1)
+
+    if [[ -z "$version" || -z "$vsix_url" || "$version" == "null" || "$vsix_url" == "null" ]]; then
+        return 1
+    fi
+
+    printf '%s' "$vsix_url"
+    return 0
+}
+
+install_extension_from_marketplace() {
+    local extension_id="$1"
+    local name="$2"
+
+    if ! command -v codium >/dev/null 2>&1; then
+        return 1
+    fi
+
+    local vsix_url
+    if ! vsix_url=$(resolve_marketplace_vsix_url "$extension_id"); then
+        return 1
+    fi
+
+    local tmp_vsix
+    tmp_vsix=$(mktemp --suffix ".vsix") || return 1
+
+    print_info "Downloading VS Marketplace package for $name"
+    if ! curl -fsSL "$vsix_url" -o "$tmp_vsix"; then
+        rm -f "$tmp_vsix"
+        return 1
+    fi
+
+    if codium --install-extension "$tmp_vsix" >/dev/null 2>&1; then
+        rm -f "$tmp_vsix"
+        print_success "$name extension installed via VS Marketplace fallback"
+        return 0
+    fi
+
+    rm -f "$tmp_vsix"
+    return 1
+}
+
 # ============================================================================
 # Flatpak Helpers
 # ============================================================================
@@ -665,6 +753,13 @@ install_flatpak_stage() {
         return 1
     fi
 
+    if [[ -n "${FLATPAK_ARCH_PRUNED_APPS[*]:-}" ]]; then
+        local pruned_list
+        pruned_list=$(printf '%s, ' "${FLATPAK_ARCH_PRUNED_APPS[@]}")
+        pruned_list=${pruned_list%, }
+        print_info "Skipping architecture-restricted Flatpak applications: ${pruned_list}"
+    fi
+
     if declare -F select_flatpak_profile >/dev/null 2>&1; then
         select_flatpak_profile --noninteractive || true
     fi
@@ -1054,6 +1149,40 @@ install_goose_cli_from_release() {
     return 0
 }
 
+extract_deb_package_contents() {
+    local deb_path="$1"
+    local dest_dir="$2"
+
+    if command -v dpkg-deb >/dev/null 2>&1; then
+        dpkg-deb -x "$deb_path" "$dest_dir" >/dev/null 2>&1
+        return $?
+    fi
+
+    if ! command -v ar >/dev/null 2>&1; then
+        print_warning "Unable to extract $deb_path: missing dpkg-deb and ar utilities"
+        return 1
+    fi
+
+    if ! mkdir -p "$dest_dir"; then
+        print_warning "Unable to create extraction directory: $dest_dir"
+        return 1
+    fi
+
+    local data_member
+    data_member=$(ar t "$deb_path" 2>/dev/null | awk '/^data\.tar/ {print; exit}')
+    if [ -z "$data_member" ]; then
+        print_warning "Data archive not found inside $deb_path"
+        return 1
+    fi
+
+    if ! ar p "$deb_path" "$data_member" | tar -C "$dest_dir" -xf -; then
+        print_warning "Failed to unpack $deb_path using ar/tar fallback"
+        return 1
+    fi
+
+    return 0
+}
+
 install_goose_desktop_from_release() {
     local release_json="$1"
     local release_tag="$2"
@@ -1068,11 +1197,6 @@ install_goose_desktop_from_release() {
             return 1
             ;;
     esac
-
-    if ! command -v dpkg-deb >/dev/null 2>&1; then
-        print_warning "dpkg-deb not available; skipping Goose Desktop installation"
-        return 1
-    fi
 
     local desktop_url desktop_name
     desktop_url=$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name | test("goose_.*_amd64\\.deb$")) | .browser_download_url' 2>/dev/null | head -n1)
@@ -1113,7 +1237,7 @@ install_goose_desktop_from_release() {
         return 1
     fi
 
-    if ! dpkg-deb -x "$deb_path" "$extract_dir" >/dev/null 2>&1; then
+    if ! extract_deb_package_contents "$deb_path" "$extract_dir"; then
         rm -rf "$tmp_dir"
         print_warning "Failed to extract Goose Desktop package"
         return 1
@@ -1922,6 +2046,9 @@ install_vscodium_extensions() {
             print_warning "$name extension not available on Open VSX (HTTP $status)"
             if [ -n "$LAST_OPEN_VSX_URL" ]; then
                 print_detail "Checked: $LAST_OPEN_VSX_URL"
+            fi
+            if install_extension_from_marketplace "$ext_id" "$name"; then
+                continue
             fi
             local manual_url
             manual_url=$(vscode_extension_manual_url "$ext_id")

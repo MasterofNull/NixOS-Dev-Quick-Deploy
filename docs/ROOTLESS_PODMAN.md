@@ -4,7 +4,9 @@ Overlay-based Podman storage is no longer part of the deployment workflow. The
 quick deploy script locks the driver to `vfs`, `btrfs`, or `zfs` during Phase 1,
 and the diagnostics phase refuses to continue if an older overlay override is
 still active. This keeps `nixos-rebuild` and `systemd` from mounting
-`/var/lib/containers/storage/overlay` entries during boot.
+`/var/lib/containers/storage/overlay` entries during boot. Phase 5 now pauses
+container services automatically, attempts the cleanup steps below, and only
+falls back to manual intervention when the automated run cannot proceed.
 
 ## Current behaviour
 
