@@ -534,7 +534,7 @@ Building flake development environment...
 Installing Claude Code extension...
 ✓ Anthropic.claude-code installed
 Installing additional extensions...
-⚠ GPT CodeX and GooseAI extensions unavailable on Open VSX (manual links printed during install)
+⚠ GPT CodeX and GooseAI extensions are not published on Open VSX (install from the VS Marketplace if you need them)
 ✓ Python, Pylance, Black Formatter
 ✓ Jupyter, Continue, Codeium
 ✓ GitLens, Git Graph, Error Lens
@@ -859,13 +859,18 @@ exec zsh
 
 **Solution:**
 ```bash
-# Run the interactive selector and pick option 1 to disable the global overlay
+# Run the interactive selector and pick the overlay mode you prefer
 ./scripts/mangohud-profile.sh
 
 # Re-apply your Home Manager config so the new preference is enforced
 cd ~/.dotfiles/home-manager
 home-manager switch -b backup --flake .
 ```
+
+- `1) disabled` removes MangoHud from every app.
+- `2) light` and `3) full` keep the classic per-application overlays.
+- `4) desktop` launches a transparent, movable mangoapp window so stats stay on the desktop instead of stacking on top of apps.
+- `5) desktop-hybrid` auto-starts the mangoapp desktop window while still injecting MangoHud into supported games/apps.
 
 The selected profile is cached at `~/.cache/nixos-quick-deploy/preferences/mangohud-profile.env`, so future deploy runs reuse your preference automatically.
 

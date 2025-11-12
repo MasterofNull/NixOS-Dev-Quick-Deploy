@@ -14,10 +14,10 @@
 
 NPM_AI_PACKAGE_MANIFEST=(
   "@anthropic-ai/claude-code|Claude Code|claude|claude-wrapper|Anthropic.claude-code|CLAUDE_DEBUG"
-  "@openai/codex|GPT CodeX CLI|codex|gpt-codex-wrapper|OpenAI.gpt-codex|GPT_CODEX_DEBUG"
-  "@openai/codex|Codex IDE|codex|codex-wrapper|OpenAI.codex-ide|CODEX_DEBUG"
+  "@openai/codex|GPT CodeX CLI|codex|gpt-codex-wrapper||GPT_CODEX_DEBUG"
+  "@openai/codex|Codex IDE|codex|codex-wrapper||CODEX_DEBUG"
   "openai|OpenAI CLI|openai|openai-wrapper|openai.chatgpt|OPENAI_DEBUG"
-  "@gooseai/cli|Goose CLI|gooseai|gooseai-wrapper|GooseAI.gooseai-vscode|GOOSEAI_DEBUG"
+  "@gooseai/cli|Goose CLI|gooseai|gooseai-wrapper||GOOSEAI_DEBUG"
 )
 
 declare -gA NPM_AI_PACKAGE_MANUAL_URLS=(
