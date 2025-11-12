@@ -50,7 +50,9 @@ print_menu() {
     printf '  1) disabled – Do not inject MangoHud globally (recommended for terminals).\n'
     printf '  2) light    – Minimal horizontal stats bar (GPU/CPU temps, FPS, RAM).\n'
     printf '  3) full     – Verbose vertical overlay with frametimes and driver info.\n'
-    printf '\nSelect [1-3] and press Enter: '
+    printf '  4) desktop  – Keep MangoHud inside the movable mangoapp window only.\n'
+    printf '  5) desktop-hybrid – Auto-start mangoapp while keeping in-app overlays.\n'
+    printf '\nSelect [1-5] and press Enter: '
 }
 
 profile_from_choice() {
@@ -58,6 +60,8 @@ profile_from_choice() {
         1) printf 'disabled' ;;
         2) printf 'light' ;;
         3) printf 'full' ;;
+        4) printf 'desktop' ;;
+        5) printf 'desktop-hybrid' ;;
         *) return 1 ;;
     esac
 }
