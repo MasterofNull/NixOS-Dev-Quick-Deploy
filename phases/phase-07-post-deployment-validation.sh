@@ -59,6 +59,15 @@ check_required_service_active() {
     local unit_state
     unit_state=$(systemctl show "$unit" --property=UnitFileState --value 2>/dev/null | tr -d '\r')
     if [[ "$unit_state" =~ ^(enabled|enabled-runtime|linked)$ ]]; then
+        if [[ "$unit" == "huggingface-tgi" ]]; then
+            local token_file="${HUGGINGFACE_TGI_ENV_FILE:-/var/lib/nixos-quick-deploy/secrets/huggingface-tgi.env}"
+            if [[ ! -s "$token_file" ]]; then
+                print_error "HuggingFace TGI API token file missing: $token_file"
+                print_info "Create it with: sudo install -m600 /dev/null \"$token_file\" && echo 'HF_TOKEN=hf_xxx' | sudo tee -a \"$token_file\""
+                print_info "Add HUGGINGFACEHUB_API_TOKEN=hf_xxx to the same file if you use gated models."
+                return 1
+            fi
+        fi
         print_error "$label service is enabled but not running"
         return 1
     fi
@@ -120,7 +129,12 @@ check_podman_network_health() {
         return 0
     fi
 
-    print_warning "Podman network '$network' not found (it will be created on-demand by Open WebUI scripts)"
+    if podman network create "$network" >/dev/null 2>&1; then
+        print_success "Podman network '$network' created"
+        return 0
+    fi
+
+    print_warning "Podman network '$network' not found and automatic creation failed; create it manually with 'podman network create ${network}'."
     return 1
 }
 

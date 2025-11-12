@@ -10,6 +10,8 @@ let
   huggingfaceStateDirName = "huggingface";
   huggingfaceDataDir = "/var/lib/${huggingfaceStateDirName}";
   huggingfaceCacheDir = "${huggingfaceDataDir}/cache";
+  huggingfaceSecretDir = "/var/lib/nixos-quick-deploy/secrets";
+  huggingfaceTokenEnvFile = "${huggingfaceSecretDir}/huggingface-tgi.env";
   huggingfaceModelId = "meta-llama/Meta-Llama-3-8B-Instruct";
   huggingfaceImage = "ghcr.io/huggingface/text-generation-inference:latest";
   qdrantStateDirName = "qdrant";
@@ -674,10 +676,12 @@ in
       ReadWritePaths = lib.mkForce [
         huggingfaceDataDir
         huggingfaceCacheDir
+        huggingfaceSecretDir
         "/var/lib/containers"
         "/run/libpod"
         "/run/podman"
       ];
+      EnvironmentFile = [ "-${huggingfaceTokenEnvFile}" ];
     };
     environment = {
       HF_HOME = "%S/${huggingfaceStateDirName}";
@@ -851,6 +855,8 @@ in
     # Required for cosmic-clipboard to work with wl-clipboard
     COSMIC_DATA_CONTROL_ENABLED = "1";
     STEAM_EXTRA_COMPAT_TOOLS_PATHS = "$HOME/.steam/root/compatibilitytools.d";
+    MANGOHUD = if glfMangoHudConfig != "" then "1" else "0";
+    MANGOHUD_CONFIG = glfMangoHudConfig;
     @GPU_SESSION_VARIABLES@
   };
 
@@ -957,7 +963,7 @@ in
   # Printing
   # ============================================================================
   services.printing.enable = true;
-  systemd.sockets.cups.socketConfig.ListenStream = lib.mkForce [
+  systemd.sockets.cups.listenStreams = lib.mkForce [
     "/run/cups/cups.sock"
     "127.0.0.1:631"
   ];
@@ -1122,6 +1128,7 @@ in
   systemd.tmpfiles.rules = lib.mkAfter (
     [
       "d /run/podman 0755 root root -"
+      "d ${huggingfaceSecretDir} 0700 root root -"
       "Z /var/lib/AccountsService 0750 accounts-daemon accounts-daemon -"
       "Z /var/lib/AccountsService/icons 0750 accounts-daemon accounts-daemon -"
       "Z ${giteaStateDir} 0750 gitea gitea -"

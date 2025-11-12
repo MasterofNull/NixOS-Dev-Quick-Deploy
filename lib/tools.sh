@@ -29,7 +29,7 @@ ai_cli_manual_url() {
     local package="$1"
 
     if declare -p NPM_AI_PACKAGE_MANUAL_URLS >/dev/null 2>&1; then
-        printf '%s' "${NPM_AI_PACKAGE_MANUAL_URLS[$package]:-}"
+        printf '%s' "${NPM_AI_PACKAGE_MANUAL_URLS["$package"]:-}"
         return 0
     fi
 
@@ -61,7 +61,7 @@ vscode_extension_manual_url() {
     local extension_id="$1"
 
     if declare -p VSCODE_AI_EXTENSION_FALLBACK_URLS >/dev/null 2>&1; then
-        printf '%s' "${VSCODE_AI_EXTENSION_FALLBACK_URLS[$extension_id]:-}"
+        printf '%s' "${VSCODE_AI_EXTENSION_FALLBACK_URLS["$extension_id"]:-}"
         return 0
     fi
 
@@ -171,6 +171,77 @@ EOF
     return 0
 }
 
+VSCODIUM_EXTENSION_INDEX=""
+VSCODIUM_EXTENSION_CACHE_LOADED="false"
+
+load_vscodium_extension_cache() {
+    if [[ "$VSCODIUM_EXTENSION_CACHE_LOADED" == "true" ]]; then
+        return 0
+    fi
+
+    if ! command -v codium >/dev/null 2>&1; then
+        return 1
+    fi
+
+    local list_output
+    list_output=$(codium --list-extensions 2>/dev/null || true)
+    VSCODIUM_EXTENSION_INDEX=""
+    if [[ -n "$list_output" ]]; then
+        while IFS= read -r ext; do
+            ext=${ext//$'\r'/}
+            [[ -z "$ext" ]] && continue
+            ext=${ext%@*}
+            if [[ -z "$VSCODIUM_EXTENSION_INDEX" ]]; then
+                VSCODIUM_EXTENSION_INDEX="$ext"
+            else
+                VSCODIUM_EXTENSION_INDEX+=$'\n'"$ext"
+            fi
+        done <<< "$list_output"
+    fi
+
+    VSCODIUM_EXTENSION_CACHE_LOADED="true"
+    return 0
+}
+
+vscodium_extension_installed() {
+    local ext_id="$1"
+    if [[ -z "$ext_id" ]]; then
+        return 1
+    fi
+
+    if ! load_vscodium_extension_cache; then
+        return 1
+    fi
+
+    if [[ -z "$VSCODIUM_EXTENSION_INDEX" ]]; then
+        return 1
+    fi
+
+    if printf '%s\n' "$VSCODIUM_EXTENSION_INDEX" | grep -Fxq "$ext_id"; then
+        return 0
+    fi
+
+    return 1
+}
+
+mark_vscodium_extension_installed() {
+    local ext_id="$1"
+    if [[ -z "$ext_id" ]]; then
+        return 0
+    fi
+    if vscodium_extension_installed "$ext_id"; then
+        return 0
+    fi
+
+    if [[ -z "$VSCODIUM_EXTENSION_INDEX" ]]; then
+        VSCODIUM_EXTENSION_INDEX="$ext_id"
+    else
+        VSCODIUM_EXTENSION_INDEX+=$'\n'"$ext_id"
+    fi
+
+    VSCODIUM_EXTENSION_CACHE_LOADED="true"
+}
+
 install_extension_from_marketplace() {
     local extension_id="$1"
     local name="$2"
@@ -196,6 +267,7 @@ install_extension_from_marketplace() {
     if codium --install-extension "$tmp_vsix" >/dev/null 2>&1; then
         rm -f "$tmp_vsix"
         print_success "$name extension installed via VS Marketplace fallback"
+        mark_vscodium_extension_installed "$extension_id"
         return 0
     fi
 
@@ -302,7 +374,7 @@ ensure_flathub_remote() {
 
 flatpak_profile_apps() {
     local profile="${1:-${SELECTED_FLATPAK_PROFILE:-$DEFAULT_FLATPAK_PROFILE}}"
-    local array_name="${FLATPAK_PROFILE_APPSETS[$profile]:-}"
+    local array_name="${FLATPAK_PROFILE_APPSETS["$profile"]:-}"
 
     if [[ -z "$array_name" ]]; then
         return 1
@@ -406,8 +478,8 @@ select_flatpak_profile() {
         print_info "Available Flatpak provisioning profiles:"
         local key
         for key in "${profile_order[@]}"; do
-            local label="${FLATPAK_PROFILE_LABELS[$key]:-$key}"
-            local array_name="${FLATPAK_PROFILE_APPSETS[$key]:-}"
+            local label="${FLATPAK_PROFILE_LABELS["$key"]:-$key}"
+            local array_name="${FLATPAK_PROFILE_APPSETS["$key"]:-}"
             local count=0
             if [[ -n "$array_name" ]]; then
                 local -n ref="$array_name"
@@ -447,14 +519,14 @@ select_flatpak_profile() {
         fi
     fi
 
-    if [[ -z "${FLATPAK_PROFILE_APPSETS[$profile]:-}" ]]; then
+    if [[ -z "${FLATPAK_PROFILE_APPSETS["$profile"]:-}" ]]; then
         print_warning "Unknown Flatpak profile '$profile', falling back to 'core'"
         profile="core"
     fi
 
     SELECTED_FLATPAK_PROFILE="$profile"
 
-    local array_name="${FLATPAK_PROFILE_APPSETS[$profile]}"
+    local array_name="${FLATPAK_PROFILE_APPSETS["$profile"]}"
     local -n chosen="$array_name"
     DEFAULT_FLATPAK_APPS=("${chosen[@]}")
 
@@ -526,55 +598,85 @@ flatpak_install_app_list() {
 
     run_as_primary_user flatpak --user repair >/dev/null 2>&1 || true
 
-    for app_id in "$@"; do
-        if run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
-            print_info "  • $app_id already present"
-            continue
-        fi
+    declare -A flatpak_support_status=()
+    declare -A flatpak_query_cache=()
+    local -a primary_queue=()
+    local -a deferred_queue=()
 
+    for app_id in "$@"; do
         flatpak_query_application_support "$app_id"
         local support_status=$?
+        flatpak_support_status["$app_id"]=$support_status
+        flatpak_query_cache["$app_id"]="$LAST_FLATPAK_QUERY_MESSAGE"
 
-        if [[ $support_status -ne 0 ]]; then
-            if [[ $support_status -eq 3 ]]; then
+        case "$support_status" in
+            0)
+                primary_queue+=("$app_id")
+                ;;
+            3)
                 print_warning "  ⚠ $app_id is not available on $remote_name for this architecture; skipping"
-            else
-                print_warning "  ⚠ Unable to query metadata for $app_id prior to installation"
+                print_flatpak_details "$LAST_FLATPAK_QUERY_MESSAGE"
+                flatpak_support_status["$app_id"]="skip"
+                ;;
+            *)
+                print_warning "  ⚠ Unable to query metadata for $app_id; deferring install until remaining apps finish"
+                print_flatpak_details "$LAST_FLATPAK_QUERY_MESSAGE"
+                deferred_queue+=("$app_id")
+                ;;
+        esac
+    done
+
+    local process_label queue_app_id
+    for process_label in primary deferred; do
+        local -a queue=()
+        if [[ "$process_label" == "primary" ]]; then
+            queue=("${primary_queue[@]}")
+        else
+            queue=("${deferred_queue[@]}")
+            if [[ ${#queue[@]} -gt 0 ]]; then
+                print_info "  Retrying deferred Flatpak installs (metadata queries previously failed)..."
             fi
-            print_flatpak_details "$LAST_FLATPAK_QUERY_MESSAGE"
-            [[ $support_status -eq 3 ]] && continue
-            failure=1
-            continue
         fi
 
-        print_info "  Installing $app_id from $remote_name..."
-        local attempt
-        local installed=0
-        for attempt in 1 2 3; do
-            local install_output
-            install_output=$(run_as_primary_user flatpak --noninteractive --assumeyes install --user "$remote_name" "$app_id" 2>&1)
-            if [[ $? -eq 0 ]]; then
-                print_success "  ✓ Installed $app_id"
-                installed=1
-                break
+        for queue_app_id in "${queue[@]}"; do
+            if [[ "${flatpak_support_status["$queue_app_id"]:-}" == "skip" ]]; then
+                continue
             fi
 
-            if printf '%s\n' "$install_output" | grep -Eiq 'No remote refs found similar|No entry for|Nothing matches'; then
-                print_warning "  ⚠ $app_id is not available on $remote_name for this architecture; skipping"
+            if run_as_primary_user flatpak info --user "$queue_app_id" >/dev/null 2>&1; then
+                print_info "  • $queue_app_id already present"
+                continue
+            fi
+
+            print_info "  Installing $queue_app_id from $remote_name..."
+            local attempt
+            local installed=0
+            for attempt in 1 2 3; do
+                local install_output
+                install_output=$(run_as_primary_user flatpak --noninteractive --assumeyes install --user "$remote_name" "$queue_app_id" 2>&1)
+                if [[ $? -eq 0 ]]; then
+                    print_success "  ✓ Installed $queue_app_id"
+                    installed=1
+                    break
+                fi
+
+                if printf '%s\n' "$install_output" | grep -Eiq 'No remote refs found similar|No entry for|Nothing matches'; then
+                    print_warning "  ⚠ $queue_app_id is not available on $remote_name for this architecture; skipping"
+                    print_flatpak_details "$install_output"
+                    installed=1
+                    break
+                fi
+
+                print_warning "  ⚠ Attempt $attempt failed for $queue_app_id"
                 print_flatpak_details "$install_output"
-                installed=1
-                break
+                sleep $(( attempt * 2 ))
+            done
+
+            if [[ $installed -ne 1 ]]; then
+                print_warning "  ⚠ Failed to install $queue_app_id after retries"
+                failure=1
             fi
-
-            print_warning "  ⚠ Attempt $attempt failed for $app_id"
-            print_flatpak_details "$install_output"
-            sleep $(( attempt * 2 ))
         done
-
-        if [[ $installed -ne 1 ]]; then
-            print_warning "  ⚠ Failed to install $app_id after retries"
-            failure=1
-        fi
     done
 
     return $failure
@@ -697,13 +799,57 @@ ensure_default_flatpak_apps_installed() {
 
     local -a missing=()
     local app_id
+    local -A installed_flatpak_index=()
+
+    if flatpak_cli_available; then
+        local installed_listing=""
+        installed_listing=$(run_as_primary_user flatpak list --user --app --columns=application 2>/dev/null || true)
+        if [[ -n "$installed_listing" ]]; then
+            while IFS= read -r line; do
+                line=${line//$'\r'/}
+                line=${line//$'\v'/}
+                line=${line//$'\f'/}
+                [[ -z "$line" ]] && continue
+
+                # Normalize header variations like "Application" or "Application ID"
+                case "$line" in
+                    "Application"|$'Application ID'|$'Application\tID')
+                        continue
+                        ;;
+                esac
+
+                # Older Flatpak releases ignore --columns and emit multiple columns separated
+                # by whitespace. Always grab the first field so we match plain App IDs.
+                local app_id
+                IFS=$' \t' read -r app_id _ <<<"$line"
+
+                if [[ -z "$app_id" ]]; then
+                    continue
+                fi
+
+                installed_flatpak_index["$app_id"]=1
+            done <<< "$installed_listing"
+        fi
+    fi
+
+    local detection_mode="list"
+    if [[ ${#installed_flatpak_index[@]} -eq 0 ]]; then
+        detection_mode="info"
+    fi
 
     for app_id in "${DEFAULT_FLATPAK_APPS[@]}"; do
-        if run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
-            print_info "  • $app_id already present"
+        if [[ "$detection_mode" == "list" ]]; then
+            if [[ -n "${installed_flatpak_index["$app_id"]:-}" ]]; then
+                print_info "  • $app_id already present"
+                continue
+            fi
         else
-            missing+=("$app_id")
+            if run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
+                print_info "  • $app_id already present"
+                continue
+            fi
         fi
+        missing+=("$app_id")
     done
 
     if (( ${#missing[@]} == 0 )); then
@@ -1959,6 +2105,8 @@ install_vscodium_extensions() {
         return 0
     fi
 
+    load_vscodium_extension_cache || true
+
     local manifest
     manifest=$(ai_cli_manifest_path)
 
@@ -2020,6 +2168,7 @@ install_vscodium_extensions() {
         for attempt in 1 2 3; do
             if codium --install-extension "$ext_id" >/dev/null 2>&1; then
                 print_success "$name extension installed"
+                mark_vscodium_extension_installed "$ext_id"
                 return 0
             fi
             sleep 2
@@ -2037,10 +2186,14 @@ install_vscodium_extensions() {
         if [ -z "$ext_id" ]; then
             continue
         fi
-        if [ -n "${seen[$ext_id]:-}" ]; then
+        if [ -n "${seen["$ext_id"]:-}" ]; then
             continue
         fi
-        seen[$ext_id]=1
+        seen["$ext_id"]=1
+        if vscodium_extension_installed "$ext_id"; then
+            print_info "$name extension already installed; skipping"
+            continue
+        fi
         if ! open_vsx_extension_available "$ext_id"; then
             local status="${LAST_OPEN_VSX_STATUS:-unknown}"
             print_warning "$name extension not available on Open VSX (HTTP $status)"
