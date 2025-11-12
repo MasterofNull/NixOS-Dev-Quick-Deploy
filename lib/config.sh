@@ -405,12 +405,35 @@ probe_performance_kernel_availability() {
     quoted_names=$(printf '"%s" ' "${kernel_names[@]}")
     quoted_names=${quoted_names% }
 
-    local probe_expr
-    probe_expr="let pkgs = import <nixpkgs> {}; names = [ ${quoted_names} ]; available = builtins.filter (name: builtins.hasAttr name pkgs) names; in builtins.concatStringsSep \"\\n\" available"
+    local -a nix_eval_cmd=("nix" "--extra-experimental-features" "nix-command flakes" "eval" "--raw" "--expr")
 
-    nix --extra-experimental-features 'nix-command' eval --raw --expr "$probe_expr" 2>/dev/null \
-        || nix eval --raw --expr "$probe_expr" 2>/dev/null \
-        || true
+    local legacy_probe
+    legacy_probe="let pkgs = import <nixpkgs> {}; names = [ ${quoted_names} ]; available = builtins.filter (name: builtins.hasAttr name pkgs) names; in builtins.concatStringsSep \"\\n\" available"
+
+    local result=""
+    result=$("${nix_eval_cmd[@]}" "$legacy_probe" 2>/dev/null || true)
+    if [[ -n "$result" ]]; then
+        printf '%s' "$result"
+        return
+    fi
+
+    local flake_probe
+    flake_probe=$(cat <<'EOF'
+let
+  inherit (builtins) concatStringsSep filter hasAttr currentSystem getFlake;
+  names = NAMES_PLACEHOLDER;
+  legacyPackages = (getFlake "nixpkgs").legacyPackages;
+  pkgs = legacyPackages.${currentSystem};
+  available = filter (name: hasAttr name pkgs) names;
+in concatStringsSep "\n" available
+EOF
+)
+    flake_probe=${flake_probe//NAMES_PLACEHOLDER/[ ${quoted_names} ]}
+
+    result=$("${nix_eval_cmd[@]}" "$flake_probe" 2>/dev/null || true)
+    if [[ -n "$result" ]]; then
+        printf '%s' "$result"
+    fi
 }
 
 resolve_total_ram_gb() {
@@ -1736,6 +1759,11 @@ generate_nixos_system_config() {
         select_zswap_memory_pool
     fi
 
+    local enable_zswap="${ENABLE_ZSWAP_CONFIGURATION:-false}"
+    local zswap_percent="${ZSWAP_MAX_POOL_PERCENT:-20}"
+    local zswap_compressor="${ZSWAP_COMPRESSOR:-zstd}"
+    local zswap_zpool="${ZSWAP_ZPOOL:-z3fold}"
+
     local -a performance_kernel_preference=(
         "linuxPackages_6_17"
         "linuxPackages_tkg"
@@ -1890,12 +1918,54 @@ generate_nixos_system_config() {
     local mangohud_definition
     mangohud_definition=$(cat <<EOF
   glfMangoHudPresets = {
-    disabled = "";
-    light = ''control=mangohud,legacy_layout=0,horizontal,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,ram,vram,ps,fps,fps_metrics=AVG,0.001,font_scale=1.05'';
-    full = ''control=mangohud,legacy_layout=0,vertical,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,core_load,ram,vram,fps,fps_metrics=AVG,0.001,frametime,refresh_rate,resolution,vulkan_driver,wine'';
+    disabled = [ ];
+    light = [
+      "control=mangohud"
+      "legacy_layout=0"
+      "horizontal"
+      "background_alpha=0"
+      "gpu_stats"
+      "gpu_power"
+      "gpu_temp"
+      "cpu_stats"
+      "cpu_temp"
+      "ram"
+      "vram"
+      "ps"
+      "fps"
+      "fps_metrics=AVG,0.001"
+      "font_scale=1.05"
+    ];
+    full = [
+      "control=mangohud"
+      "legacy_layout=0"
+      "vertical"
+      "background_alpha=0"
+      "gpu_stats"
+      "gpu_power"
+      "gpu_temp"
+      "cpu_stats"
+      "cpu_temp"
+      "core_load"
+      "ram"
+      "vram"
+      "fps"
+      "fps_metrics=AVG,0.001"
+      "frametime"
+      "refresh_rate"
+      "resolution"
+      "vulkan_driver"
+      "wine"
+    ];
   };
   glfMangoHudProfile = "${mangohud_profile}";
-  glfMangoHudConfig = glfMangoHudPresets.\${glfMangoHudProfile};
+  glfMangoHudEntries = glfMangoHudPresets.\${glfMangoHudProfile};
+  glfMangoHudConfig = lib.concatStringsSep "," glfMangoHudEntries;
+  glfMangoHudConfigFileContents =
+    if glfMangoHudEntries == [] then
+      ""
+    else
+      lib.concatStringsSep "\n" glfMangoHudEntries + "\n";
 EOF
 )
 
@@ -1972,7 +2042,8 @@ EOF
 
   services.udev = {
     extraRules = lib.mkAfter ''
-      ACTION=="add|change", SUBSYSTEM=="block", ATTR{queue/scheduler}="bfq"
+      # Pin block devices that support it to BFQ without touching zram or partitions
+      ACTION=="add|change", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", KERNEL!="zram*", TEST=="queue/scheduler", ATTR{queue/scheduler}="bfq"
 
       # Ignore DualSense/DualShock touchpads so they do not wake the desktop
       ATTRS{name}=="Sony Interactive Entertainment Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"
@@ -2188,10 +2259,6 @@ EOF
     fi
 
     local total_ram_value="${TOTAL_RAM_GB:-0}"
-    local zswap_percent="${ZSWAP_MAX_POOL_PERCENT:-20}"
-    local zswap_compressor="${ZSWAP_COMPRESSOR:-zstd}"
-    local zswap_zpool="${ZSWAP_ZPOOL:-z3fold}"
-    local enable_zswap="${ENABLE_ZSWAP_CONFIGURATION:-false}"
     local resume_device_hint="${RESUME_DEVICE_HINT:-}"
     local resume_device_literal=""
 
@@ -2885,17 +2952,54 @@ create_home_manager_config() {
     local glf_home_definitions
     glf_home_definitions=$(cat <<EOF
   glfMangoHudPresets = {
-    disabled = "";
-    light = ''control=mangohud,legacy_layout=0,horizontal,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,ram,vram,ps,fps,fps_metrics=AVG,0.001,font_scale=1.05'';
-    full = ''control=mangohud,legacy_layout=0,vertical,background_alpha=0,gpu_stats,gpu_power,gpu_temp,cpu_stats,cpu_temp,core_load,ram,vram,fps,fps_metrics=AVG,0.001,frametime,refresh_rate,resolution,vulkan_driver,wine'';
+    disabled = [ ];
+    light = [
+      "control=mangohud"
+      "legacy_layout=0"
+      "horizontal"
+      "background_alpha=0"
+      "gpu_stats"
+      "gpu_power"
+      "gpu_temp"
+      "cpu_stats"
+      "cpu_temp"
+      "ram"
+      "vram"
+      "ps"
+      "fps"
+      "fps_metrics=AVG,0.001"
+      "font_scale=1.05"
+    ];
+    full = [
+      "control=mangohud"
+      "legacy_layout=0"
+      "vertical"
+      "background_alpha=0"
+      "gpu_stats"
+      "gpu_power"
+      "gpu_temp"
+      "cpu_stats"
+      "cpu_temp"
+      "core_load"
+      "ram"
+      "vram"
+      "fps"
+      "fps_metrics=AVG,0.001"
+      "frametime"
+      "refresh_rate"
+      "resolution"
+      "vulkan_driver"
+      "wine"
+    ];
   };
   glfMangoHudProfile = "${mangohud_profile}";
-  glfMangoHudConfig = glfMangoHudPresets.\${glfMangoHudProfile};
+  glfMangoHudEntries = glfMangoHudPresets.\${glfMangoHudProfile};
+  glfMangoHudConfig = lib.concatStringsSep "," glfMangoHudEntries;
   glfMangoHudConfigFileContents =
-    let
-      entries = lib.filter (entry: entry != "") (lib.splitString "," glfMangoHudConfig);
-    in
-    lib.concatStringsSep "\n" entries;
+    if glfMangoHudEntries == [] then
+      ""
+    else
+      lib.concatStringsSep "\n" glfMangoHudEntries + "\n";
   glfLutrisWithGtk = pkgs.lutris.override { extraLibraries = p: [ p.libadwaita p.gtk4 ]; };
   glfGamingPackages =
     [ glfLutrisWithGtk ]

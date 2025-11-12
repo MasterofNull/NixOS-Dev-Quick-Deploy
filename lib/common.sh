@@ -1481,10 +1481,26 @@ run_rootless_podman_diagnostics() {
 
     local sysctl_value
     sysctl_value=$(sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || echo "")
-    if [[ "$sysctl_value" == "1" ]]; then
-        print_success "kernel.unprivileged_userns_clone=1"
+
+    local max_user_namespaces
+    max_user_namespaces=$(sysctl -n user.max_user_namespaces 2>/dev/null || cat /proc/sys/user/max_user_namespaces 2>/dev/null || echo "")
+
+    if [[ -n "$sysctl_value" ]]; then
+        if [[ "$sysctl_value" == "1" ]]; then
+            print_success "kernel.unprivileged_userns_clone=1"
+        else
+            print_error "kernel.unprivileged_userns_clone is ${sysctl_value:-unset}; rootless Podman requires it set to 1."
+            status=1
+        fi
+    elif [[ -n "$max_user_namespaces" ]]; then
+        if [[ "$max_user_namespaces" =~ ^[0-9]+$ && "$max_user_namespaces" -gt 0 ]]; then
+            print_success "user.max_user_namespaces=${max_user_namespaces} (kernel.unprivileged_userns_clone not exposed on upstream kernels)"
+        else
+            print_error "user.max_user_namespaces is ${max_user_namespaces:-unset}; set it to a value greater than zero (e.g., 65536) to enable rootless Podman."
+            status=1
+        fi
     else
-        print_error "kernel.unprivileged_userns_clone is ${sysctl_value:-unset}; rootless Podman requires it set to 1."
+        print_error "Unable to determine user namespace support; neither kernel.unprivileged_userns_clone nor user.max_user_namespaces are accessible."
         status=1
     fi
 
@@ -2065,6 +2081,7 @@ safe_mkdir() {
     # Returns: 0 on success, 1 on failure
     # Usage: safe_mkdir "/path/to/dir" || return 1
     local dir="$1"
+    local symlink_target=""
 
     if [[ -z "$dir" ]]; then
         print_error "safe_mkdir: No directory specified"
@@ -2074,6 +2091,29 @@ safe_mkdir() {
     # Already exists is success
     if [[ -d "$dir" ]]; then
         return 0
+    fi
+
+    # Handle broken symlink that should point to a directory managed elsewhere
+    if [[ -L "$dir" && ! -e "$dir" ]]; then
+        symlink_target=$(readlink "$dir" 2>/dev/null || true)
+        if [[ -z "$symlink_target" ]]; then
+            print_error "safe_mkdir: $dir is a broken symlink with no target"
+            return 1
+        fi
+
+        if [[ "$symlink_target" != /* ]]; then
+            local link_parent
+            link_parent=$(dirname "$dir")
+            symlink_target="$link_parent/$symlink_target"
+        fi
+
+        if mkdir -p "$symlink_target" 2>/dev/null && [[ -d "$dir" ]]; then
+            return 0
+        fi
+
+        print_error "Failed to create directory target for symlink: $dir -> $symlink_target"
+        print_error "Check permissions and available disk space"
+        return 1
     fi
 
     # Attempt to create with parents
