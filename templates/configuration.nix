@@ -70,6 +70,7 @@ let
   huggingfaceStopScript = pkgs.writeShellScript "huggingface-tgi-stop" ''
     ${pkgs.podman}/bin/podman stop huggingface-tgi >/dev/null 2>&1 || true
   '';
+  ollamaStateDir = "/var/lib/ollama";
   giteaStateDir = "/var/lib/gitea";
   giteaAppDataDir = "${giteaStateDir}/data";
   giteaRepositoriesDir = "${giteaAppDataDir}/repositories";
@@ -83,12 +84,6 @@ let
   giteaSshPort = 2222;
   giteaRootUrl = "http://${giteaDomain}:${toString giteaHttpPort}/";
   giteaAdminSecrets = @GITEA_ADMIN_SECRETS_SET@;
-  giteaSecrets = {
-    secretKey = @GITEA_SECRET_KEY@;
-    internalToken = @GITEA_INTERNAL_TOKEN@;
-    lfsJwtSecret = @GITEA_LFS_JWT_SECRET@;
-    oauthJwtSecret = @GITEA_JWT_SECRET@;
-  } // giteaAdminSecrets;
   giteaSharedSettings = {
     server = {
       PROTOCOL = "http";
@@ -97,10 +92,8 @@ let
       HTTP_PORT = giteaHttpPort;
       ROOT_URL = giteaRootUrl;
       APP_DATA_PATH = giteaAppDataDir;
-      STATIC_ROOT_PATH = "${giteaAppDataDir}/public";
       ENABLE_GZIP = true;
       LFS_START_SERVER = true;
-      LFS_JWT_SECRET = lib.mkForce giteaSecrets.lfsJwtSecret;
       DISABLE_SSH = false;
       SSH_DOMAIN = giteaDomain;
       SSH_PORT = giteaSshPort;
@@ -121,7 +114,8 @@ let
     packages.ENABLED = true;
     actions = {
       ENABLED = true;
-      DEFAULT_ACTIONS_URL = "https://gitea.com";
+      # Gitea 1.25+ only accepts "github"/"internal" here; https://gitea.com now fails hard.
+      DEFAULT_ACTIONS_URL = "github";
     };
     indexer = {
       ISSUE_INDEXER_TYPE = "bleve";
@@ -143,17 +137,10 @@ let
     security = {
       INSTALL_LOCK = true;
       PASSWORD_HASH_ALGO = "argon2";
-      SECRET_KEY = lib.mkForce giteaSecrets.secretKey;
-      INTERNAL_TOKEN = lib.mkForce giteaSecrets.internalToken;
     };
-    oauth2.JWT_SECRET = lib.mkForce giteaSecrets.oauthJwtSecret;
     log = {
       MODE = "console";
       LEVEL = "Info";
-    };
-    lfs = {
-      STORAGE_TYPE = "local";
-      PATH = giteaLfsDir;
     };
   };
   # Optional Gitea admin bootstrap (populated by installer)
@@ -164,18 +151,6 @@ in
 
 {
   imports = [ ./hardware-configuration.nix ];
-
-  nixpkgs.overlays = lib.mkAfter (import ./overlays.nix);
-
-  # Ensure CLI tooling sees the same overlays declared via nixpkgs.overlays.
-  # See https://wiki.nixos.org/wiki/Overlays for the compatibility overlay pattern.
-  nix.nixPath = lib.mkAfter [
-    "nixpkgs-overlays=/etc/nixos/overlays-compat"
-  ];
-
-  # Provide overlay files for nix tooling outside of flakes.
-  environment.etc."nixos/overlays.nix".source = ./overlays.nix;
-  environment.etc."nixos/overlays-compat/default.nix".source = ./overlays.nix;
 
   # ============================================================================
   # Boot Configuration (Modern EFI)
@@ -188,15 +163,15 @@ in
       timeout = lib.mkDefault 3;
     };
 
-    # Prefer performance-tuned kernels when available.
-    # Order of preference: 6.17 gaming → TKG → XanMod → Liquorix → Zen → Latest upstream.
+    # Prefer the tuned 6.17 series first, then fall back to other low-latency kernels or latest upstream.
     kernelPackages = lib.mkDefault (
       if pkgs ? linuxPackages_6_17 then pkgs.linuxPackages_6_17
       else if pkgs ? linuxPackages_tkg then pkgs.linuxPackages_tkg
       else if pkgs ? linuxPackages_xanmod then pkgs.linuxPackages_xanmod
       else if pkgs ? linuxPackages_lqx then pkgs.linuxPackages_lqx
       else if pkgs ? linuxPackages_zen then pkgs.linuxPackages_zen
-      else pkgs.linuxPackages_latest
+      else if pkgs ? linuxPackages_latest then pkgs.linuxPackages_latest
+      else pkgs.linuxPackages
     );
 
     # CPU Microcode updates (auto-detected: @CPU_VENDOR_LABEL@ CPU)
@@ -359,6 +334,13 @@ in
     autoSubUidGidRange = true;
   };
 
+  users.groups.accounts-daemon = lib.mkDefault { };
+  users.users.accounts-daemon = lib.mkDefault {
+    isSystemUser = true;
+    description = "Accounts Service";
+    group = "accounts-daemon";
+  };
+
   # Enable ZSH system-wide
   programs.zsh.enable = true;
 
@@ -519,6 +501,36 @@ in
       # Increase timeouts to handle slow starts during system changes
       RestartSec = 30;
       TimeoutStartSec = 300;  # 5 minutes
+      MemoryAccounting = lib.mkForce true;
+      IOAccounting = lib.mkForce true;
+      TasksAccounting = lib.mkForce true;
+      LimitNOFILE = lib.mkForce 1048576;
+      LimitNPROC = lib.mkForce 8192;
+      # Hardening
+      ProtectSystem = lib.mkForce "full";
+      ProtectHome = lib.mkForce true;
+      ProtectControlGroups = lib.mkForce true;
+      ProtectKernelLogs = lib.mkForce true;
+      ProtectKernelModules = lib.mkForce true;
+      ProtectKernelTunables = lib.mkForce true;
+      ProtectClock = lib.mkForce true;
+      PrivateTmp = lib.mkForce true;
+      PrivateDevices = lib.mkForce true;
+      PrivateMounts = lib.mkForce true;
+      NoNewPrivileges = lib.mkForce true;
+      LockPersonality = lib.mkForce true;
+      MemoryDenyWriteExecute = lib.mkForce true;
+      RestrictAddressFamilies = lib.mkForce [ "AF_UNIX" "AF_INET" "AF_INET6" ];
+      RestrictRealtime = lib.mkForce true;
+      RestrictSUIDSGID = lib.mkForce true;
+      SystemCallArchitectures = lib.mkForce "native";
+      SystemCallFilter = lib.mkForce [ "@system-service" "~@privileged" ];
+      ProcSubset = lib.mkForce "pid";
+      ProtectProc = lib.mkForce "invisible";
+      UMask = lib.mkForce "0077";
+      ReadWritePaths = lib.mkForce [
+        ollamaStateDir
+      ];
     };
   };
 
@@ -576,6 +588,35 @@ in
       StateDirectory = qdrantStateDirName;
       StateDirectoryMode = "0775";
       RuntimeDirectory = "qdrant";
+      MemoryAccounting = lib.mkForce true;
+      IOAccounting = lib.mkForce true;
+      TasksAccounting = lib.mkForce true;
+      LimitNOFILE = lib.mkForce 262144;
+      LimitNPROC = lib.mkForce 16384;
+      ProtectSystem = lib.mkForce "full";
+      ProtectHome = lib.mkForce true;
+      ProtectControlGroups = lib.mkForce true;
+      ProtectKernelLogs = lib.mkForce true;
+      ProtectKernelModules = lib.mkForce true;
+      ProtectKernelTunables = lib.mkForce true;
+      PrivateTmp = lib.mkForce true;
+      PrivateMounts = lib.mkForce true;
+      NoNewPrivileges = lib.mkForce true;
+      LockPersonality = lib.mkForce true;
+      MemoryDenyWriteExecute = lib.mkForce true;
+      RestrictAddressFamilies = lib.mkForce [ "AF_UNIX" "AF_INET" "AF_INET6" ];
+      RestrictRealtime = lib.mkForce true;
+      RestrictSUIDSGID = lib.mkForce true;
+      SystemCallArchitectures = lib.mkForce "native";
+      ProcSubset = lib.mkForce "pid";
+      ProtectProc = lib.mkForce "invisible";
+      UMask = lib.mkForce "0077";
+      ReadWritePaths = lib.mkForce [
+        qdrantStateDir
+        "/var/lib/containers"
+        "/run/libpod"
+        "/run/podman"
+      ];
     };
   };
 
@@ -606,6 +647,37 @@ in
       TimeoutStopSec = 120;  # Increased from 90
       WorkingDirectory = "%S/${huggingfaceStateDirName}";
       StateDirectory = huggingfaceStateDirName;
+      MemoryAccounting = lib.mkForce true;
+      IOAccounting = lib.mkForce true;
+      TasksAccounting = lib.mkForce true;
+      LimitNOFILE = lib.mkForce 262144;
+      LimitNPROC = lib.mkForce 16384;
+      ProtectSystem = lib.mkForce "full";
+      ProtectHome = lib.mkForce true;
+      ProtectControlGroups = lib.mkForce true;
+      ProtectKernelLogs = lib.mkForce true;
+      ProtectKernelModules = lib.mkForce true;
+      ProtectKernelTunables = lib.mkForce true;
+      ProtectClock = lib.mkForce true;
+      PrivateTmp = lib.mkForce true;
+      PrivateMounts = lib.mkForce true;
+      NoNewPrivileges = lib.mkForce true;
+      LockPersonality = lib.mkForce true;
+      MemoryDenyWriteExecute = lib.mkForce true;
+      RestrictAddressFamilies = lib.mkForce [ "AF_UNIX" "AF_INET" "AF_INET6" ];
+      RestrictRealtime = lib.mkForce true;
+      RestrictSUIDSGID = lib.mkForce true;
+      SystemCallArchitectures = lib.mkForce "native";
+      ProcSubset = lib.mkForce "pid";
+      ProtectProc = lib.mkForce "invisible";
+      UMask = lib.mkForce "0077";
+      ReadWritePaths = lib.mkForce [
+        huggingfaceDataDir
+        huggingfaceCacheDir
+        "/var/lib/containers"
+        "/run/libpod"
+        "/run/podman"
+      ];
     };
     environment = {
       HF_HOME = "%S/${huggingfaceStateDirName}";
@@ -624,6 +696,10 @@ in
     package = pkgs.gitea;
     user = "gitea";
     group = "gitea";
+    lfs = {
+      enable = true;
+      contentDir = giteaLfsDir;
+    };
     # NixOS 25.05+: stateDir is managed automatically, don't set it explicitly
     # The state directory will be /var/lib/gitea by default
     database = {
@@ -635,10 +711,6 @@ in
     # Deprecated options removed: rootUrl, httpAddress, httpPort, disableRegistration, stateDir, repositoryRoot
     # SSH configuration moved to settings.server (see giteaSharedSettings above)
     # NixOS 25.05+ uses freeform settings instead of structured ssh block
-    lfs = {
-      enable = true;
-      contentDir = giteaLfsDir;
-    };
     # All service settings configured via settings attribute (see giteaSharedSettings)
     settings = giteaSharedSettings;
   };
@@ -652,10 +724,44 @@ in
       StartLimitIntervalSec = 900;  # 15 minutes
     };
     serviceConfig = {
-      # Increase timeouts to handle slow starts during system changes
+      # Increase timeouts and resource accounting
       RestartSec = 30;  # Wait 30 seconds between restart attempts
       TimeoutStartSec = 300;  # Allow up to 5 minutes for service to start
       TimeoutStopSec = 60;  # Allow up to 1 minute for service to stop
+      MemoryAccounting = lib.mkForce true;
+      IOAccounting = lib.mkForce true;
+      TasksAccounting = lib.mkForce true;
+      MemoryHigh = lib.mkForce "85%";
+      # Harden the application surface
+      ProtectSystem = lib.mkForce "strict";
+      ProtectHome = lib.mkForce true;
+      ProtectControlGroups = lib.mkForce true;
+      ProtectKernelModules = lib.mkForce true;
+      ProtectKernelLogs = lib.mkForce true;
+      ProtectKernelTunables = lib.mkForce true;
+      ProtectClock = lib.mkForce true;
+      PrivateTmp = lib.mkForce true;
+      PrivateMounts = lib.mkForce true;
+      PrivateDevices = lib.mkForce true;
+      NoNewPrivileges = lib.mkForce true;
+      LockPersonality = lib.mkForce true;
+      MemoryDenyWriteExecute = lib.mkForce true;
+      RestrictAddressFamilies = lib.mkForce [ "AF_UNIX" "AF_INET" "AF_INET6" ];
+      RestrictRealtime = lib.mkForce true;
+      RestrictSUIDSGID = lib.mkForce true;
+      SystemCallArchitectures = lib.mkForce "native";
+      SystemCallFilter = lib.mkForce [ "@system-service" "~@privileged" ];
+      ProcSubset = lib.mkForce "pid";
+      ProtectProc = lib.mkForce "invisible";
+      UMask = lib.mkForce "0027";
+      CapabilityBoundingSet = lib.mkForce [ "" ];
+      AmbientCapabilities = lib.mkForce [ ];
+      ReadWritePaths = lib.mkForce [
+        giteaStateDir
+        giteaAppDataDir
+        giteaRepositoriesDir
+        giteaLfsDir
+      ];
     };
   };
 
@@ -715,6 +821,21 @@ in
     # };
   };
 
+  # Provide a bleeding-edge tiling Wayland session alongside COSMIC.
+  programs.hyprland = {
+    enable = true;
+    package = pkgs.hyprland;
+    portalPackage = pkgs.xdg-desktop-portal-hyprland;
+  };
+
+  # Ensure Wayland portals stay current for COSMIC + Hyprland workflows.
+  xdg.portal = {
+    enable = true;
+    extraPortals =
+      [ pkgs.xdg-desktop-portal-hyprland pkgs.xdg-desktop-portal-gnome ]
+      ++ lib.optionals (pkgs ? xdg-desktop-portal-cosmic) [ pkgs.xdg-desktop-portal-cosmic ];
+  };
+
   # Wayland-specific optimizations and COSMIC configuration
   environment.sessionVariables = {
     # Force Wayland for Qt apps
@@ -730,8 +851,6 @@ in
     # Required for cosmic-clipboard to work with wl-clipboard
     COSMIC_DATA_CONTROL_ENABLED = "1";
     STEAM_EXTRA_COMPAT_TOOLS_PATHS = "$HOME/.steam/root/compatibilitytools.d";
-    MANGOHUD = if glfMangoHudConfig != "" then "1" else "0";
-    MANGOHUD_CONFIG = glfMangoHudConfig;
     @GPU_SESSION_VARIABLES@
   };
 
@@ -838,6 +957,10 @@ in
   # Printing
   # ============================================================================
   services.printing.enable = true;
+  systemd.sockets.cups.socketConfig.ListenStream = lib.mkForce [
+    "/run/cups/cups.sock"
+    "127.0.0.1:631"
+  ];
 
   # ============================================================================
   # Flatpak (Required for COSMIC App Store)
@@ -960,9 +1083,33 @@ in
     };
   };
 
-  systemd.services."accounts-daemon".serviceConfig = {
-    StateDirectory = "AccountsService";
-    RuntimeDirectory = "AccountsService";
+  systemd.services."accounts-daemon" = {
+    serviceConfig = {
+      StateDirectory = "AccountsService";
+      RuntimeDirectory = "AccountsService";
+      MemoryAccounting = lib.mkForce true;
+      IOAccounting = lib.mkForce true;
+      TasksAccounting = lib.mkForce true;
+      ProtectSystem = lib.mkForce "strict";
+      ProtectHome = lib.mkForce true;
+      ProtectKernelLogs = lib.mkForce true;
+      ProtectKernelTunables = lib.mkForce true;
+      ProtectClock = lib.mkForce true;
+      PrivateTmp = lib.mkForce true;
+      NoNewPrivileges = lib.mkForce true;
+      LockPersonality = lib.mkForce true;
+      MemoryDenyWriteExecute = lib.mkForce true;
+      RestrictAddressFamilies = lib.mkForce [ "AF_UNIX" ];
+      RestrictRealtime = lib.mkForce true;
+      RestrictSUIDSGID = lib.mkForce true;
+      SystemCallArchitectures = lib.mkForce "native";
+      ProcSubset = lib.mkForce "pid";
+      ProtectProc = lib.mkForce "invisible";
+      UMask = lib.mkForce "0077";
+      ReadWritePaths = lib.mkForce [
+        "/var/lib/AccountsService"
+      ];
+    };
   };
 
   systemd.services.netdata.serviceConfig = {
@@ -972,10 +1119,26 @@ in
     LogsDirectory = "netdata";
   };
 
-  systemd.tmpfiles.rules = lib.mkAfter [
-    "d /run/podman 0755 root root -"
-    "d /var/lib/AccountsService/icons 0750 accounts-daemon accounts-daemon -"
-  ];
+  systemd.tmpfiles.rules = lib.mkAfter (
+    [
+      "d /run/podman 0755 root root -"
+      "Z /var/lib/AccountsService 0750 accounts-daemon accounts-daemon -"
+      "Z /var/lib/AccountsService/icons 0750 accounts-daemon accounts-daemon -"
+      "Z ${giteaStateDir} 0750 gitea gitea -"
+      "Z ${giteaStateDir}/custom 0750 gitea gitea -"
+      "Z ${giteaStateDir}/custom/conf 0750 gitea gitea -"
+      "z ${giteaStateDir}/custom/conf/app.ini 0640 gitea gitea -"
+      ''f ${giteaStateDir}/custom/conf/secret_key 0600 gitea gitea - "@GITEA_SECRET_KEY@"''
+      ''f ${giteaStateDir}/custom/conf/internal_token 0600 gitea gitea - "@GITEA_INTERNAL_TOKEN@"''
+      ''f ${giteaStateDir}/custom/conf/oauth2_jwt_secret 0600 gitea gitea - "@GITEA_JWT_SECRET@"''
+      ''f ${giteaStateDir}/custom/conf/lfs_jwt_secret 0600 gitea gitea - "@GITEA_LFS_JWT_SECRET@"''
+    ]
+    ++ lib.optionals giteaEnabled [
+      "d /var/lib/gitea 0750 gitea gitea -"
+      "d /var/lib/gitea/custom 0750 gitea gitea -"
+      "d /var/lib/gitea/custom/conf 0750 gitea gitea -"
+    ]
+  );
 
   # PostgreSQL for production-grade AI applications
   # Disabled by default - enable with: sudo systemctl enable --now postgresql

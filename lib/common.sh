@@ -1118,6 +1118,316 @@ detect_container_storage_backend() {
     fi
 }
 
+ensure_gitea_state_directory_ready() {
+    if [[ "${GITEA_ENABLE,,}" != "true" ]]; then
+        return 0
+    fi
+
+    if ! command -v sudo >/dev/null 2>&1; then
+        print_error "sudo is required to prepare /var/lib/gitea but is not available."
+        return 1
+    fi
+
+    local state_root="/var/lib/gitea"
+    local -a required_dirs=(
+        "$state_root"
+        "$state_root/custom"
+        "$state_root/custom/conf"
+        "$state_root/data"
+        "$state_root/log"
+    )
+
+    local dir
+    for dir in "${required_dirs[@]}"; do
+        if ! sudo install -d -m 0750 -o gitea -g gitea "$dir" 2>/dev/null; then
+            print_error "Failed to provision Gitea state directory: $dir"
+            return 1
+        fi
+    done
+
+    local app_ini="$state_root/custom/conf/app.ini"
+    if [[ ! -f "$app_ini" ]]; then
+        if ! sudo touch "$app_ini" 2>/dev/null; then
+            print_error "Unable to create $app_ini"
+            return 1
+        fi
+    fi
+
+    if ! sudo chown gitea:gitea "$app_ini" 2>/dev/null || ! sudo chmod 0640 "$app_ini" 2>/dev/null; then
+        print_error "Failed to set ownership or permissions on $app_ini"
+        return 1
+    fi
+
+    return 0
+}
+
+verify_podman_storage_cleanliness() {
+    local mode="${1:-enforce}"
+    local warn_only="false"
+    if [[ "$mode" == "--warn-only" ]]; then
+        warn_only="true"
+    fi
+
+    if [[ "${PODMAN_STORAGE_DETECTION_RUN:-false}" != true ]] \
+        && declare -F detect_container_storage_backend >/dev/null 2>&1; then
+        detect_container_storage_backend
+    fi
+
+    local configured_driver="${PODMAN_STORAGE_DRIVER:-}"
+    if [[ -z "$configured_driver" || "$configured_driver" == "overlay" ]]; then
+        return 0
+    fi
+
+    local user_cleanup_hint="podman system reset --force && rm -rf ~/.local/share/containers/storage ~/.local/share/containers/cache"
+    local system_cleanup_hint="sudo podman system reset --force && sudo rm -rf /var/lib/containers/storage"
+
+    local -a overlay_paths=()
+    local system_overlay="/var/lib/containers/storage/overlay"
+    local user_root="${PRIMARY_HOME:-$HOME}/.local/share/containers/storage/overlay"
+
+    if [[ -d "$system_overlay" ]] && find "$system_overlay" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
+        overlay_paths+=("$system_overlay")
+    fi
+
+    if [[ -d "$user_root" ]] && find "$user_root" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
+        overlay_paths+=("$user_root")
+    fi
+
+    if (( ${#overlay_paths[@]} > 0 )); then
+        local joined_paths
+        joined_paths=$(printf '%s, ' "${overlay_paths[@]}")
+        joined_paths=${joined_paths%%, }
+
+        if [[ "$warn_only" == "true" ]]; then
+            print_warning "Detected legacy overlay data under: ${joined_paths}. Clean the stores before applying the declarative Podman (driver=${configured_driver}) configuration."
+            print_detail "User store cleanup: ${user_cleanup_hint}"
+            print_detail "System store cleanup: ${system_cleanup_hint}"
+            print_detail "Refer to docs/ROOTLESS_PODMAN.md for full instructions."
+            return 0
+        fi
+
+        print_error "Podman storage check failed: legacy overlay data still exists under ${joined_paths} while the generated configuration uses driver '${configured_driver}'."
+        print_detail "User cleanup: ${user_cleanup_hint}"
+        print_detail "System cleanup: ${system_cleanup_hint}"
+        print_detail "See docs/ROOTLESS_PODMAN.md for recovery steps, then rerun the deployer."
+        return 1
+    fi
+
+    local -a driver_probe_cmd=()
+    if command -v podman >/dev/null 2>&1; then
+        local current_uid=""
+        current_uid=$(id -u 2>/dev/null || echo "")
+        if [[ "$current_uid" == "0" ]]; then
+            driver_probe_cmd=(podman info --format '{{.Store.GraphDriverName}}')
+        elif command -v sudo >/dev/null 2>&1; then
+            driver_probe_cmd=(sudo podman info --format '{{.Store.GraphDriverName}}')
+        fi
+    fi
+
+    if (( ${#driver_probe_cmd[@]} > 0 )); then
+        local driver_probe_output=""
+        if ! driver_probe_output=$("${driver_probe_cmd[@]}" 2>&1); then
+            local probe_msg="Failed to probe system Podman storage backend: ${driver_probe_output:-unknown error}."
+            if [[ "$warn_only" == "true" ]]; then
+                print_warning "$probe_msg"
+                print_detail "User cleanup: ${user_cleanup_hint}"
+                print_detail "System cleanup: ${system_cleanup_hint}"
+                print_detail "Refer to docs/ROOTLESS_PODMAN.md for recovery steps."
+                return 0
+            fi
+
+            print_error "$probe_msg"
+            print_detail "User cleanup: ${user_cleanup_hint}"
+            print_detail "System cleanup: ${system_cleanup_hint}"
+            print_detail "See docs/ROOTLESS_PODMAN.md for remediation guidance."
+            return 1
+        fi
+
+        local active_driver
+        active_driver=$(printf '%s' "$driver_probe_output" | tr -d '\r' | tail -n 1)
+        active_driver=${active_driver//[$'\t ']/}
+
+        if [[ -z "$active_driver" ]]; then
+            if [[ "$warn_only" == "true" ]]; then
+                print_warning "Podman storage probe returned an empty driver result. Clean the stores before rerunning the deployer."
+                print_detail "User cleanup: ${user_cleanup_hint}"
+                print_detail "System cleanup: ${system_cleanup_hint}"
+                return 0
+            fi
+
+            print_error "Podman storage probe returned an empty driver result. Clean the stores before rerunning the deployer."
+            print_detail "User cleanup: ${user_cleanup_hint}"
+            print_detail "System cleanup: ${system_cleanup_hint}"
+            print_detail "See docs/ROOTLESS_PODMAN.md for recovery steps."
+            return 1
+        fi
+
+        if [[ "$active_driver" != "$configured_driver" ]]; then
+            local mismatch_msg="Podman storage driver mismatch: configuration expects '${configured_driver}' but the current store reports '${active_driver}'."
+            if [[ "$warn_only" == "true" ]]; then
+                print_warning "$mismatch_msg"
+                print_detail "User cleanup: ${user_cleanup_hint}"
+                print_detail "System cleanup: ${system_cleanup_hint}"
+                print_detail "Refer to docs/ROOTLESS_PODMAN.md for the reset procedure."
+                return 0
+            fi
+
+            print_error "$mismatch_msg"
+            print_detail "User cleanup: ${user_cleanup_hint}"
+            print_detail "System cleanup: ${system_cleanup_hint}"
+            print_detail "See docs/ROOTLESS_PODMAN.md for the cleanup sequence, then rerun the deployer."
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
+declare -ag NQD_STOPPED_SYSTEM_UNITS=()
+declare -ag NQD_STOPPED_USER_UNITS=()
+
+stop_managed_services_before_switch() {
+    NQD_STOPPED_SYSTEM_UNITS=()
+    NQD_STOPPED_USER_UNITS=()
+
+    local -a system_units=(
+        "qdrant.service"
+        "huggingface-tgi.service"
+        "ollama.service"
+        "gitea.service"
+        "podman.service"
+        "podman.socket"
+        "podman-auto-update.service"
+        "podman-restart.service"
+        "podman-clean-transient.service"
+    )
+
+    print_info "Pausing managed services before system switch..."
+    local unit
+    for unit in "${system_units[@]}"; do
+        if sudo systemctl is-active --quiet "$unit" >/dev/null 2>&1; then
+            if sudo systemctl stop "$unit" >/dev/null 2>&1; then
+                NQD_STOPPED_SYSTEM_UNITS+=("$unit")
+                print_detail "Stopped $unit"
+            else
+                print_warning "Failed to stop $unit; continue with caution."
+            fi
+        fi
+    done
+
+    if systemctl --user --version >/dev/null 2>&1; then
+        local -a user_podman_units=()
+        local -a user_network_units=()
+        mapfile -t user_podman_units < <(systemctl --user list-units --state=active 'podman-*.service' --no-legend --no-pager 2>/dev/null | awk '{print $1}') || true
+        mapfile -t user_network_units < <(systemctl --user list-units --state=active 'podman-*.network' --no-legend --no-pager 2>/dev/null | awk '{print $1}') || true
+        for unit in "${user_podman_units[@]}" "${user_network_units[@]}"; do
+            if [[ -n "$unit" ]] && systemctl --user stop "$unit" >/dev/null 2>&1; then
+                NQD_STOPPED_USER_UNITS+=("$unit")
+                print_detail "Stopped user unit $unit"
+            fi
+        done
+        local -a optional_user_units=(
+            "gitea-dev.service"
+            "jupyter-lab.service"
+        )
+        for unit in "${optional_user_units[@]}"; do
+            if systemctl --user is-active --quiet "$unit" >/dev/null 2>&1; then
+                if systemctl --user stop "$unit" >/dev/null 2>&1; then
+                    NQD_STOPPED_USER_UNITS+=("$unit")
+                    print_detail "Stopped user unit $unit"
+                fi
+            fi
+        done
+    fi
+}
+
+restart_managed_services_after_switch() {
+    if (( ${#NQD_STOPPED_SYSTEM_UNITS[@]} == 0 && ${#NQD_STOPPED_USER_UNITS[@]} == 0 )); then
+        return 0
+    fi
+
+    print_info "Reinitializing services paused for the system switch..."
+    local unit
+    for unit in "${NQD_STOPPED_SYSTEM_UNITS[@]}"; do
+        if sudo systemctl start "$unit" >/dev/null 2>&1; then
+            print_detail "Restarted $unit"
+        else
+            print_warning "Failed to restart $unit; check systemctl status manually."
+        fi
+    done
+    if (( ${#NQD_STOPPED_USER_UNITS[@]} > 0 )) && systemctl --user --version >/dev/null 2>&1; then
+        for unit in "${NQD_STOPPED_USER_UNITS[@]}"; do
+            if systemctl --user start "$unit" >/dev/null 2>&1; then
+                print_detail "Restarted user unit $unit"
+            else
+                print_warning "Failed to restart user unit $unit"
+            fi
+        done
+    fi
+    NQD_STOPPED_SYSTEM_UNITS=()
+    NQD_STOPPED_USER_UNITS=()
+}
+
+auto_remediate_podman_storage() {
+    local status=0
+    print_info "Attempting automated Podman storage cleanup..."
+
+    if command -v findmnt >/dev/null 2>&1; then
+        local target
+        while IFS= read -r target; do
+            if [[ -n "$target" ]]; then
+                if sudo umount -lf "$target" >/dev/null 2>&1; then
+                    print_detail "Detached stale mount $target"
+                else
+                    print_warning "Failed to detach $target"
+                    status=1
+                fi
+            fi
+        done < <(sudo findmnt -rn -t overlay -o TARGET 2>/dev/null | grep -E '^/var/lib/containers/storage/overlay/.+/merged$' || true)
+    fi
+
+    if command -v podman >/dev/null 2>&1; then
+        podman system reset --force >/dev/null 2>&1 || status=1
+        rm -rf "${HOME}/.local/share/containers/storage" "${HOME}/.local/share/containers/cache" >/dev/null 2>&1 || true
+    fi
+
+    if command -v sudo >/dev/null 2>&1 && command -v podman >/dev/null 2>&1; then
+        sudo podman system reset --force >/dev/null 2>&1 || status=1
+    fi
+
+    if sudo test -d /var/lib/containers/storage >/dev/null 2>&1; then
+        sudo rm -rf /var/lib/containers/storage >/dev/null 2>&1 || status=1
+    fi
+
+    return $status
+}
+
+ensure_podman_storage_ready() {
+    if verify_podman_storage_cleanliness; then
+        return 0
+    fi
+
+    print_warning "Legacy Podman overlay data detected; running automated remediation..."
+    local remediation_status=0
+    if ! auto_remediate_podman_storage; then
+        remediation_status=$?
+        print_warning "Automatic Podman storage remediation reported errors; attempting verification anyway."
+    fi
+
+    if verify_podman_storage_cleanliness; then
+        print_success "Podman storage cleaned successfully."
+        return 0
+    fi
+
+    if (( remediation_status != 0 )); then
+        print_error "Automatic Podman storage remediation reported errors and the health check still fails; manual cleanup required."
+    else
+        print_error "Automatic Podman storage remediation completed but the health check still fails; manual cleanup required."
+    fi
+
+    return 1
+}
+
 resolve_subid_entry() {
     local database="$1"
     local target_user="$2"
@@ -1800,6 +2110,10 @@ safe_chown_user_dir() {
     fi
 
     if [[ ! -e "$target" ]]; then
+        if [[ -L "$target" ]]; then
+            print_detail "safe_chown_user_dir: Target is a symlink with missing referent; skipping ownership fix: $target"
+            return 0
+        fi
         print_error "safe_chown_user_dir: Target does not exist: $target"
         return 1
     fi
@@ -1915,7 +2229,9 @@ backup_path_if_exists() {
         print_warning "Unable to create backup directory: $backup_root"
         return 2
     fi
-    safe_chown_user_dir "$backup_root" || true
+    if [[ -e "$backup_root" || -L "$backup_root" ]]; then
+        safe_chown_user_dir "$backup_root" || true
+    fi
 
     local relative_path=""
     if [[ "$target_path" == "$HOME" ]]; then
@@ -1933,10 +2249,14 @@ backup_path_if_exists() {
         print_warning "Failed to prepare backup destination for ${label:-$relative_path}"
         return 2
     fi
-    safe_chown_user_dir "$destination_parent" || true
+    if [[ -e "$destination_parent" || -L "$destination_parent" ]]; then
+        safe_chown_user_dir "$destination_parent" || true
+    fi
 
     if cp -a "$target_path" "$destination" 2>/dev/null; then
-        safe_chown_user_dir "$destination" || true
+        if [[ -e "$destination" ]]; then
+            safe_chown_user_dir "$destination" || true
+        fi
         if [[ -d "$target_path" && ! -L "$target_path" ]]; then
             rm -rf "$target_path" 2>/dev/null || true
         else
@@ -2020,6 +2340,39 @@ prepare_home_manager_targets() {
     local cleaned_any=false
     local encountered_error=false
 
+    local preserve_flatpak_state=false
+    local flatpak_installed_count=0
+
+    _is_flatpak_state_path() {
+        local candidate="$1"
+        if [[ -z "$candidate" ]]; then
+            return 1
+        fi
+
+        case "$candidate" in
+            "$PRIMARY_HOME/.config/flatpak"|"$PRIMARY_HOME/.config/flatpak/"*| \
+            "$PRIMARY_HOME/.local/share/flatpak"|"$PRIMARY_HOME/.local/share/flatpak/"*| \
+            "$PRIMARY_HOME/.var/app"|"$PRIMARY_HOME/.var/app/"*| \
+            "$DOTFILES_ROOT/.config/flatpak"|"$DOTFILES_ROOT/.config/flatpak/"*| \
+            "$DOTFILES_ROOT/.local/share/flatpak"|"$DOTFILES_ROOT/.local/share/flatpak/"*| \
+            "$DOTFILES_ROOT/.var/app"|"$DOTFILES_ROOT/.var/app/"*)
+                return 0
+                ;;
+        esac
+        return 1
+    }
+
+    if command -v flatpak >/dev/null 2>&1; then
+        local flatpak_list_output=""
+        if flatpak_list_output=$(run_as_primary_user flatpak list --user --app --columns=application 2>/dev/null || true); then
+            flatpak_installed_count=$(printf '%s\n' "$flatpak_list_output" | awk '$0 != "Application" && NF {count++} END {print count+0}')
+            if [[ "$flatpak_installed_count" -gt 0 ]]; then
+                preserve_flatpak_state=true
+                print_info "Detected ${flatpak_installed_count} existing Flatpak application(s); preserving user Flatpak directories."
+            fi
+        fi
+    fi
+
     local -a directory_targets=(
         "$HOME/.config/flatpak::Flatpak configuration directory"
         "$HOME/.local/share/flatpak/overrides::Flatpak overrides directory"
@@ -2058,6 +2411,18 @@ prepare_home_manager_targets() {
     )
 
     local entry path label result
+
+    if [[ "$preserve_flatpak_state" == true ]]; then
+        local -a filtered_directories=()
+        for entry in "${directory_targets[@]}"; do
+            path="${entry%%::*}"
+            if _is_flatpak_state_path "$path"; then
+                continue
+            fi
+            filtered_directories+=("$entry")
+        done
+        directory_targets=("${filtered_directories[@]}")
+    fi
 
     for entry in "${directory_targets[@]}"; do
         path="${entry%%::*}"
@@ -2134,6 +2499,18 @@ prepare_home_manager_targets() {
     local dotfiles_created=false
     local symlinks_created=false
 
+    if [[ "$preserve_flatpak_state" == true ]]; then
+        local -a filtered_symlink_targets=()
+        for entry in "${symlink_targets[@]}"; do
+            path="${entry%%::*}"
+            if _is_flatpak_state_path "$path"; then
+                continue
+            fi
+            filtered_symlink_targets+=("$entry")
+        done
+        symlink_targets=("${filtered_symlink_targets[@]}")
+    fi
+
     for entry in "${symlink_targets[@]}"; do
         path="${entry%%::*}"
         local mode="${entry##*::}"
@@ -2187,6 +2564,18 @@ prepare_home_manager_targets() {
         "$DOTFILES_ROOT/.var/app/$GITEA_FLATPAK_APP_ID/data/gitea::750"
     )
 
+    if [[ "$preserve_flatpak_state" == true ]]; then
+        local -a filtered_nested_dirs=()
+        for entry in "${nested_dotfiles_dirs[@]}"; do
+            path="${entry%%::*}"
+            if _is_flatpak_state_path "$path"; then
+                continue
+            fi
+            filtered_nested_dirs+=("$entry")
+        done
+        nested_dotfiles_dirs=("${filtered_nested_dirs[@]}")
+    fi
+
     for entry in "${nested_dotfiles_dirs[@]}"; do
         path="${entry%%::*}"
         local mode="${entry##*::}"
@@ -2232,8 +2621,57 @@ persist_config_backup_hint() {
         return 0
     fi
 
+    if command -v python3 >/dev/null 2>&1; then
+        if ROLLBACK_INFO_FILE="$ROLLBACK_INFO_FILE" BACKUP_DIR="$backup_dir" python3 <<'PY'
+import json
+import os
+import stat
+import sys
+import tempfile
+
+rollback_file = os.environ.get("ROLLBACK_INFO_FILE")
+backup_dir = os.environ.get("BACKUP_DIR", "")
+
+if not rollback_file:
+    sys.exit(1)
+
+with open(rollback_file, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+
+if backup_dir:
+    data["config_backup_dir"] = backup_dir
+else:
+    data.pop("config_backup_dir", None)
+
+directory = os.path.dirname(rollback_file) or "."
+prefix = f"{os.path.basename(rollback_file)}."
+fd, tmp_path = tempfile.mkstemp(prefix=prefix, dir=directory)
+
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as tmp_handle:
+        json.dump(data, tmp_handle, indent=2)
+        tmp_handle.write("\n")
+
+    try:
+        mode = stat.S_IMODE(os.stat(rollback_file).st_mode)
+    except FileNotFoundError:
+        mode = 0o600
+    os.chmod(tmp_path, mode)
+    os.replace(tmp_path, rollback_file)
+except Exception:
+    os.unlink(tmp_path)
+    raise
+PY
+        then
+            return 0
+        fi
+        log WARNING "Python-based rollback hint update failed; attempting jq fallback"
+    else
+        log DEBUG "python3 unavailable – falling back to jq for rollback hint update"
+    fi
+
     if ! command -v jq >/dev/null 2>&1; then
-        log DEBUG "jq unavailable – skipping rollback hint update for configuration backup"
+        log WARNING "Neither python3 nor jq available to update rollback hints"
         return 0
     fi
 
