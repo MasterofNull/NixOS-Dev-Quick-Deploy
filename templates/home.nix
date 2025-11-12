@@ -84,10 +84,14 @@ let
       disabled = [ ];
       light = [ ];
       full = [ ];
+      desktop = [ ];
+      "desktop-hybrid" = [ ];
     };
     glfMangoHudProfile = "disabled";
     glfMangoHudConfig = "";
     glfMangoHudConfigFileContents = "";
+    glfMangoHudDesktopMode = false;
+    glfMangoHudInjectsIntoApps = false;
     glfLutrisWithGtk = pkgs.lutris;
     glfGamingPackages = [ ];
     glfSteamPackage = pkgs.steam;
@@ -109,6 +113,8 @@ let
     glfMangoHudProfile
     glfMangoHudConfig
     glfMangoHudConfigFileContents
+    glfMangoHudDesktopMode
+    glfMangoHudInjectsIntoApps
     glfLutrisWithGtk
     glfGamingPackages
     glfSteamPackage
@@ -2046,9 +2052,10 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       EDITOR = "DEFAULTEDITOR";
       VISUAL = "DEFAULTEDITOR";
       NIXPKGS_ALLOW_UNFREE = "1";
-      MANGOHUD = if glfMangoHudConfig != "" then "1" else "0";
+      MANGOHUD = if glfMangoHudInjectsIntoApps then "1" else "0";
       MANGOHUD_CONFIG = glfMangoHudConfig;
       MANGOHUD_CONFIGFILE = "${config.home.homeDirectory}/.config/MangoHud/MangoHud.conf";
+      MANGOHUD_DESKTOP_MODE = if glfMangoHudDesktopMode then "1" else "0";
       # NPM Configuration
       NPM_CONFIG_PREFIX = "$HOME/.npm-global";
       # AI Development Tools
@@ -3228,7 +3235,7 @@ PLUGINCFG
           # This prevents the service from blocking home-manager activation if it fails.
         };
       })
-      (lib.mkIf (glfMangoHudConfig != "" && pkgs ? mangohud) {
+      (lib.mkIf (glfMangoHudDesktopMode && glfMangoHudConfig != "" && pkgs ? mangohud) {
         "mangohud-desktop" = {
           Unit = {
             Description = "MangoHud desktop overlay";
