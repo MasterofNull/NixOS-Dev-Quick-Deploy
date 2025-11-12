@@ -19,10 +19,6 @@
     let
       lib = nixpkgs.lib;
       system = "SYSTEM_PLACEHOLDER";
-      nixAiToolsOverlays =
-        lib.optional
-          (nixAiTools ? overlays && nixAiTools.overlays ? default)
-          nixAiTools.overlays.default;
       nixAiToolsPackages =
         if nixAiTools ? packages && builtins.hasAttr system nixAiTools.packages then
           nixAiTools.packages.${system}
@@ -36,7 +32,6 @@
           inherit nixAiToolsPackages;
         };
         modules = [
-          { nixpkgs.overlays = nixAiToolsOverlays; }
           ./configuration.nix
           # Note: home-manager is used standalone (via homeConfigurations below)
           # Not as a NixOS module to avoid dependency issues during nixos-rebuild
@@ -47,7 +42,6 @@
         pkgs = import nixpkgs {
           inherit system;
           config.allowUnfree = true;
-          overlays = nixAiToolsOverlays;
         };
         extraSpecialArgs = {
           inherit nixAiToolsPackages;

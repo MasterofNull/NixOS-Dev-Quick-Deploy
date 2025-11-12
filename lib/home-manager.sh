@@ -104,3 +104,60 @@ install_home_manager() {
         print_info "Home-manager will be provided permanently by programs.home-manager.enable"
     fi
 }
+
+# ============================================================================
+# Home Manager CLI Helpers
+# ============================================================================
+# Purpose: Provide consistent access to the home-manager CLI regardless of
+# whether it is already installed into the user's profile.
+# ============================================================================
+
+home_manager_cli_available() {
+    command -v home-manager >/dev/null 2>&1
+}
+
+run_home_manager_cli() {
+    if home_manager_cli_available; then
+        home-manager "$@"
+        return $?
+    fi
+
+    if ! command -v nix >/dev/null 2>&1; then
+        return 127
+    fi
+
+    local hm_pkg_ref
+    hm_pkg_ref=$(get_home_manager_package_ref)
+    if [[ -z "$hm_pkg_ref" ]]; then
+        return 1
+    fi
+
+    log DEBUG "home-manager CLI not installed; falling back to nix run ${hm_pkg_ref}"
+    nix run --accept-flake-config "$hm_pkg_ref" -- "$@"
+}
+
+get_home_manager_generation_line() {
+    local hm_output
+    if hm_output=$(run_home_manager_cli generations 2>/dev/null); then
+        echo "$hm_output" | head -1
+        return 0
+    fi
+    return 1
+}
+
+get_home_manager_generation_path() {
+    local generation_line
+    if ! generation_line=$(get_home_manager_generation_line); then
+        return 1
+    fi
+
+    local generation_path
+    generation_path=$(awk '{print $NF}' <<<"$generation_line" 2>/dev/null)
+
+    if [[ -n "$generation_path" ]]; then
+        echo "$generation_path"
+        return 0
+    fi
+
+    return 1
+}

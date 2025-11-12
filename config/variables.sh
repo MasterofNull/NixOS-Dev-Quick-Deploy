@@ -227,6 +227,7 @@ declare -ag FLATPAK_PROFILE_CORE_APPS=(
     "org.mozilla.firefox"
     "md.obsidian.Obsidian"
     "io.podman_desktop.PodmanDesktop"
+    "org.prismlauncher.PrismLauncher"
     "org.sqlitebrowser.sqlitebrowser"
 )
 
@@ -258,6 +259,35 @@ declare -Ag FLATPAK_PROFILE_APPSETS=(
     [ai_workstation]="FLATPAK_PROFILE_AI_WORKSTATION_APPS"
     [minimal]="FLATPAK_PROFILE_MINIMAL_APPS"
 )
+
+declare -ag FLATPAK_ARCH_PRUNED_APPS=()
+
+_remove_flatpak_app() {
+    local array_name="$1"
+    local target="$2"
+    local -n arr_ref="$array_name"
+    local -a filtered=()
+    local item
+    for item in "${arr_ref[@]}"; do
+        if [[ "$item" != "$target" ]]; then
+            filtered+=("$item")
+        fi
+    done
+    arr_ref=("${filtered[@]}")
+}
+
+prune_arch_incompatible_flatpaks() {
+    local arch="${SYSTEM_ARCH:-$(uname -m)}"
+    case "$arch" in
+        aarch64|arm64)
+            local incompatible_app="io.github.Qalculate.Qalculate"
+            _remove_flatpak_app FLATPAK_PROFILE_AI_WORKSTATION_APPS "$incompatible_app"
+            FLATPAK_ARCH_PRUNED_APPS+=("$incompatible_app")
+            ;;
+    esac
+}
+
+prune_arch_incompatible_flatpaks
 
 declare -ag FLATPAK_VSCODIUM_CONFLICT_IDS=(
     "com.visualstudio.code"
@@ -452,7 +482,7 @@ if [[ -z "${PODMAN_STORAGE_COMMENT:-}" ]]; then
     PODMAN_STORAGE_COMMENT="Using ${PODMAN_STORAGE_DRIVER:-$DEFAULT_PODMAN_STORAGE_DRIVER} driver on detected filesystem."
 fi
 
-ENABLE_GAMING_STACK="${ENABLE_GAMING_STACK:-false}"
+ENABLE_GAMING_STACK="${ENABLE_GAMING_STACK:-true}"
 AUTO_APPLY_SYSTEM_CONFIGURATION="${AUTO_APPLY_SYSTEM_CONFIGURATION:-true}"
 AUTO_APPLY_HOME_CONFIGURATION="${AUTO_APPLY_HOME_CONFIGURATION:-true}"
 PROMPT_BEFORE_SYSTEM_SWITCH="${PROMPT_BEFORE_SYSTEM_SWITCH:-false}"
