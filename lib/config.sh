@@ -1906,11 +1906,11 @@ generate_nixos_system_config() {
 
     if [[ -n "$mangohud_profile_candidate" ]]; then
         case "$mangohud_profile_candidate" in
-            disabled|light|full)
+            disabled|light|full|desktop|desktop-hybrid)
                 mangohud_profile="$mangohud_profile_candidate"
                 ;;
             *)
-                print_warning "Unsupported MangoHud profile '$mangohud_profile_candidate'; expected disabled, light, or full. Using default profile '$mangohud_profile'."
+                print_warning "Unsupported MangoHud profile '$mangohud_profile_candidate'; expected disabled, light, full, desktop, or desktop-hybrid. Using default profile '$mangohud_profile'."
                 ;;
         esac
     fi
@@ -1957,6 +1957,52 @@ generate_nixos_system_config() {
       "vulkan_driver"
       "wine"
     ];
+    desktop = [
+      "control=mangohud"
+      "legacy_layout=0"
+      "horizontal"
+      "background_alpha=0"
+      "alpha=0.9"
+      "font_scale=1.1"
+      "position=top-left"
+      "offset_x=32"
+      "offset_y=32"
+      "hud_no_margin=1"
+      "gpu_stats"
+      "gpu_power"
+      "gpu_temp"
+      "cpu_stats"
+      "cpu_temp"
+      "core_load"
+      "ram"
+      "vram"
+      "fps"
+      "fps_metrics=AVG,0.001"
+      "frametime"
+    ];
+    "desktop-hybrid" = [
+      "control=mangohud"
+      "legacy_layout=0"
+      "horizontal"
+      "background_alpha=0"
+      "alpha=0.9"
+      "font_scale=1.1"
+      "position=top-left"
+      "offset_x=32"
+      "offset_y=32"
+      "hud_no_margin=1"
+      "gpu_stats"
+      "gpu_power"
+      "gpu_temp"
+      "cpu_stats"
+      "cpu_temp"
+      "core_load"
+      "ram"
+      "vram"
+      "fps"
+      "fps_metrics=AVG,0.001"
+      "frametime"
+    ];
   };
   glfMangoHudProfile = "${mangohud_profile}";
   glfMangoHudEntries = glfMangoHudPresets.\${glfMangoHudProfile};
@@ -1966,11 +2012,37 @@ generate_nixos_system_config() {
       ""
     else
       lib.concatStringsSep "\n" glfMangoHudEntries + "\n";
+  glfMangoHudDesktopMode =
+    glfMangoHudProfile == "desktop" || glfMangoHudProfile == "desktop-hybrid";
+  glfMangoHudInjectsIntoApps =
+    glfMangoHudConfig != "" && glfMangoHudProfile != "desktop";
 EOF
 )
 
+    local mangohud_desktop_window_mode=false
+    local mangohud_injects_into_apps=true
+    case "$mangohud_profile" in
+        disabled)
+            mangohud_injects_into_apps=false
+            ;;
+        desktop)
+            mangohud_desktop_window_mode=true
+            mangohud_injects_into_apps=false
+            ;;
+        desktop-hybrid)
+            mangohud_desktop_window_mode=true
+            ;;
+    esac
+
     if [[ "$gaming_stack_enabled" == true ]]; then
         print_info "Applying MangoHud overlay profile: $mangohud_profile (${mangohud_profile_origin})"
+        if [[ "$mangohud_desktop_window_mode" == true ]]; then
+            if [[ "$mangohud_injects_into_apps" == true ]]; then
+                print_info "Desktop overlay window will auto-start while MangoHud continues to inject into supported applications."
+            else
+                print_info "Desktop-only overlay mode enabled: MangoHud stays in mangoapp and skips injection into normal applications."
+            fi
+        fi
 
         glf_os_definitions=$(cat <<EOF
 ${mangohud_definition}
@@ -1990,7 +2062,7 @@ ${mangohud_definition}
       [ pkgs.linuxKernel.packages.linux_6_17.hid-tmff2 ];
   glfSteamPackage = pkgs.steam.override {
     extraEnv = {
-      MANGOHUD = if glfMangoHudConfig != "" then "1" else "0";
+      MANGOHUD = if glfMangoHudInjectsIntoApps then "1" else "0";
       OBS_VKCAPTURE = "1";
     };
   };
@@ -2016,6 +2088,13 @@ EOF
 )
     else
         print_info "Gaming stack disabled; MangoHud profile set to $mangohud_profile (${mangohud_profile_origin})."
+        if [[ "$mangohud_desktop_window_mode" == true ]]; then
+            if [[ "$mangohud_injects_into_apps" == true ]]; then
+                print_info "Desktop overlay window will auto-start while MangoHud continues to inject into supported applications."
+            else
+                print_info "Desktop-only overlay mode enabled: MangoHud stays in mangoapp and skips injection into normal applications."
+            fi
+        fi
 
         glf_os_definitions=$(cat <<EOF
 ${mangohud_definition}
@@ -2991,6 +3070,52 @@ create_home_manager_config() {
       "vulkan_driver"
       "wine"
     ];
+    desktop = [
+      "control=mangohud"
+      "legacy_layout=0"
+      "horizontal"
+      "background_alpha=0"
+      "alpha=0.9"
+      "font_scale=1.1"
+      "position=top-left"
+      "offset_x=32"
+      "offset_y=32"
+      "hud_no_margin=1"
+      "gpu_stats"
+      "gpu_power"
+      "gpu_temp"
+      "cpu_stats"
+      "cpu_temp"
+      "core_load"
+      "ram"
+      "vram"
+      "fps"
+      "fps_metrics=AVG,0.001"
+      "frametime"
+    ];
+    "desktop-hybrid" = [
+      "control=mangohud"
+      "legacy_layout=0"
+      "horizontal"
+      "background_alpha=0"
+      "alpha=0.9"
+      "font_scale=1.1"
+      "position=top-left"
+      "offset_x=32"
+      "offset_y=32"
+      "hud_no_margin=1"
+      "gpu_stats"
+      "gpu_power"
+      "gpu_temp"
+      "cpu_stats"
+      "cpu_temp"
+      "core_load"
+      "ram"
+      "vram"
+      "fps"
+      "fps_metrics=AVG,0.001"
+      "frametime"
+    ];
   };
   glfMangoHudProfile = "${mangohud_profile}";
   glfMangoHudEntries = glfMangoHudPresets.\${glfMangoHudProfile};
@@ -3000,6 +3125,10 @@ create_home_manager_config() {
       ""
     else
       lib.concatStringsSep "\n" glfMangoHudEntries + "\n";
+  glfMangoHudDesktopMode =
+    glfMangoHudProfile == "desktop" || glfMangoHudProfile == "desktop-hybrid";
+  glfMangoHudInjectsIntoApps =
+    glfMangoHudConfig != "" && glfMangoHudProfile != "desktop";
   glfLutrisWithGtk = pkgs.lutris.override { extraLibraries = p: [ p.libadwaita p.gtk4 ]; };
   glfGamingPackages =
     [ glfLutrisWithGtk ]
@@ -3014,7 +3143,7 @@ create_home_manager_config() {
     ++ lib.optionals (pkgs ? winetricks) [ pkgs.winetricks ];
   glfSteamPackage = pkgs.steam.override {
     extraEnv = {
-      MANGOHUD = if glfMangoHudConfig != "" then "1" else "0";
+      MANGOHUD = if glfMangoHudInjectsIntoApps then "1" else "0";
       OBS_VKCAPTURE = "1";
     };
   };
