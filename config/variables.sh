@@ -426,6 +426,8 @@ GITEA_ENABLE="true"
 # Other Application Directories
 HUGGINGFACE_CONFIG_DIR="$PRIMARY_HOME/.config/huggingface"
 HUGGINGFACE_CACHE_DIR="$PRIMARY_HOME/.cache/huggingface"
+HUGGINGFACE_TGI_SECRET_DIR="/var/lib/nixos-quick-deploy/secrets"
+HUGGINGFACE_TGI_ENV_FILE="$HUGGINGFACE_TGI_SECRET_DIR/huggingface-tgi.env"
 OPEN_WEBUI_DATA_DIR="$PRIMARY_HOME/.local/share/open-webui"
 AIDER_CONFIG_DIR="$PRIMARY_HOME/.config/aider"
 TEA_CONFIG_DIR="$PRIMARY_HOME/.config/tea"
