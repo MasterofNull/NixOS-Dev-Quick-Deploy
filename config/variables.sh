@@ -260,6 +260,35 @@ declare -Ag FLATPAK_PROFILE_APPSETS=(
     [minimal]="FLATPAK_PROFILE_MINIMAL_APPS"
 )
 
+declare -ag FLATPAK_ARCH_PRUNED_APPS=()
+
+_remove_flatpak_app() {
+    local array_name="$1"
+    local target="$2"
+    local -n arr_ref="$array_name"
+    local -a filtered=()
+    local item
+    for item in "${arr_ref[@]}"; do
+        if [[ "$item" != "$target" ]]; then
+            filtered+=("$item")
+        fi
+    done
+    arr_ref=("${filtered[@]}")
+}
+
+prune_arch_incompatible_flatpaks() {
+    local arch="${SYSTEM_ARCH:-$(uname -m)}"
+    case "$arch" in
+        aarch64|arm64)
+            local incompatible_app="io.github.Qalculate.Qalculate"
+            _remove_flatpak_app FLATPAK_PROFILE_AI_WORKSTATION_APPS "$incompatible_app"
+            FLATPAK_ARCH_PRUNED_APPS+=("$incompatible_app")
+            ;;
+    esac
+}
+
+prune_arch_incompatible_flatpaks
+
 declare -ag FLATPAK_VSCODIUM_CONFLICT_IDS=(
     "com.visualstudio.code"
     "com.visualstudio.code.insiders"

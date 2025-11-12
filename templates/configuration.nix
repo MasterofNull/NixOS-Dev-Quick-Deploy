@@ -152,18 +152,6 @@ in
 {
   imports = [ ./hardware-configuration.nix ];
 
-  nixpkgs.overlays = lib.mkAfter (import ./overlays.nix);
-
-  # Ensure CLI tooling sees the same overlays declared via nixpkgs.overlays.
-  # See https://wiki.nixos.org/wiki/Overlays for the compatibility overlay pattern.
-  nix.nixPath = lib.mkAfter [
-    "nixpkgs-overlays=/etc/nixos/overlays-compat"
-  ];
-
-  # Provide overlay files for nix tooling outside of flakes.
-  environment.etc."nixos/overlays.nix".source = ./overlays.nix;
-  environment.etc."nixos/overlays-compat/default.nix".source = ./overlays.nix;
-
   # ============================================================================
   # Boot Configuration (Modern EFI)
   # ============================================================================
@@ -175,14 +163,14 @@ in
       timeout = lib.mkDefault 3;
     };
 
-    # Always track the newest upstream kernel to keep GPU drivers, ZFS, and firmware current.
+    # Prefer the tuned 6.17 series first, then fall back to other low-latency kernels or latest upstream.
     kernelPackages = lib.mkDefault (
-      if pkgs ? linuxPackages_latest then pkgs.linuxPackages_latest
-      else if pkgs ? linuxPackages_6_17 then pkgs.linuxPackages_6_17
+      if pkgs ? linuxPackages_6_17 then pkgs.linuxPackages_6_17
       else if pkgs ? linuxPackages_tkg then pkgs.linuxPackages_tkg
       else if pkgs ? linuxPackages_xanmod then pkgs.linuxPackages_xanmod
       else if pkgs ? linuxPackages_lqx then pkgs.linuxPackages_lqx
       else if pkgs ? linuxPackages_zen then pkgs.linuxPackages_zen
+      else if pkgs ? linuxPackages_latest then pkgs.linuxPackages_latest
       else pkgs.linuxPackages
     );
 
@@ -863,8 +851,6 @@ in
     # Required for cosmic-clipboard to work with wl-clipboard
     COSMIC_DATA_CONTROL_ENABLED = "1";
     STEAM_EXTRA_COMPAT_TOOLS_PATHS = "$HOME/.steam/root/compatibilitytools.d";
-    MANGOHUD = if glfMangoHudConfig != "" then "1" else "0";
-    MANGOHUD_CONFIG = glfMangoHudConfig;
     @GPU_SESSION_VARIABLES@
   };
 

@@ -160,6 +160,102 @@ register_remote_builder_spec() {
     fi
 }
 
+# Remove transient Podman/overlay fileSystems entries from a generated
+# hardware-configuration.nix so nixos-rebuild does not try to mount ephemeral
+# runtime paths (which breaks local-fs.target).
+sanitize_hardware_configuration() {
+    local config_file="${1:-${HARDWARE_CONFIG_FILE:-}}"
+
+    if [[ -z "$config_file" || ! -f "$config_file" ]]; then
+        return 0
+    fi
+
+    local -a removed_mounts=()
+    if ! mapfile -t removed_mounts < <(
+        python3 - "$config_file" <<'PY'
+import pathlib
+import sys
+
+config_path = pathlib.Path(sys.argv[1])
+text = config_path.read_text(encoding="utf-8")
+lines = text.splitlines()
+endswith_newline = text.endswith("\n")
+
+prefixes = (
+    "/var/lib/containers/storage/overlay",
+    "/var/lib/containers/storage/overlay-containers",
+)
+
+result = []
+removed = []
+i = 0
+total = len(lines)
+
+while i < total:
+    line = lines[i]
+    stripped = line.lstrip()
+    if stripped.startswith('fileSystems."'):
+        try:
+            mount = stripped.split('fileSystems."', 1)[1].split('"', 1)[0]
+        except IndexError:
+            result.append(line)
+            i += 1
+            continue
+
+        block = [line]
+        i += 1
+        while i < total:
+            block.append(lines[i])
+            if lines[i].strip() == '};':
+                i += 1
+                break
+            i += 1
+        else:
+            # Unbalanced block; keep original text to avoid corruption.
+            result.extend(block)
+            continue
+
+        should_drop = any(
+            mount == prefix or mount.startswith(f"{prefix}/")
+            for prefix in prefixes
+        )
+
+        if should_drop:
+            removed.append(mount)
+            continue
+
+        result.extend(block)
+        continue
+
+    result.append(line)
+    i += 1
+
+new_text = "\n".join(result)
+if endswith_newline and (new_text or not result):
+    new_text += "\n"
+
+if new_text != text:
+    config_path.write_text(new_text, encoding="utf-8")
+
+for mount in removed:
+    print(mount)
+PY
+    ); then
+        print_warning "Failed to sanitize hardware-configuration.nix; rerun Phase 3 before switching."
+        return 1
+    fi
+
+    if (( ${#removed_mounts[@]} > 0 )); then
+        print_info "Removed transient container mounts from $(basename "$config_file"):"
+        local mount_point
+        for mount_point in "${removed_mounts[@]}"; do
+            print_info "  - $mount_point"
+        done
+    fi
+
+    return 0
+}
+
 # ==========================================================================
 # Podman rootless storage helper
 # ==========================================================================
@@ -250,6 +346,11 @@ build_rootless_podman_storage_block() {
     comment=${comment//$'\n'/ }
     comment=${comment//\'/}
 
+    local rootless_storage_options_block=""
+    if [[ "$driver_choice" == "vfs" ]]; then
+        rootless_storage_options_block=$'    storage.options = {\n      ignore_chown_errors = "true";\n    };\n'
+    fi
+
     PODMAN_ROOTLESS_STORAGE_BLOCK=$(cat <<EOF
   # ==========================================================================
   # Rootless Podman storage (per-user override)
@@ -273,17 +374,16 @@ build_rootless_podman_storage_block() {
           if hmUid != null then hmUid
           else if osUserUid != null then osUserUid
           else if accountUid != null then accountUid
-          else 1000;
+      else 1000;
       in toString resolvedUid}/containers";
       graphroot = "\${config.home.homeDirectory}/.local/share/containers/storage";
     };
 
-    storage.options = {
-      ignore_chown_errors = "true";
-    };
+__ROOTLESS_STORAGE_OPTIONS__
   };
 EOF
 )
+    PODMAN_ROOTLESS_STORAGE_BLOCK=${PODMAN_ROOTLESS_STORAGE_BLOCK//__ROOTLESS_STORAGE_OPTIONS__/$rootless_storage_options_block}
 }
 
 probe_performance_kernel_availability() {
@@ -1594,7 +1694,7 @@ generate_nixos_system_config() {
     fi
 
     local support_module
-    for support_module in overlays.nix python-overrides.nix; do
+    for support_module in python-overrides.nix; do
         local module_source="$TEMPLATE_DIR/$support_module"
         local module_destination="$HM_CONFIG_DIR/$support_module"
 
@@ -1637,6 +1737,7 @@ generate_nixos_system_config() {
     fi
 
     local -a performance_kernel_preference=(
+        "linuxPackages_6_17"
         "linuxPackages_tkg"
         "linuxPackages_xanmod"
         "linuxPackages_lqx"
@@ -1653,7 +1754,7 @@ generate_nixos_system_config() {
 
     local available_performance_kernels=""
     if command -v nix >/dev/null 2>&1; then
-        available_performance_kernels=$(probe_performance_kernel_availability "${performance_kernel_preference[@]:0:4}")
+        available_performance_kernels=$(probe_performance_kernel_availability "${performance_kernel_preference[@]}")
         if [[ -n "$available_performance_kernels" ]]; then
             available_performance_kernels=${available_performance_kernels//$'\n'/', '}
             print_success "Performance kernels available in current channel: ${available_performance_kernels}"
@@ -1684,15 +1785,39 @@ generate_nixos_system_config() {
         amd) cpu_vendor_label="AMD" ;;
     esac
 
-    local initrd_kernel_modules="# initrd.kernelModules handled by hardware-configuration.nix"
+    local -a initrd_kernel_modules_entries=()
     case "${CPU_VENDOR:-}" in
         intel)
-            initrd_kernel_modules='initrd.kernelModules = [ "i915" ];  # Intel GPU early KMS'
+            initrd_kernel_modules_entries+=(
+                "      # Intel GPU early KMS"
+                '      "i915"'
+            )
             ;;
         amd)
-            initrd_kernel_modules='initrd.kernelModules = [ "amdgpu" ];  # AMD GPU early KMS'
+            initrd_kernel_modules_entries+=(
+                "      # AMD GPU early KMS"
+                '      "amdgpu"'
+            )
             ;;
     esac
+
+    if [[ "${enable_zswap,,}" == "true" && "${zswap_zpool}" != "zsmalloc" ]]; then
+        initrd_kernel_modules_entries+=(
+            "      # Zswap allocator required before kernel selects a zpool"
+            "      \"${zswap_zpool}\""
+        )
+        print_info "Preloading ${zswap_zpool} in initrd so zswap can initialize with the requested zpool."
+    fi
+
+    local initrd_kernel_modules
+    if ((${#initrd_kernel_modules_entries[@]} > 0)); then
+        local initrd_lines
+        printf -v initrd_lines '%s\n' "${initrd_kernel_modules_entries[@]}"
+        initrd_lines=${initrd_lines%$'\n'}
+        initrd_kernel_modules=$'    initrd.kernelModules = [\n'"${initrd_lines}"$'\n    ];'
+    else
+        initrd_kernel_modules="    # initrd.kernelModules handled by hardware-configuration.nix"
+    fi
 
     local microcode_section="# hardware.cpu microcode updates managed automatically"
     if [[ -n "${CPU_MICROCODE:-}" && "${CPU_VENDOR:-unknown}" != "unknown" ]]; then
@@ -1921,13 +2046,10 @@ EOF
     podman_storage_comment=${podman_storage_comment//$'\n'/ }
     podman_storage_comment=${podman_storage_comment//\'/}
 
-    local storage_options_block
-    storage_options_block=$(cat <<'EOF'
-    storage.options = {
-      ignore_chown_errors = "true";
-    };
-EOF
-)
+    local storage_options_block=""
+    if [[ "$podman_storage_driver" == "vfs" ]]; then
+        storage_options_block=$'    storage.options = {\n      ignore_chown_errors = "true";\n    };\n'
+    fi
 
     local podman_storage_block
     podman_storage_block=$(cat <<'EOF'
@@ -2893,6 +3015,9 @@ materialize_hardware_configuration() {
 
     # Check if already exists
     if [[ -f "$HARDWARE_CONFIG" ]]; then
+        if ! sanitize_hardware_configuration "$HARDWARE_CONFIG"; then
+            return 1
+        fi
         print_success "Hardware configuration already exists"
         return 0
     fi
@@ -2903,6 +3028,10 @@ materialize_hardware_configuration() {
 
     if sudo nixos-generate-config --dir "$TEMP_DIR" --show-hardware-config > "$HARDWARE_CONFIG" 2>/dev/null; then
         safe_chown_user_dir "$HARDWARE_CONFIG"
+        if ! sanitize_hardware_configuration "$HARDWARE_CONFIG"; then
+            rm -rf "$TEMP_DIR"
+            return 1
+        fi
         print_success "Generated hardware-configuration.nix"
         rm -rf "$TEMP_DIR"
         return 0
