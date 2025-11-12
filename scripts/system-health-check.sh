@@ -623,6 +623,28 @@ normalize_channel_basename() {
     echo "$raw"
 }
 
+nix_channel_supports_profile_flag() {
+    if [[ -n "${NIX_CHANNEL_PROFILE_SUPPORT:-}" ]]; then
+        [[ "$NIX_CHANNEL_PROFILE_SUPPORT" == "yes" ]]
+        return
+    fi
+
+    local help_output=""
+    if ! help_output=$(nix-channel --help 2>&1); then
+        NIX_CHANNEL_PROFILE_SUPPORT="yes"
+        [[ "$NIX_CHANNEL_PROFILE_SUPPORT" == "yes" ]]
+        return
+    fi
+
+    if grep -q -- "--profile" <<<"$help_output"; then
+        NIX_CHANNEL_PROFILE_SUPPORT="yes"
+    else
+        NIX_CHANNEL_PROFILE_SUPPORT="no"
+    fi
+
+    [[ "$NIX_CHANNEL_PROFILE_SUPPORT" == "yes" ]]
+}
+
 check_nix_channel() {
     local profile=$1
     local alias=$2
@@ -633,6 +655,11 @@ check_nix_channel() {
 
     local list_output=""
     if [ -n "$profile" ]; then
+        if ! nix_channel_supports_profile_flag; then
+            print_success "$description (nix-channel lacks --profile flag; skipping system check)"
+            print_detail "Current nix-channel build does not expose --profile; run 'sudo nix-channel --list' manually if needed."
+            return 0
+        fi
         local channel_output=""
         if ! channel_output=$(nix-channel --list --profile "$profile" 2>&1); then
             if echo "$channel_output" | grep -qi "permission denied"; then

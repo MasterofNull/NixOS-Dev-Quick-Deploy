@@ -19,6 +19,19 @@ falls back to manual intervention when the automated run cannot proceed.
 - Phase 1 diagnostics print the detected driver and block if an overlay driver
   is forced through overrides.
 
+## Kernel user namespace prerequisites
+
+- Upstream kernels (including the stock NixOS builds) expose
+  `user.max_user_namespaces` instead of the Debian-specific
+  `kernel.unprivileged_userns_clone` toggle. Any positive value (the default is
+  usually `65536`) satisfies the diagnostics.
+- Debian and Ubuntu kernels ship the `kernel.unprivileged_userns_clone`
+  sysctl—set it to `1` via `sudo sysctl -w kernel.unprivileged_userns_clone=1`
+  or declaratively through NixOS.
+- When neither sysctl is present or they evaluate to `0`, the diagnostics halt
+  with remediation instructions because rootless Podman cannot start without
+  user namespaces.
+
 ## Cleaning legacy overlay directories
 
 If an older configuration left overlay layers behind, reset the stores once and

@@ -49,11 +49,15 @@ After deploying your NixOS system with `nixos-quick-deploy.sh`, complete these s
    git config --global user.email "you@example.com"
    ```
 
-2. **Configure Hugging Face** (optional, for model downloads)
+2. **Configure Hugging Face** (optional, required for gated models)
    ```bash
    # Get your token from https://huggingface.co/settings/tokens
-   mkdir -p ~/.config/huggingface
-   echo "YOUR_TOKEN_HERE" > ~/.config/huggingface/token
+   sudo install -o root -g root -m 700 -d /var/lib/nixos-quick-deploy/secrets
+   sudo tee /var/lib/nixos-quick-deploy/secrets/huggingface-tgi.env >/dev/null <<'EOF'
+HF_TOKEN=hf_your_token_here
+HUGGINGFACEHUB_API_TOKEN=hf_your_token_here
+EOF
+   sudo chmod 600 /var/lib/nixos-quick-deploy/secrets/huggingface-tgi.env
    ```
 
 3. **Verify Flatpak Setup** (optional)
@@ -68,7 +72,7 @@ After deploying your NixOS system with `nixos-quick-deploy.sh`, complete these s
    # Start Ollama (enabled by default)
    sudo systemctl status ollama
 
-   # Enable Hugging Face TGI (disabled by default)
+   # Enable Hugging Face TGI (after configuring the token file)
    sudo systemctl enable --now huggingface-tgi
 
    # Qdrant Vector DB (auto-starts; verify status or restart)
