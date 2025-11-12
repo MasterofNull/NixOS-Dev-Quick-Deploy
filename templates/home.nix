@@ -81,9 +81,9 @@ let
   # placeholders so the template remains evaluatable on its own.
   glfDefaultValues = {
     glfMangoHudPresets = {
-      disabled = "";
-      light = "";
-      full = "";
+      disabled = [ ];
+      light = [ ];
+      full = [ ];
     };
     glfMangoHudProfile = "disabled";
     glfMangoHudConfig = "";
@@ -2046,6 +2046,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       EDITOR = "DEFAULTEDITOR";
       VISUAL = "DEFAULTEDITOR";
       NIXPKGS_ALLOW_UNFREE = "1";
+      MANGOHUD = if glfMangoHudConfig != "" then "1" else "0";
       MANGOHUD_CONFIG = glfMangoHudConfig;
       MANGOHUD_CONFIGFILE = "${config.home.homeDirectory}/.config/MangoHud/MangoHud.conf";
       # NPM Configuration
@@ -2236,14 +2237,8 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
     # Hugging Face configuration and cache keepers
     ".config/MangoHud/.keep".text = "";
     ".config/MangoHud/MangoHud.conf".text =
-      let
-        mangoHudEntries =
-          lib.filter (entry: entry != "")
-            (lib.splitString "," glfMangoHudConfig);
-        mangoHudConfig = lib.concatStringsSep "\n" mangoHudEntries;
-      in
-      if mangoHudConfig != "" then
-        mangoHudConfig + "\n"
+      if glfMangoHudConfigFileContents != "" then
+        glfMangoHudConfigFileContents
       else
         "";
     ".config/huggingface/.keep".text = "";

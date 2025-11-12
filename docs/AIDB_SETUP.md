@@ -481,9 +481,13 @@ sudo systemctl status qdrant
 sudo systemctl restart qdrant
 
 # Enable and start Hugging Face TGI
-# Note: Set HF_TOKEN first for gated models
-sudo systemctl edit huggingface-tgi
-# Add: Environment="HF_TOKEN=your_token_here"
+# Note: configure /var/lib/nixos-quick-deploy/secrets/huggingface-tgi.env
+sudo install -o root -g root -m 700 -d /var/lib/nixos-quick-deploy/secrets
+sudo tee /var/lib/nixos-quick-deploy/secrets/huggingface-tgi.env >/dev/null <<'EOF'
+HF_TOKEN=hf_your_token_here
+HUGGINGFACEHUB_API_TOKEN=hf_your_token_here
+EOF
+sudo chmod 600 /var/lib/nixos-quick-deploy/secrets/huggingface-tgi.env
 sudo systemctl enable --now huggingface-tgi
 
 # Enable and start Jupyter Lab (user service)
@@ -501,6 +505,7 @@ systemctl --user enable --now jupyter-lab
 - Port: 8080
 - Model: meta-llama/Meta-Llama-3-8B-Instruct (default)
 - Cache: `~/.cache/huggingface`
+- Tokens: `/var/lib/nixos-quick-deploy/secrets/huggingface-tgi.env` (HF_TOKEN + HUGGINGFACEHUB_API_TOKEN)
 - API: http://localhost:8080/docs
 
 **Jupyter Lab:**
