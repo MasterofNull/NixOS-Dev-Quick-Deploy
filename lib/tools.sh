@@ -644,7 +644,10 @@ flatpak_install_app_list() {
             fi
 
             if run_as_primary_user flatpak info --user "$queue_app_id" >/dev/null 2>&1; then
-                print_info "  • $queue_app_id already present"
+                print_info "  • $queue_app_id already present (user scope)"
+                continue
+            elif run_as_primary_user flatpak info --system "$queue_app_id" >/dev/null 2>&1; then
+                print_info "  • $queue_app_id already present (system scope)"
                 continue
             fi
 
@@ -802,34 +805,59 @@ ensure_default_flatpak_apps_installed() {
     local -A installed_flatpak_index=()
 
     if flatpak_cli_available; then
-        local installed_listing=""
-        installed_listing=$(run_as_primary_user flatpak list --user --app --columns=application 2>/dev/null || true)
-        if [[ -n "$installed_listing" ]]; then
+        local scope
+        for scope in user system; do
+            local list_flags=("--app" "--columns=application")
+            if [[ "$scope" == "user" ]]; then
+                list_flags=("--user" "${list_flags[@]}")
+            else
+                list_flags=("--system" "${list_flags[@]}")
+            fi
+
+            local installed_listing=""
+            installed_listing=$(run_as_primary_user flatpak list "${list_flags[@]}" 2>/dev/null || true)
+            if [[ -z "$installed_listing" ]]; then
+                continue
+            fi
+
             while IFS= read -r line; do
                 line=${line//$'\r'/}
                 line=${line//$'\v'/}
                 line=${line//$'\f'/}
                 [[ -z "$line" ]] && continue
 
-                # Normalize header variations like "Application" or "Application ID"
                 case "$line" in
                     "Application"|$'Application ID'|$'Application\tID')
                         continue
                         ;;
                 esac
 
-                # Older Flatpak releases ignore --columns and emit multiple columns separated
-                # by whitespace. Always grab the first field so we match plain App IDs.
                 local app_id
                 IFS=$' \t' read -r app_id _ <<<"$line"
-
                 if [[ -z "$app_id" ]]; then
                     continue
                 fi
 
-                installed_flatpak_index["$app_id"]=1
+                local current="${installed_flatpak_index["$app_id"]:-}"
+                if [[ "$scope" == "user" ]]; then
+                    if [[ "$current" == "system" ]]; then
+                        installed_flatpak_index["$app_id"]="both"
+                    elif [[ -z "$current" ]]; then
+                        installed_flatpak_index["$app_id"]="user"
+                    else
+                        installed_flatpak_index["$app_id"]="$current"
+                    fi
+                else
+                    if [[ "$current" == "user" ]]; then
+                        installed_flatpak_index["$app_id"]="both"
+                    elif [[ -z "$current" ]]; then
+                        installed_flatpak_index["$app_id"]="system"
+                    else
+                        installed_flatpak_index["$app_id"]="$current"
+                    fi
+                fi
             done <<< "$installed_listing"
-        fi
+        done
     fi
 
     local detection_mode="list"
@@ -839,13 +867,23 @@ ensure_default_flatpak_apps_installed() {
 
     for app_id in "${DEFAULT_FLATPAK_APPS[@]}"; do
         if [[ "$detection_mode" == "list" ]]; then
-            if [[ -n "${installed_flatpak_index["$app_id"]:-}" ]]; then
-                print_info "  • $app_id already present"
+            local scope="${installed_flatpak_index["$app_id"]:-}"
+            if [[ -n "$scope" ]]; then
+                local scope_note=""
+                case "$scope" in
+                    user) scope_note=" (user scope)" ;;
+                    system) scope_note=" (system scope)" ;;
+                    both) scope_note=" (user + system scopes)" ;;
+                esac
+                print_info "  • $app_id already present${scope_note}"
                 continue
             fi
         else
             if run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
-                print_info "  • $app_id already present"
+                print_info "  • $app_id already present (user scope)"
+                continue
+            elif run_as_primary_user flatpak info --system "$app_id" >/dev/null 2>&1; then
+                print_info "  • $app_id already present (system scope)"
                 continue
             fi
         fi
@@ -2119,7 +2157,6 @@ install_vscodium_extensions() {
 
     local extensions=(
         "Anthropic.claude-code|Claude Code"
-        "OpenAI.codex-ide|Codex IDE"
         "jnoortheen.nix-ide|Nix IDE"
         "eamodio.gitlens|GitLens"
         "editorconfig.editorconfig|EditorConfig"
