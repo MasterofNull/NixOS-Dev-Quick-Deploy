@@ -51,7 +51,12 @@ replace_placeholder() {
         return 0
     fi
 
-    PLACEHOLDER_VALUE="$replacement" python3 - "$target_file" "$placeholder" <<'PY'
+    local python_runner="run_python"
+    if ! declare -F run_python >/dev/null 2>&1; then
+        python_runner="python3"
+    fi
+
+    PLACEHOLDER_VALUE="$replacement" "$python_runner" - "$target_file" "$placeholder" <<'PY'
 import pathlib
 import sys
 import os
@@ -65,6 +70,65 @@ text = text.replace(placeholder, value)
 target.write_text(text, encoding="utf-8")
 PY
 }
+
+# Resolve MangoHud profile preferences once so system/home configs stay in sync.
+resolve_mangohud_preferences() {
+    local gaming_stack_enabled_flag="${1:-false}"
+
+    local default_profile="disabled"
+    if [[ "$gaming_stack_enabled_flag" == true ]]; then
+        default_profile="desktop"
+    fi
+
+    local mangohud_profile="$default_profile"
+    local mangohud_profile_origin="defaults"
+    local mangohud_profile_candidate=""
+
+    if [[ -n "${MANGOHUD_PROFILE_OVERRIDE:-}" ]]; then
+        mangohud_profile_candidate="$MANGOHUD_PROFILE_OVERRIDE"
+        mangohud_profile_origin="environment override"
+    elif [[ -n "${MANGOHUD_PROFILE_PREFERENCE_FILE:-}" && -f "$MANGOHUD_PROFILE_PREFERENCE_FILE" ]]; then
+        mangohud_profile_candidate=$(awk -F'=' '/^MANGOHUD_PROFILE=/{print $2}' "$MANGOHUD_PROFILE_PREFERENCE_FILE" 2>/dev/null | tail -n1 | tr -d '\r')
+        mangohud_profile_origin="preference file"
+    fi
+
+    if [[ -n "$mangohud_profile_candidate" ]]; then
+        case "$mangohud_profile_candidate" in
+            disabled|light|full|desktop|desktop-hybrid)
+                mangohud_profile="$mangohud_profile_candidate"
+                ;;
+            *)
+                print_warning "Unsupported MangoHud profile '$mangohud_profile_candidate'; expected disabled, light, full, desktop, or desktop-hybrid. Using default profile '$mangohud_profile'."
+                ;;
+        esac
+    fi
+
+    local mangohud_desktop_window_mode=false
+    local mangohud_injects_into_apps=true
+    case "$mangohud_profile" in
+        disabled)
+            mangohud_injects_into_apps=false
+            ;;
+        desktop)
+            mangohud_desktop_window_mode=true
+            mangohud_injects_into_apps=false
+            ;;
+        desktop-hybrid)
+            mangohud_desktop_window_mode=true
+            ;;
+    esac
+
+    RESOLVED_MANGOHUD_PROFILE="$mangohud_profile"
+    RESOLVED_MANGOHUD_PROFILE_ORIGIN="$mangohud_profile_origin"
+    RESOLVED_MANGOHUD_DESKTOP_MODE="$mangohud_desktop_window_mode"
+    RESOLVED_MANGOHUD_INJECTS="$mangohud_injects_into_apps"
+}
+
+# Cache for resolved MangoHud state so subsequent steps can reuse it.
+RESOLVED_MANGOHUD_PROFILE=""
+RESOLVED_MANGOHUD_PROFILE_ORIGIN="defaults"
+RESOLVED_MANGOHUD_DESKTOP_MODE=false
+RESOLVED_MANGOHUD_INJECTS=true
 
 # Binary cache helpers keep runtime tooling and rendered configuration aligned.
 get_binary_cache_sources() {
@@ -1884,36 +1948,14 @@ generate_nixos_system_config() {
             ;;
     esac
 
-    local mangohud_profile_origin="defaults"
-    local mangohud_profile_candidate=""
-    local mangohud_profile
+    resolve_mangohud_preferences "$gaming_stack_enabled"
+
+    local mangohud_profile="$RESOLVED_MANGOHUD_PROFILE"
+    local mangohud_profile_origin="$RESOLVED_MANGOHUD_PROFILE_ORIGIN"
+    local mangohud_desktop_window_mode="$RESOLVED_MANGOHUD_DESKTOP_MODE"
+    local mangohud_injects_into_apps="$RESOLVED_MANGOHUD_INJECTS"
 
     local glf_os_definitions
-
-    if [[ "$gaming_stack_enabled" == true ]]; then
-        mangohud_profile="full"
-    else
-        mangohud_profile="disabled"
-    fi
-
-    if [[ -n "${MANGOHUD_PROFILE_OVERRIDE:-}" ]]; then
-        mangohud_profile_candidate="$MANGOHUD_PROFILE_OVERRIDE"
-        mangohud_profile_origin="environment override"
-    elif [[ -n "${MANGOHUD_PROFILE_PREFERENCE_FILE:-}" && -f "$MANGOHUD_PROFILE_PREFERENCE_FILE" ]]; then
-        mangohud_profile_candidate=$(awk -F'=' '/^MANGOHUD_PROFILE=/{print $2}' "$MANGOHUD_PROFILE_PREFERENCE_FILE" 2>/dev/null | tail -n1 | tr -d '\r')
-        mangohud_profile_origin="preference file"
-    fi
-
-    if [[ -n "$mangohud_profile_candidate" ]]; then
-        case "$mangohud_profile_candidate" in
-            disabled|light|full|desktop|desktop-hybrid)
-                mangohud_profile="$mangohud_profile_candidate"
-                ;;
-            *)
-                print_warning "Unsupported MangoHud profile '$mangohud_profile_candidate'; expected disabled, light, full, desktop, or desktop-hybrid. Using default profile '$mangohud_profile'."
-                ;;
-        esac
-    fi
 
     local mangohud_definition
     mangohud_definition=$(cat <<EOF
@@ -2019,21 +2061,6 @@ generate_nixos_system_config() {
 EOF
 )
 
-    local mangohud_desktop_window_mode=false
-    local mangohud_injects_into_apps=true
-    case "$mangohud_profile" in
-        disabled)
-            mangohud_injects_into_apps=false
-            ;;
-        desktop)
-            mangohud_desktop_window_mode=true
-            mangohud_injects_into_apps=false
-            ;;
-        desktop-hybrid)
-            mangohud_desktop_window_mode=true
-            ;;
-    esac
-
     if [[ "$gaming_stack_enabled" == true ]]; then
         print_info "Applying MangoHud overlay profile: $mangohud_profile (${mangohud_profile_origin})"
         if [[ "$mangohud_desktop_window_mode" == true ]]; then
@@ -2046,9 +2073,13 @@ EOF
 
         glf_os_definitions=$(cat <<EOF
 ${mangohud_definition}
-  glfLutrisWithGtk = pkgs.lutris.override { extraLibraries = p: [ p.libadwaita p.gtk4 ]; };
+  glfLutrisWithGtk =
+    if pkgs ? lutris then
+      pkgs.lutris.override { extraLibraries = p: [ p.libadwaita p.gtk4 ]; }
+    else
+      null;
   glfGamingPackages =
-    [ glfLutrisWithGtk ]
+    lib.optionals (glfLutrisWithGtk != null) [ glfLutrisWithGtk ]
     ++ lib.optionals (pkgs ? heroic) [ pkgs.heroic ]
     ++ lib.optionals (pkgs ? joystickwake) [ pkgs.joystickwake ]
     ++ lib.optionals (pkgs ? mangohud) [ pkgs.mangohud ]
@@ -2060,12 +2091,16 @@ ${mangohud_definition}
     ++ lib.optionals (pkgs ? winetricks) [ pkgs.winetricks ]
     ++ lib.optionals (lib.hasAttr "linux_6_17" pkgs.linuxKernel.packages)
       [ pkgs.linuxKernel.packages.linux_6_17.hid-tmff2 ];
-  glfSteamPackage = pkgs.steam.override {
-    extraEnv = {
-      MANGOHUD = if glfMangoHudInjectsIntoApps then "1" else "0";
-      OBS_VKCAPTURE = "1";
-    };
-  };
+  glfSteamPackage =
+    if pkgs ? steam then
+      pkgs.steam.override {
+        extraEnv = {
+          MANGOHUD = if glfMangoHudInjectsIntoApps then "1" else "0";
+          OBS_VKCAPTURE = "1";
+        };
+      }
+    else
+      null;
   glfSteamCompatPackages =
     lib.optionals (pkgs ? proton-ge-bin) [ pkgs.proton-ge-bin ];
   glfSystemUtilities =
@@ -2142,7 +2177,7 @@ EOF
     capSysNice = true;
   };
 
-  programs.steam = {
+  programs.steam = lib.mkIf (glfSteamPackage != null) {
     enable = true;
     gamescopeSession.enable = true;
     package = glfSteamPackage;
@@ -2176,6 +2211,50 @@ EOF
   # Gaming stack disabled via ENABLE_GAMING_STACK; gamemode, gamescope, steam, and zram overrides are omitted.
 EOF
 )
+    fi
+
+    local lact_service_block=""
+    local enable_lact_value
+    enable_lact_value=$(printf '%s' "${ENABLE_LACT:-auto}" | tr '[:upper:]' '[:lower:]')
+    local lact_should_enable="false"
+
+    case "$enable_lact_value" in
+        true|1|yes|on)
+            lact_should_enable="true"
+            ;;
+        auto)
+            case "${GPU_TYPE:-unknown}" in
+                nvidia|amd|intel)
+                    lact_should_enable="true"
+                    ;;
+            esac
+            ;;
+        *)
+            lact_should_enable="false"
+            ;;
+    esac
+
+    if [[ "$lact_should_enable" == "true" ]]; then
+        lact_service_block=$(cat <<'EOF'
+  services.lact = {
+    enable = true;
+  };
+EOF
+)
+    fi
+
+    local selected_flatpak_profile="${SELECTED_FLATPAK_PROFILE:-${DEFAULT_FLATPAK_PROFILE:-core}}"
+    local flatpak_packages_block=""
+    if (( ${#DEFAULT_FLATPAK_APPS[@]} > 0 )); then
+        flatpak_packages_block=$'  # Flatpak applications managed by profile: '"${selected_flatpak_profile}"$'\n'
+        flatpak_packages_block+=$'  flathubPackages = [\n'
+        local flatpak_app_id
+        for flatpak_app_id in "${DEFAULT_FLATPAK_APPS[@]}"; do
+            flatpak_packages_block+=$'    '"\"${flatpak_app_id}\""$'\n'
+        done
+        flatpak_packages_block+=$'  ];\n'
+    else
+        flatpak_packages_block=$'  # Selected Flatpak profile does not provision GUI applications.\n  flathubPackages = [];\n'
     fi
 
     local default_podman_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-vfs}"
@@ -2789,6 +2868,8 @@ EOF
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GPU_DRIVER_PACKAGES@" "$gpu_driver_packages_block"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GLF_OS_DEFINITIONS@" "$glf_os_definitions"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GLF_GAMING_STACK_SECTION@" "$glf_gaming_stack_section"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@FLATPAK_MANAGED_PACKAGES@" "$flatpak_packages_block"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@LACT_SERVICE_BLOCK@" "$lact_service_block"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@PODMAN_STORAGE_BLOCK@" "$podman_storage_block"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@SELECTED_TIMEZONE@" "$TIMEZONE"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@CURRENT_LOCALE@" "$LOCALE"
@@ -3020,6 +3101,23 @@ create_home_manager_config() {
     local TEMPLATE_HASH=$(echo -n "AIDB-v4.0-packages-v${SCRIPT_VERSION:-4.0.0}" | sha256sum | cut -d' ' -f1 | cut -c1-16)
     local DEFAULT_EDITOR="${DEFAULT_EDITOR:-nano}"
 
+    local enable_gaming_value
+    enable_gaming_value=$(printf '%s' "${ENABLE_GAMING_STACK:-true}" | tr '[:upper:]' '[:lower:]')
+    local gaming_stack_enabled=false
+    case "$enable_gaming_value" in
+        true|1|yes|on)
+            gaming_stack_enabled=true
+            ;;
+    esac
+
+    local gaming_stack_enabled_literal="false"
+    if [[ "$gaming_stack_enabled" == true ]]; then
+        gaming_stack_enabled_literal="true"
+    fi
+
+    resolve_mangohud_preferences "$gaming_stack_enabled"
+    local mangohud_profile="$RESOLVED_MANGOHUD_PROFILE"
+
     # GPU monitoring packages
     local GPU_MONITORING_PACKAGES="[]"
     if [[ "$GPU_TYPE" == "amd" ]]; then
@@ -3129,44 +3227,81 @@ create_home_manager_config() {
     glfMangoHudProfile == "desktop" || glfMangoHudProfile == "desktop-hybrid";
   glfMangoHudInjectsIntoApps =
     glfMangoHudConfig != "" && glfMangoHudProfile != "desktop";
-  glfLutrisWithGtk = pkgs.lutris.override { extraLibraries = p: [ p.libadwaita p.gtk4 ]; };
+  glfLutrisWithGtk =
+    if ${gaming_stack_enabled_literal} && pkgs ? lutris then
+      pkgs.lutris.override { extraLibraries = p: [ p.libadwaita p.gtk4 ]; }
+    else
+      null;
   glfGamingPackages =
-    [ glfLutrisWithGtk ]
-    ++ lib.optionals (pkgs ? heroic) [ pkgs.heroic ]
-    ++ lib.optionals (pkgs ? joystickwake) [ pkgs.joystickwake ]
-    ++ lib.optionals (pkgs ? mangohud) [ pkgs.mangohud ]
-    ++ lib.optionals (pkgs ? mesa-demos) [ pkgs.mesa-demos ]
-    ++ lib.optionals (pkgs ? oversteer) [ pkgs.oversteer ]
-    ++ lib.optionals (builtins.hasAttr "umu-launcher" pkgs) [ pkgs."umu-launcher" ]
-    ++ lib.optionals (pkgs ? wineWowPackages && pkgs.wineWowPackages ? staging)
-      [ pkgs.wineWowPackages.staging ]
-    ++ lib.optionals (pkgs ? winetricks) [ pkgs.winetricks ];
-  glfSteamPackage = pkgs.steam.override {
-    extraEnv = {
-      MANGOHUD = if glfMangoHudInjectsIntoApps then "1" else "0";
-      OBS_VKCAPTURE = "1";
-    };
-  };
+    if ${gaming_stack_enabled_literal} then
+      (
+        lib.optionals (glfLutrisWithGtk != null) [ glfLutrisWithGtk ]
+        ++ lib.optionals (pkgs ? heroic) [ pkgs.heroic ]
+        ++ lib.optionals (pkgs ? joystickwake) [ pkgs.joystickwake ]
+        ++ lib.optionals (pkgs ? mangohud) [ pkgs.mangohud ]
+        ++ lib.optionals (pkgs ? mesa-demos) [ pkgs.mesa-demos ]
+        ++ lib.optionals (pkgs ? oversteer) [ pkgs.oversteer ]
+        ++ lib.optionals (builtins.hasAttr "umu-launcher" pkgs) [ pkgs."umu-launcher" ]
+        ++ lib.optionals (pkgs ? wineWowPackages && pkgs.wineWowPackages ? staging)
+          [ pkgs.wineWowPackages.staging ]
+        ++ lib.optionals (pkgs ? winetricks) [ pkgs.winetricks ]
+      )
+    else
+      [];
+  glfSteamPackage =
+    if ${gaming_stack_enabled_literal} && pkgs ? steam then
+      pkgs.steam.override {
+        extraEnv = {
+          MANGOHUD = if glfMangoHudInjectsIntoApps then "1" else "0";
+          OBS_VKCAPTURE = "1";
+        };
+      }
+    else if pkgs ? steam then
+      pkgs.steam
+    else
+      null;
   glfSteamCompatPackages =
-    lib.optionals (pkgs ? proton-ge-bin) [ pkgs.proton-ge-bin ];
+    if ${gaming_stack_enabled_literal} then
+      lib.optionals (pkgs ? proton-ge-bin) [ pkgs.proton-ge-bin ]
+    else
+      [];
   glfSystemUtilities =
-    lib.optionals (pkgs ? exfatprogs) [ pkgs.exfatprogs ]
-    ++ lib.optionals (pkgs ? fastfetch) [ pkgs.fastfetch ]
-    ++ lib.optionals (pkgs ? ffmpeg) [ pkgs.ffmpeg ]
-    ++ lib.optionals (pkgs ? ffmpegthumbnailer) [ pkgs.ffmpegthumbnailer ]
-    ++ lib.optionals (pkgs ? libva-utils) [ pkgs.libva-utils ]
-    ++ lib.optionals (pkgs ? usbutils) [ pkgs.usbutils ]
-    ++ lib.optionals (pkgs ? hunspell) [ pkgs.hunspell ]
-    ++ lib.optionals (
-      pkgs ? hunspellDicts && builtins.hasAttr "fr-any" pkgs.hunspellDicts
-    ) [ pkgs.hunspellDicts.fr-any ]
-    ++ lib.optionals (pkgs ? hyphen) [ pkgs.hyphen ]
-    ++ lib.optionals (
-      pkgs ? texlivePackages
-      && builtins.hasAttr "hyphen-french" pkgs.texlivePackages
-    ) [ pkgs.texlivePackages.hyphen-french ];
+    if ${gaming_stack_enabled_literal} then
+      (
+        lib.optionals (pkgs ? exfatprogs) [ pkgs.exfatprogs ]
+        ++ lib.optionals (pkgs ? fastfetch) [ pkgs.fastfetch ]
+        ++ lib.optionals (pkgs ? ffmpeg) [ pkgs.ffmpeg ]
+        ++ lib.optionals (pkgs ? ffmpegthumbnailer) [ pkgs.ffmpegthumbnailer ]
+        ++ lib.optionals (pkgs ? libva-utils) [ pkgs.libva-utils ]
+        ++ lib.optionals (pkgs ? usbutils) [ pkgs.usbutils ]
+        ++ lib.optionals (pkgs ? hunspell) [ pkgs.hunspell ]
+        ++ lib.optionals (
+          pkgs ? hunspellDicts && builtins.hasAttr "fr-any" pkgs.hunspellDicts
+        ) [ pkgs.hunspellDicts.fr-any ]
+        ++ lib.optionals (pkgs ? hyphen) [ pkgs.hyphen ]
+        ++ lib.optionals (
+          pkgs ? texlivePackages
+          && builtins.hasAttr "hyphen-french" pkgs.texlivePackages
+        ) [ pkgs.texlivePackages.hyphen-french ]
+      )
+    else
+      lib.optionals (pkgs ? mangohud) [ pkgs.mangohud ];
 EOF
 )
+
+    local flatpak_packages_block=""
+    local selected_flatpak_profile="${SELECTED_FLATPAK_PROFILE:-${DEFAULT_FLATPAK_PROFILE:-core}}"
+    if (( ${#DEFAULT_FLATPAK_APPS[@]} > 0 )); then
+        flatpak_packages_block=$'  # Flatpak applications managed by profile: '"${selected_flatpak_profile}"$'\n'
+        flatpak_packages_block+=$'  flathubPackages = [\n'
+        local flatpak_app_id
+        for flatpak_app_id in "${DEFAULT_FLATPAK_APPS[@]}"; do
+            flatpak_packages_block+=$'    '"\"${flatpak_app_id}\""$'\n'
+        done
+        flatpak_packages_block+=$'  ];\n'
+    else
+        flatpak_packages_block=$'  # Selected Flatpak profile does not provision GUI applications.\n  flathubPackages = [];\n'
+    fi
 
     print_info "Customizing home.nix..."
 
@@ -3183,6 +3318,7 @@ EOF
     replace_placeholder "$HOME_MANAGER_FILE" "STATEVERSION_PLACEHOLDER" "$STATE_VERSION"
     replace_placeholder "$HOME_MANAGER_FILE" "@GPU_MONITORING_PACKAGES@" "$GPU_MONITORING_PACKAGES"
     replace_placeholder "$HOME_MANAGER_FILE" "@GLF_HOME_DEFINITIONS@" "$glf_home_definitions"
+    replace_placeholder "$HOME_MANAGER_FILE" "@FLATPAK_MANAGED_PACKAGES@" "$flatpak_packages_block"
     replace_placeholder "$HOME_MANAGER_FILE" "@PODMAN_ROOTLESS_STORAGE@" "${PODMAN_ROOTLESS_STORAGE_BLOCK:-}"
 
     local HOME_HOSTNAME=$(hostname)

@@ -843,6 +843,10 @@ print_post_install() {
     print_section "Deployment Report"
     echo ""
 
+    local report_host
+    report_host=$(hostname 2>/dev/null || echo "localhost")
+    local report_home_user="${PRIMARY_USER:-${USER:-$(id -un 2>/dev/null || echo user)}}"
+
     # ========================================================================
     # 1. NixOS Generation Information
     # ========================================================================
@@ -995,11 +999,11 @@ print_post_install() {
     echo ""
     echo "  3. Update system configurations:"
     echo "     Edit: $SYSTEM_CONFIG_FILE"
-    echo "     Apply: sudo nixos-rebuild switch --flake $HM_CONFIG_DIR"
+    echo "     Apply: sudo nixos-rebuild switch --flake $HM_CONFIG_DIR#$report_host"
     echo ""
     echo "  4. Update user configurations:"
     echo "     Edit: $HOME_MANAGER_FILE"
-    echo "     Apply: home-manager switch --flake $HM_CONFIG_DIR"
+    echo "     Apply: home-manager switch --flake $HM_CONFIG_DIR#$report_home_user"
     echo ""
     echo "  5. Update package versions:"
     echo "     cd $HM_CONFIG_DIR && nix flake update"

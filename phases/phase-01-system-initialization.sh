@@ -159,7 +159,7 @@ phase_01_system_initialization() {
     # How: Check for /etc/NIXOS file which exists only on NixOS
     if [[ ! -f /etc/NIXOS ]]; then
         print_error "This script must be run on NixOS"
-        exit 1
+        return 1
     fi
     print_success "Running on NixOS"
 
@@ -171,7 +171,7 @@ phase_01_system_initialization() {
     if [[ $EUID -eq 0 ]]; then
         print_error "This script should NOT be run as root"
         print_info "It will use sudo when needed for system operations"
-        exit 1
+        return 1
     fi
     print_success "Running with correct permissions (non-root)"
 
@@ -183,7 +183,7 @@ phase_01_system_initialization() {
     for cmd in "${critical_commands[@]}"; do
         if ! command -v "$cmd" &>/dev/null; then
             print_error "Critical command not found: $cmd"
-            exit 1
+            return 1
         fi
     done
     print_success "Critical NixOS commands available"
@@ -195,7 +195,7 @@ phase_01_system_initialization() {
     # builds, and multiple system generations
     if ! check_disk_space; then
         print_error "Insufficient disk space"
-        exit 1
+        return 1
     fi
 
     # ========================================================================
@@ -208,7 +208,7 @@ phase_01_system_initialization() {
     else
         print_error "No network connectivity detected"
         print_error "Internet connection required to download packages"
-        exit 1
+        return 1
     fi
 
     # ========================================================================
@@ -217,7 +217,7 @@ phase_01_system_initialization() {
     # Ensure no two config files try to use the same path
     if ! assert_unique_paths HOME_MANAGER_FILE SYSTEM_CONFIG_FILE HARDWARE_CONFIG_FILE; then
         print_error "Internal configuration path conflict detected"
-        exit 1
+        return 1
     fi
 
     # ========================================================================
@@ -238,7 +238,7 @@ phase_01_system_initialization() {
     print_info "Validating dependency chain..."
     check_required_packages || {
         print_error "Required packages not available"
-        exit 1
+        return 1
     }
 
     # ========================================================================
@@ -615,7 +615,7 @@ EOF
     # Phase 5 once declarative packages take over.
     if ! ensure_preflight_core_packages; then
         print_error "Failed to install core prerequisite packages"
-        exit 1
+        return 1
     fi
 
     # ========================================================================
@@ -625,7 +625,7 @@ EOF
     print_info "Verifying Python runtime..."
     if ! ensure_python_runtime; then
         print_error "Unable to locate or provision a python interpreter"
-        exit 1
+        return 1
     fi
 
     # Display Python runtime information
@@ -642,7 +642,7 @@ EOF
     echo ""
     if ! ensure_user_settings_ready --interactive; then
         print_error "Failed to collect user preferences and integrations"
-        exit 1
+        return 1
     fi
 
     export IMPERATIVE_INSTALLS_ALLOWED="$previous_imperative_flag"
