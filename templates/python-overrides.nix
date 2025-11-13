@@ -182,6 +182,11 @@ in
     pythonImportsCheck = [];
   });
 
+  moviepy = python-super.moviepy.overridePythonAttrs (_: {
+    doCheck = false;
+    pythonImportsCheck = [];
+  });
+
   "qdrant-client" = python-super."qdrant-client".overridePythonAttrs (_: {
     doCheck = false;
     pythonImportsCheck = [];

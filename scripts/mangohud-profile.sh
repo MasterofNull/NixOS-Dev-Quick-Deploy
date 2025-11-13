@@ -18,8 +18,17 @@ current_profile() {
         saved=$(awk -F'=' '/^MANGOHUD_PROFILE=/{print $2}' "$MANGOHUD_PROFILE_PREFERENCE_FILE" 2>/dev/null | tail -n1 | tr -d '\r')
     fi
 
+    local default_profile="disabled"
+    local enable_gaming_value
+    enable_gaming_value=$(printf '%s' "${ENABLE_GAMING_STACK:-true}" | tr '[:upper:]' '[:lower:]')
+    case "$enable_gaming_value" in
+        true|1|yes|on)
+            default_profile="desktop"
+            ;;
+    esac
+
     if [[ -z "$saved" ]]; then
-        saved="full"
+        saved="$default_profile"
     fi
 
     printf '%s' "$saved"

@@ -554,7 +554,7 @@ Then apply changes:
 
 ```bash
 cd ~/.dotfiles/home-manager
-home-manager switch --flake .
+home-manager switch --flake .#$(whoami)
 ```
 
 ---
@@ -596,7 +596,7 @@ Should show:
 
 # Or manually fix
 cd ~/.dotfiles/home-manager
-home-manager switch --flake .
+home-manager switch --flake .#$(whoami)
 
 # Reload shell
 exec zsh
