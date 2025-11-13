@@ -429,14 +429,14 @@ nfd          # nix develop
 
 ### Programming Languages
 
-#### **Python 3.11 (AI/ML Environment)**
+#### **Python 3.13 (AI/ML Environment)**
 Comprehensive Python environment for AI/ML development.
 
 - **Interpreter Path**: Available via `python3` or `pythonAiEnv`
 - **Included Libraries**: See [Python AI Environment](#python-ai-environment)
 - **Jupyter**: Integrated with VSCodium and standalone
 - **Links**:
-  - [Python Documentation](https://docs.python.org/3.11/)
+  - [Python Documentation](https://docs.python.org/3.13/)
   - [Python Package Index](https://pypi.org/)
 
 #### **Node.js 22**

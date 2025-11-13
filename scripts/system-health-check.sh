@@ -187,8 +187,11 @@ fix_home_manager() {
         print_detail "Found home-manager configuration at ~/.dotfiles/home-manager"
         cd "$HOME/.dotfiles/home-manager"
 
-        print_detail "Running: home-manager switch --flake ."
-        if home-manager switch --flake . 2>&1 | tee /tmp/hm-fix.log; then
+        local hm_target_user="${PRIMARY_USER:-${USER:-$(id -un 2>/dev/null || true)}}"
+        local hm_flake=".#${hm_target_user}"
+
+        print_detail "Running: home-manager switch --flake $hm_flake"
+        if home-manager switch --flake "$hm_flake" 2>&1 | tee /tmp/hm-fix.log; then
             print_success "Successfully applied home-manager configuration"
             fix_shell_environment
         else
@@ -212,10 +215,15 @@ ensure_npm_environment() {
     export NPM_CONFIG_PREFIX="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
     mkdir -p "$NPM_CONFIG_PREFIX/bin" "$NPM_CONFIG_PREFIX/lib" "$NPM_CONFIG_PREFIX/lib/node_modules"
 
-    if ! grep -q '^prefix=' "$HOME/.npmrc" 2>/dev/null; then
+    local npmrc="$HOME/.npmrc"
+    if [[ ! -f "$npmrc" ]]; then
         print_detail "Creating ~/.npmrc with correct prefix"
-        echo "prefix=$NPM_CONFIG_PREFIX" > "$HOME/.npmrc"
+        printf 'prefix=%s\n' "$NPM_CONFIG_PREFIX" > "$npmrc"
         print_success "Created ~/.npmrc"
+    elif ! grep -q '^[[:space:]]*prefix=' "$npmrc" 2>/dev/null; then
+        print_detail "Appending prefix to existing ~/.npmrc"
+        printf '\n# Added by system-health-check\nprefix=%s\n' "$NPM_CONFIG_PREFIX" >> "$npmrc"
+        print_success "Updated ~/.npmrc with prefix"
     fi
 }
 
@@ -496,8 +504,11 @@ fix_python_environment() {
     fi
 
     if command -v home-manager >/dev/null 2>&1 && [ -d "$HOME/.dotfiles/home-manager" ]; then
+        local hm_target_user="${PRIMARY_USER:-${USER:-$(id -un 2>/dev/null || true)}}"
+        local hm_python_target="$HOME/.dotfiles/home-manager#$hm_target_user"
         print_detail "Reapplying home-manager configuration to rebuild Python environment"
-        if home-manager switch --flake "$HOME/.dotfiles/home-manager" 2>&1 | tee /tmp/hm-python-fix.log; then
+        print_detail "Running: home-manager switch --flake $hm_python_target"
+        if home-manager switch --flake "$hm_python_target" 2>&1 | tee /tmp/hm-python-fix.log; then
             print_success "Reapplied home-manager configuration"
             detect_python_interpreter >/dev/null 2>&1 || true
 
@@ -1062,7 +1073,7 @@ run_all_checks() {
             print_detail "Not in PATH but accessible via Nix flakes"
         else
             print_warning "Home Manager not found"
-            print_detail "May need to run: home-manager switch --flake ~/.dotfiles/home-manager"
+            print_detail "May need to run: home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)"
             ((WARNING_CHECKS++))
             ((TOTAL_CHECKS++))
         fi
@@ -1459,7 +1470,7 @@ run_all_checks() {
                 echo "       exec zsh"
                 echo "     • If still missing, re-apply home-manager:"
                 echo "       cd ~/.dotfiles/home-manager"
-                echo "       nix run home-manager/master -- switch --flake ."
+                echo "       nix run home-manager/master -- switch --flake .#$(whoami)"
                 echo ""
                 suggestion_index=$((suggestion_index + 1))
             fi
@@ -1503,7 +1514,7 @@ run_all_checks() {
                 echo "     • If still missing, check if packages built successfully:"
                 echo "       nix-store --verify-path ~/.nix-profile"
                 echo "     • Re-apply home-manager to rebuild Python environment:"
-                echo "       cd ~/.dotfiles/home-manager && home-manager switch --flake ."
+                echo "       cd ~/.dotfiles/home-manager && home-manager switch --flake .#$(whoami)"
                 echo "     • Missing modules detected:"
                 for missing_entry in "${missing_required_python[@]}"; do
                     IFS='|' read -r _module missing_desc _requirement <<<"$missing_entry"

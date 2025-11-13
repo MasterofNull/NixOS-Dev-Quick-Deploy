@@ -643,11 +643,8 @@ flatpak_install_app_list() {
                 continue
             fi
 
-            if run_as_primary_user flatpak info --user "$queue_app_id" >/dev/null 2>&1; then
-                print_info "  • $queue_app_id already present (user scope)"
-                continue
-            elif run_as_primary_user flatpak info --system "$queue_app_id" >/dev/null 2>&1; then
-                print_info "  • $queue_app_id already present (system scope)"
+            if flatpak_app_installed "$queue_app_id"; then
+                print_info "  • $queue_app_id already present (skipping)"
                 continue
             fi
 
@@ -879,11 +876,8 @@ ensure_default_flatpak_apps_installed() {
                 continue
             fi
         else
-            if run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
-                print_info "  • $app_id already present (user scope)"
-                continue
-            elif run_as_primary_user flatpak info --system "$app_id" >/dev/null 2>&1; then
-                print_info "  • $app_id already present (system scope)"
+            if flatpak_app_installed "$app_id"; then
+                print_info "  • $app_id already present"
                 continue
             fi
         fi
@@ -2331,4 +2325,20 @@ setup_flake_environment() {
 
     print_success "Flake environment setup complete"
     return 0
+}
+flatpak_app_installed() {
+    local app_id="$1"
+    if [[ -z "$app_id" ]]; then
+        return 1
+    fi
+
+    if run_as_primary_user flatpak info --user "$app_id" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if run_as_primary_user flatpak info --system "$app_id" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    return 1
 }

@@ -148,6 +148,24 @@ let
   # Optional Gitea admin bootstrap (populated by installer)
   @GITEA_ADMIN_VARIABLES_BLOCK@
   commonPythonOverrides = import ./python-overrides.nix;
+  pythonPreferLatest =
+    let
+      envPref = builtins.getEnv "PYTHON_PREFER_PY314";
+    in
+    envPref == "1" || envPref == "true";
+  python14CompatibilityMask = [
+    "llvmlite"
+    "numba"
+    "sparse"
+    "dask-ml"
+    "dask-glm"
+  ];
+  python14Masked = python14CompatibilityMask != [ ];
+  pythonRuntimeWithFallback =
+    let
+      python14Available = (pkgs ? python314) && (pkgs ? python314Packages);
+    in
+    if pythonPreferLatest && python14Available && !python14Masked then pkgs.python314 else pkgs.python313;
   @GLF_OS_DEFINITIONS@
 in
 
@@ -435,7 +453,7 @@ in
   # ============================================================================
   nixpkgs.config.packageOverrides = pkgs: {
     # Apply common Python overrides that disable flaky build-time tests.
-    python311 = pkgs.python311.override {
+    pythonAi = pythonRuntimeWithFallback.override {
       packageOverrides = commonPythonOverrides;
     };
   };
@@ -860,6 +878,8 @@ in
     MANGOHUD_DESKTOP_MODE = if glfMangoHudDesktopMode then "1" else "0";
     @GPU_SESSION_VARIABLES@
   };
+
+  @LACT_SERVICE_BLOCK@
 
   # ============================================================================
   # System Packages (System-level only)

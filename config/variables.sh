@@ -229,6 +229,7 @@ declare -ag FLATPAK_PROFILE_CORE_APPS=(
     "io.podman_desktop.PodmanDesktop"
     "org.prismlauncher.PrismLauncher"
     "org.sqlitebrowser.sqlitebrowser"
+    "com.obsproject.Studio"
 )
 
 declare -ag FLATPAK_PROFILE_AI_WORKSTATION_APPS=()
@@ -239,6 +240,7 @@ FLATPAK_PROFILE_AI_WORKSTATION_APPS+=(
     #"com.visualstudio.code"
     "io.github.Qalculate.Qalculate"
     "com.bitwarden.desktop"
+    "com.obsproject.Studio"
 )
 
 declare -ag FLATPAK_PROFILE_MINIMAL_APPS=(
@@ -246,6 +248,7 @@ declare -ag FLATPAK_PROFILE_MINIMAL_APPS=(
     "md.obsidian.Obsidian"
     "com.github.tchx84.Flatseal"
     "io.podman_desktop.PodmanDesktop"
+    "com.obsproject.Studio"
 )
 
 declare -Ag FLATPAK_PROFILE_LABELS=(
@@ -485,6 +488,11 @@ if [[ -z "${PODMAN_STORAGE_COMMENT:-}" ]]; then
 fi
 
 ENABLE_GAMING_STACK="${ENABLE_GAMING_STACK:-true}"
+# ENABLE_LACT:
+#   auto  -> enable when discrete GPU detected
+#   true  -> always enable services.lact
+#   false -> never enable
+ENABLE_LACT="${ENABLE_LACT:-auto}"
 AUTO_APPLY_SYSTEM_CONFIGURATION="${AUTO_APPLY_SYSTEM_CONFIGURATION:-true}"
 AUTO_APPLY_HOME_CONFIGURATION="${AUTO_APPLY_HOME_CONFIGURATION:-true}"
 PROMPT_BEFORE_SYSTEM_SWITCH="${PROMPT_BEFORE_SYSTEM_SWITCH:-false}"
