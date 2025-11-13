@@ -391,7 +391,7 @@ flatpak list --user --app
 
 ```bash
 cd ~/.dotfiles/home-manager
-home-manager switch --flake .
+home-manager switch --flake .#$(whoami)
 ```
 
 ---

@@ -96,11 +96,11 @@ DEFAULT_GITEA_SSH_PORT=2222   # Gitea SSH git operations port
 # Default versions for programming language runtimes
 # These are LTS or stable versions with good ecosystem support
 #
-# Python 3.11: Current stable, good AI/ML library support
+# Python 3.13: Current stable, good AI/ML library support
 # Node.js 20: Current LTS version, best for production use
 # ============================================================================
 
-DEFAULT_PYTHON_VERSION="3.11"  # Python version for development environment
+DEFAULT_PYTHON_VERSION="3.13"  # Python version for development environment
 DEFAULT_NODE_VERSION="20"      # Node.js version for development environment
 
 # ============================================================================

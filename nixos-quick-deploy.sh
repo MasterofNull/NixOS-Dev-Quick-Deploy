@@ -850,8 +850,47 @@ print_header() {
 }
 
 ensure_nix_experimental_features_env() {
-    # Ensure flakes and nix-command are enabled
-    export NIX_CONFIG="experimental-features = nix-command flakes"
+    # Ensure flakes and nix-command are enabled without clobbering user settings.
+    local required_features="nix-command flakes"
+    local addition="experimental-features = ${required_features}"
+    local newline=$'\n'
+    local current_config="${NIX_CONFIG:-}"
+
+    if [[ -z "$current_config" ]]; then
+        export NIX_CONFIG="$addition"
+        log INFO "NIX_CONFIG initialized with experimental features: $required_features"
+        return
+    fi
+
+    if printf '%s\n' "$current_config" | grep -q '^[[:space:]]*experimental-features[[:space:]]*='; then
+        local existing_line
+        existing_line=$(printf '%s\n' "$current_config" | grep '^[[:space:]]*experimental-features[[:space:]]*=' | head -n1)
+        local features
+        features=$(printf '%s' "${existing_line#*=}" | xargs)
+
+        local feature
+        local updated_features="$features"
+        for feature in nix-command flakes; do
+            if [[ " $updated_features " != *" $feature "* ]]; then
+                updated_features+=" $feature"
+            fi
+        done
+        updated_features=$(printf '%s' "$updated_features" | xargs)
+
+        if [[ "$features" != "$updated_features" ]]; then
+            local new_line="experimental-features = $updated_features"
+            local updated_config
+            updated_config=$(printf '%s\n' "$current_config" | sed "0,/^[[:space:]]*experimental-features[[:space:]]*=.*/s//${new_line}/")
+            export NIX_CONFIG="$updated_config"
+            log INFO "Updated NIX_CONFIG experimental features: $updated_features"
+        else
+            export NIX_CONFIG="$current_config"
+            log DEBUG "NIX_CONFIG already contains required experimental features"
+        fi
+    else
+        export NIX_CONFIG="${current_config}${newline}${addition}"
+        log INFO "Appended experimental features to NIX_CONFIG: $required_features"
+    fi
 }
 
 # ============================================================================
