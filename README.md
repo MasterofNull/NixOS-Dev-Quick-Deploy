@@ -53,7 +53,8 @@ chmod +x nixos-quick-deploy.sh
 ### Pre-Installed Development Tools
 
 **Languages & Runtimes:**
-- Python 3.11 with 60+ AI/ML packages (PyTorch, TensorFlow, LangChain, etc.)
+- Python 3.13 with 60+ AI/ML packages (PyTorch, TensorFlow, LangChain, etc.)  
+  <sub>Set `PYTHON_PREFER_PY314=1` before running the deployer to trial Python 3.14 once the compatibility mask is cleared.</sub>
 - Node.js 22, Go, Rust, Ruby
 
 **AI/ML Python Packages (Built-in):**
@@ -244,7 +245,7 @@ exec zsh
 
 # Re-apply home-manager config
 cd ~/.dotfiles/home-manager
-home-manager switch --flake .
+home-manager switch --flake .#$(whoami)
 ```
 
 **All done!** Everything is installed and ready to use.
@@ -590,7 +591,7 @@ Next steps:
 
 4. **Re-apply home-manager config:**
    ```bash
-   home-manager switch --flake ~/.dotfiles/home-manager
+   home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)
    ```
 
 5. **Reinstall Claude Code:**
@@ -754,7 +755,7 @@ Error: configure storage: "/home/<user>/.local/share/containers/storage/btrfs" i
 3. Apply the Home Manager profile and restart the shell to pick up the new `storage.conf`:
    ```bash
    cd ~/.dotfiles/home-manager
-   home-manager switch --flake .
+   home-manager switch --flake .#$(whoami)
    exec zsh
    ```
 4. Confirm the driver now matches the override or the enforced fallback:
@@ -766,7 +767,7 @@ Error: configure storage: "/home/<user>/.local/share/containers/storage/btrfs" i
 ```bash
 # Re-apply home-manager configuration
 cd ~/.dotfiles/home-manager
-home-manager switch --flake .
+home-manager switch --flake .#$(whoami)
 
 # Restart shell
 exec zsh
@@ -799,7 +800,7 @@ ls -la ~/.config-backups/
 
 # If manual intervention needed, move conflicting files
 mv ~/.config/problematic-file ~/.config-backups/
-home-manager switch --flake ~/.dotfiles/home-manager
+home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)
 ```
 
 ### Flatpak Apps Not Launching
@@ -876,6 +877,12 @@ The selected profile is cached at `~/.cache/nixos-quick-deploy/preferences/mango
 
 > **Need a lean workstation build instead?** Set `ENABLE_GAMING_STACK=false` before running the deploy script to skip Gamemode, Gamescope, Steam, and the auxiliary tuning (zram overrides, `/etc/gamemode.ini`, etc.). The default `true` value keeps the full GLF gaming stack enabled so MangoHud, Steam, and Gamescope are ready immediately after install.
 
+### GPU control with LACT
+
+- `ENABLE_LACT=auto` (default) enables [LACT](https://github.com/ilya-zlobintsev/LACT) automatically when the hardware probe finds an AMD, Nvidia, or Intel GPU. Set the variable to `true` to force installation, or `false` to skip it entirely.
+- When enabled, the generated configuration sets `services.lact.enable = true;`, which installs the GTK application and its system daemon. Launch **LACT** from the desktop to tune clocks, voltage offsets, or fan curves. The first time you save settings, the daemon writes `/etc/lact/config.yaml`; future tweaks can be made through the GUI or by editing that file.
+- AMD users who plan to overclock/undervolt should also keep `hardware.amdgpu.overdrive.enable = true;` (already emitted when RDNA GPUs are detected) so LACT can apply the requested limits. See the upstream FAQ if you need additional kernel parameters for your card.
+
 ---
 
 ## 🚀 Advanced Usage
@@ -895,7 +902,7 @@ services.flatpak.packages = [
   # "org.gimp.GIMP"
   # "org.inkscape.Inkscape"
   # "org.blender.Blender"
-  # "com.obsproject.Studio"  # OBS Studio
+  "com.obsproject.Studio"    # OBS Studio (screen recording/streaming)
   # "com.discordapp.Discord"
   # "com.slack.Slack"
 ];
@@ -903,7 +910,7 @@ services.flatpak.packages = [
 
 Apply changes:
 ```bash
-home-manager switch --flake ~/.dotfiles/home-manager
+home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)
 ```
 
 ### Customize Powerlevel10k Later
@@ -973,7 +980,7 @@ main() {
 Already configured in your `.zshrc`:
 ```bash
 nrs    # sudo nixos-rebuild switch
-hms    # home-manager switch --flake ~/.dotfiles/home-manager
+hms    # home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)
 nfu    # nix flake update
 lg     # lazygit
 ```
@@ -1013,7 +1020,7 @@ sudo nixos-rebuild switch --upgrade
 
 # Update home-manager packages
 nix flake update ~/.dotfiles/home-manager
-home-manager switch --flake ~/.dotfiles/home-manager
+home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)
 
 # Update Flatpak apps
 flatpak update
@@ -1027,7 +1034,7 @@ flatpak update
 - `./nixos-quick-deploy.sh --resume` &mdash; continue the multi-phase installer from the last checkpoint.
 - `./nixos-quick-deploy.sh --resume --phase 5` &mdash; rerun the declarative deployment phase after editing templates.
 - `nrs` (`sudo nixos-rebuild switch`) &mdash; manual system rebuild; the deployer now pauses container services automatically when it runs this step.
-- `hms` (`home-manager switch --flake ~/.dotfiles/home-manager`) &mdash; apply user environment changes.
+- `hms` (`home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)`) &mdash; apply user environment changes.
 - `nfu` (`nix flake update`) &mdash; refresh flake inputs before rebuilding.
 
 ### AI Runtime Orchestration

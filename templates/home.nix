@@ -74,11 +74,30 @@ let
     in
     if cosmicOnlyShowInEnvironments == [ ] then "" else "${joined};";
   commonPythonOverrides = import ./python-overrides.nix;
+  pythonPreferLatest =
+    let
+      envPref = builtins.getEnv "PYTHON_PREFER_PY314";
+    in
+    envPref == "1" || envPref == "true";
+  python14CompatibilityMask = [
+    # Mask packages currently incompatible with Python 3.14 to avoid build failures.
+    "llvmlite"
+    "numba"
+    "sparse"
+    "dask-ml"
+    "dask-glm"
+  ];
+  python14Masked = python14CompatibilityMask != [ ];
+  pythonWithFallback =
+    let
+      python14Available = (pkgs ? python314) && (pkgs ? python314Packages);
+    in
+    if pythonPreferLatest && python14Available && !python14Masked then pkgs.python314 else pkgs.python313;
 
   # --------------------------------------------------------------------------
   # GLF (Gaming/Lifestyle Features) defaults. The deployment script injects
-  # @GLF_HOME_DEFINITIONS@ with tuned values, but we fall back to safe
-  # placeholders so the template remains evaluatable on its own.
+  # tuned values during generation, but we fall back to safe placeholders so
+  # the template remains evaluatable on its own.
   glfDefaultValues = {
     glfMangoHudPresets = {
       disabled = [ ];
@@ -139,51 +158,7 @@ let
   # Edit the list below to tailor the default Flatpak apps.
   # Comment out entries you do not need or append new App IDs.
   # Keep the DEFAULT_FLATPAK_APPS array in nixos-quick-deploy.sh in sync.
-  flathubPackages = [
-    # ====================================================================
-    # SYSTEM TOOLS & UTILITIES (Recommended - Essential GUI Tools)
-    # ====================================================================
-    "com.github.tchx84.Flatseal"         # Flatpak permissions manager GUI
-    "org.gnome.FileRoller"                # Archive manager (zip, tar, 7z, rar) - GUI
-    "net.nokyan.Resources"                # System monitor (CPU, GPU, RAM, Network) - GUI
-
-    # ====================================================================
-    # MEDIA PLAYERS (Desktop Applications)
-    # ====================================================================
-    "org.videolan.VLC"                    # VLC media player (universal format support)
-    "io.mpv.Mpv"                          # MPV video player (modern, lightweight)
-
-    # ====================================================================
-    # WEB BROWSERS
-    # ====================================================================
-    "org.mozilla.firefox"                 # Firefox browser (Flatpak, better sandbox isolation)
-
-    # ====================================================================
-    # PRODUCTIVITY & OFFICE (Popular for Work)
-    # ====================================================================
-    "md.obsidian.Obsidian"                # Note-taking with markdown, vault sync, plugins
-
-    # ====================================================================
-    # AI & LLM WORKBENCHES (Graphical tooling for local + cloud models)
-    # ====================================================================
-    # NOTE: The following apps are not available for all architectures
-    # If you're on x86_64, you can uncomment these:
-    # "ai.cursor.Cursor"                    # Cursor / Code-Cursor AI pair-programming IDE
-    # "com.lmstudio.LMStudio"               # LM Studio for managing local LLM weights & servers
-
-    # ====================================================================
-    # DEVELOPMENT PLATFORM MANAGEMENT
-    # ====================================================================
-    # NOTE: Gitea Flatpak not available for all architectures (use system service instead)
-    # "io.gitea.Gitea"                      # Gitea desktop (web UI) for Git/AIDB workflows
-    "io.podman_desktop.PodmanDesktop"     # Podman Desktop GUI for managing containers
-    "org.sqlitebrowser.sqlitebrowser"     # GUI browser for SQLite databases used by AIDB
-
-    # ====================================================================
-    # DATABASE TOOLS (AI/ML Data Management)
-    # ====================================================================
-    "com.dbeaver.DBeaverCommunity"        # Universal database tool (PostgreSQL, MySQL, SQLite, etc.)
-  ];
+  @FLATPAK_MANAGED_PACKAGES@
   flatpakManagedInstallRuntimeInputs = [
     pkgs.coreutils
     pkgs.gawk
@@ -702,7 +677,7 @@ RESOURCES
     };
   flatpakManagedInstallScriptExe = lib.getExe flatpakManagedInstallScript;
   pythonAi =
-    pkgs.python311.override {
+    pythonWithFallback.override {
       packageOverrides = commonPythonOverrides;
     };
   # ========================================================================

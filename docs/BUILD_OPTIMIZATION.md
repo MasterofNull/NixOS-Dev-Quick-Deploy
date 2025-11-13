@@ -259,7 +259,7 @@ nix log nixpkgs#gpt4all
 time sudo nixos-rebuild switch --flake .
 
 # Time a home-manager rebuild
-time home-manager switch --flake .
+time home-manager switch --flake .#$(whoami)
 ```
 
 ## Troubleshooting Slow Builds

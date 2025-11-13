@@ -157,7 +157,7 @@ phase_06_additional_tooling() {
     # & (ampersand): Run command in background
     # $!: PID of last background job
     # Purpose: Continue to next installation while this runs
-    print_info "Installing Flatpak applications..."
+    print_section "Flatpak Application Installation"
     install_flatpak_stage &
     local flatpak_pid=$!  # Save PID to wait for later
 
@@ -197,10 +197,9 @@ phase_06_additional_tooling() {
     # Background execution:
     # & at end of compound command: Entire block runs in background
     # local claude_pid=$!: Save PID for later wait
-    print_info "Installing Claude Code..."
+    print_section "Claude Code CLI Installation"
     if install_claude_code; then
         configure_vscodium_for_claude || print_warning "VSCodium configuration had issues"
-        install_vscodium_extensions || print_warning "Some VSCodium extensions may not have installed"
     else
         print_warning "Claude Code installation skipped due to errors"
     fi &
@@ -256,6 +255,12 @@ phase_06_additional_tooling() {
 
     # Wait for Claude Code installation
     wait $claude_pid || print_warning "Claude Code installation had issues"
+
+    # Run VSCodium extension installation as its own group so logs clearly show progress
+    print_section "VSCodium Extension Installation"
+    if ! install_vscodium_extensions; then
+        print_warning "Some VSCodium extensions may not have installed"
+    fi
 
     # Wait for OpenSkills installation
     wait $openskills_pid || print_warning "OpenSkills installation had issues"

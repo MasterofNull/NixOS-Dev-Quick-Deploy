@@ -115,8 +115,8 @@ phase_05_declarative_deployment() {
     #
     # Reference: NixOS Manual - Chapter on Declarative Package Management
     # ========================================================================
-
     local phase_name="deploy_configurations"
+    local hm_user="${PRIMARY_USER:-$USER}"
 
     # ------------------------------------------------------------------------
     # Resume Check: Skip if already completed
@@ -192,7 +192,7 @@ phase_05_declarative_deployment() {
         print_info "To apply later:"
         print_info "  1. Manually remove nix-env packages: nix-env -e '.*'"
         print_info "  2. Apply system config: sudo nixos-rebuild switch --flake $HM_CONFIG_DIR#$(hostname)"
-        print_info "  3. Apply user config: home-manager switch --flake $HM_CONFIG_DIR"
+        print_info "  3. Apply user config: home-manager switch --flake $HM_CONFIG_DIR#$hm_user"
         echo ""
         return 0
     fi
@@ -326,16 +326,17 @@ phase_05_declarative_deployment() {
 
     # Determine home-manager command
     local hm_cmd
+    local hm_flake_target="${HM_CONFIG_DIR}#${hm_user}"
     if command -v home-manager &>/dev/null; then
         hm_cmd="home-manager"
-        print_info "Using: home-manager switch --flake $HM_CONFIG_DIR"
+        print_info "Using: home-manager switch --flake $hm_flake_target"
     else
         hm_cmd="nix run github:nix-community/home-manager#home-manager --"
-        print_info "Using: nix run github:nix-community/home-manager -- switch --flake $HM_CONFIG_DIR"
+        print_info "Using: nix run github:nix-community/home-manager -- switch --flake $hm_flake_target"
     fi
     echo ""
 
-    local home_switch_display="$hm_cmd switch --flake $HM_CONFIG_DIR"
+    local home_switch_display="$hm_cmd switch --flake $hm_flake_target"
     local perform_home_switch=true
     if [[ "${AUTO_APPLY_HOME_CONFIGURATION,,}" != "true" ]]; then
         perform_home_switch=false
@@ -348,7 +349,7 @@ phase_05_declarative_deployment() {
     fi
 
     if [[ "$perform_home_switch" == true ]]; then
-        if $hm_cmd switch --flake "$HM_CONFIG_DIR" 2>&1 | tee /tmp/home-manager-switch.log; then
+        if $hm_cmd switch --flake "$hm_flake_target" 2>&1 | tee /tmp/home-manager-switch.log; then
             print_success "✓ Home manager configuration applied!"
             print_success "✓ User packages now managed declaratively"
             HOME_CONFIGURATION_APPLIED="true"
@@ -545,7 +546,7 @@ phase_05_declarative_deployment() {
     echo "Package Management (Declarative):"
     echo "  • System packages: Edit /etc/nixos/configuration.nix"
     echo "  • User packages: Edit ~/.config/home-manager/home.nix"
-    echo "  • Apply changes: nixos-rebuild switch / home-manager switch"
+    echo "  • Apply changes: nixos-rebuild switch / home-manager switch --flake ${HM_CONFIG_DIR}#${PRIMARY_USER:-$USER}"
     echo "  • NO MORE: nix-env -i (use declarative configs instead)"
     echo ""
     echo "Rollback (if needed):"
