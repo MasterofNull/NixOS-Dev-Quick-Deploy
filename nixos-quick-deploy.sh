@@ -118,6 +118,7 @@ AUTO_APPLY_SYSTEM_CONFIGURATION=true
 AUTO_APPLY_HOME_CONFIGURATION=true
 PROMPT_BEFORE_SYSTEM_SWITCH=false
 PROMPT_BEFORE_HOME_SWITCH=false
+FLATPAK_REINSTALL_REQUEST=false
 
 # Phase control
 declare -a SKIP_PHASES=()
@@ -304,6 +305,7 @@ BASIC OPTIONS:
         --skip-switch           Skip automatic nixos/home-manager switch steps
         --skip-system-switch    Skip automatic nixos-rebuild switch
         --skip-home-switch      Skip automatic home-manager switch
+        --flatpak-reinstall     Force reinstall of managed Flatpaks (resets Flatpak state pre-switch)
         --prompt-switch         Prompt before running system/home switches
         --prompt-system-switch  Prompt before running nixos-rebuild switch
         --prompt-home-switch    Prompt before running home-manager switch
@@ -511,6 +513,10 @@ parse_arguments() {
                 ;;
             --restart-from-safe-point)
                 RESTART_FROM_SAFE_POINT=true
+                shift
+                ;;
+            --flatpak-reinstall)
+                FLATPAK_REINSTALL_REQUEST=true
                 shift
                 ;;
             *)
@@ -900,6 +906,10 @@ ensure_nix_experimental_features_env() {
 main() {
     # Parse arguments
     parse_arguments "$@"
+
+    if [[ "$FLATPAK_REINSTALL_REQUEST" == true ]]; then
+        export RESET_FLATPAK_STATE_BEFORE_SWITCH="true"
+    fi
 
     # Enable debug mode if requested
     if [[ "$ENABLE_DEBUG" == true ]]; then

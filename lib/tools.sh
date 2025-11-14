@@ -314,9 +314,167 @@ print_flatpak_details() {
     done <<<"$message"
 }
 
+flatpak_user_repo_path() {
+    printf '%s\n' "$HOME/.local/share/flatpak/repo"
+}
+
+flatpak_user_repo_initialized() {
+    local repo_path
+    repo_path=$(flatpak_user_repo_path)
+
+    if [[ -d "$repo_path" ]]; then
+        if find "$repo_path" -mindepth 1 -print -quit >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+flatpak_user_app_count() {
+    if ! flatpak_cli_available; then
+        echo ""
+        return 1
+    fi
+
+    local list_output
+    list_output=$(run_as_primary_user flatpak list --user --app --columns=application 2>/dev/null || true)
+    if [[ -z "$list_output" ]]; then
+        echo "0"
+        return 0
+    fi
+
+    local count
+    count=$(printf '%s\n' "$list_output" | awk 'NR==1 && ($0=="Application" || $0=="Application ID") {next} NF {c++} END {print c+0}')
+    echo "$count"
+    return 0
+}
+
+report_flatpak_user_state() {
+    local repo_path repo_relative
+    repo_path=$(flatpak_user_repo_path)
+    repo_relative=${repo_path#"$HOME/"}
+    if [[ "$repo_relative" == "$repo_path" ]]; then
+        repo_relative="$repo_path"
+    else
+        repo_relative="~/$repo_relative"
+    fi
+
+    if flatpak_user_repo_initialized; then
+        print_info "Existing Flatpak repository detected (${repo_relative}); preserving contents"
+    elif [[ -d "$repo_path" ]]; then
+        print_info "Flatpak repository directory exists (${repo_relative}) but is empty"
+    else
+        print_info "No user-level Flatpak repository detected; initializing ${repo_relative}"
+    fi
+
+    if flatpak_cli_available; then
+        local app_count
+        app_count=$(flatpak_user_app_count)
+        if [[ -n "$app_count" ]]; then
+            print_info "User Flatpak applications currently installed: $app_count"
+        fi
+    fi
+}
+
+ensure_flatpak_repo_integrity() {
+    local repo_dir="$HOME/.local/share/flatpak/repo"
+
+    if [[ ! -e "$repo_dir" ]]; then
+        return 0
+    fi
+
+    local repo_relative=${repo_dir#"$HOME/"}
+    if [[ "$repo_relative" == "$repo_dir" ]]; then
+        repo_relative="$repo_dir"
+    else
+        repo_relative="~/$repo_relative"
+    fi
+
+    if [[ -f "$repo_dir/config" && -d "$repo_dir/objects" ]]; then
+        safe_chown_user_dir "$repo_dir" || true
+        return 0
+    fi
+
+    if find "$repo_dir" -mindepth 1 -print -quit >/dev/null 2>&1; then
+        print_warning "Flatpak repository at ${repo_relative} exists but is missing required files"
+        print_info "Manual fix: rm -rf ${repo_relative} && rerun deployer"
+        return 1
+    fi
+
+    if rm -rf "$repo_dir" 2>/dev/null; then
+        print_warning "Removed empty Flatpak repository stub at ${repo_relative}; it will be recreated"
+    else
+        print_warning "Unable to remove invalid Flatpak repository at ${repo_relative}"
+        return 1
+    fi
+
+    return 0
+}
+
+ensure_flatpak_user_dirs() {
+    local base_dir="$HOME/.local/share/flatpak"
+    local config_dir="$HOME/.config/flatpak"
+
+    local -a required_dirs=("$base_dir" "$config_dir")
+    local -a created_dirs=()
+    local dir
+    for dir in "${required_dirs[@]}"; do
+        local existed_before=true
+        if [[ ! -d "$dir" ]]; then
+            existed_before=false
+        fi
+
+        if ! safe_mkdir "$dir"; then
+            print_error "Unable to prepare Flatpak directory: $dir"
+            return 1
+        fi
+
+        if [[ "$existed_before" == false ]]; then
+            created_dirs+=("$dir")
+        fi
+    done
+
+    chmod 700 "$base_dir" "$config_dir" 2>/dev/null || true
+    local -a ownership_dirs=("$base_dir" "$config_dir")
+    for dir in "${ownership_dirs[@]}"; do
+        safe_chown_user_dir "$dir" || true
+    done
+
+    if ! ensure_flatpak_repo_integrity; then
+        return 1
+    fi
+
+    if (( ${#created_dirs[@]} > 0 )); then
+        local -a relative_created=()
+        local created
+        for dir in "${created_dirs[@]}"; do
+            local rel
+            rel=${dir#"$HOME/"}
+            if [[ "$rel" == "$dir" ]]; then
+                relative_created+=("$dir")
+            else
+                relative_created+=("~/$rel")
+            fi
+        done
+        created=$(printf '%s, ' "${relative_created[@]}")
+        created=${created%, }
+        print_success "Initialized Flatpak directories: ${created}"
+    else
+        print_info "Flatpak directories already exist; preserving current state"
+    fi
+
+    return 0
+}
+
 ensure_flathub_remote() {
     if ! flatpak_cli_available; then
         print_warning "Flatpak CLI not available; skipping Flathub repository configuration"
+        return 1
+    fi
+
+    if ! ensure_flatpak_user_dirs; then
+        print_warning "Flatpak directories missing or inaccessible; skipping Flathub configuration"
         return 1
     fi
 
@@ -528,7 +686,25 @@ select_flatpak_profile() {
 
     local array_name="${FLATPAK_PROFILE_APPSETS["$profile"]}"
     local -n chosen="$array_name"
-    DEFAULT_FLATPAK_APPS=("${chosen[@]}")
+    declare -A _flatpak_profile_seen=()
+    DEFAULT_FLATPAK_APPS=()
+
+    local candidate
+    for candidate in "${FLATPAK_PROFILE_CORE_APPS[@]}"; do
+        if [[ -z "$candidate" || -n "${_flatpak_profile_seen["$candidate"]:-}" ]]; then
+            continue
+        fi
+        _flatpak_profile_seen["$candidate"]=1
+        DEFAULT_FLATPAK_APPS+=("$candidate")
+    done
+
+    for candidate in "${chosen[@]}"; do
+        if [[ -z "$candidate" || -n "${_flatpak_profile_seen["$candidate"]:-}" ]]; then
+            continue
+        fi
+        _flatpak_profile_seen["$candidate"]=1
+        DEFAULT_FLATPAK_APPS+=("$candidate")
+    done
 
     print_info "Selected Flatpak profile '$profile' (${#DEFAULT_FLATPAK_APPS[@]} apps)"
 
@@ -580,6 +756,34 @@ flatpak_query_application_support() {
     fi
 
     return 1
+}
+
+flatpak_bulk_install_apps() {
+    local remote_name="$1"
+    shift
+    local -a apps=("$@")
+
+    if [[ ${#apps[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    print_info "  Installing ${#apps[@]} Flatpak application(s) in batch..."
+    local install_output=""
+    install_output=$(run_as_primary_user flatpak --noninteractive --assumeyes install --user "$remote_name" "${apps[@]}" 2>&1)
+    local status=$?
+    if [[ $status -eq 0 ]]; then
+        print_success "  ✓ Batch installed ${#apps[@]} Flatpak application(s)"
+        if [[ -n "$install_output" ]]; then
+            print_flatpak_details "$install_output"
+        fi
+        return 0
+    fi
+
+    print_warning "  ⚠ Batch install for ${#apps[@]} Flatpak application(s) failed (exit $status)"
+    if [[ -n "$install_output" ]]; then
+        print_flatpak_details "$install_output"
+    fi
+    return $status
 }
 
 flatpak_install_app_list() {
@@ -636,6 +840,22 @@ flatpak_install_app_list() {
             if [[ ${#queue[@]} -gt 0 ]]; then
                 print_info "  Retrying deferred Flatpak installs (metadata queries previously failed)..."
             fi
+        fi
+
+        if [[ "$process_label" == "primary" && ${#queue[@]} -gt 1 ]]; then
+            if flatpak_bulk_install_apps "$remote_name" "${queue[@]}"; then
+                local -a still_missing=()
+                for queue_app_id in "${queue[@]}"; do
+                    if ! flatpak_app_installed "$queue_app_id"; then
+                        still_missing+=("$queue_app_id")
+                    fi
+                done
+                queue=("${still_missing[@]}")
+            fi
+        fi
+
+        if [[ ${#queue[@]} -eq 0 ]]; then
+            continue
         fi
 
         for queue_app_id in "${queue[@]}"; do
@@ -925,6 +1145,8 @@ install_flatpak_stage() {
         print_info "Install Flatpak or re-run home-manager switch to enable declarative apps"
         return 1
     fi
+
+    report_flatpak_user_state
 
     if ! ensure_flathub_remote; then
         print_warning "Flatpak applications will need to be installed manually once Flathub is available"
@@ -1519,6 +1741,20 @@ install_goose_toolchain() {
     local display="$2"
     local extension_id="$3"
     local debug_env="$4"
+
+    local goose_bin=""
+    goose_bin=$(PATH="$(build_primary_user_path)" command -v goose 2>/dev/null || true)
+    if [[ -n "$goose_bin" && -x "$goose_bin" ]]; then
+        print_success "Goose CLI provided via nixpkgs: $goose_bin"
+        create_goose_cli_wrapper "$wrapper_path" "$goose_bin" "$display" "$debug_env"
+        GOOSE_CLI_BIN_PATH="$goose_bin"
+        if [ -n "$extension_id" ]; then
+            AI_VSCODE_EXTENSIONS+=("$extension_id")
+        fi
+        return 0
+    fi
+
+    print_info "Declarative Goose CLI not detected; falling back to upstream release"
 
     local release_json
     release_json=$(fetch_latest_goose_release)

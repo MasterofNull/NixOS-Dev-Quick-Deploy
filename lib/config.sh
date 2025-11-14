@@ -1958,10 +1958,33 @@ generate_nixos_system_config() {
     local glf_os_definitions
 
     local mangohud_definition
-    mangohud_definition=$(cat <<EOF
+    mangohud_definition=$(cat <<'EOF'
+  glfMangoHudCosmicBlacklist = [
+    "cosmic-app-library"
+    "cosmic-comp"
+    "cosmic-edit"
+    "cosmic-files"
+    "cosmic-launcher"
+    "cosmic-notification-daemon"
+    "cosmic-panel"
+    "cosmic-session"
+    "cosmic-settings"
+    "cosmic-store"
+    "cosmic-term"
+    "cosmic-terminal"
+    "cosmic-text"
+  ];
+  glfMangoHudBlacklistEntry =
+    if glfMangoHudCosmicBlacklist == [] then
+      ""
+    else
+      "blacklist=${lib.concatStringsSep "," glfMangoHudCosmicBlacklist}";
+  glfMangoHudCommonEntries =
+    lib.optional (glfMangoHudBlacklistEntry != "") glfMangoHudBlacklistEntry;
   glfMangoHudPresets = {
     disabled = [ ];
-    light = [
+    light =
+      [
       "control=mangohud"
       "legacy_layout=0"
       "horizontal"
@@ -1977,8 +2000,10 @@ generate_nixos_system_config() {
       "fps"
       "fps_metrics=AVG,0.001"
       "font_scale=1.05"
-    ];
-    full = [
+      ]
+      ++ glfMangoHudCommonEntries;
+    full =
+      [
       "control=mangohud"
       "legacy_layout=0"
       "vertical"
@@ -1998,8 +2023,10 @@ generate_nixos_system_config() {
       "resolution"
       "vulkan_driver"
       "wine"
-    ];
-    desktop = [
+      ]
+      ++ glfMangoHudCommonEntries;
+    desktop =
+      [
       "control=mangohud"
       "legacy_layout=0"
       "horizontal"
@@ -2021,8 +2048,10 @@ generate_nixos_system_config() {
       "fps"
       "fps_metrics=AVG,0.001"
       "frametime"
-    ];
-    "desktop-hybrid" = [
+      ]
+      ++ glfMangoHudCommonEntries;
+    "desktop-hybrid" =
+      [
       "control=mangohud"
       "legacy_layout=0"
       "horizontal"
@@ -2044,10 +2073,11 @@ generate_nixos_system_config() {
       "fps"
       "fps_metrics=AVG,0.001"
       "frametime"
-    ];
+      ]
+      ++ glfMangoHudCommonEntries;
   };
-  glfMangoHudProfile = "${mangohud_profile}";
-  glfMangoHudEntries = glfMangoHudPresets.\${glfMangoHudProfile};
+  glfMangoHudProfile = "__MANGOHUD_PROFILE__";
+  glfMangoHudEntries = glfMangoHudPresets.__MANGOHUD_PROFILE__;
   glfMangoHudConfig = lib.concatStringsSep "," glfMangoHudEntries;
   glfMangoHudConfigFileContents =
     if glfMangoHudEntries == [] then
@@ -2060,6 +2090,8 @@ generate_nixos_system_config() {
     glfMangoHudConfig != "" && glfMangoHudProfile != "desktop";
 EOF
 )
+
+    mangohud_definition="${mangohud_definition//__MANGOHUD_PROFILE__/$mangohud_profile}"
 
     if [[ "$gaming_stack_enabled" == true ]]; then
         print_info "Applying MangoHud overlay profile: $mangohud_profile (${mangohud_profile_origin})"

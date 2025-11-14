@@ -384,6 +384,9 @@ phase_05_declarative_deployment() {
         flatpak_configured=true
         print_section "Configuring Flatpak"
 
+        mkdir -p "$HOME/.local/share/flatpak" "$HOME/.config/flatpak" "$HOME/.local/share/flatpak/repo"
+        chmod 700 "$HOME/.local/share/flatpak" "$HOME/.config/flatpak" 2>/dev/null || true
+
         # Add Flathub if not present
         if ! flatpak remotes --user 2>/dev/null | grep -q "^flathub"; then
             print_info "Adding Flathub repository..."
