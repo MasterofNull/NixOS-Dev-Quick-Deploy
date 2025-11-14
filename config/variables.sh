@@ -216,6 +216,7 @@ FLATHUB_REMOTE_URL="https://dl.flathub.org/repo/flathub.flatpakrepo"
 FLATHUB_REMOTE_FALLBACK_URL="https://flathub.org/repo/flathub.flatpakrepo"
 FLATHUB_BETA_REMOTE_NAME="flathub-beta"
 FLATHUB_BETA_REMOTE_URL="https://flathub.org/beta-repo/flathub-beta.flatpakrepo"
+RESET_FLATPAK_STATE_BEFORE_SWITCH="${RESET_FLATPAK_STATE_BEFORE_SWITCH:-false}"
 
 declare -ag FLATPAK_PROFILE_CORE_APPS=(
     "com.github.tchx84.Flatseal"
@@ -238,7 +239,6 @@ FLATPAK_PROFILE_AI_WORKSTATION_APPS+=(
     "com.getpostman.Postman"
     "io.dbeaver.DBeaverCommunity"
     #"com.visualstudio.code"
-    "io.github.Qalculate.Qalculate"
     "com.bitwarden.desktop"
     "com.obsproject.Studio"
 )
@@ -283,9 +283,7 @@ prune_arch_incompatible_flatpaks() {
     local arch="${SYSTEM_ARCH:-$(uname -m)}"
     case "$arch" in
         aarch64|arm64)
-            local incompatible_app="io.github.Qalculate.Qalculate"
-            _remove_flatpak_app FLATPAK_PROFILE_AI_WORKSTATION_APPS "$incompatible_app"
-            FLATPAK_ARCH_PRUNED_APPS+=("$incompatible_app")
+            :
             ;;
     esac
 }

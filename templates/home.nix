@@ -46,6 +46,12 @@ let
   qdrantGrpcPort = 6334;
   mindsdbApiPort = 47334;
   mindsdbGuiPort = 7735;
+  gitPackage =
+    if config ? programs && config.programs ? git && config.programs.git ? package then
+      config.programs.git.package
+    else
+      pkgs.git;
+  gitExecutablePath = lib.getExe gitPackage;
   claudeWrapperPath = "${config.home.homeDirectory}/.npm-global/bin/claude-wrapper";
   claudeNodeModulesPath = "${config.home.homeDirectory}/.npm-global/lib/node_modules";
   gptCodexWrapperPath = "${config.home.homeDirectory}/.npm-global/bin/gpt-codex-wrapper";
@@ -183,6 +189,7 @@ let
         remote_url=${flathubRemoteUrl}
         remote_fallback_url=${flathubRemoteFallbackUrl}
         availability_message=""
+        managed_state_marker="$HOME/.local/share/flatpak/.aidb-managed-state"
 
         log() {
           printf '[%s] %s\n' "$(date --iso-8601=seconds)" "$*"
@@ -479,7 +486,7 @@ OSTREE_CONFIG
           local attempt=1
           while (( attempt <= 3 )); do
             local install_output=""
-            if install_output=$(flatpak --noninteractive --user install "$remote_name" "$app_id" 2>&1); then
+            if install_output=$(flatpak --noninteractive --assumeyes --user install "$remote_name" "$app_id" 2>&1); then
               log "Installed $app_id"
               return 0
             fi
@@ -509,7 +516,52 @@ OSTREE_CONFIG
           return 1
         }
 
-        backup_legacy_flatpak_configs || true
+        batch_install_missing_apps() {
+          # Accepts the package array as arguments to avoid hard-coding globals.
+          local -a source_packages=("$@")
+          if [[ ''${#source_packages[@]} -le 1 ]]; then
+            return 1
+          fi
+
+          local -a to_install=()
+          local pkg_id
+          for pkg_id in "''${source_packages[@]}"; do
+            if flatpak --user info "$pkg_id" >/dev/null 2>&1; then
+              continue
+            fi
+            to_install+=("$pkg_id")
+          done
+
+          if [[ ''${#to_install[@]} -le 1 ]]; then
+            return 1
+          fi
+
+          log "Attempting batch Flatpak install for ''${#to_install[@]} application(s)..."
+          local install_output=""
+          if install_output=$(flatpak --noninteractive --assumeyes --user install "$remote_name" "''${to_install[@]}" 2>&1); then
+            if [[ -n "$install_output" ]]; then
+              while IFS= read -r line; do
+                log "  ↳ $line"
+              done <<<"$install_output"
+            fi
+            return 0
+          fi
+
+          if [[ -n "$install_output" ]]; then
+            while IFS= read -r line; do
+              log "  ↳ $line" >&2
+            done <<<"$install_output"
+          fi
+          return 1
+        }
+
+        if [[ -f "$managed_state_marker" ]]; then
+          log "Managed Flatpak directories already prepared; skipping legacy backup"
+        else
+          if backup_legacy_flatpak_configs; then
+            touch "$managed_state_marker" 2>/dev/null || true
+          fi
+        fi
 
         if ! reset_flatpak_repo_if_corrupted; then
           log "Flatpak repository recovery failed" >&2
@@ -524,6 +576,8 @@ OSTREE_CONFIG
           log "No Flatpak packages declared; exiting"
           exit 0
         fi
+
+        batch_install_missing_apps "''${packages[@]}" || true
 
         failures=0
         for app_id in "''${packages[@]}"; do
@@ -1049,6 +1103,16 @@ in
               OnlyShowIn = cosmicOnlyShowInValue;
             };
         };
+        "goose-desktop" = {
+          name = "Goose Desktop";
+          type = "Application";
+          exec = "${pkgs.goose-cli}/bin/goose";
+          icon = "applications-engineering";
+          categories = [ "Development" "Utility" ];
+          terminal = false;
+          startupNotify = true;
+          comment = "Launch the Goose AI workspace";
+        };
       }
     ];
   # ============================================================================
@@ -1074,6 +1138,11 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
         gpt4all-fixed  # Fixed for Qt6 6.10+ GuiPrivate compatibility
         llama-cpp
       ];
+      # Optional GUI frontends for CLI-first network/security tooling.
+      networkGuiPackages =
+        lib.optionals (pkgs ? zenmap) [
+          pkgs.zenmap             # Graphical frontend for nmap scans
+        ];
       basePackages =
         [
           nixAiHelpScript
@@ -1092,6 +1161,8 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           sqlite                  # Tier 1 Guardian database
           openssl                 # Cryptographic operations
           bc                      # Basic calculator
+          qalculate-qt            # Advanced calculator (replaces Flatpak dependency)
+          goose-cli               # Goose AI CLI/Desktop provided declaratively
           inotify-tools           # File watching for Guardian
 
           # ========================================================================
@@ -1182,6 +1253,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           socat                   # Multipurpose relay (SOcket CAT)
           mtr                     # Network diagnostic tool (traceroute/ping)
           nmap                    # Network exploration and security scanner
+          wireshark               # GUI network protocol analyzer (ships tshark CLI)
 
           # Security & privacy tooling
           clamav                  # Antivirus engine and CLI scanner
@@ -1349,6 +1421,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           age             # Modern encryption tool (for secrets management)
           sops            # Secrets operations (encrypted config files)
         ])
+        ++ networkGuiPackages
         ++ fallbackNvtopPackages
         ++ gpuMonitoringPackages;
       aiderPackage =
@@ -1784,6 +1857,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       "chatgpt.response.showNotification" = false;
 
       # Git configuration
+      "git.path" = gitExecutablePath;
       "git.enableSmartCommit" = true;
       "git.autofetch" = true;
       "gitlens.codeLens.enabled" = true;
@@ -2178,6 +2252,19 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
         fi
 
         exec aider --model "$model" --repo "$repo_path" "$@"
+      '';
+      executable = true;
+    };
+
+    ".config/openskills/install.sh" = {
+      text = ''
+        #!/usr/bin/env bash
+        #
+        # OpenSkills automation hook – append the commands that install your project-specific tools here.
+        #
+        set -euo pipefail
+
+        echo "OpenSkills custom tooling hook – no actions defined."
       '';
       executable = true;
     };

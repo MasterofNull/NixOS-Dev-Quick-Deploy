@@ -2182,6 +2182,12 @@ safe_chown_user_dir() {
         owner="$target_user:$target_group"
     fi
 
+    local current_owner
+    current_owner=$(stat -c '%U:%G' "$target" 2>/dev/null || echo "")
+    if [[ -n "$current_owner" && "$current_owner" == "$owner" ]]; then
+        return 0
+    fi
+
     # Attempt to set ownership
     if ! chown -R "$owner" "$target" 2>/dev/null; then
         print_warning "Could not set ownership of $target to $owner"
@@ -2382,6 +2388,7 @@ prepare_home_manager_targets() {
 
     local preserve_flatpak_state=false
     local flatpak_installed_count=0
+    local flatpak_state_reason=""
 
     _is_flatpak_state_path() {
         local candidate="$1"
@@ -2402,14 +2409,69 @@ prepare_home_manager_targets() {
         return 1
     }
 
-    if command -v flatpak >/dev/null 2>&1; then
-        local flatpak_list_output=""
-        if flatpak_list_output=$(run_as_primary_user flatpak list --user --app --columns=application 2>/dev/null || true); then
-            flatpak_installed_count=$(printf '%s\n' "$flatpak_list_output" | awk '$0 != "Application" && NF {count++} END {print count+0}')
-            if [[ "$flatpak_installed_count" -gt 0 ]]; then
-                preserve_flatpak_state=true
-                print_info "Detected ${flatpak_installed_count} existing Flatpak application(s); preserving user Flatpak directories."
+    if [[ "${RESET_FLATPAK_STATE_BEFORE_SWITCH,,}" == "true" ]]; then
+        print_warning "RESET_FLATPAK_STATE_BEFORE_SWITCH=true; Flatpak directories may be reset before the switch."
+    else
+        local var_dir="$HOME/.var"
+        local var_backup_result=0
+        if [[ -e "$var_dir" && ! -d "$var_dir" ]]; then
+            backup_path_if_exists "$var_dir" "$backup_dir" ".var (legacy file)" || var_backup_result=$?
+            if [[ $var_backup_result -eq 0 ]]; then
+                cleaned_any=true
+            elif [[ $var_backup_result -eq 2 ]]; then
+                encountered_error=true
             fi
+        fi
+
+        if [[ ! -d "$var_dir" ]]; then
+            if ! safe_mkdir "$var_dir"; then
+                encountered_error=true
+            fi
+        fi
+
+        if command -v flatpak >/dev/null 2>&1; then
+            local flatpak_list_output=""
+            if flatpak_list_output=$(run_as_primary_user flatpak list --user --app --columns=application 2>/dev/null || true); then
+                flatpak_installed_count=$(
+                    printf '%s\n' "$flatpak_list_output" | awk '$0 != "Application" && $0 != "Application ID" && NF {count++} END {print count+0}'
+                )
+                if [[ "$flatpak_installed_count" -gt 0 ]]; then
+                    preserve_flatpak_state=true
+                    flatpak_state_reason="Detected ${flatpak_installed_count} existing Flatpak application(s)"
+                fi
+            fi
+        fi
+
+        if [[ "$preserve_flatpak_state" != true && -n "${FLATPAK_PROFILE_STATE_FILE:-}" && -f "$FLATPAK_PROFILE_STATE_FILE" ]]; then
+            preserve_flatpak_state=true
+            flatpak_state_reason="Flatpak profile cache present at ${FLATPAK_PROFILE_STATE_FILE}"
+        fi
+
+        if [[ "$preserve_flatpak_state" != true ]]; then
+            local -a flatpak_state_dirs=(
+                "$PRIMARY_HOME/.local/share/flatpak/app"
+                "$PRIMARY_HOME/.local/share/flatpak/runtime"
+                "$PRIMARY_HOME/.local/share/flatpak/repo"
+                "$PRIMARY_HOME/.var/app"
+            )
+            local candidate=""
+            for candidate in "${flatpak_state_dirs[@]}"; do
+                if [[ -d "$candidate" ]]; then
+                    if find "$candidate" -mindepth 1 -print -quit >/dev/null 2>&1; then
+                        preserve_flatpak_state=true
+                        flatpak_state_reason="Detected Flatpak data under ${candidate#$PRIMARY_HOME/}"
+                        break
+                    fi
+                fi
+            done
+        fi
+    fi
+
+    if [[ "$preserve_flatpak_state" == true ]]; then
+        if [[ -n "$flatpak_state_reason" ]]; then
+            print_info "${flatpak_state_reason}; preserving user Flatpak directories."
+        else
+            print_info "Preserving user Flatpak directories."
         fi
     fi
 
@@ -2488,6 +2550,24 @@ prepare_home_manager_targets() {
         fi
     done
 
+    local -a ensure_home_dirs=(
+        "$PRIMARY_HOME/.var"
+        "$PRIMARY_HOME/.var/app"
+        "$PRIMARY_HOME/.var/app/$GITEA_FLATPAK_APP_ID"
+        "$PRIMARY_HOME/.var/app/$GITEA_FLATPAK_APP_ID/config"
+        "$PRIMARY_HOME/.var/app/$GITEA_FLATPAK_APP_ID/data/gitea"
+    )
+    local dir_path
+    for dir_path in "${ensure_home_dirs[@]}"; do
+        if [[ -n "$dir_path" && ! -d "$dir_path" ]]; then
+            if safe_mkdir "$dir_path"; then
+                safe_chown_user_dir "$dir_path" || true
+            else
+                encountered_error=true
+            fi
+        fi
+    done
+
     local vscodium_user_dir="$HOME/.config/VSCodium/User"
     if [[ -d "$vscodium_user_dir" && ! -L "$vscodium_user_dir" ]]; then
         if find "$vscodium_user_dir" -mindepth 1 -maxdepth 1 ! -type l 2>/dev/null | grep -q .; then
@@ -2533,7 +2613,6 @@ prepare_home_manager_targets() {
         "$GITEA_NATIVE_DATA_DIR::750"
         "$GITEA_SECRETS_CACHE_DIR::700"
         "$PRIMARY_HOME/.config/obsidian/ai-integrations::700"
-        "$PRIMARY_HOME/.var/app::755"
     )
 
     local dotfiles_created=false

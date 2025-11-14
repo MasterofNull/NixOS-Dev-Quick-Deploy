@@ -859,6 +859,8 @@ Vi-like file manager for the console.
 |------|-------------|-------|
 | **mtr** | Network diagnostic tool | `mtr google.com` |
 | **nmap** | Network scanner | `nmap -A 192.168.1.0/24` |
+| **zenmap** | GUI frontend for nmap scans | `zenmap` |
+| **wireshark** | GUI network protocol analyzer (ships `tshark` CLI) | `wireshark` |
 | **netcat** | TCP/UDP networking | `nc -l 8080` |
 | **socat** | Multipurpose relay | `socat TCP-LISTEN:8080 -` |
 
@@ -872,6 +874,10 @@ Vi-like file manager for the console.
 - [httpie.io](https://httpie.io/docs)
 - [curl Manual](https://curl.se/docs/manual.html)
 - [nmap Documentation](https://nmap.org/docs.html)
+- [Zenmap User Guide](https://nmap.org/book/zenmap-manual.html)
+- [Wireshark Docs](https://www.wireshark.org/docs/)
+
+Zenmap installs automatically whenever the channel provides it, so you always have a point-and-click interface for building complex scans. Wireshark brings both the desktop analyzer and the `tshark` CLI helper, making it easy to pivot between GUI and scripted workflows.
 
 ---
 
