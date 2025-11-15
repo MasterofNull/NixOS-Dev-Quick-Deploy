@@ -125,66 +125,19 @@ sudo reboot
 
 ### Prevention
 
-The latest version of the quick deploy script includes a `force_clean_environment_setup()` function that:
-- Removes all existing flatpak applications before reinstallation
-- Cleans home-manager generations
-- Ensures fresh installation every run
-
-This minimizes duplicates by ensuring clean state before each installation.
+Current releases cache your MangoHud and Flatpak selections in `~/.cache/nixos-quick-deploy/preferences/`. Use `./scripts/mangohud-profile.sh` or `./scripts/flatpak-profile.sh` to adjust them; no manual cleanup is required between runs.
 
 ---
 
 ## Home Manager and Flatpak Not Replacing Configs
 
-### Issue
-
-Running the quick deploy script multiple times doesn't replace existing configurations or flatpak environment.
-
-### Solution (Already Fixed)
-
-The latest version of the script includes `force_clean_environment_setup()` which performs **complete environment replacement**:
-
-#### Home Manager Replacement
-1. **Backs up** all existing configurations to `~/.config-backups/`
-2. **Removes** ALL old home-manager generations
-3. **Cleans** nix profile garbage
-4. **Replaces** all configs with fresh versions
-
-#### Complete Flatpak Environment Replacement
-1. **Backs up** list of installed apps to `~/.cache/nixos-quick-deploy/flatpak-backup-*.txt`
-2. **Backs up** entire flatpak directory to `~/.cache/nixos-quick-deploy/flatpak-environment-backup-*/`
-3. **Uninstalls** ALL flatpak apps and runtimes (`flatpak uninstall --user --all`)
-4. **Removes** entire `~/.local/share/flatpak/` directory:
-   - Apps, runtimes, repo, overrides, remotes.d - everything
-5. **Removes** `~/.config/flatpak/` configuration directory
-6. **Rebuilds** complete flatpak environment from scratch via home-manager
-
-Every run of the script now performs a **complete clean installation** of both home-manager and flatpak while preserving backups.
-
-### Restore Previous Configs
-
-If you need to restore previous configurations:
+Home Manager is now rendered fresh each run (backups stay under `~/.config-backups/`). Flatpak provisioning honours the profile stored in `~/.cache/nixos-quick-deploy/preferences/flatpak-profile.env`. To switch profiles or reset, rerun:
 
 ```bash
-# Find your home-manager config backups
-ls -lt ~/.config-backups/
-
-# Restore from specific backup
-cp -a ~/.config-backups/pre-switch-20251031_123456/. ~/
-
-# Or restore just specific files
-cp ~/.config-backups/pre-switch-20251031_123456/.zshrc ~/
-
-# Find flatpak environment backups
-ls -lt ~/.cache/nixos-quick-deploy/
-
-# Restore complete flatpak environment (if needed)
-rm -rf ~/.local/share/flatpak
-cp -a ~/.cache/nixos-quick-deploy/flatpak-environment-backup-20251031_123456 ~/.local/share/flatpak
-
-# Or just check what apps were installed
-cat ~/.cache/nixos-quick-deploy/flatpak-backup-20251031_123456.txt
+./scripts/flatpak-profile.sh
 ```
+
+Need to inspect past installations? Review the generated manifests in `~/.cache/nixos-quick-deploy/flatpak-backup-*.txt` or restore a previous Home Manager snapshot from `~/.config-backups/`.
 
 ---
 

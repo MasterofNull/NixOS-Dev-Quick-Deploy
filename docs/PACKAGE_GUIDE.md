@@ -67,7 +67,17 @@ EOF
    # Should show: flathub and flathub-beta
    ```
 
-4. **Start AI Services** (optional)
+4. **Customize MangoHud & Flatpak Profiles**
+   ```bash
+   # Pick MangoHud behaviour (pure desktop overlay vs. desktop+in-app)
+   ./scripts/mangohud-profile.sh
+
+    # Switch Flatpak profile (minimal/core/ai-workstation) and persist state
+    ./scripts/flatpak-profile.sh
+   ```
+   Preferences live under `~/.cache/nixos-quick-deploy/preferences/` so future deploys reuse your choices automatically.
+
+5. **Start AI Services** (optional)
    ```bash
    # Start Ollama (enabled by default)
    sudo systemctl status ollama
@@ -80,7 +90,7 @@ EOF
    sudo systemctl restart qdrant
    ```
 
-5. **Restart Your Shell**
+6. **Restart Your Shell**
    ```bash
    exec zsh
    # Run the Powerlevel10k configuration wizard on first launch
@@ -100,10 +110,21 @@ ollama run llama3      # Run a model
 hf-start              # Start Hugging Face TGI
 open-webui-up         # Start Open WebUI
 
+# Profiles & Overlays
+./scripts/flatpak-profile.sh   # Switch Flatpak app set (Minimal/Core/AI Workstation)
+./scripts/mangohud-profile.sh  # Toggle MangoHud desktop vs. hybrid overlays
+
 # Development
 lg                    # Launch lazygit
 code-cursor           # AI-powered code editor
 nix-ai-help           # Show AI deployment help
+
+# Claude / GPT Wrappers
+claude-wrapper        # CLI interface for Claude Code
+gpt-codex-wrapper     # GPT-4o-based CLI helper
+codex-wrapper         # VSCodium-aware launcher for Codex IDE
+openai-wrapper        # Generic OpenAI CLI wrapper
+gooseai-wrapper       # GooseAI helper
 ```
 
 ---

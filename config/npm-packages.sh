@@ -10,7 +10,9 @@
 # - debug_env: optional environment variable that enables verbose wrapper logging
 #
 # Wrapper files are created under ~/.npm-global/bin and point at the resolved bin
-# entry inside ~/.npm-global/lib/node_modules/<package>.
+# entry inside ~/.npm-global/lib/node_modules/<package>. The manifest is parsed
+# by lib/tools.sh (install_claude_code()/install_vscodium_extensions()) so keep
+# the delimiter structure intact when adding new packages.
 
 NPM_AI_PACKAGE_MANIFEST=(
   "@anthropic-ai/claude-code|Claude Code|claude|claude-wrapper|Anthropic.claude-code|CLAUDE_DEBUG"

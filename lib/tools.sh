@@ -20,11 +20,15 @@
 #   - install_openskills_tooling() → Install OpenSkills tools
 #   - setup_flake_environment() → Setup Nix flakes dev environment
 
+# Resolved list of AI extensions to install via install_vscodium_extensions().
 declare -a AI_VSCODE_EXTENSIONS=()
 
 LAST_OPEN_VSX_URL=""
 LAST_OPEN_VSX_STATUS=""
 
+# -----------------------------------------------------------------------------
+# Helper lookups/registries
+# -----------------------------------------------------------------------------
 ai_cli_manual_url() {
     local package="$1"
 
@@ -375,6 +379,10 @@ report_flatpak_user_state() {
             print_info "User Flatpak applications currently installed: $app_count"
         fi
     fi
+
+    if [[ -n "${FLATPAK_INSTALL_ARCH:-}" ]]; then
+        print_info "Flatpak target architecture: $FLATPAK_INSTALL_ARCH"
+    fi
 }
 
 ensure_flatpak_repo_integrity() {
@@ -528,6 +536,54 @@ ensure_flathub_remote() {
 
     print_warning "Unable to configure Flathub repository automatically"
     return 1
+}
+
+flatpak_append_arch_flag() {
+    local -n target_ref="$1"
+    if [[ -n "${FLATPAK_INSTALL_ARCH:-}" ]]; then
+        target_ref+=("--arch" "$FLATPAK_INSTALL_ARCH")
+    fi
+}
+
+flatpak_should_retry_without_deltas() {
+    local output="$1"
+
+    if [[ -z "$output" ]]; then
+        return 1
+    fi
+
+    if printf '%s\n' "$output" | grep -Eiq 'repo/deltas|static delta|delta.+failed'; then
+        return 0
+    fi
+
+    return 1
+}
+
+flatpak_run_install_command() {
+    local output_var="$1"
+    shift
+    local -a cmd=("$@")
+    local deltas_disabled=0
+
+    while :; do
+        local install_output
+        install_output=$(run_as_primary_user "${cmd[@]}" 2>&1)
+        local status=$?
+        printf -v "$output_var" '%s' "$install_output"
+
+        if [[ $status -eq 0 ]]; then
+            return 0
+        fi
+
+        if [[ $deltas_disabled -eq 0 ]] && flatpak_should_retry_without_deltas "$install_output"; then
+            deltas_disabled=1
+            cmd+=("--no-static-deltas")
+            print_info "  Static delta fetch failed; retrying without deltas..."
+            continue
+        fi
+
+        return $status
+    done
 }
 
 flatpak_profile_apps() {
@@ -731,15 +787,19 @@ flatpak_query_application_support() {
     LAST_FLATPAK_QUERY_MESSAGE=""
 
     local remote_name="${FLATHUB_REMOTE_NAME:-flathub}"
+    local -a arch_args=()
+    if [[ -n "${FLATPAK_INSTALL_ARCH:-}" ]]; then
+        arch_args=("--arch" "$FLATPAK_INSTALL_ARCH")
+    fi
     local user_output system_output user_status system_status
 
-    user_output=$(run_as_primary_user flatpak --user remote-info "$remote_name" "$app_id" 2>&1 || true)
+    user_output=$(run_as_primary_user flatpak --user remote-info "${arch_args[@]}" "$remote_name" "$app_id" 2>&1 || true)
     user_status=$?
     if [[ $user_status -eq 0 ]]; then
         return 0
     fi
 
-    system_output=$(run_as_primary_user flatpak remote-info "$remote_name" "$app_id" 2>&1 || true)
+    system_output=$(run_as_primary_user flatpak remote-info "${arch_args[@]}" "$remote_name" "$app_id" 2>&1 || true)
     system_status=$?
     if [[ $system_status -eq 0 ]]; then
         return 0
@@ -768,10 +828,11 @@ flatpak_bulk_install_apps() {
     fi
 
     print_info "  Installing ${#apps[@]} Flatpak application(s) in batch..."
+    local -a install_cmd=(flatpak --noninteractive --assumeyes install --user)
+    flatpak_append_arch_flag install_cmd
+    install_cmd+=("$remote_name" "${apps[@]}")
     local install_output=""
-    install_output=$(run_as_primary_user flatpak --noninteractive --assumeyes install --user "$remote_name" "${apps[@]}" 2>&1)
-    local status=$?
-    if [[ $status -eq 0 ]]; then
+    if flatpak_run_install_command install_output "${install_cmd[@]}"; then
         print_success "  ✓ Batch installed ${#apps[@]} Flatpak application(s)"
         if [[ -n "$install_output" ]]; then
             print_flatpak_details "$install_output"
@@ -779,11 +840,12 @@ flatpak_bulk_install_apps() {
         return 0
     fi
 
-    print_warning "  ⚠ Batch install for ${#apps[@]} Flatpak application(s) failed (exit $status)"
+    local install_status=$?
+    print_warning "  ⚠ Batch install for ${#apps[@]} Flatpak application(s) failed (exit $install_status)"
     if [[ -n "$install_output" ]]; then
         print_flatpak_details "$install_output"
     fi
-    return $status
+    return $install_status
 }
 
 flatpak_install_app_list() {
@@ -872,9 +934,11 @@ flatpak_install_app_list() {
             local attempt
             local installed=0
             for attempt in 1 2 3; do
+                local -a install_cmd=(flatpak --noninteractive --assumeyes install --user)
+                flatpak_append_arch_flag install_cmd
+                install_cmd+=("$remote_name" "$queue_app_id")
                 local install_output
-                install_output=$(run_as_primary_user flatpak --noninteractive --assumeyes install --user "$remote_name" "$queue_app_id" 2>&1)
-                if [[ $? -eq 0 ]]; then
+                if flatpak_run_install_command install_output "${install_cmd[@]}"; then
                     print_success "  ✓ Installed $queue_app_id"
                     installed=1
                     break

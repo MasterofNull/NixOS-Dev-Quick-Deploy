@@ -13,7 +13,7 @@
 #   - lib/user-interaction.sh → print_* functions
 #
 # Required Variables:
-#   - PYTHON_BIN → Array to store python command (defined in config/variables.sh)
+#   - PYTHON_BIN → Array to store python command (defined in config/variables.sh:558)
 #
 # Exports:
 #   - ensure_python_runtime() → Detect or provision Python interpreter
@@ -109,6 +109,9 @@ run_python() {
 #   0 - Success (prints hex string to stdout)
 #   1 - Failure
 # ============================================================================
+# Hex/password utilities rely on python's secrets/random modules instead of
+# openssl to avoid extra dependencies; they also respect the resolved
+# PYTHON_BIN so we don't re-run detection.
 generate_hex_secret() {
     local bytes="${1:-32}"
 

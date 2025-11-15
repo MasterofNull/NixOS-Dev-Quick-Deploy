@@ -26,6 +26,8 @@
 # PHASE IMPLEMENTATION
 # ============================================================================
 
+# Provision a temporary swapfile on low-memory systems so declarative switches
+# do not OOM. Cleanup happens in phase-08 (see TEMP_SWAP_* usage there).
 ensure_low_memory_swap() {
     local detected_ram="${TOTAL_RAM_GB:-}"
     local ram_value
@@ -259,30 +261,37 @@ phase_05_declarative_deployment() {
     # ========================================================================
     # Step 6.4: Update Flake Inputs (System + Home Manager)
     # ========================================================================
-    print_section "Updating Flake Inputs"
-    print_info "Ensuring all configurations use the pinned revisions before switching..."
-    echo ""
+    if [[ "$AUTO_UPDATE_FLAKE_INPUTS" == true ]]; then
+        print_section "Updating Flake Inputs"
+        print_info "Ensuring all configurations use the pinned revisions before switching..."
+        echo ""
 
-    local flake_update_output=""
-    local flake_update_status=0
+        local flake_update_output=""
+        local flake_update_status=0
 
-    if ! flake_update_output=$(cd "$HM_CONFIG_DIR" && nix flake update 2>&1); then
-        flake_update_status=$?
-    fi
-
-    if (( flake_update_status == 0 )); then
-        if [[ -n "$flake_update_output" ]]; then
-            echo "$flake_update_output"
+        if ! flake_update_output=$(cd "$HM_CONFIG_DIR" && nix flake update 2>&1); then
+            flake_update_status=$?
         fi
-        print_success "✓ Flake inputs updated"
+
+        if (( flake_update_status == 0 )); then
+            if [[ -n "$flake_update_output" ]]; then
+                echo "$flake_update_output"
+            fi
+            print_success "✓ Flake inputs updated"
+        else
+            if [[ -n "$flake_update_output" ]]; then
+                echo "$flake_update_output" | sed 's/^/  /'
+            fi
+            print_warning "⚠ Flake update had issues (continuing anyway)"
+        fi
+
+        echo ""
     else
-        if [[ -n "$flake_update_output" ]]; then
-            echo "$flake_update_output" | sed 's/^/  /'
-        fi
-        print_warning "⚠ Flake update had issues (continuing anyway)"
+        print_section "Flake Inputs"
+        print_info "Skipping automatic 'nix flake update' to keep the bundled lockfile intact."
+        print_info "Use --update-flake-inputs when you want to refresh upstream sources."
+        echo ""
     fi
-
-    echo ""
 
     # ========================================================================
     # Step 6.5: Prepare Home Manager Targets
