@@ -32,7 +32,8 @@
 # ============================================================================
 
 # Replace placeholder tokens in template files using a Python helper to safely
-# handle multi-line replacements.
+# handle multi-line replacements. The helper is used extensively when writing
+# templates/home.nix and templates/configuration.nix.
 replace_placeholder() {
     local target_file="$1"
     local placeholder="$2"
@@ -72,13 +73,11 @@ PY
 }
 
 # Resolve MangoHud profile preferences once so system/home configs stay in sync.
+# Preference file path defined in config/variables.sh:129.
 resolve_mangohud_preferences() {
     local gaming_stack_enabled_flag="${1:-false}"
 
-    local default_profile="disabled"
-    if [[ "$gaming_stack_enabled_flag" == true ]]; then
-        default_profile="desktop"
-    fi
+    local default_profile="desktop"
 
     local mangohud_profile="$default_profile"
     local mangohud_profile_origin="defaults"
@@ -124,13 +123,154 @@ resolve_mangohud_preferences() {
     RESOLVED_MANGOHUD_INJECTS="$mangohud_injects_into_apps"
 }
 
+# Build the MangoHud preset/configuration block shared by system and home
+# templates. The generated string is spliced into both template files via
+# replace_placeholder to keep behaviour consistent across system/home configs.
+generate_mangohud_nix_definitions() {
+    cat <<'EOF'
+  glfMangoHudCosmicBlacklist = [
+    "cosmic-app-library"
+    "cosmic-comp"
+    "cosmic-edit"
+    "cosmic-files"
+    "cosmic-launcher"
+    "cosmic-notification-daemon"
+    "cosmic-panel"
+    "cosmic-session"
+    "cosmic-settings"
+    "cosmic-store"
+    "cosmic-term"
+    "cosmic-terminal"
+    "cosmic-text"
+  ];
+  glfMangoHudBlacklistEntry =
+    if glfMangoHudCosmicBlacklist == [] then
+      ""
+    else
+      "blacklist=${lib.concatStringsSep "," glfMangoHudCosmicBlacklist}";
+  glfMangoHudCommonEntries =
+    lib.optional (glfMangoHudBlacklistEntry != "") glfMangoHudBlacklistEntry;
+  glfMangoHudPresets = {
+    disabled = [ ];
+    light =
+      [
+      "control=mangohud"
+      "legacy_layout=0"
+      "horizontal"
+      "background_alpha=0"
+      "gpu_stats"
+      "gpu_power"
+      "gpu_temp"
+      "cpu_stats"
+      "cpu_temp"
+      "ram"
+      "vram"
+      "ps"
+      "fps"
+      "fps_metrics=AVG,0.001"
+      "font_scale=1.05"
+      ]
+      ++ glfMangoHudCommonEntries;
+    full =
+      [
+      "control=mangohud"
+      "legacy_layout=0"
+      "vertical"
+      "background_alpha=0"
+      "gpu_stats"
+      "gpu_power"
+      "gpu_temp"
+      "cpu_stats"
+      "cpu_temp"
+      "core_load"
+      "ram"
+      "vram"
+      "fps"
+      "fps_metrics=AVG,0.001"
+      "frametime"
+      "refresh_rate"
+      "resolution"
+      "vulkan_driver"
+      "wine"
+      ]
+      ++ glfMangoHudCommonEntries;
+    desktop =
+      [
+      "control=mangohud"
+      "legacy_layout=0"
+      "horizontal"
+      "background_alpha=0"
+      "alpha=0.9"
+      "font_scale=1.1"
+      "position=top-left"
+      "offset_x=32"
+      "offset_y=32"
+      "hud_no_margin=1"
+      "gpu_stats"
+      "gpu_power"
+      "gpu_temp"
+      "cpu_stats"
+      "cpu_temp"
+      "core_load"
+      "ram"
+      "vram"
+      "fps"
+      "fps_metrics=AVG,0.001"
+      "frametime"
+      ]
+      ++ glfMangoHudCommonEntries;
+    "desktop-hybrid" =
+      [
+      "control=mangohud"
+      "legacy_layout=0"
+      "horizontal"
+      "background_alpha=0"
+      "alpha=0.9"
+      "font_scale=1.1"
+      "position=top-left"
+      "offset_x=32"
+      "offset_y=32"
+      "hud_no_margin=1"
+      "gpu_stats"
+      "gpu_power"
+      "gpu_temp"
+      "cpu_stats"
+      "cpu_temp"
+      "core_load"
+      "ram"
+      "vram"
+      "fps"
+      "fps_metrics=AVG,0.001"
+      "frametime"
+      ]
+      ++ glfMangoHudCommonEntries;
+  };
+  glfMangoHudProfile = "__MANGOHUD_PROFILE__";
+  glfMangoHudEntries = glfMangoHudPresets.__MANGOHUD_PROFILE__;
+  glfMangoHudEnvEntries =
+    lib.filter (entry: builtins.match ".*,.*" entry == null) glfMangoHudEntries;
+  glfMangoHudHasEntries = glfMangoHudEntries != [];
+  glfMangoHudConfig = lib.concatStringsSep "," glfMangoHudEnvEntries;
+  glfMangoHudConfigFileContents =
+    if !glfMangoHudHasEntries then
+      ""
+    else
+      lib.concatStringsSep "\n" glfMangoHudEntries + "\n";
+  glfMangoHudDesktopMode =
+    glfMangoHudProfile == "desktop" || glfMangoHudProfile == "desktop-hybrid";
+  glfMangoHudInjectsIntoApps =
+    glfMangoHudHasEntries && glfMangoHudProfile != "desktop";
+EOF
+}
+
 # Cache for resolved MangoHud state so subsequent steps can reuse it.
 RESOLVED_MANGOHUD_PROFILE=""
 RESOLVED_MANGOHUD_PROFILE_ORIGIN="defaults"
 RESOLVED_MANGOHUD_DESKTOP_MODE=false
 RESOLVED_MANGOHUD_INJECTS=true
 
-# Binary cache helpers keep runtime tooling and rendered configuration aligned.
+# Binary cache helpers keep runtime tooling and rendered configuration aligned
+# across NixOS + Home Manager outputs.
 get_binary_cache_sources() {
     local -a caches=(
         "https://cache.nixos.org"
@@ -209,6 +349,9 @@ append_unique_value() {
     target_array+=("$value")
 }
 
+# Convenience wrappers for the arrays exported in config/variables.sh. These
+# keep call sites tidy when auxiliary modules register extra cache endpoints or
+# remote builders.
 register_additional_binary_cache() {
     append_unique_value ADDITIONAL_BINARY_CACHES "$1"
 }
@@ -227,6 +370,8 @@ register_remote_builder_spec() {
 # Remove transient Podman/overlay fileSystems entries from a generated
 # hardware-configuration.nix so nixos-rebuild does not try to mount ephemeral
 # runtime paths (which breaks local-fs.target).
+# Sanitize HM hardware config (defaults defined in config/variables.sh:589) so
+# nixos-rebuild ignores transient container mounts added by Podman.
 sanitize_hardware_configuration() {
     local config_file="${1:-${HARDWARE_CONFIG_FILE:-}}"
 
@@ -324,6 +469,9 @@ PY
 # Podman rootless storage helper
 # ==========================================================================
 
+# Generate the services.podman.settings.storage override that Home Manager
+# injects. Depends on PRIMARY_HOME (config/variables.sh:450) so rootless Podman
+# data stays inside the user's home directory.
 build_rootless_podman_storage_block() {
     local default_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-vfs}"
     local system_driver="${PODMAN_STORAGE_DRIVER:-$default_driver}"
@@ -500,6 +648,8 @@ EOF
     fi
 }
 
+# Resolve TOTAL_RAM_GB (mutable cache defined in config/variables.sh:533) so
+# later tuning code can reuse the detected value without duplicating logic.
 resolve_total_ram_gb() {
     local cached="${TOTAL_RAM_GB:-}"
     if [[ "$cached" =~ ^[0-9]+$ && "$cached" -gt 0 ]]; then
@@ -541,6 +691,9 @@ resolve_total_ram_gb() {
     echo "0"
 }
 
+# Decide nix build parallelism based on TOTAL_RAM_GB/CPU_CORES (placeholders
+# exported from config/variables.sh). Returns a tuple used when rendering
+# nix.conf sections.
 determine_nixos_parallelism() {
     local detected_ram="${TOTAL_RAM_GB:-}"
     if [[ ! "$detected_ram" =~ ^[0-9]+$ ]]; then
@@ -899,6 +1052,48 @@ verify_home_manager_flake_ready() {
     fi
 
     return 0
+}
+
+seed_flake_lock_from_template() {
+    local backup_dir="${1:-}"
+    local backup_stamp="${2:-$(date +%Y%m%d_%H%M%S)}"
+    local template_file="$SCRIPT_DIR/templates/flake.lock"
+    local target_file="$HM_CONFIG_DIR/flake.lock"
+
+    if [[ ! -f "$template_file" ]]; then
+        return 0
+    fi
+
+    if [[ "$RESTORE_KNOWN_GOOD_FLAKE_LOCK" == true ]]; then
+        if [[ -f "$target_file" && -n "$backup_dir" ]]; then
+            safe_mkdir "$backup_dir" || true
+            local backup_target="$backup_dir/flake.lock.backup.$backup_stamp"
+            safe_copy_file_silent "$target_file" "$backup_target" && \
+                print_success "Backed up existing flake.lock before restoring baseline"
+        fi
+
+        if safe_copy_file "$template_file" "$target_file"; then
+            safe_chown_user_dir "$target_file" || true
+            print_success "Restored flake.lock from bundled baseline"
+            return 0
+        fi
+
+        print_error "Failed to restore flake.lock from template baseline"
+        return 1
+    fi
+
+    if [[ -f "$target_file" ]]; then
+        return 0
+    fi
+
+    if safe_copy_file "$template_file" "$target_file"; then
+        safe_chown_user_dir "$target_file" || true
+        print_success "Seeded flake.lock from bundled baseline"
+        return 0
+    fi
+
+    print_error "Failed to seed flake.lock from template baseline"
+    return 1
 }
 
 describe_binary_cache_usage() {
@@ -1826,7 +2021,39 @@ generate_nixos_system_config() {
     local enable_zswap="${ENABLE_ZSWAP_CONFIGURATION:-false}"
     local zswap_percent="${ZSWAP_MAX_POOL_PERCENT:-20}"
     local zswap_compressor="${ZSWAP_COMPRESSOR:-zstd}"
-    local zswap_zpool="${ZSWAP_ZPOOL:-z3fold}"
+    local zswap_zpool="${ZSWAP_ZPOOL:-}"
+
+    local kernel_package_attr=""
+    if declare -F resolve_preferred_kernel_package_attr >/dev/null 2>&1; then
+        kernel_package_attr=$(resolve_preferred_kernel_package_attr 2>/dev/null || echo "")
+    fi
+
+    local zswap_pool_verified=false
+    if [[ -n "$kernel_package_attr" ]] && declare -F choose_supported_zswap_zpool_for_kernel >/dev/null 2>&1; then
+        local adjusted_zswap_pool=""
+        adjusted_zswap_pool=$(choose_supported_zswap_zpool_for_kernel "$zswap_zpool" "$kernel_package_attr" 2>/dev/null || echo "")
+        if [[ -n "$adjusted_zswap_pool" ]]; then
+            zswap_pool_verified=true
+            if [[ -z "$zswap_zpool" ]]; then
+                print_info "Kernel package ${kernel_package_attr} supports ${adjusted_zswap_pool}; selecting automatically."
+            elif [[ "$adjusted_zswap_pool" != "$zswap_zpool" ]]; then
+                print_warning "Kernel package ${kernel_package_attr} lacks ${zswap_zpool}; switching zswap pool to supported ${adjusted_zswap_pool}."
+            fi
+            zswap_zpool="$adjusted_zswap_pool"
+            ZSWAP_ZPOOL="$adjusted_zswap_pool"
+        fi
+    fi
+
+    if [[ "$zswap_pool_verified" != true ]]; then
+        if [[ -n "$zswap_zpool" && "$zswap_zpool" != "zsmalloc" ]]; then
+            local target_kernel_label="${kernel_package_attr:-selected kernel}"
+            print_warning "Unable to verify ${zswap_zpool} support for ${target_kernel_label}; defaulting zswap pool to zsmalloc."
+        elif [[ -z "$zswap_zpool" ]]; then
+            print_info "Zswap pool not specified; defaulting to safe zsmalloc backend."
+        fi
+        zswap_zpool="zsmalloc"
+        ZSWAP_ZPOOL="$zswap_zpool"
+    fi
 
     local -a performance_kernel_preference=(
         "linuxPackages_6_17"
@@ -1958,108 +2185,9 @@ generate_nixos_system_config() {
     local glf_os_definitions
 
     local mangohud_definition
-    mangohud_definition=$(cat <<EOF
-  glfMangoHudPresets = {
-    disabled = [ ];
-    light = [
-      "control=mangohud"
-      "legacy_layout=0"
-      "horizontal"
-      "background_alpha=0"
-      "gpu_stats"
-      "gpu_power"
-      "gpu_temp"
-      "cpu_stats"
-      "cpu_temp"
-      "ram"
-      "vram"
-      "ps"
-      "fps"
-      "fps_metrics=AVG,0.001"
-      "font_scale=1.05"
-    ];
-    full = [
-      "control=mangohud"
-      "legacy_layout=0"
-      "vertical"
-      "background_alpha=0"
-      "gpu_stats"
-      "gpu_power"
-      "gpu_temp"
-      "cpu_stats"
-      "cpu_temp"
-      "core_load"
-      "ram"
-      "vram"
-      "fps"
-      "fps_metrics=AVG,0.001"
-      "frametime"
-      "refresh_rate"
-      "resolution"
-      "vulkan_driver"
-      "wine"
-    ];
-    desktop = [
-      "control=mangohud"
-      "legacy_layout=0"
-      "horizontal"
-      "background_alpha=0"
-      "alpha=0.9"
-      "font_scale=1.1"
-      "position=top-left"
-      "offset_x=32"
-      "offset_y=32"
-      "hud_no_margin=1"
-      "gpu_stats"
-      "gpu_power"
-      "gpu_temp"
-      "cpu_stats"
-      "cpu_temp"
-      "core_load"
-      "ram"
-      "vram"
-      "fps"
-      "fps_metrics=AVG,0.001"
-      "frametime"
-    ];
-    "desktop-hybrid" = [
-      "control=mangohud"
-      "legacy_layout=0"
-      "horizontal"
-      "background_alpha=0"
-      "alpha=0.9"
-      "font_scale=1.1"
-      "position=top-left"
-      "offset_x=32"
-      "offset_y=32"
-      "hud_no_margin=1"
-      "gpu_stats"
-      "gpu_power"
-      "gpu_temp"
-      "cpu_stats"
-      "cpu_temp"
-      "core_load"
-      "ram"
-      "vram"
-      "fps"
-      "fps_metrics=AVG,0.001"
-      "frametime"
-    ];
-  };
-  glfMangoHudProfile = "${mangohud_profile}";
-  glfMangoHudEntries = glfMangoHudPresets.\${glfMangoHudProfile};
-  glfMangoHudConfig = lib.concatStringsSep "," glfMangoHudEntries;
-  glfMangoHudConfigFileContents =
-    if glfMangoHudEntries == [] then
-      ""
-    else
-      lib.concatStringsSep "\n" glfMangoHudEntries + "\n";
-  glfMangoHudDesktopMode =
-    glfMangoHudProfile == "desktop" || glfMangoHudProfile == "desktop-hybrid";
-  glfMangoHudInjectsIntoApps =
-    glfMangoHudConfig != "" && glfMangoHudProfile != "desktop";
-EOF
-)
+    mangohud_definition=$(generate_mangohud_nix_definitions)
+
+    mangohud_definition="${mangohud_definition//__MANGOHUD_PROFILE__/$mangohud_profile}"
 
     if [[ "$gaming_stack_enabled" == true ]]; then
         print_info "Applying MangoHud overlay profile: $mangohud_profile (${mangohud_profile_origin})"
@@ -2929,6 +3057,11 @@ EOF
     fi
 
     print_success "Generated flake.nix"
+
+    if ! seed_flake_lock_from_template "$BACKUP_DIR" "$BACKUP_TIMESTAMP"; then
+        return 1
+    fi
+
     echo ""
 
     print_success "NixOS system configuration generated successfully"
@@ -3126,107 +3259,13 @@ create_home_manager_config() {
         GPU_MONITORING_PACKAGES="[ nvtop ]"
     fi
 
+    local mangohud_definition
+    mangohud_definition=$(generate_mangohud_nix_definitions)
+    mangohud_definition="${mangohud_definition//__MANGOHUD_PROFILE__/$mangohud_profile}"
+
     local glf_home_definitions
     glf_home_definitions=$(cat <<EOF
-  glfMangoHudPresets = {
-    disabled = [ ];
-    light = [
-      "control=mangohud"
-      "legacy_layout=0"
-      "horizontal"
-      "background_alpha=0"
-      "gpu_stats"
-      "gpu_power"
-      "gpu_temp"
-      "cpu_stats"
-      "cpu_temp"
-      "ram"
-      "vram"
-      "ps"
-      "fps"
-      "fps_metrics=AVG,0.001"
-      "font_scale=1.05"
-    ];
-    full = [
-      "control=mangohud"
-      "legacy_layout=0"
-      "vertical"
-      "background_alpha=0"
-      "gpu_stats"
-      "gpu_power"
-      "gpu_temp"
-      "cpu_stats"
-      "cpu_temp"
-      "core_load"
-      "ram"
-      "vram"
-      "fps"
-      "fps_metrics=AVG,0.001"
-      "frametime"
-      "refresh_rate"
-      "resolution"
-      "vulkan_driver"
-      "wine"
-    ];
-    desktop = [
-      "control=mangohud"
-      "legacy_layout=0"
-      "horizontal"
-      "background_alpha=0"
-      "alpha=0.9"
-      "font_scale=1.1"
-      "position=top-left"
-      "offset_x=32"
-      "offset_y=32"
-      "hud_no_margin=1"
-      "gpu_stats"
-      "gpu_power"
-      "gpu_temp"
-      "cpu_stats"
-      "cpu_temp"
-      "core_load"
-      "ram"
-      "vram"
-      "fps"
-      "fps_metrics=AVG,0.001"
-      "frametime"
-    ];
-    "desktop-hybrid" = [
-      "control=mangohud"
-      "legacy_layout=0"
-      "horizontal"
-      "background_alpha=0"
-      "alpha=0.9"
-      "font_scale=1.1"
-      "position=top-left"
-      "offset_x=32"
-      "offset_y=32"
-      "hud_no_margin=1"
-      "gpu_stats"
-      "gpu_power"
-      "gpu_temp"
-      "cpu_stats"
-      "cpu_temp"
-      "core_load"
-      "ram"
-      "vram"
-      "fps"
-      "fps_metrics=AVG,0.001"
-      "frametime"
-    ];
-  };
-  glfMangoHudProfile = "${mangohud_profile}";
-  glfMangoHudEntries = glfMangoHudPresets.\${glfMangoHudProfile};
-  glfMangoHudConfig = lib.concatStringsSep "," glfMangoHudEntries;
-  glfMangoHudConfigFileContents =
-    if glfMangoHudEntries == [] then
-      ""
-    else
-      lib.concatStringsSep "\n" glfMangoHudEntries + "\n";
-  glfMangoHudDesktopMode =
-    glfMangoHudProfile == "desktop" || glfMangoHudProfile == "desktop-hybrid";
-  glfMangoHudInjectsIntoApps =
-    glfMangoHudConfig != "" && glfMangoHudProfile != "desktop";
+${mangohud_definition}
   glfLutrisWithGtk =
     if ${gaming_stack_enabled_literal} && pkgs ? lutris then
       pkgs.lutris.override { extraLibraries = p: [ p.libadwaita p.gtk4 ]; }

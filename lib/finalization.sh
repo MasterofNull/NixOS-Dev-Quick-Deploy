@@ -119,7 +119,8 @@ apply_final_system_configuration() {
         fi
     fi
 
-    # Ensure dotfiles directory has correct ownership
+    # Ensure dotfiles directory has correct ownership (DOTFILES_ROOT defined in
+    # config/variables.sh:583)
     if [[ -d "$DOTFILES_ROOT" ]]; then
         local current_owner=$(stat -c %U "$DOTFILES_ROOT" 2>/dev/null || echo "unknown")
         local expected_owner="${SUDO_USER:-${PRIMARY_USER:-$USER}}"

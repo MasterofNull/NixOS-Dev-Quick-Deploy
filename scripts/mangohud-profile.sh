@@ -1,13 +1,30 @@
 #!/usr/bin/env bash
-# Interactive MangoHud profile selector.
-# Helps switch between the shipped presets without editing Nix files manually.
+# =============================================================================
+# MangoHud Profile Selector
+# =============================================================================
+# Provides a simple TUI for switching between the GLF overlay presets without
+# editing the generated Nix/NixOS files. The script persists your choice to the
+# preference cache so future deploy runs reuse it automatically.
+# -----------------------------------------------------------------------------
+# Key variables sourced from config/variables.sh:
+#   MANGOHUD_PROFILE_PREFERENCE_FILE  (config/variables.sh:129)
+#   MANGOHUD_PROFILE_OVERRIDE         (config/variables.sh:15 via environment)
+#   DEPLOYMENT_PREFERENCES_DIR        (config/variables.sh:125)
+# =============================================================================
 
 set -euo pipefail
 
+# -----------------------------------------------------------------------------
+# Repository paths
+# -----------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # shellcheck source=../config/variables.sh
 . "$SCRIPT_DIR/config/variables.sh"
+
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
 
 current_profile() {
     local saved=""
@@ -18,14 +35,7 @@ current_profile() {
         saved=$(awk -F'=' '/^MANGOHUD_PROFILE=/{print $2}' "$MANGOHUD_PROFILE_PREFERENCE_FILE" 2>/dev/null | tail -n1 | tr -d '\r')
     fi
 
-    local default_profile="disabled"
-    local enable_gaming_value
-    enable_gaming_value=$(printf '%s' "${ENABLE_GAMING_STACK:-true}" | tr '[:upper:]' '[:lower:]')
-    case "$enable_gaming_value" in
-        true|1|yes|on)
-            default_profile="desktop"
-            ;;
-    esac
+    local default_profile="desktop"
 
     if [[ -z "$saved" ]]; then
         saved="$default_profile"
@@ -76,6 +86,9 @@ profile_from_choice() {
 }
 
 main() {
+    # -------------------------------------------------------------------------
+    # Entry point: resolve current profile, display menu, and persist selection
+    # -------------------------------------------------------------------------
     local current selected choice
     current=$(current_profile)
 

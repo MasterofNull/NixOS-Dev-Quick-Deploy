@@ -1,6 +1,11 @@
-# Common Python package overrides used across generated configurations.
-# These disable flaky or interactive test suites to keep builds reproducible
-# in the Nix sandbox and apply shared post-install cleanups.
+# =============================================================================
+# Shared Python Overrides
+# =============================================================================
+# Imported by both templates/home.nix and templates/configuration.nix so the
+# generated system/home derivations agree on which Python packages skip tests,
+# drop CLI shims, or add propagated dependencies. Placeholders are not used
+# here—the file is copied verbatim into the rendered configuration.
+# =============================================================================
 python-self: python-super:
 let
   inherit (builtins)
@@ -212,11 +217,16 @@ in
     pythonImportsCheck = [];
   });
 
-  gradio = python-super.gradio.overridePythonAttrs (old: {
+  "gradio" = python-super."gradio".overridePythonAttrs (old: {
     doCheck = false;
     pythonImportsCheck = [];
     passthru = removeAttrs (getAttrOr "passthru" {} old) [ "sans-reverse-dependencies" ];
   });
+  
+  #"gradio" = python-super."gradio".overridePythonAttrs (_: {
+  #  doCheck = false;
+  #  pythonImportsCheck = [];
+  #});
 
   gradio-client = python-super.gradio-client.overridePythonAttrs (old: {
     doCheck = false;

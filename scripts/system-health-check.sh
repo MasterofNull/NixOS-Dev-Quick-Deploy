@@ -2,37 +2,46 @@
 # =============================================================================
 # NixOS Dev Quick Deploy - System Health Check
 # =============================================================================
-# This script verifies that all packages and configurations were installed
-# correctly and are accessible in your environment.
-#
-# Usage:
-#   ./system-health-check.sh [--detailed] [--fix]
-#
-# Options:
-#   --detailed    Show detailed output for all checks
-#   --fix         Attempt to fix common issues automatically
+# Validates that critical tooling is installed post-deployment. The script is
+# intentionally verbose so operators can capture logs and triage regressions.
 # =============================================================================
+
+# -----------------------------------------------------------------------------
+# Usage
+# -----------------------------------------------------------------------------
+#   ./system-health-check.sh [--detailed] [--fix]
+#     --detailed  Show extended notes for every check
+#     --fix       Attempt basic remediation where possible
+# -----------------------------------------------------------------------------
 
 set -uo pipefail
 
-# Colors for output
+# -----------------------------------------------------------------------------
+# ANSI color palette for consistent messaging
+# -----------------------------------------------------------------------------
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Counters
+# -----------------------------------------------------------------------------
+# Check counters
+# -----------------------------------------------------------------------------
 TOTAL_CHECKS=0
 PASSED_CHECKS=0
 FAILED_CHECKS=0
 WARNING_CHECKS=0
 
-# Options
+# -----------------------------------------------------------------------------
+# CLI flags
+# -----------------------------------------------------------------------------
 DETAILED=false
 FIX_ISSUES=false
 
+# -----------------------------------------------------------------------------
 # Parse arguments
+# -----------------------------------------------------------------------------
 for arg in "$@"; do
     case $arg in
         --detailed)
@@ -54,6 +63,9 @@ for arg in "$@"; do
     esac
 done
 
+# -----------------------------------------------------------------------------
+# Repository metadata and sourced helpers
+# -----------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 NPM_MANIFEST_FILE="$REPO_ROOT/config/npm-packages.sh"
@@ -84,6 +96,9 @@ if [ -f "$COMMON_LIB" ]; then
     source "$COMMON_LIB"
 fi
 
+# -----------------------------------------------------------------------------
+# Package manifests
+# -----------------------------------------------------------------------------
 declare -a NPM_AI_PACKAGE_MANIFEST=()
 
 declare -a PYTHON_PACKAGE_CHECKS=(
@@ -118,7 +133,9 @@ PYTHON_INTERPRETER=""
 PYTHON_INTERPRETER_VERSION=""
 PYTHON_INTERPRETER_NOTE_EMITTED=false
 
-# Logging functions
+# -----------------------------------------------------------------------------
+# Logging helpers
+# -----------------------------------------------------------------------------
 print_header() {
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${BLUE}$1${NC}"
@@ -724,20 +741,32 @@ check_flatpak_app() {
         return 1
     fi
 
-    if flatpak info --user "$app_id" &> /dev/null; then
-        local version=$(flatpak info --user "$app_id" | grep "Version:" | awk '{print $2}')
-        print_success "$app_name (v$version)"
-        print_detail "App ID: $app_id"
-        return 0
-    else
-        if [ "$required" = true ]; then
-            print_fail "$app_name not installed"
-            return 1
-        else
-            print_warning "$app_name not installed (optional)"
-            return 2
-        fi
+    local info_output=""
+    local install_scope=""
+    if info_output=$(flatpak info --user "$app_id" 2>/dev/null); then
+        install_scope="user"
+    elif info_output=$(flatpak info --system "$app_id" 2>/dev/null); then
+        install_scope="system"
     fi
+
+    if [[ -n "$info_output" ]]; then
+        local version=""
+        version=$(printf '%s\n' "$info_output" | awk -F': +' '/^Version:/ {print $2; exit}')
+        if [[ -z "$version" ]]; then
+            version="unknown"
+        fi
+        print_success "$app_name (v$version)"
+        print_detail "App ID: $app_id (${install_scope} install)"
+        return 0
+    fi
+
+    if [ "$required" = true ]; then
+        print_fail "$app_name not installed"
+        return 1
+    fi
+
+    print_warning "$app_name not installed (optional)"
+    return 2
 }
 
 check_flatpak_remote() {

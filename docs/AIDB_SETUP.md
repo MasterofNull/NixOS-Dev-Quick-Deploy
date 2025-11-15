@@ -105,6 +105,17 @@ source ~/.zshrc
 exec zsh
 ```
 
+### 2.1 Adjust Flatpak / MangoHud Profiles (Optional)
+
+Your desktop tooling (Cursor, DBeaver, etc.) is governed by the Flatpak profile selected in Phase 6. To switch profiles or update MangoHud behaviour:
+
+```bash
+./scripts/flatpak-profile.sh    # Minimal / Core / AI Workstation
+./scripts/mangohud-profile.sh   # Disable / Light / Full / Desktop / Desktop-hybrid
+```
+
+Preferences are cached under `~/.cache/nixos-quick-deploy/preferences/` so subsequent deploys stay in sync automatically.
+
 ### 3. Start AI Services
 
 ```bash
@@ -269,7 +280,7 @@ The Claude Code extension works with:
 
 The AI wrappers (`claude-wrapper`, `gpt-codex-wrapper`, `codex-wrapper`, `openai-wrapper`, and `gooseai-wrapper`) ensure each CLI works correctly regardless of which editor you use.
 
-> **Heads up:** `gpt-codex-wrapper` reuses the `@openai/codex` CLI binary so it stays up to date, and `gooseai-wrapper` calls the Goose CLI installed from the official release tarball at `~/.local/share/goose-cli/goose`.
+> **Heads up:** `gpt-codex-wrapper` reuses the `@openai/codex` CLI binary so it stays up to date, and `gooseai-wrapper` now invokes the declarative `goose` binary provided by nixpkgs (`pkgs.goose-cli`).
 
 ### Cursor - AI-First IDE
 

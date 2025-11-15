@@ -1,12 +1,20 @@
 #!/usr/bin/env sh
-# Validate the MCP database stack (PostgreSQL, Redis, Qdrant).
-#
-# This helper verifies that each service is reachable, the expected databases
-# exist, and connection credentials are ready for MCP tooling.  It matches the
-# deployment architecture described in Anthropic's MCP engineering article.
+# =============================================================================
+# MCP Database Stack Validator
+# =============================================================================
+# Confirms that PostgreSQL, Redis, and Qdrant are running with the expected
+# settings for MCP tooling. The script keeps output human-readable so operators
+# can triage failures without digging through systemd logs.
+# -----------------------------------------------------------------------------
+# Environment overrides:
+#   PGPASSWORD  → password for the `mcp` PostgreSQL user (export before running)
+# =============================================================================
 
 set -eu
 
+# -----------------------------------------------------------------------------
+# Shared helpers
+# -----------------------------------------------------------------------------
 log() {
   printf '%s %s\n' "$(date -Iseconds)" "$*"
 }

@@ -370,10 +370,10 @@ CODIUM_DEBUG=1 codium
 ~/.npm-global/bin/codex-wrapper --version
 ~/.npm-global/bin/openai-wrapper --version
 ~/.npm-global/bin/gooseai-wrapper --version
-~/.local/share/goose-cli/goose --version
+goose --version
 
-# Launch Goose Desktop
-~/.local/bin/goose-desktop &
+# Launch Goose Desktop (search "Goose Desktop" in your application menu)
+# Provided by the declarative xdg.desktopEntries configuration
 
 # Debug Claude wrapper
 CLAUDE_DEBUG=1 ~/.npm-global/bin/claude-wrapper --version
@@ -499,6 +499,10 @@ Running: home-manager switch
 ✓ All Flatpak applications installed!
 ```
 
+Flatpak provisioning is now state-aware. The deployer inspects `~/.local/share/flatpak` before touching anything, keeps existing repositories intact, and only installs packages that are missing from your selected profile or the project’s core Flatpak set. To force a clean slate, pass `--flatpak-reinstall`; otherwise the run simply layers the new defaults onto your current desktop.
+
+Need Qalculate? It now ships from `pkgs.qalculate-qt` in the declarative package set, so the Flatpak profile stays lean even when Flathub temporarily removes the app. Goose CLI/Desktop are likewise provided by `pkgs.goose-cli`, eliminating the brittle `.deb` download in Phase 6.
+
 ### 6. Flake Development Environment
 ```
 ✓ Nix flakes enabled
@@ -513,13 +517,12 @@ Building flake development environment...
 ✓ Installing @anthropic-ai/claude-code via npm
 ✓ Installing @openai/codex (GPT CodeX CLI) via npm
 ✓ Installing openai via npm
-ℹ Downloading Goose CLI v1.13.1 for x86_64
+✓ Goose CLI detected via nixpkgs (goose-cli)
 ✓ Claude Code npm package installed
 ✓ GPT CodeX wrapper created from @openai/codex
 ✓ OpenAI CLI npm package installed
-✓ Goose CLI installed (v1.13.1)
-ℹ Downloading Goose Desktop v1.13.1 (Debian package)
-✓ Goose Desktop installed (v1.13.1)
+ℹ Registering Goose Desktop launcher
+✓ Goose Desktop launcher available via application menu
 ✓ Created smart Node.js wrapper at ~/.npm-global/bin/claude-wrapper
 ✓ Created smart Node.js wrapper at ~/.npm-global/bin/gpt-codex-wrapper
 ✓ Created smart Node.js wrapper at ~/.npm-global/bin/codex-wrapper
@@ -611,6 +614,58 @@ Next steps:
    flatpak info com.visualstudio.code 2>/dev/null || echo "No conflicting Flatpak"
    ```
    Remove any `com.visualstudio.code*` or `com.vscodium.codium*` Flatpak apps—they replace the declarative `programs.vscode` package and undo the managed settings/extensions.
+
+### VSCodium Git Initialization Error
+
+**Symptom:** VSCodium notifications show:
+```
+Unable to initialize Git; AggregateError(2)
+    Error: Unable to find git
+    Error: Unable to find git
+```
+
+**Cause:** GUI launches of VSCodium sometimes miss `~/.nix-profile/bin` on `PATH`, so the editor cannot locate the Git binary that Home Manager installs. Without explicit configuration, the built-in Git extension immediately fails.
+
+**Fix (v4.2.0+):** The declarative settings now set `"git.path"` to the exact derivation path of `config.programs.git.package`. Re-run the deploy script or `home-manager switch` so `~/.config/VSCodium/User/settings.json` picks up that value.
+
+**Manual verification:**
+
+1. Confirm Git works in a terminal:
+   ```bash
+   git --version
+   ```
+2. Inspect the VSCodium settings file and ensure the stored path matches your `git` derivation:
+   ```bash
+   rg '"git.path"' ~/.config/VSCodium/User/settings.json
+   ```
+3. Relaunch VSCodium. The Git panel should populate without the AggregateError message.
+
+### Flatpak Repository Creation Error
+
+**Symptom:** Phase 6 logs show repeated errors when adding Flathub, for example:
+```
+ℹ Adding Flathub Flatpak remote...
+    → error: Unable to create repository at /home/$USER/.local/share/flatpak/repo (Creating repo: mkdirat: No such file or directory)
+```
+
+**Cause:** When Phase 6 runs on its own (or after a cleanup flag), the user-level Flatpak directories may be missing or the repo path may be an empty placeholder without the expected `objects/` tree. In both cases `flatpak remote-add` fails before it can download anything.
+
+**Fix (v4.2.1+):** The Flatpak automation now recreates `~/.local/share/flatpak` and `~/.config/flatpak`, verifies ownership, and removes empty repo stubs so Flatpak can bootstrap a fresh OSTree repository. Re-run the deploy script or restart Phase 6 and the remote should be added cleanly.
+
+**Manual verification:**
+
+1. Confirm the directories exist:
+   ```bash
+   ls -ld ~/.local/share/flatpak ~/.local/share/flatpak/repo ~/.config/flatpak
+   ```
+2. If you previously created `~/.local/share/flatpak/repo` manually and it’s missing the `objects/` directory, remove the empty stub and rerun Phase 6:
+   ```bash
+   rm -rf ~/.local/share/flatpak/repo
+   ```
+3. Retry the add manually if needed:
+   ```bash
+   flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+   ```
 
 ### VSCodium Settings Read-Only Error
 
@@ -820,6 +875,27 @@ flatpak uninstall org.mozilla.firefox
 flatpak install flathub org.mozilla.firefox
 ```
 
+### OpenSkills Custom Tooling Hook
+
+**Note:** The deployer now creates `~/.config/openskills/install.sh` as an executable placeholder so you can script project-specific tooling (Claude helper scripts, AI-assisted workflows, etc.). Edit that file with the commands you want run during Phase 6 and keep your workflows reproducible.
+
+### Flatpak Packages Removed Before Switch
+
+**Issue:** Pre-switch cleanup wipes Flatpak apps (the directories under `.local/share/flatpak` or `.var/app` get deleted before `home-manager switch`).  
+**Fix:** The deployer now preserves user Flatpak directories whenever it detects installed apps, cached profile state, or existing Flatpak data. Cleanup only happens if you explicitly opt in.
+
+**Solution:**
+```bash
+# Default behavior: nothing to do, rerun the deployer and Flatpaks stay intact
+./nixos-quick-deploy.sh
+
+# Need a full reset? Opt in before running the deployer:
+#   (1) CLI flag:
+./nixos-quick-deploy.sh --flatpak-reinstall
+#   (2) Or environment variable:
+RESET_FLATPAK_STATE_BEFORE_SWITCH=true ./nixos-quick-deploy.sh
+```
+
 ### Multiple Flatpak Platform Runtimes
 
 **Issue:** `flatpak list --user` shows multiple versions of Freedesktop Platform (24.08, 25.08, etc.)
@@ -858,7 +934,9 @@ exec zsh
 
 **Issue:** MangoHud injects into every GUI/terminal session, covering windows you do not want to benchmark.
 
-**Solution:**
+**Fix:** The shipped MangoHud presets now blacklist COSMIC system applications (Files, Terminal, Settings, Store, launcher, panel, etc.) so overlays stop appearing on desktop utilities after you redeploy or reapply your Home Manager config.
+
+**Solution:** Fresh deployments now default to profile **4) desktop**, which keeps MangoHud inside the mangoapp desktop window so no other applications are wrapped. You only need the selector if you want to change this default.
 ```bash
 # Run the interactive selector and pick the overlay mode you prefer
 ./scripts/mangohud-profile.sh
@@ -870,7 +948,7 @@ home-manager switch -b backup --flake .
 
 - `1) disabled` removes MangoHud from every app.
 - `2) light` and `3) full` keep the classic per-application overlays.
-- `4) desktop` launches a transparent, movable mangoapp window so stats stay on the desktop instead of stacking on top of apps.
+- `4) desktop` launches a transparent, movable mangoapp window so stats stay on the desktop instead of stacking on top of apps. (Default)
 - `5) desktop-hybrid` auto-starts the mangoapp desktop window while still injecting MangoHud into supported games/apps.
 
 The selected profile is cached at `~/.cache/nixos-quick-deploy/preferences/mangohud-profile.env`, so future deploy runs reuse your preference automatically.
@@ -1093,6 +1171,7 @@ mermaid-cli     # Mermaid diagrams from CLI
 **Security Tools:**
 ```nix
 nmap            # Network scanner
+zenmap          # GUI frontend for nmap scans
 wireshark       # Network protocol analyzer
 hashcat         # Password cracker
 john            # John the Ripper

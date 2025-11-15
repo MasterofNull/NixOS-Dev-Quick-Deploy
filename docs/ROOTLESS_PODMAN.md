@@ -6,13 +6,15 @@ and the diagnostics phase refuses to continue if an older overlay override is
 still active. This keeps `nixos-rebuild` and `systemd` from mounting
 `/var/lib/containers/storage/overlay` entries during boot. Phase 5 now pauses
 container services automatically, attempts the cleanup steps below, and only
-falls back to manual intervention when the automated run cannot proceed.
+falls back to manual intervention when the automated run cannot proceed. You
+can re-run the diagnostics any time via `./scripts/system-health-check.sh --detailed`.
 
 ## Current behaviour
 
 - `/etc/containers/storage.conf` is regenerated automatically so the system
   scope uses the filesystem-appropriate driver (typically `vfs` when no native
-  driver is available).
+  driver is available). A timestamped backup lives beside the original file and
+  another copy is archived in `~/.cache/nixos-quick-deploy/backups/<timestamp>/etc/containers/storage.conf`.
 - `~/.config/containers/storage.conf` is rendered by Home Manager so rootless
   Podman inherits the same decision, but silently falls back to `vfs` if the
   home directory cannot host the requested driver.
@@ -49,7 +51,9 @@ sudo rm -rf /var/lib/containers/storage
 
 Re-run `./nixos-quick-deploy.sh --resume` afterwards so the regenerated
 configuration keeps the supported driver. Once the rebuild completes you should
-no longer see overlay mount units during boot or `podman info` output.
+no longer see overlay mount units during boot or `podman info` output. If the
+health check still reports overlay usage, run `./scripts/system-health-check.sh --detailed`
+and inspect the Podman section for remediation steps.
 
 ### Reset refuses to touch `/etc/containers/storage.conf`
 

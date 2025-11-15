@@ -11,16 +11,15 @@ This document captures the exact syntax patterns, escaping, and structures used 
 ## Error Handling & Bash Options
 
 ```bash
-set -u              # Exit on undefined variable
-set -o pipefail     # Catch errors in pipes
-set -E              # ERR trap is inherited by shell functions
+set -o pipefail     # Catch errors in pipelines
+set -E              # Ensure traps propagate into functions/subshells
 ```
 
 ## Constants & Configuration
 
 ### Read-only Variables
 ```bash
-readonly SCRIPT_VERSION="3.1.0"
+readonly SCRIPT_VERSION="4.0.0"
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
 readonly EXIT_SUCCESS=0

@@ -1,8 +1,8 @@
 # Quick Start Guide
 ## NixOS Quick Deploy - Get Started in 5 Minutes
 
-**Version**: 4.0.0
-**Last Updated**: January 2025
+**Version**: 4.0.0  
+**Last Updated**: March 2025
 
 ---
 
@@ -18,33 +18,31 @@ Before you start, ensure you have:
 
 ## Installation
 
-### 1. Clone the Repository
+### 1. Download or Clone
 
 ```bash
-git clone https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy.git
-cd NixOS-Dev-Quick-Deploy
-```
+# Option A – one-liner (ideal for fresh installs)
+curl -fsSL https://raw.githubusercontent.com/MasterofNull/NixOS-Dev-Quick-Deploy/main/nixos-quick-deploy.sh | bash
 
-### 2. Make the Script Executable
-
-```bash
+# Option B – clone locally for repeat use / offline tweaks
+git clone https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy.git ~/NixOS-Dev-Quick-Deploy
+cd ~/NixOS-Dev-Quick-Deploy
 chmod +x nixos-quick-deploy.sh
 ```
 
-### 3. Run Your First Deployment
+### 2. Run Your First Deployment
 
 ```bash
 ./nixos-quick-deploy.sh
 ```
 
-That's it! The script will automatically:
-- ✓ Validate your system
-- ✓ Install prerequisites
-- ✓ Backup your current configuration
-- ✓ Generate optimized NixOS configs
-- ✓ Deploy the new system
-- ✓ Install additional tools
-- ✓ Validate everything works
+From there the orchestrator:
+- ✓ Detects hardware, captures git identity/shell/editor preferences
+- ✓ Records build acceleration choices (binary caches, remote builders/private Cachix, or local compilation)
+- ✓ Creates backups and renders flake-based configs
+- ✓ Applies declarative NixOS + Home Manager switches
+- ✓ Installs Flatpaks, Claude Code, and dev shells in parallel
+- ✓ Runs validation + final health checks with a summarized report
 
 ---
 
@@ -57,15 +55,14 @@ That's it! The script will automatically:
 ./nixos-quick-deploy.sh
 ```
 
-**What happens:**
-- System validation (2-3 minutes)
-- Prerequisites installation (5-10 minutes)
-- Backup creation (1-2 minutes)
-- Configuration generation (2-3 minutes)
-- Build acceleration survey (pick binary caches, remote builders/private Cachix, or local compilation)
-- System deployment (10-20 minutes)
-- Tools installation (5-15 minutes)
-- Total time: ~30-60 minutes
+**What happens (binary cache path):**
+- Hardware + prerequisite validation (≈3 minutes)
+- Backup + template rendering (≈5 minutes)
+- Build acceleration prompts (binary caches vs. remote builders/private Cachix vs. local compilation)
+- Declarative Home Manager + system switch (10‑20 minutes depending on kernel/toolchain churn)
+- Additional tooling (Flatpaks, Claude Code, dev shells) in parallel (≈10 minutes)
+- Final validation/health check (≈5 minutes)
+- **Total time:** ~20‑40 minutes (binary caches) or 60‑120 minutes (full source builds)
 
 ### Scenario 2: Resuming After Failure
 
@@ -89,10 +86,9 @@ Want to see what will happen without making changes?
 
 ### Scenario 4: Start Fresh
 
-Starting over from scratch:
+Starting over from scratch (clears cached preferences such as Flatpak profile, MangoHud mode, remote builders, etc.):
 
 ```bash
-# Clear state and start from beginning
 ./nixos-quick-deploy.sh --reset-state
 ```
 
@@ -149,58 +145,59 @@ This instantly reverts to your last working NixOS generation!
 ### Troubleshooting
 
 ```bash
-# Debug mode (trace execution)
+# Debug mode (bash -x, verbose logging)
 ./nixos-quick-deploy.sh --debug
 
-# Skip health check (faster, less safe)
+# Skip final health check (useful for rapid iteration)
 ./nixos-quick-deploy.sh --skip-health-check
 
-# Show detailed phase info
+# Show detailed info about a phase
 ./nixos-quick-deploy.sh --show-phase-info 6
 ```
 
 ---
 
-## Understanding the 10 Phases
+## Understanding the 8 Phases
 
-The deployment runs in 10 sequential phases:
+The deployment runs in 8 sequential phases:
 
 | Phase | Name | Duration | Description |
 |-------|------|----------|-------------|
-| **1** | Preparation | 2-3 min | Validate system requirements |
-| **2** | Prerequisites | 5-10 min | Install needed packages first |
-| **3** | Backup | 1-2 min | Backup current config (safe!) |
-| **4** | Config Generation | 2-3 min | Generate NixOS configs |
-| **5** | Cleanup | 1-2 min | Smart cleanup (not aggressive) |
-| **6** | Deployment | 10-20 min | Deploy configs (point of no return) |
-| **7** | Tools Installation | 5-15 min | Install extra tools in parallel |
-| **8** | Validation | 2-3 min | Verify everything works |
-| **9** | Finalization | 1-2 min | Apply final configurations |
-| **10** | Reporting | 1 min | Generate success report |
+| **1** | System Initialization | 3 min | Hardware probe, MangoHud/Flatpak profile prep, prerequisite installs |
+| **2** | System Backup | 2 min | Snapshot configs + record rollback metadata |
+| **3** | Configuration Generation | 5 min | Render `/etc/nixos`, hardware config, Home Manager, and flake files |
+| **4** | Pre-deployment Validation | 5 min | Dry-run builds, disk/resume checks, imperative package scan |
+| **5** | Declarative Deployment | 15 min | Remove nix-env packages, run `home-manager` + `nixos-rebuild switch` |
+| **6** | Additional Tooling | 10 min | Install Flatpaks, Claude CLI, dev shells, and OpenSkills stack in parallel |
+| **7** | Post-Deployment Validation | 5 min | GPU driver validation, remote builder sanity, health check setup |
+| **8** | Finalization & Reporting | 5 min | Permission cleanup, optional swapfile removal, final report & health summary |
 
-**Total Time**: ~30-60 minutes
+**Total Time**: 20‑40 minutes with binary caches, 60‑120 minutes when building everything locally.
 
 ---
 
 ## What Gets Installed?
 
 ### System Configuration
-- Hardware-optimized kernel modules
-- GPU drivers (auto-detected: Intel/AMD/NVIDIA)
-- Network and security settings
-- Systemd services and timers
+- COSMIC desktop + Hyprland session
+- Kernel preference ladder (`linuxPackages_6_17` ➜ `linuxPackages_xanmod` ➜ `linuxPackages_lqx` ➜ `linuxPackages_zen` ➜ `linuxPackages_latest`)
+- GPU drivers, MangoHud overlays, and Gamescope tuned automatically
+- Rootless Podman defaults, PipeWire, ZRAM, nix-ld, and declarative Home Manager workspace
+- Flatpak remotes, profile caching, and MangoHud preference files stored under `$STATE_DIR/preferences`
 
-### Development Tools (100+)
-- **Languages**: Python, Node.js, Rust, Go, Java
-- **Version Control**: Git, GitHub CLI
-- **Editors**: Vim, Neovim, VS Code (via Flatpak)
-- **Container Tools**: Podman, Buildah, Skopeo
-- **Build Tools**: GCC, Clang, CMake, Make
+### Development Tools (Highlights)
+- **Languages:** Python 3.13/3.14 (mask-aware), Node.js 22, Go, Rust, Ruby, Java toolchains
+- **Version Control:** Git, Lazygit, git-credential-manager, GitHub CLI, Gitea server
+- **Editors:** VSCodium (with Claude/Continue/Codeium), Neovim, Cursor, Helix, JetBrains via Flatpak (optional)
+- **Container/Cloud:** Podman, Buildah, Skopeo, Podman Desktop, Docker-compatible CLI wrappers
+- **Observability:** Netdata, Grafana + Loki + Promtail + Vector, Glances, Cockpit
+- **Modern CLI:** `ripgrep`, `fd`, `fzf`, `bat`, `eza`, `htop/btop`, `jq/yq`, `nix-tree`, `statix`, `nix-index`
 
 ### AI/ML Environment
-- **Libraries**: PyTorch, TensorFlow, Transformers
-- **Tools**: Ollama, GPT4All, Aider
-- **Platforms**: LangChain, LlamaIndex
+- Claude Code CLI + wrappers (`claude-wrapper`, `gpt-codex-wrapper`, `codex-wrapper`, `openai-wrapper`, `gooseai-wrapper`)
+- Aider, Continue, Codeium, Cursor, Postman, DBeaver, Obsidian, and other AI workstation apps (profile-dependent)
+- Ollama, Hugging Face TGI (opt-in), Qdrant, Open WebUI, Jupyter Lab
+- Python stack with PyTorch, TensorFlow, LangChain, LlamaIndex, LiteLLM, Sentence Transformers, FAISS, Polars, Dask, Black/Ruff/Mypy/Pylint — all pinned in flake overlays for reproducibility
 
 ### Desktop Applications (via Flatpak)
 - Browsers, media players, productivity apps
@@ -432,16 +429,14 @@ A: Use the rollback feature, then delete the cloned directory.
 You'll know deployment succeeded when you see:
 
 ```
-✓ Phase 1:  Preparation - Complete
-✓ Phase 2:  Prerequisites - Complete
-✓ Phase 3:  Backup - Complete
-✓ Phase 4:  Config Generation - Complete
-✓ Phase 5:  Cleanup - Complete
-✓ Phase 6:  Deployment - Complete
-✓ Phase 7:  Tools Installation - Complete
-✓ Phase 8:  Validation - Complete
-✓ Phase 9:  Finalization - Complete
-✓ Phase 10: Reporting - Complete
+✓ Phase 1:  System Initialization - Complete
+✓ Phase 2:  System Backup - Complete
+✓ Phase 3:  Configuration Generation - Complete
+✓ Phase 4:  Pre-Deployment Validation - Complete
+✓ Phase 5:  Declarative Deployment - Complete
+✓ Phase 6:  Additional Tooling - Complete
+✓ Phase 7:  Post-Deployment Validation - Complete
+✓ Phase 8:  Finalization & Report - Complete
 
 🎉 Deployment completed successfully!
 ```
