@@ -77,6 +77,13 @@ extract_storage_driver_from_conf() {
 # ============================================================================
 
 # Ensure a package/command is available, install temporarily if needed
+# Ensure a command is present, optionally installing via nix-env when
+# IMPERATIVE_INSTALLS_ALLOWED (set in phase scripts; see phase-01) is true.
+# Args:
+#   $1 → command name to check
+#   $2 → nixpkgs attribute or flake ref (defaults to command)
+#   $3 → priority label (CRITICAL/IMPORTANT/OPTIONAL) for messaging
+#   $4 → human-readable description for logs
 ensure_package_available() {
     local cmd="$1"
     local pkg="${2:-$1}"
@@ -164,7 +171,9 @@ ensure_package_available() {
     return 1
 }
 
-# Install a prerequisite package into the user's profile if missing
+# Install a prerequisite package into the user's profile if missing. Uses
+# nix-env so it requires a writable profile for PRIMARY_USER (see
+# config/variables.sh). All install logs land under $LOG_DIR for troubleshooting.
 ensure_prerequisite_installed() {
     local cmd="$1"
     local pkg_ref="$2"
@@ -1641,6 +1650,134 @@ get_zfs_dataset_for_path() {
     fi
 
     return 1
+}
+
+# ==========================================================================
+# Kernel package helpers
+# ==========================================================================
+
+resolve_preferred_kernel_package_attr() {
+    # Mirror configuration.nix ordering to determine which kernelPackages
+    # attribute the template will select. Returns the attribute name or empty
+    # string if detection fails (e.g., nix unavailable).
+    if ! command -v nix >/dev/null 2>&1; then
+        return 1
+    fi
+
+    local expr
+    read -r -d '' expr <<'EOF'
+let
+  pkgs = import <nixpkgs> {};
+in
+  if pkgs ? linuxPackages_6_17 then "linuxPackages_6_17"
+  else if pkgs ? linuxPackages_tkg then "linuxPackages_tkg"
+  else if pkgs ? linuxPackages_xanmod then "linuxPackages_xanmod"
+  else if pkgs ? linuxPackages_lqx then "linuxPackages_lqx"
+  else if pkgs ? linuxPackages_zen then "linuxPackages_zen"
+  else if pkgs ? linuxPackages_latest then "linuxPackages_latest"
+  else "linuxPackages"
+EOF
+
+    local result=""
+    result=$(nix --extra-experimental-features "nix-command flakes" --impure eval --raw --expr "$expr" 2>/dev/null || true)
+    if [[ -n "$result" ]]; then
+        printf '%s\n' "$result"
+        return 0
+    fi
+
+    return 1
+}
+
+detect_supported_zswap_zpools_for_kernel() {
+    # Query nixpkgs for the target kernel's enabled zswap pools so we can
+    # ensure the generated initrd only preloads supported modules.
+    local kernel_attr="$1"
+
+    if [[ -z "$kernel_attr" ]] || ! command -v nix >/dev/null 2>&1; then
+        return 1
+    fi
+
+    local expr
+    read -r -d '' expr <<'EOF'
+let
+  inherit (builtins)
+    concatStringsSep
+    filter
+    getAttr
+    hasAttr
+    isBool
+    isFloat
+    isInt
+    isString
+    map;
+  kernelName = "KERNEL_ATTR";
+  pkgs = import <nixpkgs> {};
+  kernelPackages =
+    if kernelName != "" && hasAttr kernelName pkgs then getAttr kernelName pkgs
+    else pkgs.linuxPackages;
+  kernel = kernelPackages.kernel;
+  cfg = if kernel ? config then kernel.config else {};
+  isEnabled = value:
+    if isBool value then value
+    else if isString value then value != "" && value != "n" && value != "0"
+    else if isInt value || isFloat value then value != 0
+    else false;
+  zpools = [
+    { name = "z3fold"; option = "Z3FOLD"; }
+    { name = "zbud"; option = "ZBUD"; }
+    { name = "zsmalloc"; option = "ZSMALLOC"; }
+  ];
+  supported = filter (entry:
+    (hasAttr entry.option cfg) && isEnabled (getAttr entry.option cfg)
+  ) zpools;
+in concatStringsSep "\n" (map (entry: entry.name) supported)
+EOF
+
+    expr=${expr//KERNEL_ATTR/$kernel_attr}
+
+    nix --extra-experimental-features "nix-command flakes" --impure eval --raw --expr "$expr" 2>/dev/null || true
+}
+
+choose_supported_zswap_zpool_for_kernel() {
+    # Given the requested zswap zpool and the target kernel attr, return the
+    # first supported pool in preference order (z3fold → zbud → zsmalloc).
+    local requested="$1"
+    local kernel_attr="$2"
+
+    local supported_output
+    supported_output=$(detect_supported_zswap_zpools_for_kernel "$kernel_attr" 2>/dev/null || true)
+    if [[ -z "$supported_output" ]]; then
+        return 1
+    fi
+
+    local -a supported=()
+    while IFS= read -r line; do
+        if [[ -n "$line" ]]; then
+            supported+=("$line")
+        fi
+    done <<<"$supported_output"
+
+    if (( ${#supported[@]} == 0 )); then
+        return 1
+    fi
+
+    local candidate=""
+    if [[ -n "$requested" ]]; then
+        local entry
+        for entry in "${supported[@]}"; do
+            if [[ "$entry" == "$requested" ]]; then
+                candidate="$requested"
+                break
+            fi
+        done
+    fi
+
+    if [[ -z "$candidate" ]]; then
+        candidate="${supported[0]}"
+    fi
+
+    printf '%s\n' "$candidate"
+    return 0
 }
 
 # ==========================================================================

@@ -936,7 +936,7 @@ exec zsh
 
 **Fix:** The shipped MangoHud presets now blacklist COSMIC system applications (Files, Terminal, Settings, Store, launcher, panel, etc.) so overlays stop appearing on desktop utilities after you redeploy or reapply your Home Manager config.
 
-**Solution:**
+**Solution:** Fresh deployments now default to profile **4) desktop**, which keeps MangoHud inside the mangoapp desktop window so no other applications are wrapped. You only need the selector if you want to change this default.
 ```bash
 # Run the interactive selector and pick the overlay mode you prefer
 ./scripts/mangohud-profile.sh
@@ -948,7 +948,7 @@ home-manager switch -b backup --flake .
 
 - `1) disabled` removes MangoHud from every app.
 - `2) light` and `3) full` keep the classic per-application overlays.
-- `4) desktop` launches a transparent, movable mangoapp window so stats stay on the desktop instead of stacking on top of apps.
+- `4) desktop` launches a transparent, movable mangoapp window so stats stay on the desktop instead of stacking on top of apps. (Default)
 - `5) desktop-hybrid` auto-starts the mangoapp desktop window while still injecting MangoHud into supported games/apps.
 
 The selected profile is cached at `~/.cache/nixos-quick-deploy/preferences/mangohud-profile.env`, so future deploy runs reuse your preference automatically.

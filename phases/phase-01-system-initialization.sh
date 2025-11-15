@@ -8,6 +8,8 @@
 # DEPENDENCIES
 #
 # Podman storage driver selection prompt
+# PODMAN_STORAGE_DRIVER_OVERRIDE is defined/generated in lib/config.sh after
+# reading user preferences (see config/variables.sh for the state path).
 # ============================================================================
 prompt_podman_storage_driver_selection() {
     if [[ -n "${PODMAN_STORAGE_DRIVER_OVERRIDE:-}" ]]; then
@@ -54,7 +56,7 @@ prompt_podman_storage_driver_selection() {
             vfs|btrfs|zfs)
                 PODMAN_STORAGE_DRIVER_OVERRIDE="$selection"
                 export PODMAN_STORAGE_DRIVER_OVERRIDE
-                print_success "Podman storage driver set to ${selection} for this run."
+        print_success "Podman storage driver set to ${selection} for this run."
                 if declare -F detect_container_storage_backend >/dev/null 2>&1; then
                     detect_container_storage_backend
                 fi
@@ -408,6 +410,19 @@ phase_01_system_initialization() {
             print_info "Press Enter to keep ${swap_prompt_default}GB or enter a new size in GB."
         fi
 
+        local swap_guard_min=""
+        local swap_guard_max=""
+        if [[ "${TOTAL_RAM_GB:-}" =~ ^[0-9]+$ && ${TOTAL_RAM_GB} -gt 0 ]]; then
+            swap_guard_min="${TOTAL_RAM_GB}"
+            local guard_max_candidate=$(( TOTAL_RAM_GB * 2 ))
+            if [[ "$recommended_swap_gb" =~ ^[0-9]+$ && $recommended_swap_gb -gt "$guard_max_candidate" ]]; then
+                guard_max_candidate="$recommended_swap_gb"
+            fi
+            swap_guard_max="$guard_max_candidate"
+            print_info "Hibernation requires swap at least as large as installed RAM (${swap_guard_min}GB)."
+            print_info "Swap requests above roughly ${swap_guard_max}GB exceed the supported memory footprint and waste disk space."
+        fi
+
         local raw_swap_input=""
         while true; do
             raw_swap_input=$(prompt_user "Desired swap size in GB for zswap-backed hibernation" "$swap_prompt_default")
@@ -432,6 +447,17 @@ phase_01_system_initialization() {
                     print_warning "Swap size must be greater than zero to support hibernation."
                     continue
                 fi
+
+                if [[ -n "$swap_guard_min" ]] && (( raw_swap_input < swap_guard_min )); then
+                    print_warning "Swap capacity must be at least the total system memory (${swap_guard_min}GB) to resume from hibernation."
+                    continue
+                fi
+
+                if [[ -n "$swap_guard_max" ]] && (( raw_swap_input > swap_guard_max )); then
+                    print_warning "Requested swap exceeds the supported guard (${swap_guard_max}GB). Choose a value between ${swap_guard_min}GB and ${swap_guard_max}GB."
+                    continue
+                fi
+
                 HIBERNATION_SWAP_SIZE_GB="$raw_swap_input"
                 if (( raw_swap_input == recommended_swap_gb )); then
                     print_success "Using recommended swap size of ${raw_swap_input}GB."
