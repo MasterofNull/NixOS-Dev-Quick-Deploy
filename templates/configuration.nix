@@ -3,6 +3,13 @@
 # Generated: @GENERATED_AT@
 # Hostname: @HOSTNAME@ | User: @USER@
 # Target: NixOS 25.05+ with Wayland-first, security hardening
+#
+# Placeholder tokens (replaced via lib/config.sh → replace_placeholder):
+#   @SCRIPT_VERSION@, @GENERATED_AT@, @HOSTNAME@, @USER@
+#   @GITEA_ENABLE_FLAG@, @GITEA_ADMIN_VARIABLES_BLOCK@
+#   @NVIDIA_ENABLE_BLOCK@, @AMD_ENABLE_BLOCK@, etc.
+# The values are derived from config/variables.sh inputs and phase detection.
+# =============================================================================
 
 { config, pkgs, lib, nixAiToolsPackages ? {}, ... }:
 
@@ -148,6 +155,28 @@ let
   # Optional Gitea admin bootstrap (populated by installer)
   @GITEA_ADMIN_VARIABLES_BLOCK@
   commonPythonOverrides = import ./python-overrides.nix;
+  overridePythonPackages = pkgSet:
+    if pkgSet ? overrideScope' then
+      pkgSet.overrideScope' (self: super: commonPythonOverrides self super)
+    else
+      pkgSet;
+  pythonOverridesOverlay =
+    final: prev:
+      (lib.optionalAttrs (prev ? python3Packages) {
+        python3Packages = overridePythonPackages prev.python3Packages;
+      })
+      // (lib.optionalAttrs (prev ? python311Packages) {
+        python311Packages = overridePythonPackages prev.python311Packages;
+      })
+      // (lib.optionalAttrs (prev ? python312Packages) {
+        python312Packages = overridePythonPackages prev.python312Packages;
+      })
+      // (lib.optionalAttrs (prev ? python313Packages) {
+        python313Packages = overridePythonPackages prev.python313Packages;
+      })
+      // (lib.optionalAttrs (prev ? python314Packages) {
+        python314Packages = overridePythonPackages prev.python314Packages;
+      });
   pythonPreferLatest =
     let
       envPref = builtins.getEnv "PYTHON_PREFER_PY314";
@@ -447,6 +476,7 @@ in
   };
 
   nixpkgs.config.allowUnfree = true;
+  nixpkgs.overlays = [ pythonOverridesOverlay ];
 
   # ============================================================================
   # Package Overrides (Fix build issues)
@@ -613,29 +643,32 @@ in
       TasksAccounting = lib.mkForce true;
       LimitNOFILE = lib.mkForce 262144;
       LimitNPROC = lib.mkForce 16384;
-      ProtectSystem = lib.mkForce "full";
-      ProtectHome = lib.mkForce true;
-      ProtectControlGroups = lib.mkForce true;
-      ProtectKernelLogs = lib.mkForce true;
-      ProtectKernelModules = lib.mkForce true;
-      ProtectKernelTunables = lib.mkForce true;
-      PrivateTmp = lib.mkForce true;
-      PrivateMounts = lib.mkForce true;
-      NoNewPrivileges = lib.mkForce true;
-      LockPersonality = lib.mkForce true;
-      MemoryDenyWriteExecute = lib.mkForce true;
-      RestrictAddressFamilies = lib.mkForce [ "AF_UNIX" "AF_INET" "AF_INET6" ];
-      RestrictRealtime = lib.mkForce true;
-      RestrictSUIDSGID = lib.mkForce true;
-      SystemCallArchitectures = lib.mkForce "native";
-      ProcSubset = lib.mkForce "pid";
-      ProtectProc = lib.mkForce "invisible";
-      UMask = lib.mkForce "0077";
+      # Podman needs access to cgroups, /sys, and netlink sockets while launching
+      # the container. Drop the aggressive sandbox toggles so the service can
+      # configure networking and overlay storage without tripping permission
+      # errors (systemd would otherwise block qdrant with exit code 125).
+      ProtectSystem = lib.mkForce false;
+      ProtectHome = lib.mkForce false;
+      ProtectControlGroups = lib.mkForce false;
+      ProtectKernelLogs = lib.mkForce false;
+      ProtectKernelModules = lib.mkForce false;
+      ProtectKernelTunables = lib.mkForce false;
+      PrivateTmp = lib.mkForce false;
+      PrivateMounts = lib.mkForce false;
+      NoNewPrivileges = lib.mkForce false;
+      LockPersonality = lib.mkForce false;
+      MemoryDenyWriteExecute = lib.mkForce false;
+      RestrictAddressFamilies = lib.mkForce [ "AF_UNIX" "AF_INET" "AF_INET6" "AF_NETLINK" "AF_PACKET" ];
+      RestrictRealtime = lib.mkForce false;
+      RestrictSUIDSGID = lib.mkForce false;
+      ProtectProc = lib.mkForce "default";
+      UMask = lib.mkForce "0027";
       ReadWritePaths = lib.mkForce [
         qdrantStateDir
         "/var/lib/containers"
         "/run/libpod"
         "/run/podman"
+        "/run/qdrant"
       ];
     };
   };

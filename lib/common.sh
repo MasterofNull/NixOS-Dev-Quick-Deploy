@@ -77,6 +77,13 @@ extract_storage_driver_from_conf() {
 # ============================================================================
 
 # Ensure a package/command is available, install temporarily if needed
+# Ensure a command is present, optionally installing via nix-env when
+# IMPERATIVE_INSTALLS_ALLOWED (set in phase scripts; see phase-01) is true.
+# Args:
+#   $1 → command name to check
+#   $2 → nixpkgs attribute or flake ref (defaults to command)
+#   $3 → priority label (CRITICAL/IMPORTANT/OPTIONAL) for messaging
+#   $4 → human-readable description for logs
 ensure_package_available() {
     local cmd="$1"
     local pkg="${2:-$1}"
@@ -164,7 +171,9 @@ ensure_package_available() {
     return 1
 }
 
-# Install a prerequisite package into the user's profile if missing
+# Install a prerequisite package into the user's profile if missing. Uses
+# nix-env so it requires a writable profile for PRIMARY_USER (see
+# config/variables.sh). All install logs land under $LOG_DIR for troubleshooting.
 ensure_prerequisite_installed() {
     local cmd="$1"
     local pkg_ref="$2"
@@ -1644,6 +1653,134 @@ get_zfs_dataset_for_path() {
 }
 
 # ==========================================================================
+# Kernel package helpers
+# ==========================================================================
+
+resolve_preferred_kernel_package_attr() {
+    # Mirror configuration.nix ordering to determine which kernelPackages
+    # attribute the template will select. Returns the attribute name or empty
+    # string if detection fails (e.g., nix unavailable).
+    if ! command -v nix >/dev/null 2>&1; then
+        return 1
+    fi
+
+    local expr
+    read -r -d '' expr <<'EOF'
+let
+  pkgs = import <nixpkgs> {};
+in
+  if pkgs ? linuxPackages_6_17 then "linuxPackages_6_17"
+  else if pkgs ? linuxPackages_tkg then "linuxPackages_tkg"
+  else if pkgs ? linuxPackages_xanmod then "linuxPackages_xanmod"
+  else if pkgs ? linuxPackages_lqx then "linuxPackages_lqx"
+  else if pkgs ? linuxPackages_zen then "linuxPackages_zen"
+  else if pkgs ? linuxPackages_latest then "linuxPackages_latest"
+  else "linuxPackages"
+EOF
+
+    local result=""
+    result=$(nix --extra-experimental-features "nix-command flakes" --impure eval --raw --expr "$expr" 2>/dev/null || true)
+    if [[ -n "$result" ]]; then
+        printf '%s\n' "$result"
+        return 0
+    fi
+
+    return 1
+}
+
+detect_supported_zswap_zpools_for_kernel() {
+    # Query nixpkgs for the target kernel's enabled zswap pools so we can
+    # ensure the generated initrd only preloads supported modules.
+    local kernel_attr="$1"
+
+    if [[ -z "$kernel_attr" ]] || ! command -v nix >/dev/null 2>&1; then
+        return 1
+    fi
+
+    local expr
+    read -r -d '' expr <<'EOF'
+let
+  inherit (builtins)
+    concatStringsSep
+    filter
+    getAttr
+    hasAttr
+    isBool
+    isFloat
+    isInt
+    isString
+    map;
+  kernelName = "KERNEL_ATTR";
+  pkgs = import <nixpkgs> {};
+  kernelPackages =
+    if kernelName != "" && hasAttr kernelName pkgs then getAttr kernelName pkgs
+    else pkgs.linuxPackages;
+  kernel = kernelPackages.kernel;
+  cfg = if kernel ? config then kernel.config else {};
+  isEnabled = value:
+    if isBool value then value
+    else if isString value then value != "" && value != "n" && value != "0"
+    else if isInt value || isFloat value then value != 0
+    else false;
+  zpools = [
+    { name = "z3fold"; option = "Z3FOLD"; }
+    { name = "zbud"; option = "ZBUD"; }
+    { name = "zsmalloc"; option = "ZSMALLOC"; }
+  ];
+  supported = filter (entry:
+    (hasAttr entry.option cfg) && isEnabled (getAttr entry.option cfg)
+  ) zpools;
+in concatStringsSep "\n" (map (entry: entry.name) supported)
+EOF
+
+    expr=${expr//KERNEL_ATTR/$kernel_attr}
+
+    nix --extra-experimental-features "nix-command flakes" --impure eval --raw --expr "$expr" 2>/dev/null || true
+}
+
+choose_supported_zswap_zpool_for_kernel() {
+    # Given the requested zswap zpool and the target kernel attr, return the
+    # first supported pool in preference order (z3fold → zbud → zsmalloc).
+    local requested="$1"
+    local kernel_attr="$2"
+
+    local supported_output
+    supported_output=$(detect_supported_zswap_zpools_for_kernel "$kernel_attr" 2>/dev/null || true)
+    if [[ -z "$supported_output" ]]; then
+        return 1
+    fi
+
+    local -a supported=()
+    while IFS= read -r line; do
+        if [[ -n "$line" ]]; then
+            supported+=("$line")
+        fi
+    done <<<"$supported_output"
+
+    if (( ${#supported[@]} == 0 )); then
+        return 1
+    fi
+
+    local candidate=""
+    if [[ -n "$requested" ]]; then
+        local entry
+        for entry in "${supported[@]}"; do
+            if [[ "$entry" == "$requested" ]]; then
+                candidate="$requested"
+                break
+            fi
+        done
+    fi
+
+    if [[ -z "$candidate" ]]; then
+        candidate="${supported[0]}"
+    fi
+
+    printf '%s\n' "$candidate"
+    return 0
+}
+
+# ==========================================================================
 # Kernel feature detection helpers
 # ==========================================================================
 
@@ -2182,6 +2319,12 @@ safe_chown_user_dir() {
         owner="$target_user:$target_group"
     fi
 
+    local current_owner
+    current_owner=$(stat -c '%U:%G' "$target" 2>/dev/null || echo "")
+    if [[ -n "$current_owner" && "$current_owner" == "$owner" ]]; then
+        return 0
+    fi
+
     # Attempt to set ownership
     if ! chown -R "$owner" "$target" 2>/dev/null; then
         print_warning "Could not set ownership of $target to $owner"
@@ -2382,6 +2525,7 @@ prepare_home_manager_targets() {
 
     local preserve_flatpak_state=false
     local flatpak_installed_count=0
+    local flatpak_state_reason=""
 
     _is_flatpak_state_path() {
         local candidate="$1"
@@ -2402,14 +2546,69 @@ prepare_home_manager_targets() {
         return 1
     }
 
-    if command -v flatpak >/dev/null 2>&1; then
-        local flatpak_list_output=""
-        if flatpak_list_output=$(run_as_primary_user flatpak list --user --app --columns=application 2>/dev/null || true); then
-            flatpak_installed_count=$(printf '%s\n' "$flatpak_list_output" | awk '$0 != "Application" && NF {count++} END {print count+0}')
-            if [[ "$flatpak_installed_count" -gt 0 ]]; then
-                preserve_flatpak_state=true
-                print_info "Detected ${flatpak_installed_count} existing Flatpak application(s); preserving user Flatpak directories."
+    if [[ "${RESET_FLATPAK_STATE_BEFORE_SWITCH,,}" == "true" ]]; then
+        print_warning "RESET_FLATPAK_STATE_BEFORE_SWITCH=true; Flatpak directories may be reset before the switch."
+    else
+        local var_dir="$HOME/.var"
+        local var_backup_result=0
+        if [[ -e "$var_dir" && ! -d "$var_dir" ]]; then
+            backup_path_if_exists "$var_dir" "$backup_dir" ".var (legacy file)" || var_backup_result=$?
+            if [[ $var_backup_result -eq 0 ]]; then
+                cleaned_any=true
+            elif [[ $var_backup_result -eq 2 ]]; then
+                encountered_error=true
             fi
+        fi
+
+        if [[ ! -d "$var_dir" ]]; then
+            if ! safe_mkdir "$var_dir"; then
+                encountered_error=true
+            fi
+        fi
+
+        if command -v flatpak >/dev/null 2>&1; then
+            local flatpak_list_output=""
+            if flatpak_list_output=$(run_as_primary_user flatpak list --user --app --columns=application 2>/dev/null || true); then
+                flatpak_installed_count=$(
+                    printf '%s\n' "$flatpak_list_output" | awk '$0 != "Application" && $0 != "Application ID" && NF {count++} END {print count+0}'
+                )
+                if [[ "$flatpak_installed_count" -gt 0 ]]; then
+                    preserve_flatpak_state=true
+                    flatpak_state_reason="Detected ${flatpak_installed_count} existing Flatpak application(s)"
+                fi
+            fi
+        fi
+
+        if [[ "$preserve_flatpak_state" != true && -n "${FLATPAK_PROFILE_STATE_FILE:-}" && -f "$FLATPAK_PROFILE_STATE_FILE" ]]; then
+            preserve_flatpak_state=true
+            flatpak_state_reason="Flatpak profile cache present at ${FLATPAK_PROFILE_STATE_FILE}"
+        fi
+
+        if [[ "$preserve_flatpak_state" != true ]]; then
+            local -a flatpak_state_dirs=(
+                "$PRIMARY_HOME/.local/share/flatpak/app"
+                "$PRIMARY_HOME/.local/share/flatpak/runtime"
+                "$PRIMARY_HOME/.local/share/flatpak/repo"
+                "$PRIMARY_HOME/.var/app"
+            )
+            local candidate=""
+            for candidate in "${flatpak_state_dirs[@]}"; do
+                if [[ -d "$candidate" ]]; then
+                    if find "$candidate" -mindepth 1 -print -quit >/dev/null 2>&1; then
+                        preserve_flatpak_state=true
+                        flatpak_state_reason="Detected Flatpak data under ${candidate#$PRIMARY_HOME/}"
+                        break
+                    fi
+                fi
+            done
+        fi
+    fi
+
+    if [[ "$preserve_flatpak_state" == true ]]; then
+        if [[ -n "$flatpak_state_reason" ]]; then
+            print_info "${flatpak_state_reason}; preserving user Flatpak directories."
+        else
+            print_info "Preserving user Flatpak directories."
         fi
     fi
 
@@ -2488,6 +2687,24 @@ prepare_home_manager_targets() {
         fi
     done
 
+    local -a ensure_home_dirs=(
+        "$PRIMARY_HOME/.var"
+        "$PRIMARY_HOME/.var/app"
+        "$PRIMARY_HOME/.var/app/$GITEA_FLATPAK_APP_ID"
+        "$PRIMARY_HOME/.var/app/$GITEA_FLATPAK_APP_ID/config"
+        "$PRIMARY_HOME/.var/app/$GITEA_FLATPAK_APP_ID/data/gitea"
+    )
+    local dir_path
+    for dir_path in "${ensure_home_dirs[@]}"; do
+        if [[ -n "$dir_path" && ! -d "$dir_path" ]]; then
+            if safe_mkdir "$dir_path"; then
+                safe_chown_user_dir "$dir_path" || true
+            else
+                encountered_error=true
+            fi
+        fi
+    done
+
     local vscodium_user_dir="$HOME/.config/VSCodium/User"
     if [[ -d "$vscodium_user_dir" && ! -L "$vscodium_user_dir" ]]; then
         if find "$vscodium_user_dir" -mindepth 1 -maxdepth 1 ! -type l 2>/dev/null | grep -q .; then
@@ -2533,7 +2750,6 @@ prepare_home_manager_targets() {
         "$GITEA_NATIVE_DATA_DIR::750"
         "$GITEA_SECRETS_CACHE_DIR::700"
         "$PRIMARY_HOME/.config/obsidian/ai-integrations::700"
-        "$PRIMARY_HOME/.var/app::755"
     )
 
     local dotfiles_created=false
