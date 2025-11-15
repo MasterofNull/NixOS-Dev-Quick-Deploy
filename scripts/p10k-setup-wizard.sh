@@ -1,19 +1,27 @@
 #!/usr/bin/env bash
-# Powerlevel10k Interactive Setup Wizard for NixOS
-# Enhanced with better colors, contrast, and customization
-# Works with home-manager by generating a writable config overlay
+# =============================================================================
+# Powerlevel10k Interactive Setup Wizard
+# =============================================================================
+# Guides users through configuring a writable Powerlevel10k overlay outside of
+# the declarative Home Manager tree. The wizard focuses on readability (high
+# contrast themes, font checks) so non-technical contributors can tweak prompts.
+# =============================================================================
 
 set -euo pipefail
 
-# Directories
+# -----------------------------------------------------------------------------
+# Writable configuration paths (outside of Nix store)
+# -----------------------------------------------------------------------------
 CONFIG_DIR="$HOME/.config/p10k"
 THEME_FILE="$CONFIG_DIR/theme.sh"
 MARKER_FILE="$CONFIG_DIR/.configured"
 
-# Ensure directory exists
+# Ensure directory exists before continuing
 mkdir -p "$CONFIG_DIR"
 
-# Colors with better contrast for dark terminals
+# -----------------------------------------------------------------------------
+# ANSI color palette (accessible defaults for dark backgrounds)
+# -----------------------------------------------------------------------------
 RED='\033[1;31m'        # Bright red
 GREEN='\033[1;32m'      # Bright green
 YELLOW='\033[1;33m'     # Bright yellow
@@ -45,14 +53,18 @@ EOF
 
 echo -e "${CYAN}${BOLD}This wizard will help you configure your zsh prompt.${NC}\n"
 
-# Check if already configured
+# -----------------------------------------------------------------------------
+# Step 0: Check for existing configuration (idempotent guard)
+# -----------------------------------------------------------------------------
 if [[ -f "$MARKER_FILE" ]]; then
     echo -e "${YELLOW}You've already configured p10k.${NC}"
     echo -e "${CYAN}To reconfigure, run: ${WHITE}rm $MARKER_FILE && exec zsh${NC}\n"
     exit 0
 fi
 
-# Step 1: Font check with better examples
+# -----------------------------------------------------------------------------
+# Step 1: Font check with visual guidance
+# -----------------------------------------------------------------------------
 echo -e "${MAGENTA}${BOLD}═══════════════════════════════════════════════════════════${NC}"
 echo -e "${MAGENTA}${BOLD}Step 1: Font Check${NC}"
 echo -e "${MAGENTA}${BOLD}═══════════════════════════════════════════════════════════${NC}\n"
@@ -83,7 +95,9 @@ if [[ "$font_ok" != "y" && "$font_ok" != "Y" ]]; then
     exit 1
 fi
 
-# Step 2: Prompt style with visual examples
+# -----------------------------------------------------------------------------
+# Step 2: Prompt style selection
+# -----------------------------------------------------------------------------
 clear
 echo -e "${MAGENTA}${BOLD}═══════════════════════════════════════════════════════════${NC}"
 echo -e "${MAGENTA}${BOLD}Step 2: Prompt Style${NC}"
@@ -112,7 +126,9 @@ case "$style_choice" in
     *) PROMPT_STYLE="lean" ;;
 esac
 
-# Step 3: Enhanced color scheme with better descriptions
+# -----------------------------------------------------------------------------
+# Step 3: Color scheme and contrast presets
+# -----------------------------------------------------------------------------
 clear
 echo -e "${MAGENTA}${BOLD}═══════════════════════════════════════════════════════════${NC}"
 echo -e "${MAGENTA}${BOLD}Step 3: Color Scheme & Contrast${NC}"
@@ -155,7 +171,9 @@ case "$color_choice" in
     *) COLOR_SCHEME="high-contrast-dark" ;;
 esac
 
-# Step 4: Background/Foreground customization
+# -----------------------------------------------------------------------------
+# Step 4: Background/foreground customization
+# -----------------------------------------------------------------------------
 clear
 echo -e "${MAGENTA}${BOLD}═══════════════════════════════════════════════════════════${NC}"
 echo -e "${MAGENTA}${BOLD}Step 4: Terminal Background${NC}"

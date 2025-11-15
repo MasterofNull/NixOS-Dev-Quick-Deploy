@@ -85,7 +85,7 @@ After selecting option 3, the script will prompt for:
 - A list of **private Cachix cache names** and whether to authenticate them.
 - A **Cachix auth token** when authentication is requested.
 
-Inputs are stored in `$STATE_DIR/preferences/remote-builders.env` so you only have to enter them once per machine. Subsequent runs will reuse the saved configuration automatically.
+Inputs are stored in `$STATE_DIR/preferences/remote-builders.env` so you only have to enter them once per machine. Subsequent runs reuse the saved configuration automatically (you can edit or delete the file to change the answers later).
 
 ## Optimizations Applied
 

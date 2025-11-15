@@ -54,6 +54,7 @@ phase_02_backup() {
     echo ""
 
     # Create backup root directory with timestamp
+    # Stored under ~/.config-backups so it respects PRIMARY_HOME overrides
     local backup_root_path="$HOME/.config-backups/pre-deployment-$(date +%Y%m%d_%H%M%S)"
     if ! safe_mkdir "$backup_root_path"; then
         print_error "Failed to create backup directory: $backup_root_path"

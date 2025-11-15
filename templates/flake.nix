@@ -1,3 +1,17 @@
+# =============================================================================
+# Flake Skeleton
+# =============================================================================
+# This template is rendered by lib/config.sh with deployment-specific values.
+# Placeholders:
+#   NIXPKGS_CHANNEL_PLACEHOLDER  ← substituted with selected nixpkgs channel
+#   HM_CHANNEL_PLACEHOLDER       ← home-manager channel reference
+#   SYSTEM_PLACEHOLDER           ← architecture (x86_64-linux, etc.)
+#   HOSTNAME_PLACEHOLDER         ← system hostname
+#   HOME_USERNAME_PLACEHOLDER    ← home-manager username
+#
+# The template intentionally avoids hardcoding home-manager as a NixOS module
+# to keep `nixos-rebuild` from depending on the flake during system activation.
+# =============================================================================
 {
   description = "AIDB NixOS and Home Manager configuration";
 

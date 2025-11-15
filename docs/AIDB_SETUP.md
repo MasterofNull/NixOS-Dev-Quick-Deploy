@@ -105,6 +105,17 @@ source ~/.zshrc
 exec zsh
 ```
 
+### 2.1 Adjust Flatpak / MangoHud Profiles (Optional)
+
+Your desktop tooling (Cursor, DBeaver, etc.) is governed by the Flatpak profile selected in Phase 6. To switch profiles or update MangoHud behaviour:
+
+```bash
+./scripts/flatpak-profile.sh    # Minimal / Core / AI Workstation
+./scripts/mangohud-profile.sh   # Disable / Light / Full / Desktop / Desktop-hybrid
+```
+
+Preferences are cached under `~/.cache/nixos-quick-deploy/preferences/` so subsequent deploys stay in sync automatically.
+
 ### 3. Start AI Services
 
 ```bash

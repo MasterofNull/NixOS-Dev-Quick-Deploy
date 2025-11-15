@@ -4,6 +4,14 @@
 # This hash is used to detect when the template changes
 # If you edit this file manually, your edits will be preserved
 # until the template itself changes (new packages added to script)
+#
+# Placeholders consumed by lib/config.sh:
+#   VERSIONPLACEHOLDER / HASHPLACEHOLDER   → deployment metadata
+#   @GLF_HOME_DEFINITIONS@                 → gaming overlay configuration
+#   @GPU_MONITORING_PACKAGES@              → vendor-specific monitors
+#   @FLATPAK_MANAGED_PACKAGES@             → Flatpak manifest snippet
+# Additional placeholders appear throughout for optional services (Gitea, etc.)
+# =============================================================================
 
 { config, pkgs, lib, options, nixAiToolsPackages ? {}, ... }:
 
@@ -80,6 +88,28 @@ let
     in
     if cosmicOnlyShowInEnvironments == [ ] then "" else "${joined};";
   commonPythonOverrides = import ./python-overrides.nix;
+  overridePythonPackages = pkgSet:
+    if pkgSet ? overrideScope' then
+      pkgSet.overrideScope' (self: super: commonPythonOverrides self super)
+    else
+      pkgSet;
+  pythonOverridesOverlay =
+    final: prev:
+      (lib.optionalAttrs (prev ? python3Packages) {
+        python3Packages = overridePythonPackages prev.python3Packages;
+      })
+      // (lib.optionalAttrs (prev ? python311Packages) {
+        python311Packages = overridePythonPackages prev.python311Packages;
+      })
+      // (lib.optionalAttrs (prev ? python312Packages) {
+        python312Packages = overridePythonPackages prev.python312Packages;
+      })
+      // (lib.optionalAttrs (prev ? python313Packages) {
+        python313Packages = overridePythonPackages prev.python313Packages;
+      })
+      // (lib.optionalAttrs (prev ? python314Packages) {
+        python314Packages = overridePythonPackages prev.python314Packages;
+      });
   pythonPreferLatest =
     let
       envPref = builtins.getEnv "PYTHON_PREFER_PY314";
@@ -115,6 +145,7 @@ let
     glfMangoHudProfile = "disabled";
     glfMangoHudConfig = "";
     glfMangoHudConfigFileContents = "";
+    glfMangoHudHasEntries = false;
     glfMangoHudDesktopMode = false;
     glfMangoHudInjectsIntoApps = false;
     glfLutrisWithGtk = pkgs.lutris;
@@ -131,6 +162,8 @@ let
       };
     in overrides;
 
+  # Merge defaults with deploy-time overrides so the template remains
+  # evaluatable even when rendered outside the orchestrator (e.g., nix repl).
   glfHomeValues = glfDefaultValues // glfOverrideValues;
 
   inherit (glfHomeValues)
@@ -138,6 +171,7 @@ let
     glfMangoHudProfile
     glfMangoHudConfig
     glfMangoHudConfigFileContents
+    glfMangoHudHasEntries
     glfMangoHudDesktopMode
     glfMangoHudInjectsIntoApps
     glfLutrisWithGtk
@@ -190,10 +224,81 @@ let
         remote_fallback_url=${flathubRemoteFallbackUrl}
         availability_message=""
         managed_state_marker="$HOME/.local/share/flatpak/.aidb-managed-state"
+        flatpak_install_arch=""
+        flatpak_arch_args=()
 
         log() {
           printf '[%s] %s\n' "$(date --iso-8601=seconds)" "$*"
         }
+
+        detect_flatpak_install_arch() {
+          local nix_system=""
+          if command -v nix >/dev/null 2>&1; then
+            nix_system="$(nix eval --raw --expr 'builtins.currentSystem' 2>/dev/null || true)"
+            case "$nix_system" in
+              x86_64-*) flatpak_install_arch="x86_64" ;;
+              aarch64-*) flatpak_install_arch="aarch64" ;;
+              armv7l-*|armv7-*) flatpak_install_arch="arm" ;;
+            esac
+          fi
+
+          if [[ -z "$flatpak_install_arch" ]]; then
+            local arch_guess
+            arch_guess="$(flatpak --default-arch 2>/dev/null || uname -m)"
+            case "$arch_guess" in
+              x86_64|amd64) flatpak_install_arch="x86_64" ;;
+              aarch64|arm64) flatpak_install_arch="aarch64" ;;
+              armv7l|armv7hf|armv8l) flatpak_install_arch="arm" ;;
+              *) flatpak_install_arch="$arch_guess" ;;
+            esac
+          fi
+
+          if [[ -n "$flatpak_install_arch" ]]; then
+            flatpak_arch_args=(--arch "$flatpak_install_arch")
+            log "Using Flatpak architecture: $flatpak_install_arch"
+          fi
+        }
+
+        should_retry_without_deltas() {
+          local output="$1"
+          if [[ -z "$output" ]]; then
+            return 1
+          fi
+
+          if printf '%s\n' "$output" | grep -Eiq 'repo/deltas|static delta|delta.+failed'; then
+            return 0
+          fi
+          return 1
+        }
+
+        run_flatpak_install() {
+          local output_var="$1"
+          shift
+          local -a cmd=("$@")
+          local deltas_disabled=0
+
+          while true; do
+            local install_output
+            if install_output=$("''${cmd[@]}" 2>&1); then
+              printf -v "$output_var" '%s' "$install_output"
+              return 0
+            fi
+
+            local status=$?
+            printf -v "$output_var" '%s' "$install_output"
+
+            if [[ $deltas_disabled -eq 0 ]] && should_retry_without_deltas "$install_output"; then
+              deltas_disabled=1
+              log "  Static delta fetch failed; retrying without deltas..."
+              cmd+=(--no-static-deltas)
+              continue
+            fi
+
+            return $status
+          done
+        }
+
+        detect_flatpak_install_arch
 
         backup_legacy_flatpak_configs() {
           local -a targets=(
@@ -380,13 +485,13 @@ OSTREE_CONFIG
 
           availability_message=""
 
-          user_output="$(flatpak --user remote-info "$remote_name" "$app_id" 2>&1 || true)"
+          user_output="$(flatpak --user remote-info "''${flatpak_arch_args[@]}" "$remote_name" "$app_id" 2>&1 || true)"
           user_status=$?
           if [[ $user_status -eq 0 ]]; then
             return 0
           fi
 
-          system_output="$(flatpak remote-info "$remote_name" "$app_id" 2>&1 || true)"
+          system_output="$(flatpak remote-info "''${flatpak_arch_args[@]}" "$remote_name" "$app_id" 2>&1 || true)"
           system_status=$?
           if [[ $system_status -eq 0 ]]; then
             return 0
@@ -486,7 +591,10 @@ OSTREE_CONFIG
           local attempt=1
           while (( attempt <= 3 )); do
             local install_output=""
-            if install_output=$(flatpak --noninteractive --assumeyes --user install "$remote_name" "$app_id" 2>&1); then
+            local -a install_cmd=(flatpak --noninteractive --assumeyes --user install)
+            install_cmd+=("''${flatpak_arch_args[@]}")
+            install_cmd+=("$remote_name" "$app_id")
+            if run_flatpak_install install_output "''${install_cmd[@]}"; then
               log "Installed $app_id"
               return 0
             fi
@@ -538,7 +646,10 @@ OSTREE_CONFIG
 
           log "Attempting batch Flatpak install for ''${#to_install[@]} application(s)..."
           local install_output=""
-          if install_output=$(flatpak --noninteractive --assumeyes --user install "$remote_name" "''${to_install[@]}" 2>&1); then
+          local -a install_cmd=(flatpak --noninteractive --assumeyes --user install)
+          install_cmd+=("''${flatpak_arch_args[@]}")
+          install_cmd+=("$remote_name" "''${to_install[@]}")
+          if run_flatpak_install install_output "''${install_cmd[@]}"; then
             if [[ -n "$install_output" ]]; then
               while IFS= read -r line; do
                 log "  ↳ $line"
@@ -1057,6 +1168,11 @@ in
 {
   # Declarative Flatpak management is enabled via nix-flatpak in flake.nix
   # The module is already included in the flake's module list, so no manual import is required here
+
+  nixpkgs = {
+    config.allowUnfree = true;
+    overlays = [ pythonOverridesOverlay ];
+  };
 
   home.username = "HOMEUSERNAME";
   home.homeDirectory = "HOMEDIR";
@@ -3297,7 +3413,7 @@ PLUGINCFG
           # This prevents the service from blocking home-manager activation if it fails.
         };
       })
-      (lib.mkIf (glfMangoHudDesktopMode && glfMangoHudConfig != "" && pkgs ? mangohud) {
+      (lib.mkIf (glfMangoHudDesktopMode && glfMangoHudHasEntries && pkgs ? mangohud) {
         "mangohud-desktop" = {
           Unit = {
             Description = "MangoHud desktop overlay";

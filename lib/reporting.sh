@@ -18,7 +18,8 @@
 #
 # ============================================================================
 
-# Track nixos-option invocation context and deduplicate verify output
+# Track nixos-option invocation context and deduplicate verify output (used by
+# `print_post_install` when evaluating modules).
 declare -a REPORTING_NIXOS_OPTION_CMD=()
 REPORTING_NIXOS_OPTION_CONTEXT=""
 # Track hashed systemd-analyze warnings across units; associative arrays are not
@@ -91,6 +92,9 @@ _reporting_unit_fragment_is_nixos_managed() {
 # Parameters:
 #   $1 - Path to nixos-rebuild log (default: /tmp/nixos-rebuild.log)
 # ============================================================================
+# Helper used by print_post_install to display which units were stopped,
+# started, or restarted during the most recent nixos-rebuild. Expects log lines
+# from `nixos-rebuild switch`.
 summarize_nixos_rebuild_services() {
     local log_path="${1:-/tmp/nixos-rebuild.log}"
 

@@ -19,11 +19,9 @@
 #   - LOG_DIR → Log directory path
 #   - PYTHON_BIN → Python interpreter array
 #
-# Exports:
-#   - ensure_package_available() → Check and install packages
-#   - ensure_prerequisite_installed() → Install prerequisite via nix-env
-#   - ensure_preflight_core_packages() → Install core prerequisite packages
-#   - cleanup_conflicting_home_manager_profile() → Remove conflicting home-manager entries
+# Note: This module mirrors helpers from lib/common.sh but keeps them isolated
+# for package-specific workflows (preflight installs, profile cleanup). Keep
+# logic changes in sync if you adjust the shared functions.
 #
 # ============================================================================
 
@@ -40,6 +38,8 @@
 #   0 - Package available or successfully installed
 #   1 - Package unavailable and installation failed
 # ============================================================================
+# See lib/common.sh for parameter descriptions. This copy exists so phase logic
+# can source packages.sh without pulling the entire common.sh surface area.
 ensure_package_available() {
     local cmd="$1"
     local pkg="${2:-$1}"
@@ -145,6 +145,8 @@ ensure_package_available() {
 #   0 - Success
 #   1 - Failure
 # ============================================================================
+# nix-env installer variant used during the preflight phase. Shares behaviour
+# with the version in lib/common.sh; keep changes mirrored.
 ensure_prerequisite_installed() {
     local cmd="$1"
     local pkg_ref="$2"

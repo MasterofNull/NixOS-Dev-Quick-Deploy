@@ -119,6 +119,8 @@ AUTO_APPLY_HOME_CONFIGURATION=true
 PROMPT_BEFORE_SYSTEM_SWITCH=false
 PROMPT_BEFORE_HOME_SWITCH=false
 FLATPAK_REINSTALL_REQUEST=false
+AUTO_UPDATE_FLAKE_INPUTS=false
+RESTORE_KNOWN_GOOD_FLAKE_LOCK=false
 
 # Phase control
 declare -a SKIP_PHASES=()
@@ -134,6 +136,9 @@ readonly SAFE_RESTART_PHASES=(1 3 8)
 # PHASE NAME MAPPING
 # ============================================================================
 
+# Map numeric phase identifiers to their slug strings. Keep this table in sync
+# with the files living under phases/phase-XX-*.sh so orchestration stays
+# readable. Phase metadata is referenced throughout phase control helpers.
 get_phase_name() {
     case $1 in
         1) echo "system-initialization" ;;
@@ -148,6 +153,7 @@ get_phase_name() {
     esac
 }
 
+# Human-friendly descriptions for `--show-phase-info` and logging output.
 get_phase_description() {
     case $1 in
         1) echo "System initialization - validate requirements and install temporary tools" ;;
@@ -162,6 +168,9 @@ get_phase_description() {
     esac
 }
 
+# Comma-separated dependency map per phase. These relationships ensure downstream
+# steps only run when prerequisite steps have completed and are also referenced
+# by `validate_phase_dependencies`.
 get_phase_dependencies() {
     case $1 in
         1) echo "" ;;
@@ -180,6 +189,9 @@ get_phase_dependencies() {
 # LIBRARY LOADING
 # ============================================================================
 
+# Load every helper under $LIB_DIR (set near the top of this file). These
+# libraries expose functions like `log`, `print_*`, and configuration helpers
+# consumed later in the bootstrap.
 load_libraries() {
     local libs=(
         "colors.sh"
@@ -227,6 +239,8 @@ load_libraries() {
 # CONFIGURATION LOADING
 # ============================================================================
 
+# Source configuration shells from $CONFIG_DIR (variables.sh/defaults.sh). At
+# this stage strict mode is still relaxed so missing vars won't explode.
 load_configuration() {
     local configs=(
         "variables.sh"
@@ -261,6 +275,7 @@ load_configuration() {
 # HELP AND USAGE
 # ============================================================================
 
+# CLI helper: display version/build info for `--version`.
 print_version() {
     cat << EOF
 NixOS Quick Deploy - Modular Bootstrap Loader
@@ -281,6 +296,8 @@ For help: $(basename "$0") --help
 EOF
 }
 
+# Long-form usage text for `--help`. Keep option descriptions in sync with
+# `parse_arguments`.
 print_usage() {
     cat << 'EOF'
 NixOS Quick Deploy - Bootstrap Loader v4.0.0
@@ -306,6 +323,8 @@ BASIC OPTIONS:
         --skip-system-switch    Skip automatic nixos-rebuild switch
         --skip-home-switch      Skip automatic home-manager switch
         --flatpak-reinstall     Force reinstall of managed Flatpaks (resets Flatpak state pre-switch)
+        --update-flake-inputs   Run 'nix flake update' before activation (opt-in)
+        --restore-flake-lock    Re-seed flake.lock from the bundled baseline
         --prompt-switch         Prompt before running system/home switches
         --prompt-system-switch  Prompt before running nixos-rebuild switch
         --prompt-home-switch    Prompt before running home-manager switch
@@ -377,6 +396,9 @@ EOF
 # ARGUMENT PARSING
 # ============================================================================
 
+# Central CLI parser. Flags toggle the globals declared in the "GLOBAL
+# VARIABLES - CLI Flags" section (lines ~120-210) so downstream logic can react
+# without reparsing argv.
 parse_arguments() {
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -519,6 +541,14 @@ parse_arguments() {
                 FLATPAK_REINSTALL_REQUEST=true
                 shift
                 ;;
+            --update-flake-inputs)
+                AUTO_UPDATE_FLAKE_INPUTS=true
+                shift
+                ;;
+            --restore-flake-lock)
+                RESTORE_KNOWN_GOOD_FLAKE_LOCK=true
+                shift
+                ;;
             *)
                 echo "ERROR: Unknown option: $1" >&2
                 echo "Run with --help for usage information" >&2
@@ -532,6 +562,8 @@ parse_arguments() {
 # PHASE INFORMATION
 # ============================================================================
 
+# Render a table describing the eight phases. This is used by `--list-phases`
+# and piggybacks on get_phase_name/get_phase_description helpers above.
 list_phases() {
     echo ""
     echo "============================================"
@@ -563,6 +595,8 @@ list_phases() {
     echo ""
 }
 
+# Detailed view for `--show-phase-info`. Surfaces descriptions and dependency
+# chains to make troubleshooting simpler when only a subset of phases run.
 show_phase_info() {
     local phase_num="$1"
 
@@ -625,6 +659,8 @@ show_phase_info() {
 # PHASE CONTROL
 # ============================================================================
 
+# Utility: determine whether the operator asked to skip a phase (via repeated
+# `--skip-phase` flags). `SKIP_PHASES` is populated inside parse_arguments.
 should_skip_phase() {
     local phase_num="$1"
     for skip_phase in "${SKIP_PHASES[@]}"; do
@@ -635,6 +671,8 @@ should_skip_phase() {
     return 1
 }
 
+# When resuming after an interruption, walk the completion log at $STATE_FILE
+# (defined in config/variables.sh:101) to find the next incomplete phase.
 get_resume_phase() {
     # If restart-from-safe-point is set, find last safe point
     if [[ "$RESTART_FROM_SAFE_POINT" == true ]]; then
@@ -667,6 +705,9 @@ get_resume_phase() {
     echo "1"
 }
 
+# Cross-check the prerequisite list for a phase. Ensures the JSON state file
+# (managed via lib/state-management.sh) records completion entries for each
+# dependency before execution proceeds.
 validate_phase_dependencies() {
     local phase_num="$1"
     local deps=$(get_phase_dependencies "$phase_num")
@@ -697,6 +738,8 @@ validate_phase_dependencies() {
     return 0
 }
 
+# Invoke a specific phase script from $PHASES_DIR. Handles dry-run logging,
+# dependency validation, and completion tracking in one place.
 execute_phase() {
     local phase_num="$1"
     local phase_name=$(get_phase_name "$phase_num")
@@ -745,6 +788,8 @@ execute_phase() {
     fi
 }
 
+# Interactive failure handler invoked whenever execute_phase returns non-zero.
+# Provides retry/skip/rollback/exit prompts so operators can steer recovery.
 handle_phase_failure() {
     local phase_num="$1"
     local phase_name=$(get_phase_name "$phase_num")
@@ -796,6 +841,10 @@ handle_phase_failure() {
 # ROLLBACK
 # ============================================================================
 
+# Trigger a system rollback using the generation recorded in
+# $ROLLBACK_INFO_FILE (defined in config/variables.sh:108 and populated during
+# backup stages). Mirrors the manual `sudo nixos-rebuild switch --rollback`
+# flow, but keeps messaging consistent.
 perform_rollback() {
     log INFO "Performing rollback"
     print_section "Rolling back to previous state"
@@ -836,6 +885,8 @@ perform_rollback() {
 # MAIN INITIALIZATION
 # ============================================================================
 
+# Cosmetic banner shown before deployment details. Highlights DRY RUN and DEBUG
+# modes when relevant so logs are unambiguous.
 print_header() {
     echo ""
     echo "============================================"
@@ -855,6 +906,9 @@ print_header() {
     fi
 }
 
+# Guarantee that flakes + nix-command experimental features are enabled for the
+# duration of the run, while preserving any additional user-provided NIX_CONFIG
+# content.
 ensure_nix_experimental_features_env() {
     # Ensure flakes and nix-command are enabled without clobbering user settings.
     local required_features="nix-command flakes"
@@ -903,6 +957,9 @@ ensure_nix_experimental_features_env() {
 # MAIN FUNCTION
 # ============================================================================
 
+# End-to-end orchestrator: parses arguments, loads configuration, runs the
+# phase machine, optionally performs rollback, and executes the final health
+# check. Every helper above ultimately feeds into this function.
 main() {
     # Parse arguments
     parse_arguments "$@"
