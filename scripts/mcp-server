@@ -1,14 +1,26 @@
 #!/usr/bin/env sh
-# Lifecycle manager for MCP servers scaffolded from this repository.
+# =============================================================================
+# MCP Server Lifecycle Manager
+# =============================================================================
+# Provides a lightweight workflow for scaffolding, launching, and supervising
+# Model Context Protocol servers. All helpers are POSIX sh compatible so the
+# tooling can run on bare deployments without pulling in additional shells.
+# =============================================================================
 
 set -eu
 
+# -----------------------------------------------------------------------------
+# Repository Paths and Defaults
+# -----------------------------------------------------------------------------
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 TEMPLATE_DIR=${MCP_TEMPLATE_DIR:-${REPO_ROOT}/templates}
 SERVER_HOME=${MCP_SERVER_HOME:-${REPO_ROOT}/mcp-servers}
 DEFAULT_MODE=${MCP_SERVER_MODE:-minimal}
 
+# -----------------------------------------------------------------------------
+# Logging & Error Helpers
+# -----------------------------------------------------------------------------
 log() {
   printf '%s %s\n' "$(date -Iseconds)" "$*"
 }
@@ -18,6 +30,9 @@ die() {
   exit 1
 }
 
+# -----------------------------------------------------------------------------
+# Filesystem helpers keep directory creation consistent.
+# -----------------------------------------------------------------------------
 ensure_directory() {
   path="$1"
   if [ ! -d "$path" ]; then
@@ -25,6 +40,10 @@ ensure_directory() {
   fi
 }
 
+# -----------------------------------------------------------------------------
+# Read minimal metadata from a server.conf into global vars so downstream
+# commands know which template/entry/mode to use.
+# -----------------------------------------------------------------------------
 load_config() {
   config_file="$1"
   [ -f "$config_file" ] || die "Missing server configuration: ${config_file}"
@@ -45,6 +64,11 @@ load_config() {
   [ -n "$SERVER_ENTRY" ] || die "entry not defined in ${config_file}"
 }
 
+# -----------------------------------------------------------------------------
+# Scaffold a new MCP server directory from the chosen template. Creates a
+# README, config file, and executable entry point to make the generated project
+# immediately runnable.
+# -----------------------------------------------------------------------------
 cmd_init() {
   template="python"
   OPTIND=1
@@ -100,6 +124,11 @@ README
   log "[OK] Created MCP server '${name}' from ${template} template"
 }
 
+# -----------------------------------------------------------------------------
+# Start the requested server in the background and capture its PID so the
+# lifecycle commands can later stop or inspect it. Supports a `-m` mode override
+# that is passed through to the server's `--mode` flag.
+# -----------------------------------------------------------------------------
 cmd_start() {
   OPTIND=1
   mode_override=""
@@ -146,6 +175,10 @@ cmd_start() {
   log "[OK] Server '${name}' started with PID $(cat "$pid_file")"
 }
 
+# -----------------------------------------------------------------------------
+# Terminate a running server by reading its recorded PID. Emits helpful errors
+# when the server is already stopped so the CLI feels predictable.
+# -----------------------------------------------------------------------------
 cmd_stop() {
   name=${1:-}
   [ -n "$name" ] || die "Usage: mcp-server stop <name>"
@@ -163,6 +196,10 @@ cmd_stop() {
   fi
 }
 
+# -----------------------------------------------------------------------------
+# Show or follow the server log produced by the start command. This is the
+# quickest way to debug template issues without digging through directories.
+# -----------------------------------------------------------------------------
 cmd_logs() {
   OPTIND=1
   follow="false"
@@ -186,6 +223,9 @@ cmd_logs() {
   fi
 }
 
+# -----------------------------------------------------------------------------
+# Enumerate all server directories and print a simple running/stopped status.
+# -----------------------------------------------------------------------------
 cmd_list() {
   ensure_directory "$SERVER_HOME"
   for dir in "$SERVER_HOME"/*; do
@@ -200,6 +240,10 @@ cmd_list() {
   done
 }
 
+# -----------------------------------------------------------------------------
+# Run the template's built-in `--self-test` entry point so developers can
+# confirm networking and runtime dependencies before deploying the server.
+# -----------------------------------------------------------------------------
 cmd_test() {
   name=${1:-}
   [ -n "$name" ] || die "Usage: mcp-server test <name>"
@@ -225,6 +269,9 @@ cmd_test() {
   sh -c "$cmd"
 }
 
+# -----------------------------------------------------------------------------
+# CLI usage helper
+# -----------------------------------------------------------------------------
 usage() {
   cat <<USAGE
 Usage: mcp-server <command> [options]
@@ -239,6 +286,9 @@ Commands:
 USAGE
 }
 
+# -----------------------------------------------------------------------------
+# Entry point
+# -----------------------------------------------------------------------------
 main() {
   ensure_directory "$SERVER_HOME"
   command=${1:-}

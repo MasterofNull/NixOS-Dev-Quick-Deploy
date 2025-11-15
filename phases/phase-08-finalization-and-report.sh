@@ -149,6 +149,8 @@ phase_08_finalization_and_report() {
     print_success "System finalization complete"
     echo ""
 
+    # TEMP_SWAP_* exported by ensure_low_memory_swap() (phase 5). Clean up here so
+    # temp swapfiles don't stick around across reboots.
     if [[ "${TEMP_SWAP_CREATED:-false}" == true && -n "${TEMP_SWAP_FILE:-}" ]]; then
         print_section "Cleaning Up Temporary Swapfile"
 

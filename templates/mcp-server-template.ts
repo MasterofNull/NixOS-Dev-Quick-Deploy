@@ -11,7 +11,8 @@
  * - Structured logging with graceful shutdown handlers.
  *
  * Use the `mcp-server` helper script to scaffold new projects, manage
- * environments, and run the built-in self-test.
+ * environments, and run the built-in self-test. The template is injected
+ * verbatim by scripts/mcp-server (cmd_init), so keep imports self-contained.
  */
 
 import { parse } from "https://deno.land/std@0.212.0/flags/mod.ts";
