@@ -938,13 +938,25 @@ check_systemd_service() {
     local service=$1
     local description=$2
     local check_running=${3:-false}
+    local required=${4:-true}
+
+    # Gracefully handle environments without a user systemd instance
+    if ! systemctl --user show-environment >/dev/null 2>&1; then
+        print_warning "$description (user systemd unavailable, skipping)"
+        print_detail "Hint: Run inside a logged-in user session to evaluate $service."
+        return 2
+    fi
 
     print_check "$description"
 
     # Check if service unit exists
     if ! systemctl --user list-unit-files | grep -q "^${service}.service"; then
-        print_fail "$description service not configured"
-        return 1
+        if [ "$required" = true ]; then
+            print_fail "$description service not configured"
+            return 1
+        fi
+        print_warning "$description service not configured (optional)"
+        return 2
     fi
 
     # Check if service is enabled
@@ -977,6 +989,11 @@ check_system_service() {
     local required=${4:-true}
 
     print_check "$description"
+
+    if ! systemctl list-unit-files >/dev/null 2>&1; then
+        print_warning "$description (systemd unavailable, skipping)"
+        return 2
+    fi
 
     # Check if service unit exists (system-level)
     if ! systemctl list-unit-files | grep -q "^${service}.service"; then
@@ -1335,8 +1352,8 @@ run_all_checks() {
     print_section "AI Systemd Services"
 
     # Qdrant vector database (system service)
-    # These services are disabled by default to prevent startup issues during deployment
-    check_system_service "qdrant" "Qdrant (vector database)" false
+    # Treat as optional when the system configuration hasn't been applied yet.
+    check_system_service "qdrant" "Qdrant (vector database)" false false
     if systemctl is-active qdrant &> /dev/null; then
         if curl -s "http://localhost:6333" &> /dev/null || nc -z localhost 6333 2>/dev/null; then
             print_detail "Qdrant API accessible on port 6333"
@@ -1352,7 +1369,7 @@ run_all_checks() {
     fi
 
     # Jupyter Lab (user service)
-    check_systemd_service "jupyter-lab" "Jupyter Lab (notebooks)" false
+    check_systemd_service "jupyter-lab" "Jupyter Lab (notebooks)" false false
     if systemctl --user is-active jupyter-lab &> /dev/null; then
         check_systemd_service_port "jupyter-lab" "8888" "Jupyter Lab"
     fi

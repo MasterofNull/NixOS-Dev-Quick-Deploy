@@ -5,9 +5,19 @@
 # Target: NixOS 25.05+ with Wayland-first, security hardening
 #
 # Placeholder tokens (replaced via lib/config.sh → replace_placeholder):
-#   @SCRIPT_VERSION@, @GENERATED_AT@, @HOSTNAME@, @USER@
-#   @GITEA_ENABLE_FLAG@, @GITEA_ADMIN_VARIABLES_BLOCK@
-#   @NVIDIA_ENABLE_BLOCK@, @AMD_ENABLE_BLOCK@, etc.
+#   SCRIPT_VERSION, GENERATED_AT, HOSTNAME, USER
+#   CPU_VENDOR_LABEL, INITRD_KERNEL_MODULES, KERNEL_MODULES_PLACEHOLDER,
+#   KERNEL_SYSCTL_TUNABLES, RESUME_DEVICE_DIRECTIVE, BOOT_KERNEL_PARAMETERS_BLOCK,
+#   MICROCODE_SECTION, BINARY_CACHE_SETTINGS
+#   GPU_HARDWARE_SECTION, GPU_SESSION_VARIABLES, GPU_DRIVER_PACKAGES,
+#   GLF_OS_DEFINITIONS, GLF_GAMING_STACK_SECTION
+#   PODMAN_STORAGE_BLOCK, LACT_SERVICE_BLOCK, SWAP_AND_HIBERNATION_BLOCK
+#   SELECTED_TIMEZONE, CURRENT_LOCALE, NIXOS_VERSION, STATE_VERSION
+#   NIX_MAX_JOBS, NIX_BUILD_CORES, NIX_PARALLEL_COMMENT
+#   USERS_MUTABLE, USER_PASSWORD_BLOCK
+#   GITEA_ENABLE_FLAG, GITEA_ADMIN_SECRETS_SET, GITEA_ADMIN_VARIABLES_BLOCK,
+#   GITEA_ADMIN_SERVICE_BLOCK, GITEA_SECRET_KEY, GITEA_INTERNAL_TOKEN,
+#   GITEA_LFS_JWT_SECRET, GITEA_JWT_SECRET
 # The values are derived from config/variables.sh inputs and phase detection.
 # =============================================================================
 
@@ -907,8 +917,8 @@ in
     COSMIC_DATA_CONTROL_ENABLED = "1";
     STEAM_EXTRA_COMPAT_TOOLS_PATHS = "$HOME/.steam/root/compatibilitytools.d";
     MANGOHUD = if glfMangoHudInjectsIntoApps then "1" else "0";
-    MANGOHUD_CONFIG = glfMangoHudConfig;
     MANGOHUD_DESKTOP_MODE = if glfMangoHudDesktopMode then "1" else "0";
+    MANGOHUD_CONFIGFILE = "$HOME/.config/MangoHud/MangoHud.conf";
     @GPU_SESSION_VARIABLES@
   };
 
@@ -953,6 +963,7 @@ in
       skopeo
       crun
       slirp4netns
+      btrfs-progs              # Supports Btrfs-backed Podman storage
 
       # Hardware detection tools (for GPU detection in deployment script)
       pciutils  # Provides lspci for hardware detection
