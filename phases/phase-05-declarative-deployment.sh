@@ -363,6 +363,16 @@ phase_05_declarative_deployment() {
             print_success "✓ User packages now managed declaratively"
             HOME_CONFIGURATION_APPLIED="true"
             HOME_SWITCH_SKIPPED_REASON=""
+
+            # Create symlinks for home-manager news command compatibility
+            print_info "Creating home-manager config symlinks for news command..."
+            if [[ -d "$HM_CONFIG_DIR" ]]; then
+                mkdir -p "$HOME/.config/home-manager"
+                ln -sf "$HM_CONFIG_DIR/home.nix" "$HOME/.config/home-manager/home.nix" 2>/dev/null || true
+                ln -sf "$HM_CONFIG_DIR/flake.nix" "$HOME/.config/home-manager/flake.nix" 2>/dev/null || true
+                ln -sf "$HM_CONFIG_DIR/flake.lock" "$HOME/.config/home-manager/flake.lock" 2>/dev/null || true
+                print_success "✓ Symlinks created (home-manager news will work)"
+            fi
             echo ""
         else
             local hm_exit_code=${PIPESTATUS[0]}

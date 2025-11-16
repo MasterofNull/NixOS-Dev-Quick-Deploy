@@ -16,7 +16,7 @@ The GLF OS repository (`https://framagit.org/gaming-linux-fr/glf-os/glf-os`) exp
 * `modules/default/glfos-environment-selection.nix` and `pkgs/glfos-environment-selection` deliver a Zenity-driven selector utility that can be bundled as a system package whenever the desktop environment is active. A welcome screen package is provided similarly.
 
 ## Gaming Stack
-* `modules/default/gaming.nix` pulls software from both stable and unstable channels: Lutris with extra libraries, Heroic, UMU, Mangohud, Proton GE, and vendor-specific drivers (Fanatec, new-lg4ff). It enables Gamescope, sets MangoHud overlays via `MANGOHUD_CONFIG`, and configures Steam with Gamescope sessions and remote play firewall openings.  
+* `modules/default/gaming.nix` pulls software from both stable and unstable channels: Lutris with extra libraries, Heroic, UMU, Mangohud, Proton GE, and vendor-specific drivers (Fanatec, new-lg4ff). It enables Gamescope, writes the MangoHud overlay profile into the managed config file, and configures Steam with Gamescope sessions and remote play firewall openings.
 * Hardware-specific options include udev rules to ignore DualSense touchpads, and toggles for OpenTabletDriver, Xbox controller stacks, and other accessories.
 
 ## System Services and Optimisation
