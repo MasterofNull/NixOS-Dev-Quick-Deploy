@@ -25,6 +25,8 @@ prompt_podman_storage_driver_selection() {
     echo ""
     print_info "Detected filesystem backing /var/lib/containers: ${fs_type}."
     print_info "Auto-detected Podman storage driver: ${auto_detected}."
+    print_info "Btrfs yields the best snapshot performance for AI containers if /var/lib/containers lives on a Btrfs volume."
+    print_info "Recommended Btrfs data size for AI-Optimizer workloads: 200–300GiB (minimum 150GiB)."
     print_info "This choice only applies to the current deployment and defaults to vfs."
     echo ""
     echo "  Options:"

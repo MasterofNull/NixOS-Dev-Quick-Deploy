@@ -72,8 +72,192 @@ target.write_text(text, encoding="utf-8")
 PY
 }
 
+backup_generated_file() {
+    # Backup an existing generated file before replacement.
+    # Args: $1 = file path, $2 = friendly label, $3 = backup directory,
+    #       $4 = timestamp suffix
+    # Returns:
+    #   0 → backup succeeded
+    #   1 → backup attempted but failed
+    #   2 → file did not exist (no backup needed)
+    local source_path="$1"
+    local label="${2:-}"
+    local backup_dir="${3:-$HM_CONFIG_DIR/backup}"
+    local timestamp="${4:-$(date +%Y%m%d_%H%M%S)}"
+
+    if [[ -z "$source_path" || -z "$backup_dir" ]]; then
+        return 1
+    fi
+
+    if [[ ! -f "$source_path" ]]; then
+        return 2
+    fi
+
+    if ! safe_mkdir "$backup_dir"; then
+        print_warning "Could not create backup directory: $backup_dir"
+        return 1
+    fi
+
+    local base_name
+    base_name=$(basename "$source_path")
+    local backup_target="$backup_dir/${base_name}.backup.$timestamp"
+
+    if safe_copy_file_silent "$source_path" "$backup_target"; then
+        local display_label="${label:-$base_name}"
+        print_success "Backed up ${display_label}"
+        return 0
+    fi
+
+    local display_label="${label:-$base_name}"
+    print_warning "Failed to back up ${display_label}"
+    return 1
+}
+
+sync_support_module() {
+    # Ensure support modules (e.g., python-overrides.nix) are copied from
+    # templates, backing up pre-existing versions only when they differ.
+    # Args: $1 = module filename, $2 = source directory,
+    #       $3 = destination directory, $4 = backup dir, $5 = timestamp
+    local module_name="$1"
+    local template_dir="${2:-$SCRIPT_DIR/templates}"
+    local destination_dir="${3:-$HM_CONFIG_DIR}"
+    local backup_dir="${4:-$HM_CONFIG_DIR/backup}"
+    local timestamp="${5:-$(date +%Y%m%d_%H%M%S)}"
+
+    if [[ -z "$module_name" ]]; then
+        print_error "sync_support_module: module name required"
+        return 1
+    fi
+
+    local module_source="$template_dir/$module_name"
+    local module_destination="$destination_dir/$module_name"
+
+    if [[ ! -f "$module_source" ]]; then
+        print_error "Required template missing: $module_source"
+        return 1
+    fi
+
+    local needs_copy=true
+    if [[ -f "$module_destination" ]]; then
+        if cmp -s "$module_source" "$module_destination" 2>/dev/null; then
+            needs_copy=false
+        else
+            backup_generated_file "$module_destination" "$module_name" "$backup_dir" "$timestamp" || true
+        fi
+    fi
+
+    if [[ "$needs_copy" == false ]]; then
+        print_success "$module_name already up to date"
+        return 0
+    fi
+
+    if ! safe_copy_file "$module_source" "$module_destination"; then
+        print_error "Failed to install $module_name into $destination_dir"
+        return 1
+    fi
+
+    safe_chown_user_dir "$module_destination" || true
+    print_success "Installed $module_name"
+    return 0
+}
+
+DEFAULT_COSMIC_BLACKLIST_ENTRIES=(
+    "cosmic-app-library"
+    "cosmic-app-list"
+    "cosmic-applet-a11y"
+    "cosmic-applet-audio"
+    "cosmic-applet-battery"
+    "cosmic-applet-bluetooth"
+    "cosmic-applet-input-sources"
+    "cosmic-applet-minimize"
+    "cosmic-applet-network"
+    "cosmic-applet-notifications"
+    "cosmic-applet-power"
+    "cosmic-applet-status-area"
+    "cosmic-applet-tiling"
+    "cosmic-applet-time"
+    "cosmic-applet-workspaces"
+    "cosmic-applets"
+    "cosmic-bg"
+    "cosmic-comp"
+    "cosmic-edit"
+    "cosmic-files"
+    "cosmic-files-applet"
+    "cosmic-greeter"
+    "cosmic-greeter-daemon"
+    "cosmic-greeter-start"
+    "cosmic-idle"
+    "cosmic-initial-setup"
+    "cosmic-launcher"
+    "cosmic-notification-daemon"
+    "cosmic-notifications"
+    "cosmic-osd"
+    "cosmic-panel"
+    "cosmic-panel-button"
+    "cosmic-player"
+    "cosmic-randr"
+    "cosmic-screenshot"
+    "cosmic-session"
+    "cosmic-settings"
+    "cosmic-settings-daemon"
+    "cosmic-store"
+    "cosmic-term"
+    "cosmic-terminal"
+    "cosmic-text"
+    "cosmic-workspaces"
+)
+
+discover_cosmic_blacklist_entries() {
+    local -a entries=()
+    local -a search_dirs=(
+        "/run/current-system/sw/bin"
+    )
+
+    local dir path
+    for dir in "${search_dirs[@]}"; do
+        if [[ ! -d "$dir" ]]; then
+            continue
+        fi
+        while IFS= read -r -d '' path; do
+            local name
+            name=$(basename "$path")
+            [[ -n "$name" ]] || continue
+            entries+=("$name")
+        done < <(find "$dir" -maxdepth 1 -type f -name 'cosmic-*' -print0 2>/dev/null || true)
+    done
+
+    if (( ${#entries[@]} == 0 )); then
+        printf '%s\n' "${DEFAULT_COSMIC_BLACKLIST_ENTRIES[@]}"
+        return 0
+    fi
+
+    printf '%s\n' "${entries[@]}" | LC_ALL=C sort -u
+}
+
+render_cosmic_blacklist_block() {
+    local -a entries=()
+    if mapfile -t entries < <(discover_cosmic_blacklist_entries); then
+        :
+    fi
+
+    if (( ${#entries[@]} == 0 )); then
+        entries=("${DEFAULT_COSMIC_BLACKLIST_ENTRIES[@]}")
+    fi
+
+    local formatted=""
+    local entry
+    for entry in "${entries[@]}"; do
+        printf -v formatted '%s    "%s"\n' "$formatted" "$entry"
+    done
+
+    printf '%s' "$formatted"
+}
+
 # Resolve MangoHud profile preferences once so system/home configs stay in sync.
 # Preference file path defined in config/variables.sh:129.
+# On first run (no preference file exists), the default "desktop" profile will be
+# persisted to ensure MangoHud only overlays in the mangoapp window, not on COSMIC
+# applets or system windows.
 resolve_mangohud_preferences() {
     local gaming_stack_enabled_flag="${1:-false}"
 
@@ -100,6 +284,15 @@ resolve_mangohud_preferences() {
                 print_warning "Unsupported MangoHud profile '$mangohud_profile_candidate'; expected disabled, light, full, desktop, or desktop-hybrid. Using default profile '$mangohud_profile'."
                 ;;
         esac
+    fi
+
+    # Persist the default profile to preference file on first run (if no override is set)
+    if [[ -z "${MANGOHUD_PROFILE_OVERRIDE:-}" && -n "${MANGOHUD_PROFILE_PREFERENCE_FILE:-}" ]]; then
+        if [[ ! -f "$MANGOHUD_PROFILE_PREFERENCE_FILE" ]]; then
+            mkdir -p "$(dirname "$MANGOHUD_PROFILE_PREFERENCE_FILE")" 2>/dev/null || true
+            printf 'MANGOHUD_PROFILE=%s\n' "$mangohud_profile" > "$MANGOHUD_PROFILE_PREFERENCE_FILE" 2>/dev/null || true
+            chmod 600 "$MANGOHUD_PROFILE_PREFERENCE_FILE" 2>/dev/null || true
+        fi
     fi
 
     local mangohud_desktop_window_mode=false
@@ -129,19 +322,7 @@ resolve_mangohud_preferences() {
 generate_mangohud_nix_definitions() {
     cat <<'EOF'
   glfMangoHudCosmicBlacklist = [
-    "cosmic-app-library"
-    "cosmic-comp"
-    "cosmic-edit"
-    "cosmic-files"
-    "cosmic-launcher"
-    "cosmic-notification-daemon"
-    "cosmic-panel"
-    "cosmic-session"
-    "cosmic-settings"
-    "cosmic-store"
-    "cosmic-term"
-    "cosmic-terminal"
-    "cosmic-text"
+__COSMIC_BLACKLIST_ENTRIES__
   ];
   glfMangoHudBlacklistEntry =
     if glfMangoHudCosmicBlacklist == [] then
@@ -153,21 +334,24 @@ generate_mangohud_nix_definitions() {
   glfMangoHudPresets = {
     disabled = [ ];
     light =
+      # Layout: vertical, one metric per line with labels
       [
       "control=mangohud"
       "legacy_layout=0"
-      "horizontal"
+      "vertical"
       "background_alpha=0"
       "gpu_stats"
       "gpu_power"
       "gpu_temp"
       "cpu_stats"
+      "cpu_load"
       "cpu_temp"
+      "core_load"
       "ram"
       "vram"
-      "ps"
       "fps"
       "fps_metrics=AVG,0.001"
+      "frametime"
       "font_scale=1.05"
       ]
       ++ glfMangoHudCommonEntries;
@@ -181,6 +365,7 @@ generate_mangohud_nix_definitions() {
       "gpu_power"
       "gpu_temp"
       "cpu_stats"
+      "cpu_load"
       "cpu_temp"
       "core_load"
       "ram"
@@ -195,10 +380,14 @@ generate_mangohud_nix_definitions() {
       ]
       ++ glfMangoHudCommonEntries;
     desktop =
+      # Note: desktop mode uses no_display=1 to prevent MangoHud from overlaying
+      # any applications. Stats are only visible in the mangoapp desktop window.
+      # Layout: vertical, one metric per line with labels in order:
+      # GPU → Power → CPU → CPU Load → (enumerated cores) → RAM → VRAM → FPS → AVG → Frametime
       [
       "control=mangohud"
       "legacy_layout=0"
-      "horizontal"
+      "vertical"
       "background_alpha=0"
       "alpha=0.9"
       "font_scale=1.1"
@@ -206,10 +395,12 @@ generate_mangohud_nix_definitions() {
       "offset_x=32"
       "offset_y=32"
       "hud_no_margin=1"
+      "no_display=1"
       "gpu_stats"
       "gpu_power"
       "gpu_temp"
       "cpu_stats"
+      "cpu_load"
       "cpu_temp"
       "core_load"
       "ram"
@@ -220,10 +411,15 @@ generate_mangohud_nix_definitions() {
       ]
       ++ glfMangoHudCommonEntries;
     "desktop-hybrid" =
+      # Note: desktop-hybrid intentionally omits no_display=1 to allow
+      # MangoHud overlays in games/apps while also running mangoapp.
+      # The blacklist (glfMangoHudCommonEntries) prevents overlays on COSMIC apps.
+      # Layout: vertical, one metric per line with labels in order:
+      # GPU → Power → CPU → CPU Load → (enumerated cores) → RAM → VRAM → FPS → AVG → Frametime
       [
       "control=mangohud"
       "legacy_layout=0"
-      "horizontal"
+      "vertical"
       "background_alpha=0"
       "alpha=0.9"
       "font_scale=1.1"
@@ -235,6 +431,7 @@ generate_mangohud_nix_definitions() {
       "gpu_power"
       "gpu_temp"
       "cpu_stats"
+      "cpu_load"
       "cpu_temp"
       "core_load"
       "ram"
@@ -247,10 +444,7 @@ generate_mangohud_nix_definitions() {
   };
   glfMangoHudProfile = "__MANGOHUD_PROFILE__";
   glfMangoHudEntries = glfMangoHudPresets.__MANGOHUD_PROFILE__;
-  glfMangoHudEnvEntries =
-    lib.filter (entry: builtins.match ".*,.*" entry == null) glfMangoHudEntries;
   glfMangoHudHasEntries = glfMangoHudEntries != [];
-  glfMangoHudConfig = lib.concatStringsSep "," glfMangoHudEnvEntries;
   glfMangoHudConfigFileContents =
     if !glfMangoHudHasEntries then
       ""
@@ -1930,20 +2124,8 @@ generate_nixos_system_config() {
     local BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     local BACKUP_DIR="$HM_CONFIG_DIR/backup"
 
-    if [[ -f "$SYSTEM_CONFIG_FILE" || -f "$FLAKE_FILE" ]]; then
-        safe_mkdir "$BACKUP_DIR" || print_warning "Could not create backup directory"
-    fi
-
-    if [[ -f "$SYSTEM_CONFIG_FILE" ]]; then
-        local BACKUP_FILE="$BACKUP_DIR/configuration.nix.backup.$BACKUP_TIMESTAMP"
-        safe_copy_file_silent "$SYSTEM_CONFIG_FILE" "$BACKUP_FILE" && \
-            print_success "Backed up configuration.nix"
-    fi
-
-    if [[ -f "$FLAKE_FILE" ]]; then
-        safe_copy_file_silent "$FLAKE_FILE" "$BACKUP_DIR/flake.nix.backup.$BACKUP_TIMESTAMP" && \
-            print_success "Backed up flake.nix"
-    fi
+    backup_generated_file "$SYSTEM_CONFIG_FILE" "configuration.nix" "$BACKUP_DIR" "$BACKUP_TIMESTAMP" || true
+    backup_generated_file "$FLAKE_FILE" "flake.nix" "$BACKUP_DIR" "$BACKUP_TIMESTAMP" || true
 
     # ========================================================================
     # Generate Hardware Configuration
@@ -1976,24 +2158,11 @@ generate_nixos_system_config() {
     fi
 
     local support_module
-    for support_module in python-overrides.nix; do
-        local module_source="$TEMPLATE_DIR/$support_module"
-        local module_destination="$HM_CONFIG_DIR/$support_module"
-
+    for support_module in "python-overrides.nix"; do
         print_info "Syncing $support_module into system configuration workspace..."
-
-        if [[ ! -f "$module_source" ]]; then
-            print_error "Required template missing: $module_source"
+        if ! sync_support_module "$support_module" "$TEMPLATE_DIR" "$HM_CONFIG_DIR" "$BACKUP_DIR" "$BACKUP_TIMESTAMP"; then
             return 1
         fi
-
-        if ! safe_copy_file "$module_source" "$module_destination"; then
-            print_error "Failed to install $support_module into $HM_CONFIG_DIR"
-            return 1
-        fi
-
-        safe_chown_user_dir "$module_destination" || true
-        print_success "Installed $support_module"
     done
 
     if declare -F detect_container_storage_backend >/dev/null 2>&1; then
@@ -2186,8 +2355,10 @@ generate_nixos_system_config() {
 
     local mangohud_definition
     mangohud_definition=$(generate_mangohud_nix_definitions)
-
+    local cosmic_blacklist_block
+    cosmic_blacklist_block=$(render_cosmic_blacklist_block)
     mangohud_definition="${mangohud_definition//__MANGOHUD_PROFILE__/$mangohud_profile}"
+    mangohud_definition="${mangohud_definition//__COSMIC_BLACKLIST_ENTRIES__/$cosmic_blacklist_block}"
 
     if [[ "$gaming_stack_enabled" == true ]]; then
         print_info "Applying MangoHud overlay profile: $mangohud_profile (${mangohud_profile_origin})"
@@ -3166,14 +3337,9 @@ create_home_manager_config() {
     # ========================================================================
     # Backup Existing Configuration
     # ========================================================================
-    if [[ -f "$HOME_MANAGER_FILE" ]]; then
-        local BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-        local BACKUP_DIR="$HM_CONFIG_DIR/backup"
-        safe_mkdir "$BACKUP_DIR" || print_warning "Could not create backup directory"
-
-        safe_copy_file_silent "$HOME_MANAGER_FILE" "$BACKUP_DIR/home.nix.backup.$BACKUP_TIMESTAMP" && \
-            print_success "Backed up existing home.nix"
-    fi
+    local BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    local BACKUP_DIR="$HM_CONFIG_DIR/backup"
+    backup_generated_file "$HOME_MANAGER_FILE" "home.nix" "$BACKUP_DIR" "$BACKUP_TIMESTAMP" || true
 
     # ========================================================================
     # Copy Template
@@ -3209,23 +3375,10 @@ create_home_manager_config() {
     # ========================================================================
     local support_module
     for support_module in "python-overrides.nix"; do
-        local module_source="$TEMPLATE_DIR/$support_module"
-        local module_destination="$HM_CONFIG_DIR/$support_module"
-
         print_info "Syncing $support_module into Home Manager workspace..."
-
-        if [[ ! -f "$module_source" ]]; then
-            print_error "Required template missing: $module_source"
+        if ! sync_support_module "$support_module" "$TEMPLATE_DIR" "$HM_CONFIG_DIR" "$BACKUP_DIR" "$BACKUP_TIMESTAMP"; then
             return 1
         fi
-
-        if ! safe_copy_file "$module_source" "$module_destination"; then
-            print_error "Failed to install $support_module into $HM_CONFIG_DIR"
-            return 1
-        fi
-
-        safe_chown_user_dir "$module_destination" || true
-        print_success "Installed $support_module"
     done
 
     # ========================================================================
@@ -3261,7 +3414,10 @@ create_home_manager_config() {
 
     local mangohud_definition
     mangohud_definition=$(generate_mangohud_nix_definitions)
+    local cosmic_blacklist_block
+    cosmic_blacklist_block=$(render_cosmic_blacklist_block)
     mangohud_definition="${mangohud_definition//__MANGOHUD_PROFILE__/$mangohud_profile}"
+    mangohud_definition="${mangohud_definition//__COSMIC_BLACKLIST_ENTRIES__/$cosmic_blacklist_block}"
 
     local glf_home_definitions
     glf_home_definitions=$(cat <<EOF

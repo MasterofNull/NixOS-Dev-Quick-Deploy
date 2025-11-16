@@ -53,7 +53,7 @@ chmod +x nixos-quick-deploy.sh
 ### Pre-Installed Development Tools
 
 **Languages & Runtimes:**
-- Python 3.13 with 60+ AI/ML packages (PyTorch, TensorFlow, LangChain, etc.)  
+- Python 3.13 with 60+ AI/ML packages (PyTorch, TensorFlow, LangChain, etc.) and `uv` installed as a drop-in replacement for `pip` (aliases for `pip`/`pip3` point to `uv pip`).  
   <sub>Set `PYTHON_PREFER_PY314=1` before running the deployer to trial Python 3.14 once the compatibility mask is cleared.</sub>
 - Node.js 22, Go, Rust, Ruby
 
@@ -82,6 +82,9 @@ chmod +x nixos-quick-deploy.sh
 - `Glances`, `Grafana`, `Prometheus`, `Loki`, `Promtail`, `Vector`, `Cockpit` - Full observability and logging stack
 - `gnome-disk-utility`, `parted` - Disk formatting and partitioning
 - `lazygit` - Terminal UI for Git
+- `pnpm`, `biome`, `pixi`, `ast-grep`, `atuin`, `zellij`, `distrobox` - Faster package managers, JS formatter/linter, code-aware search, shell history sync, terminal multiplexing, and mutable container convenience
+- `nix-fast-build`, `lorri`, `cachix` - Nix build acceleration and cache tooling
+- `sccache`, `cargo-binstall`, `gofumpt`, `staticcheck` - Faster Rust/Go builds and linters
 
 **Nix Ecosystem:**
 - `nix-tree` - Visualize dependency trees
@@ -195,6 +198,21 @@ This will verify:
 - ✅ Flatpak applications (including DBeaver)
 - ✅ **AI Systemd Services** (Qdrant, Hugging Face TGI, Jupyter Lab, Gitea)
 - ✅ Environment variables & PATH
+
+### Podman Storage: Btrfs Recommended for AI-Optimizer
+
+The deployer will prompt for the Podman storage driver. For AI-Optimizer workloads (see `~/Documents/AI-Optimizer`), use **Btrfs** when possible for fast snapshots and deduplication.
+
+- **Sizing:** Minimum 150 GiB; **recommended 200–300 GiB** if you expect multiple large model images.
+- **Prepare a Btrfs data root** (if your root FS isn’t already Btrfs):
+  ```bash
+  sudo mkdir -p /var/lib/containers
+  sudo truncate -s 300G /var/lib/containers.btrfs
+  sudo mkfs.btrfs -L podman /var/lib/containers.btrfs
+  echo "/var/lib/containers.btrfs /var/lib/containers btrfs loop,compress=zstd,ssd,noatime 0 0" | sudo tee -a /etc/fstab
+  sudo mount -a
+  ```
+- **During the prompt:** select `btrfs`. If the backing FS is not Btrfs, you’ll see a warning reminding you to create the volume above.
 
 **Or verify manually:**
 
@@ -932,11 +950,20 @@ exec zsh
 
 ### MangoHud Overlay Appears Everywhere
 
-**Issue:** MangoHud injects into every GUI/terminal session, covering windows you do not want to benchmark.
+**Issue:** MangoHud injects into every GUI/terminal session, covering windows you do not want to benchmark, including COSMIC desktop applets and system windows.
 
-**Fix:** The shipped MangoHud presets now blacklist COSMIC system applications (Files, Terminal, Settings, Store, launcher, panel, etc.) so overlays stop appearing on desktop utilities after you redeploy or reapply your Home Manager config.
+**Fix:** The shipped MangoHud presets now include the `no_display=1` option for the desktop profile and blacklist COSMIC system applications (Files, Terminal, Settings, Store, launcher, panel, etc.) for all other profiles. This prevents overlays from appearing on desktop utilities.
 
 **Solution:** Fresh deployments now default to profile **4) desktop**, which keeps MangoHud inside the mangoapp desktop window so no other applications are wrapped. You only need the selector if you want to change this default.
+
+**For existing systems with the overlay bug:** Run the fix script to update your MangoHud configuration:
+```bash
+./scripts/fix-mangohud-config.sh
+# Then re-run the deployment to regenerate your configs with the corrected settings
+./nixos-quick-deploy.sh
+```
+
+If you want to change the MangoHud profile:
 ```bash
 # Run the interactive selector and pick the overlay mode you prefer
 ./scripts/mangohud-profile.sh
@@ -1023,6 +1050,42 @@ home.packages = with pkgs; [
 Apply:
 ```bash
 hms  # Alias for home-manager switch
+```
+
+### Enable Automatic Home Manager Updates
+
+The deployment configures an optional auto-upgrade service that can automatically update your Home Manager configuration on a schedule.
+
+To enable it, edit your home-manager config:
+```bash
+nvim ~/.dotfiles/home-manager/home.nix
+```
+
+Find the `services.home-manager.autoUpgrade` section and enable it:
+```nix
+services.home-manager.autoUpgrade = {
+  enable = true;  # Change from false to true
+  frequency = "daily";  # Options: "daily", "weekly", "monthly"
+  useFlake = true;
+  flakeDir = "${config.home.homeDirectory}/.config/home-manager";
+};
+```
+
+Apply changes:
+```bash
+hms  # Alias for home-manager switch
+```
+
+The service will:
+- Run daily at 03:00 by default
+- Pull updates from your `~/.config/home-manager` flake
+- Automatically rebuild your home environment
+- Log output to systemd journal: `journalctl --user -u home-manager-autoUpgrade.service`
+
+To check status:
+```bash
+systemctl --user status home-manager-autoUpgrade.timer
+systemctl --user status home-manager-autoUpgrade.service
 ```
 
 ### Skip Certain Steps (Advanced)
