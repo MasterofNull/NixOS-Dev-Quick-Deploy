@@ -7,9 +7,9 @@
 #
 # Placeholders consumed by lib/config.sh:
 #   VERSIONPLACEHOLDER / HASHPLACEHOLDER   → deployment metadata
-#   @GLF_HOME_DEFINITIONS@                 → gaming overlay configuration
-#   @GPU_MONITORING_PACKAGES@              → vendor-specific monitors
-#   @FLATPAK_MANAGED_PACKAGES@             → Flatpak manifest snippet
+#   GLF_HOME_DEFINITIONS                   → gaming overlay configuration
+#   GPU_MONITORING_PACKAGES                → vendor-specific monitors
+#   FLATPAK_MANAGED_PACKAGES               → Flatpak manifest snippet
 # Additional placeholders appear throughout for optional services (Gitea, etc.)
 # =============================================================================
 
@@ -143,7 +143,6 @@ let
       "desktop-hybrid" = [ ];
     };
     glfMangoHudProfile = "disabled";
-    glfMangoHudConfig = "";
     glfMangoHudConfigFileContents = "";
     glfMangoHudHasEntries = false;
     glfMangoHudDesktopMode = false;
@@ -169,7 +168,6 @@ let
   inherit (glfHomeValues)
     glfMangoHudPresets
     glfMangoHudProfile
-    glfMangoHudConfig
     glfMangoHudConfigFileContents
     glfMangoHudHasEntries
     glfMangoHudDesktopMode
@@ -1137,7 +1135,7 @@ RESOURCES
   systemdStartServicesDefault =
     let
       startServicesOption = options.systemd.user.startServices or null;
-      allowedValues =
+      allowedEnums =
         let
           rawValues =
             if startServicesOption == null || !(startServicesOption ? type) then
@@ -1154,15 +1152,17 @@ RESOURCES
           startServicesOption.default
         else
           null;
+      supportsLegacy = lib.elem "legacy" allowedEnums;
+      supportsSdSwitch = lib.elem "sd-switch" allowedEnums;
     in
-    if lib.elem "legacy" allowedValues then
+    if supportsLegacy then
       "legacy"
     else if optionDefault != null then
       optionDefault
-    else if allowedValues != [ ] then
-      lib.head allowedValues
     else
-      "legacy";
+      # Home Manager 25.05+ removed the legacy activator; defer to sd-switch
+      # (true) when it is the only supported backend.
+      if supportsSdSwitch then "sd-switch" else true;
 in
 
 {
@@ -1180,14 +1180,9 @@ in
 
   programs.home-manager.enable = true;
 
-  # Newer Home Manager releases default to the sd-switch activator, which
-  # relies on systemd's notification channel remaining responsive.  During the
-  # NixOS deployment performed by nixos-quick-deploy.sh this runs outside of an
-  # interactive login session, so the generated home-manager-hyperd.service can
-  # hang waiting on that channel and ultimately time out.  Probe the available
-  # startServices choices so we can prefer the more forgiving legacy activator
-  # whenever it is still supported, while falling back to the upstream default
-  # automatically as future Home Manager releases drop the legacy backend.
+  # Home Manager 25.05 set startServices=true (sd-switch) and removed the legacy
+  # activator. Prefer legacy where still available on older channels; otherwise
+  # keep the upstream default to avoid evaluation failures on 25.05/25.11+.
   systemd.user.startServices = lib.mkDefault systemdStartServicesDefault;
   xdg.desktopEntries =
     let
@@ -1259,12 +1254,36 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
         lib.optionals (pkgs ? zenmap) [
           pkgs.zenmap             # Graphical frontend for nmap scans
         ];
+      optionalDevTools =
+        lib.optionals (pkgs ? pnpm) [ pkgs.pnpm ]
+        ++ lib.optionals (pkgs ? biome) [ pkgs.biome ]
+        ++ lib.optionals (pkgs ? pixi) [ pkgs.pixi ]
+        ++ lib.optionals (pkgs ? ast-grep) [ pkgs.ast-grep ]
+        ++ lib.optionals (pkgs ? nix-fast-build) [ pkgs.nix-fast-build ]
+        ++ lib.optionals (pkgs ? lorri) [ pkgs.lorri ]
+        ++ lib.optionals (pkgs ? cachix) [ pkgs.cachix ]
+        ++ lib.optionals (pkgs ? distrobox) [ pkgs.distrobox ];
+
+      optionalRustGoAccelerators =
+        lib.optionals (pkgs ? sccache) [ pkgs.sccache ]
+        ++ lib.optionals (pkgs ? cargo-binstall) [ pkgs.cargo-binstall ]
+        ++ lib.optionals (pkgs ? gofumpt) [ pkgs.gofumpt ]
+        ++ lib.optionals (pkgs ? staticcheck) [ pkgs.staticcheck ];
+
+      optionalTerminalProductivity =
+        lib.optionals (pkgs ? atuin) [ pkgs.atuin ]
+        ++ lib.optionals (pkgs ? zellij) [ pkgs.zellij ];
+
       basePackages =
         [
           nixAiHelpScript
           # Python (REQUIRED for AIDB and AI model tooling)
           pythonAiEnv
+          uv                     # Drop-in replacement for pip
         ]
+        ++ optionalDevTools
+        ++ optionalRustGoAccelerators
+        ++ optionalTerminalProductivity
         ++ nixAiToolsPackageList  # Install helper binaries exported by numtide/nix-ai-tools when available
         ++ (with pkgs; [
           # ========================================================================
@@ -1595,6 +1614,10 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       nix-dev = "nix develop -c $SHELL";
       nix-search = "nix search nixpkgs";
       nix-shell-pure = "nix-shell --pure";
+
+      # Prefer uv over pip for Python package management
+      pip = "uv pip";
+      pip3 = "uv pip";
 
       # Git shortcuts
       gs = "git status";
@@ -2218,7 +2241,6 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       VISUAL = "DEFAULTEDITOR";
       NIXPKGS_ALLOW_UNFREE = "1";
       MANGOHUD = if glfMangoHudInjectsIntoApps then "1" else "0";
-      MANGOHUD_CONFIG = glfMangoHudConfig;
       MANGOHUD_CONFIGFILE = "${config.home.homeDirectory}/.config/MangoHud/MangoHud.conf";
       MANGOHUD_DESKTOP_MODE = if glfMangoHudDesktopMode then "1" else "0";
       # NPM Configuration
@@ -3426,7 +3448,6 @@ PLUGINCFG
             Type = "simple";
             Environment = [
               "MANGOHUD=1"
-              "MANGOHUD_CONFIG=${glfMangoHudConfig}"
               "MANGOHUD_CONFIGFILE=%h/.config/MangoHud/MangoHud.conf"
             ];
             ExecStart = "${pkgs.mangohud}/bin/mangoapp";
@@ -3501,8 +3522,9 @@ PLUGINCFG
             TimeoutStopSec = 30;
           };
           Install = {
-            # Disabled by default to avoid startup issues during deployment
-            # WantedBy = [ "default.target" ];
+            # Enable by default so notebooks are available immediately after switch.
+            # Disable with: systemctl --user disable --now jupyter-lab
+            WantedBy = [ "default.target" ];
           };
         };
       }
@@ -3690,5 +3712,27 @@ PLUGINCFG
       // lib.optionalAttrs (flatpakPackageOptionType != null) {
         package = selectCandidate flatpakPackageOptionType pkgs.flatpak [ pkgs.flatpak ];
       };
+
+  # ========================================================================
+  # Home Manager Auto-Upgrade Service (Optional)
+  # ========================================================================
+  # Automatically update your Home Manager configuration on a schedule.
+  # This service uses flakes and pulls updates from your configuration directory.
+  #
+  # To enable: Set 'services.home-manager.autoUpgrade.enable = true;'
+  # Schedule: Runs daily at 03:00 by default
+  #
+  # Reference: Home Manager news 2025-10-25
+  # ========================================================================
+  services.home-manager.autoUpgrade = {
+    enable = false;  # Set to true to enable automatic updates
+    frequency = "daily";  # Options: "daily", "weekly", "monthly"
+
+    # Enable flake support (recommended for this deployment)
+    useFlake = true;
+
+    # Flake directory (uses the symlinked config location)
+    flakeDir = "${config.home.homeDirectory}/.config/home-manager";
+  };
 
 }

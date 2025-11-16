@@ -33,7 +33,7 @@
 # ============================================================================
 
 # Supported release list (descending order) shared by both NixOS and home-manager
-SUPPORTED_NIX_RELEASES=("25.05" "24.11" "24.05" "23.11")
+SUPPORTED_NIX_RELEASES=("25.11" "25.05" "24.11" "24.05" "23.11")
 
 # Track fallback context so callers can emit user-facing notices without
 # polluting resolver stdout (which is frequently used inside command
@@ -48,13 +48,14 @@ SUPPORTED_NIX_RELEASES=("25.05" "24.11" "24.05" "23.11")
 # ============================================================================
 # Purpose: Get current NixOS version number
 # Returns:
-#   Current version (e.g., "24.11") or "25.05" as fallback
+#   Current version (e.g., "24.11") or latest supported release as fallback
 # ============================================================================
 derive_system_release_version() {
     local raw
+    local fallback_version="${SUPPORTED_NIX_RELEASES[0]}"
 
     if ! raw=$(nixos-version 2>/dev/null); then
-        echo "25.05"
+        echo "$fallback_version"
         return 0
     fi
 
@@ -64,7 +65,7 @@ derive_system_release_version() {
     raw=${raw%%-*}    # Remove "-" suffix
 
     if [[ -z "$raw" ]]; then
-        echo "25.05"
+        echo "$fallback_version"
     else
         echo "$raw"
     fi
@@ -164,7 +165,7 @@ channel_host_is_resolvable() {
 # ============================================================================
 # Purpose: Map requested NixOS versions to an existing release channel.
 # Returns:
-#   Matching release version (e.g., "25.05") or closest supported entry.
+#   Matching release version (e.g., "25.11") or closest supported entry.
 # ============================================================================
 resolve_nixos_release_version() {
     local requested="$1"
@@ -242,7 +243,7 @@ emit_nixos_channel_fallback_notice() {
 # do not exist upstream, which causes nixos-rebuild dry runs to fail before
 # any real validation happens.
 # Returns:
-#   Matching release version (e.g., "25.05") or the closest supported entry.
+#   Matching release version (e.g., "25.11") or the closest supported entry.
 # ============================================================================
 resolve_home_manager_release_version() {
     local requested="$1"
@@ -352,7 +353,7 @@ select_nixos_version() {
     fi
 
     # Get latest stable version
-    local LATEST_STABLE="25.05"
+    local LATEST_STABLE="${SUPPORTED_NIX_RELEASES[0]}"
 
     echo ""
     print_info "Current System Version:"
@@ -387,7 +388,7 @@ select_nixos_version() {
             export SELECTED_NIXOS_VERSION="$CURRENT_VERSION"
             print_info "Keeping current version: $CURRENT_VERSION"
             echo ""
-            if [ "$CURRENT_VERSION" = "25.05" ]; then
+            if [ "$CURRENT_VERSION" = "25.05" ] && [ "$LATEST_STABLE" != "25.05" ]; then
                 print_warning "Note: On NixOS 25.05, COSMIC duplicate apps issue cannot be fixed with excludePackages"
                 print_info "      This feature is available in NixOS 25.11+"
                 echo ""

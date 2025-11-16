@@ -1088,6 +1088,11 @@ detect_container_storage_backend() {
         fi
     fi
 
+    if [[ "$driver" == "btrfs" && "$CONTAINER_STORAGE_FS_TYPE" != "btrfs" ]]; then
+        record_podman_storage_warning \
+            "Btrfs storage driver selected but ${probe_target} is on ${CONTAINER_STORAGE_FS_TYPE}. For best performance, create a dedicated Btrfs volume for /var/lib/containers (e.g., 200–300GiB for AI-Optimizer builds), format with 'mkfs.btrfs', and mount with 'compress=zstd,ssd,noatime'."
+    fi
+
     local existing_system_driver=""
     existing_system_driver=$(extract_storage_driver_from_conf \
         "/etc/containers/storage.conf" 2>/dev/null || true)
