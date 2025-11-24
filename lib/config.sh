@@ -2076,6 +2076,14 @@ render_sops_secrets_file() {
     chmod 600 "$secrets_target" 2>/dev/null || true
     safe_chown_user_dir "$secrets_target" || true
 
+    yaml_quote_string() {
+        local value="$1"
+        value=${value//$'\r'/}
+        value=${value//$'\n'/}
+        value=${value//\'/\'\'}
+        printf "'%s'" "$value"
+    }
+
     local gitea_secret_literal
     local gitea_internal_literal
     local gitea_lfs_literal
@@ -2084,25 +2092,25 @@ render_sops_secrets_file() {
     local huggingface_literal
     local user_password_hash_literal
 
-    gitea_secret_literal=$(nix_quote_string "${GITEA_SECRET_KEY:-}")
-    gitea_internal_literal=$(nix_quote_string "${GITEA_INTERNAL_TOKEN:-}")
-    gitea_lfs_literal=$(nix_quote_string "${GITEA_LFS_JWT_SECRET:-}")
-    gitea_jwt_literal=$(nix_quote_string "${GITEA_JWT_SECRET:-}")
+    gitea_secret_literal=$(yaml_quote_string "${GITEA_SECRET_KEY:-}")
+    gitea_internal_literal=$(yaml_quote_string "${GITEA_INTERNAL_TOKEN:-}")
+    gitea_lfs_literal=$(yaml_quote_string "${GITEA_LFS_JWT_SECRET:-}")
+    gitea_jwt_literal=$(yaml_quote_string "${GITEA_JWT_SECRET:-}")
 
     local admin_password_value=""
     if [[ "${GITEA_BOOTSTRAP_ADMIN,,}" == "true" ]]; then
         admin_password_value="${GITEA_ADMIN_PASSWORD:-}"
     fi
-    gitea_admin_password_literal=$(nix_quote_string "$admin_password_value")
+    gitea_admin_password_literal=$(yaml_quote_string "$admin_password_value")
 
-    huggingface_literal=$(nix_quote_string "${HUGGINGFACEHUB_API_TOKEN:-}")
+    huggingface_literal=$(yaml_quote_string "${HUGGINGFACEHUB_API_TOKEN:-}")
 
     local resolved_password_hash=""
     resolved_password_hash=$(resolve_primary_user_password_hash)
     if [[ -z "$resolved_password_hash" ]]; then
         print_warning "Unable to determine an existing password hash for $PRIMARY_USER; secrets.yaml will store an empty value"
     fi
-    user_password_hash_literal=$(nix_quote_string "$resolved_password_hash")
+    user_password_hash_literal=$(yaml_quote_string "$resolved_password_hash")
 
     replace_placeholder "$secrets_target" "GITEA_SECRET_KEY_PLACEHOLDER" "$gitea_secret_literal"
     replace_placeholder "$secrets_target" "GITEA_INTERNAL_TOKEN_PLACEHOLDER" "$gitea_internal_literal"
@@ -2114,31 +2122,33 @@ render_sops_secrets_file() {
 
     if ! nix_verify_no_placeholders "$secrets_target" "secrets.yaml" "GITEA_[A-Z_]+_PLACEHOLDER" "HUGGINGFACE_TOKEN_PLACEHOLDER" "USER_PASSWORD_HASH_PLACEHOLDER"; then
         print_warning "Placeholders remain in secrets.yaml"
-        # Don't fail - continue with partially filled secrets
     fi
 
-    # Attempt encryption, but don't fail deployment if it doesn't work
-    if command -v sops >/dev/null 2>&1 && [[ -f "${HM_CONFIG_DIR}/.sops.yaml" ]]; then
-        print_info "Attempting to encrypt secrets.yaml..."
-        if encrypt_secrets_file "$secrets_target"; then
-            if validate_encrypted_secrets "$secrets_target"; then
-                print_success "Encrypted secrets.yaml prepared at $secrets_target"
-                print_info "Use 'sops secrets.yaml' from $HM_CONFIG_DIR to edit values going forward"
-                return 0
-            else
-                print_warning "Encrypted secrets validation failed"
-            fi
-        else
-            print_warning "Failed to encrypt secrets.yaml"
-        fi
-    else
-        print_info "Sops not available or .sops.yaml missing - skipping encryption"
+    if ! command -v sops >/dev/null 2>&1; then
+        print_error "sops binary is not available; cannot encrypt secrets.yaml"
+        return 1
     fi
 
-    # Encryption failed or skipped - continue with plaintext
-    print_warning "Secrets stored in PLAINTEXT at $secrets_target"
-    print_warning "This is acceptable for development but NOT for production"
-    print_info "To enable encryption later: run ./scripts/fix-secrets-encryption.sh"
+    local sops_config="${HM_CONFIG_DIR}/.sops.yaml"
+    if [[ ! -f "$sops_config" ]]; then
+        print_error ".sops.yaml missing from ${HM_CONFIG_DIR}; cannot encrypt secrets."
+        return 1
+    fi
+
+    export SOPS_CONFIG="$sops_config"
+    print_info "Encrypting secrets.yaml..."
+    if ! encrypt_secrets_file "$secrets_target"; then
+        print_error "Failed to encrypt secrets.yaml"
+        return 1
+    fi
+
+    if ! validate_encrypted_secrets "$secrets_target"; then
+        print_error "Encrypted secrets.yaml validation failed"
+        return 1
+    fi
+
+    print_success "Encrypted secrets.yaml prepared at $secrets_target"
+    print_info "Use 'sops secrets.yaml' from $HM_CONFIG_DIR to edit values going forward"
     return 0
 }
 

@@ -79,47 +79,9 @@ phase_08_finalization_and_report() {
     # PART 1: SYSTEM HEALTH CHECK
     # ========================================================================
 
-    # Pre-pull Podman AI stack images to avoid timeouts during service startup
-    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]] && command -v podman >/dev/null 2>&1; then
-        print_info "Pre-pulling AI stack images (ollama, open-webui, qdrant)..."
-        local -a images=(
-            "docker.io/ollama/ollama:latest"
-            "ghcr.io/open-webui/open-webui:latest"
-            "docker.io/qdrant/qdrant:latest"
-        )
-        local img
-        for img in "${images[@]}"; do
-            if podman image exists "$img" >/dev/null 2>&1; then
-                continue
-            fi
-            if podman pull "$img"; then
-                print_success "Pulled $img"
-            else
-                print_warning "Failed to pull $img; service startup may retry/pull."
-            fi
-        done
-        echo ""
-    fi
-
-    # Start Podman-based AI stack now that the generation has been switched, so health checks see running services.
     if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
-        print_info "Starting Podman-based AI stack services (manual autoStart)"
-        # Disable HF transfer acceleration if inherited from the environment to avoid missing hf_transfer.
-        export HF_HUB_ENABLE_HF_TRANSFER=0
-        local -a podman_units=(
-            "podman-local-ai-network.service"
-            "podman-local-ai-ollama.service"
-            "podman-local-ai-qdrant.service"
-            "podman-local-ai-open-webui.service"
-        )
-        local unit
-        for unit in "${podman_units[@]}"; do
-            if systemctl --user start "$unit" 2>/dev/null; then
-                print_success "Started $unit"
-            else
-                print_warning "Failed to start $unit; check: journalctl --user -u $unit"
-            fi
-        done
+        print_info "Local AI stack images and containers are now managed by ai-optimizer."
+        print_info "After deployment run 'podman-ai-stack up' to pull/start the ai-optimizer Podman stack (vLLM, Open WebUI, Qdrant, MindsDB)."
         echo ""
     fi
 
@@ -173,7 +135,7 @@ phase_08_finalization_and_report() {
     # ========================================================================
     # Complete system configuration that requires services running:
     # - Database initialization (PostgreSQL databases for Gitea)
-    # - Service configuration (Gitea, Ollama, Qdrant, HuggingFace TGI)
+    # - Service configuration (Gitea and other system services; ai-optimizer handles AI containers)
     # - Integration setup (service-to-service authentication)
     # - Permission finalization (service directory ownership)
     apply_final_system_configuration
@@ -190,98 +152,16 @@ phase_08_finalization_and_report() {
     finalize_configuration_activation
 
     # ========================================================================
-    # Step 8.4: Enable AI Services and Pull Ollama Models
+    # Step 8.4: Local AI Stack
     # ========================================================================
-    # Note: Hugging Face models were already downloaded in Phase 5 (before system switch)
-    # so that TGI services start with cached models. Here we just enable services
-    # and pull Ollama models (which require the API to be running).
-    print_section "Step 8.4: Enable AI Services and Pull Ollama Models"
+    print_section "Step 8.4: Local AI Stack"
 
-    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" != "true" ]]; then
-        print_warning "Local AI stack disabled; skipping AI service setup."
+    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
+        print_info "Local AI containers (vLLM/Open WebUI/Qdrant/MindsDB) are managed by ai-optimizer."
+        print_info "After deployment run 'podman-ai-stack up' (or the ai-optimizer launcher) to pull and start them."
+        print_info "Use 'podman-ai-stack status' or ai-servicectl stack status for health checks when ready."
     else
-        # Create systemd drop-ins to increase timeout for large container startups
-        print_info "Creating service timeout overrides for Ollama and Open WebUI..."
-        mkdir -p "$HOME/.config/systemd/user/podman-local-ai-ollama.service.d"
-        mkdir -p "$HOME/.config/systemd/user/podman-local-ai-open-webui.service.d"
-
-        cat > "$HOME/.config/systemd/user/podman-local-ai-ollama.service.d/timeout.conf" <<'EOF'
-[Service]
-# Increase timeout for large container (Ollama is 3.75GB)
-TimeoutStartSec=300
-EOF
-
-        cat > "$HOME/.config/systemd/user/podman-local-ai-open-webui.service.d/timeout.conf" <<'EOF'
-[Service]
-# Increase timeout for large container (Open WebUI is 4.38GB)
-TimeoutStartSec=300
-EOF
-
-        systemctl --user daemon-reload
-        print_success "Timeout overrides created"
-
-        # Enable user-level Podman units for the AI stack
-        print_info "Enabling Podman AI stack services (network, Ollama, Qdrant, Open WebUI)..."
-        systemctl --user enable --now podman-local-ai-network.service podman-local-ai-ollama.service podman-local-ai-qdrant.service podman-local-ai-open-webui.service >/dev/null 2>&1 || true
-
-        # Pull Ollama models (requires API to be running)
-        if ! command -v curl >/dev/null 2>&1 || ! curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
-            print_info "Waiting for Ollama API to become available..."
-            local retry=0
-            local max_retries=10
-            until curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 || [[ $retry -ge $max_retries ]]; do
-                sleep 3
-                ((retry++))
-            done
-        fi
-
-        if command -v curl >/dev/null 2>&1 && curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
-            print_success "Ollama API is available"
-            # Keep Ollama preloads lean: single lightweight model for quick testing
-            local -a ollama_models=("phi4")
-            local ollama_model
-            local existing_tags=""
-            existing_tags="$(curl -fsS http://127.0.0.1:11434/api/tags 2>/dev/null || true)"
-            for ollama_model in "${ollama_models[@]}"; do
-                if [[ "${FORCE_OLLAMA_PULL:-false}" != "true" ]] && printf '%s' "$existing_tags" | grep -q "\"name\"\s*:\s*\"${ollama_model}\""; then
-                    print_success "Ollama model already present: $ollama_model (skipping)"
-                    continue
-                fi
-                print_info "Pulling Ollama model: $ollama_model"
-                if ollama pull "$ollama_model"; then
-                    print_success "Pulled $ollama_model"
-                else
-                    print_warning "Ollama pull failed for $ollama_model (check connectivity or GPU drivers)"
-                fi
-            done
-        else
-            print_warning "Ollama API not reachable; skipping model pulls"
-            print_info "Start manually with: systemctl --user start podman-local-ai-ollama.service"
-        fi
-
-        # Health checks for all endpoints
-        print_section "Local AI endpoint health checks"
-
-        # Ollama
-        if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
-            print_success "Ollama API reachable on 11434"
-            curl -fsS http://127.0.0.1:11434/api/tags 2>/dev/null | jq -r '.models[].name' | sed 's/^/  - /' || true
-        else
-            print_warning "Ollama API not reachable on 11434"
-        fi
-
-        # Open WebUI
-        if curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1:8081 2>/dev/null | grep -q '^200$'; then
-            print_success "Open WebUI reachable on 8081"
-        else
-            print_warning "Open WebUI not reachable on 8081"
-        fi
-
-        # Optional lightweight smoke prompts (do not fail deployment)
-        print_section "Local AI smoke prompts (best-effort)"
-        if command -v ollama >/dev/null 2>&1; then
-            ollama run phi4 "test" >/tmp/ollama-smoke.log 2>/dev/null && print_success "Ollama phi4 smoke prompt succeeded" || print_warning "Ollama phi4 smoke prompt failed"
-        fi
+        print_info "Local AI stack disabled; skipping."
     fi
 
     echo ""
@@ -374,7 +254,7 @@ EOF
     echo "  • Development CLI tools (100+)"
     echo "  • Claude Code integration"
     echo "  • System services (Gitea)"
-    echo "  • Podman AI stack (Ollama, Open WebUI, Qdrant, MindsDB)"
+    echo "  • Podman AI stack integration (vLLM/Open WebUI/Qdrant/MindsDB via ai-optimizer)"
     echo ""
 
     # ========================================================================

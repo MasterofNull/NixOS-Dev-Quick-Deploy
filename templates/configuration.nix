@@ -961,6 +961,10 @@ in
     };
   };
 
+  # Legacy AI services removed in favor of the ai-optimizer Podman stack
+  systemd.services.huggingface-tgi.enable = lib.mkForce false;
+  systemd.services.huggingface-tgi-scout.enable = lib.mkForce false;
+
   # Nginx for reverse proxy and static file serving
   # Disabled by default - configure as needed for your AI services
   services.nginx = {
