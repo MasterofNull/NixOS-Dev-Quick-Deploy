@@ -2000,6 +2000,125 @@ provision_primary_user_password() {
     return 0
 }
 
+resolve_primary_user_password_hash() {
+    local extracted=""
+
+    if [[ -n "${USER_PASSWORD_BLOCK:-}" ]]; then
+        if [[ "$USER_PASSWORD_BLOCK" =~ hashedPassword[[:space:]]*=[[:space:]]*\"([^\"]+)\" ]]; then
+            extracted="${BASH_REMATCH[1]}"
+        fi
+    fi
+
+    if [[ -z "$extracted" ]]; then
+        local shadow_hash=""
+        if shadow_hash=$(get_shadow_password_hash "$PRIMARY_USER" 2>/dev/null || true); then
+            extracted="$shadow_hash"
+        fi
+    fi
+
+    printf '%s' "$extracted"
+}
+
+render_sops_secrets_file() {
+    local backup_dir="$1"
+    local backup_timestamp="$2"
+
+    if [[ -z "${HM_CONFIG_DIR:-}" ]]; then
+        print_error "HM_CONFIG_DIR is undefined; cannot prepare secrets.yaml"
+        return 1
+    fi
+
+    if ! declare -F init_sops >/dev/null 2>&1 || ! declare -F encrypt_secrets_file >/dev/null 2>&1 || ! declare -F validate_encrypted_secrets >/dev/null 2>&1; then
+        print_error "Secrets management helpers are unavailable; ensure lib/secrets.sh is loaded"
+        return 1
+    fi
+
+    local secrets_template="${SCRIPT_DIR}/templates/secrets.yaml"
+    local secrets_target="${HM_CONFIG_DIR}/secrets.yaml"
+
+    if [[ ! -f "$secrets_template" ]]; then
+        print_error "Secrets template not found: $secrets_template"
+        return 1
+    fi
+
+    if [[ -f "$secrets_target" ]]; then
+        if grep -q '^sops:' "$secrets_target" 2>/dev/null; then
+            print_success "Encrypted secrets.yaml already present: $secrets_target"
+            return 0
+        fi
+
+        print_warning "Found existing secrets.yaml without sops metadata; creating a backup before regenerating"
+        backup_generated_file "$secrets_target" "secrets.yaml" "${backup_dir:-$HM_CONFIG_DIR/backup}" "${backup_timestamp:-$(date +%Y%m%d_%H%M%S)}" || true
+    fi
+
+    print_info "Rendering secrets template into $secrets_target"
+    if ! cp "$secrets_template" "$secrets_target"; then
+        print_error "Failed to copy secrets template"
+        return 1
+    fi
+
+    chmod 600 "$secrets_target" 2>/dev/null || true
+    safe_chown_user_dir "$secrets_target" || true
+
+    local gitea_secret_literal
+    local gitea_internal_literal
+    local gitea_lfs_literal
+    local gitea_jwt_literal
+    local gitea_admin_password_literal
+    local huggingface_literal
+    local user_password_hash_literal
+
+    gitea_secret_literal=$(nix_quote_string "${GITEA_SECRET_KEY:-}")
+    gitea_internal_literal=$(nix_quote_string "${GITEA_INTERNAL_TOKEN:-}")
+    gitea_lfs_literal=$(nix_quote_string "${GITEA_LFS_JWT_SECRET:-}")
+    gitea_jwt_literal=$(nix_quote_string "${GITEA_JWT_SECRET:-}")
+
+    local admin_password_value=""
+    if [[ "${GITEA_BOOTSTRAP_ADMIN,,}" == "true" ]]; then
+        admin_password_value="${GITEA_ADMIN_PASSWORD:-}"
+    fi
+    gitea_admin_password_literal=$(nix_quote_string "$admin_password_value")
+
+    huggingface_literal=$(nix_quote_string "${HUGGINGFACEHUB_API_TOKEN:-}")
+
+    local resolved_password_hash=""
+    resolved_password_hash=$(resolve_primary_user_password_hash)
+    if [[ -z "$resolved_password_hash" ]]; then
+        print_warning "Unable to determine an existing password hash for $PRIMARY_USER; secrets.yaml will store an empty value"
+    fi
+    user_password_hash_literal=$(nix_quote_string "$resolved_password_hash")
+
+    replace_placeholder "$secrets_target" "GITEA_SECRET_KEY_PLACEHOLDER" "$gitea_secret_literal"
+    replace_placeholder "$secrets_target" "GITEA_INTERNAL_TOKEN_PLACEHOLDER" "$gitea_internal_literal"
+    replace_placeholder "$secrets_target" "GITEA_LFS_JWT_SECRET_PLACEHOLDER" "$gitea_lfs_literal"
+    replace_placeholder "$secrets_target" "GITEA_JWT_SECRET_PLACEHOLDER" "$gitea_jwt_literal"
+    replace_placeholder "$secrets_target" "GITEA_ADMIN_PASSWORD_PLACEHOLDER" "$gitea_admin_password_literal"
+    replace_placeholder "$secrets_target" "HUGGINGFACE_TOKEN_PLACEHOLDER" "$huggingface_literal"
+    replace_placeholder "$secrets_target" "USER_PASSWORD_HASH_PLACEHOLDER" "$user_password_hash_literal"
+
+    if ! nix_verify_no_placeholders "$secrets_target" "secrets.yaml" "GITEA_[A-Z_]+_PLACEHOLDER" "HUGGINGFACE_TOKEN_PLACEHOLDER" "USER_PASSWORD_HASH_PLACEHOLDER"; then
+        return 1
+    fi
+
+    if ! init_sops; then
+        print_error "Failed to initialize sops prerequisites"
+        return 1
+    fi
+
+    if ! encrypt_secrets_file "$secrets_target"; then
+        print_error "Failed to encrypt secrets.yaml"
+        return 1
+    fi
+
+    if ! validate_encrypted_secrets "$secrets_target"; then
+        print_error "Encrypted secrets.yaml validation failed"
+        return 1
+    fi
+
+    print_success "Encrypted secrets.yaml prepared at $secrets_target"
+    print_info "Use 'sops secrets.yaml' from $HM_CONFIG_DIR to edit values going forward"
+    return 0
+}
 # ============================================================================
 # Generate NixOS System Configuration
 # ============================================================================
@@ -3013,6 +3132,11 @@ EOF
     fi
 
     if ! ensure_gitea_secrets_ready --noninteractive; then
+        return 1
+    fi
+
+    if ! render_sops_secrets_file "$BACKUP_DIR" "$BACKUP_TIMESTAMP"; then
+        print_error "Failed to prepare encrypted secrets.yaml for sops-nix"
         return 1
     fi
 
