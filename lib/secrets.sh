@@ -32,9 +32,16 @@ fi
 
 readonly SOPS_AGE_KEY_DIR="${HOME}/.config/sops/age"
 readonly SOPS_AGE_KEY_FILE="${SOPS_AGE_KEY_DIR}/keys.txt"
-readonly SECRETS_STATE_DIR="${STATE_DIR}/secrets"
+
+# STATE_DIR is defined in config/variables.sh, but libraries load before the
+# configuration file is sourced during bootstrap. Provide a sane fallback so
+# secrets helpers never try to write to the root filesystem when STATE_DIR is
+# temporarily empty during initialization.
+_secrets_state_root="${STATE_DIR:-${HOME}/.cache/nixos-quick-deploy}"
+readonly SECRETS_STATE_DIR="${_secrets_state_root}/secrets"
 readonly SECRETS_BACKUP_DIR="${SECRETS_STATE_DIR}/backups"
 readonly PLAIN_SECRETS_DIR="${HOME}/.cache/nixos-quick-deploy/preferences"
+unset _secrets_state_root
 
 # ============================================================================
 # Helper Utilities
