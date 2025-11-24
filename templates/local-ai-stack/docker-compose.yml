@@ -1,0 +1,84 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: local-ai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${AIDB_POSTGRES_DB:-mcp}
+      POSTGRES_USER: ${AIDB_POSTGRES_USER:-mcp}
+      POSTGRES_PASSWORD: ${AIDB_POSTGRES_PASSWORD:-change_me}
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+    volumes:
+      - ${AI_STACK_DATA}/postgres:/var/lib/postgresql/data:Z
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AIDB_POSTGRES_USER:-mcp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: local-ai-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --requirepass ${AIDB_REDIS_PASSWORD:-}
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - ${AI_STACK_DATA}/redis:/data:Z
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${AIDB_REDIS_PASSWORD:-}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  redis-insight:
+    image: redis/redisinsight:latest
+    container_name: local-ai-redisinsight
+    restart: unless-stopped
+    environment:
+      - REDIS_HOSTS=local:${AIDB_REDIS_HOST:-redis}:${AIDB_REDIS_PORT:-6379}:${AIDB_REDIS_PASSWORD:-}
+    ports:
+      - "5540:5540"
+    volumes:
+      - ${AI_STACK_DATA}/redisinsight:/data:Z
+    depends_on:
+      - redis
+
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: local-ai-vllm
+    restart: unless-stopped
+    environment:
+      MODEL_NAME: ${VLLM_MODEL:-deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct}
+      VLLM_GPU_MEMORY_UTILIZATION: ${VLLM_GPU_MEM:-0.85}
+      VLLM_MAX_MODEL_LEN: ${VLLM_MAX_LEN:-8192}
+      VLLM_TENSOR_PARALLEL_SIZE: ${VLLM_TP_SIZE:-1}
+      VLLM_PORT: 8000
+      VLLM_HOST: 0.0.0.0
+    volumes:
+      - ${AI_STACK_DATA}/vllm-models:/root/.cache/huggingface:Z
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+networks:
+  default:
+    name: local-ai-trimmed

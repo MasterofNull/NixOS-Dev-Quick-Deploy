@@ -1,0 +1,560 @@
+#!/usr/bin/env bash
+# AI-Optimizer Integration Library for NixOS-Dev-Quick-Deploy
+# Version: 1.0.0
+# Date: 2025-11-22
+#
+# Purpose: Optional integration with AI-Optimizer AIDB MCP for:
+#   - vLLM-powered code generation
+#   - NixOS configuration assistance
+#   - ML-based system monitoring
+#   - Intelligent deployment recommendations
+#
+# Falls back gracefully if AI-Optimizer is unavailable
+
+set -euo pipefail
+
+# ============================================================================
+# Configuration
+# ============================================================================
+
+AIDB_BASE_URL="${AIDB_BASE_URL:-http://localhost:8091}"
+VLLM_BASE_URL="${VLLM_BASE_URL:-http://localhost:8000}"
+AI_ENABLED="${AI_ENABLED:-auto}"  # auto, true, false
+AI_AVAILABLE=false
+
+# Model catalog for interactive selection
+declare -A AI_MODELS=(
+    ["qwen-7b"]="Qwen/Qwen2.5-Coder-7B-Instruct"
+    ["qwen-14b"]="Qwen/Qwen2.5-Coder-14B-Instruct"
+    ["deepseek-lite"]="deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
+    ["deepseek-v2"]="deepseek-ai/DeepSeek-Coder-V2-Instruct"
+    ["phi-mini"]="microsoft/Phi-3-mini-4k-instruct"
+    ["codellama-13b"]="codellama/CodeLlama-13b-Instruct-hf"
+)
+
+# Model metadata
+declare -A MODEL_VRAM=(
+    ["qwen-7b"]="16"
+    ["qwen-14b"]="24"
+    ["deepseek-lite"]="20"
+    ["deepseek-v2"]="32"
+    ["phi-mini"]="8"
+    ["codellama-13b"]="24"
+)
+
+declare -A MODEL_SPEED=(
+    ["qwen-7b"]="40-60"
+    ["qwen-14b"]="30-45"
+    ["deepseek-lite"]="20-30"
+    ["deepseek-v2"]="15-25"
+    ["phi-mini"]="60-80"
+    ["codellama-13b"]="20-35"
+)
+
+declare -A MODEL_QUALITY=(
+    ["qwen-7b"]="88.4%"
+    ["qwen-14b"]="89.7%"
+    ["deepseek-lite"]="81.1%"
+    ["deepseek-v2"]="84.5%"
+    ["phi-mini"]="68.3%"
+    ["codellama-13b"]="78.2%"
+)
+
+# ============================================================================
+# GPU Detection
+# ============================================================================
+
+detect_gpu_vram() {
+    local vram_gb=0
+
+    if command -v nvidia-smi &> /dev/null; then
+        vram_gb=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | awk '{print int($1/1024)}' || echo 0)
+    fi
+
+    echo "$vram_gb"
+}
+
+detect_gpu_model() {
+    if command -v nvidia-smi &> /dev/null; then
+        nvidia-smi --query-gpu=gpu_name --format=csv,noheader 2>/dev/null | head -1
+    else
+        echo "No NVIDIA GPU detected"
+    fi
+}
+
+# ============================================================================
+# AI Availability Check
+# ============================================================================
+
+ai_check_availability() {
+    if [ "$AI_ENABLED" = "false" ]; then
+        AI_AVAILABLE=false
+        return 1
+    fi
+
+    # Check AIDB MCP Server
+    if curl -sf --max-time 2 "$AIDB_BASE_URL/health" > /dev/null 2>&1; then
+        AI_AVAILABLE=true
+        return 0
+    else
+        AI_AVAILABLE=false
+        return 1
+    fi
+}
+
+ai_check_vllm() {
+    if curl -sf --max-time 2 "$VLLM_BASE_URL/health" > /dev/null 2>&1; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# ============================================================================
+# Model Selection Interface
+# ============================================================================
+
+ai_recommend_model() {
+    local vram_gb="$1"
+
+    if [ "$vram_gb" -ge 24 ]; then
+        echo "qwen-14b"  # Best quality for high-end GPUs
+    elif [ "$vram_gb" -ge 16 ]; then
+        echo "qwen-7b"   # Recommended for most users
+    elif [ "$vram_gb" -ge 12 ]; then
+        echo "deepseek-lite"
+    else
+        echo "phi-mini"  # Lightweight for budget GPUs
+    fi
+}
+
+ai_display_model_menu() {
+    local gpu_vram="$1"
+    local gpu_name="$2"
+    local recommended="$3"
+
+    cat <<EOF
+
+╭───────────────────────────────────────────────────────────────────────────╮
+│ AI Model Selection (vLLM)                                                 │
+│                                                                            │
+│ Detected GPU: $gpu_name
+│ Available VRAM: ${gpu_vram}GB
+│                                                                            │
+│ Select the AI coding model for your workstation:                          │
+│                                                                            │
+│ [1] Qwen2.5-Coder-7B (Recommended for most users)                         │
+│     - VRAM: 16GB  |  Speed: 40-60 tok/s  |  Quality: 88.4%               │
+│     - Best for: NixOS, general coding, fast iteration                     │
+│                                                                            │
+│ [2] Qwen2.5-Coder-14B (Maximum quality)                                   │
+│     - VRAM: 24GB  |  Speed: 30-45 tok/s  |  Quality: 89.7%               │
+│     - Best for: Production workloads, complex code                         │
+│                                                                            │
+│ [3] DeepSeek-Coder-V2-Lite (Advanced reasoning)                           │
+│     - VRAM: 20GB  |  Speed: 20-30 tok/s  |  Quality: 81.1%               │
+│     - Best for: Algorithms, math, 300+ languages                           │
+│                                                                            │
+│ [4] DeepSeek-Coder-V2 (Enterprise)                                        │
+│     - VRAM: 32GB  |  Speed: 15-25 tok/s  |  Quality: 84.5%               │
+│     - Best for: Multi-GPU setups, highest reasoning                        │
+│                                                                            │
+│ [5] Phi-3-mini (Lightweight testing)                                      │
+│     - VRAM: 8GB   |  Speed: 60-80 tok/s  |  Quality: 68.3%               │
+│     - Best for: Testing, budget GPUs, CPU-only                             │
+│                                                                            │
+│ [6] CodeLlama-13B (Stable/Mature)                                         │
+│     - VRAM: 24GB  |  Speed: 20-35 tok/s  |  Quality: 78.2%               │
+│     - Best for: Legacy compatibility, well-tested                          │
+│                                                                            │
+│ [c] Custom (specify HuggingFace model ID)                                 │
+│                                                                            │
+│ [0] Skip AI model installation                                            │
+│                                                                            │
+╰───────────────────────────────────────────────────────────────────────────╯
+
+EOF
+
+    case "$recommended" in
+        "qwen-14b")
+            echo "💡 Recommended: [1] Qwen2.5-Coder-7B or [2] Qwen2.5-Coder-14B (you have 24GB+)"
+            ;;
+        "qwen-7b")
+            echo "💡 Recommended: [1] Qwen2.5-Coder-7B (perfect for your 16GB GPU)"
+            ;;
+        "deepseek-lite")
+            echo "💡 Recommended: [3] DeepSeek-Coder-V2-Lite (optimized for your VRAM)"
+            ;;
+        "phi-mini")
+            echo "💡 Recommended: [5] Phi-3-mini (best fit for your GPU)"
+            ;;
+    esac
+}
+
+ai_select_model() {
+    local gpu_vram=$(detect_gpu_vram)
+    local gpu_name=$(detect_gpu_model)
+    local recommended=$(ai_recommend_model "$gpu_vram")
+
+    ai_display_model_menu "$gpu_vram" "$gpu_name" "$recommended"
+
+    echo ""
+    read -p "Select option [0-6, c]: " choice
+
+    case "$choice" in
+        1)
+            echo "${AI_MODELS[qwen-7b]}"
+            ;;
+        2)
+            if [ "$gpu_vram" -lt 24 ]; then
+                echo "⚠️  Warning: Qwen2.5-Coder-14B requires 24GB VRAM. You have ${gpu_vram}GB." >&2
+                read -p "Continue anyway? [y/N]: " confirm
+                if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+                    ai_select_model  # Retry
+                    return
+                fi
+            fi
+            echo "${AI_MODELS[qwen-14b]}"
+            ;;
+        3)
+            echo "${AI_MODELS[deepseek-lite]}"
+            ;;
+        4)
+            if [ "$gpu_vram" -lt 32 ]; then
+                echo "⚠️  Warning: DeepSeek-Coder-V2 requires 32GB+ VRAM. You have ${gpu_vram}GB." >&2
+                read -p "Continue anyway? [y/N]: " confirm
+                if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+                    ai_select_model  # Retry
+                    return
+                fi
+            fi
+            echo "${AI_MODELS[deepseek-v2]}"
+            ;;
+        5)
+            echo "${AI_MODELS[phi-mini]}"
+            ;;
+        6)
+            echo "${AI_MODELS[codellama-13b]}"
+            ;;
+        c|C)
+            echo ""
+            read -p "Enter HuggingFace model ID: " custom_model
+            echo "$custom_model"
+            ;;
+        0)
+            echo "SKIP"
+            ;;
+        *)
+            echo "Invalid choice. Please try again." >&2
+            ai_select_model  # Retry
+            ;;
+    esac
+}
+
+# ============================================================================
+# AI-Optimizer Integration Functions
+# ============================================================================
+
+ai_generate_nix_config() {
+    local description="$1"
+    local context="${2:-}"
+
+    if ! ai_check_availability; then
+        log_warning "AI-Optimizer not available - manual configuration needed"
+        return 1
+    fi
+
+    log_info "Generating NixOS configuration with AI..."
+
+    local response=$(curl -s -X POST "$AIDB_BASE_URL/vllm/nix" \
+        -H "Content-Type: application/json" \
+        --max-time 60 \
+        -d "$(jq -n \
+            --arg desc "$description" \
+            --arg ctx "$context" \
+            '{description: $desc, context: $ctx}'
+        )")
+
+    if echo "$response" | jq -e '.success == true' > /dev/null 2>&1; then
+        echo "$response" | jq -r '.nix_code'
+        return 0
+    else
+        local error=$(echo "$response" | jq -r '.error // "Unknown error"')
+        log_error "Failed to generate configuration: $error"
+        return 1
+    fi
+}
+
+ai_review_config() {
+    local config_file="$1"
+
+    if ! ai_check_availability; then
+        log_warning "AI review not available - please review manually"
+        return 1
+    fi
+
+    if [ ! -f "$config_file" ]; then
+        log_error "Configuration file not found: $config_file"
+        return 1
+    fi
+
+    log_info "Reviewing configuration with AI..."
+
+    local code=$(cat "$config_file")
+    local response=$(curl -s -X POST "$AIDB_BASE_URL/vllm/review" \
+        -H "Content-Type: application/json" \
+        --max-time 60 \
+        -d "$(jq -n \
+            --arg code "$code" \
+            '{code: $code, language: "nix"}'
+        )")
+
+    if echo "$response" | jq -e '.success == true' > /dev/null 2>&1; then
+        echo "$response" | jq -r '.review'
+        return 0
+    else
+        log_error "Failed to review configuration"
+        return 1
+    fi
+}
+
+ai_explain_code() {
+    local code="$1"
+    local language="${2:-nix}"
+
+    if ! ai_check_availability; then
+        return 1
+    fi
+
+    local response=$(curl -s -X POST "$AIDB_BASE_URL/vllm/explain" \
+        -H "Content-Type: application/json" \
+        --max-time 30 \
+        -d "$(jq -n \
+            --arg code "$code" \
+            --arg lang "$language" \
+            '{code: $code, language: $lang}'
+        )")
+
+    if echo "$response" | jq -e '.success == true' > /dev/null 2>&1; then
+        echo "$response" | jq -r '.explanation'
+        return 0
+    else
+        return 1
+    fi
+}
+
+ai_chat() {
+    local question="$1"
+    local system_prompt="${2:-You are a NixOS deployment expert. Provide concise, actionable answers.}"
+
+    if ! ai_check_availability; then
+        return 1
+    fi
+
+    local response=$(curl -s -X POST "$AIDB_BASE_URL/vllm/chat" \
+        -H "Content-Type: application/json" \
+        --max-time 60 \
+        -d "$(jq -n \
+            --arg sys "$system_prompt" \
+            --arg user "$question" \
+            '{
+                messages: [
+                    {role: "system", content: $sys},
+                    {role: "user", content: $user}
+                ],
+                max_tokens: 500,
+                temperature: 0.7
+            }'
+        )")
+
+    if echo "$response" | jq -e '.success == true' > /dev/null 2>&1; then
+        echo "$response" | jq -r '.message'
+        return 0
+    else
+        return 1
+    fi
+}
+
+# ============================================================================
+# Interactive AI Features
+# ============================================================================
+
+ai_interactive_help() {
+    if ! ai_check_availability; then
+        log_warning "AI assistance not available"
+        return 1
+    fi
+
+    cat <<EOF
+
+╭───────────────────────────────────────────────────────────────╮
+│ AI-Powered Deployment Assistant                               │
+│                                                                │
+│ What would you like help with?                                 │
+│                                                                │
+│ [g] Generate NixOS configuration from description              │
+│ [r] Review existing configuration                             │
+│ [e] Explain code snippet                                      │
+│ [q] Ask a question                                            │
+│ [0] Return to deployment                                      │
+│                                                                │
+╰───────────────────────────────────────────────────────────────╯
+
+EOF
+
+    read -p "Select option [g/r/e/q/0]: " choice
+
+    case "$choice" in
+        g|G)
+            echo ""
+            read -p "Describe what you want to configure: " description
+            echo ""
+            log_info "Generating configuration..."
+            local generated=$(ai_generate_nix_config "$description")
+            if [ $? -eq 0 ]; then
+                echo ""
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "Generated Configuration:"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "$generated"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo ""
+                read -p "Save to file? [Y/n]: " save
+                if [[ ! "$save" =~ ^[Nn]$ ]]; then
+                    read -p "Filename: " filename
+                    echo "$generated" > "$filename"
+                    log_success "Saved to: $filename"
+                fi
+            fi
+            ;;
+        r|R)
+            echo ""
+            read -p "Path to configuration file: " config_path
+            echo ""
+            log_info "Reviewing configuration..."
+            local review=$(ai_review_config "$config_path")
+            if [ $? -eq 0 ]; then
+                echo ""
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "AI Review:"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "$review"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            fi
+            ;;
+        e|E)
+            echo ""
+            echo "Paste code to explain (Ctrl+D when done):"
+            local code=$(cat)
+            echo ""
+            read -p "Language [nix]: " language
+            language="${language:-nix}"
+            log_info "Generating explanation..."
+            local explanation=$(ai_explain_code "$code" "$language")
+            if [ $? -eq 0 ]; then
+                echo ""
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "Explanation:"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "$explanation"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            fi
+            ;;
+        q|Q)
+            echo ""
+            read -p "Your question: " question
+            echo ""
+            log_info "Thinking..."
+            local answer=$(ai_chat "$question")
+            if [ $? -eq 0 ]; then
+                echo ""
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "AI Assistant:"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "$answer"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            fi
+            ;;
+        0)
+            return 0
+            ;;
+        *)
+            log_warning "Invalid choice"
+            ai_interactive_help
+            ;;
+    esac
+
+    echo ""
+    read -p "Press Enter to continue..."
+    ai_interactive_help  # Loop back to menu
+}
+
+# ============================================================================
+# vLLM Container Management
+# ============================================================================
+
+ai_deploy_vllm() {
+    local model_id="$1"
+    local ai_optimizer_dir="${2:-$HOME/Documents/AI-Optimizer}"
+
+    if [ "$model_id" = "SKIP" ]; then
+        log_info "Skipping AI model installation"
+        return 0
+    fi
+
+    log_info "Deploying vLLM with model: $model_id"
+
+    # Check if AI-Optimizer directory exists
+    if [ ! -d "$ai_optimizer_dir" ]; then
+        log_warning "AI-Optimizer directory not found at: $ai_optimizer_dir"
+        read -p "Clone AI-Optimizer repository? [Y/n]: " clone
+        if [[ ! "$clone" =~ ^[Nn]$ ]]; then
+            git clone https://github.com/your-org/AI-Optimizer.git "$ai_optimizer_dir"
+        else
+            return 1
+        fi
+    fi
+
+    cd "$ai_optimizer_dir"
+
+    # Update .env with selected model
+    if [ -f ".env" ]; then
+        # Update existing .env
+        sed -i "s|^VLLM_MODEL=.*|VLLM_MODEL=$model_id|" .env
+    else
+        # Create new .env from example
+        cp .env.example .env
+        sed -i "s|^VLLM_MODEL=.*|VLLM_MODEL=$model_id|" .env
+    fi
+
+    log_info "Updated .env with model: $model_id"
+
+    # Deploy stack
+    log_info "Deploying AI-Optimizer stack..."
+    docker compose -f docker-compose.new.yml up -d
+
+    log_success "AI-Optimizer deployment initiated"
+    log_info "Model download may take 10-45 minutes depending on model size"
+    log_info "Monitor progress: docker logs -f vllm-inference"
+
+    return 0
+}
+
+# ============================================================================
+# Export Functions
+# ============================================================================
+
+# Only export functions if AI is available or in auto mode
+if [ "$AI_ENABLED" != "false" ]; then
+    export -f ai_check_availability
+    export -f ai_check_vllm
+    export -f ai_select_model
+    export -f ai_generate_nix_config
+    export -f ai_review_config
+    export -f ai_explain_code
+    export -f ai_chat
+    export -f ai_interactive_help
+    export -f ai_deploy_vllm
+    export -f detect_gpu_vram
+    export -f detect_gpu_model
+fi

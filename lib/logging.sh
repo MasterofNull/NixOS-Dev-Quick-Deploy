@@ -24,6 +24,22 @@
 #
 # ============================================================================
 
+# Provide safe defaults when helper functions or variables are not defined by
+# the caller. This keeps logging usable in minimal test harnesses.
+: "${SCRIPT_VERSION:=0.0.0}"
+: "${LOG_LEVEL:=INFO}"
+: "${ENABLE_DEBUG:=false}"
+: "${LOG_DIR:=${HOME:-/tmp}/.cache/nixos-quick-deploy}"
+: "${LOG_FILE:=${LOG_DIR}/nixos-quick-deploy.log}"
+
+if ! declare -F safe_mkdir >/dev/null 2>&1; then
+    safe_mkdir() { mkdir -p "$1"; }
+fi
+
+if ! declare -F safe_chown_user_dir >/dev/null 2>&1; then
+    safe_chown_user_dir() { return 0; }
+fi
+
 # ============================================================================
 # Logging Initialization Function
 # ============================================================================
