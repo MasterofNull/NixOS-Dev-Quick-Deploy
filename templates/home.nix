@@ -2491,8 +2491,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
     "${podmanAiStackDataDir}/open-webui/.keep".text = "";
     "${podmanAiStackDataDir}/qdrant/.keep".text = "";
     "${podmanAiStackDataDir}/mindsdb/.keep".text = "";
-  }
-    // (lib.mkIf LOCAL_AI_STACK_ENABLED_PLACEHOLDER {
+  } // (lib.mkIf LOCAL_AI_STACK_ENABLED_PLACEHOLDER {
     ".config/systemd/user/podman-local-ai-network.service.d/override.conf".text = ''
       [Unit]
       X-SwitchMethod=keep-old
