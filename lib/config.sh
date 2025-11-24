@@ -2041,6 +2041,16 @@ render_sops_secrets_file() {
         return 1
     fi
 
+    if ! init_sops; then
+        print_error "Failed to initialize sops prerequisites"
+        return 1
+    fi
+
+    if ! render_sops_config_file "$HM_CONFIG_DIR" "$backup_dir" "$backup_timestamp"; then
+        print_error "Failed to generate .sops.yaml configuration"
+        return 1
+    fi
+
     if [[ -f "$secrets_target" ]]; then
         if grep -q '^sops:' "$secrets_target" 2>/dev/null; then
             print_success "Encrypted secrets.yaml already present: $secrets_target"
@@ -2100,11 +2110,6 @@ render_sops_secrets_file() {
         return 1
     fi
 
-    if ! init_sops; then
-        print_error "Failed to initialize sops prerequisites"
-        return 1
-    fi
-
     if ! encrypt_secrets_file "$secrets_target"; then
         print_error "Failed to encrypt secrets.yaml"
         return 1
@@ -2117,6 +2122,62 @@ render_sops_secrets_file() {
 
     print_success "Encrypted secrets.yaml prepared at $secrets_target"
     print_info "Use 'sops secrets.yaml' from $HM_CONFIG_DIR to edit values going forward"
+    return 0
+}
+
+render_sops_config_file() {
+    local destination_dir="$1"
+    local backup_dir="$2"
+    local backup_timestamp="$3"
+
+    if [[ -z "$destination_dir" ]]; then
+        print_error "render_sops_config_file: destination directory is required"
+        return 1
+    fi
+
+    local sops_template="${SCRIPT_DIR}/templates/.sops.yaml"
+    local sops_target="${destination_dir}/.sops.yaml"
+
+    if [[ ! -f "$sops_template" ]]; then
+        print_error "sops configuration template not found: $sops_template"
+        return 1
+    fi
+
+    local public_key=""
+    if ! public_key=$(get_age_public_key 2>/dev/null); then
+        print_error "Unable to read age public key for sops configuration"
+        return 1
+    fi
+
+    if [[ -z "$public_key" ]]; then
+        print_error "Age public key is empty; generate the key via init_sops first"
+        return 1
+    fi
+
+    if [[ -f "$sops_target" ]]; then
+        if grep -q "$public_key" "$sops_target" 2>/dev/null; then
+            print_success ".sops.yaml already references current age public key"
+            return 0
+        fi
+
+        print_warning "Existing .sops.yaml does not match current key; creating a backup before regenerating"
+        backup_generated_file "$sops_target" ".sops.yaml" "${backup_dir:-$destination_dir/backup}" "${backup_timestamp:-$(date +%Y%m%d_%H%M%S)}" || true
+    fi
+
+    if ! cp "$sops_template" "$sops_target"; then
+        print_error "Failed to copy sops configuration template"
+        return 1
+    fi
+
+    replace_placeholder "$sops_target" "AGE_PUBLIC_KEY_PLACEHOLDER" "$public_key"
+
+    if ! nix_verify_no_placeholders "$sops_target" ".sops.yaml" "AGE_PUBLIC_KEY_PLACEHOLDER"; then
+        return 1
+    fi
+
+    chmod 600 "$sops_target" 2>/dev/null || true
+    safe_chown_user_dir "$sops_target" || true
+    print_success "Generated $sops_target for sops encryption"
     return 0
 }
 # ============================================================================
