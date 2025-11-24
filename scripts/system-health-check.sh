@@ -1349,46 +1349,21 @@ run_all_checks() {
     fi
 
     # ==========================================================================
-    # AI Systemd Services
+    # AI Stack Overview
     # ==========================================================================
-    print_section "AI Systemd Services"
+    print_section "AI Stack Status"
 
-    # Qdrant vector database (system service or user-level container)
-    # Check both systemd service and user-level podman containers
-    local qdrant_running=false
-
-    # Check systemd service
-    if systemctl is-active qdrant &> /dev/null 2>&1; then
-        check_system_service "qdrant" "Qdrant (vector database)" false false
-        qdrant_running=true
-    fi
-
-    # Check user-level podman containers
-    if command -v podman &>/dev/null; then
-        if podman ps --format "{{.Names}}" 2>/dev/null | grep -qE "qdrant|local-ai-qdrant"; then
-            print_check "  Checking Qdrant (vector database)"
-            print_detail "Running as user-level container"
-            qdrant_running=true
-        fi
-    fi
-
-    # Test API endpoint if either is running
-    if [[ "$qdrant_running" == "true" ]]; then
-        if curl -s "http://localhost:6333/collections" &> /dev/null; then
-            print_detail "Qdrant API accessible on port 6333"
+    if command -v podman-ai-stack >/dev/null 2>&1; then
+        if podman-ai-stack status >/tmp/podman-ai-stack-status.$$ 2>&1; then
+            print_success "podman-ai-stack helper available"
+            sed 's/^/  /' /tmp/podman-ai-stack-status.$$
         else
-            print_warning "Qdrant process detected but API not responding on port 6333"
+            print_warning "podman-ai-stack status reported issues:"
+            sed 's/^/  /' /tmp/podman-ai-stack-status.$$
         fi
-    elif [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
-        print_warning "Qdrant (vector database) service not configured (optional)"
-    fi
-
-    # Hugging Face TGI (system service)
-    check_system_service "huggingface-tgi" "Hugging Face TGI (LLM inference)" false false
-    if systemctl is-active huggingface-tgi &> /dev/null; then
-        if curl -s "http://localhost:8080" &> /dev/null || nc -z localhost 8080 2>/dev/null; then
-            print_detail "TGI API accessible on port 8080"
-        fi
+        rm -f /tmp/podman-ai-stack-status.$$ || true
+    else
+        print_info "podman-ai-stack helper not installed; run ai-servicectl stack status to inspect containers."
     fi
 
     # Jupyter Lab (user service)

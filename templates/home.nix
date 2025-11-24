@@ -40,16 +40,17 @@ let
   giteaNativeConfigDir = ".config/gitea";
   giteaNativeDataDir = ".local/share/gitea";
   giteaAiConfigFile = "ai-agents.json";
-  localAiStackEnabled = LOCAL_AI_STACK_ENABLED_PLACEHOLDER;
+  # AI services migrated to user-level Podman with vLLM
+  # See: ~/.config/ai-optimizer/ for the Podman-based AI stack
   huggingfaceCacheDir = ".cache/huggingface";
-  # Default HF models served via TGI
-  huggingfaceModelId = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"; # coding
-  huggingfaceScoutModelId = "meta-llama/Llama-4-Scout-17B-16E";   # generalist/planning
-  huggingfaceTgiEndpoint = "http://127.0.0.1:8080";
-  huggingfaceTgiContainerEndpoint = "http://host.containers.internal:8080";
-  huggingfaceScoutTgiEndpoint = "http://127.0.0.1:8085";
-  ollamaPort = 11434;
-  ollamaHost = "http://127.0.0.1:${toString ollamaPort}";
+  huggingfaceModelId = HUGGINGFACE_MODEL_ID_PLACEHOLDER;
+  huggingfaceScoutModelId = HUGGINGFACE_SCOUT_MODEL_ID_PLACEHOLDER;
+  huggingfaceTgiEndpoint = HUGGINGFACE_TGI_ENDPOINT_PLACEHOLDER;
+  huggingfaceScoutTgiEndpoint = HUGGINGFACE_SCOUT_TGI_ENDPOINT_PLACEHOLDER;
+  huggingfaceTgiContainerEndpoint = HUGGINGFACE_TGI_CONTAINER_ENDPOINT_PLACEHOLDER;
+  # vLLM OpenAI-compatible endpoints (configured in ai-optimizer)
+  vllmPrimaryEndpoint = "http://127.0.0.1:8000/v1";  # Primary vLLM instance
+  vllmSecondaryEndpoint = "http://127.0.0.1:8001/v1";  # Secondary vLLM instance (if needed)
   openWebUiPort = 8081;
   openWebUiUrl = "http://127.0.0.1:${toString openWebUiPort}";
   openWebUiDataDir = ".local/share/open-webui";
@@ -57,10 +58,7 @@ let
   podmanAiStackNetworkName = "local-ai";
   podmanAiStackLabelKey = "nixos.quick-deploy.ai-stack";
   podmanAiStackLabelValue = "true";
-  podmanAiStackOllamaContainerName = "${podmanAiStackNetworkName}-ollama";
   podmanAiStackOpenWebUiContainerName = "${podmanAiStackNetworkName}-open-webui";
-  podmanAiStackQdrantContainerName = "${podmanAiStackNetworkName}-qdrant";
-  podmanAiStackMindsdbContainerName = "${podmanAiStackNetworkName}-mindsdb";
   podmanEnsureImage = image:
     let
       sanitized = lib.replaceStrings [ "/" ":" "." "@" ] [ "-" "-" "-" "-" ] image;
@@ -71,10 +69,6 @@ let
         ${pkgs.podman}/bin/podman pull --quiet ${lib.escapeShellArg image}
       fi
     '';
-  qdrantHttpPort = 6333;
-  qdrantGrpcPort = 6334;
-  mindsdbApiPort = 47334;
-  mindsdbGuiPort = 7735;
   gitPackage =
     if config ? programs && config.programs ? git && config.programs.git ? package then
       config.programs.git.package
@@ -1659,13 +1653,8 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       # Lazy tools
       lg = "lazygit";
       hf-sync = "hf-model-sync";
-      hf-start = "sudo systemctl start huggingface-tgi.service";
-      hf-stop = "sudo systemctl stop huggingface-tgi.service";
-      hf-restart = "sudo systemctl restart huggingface-tgi.service";
-      hf-logs = "journalctl -u huggingface-tgi.service -f";
-      open-webui-up = "open-webui-run";
-      open-webui-down = "open-webui-stop";
-      ollama-list = "ollama list";
+      # AI services now managed via ai-optimizer Podman setup
+      # Use: cd ~/.config/ai-optimizer && docker-compose up/down
       ai-stack = "podman-ai-stack";
       gpt = "gpt-cli";
       cursor = "code-cursor";
@@ -2584,37 +2573,6 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       executable = true;
     };
 
-    # Manage the systemd Hugging Face Text Generation Inference service
-    ".local/bin/hf-tgi" = {
-      text = ''
-        #!/usr/bin/env bash
-        set -euo pipefail
-
-        usage() {
-          echo "Usage: hf-tgi {start|stop|restart|status|logs} [journalctl-args]" >&2
-          exit 1
-        }
-
-        [[ $# -gt 0 ]] || usage
-
-        case "$1" in
-          start|stop|restart)
-            exec sudo systemctl "$1" huggingface-tgi.service
-            ;;
-          status)
-            exec systemctl status huggingface-tgi.service
-            ;;
-          logs)
-            shift
-            exec journalctl -u huggingface-tgi.service "$@"
-            ;;
-          *)
-            usage
-            ;;
-        esac
-      '';
-      executable = true;
-    };
 
     # Launch Open WebUI via Podman for local AI experimentation
     ".local/bin/open-webui-run" = {
@@ -2959,12 +2917,9 @@ USAGE
         #!/usr/bin/env bash
         set -euo pipefail
 
-        declare -a SYSTEM_COMPONENTS=(ollama qdrant huggingface gitea)
-        declare -a ALL_COMPONENTS=(ollama qdrant huggingface gitea stack)
+        declare -a SYSTEM_COMPONENTS=(gitea)
+        declare -a ALL_COMPONENTS=(gitea stack)
         declare -A SYSTEM_UNITS=(
-          [ollama]="ollama.service"
-          [qdrant]="qdrant.service"
-          [huggingface]="huggingface-tgi.service"
           [gitea]="gitea.service"
         )
 
@@ -2982,7 +2937,7 @@ Commands:
   help      Show this message
 
 Components:
-  ollama, qdrant, huggingface, gitea, stack
+  gitea, stack
   Groups: all, system, stack
 USAGE
         }
@@ -3599,12 +3554,6 @@ PLUGINCFG
             WantedBy = [ "default.target" ];
           };
         };
-        # Note: Qdrant and Hugging Face TGI are configured as system services in configuration.nix
-        # They are disabled by default to prevent startup issues during deployment.
-        # Enable them manually after deployment:
-        #   sudo systemctl enable --now qdrant
-        #   sudo systemctl enable --now huggingface-tgi
-        #
         # Jupyter Lab server (user service for interactive development)
         # Disabled by default - enable manually with: systemctl --user enable --now jupyter-lab
         "jupyter-lab" = {

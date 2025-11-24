@@ -316,33 +316,22 @@ source ~/.zshrc  # Or: exec zsh
 
 ### AI Stack Management
 
-**Systemd Services (Enable as needed):**
+The local AI stack (Ollama, Open WebUI, Qdrant, MindsDB) now runs via the rootless Podman helper `podman-ai-stack`, which keeps everything isolated under `~/.local/share/podman-ai-stack/`. Use the helper to control the stack:
+
 ```bash
-# Qdrant vector database (auto-starts after deploy)
-sudo systemctl status qdrant
-# Restart or stop if needed
-sudo systemctl restart qdrant
-sudo systemctl stop qdrant
-# Access at http://localhost:6333
+# Start or stop the entire stack
+podman-ai-stack up
+podman-ai-stack down
 
-# Enable Hugging Face TGI (LLM inference)
-systemctl --user enable --now huggingface-tgi
-# API at http://localhost:8080
+# Check status or tail logs
+podman-ai-stack status
+podman-ai-stack logs
 
-# Enable Jupyter Lab
-systemctl --user enable --now jupyter-lab
-# Access at http://localhost:8888
-
-# Check service status
-sudo systemctl status qdrant
-systemctl --user status huggingface-tgi
-systemctl --user status jupyter-lab
-
-# View service logs
-journalctl -u qdrant -f
-journalctl --user -u huggingface-tgi -f
-journalctl --user -u jupyter-lab -f
+# Restart if you change ai-optimizer configs
+podman-ai-stack restart
 ```
+
+All other AI orchestration (vLLM endpoints, shared volumes, etc.) is managed by the ai-optimizer repository layered on top of this stack.
 
 **CLI Tools:**
 ```bash
@@ -1184,16 +1173,16 @@ flatpak update
 - `nfu` (`nix flake update`) &mdash; refresh flake inputs before rebuilding.
 
 ### AI Runtime Orchestration
-- `ai-servicectl start|stop|restart all` &mdash; manage Ollama, Qdrant, Hugging Face TGI, system Gitea, and the Podman AI stack in one shot.
+- `ai-servicectl start|stop|restart all` &mdash; manage system Gitea **and** the Podman AI stack in one shot.
 - `ai-servicectl start stack` &mdash; bring up only the user-space Podman network (Ollama/Open WebUI/Qdrant/MindsDB).
-- `ai-servicectl status system` &mdash; quick health summary for the declarative services without scrolling through `systemctl`.
+- `ai-servicectl status system` &mdash; quick health summary for the declarative services (currently just Gitea).
 - `ai-servicectl logs stack` &mdash; stream Podman AI stack logs from journald via one command.
 - `podman-ai-stack up|down|status|logs` &mdash; raw helper for advanced Podman scenarios; `ai-servicectl` wraps it for most workflows.
 
 ### Diagnostics & Recovery
 - `ai-servicectl stop all && ai-servicectl start all` &mdash; bounce every AI-centric service after changing models or GPU drivers.
 - `podman system reset --force` / `sudo podman system reset --force` &mdash; manual fallback for storage corruption (the deployer now attempts this automatically when stale overlay layers are detected).
-- `journalctl -u qdrant -f`, `journalctl -u ollama -f`, etc. &mdash; detailed logs for individual services when `ai-servicectl status` reports a failure.
+- `journalctl --user -u podman-local-ai-*.service -f` &mdash; detailed logs for the rootless containers when `ai-servicectl status` reports a failure.
 
 > ℹ️ **Automation note:** During Phase&nbsp;5 the deployer pauses managed services (systemd units and user-level Podman quadlets), cleans stale Podman storage if needed, applies `nixos-rebuild switch`, and then restores everything it stopped. You no longer need to stop the AI stack manually before a rebuild.
 
