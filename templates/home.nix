@@ -10,12 +10,19 @@
 #   GLF_HOME_DEFINITIONS                   → gaming overlay configuration
 #   GPU_MONITORING_PACKAGES                → vendor-specific monitors
 #   FLATPAK_MANAGED_PACKAGES               → Flatpak manifest snippet
+#   Git user/email configured via programs.git.settings
 # Additional placeholders appear throughout for optional services (Gitea, etc.)
 # =============================================================================
 
-{ config, pkgs, lib, options, nixAiToolsPackages ? {}, ... }:
+{ config, pkgs, lib, options, ... }:
 
 let
+  # Prefer nix-ai-tools outputs if passed via _module.args; otherwise default to {}.
+  nixAiToolsPackages =
+    if config ? _module && config._module.args ? nixAiToolsPackages then
+      config._module.args.nixAiToolsPackages
+    else
+      { };
   # Collect available derivations from the external nix-ai-tools flake so the
   # generated configuration gracefully degrades if certain outputs are missing.
   nixAiToolsPackageList =
@@ -33,10 +40,14 @@ let
   giteaNativeConfigDir = ".config/gitea";
   giteaNativeDataDir = ".local/share/gitea";
   giteaAiConfigFile = "ai-agents.json";
+  localAiStackEnabled = LOCAL_AI_STACK_ENABLED_PLACEHOLDER;
   huggingfaceCacheDir = ".cache/huggingface";
-  huggingfaceModelId = "meta-llama/Meta-Llama-3-8B-Instruct";
+  # Default HF models served via TGI
+  huggingfaceModelId = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"; # coding
+  huggingfaceScoutModelId = "meta-llama/Llama-4-Scout-17B-16E";   # generalist/planning
   huggingfaceTgiEndpoint = "http://127.0.0.1:8080";
   huggingfaceTgiContainerEndpoint = "http://host.containers.internal:8080";
+  huggingfaceScoutTgiEndpoint = "http://127.0.0.1:8085";
   ollamaPort = 11434;
   ollamaHost = "http://127.0.0.1:${toString ollamaPort}";
   openWebUiPort = 8081;
@@ -50,6 +61,16 @@ let
   podmanAiStackOpenWebUiContainerName = "${podmanAiStackNetworkName}-open-webui";
   podmanAiStackQdrantContainerName = "${podmanAiStackNetworkName}-qdrant";
   podmanAiStackMindsdbContainerName = "${podmanAiStackNetworkName}-mindsdb";
+  podmanEnsureImage = image:
+    let
+      sanitized = lib.replaceStrings [ "/" ":" "." "@" ] [ "-" "-" "-" "-" ] image;
+    in
+    pkgs.writeShellScript "ensure-${sanitized}-image" ''
+      set -euo pipefail
+      if ! ${pkgs.podman}/bin/podman image exists ${lib.escapeShellArg image}; then
+        ${pkgs.podman}/bin/podman pull --quiet ${lib.escapeShellArg image}
+      fi
+    '';
   qdrantHttpPort = 6333;
   qdrantGrpcPort = 6334;
   mindsdbApiPort = 47334;
@@ -762,8 +783,8 @@ HM
           cat <<'FLATPAK'
 Flatpak automation via nix-flatpak (https://github.com/gmodena/nix-flatpak):
   • Packages listed under xdg.portal.enable and xdg.desktopEntries stay in sync
-  • Use aidb-flatpak-managed-install to mirror declarative packages on legacy setups
-  • Inspect user services with systemctl --user status flatpak-managed-install.service
+  • The deployment script installs Flatpak apps directly via flathub remote
+  • Use flatpak list --user --app to see installed applications
 FLATPAK
         }
 
@@ -942,8 +963,15 @@ RESOURCES
           rich
           sqlalchemy
           psycopg2
+          asyncpg              # PostgreSQL async driver for AIDB
           redis
           alembic
+          # AIDB Additional Requirements
+          beautifulsoup4       # Web scraping for federation
+          tabulate             # Table formatting
+          cryptography         # Ed25519 signatures for Guardian
+          inotify-simple       # Linux file watching
+          watchdog             # macOS/Windows file watching
           # Specialized AI Tools
           llama-cpp-python
           # Data Processing
@@ -1177,7 +1205,6 @@ in
   home.username = "HOMEUSERNAME";
   home.homeDirectory = "HOMEDIR";
   home.stateVersion = "STATEVERSION_PLACEHOLDER";  # Auto-detected from home-manager channel
-
   programs.home-manager.enable = true;
 
   # Home Manager 25.05 set startServices=true (sd-switch) and removed the legacy
@@ -1279,7 +1306,6 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           nixAiHelpScript
           # Python (REQUIRED for AIDB and AI model tooling)
           pythonAiEnv
-          uv                     # Drop-in replacement for pip
         ]
         ++ optionalDevTools
         ++ optionalRustGoAccelerators
@@ -1363,6 +1389,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           broot                   # Tree view with navigation
           dog                     # DNS lookup utility (dig)
           shellcheck              # Shell script static analysis
+          uv                      # Drop-in replacement for pip
 
           # Terminal tools
           # Note: alacritty installed via programs.alacritty below (prevents collision)
@@ -1743,27 +1770,23 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
     enable = true;
     package = pkgs.git;
 
-    settings = {
-      user = {
-        # Git author information (uncomment + customize before committing):
-        # name = "Your Name";
-        # email = "you@example.com";
-      };
+    settings =
+      {
+        init.defaultBranch = "main";
+        pull.rebase = false;
+        core.editor = "DEFAULTEDITOR";
 
-      init.defaultBranch = "main";
-      pull.rebase = false;
-      core.editor = "DEFAULTEDITOR";
-
-      alias = {
-        st = "status";
-        co = "checkout";
-        br = "branch";
-        ci = "commit";
-        unstage = "reset HEAD --";
-        last = "log -1 HEAD";
-        visual = "log --oneline --graph --decorate --all";
-      };
-    };
+        alias = {
+          st = "status";
+          co = "checkout";
+          br = "branch";
+          ci = "commit";
+          unstage = "reset HEAD --";
+          last = "log -1 HEAD";
+          visual = "log --oneline --graph --decorate --all";
+        };
+      }
+      // GIT_USER_SETTINGS_PLACEHOLDER;
   };
 
   # ========================================================================
@@ -1898,17 +1921,15 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
             "ms-toolsai.jupyter"
             "ms-toolsai.jupyter-keymap"
             "ms-toolsai.jupyter-renderers"
+            # AI coding assistants (locally hosted capable)
             "continue.continue"
             "codeium.codeium"
           ];
           curated = lib.filter (pkg: pkg != null) (map fetchExtension extensionNames);
           marketplaceExtensionNames = [
+            # Keep Claude Code available; remove deprecated Codex/ChatGPT entries
             "Anthropic.claude-code"
-            "gencay.vscode-chatgpt"
-            "openai.chatgpt"
-            "OpenAI.gpt-codex"
-            "OpenAI.codex-ide"
-            "GooseAI.gooseai-vscode"
+            "Google.gemini-code-assist"
           ];
           fetchMarketplaceExtension = name:
             let
@@ -1972,22 +1993,34 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       "huggingface.endpoint" = "${huggingfaceTgiEndpoint}";
       "huggingface.defaultModel" = "${huggingfaceModelId}";
       "huggingface.telemetry.enableTelemetry" = false;
-      "continue.defaultModel" = "Ollama (Llama 3)";
+      "continue.defaultModel" = "Llama 4 Scout (TGI-8085)";
       "continue.enableTelemetry" = false;
       "continue.telemetryEnabled" = false;
       "continue.serverUrl" = "${openWebUiUrl}";
       "continue.models" = [
         {
-          title = "Ollama (Llama 3)";
+          title = "Llama 3.2 Instruct";
           provider = "ollama";
-          model = "llama3";
+          model = "llama3.2";
           baseUrl = ollamaHost;
         }
         {
-          title = "Hugging Face TGI";
+          title = "DeepSeek R1 Distill 7B (coding)";
           provider = "openai";
           model = huggingfaceModelId;
           baseUrl = "${huggingfaceTgiEndpoint}/v1";
+        }
+        {
+          title = "Llama 4 Scout 17B";
+          provider = "openai";
+          model = huggingfaceScoutModelId;
+          baseUrl = "${huggingfaceScoutTgiEndpoint}/v1";
+        }
+        {
+          title = "Phi-4 (Ollama)";
+          provider = "ollama";
+          model = "phi4";
+          baseUrl = ollamaHost;
         }
       ];
       "codeium.enableTelemetry" = false;
@@ -2011,19 +2044,6 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       };
 
       # Claude Code integration (managed declaratively so the wrapper path is always correct)
-      "claude-code.executablePath" = claudeWrapperPath;
-      "claude-code.claudeProcessWrapper" = claudeWrapperPath;
-      "claude-code.environmentVariables" = [
-        {
-          name = "PATH";
-          value = claudePathValue;
-        }
-        {
-          name = "NODE_PATH";
-          value = claudeNodeModulesPath;
-        }
-      ];
-      "claude-code.autoStart" = false;
       "claudeCode.executablePath" = claudeWrapperPath;
       "claudeCode.claudeProcessWrapper" = claudeWrapperPath;
       "claudeCode.environmentVariables" = [
@@ -2038,31 +2058,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       ];
       "claudeCode.autoStart" = false;
 
-      # Additional AI CLI wrappers
-      "gpt-codex.executablePath" = gptCodexWrapperPath;
-      "gpt-codex.environmentVariables" = [
-        {
-          name = "PATH";
-          value = aiPathValue;
-        }
-        {
-          name = "NODE_PATH";
-          value = aiNodeModulesPath;
-        }
-      ];
-      "gpt-codex.autoStart" = false;
-      "gptCodex.executablePath" = gptCodexWrapperPath;
-      "gptCodex.environmentVariables" = [
-        {
-          name = "PATH";
-          value = aiPathValue;
-        }
-        {
-          name = "NODE_PATH";
-          value = aiNodeModulesPath;
-        }
-      ];
-      "gptCodex.autoStart" = false;
+      # Additional AI CLI wrappers (single config per tool, no duplicates)
       "codex.executablePath" = codexWrapperPath;
       "codex.environmentVariables" = [
         {
@@ -2075,30 +2071,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
         }
       ];
       "codex.autoStart" = false;
-      "codexIDE.executablePath" = codexWrapperPath;
-      "codexIDE.environmentVariables" = [
-        {
-          name = "PATH";
-          value = aiPathValue;
-        }
-        {
-          name = "NODE_PATH";
-          value = aiNodeModulesPath;
-        }
-      ];
-      "codexIDE.autoStart" = false;
-      "codexIde.executablePath" = codexWrapperPath;
-      "codexIde.environmentVariables" = [
-        {
-          name = "PATH";
-          value = aiPathValue;
-        }
-        {
-          name = "NODE_PATH";
-          value = aiNodeModulesPath;
-        }
-      ];
-      "codexIde.autoStart" = false;
+
       "openai.executablePath" = openaiWrapperPath;
       "openai.environmentVariables" = [
         {
@@ -2111,6 +2084,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
         }
       ];
       "openai.autoStart" = false;
+
       "gooseai.executablePath" = gooseAiWrapperPath;
       "gooseai.environmentVariables" = [
         {
@@ -2147,6 +2121,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       set -eu
 
       settings="$HOME/.config/VSCodium/User/settings.json"
+      rm -f "$settings.hm-bak" 2>/dev/null || true
       backup_dir="$HOME/.local/share/nixos-quick-deploy/state/vscodium"
       backup="$backup_dir/settings.json"
 
@@ -2157,7 +2132,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
     '';
 
   home.activation.vscodiumMakeSettingsMutable =
-    lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+    lib.hm.dag.entryAfter [ "reloadSystemd" ] ''
       set -eu
 
       settings="$HOME/.config/VSCodium/User/settings.json"
@@ -2200,6 +2175,61 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
         mkdir -p "$backup_dir"
         cp "$settings" "$backup" 2>/dev/null || true
       fi
+    '';
+
+  # Remove legacy flatpak-managed-install artifacts so systemd no longer reports
+  # a degraded user session after the service was retired.
+  home.activation.cleanupFlatpakManagedArtifacts =
+    lib.hm.dag.entryBefore [ "reloadSystemd" ] ''
+      set -eu
+
+      flag_file="$${XDG_RUNTIME_DIR:-/run/user/$$(id -u)}/allow-flatpak-managed-install"
+      service_dir="$HOME/.config/systemd/user"
+      unit_path="$service_dir/flatpak-managed-install.service"
+
+      remove_path() {
+        local target="$1"
+        if [ -z "$target" ]; then
+          return 0
+        fi
+        if [ -L "$target" ] || [ -e "$target" ]; then
+          rm -f "$target" 2>/dev/null || true
+        fi
+      }
+
+      remove_path "$flag_file"
+      remove_path "$unit_path"
+
+      for wants in \
+        "$service_dir/default.target.wants/flatpak-managed-install.service" \
+        "$service_dir/graphical-session.target.wants/flatpak-managed-install.service" \
+        "$service_dir/multi-user.target.wants/flatpak-managed-install.service"
+      do
+        remove_path "$wants"
+      done
+
+      if command -v systemctl >/dev/null 2>&1; then
+        systemctl --user reset-failed flatpak-managed-install.service >/dev/null 2>&1 || true
+      fi
+    '';
+  home.activation.ensurePodmanAiStackDirs =
+    lib.hm.dag.entryBefore [ "writeBoundary" ] ''
+      set -eu
+      data_root="$HOME/${podmanAiStackDataDir}"
+      required_paths="
+        $data_root
+        $data_root/ollama
+        $data_root/open-webui
+        $data_root/qdrant
+        $data_root/mindsdb
+      "
+
+      for path in $required_paths; do
+        if [ -L "$path" ] || { [ -e "$path" ] && [ ! -d "$path" ]; }; then
+          rm -f "$path" 2>/dev/null || true
+        fi
+        mkdir -p "$path"
+      done
     '';
 
   # ========================================================================
@@ -2254,7 +2284,9 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       HUGGINGFACE_HUB_CACHE = "$HOME/${huggingfaceCacheDir}";
       TRANSFORMERS_CACHE = "$HOME/${huggingfaceCacheDir}";
       HUGGINGFACE_TGI_ENDPOINT = "${huggingfaceTgiEndpoint}";
+      HUGGINGFACE_SCOUT_TGI_ENDPOINT = "${huggingfaceScoutTgiEndpoint}";
       HUGGINGFACE_MODEL_ID = "${huggingfaceModelId}";
+      HUGGINGFACE_SCOUT_MODEL_ID = "${huggingfaceScoutModelId}";
       HUGGINGFACE_TOKEN_PATH = "$HOME/.config/huggingface/token";
       HF_HUB_ENABLE_HF_TRANSFER = "1";
       # LLM Service Endpoints
@@ -2282,7 +2314,9 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       GITEA_CUSTOM = "$HOME/${giteaNativeConfigDir}";
     };
 
-@PODMAN_ROOTLESS_STORAGE@
+  # Note: Podman rootless storage configuration is handled within the
+  # services.podman block below (line ~3312) to avoid duplicate attribute errors.
+  # Previous placeholder-based injection was removed to prevent conflicts.
 
   # ========================================================================
   # Session Path
@@ -2302,6 +2336,13 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
 
   home.file =
     {
+    # Remove legacy flatpak-managed-install units and symlinks managed by older
+    # releases so systemd stops referencing the retired service.
+    ".config/systemd/user/flatpak-managed-install.service".enable = false;
+    ".config/systemd/user/default.target.wants/flatpak-managed-install.service".enable = false;
+    ".config/systemd/user/graphical-session.target.wants/flatpak-managed-install.service".enable = false;
+    ".config/systemd/user/multi-user.target.wants/flatpak-managed-install.service".enable = false;
+
     # Create local bin directory
     ".local/bin/.keep".text = "";
 
@@ -2459,6 +2500,63 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
     "${podmanAiStackDataDir}/open-webui/.keep".text = "";
     "${podmanAiStackDataDir}/qdrant/.keep".text = "";
     "${podmanAiStackDataDir}/mindsdb/.keep".text = "";
+  }
+  // (lib.mkIf localAiStackEnabled {
+    ".config/systemd/user/podman-local-ai-network.service.d/override.conf".text = ''
+      [Unit]
+      X-SwitchMethod=keep-old
+
+      [Service]
+      TimeoutStartSec=120
+      TimeoutStopSec=60
+      RestartSec=5
+    '';
+
+    ".config/systemd/user/podman-local-ai-ollama.service.d/override.conf".text = ''
+      [Unit]
+      X-SwitchMethod=keep-old
+
+      [Service]
+      TimeoutStartSec=600
+      TimeoutStopSec=180
+      RestartSec=10
+      ExecStartPre=${podmanEnsureImage "docker.io/ollama/ollama:latest"}
+    '';
+
+    ".config/systemd/user/podman-local-ai-open-webui.service.d/override.conf".text = ''
+      [Unit]
+      X-SwitchMethod=keep-old
+
+      [Service]
+      TimeoutStartSec=600
+      TimeoutStopSec=180
+      RestartSec=10
+      ExecStartPre=${podmanEnsureImage "ghcr.io/open-webui/open-webui:latest"}
+    '';
+
+    ".config/systemd/user/podman-local-ai-qdrant.service.d/override.conf".text = ''
+      [Unit]
+      X-SwitchMethod=keep-old
+
+      [Service]
+      TimeoutStartSec=600
+      TimeoutStopSec=180
+      RestartSec=10
+      ExecStartPre=${podmanEnsureImage "docker.io/qdrant/qdrant:latest"}
+    '';
+
+    ".config/systemd/user/podman-local-ai-mindsdb.service.d/override.conf".text = ''
+      [Unit]
+      X-SwitchMethod=keep-old
+
+      [Service]
+      TimeoutStartSec=900
+      TimeoutStopSec=240
+      RestartSec=15
+      ExecStartPre=${podmanEnsureImage "docker.io/mindsdb/mindsdb:latest"}
+    '';
+  })
+  // {
     ".config/obsidian/ai-integrations/.keep".text = "";
     ".config/obsidian/ai-integrations/README".text = obsidianAiReadme;
 
@@ -3288,8 +3386,34 @@ PLUGINCFG
       '';
     };
 
-  services.podman = {
+  services.podman = lib.mkIf localAiStackEnabled {
     enable = true;
+
+    # Rootless storage tuning for AI stack containers
+    settings.storage = {
+      storage = {
+        driver = "vfs";
+        runroot = "/run/user/${let
+          hmUid = if config.home ? uidNumber then config.home.uidNumber else null;
+          osUsers =
+            if config ? users && config.users ? users then config.users.users else {};
+          osUser = osUsers.${config.home.username} or null;
+          osUserUid = if osUser != null && osUser ? uid then osUser.uid else null;
+          accountUsers =
+            if config ? accounts && config.accounts ? users then config.accounts.users else {};
+          accountUser = accountUsers.${config.home.username} or null;
+          accountUid =
+            if accountUser != null && accountUser ? uid then accountUser.uid else null;
+          resolvedUid =
+            if hmUid != null then hmUid
+            else if osUserUid != null then osUserUid
+            else if accountUid != null then accountUid
+          else 1000;
+          in toString resolvedUid}/containers";
+        graphroot = "${config.home.homeDirectory}/.local/share/containers/storage";
+        rootless_storage_path = "${config.home.homeDirectory}/.local/share/containers/storage";
+      };
+    };
 
     networks."${podmanAiStackNetworkName}" = {
       description = "Isolated network for the local AI development stack";
@@ -3304,7 +3428,7 @@ PLUGINCFG
         image = "docker.io/ollama/ollama:latest";
         description = "Ollama inference runtime (rootless Podman)";
         autoStart = false;
-        autoUpdate = "registry";
+        autoUpdate = "local";  # Use local images to avoid timeout during home-manager switch
         network = [ "${podmanAiStackNetworkName}.network" ];
         networkAlias = [ "ollama" ];
         ports = [ "${toString ollamaPort}:11434" ];
@@ -3323,7 +3447,7 @@ PLUGINCFG
         image = "ghcr.io/open-webui/open-webui:latest";
         description = "Open WebUI interface for the local AI stack";
         autoStart = false;
-        autoUpdate = "registry";
+        autoUpdate = "local";  # Use local images to avoid timeout during home-manager switch
         network = [ "${podmanAiStackNetworkName}.network" ];
         networkAlias = [ "open-webui" ];
         ports = [ "${toString openWebUiPort}:8080" ];
@@ -3343,7 +3467,7 @@ PLUGINCFG
         image = "docker.io/qdrant/qdrant:latest";
         description = "Qdrant vector database for embeddings";
         autoStart = false;
-        autoUpdate = "registry";
+        autoUpdate = "local";  # Use local images to avoid timeout during home-manager switch
         network = [ "${podmanAiStackNetworkName}.network" ];
         networkAlias = [ "qdrant" ];
         ports = [
@@ -3362,7 +3486,7 @@ PLUGINCFG
         image = "docker.io/mindsdb/mindsdb:latest";
         description = "MindsDB orchestration layer for AI workflows";
         autoStart = false;
-        autoUpdate = "registry";
+        autoUpdate = "local";  # Use local images to avoid timeout during home-manager switch
         network = [ "${podmanAiStackNetworkName}.network" ];
         networkAlias = [ "mindsdb" ];
         ports = [
@@ -3385,56 +3509,48 @@ PLUGINCFG
 
   systemd.user.services =
     lib.mkMerge [
-      (lib.mkIf config.services.flatpak.enable {
-        "flatpak-managed-install" = {
-          Unit = {
-            Description = "Declarative Flatpak managed installer";
-            Documentation = [
-              "https://nix-community.github.io/nix-flatpak/"
-              "man:flatpak(1)"
-            ];
-            After = [ "graphical-session.target" "network-online.target" ];
-            Wants = [ "network-online.target" ];
-            # Condition prevents auto-start during home-manager activation
-            # The deployment script creates this flag file only when it's safe to run
-            ConditionPathExists = "/run/user/%U/allow-flatpak-managed-install";
-            # PartOf removed - service should only be started explicitly by the deployment
-            # script, not automatically during systemd reloads or graphical-session.target
-            # activation, to prevent blocking home-manager activation if it fails.
-            # X-SwitchMethod prevents home-manager from attempting to start/stop/restart
-            # this service during activation, avoiding "timed out waiting on channel" errors
-            X-SwitchMethod = "keep-old";
-          };
-          Service = {
-            Type = "oneshot";
-            # flatpakManagedInstallScriptExe is a writeShellApplication wrapper, so
-            # PATH already includes flatpakManagedInstallRuntimeInputs.
-            ExecStart = lib.mkForce flatpakManagedInstallScriptExe;
-            ExecCondition = "${pkgs.coreutils}/bin/test -x ${pkgs.flatpak}/bin/flatpak";
-            ExecStartPre = [
-              "${pkgs.coreutils}/bin/mkdir -p %h/.local/share/flatpak"
-              "${pkgs.coreutils}/bin/mkdir -p %h/.config/flatpak"
-              "${pkgs.coreutils}/bin/mkdir -p %h/.var/app"
-            ];
-            Environment = [
-              "HOME=%h"
-              "XDG_RUNTIME_DIR=%t"
-              "DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus"
-            ];
-            TimeoutStartSec = 600;
-            Restart = lib.mkForce "no";
-            RemainAfterExit = false;
-            StandardOutput = "journal";
-            StandardError = "journal";
-            # Ignore failure on ExecCondition to prevent blocking
-            SuccessExitStatus = "0 1";
-          };
-          # Install section removed to prevent auto-start on home-manager activation.
-          # The nixos-quick-deploy.sh script handles starting this service explicitly
-          # via ensure_flatpak_managed_install_service() when appropriate.
-          # This prevents the service from blocking home-manager activation if it fails.
-        };
-      })
+      # DISABLED: flatpak-managed-install systemd service
+      # Reason: Direct flatpak remote installation is more reliable and avoids timeout issues
+      # The deployment script now uses flatpak_bulk_install_apps() which calls
+      # flatpak --noninteractive --assumeyes install --user flathub <apps...>
+      # This provides better error handling and progress reporting than the systemd service.
+      #
+      # (lib.mkIf config.services.flatpak.enable {
+      #   "flatpak-managed-install" = {
+      #     Unit = {
+      #       Description = "Declarative Flatpak managed installer";
+      #       Documentation = [
+      #         "https://nix-community.github.io/nix-flatpak/"
+      #         "man:flatpak(1)"
+      #       ];
+      #       After = [ "graphical-session.target" "network-online.target" ];
+      #       Wants = [ "network-online.target" ];
+      #       ConditionPathExists = "/run/user/%U/allow-flatpak-managed-install";
+      #       X-SwitchMethod = "keep-old";
+      #     };
+      #     Service = {
+      #       Type = "oneshot";
+      #       ExecStart = lib.mkForce flatpakManagedInstallScriptExe;
+      #       ExecCondition = "${pkgs.coreutils}/bin/test -x ${pkgs.flatpak}/bin/flatpak";
+      #       ExecStartPre = [
+      #         "${pkgs.coreutils}/bin/mkdir -p %h/.local/share/flatpak"
+      #         "${pkgs.coreutils}/bin/mkdir -p %h/.config/flatpak"
+      #         "${pkgs.coreutils}/bin/mkdir -p %h/.var/app"
+      #       ];
+      #       Environment = [
+      #         "HOME=%h"
+      #         "XDG_RUNTIME_DIR=%t"
+      #         "DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus"
+      #       ];
+      #       TimeoutStartSec = 3600;
+      #       Restart = lib.mkForce "no";
+      #       RemainAfterExit = false;
+      #       StandardOutput = "journal";
+      #       StandardError = "journal";
+      #       SuccessExitStatus = "0 1";
+      #     };
+      #   };
+      # })
       (lib.mkIf (glfMangoHudDesktopMode && glfMangoHudHasEntries && pkgs ? mangohud) {
         "mangohud-desktop" = {
           Unit = {

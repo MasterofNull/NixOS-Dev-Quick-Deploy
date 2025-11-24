@@ -100,6 +100,50 @@ readonly REQUIRED_DISK_SPACE_GB=50
 # LOG_DIR, LOG_FILE, and LOG_LEVEL now defined in main script - DO NOT redefine
 
 # ============================================================================
+# User Resolution (handle sudo invocation)
+# ============================================================================
+# Problem: When script is run with sudo, USER=$SUDO_USER but HOME=/root
+# This causes deployment to target root's home instead of the actual user's home.
+#
+# Solution: Detect sudo invocation and resolve to the invoking user before any
+# per-user paths (state, preferences, backups) are derived.
+#
+# Why this matters:
+# - NixOS/home-manager configs live in the invoking user's home
+# - Flatpaks and Podman data belong under the invoking user's XDG dirs
+# - Preference caches must remain consistent between helper scripts
+# ============================================================================
+
+# Initialize with current user/home (correct if not using sudo)
+RESOLVED_USER="${USER:-}"
+RESOLVED_HOME="$HOME"
+
+# Check if running via sudo (SUDO_USER is set and we're root)
+if [[ -n "${SUDO_USER:-}" && "$EUID" -eq 0 ]]; then
+    RESOLVED_USER="$SUDO_USER"
+    RESOLVED_HOME="$(getent passwd "$RESOLVED_USER" 2>/dev/null | cut -d: -f6)"
+
+    if [[ -z "$RESOLVED_HOME" ]]; then
+        # Fallback: expand ~username if the NSS lookup did not return a home.
+        RESOLVED_HOME="$(eval echo "~$RESOLVED_USER" 2>/dev/null || true)"
+    fi
+
+    if [[ -z "$RESOLVED_HOME" ]]; then
+        echo "Error: unable to resolve home directory for invoking user '$RESOLVED_USER'." >&2
+        exit 1
+    fi
+
+    export ORIGINAL_ROOT_HOME="$HOME"
+    export ORIGINAL_ROOT_USER="${USER:-root}"
+
+    export HOME="$RESOLVED_HOME"
+    export USER="$RESOLVED_USER"
+fi
+
+# After this block, HOME and USER always refer to the target user regardless of
+# whether the script was invoked directly or through sudo.
+
+# ============================================================================
 # State Management
 # ============================================================================
 
@@ -128,19 +172,24 @@ readonly FLATPAK_PROFILE_STATE_FILE="$DEPLOYMENT_PREFERENCES_DIR/flatpak-profile
 readonly GIT_IDENTITY_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/git-identity.env"
 readonly MANGOHUD_PROFILE_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/mangohud-profile.env"
 readonly USER_PROFILE_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/user-profile.env"
+readonly HUGGINGFACE_TOKEN_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/huggingface-token.env"
+readonly LOCAL_AI_STACK_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/local-ai-stack.env"
 
 # ============================================================================
 # Mutable Flags
 # ============================================================================
 
-DRY_RUN=false
-FORCE_UPDATE=false
-SKIP_HEALTH_CHECK=false
-ENABLE_DEBUG=false
-AUTO_ROLLBACK_ENABLED=true
-AUTO_ROLLBACK_REQUESTED=false
-ROLLBACK_IN_PROGRESS=false
-RESUME_DEVICE_HINT=""
+# NOTE: Use parameter expansion defaults so sourcing this file multiple times
+# (e.g., helper scripts, CLI previews) never clobbers values set by flags.
+: "${DRY_RUN:=false}"
+: "${FORCE_UPDATE:=false}"
+: "${SKIP_HEALTH_CHECK:=false}"
+: "${ENABLE_DEBUG:=false}"
+: "${AUTO_ROLLBACK_ENABLED:=true}"
+: "${AUTO_ROLLBACK_REQUESTED:=false}"
+: "${ROLLBACK_IN_PROGRESS:=false}"
+: "${RESUME_DEVICE_HINT:=}"
+: "${RESUME_OFFSET_HINT:=}"
 
 _use_binary_caches_default="true"
 if [[ -n "${USE_BINARY_CACHES:-}" ]]; then
@@ -380,69 +429,6 @@ USER_SETTINGS_INITIALIZED="false"
 USER_PROFILE_PREFS_LOADED="false"
 
 # ============================================================================
-# User Resolution (handle sudo invocation)
-# ============================================================================
-# Problem: When script is run with sudo, USER=$SUDO_USER but HOME=/root
-# This causes deployment to target root's home instead of actual user's home
-#
-# Solution: Detect sudo invocation and resolve to the invoking user
-#
-# How it works:
-# 1. If run without sudo: USER and HOME are correct, use as-is
-# 2. If run with sudo: SUDO_USER contains real user, resolve their HOME
-# 3. Override USER and HOME to target the invoking user's environment
-#
-# Why this matters:
-# - NixOS config goes in user's home (~/.config/nixos)
-# - Home Manager config goes in user's home
-# - User-level packages install to user's profile
-# - Flatpak apps install to user's ~/.local/share/flatpak
-#
-# Without this resolution, everything would install to root's home!
-# ============================================================================
-
-# Initialize with current user/home (correct if not using sudo)
-RESOLVED_USER="${USER:-}"  # Current username
-RESOLVED_HOME="$HOME"      # Current home directory
-
-# Check if running via sudo (SUDO_USER is set and we're root)
-# EUID = Effective User ID (0 = root)
-if [[ -n "${SUDO_USER:-}" && "$EUID" -eq 0 ]]; then
-    # Script was invoked with sudo - resolve to original user
-    RESOLVED_USER="$SUDO_USER"  # Get the real user who ran sudo
-
-    # Get home directory from passwd database (most reliable method)
-    # getent passwd: Query user database
-    # cut -d: -f6: Extract field 6 (home directory) from colon-separated output
-    RESOLVED_HOME="$(getent passwd "$RESOLVED_USER" 2>/dev/null | cut -d: -f6)"
-
-    # Fallback 1: Try shell expansion if getent failed
-    # eval echo ~username expands to user's home directory
-    if [[ -z "$RESOLVED_HOME" ]]; then
-        RESOLVED_HOME="$(eval echo "~$RESOLVED_USER" 2>/dev/null || true)"
-    fi
-
-    # Fallback 2: If both methods failed, error out
-    # Cannot proceed without knowing where to install user files
-    if [[ -z "$RESOLVED_HOME" ]]; then
-        echo "Error: unable to resolve home directory for invoking user '$RESOLVED_USER'." >&2
-        exit 1  # Fatal error - cannot continue
-    fi
-
-    # Preserve original root environment (might be needed for some operations)
-    export ORIGINAL_ROOT_HOME="$HOME"          # Save /root
-    export ORIGINAL_ROOT_USER="${USER:-root}"   # Save "root"
-
-    # Override environment to target the real user
-    # This makes the rest of the script work as if run by the real user
-    export HOME="$RESOLVED_HOME"  # Change HOME to user's home
-    export USER="$RESOLVED_USER"  # Change USER to real username
-fi
-
-# After this block, HOME and USER always refer to the target user
-# regardless of whether script was run with or without sudo
-
-# ============================================================================
 # Primary User Configuration
 # ============================================================================
 
@@ -518,6 +504,32 @@ GITEA_BOOTSTRAP_ADMIN="false"
 GITEA_ADMIN_PROMPTED="false"
 GITEA_PROMPT_CHANGED="false"
 
+# Hugging Face token (optional; controls local AI stack enablement)
+if [[ -z "${HUGGINGFACEHUB_API_TOKEN:-}" && -f "$HUGGINGFACE_TOKEN_PREFERENCE_FILE" ]]; then
+    _hf_cached_token=$(awk -F'=' '/^HUGGINGFACEHUB_API_TOKEN=/{print $2}' "$HUGGINGFACE_TOKEN_PREFERENCE_FILE" 2>/dev/null | tail -n1 | tr -d '\r')
+    if [[ -n "$_hf_cached_token" ]]; then
+        HUGGINGFACEHUB_API_TOKEN="$_hf_cached_token"
+        export HUGGINGFACEHUB_API_TOKEN
+    fi
+fi
+unset _hf_cached_token
+
+LOCAL_AI_STACK_ENABLED="${LOCAL_AI_STACK_ENABLED:-}"
+if [[ -z "$LOCAL_AI_STACK_ENABLED" && -f "$LOCAL_AI_STACK_PREFERENCE_FILE" ]]; then
+    _local_ai_cached=$(awk -F'=' '/^LOCAL_AI_STACK_ENABLED=/{print $2}' "$LOCAL_AI_STACK_PREFERENCE_FILE" 2>/dev/null | tail -n1 | tr -d '\r')
+    case "$_local_ai_cached" in
+        true|false)
+            LOCAL_AI_STACK_ENABLED="$_local_ai_cached"
+            ;;
+    esac
+fi
+if [[ -z "$LOCAL_AI_STACK_ENABLED" ]]; then
+    # Default to false until the user provides a Hugging Face token explicitly
+    LOCAL_AI_STACK_ENABLED="false"
+fi
+export LOCAL_AI_STACK_ENABLED
+unset _local_ai_cached
+
 # ============================================================================
 # Phase-Produced Variables (populated during execution)
 # ============================================================================
@@ -558,6 +570,7 @@ ENABLE_LACT="${ENABLE_LACT:-auto}"
 AUTO_APPLY_SYSTEM_CONFIGURATION="${AUTO_APPLY_SYSTEM_CONFIGURATION:-true}"
 AUTO_APPLY_HOME_CONFIGURATION="${AUTO_APPLY_HOME_CONFIGURATION:-true}"
 AUTO_UPDATE_FLAKE_INPUTS="${AUTO_UPDATE_FLAKE_INPUTS:-false}"
+AUTO_RESOLVE_SERVICE_CONFLICTS="${AUTO_RESOLVE_SERVICE_CONFLICTS:-true}"
 RESTORE_KNOWN_GOOD_FLAKE_LOCK="${RESTORE_KNOWN_GOOD_FLAKE_LOCK:-false}"
 PROMPT_BEFORE_SYSTEM_SWITCH="${PROMPT_BEFORE_SYSTEM_SWITCH:-false}"
 PROMPT_BEFORE_HOME_SWITCH="${PROMPT_BEFORE_HOME_SWITCH:-false}"
@@ -565,6 +578,14 @@ SYSTEM_CONFIGURATION_APPLIED="false"
 HOME_CONFIGURATION_APPLIED="false"
 SYSTEM_SWITCH_SKIPPED_REASON=""
 HOME_SWITCH_SKIPPED_REASON=""
+
+# AI-Optimizer / AIDB integration defaults
+AI_ENABLED="${AI_ENABLED:-auto}"                        # auto, true, false
+AIDB_BASE_URL="${AIDB_BASE_URL:-http://localhost:8091}"
+AIDB_PROJECT_NAME="${AIDB_PROJECT_NAME:-NixOS-Dev-Quick-Deploy}"
+export AI_ENABLED
+export AIDB_BASE_URL
+export AIDB_PROJECT_NAME
 
 # User Information
 SELECTED_TIMEZONE=""
