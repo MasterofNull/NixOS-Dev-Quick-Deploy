@@ -507,8 +507,6 @@ run_system_health_check_stage() {
     print_info "Checking system services..."
     
     local system_services=(
-        "postgresql"
-        "ollama"
         "gitea"
     )
     

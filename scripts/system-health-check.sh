@@ -111,7 +111,6 @@ declare -a PYTHON_PACKAGE_CHECKS=(
     "anthropic|Anthropic client|required"
     "langchain|LangChain|required"
     "llama_index|LlamaIndex|required"
-    "openskills|OpenSkills automation toolkit|optional"
     "chromadb|ChromaDB|required"
     "qdrant_client|Qdrant client|required"
     "sentence_transformers|Sentence Transformers|required"
@@ -1212,6 +1211,7 @@ run_all_checks() {
     # Other AI tools
     check_command "ollama" "Ollama" true
     check_command "aider" "Aider" true
+    check_command "openskills" "OpenSkills CLI" true
 
     # Python AI/ML Packages
     # ==========================================================================
@@ -1314,8 +1314,10 @@ run_all_checks() {
 
         # Check for duplicate runtimes
         print_check "Flatpak runtime versions"
-        local runtime_count=$(flatpak list --user --runtime 2>/dev/null | grep -c "org.freedesktop.Platform" || echo "0")
-        if [ "$runtime_count" -gt 4 ]; then
+        local runtime_count=$(flatpak list --user --runtime 2>/dev/null | grep -c "org.freedesktop.Platform" 2>/dev/null || echo "0")
+        runtime_count="${runtime_count//[^0-9]/}"  # Remove non-numeric characters
+        runtime_count="${runtime_count:-0}"  # Default to 0 if empty
+        if [[ "$runtime_count" -gt 4 ]]; then
             print_warning "Multiple Freedesktop Platform runtimes ($runtime_count found)"
             print_detail "This is normal - apps depend on different runtime versions"
             print_detail "Run 'flatpak uninstall --unused' to remove unused runtimes"
@@ -1351,13 +1353,34 @@ run_all_checks() {
     # ==========================================================================
     print_section "AI Systemd Services"
 
-    # Qdrant vector database (system service)
-    # Treat as optional when the system configuration hasn't been applied yet.
-    check_system_service "qdrant" "Qdrant (vector database)" false false
-    if systemctl is-active qdrant &> /dev/null; then
-        if curl -s "http://localhost:6333" &> /dev/null || nc -z localhost 6333 2>/dev/null; then
-            print_detail "Qdrant API accessible on port 6333"
+    # Qdrant vector database (system service or user-level container)
+    # Check both systemd service and user-level podman containers
+    local qdrant_running=false
+
+    # Check systemd service
+    if systemctl is-active qdrant &> /dev/null 2>&1; then
+        check_system_service "qdrant" "Qdrant (vector database)" false false
+        qdrant_running=true
+    fi
+
+    # Check user-level podman containers
+    if command -v podman &>/dev/null; then
+        if podman ps --format "{{.Names}}" 2>/dev/null | grep -qE "qdrant|local-ai-qdrant"; then
+            print_check "  Checking Qdrant (vector database)"
+            print_detail "Running as user-level container"
+            qdrant_running=true
         fi
+    fi
+
+    # Test API endpoint if either is running
+    if [[ "$qdrant_running" == "true" ]]; then
+        if curl -s "http://localhost:6333/collections" &> /dev/null; then
+            print_detail "Qdrant API accessible on port 6333"
+        else
+            print_warning "Qdrant process detected but API not responding on port 6333"
+        fi
+    elif [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
+        print_warning "Qdrant (vector database) service not configured (optional)"
     fi
 
     # Hugging Face TGI (system service)

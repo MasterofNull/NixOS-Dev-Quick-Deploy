@@ -2107,6 +2107,41 @@ discover_resume_device_hint() {
     return 1
 }
 
+discover_resume_offset_hint() {
+    local offset_path="/sys/power/resume_offset"
+    local resume_offset=""
+
+    if [[ -r "$offset_path" ]]; then
+        resume_offset=$(tr -d '\r\n[:space:]' <"$offset_path" 2>/dev/null || echo "")
+        if [[ "$resume_offset" =~ ^[0-9]+$ && "$resume_offset" -gt 0 ]]; then
+            log DEBUG "Resume offset discovered via /sys/power/resume_offset: $resume_offset"
+            echo "$resume_offset"
+            return 0
+        fi
+    fi
+
+    local resume_conf_paths=(
+        "${SYSTEM_CONFIG_FILE:-}"
+        "/etc/nixos/configuration.nix"
+        "/etc/nixos/hardware-configuration.nix"
+    )
+
+    local config_path
+    for config_path in "${resume_conf_paths[@]}"; do
+        if [[ -f "$config_path" ]]; then
+            resume_offset=$(grep -Eo 'resume_offset=[0-9]+' "$config_path" 2>/dev/null | head -n1 | sed -E 's/[^0-9]//g')
+            if [[ "$resume_offset" =~ ^[0-9]+$ && "$resume_offset" -gt 0 ]]; then
+                log DEBUG "Resume offset detected in $config_path: $resume_offset"
+                echo "$resume_offset"
+                return 0
+            fi
+        fi
+    done
+
+    log DEBUG "No resume offset hint detected"
+    return 1
+}
+
 detect_previous_swap_configuration() {
     # Return success when the host already has swap configured.
     local active_swap
@@ -2973,6 +3008,13 @@ restore_latest_config_backup() {
     if [[ -z "$target_dir" || ! -d "$target_dir" ]]; then
         print_warning "Cannot restore backup – target directory missing: ${target_dir:-unknown}"
         log WARNING "Restore skipped: target directory missing (${target_dir:-unset})"
+        return 1
+    fi
+
+    # Skip empty backups to avoid noisy failures
+    if [[ -z $(find "$backup_dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null) ]]; then
+        print_warning "Configuration backup is empty at $backup_dir; nothing to restore"
+        log WARNING "Empty configuration backup at $backup_dir – restore skipped"
         return 1
     fi
 
