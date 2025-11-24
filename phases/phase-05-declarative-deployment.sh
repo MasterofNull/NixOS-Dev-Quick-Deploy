@@ -438,188 +438,11 @@ phase_05_declarative_deployment() {
         echo ""
     fi
 
-    check_hf_model_access() {
-        local model="$1"
-        local token="$2"
-
-        if [[ -z "$token" ]]; then
-            return 1
-        fi
-
-        if command -v curl >/dev/null 2>&1; then
-            if curl -fsSL -H "Authorization: Bearer ${token}" "https://huggingface.co/api/models/${model}" >/dev/null 2>&1; then
-                return 0
-            fi
-        fi
-
-        return 1
-    }
-
     if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
-        print_section "Preloading AI Models (Before System Switch)"
-        print_info "Downloading models now so services start with cached models..."
+        print_section "Preparing Local AI Stack Assets"
+        print_info "Ensuring Podman containers and models managed by ai-optimizer have their images pre-pulled."
         echo ""
 
-        local -a hf_models=(
-            "${huggingfaceModelId:-deepseek-ai/DeepSeek-R1-Distill-Qwen-7B}"
-            "${huggingfaceScoutModelId:-meta-llama/Llama-4-Scout-17B-16E}"
-        )
-        local default_hf_cache_root="${HUGGINGFACE_HUB_CACHE:-}"
-        local fallback_hf_cache_root="$HOME/.cache/huggingface"
-        local hf_token="${HUGGINGFACEHUB_API_TOKEN:-}"
-        if [[ -z "$hf_token" && -f "$HOME/.config/huggingface/token" ]]; then
-            hf_token="$(head -n1 "$HOME/.config/huggingface/token" 2>/dev/null | tr -d '\r')"
-        fi
-        if [[ -z "$hf_token" ]]; then
-            local secret_file="${HUGGINGFACE_TGI_ENV_FILE:-/var/lib/nixos-quick-deploy/secrets/huggingface-tgi.env}"
-            if command -v sudo >/dev/null 2>&1 && sudo test -r "$secret_file" 2>/dev/null; then
-                hf_token="$(
-                    sudo awk -F'=' '
-                        /^(HF_TOKEN|HUGGINGFACEHUB_API_TOKEN)=/ {
-                            gsub(/\r/, "", $2);
-                            print $2;
-                            exit
-                        }
-                    ' "$secret_file" 2>/dev/null
-                )"
-            fi
-        fi
-        if [[ -n "$hf_token" ]]; then
-            export HF_TOKEN="$hf_token" HUGGINGFACEHUB_API_TOKEN="$hf_token"
-        else
-            unset HF_TOKEN HUGGINGFACEHUB_API_TOKEN
-        fi
-        export HF_HUB_ENABLE_HF_TRANSFER=1
-
-        local hf_model
-        for hf_model in "${hf_models[@]}"; do
-            local hf_cache_root="$default_hf_cache_root"
-            if [[ -z "$hf_cache_root" ]]; then
-                case "$hf_model" in
-                    "${huggingfaceModelId:-deepseek-ai/DeepSeek-R1-Distill-Qwen-7B}")
-                        hf_cache_root="/var/lib/huggingface/cache"
-                        ;;
-                    "${huggingfaceScoutModelId:-meta-llama/Llama-4-Scout-17B-16E}")
-                        hf_cache_root="/var/lib/huggingface-scout/cache"
-                        ;;
-                esac
-            fi
-            hf_cache_root="${hf_cache_root:-$fallback_hf_cache_root}"
-            local needs_sudo=false
-            if [[ "$hf_cache_root" == /var/lib/* ]]; then
-                needs_sudo=true
-            fi
-            if [[ "$needs_sudo" == true ]]; then
-                sudo mkdir -p "$hf_cache_root" || print_warning "Unable to create cache directory $hf_cache_root"
-            else
-                mkdir -p "$hf_cache_root" || print_warning "Unable to create cache directory $hf_cache_root"
-            fi
-            local hf_cache_dir="${hf_cache_root}/models--${hf_model//\//--}"
-            local hf_cache_complete=false
-            local hf_home_dir="$hf_cache_root"
-            if [[ "$hf_home_dir" == */cache ]]; then
-                hf_home_dir="${hf_home_dir%/cache}"
-            fi
-            local -a hf_env=(
-                "HF_HOME=$hf_home_dir"
-                "HUGGINGFACE_HUB_CACHE=$hf_cache_root"
-                "TRANSFORMERS_CACHE=$hf_cache_root"
-            )
-            if [[ -n "$hf_token" ]]; then
-                hf_env+=( "HF_TOKEN=$hf_token" "HUGGINGFACEHUB_API_TOKEN=$hf_token" )
-            fi
-            local -a hf_wrapper=(env)
-            if [[ "$needs_sudo" == true ]]; then
-                hf_wrapper=(sudo env)
-            fi
-
-            if [[ "${FORCE_HF_DOWNLOAD:-false}" == "true" && -d "$hf_cache_dir" ]]; then
-                print_warning "FORCE_HF_DOWNLOAD requested - removing cached model for $hf_model"
-                if ! rm -rf "$hf_cache_dir"; then
-                    print_warning "Failed to remove $hf_cache_dir; continuing with existing data"
-                fi
-            fi
-
-            if [[ -d "$hf_cache_dir" ]]; then
-                local blob_count=0
-                local snapshot_file_count=0
-                local has_refs=false
-                local has_incomplete_markers=false
-
-                if [[ -d "$hf_cache_dir/blobs" ]]; then
-                    blob_count=$(find "$hf_cache_dir/blobs" -type f 2>/dev/null | wc -l)
-                fi
-
-                if [[ -d "$hf_cache_dir/snapshots" ]]; then
-                    snapshot_file_count=$(find "$hf_cache_dir/snapshots" -type f -o -type l 2>/dev/null | wc -l)
-                fi
-
-                if [[ -f "$hf_cache_dir/refs/main" ]] || { [[ -d "$hf_cache_dir/refs" ]] && find "$hf_cache_dir/refs" -type f -quit >/dev/null 2>&1; }; then
-                    has_refs=true
-                fi
-
-                if find "$hf_cache_dir" -name "*.incomplete" -o -name "*.lock" -quit 2>/dev/null | grep -q .; then
-                    has_incomplete_markers=true
-                fi
-
-                if [[ $blob_count -gt 0 && $snapshot_file_count -gt 0 && "$has_refs" == true && "$has_incomplete_markers" == false && "${FORCE_HF_DOWNLOAD:-false}" != "true" ]]; then
-                    hf_cache_complete=true
-                fi
-            fi
-
-            if [[ "$hf_cache_complete" == true ]]; then
-                print_success "Hugging Face cache already present for $hf_model (verified complete)"
-                continue
-            elif [[ -d "$hf_cache_dir" && "$hf_cache_complete" == false ]]; then
-                print_warning "Incomplete cache detected for $hf_model - will resume download"
-            fi
-
-            if [[ -z "${HUGGINGFACEHUB_API_TOKEN:-}" ]]; then
-                print_warning "Skipping preload for $hf_model (missing HUGGINGFACEHUB_API_TOKEN); TGI will download after you supply a token."
-                continue
-            fi
-
-            if ! check_hf_model_access "$hf_model" "$HUGGINGFACEHUB_API_TOKEN"; then
-                print_warning "Skipping preload for $hf_model (token lacks access or license not accepted); TGI will download on first start."
-                continue
-            fi
-
-            print_info "Preloading Hugging Face model for TGI: $hf_model"
-            if command -v hf >/dev/null 2>&1; then
-                if "${hf_wrapper[@]}" "${hf_env[@]}" hf download "$hf_model" --local-dir "$hf_cache_dir" --local-dir-use-symlinks False --resume-download 2>&1 | grep -E '(Downloaded|already|Fetching)'; then
-                    print_success "Cached $hf_model locally"
-                    continue
-                fi
-                print_warning "Failed to cache $hf_model via hf download; attempting huggingface-cli"
-            fi
-
-            if command -v huggingface-cli >/dev/null 2>&1; then
-                if "${hf_wrapper[@]}" "${hf_env[@]}" huggingface-cli download "$hf_model" --local-dir "$hf_cache_dir" --local-dir-use-symlinks False --resume-download 2>&1 | grep -E '(Downloaded|already|Fetching)'; then
-                    print_success "Cached $hf_model locally"
-                    continue
-                fi
-                print_warning "Failed to cache $hf_model via huggingface-cli; will download on service start"
-            else
-                print_warning "huggingface CLI not found; models will download when TGI services start"
-            fi
-        done
-
-        print_info "Ollama models will be pulled after system switch when API is available"
-        echo ""
-
-        if command -v podman >/dev/null 2>&1; then
-            local huggingface_tgi_image="ghcr.io/huggingface/text-generation-inference:1.4.3"
-            if ! sudo podman image exists "$huggingface_tgi_image" >/dev/null 2>&1; then
-                print_info "Prefetching ${huggingface_tgi_image} before nixos-rebuild switch..."
-                if ! sudo podman pull "$huggingface_tgi_image"; then
-                    print_warning "Podman image prefetch failed; switch-to-configuration will attempt the pull again."
-                fi
-            else
-                print_success "TGI container image already present; skipping podman pull."
-            fi
-        fi
-
-        # Pre-pull user-level Podman images to avoid timeout during home-manager switch
         if command -v podman >/dev/null 2>&1; then
             print_info "Pre-pulling user-level AI stack images..."
             local -a user_images=(
@@ -641,6 +464,8 @@ phase_05_declarative_deployment() {
                     print_success "$img already present"
                 fi
             done
+        else
+            print_warning "Podman is not available; install Podman to use the local AI stack."
         fi
     fi
 
