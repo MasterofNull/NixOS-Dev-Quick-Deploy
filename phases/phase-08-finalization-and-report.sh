@@ -79,29 +79,6 @@ phase_08_finalization_and_report() {
     # PART 1: SYSTEM HEALTH CHECK
     # ========================================================================
 
-    # Ensure Hugging Face token file exists for TGI
-    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
-        local hf_env_file="${HUGGINGFACE_TGI_ENV_FILE:-/var/lib/nixos-quick-deploy/secrets/huggingface-tgi.env}"
-        local hf_env_dir
-        hf_env_dir="$(dirname "$hf_env_file")"
-        local hf_token="${HUGGINGFACEHUB_API_TOKEN:-}"
-        if [[ -z "$hf_token" && -f "$HOME/.config/huggingface/token" ]]; then
-            hf_token="$(head -n1 "$HOME/.config/huggingface/token" 2>/dev/null | tr -d '\r')"
-        fi
-
-        if [[ -n "$hf_token" ]]; then
-            if sudo mkdir -p "$hf_env_dir" && \
-               echo -e "HF_TOKEN=${hf_token}\nHUGGINGFACEHUB_API_TOKEN=${hf_token}" | sudo tee "$hf_env_file" >/dev/null; then
-                sudo chmod 600 "$hf_env_file" || true
-                print_success "Ensured Hugging Face token file at $hf_env_file"
-            else
-                print_warning "Failed to write Hugging Face token to $hf_env_file; verify sudo access and rerun."
-            fi
-        else
-            print_warning "HUGGINGFACEHUB_API_TOKEN not set and no ~/.config/huggingface/token found; TGI may fail to start."
-        fi
-    fi
-
     # Pre-pull Podman AI stack images to avoid timeouts during service startup
     if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]] && command -v podman >/dev/null 2>&1; then
         print_info "Pre-pulling AI stack images (ollama, open-webui, qdrant)..."
@@ -282,57 +259,6 @@ EOF
             print_info "Start manually with: systemctl --user start podman-local-ai-ollama.service"
         fi
 
-        if command -v systemctl >/dev/null 2>&1; then
-            if systemctl list-unit-files | grep -q '^huggingface-tgi\\.service'; then
-                print_info "Enabling Hugging Face TGI system service"
-                if sudo systemctl enable --now huggingface-tgi 2>/dev/null; then
-                    sleep 3  # Give service time to start
-                    if systemctl is-active --quiet huggingface-tgi 2>/dev/null; then
-                        print_success "HuggingFace TGI service started successfully"
-                    else
-                        local tgi_status=$(systemctl show huggingface-tgi --property=ActiveState --value 2>/dev/null | tr -d '\r')
-                        if [[ "$tgi_status" == "failed" ]]; then
-                            print_error "HuggingFace TGI service failed to start"
-                            print_info "Check logs: journalctl -u huggingface-tgi.service -n 30"
-                            local error_msg=$(systemctl status huggingface-tgi --no-pager -l 2>/dev/null | grep -i "No such file or directory" | tail -n 1 | sed 's/^[[:space:]]*//')
-                            if [[ -n "$error_msg" ]]; then
-                                print_info "Error: $error_msg"
-                                print_info "This may require a system reboot or nixos-rebuild switch to create missing directories"
-                            fi
-                        else
-                            print_warning "HuggingFace TGI service is not active (status: $tgi_status)"
-                        fi
-                    fi
-                else
-                    print_warning "Unable to enable/start huggingface-tgi service automatically"
-                fi
-            fi
-            if systemctl list-unit-files | grep -q '^huggingface-tgi-scout\\.service'; then
-                print_info "Enabling Hugging Face TGI Scout service"
-                if sudo systemctl enable --now huggingface-tgi-scout 2>/dev/null; then
-                    sleep 3  # Give service time to start
-                    if systemctl is-active --quiet huggingface-tgi-scout 2>/dev/null; then
-                        print_success "HuggingFace TGI Scout service started successfully"
-                    else
-                        local scout_status=$(systemctl show huggingface-tgi-scout --property=ActiveState --value 2>/dev/null | tr -d '\r')
-                        if [[ "$scout_status" == "failed" ]]; then
-                            print_error "HuggingFace TGI Scout service failed to start"
-                            print_info "Check logs: journalctl -u huggingface-tgi-scout.service -n 30"
-                            local error_msg=$(systemctl status huggingface-tgi-scout --no-pager -l 2>/dev/null | grep -i "No such file or directory" | tail -n 1 | sed 's/^[[:space:]]*//')
-                            if [[ -n "$error_msg" ]]; then
-                                print_info "Error: $error_msg"
-                                print_info "This may require a system reboot or nixos-rebuild switch to create missing directories"
-                            fi
-                        else
-                            print_warning "HuggingFace TGI Scout service is not active (status: $scout_status)"
-                        fi
-                    fi
-                else
-                    print_warning "Unable to enable/start huggingface-tgi-scout service automatically"
-                fi
-            fi
-        fi
-
         # Health checks for all endpoints
         print_section "Local AI endpoint health checks"
 
@@ -342,20 +268,6 @@ EOF
             curl -fsS http://127.0.0.1:11434/api/tags 2>/dev/null | jq -r '.models[].name' | sed 's/^/  - /' || true
         else
             print_warning "Ollama API not reachable on 11434"
-        fi
-
-        # DeepSeek TGI
-        if curl -fsS http://127.0.0.1:8080/v1/models >/dev/null 2>&1; then
-            print_success "TGI (DeepSeek) reachable on 8080"
-        else
-            print_warning "TGI (DeepSeek) not reachable on 8080"
-        fi
-
-        # Scout TGI
-        if curl -fsS http://127.0.0.1:8085/v1/models >/dev/null 2>&1; then
-            print_success "TGI (Llama 4 Scout) reachable on 8085"
-        else
-            print_warning "TGI (Llama 4 Scout) not reachable on 8085"
         fi
 
         # Open WebUI
@@ -370,15 +282,6 @@ EOF
         if command -v ollama >/dev/null 2>&1; then
             ollama run phi4 "test" >/tmp/ollama-smoke.log 2>/dev/null && print_success "Ollama phi4 smoke prompt succeeded" || print_warning "Ollama phi4 smoke prompt failed"
         fi
-        curl -fsS -X POST http://127.0.0.1:8080/v1/chat/completions \
-            -H 'Content-Type: application/json' \
-            -d '{"model":"'"${huggingfaceModelId:-deepseek-ai/DeepSeek-R1-Distill-Qwen-7B}"'","messages":[{"role":"user","content":"ping"}],"max_tokens":10}' >/tmp/tgi-8080-smoke.log 2>/dev/null &&
-            print_success "TGI 8080 (DeepSeek) smoke prompt succeeded" || print_warning "TGI 8080 (DeepSeek) smoke prompt failed"
-
-        curl -fsS -X POST http://127.0.0.1:8085/v1/chat/completions \
-            -H 'Content-Type: application/json' \
-            -d '{"model":"'"${huggingfaceScoutModelId:-meta-llama/Llama-4-Scout-17B-16E}"'","messages":[{"role":"user","content":"ping"}],"max_tokens":10}' >/tmp/tgi-8085-smoke.log 2>/dev/null &&
-            print_success "TGI 8085 (Scout) smoke prompt succeeded" || print_warning "TGI 8085 (Scout) smoke prompt failed"
     fi
 
     echo ""
@@ -470,7 +373,8 @@ EOF
     echo "  • Python AI/ML environment"
     echo "  • Development CLI tools (100+)"
     echo "  • Claude Code integration"
-    echo "  • System services (Gitea, Qdrant, Ollama, TGI)"
+    echo "  • System services (Gitea)"
+    echo "  • Podman AI stack (Ollama, Open WebUI, Qdrant, MindsDB)"
     echo ""
 
     # ========================================================================
@@ -486,8 +390,9 @@ EOF
     echo -e "     ${YELLOW}exec zsh${NC}"
     echo ""
 
-    echo -e "  ${GREEN}2.${NC} Verify system services:"
-    echo -e "     ${YELLOW}systemctl status ollama qdrant gitea huggingface-tgi${NC}"
+    echo -e "  ${GREEN}2.${NC} Verify services:"
+    echo -e "     ${YELLOW}systemctl status gitea${NC}"
+    echo -e "     ${YELLOW}podman-ai-stack status${NC}"
     echo ""
 
     echo -e "  ${GREEN}3.${NC} Check user services:"
