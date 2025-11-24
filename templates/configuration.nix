@@ -24,13 +24,18 @@
 { config, pkgs, lib, nixAiToolsPackages ? {}, ... }:
 
 let
+  localAiStackEnabled = LOCAL_AI_STACK_ENABLED_PLACEHOLDER;
   huggingfaceStateDirName = "huggingface";
   huggingfaceDataDir = "/var/lib/${huggingfaceStateDirName}";
   huggingfaceCacheDir = "${huggingfaceDataDir}/cache";
   huggingfaceSecretDir = "/var/lib/nixos-quick-deploy/secrets";
   huggingfaceTokenEnvFile = "${huggingfaceSecretDir}/huggingface-tgi.env";
-  huggingfaceModelId = "meta-llama/Meta-Llama-3-8B-Instruct";
-  huggingfaceImage = "ghcr.io/huggingface/text-generation-inference:latest";
+  huggingfaceModelId = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B";
+  huggingfaceImage = "ghcr.io/huggingface/text-generation-inference:1.4.3";
+  huggingfaceScoutStateDirName = "huggingface-scout";
+  huggingfaceScoutDataDir = "/var/lib/${huggingfaceScoutStateDirName}";
+  huggingfaceScoutCacheDir = "${huggingfaceScoutDataDir}/cache";
+  huggingfaceScoutModelId = "meta-llama/Llama-4-Scout-17B-16E";
   qdrantStateDirName = "qdrant";
   qdrantStateDir = "/var/lib/${qdrantStateDirName}";
   qdrantContainerUid = "1000";
@@ -54,6 +59,22 @@ let
       -e QDRANT__TELEMETRY_DISABLED=true \
       docker.io/qdrant/qdrant:latest
   '';
+  huggingfacePrefetchScript = pkgs.writeShellScript "huggingface-tgi-prefetch" ''
+    set -euo pipefail
+
+    ${pkgs.coreutils}/bin/mkdir -p "${huggingfaceDataDir}" "${huggingfaceCacheDir}"
+    ${pkgs.coreutils}/bin/mkdir -p "${huggingfaceScoutDataDir}" "${huggingfaceScoutCacheDir}"
+
+    if ${pkgs.podman}/bin/podman image exists ${lib.escapeShellArg huggingfaceImage}; then
+      exit 0
+    fi
+
+    echo "Prefetching ${huggingfaceImage} to avoid switch-time pulls..."
+    ${pkgs.podman}/bin/podman pull ${lib.escapeShellArg huggingfaceImage}
+  '';
+  # Obsolete: Modern TGI downloads models automatically on startup
+  # The 'download-weights' command no longer exists in newer TGI versions
+  # Model caching is now handled by the Phase 5 HuggingFace CLI downloads
   huggingfacePrepScript = pkgs.writeShellScript "huggingface-tgi-prep" ''
     set -euo pipefail
     state_root="''${STATE_DIRECTORY:-${huggingfaceDataDir}}"
@@ -63,7 +84,10 @@ let
     ${pkgs.coreutils}/bin/mkdir -p "''${state_root}" "''${cache_root}"
 
     ${pkgs.podman}/bin/podman rm -f huggingface-tgi >/dev/null 2>&1 || true
-    ${pkgs.podman}/bin/podman pull ${lib.escapeShellArg huggingfaceImage}
+    if ! ${pkgs.podman}/bin/podman image exists ${lib.escapeShellArg huggingfaceImage}; then
+      echo "huggingface-tgi image ${huggingfaceImage} missing; prefetch runs during activation to avoid switch stalls." >&2
+      exit 1
+    fi
   '';
   huggingfaceStartScript = pkgs.writeShellScript "huggingface-tgi-start" ''
     set -euo pipefail
@@ -88,6 +112,47 @@ let
   '';
   huggingfaceStopScript = pkgs.writeShellScript "huggingface-tgi-stop" ''
     ${pkgs.podman}/bin/podman stop huggingface-tgi >/dev/null 2>&1 || true
+  '';
+  huggingfaceScoutPrepScript = pkgs.writeShellScript "huggingface-tgi-scout-prep" ''
+    set -euo pipefail
+    state_root="''${STATE_DIRECTORY:-${huggingfaceScoutDataDir}}"
+    cache_root="''${CACHE_DIRECTORY:-${huggingfaceScoutCacheDir}}"
+
+    ${pkgs.coreutils}/bin/mkdir -p "${huggingfaceScoutDataDir}" "${huggingfaceScoutCacheDir}"
+    ${pkgs.coreutils}/bin/mkdir -p "''${state_root}" "''${cache_root}"
+
+    ${pkgs.podman}/bin/podman rm -f huggingface-tgi-scout >/dev/null 2>&1 || true
+    if ! ${pkgs.podman}/bin/podman image exists ${lib.escapeShellArg huggingfaceImage}; then
+      echo "huggingface-tgi-scout image ${huggingfaceImage} missing; prefetch runs during activation to avoid switch stalls." >&2
+      exit 1
+    fi
+  '';
+  # Obsolete: Modern TGI downloads models automatically on startup
+  # The 'download-weights' command no longer exists in newer TGI versions
+  # Model caching is now handled by the Phase 5 HuggingFace CLI downloads
+  huggingfaceScoutStartScript = pkgs.writeShellScript "huggingface-tgi-scout-start" ''
+    set -euo pipefail
+    state_root="''${STATE_DIRECTORY:-${huggingfaceScoutDataDir}}"
+    cache_root="''${CACHE_DIRECTORY:-${huggingfaceScoutCacheDir}}"
+
+    ${pkgs.coreutils}/bin/mkdir -p "${huggingfaceScoutDataDir}" "${huggingfaceScoutCacheDir}"
+    ${pkgs.coreutils}/bin/mkdir -p "''${state_root}" "''${cache_root}"
+
+    exec ${pkgs.podman}/bin/podman run \
+      --rm \
+      --name huggingface-tgi-scout \
+      --net host \
+      -v "''${state_root}:/data" \
+      -e HF_HOME=/data \
+      -e HUGGINGFACE_HUB_CACHE=/data/cache \
+      -e TRANSFORMERS_CACHE=/data/cache \
+      ${lib.escapeShellArg huggingfaceImage} \
+      --model-id ${lib.escapeShellArg huggingfaceScoutModelId} \
+      --port 8085 \
+      --num-shard 1
+  '';
+  huggingfaceScoutStopScript = pkgs.writeShellScript "huggingface-tgi-scout-stop" ''
+    ${pkgs.podman}/bin/podman stop huggingface-tgi-scout >/dev/null 2>&1 || true
   '';
   ollamaStateDir = "/var/lib/ollama";
   giteaStateDir = "/var/lib/gitea";
@@ -538,67 +603,11 @@ in
   @GLF_GAMING_STACK_SECTION@
 
   # ========================================================================
-  # Local AI Runtime (Hugging Face & Ollama)
-  # ========================================================================
-
-  services.ollama = {
-    enable = true;
-    package = pkgs.ollama;
-  };
-
-  systemd.services.ollama = {
-    environment = {
-      HF_HOME = huggingfaceDataDir;
-      HUGGINGFACE_HUB_CACHE = huggingfaceCacheDir;
-      TRANSFORMERS_CACHE = huggingfaceCacheDir;
-    };
-    unitConfig = {
-      # Increase restart limits for large system changes
-      StartLimitBurst = 10;
-      StartLimitIntervalSec = 900;  # 15 minutes
-    };
-    serviceConfig = {
-      # Increase timeouts to handle slow starts during system changes
-      RestartSec = 30;
-      TimeoutStartSec = 300;  # 5 minutes
-      MemoryAccounting = lib.mkForce true;
-      IOAccounting = lib.mkForce true;
-      TasksAccounting = lib.mkForce true;
-      LimitNOFILE = lib.mkForce 1048576;
-      LimitNPROC = lib.mkForce 8192;
-      # Hardening
-      ProtectSystem = lib.mkForce "full";
-      ProtectHome = lib.mkForce true;
-      ProtectControlGroups = lib.mkForce true;
-      ProtectKernelLogs = lib.mkForce true;
-      ProtectKernelModules = lib.mkForce true;
-      ProtectKernelTunables = lib.mkForce true;
-      ProtectClock = lib.mkForce true;
-      PrivateTmp = lib.mkForce true;
-      PrivateDevices = lib.mkForce true;
-      PrivateMounts = lib.mkForce true;
-      NoNewPrivileges = lib.mkForce true;
-      LockPersonality = lib.mkForce true;
-      MemoryDenyWriteExecute = lib.mkForce true;
-      RestrictAddressFamilies = lib.mkForce [ "AF_UNIX" "AF_INET" "AF_INET6" ];
-      RestrictRealtime = lib.mkForce true;
-      RestrictSUIDSGID = lib.mkForce true;
-      SystemCallArchitectures = lib.mkForce "native";
-      SystemCallFilter = lib.mkForce [ "@system-service" "~@privileged" ];
-      ProcSubset = lib.mkForce "pid";
-      ProtectProc = lib.mkForce "invisible";
-      UMask = lib.mkForce "0077";
-      ReadWritePaths = lib.mkForce [
-        ollamaStateDir
-      ];
-    };
-  };
-
-  # ========================================================================
   # Qdrant Vector Database Service
   # ========================================================================
   # Qdrant service module doesn't exist in NixOS 25.05, so we create a custom systemd service
-  systemd.services.qdrant = {
+  # Only enable system-level qdrant when user-level AI stack is DISABLED (to avoid port conflicts)
+  systemd.services.qdrant = lib.mkIf (!localAiStackEnabled) {
     description = "Qdrant Vector Database";
     documentation = [
       "https://qdrant.tech/documentation/"
@@ -683,14 +692,20 @@ in
     };
   };
 
-  systemd.services.huggingface-tgi = {
+  system.activationScripts.huggingfacePrefetch = lib.mkIf localAiStackEnabled ''
+    ${huggingfacePrefetchScript} || true
+    # Model prefetch scripts removed - modern TGI downloads models automatically on startup
+    # The old 'download-weights' command no longer exists in newer TGI versions
+  '';
+
+  systemd.services.huggingface-tgi = lib.mkIf localAiStackEnabled {
     description = "Hugging Face Text Generation Inference";
     documentation = [
       "https://huggingface.co/docs/text-generation-inference/en/index"
       "https://search.nixos.org/options?channel=25.05&show=systemd.services"
     ];
-    # Disabled by default - enable manually with: sudo systemctl enable --now huggingface-tgi
-    # wantedBy = [ "multi-user.target" ];
+    # Enabled by default so local OpenAI-compatible endpoint is ready after switch
+    wantedBy = [ "multi-user.target" ];
     wants = [ "network-online.target" "podman.service" "podman.socket" ];
     after = [ "network-online.target" "podman.service" "podman.socket" ];
     restartTriggers = [ huggingfaceStartScript huggingfacePrepScript huggingfaceStopScript ];
@@ -715,25 +730,29 @@ in
       TasksAccounting = lib.mkForce true;
       LimitNOFILE = lib.mkForce 262144;
       LimitNPROC = lib.mkForce 16384;
-      ProtectSystem = lib.mkForce "full";
-      ProtectHome = lib.mkForce true;
-      ProtectControlGroups = lib.mkForce true;
-      ProtectKernelLogs = lib.mkForce true;
-      ProtectKernelModules = lib.mkForce true;
-      ProtectKernelTunables = lib.mkForce true;
-      ProtectClock = lib.mkForce true;
-      PrivateTmp = lib.mkForce true;
-      PrivateMounts = lib.mkForce true;
-      NoNewPrivileges = lib.mkForce true;
-      LockPersonality = lib.mkForce true;
-      MemoryDenyWriteExecute = lib.mkForce true;
-      RestrictAddressFamilies = lib.mkForce [ "AF_UNIX" "AF_INET" "AF_INET6" ];
-      RestrictRealtime = lib.mkForce true;
-      RestrictSUIDSGID = lib.mkForce true;
+      # Podman requires access to cgroups, /proc/sys, and namespace APIs.
+      # Drop hardening toggles so container lifecycle can complete.
+      ProtectSystem = lib.mkForce false;
+      ProtectHome = lib.mkForce false;
+      ProtectControlGroups = lib.mkForce false;
+      ProtectKernelLogs = lib.mkForce false;
+      ProtectKernelModules = lib.mkForce false;
+      ProtectKernelTunables = lib.mkForce false;
+      ProtectClock = lib.mkForce false;
+      PrivateTmp = lib.mkForce false;
+      PrivateMounts = lib.mkForce false;
+      NoNewPrivileges = lib.mkForce false;
+      LockPersonality = lib.mkForce false;
+      MemoryDenyWriteExecute = lib.mkForce false;
+      RestrictAddressFamilies = lib.mkForce [ "AF_UNIX" "AF_INET" "AF_INET6" "AF_NETLINK" "AF_PACKET" ];
+      RestrictRealtime = lib.mkForce false;
+      RestrictSUIDSGID = lib.mkForce false;
       SystemCallArchitectures = lib.mkForce "native";
-      ProcSubset = lib.mkForce "pid";
-      ProtectProc = lib.mkForce "invisible";
-      UMask = lib.mkForce "0077";
+      # ProcSubset = "pid" prevents access to /proc/sys which Podman needs
+      # for capabilities checking. Must be "all" for container runtimes.
+      ProcSubset = lib.mkForce "all";
+      ProtectProc = lib.mkForce "default";
+      UMask = lib.mkForce "0027";
       ReadWritePaths = lib.mkForce [
         huggingfaceDataDir
         huggingfaceCacheDir
@@ -748,6 +767,65 @@ in
       HF_HOME = "%S/${huggingfaceStateDirName}";
       HUGGINGFACE_HUB_CACHE = "%S/${huggingfaceStateDirName}/cache";
       TRANSFORMERS_CACHE = "%S/${huggingfaceStateDirName}/cache";
+    };
+  };
+
+  systemd.services."huggingface-tgi-scout" = lib.mkIf localAiStackEnabled {
+    description = "Hugging Face TGI - Llama 4 Scout";
+    documentation = [
+      "https://huggingface.co/meta-llama/Llama-4-Scout-17B-16E"
+      "https://nixOS-quick-deploy/docs"
+    ];
+    wantedBy = [ "multi-user.target" ];
+    wants = [ "network-online.target" "podman.service" "podman.socket" ];
+    after = [ "network-online.target" "podman.service" "podman.socket" ];
+    restartTriggers = [ huggingfaceScoutStartScript huggingfaceScoutPrepScript huggingfaceScoutStopScript ];
+    unitConfig = {
+      StartLimitBurst = 10;
+      StartLimitIntervalSec = 900;
+    };
+    serviceConfig = {
+      Type = "simple";
+      ExecStartPre = [ huggingfaceScoutPrepScript ];
+      ExecStart = huggingfaceScoutStartScript;
+      ExecStop = huggingfaceScoutStopScript;
+      Restart = "on-failure";
+      RestartSec = 30;
+      TimeoutStartSec = 1200;
+      TimeoutStopSec = 120;
+      WorkingDirectory = "%S/${huggingfaceScoutStateDirName}";
+      StateDirectory = huggingfaceScoutStateDirName;
+      MemoryAccounting = lib.mkForce true;
+      IOAccounting = lib.mkForce true;
+      TasksAccounting = lib.mkForce true;
+      LimitNOFILE = lib.mkForce 262144;
+      LimitNPROC = lib.mkForce 16384;
+      ProtectSystem = lib.mkForce false;
+      ProtectHome = lib.mkForce false;
+      ProtectControlGroups = lib.mkForce false;
+      ProtectKernelLogs = lib.mkForce false;
+      ProtectKernelModules = lib.mkForce false;
+      ProtectKernelTunables = lib.mkForce false;
+      ProtectClock = lib.mkForce false;
+      PrivateTmp = lib.mkForce false;
+      PrivateMounts = lib.mkForce false;
+      PrivateDevices = lib.mkForce false;
+      RestrictAddressFamilies = lib.mkForce [ "AF_UNIX" "AF_INET" "AF_INET6" "AF_NETLINK" "AF_PACKET" ];
+      RestrictNamespaces = lib.mkForce false;
+      LockPersonality = lib.mkForce false;
+      NoNewPrivileges = lib.mkForce false;
+      SystemCallArchitectures = lib.mkForce "native";
+      # ProcSubset must be "all" for Podman to access /proc/sys/kernel/cap_last_cap
+      ProcSubset = lib.mkForce "all";
+      ProtectProc = lib.mkForce "default";
+      UMask = lib.mkForce "0027";
+      ReadWritePaths = lib.mkForce [
+        huggingfaceScoutDataDir
+        "/var/lib/containers"
+        "/run/libpod"
+        "/run/podman"
+        "/run/huggingface-scout"
+      ];
     };
   };
 
@@ -967,6 +1045,10 @@ in
 
       # Hardware detection tools (for GPU detection in deployment script)
       pciutils  # Provides lspci for hardware detection
+
+      # Secret management tools (sops-nix v5.0.0)
+      sops
+      age
 
       # Essential system utilities only
       # All other tools installed via home-manager to prevent collisions
@@ -1210,32 +1292,14 @@ in
       "d /var/lib/gitea/custom 0750 gitea gitea -"
       "d /var/lib/gitea/custom/conf 0750 gitea gitea -"
     ]
+    ++ lib.optionals localAiStackEnabled [
+      "d ${huggingfaceDataDir} 0755 root root -"
+      "d ${huggingfaceCacheDir} 0755 root root -"
+      "d ${huggingfaceScoutDataDir} 0755 root root -"
+      "d ${huggingfaceScoutCacheDir} 0755 root root -"
+      "d /run/huggingface-scout 0755 root root -"
+    ]
   );
-
-  # PostgreSQL for production-grade AI applications
-  # Disabled by default - enable with: sudo systemctl enable --now postgresql
-  services.postgresql = {
-    enable = false;  # Set to true to enable
-    package = pkgs.postgresql_16;
-    enableTCPIP = true;
-    authentication = pkgs.lib.mkOverride 10 ''
-      local all all trust
-      host all all 127.0.0.1/32 scram-sha-256
-      host all all ::1/128 scram-sha-256
-    '';
-    settings = {
-      shared_buffers = "256MB";
-      effective_cache_size = "1GB";
-      work_mem = "16MB";
-      maintenance_work_mem = "128MB";
-      max_connections = 100;
-    };
-    initialScript = pkgs.writeText "postgres-init.sql" ''
-      CREATE DATABASE aidb;
-      CREATE USER aidb WITH PASSWORD 'changeme';
-      GRANT ALL PRIVILEGES ON DATABASE aidb TO aidb;
-    '';
-  };
 
   # Redis for caching and message queues
   # Disabled by default - enable with: sudo systemctl enable --now redis
@@ -1356,6 +1420,71 @@ in
     channel = "https://nixos.org/channels/nixos-@NIXOS_VERSION@";
     dates = "weekly";
     randomizedDelaySec = "1h";
+  };
+
+  # ============================================================================
+  # Secrets Management (sops-nix)
+  # ============================================================================
+  # sops-nix provides encrypted secret management using age encryption.
+  # Secrets are stored in secrets.yaml (encrypted) and made available to
+  # services via /run/secrets/
+
+  sops = {
+    defaultSopsFile = ./secrets.yaml;
+    defaultSopsFormat = "yaml";
+
+    # Age key for decryption (generated during Phase 1)
+    age.keyFile = "/home/@USER@/.config/sops/age/keys.txt";
+
+    # Define secrets and their permissions
+    secrets = {
+      # Gitea secrets
+      "gitea/secret_key" = {
+        owner = "gitea";
+        group = "gitea";
+        mode = "0400";
+      };
+      "gitea/internal_token" = {
+        owner = "gitea";
+        group = "gitea";
+        mode = "0400";
+      };
+      "gitea/lfs_jwt_secret" = {
+        owner = "gitea";
+        group = "gitea";
+        mode = "0400";
+      };
+      "gitea/jwt_secret" = {
+        owner = "gitea";
+        group = "gitea";
+        mode = "0400";
+      };
+      "gitea/admin_password" = {
+        owner = "gitea";
+        group = "gitea";
+        mode = "0400";
+      };
+
+      # Hugging Face API token
+      "huggingface/api_token" = {
+        owner = "@USER@";
+        mode = "0400";
+      };
+
+      # MCP server secrets
+      "mcp/postgres_password" = {
+        owner = "@USER@";
+        mode = "0400";
+      };
+      "mcp/redis_password" = {
+        owner = "@USER@";
+        mode = "0400";
+      };
+      "mcp/api_key" = {
+        owner = "@USER@";
+        mode = "0400";
+      };
+    };
   };
 
   # ============================================================================

@@ -517,7 +517,7 @@ Running: home-manager switch
 ✓ All Flatpak applications installed!
 ```
 
-Flatpak provisioning is now state-aware. The deployer inspects `~/.local/share/flatpak` before touching anything, keeps existing repositories intact, and only installs packages that are missing from your selected profile or the project’s core Flatpak set. To force a clean slate, pass `--flatpak-reinstall`; otherwise the run simply layers the new defaults onto your current desktop.
+Flatpak provisioning is now state-aware. The deployer inspects `~/.local/share/flatpak` before touching anything, keeps existing repositories intact, and only installs packages that are missing from your selected profile or the project’s core Flatpak set. To force a clean slate, pass `--flatpak-reinstall`; otherwise the run simply layers the new defaults onto your current desktop. Need to re-seed the Hugging Face caches used by the DeepSeek and Scout TGI services? Add `--force-hf-download` so Phase 5 wipes both caches and pulls fresh weights before the switch.
 
 Need Qalculate? It now ships from `pkgs.qalculate-qt` in the declarative package set, so the Flatpak profile stays lean even when Flathub temporarily removes the app. Goose CLI/Desktop are likewise provided by `pkgs.goose-cli`, eliminating the brittle `.deb` download in Phase 6.
 
@@ -895,7 +895,9 @@ flatpak install flathub org.mozilla.firefox
 
 ### OpenSkills Custom Tooling Hook
 
-**Note:** The deployer now creates `~/.config/openskills/install.sh` as an executable placeholder so you can script project-specific tooling (Claude helper scripts, AI-assisted workflows, etc.). Edit that file with the commands you want run during Phase 6 and keep your workflows reproducible.
+Phase 6 now installs the upstream OpenSkills automation toolkit directly from `https://github.com/numman-ali/openskills.git` (via `npm install -g openskills`). After the CLI is installed or updated, the deployer runs `~/.config/openskills/install.sh` automatically so you can layer project-specific helpers on top.
+
+**Note:** The deployer still creates `~/.config/openskills/install.sh` as an executable placeholder. Edit that file with the commands you want run during Phase 6 and keep your workflows reproducible.
 
 ### Flatpak Packages Removed Before Switch
 
@@ -910,6 +912,9 @@ flatpak install flathub org.mozilla.firefox
 # Need a full reset? Opt in before running the deployer:
 #   (1) CLI flag:
 ./nixos-quick-deploy.sh --flatpak-reinstall
+
+# Force a clean Hugging Face cache for both TGI services
+./nixos-quick-deploy.sh --force-hf-download
 #   (2) Or environment variable:
 RESET_FLATPAK_STATE_BEFORE_SWITCH=true ./nixos-quick-deploy.sh
 ```
@@ -1291,6 +1296,8 @@ Already installed but worth highlighting:
 ### This Repository
 - [Build Optimization Guide](docs/BUILD_OPTIMIZATION.md) - Choose between binary caches (20-40 min) or source builds (60-120 min)
 - [AIDB Setup Guide](docs/AIDB_SETUP.md) - Complete AIDB configuration walkthrough
+- [AI Integration Guide](docs/AI_INTEGRATION.md) - Sync docs and leverage AI-Optimizer tooling
+- [Local AI Starter Toolkit](docs/LOCAL-AI-STARTER.md) - Scaffold local agents/OpenSkills/MCP servers without private repos
 - [Agent Workflows](docs/AGENTS.md) - AI agent integration documentation
 - [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and solutions
 - [Code Review Guide](docs/CODE_REVIEW.md) - Code quality and review process

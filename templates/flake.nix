@@ -23,13 +23,21 @@
     };
     #nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
     nix-flatpak.url = "github:gmodena/nix-flatpak";
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     nixAiTools = {
       url = "github:numtide/nix-ai-tools";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    nix-vscode-extensions = {
+      url = "github:nix-community/nix-vscode-extensions";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, home-manager, nix-flatpak, nixAiTools, ... }:
+  outputs = { self, nixpkgs, home-manager, nix-flatpak, sops-nix, nixAiTools, nix-vscode-extensions, ... }:
     let
       lib = nixpkgs.lib;
       system = "SYSTEM_PLACEHOLDER";
@@ -46,6 +54,7 @@
           inherit nixAiToolsPackages;
         };
         modules = [
+          sops-nix.nixosModules.sops
           ./configuration.nix
           # Note: home-manager is used standalone (via homeConfigurations below)
           # Not as a NixOS module to avoid dependency issues during nixos-rebuild
@@ -55,12 +64,14 @@
       homeConfigurations."HOME_USERNAME_PLACEHOLDER" = home-manager.lib.homeManagerConfiguration {
         pkgs = import nixpkgs {
           inherit system;
+          overlays = [ nix-vscode-extensions.overlays.default ];
           config.allowUnfree = true;
         };
         extraSpecialArgs = {
           inherit nixAiToolsPackages;
         };
         modules = [
+          sops-nix.homeManagerModules.sops
           nix-flatpak.homeManagerModules.nix-flatpak
           ./home.nix
         ];

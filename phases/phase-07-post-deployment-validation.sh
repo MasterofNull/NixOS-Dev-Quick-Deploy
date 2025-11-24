@@ -56,10 +56,20 @@ check_required_service_active() {
         return 0
     fi
 
+    # Check if service is in failed state
+    local active_state
+    active_state=$(systemctl show "$unit" --property=ActiveState --value 2>/dev/null | tr -d '\r')
+    if [[ "$active_state" == "failed" ]]; then
+        print_error "$label service is in failed state"
+        print_info "Check logs with: journalctl -u ${unit}.service -n 50"
+        print_info "Recent error: $(systemctl status "$unit" --no-pager -l 2>/dev/null | grep -i 'failed\|error\|no such' | tail -n 1 | sed 's/^[[:space:]]*//')"
+        return 1
+    fi
+
     local unit_state
     unit_state=$(systemctl show "$unit" --property=UnitFileState --value 2>/dev/null | tr -d '\r')
     if [[ "$unit_state" =~ ^(enabled|enabled-runtime|linked)$ ]]; then
-        if [[ "$unit" == "huggingface-tgi" ]]; then
+        if [[ "$unit" == "huggingface-tgi" || "$unit" == "huggingface-tgi-scout" ]]; then
             local token_file="${HUGGINGFACE_TGI_ENV_FILE:-/var/lib/nixos-quick-deploy/secrets/huggingface-tgi.env}"
             if [[ ! -s "$token_file" ]]; then
                 print_error "HuggingFace TGI API token file missing: $token_file"
@@ -68,7 +78,7 @@ check_required_service_active() {
                 return 1
             fi
         fi
-        print_error "$label service is enabled but not running"
+        print_error "$label service is enabled but not running (state: $active_state)"
         return 1
     fi
 
@@ -109,12 +119,37 @@ check_flatpak_remote_health() {
         return 0
     fi
 
+    # Check for broken symlinks in Flatpak directories
+    local flatpak_dir="$HOME/.local/share/flatpak"
+    if [[ -L "$flatpak_dir" && ! -e "$flatpak_dir" ]]; then
+        print_warning "Detected broken Flatpak symlink - repairing..."
+        rm -f "$flatpak_dir" 2>/dev/null || true
+        flatpak repair --user >/dev/null 2>&1 || true
+    fi
+
+    # Check if repository is corrupted
+    if [[ -d "$flatpak_dir/repo" ]] && [[ ! -f "$flatpak_dir/repo/config" ]]; then
+        print_warning "Detected corrupted Flatpak repository - repairing..."
+        flatpak repair --user >/dev/null 2>&1 || true
+    fi
+
     if flatpak_remote_exists; then
         print_success "Flathub remote is configured"
         return 0
     fi
 
-    print_error "Flathub remote is missing"
+    print_warning "Flathub remote is missing - attempting to configure..."
+
+    # Try to configure Flathub automatically
+    if declare -F ensure_flathub_remote >/dev/null 2>&1; then
+        if ensure_flathub_remote; then
+            print_success "Flathub remote configured successfully"
+            return 0
+        fi
+    fi
+
+    print_warning "Flathub remote not configured yet"
+    print_info "Run: flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo"
     return 1
 }
 
@@ -225,11 +260,17 @@ phase_07_post_deployment_validation() {
         validate_gpu_driver || print_warning "GPU driver validation had issues (non-critical)"
     fi
 
-    local -a critical_services=(
-        "gitea:Gitea"
-        "ollama:Ollama"
-        "huggingface-tgi:HuggingFace TGI"
-    )
+    local -a critical_services=()
+    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
+        critical_services+=(
+            "gitea:Gitea"
+            "ollama:Ollama"
+            "huggingface-tgi:HuggingFace TGI (DeepSeek)"
+            "huggingface-tgi-scout:HuggingFace TGI (Scout)"
+        )
+    else
+        critical_services+=("gitea:Gitea")
+    fi
 
     local entry service label
     for entry in "${critical_services[@]}"; do
