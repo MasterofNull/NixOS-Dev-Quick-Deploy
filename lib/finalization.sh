@@ -61,7 +61,6 @@ apply_final_system_configuration() {
 
     local services_to_check=(
         "gitea:Git hosting service"
-        "ollama:Local AI model server"
         "postgresql:Database server"
     )
 
@@ -79,6 +78,10 @@ apply_final_system_configuration() {
             print_info "  $service_name: not configured ($service_desc)"
         fi
     done
+
+    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
+        print_info "AI inference containers (vLLM/Open WebUI/Qdrant/MindsDB) are handled by the ai-optimizer Podman stack after deployment."
+    fi
     echo ""
 
     # ========================================================================
@@ -232,7 +235,6 @@ finalize_configuration_activation() {
     # Check if critical services can start their dependencies
     local services_with_deps=(
         "gitea"
-        "ollama"
     )
 
     for service in "${services_with_deps[@]}"; do

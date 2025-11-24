@@ -932,7 +932,6 @@ print_post_install() {
 
     local services=(
         "postgresql:Database server"
-        "ollama:AI model server"
         "gitea:Git hosting"
     )
 
@@ -950,6 +949,16 @@ print_post_install() {
             echo -e "  ${GRAY}−${NC} $service: not configured ($desc)"
         fi
     done
+
+    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
+        echo ""
+        echo "  Podman AI stack containers (vLLM/Open WebUI/Qdrant/MindsDB) are launched by the ai-optimizer workflow."
+        if command -v podman-ai-stack >/dev/null 2>&1; then
+            echo "  Run 'podman-ai-stack status' after deployment to view their health."
+        else
+            echo "  Install/configure ai-optimizer to pull and start the containers when ready."
+        fi
+    fi
     echo ""
 
     # ========================================================================
