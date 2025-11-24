@@ -685,6 +685,54 @@ EOF
 
     export IMPERATIVE_INSTALLS_ALLOWED="$previous_imperative_flag"
 
+    # ========================================================================
+    # Step 1.18: Initialize Secrets Infrastructure
+    # ========================================================================
+    # Install age and sops for secrets encryption (required for Phase 3)
+    # This ensures secrets management is ready before configuration generation
+    print_section "Secrets Infrastructure Setup"
+    echo ""
+
+    print_info "Installing secrets management dependencies..."
+
+    # Install age for encryption
+    if ! command -v age-keygen >/dev/null 2>&1; then
+        print_info "Installing age..."
+        if nix-env -iA nixpkgs.age 2>&1 | tee -a "$LOG_FILE"; then
+            print_success "age installed"
+        else
+            print_warning "age installation via nix-env failed, trying nix profile..."
+            nix profile install nixpkgs#age 2>&1 | tee -a "$LOG_FILE" || print_warning "Failed to install age"
+        fi
+    else
+        print_success "age already installed"
+    fi
+
+    # Install sops for secret management
+    if ! command -v sops >/dev/null 2>&1; then
+        print_info "Installing sops..."
+        if nix-env -iA nixpkgs.sops 2>&1 | tee -a "$LOG_FILE"; then
+            print_success "sops installed"
+        else
+            print_warning "sops installation via nix-env failed, trying nix profile..."
+            nix profile install nixpkgs#sops 2>&1 | tee -a "$LOG_FILE" || print_warning "Failed to install sops"
+        fi
+    else
+        print_success "sops already installed"
+    fi
+
+    # Generate age key if it doesn't exist
+    if declare -F init_sops >/dev/null 2>&1; then
+        print_info "Initializing sops infrastructure..."
+        if init_sops 2>&1 | tee -a "$LOG_FILE"; then
+            print_success "Secrets infrastructure initialized"
+        else
+            print_warning "Secrets initialization had issues (non-fatal, will retry in Phase 3)"
+        fi
+    else
+        print_info "Secrets management will be initialized in Phase 3"
+    fi
+
     # ------------------------------------------------------------------------
     # Mark Phase Complete
     # ------------------------------------------------------------------------
