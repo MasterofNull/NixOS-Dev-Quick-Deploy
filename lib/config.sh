@@ -3743,6 +3743,17 @@ EOF
 )
     fi
 
+    local huggingface_model_id_default="deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
+    local huggingface_model_id="${HUGGINGFACE_MODEL_ID:-$huggingface_model_id_default}"
+    local huggingface_scout_model_id_default="meta-llama/Llama-4-Scout-17B-16E"
+    local huggingface_scout_model_id="${HUGGINGFACE_SCOUT_MODEL_ID:-$huggingface_scout_model_id_default}"
+    local huggingface_tgi_endpoint_default="http://127.0.0.1:8000"
+    local huggingface_tgi_endpoint="${HUGGINGFACE_TGI_ENDPOINT:-$huggingface_tgi_endpoint_default}"
+    local huggingface_scout_tgi_endpoint_default="http://127.0.0.1:8001"
+    local huggingface_scout_tgi_endpoint="${HUGGINGFACE_SCOUT_TGI_ENDPOINT:-$huggingface_scout_tgi_endpoint_default}"
+    local huggingface_tgi_container_endpoint_default="http://host.containers.internal:8000"
+    local huggingface_tgi_container_endpoint="${HUGGINGFACE_TGI_CONTAINER_ENDPOINT:-$huggingface_tgi_container_endpoint_default}"
+
     replace_placeholder "$HOME_MANAGER_FILE" "VERSIONPLACEHOLDER" "${SCRIPT_VERSION:-4.0.0}"
     replace_placeholder "$HOME_MANAGER_FILE" "HASHPLACEHOLDER" "$TEMPLATE_HASH"
     replace_placeholder "$HOME_MANAGER_FILE" "HOMEUSERNAME" "$USER"
@@ -3755,6 +3766,11 @@ EOF
     # replace_placeholder "$HOME_MANAGER_FILE" "@PODMAN_ROOTLESS_STORAGE@" "${PODMAN_ROOTLESS_STORAGE_BLOCK:-}"
     replace_placeholder "$HOME_MANAGER_FILE" "GIT_USER_SETTINGS_PLACEHOLDER" "$git_user_settings_block"
     replace_placeholder "$HOME_MANAGER_FILE" "LOCAL_AI_STACK_ENABLED_PLACEHOLDER" "${LOCAL_AI_STACK_ENABLED:-false}"
+    replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_MODEL_ID_PLACEHOLDER" "$(nix_quote_string "$huggingface_model_id")"
+    replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_SCOUT_MODEL_ID_PLACEHOLDER" "$(nix_quote_string "$huggingface_scout_model_id")"
+    replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_TGI_ENDPOINT_PLACEHOLDER" "$(nix_quote_string "$huggingface_tgi_endpoint")"
+    replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_SCOUT_TGI_ENDPOINT_PLACEHOLDER" "$(nix_quote_string "$huggingface_scout_tgi_endpoint")"
+    replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_TGI_CONTAINER_ENDPOINT_PLACEHOLDER" "$(nix_quote_string "$huggingface_tgi_container_endpoint")"
 
     local HOME_HOSTNAME=$(hostname)
     replace_placeholder "$HOME_MANAGER_FILE" "@HOSTNAME@" "$HOME_HOSTNAME"

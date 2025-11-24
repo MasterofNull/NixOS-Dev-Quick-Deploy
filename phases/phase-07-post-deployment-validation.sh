@@ -69,15 +69,6 @@ check_required_service_active() {
     local unit_state
     unit_state=$(systemctl show "$unit" --property=UnitFileState --value 2>/dev/null | tr -d '\r')
     if [[ "$unit_state" =~ ^(enabled|enabled-runtime|linked)$ ]]; then
-        if [[ "$unit" == "huggingface-tgi" || "$unit" == "huggingface-tgi-scout" ]]; then
-            local token_file="${HUGGINGFACE_TGI_ENV_FILE:-/var/lib/nixos-quick-deploy/secrets/huggingface-tgi.env}"
-            if [[ ! -s "$token_file" ]]; then
-                print_error "HuggingFace TGI API token file missing: $token_file"
-                print_info "Create it with: sudo install -m600 /dev/null \"$token_file\" && echo 'HF_TOKEN=hf_xxx' | sudo tee -a \"$token_file\""
-                print_info "Add HUGGINGFACEHUB_API_TOKEN=hf_xxx to the same file if you use gated models."
-                return 1
-            fi
-        fi
         print_error "$label service is enabled but not running (state: $active_state)"
         return 1
     fi
@@ -260,17 +251,7 @@ phase_07_post_deployment_validation() {
         validate_gpu_driver || print_warning "GPU driver validation had issues (non-critical)"
     fi
 
-    local -a critical_services=()
-    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
-        critical_services+=(
-            "gitea:Gitea"
-            "ollama:Ollama"
-            "huggingface-tgi:HuggingFace TGI (DeepSeek)"
-            "huggingface-tgi-scout:HuggingFace TGI (Scout)"
-        )
-    else
-        critical_services+=("gitea:Gitea")
-    fi
+    local -a critical_services=("gitea:Gitea")
 
     local entry service label
     for entry in "${critical_services[@]}"; do
