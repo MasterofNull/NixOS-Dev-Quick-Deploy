@@ -439,17 +439,10 @@ load_existing_huggingface_token() {
         return 0
     fi
 
-    local env_file="${HUGGINGFACE_TGI_ENV_FILE:-/var/lib/nixos-quick-deploy/secrets/huggingface-tgi.env}"
     local home_token_file="$PRIMARY_HOME/.config/huggingface/token"
     local token=""
 
-    if [[ -r "$env_file" ]]; then
-        token=$(awk -F'=' '/^(HF_TOKEN|HUGGINGFACEHUB_API_TOKEN)=/{print $2; exit}' "$env_file" 2>/dev/null | tr -d '\r')
-    elif sudo -n test -r "$env_file" 2>/dev/null; then
-        token=$(sudo -n awk -F'=' '/^(HF_TOKEN|HUGGINGFACEHUB_API_TOKEN)=/{print $2; exit}' "$env_file" 2>/dev/null | tr -d '\r')
-    fi
-
-    if [[ -z "$token" && -r "$home_token_file" ]]; then
+    if [[ -r "$home_token_file" ]]; then
         token=$(head -n1 "$home_token_file" 2>/dev/null | tr -d '\r')
     fi
 
@@ -464,26 +457,21 @@ load_existing_huggingface_token() {
 
 ensure_huggingface_token_file() {
     local token="$1"
-    local env_file="${HUGGINGFACE_TGI_ENV_FILE:-/var/lib/nixos-quick-deploy/secrets/huggingface-tgi.env}"
-    local env_dir
-    env_dir="$(dirname "$env_file")"
+    local home_token_file="$PRIMARY_HOME/.config/huggingface/token"
 
     if [[ -z "$token" ]]; then
         return 0
     fi
 
-    if sudo -n true 2>/dev/null || sudo true 2>/dev/null; then
-        sudo mkdir -p "$env_dir"
-        sudo tee "$env_file" >/dev/null <<EOF
-HF_TOKEN=${token}
-HUGGINGFACEHUB_API_TOKEN=${token}
-EOF
-        sudo chmod 600 "$env_file"
-    else
-        print_warning "Unable to store Hugging Face token at $env_file automatically (sudo not available). Create it manually if you want TGI online."
-        return 1
+    if safe_mkdir "$(dirname "$home_token_file")"; then
+        printf '%s\n' "$token" >"$home_token_file"
+        chmod 600 "$home_token_file" 2>/dev/null || true
+        safe_chown_user_dir "$home_token_file" || true
+        return 0
     fi
-    return 0
+
+    print_warning "Unable to store Hugging Face token at $home_token_file automatically."
+    return 1
 }
 
 prompt_huggingface_token() {

@@ -1305,9 +1305,6 @@ stop_managed_services_before_switch() {
     NQD_STOPPED_USER_UNITS=()
 
     local -a system_units=(
-        "qdrant.service"
-        "huggingface-tgi.service"
-        "ollama.service"
         "gitea.service"
         "podman.service"
         "podman.socket"
