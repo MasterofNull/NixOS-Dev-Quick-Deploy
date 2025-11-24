@@ -37,6 +37,40 @@ readonly SECRETS_BACKUP_DIR="${SECRETS_STATE_DIR}/backups"
 readonly PLAIN_SECRETS_DIR="${HOME}/.cache/nixos-quick-deploy/preferences"
 
 # ============================================================================
+# Helper Utilities
+# ============================================================================
+
+ensure_secrets_dependency() {
+    local command_name="$1"
+    local nix_attr="${2:-}"
+    local friendly_name="${3:-$command_name}"
+    local flake_ref="${4:-}"
+
+    if command -v "$command_name" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if [[ -n "$nix_attr" && -x "$(command -v nix-env 2>/dev/null || true)" ]]; then
+        log INFO "Installing ${friendly_name} via nix-env ($nix_attr)..."
+        if nix-env -iA "$nix_attr" 2>&1 | tee -a "$LOG_FILE"; then
+            return 0
+        fi
+        log WARNING "nix-env failed to install ${friendly_name}"
+    fi
+
+    if [[ -n "$flake_ref" && -x "$(command -v nix 2>/dev/null || true)" ]]; then
+        log INFO "Installing ${friendly_name} via nix profile install ($flake_ref)..."
+        if nix profile install --accept-flake-config "$flake_ref" 2>&1 | tee -a "$LOG_FILE"; then
+            return 0
+        fi
+        log WARNING "nix profile failed to install ${friendly_name}"
+    fi
+
+    log ERROR "${friendly_name} is required but was not installed automatically. Install it manually (e.g., nix profile install --accept-flake-config ${flake_ref:-nixpkgs#$command_name}) and rerun."
+    return 1
+}
+
+# ============================================================================
 # AGE KEY MANAGEMENT
 # ============================================================================
 
@@ -56,8 +90,11 @@ generate_age_key() {
 
     # Generate new age key
     if ! command -v age-keygen >/dev/null 2>&1; then
-        log ERROR "age-keygen not found. Install age package first."
-        return 1
+        log WARNING "age-keygen not found. Attempting to install age tooling automatically."
+        if ! ensure_secrets_dependency "age-keygen" "nixpkgs.age" "age (age-keygen)" "nixpkgs#age"; then
+            log ERROR "age-keygen not found. Install age package first."
+            return 1
+        fi
     fi
 
     if age-keygen -o "$SOPS_AGE_KEY_FILE" 2>&1 | tee -a "$LOG_FILE"; then
@@ -219,8 +256,8 @@ init_sops() {
 
     # Verify sops is available
     if ! command -v sops >/dev/null 2>&1; then
-        log ERROR "sops not found. Installing via nix-env temporarily..."
-        if ! nix-env -iA nixpkgs.sops 2>&1 | tee -a "$LOG_FILE"; then
+        log WARNING "sops binary not found; attempting automatic installation."
+        if ! ensure_secrets_dependency "sops" "nixpkgs.sops" "sops" "nixpkgs#sops"; then
             log ERROR "Failed to install sops"
             return 1
         fi
