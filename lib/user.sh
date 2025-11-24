@@ -415,6 +415,147 @@ configure_git_identity() {
 }
 
 # ============================================================================
+# Hugging Face token + local AI stack preferences
+# ============================================================================
+persist_local_ai_stack_preferences() {
+    safe_mkdir "$DEPLOYMENT_PREFERENCES_DIR" || return 1
+    printf 'LOCAL_AI_STACK_ENABLED=%s\n' "${LOCAL_AI_STACK_ENABLED:-false}" >"$LOCAL_AI_STACK_PREFERENCE_FILE"
+}
+
+persist_huggingface_token_preferences() {
+    safe_mkdir "$DEPLOYMENT_PREFERENCES_DIR" || return 1
+    if [[ -n "${HUGGINGFACEHUB_API_TOKEN:-}" ]]; then
+        cat >"$HUGGINGFACE_TOKEN_PREFERENCE_FILE" <<EOF
+HUGGINGFACEHUB_API_TOKEN=${HUGGINGFACEHUB_API_TOKEN}
+EOF
+    else
+        rm -f "$HUGGINGFACE_TOKEN_PREFERENCE_FILE" 2>/dev/null || true
+    fi
+}
+
+load_existing_huggingface_token() {
+    # Prefer in-memory/env or cached preference first
+    if [[ -n "${HUGGINGFACEHUB_API_TOKEN:-}" ]]; then
+        return 0
+    fi
+
+    local env_file="${HUGGINGFACE_TGI_ENV_FILE:-/var/lib/nixos-quick-deploy/secrets/huggingface-tgi.env}"
+    local home_token_file="$PRIMARY_HOME/.config/huggingface/token"
+    local token=""
+
+    if [[ -r "$env_file" ]]; then
+        token=$(awk -F'=' '/^(HF_TOKEN|HUGGINGFACEHUB_API_TOKEN)=/{print $2; exit}' "$env_file" 2>/dev/null | tr -d '\r')
+    elif sudo -n test -r "$env_file" 2>/dev/null; then
+        token=$(sudo -n awk -F'=' '/^(HF_TOKEN|HUGGINGFACEHUB_API_TOKEN)=/{print $2; exit}' "$env_file" 2>/dev/null | tr -d '\r')
+    fi
+
+    if [[ -z "$token" && -r "$home_token_file" ]]; then
+        token=$(head -n1 "$home_token_file" 2>/dev/null | tr -d '\r')
+    fi
+
+    if [[ -n "$token" ]]; then
+        HUGGINGFACEHUB_API_TOKEN="$token"
+        export HUGGINGFACEHUB_API_TOKEN
+        return 0
+    fi
+
+    return 1
+}
+
+ensure_huggingface_token_file() {
+    local token="$1"
+    local env_file="${HUGGINGFACE_TGI_ENV_FILE:-/var/lib/nixos-quick-deploy/secrets/huggingface-tgi.env}"
+    local env_dir
+    env_dir="$(dirname "$env_file")"
+
+    if [[ -z "$token" ]]; then
+        return 0
+    fi
+
+    if sudo -n true 2>/dev/null || sudo true 2>/dev/null; then
+        sudo mkdir -p "$env_dir"
+        sudo tee "$env_file" >/dev/null <<EOF
+HF_TOKEN=${token}
+HUGGINGFACEHUB_API_TOKEN=${token}
+EOF
+        sudo chmod 600 "$env_file"
+    else
+        print_warning "Unable to store Hugging Face token at $env_file automatically (sudo not available). Create it manually if you want TGI online."
+        return 1
+    fi
+    return 0
+}
+
+prompt_huggingface_token() {
+    local mode="${1:---interactive}"
+    local interactive="true"
+
+    case "$mode" in
+        --noninteractive|--hydrate)
+            interactive="false"
+            ;;
+        --interactive)
+            interactive="true"
+            ;;
+        *)
+            interactive="true"
+            ;;
+    esac
+
+    # Hydrate from existing system files if available
+    load_existing_huggingface_token || true
+
+    # Respect previously stored selection when running non-interactively
+    if [[ "$interactive" == "false" ]]; then
+        if [[ -n "${HUGGINGFACEHUB_API_TOKEN:-}" ]]; then
+            LOCAL_AI_STACK_ENABLED="true"
+        else
+            LOCAL_AI_STACK_ENABLED="false"
+        fi
+        persist_local_ai_stack_preferences || true
+        persist_huggingface_token_preferences || true
+        return 0
+    fi
+
+    print_section "Hugging Face Token (Optional)"
+    print_info "Provide a Hugging Face access token to enable the local AI stack (TGI, Ollama/Open WebUI integration, Continue presets)."
+    print_info "Leave blank to skip configuring and starting locally hosted AI agents."
+
+    if [[ -n "${HUGGINGFACEHUB_API_TOKEN:-}" ]]; then
+        print_info "Detected an existing Hugging Face token; press Enter to keep it or enter a new one."
+    fi
+
+    local token_input
+    token_input=$(prompt_secret "Hugging Face token (blank to disable local AI stack)")
+
+    if [[ -z "$token_input" ]]; then
+        if [[ -n "${HUGGINGFACEHUB_API_TOKEN:-}" ]]; then
+            token_input="$HUGGINGFACEHUB_API_TOKEN"
+        fi
+    fi
+
+    if [[ -z "$token_input" ]]; then
+        LOCAL_AI_STACK_ENABLED="false"
+        unset HUGGINGFACEHUB_API_TOKEN
+        persist_local_ai_stack_preferences || true
+        persist_huggingface_token_preferences || true
+        print_warning "Local AI stack disabled (no Hugging Face token provided)."
+        return 0
+    fi
+
+    HUGGINGFACEHUB_API_TOKEN="$token_input"
+    LOCAL_AI_STACK_ENABLED="true"
+    export HUGGINGFACEHUB_API_TOKEN LOCAL_AI_STACK_ENABLED
+
+    persist_local_ai_stack_preferences || true
+    persist_huggingface_token_preferences || true
+    ensure_huggingface_token_file "$token_input" || true
+
+    print_success "Hugging Face token captured; local AI stack will be configured."
+    return 0
+}
+
+# ============================================================================
 # Session-Wide User Settings Initialization
 # ============================================================================
 ensure_user_settings_ready() {
@@ -483,6 +624,10 @@ ensure_user_settings_ready() {
         if ! ensure_gitea_secrets_ready "$prompt_flag"; then
             return 1
         fi
+    fi
+
+    if declare -F prompt_huggingface_token >/dev/null 2>&1; then
+        prompt_huggingface_token "$prompt_flag" || true
     fi
 
     USER_SETTINGS_INITIALIZED="true"

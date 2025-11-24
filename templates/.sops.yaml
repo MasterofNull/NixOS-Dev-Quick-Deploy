@@ -1,0 +1,28 @@
+# =============================================================================
+# SOPS Configuration File
+# =============================================================================
+# This file configures how sops encrypts secrets for this system.
+# It uses age encryption (modern, simple, secure).
+#
+# Age key location: ~/.config/sops/age/keys.txt
+# Public keys are derived from the private key.
+#
+# Placeholder: AGE_PUBLIC_KEY_PLACEHOLDER
+# =============================================================================
+
+keys:
+  # System age key (generated during Phase 1)
+  - &system_key AGE_PUBLIC_KEY_PLACEHOLDER
+
+creation_rules:
+  # Default rule: encrypt all files in this directory
+  - path_regex: secrets\.yaml$
+    age: *system_key
+
+  # Environment-specific secrets (future)
+  - path_regex: secrets/.*\.yaml$
+    age: *system_key
+
+  # MCP server secrets
+  - path_regex: mcp-secrets\.yaml$
+    age: *system_key

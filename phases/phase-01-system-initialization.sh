@@ -355,6 +355,16 @@ phase_01_system_initialization() {
         fi
     fi
 
+    if declare -F discover_resume_offset_hint >/dev/null 2>&1; then
+        local resume_offset_hint=""
+        resume_offset_hint=$(discover_resume_offset_hint 2>/dev/null || echo "")
+        if [[ -n "$resume_offset_hint" ]]; then
+            RESUME_OFFSET_HINT="$resume_offset_hint"
+            export RESUME_OFFSET_HINT
+            print_info "Detected resume offset hint: $RESUME_OFFSET_HINT"
+        fi
+    fi
+
     if [[ "$ENABLE_ZSWAP_CONFIGURATION" != "true" && "$zswap_override_mode" == "auto" ]]; then
         if confirm "Enable zswap-backed swap with hibernation support for this deployment?" "y"; then
             ENABLE_ZSWAP_CONFIGURATION="true"
