@@ -292,6 +292,12 @@ assert_unique_paths() {
 # More efficient than [[ ]] for numeric comparisons
 # ============================================================================
 check_disk_space() {
+    if [[ "${SKIP_DISK_SPACE_CHECK:-false}" == "true" ]]; then
+        log WARNING "Disk space check skipped (SKIP_DISK_SPACE_CHECK=true)"
+        print_warning "Skipping disk space validation at user request"
+        return 0
+    fi
+
     # Get required space from global configuration variable
     local required_gb=$REQUIRED_DISK_SPACE_GB
 
