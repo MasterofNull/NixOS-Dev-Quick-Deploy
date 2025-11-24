@@ -48,7 +48,6 @@ let
   huggingfaceTgiEndpoint = HUGGINGFACE_TGI_ENDPOINT_PLACEHOLDER;
   huggingfaceScoutTgiEndpoint = HUGGINGFACE_SCOUT_TGI_ENDPOINT_PLACEHOLDER;
   huggingfaceTgiContainerEndpoint = HUGGINGFACE_TGI_CONTAINER_ENDPOINT_PLACEHOLDER;
-  localAiStackEnabled = LOCAL_AI_STACK_ENABLED_PLACEHOLDER;
   # vLLM OpenAI-compatible endpoints (configured in ai-optimizer)
   vllmPrimaryEndpoint = "http://127.0.0.1:8000/v1";  # Primary vLLM instance
   vllmSecondaryEndpoint = "http://127.0.0.1:8001/v1";  # Secondary vLLM instance (if needed)
@@ -2493,7 +2492,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
     "${podmanAiStackDataDir}/qdrant/.keep".text = "";
     "${podmanAiStackDataDir}/mindsdb/.keep".text = "";
   }
-  // (lib.mkIf localAiStackEnabled {
+    // (lib.mkIf LOCAL_AI_STACK_ENABLED_PLACEHOLDER {
     ".config/systemd/user/podman-local-ai-network.service.d/override.conf".text = ''
       [Unit]
       X-SwitchMethod=keep-old
@@ -3344,7 +3343,7 @@ PLUGINCFG
       '';
     };
 
-  services.podman = lib.mkIf localAiStackEnabled {
+  services.podman = lib.mkIf LOCAL_AI_STACK_ENABLED_PLACEHOLDER {
     enable = true;
 
     # Rootless storage tuning for AI stack containers
