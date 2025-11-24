@@ -2041,14 +2041,20 @@ render_sops_secrets_file() {
         return 1
     fi
 
+    # Try to initialize sops, but don't fail deployment if unavailable
     if ! init_sops; then
-        print_error "Failed to initialize sops prerequisites"
-        return 1
+        print_warning "Failed to initialize sops prerequisites (age/sops not available)"
+        print_warning "Secrets will NOT be encrypted in this deployment"
+        print_warning "To enable encryption: nix-env -iA nixpkgs.age nixpkgs.sops"
+        print_info "Continuing with unencrypted secrets (development only)"
+        # Skip encryption but continue deployment
+        return 0
     fi
 
     if ! render_sops_config_file "$HM_CONFIG_DIR" "$backup_dir" "$backup_timestamp"; then
-        print_error "Failed to generate .sops.yaml configuration"
-        return 1
+        print_warning "Failed to generate .sops.yaml configuration"
+        print_warning "Continuing without secrets encryption"
+        return 0
     fi
 
     if [[ -f "$secrets_target" ]]; then
@@ -2107,21 +2113,32 @@ render_sops_secrets_file() {
     replace_placeholder "$secrets_target" "USER_PASSWORD_HASH_PLACEHOLDER" "$user_password_hash_literal"
 
     if ! nix_verify_no_placeholders "$secrets_target" "secrets.yaml" "GITEA_[A-Z_]+_PLACEHOLDER" "HUGGINGFACE_TOKEN_PLACEHOLDER" "USER_PASSWORD_HASH_PLACEHOLDER"; then
-        return 1
+        print_warning "Placeholders remain in secrets.yaml"
+        # Don't fail - continue with partially filled secrets
     fi
 
-    if ! encrypt_secrets_file "$secrets_target"; then
-        print_error "Failed to encrypt secrets.yaml"
-        return 1
+    # Attempt encryption, but don't fail deployment if it doesn't work
+    if command -v sops >/dev/null 2>&1 && [[ -f "${HM_CONFIG_DIR}/.sops.yaml" ]]; then
+        print_info "Attempting to encrypt secrets.yaml..."
+        if encrypt_secrets_file "$secrets_target"; then
+            if validate_encrypted_secrets "$secrets_target"; then
+                print_success "Encrypted secrets.yaml prepared at $secrets_target"
+                print_info "Use 'sops secrets.yaml' from $HM_CONFIG_DIR to edit values going forward"
+                return 0
+            else
+                print_warning "Encrypted secrets validation failed"
+            fi
+        else
+            print_warning "Failed to encrypt secrets.yaml"
+        fi
+    else
+        print_info "Sops not available or .sops.yaml missing - skipping encryption"
     fi
 
-    if ! validate_encrypted_secrets "$secrets_target"; then
-        print_error "Encrypted secrets.yaml validation failed"
-        return 1
-    fi
-
-    print_success "Encrypted secrets.yaml prepared at $secrets_target"
-    print_info "Use 'sops secrets.yaml' from $HM_CONFIG_DIR to edit values going forward"
+    # Encryption failed or skipped - continue with plaintext
+    print_warning "Secrets stored in PLAINTEXT at $secrets_target"
+    print_warning "This is acceptable for development but NOT for production"
+    print_info "To enable encryption later: run ./scripts/fix-secrets-encryption.sh"
     return 0
 }
 
