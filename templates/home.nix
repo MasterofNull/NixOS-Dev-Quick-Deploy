@@ -60,7 +60,10 @@ let
   podmanAiStackNetworkName = "local-ai";
   podmanAiStackLabelKey = "nixos.quick-deploy.ai-stack";
   podmanAiStackLabelValue = "true";
+  podmanAiStackOllamaContainerName = "${podmanAiStackNetworkName}-ollama";
   podmanAiStackOpenWebUiContainerName = "${podmanAiStackNetworkName}-open-webui";
+  podmanAiStackQdrantContainerName = "${podmanAiStackNetworkName}-qdrant";
+  podmanAiStackMindsdbContainerName = "${podmanAiStackNetworkName}-mindsdb";
   podmanEnsureImage = image:
     let
       sanitized = lib.replaceStrings [ "/" ":" "." "@" ] [ "-" "-" "-" "-" ] image;
