@@ -48,6 +48,7 @@ let
   huggingfaceTgiEndpoint = HUGGINGFACE_TGI_ENDPOINT_PLACEHOLDER;
   huggingfaceScoutTgiEndpoint = HUGGINGFACE_SCOUT_TGI_ENDPOINT_PLACEHOLDER;
   huggingfaceTgiContainerEndpoint = HUGGINGFACE_TGI_CONTAINER_ENDPOINT_PLACEHOLDER;
+  localAiStackEnabled = LOCAL_AI_STACK_ENABLED_PLACEHOLDER;
   # vLLM OpenAI-compatible endpoints (configured in ai-optimizer)
   vllmPrimaryEndpoint = "http://127.0.0.1:8000/v1";  # Primary vLLM instance
   vllmSecondaryEndpoint = "http://127.0.0.1:8001/v1";  # Secondary vLLM instance (if needed)
