@@ -53,27 +53,45 @@ ensure_secrets_dependency() {
     local friendly_name="${3:-$command_name}"
     local flake_ref="${4:-}"
 
+    # Check if already installed
     if command -v "$command_name" >/dev/null 2>&1; then
+        log INFO "${friendly_name} already available at $(command -v $command_name)"
         return 0
     fi
 
+    log WARNING "${friendly_name} not found, attempting automatic installation..."
+
+    # Try nix-env first
     if [[ -n "$nix_attr" && -x "$(command -v nix-env 2>/dev/null || true)" ]]; then
         log INFO "Installing ${friendly_name} via nix-env ($nix_attr)..."
-        if nix-env -iA "$nix_attr" 2>&1 | tee -a "$LOG_FILE"; then
-            return 0
+        if nix-env -iA "$nix_attr" >/dev/null 2>&1; then
+            # Verify installation
+            if command -v "$command_name" >/dev/null 2>&1; then
+                log INFO "${friendly_name} installed successfully via nix-env"
+                return 0
+            fi
         fi
-        log WARNING "nix-env failed to install ${friendly_name}"
+        log WARNING "nix-env installation failed or incomplete"
     fi
 
+    # Try nix profile install
     if [[ -n "$flake_ref" && -x "$(command -v nix 2>/dev/null || true)" ]]; then
-        log INFO "Installing ${friendly_name} via nix profile install ($flake_ref)..."
-        if nix profile install --accept-flake-config "$flake_ref" 2>&1 | tee -a "$LOG_FILE"; then
-            return 0
+        log INFO "Installing ${friendly_name} via nix profile ($flake_ref)..."
+        if nix profile install --accept-flake-config "$flake_ref" >/dev/null 2>&1; then
+            # Verify installation
+            if command -v "$command_name" >/dev/null 2>&1; then
+                log INFO "${friendly_name} installed successfully via nix profile"
+                return 0
+            fi
         fi
-        log WARNING "nix profile failed to install ${friendly_name}"
+        log WARNING "nix profile installation failed or incomplete"
     fi
 
-    log ERROR "${friendly_name} is required but was not installed automatically. Install it manually (e.g., nix profile install --accept-flake-config ${flake_ref:-nixpkgs#$command_name}) and rerun."
+    # Installation failed
+    log ERROR "${friendly_name} could not be installed automatically"
+    log ERROR "Manual installation required:"
+    log ERROR "  nix-env -iA ${nix_attr:-nixpkgs.$command_name}"
+    log ERROR "  OR: nix profile install ${flake_ref:-nixpkgs#$command_name}"
     return 1
 }
 
