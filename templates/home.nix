@@ -64,6 +64,10 @@ let
   podmanAiStackOpenWebUiContainerName = "${podmanAiStackNetworkName}-open-webui";
   podmanAiStackQdrantContainerName = "${podmanAiStackNetworkName}-qdrant";
   podmanAiStackMindsdbContainerName = "${podmanAiStackNetworkName}-mindsdb";
+  qdrantHttpPort = 6333;
+  qdrantGrpcPort = 6334;
+  mindsdbApiPort = 47334;
+  mindsdbGuiPort = 7735;
   podmanEnsureImage = image:
     let
       sanitized = lib.replaceStrings [ "/" ":" "." "@" ] [ "-" "-" "-" "-" ] image;

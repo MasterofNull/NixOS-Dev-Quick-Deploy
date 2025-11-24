@@ -146,7 +146,7 @@ phase_03_config_generation() {
     # - imports: Include other .nix files
     # - boot: Bootloader configuration
     # - networking: Hostname, firewall
-    # - services: Systemd services (postgres, ollama, etc.)
+    # - services: Systemd services (postgres, gitea, etc.)
     # - users: User account definitions
     # - environment.systemPackages: System-wide packages
     # - hardware: GPU drivers, kernel modules
