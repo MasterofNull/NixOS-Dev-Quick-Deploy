@@ -443,7 +443,8 @@ __COSMIC_BLACKLIST_ENTRIES__
       ++ glfMangoHudCommonEntries;
   };
   glfMangoHudProfile = "__MANGOHUD_PROFILE__";
-  glfMangoHudEntries = glfMangoHudPresets.__MANGOHUD_PROFILE__;
+  glfMangoHudEntries =
+    lib.attrByPath [ glfMangoHudProfile ] [] glfMangoHudPresets;
   glfMangoHudHasEntries = glfMangoHudEntries != [];
   glfMangoHudConfigFileContents =
     if !glfMangoHudHasEntries then
@@ -2738,6 +2739,17 @@ EOF
 )
     fi
 
+    local resume_offset_hint=""
+    if [[ "${RESUME_OFFSET_HINT:-}" =~ ^[0-9]+$ && "${RESUME_OFFSET_HINT:-}" -gt 0 ]]; then
+        resume_offset_hint="$RESUME_OFFSET_HINT"
+        print_info "Preserving resume offset hint: $resume_offset_hint"
+    fi
+
+    local resume_offset_line=""
+    if [[ -n "$resume_offset_hint" ]]; then
+        printf -v resume_offset_line '        "resume_offset=%s"\n' "$resume_offset_hint"
+    fi
+
     local kernel_modules_placeholder=""
     local kernel_modules_header="      # Kernel modules automatically loaded for generated services"
     local -a kernel_module_lines=()
@@ -2826,12 +2838,13 @@ EOF
     print_info "Preserving legacy network performance sysctl overrides."
 
     local kernel_params_block
-    kernel_params_block=$(cat <<'EOF'
+    kernel_params_block=$(cat <<EOF
     kernelParams = lib.mkAfter (
       (lib.optional (lib.elem "kvm-amd" config.boot.kernelModules) "amd_pstate=active")
       ++ [
         "nosplit_lock_mitigate"
         "clearcpuid=514"
+${resume_offset_line}
 
         # Quiet boot (cleaner boot messages)
         "quiet"
@@ -2903,6 +2916,7 @@ EOF
         "zswap.compressor=${zswap_compressor}"
         "zswap.max_pool_percent=${zswap_percent}"
         "zswap.zpool=${zswap_zpool}"
+${resume_offset_line}
 
         # Quiet boot (cleaner boot messages)
         "quiet"
@@ -3192,6 +3206,7 @@ EOF
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_ADMIN_PASSWORD@" "$gitea_admin_password_literal"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_ADMIN_USER@" "$gitea_admin_user_literal"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_ADMIN_EMAIL@" "$gitea_admin_email_literal"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "LOCAL_AI_STACK_ENABLED_PLACEHOLDER" "${LOCAL_AI_STACK_ENABLED:-false}"
 
     if ! nix_verify_no_placeholders "$SYSTEM_CONFIG_FILE" "configuration.nix"; then
         return 1
@@ -3504,7 +3519,27 @@ EOF
         return 1
     fi
 
-    build_rootless_podman_storage_block
+    # NOTE: build_rootless_podman_storage_block() is no longer used.
+    # Podman storage configuration is now defined directly in templates/home.nix
+    # within the services.podman block to avoid duplicate attribute errors.
+    # build_rootless_podman_storage_block
+
+    local git_user_settings_block="{ }"
+    if [[ -n "${GIT_USER_NAME:-}" && -n "${GIT_USER_EMAIL:-}" ]]; then
+        local git_user_name_literal
+        local git_user_email_literal
+        git_user_name_literal=$(nix_quote_string "$GIT_USER_NAME")
+        git_user_email_literal=$(nix_quote_string "$GIT_USER_EMAIL")
+        git_user_settings_block=$(cat <<EOF
+{
+        user = {
+          name = ${git_user_name_literal};
+          email = ${git_user_email_literal};
+        };
+      }
+EOF
+)
+    fi
 
     replace_placeholder "$HOME_MANAGER_FILE" "VERSIONPLACEHOLDER" "${SCRIPT_VERSION:-4.0.0}"
     replace_placeholder "$HOME_MANAGER_FILE" "HASHPLACEHOLDER" "$TEMPLATE_HASH"
@@ -3514,7 +3549,10 @@ EOF
     replace_placeholder "$HOME_MANAGER_FILE" "@GPU_MONITORING_PACKAGES@" "$GPU_MONITORING_PACKAGES"
     replace_placeholder "$HOME_MANAGER_FILE" "@GLF_HOME_DEFINITIONS@" "$glf_home_definitions"
     replace_placeholder "$HOME_MANAGER_FILE" "@FLATPAK_MANAGED_PACKAGES@" "$flatpak_packages_block"
-    replace_placeholder "$HOME_MANAGER_FILE" "@PODMAN_ROOTLESS_STORAGE@" "${PODMAN_ROOTLESS_STORAGE_BLOCK:-}"
+    # NOTE: @PODMAN_ROOTLESS_STORAGE@ placeholder removed from template to avoid duplicate services.podman
+    # replace_placeholder "$HOME_MANAGER_FILE" "@PODMAN_ROOTLESS_STORAGE@" "${PODMAN_ROOTLESS_STORAGE_BLOCK:-}"
+    replace_placeholder "$HOME_MANAGER_FILE" "GIT_USER_SETTINGS_PLACEHOLDER" "$git_user_settings_block"
+    replace_placeholder "$HOME_MANAGER_FILE" "LOCAL_AI_STACK_ENABLED_PLACEHOLDER" "${LOCAL_AI_STACK_ENABLED:-false}"
 
     local HOME_HOSTNAME=$(hostname)
     replace_placeholder "$HOME_MANAGER_FILE" "@HOSTNAME@" "$HOME_HOSTNAME"

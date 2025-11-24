@@ -79,6 +79,73 @@ phase_08_finalization_and_report() {
     # PART 1: SYSTEM HEALTH CHECK
     # ========================================================================
 
+    # Ensure Hugging Face token file exists for TGI
+    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
+        local hf_env_file="${HUGGINGFACE_TGI_ENV_FILE:-/var/lib/nixos-quick-deploy/secrets/huggingface-tgi.env}"
+        local hf_env_dir
+        hf_env_dir="$(dirname "$hf_env_file")"
+        local hf_token="${HUGGINGFACEHUB_API_TOKEN:-}"
+        if [[ -z "$hf_token" && -f "$HOME/.config/huggingface/token" ]]; then
+            hf_token="$(head -n1 "$HOME/.config/huggingface/token" 2>/dev/null | tr -d '\r')"
+        fi
+
+        if [[ -n "$hf_token" ]]; then
+            if sudo mkdir -p "$hf_env_dir" && \
+               echo -e "HF_TOKEN=${hf_token}\nHUGGINGFACEHUB_API_TOKEN=${hf_token}" | sudo tee "$hf_env_file" >/dev/null; then
+                sudo chmod 600 "$hf_env_file" || true
+                print_success "Ensured Hugging Face token file at $hf_env_file"
+            else
+                print_warning "Failed to write Hugging Face token to $hf_env_file; verify sudo access and rerun."
+            fi
+        else
+            print_warning "HUGGINGFACEHUB_API_TOKEN not set and no ~/.config/huggingface/token found; TGI may fail to start."
+        fi
+    fi
+
+    # Pre-pull Podman AI stack images to avoid timeouts during service startup
+    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]] && command -v podman >/dev/null 2>&1; then
+        print_info "Pre-pulling AI stack images (ollama, open-webui, qdrant)..."
+        local -a images=(
+            "docker.io/ollama/ollama:latest"
+            "ghcr.io/open-webui/open-webui:latest"
+            "docker.io/qdrant/qdrant:latest"
+        )
+        local img
+        for img in "${images[@]}"; do
+            if podman image exists "$img" >/dev/null 2>&1; then
+                continue
+            fi
+            if podman pull "$img"; then
+                print_success "Pulled $img"
+            else
+                print_warning "Failed to pull $img; service startup may retry/pull."
+            fi
+        done
+        echo ""
+    fi
+
+    # Start Podman-based AI stack now that the generation has been switched, so health checks see running services.
+    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
+        print_info "Starting Podman-based AI stack services (manual autoStart)"
+        # Disable HF transfer acceleration if inherited from the environment to avoid missing hf_transfer.
+        export HF_HUB_ENABLE_HF_TRANSFER=0
+        local -a podman_units=(
+            "podman-local-ai-network.service"
+            "podman-local-ai-ollama.service"
+            "podman-local-ai-qdrant.service"
+            "podman-local-ai-open-webui.service"
+        )
+        local unit
+        for unit in "${podman_units[@]}"; do
+            if systemctl --user start "$unit" 2>/dev/null; then
+                print_success "Started $unit"
+            else
+                print_warning "Failed to start $unit; check: journalctl --user -u $unit"
+            fi
+        done
+        echo ""
+    fi
+
     print_section "Part 1: System Health Check"
     echo ""
 
@@ -145,6 +212,175 @@ phase_08_finalization_and_report() {
     # - Clean up temporary files
     finalize_configuration_activation
 
+    # ========================================================================
+    # Step 8.4: Enable AI Services and Pull Ollama Models
+    # ========================================================================
+    # Note: Hugging Face models were already downloaded in Phase 5 (before system switch)
+    # so that TGI services start with cached models. Here we just enable services
+    # and pull Ollama models (which require the API to be running).
+    print_section "Step 8.4: Enable AI Services and Pull Ollama Models"
+
+    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" != "true" ]]; then
+        print_warning "Local AI stack disabled; skipping AI service setup."
+    else
+        # Create systemd drop-ins to increase timeout for large container startups
+        print_info "Creating service timeout overrides for Ollama and Open WebUI..."
+        mkdir -p "$HOME/.config/systemd/user/podman-local-ai-ollama.service.d"
+        mkdir -p "$HOME/.config/systemd/user/podman-local-ai-open-webui.service.d"
+
+        cat > "$HOME/.config/systemd/user/podman-local-ai-ollama.service.d/timeout.conf" <<'EOF'
+[Service]
+# Increase timeout for large container (Ollama is 3.75GB)
+TimeoutStartSec=300
+EOF
+
+        cat > "$HOME/.config/systemd/user/podman-local-ai-open-webui.service.d/timeout.conf" <<'EOF'
+[Service]
+# Increase timeout for large container (Open WebUI is 4.38GB)
+TimeoutStartSec=300
+EOF
+
+        systemctl --user daemon-reload
+        print_success "Timeout overrides created"
+
+        # Enable user-level Podman units for the AI stack
+        print_info "Enabling Podman AI stack services (network, Ollama, Qdrant, Open WebUI)..."
+        systemctl --user enable --now podman-local-ai-network.service podman-local-ai-ollama.service podman-local-ai-qdrant.service podman-local-ai-open-webui.service >/dev/null 2>&1 || true
+
+        # Pull Ollama models (requires API to be running)
+        if ! command -v curl >/dev/null 2>&1 || ! curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+            print_info "Waiting for Ollama API to become available..."
+            local retry=0
+            local max_retries=10
+            until curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 || [[ $retry -ge $max_retries ]]; do
+                sleep 3
+                ((retry++))
+            done
+        fi
+
+        if command -v curl >/dev/null 2>&1 && curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+            print_success "Ollama API is available"
+            # Keep Ollama preloads lean: single lightweight model for quick testing
+            local -a ollama_models=("phi4")
+            local ollama_model
+            local existing_tags=""
+            existing_tags="$(curl -fsS http://127.0.0.1:11434/api/tags 2>/dev/null || true)"
+            for ollama_model in "${ollama_models[@]}"; do
+                if [[ "${FORCE_OLLAMA_PULL:-false}" != "true" ]] && printf '%s' "$existing_tags" | grep -q "\"name\"\s*:\s*\"${ollama_model}\""; then
+                    print_success "Ollama model already present: $ollama_model (skipping)"
+                    continue
+                fi
+                print_info "Pulling Ollama model: $ollama_model"
+                if ollama pull "$ollama_model"; then
+                    print_success "Pulled $ollama_model"
+                else
+                    print_warning "Ollama pull failed for $ollama_model (check connectivity or GPU drivers)"
+                fi
+            done
+        else
+            print_warning "Ollama API not reachable; skipping model pulls"
+            print_info "Start manually with: systemctl --user start podman-local-ai-ollama.service"
+        fi
+
+        if command -v systemctl >/dev/null 2>&1; then
+            if systemctl list-unit-files | grep -q '^huggingface-tgi\\.service'; then
+                print_info "Enabling Hugging Face TGI system service"
+                if sudo systemctl enable --now huggingface-tgi 2>/dev/null; then
+                    sleep 3  # Give service time to start
+                    if systemctl is-active --quiet huggingface-tgi 2>/dev/null; then
+                        print_success "HuggingFace TGI service started successfully"
+                    else
+                        local tgi_status=$(systemctl show huggingface-tgi --property=ActiveState --value 2>/dev/null | tr -d '\r')
+                        if [[ "$tgi_status" == "failed" ]]; then
+                            print_error "HuggingFace TGI service failed to start"
+                            print_info "Check logs: journalctl -u huggingface-tgi.service -n 30"
+                            local error_msg=$(systemctl status huggingface-tgi --no-pager -l 2>/dev/null | grep -i "No such file or directory" | tail -n 1 | sed 's/^[[:space:]]*//')
+                            if [[ -n "$error_msg" ]]; then
+                                print_info "Error: $error_msg"
+                                print_info "This may require a system reboot or nixos-rebuild switch to create missing directories"
+                            fi
+                        else
+                            print_warning "HuggingFace TGI service is not active (status: $tgi_status)"
+                        fi
+                    fi
+                else
+                    print_warning "Unable to enable/start huggingface-tgi service automatically"
+                fi
+            fi
+            if systemctl list-unit-files | grep -q '^huggingface-tgi-scout\\.service'; then
+                print_info "Enabling Hugging Face TGI Scout service"
+                if sudo systemctl enable --now huggingface-tgi-scout 2>/dev/null; then
+                    sleep 3  # Give service time to start
+                    if systemctl is-active --quiet huggingface-tgi-scout 2>/dev/null; then
+                        print_success "HuggingFace TGI Scout service started successfully"
+                    else
+                        local scout_status=$(systemctl show huggingface-tgi-scout --property=ActiveState --value 2>/dev/null | tr -d '\r')
+                        if [[ "$scout_status" == "failed" ]]; then
+                            print_error "HuggingFace TGI Scout service failed to start"
+                            print_info "Check logs: journalctl -u huggingface-tgi-scout.service -n 30"
+                            local error_msg=$(systemctl status huggingface-tgi-scout --no-pager -l 2>/dev/null | grep -i "No such file or directory" | tail -n 1 | sed 's/^[[:space:]]*//')
+                            if [[ -n "$error_msg" ]]; then
+                                print_info "Error: $error_msg"
+                                print_info "This may require a system reboot or nixos-rebuild switch to create missing directories"
+                            fi
+                        else
+                            print_warning "HuggingFace TGI Scout service is not active (status: $scout_status)"
+                        fi
+                    fi
+                else
+                    print_warning "Unable to enable/start huggingface-tgi-scout service automatically"
+                fi
+            fi
+        fi
+
+        # Health checks for all endpoints
+        print_section "Local AI endpoint health checks"
+
+        # Ollama
+        if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+            print_success "Ollama API reachable on 11434"
+            curl -fsS http://127.0.0.1:11434/api/tags 2>/dev/null | jq -r '.models[].name' | sed 's/^/  - /' || true
+        else
+            print_warning "Ollama API not reachable on 11434"
+        fi
+
+        # DeepSeek TGI
+        if curl -fsS http://127.0.0.1:8080/v1/models >/dev/null 2>&1; then
+            print_success "TGI (DeepSeek) reachable on 8080"
+        else
+            print_warning "TGI (DeepSeek) not reachable on 8080"
+        fi
+
+        # Scout TGI
+        if curl -fsS http://127.0.0.1:8085/v1/models >/dev/null 2>&1; then
+            print_success "TGI (Llama 4 Scout) reachable on 8085"
+        else
+            print_warning "TGI (Llama 4 Scout) not reachable on 8085"
+        fi
+
+        # Open WebUI
+        if curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1:8081 2>/dev/null | grep -q '^200$'; then
+            print_success "Open WebUI reachable on 8081"
+        else
+            print_warning "Open WebUI not reachable on 8081"
+        fi
+
+        # Optional lightweight smoke prompts (do not fail deployment)
+        print_section "Local AI smoke prompts (best-effort)"
+        if command -v ollama >/dev/null 2>&1; then
+            ollama run phi4 "test" >/tmp/ollama-smoke.log 2>/dev/null && print_success "Ollama phi4 smoke prompt succeeded" || print_warning "Ollama phi4 smoke prompt failed"
+        fi
+        curl -fsS -X POST http://127.0.0.1:8080/v1/chat/completions \
+            -H 'Content-Type: application/json' \
+            -d '{"model":"'"${huggingfaceModelId:-deepseek-ai/DeepSeek-R1-Distill-Qwen-7B}"'","messages":[{"role":"user","content":"ping"}],"max_tokens":10}' >/tmp/tgi-8080-smoke.log 2>/dev/null &&
+            print_success "TGI 8080 (DeepSeek) smoke prompt succeeded" || print_warning "TGI 8080 (DeepSeek) smoke prompt failed"
+
+        curl -fsS -X POST http://127.0.0.1:8085/v1/chat/completions \
+            -H 'Content-Type: application/json' \
+            -d '{"model":"'"${huggingfaceScoutModelId:-meta-llama/Llama-4-Scout-17B-16E}"'","messages":[{"role":"user","content":"ping"}],"max_tokens":10}' >/tmp/tgi-8085-smoke.log 2>/dev/null &&
+            print_success "TGI 8085 (Scout) smoke prompt succeeded" || print_warning "TGI 8085 (Scout) smoke prompt failed"
+    fi
+
     echo ""
     print_success "System finalization complete"
     echo ""
@@ -195,7 +431,7 @@ phase_08_finalization_and_report() {
     echo ""
 
     # ========================================================================
-    # Step 8.4: Generate Comprehensive Post-Install Report
+    # Step 8.5: Generate Comprehensive Post-Install Report
     # ========================================================================
     # Detailed information about what was installed:
     # - NixOS generation information
@@ -206,7 +442,7 @@ phase_08_finalization_and_report() {
     print_post_install
 
     # ========================================================================
-    # Step 8.5: Display Success Banner
+    # Step 8.6: Display Success Banner
     # ========================================================================
     echo ""
     echo -e "${GREEN}╔════════════════════════════════════════════════════════════════╗${NC}"
@@ -215,7 +451,7 @@ phase_08_finalization_and_report() {
     echo ""
 
     # ========================================================================
-    # Step 8.6: Configuration Status Summary
+    # Step 8.7: Configuration Status Summary
     # ========================================================================
     print_info "Configuration Status:"
     echo -e "  ${GREEN}✓${NC} NixOS system configuration applied"
@@ -225,7 +461,7 @@ phase_08_finalization_and_report() {
     echo ""
 
     # ========================================================================
-    # Step 8.7: Installed Components List
+    # Step 8.8: Installed Components List
     # ========================================================================
     print_info "Installed Components:"
     echo "  • COSMIC Desktop Environment"
@@ -238,7 +474,7 @@ phase_08_finalization_and_report() {
     echo ""
 
     # ========================================================================
-    # Step 8.8: Next Steps Guide
+    # Step 8.9: Next Steps Guide
     # ========================================================================
     local git_identity_hint="${GIT_IDENTITY_PREFERENCE_FILE:-$DEPLOYMENT_PREFERENCES_DIR/git-identity.env}"
     local gitea_secrets_hint="${GITEA_SECRETS_CACHE_FILE:-$PRIMARY_HOME/.config/nixos-quick-deploy/gitea-secrets.env}"
@@ -284,7 +520,7 @@ phase_08_finalization_and_report() {
 
 
     # ========================================================================
-    # Step 8.9: Reboot Recommendation (Conditional)
+    # Step 8.10: Reboot Recommendation (Conditional)
     # ========================================================================
     # Recommend reboot if kernel/init system updated
     if [[ -L "/run/booted-system" && -L "/run/current-system" ]]; then
@@ -298,7 +534,7 @@ phase_08_finalization_and_report() {
     fi
 
     # ========================================================================
-    # Step 8.10: Configuration File Locations
+    # Step 8.11: Configuration File Locations
     # ========================================================================
     print_info "Configuration Files:"
     echo "  • System: $SYSTEM_CONFIG_FILE"
@@ -308,7 +544,7 @@ phase_08_finalization_and_report() {
     echo ""
 
     # ========================================================================
-    # Step 8.11: Logs and Troubleshooting Resources
+    # Step 8.12: Logs and Troubleshooting Resources
     # ========================================================================
     print_info "Logs & Troubleshooting:"
     echo "  • Deployment log: $LOG_FILE"

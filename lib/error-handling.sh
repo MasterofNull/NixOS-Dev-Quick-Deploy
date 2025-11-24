@@ -137,14 +137,51 @@ error_handler() {
     print_info "To resume from this point, re-run the script"
     echo ""
 
+    # Attempt to record the failure in AIDB logs if available
+    local aidb_log="${AIDB_LOG_PATH:-$HOME/.local/share/aidb/logs/deploy.log}"
+    local aidb_log_dir
+    aidb_log_dir="$(dirname "$aidb_log")"
+    if [[ -d "$aidb_log_dir" ]] || safe_mkdir "$aidb_log_dir"; then
+        if touch "$aidb_log" >/dev/null 2>&1; then
+            local ts
+            ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+            {
+                echo "timestamp=$ts phase=${CURRENT_PHASE_NUM:-unknown} func=${function_name:-unknown} line=$line_number exit=$exit_code"
+                echo "command=${BASH_COMMAND}"
+                echo "---"
+            } >>"$aidb_log" 2>/dev/null || print_warning "Unable to append to AIDB log at $aidb_log"
+        else
+            print_warning "AIDB log location not writable ($aidb_log); error not recorded to AIDB."
+        fi
+    else
+        print_warning "AIDB log directory missing/unwritable ($aidb_log_dir); error not recorded to AIDB."
+    fi
+
     # ========================================================================
     # Rollback data notice (automatic rollback disabled)
     # ========================================================================
     if [[ -f "$ROLLBACK_INFO_FILE" ]]; then
         echo ""
-        print_info "Rollback information recorded at $ROLLBACK_INFO_FILE"
-        print_info "Automatic rollback has been disabled for post-installation checks."
-        print_info "Review the recorded state if you need to make manual adjustments."
+        if [[ "${AUTO_ROLLBACK_ENABLED:-false}" == true && "${ROLLBACK_IN_PROGRESS:-false}" != true && "${AUTO_ROLLBACK_SUPPRESSED:-false}" != true ]]; then
+            # Skip automatic rollback for the final health check (Phase 8) or when phase context is unknown.
+            local current_phase="${CURRENT_PHASE_NUM:-}"
+            if [[ -n "$current_phase" && "$current_phase" -lt 8 ]]; then
+                print_info "Attempting automatic rollback to last known good state (phase $current_phase failed)."
+                trap - ERR  # avoid recursive traps during rollback
+                AUTO_ROLLBACK_REQUESTED=true
+                ROLLBACK_IN_PROGRESS=true
+                export AUTO_ROLLBACK_REQUESTED ROLLBACK_IN_PROGRESS
+                if ! perform_rollback; then
+                    print_warning "Automatic rollback encountered issues; manual intervention may be required."
+                fi
+            else
+                print_info "Rollback information recorded at $ROLLBACK_INFO_FILE"
+                print_info "Automatic rollback skipped (final health check or unknown phase)."
+            fi
+        else
+            print_info "Rollback information recorded at $ROLLBACK_INFO_FILE"
+            print_info "Automatic rollback not enabled for this run."
+        fi
         echo ""
     fi
 

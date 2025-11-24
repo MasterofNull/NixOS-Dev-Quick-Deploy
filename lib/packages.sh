@@ -297,6 +297,14 @@ ensure_preflight_core_packages() {
         return 1
     fi
 
+    if ! ensure_prerequisite_installed "hf" "nixpkgs#python3Packages.huggingface-hub" "hf (Hugging Face CLI)"; then
+        return 1
+    fi
+
+    if ! ensure_prerequisite_installed "huggingface-cli" "nixpkgs#python3Packages.huggingface-hub" "huggingface-cli (Hugging Face legacy CLI)"; then
+        return 1
+    fi
+
     return 0
 }
 

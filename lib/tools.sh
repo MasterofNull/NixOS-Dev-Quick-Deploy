@@ -429,7 +429,16 @@ ensure_flatpak_user_dirs() {
     local dir
     for dir in "${required_dirs[@]}"; do
         local existed_before=true
-        if [[ ! -d "$dir" ]]; then
+
+        # Handle broken symlinks
+        if [[ -L "$dir" && ! -e "$dir" ]]; then
+            print_warning "Removing broken symlink: $dir"
+            rm -f "$dir" || {
+                print_error "Unable to remove broken symlink: $dir"
+                return 1
+            }
+            existed_before=false
+        elif [[ ! -d "$dir" ]]; then
             existed_before=false
         fi
 
@@ -828,7 +837,7 @@ flatpak_bulk_install_apps() {
     fi
 
     print_info "  Installing ${#apps[@]} Flatpak application(s) in batch..."
-    local -a install_cmd=(flatpak --noninteractive --assumeyes install --user)
+    local -a install_cmd=(flatpak --noninteractive --assumeyes --no-static-deltas install --user)
     flatpak_append_arch_flag install_cmd
     install_cmd+=("$remote_name" "${apps[@]}")
     local install_output=""
@@ -846,6 +855,30 @@ flatpak_bulk_install_apps() {
         print_flatpak_details "$install_output"
     fi
     return $install_status
+}
+
+flatpak_install_single_app() {
+    local remote_name="$1"
+    local app_id="$2"
+
+    local -a install_cmd=(flatpak --noninteractive --assumeyes --no-static-deltas install --user)
+    flatpak_append_arch_flag install_cmd
+    install_cmd+=("$remote_name" "$app_id")
+    local install_output=""
+    if flatpak_run_install_command install_output "${install_cmd[@]}"; then
+        print_success "  • Installed $app_id"
+        if [[ -n "$install_output" ]]; then
+            print_flatpak_details "$install_output"
+        fi
+        return 0
+    fi
+
+    local status=$?
+    print_warning "  ⚠ Failed to install $app_id (exit $status)"
+    if [[ -n "$install_output" ]]; then
+        print_flatpak_details "$install_output"
+    fi
+    return $status
 }
 
 flatpak_install_app_list() {
@@ -904,21 +937,40 @@ flatpak_install_app_list() {
             fi
         fi
 
-        if [[ "$process_label" == "primary" && ${#queue[@]} -gt 1 ]]; then
-            if flatpak_bulk_install_apps "$remote_name" "${queue[@]}"; then
-                local -a still_missing=()
-                for queue_app_id in "${queue[@]}"; do
-                    if ! flatpak_app_installed "$queue_app_id"; then
-                        still_missing+=("$queue_app_id")
+        local batch_size=5
+        local start=0
+        local total=${#queue[@]}
+        while [[ $start -lt $total ]]; do
+            local end=$(( start + batch_size ))
+            if [[ $end -gt $total ]]; then end=$total; fi
+            local -a batch=("${queue[@]:start:end-start}")
+
+            if [[ "$process_label" == "primary" && ${#batch[@]} -gt 1 ]]; then
+                if flatpak_bulk_install_apps "$remote_name" "${batch[@]}"; then
+                    local -a still_missing=()
+                    for queue_app_id in "${batch[@]}"; do
+                        if ! flatpak_app_installed "$queue_app_id"; then
+                            still_missing+=("$queue_app_id")
+                        fi
+                    done
+                    batch=("${still_missing[@]}")
+                fi
+            fi
+
+            if [[ ${#batch[@]} -eq 0 ]]; then
+                :
+            else
+                for queue_app_id in "${batch[@]}"; do
+                    if flatpak_install_single_app "$remote_name" "$queue_app_id"; then
+                        :
+                    else
+                        failure=1
                     fi
                 done
-                queue=("${still_missing[@]}")
             fi
-        fi
 
-        if [[ ${#queue[@]} -eq 0 ]]; then
-            continue
-        fi
+            start=$end
+        done
 
         for queue_app_id in "${queue[@]}"; do
             if [[ "${flatpak_support_status["$queue_app_id"]:-}" == "skip" ]]; then
@@ -1209,6 +1261,11 @@ install_flatpak_stage() {
         print_info "Install Flatpak or re-run home-manager switch to enable declarative apps"
         return 1
     fi
+
+    # Always use direct flatpak remote installation instead of systemd service.
+    # This avoids timeout issues with large batch installations and provides
+    # better error handling and progress reporting.
+    print_info "Using direct Flathub remote for installation (bypassing systemd service)"
 
     report_flatpak_user_state
 
@@ -2558,24 +2615,102 @@ install_vscodium_extensions() {
 install_openskills_tooling() {
     print_section "Installing OpenSkills Tooling"
 
-    print_info "OpenSkills tooling installation is project-specific"
-    print_info "This is a placeholder for custom project tools"
+    if [[ "${DRY_RUN:-false}" == true ]]; then
+        print_info "Dry-run mode enabled – skipping OpenSkills installation"
+        return 0
+    fi
 
-    # Check if there's a custom install script
-    local openskills_install_script="$HOME/.config/openskills/install.sh"
-    if [[ -f "$openskills_install_script" ]]; then
-        print_info "Found OpenSkills install script, executing..."
-        if bash "$openskills_install_script"; then
-            print_success "OpenSkills tooling installed"
-            return 0
-        else
-            print_warning "OpenSkills install script failed"
+    if ! command -v npm >/dev/null 2>&1; then
+        print_warning "npm not available; skipping OpenSkills installation"
+        return 0
+    fi
+
+    ensure_npm_global_prefix
+
+    local default_prefix
+    default_prefix="${PRIMARY_HOME:-$HOME}/.npm-global"
+    local npm_prefix="${NPM_CONFIG_PREFIX:-$default_prefix}"
+    local npm_modules="$npm_prefix/lib/node_modules"
+    local package="openskills"
+    local package_dir="$npm_modules/$package"
+
+    local current_version=""
+    if [ -f "$package_dir/package.json" ]; then
+        current_version=$(node -e "const pkg=require(process.argv[1]); if(pkg && pkg.version){console.log(pkg.version);}" "$package_dir/package.json" 2>/dev/null || echo "")
+    fi
+
+    local latest_version=""
+    latest_version=$(run_as_primary_user npm view "$package" version 2>/dev/null || echo "")
+
+    local need_install=false
+    if [[ "${FORCE_UPDATE:-false}" == true ]]; then
+        need_install=true
+    elif [[ -z "$current_version" ]]; then
+        need_install=true
+    elif [[ -n "$latest_version" && "$current_version" != "$latest_version" ]]; then
+        print_info "OpenSkills update available: $current_version → $latest_version"
+        need_install=true
+    fi
+
+    if [[ "$need_install" == true ]]; then
+        print_info "Installing OpenSkills via npm..."
+        local log_file="${LOG_DIR:-/tmp}/openskills-npm-install.log"
+        mkdir -p "$(dirname "$log_file")" 2>/dev/null || true
+        run_as_primary_user env NPM_CONFIG_PREFIX="$npm_prefix" npm install -g "$package" 2>&1 | tee "$log_file"
+        local npm_status=${PIPESTATUS[0]}
+        if [[ $npm_status -ne 0 ]]; then
+            print_error "OpenSkills npm install failed (exit code $npm_status)"
+            print_detail "See $log_file for details"
             return 1
+        fi
+        current_version=$(node -e "const pkg=require(process.argv[1]); if(pkg && pkg.version){console.log(pkg.version);}" "$package_dir/package.json" 2>/dev/null || echo "")
+        print_success "OpenSkills tooling installed${current_version:+ (v$current_version)}"
+    else
+        print_success "OpenSkills already up-to-date (v${current_version:-unknown})"
+    fi
+
+    local hook_home="${PRIMARY_HOME:-$HOME}"
+    local hook_path="$hook_home/.config/openskills/install.sh"
+    if [[ -x "$hook_path" ]]; then
+        print_info "Running OpenSkills custom hook: $hook_path"
+        if ! HOME="$hook_home" bash "$hook_path"; then
+            print_warning "OpenSkills custom hook reported errors"
         fi
     fi
 
-    print_info "No custom OpenSkills tooling configured"
-    print_info "Create $openskills_install_script to add custom tools"
+    local missing_toolkits
+    if ensure_python_runtime; then
+        missing_toolkits=$(run_python <<'PY' 2>/dev/null
+import importlib.metadata
+
+candidates = [
+    ("crewai", "CrewAI (collaborative agents)"),
+    ("autogen", "Microsoft AutoGen (multi-agent automation)"),
+    ("smolagents", "Hugging Face Smolagents (tool-calling agents)"),
+]
+
+lines = []
+for package, label in candidates:
+    try:
+        importlib.metadata.distribution(package)
+    except importlib.metadata.PackageNotFoundError:
+        lines.append(f"{package}:{label}")
+
+if lines:
+    print("\n".join(lines))
+PY
+        )
+    else
+        missing_toolkits=""
+    fi
+
+    if [[ -n "$missing_toolkits" ]]; then
+        print_info "Additional agent frameworks available for this environment:"
+        while IFS=":" read -r package label; do
+            [[ -z "$package" ]] && continue
+            print_info "  • $label → run 'python3 -m pip install --user $package'"
+        done <<<"$missing_toolkits"
+    fi
 
     return 0
 }

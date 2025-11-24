@@ -53,7 +53,7 @@ set -E           # ERR trap inherited by functions
 # READONLY CONSTANTS
 # ============================================================================
 
-readonly SCRIPT_VERSION="4.0.0"
+readonly SCRIPT_VERSION="5.0.0"
 readonly BOOTSTRAP_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly LIB_DIR="$BOOTSTRAP_SCRIPT_DIR/lib"
 readonly CONFIG_DIR="$BOOTSTRAP_SCRIPT_DIR/config"
@@ -121,6 +121,7 @@ PROMPT_BEFORE_HOME_SWITCH=false
 FLATPAK_REINSTALL_REQUEST=false
 AUTO_UPDATE_FLAKE_INPUTS=false
 RESTORE_KNOWN_GOOD_FLAKE_LOCK=false
+FORCE_HF_DOWNLOAD=false
 
 # Phase control
 declare -a SKIP_PHASES=()
@@ -128,6 +129,8 @@ START_FROM_PHASE=""
 RESTART_PHASE=""
 TEST_PHASE=""
 SHOW_PHASE_INFO_NUM=""
+CURRENT_PHASE_NUM=""
+CURRENT_PHASE_NAME=""
 
 # Safe restart phases (can safely restart from these)
 readonly SAFE_RESTART_PHASES=(1 3 8)
@@ -202,6 +205,7 @@ load_libraries() {
         "validation.sh"
         "retry.sh"
         "backup.sh"
+        "secrets.sh"
         "gpu-detection.sh"
         "python.sh"
         "nixos.sh"
@@ -210,6 +214,7 @@ load_libraries() {
         "user.sh"
         "config.sh"
         "tools.sh"
+        "service-conflict-resolution.sh"
         "finalization.sh"
         "reporting.sh"
         "common.sh"
@@ -323,6 +328,7 @@ BASIC OPTIONS:
         --skip-system-switch    Skip automatic nixos-rebuild switch
         --skip-home-switch      Skip automatic home-manager switch
         --flatpak-reinstall     Force reinstall of managed Flatpaks (resets Flatpak state pre-switch)
+        --force-hf-download     Force re-download of Hugging Face TGI models before the switch
         --update-flake-inputs   Run 'nix flake update' before activation (opt-in)
         --restore-flake-lock    Re-seed flake.lock from the bundled baseline
         --prompt-switch         Prompt before running system/home switches
@@ -541,6 +547,10 @@ parse_arguments() {
                 FLATPAK_REINSTALL_REQUEST=true
                 shift
                 ;;
+            --force-hf-download)
+                FORCE_HF_DOWNLOAD=true
+                shift
+                ;;
             --update-flake-inputs)
                 AUTO_UPDATE_FLAKE_INPUTS=true
                 shift
@@ -746,6 +756,10 @@ execute_phase() {
     local phase_script="$PHASES_DIR/phase-$(printf '%02d' $phase_num)-$phase_name.sh"
     local phase_step="phase-$(printf '%02d' $phase_num)"
 
+    CURRENT_PHASE_NUM="$phase_num"
+    CURRENT_PHASE_NAME="$phase_name"
+    export CURRENT_PHASE_NUM CURRENT_PHASE_NAME
+
     # Check if phase script exists
     if [[ ! -f "$phase_script" ]]; then
         log ERROR "Phase script not found: $phase_script"
@@ -832,6 +846,8 @@ handle_phase_failure() {
             ;;
         4|*)
             log INFO "User chose to exit"
+            AUTO_ROLLBACK_SUPPRESSED=true
+            export AUTO_ROLLBACK_SUPPRESSED
             exit 1
             ;;
     esac
