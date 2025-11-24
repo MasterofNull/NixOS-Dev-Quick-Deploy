@@ -440,32 +440,15 @@ phase_05_declarative_deployment() {
 
     if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
         print_section "Preparing Local AI Stack Assets"
-        print_info "Ensuring Podman containers and models managed by ai-optimizer have their images pre-pulled."
+        print_info "Local AI services are now fully managed by the ai-optimizer Podman stack."
+        print_info "Images and containers will be pulled the first time you run your ai-optimizer workflow."
         echo ""
 
-        if command -v podman >/dev/null 2>&1; then
-            print_info "Pre-pulling user-level AI stack images..."
-            local -a user_images=(
-                "docker.io/ollama/ollama:latest"
-                "ghcr.io/open-webui/open-webui:latest"
-                "docker.io/qdrant/qdrant:latest"
-                "docker.io/mindsdb/mindsdb:latest"
-            )
-            local img
-            for img in "${user_images[@]}"; do
-                if ! podman image exists "$img" >/dev/null 2>&1; then
-                    print_info "Pulling $img..."
-                    if podman pull "$img" 2>&1 | grep -E '(Downloaded|already|Digest)'; then
-                        print_success "Pulled $img"
-                    else
-                        print_warning "Failed to pull $img (will retry during service start)"
-                    fi
-                else
-                    print_success "$img already present"
-                fi
-            done
+        if command -v podman-ai-stack >/dev/null 2>&1; then
+            print_info "After deployment run: podman-ai-stack up"
+            print_info "This will pull/start the Ollama, Open WebUI, Qdrant, and MindsDB containers."
         else
-            print_warning "Podman is not available; install Podman to use the local AI stack."
+            print_warning "podman-ai-stack helper not found. Install/configure ai-optimizer, then run its launch script to provision the containers."
         fi
     fi
 
