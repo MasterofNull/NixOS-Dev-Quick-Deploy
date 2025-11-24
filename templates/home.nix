@@ -51,6 +51,8 @@ let
   # vLLM OpenAI-compatible endpoints (configured in ai-optimizer)
   vllmPrimaryEndpoint = "http://127.0.0.1:8000/v1";  # Primary vLLM instance
   vllmSecondaryEndpoint = "http://127.0.0.1:8001/v1";  # Secondary vLLM instance (if needed)
+  ollamaPort = 11434;
+  ollamaHost = "http://127.0.0.1:${toString ollamaPort}";
   openWebUiPort = 8081;
   openWebUiUrl = "http://127.0.0.1:${toString openWebUiPort}";
   openWebUiDataDir = ".local/share/open-webui";
