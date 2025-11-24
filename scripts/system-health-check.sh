@@ -556,7 +556,7 @@ check_command() {
             go)
                 version=$($cmd version 2>&1 | head -n1)
                 ;;
-            podman|python3|node|cargo|ollama|aider|nvim)
+            podman|python3|node|cargo|aider|nvim)
                 version=$($cmd --version 2>&1 | head -n1)
                 ;;
             home-manager)
@@ -1209,7 +1209,6 @@ run_all_checks() {
     fi
 
     # Other AI tools
-    check_command "ollama" "Ollama" true
     check_command "aider" "Aider" true
     check_command "openskills" "OpenSkills CLI" true
 
@@ -1374,21 +1373,6 @@ run_all_checks() {
 
     # Gitea development forge (system service)
     check_system_service "gitea" "Gitea (development forge)" true false
-
-    # ==========================================================================
-    # Network Services
-    # ==========================================================================
-    print_section "Network Services (Optional)"
-
-    # Check if Ollama is running
-    print_check "Ollama service"
-    if curl -s http://localhost:11434/api/tags &> /dev/null; then
-        print_success "Ollama service running"
-        print_detail "URL: http://localhost:11434"
-    else
-        print_warning "Ollama service not running"
-        print_detail "Start with: systemctl --user start ollama"
-    fi
 
     # ==========================================================================
     # Nix Store & Profile Health
