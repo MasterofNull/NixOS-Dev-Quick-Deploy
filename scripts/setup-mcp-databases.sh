@@ -22,10 +22,21 @@ readonly MCP_DATA_DIR="${HOME}/.local/share/aidb"
 readonly POSTGRES_DATA_DIR="${MCP_DATA_DIR}/postgres"
 readonly REDIS_DATA_DIR="${MCP_DATA_DIR}/redis"
 
-# Database credentials (will be stored in sops later)
+# Database credentials - use environment variable or generate secure password
 readonly POSTGRES_USER="mcp"
-readonly POSTGRES_PASSWORD="mcp_dev_password_change_me"
 readonly POSTGRES_DB="mcp"
+
+# Security: Generate random password if not provided via environment
+if [[ -z "${MCP_POSTGRES_PASSWORD:-}" ]]; then
+    log_warning "MCP_POSTGRES_PASSWORD not set - generating secure random password"
+    GENERATED_PASSWORD="$(openssl rand -base64 32)"
+    readonly POSTGRES_PASSWORD="$GENERATED_PASSWORD"
+    log_warning "⚠️  SAVE THIS PASSWORD: $POSTGRES_PASSWORD"
+    log_warning "⚠️  Set MCP_POSTGRES_PASSWORD environment variable to persist"
+else
+    readonly POSTGRES_PASSWORD="$MCP_POSTGRES_PASSWORD"
+    log_success "Using password from MCP_POSTGRES_PASSWORD environment variable"
+fi
 
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $*"
@@ -113,8 +124,8 @@ setup_redis() {
     # Create Redis configuration
     cat > "${REDIS_DATA_DIR}/redis.conf" <<EOF
 # Redis configuration for MCP server
-bind 0.0.0.0
-protected-mode no
+bind 127.0.0.1
+protected-mode yes
 port 6379
 tcp-backlog 511
 timeout 0
