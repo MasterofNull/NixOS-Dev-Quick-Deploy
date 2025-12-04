@@ -43,7 +43,7 @@ let
     server = {
       PROTOCOL = "http";
       DOMAIN = giteaDomain;
-      HTTP_ADDR = "0.0.0.0";
+      HTTP_ADDR = "127.0.0.1";  # Security: Bind to localhost only, use reverse proxy for external access
       HTTP_PORT = giteaHttpPort;
       ROOT_URL = giteaRootUrl;
       APP_DATA_PATH = giteaAppDataDir;
@@ -145,7 +145,11 @@ let
 in
 
 {
-  imports = [ ./hardware-configuration.nix ];
+  imports = [
+    ./hardware-configuration.nix
+    ./nixos-improvements/virtualization.nix
+    ./nixos-improvements/optimizations.nix
+  ];
 
   # ============================================================================
   # Boot Configuration (Modern EFI)
@@ -276,8 +280,8 @@ in
         # 5432  # PostgreSQL
       ];
       # Default: Block all incoming, allow all outgoing
-      # Explicitly log rejected packets for security monitoring
-      logRefusedConnections = lib.mkDefault false;  # Set true for debugging
+      # Log rejected connections for security monitoring
+      logRefusedConnections = lib.mkDefault true;  # Disable for reduced logging if needed
     };
   };
 
@@ -692,6 +696,7 @@ in
       skopeo
       crun
       slirp4netns
+      fuse-overlayfs           # Required for rootless overlay storage driver
       btrfs-progs              # Supports Btrfs-backed Podman storage
 
       # Hardware detection tools (for GPU detection in deployment script)
@@ -928,6 +933,11 @@ in
       "d /run/podman 0755 root root -"
       "Z /var/lib/AccountsService 0750 accounts-daemon accounts-daemon -"
       "Z /var/lib/AccountsService/icons 0750 accounts-daemon accounts-daemon -"
+    ]
+    ++ lib.optionals giteaEnabled [
+      "d /var/lib/gitea 0750 gitea gitea -"
+      "d /var/lib/gitea/custom 0750 gitea gitea -"
+      "d /var/lib/gitea/custom/conf 0750 gitea gitea -"
       "Z ${giteaStateDir} 0750 gitea gitea -"
       "Z ${giteaStateDir}/custom 0750 gitea gitea -"
       "Z ${giteaStateDir}/custom/conf 0750 gitea gitea -"
@@ -936,11 +946,6 @@ in
       ''f ${giteaStateDir}/custom/conf/internal_token 0600 gitea gitea - "@GITEA_INTERNAL_TOKEN@"''
       ''f ${giteaStateDir}/custom/conf/oauth2_jwt_secret 0600 gitea gitea - "@GITEA_JWT_SECRET@"''
       ''f ${giteaStateDir}/custom/conf/lfs_jwt_secret 0600 gitea gitea - "@GITEA_LFS_JWT_SECRET@"''
-    ]
-    ++ lib.optionals giteaEnabled [
-      "d /var/lib/gitea 0750 gitea gitea -"
-      "d /var/lib/gitea/custom 0750 gitea gitea -"
-      "d /var/lib/gitea/custom/conf 0750 gitea gitea -"
     ]
   );
 
@@ -1084,34 +1089,38 @@ in
     age.keyFile = "/home/@USER@/.config/sops/age/keys.txt";
 
     # Define secrets and their permissions
-    secrets = {
-      # Gitea secrets
-      "gitea/secret_key" = {
-        owner = "gitea";
-        group = "gitea";
-        mode = "0400";
-      };
-      "gitea/internal_token" = {
-        owner = "gitea";
-        group = "gitea";
-        mode = "0400";
-      };
-      "gitea/lfs_jwt_secret" = {
-        owner = "gitea";
-        group = "gitea";
-        mode = "0400";
-      };
-      "gitea/jwt_secret" = {
-        owner = "gitea";
-        group = "gitea";
-        mode = "0400";
-      };
-      "gitea/admin_password" = {
-        owner = "gitea";
-        group = "gitea";
-        mode = "0400";
-      };
+    secrets = lib.mkMerge [
+      # Gitea secrets (only when Gitea is enabled)
+      (lib.mkIf giteaEnabled {
+        "gitea/secret_key" = {
+          owner = "gitea";
+          group = "gitea";
+          mode = "0400";
+        };
+        "gitea/internal_token" = {
+          owner = "gitea";
+          group = "gitea";
+          mode = "0400";
+        };
+        "gitea/lfs_jwt_secret" = {
+          owner = "gitea";
+          group = "gitea";
+          mode = "0400";
+        };
+        "gitea/jwt_secret" = {
+          owner = "gitea";
+          group = "gitea";
+          mode = "0400";
+        };
+        "gitea/admin_password" = {
+          owner = "gitea";
+          group = "gitea";
+          mode = "0400";
+        };
+      })
 
+      # Always-enabled secrets
+      {
       # Hugging Face API token
       "huggingface/api_token" = {
         owner = "@USER@";
@@ -1131,7 +1140,8 @@ in
         owner = "@USER@";
         mode = "0400";
       };
-    };
+      }
+    ];
   };
 
   # ============================================================================
