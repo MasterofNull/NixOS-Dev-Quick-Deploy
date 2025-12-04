@@ -56,7 +56,7 @@ This document describes the seamless "hand-in-glove" integration between **NixOS
 │                                                                          │
 │  ┌────────────────────────────────────────────────────────────────┐   │
 │  │ Services (Automatic)                                            │   │
-│  │ • vLLM Inference (port 8000)                                   │   │
+│  │ • Lemonade Server (OpenAI-compatible, port 8000)               │   │
 │  │ • AIDB MCP Server (ports 8091, 8791)                           │   │
 │  │ • PostgreSQL + TimescaleDB (port 5432)                         │   │
 │  │ • Redis + AOF (port 6379)                                      │   │
@@ -68,8 +68,7 @@ This document describes the seamless "hand-in-glove" integration between **NixOS
 │  │ • ~/.local/share/ai-optimizer/                                 │   │
 │  │   ├── postgres/    (PostgreSQL database)                       │   │
 │  │   ├── redis/       (Redis AOF + RDB)                          │   │
-│  │   ├── qdrant/      (Vector database)                          │   │
-│  │   ├── vllm-models/ (Downloaded LLM models)                    │   │
+│  │   ├── lemonade-models/ (Downloaded Lemonade model cache)       │   │
 │  │   ├── imports/     (Imported documents)                        │   │
 │  │   └── exports/     (Exported data)                            │   │
 │  └────────────────────────────────────────────────────────────────┘   │
@@ -80,6 +79,8 @@ This document describes the seamless "hand-in-glove" integration between **NixOS
 ---
 
 ## Key Principles
+
+> AI-Optimizer remains a private, optional layer. The base NixOS-Dev-Quick-Deploy repository never clones or modifies it; instead, these hooks merely prepare the directories and ports so you can bring the stack online separately.
 
 ### 1. Zero Conflicts
 
@@ -182,7 +183,7 @@ Next Steps:
 │   └── dump.rdb        # RDB snapshot
 ├── qdrant/             # Qdrant vector database (optional)
 │   └── storage/
-├── vllm-models/        # Downloaded LLM models (HuggingFace cache)
+├── lemonade-models/    # Downloaded Lemonade model cache (HuggingFace GGUF)
 │   ├── Qwen/
 │   ├── deepseek-ai/
 │   └── microsoft/
@@ -255,12 +256,12 @@ volumes:
       o: bind
       device: ${REDIS_DATA_DIR:-~/.local/share/ai-optimizer/redis}
 
-  vllm-models:
+  lemonade-models:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${VLLM_MODELS_DIR:-~/.local/share/ai-optimizer/vllm-models}
+      device: ${LEMONADE_MODELS_DIR:-~/.local/share/ai-optimizer/lemonade-models}
 ```
 
 ---
@@ -535,7 +536,7 @@ VLLM_MAX_LEN=4096  # Down from 8192
 VLLM_MODEL=microsoft/Phi-3-mini-4k-instruct
 
 # Restart
-docker compose -f docker-compose.new.yml restart vllm
+docker compose -f docker-compose.new.yml restart lemonade
 ```
 
 ### Issue: Lost data after reinstall
@@ -559,7 +560,7 @@ grep POSTGRES_DATA_DIR .env
 cat >> .env <<EOF
 POSTGRES_DATA_DIR=$HOME/.local/share/ai-optimizer/postgres
 REDIS_DATA_DIR=$HOME/.local/share/ai-optimizer/redis
-VLLM_MODELS_DIR=$HOME/.local/share/ai-optimizer/vllm-models
+LEMONADE_MODELS_DIR=$HOME/.local/share/ai-optimizer/lemonade-models
 EOF
 ```
 
