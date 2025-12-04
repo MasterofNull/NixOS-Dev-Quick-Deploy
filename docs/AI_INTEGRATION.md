@@ -106,7 +106,8 @@ Examples:
 ```
 
 The script verifies AI availability, forwards context/description to
-`/vllm/nix`, and optionally calls `/vllm/review` on the generated output.
+`/lemonade/nix` (falling back to `/vllm/nix` for older stacks), and optionally
+calls `/lemonade/review` on the generated output.
 
 ---
 
