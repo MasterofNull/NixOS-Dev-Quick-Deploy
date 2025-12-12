@@ -323,6 +323,28 @@ models:
     endpoint: http://localhost:8001
   - name: deepseek-coder
     endpoint: http://localhost:8003
+
+---
+
+### Planned: Code Migration MCP Tools (Python → TypeScript)
+
+As part of the language‑modernization plan, this project will gradually introduce MCP tools that help agents reason about and migrate Python helpers to TypeScript without manual, ad‑hoc shell scripting.
+
+**Conceptual capabilities (to be implemented later):**
+
+- `code.search_python_targets`  
+  - Find Python functions and scripts matching a given name or pattern across this repository.
+  - Return locations, signatures, and brief summaries suitable for AIDB ingestion.
+
+- `code.summarize_contract`  
+  - Analyze a Python function or CLI entry point.
+  - Emit a JSON schema describing inputs/outputs (for use as a shared contract between Python and TypeScript twins).
+
+- `code.propose_ts_port`  
+  - Given a contract and representative examples, draft a TypeScript implementation (CLI or module) that mirrors the Python behavior.
+  - Designed to plug into local models (Lemonade/vLLM) and AIDB for context.
+
+These tools will sit alongside existing servers (AIDB MCP, mcp-nixos, github-mcp, postgres-mcp) and act as the “glue layer” for codebase modernization. Implementation details will live in dedicated MCP server repos; this document remains the high‑level guide to their intended use.
 ```
 
 ---

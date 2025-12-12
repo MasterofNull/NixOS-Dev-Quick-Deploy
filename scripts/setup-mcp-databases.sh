@@ -15,8 +15,24 @@ readonly YELLOW='\033[1;33m'
 readonly BLUE='\033[0;34m'
 readonly NC='\033[0m'
 
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $*"
+}
+
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $*"
+}
+
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $*"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $*"
+}
+
 # Configuration
-readonly POSTGRES_VERSION="16"
+readonly POSTGRES_IMAGE="${MCP_POSTGRES_IMAGE:-docker.io/library/postgres:16-alpine}"
 readonly REDIS_VERSION="7"
 readonly MCP_DATA_DIR="${HOME}/.local/share/aidb"
 readonly POSTGRES_DATA_DIR="${MCP_DATA_DIR}/postgres"
@@ -38,21 +54,18 @@ else
     log_success "Using password from MCP_POSTGRES_PASSWORD environment variable"
 fi
 
-log_info() {
-    echo -e "${BLUE}[INFO]${NC} $*"
+detect_podman() {
+    if [[ -x /run/current-system/sw/bin/podman ]]; then
+        echo "/run/current-system/sw/bin/podman"
+    elif command -v podman >/dev/null 2>&1; then
+        command -v podman
+    else
+        log_error "Podman binary not found in PATH or /run/current-system/sw/bin. Install Podman and re-run this script."
+        exit 1
+    fi
 }
 
-log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $*"
-}
-
-log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $*"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $*"
-}
+readonly PODMAN_BIN="$(detect_podman)"
 
 create_directories() {
     log_info "Creating data directories..."
@@ -67,11 +80,11 @@ setup_postgres() {
     log_info "Setting up PostgreSQL container..."
 
     # Stop existing container if running
-    podman stop mcp-postgres 2>/dev/null || true
-    podman rm mcp-postgres 2>/dev/null || true
+    "${PODMAN_BIN}" stop mcp-postgres 2>/dev/null || true
+    "${PODMAN_BIN}" rm mcp-postgres 2>/dev/null || true
 
     # Create and start PostgreSQL container
-    podman run -d \
+    "${PODMAN_BIN}" run -d \
         --name mcp-postgres \
         --network local-ai \
         -e POSTGRES_USER="$POSTGRES_USER" \
@@ -79,14 +92,14 @@ setup_postgres() {
         -e POSTGRES_DB="$POSTGRES_DB" \
         -v "$POSTGRES_DATA_DIR:/var/lib/postgresql/data:Z" \
         -p 5432:5432 \
-        "docker.io/library/postgres:${POSTGRES_VERSION}-alpine"
+        "${POSTGRES_IMAGE}"
 
     log_success "PostgreSQL container created and starting"
 
     # Wait for PostgreSQL to be ready
     log_info "Waiting for PostgreSQL to be ready..."
     for i in {1..30}; do
-        if podman exec mcp-postgres pg_isready -U "$POSTGRES_USER" >/dev/null 2>&1; then
+        if "${PODMAN_BIN}" exec mcp-postgres pg_isready -U "$POSTGRES_USER" >/dev/null 2>&1; then
             log_success "PostgreSQL is ready"
             return 0
         fi
@@ -100,7 +113,7 @@ setup_postgres() {
 create_postgres_databases() {
     log_info "Creating additional PostgreSQL databases..."
 
-    podman exec mcp-postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<-EOSQL
+    "${PODMAN_BIN}" exec mcp-postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<-EOSQL
 		-- Create additional databases for MCP server
 		CREATE DATABASE IF NOT EXISTS mcp_tools;
 		CREATE DATABASE IF NOT EXISTS mcp_logs;
@@ -118,8 +131,8 @@ setup_redis() {
     log_info "Setting up Redis container..."
 
     # Stop existing container if running
-    podman stop mcp-redis 2>/dev/null || true
-    podman rm mcp-redis 2>/dev/null || true
+    "${PODMAN_BIN}" stop mcp-redis 2>/dev/null || true
+    "${PODMAN_BIN}" rm mcp-redis 2>/dev/null || true
 
     # Create Redis configuration
     cat > "${REDIS_DATA_DIR}/redis.conf" <<EOF
@@ -132,7 +145,7 @@ timeout 0
 tcp-keepalive 300
 daemonize no
 supervised no
-pidfile /var/run/redis_6379.pid
+pidfile /data/redis.pid
 loglevel notice
 databases 16
 save 900 1
@@ -153,7 +166,7 @@ auto-aof-rewrite-min-size 64mb
 EOF
 
     # Create and start Redis container
-    podman run -d \
+    "${PODMAN_BIN}" run -d \
         --name mcp-redis \
         --network local-ai \
         -v "$REDIS_DATA_DIR:/data:Z" \
@@ -165,7 +178,7 @@ EOF
 
     # Test Redis
     sleep 2
-    if podman exec mcp-redis redis-cli ping | grep -q "PONG"; then
+    if "${PODMAN_BIN}" exec mcp-redis redis-cli ping | grep -q "PONG"; then
         log_success "Redis is responding"
     else
         log_error "Redis is not responding"
@@ -179,7 +192,7 @@ verify_services() {
     local all_ok=true
 
     # Check PostgreSQL
-    if podman exec mcp-postgres pg_isready -U "$POSTGRES_USER" >/dev/null 2>&1; then
+    if "${PODMAN_BIN}" exec mcp-postgres pg_isready -U "$POSTGRES_USER" >/dev/null 2>&1; then
         log_success "✓ PostgreSQL is running on localhost:5432"
     else
         log_error "✗ PostgreSQL check failed"
@@ -187,7 +200,7 @@ verify_services() {
     fi
 
     # Check Redis
-    if podman exec mcp-redis redis-cli ping | grep -q "PONG"; then
+    if "${PODMAN_BIN}" exec mcp-redis redis-cli ping | grep -q "PONG"; then
         log_success "✓ Redis is running on localhost:6379"
     else
         log_error "✗ Redis check failed"
@@ -195,7 +208,7 @@ verify_services() {
     fi
 
     # Check Qdrant (from existing AI stack)
-    if podman ps --filter "name=local-ai-qdrant" --format "{{.Status}}" | grep -q "Up"; then
+    if "${PODMAN_BIN}" ps --filter "name=local-ai-qdrant" --format "{{.Status}}" | grep -q "Up"; then
         log_success "✓ Qdrant is running (from AI stack)"
     else
         log_warning "⚠ Qdrant container not found"
@@ -223,9 +236,9 @@ Requires=podman-local-ai-network.service
 [Service]
 Type=forking
 RemainAfterExit=yes
-ExecStartPre=-/usr/bin/env podman stop mcp-postgres
-ExecStartPre=-/usr/bin/env podman rm mcp-postgres
-ExecStart=/usr/bin/env podman run -d \\
+ExecStartPre=-${PODMAN_BIN} stop mcp-postgres
+ExecStartPre=-${PODMAN_BIN} rm mcp-postgres
+ExecStart=${PODMAN_BIN} run -d \\
     --name mcp-postgres \\
     --network local-ai \\
     -e POSTGRES_USER=${POSTGRES_USER} \\
@@ -233,12 +246,13 @@ ExecStart=/usr/bin/env podman run -d \\
     -e POSTGRES_DB=${POSTGRES_DB} \\
     -v ${POSTGRES_DATA_DIR}:/var/lib/postgresql/data:Z \\
     -p 5432:5432 \\
-    docker.io/library/postgres:${POSTGRES_VERSION}-alpine
+    ${POSTGRES_IMAGE}
 
-ExecStop=/usr/bin/env podman stop mcp-postgres
-ExecStopPost=/usr/bin/env podman rm mcp-postgres
+ExecStop=${PODMAN_BIN} stop mcp-postgres
+ExecStopPost=${PODMAN_BIN} rm mcp-postgres
 Restart=on-failure
 RestartSec=10
+TimeoutStartSec=300
 
 [Install]
 WantedBy=default.target
@@ -254,9 +268,9 @@ Requires=podman-local-ai-network.service
 [Service]
 Type=forking
 RemainAfterExit=yes
-ExecStartPre=-/usr/bin/env podman stop mcp-redis
-ExecStartPre=-/usr/bin/env podman rm mcp-redis
-ExecStart=/usr/bin/env podman run -d \\
+ExecStartPre=-${PODMAN_BIN} stop mcp-redis
+ExecStartPre=-${PODMAN_BIN} rm mcp-redis
+ExecStart=${PODMAN_BIN} run -d \\
     --name mcp-redis \\
     --network local-ai \\
     -v ${REDIS_DATA_DIR}:/data:Z \\
@@ -264,10 +278,11 @@ ExecStart=/usr/bin/env podman run -d \\
     docker.io/library/redis:${REDIS_VERSION}-alpine \\
     redis-server /data/redis.conf
 
-ExecStop=/usr/bin/env podman stop mcp-redis
-ExecStopPost=/usr/bin/env podman rm mcp-redis
+ExecStop=${PODMAN_BIN} stop mcp-redis
+ExecStopPost=${PODMAN_BIN} rm mcp-redis
 Restart=on-failure
 RestartSec=10
+TimeoutStartSec=300
 
 [Install]
 WantedBy=default.target

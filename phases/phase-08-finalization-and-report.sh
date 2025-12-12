@@ -96,20 +96,24 @@ phase_08_finalization_and_report() {
     else
         local health_script="$SCRIPT_DIR/scripts/system-health-check.sh"
         local health_status=0
+        local previous_errexit="$-"
 
         if [[ -x "$health_script" ]]; then
             print_info "Running detailed health check via $health_script"
             set +e
             "$health_script" --detailed
             health_status=$?
-            set -e
         else
             print_warning "Health check script not found at $health_script; running internal validation fallback"
             set +e
             run_system_health_check_stage
             health_status=$?
-            set -e
         fi
+
+        case "$previous_errexit" in
+            *e*) set -e ;;
+            *)   set +e ;;
+        esac
 
         if [[ $health_status -eq 0 ]]; then
             print_success "System health check completed"
@@ -253,7 +257,9 @@ phase_08_finalization_and_report() {
     echo "  • Python AI/ML environment"
     echo "  • Development CLI tools (100+)"
     echo "  • Claude Code integration"
-    echo "  • System services (Gitea)"
+    if [[ "${GITEA_ENABLE,,}" == "true" ]]; then
+        echo "  • Gitea self-hosted Git service"
+    fi
     echo "  • Podman AI stack integration (vLLM/Open WebUI/Qdrant/MindsDB via ai-optimizer)"
     echo ""
 
@@ -271,7 +277,9 @@ phase_08_finalization_and_report() {
     echo ""
 
     echo -e "  ${GREEN}2.${NC} Verify services:"
-    echo -e "     ${YELLOW}systemctl status gitea${NC}"
+    if [[ "${GITEA_ENABLE,,}" == "true" ]]; then
+        echo -e "     ${YELLOW}systemctl status gitea${NC}"
+    fi
     echo -e "     ${YELLOW}podman-ai-stack status${NC}"
     echo ""
 
@@ -296,12 +304,14 @@ phase_08_finalization_and_report() {
     fi
     echo ""
 
-    echo -e "  ${GREEN}7.${NC} Update Gitea admin bootstrap settings:"
-    echo -e "     ${YELLOW}./nixos-quick-deploy.sh --resume 1${NC} and opt into the Gitea prompt"
-    if [[ -n "$gitea_secrets_hint" ]]; then
-        echo -e "     or edit ${YELLOW}$gitea_secrets_hint${NC} (shell-quoted secrets) then rerun Phase 1."
+    if [[ "${GITEA_ENABLE,,}" == "true" ]]; then
+        echo -e "  ${GREEN}7.${NC} Update Gitea admin bootstrap settings:"
+        echo -e "     ${YELLOW}./nixos-quick-deploy.sh --resume 1${NC} and opt into the Gitea prompt"
+        if [[ -n "$gitea_secrets_hint" ]]; then
+            echo -e "     or edit ${YELLOW}$gitea_secrets_hint${NC} (shell-quoted secrets) then rerun Phase 1."
+        fi
+        echo ""
     fi
-    echo ""
 
 
     # ========================================================================

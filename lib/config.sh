@@ -82,7 +82,7 @@ backup_generated_file() {
     #   2 → file did not exist (no backup needed)
     local source_path="$1"
     local label="${2:-}"
-    local backup_dir="${3:-$HM_CONFIG_DIR/backup}"
+    local backup_dir="${3:-$HM_BACKUP_DIR}"
     local timestamp="${4:-$(date +%Y%m%d_%H%M%S)}"
 
     if [[ -z "$source_path" || -z "$backup_dir" ]]; then
@@ -121,7 +121,7 @@ sync_support_module() {
     local module_name="$1"
     local template_dir="${2:-$SCRIPT_DIR/templates}"
     local destination_dir="${3:-$HM_CONFIG_DIR}"
-    local backup_dir="${4:-$HM_CONFIG_DIR/backup}"
+    local backup_dir="${4:-$HM_BACKUP_DIR}"
     local timestamp="${5:-$(date +%Y%m%d_%H%M%S)}"
 
     if [[ -z "$module_name" ]]; then
@@ -1035,6 +1035,16 @@ activate_build_acceleration_context() {
 }
 
 describe_remote_build_context() {
+    # Summarize build strategy for logs and troubleshooting.
+    local strategy="binary caches (default)"
+    if [[ "${USE_BINARY_CACHES:-true}" != "true" ]]; then
+        strategy="local source builds (binary caches disabled)"
+    fi
+    if [[ "${REMOTE_BUILD_ACCELERATION_MODE:-}" == "remote-builders" ]]; then
+        strategy="binary caches + remote builders"
+    fi
+    print_info "Build strategy: ${strategy}"
+
     if [[ "${REMOTE_BUILDERS_ENABLED:-false}" == "true" && ${#REMOTE_BUILDER_SPECS[@]} -gt 0 ]]; then
         print_info "Remote builders enabled (${#REMOTE_BUILDER_SPECS[@]} target(s))"
     fi
@@ -2380,7 +2390,7 @@ generate_nixos_system_config() {
     # Backup Existing Configurations
     # ========================================================================
     local BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-    local BACKUP_DIR="$HM_CONFIG_DIR/backup"
+    local BACKUP_DIR="${HM_BACKUP_DIR}"
 
     backup_generated_file "$SYSTEM_CONFIG_FILE" "configuration.nix" "$BACKUP_DIR" "$BACKUP_TIMESTAMP" || true
     backup_generated_file "$FLAKE_FILE" "flake.nix" "$BACKUP_DIR" "$BACKUP_TIMESTAMP" || true
@@ -2413,6 +2423,15 @@ generate_nixos_system_config() {
     if ! cp "$CONFIG_TEMPLATE" "$SYSTEM_CONFIG_FILE"; then
         print_error "Failed to copy configuration template"
         return 1
+    fi
+
+    # Normalize Avahi disablement to avoid unit failures and activation script issues.
+    if [[ -f "$SYSTEM_CONFIG_FILE" ]]; then
+        # Remove unsupported systemd.maskedServices/sockets entries.
+        local tmp_normalized
+        tmp_normalized=$(mktemp)
+        grep -v 'systemd\.maskedServices' "$SYSTEM_CONFIG_FILE" | grep -v 'systemd\.maskedSockets' > "$tmp_normalized" || true
+        mv "$tmp_normalized" "$SYSTEM_CONFIG_FILE"
     fi
 
     local support_module
@@ -3672,7 +3691,7 @@ create_home_manager_config() {
     # Backup Existing Configuration
     # ========================================================================
     local BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-    local BACKUP_DIR="$HM_CONFIG_DIR/backup"
+    local BACKUP_DIR="${HM_BACKUP_DIR}"
     backup_generated_file "$HOME_MANAGER_FILE" "home.nix" "$BACKUP_DIR" "$BACKUP_TIMESTAMP" || true
 
     # ========================================================================
@@ -3820,6 +3839,19 @@ EOF
 
     local flatpak_packages_block=""
     local selected_flatpak_profile="${SELECTED_FLATPAK_PROFILE:-${DEFAULT_FLATPAK_PROFILE:-core}}"
+    local engineering_tools_expr="engineeringToolsPackages"
+
+    # Map Flatpak profiles to an engineering environment profile:
+    # - core / ai_workstation → full engineering toolchain
+    # - minimal               → slim (no heavy PCB/CAD/IC tools by default)
+    case "$selected_flatpak_profile" in
+        minimal)
+            engineering_tools_expr="[]"
+            ;;
+        *)
+            engineering_tools_expr="engineeringToolsPackages"
+            ;;
+    esac
     if (( ${#DEFAULT_FLATPAK_APPS[@]} > 0 )); then
         flatpak_packages_block=$'  # Flatpak applications managed by profile: '"${selected_flatpak_profile}"$'\n'
         flatpak_packages_block+=$'  flathubPackages = [\n'
@@ -3879,6 +3911,7 @@ EOF
     replace_placeholder "$HOME_MANAGER_FILE" "@GPU_MONITORING_PACKAGES@" "$GPU_MONITORING_PACKAGES"
     replace_placeholder "$HOME_MANAGER_FILE" "@GLF_HOME_DEFINITIONS@" "$glf_home_definitions"
     replace_placeholder "$HOME_MANAGER_FILE" "@FLATPAK_MANAGED_PACKAGES@" "$flatpak_packages_block"
+    replace_placeholder "$HOME_MANAGER_FILE" "ENGINEERING_TOOLS_PLACEHOLDER" "$engineering_tools_expr"
     # NOTE: @PODMAN_ROOTLESS_STORAGE@ placeholder removed from template to avoid duplicate services.podman
     # replace_placeholder "$HOME_MANAGER_FILE" "@PODMAN_ROOTLESS_STORAGE@" "${PODMAN_ROOTLESS_STORAGE_BLOCK:-}"
     replace_placeholder "$HOME_MANAGER_FILE" "GIT_USER_SETTINGS_PLACEHOLDER" "$git_user_settings_block"

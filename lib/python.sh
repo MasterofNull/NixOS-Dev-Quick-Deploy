@@ -75,7 +75,7 @@ ensure_python_runtime() {
     # Fallback: Use nix shell for ephemeral Python
     if command -v nix >/dev/null 2>&1; then
         PYTHON_BIN=(nix shell nixpkgs#python3 -c python3)
-        print_warning "python3 not found in PATH – using ephemeral nix shell"
+        print_warning "python3 not found in PATH – using ephemeral nix shell" >&2
         return 0
     fi
 

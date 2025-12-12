@@ -37,7 +37,7 @@ Before setting up AIDB components, ensure you have completed the NixOS Quick Dep
 
 ```bash
 # Verify core tools are installed
-./system-health-check.sh
+./scripts/system-health-check.sh
 
 # Should show:
 # ✓ Podman
@@ -58,7 +58,7 @@ Before setting up AIDB components, ensure you have completed the NixOS Quick Dep
 
 ```bash
 cd ~/NixOS-Dev-Quick-Deploy
-./system-health-check.sh
+./scripts/system-health-check.sh
 ```
 
 This verifies:
@@ -137,7 +137,7 @@ systemctl --user enable --now jupyter-lab
 systemctl --user start ollama
 
 # Verify services
-./system-health-check.sh
+./scripts/system-health-check.sh
 ```
 
 ### 4. Start Ollama and Download Models
@@ -250,7 +250,7 @@ which gooseai-wrapper
 ~/.npm-global/bin/gooseai-wrapper --version
 
 # If not found, run health check
-./system-health-check.sh --fix
+./scripts/system-health-check.sh --fix
 ```
 
 **Configure API Key:**
@@ -603,7 +603,7 @@ Should show:
 
 ```bash
 # Run health check with fix
-./system-health-check.sh --fix
+./scripts/system-health-check.sh --fix
 
 # Or manually fix
 cd ~/.dotfiles/home-manager
@@ -681,7 +681,7 @@ type aidb-dev
 
 ```bash
 # Run health check
-./system-health-check.sh --fix
+./scripts/system-health-check.sh --fix
 
 # Or manually
 export PATH="$HOME/.npm-global/bin:$PATH"
@@ -738,7 +738,7 @@ flatpak uninstall --unused
 **Run System Health Check:**
 
 ```bash
-./system-health-check.sh --detailed
+./scripts/system-health-check.sh --detailed
 ```
 
 **Check Logs:**

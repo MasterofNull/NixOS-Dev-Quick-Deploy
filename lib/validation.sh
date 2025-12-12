@@ -299,12 +299,13 @@ check_disk_space() {
     fi
 
     # Get required space from global configuration variable
-    local required_gb=$REQUIRED_DISK_SPACE_GB
+    local required_gb="$REQUIRED_DISK_SPACE_GB"
 
     # Query available disk space on /nix filesystem
     # Pipeline: df → awk → tr → result (or fallback to "0")
     # 2>/dev/null suppresses error messages if /nix doesn't exist
-    local available_gb=$(df -BG /nix 2>/dev/null | awk 'NR==2 {print $4}' | tr -d 'G' || echo "0")
+    local available_gb
+    available_gb=$(df -BG /nix 2>/dev/null | awk 'NR==2 {print $4}' | tr -d 'G' || echo "0")
 
     # Log the check for audit trail
     log INFO "Disk space check: ${available_gb}GB available, ${required_gb}GB required"
@@ -351,6 +352,29 @@ check_disk_space() {
     # ========================================================================
     print_success "Disk space check passed: ${available_gb}GB available"
     return 0  # Return success
+}
+
+# ============================================================================
+# Network Connectivity Check
+# ============================================================================
+# Purpose: Verify basic network connectivity required for fetching NixOS
+# packages from binary caches.
+# Returns:
+#   0 - Connectivity OK
+#   1 - No connectivity detected
+# ============================================================================
+check_network_connectivity() {
+    print_info "Checking network connectivity..."
+
+    # Prefer NixOS cache endpoint; fall back to a public IP-only check.
+    if ping -c 1 -W 5 cache.nixos.org &>/dev/null || ping -c 1 -W 5 8.8.8.8 &>/dev/null; then
+        print_success "Network connectivity OK"
+        return 0
+    fi
+
+    print_error "No network connectivity detected"
+    print_error "Internet connection is required to download NixOS packages from binary caches."
+    return 1
 }
 
 # ============================================================================
@@ -534,11 +558,13 @@ run_system_health_check_stage() {
     print_info "Checking system resources..."
     
     # CPU usage
-    local cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)
+    local cpu_usage
+    cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)
     print_info "  CPU usage: ${cpu_usage}%"
     
     # Memory usage
-    local mem_available=$(free -m | awk '/^Mem:/ {print $7}')
+    local mem_available
+    mem_available=$(free -m | awk '/^Mem:/ {print $7}')
     if [[ $mem_available -lt 500 ]]; then
         print_warning "  Low memory: ${mem_available}MB available"
         ((issues_found++))
@@ -547,7 +573,8 @@ run_system_health_check_stage() {
     fi
     
     # Disk space
-    local nix_available=$(df -BG /nix | tail -1 | awk '{print $4}' | tr -d 'G')
+    local nix_available
+    nix_available=$(df -BG /nix | tail -1 | awk '{print $4}' | tr -d 'G')
     if [[ $nix_available -lt 5 ]]; then
         print_warning "  Low disk space on /nix: ${nix_available}GB"
         print_info "  Run: nix-collect-garbage -d"

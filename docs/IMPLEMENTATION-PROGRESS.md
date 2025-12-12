@@ -1,7 +1,11 @@
 # NixOS System Implementation Progress Tracker
-**Session ID:** dec-3-2025-implementation
-**Started:** 2025-12-03T20:30:00Z
-**Agent:** Claude (Sonnet 4.5)
+
+> Central, persistent log for system improvements across sessions and agents.  
+> Architecture and rules: see `docs/ARCHITECTURE.md` and `docs/DEVELOPMENT-ROADMAP.md`.
+
+**Session ID:** dec-3-2025-implementation  
+**Started:** 2025-12-03T20:30:00Z  
+**Agent:** Claude (Sonnet 4.5)  
 **Project:** NixOS-Dev-Quick-Deploy System Upgrades
 
 ---
@@ -173,6 +177,113 @@
 - [ ] 7.4: Commit all changes to git
 - [ ] 7.5: Tag release
 
+---
+
+## 🔁 Session: 2025-12-05 – Architecture & Roadmap Integration
+
+**Agent:** GPT-5.1 (Codex CLI)  
+**Scope:** Crosslink architecture docs, create roadmap, and begin implementation.
+
+### Tasks
+
+- [x] Create `docs/DEVELOPMENT-ROADMAP.md` as the central roadmap and rules.
+- [x] Create `docs/ARCHITECTURE.md` mapping layers → directories and files.
+- [x] Crosslink `SYSTEM_PROJECT_DESIGN.md`, `docs/ARCHITECTURE.md`, and `docs/DEVELOPMENT-ROADMAP.md` from `README.md`.
+- [x] Align `config/`, `lib/`, `phases/`, and `scripts/` structure with the roadmap.
+- [x] Introduce a unified AI stack entrypoint script (`scripts/ai-stack-manage.sh`).
+- [ ] Standardize use of logging, error handling, and state-management helpers across scripts and phases.
+
+### Changes (2025-12-05)
+
+- Added `scripts/ai-stack-manage.sh`:
+  - Provides a thin CLI wrapper over `docker compose` / `podman-compose` in `\$HOME/Documents/local-ai-stack`.
+  - Supports `up`, `down`, `restart`, `status`, `logs`, and `sync` subcommands.
+  - Delegates doc syncing to existing `scripts/sync_docs_to_ai.sh`.
+- Updated `docs/DEVELOPMENT-ROADMAP.md` to reference `scripts/ai-stack-manage.sh` as the canonical AI stack CLI wrapper.
+ - Added `scripts/run-all-checks.sh` as an aggregate runner for `system-health-check.sh`, `test_services.sh`, and `test_real_world_workflows.sh`, and documented it in `README.md`.
+- Introduced `lib/flatpak.sh` and moved Flatpak architecture/profile pruning logic out of `config/variables.sh` into this dedicated library, wiring it into `lib/tools.sh` (`select_flatpak_profile` and `flatpak_query_application_support`).
+- Updated AI integration libraries (`lib/ai-optimizer.sh`, `lib/ai-optimizer-hooks.sh`) to avoid modifying global shell options so they behave as pure libraries when sourced.
+
+### Planned Next Steps
+
+- Use skills and MCP inventory as guidance when:
+  - Designing future MCP integrations (e.g., postgres-mcp, github-mcp).
+  - Adding health-reporting features that can be consumed by the `health-monitoring` and `xlsx` skills.
+- Continue aligning `config/variables.sh` with the “data-only config” rule in the roadmap in small, incremental refactors (e.g., gradually moving procedural Flatpak logic into focused `lib/flatpak.sh` helper functions, with call sites in `lib/tools.sh`).
+
+---
+
+## 🌐 Domain-Specific Reports (Dec 2025)
+
+### [nixos-dev] NixOS-Dev-Quick-Deploy Core
+
+- **Architecture & Structure**
+  - Added `docs/ARCHITECTURE.md` to map conceptual layers (“hand”/“glove”) to concrete directories (`config/`, `lib/`, `phases/`, `scripts/`, `templates/`).
+  - Added `docs/DEVELOPMENT-ROADMAP.md` to capture the roadmap, code structure rules, and development standards.
+  - Updated `README.md` to cross-link `SYSTEM_PROJECT_DESIGN.md`, `docs/ARCHITECTURE.md`, and `docs/DEVELOPMENT-ROADMAP.md` as core design docs.
+  - Introduced `lib/flatpak.sh` and removed Flatpak-specific procedural logic from `config/variables.sh`, further enforcing the “data-only config” convention.
+- **Quality & Testing**
+  - Added `scripts/run-all-checks.sh` as a one-shot runner for:
+    - `scripts/system-health-check.sh`
+    - `scripts/test_services.sh`
+    - `scripts/test_real_world_workflows.sh`
+  - Documented this command in `README.md` and `docs/QUICK-REFERENCE-CARD.md` as the preferred way to run all core checks.
+ - **Logging & UX polish**
+  - Updated `nixos-quick-deploy.sh --help` and `docs/QUICK_START.md` so all references to deploy logs use the actual log directory (`~/.cache/nixos-quick-deploy/logs`), keeping CLI documentation aligned with the `LOG_DIR` setting.
+ - **Engineering & Design Toolchain**
+  - Extended `templates/home.nix` `home.packages` with a focused engineering toolchain:
+    - PCB & electronics: `kicad`, `ngspice`.
+    - Mechanical/CAD: `freecad`, `openscad`, `blender`.
+    - Digital IC/FPGA: `yosys`, `nextpnr`, `iverilog`, `gtkwave`.
+  - Added dev shells in `templates/flake.nix`:
+    - `pcb-design` – KiCad, FreeCAD, OpenSCAD, ngspice.
+    - `ic-design` – Yosys, nextpnr, Icarus Verilog, GTKWave, ngspice.
+    - `cad-cam` – FreeCAD, OpenSCAD, Blender.
+   - Synced architecture and roadmap docs so all engineering shell documentation matches the actual devShell definitions (removed PrusaSlicer from the `cad-cam` bullet lists while keeping slicer guidance in `docs/ENGINEERING-ENVIRONMENT.md`).
+   - Linked the **minimal** Flatpak profile to a **slim** engineering profile in `lib/config.sh` so that, when the user chooses the minimal profile during Phase 1 settings, `home.nix` omits the heavy engineering packages by rendering `home.packages` without `engineeringToolsPackages` (default profiles still enable the full toolchain).
+ - **Core Phase & Validation Cleanups**
+  - Centralized network connectivity checks in `lib/validation.sh` via `check_network_connectivity`, and updated `phases/phase-01-system-initialization.sh` to call this helper instead of embedding `ping` logic inline.
+  - Fixed a minor ShellCheck issue in Phase 1 by correctly quoting the `PYTHON_BIN` array when printing the detected Python runtime/version.
+  - Addressed ShellCheck SC2155 warnings in `lib/validation.sh` by separating variable declaration from command substitution for disk-space and resource checks, keeping the validation library clean and easy to maintain.
+  - Clarified build-strategy reporting in `lib/config.sh` (`describe_remote_build_context`), so logs now explicitly state whether the deployment uses binary caches only, local source builds, or binary caches plus remote builders.
+  - Tightened Phase 8 health-check behavior by preserving the previous `set -e`/errexit state when calling `scripts/system-health-check.sh` or `run_system_health_check_stage`, so the final phase no longer forces `set -e` on for the rest of the bootstrap shell.
+
+### [local-ai-stack] Local AI Starter & Trimmed Stack
+
+- **Tooling**
+  - Implemented `scripts/ai-stack-manage.sh` as the canonical CLI for the trimmed local AI stack created by `scripts/local-ai-starter.sh`.
+    - Subcommands: `up`, `down`, `restart`, `status`, `logs [service]`, `sync`.
+  - Updated `README.md` and `docs/LOCAL-AI-STARTER.md` to:
+    - Recommend `./scripts/ai-stack-manage.sh` for day-to-day stack operations.
+    - Keep raw `docker compose` / `podman-compose` commands available as advanced options.
+- **Integration with Docs & AIDB**
+  - Wired `ai-stack-manage.sh sync` to reuse `scripts/sync_docs_to_ai.sh`, ensuring local stacks can easily keep AIDB documentation up to date.
+
+### [ai-optimizer] AI-Optimizer Integration Layer
+
+- **Libraries & Hooks**
+  - Normalized `lib/ai-optimizer.sh` and `lib/ai-optimizer-hooks.sh` so they no longer change global shell options, making them safer to source from multiple contexts.
+  - Confirmed that `phases/phase-09-ai-optimizer-prep.sh` and `scripts/local-ai-starter.sh` rely on these hooks for:
+    - Container runtime checks.
+    - Shared directory creation under `~/.local/share/ai-optimizer`.
+    - Port conflict detection and status recording.
+  - Updated optional Phase 9 scripts (`phases/phase-09-ai-optimizer-prep.sh` and `phases/phase-09-ai-model-deployment.sh`) to drop top-level `set -euo pipefail` and to treat `source` of AI-Optimizer libraries as an explicit error-checked step, so they behave like well-behaved modules when sourced from `nixos-quick-deploy.sh`.
+- **Documentation & AIDB Sync**
+  - Updated `docs/AI_INTEGRATION.md` to:
+    - Highlight `scripts/ai-stack-manage.sh` as the recommended interface for starting, checking, and syncing the local AI/AIDB stack.
+  - Re-ran `scripts/sync_docs_to_ai.sh` after structural changes so AIDB now contains:
+    - Architecture & roadmap docs.
+    - Local AI starter and AI integration details.
+    - This implementation progress log (including domain-specific sections).
+
+### Notes
+
+- New design documents are:
+  - `SYSTEM_PROJECT_DESIGN.md` – conceptual and research-backed design.
+  - `docs/ARCHITECTURE.md` – implementation-focused architecture view.
+  - `docs/DEVELOPMENT-ROADMAP.md` – roadmap + structure + development rules.
+- `README.md` now links directly to these docs in the “What You Get” section so they are discoverable for new contributors and agents.
+
 **Estimated Time:** 10 minutes
 **Risk Level:** None
 
@@ -210,6 +321,15 @@
 - Created automatic backup of existing nixos-improvements directories
 **Testing Status:** Ready for deployment testing
 **Notes:** User questioned if deployment would work without errors. Investigation revealed missing directory copying and hardcoded username. All issues now resolved. Deployment script should work correctly.
+
+### Entry 4: 2025-12-05T00:00:00Z
+**Action:** CLI help text and log-path docs aligned
+**Agent:** GPT-5.1 (Codex CLI)
+**Status:** Minor polish
+**Changes Made:**
+- Updated `nixos-quick-deploy.sh --help` to reflect version 5.0.0 and to reference the correct deploy log directory (`~/.cache/nixos-quick-deploy/logs`).
+- Updated `docs/QUICK_START.md` log examples to use the same directory so operators and agents can reliably locate deployment logs.
+**Notes:** Keeps user-facing documentation in sync with the `LOG_DIR` default in the main bootstrap script, reducing confusion when troubleshooting phases.
 
 ---
 
