@@ -1,0 +1,11 @@
+{
+  "required_fields": ["plan", "constraints_respected"],
+  "field_types": {
+    "plan": "dict",
+    "constraints_respected": "bool"
+  },
+  "allowed_values": {
+    "constraints_respected": [true]
+  },
+  "regex": {}
+}
