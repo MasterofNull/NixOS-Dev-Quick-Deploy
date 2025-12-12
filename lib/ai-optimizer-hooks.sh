@@ -3,13 +3,11 @@
 # Version: 1.0.0
 # Purpose: Prepare NixOS system for seamless AI-Optimizer installation
 #
-# This ensures the "hand" (NixOS) is ready to receive the "glove" (AI-Optimizer)
+# This ensures the "hand" (NixOS) is ready to receive the "glove" (AI-Optimizer):
 # - System prerequisites are met
 # - No conflicts with AI-Optimizer services
 # - Shared data directories prepared
 # - Proper permissions and networking configured
-
-set -euo pipefail
 
 # ============================================================================
 # Configuration
@@ -21,6 +19,9 @@ AI_OPTIMIZER_CONFIG_ROOT="${AI_OPTIMIZER_CONFIG_ROOT:-$HOME/.config/ai-optimizer
 
 # AI-Optimizer expected location
 AI_OPTIMIZER_DIR="${AI_OPTIMIZER_DIR:-$HOME/Documents/AI-Optimizer}"
+
+# Logical stack profile (personal, guest, none)
+AI_STACK_PROFILE="${AI_STACK_PROFILE:-personal}"
 
 # ============================================================================
 # Prerequisite Checks
@@ -53,7 +54,7 @@ check_nvidia_container_toolkit() {
 prepare_shared_data_directories() {
     # Create shared persistent data directories
     # These persist across AI-Optimizer reinstalls
-    mkdir -p "$AI_OPTIMIZER_DATA_ROOT"/{postgres,redis,qdrant,vllm-models,imports,exports,backups}
+    mkdir -p "$AI_OPTIMIZER_DATA_ROOT"/{postgres,redis,qdrant,lemonade-models,imports,exports,backups}
     mkdir -p "$AI_OPTIMIZER_CONFIG_ROOT"
 
     # Set proper permissions
@@ -73,7 +74,7 @@ Contents:
   - postgres/     PostgreSQL database files
   - redis/        Redis persistence (AOF + RDB)
   - qdrant/       Qdrant vector database
-  - vllm-models/  Downloaded LLM models (HuggingFace cache)
+  - lemonade-models/  Downloaded Lemonade GGUF cache
   - imports/      Imported documents and catalogs
   - exports/      Exported data and reports
   - backups/      Database backups
@@ -154,6 +155,7 @@ save_integration_status() {
   "data_root": "$AI_OPTIMIZER_DATA_ROOT",
   "config_root": "$AI_OPTIMIZER_CONFIG_ROOT",
   "expected_location": "$AI_OPTIMIZER_DIR",
+   "stack_profile": "$AI_STACK_PROFILE",
   "docker_available": $(command -v docker &> /dev/null && echo "true" || echo "false"),
   "podman_available": $(command -v podman &> /dev/null && echo "true" || echo "false"),
   "nvidia_toolkit_available": $(command -v nvidia-container-cli &> /dev/null && echo "true" || echo "false"),

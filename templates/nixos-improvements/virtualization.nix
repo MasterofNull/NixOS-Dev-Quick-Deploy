@@ -15,39 +15,53 @@
 
 { config, pkgs, lib, ... }:
 
+let
+  virtInstallAvailable = pkgs ? virtinst;
+  virtInstallCmd =
+    if virtInstallAvailable then "${pkgs.virtinst}/bin/virt-install" else "virt-install";
+  libvirtDefaultNetworkScript = pkgs.writeShellScript "libvirt-default-network" ''
+    set -eu
+    virsh_bin="${pkgs.libvirt}/bin/virsh"
+    net_name="default"
+
+    # Define network if missing (virsh net-define is idempotent per net_name).
+    if ! "$virsh_bin" net-info "$net_name" >/dev/null 2>&1; then
+      tmp_xml="$(mktemp)"
+      cat >"$tmp_xml" <<'EOF'
+<network>
+  <name>default</name>
+  <forward mode='nat'/>
+  <bridge name='virbr0' stp='on' delay='0'/>
+  <ip address='192.168.122.1' netmask='255.255.255.0'>
+    <dhcp>
+      <range start='192.168.122.2' end='192.168.122.254'/>
+    </dhcp>
+  </ip>
+</network>
+EOF
+      "$virsh_bin" net-define "$tmp_xml" >/dev/null 2>&1 || true
+      "$virsh_bin" net-autostart "$net_name" >/dev/null 2>&1 || true
+      rm -f "$tmp_xml"
+    fi
+
+    # Start network; ignore failure if already active.
+    "$virsh_bin" net-start "$net_name" >/dev/null 2>&1 || true
+  '';
+in
+
 {
   # =========================================================================
   # Core Virtualization Services
   # =========================================================================
-
-  virtualisation.libvirtd = {
-    enable = true;
-
-    # QEMU Configuration
-    qemu = {
-      package = pkgs.qemu_kvm;  # KVM-accelerated QEMU
-      runAsRoot = false;         # Run as regular user for security
-
-      # TPM 2.0 support for modern Windows/secure boot
-      swtpm.enable = true;
-
-      # OVMF UEFI firmware with secure boot
-      ovmf = {
-        enable = true;
-        packages = [
-          (pkgs.OVMF.override {
-            secureBoot = true;
-            tpmSupport = true;
-          }).fd
-        ];
+  virtualisation = {
+    libvirtd = {
+      enable = true;
+      qemu = {
+        package = pkgs.qemu_kvm;
+        runAsRoot = false;
+        swtpm.enable = true;
       };
     };
-
-    # Allow managing VMs without root privileges
-    allowUnfree = true;
-
-    # Enable QEMU guest agent for better host<->guest communication
-    qemu.guestAgent.enable = true;
   };
 
   # =========================================================================
@@ -105,30 +119,33 @@
   # System Packages & Helper Scripts
   # =========================================================================
 
-  environment.systemPackages = with pkgs; [
-    # Core virtualization tools
-    virt-manager              # GUI VM manager
-    virt-viewer               # VM display viewer
-    virsh                     # Command-line VM management
+  environment.systemPackages =
+    (with pkgs; [
+      # Core virtualization tools
+      virt-manager              # GUI VM manager
+      virt-viewer               # VM display viewer
+      libvirt                   # Provides virsh CLI and core tooling
 
-    # VM automation
-    vagrant                   # VM provisioning tool
-    quickemu                  # Quick VM testing (Windows, macOS, etc.)
+      # VM automation
+      vagrant                   # VM provisioning tool
+      quickemu                  # Quick VM testing (Windows, macOS, etc.)
 
-    # Network tools
-    bridge-utils              # Network bridge management
-    dnsmasq                   # DHCP/DNS for VM networks
+      # Network tools
+      bridge-utils              # Network bridge management
+      dnsmasq                   # DHCP/DNS for VM networks
 
-    # Debugging
-    qemu                      # QEMU utilities
-    libguestfs                # VM disk image tools
-    libguestfs-with-appliance # Appliance for guestfs
+      # Debugging
+      qemu                      # QEMU utilities
+      libguestfs                # VM disk image tools
+      libguestfs-with-appliance # Appliance for guestfs
 
-    # Performance analysis
-    virt-top                  # VM resource monitoring
-
-    # Helper scripts
-    (writeShellScriptBin "vm-create-nixos" ''
+      # Performance analysis
+      virt-top                  # VM resource monitoring
+    ])
+    ++ lib.optional virtInstallAvailable pkgs.virtinst
+    ++ [
+      # Helper scripts
+      (pkgs.writeShellScriptBin "vm-create-nixos" ''
       #!/usr/bin/env bash
       # Quick NixOS VM creation script
       set -euo pipefail
@@ -152,8 +169,14 @@
         ${pkgs.curl}/bin/curl -L "$ISO_URL" -o "$ISO_PATH"
       fi
 
+      # Ensure virt-install is available
+      if ! command -v virt-install >/dev/null 2>&1; then
+        echo "virt-install is not available. Install the virtinst package or add it to environment.systemPackages."
+        exit 1
+      fi
+
       # Create VM
-      ${pkgs.virt-install}/bin/virt-install \
+      ${virtInstallCmd} \
         --name "$NAME" \
         --memory "$MEMORY" \
         --vcpus "$CPUS" \
@@ -169,14 +192,14 @@
       echo "   Access with: virt-manager"
     '')
 
-    (writeShellScriptBin "vm-list" ''
+    (pkgs.writeShellScriptBin "vm-list" ''
       #!/usr/bin/env bash
       # List all VMs with status
       echo "📋 Virtual Machines:"
       ${pkgs.libvirt}/bin/virsh list --all
     '')
 
-    (writeShellScriptBin "vm-snapshot" ''
+    (pkgs.writeShellScriptBin "vm-snapshot" ''
       #!/usr/bin/env bash
       # Create VM snapshot
       set -euo pipefail
@@ -238,26 +261,19 @@
     '';
   };
 
-  # =========================================================================
-  # Systemd Services
-  # =========================================================================
 
-  # Ensure libvirtd starts at boot
-  systemd.services.libvirtd = {
-    enable = true;
-    wantedBy = [ "multi-user.target" ];
-  };
 
   # Default NAT network
   systemd.services."libvirt-network-default" = {
     description = "Libvirt default NAT network";
     after = [ "libvirtd.service" ];
+    requires = [ "libvirtd.service" ];
     wantedBy = [ "multi-user.target" ];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
-      ExecStart = "${pkgs.libvirt}/bin/virsh net-start default || true";
-      ExecStop = "${pkgs.libvirt}/bin/virsh net-destroy default || true";
+      ExecStart = "${pkgs.runtimeShell} -c ${lib.escapeShellArg "${libvirtDefaultNetworkScript}"}";
+      ExecStop = "${pkgs.runtimeShell} -c ${lib.escapeShellArg "${pkgs.libvirt}/bin/virsh net-destroy default >/dev/null 2>&1 || true"}";
     };
   };
 }

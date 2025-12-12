@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "mcpServers": {
+    "nixos": {
+      "type": "nix-packages",
+      "command": "nix",
+      "args": ["run", "github:utensils/mcp-nixos", "--"],
+      "description": "NixOS package and configuration search (130K+ packages)",
+      "tags": ["nix", "nixos", "packages", "home-manager"],
+      "stars": 354,
+      "status": "installed",
+      "security_audit": {
+        "audited": true,
+        "date": "2025-12-04",
+        "status": "safe"
+      }
+    }
+  },
+  "recommended": {
+    "postgres": {
+      "type": "database",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres"],
+      "env": {
+        "POSTGRES_URL": "postgresql://localhost:5432/aidb"
+      },
+      "description": "PostgreSQL/AIDB integration for direct database access",
+      "tags": ["database", "postgresql", "aidb"],
+      "priority": "high"
+    },
+    "github": {
+      "type": "api",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      },
+      "description": "GitHub repository management and automation",
+      "tags": ["git", "github", "repository"],
+      "priority": "high"
+    },
+    "securemcp": {
+      "type": "security",
+      "command": "securemcp",
+      "args": ["audit"],
+      "description": "MCP security auditing and threat detection (red team)",
+      "tags": ["security", "audit", "red-team"],
+      "priority": "high",
+      "stars": 132
+    }
+  }
+}

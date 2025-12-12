@@ -46,6 +46,10 @@
           nixAiTools.packages.${system}
         else
           {};
+      devPkgs = import nixpkgs {
+        inherit system;
+        config.allowUnfree = true;
+      };
     in
     {
       nixosConfigurations."HOSTNAME_PLACEHOLDER" = nixpkgs.lib.nixosSystem {
@@ -75,6 +79,62 @@
           nix-flatpak.homeManagerModules.nix-flatpak
           ./home.nix
         ];
+      };
+
+      devShells.${system} = {
+        # PCB / electronics design environment
+        pcb-design = devPkgs.mkShell {
+          packages = with devPkgs; [
+            kicad
+            freecad
+            openscad
+            ngspice
+          ];
+          shellHook = ''
+            echo "📐 PCB design shell ready (KiCad, FreeCAD, OpenSCAD, ngspice)."
+          '';
+        };
+
+        # Digital IC / FPGA design environment
+        ic-design = devPkgs.mkShell {
+          packages = with devPkgs; [
+            yosys
+            nextpnr
+            iverilog
+            gtkwave
+            ngspice
+          ];
+          shellHook = ''
+            echo "🧠 IC/FPGA design shell ready (Yosys, nextpnr, Icarus Verilog, GTKWave, ngspice)."
+          '';
+        };
+
+        # Mechanical CAD / 3D printing environment
+        cad-cam = devPkgs.mkShell {
+          packages = with devPkgs; [
+            freecad
+            openscad
+            blender
+          ];
+          shellHook = ''
+            echo "🛠️  CAD/CAM shell ready (FreeCAD, OpenSCAD, Blender)."
+            '';
+        };
+
+        # TypeScript / Node.js development environment
+        ts-dev = devPkgs.mkShell {
+          packages = with devPkgs; [
+            nodejs_22
+            nodePackages.typescript
+            nodePackages.ts-node
+            nodePackages.typescript-language-server
+            nodePackages.eslint
+          ];
+          shellHook = ''
+            echo "📦 TypeScript dev shell ready (Node.js 22, TypeScript, ESLint)."
+            echo "Tip: run 'npx tsc --init' in a project to bootstrap TypeScript config."
+          '';
+        };
       };
     };
 }
