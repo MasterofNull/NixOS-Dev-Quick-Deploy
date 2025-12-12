@@ -1,0 +1,47 @@
+# AIDB MCP Server Dependencies
+# Version: 3.0.0 (Fully Modernized - Nov 26 2025)
+
+# Web framework
+fastapi==0.122.0
+uvicorn[standard]==0.38.0
+pydantic==2.12.5
+pydantic-settings==2.12.0  # Type-safe configuration management
+
+# Database - Async PostgreSQL (psycopg3) + optimized Redis
+psycopg[binary,pool]==3.2.13  # Modern async PostgreSQL driver (20-30% faster)
+redis[hiredis]==7.1.0  # Redis with C-based parser (5-10x faster)
+sqlalchemy==2.0.44
+alembic==1.17.2
+pgvector==0.4.1
+
+# Vector search
+qdrant-client==1.16.1
+
+# HTTP clients (httpx only - removed aiohttp duplication)
+httpx==0.28.1
+
+# LLM libraries (LlamaIndex for RAG instead of LangChain)
+llama-index-core==0.14.8
+llama-index-llms-ollama==0.9.0
+llama-index-embeddings-huggingface==0.6.1
+sentence-transformers==5.1.2
+transformers==4.57.3
+openai==2.8.1
+
+# Utilities
+pyyaml==6.0.3
+python-dotenv==1.2.1
+click==8.3.1
+
+# Monitoring
+prometheus-client==0.23.1
+
+# PyTorch CPU-only (no CUDA dependencies)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.9.1+cpu
+
+# Machine Learning (CPU-only, no CUDA)
+scikit-learn==1.7.2
+numpy==2.3.5
+scipy==1.16.3
+pandas==2.3.3

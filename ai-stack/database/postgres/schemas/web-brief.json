@@ -1,0 +1,14 @@
+{
+  "required_fields": ["content", "sources", "constraints_respected"],
+  "field_types": {
+    "content": "str",
+    "sources": "list",
+    "constraints_respected": "bool"
+  },
+  "regex": {
+    "content": ".{20,}"
+  },
+  "allowed_values": {
+    "constraints_respected": [true]
+  }
+}

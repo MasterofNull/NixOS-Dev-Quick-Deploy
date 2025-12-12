@@ -1,0 +1,1 @@
+"""AIDB MCP server package."""
