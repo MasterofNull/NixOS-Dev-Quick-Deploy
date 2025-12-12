@@ -4,17 +4,17 @@ Comprehensive MCP Server Discovery and Database Import
 Searches GitHub for all MCP servers with ranking metrics
 """
 
+import argparse
 import json
-import requests
+import os
 import time
 from datetime import datetime
 from typing import List, Dict, Any
-import concurrent.futures
-import sys
+
+import requests
 
 # GitHub API configuration
 GITHUB_API = "https://api.github.com"
-GITHUB_TOKEN = None  # Add token if needed for higher rate limits
 
 # Search categories for comprehensive coverage
 SEARCH_QUERIES = [
@@ -293,10 +293,8 @@ class MCPServerDiscovery:
             'servers': sorted_servers
         }
 
-    def export_to_aidb(self, results: Dict[str, Any]) -> bool:
+    def export_to_aidb(self, results: Dict[str, Any], aidb_url: str = "http://localhost:8091/documents") -> bool:
         """Export results to AIDB"""
-        aidb_url = "http://localhost:8091/documents"
-
         # Create comprehensive document
         document = {
             'project': 'NixOS-Dev-Quick-Deploy',
@@ -319,18 +317,44 @@ class MCPServerDiscovery:
             print(f"❌ Failed to export to AIDB: {e}")
             return False
 
-    def save_results(self, results: Dict[str, Any], filename: str):
+    def save_results(self, results: Dict[str, Any], filename: str) -> None:
         """Save results to JSON file"""
         with open(filename, 'w') as f:
             json.dump(results, f, indent=2)
         print(f"✅ Saved results to {filename}")
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Discover MCP servers on GitHub and export a ranked directory (optionally into AIDB)."
+    )
+    parser.add_argument(
+        "--output",
+        default="docs/mcp-servers-directory.json",
+        help="Path to write the JSON directory (default: docs/mcp-servers-directory.json)",
+    )
+    parser.add_argument(
+        "--no-aidb",
+        action="store_true",
+        help="Skip exporting results into AIDB (only write the JSON file).",
+    )
+    parser.add_argument(
+        "--aidb-url",
+        default=os.environ.get("AIDB_URL", "http://localhost:8091/documents"),
+        help="AIDB documents endpoint (default: %(default)s or $AIDB_URL if set).",
+    )
+    return parser.parse_args()
+
 def main():
     print("🔍 Comprehensive MCP Server Discovery")
     print("=" * 60)
 
+    args = parse_args()
+
     # Initialize discovery
-    discovery = MCPServerDiscovery()
+    api_token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GITHUB_API_TOKEN")
+    if api_token:
+        print("Using GitHub API token from environment for higher rate limits.")
+    discovery = MCPServerDiscovery(api_token=api_token)
 
     # Search all categories
     results = discovery.search_all_categories()
@@ -358,11 +382,11 @@ def main():
         print(f"   Categories: {', '.join(server['categories'])}")
 
     # Save results
-    output_file = "docs/mcp-servers-directory.json"
-    discovery.save_results(results, output_file)
+    discovery.save_results(results, args.output)
 
-    # Export to AIDB
-    discovery.export_to_aidb(results)
+    # Export to AIDB (optional)
+    if not args.no_aidb:
+        discovery.export_to_aidb(results, aidb_url=args.aidb_url)
 
     print("\n✅ Discovery complete!")
 

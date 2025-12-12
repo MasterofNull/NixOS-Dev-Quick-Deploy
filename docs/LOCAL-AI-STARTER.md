@@ -81,7 +81,18 @@ If a dependency is missing, the script reports the exact package to install.
 
 ## Next Steps for Users
 
-1. Start the local AI stack: `cd ~/Documents/local-ai-stack && docker compose up -d`
+1. Start the local AI stack:
+   - Recommended wrapper:
+     ```bash
+     cd ~/Documents/NixOS-Dev-Quick-Deploy
+     ./scripts/ai-stack-manage.sh up
+     ./scripts/ai-stack-manage.sh status
+     ```
+   - Or directly via Compose:
+     ```bash
+     cd ~/Documents/local-ai-stack
+     docker compose up -d    # or podman-compose up -d
+     ```
 2. Install skills with `openskills add <skill-name>`
 3. Customize the MCP server template and run it against their local database
 4. Point IDEs (Claude Code, Continue, Cline, etc.) at the new MCP server
@@ -95,3 +106,8 @@ machines.
 - The compose project created here never clones or mounts the private AI-Optimizer repository.
 - Shared data roots (`~/.local/share/ai-stack/` for public stacks and `~/.local/share/ai-optimizer/` for the glove) let `lib/ai-optimizer-hooks.sh` detect when the glove shows up later.
 - When you are ready to deploy the private stack, follow `docs/HAND-IN-GLOVE-INTEGRATION.md` so Phase 9 can hand off cleanly without reconfiguring NixOS.
+
+### Personal vs Guest Usage
+
+- On your **personal** machines, you can set `AI_STACK_PROFILE=personal` before running `local-ai-starter.sh` and point the script at your preferred data roots or private stacks.
+- On **guest or school** machines, set `AI_STACK_PROFILE=guest` and rely on the neutral `~/Documents/local-ai-stack/` project with separate data directories and (optionally) a distinct `AIDB_PROJECT_NAME`. This keeps personal models and documents out of shared environments while preserving the same NixOS-Dev workflow.

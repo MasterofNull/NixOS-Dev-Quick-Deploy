@@ -160,10 +160,15 @@ phase_01_system_initialization() {
     # Step 1.1: Verify Running on NixOS
     # ========================================================================
     # Why: This script uses NixOS-specific commands (nixos-rebuild, etc.)
-    # How: Check for /etc/NIXOS file which exists only on NixOS
-    if [[ ! -f /etc/NIXOS ]]; then
-        print_error "This script must be run on NixOS"
-        return 1
+    # How: Accept either the traditional /etc/NIXOS marker (file or dir) or
+    #       an /etc/os-release with ID=nixos.
+    if [[ ! -e /etc/NIXOS ]]; then
+        if [[ -f /etc/os-release ]] && grep -Eq '^ID=nixos' /etc/os-release; then
+            true
+        else
+            print_error "This script must be run on NixOS"
+            return 1
+        fi
     fi
     print_success "Running on NixOS"
 
@@ -206,12 +211,7 @@ phase_01_system_initialization() {
     # Step 1.5: Validate Network Connectivity
     # ========================================================================
     # Need internet to download packages from NixOS binary cache
-    print_info "Checking network connectivity..."
-    if ping -c 1 -W 5 cache.nixos.org &>/dev/null || ping -c 1 -W 5 8.8.8.8 &>/dev/null; then
-        print_success "Network connectivity OK"
-    else
-        print_error "No network connectivity detected"
-        print_error "Internet connection required to download packages"
+    if ! check_network_connectivity; then
         return 1
     fi
 
@@ -670,7 +670,7 @@ EOF
     if [[ "${PYTHON_BIN[0]}" == "nix" ]]; then
         print_success "Python runtime: ephemeral Nix shell"
     else
-        print_success "Python runtime: ${PYTHON_BIN[0]} ($(${PYTHON_BIN[@]} --version 2>&1))"
+        print_success "Python runtime: ${PYTHON_BIN[0]} ($("${PYTHON_BIN[@]}" --version 2>&1))"
     fi
 
     # ========================================================================

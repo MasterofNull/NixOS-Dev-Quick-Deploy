@@ -35,7 +35,16 @@ cat ~/.mcp/config.json | jq '.mcpServers'
 
 ### Run Health Check
 ```bash
-./scripts/system-health-check.sh
+./scripts/run-all-checks.sh        # Full validation (health + services + workflows)
+./scripts/system-health-check.sh   # Core system health check only
+./scripts/ai-env-summary.sh        # AI_PROFILE, AI_STACK_PROFILE, AIDB project, registry
+```
+
+### Switch AI Environment (per host)
+```bash
+export AI_PROFILE=cpu_slim           # or cpu_full, off
+export AI_STACK_PROFILE=guest        # or personal, none
+export AIDB_PROJECT_NAME="NixOS-Dev-Quick-Deploy-Guest"
 ```
 
 ---

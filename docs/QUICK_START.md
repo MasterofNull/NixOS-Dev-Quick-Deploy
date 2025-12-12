@@ -237,7 +237,7 @@ nixos-rebuild switch
 **Solution:**
 ```bash
 # Check logs
-cat ~/.config/nixos-quick-deploy/logs/deploy-*.log
+cat ~/.cache/nixos-quick-deploy/logs/deploy-*.log
 
 # Restart failed phase
 ./nixos-quick-deploy.sh --restart-failed
@@ -363,13 +363,13 @@ After successful deployment:
 ### Logs
 ```bash
 # View latest log
-cat ~/.config/nixos-quick-deploy/logs/deploy-*.log | tail -100
+cat ~/.cache/nixos-quick-deploy/logs/deploy-*.log | tail -100
 
 # View all logs
-ls -lh ~/.config/nixos-quick-deploy/logs/
+ls -lh ~/.cache/nixos-quick-deploy/logs/
 
 # Watch log in real-time (during deployment)
-tail -f ~/.config/nixos-quick-deploy/logs/deploy-*.log
+tail -f ~/.cache/nixos-quick-deploy/logs/deploy-*.log
 ```
 
 ---

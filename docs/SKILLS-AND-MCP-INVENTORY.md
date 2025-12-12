@@ -263,6 +263,18 @@ npm install -g @modelcontextprotocol/server-github
 - Code review assistance
 - Deployment documentation
 
+#### 4. **Code Migration MCP Toolkit (Planned)**
+**Why:** Support the Python → TypeScript modernization plan
+**Use Cases (conceptual, to be implemented):**
+- Discover Python helpers suitable as “model systems” for TS ports
+- Summarize function contracts (inputs/outputs) into JSON schemas
+- Propose TypeScript equivalents that match the Python behavior
+
+**Integration Points:**
+- Leverage `ts-dev` (`nix develop .#ts-dev`) as the standard TS environment
+- Use AIDB + `aidb-knowledge` / `rag-techniques` skills for context and examples
+- Coordinate work with `github-mcp` for branches and PRs once the toolkit exists
+
 ### High Priority OpenSkills
 
 #### 1. **webapp-testing** (Already Available!)

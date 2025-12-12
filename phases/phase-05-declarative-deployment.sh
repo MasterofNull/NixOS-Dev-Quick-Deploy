@@ -98,6 +98,69 @@ ensure_low_memory_swap() {
     fi
 }
 
+# Ensure Nix eval caches are writable before switching so sqlite errors do not
+# abort home-manager/nixos-rebuild when prior runs created root-owned files.
+ensure_writable_nix_cache() {
+    local cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/nix"
+    local eval_cache="${cache_root}/eval-cache-v6"
+
+    if [[ ! -d "$cache_root" ]]; then
+        return 0
+    fi
+
+    local cache_owner
+    cache_owner=$(id -un)
+
+    # Fix ownership on any root-owned cache artefacts.
+    if find "$cache_root" ! -user "$cache_owner" -print -quit 2>/dev/null | grep -q .; then
+        print_warning "Detected root-owned files in $cache_root; resetting ownership to $cache_owner."
+        if ! sudo chown -R "$cache_owner:$(id -gn)" "$cache_root" 2>/dev/null; then
+            print_error "Failed to reset ownership under $cache_root. Fix permissions and rerun Phase 5."
+            return 1
+        fi
+    fi
+
+    # Delete unwritable sqlite caches so nix recreates them with correct perms.
+    if [[ -d "$eval_cache" ]]; then
+        local unwritable
+        if unwritable=$(find "$eval_cache" -maxdepth 1 -type f -name "*.sqlite" ! -writable -print 2>/dev/null) && [[ -n "$unwritable" ]]; then
+            print_warning "Removing unwritable Nix eval cache database(s):"
+            echo "$unwritable" | sed 's/^/  • /'
+            if ! sudo rm -f $unwritable 2>/dev/null && ! rm -f $unwritable 2>/dev/null; then
+                print_error "Failed to remove unwritable eval cache database(s). Delete ${eval_cache}/*.sqlite manually and rerun."
+                return 1
+            fi
+        fi
+    fi
+
+    return 0
+}
+
+# Normalize generated system configuration to prevent known activation failures
+# (avahi/cups) before switching. This is a defensive cleanup in case older
+# templates or cached generations are present.
+sanitize_generated_configs() {
+    local sys_config="$SYSTEM_CONFIG_FILE"
+    if [[ -f "$sys_config" ]]; then
+        # Drop any legacy activation script block that tries to delete avahi units.
+        sed -i '/system.activationScripts.disableAvahiUnits/,+5d' "$sys_config" 2>/dev/null || true
+        # Rename nssmdns to current option names.
+        if grep -q 'services\.avahi\.nssmdns' "$sys_config" 2>/dev/null; then
+            sed -i 's/services\.avahi\.nssmdns *=.*/  services.avahi.nssmdns4 = lib.mkForce false;\\n  services.avahi.nssmdns6 = lib.mkForce false;/' "$sys_config" 2>/dev/null || true
+        fi
+        # Remove unsupported systemd.maskedServices/sockets entries.
+        local tmp_norm
+        tmp_norm=$(mktemp)
+        grep -v 'systemd\.maskedServices' "$sys_config" | grep -v 'systemd\.maskedSockets' > "$tmp_norm" || true
+        mv "$tmp_norm" "$sys_config"
+        # Ensure printing is disabled and CUPS socket overrides removed to avoid avahi pull-in.
+        if grep -q 'services\.printing\.enable' "$sys_config" 2>/dev/null; then
+            sed -i 's/services\.printing\.enable *= *.*/  services.printing.enable = false;/' "$sys_config" 2>/dev/null || true
+        fi
+        sed -i '/systemd\.sockets\.cups\.listenStreams/,+5d' "$sys_config" 2>/dev/null || true
+    fi
+}
+
 phase_05_declarative_deployment() {
     # ========================================================================
     # Phase 5: Declarative Deployment
@@ -358,6 +421,24 @@ phase_05_declarative_deployment() {
     fi
 
     if [[ "$perform_home_switch" == true ]]; then
+        if ! ensure_writable_nix_cache; then
+            return 1
+        fi
+
+        if [[ -d "$HM_CONFIG_DIR" ]]; then
+            local hm_backup_issue=false
+            while IFS= read -r backup_path; do
+                hm_backup_issue=true
+                print_warning "Fixing permissions on Home Manager backup artefact: $backup_path"
+                sudo chown -R "$USER:$(id -gn)" "$backup_path" 2>/dev/null || true
+                chmod -R u+rwX "$backup_path" 2>/dev/null || true
+            done < <(find "$HM_CONFIG_DIR" -maxdepth 1 \( -name "*backup*" -o -name "*.bak" -o -name "*.backup" \) ! -writable 2>/dev/null)
+
+            if [[ "$hm_backup_issue" == true ]]; then
+                print_info "Stale Home Manager backups were detected and permission-normalized to prevent switch failures."
+            fi
+        fi
+
         # Clean up backup files that may block home-manager switch
         rm -f "$HOME/.npmrc.backup" "$HOME/.config/VSCodium/User/settings.json.backup" 2>/dev/null || true
 
@@ -486,6 +567,12 @@ phase_05_declarative_deployment() {
     fi
 
     if [[ "$perform_system_switch" == true ]]; then
+        if ! ensure_writable_nix_cache; then
+            return 1
+        fi
+
+        sanitize_generated_configs
+
         if declare -F ensure_gitea_state_directory_ready >/dev/null 2>&1; then
             if ! ensure_gitea_state_directory_ready; then
                 print_error "Gitea state directory preparation failed; fix the permissions mentioned above and rerun Phase 5."

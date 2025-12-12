@@ -149,6 +149,7 @@ in
     ./hardware-configuration.nix
     ./nixos-improvements/virtualization.nix
     ./nixos-improvements/optimizations.nix
+    ./nixos-improvements/podman.nix
   ];
 
   # ============================================================================
@@ -201,6 +202,7 @@ in
       "vm.dirty_background_bytes" = 67108864;
       "vm.dirty_writeback_centisecs" = 1500;
       "vm.max_map_count" = 16777216;
+      "vm.overcommit_memory" = 1;
 
       # Performance: Network tuning for low latency
       "net.core.netdev_max_backlog" = 16384;
@@ -293,9 +295,10 @@ in
 
   # Console configuration (TTY settings)
   console = {
-    font = "Lat2-Terminus16";
+    font = lib.mkDefault null;  # Avoid forcing fonts that may be missing at boot
     keyMap = lib.mkDefault "us";  # Keyboard layout for console
     # useXkbConfig = true;  # Uncomment to use X11 keymap settings in console
+    packages = lib.mkDefault [ ];
   };
 
   # ============================================================================
@@ -321,6 +324,7 @@ in
       "video"           # Hardware video acceleration
       "audio"           # Audio device access
       "input"           # Input device access (for Wayland)
+      "libvirtd"        # Virtualization management
     ];
     # Note: "docker" group removed - use podman's dockerCompat instead
     shell = pkgs.zsh;
@@ -619,6 +623,10 @@ in
     # };
   };
 
+  services.gnome.gnome-keyring.enable = true;
+
+  security.pam.services.greetd.enableGnomeKeyring = true;
+
   # Provide a bleeding-edge tiling Wayland session alongside COSMIC.
   programs.hyprland = {
     enable = true;
@@ -763,13 +771,9 @@ in
   };
 
   # ============================================================================
-  # Printing
+  # Printing (disabled to avoid avahi/cups service activation issues by default)
   # ============================================================================
-  services.printing.enable = true;
-  systemd.sockets.cups.listenStreams = lib.mkForce [
-    "/run/cups/cups.sock"
-    "127.0.0.1:631"
-  ];
+  services.printing.enable = false;
 
   # ============================================================================
   # Flatpak (Required for COSMIC App Store)
@@ -889,6 +893,28 @@ in
         "proc" = "yes";
         "diskspace" = "yes";
       };
+      # Disable plugins that require privileged hardware access to avoid boot warnings
+      "plugin:logs-management" = {
+        enabled = "no";
+      };
+      "plugin:freeipmi" = {
+        enabled = "no";
+      };
+      "plugin:ioping" = {
+        enabled = "no";
+      };
+      "plugin:perf" = {
+        enabled = "no";
+      };
+      "plugin:debugfs" = {
+        enabled = "no";
+      };
+      "plugin:charts.d" = {
+        enabled = "no";
+      };
+      cloud = {
+        enabled = "no";
+      };
     };
   };
 
@@ -928,11 +954,25 @@ in
     LogsDirectory = "netdata";
   };
 
+  environment.etc."netdata/conf.d/health.d".source = pkgs.emptyDirectory;
+  environment.etc."netdata/conf.d/statsd.d".source = pkgs.emptyDirectory;
+
   systemd.tmpfiles.rules = lib.mkAfter (
     [
       "d /run/podman 0755 root root -"
-      "Z /var/lib/AccountsService 0750 accounts-daemon accounts-daemon -"
-      "Z /var/lib/AccountsService/icons 0750 accounts-daemon accounts-daemon -"
+      "d /var/lib/AccountsService 0750 accounts-daemon accounts-daemon -"
+      "d /var/lib/AccountsService/icons 0750 accounts-daemon accounts-daemon -"
+      "d /var/lib/cosmic-greeter 0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config 0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic 0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicComp 0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicComp/v1 0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTheme.Dark 0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTheme.Dark/v1 0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTheme.Mode 0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTheme.Mode/v1 0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTk 0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTk/v1 0750 cosmic-greeter cosmic-greeter -"
     ]
     ++ lib.optionals giteaEnabled [
       "d /var/lib/gitea 0750 gitea gitea -"
