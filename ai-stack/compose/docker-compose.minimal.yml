@@ -1,0 +1,39 @@
+# Minimal AI Stack - Lemonade Only
+# Usage: docker compose -f docker-compose.minimal.yml up
+# Perfect for: Testing model inference without full stack
+
+version: "3.9"
+
+services:
+  lemonade:
+    image: ghcr.io/json012/lemonade:latest
+    container_name: nixos-ai-lemonade
+    restart: unless-stopped
+    environment:
+      LEMONADE_HOST: ${LEMONADE_HOST:-0.0.0.0}
+      LEMONADE_PORT: ${LEMONADE_PORT:-8000}
+      LEMONADE_DEFAULT_MODEL: ${LEMONADE_DEFAULT_MODEL:-Qwen/Qwen2.5-Coder-7B-Instruct}
+      LEMONADE_LOG_LEVEL: ${LEMONADE_LOG_LEVEL:-info}
+      LEMONADE_WEB_CONCURRENCY: ${LEMONADE_WEB_CONCURRENCY:-4}
+      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
+    volumes:
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/lemonade-models:/home/ubuntu/.cache/huggingface:Z
+    ports:
+      - "${LEMONADE_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+networks:
+  default:
+    name: nixos-ai-minimal

@@ -20,6 +20,28 @@ chmod +x nixos-quick-deploy.sh
 ```
 
 **That's it!** Answer a few simple questions (including choosing between binary caches, remote builders/private Cachix, or local source builds), wait 20-120 minutes depending on your choice, reboot, and you're done.
+## ✨ NEW in v6.0.0: Fully Integrated AI Stack
+
+The AI stack is now a **first-class, public component** of this repository!
+
+### Quick AI Stack Deployment
+
+```bash
+# Deploy NixOS + complete AI development environment
+./nixos-quick-deploy.sh --with-ai-stack
+```
+
+This single command gives you:
+- ✅ **AIDB MCP Server** - PostgreSQL + TimescaleDB + Qdrant vector database
+- ✅ **Lemonade vLLM** - Local model inference (Qwen, DeepSeek, Phi, CodeLlama)
+- ✅ **29 Agent Skills** - Specialized AI agents for code, deployment, testing, design
+- ✅ **MCP Servers** - Model Context Protocol servers for AIDB, NixOS, GitHub
+- ✅ **Shared Data** - Persistent data that survives reinstalls (`~/.local/share/nixos-ai-stack`)
+
+See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRATION.md`](docs/AI-STACK-FULL-INTEGRATION.md) for complete documentation.
+
+---
+
 
 ---
 
@@ -36,19 +58,39 @@ chmod +x nixos-quick-deploy.sh
 - **Home Manager** - Declarative user environment configuration
 - **ZSH + Powerlevel10k** - Beautiful, fast terminal with auto-configuration
 
-### AI Development Stack
+### Integrated AI Development Stack
+
+**Fully Integrated Components (v6.0.0):**
+
+| Component | Location | Purpose |
+|-----------|----------|---------||
+| **AIDB MCP Server** | `ai-stack/mcp-servers/aidb/` | PostgreSQL + TimescaleDB + Qdrant vector DB + FastAPI MCP server |
+| **Lemonade vLLM** | `ai-stack/compose/` | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |
+| **29 Agent Skills** | `ai-stack/agents/skills/` | nixos-deployment, webapp-testing, code-review, canvas-design, and more |
+| **MCP Servers** | `ai-stack/mcp-servers/` | Model Context Protocol servers for AIDB, NixOS, GitHub |
+| **Model Registry** | `ai-stack/models/registry.json` | Model catalog with 6 AI models (metadata, VRAM, speed, quality scores) |
+| **Vector Database** | PostgreSQL + Qdrant | Semantic search and document embeddings |
+| **Redis Cache** | Redis + Redis Insight | High-performance caching layer |
+
+**AI Development Tools:**
+
 | Tool | Integration | Purpose |
 |------|-------------|---------|
 | **Claude Code** | VSCodium extension + CLI wrapper | AI pair programming inside VSCodium |
 | **Cursor** | Flatpak + launcher | AI-assisted IDE with GPT-4/Claude |
 | **Continue** | VSCodium extension | In-editor AI completions |
 | **Codeium** | VSCodium extension | Free AI autocomplete |
-| **GPT CLI** | Command-line tool | Query OpenAI/Ollama from terminal |
+| **GPT CLI** | Command-line tool | Query OpenAI-compatible endpoints (local Lemonade or remote) |
 | **Aider** | CLI code assistant | AI pair programming from terminal |
-| **Ollama** | Podman container | Local LLM runtime |
-| **Open WebUI** | Podman container | ChatGPT-like interface for local LLMs |
-| **Hugging Face TGI** | Systemd service | High-performance LLM inference |
 | **LM Studio** | Flatpak app | Desktop LLM manager |
+
+
+**Quick Start:**
+```bash
+./nixos-quick-deploy.sh --with-ai-stack  # Deploy everything
+./scripts/ai-stack-manage.sh up         # Start AI services
+./scripts/ai-stack-manage.sh health     # Check health
+```
 
 ### Pre-Installed Development Tools
 
@@ -199,9 +241,9 @@ This will verify:
 - ✅ **AI Systemd Services** (Qdrant, Hugging Face TGI, Jupyter Lab, Gitea)
 - ✅ Environment variables & PATH
 
-### Podman Storage: Btrfs Recommended for AI-Optimizer
+### Podman Storage: Btrfs Recommended for AI Stack
 
-The deployer will prompt for the Podman storage driver. For AI-Optimizer workloads (see `~/Documents/AI-Optimizer`), use **Btrfs** when possible for fast snapshots and deduplication.
+The deployer will prompt for the Podman storage driver. For AI stack workloads, use **Btrfs** when possible for fast snapshots and deduplication.
 
 - **Sizing:** Minimum 150 GiB; **recommended 200–300 GiB** if you expect multiple large model images.
 - **Prepare a Btrfs data root** (if your root FS isn’t already Btrfs):
@@ -1283,6 +1325,15 @@ Already installed but worth highlighting:
 ## 📚 Documentation & Resources
 
 ### This Repository
+### AI Stack Documentation (NEW in v6.0.0)
+- [AI Stack Integration Guide](docs/AI-STACK-FULL-INTEGRATION.md) - Complete architecture and migration
+- [AI Stack README](ai-stack/README.md) - AI stack overview and quick start
+- [AIDB MCP Server](ai-stack/mcp-servers/aidb/README.md) - AIDB server documentation
+- [Agent Skills](ai-stack/agents/README.md) - 29 specialized AI agent skills
+- [AI Stack Architecture](ai-stack/docs/ARCHITECTURE.md) - Technical architecture details
+- [Agent Workflows](docs/AGENTS.md) - AI agent integration and skill development
+- [MCP Servers Guide](docs/MCP_SERVERS.md) - Model Context Protocol server docs
+
 - [Build Optimization Guide](docs/BUILD_OPTIMIZATION.md) - Choose between binary caches (20-40 min) or source builds (60-120 min)
 - [AIDB Setup Guide](docs/AIDB_SETUP.md) - Complete AIDB configuration walkthrough
 - [AI Integration Guide](docs/AI_INTEGRATION.md) - Sync docs and leverage AI-Optimizer tooling
