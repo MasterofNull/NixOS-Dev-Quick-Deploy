@@ -3219,6 +3219,23 @@ EOF
         user_password_block=$'    # (no password directives detected; update manually if required)\n'
     fi
 
+    # Generate ROOT_PASSWORD_BLOCK for emergency/rescue mode access
+    # Root uses the same password as the primary user for single-user convenience
+    local root_password_block
+    if [[ "$user_password_block" =~ hashedPassword[[:space:]]*=[[:space:]]*\"([^\"]+)\" ]]; then
+        local extracted_hash="${BASH_REMATCH[1]}"
+        printf -v root_password_block '    hashedPassword = "%s";\n' "$extracted_hash"
+        print_success "Root password synced with primary user for emergency mode access"
+    elif [[ "$user_password_block" =~ initialPassword[[:space:]]*=[[:space:]]*\"([^\"]+)\" ]]; then
+        local extracted_initial="${BASH_REMATCH[1]}"
+        printf -v root_password_block '    initialPassword = "%s";\n' "$extracted_initial"
+        print_success "Root initial password synced with primary user for emergency mode access"
+    else
+        # Fallback: Set a minimal emergency password (user should change this)
+        root_password_block=$'    # WARNING: No password configured - root access disabled in emergency mode\n    # To enable emergency mode access, add: hashedPassword = "<your-hash>";\n'
+        print_warning "No root password configured - emergency/rescue mode access will be limited"
+    fi
+
     if ! ensure_gitea_secrets_ready --noninteractive; then
         return 1
     fi
@@ -3406,6 +3423,7 @@ EOF
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@NIX_PARALLEL_COMMENT@" "$nix_parallel_comment"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@USERS_MUTABLE@" "${USERS_MUTABLE_SETTING:-true}"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@USER_PASSWORD_BLOCK@" "$user_password_block"
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@ROOT_PASSWORD_BLOCK@" "$root_password_block"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_ENABLE_FLAG@" "$gitea_enabled_literal"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_ADMIN_SECRETS_SET@" "$gitea_admin_secrets_set"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GITEA_ADMIN_VARIABLES_BLOCK@" "$gitea_admin_variables_block"
