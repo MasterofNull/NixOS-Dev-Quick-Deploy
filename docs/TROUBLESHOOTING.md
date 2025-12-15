@@ -4,6 +4,77 @@ This guide covers common issues and their solutions for the NixOS Dev Quick Depl
 
 ---
 
+## Boot Failures and Emergency Mode
+
+### Boot Fails with "Root Account Is Locked" / Emergency Mode Loop
+
+**Symptoms:**
+- System boots into emergency mode
+- Messages like:
+  ```
+  [FAILED] Failed to start Virtual Console Setup.
+  [FAILED] Failed to start Switch Root.
+  Cannot open access to console, the root account is locked.
+  See sulogin(8) man page for more details.
+  Press Enter to continue.
+  ```
+- System stuck in endless "Press Enter to continue" loop
+
+**Cause:**
+1. **Root account not configured** - The NixOS configuration didn't define a root user password. Emergency mode uses `sulogin` which requires root access.
+2. **Console font missing** - The `Lat2-Terminus16` font requires the `terminus_font` package, and without proper configuration, the Virtual Console Setup service fails.
+3. **Missing `earlySetup`** - Without `console.earlySetup = true`, the console isn't configured during initrd.
+
+**Fix (for existing installations):**
+
+1. Boot from a NixOS live USB/ISO
+
+2. Mount your root filesystem:
+   ```bash
+   # Identify your root partition (adjust device names as needed)
+   lsblk
+   sudo mount /dev/nvme0n1p2 /mnt      # Root partition
+   sudo mount /dev/nvme0n1p1 /mnt/boot # EFI partition
+   ```
+
+3. Enter a chroot environment:
+   ```bash
+   sudo nixos-enter --root /mnt
+   ```
+
+4. Set a root password:
+   ```bash
+   passwd root
+   ```
+
+5. Exit chroot and reboot:
+   ```bash
+   exit
+   sudo reboot
+   ```
+
+6. After successful boot, regenerate the configuration:
+   ```bash
+   cd ~/NixOS-Dev-Quick-Deploy
+   ./nixos-quick-deploy.sh --resume
+   sudo nixos-rebuild switch --flake ~/.dotfiles/home-manager#$(hostname)
+   ```
+
+**Prevention:**
+The deployment script (v4.1.1+) now automatically:
+- Syncs the root password with the primary user
+- Configures `console.earlySetup = true`
+- Includes the `terminus_font` package for console fonts
+- Uses the correct font name (`ter-v16n`) that's compatible with terminus_font
+
+**Alternative Recovery (without live USB):**
+
+If you can access the boot menu:
+1. Select an older NixOS generation from the bootloader
+2. Once booted, update to the latest deployment script and regenerate
+
+---
+
 ## VSCodium Continue Extension Issues
 
 ### Error: "LLM VS Code client: couldn't create connection to server"
