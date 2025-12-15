@@ -763,6 +763,51 @@ which home-manager
 which claude-wrapper
 which gpt-codex-wrapper
 
+### Boot Fails With "Root Account Is Locked" / Emergency Mode Loop
+
+**Symptom:** System drops into emergency mode with messages such as:
+
+```
+[FAILED] Failed to start Virtual Console Setup.
+[FAILED] Failed to start Switch Root.
+Cannot open access to console, the root account is locked.
+See sulogin(8) man page for more details.
+Press Enter to continue.
+```
+
+The system gets stuck in an endless "Press Enter to continue" loop.
+
+**Cause:** The NixOS configuration did not define a root user password. When the system encounters boot issues and drops to emergency mode, it requires root access via `sulogin`. Without a root password configured, `sulogin` cannot provide a shell.
+
+Additionally, the console font (`Lat2-Terminus16`) requires the `terminus_font` package, and without `console.earlySetup = true`, the Virtual Console Setup service fails during initrd.
+
+**Fix (for existing installations):**
+
+1. Boot from a NixOS live USB/ISO
+2. Mount your root filesystem:
+   ```bash
+   sudo mount /dev/nvme0n1p2 /mnt  # Adjust device as needed
+   sudo mount /dev/nvme0n1p1 /mnt/boot  # EFI partition
+   ```
+3. Enter a chroot environment:
+   ```bash
+   sudo nixos-enter --root /mnt
+   ```
+4. Set a root password:
+   ```bash
+   passwd root
+   ```
+5. Regenerate and rebuild:
+   ```bash
+   cd /path/to/NixOS-Dev-Quick-Deploy
+   ./nixos-quick-deploy.sh --resume
+   sudo nixos-rebuild switch --flake ~/.dotfiles/home-manager#$(hostname)
+   ```
+
+**Prevention:** The deployment script now automatically syncs the root password with the primary user and configures the console with `earlySetup = true` and the required `terminus_font` package.
+
+---
+
 ### Boot Fails With "Failed to mount /var/lib/containers/storage/overlay/..."
 
 **Symptom:** System drops into emergency mode during boot with messages such as:
