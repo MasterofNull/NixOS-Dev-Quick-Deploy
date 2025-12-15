@@ -1212,6 +1212,218 @@ run_all_checks() {
     check_command "aider" "Aider" true
     check_command "openskills" "OpenSkills CLI" true
 
+    local lemonade_url="${LEMONADE_BASE_URL:-http://localhost:8000/api/v1}"
+    local normalized_lemonade_url="${lemonade_url%/}"
+    print_check "Lemonade server health (${normalized_lemonade_url}/health)"
+    if curl -sf --max-time 3 "${normalized_lemonade_url}/health" > /dev/null 2>&1; then
+        print_success "Lemonade server reachable"
+    else
+        print_warning "Lemonade server not reachable (optional)"
+        print_detail "Start via ./scripts/local-ai-starter.sh option 2 or docker compose up -d inside ~/Documents/local-ai-stack"
+    fi
+
+    # ==========================================================================
+    # Virtualization Stack (NixOS 25.11 Improvements)
+    # ==========================================================================
+    print_section "Virtualization Stack"
+
+    # Check core virtualization tools
+    check_command "virsh" "Virsh (libvirt CLI)" false
+    check_command "virt-manager" "Virt-Manager (VM GUI)" false
+    check_command "qemu-system-x86_64" "QEMU" false
+
+    # Check KVM module loaded
+    print_check "KVM kernel module"
+    if lsmod | grep -q '^kvm'; then
+        local kvm_type="unknown"
+        if lsmod | grep -q 'kvm_intel'; then
+            kvm_type="Intel VT-x"
+        elif lsmod | grep -q 'kvm_amd'; then
+            kvm_type="AMD-V"
+        fi
+        print_success "KVM module loaded ($kvm_type)"
+        print_detail "Virtualization enabled and ready"
+    else
+        print_warning "KVM module not loaded (optional)"
+        print_detail "Enable virtualization in BIOS and load module: modprobe kvm_intel or kvm_amd"
+    fi
+
+    # Check CPU virtualization support
+    print_check "CPU virtualization support"
+    local virt_support=$(egrep -c '(vmx|svm)' /proc/cpuinfo 2>/dev/null || echo "0")
+    if [ "$virt_support" -gt 0 ]; then
+        print_success "CPU supports virtualization ($virt_support cores)"
+        print_detail "VT-x/AMD-V feature flags present"
+    else
+        print_warning "CPU virtualization support not detected (optional)"
+        print_detail "Enable VT-x/AMD-V in BIOS settings"
+    fi
+
+    # Check libvirtd service
+    check_system_service "libvirtd" "Libvirtd daemon" false false
+
+    # Check if user is in libvirtd group
+    print_check "Libvirtd group membership"
+    if groups | grep -q libvirtd; then
+        print_success "User in libvirtd group"
+        print_detail "Can manage VMs without sudo"
+    else
+        print_warning "User not in libvirtd group (optional)"
+        print_detail "Add with: sudo usermod -aG libvirtd $USER"
+    fi
+
+    # Check VM helper scripts
+    check_command "vm-create-nixos" "vm-create-nixos helper" false
+    check_command "vm-list" "vm-list helper" false
+    check_command "vm-snapshot" "vm-snapshot helper" false
+
+    # ==========================================================================
+    # Testing Infrastructure (pytest)
+    # ==========================================================================
+    print_section "Testing Infrastructure"
+
+    # Check pytest and plugins
+    check_python_package "pytest" "pytest core" false
+    check_python_package "pytest_cov" "pytest-cov (coverage)" false
+    check_python_package "pytest_xdist" "pytest-xdist (parallel)" false
+    check_python_package "hypothesis" "Hypothesis (property-based)" false
+
+    # Check testing helper scripts
+    check_command "pytest-init" "pytest-init helper" false
+    check_command "pytest-watch" "pytest-watch helper" false
+    check_command "pytest-report" "pytest-report helper" false
+    check_command "pytest-quick" "pytest-quick helper" false
+
+    # ==========================================================================
+    # Performance Optimizations
+    # ==========================================================================
+    print_section "Performance Optimizations"
+
+    # Check zswap
+    print_check "Zswap (compressed RAM swap)"
+    if [ -f "/sys/module/zswap/parameters/enabled" ]; then
+        local zswap_enabled=$(cat /sys/module/zswap/parameters/enabled 2>/dev/null || echo "N")
+        if [ "$zswap_enabled" = "Y" ]; then
+            local zswap_compressor=$(cat /sys/module/zswap/parameters/compressor 2>/dev/null || echo "unknown")
+            print_success "Zswap enabled (compressor: $zswap_compressor)"
+            print_detail "Memory compression active for better performance"
+        else
+            print_warning "Zswap available but disabled"
+            print_detail "Enable in configuration.nix with boot.kernelParams"
+        fi
+    else
+        print_warning "Zswap not available (optional)"
+        print_detail "Kernel may not support zswap module"
+    fi
+
+    # Check I/O schedulers
+    print_check "I/O scheduler optimization"
+    local disk_count=0
+    local optimized_count=0
+    for disk in /sys/block/*/queue/scheduler; do
+        if [ -f "$disk" ]; then
+            disk_count=$((disk_count + 1))
+            local current_scheduler=$(cat "$disk" | grep -oP '\[\K[^\]]+')
+            local disk_name=$(echo "$disk" | cut -d'/' -f4)
+            local disk_type="unknown"
+
+            # Detect disk type
+            if [[ "$disk_name" == nvme* ]]; then
+                disk_type="NVMe"
+                if [ "$current_scheduler" = "none" ]; then
+                    optimized_count=$((optimized_count + 1))
+                fi
+            elif [ -f "/sys/block/$disk_name/queue/rotational" ]; then
+                local rotational=$(cat "/sys/block/$disk_name/queue/rotational" 2>/dev/null || echo "1")
+                if [ "$rotational" = "0" ]; then
+                    disk_type="SSD"
+                    if [ "$current_scheduler" = "mq-deadline" ] || [ "$current_scheduler" = "none" ]; then
+                        optimized_count=$((optimized_count + 1))
+                    fi
+                else
+                    disk_type="HDD"
+                    if [ "$current_scheduler" = "bfq" ]; then
+                        optimized_count=$((optimized_count + 1))
+                    fi
+                fi
+            fi
+
+            if [ "$DETAILED" = true ]; then
+                print_detail "$disk_name: $current_scheduler ($disk_type)"
+            fi
+        fi
+    done
+
+    if [ $disk_count -gt 0 ]; then
+        if [ $optimized_count -eq $disk_count ]; then
+            print_success "I/O schedulers optimized ($optimized_count/$disk_count disks)"
+        elif [ $optimized_count -gt 0 ]; then
+            print_warning "I/O schedulers partially optimized ($optimized_count/$disk_count disks)"
+            print_detail "Check optimizations.nix for proper scheduler configuration"
+        else
+            print_warning "I/O schedulers using defaults"
+            print_detail "Enable optimization in optimizations.nix"
+        fi
+    else
+        print_warning "No block devices found to check"
+    fi
+
+    # Check CPU governor
+    print_check "CPU frequency governor"
+    if [ -f "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor" ]; then
+        local governor=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo "unknown")
+        case "$governor" in
+            schedutil)
+                print_success "CPU governor: schedutil (balanced)"
+                print_detail "Optimal for desktop/development workloads"
+                ;;
+            performance)
+                print_success "CPU governor: performance (max speed)"
+                print_detail "Best for performance, higher power usage"
+                ;;
+            powersave)
+                print_warning "CPU governor: powersave (battery saving)"
+                print_detail "May impact performance, good for laptops"
+                ;;
+            *)
+                print_warning "CPU governor: $governor"
+                print_detail "Consider schedutil for balanced performance"
+                ;;
+        esac
+    else
+        print_warning "CPU frequency scaling not available"
+    fi
+
+    # Check NixOS-Init (Rust-based initrd)
+    print_check "NixOS-Init (Rust-based initrd)"
+    if systemctl --version | grep -q "systemd"; then
+        if [ -d "/run/systemd" ]; then
+            # Check if system is using systemd in initrd
+            if grep -q "systemd" /proc/cmdline 2>/dev/null; then
+                print_success "Systemd-based initrd active"
+                print_detail "NixOS 25.11 fast boot enabled"
+            else
+                print_warning "Traditional initrd (optional upgrade)"
+                print_detail "Enable NixOS-Init in optimizations.nix"
+            fi
+        else
+            print_warning "Systemd initrd status unclear"
+        fi
+    else
+        print_warning "Systemd not detected"
+    fi
+
+    # Check tmpfs for /tmp
+    print_check "Tmpfs for /tmp"
+    if mount | grep -q "tmpfs on /tmp"; then
+        local tmp_size=$(df -h /tmp 2>/dev/null | awk 'NR==2 {print $2}')
+        print_success "Tmpfs enabled for /tmp (size: $tmp_size)"
+        print_detail "Fast temporary file operations"
+    else
+        print_warning "/tmp not using tmpfs (optional)"
+        print_detail "Enable in optimizations.nix for better performance"
+    fi
+
     # Python AI/ML Packages
     # ==========================================================================
     print_section "Python AI/ML Packages"

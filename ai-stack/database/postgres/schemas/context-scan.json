@@ -1,0 +1,15 @@
+{
+  "required_fields": ["content", "sources", "confidence", "constraints_respected"],
+  "field_types": {
+    "content": "str",
+    "sources": "list",
+    "confidence": "float",
+    "constraints_respected": "bool"
+  },
+  "regex": {
+    "content": ".{20,}"
+  },
+  "allowed_values": {
+    "constraints_respected": [true]
+  }
+}

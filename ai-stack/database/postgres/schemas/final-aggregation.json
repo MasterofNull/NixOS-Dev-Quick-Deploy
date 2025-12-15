@@ -1,0 +1,15 @@
+{
+  "required_fields": ["final_answer", "merged_sources", "issues", "constraints_respected"],
+  "field_types": {
+    "final_answer": "str",
+    "merged_sources": "list",
+    "issues": "list",
+    "constraints_respected": "bool"
+  },
+  "regex": {
+    "final_answer": ".{20,}"
+  },
+  "allowed_values": {
+    "constraints_respected": [true]
+  }
+}

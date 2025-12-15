@@ -1,0 +1,608 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    restart: unless-stopped
+    environment:
+      PGDATA: /var/lib/postgresql/data/18/main
+      POSTGRES_DB: ${AIDB_POSTGRES_DB:-mcp}
+      POSTGRES_USER: ${AIDB_POSTGRES_USER:-mcp}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./config/postgres.conf:/etc/postgresql/postgresql.conf:ro
+      - ./config/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    ports:
+      - "5432:5432"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AIDB_POSTGRES_USER:-mcp} -d ${AIDB_POSTGRES_DB:-mcp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    secrets:
+      - postgres_password
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter
+    profiles: ["observability"]
+    restart: unless-stopped
+    entrypoint: ["/bin/sh","-c"]
+    command:
+      - |
+        export DATA_SOURCE_NAME="postgresql://${AIDB_POSTGRES_USER:-mcp}:$(tr -d '\r\n' < /run/secrets/postgres_password)@postgres:5432/${AIDB_POSTGRES_DB:-mcp}?sslmode=disable"
+        exec /bin/postgres_exporter
+    ports:
+      - "9187:9187"
+    secrets:
+      - postgres_password
+
+  redis:
+    image: redis:8.4-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+    command:
+      - sh
+      - -c
+      - |
+        REDIS_PASSWORD=$$(cat $$REDIS_PASSWORD_FILE 2>/dev/null || echo "")
+        if [ -n "$$REDIS_PASSWORD" ]; then
+          exec redis-server \
+            --requirepass "$$REDIS_PASSWORD" \
+            --appendonly yes \
+            --appendfsync everysec \
+            --save 900 1 \
+            --save 300 10 \
+            --save 60 10000 \
+            --maxmemory 1gb \
+            --maxmemory-policy allkeys-lru \
+            --maxclients 100 \
+            --no-appendfsync-on-rewrite yes
+        else
+          exec redis-server \
+            --appendonly yes \
+            --appendfsync everysec \
+            --save 900 1 \
+            --save 300 10 \
+            --save 60 10000 \
+            --maxmemory 1gb \
+            --maxmemory-policy allkeys-lru \
+            --maxclients 100 \
+            --no-appendfsync-on-rewrite yes
+        fi
+    ports:
+      - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          memory: 1200M
+        reservations:
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - |
+          PASS_FILE=/run/secrets/redis_password
+          if [ -f "$$PASS_FILE" ]; then
+            PASS=$$(cat "$$PASS_FILE")
+            redis-cli -a "$$PASS" ping >/dev/null 2>&1
+          else
+            redis-cli ping >/dev/null 2>&1
+          fi
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    secrets:
+      - redis_password
+
+  redis-exporter:
+    image: oliver006/redis_exporter
+    profiles: ["observability"]
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: "redis:6379"
+    entrypoint: ["/bin/sh","-c"]
+    command:
+      - |
+        set -e
+        REDIS_SECRET="/run/secrets/redis_password"
+        if [ -f "$REDIS_SECRET" ]; then
+          export REDIS_PASSWORD="$(tr -d '\r\n' < "$REDIS_SECRET")"
+        elif [ -n "${AIDB_REDIS_PASSWORD:-}" ]; then
+          export REDIS_PASSWORD="${AIDB_REDIS_PASSWORD}"
+        fi
+        exec /redis_exporter
+    ports:
+      - "9121:9121"
+    secrets:
+      - redis_password
+
+  lemonade:
+    build:
+      context: .
+      dockerfile: deployment/container/Dockerfile.lemonade-cpp
+    container_name: lemonade
+    restart: unless-stopped
+    environment:
+      LEMONADE_HOST: "0.0.0.0"
+      LEMONADE_PORT: "8000"
+      LEMONADE_LOG_LEVEL: "info"
+      LEMONADE_BASE_URL: "http://lemonade:8000/api/v1"
+      # Choose backend; default to cpu for widest compatibility on this host
+      LEMONADE_LLAMACPP: "cpu"
+      LEMONADE_CTX_SIZE: "4096"
+      # CPU-friendly default pulled via Lemonade registry names
+      LEMONADE_DEFAULT_MODEL: "Qwen3-4B-Instruct-2507-GGUF"
+      # Comma-separated list of additional models to prefetch (e.g. user.Qwen2.5-Coder-7B-Instruct-GGUF)
+      LEMONADE_ADDITIONAL_MODELS: ""
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        echo "[llama.cpp] Starting llama-server with CPU optimizations (OpenBLAS)"
+
+        # Download default model if specified
+        MODEL_PATH=""
+        HF_REPO="unsloth/Qwen3-4B-Instruct-2507-GGUF"
+        MODEL_FILE="Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+
+        # Check if model already in cache
+        CACHED_MODEL=$$(find /root/.cache/huggingface -name "$$MODEL_FILE" 2>/dev/null | head -1)
+        if [ -n "$$CACHED_MODEL" ]; then
+          echo "[llama.cpp] Using cached model: $$CACHED_MODEL"
+          MODEL_PATH="$$CACHED_MODEL"
+        else
+          echo "[llama.cpp] Downloading model: $$HF_REPO/$$MODEL_FILE"
+          python3 -c "from huggingface_hub import hf_hub_download; path = hf_hub_download(repo_id='$$HF_REPO', filename='$$MODEL_FILE'); print(f'[llama.cpp] Downloaded to: {path}')" || {
+            echo "[ERROR] Model download failed"
+            echo "[ERROR] Check if model exists: https://huggingface.co/$$HF_REPO"
+            exit 1
+          }
+          MODEL_PATH=$$(find /root/.cache/huggingface -name "$$MODEL_FILE" 2>/dev/null | head -1)
+        fi
+
+        if [ -z "$$MODEL_PATH" ] || [ ! -f "$$MODEL_PATH" ]; then
+          echo "[ERROR] Model file not found: $$MODEL_FILE"
+          exit 1
+        fi
+        echo "[llama.cpp] Model ready: $$MODEL_PATH"
+
+        # Start llama-server
+        THREADS="4"
+        CTX_SIZE="4096"
+
+        if [ -n "$$MODEL_PATH" ]; then
+          exec ./build/bin/llama-server \
+            --host 0.0.0.0 \
+            --port 8000 \
+            --model "$$MODEL_PATH" \
+            --ctx-size "$$CTX_SIZE" \
+            --threads "$$THREADS" \
+            --n-gpu-layers 0
+        else
+          echo "[ERROR] No model available - container will exit"
+          exit 1
+        fi
+    volumes:
+      - lemonade-hf-cache:/root/.cache/huggingface
+    ports:
+      - "8000:8000"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  lemonade-coder:
+    build:
+      context: .
+      dockerfile: deployment/container/Dockerfile.lemonade-cpp
+    container_name: lemonade-coder
+    restart: unless-stopped
+    environment:
+      LEMONADE_HOST: "0.0.0.0"
+      LEMONADE_PORT: "8001"
+      LEMONADE_LOG_LEVEL: "info"
+      LEMONADE_BASE_URL: "http://lemonade-coder:8001/api/v1"
+      LEMONADE_LLAMACPP: "cpu"
+      LEMONADE_CTX_SIZE: "4096"
+      LEMONADE_DEFAULT_MODEL: "Qwen2.5-Coder-7B-Instruct-GGUF"
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        echo "[llama.cpp] Starting llama-server (Coder model) with CPU optimizations"
+
+        # Download Qwen2.5-Coder model
+        MODEL_PATH=""
+        HF_REPO="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
+        MODEL_FILE="qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+
+        # Check if model already in cache
+        CACHED_MODEL=$$(find /root/.cache/huggingface -name "$$MODEL_FILE" 2>/dev/null | head -1)
+        if [ -n "$$CACHED_MODEL" ]; then
+          echo "[llama.cpp] Using cached model: $$CACHED_MODEL"
+          MODEL_PATH="$$CACHED_MODEL"
+        else
+          echo "[llama.cpp] Downloading model: $$HF_REPO/$$MODEL_FILE"
+          python3 -c "from huggingface_hub import hf_hub_download; path = hf_hub_download(repo_id='$$HF_REPO', filename='$$MODEL_FILE'); print(f'[llama.cpp] Downloaded to: {path}')" || {
+            echo "[ERROR] Model download failed"
+            echo "[ERROR] Check if model exists: https://huggingface.co/$$HF_REPO"
+            exit 1
+          }
+          MODEL_PATH=$$(find /root/.cache/huggingface -name "$$MODEL_FILE" 2>/dev/null | head -1)
+        fi
+
+        if [ -z "$$MODEL_PATH" ] || [ ! -f "$$MODEL_PATH" ]; then
+          echo "[ERROR] Model file not found: $$MODEL_FILE"
+          exit 1
+        fi
+        echo "[llama.cpp] Model ready: $$MODEL_PATH"
+
+        # Start llama-server
+        THREADS="4"
+        CTX_SIZE="4096"
+
+        if [ -n "$$MODEL_PATH" ]; then
+          exec ./build/bin/llama-server \
+            --host 0.0.0.0 \
+            --port 8001 \
+            --model "$$MODEL_PATH" \
+            --ctx-size "$$CTX_SIZE" \
+            --threads "$$THREADS" \
+            --n-gpu-layers 0
+        else
+          echo "[ERROR] No model available - container will exit"
+          exit 1
+        fi
+    volumes:
+      - lemonade-hf-cache:/root/.cache/huggingface
+    ports:
+      - "8001:8001"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  lemonade-deepseek:
+    build:
+      context: .
+      dockerfile: deployment/container/Dockerfile.lemonade-cpp
+    container_name: lemonade-deepseek
+    restart: unless-stopped
+    environment:
+      LEMONADE_HOST: "0.0.0.0"
+      LEMONADE_PORT: "8003"
+      LEMONADE_LOG_LEVEL: "info"
+      LEMONADE_BASE_URL: "http://lemonade-deepseek:8003/api/v1"
+      LEMONADE_LLAMACPP: "cpu"
+      LEMONADE_CTX_SIZE: "4096"
+      LEMONADE_DEFAULT_MODEL: "Deepseek-Coder-6.7B-Instruct-GGUF"
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        echo "[llama.cpp] Starting llama-server (Deepseek model) with CPU optimizations"
+
+        # Download Deepseek-Coder model
+        MODEL_PATH=""
+        HF_REPO="TheBloke/deepseek-coder-6.7B-instruct-GGUF"
+        MODEL_FILE="deepseek-coder-6.7b-instruct.Q4_K_M.gguf"
+
+        # Check if model already in cache
+        CACHED_MODEL=$$(find /root/.cache/huggingface -name "$$MODEL_FILE" 2>/dev/null | head -1)
+        if [ -n "$$CACHED_MODEL" ]; then
+          echo "[llama.cpp] Using cached model: $$CACHED_MODEL"
+          MODEL_PATH="$$CACHED_MODEL"
+        else
+          echo "[llama.cpp] Downloading model: $$HF_REPO/$$MODEL_FILE"
+          python3 -c "from huggingface_hub import hf_hub_download; path = hf_hub_download(repo_id='$$HF_REPO', filename='$$MODEL_FILE'); print(f'[llama.cpp] Downloaded to: {path}')" || {
+            echo "[ERROR] Model download failed"
+            echo "[ERROR] Check if model exists: https://huggingface.co/$$HF_REPO"
+            exit 1
+          }
+          MODEL_PATH=$$(find /root/.cache/huggingface -name "$$MODEL_FILE" 2>/dev/null | head -1)
+        fi
+
+        if [ -z "$$MODEL_PATH" ] || [ ! -f "$$MODEL_PATH" ]; then
+          echo "[ERROR] Model file not found: $$MODEL_FILE"
+          exit 1
+        fi
+        echo "[llama.cpp] Model ready: $$MODEL_PATH"
+
+        # Start llama-server
+        THREADS="4"
+        CTX_SIZE="4096"
+
+        if [ -n "$$MODEL_PATH" ]; then
+          exec ./build/bin/llama-server \
+            --host 0.0.0.0 \
+            --port 8003 \
+            --model "$$MODEL_PATH" \
+            --ctx-size "$$CTX_SIZE" \
+            --threads "$$THREADS" \
+            --n-gpu-layers 0
+        else
+          echo "[ERROR] No model available - container will exit"
+          exit 1
+        fi
+    volumes:
+      - lemonade-hf-cache:/root/.cache/huggingface
+    ports:
+      - "8003:8003"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  lemonade-exporter:
+    build:
+      context: .
+      dockerfile: deployment/container/Dockerfile.lemonade-exporter
+    container_name: lemonade-exporter
+    restart: unless-stopped
+    environment:
+      LEMONADE_BASE_URL: "http://lemonade:8000/api/v1"
+      SCRAPE_INTERVAL_SECONDS: "${LEMONADE_EXPORTER_SCRAPE:-15}"
+      EXPORTER_PORT: "9100"
+    ports:
+      - "9100:9100"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  lemonade-coder-exporter:
+    build:
+      context: .
+      dockerfile: deployment/container/Dockerfile.lemonade-exporter
+    container_name: lemonade-coder-exporter
+    restart: unless-stopped
+    environment:
+      LEMONADE_BASE_URL: "http://lemonade-coder:8001/api/v1"
+      SCRAPE_INTERVAL_SECONDS: "${LEMONADE_EXPORTER_SCRAPE:-15}"
+      EXPORTER_PORT: "9101"
+    ports:
+      - "9101:9101"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  lemonade-deepseek-exporter:
+    build:
+      context: .
+      dockerfile: deployment/container/Dockerfile.lemonade-exporter
+    container_name: lemonade-deepseek-exporter
+    restart: unless-stopped
+    environment:
+      LEMONADE_BASE_URL: "http://lemonade-deepseek:8003/api/v1"
+      SCRAPE_INTERVAL_SECONDS: "${LEMONADE_EXPORTER_SCRAPE:-15}"
+      EXPORTER_PORT: "9102"
+    ports:
+      - "9102:9102"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  aidb-mcp:
+    build:
+      context: .
+      dockerfile: deployment/container/Dockerfile
+    # MCP Server Configuration:
+    # - MCP servers directory: docs/mcp-servers-directory.json (707 servers)
+    # - MCP config template: templates/mcp-config-template.json
+    # - Agent skills: .agent/skills/ (25 unified skills)
+    # - Host MCP config: ~/.mcp/config.json (deployed from template)
+    # - Data persistence: pgdata volume (database), ./data (host-mounted)
+    environment:
+      AIDB_CONFIG: /app/config/config.yaml
+      AIDB_POSTGRES_HOST: ${AIDB_POSTGRES_HOST:-postgres}
+      AIDB_POSTGRES_PORT: ${AIDB_POSTGRES_PORT:-5432}
+      AIDB_POSTGRES_DB: ${AIDB_POSTGRES_DB:-mcp}
+      AIDB_POSTGRES_USER: ${AIDB_POSTGRES_USER:-mcp}
+      AIDB_POSTGRES_PASSWORD: ${AIDB_POSTGRES_PASSWORD:-}
+      AIDB_POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      AIDB_REDIS_HOST: ${AIDB_REDIS_HOST:-redis}
+      AIDB_REDIS_PORT: ${AIDB_REDIS_PORT:-6379}
+      AIDB_REDIS_PASSWORD: ${AIDB_REDIS_PASSWORD:-}
+      AIDB_REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      LEMONADE_BASE_URL: http://lemonade:8000/api/v1
+      LEMONADE_CODER_URL: http://lemonade-coder:8001/api/v1
+      LEMONADE_DEEPSEEK_URL: http://lemonade-deepseek:8003/api/v1
+      CONSTRAINT_ENGINEERED_DEVELOPMENT: "true"
+      CODEMACHINE_URL: ${CODEMACHINE_URL:-http://codemachine:3000}
+    volumes:
+      - ./config:/app/config:ro
+      - ./data:/app/data
+      - ./migrations:/app/migrations
+    ports:
+      - "8791:8791"
+      - "8091:8091"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8091/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      lemonade:
+        condition: service_started
+    secrets:
+      - postgres_password
+      - redis_password
+
+  redis-insight:
+    image: redislabs/redisinsight:latest
+    container_name: redis-insight
+    profiles: ["observability"]
+    restart: unless-stopped
+    ports:
+      - "5540:5540"
+    volumes:
+      - redisinsight:/data
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:5540/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  log-importer:
+    build:
+      context: .
+      dockerfile: deployment/container/Dockerfile.log-importer
+    container_name: aidb-log-importer
+    profiles: ["observability"]
+    restart: unless-stopped
+    environment:
+      LOG: ${LOG_IMPORT_PATH:-/data/logs/runs.jsonl}
+      DSN: ${LOG_IMPORT_DSN:-}
+      INTERVAL: ${LOG_IMPORT_INTERVAL:-900}
+      ROTATE: ${LOG_IMPORT_ROTATE:-1}
+      ROTATE_KEEP: ${LOG_IMPORT_ROTATE_KEEP:-5}
+      AIDB_POSTGRES_HOST: ${AIDB_POSTGRES_HOST:-postgres}
+      AIDB_POSTGRES_PORT: ${AIDB_POSTGRES_PORT:-5432}
+      AIDB_POSTGRES_DB: ${AIDB_POSTGRES_DB:-mcp}
+      AIDB_POSTGRES_USER: ${AIDB_POSTGRES_USER:-mcp}
+      AIDB_POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    volumes:
+      - ./logs:/data/logs
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - |
+          PASS_FILE=/run/secrets/postgres_password
+          if [ -f "$PASS_FILE" ]; then
+            export PGPASSWORD="$(tr -d '\r\n' < "$PASS_FILE")"
+          fi
+          exec psql -h postgres -U ${AIDB_POSTGRES_USER:-mcp} -d ${AIDB_POSTGRES_DB:-mcp} -c 'SELECT 1' >/dev/null 2>&1
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    secrets:
+      - postgres_password
+
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    container_name: prometheus
+    profiles: ["observability"]
+    restart: unless-stopped
+    volumes:
+      - ./deployment/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deployment/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--storage.tsdb.retention.size=10GB'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-admin-api'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  grafana:
+    image: grafana/grafana:12.3.0
+    container_name: grafana
+    profiles: ["observability"]
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_INSTALL_PLUGINS: grafana-clock-panel
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3001}
+    volumes:
+      - ./deployment/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deployment/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  pgdata:
+  lemonade-hf-cache:
+  prometheus-data:
+  grafana-data:
+  redisinsight:
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+  redis_password:
+    file: ./secrets/redis_password

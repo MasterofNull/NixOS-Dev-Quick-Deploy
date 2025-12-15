@@ -122,6 +122,8 @@ FLATPAK_REINSTALL_REQUEST=false
 AUTO_UPDATE_FLAKE_INPUTS=false
 RESTORE_KNOWN_GOOD_FLAKE_LOCK=false
 FORCE_HF_DOWNLOAD=false
+RUN_AI_PREP=false
+RUN_AI_MODEL=false
 
 # Phase control
 declare -a SKIP_PHASES=()
@@ -213,6 +215,7 @@ load_libraries() {
         "home-manager.sh"
         "user.sh"
         "config.sh"
+        "flatpak.sh"
         "tools.sh"
         "service-conflict-resolution.sh"
         "finalization.sh"
@@ -305,7 +308,7 @@ EOF
 # `parse_arguments`.
 print_usage() {
     cat << 'EOF'
-NixOS Quick Deploy - Bootstrap Loader v4.0.0
+NixOS Quick Deploy - Bootstrap Loader v5.0.0
 
 USAGE:
     ./nixos-quick-deploy.sh [OPTIONS]
@@ -331,6 +334,9 @@ BASIC OPTIONS:
         --force-hf-download     Force re-download of Hugging Face TGI models before the switch
         --update-flake-inputs   Run 'nix flake update' before activation (opt-in)
         --restore-flake-lock    Re-seed flake.lock from the bundled baseline
+        --with-ai-prep          Run the optional AI-Optimizer preparation phase after Phase 8
+        --with-ai-model         Run the optional AI model deployment phase after Phase 8
+        --with-ai-stack         Convenience alias for --with-ai-prep --with-ai-model
         --prompt-switch         Prompt before running system/home switches
         --prompt-system-switch  Prompt before running nixos-rebuild switch
         --prompt-home-switch    Prompt before running home-manager switch
@@ -393,7 +399,7 @@ SAFE RESTART POINTS:
 
 FOR MORE INFORMATION:
     Visit: https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy
-    Logs: ~/.config/nixos-quick-deploy/logs/
+    Logs: ~/.cache/nixos-quick-deploy/logs/
 
 EOF
 }
@@ -559,6 +565,19 @@ parse_arguments() {
                 RESTORE_KNOWN_GOOD_FLAKE_LOCK=true
                 shift
                 ;;
+            --with-ai-prep)
+                RUN_AI_PREP=true
+                shift
+                ;;
+            --with-ai-model)
+                RUN_AI_MODEL=true
+                shift
+                ;;
+            --with-ai-stack)
+                RUN_AI_PREP=true
+                RUN_AI_MODEL=true
+                shift
+                ;;
             *)
                 echo "ERROR: Unknown option: $1" >&2
                 echo "Run with --help for usage information" >&2
@@ -602,6 +621,9 @@ list_phases() {
     done
 
     echo "============================================"
+    echo "Optional extensions:"
+    echo "  • AI-Optimizer preparation (enable with --with-ai-prep)"
+    echo "  • AI model deployment (enable with --with-ai-model)"
     echo ""
 }
 
@@ -800,6 +822,32 @@ execute_phase() {
         log ERROR "Phase $phase_num failed with exit code $exit_code"
         return $exit_code
     fi
+}
+
+run_optional_phase_script() {
+    local script_path="$1"
+    local function_name="$2"
+    local label="$3"
+
+    if [[ ! -f "$script_path" ]]; then
+        print_warning "$label script not found at $script_path"
+        return 1
+    fi
+
+    # shellcheck source=/dev/null
+    if ! source "$script_path"; then
+        print_error "Failed to load $label script ($script_path)"
+        return 1
+    fi
+
+    if "$function_name"; then
+        print_success "$label completed"
+        echo ""
+        return 0
+    fi
+
+    print_error "$label failed"
+    return 1
 }
 
 # Interactive failure handler invoked whenever execute_phase returns non-zero.
@@ -1132,6 +1180,20 @@ main() {
 
         echo ""
     done
+
+    if [[ "$RUN_AI_PREP" == true ]]; then
+        print_section "Optional Phase: AI-Optimizer Preparation"
+        if ! run_optional_phase_script "$PHASES_DIR/phase-09-ai-optimizer-prep.sh" phase_09_ai_optimizer_prep "AI-Optimizer preparation"; then
+            exit 1
+        fi
+    fi
+
+    if [[ "$RUN_AI_MODEL" == true ]]; then
+        print_section "Optional Phase: AI Model Deployment"
+        if ! run_optional_phase_script "$PHASES_DIR/phase-09-ai-model-deployment.sh" phase_09_ai_model_deployment "AI model deployment"; then
+            exit 1
+        fi
+    fi
 
     # Deployment success
     log INFO "All phases completed successfully"

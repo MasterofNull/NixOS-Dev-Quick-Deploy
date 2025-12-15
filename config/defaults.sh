@@ -101,7 +101,7 @@ DEFAULT_GITEA_SSH_PORT=2222   # Gitea SSH git operations port
 # ============================================================================
 
 DEFAULT_PYTHON_VERSION="3.13"  # Python version for development environment
-DEFAULT_NODE_VERSION="20"      # Node.js version for development environment
+DEFAULT_NODE_VERSION="22"      # Node.js version for development environment
 
 # ============================================================================
 # Deployment Behavior Defaults

@@ -4,8 +4,6 @@
 # Version: 6.0.0
 # Purpose: Prepare NixOS system for optional AI-Optimizer installation
 
-set -euo pipefail
-
 # ============================================================================
 # Phase 9: AI-Optimizer System Preparation
 # ============================================================================
@@ -15,7 +13,10 @@ phase_09_ai_optimizer_prep() {
 
     # Load integration hooks
     if [ -f "${SCRIPT_DIR}/lib/ai-optimizer-hooks.sh" ]; then
-        source "${SCRIPT_DIR}/lib/ai-optimizer-hooks.sh"
+        if ! source "${SCRIPT_DIR}/lib/ai-optimizer-hooks.sh"; then
+            log_error "Failed to load AI-Optimizer hooks library"
+            return 1
+        fi
     else
         log_error "AI-Optimizer hooks library not found"
         return 1
@@ -24,7 +25,7 @@ phase_09_ai_optimizer_prep() {
     # Check if user wants to prepare for AI-Optimizer
     if ! prompt_ai_optimizer_prep; then
         log_info "Skipping AI-Optimizer preparation"
-        mark_phase_complete 9
+        mark_phase_complete "phase-09-ai-optimizer-prep"
         return 0
     fi
 
@@ -131,7 +132,7 @@ Integration features:
 EOF
     fi
 
-    mark_phase_complete 9
+    mark_phase_complete "phase-09-ai-optimizer-prep"
     return 0
 }
 

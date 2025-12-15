@@ -4,21 +4,20 @@
 # Date: 2025-11-22
 #
 # Purpose: Optional integration with AI-Optimizer AIDB MCP for:
-#   - vLLM-powered code generation
+#   - Lemonade-powered code generation
 #   - NixOS configuration assistance
 #   - ML-based system monitoring
 #   - Intelligent deployment recommendations
 #
-# Falls back gracefully if AI-Optimizer is unavailable
-
-set -euo pipefail
+# Falls back gracefully if AI-Optimizer is unavailable. This file is sourced
+# as a library, so it does not modify shell options (set -e/-u/-o pipefail).
 
 # ============================================================================
 # Configuration
 # ============================================================================
 
 AIDB_BASE_URL="${AIDB_BASE_URL:-http://localhost:8091}"
-VLLM_BASE_URL="${VLLM_BASE_URL:-http://localhost:8000}"
+LEMONADE_BASE_URL="${LEMONADE_BASE_URL:-http://localhost:8000/api/v1}"
 AI_ENABLED="${AI_ENABLED:-auto}"  # auto, true, false
 AI_AVAILABLE=false
 
@@ -102,12 +101,52 @@ ai_check_availability() {
     fi
 }
 
-ai_check_vllm() {
-    if curl -sf --max-time 2 "$VLLM_BASE_URL/health" > /dev/null 2>&1; then
+ai_check_lemonade() {
+    local base="${LEMONADE_BASE_URL%/}"
+    if curl -sf --max-time 2 "$base/health" > /dev/null 2>&1; then
         return 0
     else
         return 1
     fi
+}
+
+aidb_post_with_fallback() {
+    local primary_endpoint="$1"
+    local fallback_endpoint="$2"
+    local payload="$3"
+    local timeout="$4"
+    local response=""
+    local last_response=""
+
+    if [ -z "$timeout" ]; then
+        timeout=60
+    fi
+
+    for endpoint in "$primary_endpoint" "$fallback_endpoint"; do
+        if [ -z "$endpoint" ]; then
+            continue
+        fi
+
+        response=$(curl -s -X POST "$AIDB_BASE_URL/$endpoint" \
+            -H "Content-Type: application/json" \
+            --max-time "$timeout" \
+            -d "$payload")
+
+        if echo "$response" | jq -e '.success == true' > /dev/null 2>&1; then
+            echo "$response"
+            return 0
+        fi
+
+        last_response="$response"
+    done
+
+    if [ -n "$last_response" ]; then
+        echo "$last_response"
+    else
+        echo "$response"
+    fi
+
+    return 1
 }
 
 # ============================================================================
@@ -136,7 +175,7 @@ ai_display_model_menu() {
     cat <<EOF
 
 ╭───────────────────────────────────────────────────────────────────────────╮
-│ AI Model Selection (vLLM)                                                 │
+│ AI Model Selection (Lemonade)                                             │
 │                                                                            │
 │ Detected GPU: $gpu_name
 │ Available VRAM: ${gpu_vram}GB
@@ -266,16 +305,13 @@ ai_generate_nix_config() {
 
     log_info "Generating NixOS configuration with AI..."
 
-    local response=$(curl -s -X POST "$AIDB_BASE_URL/vllm/nix" \
-        -H "Content-Type: application/json" \
-        --max-time 60 \
-        -d "$(jq -n \
-            --arg desc "$description" \
-            --arg ctx "$context" \
-            '{description: $desc, context: $ctx}'
-        )")
+    local payload=$(jq -n \
+        --arg desc "$description" \
+        --arg ctx "$context" \
+        '{description: $desc, context: $ctx}')
 
-    if echo "$response" | jq -e '.success == true' > /dev/null 2>&1; then
+    local response
+    if response=$(aidb_post_with_fallback "lemonade/nix" "vllm/nix" "$payload" 60); then
         echo "$response" | jq -r '.nix_code'
         return 0
     else
@@ -301,15 +337,12 @@ ai_review_config() {
     log_info "Reviewing configuration with AI..."
 
     local code=$(cat "$config_file")
-    local response=$(curl -s -X POST "$AIDB_BASE_URL/vllm/review" \
-        -H "Content-Type: application/json" \
-        --max-time 60 \
-        -d "$(jq -n \
-            --arg code "$code" \
-            '{code: $code, language: "nix"}'
-        )")
+    local payload=$(jq -n \
+        --arg code "$code" \
+        '{code: $code, language: "nix"}')
 
-    if echo "$response" | jq -e '.success == true' > /dev/null 2>&1; then
+    local response
+    if response=$(aidb_post_with_fallback "lemonade/review" "vllm/review" "$payload" 60); then
         echo "$response" | jq -r '.review'
         return 0
     else
@@ -326,16 +359,13 @@ ai_explain_code() {
         return 1
     fi
 
-    local response=$(curl -s -X POST "$AIDB_BASE_URL/vllm/explain" \
-        -H "Content-Type: application/json" \
-        --max-time 30 \
-        -d "$(jq -n \
-            --arg code "$code" \
-            --arg lang "$language" \
-            '{code: $code, language: $lang}'
-        )")
+    local payload=$(jq -n \
+        --arg code "$code" \
+        --arg lang "$language" \
+        '{code: $code, language: $lang}')
 
-    if echo "$response" | jq -e '.success == true' > /dev/null 2>&1; then
+    local response
+    if response=$(aidb_post_with_fallback "lemonade/explain" "vllm/explain" "$payload" 30); then
         echo "$response" | jq -r '.explanation'
         return 0
     else
@@ -351,23 +381,20 @@ ai_chat() {
         return 1
     fi
 
-    local response=$(curl -s -X POST "$AIDB_BASE_URL/vllm/chat" \
-        -H "Content-Type: application/json" \
-        --max-time 60 \
-        -d "$(jq -n \
-            --arg sys "$system_prompt" \
-            --arg user "$question" \
-            '{
-                messages: [
-                    {role: "system", content: $sys},
-                    {role: "user", content: $user}
-                ],
-                max_tokens: 500,
-                temperature: 0.7
-            }'
-        )")
+    local payload=$(jq -n \
+        --arg sys "$system_prompt" \
+        --arg user "$question" \
+        '{
+            messages: [
+                {role: "system", content: $sys},
+                {role: "user", content: $user}
+            ],
+            max_tokens: 500,
+            temperature: 0.7
+        }')
 
-    if echo "$response" | jq -e '.success == true' > /dev/null 2>&1; then
+    local response
+    if response=$(aidb_post_with_fallback "lemonade/chat" "vllm/chat" "$payload" 60); then
         echo "$response" | jq -r '.message'
         return 0
     else
@@ -490,10 +517,10 @@ EOF
 }
 
 # ============================================================================
-# vLLM Container Management
+# Lemonade Container Management
 # ============================================================================
 
-ai_deploy_vllm() {
+ai_deploy_lemonade() {
     local model_id="$1"
     local ai_optimizer_dir="${2:-$HOME/Documents/AI-Optimizer}"
 
@@ -502,7 +529,7 @@ ai_deploy_vllm() {
         return 0
     fi
 
-    log_info "Deploying vLLM with model: $model_id"
+    log_info "Deploying Lemonade with model: $model_id"
 
     # Check if AI-Optimizer directory exists
     if [ ! -d "$ai_optimizer_dir" ]; then
@@ -520,11 +547,12 @@ ai_deploy_vllm() {
     # Update .env with selected model
     if [ -f ".env" ]; then
         # Update existing .env
-        sed -i "s|^VLLM_MODEL=.*|VLLM_MODEL=$model_id|" .env
+        sed -i "s|^LEMONADE_DEFAULT_MODEL=.*|LEMONADE_DEFAULT_MODEL=$model_id|" .env || \
+            echo "LEMONADE_DEFAULT_MODEL=$model_id" >> .env
     else
         # Create new .env from example
         cp .env.example .env
-        sed -i "s|^VLLM_MODEL=.*|VLLM_MODEL=$model_id|" .env
+        sed -i "s|^LEMONADE_DEFAULT_MODEL=.*|LEMONADE_DEFAULT_MODEL=$model_id|" .env
     fi
 
     log_info "Updated .env with model: $model_id"
@@ -535,7 +563,7 @@ ai_deploy_vllm() {
 
     log_success "AI-Optimizer deployment initiated"
     log_info "Model download may take 10-45 minutes depending on model size"
-    log_info "Monitor progress: docker logs -f vllm-inference"
+    log_info "Monitor progress: docker logs -f lemonade"
 
     return 0
 }
@@ -547,14 +575,14 @@ ai_deploy_vllm() {
 # Only export functions if AI is available or in auto mode
 if [ "$AI_ENABLED" != "false" ]; then
     export -f ai_check_availability
-    export -f ai_check_vllm
+    export -f ai_check_lemonade
     export -f ai_select_model
     export -f ai_generate_nix_config
     export -f ai_review_config
     export -f ai_explain_code
     export -f ai_chat
     export -f ai_interactive_help
-    export -f ai_deploy_vllm
+    export -f ai_deploy_lemonade
     export -f detect_gpu_vram
     export -f detect_gpu_model
 fi

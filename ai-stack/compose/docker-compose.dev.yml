@@ -1,0 +1,40 @@
+# Development Override for AI Stack
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+version: "3.9"
+
+services:
+  aidb-mcp:
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=debug
+      - RELOAD=true  # Auto-reload on code changes
+    volumes:
+      - ../../ai-stack/mcp-servers/aidb:/app:Z  # Mount source code
+    command: uvicorn server:app --host 0.0.0.0 --port 8091 --reload
+
+  lemonade:
+    environment:
+      - LEMONADE_LOG_LEVEL=debug
+      - LEMONADE_DEBUG=1
+
+  postgres:
+    ports:
+      - "5433:5432"  # Alternative port for dev to avoid conflicts
+    environment:
+      - POSTGRES_DB=mcp_dev
+
+  redis:
+    ports:
+      - "6380:6379"  # Alternative port for dev
+    command: >
+      redis-server
+      --appendonly yes
+      --loglevel debug
+      --maxmemory 256mb
+
+  qdrant:
+    ports:
+      - "6334:6333"  # Alternative port for dev
+    environment:
+      - QDRANT__LOG_LEVEL=DEBUG

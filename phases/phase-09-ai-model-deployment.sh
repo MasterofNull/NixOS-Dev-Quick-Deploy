@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# Phase 9: AI Model Deployment (vLLM)
+# Phase 9: AI Model Deployment (Lemonade)
 # Part of: nixos-quick-deploy.sh
 # Version: 5.0.0
-# Purpose: Optional deployment of AI coding models via vLLM
-
-set -euo pipefail
+# Purpose: Optional deployment of AI coding models via Lemonade
 
 # ============================================================================
 # Phase 9: AI Model Deployment
@@ -16,13 +14,16 @@ phase_09_ai_model_deployment() {
     # Check if user wants AI capabilities
     if ! prompt_ai_deployment; then
         log_info "Skipping AI model deployment"
-        mark_phase_complete 9
+        mark_phase_complete "phase-09-ai-model"
         return 0
     fi
 
     # Load AI-Optimizer integration library
     if [ -f "${SCRIPT_DIR}/lib/ai-optimizer.sh" ]; then
-        source "${SCRIPT_DIR}/lib/ai-optimizer.sh"
+        if ! source "${SCRIPT_DIR}/lib/ai-optimizer.sh"; then
+            log_error "Failed to load AI-Optimizer library"
+            return 1
+        fi
     else
         log_error "AI-Optimizer library not found"
         return 1
@@ -37,7 +38,7 @@ phase_09_ai_model_deployment() {
         read -p "Continue with CPU-only deployment? [y/N]: " cpu_confirm
         if [[ ! "$cpu_confirm" =~ ^[Yy]$ ]]; then
             log_info "Skipping AI model deployment"
-            mark_phase_complete 9
+            mark_phase_complete "phase-09-ai-model"
             return 0
         fi
     fi
@@ -47,19 +48,19 @@ phase_09_ai_model_deployment() {
 
     if [ "$selected_model" = "SKIP" ]; then
         log_info "AI model deployment skipped by user"
-        mark_phase_complete 9
+        mark_phase_complete "phase-09-ai-model"
         return 0
     fi
 
     # Save selection to preferences
     mkdir -p "${CACHE_DIR}/preferences"
-    echo "VLLM_MODEL=$selected_model" > "${CACHE_DIR}/preferences/ai-model.env"
+    echo "LEMONADE_DEFAULT_MODEL=$selected_model" > "${CACHE_DIR}/preferences/ai-model.env"
     echo "GPU_VRAM=$gpu_vram" >> "${CACHE_DIR}/preferences/ai-model.env"
 
     # Deploy AI-Optimizer with selected model
     log_info "Deploying AI-Optimizer with model: $selected_model"
 
-    if ai_deploy_vllm "$selected_model" "$HOME/Documents/AI-Optimizer"; then
+    if ai_deploy_lemonade "$selected_model" "$HOME/Documents/AI-Optimizer"; then
         log_success "AI-Optimizer deployment initiated"
 
         # Add monitoring instructions
@@ -80,15 +81,15 @@ The first-time model download may take 10-45 minutes depending on:
   • HuggingFace server load
 
 Monitor Progress:
-  docker logs -f vllm-inference
+  docker logs -f lemonade
 
 Check Status:
-  docker ps | grep vllm
-  curl http://localhost:8000/health
+  docker ps | grep lemonade
+  curl http://localhost:8000/api/v1/health
 
 Once Ready:
   • AIDB MCP Server: http://localhost:8091
-  • vLLM Inference: http://localhost:8000
+  • Lemonade Inference: http://localhost:8000/api/v1
   • AI Assistant available in deployment scripts
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -98,11 +99,11 @@ EOF
         # Offer to wait for completion
         read -p "Wait for model download to complete? [y/N]: " wait_confirm
         if [[ "$wait_confirm" =~ ^[Yy]$ ]]; then
-            log_info "Waiting for vLLM model download..."
-            wait_for_vllm_ready "$selected_model"
+            log_info "Waiting for Lemonade model download..."
+            wait_for_lemonade_ready
         fi
 
-        mark_phase_complete 9
+        mark_phase_complete "phase-09-ai-model"
         return 0
     else
         log_error "Failed to deploy AI-Optimizer"
@@ -152,28 +153,18 @@ EOF
     fi
 }
 
-wait_for_vllm_ready() {
-    local model_name="$1"
+wait_for_lemonade_ready() {
     local max_wait=3600  # 1 hour max
     local elapsed=0
     local interval=30
 
-    log_info "Waiting for vLLM to download and load model..."
+    log_info "Waiting for Lemonade to download and load model..."
     log_info "This may take 10-45 minutes. Press Ctrl+C to skip and continue in background."
 
     while [ $elapsed -lt $max_wait ]; do
-        if curl -sf --max-time 5 http://localhost:8000/health > /dev/null 2>&1; then
-            log_success "vLLM is ready!"
-
-            # Test model
-            local test_response=$(curl -s -X POST http://localhost:8000/v1/completions \
-                -H "Content-Type: application/json" \
-                -d '{"model": "'"$model_name"'", "prompt": "def hello():", "max_tokens": 10}' 2>/dev/null || echo "")
-
-            if [ -n "$test_response" ]; then
-                log_success "Model loaded and responding!"
-                return 0
-            fi
+        if curl -sf --max-time 5 http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+            log_success "Lemonade is ready!"
+            return 0
         fi
 
         # Show progress indicator
@@ -184,8 +175,8 @@ wait_for_vllm_ready() {
         elapsed=$((elapsed + interval))
     done
 
-    log_warning "Timed out waiting for vLLM. Model may still be downloading in background."
-    log_info "Check progress: docker logs -f vllm-inference"
+    log_warning "Timed out waiting for Lemonade. Model may still be downloading in background."
+    log_info "Check progress: docker logs -f lemonade"
     return 1
 }
 

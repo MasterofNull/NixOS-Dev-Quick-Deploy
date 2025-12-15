@@ -10,6 +10,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCAL_STACK_DIR="${LOCAL_STACK_DIR:-$HOME/Documents/local-ai-stack}"
 MCP_TEMPLATE_ROOT="${SCRIPT_DIR}/templates"
+EDGE_MODEL_REGISTRY="${EDGE_MODEL_REGISTRY:-$SCRIPT_DIR/config/edge-model-registry.json}"
+AI_PROFILE="${AI_PROFILE:-cpu_full}"
+AI_STACK_PROFILE="${AI_STACK_PROFILE:-personal}"
 
 if ! command -v ss >/dev/null 2>&1; then
     echo "[ERROR] ss command is required (from iproute2)." >&2
@@ -35,6 +38,17 @@ action_prepare_environment() {
     info "Creating shared data directories..."
     prepare_shared_data_directories
     success "Shared directories ready at ${AI_OPTIMIZER_DATA_ROOT}"
+
+    info "Current AI profile for this host: ${AI_PROFILE}"
+    info "Current AI stack profile: ${AI_STACK_PROFILE} (personal, guest, or none)."
+
+    info "Current AI profile for this host: ${AI_PROFILE}"
+    if [[ -f "$EDGE_MODEL_REGISTRY" ]]; then
+        info "Edge model registry detected at ${EDGE_MODEL_REGISTRY}"
+        info "Use this file to declare which external Podman/Docker models should be available for AI_PROFILE=${AI_PROFILE}."
+    else
+        warn "Edge model registry not found at ${EDGE_MODEL_REGISTRY}; create it to track which external models your stacks host."
+    fi
 
     if detect_port_conflicts; then
         success "No conflicting ports detected."
@@ -91,8 +105,13 @@ start_local_stack() {
 action_scaffold_local_stack() {
     info "Scaffolding local AI stack at ${LOCAL_STACK_DIR}"
     local data_root="${AI_STACK_DATA:-$HOME/.local/share/ai-stack}"
-    mkdir -p "${data_root}"/{postgres,redis,redisinsight,vllm-models}
+    mkdir -p "${data_root}"/{postgres,redis,redisinsight,lemonade-models}
     copy_local_stack_templates "$data_root"
+
+    info "AI_PROFILE=${AI_PROFILE} (override in environment to change edge AI behavior hints)."
+    if [[ -f "$EDGE_MODEL_REGISTRY" ]]; then
+        info "After your external containers are configured, update ${EDGE_MODEL_REGISTRY} so agents can discover which models are actually served for this profile."
+    fi
 
     read -rp "Start the stack now? [Y/n]: " start_choice
     if [[ -z "$start_choice" || "$start_choice" =~ ^[Yy]$ ]]; then
