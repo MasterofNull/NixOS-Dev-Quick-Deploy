@@ -14,7 +14,7 @@
 #   PODMAN_STORAGE_BLOCK, LACT_SERVICE_BLOCK, SWAP_AND_HIBERNATION_BLOCK
 #   SELECTED_TIMEZONE, CURRENT_LOCALE, NIXOS_VERSION, STATE_VERSION
 #   NIX_MAX_JOBS, NIX_BUILD_CORES, NIX_PARALLEL_COMMENT
-#   USERS_MUTABLE, USER_PASSWORD_BLOCK
+#   USERS_MUTABLE, USER_PASSWORD_BLOCK, ROOT_PASSWORD_BLOCK
 #   GITEA_ENABLE_FLAG, GITEA_ADMIN_SECRETS_SET, GITEA_ADMIN_VARIABLES_BLOCK,
 #   GITEA_ADMIN_SERVICE_BLOCK, GITEA_SECRET_KEY, GITEA_INTERNAL_TOKEN,
 #   GITEA_LFS_JWT_SECRET, GITEA_JWT_SECRET
@@ -294,6 +294,9 @@ in
   i18n.defaultLocale = lib.mkDefault "@CURRENT_LOCALE@";  # Auto-detected locale
 
   # Console configuration (TTY settings)
+  # The terminus_font package provides the Lat2-Terminus16 font used below.
+  # earlySetup ensures the console is configured during initrd, which prevents
+  # "Failed to start Virtual Console Setup" errors during boot.
   console = {
     font = lib.mkDefault null;  # Avoid forcing fonts that may be missing at boot
     keyMap = lib.mkDefault "us";  # Keyboard layout for console
@@ -335,6 +338,15 @@ in
 
     # Allocate subordinate UID/GID ranges automatically (required for rootless Podman per the NixOS wiki)
     autoSubUidGidRange = true;
+  };
+
+  # Root user configuration - REQUIRED for emergency/rescue mode access
+  # Without this, emergency mode fails with "root account is locked" error
+  # The root password is synced with the primary user for single-user convenience
+  users.users.root = {
+    # Root uses the same password hash as the primary user for emergency access
+    # This allows rescue mode login while keeping password management simple
+@ROOT_PASSWORD_BLOCK@
   };
 
   users.groups.accounts-daemon = lib.mkDefault { };

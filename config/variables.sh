@@ -397,6 +397,7 @@ TEA_CONFIG_DIR="$PRIMARY_HOME/.config/tea"
 # Cached secrets and provisioning artifacts
 USER_PASSWORD_BLOCK=""
 USER_TEMP_PASSWORD=""
+ROOT_PASSWORD_BLOCK=""  # Synced with USER_PASSWORD_BLOCK for emergency mode access
 
 # ============================================================================
 # Gitea Secrets (initialized empty, populated during runtime)
