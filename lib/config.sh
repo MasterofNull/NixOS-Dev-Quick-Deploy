@@ -82,7 +82,7 @@ backup_generated_file() {
     #   2 → file did not exist (no backup needed)
     local source_path="$1"
     local label="${2:-}"
-    local backup_dir="${3:-$HM_CONFIG_DIR/backup}"
+    local backup_dir="${3:-$HM_BACKUP_DIR}"
     local timestamp="${4:-$(date +%Y%m%d_%H%M%S)}"
 
     if [[ -z "$source_path" || -z "$backup_dir" ]]; then
@@ -121,7 +121,7 @@ sync_support_module() {
     local module_name="$1"
     local template_dir="${2:-$SCRIPT_DIR/templates}"
     local destination_dir="${3:-$HM_CONFIG_DIR}"
-    local backup_dir="${4:-$HM_CONFIG_DIR/backup}"
+    local backup_dir="${4:-$HM_BACKUP_DIR}"
     local timestamp="${5:-$(date +%Y%m%d_%H%M%S)}"
 
     if [[ -z "$module_name" ]]; then
@@ -1035,6 +1035,16 @@ activate_build_acceleration_context() {
 }
 
 describe_remote_build_context() {
+    # Summarize build strategy for logs and troubleshooting.
+    local strategy="binary caches (default)"
+    if [[ "${USE_BINARY_CACHES:-true}" != "true" ]]; then
+        strategy="local source builds (binary caches disabled)"
+    fi
+    if [[ "${REMOTE_BUILD_ACCELERATION_MODE:-}" == "remote-builders" ]]; then
+        strategy="binary caches + remote builders"
+    fi
+    print_info "Build strategy: ${strategy}"
+
     if [[ "${REMOTE_BUILDERS_ENABLED:-false}" == "true" && ${#REMOTE_BUILDER_SPECS[@]} -gt 0 ]]; then
         print_info "Remote builders enabled (${#REMOTE_BUILDER_SPECS[@]} target(s))"
     fi
@@ -1458,6 +1468,34 @@ nix_quote_string() {
     printf '"%s"' "$input"
 }
 
+prompt_enable_gitea() {
+    local changed="false"
+    local default_choice="n"
+
+    if [[ "${GITEA_ENABLE,,}" == "true" ]]; then
+        default_choice="y"
+    fi
+
+    if confirm "Do you want to enable the Gitea self-hosted Git service?" "$default_choice"; then
+        if [[ "${GITEA_ENABLE,,}" != "true" ]]; then
+            changed="true"
+        fi
+        GITEA_ENABLE="true"
+    else
+        if [[ "${GITEA_ENABLE,,}" != "false" ]]; then
+            changed="true"
+        fi
+        GITEA_ENABLE="false"
+        print_info "Gitea service will be disabled"
+    fi
+
+    if [[ "$changed" == "true" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 prompt_configure_gitea_admin() {
     local changed="false"
     local default_choice="n"
@@ -1648,13 +1686,25 @@ ensure_gitea_secrets_ready() {
             print_info "Gitea admin bootstrap settings not initialized; rerun Phase 1 to configure."
             return 1
         fi
-        GITEA_PROMPT_CHANGED="false"
-        if ! prompt_configure_gitea_admin; then
-            return 1
-        fi
-        GITEA_ADMIN_PROMPTED="true"
-        if [[ "$GITEA_PROMPT_CHANGED" == "true" ]]; then
+
+        # First ask if user wants to enable Gitea at all
+        if prompt_enable_gitea; then
             updated="true"
+        fi
+
+        # Only prompt for admin if Gitea is enabled
+        if [[ "${GITEA_ENABLE,,}" == "true" ]]; then
+            GITEA_PROMPT_CHANGED="false"
+            if ! prompt_configure_gitea_admin; then
+                return 1
+            fi
+            GITEA_ADMIN_PROMPTED="true"
+            if [[ "$GITEA_PROMPT_CHANGED" == "true" ]]; then
+                updated="true"
+            fi
+        else
+            GITEA_ADMIN_PROMPTED="true"
+            GITEA_PROMPT_CHANGED="false"
         fi
     fi
 
@@ -2112,11 +2162,21 @@ render_sops_secrets_file() {
     fi
     user_password_hash_literal=$(yaml_quote_string "$resolved_password_hash")
 
-    replace_placeholder "$secrets_target" "GITEA_SECRET_KEY_PLACEHOLDER" "$gitea_secret_literal"
-    replace_placeholder "$secrets_target" "GITEA_INTERNAL_TOKEN_PLACEHOLDER" "$gitea_internal_literal"
-    replace_placeholder "$secrets_target" "GITEA_LFS_JWT_SECRET_PLACEHOLDER" "$gitea_lfs_literal"
-    replace_placeholder "$secrets_target" "GITEA_JWT_SECRET_PLACEHOLDER" "$gitea_jwt_literal"
-    replace_placeholder "$secrets_target" "GITEA_ADMIN_PASSWORD_PLACEHOLDER" "$gitea_admin_password_literal"
+    # Remove Gitea secrets section if Gitea is disabled
+    if [[ "${GITEA_ENABLE,,}" != "true" ]]; then
+        print_info "Gitea is disabled; removing Gitea secrets section from secrets.yaml"
+        # Remove lines from "# Gitea Secrets" through "admin_password: ..." (lines 19-25 in template)
+        if command -v sed >/dev/null 2>&1; then
+            sed -i '/^# Gitea Secrets$/,/^$/{ /^# Gitea Secrets$/d; /^gitea:$/d; /^  secret_key:/d; /^  internal_token:/d; /^  lfs_jwt_secret:/d; /^  jwt_secret:/d; /^  admin_password:/d; }' "$secrets_target"
+        fi
+    else
+        replace_placeholder "$secrets_target" "GITEA_SECRET_KEY_PLACEHOLDER" "$gitea_secret_literal"
+        replace_placeholder "$secrets_target" "GITEA_INTERNAL_TOKEN_PLACEHOLDER" "$gitea_internal_literal"
+        replace_placeholder "$secrets_target" "GITEA_LFS_JWT_SECRET_PLACEHOLDER" "$gitea_lfs_literal"
+        replace_placeholder "$secrets_target" "GITEA_JWT_SECRET_PLACEHOLDER" "$gitea_jwt_literal"
+        replace_placeholder "$secrets_target" "GITEA_ADMIN_PASSWORD_PLACEHOLDER" "$gitea_admin_password_literal"
+    fi
+
     replace_placeholder "$secrets_target" "HUGGINGFACE_TOKEN_PLACEHOLDER" "$huggingface_literal"
     replace_placeholder "$secrets_target" "USER_PASSWORD_HASH_PLACEHOLDER" "$user_password_hash_literal"
 
@@ -2330,7 +2390,7 @@ generate_nixos_system_config() {
     # Backup Existing Configurations
     # ========================================================================
     local BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-    local BACKUP_DIR="$HM_CONFIG_DIR/backup"
+    local BACKUP_DIR="${HM_BACKUP_DIR}"
 
     backup_generated_file "$SYSTEM_CONFIG_FILE" "configuration.nix" "$BACKUP_DIR" "$BACKUP_TIMESTAMP" || true
     backup_generated_file "$FLAKE_FILE" "flake.nix" "$BACKUP_DIR" "$BACKUP_TIMESTAMP" || true
@@ -2365,6 +2425,15 @@ generate_nixos_system_config() {
         return 1
     fi
 
+    # Normalize Avahi disablement to avoid unit failures and activation script issues.
+    if [[ -f "$SYSTEM_CONFIG_FILE" ]]; then
+        # Remove unsupported systemd.maskedServices/sockets entries.
+        local tmp_normalized
+        tmp_normalized=$(mktemp)
+        grep -v 'systemd\.maskedServices' "$SYSTEM_CONFIG_FILE" | grep -v 'systemd\.maskedSockets' > "$tmp_normalized" || true
+        mv "$tmp_normalized" "$SYSTEM_CONFIG_FILE"
+    fi
+
     local support_module
     for support_module in "python-overrides.nix"; do
         print_info "Syncing $support_module into system configuration workspace..."
@@ -2372,6 +2441,49 @@ generate_nixos_system_config() {
             return 1
         fi
     done
+
+    # ========================================================================
+    # Copy NixOS Improvements Directory
+    # ========================================================================
+    # Copy the nixos-improvements module directory to both system and home-manager
+    # config directories so the imports in configuration.nix and home.nix work
+    if [[ -d "$TEMPLATE_DIR/nixos-improvements" ]]; then
+        print_info "Syncing nixos-improvements modules to system configuration..."
+        local system_improvements_dir="/etc/nixos/nixos-improvements"
+
+        # Create backup if directory already exists
+        if [[ -d "$system_improvements_dir" ]]; then
+            local backup_improvements_dir="$BACKUP_DIR/nixos-improvements-$BACKUP_TIMESTAMP"
+            print_info "Backing up existing nixos-improvements to $backup_improvements_dir"
+            if ! sudo cp -r "$system_improvements_dir" "$backup_improvements_dir" 2>/dev/null; then
+                print_warning "Could not backup existing nixos-improvements directory"
+            fi
+        fi
+
+        # Copy improvements to system config
+        if ! sudo cp -r "$TEMPLATE_DIR/nixos-improvements" "/etc/nixos/"; then
+            print_error "Failed to copy nixos-improvements to /etc/nixos/"
+            return 1
+        fi
+        print_success "NixOS improvements modules copied to /etc/nixos/nixos-improvements"
+
+        # Also copy to home-manager config for testing.nix
+        print_info "Syncing nixos-improvements to home-manager configuration..."
+        local hm_improvements_dir="$HM_CONFIG_DIR/nixos-improvements"
+        if [[ -d "$hm_improvements_dir" ]]; then
+            local backup_hm_improvements="$BACKUP_DIR/hm-nixos-improvements-$BACKUP_TIMESTAMP"
+            print_info "Backing up existing home-manager nixos-improvements"
+            cp -r "$hm_improvements_dir" "$backup_hm_improvements" 2>/dev/null || true
+        fi
+
+        if ! cp -r "$TEMPLATE_DIR/nixos-improvements" "$HM_CONFIG_DIR/"; then
+            print_error "Failed to copy nixos-improvements to home-manager config"
+            return 1
+        fi
+        print_success "NixOS improvements modules copied to $HM_CONFIG_DIR/nixos-improvements"
+    else
+        print_info "No nixos-improvements directory found in templates (optional)"
+    fi
 
     if declare -F detect_container_storage_backend >/dev/null 2>&1; then
         if [[ "${FORCE_CONTAINER_STORAGE_REDETECT:-false}" == true ]]; then
@@ -2790,8 +2902,12 @@ EOF
     local podman_storage_block
     podman_storage_block=$(cat <<'EOF'
   # ===========================================================================
-  # Container storage backend (auto-detected)
+  # Container storage backend (auto-detected) - SYSTEM-LEVEL ONLY
   # ===========================================================================
+  # NOTE: This configures system-level podman storage (root).
+  # User-level (rootless) podman uses overlay with fuse-overlayfs configured
+  # via Home Manager in home.nix to prevent VFS bloat while avoiding boot issues.
+  # System-level stays on VFS/btrfs/zfs to prevent systemd overlay mount failures.
   virtualisation.containers.storage.settings = {
     storage = {
       # __PODMAN_STORAGE_COMMENT__
@@ -3446,6 +3562,16 @@ EOF
     echo ""
 
     # ========================================================================
+    # Replace Placeholders in NixOS Improvements Modules
+    # ========================================================================
+    # Replace user-specific placeholders in improvement modules if they exist
+    local improvements_virt_file="/etc/nixos/nixos-improvements/virtualization.nix"
+    if [[ -f "$improvements_virt_file" ]]; then
+        print_info "Customizing virtualization module for user: $primary_user"
+        replace_placeholder "$improvements_virt_file" "@USER@" "$primary_user"
+    fi
+
+    # ========================================================================
     # Generate Flake Configuration
     # ========================================================================
     print_info "Generating flake configuration..."
@@ -3583,7 +3709,7 @@ create_home_manager_config() {
     # Backup Existing Configuration
     # ========================================================================
     local BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-    local BACKUP_DIR="$HM_CONFIG_DIR/backup"
+    local BACKUP_DIR="${HM_BACKUP_DIR}"
     backup_generated_file "$HOME_MANAGER_FILE" "home.nix" "$BACKUP_DIR" "$BACKUP_TIMESTAMP" || true
 
     # ========================================================================
@@ -3731,6 +3857,19 @@ EOF
 
     local flatpak_packages_block=""
     local selected_flatpak_profile="${SELECTED_FLATPAK_PROFILE:-${DEFAULT_FLATPAK_PROFILE:-core}}"
+    local engineering_tools_expr="engineeringToolsPackages"
+
+    # Map Flatpak profiles to an engineering environment profile:
+    # - core / ai_workstation → full engineering toolchain
+    # - minimal               → slim (no heavy PCB/CAD/IC tools by default)
+    case "$selected_flatpak_profile" in
+        minimal)
+            engineering_tools_expr="[]"
+            ;;
+        *)
+            engineering_tools_expr="engineeringToolsPackages"
+            ;;
+    esac
     if (( ${#DEFAULT_FLATPAK_APPS[@]} > 0 )); then
         flatpak_packages_block=$'  # Flatpak applications managed by profile: '"${selected_flatpak_profile}"$'\n'
         flatpak_packages_block+=$'  flathubPackages = [\n'
@@ -3790,6 +3929,7 @@ EOF
     replace_placeholder "$HOME_MANAGER_FILE" "@GPU_MONITORING_PACKAGES@" "$GPU_MONITORING_PACKAGES"
     replace_placeholder "$HOME_MANAGER_FILE" "@GLF_HOME_DEFINITIONS@" "$glf_home_definitions"
     replace_placeholder "$HOME_MANAGER_FILE" "@FLATPAK_MANAGED_PACKAGES@" "$flatpak_packages_block"
+    replace_placeholder "$HOME_MANAGER_FILE" "ENGINEERING_TOOLS_PLACEHOLDER" "$engineering_tools_expr"
     # NOTE: @PODMAN_ROOTLESS_STORAGE@ placeholder removed from template to avoid duplicate services.podman
     # replace_placeholder "$HOME_MANAGER_FILE" "@PODMAN_ROOTLESS_STORAGE@" "${PODMAN_ROOTLESS_STORAGE_BLOCK:-}"
     replace_placeholder "$HOME_MANAGER_FILE" "GIT_USER_SETTINGS_PLACEHOLDER" "$git_user_settings_block"
@@ -3978,5 +4118,47 @@ validate_system_build_stage() {
             print_info "Proceeding with deployment"
             return 0
         fi
+    fi
+}
+
+# ========================================================================
+# Deploy MCP Configuration
+# ========================================================================
+deploy_mcp_configuration() {
+    print_section "Deploying MCP Server Configuration"
+    
+    local mcp_config_dir="$HOME/.mcp"
+    local mcp_template="$TEMPLATE_DIR/mcp-config-template.json"
+    local mcp_config="$mcp_config_dir/config.json"
+    
+    # Create MCP config directory
+    if ! mkdir -p "$mcp_config_dir"; then
+        print_error "Failed to create MCP config directory"
+        return 1
+    fi
+    
+    # Copy template
+    if [[ -f "$mcp_template" ]]; then
+        print_info "Deploying MCP configuration..."
+        
+        # Replace placeholder with current date
+        sed "s/@DEPLOYMENT_DATE@/$(date +%Y-%m-%d)/g" "$mcp_template" > "$mcp_config"
+        
+        # Create symlink for Claude Code
+        local claude_mcp_config="$HOME/.config/claude/mcp.json"
+        mkdir -p "$(dirname "$claude_mcp_config")"
+        
+        if [[ -L "$claude_mcp_config" ]] || [[ -f "$claude_mcp_config" ]]; then
+            print_info "Backing up existing Claude MCP config..."
+            mv "$claude_mcp_config" "${claude_mcp_config}.backup-$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
+        fi
+        
+        ln -sf "$mcp_config" "$claude_mcp_config"
+        
+        print_success "MCP configuration deployed"
+        print_detail "Config: ~/.mcp/config.json"
+        print_detail "Symlink: ~/.config/claude/mcp.json -> ~/.mcp/config.json"
+    else
+        print_warning "MCP template not found (optional)"
     fi
 }

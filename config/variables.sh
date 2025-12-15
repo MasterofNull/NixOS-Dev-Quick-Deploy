@@ -150,6 +150,7 @@ fi
 readonly STATE_DIR="$HOME/.cache/nixos-quick-deploy"
 readonly STATE_FILE="$STATE_DIR/state.json"
 readonly ROLLBACK_INFO_FILE="$STATE_DIR/rollback-info.json"
+readonly HM_BACKUP_DIR="$STATE_DIR/hm-backups"
 
 # ============================================================================
 # Backup Management
@@ -315,94 +316,6 @@ declare -Ag FLATPAK_PROFILE_APPSETS=(
 declare -ag FLATPAK_ARCH_PRUNED_APPS=()
 FLATPAK_INSTALL_ARCH=""
 
-_detect_flatpak_install_arch() {
-    if [[ -n "$FLATPAK_INSTALL_ARCH" ]]; then
-        return 0
-    fi
-
-    local nix_system arch_guess
-    if command -v nix >/dev/null 2>&1; then
-        nix_system=$(nix eval --raw --expr 'builtins.currentSystem' 2>/dev/null || echo "")
-        case "$nix_system" in
-            x86_64-*) FLATPAK_INSTALL_ARCH="x86_64" ;;
-            aarch64-*) FLATPAK_INSTALL_ARCH="aarch64" ;;
-            armv7l-*|armv7-*) FLATPAK_INSTALL_ARCH="arm" ;;
-        esac
-    fi
-
-    if [[ -z "$FLATPAK_INSTALL_ARCH" ]]; then
-        arch_guess=$(uname -m)
-        case "$arch_guess" in
-            x86_64|amd64) FLATPAK_INSTALL_ARCH="x86_64" ;;
-            aarch64|arm64) FLATPAK_INSTALL_ARCH="aarch64" ;;
-            armv7l|armv7hf|armv8l) FLATPAK_INSTALL_ARCH="arm" ;;
-            *) FLATPAK_INSTALL_ARCH="$arch_guess" ;;
-        esac
-    fi
-}
-
-_detect_flatpak_install_arch
-
-_register_pruned_flatpak_app() {
-    local candidate="$1"
-    local existing
-    for existing in "${FLATPAK_ARCH_PRUNED_APPS[@]}"; do
-        if [[ "$existing" == "$candidate" ]]; then
-            return 0
-        fi
-    done
-    FLATPAK_ARCH_PRUNED_APPS+=("$candidate")
-}
-
-_prune_flatpak_app_everywhere() {
-    local target="$1"
-    local removed=0
-    local before after array_name
-    for array_name in \
-        "FLATPAK_PROFILE_CORE_APPS" \
-        "FLATPAK_PROFILE_AI_WORKSTATION_APPS" \
-        "FLATPAK_PROFILE_MINIMAL_APPS"; do
-        local -n prune_ref="$array_name"
-        before=${#prune_ref[@]}
-        _remove_flatpak_app "$array_name" "$target"
-        after=${#prune_ref[@]}
-        if (( after < before )); then
-            removed=1
-        fi
-    done
-
-    if (( removed == 1 )); then
-        _register_pruned_flatpak_app "$target"
-    fi
-}
-
-_remove_flatpak_app() {
-    local array_name="$1"
-    local target="$2"
-    local -n arr_ref="$array_name"
-    local -a filtered=()
-    local item
-    for item in "${arr_ref[@]}"; do
-        if [[ "$item" != "$target" ]]; then
-            filtered+=("$item")
-        fi
-    done
-    arr_ref=("${filtered[@]}")
-}
-
-prune_arch_incompatible_flatpaks() {
-    _detect_flatpak_install_arch
-    local arch="${FLATPAK_INSTALL_ARCH:-$(uname -m)}"
-    case "$arch" in
-        aarch64|arm64)
-            _prune_flatpak_app_everywhere "com.google.Chrome"
-            _prune_flatpak_app_everywhere "com.obsproject.Studio"
-            ;;
-    esac
-}
-
-prune_arch_incompatible_flatpaks
-
 declare -ag FLATPAK_VSCODIUM_CONFLICT_IDS=(
     "com.visualstudio.code"
     "com.visualstudio.code.insiders"
@@ -472,7 +385,7 @@ GITEA_FLATPAK_CONFIG_DIR="$PRIMARY_HOME/.var/app/$GITEA_FLATPAK_APP_ID/config/gi
 GITEA_FLATPAK_DATA_DIR="$PRIMARY_HOME/.var/app/$GITEA_FLATPAK_APP_ID/data/gitea"
 GITEA_NATIVE_CONFIG_DIR="$PRIMARY_HOME/.config/gitea"
 GITEA_NATIVE_DATA_DIR="$PRIMARY_HOME/.local/share/gitea"
-GITEA_ENABLE="true"
+GITEA_ENABLE="false"
 
 # Other Application Directories
 HUGGINGFACE_CONFIG_DIR="$PRIMARY_HOME/.config/huggingface"
@@ -582,9 +495,27 @@ HOME_SWITCH_SKIPPED_REASON=""
 AI_ENABLED="${AI_ENABLED:-auto}"                        # auto, true, false
 AIDB_BASE_URL="${AIDB_BASE_URL:-http://localhost:8091}"
 AIDB_PROJECT_NAME="${AIDB_PROJECT_NAME:-NixOS-Dev-Quick-Deploy}"
+
+# High-level host role; used as a human- and agent-friendly
+# identifier (for example personal laptop, lab machine, guest
+# workstation, CI runner). It does not override more specific
+# flags, but can be used by tools and agents to infer intent.
+HOST_PROFILE="${HOST_PROFILE:-personal}"                # personal, lab, guest, ci
+
+# Edge AI profile for local LLM behavior on this host.
+# Currently informational; future phases may use it to
+# select which models to download/configure from the
+# edge model registry (see config/edge-model-registry.json).
+AI_PROFILE="${AI_PROFILE:-cpu_full}"                    # cpu_slim, cpu_full, off
+
+AI_STACK_PROFILE="${AI_STACK_PROFILE:-personal}"        # personal, guest, none
+
 export AI_ENABLED
 export AIDB_BASE_URL
 export AIDB_PROJECT_NAME
+export HOST_PROFILE
+export AI_PROFILE
+export AI_STACK_PROFILE
 
 # User Information
 SELECTED_TIMEZONE=""
@@ -600,7 +531,7 @@ USER_SYSTEMD_CHANNEL_MESSAGE=""
 LATEST_CONFIG_BACKUP_DIR=""
 
 # Home Manager Configuration
-DOTFILES_ROOT="$PRIMARY_HOME/.dotfiles"
+DOTFILES_ROOT="${DOTFILES_ROOT_OVERRIDE:-$PRIMARY_HOME/.dotfiles}"
 DEV_HOME_ROOT="$DOTFILES_ROOT"
 HM_CONFIG_DIR="$DOTFILES_ROOT/home-manager"
 FLAKE_FILE="$HM_CONFIG_DIR/flake.nix"
