@@ -22,3 +22,20 @@ forward safely. If you stripped that directive earlier, make sure the user has
 logged in at least once so `/etc/shadow` contains a valid hash prior to running
 `nixos-quick-deploy.sh`; otherwise the resulting configuration will trigger the
 warning you observed.
+
+## Root user password synchronization
+
+As of v4.1.1+, the deployment script also configures the **root** user account
+with the same password hash as the primary user. This is required for emergency
+mode access:
+
+- When NixOS drops to emergency/rescue mode (due to boot failures), it uses
+  `sulogin` which requires root authentication.
+- Without a root password configured, the system enters an unrecoverable
+  "root account is locked" state.
+- By syncing the root password with the primary user, single-user systems
+  maintain easy emergency access while avoiding separate credential management.
+
+If you need a different root password, you can manually edit the generated
+`configuration.nix` after deployment to set `users.users.root.hashedPassword`
+to a different value. Run `mkpasswd -m sha-512` to generate a new hash.
