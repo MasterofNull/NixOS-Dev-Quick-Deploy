@@ -210,6 +210,17 @@ mark_step_complete() {
     fi
 }
 
+mark_phase_complete() {
+    local identifier="$1"
+
+    if [[ "$identifier" =~ ^[0-9]+$ ]]; then
+        local formatted_step="phase-$(printf '%02d' "$identifier")"
+        mark_step_complete "$formatted_step"
+    else
+        mark_step_complete "$identifier"
+    fi
+}
+
 # ============================================================================
 # Check if Step is Complete Function
 # ============================================================================

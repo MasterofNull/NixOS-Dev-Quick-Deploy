@@ -1133,45 +1133,17 @@ detect_container_storage_backend() {
 }
 
 ensure_gitea_state_directory_ready() {
+    # NOTE: This function is now a no-op stub for backward compatibility.
+    # The gitea user and state directories are created automatically by NixOS
+    # during system activation via systemd-tmpfiles (see configuration.nix lines 941-944).
+    # We cannot create these directories before nixos-rebuild because the gitea
+    # user doesn't exist until the system is built with services.gitea.enable = true.
+    # Attempting to create directories owned by a non-existent user causes errors.
     if [[ "${GITEA_ENABLE,,}" != "true" ]]; then
         return 0
     fi
 
-    if ! command -v sudo >/dev/null 2>&1; then
-        print_error "sudo is required to prepare /var/lib/gitea but is not available."
-        return 1
-    fi
-
-    local state_root="/var/lib/gitea"
-    local -a required_dirs=(
-        "$state_root"
-        "$state_root/custom"
-        "$state_root/custom/conf"
-        "$state_root/data"
-        "$state_root/log"
-    )
-
-    local dir
-    for dir in "${required_dirs[@]}"; do
-        if ! sudo install -d -m 0750 -o gitea -g gitea "$dir" 2>/dev/null; then
-            print_error "Failed to provision Gitea state directory: $dir"
-            return 1
-        fi
-    done
-
-    local app_ini="$state_root/custom/conf/app.ini"
-    if [[ ! -f "$app_ini" ]]; then
-        if ! sudo touch "$app_ini" 2>/dev/null; then
-            print_error "Unable to create $app_ini"
-            return 1
-        fi
-    fi
-
-    if ! sudo chown gitea:gitea "$app_ini" 2>/dev/null || ! sudo chmod 0640 "$app_ini" 2>/dev/null; then
-        print_error "Failed to set ownership or permissions on $app_ini"
-        return 1
-    fi
-
+    print_info "Gitea state directories will be created automatically by NixOS during system activation"
     return 0
 }
 
@@ -1486,8 +1458,7 @@ run_rootless_podman_diagnostics() {
     print_info "Podman storage backend: ${PODMAN_STORAGE_DRIVER:-unknown} on ${CONTAINER_STORAGE_FS_TYPE:-unknown}"
 
     if [[ "$effective_driver" == "overlay" ]]; then
-        print_error "Overlay storage driver support has been removed; rerun the deployer with DEFAULT_PODMAN_STORAGE_DRIVER=vfs."
-        status=1
+        print_info "Using overlay (with fuse-overlayfs) for rootless Podman."
     fi
 
     local sysctl_value
@@ -1531,16 +1502,14 @@ run_rootless_podman_diagnostics() {
     if subuid_entry=$(resolve_subid_entry subuid "$target_user"); then
         print_success "Subordinate UID range: $subuid_entry"
     else
-        print_error "No subordinate UID range configured for ${target_user}; enable autoSubUidGidRange or define users.users.${target_user}.subUidRanges."
-        status=1
+        print_warning "No subordinate UID range configured for ${target_user}; enable autoSubUidGidRange or define users.users.${target_user}.subUidRanges (will be created on next system switch)."
     fi
 
     local subgid_entry=""
     if subgid_entry=$(resolve_subid_entry subgid "$target_user"); then
         print_success "Subordinate GID range: $subgid_entry"
     else
-        print_error "No subordinate GID range configured for ${target_user}; enable autoSubUidGidRange or define users.users.${target_user}.subGidRanges."
-        status=1
+        print_warning "No subordinate GID range configured for ${target_user}; enable autoSubUidGidRange or define users.users.${target_user}.subGidRanges (will be created on next system switch)."
     fi
 
     local message

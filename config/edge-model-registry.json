@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "id": "edge-chat-3b-q4",
+      "name": "EdgeChat-3B Q4",
+      "family": "generic-chat-slm",
+      "parameters": "3B",
+      "quantization": {
+        "format": "gguf",
+        "bits": 4,
+        "method": "Q4_K_M"
+      },
+      "runtime": "openai_compatible",
+      "backend": "llama.cpp",
+      "tasks": ["chat", "planning"],
+      "ai_profiles": ["cpu_slim", "cpu_full"],
+      "storage_path": "~/.local/share/ai-models/edge-chat-3b-q4",
+      "endpoint_hint": "http://localhost:8000"
+    },
+    {
+      "id": "edge-code-7b-q5",
+      "name": "EdgeCode-7B Q5",
+      "family": "generic-code-slm",
+      "parameters": "7B",
+      "quantization": {
+        "format": "gguf",
+        "bits": 5,
+        "method": "Q5_K_M"
+      },
+      "runtime": "openai_compatible",
+      "backend": "llama.cpp",
+      "tasks": ["code", "refactor", "review"],
+      "ai_profiles": ["cpu_full"],
+      "storage_path": "~/.local/share/ai-models/edge-code-7b-q5",
+      "endpoint_hint": "http://localhost:8000"
+    }
+  ]
+}

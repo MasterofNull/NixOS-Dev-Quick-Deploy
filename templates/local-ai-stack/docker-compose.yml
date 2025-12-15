@@ -57,23 +57,23 @@ services:
     depends_on:
       - redis
 
-  vllm:
-    image: vllm/vllm-openai:latest
-    container_name: local-ai-vllm
+  lemonade:
+    image: ghcr.io/json012/lemonade:latest
+    container_name: local-ai-lemonade
     restart: unless-stopped
     environment:
-      MODEL_NAME: ${VLLM_MODEL:-deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct}
-      VLLM_GPU_MEMORY_UTILIZATION: ${VLLM_GPU_MEM:-0.85}
-      VLLM_MAX_MODEL_LEN: ${VLLM_MAX_LEN:-8192}
-      VLLM_TENSOR_PARALLEL_SIZE: ${VLLM_TP_SIZE:-1}
-      VLLM_PORT: 8000
-      VLLM_HOST: 0.0.0.0
+      LEMONADE_HOST: ${LEMONADE_HOST:-0.0.0.0}
+      LEMONADE_PORT: ${LEMONADE_PORT:-8000}
+      LEMONADE_DEFAULT_MODEL: ${LEMONADE_DEFAULT_MODEL:-Qwen3-Coder-30B-A3B-GGUF}
+      LEMONADE_LOG_LEVEL: ${LEMONADE_LOG_LEVEL:-info}
+      LEMONADE_WEB_CONCURRENCY: ${LEMONADE_WEB_CONCURRENCY:-4}
+      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
     volumes:
-      - ${AI_STACK_DATA}/vllm-models:/root/.cache/huggingface:Z
+      - ${AI_STACK_DATA}/lemonade-models:/home/ubuntu/.cache/huggingface:Z
     ports:
       - "8000:8000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 30s
       timeout: 10s
       retries: 3

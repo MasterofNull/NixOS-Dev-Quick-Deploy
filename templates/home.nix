@@ -78,6 +78,17 @@ let
         ${pkgs.podman}/bin/podman pull --quiet ${lib.escapeShellArg image}
       fi
     '';
+  podmanWaitForNetworkScript = pkgs.writeShellScript "podman-wait-for-network" ''
+    set -euo pipefail
+    for attempt in $(seq 1 120); do
+      if ${pkgs.networkmanager}/bin/nm-online -q -t 5; then
+        exit 0
+      fi
+      sleep 1
+    done
+    echo "NetworkManager did not report online status within timeout" >&2
+    exit 1
+  '';
   gitPackage =
     if config ? programs && config.programs ? git && config.programs.git ? package then
       config.programs.git.package
@@ -1197,6 +1208,10 @@ RESOURCES
 in
 
 {
+  #imports = [
+  #  ./nixos-improvements/testing.nix
+  #];
+
   # Declarative Flatpak management is enabled via nix-flatpak in flake.nix
   # The module is already included in the flake's module list, so no manual import is required here
 
@@ -1334,17 +1349,40 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           # ========================================================================
 
           # Nix tools
+          # Language servers
+          nil                     # Nix language server for IDE support
+          nixd                    # Alternative Nix language server with advanced features
+
+          # Package creation & development
+          nurl                    # Generate Nix fetcher calls from repository URLs
+          nix-init                # Interactive tool to generate Nix packages
+          nix-update              # Automatically update package versions
+
+          # Dependency analysis & visualization
           nix-tree                # Visualize Nix dependencies
           nix-index               # Index Nix packages for fast searching
+          nvd                     # Nix/NixOS package version diff (better than nix-diff)
+          nix-diff                # Compare Nix derivations
+
+          # Build & fetch utilities
           nix-prefetch-git        # Prefetch git repositories
+          nix-output-monitor      # Better build output
+          cachix                  # Binary cache service CLI
+
+          # Code quality & formatting
           nixpkgs-fmt             # Nix code formatter
           alejandra               # Alternative Nix formatter
           statix                  # Linter for Nix
           deadnix                 # Find dead Nix code
-          nix-output-monitor      # Better build output
+
+          # Development environments
+          devenv                  # Fast, declarative dev environments using Nix
+
+          # Storage & maintenance
           nix-du                  # Disk usage for Nix store
+
+          # Package review
           nixpkgs-review          # Review nixpkgs PRs
-          nix-diff                # Compare Nix derivations
 
           # ========================================================================
           # Development Tools
@@ -1603,8 +1641,24 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           # The OpenAI Python SDK is bundled via pythonAiEnv to avoid duplicate store paths.
         ]
         ++ aiderPackage;
+      engineeringToolsPackages = with pkgs; [
+        # PCB and electronics design
+        kicad
+        ngspice
+
+        # Mechanical CAD / 3D modeling
+        freecad
+        openscad
+        blender
+
+        # Digital IC / FPGA design and simulation
+        yosys
+        nextpnr
+        iverilog
+        gtkwave
+      ];
     in
-    basePackages ++ giteaDevAiPackages ++ aiCommandLinePackages;
+    basePackages ++ giteaDevAiPackages ++ aiCommandLinePackages ++ ENGINEERING_TOOLS_PLACEHOLDER;
 
   # ========================================================================
   # ZSH Configuration
@@ -1755,6 +1809,36 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       "pkcs11"
     ];
   };
+
+  # ========================================================================
+  # Rootless Podman Storage Configuration
+  # ========================================================================
+  # Configure overlay storage driver for rootless podman (user-level only).
+  # System-level podman stays on VFS to prevent boot issues from systemd mounts.
+  # Overlay with fuse-overlayfs provides efficient layer storage without VFS bloat.
+  #
+  # Benefits:
+  # - Prevents VFS bloat (424GB+ from duplicate layers)
+  # - Copy-on-write efficiency for container layers
+  # - No systemd overlay mounts during boot (no boot failures)
+  # - User-level storage in ~/.local/share (safe, isolated)
+  #
+  # Requirements:
+  # - fuse-overlayfs package (added to system packages)
+  # - kernel.unprivileged_userns_clone = 1 (already configured)
+  # - subuid/subgid ranges (handled by autoSubUidGidRange = true)
+
+  xdg.configFile."containers/storage.conf".text = ''
+    [storage]
+    driver = "overlay"
+    graphroot = "${config.home.homeDirectory}/.local/share/containers/storage"
+    rootless_storage_path = "${config.home.homeDirectory}/.local/share/containers/storage"
+    runroot = "/run/user/''${UID}/containers"
+
+    [storage.options]
+    # Use fuse-overlayfs for rootless overlay (safer than kernel overlay)
+    mount_program = "${pkgs.fuse-overlayfs}/bin/fuse-overlayfs"
+  '';
 
   # ========================================================================
   # Git Configuration
@@ -2175,6 +2259,70 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       fi
     '';
 
+  # GPT4All: Make settings and model storage mutable
+  home.activation.gpt4allMakeSettingsMutable =
+    lib.hm.dag.entryAfter [ "reloadSystemd" ] ''
+      set -eu
+
+      # GPT4All stores configuration in .ini file
+      config_dir="$HOME/.local/share/nomic.ai/GPT4All"
+      config_file="$config_dir/GPT4All.ini"
+      backup_dir="$HOME/.local/share/nixos-quick-deploy/state/gpt4all"
+      backup="$backup_dir/GPT4All.ini"
+
+      # Create directories for models and config
+      mkdir -p "$config_dir"
+      mkdir -p "$backup_dir"
+
+      restore_from_backup() {
+        if [ -f "$backup" ]; then
+          cp "$backup" "$config_file" 2>/dev/null
+          return 0
+        fi
+        return 1
+      }
+
+      # Handle symlinked config files from Nix store
+      if [ -L "$config_file" ]; then
+        target="$(readlink -f "$config_file" 2>/dev/null || true)"
+        rm -f "$config_file"
+        if ! restore_from_backup; then
+          case "$target" in
+            /nix/store/*)
+              if [ -n "$target" ] && [ -f "$target" ]; then
+                cp "$target" "$config_file" 2>/dev/null || cat >"$config_file" <<'EOF'
+[General]
+modelPath=$HOME/.local/share/nomic.ai/GPT4All
+EOF
+              else
+                cat >"$config_file" <<'EOF'
+[General]
+modelPath=$HOME/.local/share/nomic.ai/GPT4All
+EOF
+              fi
+              ;;
+            *)
+              cat >"$config_file" <<'EOF'
+[General]
+modelPath=$HOME/.local/share/nomic.ai/GPT4All
+EOF
+              ;;
+          esac
+        fi
+      elif [ ! -e "$config_file" ]; then
+        restore_from_backup || cat >"$config_file" <<'EOF'
+[General]
+modelPath=$HOME/.local/share/nomic.ai/GPT4All
+EOF
+      fi
+
+      # Ensure config file is writable and backed up
+      if [ -f "$config_file" ]; then
+        chmod u+rw "$config_file" 2>/dev/null || true
+        cp "$config_file" "$backup" 2>/dev/null || true
+      fi
+    '';
+
   # Remove legacy flatpak-managed-install artifacts so systemd no longer reports
   # a degraded user session after the service was retired.
   home.activation.cleanupFlatpakManagedArtifacts =
@@ -2498,6 +2646,12 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
     "${podmanAiStackDataDir}/open-webui/.keep".text = "";
     "${podmanAiStackDataDir}/qdrant/.keep".text = "";
     "${podmanAiStackDataDir}/mindsdb/.keep".text = "";
+    ".config/systemd/user/podman-user-wait-network-online.service.d/60-nm-online.conf".text = ''
+      [Service]
+      ExecStart=
+      ExecStart=${podmanWaitForNetworkScript}
+    '';
+
   } // (lib.mkIf LOCAL_AI_STACK_ENABLED_PLACEHOLDER {
     ".config/systemd/user/podman-local-ai-network.service.d/override.conf".text = ''
       [Unit]

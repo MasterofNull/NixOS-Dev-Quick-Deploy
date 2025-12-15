@@ -674,6 +674,13 @@ select_flatpak_profile() {
     local mode="${1:---interactive}"
     local interactive="true"
 
+    # Ensure Flatpak architecture and profiles are normalized before selection
+    if declare -F prune_arch_incompatible_flatpaks >/dev/null 2>&1; then
+        prune_arch_incompatible_flatpaks
+    elif [[ -z "${FLATPAK_INSTALL_ARCH:-}" ]] && declare -F detect_flatpak_install_arch >/dev/null 2>&1; then
+        detect_flatpak_install_arch
+    fi
+
     case "$mode" in
         --noninteractive|--hydrate)
             interactive="false"
@@ -794,6 +801,10 @@ flatpak_query_application_support() {
     local app_id="$1"
 
     LAST_FLATPAK_QUERY_MESSAGE=""
+
+    if [[ -z "${FLATPAK_INSTALL_ARCH:-}" ]] && declare -F detect_flatpak_install_arch >/dev/null 2>&1; then
+        detect_flatpak_install_arch
+    fi
 
     local remote_name="${FLATHUB_REMOTE_NAME:-flathub}"
     local -a arch_args=()

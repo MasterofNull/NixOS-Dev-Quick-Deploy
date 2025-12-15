@@ -1,0 +1,59 @@
+{
+  "version": "1.0.0",
+  "models": {
+    "qwen-7b": {
+      "id": "Qwen/Qwen2.5-Coder-7B-Instruct",
+      "name": "Qwen2.5-Coder-7B",
+      "vram_gb": 16,
+      "speed_tokens_per_sec": "40-60",
+      "quality_score": "88.4%",
+      "recommended_for": ["general coding", "NixOS", "fast iteration"],
+      "download_url": "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct"
+    },
+    "qwen-14b": {
+      "id": "Qwen/Qwen2.5-Coder-14B-Instruct",
+      "name": "Qwen2.5-Coder-14B",
+      "vram_gb": 24,
+      "speed_tokens_per_sec": "30-45",
+      "quality_score": "89.7%",
+      "recommended_for": ["production workloads", "complex code"],
+      "download_url": "https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct"
+    },
+    "deepseek-lite": {
+      "id": "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
+      "name": "DeepSeek-Coder-V2-Lite",
+      "vram_gb": 20,
+      "speed_tokens_per_sec": "20-30",
+      "quality_score": "81.1%",
+      "recommended_for": ["algorithms", "math", "300+ languages"],
+      "download_url": "https://huggingface.co/deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
+    },
+    "deepseek-v2": {
+      "id": "deepseek-ai/DeepSeek-Coder-V2-Instruct",
+      "name": "DeepSeek-Coder-V2",
+      "vram_gb": 32,
+      "speed_tokens_per_sec": "15-25",
+      "quality_score": "84.5%",
+      "recommended_for": ["multi-GPU", "highest reasoning"],
+      "download_url": "https://huggingface.co/deepseek-ai/DeepSeek-Coder-V2-Instruct"
+    },
+    "phi-mini": {
+      "id": "microsoft/Phi-3-mini-4k-instruct",
+      "name": "Phi-3-mini",
+      "vram_gb": 8,
+      "speed_tokens_per_sec": "60-80",
+      "quality_score": "68.3%",
+      "recommended_for": ["testing", "budget GPUs", "CPU-only"],
+      "download_url": "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct"
+    },
+    "codellama-13b": {
+      "id": "codellama/CodeLlama-13b-Instruct-hf",
+      "name": "CodeLlama-13B",
+      "vram_gb": 24,
+      "speed_tokens_per_sec": "20-35",
+      "quality_score": "78.2%",
+      "recommended_for": ["legacy compatibility", "well-tested"],
+      "download_url": "https://huggingface.co/codellama/CodeLlama-13b-Instruct-hf"
+    }
+  }
+}
