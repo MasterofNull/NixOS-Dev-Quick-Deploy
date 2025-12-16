@@ -1148,22 +1148,28 @@ ensure_gitea_state_directory_ready() {
 }
 
 verify_podman_storage_cleanliness() {
-    local mode="${1:-enforce}"
     local warn_only="false"
     local skip_driver_probe="false"
 
-    # Parse arguments
-    for arg in "$@"; do
-        case "$arg" in
-            --warn-only)
-                warn_only="true"
+    # Parse all arguments as flags
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --warn-only|enforce)
+                # 'enforce' is legacy positional arg - treat as default (not warn-only)
+                if [[ "$1" == "--warn-only" ]]; then
+                    warn_only="true"
+                fi
                 ;;
             --skip-driver-probe)
                 # Skip podman info probe - useful after remediation to avoid
                 # recreating storage with old driver before nixos-rebuild runs
                 skip_driver_probe="true"
                 ;;
+            *)
+                # Ignore unknown arguments for backwards compatibility
+                ;;
         esac
+        shift
     done
 
     if [[ "${PODMAN_STORAGE_DETECTION_RUN:-false}" != true ]] \
@@ -1484,7 +1490,7 @@ auto_remediate_podman_storage() {
         done < <(findmnt -rn -t fuse.fuse-overlayfs -o TARGET 2>/dev/null || true)
     fi
 
-    # Step 4: Backup and remove storage.conf if it exists (allows podman reset to work)
+    # Step 4: Backup and remove storage.conf files (system AND user) to allow fresh start
     if [[ -f /etc/containers/storage.conf ]]; then
         local backup_path="/etc/containers/storage.conf.pre-reset.$(date +%Y%m%d-%H%M%S)"
         if sudo mv /etc/containers/storage.conf "$backup_path" 2>/dev/null; then
@@ -1492,23 +1498,42 @@ auto_remediate_podman_storage() {
         fi
     fi
 
+    # Also handle user-level storage.conf
+    local user_storage_conf="${HOME}/.config/containers/storage.conf"
+    if [[ -f "$user_storage_conf" ]]; then
+        local user_backup="${user_storage_conf}.pre-reset.$(date +%Y%m%d-%H%M%S)"
+        if mv "$user_storage_conf" "$user_backup" 2>/dev/null; then
+            print_detail "Backed up user storage.conf to $user_backup"
+        fi
+    fi
+
     # Step 5: Run podman system reset (may still fail but that's okay)
+    # Note: We ignore errors here because we'll force-delete the directories anyway
     if command -v podman >/dev/null 2>&1; then
-        # User reset - ignore errors since we'll force-delete anyway
-        podman system reset --force >/dev/null 2>&1 || true
+        # User reset - use timeout to prevent hanging
+        timeout 30 podman system reset --force >/dev/null 2>&1 || true
     fi
 
     if command -v sudo >/dev/null 2>&1 && command -v podman >/dev/null 2>&1; then
-        # System reset - ignore errors since we'll force-delete anyway
-        sudo podman system reset --force >/dev/null 2>&1 || true
+        # System reset - use timeout to prevent hanging
+        sudo timeout 30 podman system reset --force >/dev/null 2>&1 || true
     fi
 
     # Step 6: Force delete storage directories regardless of reset success
     print_detail "Removing storage directories..."
 
-    # Remove user storage
-    rm -rf "${HOME}/.local/share/containers/storage" 2>/dev/null || true
+    # Remove user storage - be thorough
+    if [[ -d "${HOME}/.local/share/containers/storage" ]]; then
+        rm -rf "${HOME}/.local/share/containers/storage" 2>/dev/null || {
+            # Try with sudo if normal rm fails (might be permission issues from root-run podman)
+            sudo rm -rf "${HOME}/.local/share/containers/storage" 2>/dev/null || true
+        }
+    fi
     rm -rf "${HOME}/.local/share/containers/cache" 2>/dev/null || true
+
+    # Also remove the containers directory lock files that might cause issues
+    rm -f "${HOME}/.local/share/containers/storage.lock" 2>/dev/null || true
+    rm -f "${HOME}/.local/share/containers/cache/blob-info-cache-v1.boltdb" 2>/dev/null || true
 
     # Remove system storage
     if sudo test -d /var/lib/containers/storage 2>/dev/null; then
@@ -1521,23 +1546,57 @@ auto_remediate_podman_storage() {
         }
     fi
 
+    # Remove system-level lock files too
+    sudo rm -f /run/containers/storage.lock 2>/dev/null || true
+    sudo rm -f /var/lib/containers/storage.lock 2>/dev/null || true
+
     # Step 7: Verify directories are actually gone
     local cleanup_complete=true
-    if [[ -d "${HOME}/.local/share/containers/storage/overlay" ]] && \
-       find "${HOME}/.local/share/containers/storage/overlay" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
-        print_warning "User overlay directory still has content"
-        cleanup_complete=false
+
+    # Check user overlay directory
+    local user_overlay="${HOME}/.local/share/containers/storage/overlay"
+    if [[ -d "$user_overlay" ]]; then
+        if find "$user_overlay" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
+            print_warning "User overlay directory still has content: $user_overlay"
+            # Show what's left for debugging
+            print_detail "Remaining contents:"
+            ls -la "$user_overlay" 2>/dev/null | head -5 | while read -r line; do
+                print_detail "  $line"
+            done
+            cleanup_complete=false
+        else
+            print_detail "User overlay directory exists but is empty"
+            # Remove empty directory
+            rmdir "$user_overlay" 2>/dev/null || true
+        fi
+    else
+        print_detail "User overlay directory removed successfully"
     fi
 
-    if sudo test -d /var/lib/containers/storage/overlay 2>/dev/null && \
-       sudo find /var/lib/containers/storage/overlay -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
-        print_warning "System overlay directory still has content"
-        cleanup_complete=false
+    # Check system overlay directory
+    local sys_overlay="/var/lib/containers/storage/overlay"
+    if sudo test -d "$sys_overlay" 2>/dev/null; then
+        if sudo find "$sys_overlay" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
+            print_warning "System overlay directory still has content: $sys_overlay"
+            # Show what's left for debugging
+            print_detail "Remaining contents:"
+            sudo ls -la "$sys_overlay" 2>/dev/null | head -5 | while read -r line; do
+                print_detail "  $line"
+            done
+            cleanup_complete=false
+        else
+            print_detail "System overlay directory exists but is empty"
+            # Remove empty directory
+            sudo rmdir "$sys_overlay" 2>/dev/null || true
+        fi
+    else
+        print_detail "System overlay directory removed successfully"
     fi
 
     if [[ "$cleanup_complete" == true ]]; then
-        print_detail "Storage directories cleaned successfully"
+        print_success "Storage directories cleaned successfully"
     else
+        print_warning "Some storage content could not be removed automatically"
         status=1
     fi
 
