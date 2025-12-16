@@ -1150,9 +1150,21 @@ ensure_gitea_state_directory_ready() {
 verify_podman_storage_cleanliness() {
     local mode="${1:-enforce}"
     local warn_only="false"
-    if [[ "$mode" == "--warn-only" ]]; then
-        warn_only="true"
-    fi
+    local skip_driver_probe="false"
+
+    # Parse arguments
+    for arg in "$@"; do
+        case "$arg" in
+            --warn-only)
+                warn_only="true"
+                ;;
+            --skip-driver-probe)
+                # Skip podman info probe - useful after remediation to avoid
+                # recreating storage with old driver before nixos-rebuild runs
+                skip_driver_probe="true"
+                ;;
+        esac
+    done
 
     if [[ "${PODMAN_STORAGE_DETECTION_RUN:-false}" != true ]] \
         && declare -F detect_container_storage_backend >/dev/null 2>&1; then
@@ -1171,7 +1183,7 @@ verify_podman_storage_cleanliness() {
     local system_overlay="/var/lib/containers/storage/overlay"
     local user_root="${PRIMARY_HOME:-$HOME}/.local/share/containers/storage/overlay"
 
-    if [[ -d "$system_overlay" ]] && find "$system_overlay" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
+    if [[ -d "$system_overlay" ]] && sudo find "$system_overlay" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
         overlay_paths+=("$system_overlay")
     fi
 
@@ -1197,6 +1209,12 @@ verify_podman_storage_cleanliness() {
         print_detail "System cleanup: ${system_cleanup_hint}"
         print_detail "See docs/ROOTLESS_PODMAN.md for recovery steps, then rerun the deployer."
         return 1
+    fi
+
+    # Skip driver probe if requested (after remediation, probing would recreate storage)
+    if [[ "$skip_driver_probe" == "true" ]]; then
+        # Overlay directories are clean - that's sufficient for post-remediation check
+        return 0
     fi
 
     local -a driver_probe_cmd=()
@@ -1331,22 +1349,67 @@ restart_managed_services_after_switch() {
 
     print_info "Reinitializing services paused for the system switch..."
     local unit
+    local -a failed_system_units=()
+    local -a failed_user_units=()
+
     for unit in "${NQD_STOPPED_SYSTEM_UNITS[@]}"; do
         if sudo systemctl start "$unit" >/dev/null 2>&1; then
             print_detail "Restarted $unit"
         else
-            print_warning "Failed to restart $unit; check systemctl status manually."
+            failed_system_units+=("$unit")
         fi
     done
+
     if (( ${#NQD_STOPPED_USER_UNITS[@]} > 0 )) && systemctl --user --version >/dev/null 2>&1; then
         for unit in "${NQD_STOPPED_USER_UNITS[@]}"; do
+            # First check if the service unit file exists after rebuild
+            # (it may have been removed or renamed during nixos-rebuild)
+            if ! systemctl --user cat "$unit" >/dev/null 2>&1; then
+                print_detail "Skipping $unit (unit no longer exists after rebuild)"
+                continue
+            fi
+
+            # Reset any failed state before attempting restart
+            systemctl --user reset-failed "$unit" >/dev/null 2>&1 || true
+
             if systemctl --user start "$unit" >/dev/null 2>&1; then
-                print_detail "Restarted user unit $unit"
+                # Brief wait to check if service stays up
+                sleep 1
+                if systemctl --user is-active --quiet "$unit" 2>/dev/null; then
+                    print_detail "Restarted user unit $unit"
+                else
+                    failed_user_units+=("$unit")
+                fi
             else
-                print_warning "Failed to restart user unit $unit"
+                failed_user_units+=("$unit")
             fi
         done
     fi
+
+    # Report failed units with actionable guidance (single message per unit)
+    if (( ${#failed_system_units[@]} > 0 )); then
+        print_warning "System services that failed to restart (${#failed_system_units[@]}):"
+        for unit in "${failed_system_units[@]}"; do
+            print_detail "  • $unit"
+        done
+        print_info "Check with: sudo systemctl status <service>"
+    fi
+
+    if (( ${#failed_user_units[@]} > 0 )); then
+        print_warning "User services that failed to restart (${#failed_user_units[@]}):"
+        for unit in "${failed_user_units[@]}"; do
+            local fail_reason=""
+            fail_reason=$(systemctl --user show "$unit" --property=Result --value 2>/dev/null | tr -d '\r')
+            if [[ -n "$fail_reason" && "$fail_reason" != "success" ]]; then
+                print_detail "  • $unit (result: $fail_reason)"
+            else
+                print_detail "  • $unit"
+            fi
+        done
+        print_info "Check with: systemctl --user status <service>"
+        print_info "View logs: journalctl --user -u <service> -n 20"
+    fi
+
     NQD_STOPPED_SYSTEM_UNITS=()
     NQD_STOPPED_USER_UNITS=()
 }
@@ -1355,31 +1418,127 @@ auto_remediate_podman_storage() {
     local status=0
     print_info "Attempting automated Podman storage cleanup..."
 
+    # Step 1: Stop all Podman-related services (system and user)
+    print_detail "Stopping Podman services before cleanup..."
+    local -a podman_services=(
+        "podman.service"
+        "podman.socket"
+        "podman-auto-update.service"
+        "podman-auto-update.timer"
+        "podman-restart.service"
+        "podman-clean-transient.service"
+    )
+    for svc in "${podman_services[@]}"; do
+        sudo systemctl stop "$svc" 2>/dev/null || true
+    done
+
+    # Stop user Podman services
+    if systemctl --user --version >/dev/null 2>&1; then
+        for svc in "${podman_services[@]}"; do
+            systemctl --user stop "$svc" 2>/dev/null || true
+        done
+        # Stop any quadlet-managed containers
+        local quadlet_unit
+        while IFS= read -r quadlet_unit; do
+            [[ -n "$quadlet_unit" ]] && systemctl --user stop "$quadlet_unit" 2>/dev/null || true
+        done < <(systemctl --user list-units 'podman-*.service' --no-legend --no-pager 2>/dev/null | awk '{print $1}')
+    fi
+
+    # Step 2: Kill any remaining podman processes
+    print_detail "Terminating remaining Podman processes..."
+    pkill -9 -u "$(id -u)" podman 2>/dev/null || true
+    pkill -9 -u "$(id -u)" conmon 2>/dev/null || true
+    sudo pkill -9 podman 2>/dev/null || true
+    sudo pkill -9 conmon 2>/dev/null || true
+    sleep 1
+
+    # Step 3: Unmount all container overlay filesystems (system AND user)
     if command -v findmnt >/dev/null 2>&1; then
         local target
+        # Unmount system overlay mounts
         while IFS= read -r target; do
             if [[ -n "$target" ]]; then
                 if sudo umount -lf "$target" >/dev/null 2>&1; then
-                    print_detail "Detached stale mount $target"
-                else
-                    print_warning "Failed to detach $target"
-                    status=1
+                    print_detail "Detached system mount $target"
                 fi
             fi
         done < <(sudo findmnt -rn -t overlay -o TARGET 2>/dev/null | grep -E '^/var/lib/containers/storage/overlay/.+/merged$' || true)
+
+        # Unmount user overlay mounts
+        local user_storage="${HOME}/.local/share/containers/storage"
+        while IFS= read -r target; do
+            if [[ -n "$target" ]]; then
+                if umount -lf "$target" 2>/dev/null || sudo umount -lf "$target" 2>/dev/null; then
+                    print_detail "Detached user mount $target"
+                fi
+            fi
+        done < <(findmnt -rn -t overlay -o TARGET 2>/dev/null | grep -E "^${user_storage}/overlay/.+/merged$" || true)
+
+        # Also unmount any fuse-overlayfs mounts
+        while IFS= read -r target; do
+            if [[ -n "$target" && "$target" == *"/containers/storage/"* ]]; then
+                if umount -lf "$target" 2>/dev/null || sudo umount -lf "$target" 2>/dev/null; then
+                    print_detail "Detached fuse-overlayfs mount $target"
+                fi
+            fi
+        done < <(findmnt -rn -t fuse.fuse-overlayfs -o TARGET 2>/dev/null || true)
     fi
 
+    # Step 4: Backup and remove storage.conf if it exists (allows podman reset to work)
+    if [[ -f /etc/containers/storage.conf ]]; then
+        local backup_path="/etc/containers/storage.conf.pre-reset.$(date +%Y%m%d-%H%M%S)"
+        if sudo mv /etc/containers/storage.conf "$backup_path" 2>/dev/null; then
+            print_detail "Backed up /etc/containers/storage.conf to $backup_path"
+        fi
+    fi
+
+    # Step 5: Run podman system reset (may still fail but that's okay)
     if command -v podman >/dev/null 2>&1; then
-        podman system reset --force >/dev/null 2>&1 || status=1
-        rm -rf "${HOME}/.local/share/containers/storage" "${HOME}/.local/share/containers/cache" >/dev/null 2>&1 || true
+        # User reset - ignore errors since we'll force-delete anyway
+        podman system reset --force >/dev/null 2>&1 || true
     fi
 
     if command -v sudo >/dev/null 2>&1 && command -v podman >/dev/null 2>&1; then
-        sudo podman system reset --force >/dev/null 2>&1 || status=1
+        # System reset - ignore errors since we'll force-delete anyway
+        sudo podman system reset --force >/dev/null 2>&1 || true
     fi
 
-    if sudo test -d /var/lib/containers/storage >/dev/null 2>&1; then
-        sudo rm -rf /var/lib/containers/storage >/dev/null 2>&1 || status=1
+    # Step 6: Force delete storage directories regardless of reset success
+    print_detail "Removing storage directories..."
+
+    # Remove user storage
+    rm -rf "${HOME}/.local/share/containers/storage" 2>/dev/null || true
+    rm -rf "${HOME}/.local/share/containers/cache" 2>/dev/null || true
+
+    # Remove system storage
+    if sudo test -d /var/lib/containers/storage 2>/dev/null; then
+        sudo rm -rf /var/lib/containers/storage 2>/dev/null || {
+            # If rm fails, try more aggressive cleanup
+            print_detail "Standard removal failed, trying aggressive cleanup..."
+            sudo find /var/lib/containers/storage -type f -delete 2>/dev/null || true
+            sudo find /var/lib/containers/storage -type d -empty -delete 2>/dev/null || true
+            sudo rm -rf /var/lib/containers/storage 2>/dev/null || status=1
+        }
+    fi
+
+    # Step 7: Verify directories are actually gone
+    local cleanup_complete=true
+    if [[ -d "${HOME}/.local/share/containers/storage/overlay" ]] && \
+       find "${HOME}/.local/share/containers/storage/overlay" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
+        print_warning "User overlay directory still has content"
+        cleanup_complete=false
+    fi
+
+    if sudo test -d /var/lib/containers/storage/overlay 2>/dev/null && \
+       sudo find /var/lib/containers/storage/overlay -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
+        print_warning "System overlay directory still has content"
+        cleanup_complete=false
+    fi
+
+    if [[ "$cleanup_complete" == true ]]; then
+        print_detail "Storage directories cleaned successfully"
+    else
+        status=1
     fi
 
     return $status
@@ -1397,7 +1556,12 @@ ensure_podman_storage_ready() {
         print_warning "Automatic Podman storage remediation reported errors; attempting verification anyway."
     fi
 
-    if verify_podman_storage_cleanliness; then
+    # After remediation, skip the podman info probe because:
+    # 1. Running podman info would recreate storage with the OLD driver
+    #    (storage.conf hasn't been updated yet - that happens during nixos-rebuild)
+    # 2. We only need to verify overlay directories are clean
+    # 3. The new storage with correct driver will be created after nixos-rebuild
+    if verify_podman_storage_cleanliness --skip-driver-probe; then
         print_success "Podman storage cleaned successfully."
         return 0
     fi
