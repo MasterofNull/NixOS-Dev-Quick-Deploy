@@ -1349,22 +1349,67 @@ restart_managed_services_after_switch() {
 
     print_info "Reinitializing services paused for the system switch..."
     local unit
+    local -a failed_system_units=()
+    local -a failed_user_units=()
+
     for unit in "${NQD_STOPPED_SYSTEM_UNITS[@]}"; do
         if sudo systemctl start "$unit" >/dev/null 2>&1; then
             print_detail "Restarted $unit"
         else
-            print_warning "Failed to restart $unit; check systemctl status manually."
+            failed_system_units+=("$unit")
         fi
     done
+
     if (( ${#NQD_STOPPED_USER_UNITS[@]} > 0 )) && systemctl --user --version >/dev/null 2>&1; then
         for unit in "${NQD_STOPPED_USER_UNITS[@]}"; do
+            # First check if the service unit file exists after rebuild
+            # (it may have been removed or renamed during nixos-rebuild)
+            if ! systemctl --user cat "$unit" >/dev/null 2>&1; then
+                print_detail "Skipping $unit (unit no longer exists after rebuild)"
+                continue
+            fi
+
+            # Reset any failed state before attempting restart
+            systemctl --user reset-failed "$unit" >/dev/null 2>&1 || true
+
             if systemctl --user start "$unit" >/dev/null 2>&1; then
-                print_detail "Restarted user unit $unit"
+                # Brief wait to check if service stays up
+                sleep 1
+                if systemctl --user is-active --quiet "$unit" 2>/dev/null; then
+                    print_detail "Restarted user unit $unit"
+                else
+                    failed_user_units+=("$unit")
+                fi
             else
-                print_warning "Failed to restart user unit $unit"
+                failed_user_units+=("$unit")
             fi
         done
     fi
+
+    # Report failed units with actionable guidance (single message per unit)
+    if (( ${#failed_system_units[@]} > 0 )); then
+        print_warning "System services that failed to restart (${#failed_system_units[@]}):"
+        for unit in "${failed_system_units[@]}"; do
+            print_detail "  • $unit"
+        done
+        print_info "Check with: sudo systemctl status <service>"
+    fi
+
+    if (( ${#failed_user_units[@]} > 0 )); then
+        print_warning "User services that failed to restart (${#failed_user_units[@]}):"
+        for unit in "${failed_user_units[@]}"; do
+            local fail_reason=""
+            fail_reason=$(systemctl --user show "$unit" --property=Result --value 2>/dev/null | tr -d '\r')
+            if [[ -n "$fail_reason" && "$fail_reason" != "success" ]]; then
+                print_detail "  • $unit (result: $fail_reason)"
+            else
+                print_detail "  • $unit"
+            fi
+        done
+        print_info "Check with: systemctl --user status <service>"
+        print_info "View logs: journalctl --user -u <service> -n 20"
+    fi
+
     NQD_STOPPED_SYSTEM_UNITS=()
     NQD_STOPPED_USER_UNITS=()
 }
@@ -1511,7 +1556,12 @@ ensure_podman_storage_ready() {
         print_warning "Automatic Podman storage remediation reported errors; attempting verification anyway."
     fi
 
-    if verify_podman_storage_cleanliness; then
+    # After remediation, skip the podman info probe because:
+    # 1. Running podman info would recreate storage with the OLD driver
+    #    (storage.conf hasn't been updated yet - that happens during nixos-rebuild)
+    # 2. We only need to verify overlay directories are clean
+    # 3. The new storage with correct driver will be created after nixos-rebuild
+    if verify_podman_storage_cleanliness --skip-driver-probe; then
         print_success "Podman storage cleaned successfully."
         return 0
     fi
