@@ -668,15 +668,15 @@ PY
 # injects. Depends on PRIMARY_HOME (config/variables.sh:450) so rootless Podman
 # data stays inside the user's home directory.
 build_rootless_podman_storage_block() {
-    local default_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-vfs}"
+    local default_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-overlay}"
     local system_driver="${PODMAN_STORAGE_DRIVER:-$default_driver}"
 
     case "$default_driver" in
-        vfs|btrfs|zfs)
+        vfs|btrfs|zfs|overlay)
             ;;
         *)
-            print_warning "DEFAULT_PODMAN_STORAGE_DRIVER=${default_driver} unsupported; falling back to vfs."
-            default_driver="vfs"
+            print_warning "DEFAULT_PODMAN_STORAGE_DRIVER=${default_driver} unsupported; falling back to overlay."
+            default_driver="overlay"
             ;;
     esac
 
@@ -691,7 +691,7 @@ build_rootless_podman_storage_block() {
     fi
 
     case "$system_driver" in
-        vfs|btrfs|zfs)
+        vfs|btrfs|zfs|overlay)
             ;;
         *)
             print_warning "PODMAN_STORAGE_DRIVER=${system_driver} unsupported; using ${default_driver} for rootless storage."
@@ -754,9 +754,15 @@ build_rootless_podman_storage_block() {
     comment=${comment//\'/}
 
     local rootless_storage_options_block=""
-    if [[ "$driver_choice" == "vfs" ]]; then
-        rootless_storage_options_block=$'    storage.options = {\n      ignore_chown_errors = "true";\n    };\n'
-    fi
+    case "$driver_choice" in
+        vfs)
+            rootless_storage_options_block=$'    storage.options = {\n      ignore_chown_errors = "true";\n    };\n'
+            ;;
+        overlay)
+            # For overlay, specify fuse-overlayfs for rootless operation
+            rootless_storage_options_block=$'    storage.options.overlay = {\n      mount_program = "/run/current-system/sw/bin/fuse-overlayfs";\n    };\n'
+            ;;
+    esac
 
     PODMAN_ROOTLESS_STORAGE_BLOCK=$(cat <<EOF
   # ==========================================================================
@@ -2876,18 +2882,14 @@ EOF
         flatpak_packages_block=$'  # Selected Flatpak profile does not provision GUI applications.\n  flathubPackages = [];\n'
     fi
 
-    local default_podman_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-vfs}"
+    local default_podman_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-overlay}"
     local podman_storage_driver="${PODMAN_STORAGE_DRIVER:-$default_podman_driver}"
     case "$podman_storage_driver" in
-        vfs|btrfs|zfs)
-            ;;
-        overlay)
-            print_warning "Overlay storage driver support has been removed from generated configurations; forcing vfs."
-            podman_storage_driver="vfs"
+        vfs|btrfs|zfs|overlay)
             ;;
         *)
-            print_warning "Unknown Podman storage driver '${podman_storage_driver}'; defaulting to vfs."
-            podman_storage_driver="vfs"
+            print_warning "Unknown Podman storage driver '${podman_storage_driver}'; defaulting to overlay."
+            podman_storage_driver="overlay"
             ;;
     esac
     local podman_storage_comment="${PODMAN_STORAGE_COMMENT:-Using ${podman_storage_driver} driver on detected filesystem.}"
@@ -2895,9 +2897,15 @@ EOF
     podman_storage_comment=${podman_storage_comment//\'/}
 
     local storage_options_block=""
-    if [[ "$podman_storage_driver" == "vfs" ]]; then
-        storage_options_block=$'    storage.options = {\n      ignore_chown_errors = "true";\n    };\n'
-    fi
+    case "$podman_storage_driver" in
+        vfs)
+            storage_options_block=$'    storage.options = {\n      ignore_chown_errors = "true";\n    };\n'
+            ;;
+        overlay)
+            # For overlay, specify fuse-overlayfs for rootless operation
+            storage_options_block=$'    storage.options.overlay = {\n      # Use fuse-overlayfs for rootless containers\n      mount_program = "${pkgs.fuse-overlayfs}/bin/fuse-overlayfs";\n    };\n'
+            ;;
+    esac
 
     local podman_storage_block
     podman_storage_block=$(cat <<'EOF'

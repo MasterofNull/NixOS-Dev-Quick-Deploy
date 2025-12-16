@@ -17,7 +17,7 @@ prompt_podman_storage_driver_selection() {
         return 0
     fi
 
-    local default_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-vfs}"
+    local default_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-overlay}"
     local auto_detected="${PODMAN_STORAGE_DRIVER:-$default_driver}"
     local fs_type="${CONTAINER_STORAGE_FS_TYPE:-unknown}"
 
@@ -38,7 +38,7 @@ prompt_podman_storage_driver_selection() {
 
     local selection=""
     while true; do
-        selection=$(prompt_user "Select Podman storage driver [vfs/btrfs/zfs/auto]" "$default_driver")
+        selection=$(prompt_user "Select Podman storage driver [overlay/vfs/btrfs/zfs/auto]" "$default_driver")
         selection="${selection,,}"
 
         if [[ -z "$selection" ]]; then
@@ -55,10 +55,10 @@ prompt_podman_storage_driver_selection() {
                 fi
                 break
                 ;;
-            vfs|btrfs|zfs)
+            overlay|vfs|btrfs|zfs)
                 PODMAN_STORAGE_DRIVER_OVERRIDE="$selection"
                 export PODMAN_STORAGE_DRIVER_OVERRIDE
-        print_success "Podman storage driver set to ${selection} for this run."
+                print_success "Podman storage driver set to ${selection} for this run."
                 if declare -F detect_container_storage_backend >/dev/null 2>&1; then
                     detect_container_storage_backend
                 fi

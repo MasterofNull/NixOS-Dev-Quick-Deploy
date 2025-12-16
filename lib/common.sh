@@ -956,20 +956,20 @@ detect_container_storage_backend() {
     fi
 
     case "$default_driver" in
-        vfs|btrfs|zfs)
+        vfs|btrfs|zfs|overlay)
             ;;
         ""|auto)
-            default_driver="vfs"
+            default_driver="overlay"
             ;;
         *)
-            print_warning "DEFAULT_PODMAN_STORAGE_DRIVER=${default_driver} unsupported; falling back to vfs."
-            default_driver="vfs"
+            print_warning "DEFAULT_PODMAN_STORAGE_DRIVER=${default_driver} unsupported; falling back to overlay."
+            default_driver="overlay"
             ;;
     esac
 
     if [[ -n "$forced_driver" ]]; then
         case "$forced_driver" in
-            vfs|btrfs|zfs)
+            vfs|btrfs|zfs|overlay)
                 ;;
             *)
                 print_warning "PODMAN_STORAGE_DRIVER_OVERRIDE=${forced_driver} unsupported; ignoring and reverting to ${default_driver}."

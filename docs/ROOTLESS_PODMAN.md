@@ -1,25 +1,25 @@
 # Rootless Podman Storage
 
-Overlay-based Podman storage is no longer part of the deployment workflow. The
-quick deploy script locks the driver to `vfs`, `btrfs`, or `zfs` during Phase 1,
-and the diagnostics phase refuses to continue if an older overlay override is
-still active. This keeps `nixos-rebuild` and `systemd` from mounting
-`/var/lib/containers/storage/overlay` entries during boot. Phase 5 now pauses
-container services automatically, attempts the cleanup steps below, and only
-falls back to manual intervention when the automated run cannot proceed. You
-can re-run the diagnostics any time via `./scripts/system-health-check.sh --detailed`.
+The quick deploy script now defaults to the `overlay` storage driver, which
+provides the best performance on most filesystems using `fuse-overlayfs` for
+rootless operation. Alternative drivers (`vfs`, `btrfs`, `zfs`) are also
+supported and can be selected during Phase 1 or via the
+`DEFAULT_PODMAN_STORAGE_DRIVER` environment variable.
+
+Phase 5 pauses container services automatically before the system switch and
+attempts automated storage cleanup if a driver mismatch is detected. You can
+re-run the diagnostics any time via `./scripts/system-health-check.sh --detailed`.
 
 ## Current behaviour
 
-- `/etc/containers/storage.conf` is regenerated automatically so the system
-  scope uses the filesystem-appropriate driver (typically `vfs` when no native
-  driver is available). A timestamped backup lives beside the original file and
-  another copy is archived in `~/.cache/nixos-quick-deploy/backups/<timestamp>/etc/containers/storage.conf`.
+- `/etc/containers/storage.conf` is regenerated automatically during
+  `nixos-rebuild switch` with the selected driver (default: `overlay`).
+  A timestamped backup is archived in `~/.cache/nixos-quick-deploy/backups/`.
 - `~/.config/containers/storage.conf` is rendered by Home Manager so rootless
-  Podman inherits the same decision, but silently falls back to `vfs` if the
-  home directory cannot host the requested driver.
-- Phase 1 diagnostics print the detected driver and block if an overlay driver
-  is forced through overrides.
+  Podman uses the same driver, with `fuse-overlayfs` providing overlay support
+  for unprivileged containers.
+- Phase 1 diagnostics print the detected driver and allow selection of
+  `overlay`, `vfs`, `btrfs`, or `zfs`.
 
 ## Kernel user namespace prerequisites
 
@@ -34,10 +34,10 @@ can re-run the diagnostics any time via `./scripts/system-health-check.sh --deta
   with remediation instructions because rootless Podman cannot start without
   user namespaces.
 
-## Cleaning legacy overlay directories
+## Switching storage drivers
 
-If an older configuration left overlay layers behind, reset the stores once and
-rebuild with the new templates applied:
+If you need to switch between storage drivers (e.g., from `vfs` to `overlay`
+or vice versa), you must clean the existing storage first:
 
 ```bash
 # Rootless store (per user)
