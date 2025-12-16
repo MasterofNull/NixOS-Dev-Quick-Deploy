@@ -927,6 +927,14 @@ in
       cloud = {
         enabled = "no";
       };
+      # Disable health monitoring to avoid excessive alerts in dev environment
+      health = {
+        enabled = "no";
+      };
+      # Disable statsd plugin if not needed
+      statsd = {
+        enabled = "no";
+      };
     };
   };
 
@@ -966,8 +974,10 @@ in
     LogsDirectory = "netdata";
   };
 
-  environment.etc."netdata/conf.d/health.d".source = pkgs.emptyDirectory;
-  environment.etc."netdata/conf.d/statsd.d".source = pkgs.emptyDirectory;
+  # NOTE: Removed environment.etc overrides for netdata/conf.d/health.d and statsd.d
+  # These caused "Permission denied" errors during nix build because they conflict
+  # with netdata's own directory management. Health and statsd are now disabled
+  # via the services.netdata.config options above.
 
   systemd.tmpfiles.rules = lib.mkAfter (
     [
