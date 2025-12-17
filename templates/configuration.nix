@@ -966,8 +966,8 @@ in
     LogsDirectory = "netdata";
   };
 
-  environment.etc."netdata/conf.d/health.d".source = pkgs.emptyDirectory;
-  environment.etc."netdata/conf.d/statsd.d".source = pkgs.emptyDirectory;
+  # Note: Health alerts and statsd configuration are managed through services.netdata.config
+  # Do NOT use environment.etc for netdata subdirectories - it conflicts with netdata's module
 
   systemd.tmpfiles.rules = lib.mkAfter (
     [
