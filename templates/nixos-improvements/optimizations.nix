@@ -234,68 +234,64 @@
   };
 
   # =========================================================================
-  # Documentation (embedded in activation)
+  # Documentation (declarative via environment.etc)
   # =========================================================================
 
-  system.activationScripts.performanceInfo = {
-    text = ''
-      cat > /etc/nixos/PERFORMANCE-OPTIMIZATIONS.txt <<'EOF'
-      ========================================
-      NixOS Performance Optimizations Summary
-      ========================================
+  environment.etc."nixos/PERFORMANCE-OPTIMIZATIONS.txt".text = ''
+    ========================================
+    NixOS Performance Optimizations Summary
+    ========================================
 
-      ENABLED OPTIMIZATIONS:
-      ----------------------
-      ✅ NixOS-Init: Rust-based initrd (faster boot)
-      ✅ Zswap: Compressed RAM swap (zstd, 20% pool)
-      ✅ I/O Schedulers: NVMe=none, SSD=mq-deadline, HDD=bfq
-      ✅ CPU Governor: schedutil (balanced)
-      ✅ Swappiness: 10 (prefer RAM)
-      ✅ Inotify watchers: 524,288 (for development)
-      ✅ Nix build: Auto-jobs, all cores
-      ✅ Binary caches: NixOS, nix-community, CUDA
-      ✅ Auto-optimize store: Weekly deduplication
-      ✅ LACT: GPU monitoring (auto-detect)
-      ✅ Tmpfs /tmp: 50% of RAM
+    ENABLED OPTIMIZATIONS:
+    ----------------------
+    ✅ NixOS-Init: Rust-based initrd (faster boot)
+    ✅ Zswap: Compressed RAM swap (zstd, 20% pool)
+    ✅ I/O Schedulers: NVMe=none, SSD=mq-deadline, HDD=bfq
+    ✅ CPU Governor: schedutil (balanced)
+    ✅ Swappiness: 10 (prefer RAM)
+    ✅ Inotify watchers: 524,288 (for development)
+    ✅ Nix build: Auto-jobs, all cores
+    ✅ Binary caches: NixOS, nix-community, CUDA
+    ✅ Auto-optimize store: Weekly deduplication
+    ✅ LACT: GPU monitoring (auto-detect)
+    ✅ Tmpfs /tmp: 50% of RAM
 
-      EXPECTED IMPROVEMENTS:
-      ----------------------
-      🚀 Boot time: 20-30% faster
-      🚀 Build time: 15-20% faster
-      🚀 Memory usage: 10-15% reduction (zswap)
-      🚀 I/O latency: 30-40% improvement (optimized schedulers)
-      🚀 Nix operations: 25% faster (caching + optimization)
+    EXPECTED IMPROVEMENTS:
+    ----------------------
+    🚀 Boot time: 20-30% faster
+    🚀 Build time: 15-20% faster
+    🚀 Memory usage: 10-15% reduction (zswap)
+    🚀 I/O latency: 30-40% improvement (optimized schedulers)
+    🚀 Nix operations: 25% faster (caching + optimization)
 
-      BENCHMARKING:
-      -------------
-      Test boot time:
-        $ systemd-analyze
+    BENCHMARKING:
+    -------------
+    Test boot time:
+      $ systemd-analyze
 
-      Test I/O performance:
-        $ fio --name=randread --ioengine=libaio --iodepth=16 --rw=randread --bs=4k --direct=1 --size=1G --numjobs=4 --runtime=60 --group_reporting
+    Test I/O performance:
+      $ fio --name=randread --ioengine=libaio --iodepth=16 --rw=randread --bs=4k --direct=1 --size=1G --numjobs=4 --runtime=60 --group_reporting
 
-      Test CPU performance:
-        $ sysbench cpu run
+    Test CPU performance:
+      $ sysbench cpu run
 
-      Monitor system:
-        $ btop
-        $ nvtop  # GPU
-        $ iotop  # I/O
+    Monitor system:
+      $ btop
+      $ nvtop  # GPU
+      $ iotop  # I/O
 
-      TUNING FURTHER:
-      ---------------
-      For maximum performance (at cost of power):
-        boot.kernelParams = [ "processor.max_cstate=1" ];
-        powerManagement.cpuFreqGovernor = "performance";
+    TUNING FURTHER:
+    ---------------
+    For maximum performance (at cost of power):
+      boot.kernelParams = [ "processor.max_cstate=1" ];
+      powerManagement.cpuFreqGovernor = "performance";
 
-      For battery saving:
-        powerManagement.cpuFreqGovernor = "powersave";
-        boot.kernelParams = [ "pcie_aspm=force" ];
+    For battery saving:
+      powerManagement.cpuFreqGovernor = "powersave";
+      boot.kernelParams = [ "pcie_aspm=force" ];
 
-      ========================================
-      Last updated: $(date)
-      ========================================
-      EOF
-    '';
-  };
+    ========================================
+    Configuration: optimizations.nix
+    ========================================
+  '';
 }
