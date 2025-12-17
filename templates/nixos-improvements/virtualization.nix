@@ -214,52 +214,47 @@ in
   ];
 
   # =========================================================================
-  # Documentation
+  # Documentation (declarative via environment.etc)
   # =========================================================================
 
-  # Quick start guide embedded in configuration
-  system.activationScripts.vmQuickStart = {
-    text = ''
-      cat > /etc/nixos/VM-QUICKSTART.txt <<'EOF'
-      ========================================
-      NixOS Virtualization Quick Start Guide
-      ========================================
+  environment.etc."nixos/VM-QUICKSTART.txt".text = ''
+    ========================================
+    NixOS Virtualization Quick Start Guide
+    ========================================
 
-      Create a NixOS VM:
-        $ vm-create-nixos myvm 4096 2 20
+    Create a NixOS VM:
+      $ vm-create-nixos myvm 4096 2 20
 
-      List all VMs:
-        $ vm-list
+    List all VMs:
+      $ vm-list
 
-      Start a VM:
-        $ virsh start myvm
+    Start a VM:
+      $ virsh start myvm
 
-      Connect to VM console:
-        $ virt-manager
-        # OR
-        $ virt-viewer myvm
+    Connect to VM console:
+      $ virt-manager
+      # OR
+      $ virt-viewer myvm
 
-      Create snapshot:
-        $ vm-snapshot myvm my-snapshot
+    Create snapshot:
+      $ vm-snapshot myvm my-snapshot
 
-      Stop a VM:
-        $ virsh shutdown myvm
+    Stop a VM:
+      $ virsh shutdown myvm
 
-      Delete a VM:
-        $ virsh undefine myvm --remove-all-storage
+    Delete a VM:
+      $ virsh undefine myvm --remove-all-storage
 
-      Check VM status:
-        $ virsh dominfo myvm
+    Check VM status:
+      $ virsh dominfo myvm
 
-      ========================================
-      For full documentation, see:
-        - https://nixos.wiki/wiki/Libvirt
-        - https://nixos.wiki/wiki/Virt-manager
-        - /etc/nixos/VM-QUICKSTART.txt
-      ========================================
-      EOF
-    '';
-  };
+    ========================================
+    For full documentation, see:
+      - https://nixos.wiki/wiki/Libvirt
+      - https://nixos.wiki/wiki/Virt-manager
+    Configuration: virtualization.nix
+    ========================================
+  '';
 
 
 
