@@ -2,7 +2,7 @@
 #
 # Phase 06: Additional Tooling
 # Purpose: Install additional tools (Flatpak, Claude Code, etc.) in parallel
-# Version: 4.0.0
+# Version: Uses SCRIPT_VERSION from main script
 #
 # ============================================================================
 # DEPENDENCIES
@@ -133,6 +133,24 @@ phase_06_additional_tooling() {
     fi
 
     # ========================================================================
+    # Pre-Setup: Ensure NPM Environment (Before Parallel Operations)
+    # ========================================================================
+    # CRITICAL: Both install_claude_code() and install_openskills_tooling()
+    # call ensure_npm_global_prefix() which writes to ~/.npmrc. To avoid race
+    # conditions with concurrent .npmrc writes, we ensure the npm prefix is
+    # configured once before any parallel npm operations start.
+    #
+    # Why here:
+    # - Must happen before install_claude_code() runs (it installs npm packages)
+    # - Must happen before install_openskills_tooling() runs (it installs npm packages)
+    # - Ensures .npmrc is set up correctly before any concurrent access
+    if command -v npm >/dev/null 2>&1; then
+        if declare -F ensure_npm_global_prefix >/dev/null 2>&1; then
+            ensure_npm_global_prefix
+        fi
+    fi
+
+    # ========================================================================
     # Parallel Installation: Flatpak Applications
     # ========================================================================
     # What is Flatpak:
@@ -160,6 +178,13 @@ phase_06_additional_tooling() {
     print_section "Flatpak Application Installation"
     install_flatpak_stage &
     local flatpak_pid=$!  # Save PID to wait for later
+    
+    # Track background PID for cleanup on exit
+    if [[ -z "${BACKGROUND_PIDS:-}" ]]; then
+        declare -a BACKGROUND_PIDS=()
+    fi
+    BACKGROUND_PIDS+=("$flatpak_pid")
+    export BACKGROUND_PIDS
 
     # ========================================================================
     # Parallel Installation: Claude Code CLI
@@ -204,9 +229,35 @@ phase_06_additional_tooling() {
         print_warning "Claude Code installation skipped due to errors"
     fi &
     local claude_pid=$!  # Save PID
+    
+    # Track background PID for cleanup on exit
+    BACKGROUND_PIDS+=("$claude_pid")
 
     # ========================================================================
-    # Parallel Installation: OpenSkills Tooling
+    # Synchronization Point: Wait for Flatpak (must complete before OpenSkills)
+    # ========================================================================
+    # CRITICAL: OpenSkills hook may install Flatpak apps, so we must wait for
+    # the main Flatpak installation to complete first to avoid database lock conflicts.
+    #
+    # Why wait here:
+    # - Flatpak locks its database during installation
+    # - OpenSkills hook (~/.config/openskills/install.sh) may call Flatpak commands
+    # - Concurrent Flatpak operations cause hangs (database lock)
+    # - We must complete Flatpak installation before OpenSkills runs its hook
+    #
+    # wait command:
+    # - wait PID: Block until process PID completes
+    # - Returns: Exit code of the waited process
+    # - 0 = success, non-zero = failure
+    #
+    # Error handling:
+    # - || print_warning: If wait returns non-zero (failure), show warning
+    # - Don't exit: These are optional, non-critical components
+    print_info "Waiting for Flatpak installation to complete (required before OpenSkills hook)..."
+    wait $flatpak_pid || print_warning "Flatpak installation had issues"
+
+    # ========================================================================
+    # Installation: OpenSkills Tooling (after Flatpak completes)
     # ========================================================================
     # What is OpenSkills:
     # - Custom tooling for skills assessment and development
@@ -220,38 +271,28 @@ phase_06_additional_tooling() {
     # - Sets up configuration
     # - Integrates with shell environment
     #
-    # Background execution: Same pattern as above
+    # Why run AFTER Flatpak:
+    # - OpenSkills hook may install Flatpak apps via install_flatpak_stage()
+    # - Must wait for main Flatpak installation to release database lock
+    # - Prevents race condition and hanging
+    #
+    # Note: Not running in background because we need Flatpak complete first,
+    # and we want to catch any hook-initiated Flatpak operations synchronously.
     print_info "Installing OpenSkills tooling..."
-    install_openskills_tooling &
-    local openskills_pid=$!  # Save PID
+    install_openskills_tooling || print_warning "OpenSkills installation had issues"
 
     # ========================================================================
-    # Synchronization Point: Wait for Parallel Installations
+    # Synchronization Point: Wait for Remaining Parallel Installations
     # ========================================================================
     # Why wait here:
     # - Need all installations complete before next phase
     # - Collect exit codes to detect failures
     # - Provide status feedback to user
     #
-    # wait command:
-    # - wait PID: Block until process PID completes
-    # - Returns: Exit code of the waited process
-    # - 0 = success, non-zero = failure
-    #
     # Error handling:
     # - || print_warning: If wait returns non-zero (failure), show warning
     # - Don't exit: These are optional, non-critical components
-    # - User informed of issues but deployment continues
-    #
-    # Why separate waits (not wait $pid1 $pid2 $pid3):
-    # - Get individual status for each installation
-    # - Provide specific feedback per component
-    # - Distinguish which installation failed
-    print_info "Waiting for parallel installations to complete..."
-
-    # Wait for Flatpak installation
-    # If it fails (returns non-zero), show warning but continue
-    wait $flatpak_pid || print_warning "Flatpak installation had issues"
+    print_info "Waiting for remaining parallel installations to complete..."
 
     # Wait for Claude Code installation
     wait $claude_pid || print_warning "Claude Code installation had issues"
@@ -261,9 +302,6 @@ phase_06_additional_tooling() {
     if ! install_vscodium_extensions; then
         print_warning "Some VSCodium extensions may not have installed"
     fi
-
-    # Wait for OpenSkills installation
-    wait $openskills_pid || print_warning "OpenSkills installation had issues"
 
     # ========================================================================
     # Flake Environment Setup

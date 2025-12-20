@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Phase 9: AI-Optimizer Preparation
 # Part of: nixos-quick-deploy.sh
-# Version: 6.0.0
+# Version: Uses SCRIPT_VERSION from main script
 # Purpose: Prepare NixOS system for optional AI-Optimizer installation
 
 # ============================================================================

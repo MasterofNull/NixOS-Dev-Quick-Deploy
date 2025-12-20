@@ -100,6 +100,26 @@ readonly REQUIRED_DISK_SPACE_GB=50
 # LOG_DIR, LOG_FILE, and LOG_LEVEL now defined in main script - DO NOT redefine
 
 # ============================================================================
+# Path Configuration
+# ============================================================================
+# Use environment variables where available, with safe fallbacks
+# This improves portability and allows for testing with different directories
+# ============================================================================
+
+# Temporary directory (respects TMPDIR environment variable)
+readonly TMP_DIR="${TMPDIR:-/tmp}"
+
+# User directories (respects HOME environment variable)
+readonly USER_HOME="${HOME:-$(cd ~ && pwd)}"
+readonly USER_LOCAL_BIN="${HOME}/.local/bin"
+readonly USER_LOCAL_SHARE="${HOME}/.local/share"
+readonly USER_NPM_GLOBAL="${HOME}/.npm-global"
+
+# System directories (configurable for testing)
+readonly VAR_LIB_DIR="${VAR_LIB_DIR:-/var/lib}"
+readonly NIXOS_SECRETS_DIR="${VAR_LIB_DIR}/nixos-quick-deploy/secrets"
+
+# ============================================================================
 # User Resolution (handle sudo invocation)
 # ============================================================================
 # Problem: When script is run with sudo, USER=$SUDO_USER but HOME=/root
@@ -175,6 +195,8 @@ readonly MANGOHUD_PROFILE_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/mangohud-
 readonly USER_PROFILE_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/user-profile.env"
 readonly HUGGINGFACE_TOKEN_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/huggingface-token.env"
 readonly LOCAL_AI_STACK_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/local-ai-stack.env"
+readonly LLM_BACKEND_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/llm-backend.env"
+readonly LLM_MODELS_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/llm-models.env"
 
 # ============================================================================
 # Mutable Flags
@@ -269,28 +291,100 @@ FLATHUB_BETA_REMOTE_URL="https://flathub.org/beta-repo/flathub-beta.flatpakrepo"
 RESET_FLATPAK_STATE_BEFORE_SWITCH="${RESET_FLATPAK_STATE_BEFORE_SWITCH:-false}"
 
 declare -ag FLATPAK_PROFILE_CORE_APPS=(
-    "com.github.tchx84.Flatseal"
-    "org.gnome.FileRoller"
-    "net.nokyan.Resources"
-    "org.videolan.VLC"
-    "io.mpv.Mpv"
+    # === System Utilities ===
+    "com.github.tchx84.Flatseal"         # Flatpak permissions manager
+    "org.gnome.FileRoller"               # Archive manager
+    "net.nokyan.Resources"               # System monitor
+    "com.bitwarden.desktop"              # Password manager
+    
+    # === Browsers ===
     "com.google.Chrome"
     "org.mozilla.firefox"
-    "md.obsidian.Obsidian"
-    "io.podman_desktop.PodmanDesktop"
-    "org.prismlauncher.PrismLauncher"
-    "org.sqlitebrowser.sqlitebrowser"
-    "com.obsproject.Studio"
+    
+    # === Media ===
+    "org.videolan.VLC"
+    "io.mpv.Mpv"
+    "com.obsproject.Studio"              # Screen recording/streaming
+    
+    # === Development Essentials ===
+    "md.obsidian.Obsidian"               # Knowledge management
+    "io.podman_desktop.PodmanDesktop"    # Container management
+    "org.sqlitebrowser.sqlitebrowser"    # Database browser
+    "com.jgraph.drawio.desktop"          # Diagrams and flowcharts
+    
+    # === 3D Printing ===
+    "com.prusa3d.PrusaSlicer"            # 3D print slicer
+    
+    # === 3D Modeling/CAD ===
+    "org.blender.Blender"                # 3D creation suite
+    "org.freecad.FreeCAD"                # Parametric 3D CAD (also CNC/CAM)
+    "org.openscad.OpenSCAD"              # Programmatic 3D modeling
+    
+    # === PCB/Electronics Design ===
+    "org.kicad.KiCad"                    # PCB design and schematic capture
+    
+    # === VM Management ===
+    "org.virt_manager.virt-manager"      # KVM/QEMU VM manager
+    "org.gnome.Boxes"                    # Simple VM management
+    
+    # === Gaming (optional) ===
+    "org.prismlauncher.PrismLauncher"    # Minecraft launcher
 )
 
 declare -ag FLATPAK_PROFILE_AI_WORKSTATION_APPS=()
 FLATPAK_PROFILE_AI_WORKSTATION_APPS+=("${FLATPAK_PROFILE_CORE_APPS[@]}")
 FLATPAK_PROFILE_AI_WORKSTATION_APPS+=(
-    "com.getpostman.Postman"
-    "io.dbeaver.DBeaverCommunity"
-    #"com.visualstudio.code"
-    "com.bitwarden.desktop"
-    "com.obsproject.Studio"
+    # === AI/ML Development ===
+    "org.jupyter.JupyterLab"             # Jupyter notebooks
+    
+    # === API Development & Testing ===
+    "com.getpostman.Postman"             # API testing
+    "rest.insomnia.Insomnia"             # API client (lighter alternative)
+    
+    # === Database Tools ===
+    "io.dbeaver.DBeaverCommunity"        # Universal database client
+    
+    # === Version Control ===
+    "io.github.shiftey.Desktop"          # GitHub Desktop
+    
+    # === Stock Trading/Finance ===
+    "com.tradingview.tradingview"        # Charts and market analysis
+    
+    # === Additional 3D Printing ===
+    "com.ultimaker.cura"                 # UltiMaker Cura slicer
+)
+
+# ============================================================================
+# Gaming Profile - Full gaming experience with launchers, emulators, and dev
+# ============================================================================
+declare -ag FLATPAK_PROFILE_GAMING_APPS=()
+FLATPAK_PROFILE_GAMING_APPS+=("${FLATPAK_PROFILE_CORE_APPS[@]}")
+FLATPAK_PROFILE_GAMING_APPS+=(
+    # === Game Launchers & Stores ===
+    "com.valvesoftware.Steam"            # Steam client
+    "net.lutris.Lutris"                  # Game manager (Wine, Proton, native)
+    "com.heroicgameslauncher.hgl"        # Epic, GOG, Amazon Games launcher
+    "com.usebottles.bottles"             # Run Windows software/games
+    
+    # === Console Emulators ===
+    "org.libretro.RetroArch"             # Multi-system emulator frontend
+    "net.pcsx2.PCSX2"                    # PlayStation 2 emulator
+    "org.DolphinEmu.dolphin-emu"         # GameCube/Wii emulator
+    "net.rpcs3.RPCS3"                    # PlayStation 3 emulator
+    "io.github.ryubing.Ryujinx"          # Nintendo Switch emulator
+    
+    # === Communication ===
+    "com.discordapp.Discord"             # Gaming chat & voice
+    
+    # === Game Utilities ===
+    "page.kramo.Cartridges"              # Game library manager
+    
+    # === Development (VSCodium via Nix, not Flatpak) ===
+    # Note: VSCodium is installed via home-manager with extensions
+    # Adding here would conflict - use the Nix-managed version instead
+    
+    # === Streaming & Recording ===
+    # OBS already included from core profile
 )
 
 declare -ag FLATPAK_PROFILE_MINIMAL_APPS=(
@@ -302,14 +396,16 @@ declare -ag FLATPAK_PROFILE_MINIMAL_APPS=(
 )
 
 declare -Ag FLATPAK_PROFILE_LABELS=(
-    [core]="Core desktop (browser, media, developer essentials)"
-    [ai_workstation]="AI workstation (core plus tooling and data clients)"
+    [core]="Core desktop (browser, media, 3D printing, CAD, PCB design, VMs)"
+    [ai_workstation]="AI workstation (core + AI tools, trading, API dev, CNC/CAM)"
+    [gaming]="Gaming (core + Steam, Lutris, emulators, Discord)"
     [minimal]="Minimal (lean stack for recovery and remote shells)"
 )
 
 declare -Ag FLATPAK_PROFILE_APPSETS=(
     [core]="FLATPAK_PROFILE_CORE_APPS"
     [ai_workstation]="FLATPAK_PROFILE_AI_WORKSTATION_APPS"
+    [gaming]="FLATPAK_PROFILE_GAMING_APPS"
     [minimal]="FLATPAK_PROFILE_MINIMAL_APPS"
 )
 
@@ -436,11 +532,106 @@ if [[ -z "$LOCAL_AI_STACK_ENABLED" && -f "$LOCAL_AI_STACK_PREFERENCE_FILE" ]]; t
     esac
 fi
 if [[ -z "$LOCAL_AI_STACK_ENABLED" ]]; then
-    # Default to false until the user provides a Hugging Face token explicitly
+    # Default to false - user will be prompted during interactive deployment
+    # This allows users to enable the AI stack independently of Hugging Face token
     LOCAL_AI_STACK_ENABLED="false"
 fi
 export LOCAL_AI_STACK_ENABLED
 unset _local_ai_cached
+
+# LLM Backend Selection (ollama or lemonade)
+# Lemonade is optimized for AMD GPUs with ROCm support
+# Ollama is the default, works on all platforms
+LLM_BACKEND="${LLM_BACKEND:-}"
+if [[ -z "$LLM_BACKEND" && -f "$LLM_BACKEND_PREFERENCE_FILE" ]]; then
+    _llm_backend_cached=$(awk -F'=' '/^LLM_BACKEND=/{print $2}' "$LLM_BACKEND_PREFERENCE_FILE" 2>/dev/null | tail -n1 | tr -d '\r')
+    case "$_llm_backend_cached" in
+        ollama|lemonade)
+            LLM_BACKEND="$_llm_backend_cached"
+            ;;
+    esac
+fi
+if [[ -z "$LLM_BACKEND" ]]; then
+    # Default to ollama - user will be prompted during interactive deployment
+    LLM_BACKEND="ollama"
+fi
+export LLM_BACKEND
+unset _llm_backend_cached
+
+# LLM Models Configuration (comma-separated list)
+# Updated December 2025 - Best coding models for mobile workstations
+#
+# RECOMMENDED MODELS FOR CODING (ranked by performance/efficiency):
+# ─────────────────────────────────────────────────────────────────
+# Tier 1 - Primary Coding Models (pick 1-2 based on VRAM):
+#   qwen2.5-coder:14b    - Best overall coding model, 14B params, needs ~10GB VRAM
+#   qwen2.5-coder:7b     - Fast, efficient, great for 8GB VRAM systems
+#   deepseek-coder-v2    - Excellent for complex reasoning, debugging
+#   codestral:22b        - Mistral's coding model, strong on completions
+#
+# Tier 2 - Specialized Models:
+#   starcoder2:15b       - 80+ languages, trained on permissive code
+#   llama3.2:8b          - General purpose, good instruction following
+#   phi-4:14b            - Microsoft's efficient reasoning model
+#
+# Tier 3 - Lightweight (for limited hardware):
+#   qwen2.5-coder:3b     - Minimal footprint, still good for autocomplete
+#   deepseek-coder:6.7b  - Fast inference, decent quality
+#
+# MOBILE WORKSTATION RECOMMENDATIONS:
+#   8GB VRAM:   qwen2.5-coder:7b,deepseek-coder:6.7b
+#   16GB VRAM:  qwen2.5-coder:14b,deepseek-coder-v2,starcoder2:15b
+#   32GB+ VRAM: qwen2.5-coder:32b,codestral:22b,llama3.2:70b
+#
+LLM_MODELS="${LLM_MODELS:-}"
+if [[ -z "$LLM_MODELS" && -f "$LLM_MODELS_PREFERENCE_FILE" ]]; then
+    _llm_models_cached=$(awk -F'=' '/^LLM_MODELS=/{print $2}' "$LLM_MODELS_PREFERENCE_FILE" 2>/dev/null | tail -n1 | tr -d '\r')
+    if [[ -n "$_llm_models_cached" ]]; then
+        LLM_MODELS="$_llm_models_cached"
+    fi
+fi
+if [[ -z "$LLM_MODELS" ]]; then
+    # Default: Balanced set for 16GB VRAM mobile workstation
+    # qwen2.5-coder:14b - Primary coding model (best code quality)
+    # deepseek-coder-v2 - Secondary for complex debugging/reasoning
+    # starcoder2:7b     - Fast autocomplete, 80+ languages
+    LLM_MODELS="qwen2.5-coder:14b,deepseek-coder-v2,starcoder2:7b"
+fi
+export LLM_MODELS
+unset _llm_models_cached
+
+# ============================================================================
+# Remote LLM Configuration (for hybrid local/remote workflows)
+# ============================================================================
+# Configure remote LLM endpoints for when local resources are insufficient
+# or for accessing larger models (Claude, GPT-4, Gemini)
+#
+# HYBRID WORKFLOW STRATEGY:
+# ─────────────────────────────────────────────────────────────────────────
+# Local LLM (fast, private):  Code completion, simple refactoring, docs
+# Remote LLM (powerful):      Complex reasoning, architecture, debugging
+#
+# Supported Remote Providers:
+#   - OpenAI:     GPT-4o, o3-mini (fast coding)
+#   - Anthropic:  Claude 4.5 Sonnet (best for coding)
+#   - Google:     Gemini 3 Flash (multimodal)
+#   - OpenRouter: Access to all providers via single API
+#   - Self-hosted: vLLM/TGI on remote server
+#
+# Environment Variables (set in your shell or .env):
+#   OPENAI_API_KEY       - For GPT models
+#   ANTHROPIC_API_KEY    - For Claude models
+#   OPENROUTER_API_KEY   - For OpenRouter (recommended for flexibility)
+#   REMOTE_LLM_BASE_URL  - Custom endpoint (e.g., self-hosted vLLM)
+#
+readonly REMOTE_LLM_PROVIDERS="openai,anthropic,openrouter,custom"
+readonly REMOTE_LLM_DEFAULT_PROVIDER="openrouter"
+
+# Remote model recommendations for coding (December 2025):
+# Fast & Cheap:    openai/o3-mini, anthropic/claude-3.5-haiku
+# Best Quality:    anthropic/claude-4.5-sonnet, google/gemini-3-flash
+# Best Value:      openrouter/qwen/qwen3-coder-480b, deepseek/deepseek-r1
+readonly REMOTE_LLM_MODELS_RECOMMENDED="anthropic/claude-4.5-sonnet,openai/o3-mini,google/gemini-3-flash"
 
 # ============================================================================
 # Phase-Produced Variables (populated during execution)
@@ -464,7 +655,7 @@ ENABLE_ZSWAP_CONFIGURATION="false"
 CONTAINER_STORAGE_FS_TYPE="${CONTAINER_STORAGE_FS_TYPE:-unknown}"
 CONTAINER_STORAGE_SOURCE="${CONTAINER_STORAGE_SOURCE:-}"
 
-DEFAULT_PODMAN_STORAGE_DRIVER="${DEFAULT_PODMAN_STORAGE_DRIVER:-vfs}"
+DEFAULT_PODMAN_STORAGE_DRIVER="${DEFAULT_PODMAN_STORAGE_DRIVER:-zfs}"
 PODMAN_AUTO_REPAIR_SYSTEM_STORAGE_CONF="${PODMAN_AUTO_REPAIR_SYSTEM_STORAGE_CONF:-true}"
 PODMAN_SYSTEM_STORAGE_REPAIR_NOTE="${PODMAN_SYSTEM_STORAGE_REPAIR_NOTE:-}"
 PODMAN_STORAGE_DRIVER="${PODMAN_STORAGE_DRIVER:-}"

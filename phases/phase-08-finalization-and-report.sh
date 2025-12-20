@@ -2,7 +2,7 @@
 #
 # Phase 08: System Finalization & Deployment Report
 # Purpose: Complete post-install configuration and generate comprehensive deployment report
-# Version: 4.0.0
+# Version: Uses SCRIPT_VERSION from main script
 #
 # ============================================================================
 # DEPENDENCIES

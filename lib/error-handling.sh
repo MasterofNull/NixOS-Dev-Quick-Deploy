@@ -245,23 +245,79 @@ cleanup_on_exit() {
     log INFO "Script exiting with code: $exit_code"
 
     # ========================================================================
-    # Cleanup temporary files (placeholder)
+    # Cleanup background processes
     # ========================================================================
-    # Add cleanup logic here, for example:
-    # - rm -f /tmp/nixos-deploy-*.tmp
-    # - rm -f "$STATE_DIR"/*.lock
-    # - kill background processes if any
-    #
-    # Best practice: Use a trap-safe cleanup approach
-    # - Check if files exist before removing them
-    # - Use || true to prevent cleanup failures from masking real errors
-    # - Don't rely on external commands that might not be available
+    # Kill any background processes started by this script to prevent orphaned processes
+    # Check for PIDs in BACKGROUND_PIDS array (set by phase scripts)
+    if [[ -n "${BACKGROUND_PIDS:-}" && "${#BACKGROUND_PIDS[@]}" -gt 0 ]]; then
+        local pid
+        for pid in "${BACKGROUND_PIDS[@]}"; do
+            if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+                log INFO "Terminating background process: $pid"
+                kill "$pid" 2>/dev/null || true
+                # Wait briefly for graceful shutdown
+                wait "$pid" 2>/dev/null || true
+            fi
+        done
+    fi
+
     # ========================================================================
+    # Cleanup temporary files
+    # ========================================================================
+    # Remove temporary files tracked in TEMP_FILES array
+    if [[ -n "${TEMP_FILES:-}" && "${#TEMP_FILES[@]}" -gt 0 ]]; then
+        local temp_file
+        for temp_file in "${TEMP_FILES[@]}"; do
+            if [[ -n "$temp_file" && -e "$temp_file" ]]; then
+                rm -f "$temp_file" 2>/dev/null || true
+            fi
+        done
+    fi
+
+    # Cleanup common temporary file patterns
+    # Only clean files we created (matched by naming pattern)
+    if [[ -d "${TMPDIR:-/tmp}" ]]; then
+        # Clean state file temp files
+        if [[ -n "${STATE_FILE:-}" ]]; then
+            rm -f "${STATE_FILE}.tmp" 2>/dev/null || true
+        fi
+        # Clean deployment-related temp files older than 1 hour
+        find "${TMPDIR:-/tmp}" -maxdepth 1 -name "nixos-deploy-*.tmp" -type f -mmin +60 -delete 2>/dev/null || true
+    fi
+
+    # ========================================================================
+    # Cleanup lock files
+    # ========================================================================
+    if [[ -n "${STATE_DIR:-}" && -d "$STATE_DIR" ]]; then
+        find "$STATE_DIR" -name "*.lock" -type f -delete 2>/dev/null || true
+    fi
 
     # Return the original exit code
     # This makes the cleanup transparent to the caller
     # The script exits with the same code it would have without cleanup
     return $exit_code
+}
+
+# ============================================================================
+# Signal Handler for Interrupts
+# ============================================================================
+# Handle SIGINT (Ctrl+C) and SIGTERM gracefully
+# Ensures cleanup happens even when user interrupts the script
+# ============================================================================
+cleanup_on_signal() {
+    local signal_name="$1"
+    log WARNING "Received $signal_name signal, initiating graceful shutdown..."
+    
+    # Perform cleanup
+    cleanup_on_exit
+    
+    # Exit with appropriate code
+    # 130 = SIGINT (Ctrl+C), 143 = SIGTERM
+    if [[ "$signal_name" == "INT" ]]; then
+        exit 130
+    else
+        exit 143
+    fi
 }
 
 # ============================================================================
@@ -279,6 +335,14 @@ cleanup_on_exit() {
 # State is saved before cleanup (in error_handler)
 # ============================================================================
 trap cleanup_on_exit EXIT
+
+# ============================================================================
+# Set up signal handlers for graceful shutdown
+# ============================================================================
+# Handle SIGINT (Ctrl+C) and SIGTERM to ensure cleanup
+# ============================================================================
+trap 'cleanup_on_signal INT' INT
+trap 'cleanup_on_signal TERM' TERM
 
 # ============================================================================
 # Error Handling Best Practices Demonstrated Here
