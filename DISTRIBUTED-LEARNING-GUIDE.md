@@ -2,6 +2,8 @@
 
 Complete guide for deploying the hybrid learning system across multiple nodes with automatic synchronization and knowledge sharing.
 
+> **📊 System Dashboard**: Monitor federation status, connected nodes, and sync progress at [ai-stack/dashboard/index.html](ai-stack/dashboard/index.html)
+
 ---
 
 ## Table of Contents
