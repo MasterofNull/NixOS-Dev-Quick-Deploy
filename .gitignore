@@ -28,3 +28,4 @@ result-*
 # Git metadata that should not be versioned
 .github/
 .githooks/
+ai-stack/mcp-servers/hybrid-coordinator/venv/
