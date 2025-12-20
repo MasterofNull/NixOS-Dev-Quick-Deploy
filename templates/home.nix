@@ -137,14 +137,18 @@ let
     '';
   podmanWaitForNetworkScript = pkgs.writeShellScript "podman-wait-for-network" ''
     set -euo pipefail
+    if ! ${pkgs.systemd}/bin/systemctl --system is-active --quiet NetworkManager.service; then
+      echo "NetworkManager is not active; skipping network wait." >&2
+      exit 0
+    fi
     for attempt in $(seq 1 120); do
       if ${pkgs.networkmanager}/bin/nm-online -q -t 5; then
         exit 0
       fi
       sleep 1
     done
-    echo "NetworkManager did not report online status within timeout" >&2
-    exit 1
+    echo "NetworkManager did not report online status within timeout; continuing." >&2
+    exit 0
   '';
   gitPackage =
     if config ? programs && config.programs ? git && config.programs.git ? package then
@@ -2158,7 +2162,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
   };
 
   # ========================================================================
-  # VSCodium Configuration (Declarative)
+  # VSCodium (Insiders) Configuration (Declarative)
   # ========================================================================
 
   programs.vscode = {
@@ -2731,7 +2735,26 @@ EOF
         export NPM_CONFIG_PREFIX="$HOME/.npm-global"
         export PATH="$HOME/.npm-global/bin:$HOME/.local/bin:$PATH"
 
-        exec codium "$@"
+        codium_bin="''${CODIUM_BIN:-${pkgs.vscodium-insiders}/bin/codium-insiders}"
+        if [[ ! -x "''${codium_bin}" ]]; then
+          if command -v codium-insiders >/dev/null 2>&1; then
+            codium_bin="$(command -v codium-insiders)"
+          else
+            echo "codium-wrapped: unable to locate VSCodium Insiders binary" >&2
+            exit 127
+          fi
+        fi
+
+        exec "''${codium_bin}" "$@"
+      '';
+      executable = true;
+    };
+
+    ".local/bin/codium" = {
+      text = ''
+        #!/usr/bin/env bash
+        set -euo pipefail
+        exec "$HOME/.local/bin/codium-wrapped" "$@"
       '';
       executable = true;
     };
@@ -3504,7 +3527,7 @@ EOF
       X-SwitchMethod=keep-old
 
       [Service]
-      TimeoutStartSec=600
+      TimeoutStartSec=1800
       TimeoutStopSec=180
       RestartSec=10
       ExecStartPre=${podmanEnsureImage "ghcr.io/open-webui/open-webui:latest"}
@@ -3779,125 +3802,7 @@ EOF
     };
 
     ".local/bin/podman-ai-stack" = {
-      text = ''
-        #!/usr/bin/env bash
-        set -euo pipefail
-
-        if ! command -v podman >/dev/null 2>&1; then
-          echo "podman-ai-stack: podman CLI is required" >&2
-          exit 127
-        fi
-
-        if ! systemctl --user --help >/dev/null 2>&1; then
-          echo "podman-ai-stack: systemd --user is unavailable; log in to a graphical or linger-enabled session" >&2
-          exit 1
-        fi
-
-        network="''${PODMAN_AI_STACK_NETWORK:-${podmanAiStackNetworkName}}"
-        data_root="''${PODMAN_AI_STACK_DATA_ROOT:-$HOME/${podmanAiStackDataDir}}"
-        label_key="${podmanAiStackLabelKey}"
-        label_value="${podmanAiStackLabelValue}"
-        network_unit="podman-''${network}.network"
-
-        # Use the LLM container based on configured backend (ollama or lemonade)
-        mapfile -t container_names <<'EOCONTAINERS'
-${podmanAiStackLlmContainerName}
-${podmanAiStackOpenWebUiContainerName}
-${podmanAiStackQdrantContainerName}
-${podmanAiStackMindsdbContainerName}
-EOCONTAINERS
-
-        container_units=()
-        for name in "''${container_names[@]}"; do
-          container_units+=("podman-''${name}.service")
-        done
-
-        usage() {
-          cat <<USAGE >&2
-Usage: podman-ai-stack <command>
-
-Commands:
-  up         Start the Podman network and all AI services
-  down       Stop the managed containers and network (volumes kept)
-  restart    Restart all services (down + up)
-  status     Show systemd and Podman status information
-  logs       Stream journald logs from the managed units
-
-Environment overrides:
-  PODMAN_AI_STACK_DATA_ROOT  Base directory for persistent bind mounts
-  PODMAN_AI_STACK_NETWORK    Custom network name (default: ${podmanAiStackNetworkName})
-USAGE
-        }
-
-        ensure_directories() {
-          # Create directories for all backends (ollama and lemonade-models)
-          mkdir -p "''${data_root}/ollama" "''${data_root}/lemonade-models" "''${data_root}/open-webui" "''${data_root}/qdrant" "''${data_root}/mindsdb"
-        }
-
-        start_units() {
-          local unit
-          for unit in "$@"; do
-            systemctl --user start "$unit"
-          done
-        }
-
-        stop_units() {
-          local unit
-          for unit in "$@"; do
-            systemctl --user stop "$unit" || true
-          done
-        }
-
-        cmd=""
-        if [[ $# -gt 0 ]]; then
-          cmd="$1"
-          shift
-        fi
-
-        [[ -n "$cmd" ]] || { usage; exit 1; }
-
-        case "$cmd" in
-          up)
-            ensure_directories
-            start_units "$network_unit"
-            start_units "''${container_units[@]}"
-            echo "podman-ai-stack: started services: ${podmanAiStackLlmContainerName}, ${podmanAiStackOpenWebUiContainerName}, ${podmanAiStackQdrantContainerName}, ${podmanAiStackMindsdbContainerName}"
-            ;;
-          down)
-            stop_units "''${container_units[@]}"
-            stop_units "$network_unit"
-            ;;
-          restart)
-            "$0" down
-            "$0" up
-            ;;
-          status)
-            echo "-- systemd unit status --"
-            for unit in "$network_unit" "''${container_units[@]}"; do
-              echo "[$unit]"
-              systemctl --user --no-pager status "$unit" || true
-              echo
-            done
-
-            echo "-- podman ps (running) --"
-            podman ps --filter "label=$label_key=$label_value" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-            echo
-            echo "-- podman ps -a (all managed containers) --"
-            podman ps -a --filter "label=$label_key=$label_value" --format "table {{.Names}}\t{{.Status}}\t{{.CreatedAt}}"
-            ;;
-          logs)
-            log_args=()
-            for unit in "$network_unit" "''${container_units[@]}"; do
-              log_args+=("-u" "$unit")
-            done
-            exec journalctl --user -f "''${log_args[@]}" "$@"
-            ;;
-          *)
-            usage
-            exit 1
-            ;;
-        esac
-      '';
+      source = ./podman-ai-stack.sh;
       executable = true;
     };
 

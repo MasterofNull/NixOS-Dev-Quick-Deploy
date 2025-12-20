@@ -338,6 +338,10 @@ phase_06_additional_tooling() {
         print_warning "Flake environment setup had issues (non-critical)"
     fi
 
+    if declare -F download_lemonade_models_if_needed >/dev/null 2>&1; then
+        download_lemonade_models_if_needed
+    fi
+
     # ------------------------------------------------------------------------
     # Mark Phase Complete
     # ------------------------------------------------------------------------

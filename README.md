@@ -108,7 +108,7 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRAT
 - **Agent Ops & MCP:** LiteLLM, Tiktoken, FastAPI, Uvicorn, HTTPX, Pydantic, Typer, Rich, SQLAlchemy, DuckDB
 
 **Editors & IDEs:**
-- VSCodium (VS Code without telemetry)
+- VSCodium Insiders (VS Code without telemetry, rolling build)
 - Neovim (modern Vim)
 - Cursor (AI-powered editor)
 
@@ -373,6 +373,8 @@ podman-ai-stack logs
 podman-ai-stack restart
 ```
 
+During NixOS Quick Deploy, Phase 5 prefetches every Podman image and Phase 6 downloads the default Lemonade GGUF models (when that backend is selected and a Hugging Face token is present), so the first `podman-ai-stack up` no longer stalls on multi-gigabyte downloads.
+
 All other AI orchestration (vLLM endpoints, shared volumes, etc.) is managed by the ai-optimizer repository layered on top of this stack.
 
 **CLI Tools:**
@@ -400,7 +402,7 @@ podman-compose up   # Start services from compose file
 ### VSCodium / AI CLI wrappers
 
 **VSCodium Version Compatibility:**
-- VSCodium 1.85.0+ (installed by this script)
+- VSCodium Insiders (rolling build; installed by this script)
 - Claude Code extension works with VSCodium and VS Code 1.85.0+
 - Smart wrappers ensure Node.js is found correctly for each CLI
 
