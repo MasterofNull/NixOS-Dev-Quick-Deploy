@@ -604,11 +604,13 @@ update_nixos_channels() {
         # Update user channels (home-manager)
         print_info "Updating user channels (home-manager)..."
         echo ""
-        if nix-channel --update 2>&1 | tee /tmp/home-manager-channel-update.log; then
+        local tmp_dir="${TMP_DIR:-/tmp}"
+        local channel_log="${tmp_dir}/home-manager-channel-update.log"
+        if nix-channel --update 2>&1 | tee "$channel_log"; then
             print_success "User channels updated successfully"
         else
             print_error "User channel update failed"
-            print_info "Log saved to: /tmp/home-manager-channel-update.log"
+            print_info "Log saved to: $channel_log"
             exit 1
         fi
         echo ""

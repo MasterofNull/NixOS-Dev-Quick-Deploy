@@ -204,12 +204,12 @@ finalize_configuration_activation() {
     print_info "Cleaning up temporary files..."
 
     local temp_files=(
-        "/tmp/nixos-rebuild-dry-run.log"
-        "/tmp/nixos-rebuild-dry-build.log"
-        "/tmp/home-manager-bootstrap.log"
-        "/tmp/nixos-rebuild.log"
-        "/tmp/home-manager-switch.log"
-        "/tmp/flake-check.log"
+        "${TMP_DIR:-/tmp}/nixos-rebuild-dry-run.log"
+        "${TMP_DIR:-/tmp}/nixos-rebuild-dry-build.log"
+        "${TMP_DIR:-/tmp}/home-manager-bootstrap.log"
+        "${TMP_DIR:-/tmp}/nixos-rebuild.log"
+        "${TMP_DIR:-/tmp}/home-manager-switch.log"
+        "${TMP_DIR:-/tmp}/flake-check.log"
         "/tmp/flake-update.log"
     )
 

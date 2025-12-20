@@ -1628,83 +1628,153 @@ ensure_gitea_secrets_ready() {
         . "$GITEA_SECRETS_CACHE_FILE"
     fi
 
+    # In interactive mode, prompt to enable Gitea FIRST before checking if it's enabled
+    # This ensures the user sees the prompt even if GITEA_ENABLE defaults to false
+    if [[ "$interactive" == "true" ]]; then
+        local needs_prompt="false"
+        if [[ "${GITEA_ADMIN_PROMPTED,,}" != "true" ]]; then
+            needs_prompt="true"
+        fi
+
+        if [[ "$needs_prompt" == "true" ]]; then
+            # First ask if user wants to enable Gitea at all
+            print_section "Gitea Self-Hosted Git Service"
+            echo ""
+            if prompt_enable_gitea; then
+                updated="true"
+            fi
+        fi
+    fi
+
+    # After prompting (or if non-interactive), check if Gitea is enabled
+    # If not enabled, skip secret generation and admin prompts
     if [[ "${GITEA_ENABLE,,}" != "true" ]]; then
         GITEA_ADMIN_PROMPTED="true"
         GITEA_PROMPT_CHANGED="false"
         return 0
     fi
 
+    # Generate secrets with fallback to openssl if generate_hex_secret fails
+    # Define this helper function before using it
+    local generate_secret_with_fallback
+    generate_secret_with_fallback() {
+        local length="$1"
+        local secret_name="$2"
+        local secret_value=""
+        
+        # Try primary method (Python-based)
+        if declare -F generate_hex_secret >/dev/null 2>&1; then
+            if secret_value=$(generate_hex_secret "$length" 2>/dev/null); then
+                if [[ -n "$secret_value" ]]; then
+                    echo "$secret_value"
+                    return 0
+                fi
+            fi
+        fi
+        
+        # Fallback to openssl
+        if command -v openssl >/dev/null 2>&1; then
+            if secret_value=$(openssl rand -hex "$length" 2>/dev/null); then
+                if [[ -n "$secret_value" ]]; then
+                    echo "$secret_value"
+                    return 0
+                fi
+            fi
+        fi
+        
+        # Last resort: use /dev/urandom with od
+        if [[ -r /dev/urandom ]]; then
+            # Generate hex string of appropriate length
+            local hex_length=$((length * 2))
+            if secret_value=$(od -An -N "$length" -tx1 /dev/urandom 2>/dev/null | tr -d ' \n' | head -c "$hex_length"); then
+                if [[ -n "$secret_value" && ${#secret_value} -ge $((length / 2)) ]]; then
+                    echo "$secret_value"
+                    return 0
+                fi
+            fi
+        fi
+        
+        print_error "Failed to generate $secret_name - all methods failed"
+        return 1
+    }
+
     if [[ -z "${GITEA_SECRET_KEY:-}" ]]; then
         local generated_secret
-        if ! generated_secret=$(generate_hex_secret 32); then
-            print_error "Failed to generate Gitea secret key"
-            return 1
+        if ! generated_secret=$(generate_secret_with_fallback 32 "Gitea secret key"); then
+            print_error "Failed to generate Gitea secret key - Gitea may not start properly"
+            print_info "You can manually set GITEA_SECRET_KEY and rerun the deployment"
+            # Don't return 1 - allow deployment to continue, user can fix manually
+        else
+            GITEA_SECRET_KEY="$generated_secret"
+            updated="true"
         fi
-        GITEA_SECRET_KEY="$generated_secret"
-        updated="true"
     fi
 
     if [[ -z "${GITEA_INTERNAL_TOKEN:-}" ]]; then
         local internal_token
-        if ! internal_token=$(generate_hex_secret 32); then
-            print_error "Failed to generate Gitea internal token"
-            return 1
+        if ! internal_token=$(generate_secret_with_fallback 32 "Gitea internal token"); then
+            print_error "Failed to generate Gitea internal token - Gitea may not start properly"
+            print_info "You can manually set GITEA_INTERNAL_TOKEN and rerun the deployment"
+        else
+            GITEA_INTERNAL_TOKEN="$internal_token"
+            updated="true"
         fi
-        GITEA_INTERNAL_TOKEN="$internal_token"
-        updated="true"
     fi
 
     if [[ -z "${GITEA_LFS_JWT_SECRET:-}" ]]; then
         local lfs_jwt_secret
-        if ! lfs_jwt_secret=$(generate_hex_secret 32); then
-            print_error "Failed to generate Gitea LFS JWT secret"
-            return 1
+        if ! lfs_jwt_secret=$(generate_secret_with_fallback 32 "Gitea LFS JWT secret"); then
+            print_error "Failed to generate Gitea LFS JWT secret - LFS features may not work"
+            print_info "You can manually set GITEA_LFS_JWT_SECRET and rerun the deployment"
+        else
+            GITEA_LFS_JWT_SECRET="$lfs_jwt_secret"
+            updated="true"
         fi
-        GITEA_LFS_JWT_SECRET="$lfs_jwt_secret"
-        updated="true"
     fi
 
     if [[ -z "${GITEA_JWT_SECRET:-}" ]]; then
         local oauth_secret
-        if ! oauth_secret=$(generate_hex_secret 32); then
-            print_error "Failed to generate Gitea OAuth2 secret"
-            return 1
-        fi
-        GITEA_JWT_SECRET="$oauth_secret"
-        updated="true"
-    fi
-
-    local needs_prompt="false"
-    if [[ "$interactive" == "true" ]]; then
-        needs_prompt="true"
-    elif [[ "${GITEA_ADMIN_PROMPTED,,}" != "true" ]]; then
-        needs_prompt="true"
-    fi
-
-    if [[ "$needs_prompt" == "true" ]]; then
-        if [[ "$interactive" != "true" ]]; then
-            print_info "Gitea admin bootstrap settings not initialized; rerun Phase 1 to configure."
-            return 1
-        fi
-
-        # First ask if user wants to enable Gitea at all
-        if prompt_enable_gitea; then
+        if ! oauth_secret=$(generate_secret_with_fallback 32 "Gitea OAuth2 secret"); then
+            print_error "Failed to generate Gitea OAuth2 secret - OAuth features may not work"
+            print_info "You can manually set GITEA_JWT_SECRET and rerun the deployment"
+        else
+            GITEA_JWT_SECRET="$oauth_secret"
             updated="true"
         fi
+    fi
 
-        # Only prompt for admin if Gitea is enabled
-        if [[ "${GITEA_ENABLE,,}" == "true" ]]; then
+    # Now prompt for admin configuration if needed (Gitea is enabled at this point)
+    local needs_admin_prompt="false"
+    if [[ "$interactive" == "true" && "${GITEA_ADMIN_PROMPTED,,}" != "true" ]]; then
+        needs_admin_prompt="true"
+    elif [[ "$interactive" != "true" && "${GITEA_ADMIN_PROMPTED,,}" != "true" ]]; then
+        needs_admin_prompt="true"
+    fi
+
+    if [[ "$needs_admin_prompt" == "true" ]]; then
+        if [[ "$interactive" != "true" ]]; then
+            # In non-interactive mode, Gitea is enabled but admin not configured
+            print_warning "Gitea admin bootstrap settings not initialized; rerun Phase 1 to configure."
+            print_info "Continuing without Gitea admin setup - you can configure it later."
+            # Don't return 1 - allow deployment to continue
+            GITEA_ADMIN_PROMPTED="true"
+            GITEA_PROMPT_CHANGED="false"
+        else
+            # Interactive mode - prompt for admin configuration
+            # Only prompt for admin if Gitea is enabled (which it is at this point)
             GITEA_PROMPT_CHANGED="false"
             if ! prompt_configure_gitea_admin; then
-                return 1
+                print_warning "Gitea admin configuration was cancelled or failed."
+                print_info "You can configure Gitea admin later via the web interface."
+                # Don't fail completely - allow user to configure later
+                GITEA_ADMIN_PROMPTED="true"
+                GITEA_PROMPT_CHANGED="false"
+            else
+                GITEA_ADMIN_PROMPTED="true"
+                if [[ "$GITEA_PROMPT_CHANGED" == "true" ]]; then
+                    updated="true"
+                fi
             fi
-            GITEA_ADMIN_PROMPTED="true"
-            if [[ "$GITEA_PROMPT_CHANGED" == "true" ]]; then
-                updated="true"
-            fi
-        else
-            GITEA_ADMIN_PROMPTED="true"
-            GITEA_PROMPT_CHANGED="false"
         fi
     fi
 
@@ -2876,18 +2946,19 @@ EOF
         flatpak_packages_block=$'  # Selected Flatpak profile does not provision GUI applications.\n  flathubPackages = [];\n'
     fi
 
-    local default_podman_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-vfs}"
+    local default_podman_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-zfs}"
     local podman_storage_driver="${PODMAN_STORAGE_DRIVER:-$default_podman_driver}"
     case "$podman_storage_driver" in
         vfs|btrfs|zfs)
             ;;
         overlay)
-            print_warning "Overlay storage driver support has been removed from generated configurations; forcing vfs."
-            podman_storage_driver="vfs"
+            print_warning "Overlay storage driver is not recommended for system-level Podman; converting to zfs."
+            print_info "Note: Overlay requires fuse-overlayfs and can cause systemd mount issues."
+            podman_storage_driver="zfs"
             ;;
         *)
-            print_warning "Unknown Podman storage driver '${podman_storage_driver}'; defaulting to vfs."
-            podman_storage_driver="vfs"
+            print_warning "Unknown Podman storage driver '${podman_storage_driver}'; defaulting to zfs."
+            podman_storage_driver="zfs"
             ;;
     esac
     local podman_storage_comment="${PODMAN_STORAGE_COMMENT:-Using ${podman_storage_driver} driver on detected filesystem.}"
@@ -3934,6 +4005,8 @@ EOF
     # replace_placeholder "$HOME_MANAGER_FILE" "@PODMAN_ROOTLESS_STORAGE@" "${PODMAN_ROOTLESS_STORAGE_BLOCK:-}"
     replace_placeholder "$HOME_MANAGER_FILE" "GIT_USER_SETTINGS_PLACEHOLDER" "$git_user_settings_block"
     replace_placeholder "$HOME_MANAGER_FILE" "LOCAL_AI_STACK_ENABLED_PLACEHOLDER" "${LOCAL_AI_STACK_ENABLED:-false}"
+    replace_placeholder "$HOME_MANAGER_FILE" "LLM_BACKEND_PLACEHOLDER" "$(nix_quote_string "${LLM_BACKEND:-ollama}")"
+    replace_placeholder "$HOME_MANAGER_FILE" "LLM_MODELS_PLACEHOLDER" "$(nix_quote_string "${LLM_MODELS:-gpt-oss,qwen-3,Apriel-1.5}")"
     replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_MODEL_ID_PLACEHOLDER" "$(nix_quote_string "$huggingface_model_id")"
     replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_SCOUT_MODEL_ID_PLACEHOLDER" "$(nix_quote_string "$huggingface_scout_model_id")"
     replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_TGI_ENDPOINT_PLACEHOLDER" "$(nix_quote_string "$huggingface_tgi_endpoint")"
@@ -4042,7 +4115,8 @@ validate_system_build_stage() {
     print_section "Validating Configuration"
 
     local target_host=$(hostname)
-    local log_path="/tmp/nixos-rebuild-dry-build.log"
+    local tmp_dir="${TMP_DIR:-/tmp}"
+    local log_path="${tmp_dir}/nixos-rebuild-dry-build.log"
 
     if ! ensure_flake_workspace; then
         print_error "Unable to prepare Home Manager flake workspace at $HM_CONFIG_DIR"

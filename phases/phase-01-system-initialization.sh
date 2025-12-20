@@ -2,7 +2,7 @@
 #
 # Phase 01: System Initialization
 # Purpose: Validate system requirements and install temporary deployment tools
-# Version: 4.0.0
+# Version: Uses SCRIPT_VERSION from main script
 #
 # ============================================================================
 # DEPENDENCIES

@@ -702,7 +702,7 @@ select_flatpak_profile() {
     local persist_choice="true"
 
     if [[ "$interactive" == "true" ]]; then
-        local -a profile_order=("core" "ai_workstation" "minimal")
+        local -a profile_order=("core" "ai_workstation" "gaming" "minimal")
         local -a profile_keys=()
         local index=1
         print_info "Available Flatpak provisioning profiles:"
@@ -839,9 +839,15 @@ flatpak_query_application_support() {
 }
 
 flatpak_bulk_install_apps() {
-    local remote_name="$1"
+    local remote_name="${1:-}"
     shift
     local -a apps=("$@")
+    
+    # Validate inputs
+    if ! validate_non_empty "remote_name" "$remote_name" 2>/dev/null; then
+        log ERROR "flatpak_bulk_install_apps: remote_name required"
+        return 1
+    fi
 
     if [[ ${#apps[@]} -eq 0 ]]; then
         return 0
@@ -1267,10 +1273,13 @@ ensure_default_flatpak_apps_installed() {
 install_flatpak_stage() {
     print_section "Installing Flatpak Applications"
 
-    if ! command -v flatpak >/dev/null 2>&1; then
-        print_warning "Flatpak CLI not found in PATH"
-        print_info "Install Flatpak or re-run home-manager switch to enable declarative apps"
-        return 1
+    # Validate flatpak command availability using validation helper
+    if ! validate_command_available "flatpak" 2>/dev/null; then
+        if ! command -v flatpak >/dev/null 2>&1; then
+            print_warning "Flatpak CLI not found in PATH"
+            print_info "Install Flatpak or re-run home-manager switch to enable declarative apps"
+            return 1
+        fi
     fi
 
     # Always use direct flatpak remote installation instead of systemd service.
@@ -2069,14 +2078,19 @@ install_single_ai_cli() {
 install_claude_code() {
     print_section "Installing AI Coding CLIs"
 
-    if ! command -v npm >/dev/null 2>&1; then
-        print_warning "npm not available – skipping AI CLI installation"
-        return 1
+    # Validate required commands using validation helpers
+    if ! validate_command_available "npm" 2>/dev/null; then
+        if ! command -v npm >/dev/null 2>&1; then
+            print_warning "npm not available – skipping AI CLI installation"
+            return 1
+        fi
     fi
 
-    if ! command -v node >/dev/null 2>&1; then
-        print_warning "Node.js not available – skipping AI CLI installation"
-        return 1
+    if ! validate_command_available "node" 2>/dev/null; then
+        if ! command -v node >/dev/null 2>&1; then
+            print_warning "Node.js not available – skipping AI CLI installation"
+            return 1
+        fi
     fi
 
     ensure_npm_global_prefix
@@ -2631,7 +2645,8 @@ install_openskills_tooling() {
         return 0
     fi
 
-    if ! command -v npm >/dev/null 2>&1; then
+    # Validate npm is available
+    if ! validate_command_available "npm"; then
         print_warning "npm not available; skipping OpenSkills installation"
         return 0
     fi
@@ -2761,10 +2776,12 @@ setup_flake_environment() {
     # Check if our flake configuration is valid
     if [[ -f "$HM_CONFIG_DIR/flake.nix" ]]; then
         print_info "Validating flake configuration..."
-        if nix flake check "$HM_CONFIG_DIR" 2>&1 | tee /tmp/flake-check.log; then
+        local tmp_dir="${TMP_DIR:-/tmp}"
+        local flake_check_log="${tmp_dir}/flake-check.log"
+        if nix flake check "$HM_CONFIG_DIR" 2>&1 | tee "$flake_check_log"; then
             print_success "Flake configuration is valid"
         else
-            print_warning "Flake validation had issues (see /tmp/flake-check.log)"
+            print_warning "Flake validation had issues (see $flake_check_log)"
             print_info "Configuration may still work, issues are often non-critical"
         fi
     fi
@@ -2773,8 +2790,10 @@ setup_flake_environment() {
     return 0
 }
 flatpak_app_installed() {
-    local app_id="$1"
-    if [[ -z "$app_id" ]]; then
+    local app_id="${1:-}"
+    
+    # Validate input
+    if ! validate_non_empty "app_id" "$app_id"; then
         return 1
     fi
 

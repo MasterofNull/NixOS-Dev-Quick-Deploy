@@ -2,7 +2,7 @@
 #
 # Phase 02: System Backup
 # Purpose: ONE complete backup of all system and user state before ANY changes
-# Version: 4.0.0
+# Version: Uses SCRIPT_VERSION from main script
 #
 # ============================================================================
 # DEPENDENCIES

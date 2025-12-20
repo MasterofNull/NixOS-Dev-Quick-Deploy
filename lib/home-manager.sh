@@ -92,7 +92,8 @@ install_home_manager() {
         # ====================================================================
         # Step 4: Pre-fetch via Nix Run
         # ====================================================================
-        local bootstrap_log="/tmp/home-manager-bootstrap.log"
+        local tmp_dir="${TMP_DIR:-/tmp}"
+        local bootstrap_log="${tmp_dir}/home-manager-bootstrap.log"
         print_info "Pre-fetching home-manager CLI via nix run (no profile install)..."
         if nix run --accept-flake-config "$hm_pkg_ref" -- --version 2>&1 | tee "$bootstrap_log"; then
             print_success "home-manager CLI accessible via nix run"

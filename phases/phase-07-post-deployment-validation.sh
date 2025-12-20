@@ -2,7 +2,7 @@
 #
 # Phase 07: Post-Deployment Validation
 # Purpose: Verify all packages installed and services running
-# Version: 4.0.0
+# Version: Uses SCRIPT_VERSION from main script
 #
 # ============================================================================
 # DEPENDENCIES

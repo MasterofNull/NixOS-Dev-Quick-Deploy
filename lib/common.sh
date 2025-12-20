@@ -45,6 +45,166 @@ declare -a PODMAN_STORAGE_WARNINGS=()
 declare -a PODMAN_STORAGE_ERRORS=()
 OVERLAY_METACOPY_SUPPORTED_CACHE=""
 
+# ============================================================================
+# Temporary File Tracking
+# ============================================================================
+# Global array to track temporary files for automatic cleanup
+# Files added via track_temp_file() will be cleaned up on exit
+# ============================================================================
+
+declare -a TEMP_FILES=()
+
+# ============================================================================
+# Track Temporary File Function
+# ============================================================================
+# Purpose: Register a temporary file for automatic cleanup
+# Parameters:
+#   $1 - Path to temporary file
+# Returns: 0 on success
+# ============================================================================
+track_temp_file() {
+    local file_path="${1:-}"
+    if [[ -z "$file_path" ]]; then
+        log WARNING "track_temp_file called with empty path"
+        return 1
+    fi
+    TEMP_FILES+=("$file_path")
+    export TEMP_FILES
+    log DEBUG "Tracking temporary file: $file_path"
+    return 0
+}
+
+# ============================================================================
+# Create and Track Temporary File Function
+# ============================================================================
+# Purpose: Create a temporary file using mktemp and track it automatically
+# Parameters:
+#   $1 - Template (optional, defaults to system default)
+#   $2 - Variable name to store path (optional, defaults to tmp_file)
+# Returns: 0 on success, 1 on failure
+# ============================================================================
+create_tracked_temp_file() {
+    local template="${1:-}"
+    local var_name="${2:-tmp_file}"
+    local tmp_path
+    
+    if [[ -n "$template" ]]; then
+        tmp_path=$(mktemp "$template" 2>/dev/null) || {
+            log ERROR "Failed to create temporary file with template: $template"
+            return 1
+        }
+    else
+        tmp_path=$(mktemp 2>/dev/null) || {
+            log ERROR "Failed to create temporary file"
+            return 1
+        }
+    fi
+    
+    track_temp_file "$tmp_path"
+    
+    # Set the variable in the calling scope
+    printf -v "$var_name" '%s' "$tmp_path"
+    return 0
+}
+
+# ============================================================================
+# Input Validation Functions
+# ============================================================================
+# Purpose: Validate function inputs to prevent errors from empty/null values
+# ============================================================================
+
+# ============================================================================
+# Validate Non-Empty String
+# ============================================================================
+# Purpose: Check that a string parameter is not empty
+# Parameters:
+#   $1 - Variable name (for error message)
+#   $2 - Value to check
+# Returns: 0 if valid, 1 if invalid
+# ============================================================================
+validate_non_empty() {
+    local var_name="${1:-parameter}"
+    local value="${2:-}"
+    
+    if [[ -z "$value" ]]; then
+        log ERROR "$var_name is required but was empty or not provided"
+        return 1
+    fi
+    return 0
+}
+
+# ============================================================================
+# Validate Path Exists
+# ============================================================================
+# Purpose: Check that a path exists (file or directory)
+# Parameters:
+#   $1 - Variable name (for error message)
+#   $2 - Path to check
+#   $3 - Type: "file", "directory", or "any" (default)
+# Returns: 0 if valid, 1 if invalid
+# ============================================================================
+validate_path_exists() {
+    local var_name="${1:-path}"
+    local path="${2:-}"
+    local type="${3:-any}"
+    
+    if [[ -z "$path" ]]; then
+        log ERROR "$var_name is required but was empty"
+        return 1
+    fi
+    
+    case "$type" in
+        file)
+            if [[ ! -f "$path" ]]; then
+                log ERROR "$var_name must be an existing file: $path"
+                return 1
+            fi
+            ;;
+        directory)
+            if [[ ! -d "$path" ]]; then
+                log ERROR "$var_name must be an existing directory: $path"
+                return 1
+            fi
+            ;;
+        any)
+            if [[ ! -e "$path" ]]; then
+                log ERROR "$var_name must exist: $path"
+                return 1
+            fi
+            ;;
+        *)
+            log ERROR "Invalid validation type: $type (must be file, directory, or any)"
+            return 1
+            ;;
+    esac
+    
+    return 0
+}
+
+# ============================================================================
+# Validate Command Available
+# ============================================================================
+# Purpose: Check that a command is available in PATH
+# Parameters:
+#   $1 - Command name to check
+# Returns: 0 if available, 1 if not
+# ============================================================================
+validate_command_available() {
+    local cmd="${1:-}"
+    
+    if [[ -z "$cmd" ]]; then
+        log ERROR "Command name is required"
+        return 1
+    fi
+    
+    if ! command -v "$cmd" &>/dev/null; then
+        log ERROR "Required command not found: $cmd"
+        return 1
+    fi
+    
+    return 0
+}
+
 extract_storage_driver_from_conf() {
     local conf_path="$1"
 
@@ -1545,8 +1705,30 @@ auto_remediate_podman_storage() {
 }
 
 ensure_podman_storage_ready() {
-    if verify_podman_storage_cleanliness; then
+    local warn_only="false"
+    
+    # Parse arguments for warn-only mode
+    for arg in "$@"; do
+        case "$arg" in
+            --warn-only)
+                warn_only="true"
+                ;;
+        esac
+    done
+
+    # Use warn-only mode for verify if requested
+    local verify_args=()
+    if [[ "$warn_only" == "true" ]]; then
+        verify_args+=("--warn-only")
+    fi
+    
+    if verify_podman_storage_cleanliness "${verify_args[@]}"; then
         return 0
+    fi
+
+    # If warn-only, don't attempt remediation
+    if [[ "$warn_only" == "true" ]]; then
+        return 1
     fi
 
     print_warning "Legacy Podman overlay data detected; running automated remediation..."

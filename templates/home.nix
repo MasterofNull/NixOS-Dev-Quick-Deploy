@@ -51,8 +51,63 @@ let
   # vLLM OpenAI-compatible endpoints (configured in ai-optimizer)
   vllmPrimaryEndpoint = "http://127.0.0.1:8000/v1";  # Primary vLLM instance
   vllmSecondaryEndpoint = "http://127.0.0.1:8001/v1";  # Secondary vLLM instance (if needed)
+  # ===========================================================================
+  # LLM Configuration (December 2025 - Optimized for Coding)
+  # ===========================================================================
+  # 
+  # RECOMMENDED LOCAL MODELS FOR CODING:
+  # ---------------------------------------------------------------------------
+  # Tier 1 - Primary (pick based on VRAM):
+  #   qwen2.5-coder:14b    - Best overall coding model (~10GB VRAM)
+  #   qwen2.5-coder:7b     - Fast, efficient (~5GB VRAM)
+  #   deepseek-coder-v2    - Excellent debugging/reasoning
+  #   codestral:22b        - Strong completions (~14GB VRAM)
+  #
+  # Tier 2 - Specialized:
+  #   starcoder2:15b       - 80+ languages, permissive license
+  #   llama3.2:8b          - General purpose, good instruction following
+  #   phi-4:14b            - Microsoft's efficient reasoning model
+  #
+  # MOBILE WORKSTATION RECOMMENDATIONS:
+  #   8GB VRAM:   qwen2.5-coder:7b,deepseek-coder:6.7b
+  #   16GB VRAM:  qwen2.5-coder:14b,deepseek-coder-v2,starcoder2:7b
+  #   32GB+ VRAM: qwen2.5-coder:32b,codestral:22b,llama3.2:70b
+  #
+  # REMOTE LLM FALLBACK (for complex tasks):
+  #   Claude 4.5 Sonnet - Best for coding (77% SWE-bench)
+  #   GPT-4o / o3-mini  - Fast, reliable, good tool calling
+  #   Gemini 3 Flash    - Multimodal, real-time
+  # ---------------------------------------------------------------------------
+  
+  # LLM Backend Configuration (ollama or lemonade)
+  # Lemonade is optimized for AMD GPUs with ROCm, Ollama is universal
+  llmBackend = LLM_BACKEND_PLACEHOLDER;  # "ollama" or "lemonade"
+  llmModels = LLM_MODELS_PLACEHOLDER;    # Comma-separated model list
+  llmModelsList = lib.splitString "," llmModels;
+  
+  # Backend-specific ports
   ollamaPort = 11434;
+  lemonadePort = 8080;  # llama.cpp server default port
+  llmInferencePort = if llmBackend == "lemonade" then lemonadePort else ollamaPort;
   ollamaHost = "http://127.0.0.1:${toString ollamaPort}";
+  lemonadeHost = "http://127.0.0.1:${toString lemonadePort}";
+  llmInferenceHost = if llmBackend == "lemonade" then lemonadeHost else ollamaHost;
+  
+  # Remote LLM Configuration (for hybrid local/remote workflows)
+  # Set these environment variables for remote LLM access:
+  #   OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY
+  remoteLlmProviders = {
+    openrouter = "https://openrouter.ai/api/v1";
+    openai = "https://api.openai.com/v1";
+    anthropic = "https://api.anthropic.com/v1";
+  };
+  # Recommended remote models for coding (December 2025)
+  remoteLlmRecommended = [
+    "anthropic/claude-4.5-sonnet"  # Best for coding
+    "openai/o3-mini"               # Fast, cheap
+    "google/gemini-3-flash"        # Multimodal
+  ];
+  
   openWebUiPort = 8081;
   openWebUiUrl = "http://127.0.0.1:${toString openWebUiPort}";
   openWebUiDataDir = ".local/share/open-webui";
@@ -60,7 +115,9 @@ let
   podmanAiStackNetworkName = "local-ai";
   podmanAiStackLabelKey = "nixos.quick-deploy.ai-stack";
   podmanAiStackLabelValue = "true";
+  podmanAiStackLlmContainerName = "${podmanAiStackNetworkName}-${llmBackend}";
   podmanAiStackOllamaContainerName = "${podmanAiStackNetworkName}-ollama";
+  podmanAiStackLemonadeContainerName = "${podmanAiStackNetworkName}-lemonade";
   podmanAiStackOpenWebUiContainerName = "${podmanAiStackNetworkName}-open-webui";
   podmanAiStackQdrantContainerName = "${podmanAiStackNetworkName}-qdrant";
   podmanAiStackMindsdbContainerName = "${podmanAiStackNetworkName}-mindsdb";
@@ -592,18 +649,27 @@ OSTREE_CONFIG
 
         install_app() {
           local app_id="$1"
+          local current_num="''${2:-}"
+          local total_num="''${3:-}"
+          local progress_prefix=""
+          
+          if [[ -n "$current_num" && -n "$total_num" ]]; then
+            progress_prefix="[$current_num/$total_num] "
+          fi
 
           if flatpak --user info "$app_id" >/dev/null 2>&1; then
-            log "Flatpak $app_id already installed"
+            log "''${progress_prefix}✓ $app_id (already installed)"
             return 0
           fi
 
+          log "''${progress_prefix}Installing $app_id..."
+          
           local availability_status=0
           check_app_availability "$app_id"
           availability_status=$?
           if [[ $availability_status -ne 0 ]]; then
             if [[ $availability_status -eq 3 ]]; then
-              log "Flatpak $app_id not available on $remote_name for this architecture; skipping"
+              log "''${progress_prefix}⊘ $app_id (not available for this architecture)"
               if [[ -n "$availability_message" ]]; then
                 while IFS= read -r line; do
                   log "  ↳ $line"
@@ -624,11 +690,12 @@ OSTREE_CONFIG
           local attempt=1
           while (( attempt <= 3 )); do
             local install_output=""
-            local -a install_cmd=(flatpak --noninteractive --assumeyes --user install)
+            # Use --or-update to install or update to latest version
+            local -a install_cmd=(flatpak --noninteractive --assumeyes --user install --or-update)
             install_cmd+=("''${flatpak_arch_args[@]}")
             install_cmd+=("$remote_name" "$app_id")
             if run_flatpak_install install_output "''${install_cmd[@]}"; then
-              log "Installed $app_id"
+              log "''${progress_prefix}✓ $app_id (installed)"
               return 0
             fi
 
@@ -679,7 +746,8 @@ OSTREE_CONFIG
 
           log "Attempting batch Flatpak install for ''${#to_install[@]} application(s)..."
           local install_output=""
-          local -a install_cmd=(flatpak --noninteractive --assumeyes --user install)
+          # Use --or-update to install or update to latest version
+          local -a install_cmd=(flatpak --noninteractive --assumeyes --user install --or-update)
           install_cmd+=("''${flatpak_arch_args[@]}")
           install_cmd+=("$remote_name" "''${to_install[@]}")
           if run_flatpak_install install_output "''${install_cmd[@]}"; then
@@ -721,17 +789,58 @@ OSTREE_CONFIG
           exit 0
         fi
 
-        batch_install_missing_apps "''${packages[@]}" || true
+        # Count already installed vs to-install
+        already_installed=0
+        to_install_count=0
+        for pkg_id in "''${packages[@]}"; do
+          if flatpak --user info "$pkg_id" >/dev/null 2>&1; then
+            (( already_installed += 1 ))
+          else
+            (( to_install_count += 1 ))
+          fi
+        done
+        
+        total_count=''${#packages[@]}
+        log "=========================================="
+        log "Flatpak Installation Summary"
+        log "=========================================="
+        log "Total apps in profile: $total_count"
+        log "Already installed:     $already_installed"
+        log "To install:            $to_install_count"
+        log "=========================================="
+        
+        if [[ $to_install_count -gt 0 ]]; then
+          log "Starting installation of $to_install_count app(s)..."
+          batch_install_missing_apps "''${packages[@]}" || true
+        else
+          log "All apps already installed. Checking for updates..."
+        fi
 
         failures=0
+        current=0
         for app_id in "''${packages[@]}"; do
-          if ! install_app "$app_id"; then
+          (( current += 1 ))
+          if ! install_app "$app_id" "$current" "$total_count"; then
             failures=1
           fi
         done
 
+        log "Refreshing Flatpak metadata..."
         flatpak --user update --noninteractive --appstream || log "Appstream refresh failed (continuing)" >&2
         flatpak --user update --noninteractive || log "Flatpak update failed (continuing)" >&2
+
+        # Final summary
+        final_installed=$(flatpak --user list --app --columns=application 2>/dev/null | wc -l)
+        log "=========================================="
+        log "Flatpak Installation Complete"
+        log "=========================================="
+        log "Apps now installed: $final_installed"
+        if [[ $failures -eq 0 ]]; then
+          log "Status: ✓ All apps installed successfully"
+        else
+          log "Status: ⚠ Some apps failed to install"
+        fi
+        log "=========================================="
 
         exit $failures
       '';
@@ -937,7 +1046,8 @@ RESOURCES
           tokenizers
           transformers
           evaluate
-          gradio
+          # gradio removed - causes typer vs typer-slim conflict in nixpkgs
+          # Install via pip if needed: pip install gradio
           # Data Processing (Modern Alternatives)
           polars               # Fast DataFrame library (Rust-based)
           # LLM & AI APIs (Required)
@@ -956,16 +1066,20 @@ RESOURCES
           langchain-community
           langchain-core
           # LlamaIndex Ecosystem
-          llama-index
-          llama-index-core
+          # llama-index removed - causes typer vs typer-slim conflict in nixpkgs
+          # Install via pip if needed: pip install llama-index llama-index-core
+          # llama-index
+          # llama-index-core
           # Vector Databases & Embeddings
-          chromadb
+          # chromadb removed - causes typer vs typer-slim conflict with spacy in nixpkgs
+          # Install via pip if needed: pip install chromadb
           qdrant-client
           pinecone-client
           faiss
           sentence-transformers
           # MCP & Agent Tooling
-          litellm
+          # litellm removed - causes typer vs typer-slim conflict in nixpkgs
+          # Install via pip if needed: pip install litellm
           tiktoken
           fastapi
           uvicorn
@@ -973,8 +1087,13 @@ RESOURCES
           aiohttp
           websockets
           pydantic
-          typer
+          # typer removed - gradio brings its own typer dependency
           rich
+          
+          # AI Agent Frameworks (December 2025)
+          # Note: Some cutting-edge packages need pip install
+          # Use: pip install -r ~/.config/ai-agents/requirements.txt
+          instructor              # Structured LLM outputs
           sqlalchemy
           psycopg2
           asyncpg              # PostgreSQL async driver for AIDB
@@ -1058,7 +1177,8 @@ RESOURCES
     packages.ENABLED = true;
     actions = {
       ENABLED = true;
-      DEFAULT_ACTIONS_URL = "https://gitea.com";
+      # Gitea 1.25+ only accepts "github" or "internal" - "https://gitea.com" fails
+      DEFAULT_ACTIONS_URL = "github";
     };
     indexer = {
       ISSUE_INDEXER_TYPE = "bleve";
@@ -1483,15 +1603,14 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           tree                    # Display directory tree structure
           unzip                   # Extract ZIP archives
           zip                     # Create ZIP archives
-          bc                      # Arbitrary precision calculator
+          # bc already included above in utility tools section
           efibootmgr              # Modify EFI Boot Manager variables
 
           # Observability & monitoring stack
           glances                 # System dashboard with sensor, process, network metrics
           grafana                 # Metrics visualization web UI
           prometheus              # Metrics collection server
-          loki                    # Log aggregation backend
-          promtail                # Promtail agent for Loki pipelines
+          # loki/promtail removed - use grafana-loki in engineeringToolsPackages (includes both)
           vector                  # Data pipeline for logs and metrics
           cockpit                 # Web-based host management and reporting
 
@@ -1509,14 +1628,44 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           # Development utilities
           gnumake                 # GNU Make build automation
           gcc                     # GNU C/C++ compiler
+          cmake                   # Cross-platform build system
+          # ninja removed - conflicts with Python environment (provides ninja)
+
+          # ========================================================================
+          # Web Development
+          # ========================================================================
           nodejs_22               # Node.js JavaScript runtime v22
+          yarn                    # Alternative npm package manager
+          # bun and deno already included above in MCP tooling section
+          typescript              # TypeScript compiler
+
+          # Frontend tools
+          tailwindcss             # Utility-first CSS framework CLI
+          esbuild                 # Extremely fast JS bundler
+          # sass                  # Sass CSS preprocessor (uncomment if needed)
+
+          # Backend frameworks CLI
+          # prisma                # Database ORM (uncomment if needed)
+          # drizzle-kit           # TypeScript ORM (uncomment if needed)
 
           # ========================================================================
           # Virtualization & Emulation
           # ========================================================================
+          # Core virtualization tools for safe NixOS development and testing
+          # These allow testing configurations in VMs before applying to base system
 
           qemu            # Machine emulator and virtualizer
+          qemu_kvm        # QEMU with KVM acceleration
           virtiofsd       # VirtIO filesystem daemon
+          virt-manager    # GUI for managing VMs (KVM/QEMU/Libvirt)
+          virt-viewer     # VM display viewer (SPICE/VNC)
+          libvirt         # Libvirt CLI tools (virsh, virt-install, etc.)
+          # Note: virt-install is provided by system-level virtualization.nix if available
+          virt-top        # VM resource monitoring
+          libguestfs-with-appliance # Guest filesystem tools (includes libguestfs)
+          vagrant         # VM provisioning and automation tool
+          quickemu        # Quick VM testing (Windows, macOS, Linux ISOs)
+          bridge-utils    # Network bridge management for VMs
 
           # ========================================================================
           # Desktop Environment - Cosmic (Rust-based modern desktop)
@@ -1642,20 +1791,58 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
         ]
         ++ aiderPackage;
       engineeringToolsPackages = with pkgs; [
-        # PCB and electronics design
-        kicad
-        ngspice
+        # ========================================================================
+        # PCB & Electronics Design
+        # ========================================================================
+        kicad                   # Full EDA suite (schematic + PCB + 3D viewer)
+        ngspice                 # SPICE simulation for circuit analysis
+        # kicad-nightly          # Bleeding edge KiCad (uncomment if needed)
 
-        # Mechanical CAD / 3D modeling
-        freecad
-        openscad
-        blender
+        # ========================================================================
+        # Mechanical CAD / 3D Modeling
+        # ========================================================================
+        freecad                 # Parametric 3D CAD (also CNC/CAM via Path workbench)
+        openscad                # Programmatic 3D modeling (code-based)
+        blender                 # 3D creation suite (modeling, animation, rendering)
+        # solvespace            # Parametric 2D/3D CAD (lightweight, uncomment if available)
 
-        # Digital IC / FPGA design and simulation
-        yosys
-        nextpnr
-        iverilog
-        gtkwave
+        # ========================================================================
+        # 3D Printing / Slicing (CLI tools - GUI via Flatpak)
+        # ========================================================================
+        prusa-slicer            # PrusaSlicer CLI (also available as Flatpak)
+        # Note: openscad listed above for generating STLs from code
+
+        # ========================================================================
+        # CNC Machining & CAM
+        # ========================================================================
+        # Note: FreeCAD Path workbench provides CAM functionality
+        # Additional G-code tools:
+        # linuxcnc              # Full CNC control system (system-level, see docs)
+
+        # ========================================================================
+        # Digital IC / FPGA Design and Simulation
+        # ========================================================================
+        yosys                   # Open-source synthesis suite
+        nextpnr                 # Place and route for FPGAs
+        iverilog                # Icarus Verilog simulator
+        gtkwave                 # Waveform viewer for simulation results
+
+        # ========================================================================
+        # Stock Trading / Financial Analysis (CLI tools)
+        # ========================================================================
+        # Note: TradingView available via Flatpak for GUI charting
+        ledger                  # Double-entry accounting CLI
+        hledger                 # Haskell variant of ledger
+        # ta-lib                # Technical analysis library (Python bindings in env)
+
+        # ========================================================================
+        # AI/ML Monitoring & Dashboards
+        # ========================================================================
+        # Note: prometheus and grafana already in basePackages
+        # Additional monitoring tools for engineering:
+        prometheus-node-exporter # System metrics exporter
+        grafana-loki            # Log aggregation (includes promtail)
+        # netdata               # Real-time system monitoring (system service)
       ];
     in
     basePackages ++ giteaDevAiPackages ++ aiCommandLinePackages ++ ENGINEERING_TOOLS_PLACEHOLDER;
@@ -1978,52 +2165,52 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
     enable = true;
     package = pkgs.vscodium;
 
-    # NixOS 25.11: Use profiles.default for extensions and settings
+    # Extensions installed declaratively
+    # Note: NixOS 25.11+ requires extensions and userSettings under profiles.default
     profiles.default = {
-      # Extensions installed declaratively
       extensions =
-        let
-          fetchExtension = name:
-            let
-              path = lib.splitString "." name;
-            in
-              if lib.hasAttrByPath path pkgs.vscode-extensions then
-                lib.getAttrFromPath path pkgs.vscode-extensions
-              else
-                null;
-          extensionNames = [
-            "jnoortheen.nix-ide"
-            "arrterian.nix-env-selector"
-            "eamodio.gitlens"
-            "editorconfig.editorconfig"
-            "esbenp.prettier-vscode"
-            "ms-python.python"
-            "ms-python.black-formatter"
-            "ms-python.vscode-pylance"
-            "ms-toolsai.jupyter"
-            "ms-toolsai.jupyter-keymap"
-            "ms-toolsai.jupyter-renderers"
-            # AI coding assistants (locally hosted capable)
-            "continue.continue"
-            "codeium.codeium"
-          ];
-          curated = lib.filter (pkg: pkg != null) (map fetchExtension extensionNames);
-          marketplaceExtensionNames = [
-            # Keep Claude Code available; remove deprecated Codex/ChatGPT entries
-            "Anthropic.claude-code"
-            "Google.gemini-code-assist"
-          ];
-          fetchMarketplaceExtension = name:
-            let
-              path = lib.splitString "." name;
-            in
-              if pkgs ? vscode-marketplace && lib.hasAttrByPath path pkgs.vscode-marketplace then
-                lib.getAttrFromPath path pkgs.vscode-marketplace
-              else
-                null;
-          marketplaceExtensions = lib.filter (pkg: pkg != null) (map fetchMarketplaceExtension marketplaceExtensionNames);
-        in
-          curated ++ marketplaceExtensions;
+      let
+        fetchExtension = name:
+          let
+            path = lib.splitString "." name;
+          in
+            if lib.hasAttrByPath path pkgs.vscode-extensions then
+              lib.getAttrFromPath path pkgs.vscode-extensions
+            else
+              null;
+        extensionNames = [
+          "jnoortheen.nix-ide"
+          "arrterian.nix-env-selector"
+          "eamodio.gitlens"
+          "editorconfig.editorconfig"
+          "esbenp.prettier-vscode"
+          "ms-python.python"
+          "ms-python.black-formatter"
+          "ms-python.vscode-pylance"
+          "ms-toolsai.jupyter"
+          "ms-toolsai.jupyter-keymap"
+          "ms-toolsai.jupyter-renderers"
+          # AI coding assistants (locally hosted capable)
+          "continue.continue"
+          "codeium.codeium"
+        ];
+        curated = lib.filter (pkg: pkg != null) (map fetchExtension extensionNames);
+        marketplaceExtensionNames = [
+          # Keep Claude Code available; remove deprecated Codex/ChatGPT entries
+          "Anthropic.claude-code"
+          "Google.gemini-code-assist"
+        ];
+        fetchMarketplaceExtension = name:
+          let
+            path = lib.splitString "." name;
+          in
+            if pkgs ? vscode-marketplace && lib.hasAttrByPath path pkgs.vscode-marketplace then
+              lib.getAttrFromPath path pkgs.vscode-marketplace
+            else
+              null;
+        marketplaceExtensions = lib.filter (pkg: pkg != null) (map fetchMarketplaceExtension marketplaceExtensionNames);
+      in
+        curated ++ marketplaceExtensions;
 
       # VSCodium settings (declarative)
       # Note: Claude Code paths will be added by bash script (dynamic)
@@ -2378,6 +2565,42 @@ EOF
       done
     '';
 
+  # Auto-start Podman AI stack on first deployment (if enabled)
+  # This runs after all files are linked, so podman-ai-stack helper should be available
+  home.activation.startPodmanAiStack =
+    lib.mkIf LOCAL_AI_STACK_ENABLED_PLACEHOLDER (
+      lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+        set -eu
+        
+        # Only attempt to start if podman-ai-stack helper is available
+        if [ -x "$HOME/.local/bin/podman-ai-stack" ]; then
+          # Check if this is the first time (no containers exist yet)
+          if ! ${pkgs.podman}/bin/podman ps -a --filter "label=${podmanAiStackLabelKey}=${podmanAiStackLabelValue}" --format "{{.Names}}" 2>/dev/null | grep -q .; then
+            echo "Starting Podman AI stack for the first time..."
+            echo "This will pull container images, which may take several minutes."
+            echo "You can monitor progress with: podman-ai-stack logs"
+            
+            # Start in background to avoid blocking home-manager switch
+            # Use nohup and redirect output to avoid issues
+            (
+              sleep 2  # Give systemd a moment to settle
+              "$HOME/.local/bin/podman-ai-stack" up || {
+                echo "Warning: Failed to start Podman AI stack automatically." >&2
+                echo "You can start it manually later with: podman-ai-stack up" >&2
+                exit 0  # Don't fail the activation
+              }
+            ) &
+          else
+            echo "Podman AI stack containers already exist. Skipping auto-start."
+            echo "Use 'podman-ai-stack up' to start them manually."
+          fi
+        else
+          echo "Warning: podman-ai-stack helper not found. Stack will not auto-start." >&2
+          echo "After rebuild, you can start it with: podman-ai-stack up" >&2
+        fi
+      ''
+    );
+
   # ========================================================================
   # Alacritty Terminal Configuration
   # ========================================================================
@@ -2492,6 +2715,13 @@ EOF
     # Create local bin directory
     ".local/bin/.keep".text = "";
 
+    # Create Jupyter notebooks directory
+    "notebooks/.keep".text = "# Jupyter notebooks directory\n";
+
+    # Create Jupyter data directories
+    ".local/share/jupyter/.keep".text = "";
+    ".config/jupyter/.keep".text = "";
+
     # Declarative VSCodium wrapper so the Claude CLI stays on PATH
     ".local/bin/codium-wrapped" = {
       text = ''
@@ -2593,6 +2823,425 @@ EOF
       '';
       executable = true;
     };
+    
+    # AI Agent Setup Helper
+    ".local/bin/ai-agent-setup" = {
+      text = ''
+        #!/usr/bin/env bash
+        set -euo pipefail
+        
+        # AI Agent Stack Setup Script
+        # Installs cutting-edge agent packages not in nixpkgs
+        
+        usage() {
+          cat <<'USAGE'
+        AI Agent Stack Setup
+        
+        Usage: ai-agent-setup <command>
+        
+        Commands:
+          install     Install all agent packages from requirements.txt
+          update      Update all agent packages to latest versions
+          check       Check which packages are installed
+          models      Pull recommended models for agents
+          test        Run a quick agent test
+          help        Show this message
+        
+        Examples:
+          ai-agent-setup install     # Install agent packages
+          ai-agent-setup models      # Pull Qwen models for agents
+          ai-agent-setup test        # Test smolagents with local LLM
+        USAGE
+        }
+        
+        REQUIREMENTS_FILE="$HOME/.config/ai-agents/requirements.txt"
+        
+        cmd_install() {
+          echo "Installing AI Agent packages..."
+          
+          if command -v uv >/dev/null 2>&1; then
+            echo "Using uv for fast installation..."
+            uv pip install -r "$REQUIREMENTS_FILE"
+          else
+            echo "Using pip..."
+            pip install -r "$REQUIREMENTS_FILE"
+          fi
+          
+          echo ""
+          echo "✓ Agent packages installed!"
+          echo ""
+          echo "Quick start:"
+          echo "  python -c 'from smolagents import CodeAgent; print(\"smolagents ready\")'"
+          echo "  python -c 'from langgraph.graph import StateGraph; print(\"langgraph ready\")'"
+          echo "  python -c 'from crewai import Agent; print(\"crewai ready\")'"
+        }
+        
+        cmd_update() {
+          echo "Updating AI Agent packages..."
+          
+          if command -v uv >/dev/null 2>&1; then
+            uv pip install --upgrade -r "$REQUIREMENTS_FILE"
+          else
+            pip install --upgrade -r "$REQUIREMENTS_FILE"
+          fi
+          
+          echo "✓ Agent packages updated!"
+        }
+        
+        cmd_check() {
+          echo "Checking installed agent packages..."
+          echo ""
+          
+          local packages=(
+            "smolagents"
+            "langgraph"
+            "crewai"
+            "instructor"
+            "llmlingua"
+            "langfuse"
+            "mcp"
+          )
+          
+          for pkg in "''${packages[@]}"; do
+            if python -c "import $pkg" 2>/dev/null; then
+              version=$(python -c "import $pkg; print(getattr($pkg, '__version__', 'installed'))" 2>/dev/null || echo "installed")
+              echo "✓ $pkg: $version"
+            else
+              echo "✗ $pkg: not installed"
+            fi
+          done
+        }
+        
+        cmd_models() {
+          echo "Pulling recommended models for AI agents..."
+          
+          # Check if Ollama is available
+          if ! command -v ollama >/dev/null 2>&1 && ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
+            echo "Error: Ollama not available. Start the Podman AI stack first:"
+            echo "  podman-ai-stack up"
+            exit 1
+          fi
+          
+          echo ""
+          echo "Pulling code model (Qwen2.5-Coder)..."
+          ollama pull qwen2.5-coder:1.5b || echo "  (skipped - may need manual pull)"
+          
+          echo ""
+          echo "Pulling reasoning model (Qwen3)..."
+          ollama pull qwen3:8b || echo "  (skipped - may need manual pull)"
+          
+          echo ""
+          echo "Pulling embedding model..."
+          ollama pull nomic-embed-text || echo "  (skipped - may need manual pull)"
+          
+          echo ""
+          echo "✓ Models pulled!"
+          echo ""
+          echo "Available models:"
+          ollama list 2>/dev/null || curl -s http://localhost:11434/api/tags | python -m json.tool 2>/dev/null || echo "  (could not list models)"
+        }
+        
+        cmd_test() {
+          echo "Testing AI Agent setup..."
+          echo ""
+          
+          python <<'PYTEST'
+        try:
+            from smolagents import CodeAgent
+            print("✓ smolagents imported successfully")
+            
+            # Check if local LLM is available
+            import httpx
+            try:
+                response = httpx.get("http://localhost:11434/api/tags", timeout=5)
+                if response.status_code == 200:
+                    print("✓ Local Ollama server is running")
+                    models = response.json().get("models", [])
+                    print(f"  Available models: {len(models)}")
+                else:
+                    print("⚠ Ollama server responded but with error")
+            except:
+                # Try Lemonade server
+                try:
+                    response = httpx.get("http://localhost:8000/api/v1/models", timeout=5)
+                    if response.status_code == 200:
+                        print("✓ Local Lemonade server is running")
+                    else:
+                        print("⚠ No local LLM server detected")
+                except:
+                    print("⚠ No local LLM server detected (start with: podman-ai-stack up)")
+            
+            print("")
+            print("Agent stack is ready for use!")
+            print("")
+            print("Example usage:")
+            print("  from smolagents import CodeAgent, HfApiModel")
+            print("  model = HfApiModel(model_id='http://localhost:11434/v1')")
+            print("  agent = CodeAgent(tools=[], model=model)")
+            print("  result = agent.run('Write a hello world function')")
+            
+        except ImportError as e:
+            print(f"✗ Import error: {e}")
+            print("  Run: ai-agent-setup install")
+        PYTEST
+        }
+        
+        if [[ $# -eq 0 ]]; then
+          usage
+          exit 0
+        fi
+        
+        case "$1" in
+          install)
+            cmd_install
+            ;;
+          update)
+            cmd_update
+            ;;
+          check)
+            cmd_check
+            ;;
+          models)
+            cmd_models
+            ;;
+          test)
+            cmd_test
+            ;;
+          help|--help|-h)
+            usage
+            ;;
+          *)
+            echo "Unknown command: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+        esac
+      '';
+      executable = true;
+    };
+
+    # Security Manager - Firewall and monitoring dashboard helper
+    ".local/bin/security-manager" = {
+      text = ''
+        #!/usr/bin/env bash
+        # security-manager - Security & Firewall Management Helper
+        set -euo pipefail
+        
+        SCRIPT_NAME="$(basename "$0")"
+        CYAN=$'\033[0;36m'
+        GREEN=$'\033[0;32m'
+        YELLOW=$'\033[0;33m'
+        RED=$'\033[0;31m'
+        RESET=$'\033[0m'
+        
+        usage() {
+          cat <<EOF
+        ''${CYAN}Security & Firewall Manager for NixOS''${RESET}
+        
+        Usage: $SCRIPT_NAME <command>
+        
+        Commands:
+          status          Show firewall and security service status
+          rules           Display current iptables rules
+          ports           Show open ports and listening services
+          dashboards      List available monitoring dashboards
+          enable-monitoring   Show how to enable Prometheus/Grafana
+          flatseal        Launch Flatseal for Flatpak permissions
+          netdata         Open Netdata dashboard
+          help            Show this message
+        EOF
+        }
+        
+        print_section() {
+          echo ""
+          echo "''${CYAN}━━━ $1 ━━━''${RESET}"
+        }
+        
+        check_service() {
+          local service="$1"
+          local name="''${2:-$service}"
+          if systemctl is-active --quiet "$service" 2>/dev/null; then
+            echo "  ''${GREEN}✓''${RESET} $name: RUNNING"
+            return 0
+          elif systemctl is-enabled --quiet "$service" 2>/dev/null; then
+            echo "  ''${YELLOW}○''${RESET} $name: ENABLED (not running)"
+            return 1
+          else
+            echo "  ''${RED}✗''${RESET} $name: DISABLED"
+            return 2
+          fi
+        }
+        
+        subcmd_status() {
+          print_section "Firewall Status"
+          check_service "firewall" "NixOS Firewall" || true
+          
+          print_section "Security Services"
+          check_service "fail2ban" "Fail2ban (SSH protection)" || true
+          
+          print_section "Monitoring Services"
+          check_service "netdata" "Netdata (real-time monitoring)" || true
+          check_service "prometheus" "Prometheus (metrics collection)" || true
+          check_service "grafana" "Grafana (dashboards)" || true
+          
+          print_section "Network Status"
+          echo "  Default route:"
+          ip route | head -1 | sed 's/^/    /'
+          echo "  DNS servers:"
+          grep "nameserver" /etc/resolv.conf 2>/dev/null | sed 's/^/    /' || echo "    (none found)"
+        }
+        
+        subcmd_rules() {
+          print_section "Firewall Rules (requires sudo)"
+          echo ""
+          echo "INPUT chain (incoming connections):"
+          sudo iptables -L INPUT -n -v --line-numbers 2>/dev/null || echo "  (need sudo or iptables not installed)"
+          
+          echo ""
+          echo "FORWARD chain:"
+          sudo iptables -L FORWARD -n -v --line-numbers 2>/dev/null | head -20
+          
+          echo ""
+          echo "OUTPUT chain (outgoing connections):"
+          sudo iptables -L OUTPUT -n -v --line-numbers 2>/dev/null | head -10
+        }
+        
+        subcmd_ports() {
+          print_section "Listening Ports & Services"
+          echo ""
+          echo "TCP Ports:"
+          ss -tlnp 2>/dev/null | head -30 || netstat -tlnp 2>/dev/null | head -30
+          
+          echo ""
+          echo "UDP Ports:"
+          ss -ulnp 2>/dev/null | head -10 || netstat -ulnp 2>/dev/null | head -10
+        }
+        
+        subcmd_dashboards() {
+          print_section "Available Monitoring Dashboards"
+          echo ""
+          
+          # Netdata
+          if ${pkgs.curl}/bin/curl -s -o /dev/null --connect-timeout 1 http://localhost:19999 2>/dev/null; then
+            echo "  ''${GREEN}✓''${RESET} Netdata: http://localhost:19999"
+          else
+            echo "  ''${RED}✗''${RESET} Netdata: Not accessible (service may not be running)"
+          fi
+          
+          # Prometheus
+          if ${pkgs.curl}/bin/curl -s -o /dev/null --connect-timeout 1 http://localhost:9090 2>/dev/null; then
+            echo "  ''${GREEN}✓''${RESET} Prometheus: http://localhost:9090"
+          else
+            echo "  ''${YELLOW}○''${RESET} Prometheus: Not enabled (see 'enable-monitoring' command)"
+          fi
+          
+          # Grafana
+          if ${pkgs.curl}/bin/curl -s -o /dev/null --connect-timeout 1 http://localhost:3001 2>/dev/null; then
+            echo "  ''${GREEN}✓''${RESET} Grafana: http://localhost:3001"
+          else
+            echo "  ''${YELLOW}○''${RESET} Grafana: Not enabled (see 'enable-monitoring' command)"
+          fi
+          
+          # Gitea
+          if ${pkgs.curl}/bin/curl -s -o /dev/null --connect-timeout 1 http://localhost:3000 2>/dev/null; then
+            echo "  ''${GREEN}✓''${RESET} Gitea: http://localhost:3000"
+          fi
+          
+          echo ""
+          echo "To open dashboards in browser:"
+          echo "  nix-shell -p firefox --run 'firefox http://localhost:19999'"
+        }
+        
+        subcmd_enable_monitoring() {
+          print_section "How to Enable Full Monitoring Stack"
+          echo ""
+          echo "Edit /etc/nixos/configuration.nix and change these settings:"
+          echo ""
+          cat <<'NIXCODE'
+          # Enable Prometheus
+          services.prometheus = {
+            enable = true;
+            exporters.node.enable = true;
+          };
+        
+          # Enable Grafana
+          services.grafana = {
+            enable = true;
+            settings.server.http_port = 3001;
+            settings.security.admin_password = "changeme";  # CHANGE THIS!
+          };
+        
+          # Enable Fail2ban
+          services.fail2ban = {
+            enable = true;
+            maxretry = 3;
+            bantime = "1h";
+          };
+        NIXCODE
+          echo ""
+          echo "Then rebuild NixOS:"
+          echo "  sudo nixos-rebuild switch"
+        }
+        
+        subcmd_flatseal() {
+          print_section "Launching Flatseal"
+          if flatpak list | grep -q "Flatseal"; then
+            flatpak run com.github.tchx84.Flatseal &
+            disown
+            echo "Flatseal launched. Use it to manage Flatpak app permissions."
+          else
+            echo "''${RED}Flatseal not installed.''${RESET}"
+            echo "Install with: flatpak install flathub com.github.tchx84.Flatseal"
+          fi
+        }
+        
+        subcmd_netdata() {
+          print_section "Opening Netdata Dashboard"
+          if ${pkgs.curl}/bin/curl -s -o /dev/null --connect-timeout 1 http://localhost:19999 2>/dev/null; then
+            nix-shell -p firefox --run "firefox http://localhost:19999" &
+            disown
+            echo "Opening Netdata at http://localhost:19999"
+          else
+            echo "''${RED}Netdata not running.''${RESET}"
+            echo "Start with: sudo systemctl start netdata"
+          fi
+        }
+        
+        # Main
+        case "''${1:-help}" in
+          status)
+            subcmd_status
+            ;;
+          rules)
+            subcmd_rules
+            ;;
+          ports)
+            subcmd_ports
+            ;;
+          dashboards)
+            subcmd_dashboards
+            ;;
+          enable-monitoring)
+            subcmd_enable_monitoring
+            ;;
+          flatseal)
+            subcmd_flatseal
+            ;;
+          netdata)
+            subcmd_netdata
+            ;;
+          help|-h|--help)
+            usage
+            ;;
+          *)
+            echo "''${RED}Unknown command: $1''${RESET}" >&2
+            usage >&2
+            exit 1
+            ;;
+        esac
+      '';
+      executable = true;
+    };
 
     # NPM Configuration
     ".npmrc".text = ''
@@ -2637,12 +3286,188 @@ EOF
         "";
     ".config/huggingface/.keep".text = "";
     ".config/huggingface/README".text = huggingfaceReadme;
+    
+    # AI Agent Stack Configuration (December 2025)
+    ".config/ai-agents/.keep".text = "";
+    ".config/ai-agents/requirements.txt".text = ''
+      # ==========================================================================
+      # AI Agent Stack - Pip Requirements
+      # ==========================================================================
+      # Install: pip install -r ~/.config/ai-agents/requirements.txt
+      # Or use uv: uv pip install -r ~/.config/ai-agents/requirements.txt
+      # ==========================================================================
+      
+      # Core Agent Frameworks
+      smolagents>=1.0.0           # Hugging Face lightweight agents
+      langgraph>=0.2.0            # Stateful agent workflows
+      crewai>=0.60.0              # Multi-agent orchestration
+      crewai-tools>=0.10.0        # CrewAI tool integrations
+      
+      # RAG Optimization
+      semantic-text-splitter>=0.10.0  # Semantic chunking
+      rank-bm25>=0.2.0            # BM25 for hybrid search
+      flashrank>=0.3.0            # Fast reranking
+      
+      # Structured Outputs
+      instructor>=1.4.0           # Structured LLM outputs
+      outlines>=0.0.40            # Grammar-constrained generation
+      
+      # Context Compression
+      llmlingua>=0.2.0            # Token compression
+      
+      # Memory & Observability
+      mem0ai>=0.1.0               # Conversation memory
+      langfuse>=2.30.0            # LLM tracing
+      
+      # MCP Integration
+      mcp>=1.0.0                  # Model Context Protocol client
+      
+      # Code Execution
+      e2b>=1.0.0                  # Code sandbox
+      
+      # Document Processing
+      unstructured>=0.15.0        # Document parsing
+      
+      # LlamaIndex (if not in nixpkgs)
+      llama-index>=0.11.0
+      llama-index-core>=0.11.0
+      llama-index-llms-ollama>=0.3.0
+      llama-index-embeddings-huggingface>=0.3.0
+      
+      # ChromaDB (if not in nixpkgs)
+      chromadb>=0.5.0
+      
+      # LiteLLM (unified API)
+      litellm>=1.50.0
+    '';
+    
+    ".config/ai-agents/README.md".text = ''
+      # AI Agent Stack for Mobile Workstations
+      
+      ## Quick Start
+      
+      ```bash
+      # Install agent packages
+      pip install -r ~/.config/ai-agents/requirements.txt
+      
+      # Or with uv (faster)
+      uv pip install -r ~/.config/ai-agents/requirements.txt
+      ```
+      
+      ## Token Optimization Best Practices
+      
+      ### 1. Use smolagents for Simple Tasks
+      smolagents uses code-based actions instead of verbose JSON,
+      reducing token usage by 30-50%.
+      
+      ```python
+      from smolagents import CodeAgent, HfApiModel
+      
+      # Connect to local Ollama
+      model = HfApiModel(model_id="http://localhost:11434/v1")
+      agent = CodeAgent(tools=[], model=model)
+      result = agent.run("Create a fibonacci function")
+      ```
+      
+      ### 2. Semantic Chunking for RAG
+      ```python
+      from semantic_text_splitter import TextSplitter
+      
+      splitter = TextSplitter(capacity=512)
+      chunks = splitter.chunks(document)
+      ```
+      
+      ### 3. Context Compression
+      ```python
+      from llmlingua import PromptCompressor
+      
+      compressor = PromptCompressor()
+      compressed = compressor.compress_prompt(
+          context=long_context,
+          target_token=500
+      )
+      # Up to 20x compression!
+      ```
+      
+      ### 4. Hybrid Search
+      ```python
+      from rank_bm25 import BM25Okapi
+      
+      # Combine keyword + semantic search
+      bm25_scores = bm25.get_scores(query)
+      vector_scores = model.similarity(query, docs)
+      final_scores = reciprocal_rank_fusion([bm25_scores, vector_scores])
+      ```
+      
+      ## Recommended Models for Mobile Workstation
+      
+      | Task | Model | VRAM | Notes |
+      |------|-------|------|-------|
+      | Code | Qwen2.5-Coder-1.5B | 2GB | Fast completions |
+      | Code | Qwen2.5-Coder-7B | 6GB | Better quality |
+      | General | Qwen3-8B | 6GB | Good reasoning |
+      | Complex | Qwen3-14B | 10GB | Best quality |
+      | Embeddings | nomic-embed-text | 1GB | Fast & accurate |
+      
+      ## MCP Servers
+      
+      Connect to MCP servers for enhanced tool capabilities:
+      
+      ```bash
+      # Filesystem access
+      mcp connect filesystem --root ~/projects
+      
+      # GitHub integration
+      mcp connect github
+      
+      # PostgreSQL
+      mcp connect postgres --uri postgresql://localhost/mydb
+      ```
+      
+      ## Agentic Workflow Pattern
+      
+      ```
+      User Query
+          │
+          ▼
+      ┌─────────────┐
+      │ Planner     │  (Small model - Qwen3-1.5B)
+      │ Agent       │  - Decomposes task
+      └─────────────┘  - Minimal tokens
+          │
+          ▼
+      ┌─────────────┐
+      │ Researcher  │  (Medium model - Qwen3-8B)
+      │ Agent       │  - RAG retrieval
+      └─────────────┘  - Context compression
+          │
+          ▼
+      ┌─────────────┐
+      │ Coder       │  (Code model - Qwen2.5-Coder-7B)
+      │ Agent       │  - Code generation
+      └─────────────┘  - Structured outputs
+          │
+          ▼
+      ┌─────────────┐
+      │ Reviewer    │  (Small model - Qwen3-1.5B)
+      │ Agent       │  - Validation
+      └─────────────┘  - Final check
+          │
+          ▼
+      Final Output
+      ```
+      
+      This multi-model approach optimizes token usage by using
+      small models for simple tasks and reserving larger models
+      for complex reasoning.
+    '';
     "${huggingfaceCacheDir}/.keep".text = "";
     "${openWebUiDataDir}/.keep".text = "";
     "${openWebUiDataDir}/README".text = openWebUiReadme;
     "${podmanAiStackDataDir}/.keep".text = "";
     "${podmanAiStackDataDir}/README".text = podmanAiStackReadme;
     "${podmanAiStackDataDir}/ollama/.keep".text = "";
+    "${podmanAiStackDataDir}/lemonade-models/.keep".text = "";
     "${podmanAiStackDataDir}/open-webui/.keep".text = "";
     "${podmanAiStackDataDir}/qdrant/.keep".text = "";
     "${podmanAiStackDataDir}/mindsdb/.keep".text = "";
@@ -2974,8 +3799,9 @@ EOF
         label_value="${podmanAiStackLabelValue}"
         network_unit="podman-''${network}.network"
 
+        # Use the LLM container based on configured backend (ollama or lemonade)
         mapfile -t container_names <<'EOCONTAINERS'
-${podmanAiStackOllamaContainerName}
+${podmanAiStackLlmContainerName}
 ${podmanAiStackOpenWebUiContainerName}
 ${podmanAiStackQdrantContainerName}
 ${podmanAiStackMindsdbContainerName}
@@ -3004,7 +3830,8 @@ USAGE
         }
 
         ensure_directories() {
-          mkdir -p "''${data_root}/ollama" "''${data_root}/open-webui" "''${data_root}/qdrant" "''${data_root}/mindsdb"
+          # Create directories for all backends (ollama and lemonade-models)
+          mkdir -p "''${data_root}/ollama" "''${data_root}/lemonade-models" "''${data_root}/open-webui" "''${data_root}/qdrant" "''${data_root}/mindsdb"
         }
 
         start_units() {
@@ -3034,7 +3861,7 @@ USAGE
             ensure_directories
             start_units "$network_unit"
             start_units "''${container_units[@]}"
-            echo "podman-ai-stack: started services: ${podmanAiStackOllamaContainerName}, ${podmanAiStackOpenWebUiContainerName}, ${podmanAiStackQdrantContainerName}, ${podmanAiStackMindsdbContainerName}"
+            echo "podman-ai-stack: started services: ${podmanAiStackLlmContainerName}, ${podmanAiStackOpenWebUiContainerName}, ${podmanAiStackQdrantContainerName}, ${podmanAiStackMindsdbContainerName}"
             ;;
           down)
             stop_units "''${container_units[@]}"
@@ -3540,84 +4367,136 @@ PLUGINCFG
       };
     };
 
-    containers = {
-      "${podmanAiStackOllamaContainerName}" = {
-        image = "docker.io/ollama/ollama:latest";
-        description = "Ollama inference runtime (rootless Podman)";
-        autoStart = false;
-        autoUpdate = "local";  # Use local images to avoid timeout during home-manager switch
-        network = [ "${podmanAiStackNetworkName}.network" ];
-        networkAlias = [ "ollama" ];
-        ports = [ "${toString ollamaPort}:11434" ];
-        volumes = [
-          "${config.home.homeDirectory}/${podmanAiStackDataDir}/ollama:/root/.ollama"
-        ];
-        environment = {
-          OLLAMA_HOST = "0.0.0.0";
+    containers = lib.mkMerge [
+      # Ollama container (when llmBackend == "ollama")
+      (lib.mkIf (llmBackend == "ollama") {
+        "${podmanAiStackOllamaContainerName}" = {
+          image = "docker.io/ollama/ollama:latest";
+          description = "Ollama inference runtime (rootless Podman)";
+          autoStart = false;
+          autoUpdate = "local";
+          network = [ "${podmanAiStackNetworkName}.network" ];
+          networkAlias = [ "ollama" "llm" ];
+          ports = [ "${toString ollamaPort}:11434" ];
+          volumes = [
+            "${config.home.homeDirectory}/${podmanAiStackDataDir}/ollama:/root/.ollama"
+          ];
+          environment = {
+            OLLAMA_HOST = "0.0.0.0";
+          };
+          labels = {
+            "${podmanAiStackLabelKey}" = podmanAiStackLabelValue;
+            "nixos.quick-deploy.llm-backend" = "ollama";
+          };
         };
-        labels = {
-          "${podmanAiStackLabelKey}" = podmanAiStackLabelValue;
-        };
-      };
+      })
 
-      "${podmanAiStackOpenWebUiContainerName}" = {
-        image = "ghcr.io/open-webui/open-webui:latest";
-        description = "Open WebUI interface for the local AI stack";
-        autoStart = false;
-        autoUpdate = "local";  # Use local images to avoid timeout during home-manager switch
-        network = [ "${podmanAiStackNetworkName}.network" ];
-        networkAlias = [ "open-webui" ];
-        ports = [ "${toString openWebUiPort}:8080" ];
-        volumes = [
-          "${config.home.homeDirectory}/${podmanAiStackDataDir}/open-webui:/app/backend/data"
-        ];
-        environment = {
-          OLLAMA_BASE_URL = "http://ollama:${toString ollamaPort}";
-          OPENAI_API_BASE = "${huggingfaceTgiContainerEndpoint}/v1";
+      # Lemonade container (when llmBackend == "lemonade")
+      # Uses the official llama.cpp server image
+      # For AMD ROCm, build a custom image or use CPU mode
+      (lib.mkIf (llmBackend == "lemonade") {
+        "${podmanAiStackLemonadeContainerName}" = {
+          image = "ghcr.io/ggml-org/llama.cpp:server";
+          description = "llama.cpp server for local LLM inference";
+          autoStart = false;
+          autoUpdate = "local";
+          network = [ "${podmanAiStackNetworkName}.network" ];
+          networkAlias = [ "lemonade" "llm" ];
+          ports = [ "${toString lemonadePort}:8080" ];
+          volumes = [
+            "${config.home.homeDirectory}/${podmanAiStackDataDir}/lemonade-models:/models"
+          ];
+          environment = {
+            # Lemonade/llama.cpp configuration
+            HOST = "0.0.0.0";
+            PORT = "8080";
+            # Models will be pulled on first start
+            MODEL_PATH = "/models";
+            # AMD ROCm settings
+            HSA_OVERRIDE_GFX_VERSION = "11.0.0";
+            ROCM_PATH = "/opt/rocm";
+          };
+          labels = {
+            "${podmanAiStackLabelKey}" = podmanAiStackLabelValue;
+            "nixos.quick-deploy.llm-backend" = "lemonade";
+            "nixos.quick-deploy.llm-models" = llmModels;
+          };
         };
-        labels = {
-          "${podmanAiStackLabelKey}" = podmanAiStackLabelValue;
-        };
-      };
+      })
 
-      "${podmanAiStackQdrantContainerName}" = {
-        image = "docker.io/qdrant/qdrant:latest";
-        description = "Qdrant vector database for embeddings";
-        autoStart = false;
-        autoUpdate = "local";  # Use local images to avoid timeout during home-manager switch
-        network = [ "${podmanAiStackNetworkName}.network" ];
-        networkAlias = [ "qdrant" ];
-        ports = [
-          "${toString qdrantHttpPort}:6333"
-          "${toString qdrantGrpcPort}:6334"
-        ];
-        volumes = [
-          "${config.home.homeDirectory}/${podmanAiStackDataDir}/qdrant:/qdrant/storage"
-        ];
-        labels = {
-          "${podmanAiStackLabelKey}" = podmanAiStackLabelValue;
+      # Open WebUI (works with both backends via the 'llm' network alias)
+      {
+        "${podmanAiStackOpenWebUiContainerName}" = {
+          image = "ghcr.io/open-webui/open-webui:latest";
+          description = "Open WebUI interface for the local AI stack";
+          autoStart = false;
+          autoUpdate = "local";
+          network = [ "${podmanAiStackNetworkName}.network" ];
+          networkAlias = [ "open-webui" ];
+          ports = [ "${toString openWebUiPort}:8080" ];
+          volumes = [
+            "${config.home.homeDirectory}/${podmanAiStackDataDir}/open-webui:/app/backend/data"
+          ];
+          environment = 
+            if llmBackend == "lemonade" then {
+              # Lemonade uses OpenAI-compatible API
+              OPENAI_API_BASE = "http://lemonade:${toString lemonadePort}/v1";
+              OLLAMA_BASE_URL = "";  # Disable Ollama
+            } else {
+              # Ollama backend (default)
+              OPENAI_API_BASE = "${huggingfaceTgiContainerEndpoint}/v1";
+              OLLAMA_BASE_URL = "http://ollama:${toString ollamaPort}";
+            };
+          labels = {
+            "${podmanAiStackLabelKey}" = podmanAiStackLabelValue;
+          };
         };
-      };
+      }
 
-      "${podmanAiStackMindsdbContainerName}" = {
-        image = "docker.io/mindsdb/mindsdb:latest";
-        description = "MindsDB orchestration layer for AI workflows";
-        autoStart = false;
-        autoUpdate = "local";  # Use local images to avoid timeout during home-manager switch
-        network = [ "${podmanAiStackNetworkName}.network" ];
-        networkAlias = [ "mindsdb" ];
-        ports = [
-          "${toString mindsdbApiPort}:47334"
-          "${toString mindsdbGuiPort}:7735"
-        ];
-        volumes = [
-          "${config.home.homeDirectory}/${podmanAiStackDataDir}/mindsdb:/var/lib/mindsdb"
-        ];
-        labels = {
-          "${podmanAiStackLabelKey}" = podmanAiStackLabelValue;
+      # Qdrant vector database (always included)
+      {
+        "${podmanAiStackQdrantContainerName}" = {
+          image = "docker.io/qdrant/qdrant:latest";
+          description = "Qdrant vector database for embeddings";
+          autoStart = false;
+          autoUpdate = "local";
+          network = [ "${podmanAiStackNetworkName}.network" ];
+          networkAlias = [ "qdrant" ];
+          ports = [
+            "${toString qdrantHttpPort}:6333"
+            "${toString qdrantGrpcPort}:6334"
+          ];
+          volumes = [
+            "${config.home.homeDirectory}/${podmanAiStackDataDir}/qdrant:/qdrant/storage"
+          ];
+          labels = {
+            "${podmanAiStackLabelKey}" = podmanAiStackLabelValue;
+          };
         };
-      };
-    };
+      }
+
+      # MindsDB orchestration (always included)
+      {
+        "${podmanAiStackMindsdbContainerName}" = {
+          image = "docker.io/mindsdb/mindsdb:latest";
+          description = "MindsDB orchestration layer for AI workflows";
+          autoStart = false;
+          autoUpdate = "local";
+          network = [ "${podmanAiStackNetworkName}.network" ];
+          networkAlias = [ "mindsdb" ];
+          ports = [
+            "${toString mindsdbApiPort}:47334"
+            "${toString mindsdbGuiPort}:7735"
+          ];
+          volumes = [
+            "${config.home.homeDirectory}/${podmanAiStackDataDir}/mindsdb:/var/lib/mindsdb"
+          ];
+          labels = {
+            "${podmanAiStackLabelKey}" = podmanAiStackLabelValue;
+          };
+        };
+      }
+    ];
   };
 
   # ========================================================================
@@ -3717,41 +4596,47 @@ PLUGINCFG
           };
         };
         # Jupyter Lab server (user service for interactive development)
-        # Disabled by default - enable manually with: systemctl --user enable --now jupyter-lab
+        # Disabled by default - start manually with: systemctl --user start jupyter-lab
         "jupyter-lab" = {
           Unit = {
             Description = "Jupyter Lab server for interactive AI/ML development";
             Documentation = [ "https://jupyter.org/documentation" ];
             After = [ "network.target" ];
+            # Don't fail if network isn't ready
+            Wants = [ "network.target" ];
           };
           Service = {
             Type = "simple";
             Environment = [
+              "HOME=%h"
               "JUPYTER_DATA_DIR=%h/.local/share/jupyter"
               "JUPYTER_CONFIG_DIR=%h/.config/jupyter"
               "JUPYTER_RUNTIME_DIR=%h/.local/share/jupyter/runtime"
             ];
-            ExecStartPre = [
-              "${pkgs.coreutils}/bin/mkdir -p %h/.local/share/jupyter"
-              "${pkgs.coreutils}/bin/mkdir -p %h/.config/jupyter"
-              "${pkgs.coreutils}/bin/mkdir -p %h/notebooks"
-            ];
-            ExecStart = ''
-              ${pythonAiEnv}/bin/jupyter-lab \
+            # Create required directories before starting
+            ExecStartPre = "${pkgs.writeShellScript "jupyter-setup" ''
+              set -e
+              mkdir -p "$HOME/.local/share/jupyter"
+              mkdir -p "$HOME/.config/jupyter"
+              mkdir -p "$HOME/notebooks"
+            ''}";
+            ExecStart = "${pkgs.writeShellScript "jupyter-start" ''
+              exec ${pythonAiEnv}/bin/jupyter-lab \
                 --ip=127.0.0.1 \
                 --port=8888 \
                 --no-browser \
-                --notebook-dir=%h/notebooks
-            '';
-            WorkingDirectory = "%h/notebooks";
+                --notebook-dir="$HOME/notebooks"
+            ''}";
+            # Use home directory as fallback working directory
+            WorkingDirectory = "%h";
             Restart = "on-failure";
-            RestartSec = 5;
+            RestartSec = 10;
             TimeoutStopSec = 30;
           };
           Install = {
-            # Enable by default so notebooks are available immediately after switch.
-            # Disable with: systemctl --user disable --now jupyter-lab
-            WantedBy = [ "default.target" ];
+            # Disabled by default - notebooks should be started on demand
+            # Enable with: systemctl --user enable --now jupyter-lab
+            # WantedBy = [ "default.target" ];
           };
         };
       }

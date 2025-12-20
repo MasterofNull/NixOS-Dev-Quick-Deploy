@@ -2,7 +2,7 @@
 #
 # Phase 04: Pre-Deployment Validation
 # Purpose: Validate environment and identify potential conflicts before deployment
-# Version: 4.0.0
+# Version: Uses SCRIPT_VERSION from main script
 #
 # ============================================================================
 # DEPENDENCIES
@@ -140,7 +140,8 @@ phase_04_pre_deployment_validation() {
     # Step 5.4: Validate System Build (Dry Run)
     # ========================================================================
     print_info "Validating system build (dry run)..."
-    local NIXOS_REBUILD_DRY_LOG="/tmp/nixos-rebuild-dry-run.log"
+    local tmp_dir="${TMP_DIR:-/tmp}"
+    local NIXOS_REBUILD_DRY_LOG="${tmp_dir}/nixos-rebuild-dry-run.log"
     local target_host=$(hostname)
 
     local -a nixos_rebuild_opts=()

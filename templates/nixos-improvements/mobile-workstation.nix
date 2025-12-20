@@ -138,27 +138,30 @@ in
     lidSwitch = lib.mkDefault "suspend";
     lidSwitchDocked = lib.mkDefault "ignore";  # External monitor connected
     lidSwitchExternalPower = lib.mkDefault "ignore";  # On AC power
-    
+
     # Power button behavior
     powerKey = lib.mkDefault "suspend";
     powerKeyLongPress = lib.mkDefault "poweroff";
-    
+
     # Suspend key (if present on keyboard)
     suspendKey = lib.mkDefault "suspend";
-    
+
     # Hibernate key
     hibernateKey = lib.mkDefault "hibernate";
-    
+
     # Kill user processes on logout for clean session
     killUserProcesses = lib.mkDefault false;
-    
+
     # Idle action (auto-suspend after inactivity)
     # Set to "ignore" to disable auto-suspend
-    extraConfig = ''
-      IdleAction=ignore
-      IdleActionSec=30min
-      HandleLidSwitchExternalPower=ignore
-    '';
+    # NixOS 25.05+: Use settings.Login instead of extraConfig
+    settings = {
+      Login = {
+        IdleAction = lib.mkDefault "ignore";
+        IdleActionSec = lib.mkDefault "30min";
+        HandleLidSwitchExternalPower = lib.mkDefault "ignore";
+      };
+    };
   };
 
   # =========================================================================
@@ -166,7 +169,7 @@ in
   # =========================================================================
   # Enable hibernation (suspend-to-disk)
   # Requires a swap partition/file at least as large as RAM
-  
+
   # Hybrid sleep (suspend + hibernate safety net)
   systemd.sleep.extraConfig = ''
     AllowSuspend=yes
@@ -285,10 +288,14 @@ in
   # =========================================================================
   # Fan Control (if supported)
   # =========================================================================
-  
-  # Enable lm_sensors for temperature monitoring
-  hardware.sensor.hddtemp.enable = lib.mkDefault true;
-  
+
+  # HDD temperature monitoring (disabled by default - requires drive list)
+  # Uncomment and configure if you want to monitor HDD temperatures
+  # hardware.sensor.hddtemp = {
+  #   enable = true;
+  #   drives = [ "/dev/sda" ];  # Add your drives here
+  # };
+
   # Fancontrol daemon (if supported by hardware)
   # Uncomment if your laptop supports PWM fan control
   # hardware.fancontrol.enable = true;

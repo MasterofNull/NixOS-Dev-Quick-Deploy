@@ -2,7 +2,7 @@
 #
 # Phase 03: Configuration Generation
 # Purpose: Generate all declarative NixOS and home-manager configurations
-# Version: 4.0.0
+# Version: Uses SCRIPT_VERSION from main script
 #
 # ============================================================================
 # DEPENDENCIES
