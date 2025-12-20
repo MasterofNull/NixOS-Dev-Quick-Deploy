@@ -16,8 +16,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Model storage directory (user-level)
-MODEL_DIR="${MODEL_DIR:-${HOME}/.local/share/nixos-ai-stack/lemonade-models}"
+MODEL_DIR="${MODEL_DIR:-${HOME}/.local/share/podman-ai-stack/lemonade-models}"
 CACHE_DIR="${HF_HOME:-${HOME}/.cache/huggingface}"
+HUGGINGFACE_TOKEN_FILE_DEFAULT="${HUGGINGFACE_TOKEN_FILE:-${HOME}/.cache/nixos-quick-deploy/preferences/huggingface-token.env}"
 
 # Logging
 LOG_FILE="${MODEL_DIR}/download.log"
@@ -70,6 +71,7 @@ log() {
     shift
     local message="$*"
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    mkdir -p "$(dirname "${LOG_FILE}")" >/dev/null 2>&1 || true
     echo -e "${timestamp} [${level}] ${message}" | tee -a "${LOG_FILE}"
 }
 
@@ -116,6 +118,30 @@ check_prerequisites() {
     fi
 
     success "Prerequisites satisfied"
+}
+
+# ============================================================================
+# Hugging Face Token (optional but recommended)
+# ============================================================================
+
+ensure_huggingface_token() {
+    if [[ -n "${HUGGINGFACEHUB_API_TOKEN:-}" ]]; then
+        return 0
+    fi
+
+    local token_file="${HUGGINGFACE_TOKEN_FILE_DEFAULT}"
+    if [[ -r "$token_file" ]]; then
+        local token
+        token=$(awk -F'=' '/^HUGGINGFACEHUB_API_TOKEN=/{print $2}' "$token_file" 2>/dev/null | tail -n1 | tr -d '\r')
+        if [[ -n "$token" ]]; then
+            export HUGGINGFACEHUB_API_TOKEN="$token"
+            success "Loaded Hugging Face token from ${token_file}"
+            return 0
+        fi
+    fi
+
+    warning "Hugging Face token not set; public models will download, but gated repositories may fail."
+    return 0
 }
 
 # ============================================================================
@@ -389,6 +415,7 @@ main() {
 
     check_prerequisites
     setup_directories
+    ensure_huggingface_token
 
     # Parse command line arguments
     case "${1:-interactive}" in

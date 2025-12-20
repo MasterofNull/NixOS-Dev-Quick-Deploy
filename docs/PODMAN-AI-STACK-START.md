@@ -4,6 +4,37 @@
 
 The Podman AI stack is configured but **not started automatically**. You need to start it manually.
 
+## Prerequisites
+
+Before running `podman-ai-stack up`, make sure the supporting systemd units exist:
+
+1. **Enable the stack preference (one time):**
+   ```bash
+   ./scripts/enable-podman-containers.sh [--hf-token YOUR_HF_TOKEN]
+   ```
+   This writes `LOCAL_AI_STACK_ENABLED=true` into the deployment preferences and triggers a Home Manager rebuild so it can install the helper script plus all `podman-local-ai-*` user units.
+
+2. **Verify the helper is installed:**
+   After the rebuild you should have `~/.local/bin/podman-ai-stack`. If you need to run the stack helper before rebuilding, you can invoke it directly from the repo:
+   ```bash
+   ./scripts/podman-ai-stack.sh status
+   ```
+   (The script prints a warning if it can’t find the systemd units yet.)
+
+3. **Check the units are present:**
+   ```bash
+   systemctl --user list-unit-files 'podman-local-ai*'
+   ```
+   You should see entries for the network plus `ollama`, `lemonade`, `open-webui`, `qdrant`, and `mindsdb` services.
+
+If any unit is missing, re-run the enable script above or re-apply your Home Manager configuration.
+
+### Automatic Prefetch (NixOS Quick Deploy v5+)
+
+- Phase 5 now pre-pulls all Podman images (Ollama/Lemonade, Open WebUI, Qdrant, MindsDB) whenever `LOCAL_AI_STACK_ENABLED=true`, so `podman-ai-stack up` no longer times out waiting for the first `podman pull`.
+- Phase 6 automatically downloads the default Lemonade GGUF models (Qwen3-4B, Qwen2.5-Coder-7B, DeepSeek 6.7B) when the Lemonade backend is selected **and** a Hugging Face token is configured. The models land in `~/.local/share/podman-ai-stack/lemonade-models/`, ready for the running container.
+- You can still rerun the helper manually via `scripts/download-lemonade-models.sh --all` if you add new models later.
+
 ### Method 1: Using Systemd (Recommended)
 
 Start all services in order:
@@ -189,4 +220,3 @@ All container data is stored in `~/.local/share/podman-ai-stack/`:
 - `mindsdb/` - MindsDB database files
 
 This data persists across container restarts and rebuilds.
-

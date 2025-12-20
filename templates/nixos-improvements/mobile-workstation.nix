@@ -134,32 +134,27 @@ in
   # =========================================================================
   
   services.logind = {
-    # What to do when lid is closed
-    lidSwitch = lib.mkDefault "suspend";
-    lidSwitchDocked = lib.mkDefault "ignore";  # External monitor connected
-    lidSwitchExternalPower = lib.mkDefault "ignore";  # On AC power
-
-    # Power button behavior
-    powerKey = lib.mkDefault "suspend";
-    powerKeyLongPress = lib.mkDefault "poweroff";
-
-    # Suspend key (if present on keyboard)
-    suspendKey = lib.mkDefault "suspend";
-
-    # Hibernate key
-    hibernateKey = lib.mkDefault "hibernate";
-
-    # Kill user processes on logout for clean session
-    killUserProcesses = lib.mkDefault false;
-
     # Idle action (auto-suspend after inactivity)
     # Set to "ignore" to disable auto-suspend
     # NixOS 25.05+: Use settings.Login instead of extraConfig
     settings = {
       Login = {
+        # Lid handling
+        HandleLidSwitch = lib.mkDefault "suspend";
+        HandleLidSwitchDocked = lib.mkDefault "ignore";
+        HandleLidSwitchExternalPower = lib.mkDefault "ignore";
+
+        # Power/suspend keys
+        HandlePowerKey = lib.mkDefault "suspend";
+        HandlePowerKeyLongPress = lib.mkDefault "poweroff";
+        HandleSuspendKey = lib.mkDefault "suspend";
+        HandleHibernateKey = lib.mkDefault "hibernate";
+
+        # Session cleanup
+        KillUserProcesses = lib.mkDefault false;
+
         IdleAction = lib.mkDefault "ignore";
         IdleActionSec = lib.mkDefault "30min";
-        HandleLidSwitchExternalPower = lib.mkDefault "ignore";
       };
     };
   };
@@ -382,5 +377,4 @@ in
     ==========================================
   '';
 }
-
 
