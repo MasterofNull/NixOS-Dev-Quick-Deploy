@@ -1,0 +1,149 @@
+# Hybrid Learning AI Stack - Simplified
+# Usage: podman-compose -f docker-compose.hybrid.yml up -d
+# Includes: Lemonade (inference), Qdrant (vector DB), Ollama (embeddings)
+
+version: "3.9"
+
+services:
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: nixos-ai-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/qdrant:/qdrant/storage:Z
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Ollama for embeddings
+  ollama:
+    image: ollama/ollama:latest
+    container_name: nixos-ai-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/ollama:/root/.ollama:Z
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Lemonade General Purpose
+  lemonade:
+    image: ghcr.io/json012/lemonade:latest
+    container_name: nixos-ai-lemonade
+    restart: unless-stopped
+    environment:
+      LEMONADE_HOST: 0.0.0.0
+      LEMONADE_PORT: 8000
+      LEMONADE_DEFAULT_MODEL: ${LEMONADE_DEFAULT_MODEL:-Qwen/Qwen2.5-Coder-7B-Instruct}
+      LEMONADE_LOG_LEVEL: ${LEMONADE_LOG_LEVEL:-info}
+      LEMONADE_WEB_CONCURRENCY: ${LEMONADE_WEB_CONCURRENCY:-4}
+      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
+    volumes:
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/lemonade-models:/home/ubuntu/.cache/huggingface:Z
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Lemonade Coder (if needed)
+  lemonade-coder:
+    image: ghcr.io/json012/lemonade:latest
+    container_name: nixos-ai-lemonade-coder
+    restart: unless-stopped
+    environment:
+      LEMONADE_HOST: 0.0.0.0
+      LEMONADE_PORT: 8001
+      LEMONADE_DEFAULT_MODEL: Qwen/Qwen2.5-Coder-7B-Instruct
+      LEMONADE_LOG_LEVEL: ${LEMONADE_LOG_LEVEL:-info}
+      LEMONADE_WEB_CONCURRENCY: ${LEMONADE_WEB_CONCURRENCY:-2}
+      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
+    volumes:
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/lemonade-models:/home/ubuntu/.cache/huggingface:Z
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Lemonade DeepSeek
+  lemonade-deepseek:
+    image: ghcr.io/json012/lemonade:latest
+    container_name: nixos-ai-lemonade-deepseek
+    restart: unless-stopped
+    environment:
+      LEMONADE_HOST: 0.0.0.0
+      LEMONADE_PORT: 8003
+      LEMONADE_DEFAULT_MODEL: TheBloke/deepseek-coder-6.7B-instruct-GGUF
+      LEMONADE_LOG_LEVEL: ${LEMONADE_LOG_LEVEL:-info}
+      LEMONADE_WEB_CONCURRENCY: ${LEMONADE_WEB_CONCURRENCY:-2}
+      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
+    volumes:
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/lemonade-models:/home/ubuntu/.cache/huggingface:Z
+    ports:
+      - "8003:8003"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Open WebUI (optional but useful)
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: nixos-ai-webui
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    volumes:
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/open-webui:/app/backend/data:Z
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      WEBUI_AUTH: "false"
+    depends_on:
+      - ollama
+
+networks:
+  default:
+    name: nixos-ai-hybrid
