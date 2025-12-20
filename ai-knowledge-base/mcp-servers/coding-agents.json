@@ -1,0 +1,305 @@
+{
+  "catalog_name": "Coding Agent MCP Servers",
+  "description": "MCP servers specifically for AI coding agents and development automation",
+  "last_updated": "2025-12-19",
+  "servers": [
+    {
+      "name": "serena",
+      "type": "external",
+      "url": "https://github.com/oraios/serena",
+      "stars": 16795,
+      "description": "Powerful coding agent toolkit with semantic retrieval and editing",
+      "capabilities": [
+        "semantic_code_search",
+        "intelligent_editing",
+        "refactoring",
+        "code_understanding"
+      ],
+      "use_cases": [
+        "Find code by semantic meaning",
+        "Refactor large codebases",
+        "Understand code architecture",
+        "Targeted code modifications"
+      ],
+      "priority": "critical",
+      "notes": "Specifically designed for Claude Code integration"
+    },
+    {
+      "name": "github-mcp-server",
+      "type": "official",
+      "url": "https://github.com/modelcontextprotocol/servers",
+      "description": "Official GitHub integration for repository operations",
+      "capabilities": [
+        "repository_search",
+        "file_operations",
+        "pr_management",
+        "code_search"
+      ],
+      "use_cases": [
+        "Search GitHub codebases",
+        "Create pull requests",
+        "Browse repository structure",
+        "Code review automation"
+      ],
+      "priority": "critical",
+      "installation": "npm install -g @modelcontextprotocol/server-github"
+    },
+    {
+      "name": "repomix",
+      "type": "external",
+      "url": "https://github.com/yamadashy/repomix",
+      "stars": 20504,
+      "description": "Pack entire repository into single AI-friendly file",
+      "capabilities": [
+        "repository_analysis",
+        "context_generation",
+        "dependency_mapping",
+        "structure_extraction"
+      ],
+      "use_cases": [
+        "Generate full codebase context",
+        "Prepare repos for AI analysis",
+        "Document project structure",
+        "Code review preparation"
+      ],
+      "priority": "high"
+    },
+    {
+      "name": "goose",
+      "type": "external",
+      "url": "https://github.com/block/goose",
+      "stars": 22677,
+      "description": "Extensible AI agent that goes beyond code suggestions",
+      "capabilities": [
+        "code_generation",
+        "code_execution",
+        "system_interaction",
+        "mcp_tool_usage"
+      ],
+      "use_cases": [
+        "Autonomous coding tasks",
+        "Multi-file code generation",
+        "System-level automation",
+        "Tool-augmented development"
+      ],
+      "priority": "high",
+      "notes": "Built-in MCP support, complementary to Claude Code"
+    },
+    {
+      "name": "context7",
+      "type": "external",
+      "url": "https://github.com/upstash/context7",
+      "stars": 38571,
+      "description": "Up-to-date code documentation for LLMs",
+      "capabilities": [
+        "live_documentation",
+        "api_reference_generation",
+        "code_context",
+        "framework_knowledge"
+      ],
+      "use_cases": [
+        "Generate current documentation",
+        "Provide framework context",
+        "API reference lookup",
+        "Version-specific guidance"
+      ],
+      "priority": "high"
+    },
+    {
+      "name": "git",
+      "type": "builtin",
+      "description": "Git operations for version control",
+      "capabilities": [
+        "commit",
+        "branch",
+        "merge",
+        "history_analysis"
+      ],
+      "use_cases": [
+        "Automated commits",
+        "Branch management",
+        "Code history analysis",
+        "Conflict resolution"
+      ],
+      "priority": "critical"
+    },
+    {
+      "name": "filesystem",
+      "type": "builtin",
+      "description": "File system operations for code manipulation",
+      "capabilities": [
+        "read_files",
+        "write_files",
+        "directory_navigation",
+        "file_search"
+      ],
+      "use_cases": [
+        "Read source code",
+        "Create new files",
+        "Navigate project structure",
+        "Search codebase"
+      ],
+      "priority": "critical"
+    },
+    {
+      "name": "chrome-devtools-mcp",
+      "type": "external",
+      "url": "https://github.com/ChromeDevTools/chrome-devtools-mcp",
+      "stars": 15945,
+      "description": "Chrome DevTools for coding agents",
+      "capabilities": [
+        "browser_debugging",
+        "performance_profiling",
+        "network_inspection",
+        "dom_manipulation"
+      ],
+      "use_cases": [
+        "Debug web applications",
+        "Frontend testing",
+        "Performance optimization",
+        "Network debugging"
+      ],
+      "priority": "medium"
+    },
+    {
+      "name": "playwright-mcp",
+      "type": "external",
+      "url": "https://github.com/executeautomation/playwright-mcp",
+      "description": "Playwright automation for testing",
+      "capabilities": [
+        "e2e_testing",
+        "browser_automation",
+        "visual_testing",
+        "api_testing"
+      ],
+      "use_cases": [
+        "Automated testing",
+        "Cross-browser testing",
+        "Visual regression testing",
+        "API endpoint testing"
+      ],
+      "priority": "medium"
+    },
+    {
+      "name": "UI-TARS-desktop",
+      "type": "external",
+      "url": "https://github.com/bytedance/UI-TARS-desktop",
+      "stars": 19674,
+      "description": "Multimodal AI agent for UI interaction",
+      "capabilities": [
+        "ui_automation",
+        "visual_understanding",
+        "gui_testing",
+        "computer_use"
+      ],
+      "use_cases": [
+        "Automated UI testing",
+        "Visual bug detection",
+        "GUI automation",
+        "Accessibility testing"
+      ],
+      "priority": "medium"
+    },
+    {
+      "name": "python-sdk",
+      "type": "official",
+      "url": "https://github.com/modelcontextprotocol/python-sdk",
+      "description": "Official Python SDK for building MCP servers",
+      "capabilities": [
+        "mcp_server_development",
+        "custom_tools",
+        "python_integration",
+        "protocol_implementation"
+      ],
+      "use_cases": [
+        "Build custom MCP servers",
+        "Extend agent capabilities",
+        "Python-based tools",
+        "Custom integrations"
+      ],
+      "priority": "high",
+      "notes": "For developing custom MCP servers in Python"
+    },
+    {
+      "name": "fastmcp",
+      "type": "external",
+      "url": "https://github.com/jlowin/fastmcp",
+      "description": "Fast and simple MCP server creation framework",
+      "capabilities": [
+        "rapid_server_development",
+        "simplified_api",
+        "python_tools",
+        "quick_prototyping"
+      ],
+      "use_cases": [
+        "Quick MCP server prototypes",
+        "Simple tool integration",
+        "Python utility wrapping",
+        "Rapid development"
+      ],
+      "priority": "medium",
+      "notes": "Faster alternative to official SDK for simple servers"
+    },
+    {
+      "name": "excelize",
+      "type": "external",
+      "url": "https://github.com/qax-os/excelize",
+      "stars": 19998,
+      "description": "Excel operations for data-driven development",
+      "capabilities": [
+        "excel_reading",
+        "excel_writing",
+        "chart_generation",
+        "data_processing"
+      ],
+      "use_cases": [
+        "Generate reports",
+        "Process data files",
+        "Create documentation",
+        "Data analysis"
+      ],
+      "priority": "low"
+    }
+  ],
+  "recommended_setup": [
+    "serena",
+    "github-mcp-server",
+    "git",
+    "filesystem",
+    "goose"
+  ],
+  "integration_with_stack": {
+    "claude_code": "Primary coding agent using these MCP servers",
+    "aidb_mcp": "Can leverage coding tools for code generation tasks",
+    "lemonade_coder": "Code-specialized model benefits from these tools",
+    "vscodium": "Editor integration for visual feedback"
+  },
+  "development_workflows": [
+    {
+      "name": "Code Review Workflow",
+      "tools": ["github-mcp-server", "serena", "repomix"],
+      "description": "Pull code, analyze semantically, generate review"
+    },
+    {
+      "name": "Refactoring Workflow",
+      "tools": ["serena", "git", "filesystem"],
+      "description": "Semantic search, intelligent editing, version control"
+    },
+    {
+      "name": "Testing Workflow",
+      "tools": ["playwright-mcp", "chrome-devtools-mcp", "git"],
+      "description": "Automated testing, debugging, commit tests"
+    },
+    {
+      "name": "Documentation Workflow",
+      "tools": ["context7", "repomix", "filesystem"],
+      "description": "Generate docs, analyze structure, write files"
+    }
+  ],
+  "custom_mcp_opportunities": [
+    "nix-lsp-mcp: Wrap Nix language server for better Nix code support",
+    "nixfmt-mcp: Automated Nix code formatting",
+    "nix-eval-mcp: Safe Nix expression evaluation",
+    "home-manager-mcp: Home Manager configuration assistance"
+  ]
+}

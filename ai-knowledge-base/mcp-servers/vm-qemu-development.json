@@ -1,0 +1,228 @@
+{
+  "catalog_name": "VM/QEMU Development MCP Servers",
+  "description": "MCP servers for virtual machine management, QEMU operations, and infrastructure automation",
+  "last_updated": "2025-12-19",
+  "servers": [
+    {
+      "name": "shell-command",
+      "type": "builtin",
+      "description": "Execute VM management commands (virsh, qemu, vagrant)",
+      "capabilities": [
+        "execute_virsh_commands",
+        "qemu_operations",
+        "vagrant_control",
+        "vm_monitoring"
+      ],
+      "use_cases": [
+        "Start/stop VMs with virsh",
+        "Query VM status",
+        "Manage VM snapshots",
+        "Execute quickemu commands"
+      ],
+      "priority": "critical",
+      "commands": [
+        "virsh list --all",
+        "virsh start <vm-name>",
+        "virsh snapshot-create-as",
+        "qemu-img create",
+        "vagrant up/halt/destroy"
+      ]
+    },
+    {
+      "name": "filesystem",
+      "type": "builtin",
+      "description": "Access VM disk images and configuration files",
+      "capabilities": [
+        "read_vm_configs",
+        "manage_disk_images",
+        "libvirt_xml_editing",
+        "cloud-init_configs"
+      ],
+      "use_cases": [
+        "Read/write libvirt XML",
+        "Manage cloud-init configs",
+        "Access VM disk images",
+        "Configure network bridges"
+      ],
+      "priority": "critical",
+      "paths": [
+        "/var/lib/libvirt/images/",
+        "/etc/libvirt/qemu/",
+        "~/.config/libvirt/",
+        "~/.local/share/quickemu/"
+      ]
+    },
+    {
+      "name": "vm-automation",
+      "type": "custom",
+      "description": "Custom MCP server for automated VM provisioning and management",
+      "capabilities": [
+        "vm_creation",
+        "automated_provisioning",
+        "snapshot_management",
+        "resource_allocation"
+      ],
+      "use_cases": [
+        "Automated NixOS VM creation",
+        "Test environment provisioning",
+        "VM lifecycle management",
+        "Resource optimization"
+      ],
+      "implementation_status": "proposed",
+      "priority": "high",
+      "notes": "Could wrap vm-create-nixos, vm-list, vm-snapshot helper scripts"
+    },
+    {
+      "name": "1Panel",
+      "type": "external",
+      "url": "https://github.com/1Panel-dev/1Panel",
+      "stars": 32258,
+      "description": "Web interface to manage containers, databases via MCP",
+      "capabilities": [
+        "container_management",
+        "database_administration",
+        "file_management",
+        "system_monitoring"
+      ],
+      "use_cases": [
+        "Podman container GUI",
+        "Database management for VM DBs",
+        "File transfer to/from VMs",
+        "System resource monitoring"
+      ],
+      "priority": "medium",
+      "notes": "Good complement to Cockpit for VM host management"
+    },
+    {
+      "name": "netdata",
+      "type": "external",
+      "url": "https://github.com/netdata/netdata",
+      "stars": 76901,
+      "description": "AI-powered observability for infrastructure monitoring",
+      "capabilities": [
+        "real_time_monitoring",
+        "vm_performance_metrics",
+        "alert_management",
+        "ai_anomaly_detection"
+      ],
+      "use_cases": [
+        "Monitor VM resource usage",
+        "Track QEMU performance",
+        "Alert on resource issues",
+        "Capacity planning"
+      ],
+      "priority": "medium",
+      "deployment": "Can monitor host and VM guests"
+    },
+    {
+      "name": "ansible-mcp",
+      "type": "custom",
+      "description": "MCP wrapper for Ansible automation (proposed)",
+      "capabilities": [
+        "vm_provisioning",
+        "configuration_management",
+        "playbook_execution",
+        "inventory_management"
+      ],
+      "use_cases": [
+        "Automated VM configuration",
+        "Multi-VM orchestration",
+        "Infrastructure as Code",
+        "NixOS VM provisioning"
+      ],
+      "implementation_status": "proposed",
+      "priority": "medium",
+      "notes": "Would integrate with existing Vagrant/libvirt setup"
+    },
+    {
+      "name": "terraform-mcp",
+      "type": "custom",
+      "description": "MCP wrapper for Terraform infrastructure (proposed)",
+      "capabilities": [
+        "infrastructure_provisioning",
+        "state_management",
+        "resource_planning",
+        "multi_cloud"
+      ],
+      "use_cases": [
+        "Declarative VM infrastructure",
+        "Cloud VM provisioning",
+        "Infrastructure state management",
+        "Multi-provider orchestration"
+      ],
+      "implementation_status": "proposed",
+      "priority": "low",
+      "notes": "Useful for cloud VM deployments (AWS, GCP, Azure)"
+    },
+    {
+      "name": "chrome-devtools-mcp",
+      "type": "external",
+      "url": "https://github.com/ChromeDevTools/chrome-devtools-mcp",
+      "stars": 15945,
+      "description": "Chrome DevTools for testing web apps in VMs",
+      "capabilities": [
+        "browser_automation",
+        "debugging",
+        "performance_testing",
+        "screenshot_capture"
+      ],
+      "use_cases": [
+        "Test web apps in VM browsers",
+        "Debug applications in isolated VMs",
+        "Automated browser testing",
+        "Performance profiling"
+      ],
+      "priority": "low",
+      "notes": "Useful for web application testing in VMs"
+    },
+    {
+      "name": "playwright-mcp",
+      "type": "external",
+      "url": "https://github.com/executeautomation/playwright-mcp",
+      "description": "Playwright automation for VM-based testing",
+      "capabilities": [
+        "browser_automation",
+        "e2e_testing",
+        "cross_browser_testing",
+        "visual_regression"
+      ],
+      "use_cases": [
+        "Automated testing in VMs",
+        "Cross-browser compatibility",
+        "CI/CD integration",
+        "Visual regression testing"
+      ],
+      "priority": "low"
+    }
+  ],
+  "recommended_setup": [
+    "shell-command",
+    "filesystem",
+    "vm-automation"
+  ],
+  "integration_notes": {
+    "libvirt": "Core VM management via virsh commands",
+    "qemu": "Direct QEMU operations for advanced use cases",
+    "vagrant": "Higher-level VM provisioning",
+    "quickemu": "Quick VM testing (Windows, macOS, etc.)",
+    "helper_scripts": "vm-create-nixos, vm-list, vm-snapshot already available"
+  },
+  "nixos_specifics": {
+    "virtualization_module": "templates/nixos-improvements/virtualization.nix",
+    "libvirt_enabled": true,
+    "virt_manager": "Available via Flatpak (org.virt_manager.virt-manager)",
+    "helper_scripts": [
+      "vm-create-nixos",
+      "vm-list",
+      "vm-snapshot"
+    ],
+    "documentation": "/etc/nixos/VM-QUICKSTART.txt"
+  },
+  "automation_opportunities": [
+    "Automated NixOS VM testing before system rebuild",
+    "CI/CD integration for configuration testing",
+    "Snapshot-based rollback testing",
+    "Multi-VM cluster provisioning",
+    "Resource optimization based on usage patterns"
+  ]
+}

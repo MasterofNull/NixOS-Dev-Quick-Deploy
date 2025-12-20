@@ -1,0 +1,161 @@
+{
+  "catalog_name": "NixOS Development MCP Servers",
+  "description": "MCP servers specifically useful for NixOS, Nix, and declarative system configuration development",
+  "last_updated": "2025-12-19",
+  "servers": [
+    {
+      "name": "filesystem",
+      "type": "builtin",
+      "description": "File system operations for reading/writing Nix configuration files",
+      "capabilities": [
+        "read_file",
+        "write_file",
+        "list_directory",
+        "search_files"
+      ],
+      "use_cases": [
+        "Read and modify configuration.nix",
+        "Browse /etc/nixos structure",
+        "Update home-manager configs"
+      ],
+      "priority": "critical"
+    },
+    {
+      "name": "github-mcp-server",
+      "type": "external",
+      "url": "https://github.com/modelcontextprotocol/servers",
+      "stars": "⭐ High popularity",
+      "description": "GitHub integration for accessing Nix package repositories and NixOS/nixpkgs",
+      "capabilities": [
+        "search_repositories",
+        "read_file_content",
+        "search_code",
+        "create_pull_request"
+      ],
+      "use_cases": [
+        "Search nixpkgs for package definitions",
+        "Browse NixOS modules",
+        "Submit configuration improvements"
+      ],
+      "installation": "npm install -g @modelcontextprotocol/server-github",
+      "priority": "high"
+    },
+    {
+      "name": "git",
+      "type": "builtin",
+      "description": "Git operations for version controlling NixOS configurations",
+      "capabilities": [
+        "git_status",
+        "git_diff",
+        "git_commit",
+        "git_log"
+      ],
+      "use_cases": [
+        "Track configuration changes",
+        "Rollback to previous configs",
+        "Manage flake.lock versions"
+      ],
+      "priority": "critical"
+    },
+    {
+      "name": "nix-search",
+      "type": "custom",
+      "description": "Custom MCP server for searching NixOS packages and options",
+      "capabilities": [
+        "search_packages",
+        "search_options",
+        "get_package_info",
+        "resolve_dependencies"
+      ],
+      "use_cases": [
+        "Find packages by name or description",
+        "Discover available NixOS options",
+        "Check package versions"
+      ],
+      "implementation_status": "proposed",
+      "priority": "high",
+      "notes": "Could wrap 'nix search' and 'nixos-option' commands"
+    },
+    {
+      "name": "shell-command",
+      "type": "builtin",
+      "description": "Execute shell commands including nix-specific tools",
+      "capabilities": [
+        "execute_command",
+        "capture_output"
+      ],
+      "use_cases": [
+        "Run 'nixos-rebuild switch'",
+        "Execute 'nix flake update'",
+        "Check 'nix-store' queries"
+      ],
+      "priority": "critical",
+      "security_note": "Use with caution - can execute arbitrary commands"
+    },
+    {
+      "name": "repomix",
+      "type": "external",
+      "url": "https://github.com/yamadashy/repomix",
+      "stars": 20504,
+      "description": "Pack entire repository into AI-friendly format for analysis",
+      "capabilities": [
+        "analyze_repository",
+        "generate_context",
+        "extract_structure"
+      ],
+      "use_cases": [
+        "Analyze NixOS configuration structure",
+        "Generate context for AI code review",
+        "Document complex Nix expressions"
+      ],
+      "priority": "medium"
+    },
+    {
+      "name": "context7",
+      "type": "external",
+      "url": "https://github.com/upstash/context7",
+      "stars": 38571,
+      "description": "Up-to-date code documentation for LLMs and AI code editors",
+      "capabilities": [
+        "generate_documentation",
+        "code_context",
+        "api_reference"
+      ],
+      "use_cases": [
+        "Generate Nix module documentation",
+        "Document custom NixOS configurations",
+        "Create API references for custom functions"
+      ],
+      "priority": "medium"
+    },
+    {
+      "name": "serena",
+      "type": "external",
+      "url": "https://github.com/oraios/serena",
+      "stars": 16795,
+      "description": "Semantic retrieval and editing capabilities for code",
+      "capabilities": [
+        "semantic_search",
+        "code_editing",
+        "refactoring"
+      ],
+      "use_cases": [
+        "Semantic search across Nix configurations",
+        "Refactor NixOS modules",
+        "Find similar configuration patterns"
+      ],
+      "priority": "medium"
+    }
+  ],
+  "recommended_setup": [
+    "filesystem",
+    "git",
+    "shell-command",
+    "github-mcp-server"
+  ],
+  "integration_notes": {
+    "aidb_mcp_server": "Already configured in ai-stack/mcp-servers/aidb/",
+    "claude_code": "Available through Claude SDK",
+    "open_webui": "Can be configured through plugins"
+  }
+}
