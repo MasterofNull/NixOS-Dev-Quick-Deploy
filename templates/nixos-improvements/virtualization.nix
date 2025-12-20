@@ -122,8 +122,8 @@ in
   environment.systemPackages =
     (with pkgs; [
       # Core virtualization tools
-      virt-manager              # GUI VM manager
-      virt-viewer               # VM display viewer
+      # virt-manager - removed, using Flatpak version (org.virt_manager.virt-manager)
+      # virt-viewer - removed, using Flatpak version (included with virt-manager)
       libvirt                   # Provides virsh CLI and core tooling
 
       # VM automation
@@ -189,7 +189,7 @@ in
         --boot uefi
 
       echo "✅ VM created: $NAME"
-      echo "   Access with: virt-manager"
+      echo "   Access with: virt-manager (Flatpak)"
     '')
 
     (pkgs.writeShellScriptBin "vm-list" ''
@@ -232,9 +232,9 @@ in
       $ virsh start myvm
 
     Connect to VM console:
-      $ virt-manager
-      # OR
-      $ virt-viewer myvm
+      $ flatpak run org.virt_manager.virt-manager
+      # OR (GUI apps should be available in your application menu)
+      # Launch virt-manager from the application menu
 
     Create snapshot:
       $ vm-snapshot myvm my-snapshot

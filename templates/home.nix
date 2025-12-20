@@ -1020,7 +1020,7 @@ RESOURCES
           setuptools
           wheel
           # Jupyter and Interactive Development
-          jupyterlab
+          # jupyterlab - removed, using Flatpak version (org.jupyter.JupyterLab)
           ipykernel
           ipython
           ipywidgets
@@ -1657,8 +1657,8 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           qemu            # Machine emulator and virtualizer
           qemu_kvm        # QEMU with KVM acceleration
           virtiofsd       # VirtIO filesystem daemon
-          virt-manager    # GUI for managing VMs (KVM/QEMU/Libvirt)
-          virt-viewer     # VM display viewer (SPICE/VNC)
+          # virt-manager - removed, using Flatpak version (org.virt_manager.virt-manager)
+          # virt-viewer - removed, using Flatpak version (included with virt-manager)
           libvirt         # Libvirt CLI tools (virsh, virt-install, etc.)
           # Note: virt-install is provided by system-level virtualization.nix if available
           virt-top        # VM resource monitoring
@@ -1794,23 +1794,23 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
         # ========================================================================
         # PCB & Electronics Design
         # ========================================================================
-        kicad                   # Full EDA suite (schematic + PCB + 3D viewer)
+        # kicad - removed, using Flatpak version (org.kicad.KiCad)
         ngspice                 # SPICE simulation for circuit analysis
         # kicad-nightly          # Bleeding edge KiCad (uncomment if needed)
 
         # ========================================================================
         # Mechanical CAD / 3D Modeling
         # ========================================================================
-        freecad                 # Parametric 3D CAD (also CNC/CAM via Path workbench)
-        openscad                # Programmatic 3D modeling (code-based)
+        # freecad - removed, using Flatpak version (org.freecad.FreeCAD)
+        # openscad - removed, using Flatpak version (org.openscad.OpenSCAD)
         blender                 # 3D creation suite (modeling, animation, rendering)
         # solvespace            # Parametric 2D/3D CAD (lightweight, uncomment if available)
 
         # ========================================================================
         # 3D Printing / Slicing (CLI tools - GUI via Flatpak)
         # ========================================================================
-        prusa-slicer            # PrusaSlicer CLI (also available as Flatpak)
-        # Note: openscad listed above for generating STLs from code
+        # prusa-slicer - removed, using Flatpak version (com.prusa3d.PrusaSlicer)
+        # Note: openscad available as Flatpak for generating STLs from code
 
         # ========================================================================
         # CNC Machining & CAM

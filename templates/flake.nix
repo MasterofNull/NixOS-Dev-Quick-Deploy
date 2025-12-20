@@ -83,15 +83,16 @@
 
       devShells.${system} = {
         # PCB / electronics design environment
+        # Note: KiCad, FreeCAD, OpenSCAD available via Flatpak
         pcb-design = devPkgs.mkShell {
           packages = with devPkgs; [
-            kicad
-            freecad
-            openscad
+            # kicad - using Flatpak (org.kicad.KiCad)
+            # freecad - using Flatpak (org.freecad.FreeCAD)
+            # openscad - using Flatpak (org.openscad.OpenSCAD)
             ngspice
           ];
           shellHook = ''
-            echo "📐 PCB design shell ready (KiCad, FreeCAD, OpenSCAD, ngspice)."
+            echo "📐 PCB design shell ready (ngspice). Note: KiCad, FreeCAD, OpenSCAD available via Flatpak."
           '';
         };
 
@@ -110,14 +111,15 @@
         };
 
         # Mechanical CAD / 3D printing environment
+        # Note: FreeCAD, OpenSCAD available via Flatpak
         cad-cam = devPkgs.mkShell {
           packages = with devPkgs; [
-            freecad
-            openscad
+            # freecad - using Flatpak (org.freecad.FreeCAD)
+            # openscad - using Flatpak (org.openscad.OpenSCAD)
             blender
           ];
           shellHook = ''
-            echo "🛠️  CAD/CAM shell ready (FreeCAD, OpenSCAD, Blender)."
+            echo "🛠️  CAD/CAM shell ready (Blender). Note: FreeCAD, OpenSCAD available via Flatpak."
             '';
         };
 

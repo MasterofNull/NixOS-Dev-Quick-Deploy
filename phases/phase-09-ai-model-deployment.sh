@@ -57,6 +57,24 @@ phase_09_ai_model_deployment() {
     echo "LEMONADE_DEFAULT_MODEL=$selected_model" > "${CACHE_DIR}/preferences/ai-model.env"
     echo "GPU_VRAM=$gpu_vram" >> "${CACHE_DIR}/preferences/ai-model.env"
 
+    # Pre-download recommended GGUF models
+    log_info "Pre-downloading recommended GGUF models..."
+    if [ -f "${SCRIPT_DIR}/scripts/download-lemonade-models.sh" ]; then
+        log_info "This may take some time depending on your internet connection"
+        read -p "Download all recommended models now? [Y/n]: " download_confirm
+
+        if [[ ! "$download_confirm" =~ ^[Nn]$ ]]; then
+            # Run the download script in automatic mode
+            bash "${SCRIPT_DIR}/scripts/download-lemonade-models.sh" --all || {
+                log_warning "Model download incomplete. Models will download on first container startup."
+            }
+        else
+            log_info "Models will download automatically on first container startup"
+        fi
+    else
+        log_warning "Model download script not found, models will download on first container startup"
+    fi
+
     # Deploy AI-Optimizer with selected model
     log_info "Deploying AI-Optimizer with model: $selected_model"
 
