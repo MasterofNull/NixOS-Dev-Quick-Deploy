@@ -126,10 +126,28 @@ fi
 echo ""
 
 # ============================================================================
-# Step 4: Download GGUF Models
+# Step 4: Create Required Directories
 # ============================================================================
 
-info "Step 4: Downloading GGUF models..."
+info "Step 4: Creating required directories..."
+
+# Create all required directories for AI stack
+mkdir -p ~/.local/share/nixos-ai-stack/lemonade-models
+mkdir -p ~/.local/share/nixos-ai-stack/fine-tuning
+mkdir -p ~/.cache/huggingface
+mkdir -p ~/.cache/nixos-ai-stack
+mkdir -p /var/lib/hybrid-learning/{models,exports,fine-tuning} 2>/dev/null || {
+    info "System directories require sudo access, will be created by NixOS module"
+}
+
+success "Directories created"
+echo ""
+
+# ============================================================================
+# Step 5: Download GGUF Models
+# ============================================================================
+
+info "Step 5: Downloading GGUF models..."
 
 read -p "Download all recommended models now? (~10.5GB) [Y/n]: " download_confirm
 
@@ -146,10 +164,10 @@ fi
 echo ""
 
 # ============================================================================
-# Step 5: Start AI Stack
+# Step 6: Start AI Stack
 # ============================================================================
 
-info "Step 5: Starting AI stack containers..."
+info "Step 6: Starting AI stack containers..."
 
 cd "${PROJECT_ROOT}/ai-stack/compose"
 
@@ -166,10 +184,10 @@ info "Waiting for services to initialize..."
 sleep 5
 
 # ============================================================================
-# Step 6: Verify Services
+# Step 7: Verify Services
 # ============================================================================
 
-info "Step 6: Verifying services..."
+info "Step 7: Verifying services..."
 
 check_service() {
     local name=$1
@@ -202,10 +220,10 @@ check_service "Open WebUI" 3000 ""
 echo ""
 
 # ============================================================================
-# Step 7: Initialize Qdrant Collections
+# Step 8: Initialize Qdrant Collections
 # ============================================================================
 
-info "Step 7: Initializing Qdrant collections..."
+info "Step 8: Initializing Qdrant collections..."
 
 python3 << 'PYTHON_SCRIPT'
 import sys
@@ -227,10 +245,10 @@ PYTHON_SCRIPT
 echo ""
 
 # ============================================================================
-# Step 8: Create Test Interaction
+# Step 9: Create Test Interaction
 # ============================================================================
 
-info "Step 8: Creating test interaction to verify system..."
+info "Step 9: Creating test interaction to verify system..."
 
 python3 << 'PYTHON_SCRIPT'
 import asyncio

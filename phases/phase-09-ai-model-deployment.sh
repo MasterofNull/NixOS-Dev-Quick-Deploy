@@ -75,6 +75,18 @@ phase_09_ai_model_deployment() {
         log_warning "Model download script not found, models will download on first container startup"
     fi
 
+    # Setup Hybrid Learning System
+    log_info "Setting up Hybrid Local-Remote AI Learning System..."
+    if [ -f "${SCRIPT_DIR}/scripts/setup-hybrid-learning.sh" ]; then
+        if bash "${SCRIPT_DIR}/scripts/setup-hybrid-learning.sh"; then
+            log_success "Hybrid learning system initialized"
+        else
+            log_warning "Hybrid learning setup encountered issues but will continue"
+        fi
+    else
+        log_warning "Hybrid learning setup script not found"
+    fi
+
     # Deploy AI-Optimizer with selected model
     log_info "Deploying AI-Optimizer with model: $selected_model"
 
@@ -105,10 +117,35 @@ Check Status:
   docker ps | grep lemonade
   curl http://localhost:8000/api/v1/health
 
+System Dashboard:
+  • Open: ai-stack/dashboard/index.html in your browser
+  • Monitor all services, learning metrics, and federation status
+  • Access all documentation from one central hub
+  • Real-time health checks every 30 seconds
+
 Once Ready:
   • AIDB MCP Server: http://localhost:8091
-  • Lemonade Inference: http://localhost:8000/api/v1
+  • Lemonade General: http://localhost:8000/api/v1
+  • Lemonade Coder: http://localhost:8001/api/v1
+  • Lemonade DeepSeek: http://localhost:8003/api/v1
+  • Qdrant Vector DB: http://localhost:6333
+  • Hybrid Coordinator MCP Server: Available via MCP protocol
   • AI Assistant available in deployment scripts
+
+Hybrid Learning Features:
+  ✓ Context augmentation from local knowledge base
+  ✓ Automatic interaction tracking and value scoring
+  ✓ Pattern extraction from successful interactions
+  ✓ Multi-node federation for distributed learning
+  ✓ Fine-tuning dataset generation
+  ✓ Continuous improvement of local LLMs
+
+Documentation:
+  • Quick Start: AI-AGENT-SETUP.md
+  • Complete Guide: HYBRID-AI-SYSTEM-GUIDE.md
+  • Architecture: ai-knowledge-base/HYBRID-LEARNING-ARCHITECTURE.md
+  • Multi-Node Setup: DISTRIBUTED-LEARNING-GUIDE.md
+  • Dashboard Guide: SYSTEM-DASHBOARD-README.md
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
