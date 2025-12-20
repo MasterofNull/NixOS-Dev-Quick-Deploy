@@ -79,8 +79,20 @@ info "Step 2: Installing Hybrid Coordinator dependencies..."
 
 cd "${PROJECT_ROOT}/ai-stack/mcp-servers/hybrid-coordinator"
 
-if pip3 install -r requirements.txt; then
-    success "Dependencies installed"
+# Create virtual environment if it doesn't exist
+if [ ! -d "venv" ]; then
+    info "Creating Python virtual environment..."
+    python3 -m venv venv || {
+        error "Failed to create virtual environment"
+        exit 1
+    }
+fi
+
+# Activate virtual environment and install dependencies
+info "Installing dependencies in virtual environment..."
+if source venv/bin/activate && pip install -r requirements.txt; then
+    success "Dependencies installed in virtual environment"
+    deactivate
 else
     error "Failed to install dependencies"
     exit 1
@@ -171,8 +183,8 @@ info "Step 6: Starting AI stack containers..."
 
 cd "${PROJECT_ROOT}/ai-stack/compose"
 
-# Start services
-if $COMPOSE_CMD up -d; then
+# Start services using hybrid compose file
+if $COMPOSE_CMD -f docker-compose.hybrid.yml up -d; then
     success "AI stack started"
 else
     error "Failed to start AI stack"
