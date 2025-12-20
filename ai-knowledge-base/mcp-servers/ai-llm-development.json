@@ -1,0 +1,279 @@
+{
+  "catalog_name": "AI/LLM Development MCP Servers",
+  "description": "MCP servers for AI development, LLM integration, and agentic workflows",
+  "last_updated": "2025-12-19",
+  "servers": [
+    {
+      "name": "aidb",
+      "type": "custom",
+      "path": "ai-stack/mcp-servers/aidb/",
+      "description": "Custom AIDB MCP server with Qdrant, Lemonade, and Ollama integration",
+      "capabilities": [
+        "vector_search",
+        "llm_inference",
+        "context_management",
+        "parallel_inference"
+      ],
+      "use_cases": [
+        "RAG-powered code search",
+        "Multi-model inference routing",
+        "Knowledge base querying",
+        "Constraint-engineered development"
+      ],
+      "priority": "critical",
+      "status": "implemented",
+      "apis": {
+        "qdrant": "http://localhost:6333",
+        "lemonade": "http://localhost:8000/api/v1",
+        "lemonade_coder": "http://localhost:8001/api/v1",
+        "lemonade_deepseek": "http://localhost:8003/api/v1",
+        "ollama": "http://localhost:11434/api"
+      }
+    },
+    {
+      "name": "dify",
+      "type": "external",
+      "url": "https://github.com/langgenius/dify",
+      "stars": 120550,
+      "description": "Production-ready platform for agentic workflow development",
+      "capabilities": [
+        "workflow_orchestration",
+        "agent_management",
+        "llm_integration",
+        "rag_pipeline"
+      ],
+      "use_cases": [
+        "Build complex AI workflows",
+        "Orchestrate multiple agents",
+        "Production LLM deployment",
+        "RAG application development"
+      ],
+      "priority": "high",
+      "deployment": "Can be deployed via Podman alongside existing stack"
+    },
+    {
+      "name": "anything-llm",
+      "type": "external",
+      "url": "https://github.com/Mintplex-Labs/anything-llm",
+      "stars": 51842,
+      "description": "All-in-one Desktop & Docker AI application with RAG and agents",
+      "capabilities": [
+        "custom_ai_agents",
+        "document_rag",
+        "multi_model_support",
+        "workspace_management"
+      ],
+      "use_cases": [
+        "Document Q&A with RAG",
+        "Custom agent creation",
+        "Multi-workspace LLM management",
+        "Privacy-focused AI deployment"
+      ],
+      "priority": "medium",
+      "notes": "Alternative to Open WebUI with stronger agent focus"
+    },
+    {
+      "name": "composio",
+      "type": "external",
+      "url": "https://github.com/ComposioHQ/composio",
+      "stars": 26198,
+      "description": "100+ high-quality integrations for AI agents via function calling",
+      "capabilities": [
+        "tool_integration",
+        "function_calling",
+        "api_connections",
+        "agent_tools"
+      ],
+      "use_cases": [
+        "Extend agent capabilities",
+        "Connect to external APIs",
+        "Automated workflows",
+        "Multi-tool orchestration"
+      ],
+      "priority": "high",
+      "integration": "Can enhance AIDB MCP server capabilities"
+    },
+    {
+      "name": "gpt-researcher",
+      "type": "external",
+      "url": "https://github.com/assafelovic/gpt-researcher",
+      "stars": 24384,
+      "description": "LLM agent for deep research with web and local sources",
+      "capabilities": [
+        "web_research",
+        "report_generation",
+        "source_aggregation",
+        "fact_checking"
+      ],
+      "use_cases": [
+        "Technical research",
+        "Documentation generation",
+        "Competitive analysis",
+        "Knowledge synthesis"
+      ],
+      "priority": "medium"
+    },
+    {
+      "name": "goose",
+      "type": "external",
+      "url": "https://github.com/block/goose",
+      "stars": 22677,
+      "description": "Extensible AI agent beyond code suggestions - install, execute, edit",
+      "capabilities": [
+        "code_generation",
+        "code_execution",
+        "system_commands",
+        "mcp_support"
+      ],
+      "use_cases": [
+        "Autonomous coding tasks",
+        "System automation",
+        "Development workflow",
+        "MCP-based tool usage"
+      ],
+      "priority": "high",
+      "notes": "Native MCP support, complementary to Claude Code"
+    },
+    {
+      "name": "mastra",
+      "type": "external",
+      "url": "https://github.com/mastra-ai/mastra",
+      "stars": 18621,
+      "description": "TypeScript AI agent framework with RAG and observability",
+      "capabilities": [
+        "agent_framework",
+        "rag_support",
+        "llm_integration",
+        "observability"
+      ],
+      "use_cases": [
+        "TypeScript-based agents",
+        "Custom chatbots",
+        "Evaluation pipelines",
+        "Multi-LLM support"
+      ],
+      "priority": "medium",
+      "deployment": "Good fit for ts-dev flake environment"
+    },
+    {
+      "name": "activepieces",
+      "type": "external",
+      "url": "https://github.com/activepieces/activepieces",
+      "stars": 19360,
+      "description": "AI Agents & MCPs & AI Workflow Automation (~400 MCP servers)",
+      "capabilities": [
+        "workflow_automation",
+        "mcp_aggregation",
+        "ai_agents",
+        "integration_hub"
+      ],
+      "use_cases": [
+        "Discover MCP servers",
+        "Workflow automation",
+        "Agent orchestration",
+        "Integration management"
+      ],
+      "priority": "high",
+      "notes": "Provides access to ~400 MCP servers"
+    },
+    {
+      "name": "mindsdb",
+      "type": "external",
+      "url": "https://github.com/mindsdb/mindsdb",
+      "stars": 37440,
+      "description": "Federated query engine for AI - The only MCP Server you'll ever need",
+      "capabilities": [
+        "federated_queries",
+        "ai_integration",
+        "database_connection",
+        "mcp_hub"
+      ],
+      "use_cases": [
+        "Query multiple data sources",
+        "AI-powered analytics",
+        "Data federation",
+        "Unified MCP interface"
+      ],
+      "priority": "high",
+      "notes": "Claims to be comprehensive MCP solution"
+    },
+    {
+      "name": "LibreChat",
+      "type": "external",
+      "url": "https://github.com/danny-avila/LibreChat",
+      "stars": 32156,
+      "description": "Enhanced ChatGPT Clone with Agents, MCP, DeepSeek, Anthropic, OpenAI",
+      "capabilities": [
+        "chat_interface",
+        "agent_support",
+        "mcp_integration",
+        "multi_provider"
+      ],
+      "use_cases": [
+        "Self-hosted ChatGPT alternative",
+        "Multi-model chat interface",
+        "Agent conversations",
+        "MCP tool usage"
+      ],
+      "priority": "medium",
+      "notes": "Alternative to Open WebUI"
+    },
+    {
+      "name": "trigger.dev",
+      "type": "external",
+      "url": "https://github.com/triggerdotdev/trigger.dev",
+      "stars": 12909,
+      "description": "Build and deploy fully-managed AI agents and workflows",
+      "capabilities": [
+        "agent_deployment",
+        "workflow_management",
+        "background_jobs",
+        "ai_automation"
+      ],
+      "use_cases": [
+        "Production agent deployment",
+        "Scheduled AI tasks",
+        "Background processing",
+        "Workflow automation"
+      ],
+      "priority": "medium"
+    },
+    {
+      "name": "n8n",
+      "type": "external",
+      "url": "https://github.com/n8n-io/n8n",
+      "stars": 160595,
+      "description": "Fair-code workflow automation with native AI capabilities",
+      "capabilities": [
+        "visual_workflows",
+        "ai_integration",
+        "400+_integrations",
+        "mcp_client_server"
+      ],
+      "use_cases": [
+        "No-code AI workflows",
+        "Integration automation",
+        "Data pipeline orchestration",
+        "MCP orchestration"
+      ],
+      "priority": "high",
+      "notes": "Most popular workflow automation platform, MCP client & server"
+    }
+  ],
+  "recommended_setup": [
+    "aidb",
+    "composio",
+    "goose",
+    "activepieces"
+  ],
+  "deployment_notes": {
+    "aidb": "Already deployed in ai-stack/",
+    "external_servers": "Can be added to Podman compose stack",
+    "mcp_integration": "Most support OpenAI-compatible APIs (Lemonade/Ollama)"
+  },
+  "model_compatibility": {
+    "lemonade": "OpenAI-compatible API, works with all servers",
+    "ollama": "Native Ollama support in many servers",
+    "qdrant": "Vector DB integration for RAG pipelines"
+  }
+}
