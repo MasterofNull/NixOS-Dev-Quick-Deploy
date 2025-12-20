@@ -1,5 +1,7 @@
 # Hybrid Local-Remote AI Learning Architecture
 
+> **📊 System Dashboard**: View real-time architecture status and metrics at [../ai-stack/dashboard/index.html](../ai-stack/dashboard/index.html)
+
 ## Overview
 
 A continuous learning system where **local LLMs** (Lemonade/Ollama) support **remote agents** (Claude, GPT-4) with context augmentation, while learning from interactions to improve over time.

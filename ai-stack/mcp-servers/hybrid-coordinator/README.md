@@ -2,6 +2,8 @@
 
 Intelligently coordinates between local LLMs and remote AI agents while implementing continuous learning through interaction tracking and pattern extraction.
 
+> **📊 System Dashboard**: Monitor coordinator status and learning metrics at [../../dashboard/index.html](../../dashboard/index.html)
+
 ## Features
 
 ### 1. Context Augmentation

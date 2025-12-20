@@ -2,6 +2,8 @@
 
 Complete guide for setting up AI agents, downloading GGUF models, and leveraging the NixOS-Dev-Quick-Deploy AI knowledge base.
 
+> **📊 System Dashboard**: Monitor all services and check deployment status at [ai-stack/dashboard/index.html](ai-stack/dashboard/index.html)
+
 ## Quick Start
 
 ### 1. Download Lemonade GGUF Models
