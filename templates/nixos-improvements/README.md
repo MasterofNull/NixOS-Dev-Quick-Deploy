@@ -14,6 +14,9 @@ This directory contains modular NixOS configuration improvements for the NixOS-D
 | `virtualization.nix` | KVM/QEMU/Libvirt stack | **High** |
 | `testing.nix` | pytest + testing infrastructure | **High** |
 | `optimizations.nix` | NixOS 25.11 performance tuning | **Medium** |
+| `mobile-workstation.nix` | Laptop/battery/AMD iGPU optimizations | **Medium** |
+| `podman.nix` | Rootless container configuration | **Medium** |
+| `ai-env.nix` | AI/ML development environment | **Medium** |
 
 ---
 
@@ -29,6 +32,7 @@ Add to your `configuration.nix`:
     ./hardware-configuration.nix
     ./nixos-improvements/virtualization.nix
     ./nixos-improvements/optimizations.nix
+    ./nixos-improvements/mobile-workstation.nix  # For laptops
   ];
 }
 ```
@@ -225,6 +229,62 @@ vim pytest.ini
 
 ---
 
+### 4. Mobile Workstation (`mobile-workstation.nix`)
+
+**What it provides:**
+- ✅ TLP for advanced battery optimization
+- ✅ Power-profiles-daemon integration
+- ✅ AMD P-State driver for efficient CPU scaling
+- ✅ AMD iGPU optimizations (ROCm, RADV, VA-API)
+- ✅ WiFi power saving with iwd backend
+- ✅ Lid close/suspend handling
+- ✅ Hibernate support
+- ✅ Thermal management (thermald)
+- ✅ Bluetooth power management
+- ✅ Brightness control (light, brightnessctl)
+
+**Expected improvements:**
+- 🔋 **Battery life:** 20-40% improvement
+- 🌡️ **Thermals:** Better heat management
+- 📶 **WiFi:** Faster roaming, lower power
+- ⚡ **AMD iGPU:** Hardware acceleration enabled
+
+**Power Profiles:**
+| Setting | On AC | On Battery |
+|---------|-------|------------|
+| CPU Governor | performance | powersave |
+| CPU Boost | enabled | disabled |
+| WiFi Power Save | off | on |
+| PCIe ASPM | default | powersupersave |
+
+**Usage after installation:**
+```bash
+# Check TLP status
+sudo tlp-stat -s
+
+# Check battery status
+acpi -V
+upower -d
+
+# Power consumption analysis
+sudo powertop
+
+# Control brightness
+brightnessctl set 50%
+light -S 50
+
+# Check temperatures
+sensors
+```
+
+**Benefits:**
+- Automatic power profile switching
+- Optimized for AMD Ryzen laptops
+- Compatible with Intel/NVIDIA too
+- Clean suspend/hibernate
+
+---
+
 ## 🔧 Troubleshooting
 
 ### Virtualization
@@ -289,6 +349,56 @@ boot.initrd.systemd.enable = false;
 powerManagement.cpuFreqGovernor = "schedutil";
 ```
 
+### Mobile Workstation
+
+**Issue:** Battery draining quickly
+
+**Solution:**
+```bash
+# Check what's consuming power
+sudo powertop
+
+# Auto-tune power settings
+sudo powertop --auto-tune
+
+# Check TLP status
+sudo tlp-stat -s
+```
+
+**Issue:** TLP conflicts with power-profiles-daemon
+
+**Solution:**
+```nix
+# Use only one - TLP is more comprehensive
+services.tlp.enable = true;
+services.power-profiles-daemon.enable = false;
+```
+
+**Issue:** WiFi slow or disconnecting
+
+**Solution:**
+```nix
+# Disable WiFi power saving if unstable
+networking.networkmanager.wifi.powersave = false;
+
+# Or switch back to wpa_supplicant
+networking.networkmanager.wifi.backend = "wpa_supplicant";
+```
+
+**Issue:** AMD GPU not using hardware acceleration
+
+**Solution:**
+```bash
+# Check if VA-API is working
+vainfo
+
+# Check if Vulkan is working
+vulkaninfo | head -20
+
+# Ensure RADV is being used
+echo $LIBVA_DRIVER_NAME  # Should be "radeonsi"
+```
+
 ---
 
 ## 📊 Validation Checklist
@@ -312,6 +422,14 @@ After applying improvements, verify:
 - [ ] Nix builds faster: `time nix-build '<nixpkgs>' -A hello`
 - [ ] Zswap active: `cat /sys/module/zswap/parameters/enabled` shows Y
 - [ ] I/O scheduler correct: `cat /sys/block/nvme0n1/queue/scheduler`
+
+### Mobile Workstation
+- [ ] TLP active: `sudo tlp-stat -s` shows "TLP power save = enabled"
+- [ ] Battery detected: `acpi -V` shows battery info
+- [ ] Power profiles work: unplug AC, check `cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor`
+- [ ] WiFi power save: `iw dev wlan0 get power_save` shows "on" (battery) or "off" (AC)
+- [ ] AMD P-State active: `cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver` shows "amd_pstate"
+- [ ] Hardware acceleration: `vainfo` shows supported profiles
 
 ---
 

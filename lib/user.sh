@@ -422,6 +422,16 @@ persist_local_ai_stack_preferences() {
     printf 'LOCAL_AI_STACK_ENABLED=%s\n' "${LOCAL_AI_STACK_ENABLED:-false}" >"$LOCAL_AI_STACK_PREFERENCE_FILE"
 }
 
+persist_llm_backend_preferences() {
+    safe_mkdir "$DEPLOYMENT_PREFERENCES_DIR" || return 1
+    printf 'LLM_BACKEND=%s\n' "${LLM_BACKEND:-ollama}" >"$LLM_BACKEND_PREFERENCE_FILE"
+}
+
+persist_llm_models_preferences() {
+    safe_mkdir "$DEPLOYMENT_PREFERENCES_DIR" || return 1
+    printf 'LLM_MODELS=%s\n' "${LLM_MODELS:-}" >"$LLM_MODELS_PREFERENCE_FILE"
+}
+
 persist_huggingface_token_preferences() {
     safe_mkdir "$DEPLOYMENT_PREFERENCES_DIR" || return 1
     if [[ -n "${HUGGINGFACEHUB_API_TOKEN:-}" ]]; then
@@ -495,7 +505,19 @@ prompt_huggingface_token() {
 
     # Respect previously stored selection when running non-interactively
     if [[ "$interactive" == "false" ]]; then
-        if [[ -n "${HUGGINGFACEHUB_API_TOKEN:-}" ]]; then
+        # In non-interactive mode, respect existing preference file first
+        if [[ -f "$LOCAL_AI_STACK_PREFERENCE_FILE" ]]; then
+            _local_ai_cached=$(awk -F'=' '/^LOCAL_AI_STACK_ENABLED=/{print $2}' "$LOCAL_AI_STACK_PREFERENCE_FILE" 2>/dev/null | tail -n1 | tr -d '\r')
+            case "$_local_ai_cached" in
+                true)
+                    LOCAL_AI_STACK_ENABLED="true"
+                    ;;
+                false|*)
+                    LOCAL_AI_STACK_ENABLED="false"
+                    ;;
+            esac
+        elif [[ -n "${HUGGINGFACEHUB_API_TOKEN:-}" ]]; then
+            # If no preference but token exists, enable AI stack
             LOCAL_AI_STACK_ENABLED="true"
         else
             LOCAL_AI_STACK_ENABLED="false"
@@ -505,41 +527,149 @@ prompt_huggingface_token() {
         return 0
     fi
 
-    print_section "Hugging Face Token (Optional)"
-    print_info "Provide a Hugging Face access token to enable the local AI stack (TGI, Ollama/Open WebUI integration, Continue presets)."
-    print_info "Leave blank to skip configuring and starting locally hosted AI agents."
+    # Always show this section header in interactive mode
+    print_section "Local AI Stack (Podman Containers)"
+    print_info "The local AI stack includes Podman containers for:"
+    print_info "  • Ollama - Local LLM inference runtime"
+    print_info "  • Open WebUI - Web interface for AI models"
+    print_info "  • Qdrant - Vector database for embeddings"
+    print_info "  • MindsDB - AI workflow orchestration"
+    echo ""
 
-    if [[ -n "${HUGGINGFACEHUB_API_TOKEN:-}" ]]; then
-        print_info "Detected an existing Hugging Face token; press Enter to keep it or enter a new one."
-    fi
-
-    local token_input
-    token_input=$(prompt_secret "Hugging Face token (blank to disable local AI stack)")
-
-    if [[ -z "$token_input" ]]; then
-        if [[ -n "${HUGGINGFACEHUB_API_TOKEN:-}" ]]; then
-            token_input="$HUGGINGFACEHUB_API_TOKEN"
+    # First, ask if user wants to enable the AI stack
+    # In interactive mode, always show the prompt (even if previously set to false)
+    # This allows users to change their mind during deployment
+    local enable_ai_stack=false
+    
+    # Check if confirm function is available
+    if ! declare -F confirm >/dev/null 2>&1; then
+        print_error "confirm function not available - cannot prompt for AI stack"
+        enable_ai_stack=false
+        LOCAL_AI_STACK_ENABLED="false"
+    else
+        # Always prompt in interactive mode, but use previous selection as default
+        local default_choice="n"
+        if [[ "${LOCAL_AI_STACK_ENABLED:-}" == "true" ]]; then
+            default_choice="y"
+        fi
+        
+        if confirm "Enable local AI stack (Podman containers)?" "$default_choice"; then
+            enable_ai_stack=true
+            LOCAL_AI_STACK_ENABLED="true"
+        else
+            enable_ai_stack=false
+            LOCAL_AI_STACK_ENABLED="false"
         fi
     fi
 
-    if [[ -z "$token_input" ]]; then
+    # If AI stack is enabled, ask for LLM backend and optional Hugging Face token
+    if [[ "$enable_ai_stack" == "true" ]]; then
+        echo ""
+        print_section "LLM Backend Selection"
+        print_info "Choose your LLM inference backend:"
+        print_info "  1) Ollama   - Universal, works on all platforms (NVIDIA, AMD, CPU)"
+        print_info "  2) Lemonade - Optimized for AMD GPUs with ROCm (llama.cpp based)"
+        echo ""
+        
+        # Show current selection
+        local current_backend="${LLM_BACKEND:-ollama}"
+        if [[ "$current_backend" == "lemonade" ]]; then
+            print_info "Current selection: Lemonade (AMD optimized)"
+        else
+            print_info "Current selection: Ollama (universal)"
+        fi
+        
+        local backend_choice
+        read -rp "$(echo -e "${BLUE}Select backend [1=Ollama, 2=Lemonade]${NC} (default: $current_backend): ")" backend_choice
+        
+        case "$backend_choice" in
+            2|lemonade|Lemonade|LEMONADE)
+                LLM_BACKEND="lemonade"
+                print_success "Selected: Lemonade (AMD optimized)"
+                ;;
+            1|ollama|Ollama|OLLAMA|"")
+                LLM_BACKEND="ollama"
+                print_success "Selected: Ollama (universal)"
+                ;;
+            *)
+                LLM_BACKEND="$current_backend"
+                print_info "Keeping current selection: $LLM_BACKEND"
+                ;;
+        esac
+        export LLM_BACKEND
+        
+        # Ask for model configuration
+        echo ""
+        print_section "LLM Models Configuration"
+        
+        # Default models (same for both backends)
+        local default_models="gpt-oss,qwen-3,Apriel-1.5"
+        print_info "Default models: $default_models"
+        print_info "  • gpt-oss    - General purpose model"
+        print_info "  • qwen-3     - Multilingual reasoning model"
+        print_info "  • Apriel-1.5 - Efficient instruction-following model"
+        
+        local current_models="${LLM_MODELS:-$default_models}"
+        print_info "Current models: $current_models"
+        print_info "Enter comma-separated model names to customize, or press Enter for defaults."
+        
+        local models_input
+        read -rp "$(echo -e "${BLUE}Models${NC} (blank for defaults): ")" models_input
+        
+        if [[ -n "$models_input" ]]; then
+            LLM_MODELS="$models_input"
+        else
+            LLM_MODELS="$default_models"
+        fi
+        export LLM_MODELS
+        print_success "Models configured: $LLM_MODELS"
+        
+        # Optionally ask for Hugging Face token
+        echo ""
+        print_section "Hugging Face Token (Optional)"
+        print_info "A Hugging Face token enables additional AI features:"
+        print_info "  • Access to Hugging Face model repositories"
+        print_info "  • TGI (Text Generation Inference) integration"
+        print_info "  • Enhanced Continue.dev presets"
+        print_info "You can skip this and add a token later if needed."
+
+        if [[ -n "${HUGGINGFACEHUB_API_TOKEN:-}" ]]; then
+            print_info "Detected an existing Hugging Face token; press Enter to keep it or enter a new one."
+        fi
+
+        local token_input
+        token_input=$(prompt_secret "Hugging Face token (blank to skip)")
+
+        if [[ -z "$token_input" ]]; then
+            if [[ -n "${HUGGINGFACEHUB_API_TOKEN:-}" ]]; then
+                token_input="$HUGGINGFACEHUB_API_TOKEN"
+            fi
+        fi
+
+        if [[ -n "$token_input" ]]; then
+            HUGGINGFACEHUB_API_TOKEN="$token_input"
+            export HUGGINGFACEHUB_API_TOKEN
+            ensure_huggingface_token_file "$token_input" || true
+            print_success "Hugging Face token saved."
+        else
+            print_info "Skipping Hugging Face token (can be added later)."
+        fi
+
+        persist_local_ai_stack_preferences || true
+        persist_llm_backend_preferences || true
+        persist_llm_models_preferences || true
+        persist_huggingface_token_preferences || true
+        export LOCAL_AI_STACK_ENABLED
+
+        print_success "Local AI stack enabled with $LLM_BACKEND backend."
+    else
         LOCAL_AI_STACK_ENABLED="false"
         unset HUGGINGFACEHUB_API_TOKEN
         persist_local_ai_stack_preferences || true
         persist_huggingface_token_preferences || true
-        print_warning "Local AI stack disabled (no Hugging Face token provided)."
-        return 0
+        print_info "Local AI stack disabled."
     fi
 
-    HUGGINGFACEHUB_API_TOKEN="$token_input"
-    LOCAL_AI_STACK_ENABLED="true"
-    export HUGGINGFACEHUB_API_TOKEN LOCAL_AI_STACK_ENABLED
-
-    persist_local_ai_stack_preferences || true
-    persist_huggingface_token_preferences || true
-    ensure_huggingface_token_file "$token_input" || true
-
-    print_success "Hugging Face token captured; local AI stack will be configured."
     return 0
 }
 
@@ -584,8 +714,15 @@ ensure_user_settings_ready() {
         gather_flag="--interactive"
     fi
 
+    # Gather basic user info (timezone, shell, editor, etc.)
+    # Don't fail completely if this has issues - use defaults and continue
     if ! gather_user_info "$gather_flag"; then
-        return 1
+        print_warning "User info gathering had issues, using defaults and continuing..."
+        # Set safe defaults if gather_user_info failed
+        SELECTED_TIMEZONE="${SELECTED_TIMEZONE:-$(timedatectl show --property=Timezone --value 2>/dev/null || echo "America/New_York")}"
+        SELECTED_SHELL="${SELECTED_SHELL:-$(getent passwd "$USER" | cut -d: -f7 | xargs basename 2>/dev/null || echo "bash")}"
+        SELECTED_EDITOR="${SELECTED_EDITOR:-${EDITOR:-vim}}"
+        USER_DESCRIPTION="${USER_DESCRIPTION:-$USER}"
     fi
 
     if [[ "$interactive" == "true" ]]; then
@@ -600,22 +737,36 @@ ensure_user_settings_ready() {
         prompt_flag="--interactive"
     fi
 
+    # Prompt for git identity - continue even if it fails
     if declare -F prompt_git_identity >/dev/null 2>&1; then
-        prompt_git_identity "$prompt_flag" || true
+        if ! prompt_git_identity "$prompt_flag"; then
+            print_warning "Git identity prompt had issues, but continuing..."
+        fi
+    else
+        print_warning "prompt_git_identity function not found - git identity prompt will be skipped"
     fi
 
+    # Prompt for Flatpak profile - continue even if it fails
     if declare -F select_flatpak_profile >/dev/null 2>&1; then
-        select_flatpak_profile "$prompt_flag" || true
+        if ! select_flatpak_profile "$prompt_flag"; then
+            print_warning "Flatpak profile selection had issues, but continuing..."
+        fi
+    else
+        print_warning "select_flatpak_profile function not found - Flatpak profile prompt will be skipped"
     fi
 
     if declare -F ensure_gitea_secrets_ready >/dev/null 2>&1; then
         if ! ensure_gitea_secrets_ready "$prompt_flag"; then
-            return 1
+            print_warning "Gitea secrets preparation had issues, but continuing with other prompts..."
+            # Don't return early - continue to other prompts
         fi
     fi
 
+    # Always prompt for AI stack (even if Gitea setup had issues)
     if declare -F prompt_huggingface_token >/dev/null 2>&1; then
         prompt_huggingface_token "$prompt_flag" || true
+    else
+        print_warning "prompt_huggingface_token function not found - AI stack prompt will be skipped"
     fi
 
     USER_SETTINGS_INITIALIZED="true"

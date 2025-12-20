@@ -76,6 +76,7 @@ prune_flatpak_app_everywhere() {
     for array_name in \
         "FLATPAK_PROFILE_CORE_APPS" \
         "FLATPAK_PROFILE_AI_WORKSTATION_APPS" \
+        "FLATPAK_PROFILE_GAMING_APPS" \
         "FLATPAK_PROFILE_MINIMAL_APPS"; do
         local -n prune_ref="$array_name"
         before=${#prune_ref[@]}
@@ -98,6 +99,12 @@ prune_arch_incompatible_flatpaks() {
         aarch64|arm64)
             prune_flatpak_app_everywhere "com.google.Chrome"
             prune_flatpak_app_everywhere "com.obsproject.Studio"
+            # Gaming apps that don't support ARM
+            prune_flatpak_app_everywhere "com.valvesoftware.Steam"
+            prune_flatpak_app_everywhere "net.lutris.Lutris"
+            prune_flatpak_app_everywhere "com.heroicgameslauncher.hgl"
+            prune_flatpak_app_everywhere "net.pcsx2.PCSX2"
+            prune_flatpak_app_everywhere "net.rpcs3.RPCS3"
             ;;
     esac
 }

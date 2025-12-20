@@ -90,13 +90,14 @@ _reporting_unit_fragment_is_nixos_managed() {
 # Returns:
 #   0 - Always succeeds (pure reporting utility)
 # Parameters:
-#   $1 - Path to nixos-rebuild log (default: /tmp/nixos-rebuild.log)
+#   $1 - Path to nixos-rebuild log (default: $TMP_DIR/nixos-rebuild.log)
 # ============================================================================
 # Helper used by print_post_install to display which units were stopped,
 # started, or restarted during the most recent nixos-rebuild. Expects log lines
 # from `nixos-rebuild switch`.
 summarize_nixos_rebuild_services() {
-    local log_path="${1:-/tmp/nixos-rebuild.log}"
+    local tmp_dir="${TMP_DIR:-/tmp}"
+    local log_path="${1:-${tmp_dir}/nixos-rebuild.log}"
 
     if [[ ! -f "$log_path" ]]; then
         print_info "nixos-rebuild log not found at $log_path; skipping service summary."

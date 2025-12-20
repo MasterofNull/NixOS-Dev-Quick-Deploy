@@ -150,7 +150,16 @@ EOF
 # ============================================================================
 mark_step_complete() {
     # Capture step name from parameter
-    local step="$1"
+    local step="${1:-}"
+    
+    # Validate input
+    if ! validate_non_empty "step" "$step" 2>/dev/null; then
+        # Fallback if validation function not available
+        if [[ -z "$step" ]]; then
+            log WARNING "mark_step_complete called with empty step name"
+            return 1
+        fi
+    fi
 
     # Ensure state file exists before trying to update it
     # If somehow state wasn't initialized, initialize it now
@@ -251,7 +260,13 @@ mark_phase_complete() {
 # ============================================================================
 is_step_complete() {
     # Capture step name from parameter
-    local step="$1"
+    local step="${1:-}"
+    
+    # Validate input
+    if [[ -z "$step" ]]; then
+        # Empty step name means not complete
+        return 1
+    fi
 
     # Check if state file exists
     # If no state file exists, obviously no steps are complete

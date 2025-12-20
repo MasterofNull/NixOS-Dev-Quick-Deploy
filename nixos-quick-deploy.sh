@@ -46,7 +46,11 @@
 # ============================================================================
 
 # Bash strict mode
-set -o pipefail  # Catch errors in pipelines
+# set -e: Exit immediately if a command exits with a non-zero status
+# set -u: Treat unset variables as an error and exit immediately
+# set -o pipefail: Return value of pipeline is status of last command to exit with non-zero status
+# set -E: ERR trap is inherited by shell functions
+set -euo pipefail
 set -E           # ERR trap inherited by functions
 
 # ============================================================================
@@ -220,6 +224,8 @@ load_libraries() {
         "service-conflict-resolution.sh"
         "finalization.sh"
         "reporting.sh"
+        "progress.sh"
+        "dry-run.sh"
         "common.sh"
     )
 
@@ -801,25 +807,69 @@ execute_phase() {
         return 1
     fi
 
-    # Execute phase
-    print_section "Phase $phase_num: $phase_name"
-    log INFO "Executing phase $phase_num: $phase_name"
+    # Execute phase with progress tracking
+    local total_phases=8  # Total number of phases in deployment
+    
+    # Track phase start for duration calculation
+    if declare -F track_phase_start >/dev/null 2>&1; then
+        track_phase_start "$phase_num"
+    fi
+    
+    # Calculate and display progress
+    local progress_pct=$(( (phase_num * 100) / total_phases ))
+    
+    print_section "Phase $phase_num/$total_phases: $phase_name"
+    print_info "Progress: $progress_pct% ($phase_num of $total_phases phases)"
+    
+    # Show overall progress with ETA if available
+    if declare -F show_progress >/dev/null 2>&1; then
+        show_progress "$phase_num"
+    fi
+    
+    log INFO "Executing phase $phase_num/$total_phases: $phase_name"
 
     if [[ "$DRY_RUN" == true ]]; then
         print_info "[DRY RUN] Would execute: $phase_script"
         log INFO "[DRY RUN] Phase $phase_num skipped"
+        
+        # Enhanced dry-run: Show what would be done
+        if declare -F dry_run_phase_validation >/dev/null 2>&1; then
+            dry_run_phase_validation "$phase_num" "$phase_name" "$phase_script" || true
+        fi
         return 0
     fi
 
     # Source and execute the phase script
+    local phase_start_time
+    phase_start_time=$(date +%s)
+    
     if source "$phase_script"; then
+        local phase_end_time
+        phase_end_time=$(date +%s)
+        local phase_duration=$((phase_end_time - phase_start_time))
+        
+        # Track phase completion
+        if declare -F track_phase_complete >/dev/null 2>&1; then
+            track_phase_complete "$phase_num"
+        fi
+        
         mark_step_complete "$phase_step"
-        log INFO "Phase $phase_num completed successfully"
-        print_success "Phase $phase_num completed"
+        log INFO "Phase $phase_num completed successfully in ${phase_duration}s"
+        print_success "Phase $phase_num completed (${phase_duration}s)"
+        
+        # Show cumulative progress
+        local completed_pct=$(( ((phase_num) * 100) / total_phases ))
+        log INFO "Overall progress: $completed_pct% complete"
+        
         return 0
     else
         local exit_code=$?
-        log ERROR "Phase $phase_num failed with exit code $exit_code"
+        local phase_end_time
+        phase_end_time=$(date +%s)
+        local phase_duration=$((phase_end_time - phase_start_time))
+        
+        log ERROR "Phase $phase_num failed with exit code $exit_code after ${phase_duration}s"
+        print_error "Phase $phase_num failed (exit code: $exit_code)"
         return $exit_code
     fi
 }

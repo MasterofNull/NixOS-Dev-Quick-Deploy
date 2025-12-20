@@ -482,7 +482,8 @@ verify_sops_configuration() {
     fi
 
     # Check if we can create a test encrypted file
-    local test_file="/tmp/sops-test-$$"
+    local tmp_dir="${TMP_DIR:-/tmp}"
+    local test_file="${tmp_dir}/sops-test-$$"
     echo "test: secret" > "$test_file"
 
     export SOPS_AGE_KEY_FILE

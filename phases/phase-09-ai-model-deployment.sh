@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Phase 9: AI Model Deployment (Lemonade)
 # Part of: nixos-quick-deploy.sh
-# Version: 5.0.0
+# Version: Uses SCRIPT_VERSION from main script
 # Purpose: Optional deployment of AI coding models via Lemonade
 
 # ============================================================================
