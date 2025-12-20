@@ -270,6 +270,12 @@ in
   networking = {
     hostName = "@HOSTNAME@";
     networkmanager.enable = true;
+    networkmanager.dns = "systemd-resolved";
+    # Ensure DNS works even if the router DNS is flaky.
+    nameservers = [
+      "1.1.1.1"
+      "8.8.8.8"
+    ];
 
     # Firewall enabled by default with minimal ports
     firewall = {
@@ -287,6 +293,8 @@ in
       logRefusedConnections = lib.mkDefault true;  # Disable for reduced logging if needed
     };
   };
+
+  services.resolved.enable = true;
 
   # ============================================================================
   # Locale & Time (User-configured during setup)

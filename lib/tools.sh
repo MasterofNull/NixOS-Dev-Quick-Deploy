@@ -2789,6 +2789,79 @@ setup_flake_environment() {
     print_success "Flake environment setup complete"
     return 0
 }
+
+prefetch_podman_ai_stack_images() {
+    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" != "true" ]]; then
+        return 0
+    fi
+
+    if ! command -v podman >/dev/null 2>&1; then
+        print_warning "Podman is not available; skipping AI stack image prefetch."
+        return 0
+    fi
+
+    local -a images=(
+        "docker.io/ollama/ollama:latest"
+        "ghcr.io/open-webui/open-webui:latest"
+        "docker.io/qdrant/qdrant:latest"
+        "docker.io/mindsdb/mindsdb:latest"
+    )
+
+    print_section "Prefetching Podman AI stack images"
+    local image=""
+    for image in "${images[@]}"; do
+        if podman image exists "$image" >/dev/null 2>&1; then
+            print_info "Image already present: $image"
+            continue
+        fi
+
+        print_info "Pulling $image ..."
+        if podman pull "$image"; then
+            print_success "Pulled $image"
+        else
+            print_warning "Failed to pull $image (continuing)"
+        fi
+    done
+    echo ""
+}
+
+download_lemonade_models_if_needed() {
+    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" != "true" ]]; then
+        return 0
+    fi
+    if [[ "${LLM_BACKEND:-ollama}" != "lemonade" ]]; then
+        return 0
+    fi
+
+    local download_script="$SCRIPT_DIR/scripts/download-lemonade-models.sh"
+    if [[ ! -x "$download_script" ]]; then
+        print_warning "Lemonade model download script missing at $download_script"
+        return 0
+    fi
+
+    if [[ -z "${HUGGINGFACEHUB_API_TOKEN:-}" && -n "${HUGGINGFACE_TOKEN_PREFERENCE_FILE:-}" && -r "$HUGGINGFACE_TOKEN_PREFERENCE_FILE" ]]; then
+        local hf_token
+        hf_token=$(awk -F'=' '/^HUGGINGFACEHUB_API_TOKEN=/{print $2}' "$HUGGINGFACE_TOKEN_PREFERENCE_FILE" 2>/dev/null | tail -n1 | tr -d '\r')
+        if [[ -n "$hf_token" ]]; then
+            export HUGGINGFACEHUB_API_TOKEN="$hf_token"
+        fi
+    fi
+
+    if [[ -z "${HUGGINGFACEHUB_API_TOKEN:-}" ]]; then
+        print_warning "Skipping automatic Lemonade model download (Hugging Face token not configured)."
+        print_warning "Set HUGGINGFACEHUB_API_TOKEN or rerun Phase 1 to cache the token."
+        return 0
+    fi
+
+    local model_dir="$HOME/.local/share/podman-ai-stack/lemonade-models"
+    local cache_dir="${HUGGINGFACE_HOME:-$HOME/.cache/huggingface}"
+
+    print_section "Downloading Lemonade GGUF models"
+    MODEL_DIR="$model_dir" HF_HOME="$cache_dir" HUGGINGFACE_TOKEN_FILE="$HUGGINGFACE_TOKEN_PREFERENCE_FILE" \
+        "$download_script" --all || print_warning "Lemonade model download encountered issues"
+    echo ""
+}
+
 flatpak_app_installed() {
     local app_id="${1:-}"
     

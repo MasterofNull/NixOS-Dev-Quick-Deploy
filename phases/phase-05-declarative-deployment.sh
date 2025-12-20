@@ -397,6 +397,31 @@ phase_05_declarative_deployment() {
     fi
     echo ""
 
+    # Ensure podman-ai-stack helper script is synced so Home Manager can install it
+    local podman_helper_source="$BOOTSTRAP_SCRIPT_DIR/scripts/podman-ai-stack.sh"
+    local podman_helper_destination="$HM_CONFIG_DIR/podman-ai-stack.sh"
+
+    print_info "Ensuring podman-ai-stack helper is available for Home Manager"
+    if [[ -f "$podman_helper_source" ]]; then
+        if [[ ! -d "$HM_CONFIG_DIR" ]]; then
+            if mkdir -p "$HM_CONFIG_DIR"; then
+                print_info "  Created Home Manager config directory at $HM_CONFIG_DIR"
+            else
+                print_warning "  ⚠ Unable to create $HM_CONFIG_DIR (continuing, but podman-ai-stack may be missing)"
+            fi
+        fi
+
+        if cp "$podman_helper_source" "$podman_helper_destination"; then
+            chmod +x "$podman_helper_destination" 2>/dev/null || true
+            print_success "  ✓ Synced podman-ai-stack helper"
+        else
+            print_warning "  ⚠ Failed to sync podman-ai-stack helper (Home Manager may fail to build the CLI)"
+        fi
+    else
+        print_warning "  ⚠ Source podman-ai-stack.sh not found at $podman_helper_source"
+    fi
+    echo ""
+
     # Determine home-manager command
     local hm_cmd
     local hm_flake_target="${HM_CONFIG_DIR}#${hm_user}"
@@ -532,6 +557,10 @@ phase_05_declarative_deployment() {
             print_info "This will pull/start the ai-optimizer Podman stack (vLLM, Open WebUI, Qdrant, MindsDB)."
         else
             print_warning "podman-ai-stack helper not found. Install/configure ai-optimizer, then run its launch script to provision the containers."
+        fi
+
+        if declare -F prefetch_podman_ai_stack_images >/dev/null 2>&1; then
+            prefetch_podman_ai_stack_images
         fi
     fi
 
