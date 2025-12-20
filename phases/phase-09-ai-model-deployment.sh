@@ -75,16 +75,16 @@ phase_09_ai_model_deployment() {
         log_warning "Model download script not found, models will download on first container startup"
     fi
 
-    # Setup Hybrid Learning System
+    # Setup Hybrid Learning System (Automated)
     log_info "Setting up Hybrid Local-Remote AI Learning System..."
-    if [ -f "${SCRIPT_DIR}/scripts/setup-hybrid-learning.sh" ]; then
-        if bash "${SCRIPT_DIR}/scripts/setup-hybrid-learning.sh"; then
+    if [ -f "${SCRIPT_DIR}/scripts/setup-hybrid-learning-auto.sh" ]; then
+        if bash "${SCRIPT_DIR}/scripts/setup-hybrid-learning-auto.sh"; then
             log_success "Hybrid learning system initialized"
         else
             log_warning "Hybrid learning setup encountered issues but will continue"
         fi
     else
-        log_warning "Hybrid learning setup script not found"
+        log_warning "Automated setup script not found, skipping hybrid learning setup"
     fi
 
     # Deploy AI-Optimizer with selected model

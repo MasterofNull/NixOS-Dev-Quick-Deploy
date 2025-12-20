@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Hybrid AI Stack Helper - Manages docker-compose.hybrid.yml
-# Quick management for NixOS Hybrid Learning AI Stack
+# Unified AI Stack Helper - Single Source of Truth
+# Manages the complete NixOS Hybrid Learning AI Stack
 #
 
 set -euo pipefail
@@ -9,7 +9,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_DIR="${PROJECT_ROOT}/ai-stack/compose"
-COMPOSE_FILE="docker-compose.hybrid.yml"
+COMPOSE_FILE="docker-compose.yml"  # Single unified configuration
 
 # Colors
 RED='\033[0;31m'

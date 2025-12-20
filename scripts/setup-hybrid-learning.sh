@@ -184,7 +184,7 @@ info "Step 6: Starting AI stack containers..."
 cd "${PROJECT_ROOT}/ai-stack/compose"
 
 # Start services using hybrid compose file
-if $COMPOSE_CMD -f docker-compose.hybrid.yml up -d; then
+if $COMPOSE_CMD -f docker-compose.yml up -d; then
     success "AI stack started"
 else
     error "Failed to start AI stack"
