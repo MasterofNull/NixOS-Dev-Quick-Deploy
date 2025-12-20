@@ -646,7 +646,10 @@ in
 
   services.gnome.gnome-keyring.enable = true;
 
+  # Enable GNOME Keyring integration for all login services
   security.pam.services.greetd.enableGnomeKeyring = true;
+  security.pam.services.login.enableGnomeKeyring = true;
+  security.pam.services.passwd.enableGnomeKeyring = true;
 
   # Provide a bleeding-edge tiling Wayland session alongside COSMIC.
   programs.hyprland = {
