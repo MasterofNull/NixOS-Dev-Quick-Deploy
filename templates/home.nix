@@ -1595,6 +1595,8 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           gnupg                   # GNU Privacy Guard for encryption workflows
           seahorse                # GNOME credential manager for GnuPG/SSH
           pinentry-gnome3         # Pinentry dialog compatible with COSMIC/GNOME
+          libsecret               # Library for storing/retrieving passwords (required for OS keyring)
+          gcr                     # GNOME crypto library (keyring UI components)
           # YubiKey Manager Qt was removed because upstream marked it EOL and nixpkgs flags it insecure.
           # Install `yubikey-manager` (CLI) or `yubioath-flutter` manually if YubiKey support is required.
 
