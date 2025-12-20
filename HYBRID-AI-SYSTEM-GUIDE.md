@@ -1,5 +1,7 @@
 # Hybrid Local-Remote AI Learning System - Complete Guide
 
+> **📊 System Dashboard**: Monitor all services, metrics, and learning progress at [ai-stack/dashboard/index.html](ai-stack/dashboard/index.html)
+
 ## Executive Summary
 
 This system creates a **bidirectional learning loop** where:
