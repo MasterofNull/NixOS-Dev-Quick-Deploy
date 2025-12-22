@@ -1332,10 +1332,20 @@ class MCPServer:
 
     async def startup(self) -> None:
         LOGGER.info("Starting MCP server")
+        await asyncio.to_thread(self._ensure_pgvector_extension)
         METADATA.create_all(self._engine)
         await self._ingest_points_of_interest()
         await self._tool_registry.warm_cache()
         await asyncio.to_thread(self._catalog.sync_catalog)
+
+    def _ensure_pgvector_extension(self) -> None:
+        try:
+            with self._engine.begin() as conn:
+                conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
+            LOGGER.info("pgvector extension ensured")
+        except Exception:  # noqa: BLE001
+            LOGGER.exception("Failed to ensure pgvector extension")
+            raise
 
     async def shutdown(self) -> None:
         LOGGER.info("Stopping MCP server")
