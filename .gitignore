@@ -29,3 +29,7 @@ result-*
 .github/
 .githooks/
 ai-stack/mcp-servers/hybrid-coordinator/venv/
+
+# Python bytecode
+__pycache__/
+*.pyc
