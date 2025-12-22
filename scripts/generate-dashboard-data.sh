@@ -596,12 +596,19 @@ collect_database_metrics() {
     local pg_status="offline"
     local pg_size="0"
     local pg_connections=0
+    local redis_status="offline"
+    local redis_keys=0
+    local redis_memory="unknown"
+    local qdrant_status="offline"
+    local qdrant_collections=0
+    local mindsdb_status="offline"
     local container_runtime
     container_runtime=$(detect_container_runtime)
     local env_file="$PROJECT_ROOT/ai-stack/compose/.env"
     local pg_user="${AIDB_POSTGRES_USER:-${POSTGRES_USER:-}}"
     local pg_db="${AIDB_POSTGRES_DB:-${POSTGRES_DB:-}}"
     local pg_password="${AIDB_POSTGRES_PASSWORD:-${POSTGRES_PASSWORD:-}}"
+    local redis_password="${AIDB_REDIS_PASSWORD:-}"
 
     if [[ -z "$pg_user" && -f "$env_file" ]]; then
         pg_user=$(read_env_value "$env_file" "AIDB_POSTGRES_USER")
@@ -614,6 +621,9 @@ collect_database_metrics() {
     fi
     pg_user="${pg_user:-mcp}"
     pg_db="${pg_db:-mcp}"
+    if [[ -z "$redis_password" && -f "$env_file" ]]; then
+        redis_password=$(read_env_value "$env_file" "AIDB_REDIS_PASSWORD")
+    fi
 
     if [[ "$container_runtime" == "podman" ]]; then
         if run_timeout 3 podman exec local-ai-postgres pg_isready -U "$pg_user" > /dev/null 2>&1; then
@@ -625,6 +635,22 @@ collect_database_metrics() {
                 psql -U "$pg_user" -d "$pg_db" -t -c "SELECT count(*) FROM pg_stat_activity WHERE datname = '$pg_db';" \
                 2>/dev/null | tr -d ' \n' || echo "0")
         fi
+
+        if run_timeout 3 podman exec local-ai-redis redis-cli ${redis_password:+-a "$redis_password"} ping > /dev/null 2>&1; then
+            redis_status="online"
+            redis_keys=$(run_timeout 3 podman exec local-ai-redis redis-cli ${redis_password:+-a "$redis_password"} dbsize 2>/dev/null | tr -d ' \n' || echo "0")
+            redis_memory=$(run_timeout 3 podman exec local-ai-redis redis-cli ${redis_password:+-a "$redis_password"} info memory 2>/dev/null \
+                | awk -F: '/used_memory_human/ {print $2}' | tr -d '\r' | tr -d ' ' || echo "unknown")
+        fi
+
+        if curl_fast http://localhost:6333/collections > /dev/null 2>&1; then
+            qdrant_status="online"
+            qdrant_collections=$(curl_fast http://localhost:6333/collections | maybe_jq '.result.collections | length' 2>/dev/null || echo "0")
+        fi
+
+        if podman ps --format '{{.Names}}' | grep -q '^local-ai-mindsdb$'; then
+            mindsdb_status="online"
+        fi
     fi
 
     cat > "$DATA_DIR/database.json" <<EOF
@@ -634,6 +660,18 @@ collect_database_metrics() {
     "status": "$pg_status",
     "database_size": "$pg_size",
     "active_connections": $pg_connections
+  },
+  "redis": {
+    "status": "$redis_status",
+    "keys": $redis_keys,
+    "memory_used": "$redis_memory"
+  },
+  "qdrant": {
+    "status": "$qdrant_status",
+    "collections": $qdrant_collections
+  },
+  "mindsdb": {
+    "status": "$mindsdb_status"
   }
 }
 EOF

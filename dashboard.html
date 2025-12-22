@@ -74,7 +74,7 @@
         }
 
         .container {
-            max-width: 1920px;
+            max-width: 2200px;
             margin: 0 auto;
             padding: 2rem;
         }
@@ -164,6 +164,12 @@
             grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
             gap: 1.5rem;
             margin-bottom: 2rem;
+        }
+
+        @media (min-width: 1400px) {
+            .dashboard-grid {
+                grid-template-columns: repeat(3, minmax(360px, 1fr));
+            }
         }
 
         .dashboard-section {
@@ -716,7 +722,9 @@
             </div>
         </header>
 
-        <div style="display: flex; justify-content: flex-end; margin-bottom: 1rem;">
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-bottom: 1rem; align-items: center;">
+            <span id="refreshStatus" style="font-size: 0.75rem; color: var(--text-muted);"></span>
+            <button class="export-btn" onclick="refreshDashboard()">⟳ Refresh Now</button>
             <button class="export-btn" onclick="exportData()">⬇ Export JSON for AI</button>
         </div>
 
@@ -1144,21 +1152,45 @@
                             <span class="collapsible-arrow">▼</span>
                             <h2 class="card-title">Database Metrics</h2>
                         </div>
-                        <span class="card-badge">PostgreSQL</span>
+                        <span class="card-badge">Data Stores</span>
                     </div>
                     <div class="collapsible-content">
                         <div class="metrics-grid">
                             <div class="metric">
-                                <div class="metric-label">Status</div>
-                                <div class="metric-value" id="dbStatus" style="font-size: 1.2rem;">--</div>
+                                <div class="metric-label">PostgreSQL Status</div>
+                                <div class="metric-value" id="dbStatus" style="font-size: 1.1rem;">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">Database Size</div>
+                                <div class="metric-label">PostgreSQL Size</div>
                                 <div class="metric-value" id="dbSize">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">Active Connections</div>
+                                <div class="metric-label">PostgreSQL Connections</div>
                                 <div class="metric-value" id="dbConnections">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Redis Status</div>
+                                <div class="metric-value" id="redisStatus" style="font-size: 1.1rem;">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Redis Keys</div>
+                                <div class="metric-value" id="redisKeys">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Redis Memory</div>
+                                <div class="metric-value" id="redisMemory">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Qdrant Status</div>
+                                <div class="metric-value" id="qdrantStatus" style="font-size: 1.1rem;">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Qdrant Collections</div>
+                                <div class="metric-value" id="qdrantCollections">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">MindsDB Status</div>
+                                <div class="metric-value" id="mindsdbStatus" style="font-size: 1.1rem;">--</div>
                             </div>
                         </div>
                     </div>
@@ -1380,7 +1412,8 @@
 
             for (const path of paths) {
                 try {
-                    const response = await fetch(path);
+                    const cacheBuster = `?ts=${Date.now()}`;
+                    const response = await fetch(`${path}${cacheBuster}`, { cache: 'no-store' });
                     if (response.ok) {
                         return await response.json();
                     }
@@ -1448,7 +1481,10 @@
                 },
                 'database.json': {
                     timestamp: new Date().toISOString(),
-                    postgresql: { status: 'online', database_size: '142MB', active_connections: 3 }
+                    postgresql: { status: 'online', database_size: '142MB', active_connections: 3 },
+                    redis: { status: 'online', keys: 120, memory_used: '64MB' },
+                    qdrant: { status: 'online', collections: 5 },
+                    mindsdb: { status: 'offline' }
                 },
                 'links.json': {
                     timestamp: new Date().toISOString(),
@@ -1781,6 +1817,19 @@
             document.getElementById('dbStatus').textContent = pg.status.toUpperCase();
             document.getElementById('dbSize').textContent = pg.database_size;
             document.getElementById('dbConnections').textContent = pg.active_connections;
+
+            if (data.redis) {
+                document.getElementById('redisStatus').textContent = data.redis.status.toUpperCase();
+                document.getElementById('redisKeys').textContent = data.redis.keys;
+                document.getElementById('redisMemory').textContent = data.redis.memory_used;
+            }
+            if (data.qdrant) {
+                document.getElementById('qdrantStatus').textContent = data.qdrant.status.toUpperCase();
+                document.getElementById('qdrantCollections').textContent = data.qdrant.collections;
+            }
+            if (data.mindsdb) {
+                document.getElementById('mindsdbStatus').textContent = data.mindsdb.status.toUpperCase();
+            }
         }
 
         // Update persistence metrics
@@ -2088,6 +2137,20 @@
         function updateLastUpdate() {
             const now = new Date();
             document.getElementById('lastUpdate').textContent = now.toLocaleTimeString();
+        }
+
+        async function refreshDashboard() {
+            const status = document.getElementById('refreshStatus');
+            if (status) {
+                status.textContent = 'Refreshing...';
+            }
+            await loadData();
+            if (status) {
+                status.textContent = 'Updated';
+                setTimeout(() => {
+                    status.textContent = '';
+                }, 2000);
+            }
         }
 
         // Helper functions
