@@ -335,19 +335,22 @@ services:
     ports:
       - "8092:8092"
     environment:
+      MCP_SERVER_MODE: http
+      MCP_SERVER_PORT: 8092
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:-}
       LEMONADE_BASE_URL: http://lemonade:8080
       OLLAMA_BASE_URL: http://ollama:11434
+      HYBRID_TELEMETRY_PATH: /data/telemetry/hybrid-events.jsonl
       LOCAL_CONFIDENCE_THRESHOLD: ${LOCAL_CONFIDENCE_THRESHOLD:-0.7}
       HIGH_VALUE_THRESHOLD: ${HIGH_VALUE_THRESHOLD:-0.7}
       PATTERN_EXTRACTION_ENABLED: ${PATTERN_EXTRACTION_ENABLED:-true}
       FINETUNE_DATA_PATH: /data/fine-tuning/dataset.jsonl
       TELEMETRY_PATH: /data/telemetry/hybrid-events.jsonl
     volumes:
-      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/hybrid-coordinator:/data:Z
-      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/telemetry:/data/telemetry:Z
-      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/fine-tuning:/data/fine-tuning:Z
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/hybrid-coordinator:/data:Z,U
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/telemetry:/data/telemetry:Z,U
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/fine-tuning:/data/fine-tuning:Z,U
     depends_on:
       - qdrant
       - ollama
