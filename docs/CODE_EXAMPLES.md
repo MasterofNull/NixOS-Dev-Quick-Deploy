@@ -431,7 +431,7 @@ USER appuser
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:8080/health || exit 1
 
 # Run application
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
@@ -447,7 +447,7 @@ services:
   app:
     build: .
     ports:
-      - "8000:8000"
+      - "8080:8080"
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432

@@ -133,7 +133,7 @@ qdrant_client = QdrantClient(
 - Phi-3-mini
 - CodeLlama-13B
 
-**Port:** 8000
+**Port:** 8080
 
 **API Compatibility:**
 - OpenAI completions API
@@ -391,7 +391,7 @@ ping lemonade
 | Service | Internal Port | External Port | Protocol |
 |---------|---------------|---------------|----------|
 | AIDB MCP | 8091 | 8091 | HTTP |
-| Lemonade | 8000 | 8000 | HTTP |
+| Lemonade | 8080 | 8080 | HTTP |
 | PostgreSQL | 5432 | 5432 | TCP |
 | Redis | 6379 | 6379 | TCP |
 | Qdrant HTTP | 6333 | 6333 | HTTP |

@@ -1,0 +1,1496 @@
+#!/usr/bin/env bash
+# Dashboard Data Generator
+# Collects real-time system, LLM, database, network, and security metrics
+# Outputs JSON for consumption by the dashboard UI
+
+set -euo pipefail
+
+# Output directory for JSON data
+DATA_DIR="${HOME}/.local/share/nixos-system-dashboard"
+AI_STACK_DATA_ROOT="${AI_STACK_DATA:-$HOME/.local/share/nixos-ai-stack}"
+
+has_cmd() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+run_timeout() {
+    local seconds="$1"
+    shift
+    if has_cmd timeout; then
+        timeout "$seconds" "$@"
+    else
+        "$@"
+    fi
+}
+
+curl_fast() {
+    run_timeout 3 curl -sf --max-time 2 "$@"
+}
+
+maybe_jq() {
+    if has_cmd jq; then
+        jq "$@"
+    else
+        cat
+    fi
+}
+
+detect_container_runtime() {
+    if has_cmd podman; then
+        echo "podman"
+    elif has_cmd docker; then
+        echo "docker"
+    else
+        echo ""
+    fi
+}
+
+dir_size() {
+    local path="$1"
+    if [[ -d "$path" ]]; then
+        du -sh "$path" 2>/dev/null | awk '{print $1}'
+    else
+        echo "0"
+    fi
+}
+
+dir_exists() {
+    local path="$1"
+    if [[ -d "$path" ]]; then
+        echo "true"
+    else
+        echo "false"
+    fi
+}
+
+file_exists() {
+    local path="$1"
+    if [[ -f "$path" ]]; then
+        echo "true"
+    else
+        echo "false"
+    fi
+}
+
+file_size_bytes() {
+    local path="$1"
+    if [[ -f "$path" ]]; then
+        stat -c %s "$path" 2>/dev/null || wc -c < "$path" 2>/dev/null || echo 0
+    else
+        echo 0
+    fi
+}
+
+file_line_count() {
+    local path="$1"
+    if [[ -f "$path" ]]; then
+        wc -l < "$path" 2>/dev/null | tr -d ' '
+    else
+        echo 0
+    fi
+}
+
+last_event_timestamp() {
+    local path="$1"
+    if [[ -f "$path" ]]; then
+        tail -n 1 "$path" | maybe_jq -r '.timestamp // .created_at // empty' 2>/dev/null | tr -d '\r'
+    fi
+}
+
+read_env_value() {
+    local env_file="$1"
+    local key="$2"
+    if [[ -f "$env_file" ]]; then
+        sed -n "s/^${key}=//p" "$env_file" | tail -n 1 | tr -d '\r'
+    fi
+}
+
+read_nixos_option() {
+    local option="$1"
+    if has_cmd nixos-option; then
+        nixos-option "$option" 2>/dev/null | awk -F': ' '/Value:/ {print $2}' | tail -n 1
+    else
+        echo ""
+    fi
+    return 0
+}
+
+read_sshd_config_value() {
+    local key="$1"
+    local config_file="/etc/ssh/sshd_config"
+    if [[ -f "$config_file" ]]; then
+        awk -v k="$key" 'tolower($1) == tolower(k) {print $2}' "$config_file" | tail -n 1
+    fi
+}
+
+read_journald_value() {
+    local key="$1"
+    local config_file="/etc/systemd/journald.conf"
+    if [[ -f "$config_file" ]]; then
+        awk -F= -v k="$key" '$1 == k {gsub(/"/,"",$2); print $2}' "$config_file" | tail -n 1
+    fi
+}
+
+systemd_is_active() {
+    local unit="$1"
+    if has_cmd systemctl; then
+        systemctl is-active "$unit" 2>/dev/null || echo "unknown"
+    else
+        echo "unknown"
+    fi
+}
+
+os_release_value() {
+    local key="$1"
+    local os_release="/etc/os-release"
+    if [[ -f "$os_release" ]]; then
+        awk -F= -v k="$key" '$1 == k {gsub(/"/,"",$2); print $2}' "$os_release" | tail -n 1
+    fi
+}
+
+sysctl_value() {
+    local key="$1"
+    if has_cmd sysctl; then
+        sysctl -n "$key" 2>/dev/null | tail -n 1
+    fi
+}
+mkdir -p "$DATA_DIR"
+
+LOCK_FILE="${DATA_DIR}/collector.lock"
+
+acquire_lock() {
+    if has_cmd flock; then
+        exec 9>"$LOCK_FILE"
+        if ! flock -n 9; then
+            echo "Collector already running; skipping."
+            exit 0
+        fi
+        return 0
+    fi
+
+    if [[ -f "$LOCK_FILE" ]]; then
+        local existing_pid
+        existing_pid=$(cat "$LOCK_FILE" 2>/dev/null || echo "")
+        if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
+            echo "Collector already running (PID $existing_pid); skipping."
+            exit 0
+        fi
+    fi
+
+    echo "$$" > "$LOCK_FILE"
+}
+
+# ============================================================================
+# System Metrics
+# ============================================================================
+collect_system_metrics() {
+    local cpu_usage=$(run_timeout 2 top -bn1 2>/dev/null | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}')
+    local mem_info=$(run_timeout 2 free -m 2>/dev/null | awk 'NR==2{printf "{\"total\":%s,\"used\":%s,\"free\":%s,\"percent\":%.2f}", $2,$3,$4,$3*100/$2}')
+    local disk_usage=$(run_timeout 2 df -h / 2>/dev/null | awk 'NR==2{printf "{\"total\":\"%s\",\"used\":\"%s\",\"avail\":\"%s\",\"percent\":\"%s\"}", $2,$3,$4,$5}')
+    local uptime_seconds=$(awk '{print int($1)}' /proc/uptime)
+    local load_avg=$(run_timeout 2 uptime 2>/dev/null | awk -F'load average:' '{print $2}' | sed 's/^ *//')
+    local cpu_model="Unknown"
+    local arch
+    local gpu_name="N/A"
+    local gpu_busy="null"
+    local vram_total="null"
+    local vram_used="null"
+
+    # CPU temperature (if available)
+    local cpu_temp="N/A"
+    if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
+        cpu_temp=$(awk '{printf "%.1f°C", $1/1000}' /sys/class/thermal/thermal_zone0/temp)
+    fi
+
+    if [[ -f /proc/cpuinfo ]]; then
+        cpu_model=$(awk -F': ' '/model name|Hardware|Processor/ {print $2; exit}' /proc/cpuinfo 2>/dev/null || echo "Unknown")
+    fi
+
+    arch=$(uname -m 2>/dev/null || echo "unknown")
+
+    if has_cmd lspci; then
+        gpu_name=$(lspci | rg -m 1 -i 'vga|3d|display' | sed 's/^[0-9a-f:.]* //')
+        [[ -z "$gpu_name" ]] && gpu_name="N/A"
+    fi
+
+    for path in /sys/class/drm/card*/device/gpu_busy_percent; do
+        if [[ -f "$path" ]]; then
+            gpu_busy=$(cat "$path" 2>/dev/null || echo "null")
+            break
+        fi
+    done
+
+    for path in /sys/class/drm/card*/device/mem_info_vram_total; do
+        if [[ -f "$path" ]]; then
+            vram_total=$(awk '{printf "%.0f", $1/1024/1024}' "$path" 2>/dev/null || echo "null")
+            break
+        fi
+    done
+
+    for path in /sys/class/drm/card*/device/mem_info_vram_used; do
+        if [[ -f "$path" ]]; then
+            vram_used=$(awk '{printf "%.0f", $1/1024/1024}' "$path" 2>/dev/null || echo "null")
+            break
+        fi
+    done
+
+    cat > "$DATA_DIR/system.json" <<EOF
+{
+  "timestamp": "$(date -Iseconds)",
+  "cpu": {
+    "usage_percent": $cpu_usage,
+    "temperature": "$cpu_temp",
+    "cores": $(nproc),
+    "model": "$cpu_model",
+    "arch": "$arch"
+  },
+  "gpu": {
+    "name": "$gpu_name",
+    "busy_percent": $gpu_busy,
+    "vram_used_mb": $vram_used,
+    "vram_total_mb": $vram_total
+  },
+  "memory": $mem_info,
+  "disk": $disk_usage,
+  "uptime_seconds": $uptime_seconds,
+  "load_average": "$load_avg"
+}
+EOF
+}
+
+# ============================================================================
+# LLM Stack Metrics
+# ============================================================================
+collect_llm_metrics() {
+    local qdrant_status="offline"
+    local ollama_status="offline"
+    local lemonade_status="offline"
+    local postgres_status="offline"
+    local redis_status="offline"
+    local open_webui_status="offline"
+    local mindsdb_status="offline"
+    local aidb_status="offline"
+    local aidb_services="{}"
+    local container_runtime
+    container_runtime=$(detect_container_runtime)
+    local qdrant_collections="[]"
+    local qdrant_collection_count=0
+    local postgres_user="${POSTGRES_USER:-mcp}"
+
+    # Check Qdrant
+    if curl_fast http://localhost:6333/healthz > /dev/null 2>&1; then
+        qdrant_status="online"
+        qdrant_collections=$(curl_fast http://localhost:6333/collections | maybe_jq -c '.result.collections | map(.name)' 2>/dev/null || echo "[]")
+        qdrant_collection_count=$(echo "$qdrant_collections" | maybe_jq -r 'length' 2>/dev/null || echo "0")
+    fi
+
+    # Check Ollama
+    if curl_fast http://localhost:11434/api/tags > /dev/null 2>&1; then
+        ollama_status="online"
+        ollama_models=$(curl_fast http://localhost:11434/api/tags | maybe_jq -c '[.models[] | {name: .name, size: .size}]' 2>/dev/null || echo "[]")
+    fi
+
+    # Check Lemonade (llama.cpp server)
+    if curl_fast http://localhost:8080/health > /dev/null 2>&1; then
+        lemonade_status="online"
+        lemonade_models=$(curl_fast http://localhost:8080/v1/models 2>/dev/null | maybe_jq -c '.data // []' || echo "[]")
+    fi
+
+    # Check PostgreSQL
+    if [[ "$container_runtime" == "podman" ]]; then
+        if run_timeout 3 podman exec local-ai-postgres pg_isready -U "$postgres_user" > /dev/null 2>&1; then
+            postgres_status="online"
+        fi
+    fi
+
+    # Check Redis
+    if [[ "$container_runtime" == "podman" ]]; then
+        if run_timeout 3 podman exec local-ai-redis redis-cli ping 2>/dev/null | grep -q PONG; then
+            redis_status="online"
+        fi
+    fi
+
+    # Check Open WebUI
+    # Note: Open WebUI doesn't have a health endpoint, check if container is running
+    if [[ "$container_runtime" == "podman" ]]; then
+        if run_timeout 3 podman ps --filter "name=local-ai-open-webui" --filter "status=running" --format "{{.Names}}" 2>/dev/null | grep -q "local-ai-open-webui"; then
+            open_webui_status="online"
+        fi
+    elif curl_fast http://localhost:3001 > /dev/null 2>&1; then
+        open_webui_status="online"
+    fi
+
+    # Check MindsDB (optional)
+    if curl_fast http://localhost:47334 > /dev/null 2>&1; then
+        mindsdb_status="online"
+    fi
+
+    # Check AIDB MCP Server
+    if curl_fast http://localhost:8091/health > /dev/null 2>&1; then
+        aidb_status="online"
+        aidb_services=$(curl_fast http://localhost:8091/health | maybe_jq -c '.services // {}' 2>/dev/null || echo "{}")
+    fi
+
+    # Container stats
+    local containers="[]"
+    if [[ "$container_runtime" == "podman" ]]; then
+        containers=$(run_timeout 3 podman ps --format json 2>/dev/null | maybe_jq -c '[.[] | {name: .Names[0], status: .State, image: .Image}]' || echo "[]")
+    fi
+
+    cat > "$DATA_DIR/llm.json" <<EOF
+{
+  "timestamp": "$(date -Iseconds)",
+  "services": {
+    "qdrant": {
+      "status": "$qdrant_status",
+      "collections": ${qdrant_collection_count:-0},
+      "collection_names": ${qdrant_collections:-[]},
+      "url": "http://localhost:6333"
+    },
+    "ollama": {
+      "status": "$ollama_status",
+      "models": ${ollama_models:-[]},
+      "url": "http://localhost:11434"
+    },
+    "lemonade": {
+      "status": "$lemonade_status",
+      "models": ${lemonade_models:-[]},
+      "url": "http://localhost:8080"
+    },
+    "postgres": {
+      "status": "$postgres_status",
+      "url": "localhost:5432"
+    },
+    "redis": {
+      "status": "$redis_status",
+      "url": "localhost:6379"
+    },
+    "open_webui": {
+      "status": "$open_webui_status",
+      "url": "http://localhost:3001"
+    },
+    "mindsdb": {
+      "status": "$mindsdb_status",
+      "url": "http://localhost:47334"
+    },
+    "aidb": {
+      "status": "$aidb_status",
+      "services": ${aidb_services},
+      "url": "http://localhost:8091"
+    }
+  },
+  "containers": ${containers}
+}
+EOF
+}
+
+# ============================================================================
+# Network & Firewall Metrics
+# ============================================================================
+collect_network_metrics() {
+    # Active connections
+    local connections=$(run_timeout 2 ss -tun 2>/dev/null | wc -l)
+
+    # Firewall rules count
+    local firewall_rules="0"
+    if has_cmd nft; then
+        firewall_rules=$(run_timeout 2 nft list ruleset 2>/dev/null | grep -c "^[[:space:]]*rule" || echo "0")
+    fi
+
+    # Network interfaces
+    local interfaces=$(run_timeout 2 ip -j addr show 2>/dev/null | maybe_jq -c '[.[] | select(.operstate == "UP") | {name: .ifname, address: .addr_info[0].local, state: .operstate}]')
+
+    # DNS status
+    local dns_status="unknown"
+    if [ -L /etc/resolv.conf ]; then
+        dns_status="configured (symlink)"
+    elif grep -q "nameserver" /etc/resolv.conf 2>/dev/null; then
+        dns_status="configured (static)"
+    else
+        dns_status="misconfigured"
+    fi
+
+    # Listening ports
+    local listening_ports=$(run_timeout 2 ss -tlnp 2>/dev/null | awk 'NR>1 {print $4}' | sed 's/.*://' | sort -n | uniq | maybe_jq -R . | maybe_jq -s -c .)
+    local neighbors="[]"
+    if has_cmd ip; then
+        neighbors=$(run_timeout 2 ip -j neigh 2>/dev/null | maybe_jq -c '[.[] | {ip: .dst, mac: .lladdr, state: .state, dev: .dev}]' 2>/dev/null || echo "[]")
+    fi
+
+    cat > "$DATA_DIR/network.json" <<EOF
+{
+  "timestamp": "$(date -Iseconds)",
+  "connections": {
+    "active": $connections
+  },
+  "firewall": {
+    "enabled": true,
+    "rules_count": $firewall_rules
+  },
+  "interfaces": ${interfaces},
+  "dns": {
+    "status": "$dns_status",
+    "resolvers": $(grep "^nameserver" /etc/resolv.conf 2>/dev/null | awk '{print $2}' | jq -R . | jq -s -c . || echo "[]")
+  },
+  "neighbors": ${neighbors},
+  "listening_ports": ${listening_ports}
+}
+EOF
+}
+
+# ============================================================================
+# Security Metrics
+# ============================================================================
+collect_security_metrics() {
+    # Failed login attempts (last hour)
+    local failed_logins=$(run_timeout 2 journalctl -u systemd-logind --since "1 hour ago" 2>/dev/null | grep -c "Failed" || echo "0")
+
+    # AppArmor status
+    local apparmor_status="unknown"
+    if run_timeout 2 systemctl is-active apparmor > /dev/null 2>&1; then
+        apparmor_status="active"
+    else
+        apparmor_status="inactive"
+    fi
+
+    # Firewall status
+    local firewall_status="active"
+
+    # SELinux/AppArmor profiles
+    local security_profiles=0
+    if command -v aa-status > /dev/null 2>&1; then
+        security_profiles=$(aa-status --profiled 2>/dev/null | head -1 | awk '{print $1}' || echo "0")
+    fi
+
+    # System updates available
+    local updates_available="n/a"
+    if has_cmd nixos-rebuild; then
+        updates_available="check-manually"
+    fi
+
+    cat > "$DATA_DIR/security.json" <<EOF
+{
+  "timestamp": "$(date -Iseconds)",
+  "authentication": {
+    "failed_logins_1h": $failed_logins
+  },
+  "mandatory_access_control": {
+    "apparmor": {
+      "status": "$apparmor_status",
+      "profiles_loaded": $security_profiles
+    }
+  },
+  "firewall": {
+    "status": "$firewall_status"
+  },
+  "updates": {
+    "available": "$updates_available"
+  }
+}
+EOF
+}
+
+# ============================================================================
+# Persistence & Data Metrics
+# ============================================================================
+collect_persistence_metrics() {
+    local data_root="$AI_STACK_DATA_ROOT"
+    local device="unknown"
+    local fstype="unknown"
+    local mount_point="unknown"
+
+    if [[ -d "$data_root" ]]; then
+        device=$(df -P "$data_root" 2>/dev/null | awk 'NR==2{print $1}' || echo "unknown")
+        mount_point=$(df -P "$data_root" 2>/dev/null | awk 'NR==2{print $6}' || echo "unknown")
+        if df -T "$data_root" >/dev/null 2>&1; then
+            fstype=$(df -T "$data_root" 2>/dev/null | awk 'NR==2{print $2}' || echo "unknown")
+        fi
+    fi
+
+    cat > "$DATA_DIR/persistence.json" <<EOF
+{
+  "timestamp": "$(date -Iseconds)",
+  "data_root": "$data_root",
+  "mount": {
+    "device": "$device",
+    "filesystem": "$fstype",
+    "mount_point": "$mount_point"
+  },
+  "paths": [
+    {
+      "name": "qdrant",
+      "path": "${data_root}/qdrant",
+      "exists": $(dir_exists "${data_root}/qdrant"),
+      "size": "$(dir_size "${data_root}/qdrant")"
+    },
+    {
+      "name": "ollama",
+      "path": "${data_root}/ollama",
+      "exists": $(dir_exists "${data_root}/ollama"),
+      "size": "$(dir_size "${data_root}/ollama")"
+    },
+    {
+      "name": "lemonade",
+      "path": "${data_root}/lemonade-models",
+      "exists": $(dir_exists "${data_root}/lemonade-models"),
+      "size": "$(dir_size "${data_root}/lemonade-models")"
+    },
+    {
+      "name": "open-webui",
+      "path": "${data_root}/open-webui",
+      "exists": $(dir_exists "${data_root}/open-webui"),
+      "size": "$(dir_size "${data_root}/open-webui")"
+    },
+    {
+      "name": "postgres",
+      "path": "${data_root}/postgres",
+      "exists": $(dir_exists "${data_root}/postgres"),
+      "size": "$(dir_size "${data_root}/postgres")"
+    },
+    {
+      "name": "redis",
+      "path": "${data_root}/redis",
+      "exists": $(dir_exists "${data_root}/redis"),
+      "size": "$(dir_size "${data_root}/redis")"
+    },
+    {
+      "name": "mindsdb",
+      "path": "${data_root}/mindsdb",
+      "exists": $(dir_exists "${data_root}/mindsdb"),
+      "size": "$(dir_size "${data_root}/mindsdb")"
+    },
+    {
+      "name": "huggingface-cache",
+      "path": "${HOME}/.cache/huggingface",
+      "exists": $(dir_exists "${HOME}/.cache/huggingface"),
+      "size": "$(dir_size "${HOME}/.cache/huggingface")"
+    }
+  ]
+}
+EOF
+}
+
+# ============================================================================
+# Database Metrics (PostgreSQL via Podman)
+# ============================================================================
+collect_database_metrics() {
+    local pg_status="offline"
+    local pg_size="0"
+    local pg_connections=0
+    local container_runtime
+    container_runtime=$(detect_container_runtime)
+
+    if [[ "$container_runtime" == "podman" ]]; then
+        if run_timeout 3 podman exec local-ai-postgres pg_isready -U postgres > /dev/null 2>&1; then
+            pg_status="online"
+            pg_size=$(run_timeout 3 podman exec local-ai-postgres psql -U postgres -t -c "SELECT pg_size_pretty(pg_database_size('postgres'));" 2>/dev/null | tr -d ' \n' || echo "unknown")
+            pg_connections=$(run_timeout 3 podman exec local-ai-postgres psql -U postgres -t -c "SELECT count(*) FROM pg_stat_activity;" 2>/dev/null | tr -d ' \n' || echo "0")
+        fi
+    fi
+
+    cat > "$DATA_DIR/database.json" <<EOF
+{
+  "timestamp": "$(date -Iseconds)",
+  "postgresql": {
+    "status": "$pg_status",
+    "database_size": "$pg_size",
+    "active_connections": $pg_connections
+  }
+}
+EOF
+}
+
+# ============================================================================
+# Telemetry Metrics (AIDB)
+# ============================================================================
+collect_telemetry_metrics() {
+    local telemetry_status="offline"
+    local summary="{}"
+
+    if curl_fast http://localhost:8091/telemetry/summary > /dev/null 2>&1; then
+        telemetry_status="online"
+        summary=$(curl_fast http://localhost:8091/telemetry/summary | maybe_jq -c '.' 2>/dev/null || echo "{}")
+    fi
+
+    cat > "$DATA_DIR/telemetry.json" <<EOF
+{
+  "timestamp": "$(date -Iseconds)",
+  "status": "$telemetry_status",
+  "summary": $summary
+}
+EOF
+}
+
+# ============================================================================
+# Feedback Pipeline Metrics
+# ============================================================================
+collect_feedback_pipeline_metrics() {
+    local aidb_status="offline"
+    local telemetry_path="${AIDB_TELEMETRY_PATH:-$AI_STACK_DATA_ROOT/telemetry/aidb-events.jsonl}"
+    local hybrid_path="${HYBRID_TELEMETRY_PATH:-$AI_STACK_DATA_ROOT/telemetry/hybrid-events.jsonl}"
+
+    if curl_fast http://localhost:8091/health > /dev/null 2>&1; then
+        aidb_status="online"
+    fi
+
+    cat > "$DATA_DIR/feedback.json" <<EOF
+{
+  "timestamp": "$(date -Iseconds)",
+  "aidb_status": "$aidb_status",
+  "telemetry": {
+    "path": "$telemetry_path",
+    "exists": $(file_exists "$telemetry_path"),
+    "bytes": $(file_size_bytes "$telemetry_path"),
+    "last_event_at": "$(last_event_timestamp "$telemetry_path")"
+  },
+  "hybrid": {
+    "path": "$hybrid_path",
+    "exists": $(file_exists "$hybrid_path"),
+    "bytes": $(file_size_bytes "$hybrid_path"),
+    "last_event_at": "$(last_event_timestamp "$hybrid_path")"
+  }
+}
+EOF
+}
+
+# ============================================================================
+# Local Proof Metrics (Local LLM + RAG + Skills + Orchestration)
+# ============================================================================
+collect_local_proof_metrics() {
+    local aidb_status="offline"
+    local qdrant_collections="[]"
+    local qdrant_collection_count=0
+    local ollama_model_count=0
+    local lemonade_model_count=0
+    local skills_count=0
+    local telemetry_path="${AIDB_TELEMETRY_PATH:-$AI_STACK_DATA_ROOT/telemetry/aidb-events.jsonl}"
+    local telemetry_events
+    local last_telemetry_event="{}"
+    local skill_samples="[]"
+    local container_runtime
+    local container_count=0
+
+    telemetry_events=$(file_line_count "$telemetry_path")
+    if [[ -f "$telemetry_path" ]]; then
+        last_telemetry_event=$(tail -n 1 "$telemetry_path" | maybe_jq -c '{timestamp: .timestamp, event_type: .event_type, source: .source, llm_used: .llm_used, model: .model}' 2>/dev/null || echo "{}")
+    fi
+
+    if curl_fast http://localhost:8091/health > /dev/null 2>&1; then
+        aidb_status="online"
+    fi
+
+    if curl_fast http://localhost:6333/collections > /dev/null 2>&1; then
+        qdrant_collections=$(curl_fast http://localhost:6333/collections | maybe_jq -c '.result.collections | map(.name)' 2>/dev/null || echo "[]")
+        qdrant_collection_count=$(echo "$qdrant_collections" | maybe_jq -r 'length' 2>/dev/null || echo "0")
+    fi
+
+    if curl_fast http://localhost:11434/api/tags > /dev/null 2>&1; then
+        ollama_model_count=$(curl_fast http://localhost:11434/api/tags | maybe_jq -r '.models | length' 2>/dev/null || echo "0")
+    fi
+
+    if curl_fast http://localhost:8080/v1/models > /dev/null 2>&1; then
+        lemonade_model_count=$(curl_fast http://localhost:8080/v1/models | maybe_jq -r '.data | length' 2>/dev/null || echo "0")
+    fi
+
+    if curl_fast http://localhost:8091/skills > /dev/null 2>&1; then
+        local skills_payload
+        skills_payload=$(curl_fast http://localhost:8091/skills | maybe_jq -c '.' 2>/dev/null || echo "[]")
+        skills_count=$(echo "$skills_payload" | maybe_jq -r 'length' 2>/dev/null || echo "0")
+        skill_samples=$(echo "$skills_payload" | maybe_jq -c '.[0:5] | map(.slug // .name // .id)' 2>/dev/null || echo "[]")
+    fi
+
+    container_runtime=$(detect_container_runtime)
+    if [[ "$container_runtime" == "podman" ]]; then
+        container_count=$(run_timeout 3 podman ps --format json 2>/dev/null | maybe_jq -r 'length' 2>/dev/null || echo "0")
+    elif [[ "$container_runtime" == "docker" ]]; then
+        container_count=$(run_timeout 3 docker ps --format json 2>/dev/null | maybe_jq -r 'length' 2>/dev/null || echo "0")
+    fi
+
+    cat > "$DATA_DIR/proof.json" <<EOF
+{
+  "timestamp": "$(date -Iseconds)",
+  "aidb_status": "$aidb_status",
+  "rag": {
+    "qdrant_collections": ${qdrant_collections:-[]},
+    "collection_count": ${qdrant_collection_count:-0}
+  },
+  "llm": {
+    "ollama_models": ${ollama_model_count:-0},
+    "lemonade_models": ${lemonade_model_count:-0}
+  },
+  "skills": {
+    "count": ${skills_count:-0},
+    "samples": ${skill_samples:-[]}
+  },
+  "telemetry": {
+    "path": "$telemetry_path",
+    "events": ${telemetry_events:-0},
+    "last_event": ${last_telemetry_event}
+  },
+  "orchestration": {
+    "runtime": "${container_runtime}",
+    "containers_running": ${container_count:-0}
+  }
+}
+EOF
+}
+
+# ============================================================================
+# Configuration Snapshot (for dashboard controls)
+# ============================================================================
+collect_config_metrics() {
+    local env_file="${AI_STACK_CONFIG:-$HOME/.config/nixos-ai-stack/.env}"
+    local aidb_port="${AIDB_PORT:-$(read_env_value "$env_file" "AIDB_PORT")}"
+    local lemonade_port="${LEMONADE_PORT:-$(read_env_value "$env_file" "LEMONADE_PORT")}"
+    local qdrant_port="${QDRANT_PORT:-$(read_env_value "$env_file" "QDRANT_PORT")}"
+    local open_webui_port="${OPEN_WEBUI_PORT:-3001}"
+    local postgres_port="${POSTGRES_PORT:-$(read_env_value "$env_file" "POSTGRES_PORT")}"
+    local redis_port="${REDIS_PORT:-$(read_env_value "$env_file" "REDIS_PORT")}"
+    local aidb_config="${AIDB_CONFIG:-$(read_env_value "$env_file" "AIDB_CONFIG")}"
+    local telemetry_path="${AIDB_TELEMETRY_PATH:-$(read_env_value "$env_file" "AIDB_TELEMETRY_PATH")}"
+    local hybrid_telemetry_path="${HYBRID_TELEMETRY_PATH:-$(read_env_value "$env_file" "HYBRID_TELEMETRY_PATH")}"
+    local dashboard_refresh="${DASHBOARD_COLLECT_INTERVAL:-15}"
+    local telemetry_stale="${TELEMETRY_STALE_MINUTES:-30}"
+    local podman_socket="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
+    local dashboard_data_dir="${HOME}/.local/share/nixos-system-dashboard"
+    local compose_file="ai-stack/compose/docker-compose.yml"
+    local host_name
+    local user_uid
+    local sshd_password_auth
+    local sshd_root_login
+    local firewall_enabled
+    local openssh_enabled
+    local fail2ban_enabled
+    local tailscale_enabled
+    local auto_upgrade_enabled
+    local auto_upgrade_schedule
+    local nixos_version
+    local kernel_version
+    local nix_gc_enabled
+    local nix_gc_schedule
+    local nix_gc_older_than
+    local nix_optimise
+    local zram_enabled
+    local swap_devices
+    local journald_storage
+    local journald_system_max_use
+    local journald_runtime_max_use
+    local swappiness
+    local inotify_watches
+    local ip_forward
+
+    sshd_password_auth=$(read_sshd_config_value "PasswordAuthentication")
+    sshd_root_login=$(read_sshd_config_value "PermitRootLogin")
+    firewall_enabled=$(read_nixos_option "networking.firewall.enable")
+    openssh_enabled=$(read_nixos_option "services.openssh.enable")
+    fail2ban_enabled=$(read_nixos_option "services.fail2ban.enable")
+    tailscale_enabled=$(read_nixos_option "services.tailscale.enable")
+    auto_upgrade_enabled=$(read_nixos_option "system.autoUpgrade.enable")
+    auto_upgrade_schedule=$(read_nixos_option "system.autoUpgrade.dates")
+    nixos_version=$(os_release_value "VERSION")
+    kernel_version=$(uname -r)
+    nix_gc_enabled=$(read_nixos_option "nix.gc.automatic")
+    nix_gc_schedule=$(read_nixos_option "nix.gc.dates")
+    nix_gc_older_than=$(read_nixos_option "nix.gc.options")
+    nix_optimise=$(read_nixos_option "nix.optimise.automatic")
+    zram_enabled=$(read_nixos_option "zramSwap.enable")
+    swap_devices=$(read_nixos_option "swapDevices")
+    journald_storage=$(read_journald_value "Storage")
+    journald_system_max_use=$(read_journald_value "SystemMaxUse")
+    journald_runtime_max_use=$(read_journald_value "RuntimeMaxUse")
+    swappiness=$(sysctl_value "vm.swappiness")
+    inotify_watches=$(sysctl_value "fs.inotify.max_user_watches")
+    ip_forward=$(sysctl_value "net.ipv4.ip_forward")
+    host_name=$(hostname)
+    user_uid=$(id -u)
+
+    aidb_port="${aidb_port:-8091}"
+    lemonade_port="${lemonade_port:-8080}"
+    qdrant_port="${qdrant_port:-6333}"
+    postgres_port="${postgres_port:-5432}"
+    redis_port="${redis_port:-6379}"
+    aidb_config="${aidb_config:-/app/config/config.yaml}"
+    telemetry_path="${telemetry_path:-${AI_STACK_DATA_ROOT}/telemetry/aidb-events.jsonl}"
+    hybrid_telemetry_path="${hybrid_telemetry_path:-${AI_STACK_DATA_ROOT}/telemetry/hybrid-events.jsonl}"
+
+    cat > "$DATA_DIR/config.json" <<EOF
+{
+  "timestamp": "$(date -Iseconds)",
+  "env_file": "$env_file",
+  "required_services": [
+    "qdrant",
+    "ollama",
+    "lemonade",
+    "postgres",
+    "redis",
+    "open_webui",
+    "aidb",
+    "mindsdb"
+  ],
+  "settings": [
+    {
+      "label": "AI Stack Data Root",
+      "value": "${AI_STACK_DATA_ROOT}",
+      "path": "$env_file",
+      "hint": "Set AI_STACK_DATA to relocate persisted services."
+    },
+    {
+      "label": "AI Stack Config Root",
+      "value": "${AI_STACK_CONFIG:-$HOME/.config/nixos-ai-stack}",
+      "path": "$env_file",
+      "hint": "Set AI_STACK_CONFIG to relocate stack settings."
+    },
+    {
+      "label": "Dashboard Data Dir",
+      "value": "${dashboard_data_dir}",
+      "path": "scripts/generate-dashboard-data.sh",
+      "hint": "Dashboard JSON output directory."
+    },
+    {
+      "label": "AIDB Port",
+      "value": "${aidb_port}",
+      "path": "$env_file",
+      "hint": "Controls AIDB MCP server port."
+    },
+    {
+      "label": "NixOS Version",
+      "value": "${nixos_version:-unknown}",
+      "path": "/etc/os-release",
+      "hint": "System release version."
+    },
+    {
+      "label": "Kernel Version",
+      "value": "${kernel_version}",
+      "path": "runtime",
+      "hint": "Active Linux kernel."
+    },
+    {
+      "label": "Nix GC Automatic",
+      "value": "${nix_gc_enabled:-unknown}",
+      "path": "/etc/nixos/configuration.nix",
+      "hint": "nix.gc.automatic"
+    },
+    {
+      "label": "Nix GC Schedule",
+      "value": "${nix_gc_schedule:-unknown}",
+      "path": "/etc/nixos/configuration.nix",
+      "hint": "nix.gc.dates"
+    },
+    {
+      "label": "Nix GC Options",
+      "value": "${nix_gc_older_than:-unknown}",
+      "path": "/etc/nixos/configuration.nix",
+      "hint": "nix.gc.options"
+    },
+    {
+      "label": "Nix Optimise Store",
+      "value": "${nix_optimise:-unknown}",
+      "path": "/etc/nixos/configuration.nix",
+      "hint": "nix.optimise.automatic"
+    },
+    {
+      "label": "ZRAM Enabled",
+      "value": "${zram_enabled:-unknown}",
+      "path": "/etc/nixos/configuration.nix",
+      "hint": "zramSwap.enable"
+    },
+    {
+      "label": "Swap Devices",
+      "value": "${swap_devices:-unknown}",
+      "path": "/etc/nixos/configuration.nix",
+      "hint": "swapDevices"
+    },
+    {
+      "label": "Journald Storage",
+      "value": "${journald_storage:-unknown}",
+      "path": "/etc/systemd/journald.conf",
+      "hint": "Storage"
+    },
+    {
+      "label": "Journald System Max Use",
+      "value": "${journald_system_max_use:-unknown}",
+      "path": "/etc/systemd/journald.conf",
+      "hint": "SystemMaxUse"
+    },
+    {
+      "label": "Journald Runtime Max Use",
+      "value": "${journald_runtime_max_use:-unknown}",
+      "path": "/etc/systemd/journald.conf",
+      "hint": "RuntimeMaxUse"
+    },
+    {
+      "label": "Swappiness",
+      "value": "${swappiness:-unknown}",
+      "path": "sysctl",
+      "hint": "vm.swappiness"
+    },
+    {
+      "label": "Inotify Watches",
+      "value": "${inotify_watches:-unknown}",
+      "path": "sysctl",
+      "hint": "fs.inotify.max_user_watches"
+    },
+    {
+      "label": "IPv4 Forwarding",
+      "value": "${ip_forward:-unknown}",
+      "path": "sysctl",
+      "hint": "net.ipv4.ip_forward"
+    },
+    {
+      "label": "AIDB Config Path",
+      "value": "${aidb_config}",
+      "path": "$env_file",
+      "hint": "Config file used by AIDB MCP server."
+    },
+    {
+      "label": "Lemonade Port",
+      "value": "${lemonade_port}",
+      "path": "$env_file",
+      "hint": "Controls Lemonade inference port."
+    },
+    {
+      "label": "Open WebUI Port",
+      "value": "${open_webui_port}",
+      "path": "$compose_file",
+      "hint": "Open WebUI HTTP port mapping."
+    },
+    {
+      "label": "Qdrant Port",
+      "value": "${qdrant_port}",
+      "path": "$env_file",
+      "hint": "Controls Qdrant HTTP port."
+    },
+    {
+      "label": "Firewall Enabled",
+      "value": "${firewall_enabled:-unknown}",
+      "path": "/etc/nixos/configuration.nix",
+      "hint": "networking.firewall.enable"
+    },
+    {
+      "label": "OpenSSH Enabled",
+      "value": "${openssh_enabled:-unknown}",
+      "path": "/etc/nixos/configuration.nix",
+      "hint": "services.openssh.enable"
+    },
+    {
+      "label": "OpenSSH Password Auth",
+      "value": "${sshd_password_auth:-unknown}",
+      "path": "/etc/ssh/sshd_config",
+      "hint": "PasswordAuthentication"
+    },
+    {
+      "label": "OpenSSH Root Login",
+      "value": "${sshd_root_login:-unknown}",
+      "path": "/etc/ssh/sshd_config",
+      "hint": "PermitRootLogin"
+    },
+    {
+      "label": "Fail2ban Enabled",
+      "value": "${fail2ban_enabled:-unknown}",
+      "path": "/etc/nixos/configuration.nix",
+      "hint": "services.fail2ban.enable"
+    },
+    {
+      "label": "Tailscale Enabled",
+      "value": "${tailscale_enabled:-unknown}",
+      "path": "/etc/nixos/configuration.nix",
+      "hint": "services.tailscale.enable"
+    },
+    {
+      "label": "Auto Upgrade Enabled",
+      "value": "${auto_upgrade_enabled:-unknown}",
+      "path": "/etc/nixos/configuration.nix",
+      "hint": "system.autoUpgrade.enable"
+    },
+    {
+      "label": "Auto Upgrade Schedule",
+      "value": "${auto_upgrade_schedule:-unknown}",
+      "path": "/etc/nixos/configuration.nix",
+      "hint": "system.autoUpgrade.dates"
+    },
+    {
+      "label": "PostgreSQL Port",
+      "value": "${postgres_port}",
+      "path": "$env_file",
+      "hint": "PostgreSQL service port."
+    },
+    {
+      "label": "Redis Port",
+      "value": "${redis_port}",
+      "path": "$env_file",
+      "hint": "Redis service port."
+    },
+    {
+      "label": "AIDB Telemetry Path",
+      "value": "${telemetry_path}",
+      "path": "$env_file",
+      "hint": "AIDB JSONL telemetry output."
+    },
+    {
+      "label": "Hybrid Telemetry Path",
+      "value": "${hybrid_telemetry_path}",
+      "path": "$env_file",
+      "hint": "Hybrid coordinator telemetry output."
+    },
+    {
+      "label": "Dashboard Refresh (seconds)",
+      "value": "${dashboard_refresh}",
+      "path": "launch-dashboard.sh",
+      "hint": "Set DASHBOARD_COLLECT_INTERVAL to adjust refresh cadence."
+    },
+    {
+      "label": "Telemetry Stale Threshold (minutes)",
+      "value": "${telemetry_stale}",
+      "path": "scripts/verify-local-llm-feedback.sh",
+      "hint": "Set TELEMETRY_STALE_MINUTES to change stale warnings."
+    },
+    {
+      "label": "Podman Socket",
+      "value": "${podman_socket}",
+      "path": "runtime",
+      "hint": "Rootless Podman socket path."
+    },
+    {
+      "label": "Podman Socket Status",
+      "value": "$(systemd_is_active podman.socket)",
+      "path": "systemd",
+      "hint": "Podman rootless socket unit state."
+    },
+    {
+      "label": "OpenSSH Service Status",
+      "value": "$(systemd_is_active sshd)",
+      "path": "systemd",
+      "hint": "OpenSSH daemon service state."
+    },
+    {
+      "label": "Tailscale Service Status",
+      "value": "$(systemd_is_active tailscaled)",
+      "path": "systemd",
+      "hint": "Tailscale daemon service state."
+    },
+    {
+      "label": "Firewall Service Status",
+      "value": "$(systemd_is_active nftables)",
+      "path": "systemd",
+      "hint": "nftables firewall service state."
+    },
+    {
+      "label": "Fail2ban Service Status",
+      "value": "$(systemd_is_active fail2ban)",
+      "path": "systemd",
+      "hint": "Fail2ban service state."
+    },
+    {
+      "label": "Compose File",
+      "value": "${compose_file}",
+      "path": "${compose_file}",
+      "hint": "Primary AI stack compose definition."
+    }
+  ],
+  "actions": [
+    {
+      "label": "Grant Podman Desktop Socket",
+      "command": "flatpak override --user --filesystem=xdg-run/podman io.podman_desktop.PodmanDesktop",
+      "mode": "run",
+      "category": "Desktop"
+    },
+    {
+      "label": "Create Podman Connection",
+      "command": "podman system connection add local unix:///run/user/${user_uid}/podman/podman.sock --default",
+      "mode": "run",
+      "category": "Containers"
+    },
+    {
+      "label": "Restart Podman Socket",
+      "command": "systemctl --user restart podman.socket",
+      "mode": "run",
+      "category": "Containers"
+    },
+    {
+      "label": "Restart OpenSSH",
+      "command": "sudo -n systemctl restart sshd",
+      "mode": "run",
+      "category": "Security"
+    },
+    {
+      "label": "Restart Firewall (nftables)",
+      "command": "sudo -n systemctl restart nftables",
+      "mode": "run",
+      "category": "Security"
+    },
+    {
+      "label": "Show Firewall Rules",
+      "command": "sudo -n nft list ruleset",
+      "mode": "run",
+      "category": "Security"
+    },
+    {
+      "label": "Restart Tailscale",
+      "command": "sudo -n systemctl restart tailscaled",
+      "mode": "run",
+      "category": "Security"
+    },
+    {
+      "label": "Restart Fail2ban",
+      "command": "sudo -n systemctl restart fail2ban",
+      "mode": "run",
+      "category": "Security"
+    },
+    {
+      "label": "Vacuum Journald (500M)",
+      "command": "sudo -n journalctl --vacuum-size=500M",
+      "mode": "run",
+      "category": "Observability"
+    },
+    {
+      "label": "Show System Journal (Last 200)",
+      "command": "journalctl -n 200",
+      "mode": "run",
+      "category": "Observability"
+    },
+    {
+      "label": "Journal Disk Usage",
+      "command": "journalctl --disk-usage",
+      "mode": "run",
+      "category": "Observability"
+    },
+    {
+      "label": "Force Logrotate",
+      "command": "sudo -n logrotate -f /etc/logrotate.conf",
+      "mode": "run",
+      "category": "Observability"
+    },
+    {
+      "label": "List Listening Ports",
+      "command": "ss -tuln",
+      "mode": "run",
+      "category": "Diagnostics"
+    },
+    {
+      "label": "Process Snapshot",
+      "command": "top -bn1 | head -n 15",
+      "mode": "run",
+      "category": "Diagnostics"
+    },
+    {
+      "label": "Nix Store GC",
+      "command": "sudo -n nix-collect-garbage -d",
+      "mode": "run",
+      "category": "System"
+    },
+    {
+      "label": "Nix Store Optimise",
+      "command": "sudo -n nix-store --optimise",
+      "mode": "run",
+      "category": "System"
+    },
+    {
+      "label": "Reload systemd Daemon",
+      "command": "sudo -n systemctl daemon-reload",
+      "mode": "run",
+      "category": "System"
+    },
+    {
+      "label": "System Update Check",
+      "command": "nix-channel --update",
+      "mode": "run",
+      "category": "System"
+    },
+    {
+      "label": "Show IP Addresses",
+      "command": "ip a",
+      "mode": "run",
+      "category": "Network"
+    },
+    {
+      "label": "DNS Status",
+      "command": "resolvectl status",
+      "mode": "run",
+      "category": "Network"
+    },
+    {
+      "label": "Ping 1.1.1.1",
+      "command": "ping -c 3 1.1.1.1",
+      "mode": "run",
+      "category": "Network"
+    },
+    {
+      "label": "Disk Usage (Root)",
+      "command": "df -h /",
+      "mode": "run",
+      "category": "Diagnostics"
+    },
+    {
+      "label": "Memory Snapshot",
+      "command": "free -h",
+      "mode": "run",
+      "category": "Diagnostics"
+    },
+    {
+      "label": "Start AI Stack",
+      "command": "podman-compose -f ai-stack/compose/docker-compose.yml up -d",
+      "mode": "run",
+      "category": "AI Stack"
+    },
+    {
+      "label": "Stop AI Stack",
+      "command": "podman-compose -f ai-stack/compose/docker-compose.yml down",
+      "mode": "run",
+      "category": "AI Stack"
+    },
+    {
+      "label": "AI Stack Logs (AIDB)",
+      "command": "podman-compose -f ai-stack/compose/docker-compose.yml logs --tail 200 aidb",
+      "mode": "run",
+      "category": "AI Stack"
+    },
+    {
+      "label": "AI Stack Logs (Qdrant)",
+      "command": "podman-compose -f ai-stack/compose/docker-compose.yml logs --tail 200 qdrant",
+      "mode": "run",
+      "category": "AI Stack"
+    },
+    {
+      "label": "AI Stack Logs (Ollama)",
+      "command": "podman-compose -f ai-stack/compose/docker-compose.yml logs --tail 200 ollama",
+      "mode": "run",
+      "category": "AI Stack"
+    },
+    {
+      "label": "AI Stack Logs (Lemonade)",
+      "command": "podman-compose -f ai-stack/compose/docker-compose.yml logs --tail 200 lemonade",
+      "mode": "run",
+      "category": "AI Stack"
+    },
+    {
+      "label": "AI Stack Logs (Open WebUI)",
+      "command": "podman-compose -f ai-stack/compose/docker-compose.yml logs --tail 200 open-webui",
+      "mode": "run",
+      "category": "AI Stack"
+    },
+    {
+      "label": "AI Stack Health Check",
+      "command": "python3 scripts/check-ai-stack-health-v2.py -v",
+      "mode": "run",
+      "category": "AI Stack"
+    },
+    {
+      "label": "Dashboard Data Refresh",
+      "command": "bash scripts/generate-dashboard-data.sh",
+      "mode": "run",
+      "category": "Dashboard"
+    },
+    {
+      "label": "Run Feedback Verification",
+      "command": "./scripts/verify-local-llm-feedback.sh",
+      "mode": "run",
+      "category": "AI Stack"
+    },
+    {
+      "label": "List Podman Containers",
+      "command": "podman ps --all",
+      "mode": "run",
+      "category": "Containers"
+    },
+    {
+      "label": "Podman Disk Usage",
+      "command": "podman system df",
+      "mode": "run",
+      "category": "Containers"
+    },
+    {
+      "label": "Podman Connections",
+      "command": "podman system connection list",
+      "mode": "run",
+      "category": "Containers"
+    },
+    {
+      "label": "Rebuild Home Manager",
+      "command": "home-manager switch --flake ~/.config/home-manager#${host_name}",
+      "mode": "run",
+      "category": "System"
+    },
+    {
+      "label": "Edit NixOS Config",
+      "command": "sudo nano /etc/nixos/configuration.nix",
+      "mode": "copy",
+      "category": "Configuration"
+    },
+    {
+      "label": "Edit Home Manager Config",
+      "command": "nano ~/.config/home-manager/home.nix",
+      "mode": "copy",
+      "category": "Configuration"
+    },
+    {
+      "label": "Edit AI Stack Env",
+      "command": "nano ~/.config/nixos-ai-stack/.env",
+      "mode": "copy",
+      "category": "Configuration"
+    },
+    {
+      "label": "Reload NixOS Config",
+      "command": "sudo -n nixos-rebuild switch",
+      "mode": "run",
+      "category": "System"
+    }
+  ]
+}
+EOF
+}
+
+# ============================================================================
+# Document Links & Quick Access
+# ============================================================================
+generate_quick_links() {
+    cat > "$DATA_DIR/links.json" <<EOF
+{
+  "timestamp": "$(date -Iseconds)",
+  "documentation": [
+    {
+      "title": "System Overview",
+      "path": "docs/agent-guides/00-SYSTEM-OVERVIEW.md",
+      "category": "ai"
+    },
+    {
+      "title": "Implementation Summary",
+      "path": "IMPLEMENTATION-SUMMARY.md",
+      "category": "deployment"
+    },
+    {
+      "title": "Comprehensive System Analysis",
+      "path": "COMPREHENSIVE-SYSTEM-ANALYSIS.md",
+      "category": "analysis"
+    },
+    {
+      "title": "System Test Results",
+      "path": "SYSTEM-TEST-RESULTS.md",
+      "category": "testing"
+    },
+    {
+      "title": "DNS Resolution Fix",
+      "path": "DNS-RESOLUTION-FIX.md",
+      "category": "networking"
+    },
+    {
+      "title": "AI Stack RAG Implementation",
+      "path": "AI-STACK-RAG-IMPLEMENTATION.md",
+      "category": "ai"
+    },
+    {
+      "title": "Continuous Learning Guide",
+      "path": "docs/agent-guides/22-CONTINUOUS-LEARNING.md",
+      "category": "ai"
+    },
+    {
+      "title": "RAG Context Guide",
+      "path": "docs/agent-guides/21-RAG-CONTEXT.md",
+      "category": "ai"
+    }
+  ],
+  "services": [
+    {
+      "name": "AIDB MCP Server",
+      "url": "http://localhost:8091/health",
+      "category": "ai"
+    },
+    {
+      "name": "Open WebUI",
+      "url": "http://localhost:3001",
+      "category": "ai"
+    },
+    {
+      "name": "Qdrant Dashboard",
+      "url": "http://localhost:6333/dashboard",
+      "category": "ai"
+    },
+    {
+      "name": "Lemonade Health",
+      "url": "http://localhost:8080/health",
+      "category": "ai"
+    },
+    {
+      "name": "Netdata Monitoring",
+      "url": "http://localhost:19999",
+      "category": "monitoring"
+    },
+    {
+      "name": "Gitea",
+      "url": "http://localhost:3000",
+      "category": "development"
+    }
+  ],
+  "config_files": [
+    {
+      "title": "NixOS Configuration",
+      "path": "/etc/nixos/configuration.nix",
+      "category": "system"
+    },
+    {
+      "title": "Docker Compose (AI Stack)",
+      "path": "ai-stack/compose/docker-compose.yml",
+      "category": "ai"
+    },
+    {
+      "title": "System Dashboard Guide",
+      "path": "SYSTEM-DASHBOARD-GUIDE.md",
+      "category": "monitoring"
+    },
+    {
+      "title": "Networking Config",
+      "path": "templates/nixos-improvements/networking.nix",
+      "category": "networking"
+    }
+  ]
+}
+EOF
+}
+
+# ============================================================================
+# Main Execution
+# ============================================================================
+main() {
+    acquire_lock
+    if ! has_cmd flock; then
+        trap 'rm -f "$LOCK_FILE"' EXIT
+    fi
+
+    echo "🔄 Collecting system metrics..."
+    collect_system_metrics
+
+    echo "🤖 Collecting LLM stack metrics..."
+    collect_llm_metrics
+
+    echo "🌐 Collecting network metrics..."
+    collect_network_metrics
+
+    echo "🔒 Collecting security metrics..."
+    collect_security_metrics
+
+    echo "🗄️  Collecting database metrics..."
+    collect_database_metrics
+
+    echo "🧠 Collecting telemetry metrics..."
+    collect_telemetry_metrics
+
+    echo "🪢 Collecting feedback pipeline metrics..."
+    collect_feedback_pipeline_metrics
+
+    echo "🛠️  Collecting configuration snapshot..."
+    collect_config_metrics
+
+    echo "✅ Collecting local proof metrics..."
+    collect_local_proof_metrics
+
+    echo "💾 Collecting persistence metrics..."
+    collect_persistence_metrics
+
+    echo "📚 Generating quick links..."
+    generate_quick_links
+
+    echo "✅ Dashboard data generated at: $DATA_DIR"
+    echo "📊 Files created:"
+    ls -lh "$DATA_DIR"/*.json
+}
+
+main "$@"

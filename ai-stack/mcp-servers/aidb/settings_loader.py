@@ -43,7 +43,7 @@ class Settings(BaseModel):
     parallel_diversity_mode: bool = False
     postgres_dsn: str
     redis_url: str
-    lemonade_url: str = "http://localhost:8000/api/v1"
+    lemonade_url: str = "http://localhost:8080"
     lemonade_models: List[str] = Field(default_factory=list)
     tool_schema_cache: Path = Field(default=Path(".mcp_cache/tool_schemas.json"))
     sandbox_enabled: bool = True
@@ -57,6 +57,10 @@ class Settings(BaseModel):
     log_file: Path = Field(default=Path("/tmp/aidb-mcp.log"))
     log_max_bytes: int = 10 * 1024 * 1024
     log_backup_count: int = 5
+    telemetry_enabled: bool = True
+    telemetry_path: Path = Field(
+        default=Path("~/.local/share/nixos-ai-stack/telemetry/aidb-events.jsonl").expanduser()
+    )
     rate_limit_enabled: bool = False
     rate_limit_rpm: int = 60
     api_key: Optional[str] = None
@@ -109,7 +113,7 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
     redis_url = f"redis://{redis_auth}{redis_cfg.get('host','localhost')}:{redis_cfg.get('port',6379)}/{redis_cfg.get('db',0)}"
 
     lemonade_cfg = llm_cfg.get("lemonade", {})
-    lemonade_url = os.environ.get("LEMONADE_BASE_URL") or lemonade_cfg.get("host") or "http://localhost:8000/api/v1"
+    lemonade_url = os.environ.get("LEMONADE_BASE_URL") or lemonade_cfg.get("host") or "http://localhost:8080"
     lemonade_models = lemonade_cfg.get("models", [])
 
     sandbox_cfg = tools_cfg.get("sandbox", {})
@@ -128,6 +132,12 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
         _read_secret(security_cfg.get("api_key_file"))
         or security_cfg.get("api_key")
         or os.environ.get("AIDB_API_KEY")
+    )
+
+    telemetry_cfg = raw.get("telemetry", {})
+    telemetry_enabled = telemetry_cfg.get("enabled", True)
+    telemetry_path = os.environ.get("AIDB_TELEMETRY_PATH") or telemetry_cfg.get(
+        "path", "~/.local/share/nixos-ai-stack/telemetry/aidb-events.jsonl"
     )
 
     return Settings(
@@ -151,6 +161,8 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
         log_file=log_path,
         log_max_bytes=_parse_size(log_size),
         log_backup_count=logging_cfg.get("backup_count", 5),
+        telemetry_enabled=telemetry_enabled,
+        telemetry_path=Path(telemetry_path).expanduser(),
         rate_limit_enabled=security_cfg.get("rate_limit", {}).get("enabled", False),
         rate_limit_rpm=security_cfg.get("rate_limit", {}).get("requests_per_minute", 60),
         api_key=api_key,

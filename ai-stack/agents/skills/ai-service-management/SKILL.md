@@ -129,7 +129,7 @@ AI Service Control - status all services
 
 Access points:
   • Ollama API:    http://localhost:11434
-  • Open WebUI:    http://localhost:8081
+  • Open WebUI:    http://localhost:3001
   • Qdrant:        http://localhost:6333
   • MindsDB:       http://localhost:7735
 ```
@@ -137,7 +137,7 @@ Access points:
 ## Service Ports
 
 - **Ollama API**: http://localhost:11434
-- **Open WebUI**: http://localhost:8081
+- **Open WebUI**: http://localhost:3001
 - **Qdrant HTTP**: http://localhost:6333
 - **Qdrant gRPC**: localhost:6334
 - **MindsDB API**: localhost:47334

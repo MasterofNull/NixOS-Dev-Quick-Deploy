@@ -78,8 +78,18 @@ QDRANT_HOST=qdrant
 QDRANT_PORT=6333
 
 # Lemonade
-LEMONADE_BASE_URL=http://lemonade:8000/api/v1
+LEMONADE_BASE_URL=http://lemonade:8080
 ```
+
+### Config File
+
+The default config file used by the container image lives at:
+
+```
+ai-stack/mcp-servers/config/config.yaml
+```
+
+Override with `AIDB_CONFIG` if you want to mount a custom config.
 
 ---
 

@@ -17,7 +17,7 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
@@ -49,6 +49,24 @@ qdrant_client: Optional[QdrantClient] = None
 lemonade_client: Optional[httpx.AsyncClient] = None
 embedding_client: Optional[httpx.AsyncClient] = None
 
+TELEMETRY_PATH = os.path.expanduser(
+    os.getenv(
+        "HYBRID_TELEMETRY_PATH",
+        "~/.local/share/nixos-ai-stack/telemetry/hybrid-events.jsonl",
+    )
+)
+
+
+def record_telemetry_event(event_type: str, payload: Dict[str, Any]) -> None:
+    payload = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "event_type": event_type,
+        **payload,
+    }
+    os.makedirs(os.path.dirname(TELEMETRY_PATH), exist_ok=True)
+    with open(TELEMETRY_PATH, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload) + "\n")
+
 
 # ============================================================================
 # Configuration
@@ -61,13 +79,13 @@ class Config:
     QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
     QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", None)
 
-    LEMONADE_URL = os.getenv("LEMONADE_BASE_URL", "http://localhost:8000/api/v1")
-    LEMONADE_CODER_URL = os.getenv(
-        "LEMONADE_CODER_URL", "http://localhost:8001/api/v1"
-    )
-    LEMONADE_DEEPSEEK_URL = os.getenv(
-        "LEMONADE_DEEPSEEK_URL", "http://localhost:8003/api/v1"
-    )
+LEMONADE_URL = os.getenv("LEMONADE_BASE_URL", "http://localhost:8080")
+LEMONADE_CODER_URL = os.getenv(
+    "LEMONADE_CODER_URL", "http://localhost:8080"
+)
+LEMONADE_DEEPSEEK_URL = os.getenv(
+    "LEMONADE_DEEPSEEK_URL", "http://localhost:8080"
+)
 
     EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
     EMBEDDING_DIM = 384
@@ -396,6 +414,15 @@ Relevant Context from Local Knowledge Base:
 Please use this context to provide a more accurate and efficient response.
 """
 
+    record_telemetry_event(
+        "context_augmented",
+        {
+            "agent_type": agent_type,
+            "context_count": len(context_ids),
+            "collections": list(COLLECTIONS.keys()),
+        },
+    )
+
     return {
         "augmented_prompt": augmented_prompt,
         "context_ids": context_ids,
@@ -456,6 +483,17 @@ async def track_interaction(
             ],
         )
         logger.info(f"Tracked interaction: {interaction_id}")
+        record_telemetry_event(
+            "interaction_tracked",
+            {
+                "interaction_id": interaction_id,
+                "agent_type": agent_type,
+                "model_used": model_used,
+                "tokens_used": tokens_used,
+                "latency_ms": latency_ms,
+                "context_count": len(context_ids),
+            },
+        )
         return interaction_id
 
     except Exception as e:

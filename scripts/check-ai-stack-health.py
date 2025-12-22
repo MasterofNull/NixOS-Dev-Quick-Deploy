@@ -175,7 +175,7 @@ class AIStackHealthChecker:
 
     def check_open_webui(self) -> ServiceCheck:
         """Check Open WebUI"""
-        return self.check_service("Open WebUI", "http://localhost:3000")
+        return self.check_service("Open WebUI", "http://localhost:3001")
 
     def check_postgres(self) -> ServiceCheck:
         """Check PostgreSQL database"""

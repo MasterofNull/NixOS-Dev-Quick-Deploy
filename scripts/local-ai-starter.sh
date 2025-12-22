@@ -82,6 +82,16 @@ copy_local_stack_templates() {
         cp "${SCRIPT_DIR}/templates/local-ai-stack/.env.example" "$LOCAL_STACK_DIR/.env"
         sed -i "s|/home/your-user/.local/share/ai-stack|${data_root}|g" "$LOCAL_STACK_DIR/.env"
     fi
+
+    mkdir -p "$LOCAL_STACK_DIR/mcp-servers"
+    if [[ -d "${SCRIPT_DIR}/ai-stack/mcp-servers/aidb" ]]; then
+        rm -rf "$LOCAL_STACK_DIR/mcp-servers/aidb"
+        cp -R "${SCRIPT_DIR}/ai-stack/mcp-servers/aidb" "$LOCAL_STACK_DIR/mcp-servers/aidb"
+    fi
+    if [[ -d "${SCRIPT_DIR}/ai-stack/mcp-servers/config" ]]; then
+        rm -rf "$LOCAL_STACK_DIR/mcp-servers/config"
+        cp -R "${SCRIPT_DIR}/ai-stack/mcp-servers/config" "$LOCAL_STACK_DIR/mcp-servers/config"
+    fi
 }
 
 start_local_stack() {
@@ -105,7 +115,7 @@ start_local_stack() {
 action_scaffold_local_stack() {
     info "Scaffolding local AI stack at ${LOCAL_STACK_DIR}"
     local data_root="${AI_STACK_DATA:-$HOME/.local/share/ai-stack}"
-    mkdir -p "${data_root}"/{postgres,redis,redisinsight,lemonade-models}
+    mkdir -p "${data_root}"/{postgres,redis,redisinsight,lemonade-models,aidb,aidb-cache,telemetry}
     copy_local_stack_templates "$data_root"
 
     info "AI_PROFILE=${AI_PROFILE} (override in environment to change edge AI behavior hints)."

@@ -24,8 +24,8 @@
 { config, pkgs, lib, nixAiToolsPackages ? {}, ... }:
 
 let
-  # AI services have been migrated to user-level Podman with vLLM
-  # HuggingFace TGI, Qdrant, and Ollama system services removed
+  # AI services run in user-level Podman (Lemonade + Ollama + Qdrant)
+  # Legacy system services removed; use the rootless AI stack instead
   giteaStateDir = "/var/lib/gitea";
   giteaAppDataDir = "${giteaStateDir}/data";
   giteaRepositoriesDir = "${giteaAppDataDir}/repositories";
@@ -147,6 +147,7 @@ in
 {
   imports = [
     ./hardware-configuration.nix
+    ./nixos-improvements/networking.nix  # DNS resolution fix
     ./nixos-improvements/virtualization.nix
     ./nixos-improvements/optimizations.nix
     ./nixos-improvements/podman.nix
@@ -267,15 +268,10 @@ in
   # ============================================================================
   # Networking (Secure defaults)
   # ============================================================================
+  # Note: DNS configuration is in ./nixos-improvements/networking.nix
   networking = {
     hostName = "@HOSTNAME@";
     networkmanager.enable = true;
-    networkmanager.dns = "systemd-resolved";
-    # Ensure DNS works even if the router DNS is flaky.
-    nameservers = [
-      "1.1.1.1"
-      "8.8.8.8"
-    ];
 
     # Firewall enabled by default with minimal ports
     firewall = {
@@ -285,7 +281,11 @@ in
         2222  # Gitea built-in SSH server
         19999 # Netdata monitoring dashboard
         # Add ports only when needed:
-        # 8000  # AIDB API
+        # 8091  # AIDB API
+        # 8080  # Lemonade inference
+        # 3001  # Open WebUI
+        # 6333  # Qdrant HTTP
+        # 11434 # Ollama embeddings
         # 5432  # PostgreSQL
       ];
       # Default: Block all incoming, allow all outgoing
@@ -293,8 +293,6 @@ in
       logRefusedConnections = lib.mkDefault true;  # Disable for reduced logging if needed
     };
   };
-
-  services.resolved.enable = true;
 
   # ============================================================================
   # Locale & Time (User-configured during setup)
@@ -503,11 +501,10 @@ in
   @GLF_GAMING_STACK_SECTION@
 
   # ========================================================================
-  # AI Services - Migrated to User-Level Podman with vLLM
+  # AI Services - Rootless Podman AI Stack
   # ========================================================================
-  # HuggingFace TGI, Qdrant, and Ollama system services have been removed.
-  # All AI inference is now handled by vLLM in user-level Podman containers.
-  # See: ~/.config/ai-optimizer/ for the Podman-based AI stack configuration.
+  # Legacy system services removed; use the containerized stack for Lemonade/Ollama/Qdrant.
+  # See: ~/.config/ai-optimizer/ for Podman-based AI stack configuration and overrides.
 
   # ========================================================================
   # Self-hosted Git Service (Gitea)
@@ -1046,7 +1043,7 @@ in
     # Example configuration for proxying AI services
     virtualHosts."localhost" = {
       locations."/" = {
-        proxyPass = "http://127.0.0.1:8000";  # Example: Your AI API
+        proxyPass = "http://127.0.0.1:8080";  # Example: Your AI API
         proxyWebsockets = true;
       };
       # locations."/ollama/" = {

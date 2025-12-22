@@ -16,7 +16,7 @@
       "tasks": ["chat", "planning"],
       "ai_profiles": ["cpu_slim", "cpu_full"],
       "storage_path": "~/.local/share/ai-models/edge-chat-3b-q4",
-      "endpoint_hint": "http://localhost:8000"
+      "endpoint_hint": "http://localhost:8080"
     },
     {
       "id": "edge-code-7b-q5",
@@ -33,7 +33,7 @@
       "tasks": ["code", "refactor", "review"],
       "ai_profiles": ["cpu_full"],
       "storage_path": "~/.local/share/ai-models/edge-code-7b-q5",
-      "endpoint_hint": "http://localhost:8000"
+      "endpoint_hint": "http://localhost:8080"
     }
   ]
 }

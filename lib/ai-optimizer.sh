@@ -17,7 +17,7 @@
 # ============================================================================
 
 AIDB_BASE_URL="${AIDB_BASE_URL:-http://localhost:8091}"
-LEMONADE_BASE_URL="${LEMONADE_BASE_URL:-http://localhost:8000/api/v1}"
+LEMONADE_BASE_URL="${LEMONADE_BASE_URL:-http://localhost:8080}"
 AI_ENABLED="${AI_ENABLED:-auto}"  # auto, true, false
 AI_AVAILABLE=false
 
@@ -103,6 +103,7 @@ ai_check_availability() {
 
 ai_check_lemonade() {
     local base="${LEMONADE_BASE_URL%/}"
+    base="${base%/api/v1}"
     if curl -sf --max-time 2 "$base/health" > /dev/null 2>&1; then
         return 0
     else
@@ -230,64 +231,134 @@ EOF
     esac
 }
 
+# Detect already downloaded models from cache
+ai_detect_cached_models() {
+    local cache_dir="${HOME}/.cache/huggingface"
+    declare -A cached_models
+
+    # Check for qwen-coder (Qwen2.5-Coder-7B)
+    if ls "${cache_dir}/models--Qwen--Qwen2.5-Coder-7B-Instruct-GGUF/snapshots/"*/qwen2.5-coder-7b-instruct-q4_k_m.gguf >/dev/null 2>&1; then
+        cached_models[qwen-coder]="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
+    fi
+
+    # Check for qwen3-4b (Qwen3-4B-Instruct)
+    if ls "${cache_dir}/models--unsloth--Qwen3-4B-Instruct-2507-GGUF/snapshots/"*/Qwen3-4B-Instruct-2507-Q4_K_M.gguf >/dev/null 2>&1; then
+        cached_models[qwen3-4b]="unsloth/Qwen3-4B-Instruct-2507-GGUF"
+    fi
+
+    # Check for deepseek (DeepSeek-Coder-6.7B)
+    if ls "${cache_dir}/models--TheBloke--deepseek-coder-6.7B-instruct-GGUF/snapshots/"*/deepseek-coder-6.7b-instruct.Q4_K_M.gguf >/dev/null 2>&1; then
+        cached_models[deepseek]="TheBloke/deepseek-coder-6.7B-instruct-GGUF"
+    fi
+
+    # Return the keys of cached models
+    echo "${!cached_models[@]}"
+}
+
+# Display menu showing ONLY cached models
+ai_display_cached_model_menu() {
+    local -a cached=($1)
+    local count=${#cached[@]}
+
+    if [ $count -eq 0 ]; then
+        # No cached models - show message
+        cat <<EOF
+
+╭───────────────────────────────────────────────────────────────────────────╮
+│ AI Model Selection (Lemonade)                                             │
+│                                                                            │
+│ No models found in cache. Models will be downloaded on first startup.     │
+│                                                                            │
+│ [0] Skip AI model deployment                                              │
+╰───────────────────────────────────────────────────────────────────────────╯
+EOF
+        return
+    fi
+
+    cat <<EOF
+
+╭───────────────────────────────────────────────────────────────────────────╮
+│ AI Model Selection (Lemonade)                                             │
+│                                                                            │
+│ The following models are already downloaded and ready to use:             │
+│                                                                            │
+EOF
+
+    local option=1
+    for model in "${cached[@]}"; do
+        case "$model" in
+            qwen-coder)
+                echo "│ [$option] Qwen2.5-Coder-7B (Recommended)                                      │"
+                echo "│     - Size: 4.4GB  |  Speed: 40-60 tok/s  |  Quality: 88.4%               │"
+                ;;
+            qwen3-4b)
+                echo "│ [$option] Qwen3-4B-Instruct (Lightweight)                                     │"
+                echo "│     - Size: 2.3GB  |  Speed: 60-80 tok/s  |  Quality: 85%                 │"
+                ;;
+            deepseek)
+                echo "│ [$option] DeepSeek-Coder-6.7B (Advanced reasoning)                            │"
+                echo "│     - Size: 3.8GB  |  Speed: 35-50 tok/s  |  Quality: 86%                 │"
+                ;;
+        esac
+        option=$((option + 1))
+    done
+
+    cat <<EOF
+│                                                                            │
+│ [0] Skip AI model deployment                                              │
+╰───────────────────────────────────────────────────────────────────────────╯
+EOF
+}
+
 ai_select_model() {
     local gpu_vram=$(detect_gpu_vram)
     local gpu_name=$(detect_gpu_model)
-    local recommended=$(ai_recommend_model "$gpu_vram")
 
-    ai_display_model_menu "$gpu_vram" "$gpu_name" "$recommended"
+    # Detect cached models
+    local cached_models=$(ai_detect_cached_models)
+    local -a cached_array=($cached_models)
+    local count=${#cached_array[@]}
 
-    echo ""
-    read -p "Select option [0-6, c]: " choice
+    # Display menu with only cached models (send to stderr so it shows when output captured)
+    ai_display_cached_model_menu "$cached_models" >&2
 
-    case "$choice" in
-        1)
-            echo "${AI_MODELS[qwen-7b]}"
-            ;;
-        2)
-            if [ "$gpu_vram" -lt 24 ]; then
-                echo "⚠️  Warning: Qwen2.5-Coder-14B requires 24GB VRAM. You have ${gpu_vram}GB." >&2
-                read -p "Continue anyway? [y/N]: " confirm
-                if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-                    ai_select_model  # Retry
-                    return
-                fi
-            fi
-            echo "${AI_MODELS[qwen-14b]}"
-            ;;
-        3)
-            echo "${AI_MODELS[deepseek-lite]}"
-            ;;
-        4)
-            if [ "$gpu_vram" -lt 32 ]; then
-                echo "⚠️  Warning: DeepSeek-Coder-V2 requires 32GB+ VRAM. You have ${gpu_vram}GB." >&2
-                read -p "Continue anyway? [y/N]: " confirm
-                if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-                    ai_select_model  # Retry
-                    return
-                fi
-            fi
-            echo "${AI_MODELS[deepseek-v2]}"
-            ;;
-        5)
-            echo "${AI_MODELS[phi-mini]}"
-            ;;
-        6)
-            echo "${AI_MODELS[codellama-13b]}"
-            ;;
-        c|C)
-            echo ""
-            read -p "Enter HuggingFace model ID: " custom_model
-            echo "$custom_model"
-            ;;
-        0)
-            echo "SKIP"
-            ;;
-        *)
-            echo "Invalid choice. Please try again." >&2
-            ai_select_model  # Retry
-            ;;
-    esac
+    if [ $count -eq 0 ]; then
+        # No cached models - skip
+        read -p "Press Enter to skip or 'q' to quit: " choice >&2
+        echo "SKIP"
+        return
+    fi
+
+    echo "" >&2
+    read -p "Select option [1-${count}, 0]: " choice >&2
+
+    # Validate choice
+    if [[ "$choice" == "0" ]]; then
+        echo "SKIP"
+        return
+    elif [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "$count" ]; then
+        # Valid selection - return the corresponding model
+        local selected_index=$((choice - 1))
+        local selected_model="${cached_array[$selected_index]}"
+
+        case "$selected_model" in
+            qwen-coder)
+                echo "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
+                ;;
+            qwen3-4b)
+                echo "unsloth/Qwen3-4B-Instruct-2507-GGUF"
+                ;;
+            deepseek)
+                echo "TheBloke/deepseek-coder-6.7B-instruct-GGUF"
+                ;;
+            *)
+                echo "SKIP"
+                ;;
+        esac
+    else
+        echo "Invalid choice. Please try again." >&2
+        ai_select_model  # Retry
+    fi
 }
 
 # ============================================================================

@@ -1262,6 +1262,48 @@ ensure_default_flatpak_apps_installed() {
     return 1
 }
 
+configure_podman_desktop_flatpak() {
+    local app_id="io.podman_desktop.PodmanDesktop"
+
+    if ! flatpak_cli_available; then
+        return 0
+    fi
+
+    if ! flatpak_app_installed "$app_id"; then
+        return 0
+    fi
+
+    print_info "Configuring Podman Desktop Flatpak permissions"
+    if ! run_as_primary_user flatpak override --user --filesystem=xdg-run/podman "$app_id" >/dev/null 2>&1; then
+        print_warning "Unable to grant Podman socket access to Podman Desktop"
+    fi
+
+    if ! command -v podman >/dev/null 2>&1; then
+        return 0
+    fi
+
+    run_as_primary_user systemctl --user enable --now podman.socket >/dev/null 2>&1 || true
+
+    local user_uid socket_path
+    user_uid=$(run_as_primary_user id -u 2>/dev/null || echo "")
+    if [[ -z "$user_uid" ]]; then
+        return 0
+    fi
+
+    socket_path="/run/user/${user_uid}/podman/podman.sock"
+    if [[ ! -S "$socket_path" ]]; then
+        print_warning "Podman socket not found at ${socket_path}"
+        return 0
+    fi
+
+    local connection_list
+    connection_list=$(run_as_primary_user podman system connection list --format "{{.Name}}" 2>/dev/null | sed '/^$/d' || true)
+    if [[ -z "$connection_list" ]]; then
+        run_as_primary_user podman system connection add local "unix://${socket_path}" --default >/dev/null 2>&1 || \
+            print_warning "Unable to register the default Podman connection for Podman Desktop"
+    fi
+}
+
 # ============================================================================
 # Install Flatpak Applications
 # ============================================================================
@@ -1305,11 +1347,13 @@ install_flatpak_stage() {
         select_flatpak_profile --noninteractive || true
     fi
 
+    local install_status=1
     if ensure_default_flatpak_apps_installed; then
-        return 0
+        install_status=0
     fi
 
-    return 1
+    configure_podman_desktop_flatpak
+    return "$install_status"
 }
 
 # ============================================================================

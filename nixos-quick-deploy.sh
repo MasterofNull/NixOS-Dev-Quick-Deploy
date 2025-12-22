@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # NixOS Quick Deploy - Bootstrap Loader
-# Version: 4.0.0
+# Version: 6.0.0
 # Purpose: Orchestrate modular 8-phase deployment workflow
 #
 # ============================================================================
@@ -10,7 +10,7 @@
 # This is the main entry point that orchestrates the 8-phase deployment
 # workflow using a modular architecture.
 #
-# Workflow Phases (v4.0.0):
+# Workflow Phases (v6.0.0):
 # - Phase 1: System Initialization - Validate requirements, install temp tools
 # - Phase 2: System Backup - Comprehensive backup of system and user state
 # - Phase 3: Configuration Generation - Generate declarative NixOS configs
@@ -57,7 +57,7 @@ set -E           # ERR trap inherited by functions
 # READONLY CONSTANTS
 # ============================================================================
 
-readonly SCRIPT_VERSION="5.0.0"
+readonly SCRIPT_VERSION="6.0.0"
 readonly BOOTSTRAP_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly LIB_DIR="$BOOTSTRAP_SCRIPT_DIR/lib"
 readonly CONFIG_DIR="$BOOTSTRAP_SCRIPT_DIR/config"
@@ -86,6 +86,8 @@ export EUID
 
 # Create log directory path in user cache
 readonly LOG_DIR="${HOME}/.cache/nixos-quick-deploy/logs"
+# Create cache directory for preferences and state
+readonly CACHE_DIR="${HOME}/.cache/nixos-quick-deploy"
 # Create unique log file with timestamp
 readonly LOG_FILE="${LOG_DIR}/deploy-$(date +%Y%m%d_%H%M%S).log"
 # Set default log level (can be overridden by CLI args)
@@ -96,6 +98,7 @@ ENABLE_DEBUG=false
 # Export critical variables so they're available to all sourced files
 export SCRIPT_VERSION
 export LOG_DIR
+export CACHE_DIR
 export LOG_FILE
 export LOG_LEVEL
 
@@ -127,7 +130,7 @@ AUTO_UPDATE_FLAKE_INPUTS=false
 RESTORE_KNOWN_GOOD_FLAKE_LOCK=false
 FORCE_HF_DOWNLOAD=false
 RUN_AI_PREP=false
-RUN_AI_MODEL=false
+RUN_AI_MODEL=true  # Default: Enable Hybrid Learning Stack (Qdrant/Lemonade/Ollama)
 
 # Phase control
 declare -a SKIP_PHASES=()
@@ -172,7 +175,7 @@ get_phase_description() {
         5) echo "Declarative deployment - remove nix-env packages and apply configs" ;;
         6) echo "Additional tooling - install non-declarative tools (Claude Code, etc.)" ;;
         7) echo "Post-deployment validation - verify packages and services running" ;;
-        8) echo "Finalization and report - complete setup and generate deployment report" ;;
+        8) echo "Finalization and report - complete setup, validate Hybrid Stack, generate report" ;;
         *) echo "Unknown phase" ;;
     esac
 }
@@ -213,6 +216,7 @@ load_libraries() {
         "backup.sh"
         "secrets.sh"
         "gpu-detection.sh"
+        "ai-optimizer.sh"
         "python.sh"
         "nixos.sh"
         "packages.sh"
@@ -227,6 +231,7 @@ load_libraries() {
         "progress.sh"
         "dry-run.sh"
         "common.sh"
+        "dashboard.sh"
     )
 
     echo "Loading libraries..."
@@ -314,7 +319,7 @@ EOF
 # `parse_arguments`.
 print_usage() {
     cat << 'EOF'
-NixOS Quick Deploy - Bootstrap Loader v5.0.0
+NixOS Quick Deploy - Bootstrap Loader v6.0.0
 
 USAGE:
     ./nixos-quick-deploy.sh [OPTIONS]
@@ -341,7 +346,8 @@ BASIC OPTIONS:
         --update-flake-inputs   Run 'nix flake update' before activation (opt-in)
         --restore-flake-lock    Re-seed flake.lock from the bundled baseline
         --with-ai-prep          Run the optional AI-Optimizer preparation phase after Phase 8
-        --with-ai-model         Run the optional AI model deployment phase after Phase 8
+        --with-ai-model         Force enable Hybrid Learning Stack deployment (enabled by default)
+        --without-ai-model      Skip AI model deployment phase (disable default prompt)
         --with-ai-stack         Convenience alias for --with-ai-prep --with-ai-model
         --prompt-switch         Prompt before running system/home switches
         --prompt-system-switch  Prompt before running nixos-rebuild switch
@@ -369,7 +375,7 @@ PHASE OVERVIEW:
     Phase 5:  Declarative Deployment      - Remove nix-env packages, apply configs
     Phase 6:  Additional Tooling          - Install non-declarative tools
     Phase 7:  Post-deployment Validation  - Verify packages and services
-    Phase 8:  Finalization and Report     - Complete setup, generate report
+    Phase 8:  Finalization and Report     - Complete setup, validate Hybrid Stack, generate report
 
 EXAMPLES:
     # Normal deployment (resumes from last failure if any)
@@ -579,6 +585,10 @@ parse_arguments() {
                 RUN_AI_MODEL=true
                 shift
                 ;;
+            --without-ai-model)
+                RUN_AI_MODEL=false
+                shift
+                ;;
             --with-ai-stack)
                 RUN_AI_PREP=true
                 RUN_AI_MODEL=true
@@ -629,7 +639,7 @@ list_phases() {
     echo "============================================"
     echo "Optional extensions:"
     echo "  • AI-Optimizer preparation (enable with --with-ai-prep)"
-    echo "  • AI model deployment (enable with --with-ai-model)"
+    echo "  • AI model deployment (enabled by default, disable with --without-ai-model)"
     echo ""
 }
 

@@ -153,7 +153,7 @@ def check_lemonade(timeout: int = 5) -> ServiceCheck:
 
 def check_open_webui(timeout: int = 5) -> ServiceCheck:
     """Check Open WebUI (try multiple ports)"""
-    ports = [3000, 8080, 8081]  # Common ports
+    ports = [3001, 3000, 8080, 8081]  # Common ports
 
     for port in ports:
         try:
@@ -176,6 +176,79 @@ def check_open_webui(timeout: int = 5) -> ServiceCheck:
         message="Not reachable on common ports (3000, 8080, 8081)",
         details={"suggestion": "podman start local-ai-open-webui"}
     )
+
+
+def check_aidb(timeout: int = 5) -> ServiceCheck:
+    """Check AIDB MCP server"""
+    try:
+        response = requests.get("http://localhost:8091/health", timeout=timeout)
+
+        if response.status_code == 200:
+            check = ServiceCheck(
+                name="AIDB MCP",
+                status="ok",
+                message="AIDB is healthy"
+            )
+
+            try:
+                data = response.json()
+                services = data.get("services", {})
+                if services:
+                    check.details["services"] = services
+            except Exception:
+                pass
+
+            return check
+
+        return ServiceCheck(
+            name="AIDB MCP",
+            status="error",
+            message=f"Unhealthy (HTTP {response.status_code})"
+        )
+
+    except requests.exceptions.ConnectionError:
+        return ServiceCheck(
+            name="AIDB MCP",
+            status="error",
+            message="Not reachable",
+            details={"suggestion": "podman start local-ai-aidb"}
+        )
+    except Exception as e:
+        return ServiceCheck(
+            name="AIDB MCP",
+            status="error",
+            message=f"Check failed: {str(e)[:50]}"
+        )
+
+
+def check_mindsdb(timeout: int = 5) -> ServiceCheck:
+    """Check MindsDB analytics (optional)"""
+    try:
+        response = requests.get("http://localhost:47334", timeout=timeout)
+        if response.status_code in (200, 302, 401):
+            return ServiceCheck(
+                name="MindsDB",
+                status="ok",
+                message="MindsDB is reachable"
+            )
+        return ServiceCheck(
+            name="MindsDB",
+            status="warning",
+            message=f"Unexpected response (HTTP {response.status_code})"
+        )
+    except requests.exceptions.ConnectionError:
+        return ServiceCheck(
+            name="MindsDB",
+            status="not_installed",
+            message="Not reachable (optional service)",
+            details={"suggestion": "podman start local-ai-mindsdb"}
+        )
+    except Exception as e:
+        return ServiceCheck(
+            name="MindsDB",
+            status="warning",
+            message=f"Check failed: {str(e)[:50]}"
+        )
 
 
 def check_container_service(container_name: str, display_name: str, check_command: List[str]) -> ServiceCheck:
@@ -253,6 +326,8 @@ def main():
     results.append(check_qdrant())
     results.append(check_lemonade())
     results.append(check_open_webui())
+    results.append(check_aidb())
+    results.append(check_mindsdb())
 
     # Only check container services if they're running
     if "local-ai-postgres" in containers:

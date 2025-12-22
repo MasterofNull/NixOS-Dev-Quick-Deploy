@@ -76,9 +76,7 @@ Add to your `configuration.nix`:
 
     # Lemonade configuration
     lemonade = {
-      baseUrl = "http://localhost:8000/api/v1";
-      coderUrl = "http://localhost:8001/api/v1";
-      deepseekUrl = "http://localhost:8003/api/v1";
+      baseUrl = "http://localhost:8080";
     };
 
     # Learning thresholds

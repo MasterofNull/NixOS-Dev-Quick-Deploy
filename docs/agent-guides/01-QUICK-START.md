@@ -55,7 +55,7 @@ curl http://localhost:8080/health
 # Expected: {"status":"ok"}
 
 # Open WebUI
-curl -I http://localhost:3000
+curl -I http://localhost:3001
 # Expected: HTTP/1.1 200 OK
 
 # PostgreSQL
@@ -162,7 +162,7 @@ Dashboard shows:
 
 ```bash
 # Open WebUI in browser
-firefox http://localhost:3000
+firefox http://localhost:3001
 ```
 
 Features:

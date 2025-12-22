@@ -227,16 +227,8 @@
                     <h3><span class="status-indicator status-running"></span> Core Services</h3>
                     <ul class="service-list">
                         <li class="service-item">
-                            <span>Lemonade General (8000)</span>
+                            <span>Lemonade (8080)</span>
                             <span id="lemonade-status">Checking...</span>
-                        </li>
-                        <li class="service-item">
-                            <span>Lemonade Coder (8001)</span>
-                            <span id="lemonade-coder-status">Checking...</span>
-                        </li>
-                        <li class="service-item">
-                            <span>Lemonade DeepSeek (8003)</span>
-                            <span id="lemonade-deepseek-status">Checking...</span>
                         </li>
                         <li class="service-item">
                             <span>Qdrant Vector DB (6333)</span>
@@ -300,7 +292,7 @@
             <h2>⚡ Quick Actions</h2>
             <div class="card">
                 <div class="quick-actions">
-                    <a href="http://localhost:3000" class="btn" target="_blank">Open WebUI</a>
+                    <a href="http://localhost:3001" class="btn" target="_blank">Open WebUI</a>
                     <a href="http://localhost:6333/dashboard" class="btn" target="_blank">Qdrant Dashboard</a>
                     <a href="http://localhost:9200/metrics" class="btn" target="_blank">Metrics</a>
                     <button class="btn btn-success" onclick="triggerSync()">Sync Now</button>
@@ -408,9 +400,7 @@
 
         // Check all services
         function checkAllServices() {
-            checkService('http://localhost:8000/health', 'lemonade-status');
-            checkService('http://localhost:8001/health', 'lemonade-coder-status');
-            checkService('http://localhost:8003/health', 'lemonade-deepseek-status');
+            checkService('http://localhost:8080/health', 'lemonade-status');
             checkService('http://localhost:6333/collections', 'qdrant-status');
             checkService('http://localhost:11434/api/tags', 'ollama-status');
         }

@@ -82,7 +82,7 @@ podman run -d \
   --name local-ai-open-webui \
   --network local-ai \
   --label nixos.quick-deploy.ai-stack=true \
-  -p 3000:8080 \
+  -p 3001:8080 \
   -v $HOME/.local/share/podman-ai-stack/open-webui:/app/backend/data \
   -e OLLAMA_BASE_URL=http://ollama:11434 \
   ghcr.io/open-webui/open-webui:latest
@@ -127,7 +127,7 @@ podman logs local-ai-open-webui
 Once running, you can access:
 
 - **Ollama API**: `http://localhost:11434`
-- **Open WebUI**: `http://localhost:3000` (web interface)
+- **Open WebUI**: `http://localhost:3001` (web interface)
 - **Qdrant HTTP**: `http://localhost:6333`
 - **Qdrant gRPC**: `localhost:6334`
 - **MindsDB API**: `http://localhost:47334`
