@@ -562,7 +562,7 @@ grep "nixos-deployment" ~/.cache/nixos-ai-stack/logs/skills.log
 
 ## References
 
-- [Agent Architecture](../../docs/AGENTS.md)
+- [Agent Architecture](../../AGENTS.md)
 - [AIDB MCP Server](../mcp-servers/aidb/README.md)
 - [Skill Development Guide](../../docs/SKILL-DEVELOPMENT.md) (coming soon)
 

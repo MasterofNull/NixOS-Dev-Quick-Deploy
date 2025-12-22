@@ -18,6 +18,9 @@ Skills (Source of Truth): .agent/skills/ (25 skills)
 MCP Config: ~/.mcp/config.json
 AIDB: http://localhost:8091
 Main Onboarding: AGENTS.md (comprehensive guide)
+Mirror Guide: docs/AGENTS.md (quick reference)
+System Map: docs/agent-guides/00-SYSTEM-OVERVIEW.md
+Quick Start: docs/agent-guides/01-QUICK-START.md
 ```
 
 ### ⚡ 30-Second Quickstart
