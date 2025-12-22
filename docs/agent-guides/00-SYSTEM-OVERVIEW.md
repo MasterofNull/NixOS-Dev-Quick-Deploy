@@ -4,6 +4,8 @@
 
 ---
 
+**Agent quick links:** `AGENTS.md`, `docs/AGENTS.md`, `docs/agent-guides/01-QUICK-START.md`, `ai-stack/agents/skills/AGENTS.md`
+
 ## What Is This System?
 
 A **unified AI development environment** that combines:

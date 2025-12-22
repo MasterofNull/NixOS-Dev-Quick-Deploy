@@ -7,6 +7,13 @@ Specialized AI agents for deployment automation, code review, testing, design, a
 
 ---
 
+**Agent Docs Index (quick links):**
+- `AGENTS.md` - Canonical onboarding rules
+- `docs/AGENTS.md` - Mirror for quick reference
+- `docs/agent-guides/00-SYSTEM-OVERVIEW.md` - System map
+- `docs/agent-guides/01-QUICK-START.md` - Task-ready checklist
+- `ai-stack/agents/skills/AGENTS.md` - Skill usage and sync rules
+
 ## Overview
 
 The AI Stack includes **29 specialized agent skills** that provide targeted capabilities for specific workflows. Each skill is a self-contained module that can be executed independently or orchestrated together.

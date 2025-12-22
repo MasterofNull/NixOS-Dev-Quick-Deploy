@@ -4,6 +4,11 @@ This directory contains OpenSkills-format skill definitions for AIDB system mana
 
 Operational rule: apply system changes to `nixos-quick-deploy.sh` and templates first, then use runtime patches only for validation without rebuilding.
 
+See also:
+- `AGENTS.md` (root) - canonical agent onboarding rules
+- `docs/AGENTS.md` - mirror for quick reference
+- `docs/agent-guides/00-SYSTEM-OVERVIEW.md` - system map
+
 ## Available Skills
 
 ### aidb-knowledge
