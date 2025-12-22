@@ -271,6 +271,7 @@ collect_llm_metrics() {
     local mindsdb_status="offline"
     local aidb_status="offline"
     local aidb_services="{}"
+    local hybrid_coordinator_status="offline"
     local container_runtime
     container_runtime=$(detect_container_runtime)
     local qdrant_collections="[]"
@@ -331,6 +332,11 @@ collect_llm_metrics() {
         aidb_services=$(curl_fast http://localhost:8091/health | maybe_jq -c '.services // {}' 2>/dev/null || echo "{}")
     fi
 
+    # Check Hybrid Coordinator MCP Server
+    if curl_fast http://localhost:8092/health > /dev/null 2>&1; then
+        hybrid_coordinator_status="online"
+    fi
+
     # Container stats
     local containers="[]"
     if [[ "$container_runtime" == "podman" ]]; then
@@ -377,6 +383,10 @@ collect_llm_metrics() {
       "status": "$aidb_status",
       "services": ${aidb_services},
       "url": "http://localhost:8091"
+    },
+    "hybrid_coordinator": {
+      "status": "$hybrid_coordinator_status",
+      "url": "http://localhost:8092"
     }
   },
   "containers": ${containers}
@@ -622,6 +632,321 @@ EOF
 }
 
 # ============================================================================
+# Hybrid Coordinator Metrics
+# ============================================================================
+collect_hybrid_coordinator_metrics() {
+    local coordinator_status="offline"
+    local coordinator_health="{}"
+    local context_cache_size=0
+    local pattern_extraction_count=0
+    local value_scores="[]"
+    local telemetry_path="${AI_STACK_DATA_ROOT}/telemetry/hybrid-events.jsonl"
+    local finetune_path="${AI_STACK_DATA_ROOT}/fine-tuning/dataset.jsonl"
+    local finetune_records=0
+    local telemetry_records=0
+    local last_event="{}"
+    local avg_value_score="0.0"
+    local high_value_count=0
+
+    # Check hybrid coordinator health
+    if curl_fast http://localhost:8092/health > /dev/null 2>&1; then
+        coordinator_status="online"
+        coordinator_health=$(curl_fast http://localhost:8092/health | maybe_jq -c '.' 2>/dev/null || echo "{}")
+    fi
+
+    # Count telemetry records
+    if [[ -f "$telemetry_path" ]]; then
+        telemetry_records=$(file_line_count "$telemetry_path")
+        last_event=$(tail -n 1 "$telemetry_path" 2>/dev/null | maybe_jq -c '{timestamp, query_type, value_score, pattern_extracted}' 2>/dev/null || echo "{}")
+
+        # Calculate average value score and high-value count (last 100 events)
+        if [[ $telemetry_records -gt 0 ]]; then
+            local scores_data
+            scores_data=$(tail -n 100 "$telemetry_path" 2>/dev/null | maybe_jq -r 'select(.value_score != null) | .value_score' 2>/dev/null || echo "")
+            if [[ -n "$scores_data" ]]; then
+                avg_value_score=$(echo "$scores_data" | awk '{sum+=$1; count++} END {if(count>0) printf "%.3f", sum/count; else print "0.0"}')
+                high_value_count=$(echo "$scores_data" | awk '$1 >= 0.7 {count++} END {print count+0}')
+            fi
+
+            # Get last 10 value scores for sparkline
+            value_scores=$(tail -n 10 "$telemetry_path" 2>/dev/null | maybe_jq -s -c 'map(select(.value_score != null) | .value_score)' 2>/dev/null || echo "[]")
+        fi
+    fi
+
+    # Count fine-tuning dataset records
+    if [[ -f "$finetune_path" ]]; then
+        finetune_records=$(file_line_count "$finetune_path")
+    fi
+
+    # Count pattern extractions
+    if [[ -f "$telemetry_path" ]] && [[ $telemetry_records -gt 0 ]]; then
+        pattern_extraction_count=$(grep -c '"pattern_extracted":true' "$telemetry_path" 2>/dev/null || echo "0")
+    fi
+
+    cat > "$DATA_DIR/hybrid-coordinator.json" <<EOF
+{
+  "timestamp": "$(date -Iseconds)",
+  "status": "$coordinator_status",
+  "health": $coordinator_health,
+  "telemetry": {
+    "path": "$telemetry_path",
+    "events": $telemetry_records,
+    "last_event": $last_event,
+    "avg_value_score": $avg_value_score,
+    "high_value_count": $high_value_count,
+    "value_scores_recent": $value_scores
+  },
+  "learning": {
+    "pattern_extractions": $pattern_extraction_count,
+    "finetune_dataset_path": "$finetune_path",
+    "finetune_records": $finetune_records
+  },
+  "url": "http://localhost:8092"
+}
+EOF
+}
+
+# ============================================================================
+# RAG Collections Metrics (Qdrant)
+# ============================================================================
+collect_rag_collections_metrics() {
+    local qdrant_status="offline"
+    local collections_data="[]"
+    local total_points=0
+    local total_collections=0
+
+    # Expected collections based on COMPREHENSIVE-SYSTEM-ANALYSIS.md
+    local expected_collections='["codebase-context","skills-patterns","error-solutions","interaction-history","best-practices"]'
+
+    if curl_fast http://localhost:6333/collections > /dev/null 2>&1; then
+        qdrant_status="online"
+
+        # Get all collections
+        local all_collections
+        all_collections=$(curl_fast http://localhost:6333/collections | maybe_jq -c '.result.collections' 2>/dev/null || echo "[]")
+        total_collections=$(echo "$all_collections" | maybe_jq -r 'length' 2>/dev/null || echo "0")
+
+        # Build detailed collection data
+        local collection_details="[]"
+        for collection in codebase-context skills-patterns error-solutions interaction-history best-practices; do
+            local exists="false"
+            local points=0
+            local vectors=0
+
+            if curl_fast "http://localhost:6333/collections/$collection" > /dev/null 2>&1; then
+                exists="true"
+                local collection_info
+                collection_info=$(curl_fast "http://localhost:6333/collections/$collection" 2>/dev/null)
+                points=$(echo "$collection_info" | maybe_jq -r '.result.points_count // 0' 2>/dev/null || echo "0")
+                vectors=$(echo "$collection_info" | maybe_jq -r '.result.vectors_count // 0' 2>/dev/null || echo "0")
+                total_points=$((total_points + points))
+            fi
+
+            # Build JSON object for this collection
+            local collection_obj
+            collection_obj=$(cat <<COLLECTION_EOF
+{
+  "name": "$collection",
+  "exists": $exists,
+  "points": $points,
+  "vectors": $vectors
+}
+COLLECTION_EOF
+)
+            if [[ "$collection_details" == "[]" ]]; then
+                collection_details="[$collection_obj]"
+            else
+                collection_details=$(echo "$collection_details" | maybe_jq -c ". += [$collection_obj]" 2>/dev/null || echo "$collection_details")
+            fi
+        done
+
+        collections_data="$collection_details"
+    fi
+
+    cat > "$DATA_DIR/rag-collections.json" <<EOF
+{
+  "timestamp": "$(date -Iseconds)",
+  "qdrant_status": "$qdrant_status",
+  "total_collections": $total_collections,
+  "total_points": $total_points,
+  "expected_collections": $expected_collections,
+  "collections": $collections_data,
+  "url": "http://localhost:6333/dashboard"
+}
+EOF
+}
+
+# ============================================================================
+# Learning Metrics (Continuous Learning Framework)
+# ============================================================================
+collect_learning_metrics() {
+    local aidb_telemetry="${AI_STACK_DATA_ROOT}/telemetry/aidb-events.jsonl"
+    local hybrid_telemetry="${AI_STACK_DATA_ROOT}/telemetry/hybrid-events.jsonl"
+    local finetune_dataset="${AI_STACK_DATA_ROOT}/fine-tuning/dataset.jsonl"
+
+    local total_interactions=0
+    local high_value_interactions=0
+    local pattern_extractions=0
+    local finetune_samples=0
+    local avg_value_score="0.0"
+    local learning_rate="0.0"
+    local last_7d_interactions=0
+    local last_7d_high_value=0
+
+    # Count AIDB telemetry
+    if [[ -f "$aidb_telemetry" ]]; then
+        total_interactions=$(file_line_count "$aidb_telemetry")
+    fi
+
+    # Count hybrid coordinator telemetry and calculate metrics
+    if [[ -f "$hybrid_telemetry" ]]; then
+        local hybrid_count
+        hybrid_count=$(file_line_count "$hybrid_telemetry")
+        total_interactions=$((total_interactions + hybrid_count))
+
+        # High-value interactions (value_score >= 0.7)
+        high_value_interactions=$(grep -c '"value_score":[0-9.]*[7-9][0-9.]*' "$hybrid_telemetry" 2>/dev/null || echo "0")
+
+        # Pattern extractions
+        pattern_extractions=$(grep -c '"pattern_extracted":true' "$hybrid_telemetry" 2>/dev/null || echo "0")
+
+        # Average value score
+        if [[ $hybrid_count -gt 0 ]]; then
+            local scores
+            scores=$(grep -o '"value_score":[0-9.]*' "$hybrid_telemetry" 2>/dev/null | cut -d: -f2 || echo "")
+            if [[ -n "$scores" ]]; then
+                avg_value_score=$(echo "$scores" | awk '{sum+=$1; count++} END {if(count>0) printf "%.3f", sum/count; else print "0.0"}')
+            fi
+        fi
+
+        # Last 7 days metrics
+        if has_cmd date; then
+            local seven_days_ago
+            seven_days_ago=$(date -d '7 days ago' -Iseconds 2>/dev/null || date -v-7d -Iseconds 2>/dev/null || echo "")
+            if [[ -n "$seven_days_ago" ]]; then
+                last_7d_interactions=$(grep -c "\"timestamp\":\"[^\"]*\"" "$hybrid_telemetry" 2>/dev/null | head -100 || echo "0")
+                last_7d_high_value=$(tail -n 100 "$hybrid_telemetry" 2>/dev/null | grep -c '"value_score":[0-9.]*[7-9][0-9.]*' || echo "0")
+            fi
+        fi
+    fi
+
+    # Fine-tuning dataset count
+    if [[ -f "$finetune_dataset" ]]; then
+        finetune_samples=$(file_line_count "$finetune_dataset")
+    fi
+
+    # Calculate learning rate (pattern extractions / total interactions)
+    if [[ $total_interactions -gt 0 ]]; then
+        learning_rate=$(awk "BEGIN {printf \"%.3f\", $pattern_extractions / $total_interactions}")
+    fi
+
+    cat > "$DATA_DIR/learning-metrics.json" <<EOF
+{
+  "timestamp": "$(date -Iseconds)",
+  "interactions": {
+    "total": $total_interactions,
+    "high_value": $high_value_interactions,
+    "last_7d": $last_7d_interactions,
+    "last_7d_high_value": $last_7d_high_value
+  },
+  "patterns": {
+    "extractions": $pattern_extractions,
+    "learning_rate": $learning_rate
+  },
+  "value_scoring": {
+    "avg_score": $avg_value_score,
+    "threshold": 0.7
+  },
+  "fine_tuning": {
+    "dataset_path": "$finetune_dataset",
+    "samples": $finetune_samples
+  },
+  "telemetry_paths": {
+    "aidb": "$aidb_telemetry",
+    "hybrid": "$hybrid_telemetry"
+  }
+}
+EOF
+}
+
+# ============================================================================
+# Token Savings Metrics
+# ============================================================================
+collect_token_savings_metrics() {
+    local hybrid_telemetry="${AI_STACK_DATA_ROOT}/telemetry/hybrid-events.jsonl"
+    local total_queries=0
+    local local_queries=0
+    local remote_queries=0
+    local cached_queries=0
+    local avg_tokens_per_query=3000
+    local baseline_tokens_per_query=15000
+    local estimated_savings=0
+    local local_routing_percent="0.0"
+    local cache_hit_rate="0.0"
+    local cost_per_million_tokens=15.0
+    local estimated_cost_savings="0.00"
+
+    if [[ -f "$hybrid_telemetry" ]]; then
+        total_queries=$(file_line_count "$hybrid_telemetry")
+
+        if [[ $total_queries -gt 0 ]]; then
+            # Count local vs remote routing
+            local_queries=$(grep -c '"agent_type":"local"' "$hybrid_telemetry" 2>/dev/null || echo "0")
+            remote_queries=$(grep -c '"agent_type":"remote"' "$hybrid_telemetry" 2>/dev/null || echo "0")
+            cached_queries=$(grep -c '"cached":true' "$hybrid_telemetry" 2>/dev/null || echo "0")
+
+            # Calculate percentages
+            if [[ $total_queries -gt 0 ]]; then
+                local_routing_percent=$(awk "BEGIN {printf \"%.1f\", ($local_queries / $total_queries) * 100}")
+                cache_hit_rate=$(awk "BEGIN {printf \"%.1f\", ($cached_queries / $total_queries) * 100}")
+            fi
+
+            # Estimate token savings
+            # Baseline: 15,000 tokens per query (full docs loaded)
+            # With RAG: 3,000 tokens per remote query + 0 tokens for local queries
+            local baseline_total=$((total_queries * baseline_tokens_per_query))
+            local actual_total=$((remote_queries * avg_tokens_per_query))
+            estimated_savings=$((baseline_total - actual_total))
+
+            # Estimate cost savings (assuming $15 per million tokens)
+            estimated_cost_savings=$(awk "BEGIN {printf \"%.2f\", ($estimated_savings / 1000000) * $cost_per_million_tokens}")
+        fi
+    fi
+
+    cat > "$DATA_DIR/token-savings.json" <<EOF
+{
+  "timestamp": "$(date -Iseconds)",
+  "queries": {
+    "total": $total_queries,
+    "local": $local_queries,
+    "remote": $remote_queries,
+    "cached": $cached_queries
+  },
+  "routing": {
+    "local_percent": $local_routing_percent,
+    "remote_percent": $(awk "BEGIN {printf \"%.1f\", 100 - $local_routing_percent}"),
+    "target_local_percent": 70.0
+  },
+  "cache": {
+    "hit_rate": $cache_hit_rate,
+    "target_hit_rate": 30.0
+  },
+  "tokens": {
+    "baseline_per_query": $baseline_tokens_per_query,
+    "rag_per_query": $avg_tokens_per_query,
+    "estimated_savings": $estimated_savings,
+    "reduction_percent": $(awk "BEGIN {if($baseline_tokens_per_query>0) printf \"%.1f\", (($baseline_tokens_per_query - $avg_tokens_per_query) / $baseline_tokens_per_query) * 100; else print \"0.0\"}")
+  },
+  "cost": {
+    "estimated_savings_usd": $estimated_cost_savings,
+    "cost_per_million_tokens": $cost_per_million_tokens,
+    "period": "cumulative"
+  }
+}
+EOF
+}
+
+# ============================================================================
 # Feedback Pipeline Metrics
 # ============================================================================
 collect_feedback_pipeline_metrics() {
@@ -825,7 +1150,8 @@ collect_config_metrics() {
     "redis",
     "open_webui",
     "aidb",
-    "mindsdb"
+    "mindsdb",
+    "hybrid_coordinator"
   ],
   "settings": [
     {
@@ -1487,6 +1813,18 @@ main() {
 
     echo "🪢 Collecting feedback pipeline metrics..."
     collect_feedback_pipeline_metrics
+
+    echo "🎯 Collecting hybrid coordinator metrics..."
+    collect_hybrid_coordinator_metrics
+
+    echo "🗂️  Collecting RAG collections metrics..."
+    collect_rag_collections_metrics
+
+    echo "📊 Collecting learning metrics..."
+    collect_learning_metrics
+
+    echo "💰 Collecting token savings metrics..."
+    collect_token_savings_metrics
 
     echo "🛠️  Collecting configuration snapshot..."
     collect_config_metrics

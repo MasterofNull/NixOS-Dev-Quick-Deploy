@@ -39,10 +39,11 @@ services:
       QDRANT__SERVICE__HTTP_PORT: 6333
       QDRANT__SERVICE__GRPC_PORT: 6334
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
-      interval: 30s
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:6333/healthz || exit 1"]
+      interval: 15s
       timeout: 10s
       retries: 3
+      start_period: 30s
     deploy:
       resources:
         reservations:
@@ -70,10 +71,11 @@ services:
     environment:
       OLLAMA_MODELS: /root/.ollama/models
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
     deploy:
       resources:
         reservations:
@@ -320,6 +322,54 @@ services:
     labels:
       - "nixos.quick-deploy.ai-stack=true"
       - "nixos.quick-deploy.service=mindsdb"
+
+  # ============================================================================
+  # Hybrid Coordinator MCP Server - Context Augmentation & Learning
+  # ============================================================================
+  hybrid-coordinator:
+    build:
+      context: ../mcp-servers
+      dockerfile: hybrid-coordinator/Dockerfile
+    container_name: local-ai-hybrid-coordinator
+    restart: unless-stopped
+    ports:
+      - "8092:8092"
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      LEMONADE_BASE_URL: http://lemonade:8080
+      OLLAMA_BASE_URL: http://ollama:11434
+      LOCAL_CONFIDENCE_THRESHOLD: ${LOCAL_CONFIDENCE_THRESHOLD:-0.7}
+      HIGH_VALUE_THRESHOLD: ${HIGH_VALUE_THRESHOLD:-0.7}
+      PATTERN_EXTRACTION_ENABLED: ${PATTERN_EXTRACTION_ENABLED:-true}
+      FINETUNE_DATA_PATH: /data/fine-tuning/dataset.jsonl
+      TELEMETRY_PATH: /data/telemetry/hybrid-events.jsonl
+    volumes:
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/hybrid-coordinator:/data:Z
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/telemetry:/data/telemetry:Z
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/fine-tuning:/data/fine-tuning:Z
+    depends_on:
+      - qdrant
+      - ollama
+      - lemonade
+      - aidb
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8092/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+        limits:
+          cpus: '2.0'
+          memory: 2G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=hybrid-coordinator"
 
 networks:
   default:

@@ -222,20 +222,45 @@ else
     info "Skipping model downloads"
 fi
 
-# Step 7: Test RAG system
-step "Step 7: Testing RAG system"
+# Step 7: Initialize Qdrant collection indexes
+step "Step 7: Creating Qdrant payload indexes"
 
-info "Running RAG system diagnostic and test..."
-python3 "${SCRIPT_DIR}/rag-system-complete.py"
-RAG_STATUS=$?
-
-if [ $RAG_STATUS -eq 0 ]; then
-    success "RAG system test passed"
+if [ -f "${SCRIPT_DIR}/initialize-qdrant-collections.sh" ]; then
+    info "Running Qdrant collection initialization..."
+    bash "${SCRIPT_DIR}/initialize-qdrant-collections.sh"
 else
-    warning "RAG system test had issues (this is expected if models are still downloading)"
+    warning "Qdrant initialization script not found, skipping index creation"
 fi
 
-# Step 8: Summary
+# Step 8: Generate dashboard data
+step "Step 8: Generating dashboard metrics"
+
+if [ -f "${SCRIPT_DIR}/generate-dashboard-data.sh" ]; then
+    info "Generating initial dashboard data..."
+    bash "${SCRIPT_DIR}/generate-dashboard-data.sh"
+    success "Dashboard data generated"
+else
+    warning "Dashboard generation script not found"
+fi
+
+# Step 9: Test RAG system
+step "Step 9: Testing RAG system"
+
+if [ -f "${SCRIPT_DIR}/rag-system-complete.py" ]; then
+    info "Running RAG system diagnostic and test..."
+    python3 "${SCRIPT_DIR}/rag-system-complete.py"
+    RAG_STATUS=$?
+
+    if [ $RAG_STATUS -eq 0 ]; then
+        success "RAG system test passed"
+    else
+        warning "RAG system test had issues (this is expected if models are still downloading)"
+    fi
+else
+    warning "RAG system test script not found, skipping"
+fi
+
+# Step 10: Summary
 step "Setup Complete!"
 
 echo ""
@@ -244,12 +269,14 @@ echo "  AI STACK READY"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "Services:"
-echo "  • Qdrant Vector DB:   http://localhost:6333"
+echo "  • Qdrant Vector DB:   http://localhost:6333/dashboard"
 echo "  • Ollama Embeddings:  http://localhost:11434"
 echo "  • Lemonade GGUF:      http://localhost:8080"
 echo "  • Open WebUI:         http://localhost:3001"
 echo "  • PostgreSQL:         localhost:5432"
 echo "  • Redis:              localhost:6379"
+echo "  • AIDB MCP Server:    http://localhost:8091"
+echo "  • Hybrid Coordinator: http://localhost:8092 (deploy separately)"
 echo ""
 echo "Management:"
 echo "  • Status:  ./scripts/hybrid-ai-stack.sh status"
@@ -258,8 +285,15 @@ echo "  • Stop:    ./scripts/hybrid-ai-stack.sh down"
 echo "  • Restart: ./scripts/hybrid-ai-stack.sh restart"
 echo ""
 echo "Testing:"
-echo "  • Health Check:  python3 scripts/check-ai-stack-health-v2.py -v"
-echo "  • RAG Test:      python3 scripts/rag-system-complete.py"
+echo "  • Health Check:       python3 scripts/check-ai-stack-health-v2.py -v"
+echo "  • RAG Test:           python3 scripts/rag-system-complete.py"
+echo "  • Dashboard Metrics:  bash scripts/generate-dashboard-data.sh"
+echo ""
+echo "Continuous Learning:"
+echo "  • RAG Collections:    5 collections initialized in Qdrant"
+echo "  • Telemetry:          ${DATA_DIR}/telemetry/"
+echo "  • Fine-tuning Data:   ${DATA_DIR}/fine-tuning/"
+echo "  • Dashboard Data:     ~/.local/share/nixos-system-dashboard/"
 echo ""
 echo "Data Location:"
 echo "  • ${DATA_DIR}"
