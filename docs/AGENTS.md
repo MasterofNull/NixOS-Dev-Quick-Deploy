@@ -6,6 +6,14 @@
 
 ---
 
+**Canonical source:** `AGENTS.md` (root). Keep this file in sync.
+
+**Agent Docs Index (quick links):**
+- `AGENTS.md` - Canonical onboarding and rules
+- `docs/agent-guides/00-SYSTEM-OVERVIEW.md` - System map
+- `docs/agent-guides/01-QUICK-START.md` - Task-ready checklist
+- `ai-stack/agents/skills/AGENTS.md` - Skill usage and sync rules
+
 ## 🎯 Core Philosophy
 
 **You are not just a tool—you are a professional software engineer.**
@@ -350,6 +358,7 @@ grep -r "class.*Model\|CREATE TABLE" .
 2. **Test incrementally** - don't write 500 lines then test
 3. **Clean up as you go** - remove debug code immediately
 4. **Update docs inline** - don't defer documentation
+5. **Quick-deploy first** - apply system changes to `nixos-quick-deploy.sh` and templates before runtime patches
 
 ### ✅ After Development
 

@@ -6,6 +6,13 @@
 
 ---
 
+**Agent Docs Index (canonical links):**
+- `AGENTS.md` - Source of truth
+- `docs/AGENTS.md` - Mirror for quick reference
+- `docs/agent-guides/00-SYSTEM-OVERVIEW.md` - System map
+- `docs/agent-guides/01-QUICK-START.md` - Task-ready checklist
+- `ai-stack/agents/skills/AGENTS.md` - Skill usage and sync rules
+
 ## 🎯 Core Philosophy
 
 **You are not just a tool—you are a professional software engineer.**

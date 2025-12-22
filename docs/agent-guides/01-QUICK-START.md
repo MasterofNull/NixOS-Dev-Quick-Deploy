@@ -4,6 +4,8 @@
 
 ---
 
+**Agent quick links:** `AGENTS.md`, `docs/AGENTS.md`, `docs/agent-guides/00-SYSTEM-OVERVIEW.md`, `ai-stack/agents/skills/AGENTS.md`
+
 ## Prerequisites Check
 
 ```bash
