@@ -21,7 +21,7 @@ cat FINAL_STATUS.md
 
 **New here?** → Read [START_HERE.md](START_HERE.md) for onboarding
 
-**AI Agent?** → Read [AGENTS.md](AGENTS.md) for comprehensive training
+**AI Agent?** → Read [AGENTS.md](../../AGENTS.md) for comprehensive training
 
 ---
 
@@ -81,7 +81,7 @@ Additional Lemonade instances can be enabled if you want specialized model routi
 
 ### Essential Docs (Root Directory)
 
-- **[AGENTS.md](AGENTS.md)** - Complete agent training & system guide
+- **[AGENTS.md](../../AGENTS.md)** - Complete agent training & system guide
 - **[QUICK_START.md](QUICK_START.md)** - Fast deployment guide
 - **[START_HERE.md](START_HERE.md)** - New user onboarding
 - **[FINAL_STATUS.md](FINAL_STATUS.md)** - Current system status
@@ -224,7 +224,7 @@ Access at http://localhost:3001 (admin/admin)
 
 ## 🤖 For AI Agents
 
-**Primary Training Document:** [AGENTS.md](AGENTS.md)
+**Primary Training Document:** [AGENTS.md](../../AGENTS.md)
 
 This document includes:
 - Complete system architecture
