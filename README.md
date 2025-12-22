@@ -20,6 +20,7 @@ chmod +x nixos-quick-deploy.sh
 ```
 
 **That's it!** Answer a few simple questions (including choosing between binary caches, remote builders/private Cachix, or local source builds), wait 20-120 minutes depending on your choice, reboot, and you're done.
+
 ## ✨ NEW in v6.0.0: Fully Integrated AI Stack
 
 The AI stack is now a **first-class, public component** of this repository!
@@ -32,6 +33,7 @@ The AI stack is now a **first-class, public component** of this repository!
 ```
 
 This single command gives you:
+
 - ✅ **AIDB MCP Server** - PostgreSQL + TimescaleDB + Qdrant vector database
 - ✅ **Lemonade vLLM** - Local model inference (Qwen, DeepSeek, Phi, CodeLlama)
 - ✅ **29 Agent Skills** - Specialized AI agents for code, deployment, testing, design
@@ -42,12 +44,12 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRAT
 
 ---
 
-
 ---
 
 ## 📋 What You Get
 
 ### Complete System Setup
+
 - **COSMIC Desktop** - Modern, fast desktop environment from System76
 - **Hyprland Wayland Session** - Latest Hyprland compositor alongside COSMIC for tiling workflows
 - **Performance Kernel Track** - Prefers the tuned `linuxPackages_6_17` build, then falls back to TKG, XanMod, Liquorix, Zen, and finally `linuxPackages_latest`
@@ -62,30 +64,33 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRAT
 
 **Fully Integrated Components (v6.0.0):**
 
-| Component | Location | Purpose |
-|-----------|----------|---------||
-| **AIDB MCP Server** | `ai-stack/mcp-servers/aidb/` | PostgreSQL + TimescaleDB + Qdrant vector DB + FastAPI MCP server |
-| **Lemonade vLLM** | `ai-stack/compose/` | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |
-| **29 Agent Skills** | `ai-stack/agents/skills/` | nixos-deployment, webapp-testing, code-review, canvas-design, and more |
-| **MCP Servers** | `ai-stack/mcp-servers/` | Model Context Protocol servers for AIDB, NixOS, GitHub |
-| **Model Registry** | `ai-stack/models/registry.json` | Model catalog with 6 AI models (metadata, VRAM, speed, quality scores) |
-| **Vector Database** | PostgreSQL + Qdrant | Semantic search and document embeddings |
-| **Redis Cache** | Redis + Redis Insight | High-performance caching layer |
+<br>
+
+| Component              | Location                        |      Status       | Purpose                                                                |
+| :--------------------- | :------------------------------ | :---------------: | :--------------------------------------------------------------------- |
+| **AIDB MCP Server**    | `ai-stack/mcp-servers/aidb/`    |     ✅ Active     | PostgreSQL + TimescaleDB + Qdrant vector DB + FastAPI MCP server       |
+| **Lemonade vLLM**      | `ai-stack/compose/`             |     ✅ Active     | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama)     |
+| **29 Agent Skills**    | `ai-stack/agents/skills/`       |     ✅ Active     | nixos-deployment, webapp-testing, code-review, canvas-design, and more |
+| **Hybrid Coordinator** | `ai-stack/core/`                | 🟡 In Development | Orchestrates local/remote dispatch for 30-50% token reduction          |
+| **MCP Servers**        | `ai-stack/mcp-servers/`         |     ✅ Active     | Model Context Protocol servers for AIDB, NixOS, GitHub                 |
+| **Model Registry**     | `ai-stack/models/registry.json` |     ✅ Active     | Model catalog with 6 AI models (metadata, VRAM, speed, quality scores) |
+| **Vector Database**    | PostgreSQL + Qdrant             |     ✅ Active     | Semantic search and document embeddings                                |
+| **Redis Cache**        | Redis + Redis Insight           |     ✅ Active     | High-performance caching layer                                         |
 
 **AI Development Tools:**
 
-| Tool | Integration | Purpose |
-|------|-------------|---------|
-| **Claude Code** | VSCodium extension + CLI wrapper | AI pair programming inside VSCodium |
-| **Cursor** | Flatpak + launcher | AI-assisted IDE with GPT-4/Claude |
-| **Continue** | VSCodium extension | In-editor AI completions |
-| **Codeium** | VSCodium extension | Free AI autocomplete |
-| **GPT CLI** | Command-line tool | Query OpenAI-compatible endpoints (local Lemonade or remote) |
-| **Aider** | CLI code assistant | AI pair programming from terminal |
-| **LM Studio** | Flatpak app | Desktop LLM manager |
-
+| Tool            | Integration                      | Purpose                                                      |
+| --------------- | -------------------------------- | ------------------------------------------------------------ |
+| **Claude Code** | VSCodium extension + CLI wrapper | AI pair programming inside VSCodium                          |
+| **Cursor**      | Flatpak + launcher               | AI-assisted IDE with GPT-4/Claude                            |
+| **Continue**    | VSCodium extension               | In-editor AI completions                                     |
+| **Codeium**     | VSCodium extension               | Free AI autocomplete                                         |
+| **GPT CLI**     | Command-line tool                | Query OpenAI-compatible endpoints (local Lemonade or remote) |
+| **Aider**       | CLI code assistant               | AI pair programming from terminal                            |
+| **LM Studio**   | Flatpak app                      | Desktop LLM manager                                          |
 
 **Quick Start:**
+
 ```bash
 ./nixos-quick-deploy.sh --with-ai-stack  # Deploy everything
 ./scripts/ai-stack-manage.sh up         # Start AI services
@@ -95,11 +100,13 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRAT
 ### Pre-Installed Development Tools
 
 **Languages & Runtimes:**
+
 - Python 3.13 with 60+ AI/ML packages (PyTorch, TensorFlow, LangChain, etc.) and `uv` installed as a drop-in replacement for `pip` (aliases for `pip`/`pip3` point to `uv pip`).  
   <sub>Set `PYTHON_PREFER_PY314=1` before running the deployer to trial Python 3.14 once the compatibility mask is cleared.</sub>
 - Node.js 22, Go, Rust, Ruby
 
 **AI/ML Python Packages (Built-in):**
+
 - **Deep Learning:** PyTorch, TensorFlow, Transformers, Diffusers
 - **LLM Frameworks:** LangChain, LlamaIndex, OpenAI, Anthropic clients
 - **Vector DBs:** ChromaDB, Qdrant client, FAISS, Sentence Transformers
@@ -108,15 +115,18 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRAT
 - **Agent Ops & MCP:** LiteLLM, Tiktoken, FastAPI, Uvicorn, HTTPX, Pydantic, Typer, Rich, SQLAlchemy, DuckDB
 
 **Editors & IDEs:**
+
 - VSCodium Insiders (VS Code without telemetry, rolling build)
 - Neovim (modern Vim)
 - Cursor (AI-powered editor)
 
 **Version Control:**
+
 - Git, Git LFS, Lazygit
 - GitLens, Git Graph (VSCodium extensions)
 
 **Modern CLI Tools:**
+
 - `ripgrep`, `fd`, `fzf` - Fast search tools
 - `bat`, `eza` - Enhanced cat/ls with syntax highlighting
 - `jq`, `yq` - JSON/YAML processors
@@ -129,17 +139,20 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRAT
 - `sccache`, `cargo-binstall`, `gofumpt`, `staticcheck` - Faster Rust/Go builds and linters
 
 **Nix Ecosystem:**
+
 - `nix-tree` - Visualize dependency trees
 - `nixpkgs-fmt`, `alejandra` - Nix code formatters
 - `statix` - Nix linter
 - `nix-index` - File search in nixpkgs
 
 **Container Tools:**
+
 - Podman, Podman Compose
 - Buildah, Skopeo
 - Podman Desktop (Flatpak GUI)
 
 **AI Services (Systemd):**
+
 - Qdrant (vector database, enabled by default)
 - Hugging Face TGI (LLM inference server, manual enable)
 - Jupyter Lab (web-based notebooks, user service)
@@ -176,7 +189,7 @@ cd ~/NixOS-Dev-Quick-Deploy
 
 After the initial survey, Phase 1 now asks how you want to accelerate builds:
 
-1. **Binary caches** *(default)* – Fastest path, uses NixOS/nix-community/CUDA caches.
+1. **Binary caches** _(default)_ – Fastest path, uses NixOS/nix-community/CUDA caches.
 2. **Build locally** – Compile everything on the target host for maximal control.
 3. **Remote builders or private Cachix** – Layer SSH build farm(s) and/or authenticated Cachix caches on top of the binary caches option.
 
@@ -185,6 +198,7 @@ If you choose option 3, be ready to paste builder strings (e.g., `ssh://nix@buil
 ### Step 3: Wait (20-35 minutes)
 
 The script automatically:
+
 - ✅ Updates NixOS system config (COSMIC, Podman, Flakes)
 - ✅ Runs `sudo nixos-rebuild switch`
 - ✅ Creates home-manager configuration (~100 packages)
@@ -209,6 +223,7 @@ At login, select **"Cosmic"** from the session menu.
 ### Step 5: First Terminal Launch
 
 When you open a terminal, **Powerlevel10k wizard runs automatically**:
+
 - Choose prompt style
 - Choose color scheme (High Contrast Dark recommended)
 - Choose what to show (time, icons, path)
@@ -226,6 +241,7 @@ cd ~/NixOS-Dev-Quick-Deploy
 The quick deploy runs this automatically after Phase 8, but you can rerun it anytime to confirm your setup.
 
 This will verify:
+
 - ✅ All core tools (podman, python3, node, etc.)
 - ✅ Nix ecosystem (home-manager, flakes)
 - ✅ AI tools (claude-wrapper, gpt-codex-wrapper, codex-wrapper, openai-wrapper, gooseai-wrapper, ollama, aider)
@@ -325,6 +341,7 @@ home-manager switch --flake .#$(whoami)
 ```
 
 **Checks include:**
+
 - Core system tools (podman, git, curl, etc.)
 - Programming languages (Python, Node.js, Go, Rust)
 - Nix ecosystem (home-manager, flakes)
@@ -337,6 +354,7 @@ home-manager switch --flake .#$(whoami)
 - Environment variables and PATH configuration
 
 ### System Management
+
 ```bash
 nrs              # Alias for: sudo nixos-rebuild switch
 hms              # Alias for: home-manager switch
@@ -344,6 +362,7 @@ nfu              # Alias for: nix flake update
 ```
 
 ### Development Environments
+
 ```bash
 aidb-dev         # Enter flake dev environment with all tools
 aidb-shell       # Alternative way to enter dev environment
@@ -352,6 +371,7 @@ aidb-update      # Update flake dependencies
 ```
 
 **Note:** If `aidb-dev` is not found, reload your shell:
+
 ```bash
 source ~/.zshrc  # Or: exec zsh
 ```
@@ -378,6 +398,7 @@ During NixOS Quick Deploy, Phase 5 prefetches every Podman image and Phase 6 dow
 All other AI orchestration (vLLM endpoints, shared volumes, etc.) is managed by the ai-optimizer repository layered on top of this stack.
 
 **CLI Tools:**
+
 ```bash
 # Query LLMs from command line
 gpt-cli "explain this code"
@@ -393,6 +414,7 @@ obsidian-ai-bootstrap
 ```
 
 ### Container Management
+
 ```bash
 podman pod ps       # List running pods
 podman ps           # List running containers
@@ -402,6 +424,7 @@ podman-compose up   # Start services from compose file
 ### VSCodium / AI CLI wrappers
 
 **VSCodium Version Compatibility:**
+
 - VSCodium Insiders (rolling build; installed by this script)
 - Claude Code extension works with VSCodium and VS Code 1.85.0+
 - Smart wrappers ensure Node.js is found correctly for each CLI
@@ -439,6 +462,7 @@ GOOSEAI_DEBUG=1 ~/.npm-global/bin/gooseai-wrapper --version
 ```
 
 ### Cursor IDE
+
 ```bash
 # Launch Cursor (prefers Flatpak, falls back to native)
 code-cursor
@@ -448,6 +472,7 @@ code-cursor /path/to/project
 ```
 
 **Note:** Cursor must be installed via Flatpak:
+
 ```bash
 flatpak install flathub ai.cursor.Cursor
 ```
@@ -456,16 +481,16 @@ flatpak install flathub ai.cursor.Cursor
 
 ## 🔧 Configuration Files
 
-| File | Description | Managed By |
-|------|-------------|------------|
-| `/etc/nixos/configuration.nix` | System configuration | Script auto-updates |
-| `~/.dotfiles/home-manager/home.nix` | User packages & config | Script auto-creates |
-| `~/.dotfiles/home-manager/flake.nix` | Home-manager flake | Script auto-creates |
-| `~/.config/VSCodium/User/settings.json` | VSCodium settings | Home-manager (declarative) |
-| `~/.config/p10k/theme.sh` | Powerlevel10k theme | Wizard auto-generates |
-| `~/.zshrc` | ZSH configuration | Home-manager (declarative) |
-| `~/.npmrc` | NPM configuration | Script auto-creates |
-| `~/.npm-global/` | Global NPM packages | AI CLI wrappers installed here (Claude, GPT CodeX, Codex IDE, OpenAI, GooseAI) |
+| File                                    | Description            | Managed By                                                                     |
+| --------------------------------------- | ---------------------- | ------------------------------------------------------------------------------ |
+| `/etc/nixos/configuration.nix`          | System configuration   | Script auto-updates                                                            |
+| `~/.dotfiles/home-manager/home.nix`     | User packages & config | Script auto-creates                                                            |
+| `~/.dotfiles/home-manager/flake.nix`    | Home-manager flake     | Script auto-creates                                                            |
+| `~/.config/VSCodium/User/settings.json` | VSCodium settings      | Home-manager (declarative)                                                     |
+| `~/.config/p10k/theme.sh`               | Powerlevel10k theme    | Wizard auto-generates                                                          |
+| `~/.zshrc`                              | ZSH configuration      | Home-manager (declarative)                                                     |
+| `~/.npmrc`                              | NPM configuration      | Script auto-creates                                                            |
+| `~/.npm-global/`                        | Global NPM packages    | AI CLI wrappers installed here (Claude, GPT CodeX, Codex IDE, OpenAI, GooseAI) |
 
 ---
 
@@ -498,6 +523,7 @@ NixOS-Dev-Quick-Deploy/
 <summary><b>Click to expand detailed execution flow</b></summary>
 
 ### 1. Prerequisites Check
+
 ```
 ✓ Running as user (not root)
 ✓ NixOS detected
@@ -506,6 +532,7 @@ NixOS-Dev-Quick-Deploy/
 ```
 
 ### 2. User Information Gathering
+
 ```
 → GitHub username: yourusername
 → GitHub email: you@example.com
@@ -513,6 +540,7 @@ NixOS-Dev-Quick-Deploy/
 ```
 
 ### 3. System Configuration Update
+
 ```
 ✓ Backing up /etc/nixos/configuration.nix
 ✓ Adding COSMIC desktop configuration
@@ -524,6 +552,7 @@ Running: sudo nixos-rebuild switch
 ```
 
 ### 4. Home-Manager Setup
+
 ```
 ✓ Creating ~/.dotfiles/home-manager/
 ✓ Writing home.nix with ~100 packages
@@ -539,6 +568,7 @@ Running: home-manager switch
 ```
 
 ### 5. Flatpak Setup
+
 ```
 ✓ Flathub remote added
 ✓ Installing Firefox
@@ -555,6 +585,7 @@ Flatpak provisioning is now state-aware. The deployer inspects `~/.local/share/f
 Need Qalculate? It now ships from `pkgs.qalculate-qt` in the declarative package set, so the Flatpak profile stays lean even when Flathub temporarily removes the app. Goose CLI/Desktop are likewise provided by `pkgs.goose-cli`, eliminating the brittle `.deb` download in Phase 6.
 
 ### 6. Flake Development Environment
+
 ```
 ✓ Nix flakes enabled
 Building flake development environment...
@@ -564,6 +595,7 @@ Building flake development environment...
 ```
 
 ### 7. AI CLI Integration
+
 ```
 ✓ Installing @anthropic-ai/claude-code via npm
 ✓ Installing @openai/codex (GPT CodeX CLI) via npm
@@ -585,6 +617,7 @@ Building flake development environment...
 ```
 
 ### 8. VSCodium Extensions
+
 ```
 Installing Claude Code extension...
 ✓ Anthropic.claude-code installed
@@ -599,6 +632,7 @@ Installing additional extensions...
 ```
 
 ### 9. Completion
+
 ```
 ============================================
 ✓ NixOS Quick Deploy COMPLETE!
@@ -626,38 +660,47 @@ Next steps:
 **Solutions:**
 
 1. **Run the diagnostic wrapper:**
+
    ```bash
    CLAUDE_DEBUG=1 ~/.npm-global/bin/claude-wrapper --version
    ```
+
    This shows exactly where it's searching for Node.js.
 
 2. **Verify Node.js is installed:**
+
    ```bash
    which node
    node --version
    ```
+
    If this fails, Node.js wasn't installed properly.
 
 3. **Restart your shell to refresh PATH:**
+
    ```bash
    exec zsh
    ```
 
 4. **Re-apply home-manager config:**
+
    ```bash
    home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)
    ```
 
 5. **Reinstall Claude Code:**
+
    ```bash
    export NPM_CONFIG_PREFIX=~/.npm-global
    npm install -g @anthropic-ai/claude-code
    ```
 
 6. **Check VSCodium settings:**
+
    ```bash
    cat ~/.config/VSCodium/User/settings.json | grep -A5 "claude-code"
    ```
+
    Should show `executablePath` pointing to `~/.npm-global/bin/claude-wrapper`
 
 7. **Verify no Flatpak overrides exist:**
@@ -669,6 +712,7 @@ Next steps:
 ### VSCodium Git Initialization Error
 
 **Symptom:** VSCodium notifications show:
+
 ```
 Unable to initialize Git; AggregateError(2)
     Error: Unable to find git
@@ -694,6 +738,7 @@ Unable to initialize Git; AggregateError(2)
 ### Flatpak Repository Creation Error
 
 **Symptom:** Phase 6 logs show repeated errors when adding Flathub, for example:
+
 ```
 ℹ Adding Flathub Flatpak remote...
     → error: Unable to create repository at /home/$USER/.local/share/flatpak/repo (Creating repo: mkdirat: No such file or directory)
@@ -721,6 +766,7 @@ Unable to initialize Git; AggregateError(2)
 ### VSCodium Settings Read-Only Error
 
 **Symptom:** VSCodium shows error when trying to save settings:
+
 ```
 Failed to save 'settings.json': Unable to write file (EROFS: read-only file system)
 ```
@@ -749,6 +795,7 @@ You can still keep long-term configuration in `templates/home.nix → programs.v
 **Issue:** `podman: command not found`, `home-manager: command not found`, or AI CLI wrappers (claude/gpt-codex/openai/gooseai) not found after installation
 
 **Solution:**
+
 ```bash
 # Run health check with automatic fixes
 ./system-health-check.sh --fix
@@ -770,12 +817,14 @@ which gpt-codex-wrapper
 **Symptom:** System drops into emergency mode with messages such as:
 
 ```
+
 [FAILED] Failed to start Virtual Console Setup.
 [FAILED] Failed to start Switch Root.
 Cannot open access to console, the root account is locked.
 See sulogin(8) man page for more details.
 Press Enter to continue.
-```
+
+````
 
 The system gets stuck in an endless "Press Enter to continue" loop.
 
@@ -790,7 +839,8 @@ Additionally, the console font (`Lat2-Terminus16`) requires the `terminus_font` 
    ```bash
    sudo mount /dev/nvme0n1p2 /mnt  # Adjust device as needed
    sudo mount /dev/nvme0n1p1 /mnt/boot  # EFI partition
-   ```
+````
+
 3. Enter a chroot environment:
    ```bash
    sudo nixos-enter --root /mnt
@@ -854,6 +904,7 @@ When you force a driver, the detector still reports the filesystem that backs `/
 which codex-wrapper
 which openai-wrapper
 which gooseai-wrapper
+
 ```
 
 ### Podman Service Fails With `overlay: unknown option vfs.ignore_chown_errors`
@@ -861,9 +912,11 @@ which gooseai-wrapper
 **Symptom:** `nixos-rebuild switch` aborts while restarting `podman.service` and logs:
 
 ```
+
 ERRO[0000] User-selected graph driver "vfs" overwritten by graph driver "overlay" from database
 Error: configure storage: overlay: unknown option vfs.ignore_chown_errors
-```
+
+````
 
 **Cause:** Earlier deployments may have initialized `/var/lib/containers/storage` with the kernel `overlay` driver. Even after the generator switches to `vfs`, Podman keeps the old driver recorded in its BoltDB metadata and refuses to start because the VFS-only `ignore_chown_errors` option now appears alongside the overlay runtime.
 
@@ -876,7 +929,7 @@ sudo systemctl stop podman.service podman.socket || true
 podman system reset --force && rm -rf ~/.local/share/containers/storage ~/.local/share/containers/cache
 sudo podman system reset --force
 sudo rm -rf /var/lib/containers/storage
-```
+````
 
 Rerun `./nixos-quick-deploy.sh --resume` afterwards so Phase 5 re-probes the driver. Once the probe and configuration agree on `vfs`, Podman restarts cleanly and the generator re-adds the `ignore_chown_errors` flag only when the driver is actually `vfs`.
 
@@ -915,6 +968,7 @@ Error: configure storage: "/home/<user>/.local/share/containers/storage/btrfs" i
    ```
 
 **If still not working:**
+
 ```bash
 # Re-apply home-manager configuration
 cd ~/.dotfiles/home-manager
@@ -929,6 +983,7 @@ exec zsh
 **Issue:** Only GNOME/KDE shows at login screen
 
 **Solution:**
+
 ```bash
 # Verify COSMIC is in system config
 grep -i cosmic /etc/nixos/configuration.nix
@@ -945,6 +1000,7 @@ sudo reboot
 **Issue:** `home-manager switch` fails with "existing file conflicts"
 
 **Solution:**
+
 ```bash
 # Script automatically backs up conflicts to:
 ls -la ~/.config-backups/
@@ -959,6 +1015,7 @@ home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)
 **Issue:** Flatpak app installed but won't start
 
 **Solution:**
+
 ```bash
 # Check if app is actually installed
 flatpak list --user | grep -i appname
@@ -983,6 +1040,7 @@ Phase 6 now installs the upstream OpenSkills automation toolkit directly from `h
 **Fix:** The deployer now preserves user Flatpak directories whenever it detects installed apps, cached profile state, or existing Flatpak data. Cleanup only happens if you explicitly opt in.
 
 **Solution:**
+
 ```bash
 # Default behavior: nothing to do, rerun the deployer and Flatpaks stay intact
 ./nixos-quick-deploy.sh
@@ -1002,11 +1060,13 @@ RESET_FLATPAK_STATE_BEFORE_SWITCH=true ./nixos-quick-deploy.sh
 **Issue:** `flatpak list --user` shows multiple versions of Freedesktop Platform (24.08, 25.08, etc.)
 
 **This is NORMAL!** Different Flatpak applications depend on different runtime versions. For example:
+
 - Firefox might need Platform 24.08
 - Cursor might need Platform 25.08
 - Some apps need both stable and extra codecs
 
 **Cleanup unused runtimes:**
+
 ```bash
 # See what would be removed (safe, dry-run)
 flatpak uninstall --unused
@@ -1022,6 +1082,7 @@ flatpak uninstall --unused -y
 **Issue:** Text blends with background colors
 
 **Solution:**
+
 ```bash
 # Re-run wizard
 rm ~/.config/p10k/.configured
@@ -1040,6 +1101,7 @@ exec zsh
 **Solution:** Fresh deployments now default to profile **4) desktop**, which keeps MangoHud inside the mangoapp desktop window so no other applications are wrapped. You only need the selector if you want to change this default.
 
 **For existing systems with the overlay bug:** Run the fix script to update your MangoHud configuration:
+
 ```bash
 ./scripts/fix-mangohud-config.sh
 # Then re-run the deployment to regenerate your configs with the corrected settings
@@ -1047,6 +1109,7 @@ exec zsh
 ```
 
 If you want to change the MangoHud profile:
+
 ```bash
 # Run the interactive selector and pick the overlay mode you prefer
 ./scripts/mangohud-profile.sh
@@ -1078,11 +1141,13 @@ The selected profile is cached at `~/.cache/nixos-quick-deploy/preferences/mango
 ### Enable Additional Flatpak Apps
 
 Edit your home-manager config:
+
 ```bash
 nvim ~/.dotfiles/home-manager/home.nix
 ```
 
 Find the `services.flatpak.packages` section and uncomment apps you want:
+
 ```nix
 services.flatpak.packages = [
   # Uncomment to enable:
@@ -1097,6 +1162,7 @@ services.flatpak.packages = [
 ```
 
 Apply changes:
+
 ```bash
 home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)
 ```
@@ -1114,11 +1180,13 @@ exec zsh
 ### Add Your Own Packages
 
 Edit home-manager config:
+
 ```bash
 nvim ~/.dotfiles/home-manager/home.nix
 ```
 
 Add packages to `home.packages`:
+
 ```nix
 home.packages = with pkgs; [
   # ... existing packages ...
@@ -1131,6 +1199,7 @@ home.packages = with pkgs; [
 ```
 
 Apply:
+
 ```bash
 hms  # Alias for home-manager switch
 ```
@@ -1140,11 +1209,13 @@ hms  # Alias for home-manager switch
 The deployment configures an optional auto-upgrade service that can automatically update your Home Manager configuration on a schedule.
 
 To enable it, edit your home-manager config:
+
 ```bash
 nvim ~/.dotfiles/home-manager/home.nix
 ```
 
 Find the `services.home-manager.autoUpgrade` section and enable it:
+
 ```nix
 services.home-manager.autoUpgrade = {
   enable = true;  # Change from false to true
@@ -1155,17 +1226,20 @@ services.home-manager.autoUpgrade = {
 ```
 
 Apply changes:
+
 ```bash
 hms  # Alias for home-manager switch
 ```
 
 The service will:
+
 - Run daily at 03:00 by default
 - Pull updates from your `~/.config/home-manager` flake
 - Automatically rebuild your home environment
 - Log output to systemd journal: `journalctl --user -u home-manager-autoUpgrade.service`
 
 To check status:
+
 ```bash
 systemctl --user status home-manager-autoUpgrade.timer
 systemctl --user status home-manager-autoUpgrade.service
@@ -1174,11 +1248,13 @@ systemctl --user status home-manager-autoUpgrade.service
 ### Skip Certain Steps (Advanced)
 
 Edit the main script:
+
 ```bash
 nvim ~/NixOS-Dev-Quick-Deploy/nixos-quick-deploy.sh
 ```
 
 Find the `main()` function and comment out steps:
+
 ```bash
 main() {
     check_prerequisites
@@ -1201,7 +1277,9 @@ main() {
 ## 💡 Pro Tips
 
 ### 1. Use Aliases for Common Tasks
+
 Already configured in your `.zshrc`:
+
 ```bash
 nrs    # sudo nixos-rebuild switch
 hms    # home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)
@@ -1210,6 +1288,7 @@ lg     # lazygit
 ```
 
 ### 2. Quick Container AI Stack
+
 ```bash
 # Start all AI services at once (system + stack containers)
 ai-servicectl start all
@@ -1224,10 +1303,12 @@ ai-servicectl start stack
 ```
 
 ### 3. VSCodium vs Cursor - When to Use Each
+
 - **VSCodium**: General development, Claude Code integration, Continue AI
 - **Cursor**: Heavy AI pair programming, GPT-4 integration, AI-first workflows
 
 ### 4. Manage Node.js Packages Globally
+
 ```bash
 # Always set NPM prefix before installing global packages
 export NPM_CONFIG_PREFIX=~/.npm-global
@@ -1238,6 +1319,7 @@ npm install -g <package-name>
 ```
 
 ### 5. Keep Your System Up to Date
+
 ```bash
 # Update NixOS system
 sudo nixos-rebuild switch --upgrade
@@ -1255,6 +1337,7 @@ flatpak update
 ## 🧭 Command Cheat Sheet
 
 ### Deployment & Maintenance
+
 - `./nixos-quick-deploy.sh --resume` &mdash; continue the multi-phase installer from the last checkpoint.
 - `./nixos-quick-deploy.sh --resume --phase 5` &mdash; rerun the declarative deployment phase after editing templates.
 - `nrs` (`sudo nixos-rebuild switch`) &mdash; manual system rebuild; the deployer now pauses container services automatically when it runs this step.
@@ -1262,6 +1345,7 @@ flatpak update
 - `nfu` (`nix flake update`) &mdash; refresh flake inputs before rebuilding.
 
 ### AI Runtime Orchestration
+
 - `ai-servicectl start|stop|restart all` &mdash; manage system Gitea **and** the Podman AI stack in one shot.
 - `ai-servicectl start stack` &mdash; bring up only the user-space Podman network (Ollama/Open WebUI/Qdrant/MindsDB).
 - `ai-servicectl status system` &mdash; quick health summary for the declarative services (currently just Gitea).
@@ -1269,6 +1353,7 @@ flatpak update
 - `podman-ai-stack up|down|status|logs` &mdash; raw helper for advanced Podman scenarios; `ai-servicectl` wraps it for most workflows.
 
 ### Diagnostics & Recovery
+
 - `ai-servicectl stop all && ai-servicectl start all` &mdash; bounce every AI-centric service after changing models or GPU drivers.
 - `podman system reset --force` / `sudo podman system reset --force` &mdash; manual fallback for storage corruption (the deployer now attempts this automatically when stale overlay layers are detected).
 - `journalctl --user -u podman-local-ai-*.service -f` &mdash; detailed logs for the rootless containers when `ai-servicectl status` reports a failure.
@@ -1282,6 +1367,7 @@ flatpak update
 ### Additional Packages to Consider
 
 **Database Tools:**
+
 ```nix
 postgresql      # PostgreSQL database
 redis           # Redis key-value store
@@ -1290,6 +1376,7 @@ dbeaver         # Universal database IDE
 ```
 
 **Cloud & Infrastructure:**
+
 ```nix
 terraform       # Infrastructure as code
 kubectl         # Kubernetes CLI
@@ -1299,6 +1386,7 @@ azure-cli       # Azure command line
 ```
 
 **Performance & Debugging:**
+
 ```nix
 valgrind        # Memory debugging
 gdb             # GNU debugger
@@ -1308,6 +1396,7 @@ perf            # Linux profiling
 ```
 
 **Documentation & Diagramming:**
+
 ```nix
 graphviz        # Graph visualization
 plantuml        # UML diagrams
@@ -1315,6 +1404,7 @@ mermaid-cli     # Mermaid diagrams from CLI
 ```
 
 **Security Tools:**
+
 ```nix
 nmap            # Network scanner
 zenmap          # GUI frontend for nmap scans
@@ -1326,17 +1416,20 @@ john            # John the Ripper
 ### Recommended Flatpak Additions
 
 **Creative Tools:**
+
 - `org.blender.Blender` - 3D creation suite
 - `org.inkscape.Inkscape` - Vector graphics
 - `org.gimp.GIMP` - Image editor
 - `org.kde.kdenlive` - Video editor
 
 **Communication:**
+
 - `com.discordapp.Discord` - Team chat
 - `com.slack.Slack` - Team collaboration
 - `org.telegram.desktop` - Messaging
 
 **Productivity:**
+
 - `org.libreoffice.LibreOffice` - Office suite
 - `md.obsidian.Obsidian` - Note-taking (already included!)
 - `com.notion.Notion` - Workspace
@@ -1344,6 +1437,7 @@ john            # John the Ripper
 ### VSCodium Extension Recommendations
 
 Already installed but worth highlighting:
+
 - **Claude Code** - AI pair programming
 - **Continue** - In-editor AI completions
 - **Codeium** - Free AI autocomplete
@@ -1356,12 +1450,14 @@ Already installed but worth highlighting:
 ### Environment Integrations
 
 **Gitea AI Workflow** (already configured):
+
 - Repository task runners
 - Cursor integration for AI code generation
 - Aider integration for AI code review
 - GPT CLI for commit message generation
 
 **Obsidian AI Plugins** (install with `obsidian-ai-bootstrap`):
+
 - Smart Connections
 - Text Generator
 - Copilot
@@ -1372,7 +1468,9 @@ Already installed but worth highlighting:
 ## 📚 Documentation & Resources
 
 ### This Repository
+
 ### AI Stack Documentation (NEW in v6.0.0)
+
 - [AI Stack Integration Guide](docs/AI-STACK-FULL-INTEGRATION.md) - Complete architecture and migration
 - [AI Stack README](ai-stack/README.md) - AI stack overview and quick start
 - [AIDB MCP Server](ai-stack/mcp-servers/aidb/README.md) - AIDB server documentation
@@ -1392,12 +1490,14 @@ Already installed but worth highlighting:
 - [System Health Check](scripts/system-health-check.sh) - Verify and fix installation
 
 ### Official Docs
+
 - [NixOS Manual](https://nixos.org/manual/nixos/stable/)
 - [Home Manager Manual](https://nix-community.github.io/home-manager/)
 - [Nix Package Search](https://search.nixos.org/packages)
 - [COSMIC Desktop](https://system76.com/cosmic)
 
 ### AI Tools
+
 - [Claude Code Docs](https://docs.anthropic.com/claude/docs)
 - [Cursor Docs](https://docs.cursor.sh/)
 - [Continue Docs](https://continue.dev/docs)
@@ -1405,6 +1505,7 @@ Already installed but worth highlighting:
 - [Ollama Docs](https://ollama.ai/docs)
 
 ### Learning Resources
+
 - [Zero to Nix](https://zero-to-nix.com/) - Beginner-friendly Nix tutorial
 - [Nix Pills](https://nixos.org/guides/nix-pills/) - Deep dive into Nix
 - [NixOS & Flakes Book](https://nixos-and-flakes.thiscute.world/) - Modern Nix
@@ -1418,6 +1519,7 @@ Found a bug or have a suggestion? Please open an issue or submit a pull request!
 ### Reporting Issues
 
 When reporting problems, please include:
+
 - NixOS version: `nixos-version`
 - Script output or error messages
 - Relevant logs from `/tmp/nixos-quick-deploy.log`
@@ -1433,6 +1535,7 @@ MIT License - See [LICENSE](LICENSE) file for details.
 ## ⭐ Acknowledgments
 
 Built with these amazing technologies:
+
 - [NixOS](https://nixos.org/) - Reproducible Linux distribution
 - [Home Manager](https://github.com/nix-community/home-manager) - Declarative dotfile management
 - [COSMIC](https://system76.com/cosmic) - Modern desktop environment

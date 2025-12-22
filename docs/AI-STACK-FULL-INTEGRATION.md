@@ -431,7 +431,7 @@ show_ai_stack_success_message() {
 
 Services running:
   • AIDB MCP Server:  http://localhost:8091
-  • Lemonade vLLM:    http://localhost:8000
+  • Lemonade vLLM:    http://localhost:8080
   • PostgreSQL:       localhost:5432
   • Redis:            localhost:6379
   • Qdrant:           localhost:6333
@@ -456,7 +456,7 @@ Data locations:
 
 Next steps:
   1. Test AIDB: curl http://localhost:8091/health | jq
-  2. Test model: curl http://localhost:8000/health | jq
+  2. Test model: curl http://localhost:8080/health | jq
   3. Explore agents: ls -la ai-stack/agents/skills/
 
 EOF

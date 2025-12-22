@@ -113,7 +113,7 @@ in {
     lemonade = {
       baseUrl = mkOption {
         type = types.str;
-        default = "http://localhost:8000/api/v1";
+        default = "http://localhost:8080";
         description = "Lemonade general purpose inference URL";
       };
 

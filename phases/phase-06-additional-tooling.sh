@@ -256,6 +256,11 @@ phase_06_additional_tooling() {
     print_info "Waiting for Flatpak installation to complete (required before OpenSkills hook)..."
     wait $flatpak_pid || print_warning "Flatpak installation had issues"
 
+    # Ensure Podman Desktop (Flatpak) is wired to the rootless socket.
+    if declare -F configure_podman_desktop_flatpak >/dev/null 2>&1; then
+        configure_podman_desktop_flatpak || true
+    fi
+
     # ========================================================================
     # Installation: OpenSkills Tooling (after Flatpak completes)
     # ========================================================================

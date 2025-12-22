@@ -41,7 +41,7 @@ podman logs -f lemonade-deepseek
 
 ```bash
 # Check Lemonade services
-curl http://localhost:8000/health  # General purpose
+curl http://localhost:8080/health  # General purpose
 curl http://localhost:8001/health  # Code generation
 curl http://localhost:8003/health  # Code analysis
 
@@ -49,7 +49,7 @@ curl http://localhost:8003/health  # Code analysis
 curl http://localhost:6333/health
 
 # Check Open WebUI
-open http://localhost:3000
+open http://localhost:3001
 
 # Check AIDB MCP Server
 curl http://localhost:8091/health
@@ -150,7 +150,7 @@ OpenAI-compatible API for local LLM inference:
 ```python
 import httpx
 
-async with httpx.AsyncClient(base_url="http://localhost:8000/api/v1") as client:
+async with httpx.AsyncClient(base_url="http://localhost:8080") as client:
     response = await client.post("/chat/completions", json={
         "messages": [{"role": "user", "content": "Explain NixOS modules"}],
         "temperature": 0.7,
@@ -322,7 +322,7 @@ cd ai-stack/compose/
 podman-compose up -d
 
 # 3. Wait for models to load
-while ! curl -sf http://localhost:8000/health > /dev/null; do
+while ! curl -sf http://localhost:8080/health > /dev/null; do
     echo "Waiting for Lemonade..."
     sleep 10
 done
@@ -367,7 +367,7 @@ export LEMONADE_ARGS="--n-gpu-layers 99"
 # Quick health check script
 #!/usr/bin/env bash
 services=(
-    "lemonade:8000"
+    "lemonade:8080"
     "lemonade-coder:8001"
     "lemonade-deepseek:8003"
     "qdrant:6333"

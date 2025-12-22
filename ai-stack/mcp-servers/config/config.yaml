@@ -1,0 +1,63 @@
+server:
+  name: aidb-mcp
+  host: 0.0.0.0
+  port: 8791
+  api_port: 8091
+  workers: 1
+
+database:
+  postgres:
+    host: postgres
+    port: 5432
+    database: mcp
+    user: mcp
+    password: ""
+  redis:
+    host: redis
+    port: 6379
+    db: 0
+    password: ""
+
+llm:
+  lemonade:
+    host: http://lemonade:8080
+    models: []
+  parallel_processing:
+    enabled: false
+    simple_model: GLM-4.5-Air-UD-Q4K-XL-GGUF
+    complex_model: gpt-oss-20b-mxfp4-GGUF
+    diversity_mode: false
+
+tools:
+  sandbox:
+    enabled: false
+    runner: bubblewrap
+    timeout: 30
+    extra_args: []
+  cache:
+    ttl: 3600
+  schema_cache: .mcp_cache/tool_schemas.json
+
+logging:
+  level: INFO
+  file: /data/logs/aidb-mcp.log
+  max_size: 10MB
+  backup_count: 5
+
+security:
+  api_key: ""
+  rate_limit:
+    enabled: false
+    requests_per_minute: 60
+
+rag:
+  embedding_model: sentence-transformers/all-MiniLM-L6-v2
+  embedding_dimension: 384
+
+websearch:
+  google_api_key: ""
+  google_cse_id: ""
+
+telemetry:
+  enabled: true
+  path: /data/telemetry/aidb-events.jsonl

@@ -24,9 +24,7 @@
       "status": "implemented",
       "apis": {
         "qdrant": "http://localhost:6333",
-        "lemonade": "http://localhost:8000/api/v1",
-        "lemonade_coder": "http://localhost:8001/api/v1",
-        "lemonade_deepseek": "http://localhost:8003/api/v1",
+        "lemonade": "http://localhost:8080",
         "ollama": "http://localhost:11434/api"
       }
     },

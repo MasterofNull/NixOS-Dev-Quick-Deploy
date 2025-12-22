@@ -12,7 +12,7 @@ from sqlalchemy.dialects.postgresql import insert
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from mcp_server.server import MCPServer
+    from server import MCPServer
 
 LOGGER = logging.getLogger(__name__)
 router = APIRouter(prefix="/registry", tags=["registry"])
@@ -21,7 +21,7 @@ def get_mcp_server(request: Request) -> "MCPServer":
     return request.app.state.mcp_server
 
 def _system_registry():
-    from mcp_server.server import SYSTEM_REGISTRY
+    from server import SYSTEM_REGISTRY
     return SYSTEM_REGISTRY
 
 class RegistryResource(BaseModel):

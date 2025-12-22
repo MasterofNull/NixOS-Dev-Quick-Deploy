@@ -40,7 +40,7 @@ let
   giteaNativeConfigDir = ".config/gitea";
   giteaNativeDataDir = ".local/share/gitea";
   giteaAiConfigFile = "ai-agents.json";
-  # AI services migrated to user-level Podman with vLLM
+  # AI services run in user-level Podman (Lemonade + Ollama + Qdrant)
   # See: ~/.config/ai-optimizer/ for the Podman-based AI stack
   huggingfaceCacheDir = ".cache/huggingface";
   huggingfaceModelId = HUGGINGFACE_MODEL_ID_PLACEHOLDER;
@@ -48,9 +48,9 @@ let
   huggingfaceTgiEndpoint = HUGGINGFACE_TGI_ENDPOINT_PLACEHOLDER;
   huggingfaceScoutTgiEndpoint = HUGGINGFACE_SCOUT_TGI_ENDPOINT_PLACEHOLDER;
   huggingfaceTgiContainerEndpoint = HUGGINGFACE_TGI_CONTAINER_ENDPOINT_PLACEHOLDER;
-  # vLLM OpenAI-compatible endpoints (configured in ai-optimizer)
-  vllmPrimaryEndpoint = "http://127.0.0.1:8000/v1";  # Primary vLLM instance
-  vllmSecondaryEndpoint = "http://127.0.0.1:8001/v1";  # Secondary vLLM instance (if needed)
+  # OpenAI-compatible local endpoints (Lemonade/llama.cpp)
+  vllmPrimaryEndpoint = "http://127.0.0.1:8080/v1";  # Primary local inference
+  vllmSecondaryEndpoint = "http://127.0.0.1:8081/v1";  # Secondary local inference (if needed)
   # ===========================================================================
   # LLM Configuration (December 2025 - Optimized for Coding)
   # ===========================================================================
@@ -108,7 +108,7 @@ let
     "google/gemini-3-flash"        # Multimodal
   ];
   
-  openWebUiPort = 8081;
+  openWebUiPort = 3001;
   openWebUiUrl = "http://127.0.0.1:${toString openWebUiPort}";
   openWebUiDataDir = ".local/share/open-webui";
   podmanAiStackDataDir = ".local/share/podman-ai-stack";
@@ -2551,6 +2551,33 @@ EOF
         systemctl --user reset-failed flatpak-managed-install.service >/dev/null 2>&1 || true
       fi
     '';
+
+  # Ensure Podman Desktop (Flatpak) can see the rootless Podman socket.
+  home.activation.configurePodmanDesktopFlatpak =
+    lib.hm.dag.entryBefore [ "reloadSystemd" ] ''
+      set -eu
+
+      app_id="io.podman_desktop.PodmanDesktop"
+
+      if command -v flatpak >/dev/null 2>&1; then
+        if flatpak info --user "$app_id" >/dev/null 2>&1 || flatpak info --system "$app_id" >/dev/null 2>&1; then
+          flatpak override --user --filesystem=xdg-run/podman "$app_id" >/dev/null 2>&1 || true
+        fi
+      fi
+
+      if command -v podman >/dev/null 2>&1; then
+        if command -v systemctl >/dev/null 2>&1; then
+          systemctl --user enable --now podman.socket >/dev/null 2>&1 || true
+        fi
+
+        socket_path="$${XDG_RUNTIME_DIR:-/run/user/$$(id -u)}/podman/podman.sock"
+        if [ -S "$socket_path" ]; then
+          if ! podman system connection list --format "{{.Name}}" 2>/dev/null | grep -q .; then
+            podman system connection add local "unix://$socket_path" --default >/dev/null 2>&1 || true
+          fi
+        fi
+      fi
+    '';
   home.activation.ensurePodmanAiStackDirs =
     lib.hm.dag.entryBefore [ "writeBoundary" ] ''
       set -eu
@@ -2561,6 +2588,9 @@ EOF
         $data_root/open-webui
         $data_root/qdrant
         $data_root/mindsdb
+        $data_root/aidb
+        $data_root/aidb-cache
+        $data_root/telemetry
       "
 
       for path in $required_paths; do
@@ -2988,7 +3018,7 @@ EOF
             except:
                 # Try Lemonade server
                 try:
-                    response = httpx.get("http://localhost:8000/api/v1/models", timeout=5)
+                    response = httpx.get("http://localhost:8080/v1/models", timeout=5)
                     if response.status_code == 200:
                         print("✓ Local Lemonade server is running")
                     else:
@@ -3521,7 +3551,7 @@ EOF
       TimeoutStartSec=600
       TimeoutStopSec=180
       RestartSec=10
-      ExecStartPre=${podmanEnsureImage "docker.io/ollama/ollama:latest"}
+      ExecStartPre=${podmanEnsureImage "docker.io/ollama/ollama:0.5.13.5"}
     '';
 
     ".config/systemd/user/podman-local-ai-open-webui.service.d/override.conf".text = ''
@@ -3532,7 +3562,7 @@ EOF
       TimeoutStartSec=1800
       TimeoutStopSec=180
       RestartSec=10
-      ExecStartPre=${podmanEnsureImage "ghcr.io/open-webui/open-webui:latest"}
+      ExecStartPre=${podmanEnsureImage "ghcr.io/open-webui/open-webui:main"}
     '';
 
     ".config/systemd/user/podman-local-ai-qdrant.service.d/override.conf".text = ''
@@ -3593,7 +3623,7 @@ EOF
         set -euo pipefail
 
         container_name="''${OPEN_WEBUI_CONTAINER_NAME:-open-webui-dev}"
-        image="''${OPEN_WEBUI_IMAGE:-ghcr.io/open-webui/open-webui:latest}"
+        image="''${OPEN_WEBUI_IMAGE:-ghcr.io/open-webui/open-webui:main}"
         port="''${OPEN_WEBUI_PORT:-${toString openWebUiPort}}"
         data_dir="''${OPEN_WEBUI_DATA_DIR:-$HOME/${openWebUiDataDir}}"
         network="''${PODMAN_AI_STACK_NETWORK:-local-ai}"
@@ -4278,7 +4308,7 @@ PLUGINCFG
       # Ollama container (when llmBackend == "ollama")
       (lib.mkIf (llmBackend == "ollama") {
         "${podmanAiStackOllamaContainerName}" = {
-          image = "docker.io/ollama/ollama:latest";
+          image = "docker.io/ollama/ollama:0.5.13.5";
           description = "Ollama inference runtime (rootless Podman)";
           autoStart = false;
           autoUpdate = "local";
@@ -4334,7 +4364,7 @@ PLUGINCFG
       # Open WebUI (works with both backends via the 'llm' network alias)
       {
         "${podmanAiStackOpenWebUiContainerName}" = {
-          image = "ghcr.io/open-webui/open-webui:latest";
+          image = "ghcr.io/open-webui/open-webui:main";
           description = "Open WebUI interface for the local AI stack";
           autoStart = false;
           autoUpdate = "local";
@@ -4363,7 +4393,7 @@ PLUGINCFG
       # Qdrant vector database (always included)
       {
         "${podmanAiStackQdrantContainerName}" = {
-          image = "docker.io/qdrant/qdrant:latest";
+          image = "docker.io/qdrant/qdrant:v1.16.2";
           description = "Qdrant vector database for embeddings";
           autoStart = false;
           autoUpdate = "local";
@@ -4385,7 +4415,7 @@ PLUGINCFG
       # MindsDB orchestration (always included)
       {
         "${podmanAiStackMindsdbContainerName}" = {
-          image = "docker.io/mindsdb/mindsdb:latest";
+          image = "docker.io/mindsdb/mindsdb:latest";  # Rolling release
           description = "MindsDB orchestration layer for AI workflows";
           autoStart = false;
           autoUpdate = "local";

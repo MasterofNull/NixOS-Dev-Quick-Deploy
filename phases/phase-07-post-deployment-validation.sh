@@ -164,6 +164,33 @@ check_podman_network_health() {
     return 1
 }
 
+check_podman_desktop_flatpak() {
+    local app_id="io.podman_desktop.PodmanDesktop"
+
+    if ! command -v flatpak >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if ! flatpak info --user "$app_id" >/dev/null 2>&1 && ! flatpak info --system "$app_id" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if ! command -v podman >/dev/null 2>&1; then
+        print_warning "Podman Desktop installed but podman CLI missing"
+        return 1
+    fi
+
+    local connection_count
+    connection_count=$(podman system connection list --format "{{.Name}}" 2>/dev/null | sed '/^$/d' | wc -l | tr -d ' ')
+    if [[ "$connection_count" -gt 0 ]]; then
+        print_success "Podman Desktop connection configured"
+        return 0
+    fi
+
+    print_warning "Podman Desktop has no Podman connection configured"
+    print_info "Run: podman system connection add local unix:///run/user/$(id -u)/podman/podman.sock --default"
+    return 1
+}
 
 phase_07_post_deployment_validation() {
     # ========================================================================
@@ -279,6 +306,10 @@ phase_07_post_deployment_validation() {
     fi
 
     if ! check_podman_network_health; then
+        ((warning_failures++))
+    fi
+
+    if ! check_podman_desktop_flatpak; then
         ((warning_failures++))
     fi
 

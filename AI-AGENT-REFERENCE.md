@@ -151,7 +151,7 @@ client.upsert(
 | Qdrant | 6333 | `/healthz` | Vector database |
 | Ollama | 11434 | `/api/tags` | Embeddings |
 | Lemonade | 8080 | `/health` | GGUF inference |
-| Open WebUI | 3000 | `/` | Chat interface |
+| Open WebUI | 3001 | `/` | Chat interface |
 | PostgreSQL | 5432 | `pg_isready` | Structured data |
 | Redis | 6379 | `PING` | Caching |
 

@@ -1,5 +1,20 @@
+# Hybrid Coordinator MCP Server Dependencies
+# Version: 1.0.0
+# Date: 2025-12-20
+
+# Vector Database
+qdrant-client>=1.12.0
+
+# HTTP Client
+requests>=2.31.0
+
+# MCP Server Framework
 mcp>=0.9.0
 httpx>=0.24.0
-qdrant-client>=1.7.0
 pydantic>=2.0.0
 python-dotenv>=1.0.0
+
+# Optional: For future enhancements
+# langchain>=0.3.0
+# anthropic>=0.40.0
+# openai>=1.0.0

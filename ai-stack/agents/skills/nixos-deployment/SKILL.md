@@ -169,7 +169,7 @@ This deployment includes comprehensive AI development tools:
 - **Ollama** (port 11434): Local LLM inference
 - **Qdrant** (ports 6333, 6334): Vector database
 - **MindsDB** (ports 47334, 7735): ML orchestration
-- **Open WebUI** (port 8081): Chat interface
+- **Open WebUI** (port 3001): Chat interface
 - **PostgreSQL** (port 5432): MCP server database
 - **Redis** (port 6379): MCP server cache
 

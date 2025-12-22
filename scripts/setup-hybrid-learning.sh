@@ -146,6 +146,9 @@ info "Step 4: Creating required directories..."
 # Create all required directories for AI stack
 mkdir -p ~/.local/share/nixos-ai-stack/lemonade-models
 mkdir -p ~/.local/share/nixos-ai-stack/fine-tuning
+mkdir -p ~/.local/share/nixos-ai-stack/aidb
+mkdir -p ~/.local/share/nixos-ai-stack/aidb-cache
+mkdir -p ~/.local/share/nixos-ai-stack/telemetry
 mkdir -p ~/.cache/huggingface
 mkdir -p ~/.cache/nixos-ai-stack
 mkdir -p /var/lib/hybrid-learning/{models,exports,fine-tuning} 2>/dev/null || {
@@ -216,7 +219,7 @@ check_service() {
 }
 
 # Check Lemonade services
-check_service "Lemonade General" 8000 "/health"
+check_service "Lemonade General" 8080 "/health"
 check_service "Lemonade Coder" 8001 "/health"
 check_service "Lemonade DeepSeek" 8003 "/health"
 
@@ -227,7 +230,7 @@ check_service "Qdrant Vector DB" 6333 ""
 check_service "Ollama" 11434 "/api/tags"
 
 # Check Open WebUI
-check_service "Open WebUI" 3000 ""
+check_service "Open WebUI" 3001 ""
 
 echo ""
 
@@ -276,7 +279,7 @@ async def test_system():
 
         # Test Lemonade
         async with httpx.AsyncClient() as http:
-            response = await http.get("http://localhost:8000/health", timeout=5.0)
+            response = await http.get("http://localhost:8080/health", timeout=5.0)
             if response.status_code == 200:
                 print("✓ Lemonade inference ready")
 
@@ -309,12 +312,12 @@ echo ""
 success "Hybrid Local-Remote AI Learning System is ready!"
 echo ""
 echo "Service URLs:"
-echo "  • Lemonade General:    http://localhost:8000"
+echo "  • Lemonade General:    http://localhost:8080"
 echo "  • Lemonade Coder:      http://localhost:8001"
 echo "  • Lemonade DeepSeek:   http://localhost:8003"
 echo "  • Qdrant Vector DB:    http://localhost:6333"
 echo "  • Ollama:              http://localhost:11434"
-echo "  • Open WebUI:          http://localhost:3000"
+echo "  • Open WebUI:          http://localhost:3001"
 echo ""
 echo "Qdrant Collections:"
 echo "  • codebase-context     - Code snippets and context"
@@ -333,7 +336,7 @@ echo ""
 echo "Monitoring:"
 echo "  • View logs:     ${COMPOSE_CMD} logs -f"
 echo "  • Check Qdrant:  curl http://localhost:6333/collections"
-echo "  • Test Lemonade: curl http://localhost:8000/health"
+echo "  • Test Lemonade: curl http://localhost:8080/health"
 echo ""
 echo "Documentation:"
 echo "  • Architecture:         ai-knowledge-base/HYBRID-LEARNING-ARCHITECTURE.md"

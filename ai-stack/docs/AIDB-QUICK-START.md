@@ -32,7 +32,7 @@ That's it! The script handles everything automatically.
 ./scripts/test_services.sh
 
 # Quick model check
-for port in 8000 8001 8003; do
+for port in 8080; do
   curl -sf http://localhost:$port/health && echo "Port $port: OK"
 done
 
@@ -85,9 +85,7 @@ curl -sf http://localhost:9090/api/v1/targets | jq -r '.data.activeTargets[] | "
 | Grafana | http://localhost:3001 | Dashboards |
 | Prometheus | http://localhost:9090 | Metrics |
 | Redis Insight | http://localhost:5540 | Cache viewer |
-| Qwen3-4B | http://localhost:8000 | General reasoning |
-| Qwen2.5-Coder | http://localhost:8001 | Code generation |
-| Deepseek-Coder | http://localhost:8003 | Code analysis |
+| Qwen3-4B | http://localhost:8080 | General reasoning |
 | MCP Server | http://localhost:8091 | RAG + orchestration |
 
 ---
@@ -97,8 +95,6 @@ curl -sf http://localhost:9090/api/v1/targets | jq -r '.data.activeTargets[] | "
 ```bash
 # View logs
 podman logs lemonade
-podman logs lemonade-coder
-podman logs lemonade-deepseek
 
 # Restart service
 podman restart lemonade

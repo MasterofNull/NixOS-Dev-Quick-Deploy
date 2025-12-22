@@ -57,19 +57,19 @@ class ParallelInferenceEngine:
             ModelRole.GENERAL_REASONING: ModelEndpoint(
                 name="Qwen3-4B-Instruct",
                 role=ModelRole.GENERAL_REASONING,
-                base_url=os.getenv("LEMONADE_BASE_URL", "http://lemonade:8000/api/v1"),
+                base_url=os.getenv("LEMONADE_BASE_URL", "http://lemonade:8080"),
                 use_case="General-purpose task coordination and high-level reasoning"
             ),
             ModelRole.CODE_GENERATION: ModelEndpoint(
                 name="Qwen2.5-Coder",
                 role=ModelRole.CODE_GENERATION,
-                base_url=os.getenv("LEMONADE_CODER_URL", "http://lemonade-coder:8001/api/v1"),
+                base_url=os.getenv("LEMONADE_CODER_URL", "http://lemonade:8080"),
                 use_case="Specialized code generation and refactoring"
             ),
             ModelRole.CODE_ANALYSIS: ModelEndpoint(
                 name="Deepseek-Coder",
                 role=ModelRole.CODE_ANALYSIS,
-                base_url=os.getenv("LEMONADE_DEEPSEEK_URL", "http://lemonade-deepseek:8002/api/v1"),
+                base_url=os.getenv("LEMONADE_DEEPSEEK_URL", "http://lemonade:8080"),
                 use_case="Deep code understanding and bug detection"
             )
         }
@@ -101,8 +101,14 @@ class ParallelInferenceEngine:
         """
         try:
             # Convert base_url to chat completion endpoint
-            # Format: http://host:port/api/v1 -> http://host:port/v1/chat/completions
-            url = endpoint.base_url.replace("/api/v1", "/v1/chat/completions")
+            # Supports base URLs with or without /api/v1.
+            base = endpoint.base_url.rstrip("/")
+            if base.endswith("/api/v1"):
+                base = base[: -len("/api/v1")]
+            if base.endswith("/v1"):
+                url = f"{base}/chat/completions"
+            else:
+                url = f"{base}/v1/chat/completions"
 
             payload = {
                 "model": endpoint.name,

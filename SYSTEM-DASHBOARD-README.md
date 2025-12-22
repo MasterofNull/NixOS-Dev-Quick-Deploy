@@ -63,7 +63,7 @@ The dashboard will be automatically served by the hybrid learning system when fu
 - **Federation**: Multi-node synchronization status
 
 ### 2. Quick Actions
-- **Open WebUI**: Chat interface (port 3000)
+- **Open WebUI**: Chat interface (port 3001)
 - **Qdrant Dashboard**: Vector database UI (port 6333)
 - **Metrics**: Prometheus metrics (port 9200)
 - **Sync Now**: Manual federation sync trigger
@@ -87,7 +87,7 @@ All system documentation in one place:
 ## API Endpoints Used
 
 The dashboard connects to:
-- `http://localhost:8000/health` - Lemonade General
+- `http://localhost:8080/health` - Lemonade General
 - `http://localhost:8001/health` - Lemonade Coder
 - `http://localhost:8003/health` - Lemonade DeepSeek
 - `http://localhost:6333/collections` - Qdrant

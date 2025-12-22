@@ -38,7 +38,7 @@ NC='\033[0m' # No Color
 # All models use Q4_K_M quantization (4-bit) for optimal CPU performance
 
 declare -A MODELS=(
-    # General Purpose Model (lemonade:8000)
+    # General Purpose Model (lemonade:8080)
     ["qwen3-4b"]="unsloth/Qwen3-4B-Instruct-2507-GGUF:Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 
     # Code Generation Model (lemonade-coder:8001)

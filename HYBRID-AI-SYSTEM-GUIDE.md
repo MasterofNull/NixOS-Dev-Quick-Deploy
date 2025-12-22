@@ -94,7 +94,7 @@ This system creates a **bidirectional learning loop** where:
 ### 3. Local LLM Stack
 
 **Lemonade Services**:
-- **Port 8000**: General reasoning (Qwen3-4B)
+- **Port 8080**: General reasoning (Qwen3-4B)
 - **Port 8001**: Code generation (Qwen2.5-Coder-7B)
 - **Port 8003**: Code analysis (Deepseek-Coder-6.7B)
 
@@ -500,7 +500,7 @@ Add to your Claude Code MCP configuration:
       ],
       "env": {
         "QDRANT_URL": "http://localhost:6333",
-        "LEMONADE_BASE_URL": "http://localhost:8000/api/v1",
+        "LEMONADE_BASE_URL": "http://localhost:8080",
         "LOCAL_CONFIDENCE_THRESHOLD": "0.7",
         "HIGH_VALUE_THRESHOLD": "0.7",
         "PATTERN_EXTRACTION_ENABLED": "true"
@@ -667,7 +667,7 @@ python ai-stack/mcp-servers/hybrid-coordinator/server.py
 ### Pattern extraction not working
 ```bash
 # Check Lemonade is running
-curl http://localhost:8000/health
+curl http://localhost:8080/health
 
 # Check logs
 podman logs lemonade

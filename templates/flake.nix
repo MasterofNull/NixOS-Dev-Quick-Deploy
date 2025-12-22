@@ -128,12 +128,15 @@
           packages = with devPkgs; [
             nodejs_22
             nodePackages.typescript
-            nodePackages.ts-node
+            # ts-node removed - Node.js 22.6.0+ has built-in TypeScript support
+            # Use: node --experimental-strip-types script.ts
             nodePackages.typescript-language-server
             nodePackages.eslint
           ];
           shellHook = ''
             echo "📦 TypeScript dev shell ready (Node.js 22, TypeScript, ESLint)."
+            echo "ℹ️  Node.js 22+ has built-in TypeScript support:"
+            echo "   node --experimental-strip-types script.ts"
             echo "Tip: run 'npx tsc --init' in a project to bootstrap TypeScript config."
           '';
         };
