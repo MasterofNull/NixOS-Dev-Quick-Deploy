@@ -401,7 +401,7 @@
         .chart-container {
             position: relative;
             height: 200px;
-            margin-top: 1rem;
+            margin-top: 0.5rem;
         }
 
         .chart-grid {
@@ -409,6 +409,43 @@
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 1rem;
             margin-top: 1rem;
+        }
+
+        .hardware-grid {
+            display: grid;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .hardware-block {
+            display: grid;
+            grid-template-columns: minmax(240px, 1fr) minmax(240px, 1fr);
+            gap: 1rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            border-radius: 6px;
+            padding: 1rem;
+        }
+
+        .hardware-title {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--accent-cyan);
+            margin-bottom: 0.75rem;
+        }
+
+        .chart-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+
+        .hardware-metrics {
+            display: grid;
+            gap: 0.75rem;
         }
 
         /* Quick Links */
@@ -695,80 +732,116 @@
                         <span class="card-badge">Core Metrics</span>
                     </div>
                     <div class="collapsible-content">
-                        <div class="metrics-grid">
-                            <div class="metric">
-                                <div class="metric-label">CPU Usage</div>
-                                <div class="metric-value" id="cpuUsage">--<span class="metric-unit">%</span></div>
+                        <div class="hardware-grid">
+                            <div class="hardware-block">
+                                <div>
+                                    <div class="hardware-title">CPU</div>
+                                    <div class="hardware-metrics">
+                                        <div class="metric">
+                                            <div class="metric-label">CPU Usage</div>
+                                            <div class="metric-value" id="cpuUsage">--<span class="metric-unit">%</span></div>
+                                        </div>
+                                        <div class="metric">
+                                            <div class="metric-label">CPU Model</div>
+                                            <div class="metric-value" id="cpuModel">--</div>
+                                        </div>
+                                        <div class="metric">
+                                            <div class="metric-label">CPU Temp</div>
+                                            <div class="metric-value" id="cpuTemp">--</div>
+                                        </div>
+                                        <div class="metric">
+                                            <div class="metric-label">Load Avg</div>
+                                            <div class="metric-value copyable" id="loadAvg">--</div>
+                                        </div>
+                                        <div class="metric">
+                                            <div class="metric-label">Arch</div>
+                                            <div class="metric-value" id="cpuArch">--</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="chart-title">CPU Usage Trend</div>
+                                    <div class="chart-container">
+                                        <canvas id="cpuChart"></canvas>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="metric">
-                                <div class="metric-label">CPU Model</div>
-                                <div class="metric-value" id="cpuModel">--</div>
-                            </div>
-                            <div class="metric">
-                                <div class="metric-label">CPU Temp</div>
-                                <div class="metric-value" id="cpuTemp">--</div>
-                            </div>
-                            <div class="metric">
-                                <div class="metric-label">GPU</div>
-                                <div class="metric-value" id="gpuName">--</div>
-                            </div>
-                            <div class="metric">
-                                <div class="metric-label">GPU Busy</div>
-                                <div class="metric-value" id="gpuBusy">--</div>
-                            </div>
-                            <div class="metric">
-                                <div class="metric-label">Uptime</div>
-                                <div class="metric-value" id="uptime">--</div>
-                            </div>
-                            <div class="metric">
-                                <div class="metric-label">Load Avg</div>
-                                <div class="metric-value copyable" id="loadAvg">--</div>
-                            </div>
-                            <div class="metric">
-                                <div class="metric-label">Arch</div>
-                                <div class="metric-value" id="cpuArch">--</div>
-                            </div>
-                            <div class="metric">
-                                <div class="metric-label">VRAM</div>
-                                <div class="metric-value" id="gpuVram">--</div>
-                            </div>
-                        </div>
 
-                        <div class="progress-container">
-                            <div class="progress-header">
-                                <span>Memory</span>
-                                <span id="memoryPercent">-- %</span>
+                            <div class="hardware-block">
+                                <div>
+                                    <div class="hardware-title">Memory</div>
+                                    <div class="progress-container">
+                                        <div class="progress-header">
+                                            <span>Memory Utilization</span>
+                                            <span id="memoryPercent">-- %</span>
+                                        </div>
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" id="memoryBar" style="width: 0%"></div>
+                                        </div>
+                                        <div style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
+                                            <span id="memoryUsed">--</span> / <span id="memoryTotal">--</span> MB
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="chart-title">Memory Usage Trend</div>
+                                    <div class="chart-container">
+                                        <canvas id="memoryChart"></canvas>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="progress-bar">
-                                <div class="progress-fill" id="memoryBar" style="width: 0%"></div>
-                            </div>
-                            <div style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
-                                <span id="memoryUsed">--</span> / <span id="memoryTotal">--</span> MB
-                            </div>
-                        </div>
 
-                        <div class="progress-container">
-                            <div class="progress-header">
-                                <span>Disk Usage (/)</span>
-                                <span id="diskPercent">-- %</span>
+                            <div class="hardware-block">
+                                <div>
+                                    <div class="hardware-title">Disk</div>
+                                    <div class="progress-container">
+                                        <div class="progress-header">
+                                            <span>Disk Usage (/)</span>
+                                            <span id="diskPercent">-- %</span>
+                                        </div>
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" id="diskBar" style="width: 0%"></div>
+                                        </div>
+                                        <div style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
+                                            <span id="diskUsed">--</span> / <span id="diskTotal">--</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="chart-title">Disk Usage Trend</div>
+                                    <div class="chart-container">
+                                        <canvas id="diskChart"></canvas>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="progress-bar">
-                                <div class="progress-fill" id="diskBar" style="width: 0%"></div>
-                            </div>
-                            <div style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
-                                <span id="diskUsed">--</span> / <span id="diskTotal">--</span>
-                            </div>
-                        </div>
 
-                        <div class="chart-grid">
-                            <div class="chart-container">
-                                <canvas id="cpuChart"></canvas>
-                            </div>
-                            <div class="chart-container">
-                                <canvas id="memoryChart"></canvas>
-                            </div>
-                            <div class="chart-container">
-                                <canvas id="diskChart"></canvas>
+                            <div class="hardware-block">
+                                <div>
+                                    <div class="hardware-title">GPU</div>
+                                    <div class="hardware-metrics">
+                                        <div class="metric">
+                                            <div class="metric-label">GPU</div>
+                                            <div class="metric-value" id="gpuName">--</div>
+                                        </div>
+                                        <div class="metric">
+                                            <div class="metric-label">GPU Busy</div>
+                                            <div class="metric-value" id="gpuBusy">--</div>
+                                        </div>
+                                        <div class="metric">
+                                            <div class="metric-label">VRAM</div>
+                                            <div class="metric-value" id="gpuVram">--</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="hardware-title">Uptime</div>
+                                    <div class="hardware-metrics">
+                                        <div class="metric">
+                                            <div class="metric-label">Uptime</div>
+                                            <div class="metric-value" id="uptime">--</div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
