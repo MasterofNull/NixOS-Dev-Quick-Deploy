@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/run/current-system/sw/bin/bash
 #
 # Dashboard Library
 # Functions for installing and configuring the System Command Center dashboard
@@ -54,7 +54,7 @@ setup_system_dashboard() {
     fi
 
     # Run setup script
-    if bash "$setup_script"; then
+    if /run/current-system/sw/bin/bash "$setup_script"; then
         print_success "System dashboard installed successfully"
         echo ""
         print_info "Dashboard will be available at: ${BLUE}http://localhost:8888/dashboard.html${NC}"

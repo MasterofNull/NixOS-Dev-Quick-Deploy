@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/run/current-system/sw/bin/bash
 # Quick Launcher for NixOS System Monitoring Dashboard
 # This script starts data collection and dashboard server simultaneously
 

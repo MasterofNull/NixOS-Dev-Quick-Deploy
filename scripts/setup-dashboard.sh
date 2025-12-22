@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/run/current-system/sw/bin/bash
 # Dashboard Setup Script for NixOS Quick Deploy
 # Installs and configures the System Command Center dashboard
 # as part of the deployment process
