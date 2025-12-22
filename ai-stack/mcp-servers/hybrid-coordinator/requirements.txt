@@ -7,10 +7,13 @@ qdrant-client>=1.12.0
 
 # HTTP Client
 requests>=2.31.0
+httpx>=0.24.0
+
+# HTTP Server (for container mode)
+aiohttp>=3.9.0
 
 # MCP Server Framework
 mcp>=0.9.0
-httpx>=0.24.0
 pydantic>=2.0.0
 python-dotenv>=1.0.0
 

@@ -22,7 +22,8 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 import httpx
-from mcp import Server, Tool
+from mcp import Tool
+from mcp.server import Server
 from mcp.types import TextContent
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -52,7 +53,10 @@ embedding_client: Optional[httpx.AsyncClient] = None
 TELEMETRY_PATH = os.path.expanduser(
     os.getenv(
         "HYBRID_TELEMETRY_PATH",
-        "~/.local/share/nixos-ai-stack/telemetry/hybrid-events.jsonl",
+        os.getenv(
+            "TELEMETRY_PATH",
+            "~/.local/share/nixos-ai-stack/telemetry/hybrid-events.jsonl",
+        ),
     )
 )
 
@@ -78,14 +82,14 @@ class Config:
 
     QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
     QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", None)
-
-LEMONADE_URL = os.getenv("LEMONADE_BASE_URL", "http://localhost:8080")
-LEMONADE_CODER_URL = os.getenv(
-    "LEMONADE_CODER_URL", "http://localhost:8080"
-)
-LEMONADE_DEEPSEEK_URL = os.getenv(
-    "LEMONADE_DEEPSEEK_URL", "http://localhost:8080"
-)
+    LEMONADE_URL = os.getenv("LEMONADE_BASE_URL", "http://localhost:8080")
+    OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    LEMONADE_CODER_URL = os.getenv(
+        "LEMONADE_CODER_URL", "http://localhost:8080"
+    )
+    LEMONADE_DEEPSEEK_URL = os.getenv(
+        "LEMONADE_DEEPSEEK_URL", "http://localhost:8080"
+    )
 
     EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
     EMBEDDING_DIM = 384
@@ -97,7 +101,10 @@ LEMONADE_DEEPSEEK_URL = os.getenv(
     PATTERN_EXTRACTION_ENABLED = os.getenv("PATTERN_EXTRACTION_ENABLED", "true").lower() == "true"
 
     FINETUNE_DATA_PATH = os.path.expanduser(
-        "~/.local/share/nixos-ai-stack/fine-tuning/dataset.jsonl"
+        os.getenv(
+            "FINETUNE_DATA_PATH",
+            "~/.local/share/nixos-ai-stack/fine-tuning/dataset.jsonl",
+        )
     )
 
 
@@ -227,7 +234,7 @@ async def embed_text(text: str) -> List[float]:
     try:
         # Using Ollama's embedding endpoint
         response = await embedding_client.post(
-            "http://localhost:11434/api/embeddings",
+            f"{Config.OLLAMA_URL}/api/embeddings",
             json={"model": "nomic-embed-text", "prompt": text},
             timeout=30.0,
         )
@@ -322,12 +329,12 @@ async def augment_query_with_context(
 
     # 2. Search codebase context
     try:
-        codebase_results = qdrant_client.search(
+        codebase_results = qdrant_client.query_points(
             collection_name="codebase-context",
-            query_vector=query_embedding,
+            query=query_embedding,
             limit=5,
             score_threshold=0.7,
-        )
+        ).points
 
         if codebase_results:
             results_text.append("## Relevant Code Context\n")
@@ -346,12 +353,12 @@ async def augment_query_with_context(
 
     # 3. Search skills/patterns
     try:
-        skills_results = qdrant_client.search(
+        skills_results = qdrant_client.query_points(
             collection_name="skills-patterns",
-            query_vector=query_embedding,
+            query=query_embedding,
             limit=3,
             score_threshold=0.75,
-        )
+        ).points
 
         if skills_results:
             results_text.append("\n## Related Skills & Patterns\n")
@@ -365,12 +372,12 @@ async def augment_query_with_context(
 
     # 4. Search error solutions
     try:
-        error_results = qdrant_client.search(
+        error_results = qdrant_client.query_points(
             collection_name="error-solutions",
-            query_vector=query_embedding,
+            query=query_embedding,
             limit=2,
             score_threshold=0.8,
-        )
+        ).points
 
         if error_results:
             results_text.append("\n## Similar Error Solutions\n")
@@ -386,12 +393,12 @@ async def augment_query_with_context(
 
     # 5. Search best practices
     try:
-        bp_results = qdrant_client.search(
+        bp_results = qdrant_client.query_points(
             collection_name="best-practices",
-            query_vector=query_embedding,
+            query=query_embedding,
             limit=2,
             score_threshold=0.75,
-        )
+        ).points
 
         if bp_results:
             results_text.append("\n## Best Practices\n")
@@ -696,12 +703,12 @@ async def store_pattern(pattern_data: Dict[str, Any], source_interaction: Dict[s
     embedding = await embed_text(skill["description"])
 
     # Check if similar pattern exists
-    similar = qdrant_client.search(
+    similar = qdrant_client.query_points(
         collection_name="skills-patterns",
-        query_vector=embedding,
+        query=embedding,
         limit=1,
         score_threshold=0.9,
-    )
+    ).points
 
     if similar:
         # Update existing pattern
@@ -947,12 +954,12 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
 
         query_embedding = await embed_text(query)
 
-        results = qdrant_client.search(
+        results = qdrant_client.query_points(
             collection_name=collection,
-            query_vector=query_embedding,
+            query=query_embedding,
             limit=limit,
             score_threshold=0.7,
-        )
+        ).points
 
         formatted_results = [
             {"id": str(r.id), "score": r.score, "payload": r.payload} for r in results
@@ -1011,11 +1018,52 @@ async def main():
     """Run the MCP server"""
     await initialize_server()
 
-    # Run MCP server via stdin/stdout
-    from mcp.server.stdio import stdio_server
+    # Check if running in HTTP mode (for container deployment)
+    mode = os.getenv("MCP_SERVER_MODE", "stdio")
 
-    async with stdio_server() as (read_stream, write_stream):
-        await app.run(read_stream, write_stream, app.create_initialization_options())
+    if mode == "http":
+        # Run as HTTP server with health endpoint
+        from aiohttp import web
+
+        async def handle_health(request):
+            """Health check endpoint"""
+            return web.json_response({
+                "status": "healthy",
+                "service": "hybrid-coordinator",
+                "collections": list(COLLECTIONS.keys())
+            })
+
+        async def handle_augment_query(request):
+            """HTTP endpoint for query augmentation"""
+            data = await request.json()
+            query = data.get("query", "")
+            agent_type = data.get("agent_type", "remote")
+
+            result = await augment_query_with_context(query, agent_type)
+            return web.json_response(result)
+
+        http_app = web.Application()
+        http_app.router.add_get('/health', handle_health)
+        http_app.router.add_post('/augment_query', handle_augment_query)
+
+        port = int(os.getenv("MCP_SERVER_PORT", "8092"))
+        logger.info(f"Starting HTTP server on port {port}")
+
+        runner = web.AppRunner(http_app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', port)
+        await site.start()
+
+        logger.info(f"✓ Hybrid Coordinator HTTP server running on http://0.0.0.0:{port}")
+
+        # Keep server running
+        await asyncio.Event().wait()
+    else:
+        # Run MCP server via stdin/stdout (for local MCP usage)
+        from mcp.server.stdio import stdio_server
+
+        async with stdio_server() as (read_stream, write_stream):
+            await app.run(read_stream, write_stream, app.create_initialization_options())
 
 
 if __name__ == "__main__":

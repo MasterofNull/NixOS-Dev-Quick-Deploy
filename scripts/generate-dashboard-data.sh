@@ -90,6 +90,12 @@ file_line_count() {
     fi
 }
 
+normalize_int() {
+    local value="${1:-}"
+    value="${value//[^0-9]/}"
+    echo "${value:-0}"
+}
+
 last_event_timestamp() {
     local path="$1"
     if [[ -f "$path" ]]; then
@@ -887,18 +893,18 @@ collect_token_savings_metrics() {
     local estimated_cost_savings="0.00"
 
     if [[ -f "$hybrid_telemetry" ]]; then
-        total_queries=$(file_line_count "$hybrid_telemetry")
+        total_queries=$(normalize_int "$(file_line_count "$hybrid_telemetry")")
 
         if [[ $total_queries -gt 0 ]]; then
             # Count local vs remote routing
-            local_queries=$(grep -c '"agent_type":"local"' "$hybrid_telemetry" 2>/dev/null || echo "0")
-            remote_queries=$(grep -c '"agent_type":"remote"' "$hybrid_telemetry" 2>/dev/null || echo "0")
-            cached_queries=$(grep -c '"cached":true' "$hybrid_telemetry" 2>/dev/null || echo "0")
+            local_queries=$(normalize_int "$(grep -c '"agent_type":"local"' "$hybrid_telemetry" 2>/dev/null || echo "0")")
+            remote_queries=$(normalize_int "$(grep -c '"agent_type":"remote"' "$hybrid_telemetry" 2>/dev/null || echo "0")")
+            cached_queries=$(normalize_int "$(grep -c '"cached":true' "$hybrid_telemetry" 2>/dev/null || echo "0")")
 
             # Calculate percentages
             if [[ $total_queries -gt 0 ]]; then
-                local_routing_percent=$(awk "BEGIN {printf \"%.1f\", ($local_queries / $total_queries) * 100}")
-                cache_hit_rate=$(awk "BEGIN {printf \"%.1f\", ($cached_queries / $total_queries) * 100}")
+                local_routing_percent=$(awk -v l="$local_queries" -v t="$total_queries" 'BEGIN {if(t>0) printf "%.1f", (l/t)*100; else printf "0.0"}')
+                cache_hit_rate=$(awk -v c="$cached_queries" -v t="$total_queries" 'BEGIN {if(t>0) printf "%.1f", (c/t)*100; else printf "0.0"}')
             fi
 
             # Estimate token savings
@@ -909,7 +915,7 @@ collect_token_savings_metrics() {
             estimated_savings=$((baseline_total - actual_total))
 
             # Estimate cost savings (assuming $15 per million tokens)
-            estimated_cost_savings=$(awk "BEGIN {printf \"%.2f\", ($estimated_savings / 1000000) * $cost_per_million_tokens}")
+            estimated_cost_savings=$(awk -v s="$estimated_savings" -v c="$cost_per_million_tokens" 'BEGIN {printf "%.2f", (s/1000000)*c}')
         fi
     fi
 
@@ -924,7 +930,7 @@ collect_token_savings_metrics() {
   },
   "routing": {
     "local_percent": $local_routing_percent,
-    "remote_percent": $(awk "BEGIN {printf \"%.1f\", 100 - $local_routing_percent}"),
+    "remote_percent": $(awk -v l="$local_routing_percent" 'BEGIN {printf "%.1f", 100 - l}'),
     "target_local_percent": 70.0
   },
   "cache": {
@@ -935,7 +941,7 @@ collect_token_savings_metrics() {
     "baseline_per_query": $baseline_tokens_per_query,
     "rag_per_query": $avg_tokens_per_query,
     "estimated_savings": $estimated_savings,
-    "reduction_percent": $(awk "BEGIN {if($baseline_tokens_per_query>0) printf \"%.1f\", (($baseline_tokens_per_query - $avg_tokens_per_query) / $baseline_tokens_per_query) * 100; else print \"0.0\"}")
+    "reduction_percent": $(awk -v b="$baseline_tokens_per_query" -v a="$avg_tokens_per_query" 'BEGIN {if(b>0) printf "%.1f", ((b-a)/b)*100; else print "0.0"}')
   },
   "cost": {
     "estimated_savings_usd": $estimated_cost_savings,
