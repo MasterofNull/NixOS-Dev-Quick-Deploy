@@ -33,3 +33,30 @@ ai-stack/mcp-servers/hybrid-coordinator/venv/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# ==============================================================================
+# Federated Learning Data Policy
+# ==============================================================================
+
+# Runtime data directories (NOT for federation - too large, system-specific)
+.local/
+**/nixos-system-dashboard/
+**/nixos-ai-stack/telemetry/aidb-events.jsonl
+**/nixos-ai-stack/telemetry/hybrid-events.jsonl
+
+# BUT: Keep federated learning data in repo
+!data/
+!data/patterns/
+!data/fine-tuning/
+!data/collections/
+!data/telemetry/snapshots/
+!data/metrics/
+
+# Temporary and backup files in data/
+data/**/*.tmp
+data/**/*.bak
+data/**/*.backup
+
+# Keep README files
+!data/**/README.md
+!data/**/.gitkeep
