@@ -260,7 +260,28 @@ else
     warning "RAG system test script not found, skipping"
 fi
 
-# Step 10: Summary
+# Step 10: Import federated learning data
+step "Step 10: Importing federated learning data"
+
+if [ -f "${SCRIPT_DIR}/import-collections.sh" ] && [ -d "${PROJECT_ROOT}/data/collections/snapshots" ]; then
+    info "Checking for federated collection snapshots..."
+
+    # Count available snapshots
+    SNAPSHOT_COUNT=$(find "${PROJECT_ROOT}/data/collections/snapshots" -name "*.json" 2>/dev/null | wc -l)
+
+    if [ "$SNAPSHOT_COUNT" -gt 0 ]; then
+        info "Found $SNAPSHOT_COUNT collection snapshot(s), importing..."
+        bash "${SCRIPT_DIR}/import-collections.sh"
+        success "Federated learning data imported"
+    else
+        info "No federated snapshots found (this is normal for first deployment)"
+        info "Future deployments will restore learned patterns from git"
+    fi
+else
+    info "Federated data import not configured yet"
+fi
+
+# Step 11: Summary
 step "Setup Complete!"
 
 echo ""
@@ -294,6 +315,13 @@ echo "  • RAG Collections:    5 collections initialized in Qdrant"
 echo "  • Telemetry:          ${DATA_DIR}/telemetry/"
 echo "  • Fine-tuning Data:   ${DATA_DIR}/fine-tuning/"
 echo "  • Dashboard Data:     ~/.local/share/nixos-system-dashboard/"
+echo ""
+echo "Federated Learning (NEW):"
+echo "  • Local Runtime:      ~/.local/share/nixos-ai-stack/"
+echo "  • Git Repository:     ${PROJECT_ROOT}/data/"
+echo "  • Sync to Git:        bash scripts/sync-learning-data.sh"
+echo "  • Export Collections: bash scripts/export-collections.sh"
+echo "  • Setup Automation:   See scripts/cron-templates.sh"
 echo ""
 echo "Data Location:"
 echo "  • ${DATA_DIR}"

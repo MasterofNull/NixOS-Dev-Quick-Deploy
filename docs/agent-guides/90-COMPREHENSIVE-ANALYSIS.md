@@ -6,6 +6,8 @@
 - [00-SYSTEM-OVERVIEW.md](00-SYSTEM-OVERVIEW.md) - System architecture
 - [40-HYBRID-WORKFLOW.md](40-HYBRID-WORKFLOW.md) - Hybrid coordinator workflow
 - [22-CONTINUOUS-LEARNING.md](22-CONTINUOUS-LEARNING.md) - Learning implementation
+- [43-FEDERATED-DEPLOYMENT.md](43-FEDERATED-DEPLOYMENT.md) - Federated learning deployment
+- [44-FEDERATION-AUTOMATION.md](44-FEDERATION-AUTOMATION.md) - Automation workflows
 
 ---
 
