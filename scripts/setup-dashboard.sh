@@ -65,6 +65,7 @@ ExecStart=${SCRIPT_DIR}/scripts/serve-dashboard.sh
 Restart=on-failure
 RestartSec=5s
 Environment="DASHBOARD_PORT=8888"
+Environment="PATH=/run/current-system/sw/bin:/usr/bin:/bin:%h/.nix-profile/bin"
 
 [Install]
 WantedBy=default.target
@@ -110,7 +111,7 @@ fi
 
 # Create convenience alias
 SHELL_RC="${USER_HOME}/.zshrc"
-if [[ -f "$SHELL_RC" ]] && ! grep -q "alias dashboard=" "$SHELL_RC"; then
+if [[ -f "$SHELL_RC" && -w "$SHELL_RC" ]] && ! grep -q "alias dashboard=" "$SHELL_RC"; then
     cat >> "$SHELL_RC" <<EOF
 
 # NixOS System Dashboard
@@ -120,6 +121,8 @@ alias dashboard-stop='systemctl --user stop dashboard-collector.timer dashboard-
 alias dashboard-status='systemctl --user status dashboard-collector.timer dashboard-server.service'
 EOF
     echo -e "${GREEN}✅ Shell aliases added to ${SHELL_RC}${NC}"
+elif [[ -f "$SHELL_RC" && ! -w "$SHELL_RC" ]]; then
+    echo -e "${YELLOW}⚠️  ${SHELL_RC} is not writable; skipped alias install.${NC}"
 fi
 
 echo ""

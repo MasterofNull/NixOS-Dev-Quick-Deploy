@@ -1,10 +1,13 @@
-#!/usr/bin/env bash
+#!/run/current-system/sw/bin/bash
 # Dashboard HTTP Server
 # Serves the system monitoring dashboard and provides API endpoints for JSON data
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PATH="/run/current-system/sw/bin:/usr/bin:/bin:${HOME}/.nix-profile/bin"
+
+SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
+SCRIPT_DIR="$(cd "$(/run/current-system/sw/bin/dirname "$SCRIPT_PATH")" && pwd)"
 DASHBOARD_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DATA_DIR="${HOME}/.local/share/nixos-system-dashboard"
 PORT="${DASHBOARD_PORT:-8888}"
@@ -23,7 +26,19 @@ echo ""
 echo "Press Ctrl+C to stop"
 
 # Create a simple Python server with CORS support
-python3 - <<'EOF'
+python_bin=""
+if command -v python3 >/dev/null 2>&1; then
+    python_bin="python3"
+elif command -v python >/dev/null 2>&1; then
+    python_bin="python"
+fi
+
+if [[ -z "$python_bin" ]]; then
+    echo "ERROR: python not found in PATH. Install python3 or update dashboard-server.service PATH."
+    exit 127
+fi
+
+"$python_bin" - <<'EOF'
 import http.server
 import socketserver
 import os
@@ -144,7 +159,12 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
         if not self.path.endswith(('.ico', '.map')):
             print(f"[{self.log_date_time_string()}] {format % args}")
 
-with socketserver.TCPServer(("", PORT), DashboardHandler) as httpd:
+class ThreadingHTTPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+
+with ThreadingHTTPServer(("", PORT), DashboardHandler) as httpd:
     print(f"✅ Server running on port {PORT}")
     httpd.serve_forever()
 EOF
