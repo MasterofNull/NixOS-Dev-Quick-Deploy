@@ -12,6 +12,7 @@ from logging.handlers import RotatingFileHandler
 import signal
 import sys
 import time
+from datetime import datetime, timezone
 from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional
@@ -33,12 +34,12 @@ from urllib.parse import urlparse
 from pgvector.sqlalchemy import Vector
 from sentence_transformers import SentenceTransformer
 
-from mcp_server.middleware.cache import CacheMiddleware
-from mcp_server.llm_parallel import run_parallel_inference
-from mcp_server.settings_loader import Settings, load_settings
-from mcp_server.skills_loader import ParsedSkill, parse_skill_text, write_skill_file
-from mcp_server.ml_engine import MLEngine
-from mcp_server import registry_api
+from middleware.cache import CacheMiddleware
+from llm_parallel import run_parallel_inference
+from settings_loader import Settings, load_settings
+from skills_loader import ParsedSkill, parse_skill_text, write_skill_file
+from ml_engine import MLEngine
+import registry_api
 
 LOGGER = logging.getLogger("aidb.mcp")
 
@@ -112,6 +113,23 @@ POINTS_OF_INTEREST = sa.Table(
     sa.Column("source", sa.Text, nullable=True),
     sa.Column("ingested_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     sa.UniqueConstraint("name", "category", name="uq_points_of_interest_name_category"),
+)
+
+TELEMETRY_EVENTS = sa.Table(
+    "telemetry_events",
+    METADATA,
+    sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+    sa.Column("source", sa.String(64), nullable=False),
+    sa.Column("event_type", sa.String(64), nullable=False),
+    sa.Column("llm_used", sa.String(32), nullable=True),
+    sa.Column("tokens_saved", sa.Integer, nullable=True),
+    sa.Column("rag_hits", sa.Integer, nullable=True),
+    sa.Column("collections_used", sa.JSON, nullable=True),
+    sa.Column("model", sa.String(128), nullable=True),
+    sa.Column("latency_ms", sa.Integer, nullable=True),
+    sa.Column("cache_hit", sa.Boolean, nullable=True),
+    sa.Column("metadata", sa.JSON, nullable=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
 )
 
 TOOL_DISCOVERY_COUNTER = Counter(
@@ -722,9 +740,47 @@ class MonitoringServer:
         async def metrics() -> Response:
             return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
+        @self.app.get("/telemetry/summary")
+        async def telemetry_summary() -> Dict[str, Any]:
+            return await self.mcp_server.telemetry_summary()
+
+        @self.app.post("/telemetry/probe")
+        async def telemetry_probe(payload: Dict[str, Any]) -> Dict[str, Any]:
+            prompt = payload.get("prompt", "Telemetry probe: confirm local LLM route.")
+            start = time.time()
+            response = await self.mcp_server._lemonade_client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": payload.get("model", "local-telemetry-probe"),
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": payload.get("max_tokens", 64),
+                    "temperature": payload.get("temperature", 0.2),
+                },
+            )
+            response.raise_for_status()
+            latency_ms = int((time.time() - start) * 1000)
+            await self.mcp_server.record_telemetry(
+                event_type="telemetry_probe",
+                source="aidb",
+                llm_used="local",
+                model=payload.get("model", "local-telemetry-probe"),
+                latency_ms=latency_ms,
+                metadata={"prompt_chars": len(prompt)},
+            )
+            return {
+                "status": "ok",
+                "latency_ms": latency_ms,
+                "response": response.json(),
+            }
+
         @self.app.get("/skills")
         async def list_skills(include_pending: bool = False) -> List[Dict[str, Any]]:
             skills = await self.mcp_server.list_skills(include_pending=include_pending)
+            await self.mcp_server.record_telemetry(
+                event_type="skills_list",
+                source="aidb",
+                metadata={"include_pending": include_pending, "count": len(skills)},
+            )
             return [skill.model_dump() for skill in skills]
 
         @self.app.get("/skills/discover")
@@ -737,6 +793,11 @@ class MonitoringServer:
             skill = await self.mcp_server.get_skill(slug, include_pending=include_pending)
             if not skill:
                 raise HTTPException(status_code=404, detail={"error": "skill_not_found"})
+            await self.mcp_server.record_telemetry(
+                event_type="skill_get",
+                source="aidb",
+                metadata={"slug": slug, "include_pending": include_pending},
+            )
             return skill.model_dump()
 
         @self.app.post("/skills/import")
@@ -748,6 +809,11 @@ class MonitoringServer:
                 record = await self.mcp_server.import_skill(payload)
             except ValueError as exc:  # noqa: BLE001
                 raise HTTPException(status_code=400, detail=str(exc))
+            await self.mcp_server.record_telemetry(
+                event_type="skill_import",
+                source="aidb",
+                metadata={"slug": payload.slug, "source": payload.source_url},
+            )
             return record.model_dump()
 
         @self.app.get("/tools")
@@ -757,6 +823,11 @@ class MonitoringServer:
                 raise HTTPException(status_code=400, detail="mode must be 'minimal' or 'full'")
             try:
                 tools = await self.mcp_server._tool_registry.get_tools(mode)
+                await self.mcp_server.record_telemetry(
+                    event_type="tools_list",
+                    source="aidb",
+                    metadata={"mode": mode, "count": len(tools)},
+                )
                 return {
                     "tools": [tool.model_dump() for tool in tools],
                     "count": len(tools),
@@ -774,6 +845,11 @@ class MonitoringServer:
                 raise HTTPException(status_code=400, detail="tool_name is required")
             try:
                 result = await self.mcp_server.execute_tool(tool_name, parameters)
+                await self.mcp_server.record_telemetry(
+                    event_type="tool_execute",
+                    source="aidb",
+                    metadata={"tool_name": tool_name},
+                )
                 return result
             except PermissionError as exc:  # configuration / auth errors
                 raise HTTPException(status_code=403, detail=str(exc))
@@ -829,6 +905,11 @@ class MonitoringServer:
                     ]
 
             documents = await asyncio.to_thread(_fetch)
+            await self.mcp_server.record_telemetry(
+                event_type="documents_list",
+                source="aidb",
+                metadata={"project": project, "count": len(documents), "include_content": include_content},
+            )
             return {"documents": documents, "total": len(documents), "project": project}
 
         @self.app.post("/documents")
@@ -860,6 +941,11 @@ class MonitoringServer:
                     conn.execute(stmt)
 
             await asyncio.to_thread(_insert)
+            await self.mcp_server.record_telemetry(
+                event_type="document_import",
+                source="aidb",
+                metadata={"project": doc.get("project", "default"), "title": doc.get("title")},
+            )
             return {"status": "ok", "message": "Document imported successfully"}
 
         @self.app.post("/vector/embed")
@@ -1110,6 +1196,96 @@ class MCPServer:
             base_url=settings.lemonade_url, timeout=120.0
         )
         LOGGER.info(f"Lemonade client configured for {settings.lemonade_url}")
+        self._telemetry_path = Path(self.settings.telemetry_path)
+        self._telemetry_enabled = self.settings.telemetry_enabled
+
+    async def record_telemetry(
+        self,
+        event_type: str,
+        source: str,
+        llm_used: Optional[str] = None,
+        tokens_saved: int = 0,
+        rag_hits: int = 0,
+        collections_used: Optional[List[str]] = None,
+        model: Optional[str] = None,
+        latency_ms: Optional[int] = None,
+        cache_hit: Optional[bool] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if not self._telemetry_enabled:
+            return
+
+        event = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "source": source,
+            "event_type": event_type,
+            "llm_used": llm_used,
+            "tokens_saved": tokens_saved,
+            "rag_hits": rag_hits,
+            "collections_used": collections_used or [],
+            "model": model,
+            "latency_ms": latency_ms,
+            "cache_hit": cache_hit,
+            "metadata": metadata or {},
+        }
+
+        def _write_jsonl() -> None:
+            self._telemetry_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._telemetry_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(event) + "\n")
+
+        def _insert_db() -> None:
+            with self._engine.begin() as conn:
+                conn.execute(
+                    insert(TELEMETRY_EVENTS).values(
+                        source=event["source"],
+                        event_type=event["event_type"],
+                        llm_used=event["llm_used"],
+                        tokens_saved=event["tokens_saved"],
+                        rag_hits=event["rag_hits"],
+                        collections_used=event["collections_used"],
+                        model=event["model"],
+                        latency_ms=event["latency_ms"],
+                        cache_hit=event["cache_hit"],
+                        metadata=event["metadata"],
+                    )
+                )
+
+        await asyncio.to_thread(_write_jsonl)
+        await asyncio.to_thread(_insert_db)
+
+    async def telemetry_summary(self) -> Dict[str, Any]:
+        def _query() -> Dict[str, Any]:
+            with self._engine.connect() as conn:
+                total = conn.execute(sa.text("SELECT COUNT(*) FROM telemetry_events")).scalar() or 0
+                local = conn.execute(
+                    sa.text("SELECT COUNT(*) FROM telemetry_events WHERE llm_used = 'local'")
+                ).scalar() or 0
+                remote = conn.execute(
+                    sa.text("SELECT COUNT(*) FROM telemetry_events WHERE llm_used = 'remote'")
+                ).scalar() or 0
+                tokens_saved = conn.execute(
+                    sa.text("SELECT COALESCE(SUM(tokens_saved), 0) FROM telemetry_events")
+                ).scalar() or 0
+                last_event = conn.execute(
+                    sa.text("SELECT MAX(created_at) FROM telemetry_events")
+                ).scalar()
+            return {
+                "total_events": int(total),
+                "local_events": int(local),
+                "remote_events": int(remote),
+                "tokens_saved": int(tokens_saved),
+                "last_event_at": last_event.isoformat() if last_event else None,
+            }
+
+        summary = await asyncio.to_thread(_query)
+        summary["telemetry_path"] = str(self._telemetry_path)
+        summary["enabled"] = self._telemetry_enabled
+        if summary["total_events"] > 0:
+            summary["local_usage_rate"] = summary["local_events"] / summary["total_events"]
+        else:
+            summary["local_usage_rate"] = 0.0
+        return summary
 
     async def _ingest_points_of_interest(self) -> None:
         LOGGER.info("Ingesting points of interest...")
@@ -1481,12 +1657,22 @@ class MCPServer:
             "simple_model": self.settings.parallel_simple_model,
             "complex_model": self.settings.parallel_complex_model,
         }
+        start = time.time()
         responses = await run_parallel_inference(
             client=self._lemonade_client,
             prompt=prompt,
             simple_model=self.settings.parallel_simple_model,
             complex_model=self.settings.parallel_complex_model,
             max_tokens=max_tokens,
+        )
+        latency_ms = int((time.time() - start) * 1000)
+        await self.record_telemetry(
+            event_type="parallel_generate",
+            source="aidb",
+            llm_used="local",
+            model=self.settings.parallel_complex_model,
+            latency_ms=latency_ms,
+            metadata={"prompt_chars": len(prompt), "max_tokens": max_tokens},
         )
         responses.update({"diversity_mode": self.settings.parallel_diversity_mode})
         return payload | responses

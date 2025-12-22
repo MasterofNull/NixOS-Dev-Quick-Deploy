@@ -146,7 +146,7 @@ Skills can reference each other:
 
 Skills require these environment variables (from `deployment/podman/.env`):
 
-- `AIDB_API_URL` - API base URL (default: http://localhost:8000)
+- `AIDB_API_URL` - API base URL (default: http://localhost:8091)
 - `AIDB_API_TOKEN` - Authentication token
 
 ## Maintenance

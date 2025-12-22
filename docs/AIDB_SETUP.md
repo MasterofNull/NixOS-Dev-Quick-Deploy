@@ -161,12 +161,12 @@ Open WebUI provides a ChatGPT-like interface for your local models:
 # Using podman directly
 podman run -d \
   --name open-webui \
-  -p 8081:8080 \
+  -p 3001:8080 \
   -v $HOME/.local/share/open-webui:/app/backend/data \
   --add-host=host.docker.internal:host-gateway \
   ghcr.io/open-webui/open-webui:main
 
-# Access at http://localhost:8081
+# Access at http://localhost:3001
 ```
 
 ---

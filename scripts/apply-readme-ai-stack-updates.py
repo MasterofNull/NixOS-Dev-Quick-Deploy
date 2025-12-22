@@ -121,7 +121,7 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRAT
 
 # Test individual endpoints
 curl http://localhost:8091/health | jq .       # AIDB MCP server
-curl http://localhost:8000/health | jq .       # Lemonade inference
+curl http://localhost:8080/health | jq .       # Lemonade inference
 curl http://localhost:6333/collections | jq .  # Qdrant vector DB
 ```
 

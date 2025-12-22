@@ -13,7 +13,7 @@ The Hybrid Local-Remote AI Learning System has been successfully deployed and is
 |---------|------|--------|--------------|
 | Qdrant Vector DB | 6333 | ✅ Running | http://localhost:6333/healthz |
 | Lemonade LLM | 8080 | ✅ Running | http://localhost:8080/health |
-| Open WebUI | 3000 | ✅ Running | http://localhost:3000 |
+| Open WebUI | 3001 | ✅ Running | http://localhost:3001 |
 | MindsDB | 7735 | ✅ Running | http://localhost:7735 |
 
 ## 💾 Qdrant Collections Initialized
@@ -101,7 +101,7 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 
 ### 2. Access Open WebUI
 
-Visit http://localhost:3000 in your browser to interact with the models through a ChatGPT-like interface.
+Visit http://localhost:3001 in your browser to interact with the models through a ChatGPT-like interface.
 
 ### 3. Start Using Hybrid Learning
 
@@ -139,4 +139,3 @@ Your NixOS Hybrid AI Learning System is fully operational and ready to reduce re
 **Collections Ready**: ✅ 5/5 Initialized  
 **Documentation**: ✅ Complete  
 **Dashboard**: ✅ Accessible  
-

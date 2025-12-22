@@ -11,7 +11,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 HEALTH_SCRIPT="$REPO_ROOT/scripts/system-health-check.sh"
 
 AIDB_BASE_URL="${AIDB_BASE_URL:-http://localhost:8091}"
-LEMONADE_BASE_URL="${LEMONADE_BASE_URL:-http://localhost:8000/api/v1}"
+LEMONADE_BASE_URL="${LEMONADE_BASE_URL:-http://localhost:8080}"
 
 run_health_check=true
 
@@ -64,7 +64,9 @@ check_endpoint() {
 
 echo "\n🌐 Endpoint probes"
 check_endpoint "AIDB MCP" "${AIDB_BASE_URL%/}/health"
-check_endpoint "Lemonade" "${LEMONADE_BASE_URL%/}/health"
+lemonade_base="${LEMONADE_BASE_URL%/}"
+lemonade_base="${lemonade_base%/api/v1}"
+check_endpoint "Lemonade" "${lemonade_base}/health"
 check_endpoint "RedisInsight" "http://localhost:5540"
 
 echo "\nDone. Review warnings above if any checks failed."

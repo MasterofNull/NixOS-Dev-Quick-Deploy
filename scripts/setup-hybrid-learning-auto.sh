@@ -49,7 +49,7 @@ fi
 echo "✓ Environment configured"
 
 echo "==> Step 3: Creating directories..."
-mkdir -p ~/.local/share/nixos-ai-stack/{lemonade-models,fine-tuning,qdrant,ollama,open-webui,postgres,redis}
+mkdir -p ~/.local/share/nixos-ai-stack/{lemonade-models,fine-tuning,qdrant,ollama,open-webui,postgres,redis,aidb,aidb-cache,telemetry}
 mkdir -p ~/.cache/huggingface
 echo "✓ Directories created"
 
@@ -105,7 +105,7 @@ echo "Services running:"
 echo "  • Qdrant:     http://localhost:6333"
 echo "  • Lemonade:   http://localhost:8080"
 echo "  • Ollama:     http://localhost:11434"
-echo "  • Open WebUI: http://localhost:3000"
+echo "  • Open WebUI: http://localhost:3001"
 echo "  • PostgreSQL: localhost:5432"
 echo "  • Redis:      localhost:6379"
 echo ""

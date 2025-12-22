@@ -65,7 +65,7 @@ cmd_compose() {
 
 subcmd_up() {
     ensure_stack_dir
-    cmd_compose up -d
+    cmd_compose up -d --build
 }
 
 subcmd_down() {
@@ -124,4 +124,3 @@ main() {
 }
 
 main "$@"
-

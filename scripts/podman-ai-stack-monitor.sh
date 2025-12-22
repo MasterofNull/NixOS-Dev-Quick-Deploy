@@ -357,7 +357,7 @@ monitor_startup() {
             echo "Access points:"
             echo "  • Ollama:     http://localhost:11434"
             echo "  • Qdrant:     http://localhost:6333"
-            echo "  • Open WebUI: http://localhost:3000"
+            echo "  • Open WebUI: http://localhost:3001"
             echo "  • MindsDB:    http://localhost:47334"
             echo ""
             break
@@ -580,4 +580,3 @@ main() {
 }
 
 main "$@"
-

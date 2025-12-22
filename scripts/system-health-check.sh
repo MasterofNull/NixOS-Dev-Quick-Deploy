@@ -1212,8 +1212,9 @@ run_all_checks() {
     check_command "aider" "Aider" true
     check_command "openskills" "OpenSkills CLI" true
 
-    local lemonade_url="${LEMONADE_BASE_URL:-http://localhost:8000/api/v1}"
+    local lemonade_url="${LEMONADE_BASE_URL:-http://localhost:8080}"
     local normalized_lemonade_url="${lemonade_url%/}"
+    normalized_lemonade_url="${normalized_lemonade_url%/api/v1}"
     print_check "Lemonade server health (${normalized_lemonade_url}/health)"
     if curl -sf --max-time 3 "${normalized_lemonade_url}/health" > /dev/null 2>&1; then
         print_success "Lemonade server reachable"

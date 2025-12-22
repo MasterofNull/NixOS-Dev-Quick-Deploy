@@ -49,7 +49,7 @@ Add to your MCP configuration:
       "args": ["/path/to/hybrid-coordinator/server.py"],
       "env": {
         "QDRANT_URL": "http://localhost:6333",
-        "LEMONADE_BASE_URL": "http://localhost:8000/api/v1",
+        "LEMONADE_BASE_URL": "http://localhost:8080",
         "LOCAL_CONFIDENCE_THRESHOLD": "0.7",
         "HIGH_VALUE_THRESHOLD": "0.7",
         "PATTERN_EXTRACTION_ENABLED": "true"
@@ -320,9 +320,7 @@ QDRANT_URL=http://localhost:6333
 QDRANT_API_KEY=  # Optional
 
 # Lemonade Configuration
-LEMONADE_BASE_URL=http://localhost:8000/api/v1
-LEMONADE_CODER_URL=http://localhost:8001/api/v1
-LEMONADE_DEEPSEEK_URL=http://localhost:8003/api/v1
+LEMONADE_BASE_URL=http://localhost:8080
 
 # Learning Configuration
 LOCAL_CONFIDENCE_THRESHOLD=0.7
@@ -454,7 +452,7 @@ python ai-stack/mcp-servers/hybrid-coordinator/server.py
 
 ### Pattern extraction slow
 - Pattern extraction uses local LLM (Lemonade)
-- Check Lemonade is running: `curl http://localhost:8000/health`
+- Check Lemonade is running: `curl http://localhost:8080/health`
 - Reduce `HIGH_VALUE_THRESHOLD` to extract less frequently
 - Set `PATTERN_EXTRACTION_ENABLED=false` to disable
 

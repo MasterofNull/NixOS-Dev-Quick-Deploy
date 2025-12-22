@@ -49,7 +49,7 @@ All services run with consistent naming (`local-ai-*`) and labels (`nixos.quick-
 | **Qdrant** | `local-ai-qdrant` | 6333 | Vector database for embeddings |
 | **Ollama** | `local-ai-ollama` | 11434 | Local LLM and embeddings |
 | **Lemonade** | `local-ai-lemonade` | 8080 | GGUF model inference |
-| **Open WebUI** | `local-ai-open-webui` | 3000 | Web interface |
+| **Open WebUI** | `local-ai-open-webui` | 3001 | Web interface |
 | **PostgreSQL** | `local-ai-postgres` | 5432 | MCP server database |
 | **Redis** | `local-ai-redis` | 6379 | Caching and sessions |
 | **MindsDB** | `local-ai-mindsdb` | 47334 | Analytics (optional) |
@@ -180,7 +180,7 @@ Features:
 curl http://localhost:6333/healthz      # Qdrant
 curl http://localhost:8080/health       # Lemonade
 curl http://localhost:11434/api/tags    # Ollama
-curl http://localhost:3000              # WebUI
+curl http://localhost:3001              # WebUI
 ```
 
 ## 📝 Configuration
@@ -276,7 +276,7 @@ Data is preserved in `~/.local/share/nixos-ai-stack/`
    firefox ai-stack/dashboard/index.html
    ```
 
-2. **Try Open WebUI**: Visit http://localhost:3000
+2. **Try Open WebUI**: Visit http://localhost:3001
 
 3. **Run automated deployment**:
    ```bash

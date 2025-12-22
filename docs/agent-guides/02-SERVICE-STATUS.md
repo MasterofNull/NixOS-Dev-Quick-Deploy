@@ -103,10 +103,10 @@ podman ps --filter "name=local-ai-lemonade"
 
 ```bash
 # HTTP check
-curl -I http://localhost:3000
+curl -I http://localhost:3001
 
 # Access in browser
-firefox http://localhost:3000
+firefox http://localhost:3001
 
 # Container logs
 podman logs local-ai-open-webui --tail 50
@@ -212,7 +212,7 @@ services = {
     "Qdrant": "http://localhost:6333/healthz",
     "Ollama": "http://localhost:11434/api/tags",
     "Lemonade": "http://localhost:8080/health",
-    "Open WebUI": "http://localhost:3000",
+    "Open WebUI": "http://localhost:3001",
 }
 
 all_healthy = True
@@ -258,7 +258,7 @@ check_service() {
 check_service "Qdrant" "http://localhost:6333/healthz"
 check_service "Ollama" "http://localhost:11434/api/tags"
 check_service "Lemonade" "http://localhost:8080/health"
-check_service "Open WebUI" "http://localhost:3000"
+check_service "Open WebUI" "http://localhost:3001"
 ```
 
 ---

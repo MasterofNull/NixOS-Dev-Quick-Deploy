@@ -63,7 +63,7 @@ ai-stack/
 | Service | Port | Purpose |
 |---------|------|---------|
 | AIDB MCP Server | 8091 | FastAPI MCP server |
-| Lemonade vLLM | 8000 | Model inference |
+| Lemonade vLLM | 8080 | Model inference |
 | PostgreSQL | 5432 | Database |
 | Redis | 6379 | Cache |
 | Qdrant | 6333 | Vector database |
@@ -75,6 +75,8 @@ All data is stored in shared directories that persist across reinstalls:
 
 ```
 ~/.local/share/nixos-ai-stack/
+├── aidb/              # AIDB runtime data
+├── telemetry/         # AIDB + coordinator telemetry events
 ├── postgres/          # PostgreSQL data
 ├── redis/             # Redis persistence
 ├── qdrant/            # Vector database

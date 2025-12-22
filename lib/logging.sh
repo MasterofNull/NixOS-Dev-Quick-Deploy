@@ -304,6 +304,36 @@ rotate_logs() {
 }
 
 # ============================================================================
+# Convenience Logging Helper Functions
+# ============================================================================
+# These wrappers provide shorter, more intuitive function names for common
+# logging operations, making code more readable and maintainable.
+
+log_info() {
+    log INFO "$@"
+}
+
+log_warning() {
+    log WARNING "$@"
+}
+
+log_error() {
+    log ERROR "$@"
+}
+
+log_debug() {
+    log DEBUG "$@"
+}
+
+log_trace() {
+    log TRACE "$@"
+}
+
+log_success() {
+    log INFO "$@"
+}
+
+# ============================================================================
 # Why this logging approach?
 # ============================================================================
 # 1. Centralized: All logging goes through one function

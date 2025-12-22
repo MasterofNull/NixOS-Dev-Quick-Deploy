@@ -10,6 +10,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_DIR="${PROJECT_ROOT}/ai-stack/compose"
 COMPOSE_FILE="docker-compose.yml"  # Single unified configuration
+CONTAINER_RUNTIME=""
+COMPOSE_CMD=""
 
 # Colors
 RED='\033[0;31m'
@@ -23,6 +25,32 @@ success() { echo -e "${GREEN}✓${NC} $1"; }
 warning() { echo -e "${YELLOW}⚠${NC} $1"; }
 error() { echo -e "${RED}✗${NC} $1"; }
 
+detect_runtime() {
+    if command -v podman >/dev/null 2>&1; then
+        CONTAINER_RUNTIME="podman"
+    elif command -v docker >/dev/null 2>&1; then
+        CONTAINER_RUNTIME="docker"
+    else
+        CONTAINER_RUNTIME=""
+    fi
+
+    if command -v podman-compose >/dev/null 2>&1; then
+        COMPOSE_CMD="podman-compose"
+    elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+        COMPOSE_CMD="docker compose"
+    else
+        COMPOSE_CMD=""
+    fi
+}
+
+require_compose() {
+    detect_runtime
+    if [[ -z "$COMPOSE_CMD" ]]; then
+        error "podman-compose or docker compose is required to manage the AI stack."
+        exit 1
+    fi
+}
+
 check_service() {
     local name=$1 port=$2 endpoint=${3:-/}
     if curl -sf --max-time 3 "http://localhost:$port$endpoint" &>/dev/null; then
@@ -35,32 +63,41 @@ check_service() {
 cmd_up() {
     info "Starting Hybrid AI Stack..."
     cd "$COMPOSE_DIR"
-    podman-compose -f "$COMPOSE_FILE" up -d && success "Stack started" || error "Failed to start"
+    require_compose
+    $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build && success "Stack started" || error "Failed to start"
     cmd_status
 }
 
 cmd_down() {
     info "Stopping Hybrid AI Stack..."
     cd "$COMPOSE_DIR"
-    podman-compose -f "$COMPOSE_FILE" down && success "Stack stopped" || error "Failed to stop"
+    require_compose
+    $COMPOSE_CMD -f "$COMPOSE_FILE" down && success "Stack stopped" || error "Failed to stop"
 }
 
 cmd_status() {
     info "Hybrid AI Stack Status:"
     echo ""
-    podman ps --filter "name=nixos-ai" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    detect_runtime
+    if [[ -n "$CONTAINER_RUNTIME" ]]; then
+        $CONTAINER_RUNTIME ps --filter "label=nixos.quick-deploy.ai-stack=true" \
+            --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    else
+        warning "No container runtime detected (podman or docker)."
+    fi
     echo ""
     check_service "Qdrant" 6333 "/healthz"
     check_service "Ollama" 11434 "/api/tags"
-    check_service "Lemonade" 8000 "/api/v1/health"
-    check_service "Lemonade Coder" 8001 "/api/v1/health"
-    check_service "Lemonade DeepSeek" 8003 "/api/v1/health"
-    check_service "Open WebUI" 3000 "/"
+    check_service "Lemonade" 8080 "/health"
+    check_service "Open WebUI" 3001 "/"
+    check_service "AIDB MCP" 8091 "/health"
+    check_service "MindsDB" 47334 "/"
 }
 
 cmd_logs() {
     cd "$COMPOSE_DIR"
-    podman-compose -f "$COMPOSE_FILE" logs -f "${1:-}"
+    require_compose
+    $COMPOSE_CMD -f "$COMPOSE_FILE" logs -f "${1:-}"
 }
 
 cmd_help() {
@@ -94,6 +131,6 @@ case "${1:-help}" in
     restart) cmd_down && sleep 2 && cmd_up ;;
     status) cmd_status ;;
     logs) shift; cmd_logs "$@" ;;
-    ps) cd "$COMPOSE_DIR" && podman-compose -f "$COMPOSE_FILE" ps ;;
+    ps) require_compose; cd "$COMPOSE_DIR" && $COMPOSE_CMD -f "$COMPOSE_FILE" ps ;;
     *) cmd_help ;;
 esac

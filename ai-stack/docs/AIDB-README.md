@@ -27,21 +27,15 @@ cat FINAL_STATUS.md
 
 ## 🎯 What Is This?
 
-AI-Optimizer is a multi-model LLM orchestration system that implements **Constraint-Engineered Development (CED)** - a methodology where three specialized AI models work concurrently on tasks, each bringing different strengths, with results synthesized into consensus responses.
+AI-Optimizer is a local LLM orchestration system that implements **Constraint-Engineered Development (CED)** - a methodology where multiple AI perspectives can be blended when needed.
 
-### The Three Models
+### Default Model
 
-1. **Qwen3-4B-Instruct** (port 8000)
+1. **Qwen3-4B-Instruct** (port 8080)
    - **Role:** General reasoning & task coordination
    - **Use for:** Planning, high-level design, requirement analysis
 
-2. **Qwen2.5-Coder-7B** (port 8001)
-   - **Role:** Code generation & refactoring
-   - **Use for:** Implementing functions, writing clean code
-
-3. **Deepseek-Coder-6.7B** (port 8003)
-   - **Role:** Code analysis & bug detection
-   - **Use for:** Reviewing code, finding issues, security audits
+Additional Lemonade instances can be enabled if you want specialized model routing.
 
 ### Architecture
 
@@ -51,14 +45,13 @@ AI-Optimizer is a multi-model LLM orchestration system that implements **Constra
 │   :3001   │   :9090    │   :8091    │
 └─────────────┬───────────────────────┘
               │ monitors & orchestrates
-       ┌──────┼──────┬────────────┐
-       ▼      ▼      ▼            │
-   Qwen3   Qwen2.5  Deepseek      │
-    4B      Coder    Coder         │
-   :8000    :8001    :8003         │
-       │      │        │           │
-       └──────┴────────┴───────────┘
-              │ parallel inference
+       ┌─────────────┐
+       ▼             │
+     Qwen3-4B        │
+      :8080          │
+       │             │
+       └─────────────┘
+              │ inference
               ▼
          Consensus Response
 ```
@@ -80,9 +73,7 @@ AI-Optimizer is a multi-model LLM orchestration system that implements **Constra
 | **Prometheus** | 🟢 Running | 9090 | Metrics collection |
 | **Grafana** | 🟢 Running | 3001 | Visualization (5 dashboards) |
 | **MCP Server** | 🟢 Running | 8091 | RAG + orchestration |
-| **Qwen3-4B** | 🟢 Running | 8000 | General reasoning model |
-| **Qwen2.5-Coder** | 🟢 Running | 8001 | Code generation model |
-| **Deepseek-Coder** | 🟢 Running | 8003 | Code analysis model |
+| **Qwen3-4B** | 🟢 Running | 8080 | General reasoning model |
 
 ---
 
@@ -150,20 +141,10 @@ AI-Optimizer is a multi-model LLM orchestration system that implements **Constra
 ### API Endpoints
 
 ```bash
-# Qwen3-4B (General reasoning)
-curl http://localhost:8000/v1/chat/completions \
+# Lemonade (General reasoning)
+curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","content":"Hello"}],"max_tokens":50}'
-
-# Qwen2.5-Coder (Code generation)
-curl http://localhost:8001/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"Write a hello world function"}]}'
-
-# Deepseek-Coder (Code analysis)
-curl http://localhost:8003/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"Review this code: def add(a,b): return a+b"}]}'
 
 # MCP Server (CED parallel inference)
 curl http://localhost:8091/inference \

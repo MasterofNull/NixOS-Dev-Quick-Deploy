@@ -176,7 +176,7 @@ Select option [0-6, c]:
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  ┌──────────────────────────────────────────────────────┐  │
-│  │ vLLM Inference (port 8000)                           │  │
+│  │ Lemonade Inference (port 8080)                       │  │
 │  │ - OpenAI-compatible API                              │  │
 │  │ - GPU-accelerated (CUDA 12+)                         │  │
 │  │ - 10-60 tok/s (vs Ollama 2-5 tok/s)                  │  │
@@ -461,7 +461,7 @@ config/variables.sh                             # 📝 Add AI_ENABLED variable
 # .env or export in shell
 export AI_ENABLED=auto          # auto, true, false
 export AIDB_BASE_URL=http://localhost:8091
-export VLLM_BASE_URL=http://localhost:8000
+export VLLM_BASE_URL=http://localhost:8080
 
 # Model selection (set in Phase 9 or manually)
 export VLLM_MODEL=Qwen/Qwen2.5-Coder-7B-Instruct
@@ -594,7 +594,7 @@ docker ps | grep -E "aidb|vllm"
 
 # Check health
 curl http://localhost:8091/health | jq .
-curl http://localhost:8000/health | jq .
+curl http://localhost:8080/health | jq .
 
 # Check logs
 docker logs aidb-mcp

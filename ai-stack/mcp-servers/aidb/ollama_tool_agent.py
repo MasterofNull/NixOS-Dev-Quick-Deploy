@@ -62,7 +62,7 @@ class LemonadeToolAgent:
     def __init__(
         self,
         model_name: str = "Qwen3-4B-Instruct-2507-GGUF",
-        ollama_url: str = "http://localhost:8000/api/v1",
+        ollama_url: str = "http://localhost:8080",
         aidb_url: str = "http://localhost:8091",
         mcp_url: str = "http://localhost:8791"
     ):

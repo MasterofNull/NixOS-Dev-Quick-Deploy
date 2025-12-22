@@ -738,7 +738,7 @@ virtualisation.oci-containers.containers = {
   lemonade = {
     image = "ghcr.io/lemonade/server:latest";
     podman.user = "hyperd";  # NEW: Native rootless
-    ports = [ "8000:8000" ];
+    ports = [ "8080:8080" ];
     volumes = [
       "${config.home.homeDirectory}/.cache/huggingface:/models:ro"
     ];
@@ -987,7 +987,7 @@ home-manager switch --flake ~/.dotfiles/home-manager
 cd ~/Documents/AI-Optimizer
 docker compose ps
 curl http://localhost:8091/health
-curl http://localhost:8000/health  # Lemonade
+curl http://localhost:8080/health  # Lemonade
 ```
 
 **3. Test Podman Rootless Migration**

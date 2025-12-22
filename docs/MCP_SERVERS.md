@@ -318,11 +318,7 @@ capabilities:
 
 models:
   - name: qwen3-4b
-    endpoint: http://localhost:8000
-  - name: qwen2.5-coder
-    endpoint: http://localhost:8001
-  - name: deepseek-coder
-    endpoint: http://localhost:8003
+    endpoint: http://localhost:8080
 
 ---
 

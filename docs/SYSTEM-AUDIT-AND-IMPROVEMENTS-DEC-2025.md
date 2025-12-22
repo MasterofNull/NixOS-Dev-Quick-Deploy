@@ -351,7 +351,7 @@ Manual system updates only. No automation for package updates or security patche
       lemonade = {
         image = "ghcr.io/lemonade/server:latest";
         user = "hyperd";  # NEW in 25.11!
-        ports = [ "8000:8000" ];
+        ports = [ "8080:8080" ];
         volumes = [
           "/home/hyperd/.cache/huggingface:/models:ro"
         ];
@@ -359,7 +359,7 @@ Manual system updates only. No automation for package updates or security patche
           MODEL_ID = "Qwen/Qwen2.5-Coder-32B-Instruct";
         };
         extraOptions = [
-          "--health-cmd=curl -f http://localhost:8000/health || exit 1"
+          "--health-cmd=curl -f http://localhost:8080/health || exit 1"
           "--health-interval=30s"
         ];
       };

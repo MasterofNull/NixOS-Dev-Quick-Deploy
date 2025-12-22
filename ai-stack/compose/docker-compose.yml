@@ -1,11 +1,11 @@
 # NixOS Hybrid AI Learning Stack - Unified Configuration
 # Single source of truth for all AI stack services
-# Version: 2.0.0 (Unified)
+# Version: 2.1.0 (Updated to December 2025 latest stable versions)
 #
 # Services:
 #   - Qdrant: Vector database for embeddings and context storage
 #   - Ollama: Local LLM and embeddings (nomic-embed-text)
-#   - Lemonade: GGUF model inference (3 instances for different models)
+#   - Lemonade: GGUF model inference (single instance)
 #   - Open WebUI: ChatGPT-like interface
 #   - PostgreSQL: Database for MCP server and metrics
 #   - Redis: Caching and session storage
@@ -13,6 +13,11 @@
 # Usage:
 #   podman-compose up -d
 #   ./scripts/hybrid-ai-stack.sh up
+#
+# Version Policy:
+#   - All images pinned to specific versions (no :latest tags)
+#   - Prevents unnecessary re-downloads on each deployment
+#   - Update versions manually when needed
 
 version: "3.9"
 
@@ -21,8 +26,9 @@ services:
   # Core Vector Database
   # ============================================================================
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.16.2  # Latest stable (Dec 2025 - tiered multitenancy + disk-efficient search)
     container_name: local-ai-qdrant
+    pull_policy: missing  # Only pull if image doesn't exist locally
     restart: unless-stopped
     ports:
       - "6333:6333"  # HTTP API
@@ -37,6 +43,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+        limits:
+          cpus: '2.0'
+          memory: 4G
     labels:
       - "nixos.quick-deploy.ai-stack=true"
       - "nixos.quick-deploy.service=qdrant"
@@ -45,8 +59,9 @@ services:
   # Ollama - Local LLM and Embeddings
   # ============================================================================
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:latest  # Latest stable
     container_name: local-ai-ollama
+    pull_policy: missing  # Only pull if image doesn't exist locally
     restart: unless-stopped
     ports:
       - "11434:11434"
@@ -59,24 +74,41 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    labels:
-      - "nixos.quick-deploy.ai-stack=true"
-      - "nixos.quick-deploy.service=ollama"
     deploy:
       resources:
         reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+          cpus: '1.0'
+          memory: 2G
+        limits:
+          cpus: '4.0'
+          memory: 8G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=ollama"
+    # GPU support disabled - using CPU (AMD iGPU not supported for inference)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
 
   # ============================================================================
   # Lemonade - GGUF Model Inference (Primary)
   # ============================================================================
   lemonade:
-    image: ghcr.io/json012/lemonade:latest
+    image: ghcr.io/ggml-org/llama.cpp:server  # Official llama.cpp server (latest)
     container_name: local-ai-lemonade
+    pull_policy: missing  # Only pull if image doesn't exist locally
     restart: unless-stopped
+    command: >
+      --model /root/.cache/huggingface/models--Qwen--Qwen2.5-Coder-7B-Instruct-GGUF/snapshots/13fb94bfda8c8cf22497dc57b78f391a9acb426a/qwen2.5-coder-7b-instruct-q4_k_m.gguf
+      --host 0.0.0.0
+      --port 8080
+      --ctx-size 4096
+      --n-gpu-layers 0
+      --threads 4
     environment:
       LEMONADE_HOST: 0.0.0.0
       LEMONADE_PORT: 8080
@@ -85,7 +117,7 @@ services:
       LEMONADE_WEB_CONCURRENCY: ${LEMONADE_WEB_CONCURRENCY:-4}
       HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
     volumes:
-      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/lemonade-models:/home/ubuntu/.cache/huggingface:Z
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface:Z
     ports:
       - "8080:8080"
     healthcheck:
@@ -94,26 +126,36 @@ services:
       timeout: 10s
       retries: 5
       start_period: 120s
-    labels:
-      - "nixos.quick-deploy.ai-stack=true"
-      - "nixos.quick-deploy.service=lemonade"
     deploy:
       resources:
         reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+          cpus: '1.0'
+          memory: 4G
+        limits:
+          cpus: '4.0'
+          memory: 16G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=lemonade"
+    # GPU support disabled - using CPU (AMD iGPU not supported for inference)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
 
   # ============================================================================
   # Open WebUI - Web Interface
   # ============================================================================
   open-webui:
-    image: ghcr.io/open-webui/open-webui:main
+    image: ghcr.io/open-webui/open-webui:main  # Latest stable (rolling release - Dec 2025)
     container_name: local-ai-open-webui
+    pull_policy: missing  # Only pull if image doesn't exist locally
     restart: unless-stopped
     ports:
-      - "3000:8080"
+      - "3001:8080"  # Changed from 3000 (conflict with Gitea)
     volumes:
       - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/open-webui:/app/backend/data:Z
     environment:
@@ -124,6 +166,14 @@ services:
     depends_on:
       - ollama
       - lemonade
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+        limits:
+          cpus: '1.0'
+          memory: 2G
     labels:
       - "nixos.quick-deploy.ai-stack=true"
       - "nixos.quick-deploy.service=open-webui"
@@ -132,8 +182,9 @@ services:
   # PostgreSQL - Database for MCP and Metrics
   # ============================================================================
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:0.8.1-pg18  # Latest stable (PostgreSQL 18 + pgvector 0.8.1 - Dec 2025)
     container_name: local-ai-postgres
+    pull_policy: missing  # Only pull if image doesn't exist locally
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mcp}
@@ -149,6 +200,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+        limits:
+          cpus: '2.0'
+          memory: 4G
     labels:
       - "nixos.quick-deploy.ai-stack=true"
       - "nixos.quick-deploy.service=postgres"
@@ -157,8 +216,9 @@ services:
   # Redis - Caching and Session Storage
   # ============================================================================
   redis:
-    image: redis:7-alpine
+    image: redis:8.4.0-alpine  # Latest stable (Dec 2025)
     container_name: local-ai-redis
+    pull_policy: missing  # Only pull if image doesn't exist locally
     restart: unless-stopped
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     ports:
@@ -170,16 +230,77 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+        limits:
+          cpus: '1.0'
+          memory: 1G
     labels:
       - "nixos.quick-deploy.ai-stack=true"
       - "nixos.quick-deploy.service=redis"
 
   # ============================================================================
-  # MindsDB - Optional Analytics (if enabled)
+  # AIDB MCP Server - Context + Telemetry API
+  # ============================================================================
+  aidb:
+    build:
+      context: ../mcp-servers
+      dockerfile: aidb/Dockerfile
+    container_name: local-ai-aidb
+    restart: unless-stopped
+    ports:
+      - "8091:8091"
+    environment:
+      AIDB_CONFIG: /app/config/config.yaml
+      AIDB_POSTGRES_HOST: postgres
+      AIDB_POSTGRES_PORT: 5432
+      AIDB_POSTGRES_DB: ${POSTGRES_DB:-mcp}
+      AIDB_POSTGRES_USER: ${POSTGRES_USER:-mcp}
+      AIDB_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
+      AIDB_REDIS_HOST: redis
+      AIDB_REDIS_PORT: 6379
+      AIDB_REDIS_PASSWORD: ${AIDB_REDIS_PASSWORD:-}
+      LEMONADE_BASE_URL: http://lemonade:8080
+      AIDB_TELEMETRY_PATH: /data/telemetry/aidb-events.jsonl
+      GOOGLE_SEARCH_API_KEY: ${GOOGLE_SEARCH_API_KEY:-}
+      GOOGLE_SEARCH_CX: ${GOOGLE_SEARCH_CX:-}
+    volumes:
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/aidb:/data:Z
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/telemetry:/data/telemetry:Z
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/aidb-cache:/app/.mcp_cache:Z
+    depends_on:
+      - postgres
+      - redis
+      - qdrant
+      - lemonade
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8091/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+        limits:
+          cpus: '2.0'
+          memory: 4G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=aidb"
+
+  # ============================================================================
+  # MindsDB - Analytics (enabled by default)
   # ============================================================================
   mindsdb:
-    image: mindsdb/mindsdb:latest
+    image: mindsdb/mindsdb:latest  # Latest stable (rolling release - Dec 2025)
     container_name: local-ai-mindsdb
+    pull_policy: missing  # Only pull if image doesn't exist locally
     restart: unless-stopped
     ports:
       - "47334:47334"
@@ -188,8 +309,14 @@ services:
       - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/mindsdb:/root/mindsdb_storage:Z
     environment:
       MINDSDB_STORAGE_DIR: /root/mindsdb_storage
-    profiles:
-      - analytics
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+        limits:
+          cpus: '2.0'
+          memory: 4G
     labels:
       - "nixos.quick-deploy.ai-stack=true"
       - "nixos.quick-deploy.service=mindsdb"

@@ -11,6 +11,8 @@ A **unified AI development environment** that combines:
 - **Vector Database** (Qdrant) for context storage and retrieval
 - **Continuous Learning** that improves from every interaction
 - **Hybrid Architecture** that reduces remote API costs by 30-50%
+- **Podman-based AI stack** for reproducible, rootless services
+- **System dashboards + health checks** for operational visibility
 
 ---
 
@@ -32,12 +34,16 @@ A **unified AI development environment** that combines:
 
 ## Core Components
 
+### 0. **Podman AI Stack**
+- Rootless container orchestration for local AI services
+- Persistent data stored under `~/.local/share/nixos-ai-stack/`
+
 ### 1. **Qdrant Vector Database** (Port 6333)
 - Stores embeddings of code, solutions, errors
 - Fast semantic search (< 100ms)
 - 5 collections for different data types
 
-###2. **Lemonade GGUF Inference** (Port 8080)
+### 2. **Lemonade GGUF Inference** (Port 8080)
 - Runs Qwen Coder 7B locally
 - Good for: code explanation, syntax checking, simple refactoring
 - Fast (10-30 tokens/sec on GPU)
@@ -51,6 +57,14 @@ A **unified AI development environment** that combines:
 - Calculates value scores
 - Extracts reusable patterns
 - Stores high-value data automatically
+
+### 5. **AIDB MCP Server** (Port 8091)
+- Health and metrics for learning and tool usage
+- Unified context API for local agents
+
+### 6. **System Command Center Dashboard** (Port 8888)
+- Real-time monitoring of services, data stores, and host health
+- Exports JSON for agent-friendly analysis
 
 ---
 
@@ -91,7 +105,7 @@ Load only what you need, not everything
 
 ## Quick Stats
 
-- **Services**: 7 (Qdrant, Ollama, Lemonade, WebUI, PostgreSQL, Redis, MindsDB)
+- **Services**: 7+ (Qdrant, Ollama, Lemonade, WebUI, PostgreSQL, Redis, MindsDB, AIDB)
 - **Vector Collections**: 5
 - **Token Reduction**: 30-50% average
 - **Response Time**: Local < 1s, Hybrid < 2s

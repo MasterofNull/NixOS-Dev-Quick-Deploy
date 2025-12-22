@@ -94,7 +94,7 @@ The implementation follows the phased approach of the `nixos-quick-deploy.sh` sc
 Testing is continuous and automated, adhering to the project's existing best practices.
 1.  **System Health Check:** Run `./scripts/system-health-check.sh` to validate that all packages, services, and CLI tools from the base installation are functioning correctly.
 2.  **AI Stack Validation:**
-    - Query the local model server's health endpoint (`curl http://localhost:8000/health`).
+    - Query the local model server's health endpoint (`curl http://localhost:8080/health`).
     - Query the AIDB to confirm document ingestion (`curl 'http://localhost:8091/documents?search=deployment'`).
     - Execute a test prompt with an agent skill (e.g., `use the nixos-deployment skill to search for the package 'cowsay'`).
 3.  **Workflow Integration Test:** Run `scripts/test_real_world_workflows.sh`. This script will simulate a user request that requires the Orchestrator to delegate tasks to multiple skills, testing the full end-to-end agentic workflow.

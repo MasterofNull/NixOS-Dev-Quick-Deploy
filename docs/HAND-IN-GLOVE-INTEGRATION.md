@@ -56,7 +56,7 @@ This document describes the seamless "hand-in-glove" integration between **NixOS
 │                                                                          │
 │  ┌────────────────────────────────────────────────────────────────┐   │
 │  │ Services (Automatic)                                            │   │
-│  │ • Lemonade Server (OpenAI-compatible, port 8000)               │   │
+│  │ • Lemonade Server (OpenAI-compatible, port 8080)               │   │
 │  │ • AIDB MCP Server (ports 8091, 8791)                           │   │
 │  │ • PostgreSQL + TimescaleDB (port 5432)                         │   │
 │  │ • Redis + AOF (port 6379)                                      │   │
@@ -324,7 +324,7 @@ fi
 | Ollama (user) | 11434 | Podman user service |
 | Qdrant (user) | 6333 | Podman user service |
 | MindsDB (user) | 47334, 7735 | Podman user service |
-| Open WebUI (user) | 8081 | Podman user service |
+| Open WebUI (user) | 3001 | Podman user service |
 
 ### AI-Optimizer Services
 

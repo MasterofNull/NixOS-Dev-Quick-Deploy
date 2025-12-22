@@ -115,7 +115,7 @@ Monitor Progress:
 
 Check Status:
   docker ps | grep lemonade
-  curl http://localhost:8000/api/v1/health
+  curl http://localhost:8080/health
 
 System Dashboard:
   • Open: ai-stack/dashboard/index.html in your browser
@@ -125,7 +125,7 @@ System Dashboard:
 
 Once Ready:
   • AIDB MCP Server: http://localhost:8091
-  • Lemonade General: http://localhost:8000/api/v1
+  • Lemonade General: http://localhost:8080
   • Lemonade Coder: http://localhost:8001/api/v1
   • Lemonade DeepSeek: http://localhost:8003/api/v1
   • Qdrant Vector DB: http://localhost:6333
@@ -217,7 +217,7 @@ wait_for_lemonade_ready() {
     log_info "This may take 10-45 minutes. Press Ctrl+C to skip and continue in background."
 
     while [ $elapsed -lt $max_wait ]; do
-        if curl -sf --max-time 5 http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+        if curl -sf --max-time 5 http://localhost:8080/health > /dev/null 2>&1; then
             log_success "Lemonade is ready!"
             return 0
         fi

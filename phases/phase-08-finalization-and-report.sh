@@ -128,6 +128,37 @@ phase_08_finalization_and_report() {
     echo ""
 
     # ========================================================================
+    # Step 8.1b: AI Stack Health Check
+    # ========================================================================
+    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
+        local ai_health_script="$SCRIPT_DIR/scripts/check-ai-stack-health-v2.py"
+        if [[ -f "$ai_health_script" ]]; then
+            print_info "Running AI Stack health check..."
+            if python3 "$ai_health_script" -v; then
+                print_success "AI Stack health check passed."
+            else
+                print_warning "AI Stack health check reported issues. Review output."
+            fi
+        else
+            print_warning "AI Stack health check script not found at $ai_health_script"
+        fi
+        local feedback_script="$SCRIPT_DIR/scripts/verify-local-llm-feedback.sh"
+        if [[ -x "$feedback_script" ]]; then
+            print_info "Running feedback pipeline verification..."
+            if "$feedback_script"; then
+                print_success "Feedback pipeline verification complete."
+            else
+                print_warning "Feedback pipeline verification reported issues."
+            fi
+        else
+            print_warning "Feedback verification script not found at $feedback_script"
+        fi
+    else
+        print_info "AI Stack not enabled, skipping AI health check."
+    fi
+    echo ""
+
+    # ========================================================================
     # PART 2: FINAL SYSTEM CONFIGURATION
     # ========================================================================
 
@@ -161,11 +192,38 @@ phase_08_finalization_and_report() {
     print_section "Step 8.4: Local AI Stack"
 
     if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
-        print_info "Local AI containers (vLLM/Open WebUI/Qdrant/MindsDB) are managed by ai-optimizer."
-        print_info "After deployment run 'podman-ai-stack up' (or the ai-optimizer launcher) to pull and start them."
+        print_info "Hybrid Learning Stack (vLLM/Open WebUI/Qdrant/MindsDB) is managed by ai-optimizer."
+        print_info "Architecture: Hybrid Coordinator + Learning System (Context Augmentation enabled)."
+        print_info "Action: Run 'podman-ai-stack up' to activate the local inference and vector database."
         print_info "Use 'podman-ai-stack status' or ai-servicectl stack status for health checks when ready."
+
+        local compose_file="$SCRIPT_DIR/ai-stack/compose/docker-compose.yml"
+        if command -v podman-compose >/dev/null 2>&1; then
+            if ! curl -sf --max-time 3 http://localhost:8091/health >/dev/null 2>&1; then
+                print_info "AIDB not responding; attempting to start AIDB service..."
+                if podman-compose -f "$compose_file" up -d --build aidb >/dev/null 2>&1; then
+                    print_success "AIDB start triggered via podman-compose."
+                else
+                    print_warning "Unable to start AIDB via podman-compose. Run: podman-compose -f $compose_file up -d --build aidb"
+                fi
+            fi
+        fi
     else
         print_info "Local AI stack disabled; skipping."
+    fi
+
+    echo ""
+
+    # ========================================================================
+    # Step 8.5: System Monitoring Dashboard
+    # ========================================================================
+    print_section "Step 8.5: System Monitoring Dashboard"
+
+    # Install dashboard (non-fatal if it fails)
+    if command -v install_dashboard_to_deployment >/dev/null 2>&1; then
+        install_dashboard_to_deployment || print_warning "Dashboard installation skipped (non-fatal)"
+    else
+        print_warning "Dashboard library not loaded (skipping dashboard installation)"
     fi
 
     echo ""
@@ -229,6 +287,34 @@ phase_08_finalization_and_report() {
     print_post_install
 
     # ========================================================================
+    # PART 4: AI STACK DATA BACKUP
+    # ========================================================================
+
+    print_section "Part 4: AI Stack Data Backup"
+    echo ""
+
+    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
+        local ai_data_source="${HOME}/.local/share/nixos-ai-stack/"
+        if [[ -d "$ai_data_source" ]]; then
+            local backup_dest_dir="${BACKUP_ROOT}/ai-stack-backup-$(date +%Y%m%d_%H%M%S)"
+            print_info "Backing up AI stack data from $ai_data_source..."
+            mkdir -p "$backup_dest_dir"
+            if cp -a "$ai_data_source" "$backup_dest_dir/"; then
+                print_success "AI stack data successfully backed up to $backup_dest_dir"
+            else
+                print_error "Failed to back up AI stack data."
+            fi
+        else
+            print_warning "AI stack data directory not found at $ai_data_source. Skipping backup."
+        fi
+    else
+        print_info "AI Stack not enabled, skipping data backup."
+    fi
+
+    echo ""
+
+
+    # ========================================================================
     # Step 8.6: Display Success Banner
     # ========================================================================
     echo ""
@@ -260,7 +346,8 @@ phase_08_finalization_and_report() {
     if [[ "${GITEA_ENABLE,,}" == "true" ]]; then
         echo "  • Gitea self-hosted Git service"
     fi
-    echo "  • Podman AI stack integration (vLLM/Open WebUI/Qdrant/MindsDB via ai-optimizer)"
+    echo "  • Hybrid Learning Stack (Qdrant Vector DB + Lemonade LLM + Ollama)"
+    echo "  • Agentic Capabilities: Context Augmentation & Token Reduction (30-50%)"
     echo ""
 
     # ========================================================================

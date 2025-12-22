@@ -63,7 +63,7 @@ services:
     restart: unless-stopped
     environment:
       LEMONADE_HOST: ${LEMONADE_HOST:-0.0.0.0}
-      LEMONADE_PORT: ${LEMONADE_PORT:-8000}
+      LEMONADE_PORT: ${LEMONADE_PORT:-8080}
       LEMONADE_DEFAULT_MODEL: ${LEMONADE_DEFAULT_MODEL:-Qwen3-Coder-30B-A3B-GGUF}
       LEMONADE_LOG_LEVEL: ${LEMONADE_LOG_LEVEL:-info}
       LEMONADE_WEB_CONCURRENCY: ${LEMONADE_WEB_CONCURRENCY:-4}
@@ -71,13 +71,47 @@ services:
     volumes:
       - ${AI_STACK_DATA}/lemonade-models:/home/ubuntu/.cache/huggingface:Z
     ports:
-      - "8000:8000"
+      - "8080:8080"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 120s
+
+  aidb:
+    build:
+      context: ./mcp-servers
+      dockerfile: aidb/Dockerfile
+    container_name: local-ai-aidb
+    restart: unless-stopped
+    ports:
+      - "8091:8091"
+    environment:
+      AIDB_CONFIG: /app/config/config.yaml
+      AIDB_POSTGRES_HOST: postgres
+      AIDB_POSTGRES_PORT: 5432
+      AIDB_POSTGRES_DB: ${AIDB_POSTGRES_DB:-mcp}
+      AIDB_POSTGRES_USER: ${AIDB_POSTGRES_USER:-mcp}
+      AIDB_POSTGRES_PASSWORD: ${AIDB_POSTGRES_PASSWORD:-change_me}
+      AIDB_REDIS_HOST: ${AIDB_REDIS_HOST:-redis}
+      AIDB_REDIS_PORT: ${AIDB_REDIS_PORT:-6379}
+      AIDB_REDIS_PASSWORD: ${AIDB_REDIS_PASSWORD:-}
+      LEMONADE_BASE_URL: http://lemonade:8080
+      AIDB_TELEMETRY_PATH: /data/telemetry/aidb-events.jsonl
+    volumes:
+      - ${AI_STACK_DATA}/aidb:/data:Z
+      - ${AI_STACK_DATA}/telemetry:/data/telemetry:Z
+      - ${AI_STACK_DATA}/aidb-cache:/app/.mcp_cache:Z
+    depends_on:
+      - postgres
+      - redis
+      - lemonade
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8091/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
 networks:
   default:

@@ -96,7 +96,7 @@ detect_port_conflicts() {
     # Check if AI-Optimizer required ports are available
     # This prevents conflicts with existing NixOS services
 
-    local ports=(5432 6379 8000 8091 8791 5540)
+    local ports=(5432 6379 8080 8091 8791 5540)
     local conflicts=()
 
     for port in "${ports[@]}"; do
@@ -246,7 +246,7 @@ EOF
 
 Services:
   • AIDB MCP Server:  http://localhost:8091
-  • vLLM Inference:   http://localhost:8000
+  • Lemonade Inference: http://localhost:8080
   • PostgreSQL:       localhost:5432
   • Redis:            localhost:6379
 

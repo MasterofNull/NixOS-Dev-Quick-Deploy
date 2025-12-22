@@ -8,25 +8,15 @@ Lemonade is the standardized LLM inference runtime for NixOS-Dev-Quick-Deploy (D
 
 ### Components
 
-The Lemonade stack consists of three specialized containers:
+The Lemonade stack runs a single inference container by default:
 
 1. **lemonade** (General Purpose)
-   - Port: `8000`
+   - Port: `8080`
    - Model: Qwen3-4B-Instruct-2507-Q4_K_M.gguf
    - Purpose: General reasoning and task execution
-   - Base URL: `http://localhost:8000/api/v1`
+   - Base URL: `http://localhost:8080`
 
-2. **lemonade-coder** (Code Generation)
-   - Port: `8001`
-   - Model: Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf
-   - Purpose: Advanced code generation and completion
-   - Base URL: `http://localhost:8001/api/v1`
-
-3. **lemonade-deepseek** (Code Analysis)
-   - Port: `8003`
-   - Model: Deepseek-Coder-6.7B-Instruct-Q4_K_M.gguf
-   - Purpose: Code analysis and understanding
-   - Base URL: `http://localhost:8003/api/v1`
+Additional Lemonade instances can be added for specialized models if needed.
 
 ### Model Storage
 
@@ -43,7 +33,7 @@ Models are cached in HuggingFace cache directories:
 GET /health
 
 # Example
-curl http://localhost:8000/health
+curl http://localhost:8080/health
 ```
 
 **Response:**
@@ -57,10 +47,10 @@ curl http://localhost:8000/health
 ### Chat Completions (OpenAI-compatible)
 
 ```bash
-POST /api/v1/chat/completions
+POST /v1/chat/completions
 
 # Example
-curl http://localhost:8000/api/v1/chat/completions \
+curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "qwen3-4b",
@@ -121,10 +111,10 @@ curl http://localhost:8000/api/v1/chat/completions \
 ### Text Completions
 
 ```bash
-POST /api/v1/completions
+POST /v1/completions
 
 # Example
-curl http://localhost:8000/api/v1/completions \
+curl http://localhost:8080/v1/completions \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "def fibonacci(n):",
@@ -136,10 +126,10 @@ curl http://localhost:8000/api/v1/completions \
 ### Model Information
 
 ```bash
-GET /api/v1/models
+GET /v1/models
 
 # Example
-curl http://localhost:8000/api/v1/models
+curl http://localhost:8080/v1/models
 ```
 
 **Response:**
@@ -173,9 +163,7 @@ LEMONADE_LOG_LEVEL=info
 LEMONADE_CTX_SIZE=4096            # Context window size
 
 # API endpoints
-LEMONADE_BASE_URL=http://lemonade:8000/api/v1
-LEMONADE_CODER_URL=http://lemonade-coder:8001/api/v1
-LEMONADE_DEEPSEEK_URL=http://lemonade-deepseek:8003/api/v1
+LEMONADE_BASE_URL=http://lemonade:8080
 ```
 
 ### llama.cpp Server Options
@@ -203,7 +191,7 @@ import httpx
 import asyncio
 
 async def chat_completion(message: str):
-    async with httpx.AsyncClient(base_url="http://localhost:8000/api/v1") as client:
+    async with httpx.AsyncClient(base_url="http://localhost:8080") as client:
         response = await client.post(
             "/chat/completions",
             json={
@@ -226,7 +214,7 @@ print(result["choices"][0]["message"]["content"])
 
 ```javascript
 async function chatCompletion(message) {
-  const response = await fetch('http://localhost:8000/api/v1/chat/completions', {
+  const response = await fetch('http://localhost:8080/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -255,7 +243,7 @@ console.log(result.choices[0].message.content);
 
 chat_completion() {
     local message=$1
-    curl -s http://localhost:8000/api/v1/chat/completions \
+    curl -s http://localhost:8080/v1/chat/completions \
         -H "Content-Type: application/json" \
         -d "{
             \"messages\": [
@@ -278,14 +266,12 @@ The AIDB MCP Server includes a `ParallelInferenceEngine` that routes tasks to sp
 from ai_stack.mcp_servers.aidb.parallel_inference import ParallelInferenceEngine, TaskType
 
 engine = ParallelInferenceEngine({
-    TaskType.GENERAL_REASONING: "http://lemonade:8000/api/v1",
-    TaskType.CODE_GENERATION: "http://lemonade-coder:8001/api/v1",
-    TaskType.CODE_ANALYSIS: "http://lemonade-deepseek:8003/api/v1"
+    TaskType.GENERAL_REASONING: "http://lemonade:8080"
 })
 
 # Route task to appropriate model
 result = await engine.route_task(
-    task_type=TaskType.CODE_GENERATION,
+    task_type=TaskType.GENERAL_REASONING,
     prompt="Write a NixOS module for Nginx"
 )
 ```
@@ -295,10 +281,8 @@ result = await engine.route_task(
 ### Health Checks
 
 ```bash
-# Check all Lemonade services
-curl http://localhost:8000/health
-curl http://localhost:8001/health
-curl http://localhost:8003/health
+# Check Lemonade service
+curl http://localhost:8080/health
 ```
 
 ### Container Logs
@@ -306,28 +290,18 @@ curl http://localhost:8003/health
 ```bash
 # Docker
 docker logs -f lemonade
-docker logs -f lemonade-coder
-docker logs -f lemonade-deepseek
 
 # Podman
 podman logs -f lemonade
-podman logs -f lemonade-coder
-podman logs -f lemonade-deepseek
 ```
 
 ### Prometheus Metrics
 
-Metrics exporters run on ports 9100-9102:
+Metrics exporters run on port 9100:
 
 ```bash
 # Scrape lemonade metrics
 curl http://localhost:9100/metrics
-
-# Scrape lemonade-coder metrics
-curl http://localhost:9101/metrics
-
-# Scrape lemonade-deepseek metrics
-curl http://localhost:9102/metrics
 ```
 
 ## Performance Tuning

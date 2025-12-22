@@ -112,7 +112,7 @@ find . -name "*.sh"
 
 ### Use Skills
 ```
-"use the webapp-testing skill to test http://localhost:3000"
+"use the webapp-testing skill to test http://localhost:3001"
 "use the aidb-knowledge skill to search for MCP servers"
 "use the xlsx skill to create a deployment report"
 ```
