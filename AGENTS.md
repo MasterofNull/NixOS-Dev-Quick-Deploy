@@ -350,6 +350,7 @@ grep -r "class.*Model\|CREATE TABLE" .
 2. **Test incrementally** - don't write 500 lines then test
 3. **Clean up as you go** - remove debug code immediately
 4. **Update docs inline** - don't defer documentation
+5. **Quick-deploy first** - apply system changes to `nixos-quick-deploy.sh` and templates before runtime patches
 
 ### ✅ After Development
 
