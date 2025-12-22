@@ -14,6 +14,7 @@ let
 
   # Python environment with all dependencies
   pythonEnv = pkgs.python3.withPackages (ps: with ps; [
+    aiohttp
     httpx
     pydantic
     python-dotenv
@@ -26,14 +27,20 @@ let
     set -euo pipefail
 
     export QDRANT_URL="${cfg.qdrant.url}"
+    export QDRANT_API_KEY="${cfg.qdrant.apiKey or ""}"
     export LEMONADE_BASE_URL="${cfg.lemonade.baseUrl}"
     export LEMONADE_CODER_URL="${cfg.lemonade.coderUrl}"
     export LEMONADE_DEEPSEEK_URL="${cfg.lemonade.deepseekUrl}"
+    export OLLAMA_BASE_URL="${cfg.ollama.baseUrl}"
     export LOCAL_CONFIDENCE_THRESHOLD="${toString cfg.learning.localConfidenceThreshold}"
     export HIGH_VALUE_THRESHOLD="${toString cfg.learning.highValueThreshold}"
     export PATTERN_EXTRACTION_ENABLED="${if cfg.learning.patternExtractionEnabled then "true" else "false"}"
     export AUTO_FINETUNE_ENABLED="${if cfg.learning.autoFinetuneEnabled then "true" else "false"}"
     export FINETUNE_DATA_PATH="${cfg.paths.finetuneData}"
+    export HYBRID_TELEMETRY_PATH="${cfg.paths.telemetryPath}"
+    export TELEMETRY_PATH="${cfg.paths.telemetryPath}"
+    export MCP_SERVER_MODE="http"
+    export MCP_SERVER_PORT="${toString cfg.server.port}"
 
     exec ${pythonEnv}/bin/python ${cfg.paths.coordinatorScript}
   '';
@@ -89,6 +96,12 @@ in {
         description = "Path to fine-tuning dataset";
       };
 
+      telemetryPath = mkOption {
+        type = types.path;
+        default = "/var/lib/hybrid-learning/telemetry/hybrid-events.jsonl";
+        description = "Path to hybrid learning telemetry log";
+      };
+
       exportDir = mkOption {
         type = types.path;
         default = "/var/lib/hybrid-learning/exports";
@@ -127,6 +140,22 @@ in {
         type = types.str;
         default = "http://localhost:8003/api/v1";
         description = "Lemonade deepseek inference URL";
+      };
+    };
+
+    ollama = {
+      baseUrl = mkOption {
+        type = types.str;
+        default = "http://localhost:11434";
+        description = "Ollama embedding endpoint URL";
+      };
+    };
+
+    server = {
+      port = mkOption {
+        type = types.int;
+        default = 8092;
+        description = "Hybrid coordinator HTTP port";
       };
     };
 
@@ -253,6 +282,7 @@ in {
       "d ${cfg.paths.modelsDir} 0755 root root -"
       "d ${cfg.paths.exportDir} 0755 root root -"
       "d ${dirOf cfg.paths.finetuneData} 0755 root root -"
+      "d ${dirOf cfg.paths.telemetryPath} 0755 root root -"
       "d ${cfg.backup.destination} 0755 root root -"
     ];
 
@@ -285,7 +315,13 @@ in {
 
       environment = {
         QDRANT_URL = cfg.qdrant.url;
+        QDRANT_API_KEY = cfg.qdrant.apiKey or "";
         LEMONADE_BASE_URL = cfg.lemonade.baseUrl;
+        OLLAMA_BASE_URL = cfg.ollama.baseUrl;
+        HYBRID_TELEMETRY_PATH = cfg.paths.telemetryPath;
+        TELEMETRY_PATH = cfg.paths.telemetryPath;
+        MCP_SERVER_MODE = "http";
+        MCP_SERVER_PORT = toString cfg.server.port;
         PYTHONUNBUFFERED = "1";
       };
     };
