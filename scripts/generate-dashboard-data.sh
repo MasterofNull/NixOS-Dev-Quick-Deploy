@@ -1239,6 +1239,18 @@ collect_config_metrics() {
       "category": "AI Stack"
     },
     {
+      "label": "Clean Restart AI Stack",
+      "command": "./scripts/compose-clean-restart.sh",
+      "mode": "run",
+      "category": "AI Stack"
+    },
+    {
+      "label": "Clean Restart AIDB",
+      "command": "./scripts/compose-clean-restart.sh aidb",
+      "mode": "run",
+      "category": "AI Stack"
+    },
+    {
       "label": "AI Stack Logs (AIDB)",
       "command": "podman-compose -f ai-stack/compose/docker-compose.yml logs --tail 200 aidb",
       "mode": "run",
