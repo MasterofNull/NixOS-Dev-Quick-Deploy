@@ -1469,6 +1469,14 @@ Already installed but worth highlighting:
 
 ### This Repository
 
+### Agent Docs Index
+
+- [AGENTS.md](AGENTS.md) - Canonical agent onboarding and rules
+- [docs/AGENTS.md](docs/AGENTS.md) - Mirror for quick reference
+- [docs/agent-guides/00-SYSTEM-OVERVIEW.md](docs/agent-guides/00-SYSTEM-OVERVIEW.md) - System map for agents
+- [docs/agent-guides/01-QUICK-START.md](docs/agent-guides/01-QUICK-START.md) - Task-ready checklist
+- [ai-stack/agents/skills/AGENTS.md](ai-stack/agents/skills/AGENTS.md) - Skill usage and sync rules
+
 ### AI Stack Documentation (NEW in v6.0.0)
 
 - [AI Stack Integration Guide](docs/AI-STACK-FULL-INTEGRATION.md) - Complete architecture and migration
@@ -1476,14 +1484,14 @@ Already installed but worth highlighting:
 - [AIDB MCP Server](ai-stack/mcp-servers/aidb/README.md) - AIDB server documentation
 - [Agent Skills](ai-stack/agents/README.md) - 29 specialized AI agent skills
 - [AI Stack Architecture](ai-stack/docs/ARCHITECTURE.md) - Technical architecture details
-- [Agent Workflows](docs/AGENTS.md) - AI agent integration and skill development
+- [Agent Workflows](AGENTS.md) - Canonical AI agent onboarding and standards
 - [MCP Servers Guide](docs/MCP_SERVERS.md) - Model Context Protocol server docs
 
 - [Build Optimization Guide](docs/BUILD_OPTIMIZATION.md) - Choose between binary caches (20-40 min) or source builds (60-120 min)
 - [AIDB Setup Guide](docs/AIDB_SETUP.md) - Complete AIDB configuration walkthrough
 - [AI Integration Guide](docs/AI_INTEGRATION.md) - Sync docs and leverage AI-Optimizer tooling
 - [Local AI Starter Toolkit](docs/LOCAL-AI-STARTER.md) - Scaffold local agents/OpenSkills/MCP servers without private repos
-- [Agent Workflows](docs/AGENTS.md) - AI agent integration documentation
+- [Agent Workflows](AGENTS.md) - AI agent integration documentation
 - [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and solutions
 - [Code Review Guide](docs/CODE_REVIEW.md) - Code quality and review process
 - [Safe Improvements](docs/SAFE_IMPROVEMENTS.md) - Guidelines for safe changes
