@@ -2,6 +2,8 @@
 
 This directory contains OpenSkills-format skill definitions for AIDB system management and usage.
 
+Operational rule: apply system changes to `nixos-quick-deploy.sh` and templates first, then use runtime patches only for validation without rebuilding.
+
 ## Available Skills
 
 ### aidb-knowledge

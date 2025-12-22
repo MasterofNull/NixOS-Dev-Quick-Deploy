@@ -79,6 +79,35 @@ services:
       retries: 3
       start_period: 120s
 
+  qdrant:
+    image: qdrant/qdrant:v1.16.2
+    container_name: local-ai-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ${AI_STACK_DATA}/qdrant:/qdrant/storage:Z
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: local-ai-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ${AI_STACK_DATA}/ollama:/root/.ollama:Z
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
   aidb:
     build:
       context: ./mcp-servers
@@ -109,6 +138,41 @@ services:
       - lemonade
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8091/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  hybrid-coordinator:
+    build:
+      context: ./mcp-servers
+      dockerfile: hybrid-coordinator/Dockerfile
+    container_name: local-ai-hybrid-coordinator
+    restart: unless-stopped
+    ports:
+      - "8092:8092"
+    environment:
+      MCP_SERVER_MODE: http
+      MCP_SERVER_PORT: ${MCP_SERVER_PORT:-8092}
+      QDRANT_URL: http://qdrant:6333
+      LEMONADE_BASE_URL: http://lemonade:8080
+      OLLAMA_BASE_URL: http://ollama:11434
+      LOCAL_CONFIDENCE_THRESHOLD: ${LOCAL_CONFIDENCE_THRESHOLD:-0.7}
+      HIGH_VALUE_THRESHOLD: ${HIGH_VALUE_THRESHOLD:-0.7}
+      PATTERN_EXTRACTION_ENABLED: ${PATTERN_EXTRACTION_ENABLED:-true}
+      FINETUNE_DATA_PATH: /data/fine-tuning/dataset.jsonl
+      HYBRID_TELEMETRY_PATH: /data/telemetry/hybrid-events.jsonl
+      TELEMETRY_PATH: /data/telemetry/hybrid-events.jsonl
+    volumes:
+      - ${AI_STACK_DATA}/hybrid-coordinator:/data:Z,U
+      - ${AI_STACK_DATA}/telemetry:/data/telemetry:Z,U
+      - ${AI_STACK_DATA}/fine-tuning:/data/fine-tuning:Z,U
+    depends_on:
+      - qdrant
+      - ollama
+      - lemonade
+      - aidb
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8092/health"]
       interval: 30s
       timeout: 10s
       retries: 5
