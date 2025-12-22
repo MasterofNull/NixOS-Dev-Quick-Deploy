@@ -331,7 +331,7 @@ collect_llm_metrics() {
     fi
 
     # Check MindsDB (optional)
-    if curl_fast http://localhost:47334 > /dev/null 2>&1; then
+    if curl_fast http://localhost:47334/api/util/ping > /dev/null 2>&1; then
         mindsdb_status="online"
     fi
 
