@@ -13,12 +13,14 @@ COMPOSE_FILE_NAME="docker-compose.yml"
 
 print_usage() {
     cat <<EOF
-Usage: $(basename "$0") {up|down|restart|status|logs|sync} [service]
+Usage: $(basename "$0") {up|down|restart|clean-restart|status|logs|sync} [service]
 
 Subcommands:
   up         Start the local AI stack (docker compose / podman-compose up -d)
   down       Stop the local AI stack (docker compose / podman-compose down)
   restart    Restart the stack (down then up)
+  clean-restart
+            Restart with container cleanup to avoid name conflicts (Podman)
   status     Show container status (compose ps)
   logs       Tail logs (all services or a single service if provided)
   sync       Sync repo docs into AIDB (runs scripts/sync_docs_to_ai.sh)
@@ -78,6 +80,15 @@ subcmd_restart() {
     subcmd_up
 }
 
+subcmd_clean_restart() {
+    local clean_script="$SCRIPT_DIR/scripts/compose-clean-restart.sh"
+    if [[ ! -x "$clean_script" ]]; then
+        echo "[ERROR] Clean restart script not found at: $clean_script" >&2
+        exit 1
+    fi
+    "$clean_script" "$@"
+}
+
 subcmd_status() {
     ensure_stack_dir
     cmd_compose ps
@@ -110,6 +121,7 @@ main() {
         up)       subcmd_up ;;
         down)     subcmd_down ;;
         restart)  subcmd_restart ;;
+        clean-restart) subcmd_clean_restart "$@" ;;
         status)   subcmd_status ;;
         logs)     subcmd_logs "$@" ;;
         sync)     subcmd_sync ;;

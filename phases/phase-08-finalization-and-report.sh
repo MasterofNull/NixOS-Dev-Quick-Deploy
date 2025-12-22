@@ -198,10 +198,17 @@ phase_08_finalization_and_report() {
         print_info "Use 'podman-ai-stack status' or ai-servicectl stack status for health checks when ready."
 
         local compose_file="$SCRIPT_DIR/ai-stack/compose/docker-compose.yml"
+        local clean_restart_script="$SCRIPT_DIR/scripts/compose-clean-restart.sh"
         if command -v podman-compose >/dev/null 2>&1; then
             if ! curl -sf --max-time 3 http://localhost:8091/health >/dev/null 2>&1; then
                 print_info "AIDB not responding; attempting to start AIDB service..."
-                if podman-compose -f "$compose_file" up -d --build aidb >/dev/null 2>&1; then
+                if [[ -x "$clean_restart_script" ]]; then
+                    if "$clean_restart_script" aidb >/dev/null 2>&1; then
+                        print_success "AIDB clean restart triggered."
+                    else
+                        print_warning "Unable to clean restart AIDB. Run: $clean_restart_script aidb"
+                    fi
+                elif podman-compose -f "$compose_file" up -d --build aidb >/dev/null 2>&1; then
                     print_success "AIDB start triggered via podman-compose."
                 else
                     print_warning "Unable to start AIDB via podman-compose. Run: podman-compose -f $compose_file up -d --build aidb"
