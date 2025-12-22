@@ -1,0 +1,14 @@
+# Health Monitor MCP Server Dependencies
+# Version: 1.0.0
+# Date: 2025-12-21
+
+# MCP Server Framework
+mcp>=0.9.0
+
+# HTTP Client
+httpx>=0.24.0
+
+# Data Validation
+pydantic>=2.0.0
+
+# Python Standard Library (no additional deps needed)
