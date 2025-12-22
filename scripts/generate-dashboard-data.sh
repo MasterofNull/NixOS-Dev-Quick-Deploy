@@ -1,9 +1,12 @@
-#!/usr/bin/env bash
+#!/run/current-system/sw/bin/bash
 # Dashboard Data Generator
 # Collects real-time system, LLM, database, network, and security metrics
 # Outputs JSON for consumption by the dashboard UI
 
 set -euo pipefail
+
+# Resolve project root for reading compose env defaults.
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Output directory for JSON data
 DATA_DIR="${HOME}/.local/share/nixos-system-dashboard"
@@ -595,12 +598,32 @@ collect_database_metrics() {
     local pg_connections=0
     local container_runtime
     container_runtime=$(detect_container_runtime)
+    local env_file="$PROJECT_ROOT/ai-stack/compose/.env"
+    local pg_user="${AIDB_POSTGRES_USER:-${POSTGRES_USER:-}}"
+    local pg_db="${AIDB_POSTGRES_DB:-${POSTGRES_DB:-}}"
+    local pg_password="${AIDB_POSTGRES_PASSWORD:-${POSTGRES_PASSWORD:-}}"
+
+    if [[ -z "$pg_user" && -f "$env_file" ]]; then
+        pg_user=$(read_env_value "$env_file" "AIDB_POSTGRES_USER")
+    fi
+    if [[ -z "$pg_db" && -f "$env_file" ]]; then
+        pg_db=$(read_env_value "$env_file" "AIDB_POSTGRES_DB")
+    fi
+    if [[ -z "$pg_password" && -f "$env_file" ]]; then
+        pg_password=$(read_env_value "$env_file" "AIDB_POSTGRES_PASSWORD")
+    fi
+    pg_user="${pg_user:-mcp}"
+    pg_db="${pg_db:-mcp}"
 
     if [[ "$container_runtime" == "podman" ]]; then
-        if run_timeout 3 podman exec local-ai-postgres pg_isready -U postgres > /dev/null 2>&1; then
+        if run_timeout 3 podman exec local-ai-postgres pg_isready -U "$pg_user" > /dev/null 2>&1; then
             pg_status="online"
-            pg_size=$(run_timeout 3 podman exec local-ai-postgres psql -U postgres -t -c "SELECT pg_size_pretty(pg_database_size('postgres'));" 2>/dev/null | tr -d ' \n' || echo "unknown")
-            pg_connections=$(run_timeout 3 podman exec local-ai-postgres psql -U postgres -t -c "SELECT count(*) FROM pg_stat_activity;" 2>/dev/null | tr -d ' \n' || echo "0")
+            pg_size=$(run_timeout 3 podman exec --env "PGPASSWORD=$pg_password" local-ai-postgres \
+                psql -U "$pg_user" -d "$pg_db" -t -c "SELECT pg_size_pretty(pg_database_size('$pg_db'));" \
+                2>/dev/null | tr -d ' \n' || echo "unknown")
+            pg_connections=$(run_timeout 3 podman exec --env "PGPASSWORD=$pg_password" local-ai-postgres \
+                psql -U "$pg_user" -d "$pg_db" -t -c "SELECT count(*) FROM pg_stat_activity WHERE datname = '$pg_db';" \
+                2>/dev/null | tr -d ' \n' || echo "0")
         fi
     fi
 
