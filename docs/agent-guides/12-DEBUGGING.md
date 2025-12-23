@@ -62,16 +62,16 @@ curl http://localhost:6333/collections/error-solutions | jq '.result.points_coun
 ./scripts/setup-hybrid-learning-auto.sh
 ```
 
-### 3. Lemonade Model Not Loading
+### 3. llama.cpp Model Not Loading
 
 **Symptoms**: Slow responses, model download errors
 
 ```bash
 # Check model download progress
-podman logs local-ai-lemonade | grep -i "download"
+podman logs local-ai-llama-cpp | grep -i "download"
 
 # Check available disk space
-df -h ~/.local/share/nixos-ai-stack/lemonade-models/
+df -h ~/.local/share/nixos-ai-stack/llama-cpp-models/
 
 # Model download can take 10-45 minutes on first start
 # Be patient!
@@ -254,7 +254,7 @@ time curl -X POST http://localhost:6333/search ...
 
 ```bash
 # Check container memory
-podman stats local-ai-lemonade
+podman stats local-ai-llama-cpp
 
 # Redis memory
 podman exec local-ai-redis redis-cli INFO memory
@@ -308,7 +308,7 @@ home-manager switch --rollback
 
 ```bash
 # In .env file
-LEMONADE_LOG_LEVEL=debug
+LLAMA_CPP_LOG_LEVEL=debug
 
 # Restart to apply
 ./scripts/hybrid-ai-stack.sh restart

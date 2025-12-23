@@ -204,7 +204,7 @@ Tracks cost reduction from RAG-based context augmentation vs. full document load
 **Calculation Logic**:
 - **Baseline Tokens**: 15,000 per query (full documentation loaded)
 - **RAG Tokens**: 3,000 per remote query (semantic search results only)
-- **Local Queries**: 0 tokens (handled by local Lemonade server)
+- **Local Queries**: 0 tokens (handled by local llama.cpp server)
 - **Savings**: `(total * 15000) - (remote * 3000)`
 - **Cost**: `(savings / 1_000_000) * $15.00`
 

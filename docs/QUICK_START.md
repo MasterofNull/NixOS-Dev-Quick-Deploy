@@ -196,7 +196,7 @@ The deployment runs in 8 sequential phases:
 ### AI/ML Environment
 - Claude Code CLI + wrappers (`claude-wrapper`, `gpt-codex-wrapper`, `codex-wrapper`, `openai-wrapper`, `gooseai-wrapper`)
 - Aider, Continue, Codeium, Cursor, Postman, DBeaver, Obsidian, and other AI workstation apps (profile-dependent)
-- Ollama, Hugging Face TGI (opt-in), Qdrant, Open WebUI, Jupyter Lab
+- llama.cpp, Hugging Face TGI (opt-in), Qdrant, Open WebUI, Jupyter Lab
 - Python stack with PyTorch, TensorFlow, LangChain, LlamaIndex, LiteLLM, Sentence Transformers, FAISS, Polars, Dask, Black/Ruff/Mypy/Pylint — all pinned in flake overlays for reproducibility
 
 ### Desktop Applications (via Flatpak)

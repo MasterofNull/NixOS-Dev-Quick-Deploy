@@ -19,8 +19,8 @@ database:
     password: ""
 
 llm:
-  lemonade:
-    host: http://lemonade:8080
+  llama_cpp:
+    host: http://llama-cpp:8080
     models: []
   parallel_processing:
     enabled: false
@@ -29,6 +29,8 @@ llm:
     diversity_mode: false
 
 tools:
+  disclosure:
+    full_requires_api_key: true
   sandbox:
     enabled: false
     runner: bubblewrap
@@ -37,6 +39,7 @@ tools:
   cache:
     ttl: 3600
   schema_cache: .mcp_cache/tool_schemas.json
+  discovery_mode: minimal
 
 logging:
   level: INFO

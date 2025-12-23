@@ -1,5 +1,5 @@
 # AI Environment Configuration Module
-# NixOS 25.11 Xantusia
+# NixOS 26.05 Yarara
 # Purpose: Optional declarative AI environment hints for hosts.
 #
 # Usage:
@@ -56,4 +56,3 @@ in
     '';
   };
 }
-

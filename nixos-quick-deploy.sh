@@ -130,7 +130,7 @@ AUTO_UPDATE_FLAKE_INPUTS=false
 RESTORE_KNOWN_GOOD_FLAKE_LOCK=false
 FORCE_HF_DOWNLOAD=false
 RUN_AI_PREP=false
-RUN_AI_MODEL=true  # Default: Enable Hybrid Learning Stack (Qdrant/Lemonade/Ollama)
+RUN_AI_MODEL=true  # Default: Enable Hybrid Learning Stack (Qdrant/llama.cpp/Ollama)
 
 # Phase control
 declare -a SKIP_PHASES=()
@@ -1255,6 +1255,33 @@ main() {
         fi
     fi
 
+    local stack_exit=0
+    if [[ "$RUN_AI_MODEL" == true ]]; then
+        local startup_script="$SCRIPT_DIR/scripts/start-ai-stack-and-dashboard.sh"
+        if [[ -x "$startup_script" ]]; then
+            print_section "Post-Deploy: Start AI Stack + Dashboard"
+            log INFO "Starting AI stack + dashboard via $startup_script"
+            if "$startup_script"; then
+                print_success "AI stack + dashboard startup completed"
+                echo ""
+            else
+                stack_exit=$?
+                print_warning "AI stack + dashboard startup reported issues. Review the output above."
+                echo ""
+            fi
+        else
+            log WARNING "Startup script missing at $startup_script"
+            print_warning "AI stack startup script not found at $startup_script"
+            print_info "Ensure scripts are up to date (git pull) and rerun."
+            echo ""
+            stack_exit=1
+        fi
+    else
+        log INFO "Skipping AI stack startup (AI model deployment disabled)"
+        print_info "Skipping AI stack startup (--without-ai-model)"
+        echo ""
+    fi
+
     # Deployment success
     log INFO "All phases completed successfully"
     echo ""
@@ -1291,18 +1318,28 @@ main() {
     fi
 
     echo "============================================"
-    if [[ $health_exit -eq 0 ]]; then
+    local final_exit=0
+    if [[ $health_exit -ne 0 || $stack_exit -ne 0 ]]; then
+        final_exit=1
+    fi
+
+    if [[ $final_exit -eq 0 ]]; then
         print_success "Deployment completed successfully!"
     else
         print_warning "Deployment completed with follow-up actions required."
-        print_info "Review the health check summary above. You can rerun fixes with: $health_script --fix"
+        if [[ $health_exit -ne 0 ]]; then
+            print_info "Review the health check summary above. You can rerun fixes with: $health_script --fix"
+        fi
+        if [[ $stack_exit -ne 0 ]]; then
+            print_info "AI stack + dashboard startup failed. Run: $SCRIPT_DIR/scripts/start-ai-stack-and-dashboard.sh"
+        fi
     fi
     echo "============================================"
     echo ""
     echo "Log file: $LOG_FILE"
     echo ""
 
-    return $health_exit
+    return $final_exit
 }
 
 # ============================================================================

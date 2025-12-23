@@ -2,7 +2,7 @@
 #
 # Quick health probe for the public NixOS-Dev-Quick-Deploy services.
 # Runs the detailed system health check and pings the key HTTP endpoints
-# exposed by the trimmed Lemonade stack.
+# exposed by the trimmed llama.cpp stack.
 
 set -euo pipefail
 
@@ -11,7 +11,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 HEALTH_SCRIPT="$REPO_ROOT/scripts/system-health-check.sh"
 
 AIDB_BASE_URL="${AIDB_BASE_URL:-http://localhost:8091}"
-LEMONADE_BASE_URL="${LEMONADE_BASE_URL:-http://localhost:8080}"
+LLAMA_CPP_BASE_URL="${LLAMA_CPP_BASE_URL:-http://localhost:8080}"
 
 run_health_check=true
 
@@ -64,9 +64,9 @@ check_endpoint() {
 
 echo "\n🌐 Endpoint probes"
 check_endpoint "AIDB MCP" "${AIDB_BASE_URL%/}/health"
-lemonade_base="${LEMONADE_BASE_URL%/}"
-lemonade_base="${lemonade_base%/api/v1}"
-check_endpoint "Lemonade" "${lemonade_base}/health"
+llama_cpp_base="${LLAMA_CPP_BASE_URL%/}"
+llama_cpp_base="${llama_cpp_base%/api/v1}"
+check_endpoint "llama.cpp" "${llama_cpp_base}/health"
 check_endpoint "RedisInsight" "http://localhost:5540"
 
 echo "\nDone. Review warnings above if any checks failed."

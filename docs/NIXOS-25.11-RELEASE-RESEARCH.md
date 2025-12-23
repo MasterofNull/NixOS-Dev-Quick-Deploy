@@ -735,8 +735,8 @@ NixOS 25.11 Default:
 **Recommended Migration to 25.11:**
 ```nix
 virtualisation.oci-containers.containers = {
-  lemonade = {
-    image = "ghcr.io/lemonade/server:latest";
+  llama-cpp = {
+    image = "ghcr.io/llama-cpp/server:latest";
     podman.user = "hyperd";  # NEW: Native rootless
     ports = [ "8080:8080" ];
     volumes = [
@@ -857,7 +857,7 @@ podman system reset --force
 
 **Test Required:**
 - Verify Docker 28.x compatibility with current compose files
-- Check Lemonade server compatibility with updated Python 3.13
+- Check llama.cpp server compatibility with updated Python 3.13
 - Test AIDB MCP server with PostgreSQL 17 (if upgrading)
 
 #### 🆕 New Capabilities to Explore
@@ -987,7 +987,7 @@ home-manager switch --flake ~/.dotfiles/home-manager
 cd ~/Documents/AI-Optimizer
 docker compose ps
 curl http://localhost:8091/health
-curl http://localhost:8080/health  # Lemonade
+curl http://localhost:8080/health  # llama.cpp
 ```
 
 **3. Test Podman Rootless Migration**
@@ -1060,7 +1060,7 @@ podman system reset --force
 - [ ] Test AI/ML Python packages (PyTorch, TensorFlow, LangChain)
 - [ ] Start AI-Optimizer stack
 - [ ] Verify AIDB MCP server health
-- [ ] Verify Lemonade inference server
+- [ ] Verify llama.cpp inference server
 - [ ] Run full system health check
 - [ ] Test real-world workflows
 
@@ -1068,7 +1068,7 @@ podman system reset --force
 
 - [ ] Verify PostgreSQL compatibility (consider v17 upgrade)
 - [ ] Test Redis AOF persistence
-- [ ] Verify Lemonade model loading
+- [ ] Verify llama.cpp model loading
 - [ ] Test MCP server endpoints
 - [ ] Verify document imports (512+ NixOS configs)
 - [ ] Test skill discovery

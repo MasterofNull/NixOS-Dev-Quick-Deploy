@@ -44,8 +44,7 @@ SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 # Service configuration
 SERVICES = {
     "qdrant": {"url": "http://localhost:6333/healthz", "name": "Qdrant Vector DB"},
-    "ollama": {"url": "http://localhost:11434/api/tags", "name": "Ollama Embeddings"},
-    "lemonade": {"url": "http://localhost:8080/health", "name": "Lemonade GGUF"},
+    "llama_cpp": {"url": "http://localhost:8080/health", "name": "llama.cpp"},
     "open_webui": {"url": "http://localhost:3001", "name": "Open WebUI"},
     "aidb": {"url": "http://localhost:8091/health", "name": "AIDB MCP Server"},
     "hybrid_coordinator": {"url": "http://localhost:8092/health", "name": "Hybrid Coordinator"},

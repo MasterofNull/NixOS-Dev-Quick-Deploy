@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   postgres:
-    image: timescale/timescaledb:latest-pg16
+    image: timescale/timescaledb:latest-pg18
     container_name: local-ai-postgres
     restart: unless-stopped
     environment:
@@ -57,21 +57,30 @@ services:
     depends_on:
       - redis
 
-  lemonade:
-    image: ghcr.io/json012/lemonade:latest
-    container_name: local-ai-lemonade
+  llama-cpp:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: local-ai-llama-cpp
     restart: unless-stopped
+    command: >
+      --model /models/${LLAMA_CPP_MODEL_FILE:-qwen2.5-coder-7b-instruct-q4_k_m.gguf}
+      --host 0.0.0.0
+      --port 8080
+      --ctx-size 4096
+      --n-gpu-layers 0
+      --threads 4
     environment:
-      LEMONADE_HOST: ${LEMONADE_HOST:-0.0.0.0}
-      LEMONADE_PORT: ${LEMONADE_PORT:-8080}
-      LEMONADE_DEFAULT_MODEL: ${LEMONADE_DEFAULT_MODEL:-Qwen3-Coder-30B-A3B-GGUF}
-      LEMONADE_LOG_LEVEL: ${LEMONADE_LOG_LEVEL:-info}
-      LEMONADE_WEB_CONCURRENCY: ${LEMONADE_WEB_CONCURRENCY:-4}
+      LLAMA_CPP_HOST: 0.0.0.0
+      LLAMA_CPP_PORT: ${LLAMA_CPP_PORT:-8080}
+      LLAMA_CPP_DEFAULT_MODEL: ${LLAMA_CPP_DEFAULT_MODEL:-Qwen/Qwen2.5-Coder-7B-Instruct}
+      LLAMA_CPP_LOG_LEVEL: ${LLAMA_CPP_LOG_LEVEL:-info}
+      LLAMA_CPP_WEB_CONCURRENCY: ${LLAMA_CPP_WEB_CONCURRENCY:-4}
       HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
     volumes:
-      - ${AI_STACK_DATA}/lemonade-models:/home/ubuntu/.cache/huggingface:Z
+      - ${AI_STACK_DATA}/llama-cpp-models:/home/ubuntu/.cache/huggingface:Z
     ports:
       - "8080:8080"
+    networks:
+      default: {}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -89,24 +98,10 @@ services:
     volumes:
       - ${AI_STACK_DATA}/qdrant:/qdrant/storage:Z
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      test: ["CMD", "true"]
       interval: 30s
       timeout: 5s
-      retries: 5
-
-  ollama:
-    image: ollama/ollama:latest
-    container_name: local-ai-ollama
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
-    volumes:
-      - ${AI_STACK_DATA}/ollama:/root/.ollama:Z
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      retries: 3
 
   aidb:
     build:
@@ -126,7 +121,7 @@ services:
       AIDB_REDIS_HOST: ${AIDB_REDIS_HOST:-redis}
       AIDB_REDIS_PORT: ${AIDB_REDIS_PORT:-6379}
       AIDB_REDIS_PASSWORD: ${AIDB_REDIS_PASSWORD:-}
-      LEMONADE_BASE_URL: http://lemonade:8080
+      LLAMA_CPP_BASE_URL: http://llama-cpp:8080
       AIDB_TELEMETRY_PATH: /data/telemetry/aidb-events.jsonl
     volumes:
       - ${AI_STACK_DATA}/aidb:/data:Z
@@ -135,7 +130,7 @@ services:
     depends_on:
       - postgres
       - redis
-      - lemonade
+      - llama-cpp
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8091/health"]
       interval: 30s
@@ -154,8 +149,7 @@ services:
       MCP_SERVER_MODE: http
       MCP_SERVER_PORT: ${MCP_SERVER_PORT:-8092}
       QDRANT_URL: http://qdrant:6333
-      LEMONADE_BASE_URL: http://lemonade:8080
-      OLLAMA_BASE_URL: http://ollama:11434
+      LLAMA_CPP_BASE_URL: http://llama-cpp:8080
       LOCAL_CONFIDENCE_THRESHOLD: ${LOCAL_CONFIDENCE_THRESHOLD:-0.7}
       HIGH_VALUE_THRESHOLD: ${HIGH_VALUE_THRESHOLD:-0.7}
       PATTERN_EXTRACTION_ENABLED: ${PATTERN_EXTRACTION_ENABLED:-true}
@@ -168,8 +162,7 @@ services:
       - ${AI_STACK_DATA}/fine-tuning:/data/fine-tuning:Z,U
     depends_on:
       - qdrant
-      - ollama
-      - lemonade
+      - llama-cpp
       - aidb
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8092/health"]

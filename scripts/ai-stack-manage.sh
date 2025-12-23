@@ -9,11 +9,12 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCAL_STACK_DIR="${LOCAL_STACK_DIR:-$HOME/Documents/local-ai-stack}"
+REPO_STACK_DIR="${SCRIPT_DIR}/ai-stack/compose"
 COMPOSE_FILE_NAME="docker-compose.yml"
 
 print_usage() {
     cat <<EOF
-Usage: $(basename "$0") {up|down|restart|clean-restart|status|logs|sync} [service]
+Usage: $(basename "$0") {up|down|restart|clean-restart|status|logs|health|sync} [service]
 
 Subcommands:
   up         Start the local AI stack (docker compose / podman-compose up -d)
@@ -23,11 +24,12 @@ Subcommands:
             Restart with container cleanup to avoid name conflicts (Podman)
   status     Show container status (compose ps)
   logs       Tail logs (all services or a single service if provided)
+  health     Run AI stack health checks
   sync       Sync repo docs into AIDB (runs scripts/sync_docs_to_ai.sh)
 
 Environment:
   LOCAL_STACK_DIR   Directory containing ${COMPOSE_FILE_NAME}
-                    (default: \$HOME/Documents/local-ai-stack)
+                    (default: \$HOME/Documents/local-ai-stack or ${REPO_STACK_DIR})
 EOF
 }
 
@@ -44,13 +46,20 @@ find_compose_cmd() {
 }
 
 ensure_stack_dir() {
-    if [[ ! -d "$LOCAL_STACK_DIR" ]] || [[ ! -f "$LOCAL_STACK_DIR/$COMPOSE_FILE_NAME" ]]; then
-        echo "[ERROR] Local AI stack directory or ${COMPOSE_FILE_NAME} not found at:" >&2
-        echo "        $LOCAL_STACK_DIR" >&2
-        echo "" >&2
-        echo "Run scripts/local-ai-starter.sh and choose the option to scaffold the local AI stack first." >&2
-        exit 1
+    if [[ -d "$LOCAL_STACK_DIR" ]] && [[ -f "$LOCAL_STACK_DIR/$COMPOSE_FILE_NAME" ]]; then
+        return 0
     fi
+
+    if [[ -d "$REPO_STACK_DIR" ]] && [[ -f "$REPO_STACK_DIR/$COMPOSE_FILE_NAME" ]]; then
+        LOCAL_STACK_DIR="$REPO_STACK_DIR"
+        return 0
+    fi
+
+    echo "[ERROR] Local AI stack directory or ${COMPOSE_FILE_NAME} not found at:" >&2
+    echo "        $LOCAL_STACK_DIR" >&2
+    echo "" >&2
+    echo "Run scripts/local-ai-starter.sh or set LOCAL_STACK_DIR to a valid stack directory." >&2
+    exit 1
 }
 
 cmd_compose() {
@@ -104,6 +113,19 @@ subcmd_logs() {
     fi
 }
 
+subcmd_health() {
+    local health_script="$SCRIPT_DIR/scripts/check-ai-stack-health-v2.py"
+    if [[ ! -f "$health_script" ]]; then
+        echo "[ERROR] Health check script not found at: $health_script" >&2
+        exit 1
+    fi
+    if [[ -x "$health_script" ]]; then
+        "$health_script"
+    else
+        python3 "$health_script"
+    fi
+}
+
 subcmd_sync() {
     local sync_script="$SCRIPT_DIR/scripts/sync_docs_to_ai.sh"
     if [[ ! -x "$sync_script" ]]; then
@@ -124,6 +146,7 @@ main() {
         clean-restart) subcmd_clean_restart "$@" ;;
         status)   subcmd_status ;;
         logs)     subcmd_logs "$@" ;;
+        health)   subcmd_health ;;
         sync)     subcmd_sync ;;
         -h|--help|"") print_usage ;;
         *)

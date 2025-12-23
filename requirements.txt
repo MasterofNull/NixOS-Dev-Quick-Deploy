@@ -5,10 +5,15 @@
 qdrant-client>=1.7.0
 
 # Ollama Python client
-ollama>=0.1.0
 
 # HTTP requests
 requests>=2.31.0
+
+# Podman API client
+podman-py>=4.0.0
+
+# Environment variable loading
+python-dotenv>=1.0.0
 
 # PostgreSQL client (optional)
 psycopg2-binary>=2.9.9

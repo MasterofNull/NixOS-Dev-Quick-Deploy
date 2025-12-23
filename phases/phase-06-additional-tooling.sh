@@ -343,9 +343,11 @@ phase_06_additional_tooling() {
         print_warning "Flake environment setup had issues (non-critical)"
     fi
 
-    if declare -F download_lemonade_models_if_needed >/dev/null 2>&1; then
-        download_lemonade_models_if_needed
+    if declare -F download_llama_cpp_models_if_needed >/dev/null 2>&1; then
+        download_llama_cpp_models_if_needed
     fi
+
+    # Lemonade Server/GUI removed: llama.cpp is the default local LLM backend.
 
     # ------------------------------------------------------------------------
     # Mark Phase Complete

@@ -43,7 +43,7 @@ podman restart $(podman ps -aq --filter "label=nixos.quick-deploy.ai-stack=true"
 ./scripts/hybrid-ai-stack.sh logs
 
 # Specific service
-podman logs local-ai-lemonade
+podman logs local-ai-llama-cpp
 
 # Follow logs (real-time)
 podman logs -f local-ai-qdrant
@@ -68,8 +68,8 @@ podman exec local-ai-postgres psql -U mcp -d mcp
 # Redis
 podman exec local-ai-redis redis-cli
 
-# Ollama
-podman exec local-ai-ollama ollama list
+# llama.cpp (model list)
+curl http://localhost:8080/v1/models | jq
 
 # Shell access
 podman exec -it local-ai-qdrant /bin/sh
@@ -79,13 +79,13 @@ podman exec -it local-ai-qdrant /bin/sh
 
 ```bash
 # Full details
-podman inspect local-ai-lemonade | jq
+podman inspect local-ai-llama-cpp | jq
 
 # Specific field
 podman inspect local-ai-qdrant --format '{{.State.Status}}'
 
 # Environment variables
-podman inspect local-ai-ollama --format '{{.Config.Env}}'
+podman inspect local-ai-llama-cpp --format '{{.Config.Env}}'
 
 # Volume mounts
 podman inspect local-ai-postgres --format '{{.Mounts}}'
@@ -101,7 +101,7 @@ podman stats
 podman stats --no-stream
 
 # Specific container
-podman stats local-ai-lemonade
+podman stats local-ai-llama-cpp
 ```
 
 ---

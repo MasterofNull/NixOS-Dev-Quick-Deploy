@@ -1,5 +1,5 @@
 # Python Testing Infrastructure with pytest
-# NixOS 25.11 Xantusia
+# NixOS 26.05 Yarara
 # Purpose: Comprehensive testing framework for Python development
 #
 # Features:

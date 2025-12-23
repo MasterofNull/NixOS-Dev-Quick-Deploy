@@ -17,7 +17,7 @@ Updated all container images from previous versions to the latest stable release
 |---------|-------------|-------------|--------------|-------------|
 | **Qdrant** | v1.12.1 | **v1.16.2** | Dec 4, 2025 | 🔼 Major update (4 versions) |
 | **Ollama** | 0.5.4 | **0.5.13.5** | Dec 18, 2025 | 🔼 Major update |
-| **Lemonade** | ghcr.io/json012/lemonade:0.1.0 | **ghcr.io/ggml-org/llama.cpp:server** | Latest | ⚠️ **Image changed** |
+| **llama.cpp** | ghcr.io/json012/llama-cpp:0.1.0 | **ghcr.io/ggml-org/llama.cpp:server** | Latest | ⚠️ **Image changed** |
 | **Open WebUI** | v0.4.6 | **main** | Rolling | 🔄 Rolling release |
 | **PostgreSQL** | pg16-v0.8.0 | **pg17-v0.8.1** | Dec 2025 | 🔼 Minor update + PG17 |
 | **Redis** | 7.4-alpine | **8.4.0-alpine** | Dec 2025 | 🔼 Major update (v7→v8) |
@@ -27,9 +27,9 @@ Updated all container images from previous versions to the latest stable release
 
 ## Breaking Changes & Important Notes
 
-### ⚠️ Lemonade Image Replacement
+### ⚠️ llama.cpp Image Replacement
 
-**Old Image**: `ghcr.io/json012/lemonade:0.1.0`
+**Old Image**: `ghcr.io/json012/llama-cpp:0.1.0`
 - This image appears to be private/non-existent
 - Could not be verified on GitHub or GHCR
 
@@ -150,8 +150,8 @@ qdrant:
 ollama:
   image: ollama/ollama:0.5.4
 
-lemonade:
-  image: ghcr.io/json012/lemonade:0.1.0
+llama-cpp:
+  image: ghcr.io/json012/llama-cpp:0.1.0
 
 open-webui:
   image: ghcr.io/open-webui/open-webui:v0.4.6
@@ -172,7 +172,7 @@ qdrant:
 ollama:
   image: ollama/ollama:0.5.13.5  # Latest stable
 
-lemonade:
+llama-cpp:
   image: ghcr.io/ggml-org/llama.cpp:server  # Official image
 
 open-webui:
@@ -223,7 +223,7 @@ curl http://localhost:11434/api/tags
 # Expected: List of models (nomic-embed-text)
 ```
 
-### 3. llama.cpp Server (was Lemonade)
+### 3. llama.cpp Server (was llama.cpp)
 ```bash
 curl http://localhost:8080/health
 # Expected: {"status":"ok"} or similar
@@ -233,7 +233,7 @@ curl http://localhost:8080/v1/models
 # Expected: List of loaded models
 ```
 
-**⚠️ Important**: llama.cpp server may have different API endpoints than the previous Lemonade image. Update integration code if needed.
+**⚠️ Important**: llama.cpp server may have different API endpoints than the previous llama.cpp image. Update integration code if needed.
 
 ### 4. Open WebUI
 ```bash

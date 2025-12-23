@@ -1,5 +1,5 @@
-# NixOS 25.11 System Improvements
-**Date:** December 3, 2025
+# NixOS 26.05 System Improvements
+**Date:** December 23, 2025
 **Version:** 1.0.0
 **Status:** Ready for Implementation
 
@@ -13,7 +13,7 @@ This directory contains modular NixOS configuration improvements for the NixOS-D
 |------|---------|----------|
 | `virtualization.nix` | KVM/QEMU/Libvirt stack | **High** |
 | `testing.nix` | pytest + testing infrastructure | **High** |
-| `optimizations.nix` | NixOS 25.11 performance tuning | **Medium** |
+| `optimizations.nix` | NixOS 26.05 performance tuning | **Medium** |
 | `mobile-workstation.nix` | Laptop/battery/AMD iGPU optimizations | **Medium** |
 | `podman.nix` | Rootless container configuration | **Medium** |
 | `ai-env.nix` | AI/ML development environment | **Medium** |
@@ -237,7 +237,7 @@ vim pytest.ini
 - ✅ AMD P-State driver for efficient CPU scaling
 - ✅ AMD iGPU optimizations (ROCm, RADV, VA-API)
 - ✅ WiFi power saving with iwd backend
-- ✅ Lid close/suspend handling
+- ✅ Lid close suspend-then-hibernate handling
 - ✅ Hibernate support
 - ✅ Thermal management (thermald)
 - ✅ Bluetooth power management

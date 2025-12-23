@@ -26,7 +26,7 @@ Successfully completed comprehensive system testing and improvements for the Nix
 **Solution**: Recreated all 5 collections with correct 768 dimensions
 **Files**: [scripts/rag_system_complete.py](scripts/rag_system_complete.py#L36), [scripts/initialize-ai-stack.sh](scripts/initialize-ai-stack.sh#L168)
 
-### 2. Lemonade Model Not Loading ✅
+### 2. llama.cpp Model Not Loading ✅
 
 **Problem**: llama.cpp server had no model loading command
 **Solution**: Added startup command with Qwen2.5-Coder-7B path  
@@ -52,7 +52,7 @@ Successfully completed comprehensive system testing and improvements for the Nix
 Running containers: 6
 
 ✓ Qdrant: Healthy (5 collections, 768-dim)
-✓ Lemonade: Healthy (model loaded)
+✓ llama.cpp: Healthy (model loaded)
 ✓ Ollama: Healthy (nomic-embed-text)
 ✓ Open WebUI: Healthy (port 3001)
 ✓ PostgreSQL: Healthy
@@ -67,7 +67,7 @@ Total: 5 | OK: 5 | Warnings: 0 | Errors: 0
 
 | Component | Metric | Value |
 |-----------|--------|-------|
-| **Lemonade** | Inference Speed | 7.69 tok/s (CPU) |
+| **llama.cpp** | Inference Speed | 7.69 tok/s (CPU) |
 | | Model Size | 4.4GB (7.6B params) |
 | | Memory Usage | 7.8GB RSS |
 | **Ollama** | Embedding Dims | 768 |
@@ -118,7 +118,7 @@ python3 scripts/check-ai-stack-health-v2.py -v
 - [x] All containers running (6/6)
 - [x] Qdrant collections created (5, 768-dim)
 - [x] Ollama model installed (nomic-embed-text, 274MB)
-- [x] Lemonade model loaded (Qwen2.5-Coder-7B, 4.4GB)
+- [x] llama.cpp model loaded (Qwen2.5-Coder-7B, 4.4GB)
 - [x] Vector storage working
 - [x] Local LLM inference working
 - [x] Semantic cache operational

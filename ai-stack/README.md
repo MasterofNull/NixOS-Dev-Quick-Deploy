@@ -9,7 +9,7 @@ This directory contains the complete AI development stack, fully integrated into
 
 The AI stack provides:
 - **AIDB MCP Server** - PostgreSQL + TimescaleDB + Qdrant vector database + FastAPI MCP server
-- **Lemonade vLLM** - Local OpenAI-compatible model inference
+- **llama.cpp vLLM** - Local OpenAI-compatible model inference
 - **Agentic Skills** - Specialized AI agents for deployment, testing, code review, and more
 - **MCP Servers** - Model Context Protocol servers for NixOS, GitHub, and custom integrations
 - **Model Management** - Model registry, download scripts, and version control
@@ -34,7 +34,7 @@ ai-stack/
 ├── compose/                 # Docker Compose configurations
 │   ├── docker-compose.yml   # Full production stack
 │   ├── docker-compose.dev.yml  # Development overrides
-│   ├── docker-compose.minimal.yml  # Minimal stack (Lemonade only)
+│   ├── docker-compose.minimal.yml  # Minimal stack (llama.cpp only)
 │   └── .env.example         # Environment template
 ├── mcp-servers/             # Model Context Protocol servers
 │   ├── aidb/                # AIDB MCP server (PostgreSQL + Qdrant + FastAPI)
@@ -63,7 +63,7 @@ ai-stack/
 | Service | Port | Purpose |
 |---------|------|---------|
 | AIDB MCP Server | 8091 | FastAPI MCP server |
-| Lemonade vLLM | 8080 | Model inference |
+| llama.cpp vLLM | 8080 | Model inference |
 | PostgreSQL | 5432 | Database |
 | Redis | 6379 | Cache |
 | Qdrant | 6333 | Vector database |
@@ -80,7 +80,7 @@ All data is stored in shared directories that persist across reinstalls:
 ├── postgres/          # PostgreSQL data
 ├── redis/             # Redis persistence
 ├── qdrant/            # Vector database
-├── lemonade-models/   # Downloaded models
+├── llama-cpp-models/   # Downloaded models
 ├── imports/           # Document imports
 ├── exports/           # Exported data
 └── backups/           # Database backups

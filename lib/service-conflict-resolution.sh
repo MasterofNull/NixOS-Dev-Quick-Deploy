@@ -38,15 +38,12 @@ fi
 # Mapping of service conflicts: system-service → user-services
 declare -gA SERVICE_CONFLICT_MAP=(
     # AI Stack Services
-    ["ollama.service"]="podman-local-ai-ollama.service"
     ["qdrant.service"]="podman-local-ai-qdrant.service"
 )
 
 # Port mapping for conflict detection
 declare -gA SERVICE_PORT_MAP=(
-    ["ollama.service"]="11434"
     ["qdrant.service"]="6333,6334"
-    ["podman-local-ai-ollama.service"]="11434"
     ["podman-local-ai-qdrant.service"]="6333,6334"
 )
 

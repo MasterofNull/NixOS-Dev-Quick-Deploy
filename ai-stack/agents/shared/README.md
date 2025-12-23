@@ -121,7 +121,7 @@ class CacheManager:
 ### Model Inference
 ```python
 class ModelClient:
-    """Lemonade vLLM client"""
+    """llama.cpp vLLM client"""
 
     async def generate(
         self,

@@ -7,7 +7,7 @@
       "name": "aidb",
       "type": "custom",
       "path": "ai-stack/mcp-servers/aidb/",
-      "description": "Custom AIDB MCP server with Qdrant, Lemonade, and Ollama integration",
+      "description": "Custom AIDB MCP server with Qdrant, llama.cpp, and Ollama integration",
       "capabilities": [
         "vector_search",
         "llm_inference",
@@ -24,7 +24,7 @@
       "status": "implemented",
       "apis": {
         "qdrant": "http://localhost:6333",
-        "lemonade": "http://localhost:8080",
+        "llama_cpp": "http://localhost:8080",
         "ollama": "http://localhost:11434/api"
       }
     },
@@ -267,10 +267,10 @@
   "deployment_notes": {
     "aidb": "Already deployed in ai-stack/",
     "external_servers": "Can be added to Podman compose stack",
-    "mcp_integration": "Most support OpenAI-compatible APIs (Lemonade/Ollama)"
+    "mcp_integration": "Most support OpenAI-compatible APIs (llama.cpp/Ollama)"
   },
   "model_compatibility": {
-    "lemonade": "OpenAI-compatible API, works with all servers",
+    "llama_cpp": "OpenAI-compatible API, works with all servers",
     "ollama": "Native Ollama support in many servers",
     "qdrant": "Vector DB integration for RAG pipelines"
   }

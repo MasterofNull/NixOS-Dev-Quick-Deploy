@@ -119,15 +119,16 @@ store_solution(
     solution="""
     Add to home.nix:
     - libsecret
-    - gcr
+    - gcr_4
 
     Add to configuration.nix:
+    services.gnome.gcr-ssh-agent.enable = true;
     security.pam.services.login.enableGnomeKeyring = true;
     security.pam.services.passwd.enableGnomeKeyring = true;
     """,
     category="error-solutions",
     metadata={
-        "error_type": "gnome-keyring",
+        "error_type": "gcr-ssh-agent",
         "os": "nixos",
         "severity": "medium"
     }

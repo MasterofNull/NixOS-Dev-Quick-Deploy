@@ -338,7 +338,7 @@ As part of the language‑modernization plan, this project will gradually introd
 
 - `code.propose_ts_port`  
   - Given a contract and representative examples, draft a TypeScript implementation (CLI or module) that mirrors the Python behavior.
-  - Designed to plug into local models (Lemonade/vLLM) and AIDB for context.
+  - Designed to plug into local models (llama.cpp/vLLM) and AIDB for context.
 
 These tools will sit alongside existing servers (AIDB MCP, mcp-nixos, github-mcp, postgres-mcp) and act as the “glue layer” for codebase modernization. Implementation details will live in dedicated MCP server repos; this document remains the high‑level guide to their intended use.
 ```

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The NixOS Quick Deploy script now automatically detects and resolves conflicts between system-level and user-level services during deployment. This prevents port conflicts and service failures when the same service (e.g., Ollama, Qdrant) is configured at both levels.
+The NixOS Quick Deploy script now automatically detects and resolves conflicts between system-level and user-level services during deployment. This prevents port conflicts and service failures when the same service (e.g., llama.cpp, Qdrant) is configured at both levels.
 
 ## Problem Statement
 
@@ -13,8 +13,8 @@ Error: rootlessport listen tcp 0.0.0.0:6333: bind: address already in use
 ```
 
 This happens when:
-1. **System-level service** (e.g., `ollama.service`) is running as root
-2. **User-level service** (e.g., `podman-local-ai-ollama.service`) tries to use the same port
+1. **System-level service** (e.g., `llama-cpp.service`) is running as root
+2. **User-level service** (e.g., `podman-local-ai-llama-cpp.service`) tries to use the same port
 3. Both services attempt to bind to the same network port simultaneously
 
 ## Solution: Automatic Conflict Resolution
@@ -24,7 +24,7 @@ The deployment script (Phase 5) now includes automatic conflict detection and re
 ### How It Works
 
 1. **Detection Phase** (Step 6.5)
-   - Scans for active system-level services (ollama, qdrant, etc.)
+   - Scans for active system-level services (llama.cpp, qdrant, etc.)
    - Checks if corresponding user-level services are enabled in `home.nix`
    - Identifies port conflicts
 

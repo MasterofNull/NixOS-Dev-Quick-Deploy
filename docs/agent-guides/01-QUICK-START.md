@@ -32,7 +32,7 @@ podman ps --filter "label=nixos.quick-deploy.ai-stack=true"
 # Expected output: 6-7 containers running
 # - local-ai-qdrant
 # - local-ai-ollama
-# - local-ai-lemonade
+# - local-ai-llama-cpp
 # - local-ai-open-webui
 # - local-ai-postgres
 # - local-ai-redis
@@ -48,11 +48,10 @@ podman ps --filter "label=nixos.quick-deploy.ai-stack=true"
 curl http://localhost:6333/healthz
 # Expected: {"title":"healthz OK","version":"1.x.x"}
 
-# Ollama Embeddings
-curl http://localhost:11434/api/tags
-# Expected: {"models":[...]}
+# Embeddings (Sentence Transformers)
+ls ~/.cache/huggingface/sentence-transformers
 
-# Lemonade Inference
+# llama.cpp Inference
 curl http://localhost:8080/health
 # Expected: {"status":"ok"}
 
@@ -91,7 +90,7 @@ Expected: All 5 collections show `"green"`
 ## First Query to Local LLM
 
 ```bash
-# Test Lemonade inference
+# Test llama.cpp inference
 curl -X POST http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
@@ -216,19 +215,16 @@ for name, size in collections.items():
 EOF
 ```
 
-### Issue: Ollama models not downloaded
+### Issue: Embedding model not available
 ```bash
-# Pull embedding model
-podman exec local-ai-ollama ollama pull nomic-embed-text
-
-# Verify
-podman exec local-ai-ollama ollama list
+# Verify embeddings cache (sentence-transformers)
+ls ~/.cache/huggingface/sentence-transformers
 ```
 
-### Issue: Lemonade model downloading
+### Issue: llama.cpp model downloading
 ```bash
 # Check download progress
-podman logs -f local-ai-lemonade
+podman logs -f local-ai-llama-cpp
 
 # First download takes 10-45 minutes (7-32GB models)
 # Patience required!
@@ -271,8 +267,8 @@ All data stored in: `~/.local/share/nixos-ai-stack/`
 ```
 ~/.local/share/nixos-ai-stack/
 ├── qdrant/              # Vector database
-├── ollama/              # Ollama models
-├── lemonade-models/     # GGUF models (10.5GB)
+├── huggingface/         # Embedding models cache
+├── llama-cpp-models/     # GGUF models (10.5GB)
 ├── open-webui/          # Web UI data
 ├── postgres/            # PostgreSQL data
 ├── redis/               # Redis persistence

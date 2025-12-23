@@ -37,7 +37,7 @@ for port in 8080; do
 done
 
 # Container status
-podman ps | grep -E "lemonade|postgres|redis|prometheus|grafana"
+podman ps | grep -E "llama-cpp|postgres|redis|prometheus|grafana"
 ```
 
 ### Benchmarking
@@ -94,10 +94,10 @@ curl -sf http://localhost:9090/api/v1/targets | jq -r '.data.activeTargets[] | "
 
 ```bash
 # View logs
-podman logs lemonade
+podman logs llama-cpp
 
 # Restart service
-podman restart lemonade
+podman restart llama-cpp
 
 # Stop all services
 podman-compose down
@@ -106,7 +106,7 @@ podman-compose down
 podman-compose up -d
 
 # Rebuild specific service
-podman-compose build lemonade && podman-compose up -d lemonade
+podman-compose build llama-cpp && podman-compose up -d llama-cpp
 ```
 
 ---
@@ -168,8 +168,8 @@ open http://localhost:3001
 
 ```bash
 # Model not responding
-podman logs lemonade
-podman restart lemonade
+podman logs llama-cpp
+podman restart llama-cpp
 
 # Database issues
 podman logs ai-optimizer_postgres_1

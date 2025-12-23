@@ -5,7 +5,7 @@ Version: 1.0.0
 Date: 2025-12-20
 
 This script provides a complete, standalone RAG system that:
-1. Tests all AI stack components (Qdrant, Ollama, Lemonade)
+1. Tests all AI stack components (Qdrant, llama.cpp)
 2. Implements semantic caching
 3. Provides enhanced data structures with metadata
 4. Implements value scoring and pattern extraction
@@ -30,8 +30,7 @@ import sqlite3
 # Configuration
 CONFIG = {
     "qdrant_url": "http://localhost:6333",
-    "ollama_url": "http://localhost:11434",
-    "lemonade_url": "http://localhost:8080",
+    "llama_cpp_url": "http://localhost:8080",
     "embedding_model": "nomic-embed-text",
     "embedding_dimensions": 768,  # nomic-embed-text actual dimensions
     "local_confidence_threshold": 0.85,
@@ -278,34 +277,27 @@ class RAGSystem:
         except:
             services["qdrant"] = False
 
-        # Check Ollama
+        # Check llama.cpp
         try:
-            response = requests.get(f"{self.config['ollama_url']}/api/tags", timeout=2)
-            services["ollama"] = response.status_code == 200
+            response = requests.get(f"{self.config['llama_cpp_url']}/health", timeout=2)
+            services["llama_cpp"] = response.status_code == 200
         except:
-            services["ollama"] = False
-
-        # Check Lemonade
-        try:
-            response = requests.get(f"{self.config['lemonade_url']}/health", timeout=2)
-            services["lemonade"] = response.status_code == 200
-        except:
-            services["lemonade"] = False
+            services["llama_cpp"] = False
 
         return services
 
     def generate_embedding(self, text: str) -> Optional[EmbeddingVector]:
-        """Generate embedding using Ollama"""
-        if not self.services_available["ollama"]:
-            print("⚠️  Ollama not available, cannot generate embeddings")
+        """Generate embedding using llama.cpp"""
+        if not self.services_available["llama_cpp"]:
+            print("⚠️  llama.cpp not available, cannot generate embeddings")
             return None
 
         try:
             response = requests.post(
-                f"{self.config['ollama_url']}/api/embeddings",
+                f"{self.config['llama_cpp_url']}/v1/embeddings",
                 json={
                     "model": self.config["embedding_model"],
-                    "prompt": text
+                    "input": text
                 },
                 timeout=10
             )
@@ -405,16 +397,16 @@ class RAGSystem:
             return []
 
     def query_local_llm(self, prompt: str, context: str = "") -> Optional[str]:
-        """Query local LLM (Lemonade)"""
-        if not self.services_available["lemonade"]:
-            print("⚠️  Lemonade not available")
+        """Query local LLM (llama.cpp)"""
+        if not self.services_available["llama_cpp"]:
+            print("⚠️  llama.cpp not available")
             return None
 
         full_prompt = f"Context:\n{context}\n\nQuery: {prompt}" if context else prompt
 
         try:
             response = requests.post(
-                f"{self.config['lemonade_url']}/v1/completions",
+                f"{self.config['llama_cpp_url']}/v1/completions",
                 json={
                     "prompt": full_prompt,
                     "max_tokens": 500,

@@ -23,7 +23,7 @@ The `ai_select_model()` function in [lib/ai-optimizer.sh](lib/ai-optimizer.sh) w
 3. Not respecting previous user choices
 
 This disconnect occurred because:
-- `scripts/download-lemonade-models.sh` downloads 3 specific models
+- `scripts/download-llama-cpp-models.sh` downloads 3 specific models
 - Phase 9's menu showed 6+ options from `ai-stack/models/registry.json`
 - No detection of cached models before displaying the menu
 
@@ -82,7 +82,7 @@ ai_detect_cached_models() {
 **Example Output** (3 models cached):
 ```
 ╭───────────────────────────────────────────────────────────────────────────╮
-│ AI Model Selection (Lemonade)                                             │
+│ AI Model Selection (llama.cpp)                                             │
 │                                                                            │
 │ The following models are already downloaded and ready to use:             │
 │                                                                            │
@@ -113,7 +113,7 @@ ai_detect_cached_models() {
 
 ## Models Detected
 
-The function detects these 3 models that were downloaded via `download-lemonade-models.sh`:
+The function detects these 3 models that were downloaded via `download-llama-cpp-models.sh`:
 
 | Key | HuggingFace ID | Size | File Location |
 |-----|----------------|------|---------------|
@@ -282,7 +282,7 @@ Phase 9: Menu shows ONLY the 3 downloaded models
 ↓
 User selects one → No additional download needed
 ↓
-Lemonade starts with cached model immediately
+llama.cpp starts with cached model immediately
 ```
 
 ---

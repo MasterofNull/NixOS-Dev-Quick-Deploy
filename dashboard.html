@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NixOS System Command Center</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="./assets/vendor/chart.umd.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Orbitron:wght@700;900&display=swap');
 
@@ -410,6 +410,21 @@
             margin-top: 0.5rem;
         }
 
+        .chart-container.chart-disabled {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px dashed rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .chart-fallback {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            text-align: center;
+            padding: 0 1rem;
+        }
+
         .chart-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -777,6 +792,32 @@
 
                             <div class="hardware-block">
                                 <div>
+                                    <div class="hardware-title">GPU</div>
+                                    <div class="hardware-metrics">
+                                        <div class="metric">
+                                            <div class="metric-label">GPU</div>
+                                            <div class="metric-value" id="gpuName">--</div>
+                                        </div>
+                                        <div class="metric">
+                                            <div class="metric-label">GPU Busy</div>
+                                            <div class="metric-value" id="gpuBusy">--</div>
+                                        </div>
+                                        <div class="metric">
+                                            <div class="metric-label">VRAM</div>
+                                            <div class="metric-value" id="gpuVram">--</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="chart-title">GPU Usage Trend</div>
+                                    <div class="chart-container">
+                                        <canvas id="gpuChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="hardware-block">
+                                <div>
                                     <div class="hardware-title">Memory</div>
                                     <div class="progress-container">
                                         <div class="progress-header">
@@ -825,28 +866,46 @@
 
                             <div class="hardware-block">
                                 <div>
-                                    <div class="hardware-title">GPU</div>
+                                    <div class="hardware-title">Network</div>
                                     <div class="hardware-metrics">
                                         <div class="metric">
-                                            <div class="metric-label">GPU</div>
-                                            <div class="metric-value" id="gpuName">--</div>
+                                            <div class="metric-label">Interface</div>
+                                            <div class="metric-value copyable" id="netIface">--</div>
                                         </div>
                                         <div class="metric">
-                                            <div class="metric-label">GPU Busy</div>
-                                            <div class="metric-value" id="gpuBusy">--</div>
+                                            <div class="metric-label">Download</div>
+                                            <div class="metric-value" id="netRxRate">--</div>
                                         </div>
                                         <div class="metric">
-                                            <div class="metric-label">VRAM</div>
-                                            <div class="metric-value" id="gpuVram">--</div>
+                                            <div class="metric-label">Upload</div>
+                                            <div class="metric-value" id="netTxRate">--</div>
                                         </div>
                                     </div>
                                 </div>
                                 <div>
-                                    <div class="hardware-title">Uptime</div>
+                                    <div class="chart-title">Network Traffic (KB/s)</div>
+                                    <div class="chart-container">
+                                        <canvas id="networkChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="hardware-block">
+                                <div>
+                                    <div class="hardware-title">System</div>
                                     <div class="hardware-metrics">
                                         <div class="metric">
                                             <div class="metric-label">Uptime</div>
                                             <div class="metric-value" id="uptime">--</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="hardware-title">Host</div>
+                                    <div class="hardware-metrics">
+                                        <div class="metric">
+                                            <div class="metric-label">Host</div>
+                                            <div class="metric-value copyable" id="hostnameDetail">--</div>
                                         </div>
                                     </div>
                                 </div>
@@ -929,6 +988,119 @@
                 </div>
             </div>
 
+            <!-- Hybrid Coordinator Metrics -->
+            <div class="dashboard-section">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Hybrid Coordinator Metrics</h2>
+                        </div>
+                        <span class="card-badge" id="hybridBadge">Coordinator</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="metrics-grid">
+                            <div class="metric">
+                                <div class="metric-label">Status</div>
+                                <div class="metric-value" id="hybridStatus">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Telemetry Events</div>
+                                <div class="metric-value" id="hybridEvents">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Avg Value Score</div>
+                                <div class="metric-value" id="hybridAvgValue">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">High-Value Count</div>
+                                <div class="metric-value" id="hybridHighValue">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Patterns Extracted</div>
+                                <div class="metric-value" id="hybridPatterns">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Local Routing</div>
+                                <div class="metric-value" id="hybridLocalPercent">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Cache Hit Rate</div>
+                                <div class="metric-value" id="hybridCacheHit">--</div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.1em;">Value Score Trend</div>
+                            <div id="hybridValueScores" style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Continuous Improvement -->
+            <div class="dashboard-section">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Continuous Improvement</h2>
+                        </div>
+                        <span class="card-badge">Learning Loop</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="metrics-grid">
+                            <div class="metric">
+                                <div class="metric-label">Total Interactions</div>
+                                <div class="metric-value" id="learningTotal">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">High-Value Interactions</div>
+                                <div class="metric-value" id="learningHighValue">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Learning Rate</div>
+                                <div class="metric-value" id="learningRate">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Avg Value Score</div>
+                                <div class="metric-value" id="learningAvgScore">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Pattern Extractions</div>
+                                <div class="metric-value" id="learningPatterns">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Fine-Tune Samples</div>
+                                <div class="metric-value" id="learningFinetune">--</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Discovery Signals -->
+            <div class="dashboard-section">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Discovery Signals</h2>
+                        </div>
+                        <span class="card-badge" id="discoveryBadge">Signals</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">High-Value Mentions</div>
+                        <div class="data-list" id="discoveryCandidates">
+                            <div class="loading"><div class="spinner"></div></div>
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin: 1rem 0 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Low-Trust Signals</div>
+                        <div class="data-list" id="discoverySignals">
+                            <div class="loading"><div class="spinner"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Local Usage Proof -->
             <div class="dashboard-section">
                 <div class="card">
@@ -950,12 +1122,12 @@
                                 <div class="metric-value" id="proofRag">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">Ollama Models</div>
-                                <div class="metric-value" id="proofOllama">--</div>
+                                <div class="metric-label">llama.cpp Models</div>
+                                <div class="metric-value" id="proofLlamaCpp">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">Lemonade Models</div>
-                                <div class="metric-value" id="proofLemonade">--</div>
+                                <div class="metric-label">llama.cpp Models</div>
+                                <div class="metric-value" id="proofLlamaCpp">--</div>
                             </div>
                             <div class="metric">
                                 <div class="metric-label">Skills Loaded</div>
@@ -1223,28 +1395,30 @@
         let cpuChart = null;
         let memoryChart = null;
         let diskChart = null;
+        let gpuChart = null;
+        let networkChart = null;
         let cpuHistory = [];
         let memoryHistory = [];
         let diskHistory = [];
+        let gpuHistory = [];
+        let networkRxHistory = [];
+        let networkTxHistory = [];
+        let lastNetSample = null;
 
         // Data directory (update this path if needed)
         const DATA_DIR = `${window.location.origin}/data`;
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-            initCharts();
-            loadData();
-            setInterval(loadData, 15000); // Refresh every 15 seconds
-
-            // Set hostname
-            fetch('/etc/hostname')
-                .then(r => r.text())
-                .then(hostname => {
-                    document.getElementById('hostname').textContent = hostname.trim();
-                })
-                .catch(() => {
-                    document.getElementById('hostname').textContent = 'nixos';
-                });
+            if (typeof Chart !== 'undefined') {
+                initCharts();
+            } else {
+                console.warn('Chart.js unavailable; rendering dashboard without charts.');
+                disableCharts();
+            }
+            loadData(); // Initial full load
+            setInterval(loadSystemMetricsOnly, 2000); // Update graphs every 2 seconds (lite collector)
+            setInterval(loadData, 60000); // Full refresh every 60 seconds (full collector)
         });
 
         // Initialize Chart.js
@@ -1321,6 +1495,42 @@
                 }
             });
 
+            const gpuCtx = document.getElementById('gpuChart').getContext('2d');
+            gpuChart = new Chart(gpuCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'GPU %',
+                        data: [],
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: { color: '#8892a6' },
+                            grid: { color: '#1e3a5f' }
+                        },
+                        x: {
+                            ticks: { color: '#8892a6' },
+                            grid: { color: '#1e3a5f' }
+                        }
+                    }
+                }
+            });
+
             const diskCtx = document.getElementById('diskChart').getContext('2d');
             diskChart = new Chart(diskCtx, {
                 type: 'line',
@@ -1356,12 +1566,82 @@
                     }
                 }
             });
+
+            const netCtx = document.getElementById('networkChart').getContext('2d');
+            networkChart = new Chart(netCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Download KB/s',
+                            data: [],
+                            borderColor: '#8ecae6',
+                            backgroundColor: 'rgba(142, 202, 230, 0.08)',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            fill: true
+                        },
+                        {
+                            label: 'Upload KB/s',
+                            data: [],
+                            borderColor: '#ffb703',
+                            backgroundColor: 'rgba(255, 183, 3, 0.08)',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: '#8892a6' },
+                            grid: { color: '#1e3a5f' }
+                        },
+                        x: {
+                            ticks: { color: '#8892a6' },
+                            grid: { color: '#1e3a5f' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function disableCharts() {
+            const chartBlocks = document.querySelectorAll('.chart-container');
+            chartBlocks.forEach(block => {
+                block.classList.add('chart-disabled');
+                const note = document.createElement('div');
+                note.className = 'chart-fallback';
+                note.textContent = 'Charts unavailable (Chart.js not loaded)';
+                block.appendChild(note);
+            });
+        }
+
+        // Load only system metrics for fast updates (graphs)
+        async function loadSystemMetricsOnly() {
+            try {
+                const system = await fetchJSON('system.json');
+                const network = await fetchJSON('network.json');
+
+                updateSystemMetrics(system);
+                updateNetworkMetrics(network);
+            } catch (error) {
+                console.error('Error loading system metrics:', error);
+            }
         }
 
         // Load all dashboard data
         async function loadData() {
             try {
-                const [system, llm, network, security, database, links, persistence, telemetry, feedback, config, proof] = await Promise.all([
+                const [system, llm, network, security, database, links, persistence, telemetry, feedback, config, proof, hybrid, learning, tokenSavings, keywordSignals] = await Promise.all([
                     fetchJSON('system.json'),
                     fetchJSON('llm.json'),
                     fetchJSON('network.json'),
@@ -1372,10 +1652,14 @@
                     fetchJSON('telemetry.json'),
                     fetchJSON('feedback.json'),
                     fetchJSON('config.json'),
-                    fetchJSON('proof.json')
+                    fetchJSON('proof.json'),
+                    fetchJSON('hybrid-coordinator.json'),
+                    fetchJSON('learning-metrics.json'),
+                    fetchJSON('token-savings.json'),
+                    fetchJSON('keyword-signals.json')
                 ]);
 
-                dashboardData = { system, llm, network, security, database, links, persistence, telemetry, feedback, config, proof };
+                dashboardData = { system, llm, network, security, database, links, persistence, telemetry, feedback, config, proof, hybrid, learning, tokenSavings, keywordSignals };
 
                 updateSystemMetrics(system);
                 updateLLMStatus(llm);
@@ -1386,6 +1670,9 @@
                 updateQuickLinks(links);
                 updatePersistenceMetrics(persistence);
                 updateTelemetryMetrics(telemetry);
+                updateHybridMetrics(hybrid, tokenSavings);
+                updateLearningMetrics(learning);
+                updateDiscoverySignals(keywordSignals);
                 updateFeedbackMetrics(feedback);
                 updateConfigMetrics(config);
                 updateProofMetrics(proof);
@@ -1404,6 +1691,7 @@
 
             // Try multiple paths
             const paths = [
+                `/data/${filename}`,
                 `${homeDir}/.local/share/nixos-system-dashboard/${filename}`,
                 `/home/${getUserName()}/.local/share/nixos-system-dashboard/${filename}`,
                 `./data/${filename}`,
@@ -1436,6 +1724,7 @@
             const mock = {
                 'system.json': {
                     timestamp: new Date().toISOString(),
+                    host_name: 'nixos',
                     cpu: { usage_percent: Math.random() * 50, temperature: '45.2°C', cores: 8, model: 'AMD Ryzen', arch: 'x86_64' },
                     gpu: { name: 'AMD Radeon iGPU', busy_percent: 12, vram_used_mb: 256, vram_total_mb: 512 },
                     memory: { total: 32000, used: 12000, free: 20000, percent: 37.5 },
@@ -1447,8 +1736,7 @@
                     timestamp: new Date().toISOString(),
                     services: {
                         qdrant: { status: 'online', collections: 5, collection_names: ['codebase-context', 'skills-patterns', 'error-solutions'], url: 'http://localhost:6333' },
-                        ollama: { status: 'online', models: [{name: 'nomic-embed-text', size: 274302450}], url: 'http://localhost:11434' },
-                        lemonade: { status: 'online', models: [{name: 'qwen2.5-coder-7b'}], url: 'http://localhost:8080' },
+                        "llama-cpp": { status: 'online', models: [{name: 'qwen2.5-coder-7b'}], url: 'http://localhost:8080' },
                         postgres: { status: 'online', url: 'localhost:5432' },
                         redis: { status: 'online', url: 'localhost:6379' },
                         open_webui: { status: 'online', url: 'http://localhost:3001' },
@@ -1457,7 +1745,7 @@
                     },
                     containers: [
                         { name: 'local-ai-qdrant', status: 'running', image: 'qdrant/qdrant:v1.16.2' },
-                        { name: 'local-ai-ollama', status: 'running', image: 'ollama/ollama:latest' }
+                        { name: 'local-ai-llama-cpp', status: 'running', image: 'ghcr.io/ggml-org/llama.cpp:server' }
                     ]
                 },
                 'network.json': {
@@ -1470,7 +1758,7 @@
                         { ip: '192.168.86.1', mac: 'aa:bb:cc:dd:ee:ff', state: 'REACHABLE', dev: 'wlan0' },
                         { ip: '192.168.86.50', mac: '11:22:33:44:55:66', state: 'STALE', dev: 'wlan0' }
                     ],
-                    listening_ports: ['22', '80', '443', '3000', '3001', '6333', '8080', '11434']
+                    listening_ports: ['22', '80', '443', '3000', '3001', '6333', '8080']
                 },
                 'security.json': {
                     timestamp: new Date().toISOString(),
@@ -1506,8 +1794,7 @@
                     mount: { device: '/dev/nvme0n1p2', filesystem: 'btrfs', mount_point: '/' },
                     paths: [
                         { name: 'qdrant', path: '/home/hyperd/.local/share/nixos-ai-stack/qdrant', exists: true, size: '1.2G' },
-                        { name: 'ollama', path: '/home/hyperd/.local/share/nixos-ai-stack/ollama', exists: true, size: '4.8G' },
-                        { name: 'lemonade', path: '/home/hyperd/.local/share/nixos-ai-stack/lemonade-models', exists: true, size: '9.6G' },
+                        { name: 'llama_cpp', path: '/home/hyperd/.local/share/nixos-ai-stack/llama-cpp-models', exists: true, size: '9.6G' },
                         { name: 'open-webui', path: '/home/hyperd/.local/share/nixos-ai-stack/open-webui', exists: true, size: '240M' },
                         { name: 'postgres', path: '/home/hyperd/.local/share/nixos-ai-stack/postgres', exists: true, size: '620M' },
                         { name: 'redis', path: '/home/hyperd/.local/share/nixos-ai-stack/redis', exists: true, size: '180M' },
@@ -1548,11 +1835,11 @@
                 'config.json': {
                     timestamp: new Date().toISOString(),
                     env_file: '/home/hyperd/.config/nixos-ai-stack/.env',
-                    required_services: ['qdrant', 'ollama', 'lemonade', 'postgres', 'redis', 'open_webui', 'aidb', 'mindsdb'],
+                    required_services: ['qdrant', 'llama_cpp', 'postgres', 'redis', 'open_webui', 'aidb', 'mindsdb'],
                     settings: [
                         { label: 'AI Stack Data Root', value: '/home/hyperd/.local/share/nixos-ai-stack', path: '/home/hyperd/.config/nixos-ai-stack/.env', hint: 'Set AI_STACK_DATA to relocate persisted services.' },
                         { label: 'AIDB Port', value: '8091', path: '/home/hyperd/.config/nixos-ai-stack/.env', hint: 'Controls AIDB MCP server port.' },
-                        { label: 'Lemonade Port', value: '8080', path: '/home/hyperd/.config/nixos-ai-stack/.env', hint: 'Controls Lemonade inference port.' },
+                        { label: 'llama.cpp Port', value: '8080', path: '/home/hyperd/.config/nixos-ai-stack/.env', hint: 'Controls llama.cpp inference port.' },
                         { label: 'Qdrant Port', value: '6333', path: '/home/hyperd/.config/nixos-ai-stack/.env', hint: 'Controls Qdrant HTTP port.' },
                         { label: 'Dashboard Refresh (seconds)', value: '15', path: 'launch-dashboard.sh', hint: 'Set DASHBOARD_COLLECT_INTERVAL to adjust refresh cadence.' },
                         { label: 'Telemetry Stale Threshold (minutes)', value: '30', path: 'scripts/verify-local-llm-feedback.sh', hint: 'Set TELEMETRY_STALE_MINUTES to change stale warnings.' }
@@ -1567,10 +1854,54 @@
                     timestamp: new Date().toISOString(),
                     aidb_status: 'online',
                     rag: { qdrant_collections: ['skills-patterns', 'codebase-context'], collection_count: 2 },
-                    llm: { ollama_models: 2, lemonade_models: 1 },
+                    llm: { llama_cpp_models: 1 },
                     skills: { count: 24, samples: ['nixos-deployment', 'webapp-testing'] },
                     telemetry: { path: '/home/hyperd/.local/share/nixos-ai-stack/telemetry/aidb-events.jsonl', events: 128, last_event: { timestamp: new Date().toISOString(), event_type: 'tool_execute', source: 'aidb', llm_used: 'local', model: 'Qwen' } },
                     orchestration: { runtime: 'podman', containers_running: 6 }
+                },
+                'hybrid-coordinator.json': {
+                    timestamp: new Date().toISOString(),
+                    status: 'online',
+                    health: { status: 'healthy' },
+                    telemetry: {
+                        path: '/home/hyperd/.local/share/nixos-ai-stack/telemetry/hybrid-events.jsonl',
+                        events: 12,
+                        last_event: { timestamp: new Date().toISOString(), value_score: 0.82 },
+                        avg_value_score: 0.74,
+                        high_value_count: 6,
+                        value_scores_recent: [0.42, 0.68, 0.73, 0.91, 0.78]
+                    },
+                    learning: {
+                        pattern_extractions: 4,
+                        finetune_dataset_path: '/home/hyperd/.local/share/nixos-ai-stack/fine-tuning/dataset.jsonl',
+                        finetune_records: 18
+                    }
+                },
+                'learning-metrics.json': {
+                    timestamp: new Date().toISOString(),
+                    interactions: { total: 42, high_value: 12, last_7d: 20, last_7d_high_value: 6 },
+                    patterns: { extractions: 4, learning_rate: 0.19 },
+                    value_scoring: { avg_score: 0.72, threshold: 0.7 },
+                    fine_tuning: { dataset_path: '/home/hyperd/.local/share/nixos-ai-stack/fine-tuning/dataset.jsonl', samples: 18 }
+                },
+                'token-savings.json': {
+                    timestamp: new Date().toISOString(),
+                    routing: { local_percent: 65.0 },
+                    cache: { hit_rate: 28.0 }
+                },
+                'keyword-signals.json': {
+                    timestamp: new Date().toISOString(),
+                    status: 'ok',
+                    report_path: 'docs/development/IMPROVEMENT-DISCOVERY-REPORT-2025-12-22.md',
+                    candidates: [
+                        { url: 'https://github.com/qdrant/qdrant/releases', repo: 'qdrant/qdrant', score: 56.0, release: 'v1.16.3', release_url: 'https://github.com/qdrant/qdrant/releases/tag/v1.16.3', stars: 27767 },
+                        { url: 'https://github.com/open-webui/open-webui/releases', repo: 'open-webui/open-webui', score: 48.0, release: 'v0.6.43', release_url: 'https://github.com/open-webui/open-webui/releases/tag/v0.6.43', stars: 118476 }
+                    ],
+                    signals: [
+                        { url: 'https://www.reddit.com/r/LocalLLaMA/', note: 'social signal; requires corroboration' },
+                        { url: 'https://news.ycombinator.com/', note: 'social signal; requires corroboration' }
+                    ],
+                    sources: []
                 }
             };
             return mock[filename] || {};
@@ -1579,6 +1910,14 @@
         // Update system metrics
         function updateSystemMetrics(data) {
             if (!data) return;
+
+            if (data.host_name) {
+                document.getElementById('hostname').textContent = data.host_name;
+                document.getElementById('hostnameDetail').textContent = data.host_name;
+            } else {
+                document.getElementById('hostname').textContent = 'nixos';
+                document.getElementById('hostnameDetail').textContent = 'nixos';
+            }
 
             document.getElementById('cpuUsage').innerHTML = `${data.cpu.usage_percent.toFixed(1)}<span class="metric-unit">%</span>`;
             document.getElementById('cpuModel').textContent = data.cpu.model || '--';
@@ -1612,24 +1951,38 @@
             document.getElementById('diskTotal').textContent = data.disk.total;
 
             // Update CPU chart
-            cpuHistory.push(data.cpu.usage_percent);
-            if (cpuHistory.length > 20) cpuHistory.shift();
+            if (cpuChart && memoryChart && diskChart && gpuChart) {
+                cpuHistory.push(data.cpu.usage_percent);
+                if (cpuHistory.length > 20) cpuHistory.shift();
 
-            cpuChart.data.labels = cpuHistory.map((_, i) => '');
-            cpuChart.data.datasets[0].data = cpuHistory;
-            cpuChart.update('none');
+                cpuChart.data.labels = cpuHistory.map(() => '');
+                cpuChart.data.datasets[0].data = cpuHistory;
+                cpuChart.update('none');
 
-            memoryHistory.push(data.memory.percent);
-            if (memoryHistory.length > 20) memoryHistory.shift();
-            memoryChart.data.labels = memoryHistory.map(() => '');
-            memoryChart.data.datasets[0].data = memoryHistory;
-            memoryChart.update('none');
+                memoryHistory.push(data.memory.percent);
+                if (memoryHistory.length > 20) memoryHistory.shift();
+                memoryChart.data.labels = memoryHistory.map(() => '');
+                memoryChart.data.datasets[0].data = memoryHistory;
+                memoryChart.update('none');
 
-            diskHistory.push(parseFloat(data.disk.percent));
-            if (diskHistory.length > 20) diskHistory.shift();
-            diskChart.data.labels = diskHistory.map(() => '');
-            diskChart.data.datasets[0].data = diskHistory;
-            diskChart.update('none');
+                diskHistory.push(parseFloat(data.disk.percent));
+                if (diskHistory.length > 20) diskHistory.shift();
+                diskChart.data.labels = diskHistory.map(() => '');
+                diskChart.data.datasets[0].data = diskHistory;
+                diskChart.update('none');
+            }
+
+            let gpuValue = 0;
+            if (gpu.busy_percent !== null && gpu.busy_percent !== undefined && gpu.busy_percent !== 'null') {
+                gpuValue = Number(gpu.busy_percent) || 0;
+            }
+            if (gpuChart) {
+                gpuHistory.push(gpuValue);
+                if (gpuHistory.length > 20) gpuHistory.shift();
+                gpuChart.data.labels = gpuHistory.map(() => '');
+                gpuChart.data.datasets[0].data = gpuHistory;
+                gpuChart.update('none');
+            }
         }
 
         // Update LLM status
@@ -1643,12 +1996,17 @@
             let onlineCount = 0;
 
             for (const [key, service] of Object.entries(services)) {
+                if (!service || !service.status) {
+                    continue;
+                }
+
                 if (service.status === 'online') onlineCount++;
 
                 const item = document.createElement('div');
                 item.className = `status-item ${service.status}`;
+                const label = key.replace(/_/g, ' ').toUpperCase();
                 item.innerHTML = `
-                    <span class="status-label">${key.toUpperCase()}</span>
+                    <span class="status-label">${label}</span>
                     <span class="status-badge ${service.status}">
                         <span class="status-dot"></span>
                         ${service.status.toUpperCase()}
@@ -1672,8 +2030,8 @@
 
             const aidb = data.services.aidb || { status: 'offline', services: {} };
             const qdrant = data.services.qdrant || {};
-            const ollama = data.services.ollama || { models: [] };
-            const lemonade = data.services.lemonade || { models: [] };
+            const llamaCpp = data.services.llama_cpp || { models: [] };
+            const embeddings = data.services.embeddings || { models: [] };
 
             const items = [
                 {
@@ -1687,14 +2045,14 @@
                     status: (qdrant.collections || 0) > 0 ? 'online' : 'warning'
                 },
                 {
-                    label: 'Ollama Models',
-                    value: `${(ollama.models || []).length} available`,
-                    status: (ollama.models || []).length > 0 ? 'online' : 'warning'
+                    label: 'llama.cpp Models',
+                    value: `${(llamaCpp.models || []).length} loaded`,
+                    status: (llamaCpp.models || []).length > 0 ? 'online' : 'warning'
                 },
                 {
-                    label: 'Lemonade Models',
-                    value: `${(lemonade.models || []).length} loaded`,
-                    status: (lemonade.models || []).length > 0 ? 'online' : 'warning'
+                    label: 'Embedding Models',
+                    value: `${(embeddings.models || []).length} available`,
+                    status: (embeddings.models || []).length > 0 ? 'online' : 'warning'
                 }
             ];
 
@@ -1755,6 +2113,35 @@
             } else {
                 const sample = devices.slice(0, 10).map(d => `${d.ip || 'unknown'} (${d.mac || 'n/a'}) ${d.state || ''}`).join(', ');
                 document.getElementById('networkDevices').textContent = sample;
+            }
+
+            const traffic = data.traffic || {};
+            const iface = traffic.iface || '--';
+            document.getElementById('netIface').textContent = iface;
+
+            if (traffic.rx_bytes !== undefined && traffic.tx_bytes !== undefined) {
+                const now = Date.parse(data.timestamp) || Date.now();
+                if (lastNetSample && lastNetSample.ts) {
+                    const deltaSec = Math.max((now - lastNetSample.ts) / 1000, 1);
+                    const rxRate = Math.max((traffic.rx_bytes - lastNetSample.rx) / deltaSec, 0);
+                    const txRate = Math.max((traffic.tx_bytes - lastNetSample.tx) / deltaSec, 0);
+
+                    document.getElementById('netRxRate').textContent = `${(rxRate / 1024).toFixed(1)} KB/s`;
+                    document.getElementById('netTxRate').textContent = `${(txRate / 1024).toFixed(1)} KB/s`;
+
+                    if (networkChart) {
+                        networkRxHistory.push(rxRate / 1024);
+                        networkTxHistory.push(txRate / 1024);
+                        if (networkRxHistory.length > 20) networkRxHistory.shift();
+                        if (networkTxHistory.length > 20) networkTxHistory.shift();
+                        networkChart.data.labels = networkRxHistory.map(() => '');
+                        networkChart.data.datasets[0].data = networkRxHistory;
+                        networkChart.data.datasets[1].data = networkTxHistory;
+                        networkChart.update('none');
+                    }
+                }
+
+                lastNetSample = { ts: now, rx: traffic.rx_bytes, tx: traffic.tx_bytes };
             }
         }
 
@@ -1873,10 +2260,123 @@
 
             const summary = data.summary;
             document.getElementById('telemetryTotal').textContent = summary.total_events ?? '--';
-            const localRate = (summary.local_usage_rate ?? 0) * 100;
+            const localRate = parseFloat(summary.local_usage_rate ?? 0);
             document.getElementById('telemetryLocalRate').textContent = `${localRate.toFixed(1)}%`;
             document.getElementById('telemetryTokens').textContent = summary.tokens_saved ?? 0;
             document.getElementById('telemetryLast').textContent = formatTimestampWithStaleness(summary.last_event_at, 30);
+        }
+
+        function updateHybridMetrics(hybrid, tokenSavings) {
+            if (!hybrid) return;
+
+            const status = hybrid.status || 'offline';
+            document.getElementById('hybridStatus').textContent = status.toUpperCase();
+            document.getElementById('hybridBadge').textContent = status === 'online' ? 'ONLINE' : 'OFFLINE';
+
+            const telemetry = hybrid.telemetry || {};
+            document.getElementById('hybridEvents').textContent = telemetry.events ?? 0;
+
+            const avgScore = parseFloat(telemetry.avg_value_score ?? 0);
+            document.getElementById('hybridAvgValue').textContent = avgScore.toFixed(2);
+            document.getElementById('hybridHighValue').textContent = telemetry.high_value_count ?? 0;
+
+            const learning = hybrid.learning || {};
+            document.getElementById('hybridPatterns').textContent = learning.pattern_extractions ?? 0;
+
+            const routingPercent = parseFloat(tokenSavings?.routing?.local_percent ?? 0);
+            document.getElementById('hybridLocalPercent').textContent = `${routingPercent.toFixed(1)}%`;
+            const cacheHit = parseFloat(tokenSavings?.cache?.hit_rate ?? 0);
+            document.getElementById('hybridCacheHit').textContent = `${cacheHit.toFixed(1)}%`;
+
+            const scores = telemetry.value_scores_recent || [];
+            document.getElementById('hybridValueScores').textContent = scores.length
+                ? scores.map(score => score.toFixed(2)).join(' → ')
+                : '--';
+        }
+
+        function updateLearningMetrics(data) {
+            if (!data) return;
+
+            const interactions = data.interactions || {};
+            const patterns = data.patterns || {};
+            const scoring = data.value_scoring || {};
+            const fineTuning = data.fine_tuning || {};
+
+            document.getElementById('learningTotal').textContent = interactions.total ?? 0;
+            document.getElementById('learningHighValue').textContent = interactions.high_value ?? 0;
+
+            const learningRate = parseFloat(patterns.learning_rate ?? 0);
+            document.getElementById('learningRate').textContent = learningRate.toFixed(3);
+
+            const avgScore = parseFloat(scoring.avg_score ?? 0);
+            document.getElementById('learningAvgScore').textContent = avgScore.toFixed(2);
+            document.getElementById('learningPatterns').textContent = patterns.extractions ?? 0;
+            document.getElementById('learningFinetune').textContent = fineTuning.samples ?? 0;
+        }
+
+        function updateDiscoverySignals(data) {
+            if (!data) return;
+
+            const badge = document.getElementById('discoveryBadge');
+            const candidatesEl = document.getElementById('discoveryCandidates');
+            const signalsEl = document.getElementById('discoverySignals');
+
+            const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+            const signals = Array.isArray(data.signals) ? data.signals : [];
+            const candidateCount = data.summary?.candidate_count ?? candidates.length ?? 0;
+            const signalCount = data.summary?.signal_count ?? signals.length ?? 0;
+
+            // Show meaningful badge based on what we have
+            if (candidateCount > 0) {
+                badge.textContent = `${candidateCount} High-Value`;
+            } else if (signalCount > 0) {
+                badge.textContent = `${signalCount} Signals`;
+            } else {
+                badge.textContent = 'No Data';
+            }
+
+            const renderList = (container, items, emptyLabel, limit) => {
+                container.innerHTML = '';
+                if (!items.length) {
+                    const empty = document.createElement('div');
+                    empty.className = 'data-item';
+                    empty.textContent = emptyLabel;
+                    container.appendChild(empty);
+                    return;
+                }
+
+                items.slice(0, limit).forEach((item) => {
+                    const entry = document.createElement('div');
+                    entry.className = 'data-item';
+
+                    const label = document.createElement('div');
+                    const link = document.createElement('a');
+                    link.href = item.release_url || item.url || '#';
+                    link.target = '_blank';
+                    link.rel = 'noopener';
+                    link.textContent = item.repo || item.url || 'Unknown source';
+                    link.style.color = 'var(--text-primary)';
+                    link.style.textDecoration = 'none';
+                    label.appendChild(link);
+
+                    const meta = document.createElement('div');
+                    meta.className = 'data-meta';
+                    if (item.score !== undefined) {
+                        meta.textContent = `Score ${item.score}`;
+                    } else if (item.note) {
+                        meta.textContent = item.note;
+                    } else {
+                        meta.textContent = `Signals ${signalCount}`;
+                    }
+
+                    entry.appendChild(label);
+                    entry.appendChild(meta);
+                    container.appendChild(entry);
+                });
+            };
+
+            renderList(candidatesEl, candidates, 'No high-value mentions yet', 6);
+            renderList(signalsEl, signals, 'No low-trust signals yet', 6);
         }
 
         // Update feedback pipeline metrics
@@ -1899,8 +2399,8 @@
 
             document.getElementById('proofAidb').textContent = (data.aidb_status || 'offline').toUpperCase();
             document.getElementById('proofRag').textContent = data.rag?.collection_count ?? '--';
-            document.getElementById('proofOllama').textContent = data.llm?.ollama_models ?? '--';
-            document.getElementById('proofLemonade').textContent = data.llm?.lemonade_models ?? '--';
+            document.getElementById('proofLlamaCpp').textContent = data.llm?.llama_cpp_models ?? '--';
+            document.getElementById('proofLlamaCpp').textContent = data.llm?.llama_cpp_models ?? '--';
             document.getElementById('proofSkills').textContent = data.skills?.count ?? '--';
             document.getElementById('proofTelemetry').textContent = data.telemetry?.events ?? '--';
             document.getElementById('proofContainers').textContent = data.orchestration?.containers_running ?? '--';

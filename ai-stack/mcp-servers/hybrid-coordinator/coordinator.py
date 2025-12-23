@@ -5,7 +5,7 @@ Version: 1.0.0
 Date: 2025-12-20
 
 MCP (Model Context Protocol) server that coordinates between:
-- Local LLMs (Lemonade, Ollama)
+- Local LLMs (llama.cpp, Ollama)
 - Remote APIs (Claude, GPT)
 - RAG system (Qdrant)
 - Semantic caching

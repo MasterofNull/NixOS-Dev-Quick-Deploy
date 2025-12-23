@@ -9,7 +9,7 @@
 ## What Is This System?
 
 A **unified AI development environment** that combines:
-- **Local LLMs** (Lemonade/Ollama) for fast, cheap inference
+- **Local LLMs** (llama.cpp) for fast, cheap inference
 - **Vector Database** (Qdrant) for context storage and retrieval
 - **Continuous Learning** that improves from every interaction
 - **Hybrid Architecture** that reduces remote API costs by 30-50%
@@ -45,14 +45,14 @@ A **unified AI development environment** that combines:
 - Fast semantic search (< 100ms)
 - 5 collections for different data types
 
-### 2. **Lemonade GGUF Inference** (Port 8080)
+### 2. **llama.cpp GGUF Inference** (Port 8080)
 - Runs Qwen Coder 7B locally
 - Good for: code explanation, syntax checking, simple refactoring
 - Fast (10-30 tokens/sec on GPU)
 
-### 3. **Ollama** (Port 11434)
-- Provides embeddings (nomic-embed-text)
-- Converts text to vectors for Qdrant
+### 3. **Embedding Models** (Sentence Transformers)
+- Provides embeddings for RAG (e.g., `all-MiniLM-L6-v2`)
+- Stored in the local Hugging Face cache and used by AIDB
 
 ### 4. **Learning System**
 - Tracks all interactions
@@ -107,7 +107,7 @@ Load only what you need, not everything
 
 ## Quick Stats
 
-- **Services**: 7+ (Qdrant, Ollama, Lemonade, WebUI, PostgreSQL, Redis, MindsDB, AIDB)
+- **Services**: 7+ (Qdrant, llama.cpp, WebUI, PostgreSQL, Redis, MindsDB, AIDB)
 - **Vector Collections**: 5
 - **Token Reduction**: 30-50% average
 - **Response Time**: Local < 1s, Hybrid < 2s

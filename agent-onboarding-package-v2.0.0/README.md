@@ -45,7 +45,7 @@ chmod +x nixos-quick-deploy.sh
 | **Cursor** | Flatpak + launcher | AI-assisted IDE with GPT-4/Claude |
 | **Continue** | VSCodium extension | In-editor AI completions |
 | **Codeium** | VSCodium extension | Free AI autocomplete |
-| **GPT CLI** | Command-line tool | Query OpenAI-compatible endpoints (local Lemonade or remote) |
+| **GPT CLI** | Command-line tool | Query OpenAI-compatible endpoints (local llama.cpp or remote) |
 | **Aider** | CLI code assistant | AI pair programming from terminal |
 | **Lemonade Server** | Docker Compose via `local-ai-starter` | Local OpenAI-compatible runtime with Qwen3-Coder-30B-A3B |
 | **Redis Insight** | Docker Compose (trimmed stack) | Visualize Redis caching used by local agents |
@@ -101,7 +101,7 @@ chmod +x nixos-quick-deploy.sh
 
 **AI Services (Systemd):**
 - Qdrant (vector database, enabled by default)
-- Lemonade optional helper unit (exposed via local-ai-starter compose)
+- llama.cpp optional helper unit (exposed via local-ai-starter compose)
 - Jupyter Lab (web-based notebooks, user service)
 
 ### Flatpak Applications
@@ -331,15 +331,15 @@ Once scaffolded, manage the services with standard Compose commands:
 cd ~/Documents/local-ai-stack
 docker compose up -d    # or podman-compose up -d
 docker compose ps
-docker compose logs -f lemonade
+docker compose logs -f llama-cpp
 ```
 
-This keeps Lemonade and the public databases local to this repository. When you clone the private AI-Optimizer stack later, follow `docs/HAND-IN-GLOVE-INTEGRATION.md` so the hooks in `lib/ai-optimizer*.sh` can discover it without changing the base system.
+This keeps llama.cpp and the public databases local to this repository. When you clone the private AI-Optimizer stack later, follow `docs/HAND-IN-GLOVE-INTEGRATION.md` so the hooks in `lib/ai-optimizer*.sh` can discover it without changing the base system.
 
 ### Model Profiles
 
 Use `scripts/ai-model-manager.sh` (alias `amm`) to inspect and switch YAML
-profiles for Lemonade/TGI containers:
+profiles for llama.cpp/TGI containers:
 
 ```bash
 ln -s ~/Documents/NixOS-Dev-Quick-Deploy/scripts/ai-model-manager.sh ~/.local/bin/amm
@@ -1154,11 +1154,11 @@ docker compose up -d           # or podman-compose up -d
 
 # Inspect
 docker compose ps
-curl http://localhost:8000/health   # Lemonade
+curl http://localhost:8000/health   # llama.cpp
 docker compose exec redis redis-cli ping
 ```
 
-Keep `ai-servicectl` reserved for the private AI-Optimizer stack—it will discover Lemonade automatically once the glove repo is present, but the trimmed Compose bundle above remains fully standalone.
+Keep `ai-servicectl` reserved for the private AI-Optimizer stack—it will discover llama.cpp automatically once the glove repo is present, but the trimmed Compose bundle above remains fully standalone.
 
 ### 3. VSCodium vs Cursor - When to Use Each
 - **VSCodium**: General development, Claude Code integration, Continue AI
@@ -1200,8 +1200,8 @@ flatpak update
 
 ### AI Runtime Orchestration
 - `./scripts/local-ai-starter.sh` &mdash; prepare directories, scaffold Compose assets, or layer OpenSkills tooling.
-- `docker compose up -d` inside `~/Documents/local-ai-stack` &mdash; bring Postgres, Redis/RedisInsight, and Lemonade online.
-- `docker compose logs -f lemonade` &mdash; tail the OpenAI-compatible runtime.
+- `docker compose up -d` inside `~/Documents/local-ai-stack` &mdash; bring Postgres, Redis/RedisInsight, and llama.cpp online.
+- `docker compose logs -f llama-cpp` &mdash; tail the OpenAI-compatible runtime.
 - `./scripts/deploy-aidb-mcp-server.sh` &mdash; when the private AI-Optimizer repo is present, bootstrap MCP services without touching the base system.
 - `ai-servicectl start|status` &mdash; optional helper that hands control to the glove stack only after it has been installed.
 

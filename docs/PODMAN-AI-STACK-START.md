@@ -1,5 +1,9 @@
 # Starting the Podman AI Stack
 
+> ⚠️ **Legacy doc:** The current stack uses `./scripts/ai-stack-manage.sh` with
+> `ai-stack/compose/docker-compose.yml`. Ollama has been removed and llama.cpp
+> is the local inference runtime. Use this file only for historical reference.
+
 ## Quick Start
 
 The Podman AI stack is configured but **not started automatically**. You need to start it manually.
@@ -25,15 +29,15 @@ Before running `podman-ai-stack up`, make sure the supporting systemd units exis
    ```bash
    systemctl --user list-unit-files 'podman-local-ai*'
    ```
-   You should see entries for the network plus `ollama`, `lemonade`, `open-webui`, `qdrant`, and `mindsdb` services.
+   You should see entries for the network plus `ollama`, `llama-cpp`, `open-webui`, `qdrant`, and `mindsdb` services.
 
 If any unit is missing, re-run the enable script above or re-apply your Home Manager configuration.
 
 ### Automatic Prefetch (NixOS Quick Deploy v5+)
 
-- Phase 5 now pre-pulls all Podman images (Ollama/Lemonade, Open WebUI, Qdrant, MindsDB) whenever `LOCAL_AI_STACK_ENABLED=true`, so `podman-ai-stack up` no longer times out waiting for the first `podman pull`.
-- Phase 6 automatically downloads the default Lemonade GGUF models (Qwen3-4B, Qwen2.5-Coder-7B, DeepSeek 6.7B) when the Lemonade backend is selected **and** a Hugging Face token is configured. The models land in `~/.local/share/podman-ai-stack/lemonade-models/`, ready for the running container.
-- You can still rerun the helper manually via `scripts/download-lemonade-models.sh --all` if you add new models later.
+- Phase 5 now pre-pulls all Podman images (llama.cpp, Open WebUI, Qdrant, MindsDB) whenever `LOCAL_AI_STACK_ENABLED=true`, so `podman-ai-stack up` no longer times out waiting for the first `podman pull`.
+- Phase 6 automatically downloads the default llama.cpp GGUF models (Qwen3-4B, Qwen2.5-Coder-7B, DeepSeek 6.7B) when the llama.cpp backend is selected **and** a Hugging Face token is configured. The models land in `~/.local/share/podman-ai-stack/llama-cpp-models/`, ready for the running container.
+- You can still rerun the helper manually via `scripts/download-llama-cpp-models.sh --all` if you add new models later.
 
 ### Method 1: Using Systemd (Recommended)
 
@@ -68,14 +72,15 @@ If the `podman-ai-stack` helper isn't available yet, you can start containers ma
 # Ensure network exists
 podman network exists local-ai || podman network create local-ai
 
-# Start Ollama
+# Start llama.cpp
 podman run -d \
-  --name local-ai-ollama \
+  --name local-ai-llama-cpp \
   --network local-ai \
   --label nixos.quick-deploy.ai-stack=true \
-  -p 11434:11434 \
-  -v $HOME/.local/share/podman-ai-stack/ollama:/root/.ollama \
-  docker.io/ollama/ollama:latest
+  -p 8080:8080 \
+  -v $HOME/.local/share/podman-ai-stack/llama-cpp-models:/models \
+  ghcr.io/ggml-org/llama.cpp:server \
+  --model /models/qwen2.5-coder-7b-instruct-q4_k_m.gguf --host 0.0.0.0 --port 8080
 
 # Start Open WebUI
 podman run -d \
@@ -126,7 +131,7 @@ podman logs local-ai-open-webui
 
 Once running, you can access:
 
-- **Ollama API**: `http://localhost:11434`
+- **llama.cpp API**: `http://localhost:8080`
 - **Open WebUI**: `http://localhost:3001` (web interface)
 - **Qdrant HTTP**: `http://localhost:6333`
 - **Qdrant gRPC**: `localhost:6334`
@@ -214,7 +219,7 @@ podman stop local-ai-ollama local-ai-open-webui local-ai-qdrant local-ai-mindsdb
 
 All container data is stored in `~/.local/share/podman-ai-stack/`:
 
-- `ollama/` - Ollama model cache
+- `llama-cpp-models/` - llama.cpp GGUF cache
 - `open-webui/` - Open WebUI chat history and settings
 - `qdrant/` - Qdrant vector database files
 - `mindsdb/` - MindsDB database files

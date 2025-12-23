@@ -105,7 +105,7 @@ These scripts rely on `lib/` for logging, validation, and state where possible.
   - Accessible at `http://localhost:8091`.
   - Stores project docs, decisions, and tool inventories for agent consumption.
 - **Local Model Runtime**
-  - OpenAI-compatible container runtimes (for example Lemonade or llama.cpp), exposed via HTTP APIs. Heavier GPU-centric runtimes such as vLLM are reserved for dedicated server environments rather than laptop/desktop defaults.
+  - OpenAI-compatible container runtimes (for example llama.cpp or llama.cpp), exposed via HTTP APIs. Heavier GPU-centric runtimes such as vLLM are reserved for dedicated server environments rather than laptop/desktop defaults.
   - Executes code analysis, documentation extraction, and other batch tasks.
 - **MCP Servers**
   - `mcp-nixos` – NixOS/Home Manager package and configuration search.

@@ -207,7 +207,7 @@ For developer laptops and desktops that are used to design edge and embedded sys
   These profiles are suggested automatically based on hardware but always remain user‑selectable during the Phase 1/Phase 3 prompts.
 - **Model registry:** Back the profiles with a small, declarative model registry (for example `config/edge-model-registry.json`) that records, for each model:
   - An identifier, family, and parameter size.
-  - Quantization format (e.g., GGUF Q4/Q5) and intended runtime (`llama_cpp`, `lemonade`).
+  - Quantization format (e.g., GGUF Q4/Q5) and intended runtime (`llama_cpp`, `llama-cpp`).
   - Primary tasks (chat, code, planning) and suitable `ai_profile` values.
   - Expected storage location under the user’s home (for example `~/.local/share/ai-models/...`).
   The registry is mirrored into AIDB so agents can discover available models and choose defaults per task.
@@ -219,7 +219,7 @@ For developer laptops and desktops that are used to design edge and embedded sys
   - Suggest an `ai_profile` and a small set of models from the registry per project.
   - Allow users to override choices and experiment, while agents continue to respect the registry as the single source of truth.
 
-The concrete wiring for `ai_profile` flags, the edge model registry, and containerized inference services lives in the implementation documents and Nix templates (`docs/AI_INTEGRATION.md`, `docs/DEVELOPMENT-ROADMAP.md`, and `templates/local-ai-stack/`). The actual LLM runtimes (such as `llama.cpp` or Lemonade) are developed and maintained as separate Podman/Docker stacks; this project only provides optional scaffolding and integration hooks, not the containers themselves. This section defines the long‑term strategy so that future changes remain aligned with the edge‑optimized, agent‑friendly design.
+The concrete wiring for `ai_profile` flags, the edge model registry, and containerized inference services lives in the implementation documents and Nix templates (`docs/AI_INTEGRATION.md`, `docs/DEVELOPMENT-ROADMAP.md`, and `templates/local-ai-stack/`). The actual LLM runtimes (such as `llama.cpp` or llama.cpp) are developed and maintained as separate Podman/Docker stacks; this project only provides optional scaffolding and integration hooks, not the containers themselves. This section defines the long‑term strategy so that future changes remain aligned with the edge‑optimized, agent‑friendly design.
 
 ## 7. Conclusion
 

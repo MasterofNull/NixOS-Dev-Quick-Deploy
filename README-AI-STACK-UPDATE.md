@@ -16,7 +16,7 @@ The AI-Optimizer stack is now a **first-class, public component** of this reposi
 
 This single command gives you:
 - ✅ **AIDB MCP Server** - PostgreSQL + TimescaleDB + Qdrant vector database
-- ✅ **Lemonade vLLM** - Local model inference (Qwen, DeepSeek, Phi, CodeLlama)
+- ✅ **llama.cpp vLLM** - Local model inference (Qwen, DeepSeek, Phi, CodeLlama)
 - ✅ **Agentic Skills** - Specialized AI agents for code, deployment, testing
 - ✅ **MCP Servers** - Model Context Protocol servers for NixOS, GitHub, and more
 - ✅ **Shared Data** - Persistent data that survives reinstalls (`~/.local/share/nixos-ai-stack`)
@@ -74,7 +74,7 @@ Replace the existing table with:
 | Component | Integration | Purpose |
 |-----------|-------------|---------|
 | **AIDB MCP Server** | Phase 9 deployment | PostgreSQL + TimescaleDB + Qdrant vector DB + FastAPI MCP server |
-| **Lemonade vLLM** | Podman Compose | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |
+| **llama.cpp vLLM** | Podman Compose | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |
 | **Agentic Skills** | `ai-stack/agents/` | Specialized agents: nixos-deployment, webapp-testing, code-review, canvas-design |
 | **MCP Servers** | `ai-stack/mcp-servers/` | Model Context Protocol servers for NixOS, GitHub, and custom integrations |
 | **Model Registry** | `ai-stack/models/` | Model catalog, download scripts, and management tools |
@@ -82,7 +82,7 @@ Replace the existing table with:
 | **Cursor** | Flatpak + launcher | AI-assisted IDE with GPT-4/Claude |
 | **Continue** | VSCodium extension | In-editor AI completions |
 | **Codeium** | VSCodium extension | Free AI autocomplete |
-| **GPT CLI** | Command-line tool | Query OpenAI-compatible endpoints (local Lemonade or remote) |
+| **GPT CLI** | Command-line tool | Query OpenAI-compatible endpoints (local llama.cpp or remote) |
 | **Aider** | CLI code assistant | AI pair programming from terminal |
 | **Redis + Insight** | Podman Compose | Caching and visualization for AI agents |
 | **LM Studio** | Flatpak app | Desktop LLM manager |
@@ -118,7 +118,7 @@ Insert this after the "Useful Commands" section:
 
 # Test individual endpoints
 curl http://localhost:8091/health | jq .   # AIDB MCP server
-curl http://localhost:8080/health | jq .   # Lemonade inference
+curl http://localhost:8080/health | jq .   # llama.cpp inference
 curl http://localhost:6333/collections | jq .  # Qdrant vector DB
 ```
 
@@ -138,7 +138,7 @@ curl http://localhost:6333/collections | jq .  # Qdrant vector DB
 ├── postgres/         # PostgreSQL database
 ├── redis/            # Redis persistence
 ├── qdrant/           # Vector database
-├── lemonade-models/  # Downloaded models
+├── llama-cpp-models/  # Downloaded models
 ├── imports/          # Document imports
 └── exports/          # Exported data
 

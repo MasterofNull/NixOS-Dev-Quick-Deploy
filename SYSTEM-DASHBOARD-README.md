@@ -11,7 +11,7 @@ or
 ## Features
 
 ### 📊 Real-time Monitoring
-- Service health checks (Lemonade, Qdrant, Ollama)
+- Service health checks (llama.cpp, Qdrant, Ollama)
 - Learning system metrics
 - Federation status
 - System resource usage
@@ -87,9 +87,9 @@ All system documentation in one place:
 ## API Endpoints Used
 
 The dashboard connects to:
-- `http://localhost:8080/health` - Lemonade General
-- `http://localhost:8001/health` - Lemonade Coder
-- `http://localhost:8003/health` - Lemonade DeepSeek
+- `http://localhost:8080/health` - llama.cpp General
+- `http://localhost:8001/health` - llama.cpp Coder
+- `http://localhost:8003/health` - llama.cpp DeepSeek
 - `http://localhost:6333/collections` - Qdrant
 - `http://localhost:11434/api/tags` - Ollama
 - `http://localhost:8092/manifest` - Federation (when enabled)

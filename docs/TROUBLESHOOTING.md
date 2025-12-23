@@ -93,15 +93,15 @@ After installation, you need to configure Continue to use your LLM backend:
 
 Choose one of these options:
 
-**Option A: Use Local Ollama**
+**Option A: Use Local llama.cpp**
 ```json
 {
   "models": [
     {
-      "title": "Ollama",
-      "provider": "ollama",
-      "model": "codellama:7b",
-      "apiBase": "http://localhost:11434"
+      "title": "llama.cpp",
+      "provider": "openai",
+      "model": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+      "apiBase": "http://localhost:8080"
     }
   ]
 }
@@ -140,14 +140,14 @@ Choose one of these options:
 Make sure your chosen LLM service is running:
 
 ```bash
-# For Ollama
-systemctl --user start ollama
+# For llama.cpp (Podman stack)
+./scripts/ai-stack-manage.sh up
 
 # For Hugging Face TGI
 systemctl --user start huggingface-tgi
 
 # Verify it's running
-curl http://localhost:11434/api/tags  # Ollama
+curl http://localhost:8080/health     # llama.cpp
 # or
 curl http://localhost:8080/health     # TGI
 ```
@@ -462,45 +462,41 @@ fi
 
 ---
 
-## Ollama Service Not Starting
+## llama.cpp Service Not Starting
 
 ### Check Status
 
 ```bash
-systemctl --user status ollama
-journalctl --user -u ollama -f
+./scripts/ai-stack-manage.sh status
+podman logs -f local-ai-llama-cpp
 ```
 
 ### Common Issues
 
 **1. Port Already in Use**
 ```bash
-# Check what's using port 11434
-sudo ss -tulpn | grep 11434
+# Check what's using port 8080
+sudo ss -tulpn | grep 8080
 
 # Kill the process if needed
 sudo kill <PID>
 
 # Restart
-systemctl --user restart ollama
+./scripts/ai-stack-manage.sh restart
 ```
 
 **2. Model Not Downloaded**
 ```bash
-# Download a model
-ollama pull codellama:7b
+# Download models
+./scripts/download-llama-cpp-models.sh
 
 # List models
-ollama list
-
-# Test
-ollama run codellama:7b "Hello"
+curl http://localhost:8080/v1/models | jq
 ```
 
 **3. Service Not Enabled**
 ```bash
-systemctl --user enable ollama
-systemctl --user start ollama
+./scripts/ai-stack-manage.sh up
 ```
 
 ---

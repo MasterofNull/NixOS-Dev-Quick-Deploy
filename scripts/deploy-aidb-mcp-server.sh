@@ -11,7 +11,7 @@
 # - PostgreSQL (tool registry, metadata, logs)
 # - Redis (caching, session state)
 # - Qdrant (vector search, embeddings)
-# - Ollama (local LLM inference)
+# - llama.cpp (local LLM inference)
 # - Open WebUI (chat interface)
 #
 # The MCP server provides:
@@ -49,7 +49,7 @@ readonly REDIS_HOST="localhost"
 readonly REDIS_PORT=6379
 readonly QDRANT_HTTP_PORT=6333
 readonly QDRANT_GRPC_PORT=6334
-readonly OLLAMA_PORT=11434
+readonly LLAMA_CPP_PORT=8080
 
 # Colors
 readonly RED='\033[0;31m'
@@ -127,9 +127,9 @@ check_services() {
         services_ok=false
     fi
 
-    # Check Ollama
-    if ! curl -sf "http://localhost:${OLLAMA_PORT}/api/tags" >/dev/null 2>&1; then
-        log_warning "Ollama not running on port ${OLLAMA_PORT}"
+    # Check llama.cpp
+    if ! curl -sf "http://localhost:${LLAMA_CPP_PORT}/health" >/dev/null 2>&1; then
+        log_warning "llama.cpp not running on port ${LLAMA_CPP_PORT}"
         services_ok=false
     fi
 
@@ -171,7 +171,21 @@ setup_postgres() {
     log_info "Setting up PostgreSQL database..."
 
     # Use podman exec to avoid password authentication
-    local postgres_container="mcp-postgres"
+    local postgres_container=""
+
+    postgres_container="$(
+        podman ps -a --format "{{.Names}}" 2>/dev/null | awk '
+            $0 == "mcp-postgres" { print; found=1 }
+            $0 == "local-ai-postgres" && !found { print; found=1 }
+            END { if (!found) exit 1 }
+        '
+    )" || true
+
+    if [[ -z "$postgres_container" ]]; then
+        log_error "No PostgreSQL container found (expected mcp-postgres or local-ai-postgres)"
+        log_info "Start the AI stack with: ./scripts/hybrid-ai-stack.sh up"
+        return 1
+    fi
 
     # Check if database exists
     if podman exec "$postgres_container" psql -U "$POSTGRES_USER" -lqt 2>/dev/null | cut -d \| -f 1 | grep -qw "$POSTGRES_DB"; then
@@ -268,8 +282,8 @@ setup_qdrant() {
 create_mcp_server() {
     log_info "Creating MCP server from template..."
 
-    # Copy template
-    cp "${PROJECT_ROOT}/templates/mcp-server-template.py" "${MCP_SERVER_DIR}/server.py"
+    # Copy AIDB MCP server implementation
+    cp -a "${PROJECT_ROOT}/ai-stack/mcp-servers/aidb/." "${MCP_SERVER_DIR}/"
 
     # Create configuration
     cat > "${MCP_CONFIG_DIR}/config.yaml" << EOF
@@ -302,17 +316,17 @@ database:
     grpc_port: ${QDRANT_GRPC_PORT}
 
 llm:
-  ollama:
-    host: "http://localhost:${OLLAMA_PORT}"
+  llama_cpp:
+    host: "http://localhost:${LLAMA_CPP_PORT}"
     models:
-      - phi4:latest
-      - qwen2.5-coder:7b
-      - llama3.2:latest
+      - qwen2.5-coder-7b-instruct-q4_k_m.gguf
 
-  default_model: "phi4:latest"
+  default_model: "qwen2.5-coder-7b-instruct-q4_k_m.gguf"
 
 tools:
   discovery_mode: "minimal"  # minimal | full
+  disclosure:
+    full_requires_api_key: true
   sandbox:
     enabled: true
     runner: "bubblewrap"  # bubblewrap | firejail
@@ -325,6 +339,10 @@ logging:
   file: "${MCP_LOG_DIR}/mcp-server.log"
   max_size: "100MB"
   backup_count: 5
+
+telemetry:
+  enabled: true
+  path: "${MCP_DATA_DIR}/telemetry/aidb-events.jsonl"
 
 security:
   api_key_file: "/run/secrets/mcp/api_key"
@@ -341,17 +359,28 @@ create_systemd_service() {
 
     mkdir -p "${HOME}/.config/systemd/user"
 
+    local venv_python="${MCP_SERVER_DIR}/.venv/bin/python"
+    local libstdcpp_path=""
+    local libstdcpp_dir=""
+    local ld_library_line=""
+
+    libstdcpp_path="$(find /nix/store -name libstdc++.so.6 -print -quit 2>/dev/null || true)"
+    if [[ -n "$libstdcpp_path" ]]; then
+        libstdcpp_dir="$(dirname "$libstdcpp_path")"
+        ld_library_line="Environment=\"LD_LIBRARY_PATH=${libstdcpp_dir}\""
+    fi
+
     cat > "${HOME}/.config/systemd/user/aidb-mcp-server.service" << EOF
 [Unit]
 Description=AIDB MCP Server (AI-Optimizer)
 Documentation=file://${AIDB_DIR}/README.md
-After=network.target podman-local-ai-ollama.service
+After=network.target podman-local-ai-llama-cpp.service
 Wants=podman-local-ai-qdrant.service
 
 [Service]
 Type=simple
 WorkingDirectory=${MCP_SERVER_DIR}
-ExecStart=${HOME}/.nix-profile/bin/python3 ${MCP_SERVER_DIR}/server.py --config ${MCP_CONFIG_DIR}/config.yaml
+ExecStart=${venv_python} ${MCP_SERVER_DIR}/server.py --config ${MCP_CONFIG_DIR}/config.yaml
 Restart=on-failure
 RestartSec=10
 
@@ -359,6 +388,7 @@ RestartSec=10
 Environment="PYTHONUNBUFFERED=1"
 Environment="MCP_DATA_DIR=${MCP_DATA_DIR}"
 Environment="MCP_LOG_DIR=${MCP_LOG_DIR}"
+${ld_library_line}
 
 # Logging
 StandardOutput=journal
@@ -378,44 +408,16 @@ EOF
 install_dependencies() {
     log_info "Installing Python dependencies..."
 
-    # Create requirements.txt
-    cat > "${MCP_SERVER_DIR}/requirements.txt" << EOF
-# AIDB MCP Server Dependencies
-# Version: 1.0.0
-
-# Web framework
-fastapi==0.115.0
-uvicorn[standard]==0.32.0
-pydantic==2.10.0
-
-# Database
-psycopg2-binary==2.9.10
-redis==5.2.0
-sqlalchemy==2.0.36
-alembic==1.14.0
-
-# Vector search
-qdrant-client==1.12.1
-
-# HTTP clients
-httpx==0.28.1
-aiohttp==3.11.0
-
-# LLM libraries
-langchain==0.3.13
-openai==1.59.3
-
-# Utilities
-pyyaml==6.0.2
-python-dotenv==1.0.1
-click==8.1.8
-
-# Monitoring
-prometheus-client==0.21.0
-EOF
+    cp "${PROJECT_ROOT}/ai-stack/mcp-servers/aidb/requirements.txt" "${MCP_SERVER_DIR}/requirements.txt"
 
     # Install dependencies (skip --user if in virtualenv)
-    pip3 install --break-system-packages -r "${MCP_SERVER_DIR}/requirements.txt" 2>&1 | grep -v "WARNING:" || true
+    python3 -m venv "${MCP_SERVER_DIR}/.venv"
+    "${MCP_SERVER_DIR}/.venv/bin/pip" install --upgrade pip
+
+    if ! "${MCP_SERVER_DIR}/.venv/bin/pip" install -r "${MCP_SERVER_DIR}/requirements.txt" 2>&1 | grep -v "WARNING:"; then
+        log_error "Dependency installation failed; check pip output above"
+        return 1
+    fi
 
     log_success "Dependencies installed"
 }

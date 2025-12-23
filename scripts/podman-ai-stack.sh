@@ -83,7 +83,7 @@ resolve_llm_backend() {
         return
     fi
 
-    echo "ollama"
+    echo "llama_cpp"
 }
 
 resolve_network() {
@@ -110,8 +110,7 @@ unit_exists() {
 ensure_directories() {
     local root="$1"
     mkdir -p \
-        "$root/ollama" \
-        "$root/lemonade-models" \
+        "$root/llama-cpp-models" \
         "$root/open-webui" \
         "$root/qdrant" \
         "$root/mindsdb"
@@ -221,9 +220,9 @@ main() {
     local backend
     backend=$(resolve_llm_backend)
 
-    local llm_container="${network}-ollama"
-    if [[ "$backend" == "lemonade" ]]; then
-        llm_container="${network}-lemonade"
+    local llm_container="${network}-llama-cpp"
+    if [[ "$backend" == "llama_cpp" ]]; then
+        llm_container="${network}-llama-cpp"
     fi
 
     local containers=(

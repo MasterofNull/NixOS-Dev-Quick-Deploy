@@ -48,28 +48,16 @@ podman logs local-ai-qdrant --tail 50
 }
 ```
 
-### Ollama (Embeddings)
+### Embeddings (Sentence Transformers)
+
+Embedding models are stored in the local Hugging Face cache and used by AIDB.
 
 ```bash
-# API check
-curl http://localhost:11434/api/tags
-
-# List models
-podman exec local-ai-ollama ollama list
-
-# Test embedding generation
-curl -X POST http://localhost:11434/api/embeddings \
-  -H "Content-Type: application/json" \
-  -d '{"model": "nomic-embed-text", "prompt": "test"}' | jq
-
-# Container logs
-podman logs local-ai-ollama --tail 50
+# Verify embedding model cache
+ls ~/.cache/huggingface/sentence-transformers
 ```
 
-**Expected Models**:
-- nomic-embed-text (384 dimensions)
-
-### Lemonade (GGUF Inference)
+### llama.cpp (GGUF Inference)
 
 ```bash
 # Health check
@@ -88,10 +76,10 @@ curl -X POST http://localhost:8080/v1/chat/completions \
   }' | jq
 
 # Check model download progress
-podman logs local-ai-lemonade | grep -i download
+podman logs local-ai-llama-cpp | grep -i download
 
 # Container status
-podman ps --filter "name=local-ai-lemonade"
+podman ps --filter "name=local-ai-llama-cpp"
 ```
 
 **Common States**:
@@ -181,7 +169,7 @@ podman stats --no-stream --filter "label=nixos.quick-deploy.ai-stack=true"
 podman system df
 
 # Specific container stats
-podman stats local-ai-lemonade --no-stream
+podman stats local-ai-llama-cpp --no-stream
 ```
 
 ### Restart Containers
@@ -210,8 +198,8 @@ import sys
 
 services = {
     "Qdrant": "http://localhost:6333/healthz",
-    "Ollama": "http://localhost:11434/api/tags",
-    "Lemonade": "http://localhost:8080/health",
+    "Embeddings": "local cache (~/.cache/huggingface/sentence-transformers)",
+    "llama.cpp": "http://localhost:8080/health",
     "Open WebUI": "http://localhost:3001",
 }
 
@@ -256,8 +244,8 @@ check_service() {
 }
 
 check_service "Qdrant" "http://localhost:6333/healthz"
-check_service "Ollama" "http://localhost:11434/api/tags"
-check_service "Lemonade" "http://localhost:8080/health"
+echo "Embeddings cache: $(ls ~/.cache/huggingface/sentence-transformers 2>/dev/null | wc -l) models"
+check_service "llama.cpp" "http://localhost:8080/health"
 check_service "Open WebUI" "http://localhost:3001"
 ```
 
@@ -338,7 +326,7 @@ podman stats --no-stream
 iostat -x 1 5
 
 # Check if models still downloading
-podman logs local-ai-lemonade | grep -i download
+podman logs local-ai-llama-cpp | grep -i download
 
 # Check GPU usage (if available)
 nvidia-smi

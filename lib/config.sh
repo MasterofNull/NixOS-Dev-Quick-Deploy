@@ -2537,6 +2537,17 @@ generate_nixos_system_config() {
         fi
         print_success "NixOS improvements modules copied to /etc/nixos/nixos-improvements"
 
+        local mobile_workstation_file="$system_improvements_dir/mobile-workstation.nix"
+        if [[ -f "$mobile_workstation_file" ]]; then
+            print_info "Ensuring lid close uses suspend-then-hibernate (12h) in $mobile_workstation_file"
+            sudo sed -i \
+                -e 's/HandleLidSwitch = lib.mkDefault "[^"]*";/HandleLidSwitch = lib.mkDefault "suspend-then-hibernate";/' \
+                -e 's/HandleLidSwitchDocked = lib.mkDefault "[^"]*";/HandleLidSwitchDocked = lib.mkDefault "suspend-then-hibernate";/' \
+                -e 's/HandleLidSwitchExternalPower = lib.mkDefault "[^"]*";/HandleLidSwitchExternalPower = lib.mkDefault "suspend-then-hibernate";/' \
+                -e 's/HibernateDelaySec=[0-9][0-9]*/HibernateDelaySec=43200/' \
+                "$mobile_workstation_file" || print_warning "Failed to enforce lid-close suspend-then-hibernate defaults"
+        fi
+
         # Also copy to home-manager config for testing.nix
         print_info "Syncing nixos-improvements to home-manager configuration..."
         local hm_improvements_dir="$HM_CONFIG_DIR/nixos-improvements"
@@ -4005,7 +4016,7 @@ EOF
     # replace_placeholder "$HOME_MANAGER_FILE" "@PODMAN_ROOTLESS_STORAGE@" "${PODMAN_ROOTLESS_STORAGE_BLOCK:-}"
     replace_placeholder "$HOME_MANAGER_FILE" "GIT_USER_SETTINGS_PLACEHOLDER" "$git_user_settings_block"
     replace_placeholder "$HOME_MANAGER_FILE" "LOCAL_AI_STACK_ENABLED_PLACEHOLDER" "${LOCAL_AI_STACK_ENABLED:-false}"
-    replace_placeholder "$HOME_MANAGER_FILE" "LLM_BACKEND_PLACEHOLDER" "$(nix_quote_string "${LLM_BACKEND:-ollama}")"
+    replace_placeholder "$HOME_MANAGER_FILE" "LLM_BACKEND_PLACEHOLDER" "$(nix_quote_string "${LLM_BACKEND:-llama_cpp}")"
     replace_placeholder "$HOME_MANAGER_FILE" "LLM_MODELS_PLACEHOLDER" "$(nix_quote_string "${LLM_MODELS:-gpt-oss,qwen-3,Apriel-1.5}")"
     replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_MODEL_ID_PLACEHOLDER" "$(nix_quote_string "$huggingface_model_id")"
     replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_SCOUT_MODEL_ID_PLACEHOLDER" "$(nix_quote_string "$huggingface_scout_model_id")"
