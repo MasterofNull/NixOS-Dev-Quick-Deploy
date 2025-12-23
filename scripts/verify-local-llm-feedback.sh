@@ -4,7 +4,7 @@
 set -euo pipefail
 
 AIDB_URL="${AIDB_URL:-http://localhost:8091}"
-LEMONADE_URL="${LEMONADE_URL:-http://localhost:8080}"
+LLAMA_CPP_URL="${LLAMA_CPP_BASE_URL:-http://localhost:8080}"
 TELEMETRY_PATH="${AIDB_TELEMETRY_PATH:-$HOME/.local/share/nixos-ai-stack/telemetry/aidb-events.jsonl}"
 HYBRID_TELEMETRY_PATH="${HYBRID_TELEMETRY_PATH:-$HOME/.local/share/nixos-ai-stack/telemetry/hybrid-events.jsonl}"
 AI_STACK_DATA="${AI_STACK_DATA:-$HOME/.local/share/nixos-ai-stack}"
@@ -37,11 +37,11 @@ stale_warning() {
   fi
 }
 
-info "Checking Lemonade health..."
-if curl -sf "${LEMONADE_URL%/}/health" >/dev/null 2>&1; then
-  success "Lemonade reachable at ${LEMONADE_URL%/}/health"
+info "Checking llama.cpp health..."
+if curl -sf "${LLAMA_CPP_URL%/}/health" >/dev/null 2>&1; then
+  success "llama.cpp reachable at ${LLAMA_CPP_URL%/}/health"
 else
-  warn "Lemonade not reachable at ${LEMONADE_URL%/}/health"
+  warn "llama.cpp not reachable at ${LLAMA_CPP_URL%/}/health"
 fi
 
 info "Triggering AIDB telemetry probe (local LLM call)..."

@@ -4,7 +4,7 @@
 # Date: 2025-11-22
 #
 # Purpose: Optional integration with AI-Optimizer AIDB MCP for:
-#   - Lemonade-powered code generation
+#   - llama.cpp-powered code generation
 #   - NixOS configuration assistance
 #   - ML-based system monitoring
 #   - Intelligent deployment recommendations
@@ -17,7 +17,7 @@
 # ============================================================================
 
 AIDB_BASE_URL="${AIDB_BASE_URL:-http://localhost:8091}"
-LEMONADE_BASE_URL="${LEMONADE_BASE_URL:-http://localhost:8080}"
+LLAMA_CPP_BASE_URL="${LLAMA_CPP_BASE_URL:-http://localhost:8080}"
 AI_ENABLED="${AI_ENABLED:-auto}"  # auto, true, false
 AI_AVAILABLE=false
 
@@ -101,8 +101,8 @@ ai_check_availability() {
     fi
 }
 
-ai_check_lemonade() {
-    local base="${LEMONADE_BASE_URL%/}"
+ai_check_llama_cpp() {
+    local base="${LLAMA_CPP_BASE_URL%/}"
     base="${base%/api/v1}"
     if curl -sf --max-time 2 "$base/health" > /dev/null 2>&1; then
         return 0
@@ -176,7 +176,7 @@ ai_display_model_menu() {
     cat <<EOF
 
 ╭───────────────────────────────────────────────────────────────────────────╮
-│ AI Model Selection (Lemonade)                                             │
+│ AI Model Selection (llama.cpp)                                             │
 │                                                                            │
 │ Detected GPU: $gpu_name
 │ Available VRAM: ${gpu_vram}GB
@@ -265,7 +265,7 @@ ai_display_cached_model_menu() {
         cat <<EOF
 
 ╭───────────────────────────────────────────────────────────────────────────╮
-│ AI Model Selection (Lemonade)                                             │
+│ AI Model Selection (llama.cpp)                                             │
 │                                                                            │
 │ No models found in cache. Models will be downloaded on first startup.     │
 │                                                                            │
@@ -278,7 +278,7 @@ EOF
     cat <<EOF
 
 ╭───────────────────────────────────────────────────────────────────────────╮
-│ AI Model Selection (Lemonade)                                             │
+│ AI Model Selection (llama.cpp)                                             │
 │                                                                            │
 │ The following models are already downloaded and ready to use:             │
 │                                                                            │
@@ -382,7 +382,7 @@ ai_generate_nix_config() {
         '{description: $desc, context: $ctx}')
 
     local response
-    if response=$(aidb_post_with_fallback "lemonade/nix" "vllm/nix" "$payload" 60); then
+    if response=$(aidb_post_with_fallback "llama_cpp/nix" "vllm/nix" "$payload" 60); then
         echo "$response" | jq -r '.nix_code'
         return 0
     else
@@ -413,7 +413,7 @@ ai_review_config() {
         '{code: $code, language: "nix"}')
 
     local response
-    if response=$(aidb_post_with_fallback "lemonade/review" "vllm/review" "$payload" 60); then
+    if response=$(aidb_post_with_fallback "llama_cpp/review" "vllm/review" "$payload" 60); then
         echo "$response" | jq -r '.review'
         return 0
     else
@@ -436,7 +436,7 @@ ai_explain_code() {
         '{code: $code, language: $lang}')
 
     local response
-    if response=$(aidb_post_with_fallback "lemonade/explain" "vllm/explain" "$payload" 30); then
+    if response=$(aidb_post_with_fallback "llama_cpp/explain" "vllm/explain" "$payload" 30); then
         echo "$response" | jq -r '.explanation'
         return 0
     else
@@ -465,7 +465,7 @@ ai_chat() {
         }')
 
     local response
-    if response=$(aidb_post_with_fallback "lemonade/chat" "vllm/chat" "$payload" 60); then
+    if response=$(aidb_post_with_fallback "llama_cpp/chat" "vllm/chat" "$payload" 60); then
         echo "$response" | jq -r '.message'
         return 0
     else
@@ -588,10 +588,10 @@ EOF
 }
 
 # ============================================================================
-# Lemonade Container Management
+# llama.cpp Container Management
 # ============================================================================
 
-ai_deploy_lemonade() {
+ai_deploy_llama_cpp() {
     local model_id="$1"
     local ai_optimizer_dir="${2:-$HOME/Documents/AI-Optimizer}"
 
@@ -600,7 +600,7 @@ ai_deploy_lemonade() {
         return 0
     fi
 
-    log_info "Deploying Lemonade with model: $model_id"
+    log_info "Deploying llama.cpp with model: $model_id"
 
     # Check if AI-Optimizer directory exists
     if [ ! -d "$ai_optimizer_dir" ]; then
@@ -618,12 +618,12 @@ ai_deploy_lemonade() {
     # Update .env with selected model
     if [ -f ".env" ]; then
         # Update existing .env
-        sed -i "s|^LEMONADE_DEFAULT_MODEL=.*|LEMONADE_DEFAULT_MODEL=$model_id|" .env || \
-            echo "LEMONADE_DEFAULT_MODEL=$model_id" >> .env
+        sed -i "s|^LLAMA_CPP_DEFAULT_MODEL=.*|LLAMA_CPP_DEFAULT_MODEL=$model_id|" .env || \
+            echo "LLAMA_CPP_DEFAULT_MODEL=$model_id" >> .env
     else
         # Create new .env from example
         cp .env.example .env
-        sed -i "s|^LEMONADE_DEFAULT_MODEL=.*|LEMONADE_DEFAULT_MODEL=$model_id|" .env
+        sed -i "s|^LLAMA_CPP_DEFAULT_MODEL=.*|LLAMA_CPP_DEFAULT_MODEL=$model_id|" .env
     fi
 
     log_info "Updated .env with model: $model_id"
@@ -634,7 +634,7 @@ ai_deploy_lemonade() {
 
     log_success "AI-Optimizer deployment initiated"
     log_info "Model download may take 10-45 minutes depending on model size"
-    log_info "Monitor progress: docker logs -f lemonade"
+    log_info "Monitor progress: docker logs -f llama-cpp"
 
     return 0
 }
@@ -646,14 +646,14 @@ ai_deploy_lemonade() {
 # Only export functions if AI is available or in auto mode
 if [ "$AI_ENABLED" != "false" ]; then
     export -f ai_check_availability
-    export -f ai_check_lemonade
+    export -f ai_check_llama_cpp
     export -f ai_select_model
     export -f ai_generate_nix_config
     export -f ai_review_config
     export -f ai_explain_code
     export -f ai_chat
     export -f ai_interactive_help
-    export -f ai_deploy_lemonade
+    export -f ai_deploy_llama_cpp
     export -f detect_gpu_vram
     export -f detect_gpu_model
 fi

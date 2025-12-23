@@ -33,6 +33,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 import sqlalchemy as sa
+import yaml
 from pydantic import BaseModel, Field
 from redis import asyncio as redis_asyncio
 from sqlalchemy.orm import sessionmaker
@@ -354,31 +355,91 @@ async def self_test(settings: Settings) -> int:
 
 def parse_args(argv: List[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", default=os.environ.get("MCP_TOOL_MODE", "minimal"))
-    parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=8791)
+    parser.add_argument("--config", help="Path to YAML config file")
+    parser.add_argument("--mode", default=os.environ.get("MCP_TOOL_MODE"))
+    parser.add_argument("--host")
+    parser.add_argument("--port", type=int)
     parser.add_argument("--self-test", action="store_true")
     return parser.parse_args(argv)
 
 
-def configure_logging() -> None:
+def configure_logging(level: Optional[str] = None) -> None:
+    log_level = (level or DEFAULT_LOG_LEVEL).upper()
     logging.basicConfig(
-        level=DEFAULT_LOG_LEVEL,
+        level=log_level,
         format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
     )
 
 
+def load_config(path: Optional[str]) -> Dict[str, Any]:
+    if not path:
+        return {}
+    config_path = pathlib.Path(path)
+    if not config_path.is_file():
+        LOGGER.warning("Config file not found: %s", config_path)
+        return {}
+    return yaml.safe_load(config_path.read_text()) or {}
+
+
+def build_settings(config: Dict[str, Any], mode: Optional[str]) -> Settings:
+    db_config = config.get("database", {})
+    pg_config = db_config.get("postgres", {})
+    redis_config = db_config.get("redis", {})
+    qdrant_config = db_config.get("qdrant", {})
+
+    postgres_password = ""
+    password_file = pg_config.get("password_file")
+    if password_file:
+        password_path = pathlib.Path(password_file)
+        if password_path.is_file():
+            postgres_password = password_path.read_text().strip()
+
+    pg_user = pg_config.get("user", "mcp")
+    pg_host = pg_config.get("host", "localhost")
+    pg_port = pg_config.get("port", 5432)
+    pg_db = pg_config.get("database", "mcp")
+    pg_password_segment = f":{postgres_password}" if postgres_password else ""
+    postgres_dsn = f"postgresql+psycopg2://{pg_user}{pg_password_segment}@{pg_host}:{pg_port}/{pg_db}"
+
+    redis_password = ""
+    redis_password_file = redis_config.get("password_file")
+    if redis_password_file:
+        redis_password_path = pathlib.Path(redis_password_file)
+        if redis_password_path.is_file():
+            redis_password = redis_password_path.read_text().strip()
+    redis_password_segment = f":{redis_password}@" if redis_password else ""
+    redis_url = f"redis://{redis_password_segment}{redis_config.get('host', 'localhost')}:{redis_config.get('port', 6379)}/{redis_config.get('db', 0)}"
+
+    qdrant_host = qdrant_config.get("host", "localhost")
+    qdrant_http_port = qdrant_config.get("http_port", 6333)
+    qdrant_url = qdrant_host if qdrant_host.startswith("http") else f"http://{qdrant_host}:{qdrant_http_port}"
+
+    discovery_mode = config.get("tools", {}).get("discovery_mode", "minimal")
+
+    return Settings(
+        postgres_dsn=postgres_dsn,
+        redis_url=redis_url,
+        qdrant_url=qdrant_url,
+        default_tool_mode=mode or discovery_mode,
+    )
+
+
 def main(argv: Optional[List[str]] = None) -> int:
-    configure_logging()
     args = parse_args(argv or sys.argv[1:])
-    settings = Settings(default_tool_mode=args.mode)
+    config = load_config(args.config)
+    configure_logging(config.get("logging", {}).get("level"))
+    settings = build_settings(config, args.mode)
+
+    server_config = config.get("server", {})
+    host = args.host or server_config.get("host", "0.0.0.0")
+    port = args.port or server_config.get("port", 8791)
 
     if args.self_test:
         return asyncio.run(self_test(settings))
 
     server = MCPServer(settings)
     try:
-        asyncio.run(server.serve(args.host, args.port))
+        asyncio.run(server.serve(host, port))
     except KeyboardInterrupt:
         LOGGER.info("Interrupted by user")
     return 0

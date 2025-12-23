@@ -1,0 +1,25 @@
+[Unit]
+Description=Claude API Proxy - Routes Claude Code through local AI stack
+After=network.target hybrid-coordinator.service aidb-mcp.service
+Wants=hybrid-coordinator.service aidb-mcp.service
+
+[Service]
+Type=simple
+User=%u
+WorkingDirectory=/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
+ExecStart=/usr/bin/env python3 /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/claude-api-proxy.py
+Restart=on-failure
+RestartSec=5s
+
+# Environment
+Environment="HYBRID_COORDINATOR_URL=http://localhost:8092"
+Environment="AIDB_MCP_URL=http://localhost:8091"
+Environment="ANTHROPIC_API_KEY="
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=claude-api-proxy
+
+[Install]
+WantedBy=default.target

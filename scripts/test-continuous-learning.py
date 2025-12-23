@@ -7,12 +7,22 @@ Following: docs/agent-guides/22-CONTINUOUS-LEARNING.md
 """
 
 import sys
-import ollama
+import requests
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct
 import uuid
 from datetime import datetime
+from sentence_transformers import SentenceTransformer
 
+# Initialize embedding model (matches AIDB architecture)
+embedding_model = None
+
+def get_embedding_model():
+    """Lazy-load embedding model"""
+    global embedding_model
+    if embedding_model is None:
+        embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+    return embedding_model
 
 def calculate_value_score(interaction: dict) -> float:
     """
@@ -71,6 +81,13 @@ def calculate_value_score(interaction: dict) -> float:
     return round(value_score, 2)
 
 
+def get_embedding(text: str, model: str = None, base_url: str = None) -> list:
+    """Generate embeddings using SentenceTransformer (matches AIDB implementation)."""
+    model_instance = get_embedding_model()
+    embedding = model_instance.encode(text, convert_to_tensor=False)
+    return embedding.tolist()
+
+
 def store_interaction(query: str, response: str, metadata: dict) -> str:
     """Store interaction with value scoring"""
 
@@ -80,10 +97,7 @@ def store_interaction(query: str, response: str, metadata: dict) -> str:
     value_score = calculate_value_score(metadata)
 
     # Create embedding
-    embedding_response = ollama.embeddings(
-        model="nomic-embed-text",
-        prompt=query
-    )
+    embedding_vector = get_embedding(query)
 
     # Prepare payload
     payload = {
@@ -101,7 +115,7 @@ def store_interaction(query: str, response: str, metadata: dict) -> str:
         points=[
             PointStruct(
                 id=point_id,
-                vector=embedding_response["embedding"],
+                vector=embedding_vector,
                 payload=payload
             )
         ]
@@ -114,7 +128,7 @@ def store_interaction(query: str, response: str, metadata: dict) -> str:
             points=[
                 PointStruct(
                     id=str(uuid.uuid4()),
-                    vector=embedding_response["embedding"],
+                    vector=embedding_vector,
                     payload=payload
                 )
             ]
@@ -129,10 +143,7 @@ def store_error_solution(error: str, solution: str, root_cause: str = None, seve
     client = QdrantClient(url="http://localhost:6333")
 
     # Create embedding
-    response = ollama.embeddings(
-        model="nomic-embed-text",
-        prompt=error
-    )
+    embedding = get_embedding(error)
 
     # Prepare payload
     payload = {
@@ -151,7 +162,7 @@ def store_error_solution(error: str, solution: str, root_cause: str = None, seve
         points=[
             PointStruct(
                 id=point_id,
-                vector=response["embedding"],
+                vector=embedding,
                 payload=payload
             )
         ]
@@ -348,14 +359,11 @@ class ContinuousLearningTester:
             self.test_point_ids.append(("interaction-history", point_id))
 
             # Search skills-patterns for this high-value interaction
-            embedding = ollama.embeddings(
-                model="nomic-embed-text",
-                prompt=query
-            )
+            embedding = get_embedding(query)
 
             results = self.client.search(
                 collection_name="skills-patterns",
-                query_vector=embedding["embedding"],
+                query_vector=embedding,
                 limit=5,
                 score_threshold=0.9  # Should be exact match
             )
@@ -404,14 +412,11 @@ class ContinuousLearningTester:
             # Search for similar error
             search_query = "filesystem is read only when installing packages"
 
-            embedding = ollama.embeddings(
-                model="nomic-embed-text",
-                prompt=search_query
-            )
+            embedding = get_embedding(search_query)
 
             results = self.client.search(
                 collection_name="error-solutions",
-                query_vector=embedding["embedding"],
+                query_vector=embedding,
                 limit=3,
                 score_threshold=0.5
             )

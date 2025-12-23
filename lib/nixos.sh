@@ -33,7 +33,7 @@
 # ============================================================================
 
 # Supported release list (descending order) shared by both NixOS and home-manager
-SUPPORTED_NIX_RELEASES=("25.11" "25.05" "24.11" "24.05" "23.11")
+SUPPORTED_NIX_RELEASES=("26.05" "25.11" "25.05" "24.11" "24.05" "23.11")
 
 # Track fallback context so callers can emit user-facing notices without
 # polluting resolver stdout (which is frequently used inside command
@@ -239,7 +239,7 @@ emit_nixos_channel_fallback_notice() {
 # ============================================================================
 # Purpose: Map requested NixOS versions to an existing home-manager release.
 # Rationale: Home Manager occasionally lags behind new NixOS releases (e.g.,
-# 25.11). Without this guard, we generate flake references to branches that
+# 26.05). Without this guard, we generate flake references to branches that
 # do not exist upstream, which causes nixos-rebuild dry runs to fail before
 # any real validation happens.
 # Returns:

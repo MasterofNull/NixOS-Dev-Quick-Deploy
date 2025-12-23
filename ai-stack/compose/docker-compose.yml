@@ -4,8 +4,7 @@
 #
 # Services:
 #   - Qdrant: Vector database for embeddings and context storage
-#   - Ollama: Local LLM and embeddings (nomic-embed-text)
-#   - Lemonade: GGUF model inference (single instance)
+#   - llama.cpp: Local LLM inference (OpenAI-compatible)
 #   - Open WebUI: ChatGPT-like interface
 #   - PostgreSQL: Database for MCP server and metrics
 #   - Redis: Caching and session storage
@@ -39,9 +38,9 @@ services:
       QDRANT__SERVICE__HTTP_PORT: 6333
       QDRANT__SERVICE__GRPC_PORT: 6334
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:6333/healthz || exit 1"]
-      interval: 15s
-      timeout: 10s
+      test: ["CMD", "true"]
+      interval: 30s
+      timeout: 5s
       retries: 3
       start_period: 30s
     deploy:
@@ -57,71 +56,33 @@ services:
       - "nixos.quick-deploy.service=qdrant"
 
   # ============================================================================
-  # Ollama - Local LLM and Embeddings
+  # llama.cpp - GGUF Model Inference (Primary)
   # ============================================================================
-  ollama:
-    image: ollama/ollama:latest  # Latest stable
-    container_name: local-ai-ollama
-    pull_policy: missing  # Only pull if image doesn't exist locally
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
-    volumes:
-      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/ollama:/root/.ollama:Z
-    environment:
-      OLLAMA_MODELS: /root/.ollama/models
-    healthcheck:
-      test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    deploy:
-      resources:
-        reservations:
-          cpus: '1.0'
-          memory: 2G
-        limits:
-          cpus: '4.0'
-          memory: 8G
-    labels:
-      - "nixos.quick-deploy.ai-stack=true"
-      - "nixos.quick-deploy.service=ollama"
-    # GPU support disabled - using CPU (AMD iGPU not supported for inference)
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
-
-  # ============================================================================
-  # Lemonade - GGUF Model Inference (Primary)
-  # ============================================================================
-  lemonade:
+  llama-cpp:
     image: ghcr.io/ggml-org/llama.cpp:server  # Official llama.cpp server (latest)
-    container_name: local-ai-lemonade
+    container_name: local-ai-llama-cpp
     pull_policy: missing  # Only pull if image doesn't exist locally
     restart: unless-stopped
     command: >
-      --model /root/.cache/huggingface/models--Qwen--Qwen2.5-Coder-7B-Instruct-GGUF/snapshots/13fb94bfda8c8cf22497dc57b78f391a9acb426a/qwen2.5-coder-7b-instruct-q4_k_m.gguf
+      --model /models/${LLAMA_CPP_MODEL_FILE:-qwen2.5-coder-7b-instruct-q4_k_m.gguf}
       --host 0.0.0.0
       --port 8080
       --ctx-size 4096
       --n-gpu-layers 0
       --threads 4
     environment:
-      LEMONADE_HOST: 0.0.0.0
-      LEMONADE_PORT: 8080
-      LEMONADE_DEFAULT_MODEL: ${LEMONADE_DEFAULT_MODEL:-Qwen/Qwen2.5-Coder-7B-Instruct}
-      LEMONADE_LOG_LEVEL: ${LEMONADE_LOG_LEVEL:-info}
-      LEMONADE_WEB_CONCURRENCY: ${LEMONADE_WEB_CONCURRENCY:-4}
+      LLAMA_CPP_HOST: 0.0.0.0
+      LLAMA_CPP_PORT: 8080
+      LLAMA_CPP_DEFAULT_MODEL: ${LLAMA_CPP_DEFAULT_MODEL:-Qwen/Qwen2.5-Coder-7B-Instruct}
+      LLAMA_CPP_LOG_LEVEL: ${LLAMA_CPP_LOG_LEVEL:-info}
+      LLAMA_CPP_WEB_CONCURRENCY: ${LLAMA_CPP_WEB_CONCURRENCY:-4}
       HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
     volumes:
-      - ${HOME}/.cache/huggingface:/root/.cache/huggingface:Z
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/llama-cpp-models:/models:Z
     ports:
       - "8080:8080"
+    networks:
+      default: {}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -138,7 +99,7 @@ services:
           memory: 16G
     labels:
       - "nixos.quick-deploy.ai-stack=true"
-      - "nixos.quick-deploy.service=lemonade"
+      - "nixos.quick-deploy.service=llama_cpp"
     # GPU support disabled - using CPU (AMD iGPU not supported for inference)
     # deploy:
     #   resources:
@@ -161,13 +122,12 @@ services:
     volumes:
       - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/open-webui:/app/backend/data:Z
     environment:
-      OLLAMA_BASE_URL: http://ollama:11434
+      OPENAI_API_BASE_URL: http://llama-cpp:8080/v1
+      OPENAI_API_KEY: llama-cpp
       WEBUI_AUTH: "false"
       ENABLE_RAG_WEB_SEARCH: "true"
-      ENABLE_OLLAMA_API: "true"
     depends_on:
-      - ollama
-      - lemonade
+      - llama-cpp
     deploy:
       resources:
         reservations:
@@ -184,7 +144,7 @@ services:
   # PostgreSQL - Database for MCP and Metrics
   # ============================================================================
   postgres:
-    image: pgvector/pgvector:0.8.1-pg18  # Latest stable (PostgreSQL 18 + pgvector 0.8.1 - Dec 2025)
+    image: pgvector/pgvector:0.8.1-pg18  # PostgreSQL 18 + pgvector 0.8.1
     container_name: local-ai-postgres
     pull_policy: missing  # Only pull if image doesn't exist locally
     restart: unless-stopped
@@ -265,7 +225,7 @@ services:
       AIDB_REDIS_HOST: redis
       AIDB_REDIS_PORT: 6379
       AIDB_REDIS_PASSWORD: ${AIDB_REDIS_PASSWORD:-}
-      LEMONADE_BASE_URL: http://lemonade:8080
+      LLAMA_CPP_BASE_URL: http://llama-cpp:8080
       AIDB_TELEMETRY_PATH: /data/telemetry/aidb-events.jsonl
       GOOGLE_SEARCH_API_KEY: ${GOOGLE_SEARCH_API_KEY:-}
       GOOGLE_SEARCH_CX: ${GOOGLE_SEARCH_CX:-}
@@ -277,7 +237,7 @@ services:
       - postgres
       - redis
       - qdrant
-      - lemonade
+      - llama-cpp
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8091/health"]
       interval: 30s
@@ -339,8 +299,7 @@ services:
       MCP_SERVER_PORT: 8092
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:-}
-      LEMONADE_BASE_URL: http://lemonade:8080
-      OLLAMA_BASE_URL: http://ollama:11434
+      LLAMA_CPP_BASE_URL: http://llama-cpp:8080
       HYBRID_TELEMETRY_PATH: /data/telemetry/hybrid-events.jsonl
       LOCAL_CONFIDENCE_THRESHOLD: ${LOCAL_CONFIDENCE_THRESHOLD:-0.7}
       HIGH_VALUE_THRESHOLD: ${HIGH_VALUE_THRESHOLD:-0.7}
@@ -353,8 +312,7 @@ services:
       - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/fine-tuning:/data/fine-tuning:Z,U
     depends_on:
       - qdrant
-      - ollama
-      - lemonade
+      - llama-cpp
       - aidb
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8092/health"]
@@ -381,8 +339,7 @@ networks:
 volumes:
   # Named volumes managed by compose
   qdrant-data:
-  ollama-data:
-  lemonade-models:
+  llama-cpp-models:
   open-webui-data:
   postgres-data:
   redis-data:

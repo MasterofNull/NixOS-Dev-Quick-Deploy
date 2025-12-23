@@ -35,7 +35,7 @@ The AI stack is now a **first-class, public component** of this repository!
 This single command gives you:
 
 - ✅ **AIDB MCP Server** - PostgreSQL + TimescaleDB + Qdrant vector database
-- ✅ **Lemonade vLLM** - Local model inference (Qwen, DeepSeek, Phi, CodeLlama)
+- ✅ **llama.cpp vLLM** - Local model inference (Qwen, DeepSeek, Phi, CodeLlama)
 - ✅ **29 Agent Skills** - Specialized AI agents for code, deployment, testing, design
 - ✅ **MCP Servers** - Model Context Protocol servers for AIDB, NixOS, GitHub
 - ✅ **Shared Data** - Persistent data that survives reinstalls (`~/.local/share/nixos-ai-stack`)
@@ -69,7 +69,7 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRAT
 | Component              | Location                        |      Status       | Purpose                                                                |
 | :--------------------- | :------------------------------ | :---------------: | :--------------------------------------------------------------------- |
 | **AIDB MCP Server**    | `ai-stack/mcp-servers/aidb/`    |     ✅ Active     | PostgreSQL + TimescaleDB + Qdrant vector DB + FastAPI MCP server       |
-| **Lemonade vLLM**      | `ai-stack/compose/`             |     ✅ Active     | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama)     |
+| **llama.cpp vLLM**      | `ai-stack/compose/`             |     ✅ Active     | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama)     |
 | **29 Agent Skills**    | `ai-stack/agents/skills/`       |     ✅ Active     | nixos-deployment, webapp-testing, code-review, canvas-design, and more |
 | **Hybrid Coordinator** | `ai-stack/core/`                | 🟡 In Development | Orchestrates local/remote dispatch for 30-50% token reduction          |
 | **MCP Servers**        | `ai-stack/mcp-servers/`         |     ✅ Active     | Model Context Protocol servers for AIDB, NixOS, GitHub                 |
@@ -85,7 +85,7 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRAT
 | **Cursor**      | Flatpak + launcher               | AI-assisted IDE with GPT-4/Claude                            |
 | **Continue**    | VSCodium extension               | In-editor AI completions                                     |
 | **Codeium**     | VSCodium extension               | Free AI autocomplete                                         |
-| **GPT CLI**     | Command-line tool                | Query OpenAI-compatible endpoints (local Lemonade or remote) |
+| **GPT CLI**     | Command-line tool                | Query OpenAI-compatible endpoints (local llama.cpp or remote) |
 | **Aider**       | CLI code assistant               | AI pair programming from terminal                            |
 | **LM Studio**   | Flatpak app                      | Desktop LLM manager                                          |
 
@@ -345,7 +345,7 @@ home-manager switch --flake .#$(whoami)
 - Core system tools (podman, git, curl, etc.)
 - Programming languages (Python, Node.js, Go, Rust)
 - Nix ecosystem (home-manager, flakes)
-- AI tools (Claude Code, Ollama, Aider)
+- AI tools (Claude Code, llama.cpp, Aider)
 - **60+ Python AI/ML packages** (PyTorch, TensorFlow, LangChain, etc.)
 - Editors and IDEs (VSCodium, Neovim, Cursor)
 - Shell configuration (ZSH, aliases, functions)
@@ -378,22 +378,22 @@ source ~/.zshrc  # Or: exec zsh
 
 ### AI Stack Management
 
-The local AI stack (Ollama, Open WebUI, Qdrant, MindsDB) now runs via the rootless Podman helper `podman-ai-stack`, which keeps everything isolated under `~/.local/share/podman-ai-stack/`. Use the helper to control the stack:
+The local AI stack (llama.cpp, Open WebUI, Qdrant, MindsDB, AIDB) runs via the unified `ai-stack-manage.sh` helper in this repo. Use it to control the stack:
 
 ```bash
 # Start or stop the entire stack
-podman-ai-stack up
-podman-ai-stack down
+./scripts/ai-stack-manage.sh up
+./scripts/ai-stack-manage.sh down
 
 # Check status or tail logs
-podman-ai-stack status
-podman-ai-stack logs
+./scripts/ai-stack-manage.sh status
+./scripts/ai-stack-manage.sh logs
 
 # Restart if you change ai-optimizer configs
-podman-ai-stack restart
+./scripts/ai-stack-manage.sh restart
 ```
 
-During NixOS Quick Deploy, Phase 5 prefetches every Podman image and Phase 6 downloads the default Lemonade GGUF models (when that backend is selected and a Hugging Face token is present), so the first `podman-ai-stack up` no longer stalls on multi-gigabyte downloads.
+During NixOS Quick Deploy, Phase 5 prefetches every Podman image and Phase 6 downloads the default llama.cpp GGUF models (when that backend is selected and a Hugging Face token is present), so the first `ai-stack-manage.sh up` no longer stalls on multi-gigabyte downloads.
 
 All other AI orchestration (vLLM endpoints, shared volumes, etc.) is managed by the ai-optimizer repository layered on top of this stack.
 
@@ -1290,16 +1290,16 @@ lg     # lazygit
 ### 2. Quick Container AI Stack
 
 ```bash
-# Start all AI services at once (system + stack containers)
-ai-servicectl start all
+# Start all AI services (local stack)
+./scripts/ai-stack-manage.sh up
 
-# Or focus on the user-space Podman stack only
-ai-servicectl start stack
-# (equivalent to podman-ai-stack up for advanced workflows)
+# Check status
+./scripts/ai-stack-manage.sh status
 
-# Access Open WebUI at http://localhost:8081
-# Access Ollama API at http://localhost:11434
-# Access Hugging Face TGI at http://localhost:8080
+# Access Open WebUI at http://localhost:3001
+# Access llama.cpp at http://localhost:8080
+# Access Qdrant at http://localhost:6333
+# Access AIDB MCP at http://localhost:8091
 ```
 
 ### 3. VSCodium vs Cursor - When to Use Each
@@ -1346,17 +1346,16 @@ flatpak update
 
 ### AI Runtime Orchestration
 
-- `ai-servicectl start|stop|restart all` &mdash; manage system Gitea **and** the Podman AI stack in one shot.
-- `ai-servicectl start stack` &mdash; bring up only the user-space Podman network (Ollama/Open WebUI/Qdrant/MindsDB).
-- `ai-servicectl status system` &mdash; quick health summary for the declarative services (currently just Gitea).
-- `ai-servicectl logs stack` &mdash; stream Podman AI stack logs from journald via one command.
-- `podman-ai-stack up|down|status|logs` &mdash; raw helper for advanced Podman scenarios; `ai-servicectl` wraps it for most workflows.
+- `./scripts/ai-stack-manage.sh up|down|restart` &mdash; manage the local AI stack containers.
+- `./scripts/ai-stack-manage.sh status` &mdash; show container status.
+- `./scripts/ai-stack-manage.sh logs` &mdash; stream stack logs.
+- `./scripts/ai-stack-manage.sh health` &mdash; run AI stack health checks.
 
 ### Diagnostics & Recovery
 
-- `ai-servicectl stop all && ai-servicectl start all` &mdash; bounce every AI-centric service after changing models or GPU drivers.
+- `./scripts/ai-stack-manage.sh restart` &mdash; bounce the AI stack after changing models or GPU drivers.
 - `podman system reset --force` / `sudo podman system reset --force` &mdash; manual fallback for storage corruption (the deployer now attempts this automatically when stale overlay layers are detected).
-- `journalctl --user -u podman-local-ai-*.service -f` &mdash; detailed logs for the rootless containers when `ai-servicectl status` reports a failure.
+- `podman logs -f <container>` &mdash; detailed logs for the rootless containers.
 
 > ℹ️ **Automation note:** During Phase&nbsp;5 the deployer pauses managed services (systemd units and user-level Podman quadlets), cleans stale Podman storage if needed, applies `nixos-rebuild switch`, and then restores everything it stopped. You no longer need to stop the AI stack manually before a rebuild.
 
@@ -1510,7 +1509,7 @@ Already installed but worth highlighting:
 - [Cursor Docs](https://docs.cursor.sh/)
 - [Continue Docs](https://continue.dev/docs)
 - [Aider Docs](https://aider.chat/)
-- [Ollama Docs](https://ollama.ai/docs)
+- [llama.cpp Docs](https://github.com/ggerganov/llama.cpp)
 
 ### Learning Resources
 

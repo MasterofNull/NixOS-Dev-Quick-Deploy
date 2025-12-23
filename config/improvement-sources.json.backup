@@ -1,0 +1,211 @@
+[
+  {
+    "url": "https://github.com/containers/podman/releases",
+    "type": "github_release",
+    "weight": 0.6
+  },
+  {
+    "url": "https://github.com/qdrant/qdrant/releases",
+    "type": "github_release",
+    "weight": 0.7
+  },
+  {
+    "url": "https://github.com/ggml-org/llama.cpp/releases",
+    "type": "github_release",
+    "weight": 0.8
+  },
+  {
+    "url": "https://github.com/open-webui/open-webui/releases",
+    "type": "github_release",
+    "weight": 0.6
+  },
+  {
+    "url": "https://github.com/ollama/ollama/releases",
+    "type": "github_release",
+    "weight": 0.7
+  },
+  {
+    "url": "https://github.com/numman-ali/openskills/releases",
+    "type": "github_release",
+    "weight": 0.5
+  },
+  {
+    "url": "https://github.com/utensils/mcp-nixos/releases",
+    "type": "github_release",
+    "weight": 0.5
+  },
+  {
+    "url": "https://paperswithcode.com/",
+    "type": "research",
+    "weight": 0.2,
+    "cadence_hours": 168
+  },
+  {
+    "url": "https://www.reddit.com/r/LocalLLaMA/",
+    "type": "social",
+    "weight": 0.15,
+    "cadence_hours": 72
+  },
+  {
+    "url": "https://www.reddit.com/r/localllama/",
+    "type": "social",
+    "weight": 0.08,
+    "cadence_hours": 168
+  },
+  {
+    "url": "https://www.reddit.com/r/selfhosted/",
+    "type": "social",
+    "weight": 0.12,
+    "cadence_hours": 96
+  },
+  {
+    "url": "https://www.reddit.com/r/homelab/",
+    "type": "social",
+    "weight": 0.1,
+    "cadence_hours": 120
+  },
+  {
+    "url": "https://www.reddit.com/r/devops/",
+    "type": "social",
+    "weight": 0.08,
+    "cadence_hours": 168
+  },
+  {
+    "url": "https://www.reddit.com/r/MachineLearning/",
+    "type": "social",
+    "weight": 0.08,
+    "cadence_hours": 168
+  },
+  {
+    "url": "https://www.reddit.com/r/nixos/",
+    "type": "social",
+    "weight": 0.08,
+    "cadence_hours": 168
+  },
+  {
+    "url": "https://www.reddit.com/r/containers/",
+    "type": "social",
+    "weight": 0.08,
+    "cadence_hours": 168
+  },
+  {
+    "url": "https://www.reddit.com/r/claude/",
+    "type": "social",
+    "weight": 0.07,
+    "cadence_hours": 168
+  },
+  {
+    "url": "https://www.reddit.com/r/codex/",
+    "type": "social",
+    "weight": 0.06,
+    "cadence_hours": 336
+  },
+  {
+    "url": "https://www.reddit.com/r/ChatGPT/",
+    "type": "social",
+    "weight": 0.07,
+    "cadence_hours": 168
+  },
+  {
+    "url": "https://www.reddit.com/r/MLOps/",
+    "type": "social",
+    "weight": 0.08,
+    "cadence_hours": 168
+  },
+  {
+    "url": "https://www.reddit.com/r/kubernetes/",
+    "type": "social",
+    "weight": 0.08,
+    "cadence_hours": 168
+  },
+  {
+    "url": "https://www.reddit.com/r/opensource/",
+    "type": "social",
+    "weight": 0.06,
+    "cadence_hours": 336
+  },
+  {
+    "url": "https://news.ycombinator.com/",
+    "type": "social",
+    "weight": 0.1,
+    "cadence_hours": 72
+  },
+  {
+    "url": "https://lobste.rs/",
+    "type": "social",
+    "weight": 0.08,
+    "cadence_hours": 120
+  },
+  {
+    "url": "https://discuss.pytorch.org/",
+    "type": "discussion",
+    "weight": 0.05,
+    "cadence_hours": 336
+  },
+  {
+    "url": "https://discuss.huggingface.co/",
+    "type": "discussion",
+    "weight": 0.05,
+    "cadence_hours": 336
+  },
+  {
+    "url": "https://community.openai.com/",
+    "type": "discussion",
+    "weight": 0.05,
+    "cadence_hours": 336
+  },
+  {
+    "url": "https://discourse.nixos.org/",
+    "type": "discussion",
+    "weight": 0.05,
+    "cadence_hours": 336
+  },
+  {
+    "url": "https://forum.qdrant.tech/",
+    "type": "discussion",
+    "weight": 0.05,
+    "cadence_hours": 336
+  },
+  {
+    "url": "https://forum.ollama.com/",
+    "type": "discussion",
+    "weight": 0.05,
+    "cadence_hours": 336
+  },
+  {
+    "url": "https://discord.com/invite/ollama",
+    "type": "forum",
+    "weight": 0.03,
+    "cadence_hours": 720
+  },
+  {
+    "url": "https://discord.gg/qdrant",
+    "type": "forum",
+    "weight": 0.03,
+    "cadence_hours": 720
+  },
+  {
+    "url": "https://discord.com/invite/huggingface",
+    "type": "forum",
+    "weight": 0.03,
+    "cadence_hours": 720
+  },
+  {
+    "url": "https://discord.gg/containers",
+    "type": "forum",
+    "weight": 0.03,
+    "cadence_hours": 720
+  },
+  {
+    "url": "https://discord.gg/nixos",
+    "type": "forum",
+    "weight": 0.03,
+    "cadence_hours": 720
+  },
+  {
+    "url": "https://discord.gg/localai",
+    "type": "forum",
+    "weight": 0.03,
+    "cadence_hours": 720
+  }
+]

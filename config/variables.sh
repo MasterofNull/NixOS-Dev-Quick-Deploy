@@ -539,24 +539,12 @@ fi
 export LOCAL_AI_STACK_ENABLED
 unset _local_ai_cached
 
-# LLM Backend Selection (ollama or lemonade)
-# Lemonade is optimized for AMD GPUs with ROCm support
-# Ollama is the default, works on all platforms
-LLM_BACKEND="${LLM_BACKEND:-}"
-if [[ -z "$LLM_BACKEND" && -f "$LLM_BACKEND_PREFERENCE_FILE" ]]; then
-    _llm_backend_cached=$(awk -F'=' '/^LLM_BACKEND=/{print $2}' "$LLM_BACKEND_PREFERENCE_FILE" 2>/dev/null | tail -n1 | tr -d '\r')
-    case "$_llm_backend_cached" in
-        ollama|lemonade)
-            LLM_BACKEND="$_llm_backend_cached"
-            ;;
-    esac
-fi
-if [[ -z "$LLM_BACKEND" ]]; then
-    # Default to ollama - user will be prompted during interactive deployment
-    LLM_BACKEND="ollama"
-fi
-export LLM_BACKEND
-unset _llm_backend_cached
+# LLM Backend: llama.cpp server (ghcr.io/ggml-org/llama.cpp:server)
+# Serves GGUF models via OpenAI-compatible API on port 8080
+LLM_BACKEND="${LLM_BACKEND:-llama_cpp}"
+readonly LLAMA_CPP_URL="http://localhost:8080"
+readonly LLAMA_CPP_HEALTH_URL="${LLAMA_CPP_URL}/health"
+export LLM_BACKEND LLAMA_CPP_URL
 
 # LLM Models Configuration (comma-separated list)
 # Updated December 2025 - Best coding models for mobile workstations
@@ -591,14 +579,20 @@ if [[ -z "$LLM_MODELS" && -f "$LLM_MODELS_PREFERENCE_FILE" ]]; then
     fi
 fi
 if [[ -z "$LLM_MODELS" ]]; then
-    # Default: Balanced set for 16GB VRAM mobile workstation
-    # qwen2.5-coder:14b - Primary coding model (best code quality)
-    # deepseek-coder-v2 - Secondary for complex debugging/reasoning
-    # starcoder2:7b     - Fast autocomplete, 80+ languages
-    LLM_MODELS="qwen2.5-coder:14b,deepseek-coder-v2,starcoder2:7b"
+    # Default models for deployment (coder + embeddings)
+    LLM_MODELS="qwen2.5-coder,nomic-embed-text"
 fi
 export LLM_MODELS
 unset _llm_models_cached
+
+# Primary model file for docker-compose
+# This is what gets loaded by llama-cpp container on startup
+readonly LLAMA_CPP_MODEL_FILE="${LLAMA_CPP_MODEL_FILE:-qwen2.5-coder-7b-instruct-q4_k_m.gguf}"
+export LLAMA_CPP_MODEL_FILE
+
+# Embedding model for RAG (OpenAI-compatible embeddings endpoint)
+EMBEDDING_MODEL="${EMBEDDING_MODEL:-nomic-embed-text}"
+export EMBEDDING_MODEL
 
 # ============================================================================
 # Remote LLM Configuration (for hybrid local/remote workflows)
@@ -655,13 +649,15 @@ ENABLE_ZSWAP_CONFIGURATION="false"
 CONTAINER_STORAGE_FS_TYPE="${CONTAINER_STORAGE_FS_TYPE:-unknown}"
 CONTAINER_STORAGE_SOURCE="${CONTAINER_STORAGE_SOURCE:-}"
 
+# Podman Storage Driver Selection (defaults to zfs)
+# ZFS:    Use zfs driver (native snapshots, compression)
 DEFAULT_PODMAN_STORAGE_DRIVER="${DEFAULT_PODMAN_STORAGE_DRIVER:-zfs}"
 PODMAN_AUTO_REPAIR_SYSTEM_STORAGE_CONF="${PODMAN_AUTO_REPAIR_SYSTEM_STORAGE_CONF:-true}"
 PODMAN_SYSTEM_STORAGE_REPAIR_NOTE="${PODMAN_SYSTEM_STORAGE_REPAIR_NOTE:-}"
 PODMAN_STORAGE_DRIVER="${PODMAN_STORAGE_DRIVER:-}"
 
 if [[ -z "${PODMAN_STORAGE_COMMENT:-}" ]]; then
-    PODMAN_STORAGE_COMMENT="Using ${PODMAN_STORAGE_DRIVER:-$DEFAULT_PODMAN_STORAGE_DRIVER} driver on detected filesystem."
+    PODMAN_STORAGE_COMMENT="Storage driver will be auto-detected based on filesystem type."
 fi
 
 ENABLE_GAMING_STACK="${ENABLE_GAMING_STACK:-true}"
@@ -707,6 +703,29 @@ export AIDB_PROJECT_NAME
 export HOST_PROFILE
 export AI_PROFILE
 export AI_STACK_PROFILE
+
+# ============================================================================
+# AI Stack Service Configuration
+# ============================================================================
+# Service URLs for the Podman-based AI stack
+# All services are containerized via docker-compose.yml
+
+readonly QDRANT_URL="http://localhost:6333"
+readonly QDRANT_GRPC_URL="http://localhost:6334"
+readonly LLAMA_CPP_API_URL="http://localhost:8080/v1"
+readonly OPEN_WEBUI_URL="http://localhost:3001"
+readonly POSTGRES_URL="postgresql://mcp:change_me_in_production@localhost:5432/mcp"
+readonly REDIS_URL="redis://localhost:6379"
+readonly HYBRID_COORDINATOR_URL="http://localhost:8092"
+readonly MINDSDB_URL="http://localhost:47334"
+
+# AI Stack data directory
+readonly AI_STACK_DATA="${HOME}/.local/share/nixos-ai-stack"
+readonly AI_STACK_COMPOSE="${SCRIPT_DIR}/ai-stack/compose"
+readonly AI_STACK_ENV="${AI_STACK_COMPOSE}/.env"
+
+export QDRANT_URL LLAMA_CPP_API_URL HYBRID_COORDINATOR_URL
+export AI_STACK_DATA AI_STACK_COMPOSE
 
 # User Information
 SELECTED_TIMEZONE=""

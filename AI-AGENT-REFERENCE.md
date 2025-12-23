@@ -21,7 +21,7 @@
 - [Debugging & Logs](docs/agent-guides/12-DEBUGGING.md) - Find and fix issues
 
 ### 🤖 AI & LLM Operations
-- [Local LLM Usage](docs/agent-guides/20-LOCAL-LLM-USAGE.md) - Use Lemonade/Ollama for inference
+- [Local LLM Usage](docs/agent-guides/20-LOCAL-LLM-USAGE.md) - Use llama.cpp/Ollama for inference
 - [RAG & Context Augmentation](docs/agent-guides/21-RAG-CONTEXT.md) - Reduce remote API costs
 - [Continuous Learning](docs/agent-guides/22-CONTINUOUS-LEARNING.md) - Store learnings & improve
 
@@ -46,7 +46,7 @@ Remote Agent (You)
 Local Context Layer (Qdrant + PostgreSQL)
     ↓ Augmented Query (with local context)
     ↓
-Local LLM (Lemonade/Ollama) OR Remote API
+Local LLM (llama.cpp/Ollama) OR Remote API
     ↓ Response
     ↓
 Learning System (stores high-value data)
@@ -150,7 +150,7 @@ client.upsert(
 |---------|------|--------------|---------|
 | Qdrant | 6333 | `/healthz` | Vector database |
 | Ollama | 11434 | `/api/tags` | Embeddings |
-| Lemonade | 8080 | `/health` | GGUF inference |
+| llama.cpp | 8080 | `/health` | GGUF inference |
 | Open WebUI | 3001 | `/` | Chat interface |
 | PostgreSQL | 5432 | `pg_isready` | Structured data |
 | Redis | 6379 | `PING` | Caching |
@@ -232,7 +232,7 @@ else:
 
 ### Strategy 3: Use Local LLM for Simple Tasks
 ```bash
-# Use Lemonade for:
+# Use llama.cpp for:
 - Code explanation
 - Syntax checking
 - Simple refactoring
@@ -397,7 +397,7 @@ store_pattern("systemd-service-pattern", config)
 ```
 Task Received
     │
-    ├─ Simple/Repetitive? → Use Local LLM (Lemonade)
+    ├─ Simple/Repetitive? → Use Local LLM (llama.cpp)
     │
     ├─ Seen Before? → Search Qdrant → Apply Stored Solution
     │

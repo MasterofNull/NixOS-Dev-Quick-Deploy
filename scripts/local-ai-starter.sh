@@ -115,7 +115,7 @@ start_local_stack() {
 action_scaffold_local_stack() {
     info "Scaffolding local AI stack at ${LOCAL_STACK_DIR}"
     local data_root="${AI_STACK_DATA:-$HOME/.local/share/ai-stack}"
-    mkdir -p "${data_root}"/{postgres,redis,redisinsight,lemonade-models,aidb,aidb-cache,telemetry}
+    mkdir -p "${data_root}"/{postgres,redis,redisinsight,llama-cpp-models,aidb,aidb-cache,telemetry}
     copy_local_stack_templates "$data_root"
 
     info "AI_PROFILE=${AI_PROFILE} (override in environment to change edge AI behavior hints)."

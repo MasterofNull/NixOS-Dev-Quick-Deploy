@@ -30,7 +30,7 @@ class AgentEngine(Enum):
     CODEX = "codex"
     CCR = "ccr"  # Claude Code Router
     AUGGIE = "auggie"
-    # Local Lemonade runtime (AMD ROCm compatible)
+    # Local llama.cpp runtime (AMD ROCm compatible)
     QWEN_CODER = "qwen-coder"  # Qwen2.5-Coder-1.5B
     DEEPSEEK_R1 = "deepseek-r1"  # DeepSeek-R1-1.5B
 

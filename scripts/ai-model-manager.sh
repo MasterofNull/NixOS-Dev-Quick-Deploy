@@ -226,16 +226,14 @@ show_status() {
         echo -e "\nUse: ${CYAN}amm switch <service> <profile>${NC} to activate a model"
     fi
 
-    # Show Ollama models
-    echo -e "${BOLD}${BLUE}═══ Ollama Models ═══${NC}\n"
-    if command -v podman &>/dev/null; then
-        if podman exec local-ai-ollama ollama list 2>/dev/null; then
-            :
-        else
-            log_warn "Ollama container not running"
+    # Show llama.cpp models
+    echo -e "${BOLD}${BLUE}═══ llama.cpp Models ═══${NC}\n"
+    if command -v curl >/dev/null 2>&1; then
+        if ! curl -s http://localhost:8080/v1/models 2>/dev/null; then
+            log_warn "llama.cpp server not responding"
         fi
     else
-        log_warn "Podman not available"
+        log_warn "curl not available"
     fi
 }
 
@@ -377,7 +375,7 @@ source:
 
 container:
   runtime: ${runtime}
-  image: ${runtime == "tgi" && "ghcr.io/huggingface/text-generation-inference:latest" || "docker.io/ollama/ollama:latest"}
+  image: ${runtime == "tgi" && "ghcr.io/huggingface/text-generation-inference:latest" || "ghcr.io/ggml-org/llama.cpp:server"}
 
 parameters:
   max_input_length: 4096
@@ -477,7 +475,7 @@ ${BOLD}Service Names:${NC}
   - tgi-primary         Main TGI instance (port 8080)
   - tgi-secondary       Secondary TGI instance (port 8085)
   - tgi-experimental    Experimental TGI instance (port 8090)
-  - ollama-default      Default Ollama model
+  - llama-cpp-default   Default llama.cpp model
 
 ${BOLD}Profile Categories:${NC}
   - coding       Code generation models

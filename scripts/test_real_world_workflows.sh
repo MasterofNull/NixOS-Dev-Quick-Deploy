@@ -2,7 +2,7 @@
 #
 # Smoke-test a few real-world workflows referenced in AGENTS.md.
 # The script keeps everything deterministic by falling back to warnings when
-# optional services (Lemonade/AIDB) are offline.
+# optional services (llama.cpp/AIDB) are offline.
 
 set -euo pipefail
 

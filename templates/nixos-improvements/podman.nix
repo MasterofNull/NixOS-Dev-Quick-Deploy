@@ -1,5 +1,5 @@
 # Rootless Podman Container Runtime
-# NixOS 25.11 Xantusia
+# NixOS 26.05 Yarara
 # Purpose: Optional, declarative enablement of Podman for local containers.
 #
 # Features:

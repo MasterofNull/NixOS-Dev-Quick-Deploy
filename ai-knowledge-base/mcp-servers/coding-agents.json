@@ -271,7 +271,7 @@
   "integration_with_stack": {
     "claude_code": "Primary coding agent using these MCP servers",
     "aidb_mcp": "Can leverage coding tools for code generation tasks",
-    "lemonade_coder": "Code-specialized model benefits from these tools",
+    "llama_cpp_coder": "Code-specialized model benefits from these tools",
     "vscodium": "Editor integration for visual feedback"
   },
   "development_workflows": [

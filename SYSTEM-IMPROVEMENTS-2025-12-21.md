@@ -80,7 +80,7 @@ hybrid-coordinator:
     - "8092:8092"
   environment:
     QDRANT_URL: http://qdrant:6333
-    LEMONADE_BASE_URL: http://lemonade:8080
+    LLAMA_CPP_BASE_URL: http://llama-cpp:8080
     OLLAMA_BASE_URL: http://ollama:11434
     LOCAL_CONFIDENCE_THRESHOLD: 0.7
     HIGH_VALUE_THRESHOLD: 0.7
@@ -134,7 +134,7 @@ Semantic Cache Check (Redis)
   └─ MISS → Continue
        ↓
 Query Classification (Hybrid Coordinator)
-  ├─ Simple → Lemonade (local)
+  ├─ Simple → llama.cpp (local)
   ├─ Complex → Remote API
   ↓
 Context Augmentation (Qdrant + Hybrid Coordinator)
@@ -232,7 +232,7 @@ await hybrid_coordinator.update_outcome(
 
 ### 3. Pattern Extraction
 - Runs automatically for high-value interactions
-- Uses local LLM (Lemonade) for extraction
+- Uses local LLM (llama.cpp) for extraction
 - Stores patterns in `skills-patterns` collection
 - Updates context success rates
 

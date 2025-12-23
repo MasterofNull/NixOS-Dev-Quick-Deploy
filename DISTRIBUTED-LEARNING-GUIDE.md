@@ -74,8 +74,8 @@ Add to your `configuration.nix`:
       url = "http://localhost:6333";
     };
 
-    # Lemonade configuration
-    lemonade = {
+    # llama.cpp configuration
+    llama-cpp = {
       baseUrl = "http://localhost:8080";
     };
 

@@ -7,7 +7,7 @@
 ## Core Concept
 
 **Use the right tool for the job:**
-- Local LLM (Lemonade): Fast, free, good for simple/repetitive tasks
+- Local LLM (llama.cpp): Fast, free, good for simple/repetitive tasks
 - Remote API (Claude/GPT): Expensive, excellent for complex/novel tasks
 
 **Goal**: 70%+ queries handled locally, 30-50% token reduction overall
@@ -173,7 +173,7 @@ class HybridWorkflow:
         return False
 
     def query_local_llm(self, query, context):
-        """Query Lemonade local LLM"""
+        """Query llama.cpp local LLM"""
 
         # Build context-augmented prompt
         if context:
@@ -396,7 +396,7 @@ for query in common_queries:
 # Process multiple queries efficiently
 queries = [
     "How to restart Qdrant?",
-    "Check Ollama status",
+    "Check llama.cpp status",
     "View container logs"
 ]
 

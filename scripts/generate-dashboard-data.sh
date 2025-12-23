@@ -11,6 +11,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Output directory for JSON data
 DATA_DIR="${HOME}/.local/share/nixos-system-dashboard"
 AI_STACK_DATA_ROOT="${AI_STACK_DATA:-$HOME/.local/share/nixos-ai-stack}"
+AIDB_LOCAL_CONFIG="${AIDB_CONFIG_PATH:-$HOME/Documents/AI-Optimizer/config/config.yaml}"
 
 has_cmd() {
     command -v "$1" >/dev/null 2>&1
@@ -99,6 +100,38 @@ normalize_int() {
     echo "${value:-0}"
 }
 
+count_jsonl_field() {
+    local path="$1"
+    local field="$2"
+    local value="$3"
+    if [[ -f "$path" ]]; then
+        if has_cmd jq; then
+            jq -r "select(.${field} == \"${value}\") | 1" "$path" 2>/dev/null | wc -l | tr -d ' '
+        else
+            grep -c "\"${field}\"[[:space:]]*:[[:space:]]*\"${value}\"" "$path" 2>/dev/null || echo "0"
+        fi
+    else
+        echo "0"
+    fi
+}
+
+count_aidb_local_events() {
+    local path="$1"
+    if [[ ! -f "$path" ]]; then
+        echo "0"
+        return
+    fi
+    if has_cmd jq; then
+        jq -r 'select((.llm_used == "llama.cpp") or ((.model // "") | tostring | test("^(qwen|deepseek)"; "i"))) | 1' "$path" 2>/dev/null | wc -l | tr -d ' '
+        return
+    fi
+    awk '
+        /"llm_used"[[:space:]]*:[[:space:]]*"llama\.cpp"/ {count++; next}
+        /"model"[[:space:]]*:[[:space:]]*"(qwen|deepseek)/ {count++; next}
+        END {print count+0}
+    ' "$path"
+}
+
 last_event_timestamp() {
     local path="$1"
     if [[ -f "$path" ]]; then
@@ -112,6 +145,26 @@ read_env_value() {
     if [[ -f "$env_file" ]]; then
         sed -n "s/^${key}=//p" "$env_file" | tail -n 1 | tr -d '\r'
     fi
+}
+
+read_yaml_telemetry_path() {
+    local config_file="$1"
+    if [[ -f "$config_file" ]]; then
+        awk '
+            $1 == "telemetry:" {in_telemetry=1; next}
+            in_telemetry && $1 == "path:" {print $2; exit}
+            in_telemetry && /^[^[:space:]]/ {exit}
+        ' "$config_file" | tr -d '"'
+    fi
+}
+
+resolve_tilde_path() {
+    local path="$1"
+    if [[ "$path" == "~/"* ]]; then
+        path="${HOME}/${path#~/}"
+    fi
+    path="${path//\/~\//\/}"
+    echo "$path"
 }
 
 read_nixos_option() {
@@ -143,7 +196,7 @@ read_journald_value() {
 systemd_is_active() {
     local unit="$1"
     if has_cmd systemctl; then
-        systemctl is-active "$unit" 2>/dev/null || echo "unknown"
+        systemctl is-active "$unit" 2>/dev/null | tr -d '\n' || echo "unknown"
     else
         echo "unknown"
     fi
@@ -164,6 +217,14 @@ sysctl_value() {
     fi
 }
 mkdir -p "$DATA_DIR"
+
+if [[ -z "${AIDB_TELEMETRY_PATH:-}" ]]; then
+    telemetry_candidate=$(read_yaml_telemetry_path "$AIDB_LOCAL_CONFIG")
+    if [[ -n "$telemetry_candidate" ]]; then
+        export AIDB_TELEMETRY_PATH
+        AIDB_TELEMETRY_PATH=$(resolve_tilde_path "$telemetry_candidate")
+    fi
+fi
 
 LOCK_FILE="${DATA_DIR}/collector.lock"
 
@@ -193,8 +254,74 @@ acquire_lock() {
 # System Metrics
 # ============================================================================
 collect_system_metrics() {
-    local cpu_usage=$(run_timeout 2 top -bn1 2>/dev/null | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}')
-    local mem_info=$(run_timeout 2 free -m 2>/dev/null | awk 'NR==2{printf "{\"total\":%s,\"used\":%s,\"free\":%s,\"percent\":%.2f}", $2,$3,$4,$3*100/$2}')
+    local host_name
+    host_name=$(hostname)
+
+    # CPU usage - Enhanced for GNOME Resources-like precision using /proc/stat
+    local cpu_usage="0.0"
+    if [[ -f /proc/stat ]]; then
+        # Read CPU stats (avoid process substitution which can hang)
+        local cpu_line=$(grep '^cpu ' /proc/stat | head -1)
+        local cpu_times=($cpu_line)
+        local idle=${cpu_times[4]:-0}
+        local iowait=${cpu_times[5]:-0}
+        local total=0
+        for val in "${cpu_times[@]:1}"; do
+            [[ -n "$val" ]] && total=$((total + val))
+        done
+
+        # Calculate usage percentage using delta
+        if [[ -f "$DATA_DIR/.cpu_prev" ]]; then
+            read -r prev_idle prev_total < "$DATA_DIR/.cpu_prev" 2>/dev/null || true
+            local idle_delta=$((idle - prev_idle))
+            local total_delta=$((total - prev_total))
+            if [[ $total_delta -gt 0 ]]; then
+                cpu_usage=$(awk -v idle="$idle_delta" -v total="$total_delta" 'BEGIN {printf "%.1f", 100 * (1 - idle/total)}' 2>/dev/null || echo "0.0")
+            fi
+        fi
+        echo "$idle $total" > "$DATA_DIR/.cpu_prev" 2>/dev/null || true
+    else
+        # Fallback to top
+        cpu_usage=$(run_timeout 2 top -bn1 2>/dev/null | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}' || echo "0.0")
+    fi
+
+    # Memory info - Enhanced with /proc/meminfo for GNOME Resources-style detail
+    local mem_info
+    if [[ -f /proc/meminfo ]]; then
+        local mem_total=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+        local mem_free=$(awk '/^MemFree:/ {print $2}' /proc/meminfo)
+        local mem_available=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+        local mem_buffers=$(awk '/^Buffers:/ {print $2}' /proc/meminfo)
+        local mem_cached=$(awk '/^Cached:/ {print $2}' /proc/meminfo)
+        local mem_shmem=$(awk '/^Shmem:/ {print $2}' /proc/meminfo)
+        local mem_sreclaimable=$(awk '/^SReclaimable:/ {print $2}' /proc/meminfo)
+        local swap_total=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo)
+        local swap_free=$(awk '/^SwapFree:/ {print $2}' /proc/meminfo)
+        local swap_used=$((swap_total - swap_free))
+
+        local mem_used=$((mem_total - mem_available))
+        local mem_total_mb=$((mem_total / 1024))
+        local mem_used_mb=$((mem_used / 1024))
+        local mem_free_mb=$((mem_free / 1024))
+        local mem_available_mb=$((mem_available / 1024))
+        local mem_buffers_mb=$((mem_buffers / 1024))
+        local mem_cached_mb=$((mem_cached / 1024))
+        local swap_total_mb=$((swap_total / 1024))
+        local swap_used_mb=$((swap_used / 1024))
+        local swap_free_mb=$((swap_free / 1024))
+
+        local mem_percent=$(awk -v used="$mem_used" -v total="$mem_total" 'BEGIN {printf "%.1f", (used/total)*100}')
+        local swap_percent=0
+        if [[ $swap_total -gt 0 ]]; then
+            swap_percent=$(awk -v used="$swap_used" -v total="$swap_total" 'BEGIN {printf "%.1f", (used/total)*100}')
+        fi
+
+        mem_info="{\"total\":$mem_total_mb,\"used\":$mem_used_mb,\"free\":$mem_free_mb,\"available\":$mem_available_mb,\"buffers\":$mem_buffers_mb,\"cached\":$mem_cached_mb,\"percent\":$mem_percent,\"swap\":{\"total\":$swap_total_mb,\"used\":$swap_used_mb,\"free\":$swap_free_mb,\"percent\":$swap_percent}}"
+    else
+        # Fallback to free
+        mem_info=$(run_timeout 2 free -m 2>/dev/null | awk 'NR==2{printf "{\"total\":%s,\"used\":%s,\"free\":%s,\"percent\":%.2f}", $2,$3,$4,$3*100/$2}')
+    fi
+
     local disk_usage=$(run_timeout 2 df -h / 2>/dev/null | awk 'NR==2{printf "{\"total\":\"%s\",\"used\":\"%s\",\"avail\":\"%s\",\"percent\":\"%s\"}", $2,$3,$4,$5}')
     local uptime_seconds=$(awk '{print int($1)}' /proc/uptime)
     local load_avg=$(run_timeout 2 uptime 2>/dev/null | awk -F'load average:' '{print $2}' | sed 's/^ *//')
@@ -209,6 +336,60 @@ collect_system_metrics() {
     local cpu_temp="N/A"
     if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
         cpu_temp=$(awk '{printf "%.1f°C", $1/1000}' /sys/class/thermal/thermal_zone0/temp)
+    fi
+
+    # CPU frequency (current/min/max) - GNOME Resources style
+    local cpu_freq_current="N/A"
+    local cpu_freq_min="N/A"
+    local cpu_freq_max="N/A"
+    if [ -f /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq ]; then
+        cpu_freq_current=$(awk '{printf "%.2f", $1/1000000}' /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null || echo "0")
+    fi
+    if [ -f /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq ]; then
+        cpu_freq_min=$(awk '{printf "%.2f", $1/1000000}' /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq 2>/dev/null || echo "0")
+    fi
+    if [ -f /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq ]; then
+        cpu_freq_max=$(awk '{printf "%.2f", $1/1000000}' /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq 2>/dev/null || echo "0")
+    fi
+
+    # Per-core CPU usage - GNOME Resources style
+    local per_core_usage="[]"
+    if [[ -f /proc/stat ]]; then
+        local core_array="["
+        local first=true
+        local core_count=0
+
+        for core_num in $(seq 0 $(($(nproc) - 1))); do
+            local line=$(grep "^cpu$core_num " /proc/stat)
+            [[ -z "$line" ]] && continue
+
+            local cpu_times=($line)
+            local idle=${cpu_times[4]}
+            local total=0
+            for val in "${cpu_times[@]:1}"; do
+                total=$((total + val))
+            done
+
+            local core_usage="0.0"
+            if [[ -f "$DATA_DIR/.cpu_core${core_num}_prev" ]]; then
+                read -r prev_idle prev_total < "$DATA_DIR/.cpu_core${core_num}_prev" 2>/dev/null || true
+                local idle_delta=$((idle - prev_idle))
+                local total_delta=$((total - prev_total))
+                if [[ $total_delta -gt 0 ]]; then
+                    core_usage=$(awk -v idle="$idle_delta" -v total="$total_delta" 'BEGIN {printf "%.1f", 100 * (1 - idle/total)}')
+                fi
+            fi
+            echo "$idle $total" > "$DATA_DIR/.cpu_core${core_num}_prev"
+
+            [[ "$first" == "false" ]] && core_array+=","
+            first=false
+            core_array+="{\"core\":$core_num,\"usage\":$core_usage}"
+            core_count=$((core_count + 1))
+            [[ $core_count -ge 16 ]] && break  # Safety limit
+        done
+
+        core_array+="]"
+        per_core_usage="$core_array"
     fi
 
     if [[ -f /proc/cpuinfo ]]; then
@@ -243,13 +424,68 @@ collect_system_metrics() {
         fi
     done
 
+    # Disk I/O monitoring - GNOME Resources style
+    local disk_read_rate="0"
+    local disk_write_rate="0"
+    local disk_read_total="0"
+    local disk_write_total="0"
+
+    if [[ -f /proc/diskstats ]]; then
+        # Get primary disk device (usually sda, nvme0n1, etc.)
+        local primary_disk=""
+        if has_cmd findmnt; then
+            # Remove /dev/ and partition suffix (p2, 2, etc) but keep device number (nvme0n1)
+            primary_disk=$(findmnt -no SOURCE / 2>/dev/null | sed 's|/dev/||; s|p[0-9]\+$||')
+        fi
+
+        if [[ -n "$primary_disk" ]]; then
+            # Read sectors read and written from /proc/diskstats (avoid process substitution)
+            local disk_stats=$(awk -v disk="$primary_disk" '$3 == disk {print $6, $10}' /proc/diskstats 2>/dev/null | head -1)
+            read -r sectors_read sectors_written <<< "$disk_stats"
+
+            if [[ -n "$sectors_read" && -n "$sectors_written" ]]; then
+                # Convert sectors to MB (sector = 512 bytes typically)
+                disk_read_total=$(awk -v sectors="$sectors_read" 'BEGIN {printf "%.2f", sectors * 512 / 1024 / 1024}')
+                disk_write_total=$(awk -v sectors="$sectors_written" 'BEGIN {printf "%.2f", sectors * 512 / 1024 / 1024}')
+
+                # Calculate rates
+                if [[ -f "$DATA_DIR/.disk_prev" ]]; then
+                    read -r prev_read prev_write prev_time < "$DATA_DIR/.disk_prev"
+                    local current_time=$(date +%s)
+                    local time_delta=$((current_time - prev_time))
+
+                    if [[ $time_delta -gt 0 ]]; then
+                        disk_read_rate=$(awk -v curr="$disk_read_total" -v prev="$prev_read" -v time="$time_delta" 'BEGIN {printf "%.2f", (curr - prev) / time}')
+                        disk_write_rate=$(awk -v curr="$disk_write_total" -v prev="$prev_write" -v time="$time_delta" 'BEGIN {printf "%.2f", (curr - prev) / time}')
+                    fi
+                fi
+
+                echo "$disk_read_total $disk_write_total $(date +%s)" > "$DATA_DIR/.disk_prev"
+            fi
+        fi
+    fi
+
+    # Top processes by CPU and memory - GNOME Resources style
+    local top_processes="[]"
+    if has_cmd ps; then
+        top_processes=$(ps aux --sort=-%cpu | head -11 | tail -10 | awk '{printf "{\"pid\":%s,\"user\":\"%s\",\"cpu\":%.1f,\"mem\":%.1f,\"command\":\"%s\"},", $2,$1,$3,$4,substr($0,index($0,$11))}' | sed 's/,$//' | sed 's/^/[/' | sed 's/$/]/')
+        [[ -z "$top_processes" || "$top_processes" == "[]" ]] && top_processes="[]"
+    fi
+
     cat > "$DATA_DIR/system.json" <<EOF
 {
   "timestamp": "$(date -Iseconds)",
+  "host_name": "$host_name",
   "cpu": {
     "usage_percent": $cpu_usage,
     "temperature": "$cpu_temp",
+    "frequency": {
+      "current": "$cpu_freq_current",
+      "min": "$cpu_freq_min",
+      "max": "$cpu_freq_max"
+    },
     "cores": $(nproc),
+    "per_core": $per_core_usage,
     "model": "$cpu_model",
     "arch": "$arch"
   },
@@ -261,6 +497,15 @@ collect_system_metrics() {
   },
   "memory": $mem_info,
   "disk": $disk_usage,
+  "disk_io": {
+    "read_rate_mb_s": $disk_read_rate,
+    "write_rate_mb_s": $disk_write_rate,
+    "read_total_mb": $disk_read_total,
+    "write_total_mb": $disk_write_total
+  },
+  "processes": {
+    "top_by_cpu": $top_processes
+  },
   "uptime_seconds": $uptime_seconds,
   "load_average": "$load_avg"
 }
@@ -272,8 +517,7 @@ EOF
 # ============================================================================
 collect_llm_metrics() {
     local qdrant_status="offline"
-    local ollama_status="offline"
-    local lemonade_status="offline"
+    local llama_cpp_status="offline"
     local postgres_status="offline"
     local redis_status="offline"
     local open_webui_status="offline"
@@ -286,6 +530,7 @@ collect_llm_metrics() {
     local qdrant_collections="[]"
     local qdrant_collection_count=0
     local postgres_user="${POSTGRES_USER:-mcp}"
+    local embedding_models="[]"
 
     # Check Qdrant
     if curl_fast http://localhost:6333/healthz > /dev/null 2>&1; then
@@ -294,17 +539,19 @@ collect_llm_metrics() {
         qdrant_collection_count=$(echo "$qdrant_collections" | maybe_jq -r 'length' 2>/dev/null || echo "0")
     fi
 
-    # Check Ollama
-    if curl_fast http://localhost:11434/api/tags > /dev/null 2>&1; then
-        ollama_status="online"
-        ollama_models=$(curl_fast http://localhost:11434/api/tags | maybe_jq -c '[.models[] | {name: .name, size: .size}]' 2>/dev/null || echo "[]")
+    # Check llama.cpp (llama.cpp server)
+    if curl_fast http://localhost:8080/health > /dev/null 2>&1; then
+        llama_cpp_status="online"
+        llama_cpp_models=$(curl_fast http://localhost:8080/v1/models 2>/dev/null | maybe_jq -c '.data // []' || echo "[]")
     fi
 
-    # Check Lemonade (llama.cpp server)
-    if curl_fast http://localhost:8080/health > /dev/null 2>&1; then
-        lemonade_status="online"
-        lemonade_models=$(curl_fast http://localhost:8080/v1/models 2>/dev/null | maybe_jq -c '.data // []' || echo "[]")
+    # Detect local embedding models (sentence-transformers cache)
+    if [[ -d "${HOME}/.cache/huggingface/sentence-transformers" ]]; then
+        embedding_models=$(run_timeout 3 find "${HOME}/.cache/huggingface/sentence-transformers" -maxdepth 2 -mindepth 2 -type f -name "config.json" -printf '%h\n' 2>/dev/null | xargs -r -n1 basename | sort -u | maybe_jq -R -s -c 'split("\n") | map(select(length > 0))' || echo "[]")
+    elif [[ -d "${HOME}/.cache/huggingface/hub" ]]; then
+        embedding_models=$(run_timeout 3 find "${HOME}/.cache/huggingface/hub" -type f -path "*/models--sentence-transformers--*/snapshots/*/config.json" -printf '%p\n' 2>/dev/null | sed -n 's|.*/models--sentence-transformers--\\([^/]*\\)/.*|\\1|p' | sort -u | maybe_jq -R -s -c 'split("\n") | map(select(length > 0))' || echo "[]")
     fi
+
 
     # Check PostgreSQL
     if [[ "$container_runtime" == "podman" ]]; then
@@ -333,6 +580,10 @@ collect_llm_metrics() {
     # Check MindsDB (optional)
     if curl_fast http://localhost:47334/api/util/ping > /dev/null 2>&1; then
         mindsdb_status="online"
+    elif [[ "$container_runtime" == "podman" ]]; then
+        if run_timeout 3 podman ps --filter "name=local-ai-mindsdb" --filter "status=running" --format "{{.Names}}" 2>/dev/null | grep -q "local-ai-mindsdb"; then
+            mindsdb_status="starting"
+        fi
     fi
 
     # Check AIDB MCP Server
@@ -362,15 +613,14 @@ collect_llm_metrics() {
       "collection_names": ${qdrant_collections:-[]},
       "url": "http://localhost:6333"
     },
-    "ollama": {
-      "status": "$ollama_status",
-      "models": ${ollama_models:-[]},
-      "url": "http://localhost:11434"
-    },
-    "lemonade": {
-      "status": "$lemonade_status",
-      "models": ${lemonade_models:-[]},
+    "llama_cpp": {
+      "status": "$llama_cpp_status",
+      "models": ${llama_cpp_models:-[]},
       "url": "http://localhost:8080"
+    },
+    "embeddings": {
+      "models": ${embedding_models:-[]},
+      "source": "huggingface-cache"
     },
     "postgres": {
       "status": "$postgres_status",
@@ -418,6 +668,17 @@ collect_network_metrics() {
 
     # Network interfaces
     local interfaces=$(run_timeout 2 ip -j addr show 2>/dev/null | maybe_jq -c '[.[] | select(.operstate == "UP") | {name: .ifname, address: .addr_info[0].local, state: .operstate}]')
+    local primary_iface=""
+    if has_cmd ip; then
+        primary_iface=$(run_timeout 2 ip route show default 2>/dev/null | awk 'NR==1 {for (i=1; i<=NF; i++) if ($i=="dev") print $(i+1)}' | head -n1)
+    fi
+    primary_iface="${primary_iface:-}"
+
+    local rx_bytes=0
+    local tx_bytes=0
+    if [[ -n "$primary_iface" && -r /proc/net/dev ]]; then
+        read -r rx_bytes tx_bytes < <(awk -v iface="$primary_iface" '$1 ~ iface":" {gsub(":", "", $1); print $2, $10}' /proc/net/dev)
+    fi
 
     # DNS status
     local dns_status="unknown"
@@ -447,6 +708,11 @@ collect_network_metrics() {
     "rules_count": $firewall_rules
   },
   "interfaces": ${interfaces},
+  "traffic": {
+    "iface": "${primary_iface}",
+    "rx_bytes": ${rx_bytes:-0},
+    "tx_bytes": ${tx_bytes:-0}
+  },
   "dns": {
     "status": "$dns_status",
     "resolvers": $(grep "^nameserver" /etc/resolv.conf 2>/dev/null | awk '{print $2}' | jq -R . | jq -s -c . || echo "[]")
@@ -462,7 +728,7 @@ EOF
 # ============================================================================
 collect_security_metrics() {
     # Failed login attempts (last hour)
-    local failed_logins=$(run_timeout 2 journalctl -u systemd-logind --since "1 hour ago" 2>/dev/null | grep -c "Failed" || echo "0")
+    local failed_logins=$(normalize_int "$(run_timeout 2 journalctl -u systemd-logind --since "1 hour ago" 2>/dev/null | grep -c "Failed" || echo "0")")
 
     # AppArmor status
     local apparmor_status="unknown"
@@ -543,16 +809,10 @@ collect_persistence_metrics() {
       "size": "$(dir_size "${data_root}/qdrant")"
     },
     {
-      "name": "ollama",
-      "path": "${data_root}/ollama",
-      "exists": $(dir_exists "${data_root}/ollama"),
-      "size": "$(dir_size "${data_root}/ollama")"
-    },
-    {
-      "name": "lemonade",
-      "path": "${data_root}/lemonade-models",
-      "exists": $(dir_exists "${data_root}/lemonade-models"),
-      "size": "$(dir_size "${data_root}/lemonade-models")"
+      "name": "llama_cpp",
+      "path": "${data_root}/llama-cpp-models",
+      "exists": $(dir_exists "${data_root}/llama-cpp-models"),
+      "size": "$(dir_size "${data_root}/llama-cpp-models")"
     },
     {
       "name": "open-webui",
@@ -682,18 +942,73 @@ EOF
 # ============================================================================
 collect_telemetry_metrics() {
     local telemetry_status="offline"
-    local summary="{}"
+    local aidb_telemetry="${AIDB_TELEMETRY_PATH:-$AI_STACK_DATA_ROOT/telemetry/aidb-events.jsonl}"
+    local hybrid_telemetry="${AI_STACK_DATA_ROOT}/telemetry/hybrid-events.jsonl"
 
-    if curl_fast http://localhost:8091/telemetry/summary > /dev/null 2>&1; then
+    local total_events=0
+    local local_events=0
+    local remote_events=0
+    local tokens_saved=0
+    local last_event_at="N/A"
+    local telemetry_path
+    telemetry_path=$(resolve_tilde_path "$aidb_telemetry")
+    local enabled=true
+    local local_usage_rate=0.0
+
+    # Check if AIDB is online
+    if curl_fast http://localhost:8091/health > /dev/null 2>&1; then
         telemetry_status="online"
-        summary=$(curl_fast http://localhost:8091/telemetry/summary | maybe_jq -c '.' 2>/dev/null || echo "{}")
     fi
+
+    # Count AIDB telemetry events
+    if [[ -f "$aidb_telemetry" ]]; then
+        total_events=$(file_line_count "$aidb_telemetry")
+        local last_line
+        last_line=$(tail -n 1 "$aidb_telemetry" 2>/dev/null)
+        if [[ -n "$last_line" ]]; then
+            last_event_at=$(echo "$last_line" | maybe_jq -r '.timestamp' 2>/dev/null || echo "N/A")
+        fi
+
+        # Count events by LLM type (llama.cpp = local, others = remote)
+        local_events=$(normalize_int "$(count_aidb_local_events "$aidb_telemetry")")
+    fi
+
+    # Add hybrid coordinator telemetry
+    if [[ -f "$hybrid_telemetry" ]]; then
+        local hybrid_total hybrid_local hybrid_remote
+        hybrid_total=$(normalize_int "$(file_line_count "$hybrid_telemetry")")
+        total_events=$((total_events + hybrid_total))
+
+        # Count local vs remote from hybrid coordinator
+        hybrid_local=$(normalize_int "$(count_jsonl_field "$hybrid_telemetry" "agent_type" "local")")
+        local_events=$((local_events + hybrid_local))
+
+        hybrid_remote=$(normalize_int "$(count_jsonl_field "$hybrid_telemetry" "agent_type" "remote")")
+        remote_events=$((remote_events + hybrid_remote))
+    fi
+
+    # Calculate local usage rate
+    if [[ $total_events -gt 0 ]]; then
+        local_usage_rate=$(awk -v l="$local_events" -v t="$total_events" 'BEGIN {printf "%.1f", (l/t)*100}')
+    fi
+
+    # Estimate tokens saved (assume 12K tokens saved per local query)
+    tokens_saved=$((local_events * 12000))
 
     cat > "$DATA_DIR/telemetry.json" <<EOF
 {
   "timestamp": "$(date -Iseconds)",
   "status": "$telemetry_status",
-  "summary": $summary
+  "summary": {
+    "total_events": $total_events,
+    "local_events": $local_events,
+    "remote_events": $remote_events,
+    "tokens_saved": $tokens_saved,
+    "last_event_at": "$last_event_at",
+    "telemetry_path": "$telemetry_path",
+    "enabled": $enabled,
+    "local_usage_rate": $local_usage_rate
+  }
 }
 EOF
 }
@@ -747,7 +1062,7 @@ collect_hybrid_coordinator_metrics() {
 
     # Count pattern extractions
     if [[ -f "$telemetry_path" ]] && [[ $telemetry_records -gt 0 ]]; then
-        pattern_extraction_count=$(grep -c '"pattern_extracted":true' "$telemetry_path" 2>/dev/null || echo "0")
+        pattern_extraction_count=$(normalize_int "$(grep -c '"pattern_extracted":true' "$telemetry_path" 2>/dev/null || echo "0")")
     fi
 
     cat > "$DATA_DIR/hybrid-coordinator.json" <<EOF
@@ -872,10 +1187,10 @@ collect_learning_metrics() {
         total_interactions=$((total_interactions + hybrid_count))
 
         # High-value interactions (value_score >= 0.7)
-        high_value_interactions=$(grep -c '"value_score":[0-9.]*[7-9][0-9.]*' "$hybrid_telemetry" 2>/dev/null || echo "0")
+        high_value_interactions=$(normalize_int "$(grep -c '"value_score":[0-9.]*[7-9][0-9.]*' "$hybrid_telemetry" 2>/dev/null || echo "0")")
 
         # Pattern extractions
-        pattern_extractions=$(grep -c '"pattern_extracted":true' "$hybrid_telemetry" 2>/dev/null || echo "0")
+        pattern_extractions=$(normalize_int "$(grep -c '"pattern_extracted":true' "$hybrid_telemetry" 2>/dev/null || echo "0")")
 
         # Average value score
         if [[ $hybrid_count -gt 0 ]]; then
@@ -886,13 +1201,13 @@ collect_learning_metrics() {
             fi
         fi
 
-        # Last 7 days metrics
+        # Last 7 days metrics (use last 100 lines as approximation)
         if has_cmd date; then
             local seven_days_ago
             seven_days_ago=$(date -d '7 days ago' -Iseconds 2>/dev/null || date -v-7d -Iseconds 2>/dev/null || echo "")
             if [[ -n "$seven_days_ago" ]]; then
-                last_7d_interactions=$(grep -c "\"timestamp\":\"[^\"]*\"" "$hybrid_telemetry" 2>/dev/null | head -100 || echo "0")
-                last_7d_high_value=$(tail -n 100 "$hybrid_telemetry" 2>/dev/null | grep -c '"value_score":[0-9.]*[7-9][0-9.]*' || echo "0")
+                last_7d_interactions=$(normalize_int "$(tail -n 100 "$hybrid_telemetry" 2>/dev/null | wc -l | tr -d ' ' || echo "0")")
+                last_7d_high_value=$(normalize_int "$(tail -n 100 "$hybrid_telemetry" 2>/dev/null | grep -c '"value_score":[0-9.]*[7-9][0-9.]*' 2>/dev/null || echo "0")")
             fi
         fi
     fi
@@ -934,6 +1249,158 @@ collect_learning_metrics() {
   }
 }
 EOF
+}
+
+# ============================================================================
+# Keyword Signals (Discovery Report Summary)
+# ============================================================================
+collect_keyword_signals() {
+    local report_dir="${PROJECT_ROOT}/docs/development"
+    local output_path="${DATA_DIR}/keyword-signals.json"
+    local report_path
+    report_path=$(ls -t "${report_dir}"/IMPROVEMENT-DISCOVERY-REPORT-*.md 2>/dev/null | head -n 1 || true)
+
+    if [[ -z "$report_path" ]]; then
+        cat > "$output_path" <<EOF
+{
+  "timestamp": "$(date -Iseconds)",
+  "status": "missing",
+  "report_path": "",
+  "candidates": [],
+  "signals": [],
+  "sources": [],
+  "summary": {
+    "candidate_count": 0,
+    "signal_count": 0,
+    "source_count": 0
+  }
+}
+EOF
+        return 0
+    fi
+
+    if has_cmd python3; then
+        python3 - "$report_path" "$output_path" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+
+report_path = sys.argv[1]
+output_path = sys.argv[2]
+
+with open(report_path, "r", encoding="utf-8") as handle:
+    lines = handle.read().splitlines()
+
+section = None
+candidates = []
+signals = []
+sources = []
+current = None
+
+def flush_candidate():
+    global current
+    if current:
+        candidates.append(current)
+        current = None
+
+for line in lines:
+    if line.startswith("## "):
+        flush_candidate()
+        # More flexible section matching (case-insensitive, partial match)
+        line_lower = line.lower()
+        if "candidate" in line_lower and "summary" in line_lower:
+            section = "candidates"
+        elif "signal" in line_lower and "low" in line_lower:
+            section = "signals"
+        elif "source" in line_lower and "review" in line_lower:
+            section = "sources"
+        else:
+            section = None
+        continue
+
+    if section == "candidates":
+        if line.startswith("### "):
+            flush_candidate()
+            current = {"url": line[4:].strip(), "details": {}}
+        elif line.startswith("- **") and current is not None:
+            raw = line.split(":", 1)
+            if len(raw) == 2:
+                label = raw[0].replace("- **", "").replace("**", "").strip()
+                val = raw[1].replace("**", "").strip()
+                if label.lower() == "score":
+                    try:
+                        current["score"] = float(val)
+                    except ValueError:
+                        current["score"] = val
+                elif label.lower() == "release url":
+                    current["release_url"] = val
+                elif label.lower() == "latest release":
+                    current["release"] = val
+                elif label.lower() == "repo":
+                    current["repo"] = val
+                elif label.lower() == "stars":
+                    try:
+                        current["stars"] = int(val.replace(",", ""))
+                    except ValueError:
+                        current["stars"] = val
+                else:
+                    current["details"][label] = val
+        elif not line.strip():
+            flush_candidate()
+    elif section == "signals":
+        if line.startswith("- "):
+            entry = line[2:].strip()
+            note = ""
+            if " (" in entry and entry.endswith(")"):
+                entry, note = entry.rsplit(" (", 1)
+                note = note[:-1]
+            signals.append({"url": entry.strip(), "note": note})
+    elif section == "sources":
+        if line.startswith("### "):
+            sources.append({"url": line[4:].strip()})
+        elif line.startswith("- **") and sources:
+            raw = line.split("**:", 1)
+            if len(raw) == 2:
+                label = raw[0].replace("- **", "").replace("**", "").strip()
+                val = raw[1].strip()
+                sources[-1][label.lower().replace(" ", "_")] = val
+
+flush_candidate()
+
+payload = {
+    "timestamp": datetime.now(timezone.utc).isoformat(),
+    "status": "ok",
+    "report_path": report_path,
+    "candidates": candidates,
+    "signals": signals,
+    "sources": sources,
+    "summary": {
+        "candidate_count": len(candidates),
+        "signal_count": len(signals),
+        "source_count": len(sources),
+    },
+}
+
+with open(output_path, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle, indent=2, sort_keys=True)
+PY
+    else
+        cat > "$output_path" <<EOF
+{
+  "timestamp": "$(date -Iseconds)",
+  "status": "missing_python",
+  "report_path": "$report_path",
+  "candidates": [],
+  "signals": [],
+  "sources": [],
+  "summary": {
+    "candidate_count": 0,
+    "signal_count": 0,
+    "source_count": 0
+  }
+}
+EOF
+    fi
 }
 
 # ============================================================================
@@ -1052,8 +1519,7 @@ collect_local_proof_metrics() {
     local aidb_status="offline"
     local qdrant_collections="[]"
     local qdrant_collection_count=0
-    local ollama_model_count=0
-    local lemonade_model_count=0
+    local llama_cpp_model_count=0
     local skills_count=0
     local telemetry_path="${AIDB_TELEMETRY_PATH:-$AI_STACK_DATA_ROOT/telemetry/aidb-events.jsonl}"
     local telemetry_events
@@ -1076,12 +1542,8 @@ collect_local_proof_metrics() {
         qdrant_collection_count=$(echo "$qdrant_collections" | maybe_jq -r 'length' 2>/dev/null || echo "0")
     fi
 
-    if curl_fast http://localhost:11434/api/tags > /dev/null 2>&1; then
-        ollama_model_count=$(curl_fast http://localhost:11434/api/tags | maybe_jq -r '.models | length' 2>/dev/null || echo "0")
-    fi
-
     if curl_fast http://localhost:8080/v1/models > /dev/null 2>&1; then
-        lemonade_model_count=$(curl_fast http://localhost:8080/v1/models | maybe_jq -r '.data | length' 2>/dev/null || echo "0")
+        llama_cpp_model_count=$(curl_fast http://localhost:8080/v1/models | maybe_jq -r '.data | length' 2>/dev/null || echo "0")
     fi
 
     if curl_fast http://localhost:8091/skills > /dev/null 2>&1; then
@@ -1107,8 +1569,7 @@ collect_local_proof_metrics() {
     "collection_count": ${qdrant_collection_count:-0}
   },
   "llm": {
-    "ollama_models": ${ollama_model_count:-0},
-    "lemonade_models": ${lemonade_model_count:-0}
+    "llama_cpp_models": ${llama_cpp_model_count:-0}
   },
   "skills": {
     "count": ${skills_count:-0},
@@ -1133,7 +1594,7 @@ EOF
 collect_config_metrics() {
     local env_file="${AI_STACK_CONFIG:-$HOME/.config/nixos-ai-stack/.env}"
     local aidb_port="${AIDB_PORT:-$(read_env_value "$env_file" "AIDB_PORT")}"
-    local lemonade_port="${LEMONADE_PORT:-$(read_env_value "$env_file" "LEMONADE_PORT")}"
+    local llama_cpp_port="${LLAMA_CPP_PORT:-$(read_env_value "$env_file" "LLAMA_CPP_PORT")}"
     local qdrant_port="${QDRANT_PORT:-$(read_env_value "$env_file" "QDRANT_PORT")}"
     local open_webui_port="${OPEN_WEBUI_PORT:-3001}"
     local postgres_port="${POSTGRES_PORT:-$(read_env_value "$env_file" "POSTGRES_PORT")}"
@@ -1197,7 +1658,7 @@ collect_config_metrics() {
     user_uid=$(id -u)
 
     aidb_port="${aidb_port:-8091}"
-    lemonade_port="${lemonade_port:-8080}"
+    llama_cpp_port="${llama_cpp_port:-8080}"
     qdrant_port="${qdrant_port:-6333}"
     postgres_port="${postgres_port:-5432}"
     redis_port="${redis_port:-6379}"
@@ -1211,8 +1672,7 @@ collect_config_metrics() {
   "env_file": "$env_file",
   "required_services": [
     "qdrant",
-    "ollama",
-    "lemonade",
+    "llama_cpp",
     "postgres",
     "redis",
     "open_webui",
@@ -1244,6 +1704,12 @@ collect_config_metrics() {
       "value": "${aidb_port}",
       "path": "$env_file",
       "hint": "Controls AIDB MCP server port."
+    },
+    {
+      "label": "llama.cpp Port",
+      "value": "${llama_cpp_port}",
+      "path": "$env_file",
+      "hint": "Controls llama.cpp inference server port."
     },
     {
       "label": "NixOS Version",
@@ -1336,10 +1802,10 @@ collect_config_metrics() {
       "hint": "Config file used by AIDB MCP server."
     },
     {
-      "label": "Lemonade Port",
-      "value": "${lemonade_port}",
+      "label": "llama.cpp Port",
+      "value": "${llama_cpp_port}",
       "path": "$env_file",
-      "hint": "Controls Lemonade inference port."
+      "hint": "Controls llama.cpp inference port."
     },
     {
       "label": "Open WebUI Port",
@@ -1656,14 +2122,8 @@ collect_config_metrics() {
       "category": "AI Stack"
     },
     {
-      "label": "AI Stack Logs (Ollama)",
-      "command": "podman-compose -f ai-stack/compose/docker-compose.yml logs --tail 200 ollama",
-      "mode": "run",
-      "category": "AI Stack"
-    },
-    {
-      "label": "AI Stack Logs (Lemonade)",
-      "command": "podman-compose -f ai-stack/compose/docker-compose.yml logs --tail 200 lemonade",
+      "label": "AI Stack Logs (llama.cpp)",
+      "command": "podman-compose -f ai-stack/compose/docker-compose.yml logs --tail 200 llama-cpp",
       "mode": "run",
       "category": "AI Stack"
     },
@@ -1810,7 +2270,7 @@ generate_quick_links() {
       "category": "ai"
     },
     {
-      "name": "Lemonade Health",
+      "name": "llama.cpp Health",
       "url": "http://localhost:8080/health",
       "category": "ai"
     },
@@ -1860,6 +2320,19 @@ main() {
         trap 'rm -f "$LOCK_FILE"' EXIT
     fi
 
+    # Check if running in lite mode (only system + network)
+    if [[ "${1:-}" == "--lite-mode" ]]; then
+        echo "🔄 Collecting system metrics (lite mode)..."
+        collect_system_metrics
+
+        echo "🌐 Collecting network metrics (lite mode)..."
+        collect_network_metrics
+
+        echo "✅ Lite dashboard data generated at: $DATA_DIR"
+        return 0
+    fi
+
+    # Full collection mode
     echo "🔄 Collecting system metrics..."
     collect_system_metrics
 
@@ -1889,6 +2362,9 @@ main() {
 
     echo "📊 Collecting learning metrics..."
     collect_learning_metrics
+
+    echo "🔎 Collecting keyword signals..."
+    collect_keyword_signals
 
     echo "💰 Collecting token savings metrics..."
     collect_token_savings_metrics

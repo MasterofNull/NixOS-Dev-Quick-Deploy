@@ -46,7 +46,7 @@ class MindsDBClient:
 
     Integrates with:
     - AIDB PostgreSQL database
-    - Local Lemonade runtime for AI-enhanced predictions
+    - Local llama.cpp runtime for AI-enhanced predictions
     - CodeMachine workflows
     - Redis for caching
 
@@ -457,7 +457,7 @@ async def forecast_agent_performance(
     periods_ahead: int = 7
 ) -> List[float]:
     """
-    Forecast Lemonade inference performance metrics
+    Forecast llama.cpp inference performance metrics
 
     Args:
         mindsdb: MindsDB client

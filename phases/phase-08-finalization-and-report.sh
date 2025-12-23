@@ -353,7 +353,7 @@ phase_08_finalization_and_report() {
     if [[ "${GITEA_ENABLE,,}" == "true" ]]; then
         echo "  • Gitea self-hosted Git service"
     fi
-    echo "  • Hybrid Learning Stack (Qdrant Vector DB + Lemonade LLM + Ollama)"
+    echo "  • Hybrid Learning Stack (Qdrant Vector DB + llama.cpp LLM + Ollama)"
     echo "  • Agentic Capabilities: Context Augmentation & Token Reduction (30-50%)"
     echo ""
 

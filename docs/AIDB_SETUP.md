@@ -22,7 +22,7 @@ AIDB is a comprehensive AI development environment that provides local and cloud
 
 AIDB is a collection of tools and services that work together to provide a complete AI development environment:
 
-- **Local LLM Runtime**: Ollama for running models locally
+- **Local LLM Runtime**: llama.cpp for running GGUF models locally
 - **Web Interface**: Open WebUI for ChatGPT-like experience
 - **Vector Database**: Qdrant for semantic search and RAG
 - **IDE Integration**: Claude Code, Cursor, Continue
@@ -44,7 +44,7 @@ Before setting up AIDB components, ensure you have completed the NixOS Quick Dep
 # ✓ Python 3
 # ✓ Node.js
 # ✓ Home Manager
-# ✓ Ollama
+# ✓ llama.cpp
 # ✓ Aider
 ```
 
@@ -133,24 +133,21 @@ sudo systemctl enable --now huggingface-tgi
 systemctl --user enable --now jupyter-lab
 # Access at http://localhost:8888
 
-# Start Ollama (local LLM runtime)
-systemctl --user start ollama
+# Start llama.cpp stack (local LLM runtime)
+./scripts/ai-stack-manage.sh up
 
 # Verify services
 ./scripts/system-health-check.sh
 ```
 
-### 4. Start Ollama and Download Models
+### 4. Verify llama.cpp and Models
 
 ```bash
-# Verify Ollama is running
-ollama list
+# Verify llama.cpp is running
+curl http://localhost:8080/health
 
-# Pull a model (example: llama3.2)
-ollama pull llama3.2
-
-# Test the model
-ollama run llama3.2 "Hello, how are you?"
+# List loaded models
+curl http://localhost:8080/v1/models | jq
 ```
 
 ### 5. Start Open WebUI (Optional)
@@ -173,52 +170,34 @@ podman run -d \
 
 ## Component Setup
 
-### Ollama - Local LLM Runtime
+### llama.cpp - Local LLM Runtime
 
-Ollama is already installed via Home Manager. Here's how to use it:
+llama.cpp runs the local GGUF models inside the Podman stack.
 
-**Start Ollama Service:**
+**Start llama.cpp:**
 
 ```bash
-# Enable and start Ollama service
-systemctl --user enable ollama
-systemctl --user start ollama
-
-# Check status
-systemctl --user status ollama
+./scripts/ai-stack-manage.sh up
+./scripts/ai-stack-manage.sh status
 ```
 
-**Install Models:**
+**Verify Models:**
 
 ```bash
-# List available models
-ollama list
-
-# Pull popular models
-ollama pull llama3.2        # Meta's Llama 3.2 (4.7GB)
-ollama pull phi4            # Microsoft Phi-4 (small, fast)
-ollama pull mistral         # Mistral 7B (powerful, medium size)
-ollama pull codellama       # Code-specialized Llama
-ollama pull deepseek-coder  # DeepSeek Coder (excellent for code)
-
-# Check downloaded models
-ollama list
+curl http://localhost:8080/v1/models | jq
 ```
 
 **Use Models:**
 
 ```bash
-# Interactive chat
-ollama run llama3.2
-
-# One-shot query
-ollama run llama3.2 "Explain what Nix flakes are"
-
-# API usage
-curl http://localhost:11434/api/generate -d '{
-  "model": "llama3.2",
-  "prompt": "Why is NixOS great for development?"
-}'
+# Chat completions (OpenAI-compatible)
+curl -X POST http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+    "messages": [{"role": "user", "content": "Explain what Nix flakes are"}],
+    "max_tokens": 120
+  }'
 ```
 
 **Environment Variables (already configured):**
@@ -332,8 +311,8 @@ aider src/main.rs src/lib.rs
 aider --model gpt-4o
 aider --model claude-3-5-sonnet-20241022
 
-# Use local model via Ollama
-aider --model ollama/codellama
+# Use local model via llama.cpp (OpenAI-compatible)
+aider --model openai/qwen2.5-coder-7b-instruct-q4_k_m.gguf --openai-api-base http://localhost:8080
 ```
 
 **Configuration:**
@@ -371,8 +350,8 @@ gpt-cli "Explain Nix flakes in one sentence"
 # Use specific model
 gpt-cli --model gpt-4o "Write a Rust function to parse JSON"
 
-# Use local model
-gpt-cli --model ollama/llama3.2 "What is NixOS?"
+# Use local model (llama.cpp)
+GPT_CLI_BASE_URL=http://localhost:8080 gpt-cli --model openai/qwen2.5-coder-7b-instruct-q4_k_m.gguf "What is NixOS?"
 
 # Pipe input
 cat README.md | gpt-cli "Summarize this document"
@@ -381,7 +360,7 @@ cat README.md | gpt-cli "Summarize this document"
 **Environment Variables (already configured):**
 
 - `GPT_CLI_DEFAULT_MODEL` - Default model to use
-- `GPT_CLI_DEFAULT_PROVIDER=openai` - Provider (openai, anthropic, ollama)
+- `GPT_CLI_DEFAULT_PROVIDER=openai` - Provider (openai, anthropic)
 - `GPT_CLI_BASE_URL` - API endpoint
 
 ---
@@ -393,7 +372,7 @@ cat README.md | gpt-cli "Summarize this document"
 These packages are installed automatically by the NixOS Quick Deploy script:
 
 **Core AI Tools:**
-- `ollama` - Local LLM runtime
+- `llama.cpp` - Local LLM runtime (via Podman stack)
 - `aider` - AI coding assistant
 - Python packages for AI/ML (numpy, pandas, etc.)
 
@@ -613,16 +592,17 @@ home-manager switch --flake .#$(whoami)
 exec zsh
 ```
 
-### Using Ollama with Aider
+### Using llama.cpp with Aider
 
-Aider can use local Ollama models:
+Aider can use local llama.cpp models via the OpenAI-compatible endpoint:
 
 ```bash
-# Use Ollama model
-aider --model ollama/codellama
+# Use llama.cpp model
+aider --model openai/qwen2.5-coder-7b-instruct-q4_k_m.gguf --openai-api-base http://localhost:8080
 
 # Or set as default
-export AIDER_DEFAULT_MODEL=ollama/codellama
+export AIDER_DEFAULT_MODEL=openai/qwen2.5-coder-7b-instruct-q4_k_m.gguf
+export OPENAI_API_BASE=http://localhost:8080
 aider
 ```
 
@@ -702,21 +682,18 @@ flatpak install flathub ai.cursor.Cursor
 flatpak list --user | grep Cursor
 ```
 
-#### "Ollama service not running"
+#### "llama.cpp not responding"
 
-**Cause:** Ollama systemd service not started.
+**Cause:** llama.cpp container not running.
 
 **Fix:**
 
 ```bash
-# Start service
-systemctl --user start ollama
-
-# Enable on boot
-systemctl --user enable ollama
+# Start stack
+./scripts/ai-stack-manage.sh up
 
 # Check status
-systemctl --user status ollama
+./scripts/ai-stack-manage.sh status
 ```
 
 #### "Multiple Flatpak Platform runtimes"
@@ -747,8 +724,8 @@ flatpak uninstall --unused
 # Home Manager log
 journalctl --user -u home-manager-$USER.service
 
-# Ollama log
-journalctl --user -u ollama
+# llama.cpp logs
+podman logs -f local-ai-llama-cpp
 
 # Claude wrapper debug
 CLAUDE_DEBUG=1 claude-wrapper --version
@@ -774,9 +751,7 @@ https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy/issues
 
 2. **Download Models:**
    ```bash
-   ollama pull llama3.2
-   ollama pull codellama
-   ollama pull deepseek-coder
+   ./scripts/download-llama-cpp-models.sh
    ```
 
 3. **Explore Tools:**
@@ -798,7 +773,7 @@ https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy/issues
 
 ## Resources
 
-- [Ollama Documentation](https://ollama.ai/docs)
+- [llama.cpp Documentation](https://github.com/ggerganov/llama.cpp)
 - [Aider Documentation](https://aider.chat/)
 - [Claude Code Documentation](https://docs.anthropic.com/claude/docs)
 - [Cursor Documentation](https://docs.cursor.sh/)

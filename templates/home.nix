@@ -40,7 +40,7 @@ let
   giteaNativeConfigDir = ".config/gitea";
   giteaNativeDataDir = ".local/share/gitea";
   giteaAiConfigFile = "ai-agents.json";
-  # AI services run in user-level Podman (Lemonade + Ollama + Qdrant)
+  # AI services run in user-level Podman (llama.cpp + Ollama + Qdrant)
   # See: ~/.config/ai-optimizer/ for the Podman-based AI stack
   huggingfaceCacheDir = ".cache/huggingface";
   huggingfaceModelId = HUGGINGFACE_MODEL_ID_PLACEHOLDER;
@@ -48,7 +48,7 @@ let
   huggingfaceTgiEndpoint = HUGGINGFACE_TGI_ENDPOINT_PLACEHOLDER;
   huggingfaceScoutTgiEndpoint = HUGGINGFACE_SCOUT_TGI_ENDPOINT_PLACEHOLDER;
   huggingfaceTgiContainerEndpoint = HUGGINGFACE_TGI_CONTAINER_ENDPOINT_PLACEHOLDER;
-  # OpenAI-compatible local endpoints (Lemonade/llama.cpp)
+  # OpenAI-compatible local endpoints (llama.cpp/llama.cpp)
   vllmPrimaryEndpoint = "http://127.0.0.1:8080/v1";  # Primary local inference
   vllmSecondaryEndpoint = "http://127.0.0.1:8081/v1";  # Secondary local inference (if needed)
   # ===========================================================================
@@ -79,19 +79,17 @@ let
   #   Gemini 3 Flash    - Multimodal, real-time
   # ---------------------------------------------------------------------------
   
-  # LLM Backend Configuration (ollama or lemonade)
-  # Lemonade is optimized for AMD GPUs with ROCm, Ollama is universal
-  llmBackend = LLM_BACKEND_PLACEHOLDER;  # "ollama" or "lemonade"
+  # LLM Backend Configuration (llama_cpp via llama.cpp server)
+  # llama.cpp is optimized for AMD GPUs with ROCm
+  llmBackend = LLM_BACKEND_PLACEHOLDER;  # "llama_cpp"
   llmModels = LLM_MODELS_PLACEHOLDER;    # Comma-separated model list
   llmModelsList = lib.splitString "," llmModels;
   
   # Backend-specific ports
-  ollamaPort = 11434;
-  lemonadePort = 8080;  # llama.cpp server default port
-  llmInferencePort = if llmBackend == "lemonade" then lemonadePort else ollamaPort;
-  ollamaHost = "http://127.0.0.1:${toString ollamaPort}";
-  lemonadeHost = "http://127.0.0.1:${toString lemonadePort}";
-  llmInferenceHost = if llmBackend == "lemonade" then lemonadeHost else ollamaHost;
+  llamaCppPort = 8080;  # llama.cpp server default port
+  llmInferencePort = llamaCppPort;
+  llamaCppHost = "http://127.0.0.1:${toString llamaCppPort}";
+  llmInferenceHost = llamaCppHost;
   
   # Remote LLM Configuration (for hybrid local/remote workflows)
   # Set these environment variables for remote LLM access:
@@ -115,9 +113,8 @@ let
   podmanAiStackNetworkName = "local-ai";
   podmanAiStackLabelKey = "nixos.quick-deploy.ai-stack";
   podmanAiStackLabelValue = "true";
-  podmanAiStackLlmContainerName = "${podmanAiStackNetworkName}-${llmBackend}";
-  podmanAiStackOllamaContainerName = "${podmanAiStackNetworkName}-ollama";
-  podmanAiStackLemonadeContainerName = "${podmanAiStackNetworkName}-lemonade";
+  podmanAiStackLlamaCppContainerName = "${podmanAiStackNetworkName}-llama-cpp";
+  podmanAiStackLlmContainerName = podmanAiStackLlamaCppContainerName;
   podmanAiStackOpenWebUiContainerName = "${podmanAiStackNetworkName}-open-webui";
   podmanAiStackQdrantContainerName = "${podmanAiStackNetworkName}-qdrant";
   podmanAiStackMindsdbContainerName = "${podmanAiStackNetworkName}-mindsdb";
@@ -931,7 +928,7 @@ Discovering options quickly:
   • nix search nixpkgs <pattern> for package discovery
   • nixos-option <path> --json | jq '.' to inspect live system values
   • home-manager option search '<pattern>' to explore user-level modules
-  • Web catalogue: https://search.nixos.org/options?channel=25.05
+  • Web catalogue: https://search.nixos.org/options?channel=26.05
 OPTIONS
         }
 
@@ -1138,7 +1135,7 @@ RESOURCES
   podmanAiStackReadme = ''
     Podman AI Stack shared storage.
 
-    - ollama/: persistent model cache for the Ollama container.
+    - llama-cpp-models/: persistent GGUF cache for the llama.cpp server.
     - open-webui/: shared chat history for the Open WebUI container.
     - qdrant/: vector database state for embeddings and RAG pipelines.
     - mindsdb/: MindsDB database files for AI-assisted SQL workflows.
@@ -1414,7 +1411,6 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
 
       # ALL AI command-line packages are REQUIRED (not optional)
       aiCommandLinePackages = with pkgs; [
-        ollama
         gpt4all-fixed  # Fixed for Qt6 6.10+ GuiPrivate compatibility
         llama-cpp
       ];
@@ -1596,7 +1592,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           seahorse                # GNOME credential manager for GnuPG/SSH
           pinentry-gnome3         # Pinentry dialog compatible with COSMIC/GNOME
           libsecret               # Library for storing/retrieving passwords (required for OS keyring)
-          gcr                     # GNOME crypto library (keyring UI components)
+          gcr_4                   # GNOME crypto library (keyring UI components + SSH agent)
           # YubiKey Manager Qt was removed because upstream marked it EOL and nixpkgs flags it insecure.
           # Install `yubikey-manager` (CLI) or `yubioath-flutter` manually if YubiKey support is required.
 
@@ -1980,7 +1976,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
 
   services.gpg-agent = {
     enable = true;
-    # COSMIC relies on GNOME Keyring for SSH agent duties so we keep gpg-agent scoped to GPG only.
+    # COSMIC relies on GCR SSH agent for SSH duties so we keep gpg-agent scoped to GPG only.
     enableSshSupport = false;
     enableExtraSocket = true;
     defaultCacheTtl = 3600;
@@ -1995,10 +1991,9 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
 
   services.gnome-keyring = {
     enable = true;
-    # Secrets + PKCS#11 back up COSMIC's keyring UI while ssh replaces the vanilla agent we disabled above.
+    # Secrets + PKCS#11 back up COSMIC's keyring UI; SSH agent is handled by GCR.
     components = [
       "secrets"
-      "ssh"
       "pkcs11"
     ];
   };
@@ -2274,10 +2269,10 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       "continue.serverUrl" = "${openWebUiUrl}";
       "continue.models" = [
         {
-          title = "Llama 3.2 Instruct";
-          provider = "ollama";
+          title = "Llama 3.2 Instruct (llama.cpp)";
+          provider = "openai";
           model = "llama3.2";
-          baseUrl = ollamaHost;
+          baseUrl = "${llamaCppHost}/v1";
         }
         {
           title = "DeepSeek R1 Distill 7B (coding)";
@@ -2292,10 +2287,10 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           baseUrl = "${huggingfaceScoutTgiEndpoint}/v1";
         }
         {
-          title = "Phi-4 (Ollama)";
-          provider = "ollama";
+          title = "Phi-4 (llama.cpp)";
+          provider = "openai";
           model = "phi4";
-          baseUrl = ollamaHost;
+          baseUrl = "${llamaCppHost}/v1";
         }
       ];
       "codeium.enableTelemetry" = false;
@@ -2314,8 +2309,11 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       "terminal.integrated.fontSize" = 13;
       "terminal.integrated.env.linux" = {
         "OPENAI_API_BASE" = "${huggingfaceTgiEndpoint}/v1";
-        "OLLAMA_HOST" = ollamaHost;
+        "LLAMA_CPP_BASE_URL" = "${llamaCppHost}/v1";
         "GPT_CLI_BASE_URL" = "${huggingfaceTgiEndpoint}/v1";
+        "ANTHROPIC_BASE_URL" = "http://localhost:8094";
+        "HYBRID_COORDINATOR_URL" = "http://localhost:8092";
+        "AIDB_MCP_URL" = "http://localhost:8091";
       };
 
       # Claude Code integration (managed declaratively so the wrapper path is always correct)
@@ -2330,8 +2328,20 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           name = "NODE_PATH";
           value = claudeNodeModulesPath;
         }
+        {
+          name = "ANTHROPIC_BASE_URL";
+          value = "http://localhost:8094";
+        }
+        {
+          name = "HYBRID_COORDINATOR_URL";
+          value = "http://localhost:8092";
+        }
+        {
+          name = "AIDB_MCP_URL";
+          value = "http://localhost:8091";
+        }
       ];
-      "claudeCode.autoStart" = false;
+      "claudeCode.autoStart" = true;
 
       # Additional AI CLI wrappers (single config per tool, no duplicates)
       "codex.executablePath" = codexWrapperPath;
@@ -2344,8 +2354,16 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           name = "NODE_PATH";
           value = aiNodeModulesPath;
         }
+        {
+          name = "HYBRID_COORDINATOR_URL";
+          value = "http://localhost:8092";
+        }
+        {
+          name = "AIDB_MCP_URL";
+          value = "http://localhost:8091";
+        }
       ];
-      "codex.autoStart" = false;
+      "codex.autoStart" = true;
 
       "openai.executablePath" = openaiWrapperPath;
       "openai.environmentVariables" = [
@@ -2584,7 +2602,7 @@ EOF
       data_root="$HOME/${podmanAiStackDataDir}"
       required_paths="
         $data_root
-        $data_root/ollama
+        $data_root/llama-cpp-models
         $data_root/open-webui
         $data_root/qdrant
         $data_root/mindsdb
@@ -2695,7 +2713,7 @@ EOF
       HUGGINGFACE_TOKEN_PATH = "$HOME/.config/huggingface/token";
       HF_HUB_ENABLE_HF_TRANSFER = "1";
       # LLM Service Endpoints
-      OLLAMA_HOST = "${ollamaHost}";
+      LLAMA_CPP_BASE_URL = "${llamaCppHost}/v1";
       OPEN_WEBUI_URL = "${openWebUiUrl}";
       GPT_CLI_DEFAULT_MODEL = "${huggingfaceModelId}";
       GPT_CLI_DEFAULT_PROVIDER = "openai";
@@ -2968,32 +2986,24 @@ EOF
         }
         
         cmd_models() {
-          echo "Pulling recommended models for AI agents..."
+          echo "Preparing recommended models for AI agents..."
           
-          # Check if Ollama is available
-          if ! command -v ollama >/dev/null 2>&1 && ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
-            echo "Error: Ollama not available. Start the Podman AI stack first:"
+          if ! curl -s http://localhost:8080/health >/dev/null 2>&1; then
+            echo "Error: llama.cpp server not available. Start the Podman AI stack first:"
             echo "  podman-ai-stack up"
             exit 1
           fi
           
           echo ""
-          echo "Pulling code model (Qwen2.5-Coder)..."
-          ollama pull qwen2.5-coder:1.5b || echo "  (skipped - may need manual pull)"
-          
+          echo "llama.cpp uses GGUF models stored in:"
+          echo "  ~/.local/share/podman-ai-stack/llama-cpp-models/"
           echo ""
-          echo "Pulling reasoning model (Qwen3)..."
-          ollama pull qwen3:8b || echo "  (skipped - may need manual pull)"
-          
+          echo "Download recommended models (examples):"
+          echo "  qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+          echo "  qwen3-8b-instruct-q4_k_m.gguf"
+          echo "  nomic-embed-text-v1.5.q4_0.gguf"
           echo ""
-          echo "Pulling embedding model..."
-          ollama pull nomic-embed-text || echo "  (skipped - may need manual pull)"
-          
-          echo ""
-          echo "✓ Models pulled!"
-          echo ""
-          echo "Available models:"
-          ollama list 2>/dev/null || curl -s http://localhost:11434/api/tags | python -m json.tool 2>/dev/null || echo "  (could not list models)"
+          echo "Use huggingface-cli or wget to fetch GGUF files."
         }
         
         cmd_test() {
@@ -3008,30 +3018,22 @@ EOF
             # Check if local LLM is available
             import httpx
             try:
-                response = httpx.get("http://localhost:11434/api/tags", timeout=5)
+                response = httpx.get("http://localhost:8080/health", timeout=5)
                 if response.status_code == 200:
-                    print("✓ Local Ollama server is running")
-                    models = response.json().get("models", [])
+                    print("✓ Local llama.cpp server is running")
+                    models = httpx.get("http://localhost:8080/v1/models", timeout=5).json().get("data", [])
                     print(f"  Available models: {len(models)}")
                 else:
-                    print("⚠ Ollama server responded but with error")
+                    print("⚠ llama.cpp server responded but with error")
             except:
-                # Try Lemonade server
-                try:
-                    response = httpx.get("http://localhost:8080/v1/models", timeout=5)
-                    if response.status_code == 200:
-                        print("✓ Local Lemonade server is running")
-                    else:
-                        print("⚠ No local LLM server detected")
-                except:
-                    print("⚠ No local LLM server detected (start with: podman-ai-stack up)")
+                print("⚠ No local LLM server detected (start with: podman-ai-stack up)")
             
             print("")
             print("Agent stack is ready for use!")
             print("")
             print("Example usage:")
             print("  from smolagents import CodeAgent, HfApiModel")
-            print("  model = HfApiModel(model_id='http://localhost:11434/v1')")
+            print("  model = HfApiModel(model_id='http://localhost:8080/v1')")
             print("  agent = CodeAgent(tools=[], model=model)")
             print("  result = agent.run('Write a hello world function')")
             
@@ -3386,7 +3388,6 @@ EOF
       # LlamaIndex (if not in nixpkgs)
       llama-index>=0.11.0
       llama-index-core>=0.11.0
-      llama-index-llms-ollama>=0.3.0
       llama-index-embeddings-huggingface>=0.3.0
       
       # ChromaDB (if not in nixpkgs)
@@ -3521,8 +3522,7 @@ EOF
     "${openWebUiDataDir}/README".text = openWebUiReadme;
     "${podmanAiStackDataDir}/.keep".text = "";
     "${podmanAiStackDataDir}/README".text = podmanAiStackReadme;
-    "${podmanAiStackDataDir}/ollama/.keep".text = "";
-    "${podmanAiStackDataDir}/lemonade-models/.keep".text = "";
+    "${podmanAiStackDataDir}/llama-cpp-models/.keep".text = "";
     "${podmanAiStackDataDir}/open-webui/.keep".text = "";
     "${podmanAiStackDataDir}/qdrant/.keep".text = "";
     "${podmanAiStackDataDir}/mindsdb/.keep".text = "";
@@ -3543,7 +3543,7 @@ EOF
       RestartSec=5
     '';
 
-    ".config/systemd/user/podman-local-ai-ollama.service.d/override.conf".text = ''
+    ".config/systemd/user/podman-local-ai-llama-cpp.service.d/override.conf".text = ''
       [Unit]
       X-SwitchMethod=keep-old
 
@@ -3551,7 +3551,7 @@ EOF
       TimeoutStartSec=600
       TimeoutStopSec=180
       RestartSec=10
-      ExecStartPre=${podmanEnsureImage "docker.io/ollama/ollama:0.5.13.5"}
+      ExecStartPre=${podmanEnsureImage "ghcr.io/ggml-org/llama.cpp:server"}
     '';
 
     ".config/systemd/user/podman-local-ai-open-webui.service.d/override.conf".text = ''
@@ -3644,8 +3644,7 @@ EOF
           --network "''${network}" \
           -p "''${port}:8080" \
           -v "''${data_dir}:/app/backend/data" \
-          -e "OLLAMA_BASE_URL=http://host.containers.internal:${toString ollamaPort}" \
-          -e "OPENAI_API_BASE=${huggingfaceTgiContainerEndpoint}/v1" \
+          -e "OPENAI_API_BASE=http://host.containers.internal:${toString llamaCppPort}/v1" \
           -e "HF_HOME=''${HF_HOME:-$HOME/${huggingfaceCacheDir}}" \
           "''${image}"
       '';
@@ -3727,47 +3726,15 @@ EOF
           print(completion.choices[0].message.content.strip())
 
 
-        def _ollama_request(base_url: str, payload: dict[str, object]) -> urllib.request.Request:
-          data = json.dumps(payload).encode("utf-8")
-          headers = {"Content-Type": "application/json"}
-          return urllib.request.Request(base_url, data=data, headers=headers)
-
-
-        def _ollama_stream(url: str, payload: dict[str, object]) -> None:
-          request = _ollama_request(url, payload | {"stream": True})
-          with urllib.request.urlopen(request) as response:
-            for raw in response:
-              line = raw.decode("utf-8").strip()
-              if not line:
-                continue
-              event = json.loads(line)
-              message = event.get("message") or {}
-              content = message.get("content")
-              if content:
-                sys.stdout.write(content)
-                sys.stdout.flush()
-            print()
-
-
-        def _ollama_complete(url: str, payload: dict[str, object]) -> None:
-          request = _ollama_request(url, payload | {"stream": False})
-          with urllib.request.urlopen(request) as response:
-            body = json.load(response)
-          message = body.get("message") or {}
-          content = message.get("content", "")
-          print(content.strip())
-
-
         def main() -> None:
           parser = argparse.ArgumentParser(
             prog="gpt-cli",
-            description="Talk to local Ollama models or any OpenAI-compatible endpoint.",
+            description="Talk to any OpenAI-compatible endpoint (including llama.cpp).",
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog=textwrap.dedent(
               """
               Examples:
                 gpt-cli "summarize the latest git commits"
-                gpt-cli --provider ollama --model llama3 "write unit tests for foo()"
                 gpt-cli --system "You are a SQL assistant" < query.sql
               """
             ),
@@ -3775,15 +3742,9 @@ EOF
           parser.add_argument("prompt", nargs=argparse.REMAINDER, help="Prompt text or leave empty to read stdin")
           parser.add_argument("--model", "-m", default=os.environ.get("GPT_CLI_DEFAULT_MODEL", "gpt-4o-mini"))
           parser.add_argument(
-            "--provider",
-            choices=["openai", "ollama"],
-            default=os.environ.get("GPT_CLI_DEFAULT_PROVIDER", "openai"),
-            help="Select backend provider (default: openai)",
-          )
-          parser.add_argument(
             "--base-url",
             default=os.environ.get("GPT_CLI_BASE_URL", os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")),
-            help="Override the OpenAI/Ollama base URL",
+            help="Override the OpenAI-compatible base URL",
           )
           parser.add_argument("--system", default=os.environ.get("GPT_CLI_SYSTEM", "You are a helpful AI assistant."))
           parser.add_argument("--temperature", type=float, default=float(os.environ.get("GPT_CLI_TEMPERATURE", "0.2")))
@@ -3792,39 +3753,14 @@ EOF
           args = parser.parse_args()
           prompt = _read_prompt(args)
 
-          if args.provider == "openai":
-            if OpenAI is None:
-              raise SystemExit("gpt-cli: openai python package is unavailable in the current environment")
-            api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACEHUB_API_TOKEN")
-            if not api_key:
-              raise SystemExit("gpt-cli: set OPENAI_API_KEY or HUGGINGFACEHUB_API_TOKEN for OpenAI-compatible backends")
-
-            client = OpenAI(base_url=args.base_url.rstrip("/"), api_key=api_key)
-            if args.stream:
-              _stream_openai(client, args.model, args.system, prompt, args.temperature)
-            else:
-              _complete_openai(client, args.model, args.system, prompt, args.temperature)
-            return
-
-          base = args.base_url.rstrip("/") or os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
-          url = f"{base}/api/chat"
-          payload: dict[str, object] = {
-            "model": args.model,
-            "messages": [
-              {"role": "system", "content": args.system},
-              {"role": "user", "content": prompt},
-            ],
-            "stream": args.stream,
-            "options": {"temperature": args.temperature},
-          }
-
-          try:
-            if args.stream:
-              _ollama_stream(url, payload)
-            else:
-              _ollama_complete(url, payload)
-          except urllib.error.URLError as exc:
-            raise SystemExit(f"gpt-cli: failed to reach Ollama at {base}: {exc}")
+          if OpenAI is None:
+            raise SystemExit("gpt-cli: openai python package is unavailable in the current environment")
+          api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACEHUB_API_TOKEN") or "local"
+          client = OpenAI(base_url=args.base_url.rstrip("/"), api_key=api_key)
+          if args.stream:
+            _stream_openai(client, args.model, args.system, prompt, args.temperature)
+          else:
+            _complete_openai(client, args.model, args.system, prompt, args.temperature)
 
 
         if __name__ == "__main__":
@@ -4305,46 +4241,23 @@ PLUGINCFG
     };
 
     containers = lib.mkMerge [
-      # Ollama container (when llmBackend == "ollama")
-      (lib.mkIf (llmBackend == "ollama") {
-        "${podmanAiStackOllamaContainerName}" = {
-          image = "docker.io/ollama/ollama:0.5.13.5";
-          description = "Ollama inference runtime (rootless Podman)";
-          autoStart = false;
-          autoUpdate = "local";
-          network = [ "${podmanAiStackNetworkName}.network" ];
-          networkAlias = [ "ollama" "llm" ];
-          ports = [ "${toString ollamaPort}:11434" ];
-          volumes = [
-            "${config.home.homeDirectory}/${podmanAiStackDataDir}/ollama:/root/.ollama"
-          ];
-          environment = {
-            OLLAMA_HOST = "0.0.0.0";
-          };
-          labels = {
-            "${podmanAiStackLabelKey}" = podmanAiStackLabelValue;
-            "nixos.quick-deploy.llm-backend" = "ollama";
-          };
-        };
-      })
-
-      # Lemonade container (when llmBackend == "lemonade")
+      # llama.cpp container (llama.cpp backend)
       # Uses the official llama.cpp server image
       # For AMD ROCm, build a custom image or use CPU mode
-      (lib.mkIf (llmBackend == "lemonade") {
-        "${podmanAiStackLemonadeContainerName}" = {
+      (lib.mkIf (llmBackend == "llama_cpp") {
+        "${podmanAiStackLlamaCppContainerName}" = {
           image = "ghcr.io/ggml-org/llama.cpp:server";
           description = "llama.cpp server for local LLM inference";
           autoStart = false;
           autoUpdate = "local";
           network = [ "${podmanAiStackNetworkName}.network" ];
-          networkAlias = [ "lemonade" "llm" ];
-          ports = [ "${toString lemonadePort}:8080" ];
+          networkAlias = [ "llama-cpp" "llm" ];
+          ports = [ "${toString llamaCppPort}:8080" ];
           volumes = [
-            "${config.home.homeDirectory}/${podmanAiStackDataDir}/lemonade-models:/models"
+            "${config.home.homeDirectory}/${podmanAiStackDataDir}/llama-cpp-models:/models"
           ];
           environment = {
-            # Lemonade/llama.cpp configuration
+            # llama.cpp/llama.cpp configuration
             HOST = "0.0.0.0";
             PORT = "8080";
             # Models will be pulled on first start
@@ -4355,7 +4268,7 @@ PLUGINCFG
           };
           labels = {
             "${podmanAiStackLabelKey}" = podmanAiStackLabelValue;
-            "nixos.quick-deploy.llm-backend" = "lemonade";
+            "nixos.quick-deploy.llm-backend" = "llama_cpp";
             "nixos.quick-deploy.llm-models" = llmModels;
           };
         };
@@ -4374,16 +4287,10 @@ PLUGINCFG
           volumes = [
             "${config.home.homeDirectory}/${podmanAiStackDataDir}/open-webui:/app/backend/data"
           ];
-          environment = 
-            if llmBackend == "lemonade" then {
-              # Lemonade uses OpenAI-compatible API
-              OPENAI_API_BASE = "http://lemonade:${toString lemonadePort}/v1";
-              OLLAMA_BASE_URL = "";  # Disable Ollama
-            } else {
-              # Ollama backend (default)
-              OPENAI_API_BASE = "${huggingfaceTgiContainerEndpoint}/v1";
-              OLLAMA_BASE_URL = "http://ollama:${toString ollamaPort}";
-            };
+          environment = {
+            # llama.cpp uses OpenAI-compatible API
+            OPENAI_API_BASE = "http://llama-cpp:${toString llamaCppPort}/v1";
+          };
           labels = {
             "${podmanAiStackLabelKey}" = podmanAiStackLabelValue;
           };

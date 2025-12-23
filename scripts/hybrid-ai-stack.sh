@@ -87,8 +87,7 @@ cmd_status() {
     fi
     echo ""
     check_service "Qdrant" 6333 "/healthz"
-    check_service "Ollama" 11434 "/api/tags"
-    check_service "Lemonade" 8080 "/health"
+    check_service "llama.cpp" 8080 "/health"
     check_service "Open WebUI" 3001 "/"
     check_service "AIDB MCP" 8091 "/health"
     check_service "MindsDB" 47334 "/"
@@ -118,10 +117,10 @@ COMMANDS:
 EXAMPLES:
     $(basename "$0") up
     $(basename "$0") status
-    $(basename "$0") logs lemonade
+    $(basename "$0") logs llama-cpp
 
 DASHBOARD:
-    Open ai-stack/dashboard/index.html in browser
+    Run ./scripts/serve-dashboard.sh and open http://localhost:8888/dashboard.html
 EOF
 }
 

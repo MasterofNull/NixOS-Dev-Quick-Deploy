@@ -12,64 +12,13 @@
 # reading user preferences (see config/variables.sh for the state path).
 # ============================================================================
 prompt_podman_storage_driver_selection() {
-    if [[ -n "${PODMAN_STORAGE_DRIVER_OVERRIDE:-}" ]]; then
-        print_info "Podman storage driver override preset to ${PODMAN_STORAGE_DRIVER_OVERRIDE}; skipping interactive selection."
-        return 0
+    local default_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-zfs}"
+    PODMAN_STORAGE_DRIVER_OVERRIDE="${PODMAN_STORAGE_DRIVER_OVERRIDE:-$default_driver}"
+    export PODMAN_STORAGE_DRIVER_OVERRIDE
+    print_info "Podman storage driver forced to ${PODMAN_STORAGE_DRIVER_OVERRIDE} (no prompt)."
+    if declare -F detect_container_storage_backend >/dev/null 2>&1; then
+        detect_container_storage_backend
     fi
-
-    local default_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-vfs}"
-    local auto_detected="${PODMAN_STORAGE_DRIVER:-$default_driver}"
-    local fs_type="${CONTAINER_STORAGE_FS_TYPE:-unknown}"
-
-    print_section "Podman Storage Driver Selection"
-    echo ""
-    print_info "Detected filesystem backing /var/lib/containers: ${fs_type}."
-    print_info "Auto-detected Podman storage driver: ${auto_detected}."
-    print_info "Btrfs yields the best snapshot performance for AI containers if /var/lib/containers lives on a Btrfs volume."
-    print_info "Recommended Btrfs data size for AI-Optimizer workloads: 200–300GiB (minimum 150GiB)."
-    print_info "This choice only applies to the current deployment and defaults to vfs."
-    echo ""
-    echo "  Options:"
-    echo "    - vfs      → Portable default without overlay mounts (larger disk usage)."
-    echo "    - btrfs    → Native driver; requires the storage path on a Btrfs filesystem."
-    echo "    - zfs      → Native driver; requires POSIX ACLs on the backing dataset."
-    echo "    - auto     → Keep the detected driver above."
-    echo ""
-
-    local selection=""
-    while true; do
-        selection=$(prompt_user "Select Podman storage driver [vfs/btrfs/zfs/auto]" "$default_driver")
-        selection="${selection,,}"
-
-        if [[ -z "$selection" ]]; then
-            selection="$default_driver"
-        fi
-
-        case "$selection" in
-            auto)
-                print_success "Keeping auto-detected Podman storage driver: ${auto_detected}."
-                PODMAN_STORAGE_DRIVER_OVERRIDE=""
-                unset PODMAN_STORAGE_DRIVER_OVERRIDE
-                if declare -F detect_container_storage_backend >/dev/null 2>&1; then
-                    detect_container_storage_backend
-                fi
-                break
-                ;;
-            vfs|btrfs|zfs)
-                PODMAN_STORAGE_DRIVER_OVERRIDE="$selection"
-                export PODMAN_STORAGE_DRIVER_OVERRIDE
-        print_success "Podman storage driver set to ${selection} for this run."
-                if declare -F detect_container_storage_backend >/dev/null 2>&1; then
-                    detect_container_storage_backend
-                fi
-                break
-                ;;
-            *)
-                print_warning "Invalid selection. Enter vfs, btrfs, zfs, or auto."
-                ;;
-        esac
-    done
-
     return 0
 }
 

@@ -57,19 +57,19 @@ class ParallelInferenceEngine:
             ModelRole.GENERAL_REASONING: ModelEndpoint(
                 name="Qwen3-4B-Instruct",
                 role=ModelRole.GENERAL_REASONING,
-                base_url=os.getenv("LEMONADE_BASE_URL", "http://lemonade:8080"),
+                base_url=os.getenv("LLAMA_CPP_BASE_URL", "http://llama-cpp:8080"),
                 use_case="General-purpose task coordination and high-level reasoning"
             ),
             ModelRole.CODE_GENERATION: ModelEndpoint(
                 name="Qwen2.5-Coder",
                 role=ModelRole.CODE_GENERATION,
-                base_url=os.getenv("LEMONADE_CODER_URL", "http://lemonade:8080"),
+                base_url=os.getenv("LLAMA_CPP_CODER_URL", "http://llama-cpp:8080"),
                 use_case="Specialized code generation and refactoring"
             ),
             ModelRole.CODE_ANALYSIS: ModelEndpoint(
                 name="Deepseek-Coder",
                 role=ModelRole.CODE_ANALYSIS,
-                base_url=os.getenv("LEMONADE_DEEPSEEK_URL", "http://lemonade:8080"),
+                base_url=os.getenv("LLAMA_CPP_DEEPSEEK_URL", "http://llama-cpp:8080"),
                 use_case="Deep code understanding and bug detection"
             )
         }

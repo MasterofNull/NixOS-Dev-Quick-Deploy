@@ -45,7 +45,7 @@ def main():
                 '\n',
                 'This single command gives you:\n',
                 '- ✅ **AIDB MCP Server** - PostgreSQL + TimescaleDB + Qdrant vector database\n',
-                '- ✅ **Lemonade vLLM** - Local model inference (Qwen, DeepSeek, Phi, CodeLlama)\n',
+                '- ✅ **llama.cpp vLLM** - Local model inference (Qwen, DeepSeek, Phi, CodeLlama)\n',
                 '- ✅ **29 Agent Skills** - Specialized AI agents for code, deployment, testing, design\n',
                 '- ✅ **MCP Servers** - Model Context Protocol servers for AIDB, NixOS, GitHub\n',
                 '- ✅ **Shared Data** - Persistent data that survives reinstalls (`~/.local/share/nixos-ai-stack`)\n',
@@ -66,7 +66,7 @@ def main():
             new_lines.append('| Component | Location | Purpose |\n')
             new_lines.append('|-----------|----------|---------||\n')
             new_lines.append('| **AIDB MCP Server** | `ai-stack/mcp-servers/aidb/` | PostgreSQL + TimescaleDB + Qdrant vector DB + FastAPI MCP server |\n')
-            new_lines.append('| **Lemonade vLLM** | `ai-stack/compose/` | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |\n')
+            new_lines.append('| **llama.cpp vLLM** | `ai-stack/compose/` | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |\n')
             new_lines.append('| **29 Agent Skills** | `ai-stack/agents/skills/` | nixos-deployment, webapp-testing, code-review, canvas-design, and more |\n')
             new_lines.append('| **MCP Servers** | `ai-stack/mcp-servers/` | Model Context Protocol servers for AIDB, NixOS, GitHub |\n')
             new_lines.append('| **Model Registry** | `ai-stack/models/registry.json` | Model catalog with 6 AI models (metadata, VRAM, speed, quality scores) |\n')
@@ -83,7 +83,7 @@ def main():
                 elif lines[i].startswith('|'):
                     # Modify existing tool lines if needed
                     if 'GPT CLI' in lines[i]:
-                        new_lines.append('| **GPT CLI** | Command-line tool | Query OpenAI-compatible endpoints (local Lemonade or remote) |\n')
+                        new_lines.append('| **GPT CLI** | Command-line tool | Query OpenAI-compatible endpoints (local llama.cpp or remote) |\n')
                     elif 'Ollama' in lines[i] or 'Open WebUI' in lines[i] or 'Hugging Face TGI' in lines[i]:
                         pass  # Skip these old entries
                     else:

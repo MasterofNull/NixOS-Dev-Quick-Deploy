@@ -1212,14 +1212,14 @@ run_all_checks() {
     check_command "aider" "Aider" true
     check_command "openskills" "OpenSkills CLI" true
 
-    local lemonade_url="${LEMONADE_BASE_URL:-http://localhost:8080}"
-    local normalized_lemonade_url="${lemonade_url%/}"
-    normalized_lemonade_url="${normalized_lemonade_url%/api/v1}"
-    print_check "Lemonade server health (${normalized_lemonade_url}/health)"
-    if curl -sf --max-time 3 "${normalized_lemonade_url}/health" > /dev/null 2>&1; then
-        print_success "Lemonade server reachable"
+    local llama_cpp_url="${LLAMA_CPP_BASE_URL:-http://localhost:8080}"
+    local normalized_llama_cpp_url="${llama_cpp_url%/}"
+    normalized_llama_cpp_url="${normalized_llama_cpp_url%/api/v1}"
+    print_check "llama.cpp server health (${normalized_llama_cpp_url}/health)"
+    if curl -sf --max-time 3 "${normalized_llama_cpp_url}/health" > /dev/null 2>&1; then
+        print_success "llama.cpp server reachable"
     else
-        print_warning "Lemonade server not reachable (optional)"
+        print_warning "llama.cpp server not reachable (optional)"
         print_detail "Start via ./scripts/local-ai-starter.sh option 2 or docker compose up -d inside ~/Documents/local-ai-stack"
     fi
 

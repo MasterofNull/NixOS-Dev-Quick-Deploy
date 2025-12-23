@@ -24,7 +24,15 @@ ai-knowledge-base/
 │   ├── vm-provisioning.md             # VM provisioning workflows
 │   └── development-environment.md     # Development environment setup
 ├── reference/                          # Reference documentation
-│   ├── lemonade-api.md                # Lemonade AI server API reference
+│   ├── llama-cpp-api.md                # llama.cpp API reference
+│   ├── nixpkgs-25.05-release-notes.md  # Nixpkgs 25.05 release notes
+│   ├── nixpkgs-25.11-release-notes.md  # Nixpkgs 25.11 release notes
+│   ├── nixpkgs-26.05-release-notes.md  # Nixpkgs 26.05 release notes
+│   ├── postgresql-release-notes-18.1.md # PostgreSQL 18.1 release notes
+│   ├── postgresql-release-notes-18.0.md # PostgreSQL 18.0 release notes
+│   ├── postgresql-release-notes-17.7.md # PostgreSQL 17.7 release notes
+│   ├── postgresql-release-notes-17.6.md # PostgreSQL 17.6 release notes
+│   ├── postgresql-release-notes-17.5.md # PostgreSQL 17.5 release notes
 │   ├── ollama-api.md                  # Ollama API reference
 │   ├── qdrant-api.md                  # Qdrant vector DB API reference
 │   └── podman-commands.md             # Podman/Docker commands reference
@@ -66,7 +74,7 @@ Developers should:
 
 This knowledge base integrates with:
 
-- **Lemonade AI Server**: Provides context for LLM inference
+- **llama.cpp AI Server**: Provides context for LLM inference
 - **Qdrant Vector DB**: Stores embeddings for semantic search
 - **AIDB MCP Server**: Accesses knowledge via MCP protocol
 - **Claude Code**: Provides context for development tasks

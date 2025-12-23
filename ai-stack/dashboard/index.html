@@ -227,16 +227,12 @@
                     <h3><span class="status-indicator status-running"></span> Core Services</h3>
                     <ul class="service-list">
                         <li class="service-item">
-                            <span>Lemonade (8080)</span>
-                            <span id="lemonade-status">Checking...</span>
+                            <span>llama.cpp (8080)</span>
+                            <span id="llama-cpp-status">Checking...</span>
                         </li>
                         <li class="service-item">
                             <span>Qdrant Vector DB (6333)</span>
                             <span id="qdrant-status">Checking...</span>
-                        </li>
-                        <li class="service-item">
-                            <span>Ollama (11434)</span>
-                            <span id="ollama-status">Checking...</span>
                         </li>
                     </ul>
                 </div>
@@ -323,8 +319,8 @@
                         <strong>Architecture</strong>
                         <small>Technical deep dive</small>
                     </a>
-                    <a href="/docs/ai-knowledge-base/reference/lemonade-api.md" class="doc-link">
-                        <strong>Lemonade API</strong>
+                    <a href="/docs/ai-knowledge-base/reference/llama-cpp-api.md" class="doc-link">
+                        <strong>llama.cpp API</strong>
                         <small>API reference & examples</small>
                     </a>
                     <a href="/docs/ai-knowledge-base/mcp-servers/" class="doc-link">
@@ -343,8 +339,8 @@
                     <h3>Container Logs</h3>
                     <ul class="service-list">
                         <li class="service-item">
-                            <span>Lemonade</span>
-                            <button class="btn" onclick="viewLogs('lemonade')">View Logs</button>
+                            <span>llama.cpp</span>
+                            <button class="btn" onclick="viewLogs('llama-cpp')">View Logs</button>
                         </li>
                         <li class="service-item">
                             <span>Qdrant</span>
@@ -400,9 +396,8 @@
 
         // Check all services
         function checkAllServices() {
-            checkService('http://localhost:8080/health', 'lemonade-status');
+            checkService('http://localhost:8080/health', 'llama-cpp-status');
             checkService('http://localhost:6333/collections', 'qdrant-status');
-            checkService('http://localhost:11434/api/tags', 'ollama-status');
         }
 
         // Load metrics from Qdrant

@@ -306,7 +306,7 @@ npm install -g @modelcontextprotocol/server-github
 **Why:** Manage local AI models
 **Use Cases:**
 - vLLM model management
-- Ollama model tracking
+- llama.cpp model tracking
 - Model version control
 - Performance monitoring
 
@@ -388,7 +388,7 @@ npm install -g @modelcontextprotocol/server-github
    - Automated health reports
 
 3. **ai-model-management**
-   - Available for vLLM/Ollama management
+   - Available for llama.cpp model management
    - Not yet integrated with deployment
 
 4. **mcp-database-setup**

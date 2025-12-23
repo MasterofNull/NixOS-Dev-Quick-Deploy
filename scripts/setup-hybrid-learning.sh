@@ -144,7 +144,7 @@ echo ""
 info "Step 4: Creating required directories..."
 
 # Create all required directories for AI stack
-mkdir -p ~/.local/share/nixos-ai-stack/lemonade-models
+mkdir -p ~/.local/share/nixos-ai-stack/llama-cpp-models
 mkdir -p ~/.local/share/nixos-ai-stack/fine-tuning
 mkdir -p ~/.local/share/nixos-ai-stack/aidb
 mkdir -p ~/.local/share/nixos-ai-stack/aidb-cache
@@ -167,7 +167,7 @@ info "Step 5: Downloading GGUF models..."
 read -p "Download all recommended models now? (~10.5GB) [Y/n]: " download_confirm
 
 if [[ ! "$download_confirm" =~ ^[Nn]$ ]]; then
-    if bash "${PROJECT_ROOT}/scripts/download-lemonade-models.sh" --all; then
+    if bash "${PROJECT_ROOT}/scripts/download-llama-cpp-models.sh" --all; then
         success "Models downloaded successfully"
     else
         warning "Model download incomplete - models will download on first container startup"
@@ -218,10 +218,10 @@ check_service() {
     fi
 }
 
-# Check Lemonade services
-check_service "Lemonade General" 8080 "/health"
-check_service "Lemonade Coder" 8001 "/health"
-check_service "Lemonade DeepSeek" 8003 "/health"
+# Check llama.cpp services
+check_service "llama.cpp General" 8080 "/health"
+check_service "llama.cpp Coder" 8001 "/health"
+check_service "llama.cpp DeepSeek" 8003 "/health"
 
 # Check Qdrant
 check_service "Qdrant Vector DB" 6333 ""
@@ -277,11 +277,11 @@ async def test_system():
         collections = client.get_collections().collections
         print(f"✓ Qdrant collections: {len(collections)}")
 
-        # Test Lemonade
+        # Test llama.cpp
         async with httpx.AsyncClient() as http:
             response = await http.get("http://localhost:8080/health", timeout=5.0)
             if response.status_code == 200:
-                print("✓ Lemonade inference ready")
+                print("✓ llama.cpp inference ready")
 
         # Test embedding (Ollama)
         async with httpx.AsyncClient() as http:
@@ -312,9 +312,9 @@ echo ""
 success "Hybrid Local-Remote AI Learning System is ready!"
 echo ""
 echo "Service URLs:"
-echo "  • Lemonade General:    http://localhost:8080"
-echo "  • Lemonade Coder:      http://localhost:8001"
-echo "  • Lemonade DeepSeek:   http://localhost:8003"
+echo "  • llama.cpp General:    http://localhost:8080"
+echo "  • llama.cpp Coder:      http://localhost:8001"
+echo "  • llama.cpp DeepSeek:   http://localhost:8003"
 echo "  • Qdrant Vector DB:    http://localhost:6333"
 echo "  • Ollama:              http://localhost:11434"
 echo "  • Open WebUI:          http://localhost:3001"
@@ -336,12 +336,12 @@ echo ""
 echo "Monitoring:"
 echo "  • View logs:     ${COMPOSE_CMD} logs -f"
 echo "  • Check Qdrant:  curl http://localhost:6333/collections"
-echo "  • Test Lemonade: curl http://localhost:8080/health"
+echo "  • Test llama.cpp: curl http://localhost:8080/health"
 echo ""
 echo "Documentation:"
 echo "  • Architecture:         ai-knowledge-base/HYBRID-LEARNING-ARCHITECTURE.md"
 echo "  • Complete Guide:       HYBRID-AI-SYSTEM-GUIDE.md"
-echo "  • Lemonade API:         ai-knowledge-base/reference/lemonade-api.md"
+echo "  • llama.cpp API:        ai-knowledge-base/reference/llama-cpp-api.md"
 echo "  • Hybrid Coordinator:   ai-stack/mcp-servers/hybrid-coordinator/README.md"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

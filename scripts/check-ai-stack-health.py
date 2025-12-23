@@ -124,33 +124,9 @@ class AIStackHealthChecker:
 
         return check
 
-    def check_ollama(self) -> ServiceCheck:
-        """Check Ollama embeddings service"""
-        check = self.check_service("Ollama", "http://localhost:11434/api/tags")
-
-        if check.status == "ok":
-            # Check if nomic-embed-text model is available
-            try:
-                response = requests.get("http://localhost:11434/api/tags", timeout=self.timeout)
-                if response.status_code == 200:
-                    data = response.json()
-                    models = [m["name"] for m in data.get("models", [])]
-                    check.details["models"] = models
-
-                    if not any("nomic-embed-text" in m for m in models):
-                        check.status = "warning"
-                        check.message += " (nomic-embed-text model not found)"
-                        check.details["missing_model"] = "nomic-embed-text"
-
-            except Exception as e:
-                check.status = "warning"
-                check.message += f" (couldn't check models: {e})"
-
-        return check
-
-    def check_lemonade(self) -> ServiceCheck:
-        """Check Lemonade GGUF inference service"""
-        check = self.check_service("Lemonade", "http://localhost:8080/health")
+    def check_llama_cpp(self) -> ServiceCheck:
+        """Check llama.cpp inference service"""
+        check = self.check_service("llama.cpp", "http://localhost:8080/health")
 
         if check.status == "ok":
             # Try to get model info
@@ -270,8 +246,7 @@ class AIStackHealthChecker:
 
         checks = [
             ("Qdrant Vector DB", self.check_qdrant),
-            ("Ollama Embeddings", self.check_ollama),
-            ("Lemonade Inference", self.check_lemonade),
+            ("llama.cpp Inference", self.check_llama_cpp),
             ("Open WebUI", self.check_open_webui),
             ("PostgreSQL", self.check_postgres),
             ("Redis Cache", self.check_redis),

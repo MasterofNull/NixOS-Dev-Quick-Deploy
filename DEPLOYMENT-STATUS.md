@@ -12,7 +12,7 @@ The Hybrid Local-Remote AI Learning System has been successfully deployed and is
 | Service | Port | Status | Health Check |
 |---------|------|--------|--------------|
 | Qdrant Vector DB | 6333 | ✅ Running | http://localhost:6333/healthz |
-| Lemonade LLM | 8080 | ✅ Running | http://localhost:8080/health |
+| llama.cpp LLM | 8080 | ✅ Running | http://localhost:8080/health |
 | Open WebUI | 3001 | ✅ Running | http://localhost:3001 |
 | MindsDB | 7735 | ✅ Running | http://localhost:7735 |
 
@@ -34,7 +34,7 @@ All recommended models (~10.5GB total) successfully downloaded:
 - ✅ **Qwen 4B** (2.4GB) - General purpose, fast inference
 - ✅ **DeepSeek 6.7B** (3.8GB) - Advanced reasoning model
 
-Models cached in: `~/.local/share/nixos-ai-stack/lemonade-models/`
+Models cached in: `~/.local/share/nixos-ai-stack/llama-cpp-models/`
 
 ## 🛠️ Helper Scripts
 
@@ -90,7 +90,7 @@ The dashboard provides:
 ### 1. Test the System
 
 ```bash
-# Send a test query to Lemonade
+# Send a test query to llama.cpp
 curl -X POST http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{

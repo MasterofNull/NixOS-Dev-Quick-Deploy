@@ -1,5 +1,5 @@
 # Network Configuration with DNS Fix
-# NixOS 25.11 Xantusia
+# NixOS 26.05 Yarara
 # Purpose: Proper DNS resolution configuration to prevent hostname resolution errors
 #
 # Features:
@@ -49,10 +49,7 @@
     dns = "systemd-resolved";
     # Tell NetworkManager to manage /etc/resolv.conf via systemd-resolved
     # This ensures the symlink is maintained
-    extraConfig = ''
-      [main]
-      rc-manager=symlink
-    '';
+    settings.main."rc-manager" = "symlink";
   };
 
   # Add fallback nameservers (these get added to systemd-resolved config)

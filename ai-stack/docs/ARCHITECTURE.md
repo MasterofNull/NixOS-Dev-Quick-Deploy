@@ -12,7 +12,7 @@ The AI Stack is a fully integrated, production-ready AI development environment 
 - **PostgreSQL + TimescaleDB** - Time-series document storage
 - **Redis** - High-performance caching
 - **Qdrant** - Vector database for semantic search
-- **Lemonade vLLM** - Local OpenAI-compatible inference
+- **llama.cpp vLLM** - Local OpenAI-compatible inference
 - **FastAPI MCP Server** - Unified API gateway
 - **29 Agent Skills** - Specialized AI capabilities
 
@@ -38,7 +38,7 @@ The AI Stack is a fully integrated, production-ready AI development environment 
 ┌─────────────────────────────────────────────────────────────────┐
 │ Layer 3: AI Stack (ai-stack/)                                   │
 │ ┌─────────────┐  ┌──────────────┐  ┌────────────────┐          │
-│ │ AIDB MCP    │  │ Agent Skills │  │ Lemonade vLLM  │          │
+│ │ AIDB MCP    │  │ Agent Skills │  │ llama.cpp vLLM  │          │
 │ │ Server      │  │ (29 skills)  │  │ Inference      │          │
 │ │ (FastAPI)   │  └──────────────┘  └────────────────┘          │
 │ └─────────────┘                                                 │
@@ -121,7 +121,7 @@ qdrant_client = QdrantClient(
 )
 ```
 
-### 2. Lemonade vLLM
+### 2. llama.cpp vLLM
 
 **Purpose:** Local OpenAI-compatible model inference
 
@@ -150,10 +150,10 @@ qdrant_client = QdrantClient(
 **Model Loading:**
 ```bash
 # Automatic model download from HuggingFace
-LEMONADE_DEFAULT_MODEL=Qwen/Qwen2.5-Coder-7B-Instruct
+LLAMA_CPP_DEFAULT_MODEL=Qwen/Qwen2.5-Coder-7B-Instruct
 HUGGING_FACE_HUB_TOKEN=<optional>
 
-# Models cached in ~/.local/share/nixos-ai-stack/lemonade-models
+# Models cached in ~/.local/share/nixos-ai-stack/llama-cpp-models
 ```
 
 ### 3. PostgreSQL + TimescaleDB
@@ -326,7 +326,7 @@ result = await skills["nixos-deployment"].execute(
 
 ```
 User → AIDB MCP Server → PostgreSQL (store document)
-                       → Lemonade (generate embedding)
+                       → llama.cpp (generate embedding)
                        → Qdrant (store vector)
                        → Redis (cache)
 ```
@@ -334,7 +334,7 @@ User → AIDB MCP Server → PostgreSQL (store document)
 ### Semantic Search
 
 ```
-User → AIDB MCP Server → Lemonade (embed query)
+User → AIDB MCP Server → llama.cpp (embed query)
                        → Qdrant (vector search)
                        → PostgreSQL (fetch documents)
                        → Redis (cache results)
@@ -345,7 +345,7 @@ User → AIDB MCP Server → Lemonade (embed query)
 
 ```
 User → AIDB MCP Server → Redis (check cache)
-                       → Lemonade (generate completion)
+                       → llama.cpp (generate completion)
                        → PostgreSQL (log inference)
                        → Redis (cache response)
                        → Response
@@ -356,7 +356,7 @@ User → AIDB MCP Server → Redis (check cache)
 ```
 User → AIDB MCP Server → Skill Loader
                        → Skill.execute()
-                       → Lemonade (if LLM needed)
+                       → llama.cpp (if LLM needed)
                        → PostgreSQL (store results)
                        → Response
 ```
@@ -371,7 +371,7 @@ User → AIDB MCP Server → Skill Loader
 
 **Services:**
 - `aidb-mcp` (AIDB MCP Server)
-- `lemonade` (vLLM inference)
+- `llama-cpp` (vLLM inference)
 - `postgres` (PostgreSQL)
 - `redis` (Redis cache)
 - `qdrant` (Vector DB)
@@ -383,7 +383,7 @@ User → AIDB MCP Server → Skill Loader
 ping postgres
 ping redis
 ping qdrant
-ping lemonade
+ping llama-cpp
 ```
 
 ### Port Mapping
@@ -391,7 +391,7 @@ ping lemonade
 | Service | Internal Port | External Port | Protocol |
 |---------|---------------|---------------|----------|
 | AIDB MCP | 8091 | 8091 | HTTP |
-| Lemonade | 8080 | 8080 | HTTP |
+| llama.cpp | 8080 | 8080 | HTTP |
 | PostgreSQL | 5432 | 5432 | TCP |
 | Redis | 6379 | 6379 | TCP |
 | Qdrant HTTP | 6333 | 6333 | HTTP |
@@ -419,7 +419,7 @@ ping lemonade
 ├── qdrant/            # Qdrant collections
 │   ├── collections/
 │   └── storage/
-├── lemonade-models/   # HuggingFace model cache
+├── llama-cpp-models/   # HuggingFace model cache
 │   └── hub/
 ├── imports/           # Document imports
 ├── exports/           # Exported data
@@ -427,7 +427,7 @@ ping lemonade
 │   └── YYYYMMDD/
 └── logs/              # Service logs
     ├── aidb.log
-    ├── lemonade.log
+    ├── llama-cpp.log
     └── postgres.log
 ```
 
@@ -477,7 +477,7 @@ ping lemonade
 
 **Services that can scale:**
 - AIDB MCP Server (multiple instances + load balancer)
-- Lemonade (multiple models on different GPUs)
+- llama.cpp (multiple models on different GPUs)
 
 **Services that require coordination:**
 - PostgreSQL (read replicas supported)
@@ -489,10 +489,10 @@ ping lemonade
 **Memory:**
 - PostgreSQL: Adjust `shared_buffers`
 - Redis: Adjust `maxmemory`
-- Lemonade: Adjust GPU allocation
+- llama.cpp: Adjust GPU allocation
 
 **CPU/GPU:**
-- Lemonade: Add more GPUs
+- llama.cpp: Add more GPUs
 - AIDB: Increase worker processes
 
 ---
@@ -538,7 +538,7 @@ curl http://localhost:8091/health
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 ```
 
-### Minimal (Lemonade Only)
+### Minimal (llama.cpp Only)
 
 ```bash
 # Just model inference, no database
@@ -620,12 +620,12 @@ save 300 10
 save 60 10000
 ```
 
-### Lemonade
+### llama.cpp
 
 ```bash
 # Environment variables
-LEMONADE_WEB_CONCURRENCY=4
-LEMONADE_CTX_SIZE=4096
+LLAMA_CPP_WEB_CONCURRENCY=4
+LLAMA_CPP_CTX_SIZE=4096
 ```
 
 ---
@@ -634,7 +634,7 @@ LEMONADE_CTX_SIZE=4096
 
 1. **Multi-tenancy** - Support multiple users/projects
 2. **OAuth2 authentication** - Enterprise SSO
-3. **Distributed inference** - Multiple Lemonade instances
+3. **Distributed inference** - Multiple llama.cpp instances
 4. **Real-time collaboration** - WebSocket support
 5. **Advanced analytics** - ClickHouse integration
 6. **Model fine-tuning** - LoRA training support

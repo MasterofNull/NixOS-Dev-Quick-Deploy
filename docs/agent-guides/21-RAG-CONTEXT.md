@@ -20,7 +20,7 @@
 ```
 User: "How do I fix the keyring error in NixOS?"
 → Load full NixOS docs (15,000 tokens)
-→ Load gnome-keyring docs (8,000 tokens)
+→ Load gcr-ssh-agent docs (8,000 tokens)
 → Load PAM docs (5,000 tokens)
 Total: 28,000 tokens
 ```
@@ -47,7 +47,7 @@ import ollama
 # Convert query to vector
 response = ollama.embeddings(
     model="nomic-embed-text",
-    prompt="fix gnome keyring error"
+    prompt="fix gcr ssh agent error"
 )
 embedding = response["embedding"]
 ```
@@ -164,7 +164,7 @@ def rerank_results(query, results):
 
 ## When to Use Local vs Remote
 
-### Use Local LLM (Lemonade) When:
+### Use Local LLM (llama.cpp) When:
 ✅ Query has high-relevance local context (score > 0.85)
 ✅ Task is simple (code explanation, syntax check)
 ✅ Speed matters more than perfection
@@ -264,12 +264,12 @@ if validate_solution(solution):
 
 ### Embedding Model Settings
 ```bash
-# In Ollama
-# Default: nomic-embed-text (384 dimensions)
+# Sentence Transformers
+# Default: all-MiniLM-L6-v2 (384 dimensions)
 # Fast, good quality for code/text
 
 # To change:
-export EMBEDDING_MODEL="nomic-embed-text"
+export EMBEDDING_MODEL="sentence-transformers/all-MiniLM-L6-v2"
 export EMBEDDING_DIMENSIONS=384
 ```
 
