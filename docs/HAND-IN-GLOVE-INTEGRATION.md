@@ -68,7 +68,7 @@ This document describes the seamless "hand-in-glove" integration between **NixOS
 │  │ • ~/.local/share/ai-optimizer/                                 │   │
 │  │   ├── postgres/    (PostgreSQL database)                       │   │
 │  │   ├── redis/       (Redis AOF + RDB)                          │   │
-│  │   ├── lemonade-models/ (Downloaded Lemonade model cache)       │   │
+│  │   ├── llama-cpp-models/ (Downloaded llama.cpp model cache)       │   │
 │  │   ├── imports/     (Imported documents)                        │   │
 │  │   └── exports/     (Exported data)                            │   │
 │  └────────────────────────────────────────────────────────────────┘   │
@@ -183,7 +183,7 @@ Next Steps:
 │   └── dump.rdb        # RDB snapshot
 ├── qdrant/             # Qdrant vector database (optional)
 │   └── storage/
-├── lemonade-models/    # Downloaded Lemonade model cache (HuggingFace GGUF)
+├── llama-cpp-models/    # Downloaded llama.cpp model cache (HuggingFace GGUF)
 │   ├── Qwen/
 │   ├── deepseek-ai/
 │   └── microsoft/
@@ -256,12 +256,12 @@ volumes:
       o: bind
       device: ${REDIS_DATA_DIR:-~/.local/share/ai-optimizer/redis}
 
-  lemonade-models:
+  llama-cpp-models:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${LEMONADE_MODELS_DIR:-~/.local/share/ai-optimizer/lemonade-models}
+      device: ${LLAMA_CPP_MODELS_DIR:-~/.local/share/ai-optimizer/llama-cpp-models}
 ```
 
 ---
@@ -536,7 +536,7 @@ VLLM_MAX_LEN=4096  # Down from 8192
 VLLM_MODEL=microsoft/Phi-3-mini-4k-instruct
 
 # Restart
-docker compose -f docker-compose.new.yml restart lemonade
+docker compose -f docker-compose.new.yml restart llama-cpp
 ```
 
 ### Issue: Lost data after reinstall
@@ -560,7 +560,7 @@ grep POSTGRES_DATA_DIR .env
 cat >> .env <<EOF
 POSTGRES_DATA_DIR=$HOME/.local/share/ai-optimizer/postgres
 REDIS_DATA_DIR=$HOME/.local/share/ai-optimizer/redis
-LEMONADE_MODELS_DIR=$HOME/.local/share/ai-optimizer/lemonade-models
+LLAMA_CPP_MODELS_DIR=$HOME/.local/share/ai-optimizer/llama-cpp-models
 EOF
 ```
 

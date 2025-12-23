@@ -43,8 +43,8 @@ class Settings(BaseModel):
     parallel_diversity_mode: bool = False
     postgres_dsn: str
     redis_url: str
-    lemonade_url: str = "http://localhost:8080"
-    lemonade_models: List[str] = Field(default_factory=list)
+    llama_cpp_url: str = "http://localhost:8080"
+    llama_cpp_models: List[str] = Field(default_factory=list)
     tool_schema_cache: Path = Field(default=Path(".mcp_cache/tool_schemas.json"))
     sandbox_enabled: bool = True
     sandbox_runner: str = "bubblewrap"
@@ -52,6 +52,7 @@ class Settings(BaseModel):
     sandbox_timeout: int = 30
     sandbox_extra_args: List[str] = Field(default_factory=list)
     default_tool_mode: str = "minimal"
+    full_tool_disclosure_requires_key: bool = True
     tool_cache_ttl: int = 3600
     log_level: str = "INFO"
     log_file: Path = Field(default=Path("/tmp/aidb-mcp.log"))
@@ -80,6 +81,7 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
     llm_cfg = raw.get("llm", {})
     parallel_cfg = llm_cfg.get("parallel_processing", {})
     tools_cfg = raw.get("tools", {})
+    disclosure_cfg = tools_cfg.get("disclosure", {})
     logging_cfg = raw.get("logging", {})
     security_cfg = raw.get("security", {})
     rag_cfg = raw.get("rag", {})
@@ -112,9 +114,9 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
         redis_auth = ""
     redis_url = f"redis://{redis_auth}{redis_cfg.get('host','localhost')}:{redis_cfg.get('port',6379)}/{redis_cfg.get('db',0)}"
 
-    lemonade_cfg = llm_cfg.get("lemonade", {})
-    lemonade_url = os.environ.get("LEMONADE_BASE_URL") or lemonade_cfg.get("host") or "http://localhost:8080"
-    lemonade_models = lemonade_cfg.get("models", [])
+    llama_cpp_cfg = llm_cfg.get("llama_cpp") or llm_cfg.get("llama-cpp") or {}
+    llama_cpp_url = os.environ.get("LLAMA_CPP_BASE_URL") or llama_cpp_cfg.get("host") or "http://localhost:8080"
+    llama_cpp_models = llama_cpp_cfg.get("models", [])
 
     sandbox_cfg = tools_cfg.get("sandbox", {})
     cache_cfg = tools_cfg.get("cache", {})
@@ -136,9 +138,11 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
 
     telemetry_cfg = raw.get("telemetry", {})
     telemetry_enabled = telemetry_cfg.get("enabled", True)
-    telemetry_path = os.environ.get("AIDB_TELEMETRY_PATH") or telemetry_cfg.get(
-        "path", "~/.local/share/nixos-ai-stack/telemetry/aidb-events.jsonl"
-    )
+    telemetry_path = Path(
+        os.environ.get("AIDB_TELEMETRY_PATH")
+        or telemetry_cfg.get("path", "~/.local/share/nixos-ai-stack/telemetry/aidb-events.jsonl")
+    ).expanduser()
+    telemetry_path.parent.mkdir(parents=True, exist_ok=True)
 
     return Settings(
         server_host=server_cfg.get("host", "0.0.0.0"),
@@ -147,8 +151,8 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
         worker_count=server_cfg.get("workers", 1),
         postgres_dsn=postgres_dsn,
         redis_url=redis_url,
-        lemonade_url=lemonade_url,
-        lemonade_models=lemonade_models,
+        llama_cpp_url=llama_cpp_url,
+        llama_cpp_models=llama_cpp_models,
         sandbox_enabled=sandbox_cfg.get("enabled", True),
         sandbox_runner=sandbox_cfg.get("runner", "bubblewrap"),
         sandbox_profile=Path(sandbox_cfg["profile"]) if sandbox_cfg.get("profile") else None,
@@ -156,13 +160,14 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
         sandbox_extra_args=sandbox_cfg.get("extra_args", []),
         tool_schema_cache=Path(tools_cfg.get("schema_cache", ".mcp_cache/tool_schemas.json")),
         default_tool_mode=tools_cfg.get("discovery_mode", "minimal"),
+        full_tool_disclosure_requires_key=disclosure_cfg.get("full_requires_api_key", True),
         tool_cache_ttl=cache_cfg.get("ttl", 3600),
         log_level=logging_cfg.get("level", "INFO").upper(),
         log_file=log_path,
         log_max_bytes=_parse_size(log_size),
         log_backup_count=logging_cfg.get("backup_count", 5),
         telemetry_enabled=telemetry_enabled,
-        telemetry_path=Path(telemetry_path).expanduser(),
+        telemetry_path=telemetry_path,
         rate_limit_enabled=security_cfg.get("rate_limit", {}).get("enabled", False),
         rate_limit_rpm=security_cfg.get("rate_limit", {}).get("requests_per_minute", 60),
         api_key=api_key,

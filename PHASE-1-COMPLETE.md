@@ -32,7 +32,7 @@ ai-stack/                                # ✅ Complete integration
 ├── compose/                             # ✅ All variants created
 │   ├── docker-compose.yml               # ✅ Production stack (19KB)
 │   ├── docker-compose.dev.yml           # ✅ Development overrides
-│   ├── docker-compose.minimal.yml       # ✅ Minimal stack (Lemonade only)
+│   ├── docker-compose.minimal.yml       # ✅ Minimal stack (llama.cpp only)
 │   └── .env.example                     # ✅ Updated with new paths (100 lines)
 ├── mcp-servers/                         # ✅ MCP server code
 │   └── aidb/                            # ✅ Complete AIDB server

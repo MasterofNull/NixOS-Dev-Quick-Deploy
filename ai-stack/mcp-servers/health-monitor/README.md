@@ -20,7 +20,7 @@ This MCP server was created to enable:
 
 ### 1. Service Health Monitoring
 
-- Checks 7 AI stack services (Qdrant, Ollama, Lemonade, Open WebUI, AIDB, Hybrid Coordinator, MindsDB)
+- Checks 7 AI stack services (Qdrant, Ollama, llama.cpp, Open WebUI, AIDB, Hybrid Coordinator, MindsDB)
 - Measures response times
 - Detects offline/degraded states
 - Parallel health checks for speed
@@ -51,7 +51,7 @@ Check health status of a specific service.
 **Input**:
 ```json
 {
-  "service_id": "qdrant"  // One of: qdrant, ollama, lemonade, open_webui, aidb, hybrid_coordinator, mindsdb
+  "service_id": "qdrant"  // One of: qdrant, llama_cpp, llama-cpp_server, open_webui, aidb, hybrid_coordinator, mindsdb
 }
 ```
 
@@ -229,7 +229,7 @@ asyncio.run(main())
 |---------|----------|-------------------|
 | Qdrant | `http://localhost:6333/healthz` | 200 OK |
 | Ollama | `http://localhost:11434/api/tags` | 200 OK |
-| Lemonade | `http://localhost:8080/health` | 200 OK |
+| llama.cpp | `http://localhost:8080/health` | 200 OK |
 | Open WebUI | `http://localhost:3001` | 200 OK |
 | AIDB | `http://localhost:8091/health` | 200 OK |
 | Hybrid Coordinator | `http://localhost:8092/health` | 200 OK |

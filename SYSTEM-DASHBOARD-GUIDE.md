@@ -11,7 +11,7 @@
 The **NixOS System Command Center** is a production-grade, real-time monitoring dashboard that provides comprehensive visibility into:
 
 - **System Resources** (CPU, Memory, Disk, Uptime, Load Average, Temperature)
-- **AI/LLM Stack** (Qdrant, Ollama, Lemonade, PostgreSQL, Redis, Open WebUI)
+- **AI/LLM Stack** (Qdrant, Ollama, llama.cpp, PostgreSQL, Redis, Open WebUI)
 - **Container Status** (Podman containers with real-time stats)
 - **Network & Firewall** (Active connections, DNS, Listening ports, Rules)
 - **Security Monitoring** (Failed logins, AppArmor, Updates)
@@ -93,6 +93,20 @@ cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
 # Run the data collection script
 ./scripts/generate-dashboard-data.sh
 ```
+
+### 0. One-Command Startup (Stack + Dashboard + Tests)
+
+If the podman AI stack is installed, you can start everything and run tests in one command:
+
+```bash
+./scripts/start-ai-stack-and-dashboard.sh
+```
+
+This will:
+- Start the podman AI stack containers
+- Start the dashboard collector + server
+- Run a telemetry smoke test
+- Run stack health checks
 
 **Output**:
 ```
@@ -177,7 +191,7 @@ firefox http://localhost:8888/dashboard.html
 **Services Monitored**:
 - ✅ **Qdrant** (Vector database) - Port 6333
 - ✅ **Ollama** (Embedding models) - Port 11434
-- ✅ **Lemonade** (Local LLM via llama.cpp) - Port 8080
+- ✅ **llama.cpp** (Local LLM via llama.cpp) - Port 8080
 - ✅ **PostgreSQL** (Relational database) - Port 5432
 - ✅ **Redis** (Cache/message queue) - Port 6379
 - ✅ **Open WebUI** (Chat interface) - Port 3001
@@ -196,7 +210,7 @@ firefox http://localhost:8888/dashboard.html
 **Signals Tracked**:
 - **AIDB MCP** availability (health endpoint)
 - **RAG Collections** count and names
-- **Local Model Inventory** (Ollama/Lemonade models)
+- **Local Model Inventory** (Ollama/llama.cpp models)
 
 **Purpose**:
 - Validate that hybrid learning + RAG prerequisites are online
@@ -262,7 +276,7 @@ firefox http://localhost:8888/dashboard.html
 **Metrics**:
 - **Data Root** location
 - **Filesystem** and device
-- **Data Store Sizes** (Qdrant, Ollama, Lemonade, Postgres, Redis, Hugging Face cache)
+- **Data Store Sizes** (Qdrant, Ollama, llama.cpp, Postgres, Redis, Hugging Face cache)
 
 **Purpose**:
 - Confirm persistent storage placement
@@ -295,7 +309,7 @@ firefox http://localhost:8888/dashboard.html
 **Signals Tracked**:
 - AIDB availability
 - RAG collection counts (Qdrant)
-- Local model inventories (Ollama/Lemonade)
+- Local model inventories (Ollama/llama.cpp)
 - Skills count + telemetry events
 - Container runtime + running container count
 - Sample skill slugs + last telemetry event summary
@@ -592,7 +606,7 @@ For reduced motion or better performance:
 1. **Check data files exist**:
 ```bash
 ls -la ~/.local/share/nixos-system-dashboard/
-# Should show 6 JSON files
+# Should show JSON files (system.json, llm.json, keyword-signals.json, etc.)
 ```
 
 2. **Run data collection manually**:
@@ -665,7 +679,7 @@ ss -tlnp | grep -E '(6333|11434|8080|5432|6379|3001)'
 # Test health endpoints manually
 curl http://localhost:6333/healthz    # Qdrant
 curl http://localhost:11434/api/tags  # Ollama
-curl http://localhost:8080/health     # Lemonade
+curl http://localhost:8080/health     # llama.cpp
 
 # Start services
 cd ai-stack/compose

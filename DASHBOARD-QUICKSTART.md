@@ -39,7 +39,7 @@ cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
 **2. AI Stack Status** (8 services)
 - 🟢 Qdrant (Vector DB)
 - 🟢 Ollama (Embeddings)
-- 🟢 Lemonade (Local LLM)
+- 🟢 llama.cpp (Local LLM)
 - 🟢 PostgreSQL
 - 🟢 Redis
 - 🟢 Open WebUI
@@ -49,7 +49,7 @@ cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
 **3. Agentic Readiness**
 - AIDB MCP availability
 - RAG collection count + names
-- Local model inventory (Ollama/Lemonade)
+- Local model inventory (Ollama/llama.cpp)
 
 **4. Container Status**
 - All Podman containers
@@ -71,7 +71,7 @@ cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
 
 **7. Persistent AI Data**
 - AI data root + filesystem
-- Data store sizes (Qdrant, Ollama, Lemonade, Postgres, Redis, caches)
+- Data store sizes (Qdrant, Ollama, llama.cpp, Postgres, Redis, caches)
 
 **8. Database Metrics**
 - PostgreSQL status
@@ -86,7 +86,7 @@ cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
 **10. Local Usage Proof**
 - AIDB status
 - RAG collection count
-- Local LLM model counts (Ollama/Lemonade)
+- Local LLM model counts (Ollama/llama.cpp)
 - Skills loaded + telemetry events
 - Container runtime + running container count
 - Sample skill slugs + last telemetry event summary
@@ -345,7 +345,7 @@ Share dashboard link with team members for collaborative debugging.
 
 - **Total Metrics**: 40+ data points
 - **Refresh Rate**: 5 seconds
-- **Services Monitored**: 6 (Qdrant, Ollama, Lemonade, PostgreSQL, Redis, Open WebUI)
+- **Services Monitored**: 6 (Qdrant, Ollama, llama.cpp, PostgreSQL, Redis, Open WebUI)
 - **Page Load Time**: < 1 second
 - **Browser Support**: All modern browsers (Chrome, Firefox, Safari, Edge)
 - **Mobile Support**: ✅ Fully responsive

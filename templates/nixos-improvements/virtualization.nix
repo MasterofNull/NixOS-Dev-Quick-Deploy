@@ -1,5 +1,5 @@
 # KVM/QEMU/Libvirt Virtualization Stack Configuration
-# NixOS 25.11 Xantusia
+# NixOS 26.05 Yarara
 # Purpose: Full virtualization support for development and testing
 #
 # Features:
@@ -161,7 +161,7 @@ in
       echo "  Disk: $DISK_SIZE GB"
 
       # Download latest NixOS ISO (or specify path)
-      ISO_URL="https://channels.nixos.org/nixos-25.11/latest-nixos-minimal-x86_64-linux.iso"
+      ISO_URL="https://channels.nixos.org/nixos-26.05/latest-nixos-minimal-x86_64-linux.iso"
       ISO_PATH="/var/lib/libvirt/images/nixos-minimal.iso"
 
       if [ ! -f "$ISO_PATH" ]; then

@@ -54,7 +54,7 @@ check_nvidia_container_toolkit() {
 prepare_shared_data_directories() {
     # Create shared persistent data directories
     # These persist across AI-Optimizer reinstalls
-    mkdir -p "$AI_OPTIMIZER_DATA_ROOT"/{postgres,redis,qdrant,lemonade-models,imports,exports,backups}
+    mkdir -p "$AI_OPTIMIZER_DATA_ROOT"/{postgres,redis,qdrant,llama-cpp-models,imports,exports,backups}
     mkdir -p "$AI_OPTIMIZER_CONFIG_ROOT"
 
     # Set proper permissions
@@ -74,7 +74,7 @@ Contents:
   - postgres/     PostgreSQL database files
   - redis/        Redis persistence (AOF + RDB)
   - qdrant/       Qdrant vector database
-  - lemonade-models/  Downloaded Lemonade GGUF cache
+  - llama-cpp-models/  Downloaded llama.cpp GGUF cache
   - imports/      Imported documents and catalogs
   - exports/      Exported data and reports
   - backups/      Database backups
@@ -246,7 +246,7 @@ EOF
 
 Services:
   • AIDB MCP Server:  http://localhost:8091
-  • Lemonade Inference: http://localhost:8080
+  • llama.cpp Inference: http://localhost:8080
   • PostgreSQL:       localhost:5432
   • Redis:            localhost:6379
 

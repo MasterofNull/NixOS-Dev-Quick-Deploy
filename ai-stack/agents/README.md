@@ -60,7 +60,7 @@ Generate and manage NixOS configurations
 - `services`: List of systemd services
 
 #### 2. **ai-service-management**
-Manage AI stack services (Lemonade, AIDB, etc.)
+Manage AI stack services (llama.cpp, AIDB, etc.)
 
 **Use Cases:**
 - Start/stop AI services
@@ -69,7 +69,7 @@ Manage AI stack services (Lemonade, AIDB, etc.)
 
 **Parameters:**
 - `action`: start | stop | restart | health
-- `service`: aidb | lemonade | postgres | redis | qdrant
+- `service`: aidb | llama-cpp | postgres | redis | qdrant
 
 #### 3. **ai-model-management**
 Download, manage, and switch AI models
@@ -485,13 +485,13 @@ if not health["healthy"]:
 
 ---
 
-## Integration with Lemonade
+## Integration with llama.cpp
 
-Skills can use Lemonade for LLM operations:
+Skills can use llama.cpp for LLM operations:
 
 ```python
-# Generate code with Lemonade
-response = await lemonade_client.completions.create(
+# Generate code with llama.cpp
+response = await llama-cpp_client.completions.create(
     model="Qwen/Qwen2.5-Coder-7B-Instruct",
     prompt="Generate a NixOS config for...",
     max_tokens=500

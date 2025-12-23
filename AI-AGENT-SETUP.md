@@ -6,17 +6,17 @@ Complete guide for setting up AI agents, downloading GGUF models, and leveraging
 
 ## Quick Start
 
-### 1. Download Lemonade GGUF Models
+### 1. Download llama.cpp GGUF Models
 
 ```bash
 # Interactive mode (recommended for first-time setup)
-./scripts/download-lemonade-models.sh
+./scripts/download-llama-cpp-models.sh
 
 # Automated download of all recommended models
-./scripts/download-lemonade-models.sh --all
+./scripts/download-llama-cpp-models.sh --all
 
 # List downloaded models
-./scripts/download-lemonade-models.sh --list
+./scripts/download-llama-cpp-models.sh --list
 ```
 
 ### 2. Start Podman AI Stack
@@ -25,22 +25,22 @@ Complete guide for setting up AI agents, downloading GGUF models, and leveraging
 # Navigate to AI stack directory
 cd ai-stack/compose/
 
-# Start all services (Lemonade, Ollama, Qdrant, Open WebUI, AIDB MCP)
+# Start all services (llama.cpp, Ollama, Qdrant, Open WebUI, AIDB MCP)
 podman-compose up -d
 
 # Or using Docker
 docker-compose up -d
 
 # Monitor startup
-podman logs -f lemonade
-podman logs -f lemonade-coder
-podman logs -f lemonade-deepseek
+podman logs -f llama-cpp
+podman logs -f llama-cpp-coder
+podman logs -f llama-cpp-deepseek
 ```
 
 ### 3. Verify Services
 
 ```bash
-# Check Lemonade services
+# Check llama.cpp services
 curl http://localhost:8080/health  # General purpose
 curl http://localhost:8001/health  # Code generation
 curl http://localhost:8003/health  # Code analysis
@@ -87,13 +87,13 @@ The NixOS-Dev-Quick-Deploy stack uses three specialized GGUF models:
 Models are cached to avoid re-downloading:
 
 ```
-~/.local/share/nixos-ai-stack/lemonade-models/  # User-level storage
+~/.local/share/nixos-ai-stack/llama-cpp-models/  # User-level storage
 ~/.cache/huggingface/                           # HuggingFace cache
 ```
 
 Docker/Podman mounts:
 - Container path: `/root/.cache/huggingface`
-- Volume name: `lemonade-hf-cache`
+- Volume name: `llama-cpp-hf-cache`
 
 ## AI Knowledge Base
 
@@ -107,7 +107,7 @@ ai-knowledge-base/
 │   ├── vm-qemu-development.json    # VM/QEMU MCP servers
 │   └── coding-agents.json          # Coding agent MCP servers
 ├── reference/
-│   ├── lemonade-api.md            # Lemonade API reference
+│   ├── llama-cpp-api.md            # llama.cpp API reference
 │   └── ... (other API docs)
 └── README.md
 ```
@@ -123,7 +123,7 @@ ai-knowledge-base/
 
 ### Critical MCP Servers for AI/LLM Development
 
-1. **aidb** (custom) - Integrated Qdrant + Lemonade + Ollama
+1. **aidb** (custom) - Integrated Qdrant + llama.cpp + Ollama
 2. **composio** - 100+ agent tool integrations
 3. **goose** - Extensible AI agent with MCP support
 4. **activepieces** - Access to ~400 MCP servers
@@ -143,7 +143,7 @@ ai-knowledge-base/
 
 ## Integration Points
 
-### Lemonade AI Server
+### llama.cpp AI Server
 
 OpenAI-compatible API for local LLM inference:
 
@@ -161,7 +161,7 @@ async with httpx.AsyncClient(base_url="http://localhost:8080") as client:
 
 ### AIDB MCP Server
 
-Unified interface to Qdrant, Lemonade, and Ollama:
+Unified interface to Qdrant, llama.cpp, and Ollama:
 
 ```python
 from mcp import ClientSession
@@ -176,7 +176,7 @@ async with ClientSession() as session:
     # LLM inference with routing
     response = await session.call_tool("llm_inference", {
         "prompt": "Generate a NixOS module for Nginx",
-        "task_type": "CODE_GENERATION"  # Routes to lemonade-coder
+        "task_type": "CODE_GENERATION"  # Routes to llama-cpp-coder
     })
 ```
 
@@ -228,7 +228,7 @@ async def nixos_config_agent(requirement: str):
     similar = await qdrant_search(requirement)
 
     # 2. Generate new config using code model
-    config = await lemonade_coder.generate(
+    config = await llama-cpp_coder.generate(
         f"Create NixOS module for: {requirement}\nSimilar configs: {similar}"
     )
 
@@ -257,7 +257,7 @@ async def code_review_agent(repo_url: str, pr_number: int):
     issues = await serena.analyze(changes)
 
     # 3. LLM-powered review
-    review = await lemonade_coder.review(
+    review = await llama-cpp_coder.review(
         changes, context=issues
     )
 
@@ -308,14 +308,14 @@ When running `nixos-quick-deploy.sh`, Phase 9 will:
 1. Detect GPU capabilities
 2. Recommend suitable models
 3. Offer to pre-download GGUF models
-4. Configure Lemonade services
+4. Configure llama.cpp services
 5. Start AI stack containers
 
 ### Manual Installation
 
 ```bash
 # 1. Download models
-./scripts/download-lemonade-models.sh --all
+./scripts/download-llama-cpp-models.sh --all
 
 # 2. Start AI stack
 cd ai-stack/compose/
@@ -323,11 +323,11 @@ podman-compose up -d
 
 # 3. Wait for models to load
 while ! curl -sf http://localhost:8080/health > /dev/null; do
-    echo "Waiting for Lemonade..."
+    echo "Waiting for llama.cpp..."
     sleep 10
 done
 
-echo "Lemonade AI Stack Ready!"
+echo "llama.cpp AI Stack Ready!"
 ```
 
 ## Performance Tuning
@@ -336,27 +336,27 @@ echo "Lemonade AI Stack Ready!"
 
 ```bash
 # Use all available cores
-export LEMONADE_ARGS="--threads $(nproc) --mlock"
+export LLAMA_CPP_ARGS="--threads $(nproc) --mlock"
 
 # Enable NUMA for multi-socket systems
-export LEMONADE_ARGS="--threads $(nproc) --numa"
+export LLAMA_CPP_ARGS="--threads $(nproc) --numa"
 ```
 
 ### Memory Optimization
 
 ```bash
 # Reduce context window for less RAM usage
-export LEMONADE_CTX_SIZE=2048
+export LLAMA_CPP_CTX_SIZE=2048
 
 # Smaller batch size
-export LEMONADE_ARGS="--batch-size 256"
+export LLAMA_CPP_ARGS="--batch-size 256"
 ```
 
 ### GPU Acceleration (if available)
 
 ```bash
 # Offload all layers to GPU
-export LEMONADE_ARGS="--n-gpu-layers 99"
+export LLAMA_CPP_ARGS="--n-gpu-layers 99"
 ```
 
 ## Monitoring and Debugging
@@ -367,9 +367,9 @@ export LEMONADE_ARGS="--n-gpu-layers 99"
 # Quick health check script
 #!/usr/bin/env bash
 services=(
-    "lemonade:8080"
-    "lemonade-coder:8001"
-    "lemonade-deepseek:8003"
+    "llama-cpp:8080"
+    "llama-cpp-coder:8001"
+    "llama-cpp-deepseek:8003"
     "qdrant:6333"
     "ollama:11434"
     "open-webui:3000"
@@ -389,10 +389,10 @@ done
 ### View Logs
 
 ```bash
-# Lemonade services
-podman logs -f lemonade
-podman logs -f lemonade-coder
-podman logs -f lemonade-deepseek
+# llama.cpp services
+podman logs -f llama-cpp
+podman logs -f llama-cpp-coder
+podman logs -f llama-cpp-deepseek
 
 # AIDB MCP Server
 podman logs -f aidb-mcp
@@ -404,10 +404,10 @@ podman logs -f qdrant
 ### Prometheus Metrics
 
 ```bash
-# Lemonade metrics
-curl http://localhost:9100/metrics  # lemonade
-curl http://localhost:9101/metrics  # lemonade-coder
-curl http://localhost:9102/metrics  # lemonade-deepseek
+# llama.cpp metrics
+curl http://localhost:9100/metrics  # llama-cpp
+curl http://localhost:9101/metrics  # llama-cpp-coder
+curl http://localhost:9102/metrics  # llama-cpp-deepseek
 
 # Qdrant metrics
 curl http://localhost:6333/metrics
@@ -422,7 +422,7 @@ curl http://localhost:6333/metrics
 ls -lh ~/.cache/huggingface/hub/
 
 # Manually trigger download
-podman exec lemonade python3 -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='unsloth/Qwen3-4B-Instruct-2507-GGUF', filename='Qwen3-4B-Instruct-2507-Q4_K_M.gguf')"
+podman exec llama-cpp python3 -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='unsloth/Qwen3-4B-Instruct-2507-GGUF', filename='Qwen3-4B-Instruct-2507-Q4_K_M.gguf')"
 ```
 
 ### Out of Memory
@@ -432,10 +432,10 @@ podman exec lemonade python3 -c "from huggingface_hub import hf_hub_download; hf
 free -h
 
 # Reduce context size
-export LEMONADE_CTX_SIZE=2048
+export LLAMA_CPP_CTX_SIZE=2048
 
 # Stop unused services
-podman stop ollama  # If only using Lemonade
+podman stop ollama  # If only using llama.cpp
 ```
 
 ### Slow Inference
@@ -445,28 +445,28 @@ podman stop ollama  # If only using Lemonade
 htop
 
 # Increase threads
-export LEMONADE_ARGS="--threads $(nproc)"
+export LLAMA_CPP_ARGS="--threads $(nproc)"
 
 # Enable memory locking
-export LEMONADE_ARGS="--mlock"
+export LLAMA_CPP_ARGS="--mlock"
 ```
 
 ## References
 
-- **Model Download Script**: `scripts/download-lemonade-models.sh`
+- **Model Download Script**: `scripts/download-llama-cpp-models.sh`
 - **AI Knowledge Base**: `ai-knowledge-base/README.md`
-- **Lemonade API Reference**: `ai-knowledge-base/reference/lemonade-api.md`
+- **llama.cpp API Reference**: `ai-knowledge-base/reference/llama-cpp-api.md`
 - **Docker Compose Config**: `ai-stack/compose/docker-compose.yml`
 - **AIDB MCP Server**: `ai-stack/mcp-servers/aidb/`
 - **Phase 9 Deployment**: `phases/phase-09-ai-model-deployment.sh`
 
 ## Next Steps
 
-1. **Download Models**: Run `./scripts/download-lemonade-models.sh --all`
+1. **Download Models**: Run `./scripts/download-llama-cpp-models.sh --all`
 2. **Start Services**: `cd ai-stack/compose/ && podman-compose up -d`
 3. **Explore MCP Servers**: Review `ai-knowledge-base/mcp-servers/`
 4. **Test Integration**: Try example workflows above
-5. **Build Custom Agents**: Use MCP servers and Lemonade API
+5. **Build Custom Agents**: Use MCP servers and llama.cpp API
 
 ## Contributing
 

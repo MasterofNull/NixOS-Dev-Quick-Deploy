@@ -107,7 +107,7 @@ This session successfully implemented a comprehensive dashboard metrics system, 
 - Added hybrid-coordinator service (port 8092)
 - Environment variables configured
 - Volume mounts for persistence
-- Depends on: qdrant, ollama, lemonade, aidb
+- Depends on: qdrant, ollama, llama-cpp, aidb
 
 #### Health Check Fixes
 
@@ -313,7 +313,7 @@ health_score = (online_count / total_services) * 100
    ```bash
    # Qdrant: ✅ Online
    # Ollama: ✅ Online
-   # Lemonade: ✅ Online
+   # llama.cpp: ✅ Online
    # PostgreSQL: ✅ Online
    # Redis: ✅ Online
    # Open WebUI: ✅ Online
@@ -352,7 +352,7 @@ User Visibility
 Hybrid Coordinator
   ├── Depends on: Qdrant (collections)
   ├── Depends on: Ollama (embeddings)
-  ├── Depends on: Lemonade (local inference)
+  ├── Depends on: llama.cpp (local inference)
   └── Depends on: AIDB (telemetry coordination)
 
 Health Monitor MCP

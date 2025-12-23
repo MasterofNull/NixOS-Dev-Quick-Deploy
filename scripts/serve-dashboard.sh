@@ -12,6 +12,15 @@ DASHBOARD_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DATA_DIR="${HOME}/.local/share/nixos-system-dashboard"
 PORT="${DASHBOARD_PORT:-8888}"
 
+# Bail early if port is already in use to avoid Python traceback.
+if command -v ss >/dev/null 2>&1; then
+    if ss -ltn "sport = :${PORT}" | /run/current-system/sw/bin/grep -q ":${PORT}"; then
+        echo "ERROR: Port ${PORT} is already in use."
+        echo "Hint: run 'ss -ltnp \"sport = :${PORT}\"' to see the process, or set DASHBOARD_PORT."
+        exit 1
+    fi
+fi
+
 # Ensure data directory exists
 mkdir -p "$DATA_DIR"
 
@@ -46,6 +55,7 @@ import json
 import shlex
 import subprocess
 from pathlib import Path
+from urllib.parse import urlparse
 
 PORT = int(os.getenv('DASHBOARD_PORT', '8888'))
 DATA_DIR = Path.home() / '.local/share/nixos-system-dashboard'
@@ -60,12 +70,48 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_GET(self):
+        parsed = urlparse(self.path)
+        clean_path = parsed.path
+
         # Serve JSON data files
-        if self.path.startswith('/data/'):
-            filename = self.path.replace('/data/', '')
+        if clean_path.startswith('/data/'):
+            filename = clean_path.replace('/data/', '')
             filepath = DATA_DIR / filename
 
             if filepath.exists() and filepath.suffix == '.json':
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                with open(filepath, 'rb') as f:
+                    self.wfile.write(f.read())
+                return
+        elif clean_path.startswith('/.local/share/nixos-system-dashboard/'):
+            filename = clean_path.replace('/.local/share/nixos-system-dashboard/', '')
+            filepath = DATA_DIR / filename
+
+            if filepath.exists() and filepath.suffix == '.json':
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                with open(filepath, 'rb') as f:
+                    self.wfile.write(f.read())
+                return
+        elif clean_path.startswith(f'/home/{os.getenv("USER", "hyperd")}/.local/share/nixos-system-dashboard/'):
+            filename = clean_path.replace(f'/home/{os.getenv("USER", "hyperd")}/.local/share/nixos-system-dashboard/', '')
+            filepath = DATA_DIR / filename
+
+            if filepath.exists() and filepath.suffix == '.json':
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                with open(filepath, 'rb') as f:
+                    self.wfile.write(f.read())
+                return
+        elif clean_path.count('/') == 1 and clean_path.endswith('.json'):
+            filename = clean_path.lstrip('/')
+            filepath = DATA_DIR / filename
+
+            if filepath.exists():
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()

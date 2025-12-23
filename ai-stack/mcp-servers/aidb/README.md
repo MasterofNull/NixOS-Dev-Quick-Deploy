@@ -13,7 +13,7 @@ The AIDB MCP Server provides a unified API for:
 - **Document Storage & Retrieval** - PostgreSQL + TimescaleDB
 - **Vector Search** - Qdrant embeddings and semantic search
 - **Caching** - Redis for fast data access
-- **Model Inference** - Integration with Lemonade vLLM
+- **Model Inference** - Integration with llama.cpp vLLM
 - **Agent Skills** - Load and execute specialized AI agents
 - **Parallel Processing** - Multi-model inference support
 
@@ -46,7 +46,7 @@ AIDB MCP Server (port 8091)
 ├── ml_engine.py           # ML processing engine
 ├── codemachine_client.py  # CodeMachine integration
 ├── mindsdb_client.py      # MindsDB integration
-├── ollama_tool_agent.py   # Ollama agent
+├── llama_cpp_tool_agent.py   # llama.cpp agent
 ├── llm_parallel.py        # LLM parallelization
 └── middleware/            # Request/response middleware
 ```
@@ -77,8 +77,8 @@ AIDB_REDIS_PASSWORD=
 QDRANT_HOST=qdrant
 QDRANT_PORT=6333
 
-# Lemonade
-LEMONADE_BASE_URL=http://lemonade:8080
+# llama.cpp
+LLAMA_CPP_BASE_URL=http://llama-cpp:8080
 ```
 
 ### Config File
@@ -254,14 +254,14 @@ See [`requirements.txt`](requirements.txt) for complete list.
 
 ---
 
-## Integration with Lemonade
+## Integration with llama.cpp
 
-AIDB automatically connects to Lemonade for model inference:
+AIDB automatically connects to llama.cpp for model inference:
 
 ```python
-# Automatic Lemonade integration
+# Automatic llama.cpp integration
 response = await client.post(
-    f"{LEMONADE_BASE_URL}/completions",
+    f"{LLAMA_CPP_BASE_URL}/completions",
     json={
         "model": model_id,
         "prompt": prompt,
@@ -363,7 +363,7 @@ docker compose up -d
 1. Check database indexes
 2. Verify Redis is caching
 3. Monitor Qdrant performance
-4. Check Lemonade model load
+4. Check llama.cpp model load
 
 ```bash
 # Check service health

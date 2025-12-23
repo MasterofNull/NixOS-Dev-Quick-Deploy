@@ -19,7 +19,7 @@ Run: `python3 scripts/check-ai-stack-health-v2.py -v`
 
 - [ ] **Qdrant**: ✓ Healthy with 5 collections
 - [ ] **Ollama**: ✓ Healthy with nomic-embed-text model
-- [ ] **Lemonade**: ✓ Healthy with Qwen2.5-Coder-7B
+- [ ] **llama.cpp**: ✓ Healthy with Qwen2.5-Coder-7B
 - [ ] **Open WebUI**: ✓ Healthy on port 3001
 - [ ] **PostgreSQL**: ✓ Healthy
 - [ ] **Redis**: ✓ Healthy
@@ -209,7 +209,7 @@ python3 ai-stack/mcp-servers/hybrid-coordinator/coordinator.py
 # Service logs
 podman logs -f local-ai-qdrant
 podman logs -f local-ai-ollama
-podman logs -f local-ai-lemonade
+podman logs -f local-ai-llama-cpp
 
 # Service management
 ./scripts/hybrid-ai-stack.sh status

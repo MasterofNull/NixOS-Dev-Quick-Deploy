@@ -35,7 +35,7 @@ AI-Optimizer is a local LLM orchestration system that implements **Constraint-En
    - **Role:** General reasoning & task coordination
    - **Use for:** Planning, high-level design, requirement analysis
 
-Additional Lemonade instances can be enabled if you want specialized model routing.
+Additional llama.cpp instances can be enabled if you want specialized model routing.
 
 ### Architecture
 
@@ -141,7 +141,7 @@ Additional Lemonade instances can be enabled if you want specialized model routi
 ### API Endpoints
 
 ```bash
-# Lemonade (General reasoning)
+# llama.cpp (General reasoning)
 curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","content":"Hello"}],"max_tokens":50}'
@@ -210,7 +210,7 @@ Access at http://localhost:3001 (admin/admin)
 1. **Model Performance Comparison** - Side-by-side comparison of all 3 models
 2. **AI-Optimizer Complete** - Full stack overview
 3. **AIDB Overview** - MCP server & RAG metrics
-4. **Lemonade Health** - Primary model monitoring
+4. **llama.cpp Health** - Primary model monitoring
 5. **Run Logs** - Historical log analysis
 
 ### Prometheus Metrics

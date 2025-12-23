@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Ollama Tool-Enabled Agent
-Provides Ollama models with full access to MCP tools, AIDB, CLI tools, and RAG
+llama.cpp Tool-Enabled Agent
+Provides llama.cpp models with full access to MCP tools, AIDB, CLI tools, and RAG
 """
 
 import asyncio
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class ToolCategory(Enum):
-    """Categories of tools available to Ollama agents"""
+    """Categories of tools available to llama.cpp agents"""
     MCP_SERVER = "mcp_server"  # MCP protocol tools
     DATABASE = "database"  # PostgreSQL/TimescaleDB operations
     RAG = "rag"  # Retrieval-Augmented Generation
@@ -46,9 +46,9 @@ class ToolCall:
     execution_time: float = 0.0
 
 
-class LemonadeToolAgent:
+class LlamaCppToolAgent:
     """
-    Enhanced Lemonade agent with full tool access
+    Enhanced llama.cpp agent with full tool access
 
     Capabilities:
     - MCP Server tools (3,976 cataloged tools)
@@ -62,12 +62,12 @@ class LemonadeToolAgent:
     def __init__(
         self,
         model_name: str = "Qwen3-4B-Instruct-2507-GGUF",
-        ollama_url: str = "http://localhost:8080",
+        llama_cpp_url: str = "http://localhost:8080",
         aidb_url: str = "http://localhost:8091",
         mcp_url: str = "http://localhost:8791"
     ):
         self.model_name = model_name
-        self.ollama_url = ollama_url
+        self.llama_cpp_url = llama_cpp_url
         self.aidb_url = aidb_url
         self.mcp_url = mcp_url
         self.http_client = httpx.AsyncClient(timeout=300.0)
@@ -271,7 +271,7 @@ class LemonadeToolAgent:
         if not enable_tools:
             # Simple generation without tools
             response = await self.http_client.post(
-                f"{self.ollama_url}/chat/completions",
+                f"{self.llama_cpp_url}/chat/completions",
                 json={
                     "model": self.model_name,
                     "messages": [{"role": "user", "content": prompt}],
@@ -308,7 +308,7 @@ If you need to use a tool, respond with the tool call JSON. Otherwise, provide a
         while iteration < max_tool_calls:
             # Generate response
             response = await self.http_client.post(
-                f"{self.ollama_url}/chat/completions",
+                f"{self.llama_cpp_url}/chat/completions",
                 json={
                     "model": self.model_name,
                     "messages": [{"role": "user", "content": current_prompt}],

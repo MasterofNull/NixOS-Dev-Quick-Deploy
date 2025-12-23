@@ -55,7 +55,7 @@ NixOS-Dev-Quick-Deploy/                    # Single unified repository
 │   ├── compose/
 │   │   ├── docker-compose.yml             # Full production stack
 │   │   ├── docker-compose.dev.yml         # Development override
-│   │   ├── docker-compose.minimal.yml     # Minimal stack (Lemonade only)
+│   │   ├── docker-compose.minimal.yml     # Minimal stack (llama.cpp only)
 │   │   └── .env.example                   # Environment template
 │   │
 │   ├── mcp-servers/                       # Model Context Protocol servers
@@ -233,7 +233,7 @@ migrate_from_standalone() {
 
     # 3. Create new shared data directories
     echo "→ Creating shared data directories..."
-    mkdir -p "$SHARED_DATA_DIR"/{postgres,redis,qdrant,lemonade-models,imports,exports,backups,logs}
+    mkdir -p "$SHARED_DATA_DIR"/{postgres,redis,qdrant,llama-cpp-models,imports,exports,backups,logs}
 
     # 4. Migrate data
     echo "→ Migrating data..."
@@ -293,7 +293,7 @@ cd NixOS-Dev-Quick-Deploy
 ```bash
 #!/usr/bin/env bash
 # Phase 9: AI Stack Deployment
-# Purpose: Deploy full AI stack (AIDB, Lemonade, MCP servers)
+# Purpose: Deploy full AI stack (AIDB, llama.cpp, MCP servers)
 
 phase_09_ai_stack_deployment() {
     log_phase_start 9 "AI Stack Deployment"
@@ -431,7 +431,7 @@ show_ai_stack_success_message() {
 
 Services running:
   • AIDB MCP Server:  http://localhost:8091
-  • Lemonade vLLM:    http://localhost:8080
+  • llama.cpp vLLM:    http://localhost:8080
   • PostgreSQL:       localhost:5432
   • Redis:            localhost:6379
   • Qdrant:           localhost:6333
@@ -500,7 +500,7 @@ Options:
 
 Examples:
   $(basename "$0") up              # Start all services
-  $(basename "$0") logs lemonade   # View Lemonade logs
+  $(basename "$0") logs llama-cpp   # View llama.cpp logs
   $(basename "$0") restart         # Restart all services
   $(basename "$0") health          # Check service health
 
@@ -803,9 +803,9 @@ nix flake update
 ```bash
 # Edit config
 vim ~/.config/nixos-ai-stack/.env
-# Change LEMONADE_DEFAULT_MODEL=...
+# Change LLAMA_CPP_DEFAULT_MODEL=...
 
-# Restart Lemonade
+# Restart llama.cpp
 ./scripts/ai-stack-manage.sh restart
 ```
 

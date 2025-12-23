@@ -22,7 +22,16 @@ import sys
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+def find_repo_root(start: Path) -> Path:
+    for parent in [start, *start.parents]:
+        if (parent / "nixos-quick-deploy.sh").is_file():
+            return parent
+        if (parent / "AGENTS.md").is_file() and (parent / "docs").is_dir():
+            return parent
+    return start.parents[2] if len(start.parents) > 2 else start
+
+
+REPO_ROOT = find_repo_root(Path(__file__).resolve())
 DEPLOY_SCRIPT = REPO_ROOT / "scripts" / "deploy-aidb-mcp-server.sh"
 
 

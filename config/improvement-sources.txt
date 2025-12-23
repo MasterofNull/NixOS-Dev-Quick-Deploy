@@ -1,0 +1,8 @@
+# Improvement discovery sources (one URL per line).
+# Keep this list short and high-signal; avoid duplicates.
+https://github.com/containers/podman/releases
+https://github.com/qdrant/qdrant/releases
+https://github.com/ggml-org/llama.cpp/releases
+https://github.com/open-webui/open-webui/releases
+https://github.com/utensils/mcp-nixos
+https://github.com/numman-ali/openskills

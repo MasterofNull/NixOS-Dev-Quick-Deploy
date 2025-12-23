@@ -4,7 +4,7 @@
 
 ## Overview
 
-A continuous learning system where **local LLMs** (Lemonade/Ollama) support **remote agents** (Claude, GPT-4) with context augmentation, while learning from interactions to improve over time.
+A continuous learning system where **local LLMs** (llama.cpp/Ollama) support **remote agents** (Claude, GPT-4) with context augmentation, while learning from interactions to improve over time.
 
 ## Architecture Diagram
 
@@ -41,7 +41,7 @@ A continuous learning system where **local LLMs** (Lemonade/Ollama) support **re
 │                    Local LLM Inference Layer                         │
 │                                                                       │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │
-│  │  Lemonade    │  │  Lemonade    │  │  Lemonade    │              │
+│  │  llama.cpp    │  │  llama.cpp    │  │  llama.cpp    │              │
 │  │  General     │  │  Coder       │  │  DeepSeek    │              │
 │  │  (Qwen 4B)   │  │  (Qwen 7B)   │  │  (6.7B)      │              │
 │  └──────────────┘  └──────────────┘  └──────────────┘              │
@@ -351,7 +351,7 @@ async def handle_remote_agent_request(query: str):
 
     if local_confidence > 0.8:
         # Local LLM can handle this
-        response = await lemonade_inference(augmented["augmented_prompt"])
+        response = await llama-cpp_inference(augmented["augmented_prompt"])
         source = "local"
     else:
         # Need remote agent, but provide context
@@ -474,8 +474,8 @@ Return JSON format:
 }}
 """
 
-    # Use local Lemonade model for pattern extraction
-    analysis = await lemonade_inference(prompt)
+    # Use local llama.cpp model for pattern extraction
+    analysis = await llama-cpp_inference(prompt)
     return parse_json(analysis)
 ```
 
@@ -531,7 +531,7 @@ async def fine_tune_local_model():
 unsloth-finetune \\
     --base_model unsloth/Qwen3-4B-Instruct-2507-GGUF \\
     --dataset {dataset_path} \\
-    --output ~/.local/share/nixos-ai-stack/lemonade-models/qwen3-4b-finetuned \\
+    --output ~/.local/share/nixos-ai-stack/llama-cpp-models/qwen3-4b-finetuned \\
     --epochs 3 \\
     --batch_size 4 \\
     --learning_rate 2e-5

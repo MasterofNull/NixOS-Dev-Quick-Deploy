@@ -49,7 +49,7 @@ Add to your MCP configuration:
       "args": ["/path/to/hybrid-coordinator/server.py"],
       "env": {
         "QDRANT_URL": "http://localhost:6333",
-        "LEMONADE_BASE_URL": "http://localhost:8080",
+        "LLAMA_CPP_BASE_URL": "http://localhost:8080",
         "LOCAL_CONFIDENCE_THRESHOLD": "0.7",
         "HIGH_VALUE_THRESHOLD": "0.7",
         "PATTERN_EXTRACTION_ENABLED": "true"
@@ -319,8 +319,8 @@ The system computes a value score (0-1) for each interaction based on:
 QDRANT_URL=http://localhost:6333
 QDRANT_API_KEY=  # Optional
 
-# Lemonade Configuration
-LEMONADE_BASE_URL=http://localhost:8080
+# llama.cpp Configuration
+LLAMA_CPP_BASE_URL=http://localhost:8080
 
 # Learning Configuration
 LOCAL_CONFIDENCE_THRESHOLD=0.7
@@ -377,8 +377,8 @@ async with ClientSession() as session:
         "agent_type": "local"
     })
 
-    # 2. Use local Lemonade model
-    response = await lemonade_inference(context["augmented_prompt"])
+    # 2. Use local llama.cpp model
+    response = await llama-cpp_inference(context["augmented_prompt"])
 
     # 3. Track for learning
     await session.call_tool("track_interaction", {
@@ -435,7 +435,7 @@ asyncio.run(generate())
 2. **Generate dataset**: Use `generate_training_data` tool
 3. **Review dataset**: Check quality of examples
 4. **Fine-tune model**: Use unsloth or llama.cpp
-5. **Deploy updated model**: Replace in Lemonade container
+5. **Deploy updated model**: Replace in llama.cpp container
 6. **Monitor improvement**: Track success rates
 
 ## Troubleshooting
@@ -451,8 +451,8 @@ python ai-stack/mcp-servers/hybrid-coordinator/server.py
 ```
 
 ### Pattern extraction slow
-- Pattern extraction uses local LLM (Lemonade)
-- Check Lemonade is running: `curl http://localhost:8080/health`
+- Pattern extraction uses local LLM (llama.cpp)
+- Check llama.cpp is running: `curl http://localhost:8080/health`
 - Reduce `HIGH_VALUE_THRESHOLD` to extract less frequently
 - Set `PATTERN_EXTRACTION_ENABLED=false` to disable
 

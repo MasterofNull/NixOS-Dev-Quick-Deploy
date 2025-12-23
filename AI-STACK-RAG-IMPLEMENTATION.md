@@ -51,7 +51,7 @@ EnhancedPayload:
 3. Search Qdrant (multiple collections)
 4. Build context from top results
 5. Route to LLM:
-   - Local (Lemonade) if score > 0.85
+   - Local (llama.cpp) if score > 0.85
    - Remote (Claude API) if score < 0.85
 6. Cache result for future queries
 7. Track token savings
@@ -80,7 +80,7 @@ Comprehensive setup and validation script:
 3. **Service Startup**: Starts all 7 AI stack containers
 4. **Health Checks**: Validates each service
 5. **Qdrant Initialization**: Creates all 5 collections with enhanced schema
-6. **Model Downloads**: Pulls Ollama and Lemonade models
+6. **Model Downloads**: Pulls Ollama and llama.cpp models
 7. **RAG Testing**: End-to-end workflow validation
 
 #### Usage
@@ -139,8 +139,8 @@ Models download in the background. Monitor progress:
 # Ollama (nomic-embed-text, ~274MB)
 podman logs -f local-ai-ollama
 
-# Lemonade (Qwen2.5-Coder-7B, ~4.5GB)
-podman logs -f local-ai-lemonade
+# llama.cpp (Qwen2.5-Coder-7B, ~4.5GB)
+podman logs -f local-ai-llama-cpp
 ```
 
 ### Step 4: Run RAG Tests
@@ -175,7 +175,7 @@ python3 scripts/rag-system-complete.py
          │              │              │
          ▼              ▼              ▼
 ┌────────────┐  ┌────────────┐  ┌─────────────┐
-│  Qdrant    │  │  Ollama    │  │  Lemonade   │
+│  Qdrant    │  │  Ollama    │  │  llama.cpp   │
 │  Vector DB │  │  Embedding │  │  Local LLM  │
 │  Port 6333 │  │  Port11434 │  │  Port 8080  │
 └────────────┘  └────────────┘  └─────────────┘
@@ -186,7 +186,7 @@ python3 scripts/rag-system-complete.py
 │  ~/.local/share/nixos-ai-stack/                                  │
 │  ├── qdrant/          (Vector database)                          │
 │  ├── ollama/          (Embedding models)                         │
-│  ├── lemonade-models/ (GGUF models)                              │
+│  ├── llama-cpp-models/ (GGUF models)                              │
 │  └── semantic_cache.db (Response cache)                          │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -203,7 +203,7 @@ python3 scripts/check-ai-stack-health-v2.py -v
 **Expected Results**:
 - ✓ Qdrant: Healthy with 5 collections
 - ✓ Ollama: Healthy with nomic-embed-text model
-- ✓ Lemonade: Healthy (may show warning during model download)
+- ✓ llama.cpp: Healthy (may show warning during model download)
 - ✓ Open WebUI: Healthy on port 3001
 - ✓ PostgreSQL: Healthy
 - ✓ Redis: Healthy
@@ -311,13 +311,13 @@ podman logs local-ai-ollama
 # Look for "successfully pulled nomic-embed-text"
 ```
 
-### Issue: Lemonade not responding
+### Issue: llama.cpp not responding
 
 **Cause**: Model downloading (first time takes 10-45 min)
 
 **Check**:
 ```bash
-podman logs local-ai-lemonade | tail -50
+podman logs local-ai-llama-cpp | tail -50
 # Look for download progress bars
 ```
 

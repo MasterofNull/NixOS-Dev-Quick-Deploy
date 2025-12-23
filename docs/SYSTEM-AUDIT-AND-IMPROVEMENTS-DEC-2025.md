@@ -347,9 +347,9 @@ Manual system updates only. No automation for package updates or security patche
   virtualisation.oci-containers = {
     backend = "podman";
     containers = {
-      # Lemonade inference server (rootless)
-      lemonade = {
-        image = "ghcr.io/lemonade/server:latest";
+      # llama.cpp inference server (rootless)
+      llama-cpp = {
+        image = "ghcr.io/llama-cpp/server:latest";
         user = "hyperd";  # NEW in 25.11!
         ports = [ "8080:8080" ];
         volumes = [
@@ -437,7 +437,7 @@ Manual system updates only. No automation for package updates or security patche
       public = {
         interfaces = [ "enp0s3" ];
         services = [ "ssh" "http" "https" ];
-        ports = [ "8091/tcp" "8000/tcp" ];  # AIDB and Lemonade
+        ports = [ "8091/tcp" "8000/tcp" ];  # AIDB and llama.cpp
       };
 
       # Trusted zone for local AI services

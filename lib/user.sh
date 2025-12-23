@@ -424,7 +424,7 @@ persist_local_ai_stack_preferences() {
 
 persist_llm_backend_preferences() {
     safe_mkdir "$DEPLOYMENT_PREFERENCES_DIR" || return 1
-    printf 'LLM_BACKEND=%s\n' "${LLM_BACKEND:-ollama}" >"$LLM_BACKEND_PREFERENCE_FILE"
+    printf 'LLM_BACKEND=%s\n' "${LLM_BACKEND:-llama_cpp}" >"$LLM_BACKEND_PREFERENCE_FILE"
 }
 
 persist_llm_models_preferences() {
@@ -530,7 +530,7 @@ prompt_huggingface_token() {
     # Always show this section header in interactive mode
     print_section "Local AI Stack (Podman Containers)"
     print_info "The local AI stack includes Podman containers for:"
-    print_info "  • Ollama - Local LLM inference runtime"
+    print_info "  • llama.cpp - Local LLM inference server (containerized)"
     print_info "  • Open WebUI - Web interface for AI models"
     print_info "  • Qdrant - Vector database for embeddings"
     print_info "  • MindsDB - AI workflow orchestration"
@@ -566,63 +566,63 @@ prompt_huggingface_token() {
     if [[ "$enable_ai_stack" == "true" ]]; then
         echo ""
         print_section "LLM Backend Selection"
-        print_info "Choose your LLM inference backend:"
-        print_info "  1) Ollama   - Universal, works on all platforms (NVIDIA, AMD, CPU)"
-        print_info "  2) Lemonade - Optimized for AMD GPUs with ROCm (llama.cpp based)"
-        echo ""
-        
-        # Show current selection
-        local current_backend="${LLM_BACKEND:-ollama}"
-        if [[ "$current_backend" == "lemonade" ]]; then
-            print_info "Current selection: Lemonade (AMD optimized)"
-        else
-            print_info "Current selection: Ollama (universal)"
-        fi
-        
-        local backend_choice
-        read -rp "$(echo -e "${BLUE}Select backend [1=Ollama, 2=Lemonade]${NC} (default: $current_backend): ")" backend_choice
-        
-        case "$backend_choice" in
-            2|lemonade|Lemonade|LEMONADE)
-                LLM_BACKEND="lemonade"
-                print_success "Selected: Lemonade (AMD optimized)"
-                ;;
-            1|ollama|Ollama|OLLAMA|"")
-                LLM_BACKEND="ollama"
-                print_success "Selected: Ollama (universal)"
-                ;;
-            *)
-                LLM_BACKEND="$current_backend"
-                print_info "Keeping current selection: $LLM_BACKEND"
-                ;;
-        esac
+        print_info "Using llama.cpp backend (served by the containerized server)."
+        LLM_BACKEND="llama_cpp"
+        print_success "Selected: llama_cpp (containerized server)"
         export LLM_BACKEND
         
-        # Ask for model configuration
+        # Model configuration (choose embedding + coder)
         echo ""
-        print_section "LLM Models Configuration"
-        
-        # Default models (same for both backends)
-        local default_models="gpt-oss,qwen-3,Apriel-1.5"
-        print_info "Default models: $default_models"
-        print_info "  • gpt-oss    - General purpose model"
-        print_info "  • qwen-3     - Multilingual reasoning model"
-        print_info "  • Apriel-1.5 - Efficient instruction-following model"
-        
-        local current_models="${LLM_MODELS:-$default_models}"
-        print_info "Current models: $current_models"
-        print_info "Enter comma-separated model names to customize, or press Enter for defaults."
-        
-        local models_input
-        read -rp "$(echo -e "${BLUE}Models${NC} (blank for defaults): ")" models_input
-        
-        if [[ -n "$models_input" ]]; then
-            LLM_MODELS="$models_input"
-        else
-            LLM_MODELS="$default_models"
+        print_section "RAG Embedding Model Selection"
+        local default_embedding="${EMBEDDING_MODEL:-nomic-embed-text}"
+        print_info "Default embedding model: ${default_embedding}"
+        print_info "Options:"
+        print_info "  1) nomic-embed-text (default)"
+        print_info "  2) bge-small-en-v1.5"
+        print_info "  3) bge-base-en-v1.5"
+        print_info "  4) all-MiniLM-L6-v2"
+
+        local embedding_choice="1"
+        if declare -F prompt_user >/dev/null 2>&1; then
+            embedding_choice=$(prompt_user "Select embedding model [1-4]" "1")
         fi
+
+        case "${embedding_choice}" in
+            2) EMBEDDING_MODEL="bge-small-en-v1.5" ;;
+            3) EMBEDDING_MODEL="bge-base-en-v1.5" ;;
+            4) EMBEDDING_MODEL="all-MiniLM-L6-v2" ;;
+            *) EMBEDDING_MODEL="${default_embedding}" ;;
+        esac
+        export EMBEDDING_MODEL
+        print_success "Embedding model: ${EMBEDDING_MODEL}"
+
+        echo ""
+        print_section "Coder LLM Selection"
+        local default_coder="${CODER_MODEL:-qwen2.5-coder}"
+        print_info "Default coder model: ${default_coder}"
+        print_info "Options:"
+        print_info "  1) qwen2.5-coder (default)"
+        print_info "  2) deepseek-coder-v2"
+        print_info "  3) starcoder2"
+        print_info "  4) codestral"
+
+        local coder_choice="1"
+        if declare -F prompt_user >/dev/null 2>&1; then
+            coder_choice=$(prompt_user "Select coder model [1-4]" "1")
+        fi
+
+        case "${coder_choice}" in
+            2) CODER_MODEL="deepseek-coder-v2" ;;
+            3) CODER_MODEL="starcoder2" ;;
+            4) CODER_MODEL="codestral" ;;
+            *) CODER_MODEL="${default_coder}" ;;
+        esac
+        export CODER_MODEL
+        print_success "Coder model: ${CODER_MODEL}"
+
+        LLM_MODELS="${CODER_MODEL},${EMBEDDING_MODEL}"
         export LLM_MODELS
-        print_success "Models configured: $LLM_MODELS"
+        print_success "Models configured: ${LLM_MODELS}"
         
         # Optionally ask for Hugging Face token
         echo ""

@@ -99,16 +99,16 @@ def check_qdrant(timeout: int = 5) -> ServiceCheck:
         )
 
 
-def check_lemonade(timeout: int = 5) -> ServiceCheck:
-    """Check Lemonade GGUF inference"""
+def check_llama_cpp(timeout: int = 5) -> ServiceCheck:
+    """Check llama.cpp GGUF inference"""
     try:
         response = requests.get("http://localhost:8080/health", timeout=timeout)
 
         if response.status_code == 200:
             check = ServiceCheck(
-                name="Lemonade",
+                name="llama.cpp",
                 status="ok",
-                message="Lemonade is healthy"
+                message="llama.cpp is healthy"
             )
 
             # Try to get models
@@ -131,21 +131,21 @@ def check_lemonade(timeout: int = 5) -> ServiceCheck:
             return check
         else:
             return ServiceCheck(
-                name="Lemonade",
+                name="llama.cpp",
                 status="error",
                 message=f"Unhealthy (HTTP {response.status_code})"
             )
 
     except requests.exceptions.ConnectionError:
         return ServiceCheck(
-            name="Lemonade",
+            name="llama.cpp",
             status="error",
             message="Not reachable",
-            details={"suggestion": "podman start local-ai-lemonade"}
+            details={"suggestion": "podman start local-ai-llama-cpp"}
         )
     except Exception as e:
         return ServiceCheck(
-            name="Lemonade",
+            name="llama.cpp",
             status="error",
             message=f"Check failed: {str(e)[:50]}"
         )
@@ -324,7 +324,7 @@ def main():
 
     # Always check HTTP services
     results.append(check_qdrant())
-    results.append(check_lemonade())
+    results.append(check_llama_cpp())
     results.append(check_open_webui())
     results.append(check_aidb())
     results.append(check_mindsdb())
@@ -357,10 +357,6 @@ def main():
             message="Container not running (optional service)",
             details={"suggestion": "./scripts/hybrid-ai-stack.sh up"}
         ))
-
-    if "local-ai-ollama" in containers:
-        # Note: Ollama doesn't seem to be running currently
-        pass
 
     # Print results
     status_icons = {

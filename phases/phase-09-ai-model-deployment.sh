@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Phase 9: AI Model Deployment (Lemonade)
+# Phase 9: AI Model Deployment (llama.cpp)
 # Part of: nixos-quick-deploy.sh
 # Version: Uses SCRIPT_VERSION from main script
-# Purpose: Optional deployment of AI coding models via Lemonade
+# Purpose: Optional deployment of AI coding models via llama.cpp
 
 # ============================================================================
 # Phase 9: AI Model Deployment
@@ -54,18 +54,18 @@ phase_09_ai_model_deployment() {
 
     # Save selection to preferences
     mkdir -p "${CACHE_DIR}/preferences"
-    echo "LEMONADE_DEFAULT_MODEL=$selected_model" > "${CACHE_DIR}/preferences/ai-model.env"
+    echo "LLAMA_CPP_DEFAULT_MODEL=$selected_model" > "${CACHE_DIR}/preferences/ai-model.env"
     echo "GPU_VRAM=$gpu_vram" >> "${CACHE_DIR}/preferences/ai-model.env"
 
     # Pre-download recommended GGUF models
     log_info "Pre-downloading recommended GGUF models..."
-    if [ -f "${SCRIPT_DIR}/scripts/download-lemonade-models.sh" ]; then
+    if [ -f "${SCRIPT_DIR}/scripts/download-llama-cpp-models.sh" ]; then
         log_info "This may take some time depending on your internet connection"
         read -p "Download all recommended models now? [Y/n]: " download_confirm
 
         if [[ ! "$download_confirm" =~ ^[Nn]$ ]]; then
             # Run the download script in automatic mode
-            bash "${SCRIPT_DIR}/scripts/download-lemonade-models.sh" --all || {
+            bash "${SCRIPT_DIR}/scripts/download-llama-cpp-models.sh" --all || {
                 log_warning "Model download incomplete. Models will download on first container startup."
             }
         else
@@ -90,7 +90,7 @@ phase_09_ai_model_deployment() {
     # Deploy AI-Optimizer with selected model
     log_info "Deploying AI-Optimizer with model: $selected_model"
 
-    if ai_deploy_lemonade "$selected_model" "$HOME/Documents/AI-Optimizer"; then
+    if ai_deploy_llama_cpp "$selected_model" "$HOME/Documents/AI-Optimizer"; then
         log_success "AI-Optimizer deployment initiated"
 
         # Add monitoring instructions
@@ -111,10 +111,10 @@ The first-time model download may take 10-45 minutes depending on:
   • HuggingFace server load
 
 Monitor Progress:
-  docker logs -f lemonade
+  docker logs -f llama-cpp
 
 Check Status:
-  docker ps | grep lemonade
+  docker ps | grep llama-cpp
   curl http://localhost:8080/health
 
 System Dashboard:
@@ -125,9 +125,9 @@ System Dashboard:
 
 Once Ready:
   • AIDB MCP Server: http://localhost:8091
-  • Lemonade General: http://localhost:8080
-  • Lemonade Coder: http://localhost:8001/api/v1
-  • Lemonade DeepSeek: http://localhost:8003/api/v1
+  • llama.cpp General: http://localhost:8080
+  • llama.cpp Coder: http://localhost:8001/api/v1
+  • llama.cpp DeepSeek: http://localhost:8003/api/v1
   • Qdrant Vector DB: http://localhost:6333
   • Hybrid Coordinator MCP Server: Available via MCP protocol
   • AI Assistant available in deployment scripts
@@ -154,8 +154,8 @@ EOF
         # Offer to wait for completion
         read -p "Wait for model download to complete? [y/N]: " wait_confirm
         if [[ "$wait_confirm" =~ ^[Yy]$ ]]; then
-            log_info "Waiting for Lemonade model download..."
-            wait_for_lemonade_ready
+            log_info "Waiting for llama.cpp model download..."
+            wait_for_llama_cpp_ready
         fi
 
         mark_phase_complete "phase-09-ai-model"
@@ -208,17 +208,17 @@ EOF
     fi
 }
 
-wait_for_lemonade_ready() {
+wait_for_llama_cpp_ready() {
     local max_wait=3600  # 1 hour max
     local elapsed=0
     local interval=30
 
-    log_info "Waiting for Lemonade to download and load model..."
+    log_info "Waiting for llama.cpp to download and load model..."
     log_info "This may take 10-45 minutes. Press Ctrl+C to skip and continue in background."
 
     while [ $elapsed -lt $max_wait ]; do
         if curl -sf --max-time 5 http://localhost:8080/health > /dev/null 2>&1; then
-            log_success "Lemonade is ready!"
+            log_success "llama.cpp is ready!"
             return 0
         fi
 
@@ -230,8 +230,8 @@ wait_for_lemonade_ready() {
         elapsed=$((elapsed + interval))
     done
 
-    log_warning "Timed out waiting for Lemonade. Model may still be downloading in background."
-    log_info "Check progress: docker logs -f lemonade"
+    log_warning "Timed out waiting for llama.cpp. Model may still be downloading in background."
+    log_info "Check progress: docker logs -f llama-cpp"
     return 1
 }
 

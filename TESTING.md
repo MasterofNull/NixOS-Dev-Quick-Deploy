@@ -16,7 +16,7 @@ python3 scripts/check-ai-stack-health-v2.py
 Features:
 - No external dependencies (uses only stdlib + requests)
 - Smart container detection
-- Checks Qdrant, Lemonade, Open WebUI
+- Checks Qdrant, llama.cpp, Open WebUI
 - Handles optional services (PostgreSQL, Redis, Ollama)
 - Clear status indicators
 
@@ -166,13 +166,13 @@ sudo systemctl enable --now ai-stack-health.timer
 ./scripts/setup-hybrid-learning-auto.sh
 ```
 
-#### Lemonade: No Models Loaded
+#### llama.cpp: No Models Loaded
 
-**Warning**: "Lemonade is healthy (no models loaded - may be downloading)"
+**Warning**: "llama.cpp is healthy (no models loaded - may be downloading)"
 
 **Check Progress**:
 ```bash
-podman logs -f local-ai-lemonade
+podman logs -f local-ai-llama-cpp
 ```
 
 First-time model download takes 10-45 minutes depending on connection speed.

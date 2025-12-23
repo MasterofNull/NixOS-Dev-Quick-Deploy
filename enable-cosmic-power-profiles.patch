@@ -1,0 +1,20 @@
+--- /etc/nixos/nixos-improvements/mobile-workstation.nix.orig
++++ /etc/nixos/nixos-improvements/mobile-workstation.nix
+@@ -35,7 +35,7 @@
+   # It automatically switches between AC and battery power profiles
+
+   services.tlp = {
+-    enable = lib.mkDefault true;
++    enable = lib.mkDefault false;  # Disabled in favor of power-profiles-daemon for COSMIC integration
+     settings = {
+       # CPU Governor
+       CPU_SCALING_GOVERNOR_ON_AC = "performance";
+@@ -104,7 +104,7 @@
+   # Disabled by default since TLP is more comprehensive
+   # Enable this instead of TLP if you prefer GUI power profile switching
+   # Using mkForce to override COSMIC's default setting (which enables it)
+-  services.power-profiles-daemon.enable = lib.mkForce false;
++  services.power-profiles-daemon.enable = lib.mkDefault true;  # Enabled for COSMIC power profile GUI
+
+   # =========================================================================
+   # Thermald - Intel Thermal Management

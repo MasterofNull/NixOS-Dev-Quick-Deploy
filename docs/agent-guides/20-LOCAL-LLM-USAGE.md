@@ -1,4 +1,4 @@
-# Local LLM Usage - Lemonade & Ollama
+# Local LLM Usage - llama.cpp & Embeddings
 
 **Purpose**: Use local LLMs for inference and embeddings without remote API costs
 
@@ -8,12 +8,12 @@
 
 | Service | Port | Purpose | Models |
 |---------|------|---------|--------|
-| **Lemonade** | 8080 | GGUF inference | Qwen Coder 7B, Qwen 4B, DeepSeek 6.7B |
-| **Ollama** | 11434 | Embeddings | nomic-embed-text (384d) |
+| **llama.cpp** | 8080 | GGUF inference | Qwen Coder 7B, Qwen 4B, DeepSeek 6.7B |
+| **Sentence Transformers** | n/a | Embeddings | all-MiniLM-L6-v2 |
 
 ---
 
-## Lemonade (GGUF Inference)
+## llama.cpp (GGUF Inference)
 
 ### Chat Completions API
 
@@ -37,7 +37,7 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 import requests
 
 def query_local_llm(prompt, max_tokens=500, temperature=0.7):
-    """Query Lemonade local LLM"""
+    """Query llama.cpp local LLM"""
 
     url = "http://localhost:8080/v1/chat/completions"
 
@@ -154,34 +154,21 @@ print(feedback)
 
 ---
 
-## Ollama (Embeddings)
+## Embeddings (Sentence Transformers)
 
 ### Generate Embeddings
 
 ```bash
-# Via curl
-curl -X POST http://localhost:11434/api/embeddings \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "nomic-embed-text",
-    "prompt": "Your text here"
-  }' | jq
+# Embeddings are stored locally and used by AIDB.
+ls ~/.cache/huggingface/sentence-transformers
 ```
 
 ### Python Usage
 
 ```python
-import ollama
-
 def create_embedding(text):
-    """Create 384-dimensional embedding"""
-
-    response = ollama.embeddings(
-        model="nomic-embed-text",
-        prompt=text
-    )
-
-    return response["embedding"]  # List of 384 floats
+    """Describe embedding flow (AIDB uses sentence-transformers)"""
+    raise NotImplementedError("Use AIDB embedding pipeline or local sentence-transformers.")
 
 # Example
 text = "How to enable systemd service in NixOS"
@@ -467,8 +454,8 @@ curl http://localhost:8080/v1/models | jq
 # Check health
 curl http://localhost:8080/health
 
-# Ollama models
-curl http://localhost:11434/api/tags | jq
+# Embedding models live in the Hugging Face cache.
+ls ~/.cache/huggingface/sentence-transformers
 ```
 
 ### Performance Metrics
@@ -503,8 +490,8 @@ speed = measure_inference_time("Explain NixOS")
 ### Model Not Loaded
 
 ```bash
-# Check if Lemonade is downloading model
-podman logs local-ai-lemonade | grep -i download
+# Check if llama.cpp is downloading model
+podman logs local-ai-llama-cpp | grep -i download
 
 # First time can take 10-45 minutes
 # Check progress regularly

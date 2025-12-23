@@ -30,8 +30,8 @@ This comprehensive document (756 lines) contains:
 
 **AI Stack Services**: 8/8 running
 - ✅ Qdrant (port 6333) - Vector database
-- ✅ Ollama (port 11434) - Embeddings
-- ✅ Lemonade (port 8080) - Local LLM
+- ✅ Sentence Transformers (local cache) - Embeddings
+- ✅ llama.cpp (port 8080) - Local LLM
 - ✅ Open WebUI (port 3001) - Chat interface
 - ✅ PostgreSQL (port 5432) - Database
 - ✅ Redis (port 6379) - Cache
@@ -51,7 +51,7 @@ mindsdb: latest          # ✅ Rolling release
 ```
 
 #### Architecture Gaps Addressed
-1. ✅ **Health Checks Fixed** - Qdrant & Ollama now reliable
+1. ✅ **Health Checks Fixed** - Qdrant & llama.cpp now reliable
 2. ✅ **Hybrid Coordinator Deployed** - As containerized service
 3. ⏳ **Dashboard Enhancement** - Learning metrics pending
 4. ⏳ **RAG Integration** - Collections need initialization
@@ -65,7 +65,7 @@ mindsdb: latest          # ✅ Rolling release
 
 1. **Health Check Fixes**
    - Qdrant: Uses `wget` for reliability
-   - Ollama: Uses native `ollama list` command
+   - Embeddings: Use sentence-transformers cache (`~/.cache/huggingface/sentence-transformers`)
    - Impact: Container orchestration accuracy
 
 2. **Hybrid Coordinator Deployment**
@@ -226,7 +226,7 @@ def calculate_value_score(interaction):
                                ▼
                   ┌────────────────────────┐
                   │   Model Inference      │
-                  │  (Lemonade or Remote)  │
+                  │  (llama.cpp or Remote)  │
                   └────────────┬───────────┘
                                │
                                ▼
@@ -254,7 +254,7 @@ def calculate_value_score(interaction):
                     ▼                      ▼
       ┌──────────────────────┐        Store only
       │ Pattern Extraction   │
-      │ (Lemonade processes) │
+      │ (llama.cpp processes) │
       └──────────┬───────────┘
                  │
                  ▼

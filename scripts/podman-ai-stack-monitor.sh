@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Podman AI Stack Monitor
-# Initialize and monitor the local AI stack (Ollama, Qdrant, Open WebUI, MindsDB)
+# Initialize and monitor the local AI stack (llama.cpp, Qdrant, Open WebUI, MindsDB)
 #
 # Usage: ./podman-ai-stack-monitor.sh [start|stop|status|logs|restart]
 #
@@ -23,7 +23,7 @@ LLM_BACKEND_PREF_FILE="${HOME}/.cache/nixos-quick-deploy/preferences/llm-backend
 if [[ -f "$LLM_BACKEND_PREF_FILE" ]]; then
     LLM_BACKEND=$(awk -F'=' '/^LLM_BACKEND=/{print $2}' "$LLM_BACKEND_PREF_FILE" 2>/dev/null | tail -n1 | tr -d '\r')
 fi
-LLM_BACKEND="${LLM_BACKEND:-ollama}"
+LLM_BACKEND="${LLM_BACKEND:-llama_cpp}"
 
 # Load models from preferences
 LLM_MODELS_PREF_FILE="${HOME}/.cache/nixos-quick-deploy/preferences/llm-models.env"
@@ -44,29 +44,18 @@ declare -A MODEL_TIERS=(
     ["48gb+"]="qwen2.5-coder:32b,codestral:22b,llama3.2:70b"
 )
 
-# Service names (dynamic based on backend)
-if [[ "$LLM_BACKEND" == "lemonade" ]]; then
-    SERVICES=(
-        "podman-local-ai-network"
-        "podman-local-ai-lemonade"
-        "podman-local-ai-qdrant"
-        "podman-local-ai-open-webui"
-        "podman-local-ai-mindsdb"
-    )
-else
-    SERVICES=(
-        "podman-local-ai-network"
-        "podman-local-ai-ollama"
-        "podman-local-ai-qdrant"
-        "podman-local-ai-open-webui"
-        "podman-local-ai-mindsdb"
-    )
-fi
+# Service names
+SERVICES=(
+    "podman-local-ai-network"
+    "podman-local-ai-llama-cpp"
+    "podman-local-ai-qdrant"
+    "podman-local-ai-open-webui"
+    "podman-local-ai-mindsdb"
+)
 
 # Port mappings
 declare -A PORTS=(
-    ["ollama"]="11434"
-    ["lemonade"]="8080"
+    ["llama-cpp"]="8080"
     ["qdrant"]="6333"
     ["open-webui"]="8081"
     ["mindsdb"]="47334"
@@ -80,29 +69,16 @@ header()  { echo -e "\n${BOLD}${CYAN}$*${NC}"; }
 
 show_banner() {
     echo -e "${MAGENTA}"
-    if [[ "$LLM_BACKEND" == "lemonade" ]]; then
-        cat << 'EOF'
+    cat << 'EOF'
 ╭─────────────────────────────────────────────────────────────────╮
 │                                                                 │
-│     🍋  Podman AI Stack Monitor (Lemonade)                      │
+│     🦙  Podman AI Stack Monitor (llama.cpp)                     │
 │                                                                 │
-│     Backend: Lemonade (AMD ROCm optimized)                      │
-│     Services: Lemonade, Qdrant, Open WebUI, MindsDB             │
+│     Backend: llama.cpp (AMD ROCm optimized)                     │
+│     Services: llama.cpp, Qdrant, Open WebUI, MindsDB            │
 │                                                                 │
 ╰─────────────────────────────────────────────────────────────────╯
 EOF
-    else
-        cat << 'EOF'
-╭─────────────────────────────────────────────────────────────────╮
-│                                                                 │
-│     🤖  Podman AI Stack Monitor (Ollama)                        │
-│                                                                 │
-│     Backend: Ollama (Universal)                                 │
-│     Services: Ollama, Qdrant, Open WebUI, MindsDB               │
-│                                                                 │
-╰─────────────────────────────────────────────────────────────────╯
-EOF
-    fi
     echo -e "${NC}"
     echo -e "${CYAN}Configured models: ${LLM_MODELS}${NC}"
     echo ""
@@ -117,37 +93,16 @@ pull_models() {
     # Convert comma-separated to array
     IFS=',' read -ra models <<< "$LLM_MODELS"
     
-    if [[ "$LLM_BACKEND" == "lemonade" ]]; then
-        info "Lemonade uses GGUF models from Hugging Face."
-        info "Models will be downloaded on first inference or can be pre-downloaded."
-        echo ""
-        for model in "${models[@]}"; do
-            model=$(echo "$model" | xargs)  # trim whitespace
-            info "To download $model, use:"
-            echo "  huggingface-cli download <repo>/$model --local-dir ~/.local/share/podman-ai-stack/lemonade-models/"
-        done
-        echo ""
-        info "After downloading, restart the Lemonade container."
-    else
-        # Ollama model pull
-        local container_name="local-ai-ollama"
-        
-        if ! podman ps --format '{{.Names}}' 2>/dev/null | grep -q "^${container_name}$"; then
-            warn "Ollama container not running. Starting it first..."
-            systemctl --user start podman-local-ai-ollama.service
-            sleep 5
-        fi
-        
-        for model in "${models[@]}"; do
-            model=$(echo "$model" | xargs)  # trim whitespace
-            info "Pulling model: $model"
-            if podman exec -it "$container_name" ollama pull "$model" 2>&1; then
-                success "Downloaded: $model"
-            else
-                warn "Failed to pull: $model (may need to retry)"
-            fi
-        done
-    fi
+    info "llama.cpp uses GGUF models from Hugging Face."
+    info "Models will be downloaded on first inference or can be pre-downloaded."
+    echo ""
+    for model in "${models[@]}"; do
+        model=$(echo "$model" | xargs)  # trim whitespace
+        info "To download $model, use:"
+        echo "  huggingface-cli download <repo>/$model --local-dir ~/.local/share/podman-ai-stack/llama-cpp-models/"
+    done
+    echo ""
+    info "After downloading, restart the llama.cpp container."
     
     echo ""
     success "Model download complete."
@@ -244,7 +199,7 @@ show_status() {
 show_containers() {
     header "Container Status"
     
-    if ! podman ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null | grep -E "ollama|qdrant|webui|mindsdb|local-ai"; then
+    if ! podman ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null | grep -E "llama-cpp|qdrant|webui|mindsdb|local-ai"; then
         warn "No AI stack containers found"
     fi
     echo ""
@@ -446,33 +401,14 @@ list_installed_models() {
     header "📦 Installed Models"
     echo ""
     
-    if [[ "$LLM_BACKEND" == "ollama" ]]; then
-        if curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
-            local models
-            models=$(curl -s http://localhost:11434/api/tags | jq -r '.models[].name' 2>/dev/null || echo "")
-            if [[ -n "$models" ]]; then
-                echo -e "${GREEN}Ollama Models:${NC}"
-                echo "$models" | while read -r model; do
-                    local size
-                    size=$(curl -s http://localhost:11434/api/show -d "{\"name\":\"$model\"}" | jq -r '.size // "unknown"' 2>/dev/null || echo "unknown")
-                    printf "  %-30s %s\n" "$model" "$size"
-                done
-            else
-                echo "  No models installed yet."
-            fi
-        else
-            warn "Ollama not running. Start with: $(basename "$0") start"
-        fi
+    local models_dir="$HOME/.local/share/podman-ai-stack/llama-cpp-models"
+    if [[ -d "$models_dir" ]]; then
+        echo -e "${GREEN}llama.cpp Models (GGUF files):${NC}"
+        find "$models_dir" -name "*.gguf" -exec basename {} \; 2>/dev/null | while read -r model; do
+            echo "  $model"
+        done || echo "  No models found in $models_dir"
     else
-        local models_dir="$HOME/.local/share/podman-ai-stack/lemonade-models"
-        if [[ -d "$models_dir" ]]; then
-            echo -e "${GREEN}Lemonade Models (GGUF files):${NC}"
-            find "$models_dir" -name "*.gguf" -exec basename {} \; 2>/dev/null | while read -r model; do
-                echo "  $model"
-            done || echo "  No models found in $models_dir"
-        else
-            echo "  Models directory not found: $models_dir"
-        fi
+        echo "  Models directory not found: $models_dir"
     fi
     
     echo ""
@@ -483,28 +419,16 @@ list_installed_models() {
 pull_specific_model() {
     local model="$1"
     
-    if [[ "$LLM_BACKEND" == "ollama" ]]; then
-        info "Pulling model: $model via Ollama..."
-        local container_name="podman-local-ai-ollama"
-        if podman exec "$container_name" ollama pull "$model" 2>&1; then
-            success "Model $model pulled successfully!"
-        else
-            error "Failed to pull $model"
-            echo "  Make sure the stack is running: $(basename "$0") start"
-            return 1
-        fi
-    else
-        warn "For Lemonade backend, download GGUF files manually to:"
-        echo "  ~/.local/share/podman-ai-stack/lemonade-models/"
-        echo ""
-        echo "Recommended sources:"
-        echo "  - Hugging Face: https://huggingface.co/models?sort=trending&search=gguf"
-        echo "  - TheBloke: https://huggingface.co/TheBloke"
-        echo ""
-        echo "Example download:"
-        echo "  cd ~/.local/share/podman-ai-stack/lemonade-models/"
-        echo "  wget https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct-GGUF/resolve/main/qwen2.5-coder-14b-instruct-q4_k_m.gguf"
-    fi
+    warn "Download GGUF files manually to:"
+    echo "  ~/.local/share/podman-ai-stack/llama-cpp-models/"
+    echo ""
+    echo "Recommended sources:"
+    echo "  - Hugging Face: https://huggingface.co/models?sort=trending&search=gguf"
+    echo "  - TheBloke: https://huggingface.co/TheBloke"
+    echo ""
+    echo "Example download:"
+    echo "  cd ~/.local/share/podman-ai-stack/llama-cpp-models/"
+    echo "  wget https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct-GGUF/resolve/main/qwen2.5-coder-14b-instruct-q4_k_m.gguf"
 }
 
 main() {

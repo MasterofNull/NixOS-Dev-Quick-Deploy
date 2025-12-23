@@ -86,7 +86,7 @@ This checklist tracks the complete integration of AI-Optimizer into NixOS-Dev-Qu
 ### 1.4 Copy Docker Compose Files
 - [x] Copy `docker-compose.yml` → `ai-stack/compose/docker-compose.yml`
 - [x] Create `ai-stack/compose/docker-compose.dev.yml` (development overrides)
-- [x] Create `ai-stack/compose/docker-compose.minimal.yml` (Lemonade only)
+- [x] Create `ai-stack/compose/docker-compose.minimal.yml` (llama.cpp only)
 - [x] Copy `.env.example` → `ai-stack/compose/.env.example`
 - [x] Update `.env.example` with new paths and variables (100 lines, updated 2025-12-12)
 
@@ -334,7 +334,7 @@ This checklist tracks the complete integration of AI-Optimizer into NixOS-Dev-Qu
 - [ ] Test all service containers
 - [ ] Test health checks
 - [ ] Test AIDB connectivity
-- [ ] Test Lemonade inference
+- [ ] Test llama.cpp inference
 - [ ] Test agent skills
 - [ ] Test MCP servers
 

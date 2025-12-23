@@ -43,14 +43,14 @@ Running containers: 5
   - local-ai-ollama
   - local-ai-postgres
   - local-ai-redis
-  - local-ai-lemonade
+  - local-ai-llama-cpp
 
 ✓ Qdrant              : Qdrant is healthy
    collections: 5 total
 ✓ Open WebUI          : Open WebUI is healthy (port 3001)
 ✓ PostgreSQL          : PostgreSQL is healthy
 ✓ Redis               : Redis is healthy
-⚠ Lemonade            : Lemonade is healthy (no models loaded - may be downloading)
+⚠ llama.cpp            : llama.cpp is healthy (no models loaded - may be downloading)
 
 === Summary ===
 Total: 5 | OK: 4 | Warnings: 1 | Errors: 0
@@ -58,7 +58,7 @@ Total: 5 | OK: 4 | Warnings: 1 | Errors: 0
 
 **Analysis**:
 - All 5 containers running successfully
-- Lemonade warning: Model not yet loaded (Qwen2.5-Coder-7B downloading/loading)
+- llama.cpp warning: Model not yet loaded (Qwen2.5-Coder-7B downloading/loading)
 - PostgreSQL, Redis, Qdrant, Open WebUI fully operational
 - Volume mappings working correctly (using cached models at ~/.cache/huggingface/)
 
@@ -132,7 +132,7 @@ RAG SYSTEM DIAGNOSTICS
 📊 Service Status:
   qdrant          : ✓ Available
   ollama          : ✓ Available
-  lemonade        : ✓ Available
+  llama-cpp        : ✓ Available
 
 💾 Cache Statistics:
   total_entries             : 0
@@ -143,7 +143,7 @@ RAG SYSTEM DIAGNOSTICS
 ⚙️  Configuration:
   qdrant_url                     : http://localhost:6333
   ollama_url                     : http://localhost:11434
-  lemonade_url                   : http://localhost:8080
+  llama_cpp_url                   : http://localhost:8080
   embedding_model                : nomic-embed-text
   embedding_dimensions           : 384
   local_confidence_threshold     : 0.85
@@ -288,7 +288,7 @@ local-ai-qdrant    qdrant/qdrant:v1.16.2              Up
 local-ai-ollama    ollama/ollama:latest               Up
 local-ai-postgres  pgvector/pgvector:0.8.1-pg18       Up
 local-ai-redis     redis:8.4.0-alpine                 Up
-local-ai-lemonade  ghcr.io/ggml-org/llama.cpp:server  Up
+local-ai-llama-cpp  ghcr.io/ggml-org/llama.cpp:server  Up
 ```
 
 ### Models Cached
@@ -296,7 +296,7 @@ Location: `~/.cache/huggingface/`
 
 1. **qwen-coder** (4.4GB)
    - Model: Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
-   - Status: ✅ Cached, ready for Lemonade
+   - Status: ✅ Cached, ready for llama.cpp
 
 2. **qwen3-4b** (2.3GB)
    - Model: unsloth/Qwen3-4B-Instruct-2507-GGUF
@@ -335,11 +335,11 @@ None
    - **Root Cause**: Test code using different embedding model
    - **Fix**: Ensure all components use `nomic-embed-text` (384-dim) consistently
 
-2. **Lemonade Model Not Loaded** ⚠️
+2. **llama.cpp Model Not Loaded** ⚠️
    - **Issue**: Model still downloading/loading
    - **Impact**: Local LLM queries will fail until model loads
    - **Expected**: First-time 7B model load can take 5-15 minutes
-   - **Action**: Monitor `podman logs -f local-ai-lemonade`
+   - **Action**: Monitor `podman logs -f local-ai-llama-cpp`
 
 ### Minor Issues
 
@@ -366,8 +366,8 @@ None
    - Verify all embedding calls use same model
    - Test solution storage after fix
 
-2. **Wait for Lemonade Model Load**
-   - Monitor: `podman logs -f local-ai-lemonade`
+2. **Wait for llama.cpp Model Load**
+   - Monitor: `podman logs -f local-ai-llama-cpp`
    - Expected: 5-15 minutes for first load
    - Verify: `curl http://localhost:8080/v1/models`
 
@@ -385,7 +385,7 @@ None
 5. **Add Monitoring**
    - Create dashboard for cache hit rates
    - Track token savings over time
-   - Monitor Lemonade model performance (tok/s)
+   - Monitor llama.cpp model performance (tok/s)
 
 6. **Optimize Collections**
    - Add indexing for frequent queries
@@ -393,7 +393,7 @@ None
    - Add collection-specific retention policies
 
 7. **Test Model Cascading**
-   - Test local LLM queries (when Lemonade ready)
+   - Test local LLM queries (when llama.cpp ready)
    - Verify fallback logic (local → remote)
    - Measure quality vs. cost tradeoffs
 
@@ -409,7 +409,7 @@ None
 - [x] Hybrid coordinator routes queries
 - [x] Token savings calculated
 - [ ] Vector storage working (dimension mismatch to fix)
-- [ ] Lemonade model loaded
+- [ ] llama.cpp model loaded
 - [ ] Local LLM inference working
 - [ ] Model cascading tested
 
@@ -418,7 +418,7 @@ None
 ## Next Steps
 
 1. **Fix vector dimension mismatch** in coordinator
-2. **Monitor Lemonade** model loading
+2. **Monitor llama.cpp** model loading
 3. **Test local LLM** inference when ready
 4. **Populate knowledge base** with NixOS docs
 5. **Measure real-world** token savings

@@ -53,7 +53,7 @@ This document turns the high-level design in `SYSTEM_PROJECT_DESIGN.md` into a c
 
 - Treat the AI-Optimizer stack as a separate but tightly integrated layer:
   - AIDB at `localhost:8091`
-  - Local LLM runtime (OpenAI-compatible container such as Lemonade or llama.cpp; vLLM reserved for dedicated servers)
+  - Local LLM runtime (OpenAI-compatible container such as llama.cpp or llama.cpp; vLLM reserved for dedicated servers)
   - MCP servers and skills
 - Organize AI-related assets:
   - `templates/local-ai-stack/`

@@ -25,7 +25,7 @@ setup_system_dashboard() {
     #
     # Features:
     # - Real-time system monitoring (CPU, memory, disk, uptime)
-    # - AI stack status (Qdrant, Ollama, Lemonade, PostgreSQL, Redis)
+    # - AI stack status (Qdrant, Ollama, llama.cpp, PostgreSQL, Redis)
     # - Container monitoring (Podman containers)
     # - Network & firewall status
     # - Security monitoring

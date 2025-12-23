@@ -13,7 +13,7 @@ This is a **sophisticated hybrid AI development environment** that combines:
 - Container-based AI stack (7 services via Podman)
 - RAG (Retrieval Augmented Generation) with vector database
 - Continuous learning system with value scoring
-- Local LLM inference (Lemonade/Ollama) + Remote API hybrid
+- Local LLM inference (llama.cpp/Ollama) + Remote API hybrid
 - Comprehensive health monitoring and dashboards
 
 **Target Outcome**: 30-50% reduction in remote API token usage through intelligent local context augmentation.
@@ -34,7 +34,7 @@ This is a **sophisticated hybrid AI development environment** that combines:
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
 │                   AI SERVICES LAYER                          │
-│  • Lemonade GGUF (Port 8080) - Qwen2.5-Coder-7B            │
+│  • llama.cpp GGUF (Port 8080) - Qwen2.5-Coder-7B            │
 │  • Ollama (Port 11434) - nomic-embed-text embeddings        │
 │  • Hybrid Coordinator (MCP Server) - Route local/remote      │
 └─────────────────────────────────────────────────────────────┘
@@ -97,9 +97,9 @@ AI Stack (Podman Compose)
 ├── ollama (Embeddings)
 │   ├── Model: nomic-embed-text (384 dimensions)
 │   └── Volume: ~/.local/share/nixos-ai-stack/ollama
-├── lemonade (GGUF Inference)
+├── llama-cpp (GGUF Inference)
 │   ├── Model: Qwen/Qwen2.5-Coder-7B-Instruct
-│   └── Volume: ~/.local/share/nixos-ai-stack/lemonade-models
+│   └── Volume: ~/.local/share/nixos-ai-stack/llama-cpp-models
 ├── open-webui (Web Interface)
 │   └── Volume: ~/.local/share/nixos-ai-stack/open-webui
 ├── postgres (Database)
@@ -186,7 +186,7 @@ nixos-quick-deploy.sh          # Bootstrap loader
 |---------|-------|------|---------|-----|-------------|
 | **qdrant** | qdrant/qdrant:latest | 6333, 6334 | Vector database | No | ~1-5 GB |
 | **ollama** | ollama/ollama:latest | 11434 | Embeddings | Yes | ~2-10 GB |
-| **lemonade** | ghcr.io/ggml-org/llama.cpp:server | 8080 | GGUF inference | Yes | ~10-50 GB |
+| **llama-cpp** | ghcr.io/ggml-org/llama.cpp:server | 8080 | GGUF inference | Yes | ~10-50 GB |
 | **open-webui** | ghcr.io/open-webui/open-webui:main | 3001 | Web UI | No | ~500 MB |
 | **postgres** | pgvector/pgvector:pg16 | 5432 | Database | No | ~1-5 GB |
 | **redis** | redis:7-alpine | 6379 | Cache | No | ~512 MB |
@@ -204,7 +204,7 @@ Each service has built-in health checks:
 ```yaml
 qdrant: curl http://localhost:6333/healthz
 ollama: curl http://localhost:11434/api/tags
-lemonade: curl http://localhost:8080/health
+llama-cpp: curl http://localhost:8080/health
 postgres: pg_isready -U mcp
 redis: redis-cli ping
 ```
@@ -241,7 +241,7 @@ redis: redis-cli ping
 4. Filter by Score → results where score > 0.75
 5. Augment Query → combine query + top contexts
 6. Route to LLM:
-   - Local (Lemonade) if score > 0.85 and simple task
+   - Local (llama.cpp) if score > 0.85 and simple task
    - Remote (Claude API) if score < 0.85 or complex task
 7. Store Outcome → Always log interaction with value score
 ```
@@ -285,7 +285,7 @@ Savings: 97% reduction
 ✅ Three output modes: human-readable, verbose, JSON
 ✅ Service-specific health checks:
   - Qdrant: `/healthz` + collection verification
-  - Lemonade: `/health` + model loading status
+  - llama.cpp: `/health` + model loading status
   - Open WebUI: Port scanning (3001)
   - PostgreSQL: Container exec `pg_isready`
   - Redis: Container exec `redis-cli ping`
@@ -325,7 +325,7 @@ python3 scripts/check-ai-stack-health-v2.py -j > health.json
 ~/.local/share/nixos-ai-stack/
 ├── qdrant/              # Vector database storage
 ├── ollama/              # Models + embeddings
-├── lemonade-models/     # GGUF model files
+├── llama-cpp-models/     # GGUF model files
 ├── open-webui/          # User data, chat history
 ├── postgres/            # PostgreSQL data directory
 ├── redis/               # Redis append-only file
@@ -505,7 +505,7 @@ mcp-servers/
 | **Podman** | System version | ~5.x | ⚠️ Check version |
 | **Qdrant** | latest | 1.12.x | ⚠️ Pin version |
 | **Ollama** | latest | 0.5.x | ⚠️ Pin version |
-| **Lemonade** | latest | Unknown | ⚠️ Pin version |
+| **llama.cpp** | latest | Unknown | ⚠️ Pin version |
 | **Open WebUI** | main | Unknown | ⚠️ Pin version |
 | **PostgreSQL** | 16 (pgvector) | 17 available | ⚠️ Consider upgrade |
 | **Redis** | 7-alpine | 7.4 | ✅ Current |
@@ -569,7 +569,7 @@ mcp-servers/
 
 #### Current Implementation
 - RAG with Qdrant vector search
-- Local LLM routing (Lemonade)
+- Local LLM routing (llama.cpp)
 - Context augmentation
 - **Estimated savings**: 30-50%
 
@@ -738,7 +738,7 @@ top_results = sorted(scored_results, key=lambda x: x[1], reverse=True)[:5]
 - Qdrant: http://localhost:6333
 - Qdrant gRPC: localhost:6334
 - Ollama: http://localhost:11434
-- Lemonade: http://localhost:8080
+- llama.cpp: http://localhost:8080
 - Open WebUI: http://localhost:3001
 - PostgreSQL: localhost:5432
 - Redis: localhost:6379

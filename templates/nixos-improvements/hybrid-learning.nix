@@ -28,10 +28,9 @@ let
 
     export QDRANT_URL="${cfg.qdrant.url}"
     export QDRANT_API_KEY="${cfg.qdrant.apiKey or ""}"
-    export LEMONADE_BASE_URL="${cfg.lemonade.baseUrl}"
-    export LEMONADE_CODER_URL="${cfg.lemonade.coderUrl}"
-    export LEMONADE_DEEPSEEK_URL="${cfg.lemonade.deepseekUrl}"
-    export OLLAMA_BASE_URL="${cfg.ollama.baseUrl}"
+    export LLAMA_CPP_BASE_URL="${cfg.llamaCpp.baseUrl}"
+    export LLAMA_CPP_CODER_URL="${cfg.llamaCpp.coderUrl}"
+    export LLAMA_CPP_DEEPSEEK_URL="${cfg.llamaCpp.deepseekUrl}"
     export LOCAL_CONFIDENCE_THRESHOLD="${toString cfg.learning.localConfidenceThreshold}"
     export HIGH_VALUE_THRESHOLD="${toString cfg.learning.highValueThreshold}"
     export PATTERN_EXTRACTION_ENABLED="${if cfg.learning.patternExtractionEnabled then "true" else "false"}"
@@ -123,31 +122,21 @@ in {
       };
     };
 
-    lemonade = {
+    llamaCpp = {
       baseUrl = mkOption {
         type = types.str;
         default = "http://localhost:8080";
-        description = "Lemonade general purpose inference URL";
+        description = "llama.cpp inference URL";
       };
-
       coderUrl = mkOption {
         type = types.str;
         default = "http://localhost:8001/api/v1";
-        description = "Lemonade coder inference URL";
+        description = "llama.cpp coder inference URL (optional)";
       };
-
       deepseekUrl = mkOption {
         type = types.str;
         default = "http://localhost:8003/api/v1";
-        description = "Lemonade deepseek inference URL";
-      };
-    };
-
-    ollama = {
-      baseUrl = mkOption {
-        type = types.str;
-        default = "http://localhost:11434";
-        description = "Ollama embedding endpoint URL";
+        description = "llama.cpp deepseek inference URL (optional)";
       };
     };
 
@@ -316,8 +305,8 @@ in {
       environment = {
         QDRANT_URL = cfg.qdrant.url;
         QDRANT_API_KEY = cfg.qdrant.apiKey or "";
-        LEMONADE_BASE_URL = cfg.lemonade.baseUrl;
-        OLLAMA_BASE_URL = cfg.ollama.baseUrl;
+        LLAMA_CPP_BASE_URL = cfg.llamaCpp.baseUrl;
+        LLAMA_CPP_BASE_URL = cfg.llamaCpp.baseUrl;
         HYBRID_TELEMETRY_PATH = cfg.paths.telemetryPath;
         TELEMETRY_PATH = cfg.paths.telemetryPath;
         MCP_SERVER_MODE = "http";
@@ -456,7 +445,7 @@ in {
     environment.sessionVariables = {
       HYBRID_LEARNING_ENABLED = "true";
       QDRANT_URL = cfg.qdrant.url;
-      LEMONADE_BASE_URL = cfg.lemonade.baseUrl;
+      LLAMA_CPP_BASE_URL = cfg.llamaCpp.baseUrl;
     };
 
     # Add management scripts to system PATH
@@ -497,7 +486,7 @@ in {
 
       Monitoring:
         • Qdrant:              ${cfg.qdrant.url}
-        • Lemonade General:    ${cfg.lemonade.baseUrl}
+        • llama.cpp General:   ${cfg.llamaCpp.baseUrl}
         • Metrics:             http://localhost:${toString cfg.monitoring.port}/metrics ${optionalString (!cfg.monitoring.enable) "(disabled)"}
 
       Management:

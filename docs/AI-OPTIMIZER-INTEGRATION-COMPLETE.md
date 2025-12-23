@@ -176,7 +176,7 @@ Select option [0-6, c]:
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  ┌──────────────────────────────────────────────────────┐  │
-│  │ Lemonade Inference (port 8080)                       │  │
+│  │ llama.cpp Inference (port 8080)                       │  │
 │  │ - OpenAI-compatible API                              │  │
 │  │ - GPU-accelerated (CUDA 12+)                         │  │
 │  │ - 10-60 tok/s (vs Ollama 2-5 tok/s)                  │  │

@@ -70,7 +70,7 @@
 - [x] Copy `docker-compose.yml` → `ai-stack/compose/docker-compose.yml`
 - [x] Copy `.env.example` → `ai-stack/compose/.env.example`
 - [ ] Create `ai-stack/compose/docker-compose.dev.yml` (development overrides)
-- [ ] Create `ai-stack/compose/docker-compose.minimal.yml` (Lemonade only)
+- [ ] Create `ai-stack/compose/docker-compose.minimal.yml` (llama.cpp only)
 - [ ] Update `.env.example` with new paths and variables
 
 **Files:**

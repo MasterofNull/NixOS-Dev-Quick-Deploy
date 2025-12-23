@@ -118,8 +118,8 @@ Examples:
 ```
 
 The script verifies AI availability, forwards context/description to
-`/lemonade/nix` (falling back to `/vllm/nix` for older stacks), and optionally
-calls `/lemonade/review` on the generated output.
+`/llama-cpp/nix` (falling back to `/vllm/nix` for older stacks), and optionally
+calls `/llama-cpp/review` on the generated output.
 
 ---
 
@@ -138,7 +138,7 @@ calls `/lemonade/review` on the generated output.
 
 For developer laptops and desktops that host the NixOS-Dev-Quick-Deploy system, the preferred local LLM pattern is:
 
-- **Runtime standard:** Use `llama.cpp` (or a similar OpenAI-compatible runtime such as Lemonade) as the default on-device runtime for SLMs in GGUF format, targeting CPU-first inference. These runtimes are expected to be provided by separately developed Podman/Docker container stacks (for example those scaffolded by `templates/local-ai-stack/`), not baked into the base NixOS system. Larger GPU-heavy runtimes (such as vLLM) are reserved for future dedicated servers and are not required for day-to-day edge development.
+- **Runtime standard:** Use `llama.cpp` (or a similar OpenAI-compatible runtime such as llama.cpp) as the default on-device runtime for SLMs in GGUF format, targeting CPU-first inference. These runtimes are expected to be provided by separately developed Podman/Docker container stacks (for example those scaffolded by `templates/local-ai-stack/`), not baked into the base NixOS system. Larger GPU-heavy runtimes (such as vLLM) are reserved for future dedicated servers and are not required for day-to-day edge development.
 - **AI profiles:** Introduce a logical `ai_profile` concept (separate from Flatpak profiles) with values such as:
   - `cpu_slim` – very small SLMs, aggressively quantized, minimal resource usage.
   - `cpu_full` – a curated set of stronger SLMs suitable for coding assistants and project planning.
@@ -146,7 +146,7 @@ For developer laptops and desktops that host the NixOS-Dev-Quick-Deploy system, 
   When implemented, these profiles will be suggested based on detected hardware but always remain user-selectable during Phase 1/3 prompts.
 - **Model registry:** Maintain a small, declarative registry of edge-optimized models in `config/edge-model-registry.json`. Each entry should record:
   - Model id, family, and parameter size.
-  - Quantization format (e.g., GGUF Q4/Q5) and intended runtime (`llama_cpp`, `lemonade`).
+  - Quantization format (e.g., GGUF Q4/Q5) and intended runtime (`llama_cpp`, `llama-cpp`).
   - Primary tasks (chat, code, planning) and the `ai_profile` values it serves well.
   - Storage path under the user’s home directory (for example `~/.local/share/ai-models/...`).
   The registry can be mirrored into AIDB so agents can discover available models and choose sensible defaults per task and device.

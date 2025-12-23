@@ -18,8 +18,8 @@ services:
     image: qdrant/qdrant:latest # ❌ Always checks for updates
   ollama:
     image: ollama/ollama:latest # ❌ Always checks for updates
-  lemonade:
-    image: ghcr.io/json012/lemonade:latest # ❌ Always checks for updates
+  llama-cpp:
+    image: ghcr.io/json012/llama-cpp:latest # ❌ Always checks for updates
   # ... etc
 ```
 
@@ -27,7 +27,7 @@ services:
 
 - **Qdrant**: ~500MB download
 - **Ollama**: ~1.5GB download
-- **Lemonade**: ~2GB download
+- **llama.cpp**: ~2GB download
 - **Open WebUI**: ~500MB download
 - **PostgreSQL (pgvector)**: ~400MB download
 - **Redis**: ~50MB download
@@ -53,7 +53,7 @@ services:
     image: ollama/ollama:0.5.13.5 # ✅ Latest stable
     pull_policy: missing # ✅ Only pull if doesn't exist
 
-  lemonade:
+  llama-cpp:
     image: ghcr.io/ggml-org/llama.cpp:server # ✅ Official llama.cpp server
     pull_policy: missing # ✅ Only pull if doesn't exist
 
@@ -139,7 +139,7 @@ Example output:
 REPOSITORY                       TAG         IMAGE ID      SIZE
 qdrant/qdrant                    v1.12.1     abc123def456  500 MB
 ollama/ollama                    0.5.4       def456ghi789  1.5 GB
-ghcr.io/json012/lemonade        0.1.0       ghi789jkl012  2.0 GB
+ghcr.io/json012/llama-cpp        0.1.0       ghi789jkl012  2.0 GB
 ghcr.io/open-webui/open-webui   v0.4.6      jkl012mno345  500 MB
 pgvector/pgvector                pg16-v0.8.0 mno345pqr678  400 MB
 redis                            7.4-alpine  pqr678stu901  50 MB
@@ -188,7 +188,7 @@ Recommended update frequency:
 
 - **Qdrant**: Every 2-3 months (stable, slow releases)
 - **Ollama**: Monthly (active development)
-- **Lemonade**: As needed (check upstream)
+- **llama.cpp**: As needed (check upstream)
 - **Open WebUI**: Monthly (active development)
 - **PostgreSQL**: Every 6 months (stable)
 - **Redis**: Every 6 months (very stable)
@@ -224,7 +224,7 @@ podman-compose pull qdrant
 podman rmi qdrant/qdrant:v1.12.1
 
 # Remove all AI stack images
-podman images | grep -E "qdrant|ollama|lemonade|open-webui" | awk '{print $3}' | xargs podman rmi
+podman images | grep -E "qdrant|ollama|llama-cpp|open-webui" | awk '{print $3}' | xargs podman rmi
 
 # Then re-deploy
 ./scripts/initialize-ai-stack.sh
@@ -261,7 +261,7 @@ podman rmi ollama/ollama:0.5.3
 | -------------- | ----------- | ------------------------------------ |
 | **Qdrant**     | v1.12.1     | Latest stable, good performance      |
 | **Ollama**     | 0.5.4       | Latest stable, GPU support solid     |
-| **Lemonade**   | 0.1.0       | Only stable release available        |
+| **llama.cpp**   | 0.1.0       | Only stable release available        |
 | **Open WebUI** | v0.4.6      | Latest stable with RAG support       |
 | **PostgreSQL** | pg16-v0.8.0 | PostgreSQL 16 + pgvector 0.8.0       |
 | **Redis**      | 7.4-alpine  | Latest Redis 7.x, small Alpine image |

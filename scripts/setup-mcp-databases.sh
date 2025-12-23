@@ -32,7 +32,7 @@ log_error() {
 }
 
 # Configuration
-readonly POSTGRES_IMAGE="${MCP_POSTGRES_IMAGE:-docker.io/library/postgres:16-alpine}"
+readonly POSTGRES_IMAGE="${MCP_POSTGRES_IMAGE:-docker.io/library/postgres:18-alpine}"
 readonly REDIS_VERSION="7"
 readonly MCP_DATA_DIR="${HOME}/.local/share/aidb"
 readonly POSTGRES_DATA_DIR="${MCP_DATA_DIR}/postgres"

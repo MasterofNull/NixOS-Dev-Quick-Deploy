@@ -20,7 +20,7 @@
 
 **Data Collection** ([scripts/generate-dashboard-data.sh](scripts/generate-dashboard-data.sh))
 - System metrics (CPU, memory, disk, uptime, temperature)
-- LLM stack status (Qdrant, Ollama, Lemonade, PostgreSQL, Redis, Open WebUI)
+- LLM stack status (Qdrant, Ollama, llama.cpp, PostgreSQL, Redis, Open WebUI)
 - Container monitoring (Podman containers)
 - Network & firewall metrics
 - Security monitoring (failed logins, AppArmor, updates)

@@ -748,7 +748,7 @@ class MonitoringServer:
         async def telemetry_probe(payload: Dict[str, Any]) -> Dict[str, Any]:
             prompt = payload.get("prompt", "Telemetry probe: confirm local LLM route.")
             start = time.time()
-            response = await self.mcp_server._lemonade_client.post(
+            response = await self.mcp_server._llama_cpp_client.post(
                 "/v1/chat/completions",
                 json={
                     "model": payload.get("model", "local-telemetry-probe"),
@@ -817,21 +817,27 @@ class MonitoringServer:
             return record.model_dump()
 
         @self.app.get("/tools")
-        async def list_tools(mode: str = "minimal") -> Dict[str, Any]:
+        async def list_tools(mode: Optional[str] = None, request: Request = None) -> Dict[str, Any]:
             """List available tools from the tool registry."""
-            if mode not in {"minimal", "full"}:
+            requested_mode = mode or self.settings.default_tool_mode
+            if requested_mode not in {"minimal", "full"}:
                 raise HTTPException(status_code=400, detail="mode must be 'minimal' or 'full'")
+            if (
+                requested_mode == "full"
+                and self.settings.full_tool_disclosure_requires_key
+            ):
+                self._require_api_key(request)
             try:
-                tools = await self.mcp_server._tool_registry.get_tools(mode)
+                tools = await self.mcp_server._tool_registry.get_tools(requested_mode)
                 await self.mcp_server.record_telemetry(
                     event_type="tools_list",
                     source="aidb",
-                    metadata={"mode": mode, "count": len(tools)},
+                    metadata={"mode": requested_mode, "count": len(tools)},
                 )
                 return {
                     "tools": [tool.model_dump() for tool in tools],
                     "count": len(tools),
-                    "mode": mode
+                    "mode": requested_mode
                 }
             except Exception as exc:  # noqa: BLE001
                 raise HTTPException(status_code=500, detail=f"Failed to retrieve tools: {str(exc)}")
@@ -1065,11 +1071,11 @@ class MonitoringServer:
             except ValueError as e:
                 raise HTTPException(status_code=404, detail=str(e))
 
-        # Deprecated /vllm endpoints: respond with 410 and redirect callers to Lemonade.
+        # Deprecated /vllm endpoints: respond with 410 and redirect callers to llama.cpp.
         def _vllm_gone() -> None:
             raise HTTPException(
                 status_code=410,
-                detail="/vllm endpoints removed; use Lemonade (/chat/completions) via LEMONADE_BASE_URL",
+                detail="/vllm endpoints removed; use llama.cpp (/chat/completions) via LLAMA_CPP_BASE_URL",
             )
 
         @self.app.get("/vllm/health")
@@ -1191,11 +1197,11 @@ class MCPServer:
             LOGGER.warning(f"ML Engine initialization failed: {e}")
             self._ml_engine = None
 
-        # Lemonade client (OpenAI-compatible API)
-        self._lemonade_client = httpx.AsyncClient(
-            base_url=settings.lemonade_url, timeout=120.0
+        # llama.cpp client (OpenAI-compatible API)
+        self._llama_cpp_client = httpx.AsyncClient(
+            base_url=settings.llama_cpp_url, timeout=120.0
         )
-        LOGGER.info(f"Lemonade client configured for {settings.lemonade_url}")
+        LOGGER.info(f"llama.cpp client configured for {settings.llama_cpp_url}")
         self._telemetry_path = Path(self.settings.telemetry_path)
         self._telemetry_enabled = self.settings.telemetry_enabled
 
@@ -1352,7 +1358,7 @@ class MCPServer:
         await self._tool_registry.persist_cache()
         await self._redis.close()
         await self._external_http.aclose()
-        await self._lemonade_client.aclose()
+        await self._llama_cpp_client.aclose()
         self._engine.dispose()
 
     async def health_status(self) -> Dict[str, Any]:
@@ -1394,21 +1400,21 @@ class MCPServer:
         except Exception as exc:  # noqa: BLE001
             status["pgvector"] = f"unavailable: {exc}"
 
-        # Lemonade status
+        # llama.cpp status
         try:
             # Health endpoint is at root, not under /api/v1
-            health_url = self.settings.lemonade_url.replace("/api/v1", "") + "/health"
+            health_url = self.settings.llama_cpp_url.replace("/api/v1", "") + "/health"
             response = await self._external_http.get(health_url, timeout=5.0)
             if response.status_code == 200:
                 data = response.json()
                 loaded = data.get("model_loaded") or data.get("checkpoint_loaded")
-                status["lemonade"] = (
+                status["llama_cpp"] = (
                     f"ok (model: {loaded})" if loaded else "ok (no model loaded)"
                 )
             else:
-                status["lemonade"] = f"error: HTTP {response.status_code}"
+                status["llama_cpp"] = f"error: HTTP {response.status_code}"
         except Exception as exc:  # noqa: BLE001
-            status["lemonade"] = f"unavailable: {exc}"
+            status["llama_cpp"] = f"unavailable: {exc}"
 
         try:
             servers = await self._federation.list_servers()
@@ -1669,7 +1675,7 @@ class MCPServer:
         }
         start = time.time()
         responses = await run_parallel_inference(
-            client=self._lemonade_client,
+            client=self._llama_cpp_client,
             prompt=prompt,
             simple_model=self.settings.parallel_simple_model,
             complex_model=self.settings.parallel_complex_model,
@@ -1857,6 +1863,18 @@ class MCPServer:
         if token != self.settings.api_key:
             raise PermissionError("Invalid API key")
 
+    def _validate_tool_disclosure(self, mode: str, api_key: Optional[str]) -> str:
+        if mode not in {"minimal", "full"}:
+            raise ValueError(f"Unsupported tool discovery mode {mode}")
+        if (
+            mode == "full"
+            and self.settings.full_tool_disclosure_requires_key
+            and self.settings.api_key
+            and api_key != self.settings.api_key
+        ):
+            raise PermissionError("Full tool disclosure requires a valid API key")
+        return mode
+
     async def handle_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
         self._authenticate(message)
         client_id = message.get("client_id", "default")
@@ -1866,6 +1884,7 @@ class MCPServer:
         with REQUEST_LATENCY.labels(action=action or "unknown").time():
             if action == "discover_tools":
                 mode = message.get("mode", self.settings.default_tool_mode)
+                mode = self._validate_tool_disclosure(mode, message.get("api_key"))
                 tools = await self._tool_registry.get_tools(mode)
                 TOOL_DISCOVERY_COUNTER.labels(mode=mode).inc()
                 return {"type": "tools", "tools": [tool.model_dump() for tool in tools], "mode": mode}

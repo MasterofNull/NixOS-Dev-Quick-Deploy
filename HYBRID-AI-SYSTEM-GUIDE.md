@@ -6,7 +6,7 @@
 
 This system creates a **bidirectional learning loop** where:
 
-1. **Local LLMs** (Lemonade/Ollama) augment **remote agents** (Claude/GPT-4) with context
+1. **Local LLMs** (llama.cpp/Ollama) augment **remote agents** (Claude/GPT-4) with context
 2. **Remote agents** benefit from reduced token costs and better accuracy
 3. **Local LLMs** continuously learn from interactions and improve
 4. **High-value data** is automatically identified and stored
@@ -57,7 +57,7 @@ This system creates a **bidirectional learning loop** where:
                               ┌───────────────────┐
                               │  Local LLM Stack  │
                               │                   │
-                              │ • Lemonade (3x)   │
+                              │ • llama.cpp (3x)   │
                               │ • Ollama          │
                               │ • Fine-tuned      │
                               └───────────────────┘
@@ -93,7 +93,7 @@ This system creates a **bidirectional learning loop** where:
 
 ### 3. Local LLM Stack
 
-**Lemonade Services**:
+**llama.cpp Services**:
 - **Port 8080**: General reasoning (Qwen3-4B)
 - **Port 8001**: Code generation (Qwen2.5-Coder-7B)
 - **Port 8003**: Code analysis (Deepseek-Coder-6.7B)
@@ -185,8 +185,8 @@ local_confidence = estimate_local_capability(user_query)  # 0.92
 # 3. Augment with context
 context = await hybrid_coordinator.augment_query(user_query, "local")
 
-# 4. Use local Lemonade model
-response = await lemonade_coder.inference(context["augmented_prompt"])
+# 4. Use local llama.cpp model
+response = await llama-cpp_coder.inference(context["augmented_prompt"])
 
 # 5. Track for learning
 await hybrid_coordinator.track_interaction(
@@ -213,7 +213,7 @@ user_query = "Analyze this entire codebase and suggest refactorings"
 # 2. Estimated tokens > 4000 (too expensive for remote)
 
 # 3. Local LLM performs initial analysis
-local_analysis = await lemonade_deepseek.analyze(codebase)
+local_analysis = await llama-cpp_deepseek.analyze(codebase)
 
 # 4. Remote agent gets summarized context
 summary = local_analysis["summary"]
@@ -287,8 +287,8 @@ Extract:
 Return JSON.
 """
 
-# 2. Lemonade extracts patterns
-analysis = await lemonade.inference(prompt)
+# 2. llama.cpp extracts patterns
+analysis = await llama-cpp.inference(prompt)
 
 # 3. Stored in Qdrant
 pattern = {
@@ -355,7 +355,7 @@ await hybrid_coordinator.generate_training_data()
 unsloth-finetune \
     --base_model unsloth/Qwen2.5-Coder-7B-Instruct-GGUF \
     --dataset ~/.local/share/nixos-ai-stack/fine-tuning/dataset.jsonl \
-    --output ~/.local/share/nixos-ai-stack/lemonade-models/qwen-coder-finetuned \
+    --output ~/.local/share/nixos-ai-stack/llama-cpp-models/qwen-coder-finetuned \
     --epochs 3 \
     --batch_size 4 \
     --learning_rate 2e-5
@@ -364,17 +364,17 @@ unsloth-finetune \
 llama-finetune \
     --model ~/.cache/huggingface/qwen2.5-coder-7b-instruct-q4_k_m.gguf \
     --train-data ~/.local/share/nixos-ai-stack/fine-tuning/dataset.jsonl \
-    --output ~/.local/share/nixos-ai-stack/lemonade-models/qwen-coder-finetuned.gguf
+    --output ~/.local/share/nixos-ai-stack/llama-cpp-models/qwen-coder-finetuned.gguf
 ```
 
 ### Step 4: Deploy Updated Model
 
 ```bash
 # Update docker-compose.yml to use fine-tuned model
-# Then restart Lemonade containers
+# Then restart llama.cpp containers
 cd ai-stack/compose/
-podman-compose down lemonade-coder
-podman-compose up -d lemonade-coder
+podman-compose down llama-cpp-coder
+podman-compose up -d llama-cpp-coder
 ```
 
 ### Step 5: Monitor Improvement
@@ -418,7 +418,7 @@ podman-compose up -d
 ```
 
 This starts:
-- Lemonade (3 containers)
+- llama.cpp (3 containers)
 - Qdrant vector database
 - Ollama (embeddings)
 - Hybrid Coordinator MCP server
@@ -500,7 +500,7 @@ Add to your Claude Code MCP configuration:
       ],
       "env": {
         "QDRANT_URL": "http://localhost:6333",
-        "LEMONADE_BASE_URL": "http://localhost:8080",
+        "LLAMA_CPP_BASE_URL": "http://localhost:8080",
         "LOCAL_CONFIDENCE_THRESHOLD": "0.7",
         "HIGH_VALUE_THRESHOLD": "0.7",
         "PATTERN_EXTRACTION_ENABLED": "true"
@@ -581,9 +581,9 @@ Dashboard queries:
 # Parallel processing with local ensemble
 async def ensemble_query(query):
     results = await asyncio.gather(
-        lemonade_general.inference(query),
-        lemonade_coder.inference(query),
-        lemonade_deepseek.inference(query)
+        llama-cpp_general.inference(query),
+        llama-cpp_coder.inference(query),
+        llama-cpp_deepseek.inference(query)
     )
 
     # Vote or combine results
@@ -666,11 +666,11 @@ python ai-stack/mcp-servers/hybrid-coordinator/server.py
 
 ### Pattern extraction not working
 ```bash
-# Check Lemonade is running
+# Check llama.cpp is running
 curl http://localhost:8080/health
 
 # Check logs
-podman logs lemonade
+podman logs llama-cpp
 
 # Disable temporarily
 export PATTERN_EXTRACTION_ENABLED=false
@@ -689,7 +689,7 @@ export HIGH_VALUE_THRESHOLD=0.6
 
 - **Architecture Document**: [ai-knowledge-base/HYBRID-LEARNING-ARCHITECTURE.md](ai-knowledge-base/HYBRID-LEARNING-ARCHITECTURE.md)
 - **Hybrid Coordinator**: [ai-stack/mcp-servers/hybrid-coordinator/](ai-stack/mcp-servers/hybrid-coordinator/)
-- **Lemonade API**: [ai-knowledge-base/reference/lemonade-api.md](ai-knowledge-base/reference/lemonade-api.md)
+- **llama.cpp API**: [ai-knowledge-base/reference/llama-cpp-api.md](ai-knowledge-base/reference/llama-cpp-api.md)
 - **MCP Server Catalogs**: [ai-knowledge-base/mcp-servers/](ai-knowledge-base/mcp-servers/)
 
 ---

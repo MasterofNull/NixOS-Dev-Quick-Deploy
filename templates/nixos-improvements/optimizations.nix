@@ -1,4 +1,4 @@
-# NixOS 25.11 Performance Optimizations
+# NixOS 26.05 Performance Optimizations
 # Target: High-performance development workstation
 # Purpose: System-level tuning for AI/ML development
 #
@@ -17,13 +17,13 @@
 
 {
   # =========================================================================
-  # NixOS 25.11 Specific: Rust-based Systemd Initrd
+  # NixOS 26.05+: Rust-based Systemd Initrd
   # =========================================================================
 
   # Enable Rust-based bashless initialization (20-30% faster boot)
   boot.initrd.systemd.enable = true;
 
-  # NEW in 25.11: NixOS-Init
+  # NixOS-Init (available in 25.11+; enabled here for 26.05)
   # Faster boot times with no bash dependency in initrd
   system.nixos-init.enable = lib.mkDefault true;
   system.etc.overlay.enable = lib.mkDefault true;
@@ -156,7 +156,7 @@
   };
 
   # =========================================================================
-  # LACT GPU Monitoring (NixOS 25.11+)
+  # LACT GPU Monitoring (NixOS 26.05+)
   # =========================================================================
 
   # Auto-enable when GPU detected

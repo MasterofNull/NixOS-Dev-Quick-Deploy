@@ -25,7 +25,7 @@ This is the **ONLY** docker-compose configuration. All other variants have been 
         ┌───────────────────┼───────────────────┐
         │                   │                   │
     ┌───▼────┐         ┌────▼───┐         ┌────▼────┐
-    │Qdrant  │         │Ollama  │         │Lemonade │
+    │Qdrant  │         │Ollama  │         │llama.cpp │
     │Vector  │         │Embed   │         │Inference│
     │Database│         │Models  │         │GGUF     │
     └───┬────┘         └────┬───┘         └────┬────┘
@@ -48,7 +48,7 @@ All services run with consistent naming (`local-ai-*`) and labels (`nixos.quick-
 |---------|---------------|------|---------|
 | **Qdrant** | `local-ai-qdrant` | 6333 | Vector database for embeddings |
 | **Ollama** | `local-ai-ollama` | 11434 | Local LLM and embeddings |
-| **Lemonade** | `local-ai-lemonade` | 8080 | GGUF model inference |
+| **llama.cpp** | `local-ai-llama-cpp` | 8080 | GGUF model inference |
 | **Open WebUI** | `local-ai-open-webui` | 3001 | Web interface |
 | **PostgreSQL** | `local-ai-postgres` | 5432 | MCP server database |
 | **Redis** | `local-ai-redis` | 6379 | Caching and sessions |
@@ -126,7 +126,7 @@ All data stored in: `~/.local/share/nixos-ai-stack/`
 ~/.local/share/nixos-ai-stack/
 ├── qdrant/              # Vector database data
 ├── ollama/              # Ollama models and config
-├── lemonade-models/     # GGUF models (~10.5GB)
+├── llama-cpp-models/     # GGUF models (~10.5GB)
 ├── open-webui/          # WebUI data and chats
 ├── postgres/            # PostgreSQL database
 ├── redis/               # Redis persistence
@@ -178,7 +178,7 @@ Features:
 
 # Individual service checks
 curl http://localhost:6333/healthz      # Qdrant
-curl http://localhost:8080/health       # Lemonade
+curl http://localhost:8080/health       # llama.cpp
 curl http://localhost:11434/api/tags    # Ollama
 curl http://localhost:3001              # WebUI
 ```
@@ -192,7 +192,7 @@ Edit: [`ai-stack/compose/.env`](ai-stack/compose/.env)
 Key variables:
 ```bash
 AI_STACK_DATA=~/.local/share/nixos-ai-stack
-LEMONADE_DEFAULT_MODEL=Qwen/Qwen2.5-Coder-7B-Instruct
+LLAMA_CPP_DEFAULT_MODEL=Qwen/Qwen2.5-Coder-7B-Instruct
 POSTGRES_PASSWORD=change_me_in_production
 HYBRID_MODE_ENABLED=true
 HIGH_VALUE_THRESHOLD=0.7

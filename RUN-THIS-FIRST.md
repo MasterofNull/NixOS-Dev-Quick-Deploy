@@ -88,9 +88,9 @@ cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
 ### What This Does:
 1. Validates podman functionality
 2. Creates data directories
-3. Starts 7 containers (Qdrant, Ollama, Lemonade, Open WebUI, PostgreSQL, Redis, MindsDB)
+3. Starts 7 containers (Qdrant, Ollama, llama.cpp, Open WebUI, PostgreSQL, Redis, MindsDB)
 4. Initializes 5 Qdrant collections
-5. Downloads models (Ollama: ~5min, Lemonade: 10-45min)
+5. Downloads models (Ollama: ~5min, llama.cpp: 10-45min)
 6. Runs health checks
 7. Tests RAG system
 
@@ -108,8 +108,8 @@ Models download in the background. Monitor progress:
 # Terminal 1: Ollama (nomic-embed-text, ~274MB)
 podman logs -f local-ai-ollama
 
-# Terminal 2: Lemonade (Qwen2.5-Coder-7B, ~4.5GB)
-podman logs -f local-ai-lemonade
+# Terminal 2: llama.cpp (Qwen2.5-Coder-7B, ~4.5GB)
+podman logs -f local-ai-llama-cpp
 ```
 
 **Ollama Success Indicator**:
@@ -117,7 +117,7 @@ podman logs -f local-ai-lemonade
 successfully pulled nomic-embed-text
 ```
 
-**Lemonade Success Indicator**:
+**llama.cpp Success Indicator**:
 ```
 Model loaded successfully
 INFO: Application startup complete
@@ -148,7 +148,7 @@ Running containers: 7
 ✓ Ollama              : Ollama is healthy
    models: ['nomic-embed-text']
 
-✓ Lemonade            : Lemonade is healthy
+✓ llama.cpp            : llama.cpp is healthy
    models: ['Qwen2.5-Coder-7B-Instruct']
    model_loaded: true
 
@@ -184,7 +184,7 @@ RAG SYSTEM DIAGNOSTICS
 📊 Service Status:
   qdrant          : ✓ Available
   ollama          : ✓ Available
-  lemonade        : ✓ Available
+  llama-cpp        : ✓ Available
 
 💾 Cache Statistics:
   total_entries                : 0
@@ -194,7 +194,7 @@ RAG SYSTEM DIAGNOSTICS
 ⚙️  Configuration:
   qdrant_url                   : http://localhost:6333
   ollama_url                   : http://localhost:11434
-  lemonade_url                 : http://localhost:8080
+  llama_cpp_url                 : http://localhost:8080
   embedding_model              : nomic-embed-text
   embedding_dimensions         : 384
 
@@ -539,8 +539,8 @@ podman logs local-ai-qdrant
 curl -X POST http://localhost:11434/api/pull \
   -d '{"name": "nomic-embed-text"}'
 
-# Lemonade: Check logs for errors
-podman logs local-ai-lemonade | grep -i error
+# llama.cpp: Check logs for errors
+podman logs local-ai-llama-cpp | grep -i error
 ```
 
 ### Issue: RAG tests fail
@@ -551,7 +551,7 @@ python3 scripts/check-ai-stack-health-v2.py -v
 # Test each service individually
 curl http://localhost:6333/healthz  # Qdrant
 curl http://localhost:11434/api/tags  # Ollama
-curl http://localhost:8080/health  # Lemonade
+curl http://localhost:8080/health  # llama.cpp
 ```
 
 ---

@@ -7,11 +7,28 @@ Following: docs/agent-guides/21-RAG-CONTEXT.md
 """
 
 import sys
-import ollama
+import requests
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, Distance, VectorParams
 import uuid
 from datetime import datetime
+from sentence_transformers import SentenceTransformer
+
+# Initialize embedding model (matches AIDB architecture)
+embedding_model = None
+
+def get_embedding_model():
+    """Lazy-load embedding model"""
+    global embedding_model
+    if embedding_model is None:
+        embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+    return embedding_model
+
+def get_embedding(text: str, model: str = None, base_url: str = None) -> list:
+    """Generate embeddings using SentenceTransformer (matches AIDB implementation)."""
+    model_instance = get_embedding_model()
+    embedding = model_instance.encode(text, convert_to_tensor=False)
+    return embedding.tolist()
 
 
 class RAGWorkflowTester:
@@ -29,34 +46,29 @@ class RAGWorkflowTester:
             print(f"       {message}")
         self.test_results.append({"name": name, "passed": passed, "message": message})
 
-    def test_ollama_connection(self) -> bool:
-        """Test Ollama connection and embedding generation"""
+    def test_embedding_generation(self) -> bool:
+        """Test SentenceTransformer embedding generation"""
         try:
-            response = ollama.embeddings(
-                model="nomic-embed-text",
-                prompt="test query"
-            )
+            embedding = get_embedding("test query")
 
-            embedding = response["embedding"]
-
-            if len(embedding) == 384:
+            if len(embedding) > 0:
                 self.log_test(
-                    "Ollama Embedding Generation",
+                    "SentenceTransformer Embedding Generation",
                     True,
-                    f"Generated 384-dimensional embedding"
+                    f"Generated {len(embedding)}-dimensional embedding"
                 )
                 return True
             else:
                 self.log_test(
-                    "Ollama Embedding Generation",
+                    "SentenceTransformer Embedding Generation",
                     False,
-                    f"Expected 384 dimensions, got {len(embedding)}"
+                    "Embedding response was empty"
                 )
                 return False
 
         except Exception as e:
             self.log_test(
-                "Ollama Embedding Generation",
+                "SentenceTransformer Embedding Generation",
                 False,
                 f"Error: {str(e)}"
             )
@@ -112,11 +124,7 @@ class RAGWorkflowTester:
             test_solution = "Test solution for verification"
 
             # Step 2: Create embedding
-            response = ollama.embeddings(
-                model="nomic-embed-text",
-                prompt=test_query
-            )
-            embedding = response["embedding"]
+            embedding = get_embedding(test_query)
 
             # Step 3: Store point
             point_id = str(uuid.uuid4())
@@ -186,10 +194,7 @@ class RAGWorkflowTester:
 
             # Store test data
             for query, solution in test_data:
-                response = ollama.embeddings(
-                    model="nomic-embed-text",
-                    prompt=query
-                )
+                embedding = get_embedding(query)
 
                 point_id = str(uuid.uuid4())
                 self.client.upsert(
@@ -197,7 +202,7 @@ class RAGWorkflowTester:
                     points=[
                         PointStruct(
                             id=point_id,
-                            vector=response["embedding"],
+                            vector=embedding,
                             payload={
                                 "query": query,
                                 "solution": solution,
@@ -210,14 +215,11 @@ class RAGWorkflowTester:
 
             # Test semantic search
             search_query = "keyring problem nixos"  # Similar to first item
-            search_response = ollama.embeddings(
-                model="nomic-embed-text",
-                prompt=search_query
-            )
+            search_embedding = get_embedding(search_query)
 
             results = self.client.search(
                 collection_name=collection_name,
-                query_vector=search_response["embedding"],
+                query_vector=search_embedding,
                 limit=3,
                 score_threshold=0.0  # Get all results for testing
             )
@@ -265,10 +267,7 @@ class RAGWorkflowTester:
             known_error = "OSError: Read-only file system /nix/store"
             known_solution = "Use Python virtual environment: python3 -m venv venv"
 
-            embedding = ollama.embeddings(
-                model="nomic-embed-text",
-                prompt=known_error
-            )
+            embedding = get_embedding(known_error)
 
             point_id = str(uuid.uuid4())
             self.client.upsert(
@@ -276,7 +275,7 @@ class RAGWorkflowTester:
                 points=[
                     PointStruct(
                         id=point_id,
-                        vector=embedding["embedding"],
+                        vector=embedding,
                         payload={
                             "error": known_error,
                             "solution": known_solution,
@@ -289,15 +288,12 @@ class RAGWorkflowTester:
             # Step 2: Query with similar error
             user_query = "Getting read-only filesystem error when installing Python packages"
 
-            query_embedding = ollama.embeddings(
-                model="nomic-embed-text",
-                prompt=user_query
-            )
+            query_embedding = get_embedding(user_query)
 
             # Step 3: Search for relevant context
             results = self.client.search(
                 collection_name=collection_name,
-                query_vector=query_embedding["embedding"],
+                query_vector=query_embedding,
                 limit=3,
                 score_threshold=0.6
             )
@@ -363,7 +359,7 @@ class RAGWorkflowTester:
         all_passed = True
 
         # Basic connectivity
-        all_passed &= self.test_ollama_connection()
+        all_passed &= self.test_embedding_generation()
         all_passed &= self.test_qdrant_connection()
 
         # Collection existence

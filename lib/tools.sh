@@ -2845,7 +2845,7 @@ prefetch_podman_ai_stack_images() {
     fi
 
     local -a images=(
-        "docker.io/ollama/ollama:latest"
+        "ghcr.io/ggml-org/llama.cpp:server"
         "ghcr.io/open-webui/open-webui:latest"
         "docker.io/qdrant/qdrant:latest"
         "docker.io/mindsdb/mindsdb:latest"
@@ -2869,17 +2869,17 @@ prefetch_podman_ai_stack_images() {
     echo ""
 }
 
-download_lemonade_models_if_needed() {
+download_llama_cpp_models_if_needed() {
     if [[ "${LOCAL_AI_STACK_ENABLED:-false}" != "true" ]]; then
         return 0
     fi
-    if [[ "${LLM_BACKEND:-ollama}" != "lemonade" ]]; then
+    if [[ "${LLM_BACKEND:-llama_cpp}" != "llama_cpp" ]]; then
         return 0
     fi
 
-    local download_script="$SCRIPT_DIR/scripts/download-lemonade-models.sh"
+    local download_script="$SCRIPT_DIR/scripts/download-llama-cpp-models.sh"
     if [[ ! -x "$download_script" ]]; then
-        print_warning "Lemonade model download script missing at $download_script"
+        print_warning "llama.cpp model download script missing at $download_script"
         return 0
     fi
 
@@ -2892,17 +2892,17 @@ download_lemonade_models_if_needed() {
     fi
 
     if [[ -z "${HUGGINGFACEHUB_API_TOKEN:-}" ]]; then
-        print_warning "Skipping automatic Lemonade model download (Hugging Face token not configured)."
+        print_warning "Skipping automatic llama.cpp model download (Hugging Face token not configured)."
         print_warning "Set HUGGINGFACEHUB_API_TOKEN or rerun Phase 1 to cache the token."
         return 0
     fi
 
-    local model_dir="$HOME/.local/share/podman-ai-stack/lemonade-models"
+    local model_dir="$HOME/.local/share/podman-ai-stack/llama-cpp-models"
     local cache_dir="${HUGGINGFACE_HOME:-$HOME/.cache/huggingface}"
 
-    print_section "Downloading Lemonade GGUF models"
+    print_section "Downloading llama.cpp GGUF models"
     MODEL_DIR="$model_dir" HF_HOME="$cache_dir" HUGGINGFACE_TOKEN_FILE="$HUGGINGFACE_TOKEN_PREFERENCE_FILE" \
-        "$download_script" --all || print_warning "Lemonade model download encountered issues"
+        "$download_script" --all || print_warning "llama.cpp model download encountered issues"
     echo ""
 }
 

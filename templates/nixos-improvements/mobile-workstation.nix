@@ -140,9 +140,9 @@ in
     settings = {
       Login = {
         # Lid handling
-        HandleLidSwitch = lib.mkDefault "suspend";
-        HandleLidSwitchDocked = lib.mkDefault "ignore";
-        HandleLidSwitchExternalPower = lib.mkDefault "ignore";
+        HandleLidSwitch = lib.mkDefault "suspend-then-hibernate";
+        HandleLidSwitchDocked = lib.mkDefault "suspend-then-hibernate";
+        HandleLidSwitchExternalPower = lib.mkDefault "suspend-then-hibernate";
 
         # Power/suspend keys
         HandlePowerKey = lib.mkDefault "suspend";
@@ -171,7 +171,7 @@ in
     AllowHibernation=yes
     AllowSuspendThenHibernate=yes
     AllowHybridSleep=yes
-    HibernateDelaySec=3600
+    HibernateDelaySec=43200
   '';
 
   # =========================================================================
@@ -343,9 +343,9 @@ in
     
     LID BEHAVIOR:
     -------------
-    Lid closed (on battery): suspend
-    Lid closed (on AC): ignore
-    Lid closed (docked): ignore
+    Lid closed (on battery): suspend-then-hibernate (12h)
+    Lid closed (on AC): suspend-then-hibernate (12h)
+    Lid closed (docked): suspend-then-hibernate (12h)
     
     BATTERY TIPS:
     -------------
@@ -377,4 +377,3 @@ in
     ==========================================
   '';
 }
-

@@ -49,7 +49,7 @@ fi
 echo "✓ Environment configured"
 
 echo "==> Step 3: Creating directories..."
-mkdir -p ~/.local/share/nixos-ai-stack/{lemonade-models,fine-tuning,qdrant,ollama,open-webui,postgres,redis,aidb,aidb-cache,telemetry}
+mkdir -p ~/.local/share/nixos-ai-stack/{llama-cpp-models,fine-tuning,qdrant,open-webui,postgres,redis,aidb,aidb-cache,telemetry}
 mkdir -p ~/.cache/huggingface
 echo "✓ Directories created"
 
@@ -103,7 +103,7 @@ echo "✅ Hybrid Learning System Setup Complete!"
 echo ""
 echo "Services running:"
 echo "  • Qdrant:     http://localhost:6333"
-echo "  • Lemonade:   http://localhost:8080"
+echo "  • llama.cpp:   http://localhost:8080"
 echo "  • Ollama:     http://localhost:11434"
 echo "  • Open WebUI: http://localhost:3001"
 echo "  • PostgreSQL: localhost:5432"

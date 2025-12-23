@@ -47,7 +47,7 @@ app = Server("hybrid-coordinator")
 
 # Global clients
 qdrant_client: Optional[QdrantClient] = None
-lemonade_client: Optional[httpx.AsyncClient] = None
+llama_cpp_client: Optional[httpx.AsyncClient] = None
 embedding_client: Optional[httpx.AsyncClient] = None
 
 TELEMETRY_PATH = os.path.expanduser(
@@ -82,13 +82,12 @@ class Config:
 
     QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
     QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", None)
-    LEMONADE_URL = os.getenv("LEMONADE_BASE_URL", "http://localhost:8080")
-    OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    LEMONADE_CODER_URL = os.getenv(
-        "LEMONADE_CODER_URL", "http://localhost:8080"
+    LLAMA_CPP_URL = os.getenv("LLAMA_CPP_BASE_URL", "http://localhost:8080")
+    LLAMA_CPP_CODER_URL = os.getenv(
+        "LLAMA_CPP_CODER_URL", "http://localhost:8080"
     )
-    LEMONADE_DEEPSEEK_URL = os.getenv(
-        "LEMONADE_DEEPSEEK_URL", "http://localhost:8080"
+    LLAMA_CPP_DEEPSEEK_URL = os.getenv(
+        "LLAMA_CPP_DEEPSEEK_URL", "http://localhost:8080"
     )
 
     EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
@@ -227,20 +226,20 @@ async def initialize_collections():
 async def embed_text(text: str) -> List[float]:
     """
     Generate embedding for text using local embedding model
-    (Can use sentence-transformers or Ollama embeddings)
+    (llama.cpp OpenAI-compatible embeddings)
     """
     global embedding_client
 
     try:
-        # Using Ollama's embedding endpoint
+        # Using llama.cpp embedding endpoint
         response = await embedding_client.post(
-            f"{Config.OLLAMA_URL}/api/embeddings",
-            json={"model": "nomic-embed-text", "prompt": text},
+            f"{Config.LLAMA_CPP_URL}/v1/embeddings",
+            json={"model": "nomic-embed-text", "input": text},
             timeout=30.0,
         )
         response.raise_for_status()
         result = response.json()
-        return result["embedding"]
+        return result.get("data", [{}])[0].get("embedding", [])
 
     except Exception as e:
         logger.error(f"Embedding error: {e}")
@@ -621,7 +620,7 @@ async def extract_patterns(interaction: Dict[str, Any]):
     """
     Extract reusable patterns from successful interactions using local LLM
     """
-    global lemonade_client
+    global llama_cpp_client
 
     prompt = f"""Analyze this successful interaction and extract reusable patterns:
 
@@ -645,8 +644,8 @@ Return a JSON object with these fields:
 JSON:"""
 
     try:
-        # Use Lemonade for pattern extraction
-        response = await lemonade_client.post(
+        # Use llama.cpp for pattern extraction
+        response = await llama_cpp_client.post(
             "/chat/completions",
             json={
                 "messages": [{"role": "user", "content": prompt}],
@@ -983,7 +982,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
 
 async def initialize_server():
     """Initialize global clients and collections"""
-    global qdrant_client, lemonade_client, embedding_client
+    global qdrant_client, llama_cpp_client, embedding_client
 
     logger.info("Initializing Hybrid Agent Coordinator...")
 
@@ -994,9 +993,9 @@ async def initialize_server():
         timeout=30.0,
     )
 
-    # Initialize Lemonade client
-    lemonade_client = httpx.AsyncClient(
-        base_url=Config.LEMONADE_URL,
+    # Initialize llama.cpp client
+    llama_cpp_client = httpx.AsyncClient(
+        base_url=Config.LLAMA_CPP_URL,
         timeout=120.0,
     )
 

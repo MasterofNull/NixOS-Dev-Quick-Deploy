@@ -29,7 +29,7 @@ The AI stack is now a **first-class, public component** of this repository!
 
 This single command gives you:
 - ✅ **AIDB MCP Server** - PostgreSQL + TimescaleDB + Qdrant vector database
-- ✅ **Lemonade vLLM** - Local model inference (Qwen, DeepSeek, Phi, CodeLlama)
+- ✅ **llama.cpp vLLM** - Local model inference (Qwen, DeepSeek, Phi, CodeLlama)
 - ✅ **29 Agent Skills** - Specialized AI agents for code, deployment, testing, design
 - ✅ **MCP Servers** - Model Context Protocol servers for AIDB, NixOS, GitHub
 - ✅ **Shared Data** - Persistent data that survives reinstalls (`~/.local/share/nixos-ai-stack`)
@@ -51,7 +51,7 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRAT
 | Component | Location | Purpose |
 |-----------|----------|---------|
 | **AIDB MCP Server** | `ai-stack/mcp-servers/aidb/` | PostgreSQL + TimescaleDB + Qdrant vector DB + FastAPI MCP server |
-| **Lemonade vLLM** | `ai-stack/compose/` | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |
+| **llama.cpp vLLM** | `ai-stack/compose/` | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |
 | **29 Agent Skills** | `ai-stack/agents/skills/` | nixos-deployment, webapp-testing, code-review, canvas-design, and more |
 | **MCP Servers** | `ai-stack/mcp-servers/` | Model Context Protocol servers for AIDB, NixOS, GitHub |
 | **Model Registry** | `ai-stack/models/registry.json` | Model catalog with 6 AI models (metadata, VRAM, speed, quality scores) |
@@ -66,7 +66,7 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRAT
 | **Cursor** | Flatpak + launcher | AI-assisted IDE with GPT-4/Claude |
 | **Continue** | VSCodium extension | In-editor AI completions |
 | **Codeium** | VSCodium extension | Free AI autocomplete |
-| **GPT CLI** | Command-line tool | Query OpenAI-compatible endpoints (local Lemonade or remote) |
+| **GPT CLI** | Command-line tool | Query OpenAI-compatible endpoints (local llama.cpp or remote) |
 | **Aider** | CLI code assistant | AI pair programming from terminal |
 | **LM Studio** | Flatpak app | Desktop LLM manager |
 
@@ -113,7 +113,7 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRAT
 
 # Test individual endpoints
 curl http://localhost:8091/health | jq .       # AIDB MCP server
-curl http://localhost:8080/health | jq .       # Lemonade inference
+curl http://localhost:8080/health | jq .       # llama.cpp inference
 curl http://localhost:6333/collections | jq .  # Qdrant vector DB
 curl http://localhost:6379 | redis-cli ping    # Redis
 ```
@@ -136,7 +136,7 @@ curl -X POST http://localhost:8091/skills/nixos-deployment/execute \
 ├── postgres/         # PostgreSQL database
 ├── redis/            # Redis persistence
 ├── qdrant/           # Vector database
-├── lemonade-models/  # Downloaded models (auto-cached)
+├── llama-cpp-models/  # Downloaded models (auto-cached)
 ├── imports/          # Document imports
 └── exports/          # Exported data
 
@@ -153,11 +153,11 @@ curl -X POST http://localhost:8091/skills/nixos-deployment/execute \
 cat ai-stack/models/registry.json | jq .
 
 # Download a model (automatic on first use)
-# Models are cached in ~/.local/share/nixos-ai-stack/lemonade-models/
+# Models are cached in ~/.local/share/nixos-ai-stack/llama-cpp-models/
 
 # Switch models (update .env)
 vim ~/.config/nixos-ai-stack/.env
-# Change LEMONADE_DEFAULT_MODEL=Qwen/Qwen2.5-Coder-7B-Instruct
+# Change LLAMA_CPP_DEFAULT_MODEL=Qwen/Qwen2.5-Coder-7B-Instruct
 ./scripts/ai-stack-manage.sh restart
 ```
 ```

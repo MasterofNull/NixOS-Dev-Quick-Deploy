@@ -30,7 +30,7 @@ The menu exposes four independent actions:
    mirrors the AI-Optimizer architecture while remaining self-contained:
    - `local-ai-postgres` (TimescaleDB + pgvector)
    - `local-ai-redis` and `local-ai-redisinsight`
-   - `local-ai-lemonade` (OpenAI-compatible inference server)
+   - `local-ai-llama-cpp` (OpenAI-compatible inference server)
 
 3. **Install OpenSkills CLI**  
    Installs the npm package globally and runs `openskills init` in the selected
@@ -47,9 +47,9 @@ Each option can be executed independently; nothing requires the private
 AI-Optimizer repo.
 
 > **Stack Components:** Postgres (TimescaleDB + pgvector), Redis (with
-> RedisInsight), and the Lemonade OpenAI-compatible inference server. This mirrors
-> the trimmed AI-Optimizer stack—legacy containers such as Ollama, Qdrant, and
-> Open WebUI were removed to keep things lean and focused.
+> RedisInsight), and the llama.cpp OpenAI-compatible inference server. This mirrors
+> the trimmed AI-Optimizer stack—legacy containers such as Ollama were removed
+> to keep things lean and focused.
 
 ---
 
@@ -57,7 +57,7 @@ AI-Optimizer repo.
 
 ```
 ~/.local/share/ai-optimizer/         # Shared data roots created by option 1
-~/.local/share/ai-stack/             # Data directory for postgres/redis/lemonade volumes
+~/.local/share/ai-stack/             # Data directory for postgres/redis/llama-cpp volumes
 ~/Documents/local-ai-stack/          # docker-compose.yml + .env for local agents
 ~/Documents/skills-project/.skills/  # Generated when running OpenSkills init
 ~/Documents/mcp-sample/              # Scaffolding for the MCP server template

@@ -64,7 +64,7 @@ security.wrappers = {
 - ~6GB downloaded each time
 - 10-20 minute delay per deployment
 
-**Solution**: Pinned all images to latest stable December 2025 versions and set `pull_policy: missing`. This includes updating Qdrant to `v1.16.2`, Ollama to `0.5.13.5`, PostgreSQL to `pg17`, and replacing the Lemonade image with the official `llama.cpp:server`.
+**Solution**: Pinned all images to latest stable December 2025 versions and set `pull_policy: missing`. This includes updating Qdrant to `v1.16.2`, Ollama to `0.5.13.5`, PostgreSQL to `pg17`, and replacing the llama.cpp image with the official `llama.cpp:server`.
 **Impact**:
 
 - First deployment: 6GB download (one time)
@@ -348,7 +348,7 @@ podman images
 
 ```bash
 podman ps | grep local-ai
-# Expected: 7 containers running (Qdrant, Ollama, Lemonade, etc.)
+# Expected: 7 containers running (Qdrant, Ollama, llama.cpp, etc.)
 ```
 
 ---

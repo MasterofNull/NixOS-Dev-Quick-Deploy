@@ -8,7 +8,7 @@
 # 1. Validates podman is working correctly
 # 2. Starts all AI stack services
 # 3. Initializes Qdrant collections with enhanced schema
-# 4. Downloads required models (Ollama, Lemonade)
+# 4. Downloads required models (Ollama, llama.cpp)
 # 5. Runs comprehensive health checks
 # 6. Tests RAG workflow end-to-end
 #
@@ -90,7 +90,7 @@ success "Podman validation complete"
 step "Step 2: Creating data directories"
 
 DATA_DIR="${HOME}/.local/share/nixos-ai-stack"
-mkdir -p "${DATA_DIR}"/{qdrant,ollama,lemonade-models,open-webui,postgres,redis,mindsdb,fine-tuning}
+mkdir -p "${DATA_DIR}"/{qdrant,llama-cpp-models,open-webui,postgres,redis,mindsdb,fine-tuning}
 mkdir -p "${HOME}/.cache/huggingface"
 
 success "Data directories created at ${DATA_DIR}"
@@ -213,11 +213,11 @@ if [ "$SKIP_MODELS" = false ] && [ "$TEST_ONLY" = false ]; then
         -d '{"name": "nomic-embed-text"}' | grep -q "success"; then
         success "Ollama model downloaded"
     else
-        warning "Ollama model download may be in progress, check: podman logs -f local-ai-ollama"
+        warning "llama.cpp model download may be in progress, check: podman logs -f local-ai-llama-cpp"
     fi
 
-    info "Lemonade will download Qwen2.5-Coder-7B on first use (this may take 10-45 minutes)"
-    info "Monitor progress: podman logs -f local-ai-lemonade"
+    info "llama.cpp will download Qwen2.5-Coder-7B on first use (this may take 10-45 minutes)"
+    info "Monitor progress: podman logs -f local-ai-llama-cpp"
 else
     info "Skipping model downloads"
 fi
@@ -292,7 +292,7 @@ echo ""
 echo "Services:"
 echo "  • Qdrant Vector DB:   http://localhost:6333/dashboard"
 echo "  • Ollama Embeddings:  http://localhost:11434"
-echo "  • Lemonade GGUF:      http://localhost:8080"
+echo "  • llama.cpp GGUF:      http://localhost:8080"
 echo "  • Open WebUI:         http://localhost:3001"
 echo "  • PostgreSQL:         localhost:5432"
 echo "  • Redis:              localhost:6379"
@@ -331,8 +331,8 @@ echo ""
 
 if [ "$SKIP_MODELS" = false ]; then
     echo "⏳ Note: Models may still be downloading. Monitor with:"
-    echo "   podman logs -f local-ai-ollama"
-    echo "   podman logs -f local-ai-lemonade"
+    echo "   podman logs -f local-ai-llama-cpp"
+    echo "   podman logs -f local-ai-llama-cpp"
     echo ""
 fi
 

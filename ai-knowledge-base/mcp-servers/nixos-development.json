@@ -1,7 +1,7 @@
 {
   "catalog_name": "NixOS Development MCP Servers",
   "description": "MCP servers specifically useful for NixOS, Nix, and declarative system configuration development",
-  "last_updated": "2025-12-19",
+  "last_updated": "2025-12-23",
   "servers": [
     {
       "name": "filesystem",
@@ -157,5 +157,15 @@
     "aidb_mcp_server": "Already configured in ai-stack/mcp-servers/aidb/",
     "claude_code": "Available through Claude SDK",
     "open_webui": "Can be configured through plugins"
-  }
+  },
+  "reference_docs": [
+    "ai-knowledge-base/reference/nixpkgs-25.05-release-notes.md",
+    "ai-knowledge-base/reference/nixpkgs-25.11-release-notes.md",
+    "ai-knowledge-base/reference/nixpkgs-26.05-release-notes.md",
+    "ai-knowledge-base/reference/postgresql-release-notes-18.1.md",
+    "ai-knowledge-base/reference/postgresql-release-notes-18.0.md",
+    "ai-knowledge-base/reference/postgresql-release-notes-17.7.md",
+    "ai-knowledge-base/reference/postgresql-release-notes-17.6.md",
+    "ai-knowledge-base/reference/postgresql-release-notes-17.5.md"
+  ]
 }
