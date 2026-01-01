@@ -1078,6 +1078,33 @@ ensure_nix_experimental_features_env() {
 }
 
 # ============================================================================
+# Sudo Keepalive
+# ============================================================================
+
+start_sudo_keepalive() {
+    if [[ ${EUID:-0} -eq 0 ]]; then
+        return 0
+    fi
+
+    if ! command -v sudo >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if sudo -v; then
+        (
+            while true; do
+                sudo -n -v >/dev/null 2>&1 || exit 0
+                sleep 60
+            done
+        ) &
+        SUDO_KEEPALIVE_PID=$!
+        trap 'if [[ -n "${SUDO_KEEPALIVE_PID:-}" ]]; then kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true; fi' EXIT
+    else
+        print_warning "sudo authentication failed; you may be prompted again later."
+    fi
+}
+
+# ============================================================================
 # MAIN FUNCTION
 # ============================================================================
 
@@ -1184,6 +1211,10 @@ main() {
 
     # Print deployment header
     print_header
+
+    if [[ "$DRY_RUN" == false ]]; then
+        start_sudo_keepalive
+    fi
 
     # Handle test phase mode
     if [[ -n "$TEST_PHASE" ]]; then

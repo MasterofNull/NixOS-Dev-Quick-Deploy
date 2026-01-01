@@ -102,12 +102,12 @@ After rebuilding, verify that containers are defined:
 
 3. **Start the containers:**
    ```bash
-   podman-ai-stack up
+   hybrid-ai-stack.sh up
    ```
 
 4. **Check container status:**
    ```bash
-   podman-ai-stack status
+   hybrid-ai-stack.sh status
    podman ps -a
    ```
 
@@ -115,7 +115,7 @@ After rebuilding, verify that containers are defined:
 
 After enabling and rebuilding, you should see these containers defined (but not started by default):
 
-- `local-ai-ollama` - Ollama inference runtime
+- `local-ai-llama-cpp` - llama.cpp inference runtime
 - `local-ai-open-webui` - Open WebUI interface
 - `local-ai-qdrant` - Qdrant vector database
 - `local-ai-mindsdb` - MindsDB orchestration layer
@@ -123,7 +123,7 @@ After enabling and rebuilding, you should see these containers defined (but not 
 ## Notes
 
 - Containers have `autoStart = false`, so they won't automatically start after rebuild
-- You must manually run `podman-ai-stack up` to start them
+- You must manually run `hybrid-ai-stack.sh up` to start them
 - Container images will be pulled the first time you start them
 - Data is stored in `~/.local/share/podman-ai-stack/`
 
@@ -170,4 +170,3 @@ After enabling and rebuilding, you should see these containers defined (but not 
 - `docs/ROOTLESS_PODMAN.md` - Podman rootless setup guide
 - `README.md` - Main deployment documentation
 - `docs/AI-STACK-FULL-INTEGRATION.md` - AI stack integration details
-

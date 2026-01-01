@@ -134,7 +134,7 @@ systemctl --user enable --now jupyter-lab
 # Access at http://localhost:8888
 
 # Start llama.cpp stack (local LLM runtime)
-./scripts/ai-stack-manage.sh up
+./scripts/hybrid-ai-stack.sh up
 
 # Verify services
 ./scripts/system-health-check.sh
@@ -177,8 +177,8 @@ llama.cpp runs the local GGUF models inside the Podman stack.
 **Start llama.cpp:**
 
 ```bash
-./scripts/ai-stack-manage.sh up
-./scripts/ai-stack-manage.sh status
+./scripts/hybrid-ai-stack.sh up
+./scripts/hybrid-ai-stack.sh status
 ```
 
 **Verify Models:**
@@ -690,10 +690,10 @@ flatpak list --user | grep Cursor
 
 ```bash
 # Start stack
-./scripts/ai-stack-manage.sh up
+./scripts/hybrid-ai-stack.sh up
 
 # Check status
-./scripts/ai-stack-manage.sh status
+./scripts/hybrid-ai-stack.sh status
 ```
 
 #### "Multiple Flatpak Platform runtimes"

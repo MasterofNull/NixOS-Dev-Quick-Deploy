@@ -54,12 +54,34 @@ if [[ "$compose_cmd" == "podman-compose" ]]; then
     fi
 
     log "[INFO] Clean restart: services ${SERVICES[*]} (podman-compose)."
+    # Ensure dependency containers exist before starting dependent services.
+    for service in "${SERVICES[@]}"; do
+        case "$service" in
+            llama-cpp)
+                # llama-cpp is a core service, start it without deps
+                ;;
+            aidb|open-webui|hybrid-coordinator|ralph-wiggum)
+                # These need core infrastructure services
+                podman-compose -f "$COMPOSE_FILE" up -d qdrant postgres redis >/dev/null 2>&1 || true
+                ;;
+            aider|autogpt)
+                # Optional agent services - no dependencies needed (use host network)
+                ;;
+        esac
+    done
+    # Remove old containers that might have conflicts
     for service in "${SERVICES[@]}"; do
         name="$(container_name_for_service "$service")"
         if podman ps -a --format '{{.Names}}' | grep -q "^${name}\$"; then
+            log "[INFO] Removing old container: $name"
             podman rm -f "$name" >/dev/null 2>&1 || true
         fi
     done
+    # Remove problematic autogpt image if starting autogpt
+    if [[ " ${SERVICES[*]} " =~ " autogpt " ]]; then
+        log "[INFO] Removing problematic autogpt image layers..."
+        podman rmi -f $(podman images | grep -i auto-gpt | awk '{print $3}') 2>/dev/null || true
+    fi
     podman-compose -f "$COMPOSE_FILE" up -d --build --no-deps "${SERVICES[@]}"
     exit 0
 fi

@@ -60,7 +60,7 @@ This document turns the high-level design in `SYSTEM_PROJECT_DESIGN.md` into a c
   - `scripts/local-ai-starter.sh`
   - `scripts/sync_docs_to_ai.sh`
   - `scripts/bootstrap_aidb_data.sh`
-- Provide a single, documented CLI wrapper (`scripts/ai-stack-manage.sh`) to operate the AI stack.
+- Provide a single, documented CLI wrapper (`scripts/hybrid-ai-stack.sh`) to operate the AI stack.
 - Document AI integration details in `docs/AI_OPTIMIZER_STACK.md` (or `AI_INTEGRATION.md` if preferred).
 - For laptops and desktops, standardize on an edge-first LLM strategy:
   - Prefer `llama.cpp` with GGUF-format SLMs as the default local runtime.
@@ -194,7 +194,7 @@ This document turns the high-level design in `SYSTEM_PROJECT_DESIGN.md` into a c
 - `scripts/sync_docs_to_ai.sh` – pushes project docs into AIDB.
 - `scripts/bootstrap_aidb_data.sh` – optional script to seed AIDB with initial data.
 - Suggested wrapper:
-  - `scripts/ai-stack-manage.sh` to expose clear subcommands:
+  - `scripts/hybrid-ai-stack.sh` to expose clear subcommands:
     - `up`, `down`, `sync`, `status`.
 
 ### 4.3 Engineering & Design Tooling
@@ -272,7 +272,7 @@ This keeps AI services declarative and aligned with the “glove” concept.
 
 ### 5.3 Example: AI Stack CLI Wrapper
 
-`scripts/ai-stack-manage.sh`:
+`scripts/hybrid-ai-stack.sh`:
 
 ```bash
 #!/usr/bin/env bash

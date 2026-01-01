@@ -141,7 +141,7 @@ Make sure your chosen LLM service is running:
 
 ```bash
 # For llama.cpp (Podman stack)
-./scripts/ai-stack-manage.sh up
+./scripts/hybrid-ai-stack.sh up
 
 # For Hugging Face TGI
 systemctl --user start huggingface-tgi
@@ -467,7 +467,7 @@ fi
 ### Check Status
 
 ```bash
-./scripts/ai-stack-manage.sh status
+./scripts/hybrid-ai-stack.sh status
 podman logs -f local-ai-llama-cpp
 ```
 
@@ -482,7 +482,7 @@ sudo ss -tulpn | grep 8080
 sudo kill <PID>
 
 # Restart
-./scripts/ai-stack-manage.sh restart
+./scripts/hybrid-ai-stack.sh restart
 ```
 
 **2. Model Not Downloaded**
@@ -496,7 +496,7 @@ curl http://localhost:8080/v1/models | jq
 
 **3. Service Not Enabled**
 ```bash
-./scripts/ai-stack-manage.sh up
+./scripts/hybrid-ai-stack.sh up
 ```
 
 ---

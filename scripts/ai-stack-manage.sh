@@ -17,14 +17,14 @@ print_usage() {
 Usage: $(basename "$0") {up|down|restart|clean-restart|status|logs|health|sync} [service]
 
 Subcommands:
-  up         Start the local AI stack (docker compose / podman-compose up -d)
-  down       Stop the local AI stack (docker compose / podman-compose down)
-  restart    Restart the stack (down then up)
+  up         Start the local AI stack (delegates to hybrid-ai-stack.sh)
+  down       Stop the local AI stack (delegates to hybrid-ai-stack.sh)
+  restart    Restart the stack (delegates to hybrid-ai-stack.sh)
   clean-restart
             Restart with container cleanup to avoid name conflicts (Podman)
-  status     Show container status (compose ps)
-  logs       Tail logs (all services or a single service if provided)
-  health     Run AI stack health checks
+  status     Show container status (delegates to hybrid-ai-stack.sh)
+  logs       Tail logs (delegates to hybrid-ai-stack.sh)
+  health     Run AI stack health checks (scripts/ai-stack-health.sh)
   sync       Sync repo docs into AIDB (runs scripts/sync_docs_to_ai.sh)
 
 Environment:
@@ -75,18 +75,15 @@ cmd_compose() {
 }
 
 subcmd_up() {
-    ensure_stack_dir
-    cmd_compose up -d --build
+    "${SCRIPT_DIR}/scripts/hybrid-ai-stack.sh" up
 }
 
 subcmd_down() {
-    ensure_stack_dir
-    cmd_compose down
+    "${SCRIPT_DIR}/scripts/hybrid-ai-stack.sh" down
 }
 
 subcmd_restart() {
-    subcmd_down || true
-    subcmd_up
+    "${SCRIPT_DIR}/scripts/hybrid-ai-stack.sh" restart
 }
 
 subcmd_clean_restart() {
@@ -99,31 +96,15 @@ subcmd_clean_restart() {
 }
 
 subcmd_status() {
-    ensure_stack_dir
-    cmd_compose ps
+    "${SCRIPT_DIR}/scripts/hybrid-ai-stack.sh" status
 }
 
 subcmd_logs() {
-    ensure_stack_dir
-    local service="${1:-}"
-    if [[ -n "$service" ]]; then
-        cmd_compose logs -f "$service"
-    else
-        cmd_compose logs -f
-    fi
+    "${SCRIPT_DIR}/scripts/hybrid-ai-stack.sh" logs "$@"
 }
 
 subcmd_health() {
-    local health_script="$SCRIPT_DIR/scripts/check-ai-stack-health-v2.py"
-    if [[ ! -f "$health_script" ]]; then
-        echo "[ERROR] Health check script not found at: $health_script" >&2
-        exit 1
-    fi
-    if [[ -x "$health_script" ]]; then
-        "$health_script"
-    else
-        python3 "$health_script"
-    fi
+    "${SCRIPT_DIR}/scripts/ai-stack-health.sh"
 }
 
 subcmd_sync() {
@@ -140,12 +121,12 @@ main() {
     shift || true
 
     case "$cmd" in
-        up)       subcmd_up ;;
-        down)     subcmd_down ;;
-        restart)  subcmd_restart ;;
+        up)       echo "ℹ ai-stack-manage.sh delegates to hybrid-ai-stack.sh for stack control." ; subcmd_up ;;
+        down)     echo "ℹ ai-stack-manage.sh delegates to hybrid-ai-stack.sh for stack control." ; subcmd_down ;;
+        restart)  echo "ℹ ai-stack-manage.sh delegates to hybrid-ai-stack.sh for stack control." ; subcmd_restart ;;
         clean-restart) subcmd_clean_restart "$@" ;;
-        status)   subcmd_status ;;
-        logs)     subcmd_logs "$@" ;;
+        status)   echo "ℹ ai-stack-manage.sh delegates to hybrid-ai-stack.sh for stack control." ; subcmd_status ;;
+        logs)     echo "ℹ ai-stack-manage.sh delegates to hybrid-ai-stack.sh for stack control." ; subcmd_logs "$@" ;;
         health)   subcmd_health ;;
         sync)     subcmd_sync ;;
         -h|--help|"") print_usage ;;

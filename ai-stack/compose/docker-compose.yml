@@ -1,17 +1,45 @@
 # NixOS Hybrid AI Learning Stack - Unified Configuration
 # Single source of truth for all AI stack services
-# Version: 2.1.0 (Updated to December 2025 latest stable versions)
+# Version: 3.0.0 (Updated December 2025 - Agentic Era Edition)
 #
 # Services:
+#   Core AI Infrastructure:
 #   - Qdrant: Vector database for embeddings and context storage
 #   - llama.cpp: Local LLM inference (OpenAI-compatible)
 #   - Open WebUI: ChatGPT-like interface
-#   - PostgreSQL: Database for MCP server and metrics
+#   - PostgreSQL 18 + pgvector: Database for MCP server and metrics
 #   - Redis: Caching and session storage
+#   - MindsDB: Analytics and data integration
+#
+#   Agentic Coding Tools (December 2025):
+#   - Aider: AI pair programming with git integration
+#   - Continue: Open-source autopilot for VS Code and JetBrains
+#   - Goose: Autonomous coding agent with file system access
+#
+#   Video Coding & Content Tools:
+#   - LangChain: Agent framework with memory and state management
+#   - AutoGPT: Goal decomposition and autonomous planning
+#
+#   MCP Servers (Model Context Protocol):
+#   - AIDB: Context API and telemetry
+#   - Hybrid Coordinator: Context augmentation & learning
+#   - Ralph Wiggum Loop: Continuous autonomous agent orchestration
+#
+# Ralph Wiggum Loop:
+#   - Implements continuous self-referential AI workflow
+#   - Enables iterative development until task completion
+#   - Default behavior for all agents
 #
 # Usage:
 #   podman-compose up -d
 #   ./scripts/hybrid-ai-stack.sh up
+#
+# Caching & Performance:
+#   - All services use pull_policy: missing (only pull if image doesn't exist)
+#   - Container images are cached locally and not re-downloaded
+#   - GGUF models are cached in ~/.cache/huggingface and ~/.local/share/nixos-ai-stack
+#   - Re-running deployment will reuse existing images and models
+#   - To force update: podman-compose pull (images) or re-download models manually
 #
 # Version Policy:
 #   - All images pinned to specific versions (no :latest tags)
@@ -29,6 +57,10 @@ services:
     container_name: local-ai-qdrant
     pull_policy: missing  # Only pull if image doesn't exist locally
     restart: unless-stopped
+    networks:
+      default:
+        aliases:
+          - qdrant
     ports:
       - "6333:6333"  # HTTP API
       - "6334:6334"  # gRPC API
@@ -67,9 +99,20 @@ services:
       --model /models/${LLAMA_CPP_MODEL_FILE:-qwen2.5-coder-7b-instruct-q4_k_m.gguf}
       --host 0.0.0.0
       --port 8080
-      --ctx-size 4096
+      --ctx-size ${LLAMA_CTX_SIZE:-8192}
       --n-gpu-layers 0
-      --threads 4
+      --threads ${LLAMA_THREADS:-0}
+      --batch-size ${LLAMA_BATCH_SIZE:-512}
+      --ubatch-size ${LLAMA_UBATCH_SIZE:-128}
+      --flash-attn on
+      --defrag-thold ${LLAMA_DEFRAG_THOLD:-0.1}
+      --cont-batching
+      --parallel ${LLAMA_PARALLEL:-4}
+      --mlock
+      --numa distribute
+      --cache-type-k ${LLAMA_CACHE_TYPE_K:-q4_0}
+      --cache-type-v ${LLAMA_CACHE_TYPE_V:-q4_0}
+      --metrics
     environment:
       LLAMA_CPP_HOST: 0.0.0.0
       LLAMA_CPP_PORT: 8080
@@ -82,7 +125,9 @@ services:
     ports:
       - "8080:8080"
     networks:
-      default: {}
+      default:
+        aliases:
+          - llama-cpp
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -117,17 +162,16 @@ services:
     container_name: local-ai-open-webui
     pull_policy: missing  # Only pull if image doesn't exist locally
     restart: unless-stopped
-    ports:
-      - "3001:8080"  # Changed from 3000 (conflict with Gitea)
+    network_mode: host  # Use host networking for localhost access
     volumes:
       - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/open-webui:/app/backend/data:Z
     environment:
-      OPENAI_API_BASE_URL: http://llama-cpp:8080/v1
+      OPENAI_API_BASE_URL: http://localhost:8080/v1  # Use localhost instead of service name
       OPENAI_API_KEY: llama-cpp
       WEBUI_AUTH: "false"
       ENABLE_RAG_WEB_SEARCH: "true"
-    depends_on:
-      - llama-cpp
+      PORT: 3001  # Run on port 3001 (instead of default 8080)
+      ENABLE_OLLAMA_API: "false"  # Disable Ollama, use OpenAI-compatible API only
     deploy:
       resources:
         reservations:
@@ -148,6 +192,10 @@ services:
     container_name: local-ai-postgres
     pull_policy: missing  # Only pull if image doesn't exist locally
     restart: unless-stopped
+    networks:
+      default:
+        aliases:
+          - postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mcp}
       POSTGRES_USER: ${POSTGRES_USER:-mcp}
@@ -182,6 +230,10 @@ services:
     container_name: local-ai-redis
     pull_policy: missing  # Only pull if image doesn't exist locally
     restart: unless-stopped
+    networks:
+      default:
+        aliases:
+          - redis
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     ports:
       - "6379:6379"
@@ -213,20 +265,36 @@ services:
       dockerfile: aidb/Dockerfile
     container_name: local-ai-aidb
     restart: unless-stopped
-    ports:
-      - "8091:8091"
+    network_mode: host
     environment:
       AIDB_CONFIG: /app/config/config.yaml
-      AIDB_POSTGRES_HOST: postgres
+      # Postgres connection (both AIDB_ and standard POSTGRES_ prefixes for compatibility)
+      # Using localhost since network_mode: host allows direct access to host ports
+      AIDB_POSTGRES_HOST: localhost
       AIDB_POSTGRES_PORT: 5432
       AIDB_POSTGRES_DB: ${POSTGRES_DB:-mcp}
       AIDB_POSTGRES_USER: ${POSTGRES_USER:-mcp}
       AIDB_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
-      AIDB_REDIS_HOST: redis
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-mcp}
+      POSTGRES_USER: ${POSTGRES_USER:-mcp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
+      # Redis connection
+      AIDB_REDIS_HOST: localhost
       AIDB_REDIS_PORT: 6379
       AIDB_REDIS_PASSWORD: ${AIDB_REDIS_PASSWORD:-}
-      LLAMA_CPP_BASE_URL: http://llama-cpp:8080
+      # Qdrant connection
+      QDRANT_URL: http://localhost:6333
+      QDRANT_HOST: localhost
+      QDRANT_PORT: 6333
+      # llama.cpp connection
+      LLAMA_CPP_BASE_URL: http://localhost:8080
+      # Telemetry and discovery
       AIDB_TELEMETRY_PATH: /data/telemetry/aidb-events.jsonl
+      AIDB_TOOL_DISCOVERY_ENABLED: ${AIDB_TOOL_DISCOVERY_ENABLED:-true}
+      AIDB_TOOL_DISCOVERY_INTERVAL: ${AIDB_TOOL_DISCOVERY_INTERVAL:-300}
+      # External integrations
       GOOGLE_SEARCH_API_KEY: ${GOOGLE_SEARCH_API_KEY:-}
       GOOGLE_SEARCH_CX: ${GOOGLE_SEARCH_CX:-}
     volumes:
@@ -234,10 +302,12 @@ services:
       - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/telemetry:/data/telemetry:Z
       - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/aidb-cache:/app/.mcp_cache:Z
     depends_on:
-      - postgres
-      - redis
-      - qdrant
-      - llama-cpp
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8091/health"]
       interval: 30s
@@ -292,28 +362,44 @@ services:
       dockerfile: hybrid-coordinator/Dockerfile
     container_name: local-ai-hybrid-coordinator
     restart: unless-stopped
-    ports:
-      - "8092:8092"
+    network_mode: host
     environment:
       MCP_SERVER_MODE: http
       MCP_SERVER_PORT: 8092
-      QDRANT_URL: http://qdrant:6333
+      # Qdrant connection (using localhost since network_mode: host)
+      QDRANT_URL: http://localhost:6333
+      QDRANT_HOST: localhost
+      QDRANT_PORT: 6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:-}
-      LLAMA_CPP_BASE_URL: http://llama-cpp:8080
+      # Postgres connection (for telemetry storage)
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-mcp}
+      POSTGRES_USER: ${POSTGRES_USER:-mcp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
+      # llama.cpp connection
+      LLAMA_CPP_BASE_URL: http://localhost:8080
+      # Telemetry and learning
       HYBRID_TELEMETRY_PATH: /data/telemetry/hybrid-events.jsonl
+      TELEMETRY_PATH: /data/telemetry/hybrid-events.jsonl
+      # Continuous learning configuration
+      CONTINUOUS_LEARNING_ENABLED: ${CONTINUOUS_LEARNING_ENABLED:-true}
+      LEARNING_PROCESSING_INTERVAL: ${LEARNING_PROCESSING_INTERVAL:-3600}
+      LEARNING_DATASET_THRESHOLD: ${LEARNING_DATASET_THRESHOLD:-1000}
+      # Hybrid mode settings
       LOCAL_CONFIDENCE_THRESHOLD: ${LOCAL_CONFIDENCE_THRESHOLD:-0.7}
       HIGH_VALUE_THRESHOLD: ${HIGH_VALUE_THRESHOLD:-0.7}
       PATTERN_EXTRACTION_ENABLED: ${PATTERN_EXTRACTION_ENABLED:-true}
       FINETUNE_DATA_PATH: /data/fine-tuning/dataset.jsonl
-      TELEMETRY_PATH: /data/telemetry/hybrid-events.jsonl
     volumes:
       - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/hybrid-coordinator:/data:Z,U
       - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/telemetry:/data/telemetry:Z,U
       - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/fine-tuning:/data/fine-tuning:Z,U
     depends_on:
-      - qdrant
-      - llama-cpp
-      - aidb
+      qdrant:
+        condition: service_healthy
+      aidb:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8092/health"]
       interval: 30s
@@ -331,6 +417,181 @@ services:
     labels:
       - "nixos.quick-deploy.ai-stack=true"
       - "nixos.quick-deploy.service=hybrid-coordinator"
+
+  # ============================================================================
+  # Aider - AI Pair Programming with Git Integration (Optional - use profile)
+  # ============================================================================
+  aider:
+    image: paulgauthier/aider:latest  # Latest stable (Dec 2025)
+    container_name: local-ai-aider
+    pull_policy: missing
+    restart: unless-stopped
+    network_mode: host
+    profiles: ["agents", "full"]  # Optional service
+    environment:
+      OPENAI_API_BASE_URL: http://localhost:8080/v1
+      OPENAI_API_KEY: llama-cpp
+      AIDER_MODEL: ${AIDER_MODEL:-qwen2.5-coder-7b-instruct}
+      AIDER_AUTO_COMMITS: ${AIDER_AUTO_COMMITS:-true}
+      AIDER_GIT_DRY_RUN: ${AIDER_GIT_DRY_RUN:-false}
+      AIDER_PORT: 8093
+    volumes:
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/aider:/data:Z
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/workspace:/workspace:Z
+    working_dir: /workspace
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+        limits:
+          cpus: '2.0'
+          memory: 2G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=aider"
+
+  # ============================================================================
+  # NOTE: Continue, Goose, and LangChain services removed (unused)
+  # VSCode Continue extension uses llama.cpp directly at port 8080
+  # Ralph Wiggum uses aider+autogpt as backends (sufficient for autonomous coding)
+  # ============================================================================
+
+  # ============================================================================
+  # AutoGPT - Autonomous Goal Decomposition Agent (Optional - use profile)
+  # ============================================================================
+  autogpt:
+    image: significantgravitas/auto-gpt:latest  # Latest stable (Dec 2025)
+    container_name: local-ai-autogpt
+    pull_policy: missing
+    restart: unless-stopped
+    network_mode: host
+    profiles: ["agents", "full"]  # Optional service
+    environment:
+      OPENAI_API_BASE: http://localhost:8080/v1
+      OPENAI_API_KEY: llama-cpp
+      AUTOGPT_MODEL: ${AUTOGPT_MODEL:-qwen2.5-coder-7b-instruct}
+      AUTOGPT_PORT: 8097
+      MEMORY_BACKEND: ${AUTOGPT_MEMORY_BACKEND:-redis}
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      WORKSPACE_PATH: /workspace
+      EXECUTE_LOCAL_COMMANDS: ${AUTOGPT_EXECUTE_COMMANDS:-true}
+    volumes:
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/autogpt:/data:Z
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/workspace:/workspace:Z
+    working_dir: /workspace
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+        limits:
+          cpus: '2.0'
+          memory: 4G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=autogpt"
+
+  # ============================================================================
+  # Health Monitor - Self-Healing Infrastructure
+  # ============================================================================
+  health-monitor:
+    build:
+      context: ../mcp-servers
+      dockerfile: health-monitor/Dockerfile
+    container_name: local-ai-health-monitor
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      SELF_HEALING_ENABLED: ${SELF_HEALING_ENABLED:-true}
+      SELF_HEALING_CHECK_INTERVAL: ${SELF_HEALING_CHECK_INTERVAL:-30}
+      SELF_HEALING_COOLDOWN: ${SELF_HEALING_COOLDOWN:-60}
+      QDRANT_URL: http://localhost:6333
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-mcp}
+      POSTGRES_USER: ${POSTGRES_USER:-mcp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
+    volumes:
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/health-monitor:/data:Z
+      - /var/run/podman/podman.sock:/var/run/docker.sock:Z  # For container management
+    privileged: true  # Required for podman container management
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+        limits:
+          cpus: '1.0'
+          memory: 1G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=health-monitor"
+      - "nixos.quick-deploy.self-healing=enabled"
+
+  # ============================================================================
+  # Ralph Wiggum Loop - Continuous Autonomous Agent Orchestrator
+  # ============================================================================
+  ralph-wiggum:
+    build:
+      context: ../mcp-servers
+      dockerfile: ralph-wiggum/Dockerfile
+    container_name: local-ai-ralph-wiggum
+    restart: unless-stopped
+    network_mode: host
+    profiles: ["agents", "full"]  # Optional - requires agent backends
+    environment:
+      RALPH_MCP_SERVER_PORT: 8098
+      RALPH_LOOP_ENABLED: ${RALPH_LOOP_ENABLED:-true}
+      RALPH_EXIT_CODE_BLOCK: ${RALPH_EXIT_CODE_BLOCK:-2}
+      RALPH_MAX_ITERATIONS: ${RALPH_MAX_ITERATIONS:-0}  # 0 = infinite
+      RALPH_CONTEXT_RECOVERY: ${RALPH_CONTEXT_RECOVERY:-true}
+      RALPH_GIT_INTEGRATION: ${RALPH_GIT_INTEGRATION:-true}
+      RALPH_STATE_FILE: /data/ralph-state.json
+      RALPH_TELEMETRY_PATH: /data/telemetry/ralph-events.jsonl
+      RALPH_POSTGRES_HOST: localhost
+      RALPH_POSTGRES_PORT: 5432
+      RALPH_POSTGRES_DB: ${POSTGRES_DB:-mcp}
+      RALPH_POSTGRES_USER: ${POSTGRES_USER:-mcp}
+      RALPH_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
+      RALPH_REDIS_HOST: localhost
+      RALPH_REDIS_PORT: 6379
+      RALPH_AGENT_BACKENDS: aider,autogpt
+      RALPH_DEFAULT_BACKEND: ${RALPH_DEFAULT_BACKEND:-aider}
+      RALPH_COORDINATOR_URL: http://localhost:8092
+      RALPH_AIDB_URL: http://localhost:8091
+      # Human-in-the-Loop controls
+      RALPH_REQUIRE_APPROVAL: ${RALPH_REQUIRE_APPROVAL:-false}
+      RALPH_APPROVAL_THRESHOLD: ${RALPH_APPROVAL_THRESHOLD:-high}  # low, medium, high
+      RALPH_AUDIT_LOG: ${RALPH_AUDIT_LOG:-true}
+    volumes:
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/ralph-wiggum:/data:Z
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/telemetry:/data/telemetry:Z
+      - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/workspace:/workspace:Z
+      - /var/run/podman/podman.sock:/var/run/docker.sock:Z  # For container orchestration
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      aidb:
+        condition: service_healthy
+      hybrid-coordinator:
+        condition: service_healthy
+    working_dir: /workspace
+    deploy:
+      resources:
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+        limits:
+          cpus: '4.0'
+          memory: 8G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=ralph-wiggum"
+      - "nixos.quick-deploy.ralph-loop=orchestrator"
 
 networks:
   default:

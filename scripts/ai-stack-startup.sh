@@ -1,0 +1,346 @@
+#!/usr/bin/env bash
+# AI Stack Automatic Startup Script
+# Starts all AI containers, MCP services, and monitoring on system boot
+# Author: Claude Code (Vibe Coding System)
+# Date: 2025-12-31
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+LOG_DIR="${HOME}/.cache/nixos-quick-deploy/logs"
+LOG_FILE="${LOG_DIR}/ai-stack-startup-$(date +%Y%m%d_%H%M%S).log"
+
+# Ensure log directory exists
+mkdir -p "$LOG_DIR" 2>/dev/null || true
+
+# Logging functions
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+}
+
+info() {
+    log "ℹ INFO: $*"
+}
+
+success() {
+    log "✓ SUCCESS: $*"
+}
+
+error() {
+    log "✗ ERROR: $*"
+}
+
+warn() {
+    log "⚠ WARNING: $*"
+}
+
+# Wait for network to be ready
+wait_for_network() {
+    info "Waiting for network connectivity..."
+    local retries=30
+    local count=0
+
+    while [ $count -lt $retries ]; do
+        if ping -c 1 -W 1 8.8.8.8 >/dev/null 2>&1; then
+            success "Network is ready"
+            return 0
+        fi
+        count=$((count + 1))
+        sleep 2
+    done
+
+    warn "Network check timeout - proceeding anyway"
+    return 0
+}
+
+# Wait for Podman socket to be ready
+wait_for_podman() {
+    info "Waiting for Podman to be ready..."
+    local retries=30
+    local count=0
+
+    while [ $count -lt $retries ]; do
+        if podman info >/dev/null 2>&1; then
+            success "Podman is ready"
+            return 0
+        fi
+        count=$((count + 1))
+        sleep 2
+    done
+
+    error "Podman not ready after 60 seconds"
+    return 1
+}
+
+# Start core AI infrastructure
+start_core_infrastructure() {
+    info "Starting core AI infrastructure (postgres, redis, qdrant, llama-cpp, mindsdb)..."
+
+    cd "$PROJECT_ROOT/ai-stack/compose"
+
+    if podman-compose up -d postgres redis qdrant llama-cpp mindsdb 2>&1 | tee -a "$LOG_FILE"; then
+        success "Core infrastructure started"
+    else
+        error "Failed to start core infrastructure"
+        return 1
+    fi
+
+    # Wait for services to be ready
+    info "Waiting for core services to initialize (30s)..."
+    sleep 30
+}
+
+# Check service health
+check_service_health() {
+    local service_name="$1"
+    local health_url="$2"
+    local max_retries="${3:-10}"
+
+    info "Checking $service_name health..."
+    local count=0
+
+    while [ $count -lt $max_retries ]; do
+        if curl -sf --max-time 2 "$health_url" >/dev/null 2>&1; then
+            success "$service_name is healthy"
+            return 0
+        fi
+        count=$((count + 1))
+        sleep 3
+    done
+
+    warn "$service_name health check timeout"
+    return 1
+}
+
+# Start MCP services
+start_mcp_services() {
+    info "Starting MCP services (AIDB, Hybrid Coordinator, Health Monitor)..."
+
+    cd "$PROJECT_ROOT/ai-stack/compose"
+
+    # Use existing images (no --build flag to avoid rebuilding on every boot)
+    if podman-compose up -d aidb hybrid-coordinator health-monitor 2>&1 | tee -a "$LOG_FILE"; then
+        success "MCP services started"
+    else
+        error "Failed to start MCP services"
+        return 1
+    fi
+
+    # Wait for MCP services to initialize
+    info "Waiting for MCP services to initialize (20s)..."
+    sleep 20
+
+    # Check MCP service health
+    check_service_health "AIDB" "http://localhost:8091/health" 10
+    check_service_health "Hybrid Coordinator" "http://localhost:8092/health" 10
+}
+
+# Initialize Qdrant collections if needed
+initialize_qdrant_collections() {
+    info "Checking Qdrant collections..."
+
+    # Check if collections exist
+    local collection_count=$(curl -sf http://localhost:6333/collections 2>/dev/null | jq -r '.result.collections | length' 2>/dev/null || echo "0")
+
+    if [ "$collection_count" -lt 5 ]; then
+        info "Initializing Qdrant collections..."
+        if bash "$PROJECT_ROOT/scripts/initialize-qdrant-collections.sh" 2>&1 | tee -a "$LOG_FILE"; then
+            success "Qdrant collections initialized"
+        else
+            warn "Qdrant collection initialization had issues"
+        fi
+    else
+        success "Qdrant collections already exist ($collection_count collections)"
+    fi
+}
+
+# Start dashboard services
+start_dashboard_services() {
+    info "Starting dashboard services..."
+
+    # Check if dashboard server is already running
+    if systemctl --user is-active --quiet dashboard-server.service; then
+        info "Dashboard server already running"
+    else
+        systemctl --user start dashboard-server.service 2>&1 | tee -a "$LOG_FILE" || warn "Dashboard server start failed"
+    fi
+
+    # Start dashboard collector timer
+    if systemctl --user is-active --quiet dashboard-collector.timer; then
+        info "Dashboard collector already running"
+    else
+        systemctl --user start dashboard-collector.timer 2>&1 | tee -a "$LOG_FILE" || warn "Dashboard collector start failed"
+    fi
+
+    # Force initial metrics collection
+    info "Collecting initial dashboard metrics..."
+    bash "$PROJECT_ROOT/scripts/collect-ai-metrics.sh" 2>&1 | tee -a "$LOG_FILE" || warn "Initial metrics collection failed"
+    bash "$PROJECT_ROOT/scripts/generate-dashboard-data-lite.sh" 2>&1 | tee -a "$LOG_FILE" || warn "Dashboard data generation failed"
+
+    success "Dashboard services started"
+}
+
+# Run health checks
+run_health_checks() {
+    info "Running comprehensive health checks..."
+
+    local failed_checks=0
+
+    # Check container status
+    info "Checking container status..."
+    local expected_containers=(
+        "local-ai-postgres"
+        "local-ai-redis"
+        "local-ai-qdrant"
+        "local-ai-llama-cpp"
+        "local-ai-mindsdb"
+        "local-ai-aidb"
+        "local-ai-hybrid-coordinator"
+        "local-ai-health-monitor"
+    )
+
+    for container in "${expected_containers[@]}"; do
+        if podman ps --format "{{.Names}}" | grep -q "^${container}$"; then
+            success "Container running: $container"
+        else
+            error "Container not running: $container"
+            failed_checks=$((failed_checks + 1))
+        fi
+    done
+
+    # Check service endpoints
+    info "Checking service endpoints..."
+
+    if curl -sf http://localhost:8091/health >/dev/null 2>&1; then
+        success "AIDB endpoint healthy"
+    else
+        error "AIDB endpoint failed"
+        failed_checks=$((failed_checks + 1))
+    fi
+
+    if curl -sf http://localhost:8092/health >/dev/null 2>&1; then
+        success "Hybrid Coordinator endpoint healthy"
+    else
+        error "Hybrid Coordinator endpoint failed"
+        failed_checks=$((failed_checks + 1))
+    fi
+
+    if curl -sf http://localhost:6333/healthz >/dev/null 2>&1; then
+        success "Qdrant endpoint healthy"
+    else
+        error "Qdrant endpoint failed"
+        failed_checks=$((failed_checks + 1))
+    fi
+
+    if curl -sf http://localhost:8080/health >/dev/null 2>&1; then
+        success "llama.cpp endpoint healthy"
+    else
+        error "llama.cpp endpoint failed"
+        failed_checks=$((failed_checks + 1))
+    fi
+
+    # Report results
+    if [ $failed_checks -eq 0 ]; then
+        success "All health checks passed!"
+        return 0
+    else
+        warn "$failed_checks health check(s) failed"
+        return 1
+    fi
+}
+
+# Generate startup report
+generate_startup_report() {
+    local status="$1"
+    local report_file="${HOME}/.local/share/nixos-ai-stack/startup-report-$(date +%Y%m%d_%H%M%S).txt"
+
+    mkdir -p "$(dirname "$report_file")"
+
+    cat > "$report_file" <<EOF
+AI Stack Startup Report
+=======================
+Date: $(date)
+Status: $status
+Log: $LOG_FILE
+
+Container Status:
+$(podman ps --format "table {{.Names}}\t{{.Status}}" | grep local-ai || echo "No containers running")
+
+Service Health:
+- AIDB: $(curl -sf http://localhost:8091/health 2>/dev/null | jq -r '.status' 2>/dev/null || echo "unreachable")
+- Hybrid Coordinator: $(curl -sf http://localhost:8092/health 2>/dev/null | jq -r '.status' 2>/dev/null || echo "unreachable")
+- Qdrant: $(curl -sf http://localhost:6333/healthz 2>/dev/null || echo "unreachable")
+- llama.cpp: $(curl -sf http://localhost:8080/health 2>/dev/null | jq -r '.status' 2>/dev/null || echo "unreachable")
+
+Dashboard:
+- Server: $(systemctl --user is-active dashboard-server.service || echo "inactive")
+- Collector: $(systemctl --user is-active dashboard-collector.timer || echo "inactive")
+- URL: http://localhost:8888/dashboard.html
+
+Resource Usage:
+$(podman stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}" 2>/dev/null | grep local-ai || echo "Stats unavailable")
+EOF
+
+    info "Startup report saved to: $report_file"
+}
+
+# Main startup sequence
+main() {
+    info "=== AI Stack Startup Beginning ==="
+    info "Log file: $LOG_FILE"
+
+    # Pre-flight checks
+    wait_for_network
+    wait_for_podman || {
+        error "Podman not available - cannot start AI stack"
+        exit 1
+    }
+
+    # Start services in order
+    start_core_infrastructure || {
+        error "Core infrastructure failed to start"
+        generate_startup_report "FAILED"
+        exit 1
+    }
+
+    start_mcp_services || {
+        error "MCP services failed to start"
+        generate_startup_report "PARTIAL"
+        exit 1
+    }
+
+    initialize_qdrant_collections || warn "Qdrant initialization had issues"
+
+    start_dashboard_services || warn "Dashboard services had issues"
+
+    # Final health check
+    sleep 10
+    if run_health_checks; then
+        success "=== AI Stack Startup Complete ==="
+        generate_startup_report "SUCCESS"
+
+        # Display summary
+        echo ""
+        echo "╔══════════════════════════════════════════════════════════╗"
+        echo "║          AI Stack Started Successfully                   ║"
+        echo "╠══════════════════════════════════════════════════════════╣"
+        echo "║  Dashboard:  http://localhost:8888/dashboard.html       ║"
+        echo "║  AIDB MCP:   http://localhost:8091/health               ║"
+        echo "║  Hybrid:     http://localhost:8092/health               ║"
+        echo "║  Qdrant:     http://localhost:6333/dashboard            ║"
+        echo "║  llama.cpp:  http://localhost:8080                      ║"
+        echo "║  Log:        $LOG_FILE"
+        echo "╚══════════════════════════════════════════════════════════╝"
+        echo ""
+
+        exit 0
+    else
+        warn "=== AI Stack Startup Completed with Warnings ==="
+        generate_startup_report "WARNING"
+        exit 0
+    fi
+}
+
+# Run main function
+main "$@"

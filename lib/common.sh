@@ -1292,6 +1292,45 @@ detect_container_storage_backend() {
     fi
 }
 
+# ==========================================================================
+# Auto-select Podman storage driver based on detected filesystem
+# ==========================================================================
+select_podman_storage_driver() {
+    local fs_type="${CONTAINER_STORAGE_FS_TYPE:-unknown}"
+    local driver=""
+
+    # If already set by detect_container_storage_backend, use that
+    if [[ -n "${PODMAN_STORAGE_DRIVER:-}" ]]; then
+        log_info "Podman storage driver already set: ${PODMAN_STORAGE_DRIVER}"
+        return 0
+    fi
+
+    # Auto-detect based on filesystem type
+    case "$fs_type" in
+        zfs|zfs_member)
+            driver="zfs"
+            log_info "Detected ZFS filesystem → using zfs storage driver"
+            ;;
+        btrfs)
+            driver="btrfs"
+            log_info "Detected Btrfs filesystem → using btrfs storage driver"
+            ;;
+        ext4|xfs)
+            driver="overlay2"
+            log_info "Detected ${fs_type} filesystem → using overlay2 storage driver"
+            ;;
+        *)
+            driver="overlay2"
+            log_warning "Unknown filesystem type: ${fs_type} → defaulting to overlay2"
+            ;;
+    esac
+
+    PODMAN_STORAGE_DRIVER="$driver"
+    PODMAN_STORAGE_COMMENT="Auto-selected ${driver} driver for ${fs_type} filesystem"
+
+    export PODMAN_STORAGE_DRIVER PODMAN_STORAGE_COMMENT
+}
+
 ensure_gitea_state_directory_ready() {
     # NOTE: This function is now a no-op stub for backward compatibility.
     # The gitea user and state directories are created automatically by NixOS

@@ -32,9 +32,9 @@
     ];
     # Enable LLMNR (Link-Local Multicast Name Resolution)
     llmnr = "true";
-    # Enable mDNS (Multicast DNS)
+    # Disable mDNS in systemd-resolved (Avahi handles mDNS)
     extraConfig = ''
-      MulticastDNS=yes
+      MulticastDNS=no
       Cache=yes
       DNSStubListener=yes
     '';

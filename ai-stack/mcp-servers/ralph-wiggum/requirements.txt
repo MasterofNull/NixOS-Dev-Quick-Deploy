@@ -1,0 +1,39 @@
+# Ralph Wiggum Loop MCP Server Requirements
+# Version: 1.0.0 (December 2025)
+
+# Core framework
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+pydantic==2.10.0
+pydantic-settings==2.6.0
+
+# MCP Protocol
+mcp==1.3.0
+
+# Database drivers
+psycopg2-binary==2.9.10
+redis==5.2.0
+sqlalchemy==2.0.36
+
+# Agent orchestration
+asyncio-pool==0.6.0
+tenacity==9.0.0
+
+# Git integration
+gitpython==3.1.43
+
+# Monitoring and telemetry
+prometheus-client==0.21.0
+structlog==24.4.0
+
+# HTTP client
+httpx==0.28.0
+aiohttp==3.11.0
+
+# State management
+jsonschema==4.23.0
+pyyaml==6.0.2
+
+# Utils
+python-dotenv==1.0.1
+click==8.1.7

@@ -31,7 +31,7 @@ Scope: container images and tool wrappers only. No NixOS base changes.
 
 ## Risks & Mitigations
 - Risk: upstream breaking changes.
-- Mitigation: upgrade one component at a time and validate with `scripts/test-ai-stack-health.sh`.
+- Mitigation: upgrade one component at a time and validate with `scripts/ai-stack-health.sh`.
 
 ## Rollback Plan
 - Revert container image tags or `docker-compose.yml` to previous versions.

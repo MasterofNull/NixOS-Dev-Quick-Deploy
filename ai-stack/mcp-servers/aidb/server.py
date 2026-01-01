@@ -40,6 +40,7 @@ from settings_loader import Settings, load_settings
 from skills_loader import ParsedSkill, parse_skill_text, write_skill_file
 from ml_engine import MLEngine
 import registry_api
+import vscode_telemetry
 
 LOGGER = logging.getLogger("aidb.mcp")
 
@@ -702,6 +703,7 @@ class MonitoringServer:
         self.app.state.mcp_server = mcp_server
         self.app.add_middleware(CacheMiddleware, redis_url=self.settings.redis_url)
         self.app.include_router(registry_api.router)
+        self.app.include_router(vscode_telemetry.router)  # VSCode extension telemetry
         self._server: Optional[uvicorn.Server] = None
         self._register_routes()
 

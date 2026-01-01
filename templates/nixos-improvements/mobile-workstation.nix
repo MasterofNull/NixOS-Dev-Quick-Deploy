@@ -3,8 +3,8 @@
 # Purpose: Battery life, thermal management, power efficiency
 #
 # Features:
-# - TLP for advanced power management
-# - Power-profiles-daemon integration
+# - Power-profiles-daemon (COSMIC/GNOME GUI integration) - DEFAULT
+# - TLP (advanced CLI power management) - ALTERNATIVE
 # - WiFi power saving
 # - Thermal throttling
 # - Lid close/suspend handling
@@ -13,6 +13,14 @@
 #
 # Usage: Import in configuration.nix:
 #   imports = [ ./nixos-improvements/mobile-workstation.nix ];
+#
+# COSMIC Power Management (DEFAULT):
+#   Uses power-profiles-daemon for GUI power profile switching
+#   Access via: COSMIC Settings → Power → Power Profile
+#
+# To use TLP instead, override in your configuration.nix:
+#   services.power-profiles-daemon.enable = lib.mkForce false;
+#   services.tlp.enable = lib.mkForce true;
 #
 # Note: This module uses lib.mkDefault extensively so values can be
 # overridden in your main configuration.nix
@@ -23,19 +31,34 @@ let
   # Detect if this is likely a laptop/mobile system
   isLaptop = builtins.pathExists "/sys/class/power_supply/BAT0"
           || builtins.pathExists "/sys/class/power_supply/BAT1";
-  
+
   # Detect AMD CPU/GPU
   hasAmdCpu = config.hardware.cpu.amd.updateMicrocode or false;
+
+  # Power management strategy:
+  # - true = use power-profiles-daemon (COSMIC/GNOME GUI integration)
+  # - false = use TLP (more advanced, CLI-based)
+  useCOSMICPowerManagement = lib.mkDefault true;
 in
 {
   # =========================================================================
-  # TLP - Advanced Power Management (Linux Laptop)
+  # Power Profiles Daemon - GUI Power Management (COSMIC/GNOME)
+  # =========================================================================
+  # Provides power profile switching via GUI (Settings app)
+  # Modes: Performance, Balanced, Power Saver
+  # Integrates with COSMIC Settings perfectly
+
+  services.power-profiles-daemon.enable = lib.mkDefault useCOSMICPowerManagement;
+
+  # =========================================================================
+  # TLP - Advanced Power Management (Alternative to power-profiles-daemon)
   # =========================================================================
   # TLP provides excellent battery optimization without manual configuration
   # It automatically switches between AC and battery power profiles
+  # NOTE: Conflicts with power-profiles-daemon - choose one or the other
 
   services.tlp = {
-    enable = lib.mkDefault true;
+    enable = lib.mkDefault (!useCOSMICPowerManagement);
     settings = {
       # CPU Governor
       CPU_SCALING_GOVERNOR_ON_AC = "performance";
@@ -95,16 +118,8 @@ in
     };
   };
 
-  # =========================================================================
-  # Power-Profiles-Daemon (Alternative/Companion to TLP)
-  # =========================================================================
-  # Provides GNOME/KDE integration for power profile switching
-  # Note: Can conflict with TLP - choose one or the other
-
-  # Disabled by default since TLP is more comprehensive
-  # Enable this instead of TLP if you prefer GUI power profile switching
-  # Using mkForce to override COSMIC's default setting (which enables it)
-  services.power-profiles-daemon.enable = lib.mkForce false;
+  # Note: power-profiles-daemon configuration moved to top of file
+  # It's now enabled by default for COSMIC integration
 
   # =========================================================================
   # Thermald - Intel Thermal Management
@@ -252,18 +267,18 @@ in
   # =========================================================================
   # CPU Frequency Scaling
   # =========================================================================
-  
-  # AMD P-State driver (for Zen 2+ CPUs)
-  # This is more efficient than the older acpi-cpufreq driver
-  boot.kernelModules = lib.mkIf hasAmdCpu [ "amd_pstate" ];
-  
+
+  # AMD P-State driver is built-in for modern kernels (6.1+)
+  # Enabled via kernel parameter "amd_pstate=active" above - no module loading needed
+  # boot.kernelModules = lib.mkIf hasAmdCpu [ "amd_pstate" ];
+
   # CPU frequency governor
   # schedutil is good for both performance and battery
   powerManagement.cpuFreqGovernor = lib.mkDefault "schedutil";
-  
+
   # Enable power management
   powerManagement.enable = lib.mkDefault true;
-  powerManagement.powertop.enable = lib.mkDefault true;
+  powerManagement.powertop.enable = lib.mkDefault false;  # Can interfere with power-profiles-daemon
 
   # =========================================================================
   # Backlight Control
@@ -303,57 +318,62 @@ in
     ==========================================
     NixOS Mobile Workstation Optimizations
     ==========================================
-    
-    POWER PROFILES:
-    ---------------
-    On AC Power:
-      - CPU Governor: performance
-      - CPU Boost: enabled
-      - WiFi Power Save: off
-      - Max performance
-    
-    On Battery:
-      - CPU Governor: powersave
-      - CPU Boost: disabled
-      - WiFi Power Save: on
-      - PCIe ASPM: powersupersave
-      - Optimized for battery life
-    
+
+    POWER MANAGEMENT MODE: COSMIC (GUI)
+    ------------------------------------
+    Using power-profiles-daemon for COSMIC Settings integration
+
+    Power Profiles (switch in COSMIC Settings → Power):
+      - Performance: Max CPU, all power saving disabled
+      - Balanced: Good balance between performance and battery
+      - Power Saver: Maximum battery life, reduced performance
+
     COMMANDS:
     ---------
-    Check TLP status:
-      $ sudo tlp-stat -s
-    
+    Check current power profile:
+      $ powerprofilesctl get
+
+    List available profiles:
+      $ powerprofilesctl list
+
+    Set power profile (CLI):
+      $ powerprofilesctl set performance
+      $ powerprofilesctl set balanced
+      $ powerprofilesctl set power-saver
+
+    Check power-profiles-daemon status:
+      $ systemctl status power-profiles-daemon
+
     Check battery status:
       $ acpi -V
       $ upower -d
-    
+
     Check power consumption:
       $ sudo powertop
-    
+
     Control brightness:
       $ brightnessctl set 50%
       $ light -S 50
-    
+
     Check temperatures:
       $ sensors
-    
+
     Check CPU frequency:
       $ watch -n1 "cat /proc/cpuinfo | grep MHz"
-    
+
     LID BEHAVIOR:
     -------------
     Lid closed (on battery): suspend-then-hibernate (12h)
-    Lid closed (on AC): suspend-then-hibernate (12h)
-    Lid closed (docked): suspend-then-hibernate (12h)
-    
+    Lid closed (on AC): suspend
+    Lid closed (docked): ignored (no suspend)
+
     BATTERY TIPS:
     -------------
-    1. Use TLP default settings for good balance
-    2. Enable WiFi power saving on battery
+    1. Use COSMIC Settings → Power to switch profiles
+    2. Set Power Saver mode when unplugged for max battery
     3. Reduce screen brightness on battery
     4. Close unused applications
-    5. Consider undervolting AMD CPUs
+    5. Enable WiFi power saving (auto-enabled on battery)
     
     AMD iGPU:
     ---------
