@@ -233,23 +233,49 @@ EOF
 
 # Detect already downloaded models from cache
 ai_detect_cached_models() {
-    local cache_dir="${HOME}/.cache/huggingface"
+    local hf_cache="${HOME}/.cache/huggingface"
+    local ai_stack_models="${HOME}/.local/share/nixos-ai-stack/llama-cpp-models"
+    local podman_models="${HOME}/.local/share/podman-ai-stack/llama-cpp-models"
     declare -A cached_models
 
+    # Helper function to check if a model file exists in any location
+    check_model_file() {
+        local filename="$1"
+        local model_key="$2"
+        local model_id="$3"
+
+        # Check in HuggingFace cache (downloaded via huggingface-cli)
+        if find "${hf_cache}" -name "${filename}" 2>/dev/null | grep -q .; then
+            cached_models[$model_key]="$model_id"
+            return 0
+        fi
+
+        # Check in AI stack models directory (manually placed)
+        if [ -f "${ai_stack_models}/${filename}" ]; then
+            cached_models[$model_key]="$model_id"
+            return 0
+        fi
+
+        # Check in podman AI stack directory (legacy location)
+        if [ -f "${podman_models}/${filename}" ]; then
+            cached_models[$model_key]="$model_id"
+            return 0
+        fi
+
+        return 1
+    }
+
     # Check for qwen-coder (Qwen2.5-Coder-7B)
-    if ls "${cache_dir}/models--Qwen--Qwen2.5-Coder-7B-Instruct-GGUF/snapshots/"*/qwen2.5-coder-7b-instruct-q4_k_m.gguf >/dev/null 2>&1; then
-        cached_models[qwen-coder]="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
-    fi
+    check_model_file "qwen2.5-coder-7b-instruct-q4_k_m.gguf" "qwen-coder" "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
 
     # Check for qwen3-4b (Qwen3-4B-Instruct)
-    if ls "${cache_dir}/models--unsloth--Qwen3-4B-Instruct-2507-GGUF/snapshots/"*/Qwen3-4B-Instruct-2507-Q4_K_M.gguf >/dev/null 2>&1; then
-        cached_models[qwen3-4b]="unsloth/Qwen3-4B-Instruct-2507-GGUF"
-    fi
+    check_model_file "Qwen3-4B-Instruct-2507-Q4_K_M.gguf" "qwen3-4b" "unsloth/Qwen3-4B-Instruct-2507-GGUF"
 
     # Check for deepseek (DeepSeek-Coder-6.7B)
-    if ls "${cache_dir}/models--TheBloke--deepseek-coder-6.7B-instruct-GGUF/snapshots/"*/deepseek-coder-6.7b-instruct.Q4_K_M.gguf >/dev/null 2>&1; then
-        cached_models[deepseek]="TheBloke/deepseek-coder-6.7B-instruct-GGUF"
-    fi
+    check_model_file "deepseek-coder-6.7b-instruct.Q4_K_M.gguf" "deepseek" "TheBloke/deepseek-coder-6.7B-instruct-GGUF"
+
+    # Check for qwen-14b (Qwen2.5-Coder-14B)
+    check_model_file "qwen2.5-coder-14b-instruct-q4_k_m.gguf" "qwen-14b" "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF"
 
     # Return the keys of cached models
     echo "${!cached_models[@]}"
@@ -290,6 +316,10 @@ EOF
             qwen-coder)
                 echo "│ [$option] Qwen2.5-Coder-7B (Recommended)                                      │"
                 echo "│     - Size: 4.4GB  |  Speed: 40-60 tok/s  |  Quality: 88.4%               │"
+                ;;
+            qwen-14b)
+                echo "│ [$option] Qwen2.5-Coder-14B (Maximum Quality)                                 │"
+                echo "│     - Size: 8.9GB  |  Speed: 30-45 tok/s  |  Quality: 89.7%               │"
                 ;;
             qwen3-4b)
                 echo "│ [$option] Qwen3-4B-Instruct (Lightweight)                                     │"
@@ -344,6 +374,9 @@ ai_select_model() {
         case "$selected_model" in
             qwen-coder)
                 echo "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
+                ;;
+            qwen-14b)
+                echo "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF"
                 ;;
             qwen3-4b)
                 echo "unsloth/Qwen3-4B-Instruct-2507-GGUF"
@@ -591,9 +624,38 @@ EOF
 # llama.cpp Container Management
 # ============================================================================
 
+# Helper function to get GGUF filename from model ID
+get_model_filename_from_id() {
+    local model_id="$1"
+
+    case "$model_id" in
+        "Qwen/Qwen2.5-Coder-7B-Instruct"|"Qwen/Qwen2.5-Coder-7B-Instruct-GGUF")
+            echo "qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+            ;;
+        "unsloth/Qwen3-4B-Instruct-2507-GGUF")
+            echo "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+            ;;
+        "TheBloke/deepseek-coder-6.7B-instruct-GGUF")
+            echo "deepseek-coder-6.7b-instruct.Q4_K_M.gguf"
+            ;;
+        "Qwen/Qwen2.5-Coder-14B-Instruct"|"Qwen/Qwen2.5-Coder-14B-Instruct-GGUF")
+            echo "qwen2.5-coder-14b-instruct-q4_k_m.gguf"
+            ;;
+        *)
+            # Try to extract filename from model ID
+            local base=$(basename "$model_id")
+            if [[ "$base" == *.gguf ]]; then
+                echo "$base"
+            else
+                echo "qwen2.5-coder-7b-instruct-q4_k_m.gguf"  # Default fallback
+            fi
+            ;;
+    esac
+}
+
 ai_deploy_llama_cpp() {
     local model_id="$1"
-    local ai_optimizer_dir="${2:-$HOME/Documents/AI-Optimizer}"
+    local ai_stack_dir="${2:-${SCRIPT_DIR}/ai-stack/compose}"
 
     if [ "$model_id" = "SKIP" ]; then
         log_info "Skipping AI model installation"
@@ -602,39 +664,71 @@ ai_deploy_llama_cpp() {
 
     log_info "Deploying llama.cpp with model: $model_id"
 
-    # Check if AI-Optimizer directory exists
-    if [ ! -d "$ai_optimizer_dir" ]; then
-        log_warning "AI-Optimizer directory not found at: $ai_optimizer_dir"
-        read -p "Clone AI-Optimizer repository? [Y/n]: " clone
-        if [[ ! "$clone" =~ ^[Nn]$ ]]; then
-            git clone https://github.com/your-org/AI-Optimizer.git "$ai_optimizer_dir"
-        else
-            return 1
-        fi
+    # Check if AI stack directory exists
+    if [ ! -d "$ai_stack_dir" ]; then
+        log_error "AI stack directory not found at: $ai_stack_dir"
+        return 1
     fi
 
-    cd "$ai_optimizer_dir"
+    cd "$ai_stack_dir"
+
+    # Detect container runtime
+    local compose_cmd=""
+    if command -v podman-compose >/dev/null 2>&1; then
+        compose_cmd="podman-compose"
+    elif command -v docker-compose >/dev/null 2>&1; then
+        compose_cmd="docker-compose"
+    elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+        compose_cmd="docker compose"
+    else
+        log_error "No container runtime found (podman-compose, docker-compose, or docker compose)"
+        return 1
+    fi
+
+    log_info "Using container runtime: $compose_cmd"
 
     # Update .env with selected model
     if [ -f ".env" ]; then
         # Update existing .env
-        sed -i "s|^LLAMA_CPP_DEFAULT_MODEL=.*|LLAMA_CPP_DEFAULT_MODEL=$model_id|" .env || \
+        if grep -q "^LLAMA_CPP_DEFAULT_MODEL=" .env; then
+            sed -i "s|^LLAMA_CPP_DEFAULT_MODEL=.*|LLAMA_CPP_DEFAULT_MODEL=$model_id|" .env
+        else
             echo "LLAMA_CPP_DEFAULT_MODEL=$model_id" >> .env
+        fi
+
+        # Add LLAMA_CPP_MODEL_FILE if not present
+        local model_file=$(get_model_filename_from_id "$model_id")
+        if [ -n "$model_file" ]; then
+            if grep -q "^LLAMA_CPP_MODEL_FILE=" .env; then
+                sed -i "s|^LLAMA_CPP_MODEL_FILE=.*|LLAMA_CPP_MODEL_FILE=$model_file|" .env
+            else
+                echo "LLAMA_CPP_MODEL_FILE=$model_file" >> .env
+            fi
+        fi
     else
-        # Create new .env from example
-        cp .env.example .env
-        sed -i "s|^LLAMA_CPP_DEFAULT_MODEL=.*|LLAMA_CPP_DEFAULT_MODEL=$model_id|" .env
+        log_error ".env file not found at: $ai_stack_dir/.env"
+        return 1
     fi
 
     log_info "Updated .env with model: $model_id"
 
     # Deploy stack
-    log_info "Deploying AI-Optimizer stack..."
-    docker compose -f docker-compose.new.yml up -d
+    log_info "Deploying AI stack with $compose_cmd..."
+    if $compose_cmd up -d 2>&1 | tee /tmp/ai-stack-deploy.log; then
+        log_success "AI stack deployment initiated"
+        log_info "Model download may take 10-45 minutes depending on model size"
 
-    log_success "AI-Optimizer deployment initiated"
-    log_info "Model download may take 10-45 minutes depending on model size"
-    log_info "Monitor progress: docker logs -f llama-cpp"
+        # Provide correct monitoring commands based on runtime
+        local container_cmd="podman"
+        if [[ "$compose_cmd" == *"docker"* ]]; then
+            container_cmd="docker"
+        fi
+        log_info "Monitor progress: $container_cmd logs -f local-ai-llama-cpp"
+        log_info "Check status: $container_cmd ps"
+    else
+        log_error "Failed to deploy AI stack. Check logs at: /tmp/ai-stack-deploy.log"
+        return 1
+    fi
 
     return 0
 }
@@ -654,6 +748,7 @@ if [ "$AI_ENABLED" != "false" ]; then
     export -f ai_chat
     export -f ai_interactive_help
     export -f ai_deploy_llama_cpp
+    export -f get_model_filename_from_id
     export -f detect_gpu_vram
     export -f detect_gpu_model
 fi

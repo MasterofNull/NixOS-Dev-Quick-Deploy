@@ -38,7 +38,7 @@ NixOS-Dev-Quick-Deploy/                    # Single unified repository
 │   ├── ai-stack-core.sh                   # NEW: Core AI stack functions (merged from ai-optimizer.sh)
 │   ├── ai-stack-models.sh                 # NEW: Model selection/management
 │   ├── ai-stack-deployment.sh             # NEW: Deployment automation
-│   └── ai-stack-health.sh                 # NEW: Health checks
+│   └── ai-stack-health.sh                 # Health checks (script entrypoint)
 │
 ├── phases/                                # Deployment phases
 │   ├── phase-01-system-initialization.sh
@@ -109,7 +109,7 @@ NixOS-Dev-Quick-Deploy/                    # Single unified repository
 │
 ├── scripts/                               # Utility scripts
 │   ├── system-health-check.sh
-│   ├── ai-stack-manage.sh                 # AI stack management CLI (keep)
+│   ├── hybrid-ai-stack.sh                 # AI stack management CLI (keep)
 │   ├── ai-stack-migrate.sh                # NEW: Migrate from old AI-Optimizer install
 │   ├── ai-stack-sync-docs.sh              # NEW: Sync docs to AIDB
 │   ├── comprehensive-mcp-search.py        # Keep (useful for all users)
@@ -258,8 +258,8 @@ migrate_from_standalone() {
     echo "✓ Migration complete!"
     echo ""
     echo "Next steps:"
-    echo "  1. Start AI stack: ./scripts/ai-stack-manage.sh up"
-    echo "  2. Verify health: ./scripts/ai-stack-manage.sh status"
+    echo "  1. Start AI stack: ./scripts/hybrid-ai-stack.sh up"
+    echo "  2. Verify health: ./scripts/hybrid-ai-stack.sh status"
     echo "  3. Old backup: $OLD_AI_OPTIMIZER_DIR.backup-*"
     echo ""
 }
@@ -302,7 +302,7 @@ phase_09_ai_stack_deployment() {
     source "${SCRIPT_DIR}/lib/ai-stack-core.sh"
     source "${SCRIPT_DIR}/lib/ai-stack-models.sh"
     source "${SCRIPT_DIR}/lib/ai-stack-deployment.sh"
-    source "${SCRIPT_DIR}/lib/ai-stack-health.sh"
+    "${SCRIPT_DIR}/scripts/ai-stack-health.sh"
 
     # 1. Check prerequisites
     if ! check_ai_stack_prerequisites; then
@@ -438,10 +438,10 @@ Services running:
   • Redis Insight:    http://localhost:5540
 
 Management:
-  • Status:   ./scripts/ai-stack-manage.sh status
-  • Logs:     ./scripts/ai-stack-manage.sh logs
-  • Stop:     ./scripts/ai-stack-manage.sh down
-  • Restart:  ./scripts/ai-stack-manage.sh restart
+  • Status:   ./scripts/hybrid-ai-stack.sh status
+  • Logs:     ./scripts/hybrid-ai-stack.sh logs
+  • Stop:     ./scripts/hybrid-ai-stack.sh down
+  • Restart:  ./scripts/hybrid-ai-stack.sh restart
 
 Documentation:
   • Architecture: docs/ARCHITECTURE.md
@@ -465,7 +465,7 @@ EOF
 
 ### 3.3 Stack Management CLI (Updated)
 
-**File: `scripts/ai-stack-manage.sh`**
+**File: `scripts/hybrid-ai-stack.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -577,7 +577,7 @@ cmd_sync() {
 }
 
 cmd_health() {
-    local health_script="$SCRIPT_DIR/lib/ai-stack-health.sh"
+    local health_script="$SCRIPT_DIR/scripts/ai-stack-health.sh"
     if [[ -f "$health_script" ]]; then
         source "$health_script"
         run_ai_stack_health_check --verbose
@@ -694,7 +694,7 @@ main "$@"
 - [ ] Merge `lib/ai-optimizer.sh` → `lib/ai-stack-core.sh`
 - [ ] Merge `lib/ai-optimizer-hooks.sh` → `lib/ai-stack-deployment.sh`
 - [ ] Create `lib/ai-stack-models.sh` (model management)
-- [ ] Create `lib/ai-stack-health.sh` (health checks)
+- [ ] Create `scripts/ai-stack-health.sh` (health checks)
 - [ ] Update all library cross-references
 
 ### Phase 3: Phase 9 Rewrite (Week 2)
@@ -704,7 +704,7 @@ main "$@"
 - [ ] Update main orchestrator to call new Phase 9
 
 ### Phase 4: Scripts Update (Week 2)
-- [ ] Update `scripts/ai-stack-manage.sh` for new structure
+- [ ] Update `scripts/hybrid-ai-stack.sh` for new structure
 - [ ] Create `scripts/ai-stack-migrate.sh` (migration tool)
 - [ ] Create `scripts/ai-stack-sync-docs.sh`
 - [ ] Update `scripts/bootstrap_aidb_data.sh`
@@ -746,8 +746,8 @@ git pull origin main
 ./scripts/ai-stack-migrate.sh
 
 # 3. Verify migration
-./scripts/ai-stack-manage.sh status
-./scripts/ai-stack-manage.sh health
+./scripts/hybrid-ai-stack.sh status
+./scripts/ai-stack-health.sh
 
 # 4. (Optional) Remove old backup after verification
 rm -rf ~/Documents/AI-Optimizer.backup-*
@@ -764,7 +764,7 @@ git pull origin main
 ./scripts/ai-stack-migrate.sh --from-local-ai-stack
 
 # 3. Verify migration
-./scripts/ai-stack-manage.sh status
+./scripts/hybrid-ai-stack.sh status
 ```
 
 ### 6.3 Fresh Installation (New Users)
@@ -794,8 +794,8 @@ nix flake update
 ./nixos-quick-deploy.sh
 
 # Update AI stack only
-./scripts/ai-stack-manage.sh down
-./scripts/ai-stack-manage.sh up
+./scripts/hybrid-ai-stack.sh down
+./scripts/hybrid-ai-stack.sh up
 ```
 
 ### 7.2 Adding New Models
@@ -806,7 +806,7 @@ vim ~/.config/nixos-ai-stack/.env
 # Change LLAMA_CPP_DEFAULT_MODEL=...
 
 # Restart llama.cpp
-./scripts/ai-stack-manage.sh restart
+./scripts/hybrid-ai-stack.sh restart
 ```
 
 ### 7.3 Adding New MCP Servers
@@ -815,7 +815,7 @@ vim ~/.config/nixos-ai-stack/.env
 # Add server code to ai-stack/mcp-servers/new-server/
 # Update docker-compose.yml
 # Restart stack
-./scripts/ai-stack-manage.sh restart
+./scripts/hybrid-ai-stack.sh restart
 ```
 
 ---

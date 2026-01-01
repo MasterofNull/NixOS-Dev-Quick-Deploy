@@ -93,8 +93,8 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRAT
 
 ```bash
 ./nixos-quick-deploy.sh --with-ai-stack  # Deploy everything
-./scripts/ai-stack-manage.sh up         # Start AI services
-./scripts/ai-stack-manage.sh health     # Check health
+./scripts/hybrid-ai-stack.sh up         # Start AI services
+./scripts/ai-stack-health.sh            # Check health
 ```
 
 ### Pre-Installed Development Tools
@@ -378,22 +378,22 @@ source ~/.zshrc  # Or: exec zsh
 
 ### AI Stack Management
 
-The local AI stack (llama.cpp, Open WebUI, Qdrant, MindsDB, AIDB) runs via the unified `ai-stack-manage.sh` helper in this repo. Use it to control the stack:
+The local AI stack (llama.cpp, Open WebUI, Qdrant, MindsDB, AIDB) runs via the canonical `hybrid-ai-stack.sh` helper in this repo. Use it to control the stack (wrappers like `ai-stack-manage.sh` and `podman-ai-stack.sh` delegate here):
 
 ```bash
 # Start or stop the entire stack
-./scripts/ai-stack-manage.sh up
-./scripts/ai-stack-manage.sh down
+./scripts/hybrid-ai-stack.sh up
+./scripts/hybrid-ai-stack.sh down
 
 # Check status or tail logs
-./scripts/ai-stack-manage.sh status
-./scripts/ai-stack-manage.sh logs
+./scripts/hybrid-ai-stack.sh status
+./scripts/hybrid-ai-stack.sh logs
 
 # Restart if you change ai-optimizer configs
-./scripts/ai-stack-manage.sh restart
+./scripts/hybrid-ai-stack.sh restart
 ```
 
-During NixOS Quick Deploy, Phase 5 prefetches every Podman image and Phase 6 downloads the default llama.cpp GGUF models (when that backend is selected and a Hugging Face token is present), so the first `ai-stack-manage.sh up` no longer stalls on multi-gigabyte downloads.
+During NixOS Quick Deploy, Phase 5 prefetches every Podman image and Phase 6 downloads the default llama.cpp GGUF models (when that backend is selected and a Hugging Face token is present), so the first `hybrid-ai-stack.sh up` no longer stalls on multi-gigabyte downloads.
 
 All other AI orchestration (vLLM endpoints, shared volumes, etc.) is managed by the ai-optimizer repository layered on top of this stack.
 
@@ -1291,10 +1291,10 @@ lg     # lazygit
 
 ```bash
 # Start all AI services (local stack)
-./scripts/ai-stack-manage.sh up
+./scripts/hybrid-ai-stack.sh up
 
 # Check status
-./scripts/ai-stack-manage.sh status
+./scripts/hybrid-ai-stack.sh status
 
 # Access Open WebUI at http://localhost:3001
 # Access llama.cpp at http://localhost:8080
@@ -1346,14 +1346,14 @@ flatpak update
 
 ### AI Runtime Orchestration
 
-- `./scripts/ai-stack-manage.sh up|down|restart` &mdash; manage the local AI stack containers.
-- `./scripts/ai-stack-manage.sh status` &mdash; show container status.
-- `./scripts/ai-stack-manage.sh logs` &mdash; stream stack logs.
-- `./scripts/ai-stack-manage.sh health` &mdash; run AI stack health checks.
+- `./scripts/hybrid-ai-stack.sh up|down|restart` &mdash; manage the local AI stack containers.
+- `./scripts/hybrid-ai-stack.sh status` &mdash; show container status.
+- `./scripts/hybrid-ai-stack.sh logs` &mdash; stream stack logs.
+- `./scripts/ai-stack-health.sh` &mdash; run AI stack health checks.
 
 ### Diagnostics & Recovery
 
-- `./scripts/ai-stack-manage.sh restart` &mdash; bounce the AI stack after changing models or GPU drivers.
+- `./scripts/hybrid-ai-stack.sh restart` &mdash; bounce the AI stack after changing models or GPU drivers.
 - `podman system reset --force` / `sudo podman system reset --force` &mdash; manual fallback for storage corruption (the deployer now attempts this automatically when stale overlay layers are detected).
 - `podman logs -f <container>` &mdash; detailed logs for the rootless containers.
 

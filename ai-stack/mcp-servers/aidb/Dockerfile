@@ -20,6 +20,10 @@ COPY config/config.yaml /app/config/config.yaml
 
 RUN mkdir -p /data /app/.mcp_cache
 
+# Make startup script executable
+RUN chmod +x /app/start_with_discovery.sh
+
 EXPOSE 8091
 
-CMD ["python", "server.py"]
+# Use startup script that launches both server and tool discovery daemon
+CMD ["/app/start_with_discovery.sh"]

@@ -429,7 +429,32 @@ persist_llm_backend_preferences() {
 
 persist_llm_models_preferences() {
     safe_mkdir "$DEPLOYMENT_PREFERENCES_DIR" || return 1
-    printf 'LLM_MODELS=%s\n' "${LLM_MODELS:-}" >"$LLM_MODELS_PREFERENCE_FILE"
+    local resolved_model="${LLAMA_CPP_DEFAULT_MODEL:-}"
+    if [[ -z "$resolved_model" && -f "$LLM_MODELS_PREFERENCE_FILE" ]]; then
+        resolved_model=$(awk -F'=' '/^LLAMA_CPP_DEFAULT_MODEL=/{print $2}' "$LLM_MODELS_PREFERENCE_FILE" 2>/dev/null | tail -n1 | tr -d '\r')
+    fi
+    {
+        printf 'LLM_MODELS=%s\n' "${LLM_MODELS:-}"
+        if [[ -n "$resolved_model" ]]; then
+            printf 'LLAMA_CPP_DEFAULT_MODEL=%s\n' "$resolved_model"
+        fi
+    } >"$LLM_MODELS_PREFERENCE_FILE"
+}
+
+persist_llama_cpp_model_preferences() {
+    if [[ -z "${LLM_MODELS_PREFERENCE_FILE:-}" ]]; then
+        return 0
+    fi
+    safe_mkdir "$(dirname "$LLM_MODELS_PREFERENCE_FILE")" || return 1
+    if [[ -f "$LLM_MODELS_PREFERENCE_FILE" ]] && \
+        grep -q "^LLAMA_CPP_DEFAULT_MODEL=" "$LLM_MODELS_PREFERENCE_FILE" 2>/dev/null; then
+        sed -i "s|^LLAMA_CPP_DEFAULT_MODEL=.*|LLAMA_CPP_DEFAULT_MODEL=${LLAMA_CPP_DEFAULT_MODEL:-}|" \
+            "$LLM_MODELS_PREFERENCE_FILE" 2>/dev/null || true
+        return 0
+    fi
+    if [[ -n "${LLAMA_CPP_DEFAULT_MODEL:-}" ]]; then
+        printf 'LLAMA_CPP_DEFAULT_MODEL=%s\n' "${LLAMA_CPP_DEFAULT_MODEL}" >>"$LLM_MODELS_PREFERENCE_FILE"
+    fi
 }
 
 persist_huggingface_token_preferences() {
@@ -567,8 +592,12 @@ prompt_huggingface_token() {
         echo ""
         print_section "LLM Backend Selection"
         print_info "Using llama.cpp backend (served by the containerized server)."
-        LLM_BACKEND="llama_cpp"
-        print_success "Selected: llama_cpp (containerized server)"
+        if declare -p LLM_BACKEND 2>/dev/null | grep -q 'declare -r'; then
+            print_warning "LLM_BACKEND is readonly; keeping current value: ${LLM_BACKEND:-unknown}"
+        else
+            LLM_BACKEND="llama_cpp"
+        fi
+        print_success "Selected: ${LLM_BACKEND:-llama_cpp} (containerized server)"
         export LLM_BACKEND
         
         # Model configuration (choose embedding + coder)
@@ -602,9 +631,9 @@ prompt_huggingface_token() {
         print_info "Default coder model: ${default_coder}"
         print_info "Options:"
         print_info "  1) qwen2.5-coder (default)"
-        print_info "  2) deepseek-coder-v2"
-        print_info "  3) starcoder2"
-        print_info "  4) codestral"
+        print_info "  2) qwen2.5-coder-14b"
+        print_info "  3) deepseek-coder-v2-lite"
+        print_info "  4) deepseek-coder-v2"
 
         local coder_choice="1"
         if declare -F prompt_user >/dev/null 2>&1; then
@@ -612,13 +641,36 @@ prompt_huggingface_token() {
         fi
 
         case "${coder_choice}" in
-            2) CODER_MODEL="deepseek-coder-v2" ;;
-            3) CODER_MODEL="starcoder2" ;;
-            4) CODER_MODEL="codestral" ;;
+            2) CODER_MODEL="qwen2.5-coder-14b" ;;
+            3) CODER_MODEL="deepseek-coder-v2-lite" ;;
+            4) CODER_MODEL="deepseek-coder-v2" ;;
             *) CODER_MODEL="${default_coder}" ;;
         esac
         export CODER_MODEL
         print_success "Coder model: ${CODER_MODEL}"
+
+        local coder_model_id=""
+        case "${CODER_MODEL}" in
+            qwen2.5-coder|qwen2.5-coder-7b|qwen2.5-coder-7b-instruct)
+                coder_model_id="Qwen/Qwen2.5-Coder-7B-Instruct"
+                ;;
+            qwen2.5-coder-14b|qwen2.5-coder-14b-instruct)
+                coder_model_id="Qwen/Qwen2.5-Coder-14B-Instruct"
+                ;;
+            deepseek-coder-v2-lite|deepseek-lite)
+                coder_model_id="deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
+                ;;
+            deepseek-coder-v2|deepseek-v2)
+                coder_model_id="deepseek-ai/DeepSeek-Coder-V2-Instruct"
+                ;;
+        esac
+
+        if [[ -n "$coder_model_id" ]]; then
+            LLAMA_CPP_DEFAULT_MODEL="$coder_model_id"
+            export LLAMA_CPP_DEFAULT_MODEL
+            persist_llama_cpp_model_preferences || true
+            print_success "llama.cpp model: ${LLAMA_CPP_DEFAULT_MODEL}"
+        fi
 
         LLM_MODELS="${CODER_MODEL},${EMBEDDING_MODEL}"
         export LLM_MODELS

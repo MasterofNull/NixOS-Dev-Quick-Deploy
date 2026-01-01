@@ -11,4 +11,13 @@ httpx>=0.24.0
 # Data Validation
 pydantic>=2.0.0
 
+# Logging
+structlog>=23.1.0
+
+# Vector Database (optional)
+qdrant-client>=1.7.0
+
+# Async support
+aiohttp>=3.9.0
+
 # Python Standard Library (no additional deps needed)

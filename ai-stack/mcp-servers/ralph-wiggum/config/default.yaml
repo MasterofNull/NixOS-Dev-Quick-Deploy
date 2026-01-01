@@ -1,0 +1,64 @@
+# Ralph Wiggum Loop Configuration
+# Version: 1.0.0 (December 2025)
+
+# Server configuration
+server:
+  port: 8098
+  host: 0.0.0.0
+  workers: 4
+
+# Loop engine configuration
+loop:
+  enabled: true
+  exit_code_block: 2  # Exit code that triggers loop continuation
+  max_iterations: 0   # 0 = infinite
+  context_recovery: true
+  git_integration: true
+
+# Agent backends
+agents:
+  backends:
+    - aider
+    - continue
+    - goose
+    - autogpt
+    - langchain
+  default: aider
+
+# Human-in-the-loop controls
+approval:
+  enabled: false
+  threshold: high  # low, medium, high
+  timeout: 300     # 5 minutes
+
+# Telemetry and audit
+telemetry:
+  enabled: true
+  path: /data/telemetry/ralph-events.jsonl
+
+# State management
+state:
+  file: /data/ralph-state.json
+  cleanup_days: 7
+
+# Resource limits
+resources:
+  max_iterations_per_task: 100
+  max_concurrent_tasks: 10
+  max_cpu_percent: 80.0
+  max_memory_mb: 8192
+
+# Hook configuration
+hooks:
+  stop:
+    enabled: true
+  recovery:
+    enabled: true
+    git_checkpoints: true
+  approval:
+    enabled: false
+    threshold: high
+  telemetry:
+    enabled: true
+  resource_limit:
+    enabled: true

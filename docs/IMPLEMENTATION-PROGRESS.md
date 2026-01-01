@@ -190,16 +190,16 @@
 - [x] Create `docs/ARCHITECTURE.md` mapping layers → directories and files.
 - [x] Crosslink `SYSTEM_PROJECT_DESIGN.md`, `docs/ARCHITECTURE.md`, and `docs/DEVELOPMENT-ROADMAP.md` from `README.md`.
 - [x] Align `config/`, `lib/`, `phases/`, and `scripts/` structure with the roadmap.
-- [x] Introduce a unified AI stack entrypoint script (`scripts/ai-stack-manage.sh`).
+- [x] Introduce a unified AI stack entrypoint script (`scripts/hybrid-ai-stack.sh`).
 - [ ] Standardize use of logging, error handling, and state-management helpers across scripts and phases.
 
 ### Changes (2025-12-05)
 
-- Added `scripts/ai-stack-manage.sh`:
+- Added `scripts/hybrid-ai-stack.sh`:
   - Provides a thin CLI wrapper over `docker compose` / `podman-compose` in `\$HOME/Documents/local-ai-stack`.
   - Supports `up`, `down`, `restart`, `status`, `logs`, and `sync` subcommands.
   - Delegates doc syncing to existing `scripts/sync_docs_to_ai.sh`.
-- Updated `docs/DEVELOPMENT-ROADMAP.md` to reference `scripts/ai-stack-manage.sh` as the canonical AI stack CLI wrapper.
+- Updated `docs/DEVELOPMENT-ROADMAP.md` to reference `scripts/hybrid-ai-stack.sh` as the canonical AI stack CLI wrapper.
  - Added `scripts/run-all-checks.sh` as an aggregate runner for `system-health-check.sh`, `test_services.sh`, and `test_real_world_workflows.sh`, and documented it in `README.md`.
 - Introduced `lib/flatpak.sh` and moved Flatpak architecture/profile pruning logic out of `config/variables.sh` into this dedicated library, wiring it into `lib/tools.sh` (`select_flatpak_profile` and `flatpak_query_application_support`).
 - Updated AI integration libraries (`lib/ai-optimizer.sh`, `lib/ai-optimizer-hooks.sh`) to avoid modifying global shell options so they behave as pure libraries when sourced.
@@ -251,10 +251,10 @@
 ### [local-ai-stack] Local AI Starter & Trimmed Stack
 
 - **Tooling**
-  - Implemented `scripts/ai-stack-manage.sh` as the canonical CLI for the trimmed local AI stack created by `scripts/local-ai-starter.sh`.
+  - Implemented `scripts/hybrid-ai-stack.sh` as the canonical CLI for the trimmed local AI stack created by `scripts/local-ai-starter.sh`.
     - Subcommands: `up`, `down`, `restart`, `status`, `logs [service]`, `sync`.
   - Updated `README.md` and `docs/LOCAL-AI-STARTER.md` to:
-    - Recommend `./scripts/ai-stack-manage.sh` for day-to-day stack operations.
+    - Recommend `./scripts/hybrid-ai-stack.sh` for day-to-day stack operations.
     - Keep raw `docker compose` / `podman-compose` commands available as advanced options.
 - **Integration with Docs & AIDB**
   - Wired `ai-stack-manage.sh sync` to reuse `scripts/sync_docs_to_ai.sh`, ensuring local stacks can easily keep AIDB documentation up to date.
@@ -270,7 +270,7 @@
   - Updated optional Phase 9 scripts (`phases/phase-09-ai-optimizer-prep.sh` and `phases/phase-09-ai-model-deployment.sh`) to drop top-level `set -euo pipefail` and to treat `source` of AI-Optimizer libraries as an explicit error-checked step, so they behave like well-behaved modules when sourced from `nixos-quick-deploy.sh`.
 - **Documentation & AIDB Sync**
   - Updated `docs/AI_INTEGRATION.md` to:
-    - Highlight `scripts/ai-stack-manage.sh` as the recommended interface for starting, checking, and syncing the local AI/AIDB stack.
+    - Highlight `scripts/hybrid-ai-stack.sh` as the recommended interface for starting, checking, and syncing the local AI/AIDB stack.
   - Re-ran `scripts/sync_docs_to_ai.sh` after structural changes so AIDB now contains:
     - Architecture & roadmap docs.
     - Local AI starter and AI integration details.

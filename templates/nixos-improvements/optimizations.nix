@@ -41,15 +41,16 @@
     "zswap.zpool=z3fold"         # Memory pool allocator
   ];
 
-  # Reduce swappiness for desktop workstation
+  # I/O Scheduler optimization
   services.udev.extraRules = ''
-    # NVMe drives: Use 'none' scheduler (native NVMe queuing)
-    ACTION=="add|change", KERNEL=="nvme[0-9]*", ATTR{queue/scheduler}="none"
-    ACTION=="add|change", KERNEL=="nvme[0-9]*", ATTR{queue/nr_requests}="1024"
-    ACTION=="add|change", KERNEL=="nvme[0-9]*", ATTR{queue/read_ahead_kb}="256"
+    # NVMe drives: Use 'none' scheduler (native NVMe queuing is superior)
+    ACTION=="add|change", KERNEL=="nvme[0-9]n[0-9]", ATTR{queue/scheduler}="none"
+    ACTION=="add|change", KERNEL=="nvme[0-9]n[0-9]", ATTR{queue/read_ahead_kb}="256"
+    # Note: nr_requests doesn't apply to NVMe - it uses hw_queue_depth instead
 
     # SATA/SAS SSDs: Use 'mq-deadline' for better latency
     ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="mq-deadline"
+    ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="0", ATTR{queue/nr_requests}="1024"
 
     # HDDs: Use 'bfq' for fairness
     ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="1", ATTR{queue/scheduler}="bfq"

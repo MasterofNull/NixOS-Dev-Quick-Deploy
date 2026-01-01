@@ -71,7 +71,7 @@ fi
 1. Prompt user for AI deployment (optional)
 2. Auto-detect GPU and VRAM
 3. Display interactive model selection menu
-4. Save preferences to `~/.cache/nixos-quick-deploy/preferences/ai-model.env`
+4. Save preferences to `~/.cache/nixos-quick-deploy/preferences/llm-models.env`
 5. Deploy AI-Optimizer stack with selected model
 6. Monitor model download progress
 7. Verify deployment health
@@ -476,7 +476,7 @@ export VLLM_GPU_COUNT=1
 After Phase 9 completes:
 
 ```bash
-cat ~/.cache/nixos-quick-deploy/preferences/ai-model.env
+cat ~/.cache/nixos-quick-deploy/preferences/llm-models.env
 
 # Output:
 VLLM_MODEL=Qwen/Qwen2.5-Coder-7B-Instruct

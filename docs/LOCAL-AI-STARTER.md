@@ -85,8 +85,8 @@ If a dependency is missing, the script reports the exact package to install.
    - Recommended wrapper:
      ```bash
      cd ~/Documents/NixOS-Dev-Quick-Deploy
-     ./scripts/ai-stack-manage.sh up
-     ./scripts/ai-stack-manage.sh status
+     ./scripts/hybrid-ai-stack.sh up
+     ./scripts/hybrid-ai-stack.sh status
      ```
    - Or directly via Compose:
      ```bash

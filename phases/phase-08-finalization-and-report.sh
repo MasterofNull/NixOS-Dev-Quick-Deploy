@@ -196,24 +196,11 @@ phase_08_finalization_and_report() {
         print_info "Architecture: Hybrid Coordinator + Learning System (Context Augmentation enabled)."
         print_info "Action: Run 'podman-ai-stack up' to activate the local inference and vector database."
         print_info "Use 'podman-ai-stack status' or ai-servicectl stack status for health checks when ready."
-
-        local compose_file="$SCRIPT_DIR/ai-stack/compose/docker-compose.yml"
-        local clean_restart_script="$SCRIPT_DIR/scripts/compose-clean-restart.sh"
-        if command -v podman-compose >/dev/null 2>&1; then
-            if ! curl -sf --max-time 3 http://localhost:8091/health >/dev/null 2>&1; then
-                print_info "AIDB not responding; attempting to start AIDB service..."
-                if [[ -x "$clean_restart_script" ]]; then
-                    if "$clean_restart_script" aidb >/dev/null 2>&1; then
-                        print_success "AIDB clean restart triggered."
-                    else
-                        print_warning "Unable to clean restart AIDB. Run: $clean_restart_script aidb"
-                    fi
-                elif podman-compose -f "$compose_file" up -d --build aidb >/dev/null 2>&1; then
-                    print_success "AIDB start triggered via podman-compose."
-                else
-                    print_warning "Unable to start AIDB via podman-compose. Run: podman-compose -f $compose_file up -d --build aidb"
-                fi
-            fi
+        print_info "If AI deployment is enabled, the stack will be started after this phase."
+        if curl -sf --max-time 3 http://localhost:8091/health >/dev/null 2>&1; then
+            print_success "AIDB is responding."
+        else
+            print_info "AIDB not responding yet; it will come online after you start the stack."
         fi
     else
         print_info "Local AI stack disabled; skipping."
@@ -304,12 +291,22 @@ phase_08_finalization_and_report() {
         local ai_data_source="${HOME}/.local/share/nixos-ai-stack/"
         if [[ -d "$ai_data_source" ]]; then
             local backup_dest_dir="${BACKUP_ROOT}/ai-stack-backup-$(date +%Y%m%d_%H%M%S)"
+            local backup_log="${LOG_DIR:-$HOME/.cache/nixos-quick-deploy/logs}/ai-stack-backup-$(date +%Y%m%d_%H%M%S).log"
             print_info "Backing up AI stack data from $ai_data_source..."
             mkdir -p "$backup_dest_dir"
-            if cp -a "$ai_data_source" "$backup_dest_dir/"; then
-                print_success "AI stack data successfully backed up to $backup_dest_dir"
+            if command -v podman >/dev/null 2>&1; then
+                if podman unshare tar -C "$ai_data_source" -cf "$backup_dest_dir/ai-stack-data.tar" . >"$backup_log" 2>&1; then
+                    print_success "AI stack data successfully backed up to $backup_dest_dir"
+                    print_info "Backup archive: $backup_dest_dir/ai-stack-data.tar"
+                else
+                    print_error "Failed to back up AI stack data. See $backup_log"
+                fi
             else
-                print_error "Failed to back up AI stack data."
+                if cp -a "$ai_data_source" "$backup_dest_dir/" >"$backup_log" 2>&1; then
+                    print_success "AI stack data successfully backed up to $backup_dest_dir"
+                else
+                    print_error "Failed to back up AI stack data. See $backup_log"
+                fi
             fi
         else
             print_warning "AI stack data directory not found at $ai_data_source. Skipping backup."

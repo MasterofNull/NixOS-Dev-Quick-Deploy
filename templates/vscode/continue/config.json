@@ -1,0 +1,241 @@
+{
+  "models": [
+    {
+      "title": "Qwen2.5-Coder-7B-Instruct (Local)",
+      "provider": "openai",
+      "model": "Qwen/Qwen2.5-Coder-7B-Instruct",
+      "apiKey": "local-llama-cpp",
+      "apiBase": "http://localhost:8080/v1",
+      "useLegacyCompletionsEndpoint": false,
+      "contextLength": 8192,
+      "maxTokens": 4096,
+      "temperature": 0.2,
+      "topP": 0.95,
+      "topK": 40,
+      "presencePenalty": 0.0,
+      "frequencyPenalty": 0.0,
+      "completionOptions": {
+        "maxTokens": 1024,
+        "temperature": 0.1,
+        "stop": ["\n\n", "```"]
+      }
+    },
+    {
+      "title": "Qwen2.5-Coder-14B-Instruct (Local - High Quality)",
+      "provider": "openai",
+      "model": "Qwen/Qwen2.5-Coder-14B-Instruct",
+      "apiKey": "local-llama-cpp",
+      "apiBase": "http://localhost:8080/v1",
+      "contextLength": 8192,
+      "maxTokens": 4096
+    },
+    {
+      "title": "Hybrid Coordinator (Smart Routing)",
+      "provider": "openai",
+      "model": "auto-route",
+      "apiKey": "hybrid-coordinator",
+      "apiBase": "http://localhost:8092/v1",
+      "contextLength": 8192,
+      "maxTokens": 4096,
+      "description": "Intelligent routing: simple queries local, complex queries remote"
+    }
+  ],
+  "customCommands": [
+    {
+      "name": "local",
+      "prompt": "Use only local llama.cpp inference for this request. Model: Qwen2.5-Coder-7B-Instruct",
+      "description": "Force local-only inference"
+    },
+    {
+      "name": "hybrid",
+      "prompt": "Route this request through hybrid coordinator for smart local/remote decision",
+      "description": "Use hybrid routing"
+    },
+    {
+      "name": "review",
+      "prompt": "Review the following code for bugs, performance issues, and best practices:\n\n{{{ input }}}",
+      "description": "Code review"
+    },
+    {
+      "name": "optimize",
+      "prompt": "Optimize the following code for better performance and readability:\n\n{{{ input }}}",
+      "description": "Optimize code"
+    },
+    {
+      "name": "test",
+      "prompt": "Generate comprehensive unit tests for:\n\n{{{ input }}}",
+      "description": "Generate tests"
+    },
+    {
+      "name": "doc",
+      "prompt": "Generate detailed documentation for:\n\n{{{ input }}}",
+      "description": "Generate documentation"
+    },
+    {
+      "name": "explain",
+      "prompt": "Explain how this code works in detail:\n\n{{{ input }}}",
+      "description": "Explain code"
+    },
+    {
+      "name": "fix",
+      "prompt": "Fix any errors or issues in this code:\n\n{{{ input }}}",
+      "description": "Fix errors"
+    },
+    {
+      "name": "refactor",
+      "prompt": "Refactor this code to be more maintainable and follow best practices:\n\n{{{ input }}}",
+      "description": "Refactor code"
+    },
+    {
+      "name": "aidb",
+      "prompt": "Search AIDB knowledge base for information about: {{{ input }}}",
+      "description": "Search AIDB"
+    }
+  ],
+  "contextProviders": [
+    {
+      "name": "code",
+      "params": {
+        "maxChunkSize": 1024
+      }
+    },
+    {
+      "name": "diff",
+      "params": {}
+    },
+    {
+      "name": "terminal",
+      "params": {}
+    },
+    {
+      "name": "problems",
+      "params": {}
+    },
+    {
+      "name": "folder",
+      "params": {}
+    },
+    {
+      "name": "codebase",
+      "params": {
+        "nRetrieve": 10,
+        "nFinal": 5
+      }
+    },
+    {
+      "name": "url",
+      "params": {
+        "preset": "documentation"
+      }
+    },
+    {
+      "name": "search",
+      "params": {}
+    },
+    {
+      "name": "tree",
+      "params": {}
+    },
+    {
+      "name": "http",
+      "params": {
+        "url": "http://localhost:8091/context",
+        "description": "AIDB context provider",
+        "headers": {
+          "Content-Type": "application/json"
+        }
+      }
+    }
+  ],
+  "slashCommands": [
+    {
+      "name": "edit",
+      "description": "Edit highlighted code"
+    },
+    {
+      "name": "comment",
+      "description": "Add comments to code"
+    },
+    {
+      "name": "share",
+      "description": "Share code snippet"
+    },
+    {
+      "name": "cmd",
+      "description": "Generate shell command"
+    },
+    {
+      "name": "commit",
+      "description": "Generate git commit message"
+    }
+  ],
+  "tabAutocompleteModel": {
+    "title": "Tab Autocomplete (Local)",
+    "provider": "openai",
+    "model": "Qwen/Qwen2.5-Coder-7B-Instruct",
+    "apiKey": "local-llama-cpp",
+    "apiBase": "http://localhost:8080/v1",
+    "maxTokens": 256,
+    "temperature": 0.1
+  },
+  "tabAutocompleteOptions": {
+    "useCopyBuffer": false,
+    "maxPromptTokens": 1024,
+    "prefixPercentage": 0.5,
+    "maxSuffixPercentage": 0.25,
+    "debounceDelay": 250,
+    "multilineCompletions": "auto"
+  },
+  "embeddingsProvider": {
+    "provider": "huggingface",
+    "model": "nomic-embed-text",
+    "apiBase": "http://localhost:8080"
+  },
+  "reranker": {
+    "name": "local",
+    "params": {
+      "apiBase": "http://localhost:8080"
+    }
+  },
+  "allowAnonymousTelemetry": false,
+  "disableIndexing": false,
+  "disableSessionTitles": false,
+  "userToken": "",
+  "enableControlServerBeta": false,
+  "ui": {
+    "codeBlockToolbarPosition": "top",
+    "fontSize": 14,
+    "displayRawMarkdown": false,
+    "showChatScrollbar": false
+  },
+  "experimental": {
+    "modelRoles": {
+      "default": "Qwen2.5-Coder-7B-Instruct (Local)",
+      "summarize": "Qwen2.5-Coder-7B-Instruct (Local)",
+      "edit": "Qwen2.5-Coder-7B-Instruct (Local)",
+      "chat": "Qwen2.5-Coder-7B-Instruct (Local)"
+    }
+  },
+  "docs": [
+    {
+      "title": "NixOS Options",
+      "startUrl": "https://search.nixos.org/options",
+      "rootUrl": "https://search.nixos.org"
+    },
+    {
+      "title": "Nix Packages",
+      "startUrl": "https://search.nixos.org/packages",
+      "rootUrl": "https://search.nixos.org"
+    },
+    {
+      "title": "Home Manager Options",
+      "startUrl": "https://home-manager-options.extranix.com",
+      "rootUrl": "https://home-manager-options.extranix.com"
+    }
+  ],
+  "analytics": {
+    "type": "custom",
+    "url": "http://localhost:8091/telemetry/vscode/event",
+    "clientID": "continue-vscode"
+  }
+}
