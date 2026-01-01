@@ -9,7 +9,11 @@
 # ============================================================================
 
 phase_09_ai_optimizer_prep() {
-    log_phase_start 9 "AI-Optimizer System Preparation (Optional)"
+    if declare -F log_phase_start >/dev/null 2>&1; then
+        log_phase_start 9 "AI-Optimizer System Preparation (Optional)"
+    else
+        log_info "Phase 9: AI-Optimizer System Preparation (Optional)"
+    fi
 
     # Load integration hooks
     if [ -f "${SCRIPT_DIR}/lib/ai-optimizer-hooks.sh" ]; then

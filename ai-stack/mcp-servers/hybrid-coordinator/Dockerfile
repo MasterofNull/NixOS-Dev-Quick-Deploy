@@ -38,9 +38,13 @@ COPY --from=builder /root/.local /home/coordinator/.local
 COPY hybrid-coordinator/server.py .
 COPY hybrid-coordinator/coordinator.py .
 COPY hybrid-coordinator/federation_sync.py .
+COPY hybrid-coordinator/continuous_learning.py .
+COPY hybrid-coordinator/continuous_learning_daemon.py .
+COPY hybrid-coordinator/start_with_learning.sh .
 
-# Create data directories
+# Create data directories and set permissions
 RUN mkdir -p /data/telemetry /data/fine-tuning /data/collections && \
+    chmod +x /app/start_with_learning.sh && \
     chown -R coordinator:coordinator /data /app
 
 # Switch to app user
@@ -58,5 +62,5 @@ EXPOSE 8092
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8092/health || exit 1
 
-# Start server
-CMD ["python", "server.py"]
+# Start server with continuous learning daemon
+CMD ["/app/start_with_learning.sh"]

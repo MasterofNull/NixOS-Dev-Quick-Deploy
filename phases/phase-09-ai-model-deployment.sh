@@ -9,7 +9,11 @@
 # ============================================================================
 
 phase_09_ai_model_deployment() {
-    log_phase_start 9 "AI Model Deployment (Optional)"
+    if declare -F log_phase_start >/dev/null 2>&1; then
+        log_phase_start 9 "AI Model Deployment (Optional)"
+    else
+        log_info "Phase 9: AI Model Deployment (Optional)"
+    fi
 
     # Check if user wants AI capabilities
     if ! prompt_ai_deployment; then
@@ -43,8 +47,15 @@ phase_09_ai_model_deployment() {
         fi
     fi
 
-    # Interactive model selection
-    local selected_model=$(ai_select_model)
+    # Reuse the earlier model selection when available to avoid prompting twice.
+    local selected_model=""
+    selected_model=$(resolve_llama_cpp_model)
+
+    if [[ -n "$selected_model" ]]; then
+        log_info "Using previously selected model: $selected_model"
+    else
+        selected_model=$(ai_select_model)
+    fi
 
     if [ "$selected_model" = "SKIP" ]; then
         log_info "AI model deployment skipped by user"
@@ -52,10 +63,19 @@ phase_09_ai_model_deployment() {
         return 0
     fi
 
-    # Save selection to preferences
-    mkdir -p "${CACHE_DIR}/preferences"
-    echo "LLAMA_CPP_DEFAULT_MODEL=$selected_model" > "${CACHE_DIR}/preferences/ai-model.env"
-    echo "GPU_VRAM=$gpu_vram" >> "${CACHE_DIR}/preferences/ai-model.env"
+    # Save selection to preferences (consolidated with LLM models)
+    local pref_file="${LLM_MODELS_PREFERENCE_FILE:-${CACHE_DIR}/preferences/llm-models.env}"
+    mkdir -p "$(dirname "$pref_file")"
+    if grep -q "^LLAMA_CPP_DEFAULT_MODEL=" "$pref_file" 2>/dev/null; then
+        sed -i "s|^LLAMA_CPP_DEFAULT_MODEL=.*|LLAMA_CPP_DEFAULT_MODEL=$selected_model|" "$pref_file" 2>/dev/null || true
+    else
+        echo "LLAMA_CPP_DEFAULT_MODEL=$selected_model" >>"$pref_file"
+    fi
+    if grep -q "^GPU_VRAM=" "$pref_file" 2>/dev/null; then
+        sed -i "s|^GPU_VRAM=.*|GPU_VRAM=$gpu_vram|" "$pref_file" 2>/dev/null || true
+    else
+        echo "GPU_VRAM=$gpu_vram" >>"$pref_file"
+    fi
 
     # Pre-download recommended GGUF models
     log_info "Pre-downloading recommended GGUF models..."
@@ -87,11 +107,17 @@ phase_09_ai_model_deployment() {
         log_warning "Automated setup script not found, skipping hybrid learning setup"
     fi
 
-    # Deploy AI-Optimizer with selected model
-    log_info "Deploying AI-Optimizer with model: $selected_model"
+    # Deploy AI stack with selected model
+    log_info "Deploying AI stack with model: $selected_model"
 
-    if ai_deploy_llama_cpp "$selected_model" "$HOME/Documents/AI-Optimizer"; then
-        log_success "AI-Optimizer deployment initiated"
+    if ai_deploy_llama_cpp "$selected_model" "${SCRIPT_DIR}/ai-stack/compose"; then
+        log_success "AI stack deployment initiated"
+
+        # Detect container runtime for user instructions
+        local container_cmd="podman"
+        if command -v docker >/dev/null 2>&1 && systemctl is-active docker >/dev/null 2>&1; then
+            container_cmd="docker"
+        fi
 
         # Add monitoring instructions
         cat <<EOF
@@ -111,10 +137,10 @@ The first-time model download may take 10-45 minutes depending on:
   • HuggingFace server load
 
 Monitor Progress:
-  docker logs -f llama-cpp
+  $container_cmd logs -f local-ai-llama-cpp
 
 Check Status:
-  docker ps | grep llama-cpp
+  $container_cmd ps | grep llama-cpp
   curl http://localhost:8080/health
 
 System Dashboard:
@@ -161,7 +187,7 @@ EOF
         mark_phase_complete "phase-09-ai-model"
         return 0
     else
-        log_error "Failed to deploy AI-Optimizer"
+        log_error "Failed to deploy AI stack"
         return 1
     fi
 }
@@ -233,6 +259,69 @@ wait_for_llama_cpp_ready() {
     log_warning "Timed out waiting for llama.cpp. Model may still be downloading in background."
     log_info "Check progress: docker logs -f llama-cpp"
     return 1
+}
+
+resolve_llama_cpp_model() {
+    local model="${LLAMA_CPP_DEFAULT_MODEL:-}"
+    local pref_file="${LLM_MODELS_PREFERENCE_FILE:-}"
+    local legacy_pref="${CACHE_DIR:-$HOME/.cache/nixos-quick-deploy}/preferences/ai-model.env"
+
+    if [[ -z "$model" && -n "$pref_file" && -f "$pref_file" ]]; then
+        model=$(awk -F'=' '/^LLAMA_CPP_DEFAULT_MODEL=/{print $2}' "$pref_file" 2>/dev/null | tail -n1 | tr -d '\r')
+    fi
+
+    if [[ -z "$model" && -f "$legacy_pref" ]]; then
+        model=$(awk -F'=' '/^LLAMA_CPP_DEFAULT_MODEL=/{print $2}' "$legacy_pref" 2>/dev/null | tail -n1 | tr -d '\r')
+    fi
+
+    if [[ -z "$model" && -n "${CODER_MODEL:-}" ]]; then
+        model=$(map_coder_to_llama_model "$CODER_MODEL")
+    fi
+
+    if [[ -z "$model" && -n "${LLM_MODELS:-}" ]]; then
+        local coder="${LLM_MODELS%%,*}"
+        model=$(map_coder_to_llama_model "$coder")
+    fi
+
+    echo "$model"
+}
+
+map_coder_to_llama_model() {
+    local coder="${1:-}"
+
+    if [[ -z "$coder" ]]; then
+        echo ""
+        return 0
+    fi
+
+    if [[ "$coder" == */* ]]; then
+        echo "$coder"
+        return 0
+    fi
+
+    case "$coder" in
+        qwen2.5-coder|qwen2.5-coder-7b|qwen2.5-coder-7b-instruct)
+            echo "Qwen/Qwen2.5-Coder-7B-Instruct"
+            ;;
+        qwen2.5-coder-14b|qwen2.5-coder-14b-instruct)
+            echo "Qwen/Qwen2.5-Coder-14B-Instruct"
+            ;;
+        deepseek-coder-v2-lite|deepseek-lite)
+            echo "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
+            ;;
+        deepseek-coder-v2|deepseek-v2)
+            echo "deepseek-ai/DeepSeek-Coder-V2-Instruct"
+            ;;
+        phi-mini|phi-3-mini)
+            echo "microsoft/Phi-3-mini-4k-instruct"
+            ;;
+        codellama-13b)
+            echo "codellama/CodeLlama-13b-Instruct-hf"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
 }
 
 # ============================================================================

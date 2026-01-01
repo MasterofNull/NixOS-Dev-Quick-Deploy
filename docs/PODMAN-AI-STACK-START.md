@@ -1,8 +1,9 @@
 # Starting the Podman AI Stack
 
-> ⚠️ **Legacy doc:** The current stack uses `./scripts/ai-stack-manage.sh` with
-> `ai-stack/compose/docker-compose.yml`. Ollama has been removed and llama.cpp
-> is the local inference runtime. Use this file only for historical reference.
+> ⚠️ **Legacy doc:** The current stack uses the canonical `./scripts/hybrid-ai-stack.sh`
+> helper with `ai-stack/compose/docker-compose.yml`. `podman-ai-stack.sh` and
+> `ai-stack-manage.sh` now delegate to that script. Use this file only for
+> historical reference.
 
 ## Quick Start
 
@@ -10,7 +11,7 @@ The Podman AI stack is configured but **not started automatically**. You need to
 
 ## Prerequisites
 
-Before running `podman-ai-stack up`, make sure the supporting systemd units exist:
+Before running `hybrid-ai-stack.sh up` (or `podman-ai-stack up`), make sure the supporting systemd units exist:
 
 1. **Enable the stack preference (one time):**
    ```bash
@@ -22,6 +23,7 @@ Before running `podman-ai-stack up`, make sure the supporting systemd units exis
    After the rebuild you should have `~/.local/bin/podman-ai-stack`. If you need to run the stack helper before rebuilding, you can invoke it directly from the repo:
    ```bash
    ./scripts/podman-ai-stack.sh status
+   # Or: ./scripts/hybrid-ai-stack.sh status
    ```
    (The script prints a warning if it can’t find the systemd units yet.)
 
@@ -35,7 +37,7 @@ If any unit is missing, re-run the enable script above or re-apply your Home Man
 
 ### Automatic Prefetch (NixOS Quick Deploy v5+)
 
-- Phase 5 now pre-pulls all Podman images (llama.cpp, Open WebUI, Qdrant, MindsDB) whenever `LOCAL_AI_STACK_ENABLED=true`, so `podman-ai-stack up` no longer times out waiting for the first `podman pull`.
+- Phase 5 now pre-pulls all Podman images (llama.cpp, Open WebUI, Qdrant, MindsDB) whenever `LOCAL_AI_STACK_ENABLED=true`, so `hybrid-ai-stack.sh up` no longer times out waiting for the first `podman pull`.
 - Phase 6 automatically downloads the default llama.cpp GGUF models (Qwen3-4B, Qwen2.5-Coder-7B, DeepSeek 6.7B) when the llama.cpp backend is selected **and** a Hugging Face token is configured. The models land in `~/.local/share/podman-ai-stack/llama-cpp-models/`, ready for the running container.
 - You can still rerun the helper manually via `scripts/download-llama-cpp-models.sh --all` if you add new models later.
 

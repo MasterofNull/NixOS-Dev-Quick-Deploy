@@ -1,0 +1,167 @@
+{
+  "mcpServers": {
+    "aidb": {
+      "url": "http://localhost:8091",
+      "command": "curl",
+      "args": [
+        "-s",
+        "-X",
+        "POST",
+        "-H",
+        "Content-Type: application/json",
+        "-d",
+        "@-",
+        "http://localhost:8091/mcp"
+      ],
+      "env": {
+        "AIDB_PROJECT": "NixOS-Dev-Quick-Deploy",
+        "AIDB_TELEMETRY_ENABLED": "true",
+        "AIDB_CONTEXT_COLLECTIONS": "codebase-context,skills-patterns,error-solutions,best-practices"
+      },
+      "capabilities": [
+        "documents",
+        "search",
+        "inference",
+        "telemetry",
+        "tools",
+        "context"
+      ],
+      "autoStart": true,
+      "priority": 1,
+      "description": "AIDB MCP Server - Knowledge base, RAG, telemetry, and tool discovery"
+    },
+    "hybrid-coordinator": {
+      "url": "http://localhost:8092",
+      "command": "curl",
+      "args": [
+        "-s",
+        "-X",
+        "POST",
+        "-H",
+        "Content-Type: application/json",
+        "-d",
+        "@-",
+        "http://localhost:8092/mcp"
+      ],
+      "env": {
+        "COORDINATOR_MODE": "local-first",
+        "COORDINATOR_FALLBACK": "enabled",
+        "COORDINATOR_WARN_THRESHOLD": "0.2"
+      },
+      "capabilities": [
+        "context-augmentation",
+        "query-routing",
+        "learning",
+        "local-remote-fallback"
+      ],
+      "autoStart": true,
+      "priority": 2,
+      "description": "Hybrid Coordinator - Smart local/remote routing with learning pipeline"
+    },
+    "qdrant": {
+      "url": "http://localhost:6333",
+      "command": "curl",
+      "args": [
+        "-s",
+        "http://localhost:6333/collections"
+      ],
+      "env": {
+        "QDRANT_DEFAULT_COLLECTION": "codebase-context",
+        "QDRANT_LIMIT": "10"
+      },
+      "capabilities": [
+        "vector-search",
+        "semantic-search",
+        "collections"
+      ],
+      "autoStart": false,
+      "priority": 3,
+      "description": "Qdrant Vector Database - Semantic search across codebase and documentation"
+    },
+    "ralph-wiggum": {
+      "url": "http://localhost:8098",
+      "command": "curl",
+      "args": [
+        "-s",
+        "-X",
+        "POST",
+        "-H",
+        "Content-Type: application/json",
+        "-d",
+        "@-",
+        "http://localhost:8098/api/tasks"
+      ],
+      "env": {
+        "RALPH_MAX_ITERATIONS": "0",
+        "RALPH_DEFAULT_BACKEND": "aider",
+        "RALPH_EXIT_CODE_BLOCK": "2"
+      },
+      "capabilities": [
+        "task-orchestration",
+        "autonomous-coding",
+        "multi-agent",
+        "continuous-loop"
+      ],
+      "autoStart": false,
+      "priority": 4,
+      "description": "Ralph Wiggum Loop - Autonomous multi-agent task orchestration (manual activation)"
+    },
+    "nixos-search": {
+      "command": "nix",
+      "args": [
+        "run",
+        "github:utensils/mcp-nixos"
+      ],
+      "env": {
+        "NIX_SEARCH_LIMIT": "20"
+      },
+      "capabilities": [
+        "nixos-search",
+        "home-manager-search",
+        "package-info"
+      ],
+      "autoStart": true,
+      "priority": 5,
+      "description": "NixOS MCP Server - Search 130K+ packages and Home Manager options"
+    },
+    "postgres": {
+      "url": "postgresql://postgres:postgres@localhost:5432/aidb",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://postgres:postgres@localhost:5432/aidb"
+      ],
+      "capabilities": [
+        "database-query",
+        "schema-introspection",
+        "sql-execution"
+      ],
+      "autoStart": false,
+      "priority": 6,
+      "description": "PostgreSQL MCP Server - Direct database access for AIDB"
+    }
+  },
+  "settings": {
+    "globalTimeout": 30000,
+    "retryAttempts": 2,
+    "retryDelay": 1000,
+    "cacheResponses": true,
+    "cacheTTL": 3600,
+    "telemetryEndpoint": "http://localhost:8091/telemetry/vscode",
+    "logLevel": "info"
+  },
+  "discovery": {
+    "enabled": true,
+    "mode": "progressive",
+    "minimalToolCount": 10,
+    "fullToolCount": 50,
+    "discoveryInterval": 300000
+  },
+  "_metadata": {
+    "template_version": "1.0.0",
+    "deployment_date": "2025-12-31",
+    "auto_sync_enabled": true,
+    "source": "NixOS-Dev-Quick-Deploy/templates/vscode/claude-code/mcp_servers.json"
+  }
+}

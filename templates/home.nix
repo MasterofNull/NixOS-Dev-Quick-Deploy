@@ -2200,6 +2200,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           # Keep Claude Code available; remove deprecated Codex/ChatGPT entries
           "Anthropic.claude-code"
           "Google.gemini-code-assist"
+          "Kombai.kombai"  # Design-to-code AI tool (local-compatible)
         ];
         fetchMarketplaceExtension = name:
           let

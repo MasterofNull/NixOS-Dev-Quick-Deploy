@@ -64,6 +64,9 @@ cmd_up() {
     info "Starting Hybrid AI Stack..."
     cd "$COMPOSE_DIR"
     require_compose
+    if [[ "$COMPOSE_CMD" == "podman-compose" ]]; then
+        $COMPOSE_CMD -f "$COMPOSE_FILE" up -d llama-cpp || true
+    fi
     $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build && success "Stack started" || error "Failed to start"
     cmd_status
 }
@@ -76,7 +79,7 @@ cmd_down() {
 }
 
 cmd_status() {
-    info "Hybrid AI Stack Status:"
+    info "Hybrid AI Stack v3.0 (Agentic Era) Status:"
     echo ""
     detect_runtime
     if [[ -n "$CONTAINER_RUNTIME" ]]; then
@@ -86,10 +89,26 @@ cmd_status() {
         warning "No container runtime detected (podman or docker)."
     fi
     echo ""
+    echo "Core Infrastructure:"
     check_service "Qdrant" 6333 "/healthz"
     check_service "llama.cpp" 8080 "/health"
-    check_service "Open WebUI" 3001 "/"
+    check_service "PostgreSQL" 5432 "/"
+    check_service "Redis" 6379 "/"
+    echo ""
+    echo "MCP Servers:"
     check_service "AIDB MCP" 8091 "/health"
+    check_service "Hybrid Coordinator" 8092 "/health"
+    check_service "Ralph Wiggum Loop" 8098 "/health"
+    echo ""
+    echo "Agent Backends:"
+    check_service "Aider" 8093 "/health"
+    check_service "Continue" 8094 "/health"
+    check_service "Goose" 8095 "/health"
+    check_service "LangChain" 8096 "/health"
+    check_service "AutoGPT" 8097 "/health"
+    echo ""
+    echo "User Interfaces:"
+    check_service "Open WebUI" 3001 "/"
     check_service "MindsDB" 47334 "/"
 }
 

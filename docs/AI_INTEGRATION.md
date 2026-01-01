@@ -90,8 +90,8 @@ use the convenience wrapper:
 
 ```bash
 # From the NixOS-Dev-Quick-Deploy repo root
-./scripts/ai-stack-manage.sh up        # Start local AI stack
-./scripts/ai-stack-manage.sh status    # Show container status
+./scripts/hybrid-ai-stack.sh up        # Start local AI stack
+./scripts/hybrid-ai-stack.sh status    # Show container status
 ./scripts/ai-stack-manage.sh sync      # Sync docs/ into AIDB
 ```
 
@@ -199,7 +199,7 @@ To make the most of the AI-Optimizer stack and AIDB for software and research pr
 
 1. **Start the local AI stack**
    - From this repository:
-     - `./scripts/ai-stack-manage.sh up` (or `./scripts/local-ai-starter.sh` for the standalone stack).
+     - `./scripts/hybrid-ai-stack.sh up` (or `./scripts/local-ai-starter.sh` for the standalone stack).
    - Verify AIDB is healthy with `curl "$AIDB_BASE_URL/health"` (defaults to `http://localhost:8091/health`).
 2. **Sync the latest documentation**
    - Run `./scripts/sync_docs_to_ai.sh --project "NixOS-Dev-Quick-Deploy"` from the repo root.

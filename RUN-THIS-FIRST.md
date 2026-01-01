@@ -131,7 +131,7 @@ Once models are downloaded:
 
 ```bash
 # Comprehensive health check
-python3 scripts/check-ai-stack-health-v2.py -v
+./scripts/ai-stack-health.sh
 ```
 
 **Expected Output**:
@@ -546,7 +546,7 @@ podman logs local-ai-llama-cpp | grep -i error
 ### Issue: RAG tests fail
 ```bash
 # Check all services
-python3 scripts/check-ai-stack-health-v2.py -v
+./scripts/ai-stack-health.sh
 
 # Test each service individually
 curl http://localhost:6333/healthz  # Qdrant

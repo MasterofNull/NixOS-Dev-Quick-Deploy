@@ -1,0 +1,293 @@
+{
+  "_comment": "VSCode/VSCodium AI Extension Settings - Local-First Workflow",
+  "_sync_metadata": {
+    "template_version": "1.0.0",
+    "deployment_date": "2025-12-31",
+    "auto_sync_enabled": true
+  },
+
+  "// ========================================": "",
+  "// AI STACK CONFIGURATION": "",
+  "// ========================================": "",
+
+  "aiStack.telemetry.enabled": true,
+  "aiStack.telemetry.endpoint": "http://localhost:8091/telemetry/vscode",
+  "aiStack.telemetry.events": [
+    "completion",
+    "refactoring",
+    "feedback",
+    "error",
+    "health-check"
+  ],
+
+  "aiStack.enforcement.mode": "soft",
+  "aiStack.enforcement.defaultLocal": true,
+  "aiStack.enforcement.allowRemote": true,
+  "aiStack.enforcement.warnThreshold": 0.2,
+
+  "// ========================================": "",
+  "// CLAUDE CODE CONFIGURATION": "",
+  "// ========================================": "",
+
+  "claudeCode.mcpServers": {
+    "aidb": {
+      "command": "curl",
+      "args": [
+        "-X",
+        "POST",
+        "http://localhost:8091/mcp"
+      ],
+      "env": {
+        "AIDB_PROJECT": "NixOS-Dev-Quick-Deploy",
+        "AIDB_TELEMETRY": "enabled"
+      }
+    },
+    "hybrid-coordinator": {
+      "command": "curl",
+      "args": [
+        "-X",
+        "POST",
+        "http://localhost:8092/mcp"
+      ],
+      "env": {
+        "COORDINATOR_MODE": "local-first"
+      }
+    },
+    "nixos-search": {
+      "command": "nix",
+      "args": [
+        "run",
+        "github:utensils/mcp-nixos"
+      ]
+    }
+  },
+
+  "claudeCode.autoStart": true,
+  "claudeCode.enableContextSharing": true,
+  "claudeCode.preferLocalInference": true,
+
+  "// ========================================": "",
+  "// CONTINUE CONFIGURATION": "",
+  "// ========================================": "",
+
+  "continue.enable Telemetry": false,
+  "continue.telemetryEnabled": false,
+  "continue.defaultModel": "Qwen2.5-Coder-7B (Local)",
+
+  "continue.models": [
+    {
+      "title": "Qwen2.5-Coder-7B (Local)",
+      "provider": "openai",
+      "model": "Qwen/Qwen2.5-Coder-7B-Instruct",
+      "baseUrl": "http://localhost:8080/v1",
+      "priority": 1,
+      "description": "Local inference via llama.cpp - fastest, privacy-preserving"
+    },
+    {
+      "title": "Hybrid Coordinator (Smart Routing)",
+      "provider": "openai",
+      "model": "auto-route",
+      "baseUrl": "http://localhost:8092/v1",
+      "priority": 2,
+      "description": "Intelligent local/remote routing with context augmentation"
+    },
+    {
+      "title": "Qwen2.5-Coder-14B (Local - High Quality)",
+      "provider": "openai",
+      "model": "Qwen/Qwen2.5-Coder-14B-Instruct",
+      "baseUrl": "http://localhost:8080/v1",
+      "priority": 3,
+      "description": "Higher quality local model (requires more RAM)"
+    }
+  ],
+
+  "continue.embedProvider": {
+    "provider": "huggingface-tei",
+    "model": "nomic-embed-text",
+    "baseUrl": "http://localhost:8080"
+  },
+
+  "continue.contextProviders": [
+    {
+      "name": "aidb",
+      "params": {
+        "url": "http://localhost:8091",
+        "maxResults": 10
+      }
+    },
+    {
+      "name": "qdrant",
+      "params": {
+        "url": "http://localhost:6333",
+        "collection": "codebase-context"
+      }
+    },
+    {
+      "name": "codebase",
+      "params": {}
+    },
+    {
+      "name": "diff",
+      "params": {}
+    },
+    {
+      "name": "terminal",
+      "params": {}
+    }
+  ],
+
+  "continue.slashCommands": [
+    {
+      "name": "local",
+      "description": "Force local inference (llama.cpp)",
+      "step": "Force model to Qwen2.5-Coder-7B (Local)"
+    },
+    {
+      "name": "hybrid",
+      "description": "Use hybrid coordinator for smart routing",
+      "step": "Force model to Hybrid Coordinator (Smart Routing)"
+    },
+    {
+      "name": "aidb",
+      "description": "Search AIDB knowledge base",
+      "step": "Search context from AIDB MCP"
+    }
+  ],
+
+  "continue.serverUrl": "http://localhost:3001",
+  "continue.autocompletionEnabled": true,
+
+  "// ========================================": "",
+  "// KOMBAI CONFIGURATION": "",
+  "// ========================================": "",
+
+  "kombai.localInference": true,
+  "kombai.modelEndpoint": "http://localhost:8080/v1",
+  "kombai.defaultModel": "Qwen/Qwen2.5-Coder-7B-Instruct",
+  "kombai.telemetry": false,
+
+  "// ========================================": "",
+  "// CODEIUM CONFIGURATION": "",
+  "// ========================================": "",
+
+  "codeium.enableTelemetry": false,
+  "codeium.enableCodeLens": true,
+  "codeium.enableSearch": true,
+
+  "// ========================================": "",
+  "// GENERAL AI EXTENSION SETTINGS": "",
+  "// ========================================": "",
+
+  "editor.inlineSuggest.enabled": true,
+  "editor.quickSuggestions": {
+    "other": true,
+    "comments": false,
+    "strings": true
+  },
+
+  "editor.suggestSelection": "first",
+  "editor.tabCompletion": "on",
+  "editor.wordBasedSuggestions": "matchingDocuments",
+
+  "// ========================================": "",
+  "// TERMINAL ENVIRONMENT": "",
+  "// ========================================": "",
+
+  "terminal.integrated.env.linux": {
+    "AIDB_MCP_URL": "http://localhost:8091",
+    "HYBRID_COORDINATOR_URL": "http://localhost:8092",
+    "LLAMA_CPP_BASE_URL": "http://localhost:8080/v1",
+    "QDRANT_HTTP_URL": "http://localhost:6333",
+    "POSTGRES_URL": "postgresql://postgres:postgres@localhost:5432/aidb",
+    "REDIS_URL": "redis://localhost:6379",
+    "OPENAI_API_BASE": "http://localhost:8080/v1",
+    "OPENAI_API_KEY": "local-llama-cpp",
+    "ANTHROPIC_BASE_URL": "http://localhost:8092",
+    "RALPH_WIGGUM_URL": "http://localhost:8098",
+    "AISTACK_TELEMETRY_ENABLED": "true"
+  },
+
+  "// ========================================": "",
+  "// TELEMETRY PRIVACY": "",
+  "// ========================================": "",
+
+  "telemetry.telemetryLevel": "off",
+  "huggingface.telemetry.enableTelemetry": false,
+  "redhat.telemetry.enabled": false,
+
+  "// ========================================": "",
+  "// PYTHON & JUPYTER": "",
+  "// ========================================": "",
+
+  "python.languageServer": "Pylance",
+  "python.analysis.typeCheckingMode": "basic",
+  "python.formatting.provider": "black",
+  "python.testing.pytestEnabled": true,
+  "jupyter.askForKernelRestart": false,
+  "jupyter.jupyterServerType": "local",
+
+  "// ========================================": "",
+  "// GIT INTEGRATION": "",
+  "// ========================================": "",
+
+  "git.enableSmartCommit": true,
+  "git.autofetch": true,
+  "gitlens.codeLens.enabled": true,
+  "gitlens.currentLine.enabled": true,
+
+  "// ========================================": "",
+  "// EDITOR PREFERENCES": "",
+  "// ========================================": "",
+
+  "editor.fontSize": 14,
+  "editor.fontFamily": "'FiraCode Nerd Font', 'Fira Code', 'monospace'",
+  "editor.fontLigatures": true,
+  "editor.lineNumbers": "on",
+  "editor.minimap.enabled": true,
+  "editor.renderWhitespace": "selection",
+  "editor.rulers": [80, 120],
+  "editor.formatOnSave": true,
+  "editor.formatOnPaste": false,
+
+  "files.autoSave": "afterDelay",
+  "files.autoSaveDelay": 1000,
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+
+  "workbench.colorTheme": "Default Dark Modern",
+  "workbench.iconTheme": "vs-seti",
+
+  "// ========================================": "",
+  "// LANGUAGE-SPECIFIC": "",
+  "// ========================================": "",
+
+  "[nix]": {
+    "editor.defaultFormatter": "jnoortheen.nix-ide",
+    "editor.formatOnSave": true
+  },
+
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  },
+
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+
+  "[markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.wordWrap": "on"
+  }
+}
