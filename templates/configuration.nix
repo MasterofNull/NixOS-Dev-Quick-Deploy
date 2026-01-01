@@ -186,10 +186,10 @@ in
 @KERNEL_MODULES_PLACEHOLDER@
     ];
     kernel.sysctl = {
-      # Security: Disable unprivileged BPF and user namespaces
+      # Security: Disable unprivileged BPF
       "kernel.unprivileged_bpf_disabled" = 1;
-      # Rootless containers (Podman) require unprivileged user namespaces
-      "kernel.unprivileged_userns_clone" = 1;
+      # Note: kernel.unprivileged_userns_clone doesn't exist on modern kernels (6.1+)
+      # User namespaces are enabled by default and required for rootless containers
       "net.core.bpf_jit_harden" = 2;
 
       # GLF OS: Low-latency scheduling and memory tuning
