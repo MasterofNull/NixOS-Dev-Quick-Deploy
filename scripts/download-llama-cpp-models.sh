@@ -16,7 +16,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Model storage directory (user-level)
-MODEL_DIR="${MODEL_DIR:-${HOME}/.local/share/podman-ai-stack/llama-cpp-models}"
+# Standardized to nixos-ai-stack (matches docker-compose.yml AI_STACK_DATA)
+MODEL_DIR="${MODEL_DIR:-${HOME}/.local/share/nixos-ai-stack/llama-cpp-models}"
 CACHE_DIR="${HF_HOME:-${HOME}/.cache/huggingface}"
 HUGGINGFACE_TOKEN_FILE_DEFAULT="${HUGGINGFACE_TOKEN_FILE:-${HOME}/.cache/nixos-quick-deploy/preferences/huggingface-token.env}"
 
@@ -210,11 +211,16 @@ download_model() {
     fi
 
     info "Downloading model (this may take a while)..."
+    info "Large models (2-4GB) may take 10-30 minutes on slower connections"
 
-    # Download using Python API (most reliable method)
-    python3 << EOF
+    # Download using Python API (most reliable method) with timeout
+    timeout 1800 python3 << EOF
 from huggingface_hub import hf_hub_download
 import sys
+import os
+
+# Set longer timeout for large model downloads (30 minutes)
+os.environ['HF_HUB_DOWNLOAD_TIMEOUT'] = '1800'
 
 try:
     path = hf_hub_download(

@@ -11,6 +11,7 @@ import os
 from logging.handlers import RotatingFileHandler
 import signal
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from collections import defaultdict, deque
@@ -36,6 +37,7 @@ from sentence_transformers import SentenceTransformer
 
 from middleware.cache import CacheMiddleware
 from llm_parallel import run_parallel_inference
+from discovery_endpoints import register_discovery_routes
 from settings_loader import Settings, load_settings
 from skills_loader import ParsedSkill, parse_skill_text, write_skill_file
 from ml_engine import MLEngine
@@ -43,6 +45,84 @@ import registry_api
 import vscode_telemetry
 
 LOGGER = logging.getLogger("aidb.mcp")
+
+
+def retry_with_backoff(
+    func,
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    max_delay: float = 30.0,
+    exceptions: tuple = (Exception,),
+    operation_name: str = "operation",
+):
+    """
+    Retry a function with exponential backoff.
+
+    Args:
+        func: Function to retry (can be sync or async)
+        max_retries: Maximum number of retry attempts
+        base_delay: Initial delay in seconds
+        max_delay: Maximum delay between retries
+        exceptions: Tuple of exceptions to catch and retry
+        operation_name: Name for logging
+
+    Returns:
+        Result of func() if successful
+
+    Raises:
+        Last exception if all retries exhausted
+    """
+    import asyncio
+    import inspect
+
+    is_async = inspect.iscoroutinefunction(func)
+
+    async def async_wrapper():
+        last_exception = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                return await func()
+            except exceptions as e:
+                last_exception = e
+                if attempt >= max_retries:
+                    LOGGER.error(
+                        f"{operation_name} failed after {max_retries} attempts: {e}"
+                    )
+                    raise
+
+                delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
+                LOGGER.warning(
+                    f"{operation_name} attempt {attempt}/{max_retries} failed: {e}. "
+                    f"Retrying in {delay:.1f}s..."
+                )
+                await asyncio.sleep(delay)
+
+        raise last_exception  # Should never reach here, but satisfies type checker
+
+    def sync_wrapper():
+        last_exception = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                return func()
+            except exceptions as e:
+                last_exception = e
+                if attempt >= max_retries:
+                    LOGGER.error(
+                        f"{operation_name} failed after {max_retries} attempts: {e}"
+                    )
+                    raise
+
+                delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
+                LOGGER.warning(
+                    f"{operation_name} attempt {attempt}/{max_retries} failed: {e}. "
+                    f"Retrying in {delay:.1f}s..."
+                )
+                time.sleep(delay)
+
+        raise last_exception  # Should never reach here, but satisfies type checker
+
+    return async_wrapper() if is_async else sync_wrapper()
+
 
 METADATA = sa.MetaData()
 TOOL_REGISTRY = sa.Table(
@@ -151,10 +231,13 @@ class EmbeddingService:
     def __init__(self, model_name: str):
         self.model_name = model_name
         self._model: Optional[SentenceTransformer] = None
+        self._model_lock = threading.Lock()
 
     def _load_model(self) -> SentenceTransformer:
         if self._model is None:
-            self._model = SentenceTransformer(self.model_name)
+            with self._model_lock:
+                if self._model is None:
+                    self._model = SentenceTransformer(self.model_name, device="cpu")
         return self._model
 
     async def embed(self, texts: List[str]) -> List[List[float]]:
@@ -247,6 +330,42 @@ class VectorStore:
         finally:
             session.close()
 
+    def search(self, embedding: List[float], limit: int = 5, project: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Perform vector similarity search using L2 distance."""
+        self._validate_embedding(embedding)
+
+        def _query() -> List[Dict[str, Any]]:
+            with self.engine.connect() as conn:
+                project_filter = "WHERE docs.project = :project" if project else ""
+                stmt = sa.text(
+                    f"""
+                    SELECT de.id,
+                           de.document_id,
+                           de.chunk_id,
+                           de.content,
+                           de.metadata,
+                           de.score,
+                           docs.project,
+                           docs.title,
+                           docs.relative_path,
+                           de.embedding <-> :query_vec AS distance
+                    FROM document_embeddings de
+                    JOIN imported_documents docs ON docs.id = de.document_id
+                    {project_filter}
+                    ORDER BY de.embedding <-> :query_vec
+                    LIMIT :limit
+                    """
+                ).bindparams(sa.bindparam("query_vec", embedding, type_=Vector(self.settings.embedding_dimension)))
+                params: Dict[str, Any] = {"limit": limit}
+                if project:
+                    stmt = stmt.bindparams(sa.bindparam("project", project))
+                    params["project"] = project
+                result = conn.execute(stmt, params)
+                rows = result.mappings().all()
+                return [dict(row) for row in rows]
+
+        return _query()
+
 
 class FederationStore:
     """Minimal file-backed registry for federated MCP servers."""
@@ -334,41 +453,6 @@ class FederationStore:
             return sorted_urls[:limit]
         return sorted_urls
 
-    def search(self, embedding: List[float], limit: int = 5, project: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Perform vector similarity search using L2 distance."""
-        self._validate_embedding(embedding)
-
-        def _query() -> List[Dict[str, Any]]:
-            with self.engine.connect() as conn:
-                project_filter = "WHERE docs.project = :project" if project else ""
-                stmt = sa.text(
-                    f"""
-                    SELECT de.id,
-                           de.document_id,
-                           de.chunk_id,
-                           de.content,
-                           de.metadata,
-                           de.score,
-                           docs.project,
-                           docs.title,
-                           docs.relative_path,
-                           de.embedding <-> :query_vec AS distance
-                    FROM document_embeddings de
-                    JOIN imported_documents docs ON docs.id = de.document_id
-                    {project_filter}
-                    ORDER BY de.embedding <-> :query_vec
-                    LIMIT :limit
-                    """
-                ).bindparams(sa.bindparam("query_vec", embedding, type_=Vector(self.settings.embedding_dimension)))
-                params: Dict[str, Any] = {"limit": limit}
-                if project:
-                    stmt = stmt.bindparams(sa.bindparam("project", project))
-                    params["project"] = project
-                result = conn.execute(stmt, params)
-                rows = result.mappings().all()
-                return [dict(row) for row in rows]
-
-        return _query()
 
 def slugify(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
@@ -704,6 +788,7 @@ class MonitoringServer:
         self.app.add_middleware(CacheMiddleware, redis_url=self.settings.redis_url)
         self.app.include_router(registry_api.router)
         self.app.include_router(vscode_telemetry.router)  # VSCode extension telemetry
+        register_discovery_routes(self.app, self.mcp_server)
         self._server: Optional[uvicorn.Server] = None
         self._register_routes()
 
@@ -961,12 +1046,16 @@ class MonitoringServer:
             texts = payload.get("texts") or []
             if not texts:
                 raise HTTPException(status_code=400, detail="texts required")
-            embeddings = await self.mcp_server.embed_texts(texts)
-            return {
-                "model": self.settings.embedding_model,
-                "dimension": self.settings.embedding_dimension,
-                "embeddings": embeddings,
-            }
+            try:
+                embeddings = await self.mcp_server.embed_texts(texts)
+                return {
+                    "model": self.settings.embedding_model,
+                    "dimension": self.settings.embedding_dimension,
+                    "embeddings": embeddings,
+                }
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.exception("Embedding generation failed")
+                raise HTTPException(status_code=500, detail=str(exc))
 
         @self.app.post("/vector/index")
         async def index_vectors(payload: Dict[str, Any], request: Request) -> Dict[str, Any]:
@@ -997,6 +1086,9 @@ class MonitoringServer:
                 )
             except ValueError as exc:  # noqa: BLE001
                 raise HTTPException(status_code=400, detail=str(exc))
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.exception("Vector search failed")
+                raise HTTPException(status_code=500, detail=str(exc))
             return {"results": results, "limit": limit}
 
         # ML endpoints
@@ -1169,8 +1261,28 @@ class MonitoringServer:
 class MCPServer:
     def __init__(self, settings: Settings):
         self.settings = settings
-        self._engine = sa.create_engine(self.settings.postgres_dsn, future=True)
+
+        # Create database engine with retry logic
+        def _create_engine():
+            engine = sa.create_engine(self.settings.postgres_dsn, future=True)
+            # Test connection immediately
+            with engine.connect() as conn:
+                conn.execute(sa.text("SELECT 1"))
+            LOGGER.info("Database connection established")
+            return engine
+
+        self._engine = retry_with_backoff(
+            _create_engine,
+            max_retries=5,
+            base_delay=2.0,
+            exceptions=(sa.exc.OperationalError, Exception),
+            operation_name="Database connection"
+        )
+
+        # Create Redis connection (will be tested on first use)
         self._redis = redis_asyncio.Redis.from_url(self.settings.redis_url)
+        LOGGER.info("Redis client created")
+
         self._tool_registry = ToolRegistry(settings, self._engine, self._redis)
         self._sandbox = SandboxExecutor(settings)
         self._external_http = httpx.AsyncClient(timeout=20.0)
@@ -1206,6 +1318,17 @@ class MCPServer:
         LOGGER.info(f"llama.cpp client configured for {settings.llama_cpp_url}")
         self._telemetry_path = Path(self.settings.telemetry_path)
         self._telemetry_enabled = self.settings.telemetry_enabled
+
+    def _require_api_key(self, request: Request) -> None:
+        expected = self.settings.api_key
+        if not expected:
+            return
+        header_token = request.headers.get("x-api-key")
+        auth_header = request.headers.get("authorization") or ""
+        bearer = auth_header.split()
+        token = header_token or (bearer[1] if len(bearer) == 2 and bearer[0].lower() == "bearer" else None)
+        if token != expected:
+            raise HTTPException(status_code=401, detail="invalid_api_key")
 
     async def record_telemetry(
         self,

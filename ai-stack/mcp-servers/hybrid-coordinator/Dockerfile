@@ -1,7 +1,14 @@
+# syntax=docker/dockerfile:1.3
 # Hybrid Coordinator MCP Server Dockerfile
 # Multi-stage build for optimal image size
 
 FROM python:3.13-slim AS builder
+
+# Set environment for non-interactive apt and faster downloads
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_PARALLEL_BUILDS=4 \
+    PIP_TIMEOUT=300 \
+    HTTP_TIMEOUT=300
 
 # Set working directory
 WORKDIR /build
@@ -12,14 +19,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
+# Configure pip for faster downloads
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip config set global.timeout 300 && \
+    pip config set global.retries 5 && \
+    pip install --upgrade pip wheel setuptools
+
 # Copy requirements and install Python dependencies
+# Use --prefix to install to /build/.local instead of /root/.local
 COPY hybrid-coordinator/requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --timeout 300 --retries 5 --prefix=/build/.local -r requirements.txt
 
 # ============================================================================
 # Final Stage
 # ============================================================================
 FROM python:3.13-slim
+
+# Set environment for non-interactive apt
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -32,7 +50,7 @@ RUN useradd --create-home --shell /bin/bash coordinator
 WORKDIR /app
 
 # Copy Python packages from builder
-COPY --from=builder /root/.local /home/coordinator/.local
+COPY --from=builder /build/.local /home/coordinator/.local
 
 # Copy application code
 COPY hybrid-coordinator/server.py .
@@ -40,6 +58,12 @@ COPY hybrid-coordinator/coordinator.py .
 COPY hybrid-coordinator/federation_sync.py .
 COPY hybrid-coordinator/continuous_learning.py .
 COPY hybrid-coordinator/continuous_learning_daemon.py .
+COPY hybrid-coordinator/multi_turn_context.py .
+COPY hybrid-coordinator/remote_llm_feedback.py .
+COPY hybrid-coordinator/progressive_disclosure.py .
+COPY hybrid-coordinator/context_compression.py .
+COPY hybrid-coordinator/query_expansion.py .
+COPY hybrid-coordinator/embedding_cache.py .
 COPY hybrid-coordinator/start_with_learning.sh .
 
 # Create data directories and set permissions
@@ -58,9 +82,9 @@ ENV PATH="/home/coordinator/.local/bin:${PATH}" \
 # Expose MCP server port
 EXPOSE 8092
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:8092/health || exit 1
+# Health check (removed - will be handled by podman-compose healthcheck section)
+# OCI format doesn't support HEALTHCHECK directive
+# Use podman-compose.yml healthcheck configuration instead
 
 # Start server with continuous learning daemon
 CMD ["/app/start_with_learning.sh"]

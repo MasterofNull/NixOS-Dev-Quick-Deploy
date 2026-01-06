@@ -7,34 +7,67 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENABLE_LOCAL_DEPS="${HYBRID_LEARNING_LOCAL_DEPS:-false}"
+QDRANT_VECTOR_SIZE="${QDRANT_VECTOR_SIZE:-768}"
+QDRANT_DISTANCE="${QDRANT_DISTANCE:-Cosine}"
+SETUP_TIMEOUT="${HYBRID_LEARNING_SETUP_TIMEOUT:-900}"
+STATE_DIR="${HYBRID_LEARNING_STATE_DIR:-$HOME/.cache/nixos-quick-deploy}"
+MARKER_FILE="${HYBRID_LEARNING_MARKER_FILE:-$STATE_DIR/hybrid-learning-ready}"
+ENABLE_CLEAN_RESTART="${HYBRID_LEARNING_CLEAN_RESTART:-true}"
+SKIP_COMPOSE_IF_RUNNING="${HYBRID_LEARNING_SKIP_IF_RUNNING:-true}"
+
+mkdir -p "$STATE_DIR" >/dev/null 2>&1 || true
+
+timeout_cmd=()
+if command -v timeout >/dev/null 2>&1; then
+    timeout_cmd=(timeout "${SETUP_TIMEOUT}")
+fi
 
 # Determine compose command
 if command -v podman-compose >/dev/null 2>&1; then
     COMPOSE_CMD="podman-compose"
 elif command -v docker-compose >/dev/null 2>&1; then
     COMPOSE_CMD="docker-compose"
+elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    COMPOSE_CMD="docker compose"
 else
     echo "Error: Neither podman-compose nor docker-compose found"
     exit 1
 fi
 
-echo "==> Step 1: Installing Python dependencies..."
-cd "${PROJECT_ROOT}/ai-stack/mcp-servers/hybrid-coordinator"
-if [ ! -d "venv" ]; then
-    echo "  Creating virtual environment..."
-    python3 -m venv venv || {
-        echo "✗ Failed to create virtual environment"
-        exit 1
-    }
+echo "==> Step 0: Checking existing hybrid learning setup..."
+if [[ -f "$MARKER_FILE" ]]; then
+    if curl -sf --max-time 3 http://localhost:6333/healthz >/dev/null 2>&1; then
+        echo "✓ Hybrid learning already initialized (marker: $MARKER_FILE)"
+        exit 0
+    fi
+    echo "⚠ Marker present but Qdrant not ready; continuing setup."
 fi
-echo "  Activating virtual environment and installing packages..."
-if source venv/bin/activate && pip install -q -r requirements.txt; then
-    deactivate
-    echo "✓ Dependencies installed"
+
+echo "==> Step 1: Installing Python dependencies..."
+if [[ "$ENABLE_LOCAL_DEPS" == "true" ]]; then
+    cd "${PROJECT_ROOT}/ai-stack/mcp-servers/hybrid-coordinator"
+    if [ ! -d "venv" ]; then
+        echo "  Creating virtual environment..."
+        python3 -m venv venv || {
+            echo "✗ Failed to create virtual environment"
+            exit 1
+        }
+    fi
+    echo "  Activating virtual environment and installing packages..."
+    # Set pip timeout to prevent hanging on large downloads
+    export PIP_DEFAULT_TIMEOUT=300
+    export PIP_DISABLE_PIP_VERSION_CHECK=1
+    if source venv/bin/activate && "${timeout_cmd[@]}" pip install --no-input --timeout 300 --retries 3 -q -r requirements.txt; then
+        deactivate
+        echo "✓ Dependencies installed"
+    else
+        echo "✗ Failed to install dependencies"
+        deactivate 2>/dev/null || true
+        exit 1
+    fi
 else
-    echo "✗ Failed to install dependencies"
-    deactivate 2>/dev/null || true
-    exit 1
+    echo "  Skipping local Python deps (HYBRID_LEARNING_LOCAL_DEPS=false)"
 fi
 
 echo "==> Step 2: Configuring environment..."
@@ -64,69 +97,87 @@ echo "✓ Directories created"
 
 echo "==> Step 4: Starting AI stack..."
 cd "${PROJECT_ROOT}/ai-stack/compose"
-if $COMPOSE_CMD up -d 2>&1 | tee /tmp/hybrid-learning-compose.log; then
-    echo "✓ AI stack containers started"
+stack_running=false
+if command -v podman >/dev/null 2>&1; then
+    if podman ps --format '{{.Names}}' | grep -qE '^local-ai-(qdrant|llama-cpp|postgres|redis)'; then
+        stack_running=true
+    fi
+fi
+
+compose_busy=false
+if pgrep -f "podman-compose.*${PROJECT_ROOT}/ai-stack/compose" >/dev/null 2>&1; then
+    compose_busy=true
+fi
+
+if [[ "$SKIP_COMPOSE_IF_RUNNING" == "true" && ( "$stack_running" == "true" || "$compose_busy" == "true" ) ]]; then
+    echo "✓ AI stack already running (skipping compose up)"
 else
-    echo "✗ Failed to start AI stack containers"
-    echo "  Check logs: /tmp/hybrid-learning-compose.log"
-    exit 1
+    if [[ "$ENABLE_CLEAN_RESTART" == "true" ]]; then
+        clean_script="${PROJECT_ROOT}/scripts/compose-clean-restart.sh"
+        if [[ -x "$clean_script" ]]; then
+            echo "  Running clean restart to avoid container name conflicts..."
+            COMPOSE_FILE="${PROJECT_ROOT}/ai-stack/compose/docker-compose.yml" \
+                "${clean_script}" >/tmp/hybrid-learning-clean-restart.log 2>&1 || true
+        fi
+    fi
+    if "${timeout_cmd[@]}" $COMPOSE_CMD up -d 2>&1 | tee /tmp/hybrid-learning-compose.log; then
+        echo "✓ AI stack containers started"
+    else
+        echo "✗ Failed to start AI stack containers"
+        echo "  Check logs: /tmp/hybrid-learning-compose.log"
+        exit 1
+    fi
 fi
 
 echo "==> Step 5: Waiting for services..."
-sleep 10
+qdrant_ready=false
+for i in $(seq 1 30); do
+    if curl -sf --max-time 3 http://localhost:6333/healthz >/dev/null 2>&1; then
+        qdrant_ready=true
+        echo "✓ Qdrant is ready"
+        break
+    fi
+    if [[ $i -eq 1 ]]; then
+        echo "  Waiting for Qdrant to start..."
+    fi
+    sleep 2
+done
+if [[ "$qdrant_ready" != "true" ]]; then
+    echo "⚠ Qdrant not ready after 60 seconds"
+fi
 
 echo "==> Step 6: Initializing Qdrant collections..."
-if python3 << 'PYEOF'
-from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams
-import time
-import sys
+collections=(
+  "codebase-context"
+  "skills-patterns"
+  "error-solutions"
+  "best-practices"
+  "interaction-history"
+)
 
-# Wait for Qdrant to be ready
-print("Waiting for Qdrant to start...")
-connected = False
-for i in range(30):
-    try:
-        client = QdrantClient(url="http://localhost:6333")
-        client.get_collections()  # Test connection
-        connected = True
-        print(f"✓ Connected to Qdrant after {i*2} seconds")
-        break
-    except Exception as e:
-        if i == 0:
-            print(f"Attempt {i+1}/30: Waiting for Qdrant...")
-        time.sleep(2)
+qdrant_ok=true
+for name in "${collections[@]}"; do
+    payload=$(cat <<EOF
+{"vectors":{"size":${QDRANT_VECTOR_SIZE},"distance":"${QDRANT_DISTANCE}"}}
+EOF
+)
+    if curl -sf --max-time 5 -X PUT "http://localhost:6333/collections/${name}" \
+        -H "Content-Type: application/json" \
+        -d "${payload}" >/dev/null 2>&1; then
+        echo "✓ Created collection '${name}'"
+        continue
+    fi
+    if curl -sf --max-time 5 "http://localhost:6333/collections/${name}" >/dev/null 2>&1; then
+        echo "✓ Collection '${name}' exists"
+    else
+        echo "✗ Failed to create collection '${name}'"
+        qdrant_ok=false
+    fi
+done
 
-if not connected:
-    print("✗ Warning: Qdrant not ready after 60 seconds")
-    print("  Collections will be created on first use")
-    sys.exit(1)
-
-collections = {
-    "codebase-context": 384,
-    "skills-patterns": 384,
-    "error-solutions": 384,
-    "best-practices": 384,
-    "interaction-history": 384
-}
-
-try:
-    existing = [c.name for c in client.get_collections().collections]
-    for name, size in collections.items():
-        if name not in existing:
-            client.create_collection(
-                collection_name=name,
-                vectors_config=VectorParams(size=size, distance=Distance.COSINE)
-            )
-            print(f"✓ Created collection '{name}'")
-        else:
-            print(f"✓ Collection '{name}' exists")
-except Exception as e:
-    print(f"✗ Error creating collections: {e}")
-    sys.exit(1)
-PYEOF
-then
+if [[ "$qdrant_ok" == "true" ]]; then
     echo "✓ Qdrant collections initialized"
+    touch "$MARKER_FILE" 2>/dev/null || true
 else
     echo "⚠ Qdrant initialization incomplete (will retry on first use)"
 fi

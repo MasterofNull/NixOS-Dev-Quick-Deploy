@@ -1,0 +1,23 @@
+[Unit]
+Description=AI Stack Automatic Startup Service
+Documentation=file://%h/Documents/try/NixOS-Dev-Quick-Deploy/DASHBOARD-FIX-REPORT-2025-12-31.md
+After=network-online.target podman.socket
+Wants=network-online.target dashboard-collector.timer dashboard-server.service dashboard-api.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Include /run/wrappers/bin for setuid helpers (newuidmap/newgidmap)
+Environment="PATH=/run/wrappers/bin:/run/current-system/sw/bin:/usr/bin:/bin:%h/.nix-profile/bin"
+Environment="HOME=%h"
+ExecStart=%h/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai-stack-startup.sh
+TimeoutStartSec=300
+Restart=no
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ai-stack-startup
+
+[Install]
+WantedBy=default.target

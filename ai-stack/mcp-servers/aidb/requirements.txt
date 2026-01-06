@@ -38,9 +38,9 @@ click==8.3.1
 prometheus-client==0.23.1
 structlog==23.1.0
 
-# PyTorch CPU-only (no CUDA dependencies)
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.9.1+cpu
+# PyTorch CPU-only - INSTALLED SEPARATELY IN DOCKERFILE
+# torch, torchvision, torchaudio are installed via --index-url in Dockerfile
+# to prevent CUDA dependencies from being downloaded
 
 # Machine Learning (CPU-only, no CUDA)
 scikit-learn==1.7.2

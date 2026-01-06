@@ -211,7 +211,7 @@ class TelemetryHook(Hook):
             "backend": task["backend"],
             "exit_code": result.get("exit_code", 0),
             "output_length": len(result.get("output", "")),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
         try:

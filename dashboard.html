@@ -713,6 +713,122 @@
             font-size: 0.8rem;
             color: var(--text-secondary);
         }
+
+        /* Service Control Styles */
+        .service-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem;
+            border: 1px solid var(--border-primary);
+            border-radius: 8px;
+            background: var(--bg-tertiary);
+            transition: all 0.3s ease;
+        }
+
+        .service-item:hover {
+            border-color: var(--border-glow);
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.1);
+        }
+
+        .service-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .service-status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .service-status-dot.running {
+            background: var(--status-online);
+            box-shadow: 0 0 10px var(--status-online);
+        }
+
+        .service-status-dot.stopped {
+            background: var(--text-muted);
+        }
+
+        .service-details {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .service-name {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .service-type {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .service-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .service-status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .service-status-badge.running {
+            background: rgba(0, 255, 136, 0.1);
+            color: var(--status-online);
+            border: 1px solid var(--status-online);
+        }
+
+        .service-status-badge.stopped {
+            background: rgba(74, 85, 104, 0.1);
+            color: var(--text-muted);
+            border: 1px solid var(--text-muted);
+        }
+
+        .service-btn {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-primary);
+            color: var(--text-primary);
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-family: 'JetBrains Mono', monospace;
+            transition: all 0.2s ease;
+        }
+
+        .service-btn:hover:not(:disabled) {
+            background: var(--bg-tertiary);
+            border-color: var(--border-glow);
+            transform: translateY(-1px);
+        }
+
+        .service-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .service-btn.start {
+            border-color: var(--status-online);
+        }
+
+        .service-btn.stop {
+            border-color: var(--status-error);
+        }
+
+        .service-btn.restart {
+            border-color: var(--accent-yellow);
+        }
     </style>
 </head>
 <body>
@@ -948,8 +1064,58 @@
                             <div class="loading"><div class="spinner"></div></div>
                         </div>
                         <div style="margin-top: 1rem;">
-                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">RAG Collections</div>
-                            <div id="ragCollections" style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">--</div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Embeddings Service</div>
+                            <div id="embeddingsInfo" style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Knowledge Base -->
+            <div class="dashboard-section">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Knowledge Base</h2>
+                        </div>
+                        <span class="card-badge" id="knowledgeBaseBadge">Vector DB</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="metrics-grid">
+                            <div class="metric">
+                                <div class="metric-label">Total Documents</div>
+                                <div class="metric-value" id="kbTotalPoints">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Real Embeddings</div>
+                                <div class="metric-value" id="kbEmbeddingsPercent">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Context Relevance</div>
+                                <div class="metric-value" id="kbContextRelevance">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Quality Improvement</div>
+                                <div class="metric-value" id="kbQualityImprovement">--</div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Collection Breakdown</div>
+                            <div class="data-list">
+                                <div class="data-item">
+                                    <span style="color: var(--text-secondary);">Codebase Context</span>
+                                    <span id="kbCodebaseContext" style="color: var(--accent-cyan); font-weight: 600;">--</span>
+                                </div>
+                                <div class="data-item">
+                                    <span style="color: var(--text-secondary);">Error Solutions</span>
+                                    <span id="kbErrorSolutions" style="color: var(--accent-cyan); font-weight: 600;">--</span>
+                                </div>
+                                <div class="data-item">
+                                    <span style="color: var(--text-secondary);">Best Practices</span>
+                                    <span id="kbBestPractices" style="color: var(--accent-cyan); font-weight: 600;">--</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1284,6 +1450,39 @@
                 </div>
             </div>
 
+
+            <!-- AI Stack Services Control -->
+            <div class="dashboard-section full-width">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">AI Stack Services</h2>
+                        </div>
+                        <span class="card-badge" id="servicesBadge">-- Services</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <!-- Bulk Controls -->
+                        <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-primary);">
+                            <button class="service-btn start" onclick="startAIStack()" id="startStackBtn">
+                                ▶ Start All
+                            </button>
+                            <button class="service-btn stop" onclick="stopAIStack()" id="stopStackBtn">
+                                ⏹ Stop All
+                            </button>
+                            <button class="service-btn restart" onclick="restartAIStack()" id="restartStackBtn">
+                                ⟲ Restart All
+                            </button>
+                            <div id="stackControlStatus" style="margin-left: auto; display: flex; align-items: center; font-size: 0.85rem; color: var(--text-secondary);"></div>
+                        </div>
+
+                        <!-- Individual Services -->
+                        <div id="servicesList" style="display: flex; flex-direction: column; gap: 1rem;">
+                            <div class="loading"><div class="spinner"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <!-- Persistence & Data -->
             <div class="dashboard-section full-width">
                 <div class="card">
@@ -1416,9 +1615,22 @@
                 console.warn('Chart.js unavailable; rendering dashboard without charts.');
                 disableCharts();
             }
-            loadData(); // Initial full load
-            setInterval(loadSystemMetricsOnly, 2000); // Update graphs every 2 seconds (lite collector)
-            setInterval(loadData, 60000); // Full refresh every 60 seconds (full collector)
+
+            // Load initial data
+            loadData(); // Initial full load (AI stack, containers, etc.)
+            loadServices(); // Load services from FastAPI backend
+
+            // Connect WebSocket for real-time metrics (2-second updates)
+            connectMetricsWebSocket();
+
+            // Fallback polling if WebSocket fails (2-second updates)
+            setInterval(loadMetricsFromAPI, 2000);
+
+            // Refresh full dashboard less frequently (60 seconds)
+            setInterval(loadData, 60000);
+
+            // Refresh services every 10 seconds
+            setInterval(loadServices, 10000);
         });
 
         // Initialize Chart.js
@@ -1641,7 +1853,7 @@
         // Load all dashboard data
         async function loadData() {
             try {
-                const [system, llm, network, security, database, links, persistence, telemetry, feedback, config, proof, hybrid, learning, tokenSavings, keywordSignals] = await Promise.all([
+                const [system, llm, network, security, database, links, persistence, telemetry, feedback, config, proof, hybrid, learning, tokenSavings, keywordSignals, aiMetrics] = await Promise.all([
                     fetchJSON('system.json'),
                     fetchJSON('llm.json'),
                     fetchJSON('network.json'),
@@ -1656,14 +1868,16 @@
                     fetchJSON('hybrid-coordinator.json'),
                     fetchJSON('learning-metrics.json'),
                     fetchJSON('token-savings.json'),
-                    fetchJSON('keyword-signals.json')
+                    fetchJSON('keyword-signals.json'),
+                    fetchJSON('ai_metrics.json')
                 ]);
 
-                dashboardData = { system, llm, network, security, database, links, persistence, telemetry, feedback, config, proof, hybrid, learning, tokenSavings, keywordSignals };
+                dashboardData = { system, llm, network, security, database, links, persistence, telemetry, feedback, config, proof, hybrid, learning, tokenSavings, keywordSignals, aiMetrics };
 
                 updateSystemMetrics(system);
                 updateLLMStatus(llm);
-                updateAgenticReadiness(llm);
+                updateAgenticReadiness(aiMetrics);
+                updateKnowledgeBase(aiMetrics);
                 updateNetworkMetrics(network);
                 updateSecurityStatus(security);
                 updateDatabaseMetrics(database);
@@ -2029,9 +2243,9 @@
             container.innerHTML = '';
 
             const aidb = data.services.aidb || { status: 'offline', services: {} };
-            const qdrant = data.services.qdrant || {};
-            const llamaCpp = data.services.llama_cpp || { models: [] };
-            const embeddings = data.services.embeddings || { models: [] };
+            const qdrant = data.services.qdrant || { metrics: {} };
+            const llamaCpp = data.services.llama_cpp || { status: 'unknown' };
+            const embeddings = data.services.embeddings || { status: 'unknown' };
 
             const items = [
                 {
@@ -2040,19 +2254,19 @@
                     status: aidb.status === 'online' ? 'online' : 'offline'
                 },
                 {
-                    label: 'RAG Collections',
-                    value: `${qdrant.collections || 0} active`,
-                    status: (qdrant.collections || 0) > 0 ? 'online' : 'warning'
+                    label: 'Qdrant Vector DB',
+                    value: `${qdrant.metrics.collection_count || 0} collections`,
+                    status: (qdrant.metrics.collection_count || 0) > 0 ? 'online' : 'warning'
                 },
                 {
-                    label: 'llama.cpp Models',
-                    value: `${(llamaCpp.models || []).length} loaded`,
-                    status: (llamaCpp.models || []).length > 0 ? 'online' : 'warning'
+                    label: 'llama.cpp Inference',
+                    value: llamaCpp.status === 'ok' ? 'ONLINE' : llamaCpp.status.toUpperCase(),
+                    status: llamaCpp.status === 'ok' ? 'online' : 'warning'
                 },
                 {
-                    label: 'Embedding Models',
-                    value: `${(embeddings.models || []).length} available`,
-                    status: (embeddings.models || []).length > 0 ? 'online' : 'warning'
+                    label: 'Embeddings Service',
+                    value: embeddings.status === 'ok' ? 'ONLINE' : embeddings.status.toUpperCase(),
+                    status: embeddings.status === 'ok' ? 'online' : 'warning'
                 }
             ];
 
@@ -2069,10 +2283,38 @@
                 container.appendChild(el);
             });
 
-            const collectionNames = qdrant.collection_names || [];
-            document.getElementById('ragCollections').textContent = collectionNames.length
-                ? collectionNames.join(', ')
-                : 'No collections detected';
+            // Update embeddings info
+            const embeddingsModel = embeddings.model || 'unknown';
+            const embeddingsDims = embeddings.dimensions || 384;
+            const embeddingsEndpoint = embeddings.endpoint || 'http://localhost:8081';
+            document.getElementById('embeddingsInfo').textContent =
+                `${embeddingsModel} (${embeddingsDims}D) @ ${embeddingsEndpoint}`;
+        }
+
+        // Update knowledge base metrics
+        function updateKnowledgeBase(data) {
+            if (!data || !data.knowledge_base) return;
+
+            const kb = data.knowledge_base;
+
+            // Update main metrics
+            document.getElementById('kbTotalPoints').textContent = kb.total_points || 0;
+            document.getElementById('kbEmbeddingsPercent').textContent = `${kb.real_embeddings_percent || 0}%`;
+            document.getElementById('kbContextRelevance').textContent = kb.rag_quality?.context_relevance || '--';
+            document.getElementById('kbQualityImprovement').textContent = kb.rag_quality?.improvement_over_baseline || '--';
+
+            // Update collection breakdown
+            if (kb.collections) {
+                document.getElementById('kbCodebaseContext').textContent = kb.collections.codebase_context || 0;
+                document.getElementById('kbErrorSolutions').textContent = kb.collections.error_solutions || 0;
+                document.getElementById('kbBestPractices').textContent = kb.collections.best_practices || 0;
+            }
+
+            // Update badge with total points
+            const badge = document.getElementById('knowledgeBaseBadge');
+            if (badge) {
+                badge.textContent = `${kb.total_points || 0} Docs`;
+            }
         }
 
         // Update container list
@@ -2639,6 +2881,238 @@
             document.getElementById('lastUpdate').textContent = now.toLocaleTimeString();
         }
 
+        // ============================================================================
+        // Service Control Functions (FastAPI Backend Integration)
+        // ============================================================================
+
+        const FASTAPI_BASE = 'http://localhost:8889';
+
+        async function loadServices() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/services`);
+                if (!response.ok) {
+                    console.error('Failed to load services:', response.status);
+                    return;
+                }
+                const services = await response.json();
+                updateServicesList(services);
+            } catch (error) {
+                console.error('Error loading services:', error);
+                // Fallback: show message that backend is not running
+                const list = document.getElementById('servicesList');
+                list.innerHTML = `
+                    <div style="padding: 1rem; text-align: center; color: var(--text-muted);">
+                        <p>⚠️ FastAPI backend not running</p>
+                        <p style="font-size: 0.875rem; margin-top: 0.5rem;">
+                            Start backend: <code>cd dashboard/backend && uvicorn api.main:app --port 8889</code>
+                        </p>
+                    </div>
+                `;
+            }
+        }
+
+        function updateServicesList(services) {
+            const list = document.getElementById('servicesList');
+            const badge = document.getElementById('servicesBadge');
+
+            badge.textContent = `${services.length} Services`;
+
+            if (services.length === 0) {
+                list.innerHTML = '<p style="color: var(--text-muted);">No services found</p>';
+                return;
+            }
+
+            list.innerHTML = services.map(service => `
+                <div class="service-item">
+                    <div class="service-info">
+                        <div class="service-status-dot ${service.status}"></div>
+                        <div class="service-details">
+                            <div class="service-name">${service.name}</div>
+                            <div class="service-type">${service.type}</div>
+                        </div>
+                    </div>
+                    <div class="service-controls">
+                        <span class="service-status-badge ${service.status}">${service.status}</span>
+                        <button class="service-btn start"
+                                onclick="serviceAction('${service.id}', 'start')"
+                                ${service.status === 'running' ? 'disabled' : ''}>
+                            ▶ Start
+                        </button>
+                        <button class="service-btn stop"
+                                onclick="serviceAction('${service.id}', 'stop')"
+                                ${service.status === 'stopped' ? 'disabled' : ''}>
+                            ■ Stop
+                        </button>
+                        <button class="service-btn restart"
+                                onclick="serviceAction('${service.id}', 'restart')">
+                            ↻ Restart
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function serviceAction(serviceId, action) {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/services/${serviceId}/${action}`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(`Failed to ${action} service: ${error.detail || 'Unknown error'}`);
+                    return;
+                }
+
+                const result = await response.json();
+                console.log(`Service ${action} result:`, result);
+
+                // Reload services list after action
+                setTimeout(loadServices, 1000);
+
+            } catch (error) {
+                console.error(`Error ${action}ing service:`, error);
+                alert(`Error ${action}ing service: ${error.message}`);
+            }
+        }
+
+        // ============================================================================
+        // WebSocket Real-Time Metrics (FastAPI Backend Integration)
+        // ============================================================================
+
+        let metricsWebSocket = null;
+        let useWebSocketMetrics = true;
+        let lastNetworkSample = null;
+
+        function connectMetricsWebSocket() {
+            if (!useWebSocketMetrics) return;
+
+            try {
+                metricsWebSocket = new WebSocket('ws://localhost:8889/ws/metrics');
+
+                metricsWebSocket.onopen = () => {
+                    console.log('📡 WebSocket connected - Real-time metrics enabled');
+                    // Send ping to keep connection alive
+                    setInterval(() => {
+                        if (metricsWebSocket?.readyState === WebSocket.OPEN) {
+                            metricsWebSocket.send('ping');
+                        }
+                    }, 30000);
+                };
+
+                metricsWebSocket.onmessage = (event) => {
+                    try {
+                        const message = JSON.parse(event.data);
+
+                        if (message.type === 'pong') {
+                            return; // Keep-alive response
+                        }
+
+                        if (message.type === 'metrics_update' && message.data) {
+                            updateSystemMetricsFromAPI(message.data);
+                        }
+                    } catch (error) {
+                        console.error('Error parsing WebSocket message:', error);
+                    }
+                };
+
+                metricsWebSocket.onerror = (error) => {
+                    console.warn('WebSocket error, falling back to HTTP polling:', error);
+                    useWebSocketMetrics = false;
+                };
+
+                metricsWebSocket.onclose = () => {
+                    console.log('WebSocket closed, attempting reconnect in 5s...');
+                    setTimeout(connectMetricsWebSocket, 5000);
+                };
+
+            } catch (error) {
+                console.error('Failed to create WebSocket:', error);
+                useWebSocketMetrics = false;
+            }
+        }
+
+        async function loadMetricsFromAPI() {
+            // Fallback: Poll metrics from API if WebSocket not available
+            if (useWebSocketMetrics && metricsWebSocket?.readyState === WebSocket.OPEN) {
+                return; // WebSocket is handling updates
+            }
+
+            try {
+                const metrics = await fetch(`${FASTAPI_BASE}/api/metrics/system`).then(r => r.json());
+                updateSystemMetricsFromAPI(metrics);
+            } catch (error) {
+                console.error('Error loading metrics from API:', error);
+                // Fall back to original JSON files
+                loadSystemMetricsOnly();
+            }
+        }
+
+        function updateSystemMetricsFromAPI(metrics) {
+            // Update CPU
+            const cpuUsage = metrics.cpu.usage_percent;
+            document.getElementById('cpuUsage').textContent = cpuUsage.toFixed(1);
+            document.getElementById('cpuModel').textContent = metrics.cpu.model || 'Unknown';
+            document.getElementById('cpuTemp').textContent = metrics.cpu.temperature || 'N/A';
+            document.getElementById('cpuArch').textContent = metrics.cpu.arch || 'N/A';
+            document.getElementById('loadAvg').textContent = metrics.load_average || 'N/A';
+
+            // Update Memory
+            const memPercent = metrics.memory.percent;
+            const memUsedGB = (metrics.memory.used / (1024**3)).toFixed(2);
+            const memTotalGB = (metrics.memory.total / (1024**3)).toFixed(2);
+            document.getElementById('memoryPercent').textContent = memPercent.toFixed(1) + ' %';
+            document.getElementById('memoryBar').style.width = memPercent + '%';
+            document.getElementById('memoryUsed').textContent = memUsedGB;
+            document.getElementById('memoryTotal').textContent = memTotalGB;
+
+            // Update Disk
+            const diskPercent = metrics.disk.percent;
+            const diskUsedGB = (metrics.disk.used / (1024**3)).toFixed(1);
+            const diskTotalGB = (metrics.disk.total / (1024**3)).toFixed(1);
+            document.getElementById('diskPercent').textContent = diskPercent.toFixed(1) + ' %';
+            document.getElementById('diskBar').style.width = diskPercent + '%';
+            document.getElementById('diskUsed').textContent = diskUsedGB;
+            document.getElementById('diskTotal').textContent = diskTotalGB + ' GB';
+
+            // Update Network (calculate rates)
+            const now = Date.now();
+            if (lastNetworkSample) {
+                const deltaSeconds = (now - lastNetworkSample.timestamp) / 1000;
+                const rxRate = (metrics.network.bytes_recv - lastNetworkSample.bytes_recv) / deltaSeconds;
+                const txRate = (metrics.network.bytes_sent - lastNetworkSample.bytes_sent) / deltaSeconds;
+
+                document.getElementById('netRxRate').textContent = formatBytes(rxRate) + '/s';
+                document.getElementById('netTxRate').textContent = formatBytes(txRate) + '/s';
+            }
+            lastNetworkSample = {
+                timestamp: now,
+                bytes_recv: metrics.network.bytes_recv,
+                bytes_sent: metrics.network.bytes_sent
+            };
+
+            // Update GPU if available
+            if (metrics.gpu && metrics.gpu.name !== 'N/A') {
+                document.getElementById('gpuName').textContent = metrics.gpu.name;
+                document.getElementById('gpuBusy').textContent = metrics.gpu.usage || 'N/A';
+                document.getElementById('gpuVram').textContent = metrics.gpu.memory || 'N/A';
+            }
+
+            // Update System Info
+            document.getElementById('uptime').textContent = formatUptime(metrics.uptime);
+            document.getElementById('hostname').textContent = metrics.hostname;
+            document.getElementById('hostnameDetail').textContent = metrics.hostname;
+
+            // Update Charts
+            updateChartData(cpuChart, cpuUsage);
+            updateChartData(memoryChart, memPercent);
+            updateChartData(diskChart, diskPercent);
+
+            // Update health score
+            updateHealthScore();
+            updateLastUpdate();
+        }
+
         async function refreshDashboard() {
             const status = document.getElementById('refreshStatus');
             if (status) {
@@ -2722,6 +3196,112 @@
             link.download = `system-dashboard-${new Date().toISOString()}.json`;
             link.click();
             URL.revokeObjectURL(url);
+        }
+
+        // AI Stack Bulk Controls
+        async function startAIStack() {
+            const statusEl = document.getElementById('stackControlStatus');
+            const startBtn = document.getElementById('startStackBtn');
+
+            statusEl.textContent = 'Starting AI stack...';
+            statusEl.style.color = 'var(--status-warning)';
+            startBtn.disabled = true;
+
+            try {
+                const response = await fetch('http://localhost:8889/api/containers/ai-stack/start', {
+                    method: 'POST'
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    statusEl.textContent = '✓ ' + result.message;
+                    statusEl.style.color = 'var(--status-online)';
+
+                    // Refresh services list after a delay
+                    setTimeout(() => {
+                        loadServices();
+                        statusEl.textContent = '';
+                    }, 3000);
+                } else {
+                    statusEl.textContent = '✗ ' + result.message;
+                    statusEl.style.color = 'var(--status-error)';
+                }
+            } catch (error) {
+                statusEl.textContent = '✗ Error: ' + error.message;
+                statusEl.style.color = 'var(--status-error)';
+            } finally {
+                startBtn.disabled = false;
+            }
+        }
+
+        async function stopAIStack() {
+            const statusEl = document.getElementById('stackControlStatus');
+            const stopBtn = document.getElementById('stopStackBtn');
+
+            statusEl.textContent = 'Stopping AI stack...';
+            statusEl.style.color = 'var(--status-warning)';
+            stopBtn.disabled = true;
+
+            try {
+                const response = await fetch('http://localhost:8889/api/containers/ai-stack/stop', {
+                    method: 'POST'
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    statusEl.textContent = '✓ ' + result.message;
+                    statusEl.style.color = 'var(--status-online)';
+
+                    // Refresh services list after a delay
+                    setTimeout(() => {
+                        loadServices();
+                        statusEl.textContent = '';
+                    }, 3000);
+                } else {
+                    statusEl.textContent = '✗ ' + result.message;
+                    statusEl.style.color = 'var(--status-error)';
+                }
+            } catch (error) {
+                statusEl.textContent = '✗ Error: ' + error.message;
+                statusEl.style.color = 'var(--status-error)';
+            } finally {
+                stopBtn.disabled = false;
+            }
+        }
+
+        async function restartAIStack() {
+            const statusEl = document.getElementById('stackControlStatus');
+            const restartBtn = document.getElementById('restartStackBtn');
+
+            statusEl.textContent = 'Restarting AI stack...';
+            statusEl.style.color = 'var(--status-warning)';
+            restartBtn.disabled = true;
+
+            try {
+                const response = await fetch('http://localhost:8889/api/containers/ai-stack/restart', {
+                    method: 'POST'
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    statusEl.textContent = '✓ ' + result.message;
+                    statusEl.style.color = 'var(--status-online)';
+
+                    // Refresh services list after a delay
+                    setTimeout(() => {
+                        loadServices();
+                        statusEl.textContent = '';
+                    }, 3000);
+                } else {
+                    statusEl.textContent = '✗ ' + result.message;
+                    statusEl.style.color = 'var(--status-error)';
+                }
+            } catch (error) {
+                statusEl.textContent = '✗ Error: ' + error.message;
+                statusEl.style.color = 'var(--status-error)';
+            } finally {
+                restartBtn.disabled = false;
+            }
         }
     </script>
 </body>

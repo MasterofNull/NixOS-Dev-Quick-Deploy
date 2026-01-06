@@ -2627,20 +2627,20 @@ EOF
       lib.hm.dag.entryAfter [ "linkGeneration" ] ''
         set -eu
         
-        # Only attempt to start if podman-ai-stack helper is available
+        # Auto-start is optional - AI stack can be started manually
+        # This activation hook only runs if podman-ai-stack is in PATH
         if [ -x "$HOME/.local/bin/podman-ai-stack" ]; then
           # Check if this is the first time (no containers exist yet)
           if ! ${pkgs.podman}/bin/podman ps -a --filter "label=${podmanAiStackLabelKey}=${podmanAiStackLabelValue}" --format "{{.Names}}" 2>/dev/null | grep -q .; then
             echo "Starting Podman AI stack for the first time..."
             echo "This will pull container images, which may take several minutes."
             echo "You can monitor progress with: podman-ai-stack logs"
-            
+
             # Start in background to avoid blocking home-manager switch
-            # Use nohup and redirect output to avoid issues
             (
               sleep 2  # Give systemd a moment to settle
               "$HOME/.local/bin/podman-ai-stack" up || {
-                echo "Warning: Failed to start Podman AI stack automatically." >&2
+                echo "Info: Failed to start Podman AI stack automatically." >&2
                 echo "You can start it manually later with: podman-ai-stack up" >&2
                 exit 0  # Don't fail the activation
               }
@@ -2650,8 +2650,12 @@ EOF
             echo "Use 'podman-ai-stack up' to start them manually."
           fi
         else
-          echo "Warning: podman-ai-stack helper not found. Stack will not auto-start." >&2
-          echo "After rebuild, you can start it with: podman-ai-stack up" >&2
+          # Not a warning - auto-start is optional
+          echo "Info: AI stack auto-start not configured (podman-ai-stack not in PATH)"
+          echo "To start manually, run one of:"
+          echo "  - ./scripts/podman-ai-stack.sh up"
+          echo "  - ./scripts/hybrid-ai-stack.sh up"
+          echo "  - cd ai-stack/compose && podman-compose up -d"
         fi
       ''
     );

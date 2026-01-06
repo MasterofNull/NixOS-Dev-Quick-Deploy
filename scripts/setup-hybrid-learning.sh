@@ -90,7 +90,9 @@ fi
 
 # Activate virtual environment and install dependencies
 info "Installing dependencies in virtual environment..."
-if source venv/bin/activate && pip install -r requirements.txt; then
+# Set pip timeout to prevent hanging on large downloads
+export PIP_DEFAULT_TIMEOUT=300
+if source venv/bin/activate && pip install --timeout 300 --retries 3 -r requirements.txt; then
     success "Dependencies installed in virtual environment"
     deactivate
 else

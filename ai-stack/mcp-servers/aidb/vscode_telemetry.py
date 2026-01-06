@@ -74,7 +74,7 @@ async def collect_event(event: VscodeEvent):
     try:
         # Auto-generate timestamp if not provided
         if not event.timestamp:
-            event.timestamp = datetime.utcnow()
+            event.timestamp = datetime.now(timezone.utc)
 
         # Convert to dict for JSON serialization
         event_dict = event.model_dump()

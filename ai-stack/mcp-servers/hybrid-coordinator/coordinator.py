@@ -96,7 +96,7 @@ class HybridCoordinator:
                 - processing_time: Time taken (seconds)
                 - context_used: List of context sources used
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         self.stats["total_queries"] += 1
 
         # Step 1: Use RAG system for query processing
@@ -123,7 +123,7 @@ class HybridCoordinator:
             "llm_used": rag_result.get("llm_used"),
             "confidence": rag_result.get("context_score", 0.0),
             "tokens_saved": rag_result.get("tokens_saved", 0),
-            "processing_time": (datetime.utcnow() - start_time).total_seconds(),
+            "processing_time": (datetime.now(timezone.utc) - start_time).total_seconds(),
             "cache_hit": rag_result.get("cache_hit", False),
             "context_found": rag_result.get("context_found", False),
         }
@@ -233,7 +233,7 @@ class HybridCoordinator:
             "attempted_solution": attempted_solution,
             "correct_solution": correct_solution,
             "root_cause": root_cause or "Unknown",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         # Merge with metadata
