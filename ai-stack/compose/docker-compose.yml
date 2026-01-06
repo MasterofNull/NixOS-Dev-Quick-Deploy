@@ -179,7 +179,7 @@ services:
       - /dev/dri:/dev/dri  # GPU device access for Vulkan
     network_mode: host  # Use host networking for direct localhost access
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "sh", "-c", "curl -sf http://localhost:8080/health | grep -q '\"status\":\"ok\"' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -225,6 +225,9 @@ services:
       ENABLE_RAG_WEB_SEARCH: "true"
       PORT: 3001  # Run on port 3001 (instead of default 8080)
       ENABLE_OLLAMA_API: "false"  # Disable Ollama, use OpenAI-compatible API only
+    depends_on:
+      llama-cpp:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/3001 && echo -e 'GET / HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
       interval: 30s
@@ -363,7 +366,7 @@ services:
       qdrant:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-s", "http://localhost:8091/health"]
+      test: ["CMD", "sh", "-c", "curl -sf http://localhost:8091/health | grep -q '\"status\":\"ok\"' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -393,6 +396,9 @@ services:
       - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/mindsdb:/root/mindsdb_storage:Z
     environment:
       MINDSDB_STORAGE_DIR: /root/mindsdb_storage
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/47334 && echo -e 'GET / HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
       interval: 30s
@@ -466,8 +472,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      embeddings:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8092/health"]
+      test: ["CMD", "sh", "-c", "curl -sf http://localhost:8092/health | grep -q '\"status\"' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -624,6 +632,15 @@ services:
     volumes:
       - ${AI_STACK_DATA:-~/.local/share/nixos-ai-stack}/health-monitor:/data:Z
       - /var/run/podman/podman.sock:/var/run/docker.sock:Z  # For container management
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      aidb:
+        condition: service_healthy
+      hybrid-coordinator:
+        condition: service_healthy
     privileged: true  # Required for podman container management
     healthcheck:
       test: ["CMD", "python3", "-c", "import sys; sys.exit(0)"]
