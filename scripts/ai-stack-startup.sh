@@ -6,6 +6,9 @@
 
 set -euo pipefail
 
+# Ensure /run/wrappers/bin is in PATH for setuid helpers (newuidmap/newgidmap)
+export PATH="/run/wrappers/bin:${PATH:-/run/current-system/sw/bin}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LOG_DIR="${HOME}/.cache/nixos-quick-deploy/logs"
@@ -61,6 +64,24 @@ wait_for_podman() {
     local count=0
 
     while [ $count -lt $retries ]; do
+        local info_output=""
+        info_output="$(podman info 2>&1 || true)"
+        if echo "$info_output" | grep -q "current system boot ID differs"; then
+            warn "Podman runtime boot ID mismatch detected."
+            if [[ -x "${PROJECT_ROOT}/scripts/reset-podman-runtime.sh" ]]; then
+                if "${PROJECT_ROOT}/scripts/reset-podman-runtime.sh"; then
+                    info "Retesting Podman after runtime reset..."
+                    continue
+                else
+                    warn "Podman runtime reset required before startup."
+                    return 1
+                fi
+            else
+                warn "Missing reset script: ${PROJECT_ROOT}/scripts/reset-podman-runtime.sh"
+                return 1
+            fi
+        fi
+
         if podman info >/dev/null 2>&1; then
             success "Podman is ready"
             return 0
@@ -73,22 +94,70 @@ wait_for_podman() {
     return 1
 }
 
+# Wait for containers to become healthy
+# Uses podman health checks instead of arbitrary sleep delays
+wait_for_containers_healthy() {
+    local max_wait=180  # 3 minutes max
+    local check_interval=5
+    local elapsed=0
+
+    info "Waiting for containers to pass health checks: $*"
+
+    while [ $elapsed -lt $max_wait ]; do
+        local all_healthy=true
+        local status_summary=""
+
+        for container_short_name in "$@"; do
+            local container_name="local-ai-${container_short_name}"
+            local health_status=$(podman inspect --format='{{.State.Health.Status}}' "$container_name" 2>/dev/null || echo "none")
+
+            # Handle containers without health checks (consider them healthy if running)
+            if [ "$health_status" = "none" ] || [ "$health_status" = "" ]; then
+                local is_running=$(podman ps --filter "name=^${container_name}$" --format "{{.Names}}" 2>/dev/null)
+                if [ -n "$is_running" ]; then
+                    health_status="running"
+                else
+                    health_status="not_running"
+                fi
+            fi
+
+            status_summary="$status_summary $container_short_name:$health_status"
+
+            if [ "$health_status" != "healthy" ] && [ "$health_status" != "running" ]; then
+                all_healthy=false
+            fi
+        done
+
+        if [ "$all_healthy" = true ]; then
+            success "All containers are healthy:$status_summary"
+            return 0
+        fi
+
+        info "Container status (${elapsed}s):$status_summary"
+        sleep $check_interval
+        elapsed=$((elapsed + check_interval))
+    done
+
+    warn "Timeout waiting for containers to become healthy after ${max_wait}s"
+    return 1
+}
+
 # Start core AI infrastructure
 start_core_infrastructure() {
-    info "Starting core AI infrastructure (postgres, redis, qdrant, llama-cpp, mindsdb)..."
+    info "Starting core AI infrastructure (postgres, redis, qdrant, embeddings, llama-cpp, mindsdb)..."
 
     cd "$PROJECT_ROOT/ai-stack/compose"
 
-    if podman-compose up -d postgres redis qdrant llama-cpp mindsdb 2>&1 | tee -a "$LOG_FILE"; then
+    if podman-compose up -d postgres redis qdrant embeddings llama-cpp mindsdb 2>&1 | tee -a "$LOG_FILE"; then
         success "Core infrastructure started"
     else
         error "Failed to start core infrastructure"
         return 1
     fi
 
-    # Wait for services to be ready
-    info "Waiting for core services to initialize (30s)..."
-    sleep 30
+    # Wait for services to be healthy (using docker health checks)
+    info "Waiting for core services to become healthy..."
+    wait_for_containers_healthy "postgres" "redis" "qdrant" "embeddings" "llama-cpp" "mindsdb"
 }
 
 # Check service health
@@ -127,13 +196,13 @@ start_mcp_services() {
         return 1
     fi
 
-    # Wait for MCP services to initialize
-    info "Waiting for MCP services to initialize (20s)..."
-    sleep 20
+    # Wait for MCP services to become healthy
+    info "Waiting for MCP services to become healthy..."
+    wait_for_containers_healthy "aidb" "hybrid-coordinator" "health-monitor"
 
-    # Check MCP service health
-    check_service_health "AIDB" "http://localhost:8091/health" 10
-    check_service_health "Hybrid Coordinator" "http://localhost:8092/health" 10
+    # Verify endpoints are responding
+    check_service_health "AIDB" "http://localhost:8091/health" 5
+    check_service_health "Hybrid Coordinator" "http://localhost:8092/health" 5
 }
 
 # Initialize Qdrant collections if needed
@@ -166,6 +235,13 @@ start_dashboard_services() {
         systemctl --user start dashboard-server.service 2>&1 | tee -a "$LOG_FILE" || warn "Dashboard server start failed"
     fi
 
+    # Check if dashboard API is already running
+    if systemctl --user is-active --quiet dashboard-api.service; then
+        info "Dashboard API already running"
+    else
+        systemctl --user start dashboard-api.service 2>&1 | tee -a "$LOG_FILE" || warn "Dashboard API start failed"
+    fi
+
     # Start dashboard collector timer
     if systemctl --user is-active --quiet dashboard-collector.timer; then
         info "Dashboard collector already running"
@@ -193,6 +269,7 @@ run_health_checks() {
         "local-ai-postgres"
         "local-ai-redis"
         "local-ai-qdrant"
+        "local-ai-embeddings"
         "local-ai-llama-cpp"
         "local-ai-mindsdb"
         "local-ai-aidb"
@@ -230,6 +307,13 @@ run_health_checks() {
         success "Qdrant endpoint healthy"
     else
         error "Qdrant endpoint failed"
+        failed_checks=$((failed_checks + 1))
+    fi
+
+    if curl -sf http://localhost:8081/health >/dev/null 2>&1; then
+        success "Embeddings service endpoint healthy"
+    else
+        error "Embeddings service endpoint failed"
         failed_checks=$((failed_checks + 1))
     fi
 
@@ -271,12 +355,15 @@ Service Health:
 - AIDB: $(curl -sf http://localhost:8091/health 2>/dev/null | jq -r '.status' 2>/dev/null || echo "unreachable")
 - Hybrid Coordinator: $(curl -sf http://localhost:8092/health 2>/dev/null | jq -r '.status' 2>/dev/null || echo "unreachable")
 - Qdrant: $(curl -sf http://localhost:6333/healthz 2>/dev/null || echo "unreachable")
+- Embeddings: $(curl -sf http://localhost:8081/health 2>/dev/null | jq -r '.status' 2>/dev/null || echo "unreachable")
 - llama.cpp: $(curl -sf http://localhost:8080/health 2>/dev/null | jq -r '.status' 2>/dev/null || echo "unreachable")
 
 Dashboard:
 - Server: $(systemctl --user is-active dashboard-server.service || echo "inactive")
+- API: $(systemctl --user is-active dashboard-api.service || echo "inactive")
 - Collector: $(systemctl --user is-active dashboard-collector.timer || echo "inactive")
 - URL: http://localhost:8888/dashboard.html
+- API URL: http://localhost:8889
 
 Resource Usage:
 $(podman stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}" 2>/dev/null | grep local-ai || echo "Stats unavailable")
@@ -314,8 +401,7 @@ main() {
 
     start_dashboard_services || warn "Dashboard services had issues"
 
-    # Final health check
-    sleep 10
+    # Final health check (no sleep needed - containers already healthy)
     if run_health_checks; then
         success "=== AI Stack Startup Complete ==="
         generate_startup_report "SUCCESS"
@@ -325,12 +411,13 @@ main() {
         echo "╔══════════════════════════════════════════════════════════╗"
         echo "║          AI Stack Started Successfully                   ║"
         echo "╠══════════════════════════════════════════════════════════╣"
-        echo "║  Dashboard:  http://localhost:8888/dashboard.html       ║"
-        echo "║  AIDB MCP:   http://localhost:8091/health               ║"
-        echo "║  Hybrid:     http://localhost:8092/health               ║"
-        echo "║  Qdrant:     http://localhost:6333/dashboard            ║"
-        echo "║  llama.cpp:  http://localhost:8080                      ║"
-        echo "║  Log:        $LOG_FILE"
+        echo "║  Dashboard:   http://localhost:8888/dashboard.html      ║"
+        echo "║  AIDB MCP:    http://localhost:8091/health              ║"
+        echo "║  Hybrid:      http://localhost:8092/health              ║"
+        echo "║  Qdrant:      http://localhost:6333/dashboard           ║"
+        echo "║  Embeddings:  http://localhost:8081/health              ║"
+        echo "║  llama.cpp:   http://localhost:8080                     ║"
+        echo "║  Log:         $LOG_FILE"
         echo "╚══════════════════════════════════════════════════════════╝"
         echo ""
 
