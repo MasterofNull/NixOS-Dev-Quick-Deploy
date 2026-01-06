@@ -49,6 +49,9 @@ app = Server("hybrid-coordinator")
 qdrant_client: Optional[QdrantClient] = None
 llama_cpp_client: Optional[httpx.AsyncClient] = None
 embedding_client: Optional[httpx.AsyncClient] = None
+multi_turn_manager: Optional[Any] = None
+feedback_api: Optional[Any] = None
+progressive_disclosure: Optional[Any] = None
 
 TELEMETRY_PATH = os.path.expanduser(
     os.getenv(
@@ -59,6 +62,29 @@ TELEMETRY_PATH = os.path.expanduser(
         ),
     )
 )
+
+HYBRID_STATS = {
+    "total_queries": 0,
+    "context_hits": 0,
+    "last_query_at": None,
+    "agent_types": {},
+}
+
+
+def record_query_stats(agent_type: str, context_found: bool) -> None:
+    HYBRID_STATS["total_queries"] += 1
+    if context_found:
+        HYBRID_STATS["context_hits"] += 1
+    HYBRID_STATS["last_query_at"] = datetime.now(timezone.utc).isoformat()
+    agent_stats = HYBRID_STATS["agent_types"]
+    agent_stats[agent_type] = agent_stats.get(agent_type, 0) + 1
+
+
+def snapshot_stats() -> Dict[str, Any]:
+    stats = dict(HYBRID_STATS)
+    total = stats.get("total_queries", 0) or 0
+    stats["context_hit_rate"] = (stats.get("context_hits", 0) / total) if total else 0.0
+    return stats
 
 
 def record_telemetry_event(event_type: str, payload: Dict[str, Any]) -> None:
@@ -428,6 +454,7 @@ Please use this context to provide a more accurate and efficient response.
             "collections": list(COLLECTIONS.keys()),
         },
     )
+    record_query_stats(agent_type, len(context_ids) > 0)
 
     return {
         "augmented_prompt": augmented_prompt,
@@ -982,7 +1009,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
 
 async def initialize_server():
     """Initialize global clients and collections"""
-    global qdrant_client, llama_cpp_client, embedding_client
+    global qdrant_client, llama_cpp_client, embedding_client, multi_turn_manager, feedback_api, progressive_disclosure
 
     logger.info("Initializing Hybrid Agent Coordinator...")
 
@@ -1004,6 +1031,34 @@ async def initialize_server():
 
     # Create collections
     await initialize_collections()
+
+    # Initialize multi-turn context manager
+    from multi_turn_context import MultiTurnContextManager
+    multi_turn_manager = MultiTurnContextManager(
+        qdrant_client=qdrant_client,
+        redis_url=os.getenv("REDIS_URL", "redis://localhost:6379"),
+        llama_cpp_url=Config.LLAMA_CPP_URL
+    )
+    await multi_turn_manager.initialize()
+    logger.info("✓ Multi-turn context manager initialized")
+
+    # Initialize feedback API
+    from remote_llm_feedback import RemoteLLMFeedback
+    feedback_api = RemoteLLMFeedback(
+        qdrant_client=qdrant_client,
+        multi_turn_manager=multi_turn_manager,
+        llama_cpp_url=Config.LLAMA_CPP_URL
+    )
+    logger.info("✓ Remote LLM feedback API initialized")
+
+    # Initialize progressive disclosure API
+    from progressive_disclosure import ProgressiveDisclosure
+    progressive_disclosure = ProgressiveDisclosure(
+        qdrant_client=qdrant_client,
+        multi_turn_manager=multi_turn_manager,
+        feedback_api=feedback_api
+    )
+    logger.info("✓ Progressive disclosure API initialized")
 
     logger.info("✓ Hybrid Agent Coordinator initialized successfully")
 
@@ -1032,6 +1087,15 @@ async def main():
                 "collections": list(COLLECTIONS.keys())
             })
 
+        async def handle_stats(request):
+            """Stats endpoint"""
+            return web.json_response({
+                "status": "ok",
+                "service": "hybrid-coordinator",
+                "stats": snapshot_stats(),
+                "collections": list(COLLECTIONS.keys()),
+            })
+
         async def handle_augment_query(request):
             """HTTP endpoint for query augmentation"""
             data = await request.json()
@@ -1041,9 +1105,158 @@ async def main():
             result = await augment_query_with_context(query, agent_type)
             return web.json_response(result)
 
+        async def handle_multi_turn_context(request):
+            """HTTP endpoint for multi-turn context requests"""
+            try:
+                data = await request.json()
+                session_id = data.get("session_id") or str(uuid4())
+                query = data.get("query", "")
+                context_level = data.get("context_level", "standard")
+                previous_context_ids = data.get("previous_context_ids", [])
+                max_tokens = data.get("max_tokens", 2000)
+                metadata = data.get("metadata")
+
+                response = await multi_turn_manager.get_context(
+                    session_id=session_id,
+                    query=query,
+                    context_level=context_level,
+                    previous_context_ids=previous_context_ids,
+                    max_tokens=max_tokens,
+                    metadata=metadata
+                )
+
+                return web.json_response(response.dict())
+
+            except Exception as e:
+                logger.error(f"Error in multi_turn_context: {e}")
+                return web.json_response({"error": str(e)}, status=500)
+
+        async def handle_feedback_evaluate(request):
+            """HTTP endpoint for remote LLM feedback evaluation"""
+            try:
+                data = await request.json()
+                session_id = data.get("session_id", "")
+                response_text = data.get("response", "")
+                confidence = data.get("confidence", 0.5)
+                gaps = data.get("gaps", [])
+                metadata = data.get("metadata")
+
+                if not session_id:
+                    return web.json_response(
+                        {"error": "session_id required"},
+                        status=400
+                    )
+
+                feedback_response = await feedback_api.evaluate_response(
+                    session_id=session_id,
+                    response=response_text,
+                    confidence=confidence,
+                    gaps=gaps,
+                    metadata=metadata
+                )
+
+                return web.json_response(feedback_response.dict())
+
+            except Exception as e:
+                logger.error(f"Error in feedback_evaluate: {e}")
+                return web.json_response({"error": str(e)}, status=500)
+
+        async def handle_session_info(request):
+            """HTTP endpoint to get session information"""
+            try:
+                session_id = request.match_info.get('session_id')
+                if not session_id:
+                    return web.json_response(
+                        {"error": "session_id required"},
+                        status=400
+                    )
+
+                session_info = await multi_turn_manager.get_session_info(session_id)
+
+                if not session_info:
+                    return web.json_response(
+                        {"error": "session not found"},
+                        status=404
+                    )
+
+                return web.json_response(session_info)
+
+            except Exception as e:
+                logger.error(f"Error in session_info: {e}")
+                return web.json_response({"error": str(e)}, status=500)
+
+        async def handle_clear_session(request):
+            """HTTP endpoint to clear a session"""
+            try:
+                session_id = request.match_info.get('session_id')
+                if not session_id:
+                    return web.json_response(
+                        {"error": "session_id required"},
+                        status=400
+                    )
+
+                await multi_turn_manager.clear_session(session_id)
+
+                return web.json_response({"status": "cleared", "session_id": session_id})
+
+            except Exception as e:
+                logger.error(f"Error in clear_session: {e}")
+                return web.json_response({"error": str(e)}, status=500)
+
+        async def handle_discover_capabilities(request):
+            """HTTP endpoint for progressive capability discovery"""
+            try:
+                data = await request.json() if request.method == 'POST' else {}
+                level = data.get("level", "overview")
+                categories = data.get("categories")
+                token_budget = data.get("token_budget", 500)
+
+                discovery_response = await progressive_disclosure.discover(
+                    level=level,
+                    categories=categories,
+                    token_budget=token_budget
+                )
+
+                return web.json_response(discovery_response.dict())
+
+            except Exception as e:
+                logger.error(f"Error in discover_capabilities: {e}")
+                return web.json_response({"error": str(e)}, status=500)
+
+        async def handle_token_budget_recommendations(request):
+            """HTTP endpoint for token budget recommendations"""
+            try:
+                data = await request.json() if request.method == 'POST' else {}
+                query_type = data.get("query_type", "quick_lookup")
+                context_level = data.get("context_level", "standard")
+
+                recommendations = await progressive_disclosure.get_token_budget_recommendations(
+                    query_type=query_type,
+                    context_level=context_level
+                )
+
+                return web.json_response(recommendations)
+
+            except Exception as e:
+                logger.error(f"Error in token_budget_recommendations: {e}")
+                return web.json_response({"error": str(e)}, status=500)
+
         http_app = web.Application()
+        # Existing endpoints
         http_app.router.add_get('/health', handle_health)
+        http_app.router.add_get('/stats', handle_stats)
         http_app.router.add_post('/augment_query', handle_augment_query)
+
+        # New RLM endpoints
+        http_app.router.add_post('/context/multi_turn', handle_multi_turn_context)
+        http_app.router.add_post('/feedback/evaluate', handle_feedback_evaluate)
+        http_app.router.add_get('/session/{session_id}', handle_session_info)
+        http_app.router.add_delete('/session/{session_id}', handle_clear_session)
+
+        # Progressive disclosure endpoints
+        http_app.router.add_post('/discovery/capabilities', handle_discover_capabilities)
+        http_app.router.add_get('/discovery/capabilities', handle_discover_capabilities)
+        http_app.router.add_post('/discovery/token_budget', handle_token_budget_recommendations)
 
         port = int(os.getenv("MCP_SERVER_PORT", "8092"))
         logger.info(f"Starting HTTP server on port {port}")

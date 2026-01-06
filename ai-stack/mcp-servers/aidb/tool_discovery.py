@@ -138,7 +138,7 @@ class ToolDiscoveryEngine:
                 # Check server health
                 is_healthy = await self._check_server_health(server)
                 server.is_healthy = is_healthy
-                server.last_check = datetime.utcnow()
+                server.last_check = datetime.now(timezone.utc)
 
                 if not is_healthy:
                     logger.warning("server_unhealthy", server=server.name)

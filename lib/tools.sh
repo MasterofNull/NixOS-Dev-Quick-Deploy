@@ -2589,6 +2589,7 @@ install_vscodium_extensions() {
         "ms-toolsai.jupyter-renderers|Jupyter Renderers"
         "continue.continue|Continue"
         "codeium.codeium|Codeium"
+        "Kombai.kombai|Kombai"
         "ms-azuretools.vscode-docker|Docker"
         "rust-lang.rust-analyzer|Rust Analyzer"
         "dbaeumer.vscode-eslint|ESLint"

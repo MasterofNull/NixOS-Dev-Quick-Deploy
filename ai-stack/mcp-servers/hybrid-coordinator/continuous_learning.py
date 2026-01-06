@@ -223,7 +223,7 @@ class ContinuousLearningPipeline:
                     },
                     iterations=iterations,
                     timestamp=datetime.fromisoformat(
-                        event.get("timestamp", datetime.utcnow().isoformat())
+                        event.get("timestamp", datetime.now(timezone.utc).isoformat())
                     ),
                     backend=task.get("backend", "unknown"),
                 )
@@ -239,7 +239,7 @@ class ContinuousLearningPipeline:
                 success_metrics={"resolution_time": event.get("resolution_time", 0.0)},
                 iterations=1,
                 timestamp=datetime.fromisoformat(
-                    event.get("timestamp", datetime.utcnow().isoformat())
+                    event.get("timestamp", datetime.now(timezone.utc).isoformat())
                 ),
             )
 
@@ -398,7 +398,7 @@ class ContinuousLearningPipeline:
         metric = PerformanceMetric(
             metric_name=metric_name,
             value=value,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             model_version=model_version,
         )
 

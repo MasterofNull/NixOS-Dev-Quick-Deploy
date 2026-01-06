@@ -71,6 +71,25 @@ Environment="PATH=/run/current-system/sw/bin:/usr/bin:/bin:%h/.nix-profile/bin"
 WantedBy=default.target
 EOF
 
+# Create systemd service for dashboard FastAPI backend
+cat > "$SYSTEMD_USER_DIR/dashboard-api.service" <<EOF
+[Unit]
+Description=System Dashboard FastAPI Backend
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${SCRIPT_DIR}/dashboard/backend
+ExecStart=${SCRIPT_DIR}/scripts/serve-dashboard-api.sh
+Restart=on-failure
+RestartSec=5s
+Environment="DASHBOARD_API_PORT=8889"
+Environment="PATH=/run/current-system/sw/bin:/usr/bin:/bin:%h/.nix-profile/bin"
+
+[Install]
+WantedBy=default.target
+EOF
+
 echo -e "${GREEN}✅ Systemd service files created${NC}"
 
 # Reload systemd user daemon
@@ -79,6 +98,7 @@ systemctl --user daemon-reload
 # Enable services (but don't start yet - let user decide)
 systemctl --user enable dashboard-collector.timer
 systemctl --user enable dashboard-server.service
+systemctl --user enable dashboard-api.service
 
 echo -e "${GREEN}✅ Systemd services enabled${NC}"
 
@@ -116,9 +136,9 @@ if [[ -f "$SHELL_RC" && -w "$SHELL_RC" ]] && ! grep -q "alias dashboard=" "$SHEL
 
 # NixOS System Dashboard
 alias dashboard='cd ${SCRIPT_DIR} && ./launch-dashboard.sh'
-alias dashboard-start='systemctl --user start dashboard-collector.timer dashboard-server.service'
-alias dashboard-stop='systemctl --user stop dashboard-collector.timer dashboard-server.service'
-alias dashboard-status='systemctl --user status dashboard-collector.timer dashboard-server.service'
+alias dashboard-start='systemctl --user start dashboard-collector.timer dashboard-server.service dashboard-api.service'
+alias dashboard-stop='systemctl --user stop dashboard-collector.timer dashboard-server.service dashboard-api.service'
+alias dashboard-status='systemctl --user status dashboard-collector.timer dashboard-server.service dashboard-api.service'
 EOF
     echo -e "${GREEN}✅ Shell aliases added to ${SHELL_RC}${NC}"
 elif [[ -f "$SHELL_RC" && ! -w "$SHELL_RC" ]]; then
@@ -133,6 +153,7 @@ echo -e "${CYAN}║                                                       ║${N
 echo -e "${CYAN}║  ${YELLOW}Quick Start:${NC}                                      ${CYAN}║${NC}"
 echo -e "${CYAN}║  ${NC}1. Start services:${NC}                                ${CYAN}║${NC}"
 echo -e "${CYAN}║     ${NC}systemctl --user start dashboard-server${NC}        ${CYAN}║${NC}"
+echo -e "${CYAN}║     ${NC}systemctl --user start dashboard-api${NC}            ${CYAN}║${NC}"
 echo -e "${CYAN}║     ${NC}systemctl --user start dashboard-collector.timer${NC} ${CYAN}║${NC}"
 echo -e "${CYAN}║                                                       ║${NC}"
 echo -e "${CYAN}║  ${NC}2. Open dashboard:${NC}                                ${CYAN}║${NC}"

@@ -306,7 +306,6 @@ in {
         QDRANT_URL = cfg.qdrant.url;
         QDRANT_API_KEY = cfg.qdrant.apiKey or "";
         LLAMA_CPP_BASE_URL = cfg.llamaCpp.baseUrl;
-        LLAMA_CPP_BASE_URL = cfg.llamaCpp.baseUrl;
         HYBRID_TELEMETRY_PATH = cfg.paths.telemetryPath;
         TELEMETRY_PATH = cfg.paths.telemetryPath;
         MCP_SERVER_MODE = "http";

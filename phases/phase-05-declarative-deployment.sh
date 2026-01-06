@@ -552,12 +552,17 @@ phase_05_declarative_deployment() {
         print_info "Images and containers (vLLM/Open WebUI/Qdrant/MindsDB) will be pulled the first time you run your ai-optimizer workflow."
         echo ""
 
+        # Check for AI stack helper script
         if command -v podman-ai-stack >/dev/null 2>&1; then
             print_info "After deployment run: podman-ai-stack up"
-            print_info "This will pull/start the ai-optimizer Podman stack (vLLM, Open WebUI, Qdrant, MindsDB)."
+        elif [ -f "${SCRIPT_DIR}/scripts/podman-ai-stack.sh" ]; then
+            print_info "After deployment run: ./scripts/podman-ai-stack.sh up"
+        elif [ -f "${SCRIPT_DIR}/scripts/hybrid-ai-stack.sh" ]; then
+            print_info "After deployment run: ./scripts/hybrid-ai-stack.sh up"
         else
-            print_warning "podman-ai-stack helper not found. Install/configure ai-optimizer, then run its launch script to provision the containers."
+            print_info "After deployment run: cd ai-stack/compose && podman-compose up -d"
         fi
+        print_info "This will pull/start the AI stack containers (llama.cpp, Open WebUI, Qdrant, MindsDB, etc.)"
 
         if declare -F prefetch_podman_ai_stack_images >/dev/null 2>&1; then
             prefetch_podman_ai_stack_images

@@ -38,7 +38,7 @@ let
   # Power management strategy:
   # - true = use power-profiles-daemon (COSMIC/GNOME GUI integration)
   # - false = use TLP (more advanced, CLI-based)
-  useCOSMICPowerManagement = lib.mkDefault true;
+  useCOSMICPowerManagement = true;
 in
 {
   # =========================================================================

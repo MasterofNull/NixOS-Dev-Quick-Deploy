@@ -78,8 +78,8 @@ class RalphLoopEngine:
             "context": context or {},
             "status": "queued",
             "iteration": 0,
-            "started_at": datetime.utcnow().isoformat(),
-            "last_update": datetime.utcnow().isoformat(),
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "last_update": datetime.now(timezone.utc).isoformat(),
             "results": [],
             "error": None,
             "awaiting_approval": False
@@ -93,7 +93,7 @@ class RalphLoopEngine:
             "task_id": task_id,
             "backend": backend,
             "prompt_length": len(prompt),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         })
 
         logger.info("task_submitted", task_id=task_id, backend=backend)
@@ -155,7 +155,7 @@ class RalphLoopEngine:
         while True:
             iteration += 1
             task["iteration"] = iteration
-            task["last_update"] = datetime.utcnow().isoformat()
+            task["last_update"] = datetime.now(timezone.utc).isoformat()
 
             logger.info("ralph_iteration", task_id=task_id, iteration=iteration)
 
@@ -185,7 +185,7 @@ class RalphLoopEngine:
 
                 task["results"].append({
                     "iteration": iteration,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                     "result": result
                 })
 
@@ -196,7 +196,7 @@ class RalphLoopEngine:
                     "iteration": iteration,
                     "backend": task["backend"],
                     "exit_code": result.get("exit_code", 0),
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 })
 
                 # Check exit code
@@ -253,7 +253,7 @@ class RalphLoopEngine:
             "task_id": task_id,
             "status": task["status"],
             "total_iterations": iteration,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         })
 
     def _is_task_complete(self, task: Dict[str, Any], result: Dict[str, Any]) -> bool:
@@ -327,7 +327,7 @@ class RalphLoopEngine:
             return False
 
         task["status"] = "stopped"
-        task["stopped_at"] = datetime.utcnow().isoformat()
+        task["stopped_at"] = datetime.now(timezone.utc).isoformat()
         logger.info("task_stopped", task_id=task_id)
 
         return True

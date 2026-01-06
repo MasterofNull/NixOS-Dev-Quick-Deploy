@@ -26,11 +26,11 @@ class AgentOrchestrator:
     """
 
     BACKEND_URLS = {
-        "aider": "http://aider:8080",
-        "continue": "http://continue-server:8080",
-        "goose": "http://goose:8080",
-        "autogpt": "http://autogpt:8080",
-        "langchain": "http://langchain:8080",
+        "aider": "http://localhost:8099",  # Aider HTTP wrapper
+        "continue": "http://continue-server:8080",  # TODO: create wrapper
+        "goose": "http://goose:8080",  # TODO: create wrapper
+        "autogpt": "http://autogpt:8080",  # TODO: create wrapper
+        "langchain": "http://langchain:8080",  # TODO: create wrapper
     }
 
     def __init__(self, backends: List[str], default_backend: str):

@@ -414,8 +414,18 @@ install_dependencies() {
     python3 -m venv "${MCP_SERVER_DIR}/.venv"
     "${MCP_SERVER_DIR}/.venv/bin/pip" install --upgrade pip
 
-    if ! "${MCP_SERVER_DIR}/.venv/bin/pip" install -r "${MCP_SERVER_DIR}/requirements.txt" 2>&1 | grep -v "WARNING:"; then
+    # Set pip timeout and retry configuration to prevent hanging downloads
+    # PyTorch downloads can be large (100MB+) and may timeout on slow connections
+    export PIP_DEFAULT_TIMEOUT=300  # 5 minutes per download
+    export PIP_RETRIES=3
+
+    log_info "Installing dependencies (this may take several minutes for large packages like PyTorch)..."
+    log_info "Progress will be shown below..."
+
+    if ! "${MCP_SERVER_DIR}/.venv/bin/pip" install --timeout 300 --retries 3 --progress-bar on -r "${MCP_SERVER_DIR}/requirements.txt" 2>&1 | grep -v "WARNING:"; then
         log_error "Dependency installation failed; check pip output above"
+        log_info "If PyTorch download timed out, try running with better internet connection or use:"
+        log_info "  ${MCP_SERVER_DIR}/.venv/bin/pip install --timeout 600 -r ${MCP_SERVER_DIR}/requirements.txt"
         return 1
     fi
 

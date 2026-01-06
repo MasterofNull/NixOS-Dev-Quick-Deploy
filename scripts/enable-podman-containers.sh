@@ -132,9 +132,13 @@ fi
 print_info "Verifying installation..."
 
 if [[ -f "$HOME/.local/bin/podman-ai-stack" ]]; then
-    print_success "podman-ai-stack helper installed"
+    print_success "podman-ai-stack helper installed in PATH"
+elif [[ -f "${SCRIPT_DIR}/podman-ai-stack.sh" ]]; then
+    print_success "podman-ai-stack helper available at ./scripts/podman-ai-stack.sh"
+elif [[ -f "${SCRIPT_DIR}/hybrid-ai-stack.sh" ]]; then
+    print_success "AI stack helper available at ./scripts/hybrid-ai-stack.sh"
 else
-    print_warning "podman-ai-stack helper not found (may need to rebuild again)"
+    print_info "AI stack can be managed via: cd ai-stack/compose && podman-compose"
 fi
 
 # Check for systemd services
