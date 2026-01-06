@@ -4023,6 +4023,7 @@ EOF
     replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_TGI_ENDPOINT_PLACEHOLDER" "$(nix_quote_string "$huggingface_tgi_endpoint")"
     replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_SCOUT_TGI_ENDPOINT_PLACEHOLDER" "$(nix_quote_string "$huggingface_scout_tgi_endpoint")"
     replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_TGI_CONTAINER_ENDPOINT_PLACEHOLDER" "$(nix_quote_string "$huggingface_tgi_container_endpoint")"
+    replace_placeholder "$HOME_MANAGER_FILE" "DEFAULTEDITOR" "$DEFAULT_EDITOR"
 
     local HOME_HOSTNAME=$(hostname)
     replace_placeholder "$HOME_MANAGER_FILE" "@HOSTNAME@" "$HOME_HOSTNAME"

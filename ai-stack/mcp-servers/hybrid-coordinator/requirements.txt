@@ -24,6 +24,9 @@ structlog==23.1.0
 psycopg[binary]>=3.2.0
 sqlalchemy>=2.0.0
 
+# Session Management
+redis[hiredis]>=5.0.0
+
 # Optional: For future enhancements
 # langchain>=0.3.0
 # anthropic>=0.40.0

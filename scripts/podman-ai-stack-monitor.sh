@@ -57,7 +57,7 @@ SERVICES=(
 declare -A PORTS=(
     ["llama-cpp"]="8080"
     ["qdrant"]="6333"
-    ["open-webui"]="8081"
+    ["open-webui"]="3001"
     ["mindsdb"]="47334"
 )
 

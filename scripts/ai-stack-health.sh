@@ -25,7 +25,7 @@ else
 fi
 
 info "Checking dashboard services..."
-for unit in dashboard-collector.timer dashboard-server.service; do
+for unit in dashboard-collector.timer dashboard-server.service dashboard-api.service; do
     if systemctl --user is-active --quiet "$unit"; then
         success "$unit is active"
     else

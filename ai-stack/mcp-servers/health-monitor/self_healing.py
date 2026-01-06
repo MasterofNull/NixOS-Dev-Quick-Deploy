@@ -242,7 +242,7 @@ class SelfHealingOrchestrator:
             self.healing_history.append(action)
 
             # Update cooldown
-            self.restart_cooldowns[container_name] = datetime.utcnow()
+            self.restart_cooldowns[container_name] = datetime.now(timezone.utc)
 
             # Verify healing
             await asyncio.sleep(15)
@@ -272,7 +272,7 @@ class SelfHealingOrchestrator:
         last_restart = self.restart_cooldowns[container_name]
         cooldown_period = timedelta(seconds=60)
 
-        return datetime.utcnow() - last_restart > cooldown_period
+        return datetime.now(timezone.utc) - last_restart > cooldown_period
 
     async def _get_container_logs(self, container_name: str) -> str:
         """Get container logs for error analysis"""
@@ -370,7 +370,7 @@ class SelfHealingOrchestrator:
                 success = await self._restart_container(container_name)
 
             return HealingAction(
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 container=container_name,
                 error_pattern=error_pattern,
                 action=action_type,
@@ -381,7 +381,7 @@ class SelfHealingOrchestrator:
         except Exception as e:
             logger.error("fix_application_failed", error=str(e))
             return HealingAction(
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 container=container_name,
                 error_pattern=error_pattern,
                 action="failed",

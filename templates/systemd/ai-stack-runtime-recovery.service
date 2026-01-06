@@ -1,0 +1,22 @@
+# Systemd service to recover Podman runtime state on boot
+# Part of: NixOS-Dev-Quick-Deploy
+# Install: sudo cp this file to /etc/systemd/system/
+# Enable: sudo systemctl enable ai-stack-runtime-recovery.service
+
+[Unit]
+Description=Recover Podman runtime state for AI stack
+After=local-fs.target
+Before=podman.service
+
+[Service]
+Type=oneshot
+User=root
+# Update these paths to match your installation
+Environment="PODMAN_RUNTIME_UID=1000"
+ExecStart=/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/reset-podman-runtime.sh
+StandardOutput=journal
+StandardError=journal
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

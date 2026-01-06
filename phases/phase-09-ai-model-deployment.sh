@@ -97,11 +97,34 @@ phase_09_ai_model_deployment() {
 
     # Setup Hybrid Learning System (Automated)
     log_info "Setting up Hybrid Local-Remote AI Learning System..."
-    if [ -f "${SCRIPT_DIR}/scripts/setup-hybrid-learning-auto.sh" ]; then
-        if bash "${SCRIPT_DIR}/scripts/setup-hybrid-learning-auto.sh"; then
+    export HYBRID_LEARNING_SETUP_TIMEOUT="${HYBRID_LEARNING_SETUP_TIMEOUT:-900}"
+    export HYBRID_LEARNING_CLEAN_RESTART="${HYBRID_LEARNING_CLEAN_RESTART:-true}"
+    if [[ "${SKIP_HYBRID_LEARNING_SETUP:-false}" == "true" ]]; then
+        log_info "Skipping hybrid learning setup (SKIP_HYBRID_LEARNING_SETUP=true)"
+    elif [ -f "${SCRIPT_DIR}/scripts/setup-hybrid-learning-auto.sh" ]; then
+        local setup_timeout="${HYBRID_LEARNING_SETUP_TIMEOUT:-900}"
+        local timeout_cmd=()
+        if command -v timeout >/dev/null 2>&1; then
+            timeout_cmd=(timeout "${setup_timeout}")
+        fi
+
+        if command -v stdbuf >/dev/null 2>&1; then
+            "${timeout_cmd[@]}" stdbuf -oL -eL bash "${SCRIPT_DIR}/scripts/setup-hybrid-learning-auto.sh" 2>&1 | \
+                while IFS= read -r line; do
+                    log_info "[hybrid-setup] $line"
+                done
+        else
+            "${timeout_cmd[@]}" bash "${SCRIPT_DIR}/scripts/setup-hybrid-learning-auto.sh" 2>&1 | \
+                while IFS= read -r line; do
+                    log_info "[hybrid-setup] $line"
+                done
+        fi
+
+        local setup_status=${PIPESTATUS[0]:-0}
+        if [[ $setup_status -eq 0 ]]; then
             log_success "Hybrid learning system initialized"
         else
-            log_warning "Hybrid learning setup encountered issues but will continue"
+            log_warning "Hybrid learning setup encountered issues (or timed out) but will continue"
         fi
     else
         log_warning "Automated setup script not found, skipping hybrid learning setup"

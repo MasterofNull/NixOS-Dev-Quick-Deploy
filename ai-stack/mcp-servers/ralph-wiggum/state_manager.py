@@ -40,8 +40,8 @@ class StateManager:
             return {
                 "tasks": {},
                 "version": "1.0.0",
-                "created_at": datetime.utcnow().isoformat(),
-                "last_updated": datetime.utcnow().isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "last_updated": datetime.now(timezone.utc).isoformat()
             }
 
         try:
@@ -60,14 +60,14 @@ class StateManager:
             return {
                 "tasks": {},
                 "version": "1.0.0",
-                "created_at": datetime.utcnow().isoformat(),
-                "last_updated": datetime.utcnow().isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "last_updated": datetime.now(timezone.utc).isoformat()
             }
 
     def _save_state(self):
         """Save state to file"""
         try:
-            self.state["last_updated"] = datetime.utcnow().isoformat()
+            self.state["last_updated"] = datetime.now(timezone.utc).isoformat()
 
             # Write to temp file first
             temp_file = self.state_file.with_suffix(".tmp")
@@ -170,7 +170,7 @@ class StateManager:
         """Clean up old task states"""
         from datetime import timedelta
 
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         cutoff_iso = cutoff.isoformat()
 
         tasks_to_remove = [

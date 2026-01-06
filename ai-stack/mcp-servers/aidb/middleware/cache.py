@@ -89,41 +89,42 @@ class CacheMiddleware(BaseHTTPMiddleware):
 
         # Cache successful GET responses
         if request.method == "GET" and response.status_code == 200:
+            # Read response body once so we can safely return a new response.
+            body = b""
+            async for chunk in response.body_iterator:
+                body += chunk
+
+            headers = dict(response.headers)
+            headers.pop("content-length", None)
+
+            # Try to parse as JSON for caching
             try:
-                # Read response body
-                body = b""
-                async for chunk in response.body_iterator:
-                    body += chunk
-
-                # Try to parse as JSON
+                data = json.loads(body)
+                ttl = self._get_ttl(request)
                 try:
-                    data = json.loads(body)
-                    ttl = self._get_ttl(request)
-
-                    # Store in cache
                     await self.redis_client.setex(
                         cache_key,
                         ttl,
                         json.dumps(data)
                     )
+                    headers["X-Cache"] = "MISS"
+                    headers["X-Cache-TTL"] = str(ttl)
+                except Exception:
+                    # Cache write failed, return response without cache headers.
+                    pass
 
-                    # Return response with cache header
-                    return JSONResponse(
-                        content=data,
-                        status_code=response.status_code,
-                        headers={"X-Cache": "MISS", "X-Cache-TTL": str(ttl)}
-                    )
-                except json.JSONDecodeError:
-                    # Not JSON, return as-is
-                    return Response(
-                        content=body,
-                        status_code=response.status_code,
-                        headers=dict(response.headers)
-                    )
-
-            except Exception:
-                # Caching failed, return original response
-                pass
+                return JSONResponse(
+                    content=data,
+                    status_code=response.status_code,
+                    headers=headers
+                )
+            except json.JSONDecodeError:
+                # Not JSON, return as-is
+                return Response(
+                    content=body,
+                    status_code=response.status_code,
+                    headers=headers
+                )
 
         return response
 

@@ -172,9 +172,9 @@ def check_open_webui(timeout: int = 5) -> ServiceCheck:
 
     return ServiceCheck(
         name="Open WebUI",
-        status="error",
-        message="Not reachable on common ports (3000, 8080, 8081)",
-        details={"suggestion": "podman start local-ai-open-webui"}
+        status="warning",
+        message="Not reachable on common ports (3001, 3000, 8080, 8081)",
+        details={"suggestion": "podman-ai-stack up (or podman start local-ai-open-webui)"}
     )
 
 

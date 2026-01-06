@@ -88,6 +88,23 @@ services:
       retries: 3
       start_period: 120s
 
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: local-ai-open-webui
+    restart: unless-stopped
+    ports:
+      - "3001:8080"
+    environment:
+      OPENAI_API_BASE_URL: http://llama-cpp:8080/v1
+      OPENAI_API_KEY: llama-cpp
+      WEBUI_AUTH: "false"
+      ENABLE_RAG_WEB_SEARCH: "true"
+      ENABLE_OLLAMA_API: "false"
+    volumes:
+      - ${AI_STACK_DATA}/open-webui:/app/backend/data:Z
+    depends_on:
+      - llama-cpp
+
   qdrant:
     image: qdrant/qdrant:v1.16.2
     container_name: local-ai-qdrant

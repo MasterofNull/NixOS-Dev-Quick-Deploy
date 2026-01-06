@@ -35,6 +35,35 @@ __pycache__/
 *.pyc
 
 # ==============================================================================
+# Reports and Session Logs (stored in database, not repo)
+# ==============================================================================
+
+# All session reports and deployment logs should go to database
+# NOT cluttering the repo root with markdown files
+*-SUMMARY*.md
+*-COMPLETE*.md
+*-FIX*.md
+*-FIXES*.md
+*-IMPLEMENTATION*.md
+*-UPGRADE*.md
+*-DEPLOYMENT*.md
+*-SESSION*.md
+*-WORK*.md
+*-PROGRESS*.md
+*-ERROR*.md
+*-DEBUG*.md
+*-CONTAINER-*.md
+*-MIGRATION*.md
+
+# Exception: Keep README and core documentation
+!README.md
+!CONTRIBUTING.md
+!LICENSE.md
+
+# Fallback reports directory (when database unavailable)
+.reports/
+
+# ==============================================================================
 # Federated Learning Data Policy
 # ==============================================================================
 

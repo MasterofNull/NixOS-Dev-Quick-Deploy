@@ -1,0 +1,28 @@
+# Systemd service to cleanup orphaned AI stack processes on boot
+# Part of: NixOS-Dev-Quick-Deploy
+# Install: sudo cp this file to /etc/systemd/system/
+# Enable: sudo systemctl enable ai-stack-cleanup.service
+
+[Unit]
+Description=Cleanup orphaned AI stack processes
+Documentation=https://github.com/yourusername/NixOS-Dev-Quick-Deploy
+After=network-online.target
+Wants=network-online.target
+Before=podman.service
+
+[Service]
+Type=oneshot
+User=root
+# Update this path to match your installation
+ExecStart=/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/cleanup-orphaned-ai-processes.sh
+StandardOutput=journal
+StandardError=journal
+RemainAfterExit=yes
+
+# Retry on failure
+Restart=on-failure
+RestartSec=5s
+StartLimitBurst=3
+
+[Install]
+WantedBy=multi-user.target

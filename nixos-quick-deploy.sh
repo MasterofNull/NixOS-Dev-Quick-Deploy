@@ -1209,6 +1209,57 @@ main() {
     ensure_nix_experimental_features_env
     init_state
 
+    # Prevent concurrent deployments (avoids overlapping Phase 9 runs)
+    local lock_file="${CACHE_DIR}/deploy.lock"
+    local lock_fd=200
+    mkdir -p "$CACHE_DIR" >/dev/null 2>&1 || true
+    if command -v flock >/dev/null 2>&1; then
+        eval "exec ${lock_fd}>\"${lock_file}\""
+        if ! flock -n "$lock_fd"; then
+            print_error "Another nixos-quick-deploy instance is running (lock: $lock_file)"
+            exit 1
+        fi
+        trap "flock -u ${lock_fd} 2>/dev/null || true" EXIT
+    else
+        if [[ -f "$lock_file" ]]; then
+            local lock_pid
+            lock_pid=$(cat "$lock_file" 2>/dev/null || true)
+            if [[ -n "$lock_pid" ]] && kill -0 "$lock_pid" 2>/dev/null; then
+                print_error "Another nixos-quick-deploy instance is running (PID: $lock_pid)"
+                exit 1
+            fi
+        fi
+        echo "$$" > "$lock_file"
+        trap 'rm -f "$lock_file" 2>/dev/null || true' EXIT
+    fi
+
+    # Preflight: avoid overlapping AI stack setup/compose runs
+    local allow_running_stack_setup="${ALLOW_RUNNING_STACK_SETUP:-false}"
+    local auto_stop_stack="${AUTO_STOP_STACK_ON_CONFLICT:-false}"
+    if [[ "$allow_running_stack_setup" != "true" ]]; then
+        local stack_conflict=false
+        if pgrep -f "setup-hybrid-learning-auto\\.sh" >/dev/null 2>&1; then
+            print_warning "Hybrid learning setup is already running (setup-hybrid-learning-auto.sh)."
+            stack_conflict=true
+        fi
+        if pgrep -f "podman-compose.*${SCRIPT_DIR}/ai-stack/compose" >/dev/null 2>&1; then
+            print_warning "podman-compose is already running for the AI stack."
+            stack_conflict=true
+        fi
+
+        if [[ "$stack_conflict" == "true" ]]; then
+            if [[ "$auto_stop_stack" == "true" && -x "${SCRIPT_DIR}/scripts/stop-ai-stack.sh" ]]; then
+                print_warning "AUTO_STOP_STACK_ON_CONFLICT=true; stopping AI stack to continue."
+                "${SCRIPT_DIR}/scripts/stop-ai-stack.sh" || print_warning "AI stack stop reported issues."
+            else
+                print_error "AI stack setup is already running. Aborting to avoid conflicts."
+                print_info "Wait for it to finish or re-run with ALLOW_RUNNING_STACK_SETUP=true"
+                print_info "To auto-stop conflicting processes, set AUTO_STOP_STACK_ON_CONFLICT=true"
+                exit 1
+            fi
+        fi
+    fi
+
     # Print deployment header
     print_header
 
@@ -1356,6 +1407,15 @@ main() {
 
     if [[ $final_exit -eq 0 ]]; then
         print_success "Deployment completed successfully!"
+
+        # Show AI Stack Monitor Dashboard info (if available)
+        local monitor_script="$SCRIPT_DIR/scripts/ai-stack-monitor.sh"
+        if [[ -x "$monitor_script" && "$SKIP_AI_MODEL" != true ]]; then
+            echo ""
+            print_info "AI Stack Monitor Dashboard available at: $monitor_script"
+            print_info "To view live monitoring, run: $monitor_script"
+            echo ""
+        fi
     else
         print_warning "Deployment completed with follow-up actions required."
         if [[ $health_exit -ne 0 ]]; then

@@ -23,11 +23,11 @@ require_cmd() {
 require_cmd curl
 
 info "Checking AIDB MCP health..."
-curl -sf "${AIDB_URL}/health" >/dev/null
+curl -sf --max-time 5 "${AIDB_URL}/health" >/dev/null
 success "AIDB MCP is healthy"
 
 info "Checking Hybrid Coordinator health..."
-curl -sf "${HYBRID_URL}/health" >/dev/null
+curl -sf --max-time 5 "${HYBRID_URL}/health" >/dev/null
 success "Hybrid Coordinator is healthy"
 
 before_count=0
@@ -36,7 +36,7 @@ if [[ -f "$HYBRID_TELEMETRY_PATH" ]]; then
 fi
 
 info "Triggering hybrid coordinator telemetry event..."
-curl -sf -X POST "${HYBRID_URL}/augment_query" \
+curl -sf --max-time 5 -X POST "${HYBRID_URL}/augment_query" \
     -H "Content-Type: application/json" \
     -d '{"query":"Telemetry smoke test: validate local routing metrics.","agent_type":"local"}' \
     >/dev/null

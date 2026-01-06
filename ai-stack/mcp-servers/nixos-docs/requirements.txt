@@ -1,0 +1,38 @@
+# NixOS Documentation MCP Server Dependencies
+# Version: 1.0.0
+
+# FastAPI and MCP
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.5
+pydantic-settings==2.7.1
+
+# HTTP clients
+httpx==0.28.1
+aiohttp==3.11.11
+requests==2.32.3
+
+# Documentation parsing
+beautifulsoup4==4.12.3
+lxml==5.3.0
+markdown==3.7
+markdownify==0.14.1
+
+# Database clients
+psycopg2-binary==2.9.10
+redis==5.2.1
+sqlalchemy==2.0.36
+
+# Vector embeddings
+sentence-transformers==3.3.1
+
+# Caching and utilities
+diskcache==5.6.3
+python-dateutil==2.9.0.post0
+pyyaml==6.0.2
+
+# Git for repo cloning
+gitpython==3.1.43
+
+# Search and indexing
+whoosh==2.7.4
