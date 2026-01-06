@@ -124,6 +124,131 @@ def retry_with_backoff(
     return async_wrapper() if is_async else sync_wrapper()
 
 
+class CircuitBreaker:
+    """
+    Circuit breaker pattern to prevent cascade failures.
+
+    States:
+    - CLOSED: Normal operation, requests pass through
+    - OPEN: Failures exceeded threshold, fail fast
+    - HALF_OPEN: Testing if service recovered
+
+    After failure_threshold failures, circuit opens for recovery_timeout seconds.
+    During OPEN state, requests fail immediately without calling service.
+    After recovery_timeout, enters HALF_OPEN to test if service recovered.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        failure_threshold: int = 5,
+        recovery_timeout: float = 60.0,
+        expected_exception: type = Exception
+    ):
+        self.name = name
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.expected_exception = expected_exception
+
+        self._failure_count = 0
+        self._last_failure_time: Optional[float] = None
+        self._state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
+        self._lock = threading.Lock()
+
+        # Update Prometheus metrics
+        self._update_metrics()
+
+    @property
+    def state(self) -> str:
+        """Get current circuit state"""
+        with self._lock:
+            if self._state == "OPEN" and self._last_failure_time:
+                # Check if recovery timeout has elapsed
+                if time.time() - self._last_failure_time >= self.recovery_timeout:
+                    self._state = "HALF_OPEN"
+                    self._update_metrics()
+                    LOGGER.info(f"Circuit breaker '{self.name}': OPEN → HALF_OPEN (testing recovery)")
+            return self._state
+
+    def call(self, func, *args, **kwargs):
+        """
+        Execute function with circuit breaker protection.
+
+        Args:
+            func: Function to call
+            *args, **kwargs: Arguments to pass to func
+
+        Returns:
+            Result of func()
+
+        Raises:
+            RuntimeError: If circuit is OPEN
+            Exception: If func() raises
+        """
+        current_state = self.state
+
+        if current_state == "OPEN":
+            raise RuntimeError(
+                f"Circuit breaker '{self.name}' is OPEN. "
+                f"Service unavailable due to repeated failures. "
+                f"Will retry in {self.recovery_timeout - (time.time() - self._last_failure_time):.0f}s"
+            )
+
+        try:
+            result = func(*args, **kwargs)
+
+            # Success - reset failure count
+            with self._lock:
+                if self._state == "HALF_OPEN":
+                    self._state = "CLOSED"
+                    self._update_metrics()
+                    LOGGER.info(f"Circuit breaker '{self.name}': HALF_OPEN → CLOSED (service recovered)")
+
+                if self._failure_count > 0:
+                    LOGGER.debug(f"Circuit breaker '{self.name}': Reset failure count (was {self._failure_count})")
+                self._failure_count = 0
+
+            return result
+
+        except self.expected_exception as e:
+            # Failure - increment count and check threshold
+            with self._lock:
+                self._failure_count += 1
+                self._last_failure_time = time.time()
+                CIRCUIT_BREAKER_FAILURES.labels(service=self.name).inc()
+
+                if self._failure_count >= self.failure_threshold:
+                    self._state = "OPEN"
+                    self._update_metrics()
+                    LOGGER.error(
+                        f"Circuit breaker '{self.name}': CLOSED → OPEN "
+                        f"({self._failure_count} failures exceeded threshold {self.failure_threshold}). "
+                        f"Failing fast for {self.recovery_timeout}s"
+                    )
+                else:
+                    LOGGER.warning(
+                        f"Circuit breaker '{self.name}': Failure {self._failure_count}/{self.failure_threshold}: {e}"
+                    )
+
+            raise
+
+    def _update_metrics(self):
+        """Update Prometheus metrics for current state"""
+        state_value = {"CLOSED": 0, "HALF_OPEN": 1, "OPEN": 2}.get(self._state, 0)
+        CIRCUIT_BREAKER_STATE.labels(service=self.name).set(state_value)
+
+    def reset(self):
+        """Manually reset circuit breaker to CLOSED state"""
+        with self._lock:
+            old_state = self._state
+            self._state = "CLOSED"
+            self._failure_count = 0
+            self._last_failure_time = None
+            self._update_metrics()
+            if old_state != "CLOSED":
+                LOGGER.info(f"Circuit breaker '{self.name}': {old_state} → CLOSED (manual reset)")
+
+
 METADATA = sa.MetaData()
 TOOL_REGISTRY = sa.Table(
     "tool_registry",
@@ -223,6 +348,16 @@ REQUEST_LATENCY = Histogram(
     "aidb_request_latency_seconds", "Latency for MCP actions", ["action"]
 )
 CACHE_GAUGE = Gauge("aidb_tool_cache_size", "Number of tools in memory cache")
+CIRCUIT_BREAKER_STATE = Gauge(
+    "aidb_circuit_breaker_state",
+    "Circuit breaker state (0=CLOSED, 1=HALF_OPEN, 2=OPEN)",
+    ["service"]
+)
+CIRCUIT_BREAKER_FAILURES = Counter(
+    "aidb_circuit_breaker_failures_total",
+    "Circuit breaker failure count",
+    ["service"]
+)
 
 
 class EmbeddingService:
@@ -1319,6 +1454,29 @@ class MCPServer:
         self._telemetry_path = Path(self.settings.telemetry_path)
         self._telemetry_enabled = self.settings.telemetry_enabled
 
+        # Circuit breakers for external services
+        self._circuit_breakers = {
+            "embeddings": CircuitBreaker(
+                name="embeddings-service",
+                failure_threshold=5,
+                recovery_timeout=60.0,
+                expected_exception=(httpx.HTTPError, httpx.TimeoutException, ConnectionError)
+            ),
+            "qdrant": CircuitBreaker(
+                name="qdrant-vector-db",
+                failure_threshold=5,
+                recovery_timeout=60.0,
+                expected_exception=(httpx.HTTPError, httpx.TimeoutException, ConnectionError)
+            ),
+            "llama_cpp": CircuitBreaker(
+                name="llama-cpp-inference",
+                failure_threshold=3,  # Lower threshold for LLM (expensive)
+                recovery_timeout=120.0,  # Longer recovery for model loading
+                expected_exception=(httpx.HTTPError, httpx.TimeoutException, ConnectionError)
+            ),
+        }
+        LOGGER.info("Circuit breakers initialized for external services")
+
     def _require_api_key(self, request: Request) -> None:
         expected = self.settings.api_key
         if not expected:
@@ -1546,6 +1704,12 @@ class MCPServer:
             status["federation"] = f"{len(servers)} servers cached"
         except Exception as exc:  # noqa: BLE001
             status["federation"] = f"unavailable: {exc}"
+
+        # Circuit breaker states
+        status["circuit_breakers"] = {
+            name: breaker.state
+            for name, breaker in self._circuit_breakers.items()
+        }
 
         return status
 
