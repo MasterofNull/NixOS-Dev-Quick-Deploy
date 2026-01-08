@@ -1,0 +1,239 @@
+name: Security Audit & Vulnerability Scan
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    # Run weekly on Mondays at 9:00 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
+jobs:
+  security-audit:
+    name: Security Configuration Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq yq
+          pip install pyyaml
+
+      - name: Run security audit script
+        id: audit
+        run: |
+          bash scripts/security-audit.sh > security-audit-results.txt 2>&1
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Upload audit results
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-audit-results
+          path: security-audit-results.txt
+          retention-days: 30
+
+      - name: Check audit results
+        run: |
+          cat security-audit-results.txt
+          if grep -q "BLOCKING" security-audit-results.txt; then
+            echo "::error::Security audit found blocking failures"
+            exit 1
+          fi
+          if grep -q "CRITICAL" security-audit-results.txt; then
+            echo "::warning::Security audit found critical issues"
+          fi
+
+      - name: Comment PR with audit results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const results = fs.readFileSync('security-audit-results.txt', 'utf8');
+            const body = `## Security Audit Results\n\n\`\`\`\n${results}\n\`\`\``;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+  trivy-scan-core:
+    name: Trivy Vulnerability Scan (Core Images)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - postgres:17-alpine
+          - redis:7.4-alpine
+          - qdrant/qdrant:v1.12.5
+          - nginx:1.27-alpine
+          - grafana/grafana:11.4.0
+          - prom/prometheus:v3.1.0
+          - jaegertracing/all-in-one:1.64.0
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ matrix.image }}
+          format: 'sarif'
+          output: 'trivy-results-${{ hashFiles(matrix.image) }}.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'  # Don't fail on vulnerabilities in base images
+          ignore-unfixed: true
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results-${{ hashFiles(matrix.image) }}.sarif'
+          category: trivy-${{ matrix.image }}
+
+      - name: Run Trivy scanner (table output)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ matrix.image }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+
+  trivy-scan-custom:
+    name: Trivy Scan (Custom Images)
+    runs-on: ubuntu-latest
+    needs: security-audit
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - aidb
+          - embeddings-service
+          - hybrid-coordinator
+          - nixos-docs
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image for scanning
+        id: build
+        run: |
+          cd ai-stack/mcp-servers/${{ matrix.service }}
+          docker build -t local/${{ matrix.service }}:scan .
+          echo "image=local/${{ matrix.service }}:scan" >> $GITHUB_OUTPUT
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.build.outputs.image }}
+          format: 'sarif'
+          output: 'trivy-${{ matrix.service }}.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'  # Fail on HIGH/CRITICAL in custom images
+          ignore-unfixed: true
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-${{ matrix.service }}.sarif'
+          category: trivy-custom-${{ matrix.service }}
+
+      - name: Run Trivy scanner (table output)
+        uses: aquasecurity/trivy-action@master
+        if: always()
+        with:
+          image-ref: ${{ steps.build.outputs.image }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+
+  dockerfile-lint:
+    name: Dockerfile Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run hadolint on all Dockerfiles
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: "ai-stack/mcp-servers/*/Dockerfile"
+          failure-threshold: warning
+          format: sarif
+          output-file: hadolint-results.sarif
+
+      - name: Upload Hadolint results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: hadolint-results.sarif
+          category: hadolint
+
+  secrets-scan:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better detection
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  security-summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: [security-audit, trivy-scan-core, trivy-scan-custom, dockerfile-lint, secrets-scan]
+    if: always()
+    steps:
+      - name: Download audit results
+        uses: actions/download-artifact@v4
+        with:
+          name: security-audit-results
+
+      - name: Security Summary
+        run: |
+          echo "## Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Security Audit" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.security-audit.result }}" == "success" ]; then
+            echo "✅ Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Vulnerability Scans" >> $GITHUB_STEP_SUMMARY
+          echo "- Core Images: ${{ needs.trivy-scan-core.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Custom Images: ${{ needs.trivy-scan-custom.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Additional Checks" >> $GITHUB_STEP_SUMMARY
+          echo "- Dockerfile Lint: ${{ needs.dockerfile-lint.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Secret Detection: ${{ needs.secrets-scan.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📊 See the Security tab for detailed vulnerability reports" >> $GITHUB_STEP_SUMMARY
