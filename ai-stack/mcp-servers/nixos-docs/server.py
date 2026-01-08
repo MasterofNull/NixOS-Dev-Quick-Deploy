@@ -15,19 +15,87 @@ import os
 import json
 import asyncio
 import hashlib
-from datetime import datetime, timedelta
+import logging
+import time
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, Response
+from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from pydantic import BaseModel, Field
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 import redis
+import structlog
+from structlog.contextvars import bind_contextvars, merge_contextvars, clear_contextvars
 from diskcache import Cache
 from git import Repo
 from bs4 import BeautifulSoup
 from markdownify import markdownify as md
+
+# Initialize FastAPI app
+SERVICE_NAME = "nixos-docs"
+SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
+
+
+def configure_logging() -> None:
+    bind_contextvars(service=SERVICE_NAME, version=SERVICE_VERSION)
+    timestamper = structlog.processors.TimeStamper(fmt="iso", utc=True)
+    pre_chain = [
+        merge_contextvars,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        timestamper,
+    ]
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processor=structlog.processors.JSONRenderer(),
+        foreign_pre_chain=pre_chain,
+    )
+
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+
+    root = logging.getLogger()
+    root.handlers.clear()
+    root.setLevel(logging.INFO)
+    root.addHandler(handler)
+
+    for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
+        target_logger = logging.getLogger(logger_name)
+        target_logger.handlers.clear()
+        target_logger.propagate = True
+
+    structlog.configure(
+        processors=pre_chain + [structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+
+
+def configure_tracing() -> None:
+    if os.getenv("OTEL_TRACING_ENABLED", "true").lower() != "true":
+        return
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://jaeger:4317")
+    resource = Resource.create({"service.name": SERVICE_NAME})
+    sample_rate = float(os.getenv("OTEL_SAMPLE_RATE", "1.0"))
+    sampler = ParentBased(TraceIdRatioBased(sample_rate))
+    provider = TracerProvider(resource=resource, sampler=sampler)
+    exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
+    provider.add_span_processor(BatchSpanProcessor(exporter))
+    trace.set_tracer_provider(provider)
+
+
+configure_logging()
+configure_tracing()
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -35,6 +103,9 @@ app = FastAPI(
     version="1.0.0",
     description="Centralized Nix/NixOS documentation and knowledge base"
 )
+FastAPIInstrumentor.instrument_app(app, tracer_provider=trace.get_tracer_provider())
+
+logger = logging.getLogger(SERVICE_NAME)
 
 # Configuration
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
@@ -42,6 +113,57 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 CACHE_DIR = Path(os.getenv("NIXOS_CACHE_DIR", "/data/cache"))
 REPOS_DIR = Path(os.getenv("NIXOS_REPOS_DIR", "/data/repos"))
 CACHE_TTL = int(os.getenv("NIXOS_CACHE_TTL", "86400"))  # 24 hours
+API_KEY_FILE = os.getenv("NIXOS_DOCS_API_KEY_FILE", "")
+API_KEY = os.getenv("NIXOS_DOCS_API_KEY", "")
+
+
+def _read_secret(path: str) -> str:
+    if not path:
+        return ""
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return handle.read().strip()
+    except FileNotFoundError:
+        return ""
+
+
+if not API_KEY and API_KEY_FILE:
+    API_KEY = _read_secret(API_KEY_FILE)
+
+REQUEST_COUNT = Counter(
+    "nixos_docs_requests_total",
+    "Total nixos-docs HTTP requests",
+    ["endpoint", "status"],
+)
+REQUEST_ERRORS = Counter(
+    "nixos_docs_request_errors_total",
+    "Total nixos-docs HTTP request errors",
+    ["endpoint", "method"],
+)
+REQUEST_LATENCY = Histogram(
+    "nixos_docs_request_latency_seconds",
+    "NixOS docs HTTP request latency in seconds",
+    ["endpoint", "method"],
+)
+PROCESS_MEMORY_BYTES = Gauge(
+    "nixos_docs_process_memory_bytes",
+    "NixOS docs process resident memory in bytes",
+)
+
+
+def error_payload(message: str, exc: Exception) -> Dict[str, str]:
+    error_id = uuid4().hex[:12]
+    logger.exception("%s error_id=%s", message, error_id)
+    return {"error": message, "error_id": error_id}
+
+
+def _get_process_memory_bytes() -> int:
+    try:
+        with open("/proc/self/statm", "r", encoding="utf-8") as handle:
+            rss_pages = int(handle.read().split()[1])
+        return rss_pages * os.sysconf("SC_PAGE_SIZE")
+    except Exception:
+        return 0
 
 # Initialize cache
 disk_cache = Cache(str(CACHE_DIR))
@@ -58,6 +180,47 @@ try:
 except Exception as e:
     print(f"Redis unavailable, using disk cache only: {e}")
     redis_client = None
+
+
+@app.middleware("http")
+async def api_key_middleware(request: Request, call_next):
+    if request.url.path in ("/health", "/metrics"):
+        return await call_next(request)
+    if not API_KEY:
+        return await call_next(request)
+    token = request.headers.get("X-API-Key") or request.headers.get("Authorization", "")
+    if token.startswith("Bearer "):
+        token = token.split(" ", 1)[1]
+    if token != API_KEY:
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID") or uuid4().hex
+    bind_contextvars(request_id=request_id)
+    start = time.time()
+    response = None
+    try:
+        response = await call_next(request)
+        return response
+    except Exception:  # noqa: BLE001
+        REQUEST_ERRORS.labels(request.url.path, request.method).inc()
+        raise
+    finally:
+        duration = time.time() - start
+        status_code = str(response.status_code) if response else "500"
+        REQUEST_LATENCY.labels(request.url.path, request.method).observe(duration)
+        REQUEST_COUNT.labels(request.url.path, status_code).inc()
+        if response:
+            response.headers["X-Request-ID"] = request_id
+        clear_contextvars()
+
+
+@app.exception_handler(Exception)
+async def internal_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(status_code=500, content=error_payload("internal_error", exc))
 
 
 # Documentation sources configuration
@@ -386,6 +549,12 @@ async def health_check():
     }
 
 
+@app.get("/metrics")
+async def metrics():
+    PROCESS_MEMORY_BYTES.set(_get_process_memory_bytes())
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
 @app.post("/search")
 async def search_documentation(request: SearchRequest):
     """Search across all NixOS documentation sources"""
@@ -509,5 +678,7 @@ if __name__ == "__main__":
         app,
         host="0.0.0.0",
         port=8094,
-        log_level="info"
+        log_level="info",
+        log_config=None,
+        access_log=False,
     )

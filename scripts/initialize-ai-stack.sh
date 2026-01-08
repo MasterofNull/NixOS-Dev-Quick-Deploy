@@ -208,15 +208,10 @@ PYEOF
 if [ "$SKIP_MODELS" = false ] && [ "$TEST_ONLY" = false ]; then
     step "Step 6: Downloading AI models"
 
-    info "Pulling Ollama embedding model (nomic-embed-text)..."
-    if curl -s -X POST http://localhost:11434/api/pull \
-        -d '{"name": "nomic-embed-text"}' | grep -q "success"; then
-        success "Ollama model downloaded"
-    else
-        warning "llama.cpp model download may be in progress, check: podman logs -f local-ai-llama-cpp"
-    fi
+    info "Embeddings service will download the configured model on first start."
+    info "Set EMBEDDING_MODEL in ~/.config/nixos-ai-stack/.env to switch."
 
-    info "llama.cpp will download Qwen2.5-Coder-7B on first use (this may take 10-45 minutes)"
+    info "llama.cpp will download the selected GGUF on first use (this may take 10-45 minutes)"
     info "Monitor progress: podman logs -f local-ai-llama-cpp"
 else
     info "Skipping model downloads"
@@ -235,12 +230,22 @@ fi
 # Step 8: Generate dashboard data
 step "Step 8: Generating dashboard metrics"
 
-if [ -f "${SCRIPT_DIR}/generate-dashboard-data.sh" ]; then
-    info "Generating initial dashboard data..."
-    bash "${SCRIPT_DIR}/generate-dashboard-data.sh"
-    success "Dashboard data generated"
+health_gate="${SCRIPT_DIR}/check-ai-stack-health-v2.py"
+if [ -f "$health_gate" ]; then
+    info "Validating AI stack health before generating dashboard data..."
+    if python3 "$health_gate" >/dev/null 2>&1; then
+        if [ -f "${SCRIPT_DIR}/generate-dashboard-data.sh" ]; then
+            info "Generating initial dashboard data..."
+            bash "${SCRIPT_DIR}/generate-dashboard-data.sh"
+            success "Dashboard data generated"
+        else
+            warning "Dashboard generation script not found"
+        fi
+    else
+        warning "AI stack health check failed; skipping dashboard generation"
+    fi
 else
-    warning "Dashboard generation script not found"
+    warning "AI stack health check script not found; skipping dashboard generation"
 fi
 
 # Step 9: Test RAG system

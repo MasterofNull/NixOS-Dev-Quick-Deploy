@@ -1045,6 +1045,45 @@
                         <div class="status-grid" id="llmStatus">
                             <div class="loading"><div class="spinner"></div></div>
                         </div>
+                        <div style="margin-top: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">llama.cpp Cached Models</div>
+                            <div class="data-list" id="llamaCachedModels">
+                                <div class="data-item">
+                                    <span>Cached GGUFs</span>
+                                    <span class="data-meta">--</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Embedding Models (Cache)</div>
+                            <div class="data-list" id="embeddingCachedModels">
+                                <div class="data-item">
+                                    <span>Sentence-Transformers</span>
+                                    <span class="data-meta">--</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Embedding Service Usage</div>
+                            <div class="data-list" id="embeddingUsage">
+                                <div class="data-item">
+                                    <span>Status</span>
+                                    <span class="data-meta">--</span>
+                                </div>
+                                <div class="data-item">
+                                    <span>Requests</span>
+                                    <span class="data-meta">--</span>
+                                </div>
+                                <div class="data-item">
+                                    <span>Errors</span>
+                                    <span class="data-meta">--</span>
+                                </div>
+                                <div class="data-item">
+                                    <span>Memory</span>
+                                    <span class="data-meta">--</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1950,7 +1989,8 @@
                     timestamp: new Date().toISOString(),
                     services: {
                         qdrant: { status: 'online', collections: 5, collection_names: ['codebase-context', 'skills-patterns', 'error-solutions'], url: 'http://localhost:6333' },
-                        "llama-cpp": { status: 'online', models: [{name: 'qwen2.5-coder-7b'}], url: 'http://localhost:8080' },
+                        llama_cpp: { status: 'online', models: [{id: 'qwen2.5-coder-7b'}], cached_models: ['qwen2.5-coder-7b-instruct-q4_k_m.gguf', 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf', 'deepseek-coder-6.7b-instruct.Q4_K_M.gguf'], cached_models_count: 3, url: 'http://localhost:8080' },
+                        embeddings: { status: 'online', model: 'sentence-transformers/all-MiniLM-L6-v2', models: ['sentence-transformers/all-MiniLM-L6-v2', 'BAAI/bge-small-en-v1.5'], source: 'huggingface-cache', request_total: 1280, error_total: 2, memory_mb: 512.4, endpoint: 'http://localhost:8081' },
                         postgres: { status: 'online', url: 'localhost:5432' },
                         redis: { status: 'online', url: 'localhost:6379' },
                         open_webui: { status: 'online', url: 'http://localhost:3001' },
@@ -2233,6 +2273,75 @@
 
             // Update container list
             updateContainerList(data.containers || []);
+
+            const cachedContainer = document.getElementById('llamaCachedModels');
+            if (cachedContainer) {
+                const cached = services.llama_cpp?.cached_models || [];
+                if (!cached.length) {
+                    cachedContainer.innerHTML = `
+                        <div class="data-item">
+                            <span>Cached GGUFs</span>
+                            <span class="data-meta">none</span>
+                        </div>
+                    `;
+                } else {
+                    cachedContainer.innerHTML = cached.map(name => `
+                        <div class="data-item">
+                            <span>${name}</span>
+                            <span class="data-meta">cached</span>
+                        </div>
+                    `).join('');
+                }
+            }
+
+            const embeddingContainer = document.getElementById('embeddingCachedModels');
+            if (embeddingContainer) {
+                const embeddingModels = services.embeddings?.models || [];
+                if (!embeddingModels.length) {
+                    embeddingContainer.innerHTML = `
+                        <div class="data-item">
+                            <span>Sentence-Transformers</span>
+                            <span class="data-meta">none</span>
+                        </div>
+                    `;
+                } else {
+                    embeddingContainer.innerHTML = embeddingModels.map(name => `
+                        <div class="data-item">
+                            <span>${name}</span>
+                            <span class="data-meta">cached</span>
+                        </div>
+                    `).join('');
+                }
+            }
+
+            const usageContainer = document.getElementById('embeddingUsage');
+            if (usageContainer) {
+                const embeddings = services.embeddings || {};
+                const status = embeddings.status || 'unknown';
+                const requestTotal = embeddings.request_total ?? '--';
+                const errorTotal = embeddings.error_total ?? '--';
+                const memoryMb = embeddings.memory_mb !== undefined
+                    ? `${embeddings.memory_mb} MB`
+                    : '--';
+                usageContainer.innerHTML = `
+                    <div class="data-item">
+                        <span>Status</span>
+                        <span class="data-meta">${status}</span>
+                    </div>
+                    <div class="data-item">
+                        <span>Requests</span>
+                        <span class="data-meta">${requestTotal}</span>
+                    </div>
+                    <div class="data-item">
+                        <span>Errors</span>
+                        <span class="data-meta">${errorTotal}</span>
+                    </div>
+                    <div class="data-item">
+                        <span>Memory</span>
+                        <span class="data-meta">${memoryMb}</span>
+                    </div>
+                `;
+            }
         }
 
         // Update agentic readiness metrics

@@ -3264,6 +3264,34 @@ EOF
 )
 
     local swap_and_hibernation_block
+    local host_swap_limits_block=""
+    if [[ "${HOST_SWAP_LIMIT_ENABLED:-false}" == "true" ]]; then
+        local swap_limit_value="${HOST_SWAP_LIMIT_VALUE:-}"
+        if [[ -z "$swap_limit_value" && "${HOST_SWAP_LIMIT_GB:-}" =~ ^[0-9]+$ ]]; then
+            if (( HOST_SWAP_LIMIT_GB <= 0 )); then
+                swap_limit_value="infinity"
+            else
+                swap_limit_value="${HOST_SWAP_LIMIT_GB}G"
+            fi
+        fi
+
+        if [[ -n "$swap_limit_value" ]]; then
+            host_swap_limits_block=$(cat <<EOF
+
+  # Host-level swap accounting + limits for systemd units (includes containers)
+  systemd.settings.Manager = {
+    DefaultMemoryAccounting = "yes";
+    DefaultMemorySwapMax = "${swap_limit_value}";
+  };
+
+  systemd.user.extraConfig = ''
+    DefaultMemoryAccounting=yes
+    DefaultMemorySwapMax=${swap_limit_value}
+  '';
+EOF
+)
+        fi
+    fi
     local hibernation_swap_value="${HIBERNATION_SWAP_SIZE_GB:-$total_ram_value}"
     if [[ "${enable_zswap,,}" == "true" ]]; then
         local swap_device_path="/swapfile.nixos-zswap"
@@ -3364,12 +3392,14 @@ ${swap_size_directive}
   };
 EOF
 )
+        swap_and_hibernation_block+="${host_swap_limits_block}"
     else
         swap_and_hibernation_block=$(cat <<'EOF'
   # Swap configuration is inherited from hardware-configuration.nix
   # Previous deployment did not enable swap-backed hibernation; leaving defaults unchanged.
 EOF
 )
+        swap_and_hibernation_block+="${host_swap_limits_block}"
         print_info "Legacy memory management sysctl overrides skipped (zswap disabled)."
     fi
 
@@ -4017,7 +4047,7 @@ EOF
     replace_placeholder "$HOME_MANAGER_FILE" "GIT_USER_SETTINGS_PLACEHOLDER" "$git_user_settings_block"
     replace_placeholder "$HOME_MANAGER_FILE" "LOCAL_AI_STACK_ENABLED_PLACEHOLDER" "${LOCAL_AI_STACK_ENABLED:-false}"
     replace_placeholder "$HOME_MANAGER_FILE" "LLM_BACKEND_PLACEHOLDER" "$(nix_quote_string "${LLM_BACKEND:-llama_cpp}")"
-    replace_placeholder "$HOME_MANAGER_FILE" "LLM_MODELS_PLACEHOLDER" "$(nix_quote_string "${LLM_MODELS:-gpt-oss,qwen-3,Apriel-1.5}")"
+    replace_placeholder "$HOME_MANAGER_FILE" "LLM_MODELS_PLACEHOLDER" "$(nix_quote_string "${LLM_MODELS:-qwen3-4b,sentence-transformers/all-MiniLM-L6-v2}")"
     replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_MODEL_ID_PLACEHOLDER" "$(nix_quote_string "$huggingface_model_id")"
     replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_SCOUT_MODEL_ID_PLACEHOLDER" "$(nix_quote_string "$huggingface_scout_model_id")"
     replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_TGI_ENDPOINT_PLACEHOLDER" "$(nix_quote_string "$huggingface_tgi_endpoint")"

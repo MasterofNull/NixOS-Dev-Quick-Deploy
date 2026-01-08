@@ -1,0 +1,144 @@
+groups:
+  - name: ai_stack_critical
+    interval: 30s
+    rules:
+      # Database Connection Pool Alerts
+      - alert: DatabasePoolExhausted
+        expr: |
+          (aidb_db_pool_checked_out + aidb_db_pool_overflow) / aidb_db_pool_size > 0.9
+        for: 1m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "Database connection pool near exhaustion"
+          description: "Connection pool usage is at {{ $value | humanizePercentage }}. Pool may exhaust soon, causing request failures."
+
+      - alert: DatabasePoolLeaking
+        expr: |
+          aidb_db_pool_checked_out > (aidb_db_pool_size * 0.7)
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Possible database connection leak"
+          description: "{{ $value }} connections checked out for >5min. May indicate connection leak."
+
+      # Circuit Breaker Alerts
+      - alert: CircuitBreakerOpen
+        expr: |
+          aidb_circuit_breaker_state == 2
+        for: 1m
+        labels:
+          severity: critical
+          component: resilience
+        annotations:
+          summary: "Circuit breaker {{ $labels.service }} is OPEN"
+          description: "Service {{ $labels.service }} circuit breaker opened due to repeated failures. Requests failing fast."
+
+      - alert: CircuitBreakerHalfOpen
+        expr: |
+          aidb_circuit_breaker_state == 1
+        for: 30s
+        labels:
+          severity: warning
+          component: resilience
+        annotations:
+          summary: "Circuit breaker {{ $labels.service }} in HALF_OPEN state"
+          description: "Service {{ $labels.service }} circuit breaker testing recovery. Monitor for failures."
+
+      # TLS Certificate Expiration Alerts
+      - alert: TLSCertificateExpiringSoon
+        expr: |
+          (nginx_ssl_certificate_expiry_seconds - time()) < (7 * 24 * 3600)
+        for: 1h
+        labels:
+          severity: critical
+          component: security
+        annotations:
+          summary: "TLS certificate expires in <7 days"
+          description: "Certificate for {{ $labels.cn }} expires in {{ $value | humanizeDuration }}. Renew immediately!"
+
+      - alert: TLSCertificateExpiringWarning
+        expr: |
+          (nginx_ssl_certificate_expiry_seconds - time()) < (30 * 24 * 3600)
+        for: 1h
+        labels:
+          severity: warning
+          component: security
+        annotations:
+          summary: "TLS certificate expires in <30 days"
+          description: "Certificate for {{ $labels.cn }} expires in {{ $value | humanizeDuration }}. Plan renewal."
+
+      # API Request Error Rates
+      - alert: HighErrorRate
+        expr: |
+          rate(aidb_http_requests_total{status=~"5.."}[5m]) / rate(aidb_http_requests_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High error rate on {{ $labels.endpoint }}"
+          description: "{{ $value | humanizePercentage }} of requests failing with 5xx errors."
+
+      # Redis Connection Issues
+      - alert: RedisConnectionFailures
+        expr: |
+          rate(redis_rejected_connections_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Redis rejecting connections"
+          description: "Redis is rejecting {{ $value }} connections/sec. May indicate resource exhaustion."
+
+      # Service Health Check Failures
+      - alert: ServiceHealthCheckFailing
+        expr: |
+          up{job="ai-stack"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: service
+        annotations:
+          summary: "Service {{ $labels.instance }} is DOWN"
+          description: "Health check failing for {{ $labels.instance }} for >2 minutes."
+
+      # Vector Database Performance
+      - alert: QdrantSlowQueries
+        expr: |
+          histogram_quantile(0.95, rate(qdrant_query_duration_seconds_bucket[5m])) > 1.0
+        for: 3m
+        labels:
+          severity: warning
+          component: vector_db
+        annotations:
+          summary: "Qdrant queries are slow"
+          description: "95th percentile query time is {{ $value }}s. Expected <1s."
+
+      # Embedding Service Overload
+      - alert: EmbeddingServiceOverloaded
+        expr: |
+          embeddings_batch_queue_size > embeddings_batch_queue_max * 0.8
+        for: 2m
+        labels:
+          severity: warning
+          component: embeddings
+        annotations:
+          summary: "Embedding service queue near capacity"
+          description: "Queue at {{ $value }}/{{ $labels.max }} capacity. May cause request timeouts."
+
+      # Continuous Learning Data Growth
+      - alert: VectorStorageGrowthHigh
+        expr: |
+          rate(qdrant_storage_bytes[1h]) > 1e9  # 1GB/hour
+        for: 1h
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "Vector storage growing rapidly"
+          description: "Storage growing at {{ $value | humanize }}B/hour. May need garbage collection."

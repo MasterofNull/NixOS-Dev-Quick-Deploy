@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -13,6 +14,7 @@ import signal
 import sys
 import threading
 import time
+from uuid import uuid4
 from datetime import datetime, timezone
 from collections import defaultdict, deque
 from pathlib import Path
@@ -23,6 +25,14 @@ import sqlalchemy as sa
 import uvicorn
 from fastapi import FastAPI, HTTPException, Response
 from fastapi import Request
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from pydantic import BaseModel
 from prometheus_client import Counter, Gauge, Histogram, CONTENT_TYPE_LATEST, generate_latest
 from redis import asyncio as redis_asyncio
@@ -32,6 +42,8 @@ from websockets import serve
 import re
 from urllib.parse import urlparse
 
+import structlog
+from structlog.contextvars import bind_contextvars, merge_contextvars, clear_contextvars
 from pgvector.sqlalchemy import Vector
 from sentence_transformers import SentenceTransformer
 
@@ -39,12 +51,45 @@ from middleware.cache import CacheMiddleware
 from llm_parallel import run_parallel_inference
 from discovery_endpoints import register_discovery_routes
 from settings_loader import Settings, load_settings
+from schema import (
+    METADATA,
+    TOOL_REGISTRY,
+    IMPORTED_DOCUMENTS,
+    OPEN_SKILLS,
+    SYSTEM_REGISTRY,
+    POINTS_OF_INTEREST,
+    TELEMETRY_EVENTS,
+    document_embeddings_table,
+)
 from skills_loader import ParsedSkill, parse_skill_text, write_skill_file
 from ml_engine import MLEngine
 import registry_api
 import vscode_telemetry
 
+SERVICE_NAME = "aidb"
+SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
+VECTOR_CACHE_EPOCH_KEY = "aidb:vector_search:epoch"
+
 LOGGER = logging.getLogger("aidb.mcp")
+
+
+def configure_tracing() -> None:
+    if os.getenv("OTEL_TRACING_ENABLED", "true").lower() != "true":
+        return
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://jaeger:4317")
+    resource = Resource.create({"service.name": SERVICE_NAME})
+    sample_rate = float(os.getenv("OTEL_SAMPLE_RATE", "1.0"))
+    sampler = ParentBased(TraceIdRatioBased(sample_rate))
+    provider = TracerProvider(resource=resource, sampler=sampler)
+    exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
+    provider.add_span_processor(BatchSpanProcessor(exporter))
+    trace.set_tracer_provider(provider)
+
+
+def _error_detail(message: str, exc: Exception) -> Dict[str, str]:
+    error_id = uuid4().hex[:12]
+    LOGGER.exception("%s error_id=%s", message, error_id)
+    return {"error": message, "error_id": error_id}
 
 
 def retry_with_backoff(
@@ -249,95 +294,6 @@ class CircuitBreaker:
                 LOGGER.info(f"Circuit breaker '{self.name}': {old_state} → CLOSED (manual reset)")
 
 
-METADATA = sa.MetaData()
-TOOL_REGISTRY = sa.Table(
-    "tool_registry",
-    METADATA,
-    sa.Column("name", sa.String(256), primary_key=True),
-    sa.Column("description", sa.Text, nullable=False),
-    sa.Column("manifest", sa.JSON, nullable=False),
-    sa.Column("cost_estimate_tokens", sa.Integer, nullable=False, default=2000),
-)
-
-IMPORTED_DOCUMENTS = sa.Table(
-    "imported_documents",
-    METADATA,
-    sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-    sa.Column("project", sa.String(128), nullable=False),
-    sa.Column("relative_path", sa.Text, nullable=False),
-    sa.Column("title", sa.Text, nullable=False),
-    sa.Column("content_type", sa.String(32), nullable=False),
-    sa.Column("checksum", sa.String(64), nullable=False),
-    sa.Column("size_bytes", sa.Integer, nullable=False),
-    sa.Column("modified_at", sa.DateTime(timezone=True), nullable=False),
-    sa.Column("imported_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-    sa.Column("content", sa.Text, nullable=False),
-    sa.Column("status", sa.String(16), nullable=False, server_default="approved"),
-    sa.UniqueConstraint("project", "relative_path", name="uq_imported_documents_path"),
-)
-
-OPEN_SKILLS = sa.Table(
-    "open_skills",
-    METADATA,
-    sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-    sa.Column("slug", sa.String(128), nullable=False, unique=True),
-    sa.Column("name", sa.String(256), nullable=False),
-    sa.Column("description", sa.Text, nullable=False),
-    sa.Column("version", sa.String(32), nullable=True),
-    sa.Column("tags", sa.JSON, nullable=False, server_default=sa.text("'[]'::jsonb")),
-    sa.Column("content", sa.Text, nullable=False),
-    sa.Column("metadata", sa.JSON, nullable=False),
-    sa.Column("source_path", sa.Text, nullable=False),
-    sa.Column("source_url", sa.Text, nullable=True),
-    sa.Column("managed_by", sa.String(32), nullable=False, server_default="local"),
-    sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now()),
-    sa.Column("status", sa.String(16), nullable=False, server_default="approved"),
-)
-
-SYSTEM_REGISTRY = sa.Table(
-    "system_registry",
-    METADATA,
-    sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-    sa.Column("resource_type", sa.String(50), nullable=False),
-    sa.Column("name", sa.String(100), nullable=False, unique=True),
-    sa.Column("version", sa.String(20), nullable=False),
-    sa.Column("description", sa.Text, nullable=True),
-    sa.Column("location", sa.String(255), nullable=False),
-    sa.Column("install_command", sa.Text, nullable=True),
-    sa.Column("dependencies", sa.dialects.postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-    sa.Column("added_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False),
-)
-
-POINTS_OF_INTEREST = sa.Table(
-    "points_of_interest",
-    METADATA,
-    sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-    sa.Column("name", sa.String(256), nullable=False),
-    sa.Column("category", sa.String(128), nullable=False),
-    sa.Column("url", sa.Text, nullable=True),
-    sa.Column("description", sa.Text, nullable=False),
-    sa.Column("source", sa.Text, nullable=True),
-    sa.Column("ingested_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-    sa.UniqueConstraint("name", "category", name="uq_points_of_interest_name_category"),
-)
-
-TELEMETRY_EVENTS = sa.Table(
-    "telemetry_events",
-    METADATA,
-    sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-    sa.Column("source", sa.String(64), nullable=False),
-    sa.Column("event_type", sa.String(64), nullable=False),
-    sa.Column("llm_used", sa.String(32), nullable=True),
-    sa.Column("tokens_saved", sa.Integer, nullable=True),
-    sa.Column("rag_hits", sa.Integer, nullable=True),
-    sa.Column("collections_used", sa.JSON, nullable=True),
-    sa.Column("model", sa.String(128), nullable=True),
-    sa.Column("latency_ms", sa.Integer, nullable=True),
-    sa.Column("cache_hit", sa.Boolean, nullable=True),
-    sa.Column("metadata", sa.JSON, nullable=True),
-    sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-)
-
 TOOL_DISCOVERY_COUNTER = Counter(
     "aidb_tool_discovery_total", "Number of tool discovery requests", ["mode"]
 )
@@ -347,7 +303,6 @@ SANDBOX_RUN_COUNTER = Counter(
 REQUEST_LATENCY = Histogram(
     "aidb_request_latency_seconds", "Latency for MCP actions", ["action"]
 )
-CACHE_GAUGE = Gauge("aidb_tool_cache_size", "Number of tools in memory cache")
 CIRCUIT_BREAKER_STATE = Gauge(
     "aidb_circuit_breaker_state",
     "Circuit breaker state (0=CLOSED, 1=HALF_OPEN, 2=OPEN)",
@@ -358,6 +313,74 @@ CIRCUIT_BREAKER_FAILURES = Counter(
     "Circuit breaker failure count",
     ["service"]
 )
+AIDB_HTTP_REQUESTS = Counter(
+    "aidb_http_requests_total",
+    "Total AIDB HTTP requests",
+    ["endpoint", "method", "status"],
+)
+AIDB_HTTP_ERRORS = Counter(
+    "aidb_http_request_errors_total",
+    "Total AIDB HTTP request errors",
+    ["endpoint", "method"],
+)
+AIDB_HTTP_LATENCY = Histogram(
+    "aidb_http_request_latency_seconds",
+    "AIDB HTTP request latency in seconds",
+    ["endpoint", "method"],
+)
+CACHE_HITS = Counter(
+    "aidb_cache_hits_total",
+    "AIDB cache hits",
+    ["cache"],
+)
+CACHE_MISSES = Counter(
+    "aidb_cache_misses_total",
+    "AIDB cache misses",
+    ["cache"],
+)
+CACHE_GAUGE = Gauge("aidb_tool_cache_size", "Number of tools in memory cache")
+AIDB_PROCESS_MEMORY_BYTES = Gauge(
+    "aidb_process_memory_bytes",
+    "AIDB process resident memory in bytes",
+)
+AIDB_DB_POOL_SIZE = Gauge(
+    "aidb_db_pool_size",
+    "Configured size for the database connection pool",
+)
+AIDB_DB_POOL_CHECKED_OUT = Gauge(
+    "aidb_db_pool_checked_out",
+    "Database connections currently checked out",
+)
+AIDB_DB_POOL_OVERFLOW = Gauge(
+    "aidb_db_pool_overflow",
+    "Database connections above the pool size",
+)
+AIDB_REDIS_POOL_IN_USE = Gauge(
+    "aidb_redis_pool_in_use",
+    "Redis connections currently checked out",
+)
+AIDB_REDIS_POOL_AVAILABLE = Gauge(
+    "aidb_redis_pool_available",
+    "Redis connections available in pool",
+)
+AIDB_REDIS_POOL_MAX = Gauge(
+    "aidb_redis_pool_max_connections",
+    "Maximum Redis connections configured",
+)
+AIDB_PGVECTOR_INDEX_BUILD_SECONDS = Gauge(
+    "aidb_pgvector_index_build_seconds",
+    "Time to build pgvector indexes in seconds",
+    ["index"],
+)
+
+
+def _get_process_memory_bytes() -> int:
+    try:
+        with open("/proc/self/statm", "r", encoding="utf-8") as handle:
+            rss_pages = int(handle.read().split()[1])
+        return rss_pages * os.sysconf("SC_PAGE_SIZE")
+    except Exception:  # noqa: BLE001
+        return 0
 
 
 class EmbeddingService:
@@ -398,31 +421,7 @@ class VectorStore:
         self.settings = settings
         self.engine = engine
         self._session_factory = sessionmaker(bind=self.engine, expire_on_commit=False)
-        self.table = sa.Table(
-            "document_embeddings",
-            METADATA,
-            sa.Column("id", sa.Integer, primary_key=True),
-            sa.Column(
-                "document_id",
-                sa.Integer,
-                sa.ForeignKey("imported_documents.id", ondelete="CASCADE"),
-                nullable=False,
-            ),
-            sa.Column("chunk_id", sa.String(length=128), nullable=True),
-            sa.Column("content", sa.Text, nullable=False),
-            sa.Column("embedding", Vector(settings.embedding_dimension), nullable=False),
-            sa.Column("metadata", sa.JSON, nullable=False, server_default=sa.text("'{}'::jsonb")),
-            sa.Column("score", sa.Float, nullable=True),
-            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-            sa.Column(
-                "updated_at",
-                sa.DateTime(timezone=True),
-                server_default=sa.func.now(),
-                onupdate=sa.func.now(),
-            ),
-            sa.UniqueConstraint("document_id", "chunk_id", name="uq_document_embeddings_chunk"),
-            extend_existing=True,
-        )
+        self.table = document_embeddings_table(METADATA, settings.embedding_dimension)
 
     def _validate_embedding(self, embedding: List[float]) -> None:
         if len(embedding) != self.settings.embedding_dimension:
@@ -430,6 +429,31 @@ class VectorStore:
                 f"Embedding dimension {len(embedding)} does not match configured "
                 f"{self.settings.embedding_dimension}"
             )
+
+    def ensure_indexes(self) -> None:
+        index_name = "idx_document_embeddings_embedding_hnsw"
+        start = time.time()
+        try:
+            m_value = int(self.settings.pgvector_hnsw_m)
+            ef_value = int(self.settings.pgvector_hnsw_ef_construction)
+            with self.engine.begin() as conn:
+                conn.execute(
+                    sa.text(
+                        f"""
+                        CREATE INDEX IF NOT EXISTS {index_name}
+                        ON document_embeddings
+                        USING hnsw (embedding vector_l2_ops)
+                        WITH (m = {m_value}, ef_construction = {ef_value})
+                        """
+                    ),
+                )
+            duration = time.time() - start
+            AIDB_PGVECTOR_INDEX_BUILD_SECONDS.labels(index=index_name).set(duration)
+            LOGGER.info(
+                "Ensured pgvector HNSW index %s (%.2fs)", index_name, duration
+            )
+        except Exception:  # noqa: BLE001
+            LOGGER.exception("Failed to ensure pgvector indexes")
 
     def index_embeddings(self, items: List[Dict[str, Any]]) -> int:
         """Insert or update embeddings. Returns count indexed."""
@@ -919,11 +943,35 @@ class MonitoringServer:
         self.settings = settings
         self.mcp_server = mcp_server
         self.app = FastAPI(title="AIDB MCP Monitor")
+        FastAPIInstrumentor.instrument_app(
+            self.app, tracer_provider=trace.get_tracer_provider()
+        )
         self.app.state.mcp_server = mcp_server
         self.app.add_middleware(CacheMiddleware, redis_url=self.settings.redis_url)
         self.app.include_router(registry_api.router)
         self.app.include_router(vscode_telemetry.router)  # VSCode extension telemetry
         register_discovery_routes(self.app, self.mcp_server)
+        @self.app.middleware("http")
+        async def request_id_middleware(request: Request, call_next):
+            request_id = request.headers.get("X-Request-ID") or uuid4().hex
+            bind_contextvars(request_id=request_id)
+            request.state.request_id = request_id
+            start = time.time()
+            response: Optional[Response] = None
+            try:
+                response = await call_next(request)
+                return response
+            except Exception:  # noqa: BLE001
+                AIDB_HTTP_ERRORS.labels(request.url.path, request.method).inc()
+                raise
+            finally:
+                duration = time.time() - start
+                status_code = str(response.status_code) if response else "500"
+                AIDB_HTTP_LATENCY.labels(request.url.path, request.method).observe(duration)
+                AIDB_HTTP_REQUESTS.labels(request.url.path, request.method, status_code).inc()
+                if response:
+                    response.headers["X-Request-ID"] = request_id
+                clear_contextvars()
         self._server: Optional[uvicorn.Server] = None
         self._register_routes()
 
@@ -960,6 +1008,8 @@ class MonitoringServer:
 
         @self.app.get("/metrics")
         async def metrics() -> Response:
+            AIDB_PROCESS_MEMORY_BYTES.set(_get_process_memory_bytes())
+            self.mcp_server._update_pool_metrics()
             return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
         @self.app.get("/telemetry/summary")
@@ -1030,7 +1080,10 @@ class MonitoringServer:
                 self.mcp_server.validate_skill_import(payload)
                 record = await self.mcp_server.import_skill(payload)
             except ValueError as exc:  # noqa: BLE001
-                raise HTTPException(status_code=400, detail=str(exc))
+                raise HTTPException(
+                    status_code=400,
+                    detail=_error_detail("invalid_skill_import", exc),
+                )
             await self.mcp_server.record_telemetry(
                 event_type="skill_import",
                 source="aidb",
@@ -1062,7 +1115,10 @@ class MonitoringServer:
                     "mode": requested_mode
                 }
             except Exception as exc:  # noqa: BLE001
-                raise HTTPException(status_code=500, detail=f"Failed to retrieve tools: {str(exc)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=_error_detail("tools_list_failed", exc),
+                )
 
         @self.app.post("/tools/execute")
         async def execute_tool(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -1080,11 +1136,20 @@ class MonitoringServer:
                 )
                 return result
             except PermissionError as exc:  # configuration / auth errors
-                raise HTTPException(status_code=403, detail=str(exc))
+                raise HTTPException(
+                    status_code=403,
+                    detail=_error_detail("tool_execution_forbidden", exc),
+                )
             except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc))
+                raise HTTPException(
+                    status_code=400,
+                    detail=_error_detail("tool_execution_invalid", exc),
+                )
             except Exception as exc:  # noqa: BLE001
-                raise HTTPException(status_code=502, detail=f"Tool execution failed: {exc}")
+                raise HTTPException(
+                    status_code=502,
+                    detail=_error_detail("tool_execution_failed", exc),
+                )
 
         @self.app.get("/documents")
         async def list_documents(
@@ -1147,7 +1212,10 @@ class MonitoringServer:
             try:
                 self.mcp_server.validate_document(doc)
             except ValueError as exc:  # noqa: BLE001
-                raise HTTPException(status_code=400, detail=str(exc))
+                raise HTTPException(
+                    status_code=400,
+                    detail=_error_detail("invalid_document", exc),
+                )
             """Import a single document into the database."""
             def _insert():
                 stmt = insert(IMPORTED_DOCUMENTS).values(
@@ -1190,7 +1258,10 @@ class MonitoringServer:
                 }
             except Exception as exc:  # noqa: BLE001
                 LOGGER.exception("Embedding generation failed")
-                raise HTTPException(status_code=500, detail=str(exc))
+                raise HTTPException(
+                    status_code=500,
+                    detail=_error_detail("embedding_failed", exc),
+                )
 
         @self.app.post("/vector/index")
         async def index_vectors(payload: Dict[str, Any], request: Request) -> Dict[str, Any]:
@@ -1202,7 +1273,10 @@ class MonitoringServer:
             try:
                 count = await self.mcp_server.index_embeddings(items)
             except ValueError as exc:  # noqa: BLE001
-                raise HTTPException(status_code=400, detail=str(exc))
+                raise HTTPException(
+                    status_code=400,
+                    detail=_error_detail("index_invalid", exc),
+                )
             return {"status": "ok", "indexed": count}
 
         @self.app.post("/vector/search")
@@ -1220,10 +1294,16 @@ class MonitoringServer:
                     project=payload.get("project"),
                 )
             except ValueError as exc:  # noqa: BLE001
-                raise HTTPException(status_code=400, detail=str(exc))
+                raise HTTPException(
+                    status_code=400,
+                    detail=_error_detail("vector_search_invalid", exc),
+                )
             except Exception as exc:  # noqa: BLE001
                 LOGGER.exception("Vector search failed")
-                raise HTTPException(status_code=500, detail=str(exc))
+                raise HTTPException(
+                    status_code=500,
+                    detail=_error_detail("vector_search_failed", exc),
+                )
             return {"results": results, "limit": limit}
 
         # ML endpoints
@@ -1244,7 +1324,10 @@ class MonitoringServer:
                 metrics = await self.mcp_server._ml_engine.get_model_metrics(model_name)
                 return metrics
             except ValueError as e:
-                raise HTTPException(status_code=404, detail=str(e))
+                raise HTTPException(
+                    status_code=404,
+                    detail=_error_detail("model_not_found", e),
+                )
 
         @self.app.post("/ml/models/train")
         async def train_ml_model(request: Dict[str, Any]) -> Dict[str, Any]:
@@ -1280,7 +1363,10 @@ class MonitoringServer:
 
                 return result
             except ValueError as e:
-                raise HTTPException(status_code=400, detail=str(e))
+                raise HTTPException(
+                    status_code=400,
+                    detail=_error_detail("model_train_invalid", e),
+                )
 
         @self.app.post("/ml/predict")
         async def ml_predict(request: Dict[str, Any]) -> Dict[str, Any]:
@@ -1298,7 +1384,10 @@ class MonitoringServer:
                 result = await self.mcp_server._ml_engine.predict(model_name, input_data)
                 return result
             except ValueError as e:
-                raise HTTPException(status_code=404, detail=str(e))
+                raise HTTPException(
+                    status_code=404,
+                    detail=_error_detail("model_not_found", e),
+                )
 
         # Deprecated /vllm endpoints: respond with 410 and redirect callers to llama.cpp.
         def _vllm_gone() -> None:
@@ -1356,7 +1445,10 @@ class MonitoringServer:
             try:
                 record = await self.mcp_server.register_federated_server(server)
             except ValueError as exc:  # noqa: BLE001
-                raise HTTPException(status_code=400, detail=str(exc))
+                raise HTTPException(
+                    status_code=400,
+                    detail=_error_detail("federation_invalid", exc),
+                )
             return record
 
         @self.app.post("/api/v1/federation/spider/crawl")
@@ -1375,7 +1467,10 @@ class MonitoringServer:
             try:
                 updated = await self.mcp_server.approve_resource(resource, identifier, status)
             except ValueError as exc:  # noqa: BLE001
-                raise HTTPException(status_code=400, detail=str(exc))
+                raise HTTPException(
+                    status_code=400,
+                    detail=_error_detail("approval_invalid", exc),
+                )
             return {"status": "ok", "updated": updated}
 
     async def start(self) -> None:
@@ -1384,6 +1479,8 @@ class MonitoringServer:
             host=self.settings.server_host,
             port=self.settings.api_port,
             log_level="info",
+            log_config=None,
+            access_log=False,
         )
         self._server = uvicorn.Server(config)
         await self._server.serve()
@@ -1399,7 +1496,16 @@ class MCPServer:
 
         # Create database engine with retry logic
         def _create_engine():
-            engine = sa.create_engine(self.settings.postgres_dsn, future=True)
+            engine = sa.create_engine(
+                self.settings.postgres_dsn,
+                future=True,
+                pool_size=self.settings.postgres_pool_size,
+                max_overflow=self.settings.postgres_max_overflow,
+                pool_timeout=self.settings.postgres_pool_timeout,
+                pool_recycle=self.settings.postgres_pool_recycle,
+                pool_pre_ping=self.settings.postgres_pool_pre_ping,
+                pool_use_lifo=self.settings.postgres_pool_use_lifo,
+            )
             # Test connection immediately
             with engine.connect() as conn:
                 conn.execute(sa.text("SELECT 1"))
@@ -1414,9 +1520,16 @@ class MCPServer:
             operation_name="Database connection"
         )
 
-        # Create Redis connection (will be tested on first use)
-        self._redis = redis_asyncio.Redis.from_url(self.settings.redis_url)
-        LOGGER.info("Redis client created")
+        # Create Redis connection pool (will be tested on first use)
+        self._redis_pool = redis_asyncio.ConnectionPool.from_url(
+            self.settings.redis_url,
+            max_connections=self.settings.redis_max_connections,
+            socket_timeout=self.settings.redis_socket_timeout,
+            socket_connect_timeout=self.settings.redis_socket_connect_timeout,
+        )
+        self._redis = redis_asyncio.Redis(connection_pool=self._redis_pool)
+        LOGGER.info("Redis client created (pool max=%d)", self.settings.redis_max_connections)
+        self._vector_cache_epoch = 0
 
         self._tool_registry = ToolRegistry(settings, self._engine, self._redis)
         self._sandbox = SandboxExecutor(settings)
@@ -1476,6 +1589,79 @@ class MCPServer:
             ),
         }
         LOGGER.info("Circuit breakers initialized for external services")
+
+    def _update_pool_metrics(self) -> None:
+        try:
+            pool = self._engine.pool
+            if hasattr(pool, "size"):
+                AIDB_DB_POOL_SIZE.set(pool.size())
+            if hasattr(pool, "checkedout"):
+                AIDB_DB_POOL_CHECKED_OUT.set(pool.checkedout())
+            if hasattr(pool, "overflow"):
+                AIDB_DB_POOL_OVERFLOW.set(pool.overflow())
+        except Exception:  # noqa: BLE001
+            LOGGER.debug("Failed to update database pool metrics", exc_info=True)
+
+        try:
+            pool = self._redis_pool
+            available = len(getattr(pool, "_available_connections", []))
+            in_use = len(getattr(pool, "_in_use_connections", []))
+            max_conn = getattr(pool, "max_connections", 0) or 0
+            AIDB_REDIS_POOL_AVAILABLE.set(available)
+            AIDB_REDIS_POOL_IN_USE.set(in_use)
+            AIDB_REDIS_POOL_MAX.set(max_conn)
+        except Exception:  # noqa: BLE001
+            LOGGER.debug("Failed to update Redis pool metrics", exc_info=True)
+
+    def _cache_key(self, prefix: str, payload: Dict[str, Any]) -> str:
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        digest = hashlib.sha256(encoded).hexdigest()
+        return f"{prefix}:{digest}"
+
+    def _embedding_cache_key(self, text: str) -> str:
+        return self._cache_key(
+            "aidb:embeddings",
+            {"model": self.settings.embedding_model, "text": text},
+        )
+
+    def _vector_search_cache_key(
+        self,
+        *,
+        query_text: Optional[str],
+        embedding: Optional[List[float]],
+        limit: int,
+        project: Optional[str],
+    ) -> str:
+        payload = {
+            "query_text": query_text,
+            "embedding": embedding,
+            "limit": limit,
+            "project": project,
+            "epoch": self._vector_cache_epoch,
+            "model": self.settings.embedding_model,
+        }
+        return self._cache_key("aidb:vector_search", payload)
+
+    async def _load_vector_cache_epoch(self) -> None:
+        if not self.settings.embedding_cache_enabled:
+            return
+        try:
+            value = await self._redis.get(VECTOR_CACHE_EPOCH_KEY)
+            if value is not None:
+                if isinstance(value, (bytes, bytearray)):
+                    value = value.decode("utf-8")
+                self._vector_cache_epoch = int(value)
+        except Exception:  # noqa: BLE001
+            LOGGER.debug("Failed to load vector cache epoch", exc_info=True)
+
+    async def _bump_vector_cache_epoch(self) -> None:
+        if not self.settings.embedding_cache_enabled:
+            return
+        try:
+            new_value = await self._redis.incr(VECTOR_CACHE_EPOCH_KEY)
+            self._vector_cache_epoch = int(new_value)
+        except Exception:  # noqa: BLE001
+            LOGGER.debug("Failed to bump vector cache epoch", exc_info=True)
 
     def _require_api_key(self, request: Request) -> None:
         expected = self.settings.api_key
@@ -1623,6 +1809,8 @@ class MCPServer:
         LOGGER.info("Starting MCP server")
         await asyncio.to_thread(self._ensure_pgvector_extension)
         METADATA.create_all(self._engine)
+        await asyncio.to_thread(self._vector_store.ensure_indexes)
+        await self._load_vector_cache_epoch()
         await self._ingest_points_of_interest()
         await self._tool_registry.warm_cache()
         await asyncio.to_thread(self._catalog.sync_catalog)
@@ -1736,7 +1924,60 @@ class MCPServer:
         return status
 
     async def embed_texts(self, texts: List[str]) -> List[List[float]]:
-        return await self._embedding_service.embed(texts)
+        tracer = trace.get_tracer(SERVICE_NAME)
+        with tracer.start_as_current_span(
+            "aidb.embed_texts",
+            attributes={"text_count": len(texts)},
+        ) as span:
+            try:
+                if not self.settings.embedding_cache_enabled:
+                    return await self._embedding_service.embed(texts)
+
+                keys = [self._embedding_cache_key(text) for text in texts]
+                embeddings: List[Optional[List[float]]] = [None] * len(texts)
+                missing_texts: List[str] = []
+                missing_indexes: List[int] = []
+
+                try:
+                    cached = await self._redis.mget(keys)
+                    for idx, value in enumerate(cached):
+                        if value is None:
+                            missing_texts.append(texts[idx])
+                            missing_indexes.append(idx)
+                            continue
+                        if isinstance(value, (bytes, bytearray)):
+                            value = value.decode("utf-8")
+                        embeddings[idx] = json.loads(value)
+
+                    hit_count = len(texts) - len(missing_texts)
+                    if hit_count:
+                        CACHE_HITS.labels(cache="embeddings").inc(hit_count)
+                    if missing_texts:
+                        CACHE_MISSES.labels(cache="embeddings").inc(len(missing_texts))
+
+                    if missing_texts:
+                        fresh = await self._embedding_service.embed(missing_texts)
+                        for idx, embedding in zip(missing_indexes, fresh):
+                            embeddings[idx] = embedding
+                        async with self._redis.pipeline(transaction=False) as pipe:
+                            for idx, embedding in zip(missing_indexes, fresh):
+                                pipe.set(
+                                    keys[idx],
+                                    json.dumps(embedding),
+                                    ex=self.settings.embedding_cache_ttl,
+                                )
+                            await pipe.execute()
+                except Exception:  # noqa: BLE001
+                    LOGGER.debug("Embedding cache unavailable, falling back", exc_info=True)
+                    return await self._embedding_service.embed(texts)
+
+                if any(embedding is None for embedding in embeddings):
+                    return await self._embedding_service.embed(texts)
+                return [embedding for embedding in embeddings]  # type: ignore[list-item]
+            except Exception as exc:  # noqa: BLE001
+                span.record_exception(exc)
+                span.set_status(Status(StatusCode.ERROR, str(exc)))
+                raise
 
     def _get_document_content(self, document_id: int) -> str:
         with self._engine.connect() as conn:
@@ -1749,27 +1990,39 @@ class MCPServer:
             return row.content
 
     async def index_embeddings(self, items: List[Dict[str, Any]]) -> int:
-        prepared: List[Dict[str, Any]] = []
-        for item in items:
-            document_id = item.get("document_id")
-            if not document_id:
-                raise ValueError("document_id is required for indexing")
-            content = item.get("content") or self._get_document_content(document_id)
-            embedding = item.get("embedding")
-            if embedding is None:
-                embedding = (await self.embed_texts([content]))[0]
-            prepared.append(
-                {
-                    "document_id": document_id,
-                    "chunk_id": item.get("chunk_id"),
-                    "content": content,
-                    "embedding": embedding,
-                    "metadata": item.get("metadata") or {},
-                    "score": item.get("score"),
-                }
-            )
+        tracer = trace.get_tracer(SERVICE_NAME)
+        with tracer.start_as_current_span(
+            "aidb.index_embeddings",
+            attributes={"item_count": len(items)},
+        ) as span:
+            try:
+                prepared: List[Dict[str, Any]] = []
+                for item in items:
+                    document_id = item.get("document_id")
+                    if not document_id:
+                        raise ValueError("document_id is required for indexing")
+                    content = item.get("content") or self._get_document_content(document_id)
+                    embedding = item.get("embedding")
+                    if embedding is None:
+                        embedding = (await self.embed_texts([content]))[0]
+                    prepared.append(
+                        {
+                            "document_id": document_id,
+                            "chunk_id": item.get("chunk_id"),
+                            "content": content,
+                            "embedding": embedding,
+                            "metadata": item.get("metadata") or {},
+                            "score": item.get("score"),
+                        }
+                    )
 
-        return await asyncio.to_thread(self._vector_store.index_embeddings, prepared)
+                result = await asyncio.to_thread(self._vector_store.index_embeddings, prepared)
+                await self._bump_vector_cache_epoch()
+                return result
+            except Exception as exc:  # noqa: BLE001
+                span.record_exception(exc)
+                span.set_status(Status(StatusCode.ERROR, str(exc)))
+                raise
 
     async def search_vectors(
         self,
@@ -1779,13 +2032,58 @@ class MCPServer:
         limit: int = 5,
         project: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        query_embedding = embedding
-        if query_embedding is None:
-            if not query_text:
-                raise ValueError("Either query_text or embedding must be provided")
-            query_embedding = (await self.embed_texts([query_text]))[0]
-        results = await asyncio.to_thread(self._vector_store.search, query_embedding, limit, project)
-        return results
+        tracer = trace.get_tracer(SERVICE_NAME)
+        with tracer.start_as_current_span(
+            "aidb.search_vectors",
+            attributes={
+                "limit": limit,
+                "project": project or "",
+                "embedding_supplied": embedding is not None,
+            },
+        ) as span:
+            try:
+                cache_key: Optional[str] = None
+                if self.settings.embedding_cache_enabled:
+                    cache_key = self._vector_search_cache_key(
+                        query_text=query_text,
+                        embedding=embedding if query_text is None else None,
+                        limit=limit,
+                        project=project,
+                    )
+                    try:
+                        cached = await self._redis.get(cache_key)
+                        if cached is not None:
+                            if isinstance(cached, (bytes, bytearray)):
+                                cached = cached.decode("utf-8")
+                            CACHE_HITS.labels(cache="vector_search").inc()
+                            return json.loads(cached)
+                        CACHE_MISSES.labels(cache="vector_search").inc()
+                    except Exception:  # noqa: BLE001
+                        LOGGER.debug("Vector search cache unavailable", exc_info=True)
+                        cache_key = None
+
+                query_embedding = embedding
+                if query_embedding is None:
+                    if not query_text:
+                        raise ValueError("Either query_text or embedding must be provided")
+                    query_embedding = (await self.embed_texts([query_text]))[0]
+                results = await asyncio.to_thread(
+                    self._vector_store.search, query_embedding, limit, project
+                )
+                if cache_key:
+                    try:
+                        await self._redis.set(
+                            cache_key,
+                            json.dumps(results),
+                            ex=self.settings.vector_search_cache_ttl,
+                        )
+                    except Exception:  # noqa: BLE001
+                        LOGGER.debug("Failed to write vector search cache", exc_info=True)
+                return results
+            except Exception as exc:  # noqa: BLE001
+                span.record_exception(exc)
+                span.set_status(Status(StatusCode.ERROR, str(exc)))
+                raise
 
     async def execute_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Dispatch execution to supported tools."""
@@ -1951,7 +2249,10 @@ class MCPServer:
         try:
             self._rate_limiter.check(client_id)
         except PermissionError as exc:
-            raise HTTPException(status_code=429, detail=str(exc))
+            raise HTTPException(
+                status_code=429,
+                detail=_error_detail("rate_limited", exc),
+            )
 
     async def parallel_generate(self, prompt: str, max_tokens: int = 256) -> Dict[str, Any]:
         if not self.settings.parallel_processing_enabled:
@@ -2282,10 +2583,18 @@ async def self_test(settings: Settings) -> int:
 
 
 def configure_logging(settings: Settings) -> None:
-    root = logging.getLogger()
-    root.setLevel(settings.log_level)
-    root.handlers.clear()
-    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s - %(message)s")
+    bind_contextvars(service=SERVICE_NAME, version=SERVICE_VERSION)
+    timestamper = structlog.processors.TimeStamper(fmt="iso", utc=True)
+    pre_chain = [
+        merge_contextvars,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        timestamper,
+    ]
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processor=structlog.processors.JSONRenderer(),
+        foreign_pre_chain=pre_chain,
+    )
 
     file_handler = RotatingFileHandler(
         settings.log_file,
@@ -2293,11 +2602,26 @@ def configure_logging(settings: Settings) -> None:
         backupCount=settings.log_backup_count,
     )
     file_handler.setFormatter(formatter)
-    root.addHandler(file_handler)
 
     console = logging.StreamHandler()
     console.setFormatter(formatter)
+
+    root = logging.getLogger()
+    root.setLevel(settings.log_level)
+    root.handlers.clear()
+    root.addHandler(file_handler)
     root.addHandler(console)
+
+    for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
+        target_logger = logging.getLogger(logger_name)
+        target_logger.handlers.clear()
+        target_logger.propagate = True
+
+    structlog.configure(
+        processors=pre_chain + [structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
 
 
 def parse_args(argv: List[str]) -> argparse.Namespace:
@@ -2314,6 +2638,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.mode:
         settings.default_tool_mode = args.mode
     configure_logging(settings)
+    configure_tracing()
 
     if args.self_test:
         return asyncio.run(self_test(settings))

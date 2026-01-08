@@ -65,6 +65,8 @@ COPY hybrid-coordinator/context_compression.py .
 COPY hybrid-coordinator/query_expansion.py .
 COPY hybrid-coordinator/embedding_cache.py .
 COPY hybrid-coordinator/start_with_learning.sh .
+COPY shared/ /app/shared/
+COPY config/config.yaml /app/config/config.yaml
 
 # Create data directories and set permissions
 RUN mkdir -p /data/telemetry /data/fine-tuning /data/collections && \

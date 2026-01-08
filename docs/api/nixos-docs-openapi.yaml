@@ -1,0 +1,94 @@
+openapi: "3.0.3"
+info:
+  title: NixOS Docs MCP API
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8094
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: Service health
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      responses:
+        "200":
+          description: Metrics payload
+  /search:
+    post:
+      summary: Full-text search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+                limit:
+                  type: integer
+      responses:
+        "200":
+          description: Search results
+  /packages/search:
+    post:
+      summary: Search packages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+                limit:
+                  type: integer
+      responses:
+        "200":
+          description: Package results
+  /options/search:
+    post:
+      summary: Search NixOS options
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+                limit:
+                  type: integer
+      responses:
+        "200":
+          description: Option results
+  /sources:
+    get:
+      summary: List synced sources
+      responses:
+        "200":
+          description: Source list
+  /sync:
+    post:
+      summary: Sync NixOS documentation sources
+      responses:
+        "200":
+          description: Sync started
+  /cache/stats:
+    get:
+      summary: Cache statistics
+      responses:
+        "200":
+          description: Cache stats
+  /cache/clear:
+    delete:
+      summary: Clear cache
+      responses:
+        "200":
+          description: Cache cleared

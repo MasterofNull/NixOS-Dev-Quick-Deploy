@@ -69,6 +69,18 @@ ai-stack/
 | Qdrant | 6333 | Vector database |
 | Redis Insight | 5540 | Redis web UI |
 
+## Profiles
+
+- `full`: optional services (Grafana, Prometheus, agents, etc.)
+- `self-heal`: privileged health monitor (opt-in only)
+
+Examples:
+
+```bash
+podman-compose --profile full up -d
+podman-compose --profile self-heal up -d
+```
+
 ## Data Persistence
 
 All data is stored in shared directories that persist across reinstalls:
@@ -89,8 +101,25 @@ All data is stored in shared directories that persist across reinstalls:
 ## Configuration
 
 Active configuration:
+- `ai-stack/mcp-servers/config/config.yaml` - Base config for AIDB, embeddings, hybrid
+- `ai-stack/mcp-servers/config/config.dev.yaml` - Dev overrides (set `STACK_ENV=dev`)
+- `ai-stack/mcp-servers/config/config.staging.yaml` - Staging overrides (set `STACK_ENV=staging`)
+- `ai-stack/mcp-servers/config/config.prod.yaml` - Prod overrides (set `STACK_ENV=prod`)
 - `~/.config/nixos-ai-stack/.env` - Environment variables
 - `~/.config/nixos-ai-stack/ai-optimizer.json` - Integration metadata
+
+Config overrides:
+- `STACK_ENV` applies env-specific overlays for AIDB, embeddings, and hybrid
+- `AIDB_CONFIG`, `EMBEDDINGS_CONFIG`, `HYBRID_CONFIG` override the config path
+
+Required secrets (export or set in your shell):
+- `POSTGRES_PASSWORD` (used by Postgres/AIDB/MindsDB/Ralph)
+- `GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD`
+
+Example:
+```bash
+cp .env.example .env
+```
 
 ## Documentation
 
@@ -98,6 +127,7 @@ Active configuration:
 - [API Reference](docs/API.md) - MCP server API documentation
 - [Deployment Guide](docs/DEPLOYMENT.md) - Deployment and configuration
 - [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
+- [Database Migrations](migrations/README.md) - Alembic workflow and rollback testing
 - [Main Integration Guide](../docs/AI-STACK-FULL-INTEGRATION.md) - Full integration documentation
 
 ## Migration

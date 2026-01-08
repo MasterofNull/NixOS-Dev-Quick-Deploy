@@ -284,6 +284,38 @@ download_all_models() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
+download_models_by_keys() {
+    local keys_csv="$1"
+    local failed_models=()
+    IFS=',' read -ra keys <<< "$keys_csv"
+
+    for key in "${keys[@]}"; do
+        key="$(echo "$key" | xargs)"
+        if [[ -z "$key" ]]; then
+            continue
+        fi
+        if [[ -z "${MODELS[$key]:-}" ]]; then
+            warning "Unknown model key: ${key}"
+            failed_models+=("$key")
+            continue
+        fi
+        if ! download_model "$key"; then
+            failed_models+=("$key")
+        fi
+    done
+
+    if [ ${#failed_models[@]} -gt 0 ]; then
+        warning "Some models failed to download:"
+        for model in "${failed_models[@]}"; do
+            echo "  - ${model}"
+        done
+        return 1
+    fi
+
+    success "Requested models downloaded successfully"
+    return 0
+}
+
 # ============================================================================
 # List Downloaded Models
 # ============================================================================
@@ -428,6 +460,20 @@ main() {
         --all|-a)
             download_all_models
             ;;
+        --model|-m)
+            if [[ -z "${2:-}" ]]; then
+                error "Missing model key. Use --list to see available keys."
+                exit 1
+            fi
+            download_models_by_keys "$2"
+            ;;
+        --models)
+            if [[ -z "${2:-}" ]]; then
+                error "Missing model key list. Use --list to see available keys."
+                exit 1
+            fi
+            download_models_by_keys "$2"
+            ;;
         --list|-l)
             list_models
             ;;
@@ -439,6 +485,8 @@ main() {
             echo ""
             echo "Options:"
             echo "  -a, --all     Download all recommended models"
+            echo "  -m, --model   Download a specific model key (e.g., qwen-coder)"
+            echo "  --models      Download a comma-separated list of keys"
             echo "  -l, --list    List downloaded models"
             echo "  -c, --clean   Clean model cache"
             echo "  -h, --help    Show this help message"

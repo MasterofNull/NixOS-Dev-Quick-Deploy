@@ -1,0 +1,164 @@
+openapi: "3.0.3"
+info:
+  title: Hybrid Coordinator API
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8092
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: Service health
+  /stats:
+    get:
+      summary: Coordinator stats
+      responses:
+        "200":
+          description: Stats payload
+  /augment_query:
+    post:
+      summary: Augment query with context
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+                agent_type:
+                  type: string
+      responses:
+        "200":
+          description: Augmented context response
+  /context/multi_turn:
+    post:
+      summary: Multi-turn context retrieval
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_id:
+                  type: string
+                query:
+                  type: string
+                context_level:
+                  type: string
+                previous_context_ids:
+                  type: array
+                  items:
+                    type: string
+                max_tokens:
+                  type: integer
+                metadata:
+                  type: object
+      responses:
+        "200":
+          description: Context response
+  /feedback/evaluate:
+    post:
+      summary: Evaluate feedback for a response
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_id:
+                  type: string
+                response:
+                  type: string
+                confidence:
+                  type: number
+                gaps:
+                  type: array
+                  items:
+                    type: string
+                metadata:
+                  type: object
+              required:
+                - session_id
+      responses:
+        "200":
+          description: Feedback evaluation response
+  /session/{session_id}:
+    get:
+      summary: Get session info
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session info
+        "404":
+          description: Session not found
+    delete:
+      summary: Clear session
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session cleared
+  /discovery/capabilities:
+    get:
+      summary: Capability discovery (GET)
+      responses:
+        "200":
+          description: Discovery response
+    post:
+      summary: Capability discovery (POST)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                level:
+                  type: string
+                categories:
+                  type: array
+                  items:
+                    type: string
+                token_budget:
+                  type: integer
+      responses:
+        "200":
+          description: Discovery response
+  /discovery/token_budget:
+    post:
+      summary: Token budget recommendations
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query_type:
+                  type: string
+                context_level:
+                  type: string
+      responses:
+        "200":
+          description: Recommendations response
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      responses:
+        "200":
+          description: Metrics payload

@@ -50,6 +50,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     -r /app/requirements.txt
 
 COPY aidb/ /app/
+COPY shared/ /app/shared/
 COPY config/config.yaml /app/config/config.yaml
 
 RUN mkdir -p /data /app/.mcp_cache

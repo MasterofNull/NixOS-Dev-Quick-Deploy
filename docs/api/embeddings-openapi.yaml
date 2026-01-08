@@ -1,0 +1,136 @@
+openapi: "3.0.3"
+info:
+  title: Embeddings Service API
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8081
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: Service ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  model:
+                    type: string
+                  ready:
+                    type: boolean
+        "503":
+          description: Model loading or unavailable
+  /info:
+    get:
+      summary: Model metadata
+      responses:
+        "200":
+          description: Model details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  model:
+                    type: string
+                  dimensions:
+                    type: integer
+                  max_sequence_length:
+                    type: integer
+                  status:
+                    type: string
+  /embed:
+    post:
+      summary: TEI-compatible embeddings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                inputs:
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+              required:
+                - inputs
+      responses:
+        "200":
+          description: Embeddings array
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: array
+                  items:
+                    type: number
+        "400":
+          description: Validation error
+        "503":
+          description: Service not ready or overloaded
+        "504":
+          description: Request timed out
+  /v1/embeddings:
+    post:
+      summary: OpenAI-compatible embeddings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                input:
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+              required:
+                - input
+      responses:
+        "200":
+          description: OpenAI embeddings response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        object:
+                          type: string
+                        embedding:
+                          type: array
+                          items:
+                            type: number
+                        index:
+                          type: integer
+                  model:
+                    type: string
+                  usage:
+                    type: object
+                    properties:
+                      prompt_tokens:
+                        type: integer
+                      total_tokens:
+                        type: integer
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      responses:
+        "200":
+          description: Metrics payload

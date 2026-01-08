@@ -110,8 +110,8 @@ declare -a PYTHON_PACKAGE_CHECKS=(
     "openai|OpenAI client|required"
     "anthropic|Anthropic client|required"
     "langchain|LangChain|required"
-    "llama_index|LlamaIndex|required"
-    "chromadb|ChromaDB|required"
+    "llama_index|LlamaIndex|optional"
+    "chromadb|ChromaDB|optional"
     "qdrant_client|Qdrant client|required"
     "sentence_transformers|Sentence Transformers|required"
     "faiss|FAISS|optional"
@@ -125,7 +125,7 @@ declare -a PYTHON_PACKAGE_CHECKS=(
     "transformers|Transformers (Hugging Face)|required"
     "accelerate|Accelerate|required"
     "datasets|Datasets (Hugging Face)|required"
-    "gradio|Gradio|required"
+    "gradio|Gradio|optional"
 )
 
 PYTHON_INTERPRETER=""
@@ -1746,6 +1746,8 @@ run_all_checks() {
             detect_python_interpreter >/dev/null 2>&1 || true
             local -a missing_required_python=()
             mapfile -t missing_required_python < <(get_missing_python_packages "required")
+            local -a missing_optional_python=()
+            mapfile -t missing_optional_python < <(get_missing_python_packages "optional")
 
             if [ ${#missing_required_python[@]} -gt 0 ]; then
                 echo "  ${YELLOW}${suggestion_index}. Python packages missing:${NC}"
@@ -1758,6 +1760,19 @@ run_all_checks() {
                 echo "       cd ~/.dotfiles/home-manager && home-manager switch --flake .#$(whoami)"
                 echo "     • Missing modules detected:"
                 for missing_entry in "${missing_required_python[@]}"; do
+                    IFS='|' read -r _module missing_desc _requirement <<<"$missing_entry"
+                    echo "       - $missing_desc"
+                done
+                echo ""
+            fi
+
+            if [ ${#missing_optional_python[@]} -gt 0 ]; then
+                echo "  ${YELLOW}${suggestion_index}. Optional Python packages missing:${NC}"
+                echo "     • These are not installed by default to avoid nixpkgs conflicts"
+                echo "     • Install via the optional agent requirements file:"
+                echo "       pip install -r ~/.config/ai-agents/requirements.txt"
+                echo "     • Missing modules detected:"
+                for missing_entry in "${missing_optional_python[@]}"; do
                     IFS='|' read -r _module missing_desc _requirement <<<"$missing_entry"
                     echo "       - $missing_desc"
                 done

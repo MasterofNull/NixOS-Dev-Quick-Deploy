@@ -2471,6 +2471,15 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       fi
     '';
 
+  # Clear transient failed units (e.g. podman healthcheck runs, dashboard collector)
+  home.activation.resetFailedUserUnits =
+    lib.hm.dag.entryAfter [ "reloadSystemd" ] ''
+      set -eu
+      if command -v systemctl >/dev/null 2>&1; then
+        systemctl --user reset-failed >/dev/null 2>&1 || true
+      fi
+    '';
+
   # GPT4All: Make settings and model storage mutable
   home.activation.gpt4allMakeSettingsMutable =
     lib.hm.dag.entryAfter [ "reloadSystemd" ] ''

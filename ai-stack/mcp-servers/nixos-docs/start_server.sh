@@ -24,4 +24,4 @@ asyncio.run(sync_all())
 
 # Start the FastAPI server
 echo "Starting FastAPI server on port 8094..."
-exec uvicorn server:app --host 0.0.0.0 --port 8094 --log-level info
+exec python3 /app/server.py

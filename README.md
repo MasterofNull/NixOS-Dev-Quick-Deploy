@@ -38,9 +38,12 @@ This single command gives you:
 - ✅ **llama.cpp vLLM** - Local model inference (Qwen, DeepSeek, Phi, CodeLlama)
 - ✅ **29 Agent Skills** - Specialized AI agents for code, deployment, testing, design
 - ✅ **MCP Servers** - Model Context Protocol servers for AIDB, NixOS, GitHub
+- ✅ **Embeddings Service** - Dedicated sentence-transformers API for fast RAG
+- ✅ **Hybrid Coordinator** - Local/remote routing with continuous learning
+- ✅ **Nginx TLS Gateway** - HTTPS termination on `https://localhost:8443`
 - ✅ **Shared Data** - Persistent data that survives reinstalls (`~/.local/share/nixos-ai-stack`)
 
-See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRATION.md`](docs/AI-STACK-FULL-INTEGRATION.md) for complete documentation.
+See [`ai-stack/README.md`](ai-stack/README.md) and [`/docs/AI-STACK-FULL-INTEGRATION.md`](/docs/AI-STACK-FULL-INTEGRATION.md) for complete documentation.
 
 ---
 
@@ -66,16 +69,19 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRAT
 
 <br>
 
-| Component              | Location                        |      Status       | Purpose                                                                |
-| :--------------------- | :------------------------------ | :---------------: | :--------------------------------------------------------------------- |
-| **AIDB MCP Server**    | `ai-stack/mcp-servers/aidb/`    |     ✅ Active     | PostgreSQL + TimescaleDB + Qdrant vector DB + FastAPI MCP server       |
-| **llama.cpp vLLM**      | `ai-stack/compose/`             |     ✅ Active     | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama)     |
-| **29 Agent Skills**    | `ai-stack/agents/skills/`       |     ✅ Active     | nixos-deployment, webapp-testing, code-review, canvas-design, and more |
-| **Hybrid Coordinator** | `ai-stack/core/`                | 🟡 In Development | Orchestrates local/remote dispatch for 30-50% token reduction          |
-| **MCP Servers**        | `ai-stack/mcp-servers/`         |     ✅ Active     | Model Context Protocol servers for AIDB, NixOS, GitHub                 |
-| **Model Registry**     | `ai-stack/models/registry.json` |     ✅ Active     | Model catalog with 6 AI models (metadata, VRAM, speed, quality scores) |
-| **Vector Database**    | PostgreSQL + Qdrant             |     ✅ Active     | Semantic search and document embeddings                                |
-| **Redis Cache**        | Redis + Redis Insight           |     ✅ Active     | High-performance caching layer                                         |
+| Component              | Location                        |   Status   | Purpose                                                                |
+| :--------------------- | :------------------------------ | :--------: | :--------------------------------------------------------------------- |
+| **AIDB MCP Server**    | `ai-stack/mcp-servers/aidb/`    | ✅ Active | PostgreSQL + TimescaleDB + Qdrant vector DB + FastAPI MCP server       |
+| **llama.cpp vLLM**      | `ai-stack/compose/`             | ✅ Active | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama)     |
+| **29 Agent Skills**    | `ai-stack/agents/skills/`       | ✅ Active | nixos-deployment, webapp-testing, code-review, canvas-design, and more |
+| **Embeddings Service** | `ai-stack/mcp-servers/`         | ✅ Active | Sentence-transformers API for embeddings                               |
+| **Hybrid Coordinator** | `ai-stack/mcp-servers/`         | ✅ Active | Local/remote routing + continuous learning                              |
+| **NixOS Docs MCP**     | `ai-stack/mcp-servers/`         | ✅ Active | NixOS/Nix documentation search API                                     |
+| **Nginx TLS Gateway**  | `ai-stack/compose/`             | ✅ Active | HTTPS termination on `https://localhost:8443`                          |
+| **MCP Servers**        | `ai-stack/mcp-servers/`         | ✅ Active | Model Context Protocol servers for AIDB, NixOS, GitHub                 |
+| **Model Registry**     | `ai-stack/models/registry.json` | ✅ Active | Model catalog with metadata, VRAM, speed, quality scores               |
+| **Vector Database**    | PostgreSQL + Qdrant             | ✅ Active | Semantic search and document embeddings                                |
+| **Redis Cache**        | Redis + Redis Insight           | ✅ Active | High-performance caching layer                                         |
 
 **AI Development Tools:**
 
@@ -93,9 +99,16 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRAT
 
 ```bash
 ./nixos-quick-deploy.sh --with-ai-stack  # Deploy everything
-./scripts/hybrid-ai-stack.sh up         # Start AI services
+./scripts/ai-stack-manage.sh up         # Start AI services
 ./scripts/ai-stack-health.sh            # Check health
 ```
+
+### AI Stack Security Considerations
+
+- **TLS by default**: External APIs are exposed via nginx at `https://localhost:8443` (self-signed cert).
+- **API keys required**: Core APIs enforce `X-API-Key` from `ai-stack/compose/secrets/stack_api_key`.
+- **Local-only tools**: Open WebUI, MindsDB, and metrics UIs bind to `127.0.0.1`.
+- **Privileged self-heal**: The health monitor runs only under the `self-heal` profile (opt-in).
 
 ### Pre-Installed Development Tools
 
@@ -378,22 +391,33 @@ source ~/.zshrc  # Or: exec zsh
 
 ### AI Stack Management
 
-The local AI stack (llama.cpp, Open WebUI, Qdrant, MindsDB, AIDB) runs via the canonical `hybrid-ai-stack.sh` helper in this repo. Use it to control the stack (wrappers like `ai-stack-manage.sh` and `podman-ai-stack.sh` delegate here):
+The local AI stack (llama.cpp, Open WebUI, Qdrant, MindsDB, AIDB) is managed via the `ai-stack-manage.sh` helper. The lower-level `hybrid-ai-stack.sh` still works, but `ai-stack-manage.sh` is the preferred entry point.
 
 ```bash
 # Start or stop the entire stack
-./scripts/hybrid-ai-stack.sh up
-./scripts/hybrid-ai-stack.sh down
+./scripts/ai-stack-manage.sh up
+./scripts/ai-stack-manage.sh down
 
 # Check status or tail logs
-./scripts/hybrid-ai-stack.sh status
-./scripts/hybrid-ai-stack.sh logs
+./scripts/ai-stack-manage.sh status
+./scripts/ai-stack-manage.sh logs
 
 # Restart if you change ai-optimizer configs
-./scripts/hybrid-ai-stack.sh restart
+./scripts/ai-stack-manage.sh restart
 ```
 
-During NixOS Quick Deploy, Phase 5 prefetches every Podman image and Phase 6 downloads the default llama.cpp GGUF models (when that backend is selected and a Hugging Face token is present), so the first `hybrid-ai-stack.sh up` no longer stalls on multi-gigabyte downloads.
+During NixOS Quick Deploy, Phase 5 prefetches every Podman image and Phase 6 downloads the default llama.cpp GGUF models (when that backend is selected and a Hugging Face token is present), so the first `ai-stack-manage.sh up` no longer stalls on multi-gigabyte downloads.
+
+### CPU/iGPU-first model defaults
+
+Quick Deploy defaults to CPU/iGPU-friendly models unless VRAM/RAM allow larger GGUFs. The CPU/iGPU baseline uses `qwen3-4b` for the coder model and `sentence-transformers/all-MiniLM-L6-v2` for embeddings.
+
+Swap models at any time:
+
+```bash
+./scripts/swap-llama-cpp-model.sh Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+./scripts/swap-embeddings-model.sh BAAI/bge-small-en-v1.5
+```
 
 All other AI orchestration (vLLM endpoints, shared volumes, etc.) is managed by the ai-optimizer repository layered on top of this stack.
 
@@ -1291,15 +1315,15 @@ lg     # lazygit
 
 ```bash
 # Start all AI services (local stack)
-./scripts/hybrid-ai-stack.sh up
+./scripts/ai-stack-manage.sh up
 
 # Check status
-./scripts/hybrid-ai-stack.sh status
+./scripts/ai-stack-manage.sh status
 
 # Access Open WebUI at http://localhost:3001
 # Access llama.cpp at http://localhost:8080
-# Access Qdrant at http://localhost:6333
-# Access AIDB MCP at http://localhost:8091
+# Access Qdrant at https://localhost:8443/qdrant (use -k for self-signed)
+# Access AIDB MCP at https://localhost:8443/aidb (use -k for self-signed)
 ```
 
 ### 3. VSCodium vs Cursor - When to Use Each
@@ -1346,14 +1370,14 @@ flatpak update
 
 ### AI Runtime Orchestration
 
-- `./scripts/hybrid-ai-stack.sh up|down|restart` &mdash; manage the local AI stack containers.
-- `./scripts/hybrid-ai-stack.sh status` &mdash; show container status.
-- `./scripts/hybrid-ai-stack.sh logs` &mdash; stream stack logs.
+- `./scripts/ai-stack-manage.sh up|down|restart` &mdash; manage the local AI stack containers.
+- `./scripts/ai-stack-manage.sh status` &mdash; show container status.
+- `./scripts/ai-stack-manage.sh logs` &mdash; stream stack logs.
 - `./scripts/ai-stack-health.sh` &mdash; run AI stack health checks.
 
 ### Diagnostics & Recovery
 
-- `./scripts/hybrid-ai-stack.sh restart` &mdash; bounce the AI stack after changing models or GPU drivers.
+- `./scripts/ai-stack-manage.sh restart` &mdash; bounce the AI stack after changing models or GPU drivers.
 - `podman system reset --force` / `sudo podman system reset --force` &mdash; manual fallback for storage corruption (the deployer now attempts this automatically when stale overlay layers are detected).
 - `podman logs -f <container>` &mdash; detailed logs for the rootless containers.
 
