@@ -7,20 +7,31 @@ server:
 
 database:
   postgres:
-    host: localhost
+    host: postgres
     port: 5432
     database: mcp
     user: mcp
     password: ""
+    pool:
+      size: 20  # Increased from 5 to handle concurrent agent requests
+      max_overflow: 30  # Increased from 10 for burst capacity (total: 50 connections)
+      timeout: 30
+      recycle: 1800
+      pre_ping: true
+      use_lifo: true
   redis:
-    host: localhost
+    host: redis
     port: 6379
     db: 0
     password: ""
+    pool:
+      max_connections: 50
+      socket_timeout: 5
+      socket_connect_timeout: 5
 
 llm:
   llama_cpp:
-    host: http://localhost:8080
+    host: http://llama-cpp:8080
     models: []
   parallel_processing:
     enabled: false
@@ -38,6 +49,9 @@ tools:
     extra_args: []
   cache:
     ttl: 3600
+    enabled: true
+    embeddings_ttl: 86400
+    vector_search_ttl: 300
   schema_cache: .mcp_cache/tool_schemas.json
   discovery_mode: minimal
 
@@ -49,6 +63,7 @@ logging:
 
 security:
   api_key: ""
+  api_key_file: /run/secrets/stack_api_key
   rate_limit:
     enabled: false
     requests_per_minute: 60
@@ -56,6 +71,9 @@ security:
 rag:
   embedding_model: sentence-transformers/all-MiniLM-L6-v2
   embedding_dimension: 384
+  pgvector:
+    hnsw_m: 16
+    hnsw_ef_construction: 64
 
 websearch:
   google_api_key: ""
@@ -64,3 +82,31 @@ websearch:
 telemetry:
   enabled: true
   path: /data/telemetry/aidb-events.jsonl
+
+embeddings:
+  model: sentence-transformers/all-MiniLM-L6-v2
+  port: 8081
+  max_input_length: 10000
+  max_batch_size: 32
+  request_timeout: 30
+  model_load_retries: 3
+  model_load_retry_delay: 5
+  batch:
+    max_size: 64
+    max_latency_ms: 25
+    queue_max: 1024
+
+hybrid:
+  server_port: 8092
+  qdrant_url: http://qdrant:6333
+  qdrant_hnsw:
+    m: 16
+    ef_construct: 64
+    full_scan_threshold: 10000
+  llama_cpp_url: http://llama-cpp:8080
+  embedding_service_url: http://embeddings:8081
+  embedding_model: sentence-transformers/all-MiniLM-L6-v2
+  embedding_dimensions: 384
+  local_confidence_threshold: 0.7
+  high_value_threshold: 0.7
+  pattern_extraction_enabled: true

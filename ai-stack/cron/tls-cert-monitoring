@@ -1,0 +1,13 @@
+# TLS Certificate Monitoring Cron Job
+# Runs certificate expiration check every 6 hours
+# Metrics are exposed for Prometheus via node-exporter textfile collector
+#
+# Installation (manual):
+#   sudo cp ai-stack/cron/tls-cert-monitoring /etc/cron.d/
+#   sudo chmod 644 /etc/cron.d/tls-cert-monitoring
+#
+# Or use systemd timer (recommended):
+#   See: ai-stack/systemd/tls-cert-monitor.timer
+
+# Run every 6 hours
+0 */6 * * * root cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy && ./scripts/monitor-tls-certs.sh --metrics-file /var/lib/prometheus/node-exporter/tls-certs.prom >> /var/log/tls-cert-monitor.log 2>&1

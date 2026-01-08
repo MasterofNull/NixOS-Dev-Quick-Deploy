@@ -17,30 +17,95 @@ import asyncio
 import json
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 import httpx
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+import structlog
+from structlog.contextvars import bind_contextvars, merge_contextvars, clear_contextvars
 from mcp import Tool
 from mcp.server import Server
 from mcp.types import TextContent
+from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
     FieldCondition,
     Filter,
+    HnswConfigDiff,
     MatchValue,
     PointStruct,
     Range,
     VectorParams,
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger("hybrid-coordinator")
+from shared.stack_settings import HybridSettings
+SERVICE_NAME = "hybrid-coordinator"
+SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
+HYBRID_SETTINGS = HybridSettings.load()
+
+
+def configure_logging() -> None:
+    bind_contextvars(service=SERVICE_NAME, version=SERVICE_VERSION)
+    timestamper = structlog.processors.TimeStamper(fmt="iso", utc=True)
+    pre_chain = [
+        merge_contextvars,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        timestamper,
+    ]
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processor=structlog.processors.JSONRenderer(),
+        foreign_pre_chain=pre_chain,
+    )
+
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+
+    root = logging.getLogger()
+    root.handlers.clear()
+    root.setLevel(logging.INFO)
+    root.addHandler(handler)
+
+    access_logger = logging.getLogger("aiohttp.access")
+    access_logger.handlers.clear()
+    access_logger.propagate = True
+
+    structlog.configure(
+        processors=pre_chain + [structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+
+
+configure_logging()
+logger = logging.getLogger(SERVICE_NAME)
+
+
+def configure_tracing() -> None:
+    if os.getenv("OTEL_TRACING_ENABLED", "true").lower() != "true":
+        return
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://jaeger:4317")
+    resource = Resource.create({"service.name": SERVICE_NAME})
+    sample_rate = float(os.getenv("OTEL_SAMPLE_RATE", "1.0"))
+    sampler = ParentBased(TraceIdRatioBased(sample_rate))
+    provider = TracerProvider(resource=resource, sampler=sampler)
+    exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
+    provider.add_span_processor(BatchSpanProcessor(exporter))
+    trace.set_tracer_provider(provider)
+
+
+configure_tracing()
+TRACER = trace.get_tracer(SERVICE_NAME)
 
 # Initialize server
 app = Server("hybrid-coordinator")
@@ -70,6 +135,35 @@ HYBRID_STATS = {
     "agent_types": {},
 }
 
+REQUEST_COUNT = Counter(
+    "hybrid_requests_total",
+    "Total hybrid coordinator HTTP requests",
+    ["endpoint", "status"],
+)
+REQUEST_ERRORS = Counter(
+    "hybrid_request_errors_total",
+    "Total hybrid coordinator HTTP request errors",
+    ["endpoint", "method"],
+)
+REQUEST_LATENCY = Histogram(
+    "hybrid_request_latency_seconds",
+    "Hybrid coordinator HTTP request latency in seconds",
+    ["endpoint", "method"],
+)
+PROCESS_MEMORY_BYTES = Gauge(
+    "hybrid_process_memory_bytes",
+    "Hybrid coordinator process resident memory in bytes",
+)
+
+
+def _get_process_memory_bytes() -> int:
+    try:
+        with open("/proc/self/statm", "r", encoding="utf-8") as handle:
+            rss_pages = int(handle.read().split()[1])
+        return rss_pages * os.sysconf("SC_PAGE_SIZE")
+    except Exception:
+        return 0
+
 
 def record_query_stats(agent_type: str, context_found: bool) -> None:
     HYBRID_STATS["total_queries"] += 1
@@ -98,6 +192,12 @@ def record_telemetry_event(event_type: str, payload: Dict[str, Any]) -> None:
         handle.write(json.dumps(payload) + "\n")
 
 
+def error_payload(message: str, exc: Exception) -> Dict[str, str]:
+    error_id = uuid4().hex[:12]
+    logger.exception("%s error_id=%s", message, error_id)
+    return {"error": message, "error_id": error_id}
+
+
 # ============================================================================
 # Configuration
 # ============================================================================
@@ -106,31 +206,55 @@ def record_telemetry_event(event_type: str, payload: Dict[str, Any]) -> None:
 class Config:
     """Hybrid coordinator configuration"""
 
-    QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
+    QDRANT_URL = os.getenv("QDRANT_URL", HYBRID_SETTINGS.qdrant_url)
     QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", None)
-    LLAMA_CPP_URL = os.getenv("LLAMA_CPP_BASE_URL", "http://localhost:8080")
+    QDRANT_HNSW_M = int(os.getenv("QDRANT_HNSW_M", HYBRID_SETTINGS.qdrant_hnsw_m))
+    QDRANT_HNSW_EF_CONSTRUCT = int(os.getenv("QDRANT_HNSW_EF_CONSTRUCT", HYBRID_SETTINGS.qdrant_hnsw_ef_construct))
+    QDRANT_HNSW_FULL_SCAN_THRESHOLD = int(
+        os.getenv("QDRANT_HNSW_FULL_SCAN_THRESHOLD", HYBRID_SETTINGS.qdrant_hnsw_full_scan_threshold)
+    )
+    LLAMA_CPP_URL = os.getenv("LLAMA_CPP_BASE_URL", HYBRID_SETTINGS.llama_cpp_url)
     LLAMA_CPP_CODER_URL = os.getenv(
-        "LLAMA_CPP_CODER_URL", "http://localhost:8080"
+        "LLAMA_CPP_CODER_URL", HYBRID_SETTINGS.llama_cpp_url
     )
     LLAMA_CPP_DEEPSEEK_URL = os.getenv(
-        "LLAMA_CPP_DEEPSEEK_URL", "http://localhost:8080"
+        "LLAMA_CPP_DEEPSEEK_URL", HYBRID_SETTINGS.llama_cpp_url
     )
 
-    EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-    EMBEDDING_DIM = 384
+    EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", HYBRID_SETTINGS.embedding_model)
+    EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIMENSIONS", HYBRID_SETTINGS.embedding_dimensions))
 
     LOCAL_CONFIDENCE_THRESHOLD = float(
-        os.getenv("LOCAL_CONFIDENCE_THRESHOLD", "0.7")
+        os.getenv("LOCAL_CONFIDENCE_THRESHOLD", HYBRID_SETTINGS.local_confidence_threshold)
     )
-    HIGH_VALUE_THRESHOLD = float(os.getenv("HIGH_VALUE_THRESHOLD", "0.7"))
-    PATTERN_EXTRACTION_ENABLED = os.getenv("PATTERN_EXTRACTION_ENABLED", "true").lower() == "true"
+    HIGH_VALUE_THRESHOLD = float(os.getenv("HIGH_VALUE_THRESHOLD", HYBRID_SETTINGS.high_value_threshold))
+    PATTERN_EXTRACTION_ENABLED = os.getenv(
+        "PATTERN_EXTRACTION_ENABLED", str(HYBRID_SETTINGS.pattern_extraction_enabled)
+    ).lower() == "true"
 
     FINETUNE_DATA_PATH = os.path.expanduser(
         os.getenv(
             "FINETUNE_DATA_PATH",
-            "~/.local/share/nixos-ai-stack/fine-tuning/dataset.jsonl",
+            HYBRID_SETTINGS.finetune_data_path
+            or "~/.local/share/nixos-ai-stack/fine-tuning/dataset.jsonl",
         )
     )
+    API_KEY_FILE = os.getenv("HYBRID_API_KEY_FILE", HYBRID_SETTINGS.api_key_file or "")
+    API_KEY = os.getenv("HYBRID_API_KEY", "")
+
+
+def _read_secret(path: str) -> str:
+    if not path:
+        return ""
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return handle.read().strip()
+    except FileNotFoundError:
+        return ""
+
+
+if not Config.API_KEY and Config.API_KEY_FILE:
+    Config.API_KEY = _read_secret(Config.API_KEY_FILE)
 
 
 # ============================================================================
@@ -233,7 +357,13 @@ async def initialize_collections():
                 qdrant_client.create_collection(
                     collection_name=collection_name,
                     vectors_config=VectorParams(
-                        size=schema["vector_size"], distance=schema["distance"]
+                        size=schema["vector_size"],
+                        distance=schema["distance"],
+                        hnsw_config=HnswConfigDiff(
+                            m=Config.QDRANT_HNSW_M,
+                            ef_construct=Config.QDRANT_HNSW_EF_CONSTRUCT,
+                            full_scan_threshold=Config.QDRANT_HNSW_FULL_SCAN_THRESHOLD,
+                        ),
                     ),
                 )
                 logger.info(f"✓ Collection created: {collection_name}")
@@ -256,21 +386,27 @@ async def embed_text(text: str) -> List[float]:
     """
     global embedding_client
 
-    try:
-        # Using llama.cpp embedding endpoint
-        response = await embedding_client.post(
-            f"{Config.LLAMA_CPP_URL}/v1/embeddings",
-            json={"model": "nomic-embed-text", "input": text},
-            timeout=30.0,
-        )
-        response.raise_for_status()
-        result = response.json()
-        return result.get("data", [{}])[0].get("embedding", [])
+    with TRACER.start_as_current_span(
+        "hybrid.embed_text",
+        attributes={"text_length": len(text)},
+    ) as span:
+        try:
+            # Using llama.cpp embedding endpoint
+            response = await embedding_client.post(
+                f"{Config.LLAMA_CPP_URL}/v1/embeddings",
+                json={"model": "nomic-embed-text", "input": text},
+                timeout=30.0,
+            )
+            response.raise_for_status()
+            result = response.json()
+            return result.get("data", [{}])[0].get("embedding", [])
 
-    except Exception as e:
-        logger.error(f"Embedding error: {e}")
-        # Fallback: return zero vector
-        return [0.0] * Config.EMBEDDING_DIM
+        except Exception as e:
+            span.record_exception(e)
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            logger.error(f"Embedding error: {e}")
+            # Fallback: return zero vector
+            return [0.0] * Config.EMBEDDING_DIM
 
 
 # ============================================================================
@@ -346,94 +482,119 @@ async def augment_query_with_context(
     """
     global qdrant_client
 
-    # 1. Embed the query
-    query_embedding = await embed_text(query)
+    with TRACER.start_as_current_span(
+        "hybrid.augment_query",
+        attributes={"agent_type": agent_type, "query_length": len(query)},
+    ) as span:
+        # 1. Embed the query
+        query_embedding = await embed_text(query)
 
-    context_ids = []
-    results_text = []
+        context_ids = []
+        results_text = []
 
-    # 2. Search codebase context
-    try:
-        codebase_results = qdrant_client.query_points(
-            collection_name="codebase-context",
-            query=query_embedding,
-            limit=5,
-            score_threshold=0.7,
-        ).points
+        # 2. Search codebase context
+        try:
+            with TRACER.start_as_current_span(
+                "hybrid.qdrant.search",
+                attributes={"collection": "codebase-context"},
+            ):
+                codebase_results = qdrant_client.query_points(
+                    collection_name="codebase-context",
+                    query=query_embedding,
+                    limit=5,
+                    score_threshold=0.7,
+                ).points
 
-        if codebase_results:
-            results_text.append("## Relevant Code Context\n")
-            for result in codebase_results:
-                context_ids.append(str(result.id))
-                payload = result.payload
-                results_text.append(
-                    f"- **{payload.get('file_path', 'Unknown')}** ({payload.get('language', 'unknown')})\n"
-                )
-                results_text.append(f"  {payload.get('purpose', 'No description')}\n")
-                snippet = payload.get("code_snippet", "")
-                if snippet:
-                    results_text.append(f"  ```{payload.get('language', '')}\n  {snippet[:200]}...\n  ```\n")
-    except Exception as e:
-        logger.warning(f"Error searching codebase-context: {e}")
+            if codebase_results:
+                results_text.append("## Relevant Code Context\n")
+                for result in codebase_results:
+                    context_ids.append(str(result.id))
+                    payload = result.payload
+                    results_text.append(
+                        f"- **{payload.get('file_path', 'Unknown')}** ({payload.get('language', 'unknown')})\n"
+                    )
+                    results_text.append(f"  {payload.get('purpose', 'No description')}\n")
+                    snippet = payload.get("code_snippet", "")
+                    if snippet:
+                        results_text.append(f"  ```{payload.get('language', '')}\n  {snippet[:200]}...\n  ```\n")
+        except Exception as e:
+            logger.warning(f"Error searching codebase-context: {e}")
 
-    # 3. Search skills/patterns
-    try:
-        skills_results = qdrant_client.query_points(
-            collection_name="skills-patterns",
-            query=query_embedding,
-            limit=3,
-            score_threshold=0.75,
-        ).points
+        # 3. Search skills/patterns
+        try:
+            with TRACER.start_as_current_span(
+                "hybrid.qdrant.search",
+                attributes={"collection": "skills-patterns"},
+            ):
+                skills_results = qdrant_client.query_points(
+                    collection_name="skills-patterns",
+                    query=query_embedding,
+                    limit=3,
+                    score_threshold=0.75,
+                ).points
 
-        if skills_results:
-            results_text.append("\n## Related Skills & Patterns\n")
-            for result in skills_results:
-                context_ids.append(str(result.id))
-                payload = result.payload
-                results_text.append(f"- **{payload.get('skill_name', 'Unknown Skill')}**\n")
-                results_text.append(f"  {payload.get('description', 'No description')}\n")
-    except Exception as e:
-        logger.warning(f"Error searching skills-patterns: {e}")
+            if skills_results:
+                results_text.append("\n## Related Skills & Patterns\n")
+                for result in skills_results:
+                    context_ids.append(str(result.id))
+                    payload = result.payload
+                    results_text.append(f"- **{payload.get('skill_name', 'Unknown Skill')}**\n")
+                    results_text.append(f"  {payload.get('description', 'No description')}\n")
+        except Exception as e:
+            logger.warning(f"Error searching skills-patterns: {e}")
 
-    # 4. Search error solutions
-    try:
-        error_results = qdrant_client.query_points(
-            collection_name="error-solutions",
-            query=query_embedding,
-            limit=2,
-            score_threshold=0.8,
-        ).points
+        # 4. Search error solutions
+        try:
+            with TRACER.start_as_current_span(
+                "hybrid.qdrant.search",
+                attributes={"collection": "error-solutions"},
+            ):
+                error_results = qdrant_client.query_points(
+                    collection_name="error-solutions",
+                    query=query_embedding,
+                    limit=2,
+                    score_threshold=0.8,
+                ).points
 
-        if error_results:
-            results_text.append("\n## Similar Error Solutions\n")
-            for result in error_results:
-                context_ids.append(str(result.id))
-                payload = result.payload
-                results_text.append(f"- **Error**: {payload.get('error_type', 'Unknown')}\n")
-                results_text.append(f"  **Solution**: {payload.get('solution', 'No solution')[:200]}...\n")
-                confidence = payload.get('confidence_score', 0)
-                results_text.append(f"  **Confidence**: {confidence:.2f}\n")
-    except Exception as e:
-        logger.warning(f"Error searching error-solutions: {e}")
+            if error_results:
+                results_text.append("\n## Similar Error Solutions\n")
+                for result in error_results:
+                    context_ids.append(str(result.id))
+                    payload = result.payload
+                    results_text.append(f"- **Error**: {payload.get('error_type', 'Unknown')}\n")
+                    results_text.append(f"  **Solution**: {payload.get('solution', 'No solution')[:200]}...\n")
+                    confidence = payload.get('confidence_score', 0)
+                    results_text.append(f"  **Confidence**: {confidence:.2f}\n")
+        except Exception as e:
+            logger.warning(f"Error searching error-solutions: {e}")
 
-    # 5. Search best practices
-    try:
-        bp_results = qdrant_client.query_points(
-            collection_name="best-practices",
-            query=query_embedding,
-            limit=2,
-            score_threshold=0.75,
-        ).points
+        # 5. Search best practices
+        try:
+            with TRACER.start_as_current_span(
+                "hybrid.qdrant.search",
+                attributes={"collection": "best-practices"},
+            ):
+                bp_results = qdrant_client.query_points(
+                    collection_name="best-practices",
+                    query=query_embedding,
+                    limit=2,
+                    score_threshold=0.75,
+                ).points
 
-        if bp_results:
-            results_text.append("\n## Best Practices\n")
-            for result in bp_results:
-                context_ids.append(str(result.id))
-                payload = result.payload
-                results_text.append(f"- **{payload.get('title', 'Unknown')}** ({payload.get('category', 'general')})\n")
-                results_text.append(f"  {payload.get('description', 'No description')}\n")
-    except Exception as e:
-        logger.warning(f"Error searching best-practices: {e}")
+            if bp_results:
+                results_text.append("\n## Best Practices\n")
+                for result in bp_results:
+                    context_ids.append(str(result.id))
+                    payload = result.payload
+                    results_text.append(f"- **{payload.get('title', 'Unknown')}** ({payload.get('category', 'general')})\n")
+                    results_text.append(f"  {payload.get('description', 'No description')}\n")
+        except Exception as e:
+            logger.warning(f"Error searching best-practices: {e}")
+
+        if not results_text:
+            span.set_attribute("context_found", False)
+        else:
+            span.set_attribute("context_found", True)
 
     # 6. Construct augmented prompt
     context_text = "".join(results_text) if results_text else "No relevant context found in local knowledge base."
@@ -1079,6 +1240,68 @@ async def main():
         # Run as HTTP server with health endpoint
         from aiohttp import web
 
+        access_log_format = (
+            '{"remote":"%a","request":"%r","status":%s,'
+            '"bytes":"%b","agent":"%{User-Agent}i","time":"%t"}'
+        )
+        access_logger = logging.getLogger("aiohttp.access")
+        access_logger.handlers.clear()
+        access_handler = logging.StreamHandler()
+        access_handler.setFormatter(logging.Formatter("%(message)s"))
+        access_logger.addHandler(access_handler)
+        access_logger.setLevel(logging.INFO)
+        access_logger.propagate = False
+
+        @web.middleware
+        async def tracing_middleware(request, handler):
+            tracer = trace.get_tracer(SERVICE_NAME)
+            span_name = f"{request.method} {request.path}"
+            with tracer.start_as_current_span(
+                span_name,
+                attributes={
+                    "http.method": request.method,
+                    "http.target": request.path,
+                },
+            ) as span:
+                response = await handler(request)
+                span.set_attribute("http.status_code", response.status)
+                return response
+
+        @web.middleware
+        async def request_id_middleware(request, handler):
+            request_id = request.headers.get("X-Request-ID") or uuid4().hex
+            request["request_id"] = request_id
+            bind_contextvars(request_id=request_id)
+            start = time.time()
+            response = None
+            try:
+                response = await handler(request)
+                return response
+            except Exception:  # noqa: BLE001
+                REQUEST_ERRORS.labels(request.path, request.method).inc()
+                raise
+            finally:
+                duration = time.time() - start
+                status = str(response.status) if response else "500"
+                REQUEST_LATENCY.labels(request.path, request.method).observe(duration)
+                REQUEST_COUNT.labels(request.path, status).inc()
+                if response:
+                    response.headers["X-Request-ID"] = request_id
+                clear_contextvars()
+
+        @web.middleware
+        async def api_key_middleware(request, handler):
+            if request.path in ("/health", "/metrics"):
+                return await handler(request)
+            if not Config.API_KEY:
+                return await handler(request)
+            token = request.headers.get("X-API-Key") or request.headers.get("Authorization", "")
+            if token.startswith("Bearer "):
+                token = token.split(" ", 1)[1]
+            if token != Config.API_KEY:
+                return web.json_response({"error": "unauthorized"}, status=401)
+            return await handler(request)
+
         async def handle_health(request):
             """Health check endpoint"""
             return web.json_response({
@@ -1128,8 +1351,7 @@ async def main():
                 return web.json_response(response.dict())
 
             except Exception as e:
-                logger.error(f"Error in multi_turn_context: {e}")
-                return web.json_response({"error": str(e)}, status=500)
+                return web.json_response(error_payload("internal_error", e), status=500)
 
         async def handle_feedback_evaluate(request):
             """HTTP endpoint for remote LLM feedback evaluation"""
@@ -1158,8 +1380,7 @@ async def main():
                 return web.json_response(feedback_response.dict())
 
             except Exception as e:
-                logger.error(f"Error in feedback_evaluate: {e}")
-                return web.json_response({"error": str(e)}, status=500)
+                return web.json_response(error_payload("internal_error", e), status=500)
 
         async def handle_session_info(request):
             """HTTP endpoint to get session information"""
@@ -1182,8 +1403,7 @@ async def main():
                 return web.json_response(session_info)
 
             except Exception as e:
-                logger.error(f"Error in session_info: {e}")
-                return web.json_response({"error": str(e)}, status=500)
+                return web.json_response(error_payload("internal_error", e), status=500)
 
         async def handle_clear_session(request):
             """HTTP endpoint to clear a session"""
@@ -1200,8 +1420,7 @@ async def main():
                 return web.json_response({"status": "cleared", "session_id": session_id})
 
             except Exception as e:
-                logger.error(f"Error in clear_session: {e}")
-                return web.json_response({"error": str(e)}, status=500)
+                return web.json_response(error_payload("internal_error", e), status=500)
 
         async def handle_discover_capabilities(request):
             """HTTP endpoint for progressive capability discovery"""
@@ -1220,8 +1439,7 @@ async def main():
                 return web.json_response(discovery_response.dict())
 
             except Exception as e:
-                logger.error(f"Error in discover_capabilities: {e}")
-                return web.json_response({"error": str(e)}, status=500)
+                return web.json_response(error_payload("internal_error", e), status=500)
 
         async def handle_token_budget_recommendations(request):
             """HTTP endpoint for token budget recommendations"""
@@ -1238,10 +1456,11 @@ async def main():
                 return web.json_response(recommendations)
 
             except Exception as e:
-                logger.error(f"Error in token_budget_recommendations: {e}")
-                return web.json_response({"error": str(e)}, status=500)
+                return web.json_response(error_payload("internal_error", e), status=500)
 
-        http_app = web.Application()
+        http_app = web.Application(
+            middlewares=[tracing_middleware, request_id_middleware, api_key_middleware]
+        )
         # Existing endpoints
         http_app.router.add_get('/health', handle_health)
         http_app.router.add_get('/stats', handle_stats)
@@ -1257,16 +1476,36 @@ async def main():
         http_app.router.add_post('/discovery/capabilities', handle_discover_capabilities)
         http_app.router.add_get('/discovery/capabilities', handle_discover_capabilities)
         http_app.router.add_post('/discovery/token_budget', handle_token_budget_recommendations)
+        async def handle_metrics(_request):
+            PROCESS_MEMORY_BYTES.set(_get_process_memory_bytes())
+            return web.Response(
+                body=generate_latest(),
+                headers={"Content-Type": CONTENT_TYPE_LATEST},
+            )
+
+        http_app.router.add_get('/metrics', handle_metrics)
 
         port = int(os.getenv("MCP_SERVER_PORT", "8092"))
         logger.info(f"Starting HTTP server on port {port}")
 
-        runner = web.AppRunner(http_app)
+        runner = web.AppRunner(
+            http_app,
+            access_log=access_logger,
+            access_log_format=access_log_format,
+        )
         await runner.setup()
         site = web.TCPSite(runner, '0.0.0.0', port)
         await site.start()
 
         logger.info(f"✓ Hybrid Coordinator HTTP server running on http://0.0.0.0:{port}")
+
+        access_logger = logging.getLogger("aiohttp.access")
+        access_logger.handlers.clear()
+        access_handler = logging.StreamHandler()
+        access_handler.setFormatter(logging.Formatter("%(message)s"))
+        access_logger.addHandler(access_handler)
+        access_logger.setLevel(logging.INFO)
+        access_logger.propagate = False
 
         # Keep server running
         await asyncio.Event().wait()

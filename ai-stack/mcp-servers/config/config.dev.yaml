@@ -1,0 +1,5 @@
+logging:
+  level: DEBUG
+security:
+  rate_limit:
+    enabled: false

@@ -647,7 +647,7 @@ get_model_filename_from_id() {
             if [[ "$base" == *.gguf ]]; then
                 echo "$base"
             else
-                echo "qwen2.5-coder-7b-instruct-q4_k_m.gguf"  # Default fallback
+                echo "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"  # Default fallback
             fi
             ;;
     esac
@@ -656,6 +656,7 @@ get_model_filename_from_id() {
 ai_deploy_llama_cpp() {
     local model_id="$1"
     local ai_stack_dir="${2:-${SCRIPT_DIR}/ai-stack/compose}"
+    export AI_STACK_ENV_FILE="${AI_STACK_ENV_FILE:-$HOME/.config/nixos-ai-stack/.env}"
 
     if [ "$model_id" = "SKIP" ]; then
         log_info "Skipping AI model installation"
@@ -694,6 +695,13 @@ ai_deploy_llama_cpp() {
             sed -i "s|^LLAMA_CPP_DEFAULT_MODEL=.*|LLAMA_CPP_DEFAULT_MODEL=$model_id|" .env
         else
             echo "LLAMA_CPP_DEFAULT_MODEL=$model_id" >> .env
+        fi
+
+        local embedding_model="${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}"
+        if grep -q "^EMBEDDING_MODEL=" .env; then
+            sed -i "s|^EMBEDDING_MODEL=.*|EMBEDDING_MODEL=$embedding_model|" .env
+        else
+            echo "EMBEDDING_MODEL=$embedding_model" >> .env
         fi
 
         # Add LLAMA_CPP_MODEL_FILE if not present

@@ -1,0 +1,89 @@
+{
+  "uid": "ai-stack-overview",
+  "title": "AI Stack Overview",
+  "tags": ["ai-stack"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 2,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "HTTP Requests (req/s)",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {"expr": "sum(rate(aidb_http_requests_total[5m]))", "legendFormat": "aidb"},
+        {"expr": "sum(rate(embeddings_requests_total[5m]))", "legendFormat": "embeddings"},
+        {"expr": "sum(rate(hybrid_requests_total[5m]))", "legendFormat": "hybrid"},
+        {"expr": "sum(rate(nixos_docs_requests_total[5m]))", "legendFormat": "nixos-docs"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP Errors (req/s)",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {"expr": "sum(rate(aidb_http_request_errors_total[5m]))", "legendFormat": "aidb"},
+        {"expr": "sum(rate(embeddings_request_errors_total[5m]))", "legendFormat": "embeddings"},
+        {"expr": "sum(rate(hybrid_request_errors_total[5m]))", "legendFormat": "hybrid"},
+        {"expr": "sum(rate(nixos_docs_request_errors_total[5m]))", "legendFormat": "nixos-docs"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP Latency p95 (s)",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(aidb_http_request_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "aidb"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(embeddings_request_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "embeddings"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(hybrid_request_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "hybrid"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(nixos_docs_request_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "nixos-docs"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Process Memory (MB)",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {"expr": "aidb_process_memory_bytes / 1024 / 1024", "legendFormat": "aidb"},
+        {"expr": "embeddings_process_memory_bytes / 1024 / 1024", "legendFormat": "embeddings"},
+        {"expr": "hybrid_process_memory_bytes / 1024 / 1024", "legendFormat": "hybrid"},
+        {"expr": "nixos_docs_process_memory_bytes / 1024 / 1024", "legendFormat": "nixos-docs"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "AIDB Circuit Breaker State",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "targets": [
+        {"expr": "aidb_circuit_breaker_state", "legendFormat": "{{service}}"}
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Embeddings Model Load (s)",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "targets": [
+        {"expr": "embeddings_model_load_seconds"}
+      ]
+    }
+  ]
+}

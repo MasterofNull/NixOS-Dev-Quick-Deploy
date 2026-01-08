@@ -963,6 +963,24 @@ print_post_install() {
     echo ""
 
     # ========================================================================
+    # 4b. AI Stack Cohesion Checks
+    # ========================================================================
+    print_info "AI Stack Cohesion Checks:"
+    echo ""
+
+    local drift_script="${SCRIPT_DIR}/scripts/validate-ai-stack-env-drift.sh"
+    if [[ -x "$drift_script" ]]; then
+        if "$drift_script"; then
+            echo "  Env drift check: OK"
+        else
+            echo "  Env drift check: FAILED (see output above)"
+        fi
+    else
+        echo "  Env drift check: SKIPPED (script not found)"
+    fi
+    echo ""
+
+    # ========================================================================
     # 5. Hardware Summary
     # ========================================================================
     print_info "Hardware Configuration:"

@@ -73,8 +73,8 @@ if [ "$orphaned_found" = true ]; then
 fi
 
 info "Cleaning up any hanging podman-compose processes..."
-if [ -x "${SCRIPT_ROOT}/scripts/cleanup-hanging-compose.sh" ]; then
-    "${SCRIPT_ROOT}/scripts/cleanup-hanging-compose.sh" 5 || warn "Cleanup script had issues"
+if [ -x "${SCRIPT_DIR}/cleanup-hanging-compose.sh" ]; then
+    "${SCRIPT_DIR}/cleanup-hanging-compose.sh" 5 || warn "Cleanup script had issues"
 fi
 
 info "Starting Hybrid AI stack (containers)..."

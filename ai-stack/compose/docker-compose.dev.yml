@@ -1,0 +1,10 @@
+services:
+  aidb:
+    environment:
+      STACK_ENV: dev
+  embeddings:
+    environment:
+      STACK_ENV: dev
+  hybrid-coordinator:
+    environment:
+      STACK_ENV: dev

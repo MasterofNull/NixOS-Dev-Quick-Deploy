@@ -6,19 +6,82 @@
 set -euo pipefail
 
 DATA_DIR="${HOME}/.local/share/nixos-system-dashboard"
-mkdir -p "$DATA_DIR"
+STATE_DIR="${DATA_DIR}/metrics_state"
+mkdir -p "$DATA_DIR" "$STATE_DIR"
 
 OUTPUT_FILE="${DATA_DIR}/ai_metrics.json"
+LAST_RUN_FILE="${DATA_DIR}/ai_metrics_last_run"
+SLOW_CACHE_FILE="${DATA_DIR}/ai_metrics_slow_cache.json"
+MIN_INTERVAL_SECONDS=10
+SLOW_METRICS_TTL_SECONDS=30
+CB_THRESHOLD=3
+CB_COOLDOWN_SECONDS=60
 
 # Fast HTTP check with minimal timeout
 curl_fast() {
     curl -sf --max-time 1 --connect-timeout 1 "$@" 2>/dev/null || echo "{}"
 }
 
+should_skip_service() {
+    local service="$1"
+    local state_file="${STATE_DIR}/${service}.state"
+    local now
+    now=$(date +%s)
+
+    if [[ ! -f "$state_file" ]]; then
+        return 1
+    fi
+
+    local failures
+    local opened_at
+    failures=$(awk 'NR==1 {print $1}' "$state_file" 2>/dev/null || echo 0)
+    opened_at=$(awk 'NR==1 {print $2}' "$state_file" 2>/dev/null || echo 0)
+
+    if [[ "$failures" -ge "$CB_THRESHOLD" ]] && [[ $((now - opened_at)) -lt "$CB_COOLDOWN_SECONDS" ]]; then
+        return 0
+    fi
+
+    return 1
+}
+
+record_service_failure() {
+    local service="$1"
+    local state_file="${STATE_DIR}/${service}.state"
+    local now
+    now=$(date +%s)
+    local failures
+    failures=$(awk 'NR==1 {print $1}' "$state_file" 2>/dev/null || echo 0)
+    failures=$((failures + 1))
+    echo "${failures} ${now}" > "$state_file"
+}
+
+record_service_success() {
+    local service="$1"
+    local state_file="${STATE_DIR}/${service}.state"
+    rm -f "$state_file"
+}
+
 # Collect AI MCP server metrics
 get_aidb_metrics() {
+    if should_skip_service "aidb"; then
+        cat <<EOF
+{
+    "service": "aidb",
+    "status": "skipped",
+    "port": 8091,
+    "health_check": {}
+}
+EOF
+        return
+    fi
+
     local health=$(curl_fast http://localhost:8091/health)
     local status=$(echo "$health" | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
+    if [[ "$status" == "ok" ]]; then
+        record_service_success "aidb"
+    else
+        record_service_failure "aidb"
+    fi
 
     # Get telemetry file stats if exists
     local telemetry_file="$HOME/.local/share/nixos-ai-stack/telemetry/aidb-events.jsonl"
@@ -46,8 +109,25 @@ EOF
 
 # Collect Hybrid Coordinator metrics
 get_hybrid_metrics() {
+    if should_skip_service "hybrid"; then
+        cat <<EOF
+{
+    "service": "hybrid_coordinator",
+    "status": "skipped",
+    "port": 8092,
+    "health_check": {}
+}
+EOF
+        return
+    fi
+
     local health=$(curl_fast http://localhost:8092/health)
     local status=$(echo "$health" | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
+    if [[ "$status" == "healthy" || "$status" == "ok" ]]; then
+        record_service_success "hybrid"
+    else
+        record_service_failure "hybrid"
+    fi
 
     # Get telemetry file stats
     local telemetry_file="$HOME/.local/share/nixos-ai-stack/telemetry/hybrid-events.jsonl"
@@ -94,12 +174,29 @@ EOF
 
 # Collect Qdrant vector DB metrics
 get_qdrant_metrics() {
+    if should_skip_service "qdrant"; then
+        cat <<EOF
+{
+    "service": "qdrant",
+    "status": "skipped",
+    "port": 6333,
+    "metrics": {}
+}
+EOF
+        return
+    fi
+
     local health=$(curl_fast http://localhost:6333/healthz)
     local collections=$(curl_fast http://localhost:6333/collections)
 
     local status="unknown"
     if echo "$health" | grep -q "check passed"; then
         status="healthy"
+    fi
+    if [[ "$status" == "healthy" ]]; then
+        record_service_success "qdrant"
+    else
+        record_service_failure "qdrant"
     fi
 
     local collection_count=$(echo "$collections" | jq -r '.result.collections | length' 2>/dev/null || echo 0)
@@ -129,8 +226,25 @@ EOF
 
 # Collect llama.cpp inference metrics
 get_llama_cpp_metrics() {
+    if should_skip_service "llama_cpp"; then
+        cat <<EOF
+{
+    "service": "llama_cpp",
+    "status": "skipped",
+    "port": 8080,
+    "model": "unknown"
+}
+EOF
+        return
+    fi
+
     local health=$(curl_fast http://localhost:8080/health)
     local status=$(echo "$health" | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
+    if [[ "$status" == "ok" ]]; then
+        record_service_success "llama_cpp"
+    else
+        record_service_failure "llama_cpp"
+    fi
 
     local model_info=$(curl_fast http://localhost:8080/v1/models)
     local model_name=$(echo "$model_info" | jq -r '.data[0].id // "none"' 2>/dev/null || echo "none")
@@ -147,9 +261,26 @@ EOF
 
 # Collect embeddings service metrics
 get_embeddings_metrics() {
+    if should_skip_service "embeddings"; then
+        cat <<EOF
+{
+    "service": "embeddings",
+    "status": "skipped",
+    "port": 8081,
+    "model": "unknown"
+}
+EOF
+        return
+    fi
+
     local health=$(curl_fast http://localhost:8081/health)
     local status=$(echo "$health" | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
     local model=$(echo "$health" | jq -r '.model // "unknown"' 2>/dev/null || echo "unknown")
+    if [[ "$status" == "ok" ]]; then
+        record_service_success "embeddings"
+    else
+        record_service_failure "embeddings"
+    fi
 
     cat <<EOF
 {
@@ -248,13 +379,67 @@ calculate_effectiveness() {
 
 # Main collection
 main() {
+    local now
+    now=$(date +%s)
+    if [[ -f "$LAST_RUN_FILE" ]]; then
+        local last_run
+        last_run=$(cat "$LAST_RUN_FILE" 2>/dev/null || echo 0)
+        if [[ $((now - last_run)) -lt "$MIN_INTERVAL_SECONDS" ]] && [[ -f "$OUTPUT_FILE" ]]; then
+            if [[ "${VERBOSE:-}" == "1" ]]; then
+                cat "$OUTPUT_FILE"
+            fi
+            exit 0
+        fi
+    fi
+    echo "$now" > "$LAST_RUN_FILE"
+
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    trap '[[ -n "${tmp_dir:-}" ]] && rm -rf "$tmp_dir"' EXIT
+
     # Collect from all services
-    local aidb_data=$(get_aidb_metrics)
-    local hybrid_data=$(get_hybrid_metrics)
-    local qdrant_data=$(get_qdrant_metrics)
-    local llama_data=$(get_llama_cpp_metrics)
-    local embeddings_data=$(get_embeddings_metrics)
-    local knowledge_base_data=$(get_knowledge_base_metrics)
+    get_aidb_metrics > "${tmp_dir}/aidb.json" &
+    local pid_aidb=$!
+    get_hybrid_metrics > "${tmp_dir}/hybrid.json" &
+    local pid_hybrid=$!
+    get_llama_cpp_metrics > "${tmp_dir}/llama.json" &
+    local pid_llama=$!
+    get_embeddings_metrics > "${tmp_dir}/embeddings.json" &
+    local pid_embeddings=$!
+
+    local qdrant_data=""
+    local knowledge_base_data=""
+    if [[ -f "$SLOW_CACHE_FILE" ]]; then
+        local cache_age
+        cache_age=$((now - $(jq -r '.timestamp // 0' "$SLOW_CACHE_FILE" 2>/dev/null || echo 0)))
+        if [[ "$cache_age" -lt "$SLOW_METRICS_TTL_SECONDS" ]]; then
+            qdrant_data=$(jq -c '.qdrant' "$SLOW_CACHE_FILE" 2>/dev/null || echo "{}")
+            knowledge_base_data=$(jq -c '.knowledge_base' "$SLOW_CACHE_FILE" 2>/dev/null || echo "{}")
+        fi
+    fi
+
+    if [[ -z "$qdrant_data" || -z "$knowledge_base_data" || "$qdrant_data" == "null" || "$knowledge_base_data" == "null" ]]; then
+        qdrant_data=$(get_qdrant_metrics)
+        knowledge_base_data=$(get_knowledge_base_metrics)
+        cat > "$SLOW_CACHE_FILE" <<EOF
+{
+    "timestamp": $now,
+    "qdrant": $qdrant_data,
+    "knowledge_base": $knowledge_base_data
+}
+EOF
+    fi
+
+    wait "$pid_aidb" "$pid_hybrid" "$pid_llama" "$pid_embeddings"
+
+    local aidb_data
+    local hybrid_data
+    local llama_data
+    local embeddings_data
+    aidb_data=$(cat "${tmp_dir}/aidb.json")
+    hybrid_data=$(cat "${tmp_dir}/hybrid.json")
+    llama_data=$(cat "${tmp_dir}/llama.json")
+    embeddings_data=$(cat "${tmp_dir}/embeddings.json")
 
     # Extract key metrics for effectiveness calculation
     local total_events=$(echo "$hybrid_data" | jq -r '.telemetry.total_events' 2>/dev/null || echo 0)

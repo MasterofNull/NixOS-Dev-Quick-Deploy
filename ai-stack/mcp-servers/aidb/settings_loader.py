@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Optional
 from urllib.parse import quote_plus
 
-import yaml
+from shared.config_loader import load_config
 from pydantic import BaseModel, Field
 
 
@@ -43,6 +43,20 @@ class Settings(BaseModel):
     parallel_diversity_mode: bool = False
     postgres_dsn: str
     redis_url: str
+    postgres_pool_size: int = 5
+    postgres_max_overflow: int = 10
+    postgres_pool_timeout: int = 30
+    postgres_pool_recycle: int = 1800
+    postgres_pool_pre_ping: bool = True
+    postgres_pool_use_lifo: bool = True
+    redis_max_connections: int = 50
+    redis_socket_timeout: int = 5
+    redis_socket_connect_timeout: int = 5
+    pgvector_hnsw_m: int = 16
+    pgvector_hnsw_ef_construction: int = 64
+    embedding_cache_enabled: bool = True
+    embedding_cache_ttl: int = 86400
+    vector_search_cache_ttl: int = 300
     llama_cpp_url: str = "http://localhost:8080"
     llama_cpp_models: List[str] = Field(default_factory=list)
     tool_schema_cache: Path = Field(default=Path(".mcp_cache/tool_schemas.json"))
@@ -74,7 +88,7 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
     repo_root = Path(__file__).resolve().parents[1]
     default_config = repo_root / "config" / "config.yaml"
     cfg_path = config_path or Path(os.environ.get("AIDB_CONFIG", default_config))
-    raw = yaml.safe_load(Path(cfg_path).read_text(encoding="utf-8"))
+    raw = load_config(Path(cfg_path))
 
     server_cfg = raw.get("server", {})
     db_cfg = raw.get("database", {})
@@ -87,6 +101,7 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
     rag_cfg = raw.get("rag", {})
 
     postgres_cfg = db_cfg.get("postgres", {})
+    postgres_pool_cfg = postgres_cfg.get("pool", {})
     pg_password = (
         _read_secret(postgres_cfg.get("password_file"))
         or postgres_cfg.get("password", "")
@@ -103,6 +118,7 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
     )
 
     redis_cfg = db_cfg.get("redis", {})
+    redis_pool_cfg = redis_cfg.get("pool", {})
     redis_password = (
         _read_secret(redis_cfg.get("password_file"))
         or redis_cfg.get("password", "")
@@ -151,6 +167,15 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
         worker_count=server_cfg.get("workers", 1),
         postgres_dsn=postgres_dsn,
         redis_url=redis_url,
+        postgres_pool_size=int(postgres_pool_cfg.get("size", 5)),
+        postgres_max_overflow=int(postgres_pool_cfg.get("max_overflow", 10)),
+        postgres_pool_timeout=int(postgres_pool_cfg.get("timeout", 30)),
+        postgres_pool_recycle=int(postgres_pool_cfg.get("recycle", 1800)),
+        postgres_pool_pre_ping=bool(postgres_pool_cfg.get("pre_ping", True)),
+        postgres_pool_use_lifo=bool(postgres_pool_cfg.get("use_lifo", True)),
+        redis_max_connections=int(redis_pool_cfg.get("max_connections", 50)),
+        redis_socket_timeout=int(redis_pool_cfg.get("socket_timeout", 5)),
+        redis_socket_connect_timeout=int(redis_pool_cfg.get("socket_connect_timeout", 5)),
         llama_cpp_url=llama_cpp_url,
         llama_cpp_models=llama_cpp_models,
         sandbox_enabled=sandbox_cfg.get("enabled", True),
@@ -162,6 +187,9 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
         default_tool_mode=tools_cfg.get("discovery_mode", "minimal"),
         full_tool_disclosure_requires_key=disclosure_cfg.get("full_requires_api_key", True),
         tool_cache_ttl=cache_cfg.get("ttl", 3600),
+        embedding_cache_enabled=bool(cache_cfg.get("enabled", True)),
+        embedding_cache_ttl=int(cache_cfg.get("embeddings_ttl", 86400)),
+        vector_search_cache_ttl=int(cache_cfg.get("vector_search_ttl", 300)),
         log_level=logging_cfg.get("level", "INFO").upper(),
         log_file=log_path,
         log_max_bytes=_parse_size(log_size),
@@ -174,6 +202,8 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
         catalog_path=catalog_path,
         embedding_model=rag_cfg.get("embedding_model", "sentence-transformers/all-MiniLM-L6-v2"),
         embedding_dimension=int(rag_cfg.get("embedding_dimension", 384)),
+        pgvector_hnsw_m=int(rag_cfg.get("pgvector", {}).get("hnsw_m", 16)),
+        pgvector_hnsw_ef_construction=int(rag_cfg.get("pgvector", {}).get("hnsw_ef_construction", 64)),
         parallel_processing_enabled=parallel_cfg.get("enabled", False),
         parallel_simple_model=parallel_cfg.get("simple_model", "GLM-4.5-Air-UD-Q4K-XL-GGUF"),
         parallel_complex_model=parallel_cfg.get("complex_model", "gpt-oss-20b-mxfp4-GGUF"),

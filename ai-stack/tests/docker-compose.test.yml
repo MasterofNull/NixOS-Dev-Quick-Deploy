@@ -1,0 +1,122 @@
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.1-pg18
+    container_name: test-ai-postgres
+    environment:
+      POSTGRES_DB: mcp
+      POSTGRES_USER: mcp
+      POSTGRES_PASSWORD: test_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - ./.test-data/postgres:/var/lib/postgresql/data:Z
+      - ../postgres/init-schema.sql:/docker-entrypoint-initdb.d/01-init-schema.sql:Z
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8.4.0-alpine
+    container_name: test-ai-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - ./.test-data/redis:/data:Z
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.0
+    container_name: test-ai-qdrant
+    ports:
+      - "127.0.0.1:16333:6333"
+    volumes:
+      - ./.test-data/qdrant:/qdrant/storage:Z
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:6333/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  embeddings:
+    build:
+      context: ../mcp-servers
+      dockerfile: embeddings-service/Dockerfile
+    container_name: test-ai-embeddings
+    ports:
+      - "127.0.0.1:18081:8081"
+    environment:
+      PORT: 8081
+      EMBEDDING_MODEL: sentence-transformers/all-MiniLM-L6-v2
+      EMBEDDINGS_API_KEY_FILE: /run/secrets/stack_api_key
+    volumes:
+      - ./.test-data/embeddings:/data:Z
+      - ./secrets:/run/secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+
+  aidb:
+    build:
+      context: ../mcp-servers
+      dockerfile: aidb/Dockerfile
+    container_name: test-ai-aidb
+    ports:
+      - "127.0.0.1:18091:8091"
+    environment:
+      AIDB_CONFIG: /app/config/config.yaml
+      AIDB_POSTGRES_HOST: postgres
+      AIDB_POSTGRES_PORT: 5432
+      AIDB_POSTGRES_DB: mcp
+      AIDB_POSTGRES_USER: mcp
+      AIDB_POSTGRES_PASSWORD: test_password
+      REDIS_URL: redis://redis:6379
+      QDRANT_URL: http://qdrant:6333
+      EMBEDDING_SERVICE_URL: http://embeddings:8081
+      AIDB_API_KEY_FILE: /run/secrets/stack_api_key
+    volumes:
+      - ./.test-data/aidb:/data:Z
+      - ./secrets:/run/secrets:ro
+      - ../mcp-servers/config/config.yaml:/app/config/config.yaml:Z
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      embeddings:
+        condition: service_healthy
+
+  hybrid-coordinator:
+    build:
+      context: ../mcp-servers
+      dockerfile: hybrid-coordinator/Dockerfile
+    container_name: test-ai-hybrid-coordinator
+    ports:
+      - "127.0.0.1:18092:8092"
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://redis:6379
+      LLAMA_CPP_BASE_URL: http://llama-cpp:8080
+      HYBRID_API_KEY_FILE: /run/secrets/stack_api_key
+      EMBEDDING_SERVICE_URL: http://embeddings:8081
+    volumes:
+      - ./.test-data/hybrid:/data:Z
+      - ./secrets:/run/secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      embeddings:
+        condition: service_healthy
