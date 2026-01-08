@@ -166,10 +166,10 @@ echo ""
 
 info "Step 5: Downloading GGUF models..."
 
-read -p "Download all recommended models now? (~10.5GB) [Y/n]: " download_confirm
+read -p "Download recommended swap models now? (qwen3-4b,qwen-coder,deepseek) [Y/n]: " download_confirm
 
 if [[ ! "$download_confirm" =~ ^[Nn]$ ]]; then
-    if bash "${PROJECT_ROOT}/scripts/download-llama-cpp-models.sh" --all; then
+    if bash "${PROJECT_ROOT}/scripts/download-llama-cpp-models.sh" --models "qwen3-4b,qwen-coder,deepseek"; then
         success "Models downloaded successfully"
     else
         warning "Model download incomplete - models will download on first container startup"

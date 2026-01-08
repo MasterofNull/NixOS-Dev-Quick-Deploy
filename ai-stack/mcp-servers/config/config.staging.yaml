@@ -1,0 +1,6 @@
+logging:
+  level: INFO
+security:
+  rate_limit:
+    enabled: true
+    requests_per_minute: 120

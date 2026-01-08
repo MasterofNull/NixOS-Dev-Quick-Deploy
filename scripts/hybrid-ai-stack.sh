@@ -12,6 +12,7 @@ COMPOSE_DIR="${PROJECT_ROOT}/ai-stack/compose"
 COMPOSE_FILE="docker-compose.yml"  # Single unified configuration
 CONTAINER_RUNTIME=""
 COMPOSE_CMD=""
+AI_STACK_ENV_FILE="${AI_STACK_ENV_FILE:-$HOME/.config/nixos-ai-stack/.env}"
 
 # Colors
 RED='\033[0;31m'
@@ -24,6 +25,21 @@ info() { echo -e "${BLUE}ℹ${NC} $1"; }
 success() { echo -e "${GREEN}✓${NC} $1"; }
 warning() { echo -e "${YELLOW}⚠${NC} $1"; }
 error() { echo -e "${RED}✗${NC} $1"; }
+
+load_ai_stack_env() {
+    if [[ -f "$AI_STACK_ENV_FILE" ]]; then
+        export AI_STACK_ENV_FILE
+        set -a
+        # shellcheck disable=SC1090
+        source "$AI_STACK_ENV_FILE"
+        set +a
+        return 0
+    fi
+
+    warning "Missing AI stack env file: ${AI_STACK_ENV_FILE}"
+    warning "Run: ${PROJECT_ROOT}/scripts/setup-ai-stack-secrets.sh"
+    return 1
+}
 
 check_podman_boot_id() {
     if [[ "$CONTAINER_RUNTIME" != "podman" ]]; then
@@ -90,6 +106,7 @@ cmd_up() {
     cd "$COMPOSE_DIR"
     require_compose
     check_podman_boot_id || return 1
+    load_ai_stack_env || return 1
 
     # Cleanup any hanging processes first
     if [[ -x "${SCRIPT_DIR}/cleanup-hanging-compose.sh" ]]; then
@@ -185,8 +202,7 @@ cmd_status() {
     echo "Core Infrastructure:"
     check_service "Qdrant" 6333 "/healthz"
     check_service "llama.cpp" 8080 "/health"
-    check_service "PostgreSQL" 5432 "/"
-    check_service "Redis" 6379 "/"
+    info "PostgreSQL/Redis are not exposed on the host (use podman exec or make health)."
     echo ""
     echo "MCP Servers:"
     check_service "AIDB MCP" 8091 "/health"
@@ -194,7 +210,7 @@ cmd_status() {
     check_service "NixOS Docs MCP" 8094 "/health"
     echo ""
     echo "User Interfaces:"
-    check_service "Open WebUI" 3000 "/"
+    check_service "Open WebUI" 3001 "/"
     check_service "MindsDB" 47334 "/"
     echo ""
     info "Note: Some services may take 2-3 minutes to become healthy after startup"

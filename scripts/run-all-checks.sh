@@ -14,6 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HEALTH_SCRIPT="$SCRIPT_DIR/scripts/system-health-check.sh"
 SERVICES_SCRIPT="$SCRIPT_DIR/scripts/test_services.sh"
 WORKFLOWS_SCRIPT="$SCRIPT_DIR/scripts/test_real_world_workflows.sh"
+DRIFT_SCRIPT="$SCRIPT_DIR/scripts/validate-ai-stack-env-drift.sh"
 
 print_usage() {
     cat <<EOF
@@ -53,6 +54,20 @@ main() {
     done
 
     local overall_exit=0
+
+    # 0) Env drift check
+    if [[ -x "$DRIFT_SCRIPT" ]]; then
+        echo "=== Running validate-ai-stack-env-drift.sh ==="
+        if "$DRIFT_SCRIPT"; then
+            echo ">>> validate-ai-stack-env-drift.sh: OK"
+        else
+            echo ">>> validate-ai-stack-env-drift.sh: FAILED"
+            overall_exit=1
+        fi
+        echo
+    else
+        echo ">>> Skipping validate-ai-stack-env-drift.sh (not found or not executable at $DRIFT_SCRIPT)"
+    fi
 
     # 1) System health check
     if [[ -x "$HEALTH_SCRIPT" ]]; then

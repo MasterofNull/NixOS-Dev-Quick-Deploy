@@ -34,29 +34,95 @@ phase_09_ai_stack_deployment() {
     # Detect hardware for model recommendations
     local gpu_vram=$(detect_gpu_vram)
     local gpu_name=$(detect_gpu_model)
-    local ram_gb=$(detect_total_ram_gb)
+    local ram_gb=0
+    if declare -F detect_total_ram_gb >/dev/null 2>&1; then
+        ram_gb=$(detect_total_ram_gb)
+    elif [[ -r /proc/meminfo ]]; then
+        ram_gb=$(awk '/MemTotal:/ {printf "%d", $2/1024/1024}' /proc/meminfo 2>/dev/null || echo 0)
+    fi
 
-    # Recommend model based on available resources
-    local recommended_model
-    local model_file
-    if [ "$ram_gb" -ge 16 ]; then
-        recommended_model="qwen2.5-coder:14b"
-        model_file="qwen2.5-coder-14b-instruct-q4_k_m.gguf"
-    elif [ "$ram_gb" -ge 12 ]; then
-        recommended_model="qwen2.5-coder:7b"
-        model_file="qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+    # Default to CPU/iGPU-friendly models unless resources justify larger GGUFs.
+    local default_coder="qwen2.5-coder"
+    if [[ "$gpu_vram" -ge 24 ]]; then
+        default_coder="qwen2.5-coder-14b"
+    elif [[ "$gpu_vram" -ge 16 ]]; then
+        default_coder="qwen2.5-coder"
+    elif [[ "$ram_gb" -ge 32 ]]; then
+        default_coder="qwen2.5-coder"
     else
-        recommended_model="qwen2.5-coder:3b"
-        model_file="qwen2.5-coder-3b-instruct-q4_k_m.gguf"
+        default_coder="qwen3-4b"
+    fi
+
+    local selected_coder="${CODER_MODEL:-$default_coder}"
+    local selected_model_id="${LLAMA_CPP_DEFAULT_MODEL:-}"
+    local model_file="${LLAMA_CPP_MODEL_FILE:-}"
+
+    if [[ -z "$selected_model_id" ]]; then
+        case "$selected_coder" in
+            qwen3-4b|qwen3-4b-instruct)
+                selected_model_id="unsloth/Qwen3-4B-Instruct-2507-GGUF"
+                ;;
+            qwen2.5-coder|qwen2.5-coder-7b|qwen2.5-coder-7b-instruct)
+                selected_model_id="Qwen/Qwen2.5-Coder-7B-Instruct"
+                ;;
+            qwen2.5-coder-14b|qwen2.5-coder-14b-instruct)
+                selected_model_id="Qwen/Qwen2.5-Coder-14B-Instruct"
+                ;;
+            deepseek-coder-v2-lite|deepseek-lite)
+                selected_model_id="deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
+                ;;
+            deepseek-coder-v2|deepseek-v2)
+                selected_model_id="deepseek-ai/DeepSeek-Coder-V2-Instruct"
+                ;;
+        esac
+    fi
+
+    map_model_id_to_file() {
+        local model_id="$1"
+        case "$model_id" in
+            "Qwen/Qwen2.5-Coder-7B-Instruct"|"Qwen/Qwen2.5-Coder-7B-Instruct-GGUF")
+                echo "qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+                ;;
+            "unsloth/Qwen3-4B-Instruct-2507-GGUF")
+                echo "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+                ;;
+            "TheBloke/deepseek-coder-6.7B-instruct-GGUF")
+                echo "deepseek-coder-6.7b-instruct.Q4_K_M.gguf"
+                ;;
+            "Qwen/Qwen2.5-Coder-14B-Instruct"|"Qwen/Qwen2.5-Coder-14B-Instruct-GGUF")
+                echo "qwen2.5-coder-14b-instruct-q4_k_m.gguf"
+                ;;
+            *)
+                echo ""
+                ;;
+        esac
+    }
+
+    local mapped_model_file=""
+    mapped_model_file=$(map_model_id_to_file "$selected_model_id")
+
+    if [[ -z "$mapped_model_file" ]]; then
+        log_warning "Unknown llama.cpp model '${selected_model_id}'. Defaulting to qwen3-4b."
+        selected_coder="qwen3-4b"
+        selected_model_id="unsloth/Qwen3-4B-Instruct-2507-GGUF"
+        mapped_model_file="Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+    fi
+
+    if [[ -z "$model_file" ]]; then
+        model_file="$mapped_model_file"
+    elif [[ -n "$mapped_model_file" && "$model_file" != "$mapped_model_file" ]]; then
+        log_warning "LLAMA_CPP_MODEL_FILE (${model_file}) does not match ${selected_model_id}; using ${mapped_model_file}."
+        model_file="$mapped_model_file"
     fi
 
     log_info "System Resources:"
     log_info "  RAM: ${ram_gb}GB"
     log_info "  GPU: ${gpu_name:-None detected} ${gpu_vram:+(${gpu_vram}GB VRAM)}"
-    log_info "  Recommended Model: ${recommended_model}"
+    log_info "  Coder Preset: ${selected_coder}"
+    log_info "  llama.cpp Model: ${selected_model_id}"
 
     # Confirm deployment
-    read -p "Deploy AI stack with ${recommended_model}? [Y/n]: " confirm
+    read -p "Deploy AI stack with ${selected_coder}? [Y/n]: " confirm
     if [[ "$confirm" =~ ^[Nn]$ ]]; then
         log_info "AI stack deployment cancelled"
         mark_phase_complete "phase-09-ai-stack"
@@ -67,78 +133,80 @@ phase_09_ai_stack_deployment() {
     log_info "Creating AI stack data directories..."
     mkdir -p "${AI_STACK_DATA}"/{qdrant,llama-cpp-models,open-webui,postgres,redis,aidb,hybrid-coordinator,mindsdb,telemetry,fine-tuning,ralph-wiggum,health-monitor,workspace,logs}
 
-    # Generate .env file for docker-compose
-    log_info "Generating AI stack configuration..."
+    # Ensure .env file for docker-compose
+    log_info "Ensuring AI stack configuration..."
 
-    # Generate secure password for PostgreSQL
-    local postgres_password
-    if command -v openssl >/dev/null 2>&1; then
-        postgres_password=$(openssl rand -base64 32)
-    else
-        postgres_password="nixos_ai_stack_$(date +%s)"
+    local config_dir="${HOME}/.config/nixos-ai-stack"
+    local ai_stack_env="${config_dir}/.env"
+    mkdir -p "$config_dir"
+    AI_STACK_ENV="${AI_STACK_ENV:-$ai_stack_env}"
+    export AI_STACK_ENV_FILE="$AI_STACK_ENV"
+
+    if declare -F ensure_ai_stack_env >/dev/null 2>&1; then
+        if ! ensure_ai_stack_env; then
+            return 1
+        fi
     fi
 
-    cat > "${AI_STACK_ENV}" <<EOF
-# AI Stack Configuration
-# Generated: $(date)
-# Version: 3.0.0 - Agentic Era with Vibe Coding
+    if [[ ! -f "$AI_STACK_ENV" ]]; then
+        log_error "Missing AI stack env file: ${AI_STACK_ENV}"
+        log_info "Re-run nixos-quick-deploy.sh to set AI stack credentials."
+        return 1
+    fi
 
-# Data directory
-AI_STACK_DATA=${AI_STACK_DATA}
+    append_if_missing() {
+        local key="$1"
+        local value="$2"
+        if ! rg -q "^${key}=" "$AI_STACK_ENV"; then
+            printf '%s=%s\n' "$key" "$value" >> "$AI_STACK_ENV"
+        fi
+    }
 
-# llama.cpp configuration with CPU optimizations
-LLAMA_CPP_MODEL_FILE=${model_file}
-LLAMA_CPP_DEFAULT_MODEL=${recommended_model}
-LLAMA_CPP_LOG_LEVEL=info
-LLAMA_CPP_WEB_CONCURRENCY=4
+    append_if_missing "AI_STACK_DATA" "${AI_STACK_DATA}"
+    append_if_missing "LLAMA_CPP_MODEL_FILE" "${model_file}"
+    append_if_missing "LLAMA_CPP_DEFAULT_MODEL" "${selected_model_id}"
+    append_if_missing "LLAMA_CPP_LOG_LEVEL" "info"
+    append_if_missing "LLAMA_CPP_WEB_CONCURRENCY" "4"
+    append_if_missing "LLAMA_CTX_SIZE" "8192"
+    append_if_missing "LLAMA_THREADS" "0"
+    append_if_missing "LLAMA_BATCH_SIZE" "512"
+    append_if_missing "LLAMA_UBATCH_SIZE" "128"
+    append_if_missing "LLAMA_CACHE_TYPE_K" "q4_0"
+    append_if_missing "LLAMA_CACHE_TYPE_V" "q4_0"
+    append_if_missing "LLAMA_DEFRAG_THOLD" "0.1"
+    append_if_missing "LLAMA_PARALLEL" "4"
+    append_if_missing "POSTGRES_DB" "mcp"
+    append_if_missing "POSTGRES_USER" "mcp"
+    append_if_missing "HUGGING_FACE_HUB_TOKEN" "${HUGGINGFACEHUB_API_TOKEN:-}"
+    append_if_missing "LOCAL_CONFIDENCE_THRESHOLD" "0.7"
+    append_if_missing "HIGH_VALUE_THRESHOLD" "0.7"
+    append_if_missing "PATTERN_EXTRACTION_ENABLED" "true"
+    append_if_missing "AIDB_TOOL_DISCOVERY_ENABLED" "true"
+    append_if_missing "AIDB_TOOL_DISCOVERY_INTERVAL" "300"
+    append_if_missing "SELF_HEALING_ENABLED" "true"
+    append_if_missing "SELF_HEALING_CHECK_INTERVAL" "30"
+    append_if_missing "SELF_HEALING_COOLDOWN" "60"
+    append_if_missing "CONTINUOUS_LEARNING_ENABLED" "true"
+    append_if_missing "LEARNING_PROCESSING_INTERVAL" "3600"
+    append_if_missing "LEARNING_DATASET_THRESHOLD" "1000"
+    append_if_missing "RALPH_LOOP_ENABLED" "true"
+    append_if_missing "RALPH_EXIT_CODE_BLOCK" "2"
+    append_if_missing "RALPH_MAX_ITERATIONS" "0"
+    append_if_missing "RALPH_CONTEXT_RECOVERY" "true"
+    append_if_missing "RALPH_GIT_INTEGRATION" "true"
+    append_if_missing "RALPH_REQUIRE_APPROVAL" "false"
+    append_if_missing "RALPH_APPROVAL_THRESHOLD" "high"
+    append_if_missing "RALPH_AUDIT_LOG" "true"
+    append_if_missing "RALPH_DEFAULT_BACKEND" "aider"
 
-# CPU Performance Optimizations
-LLAMA_CTX_SIZE=8192
-LLAMA_THREADS=0
-LLAMA_BATCH_SIZE=512
-LLAMA_UBATCH_SIZE=128
-LLAMA_CACHE_TYPE_K=q4_0
-LLAMA_CACHE_TYPE_V=q4_0
-LLAMA_DEFRAG_THOLD=0.1
-LLAMA_PARALLEL=4
+    log_success "Configuration verified: ${AI_STACK_ENV}"
 
-# PostgreSQL configuration
-POSTGRES_DB=mcp
-POSTGRES_USER=mcp
-POSTGRES_PASSWORD=${postgres_password}
+    set -a
+    # shellcheck disable=SC1090
+    source "$AI_STACK_ENV"
+    set +a
 
-# Hugging Face token (if available)
-HUGGING_FACE_HUB_TOKEN=${HUGGINGFACEHUB_API_TOKEN:-}
-
-# Hybrid Coordinator settings
-LOCAL_CONFIDENCE_THRESHOLD=0.7
-HIGH_VALUE_THRESHOLD=0.7
-PATTERN_EXTRACTION_ENABLED=true
-
-# Vibe Coding Features (v3.0.0)
-AIDB_TOOL_DISCOVERY_ENABLED=true
-AIDB_TOOL_DISCOVERY_INTERVAL=300
-SELF_HEALING_ENABLED=true
-SELF_HEALING_CHECK_INTERVAL=30
-SELF_HEALING_COOLDOWN=60
-CONTINUOUS_LEARNING_ENABLED=true
-LEARNING_PROCESSING_INTERVAL=3600
-LEARNING_DATASET_THRESHOLD=1000
-RALPH_LOOP_ENABLED=true
-RALPH_EXIT_CODE_BLOCK=2
-RALPH_MAX_ITERATIONS=0
-RALPH_CONTEXT_RECOVERY=true
-RALPH_GIT_INTEGRATION=true
-RALPH_REQUIRE_APPROVAL=false
-RALPH_APPROVAL_THRESHOLD=high
-RALPH_AUDIT_LOG=true
-RALPH_DEFAULT_BACKEND=aider
-EOF
-
-    log_success "Configuration created: ${AI_STACK_ENV}"
-
-    # Update PostgreSQL URL with generated password
-    export POSTGRES_URL="postgresql://mcp:${postgres_password}@localhost:5432/mcp"
+    export POSTGRES_URL="postgresql://${POSTGRES_USER:-mcp}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB:-mcp}"
 
     # Start AI stack containers
     log_info "Starting AI stack containers..."
@@ -158,19 +226,11 @@ EOF
 
     popd >/dev/null 2>&1
 
-    # Download model if needed
+    # Download model if needed (optional)
     log_info "Checking for model file: ${model_file}"
     if [ ! -f "${AI_STACK_DATA}/llama-cpp-models/${model_file}" ]; then
-        log_info "Model not found. Downloading ${recommended_model}..."
-        log_info "This may take 10-30 minutes depending on your connection"
-
-        if [ -f "${SCRIPT_DIR}/scripts/download-llama-cpp-models.sh" ]; then
-            bash "${SCRIPT_DIR}/scripts/download-llama-cpp-models.sh" "${recommended_model}" || {
-                log_warning "Model download incomplete. llama-cpp will download on first API call."
-            }
-        else
-            log_warning "Download script not found. Model will download on first API call."
-        fi
+        log_warning "Model not found. It will download on first API call."
+        log_info "Optional: ${SCRIPT_DIR}/scripts/download-llama-cpp-models.sh --list"
     else
         log_success "Model file already exists: ${model_file}"
     fi
@@ -204,7 +264,7 @@ EOF
     cat > "${STATE_DIR}/ai-stack-deployment.json" <<EOF
 {
   "deployed_at": "$(date -Iseconds)",
-  "model": "${recommended_model}",
+  "model": "${selected_model_id}",
   "model_file": "${model_file}",
   "ram_gb": ${ram_gb},
   "gpu_vram": ${gpu_vram:-0},
@@ -227,7 +287,7 @@ EOF
 AI Stack Deployment Complete
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Model: ${recommended_model}
+Model: ${selected_coder} (${selected_model_id})
 System: ${ram_gb}GB RAM${gpu_vram:+ / ${gpu_vram}GB VRAM}
 
 🚀 Core Services Running:

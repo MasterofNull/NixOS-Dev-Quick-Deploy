@@ -26,11 +26,10 @@ The menu exposes four independent actions:
 2. **Scaffold the `local-ai-stack` compose project**  
    Copies `templates/local-ai-stack/docker-compose.yml` into
    `~/Documents/local-ai-stack/`, creates a matching `.env`, and (optionally)
-   launches the stack via Docker Compose or Podman Compose. The trimmed stack
-   mirrors the AI-Optimizer architecture while remaining self-contained:
-   - `local-ai-postgres` (TimescaleDB + pgvector)
-   - `local-ai-redis` and `local-ai-redisinsight`
-   - `local-ai-llama-cpp` (OpenAI-compatible inference server)
+   launches the stack via Docker Compose or Podman Compose. The stack now mirrors
+   the primary `ai-stack/compose` configuration, including security hardening
+   and profiles (core services by default, optional dashboards/agents via
+   `--profile full`).
 
 3. **Install OpenSkills CLI**  
    Installs the npm package globally and runs `openskills init` in the selected
@@ -46,10 +45,10 @@ The menu exposes four independent actions:
 Each option can be executed independently; nothing requires the private
 AI-Optimizer repo.
 
-> **Stack Components:** Postgres (TimescaleDB + pgvector), Redis (with
-> RedisInsight), and the llama.cpp OpenAI-compatible inference server. This mirrors
-> the trimmed AI-Optimizer stack—legacy containers such as Ollama were removed
-> to keep things lean and focused.
+> **Stack Components (Core):** Qdrant, embeddings, llama.cpp, Postgres (pgvector),
+> Redis, AIDB, hybrid coordinator, and nginx TLS. Use `--profile full` to add
+> dashboards (Grafana/Prometheus/Jaeger), agents (Aider/AutoGPT/Ralph), and
+> optional services.
 
 ---
 
@@ -57,8 +56,8 @@ AI-Optimizer repo.
 
 ```
 ~/.local/share/ai-optimizer/         # Shared data roots created by option 1
-~/.local/share/ai-stack/             # Data directory for postgres/redis/llama-cpp volumes
-~/Documents/local-ai-stack/          # docker-compose.yml + .env for local agents
+~/.local/share/nixos-ai-stack/        # Data directory for container volumes
+~/Documents/local-ai-stack/          # docker-compose.yml + .env + compose assets
 ~/Documents/skills-project/.skills/  # Generated when running OpenSkills init
 ~/Documents/mcp-sample/              # Scaffolding for the MCP server template
 ```
@@ -82,6 +81,7 @@ If a dependency is missing, the script reports the exact package to install.
 ## Next Steps for Users
 
 1. Start the local AI stack:
+   - Update `~/Documents/local-ai-stack/.env` with `POSTGRES_PASSWORD` (and Grafana creds if using `--profile full`).
    - Recommended wrapper:
      ```bash
      cd ~/Documents/NixOS-Dev-Quick-Deploy
@@ -92,6 +92,7 @@ If a dependency is missing, the script reports the exact package to install.
      ```bash
      cd ~/Documents/local-ai-stack
      docker compose up -d    # or podman-compose up -d
+     docker compose --profile full up -d  # start optional dashboards/agents
      ```
 2. Install skills with `openskills add <skill-name>`
 3. Customize the MCP server template and run it against their local database
@@ -104,7 +105,7 @@ machines.
 ### Keeping AI-Optimizer Separate (but Connected)
 
 - The compose project created here never clones or mounts the private AI-Optimizer repository.
-- Shared data roots (`~/.local/share/ai-stack/` for public stacks and `~/.local/share/ai-optimizer/` for the glove) let `lib/ai-optimizer-hooks.sh` detect when the glove shows up later.
+- Shared data roots (`~/.local/share/nixos-ai-stack/` for public stacks and `~/.local/share/ai-optimizer/` for the glove) let `lib/ai-optimizer-hooks.sh` detect when the glove shows up later.
 - When you are ready to deploy the private stack, follow `docs/HAND-IN-GLOVE-INTEGRATION.md` so Phase 9 can hand off cleanly without reconfiguring NixOS.
 
 ### Personal vs Guest Usage

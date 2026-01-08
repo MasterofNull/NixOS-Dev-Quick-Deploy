@@ -142,18 +142,41 @@ wait_for_containers_healthy() {
     return 1
 }
 
+# Ensure services are running without recreating existing containers.
+ensure_services_running() {
+    local services=("$@")
+    for service in "${services[@]}"; do
+        local container_name="local-ai-${service}"
+        if podman container exists "$container_name" 2>/dev/null; then
+            if podman ps --filter "name=^${container_name}$" --format "{{.Names}}" | grep -q "$container_name"; then
+                info "Service already running: $service"
+            else
+                info "Starting existing container: $service"
+                podman start "$container_name" 2>&1 | tee -a "$LOG_FILE" || {
+                    error "Failed to start existing container: $service"
+                    return 1
+                }
+            fi
+        else
+            info "Creating service container: $service"
+            if podman-compose up -d "$service" 2>&1 | tee -a "$LOG_FILE"; then
+                true
+            else
+                error "Failed to create/start service: $service"
+                return 1
+            fi
+        fi
+    done
+}
+
 # Start core AI infrastructure
 start_core_infrastructure() {
     info "Starting core AI infrastructure (postgres, redis, qdrant, embeddings, llama-cpp, mindsdb)..."
 
     cd "$PROJECT_ROOT/ai-stack/compose"
 
-    if podman-compose up -d postgres redis qdrant embeddings llama-cpp mindsdb 2>&1 | tee -a "$LOG_FILE"; then
-        success "Core infrastructure started"
-    else
-        error "Failed to start core infrastructure"
-        return 1
-    fi
+    ensure_services_running postgres redis qdrant embeddings llama-cpp mindsdb
+    success "Core infrastructure started"
 
     # Wait for services to be healthy (using docker health checks)
     info "Waiting for core services to become healthy..."
@@ -189,12 +212,8 @@ start_mcp_services() {
     cd "$PROJECT_ROOT/ai-stack/compose"
 
     # Use existing images (no --build flag to avoid rebuilding on every boot)
-    if podman-compose up -d aidb hybrid-coordinator health-monitor 2>&1 | tee -a "$LOG_FILE"; then
-        success "MCP services started"
-    else
-        error "Failed to start MCP services"
-        return 1
-    fi
+    ensure_services_running aidb hybrid-coordinator health-monitor
+    success "MCP services started"
 
     # Wait for MCP services to become healthy
     info "Waiting for MCP services to become healthy..."

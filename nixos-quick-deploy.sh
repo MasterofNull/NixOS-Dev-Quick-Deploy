@@ -130,7 +130,15 @@ AUTO_UPDATE_FLAKE_INPUTS=false
 RESTORE_KNOWN_GOOD_FLAKE_LOCK=false
 FORCE_HF_DOWNLOAD=false
 RUN_AI_PREP=false
-RUN_AI_MODEL=true  # Default: Enable Hybrid Learning Stack (Qdrant/llama.cpp/Ollama)
+RUN_AI_MODEL=true  # Default: Enable AI stack auto-deploy
+AI_STACK_POSTGRES_DB="mcp"
+AI_STACK_POSTGRES_USER="mcp"
+AI_STACK_POSTGRES_PASSWORD=""
+AI_STACK_GRAFANA_ADMIN_USER="admin"
+AI_STACK_GRAFANA_ADMIN_PASSWORD=""
+HOST_SWAP_LIMIT_ENABLED=false
+HOST_SWAP_LIMIT_GB=""
+HOST_SWAP_LIMIT_VALUE=""
 
 # Phase control
 declare -a SKIP_PHASES=()
@@ -346,7 +354,7 @@ BASIC OPTIONS:
         --update-flake-inputs   Run 'nix flake update' before activation (opt-in)
         --restore-flake-lock    Re-seed flake.lock from the bundled baseline
         --with-ai-prep          Run the optional AI-Optimizer preparation phase after Phase 8
-        --with-ai-model         Force enable Hybrid Learning Stack deployment (enabled by default)
+        --with-ai-model         Force enable Hybrid Learning Stack deployment (default: disabled)
         --without-ai-model      Skip AI model deployment phase (disable default prompt)
         --with-ai-stack         Convenience alias for --with-ai-prep --with-ai-model
         --prompt-switch         Prompt before running system/home switches
@@ -1105,6 +1113,171 @@ start_sudo_keepalive() {
 }
 
 # ============================================================================
+# AI Stack Credentials + Host Swap Limits
+# ============================================================================
+
+ensure_ai_stack_env() {
+    if [[ "$RUN_AI_MODEL" != true && "${LOCAL_AI_STACK_ENABLED:-false}" != "true" ]]; then
+        return 0
+    fi
+
+    read_env_value() {
+        local key="$1"
+        local file="$2"
+        awk -F= -v target="$key" '
+            $0 ~ "^[[:space:]]*"target"=" {
+                sub("^[^=]*=", "", $0);
+                print $0;
+                exit;
+            }
+        ' "$file"
+    }
+
+    set_env_value() {
+        local key="$1"
+        local value="$2"
+        local file="$3"
+        if grep -qE "^[[:space:]]*${key}=" "$file" 2>/dev/null; then
+            sed -i "s|^[[:space:]]*${key}=.*|${key}=${value}|" "$file"
+        else
+            printf '%s=%s\n' "$key" "$value" >> "$file"
+        fi
+    }
+
+    local config_dir="${PRIMARY_HOME:-$HOME}/.config/nixos-ai-stack"
+    local env_file="${config_dir}/.env"
+    export AI_STACK_ENV_FILE="$env_file"
+
+    if [[ -f "$env_file" ]]; then
+        if confirm "Reuse existing AI stack credentials at ${env_file}?" "y"; then
+            local existing_db
+            local existing_user
+            local existing_password
+            local existing_grafana_user
+            local existing_grafana_password
+            local existing_embedding_model
+            local existing_llama_model
+            existing_db=$(read_env_value "POSTGRES_DB" "$env_file")
+            existing_user=$(read_env_value "POSTGRES_USER" "$env_file")
+            existing_password=$(read_env_value "POSTGRES_PASSWORD" "$env_file")
+            existing_grafana_user=$(read_env_value "GRAFANA_ADMIN_USER" "$env_file")
+            existing_grafana_password=$(read_env_value "GRAFANA_ADMIN_PASSWORD" "$env_file")
+            existing_embedding_model=$(read_env_value "EMBEDDING_MODEL" "$env_file")
+            existing_llama_model=$(read_env_value "LLAMA_CPP_DEFAULT_MODEL" "$env_file")
+
+            if [[ -z "$existing_db" ]]; then
+                existing_db=$(prompt_user "Postgres database name" "${AI_STACK_POSTGRES_DB:-mcp}")
+                set_env_value "POSTGRES_DB" "$existing_db" "$env_file"
+            fi
+
+            if [[ -z "$existing_user" ]]; then
+                existing_user=$(prompt_user "Postgres username" "${AI_STACK_POSTGRES_USER:-mcp}")
+                set_env_value "POSTGRES_USER" "$existing_user" "$env_file"
+            fi
+
+            if [[ -z "$existing_password" ]]; then
+                while true; do
+                    existing_password=$(prompt_secret "Postgres password")
+                    if [[ -n "$existing_password" ]]; then
+                        break
+                    fi
+                    print_warning "Postgres password cannot be empty."
+                done
+                set_env_value "POSTGRES_PASSWORD" "$existing_password" "$env_file"
+            fi
+
+            if [[ -z "$existing_grafana_user" ]]; then
+                existing_grafana_user=$(prompt_user "Grafana admin username" "${AI_STACK_GRAFANA_ADMIN_USER:-admin}")
+                set_env_value "GRAFANA_ADMIN_USER" "$existing_grafana_user" "$env_file"
+            fi
+
+            if [[ -z "$existing_grafana_password" ]]; then
+                while true; do
+                    existing_grafana_password=$(prompt_secret "Grafana admin password")
+                    if [[ -n "$existing_grafana_password" ]]; then
+                        break
+                    fi
+                    print_warning "Grafana admin password cannot be empty."
+                done
+                set_env_value "GRAFANA_ADMIN_PASSWORD" "$existing_grafana_password" "$env_file"
+            fi
+
+            if [[ -z "$existing_embedding_model" ]]; then
+                existing_embedding_model="${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}"
+                set_env_value "EMBEDDING_MODEL" "$existing_embedding_model" "$env_file"
+            fi
+
+            if [[ -z "$existing_llama_model" ]]; then
+                existing_llama_model="${LLAMA_CPP_DEFAULT_MODEL:-unsloth/Qwen3-4B-Instruct-2507-GGUF}"
+                set_env_value "LLAMA_CPP_DEFAULT_MODEL" "$existing_llama_model" "$env_file"
+            fi
+
+            chmod 600 "$env_file" 2>/dev/null || true
+            return 0
+        fi
+    fi
+
+    print_section "AI Stack Credentials"
+    AI_STACK_POSTGRES_DB=$(prompt_user "Postgres database name" "${AI_STACK_POSTGRES_DB:-mcp}")
+    AI_STACK_POSTGRES_USER=$(prompt_user "Postgres username" "${AI_STACK_POSTGRES_USER:-mcp}")
+
+    while true; do
+        AI_STACK_POSTGRES_PASSWORD=$(prompt_secret "Postgres password")
+        if [[ -n "$AI_STACK_POSTGRES_PASSWORD" ]]; then
+            break
+        fi
+        print_warning "Postgres password cannot be empty."
+    done
+
+    AI_STACK_GRAFANA_ADMIN_USER=$(prompt_user "Grafana admin username" "${AI_STACK_GRAFANA_ADMIN_USER:-admin}")
+    while true; do
+        AI_STACK_GRAFANA_ADMIN_PASSWORD=$(prompt_secret "Grafana admin password")
+        if [[ -n "$AI_STACK_GRAFANA_ADMIN_PASSWORD" ]]; then
+            break
+        fi
+        print_warning "Grafana admin password cannot be empty."
+    done
+
+    mkdir -p "$config_dir"
+    cat > "$env_file" <<EOF
+POSTGRES_DB=${AI_STACK_POSTGRES_DB}
+POSTGRES_USER=${AI_STACK_POSTGRES_USER}
+POSTGRES_PASSWORD=${AI_STACK_POSTGRES_PASSWORD}
+GRAFANA_ADMIN_USER=${AI_STACK_GRAFANA_ADMIN_USER}
+GRAFANA_ADMIN_PASSWORD=${AI_STACK_GRAFANA_ADMIN_PASSWORD}
+EMBEDDING_MODEL=${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+LLAMA_CPP_DEFAULT_MODEL=${LLAMA_CPP_DEFAULT_MODEL:-unsloth/Qwen3-4B-Instruct-2507-GGUF}
+EOF
+
+    chmod 600 "$env_file" 2>/dev/null || true
+    print_success "Saved AI stack credentials to ${env_file}"
+}
+
+configure_host_swap_limits() {
+    local default_swap_gb="${HOST_SWAP_LIMIT_GB:-0}"
+
+    if confirm "Configure host-level swap limits for systemd services (includes containers)?" "y"; then
+        local swap_input
+        swap_input=$(prompt_user "Default swap max per service in GB (0 = unlimited)" "$default_swap_gb")
+
+        if [[ "$swap_input" =~ ^[0-9]+$ ]]; then
+            HOST_SWAP_LIMIT_GB="$swap_input"
+            HOST_SWAP_LIMIT_ENABLED=true
+            if (( swap_input <= 0 )); then
+                HOST_SWAP_LIMIT_VALUE="infinity"
+            else
+                HOST_SWAP_LIMIT_VALUE="${swap_input}G"
+            fi
+            export HOST_SWAP_LIMIT_ENABLED HOST_SWAP_LIMIT_GB HOST_SWAP_LIMIT_VALUE
+            print_success "Host swap limit set to ${HOST_SWAP_LIMIT_VALUE}"
+        else
+            print_warning "Swap limit must be a number of GB; skipping host swap limits."
+            HOST_SWAP_LIMIT_ENABLED=false
+        fi
+    fi
+}
+
+# ============================================================================
 # MAIN FUNCTION
 # ============================================================================
 
@@ -1208,6 +1381,7 @@ main() {
     init_logging
     ensure_nix_experimental_features_env
     init_state
+    configure_host_swap_limits
 
     # Prevent concurrent deployments (avoids overlapping Phase 9 runs)
     local lock_file="${CACHE_DIR}/deploy.lock"

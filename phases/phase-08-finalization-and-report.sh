@@ -83,6 +83,10 @@ phase_08_finalization_and_report() {
         print_info "Local AI stack images and containers are now managed by ai-optimizer."
         print_info "After deployment run 'podman-ai-stack up' to pull/start the ai-optimizer Podman stack (vLLM, Open WebUI, Qdrant, MindsDB)."
         echo ""
+    else
+        print_info "AI stack auto-start is enabled when selected during deployment."
+        print_info "If you skipped AI stack deployment, you can enable it later with --with-ai-model."
+        echo ""
     fi
 
     print_section "Part 1: System Health Check"
@@ -91,6 +95,7 @@ phase_08_finalization_and_report() {
     # ========================================================================
     # Step 8.1: Run Comprehensive Health Check
     # ========================================================================
+    local strict_health_checks="${STRICT_HEALTH_CHECKS:-true}"
     if [[ "$SKIP_HEALTH_CHECK" == true ]]; then
         print_info "Skipping system health check (--skip-health-check flag detected)"
     else
@@ -118,6 +123,10 @@ phase_08_finalization_and_report() {
         if [[ $health_status -eq 0 ]]; then
             print_success "System health check completed"
         else
+            if [[ "$strict_health_checks" == "true" ]]; then
+                print_error "System health check failed with STRICT_HEALTH_CHECKS=true"
+                return 1
+            fi
             print_warning "System health check reported issues (review output above)"
         fi
 
@@ -131,12 +140,17 @@ phase_08_finalization_and_report() {
     # Step 8.1b: AI Stack Health Check
     # ========================================================================
     if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
+        local enforce_ai_health="${ENFORCE_AI_STACK_HEALTH:-true}"
         local ai_health_script="$SCRIPT_DIR/scripts/check-ai-stack-health-v2.py"
         if [[ -f "$ai_health_script" ]]; then
             print_info "Running AI Stack health check..."
             if python3 "$ai_health_script" -v; then
                 print_success "AI Stack health check passed."
             else
+                if [[ "$enforce_ai_health" == "true" ]]; then
+                    print_error "AI Stack health check failed with ENFORCE_AI_STACK_HEALTH=true"
+                    return 1
+                fi
                 print_warning "AI Stack health check reported issues. Review output."
             fi
         else
@@ -152,6 +166,23 @@ phase_08_finalization_and_report() {
             fi
         else
             print_warning "Feedback verification script not found at $feedback_script"
+        fi
+
+        local drift_script="$SCRIPT_DIR/scripts/validate-ai-stack-env-drift.sh"
+        local enforce_drift_check="${ENFORCE_ENV_DRIFT_CHECK:-true}"
+        if [[ -x "$drift_script" ]]; then
+            print_info "Running AI stack env drift check..."
+            if "$drift_script"; then
+                print_success "AI stack env drift check passed."
+            else
+                if [[ "$enforce_drift_check" == "true" ]]; then
+                    print_error "AI stack env drift check failed with ENFORCE_ENV_DRIFT_CHECK=true"
+                    return 1
+                fi
+                print_warning "AI stack env drift check reported issues."
+            fi
+        else
+            print_warning "AI stack env drift check script not found at $drift_script"
         fi
     else
         print_info "AI Stack not enabled, skipping AI health check."

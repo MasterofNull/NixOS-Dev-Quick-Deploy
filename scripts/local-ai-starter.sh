@@ -78,19 +78,40 @@ copy_local_stack_templates() {
     cp "${SCRIPT_DIR}/templates/local-ai-stack/docker-compose.yml" "$LOCAL_STACK_DIR/docker-compose.yml"
     if [[ -f "$LOCAL_STACK_DIR/.env" ]]; then
         warn ".env already exists in ${LOCAL_STACK_DIR}, leaving it untouched."
+        local missing_keys=()
+        for key in AI_STACK_ENV_FILE POSTGRES_PASSWORD GRAFANA_ADMIN_USER GRAFANA_ADMIN_PASSWORD; do
+            if ! grep -q "^${key}=" "$LOCAL_STACK_DIR/.env"; then
+                missing_keys+=("$key")
+            fi
+        done
+        if (( ${#missing_keys[@]} > 0 )); then
+            warn "Missing required keys in ${LOCAL_STACK_DIR}/.env: ${missing_keys[*]}"
+            warn "Update .env or re-run setup with a fresh template."
+        fi
     else
         cp "${SCRIPT_DIR}/templates/local-ai-stack/.env.example" "$LOCAL_STACK_DIR/.env"
-        sed -i "s|/home/your-user/.local/share/ai-stack|${data_root}|g" "$LOCAL_STACK_DIR/.env"
+        sed -i "s|/home/your-user/.local/share/nixos-ai-stack|${data_root}|g" "$LOCAL_STACK_DIR/.env"
     fi
 
-    mkdir -p "$LOCAL_STACK_DIR/mcp-servers"
-    if [[ -d "${SCRIPT_DIR}/ai-stack/mcp-servers/aidb" ]]; then
-        rm -rf "$LOCAL_STACK_DIR/mcp-servers/aidb"
-        cp -R "${SCRIPT_DIR}/ai-stack/mcp-servers/aidb" "$LOCAL_STACK_DIR/mcp-servers/aidb"
+    if [[ -d "${SCRIPT_DIR}/ai-stack/mcp-servers" ]]; then
+        rm -rf "$LOCAL_STACK_DIR/mcp-servers"
+        cp -R "${SCRIPT_DIR}/ai-stack/mcp-servers" "$LOCAL_STACK_DIR/mcp-servers"
     fi
-    if [[ -d "${SCRIPT_DIR}/ai-stack/mcp-servers/config" ]]; then
-        rm -rf "$LOCAL_STACK_DIR/mcp-servers/config"
-        cp -R "${SCRIPT_DIR}/ai-stack/mcp-servers/config" "$LOCAL_STACK_DIR/mcp-servers/config"
+
+    if [[ -d "${SCRIPT_DIR}/ai-stack/postgres" ]]; then
+        rm -rf "$LOCAL_STACK_DIR/postgres"
+        cp -R "${SCRIPT_DIR}/ai-stack/postgres" "$LOCAL_STACK_DIR/postgres"
+    fi
+
+    for asset_dir in nginx grafana prometheus secrets; do
+        if [[ -d "${SCRIPT_DIR}/ai-stack/compose/${asset_dir}" ]]; then
+            rm -rf "$LOCAL_STACK_DIR/${asset_dir}"
+            cp -R "${SCRIPT_DIR}/ai-stack/compose/${asset_dir}" "$LOCAL_STACK_DIR/${asset_dir}"
+        fi
+    done
+
+    if [[ -f "$LOCAL_STACK_DIR/secrets/stack_api_key" ]]; then
+        chmod 600 "$LOCAL_STACK_DIR/secrets/stack_api_key" || true
     fi
 }
 
@@ -114,8 +135,8 @@ start_local_stack() {
 
 action_scaffold_local_stack() {
     info "Scaffolding local AI stack at ${LOCAL_STACK_DIR}"
-    local data_root="${AI_STACK_DATA:-$HOME/.local/share/ai-stack}"
-    mkdir -p "${data_root}"/{postgres,redis,redisinsight,llama-cpp-models,open-webui,aidb,aidb-cache,telemetry}
+    local data_root="${AI_STACK_DATA:-$HOME/.local/share/nixos-ai-stack}"
+    mkdir -p "${data_root}"/{qdrant,embeddings,llama-cpp-models,open-webui,postgres,redis,aidb,aidb-cache,hybrid-coordinator,mindsdb,telemetry,fine-tuning,ralph-wiggum,health-monitor,workspace,logs,prometheus,grafana,nixos-docs,nixos-repos}
     copy_local_stack_templates "$data_root"
 
     info "AI_PROFILE=${AI_PROFILE} (override in environment to change edge AI behavior hints)."

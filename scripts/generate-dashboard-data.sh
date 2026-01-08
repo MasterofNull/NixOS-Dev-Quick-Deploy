@@ -3,7 +3,7 @@
 # Collects real-time system, LLM, database, network, and security metrics
 # Outputs JSON for consumption by the dashboard UI
 
-set -euo pipefail
+set -uo pipefail
 
 # Resolve project root for reading compose env defaults.
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -531,6 +531,16 @@ collect_llm_metrics() {
     local qdrant_collection_count=0
     local postgres_user="${POSTGRES_USER:-mcp}"
     local embedding_models="[]"
+    local llama_cpp_cached_models="[]"
+    local llama_cpp_cached_count=0
+    local embeddings_status="offline"
+    local embeddings_request_total=0
+    local embeddings_error_total=0
+    local embeddings_memory_mb="0"
+    local embeddings_metrics=""
+    local embeddings_endpoint="http://localhost:8081"
+    local embedding_model_name=""
+    local env_file="${AI_STACK_CONFIG:-$HOME/.config/nixos-ai-stack/.env}"
 
     # Check Qdrant
     if curl_fast http://localhost:6333/healthz > /dev/null 2>&1; then
@@ -550,6 +560,25 @@ collect_llm_metrics() {
         embedding_models=$(run_timeout 3 find "${HOME}/.cache/huggingface/sentence-transformers" -maxdepth 2 -mindepth 2 -type f -name "config.json" -printf '%h\n' 2>/dev/null | xargs -r -n1 basename | sort -u | maybe_jq -R -s -c 'split("\n") | map(select(length > 0))' || echo "[]")
     elif [[ -d "${HOME}/.cache/huggingface/hub" ]]; then
         embedding_models=$(run_timeout 3 find "${HOME}/.cache/huggingface/hub" -type f -path "*/models--sentence-transformers--*/snapshots/*/config.json" -printf '%p\n' 2>/dev/null | sed -n 's|.*/models--sentence-transformers--\\([^/]*\\)/.*|\\1|p' | sort -u | maybe_jq -R -s -c 'split("\n") | map(select(length > 0))' || echo "[]")
+    fi
+
+    embedding_model_name="${EMBEDDING_MODEL:-$(read_env_value "$env_file" "EMBEDDING_MODEL")}"
+    embedding_model_name="${embedding_model_name:-sentence-transformers/all-MiniLM-L6-v2}"
+
+    if curl_fast "${embeddings_endpoint}/health" > /dev/null 2>&1; then
+        embeddings_status="online"
+        embeddings_metrics=$(curl_fast "${embeddings_endpoint}/metrics" 2>/dev/null || true)
+        if [[ -n "$embeddings_metrics" ]]; then
+            embeddings_request_total=$(echo "$embeddings_metrics" | awk '/^embeddings_requests_total /{sum+=$2} END{printf "%.0f",sum+0}')
+            embeddings_error_total=$(echo "$embeddings_metrics" | awk '/^embeddings_request_errors_total /{sum+=$2} END{printf "%.0f",sum+0}')
+            embeddings_memory_mb=$(echo "$embeddings_metrics" | awk '/^embeddings_process_memory_bytes /{printf "%.1f",$2/1024/1024; exit}')
+        fi
+    fi
+
+    # Detect cached GGUF models for llama.cpp
+    if [[ -d "${HOME}/.local/share/nixos-ai-stack/llama-cpp-models" ]]; then
+        llama_cpp_cached_models=$(run_timeout 3 find "${HOME}/.local/share/nixos-ai-stack/llama-cpp-models" -maxdepth 2 -type f -name "*.gguf" -printf '%f\n' 2>/dev/null | sort -u | maybe_jq -R -s -c 'split("\n") | map(select(length > 0))' || echo "[]")
+        llama_cpp_cached_count=$(echo "$llama_cpp_cached_models" | maybe_jq -r 'length' 2>/dev/null || echo "0")
     fi
 
 
@@ -616,11 +645,19 @@ collect_llm_metrics() {
     "llama_cpp": {
       "status": "$llama_cpp_status",
       "models": ${llama_cpp_models:-[]},
+      "cached_models": ${llama_cpp_cached_models:-[]},
+      "cached_models_count": ${llama_cpp_cached_count:-0},
       "url": "http://localhost:8080"
     },
     "embeddings": {
+      "status": "$embeddings_status",
+      "model": "$embedding_model_name",
       "models": ${embedding_models:-[]},
-      "source": "huggingface-cache"
+      "source": "huggingface-cache",
+      "request_total": ${embeddings_request_total:-0},
+      "error_total": ${embeddings_error_total:-0},
+      "memory_mb": ${embeddings_memory_mb:-0},
+      "endpoint": "$embeddings_endpoint"
     },
     "postgres": {
       "status": "$postgres_status",

@@ -603,13 +603,13 @@ prompt_huggingface_token() {
         # Model configuration (choose embedding + coder)
         echo ""
         print_section "RAG Embedding Model Selection"
-        local default_embedding="${EMBEDDING_MODEL:-nomic-embed-text}"
+        local default_embedding="${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}"
         print_info "Default embedding model: ${default_embedding}"
         print_info "Options:"
-        print_info "  1) nomic-embed-text (default)"
-        print_info "  2) bge-small-en-v1.5"
-        print_info "  3) bge-base-en-v1.5"
-        print_info "  4) all-MiniLM-L6-v2"
+        print_info "  1) sentence-transformers/all-MiniLM-L6-v2 (default)"
+        print_info "  2) BAAI/bge-small-en-v1.5"
+        print_info "  3) BAAI/bge-base-en-v1.5"
+        print_info "  4) nomic-ai/nomic-embed-text-v1"
 
         local embedding_choice="1"
         if declare -F prompt_user >/dev/null 2>&1; then
@@ -617,9 +617,9 @@ prompt_huggingface_token() {
         fi
 
         case "${embedding_choice}" in
-            2) EMBEDDING_MODEL="bge-small-en-v1.5" ;;
-            3) EMBEDDING_MODEL="bge-base-en-v1.5" ;;
-            4) EMBEDDING_MODEL="all-MiniLM-L6-v2" ;;
+            2) EMBEDDING_MODEL="BAAI/bge-small-en-v1.5" ;;
+            3) EMBEDDING_MODEL="BAAI/bge-base-en-v1.5" ;;
+            4) EMBEDDING_MODEL="nomic-ai/nomic-embed-text-v1" ;;
             *) EMBEDDING_MODEL="${default_embedding}" ;;
         esac
         export EMBEDDING_MODEL
@@ -627,23 +627,66 @@ prompt_huggingface_token() {
 
         echo ""
         print_section "Coder LLM Selection"
+        local gpu_vram_gb=0
+        local ram_gb=0
+
+        if declare -F detect_gpu_vram >/dev/null 2>&1; then
+            gpu_vram_gb=$(detect_gpu_vram)
+        fi
+
+        if [[ -r /proc/meminfo ]]; then
+            ram_gb=$(awk '/MemTotal:/ {printf "%d", $2/1024/1024}' /proc/meminfo 2>/dev/null || echo 0)
+        fi
+
         local default_coder="${CODER_MODEL:-qwen2.5-coder}"
+        if [[ "$gpu_vram_gb" -ge 24 ]]; then
+            default_coder="qwen2.5-coder-14b"
+        elif [[ "$gpu_vram_gb" -ge 16 ]]; then
+            default_coder="qwen2.5-coder"
+        elif [[ "$ram_gb" -ge 32 ]]; then
+            default_coder="qwen2.5-coder"
+        else
+            default_coder="qwen3-4b"
+        fi
+
         print_info "Default coder model: ${default_coder}"
         print_info "Options:"
-        print_info "  1) qwen2.5-coder (default)"
-        print_info "  2) qwen2.5-coder-14b"
-        print_info "  3) deepseek-coder-v2-lite"
-        print_info "  4) deepseek-coder-v2"
+        print_info "  1) qwen3-4b (CPU/iGPU friendly)"
+        print_info "  2) qwen2.5-coder"
+        print_info "  3) qwen2.5-coder-14b"
+        print_info "  4) deepseek-coder-v2-lite"
+        print_info "  5) deepseek-coder-v2"
 
-        local coder_choice="1"
+        local coder_choice="2"
         if declare -F prompt_user >/dev/null 2>&1; then
-            coder_choice=$(prompt_user "Select coder model [1-4]" "1")
+            case "$default_coder" in
+                qwen3-4b)
+                    coder_choice=$(prompt_user "Select coder model [1-5]" "1")
+                    ;;
+                qwen2.5-coder)
+                    coder_choice=$(prompt_user "Select coder model [1-5]" "2")
+                    ;;
+                qwen2.5-coder-14b)
+                    coder_choice=$(prompt_user "Select coder model [1-5]" "3")
+                    ;;
+                deepseek-coder-v2-lite)
+                    coder_choice=$(prompt_user "Select coder model [1-5]" "4")
+                    ;;
+                deepseek-coder-v2)
+                    coder_choice=$(prompt_user "Select coder model [1-5]" "5")
+                    ;;
+                *)
+                    coder_choice=$(prompt_user "Select coder model [1-5]" "2")
+                    ;;
+            esac
         fi
 
         case "${coder_choice}" in
-            2) CODER_MODEL="qwen2.5-coder-14b" ;;
-            3) CODER_MODEL="deepseek-coder-v2-lite" ;;
-            4) CODER_MODEL="deepseek-coder-v2" ;;
+            1) CODER_MODEL="qwen3-4b" ;;
+            2) CODER_MODEL="qwen2.5-coder" ;;
+            3) CODER_MODEL="qwen2.5-coder-14b" ;;
+            4) CODER_MODEL="deepseek-coder-v2-lite" ;;
+            5) CODER_MODEL="deepseek-coder-v2" ;;
             *) CODER_MODEL="${default_coder}" ;;
         esac
         export CODER_MODEL
@@ -651,6 +694,9 @@ prompt_huggingface_token() {
 
         local coder_model_id=""
         case "${CODER_MODEL}" in
+            qwen3-4b|qwen3-4b-instruct)
+                coder_model_id="unsloth/Qwen3-4B-Instruct-2507-GGUF"
+                ;;
             qwen2.5-coder|qwen2.5-coder-7b|qwen2.5-coder-7b-instruct)
                 coder_model_id="Qwen/Qwen2.5-Coder-7B-Instruct"
                 ;;

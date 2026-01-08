@@ -15,9 +15,9 @@ phase_09_ai_model_deployment() {
         log_info "Phase 9: AI Model Deployment (Optional)"
     fi
 
-    # Check if user wants AI capabilities
-    if ! prompt_ai_deployment; then
-        log_info "Skipping AI model deployment"
+    # Respect global preference from the earlier prompt to avoid duplicate questions.
+    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" != "true" ]]; then
+        log_info "AI stack disabled earlier; skipping AI model deployment prompt"
         mark_phase_complete "phase-09-ai-model"
         return 0
     fi
@@ -77,22 +77,40 @@ phase_09_ai_model_deployment() {
         echo "GPU_VRAM=$gpu_vram" >>"$pref_file"
     fi
 
-    # Pre-download recommended GGUF models
-    log_info "Pre-downloading recommended GGUF models..."
+    # Pre-download selected GGUF models (optional)
+    log_info "Preparing optional GGUF model downloads..."
     if [ -f "${SCRIPT_DIR}/scripts/download-llama-cpp-models.sh" ]; then
-        log_info "This may take some time depending on your internet connection"
-        read -p "Download all recommended models now? [Y/n]: " download_confirm
+        local model_key
+        local swap_keys
+        model_key=$(map_llama_model_to_download_key "$selected_model")
+        swap_keys="qwen3-4b,qwen-coder,deepseek"
 
-        if [[ ! "$download_confirm" =~ ^[Nn]$ ]]; then
-            # Run the download script in automatic mode
-            bash "${SCRIPT_DIR}/scripts/download-llama-cpp-models.sh" --all || {
-                log_warning "Model download incomplete. Models will download on first container startup."
-            }
+        if [[ -n "$model_key" ]]; then
+            read -p "Download selected model now (${model_key})? [Y/n]: " download_confirm
+            if [[ ! "$download_confirm" =~ ^[Nn]$ ]]; then
+                bash "${SCRIPT_DIR}/scripts/download-llama-cpp-models.sh" --model "$model_key" || {
+                    log_warning "Model download incomplete. It will download on first container startup."
+                }
+            else
+                log_info "Selected model will download automatically on first container startup"
+            fi
         else
-            log_info "Models will download automatically on first container startup"
+            log_warning "No GGUF download key matched for selected model; skipping pre-download."
+        fi
+
+        read -p "Download additional swap models for quick testing? (qwen3-4b,qwen-coder,deepseek) [y/N]: " swap_confirm
+        if [[ "$swap_confirm" =~ ^[Yy]$ ]]; then
+            if [[ -n "$model_key" ]]; then
+                swap_keys=$(echo "$swap_keys" | awk -v key="$model_key" -F',' '{for (i=1;i<=NF;i++) if ($i!=key && $i!="") printf (out?"," :"")$i; out=1}')
+            fi
+            if [[ -n "$swap_keys" ]]; then
+                bash "${SCRIPT_DIR}/scripts/download-llama-cpp-models.sh" --models "$swap_keys" || {
+                    log_warning "Some swap models failed to download; check logs if needed."
+                }
+            fi
         fi
     else
-        log_warning "Model download script not found, models will download on first container startup"
+        log_warning "Model download script not found; models will download on first container startup"
     fi
 
     # Setup Hybrid Learning System (Automated)
@@ -219,43 +237,6 @@ EOF
 # Helper Functions
 # ============================================================================
 
-prompt_ai_deployment() {
-    cat <<EOF
-
-╭───────────────────────────────────────────────────────────────────────────╮
-│ AI-Powered Development Environment                                        │
-│                                                                            │
-│ NixOS-Dev-Quick-Deploy can integrate with AI-Optimizer to provide:        │
-│                                                                            │
-│ ✨ AI-powered NixOS configuration generation                              │
-│ ✨ Intelligent code review and suggestions                                │
-│ ✨ Real-time coding assistance (10-60 tok/s)                              │
-│ ✨ ML-based system monitoring                                             │
-│ ✨ Automated deployment recommendations                                    │
-│                                                                            │
-│ Requirements:                                                              │
-│   • NVIDIA GPU with 8GB+ VRAM (recommended 16GB+)                         │
-│   • 20-50GB disk space for model storage                                  │
-│   • Docker/Podman for containerized deployment                            │
-│                                                                            │
-│ Models Available (November 2025):                                         │
-│   • Qwen2.5-Coder-7B: Best for most users (88.4% accuracy)               │
-│   • Qwen2.5-Coder-14B: Maximum quality (89.7% accuracy)                   │
-│   • DeepSeek-Coder-V2: Advanced reasoning (300+ languages)                │
-│   • Phi-3-mini: Lightweight testing (8GB VRAM)                            │
-│                                                                            │
-╰───────────────────────────────────────────────────────────────────────────╯
-
-EOF
-
-    read -p "Deploy AI coding model? [Y/n]: " deploy_confirm
-
-    if [[ "$deploy_confirm" =~ ^[Nn]$ ]]; then
-        return 1
-    else
-        return 0
-    fi
-}
 
 wait_for_llama_cpp_ready() {
     local max_wait=3600  # 1 hour max
@@ -323,6 +304,9 @@ map_coder_to_llama_model() {
     fi
 
     case "$coder" in
+        qwen3-4b|qwen3-4b-instruct)
+            echo "unsloth/Qwen3-4B-Instruct-2507-GGUF"
+            ;;
         qwen2.5-coder|qwen2.5-coder-7b|qwen2.5-coder-7b-instruct)
             echo "Qwen/Qwen2.5-Coder-7B-Instruct"
             ;;
@@ -340,6 +324,29 @@ map_coder_to_llama_model() {
             ;;
         codellama-13b)
             echo "codellama/CodeLlama-13b-Instruct-hf"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+map_llama_model_to_download_key() {
+    local model="${1:-}"
+    if [[ -z "$model" ]]; then
+        echo ""
+        return 0
+    fi
+
+    case "$model" in
+        *Qwen2.5-Coder-7B*|*qwen2.5-coder-7b*)
+            echo "qwen-coder"
+            ;;
+        *Qwen3-4B*|*qwen3-4b*)
+            echo "qwen3-4b"
+            ;;
+        *deepseek*|*DeepSeek*)
+            echo "deepseek"
             ;;
         *)
             echo ""
