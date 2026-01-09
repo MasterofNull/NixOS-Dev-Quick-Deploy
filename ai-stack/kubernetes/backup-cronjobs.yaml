@@ -1,0 +1,397 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-scripts
+  labels:
+    app: backup
+data:
+  backup-postgresql.sh: |
+    #!/bin/bash
+    # This will be populated from the actual script
+    # Mount the real script from the host or ConfigMap
+
+  backup-qdrant.sh: |
+    #!/bin/bash
+    # This will be populated from the actual script
+    # Mount the real script from the host or ConfigMap
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-storage
+  labels:
+    app: backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: standard
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup-postgresql
+  labels:
+    app: backup
+    component: postgresql
+spec:
+  # Run daily at 2 AM
+  schedule: "0 2 * * *"
+  timeZone: "UTC"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+
+  jobTemplate:
+    metadata:
+      labels:
+        app: backup
+        component: postgresql
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600  # 1 hour timeout
+
+      template:
+        metadata:
+          labels:
+            app: backup
+            component: postgresql
+        spec:
+          restartPolicy: OnFailure
+
+          containers:
+          - name: backup
+            image: postgres:15-alpine
+            command:
+              - /bin/bash
+              - /scripts/backup-postgresql.sh
+              - backup
+
+            env:
+            - name: BACKUP_DIR
+              value: /backups/postgresql
+            - name: DB_HOST
+              value: postgresql.default.svc.cluster.local
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: aidb
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-credentials
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-credentials
+                  key: password
+            - name: RETENTION_DAYS
+              value: "7"
+            - name: RETENTION_WEEKS
+              value: "4"
+            - name: RETENTION_MONTHS
+              value: "12"
+            - name: COMPRESSION
+              value: "gzip"
+            - name: ENCRYPTION
+              value: "true"
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: backup-encryption
+                  key: key
+            - name: VERIFY_BACKUP
+              value: "true"
+            - name: METRICS_FILE
+              value: /metrics/postgres_backup.prom
+
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "200m"
+              limits:
+                memory: "1Gi"
+                cpu: "1000m"
+
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backups
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: metrics
+              mountPath: /metrics
+
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: backup-storage
+          - name: scripts
+            configMap:
+              name: backup-scripts
+              defaultMode: 0755
+          - name: metrics
+            emptyDir: {}
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup-qdrant
+  labels:
+    app: backup
+    component: qdrant
+spec:
+  # Run daily at 3 AM
+  schedule: "0 3 * * *"
+  timeZone: "UTC"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+
+  jobTemplate:
+    metadata:
+      labels:
+        app: backup
+        component: qdrant
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600  # 1 hour timeout
+
+      template:
+        metadata:
+          labels:
+            app: backup
+            component: qdrant
+        spec:
+          restartPolicy: OnFailure
+
+          containers:
+          - name: backup
+            image: alpine:latest
+            command:
+              - /bin/sh
+              - -c
+              - |
+                apk add --no-cache curl jq bash tar gzip
+                /scripts/backup-qdrant.sh backup
+
+            env:
+            - name: BACKUP_DIR
+              value: /backups/qdrant
+            - name: QDRANT_HOST
+              value: qdrant.default.svc.cluster.local
+            - name: QDRANT_PORT
+              value: "6333"
+            - name: QDRANT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: qdrant-credentials
+                  key: api-key
+                  optional: true
+            - name: RETENTION_DAYS
+              value: "7"
+            - name: RETENTION_WEEKS
+              value: "4"
+            - name: RETENTION_MONTHS
+              value: "12"
+            - name: VERIFY_BACKUP
+              value: "true"
+            - name: METRICS_FILE
+              value: /metrics/qdrant_backup.prom
+
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "200m"
+              limits:
+                memory: "2Gi"
+                cpu: "1000m"
+
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backups
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: metrics
+              mountPath: /metrics
+
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: backup-storage
+          - name: scripts
+            configMap:
+              name: backup-scripts
+              defaultMode: 0755
+          - name: metrics
+            emptyDir: {}
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup-verification
+  labels:
+    app: backup
+    component: verification
+spec:
+  # Run weekly on Sundays at 4 AM
+  schedule: "0 4 * * 0"
+  timeZone: "UTC"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+
+  jobTemplate:
+    metadata:
+      labels:
+        app: backup
+        component: verification
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 7200  # 2 hour timeout
+
+      template:
+        metadata:
+          labels:
+            app: backup
+            component: verification
+        spec:
+          restartPolicy: OnFailure
+
+          containers:
+          - name: verification
+            image: postgres:15-alpine
+            command:
+              - /bin/bash
+              - -c
+              - |
+                echo "Starting backup verification..."
+
+                # Verify PostgreSQL backups
+                echo "Verifying PostgreSQL backups..."
+                for backup in /backups/postgresql/daily/*.sql.gz*; do
+                  if [ -f "$backup" ]; then
+                    echo "Verifying: $(basename $backup)"
+                    /scripts/backup-postgresql.sh verify "$backup"
+                  fi
+                done
+
+                # Verify Qdrant backups
+                echo "Verifying Qdrant backups..."
+                for backup in /backups/qdrant/daily/*.snapshot; do
+                  if [ -f "$backup" ]; then
+                    echo "Verifying: $(basename $backup)"
+                    /scripts/backup-qdrant.sh verify "$backup"
+                  fi
+                done
+
+                echo "Verification complete"
+
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "200m"
+              limits:
+                memory: "1Gi"
+                cpu: "500m"
+
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backups
+              readOnly: true
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: backup-storage
+          - name: scripts
+            configMap:
+              name: backup-scripts
+              defaultMode: 0755
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backup-encryption
+  labels:
+    app: backup
+type: Opaque
+stringData:
+  key: "CHANGE_THIS_TO_SECURE_ENCRYPTION_KEY"
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: backup-alerts
+  labels:
+    app: backup
+    prometheus: kube-prometheus
+spec:
+  groups:
+  - name: backup
+    interval: 30s
+    rules:
+    - alert: PostgreSQLBackupFailed
+      expr: postgres_backup_status{type="full"} == 0
+      for: 5m
+      labels:
+        severity: critical
+        component: backup
+      annotations:
+        summary: "PostgreSQL backup failed"
+        description: "PostgreSQL backup for database {{ $labels.database }} has failed"
+
+    - alert: PostgreSQLBackupOld
+      expr: (time() - postgres_backup_last_success_timestamp{type="full"}) > 86400 * 2
+      for: 1h
+      labels:
+        severity: warning
+        component: backup
+      annotations:
+        summary: "PostgreSQL backup is outdated"
+        description: "Last successful backup for {{ $labels.database }} was {{ $value | humanizeDuration }} ago"
+
+    - alert: QdrantBackupFailed
+      expr: qdrant_backup_status == 0
+      for: 5m
+      labels:
+        severity: critical
+        component: backup
+      annotations:
+        summary: "Qdrant backup failed"
+        description: "Qdrant backup for collection {{ $labels.collection }} has failed"
+
+    - alert: QdrantBackupOld
+      expr: (time() - qdrant_backup_last_success_timestamp) > 86400 * 2
+      for: 1h
+      labels:
+        severity: warning
+        component: backup
+      annotations:
+        summary: "Qdrant backup is outdated"
+        description: "Last successful backup for {{ $labels.collection }} was {{ $value | humanizeDuration }} ago"
+
+    - alert: BackupStorageFull
+      expr: (kubelet_volume_stats_used_bytes{persistentvolumeclaim="backup-storage"} / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim="backup-storage"}) > 0.85
+      for: 30m
+      labels:
+        severity: warning
+        component: backup
+      annotations:
+        summary: "Backup storage almost full"
+        description: "Backup storage is {{ $value | humanizePercentage }} full"
