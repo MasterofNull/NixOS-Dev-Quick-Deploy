@@ -1,0 +1,364 @@
+{
+  "dashboard": {
+    "title": "P1 Security & Hardening Monitoring",
+    "tags": ["security", "p1", "hardening"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Query Validation - Success vs Failures",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(aidb_query_validation_success_total[5m])",
+            "legendFormat": "Valid Queries",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(aidb_query_validation_failures_total[5m])",
+            "legendFormat": "Validation Failures",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          {"format": "reqps", "label": "Requests/sec"},
+          {"format": "short"}
+        ],
+        "legend": {"show": true, "values": true, "current": true}
+      },
+      {
+        "id": 2,
+        "title": "Rate Limiting - Active Enforcement",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(aidb_rate_limit_rejections_total[5m])",
+            "legendFormat": "Rate Limited Requests",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(aidb_requests_total[5m])",
+            "legendFormat": "Total Requests",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          {"format": "reqps", "label": "Requests/sec"},
+          {"format": "short"}
+        ],
+        "legend": {"show": true, "values": true, "current": true},
+        "alert": {
+          "conditions": [
+            {
+              "evaluator": {"type": "gt", "params": [10]},
+              "query": {"params": ["A", "5m", "now"]},
+              "type": "query"
+            }
+          ],
+          "name": "High Rate Limit Rejections",
+          "message": "More than 10 requests/sec are being rate limited"
+        }
+      },
+      {
+        "id": 3,
+        "title": "Malicious Pattern Detection",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 8, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "sum(increase(aidb_malicious_patterns_detected_total[1h]))",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value",
+          "justifyMode": "center"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 10, "color": "yellow"},
+                {"value": 50, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Query Size Distribution (95th percentile)",
+        "type": "graph",
+        "gridPos": {"x": 6, "y": 8, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(aidb_query_size_bytes_bucket[5m]))",
+            "legendFormat": "95th percentile",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(aidb_query_size_bytes_bucket[5m]))",
+            "legendFormat": "50th percentile (median)",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          {"format": "bytes", "label": "Query Size"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Garbage Collection - Solutions Deleted",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(hybrid_gc_solutions_deleted_total{reason=\"expired\"}[1h])",
+            "legendFormat": "Expired (age + low value)",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(hybrid_gc_solutions_deleted_total{reason=\"low_value\"}[1h])",
+            "legendFormat": "Pruned (low value)",
+            "refId": "B"
+          },
+          {
+            "expr": "rate(hybrid_gc_solutions_deleted_total{reason=\"duplicate\"}[1h])",
+            "legendFormat": "Duplicates",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Solutions/hour"},
+          {"format": "short"}
+        ],
+        "legend": {"show": true, "values": true, "current": true}
+      },
+      {
+        "id": 6,
+        "title": "Storage Utilization",
+        "type": "gauge",
+        "gridPos": {"x": 0, "y": 16, "w": 6, "h": 8},
+        "targets": [
+          {
+            "expr": "(hybrid_gc_storage_bytes / (100000 * 1000)) * 100",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "showThresholdLabels": true,
+          "showThresholdMarkers": true
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 70, "color": "yellow"},
+                {"value": 90, "color": "red"}
+              ]
+            },
+            "unit": "percent",
+            "max": 100,
+            "min": 0
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "GC Execution Time",
+        "type": "graph",
+        "gridPos": {"x": 6, "y": 16, "w": 6, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(hybrid_gc_execution_seconds_sum{operation=\"cleanup_old\"}[1h]) / rate(hybrid_gc_execution_seconds_count{operation=\"cleanup_old\"}[1h])",
+            "legendFormat": "Cleanup Old",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(hybrid_gc_execution_seconds_sum{operation=\"prune_low_value\"}[1h]) / rate(hybrid_gc_execution_seconds_count{operation=\"prune_low_value\"}[1h])",
+            "legendFormat": "Prune Low Value",
+            "refId": "B"
+          },
+          {
+            "expr": "rate(hybrid_gc_execution_seconds_sum{operation=\"deduplicate\"}[1h]) / rate(hybrid_gc_execution_seconds_count{operation=\"deduplicate\"}[1h])",
+            "legendFormat": "Deduplicate",
+            "refId": "C"
+          },
+          {
+            "expr": "rate(hybrid_gc_execution_seconds_sum{operation=\"cleanup_orphans\"}[1h]) / rate(hybrid_gc_execution_seconds_count{operation=\"cleanup_orphans\"}[1h])",
+            "legendFormat": "Cleanup Orphans",
+            "refId": "D"
+          }
+        ],
+        "yaxes": [
+          {"format": "s", "label": "Average Time"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Orphaned Vectors Cleaned",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 16, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "sum(increase(hybrid_gc_vectors_cleaned_total[24h]))",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 100, "color": "yellow"},
+                {"value": 1000, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 9,
+        "title": "TLS Certificate Days Until Expiry",
+        "type": "gauge",
+        "gridPos": {"x": 18, "y": 16, "w": 6, "h": 8},
+        "targets": [
+          {
+            "expr": "(tls_certificate_expiry_seconds - time()) / 86400",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "showThresholdLabels": true,
+          "showThresholdMarkers": true
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 7, "color": "orange"},
+                {"value": 14, "color": "yellow"},
+                {"value": 30, "color": "green"}
+              ]
+            },
+            "unit": "days",
+            "max": 90,
+            "min": 0
+          }
+        }
+      },
+      {
+        "id": 10,
+        "title": "Certificate Renewal Success",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 24, "w": 12, "h": 4},
+        "targets": [
+          {
+            "expr": "letsencrypt_certificate_renewal_success",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "none",
+          "colorMode": "background"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 1, "color": "green"}
+              ]
+            },
+            "mappings": [
+              {"type": "value", "value": "0", "text": "Failed"},
+              {"type": "value", "value": "1", "text": "Success"}
+            ]
+          }
+        }
+      },
+      {
+        "id": 11,
+        "title": "Last Certificate Renewal",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 24, "w": 12, "h": 4},
+        "targets": [
+          {
+            "expr": "letsencrypt_certificate_renewal_timestamp * 1000",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "none",
+          "colorMode": "value"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "dateTimeFromNow"
+          }
+        }
+      },
+      {
+        "id": 12,
+        "title": "Security Event Timeline",
+        "type": "logs",
+        "gridPos": {"x": 0, "y": 28, "w": 24, "h": 8},
+        "targets": [
+          {
+            "expr": "{job=\"aidb\"} |= \"validation\" or \"rate limit\" or \"malicious\"",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "showLabels": true,
+          "showTime": true,
+          "wrapLogMessage": true
+        }
+      }
+    ],
+    "templating": {
+      "list": []
+    },
+    "annotations": {
+      "list": [
+        {
+          "datasource": "Prometheus",
+          "enable": true,
+          "expr": "ALERTS{alertname=~\"TLS.*|RateLimit.*|GC.*\"}",
+          "name": "Security Alerts",
+          "step": "60s",
+          "tagKeys": "alertname",
+          "titleFormat": "{{alertname}}",
+          "textFormat": "{{alertstate}}: {{annotations.summary}}"
+        }
+      ]
+    },
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": ["10s", "30s", "1m", "5m", "15m", "30m", "1h"]
+    }
+  }
+}

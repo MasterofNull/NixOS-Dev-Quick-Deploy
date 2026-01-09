@@ -48,6 +48,7 @@ from pgvector.sqlalchemy import Vector
 from sentence_transformers import SentenceTransformer
 
 from middleware.cache import CacheMiddleware
+from query_validator import VectorSearchRequest, PaginatedResponse, rate_limiter, validate_input_patterns
 from llm_parallel import run_parallel_inference
 from discovery_endpoints import register_discovery_routes
 from settings_loader import Settings, load_settings
@@ -1280,12 +1281,32 @@ class MonitoringServer:
             return {"status": "ok", "indexed": count}
 
         @self.app.post("/vector/search")
-        async def vector_search(payload: Dict[str, Any]) -> Dict[str, Any]:
-            query_text = payload.get("query")
+        async def vector_search(request: Request, payload: Dict[str, Any]) -> Dict[str, Any]:
+            # Rate limiting check
+            client_id = request.client.host if request.client else "unknown"
+            allowed, error_msg = rate_limiter.check_rate_limit(client_id)
+            if not allowed:
+                raise HTTPException(status_code=429, detail=error_msg)
+
+            # Validate input using query validator
+            try:
+                validated_request = VectorSearchRequest(
+                    collection=payload.get("collection", "nixos_docs"),
+                    query=payload.get("query", ""),
+                    limit=payload.get("limit", 10),
+                    offset=payload.get("offset", 0),
+                    min_score=payload.get("min_score", 0.0)
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=f"Validation failed: {str(e)}")
+
+            query_text = validated_request.query
             embedding = payload.get("embedding")
-            limit = int(payload.get("limit", 5))
+            limit = validated_request.limit
+
             if not query_text and not embedding:
                 raise HTTPException(status_code=400, detail="query or embedding required")
+
             try:
                 results = await self.mcp_server.search_vectors(
                     query_text=query_text,
@@ -1293,6 +1314,20 @@ class MonitoringServer:
                     limit=limit,
                     project=payload.get("project"),
                 )
+
+                # Apply pagination and format response
+                offset = validated_request.offset
+                total_results = len(results)
+                paginated_results = results[offset:offset + limit]
+
+                return PaginatedResponse(
+                    results=paginated_results,
+                    total=total_results,
+                    limit=limit,
+                    offset=offset,
+                    has_more=(offset + limit) < total_results
+                ).model_dump()
+
             except ValueError as exc:  # noqa: BLE001
                 raise HTTPException(
                     status_code=400,
@@ -1304,7 +1339,7 @@ class MonitoringServer:
                     status_code=500,
                     detail=_error_detail("vector_search_failed", exc),
                 )
-            return {"results": results, "limit": limit}
+
 
         # ML endpoints
         @self.app.get("/ml/models")
