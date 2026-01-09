@@ -1,0 +1,231 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aidb
+  labels:
+    app: aidb
+    component: mcp-server
+    tier: backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: aidb
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: aidb
+        component: mcp-server
+        tier: backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8091"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: aidb
+      containers:
+      - name: aidb
+        image: aidb:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8091
+          protocol: TCP
+        - name: metrics
+          containerPort: 8091
+          protocol: TCP
+
+        # Environment variables
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: aidb-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: aidb-secrets
+              key: redis-url
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aidb-secrets
+              key: api-key
+        - name: QDRANT_HOST
+          value: "qdrant.default.svc.cluster.local"
+        - name: QDRANT_PORT
+          value: "6333"
+
+        # Resource requests and limits
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+
+        # Health Probes (P2 Feature)
+
+        # Startup Probe
+        # Used during container startup - more lenient than liveness/readiness
+        # Protects slow-starting containers from being killed by liveness probe
+        startupProbe:
+          httpGet:
+            path: /health/startup
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 30  # 30 failures * 5s = 150s max startup time
+
+        # Liveness Probe
+        # Determines if container should be restarted
+        # Checks if service is alive (not deadlocked)
+        # Should be simple and fast
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3  # Restart after 3 consecutive failures
+
+        # Readiness Probe
+        # Determines if pod should receive traffic
+        # Checks if service is ready to handle requests
+        # Checks all critical dependencies
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 15
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 2  # Remove from service after 2 consecutive failures
+
+        # Security Context
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+
+        # Volume Mounts
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+          readOnly: true
+        - name: temp
+          mountPath: /tmp
+
+      # Volumes
+      volumes:
+      - name: config
+        configMap:
+          name: aidb-config
+      - name: temp
+        emptyDir: {}
+
+      # Pod-level settings
+      terminationGracePeriodSeconds: 30
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aidb
+  labels:
+    app: aidb
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8091
+    targetPort: http
+    protocol: TCP
+  - name: metrics
+    port: 8091
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app: aidb
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aidb
+  labels:
+    app: aidb
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: aidb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: aidb
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: aidb
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: aidb
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 30
+      - type: Pods
+        value: 2
+        periodSeconds: 30
+      selectPolicy: Max
