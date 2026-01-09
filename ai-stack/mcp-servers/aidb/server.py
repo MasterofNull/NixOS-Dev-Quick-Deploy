@@ -49,6 +49,7 @@ from sentence_transformers import SentenceTransformer
 
 from middleware.cache import CacheMiddleware
 from query_validator import VectorSearchRequest, PaginatedResponse, rate_limiter, validate_input_patterns
+from health_check import HealthChecker, create_health_endpoints
 from llm_parallel import run_parallel_inference
 from discovery_endpoints import register_discovery_routes
 from settings_loader import Settings, load_settings
@@ -952,6 +953,10 @@ class MonitoringServer:
         self.app.include_router(registry_api.router)
         self.app.include_router(vscode_telemetry.router)  # VSCode extension telemetry
         register_discovery_routes(self.app, self.mcp_server)
+
+        # Initialize comprehensive health checker
+        self.health_checker = None  # Will be initialized after mcp_server is fully set up
+
         @self.app.middleware("http")
         async def request_id_middleware(request: Request, call_next):
             request_id = request.headers.get("X-Request-ID") or uuid4().hex
@@ -987,7 +992,25 @@ class MonitoringServer:
         if token != expected:
             raise HTTPException(status_code=401, detail="invalid_api_key")
 
+    def initialize_health_checker(self):
+        """Initialize health checker after mcp_server dependencies are ready"""
+        redis_client = None
+        if hasattr(self.mcp_server, '_redis') and self.mcp_server._redis:
+            redis_client = self.mcp_server._redis
+
+        qdrant_client = None
+        if hasattr(self.mcp_server, '_qdrant') and self.mcp_server._qdrant:
+            qdrant_client = self.mcp_server._qdrant
+
+        self.health_checker = HealthChecker(
+            service_name="aidb",
+            db_pool=self.mcp_server.pool,
+            qdrant_client=qdrant_client,
+            redis_client=redis_client
+        )
+
     def _register_routes(self) -> None:
+        # Legacy health endpoints (keep for backwards compatibility)
         @self.app.get("/health")
         async def health() -> Dict[str, Any]:
             return await self.mcp_server.health_status()
@@ -1006,6 +1029,53 @@ class MonitoringServer:
             if status.get("status") != "ok":
                 raise HTTPException(status_code=503, detail=status)
             return status
+
+        # Kubernetes-style health probes (P2 feature)
+        @self.app.get("/health/live")
+        async def liveness():
+            """Liveness probe - is the service alive?"""
+            if not self.health_checker:
+                # Fallback if health checker not initialized
+                return {"status": "healthy", "message": "Service is alive"}
+
+            result = await self.health_checker.liveness_probe()
+            status_code = 200 if result.status.value == "healthy" else 503
+            from fastapi.responses import JSONResponse
+            return JSONResponse(content=result.to_dict(), status_code=status_code)
+
+        @self.app.get("/health/ready")
+        async def readiness():
+            """Readiness probe - is the service ready to accept traffic?"""
+            if not self.health_checker:
+                # Fallback to legacy health check
+                status = await self.mcp_server.health_status()
+                status_code = 200 if status.get("status") == "ok" else 503
+                from fastapi.responses import JSONResponse
+                return JSONResponse(content=status, status_code=status_code)
+
+            result = await self.health_checker.readiness_probe()
+            status_code = 200 if result.status.value in ["healthy", "degraded"] else 503
+            from fastapi.responses import JSONResponse
+            return JSONResponse(content=result.to_dict(), status_code=status_code)
+
+        @self.app.get("/health/startup")
+        async def startup():
+            """Startup probe - has the service finished starting up?"""
+            if not self.health_checker:
+                return {"status": "healthy", "message": "Startup complete"}
+
+            result = await self.health_checker.startup_probe()
+            status_code = 200 if result.status.value == "healthy" else 503
+            from fastapi.responses import JSONResponse
+            return JSONResponse(content=result.to_dict(), status_code=status_code)
+
+        @self.app.get("/health/detailed")
+        async def health_detailed():
+            """Detailed health status including all probes"""
+            if not self.health_checker:
+                return {"status": "unavailable", "message": "Health checker not initialized"}
+
+            return self.health_checker.get_status_summary()
 
         @self.app.get("/metrics")
         async def metrics() -> Response:
