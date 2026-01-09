@@ -110,3 +110,30 @@ hybrid:
   local_confidence_threshold: 0.7
   high_value_threshold: 0.7
   pattern_extraction_enabled: true
+
+# Garbage Collection Configuration
+garbage_collection:
+  enabled: true
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  max_solutions: 100000
+  max_age_days: 30
+  min_value_score: 0.5
+  deduplicate_similarity: 0.95
+  orphan_cleanup_enabled: true
+
+# Query Validation Configuration
+query_validation:
+  enabled: true
+  max_query_size: 10000  # 10KB
+  max_results: 100
+  max_offset: 10000
+  rate_limit:
+    requests_per_minute: 60
+    requests_per_hour: 1000
+  allowed_collections:
+    - nixos_docs
+    - solved_issues
+    - skill_embeddings
+    - telemetry_patterns
+    - system_registry
+    - tool_schemas
