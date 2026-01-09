@@ -1,0 +1,17 @@
+[Unit]
+Description=Let's Encrypt Certificate Renewal Timer
+Requires=letsencrypt-renewal.service
+
+[Timer]
+# Run daily at 3 AM
+OnCalendar=daily
+OnCalendar=*-*-* 03:00:00
+
+# Add randomized delay to avoid thundering herd
+RandomizedDelaySec=1h
+
+# Run on boot if missed
+Persistent=true
+
+[Install]
+WantedBy=timers.target
