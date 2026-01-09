@@ -2732,6 +2732,7 @@ EOF
       GPT_CLI_DEFAULT_MODEL = "${huggingfaceModelId}";
       GPT_CLI_DEFAULT_PROVIDER = "openai";
       GPT_CLI_BASE_URL = "${huggingfaceTgiEndpoint}/v1";
+      NIXOS_QUICK_DEPLOY_ROOT = "NIXOS_QUICK_DEPLOY_ROOT_PLACEHOLDER";
       # Podman AI Stack
       PODMAN_AI_STACK_NETWORK = "local-ai";
       PODMAN_AI_STACK_DATA_ROOT = "$HOME/${podmanAiStackDataDir}";
@@ -3784,9 +3785,29 @@ EOF
     };
 
     ".local/bin/podman-ai-stack" = {
-      source = ./podman-ai-stack.sh;
+      text = ''
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        root="${NIXOS_QUICK_DEPLOY_ROOT:-}"
+        if [[ -z "$root" && -f "$HOME/.config/nixos-quick-deploy/env" ]]; then
+          root=$(awk -F= '/^NIXOS_QUICK_DEPLOY_ROOT=/{print $2}' "$HOME/.config/nixos-quick-deploy/env" | tail -n 1)
+        fi
+
+        if [[ -z "$root" ]]; then
+          echo "podman-ai-stack: NIXOS_QUICK_DEPLOY_ROOT is not set." >&2
+          echo "Run the quick deploy script again to regenerate your home-manager config." >&2
+          exit 1
+        fi
+
+        exec "$root/scripts/hybrid-ai-stack.sh" "$@"
+      '';
       executable = true;
     };
+
+    ".config/nixos-quick-deploy/env".text = ''
+      NIXOS_QUICK_DEPLOY_ROOT=NIXOS_QUICK_DEPLOY_ROOT_PLACEHOLDER
+    '';
 
     ".local/bin/ai-servicectl" = {
       text = ''

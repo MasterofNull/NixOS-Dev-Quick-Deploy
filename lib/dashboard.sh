@@ -83,6 +83,12 @@ install_dashboard_to_deployment() {
         print_success "Dashboard installation complete"
         echo ""
 
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl --user daemon-reload >/dev/null 2>&1 || true
+            systemctl --user start dashboard-collector.timer dashboard-server.service dashboard-api.service >/dev/null 2>&1 || \
+                print_warning "Dashboard services failed to start automatically"
+        fi
+
         # Provide post-install instructions
         cat <<EOF
 ${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
