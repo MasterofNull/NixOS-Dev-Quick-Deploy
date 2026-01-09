@@ -31,6 +31,7 @@ After=network.target
 [Service]
 Type=oneshot
 ExecStart=${SCRIPT_DIR}/scripts/generate-dashboard-data.sh
+Environment="PATH=/run/current-system/sw/bin:/usr/bin:/bin:%h/.nix-profile/bin"
 
 [Install]
 WantedBy=default.target
