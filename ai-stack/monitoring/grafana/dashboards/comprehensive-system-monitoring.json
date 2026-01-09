@@ -1,0 +1,623 @@
+{
+  "dashboard": {
+    "title": "NixOS AI Stack - Comprehensive System Monitoring",
+    "tags": ["system", "monitoring", "production", "aidb", "p1", "p2"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "30s",
+    "editable": true,
+    "graphTooltip": 1,
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": ["10s", "30s", "1m", "5m", "15m", "30m", "1h"]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "🎯 System Overview",
+        "type": "row",
+        "gridPos": {"x": 0, "y": 0, "w": 24, "h": 1},
+        "collapsed": false
+      },
+      {
+        "id": 2,
+        "title": "Service Health Status",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 1, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "service_health_status{service=\"aidb\",check_type=\"readiness\"}",
+            "legendFormat": "AIDB",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "none",
+          "colorMode": "value",
+          "justifyMode": "center",
+          "textMode": "value_and_name"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 1, "color": "green"}
+              ]
+            },
+            "mappings": [
+              {"type": "value", "value": "0", "text": "Unhealthy"},
+              {"type": "value", "value": "1", "text": "Healthy"}
+            ]
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Active Issues",
+        "type": "stat",
+        "gridPos": {"x": 6, "y": 1, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "sum(aidb_active_issues)",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 5, "color": "yellow"},
+                {"value": 10, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Request Rate",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 1, "w": 12, "h": 4},
+        "targets": [
+          {
+            "expr": "sum(rate(aidb_requests_total[5m]))",
+            "legendFormat": "Requests/sec",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "🔒 Security & Hardening (P1)",
+        "type": "row",
+        "gridPos": {"x": 0, "y": 5, "w": 24, "h": 1},
+        "collapsed": false
+      },
+      {
+        "id": 11,
+        "title": "Query Validation",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 6, "w": 12, "h": 6},
+        "targets": [
+          {
+            "expr": "rate(aidb_query_validation_success_total[5m])",
+            "legendFormat": "Valid Queries",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(aidb_query_validation_failures_total[5m])",
+            "legendFormat": "Validation Failures",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          {"format": "reqps", "label": "Requests/sec"},
+          {"format": "short"}
+        ],
+        "alert": {
+          "conditions": [
+            {
+              "evaluator": {"type": "gt", "params": [10]},
+              "query": {"params": ["B", "5m", "now"]},
+              "type": "query"
+            }
+          ],
+          "name": "High Validation Failure Rate"
+        }
+      },
+      {
+        "id": 12,
+        "title": "Rate Limiting",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 6, "w": 12, "h": 6},
+        "targets": [
+          {
+            "expr": "rate(aidb_rate_limit_rejections_total[5m])",
+            "legendFormat": "Rate Limited",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(aidb_requests_total[5m])",
+            "legendFormat": "Total Requests",
+            "refId": "B"
+          }
+        ]
+      },
+      {
+        "id": 13,
+        "title": "Malicious Patterns Detected",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 12, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "sum(increase(aidb_malicious_patterns_detected_total[1h]))",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 10, "color": "yellow"},
+                {"value": 50, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 14,
+        "title": "TLS Certificate Days Until Expiry",
+        "type": "gauge",
+        "gridPos": {"x": 6, "y": 12, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "(tls_certificate_expiry_seconds - time()) / 86400",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 7, "color": "orange"},
+                {"value": 14, "color": "yellow"},
+                {"value": 30, "color": "green"}
+              ]
+            },
+            "unit": "days",
+            "max": 90,
+            "min": 0
+          }
+        }
+      },
+      {
+        "id": 20,
+        "title": "🗑️ Garbage Collection (P1)",
+        "type": "row",
+        "gridPos": {"x": 0, "y": 16, "w": 24, "h": 1},
+        "collapsed": false
+      },
+      {
+        "id": 21,
+        "title": "Solutions Deleted",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 17, "w": 12, "h": 6},
+        "targets": [
+          {
+            "expr": "rate(hybrid_gc_solutions_deleted_total{reason=\"expired\"}[1h])",
+            "legendFormat": "Expired",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(hybrid_gc_solutions_deleted_total{reason=\"low_value\"}[1h])",
+            "legendFormat": "Low Value",
+            "refId": "B"
+          },
+          {
+            "expr": "rate(hybrid_gc_solutions_deleted_total{reason=\"duplicate\"}[1h])",
+            "legendFormat": "Duplicates",
+            "refId": "C"
+          }
+        ]
+      },
+      {
+        "id": 22,
+        "title": "Storage Utilization",
+        "type": "gauge",
+        "gridPos": {"x": 12, "y": 17, "w": 6, "h": 6},
+        "targets": [
+          {
+            "expr": "(hybrid_gc_storage_bytes / (100000 * 1000)) * 100",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 70, "color": "yellow"},
+                {"value": 90, "color": "red"}
+              ]
+            },
+            "unit": "percent",
+            "max": 100,
+            "min": 0
+          }
+        }
+      },
+      {
+        "id": 23,
+        "title": "GC Execution Time",
+        "type": "graph",
+        "gridPos": {"x": 18, "y": 17, "w": 6, "h": 6},
+        "targets": [
+          {
+            "expr": "rate(hybrid_gc_execution_seconds_sum[1h]) / rate(hybrid_gc_execution_seconds_count[1h])",
+            "legendFormat": "Avg Time",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [{"format": "s", "label": "Time"}]
+      },
+      {
+        "id": 30,
+        "title": "💚 Health Checks (P2)",
+        "type": "row",
+        "gridPos": {"x": 0, "y": 23, "w": 24, "h": 1},
+        "collapsed": false
+      },
+      {
+        "id": 31,
+        "title": "Health Check Success Rate",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 24, "w": 12, "h": 6},
+        "targets": [
+          {
+            "expr": "rate(health_check_total{status=\"healthy\",check_type=\"liveness\"}[5m]) / rate(health_check_total{check_type=\"liveness\"}[5m])",
+            "legendFormat": "Liveness",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(health_check_total{status=\"healthy\",check_type=\"readiness\"}[5m]) / rate(health_check_total{check_type=\"readiness\"}[5m])",
+            "legendFormat": "Readiness",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [{"format": "percentunit", "max": 1, "min": 0}]
+      },
+      {
+        "id": 32,
+        "title": "Dependency Health",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 24, "w": 12, "h": 6},
+        "targets": [
+          {
+            "expr": "dependency_health_status{dependency=\"postgresql\"}",
+            "legendFormat": "PostgreSQL",
+            "refId": "A"
+          },
+          {
+            "expr": "dependency_health_status{dependency=\"qdrant\"}",
+            "legendFormat": "Qdrant",
+            "refId": "B"
+          },
+          {
+            "expr": "dependency_health_status{dependency=\"redis\"}",
+            "legendFormat": "Redis",
+            "refId": "C"
+          }
+        ],
+        "options": {
+          "graphMode": "none",
+          "colorMode": "background"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 1, "color": "green"}
+              ]
+            },
+            "mappings": [
+              {"type": "value", "value": "0", "text": "Down"},
+              {"type": "value", "value": "1", "text": "Up"}
+            ]
+          }
+        }
+      },
+      {
+        "id": 40,
+        "title": "💾 Backup Status (P2)",
+        "type": "row",
+        "gridPos": {"x": 0, "y": 30, "w": 24, "h": 1},
+        "collapsed": false
+      },
+      {
+        "id": 41,
+        "title": "Last Successful Backup",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 31, "w": 12, "h": 4},
+        "targets": [
+          {
+            "expr": "postgres_backup_last_success_timestamp{type=\"full\"} * 1000",
+            "legendFormat": "PostgreSQL",
+            "refId": "A"
+          },
+          {
+            "expr": "qdrant_backup_last_success_timestamp * 1000",
+            "legendFormat": "Qdrant",
+            "refId": "B"
+          }
+        ],
+        "options": {
+          "graphMode": "none",
+          "colorMode": "value"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "dateTimeFromNow"
+          }
+        }
+      },
+      {
+        "id": 42,
+        "title": "Backup Success Rate",
+        "type": "gauge",
+        "gridPos": {"x": 12, "y": 31, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "avg(postgres_backup_status)",
+            "legendFormat": "PostgreSQL",
+            "refId": "A"
+          },
+          {
+            "expr": "avg(qdrant_backup_status)",
+            "legendFormat": "Qdrant",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 0.5, "color": "yellow"},
+                {"value": 0.9, "color": "green"}
+              ]
+            },
+            "unit": "percentunit",
+            "max": 1,
+            "min": 0
+          }
+        }
+      },
+      {
+        "id": 43,
+        "title": "Backup Size Trend",
+        "type": "graph",
+        "gridPos": {"x": 18, "y": 31, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "postgres_backup_size_bytes{type=\"full\"}",
+            "legendFormat": "PostgreSQL",
+            "refId": "A"
+          },
+          {
+            "expr": "sum by (collection) (qdrant_backup_size_bytes)",
+            "legendFormat": "Qdrant-{{collection}}",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [{"format": "bytes"}]
+      },
+      {
+        "id": 50,
+        "title": "📊 System Performance",
+        "type": "row",
+        "gridPos": {"x": 0, "y": 35, "w": 24, "h": 1},
+        "collapsed": false
+      },
+      {
+        "id": 51,
+        "title": "CPU Usage",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 36, "w": 8, "h": 6},
+        "targets": [
+          {
+            "expr": "100 - (avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [{"format": "percent", "max": 100, "min": 0}]
+      },
+      {
+        "id": 52,
+        "title": "Memory Usage",
+        "type": "graph",
+        "gridPos": {"x": 8, "y": 36, "w": 8, "h": 6},
+        "targets": [
+          {
+            "expr": "(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [{"format": "percent", "max": 100, "min": 0}]
+      },
+      {
+        "id": 53,
+        "title": "Disk Usage",
+        "type": "gauge",
+        "gridPos": {"x": 16, "y": 36, "w": 8, "h": 6},
+        "targets": [
+          {
+            "expr": "(node_filesystem_size_bytes{mountpoint=\"/\"} - node_filesystem_avail_bytes{mountpoint=\"/\"}) / node_filesystem_size_bytes{mountpoint=\"/\"} * 100",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 70, "color": "yellow"},
+                {"value": 85, "color": "red"}
+              ]
+            },
+            "unit": "percent",
+            "max": 100,
+            "min": 0
+          }
+        }
+      },
+      {
+        "id": 60,
+        "title": "🔧 Database Performance",
+        "type": "row",
+        "gridPos": {"x": 0, "y": 42, "w": 24, "h": 1},
+        "collapsed": false
+      },
+      {
+        "id": 61,
+        "title": "PostgreSQL Connections",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 43, "w": 12, "h": 6},
+        "targets": [
+          {
+            "expr": "pg_stat_database_numbackends",
+            "legendFormat": "{{datname}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 62,
+        "title": "Qdrant Vector Count",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 43, "w": 12, "h": 6},
+        "targets": [
+          {
+            "expr": "qdrant_collections_vector_count",
+            "legendFormat": "{{collection}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 70,
+        "title": "🐛 Issue Tracking",
+        "type": "row",
+        "gridPos": {"x": 0, "y": 49, "w": 24, "h": 1},
+        "collapsed": false
+      },
+      {
+        "id": 71,
+        "title": "Issues by Severity",
+        "type": "piechart",
+        "gridPos": {"x": 0, "y": 50, "w": 12, "h": 6},
+        "targets": [
+          {
+            "expr": "sum by (severity) (aidb_active_issues)",
+            "legendFormat": "{{severity}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 72,
+        "title": "Issue Resolution Time",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 50, "w": 12, "h": 6},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(aidb_issue_resolution_seconds_bucket[1h]))",
+            "legendFormat": "P95",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(aidb_issue_resolution_seconds_bucket[1h]))",
+            "legendFormat": "P50",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [{"format": "s", "label": "Time"}]
+      },
+      {
+        "id": 80,
+        "title": "🔔 Recent Events",
+        "type": "row",
+        "gridPos": {"x": 0, "y": 56, "w": 24, "h": 1},
+        "collapsed": false
+      },
+      {
+        "id": 81,
+        "title": "Security Event Timeline",
+        "type": "logs",
+        "gridPos": {"x": 0, "y": 57, "w": 24, "h": 8},
+        "targets": [
+          {
+            "expr": "{job=\"aidb\"} |= \"validation\" or \"rate limit\" or \"malicious\" or \"health\" or \"backup\"",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "showLabels": true,
+          "showTime": true,
+          "wrapLogMessage": true,
+          "sortOrder": "Descending"
+        }
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "name": "datasource",
+          "type": "datasource",
+          "query": "prometheus",
+          "current": {
+            "text": "Prometheus",
+            "value": "Prometheus"
+          }
+        }
+      ]
+    },
+    "annotations": {
+      "list": [
+        {
+          "datasource": "$datasource",
+          "enable": true,
+          "expr": "ALERTS{alertname=~\".*\"}",
+          "name": "Alerts",
+          "step": "60s",
+          "tagKeys": "alertname",
+          "titleFormat": "{{alertname}}",
+          "textFormat": "{{alertstate}}: {{annotations.summary}}"
+        }
+      ]
+    }
+  }
+}
