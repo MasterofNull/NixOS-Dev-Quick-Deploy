@@ -1,0 +1,228 @@
+groups:
+  - name: p1_security_hardening
+    interval: 30s
+    rules:
+      # Query Validation Alerts
+      - alert: HighValidationFailureRate
+        expr: rate(aidb_query_validation_failures_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: aidb
+          category: security
+        annotations:
+          summary: "High rate of query validation failures"
+          description: "AIDB is rejecting {{ $value }} queries/sec due to validation failures. Possible attack or misconfigured client."
+          runbook: "Check logs for validation failure reasons. Investigate client behavior."
+
+      - alert: MaliciousPatternDetectionSpike
+        expr: increase(aidb_malicious_patterns_detected_total[10m]) > 50
+        for: 5m
+        labels:
+          severity: critical
+          component: aidb
+          category: security
+        annotations:
+          summary: "Spike in malicious pattern detections"
+          description: "{{ $value }} malicious patterns detected in last 10 minutes. Possible attack in progress."
+          runbook: "1. Check security logs\n2. Identify attacking IPs\n3. Consider blocking at firewall level\n4. Review rate limit settings"
+
+      # Rate Limiting Alerts
+      - alert: HighRateLimitRejections
+        expr: rate(aidb_rate_limit_rejections_total[5m]) > 5
+        for: 10m
+        labels:
+          severity: warning
+          component: aidb
+          category: performance
+        annotations:
+          summary: "High rate of rate limit rejections"
+          description: "{{ $value }} requests/sec are being rate limited. May indicate DoS attack or need to increase limits."
+          runbook: "Check client IPs in logs. If legitimate traffic, increase rate limits in config.yaml."
+
+      - alert: RateLimitRejectionsCritical
+        expr: rate(aidb_rate_limit_rejections_total[5m]) > 20
+        for: 5m
+        labels:
+          severity: critical
+          component: aidb
+          category: security
+        annotations:
+          summary: "Critical: Very high rate limit rejections"
+          description: "{{ $value }} requests/sec being rate limited. Likely DoS attack."
+          runbook: "1. Enable emergency rate limiting\n2. Block attacking IPs\n3. Consider enabling Cloudflare DDoS protection"
+
+      # Garbage Collection Alerts
+      - alert: GarbageCollectionFailed
+        expr: increase(hybrid_gc_execution_failures_total[1h]) > 3
+        for: 5m
+        labels:
+          severity: critical
+          component: hybrid-coordinator
+          category: storage
+        annotations:
+          summary: "Garbage collection failing repeatedly"
+          description: "GC has failed {{ $value }} times in the last hour. Storage may grow unbounded."
+          runbook: "1. Check hybrid-coordinator logs\n2. Verify database connectivity\n3. Check Qdrant connectivity\n4. Review GC configuration"
+
+      - alert: StorageUtilizationHigh
+        expr: (hybrid_gc_storage_bytes / (100000 * 1000)) * 100 > 85
+        for: 30m
+        labels:
+          severity: warning
+          component: hybrid-coordinator
+          category: storage
+        annotations:
+          summary: "Storage utilization above 85%"
+          description: "Vector storage is {{ $value }}% full. Approaching max_solutions limit."
+          runbook: "1. Run manual GC\n2. Consider increasing max_solutions\n3. Review min_value_score threshold\n4. Check for data quality issues"
+
+      - alert: StorageUtilizationCritical
+        expr: (hybrid_gc_storage_bytes / (100000 * 1000)) * 100 > 95
+        for: 15m
+        labels:
+          severity: critical
+          component: hybrid-coordinator
+          category: storage
+        annotations:
+          summary: "CRITICAL: Storage almost full"
+          description: "Vector storage is {{ $value }}% full. System may stop accepting new solutions."
+          runbook: "1. IMMEDIATE: Run emergency GC with aggressive settings\n2. Temporarily disable solution storage\n3. Increase max_solutions limit\n4. Lower min_value_score to prune more aggressively"
+
+      - alert: HighOrphanVectorCount
+        expr: increase(hybrid_gc_vectors_cleaned_total[24h]) > 1000
+        for: 1h
+        labels:
+          severity: warning
+          component: hybrid-coordinator
+          category: data-integrity
+        annotations:
+          summary: "High number of orphaned vectors detected"
+          description: "{{ $value }} orphaned vectors cleaned in 24h. Indicates data consistency issues."
+          runbook: "1. Check for failed deletion operations\n2. Review database transaction logs\n3. Verify Qdrant-PostgreSQL synchronization\n4. Check for application bugs"
+
+      - alert: GCExecutionTimeTooLong
+        expr: rate(hybrid_gc_execution_seconds_sum[1h]) / rate(hybrid_gc_execution_seconds_count[1h]) > 300
+        for: 30m
+        labels:
+          severity: warning
+          component: hybrid-coordinator
+          category: performance
+        annotations:
+          summary: "Garbage collection taking too long"
+          description: "GC operations averaging {{ $value }} seconds. May impact system performance."
+          runbook: "1. Check database query performance\n2. Verify Qdrant performance\n3. Consider running GC during off-peak hours\n4. Review GC configuration for optimization"
+
+      # TLS Certificate Alerts
+      - alert: TLSCertificateExpiringWarning
+        expr: (tls_certificate_expiry_seconds - time()) / 86400 < 14
+        for: 1h
+        labels:
+          severity: warning
+          component: nginx
+          category: security
+        annotations:
+          summary: "TLS certificate expires in less than 14 days"
+          description: "Certificate expires in {{ $value }} days. Renewal should happen soon."
+          runbook: "1. Check letsencrypt-renewal.timer status\n2. Verify last renewal attempt in logs\n3. Test renewal with --dry-run"
+
+      - alert: TLSCertificateExpiringCritical
+        expr: (tls_certificate_expiry_seconds - time()) / 86400 < 7
+        for: 1h
+        labels:
+          severity: critical
+          component: nginx
+          category: security
+        annotations:
+          summary: "CRITICAL: TLS certificate expires in less than 7 days"
+          description: "Certificate expires in {{ $value }} days. Immediate action required."
+          runbook: "1. IMMEDIATE: Manually run renewal script\n2. Check certbot logs for errors\n3. Verify ACME challenge is accessible\n4. Contact Let's Encrypt support if needed"
+
+      - alert: TLSCertificateExpired
+        expr: (tls_certificate_expiry_seconds - time()) / 86400 < 0
+        for: 5m
+        labels:
+          severity: critical
+          component: nginx
+          category: security
+        annotations:
+          summary: "CRITICAL: TLS certificate has EXPIRED"
+          description: "Certificate expired {{ $value }} days ago. HTTPS is broken."
+          runbook: "1. EMERGENCY: Generate self-signed cert as temporary measure\n2. Run manual Let's Encrypt renewal\n3. Investigate why automatic renewal failed\n4. Notify users of temporary certificate change"
+
+      - alert: CertificateRenewalFailed
+        expr: letsencrypt_certificate_renewal_success == 0
+        for: 10m
+        labels:
+          severity: critical
+          component: letsencrypt
+          category: security
+        annotations:
+          summary: "Certificate renewal failed"
+          description: "Last Let's Encrypt renewal attempt failed."
+          runbook: "1. Check letsencrypt-renewal.service logs\n2. Verify ACME challenge accessibility\n3. Test with staging environment\n4. Check DNS configuration\n5. Verify certbot version"
+
+      - alert: CertificateRenewalOverdue
+        expr: time() - letsencrypt_certificate_renewal_timestamp > 2592000
+        for: 1h
+        labels:
+          severity: warning
+          component: letsencrypt
+          category: operations
+        annotations:
+          summary: "Certificate renewal overdue"
+          description: "Last renewal was {{ $value | humanizeDuration }} ago (>30 days)."
+          runbook: "1. Check if timer is enabled\n2. Review timer schedule\n3. Manually trigger renewal\n4. Check for systemd errors"
+
+      # Combined Security Alerts
+      - alert: PossibleSecurityAttack
+        expr: |
+          (
+            rate(aidb_malicious_patterns_detected_total[5m]) > 5
+            and
+            rate(aidb_rate_limit_rejections_total[5m]) > 10
+          )
+        for: 5m
+        labels:
+          severity: critical
+          component: aidb
+          category: security
+        annotations:
+          summary: "POSSIBLE SECURITY ATTACK IN PROGRESS"
+          description: "Multiple security indicators triggered: malicious patterns + high rate limit rejections."
+          runbook: "1. IMMEDIATE: Review attacking IPs in logs\n2. Block IPs at firewall level\n3. Enable stricter validation\n4. Notify security team\n5. Increase rate limit detection\n6. Consider emergency maintenance mode"
+
+      - alert: DataIntegrityIssue
+        expr: |
+          (
+            increase(hybrid_gc_vectors_cleaned_total[1h]) > 100
+            and
+            increase(aidb_query_validation_failures_total[1h]) > 100
+          )
+        for: 30m
+        labels:
+          severity: warning
+          component: hybrid-coordinator
+          category: data-integrity
+        annotations:
+          summary: "Potential data integrity issues detected"
+          description: "High orphan vector count combined with validation failures. May indicate data corruption."
+          runbook: "1. Run data integrity checks\n2. Review recent code deployments\n3. Check database transaction logs\n4. Verify Qdrant-PostgreSQL consistency\n5. Consider restoring from backup if corruption confirmed"
+
+      # Performance Degradation Alerts
+      - alert: P1FeaturePerformanceDegradation
+        expr: |
+          (
+            rate(aidb_query_validation_latency_seconds_sum[5m]) / rate(aidb_query_validation_latency_seconds_count[5m]) > 0.05
+            or
+            rate(hybrid_gc_execution_seconds_sum[1h]) / rate(hybrid_gc_execution_seconds_count[1h]) > 600
+          )
+        for: 15m
+        labels:
+          severity: warning
+          component: p1-features
+          category: performance
+        annotations:
+          summary: "P1 features causing performance degradation"
+          description: "Validation latency or GC execution time exceeding thresholds."
+          runbook: "1. Check CPU and memory usage\n2. Review database query performance\n3. Consider tuning P1 feature configuration\n4. Check for database locks\n5. Review application logs for bottlenecks"
