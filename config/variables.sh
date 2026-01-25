@@ -148,6 +148,10 @@ if [[ -n "${SUDO_USER:-}" && "$EUID" -eq 0 ]]; then
         RESOLVED_HOME="$(eval echo "~$RESOLVED_USER" 2>/dev/null || true)"
     fi
 
+    if [[ -z "$RESOLVED_HOME" && -d "/home/$RESOLVED_USER" ]]; then
+        RESOLVED_HOME="/home/$RESOLVED_USER"
+    fi
+
     if [[ -z "$RESOLVED_HOME" ]]; then
         echo "Error: unable to resolve home directory for invoking user '$RESOLVED_USER'." >&2
         exit 1
@@ -167,6 +171,12 @@ fi
 # Some launchers can set HOME to /nix/store/*-source or other transient paths.
 if [[ -n "${USER:-}" ]]; then
     _resolved_home="$(getent passwd "$USER" 2>/dev/null | cut -d: -f6)"
+    if [[ -z "$_resolved_home" && -d "/home/$USER" ]]; then
+        _resolved_home="/home/$USER"
+    fi
+    if [[ -z "$_resolved_home" && "$USER" == "root" && -d "/root" ]]; then
+        _resolved_home="/root"
+    fi
     if [[ -n "$_resolved_home" && -d "$_resolved_home" ]]; then
         case "${HOME:-}" in
             ""|/nix/store/*|/build/*|/homeless-shelter)
