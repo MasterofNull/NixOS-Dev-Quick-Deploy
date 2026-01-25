@@ -8,6 +8,7 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="${HOME}/.local/share/nixos-system-dashboard"
 DASHBOARD_URL="http://localhost:8888/dashboard.html"
 COLLECT_INTERVAL="${DASHBOARD_COLLECT_INTERVAL:-15}"
+API_PORT="${DASHBOARD_API_PORT:-8889}"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -116,6 +117,16 @@ start_dashboard_server() {
     fi
 }
 
+# Start port-forward for the Dashboard API (K3s/Kubernetes)
+start_dashboard_api_proxy() {
+    if command -v kubectl >/dev/null 2>&1; then
+        echo -e "${GREEN}🔌 Starting Dashboard API port-forward (${API_PORT})...${NC}"
+        kubectl port-forward -n ai-stack svc/dashboard-api "${API_PORT}:8889" >/dev/null 2>&1 &
+        echo "$!" > "$DATA_DIR/api.pid"
+        sleep 1
+    fi
+}
+
 # Cleanup on exit
 cleanup() {
     echo ""
@@ -133,6 +144,13 @@ cleanup() {
         kill "$(cat "$DATA_DIR/server.pid")" 2>/dev/null || true
         rm "$DATA_DIR/server.pid"
         echo -e "${GREEN}✅ Dashboard server stopped${NC}"
+    fi
+
+    # Stop API port-forward
+    if [ -f "$DATA_DIR/api.pid" ]; then
+        kill "$(cat "$DATA_DIR/api.pid")" 2>/dev/null || true
+        rm "$DATA_DIR/api.pid"
+        echo -e "${GREEN}✅ Dashboard API proxy stopped${NC}"
     fi
 
     echo -e "${CYAN}👋 Goodbye!${NC}"
@@ -153,8 +171,14 @@ main() {
     # Generate initial data
     generate_initial_data
 
+    export DASHBOARD_MODE="k8s"
+    export AI_STACK_NAMESPACE="${AI_STACK_NAMESPACE:-ai-stack}"
+    export DASHBOARD_API_PORT="${API_PORT}"
+    export AI_METRICS_ENDPOINT="http://localhost:${API_PORT}/api/ai/metrics"
+
     # Start services
     start_data_collection
+    start_dashboard_api_proxy
     start_dashboard_server
 
     # Keep script running

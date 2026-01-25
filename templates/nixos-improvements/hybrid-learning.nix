@@ -266,7 +266,7 @@ in {
   config = mkIf cfg.enable {
 
     # Create persistent directories
-    systemd.tmpfiles.rules = [
+    systemd.tmpfiles.rules = lib.mkAfter [
       "d ${cfg.paths.dataDir} 0755 root root -"
       "d ${cfg.paths.modelsDir} 0755 root root -"
       "d ${cfg.paths.exportDir} 0755 root root -"

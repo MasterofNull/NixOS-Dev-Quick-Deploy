@@ -1,0 +1,281 @@
+{
+  "batch_id": "production-hardening-phase2-4-7",
+  "description": "Complete all remaining production hardening tasks",
+  "tasks": [
+    {
+      "task_id": "P2-REL-002",
+      "name": "Add circuit breakers for all external dependencies",
+      "backend": "aider",
+      "priority": "high",
+      "files": [
+        "ai-stack/mcp-servers/shared/circuit_breaker.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/continuous_learning.py",
+        "ai-stack/mcp-servers/aidb/server.py"
+      ],
+      "description": "Implement circuit breaker pattern to prevent cascade failures when external dependencies (Qdrant, PostgreSQL, Redis, llama.cpp) are down",
+      "steps": [
+        "Create CircuitBreaker class with CLOSED/OPEN/HALF_OPEN states",
+        "Add failure threshold (5 failures → OPEN)",
+        "Add timeout before retry (30 seconds)",
+        "Wrap all external calls with circuit breaker",
+        "Add circuit breaker status to health checks"
+      ],
+      "completion_criteria": [
+        "Circuit breaker class implemented",
+        "All external dependencies wrapped",
+        "Failures don't cascade",
+        "Health endpoint shows circuit status",
+        "Tests verify OPEN/CLOSED/HALF_OPEN transitions"
+      ],
+      "test_command": "python3 ai-stack/tests/test_circuit_breaker.py"
+    },
+    {
+      "task_id": "P2-REL-003",
+      "name": "Fix telemetry file locking to prevent corruption",
+      "backend": "aider",
+      "priority": "high",
+      "files": [
+        "ai-stack/mcp-servers/aidb/telemetry.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/telemetry.py"
+      ],
+      "description": "Add file locking (fcntl) to prevent concurrent writes corrupting telemetry files",
+      "steps": [
+        "Import fcntl for file locking",
+        "Add lock acquisition before write",
+        "Add lock release after write",
+        "Handle lock timeout (5 seconds)",
+        "Add retry logic for lock failures"
+      ],
+      "completion_criteria": [
+        "fcntl.flock used for all telemetry writes",
+        "No corrupted JSONL files",
+        "Concurrent writes don't conflict",
+        "Lock timeout handled gracefully",
+        "Tests verify concurrent safety"
+      ],
+      "test_command": "python3 ai-stack/tests/test_telemetry_locking.py"
+    },
+    {
+      "task_id": "P2-REL-004",
+      "name": "Add backpressure monitoring to prevent memory exhaustion",
+      "backend": "aider",
+      "priority": "medium",
+      "files": [
+        "ai-stack/mcp-servers/hybrid-coordinator/continuous_learning.py",
+        "ai-stack/mcp-servers/aidb/monitoring.py"
+      ],
+      "description": "Monitor telemetry file growth and pause learning if queue exceeds threshold",
+      "steps": [
+        "Add telemetry file size monitoring",
+        "Set threshold (100MB unprocessed)",
+        "Pause learning when threshold exceeded",
+        "Resume when queue size drops",
+        "Add metrics to Prometheus"
+      ],
+      "completion_criteria": [
+        "Telemetry size monitored",
+        "Learning pauses at threshold",
+        "Learning resumes automatically",
+        "Prometheus metrics exported",
+        "No OOM under load"
+      ],
+      "test_command": "python3 ai-stack/tests/test_backpressure.py"
+    },
+    {
+      "task_id": "P3-RES-001",
+      "name": "Implement intelligent resource tier system",
+      "backend": "aider",
+      "priority": "medium",
+      "files": [
+        "ai-stack/compose/docker-compose.yml",
+        "ai-stack/scripts/detect-resources.sh"
+      ],
+      "description": "Auto-detect system resources and apply appropriate limits",
+      "steps": [
+        "Create resource detection script",
+        "Define tiers: minimal (<4GB), standard (4-8GB), full (>8GB)",
+        "Adjust service limits per tier",
+        "Add tier indicator to dashboard",
+        "Document manual override"
+      ],
+      "completion_criteria": [
+        "Auto-detection works",
+        "Limits adjusted per tier",
+        "System stable on low-RAM machines",
+        "Dashboard shows current tier",
+        "Manual override available"
+      ],
+      "test_command": "./ai-stack/scripts/detect-resources.sh"
+    },
+    {
+      "task_id": "P4-ORCH-001",
+      "name": "Implement nested orchestration architecture",
+      "backend": "aider",
+      "priority": "high",
+      "files": [
+        "ai-stack/mcp-servers/ralph-wiggum/orchestrator.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/router.py",
+        "ai-stack/mcp-servers/aidb/server.py"
+      ],
+      "description": "Restructure so Ralph → Hybrid → AIDB with unified learning pipeline",
+      "steps": [
+        "Create RalphOrchestrator class that uses Hybrid client",
+        "Add HybridClient to Ralph's dependencies",
+        "Add AIDBClient to Hybrid's dependencies",
+        "Create unified LearningClient",
+        "Route all learning through single pipeline"
+      ],
+      "completion_criteria": [
+        "Ralph can invoke Hybrid",
+        "Hybrid can invoke AIDB",
+        "All layers contribute to learning",
+        "No circular dependencies",
+        "End-to-end test passes"
+      ],
+      "test_command": "python3 ai-stack/tests/test_nested_orchestration.py"
+    },
+    {
+      "task_id": "P5-OBS-001",
+      "name": "Add Prometheus metrics for all components",
+      "backend": "aider",
+      "priority": "medium",
+      "files": [
+        "ai-stack/mcp-servers/aidb/metrics.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/metrics.py"
+      ],
+      "description": "Export comprehensive metrics to Prometheus",
+      "steps": [
+        "Add prometheus_client dependency",
+        "Create metrics for: requests, latency, errors, queue depth",
+        "Add /metrics endpoint to all services",
+        "Update Prometheus config",
+        "Create Grafana dashboard"
+      ],
+      "completion_criteria": [
+        "All services export metrics",
+        "/metrics endpoints accessible",
+        "Prometheus scraping works",
+        "Grafana dashboard created",
+        "Key metrics visible"
+      ],
+      "test_command": "curl -s http://localhost:8091/metrics | grep -c '^#'"
+    },
+    {
+      "task_id": "P5-OBS-002",
+      "name": "Implement distributed tracing with Jaeger",
+      "backend": "aider",
+      "priority": "low",
+      "files": [
+        "ai-stack/mcp-servers/shared/tracing.py",
+        "ai-stack/mcp-servers/aidb/server.py"
+      ],
+      "description": "Add OpenTelemetry instrumentation for request tracing",
+      "steps": [
+        "Add opentelemetry dependencies",
+        "Configure Jaeger exporter",
+        "Instrument HTTP requests",
+        "Instrument database queries",
+        "Add trace context propagation"
+      ],
+      "completion_criteria": [
+        "Traces visible in Jaeger UI",
+        "End-to-end request tracing works",
+        "Database queries traced",
+        "Context propagates across services",
+        "Performance overhead <5%"
+      ],
+      "test_command": "curl -s http://localhost:16686/api/traces"
+    },
+    {
+      "task_id": "P6-OPS-001",
+      "name": "Implement telemetry rotation and archiving",
+      "backend": "aider",
+      "priority": "medium",
+      "files": [
+        "ai-stack/scripts/rotate-telemetry.sh",
+        "ai-stack/systemd/telemetry-rotation.timer"
+      ],
+      "description": "Rotate and compress old telemetry files automatically",
+      "steps": [
+        "Create rotation script (daily, keep 30 days)",
+        "Compress files older than 7 days",
+        "Archive to S3/Backblaze (optional)",
+        "Create systemd timer",
+        "Add rotation status to dashboard"
+      ],
+      "completion_criteria": [
+        "Rotation script works",
+        "Old files compressed",
+        "Systemd timer active",
+        "No disk space issues",
+        "Dashboard shows rotation status"
+      ],
+      "test_command": "./ai-stack/scripts/rotate-telemetry.sh --dry-run"
+    },
+    {
+      "task_id": "P6-OPS-002",
+      "name": "Implement dataset deduplication",
+      "backend": "aider",
+      "priority": "low",
+      "files": [
+        "ai-stack/mcp-servers/hybrid-coordinator/continuous_learning.py"
+      ],
+      "description": "Remove duplicate patterns from fine-tuning dataset",
+      "steps": [
+        "Add pattern hash computation",
+        "Track seen hashes in Redis",
+        "Skip duplicate patterns",
+        "Add dedup stats to logs",
+        "Periodic cleanup of old hashes"
+      ],
+      "completion_criteria": [
+        "Duplicates detected",
+        "Dataset size reduced",
+        "No duplicate patterns in dataset",
+        "Redis cache works",
+        "Stats logged"
+      ],
+      "test_command": "python3 ai-stack/tests/test_deduplication.py"
+    },
+    {
+      "task_id": "P7-TEST-001",
+      "name": "Create comprehensive integration test suite",
+      "backend": "aider",
+      "priority": "high",
+      "files": [
+        "ai-stack/tests/integration_test_suite.py",
+        "ai-stack/tests/test_end_to_end.py"
+      ],
+      "description": "End-to-end tests covering all workflows",
+      "steps": [
+        "Test full query flow (Ralph → Hybrid → AIDB → DB)",
+        "Test learning pipeline (telemetry → patterns → dataset)",
+        "Test health checks (all probes)",
+        "Test failover scenarios",
+        "Create CI/CD integration"
+      ],
+      "completion_criteria": [
+        "End-to-end test passes",
+        "All workflows covered",
+        "Failover tested",
+        "Test suite runs in CI",
+        "Coverage >80%"
+      ],
+      "test_command": "python3 ai-stack/tests/integration_test_suite.py"
+    }
+  ],
+  "execution_order": [
+    "P2-REL-002",
+    "P2-REL-003",
+    "P2-REL-004",
+    "P4-ORCH-001",
+    "P3-RES-001",
+    "P5-OBS-001",
+    "P5-OBS-002",
+    "P6-OPS-001",
+    "P6-OPS-002",
+    "P7-TEST-001"
+  ],
+  "estimated_time": "8-12 hours with Ralph Wiggum loop",
+  "notes": "Tasks will be executed sequentially. Each task includes automated tests. Ralph will retry failed tasks up to 3 times before escalating."
+}

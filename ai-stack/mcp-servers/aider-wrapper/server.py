@@ -1,31 +1,93 @@
 #!/usr/bin/env python3
 """
-Code Generation HTTP Wrapper
-Provides HTTP API for code generation using llama.cpp directly
-Bypasses Aider/LiteLLM to avoid compatibility issues
+Aider-Wrapper MCP Server v3.0
+Now actually uses Aider for real file modification!
 """
 
 import os
+import sys
 import json
-import requests
+import socket
+import time
+import logging
+import subprocess
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel, Field
 import uvicorn
+import structlog
 
-app = FastAPI(title="Code Generation Wrapper", version="2.0.0")
+# Add parent directory to path for shared imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from shared.auth_middleware import get_api_key_dependency
 
+# Configure structured logging
+structlog.configure(
+    processors=[
+        structlog.stdlib.filter_by_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.JSONRenderer()
+    ],
+    wrapper_class=structlog.stdlib.BoundLogger,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    cache_logger_on_first_use=True,
+)
+
+logger = structlog.get_logger()
+
+# Load API key from secret file
+def load_api_key() -> Optional[str]:
+    """Load API key from Docker secret file"""
+    secret_file = os.environ.get("AIDER_WRAPPER_API_KEY_FILE", "/run/secrets/aider_wrapper_api_key")
+    if Path(secret_file).exists():
+        return Path(secret_file).read_text().strip()
+    # Fallback to environment variable for development
+    return os.environ.get("AIDER_WRAPPER_API_KEY")
+
+# Initialize authentication dependency
+api_key = load_api_key()
+require_auth = get_api_key_dependency(
+    service_name="aider-wrapper",
+    expected_key=api_key,
+    optional=not api_key  # If no key configured, allow unauthenticated (dev mode)
+)
+
+app = FastAPI(
+    title="Aider-Wrapper MCP Server v3",
+    description="Real Aider integration for autonomous code modification",
+    version="3.0.0"
+)
+
+# ============================================================================
+# Configuration
+# ============================================================================
+
+WORKSPACE = os.getenv("AIDER_WORKSPACE", "/workspace")
+LLAMA_CPP_URL = f"http://{os.getenv('LLAMA_CPP_HOST', 'llama-cpp')}:{os.getenv('LLAMA_CPP_PORT', '8080')}"
+MODEL_NAME = os.getenv("LLAMA_CPP_MODEL", "qwen2.5-coder-7b-instruct-q4_k_m.gguf")
+
+# ============================================================================
+# Request/Response Models
+# ============================================================================
 
 class TaskRequest(BaseModel):
     """Task request for Aider execution"""
     prompt: str = Field(..., description="Task description for Aider")
     files: List[str] = Field(default_factory=list, description="Files to include in context")
-    model: str = Field(default="gpt-4o", description="Model to use")
+    model: str = Field(default="openai/gpt-4o", description="Model to use (ignored, uses llama.cpp)")
     max_tokens: int = Field(default=4000, description="Max tokens")
-    workspace: str = Field(default="/workspace", description="Working directory")
+    workspace: str = Field(default=WORKSPACE, description="Working directory")
+    # Ralph compatibility fields
+    context: Optional[dict] = Field(default=None, description="Additional context from Ralph")
+    iteration: Optional[int] = Field(default=1, description="Iteration number from Ralph")
+    mode: Optional[str] = Field(default="autonomous", description="Execution mode")
 
 
 class TaskResponse(BaseModel):
@@ -34,7 +96,10 @@ class TaskResponse(BaseModel):
     output: str
     error: Optional[str] = None
     files_modified: List[str] = []
-    duration_seconds: float
+    git_commits: List[str] = []
+    duration_seconds: float = 0.0
+    exit_code: int = 0
+    completed: bool = False
 
 
 class HealthResponse(BaseModel):
@@ -43,181 +108,191 @@ class HealthResponse(BaseModel):
     version: str
     aider_available: bool
     workspace: str
+    llama_cpp_url: str
 
+
+# ============================================================================
+# Health Check
+# ============================================================================
 
 @app.get("/health", response_model=HealthResponse)
-async def health():
+async def health_check():
     """Health check endpoint"""
-    # Check if llama.cpp is available
+    # Check if Aider is available
     aider_available = False
     try:
-        response = requests.get("http://localhost:8080/v1/models", timeout=5)
-        aider_available = response.status_code == 200
-    except Exception:
+        result = subprocess.run(["aider", "--version"], capture_output=True, text=True, timeout=5)
+        aider_available = result.returncode == 0
+    except:
         pass
 
-    return HealthResponse(
-        status="healthy",
-        version="2.0.0",
-        aider_available=aider_available,  # Now represents llama.cpp availability
-        workspace="/workspace"
-    )
+    return {
+        "status": "healthy" if aider_available else "degraded",
+        "version": "3.0.0",
+        "aider_available": aider_available,
+        "workspace": WORKSPACE,
+        "llama_cpp_url": LLAMA_CPP_URL
+    }
 
+
+# ============================================================================
+# Main Execution Endpoint
+# ============================================================================
 
 @app.post("/execute", response_model=TaskResponse)
-async def execute_task(task: TaskRequest):
+@app.post("/api/execute", response_model=TaskResponse)
+async def execute_task(task: TaskRequest, auth: str = Depends(require_auth)):
     """
-    Execute a code generation task using llama.cpp directly
+    Execute a code modification task using REAL Aider
 
-    Bypasses Aider/LiteLLM to avoid compatibility issues
+    Aider will:
+    - Modify files in place
+    - Create git commits
+    - Use proper context from the codebase
     """
     start_time = datetime.now()
 
-    # Validate workspace exists
+    # Validate workspace
     workspace_path = Path(task.workspace)
     if not workspace_path.exists():
         raise HTTPException(status_code=400, detail=f"Workspace does not exist: {task.workspace}")
 
-    # Build prompt for code generation
-    system_prompt = """You are a code generation assistant. Generate complete, working code based on the user's request.
-
-CRITICAL: You must respond ONLY with code in a code block. Do not include any explanations, filenames, or other text.
-Just output the raw code that should go in the file.
-
-Example:
-If asked to create a hello world Python script, respond ONLY with:
-```python
-def main():
-    print("Hello World")
-
-if __name__ == "__main__":
-    main()
-```
-"""
-
-    # Extract filename from prompt if present, otherwise use a default
-    filename = "output.txt"
-    if ".py" in task.prompt.lower():
-        filename = "generated_code.py"
-        if "hello" in task.prompt.lower():
-            filename = "hello.py"
-    elif ".js" in task.prompt.lower():
-        filename = "generated_code.js"
-
-    user_prompt = task.prompt
+    logger.info("aider_task_start",
+                prompt_length=len(task.prompt),
+                files=task.files,
+                iteration=task.iteration,
+                workspace=task.workspace)
 
     try:
-        # Call llama.cpp completion API directly
-        response = requests.post(
-            "http://localhost:8080/v1/chat/completions",
-            json={
-                "model": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                "temperature": 0.7,
-                "max_tokens": 2048,
-                "stream": False
-            },
-            headers={"Content-Type": "application/json"},
-            timeout=120
+        # Build Aider command
+        cmd = [
+            "aider",
+            "--yes",  # Auto-approve changes
+            "--no-auto-commits",  # We'll handle commits ourselves
+            "--model", f"openai/{MODEL_NAME}",  # Use our llama.cpp model
+            "--openai-api-base", f"{LLAMA_CPP_URL}/v1",
+            "--openai-api-key", "dummy",  # llama.cpp doesn't need real key
+        ]
+
+        # Add files to context
+        if task.files:
+            for file in task.files:
+                file_path = workspace_path / file
+                if file_path.exists():
+                    cmd.extend(["--file", str(file_path)])
+                else:
+                    logger.warning("file_not_found", file=file)
+
+        # Add the task prompt as a message
+        cmd.extend(["--message", task.prompt])
+
+        logger.info("executing_aider", command=" ".join(cmd[:10]))  # Log first 10 args
+
+        # Execute Aider
+        result = subprocess.run(
+            cmd,
+            cwd=task.workspace,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
         )
 
         duration = (datetime.now() - start_time).total_seconds()
 
-        if response.status_code != 200:
-            return TaskResponse(
-                status="error",
-                output="",
-                error=f"llama.cpp API error: {response.status_code} - {response.text}",
-                files_modified=[],
-                duration_seconds=duration
+        # Parse Aider output
+        output = result.stdout
+        error = result.stderr if result.returncode != 0 else None
+
+        # Detect modified files from output
+        files_modified = []
+        for line in output.split('\n'):
+            if "modified:" in line.lower() or "created:" in line.lower():
+                # Extract filename
+                parts = line.split()
+                if len(parts) > 1:
+                    files_modified.append(parts[-1])
+
+        # Check git log for commits (if Aider made any)
+        git_commits = []
+        try:
+            git_result = subprocess.run(
+                ["git", "log", "--oneline", "-5"],
+                cwd=task.workspace,
+                capture_output=True,
+                text=True,
+                timeout=5
             )
+            if git_result.returncode == 0:
+                git_commits = [line.strip() for line in git_result.stdout.split('\n') if line.strip()][:3]
+        except:
+            pass
 
-        # Parse llama.cpp response
-        llm_response = response.json()
-        generated_text = llm_response['choices'][0]['message']['content']
+        # Determine completion status
+        completed = result.returncode == 0 and len(files_modified) > 0
 
-        # Parse code from markdown code blocks
-        code_content = generated_text
-        if "```" in generated_text:
-            # Extract code from markdown code blocks
-            lines = generated_text.split('\n')
-            code_lines = []
-            in_code_block = False
+        logger.info("aider_task_complete",
+                    exit_code=result.returncode,
+                    files_modified=len(files_modified),
+                    duration=duration,
+                    completed=completed)
 
-            for line in lines:
-                if line.startswith('```'):
-                    if in_code_block:
-                        # End of code block
-                        break
-                    else:
-                        # Start of code block
-                        in_code_block = True
-                        continue
-                elif in_code_block:
-                    code_lines.append(line)
+        return {
+            "status": "success" if result.returncode == 0 else "error",
+            "output": output,
+            "error": error,
+            "files_modified": files_modified,
+            "git_commits": git_commits,
+            "duration_seconds": duration,
+            "exit_code": result.returncode,
+            "completed": completed
+        }
 
-            if code_lines:
-                code_content = '\n'.join(code_lines)
-
-        # Save the generated code
-        file_path = workspace_path / filename
-        file_path.write_text(code_content)
-
-        files_modified = [filename]
-        output = f"""Code generation completed in {duration:.2f}s
-
-Generated file: {filename}
-File size: {len(code_content)} bytes
-
-Preview (first 500 chars):
-{code_content[:500]}
-"""
-
-        return TaskResponse(
-            status="success",
-            output=output,
-            error=None,
-            files_modified=files_modified,
-            duration_seconds=duration
-        )
-
-    except requests.Timeout:
+    except subprocess.TimeoutExpired:
         duration = (datetime.now() - start_time).total_seconds()
-        return TaskResponse(
-            status="error",
-            output="",
-            error="LLM request timed out after 2 minutes",
-            files_modified=[],
-            duration_seconds=duration
-        )
+        logger.error("aider_timeout", duration=duration)
+        return {
+            "status": "error",
+            "output": "",
+            "error": "Aider execution timed out after 5 minutes",
+            "files_modified": [],
+            "git_commits": [],
+            "duration_seconds": duration,
+            "exit_code": 124,
+            "completed": False
+        }
+
     except Exception as e:
         duration = (datetime.now() - start_time).total_seconds()
-        return TaskResponse(
-            status="error",
-            output="",
-            error=f"Error: {str(e)}",
-            files_modified=[],
-            duration_seconds=duration
-        )
+        logger.error("aider_exception", error=str(e), duration=duration)
+        return {
+            "status": "error",
+            "output": "",
+            "error": f"Exception: {str(e)}",
+            "files_modified": [],
+            "git_commits": [],
+            "duration_seconds": duration,
+            "exit_code": 1,
+            "completed": False
+        }
 
 
-@app.get("/")
-async def root():
-    """Root endpoint"""
-    return {
-        "service": "Aider HTTP Wrapper",
-        "version": "1.0.0",
-        "endpoints": [
-            "/health - Health check",
-            "/execute - Execute Aider task",
-            "/docs - API documentation"
-        ]
-    }
-
+# ============================================================================
+# Startup
+# ============================================================================
 
 if __name__ == "__main__":
-    port = int(os.getenv("AIDER_WRAPPER_PORT", "8080"))
-    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+    logger.info("aider_wrapper_starting", version="3.0.0", workspace=WORKSPACE)
+
+    # Validate Aider is installed
+    try:
+        result = subprocess.run(["aider", "--version"], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            logger.info("aider_found", version=result.stdout.strip())
+        else:
+            logger.error("aider_not_found", message="Aider binary not available!")
+            logger.error("install_aider", message="Run: pip install aider-chat==0.16.0")
+    except Exception as e:
+        logger.error("aider_check_failed", error=str(e))
+
+    port = int(os.getenv("AIDER_WRAPPER_PORT", "8099"))
+    uvicorn.run(app, host="0.0.0.0", port=port)

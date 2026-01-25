@@ -1,0 +1,22 @@
+{
+  "description": "Fix race condition in WebSocket connection list access",
+  "context": "CRITICAL BUG: dashboard/backend/api/main.py line 27 has active_connections list accessed by multiple coroutines without locks, causing race conditions.",
+  "backend": "aider",
+  "model": "anthropic/claude-sonnet-4",
+  "max_iterations": 5,
+  "require_approval": false,
+  "files": [
+    "dashboard/backend/api/main.py"
+  ],
+  "instructions": "FIX WEBSOCKET RACE CONDITION:\n\n1. READ dashboard/backend/api/main.py lines 25-30 to see:\n   ```python\n   active_connections: List[WebSocket] = []  # NO LOCK - RACE CONDITION!\n   ```\n\n2. ADD asyncio.Lock import at top:\n   ```python\n   import asyncio\n   ```\n\n3. ADD lock alongside active_connections list (around line 27):\n   ```python\n   active_connections: List[WebSocket] = []\n   connections_lock = asyncio.Lock()\n   ```\n\n4. FIND all places where active_connections is modified:\n   - Line ~110: `active_connections.append(websocket)`\n   - Line ~120: `active_connections.remove(websocket)`\n   - Line ~125: `active_connections.remove(websocket)`\n   - Line ~48-50: Shutdown loop\n   - Line ~137-145: Broadcasting loop\n\n5. WRAP each access with async lock:\n\n   Example A - WebSocket connection (line ~110):\n   ```python\n   async with connections_lock:\n       active_connections.append(websocket)\n   ```\n\n   Example B - WebSocket disconnect (lines ~120, ~125):\n   ```python\n   async with connections_lock:\n       if websocket in active_connections:\n           active_connections.remove(websocket)\n   ```\n\n   Example C - Shutdown cleanup (lines ~48-50):\n   ```python\n   async with connections_lock:\n       for connection in active_connections:\n           await connection.close()\n       active_connections.clear()\n   ```\n\n   Example D - Broadcasting (lines ~131-145):\n   ```python\n   async with connections_lock:\n       if not active_connections:\n           await asyncio.sleep(2)\n           continue\n       \n       # Create snapshot while holding lock\n       connections_snapshot = list(active_connections)\n   \n   # Release lock before network I/O\n   for connection in connections_snapshot:\n       try:\n           await connection.send_json({...})\n       except Exception as e:\n           # Mark for removal\n   \n   # Re-acquire lock to remove disconnected\n   if disconnected:\n       async with connections_lock:\n           for conn in disconnected:\n               if conn in active_connections:\n                   active_connections.remove(conn)\n   ```\n\n6. VERIFY all modifications are protected:\n   - Every `.append()` wrapped in lock\n   - Every `.remove()` wrapped in lock\n   - Every `.clear()` wrapped in lock\n   - Every iteration creates snapshot under lock\n\nSUCCESS CRITERIA:\n- connections_lock variable exists\n- All append/remove/clear wrapped in 'async with connections_lock'\n- Broadcasting creates snapshot under lock\n- No direct iteration over active_connections without lock\n\nVERIFICATION:\n```bash\ngrep 'connections_lock' dashboard/backend/api/main.py | wc -l  # Should be >5\ngrep 'async with connections_lock' dashboard/backend/api/main.py | wc -l  # Should be >4\n```",
+  "expected_changes": [
+    "Add asyncio import",
+    "Add connections_lock = asyncio.Lock()",
+    "Wrap all active_connections modifications with lock",
+    "Update broadcasting to use snapshot pattern"
+  ],
+  "verification_commands": [
+    "grep 'connections_lock' dashboard/backend/api/main.py",
+    "grep 'async with connections_lock' dashboard/backend/api/main.py"
+  ]
+}

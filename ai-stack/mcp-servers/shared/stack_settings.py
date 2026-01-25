@@ -10,7 +10,7 @@ from .config_loader import load_config
 
 
 class EmbeddingsSettings(BaseModel):
-    model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    model: str = "nomic-ai/nomic-embed-text-v1.5"
     port: int = 8081
     max_input_length: int = 10000
     max_batch_size: int = 32
@@ -47,8 +47,8 @@ class HybridSettings(BaseModel):
     qdrant_hnsw_full_scan_threshold: int = 10000
     llama_cpp_url: str = "http://localhost:8080"
     embedding_service_url: str = "http://localhost:8081"
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
-    embedding_dimensions: int = 384
+    embedding_model: str = "nomic-ai/nomic-embed-text-v1.5"
+    embedding_dimensions: int = 768
     local_confidence_threshold: float = 0.7
     high_value_threshold: float = 0.7
     pattern_extraction_enabled: bool = True

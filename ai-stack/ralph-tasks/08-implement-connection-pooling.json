@@ -1,0 +1,27 @@
+{
+  "description": "Implement asyncpg connection pooling for PostgreSQL database connections",
+  "context": "P3-PERF-002: Replace individual database connections with connection pool to reduce connection overhead and improve throughput. Use asyncpg.create_pool().",
+  "backend": "aider",
+  "model": "anthropic/claude-sonnet-4",
+  "max_iterations": 8,
+  "require_approval": false,
+  "files": [
+    "ai-stack/mcp-servers/aidb/server.py",
+    "ai-stack/mcp-servers/aidb/requirements.txt"
+  ],
+  "instructions": "CONNECTION POOLING IMPLEMENTATION:\n\n1. ADD asyncpg to requirements.txt (if not already present):\n   ```\n   asyncpg>=0.29.0\n   ```\n\n2. READ server.py to identify:\n   - Current PostgreSQL connection method\n   - Where connections are created\n   - Startup/shutdown hooks\n\n3. ADD imports at top:\n   ```python\n   import asyncpg\n   import os\n   ```\n\n4. ADD module-level pool variable:\n   ```python\n   # Global connection pool\n   pg_pool: Optional[asyncpg.Pool] = None\n   ```\n\n5. CREATE pool initialization function:\n   ```python\n   async def init_db_pool():\n       \"\"\"Initialize PostgreSQL connection pool\"\"\"\n       global pg_pool\n       pg_pool = await asyncpg.create_pool(\n           host=os.getenv('POSTGRES_HOST', 'postgres'),\n           port=int(os.getenv('POSTGRES_PORT', '5432')),\n           database=os.getenv('POSTGRES_DB', 'mcp'),\n           user=os.getenv('POSTGRES_USER', 'mcp'),\n           password=os.getenv('POSTGRES_PASSWORD'),\n           min_size=2,\n           max_size=10,\n           command_timeout=60\n       )\n       return pg_pool\n   ```\n\n6. CREATE pool cleanup function:\n   ```python\n   async def close_db_pool():\n       \"\"\"Close PostgreSQL connection pool\"\"\"\n       global pg_pool\n       if pg_pool:\n           await pg_pool.close()\n   ```\n\n7. INTEGRATE with FastAPI lifespan OR startup/shutdown:\n   - If using FastAPI lifespan pattern:\n     ```python\n     @asynccontextmanager\n     async def lifespan(app: FastAPI):\n         # Startup\n         await init_db_pool()\n         yield\n         # Shutdown\n         await close_db_pool()\n     \n     app = FastAPI(lifespan=lifespan)\n     ```\n   \n   - OR if using events:\n     ```python\n     @app.on_event(\"startup\")\n     async def startup():\n         await init_db_pool()\n     \n     @app.on_event(\"shutdown\")\n     async def shutdown():\n         await close_db_pool()\n     ```\n\n8. REPLACE individual connections with pool usage:\n   \n   OLD pattern:\n   ```python\n   conn = await asyncpg.connect(...)\n   result = await conn.fetch(query)\n   await conn.close()\n   ```\n   \n   NEW pattern:\n   ```python\n   async with pg_pool.acquire() as conn:\n       result = await conn.fetch(query)\n   ```\n\n9. ADD pool stats endpoint:\n   ```python\n   @app.get(\"/pool/stats\")\n   async def get_pool_stats():\n       if not pg_pool:\n           return {\"status\": \"not initialized\"}\n       return {\n           \"size\": pg_pool.get_size(),\n           \"free\": pg_pool.get_idle_size(),\n           \"max_size\": pg_pool.get_max_size(),\n           \"min_size\": pg_pool.get_min_size()\n       }\n   ```\n\n10. UPDATE health endpoint to include pool status:\n    ```python\n    @app.get(\"/health\")\n    async def health():\n        pool_ok = pg_pool is not None and pg_pool.get_size() > 0\n        return {\n            \"status\": \"healthy\" if pool_ok else \"degraded\",\n            \"database_pool\": \"ok\" if pool_ok else \"not_initialized\",\n            # ... other health checks\n        }\n    ```\n\nSUCCESS CRITERIA:\n- asyncpg in requirements.txt\n- pg_pool global variable exists\n- init_db_pool() function exists\n- Pool initialized in startup\n- Pool closed in shutdown\n- At least one query uses pg_pool.acquire()\n- /pool/stats endpoint exists\n\nVERIFICATION:\n```bash\ngrep 'asyncpg' ai-stack/mcp-servers/aidb/requirements.txt\ngrep 'pg_pool' ai-stack/mcp-servers/aidb/server.py\ngrep 'create_pool' ai-stack/mcp-servers/aidb/server.py\ngrep 'pg_pool.acquire' ai-stack/mcp-servers/aidb/server.py\n```",
+  "expected_changes": [
+    "Add asyncpg to requirements.txt",
+    "Add pg_pool global variable",
+    "Add init_db_pool() function",
+    "Add close_db_pool() function",
+    "Integrate with startup/shutdown",
+    "Replace connections with pool.acquire()",
+    "Add /pool/stats endpoint"
+  ],
+  "verification_commands": [
+    "grep 'asyncpg' ai-stack/mcp-servers/aidb/requirements.txt",
+    "grep 'pg_pool' ai-stack/mcp-servers/aidb/server.py",
+    "grep 'create_pool' ai-stack/mcp-servers/aidb/server.py"
+  ]
+}

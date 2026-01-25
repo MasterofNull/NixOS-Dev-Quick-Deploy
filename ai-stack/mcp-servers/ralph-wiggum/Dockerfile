@@ -37,6 +37,9 @@ COPY ralph-wiggum/requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --timeout 300 --retries 5 -r requirements.txt
 
+# Copy shared libraries (for authentication middleware)
+COPY shared /app/shared
+
 # Copy application code
 COPY ralph-wiggum/server.py .
 COPY ralph-wiggum/orchestrator.py .

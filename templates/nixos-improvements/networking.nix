@@ -63,7 +63,7 @@
 
   # Ensure /etc/resolv.conf symlink is created at boot
   # This is a safety fallback in case NetworkManager hasn't created it yet
-  systemd.tmpfiles.rules = [
+  systemd.tmpfiles.rules = lib.mkAfter [
     "L+ /etc/resolv.conf - - - - /run/systemd/resolve/stub-resolv.conf"
   ];
 }

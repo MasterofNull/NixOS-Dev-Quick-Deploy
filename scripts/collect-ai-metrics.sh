@@ -17,6 +17,12 @@ SLOW_METRICS_TTL_SECONDS=30
 CB_THRESHOLD=3
 CB_COOLDOWN_SECONDS=60
 
+AIDB_BASE_URL="${AIDB_BASE_URL:-http://localhost:8091}"
+HYBRID_BASE_URL="${HYBRID_BASE_URL:-http://localhost:8092}"
+QDRANT_BASE_URL="${QDRANT_BASE_URL:-http://localhost:6333}"
+LLAMA_CPP_BASE_URL="${LLAMA_CPP_BASE_URL:-http://localhost:8080}"
+EMBEDDINGS_BASE_URL="${EMBEDDINGS_BASE_URL:-http://localhost:8081}"
+
 # Fast HTTP check with minimal timeout
 curl_fast() {
     curl -sf --max-time 1 --connect-timeout 1 "$@" 2>/dev/null || echo "{}"
@@ -75,9 +81,14 @@ EOF
         return
     fi
 
-    local health=$(curl_fast http://localhost:8091/health)
-    local status=$(echo "$health" | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
-    if [[ "$status" == "ok" ]]; then
+    local health=$(curl_fast "${AIDB_BASE_URL}/health")
+    local status_raw=$(echo "$health" | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
+    local status="unknown"
+    case "${status_raw,,}" in
+        ok|healthy|online) status="online" ;;
+        *) status="$status_raw" ;;
+    esac
+    if [[ "$status" == "online" ]]; then
         record_service_success "aidb"
     else
         record_service_failure "aidb"
@@ -121,9 +132,9 @@ EOF
         return
     fi
 
-    local health=$(curl_fast http://localhost:8092/health)
+    local health=$(curl_fast "${HYBRID_BASE_URL}/health")
     local status=$(echo "$health" | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
-    if [[ "$status" == "healthy" || "$status" == "ok" ]]; then
+    if [[ "${status,,}" == "healthy" || "${status,,}" == "ok" ]]; then
         record_service_success "hybrid"
     else
         record_service_failure "hybrid"
@@ -186,8 +197,8 @@ EOF
         return
     fi
 
-    local health=$(curl_fast http://localhost:6333/healthz)
-    local collections=$(curl_fast http://localhost:6333/collections)
+    local health=$(curl_fast "${QDRANT_BASE_URL}/healthz")
+    local collections=$(curl_fast "${QDRANT_BASE_URL}/collections")
 
     local status="unknown"
     if echo "$health" | grep -q "check passed"; then
@@ -205,7 +216,7 @@ EOF
     local total_points=0
     if [[ "$collection_count" -gt 0 ]]; then
         while IFS= read -r collection_name; do
-            local coll_info=$(curl_fast "http://localhost:6333/collections/${collection_name}")
+            local coll_info=$(curl_fast "${QDRANT_BASE_URL}/collections/${collection_name}")
             local points=$(echo "$coll_info" | jq -r '.result.points_count // 0' 2>/dev/null || echo 0)
             total_points=$((total_points + points))
         done < <(echo "$collections" | jq -r '.result.collections[].name' 2>/dev/null)
@@ -238,15 +249,20 @@ EOF
         return
     fi
 
-    local health=$(curl_fast http://localhost:8080/health)
-    local status=$(echo "$health" | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
+    local health=$(curl_fast "${LLAMA_CPP_BASE_URL}/health")
+    local status_raw=$(echo "$health" | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
+    local status="unknown"
+    case "${status_raw,,}" in
+        ok|healthy) status="ok" ;;
+        *) status="$status_raw" ;;
+    esac
     if [[ "$status" == "ok" ]]; then
         record_service_success "llama_cpp"
     else
         record_service_failure "llama_cpp"
     fi
 
-    local model_info=$(curl_fast http://localhost:8080/v1/models)
+    local model_info=$(curl_fast "${LLAMA_CPP_BASE_URL}/v1/models")
     local model_name=$(echo "$model_info" | jq -r '.data[0].id // "none"' 2>/dev/null || echo "none")
 
     cat <<EOF
@@ -273,13 +289,22 @@ EOF
         return
     fi
 
-    local health=$(curl_fast http://localhost:8081/health)
-    local status=$(echo "$health" | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
+    local health=$(curl_fast "${EMBEDDINGS_BASE_URL}/health")
+    local status_raw=$(echo "$health" | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
     local model=$(echo "$health" | jq -r '.model // "unknown"' 2>/dev/null || echo "unknown")
+    local dimensions=$(echo "$health" | jq -r '.dimensions // .dim // empty' 2>/dev/null || echo "")
+    local status="unknown"
+    case "${status_raw,,}" in
+        ok|healthy) status="ok" ;;
+        *) status="$status_raw" ;;
+    esac
     if [[ "$status" == "ok" ]]; then
         record_service_success "embeddings"
     else
         record_service_failure "embeddings"
+    fi
+    if [[ -z "$dimensions" || "$dimensions" == "null" ]]; then
+        dimensions=384
     fi
 
     cat <<EOF
@@ -288,15 +313,15 @@ EOF
     "status": "$status",
     "port": 8081,
     "model": "$model",
-    "dimensions": 384,
-    "endpoint": "http://localhost:8081"
+    "dimensions": $dimensions,
+    "endpoint": "$EMBEDDINGS_BASE_URL"
 }
 EOF
 }
 
 # Collect detailed knowledge base metrics
 get_knowledge_base_metrics() {
-    local collections=$(curl_fast http://localhost:6333/collections)
+    local collections=$(curl_fast "${QDRANT_BASE_URL}/collections")
 
     # Get detailed stats for each active collection
     local codebase_context=0
@@ -306,7 +331,7 @@ get_knowledge_base_metrics() {
 
     if echo "$collections" | jq -e '.result.collections' >/dev/null 2>&1; then
         while IFS= read -r collection_name; do
-            local coll_info=$(curl_fast "http://localhost:6333/collections/${collection_name}")
+            local coll_info=$(curl_fast "${QDRANT_BASE_URL}/collections/${collection_name}")
             local points=$(echo "$coll_info" | jq -r '.result.points_count // 0' 2>/dev/null || echo 0)
 
             case "$collection_name" in
@@ -392,6 +417,18 @@ main() {
         fi
     fi
     echo "$now" > "$LAST_RUN_FILE"
+
+    if [[ -n "${AI_METRICS_ENDPOINT:-}" ]]; then
+        local remote
+        remote=$(curl_fast "$AI_METRICS_ENDPOINT")
+        if echo "$remote" | jq -e '.services and .knowledge_base' >/dev/null 2>&1; then
+            echo "$remote" > "$OUTPUT_FILE"
+            if [[ "${VERBOSE:-}" == "1" ]]; then
+                cat "$OUTPUT_FILE"
+            fi
+            exit 0
+        fi
+    fi
 
     local tmp_dir
     tmp_dir=$(mktemp -d)

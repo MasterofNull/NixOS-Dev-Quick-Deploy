@@ -1,0 +1,12 @@
+{
+  "prompt": "Implement adaptive iteration limit logic in ai-stack/mcp-servers/ralph-wiggum/loop_engine.py. Add calculate_adaptive_limit(prompt: str, context: dict) -> int function that analyzes task complexity. Score based on: (1) keywords like 'implement', 'create', 'refactor' add +10 iterations, (2) prompt length >500 chars add +5, (3) file count >3 add +5. Use environment variables RALPH_MAX_ITERATIONS_SIMPLE=10, RALPH_MAX_ITERATIONS_MEDIUM=30, RALPH_MAX_ITERATIONS_COMPLEX=50 as base limits. Integrate into loop initialization. Log complexity score and chosen limit to telemetry. Add tests in test_adaptive_iterations.py verifying simple/medium/complex tasks get appropriate limits.",
+  "backend": "aider",
+  "max_iterations": 40,
+  "require_approval": false,
+  "context": {
+    "purpose": "Automatically adjust iteration limits based on task complexity",
+    "location": "ai-stack/mcp-servers/ralph-wiggum/loop_engine.py",
+    "scoring_factors": ["keyword analysis", "prompt length", "file count"],
+    "files": ["ai-stack/mcp-servers/ralph-wiggum/loop_engine.py"]
+  }
+}

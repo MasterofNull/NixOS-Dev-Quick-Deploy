@@ -56,9 +56,57 @@ import shlex
 import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
+from collections import defaultdict
+from datetime import datetime, timedelta
+import threading
 
 PORT = int(os.getenv('DASHBOARD_PORT', '8888'))
 DATA_DIR = Path.home() / '.local/share/nixos-system-dashboard'
+
+class RateLimiter:
+    """
+    Thread-safe rate limiter using token bucket algorithm.
+    P1-SEC-002: Prevent DoS attacks via rate limiting.
+    """
+    def __init__(self, max_requests=60, window_seconds=60):
+        self.max_requests = max_requests
+        self.window = timedelta(seconds=window_seconds)
+        self.requests = defaultdict(list)
+        self.lock = threading.Lock()
+
+    def is_allowed(self, client_ip: str) -> bool:
+        """Check if client is within rate limit"""
+        with self.lock:
+            now = datetime.now()
+            cutoff = now - self.window
+
+            # Clean old requests
+            self.requests[client_ip] = [
+                req_time for req_time in self.requests[client_ip]
+                if req_time > cutoff
+            ]
+
+            # Check limit
+            if len(self.requests[client_ip]) >= self.max_requests:
+                return False
+
+            # Record request
+            self.requests[client_ip].append(now)
+            return True
+
+    def get_retry_after(self, client_ip: str) -> int:
+        """Get retry-after seconds for rate-limited client"""
+        with self.lock:
+            if client_ip not in self.requests or not self.requests[client_ip]:
+                return 0
+            oldest = self.requests[client_ip][0]
+            retry_time = oldest + self.window
+            return int((retry_time - datetime.now()).total_seconds())
+
+# Global rate limiter instance
+# Increased from 60 to 150 req/min to handle dashboard initial load (loads ~16 JSON files)
+# Dashboard needs burst capacity for initial page load without triggering 429 errors
+rate_limiter = RateLimiter(max_requests=150, window_seconds=60)
 
 class DashboardHandler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
@@ -70,8 +118,175 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_GET(self):
+        # P1-SEC-002: Rate limiting check
+        client_ip = self.client_address[0]
+        # Whitelist localhost for development (but still apply rate limits)
+        is_localhost = client_ip in ('127.0.0.1', '::1', 'localhost')
+        if not is_localhost and not rate_limiter.is_allowed(client_ip):
+            retry_after = rate_limiter.get_retry_after(client_ip)
+            self.send_response(429)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Retry-After', str(retry_after))
+            self.end_headers()
+            error_msg = json.dumps({
+                "error": "Rate limit exceeded",
+                "retry_after_seconds": retry_after
+            })
+            self.wfile.write(error_msg.encode('utf-8'))
+            return
+
         parsed = urlparse(self.path)
         clean_path = parsed.path
+
+        # API: Get current configuration
+        if clean_path == '/api/config':
+            try:
+                import yaml
+                config_file = Path.home() / '.local/share/nixos-ai-stack/config/config.yaml'
+                if not config_file.exists():
+                    # Return defaults if file doesn't exist
+                    default_config = {
+                        "rate_limit": 60,
+                        "checkpoint_interval": 100,
+                        "backpressure_threshold_mb": 100,
+                        "log_level": "INFO"
+                    }
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps(default_config).encode('utf-8'))
+                    return
+
+                with open(config_file, 'r') as f:
+                    config_data = yaml.safe_load(f)
+
+                # Extract relevant settings
+                response = {
+                    "rate_limit": config_data.get('rate_limiting', {}).get('requests_per_minute', 60),
+                    "checkpoint_interval": config_data.get('continuous_learning', {}).get('checkpoint_interval', 100),
+                    "backpressure_threshold_mb": config_data.get('continuous_learning', {}).get('backpressure_threshold_mb', 100),
+                    "log_level": config_data.get('logging', {}).get('level', 'INFO')
+                }
+
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(response).encode('utf-8'))
+                return
+            except Exception as e:
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                error_msg = json.dumps({"error": f"Failed to read config: {str(e)}"})
+                self.wfile.write(error_msg.encode('utf-8'))
+                return
+
+        # API: Get learning stats
+        if clean_path == '/api/stats/learning':
+            try:
+                import urllib.request
+                import urllib.error
+                # Fetch from hybrid coordinator learning stats endpoint
+                stats_url = 'http://localhost:8092/learning/stats'
+                req = urllib.request.Request(stats_url, headers={'User-Agent': 'Dashboard/1.0'})
+
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    content = response.read()
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(content)
+                    return
+            except Exception as e:
+                self.send_response(503)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                error_msg = json.dumps({"error": "Learning stats not available"})
+                self.wfile.write(error_msg.encode('utf-8'))
+                return
+
+        # API: Get circuit breaker stats
+        if clean_path == '/api/stats/circuit-breakers':
+            try:
+                import urllib.request
+                import urllib.error
+                # Fetch from hybrid coordinator health endpoint
+                health_url = 'http://localhost:8092/health'
+                req = urllib.request.Request(health_url, headers={'User-Agent': 'Dashboard/1.0'})
+
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    content = response.read()
+                    health_data = json.loads(content)
+                    breakers = health_data.get('circuit_breakers', {})
+
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps(breakers).encode('utf-8'))
+                    return
+            except Exception as e:
+                self.send_response(503)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                error_msg = json.dumps({"error": "Circuit breaker stats not available"})
+                self.wfile.write(error_msg.encode('utf-8'))
+                return
+
+        # Proxy AIDB health check requests to container network
+        if clean_path.startswith('/aidb/'):
+            try:
+                import urllib.request
+                import urllib.error
+                # Validate and sanitize path to prevent injection
+                aidb_path = clean_path.replace('/aidb/', '')
+                # Whitelist allowed endpoints
+                allowed_endpoints = ['health', 'health/live', 'health/ready', 'health/startup', 'health/detailed']
+                if not any(aidb_path.startswith(ep) for ep in allowed_endpoints):
+                    self.send_response(403)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    error_msg = json.dumps({"error": "Endpoint not allowed"})
+                    self.wfile.write(error_msg.encode('utf-8'))
+                    return
+
+                # Use HTTP client to access AIDB via nginx (no subprocess)
+                container_url = f'https://localhost:8443/aidb/{aidb_path}'
+
+                # Create request with timeout
+                req = urllib.request.Request(container_url, headers={'User-Agent': 'Dashboard/1.0'})
+                context = __import__('ssl').create_default_context()
+                context.check_hostname = False
+                context.verify_mode = __import__('ssl').CERT_NONE
+
+                with urllib.request.urlopen(req, timeout=5, context=context) as response:
+                    content = response.read()
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(content)
+                    return
+
+            except urllib.error.HTTPError as e:
+                self.send_response(e.code)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                error_msg = json.dumps({"error": f"AIDB returned {e.code}"})
+                self.wfile.write(error_msg.encode('utf-8'))
+                return
+            except urllib.error.URLError as e:
+                self.send_response(503)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                error_msg = json.dumps({"error": "AIDB not accessible"})
+                self.wfile.write(error_msg.encode('utf-8'))
+                return
+            except Exception as e:
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                error_msg = json.dumps({"error": "Internal server error"})
+                self.wfile.write(error_msg.encode('utf-8'))
+                return
 
         # Serve JSON data files
         if clean_path.startswith('/data/'):
@@ -123,6 +338,107 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
+        # P1-SEC-002: Rate limiting check
+        client_ip = self.client_address[0]
+        # Whitelist localhost for development (but still apply rate limits)
+        is_localhost = client_ip in ('127.0.0.1', '::1', 'localhost')
+        if not is_localhost and not rate_limiter.is_allowed(client_ip):
+            retry_after = rate_limiter.get_retry_after(client_ip)
+            self.send_response(429)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Retry-After', str(retry_after))
+            self.end_headers()
+            error_msg = json.dumps({
+                "error": "Rate limit exceeded",
+                "retry_after_seconds": retry_after
+            })
+            self.wfile.write(error_msg.encode('utf-8'))
+            return
+
+        # API: Update configuration
+        if self.path == '/api/config':
+            try:
+                import yaml
+                length = int(self.headers.get('Content-Length', 0))
+                body = self.rfile.read(length).decode('utf-8')
+                new_config = json.loads(body) if body else {}
+
+                config_file = Path.home() / '.local/share/nixos-ai-stack/config/config.yaml'
+
+                # Read existing config or create new one
+                if config_file.exists():
+                    with open(config_file, 'r') as f:
+                        config_data = yaml.safe_load(f)
+                else:
+                    config_file.parent.mkdir(parents=True, exist_ok=True)
+                    config_data = {}
+
+                # Update configuration sections
+                if 'rate_limiting' not in config_data:
+                    config_data['rate_limiting'] = {}
+                if 'continuous_learning' not in config_data:
+                    config_data['continuous_learning'] = {}
+                if 'logging' not in config_data:
+                    config_data['logging'] = {}
+
+                # Apply updates
+                if 'rate_limit' in new_config:
+                    config_data['rate_limiting']['requests_per_minute'] = new_config['rate_limit']
+                if 'checkpoint_interval' in new_config:
+                    config_data['continuous_learning']['checkpoint_interval'] = new_config['checkpoint_interval']
+                if 'backpressure_threshold_mb' in new_config:
+                    config_data['continuous_learning']['backpressure_threshold_mb'] = new_config['backpressure_threshold_mb']
+                if 'log_level' in new_config:
+                    config_data['logging']['level'] = new_config['log_level']
+
+                # Write updated config
+                with open(config_file, 'w') as f:
+                    yaml.dump(config_data, f, default_flow_style=False)
+
+                # Restart affected services (hybrid-coordinator and aidb)
+                restarted = []
+                try:
+                    result = subprocess.run(
+                        ['podman', 'restart', 'local-ai-hybrid-coordinator'],
+                        capture_output=True,
+                        timeout=30
+                    )
+                    if result.returncode == 0:
+                        restarted.append('hybrid-coordinator')
+                except Exception:
+                    pass
+
+                try:
+                    result = subprocess.run(
+                        ['podman', 'restart', 'local-ai-aidb'],
+                        capture_output=True,
+                        timeout=30
+                    )
+                    if result.returncode == 0:
+                        restarted.append('aidb')
+                except Exception:
+                    pass
+
+                response = {
+                    "status": "success",
+                    "message": "Configuration updated",
+                    "restarted": restarted
+                }
+
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(response).encode('utf-8'))
+                return
+
+            except Exception as e:
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                error_msg = json.dumps({"error": f"Failed to update config: {str(e)}"})
+                self.wfile.write(error_msg.encode('utf-8'))
+                return
+
         if self.path != '/action':
             self.send_response(404)
             self.end_headers()

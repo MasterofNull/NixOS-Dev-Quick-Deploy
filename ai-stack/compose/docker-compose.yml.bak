@@ -1,0 +1,1040 @@
+# NixOS Hybrid AI Learning Stack - Unified Configuration
+# Single source of truth for all AI stack services
+# Version: 3.0.0 (Updated December 2025 - Agentic Era Edition)
+#
+# Services:
+#   Core AI Infrastructure:
+#   - Qdrant: Vector database for embeddings and context storage
+#   - llama.cpp: Local LLM inference (OpenAI-compatible)
+#   - Open WebUI: ChatGPT-like interface
+#   - PostgreSQL 18 + pgvector: Database for MCP server and metrics
+#   - Redis: Caching and session storage
+#   - MindsDB: Analytics and data integration
+#
+#   Agentic Coding Tools (December 2025):
+#   - Aider: AI pair programming with git integration
+#   - Continue: Open-source autopilot for VS Code and JetBrains
+#   - Goose: Autonomous coding agent with file system access
+#
+#   Video Coding & Content Tools:
+#   - LangChain: Agent framework with memory and state management
+#
+# Secrets:
+# - Uses AI_STACK_ENV_FILE (default ~/.config/nixos-ai-stack/.env)
+
+x-ai-stack-env: &ai_stack_env
+  - ${AI_STACK_ENV_FILE:?set AI_STACK_ENV_FILE}
+#   - AutoGPT: Goal decomposition and autonomous planning
+#
+#   MCP Servers (Model Context Protocol):
+#   - AIDB: Context API and telemetry
+#   - Hybrid Coordinator: Context augmentation & learning
+#   - Ralph Wiggum Loop: Continuous autonomous agent orchestration
+#   - NixOS Docs: Centralized Nix/NixOS documentation knowledge base
+#
+# Ralph Wiggum Loop:
+#   - Implements continuous self-referential AI workflow
+#   - Enables iterative development until task completion
+#   - Default behavior for all agents
+#
+# Usage:
+#   podman-compose up -d
+#   ./scripts/hybrid-ai-stack.sh up
+#
+# Caching & Performance:
+#   - All services use pull_policy: missing (only pull if image doesn't exist)
+#   - Container images are cached locally and not re-downloaded
+#   - GGUF models are cached in ~/.cache/huggingface and ${HOME}/.local/share/nixos-ai-stack
+#   - Re-running deployment will reuse existing images and models
+#   - To force update: podman-compose pull (images) or re-download models manually
+#
+# Version Policy:
+#   - All images pinned to specific versions (no :latest tags)
+#   - Prevents unnecessary re-downloads on each deployment
+#   - Update versions manually when needed
+
+version: "3.9"
+
+# NOTE: `deploy.resources` is advisory in podman-compose. Hard limits are set
+# with `cpus` and `mem_limit` on each service.
+
+# Disable pod creation for podman-compose (keeps services on named bridge network)
+x-podman:
+  in_pod: false
+  pod_args:
+    - "--userns=keep-id"
+
+services:
+  # ============================================================================
+  # Core Vector Database
+  # ============================================================================
+  qdrant:
+    image: qdrant/qdrant:v1.16.2  # Latest stable (Dec 2025 - tiered multitenancy + disk-efficient search)
+    container_name: local-ai-qdrant
+    pull_policy: missing  # Only pull if image doesn't exist locally
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    env_file: *ai_stack_env
+    expose:
+      - "6333"
+      - "6334"
+    volumes:
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/qdrant:/qdrant/storage:Z
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+    # NOTE: No reliable healthcheck tooling available in the qdrant image.
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+        limits:
+          cpus: '2.0'
+          memory: 2G
+    cpus: '2.0'
+    mem_limit: 2G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=qdrant"
+
+  # ============================================================================
+  # Sentence Transformers - Dedicated Embedding Service
+  # ============================================================================
+  # Lightweight embedding service using all-MiniLM-L6-v2 (384D)
+  # Provides real semantic embeddings for RAG system
+  embeddings:
+    build:
+      context: ../mcp-servers
+      dockerfile: embeddings-service/Dockerfile
+    container_name: local-ai-embeddings
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    env_file: *ai_stack_env
+    expose:
+      - "8081"
+    environment:
+      PORT: 8081
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+      EMBEDDINGS_CONFIG: /app/config/config.yaml
+      STACK_ENV: ${STACK_ENV:-}
+      TRANSFORMERS_CACHE: /data/cache
+      HF_HOME: /data/cache
+      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
+      EMBEDDINGS_API_KEY_FILE: /run/secrets/stack_api_key
+      BATCH_MAX_SIZE: ${EMBEDDINGS_BATCH_MAX_SIZE:-64}
+      BATCH_MAX_LATENCY_MS: ${EMBEDDINGS_BATCH_MAX_LATENCY_MS:-25}
+      BATCH_QUEUE_MAX: ${EMBEDDINGS_BATCH_QUEUE_MAX:-1024}
+    volumes:
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/embeddings:/data:Z
+    secrets:
+      - source: stack_api_key
+        target: stack_api_key
+        mode: 0400
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:8081/health', timeout=5); body=r.read().decode(); import sys; sys.exit(0 if '\"status\":\"ok\"' in body else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 180s  # Model download on first run (up to 3 minutes)
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+        limits:
+          cpus: '2.0'
+          memory: 3G
+    cpus: '2.0'
+    mem_limit: 3G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=embeddings"
+      - "nixos.quick-deploy.embedding-dimensions=384"
+
+  # ============================================================================
+  # llama.cpp - GGUF Model Inference (Primary)
+  # ============================================================================
+  # Enhanced with Vulkan GPU acceleration for AMD iGPU (December 2025)
+  # Inspired by Docker Model Runner innovations
+  llama-cpp:
+    image: ghcr.io/ggml-org/llama.cpp:server  # Official llama.cpp server (latest)
+    container_name: local-ai-llama-cpp
+    pull_policy: missing  # Only pull if image doesn't exist locally
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    env_file: *ai_stack_env
+    command:
+      - "--model"
+      - "/models/${LLAMA_CPP_MODEL_FILE:-qwen2.5-coder-7b-instruct-q4_k_m.gguf}"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      - "--ctx-size"
+      - "${LLAMA_CTX_SIZE:-8192}"
+      - "--threads"
+      - "${LLAMA_THREADS:-0}"
+      - "--batch-size"
+      - "${LLAMA_BATCH_SIZE:-512}"
+      - "--ubatch-size"
+      - "${LLAMA_UBATCH_SIZE:-128}"
+      - "--defrag-thold"
+      - "${LLAMA_DEFRAG_THOLD:-0.1}"
+      - "--cont-batching"
+      - "--parallel"
+      - "${LLAMA_PARALLEL:-4}"
+      - "--cache-type-k"
+      - "${LLAMA_CACHE_TYPE_K:-q4_0}"
+      - "--cache-type-v"
+      - "${LLAMA_CACHE_TYPE_V:-q4_0}"
+      - "--metrics"
+      - "--embeddings"
+    environment:
+      LLAMA_CPP_HOST: 0.0.0.0
+      LLAMA_CPP_PORT: 8080
+      LLAMA_CPP_DEFAULT_MODEL: ${LLAMA_CPP_DEFAULT_MODEL:-Qwen/Qwen2.5-Coder-7B-Instruct}
+      LLAMA_CPP_LOG_LEVEL: ${LLAMA_CPP_LOG_LEVEL:-info}
+      LLAMA_CPP_WEB_CONCURRENCY: ${LLAMA_CPP_WEB_CONCURRENCY:-4}
+      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
+      # Vulkan GPU acceleration settings (AMD iGPU)
+      VK_ICD_FILENAMES: ${VK_ICD_FILENAMES:-/usr/share/vulkan/icd.d/radeon_icd.x86_64.json}
+      LLAMA_VULKAN_ENABLE: ${LLAMA_VULKAN_ENABLE:-}  # Set to "1" to enable Vulkan
+    volumes:
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/llama-cpp-models:/models:Z
+    devices:
+      - /dev/dri:/dev/dri  # GPU device access for Vulkan
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -sf http://localhost:8080/health | grep -q '\"status\":\"ok\"' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    deploy:
+      resources:
+        reservations:
+          cpus: '1.0'
+          memory: 6G
+        limits:
+          cpus: '4.0'
+          memory: 16G
+    cpus: '4.0'
+    mem_limit: 16G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=llama_cpp"
+      - "nixos.quick-deploy.vulkan-enabled=true"
+    # GPU support: Vulkan acceleration for AMD/Intel/NVIDIA
+    # Set LLAMA_VULKAN_ENABLE=1 to activate
+    # Legacy NVIDIA CUDA support (commented - use Vulkan instead):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # ============================================================================
+  # Open WebUI - Web Interface
+  # ============================================================================
+  open-webui:
+    image: ghcr.io/open-webui/open-webui@sha256:18c1475e636245e2f439b59b4a2b38e1965c881856092d21e5efc38da7e1dac3
+    container_name: local-ai-open-webui
+    pull_policy: missing  # Only pull if image doesn't exist locally
+    restart: unless-stopped
+    # profiles: ["full"]  # Removed - enabled by default for agentic workflow
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/open-webui:/app/backend/data:Z
+    environment:
+      OPENAI_API_BASE_URL: http://llama-cpp:8080/v1
+      OPENAI_API_KEY: llama-cpp
+      WEBUI_AUTH: "false"
+      ENABLE_RAG_WEB_SEARCH: "true"
+      PORT: 3001  # Run on port 3001 (instead of default 8080)
+      ENABLE_OLLAMA_API: "false"  # Disable Ollama, use OpenAI-compatible API only
+    depends_on:
+      llama-cpp:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:3001', timeout=5); r.read(); import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+        limits:
+          cpus: '1.0'
+          memory: 2G
+    cpus: '1.0'
+    mem_limit: 2G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=open-webui"
+
+  # ============================================================================
+  # Nginx Reverse Proxy (TLS Termination)
+  # ============================================================================
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: local-ai-nginx
+    pull_policy: missing
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    env_file: *ai_stack_env
+    ports:
+      - "127.0.0.1:8088:80"
+      - "127.0.0.1:8443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      aidb:
+        condition: service_healthy
+      hybrid-coordinator:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=nginx"
+
+  # ============================================================================
+  # Jaeger - Distributed Tracing (local only)
+  # ============================================================================
+  jaeger:
+    image: jaegertracing/all-in-one:2.060
+    container_name: local-ai-jaeger
+    pull_policy: missing
+    restart: unless-stopped
+    # profiles: ["full"]  # Removed - enabled by default for agentic workflow
+    ports:
+      - "127.0.0.1:16686:16686"  # UI
+      - "127.0.0.1:4317:4317"    # OTLP gRPC
+      - "127.0.0.1:4318:4318"    # OTLP HTTP
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=jaeger"
+
+  # ============================================================================
+  # PostgreSQL - Database for MCP and Metrics
+  # ============================================================================
+  postgres:
+    image: pgvector/pgvector:0.8.1-pg18  # PostgreSQL 18 + pgvector 0.8.1
+    container_name: local-ai-postgres
+    pull_policy: missing  # Only pull if image doesn't exist locally
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    env_file: *ai_stack_env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mcp}
+      POSTGRES_USER: ${POSTGRES_USER:-mcp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/postgres:/var/lib/postgresql/data:Z
+      - ../postgres/init-schema.sql:/docker-entrypoint-initdb.d/01-init-schema.sql:Z
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mcp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+        limits:
+          cpus: '2.0'
+          memory: 2G
+    cpus: '2.0'
+    mem_limit: 2G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=postgres"
+
+  # ============================================================================
+  # Redis - Caching and Session Storage
+  # ============================================================================
+  redis:
+    image: redis:8.4.0-alpine  # Latest stable (Dec 2025)
+    container_name: local-ai-redis
+    pull_policy: missing  # Only pull if image doesn't exist locally
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    env_file: *ai_stack_env
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/redis:/data:Z
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    cpus: '1.0'
+    mem_limit: 512M
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=redis"
+
+  # ============================================================================
+  # AIDB MCP Server - Context + Telemetry API
+  # ============================================================================
+  aidb:
+    build:
+      context: ../mcp-servers
+      dockerfile: aidb/Dockerfile
+    container_name: local-ai-aidb
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    env_file: *ai_stack_env
+    expose:
+      - "8091"
+    environment:
+      AIDB_CONFIG: /app/config/config.yaml
+      STACK_ENV: ${STACK_ENV:-}
+      # Postgres connection (both AIDB_ and standard POSTGRES_ prefixes for compatibility)
+      AIDB_POSTGRES_HOST: postgres
+      AIDB_POSTGRES_PORT: 5432
+      AIDB_POSTGRES_DB: ${POSTGRES_DB:-mcp}
+      AIDB_POSTGRES_USER: ${POSTGRES_USER:-mcp}
+      AIDB_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-mcp}
+      POSTGRES_USER: ${POSTGRES_USER:-mcp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      # Redis connection
+      AIDB_REDIS_HOST: redis
+      AIDB_REDIS_PORT: 6379
+      AIDB_REDIS_PASSWORD: ${AIDB_REDIS_PASSWORD:-}
+      # Qdrant connection
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      # llama.cpp connection
+      LLAMA_CPP_BASE_URL: http://llama-cpp:8080
+      # Embeddings service connection
+      EMBEDDING_SERVICE_URL: http://embeddings:8081
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+      EMBEDDING_DIMENSIONS: 384
+      # Telemetry and discovery
+      AIDB_TELEMETRY_PATH: /data/telemetry/aidb-events.jsonl
+      AIDB_TOOL_DISCOVERY_ENABLED: ${AIDB_TOOL_DISCOVERY_ENABLED:-true}
+      AIDB_TOOL_DISCOVERY_INTERVAL: ${AIDB_TOOL_DISCOVERY_INTERVAL:-300}
+      # External integrations
+      GOOGLE_SEARCH_API_KEY: ${GOOGLE_SEARCH_API_KEY:-}
+      GOOGLE_SEARCH_CX: ${GOOGLE_SEARCH_CX:-}
+      AIDB_API_KEY_FILE: /run/secrets/stack_api_key
+      OTEL_TRACING_ENABLED: ${OTEL_TRACING_ENABLED:-true}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
+    volumes:
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/aidb:/data:Z
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/telemetry:/data/telemetry:Z
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/aidb-cache:/app/.mcp_cache:Z
+    secrets:
+      - source: stack_api_key
+        target: stack_api_key
+        mode: 0400
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:8091/health', timeout=5); body=r.read().decode(); import sys; sys.exit(0 if '\"status\":\"ok\"' in body else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+        limits:
+          cpus: '2.0'
+          memory: 3G
+    cpus: '2.0'
+    mem_limit: 3G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=aidb"
+
+  # ============================================================================
+  # MindsDB - Analytics (enabled by default)
+  # ============================================================================
+  mindsdb:
+    image: docker.io/mindsdb/mindsdb@sha256:5248b7f9b8f1c92e4ca526617842407d87af48cb094e85ee32b2521acf4b4f92
+    container_name: local-ai-mindsdb
+    pull_policy: missing  # Only pull if image doesn't exist locally
+    restart: unless-stopped
+    # profiles: ["full"]  # Removed - enabled by default for agentic workflow
+    env_file: *ai_stack_env
+    ports:
+      - "127.0.0.1:47334:47334"
+    volumes:
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/mindsdb:/root/mindsdb_storage:Z
+    environment:
+      MINDSDB_STORAGE_DIR: /root/mindsdb_storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:47334', timeout=5); r.read(); import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+        limits:
+          cpus: '2.0'
+          memory: 4G
+    cpus: '2.0'
+    mem_limit: 4G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=mindsdb"
+
+  # ============================================================================
+  # Hybrid Coordinator MCP Server - Context Augmentation & Learning
+  # ============================================================================
+  hybrid-coordinator:
+    build:
+      context: ../mcp-servers
+      dockerfile: hybrid-coordinator/Dockerfile
+    container_name: local-ai-hybrid-coordinator
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    env_file: *ai_stack_env
+    expose:
+      - "8092"
+    environment:
+      MCP_SERVER_MODE: http
+      MCP_SERVER_PORT: 8092
+      HYBRID_CONFIG: /app/config/config.yaml
+      STACK_ENV: ${STACK_ENV:-}
+      HYBRID_API_KEY_FILE: /run/secrets/stack_api_key
+      # Qdrant connection
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      QDRANT_HNSW_M: ${QDRANT_HNSW_M:-16}
+      QDRANT_HNSW_EF_CONSTRUCT: ${QDRANT_HNSW_EF_CONSTRUCT:-64}
+      QDRANT_HNSW_FULL_SCAN_THRESHOLD: ${QDRANT_HNSW_FULL_SCAN_THRESHOLD:-10000}
+      # Postgres connection (for telemetry storage)
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-mcp}
+      POSTGRES_USER: ${POSTGRES_USER:-mcp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      # llama.cpp connection
+      LLAMA_CPP_BASE_URL: http://llama-cpp:8080
+      # Embeddings service connection
+      EMBEDDING_SERVICE_URL: http://embeddings:8081
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+      EMBEDDING_DIMENSIONS: 384
+      # Redis connection (for session management and caching)
+      REDIS_URL: redis://redis:6379
+      # Telemetry and learning
+      HYBRID_TELEMETRY_PATH: /data/telemetry/hybrid-events.jsonl
+      TELEMETRY_PATH: /data/telemetry/hybrid-events.jsonl
+      # Continuous learning configuration
+      CONTINUOUS_LEARNING_ENABLED: ${CONTINUOUS_LEARNING_ENABLED:-true}
+      LEARNING_PROCESSING_INTERVAL: ${LEARNING_PROCESSING_INTERVAL:-3600}
+      LEARNING_DATASET_THRESHOLD: ${LEARNING_DATASET_THRESHOLD:-1000}
+      # Hybrid mode settings
+      LOCAL_CONFIDENCE_THRESHOLD: ${LOCAL_CONFIDENCE_THRESHOLD:-0.7}
+      HIGH_VALUE_THRESHOLD: ${HIGH_VALUE_THRESHOLD:-0.7}
+      PATTERN_EXTRACTION_ENABLED: ${PATTERN_EXTRACTION_ENABLED:-true}
+      FINETUNE_DATA_PATH: /data/fine-tuning/dataset.jsonl
+      OTEL_TRACING_ENABLED: ${OTEL_TRACING_ENABLED:-true}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
+    volumes:
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/hybrid-coordinator:/data:Z,U
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/telemetry:/data/telemetry:Z,U
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/fine-tuning:/data/fine-tuning:Z,U
+    secrets:
+      - source: stack_api_key
+        target: stack_api_key
+        mode: 0400
+    depends_on:
+      qdrant:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      embeddings:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:8092/health', timeout=5); body=r.read().decode(); import sys; sys.exit(0 if '\"status\"' in body else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+        limits:
+          cpus: '2.0'
+          memory: 1536M
+    cpus: '2.0'
+    mem_limit: 1536M
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=hybrid-coordinator"
+
+  # ============================================================================
+  # NixOS Documentation MCP Server - Centralized Nix/NixOS Knowledge Base
+  # ============================================================================
+  nixos-docs:
+    build:
+      context: ../mcp-servers
+      dockerfile: nixos-docs/Dockerfile
+    container_name: local-ai-nixos-docs
+    restart: unless-stopped
+    # profiles: ["full"]  # Removed - enabled by default for agentic workflow
+    expose:
+      - "8094"
+    environment:
+      # Redis connection
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      NIXOS_DOCS_API_KEY_FILE: /run/secrets/stack_api_key
+      # Cache configuration
+      NIXOS_CACHE_DIR: /data/cache
+      NIXOS_REPOS_DIR: /data/repos
+      NIXOS_CACHE_TTL: ${NIXOS_CACHE_TTL:-86400}
+      OTEL_TRACING_ENABLED: ${OTEL_TRACING_ENABLED:-true}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
+    volumes:
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/nixos-docs:/data:Z
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/nixos-repos:/data/repos:Z
+    secrets:
+      - source: stack_api_key
+        target: stack_api_key
+        mode: 0400
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:8094/health', timeout=5); r.read(); import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+        limits:
+          cpus: '2.0'
+          memory: 4G
+    cpus: '2.0'
+    mem_limit: 4G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=nixos-docs"
+
+  # ============================================================================
+  # Aider - AI Pair Programming with Git Integration (Optional - use profile)
+  # ============================================================================
+  aider:
+    image: docker.io/paulgauthier/aider@sha256:c315ff23cd5242d8e1a6f20de610cb844c86e566714b5f3098d873e74b226ac9
+    container_name: local-ai-aider
+    pull_policy: missing
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8093:8093"
+    # profiles: ["agents", "full"]  # Enabled by default for agentic workflow
+    environment:
+      OPENAI_API_BASE_URL: http://llama-cpp:8080/v1
+      OPENAI_API_KEY: llama-cpp
+      AIDER_MODEL: ${AIDER_MODEL:-qwen2.5-coder-7b-instruct}
+      AIDER_AUTO_COMMITS: ${AIDER_AUTO_COMMITS:-true}
+      AIDER_GIT_DRY_RUN: ${AIDER_GIT_DRY_RUN:-false}
+      AIDER_PORT: 8093
+    volumes:
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/aider:/data:Z
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/workspace:/workspace:Z
+    working_dir: /workspace
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+        limits:
+          cpus: '2.0'
+          memory: 2G
+    cpus: '2.0'
+    mem_limit: 2G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=aider"
+
+  # ============================================================================
+  # NOTE: Continue, Goose, and LangChain services removed (unused)
+  # VSCode Continue extension uses llama.cpp directly at port 8080
+  # Ralph Wiggum uses aider+autogpt as backends (sufficient for autonomous coding)
+  # ============================================================================
+
+  # ============================================================================
+  # AutoGPT - Autonomous Goal Decomposition Agent (Optional - use profile)
+  # ============================================================================
+  autogpt:
+    image: docker.io/significantgravitas/auto-gpt@sha256:6abda195ed28cc223138002ef457ffa407f510bc1da7d750583697ae4bf5b39f
+    container_name: local-ai-autogpt
+    pull_policy: missing
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8097:8097"
+    # profiles: ["agents", "full"]  # Enabled by default for agentic workflow
+    environment:
+      OPENAI_API_BASE: http://llama-cpp:8080/v1
+      OPENAI_API_KEY: llama-cpp
+      AUTOGPT_MODEL: ${AUTOGPT_MODEL:-qwen2.5-coder-7b-instruct}
+      AUTOGPT_PORT: 8097
+      MEMORY_BACKEND: ${AUTOGPT_MEMORY_BACKEND:-redis}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      WORKSPACE_PATH: /workspace
+      EXECUTE_LOCAL_COMMANDS: ${AUTOGPT_EXECUTE_COMMANDS:-true}
+    volumes:
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/autogpt:/data:Z
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/workspace:/workspace:Z
+    working_dir: /workspace
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+        limits:
+          cpus: '2.0'
+          memory: 4G
+    cpus: '2.0'
+    mem_limit: 4G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=autogpt"
+
+  # ============================================================================
+  # Health Monitor - Self-Healing Infrastructure (opt-in)
+  # ============================================================================
+  health-monitor:
+    build:
+      context: ../mcp-servers
+      dockerfile: health-monitor/Dockerfile
+    container_name: local-ai-health-monitor
+    restart: unless-stopped
+    profiles: ["self-heal"]
+    environment:
+      SELF_HEALING_ENABLED: ${SELF_HEALING_ENABLED:-true}
+      SELF_HEALING_CHECK_INTERVAL: ${SELF_HEALING_CHECK_INTERVAL:-30}
+      SELF_HEALING_COOLDOWN: ${SELF_HEALING_COOLDOWN:-60}
+      QDRANT_URL: http://qdrant:6333
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-mcp}
+      POSTGRES_USER: ${POSTGRES_USER:-mcp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/health-monitor:/data:Z
+      - /var/run/podman/podman.sock:/var/run/docker.sock:Z  # For container management
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      aidb:
+        condition: service_healthy
+      hybrid-coordinator:
+        condition: service_healthy
+    privileged: true  # Required for podman container management (opt-in via profile)
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+        limits:
+          cpus: '1.0'
+          memory: 1G
+    cpus: '1.0'
+    mem_limit: 1G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=health-monitor"
+      - "nixos.quick-deploy.self-healing=enabled"
+
+  # ============================================================================
+  # Prometheus - Metrics Collection
+  # ============================================================================
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    container_name: local-ai-prometheus
+    restart: unless-stopped
+    # profiles: ["full"]  # Removed - enabled by default for agentic workflow
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/prometheus:/prometheus:Z,U
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+    depends_on:
+      aidb:
+        condition: service_healthy
+      embeddings:
+        condition: service_healthy
+      hybrid-coordinator:
+        condition: service_healthy
+      nixos-docs:
+        condition: service_healthy
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=prometheus"
+
+  # ============================================================================
+  # Grafana - Metrics Visualization
+  # ============================================================================
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: local-ai-grafana
+    restart: unless-stopped
+    env_file: *ai_stack_env
+    # profiles: ["full"]  # Removed - enabled by default for agentic workflow
+    ports:
+      - "127.0.0.1:3002:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?set GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/grafana:/var/lib/grafana:Z,U
+    depends_on:
+      prometheus:
+        condition: service_started
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=grafana"
+
+  # ============================================================================
+  # Ralph Wiggum Loop - Continuous Autonomous Agent Orchestrator
+  # ============================================================================
+  aider-wrapper:
+    build:
+      context: ../mcp-servers
+      dockerfile: aider-wrapper/Dockerfile
+    container_name: local-ai-aider-wrapper
+    # profiles: ["full"]  # Removed - enabled by default for agentic workflow
+    restart: unless-stopped
+    environment:
+      AIDER_WRAPPER_PORT: 8099
+      PYTHONUNBUFFERED: 1
+    volumes:
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/workspace:/workspace:Z
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+        limits:
+          cpus: '2.0'
+          memory: 2G
+    cpus: '2.0'
+    mem_limit: 2G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=aider-wrapper"
+      - "nixos.quick-deploy.agent-backend=aider"
+
+  ralph-wiggum:
+    build:
+      context: ../mcp-servers
+      dockerfile: ralph-wiggum/Dockerfile
+    container_name: local-ai-ralph-wiggum
+    # profiles: ["full"]  # Removed - enabled by default for agentic workflow
+    env_file: *ai_stack_env
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8098:8098"
+    # profiles: ["agents", "full"]  # Disabled - now starts by default for agentic workflow
+    environment:
+      RALPH_MCP_SERVER_PORT: 8098
+      RALPH_LOOP_ENABLED: ${RALPH_LOOP_ENABLED:-true}
+      RALPH_EXIT_CODE_BLOCK: ${RALPH_EXIT_CODE_BLOCK:-2}
+      RALPH_MAX_ITERATIONS: ${RALPH_MAX_ITERATIONS:-0}  # 0 = infinite
+      RALPH_CONTEXT_RECOVERY: ${RALPH_CONTEXT_RECOVERY:-true}
+      RALPH_GIT_INTEGRATION: ${RALPH_GIT_INTEGRATION:-true}
+      RALPH_STATE_FILE: /data/ralph-state.json
+      RALPH_TELEMETRY_PATH: /data/telemetry/ralph-events.jsonl
+      RALPH_POSTGRES_HOST: postgres
+      RALPH_POSTGRES_PORT: 5432
+      RALPH_POSTGRES_DB: ${POSTGRES_DB:-mcp}
+      RALPH_POSTGRES_USER: ${POSTGRES_USER:-mcp}
+      RALPH_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      RALPH_REDIS_HOST: redis
+      RALPH_REDIS_PORT: 6379
+      RALPH_AGENT_BACKENDS: aider,autogpt
+      RALPH_DEFAULT_BACKEND: ${RALPH_DEFAULT_BACKEND:-aider}
+      RALPH_COORDINATOR_URL: http://hybrid-coordinator:8092
+      RALPH_AIDB_URL: http://aidb:8091
+      # Human-in-the-Loop controls
+      RALPH_REQUIRE_APPROVAL: ${RALPH_REQUIRE_APPROVAL:-false}
+      RALPH_APPROVAL_THRESHOLD: ${RALPH_APPROVAL_THRESHOLD:-high}  # low, medium, high
+      RALPH_AUDIT_LOG: ${RALPH_AUDIT_LOG:-true}
+    volumes:
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/ralph-wiggum:/data:Z
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/telemetry:/data/telemetry:Z
+      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/workspace:/workspace:Z
+      - /var/run/podman/podman.sock:/var/run/docker.sock:Z  # For container orchestration
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      aidb:
+        condition: service_healthy
+      hybrid-coordinator:
+        condition: service_healthy
+      aider-wrapper:
+        condition: service_started
+    working_dir: /workspace
+    deploy:
+      resources:
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+        limits:
+          cpus: '4.0'
+          memory: 8G
+    cpus: '4.0'
+    mem_limit: 8G
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=ralph-wiggum"
+      - "nixos.quick-deploy.ralph-loop=orchestrator"
+
+  dashboard-api:
+    build:
+      context: ../../dashboard/backend
+      dockerfile: Dockerfile
+    container_name: local-ai-dashboard-api
+    hostname: dashboard-api
+    ports:
+      - "127.0.0.1:8889:8889"
+    networks:
+      - default
+    depends_on:
+      aidb:
+        condition: service_healthy
+      hybrid-coordinator:
+        condition: service_healthy
+      ralph-wiggum:
+        condition: service_started
+      qdrant:
+        condition: service_started
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=dashboard-api"
+
+  container-engine:
+    build:
+      context: ../mcp-servers
+      dockerfile: container-engine/Dockerfile
+    container_name: local-ai-container-engine
+    hostname: container-engine
+    expose:
+      - "8095"
+    networks:
+      - default
+    volumes:
+      - /var/run/podman/podman.sock:/var/run/podman/podman.sock:Z
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8095/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=container-engine-mcp"
+
+networks:
+  default:
+    name: local-ai
+
+volumes:
+  # Named volumes managed by compose
+  qdrant-data:
+  llama-cpp-models:
+  open-webui-data:
+  postgres-data:
+  redis-data:
+  mindsdb-data:
+
+secrets:
+  stack_api_key:
+    file: ./secrets/stack_api_key

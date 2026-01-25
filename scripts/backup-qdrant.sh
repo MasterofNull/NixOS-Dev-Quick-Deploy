@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Qdrant Vector Database Automated Backup Script
 # Supports collection snapshots, verification, and restoration
 
@@ -23,7 +23,7 @@ METRICS_FILE="${METRICS_FILE:-/var/lib/node_exporter/textfile_collector/qdrant_b
 LOG_FILE="${LOG_FILE:-/var/log/qdrant-backup.log}"
 
 log() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE" >&2
 }
 
 error() {
@@ -192,15 +192,28 @@ verify_backup() {
     local backup_file="$1"
     log "Verifying backup: $backup_file"
 
-    # Check if file is a valid tar archive (Qdrant snapshots are tar.gz)
-    if ! tar -tzf "$backup_file" > /dev/null 2>&1; then
-        error "Backup verification failed: not a valid tar archive"
+    # Check if file is a valid tar archive (Qdrant snapshots may be tar or tar.gz)
+    if ! tar -tf "$backup_file" > /dev/null 2>&1; then
+        if ! tar -tzf "$backup_file" > /dev/null 2>&1; then
+            error "Backup verification failed: not a valid tar archive"
+            update_metrics "verification" "$backup_file" 0 0 "failed"
+            return 1
+        fi
+    fi
+
+    # Check if contains expected files
+    local tar_list
+    if tar_list=$(tar -tf "$backup_file" 2>/dev/null); then
+        :
+    elif tar_list=$(tar -tzf "$backup_file" 2>/dev/null); then
+        :
+    else
+        error "Backup verification failed: cannot list snapshot contents"
         update_metrics "verification" "$backup_file" 0 0 "failed"
         return 1
     fi
 
-    # Check if contains expected files
-    if ! tar -tzf "$backup_file" | grep -q "collection.json\|segments"; then
+    if ! echo "$tar_list" | grep -q "collection.json\|segments"; then
         error "Backup verification failed: missing collection data"
         update_metrics "verification" "$backup_file" 0 0 "failed"
         return 1

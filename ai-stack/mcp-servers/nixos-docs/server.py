@@ -12,6 +12,7 @@ Features:
 """
 
 import os
+import sys
 import json
 import asyncio
 import hashlib
@@ -23,8 +24,12 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Depends
 from fastapi.responses import JSONResponse, Response
+
+# Add parent directory to path for shared imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from shared.auth_middleware import get_api_key_dependency
 from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from pydantic import BaseModel, Field
 from opentelemetry import trace
@@ -96,6 +101,23 @@ def configure_tracing() -> None:
 
 configure_logging()
 configure_tracing()
+
+# Load API key from secret file
+def load_api_key() -> Optional[str]:
+    """Load API key from Docker secret file"""
+    secret_file = os.environ.get("NIXOS_DOCS_API_KEY_FILE", "/run/secrets/nixos_docs_api_key")
+    if Path(secret_file).exists():
+        return Path(secret_file).read_text().strip()
+    # Fallback to environment variable for development
+    return os.environ.get("NIXOS_DOCS_API_KEY")
+
+# Initialize authentication dependency
+api_key = load_api_key()
+require_auth = get_api_key_dependency(
+    service_name="nixos-docs",
+    expected_key=api_key,
+    optional=not api_key  # If no key configured, allow unauthenticated (dev mode)
+)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -556,7 +578,7 @@ async def metrics():
 
 
 @app.post("/search")
-async def search_documentation(request: SearchRequest):
+async def search_documentation(request: SearchRequest, auth: str = Depends(require_auth)):
     """Search across all NixOS documentation sources"""
     results = []
 
@@ -576,7 +598,7 @@ async def search_documentation(request: SearchRequest):
 
 
 @app.post("/packages/search")
-async def search_packages(request: PackageSearchRequest):
+async def search_packages(request: PackageSearchRequest, auth: str = Depends(require_auth)):
     """Search NixOS packages"""
     packages = await search_nixos_packages(request.name, request.channel)
 
@@ -589,7 +611,7 @@ async def search_packages(request: PackageSearchRequest):
 
 
 @app.post("/options/search")
-async def search_options(request: OptionSearchRequest):
+async def search_options(request: OptionSearchRequest, auth: str = Depends(require_auth)):
     """Search NixOS configuration options"""
     options = await search_nixos_options(request.option)
 
@@ -601,7 +623,7 @@ async def search_options(request: OptionSearchRequest):
 
 
 @app.get("/sources")
-async def list_sources():
+async def list_sources(auth: str = Depends(require_auth)):
     """List all available documentation sources"""
     sources = []
     for key, info in DOCUMENTATION_SOURCES.items():
@@ -618,7 +640,7 @@ async def list_sources():
 
 
 @app.post("/sync")
-async def sync_repositories():
+async def sync_repositories(auth: str = Depends(require_auth)):
     """Sync all git repositories"""
     results = {}
 
@@ -634,7 +656,7 @@ async def sync_repositories():
 
 
 @app.get("/cache/stats")
-async def cache_stats():
+async def cache_stats(auth: str = Depends(require_auth)):
     """Get cache statistics"""
     stats = {
         "disk_cache": {

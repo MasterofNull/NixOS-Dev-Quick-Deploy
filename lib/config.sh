@@ -4048,7 +4048,7 @@ EOF
     replace_placeholder "$HOME_MANAGER_FILE" "LOCAL_AI_STACK_ENABLED_PLACEHOLDER" "${LOCAL_AI_STACK_ENABLED:-false}"
     replace_placeholder "$HOME_MANAGER_FILE" "LLM_BACKEND_PLACEHOLDER" "$(nix_quote_string "${LLM_BACKEND:-llama_cpp}")"
     replace_placeholder "$HOME_MANAGER_FILE" "LLM_MODELS_PLACEHOLDER" "$(nix_quote_string "${LLM_MODELS:-qwen3-4b,sentence-transformers/all-MiniLM-L6-v2}")"
-    replace_placeholder "$HOME_MANAGER_FILE" "NIXOS_QUICK_DEPLOY_ROOT_PLACEHOLDER" "$(nix_quote_string "$SCRIPT_DIR")"
+    replace_placeholder "$HOME_MANAGER_FILE" "NIXOS_QUICK_DEPLOY_ROOT_PLACEHOLDER" "$SCRIPT_DIR"
     replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_MODEL_ID_PLACEHOLDER" "$(nix_quote_string "$huggingface_model_id")"
     replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_SCOUT_MODEL_ID_PLACEHOLDER" "$(nix_quote_string "$huggingface_scout_model_id")"
     replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_TGI_ENDPOINT_PLACEHOLDER" "$(nix_quote_string "$huggingface_tgi_endpoint")"

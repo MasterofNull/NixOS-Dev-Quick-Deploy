@@ -1,0 +1,12 @@
+{
+  "prompt": "Implement learning-based optimization proposal system in ai-stack/mcp-servers/hybrid-coordinator/continuous_learning.py. Add analyze_and_propose_optimizations() function that: (1) Reads telemetry from ~/.local/share/nixos-ai-stack/telemetry/ralph-events.jsonl, (2) Detects patterns: tasks hitting max_iterations >80% of limit (optimization needed), common error patterns (>3 occurrences), timeout issues (>5s response times), (3) Generates optimization proposals as Ralph task JSON with require_approval=True. Add extract_failure_patterns() to group similar errors using fuzzy matching. When pattern detected, auto-submit optimization task to Ralph API at http://ralph-wiggum:8098/tasks with prompt describing the fix. Log all proposals to telemetry. Run analysis every LEARNING_PROCESSING_INTERVAL (3600s). Add tests verifying pattern detection and task generation.",
+  "backend": "aider",
+  "max_iterations": 45,
+  "require_approval": false,
+  "context": {
+    "purpose": "System self-optimizes by analyzing telemetry patterns",
+    "location": "ai-stack/mcp-servers/hybrid-coordinator/continuous_learning.py",
+    "patterns": ["high iteration exhaustion", "common failures", "timeout issues"],
+    "files": ["ai-stack/mcp-servers/hybrid-coordinator/continuous_learning.py"]
+  }
+}

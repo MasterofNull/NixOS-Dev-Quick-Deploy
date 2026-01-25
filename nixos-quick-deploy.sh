@@ -933,40 +933,66 @@ handle_phase_failure() {
         return 0
     fi
 
-    # Interactive failure handling
-    echo "What would you like to do?"
-    echo "  1) Retry this phase"
-    echo "  2) Skip and continue"
-    echo "  3) Rollback"
-    echo "  4) Exit"
-    echo ""
-    read -p "Choice [1-4]: " choice
+    # Interactive failure handling (repeat until user resolves or exits)
+    while true; do
+        echo "What would you like to do?"
+        echo "  1) Retry this phase (regenerate configs)"
+        echo "  2) Skip and continue"
+        echo "  3) Rollback"
+        echo "  4) Exit"
+        echo ""
+        read -p "Choice [1-4]: " choice
 
-    case "$choice" in
-        1)
-            log INFO "User chose to retry phase $phase_num"
-            execute_phase "$phase_num"
-            return $?
-            ;;
-        2)
-            log WARNING "User chose to skip phase $phase_num"
-            print_warning "Skipping phase $phase_num"
-            return 0
-            ;;
-        3)
-            log INFO "User chose to rollback"
-            ROLLBACK_IN_PROGRESS=true
-            export ROLLBACK_IN_PROGRESS
-            perform_rollback
-            exit $?
-            ;;
-        4|*)
-            log INFO "User chose to exit"
-            AUTO_ROLLBACK_SUPPRESSED=true
-            export AUTO_ROLLBACK_SUPPRESSED
-            exit 1
-            ;;
-    esac
+        case "$choice" in
+            1)
+                log INFO "User chose to retry phase $phase_num"
+                if [[ "$phase_num" -ge 3 ]]; then
+                    print_section "Regenerating configurations before retry"
+                    if declare -F ensure_user_settings_ready >/dev/null 2>&1; then
+                        if ! ensure_user_settings_ready --noninteractive; then
+                            print_error "Failed to confirm user settings for regeneration"
+                            continue
+                        fi
+                    fi
+                    if declare -F generate_nixos_system_config >/dev/null 2>&1; then
+                        if ! generate_nixos_system_config; then
+                            print_error "Failed to regenerate NixOS system configuration"
+                            continue
+                        fi
+                    fi
+                    if declare -F create_home_manager_config >/dev/null 2>&1; then
+                        if ! create_home_manager_config; then
+                            print_error "Failed to regenerate home-manager configuration"
+                            continue
+                        fi
+                    fi
+                    print_success "Configuration regeneration complete"
+                fi
+                if execute_phase "$phase_num"; then
+                    return 0
+                fi
+                print_warning "Phase $phase_num still failing; choose next action"
+                ;;
+            2)
+                log WARNING "User chose to skip phase $phase_num"
+                print_warning "Skipping phase $phase_num"
+                return 0
+                ;;
+            3)
+                log INFO "User chose to rollback"
+                ROLLBACK_IN_PROGRESS=true
+                export ROLLBACK_IN_PROGRESS
+                perform_rollback
+                exit $?
+                ;;
+            4|*)
+                log INFO "User chose to exit"
+                AUTO_ROLLBACK_SUPPRESSED=true
+                export AUTO_ROLLBACK_SUPPRESSED
+                exit 1
+                ;;
+        esac
+    done
 }
 
 # ============================================================================

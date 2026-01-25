@@ -6,7 +6,7 @@
 set -euo pipefail
 
 QDRANT_URL="${QDRANT_URL:-http://localhost:6333}"
-EMBEDDING_MODEL="${EMBEDDING_MODEL:-nomic-embed-text}"
+EMBEDDING_MODEL="${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5}"
 VECTOR_SIZE=768  # nomic-embed-text dimension
 
 # Colors for output

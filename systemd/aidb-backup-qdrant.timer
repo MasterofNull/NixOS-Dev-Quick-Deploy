@@ -1,0 +1,21 @@
+[Unit]
+Description=AIDB Qdrant Backup Timer
+Documentation=https://qdrant.tech/documentation/guides/backup/
+Requires=aidb-backup-qdrant.service
+
+[Timer]
+# Run daily at 3:00 AM local time (1 hour after PostgreSQL backup)
+OnCalendar=daily
+OnCalendar=*-*-* 03:00:00
+
+# If system was off at scheduled time, run shortly after boot
+Persistent=true
+
+# Add random delay of 0-300 seconds to prevent conflicts
+RandomizedDelaySec=300
+
+# Ensure timer is accurate
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

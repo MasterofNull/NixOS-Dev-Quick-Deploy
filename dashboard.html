@@ -846,6 +846,9 @@
                 <div class="header-meta-item">
                     <span>🖥️ HOST: <span id="hostname" class="copyable">localhost</span></span>
                 </div>
+                <div class="header-meta-item">
+                    <span>🧭 MODE: <span id="runtimeMode" class="copyable">unknown</span></span>
+                </div>
             </div>
             <div class="health-score">
                 <div class="health-score-label">System Health</div>
@@ -859,14 +862,14 @@
             <button class="export-btn" onclick="exportData()">⬇ Export JSON for AI</button>
         </div>
 
-        <div class="dashboard-grid">
+            <div class="dashboard-grid">
             <!-- System Overview -->
             <div class="dashboard-section full-width">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
                             <span class="collapsible-arrow">▼</span>
-                            <h2 class="card-title">System Overview</h2>
+                            <h2 class="card-title">System Overview (Host)</h2>
                         </div>
                         <span class="card-badge">Core Metrics</span>
                     </div>
@@ -1031,6 +1034,88 @@
                 </div>
             </div>
 
+            <!-- Container System Overview -->
+            <div class="dashboard-section full-width">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">System Overview (Container)</h2>
+                        </div>
+                        <span class="card-badge">Pod Metrics</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="hardware-grid">
+                            <div class="hardware-block">
+                                <div>
+                                    <div class="hardware-title">CPU</div>
+                                    <div class="hardware-metrics">
+                                        <div class="metric">
+                                            <div class="metric-label">CPU Usage</div>
+                                            <div class="metric-value" id="containerCpuUsage">--<span class="metric-unit">%</span></div>
+                                        </div>
+                                        <div class="metric">
+                                            <div class="metric-label">CPU Model</div>
+                                            <div class="metric-value" id="containerCpuModel">--</div>
+                                        </div>
+                                        <div class="metric">
+                                            <div class="metric-label">CPU Temp</div>
+                                            <div class="metric-value" id="containerCpuTemp">--</div>
+                                        </div>
+                                        <div class="metric">
+                                            <div class="metric-label">Load Avg</div>
+                                            <div class="metric-value copyable" id="containerLoadAvg">--</div>
+                                        </div>
+                                        <div class="metric">
+                                            <div class="metric-label">Arch</div>
+                                            <div class="metric-value" id="containerCpuArch">--</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="hardware-title">Memory</div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" id="containerMemoryBar" style="width: 0%"></div>
+                                    </div>
+                                    <div class="progress-labels">
+                                        <span>Used: <span id="containerMemoryUsed">--</span> GB</span>
+                                        <span>Total: <span id="containerMemoryTotal">--</span> GB</span>
+                                    </div>
+                                    <div class="metric" style="margin-top: 0.75rem;">
+                                        <div class="metric-label">Memory %</div>
+                                        <div class="metric-value" id="containerMemoryPercent">--</div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="hardware-title">Storage</div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill warning" id="containerDiskBar" style="width: 0%"></div>
+                                    </div>
+                                    <div class="progress-labels">
+                                        <span>Used: <span id="containerDiskUsed">--</span> GB</span>
+                                        <span>Total: <span id="containerDiskTotal">--</span> GB</span>
+                                    </div>
+                                    <div class="metric" style="margin-top: 0.75rem;">
+                                        <div class="metric-label">Disk %</div>
+                                        <div class="metric-value" id="containerDiskPercent">--</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="data-list" style="margin-top: 1rem;">
+                            <div class="data-item">
+                                <span>Container Hostname</span>
+                                <span class="data-meta" id="containerHostname">--</span>
+                            </div>
+                            <div class="data-item">
+                                <span>Container Uptime</span>
+                                <span class="data-meta" id="containerUptime">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- LLM Stack Status -->
             <div class="dashboard-section">
                 <div class="card">
@@ -1105,6 +1190,112 @@
                         <div style="margin-top: 1rem;">
                             <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Embeddings Service</div>
                             <div id="embeddingsInfo" style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AIDB Health Monitoring (P1/P2 Features) -->
+            <div class="dashboard-section">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">AIDB Health & Security</h2>
+                        </div>
+                        <span class="card-badge" id="aidbHealthBadge">P1/P2 Hardening</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <!-- Health Probes Status -->
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Kubernetes-Style Health Probes</div>
+                        <div class="status-grid" id="healthProbes">
+                            <div class="status-item">
+                                <span class="status-label">🫀 Liveness</span>
+                                <span class="status-value" id="livenessProbe">--</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">✅ Readiness</span>
+                                <span class="status-value" id="readinessProbe">--</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">🚀 Startup</span>
+                                <span class="status-value" id="startupProbe">--</span>
+                            </div>
+                        </div>
+
+                        <!-- Dependency Health -->
+                        <div style="margin-top: 1.5rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Dependency Health Checks</div>
+                            <div class="data-list" id="dependencyHealth">
+                                <div class="loading"><div class="spinner"></div></div>
+                            </div>
+                        </div>
+
+                        <!-- Security & Performance Metrics -->
+                        <div style="margin-top: 1.5rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Security & Performance (P1 Features)</div>
+                            <div class="metrics-grid">
+                                <div class="metric">
+                                    <div class="metric-label">Rate Limit</div>
+                                    <div class="metric-value" id="rateLimit">60/min</div>
+                                </div>
+                                <div class="metric">
+                                    <div class="metric-label">Query Validation</div>
+                                    <div class="metric-value" id="queryValidation">Active</div>
+                                </div>
+                                <div class="metric">
+                                    <div class="metric-label">Health Check Latency</div>
+                                    <div class="metric-value" id="healthLatency">--</div>
+                                </div>
+                                <div class="metric">
+                                    <div class="metric-label">Last Backup</div>
+                                    <div class="metric-value" id="lastBackup">--</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Quick Actions -->
+                        <div style="margin-top: 1.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            <button onclick="refreshAIDBHealth()" class="action-btn" style="background: var(--accent-cyan); color: var(--bg-primary); border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 600;">
+                                🔄 Refresh Health
+                            </button>
+                            <button onclick="viewDetailedHealth()" class="action-btn" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-primary); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">
+                                📊 Detailed Status
+                            </button>
+                            <button onclick="viewMetrics()" class="action-btn" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-primary); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">
+                                📈 Prometheus Metrics
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stack Health Aggregate -->
+            <div class="dashboard-section">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Stack Health (Aggregate)</h2>
+                        </div>
+                        <span class="card-badge" id="stackHealthBadge">Cluster Status</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="metrics-grid">
+                            <div class="metric">
+                                <div class="metric-label">Overall Status</div>
+                                <div class="metric-value" id="stackOverallStatus">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Services Checked</div>
+                                <div class="metric-value" id="stackServiceCount">--</div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Service Health</div>
+                            <div class="data-list" id="stackHealthList">
+                                <div class="loading"><div class="spinner"></div></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1454,18 +1645,223 @@
             </div>
 
             <!-- Configuration & Actions -->
-            <div class="dashboard-section">
+            <div class="dashboard-section full-width">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
                             <span class="collapsible-arrow">▼</span>
-                            <h2 class="card-title">Configuration & Actions</h2>
+                            <h2 class="card-title">System Configuration</h2>
                         </div>
-                        <span class="card-badge">Settings</span>
+                        <span class="card-badge">Adjustable</span>
                     </div>
                     <div class="collapsible-content">
-                        <div id="configList" style="margin-top: 0.5rem;">--</div>
-                        <div id="configActionStatus" style="margin-top: 1rem; font-size: 0.8rem; color: var(--text-muted);">--</div>
+                        <!-- Adjustable System Variables -->
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                            <div class="config-item">
+                                <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.9rem;">
+                                    Rate Limit (req/min)
+                                </label>
+                                <input type="number" id="rateLimitInput" value="60" min="10" max="1000"
+                                       style="width: 100%; padding: 0.5rem; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-primary); font-family: 'JetBrains Mono', monospace;">
+                            </div>
+                            <div class="config-item">
+                                <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.9rem;">
+                                    Checkpoint Interval (events)
+                                </label>
+                                <input type="number" id="checkpointIntervalInput" value="100" min="10" max="1000"
+                                       style="width: 100%; padding: 0.5rem; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-primary); font-family: 'JetBrains Mono', monospace;">
+                            </div>
+                            <div class="config-item">
+                                <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.9rem;">
+                                    Backpressure Threshold (MB)
+                                </label>
+                                <input type="number" id="backpressureThresholdInput" value="100" min="10" max="1000"
+                                       style="width: 100%; padding: 0.5rem; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-primary); font-family: 'JetBrains Mono', monospace;">
+                            </div>
+                            <div class="config-item">
+                                <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.9rem;">
+                                    Log Level
+                                </label>
+                                <select id="logLevelInput"
+                                        style="width: 100%; padding: 0.5rem; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-primary); font-family: 'JetBrains Mono', monospace;">
+                                    <option value="DEBUG">DEBUG</option>
+                                    <option value="INFO" selected>INFO</option>
+                                    <option value="WARNING">WARNING</option>
+                                    <option value="ERROR">ERROR</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Apply Configuration Button -->
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <button onclick="applyConfiguration()"
+                                    style="padding: 0.75rem 1.5rem; background: linear-gradient(135deg, var(--accent-cyan), var(--accent-magenta)); border: none; border-radius: 4px; color: var(--text-primary); font-family: 'JetBrains Mono', monospace; font-weight: 600; cursor: pointer; transition: all 0.3s ease;">
+                                Apply Configuration
+                            </button>
+                            <button onclick="resetConfiguration()"
+                                    style="padding: 0.75rem 1.5rem; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; cursor: pointer; transition: all 0.3s ease;">
+                                Reset to Defaults
+                            </button>
+                            <div id="configStatus" style="margin-left: auto; font-size: 0.85rem; color: var(--text-muted);"></div>
+                        </div>
+
+                        <!-- Current Configuration Display -->
+                        <div style="margin-top: 1.5rem; padding: 1rem; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 8px;">
+                            <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Current Active Configuration:</div>
+                            <pre id="currentConfig" style="font-size: 0.8rem; color: var(--accent-cyan); overflow-x: auto; margin: 0;">Loading...</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Learning System Status -->
+            <div class="dashboard-section full-width">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Continuous Learning Status</h2>
+                        </div>
+                        <span class="card-badge" id="learningBadge">Checking...</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;">
+                            <!-- Checkpointing Status -->
+                            <div style="padding: 1rem; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 8px;">
+                                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">Checkpointing (P2-REL-001)</div>
+                                <div id="checkpointStatus" style="font-size: 1.1rem; font-weight: 600; color: var(--accent-cyan);">--</div>
+                                <div id="checkpointDetails" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">Last checkpoint: --</div>
+                            </div>
+
+                            <!-- Backpressure Status -->
+                            <div style="padding: 1rem; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 8px;">
+                                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">Backpressure (P2-REL-004)</div>
+                                <div id="backpressureStatus" style="font-size: 1.1rem; font-weight: 600; color: var(--accent-green);">--</div>
+                                <div id="backpressureDetails" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">Unprocessed: --</div>
+                            </div>
+
+                            <!-- Deduplication Stats -->
+                            <div style="padding: 1rem; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 8px;">
+                                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">Deduplication (P6-OPS-002)</div>
+                                <div id="dedupStatus" style="font-size: 1.1rem; font-weight: 600; color: var(--accent-magenta);">--</div>
+                                <div id="dedupDetails" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">Duplicates removed: --</div>
+                            </div>
+
+                            <!-- Patterns Processed -->
+                            <div style="padding: 1rem; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 8px;">
+                                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">Patterns Processed</div>
+                                <div id="patternsStatus" style="font-size: 1.1rem; font-weight: 600; color: var(--accent-yellow);">--</div>
+                                <div id="patternsDetails" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">Total patterns: --</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Circuit Breaker Status -->
+            <div class="dashboard-section full-width">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Circuit Breakers (P2-REL-002)</h2>
+                        </div>
+                        <span class="card-badge" id="circuitBreakerBadge">Checking...</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div id="circuitBreakerList" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                            <div class="loading"><div class="spinner"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Production Hardening Progress -->
+            <div class="dashboard-section full-width">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Production Hardening Progress</h2>
+                        </div>
+                        <span class="card-badge" id="hardeningBadge">14/16 Complete (87.5%)</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div style="margin-bottom: 1.5rem;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                                <span style="font-size: 0.9rem; color: var(--text-secondary);">Overall Progress</span>
+                                <span style="font-size: 0.9rem; font-weight: 600; color: var(--accent-cyan);">87.5%</span>
+                            </div>
+                            <div style="height: 8px; background: var(--bg-secondary); border-radius: 4px; overflow: hidden;">
+                                <div style="height: 100%; width: 87.5%; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-magenta)); transition: width 0.5s ease;"></div>
+                            </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+                            <!-- P1: Security (3/3) -->
+                            <div style="padding: 1rem; background: var(--bg-secondary); border-left: 3px solid var(--status-online); border-radius: 4px;">
+                                <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">P1: Security ✅</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                                    • Dashboard Authentication<br>
+                                    • Rate Limiting<br>
+                                    • Input Validation
+                                </div>
+                                <div style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--status-online);">3/3 Complete</div>
+                            </div>
+
+                            <!-- P2: Reliability (4/4) -->
+                            <div style="padding: 1rem; background: var(--bg-secondary); border-left: 3px solid var(--status-online); border-radius: 4px;">
+                                <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">P2: Reliability ✅</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                                    • Checkpointing<br>
+                                    • Circuit Breakers<br>
+                                    • File Locking<br>
+                                    • Backpressure
+                                </div>
+                                <div style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--status-online);">4/4 Complete</div>
+                            </div>
+
+                            <!-- P3: Performance (1/3) -->
+                            <div style="padding: 1rem; background: var(--bg-secondary); border-left: 3px solid var(--status-warning); border-radius: 4px;">
+                                <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">P3: Performance ⏳</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                                    • Query optimization<br>
+                                    • Connection pooling<br>
+                                    • Resource limits ✅
+                                </div>
+                                <div style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--status-warning);">1/3 Complete</div>
+                            </div>
+
+                            <!-- P4: Orchestration (2/2) -->
+                            <div style="padding: 1rem; background: var(--bg-secondary); border-left: 3px solid var(--status-online); border-radius: 4px;">
+                                <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">P4: Orchestration ✅</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                                    • Nested orchestration ✅<br>
+                                    • Agent health checks ✅
+                                </div>
+                                <div style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--status-online);">2/2 Complete</div>
+                            </div>
+
+                            <!-- P5: Monitoring (1/1) -->
+                            <div style="padding: 1rem; background: var(--bg-secondary); border-left: 3px solid var(--status-online); border-radius: 4px;">
+                                <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">P5: Monitoring ✅</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                                    • Metrics aggregation ✅
+                                </div>
+                                <div style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--status-online);">1/1 Complete</div>
+                            </div>
+
+                            <!-- P6: Operations (3/3) -->
+                            <div style="padding: 1rem; background: var(--bg-secondary); border-left: 3px solid var(--status-online); border-radius: 4px;">
+                                <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">P6: Operations ✅</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                                    • Telemetry rotation<br>
+                                    • Dataset deduplication<br>
+                                    • Automated backups
+                                </div>
+                                <div style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--status-online);">3/3 Complete</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1658,6 +2054,9 @@
             // Load initial data
             loadData(); // Initial full load (AI stack, containers, etc.)
             loadServices(); // Load services from FastAPI backend
+            updateRuntimeMode();
+            detectHostMetrics();
+            loadStackHealth();
 
             // Connect WebSocket for real-time metrics (2-second updates)
             connectMetricsWebSocket();
@@ -1670,6 +2069,9 @@
 
             // Refresh services every 10 seconds
             setInterval(loadServices, 10000);
+            setInterval(updateRuntimeMode, 30000);
+            // Refresh stack health every 15 seconds
+            setInterval(loadStackHealth, 15000);
         });
 
         // Initialize Chart.js
@@ -2355,12 +2757,18 @@
             const qdrant = data.services.qdrant || { metrics: {} };
             const llamaCpp = data.services.llama_cpp || { status: 'unknown' };
             const embeddings = data.services.embeddings || { status: 'unknown' };
+            const aidbStatus = (aidb.status || 'offline').toString().toLowerCase();
+            const aidbOnline = ['online', 'ok', 'healthy'].includes(aidbStatus);
+            const llamaStatus = (llamaCpp.status || 'unknown').toString().toLowerCase();
+            const llamaOnline = ['ok', 'healthy'].includes(llamaStatus);
+            const embeddingsStatus = (embeddings.status || 'unknown').toString().toLowerCase();
+            const embeddingsOnline = ['ok', 'healthy'].includes(embeddingsStatus);
 
             const items = [
                 {
                     label: 'AIDB MCP',
-                    value: aidb.status.toUpperCase(),
-                    status: aidb.status === 'online' ? 'online' : 'offline'
+                    value: aidbStatus.toUpperCase(),
+                    status: aidbOnline ? 'online' : 'offline'
                 },
                 {
                     label: 'Qdrant Vector DB',
@@ -2369,13 +2777,13 @@
                 },
                 {
                     label: 'llama.cpp Inference',
-                    value: llamaCpp.status === 'ok' ? 'ONLINE' : llamaCpp.status.toUpperCase(),
-                    status: llamaCpp.status === 'ok' ? 'online' : 'warning'
+                    value: llamaOnline ? 'ONLINE' : llamaStatus.toUpperCase(),
+                    status: llamaOnline ? 'online' : 'warning'
                 },
                 {
                     label: 'Embeddings Service',
-                    value: embeddings.status === 'ok' ? 'ONLINE' : embeddings.status.toUpperCase(),
-                    status: embeddings.status === 'ok' ? 'online' : 'warning'
+                    value: embeddingsOnline ? 'ONLINE' : embeddingsStatus.toUpperCase(),
+                    status: embeddingsOnline ? 'online' : 'warning'
                 }
             ];
 
@@ -3091,6 +3499,7 @@
 
         let metricsWebSocket = null;
         let useWebSocketMetrics = true;
+        let useHostMetrics = false;
         let lastNetworkSample = null;
 
         function connectMetricsWebSocket() {
@@ -3148,6 +3557,10 @@
             }
 
             try {
+                if (useHostMetrics) {
+                    await loadSystemMetricsOnly();
+                    return;
+                }
                 const metrics = await fetch(`${FASTAPI_BASE}/api/metrics/system`).then(r => r.json());
                 updateSystemMetricsFromAPI(metrics);
             } catch (error) {
@@ -3157,7 +3570,50 @@
             }
         }
 
+        async function detectHostMetrics() {
+            try {
+                const response = await fetch('/data/system.json', { cache: 'no-store' });
+                useHostMetrics = response.ok;
+            } catch (err) {
+                useHostMetrics = false;
+            }
+        }
+
         function updateSystemMetricsFromAPI(metrics) {
+            // Container metrics: update container panel
+            const cCpuUsage = metrics.cpu.usage_percent;
+            const cMemPercent = metrics.memory.percent;
+            const cDiskPercent = metrics.disk.percent;
+            const cMemUsedGB = (metrics.memory.used / (1024**3)).toFixed(2);
+            const cMemTotalGB = (metrics.memory.total / (1024**3)).toFixed(2);
+            const cDiskUsedGB = (metrics.disk.used / (1024**3)).toFixed(1);
+            const cDiskTotalGB = (metrics.disk.total / (1024**3)).toFixed(1);
+
+            const setText = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = value;
+            };
+            const setWidth = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) el.style.width = value;
+            };
+
+            setText('containerCpuUsage', cCpuUsage.toFixed(1));
+            setText('containerCpuModel', metrics.cpu.model || 'Unknown');
+            setText('containerCpuTemp', metrics.cpu.temperature || 'N/A');
+            setText('containerCpuArch', metrics.cpu.arch || 'N/A');
+            setText('containerLoadAvg', metrics.load_average || 'N/A');
+            setText('containerMemoryPercent', cMemPercent.toFixed(1) + ' %');
+            setWidth('containerMemoryBar', cMemPercent + '%');
+            setText('containerMemoryUsed', cMemUsedGB);
+            setText('containerMemoryTotal', cMemTotalGB);
+            setText('containerDiskPercent', cDiskPercent.toFixed(1) + ' %');
+            setWidth('containerDiskBar', cDiskPercent + '%');
+            setText('containerDiskUsed', cDiskUsedGB);
+            setText('containerDiskTotal', cDiskTotalGB + ' GB');
+            setText('containerHostname', metrics.hostname || 'N/A');
+            setText('containerUptime', formatUptime(metrics.uptime));
+
             // Update CPU
             const cpuUsage = metrics.cpu.usage_percent;
             document.getElementById('cpuUsage').textContent = cpuUsage.toFixed(1);
@@ -3228,11 +3684,56 @@
                 status.textContent = 'Refreshing...';
             }
             await loadData();
+            await updateRuntimeMode();
+            await loadStackHealth();
             if (status) {
                 status.textContent = 'Updated';
                 setTimeout(() => {
                     status.textContent = '';
                 }, 2000);
+            }
+        }
+
+        async function loadStackHealth() {
+            const list = document.getElementById('stackHealthList');
+            const overall = document.getElementById('stackOverallStatus');
+            const count = document.getElementById('stackServiceCount');
+            const badge = document.getElementById('stackHealthBadge');
+
+            if (!list || !overall || !count || !badge) return;
+
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/health/aggregate`, { cache: 'no-store' });
+                if (!response.ok) throw new Error('aggregate health failed');
+                const data = await response.json();
+
+                const services = data.services || {};
+                const entries = Object.entries(services);
+
+                overall.textContent = data.overall_status || '--';
+                count.textContent = String(entries.length);
+
+                if (data.overall_status === 'healthy') {
+                    badge.style.background = 'var(--status-online)';
+                } else if (data.overall_status === 'degraded') {
+                    badge.style.background = 'var(--status-warning)';
+                } else {
+                    badge.style.background = 'var(--status-error)';
+                }
+
+                list.innerHTML = entries.map(([name, info]) => {
+                    const status = info?.status || 'unknown';
+                    const statusClass = status === 'healthy' ? 'status-online' :
+                                      status === 'degraded' ? 'status-warning' : 'status-offline';
+                    return `<div class="data-item">
+                        <span>${name}</span>
+                        <span class="data-meta ${statusClass}">${status}</span>
+                    </div>`;
+                }).join('');
+            } catch (err) {
+                overall.textContent = '--';
+                count.textContent = '--';
+                list.innerHTML = '<div class="data-item"><span>Stack health</span><span class="data-meta status-offline">unavailable</span></div>';
             }
         }
 
@@ -3261,6 +3762,26 @@
                 return `${timestamp} (STALE ${Math.round(diffMinutes)}m)`;
             }
             return timestamp;
+        }
+
+        async function updateRuntimeMode() {
+            const modeElement = document.getElementById('runtimeMode');
+            if (!modeElement) return;
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/services`, { cache: 'no-store' });
+                if (!response.ok) throw new Error('services fetch failed');
+                const services = await response.json();
+                const modes = new Set((services || []).map((s) => s.type));
+                if (modes.has('k8s')) {
+                    modeElement.textContent = 'k8s (cluster)';
+                } else if (modes.has('container') || modes.has('systemd')) {
+                    modeElement.textContent = 'podman/local';
+                } else {
+                    modeElement.textContent = 'unknown';
+                }
+            } catch (err) {
+                modeElement.textContent = 'api offline';
+            }
         }
 
         // Collapsible sections
@@ -3412,6 +3933,411 @@
                 restartBtn.disabled = false;
             }
         }
+
+        // AIDB Health Check Functions (P1/P2 Features)
+        async function refreshAIDBHealth() {
+            try {
+                // Fetch all health endpoints via dashboard API
+                const baseUrl = `${FASTAPI_BASE}/api/aidb`;
+                const [liveness, readiness, startup, detailed] = await Promise.all([
+                    fetch(`${baseUrl}/health/live`).then(r => r.json()).catch(() => null),
+                    fetch(`${baseUrl}/health/ready`).then(r => r.json()).catch(() => null),
+                    fetch(`${baseUrl}/health/startup`).then(r => r.json()).catch(() => null),
+                    fetch(`${baseUrl}/health/detailed`).then(r => r.json()).catch(() => null)
+                ]);
+
+                // Update health probe badges
+                updateHealthBadge('livenessProbe', liveness);
+                updateHealthBadge('readinessProbe', readiness);
+                updateHealthBadge('startupProbe', startup);
+
+                // Update dependency health
+                if (detailed && detailed.dependencies) {
+                    updateDependencyHealth(detailed.dependencies);
+                }
+
+                // Update metrics
+                if (detailed && detailed.metrics) {
+                    updateHealthMetrics(detailed.metrics);
+                }
+
+                // Update overall badge
+                const overallHealthy = liveness?.status === 'healthy' &&
+                                      readiness?.status === 'healthy';
+                const badge = document.getElementById('aidbHealthBadge');
+                if (badge) {
+                    badge.textContent = overallHealthy ? '✓ Healthy' : '⚠ Degraded';
+                    badge.style.background = overallHealthy ? 'var(--status-online)' : 'var(--status-warning)';
+                }
+
+            } catch (error) {
+                console.error('Error refreshing AIDB health:', error);
+                // Show error state
+                ['livenessProbe', 'readinessProbe', 'startupProbe'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) {
+                        el.textContent = 'Error';
+                        el.className = 'status-badge status-offline';
+                    }
+                });
+            }
+        }
+
+        function updateHealthBadge(elementId, healthData) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+
+            if (!healthData) {
+                el.textContent = 'Offline';
+                el.className = 'status-badge status-offline';
+                return;
+            }
+
+            const status = healthData.status;
+            el.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+
+            if (status === 'healthy') {
+                el.className = 'status-badge status-online';
+            } else if (status === 'degraded') {
+                el.className = 'status-badge status-warning';
+            } else {
+                el.className = 'status-badge status-offline';
+            }
+        }
+
+        function updateDependencyHealth(dependencies) {
+            const container = document.getElementById('dependencyHealth');
+            if (!container) return;
+
+            if (!dependencies || dependencies.length === 0) {
+                container.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem;">No dependency checks available</div>';
+                return;
+            }
+
+            let html = '';
+            dependencies.forEach(dep => {
+                const statusClass = dep.status === 'healthy' ? 'status-online' :
+                                   dep.status === 'degraded' ? 'status-warning' : 'status-offline';
+                const statusIcon = dep.status === 'healthy' ? '✓' :
+                                  dep.status === 'degraded' ? '⚠' : '✗';
+
+                html += `
+                    <div class="data-item">
+                        <div class="data-label">${dep.name}</div>
+                        <div class="data-value">
+                            <span class="status-badge ${statusClass}">${statusIcon} ${dep.status}</span>
+                            ${dep.latency_ms ? `<span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;">${dep.latency_ms.toFixed(1)}ms</span>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        function updateHealthMetrics(metrics) {
+            // Update health check latency
+            const latencyEl = document.getElementById('healthLatency');
+            if (latencyEl && metrics.health_check_latency_ms) {
+                latencyEl.textContent = metrics.health_check_latency_ms.toFixed(1) + 'ms';
+            }
+
+            // Try to get last backup time from filesystem (would need backend support)
+            // For now, just show a placeholder
+            const backupEl = document.getElementById('lastBackup');
+            if (backupEl) {
+                backupEl.textContent = 'Check logs';
+            }
+        }
+
+        function viewDetailedHealth() {
+            window.open(`${FASTAPI_BASE}/api/aidb/health/detailed`, '_blank');
+        }
+
+        function viewMetrics() {
+            window.open(`${FASTAPI_BASE}/api/aidb/metrics`, '_blank');
+        }
+
+        // Auto-refresh AIDB health every 30 seconds
+        setInterval(refreshAIDBHealth, 30000);
+
+        // ====================================================================
+        // System Configuration Management
+        // ====================================================================
+
+        // Configuration object
+        const systemConfig = {
+            rate_limit: 60,
+            checkpoint_interval: 100,
+            backpressure_threshold_mb: 100,
+            log_level: 'INFO'
+        };
+
+        // Load configuration from backend API
+        async function loadConfiguration() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/config`);
+                if (response.ok) {
+                    const config = await response.json();
+                    Object.assign(systemConfig, config);
+                }
+            } catch (error) {
+                console.error('Failed to load configuration:', error);
+                // Fall back to localStorage if API fails
+                const saved = localStorage.getItem('systemConfig');
+                if (saved) {
+                    Object.assign(systemConfig, JSON.parse(saved));
+                }
+            }
+            updateConfigurationDisplay();
+            updateConfigurationInputs();
+        }
+
+        // Update display of current configuration
+        function updateConfigurationDisplay() {
+            const display = document.getElementById('currentConfig');
+            if (display) {
+                display.textContent = JSON.stringify(systemConfig, null, 2);
+            }
+        }
+
+        // Update input values to match current config
+        function updateConfigurationInputs() {
+            document.getElementById('rateLimitInput').value = systemConfig.rate_limit;
+            document.getElementById('checkpointIntervalInput').value = systemConfig.checkpoint_interval;
+            document.getElementById('backpressureThresholdInput').value = systemConfig.backpressure_threshold_mb;
+            document.getElementById('logLevelInput').value = systemConfig.log_level;
+        }
+
+        // Apply configuration changes
+        async function applyConfiguration() {
+            // Get values from inputs
+            systemConfig.rate_limit = parseInt(document.getElementById('rateLimitInput').value);
+            systemConfig.checkpoint_interval = parseInt(document.getElementById('checkpointIntervalInput').value);
+            systemConfig.backpressure_threshold_mb = parseInt(document.getElementById('backpressureThresholdInput').value);
+            systemConfig.log_level = document.getElementById('logLevelInput').value;
+
+            // Update display
+            updateConfigurationDisplay();
+
+            // Show status
+            const status = document.getElementById('configStatus');
+            status.textContent = '⏳ Saving configuration...';
+            status.style.color = 'var(--status-warning)';
+
+            try {
+                // Send to backend API
+                const response = await fetch(`${FASTAPI_BASE}/api/config`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(systemConfig)
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    status.textContent = `✓ Configuration saved. Restarted: ${result.restarted.join(', ')}`;
+                    status.style.color = 'var(--status-online)';
+
+                    // Also save to localStorage as backup
+                    localStorage.setItem('systemConfig', JSON.stringify(systemConfig));
+
+                    setTimeout(() => {
+                        status.textContent = '';
+                    }, 5000);
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                console.error('Failed to save configuration:', error);
+                status.textContent = '✗ Failed to save configuration';
+                status.style.color = 'var(--status-error)';
+
+                // Fall back to localStorage
+                localStorage.setItem('systemConfig', JSON.stringify(systemConfig));
+
+                setTimeout(() => {
+                    status.textContent = 'Saved locally only - services not restarted';
+                    status.style.color = 'var(--text-muted)';
+                }, 2000);
+            }
+        }
+
+        // Reset to defaults
+        function resetConfiguration() {
+            systemConfig.rate_limit = 60;
+            systemConfig.checkpoint_interval = 100;
+            systemConfig.backpressure_threshold_mb = 100;
+            systemConfig.log_level = 'INFO';
+
+            localStorage.removeItem('systemConfig');
+            updateConfigurationInputs();
+            updateConfigurationDisplay();
+
+            const status = document.getElementById('configStatus');
+            status.textContent = '✓ Reset to defaults';
+            status.style.color = 'var(--status-online)';
+
+            setTimeout(() => {
+                status.textContent = '';
+            }, 2000);
+        }
+
+        // ====================================================================
+        // Real-Time Monitoring Functions (Phase 3)
+        // ====================================================================
+
+        // Fetch and display learning stats
+        async function refreshLearningStats() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/stats/learning`);
+                if (response.ok) {
+                    const stats = await response.json();
+
+                    // Update checkpointing
+                    const checkpoints = stats.checkpoints || {};
+                    document.getElementById('checkpointStatus').textContent =
+                        checkpoints.total ? `${checkpoints.total} checkpoints` : 'Active';
+                    document.getElementById('checkpointDetails').textContent =
+                        checkpoints.last_checkpoint ? `Last: ${checkpoints.last_checkpoint}` : 'No checkpoints yet';
+
+                    // Update backpressure
+                    const backpressure = stats.backpressure || {};
+                    const unprocessedMB = backpressure.unprocessed_mb || 0;
+                    const isPaused = backpressure.paused || false;
+                    document.getElementById('backpressureStatus').textContent =
+                        isPaused ? 'PAUSED' : `${unprocessedMB.toFixed(1)} MB`;
+                    document.getElementById('backpressureStatus').style.color =
+                        isPaused ? 'var(--status-error)' : 'var(--accent-green)';
+                    document.getElementById('backpressureDetails').textContent =
+                        `Threshold: ${stats.backpressure_threshold_mb || 100} MB`;
+
+                    // Update deduplication
+                    const dedup = stats.deduplication || {};
+                    const dupRate = dedup.total_patterns > 0
+                        ? ((dedup.duplicates_found / dedup.total_patterns) * 100).toFixed(1)
+                        : 0;
+                    document.getElementById('dedupStatus').textContent = `${dupRate}% duplicates`;
+                    document.getElementById('dedupDetails').textContent =
+                        `Removed: ${dedup.duplicates_found || 0} / ${dedup.total_patterns || 0}`;
+
+                    // Update patterns
+                    document.getElementById('patternsStatus').textContent =
+                        `${dedup.unique_patterns || 0} unique`;
+                    document.getElementById('patternsDetails').textContent =
+                        `Total processed: ${dedup.total_patterns || 0}`;
+
+                    // Update badge
+                    document.getElementById('learningBadge').textContent = 'Active';
+                    document.getElementById('learningBadge').style.background = 'var(--status-online)';
+                } else {
+                    throw new Error('API unavailable');
+                }
+            } catch (error) {
+                console.error('Failed to fetch learning stats:', error);
+                document.getElementById('learningBadge').textContent = 'Offline';
+                document.getElementById('learningBadge').style.background = 'var(--status-error)';
+            }
+        }
+
+        // Fetch and display circuit breaker stats
+        async function refreshCircuitBreakers() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/stats/circuit-breakers`);
+                if (response.ok) {
+                    const breakers = await response.json();
+                    const container = document.getElementById('circuitBreakerList');
+
+                    if (Object.keys(breakers).length === 0) {
+                        container.innerHTML = '<div style="padding: 1rem; color: var(--text-muted);">No circuit breakers registered</div>';
+                        document.getElementById('circuitBreakerBadge').textContent = 'None';
+                        return;
+                    }
+
+                    let openCount = 0;
+                    let html = '';
+
+                    for (const [name, state] of Object.entries(breakers)) {
+                        const stateColor = state === 'CLOSED' ? 'var(--status-online)' :
+                                          state === 'OPEN' ? 'var(--status-error)' :
+                                          'var(--status-warning)';
+                        if (state === 'OPEN') openCount++;
+
+                        html += `
+                            <div style="padding: 0.75rem; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 6px;">
+                                <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem;">${name}</div>
+                                <div style="font-size: 0.85rem; color: ${stateColor}; font-weight: 600;">${state}</div>
+                            </div>
+                        `;
+                    }
+
+                    container.innerHTML = html;
+
+                    // Update badge
+                    const totalBreakers = Object.keys(breakers).length;
+                    document.getElementById('circuitBreakerBadge').textContent =
+                        openCount > 0 ? `${openCount} Open` : `${totalBreakers} Healthy`;
+                    document.getElementById('circuitBreakerBadge').style.background =
+                        openCount > 0 ? 'var(--status-error)' : 'var(--status-online)';
+                } else {
+                    throw new Error('API unavailable');
+                }
+            } catch (error) {
+                console.error('Failed to fetch circuit breaker stats:', error);
+                document.getElementById('circuitBreakerBadge').textContent = 'Offline';
+                document.getElementById('circuitBreakerBadge').style.background = 'var(--status-error)';
+            }
+        }
+
+        // Load configuration from API (updated to use backend)
+        async function loadConfiguration() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/config`);
+                if (response.ok) {
+                    const config = await response.json();
+                    Object.assign(systemConfig, config);
+                    updateConfigurationDisplay();
+                    updateConfigurationInputs();
+                    return;
+                }
+            } catch (error) {
+                console.error('Failed to load config from API:', error);
+            }
+
+            // Fallback to localStorage
+            const saved = localStorage.getItem('systemConfig');
+            if (saved) {
+                Object.assign(systemConfig, JSON.parse(saved));
+            }
+            updateConfigurationDisplay();
+            updateConfigurationInputs();
+        }
+
+        // Auto-refresh all monitoring data
+        function startAutoRefresh() {
+            // Refresh learning stats every 30 seconds
+            setInterval(refreshLearningStats, 30000);
+
+            // Refresh circuit breakers every 30 seconds
+            setInterval(refreshCircuitBreakers, 30000);
+
+            // Initial load after 3 seconds
+            setTimeout(() => {
+                refreshLearningStats();
+                refreshCircuitBreakers();
+            }, 3000);
+        }
+
+        // Initial load when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Delay initial health check by 2 seconds to let other services load first
+            setTimeout(refreshAIDBHealth, 2000);
+
+            // Load configuration
+            loadConfiguration();
+
+            // Start auto-refresh for monitoring data
+            startAutoRefresh();
+        });
     </script>
 </body>
 </html>
