@@ -3864,6 +3864,21 @@ create_home_manager_config() {
         fi
     done
 
+    # Ensure the Powerlevel10k setup wizard script is present for home.nix source reference.
+    local p10k_source="${SCRIPT_DIR}/scripts/p10k-setup-wizard.sh"
+    local p10k_destination="${HM_CONFIG_DIR}/p10k-setup-wizard.sh"
+    if [[ -f "$p10k_source" ]]; then
+        if safe_copy_file "$p10k_source" "$p10k_destination"; then
+            chmod +x "$p10k_destination" 2>/dev/null || true
+            safe_chown_user_dir "$p10k_destination" || true
+            print_success "Synced p10k-setup-wizard.sh into Home Manager workspace"
+        else
+            print_warning "Failed to sync p10k-setup-wizard.sh to $HM_CONFIG_DIR (home.nix may fail to evaluate)"
+        fi
+    else
+        print_warning "p10k-setup-wizard.sh not found at $p10k_source (home.nix will skip it if optional)"
+    fi
+
     # ========================================================================
     # Replace Placeholders
     # ========================================================================
