@@ -15,8 +15,31 @@ if str(MCP_SERVERS_DIR) not in sys.path:
 
 try:
     from aidb.schema import METADATA, document_embeddings_table  # type: ignore  # noqa: E402
-except ModuleNotFoundError:
-    from schema import METADATA, document_embeddings_table  # type: ignore  # noqa: E402
+except Exception:  # pragma: no cover - fallback for minimal migration envs
+    try:
+        from schema import METADATA, document_embeddings_table  # type: ignore  # noqa: E402
+    except Exception:
+        # Fallback when pgvector or app deps are unavailable (e.g., local CLI env).
+        # Use a minimal schema to allow migrations to run.
+        from sqlalchemy import MetaData, Table, Column, Integer, String, Text, DateTime, JSON  # type: ignore  # noqa: E402
+        from sqlalchemy import Float, Boolean  # type: ignore  # noqa: E402
+
+        METADATA = MetaData()
+
+        def document_embeddings_table(metadata, dimension):  # type: ignore[no-redef]
+            return Table(
+                "document_embeddings",
+                metadata,
+                Column("id", Integer, primary_key=True),
+                Column("document_id", Integer, nullable=False),
+                Column("chunk_id", String(length=128), nullable=True),
+                Column("content", Text, nullable=False),
+                Column("embedding", Text, nullable=False),
+                Column("metadata", JSON, nullable=True),
+                Column("score", Float, nullable=True),
+                Column("created_at", DateTime(timezone=True), nullable=True),
+                Column("updated_at", DateTime(timezone=True), nullable=True),
+            )
 try:
     from aidb.settings_loader import load_settings  # type: ignore  # noqa: E402
 except ModuleNotFoundError:
