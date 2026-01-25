@@ -1204,6 +1204,13 @@ normalize_dotfiles_paths() {
         resolved_home=$(getent passwd "$resolved_user" 2>/dev/null | cut -d: -f6)
     fi
 
+    if [[ -z "$resolved_home" && -d "/home/$resolved_user" ]]; then
+        resolved_home="/home/$resolved_user"
+    fi
+    if [[ -z "$resolved_home" && "$resolved_user" == "root" && -d "/root" ]]; then
+        resolved_home="/root"
+    fi
+
     if [[ -z "$resolved_home" || ! -d "$resolved_home" ]]; then
         resolved_home="${HOME:-}"
     fi
