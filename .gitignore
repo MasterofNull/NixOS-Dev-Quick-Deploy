@@ -93,5 +93,14 @@ data/**/*.backup
 # Keep README files
 !data/**/README.md
 !data/**/.gitkeep
+# Local env/secrets (keep templates)
 .env
+ai-stack/compose/.env
+ai-stack/compose/.env.*
+!ai-stack/compose/.env.example
 ai-stack/compose/secrets/
+!ai-stack/compose/secrets/.gitkeep
+
+# Backups (generated)
+backups/
+ai-stack/backups/
