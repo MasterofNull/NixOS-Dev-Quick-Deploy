@@ -6,7 +6,7 @@ Handles persistence of Ralph loop state for context recovery
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 

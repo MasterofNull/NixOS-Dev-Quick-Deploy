@@ -1,4 +1,17 @@
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-pydantic==2.10.5
-requests==2.32.3
+# Aider-Wrapper Requirements
+# Updated: 2026-01-11 with ACTUAL January 2026 versions
+
+# Aider - v0.86.1 (Latest as of Jan 2026)
+# Supports Python 3.8-3.13, Claude Sonnet 4, GPT 4.1, DeepSeek R1
+aider-chat==0.86.1
+
+# Web Framework - Let aider determine compatible versions
+fastapi
+uvicorn[standard]
+pydantic
+
+# Logging
+structlog
+
+# Environment variables
+python-dotenv

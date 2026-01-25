@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
+    kompose.version: 1.37.0 (HEAD)
+    nixos.quick-deploy.ai-stack: "true"
+    nixos.quick-deploy.ralph-loop: orchestrator
+    nixos.quick-deploy.service: ralph-wiggum
+  labels:
+    io.kompose.service: ralph-wiggum
+  name: ralph-wiggum
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: ralph-wiggum
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
+        kompose.version: 1.37.0 (HEAD)
+        nixos.quick-deploy.ai-stack: "true"
+        nixos.quick-deploy.ralph-loop: orchestrator
+        nixos.quick-deploy.service: ralph-wiggum
+      labels:
+        io.kompose.service: ralph-wiggum
+    spec:
+      containers:
+        - args:
+            - python
+            - /app/server.py
+          env:
+            - name: RALPH_AGENT_BACKENDS
+              value: aider,autogpt
+            - name: RALPH_AIDB_URL
+              value: http://aidb:8091
+            - name: AIDER_WRAPPER_HOST
+              value: aider-wrapper
+            - name: AIDER_WRAPPER_PORT
+              value: "8099"
+            - name: RALPH_COORDINATOR_URL
+              value: http://hybrid-coordinator:8092
+            - name: RALPH_MCP_SERVER_PORT
+              value: "8098"
+            - name: RALPH_POSTGRES_DB
+              value: mcp
+            - name: RALPH_POSTGRES_HOST
+              value: postgres
+            - name: RALPH_POSTGRES_PASSWORD
+            - name: RALPH_POSTGRES_PORT
+              value: "5432"
+            - name: RALPH_POSTGRES_USER
+              value: mcp
+            - name: RALPH_REDIS_HOST
+              value: redis
+            - name: RALPH_REDIS_PORT
+              value: "6379"
+            - name: RALPH_STATE_FILE
+              value: /data/ralph-state.json
+            - name: RALPH_TELEMETRY_PATH
+              value: /data/telemetry/ralph-events.jsonl
+            - name: RALPH_WIGGUM_API_KEY_FILE
+              value: /run/secrets/ralph-wiggum-api-key
+          envFrom:
+            - configMapRef:
+                name: env
+          image: localhost/compose_ralph-wiggum:latest
+          imagePullPolicy: IfNotPresent
+          name: local-ai-ralph-wiggum
+          ports:
+            - containerPort: 8098
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "4"
+              memory: "8589934592"
+            requests:
+              cpu: "1"
+              memory: "1073741824"
+          volumeMounts:
+            - mountPath: /run/secrets/ralph-wiggum-api-key
+              name: ralph-wiggum-api-key
+              subPath: ralph-wiggum-api-key
+            - mountPath: /run/secrets/postgres-password
+              name: postgres-password
+              subPath: postgres-password
+            - mountPath: /run/secrets/redis-password
+              name: redis-password
+              subPath: redis-password
+            - mountPath: /data
+              name: ralph-wiggum-cm0
+            - mountPath: /data/telemetry
+              name: ralph-wiggum-cm1
+            - mountPath: /workspace
+              name: ralph-wiggum-cm2
+          workingDir: /app
+      restartPolicy: Always
+      volumes:
+        - name: ralph-wiggum-api-key
+          secret:
+            defaultMode: 292
+            items:
+              - key: ralph-wiggum-api-key
+                path: ralph-wiggum-api-key
+            secretName: ralph-wiggum-api-key
+        - name: postgres-password
+          secret:
+            items:
+              - key: postgres-password
+                path: postgres-password
+            secretName: postgres-password
+        - name: redis-password
+          secret:
+            items:
+              - key: redis-password
+                path: redis-password
+            secretName: redis-password
+        - configMap:
+            name: ralph-wiggum-cm0
+          name: ralph-wiggum-cm0
+        - name: ralph-wiggum-cm1
+          emptyDir: {}
+        - configMap:
+            name: ralph-wiggum-cm2
+          name: ralph-wiggum-cm2

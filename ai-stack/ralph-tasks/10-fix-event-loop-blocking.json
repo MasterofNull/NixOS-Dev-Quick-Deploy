@@ -1,0 +1,23 @@
+{
+  "description": "Fix event loop blocking from synchronous subprocess.run() calls",
+  "context": "CRITICAL BUG: dashboard/backend/api/services/metrics_collector.py uses subprocess.run() which blocks the async event loop, freezing all other requests.",
+  "backend": "aider",
+  "model": "anthropic/claude-sonnet-4",
+  "max_iterations": 6,
+  "require_approval": false,
+  "files": [
+    "dashboard/backend/api/services/metrics_collector.py"
+  ],
+  "instructions": "FIX EVENT LOOP BLOCKING:\n\n1. ADD asyncio import at top:\n   ```python\n   import asyncio\n   ```\n\n2. FIND all subprocess.run() calls in the file:\n   - Search for 'subprocess.run'\n   - Likely in functions like get_container_stats(), _get_gpu_info(), etc.\n\n3. For EACH subprocess.run() call, REPLACE:\n\n   OLD (BLOCKING):\n   ```python\n   result = subprocess.run(\n       [\"podman\", \"ps\"],\n       capture_output=True,\n       timeout=5\n   )\n   ```\n\n   NEW (NON-BLOCKING):\n   ```python\n   result = await asyncio.to_thread(\n       subprocess.run,\n       [\"podman\", \"ps\"],\n       capture_output=True,\n       timeout=5\n   )\n   ```\n\n4. ENSURE the function containing subprocess is async:\n   - If function is not async, make it async:\n     ```python\n     async def get_container_stats(self) -> List[Dict]:\n     ```\n\n5. COMMON PATTERNS to fix:\n\n   Pattern A - Simple command:\n   ```python\n   # OLD\n   result = subprocess.run([\"command\"], capture_output=True)\n   \n   # NEW\n   result = await asyncio.to_thread(\n       subprocess.run,\n       [\"command\"],\n       capture_output=True\n   )\n   ```\n\n   Pattern B - With timeout:\n   ```python\n   # OLD\n   result = subprocess.run([\"cmd\"], capture_output=True, timeout=5)\n   \n   # NEW\n   result = await asyncio.to_thread(\n       subprocess.run,\n       [\"cmd\"],\n       capture_output=True,\n       timeout=5\n   )\n   ```\n\n   Pattern C - With text output:\n   ```python\n   # OLD\n   result = subprocess.run([\"cmd\"], capture_output=True, text=True)\n   \n   # NEW\n   result = await asyncio.to_thread(\n       subprocess.run,\n       [\"cmd\"],\n       capture_output=True,\n       text=True\n   )\n   ```\n\n6. UPDATE all callers if needed:\n   - If you made a function async, all its callers must await it\n   - Example: If get_container_stats() becomes async, then:\n     ```python\n     # OLD\n     stats = self.get_container_stats()\n     \n     # NEW\n     stats = await self.get_container_stats()\n     ```\n\n7. VERIFY no blocking calls remain:\n   - No bare subprocess.run() calls\n   - All subprocess operations use asyncio.to_thread()\n   - All containing functions are async\n\nSUCCESS CRITERIA:\n- All subprocess.run() wrapped in asyncio.to_thread()\n- All functions with subprocess calls are async\n- All callers properly await async functions\n- Zero bare subprocess.run() calls\n\nVERIFICATION:\n```bash\n# Should find ZERO matches (all should be wrapped):\ngrep 'subprocess.run' dashboard/backend/api/services/metrics_collector.py | grep -v 'asyncio.to_thread'\n\n# Should find MULTIPLE matches (all wrapped):\ngrep 'asyncio.to_thread' dashboard/backend/api/services/metrics_collector.py\n```",
+  "expected_changes": [
+    "Add asyncio import",
+    "Wrap all subprocess.run() in asyncio.to_thread()",
+    "Make functions async if they use subprocess",
+    "Update callers to await async functions"
+  ],
+  "verification_commands": [
+    "grep 'import asyncio' dashboard/backend/api/services/metrics_collector.py",
+    "grep 'asyncio.to_thread' dashboard/backend/api/services/metrics_collector.py",
+    "! grep 'subprocess.run' dashboard/backend/api/services/metrics_collector.py | grep -v 'asyncio.to_thread'"
+  ]
+}

@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
+    kompose.version: 1.37.0 (HEAD)
+    nixos.quick-deploy.ai-stack: "true"
+    nixos.quick-deploy.service: redis
+  labels:
+    io.kompose.service: redis
+  name: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: redis
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
+        kompose.version: 1.37.0 (HEAD)
+        nixos.quick-deploy.ai-stack: "true"
+        nixos.quick-deploy.service: redis
+      labels:
+        io.kompose.service: redis
+    spec:
+      containers:
+        - args:
+            - sh
+            - -c
+            - redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --requirepass $(cat /run/secrets/redis-password)
+          envFrom:
+            - configMapRef:
+                name: env
+          image: redis:8.4.0-alpine
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - redis-cli -a $(cat /run/secrets/redis-password) ping
+            failureThreshold: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+          name: local-ai-redis
+          ports:
+            - containerPort: 6379
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "1"
+              memory: "536870912"
+            requests:
+              cpu: 250m
+              memory: "134217728"
+          volumeMounts:
+            - mountPath: /run/secrets/redis-password
+              name: redis-password
+              subPath: redis-password
+            - mountPath: /data
+              name: redis-data
+      restartPolicy: Always
+      volumes:
+        - name: redis-password
+          secret:
+            defaultMode: 292
+            items:
+              - key: redis-password
+                path: redis-password
+            secretName: redis-password
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: redis-data

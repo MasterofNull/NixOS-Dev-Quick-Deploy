@@ -11,7 +11,7 @@ database:
     port: 5432
     database: mcp
     user: mcp
-    password: ""
+    password_file: /run/secrets/postgres_password  # Day 5: Use Docker secrets
     pool:
       size: 20  # Increased from 5 to handle concurrent agent requests
       max_overflow: 30  # Increased from 10 for burst capacity (total: 50 connections)
@@ -23,7 +23,7 @@ database:
     host: redis
     port: 6379
     db: 0
-    password: ""
+    password_file: /run/secrets/redis_password  # Day 5: Use Docker secrets
     pool:
       max_connections: 50
       socket_timeout: 5
@@ -65,12 +65,20 @@ security:
   api_key: ""
   api_key_file: /run/secrets/stack_api_key
   rate_limit:
-    enabled: false
+    enabled: true  # P1-SEC-002: Enable rate limiting for production hardening
     requests_per_minute: 60
 
+rate_limiting:
+  enabled: true
+  requests_per_minute: 60
+
+continuous_learning:
+  checkpoint_interval: 100  # Events between checkpoints
+  backpressure_threshold_mb: 100  # MB before pausing
+
 rag:
-  embedding_model: sentence-transformers/all-MiniLM-L6-v2
-  embedding_dimension: 384
+  embedding_model: nomic-ai/nomic-embed-text-v1.5
+  embedding_dimension: 768
   pgvector:
     hnsw_m: 16
     hnsw_ef_construction: 64
@@ -84,7 +92,7 @@ telemetry:
   path: /data/telemetry/aidb-events.jsonl
 
 embeddings:
-  model: sentence-transformers/all-MiniLM-L6-v2
+  model: nomic-ai/nomic-embed-text-v1.5
   port: 8081
   max_input_length: 10000
   max_batch_size: 32
@@ -105,8 +113,8 @@ hybrid:
     full_scan_threshold: 10000
   llama_cpp_url: http://llama-cpp:8080
   embedding_service_url: http://embeddings:8081
-  embedding_model: sentence-transformers/all-MiniLM-L6-v2
-  embedding_dimensions: 384
+  embedding_model: nomic-ai/nomic-embed-text-v1.5
+  embedding_dimensions: 768
   local_confidence_threshold: 0.7
   high_value_threshold: 0.7
   pattern_extraction_enabled: true

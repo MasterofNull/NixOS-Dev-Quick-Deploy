@@ -50,7 +50,7 @@ services:
       - "127.0.0.1:18081:8081"
     environment:
       PORT: 8081
-      EMBEDDING_MODEL: sentence-transformers/all-MiniLM-L6-v2
+      EMBEDDING_MODEL: nomic-ai/nomic-embed-text-v1.5
       EMBEDDINGS_API_KEY_FILE: /run/secrets/stack_api_key
     volumes:
       - ./.test-data/embeddings:/data:Z

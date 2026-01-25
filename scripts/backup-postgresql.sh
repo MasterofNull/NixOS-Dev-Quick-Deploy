@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # PostgreSQL Automated Backup Script
 # Supports full dumps, incremental WAL archiving, and point-in-time recovery
 

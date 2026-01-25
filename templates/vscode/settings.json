@@ -53,6 +53,14 @@
         "COORDINATOR_MODE": "local-first"
       }
     },
+    "container-engine": {
+      "command": "curl",
+      "args": [
+        "-X",
+        "POST",
+        "http://localhost:8095/mcp"
+      ]
+    },
     "nixos-search": {
       "command": "nix",
       "args": [
@@ -63,7 +71,7 @@
   },
 
   "claudeCode.autoStart": true,
-  "claudeCode.enableContextSharing": true,
+  "claudeCode.enableContextSharing": false,
   "claudeCode.preferLocalInference": true,
 
   "// ========================================": "",

@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
+    kompose.version: 1.37.0 (HEAD)
+    nixos.quick-deploy.ai-stack: "true"
+    nixos.quick-deploy.service: container-engine-mcp
+  labels:
+    io.kompose.service: container-engine
+  name: container-engine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: container-engine
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
+        kompose.version: 1.37.0 (HEAD)
+        nixos.quick-deploy.ai-stack: "true"
+        nixos.quick-deploy.service: container-engine-mcp
+      labels:
+        io.kompose.service: container-engine
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - env:
+            - name: CONTAINER_AUDIT_ENABLED
+              value: "true"
+            - name: CONTAINER_ENGINE_ALLOWED_OPS
+              value: list,inspect,logs
+            - name: PODMAN_API_URL
+              value: http://192.168.86.145:2375
+            - name: PODMAN_API_VERSION
+              value: v4.0.0
+          image: localhost/compose_container-engine:latest
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            exec:
+              command:
+                - curl
+                - -f
+                - http://localhost:8095/health
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 10
+          name: local-ai-container-engine
+          ports:
+            - containerPort: 8095
+              protocol: TCP
+          resources:
+            limits:
+              cpu: 500m
+              memory: "268435456"
+          volumeMounts:
+            - mountPath: /run/secrets/container-engine-api-key
+              name: container-engine-api-key
+              subPath: container-engine-api-key
+      hostname: container-engine
+      restartPolicy: Always
+      volumes:
+        - name: container-engine-api-key
+          secret:
+            defaultMode: 292
+            items:
+              - key: container-engine-api-key
+                path: container-engine-api-key
+            secretName: container-engine-api-key

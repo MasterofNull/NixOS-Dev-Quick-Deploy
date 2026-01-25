@@ -1,0 +1,101 @@
+{
+  "task_id": "01-containerize-dashboard-api",
+  "description": "CRITICAL BLOCKER: Move dashboard API into Docker container to fix container networking (services unreachable from host)",
+  "backend": "aider",
+  "max_iterations": 15,
+  "require_approval": false,
+  "context": {
+    "problem": "Dashboard API runs on HOST but services (aidb, hybrid-coordinator, ralph-wiggum, qdrant) run in DOCKER BRIDGE NETWORK. Host localhost:8091 ≠ container localhost:8091. All API calls return empty fallback data.",
+    "goal": "Move dashboard API into container so it can reach services via container names (http://aidb:8091)",
+    "files_proving_problem": [
+      "dashboard/backend/api/routes/aistack.py:14-19 - Hardcoded localhost URLs that don't work from host",
+      "ai-stack/compose/docker-compose.yml:414,542 - Services only 'expose:' ports, not published to host"
+    ]
+  },
+  "explicit_requirements": {
+    "file_1_create_dockerfile": {
+      "file": "dashboard/backend/Dockerfile",
+      "action": "CREATE NEW FILE",
+      "exact_content_required": "FROM python:3.13-slim\n\nWORKDIR /app\n\n# Install system dependencies\nRUN apt-get update && apt-get install -y \\\n    build-essential \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Copy requirements first for caching\nCOPY requirements.txt .\nRUN pip install --no-cache-dir -r requirements.txt\n\n# Copy application code\nCOPY . .\n\nEXPOSE 8889\n\nCMD [\"python\", \"-m\", \"uvicorn\", \"api.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8889\"]",
+      "verification": "File must exist at dashboard/backend/Dockerfile",
+      "test": "docker build -t dashboard-api dashboard/backend/ should succeed"
+    },
+    "file_2_add_to_compose": {
+      "file": "ai-stack/compose/docker-compose.yml",
+      "action": "ADD new service AFTER ralph-wiggum service (around line 920)",
+      "exact_service_definition": "  dashboard-api:\n    build:\n      context: ../../dashboard/backend\n      dockerfile: Dockerfile\n    container_name: local-ai-dashboard-api\n    hostname: dashboard-api\n    ports:\n      - \"127.0.0.1:8889:8889\"\n    networks:\n      - default\n    depends_on:\n      - aidb\n      - hybrid-coordinator\n      - ralph-wiggum\n      - qdrant\n    environment:\n      - PYTHONUNBUFFERED=1\n    restart: unless-stopped\n    deploy:\n      resources:\n        limits:\n          cpus: '1'\n          memory: 512M",
+      "location": "AFTER ralph-wiggum service section, BEFORE prometheus section",
+      "verification": "grep 'dashboard-api:' docker-compose.yml",
+      "test": "docker-compose config should validate without errors"
+    },
+    "file_3_fix_service_urls": {
+      "file": "dashboard/backend/api/routes/aistack.py",
+      "action": "MODIFY lines 14-19",
+      "old_code": "SERVICES = {\n    \"ralph\": \"http://localhost:8098\",\n    \"hybrid\": \"http://localhost:8092\",\n    \"aidb\": \"http://localhost:8091\",\n    \"qdrant\": \"http://localhost:6333\",\n}",
+      "new_code": "SERVICES = {\n    \"ralph\": \"http://ralph-wiggum:8098\",\n    \"hybrid\": \"http://hybrid-coordinator:8092\",\n    \"aidb\": \"http://aidb:8091\",\n    \"qdrant\": \"http://qdrant:6333\",\n}",
+      "verification": "grep 'ralph-wiggum:8098' dashboard/backend/api/routes/aistack.py",
+      "test": "From inside container: curl http://aidb:8091/health returns JSON (not connection refused)"
+    },
+    "file_4_update_main_if_needed": {
+      "file": "dashboard/backend/api/main.py",
+      "action": "CHECK if it imports aistack correctly, no changes needed unless import broken",
+      "verification": "python -c 'from api.routes import aistack' should not error"
+    }
+  },
+  "verification_commands": [
+    {
+      "command": "docker-compose -f ai-stack/compose/docker-compose.yml up -d dashboard-api",
+      "expected": "Container starts successfully, no errors",
+      "purpose": "Start the containerized dashboard API"
+    },
+    {
+      "command": "docker exec local-ai-dashboard-api curl -s http://aidb:8091/health | jq .status",
+      "expected": "\"healthy\" (string, not null)",
+      "purpose": "Verify container can reach AIDB via container name"
+    },
+    {
+      "command": "docker exec local-ai-dashboard-api curl -s http://hybrid-coordinator:8092/health | jq .status",
+      "expected": "\"healthy\"",
+      "purpose": "Verify container can reach hybrid-coordinator"
+    },
+    {
+      "command": "docker exec local-ai-dashboard-api curl -s http://ralph-wiggum:8098/health | jq .status",
+      "expected": "\"healthy\"",
+      "purpose": "Verify container can reach ralph-wiggum"
+    },
+    {
+      "command": "curl -s http://localhost:8889/api/health/aggregate | jq .services.aidb.status",
+      "expected": "\"healthy\" (NOT \"unhealthy\")",
+      "purpose": "Verify dashboard API accessible from host AND returns real data"
+    },
+    {
+      "command": "curl -s http://localhost:8889/api/stats/learning | jq .checkpoints",
+      "expected": "Real object with 'total' field (NOT null or empty object)",
+      "purpose": "Verify API returns real data, not fallback"
+    }
+  ],
+  "success_criteria": {
+    "critical": [
+      "Dashboard API runs in container named local-ai-dashboard-api",
+      "Container can curl http://aidb:8091/health successfully",
+      "Host can curl http://localhost:8889/api/health/aggregate and get real data",
+      "ALL services in /api/health/aggregate show status='healthy', NONE show 'unhealthy'",
+      "NO fallback data returned (checkpoints.total > 0 OR legitimate empty, not null)"
+    ],
+    "nice_to_have": [
+      "Container has resource limits (1 CPU, 512MB)",
+      "Container auto-restarts on failure"
+    ]
+  },
+  "DO_NOT_DO": [
+    "Do NOT just add to requirements.txt without creating Dockerfile",
+    "Do NOT publish ports as 0.0.0.0:8889 (security risk, use 127.0.0.1)",
+    "Do NOT use localhost URLs in SERVICES dict (won't work in container)",
+    "Do NOT skip verification commands - RUN THEM ALL"
+  ],
+  "if_verification_fails": {
+    "symptom": "Container starts but can't reach aidb",
+    "debug": "docker exec local-ai-dashboard-api ping aidb - if fails, network config wrong",
+    "fix": "Ensure dashboard-api service has 'networks: - default' in compose file"
+  }
+}

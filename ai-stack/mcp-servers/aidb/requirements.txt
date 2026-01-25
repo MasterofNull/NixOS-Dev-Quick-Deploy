@@ -9,6 +9,7 @@ pydantic-settings==2.12.0  # Type-safe configuration management
 
 # Database - Async PostgreSQL (psycopg3) + optimized Redis
 psycopg[binary,pool]==3.2.13  # Modern async PostgreSQL driver (20-30% faster)
+asyncpg==0.31.0  # Async PostgreSQL for health checks
 redis[hiredis]==7.1.0  # Redis with C-based parser (5-10x faster)
 sqlalchemy==2.0.44
 alembic==1.17.2

@@ -24,9 +24,10 @@ QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant:6333")
 qdrant = QdrantClient(url=QDRANT_URL)
 
 # Initialize embedding model
+model_name = os.getenv("EMBEDDING_MODEL", "nomic-ai/nomic-embed-text-v1.5")
 print("🔄 Loading embedding model...")
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-print(f"✅ Loaded: all-MiniLM-L6-v2 ({embedding_model.get_sentence_embedding_dimension()}D)")
+embedding_model = SentenceTransformer(model_name)
+print(f"✅ Loaded: {model_name} ({embedding_model.get_sentence_embedding_dimension()}D)")
 
 
 def get_embedding(text: str) -> List[float]:

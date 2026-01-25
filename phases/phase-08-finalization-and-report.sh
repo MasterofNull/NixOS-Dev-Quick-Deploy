@@ -141,8 +141,24 @@ phase_08_finalization_and_report() {
     # ========================================================================
     if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
         local enforce_ai_health="${ENFORCE_AI_STACK_HEALTH:-true}"
+        local require_ai_running="${REQUIRE_AI_STACK_RUNNING:-false}"
         local ai_health_script="$SCRIPT_DIR/scripts/check-ai-stack-health-v2.py"
-        if [[ -f "$ai_health_script" ]]; then
+
+        # If no AI stack containers are running, skip health checks unless explicitly required.
+        local running_ai_containers
+        running_ai_containers=$(podman ps --filter "label=nixos.quick-deploy.ai-stack=true" --format "{{.Names}}" 2>/dev/null || true)
+        if [[ -z "$running_ai_containers" ]]; then
+            if [[ "$require_ai_running" == "true" ]]; then
+                print_error "AI Stack containers are not running and REQUIRE_AI_STACK_RUNNING=true"
+                return 1
+            fi
+            print_warning "AI Stack containers are not running; skipping AI health check."
+            goto_ai_health_checks_done=true
+        fi
+
+        if [[ "${goto_ai_health_checks_done:-false}" == "true" ]]; then
+            :
+        elif [[ -f "$ai_health_script" ]]; then
             print_info "Running AI Stack health check..."
             if python3 "$ai_health_script" -v; then
                 print_success "AI Stack health check passed."
@@ -156,6 +172,7 @@ phase_08_finalization_and_report() {
         else
             print_warning "AI Stack health check script not found at $ai_health_script"
         fi
+        unset goto_ai_health_checks_done
         local feedback_script="$SCRIPT_DIR/scripts/verify-local-llm-feedback.sh"
         if [[ -x "$feedback_script" ]]; then
             print_info "Running feedback pipeline verification..."

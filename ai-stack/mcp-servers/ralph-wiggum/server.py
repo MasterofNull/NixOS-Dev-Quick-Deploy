@@ -17,19 +17,33 @@ import asyncio
 import os
 import sys
 import signal
+import socket
+import time
 from contextlib import asynccontextmanager
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import structlog
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
+from pathlib import Path
+
+# Prometheus metrics
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 
 from loop_engine import RalphLoopEngine
-from orchestrator import AgentOrchestrator
+try:
+    from orchestrator import AgentOrchestrator  # legacy name
+except ImportError:
+    from orchestrator import RalphOrchestrator as AgentOrchestrator
 from state_manager import StateManager
 from hooks import StopHook, ContextRecoveryHook
+
+# Add parent directory to path for shared imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from shared.auth_middleware import get_api_key_dependency
+from shared.hybrid_client import HybridClient, AIDBClient
 
 # Configure structured logging
 structlog.configure(
@@ -51,12 +65,103 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
+# ============================================================================
+# Prometheus Metrics
+# ============================================================================
+
+RALPH_TASKS_TOTAL = Counter(
+    "ralph_tasks_total",
+    "Total number of tasks submitted",
+    ["backend", "status"]
+)
+
+RALPH_ACTIVE_TASKS = Gauge(
+    "ralph_active_tasks",
+    "Number of currently active tasks"
+)
+
+RALPH_ITERATIONS_TOTAL = Counter(
+    "ralph_iterations_total",
+    "Total number of loop iterations",
+    ["backend"]
+)
+
+RALPH_TASK_DURATION_SECONDS = Histogram(
+    "ralph_task_duration_seconds",
+    "Task completion time in seconds",
+    ["backend"],
+    buckets=[1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600]
+)
+
+RALPH_PROCESS_MEMORY_BYTES = Gauge(
+    "ralph_process_memory_bytes",
+    "Process memory usage in bytes"
+)
+
+RALPH_LOOP_ENABLED = Gauge(
+    "ralph_loop_enabled",
+    "Whether the Ralph loop is enabled (1=enabled, 0=disabled)"
+)
+
+# ============================================================================
+# Pre-Flight Dependency Validation
+# ============================================================================
+
+REQUIRED_DEPENDENCIES: Dict[str, Tuple[str, int]] = {
+    "aider-wrapper": (os.getenv("AIDER_WRAPPER_HOST", "aider-wrapper"), int(os.getenv("AIDER_WRAPPER_PORT", "8099"))),
+}
+
+def validate_dependencies():
+    """Check all required services are reachable before starting"""
+    if not os.getenv("STARTUP_DEPENDENCY_CHECK", "true").lower() == "true":
+        logger.info("pre_flight_checks_disabled")
+        return
+
+    timeout = int(os.getenv("STARTUP_TIMEOUT_SECONDS", "30"))
+    start_time = time.time()
+
+    logger.info("pre_flight_checks_start", service="ralph-wiggum")
+
+    for name, (host, port) in REQUIRED_DEPENDENCIES.items():
+        logger.info("checking_dependency", dependency=name, host=host, port=port)
+
+        while time.time() - start_time < timeout:
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(2)
+                result = sock.connect_ex((host, port))
+                sock.close()
+
+                if result == 0:
+                    logger.info("dependency_ok", dependency=name, host=host, port=port)
+                    break
+            except Exception as e:
+                logger.debug("connection_attempt_failed", error=str(e))
+
+            elapsed = int(time.time() - start_time)
+            logger.info("waiting_for_dependency", dependency=name, elapsed=elapsed, timeout=timeout)
+            time.sleep(2)
+        else:
+            # Timeout reached
+            if os.getenv("STARTUP_FAIL_FAST", "false").lower() == "true":
+                logger.critical("dependency_missing", dependency=name, host=host, port=port)
+                sys.exit(1)
+            else:
+                logger.warning("dependency_not_reachable", dependency=name, host=host, port=port)
+
+    logger.info("pre_flight_checks_complete")
+
 # Configuration from environment
 CONFIG = {
     "port": int(os.getenv("RALPH_MCP_SERVER_PORT", "8098")),
     "loop_enabled": os.getenv("RALPH_LOOP_ENABLED", "true").lower() == "true",
     "exit_code_block": int(os.getenv("RALPH_EXIT_CODE_BLOCK", "2")),
-    "max_iterations": int(os.getenv("RALPH_MAX_ITERATIONS", "0")),
+    # NEW: Adaptive iteration limits from .env
+    "max_iterations": int(os.getenv("RALPH_MAX_ITERATIONS_DEFAULT", "20")),
+    "max_iterations_simple": int(os.getenv("RALPH_MAX_ITERATIONS_SIMPLE", "10")),
+    "max_iterations_complex": int(os.getenv("RALPH_MAX_ITERATIONS_COMPLEX", "50")),
+    "adaptive_iterations": os.getenv("RALPH_ADAPTIVE_ITERATIONS", "true").lower() == "true",
+    # Existing config
     "context_recovery": os.getenv("RALPH_CONTEXT_RECOVERY", "true").lower() == "true",
     "git_integration": os.getenv("RALPH_GIT_INTEGRATION", "true").lower() == "true",
     "state_file": os.getenv("RALPH_STATE_FILE", "/data/ralph-state.json"),
@@ -120,9 +225,14 @@ async def lifespan(app: FastAPI):
 
     # Initialize components
     state_manager = StateManager(CONFIG["state_file"])
+    hybrid_url = os.getenv("RALPH_COORDINATOR_URL", "http://hybrid-coordinator:8092")
+    aidb_url = os.getenv("RALPH_AIDB_URL", "http://aidb:8091")
+    hybrid_client = HybridClient(base_url=hybrid_url)
+    aidb_client = AIDBClient(base_url=aidb_url)
     orchestrator = AgentOrchestrator(
-        backends=CONFIG["agent_backends"],
-        default_backend=CONFIG["default_backend"]
+        hybrid_client=hybrid_client,
+        aidb_client=aidb_client,
+        learning_client=None
     )
 
     loop_engine = RalphLoopEngine(
@@ -158,6 +268,23 @@ async def lifespan(app: FastAPI):
     await loop_engine.shutdown()
 
 
+# Load API key from secret file
+def load_api_key() -> Optional[str]:
+    """Load API key from Docker secret file"""
+    secret_file = os.environ.get("RALPH_WIGGUM_API_KEY_FILE", "/run/secrets/ralph_wiggum_api_key")
+    if Path(secret_file).exists():
+        return Path(secret_file).read_text().strip()
+    # Fallback to environment variable for development
+    return os.environ.get("RALPH_WIGGUM_API_KEY")
+
+# Initialize authentication dependency
+api_key = load_api_key()
+require_auth = get_api_key_dependency(
+    service_name="ralph-wiggum",
+    expected_key=api_key,
+    optional=not api_key  # If no key configured, allow unauthenticated (dev mode)
+)
+
 # Create FastAPI app
 app = FastAPI(
     title="Ralph Wiggum Loop MCP Server",
@@ -180,7 +307,7 @@ async def health_check():
 
 
 @app.post("/tasks", response_model=TaskResponse)
-async def create_task(task: TaskRequest):
+async def create_task(task: TaskRequest, auth: str = Depends(require_auth)):
     """
     Create a new Ralph loop task
 
@@ -193,15 +320,20 @@ async def create_task(task: TaskRequest):
         raise HTTPException(status_code=503, detail="Ralph loop is disabled")
 
     try:
+        backend_name = task.backend or CONFIG["default_backend"]
         task_id = await loop_engine.submit_task(
             prompt=task.prompt,
-            backend=task.backend or CONFIG["default_backend"],
+            backend=backend_name,
             max_iterations=task.max_iterations or CONFIG["max_iterations"],
             require_approval=task.require_approval if task.require_approval is not None else CONFIG["require_approval"],
             context=task.context
         )
 
-        logger.info("task_created", task_id=task_id, backend=task.backend or CONFIG["default_backend"])
+        # Update Prometheus metrics
+        RALPH_TASKS_TOTAL.labels(backend=backend_name, status="queued").inc()
+        RALPH_ACTIVE_TASKS.inc()
+
+        logger.info("task_created", task_id=task_id, backend=backend_name)
 
         return TaskResponse(
             task_id=task_id,
@@ -210,12 +342,13 @@ async def create_task(task: TaskRequest):
         )
 
     except Exception as e:
+        RALPH_TASKS_TOTAL.labels(backend=task.backend or CONFIG["default_backend"], status="failed").inc()
         logger.error("task_creation_failed", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/tasks/{task_id}", response_model=TaskStatus)
-async def get_task_status(task_id: str):
+async def get_task_status(task_id: str, auth: str = Depends(require_auth)):
     """Get status of a Ralph loop task"""
     if not loop_engine:
         raise HTTPException(status_code=503, detail="Loop engine not initialized")
@@ -229,7 +362,7 @@ async def get_task_status(task_id: str):
 
 
 @app.post("/tasks/{task_id}/stop")
-async def stop_task(task_id: str):
+async def stop_task(task_id: str, auth: str = Depends(require_auth)):
     """Stop a running Ralph loop task"""
     if not loop_engine:
         raise HTTPException(status_code=503, detail="Loop engine not initialized")
@@ -243,7 +376,7 @@ async def stop_task(task_id: str):
 
 
 @app.post("/tasks/{task_id}/approve")
-async def approve_task(task_id: str, approved: bool = True):
+async def approve_task(task_id: str, approved: bool = True, auth: str = Depends(require_auth)):
     """Approve or reject a task waiting for human approval"""
     if not loop_engine:
         raise HTTPException(status_code=503, detail="Loop engine not initialized")
@@ -257,12 +390,33 @@ async def approve_task(task_id: str, approved: bool = True):
 
 
 @app.get("/stats")
-async def get_stats():
+async def get_stats(auth: str = Depends(require_auth)):
     """Get Ralph loop statistics"""
     if not loop_engine:
         raise HTTPException(status_code=503, detail="Loop engine not initialized")
 
     return await loop_engine.get_stats()
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint"""
+    import resource
+    # Update process memory metric
+    usage = resource.getrusage(resource.RUSAGE_SELF)
+    RALPH_PROCESS_MEMORY_BYTES.set(usage.ru_maxrss * 1024)  # Convert KB to bytes
+
+    # Update loop enabled metric
+    RALPH_LOOP_ENABLED.set(1 if CONFIG["loop_enabled"] else 0)
+
+    # Update active tasks gauge
+    if loop_engine:
+        RALPH_ACTIVE_TASKS.set(loop_engine.active_task_count)
+
+    return Response(
+        content=generate_latest(),
+        media_type=CONTENT_TYPE_LATEST
+    )
 
 
 @app.exception_handler(Exception)
@@ -285,6 +439,9 @@ def main():
     """Main entry point"""
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
+
+    # Run pre-flight dependency checks
+    validate_dependencies()
 
     logger.info("ralph_starting", config=CONFIG)
 

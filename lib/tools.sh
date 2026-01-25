@@ -2877,6 +2877,10 @@ download_llama_cpp_models_if_needed() {
     if [[ "${LLM_BACKEND:-llama_cpp}" != "llama_cpp" ]]; then
         return 0
     fi
+    if [[ "${AUTO_DOWNLOAD_LLAMA_CPP_MODELS:-false}" != "true" ]]; then
+        print_info "Skipping automatic llama.cpp model download (AUTO_DOWNLOAD_LLAMA_CPP_MODELS=false)."
+        return 0
+    fi
 
     local download_script="$SCRIPT_DIR/scripts/download-llama-cpp-models.sh"
     if [[ ! -x "$download_script" ]]; then

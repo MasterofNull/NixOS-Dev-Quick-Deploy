@@ -13,7 +13,7 @@ import logging
 from typing import List
 from pathlib import Path
 
-from api.routes import metrics, services, containers, config, websockets, actions
+from api.routes import metrics, services, containers, config, websockets, actions, aistack
 from api.services.metrics_collector import MetricsCollector
 
 # Configure logging
@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 # Global state
 active_connections: List[WebSocket] = []
+connections_lock = asyncio.Lock()  # Protect against race conditions
 metrics_collector: MetricsCollector = None
 
 
@@ -45,9 +46,13 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down Dashboard API...")
-    for connection in active_connections:
-        await connection.close()
-    active_connections.clear()
+    async with connections_lock:
+        for connection in active_connections:
+            await connection.close()
+        active_connections.clear()
+    # Close aistack HTTP session
+    from api.routes import aistack
+    await aistack.close_http_session()
 
 
 # Create FastAPI app
@@ -79,6 +84,7 @@ app.include_router(services.router, prefix="/api/services", tags=["services"])
 app.include_router(containers.router, prefix="/api/containers", tags=["containers"])
 app.include_router(config.router, prefix="/api/config", tags=["config"])
 app.include_router(actions.router, prefix="/api/actions", tags=["actions"])
+app.include_router(aistack.router, prefix="/api", tags=["aistack"])
 
 
 @app.get("/")
@@ -106,50 +112,64 @@ async def health_check():
 async def websocket_metrics(websocket: WebSocket):
     """WebSocket endpoint for streaming real-time metrics"""
     await websocket.accept()
-    active_connections.append(websocket)
-    
+    async with connections_lock:
+        active_connections.append(websocket)
+
     try:
         while True:
             # Keep connection alive and wait for client messages
             data = await websocket.receive_text()
-            
+
             if data == "ping":
                 await websocket.send_json({"type": "pong"})
     except WebSocketDisconnect:
-        active_connections.remove(websocket)
+        async with connections_lock:
+            if websocket in active_connections:
+                active_connections.remove(websocket)
         logger.info(f"Client disconnected. Active connections: {len(active_connections)}")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
-        if websocket in active_connections:
-            active_connections.remove(websocket)
+        async with connections_lock:
+            if websocket in active_connections:
+                active_connections.remove(websocket)
 
 
 async def broadcast_metrics():
     """Background task to broadcast metrics to all connected clients"""
     while True:
-        if active_connections:
-            try:
-                metrics = await metrics_collector.get_current_metrics()
-                
-                # Broadcast to all connected clients
-                disconnected = []
-                for connection in active_connections:
-                    try:
-                        await connection.send_json({
-                            "type": "metrics_update",
-                            "data": metrics
-                        })
-                    except Exception as e:
-                        logger.error(f"Error sending to client: {e}")
-                        disconnected.append(connection)
-                
-                # Remove disconnected clients
-                for conn in disconnected:
-                    active_connections.remove(conn)
-                    
-            except Exception as e:
-                logger.error(f"Error broadcasting metrics: {e}")
-        
+        # Create snapshot under lock
+        async with connections_lock:
+            if not active_connections:
+                await asyncio.sleep(2)
+                continue
+            connections_snapshot = list(active_connections)
+
+        # Broadcast without holding lock
+        try:
+            metrics = await metrics_collector.get_current_metrics()
+
+            # Broadcast to all connected clients
+            disconnected = []
+            for connection in connections_snapshot:
+                try:
+                    await connection.send_json({
+                        "type": "metrics_update",
+                        "data": metrics
+                    })
+                except Exception as e:
+                    logger.error(f"Error sending to client: {e}")
+                    disconnected.append(connection)
+
+            # Remove disconnected clients under lock
+            if disconnected:
+                async with connections_lock:
+                    for conn in disconnected:
+                        if conn in active_connections:
+                            active_connections.remove(conn)
+
+        except Exception as e:
+            logger.error(f"Error broadcasting metrics: {e}")
+
         # Update every 2 seconds
         await asyncio.sleep(2)
 

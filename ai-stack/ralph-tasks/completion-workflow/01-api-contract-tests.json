@@ -1,0 +1,12 @@
+{
+  "prompt": "Create comprehensive API contract tests in ai-stack/tests/test_api_contracts.py using pytest. Test Ralph API (http://localhost:8098/health, POST /tasks), Aider-wrapper API (http://localhost:8099/health, POST /aider/run), and llama-cpp API (http://localhost:8080/health, POST /v1/chat/completions). Verify request/response formats match expected schemas. Include tests for error handling (404, 500, timeouts). Use requests library with proper fixtures and assertions.",
+  "backend": "aider",
+  "max_iterations": 30,
+  "require_approval": false,
+  "context": {
+    "purpose": "Automated testing to prevent API regressions",
+    "services": ["Ralph", "Aider-wrapper", "llama-cpp"],
+    "framework": "pytest with requests",
+    "files": ["ai-stack/tests/test_api_contracts.py"]
+  }
+}

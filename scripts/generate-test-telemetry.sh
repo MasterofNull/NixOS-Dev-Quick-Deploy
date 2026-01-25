@@ -86,6 +86,13 @@ echo "  ✓ Generated 15 Hybrid Coordinator events"
 echo "🤖 Ralph Wiggum telemetry events..."
 RALPH_FILE="$WRITE_DIR/ralph-events.jsonl"
 
+# Learning-compatible task completion event (matches hybrid pipeline expectations)
+timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
+task_id="test-task-$(date +%s)"
+cat <<EOF >> "$RALPH_FILE"
+{"event":"task_completed","task_id":"$task_id","status":"completed","total_iterations":2,"task":{"task_id":"$task_id","prompt":"Update README deployment steps and verify service health endpoints.","output":"Updated documentation and confirmed health endpoints respond with OK.","iteration":2,"backend":"aider","context":{"source":"test-telemetry-script"}},"timestamp":"$timestamp"}
+EOF
+
 # Agent task executions
 tasks=("fix_linting_errors" "update_documentation" "refactor_config" "add_tests" "optimize_imports")
 backends=("aider" "continue" "autogpt")

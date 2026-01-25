@@ -36,7 +36,7 @@ class Settings(BaseModel):
     api_port: int = 8091
     worker_count: int = 1
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
-    embedding_dimension: int = 384
+    embedding_dimension: int = 768
     parallel_processing_enabled: bool = False
     parallel_simple_model: str = "GLM-4.5-Air-UD-Q4K-XL-GGUF"
     parallel_complex_model: str = "gpt-oss-20b-mxfp4-GGUF"
@@ -201,7 +201,7 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
         api_key=api_key,
         catalog_path=catalog_path,
         embedding_model=rag_cfg.get("embedding_model", "sentence-transformers/all-MiniLM-L6-v2"),
-        embedding_dimension=int(rag_cfg.get("embedding_dimension", 384)),
+        embedding_dimension=int(rag_cfg.get("embedding_dimension", 768)),
         pgvector_hnsw_m=int(rag_cfg.get("pgvector", {}).get("hnsw_m", 16)),
         pgvector_hnsw_ef_construction=int(rag_cfg.get("pgvector", {}).get("hnsw_ef_construction", 64)),
         parallel_processing_enabled=parallel_cfg.get("enabled", False),

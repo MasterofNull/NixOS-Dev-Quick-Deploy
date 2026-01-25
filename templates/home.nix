@@ -2343,6 +2343,8 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
         }
       ];
       "claudeCode.autoStart" = true;
+      "claudeCode.enableContextSharing" = false;
+      "claudeCode.preferLocalInference" = true;
 
       # Additional AI CLI wrappers (single config per tool, no duplicates)
       "codex.executablePath" = codexWrapperPath;
@@ -2736,6 +2738,8 @@ EOF
       # Podman AI Stack
       PODMAN_AI_STACK_NETWORK = "local-ai";
       PODMAN_AI_STACK_DATA_ROOT = "$HOME/${podmanAiStackDataDir}";
+      AI_STACK_ENV_FILE = "$HOME/.config/nixos-ai-stack/.env";
+      AI_STACK_DATA = "$HOME/.local/share/nixos-ai-stack";
       # Security & Credentials
       GNUPGHOME = "${config.home.homeDirectory}/.gnupg";
       PASSWORD_STORE_DIR = "${config.home.homeDirectory}/.local/share/password-store";
@@ -3789,7 +3793,7 @@ EOF
         #!/usr/bin/env bash
         set -euo pipefail
 
-        root="${NIXOS_QUICK_DEPLOY_ROOT:-}"
+        root="''${NIXOS_QUICK_DEPLOY_ROOT:-}"
         if [[ -z "$root" && -f "$HOME/.config/nixos-quick-deploy/env" ]]; then
           root=$(awk -F= '/^NIXOS_QUICK_DEPLOY_ROOT=/{print $2}' "$HOME/.config/nixos-quick-deploy/env" | tail -n 1)
         fi

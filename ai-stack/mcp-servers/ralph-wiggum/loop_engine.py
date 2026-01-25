@@ -13,7 +13,7 @@ The Ralph Wiggum technique philosophy:
 import asyncio
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 import structlog
@@ -31,7 +31,24 @@ class RalphLoopEngine:
     - Context recovery from state files
     - Human-in-the-loop approval gates
     - Telemetry and audit logging
+    - Adaptive iteration limits (Phase 4)
     """
+
+    # Complexity keywords for prompt analysis
+    COMPLEXITY_KEYWORDS = {
+        "simple": ["fix typo", "add comment", "rename", "update version", "format"],
+        "moderate": ["add function", "implement", "create", "update", "modify", "test"],
+        "complex": ["refactor", "redesign", "migrate", "optimize", "architecture", "integration"],
+        "very_complex": ["rewrite", "overhaul", "security audit", "performance tuning", "distributed"]
+    }
+
+    # Base iteration limits per complexity level
+    BASE_ITERATION_LIMITS = {
+        "simple": 3,
+        "moderate": 10,
+        "complex": 25,
+        "very_complex": 50
+    }
 
     def __init__(self, orchestrator, state_manager, config: Dict[str, Any]):
         self.orchestrator = orchestrator
@@ -44,13 +61,17 @@ class RalphLoopEngine:
         self.is_running = False
         self.telemetry_file = open(config["telemetry_path"], "a")
 
-        logger.info("loop_engine_initialized", config=config)
+        # Adaptive iteration tracking (Phase 4)
+        self.task_history: Dict[str, List[Dict[str, Any]]] = {}  # task_type -> [results]
+        self.adaptive_enabled = config.get("adaptive_iterations", True)
+
+        logger.info("loop_engine_initialized", config=config, adaptive_enabled=self.adaptive_enabled)
 
     async def submit_task(
         self,
         prompt: str,
         backend: str,
-        max_iterations: int = 0,
+        max_iterations: int = -1,  # -1 = use adaptive, 0 = infinite, >0 = fixed
         require_approval: bool = False,
         context: Optional[Dict[str, Any]] = None
     ) -> str:
@@ -60,7 +81,7 @@ class RalphLoopEngine:
         Args:
             prompt: Task description to iterate on
             backend: Agent backend to use (aider, continue, goose, etc.)
-            max_iterations: Maximum iterations (0 = infinite)
+            max_iterations: Maximum iterations (-1 = adaptive, 0 = infinite, >0 = fixed)
             require_approval: Whether to require human approval
             context: Additional context for the task
 
@@ -69,11 +90,27 @@ class RalphLoopEngine:
         """
         task_id = str(uuid.uuid4())
 
+        # Calculate iteration limit (Phase 4: Adaptive)
+        if max_iterations == -1:
+            # Use adaptive calculation
+            effective_max_iterations = self.calculate_adaptive_limit(prompt, backend)
+            iteration_mode = "adaptive"
+        elif max_iterations == 0:
+            # Infinite mode
+            effective_max_iterations = 0
+            iteration_mode = "infinite"
+        else:
+            # Fixed limit
+            effective_max_iterations = max_iterations
+            iteration_mode = "fixed"
+
         task = {
             "task_id": task_id,
             "prompt": prompt,
             "backend": backend,
-            "max_iterations": max_iterations,
+            "max_iterations": effective_max_iterations,
+            "iteration_mode": iteration_mode,
+            "original_max_iterations": max_iterations,
             "require_approval": require_approval,
             "context": context or {},
             "status": "queued",
@@ -99,6 +136,168 @@ class RalphLoopEngine:
         logger.info("task_submitted", task_id=task_id, backend=backend)
 
         return task_id
+
+    def calculate_adaptive_limit(self, prompt: str, backend: str) -> int:
+        """
+        Calculate adaptive iteration limit based on task complexity and history
+
+        Phase 4: Adaptive Iteration Logic
+
+        Args:
+            prompt: The task prompt to analyze
+            backend: The agent backend being used
+
+        Returns:
+            Recommended iteration limit
+        """
+        if not self.adaptive_enabled:
+            return self.config.get("default_iterations", 10)
+
+        # Step 1: Analyze prompt complexity
+        complexity = self._analyze_prompt_complexity(prompt)
+        base_limit = self.BASE_ITERATION_LIMITS.get(complexity, 10)
+
+        # Step 2: Adjust based on historical success rate
+        task_type = self._extract_task_type(prompt)
+        history_adjustment = self._get_history_adjustment(task_type, backend)
+
+        # Step 3: Calculate final limit
+        adjusted_limit = int(base_limit * history_adjustment)
+
+        # Ensure within bounds
+        min_limit = self.config.get("min_iterations", 1)
+        max_limit = self.config.get("max_iterations_cap", 100)
+        final_limit = max(min_limit, min(adjusted_limit, max_limit))
+
+        # Log the adaptive decision
+        self._log_telemetry({
+            "event": "adaptive_limit_calculated",
+            "prompt_preview": prompt[:100],
+            "complexity": complexity,
+            "base_limit": base_limit,
+            "history_adjustment": history_adjustment,
+            "final_limit": final_limit,
+            "task_type": task_type,
+            "backend": backend,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+
+        logger.info(
+            "adaptive_limit_calculated",
+            complexity=complexity,
+            base_limit=base_limit,
+            adjustment=history_adjustment,
+            final_limit=final_limit
+        )
+
+        return final_limit
+
+    def _analyze_prompt_complexity(self, prompt: str) -> str:
+        """
+        Analyze prompt to determine task complexity
+
+        Returns: 'simple', 'moderate', 'complex', or 'very_complex'
+        """
+        prompt_lower = prompt.lower()
+
+        # Count matches for each complexity level
+        scores = {}
+        for level, keywords in self.COMPLEXITY_KEYWORDS.items():
+            scores[level] = sum(1 for kw in keywords if kw in prompt_lower)
+
+        # Also consider prompt length as a factor
+        word_count = len(prompt.split())
+        if word_count > 500:
+            scores["very_complex"] = scores.get("very_complex", 0) + 2
+        elif word_count > 200:
+            scores["complex"] = scores.get("complex", 0) + 1
+        elif word_count < 50:
+            scores["simple"] = scores.get("simple", 0) + 1
+
+        # Find highest scoring complexity
+        if not any(scores.values()):
+            return "moderate"  # Default
+
+        return max(scores.keys(), key=lambda k: scores[k])
+
+    def _extract_task_type(self, prompt: str) -> str:
+        """
+        Extract a normalized task type from the prompt for history tracking
+
+        Returns a category like: 'refactor', 'implement', 'fix', 'test', etc.
+        """
+        prompt_lower = prompt.lower()
+
+        task_types = [
+            "refactor", "implement", "fix", "test", "add", "update",
+            "remove", "optimize", "migrate", "document", "review"
+        ]
+
+        for task_type in task_types:
+            if task_type in prompt_lower:
+                return task_type
+
+        return "general"
+
+    def _get_history_adjustment(self, task_type: str, backend: str) -> float:
+        """
+        Calculate adjustment factor based on historical success rates
+
+        Returns multiplier: <1.0 for high success rate, >1.0 for low success rate
+        """
+        history_key = f"{task_type}:{backend}"
+        history = self.task_history.get(history_key, [])
+
+        if len(history) < 3:
+            # Not enough history, return neutral
+            return 1.0
+
+        # Analyze recent history (last 10 tasks)
+        recent = history[-10:]
+
+        # Calculate average iterations needed for success
+        successful = [h for h in recent if h.get("success", False)]
+        if not successful:
+            # No successes, increase limit significantly
+            return 1.5
+
+        avg_iterations = sum(h.get("iterations", 10) for h in successful) / len(successful)
+        success_rate = len(successful) / len(recent)
+
+        # Adjustment logic:
+        # - High success rate + low iterations = decrease limit (efficient)
+        # - Low success rate = increase limit (needs more tries)
+        # - High iterations needed = increase limit
+        if success_rate > 0.8 and avg_iterations < 5:
+            return 0.8  # Very efficient, reduce iterations
+        elif success_rate > 0.6:
+            return 1.0  # Normal
+        elif success_rate > 0.4:
+            return 1.2  # Struggling, increase
+        else:
+            return 1.5  # Low success, significant increase
+
+    def _record_task_history(self, task: Dict[str, Any]):
+        """Record task completion for adaptive learning"""
+        task_type = self._extract_task_type(task.get("prompt", ""))
+        backend = task.get("backend", "unknown")
+        history_key = f"{task_type}:{backend}"
+
+        if history_key not in self.task_history:
+            self.task_history[history_key] = []
+
+        record = {
+            "task_id": task.get("task_id"),
+            "success": task.get("status") == "completed" and task.get("completion_reason") == "success",
+            "iterations": task.get("iteration", 0),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+        self.task_history[history_key].append(record)
+
+        # Keep only last 100 records per type
+        if len(self.task_history[history_key]) > 100:
+            self.task_history[history_key] = self.task_history[history_key][-100:]
 
     async def run(self):
         """
@@ -248,11 +447,28 @@ class RalphLoopEngine:
         # Save final state
         await self.state_manager.save_task_state(task)
 
+        # Record history for adaptive learning (Phase 4)
+        self._record_task_history(task)
+
+        last_result = {}
+        if task["results"]:
+            last_result = task["results"][-1].get("result", {})
+
         self._log_telemetry({
             "event": "task_completed",
             "task_id": task_id,
             "status": task["status"],
             "total_iterations": iteration,
+            "iteration_mode": task.get("iteration_mode", "unknown"),
+            "adaptive_limit_used": task.get("max_iterations", 0),
+            "task": {
+                "task_id": task_id,
+                "prompt": task.get("prompt", ""),
+                "output": last_result.get("output", ""),
+                "iteration": task.get("iteration", iteration),
+                "backend": task.get("backend", ""),
+                "context": task.get("context", {}),
+            },
             "timestamp": datetime.now(timezone.utc).isoformat()
         })
 
@@ -345,7 +561,7 @@ class RalphLoopEngine:
         return True
 
     async def get_stats(self) -> Dict[str, Any]:
-        """Get statistics"""
+        """Get statistics including adaptive iteration insights"""
         total_tasks = len(self.tasks)
         running = sum(1 for t in self.tasks.values() if t["status"] == "running")
         completed = sum(1 for t in self.tasks.values() if t["status"] == "completed")
@@ -353,13 +569,51 @@ class RalphLoopEngine:
 
         total_iterations = sum(t["iteration"] for t in self.tasks.values())
 
+        # Adaptive iteration stats (Phase 4)
+        adaptive_stats = self._get_adaptive_stats()
+
         return {
             "total_tasks": total_tasks,
             "running": running,
             "completed": completed,
             "failed": failed,
             "total_iterations": total_iterations,
-            "average_iterations": total_iterations / total_tasks if total_tasks > 0 else 0
+            "average_iterations": total_iterations / total_tasks if total_tasks > 0 else 0,
+            "adaptive": adaptive_stats
+        }
+
+    def _get_adaptive_stats(self) -> Dict[str, Any]:
+        """Get adaptive iteration statistics (Phase 4)"""
+        if not self.task_history:
+            return {
+                "enabled": self.adaptive_enabled,
+                "history_entries": 0,
+                "task_types": []
+            }
+
+        # Aggregate stats per task type
+        type_stats = {}
+        for history_key, records in self.task_history.items():
+            task_type, backend = history_key.split(":", 1)
+
+            successful = [r for r in records if r.get("success", False)]
+            avg_iterations = sum(r.get("iterations", 0) for r in successful) / len(successful) if successful else 0
+            success_rate = len(successful) / len(records) if records else 0
+
+            type_stats[history_key] = {
+                "task_type": task_type,
+                "backend": backend,
+                "total_tasks": len(records),
+                "successful": len(successful),
+                "success_rate": round(success_rate, 2),
+                "avg_iterations": round(avg_iterations, 1),
+                "current_adjustment": self._get_history_adjustment(task_type, backend)
+            }
+
+        return {
+            "enabled": self.adaptive_enabled,
+            "history_entries": sum(len(r) for r in self.task_history.values()),
+            "task_types": list(type_stats.values())
         }
 
     @property

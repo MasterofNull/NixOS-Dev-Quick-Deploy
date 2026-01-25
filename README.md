@@ -32,6 +32,17 @@ The AI stack is now a **first-class, public component** of this repository!
 ./nixos-quick-deploy.sh --with-ai-stack
 ```
 
+### First-Time AI Stack Setup (Post-Deploy)
+
+```bash
+# Initialize local AI stack configuration
+./scripts/setup-config.sh
+./scripts/setup-ai-stack-secrets.sh
+
+# Start the services
+./scripts/ai-stack-manage.sh up
+```
+
 This single command gives you:
 
 - ✅ **AIDB MCP Server** - PostgreSQL + TimescaleDB + Qdrant vector database
@@ -732,6 +743,20 @@ Next steps:
    flatpak info com.visualstudio.code 2>/dev/null || echo "No conflicting Flatpak"
    ```
    Remove any `com.visualstudio.code*` or `com.vscodium.codium*` Flatpak apps—they replace the declarative `programs.vscode` package and undo the managed settings/extensions.
+
+### Claude Code "Prompt is too long" in VSCodium
+
+**Symptom:** Claude Code stops with "Prompt is too long"
+
+**Cause:** Context sharing can send too much workspace data or MCP context for the model window.
+
+**Fix (default templates):** The templates now disable context sharing by default. Re-run deploy or update your settings:
+
+```bash
+rg '"claudeCode.enableContextSharing"' ~/.config/VSCodium/User/settings.json
+```
+
+Set it to `false`, then restart VSCodium.
 
 ### VSCodium Git Initialization Error
 

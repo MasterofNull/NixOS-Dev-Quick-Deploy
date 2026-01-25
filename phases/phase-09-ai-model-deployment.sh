@@ -82,24 +82,45 @@ phase_09_ai_model_deployment() {
     if [ -f "${SCRIPT_DIR}/scripts/download-llama-cpp-models.sh" ]; then
         local model_key
         local swap_keys
+        local download_selected="yes"
+        local download_swaps="no"
+        local skip_selected_download="false"
         model_key=$(map_llama_model_to_download_key "$selected_model")
         swap_keys="qwen3-4b,qwen-coder,deepseek"
 
-        if [[ -n "$model_key" ]]; then
+        # If the selected GGUF already exists (from Phase 6 or prior), skip all downloads.
+        local model_file
+        local model_dir="${HOME}/.local/share/nixos-ai-stack/llama-cpp-models"
+        local cache_dir="${HUGGINGFACE_HOME:-$HOME/.cache/huggingface}"
+        model_file=$(get_model_filename_from_id "$selected_model")
+        if [[ -n "$model_file" ]]; then
+            if find "$cache_dir" -name "$model_file" 2>/dev/null | grep -q . || [[ -f "${model_dir}/${model_file}" ]]; then
+                log_info "Selected model already present (${model_file}); skipping selected model download."
+                skip_selected_download="true"
+            fi
+        fi
+
+        if [[ "$skip_selected_download" == "true" ]]; then
+            :
+        elif [[ -n "$model_key" ]]; then
             read -p "Download selected model now (${model_key})? [Y/n]: " download_confirm
             if [[ ! "$download_confirm" =~ ^[Nn]$ ]]; then
                 bash "${SCRIPT_DIR}/scripts/download-llama-cpp-models.sh" --model "$model_key" || {
                     log_warning "Model download incomplete. It will download on first container startup."
                 }
+                download_selected="yes"
             else
                 log_info "Selected model will download automatically on first container startup"
+                download_selected="no"
             fi
         else
             log_warning "No GGUF download key matched for selected model; skipping pre-download."
+            download_selected="no"
         fi
 
         read -p "Download additional swap models for quick testing? (qwen3-4b,qwen-coder,deepseek) [y/N]: " swap_confirm
         if [[ "$swap_confirm" =~ ^[Yy]$ ]]; then
+            download_swaps="yes"
             if [[ -n "$model_key" ]]; then
                 swap_keys=$(echo "$swap_keys" | awk -v key="$model_key" -F',' '{for (i=1;i<=NF;i++) if ($i!=key && $i!="") printf (out?"," :"")$i; out=1}')
             fi
@@ -111,6 +132,14 @@ phase_09_ai_model_deployment() {
         fi
     else
         log_warning "Model download script not found; models will download on first container startup"
+    fi
+
+    # Ask whether to start the AI stack now (may pull images / auto-download models)
+    read -p "Start AI stack now? (pulls images; llama.cpp may auto-download models) [Y/n]: " start_confirm
+    if [[ "$start_confirm" =~ ^[Nn]$ ]]; then
+        log_info "Skipping AI stack deployment and hybrid learning setup (can run later)."
+        mark_phase_complete "phase-09-ai-model"
+        return 0
     fi
 
     # Setup Hybrid Learning System (Automated)

@@ -93,3 +93,5 @@ data/**/*.backup
 # Keep README files
 !data/**/README.md
 !data/**/.gitkeep
+.env
+ai-stack/compose/secrets/

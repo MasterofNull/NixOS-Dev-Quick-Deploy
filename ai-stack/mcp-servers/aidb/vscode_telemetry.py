@@ -1,14 +1,17 @@
 """
 VSCode Extension Telemetry Router for AIDB MCP Server
 Collects and analyzes telemetry from VSCode AI extensions
+
+P2-REL-003: Telemetry file locking to prevent corruption
 """
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List
 import json
 import os
+import fcntl  # P2-REL-003: File locking
 from pathlib import Path
 
 router = APIRouter(prefix="/telemetry/vscode", tags=["vscode-telemetry"])
@@ -80,9 +83,16 @@ async def collect_event(event: VscodeEvent):
         event_dict = event.model_dump()
         event_dict['timestamp'] = event.timestamp.isoformat()
 
-        # Append to JSONL file
+        # P2-REL-003: Append to JSONL file with file locking to prevent corruption
         with open(TELEMETRY_FILE, "a") as f:
-            f.write(json.dumps(event_dict) + "\n")
+            # Acquire exclusive lock before writing
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                f.write(json.dumps(event_dict) + "\n")
+                f.flush()  # Ensure write completes
+            finally:
+                # Release lock (automatic on close, but explicit is safer)
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
         return {"status": "recorded", "timestamp": event_dict['timestamp']}
 

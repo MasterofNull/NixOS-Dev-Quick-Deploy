@@ -32,6 +32,9 @@ COPY health-monitor/requirements.txt /app/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --timeout 300 --retries 5 -r /app/requirements.txt
 
+# Copy shared libraries (for Podman API client)
+COPY shared /app/shared
+
 # Copy application code
 COPY health-monitor/self_healing.py /app/
 COPY health-monitor/self_healing_daemon.py /app/

@@ -1,0 +1,34 @@
+[Unit]
+Description=AIDB PostgreSQL Backup Service
+Documentation=https://www.postgresql.org/docs/current/backup-dump.html
+After=network-online.target postgresql.service local-ai-postgres.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=%u
+Group=%u
+WorkingDirectory=%h/Documents/try/NixOS-Dev-Quick-Deploy
+
+# Run the backup script
+ExecStart=%h/Documents/try/NixOS-Dev-Quick-Deploy/scripts/backup-postgresql.sh
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aidb-backup-postgresql
+
+# Security hardening
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/backups
+
+# Resource limits
+CPUQuota=50%
+MemoryMax=512M
+TasksMax=10
+
+[Install]
+WantedBy=multi-user.target
