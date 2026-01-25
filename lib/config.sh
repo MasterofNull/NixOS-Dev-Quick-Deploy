@@ -1192,9 +1192,49 @@ EOF
 # Workspace Preparation Helpers
 # ============================================================================
 
+normalize_dotfiles_paths() {
+    local resolved_user="${PRIMARY_USER:-${USER:-}}"
+    local resolved_home=""
+
+    if declare -F resolve_user_home_directory >/dev/null 2>&1; then
+        resolved_home=$(resolve_user_home_directory "$resolved_user" 2>/dev/null || true)
+    fi
+
+    if [[ -z "$resolved_home" ]]; then
+        resolved_home=$(getent passwd "$resolved_user" 2>/dev/null | cut -d: -f6)
+    fi
+
+    if [[ -z "$resolved_home" || ! -d "$resolved_home" ]]; then
+        resolved_home="${HOME:-}"
+    fi
+
+    if [[ -z "$resolved_home" ]]; then
+        return 0
+    fi
+
+    if [[ -z "${PRIMARY_HOME:-}" || ! -d "$PRIMARY_HOME" || "$PRIMARY_HOME" == /nix/store/* || "$PRIMARY_HOME" == /build/* ]]; then
+        PRIMARY_HOME="$resolved_home"
+    fi
+
+    if [[ -z "${DOTFILES_ROOT:-}" || "$DOTFILES_ROOT" == /nix/store/* || "$DOTFILES_ROOT" == /build/* || "$DOTFILES_ROOT" == /homeless-shelter ]]; then
+        DOTFILES_ROOT="$resolved_home/.dotfiles"
+    elif [[ "$DOTFILES_ROOT" != /* ]]; then
+        DOTFILES_ROOT="$resolved_home/$DOTFILES_ROOT"
+    fi
+
+    DEV_HOME_ROOT="$DOTFILES_ROOT"
+    HM_CONFIG_DIR="$DOTFILES_ROOT/home-manager"
+    FLAKE_FILE="$HM_CONFIG_DIR/flake.nix"
+    HOME_MANAGER_FILE="$HM_CONFIG_DIR/home.nix"
+    SYSTEM_CONFIG_FILE="$HM_CONFIG_DIR/configuration.nix"
+    HARDWARE_CONFIG_FILE="$HM_CONFIG_DIR/hardware-configuration.nix"
+}
+
 ensure_flake_workspace() {
     local created_root=false
     local created_dir=false
+
+    normalize_dotfiles_paths
 
     if [[ -z "${DEV_HOME_ROOT:-}" || -z "${HM_CONFIG_DIR:-}" ]]; then
         print_error "ensure_flake_workspace: workspace paths are not defined"
@@ -2346,6 +2386,7 @@ render_sops_config_file() {
 #   1 - Failure
 # ============================================================================
 generate_nixos_system_config() {
+    normalize_dotfiles_paths
     print_section "Generating NixOS Configuration"
 
     # ========================================================================
@@ -3735,6 +3776,7 @@ EOF
 #   1 - Failure
 # ============================================================================
 create_home_manager_config() {
+    normalize_dotfiles_paths
     print_section "Creating Home Manager Configuration"
 
     # ========================================================================
@@ -4170,6 +4212,7 @@ materialize_hardware_configuration() {
 #   1 - Failure (critical errors)
 # ============================================================================
 validate_system_build_stage() {
+    normalize_dotfiles_paths
     print_section "Validating Configuration"
 
     local target_host=$(hostname)
