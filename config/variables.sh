@@ -163,6 +163,25 @@ fi
 # After this block, HOME and USER always refer to the target user regardless of
 # whether the script was invoked directly or through sudo.
 
+# Ensure HOME points to a real user directory even in Nix build/sandbox contexts.
+# Some launchers can set HOME to /nix/store/*-source or other transient paths.
+if [[ -n "${USER:-}" ]]; then
+    _resolved_home="$(getent passwd "$USER" 2>/dev/null | cut -d: -f6)"
+    if [[ -n "$_resolved_home" && -d "$_resolved_home" ]]; then
+        case "${HOME:-}" in
+            ""|/nix/store/*|/build/*|/homeless-shelter)
+                export HOME="$_resolved_home"
+                ;;
+            *)
+                if [[ ! -d "$HOME" ]]; then
+                    export HOME="$_resolved_home"
+                fi
+                ;;
+        esac
+    fi
+    unset _resolved_home
+fi
+
 # ============================================================================
 # State Management
 # ============================================================================
@@ -745,6 +764,9 @@ LATEST_CONFIG_BACKUP_DIR=""
 
 # Home Manager Configuration
 DOTFILES_ROOT="${DOTFILES_ROOT_OVERRIDE:-$PRIMARY_HOME/.dotfiles}"
+if [[ "$DOTFILES_ROOT" != /* ]]; then
+    DOTFILES_ROOT="$PRIMARY_HOME/$DOTFILES_ROOT"
+fi
 DEV_HOME_ROOT="$DOTFILES_ROOT"
 HM_CONFIG_DIR="$DOTFILES_ROOT/home-manager"
 FLAKE_FILE="$HM_CONFIG_DIR/flake.nix"
