@@ -37,7 +37,7 @@ spec:
             - name: BATCH_QUEUE_MAX
               value: "1024"
             - name: EMBEDDINGS_API_KEY_FILE
-              value: /run/secrets/embeddings-api-key
+              value: /run/secrets/embeddings_api_key
             - name: EMBEDDINGS_CONFIG
               value: /app/config/config.yaml
             - name: HF_HOME
@@ -74,15 +74,15 @@ spec:
               cpu: 500m
               memory: "1073741824"
           volumeMounts:
-            - mountPath: /run/secrets/embeddings-api-key
+            - mountPath: /run/secrets/embeddings_api_key
               name: embeddings-api-key
-              subPath: embeddings-api-key
+              subPath: embeddings_api_key
       restartPolicy: Always
       volumes:
         - name: embeddings-api-key
           secret:
             defaultMode: 256
             items:
-              - key: embeddings-api-key
-                path: embeddings-api-key
+              - key: embeddings_api_key
+                path: embeddings_api_key
             secretName: embeddings-api-key

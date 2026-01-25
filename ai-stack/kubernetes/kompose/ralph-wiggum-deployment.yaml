@@ -91,7 +91,7 @@ spec:
               name: redis-password
               subPath: redis-password
             - mountPath: /data
-              name: ralph-wiggum-cm0
+              name: ralph-wiggum-data
             - mountPath: /data/telemetry
               name: ralph-wiggum-cm1
             - mountPath: /workspace
@@ -118,9 +118,9 @@ spec:
               - key: redis-password
                 path: redis-password
             secretName: redis-password
-        - configMap:
-            name: ralph-wiggum-cm0
-          name: ralph-wiggum-cm0
+        - name: ralph-wiggum-data
+          persistentVolumeClaim:
+            claimName: ralph-wiggum-data
         - name: ralph-wiggum-cm1
           emptyDir: {}
         - configMap:

@@ -107,6 +107,9 @@ spec:
             - mountPath: /run/secrets/hybrid-coordinator-api-key
               name: hybrid-coordinator-api-key
               subPath: hybrid-coordinator-api-key
+            - mountPath: /run/secrets/embeddings_api_key
+              name: embeddings-api-key
+              subPath: embeddings_api_key
             - mountPath: /run/secrets/postgres-password
               name: postgres-password
               subPath: postgres-password
@@ -129,6 +132,12 @@ spec:
               - key: postgres-password
                 path: postgres-password
             secretName: postgres-password
+        - name: embeddings-api-key
+          secret:
+            items:
+              - key: embeddings_api_key
+                path: embeddings_api_key
+            secretName: embeddings-api-key
         - name: hybrid-coordinator-cm1
           emptyDir: {}
         - configMap:
