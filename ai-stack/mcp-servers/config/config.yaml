@@ -79,6 +79,7 @@ continuous_learning:
 rag:
   embedding_model: nomic-ai/nomic-embed-text-v1.5
   embedding_dimension: 768
+  embedding_trust_remote_code: true
   pgvector:
     hnsw_m: 16
     hnsw_ef_construction: 64

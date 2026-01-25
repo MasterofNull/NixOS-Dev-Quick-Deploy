@@ -94,6 +94,9 @@ spec:
             - mountPath: /run/secrets/aidb-api-key
               name: aidb-api-key
               subPath: aidb-api-key
+            - mountPath: /run/secrets/embeddings_api_key
+              name: embeddings-api-key
+              subPath: embeddings_api_key
             - mountPath: /run/secrets/postgres-password
               name: postgres-password
               subPath: postgres-password
@@ -125,6 +128,12 @@ spec:
               - key: redis-password
                 path: redis-password
             secretName: redis-password
+        - name: embeddings-api-key
+          secret:
+            items:
+              - key: embeddings_api_key
+                path: embeddings_api_key
+            secretName: embeddings-api-key
         - name: aidb-cm1
           emptyDir: {}
         - name: aidb-cm2

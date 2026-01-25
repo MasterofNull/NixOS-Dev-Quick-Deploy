@@ -389,8 +389,9 @@ def _get_process_memory_bytes() -> int:
 class EmbeddingService:
     """Lightweight wrapper around SentenceTransformer with async helpers."""
 
-    def __init__(self, model_name: str):
+    def __init__(self, model_name: str, trust_remote_code: bool = False):
         self.model_name = model_name
+        self.trust_remote_code = trust_remote_code
         self._model: Optional[SentenceTransformer] = None
         self._model_lock = threading.Lock()
 
@@ -398,7 +399,11 @@ class EmbeddingService:
         if self._model is None:
             with self._model_lock:
                 if self._model is None:
-                    self._model = SentenceTransformer(self.model_name, device="cpu")
+                    self._model = SentenceTransformer(
+                        self.model_name,
+                        device="cpu",
+                        trust_remote_code=self.trust_remote_code,
+                    )
         return self._model
 
     async def embed(self, texts: List[str]) -> List[List[float]]:
@@ -1646,7 +1651,10 @@ class MCPServer:
         self._repo_root = Path(__file__).resolve().parents[1]
         self._server_task: Optional[asyncio.Task] = None
         self._monitor_task: Optional[asyncio.Task] = None
-        self._embedding_service = EmbeddingService(settings.embedding_model)
+        self._embedding_service = EmbeddingService(
+            settings.embedding_model,
+            trust_remote_code=settings.embedding_trust_remote_code,
+        )
         self._vector_store = VectorStore(settings, self._engine)
         self._rate_limiter = RateLimiter(
             enabled=self.settings.rate_limit_enabled,
