@@ -1306,6 +1306,28 @@ verify_home_manager_flake_ready() {
     return 0
 }
 
+ensure_flake_git_tracking() {
+    if [[ -z "${HM_CONFIG_DIR:-}" || ! -d "$HM_CONFIG_DIR" ]]; then
+        return 0
+    fi
+
+    if ! command -v git >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local toplevel=""
+    toplevel=$(git -C "$HM_CONFIG_DIR" rev-parse --show-toplevel 2>/dev/null || true)
+
+    # If the flake lives inside another repo, create a nested repo to avoid
+    # "path is not tracked by git" errors during nix flake evaluation.
+    if [[ -n "$toplevel" && "$toplevel" != "$HM_CONFIG_DIR" ]]; then
+        if [[ ! -d "$HM_CONFIG_DIR/.git" ]]; then
+            git -C "$HM_CONFIG_DIR" init -q >/dev/null 2>&1 || return 0
+        fi
+        git -C "$HM_CONFIG_DIR" add -A >/dev/null 2>&1 || true
+    fi
+}
+
 seed_flake_lock_from_template() {
     local backup_dir="${1:-}"
     local backup_stamp="${2:-$(date +%Y%m%d_%H%M%S)}"
@@ -4166,6 +4188,8 @@ EOF
     print_info "Location: $HOME_MANAGER_FILE"
     print_info "File size: $file_size bytes"
     echo ""
+
+    ensure_flake_git_tracking
 
     return 0
 }

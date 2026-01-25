@@ -38,7 +38,6 @@ class Settings(BaseModel):
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     embedding_dimension: int = 768
     embedding_trust_remote_code: bool = False
-    embedding_trust_remote_code: bool = False
     parallel_processing_enabled: bool = False
     parallel_simple_model: str = "GLM-4.5-Air-UD-Q4K-XL-GGUF"
     parallel_complex_model: str = "gpt-oss-20b-mxfp4-GGUF"
@@ -101,20 +100,6 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
     logging_cfg = raw.get("logging", {})
     security_cfg = raw.get("security", {})
     rag_cfg = raw.get("rag", {})
-    embedding_trust_remote_code = rag_cfg.get("embedding_trust_remote_code")
-    if embedding_trust_remote_code is None:
-        env_flag = os.environ.get("AIDB_EMBEDDING_TRUST_REMOTE_CODE") or os.environ.get(
-            "EMBEDDING_TRUST_REMOTE_CODE"
-        )
-        if env_flag is None:
-            embedding_trust_remote_code = False
-        else:
-            embedding_trust_remote_code = str(env_flag).strip().lower() in {
-                "1",
-                "true",
-                "yes",
-                "on",
-            }
     embedding_trust_remote_code = rag_cfg.get("embedding_trust_remote_code")
     if embedding_trust_remote_code is None:
         env_flag = os.environ.get("AIDB_EMBEDDING_TRUST_REMOTE_CODE") or os.environ.get(
@@ -232,7 +217,6 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
         catalog_path=catalog_path,
         embedding_model=rag_cfg.get("embedding_model", "sentence-transformers/all-MiniLM-L6-v2"),
         embedding_dimension=int(rag_cfg.get("embedding_dimension", 768)),
-        embedding_trust_remote_code=embedding_trust_remote_code,
         embedding_trust_remote_code=embedding_trust_remote_code,
         pgvector_hnsw_m=int(rag_cfg.get("pgvector", {}).get("hnsw_m", 16)),
         pgvector_hnsw_ef_construction=int(rag_cfg.get("pgvector", {}).get("hnsw_ef_construction", 64)),
