@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
+    kompose.version: 1.37.0 (HEAD)
+    nixos.quick-deploy.ai-stack: "true"
+    nixos.quick-deploy.service: mindsdb
+  labels:
+    io.kompose.service: mindsdb
+  name: mindsdb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: mindsdb
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
+        kompose.version: 1.37.0 (HEAD)
+        nixos.quick-deploy.ai-stack: "true"
+        nixos.quick-deploy.service: mindsdb
+      labels:
+        io.kompose.service: mindsdb
+    spec:
+      containers:
+        - env:
+            - name: MINDSDB_STORAGE_DIR
+              value: /root/mindsdb_storage
+          envFrom:
+            - configMapRef:
+                name: env
+          image: docker.io/mindsdb/mindsdb@sha256:5248b7f9b8f1c92e4ca526617842407d87af48cb094e85ee32b2521acf4b4f92
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - import urllib.request; r=urllib.request.urlopen('http://localhost:47334', timeout=5); r.read(); import sys; sys.exit(0)
+            failureThreshold: 3
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            timeoutSeconds: 5
+          name: local-ai-mindsdb
+          ports:
+            - containerPort: 47334
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "2"
+              memory: "4294967296"
+            requests:
+              cpu: 500m
+              memory: "1073741824"
+      restartPolicy: Always

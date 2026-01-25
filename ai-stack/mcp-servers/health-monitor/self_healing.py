@@ -12,13 +12,17 @@ Features:
 """
 
 import asyncio
-import subprocess
+import os
+import sys
 from typing import Dict, List, Optional, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import structlog
 from pydantic import BaseModel
-import json
+
+# Add parent directory to path for shared imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from shared.podman_api_client import PodmanAPIClient, ContainerNotFoundError
 
 logger = structlog.get_logger()
 
@@ -68,6 +72,10 @@ class SelfHealingOrchestrator:
     def __init__(self, settings, qdrant_client=None):
         self.settings = settings
         self.qdrant = qdrant_client
+
+        # Initialize Podman API client with allowed operations
+        self.podman_client = None  # Will be initialized in async context
+        self.allowed_operations = ["list", "inspect", "restart"]
 
         # Error patterns database
         self.error_patterns: Dict[str, ErrorPattern] = self._load_error_patterns()
@@ -125,6 +133,15 @@ class SelfHealingOrchestrator:
     async def start(self):
         """Start health monitoring"""
         logger.info("self_healing_starting")
+
+        # Initialize Podman API client
+        self.podman_client = PodmanAPIClient(
+            service_name="health-monitor",
+            allowed_operations=self.allowed_operations,
+            audit_enabled=True
+        )
+        await self.podman_client.__aenter__()
+
         self.monitor_task = asyncio.create_task(self._monitoring_loop())
 
     async def stop(self):
@@ -135,6 +152,11 @@ class SelfHealingOrchestrator:
                 await self.monitor_task
             except asyncio.CancelledError:
                 pass
+
+        # Clean up Podman API client
+        if self.podman_client:
+            await self.podman_client.__aexit__(None, None, None)
+
         logger.info("self_healing_stopped")
 
     async def _monitoring_loop(self):
@@ -152,41 +174,24 @@ class SelfHealingOrchestrator:
     async def _check_all_containers(self):
         """Check health of all AI stack containers"""
         try:
-            # Get all AI stack containers
-            result = subprocess.run(
-                [
-                    "podman",
-                    "ps",
-                    "-a",
-                    "--filter",
-                    "label=nixos.quick-deploy.ai-stack=true",
-                    "--format",
-                    "json",
-                ],
-                capture_output=True,
-                text=True,
+            # Get all AI stack containers via API
+            containers_data = await self.podman_client.list_containers(
+                filters={"label": ["nixos.quick-deploy.ai-stack=true"]},
+                all=True
             )
 
-            if result.returncode != 0:
-                logger.warning("podman_ps_failed", stderr=result.stderr)
-                return
-
-            containers = json.loads(result.stdout or "[]")
-
-            for container_data in containers:
+            for container_data in containers_data:
                 container = ContainerStatus(
                     name=container_data.get("Names", ["unknown"])[0],
                     id=container_data.get("Id", "")[:12],
                     status=container_data.get("State", "unknown"),
-                    health=container_data.get("Health", {}).get("Status"),
+                    health=container_data.get("Health", {}).get("Status") if container_data.get("Health") else None,
                 )
 
                 # Check if container needs healing
                 if await self._needs_healing(container):
                     await self.heal_container(container.name)
 
-        except json.JSONDecodeError as e:
-            logger.error("json_parse_error", error=str(e))
         except Exception as e:
             logger.error("container_check_failed", error=str(e))
 
@@ -277,13 +282,12 @@ class SelfHealingOrchestrator:
     async def _get_container_logs(self, container_name: str) -> str:
         """Get container logs for error analysis"""
         try:
-            result = subprocess.run(
-                ["podman", "logs", "--tail", "100", container_name],
-                capture_output=True,
-                text=True,
-                timeout=30,
+            logs = await self.podman_client.get_container_logs(
+                container_name,
+                tail=100,
+                timestamps=False
             )
-            return result.stdout + result.stderr
+            return logs
         except Exception as e:
             logger.warning("log_fetch_failed", error=str(e))
             return ""
@@ -392,25 +396,17 @@ class SelfHealingOrchestrator:
     async def _restart_container(self, container_name: str) -> bool:
         """Restart a container"""
         try:
-            result = subprocess.run(
-                ["podman", "restart", container_name],
-                capture_output=True,
-                text=True,
-                timeout=60,
+            await self.podman_client.restart_container(
+                container_name,
+                timeout=60
             )
-
-            if result.returncode == 0:
-                logger.info("container_restarted", container=container_name)
-                return True
-            else:
-                logger.warning(
-                    "restart_failed",
-                    container=container_name,
-                    stderr=result.stderr
-                )
-                return False
+            logger.info("container_restarted", container=container_name)
+            return True
+        except ContainerNotFoundError:
+            logger.warning("restart_failed", container=container_name, error="Container not found")
+            return False
         except Exception as e:
-            logger.error("restart_exception", error=str(e))
+            logger.error("restart_exception", container=container_name, error=str(e))
             return False
 
     async def _restart_with_dependencies(self, container_name: str) -> bool:
@@ -435,31 +431,21 @@ class SelfHealingOrchestrator:
     async def _verify_container_health(self, container_name: str) -> bool:
         """Verify container is healthy after healing"""
         try:
-            result = subprocess.run(
-                [
-                    "podman",
-                    "inspect",
-                    "--format",
-                    "{{.State.Health.Status}}",
-                    container_name,
-                ],
-                capture_output=True,
-                text=True,
-            )
+            container_info = await self.podman_client.get_container(container_name)
 
-            if result.returncode == 0:
-                health_status = result.stdout.strip()
+            # Check health status if available
+            health = container_info.get("State", {}).get("Health", {})
+            if health:
+                health_status = health.get("Status", "")
                 # Accept 'healthy' or 'starting' (will become healthy)
-                return health_status in ["healthy", "starting", ""]
+                return health_status in ["healthy", "starting"]
             else:
                 # No health check defined - check if running
-                result = subprocess.run(
-                    ["podman", "inspect", "--format", "{{.State.Running}}", container_name],
-                    capture_output=True,
-                    text=True,
-                )
-                return result.stdout.strip() == "true"
+                return container_info.get("State", {}).get("Running", False)
 
+        except ContainerNotFoundError:
+            logger.warning("health_verification_failed", error="Container not found")
+            return False
         except Exception as e:
             logger.warning("health_verification_failed", error=str(e))
             return False

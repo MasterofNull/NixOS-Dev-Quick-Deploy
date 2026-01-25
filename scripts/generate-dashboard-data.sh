@@ -40,13 +40,89 @@ maybe_jq() {
 }
 
 detect_container_runtime() {
+    if [[ "${DASHBOARD_MODE:-}" == "k8s" ]] || [[ "${DASHBOARD_MODE:-}" == "kubernetes" ]]; then
+        if has_cmd kubectl; then
+            echo "k8s"
+            return
+        fi
+    fi
     if has_cmd podman; then
         echo "podman"
     elif has_cmd docker; then
         echo "docker"
+    elif has_cmd kubectl; then
+        if [[ -n "${KUBECONFIG:-}" ]] || [[ -f /etc/rancher/k3s/k3s.yaml ]]; then
+            echo "k8s"
+        else
+            echo ""
+        fi
     else
         echo ""
     fi
+}
+
+k8s_pod_status_global() {
+    local service="$1"
+    local namespace="${AI_STACK_NAMESPACE:-ai-stack}"
+    if ! has_cmd kubectl; then
+        echo "offline"
+        return
+    fi
+    local status_json
+    status_json=$(run_timeout 3 kubectl get pods -n "$namespace" -l "io.kompose.service=${service}" -o json 2>/dev/null || echo "")
+    if [[ -z "$status_json" ]]; then
+        echo "offline"
+        return
+    fi
+    if has_cmd jq; then
+        local count
+        local ready
+        count=$(echo "$status_json" | jq -r '.items | length' 2>/dev/null || echo "0")
+        ready=$(echo "$status_json" | jq -r '[.items[]?.status.containerStatuses[]?.ready] | any' 2>/dev/null || echo "false")
+        if [[ "$count" == "0" ]]; then
+            echo "offline"
+        elif [[ "$ready" == "true" ]]; then
+            echo "online"
+        else
+            echo "starting"
+        fi
+    else
+        echo "online"
+    fi
+}
+
+k8s_exec() {
+    local service="$1"
+    local cmd="$2"
+    local namespace="${AI_STACK_NAMESPACE:-ai-stack}"
+    run_timeout 5 kubectl exec -n "$namespace" "deploy/${service}" -- sh -c "$cmd" 2>/dev/null || true
+}
+
+k8s_file_line_count() {
+    local service="$1"
+    local path="$2"
+    k8s_exec "$service" "test -f '$path' && wc -l < '$path' || echo 0" | tr -d ' \r\n' || echo 0
+}
+
+k8s_file_size_bytes() {
+    local service="$1"
+    local path="$2"
+    k8s_exec "$service" "test -f '$path' && wc -c < '$path' || echo 0" | tr -d ' \r\n' || echo 0
+}
+
+k8s_tail_line() {
+    local service="$1"
+    local path="$2"
+    k8s_exec "$service" "test -f '$path' && tail -n 1 '$path' || true"
+}
+
+k8s_grep_count() {
+    local service="$1"
+    local path="$2"
+    local pattern="$3"
+    local escaped
+    escaped=${pattern//\'/\'\\\'\'}
+    k8s_exec "$service" "test -f '$path' && grep -cF '$escaped' '$path' || echo 0" | tr -d ' \r\n' || echo 0
 }
 
 dir_size() {
@@ -97,7 +173,11 @@ file_line_count() {
 normalize_int() {
     local value="${1:-}"
     value="${value//[^0-9]/}"
-    echo "${value:-0}"
+    if [[ -z "$value" ]]; then
+        echo 0
+    else
+        echo $((10#$value))
+    fi
 }
 
 count_jsonl_field() {
@@ -541,18 +621,28 @@ collect_llm_metrics() {
     local embeddings_endpoint="http://localhost:8081"
     local embedding_model_name=""
     local env_file="${AI_STACK_CONFIG:-$HOME/.config/nixos-ai-stack/.env}"
+    local namespace="${AI_STACK_NAMESPACE:-ai-stack}"
+    local k8s_status=""
+
+    k8s_pod_status() {
+        k8s_pod_status_global "$1"
+    }
 
     # Check Qdrant
     if curl_fast http://localhost:6333/healthz > /dev/null 2>&1; then
         qdrant_status="online"
         qdrant_collections=$(curl_fast http://localhost:6333/collections | maybe_jq -c '.result.collections | map(.name)' 2>/dev/null || echo "[]")
         qdrant_collection_count=$(echo "$qdrant_collections" | maybe_jq -r 'length' 2>/dev/null || echo "0")
+    elif [[ "$container_runtime" == "k8s" ]]; then
+        qdrant_status=$(k8s_pod_status "qdrant")
     fi
 
     # Check llama.cpp (llama.cpp server)
     if curl_fast http://localhost:8080/health > /dev/null 2>&1; then
         llama_cpp_status="online"
         llama_cpp_models=$(curl_fast http://localhost:8080/v1/models 2>/dev/null | maybe_jq -c '.data // []' || echo "[]")
+    elif [[ "$container_runtime" == "k8s" ]]; then
+        llama_cpp_status=$(k8s_pod_status "llama-cpp")
     fi
 
     # Detect local embedding models (sentence-transformers cache)
@@ -573,6 +663,9 @@ collect_llm_metrics() {
             embeddings_error_total=$(echo "$embeddings_metrics" | awk '/^embeddings_request_errors_total /{sum+=$2} END{printf "%.0f",sum+0}')
             embeddings_memory_mb=$(echo "$embeddings_metrics" | awk '/^embeddings_process_memory_bytes /{printf "%.1f",$2/1024/1024; exit}')
         fi
+    elif [[ "$container_runtime" == "k8s" ]]; then
+        embeddings_status=$(k8s_pod_status "embeddings")
+        embeddings_endpoint="http://embeddings:8081"
     fi
 
     # Detect cached GGUF models for llama.cpp
@@ -583,14 +676,18 @@ collect_llm_metrics() {
 
 
     # Check PostgreSQL
-    if [[ "$container_runtime" == "podman" ]]; then
+    if [[ "$container_runtime" == "k8s" ]]; then
+        postgres_status=$(k8s_pod_status "postgres")
+    elif [[ "$container_runtime" == "podman" ]]; then
         if run_timeout 3 podman exec local-ai-postgres pg_isready -U "$postgres_user" > /dev/null 2>&1; then
             postgres_status="online"
         fi
     fi
 
     # Check Redis
-    if [[ "$container_runtime" == "podman" ]]; then
+    if [[ "$container_runtime" == "k8s" ]]; then
+        redis_status=$(k8s_pod_status "redis")
+    elif [[ "$container_runtime" == "podman" ]]; then
         if run_timeout 3 podman exec local-ai-redis redis-cli ping 2>/dev/null | grep -q PONG; then
             redis_status="online"
         fi
@@ -598,7 +695,9 @@ collect_llm_metrics() {
 
     # Check Open WebUI
     # Note: Open WebUI doesn't have a health endpoint, check if container is running
-    if [[ "$container_runtime" == "podman" ]]; then
+    if [[ "$container_runtime" == "k8s" ]]; then
+        open_webui_status=$(k8s_pod_status "open-webui")
+    elif [[ "$container_runtime" == "podman" ]]; then
         if run_timeout 3 podman ps --filter "name=local-ai-open-webui" --filter "status=running" --format "{{.Names}}" 2>/dev/null | grep -q "local-ai-open-webui"; then
             open_webui_status="online"
         fi
@@ -609,6 +708,8 @@ collect_llm_metrics() {
     # Check MindsDB (optional)
     if curl_fast http://localhost:47334/api/util/ping > /dev/null 2>&1; then
         mindsdb_status="online"
+    elif [[ "$container_runtime" == "k8s" ]]; then
+        mindsdb_status=$(k8s_pod_status "mindsdb")
     elif [[ "$container_runtime" == "podman" ]]; then
         if run_timeout 3 podman ps --filter "name=local-ai-mindsdb" --filter "status=running" --format "{{.Names}}" 2>/dev/null | grep -q "local-ai-mindsdb"; then
             mindsdb_status="starting"
@@ -619,16 +720,24 @@ collect_llm_metrics() {
     if curl_fast http://localhost:8091/health > /dev/null 2>&1; then
         aidb_status="online"
         aidb_services=$(curl_fast http://localhost:8091/health | maybe_jq -c '.services // {}' 2>/dev/null || echo "{}")
+    elif [[ "$container_runtime" == "k8s" ]]; then
+        aidb_status=$(k8s_pod_status "aidb")
     fi
 
     # Check Hybrid Coordinator MCP Server
     if curl_fast http://localhost:8092/health > /dev/null 2>&1; then
         hybrid_coordinator_status="online"
+    elif [[ "$container_runtime" == "k8s" ]]; then
+        hybrid_coordinator_status=$(k8s_pod_status "hybrid-coordinator")
     fi
 
     # Container stats
     local containers="[]"
-    if [[ "$container_runtime" == "podman" ]]; then
+    if [[ "$container_runtime" == "k8s" ]]; then
+        if has_cmd kubectl; then
+            containers=$(run_timeout 3 kubectl get pods -n "$namespace" -o json 2>/dev/null | maybe_jq -c '[.items[] | {name: .metadata.name, status: (.status.phase | ascii_downcase), image: (.spec.containers[0].image // "")}]' 2>/dev/null || echo "[]")
+        fi
+    elif [[ "$container_runtime" == "podman" ]]; then
         containers=$(run_timeout 3 podman ps --format json 2>/dev/null | maybe_jq -c '[.[] | {name: .Names[0], status: .State, image: .Image}]' || echo "[]")
     fi
 
@@ -922,7 +1031,48 @@ collect_database_metrics() {
         redis_password=$(read_env_value "$env_file" "AIDB_REDIS_PASSWORD")
     fi
 
-    if [[ "$container_runtime" == "podman" ]]; then
+    k8s_pod_status() {
+        local service="$1"
+        if ! has_cmd kubectl; then
+            echo "offline"
+            return
+        fi
+        local status_json
+        status_json=$(run_timeout 3 kubectl get pods -n "${AI_STACK_NAMESPACE:-ai-stack}" -l "io.kompose.service=${service}" -o json 2>/dev/null || echo "")
+        if [[ -z "$status_json" ]]; then
+            echo "offline"
+            return
+        fi
+        if has_cmd jq; then
+            local count
+            local ready
+            count=$(echo "$status_json" | jq -r '.items | length' 2>/dev/null || echo "0")
+            ready=$(echo "$status_json" | jq -r '[.items[]?.status.containerStatuses[]?.ready] | any' 2>/dev/null || echo "false")
+            if [[ "$count" == "0" ]]; then
+                echo "offline"
+            elif [[ "$ready" == "true" ]]; then
+                echo "online"
+            else
+                echo "starting"
+            fi
+        else
+            echo "online"
+        fi
+    }
+
+    if [[ "$container_runtime" == "k8s" ]]; then
+        pg_status=$(k8s_pod_status_global "postgres")
+        redis_status=$(k8s_pod_status_global "redis")
+        qdrant_status=$(k8s_pod_status_global "qdrant")
+        mindsdb_status=$(k8s_pod_status_global "mindsdb")
+
+        # Attempt to pull Qdrant collection count from dashboard-api
+        local api_metrics
+        api_metrics=$(curl_fast "http://localhost:${DASHBOARD_API_PORT:-8889}/api/ai/metrics" 2>/dev/null || echo "")
+        if echo "$api_metrics" | maybe_jq -e '.services.qdrant.metrics.collection_count' >/dev/null 2>&1; then
+            qdrant_collections=$(echo "$api_metrics" | maybe_jq -r '.services.qdrant.metrics.collection_count' 2>/dev/null || echo "0")
+        fi
+    elif [[ "$container_runtime" == "podman" ]]; then
         if run_timeout 3 podman exec local-ai-postgres pg_isready -U "$pg_user" > /dev/null 2>&1; then
             pg_status="online"
             pg_size=$(run_timeout 3 podman exec --env "PGPASSWORD=$pg_password" local-ai-postgres \
@@ -938,6 +1088,9 @@ collect_database_metrics() {
             redis_keys=$(run_timeout 3 podman exec local-ai-redis redis-cli ${redis_password:+-a "$redis_password"} dbsize 2>/dev/null | tr -d ' \n' || echo "0")
             redis_memory=$(run_timeout 3 podman exec local-ai-redis redis-cli ${redis_password:+-a "$redis_password"} info memory 2>/dev/null \
                 | awk -F: '/used_memory_human/ {print $2}' | tr -d '\r' | tr -d ' ' || echo "unknown")
+        else
+            redis_keys=0
+            redis_memory="unknown"
         fi
 
         if curl_fast http://localhost:6333/collections > /dev/null 2>&1; then
@@ -948,6 +1101,11 @@ collect_database_metrics() {
         if podman ps --format '{{.Names}}' | grep -q '^local-ai-mindsdb$'; then
             mindsdb_status="online"
         fi
+    fi
+
+    redis_keys=$(normalize_int "$redis_keys")
+    if [[ -z "$redis_memory" ]]; then
+        redis_memory="unknown"
     fi
 
     cat > "$DATA_DIR/database.json" <<EOF
@@ -981,6 +1139,8 @@ collect_telemetry_metrics() {
     local telemetry_status="offline"
     local aidb_telemetry="${AIDB_TELEMETRY_PATH:-$AI_STACK_DATA_ROOT/telemetry/aidb-events.jsonl}"
     local hybrid_telemetry="${AI_STACK_DATA_ROOT}/telemetry/hybrid-events.jsonl"
+    local container_runtime
+    container_runtime=$(detect_container_runtime)
 
     local total_events=0
     local local_events=0
@@ -995,33 +1155,66 @@ collect_telemetry_metrics() {
     # Check if AIDB is online
     if curl_fast http://localhost:8091/health > /dev/null 2>&1; then
         telemetry_status="online"
+    elif [[ "$container_runtime" == "k8s" ]]; then
+        telemetry_status=$(k8s_pod_status_global "aidb")
     fi
 
-    # Count AIDB telemetry events
-    if [[ -f "$aidb_telemetry" ]]; then
-        total_events=$(file_line_count "$aidb_telemetry")
-        local last_line
-        last_line=$(tail -n 1 "$aidb_telemetry" 2>/dev/null)
-        if [[ -n "$last_line" ]]; then
-            last_event_at=$(echo "$last_line" | maybe_jq -r '.timestamp' 2>/dev/null || echo "N/A")
+    if [[ "$container_runtime" == "k8s" && "$(k8s_pod_status_global "aidb")" != "offline" ]]; then
+        # Prefer in-cluster telemetry files when running on K8s
+        local aidb_path="/data/telemetry/aidb-events.jsonl"
+        local hybrid_path="/data/telemetry/hybrid-events.jsonl"
+        telemetry_path="$aidb_path (k8s)"
+
+        local aidb_total hybrid_total hybrid_local hybrid_remote
+        local aidb_last_line hybrid_last_line
+        aidb_total=$(normalize_int "$(k8s_file_line_count "aidb" "$aidb_path")")
+        hybrid_total=$(normalize_int "$(k8s_file_line_count "hybrid-coordinator" "$hybrid_path")")
+
+        aidb_last_line=$(k8s_tail_line "aidb" "$aidb_path")
+        hybrid_last_line=$(k8s_tail_line "hybrid-coordinator" "$hybrid_path")
+
+        if [[ -n "$aidb_last_line" ]]; then
+            last_event_at=$(echo "$aidb_last_line" | maybe_jq -r '.timestamp // "N/A"' 2>/dev/null || echo "N/A")
+        elif [[ -n "$hybrid_last_line" ]]; then
+            last_event_at=$(echo "$hybrid_last_line" | maybe_jq -r '.timestamp // "N/A"' 2>/dev/null || echo "N/A")
         fi
 
-        # Count events by LLM type (llama.cpp = local, others = remote)
-        local_events=$(normalize_int "$(count_aidb_local_events "$aidb_telemetry")")
-    fi
+        local_events=$(normalize_int "$(k8s_grep_count "aidb" "$aidb_path" "\"llm_used\":\"llama.cpp\"")")
+        local_events=$((local_events + $(normalize_int "$(k8s_grep_count "aidb" "$aidb_path" "\"decision\":\"local\"")")))
 
-    # Add hybrid coordinator telemetry
-    if [[ -f "$hybrid_telemetry" ]]; then
-        local hybrid_total hybrid_local hybrid_remote
-        hybrid_total=$(normalize_int "$(file_line_count "$hybrid_telemetry")")
-        total_events=$((total_events + hybrid_total))
+        hybrid_local=$(normalize_int "$(k8s_grep_count "hybrid-coordinator" "$hybrid_path" "\"agent_type\":\"local\"")")
+        hybrid_remote=$(normalize_int "$(k8s_grep_count "hybrid-coordinator" "$hybrid_path" "\"agent_type\":\"remote\"")")
 
-        # Count local vs remote from hybrid coordinator
-        hybrid_local=$(normalize_int "$(count_jsonl_field "$hybrid_telemetry" "agent_type" "local")")
+        total_events=$((aidb_total + hybrid_total))
         local_events=$((local_events + hybrid_local))
-
-        hybrid_remote=$(normalize_int "$(count_jsonl_field "$hybrid_telemetry" "agent_type" "remote")")
         remote_events=$((remote_events + hybrid_remote))
+    else
+        # Count AIDB telemetry events (local filesystem)
+        if [[ -f "$aidb_telemetry" ]]; then
+            total_events=$(file_line_count "$aidb_telemetry")
+            local last_line
+            last_line=$(tail -n 1 "$aidb_telemetry" 2>/dev/null)
+            if [[ -n "$last_line" ]]; then
+                last_event_at=$(echo "$last_line" | maybe_jq -r '.timestamp' 2>/dev/null || echo "N/A")
+            fi
+
+            # Count events by LLM type (llama.cpp = local, others = remote)
+            local_events=$(normalize_int "$(count_aidb_local_events "$aidb_telemetry")")
+        fi
+
+        # Add hybrid coordinator telemetry
+        if [[ -f "$hybrid_telemetry" ]]; then
+            local hybrid_total hybrid_local hybrid_remote
+            hybrid_total=$(normalize_int "$(file_line_count "$hybrid_telemetry")")
+            total_events=$((total_events + hybrid_total))
+
+            # Count local vs remote from hybrid coordinator
+            hybrid_local=$(normalize_int "$(count_jsonl_field "$hybrid_telemetry" "agent_type" "local")")
+            local_events=$((local_events + hybrid_local))
+
+            hybrid_remote=$(normalize_int "$(count_jsonl_field "$hybrid_telemetry" "agent_type" "remote")")
+            remote_events=$((remote_events + hybrid_remote))
+        fi
     fi
 
     # Calculate local usage rate
@@ -1066,11 +1259,25 @@ collect_hybrid_coordinator_metrics() {
     local last_event="{}"
     local avg_value_score="0.0"
     local high_value_count=0
+    local container_runtime
+    container_runtime=$(detect_container_runtime)
 
     # Check hybrid coordinator health
     if curl_fast http://localhost:8092/health > /dev/null 2>&1; then
         coordinator_status="online"
         coordinator_health=$(curl_fast http://localhost:8092/health | maybe_jq -c '.' 2>/dev/null || echo "{}")
+    elif [[ "$container_runtime" == "k8s" ]]; then
+        if has_cmd kubectl; then
+            local namespace="${AI_STACK_NAMESPACE:-ai-stack}"
+            local ready
+            ready=$(run_timeout 3 kubectl get pods -n "$namespace" -l "io.kompose.service=hybrid-coordinator" -o json 2>/dev/null | \
+                maybe_jq -r '[.items[]?.status.containerStatuses[]?.ready] | any' 2>/dev/null || echo "false")
+            if [[ "$ready" == "true" ]]; then
+                coordinator_status="online"
+            else
+                coordinator_status="starting"
+            fi
+        fi
     fi
 
     # Count telemetry records
@@ -1524,9 +1731,45 @@ collect_feedback_pipeline_metrics() {
     local aidb_status="offline"
     local telemetry_path="${AIDB_TELEMETRY_PATH:-$AI_STACK_DATA_ROOT/telemetry/aidb-events.jsonl}"
     local hybrid_path="${HYBRID_TELEMETRY_PATH:-$AI_STACK_DATA_ROOT/telemetry/hybrid-events.jsonl}"
+    local container_runtime
+    container_runtime=$(detect_container_runtime)
 
     if curl_fast http://localhost:8091/health > /dev/null 2>&1; then
         aidb_status="online"
+    elif [[ "$container_runtime" == "k8s" ]]; then
+        aidb_status=$(k8s_pod_status_global "aidb")
+    fi
+
+    if [[ "$container_runtime" == "k8s" ]]; then
+        telemetry_path="/data/telemetry/aidb-events.jsonl"
+        hybrid_path="/data/telemetry/hybrid-events.jsonl"
+    fi
+
+    local aidb_exists
+    local aidb_bytes
+    local aidb_last
+    local hybrid_exists
+    local hybrid_bytes
+    local hybrid_last
+
+    if [[ "$container_runtime" == "k8s" ]]; then
+        aidb_bytes=$(k8s_file_size_bytes "aidb" "$telemetry_path")
+        aidb_exists=$([[ "$aidb_bytes" != "0" ]] && echo "true" || echo "false")
+        aidb_last=$(k8s_tail_line "aidb" "$telemetry_path")
+        aidb_last=$(echo "$aidb_last" | maybe_jq -r '.timestamp // empty' 2>/dev/null || echo "")
+
+        hybrid_bytes=$(k8s_file_size_bytes "hybrid-coordinator" "$hybrid_path")
+        hybrid_exists=$([[ "$hybrid_bytes" != "0" ]] && echo "true" || echo "false")
+        hybrid_last=$(k8s_tail_line "hybrid-coordinator" "$hybrid_path")
+        hybrid_last=$(echo "$hybrid_last" | maybe_jq -r '.timestamp // empty' 2>/dev/null || echo "")
+    else
+        aidb_exists=$(file_exists "$telemetry_path")
+        aidb_bytes=$(file_size_bytes "$telemetry_path")
+        aidb_last=$(last_event_timestamp "$telemetry_path")
+
+        hybrid_exists=$(file_exists "$hybrid_path")
+        hybrid_bytes=$(file_size_bytes "$hybrid_path")
+        hybrid_last=$(last_event_timestamp "$hybrid_path")
     fi
 
     cat > "$DATA_DIR/feedback.json" <<EOF
@@ -1535,15 +1778,15 @@ collect_feedback_pipeline_metrics() {
   "aidb_status": "$aidb_status",
   "telemetry": {
     "path": "$telemetry_path",
-    "exists": $(file_exists "$telemetry_path"),
-    "bytes": $(file_size_bytes "$telemetry_path"),
-    "last_event_at": "$(last_event_timestamp "$telemetry_path")"
+    "exists": $aidb_exists,
+    "bytes": $aidb_bytes,
+    "last_event_at": "$aidb_last"
   },
   "hybrid": {
     "path": "$hybrid_path",
-    "exists": $(file_exists "$hybrid_path"),
-    "bytes": $(file_size_bytes "$hybrid_path"),
-    "last_event_at": "$(last_event_timestamp "$hybrid_path")"
+    "exists": $hybrid_exists,
+    "bytes": $hybrid_bytes,
+    "last_event_at": "$hybrid_last"
   }
 }
 EOF
@@ -1591,7 +1834,11 @@ collect_local_proof_metrics() {
     fi
 
     container_runtime=$(detect_container_runtime)
-    if [[ "$container_runtime" == "podman" ]]; then
+    if [[ "$container_runtime" == "k8s" ]]; then
+        if has_cmd kubectl; then
+            container_count=$(run_timeout 3 kubectl get pods -n "${AI_STACK_NAMESPACE:-ai-stack}" -o json 2>/dev/null | maybe_jq -r '.items | length' 2>/dev/null || echo "0")
+        fi
+    elif [[ "$container_runtime" == "podman" ]]; then
         container_count=$(run_timeout 3 podman ps --format json 2>/dev/null | maybe_jq -r 'length' 2>/dev/null || echo "0")
     elif [[ "$container_runtime" == "docker" ]]; then
         container_count=$(run_timeout 3 docker ps --format json 2>/dev/null | maybe_jq -r 'length' 2>/dev/null || echo "0")
@@ -2242,6 +2489,24 @@ EOF
 }
 
 # ============================================================================
+# AI Effectiveness Metrics (ai_metrics.json)
+# ============================================================================
+collect_ai_metrics() {
+    local collector="${PROJECT_ROOT}/scripts/collect-ai-metrics.sh"
+    if [[ ! -x "$collector" ]]; then
+        return 0
+    fi
+
+    if [[ "${DASHBOARD_MODE:-}" == "k8s" || "${DASHBOARD_MODE:-}" == "kubernetes" ]]; then
+        export AI_METRICS_ENDPOINT="${AI_METRICS_ENDPOINT:-http://localhost:${DASHBOARD_API_PORT:-8889}/api/ai/metrics}"
+    fi
+
+    if ! run_timeout 6 bash "$collector" >/dev/null 2>&1; then
+        echo "⚠️  AI metrics collection failed"
+    fi
+}
+
+# ============================================================================
 # Document Links & Quick Access
 # ============================================================================
 generate_quick_links() {
@@ -2404,7 +2669,7 @@ main() {
     collect_keyword_signals
 
     echo "💰 Collecting token savings metrics..."
-    collect_token_savings_metrics
+collect_token_savings_metrics
 
     echo "🛠️  Collecting configuration snapshot..."
     collect_config_metrics
@@ -2414,6 +2679,9 @@ main() {
 
     echo "💾 Collecting persistence metrics..."
     collect_persistence_metrics
+
+    echo "🧮 Collecting AI effectiveness metrics..."
+    collect_ai_metrics
 
     echo "📚 Generating quick links..."
     generate_quick_links

@@ -79,8 +79,11 @@ services:
     expose:
       - "6333"
       - "6334"
+    ports:
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
     volumes:
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/qdrant:/qdrant/storage:Z
+      - ${AI_STACK_DATA}/qdrant:/qdrant/storage:Z
     environment:
       QDRANT__SERVICE__HTTP_PORT: 6333
       QDRANT__SERVICE__GRPC_PORT: 6334
@@ -117,21 +120,21 @@ services:
       - "8081"
     environment:
       PORT: 8081
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5}
       EMBEDDINGS_CONFIG: /app/config/config.yaml
       STACK_ENV: ${STACK_ENV:-}
       TRANSFORMERS_CACHE: /data/cache
       HF_HOME: /data/cache
       HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
-      EMBEDDINGS_API_KEY_FILE: /run/secrets/stack_api_key
+      EMBEDDINGS_API_KEY_FILE: /run/secrets/embeddings_api_key
       BATCH_MAX_SIZE: ${EMBEDDINGS_BATCH_MAX_SIZE:-64}
       BATCH_MAX_LATENCY_MS: ${EMBEDDINGS_BATCH_MAX_LATENCY_MS:-25}
       BATCH_QUEUE_MAX: ${EMBEDDINGS_BATCH_QUEUE_MAX:-1024}
     volumes:
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/embeddings:/data:Z
+      - ${AI_STACK_DATA}/embeddings:/data:Z
     secrets:
-      - source: stack_api_key
-        target: stack_api_key
+      - source: embeddings_api_key
+        target: embeddings_api_key
         mode: 0400
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:8081/health', timeout=5); body=r.read().decode(); import sys; sys.exit(0 if '\"status\":\"ok\"' in body else 1)"]
@@ -204,7 +207,7 @@ services:
       VK_ICD_FILENAMES: ${VK_ICD_FILENAMES:-/usr/share/vulkan/icd.d/radeon_icd.x86_64.json}
       LLAMA_VULKAN_ENABLE: ${LLAMA_VULKAN_ENABLE:-}  # Set to "1" to enable Vulkan
     volumes:
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/llama-cpp-models:/models:Z
+      - ${AI_STACK_DATA}/llama-cpp-models:/models:Z
     devices:
       - /dev/dri:/dev/dri  # GPU device access for Vulkan
     ports:
@@ -248,11 +251,11 @@ services:
     container_name: local-ai-open-webui
     pull_policy: missing  # Only pull if image doesn't exist locally
     restart: unless-stopped
-    profiles: ["full"]
+    # profiles: ["full"]  # Removed - enabled by default for agentic workflow
     ports:
       - "127.0.0.1:3001:3001"
     volumes:
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/open-webui:/app/backend/data:Z
+      - ${AI_STACK_DATA}/open-webui:/app/backend/data:Z
     environment:
       OPENAI_API_BASE_URL: http://llama-cpp:8080/v1
       OPENAI_API_KEY: llama-cpp
@@ -315,11 +318,11 @@ services:
   # Jaeger - Distributed Tracing (local only)
   # ============================================================================
   jaeger:
-    image: jaegertracing/all-in-one:1.60
+    image: jaegertracing/jaeger:2.14.0
     container_name: local-ai-jaeger
     pull_policy: missing
     restart: unless-stopped
-    profiles: ["full"]
+    # profiles: ["full"]  # Removed - enabled by default for agentic workflow
     ports:
       - "127.0.0.1:16686:16686"  # UI
       - "127.0.0.1:4317:4317"    # OTLP gRPC
@@ -339,13 +342,17 @@ services:
     security_opt:
       - no-new-privileges:true
     env_file: *ai_stack_env
+    ports:
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mcp}
       POSTGRES_USER: ${POSTGRES_USER:-mcp}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       PGDATA: /var/lib/postgresql/data/pgdata
+    secrets:
+      - postgres_password
     volumes:
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/postgres:/var/lib/postgresql/data:Z
+      - ${AI_STACK_DATA}/postgres:/var/lib/postgresql/data:Z
       - ../postgres/init-schema.sql:/docker-entrypoint-initdb.d/01-init-schema.sql:Z
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mcp}"]
@@ -377,11 +384,20 @@ services:
     security_opt:
       - no-new-privileges:true
     env_file: *ai_stack_env
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "127.0.0.1:6379:6379"
+    command: >
+      sh -c "redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --requirepass $$(cat /run/secrets/redis_password)"
+    secrets:
+      - redis_password
     volumes:
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/redis:/data:Z
+      - ${AI_STACK_DATA}/redis:/data:Z
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "sh", "-c", "redis-cli -a $(cat /run/secrets/redis_password) ping"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -413,6 +429,8 @@ services:
     env_file: *ai_stack_env
     expose:
       - "8091"
+    ports:
+      - "127.0.0.1:8091:8091"
     environment:
       AIDB_CONFIG: /app/config/config.yaml
       STACK_ENV: ${STACK_ENV:-}
@@ -421,12 +439,12 @@ services:
       AIDB_POSTGRES_PORT: 5432
       AIDB_POSTGRES_DB: ${POSTGRES_DB:-mcp}
       AIDB_POSTGRES_USER: ${POSTGRES_USER:-mcp}
-      AIDB_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      AIDB_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-mcp}
       POSTGRES_USER: ${POSTGRES_USER:-mcp}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
       # Redis connection
       AIDB_REDIS_HOST: redis
       AIDB_REDIS_PORT: 6379
@@ -439,8 +457,8 @@ services:
       LLAMA_CPP_BASE_URL: http://llama-cpp:8080
       # Embeddings service connection
       EMBEDDING_SERVICE_URL: http://embeddings:8081
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
-      EMBEDDING_DIMENSIONS: 384
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5}
+      EMBEDDING_DIMENSIONS: 768
       # Telemetry and discovery
       AIDB_TELEMETRY_PATH: /data/telemetry/aidb-events.jsonl
       AIDB_TOOL_DISCOVERY_ENABLED: ${AIDB_TOOL_DISCOVERY_ENABLED:-true}
@@ -448,19 +466,21 @@ services:
       # External integrations
       GOOGLE_SEARCH_API_KEY: ${GOOGLE_SEARCH_API_KEY:-}
       GOOGLE_SEARCH_CX: ${GOOGLE_SEARCH_CX:-}
-      AIDB_API_KEY_FILE: /run/secrets/stack_api_key
+      AIDB_API_KEY_FILE: /run/secrets/aidb_api_key
       OTEL_TRACING_ENABLED: ${OTEL_TRACING_ENABLED:-true}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
       OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
     volumes:
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/aidb:/data:Z
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/telemetry:/data/telemetry:Z
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/aidb-cache:/app/.mcp_cache:Z
+      - ${AI_STACK_DATA}/aidb:/data:Z
+      - ${AI_STACK_DATA}/telemetry:/data/telemetry:Z
+      - ${AI_STACK_DATA}/aidb-cache:/app/.mcp_cache:Z
     secrets:
-      - source: stack_api_key
-        target: stack_api_key
+      - source: aidb_api_key
+        target: aidb_api_key
         mode: 0400
+      - postgres_password
+      - redis_password
     depends_on:
       postgres:
         condition: service_healthy
@@ -496,12 +516,12 @@ services:
     container_name: local-ai-mindsdb
     pull_policy: missing  # Only pull if image doesn't exist locally
     restart: unless-stopped
-    profiles: ["full"]
+    # profiles: ["full"]  # Removed - enabled by default for agentic workflow
     env_file: *ai_stack_env
     ports:
       - "127.0.0.1:47334:47334"
     volumes:
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/mindsdb:/root/mindsdb_storage:Z
+      - ${AI_STACK_DATA}/mindsdb:/root/mindsdb_storage:Z
     environment:
       MINDSDB_STORAGE_DIR: /root/mindsdb_storage
     depends_on:
@@ -541,12 +561,15 @@ services:
     env_file: *ai_stack_env
     expose:
       - "8092"
+    ports:
+      - "127.0.0.1:8092:8092"
     environment:
       MCP_SERVER_MODE: http
       MCP_SERVER_PORT: 8092
       HYBRID_CONFIG: /app/config/config.yaml
       STACK_ENV: ${STACK_ENV:-}
-      HYBRID_API_KEY_FILE: /run/secrets/stack_api_key
+      HYBRID_API_KEY_FILE: /run/secrets/hybrid_coordinator_api_key
+      HYBRID_API_KEY: ""
       # Qdrant connection
       QDRANT_URL: http://qdrant:6333
       QDRANT_HOST: qdrant
@@ -560,13 +583,13 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-mcp}
       POSTGRES_USER: ${POSTGRES_USER:-mcp}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
       # llama.cpp connection
       LLAMA_CPP_BASE_URL: http://llama-cpp:8080
       # Embeddings service connection
       EMBEDDING_SERVICE_URL: http://embeddings:8081
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
-      EMBEDDING_DIMENSIONS: 384
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5}
+      EMBEDDING_DIMENSIONS: 768
       # Redis connection (for session management and caching)
       REDIS_URL: redis://redis:6379
       # Telemetry and learning
@@ -586,13 +609,14 @@ services:
       OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
       OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
     volumes:
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/hybrid-coordinator:/data:Z,U
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/telemetry:/data/telemetry:Z,U
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/fine-tuning:/data/fine-tuning:Z,U
+      - ${AI_STACK_DATA}/hybrid-coordinator:/data:Z,U
+      - ${AI_STACK_DATA}/telemetry:/data/telemetry:Z,U
+      - ${AI_STACK_DATA}/fine-tuning:/data/fine-tuning:Z,U
     secrets:
-      - source: stack_api_key
-        target: stack_api_key
+      - source: hybrid_coordinator_api_key
+        target: hybrid_coordinator_api_key
         mode: 0400
+      - postgres_password
     depends_on:
       qdrant:
         condition: service_started
@@ -631,14 +655,16 @@ services:
       dockerfile: nixos-docs/Dockerfile
     container_name: local-ai-nixos-docs
     restart: unless-stopped
-    profiles: ["full"]
+    # profiles: ["full"]  # Removed - enabled by default for agentic workflow
     expose:
       - "8094"
+    ports:
+      - "127.0.0.1:8094:8094"
     environment:
       # Redis connection
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      NIXOS_DOCS_API_KEY_FILE: /run/secrets/stack_api_key
+      NIXOS_DOCS_API_KEY_FILE: /run/secrets/nixos_docs_api_key
       # Cache configuration
       NIXOS_CACHE_DIR: /data/cache
       NIXOS_REPOS_DIR: /data/repos
@@ -648,12 +674,13 @@ services:
       OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
       OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
     volumes:
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/nixos-docs:/data:Z
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/nixos-repos:/data/repos:Z
+      - ${AI_STACK_DATA}/nixos-docs:/data:Z
+      - ${AI_STACK_DATA}/nixos-repos:/data/repos:Z
     secrets:
-      - source: stack_api_key
-        target: stack_api_key
+      - source: nixos_docs_api_key
+        target: nixos_docs_api_key
         mode: 0400
+      - redis_password
     depends_on:
       redis:
         condition: service_healthy
@@ -687,7 +714,7 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8093:8093"
-    profiles: ["agents", "full"]  # Optional service
+    # profiles: ["agents", "full"]  # Enabled by default for agentic workflow
     environment:
       OPENAI_API_BASE_URL: http://llama-cpp:8080/v1
       OPENAI_API_KEY: llama-cpp
@@ -696,9 +723,9 @@ services:
       AIDER_GIT_DRY_RUN: ${AIDER_GIT_DRY_RUN:-false}
       AIDER_PORT: 8093
     volumes:
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/aider:/data:Z
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/workspace:/workspace:Z
-    working_dir: /workspace
+      - ${AI_STACK_DATA}/aider:/data:Z
+      - ${AI_STACK_DATA}/workspace:/workspace:Z
+    working_dir: /app
     deploy:
       resources:
         reservations:
@@ -729,7 +756,7 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8097:8097"
-    profiles: ["agents", "full"]  # Optional service
+    # profiles: ["agents", "full"]  # Enabled by default for agentic workflow
     environment:
       OPENAI_API_BASE: http://llama-cpp:8080/v1
       OPENAI_API_KEY: llama-cpp
@@ -741,9 +768,11 @@ services:
       WORKSPACE_PATH: /workspace
       EXECUTE_LOCAL_COMMANDS: ${AUTOGPT_EXECUTE_COMMANDS:-true}
     volumes:
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/autogpt:/data:Z
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/workspace:/workspace:Z
-    working_dir: /workspace
+      - ${AI_STACK_DATA}/autogpt:/data:Z
+      - ${AI_STACK_DATA}/workspace:/workspace:Z
+    secrets:
+      - redis_password
+    working_dir: /app
     deploy:
       resources:
         reservations:
@@ -777,10 +806,20 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-mcp}
       POSTGRES_USER: ${POSTGRES_USER:-mcp}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      # Secure Podman API configuration (Day 2 - Week 1)
+      PODMAN_API_URL: ${PODMAN_API_URL:-http://host.containers.internal:2375}
+      PODMAN_API_VERSION: ${PODMAN_API_VERSION:-v4.0.0}
+      HEALTH_MONITOR_ALLOWED_OPS: ${HEALTH_MONITOR_ALLOWED_OPS:-list,inspect,restart}
+      CONTAINER_AUDIT_ENABLED: ${CONTAINER_AUDIT_ENABLED:-true}
+      CONTAINER_AUDIT_LOG_PATH: /data/telemetry/container-audit.jsonl
     volumes:
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/health-monitor:/data:Z
-      - /var/run/podman/podman.sock:/var/run/docker.sock:Z  # For container management
+      - ${AI_STACK_DATA}/health-monitor:/data:Z
+      - ${AI_STACK_DATA}/telemetry:/data/telemetry:Z
+    secrets:
+      - postgres_password
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -790,7 +829,6 @@ services:
         condition: service_healthy
       hybrid-coordinator:
         condition: service_healthy
-    privileged: true  # Required for podman container management (opt-in via profile)
     healthcheck:
       test: ["CMD", "python3", "-c", "import sys; sys.exit(0)"]
       interval: 30s
@@ -819,12 +857,12 @@ services:
     image: prom/prometheus:v2.54.0
     container_name: local-ai-prometheus
     restart: unless-stopped
-    profiles: ["full"]
+    # profiles: ["full"]  # Removed - enabled by default for agentic workflow
     ports:
       - "127.0.0.1:9090:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/prometheus:/prometheus:Z,U
+      - ${AI_STACK_DATA}/prometheus:/prometheus:Z,U
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
@@ -850,15 +888,19 @@ services:
     container_name: local-ai-grafana
     restart: unless-stopped
     env_file: *ai_stack_env
-    profiles: ["full"]
+    # profiles: ["full"]  # Removed - enabled by default for agentic workflow
     ports:
       - "127.0.0.1:3002:3000"
     environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?set GRAFANA_ADMIN_USER}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+    secrets:
+      - grafana_admin_password
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/grafana:/var/lib/grafana:Z,U
+      - ${AI_STACK_DATA}/grafana:/var/lib/grafana:Z,U
     depends_on:
       prometheus:
         condition: service_started
@@ -874,13 +916,20 @@ services:
       context: ../mcp-servers
       dockerfile: aider-wrapper/Dockerfile
     container_name: local-ai-aider-wrapper
-    profiles: ["full"]
+    # profiles: ["full"]  # Removed - enabled by default for agentic workflow
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:8099:8099"
     environment:
       AIDER_WRAPPER_PORT: 8099
+      AIDER_WRAPPER_API_KEY_FILE: /run/secrets/aider_wrapper_api_key
       PYTHONUNBUFFERED: 1
     volumes:
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/workspace:/workspace:Z
+      - ${AI_STACK_DATA}/workspace:/workspace:Z
+    secrets:
+      - source: aider_wrapper_api_key
+        target: aider_wrapper_api_key
+        mode: 0400
     deploy:
       resources:
         reservations:
@@ -901,9 +950,10 @@ services:
       context: ../mcp-servers
       dockerfile: ralph-wiggum/Dockerfile
     container_name: local-ai-ralph-wiggum
-    profiles: ["full"]
+    # profiles: ["full"]  # Removed - enabled by default for agentic workflow
     env_file: *ai_stack_env
     restart: unless-stopped
+    command: ["python", "/app/server.py"]
     ports:
       - "127.0.0.1:8098:8098"
     # profiles: ["agents", "full"]  # Disabled - now starts by default for agentic workflow
@@ -920,7 +970,7 @@ services:
       RALPH_POSTGRES_PORT: 5432
       RALPH_POSTGRES_DB: ${POSTGRES_DB:-mcp}
       RALPH_POSTGRES_USER: ${POSTGRES_USER:-mcp}
-      RALPH_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      RALPH_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
       RALPH_REDIS_HOST: redis
       RALPH_REDIS_PORT: 6379
       RALPH_AGENT_BACKENDS: aider,autogpt
@@ -931,11 +981,24 @@ services:
       RALPH_REQUIRE_APPROVAL: ${RALPH_REQUIRE_APPROVAL:-false}
       RALPH_APPROVAL_THRESHOLD: ${RALPH_APPROVAL_THRESHOLD:-high}  # low, medium, high
       RALPH_AUDIT_LOG: ${RALPH_AUDIT_LOG:-true}
+      # Secure Podman API configuration (Day 2 - Week 1)
+      PODMAN_API_URL: ${PODMAN_API_URL:-http://host.containers.internal:2375}
+      PODMAN_API_VERSION: ${PODMAN_API_VERSION:-v4.0.0}
+      RALPH_WIGGUM_ALLOWED_OPS: ${RALPH_WIGGUM_ALLOWED_OPS:-list,inspect,create,start,stop,logs}
+      CONTAINER_AUDIT_ENABLED: ${CONTAINER_AUDIT_ENABLED:-true}
+      RALPH_WIGGUM_API_KEY_FILE: /run/secrets/ralph_wiggum_api_key
     volumes:
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/ralph-wiggum:/data:Z
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/telemetry:/data/telemetry:Z
-      - ${AI_STACK_DATA:-${HOME}/.local/share/nixos-ai-stack}/workspace:/workspace:Z
-      - /var/run/podman/podman.sock:/var/run/docker.sock:Z  # For container orchestration
+      - ${AI_STACK_DATA}/ralph-wiggum:/data:Z
+      - ${AI_STACK_DATA}/telemetry:/data/telemetry:Z
+      - ${AI_STACK_DATA}/workspace:/workspace:Z
+    secrets:
+      - source: ralph_wiggum_api_key
+        target: ralph_wiggum_api_key
+        mode: 0400
+      - postgres_password
+      - redis_password
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -947,7 +1010,7 @@ services:
         condition: service_healthy
       aider-wrapper:
         condition: service_started
-    working_dir: /workspace
+    working_dir: /app
     deploy:
       resources:
         reservations:
@@ -963,6 +1026,78 @@ services:
       - "nixos.quick-deploy.service=ralph-wiggum"
       - "nixos.quick-deploy.ralph-loop=orchestrator"
 
+  dashboard-api:
+    build:
+      context: ../../dashboard/backend
+      dockerfile: Dockerfile
+    container_name: local-ai-dashboard-api
+    hostname: dashboard-api
+    ports:
+      - "127.0.0.1:8889:8889"
+    networks:
+      - default
+    depends_on:
+      aidb:
+        condition: service_healthy
+      hybrid-coordinator:
+        condition: service_healthy
+      ralph-wiggum:
+        condition: service_started
+      qdrant:
+        condition: service_started
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DASHBOARD_API_KEY_FILE=/run/secrets/dashboard_api_key
+    secrets:
+      - source: dashboard_api_key
+        target: dashboard_api_key
+        mode: 0400
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=dashboard-api"
+
+  container-engine:
+    build:
+      context: ../mcp-servers
+      dockerfile: container-engine/Dockerfile
+    container_name: local-ai-container-engine
+    hostname: container-engine
+    expose:
+      - "8095"
+    networks:
+      - default
+    environment:
+      # Secure Podman API configuration (Day 2 - Week 1)
+      PODMAN_API_URL: ${PODMAN_API_URL:-http://host.containers.internal:2375}
+      PODMAN_API_VERSION: ${PODMAN_API_VERSION:-v4.0.0}
+      CONTAINER_ENGINE_ALLOWED_OPS: ${CONTAINER_ENGINE_ALLOWED_OPS:-list,inspect,logs}
+      CONTAINER_AUDIT_ENABLED: ${CONTAINER_AUDIT_ENABLED:-true}
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+    secrets:
+      - container_engine_api_key
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8095/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    labels:
+      - "nixos.quick-deploy.ai-stack=true"
+      - "nixos.quick-deploy.service=container-engine-mcp"
+
 networks:
   default:
     name: local-ai
@@ -977,5 +1112,33 @@ volumes:
   mindsdb-data:
 
 secrets:
+  # API authentication secrets (Day 3 - Week 1)
+  # Each service has its own API key stored as a Docker secret
+  # Secrets are mounted at /run/secrets/<secret_name> in containers
+  aidb_api_key:
+    file: ./secrets/aidb_api_key
+  embeddings_api_key:
+    file: ./secrets/embeddings_api_key
+  hybrid_coordinator_api_key:
+    file: ./secrets/hybrid_coordinator_api_key
+  nixos_docs_api_key:
+    file: ./secrets/nixos_docs_api_key
+  container_engine_api_key:
+    file: ./secrets/container_engine_api_key
+  ralph_wiggum_api_key:
+    file: ./secrets/ralph_wiggum_api_key
+  aider_wrapper_api_key:
+    file: ./secrets/aider_wrapper_api_key
+  dashboard_api_key:
+    file: ./secrets/dashboard_api_key
   stack_api_key:
     file: ./secrets/stack_api_key
+
+  # Database & service passwords (Day 5 - Week 1)
+  # Strong randomly generated passwords for databases and services
+  postgres_password:
+    file: ./secrets/postgres_password
+  redis_password:
+    file: ./secrets/redis_password
+  grafana_admin_password:
+    file: ./secrets/grafana_admin_password

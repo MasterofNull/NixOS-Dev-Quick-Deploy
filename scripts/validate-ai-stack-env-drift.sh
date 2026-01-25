@@ -35,11 +35,49 @@ required_keys=(
     "EMBEDDING_MODEL"
 )
 
+compose_has_default() {
+    local key="$1"
+    grep -qE "\\$\\{${key}:-[^}]+\\}" "$COMPOSE_FILE"
+}
+
+env_has_key() {
+    local key="$1"
+    grep -qE "^${key}=" "$ENV_FILE"
+}
+
+secret_exists() {
+    local name="$1"
+    local secrets_dir="${SCRIPT_DIR}/ai-stack/compose/secrets"
+    [[ -f "${secrets_dir}/${name}" ]]
+}
+
 missing=()
 for key in "${required_keys[@]}"; do
-    if ! grep -qE "^${key}=" "$ENV_FILE"; then
-        missing+=("$key")
+    if env_has_key "$key"; then
+        continue
     fi
+
+    case "$key" in
+        POSTGRES_DB|POSTGRES_USER)
+            if compose_has_default "$key"; then
+                continue
+            fi
+            ;;
+        POSTGRES_PASSWORD)
+            if env_has_key "POSTGRES_PASSWORD_FILE" || secret_exists "postgres_password"; then
+                continue
+            fi
+            ;;
+        GRAFANA_ADMIN_PASSWORD)
+            if env_has_key "GRAFANA_ADMIN_PASSWORD_FILE" || secret_exists "grafana_admin_password"; then
+                continue
+            fi
+            ;;
+        *)
+            ;;
+    esac
+
+    missing+=("$key")
 done
 
 if (( ${#missing[@]} > 0 )); then

@@ -1,0 +1,106 @@
+{
+  "task_id": "03-p3-perf-001-query-cache-real",
+  "description": "Implement ACTUAL query-level caching for Qdrant vector searches (NOT HTTP middleware like last time)",
+  "backend": "aider",
+  "max_iterations": 12,
+  "require_approval": false,
+  "context": {
+    "previous_failure": "Ralph previously added Redis HTTP cache middleware in AIDB. That's NOT what we want. We want query-level caching in hybrid-coordinator for expensive Qdrant vector searches.",
+    "goal": "Cache Qdrant search results for 5 minutes, achieve >90% cache hit rate for duplicate queries",
+    "performance_target": "Second identical query returns in <1ms (from cache), not 500ms+ (from Qdrant)"
+  },
+  "step_by_step_requirements": {
+    "step_1_dependency": {
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/requirements.txt",
+      "action": "ADD exact line",
+      "line_to_add": "cachetools>=5.3.0",
+      "verification": "grep 'cachetools' ai-stack/mcp-servers/hybrid-coordinator/requirements.txt",
+      "DO_NOT": "Do NOT add to aidb requirements.txt, MUST be hybrid-coordinator"
+    },
+    "step_2_create_module": {
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/query_cache.py",
+      "action": "CREATE NEW FILE with this EXACT code",
+      "full_code": "\"\"\"Query-level caching for Qdrant vector searches using TTL cache.\"\"\"\nfrom cachetools import TTLCache\nimport hashlib\nimport json\nimport logging\n\nlogger = logging.getLogger(__name__)\n\nclass QueryCache:\n    \"\"\"LRU cache with TTL for query results.\"\"\"\n    \n    def __init__(self, maxsize=1000, ttl=300):\n        \"\"\"Initialize cache with max size and 5-minute TTL.\"\"\"\n        self.cache = TTLCache(maxsize=maxsize, ttl=ttl)\n        self.hits = 0\n        self.misses = 0\n    \n    def get_key(self, query_text: str, params: dict) -> str:\n        \"\"\"Generate cache key from query text and parameters.\"\"\"\n        data = f\"{query_text}:{json.dumps(params, sort_keys=True)}\"\n        return hashlib.sha256(data.encode()).hexdigest()\n    \n    def get(self, query_text: str, params: dict):\n        \"\"\"Get cached result if exists.\"\"\"\n        key = self.get_key(query_text, params)\n        if key in self.cache:\n            self.hits += 1\n            logger.debug(f\"Cache HIT for query: {query_text[:50]}...\")\n            return self.cache[key]\n        self.misses += 1\n        logger.debug(f\"Cache MISS for query: {query_text[:50]}...\")\n        return None\n    \n    def set(self, query_text: str, params: dict, result):\n        \"\"\"Store result in cache.\"\"\"\n        key = self.get_key(query_text, params)\n        self.cache[key] = result\n        logger.debug(f\"Cached result for query: {query_text[:50]}...\")\n    \n    def stats(self) -> dict:\n        \"\"\"Get cache statistics.\"\"\"\n        total = self.hits + self.misses\n        hit_rate = (self.hits / total * 100) if total > 0 else 0\n        return {\n            'cache_hits': self.hits,\n            'cache_misses': self.misses,\n            'hit_rate_percent': round(hit_rate, 2),\n            'cache_size': len(self.cache),\n            'cache_maxsize': self.cache.maxsize,\n            'total_queries': total\n        }\n    \n    def clear(self):\n        \"\"\"Clear the cache.\"\"\"\n        self.cache.clear()\n        logger.info(\"Query cache cleared\")",
+      "verification": "File must exist, must have class QueryCache with methods: get, set, stats",
+      "test": "python3 -c 'from query_cache import QueryCache; c = QueryCache(); print(c.stats())' should work"
+    },
+    "step_3_find_search_function": {
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "action": "FIND the vector search function",
+      "search_for": "Search file for 'qdrant' or 'vector' or 'search' to find where Qdrant searches happen",
+      "likely_location": "May be in a handle_search or query handler function",
+      "what_to_look_for": "Function that calls qdrant_client.search() or similar vector search"
+    },
+    "step_4_integrate_cache": {
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "action": "WRAP the vector search with cache check",
+      "at_top_of_file": "from query_cache import QueryCache",
+      "module_level": "query_cache = QueryCache(maxsize=1000, ttl=300)  # 5 minutes",
+      "in_search_function": "# BEFORE calling qdrant:\ncached_result = query_cache.get(query_text, search_params)\nif cached_result is not None:\n    logger.info(f\"Returning cached result for query\")\n    return cached_result\n\n# CALL qdrant (existing code)\nresult = await qdrant_client.search(...)\n\n# AFTER getting result:\nquery_cache.set(query_text, search_params, result)\nreturn result",
+      "example_integration": "async def handle_search(query_text, limit=10, threshold=0.7):\n    params = {'limit': limit, 'threshold': threshold}\n    \n    # Check cache first\n    cached = query_cache.get(query_text, params)\n    if cached:\n        return cached\n    \n    # Cache miss, do actual search\n    result = await qdrant_client.search(\n        collection_name='vectors',\n        query_text=query_text,\n        limit=limit\n    )\n    \n    # Store in cache\n    query_cache.set(query_text, params, result)\n    return result",
+      "verification": "grep 'query_cache.get' ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "must_have": "Must call query_cache.get() BEFORE search, query_cache.set() AFTER"
+    },
+    "step_5_expose_metrics": {
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "action": "ADD cache stats to /health endpoint",
+      "find": "Search for 'async def handle_health' or /health endpoint",
+      "modify": "In the JSON response, ADD a 'cache' field",
+      "example": "return web.json_response({\n    'status': 'healthy',\n    'service': 'hybrid-coordinator',\n    'cache': query_cache.stats(),  # <-- ADD THIS LINE\n    'collections': list(COLLECTIONS.keys())\n})",
+      "verification": "curl http://localhost:8092/health | jq .cache",
+      "must_return": "{'cache_hits': N, 'cache_misses': M, 'hit_rate_percent': X, ...}"
+    },
+    "step_6_write_tests": {
+      "file": "ai-stack/tests/test_query_cache.py",
+      "action": "CREATE test file",
+      "required_tests": [
+        "test_cache_hit_on_duplicate_query - Send same query twice, second should be cached",
+        "test_cache_miss_on_new_query - Send different query, should miss cache",
+        "test_cache_expiration - Wait 301 seconds, cached item should expire",
+        "test_cache_max_size - Add 1001 items to cache with maxsize=1000, oldest should be evicted",
+        "test_cache_stats_in_health - GET /health should return cache stats",
+        "test_100_duplicate_queries - Send same query 100 times, 99 should be cache hits"
+      ],
+      "example_test": "async def test_cache_hit_on_duplicate_query():\n    from hybrid_coordinator.query_cache import QueryCache\n    cache = QueryCache()\n    \n    # First query - cache miss\n    result1 = cache.get('test query', {'limit': 10})\n    assert result1 is None\n    assert cache.stats()['cache_misses'] == 1\n    \n    # Store result\n    cache.set('test query', {'limit': 10}, {'results': ['a', 'b']})\n    \n    # Second query - cache hit\n    result2 = cache.get('test query', {'limit': 10})\n    assert result2 == {'results': ['a', 'b']}\n    assert cache.stats()['cache_hits'] == 1\n    assert cache.stats()['hit_rate_percent'] == 50.0  # 1 hit / 2 total",
+      "must_include": "Test with 100 identical queries showing >90% hit rate"
+    }
+  },
+  "verification_commands": [
+    {
+      "command": "cat ai-stack/mcp-servers/hybrid-coordinator/requirements.txt | grep cachetools",
+      "expected": "cachetools>=5.3.0"
+    },
+    {
+      "command": "python3 -c 'import sys; sys.path.insert(0, \"ai-stack/mcp-servers/hybrid-coordinator\"); from query_cache import QueryCache; print(QueryCache().stats())'",
+      "expected": "{'cache_hits': 0, 'cache_misses': 0, ...}"
+    },
+    {
+      "command": "grep 'query_cache.get' ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "expected": "Line showing cache check before search"
+    },
+    {
+      "command": "curl -s http://localhost:8092/health | jq .cache",
+      "expected": "Cache stats object with hits, misses, hit_rate"
+    },
+    {
+      "command": "pytest ai-stack/tests/test_query_cache.py -v",
+      "expected": "All tests pass, 100 duplicate queries test shows >90% hit rate"
+    }
+  ],
+  "success_criteria": {
+    "critical": [
+      "query_cache.py file exists with QueryCache class",
+      "cachetools in hybrid-coordinator requirements.txt",
+      "server.py calls query_cache.get() before search, .set() after",
+      "/health endpoint returns cache stats",
+      "100 identical queries achieve >90% cache hit rate",
+      "All tests pass"
+    ]
+  },
+  "what_NOT_to_do": [
+    "DO NOT add HTTP middleware caching (that's bug, not feature)",
+    "DO NOT add to aidb service (MUST be hybrid-coordinator)",
+    "DO NOT just add to requirements.txt without implementing (like last time)",
+    "DO NOT skip writing tests (MUST have test_query_cache.py)"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "description": "Fix critical resource leak: aiohttp.ClientSession created per request in aistack.py",
+  "context": "BLOCKER BUG: Line 28 in dashboard/backend/api/routes/aistack.py creates NEW ClientSession for EVERY request causing file descriptor exhaustion. Must create ONE session and reuse it.",
+  "backend": "aider",
+  "model": "anthropic/claude-sonnet-4",
+  "max_iterations": 5,
+  "require_approval": false,
+  "files": [
+    "dashboard/backend/api/routes/aistack.py"
+  ],
+  "instructions": "CRITICAL RESOURCE LEAK FIX - Follow these EXACT steps:\n\n1. READ dashboard/backend/api/routes/aistack.py lines 1-50 to understand current implementation\n\n2. IDENTIFY the bug at line 25-40 in fetch_with_fallback() function:\n   CURRENT (BROKEN):\n   ```python\n   async def fetch_with_fallback(url: str, fallback: Any = None) -> Any:\n       async with aiohttp.ClientSession(timeout=REQUEST_TIMEOUT) as session:  # NEW SESSION EVERY CALL!\n   ```\n\n3. IMPLEMENT the fix using FastAPI lifespan pattern:\n   \n   Step A: Add module-level variable BEFORE router definition (after line 11):\n   ```python\n   # Global aiohttp session (initialized in lifespan)\n   _http_session: Optional[aiohttp.ClientSession] = None\n   ```\n\n   Step B: Add lifespan context manager BEFORE router definition:\n   ```python\n   from contextlib import asynccontextmanager\n   from fastapi import APIRouter\n   \n   @asynccontextmanager\n   async def aistack_lifespan():\n       global _http_session\n       # Startup: create session\n       _http_session = aiohttp.ClientSession(timeout=REQUEST_TIMEOUT)\n       yield\n       # Shutdown: close session\n       if _http_session:\n           await _http_session.close()\n   ```\n\n   Step C: UPDATE fetch_with_fallback to use global session:\n   ```python\n   async def fetch_with_fallback(url: str, fallback: Any = None) -> Any:\n       global _http_session\n       if not _http_session:\n           raise RuntimeError(\"HTTP session not initialized\")\n       try:\n           async with _http_session.get(url) as resp:  # REUSE session!\n               if resp.status == 200:\n                   return await resp.json()\n               logger.warning(f\"Non-200 status from {url}: {resp.status}\")\n               return fallback\n       except Exception as e:\n           logger.warning(f\"Error fetching {url}: {e}\")\n           return fallback\n   ```\n\n   Step D: ADD initialization call in main.py startup (NOT in this file)\n\n4. ADD import for Optional at top of file:\n   ```python\n   from typing import Dict, Any, Optional\n   ```\n\n5. VERIFY the changes:\n   - Exactly ONE ClientSession created (in lifespan)\n   - Session reused across ALL requests\n   - Session properly closed on shutdown\n   - No more \"async with ClientSession()\" in fetch_with_fallback\n\n6. DO NOT:\n   - Create sessions in individual endpoint functions\n   - Use context managers inside fetch_with_fallback\n   - Add error handling that creates new sessions\n   - Modify any endpoint functions (@router.get)\n\nSUCCESS CRITERIA:\n- grep 'ClientSession(' aistack.py shows EXACTLY 1 match (in lifespan)\n- fetch_with_fallback uses _http_session.get() not 'async with ClientSession'\n- File has global _http_session variable\n- File has aistack_lifespan() context manager\n\nTEST VERIFICATION:\n```bash\n# After fix, this should show ONE session created total:\ngrep -n 'ClientSession' dashboard/backend/api/routes/aistack.py\n# Should output:\n# ~15: _http_session: Optional[aiohttp.ClientSession] = None\n# ~20:     _http_session = aiohttp.ClientSession(timeout=REQUEST_TIMEOUT)\n```",
+  "expected_changes": [
+    "Add Optional import",
+    "Add global _http_session variable",
+    "Add aistack_lifespan() context manager",
+    "Modify fetch_with_fallback to use _http_session.get()",
+    "Remove 'async with aiohttp.ClientSession()' from fetch_with_fallback"
+  ],
+  "verification_commands": [
+    "grep -c 'ClientSession(' dashboard/backend/api/routes/aistack.py  # Must output: 1",
+    "grep '_http_session.get(' dashboard/backend/api/routes/aistack.py  # Must find match",
+    "grep 'aistack_lifespan' dashboard/backend/api/routes/aistack.py  # Must find match"
+  ]
+}

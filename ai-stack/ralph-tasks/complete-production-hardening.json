@@ -1,0 +1,255 @@
+{
+  "task_id": "complete-production-hardening",
+  "description": "Complete all 5 remaining production hardening tasks and fix dashboard issues",
+  "backend": "aider",
+  "max_iterations": 10,
+  "require_approval": false,
+  "context": {
+    "goal": "Achieve 16/16 production hardening tasks (100% complete)",
+    "current_status": "11/16 complete (69%)",
+    "remaining_tasks": [
+      "P3-PERF-001: Query optimization",
+      "P3-PERF-002: Connection pooling",
+      "P3-PERF-003: Resource limits",
+      "P4-ORCH-002: Agent health checks",
+      "P5-MON-001: Metrics aggregation"
+    ],
+    "dashboard_issues": [
+      "Learning stats API returns 503 (hybrid coordinator not responding)",
+      "Circuit breaker API returns 503",
+      "Rate limiting causing 429 errors on dashboard load",
+      "Need to verify all monitoring displays work with live data"
+    ],
+    "success_criteria": [
+      "All 5 remaining tasks implemented and tested",
+      "Dashboard displays real-time data without errors",
+      "All API endpoints return 200 OK",
+      "Rate limiting adjusted to prevent legitimate dashboard requests from failing",
+      "Comprehensive tests written and passing for new features"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "task-1",
+      "name": "Fix Dashboard Rate Limiting Issues",
+      "description": "The dashboard is being rate-limited (429 errors) when loading multiple JSON files. Adjust rate limiter to allow higher burst for dashboard initial load while maintaining security.",
+      "files_to_modify": [
+        "scripts/serve-dashboard.sh"
+      ],
+      "changes_needed": [
+        "Increase rate limit from 60 to 120 requests per minute per IP",
+        "Or implement token bucket with burst allowance of 30 requests",
+        "Whitelist localhost/127.0.0.1 from rate limiting for development",
+        "Test dashboard loads without 429 errors"
+      ],
+      "tests": [
+        "Load dashboard and verify no 429 errors in console",
+        "Verify rate limiting still works for actual abuse"
+      ]
+    },
+    {
+      "id": "task-2",
+      "name": "Implement P4-ORCH-002: Agent Health Checks",
+      "description": "Add health check endpoints for all agents (Ralph, Hybrid Coordinator, AIDB) with unified monitoring.",
+      "files_to_modify": [
+        "ai-stack/mcp-servers/ralph-wiggum/server.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/server.py",
+        "scripts/serve-dashboard.sh",
+        "dashboard.html"
+      ],
+      "changes_needed": [
+        "Add /health/detailed endpoint to Ralph Wiggum returning: status, uptime, active_tasks, memory_usage, cpu_usage",
+        "Add /health/detailed endpoint to Hybrid Coordinator returning: status, uptime, circuit_breakers, learning_stats",
+        "Add GET /api/stats/agents to dashboard server that aggregates health from all agents",
+        "Add Agent Health section to dashboard.html showing all 3 agents with status indicators",
+        "Implement auto-refresh every 30 seconds"
+      ],
+      "tests": [
+        "curl http://localhost:8098/health/detailed - should return detailed Ralph stats",
+        "curl http://localhost:8092/health/detailed - should return detailed Hybrid stats",
+        "curl http://localhost:8888/api/stats/agents - should aggregate all agent health",
+        "Dashboard shows 3 agents with green/yellow/red status indicators"
+      ]
+    },
+    {
+      "id": "task-3",
+      "name": "Implement P5-MON-001: Metrics Aggregation",
+      "description": "Create unified metrics aggregation endpoint that collects stats from Prometheus, learning system, and agents.",
+      "files_to_modify": [
+        "scripts/serve-dashboard.sh",
+        "dashboard.html"
+      ],
+      "changes_needed": [
+        "Add GET /api/metrics/aggregate endpoint that fetches:",
+        "  - Prometheus metrics (container stats, resource usage)",
+        "  - Learning metrics (patterns, checkpoints, deduplication)",
+        "  - Agent metrics (task counts, success rates)",
+        "  - Circuit breaker states",
+        "Return unified JSON with all metrics",
+        "Add Metrics Overview section to dashboard with key performance indicators",
+        "Show: Total patterns processed, Success rate, Avg response time, Memory usage, CPU usage"
+      ],
+      "tests": [
+        "curl http://localhost:8888/api/metrics/aggregate - returns comprehensive metrics JSON",
+        "Dashboard Metrics Overview section displays all 5+ KPIs",
+        "Metrics update every 30 seconds automatically"
+      ]
+    },
+    {
+      "id": "task-4",
+      "name": "Implement P3-PERF-001: Query Optimization",
+      "description": "Add query optimization for Qdrant vector searches and PostgreSQL queries.",
+      "files_to_modify": [
+        "ai-stack/mcp-servers/aidb/server.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/server.py"
+      ],
+      "changes_needed": [
+        "Add query result caching for Qdrant searches (5-minute TTL)",
+        "Implement query batching for multiple similar requests",
+        "Add EXPLAIN ANALYZE logging for slow PostgreSQL queries (>100ms)",
+        "Create indexes on frequently queried columns",
+        "Add query performance metrics to /health/detailed endpoint"
+      ],
+      "tests": [
+        "Run 100 identical queries - verify second query faster (cache hit)",
+        "Check logs for EXPLAIN ANALYZE output on slow queries",
+        "/health/detailed shows query performance metrics"
+      ]
+    },
+    {
+      "id": "task-5",
+      "name": "Implement P3-PERF-002: Connection Pooling",
+      "description": "Add connection pooling for PostgreSQL and Qdrant to improve performance.",
+      "files_to_modify": [
+        "ai-stack/mcp-servers/aidb/server.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/server.py"
+      ],
+      "changes_needed": [
+        "Configure PostgreSQL connection pool: min=2, max=10 connections",
+        "Configure Qdrant connection pool: max=5 connections",
+        "Add connection pool metrics (active, idle, waiting)",
+        "Add connection pool health checks",
+        "Report pool metrics in /health/detailed"
+      ],
+      "tests": [
+        "Verify connection pool created on startup",
+        "Run concurrent requests and verify pool reuse",
+        "/health/detailed shows pool metrics: active=X, idle=Y, max=10"
+      ]
+    },
+    {
+      "id": "task-6",
+      "name": "Implement P3-PERF-003: Resource Limits",
+      "description": "Add resource limits and monitoring to prevent resource exhaustion.",
+      "files_to_modify": [
+        "ai-stack/compose/docker-compose.yml",
+        "ai-stack/mcp-servers/aidb/server.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/server.py",
+        "scripts/serve-dashboard.sh"
+      ],
+      "changes_needed": [
+        "Add memory limits to docker-compose.yml: aidb=2GB, hybrid=1GB, ralph=512MB",
+        "Add CPU limits: aidb=2.0, hybrid=1.0, ralph=0.5",
+        "Implement memory monitoring - log warning at 80% usage",
+        "Implement request size limits: max 10MB per request",
+        "Add resource usage to /api/stats/agents endpoint",
+        "Display resource usage in dashboard Agent Health section"
+      ],
+      "tests": [
+        "Verify containers respect memory limits (docker stats)",
+        "Send 11MB request - should be rejected with 413",
+        "Dashboard shows memory/CPU usage for each agent",
+        "Warning logged when service reaches 80% memory"
+      ]
+    },
+    {
+      "id": "task-7",
+      "name": "Fix Hybrid Coordinator Endpoints",
+      "description": "The dashboard API endpoints for learning stats and circuit breakers return 503 because hybrid coordinator doesn't have these endpoints yet.",
+      "files_to_modify": [
+        "ai-stack/mcp-servers/hybrid-coordinator/server.py"
+      ],
+      "changes_needed": [
+        "Add GET /learning/stats endpoint that returns continuous learning statistics",
+        "Ensure /health endpoint includes circuit_breakers in response",
+        "Test both endpoints return valid JSON",
+        "Restart hybrid coordinator container"
+      ],
+      "tests": [
+        "curl http://localhost:8092/learning/stats - returns learning metrics",
+        "curl http://localhost:8092/health - includes circuit_breakers field",
+        "Dashboard learning section shows live data",
+        "Dashboard circuit breaker section shows live states"
+      ]
+    },
+    {
+      "id": "task-8",
+      "name": "Create Comprehensive Test Suite",
+      "description": "Write tests for all 5 new P3-P5 features to ensure production readiness.",
+      "files_to_create": [
+        "ai-stack/tests/test_p3_performance.py",
+        "ai-stack/tests/test_p4_agent_health.py",
+        "ai-stack/tests/test_p5_metrics.py"
+      ],
+      "changes_needed": [
+        "Test query caching performance improvement",
+        "Test connection pooling under concurrent load",
+        "Test resource limits enforcement",
+        "Test agent health endpoints",
+        "Test metrics aggregation completeness",
+        "All tests must pass"
+      ],
+      "tests": [
+        "pytest ai-stack/tests/test_p3_performance.py -v - all pass",
+        "pytest ai-stack/tests/test_p4_agent_health.py -v - all pass",
+        "pytest ai-stack/tests/test_p5_metrics.py -v - all pass"
+      ]
+    },
+    {
+      "id": "task-9",
+      "name": "Update Dashboard with All New Features",
+      "description": "Integrate all new endpoints and features into the dashboard UI.",
+      "files_to_modify": [
+        "dashboard.html"
+      ],
+      "changes_needed": [
+        "Add Agent Health Status section with 3 agent cards (Ralph, Hybrid, AIDB)",
+        "Add Metrics Overview section with KPIs",
+        "Add Performance Metrics section (query cache hit rate, connection pool usage)",
+        "Add Resource Usage section (memory, CPU per agent)",
+        "Update Production Hardening Progress to show 16/16 (100%)",
+        "Ensure all auto-refresh works correctly"
+      ],
+      "tests": [
+        "Dashboard loads without any 429 or 503 errors",
+        "All monitoring sections show live data",
+        "Auto-refresh updates data every 30 seconds",
+        "Production Hardening shows 100% complete"
+      ]
+    },
+    {
+      "id": "task-10",
+      "name": "Final Testing and Documentation",
+      "description": "Run comprehensive end-to-end tests and update documentation.",
+      "files_to_modify": [
+        "PRODUCTION-HARDENING-STATUS.md",
+        "DASHBOARD-AND-RALPH-COMPLETION-SUMMARY.md",
+        "QUICK-START.md"
+      ],
+      "changes_needed": [
+        "Run all 40+ tests (32 existing + 8+ new)",
+        "Verify all tests pass",
+        "Update PRODUCTION-HARDENING-STATUS.md to show 16/16 complete",
+        "Update completion summary with all new features",
+        "Add new features to quick start guide",
+        "Create final production readiness checklist"
+      ],
+      "tests": [
+        "pytest ai-stack/tests/ -v - ALL tests pass (40+)",
+        "Dashboard accessible and all sections working",
+        "Documentation updated and accurate",
+        "System ready for production deployment"
+      ]
+    }
+  ]
+}

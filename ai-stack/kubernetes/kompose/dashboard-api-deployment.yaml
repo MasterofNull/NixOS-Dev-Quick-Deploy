@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
+    kompose.version: 1.37.0 (HEAD)
+    nixos.quick-deploy.ai-stack: "true"
+    nixos.quick-deploy.service: dashboard-api
+  labels:
+    io.kompose.service: dashboard-api
+  name: dashboard-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: dashboard-api
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
+        kompose.version: 1.37.0 (HEAD)
+        nixos.quick-deploy.ai-stack: "true"
+        nixos.quick-deploy.service: dashboard-api
+      labels:
+        io.kompose.service: dashboard-api
+    spec:
+      containers:
+        - env:
+            - name: DASHBOARD_API_KEY_FILE
+              value: /run/secrets/dashboard-api-key
+            - name: DASHBOARD_MODE
+              value: k8s
+            - name: AI_STACK_NAMESPACE
+              value: ai-stack
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          image: localhost/compose_dashboard-api:latest
+          imagePullPolicy: IfNotPresent
+          name: local-ai-dashboard-api
+          ports:
+            - containerPort: 8889
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "1"
+              memory: "536870912"
+          volumeMounts:
+            - mountPath: /run/secrets/dashboard-api-key
+              name: dashboard-api-key
+              subPath: dashboard-api-key
+      hostname: dashboard-api
+      restartPolicy: Always
+      volumes:
+        - name: dashboard-api-key
+          secret:
+            defaultMode: 256
+            items:
+              - key: dashboard-api-key
+                path: dashboard-api-key
+            secretName: dashboard-api-key

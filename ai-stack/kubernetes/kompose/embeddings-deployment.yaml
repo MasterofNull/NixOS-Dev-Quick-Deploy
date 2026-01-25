@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
+    kompose.version: 1.37.0 (HEAD)
+    nixos.quick-deploy.ai-stack: "true"
+    nixos.quick-deploy.embedding-dimensions: "384"
+    nixos.quick-deploy.service: embeddings
+  labels:
+    io.kompose.service: embeddings
+  name: embeddings
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: embeddings
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
+        kompose.version: 1.37.0 (HEAD)
+        nixos.quick-deploy.ai-stack: "true"
+        nixos.quick-deploy.embedding-dimensions: "384"
+        nixos.quick-deploy.service: embeddings
+      labels:
+        io.kompose.service: embeddings
+    spec:
+      containers:
+        - env:
+            - name: BATCH_MAX_LATENCY_MS
+              value: "25"
+            - name: BATCH_MAX_SIZE
+              value: "64"
+            - name: BATCH_QUEUE_MAX
+              value: "1024"
+            - name: EMBEDDINGS_API_KEY_FILE
+              value: /run/secrets/embeddings-api-key
+            - name: EMBEDDINGS_CONFIG
+              value: /app/config/config.yaml
+            - name: HF_HOME
+              value: /data/cache
+            - name: PORT
+              value: "8081"
+            - name: STACK_ENV
+            - name: TRANSFORMERS_CACHE
+              value: /data/cache
+          envFrom:
+            - configMapRef:
+                name: env
+          image: localhost/compose_embeddings:latest
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - import urllib.request; r=urllib.request.urlopen('http://localhost:8081/health', timeout=5); body=r.read().decode(); import sys; sys.exit(0 if '"status":"ok"' in body else 1)
+            failureThreshold: 10
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 10
+          name: local-ai-embeddings
+          ports:
+            - containerPort: 8081
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "2"
+              memory: "3221225472"
+            requests:
+              cpu: 500m
+              memory: "1073741824"
+          volumeMounts:
+            - mountPath: /run/secrets/embeddings-api-key
+              name: embeddings-api-key
+              subPath: embeddings-api-key
+      restartPolicy: Always
+      volumes:
+        - name: embeddings-api-key
+          secret:
+            defaultMode: 256
+            items:
+              - key: embeddings-api-key
+                path: embeddings-api-key
+            secretName: embeddings-api-key

@@ -250,6 +250,39 @@ in
   };
 
   # ============================================================================
+  # K3s (Kubernetes) with Podman runtime
+  # ============================================================================
+  services.k3s = {
+    enable = true;
+    role = "server";
+    extraFlags = toString [
+      # NOTE: Podman does not expose a CRI endpoint. Use k3s default (containerd).
+      "--write-kubeconfig-mode 644"
+      "--disable traefik"
+      "--disable servicelb"
+    ];
+  };
+
+  # Rootless Podman socket (user) + system-level symlink for K3s
+  systemd.user.sockets.podman = {
+    enable = true;
+    wantedBy = [ "sockets.target" ];
+    listenStreams = [ "%t/podman/podman.sock" ];
+    socketConfig = {
+      SocketMode = "0660";
+    };
+  };
+
+  systemd.user.services.podman = {
+    enable = true;
+    wantedBy = [ "default.target" ];
+    serviceConfig = {
+      ExecStart = "${pkgs.podman}/bin/podman system service -t 0";
+      Restart = "always";
+    };
+  };
+
+  # ============================================================================
   # Security Hardening
   # ============================================================================
   security = {
@@ -983,6 +1016,7 @@ in
   systemd.tmpfiles.rules = lib.mkAfter (
     [
       "d /run/podman 0755 root root -"
+      "L+ /run/podman/podman.sock - - - - /run/user/${toString config.users.users.@USER@.uid}/podman/podman.sock"
       "d /var/lib/AccountsService 0750 accounts-daemon accounts-daemon -"
       "d /var/lib/AccountsService/icons 0750 accounts-daemon accounts-daemon -"
       "d /var/lib/cosmic-greeter 0750 cosmic-greeter cosmic-greeter -"

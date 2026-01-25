@@ -1,0 +1,114 @@
+{
+  "task_id": "05-fix-dashboard-aidb-section",
+  "description": "Fix all 12 issues in AIDB Health & Security dashboard section (depends on tasks 01 and 02)",
+  "backend": "aider",
+  "max_iterations": 15,
+  "require_approval": false,
+  "context": {
+    "dependencies": "This task REQUIRES task 01 (containerized API) and task 02 (bug fixes) to be complete first",
+    "current_state": "AIDB Health section added by Ralph but has 12 critical issues: wrong endpoints, no null checks, XSS vulnerabilities, no timeouts",
+    "goal": "Make AIDB Health section actually work - show real data, handle errors gracefully, no console errors"
+  },
+  "issues_to_fix": {
+    "issue_01_endpoint_routing": {
+      "file": "dashboard.html",
+      "line": "Around 3700",
+      "problem": "baseUrl = '/aidb' - this routing doesn't exist",
+      "current": "const baseUrl = '/aidb';\nfetch(`${baseUrl}/health/live`)",
+      "fix": "Change to use dashboard API endpoint",
+      "new_code": "const baseUrl = 'http://localhost:8889/api';\n// OR if containerized dashboard:\nconst baseUrl = `${window.location.origin}/api`;\n\n// Then update endpoint paths:\nfetch(`${baseUrl}/health/aggregate`).then(r => {\n    if (!r.ok) throw new Error(`HTTP ${r.status}`);\n    return r.json();\n}).then(data => {\n    // data.services.aidb has the health info\n    const aidbHealth = data.services?.aidb;\n    // Update UI with aidbHealth\n})",
+      "verification": "Fetch actually reaches API and returns data (not 404)"
+    },
+    "issue_02_to_12_from_task_02": {
+      "note": "Issues 2-12 are covered by task 02 (fix-critical-bugs.json)",
+      "reference": "See bugs 4, 5, 6, 10, 11, 12 in task 02",
+      "apply_here": [
+        "bug_04 (XSS) - escape HTML in dependency names",
+        "bug_05 (memory leak) - clear intervals",
+        "bug_06 (fetch timeout) - use AbortController",
+        "bug_10 (null safety) - check healthData?.status",
+        "bug_11 (concurrent refresh) - add isRefreshing guard",
+        "bug_12 (HTTP status) - check r.ok before r.json()"
+      ],
+      "action": "Apply fixes from task 02 to AIDB Health section specifically"
+    },
+    "additional_fix_viewDetailedHealth": {
+      "file": "dashboard.html",
+      "lines": "3812-3818",
+      "problem": "viewDetailedHealth() and viewMetrics() open raw JSON, poor UX",
+      "current": "function viewDetailedHealth() {\n    window.open('/aidb/health/detailed', '_blank');\n}",
+      "improved": "function viewDetailedHealth() {\n    // Fetch and display in a modal or formatted div\n    fetch('http://localhost:8889/api/health/aggregate')\n        .then(r => r.ok ? r.json() : Promise.reject(r.status))\n        .then(data => {\n            // Create a modal with formatted JSON\n            const modal = document.createElement('div');\n            modal.className = 'health-modal';\n            modal.innerHTML = `\n                <div class=\"modal-content\">\n                    <h3>Detailed Health Status</h3>\n                    <pre>${JSON.stringify(data, null, 2)}</pre>\n                    <button onclick=\"this.parentElement.parentElement.remove()\">Close</button>\n                </div>\n            `;\n            document.body.appendChild(modal);\n        })\n        .catch(err => alert(`Failed to load health details: ${err}`));\n}",
+      "verification": "Clicking 'Detailed Status' button shows formatted modal, not raw JSON page"
+    }
+  },
+  "implementation_checklist": [
+    "Change baseUrl to point to dashboard API",
+    "Update fetch URLs to /api/health/aggregate",
+    "Parse response to extract aidb-specific health from aggregated data",
+    "Apply escapeHtml() to all user-controlled text (from task 02)",
+    "Add fetchWithTimeout wrapper to all fetch calls (from task 02)",
+    "Add HTTP status check before .json() (from task 02)",
+    "Add null safety: healthData?.status || 'unknown' (from task 02)",
+    "Clear intervals before setting new ones (from task 02)",
+    "Add isRefreshing guard to refreshAIDBHealth (from task 02)",
+    "Improve viewDetailedHealth() to show modal instead of raw JSON",
+    "Test: Open dashboard, AIDB section shows real data",
+    "Test: Console has 0 errors",
+    "Test: Refresh page 10x, only 1 interval running"
+  ],
+  "verification_commands": [
+    {
+      "command": "Open http://localhost:8888/dashboard.html in browser",
+      "check": "AIDB Health & Security section visible"
+    },
+    {
+      "command": "Check browser console (F12)",
+      "expected": "0 errors, 0 warnings about failed fetches"
+    },
+    {
+      "command": "Click 'Refresh Health' button",
+      "expected": "Data updates, shows green status for healthy services"
+    },
+    {
+      "command": "Stop AIDB container: podman stop local-ai-aidb",
+      "expected": "Within 5 seconds, status changes to 'Offline' or 'Degraded', error message shown"
+    },
+    {
+      "command": "Refresh page 10 times",
+      "expected": "DevTools Performance: only 1 interval for refreshAIDBHealth (not 10)"
+    },
+    {
+      "command": "Click 'Detailed Status' button",
+      "expected": "Modal appears with formatted JSON (not new tab with raw JSON)"
+    }
+  ],
+  "success_criteria": {
+    "critical": [
+      "Dashboard loads without console errors",
+      "AIDB Health section shows real data (not '--' placeholders)",
+      "Health probes (liveness, readiness, startup) show 'Healthy' or 'Offline'",
+      "Dependency health list populated with actual dependencies",
+      "Clicking buttons works (Refresh, Detailed Status, Metrics)",
+      "No XSS vulnerability (malicious dependency name is escaped)",
+      "No memory leaks (page refresh doesn't create duplicate intervals)",
+      "Errors handled gracefully (timeout shows user-friendly message)"
+    ],
+    "nice_to_have": [
+      "Auto-refresh works (updates every 30 seconds)",
+      "Detailed Status modal is well-formatted",
+      "Loading indicators during fetch"
+    ]
+  },
+  "dependencies_on_other_tasks": {
+    "task_01": "MUST be complete first - dashboard API needs to be containerized and accessible",
+    "task_02": "MUST be complete first - provides fetchWithTimeout, escapeHtml, and other fixes to reuse",
+    "verify_before_starting": "curl http://localhost:8889/api/health/aggregate should return real data"
+  },
+  "what_NOT_to_do": [
+    "DO NOT point to /aidb/health endpoints (they don't exist at that path)",
+    "DO NOT skip null checks (will crash on missing data)",
+    "DO NOT forget timeout on fetch (will hang forever)",
+    "DO NOT insert unescaped HTML (XSS vulnerability)",
+    "DO NOT create duplicate intervals (memory leak)"
+  ]
+}

@@ -1,0 +1,93 @@
+{
+  "task_id": "p3-perf-002-connection-pooling",
+  "description": "Configure PostgreSQL and Qdrant connection pooling to reduce connection overhead",
+  "backend": "aider",
+  "max_iterations": 15,
+  "require_approval": false,
+  "context": {
+    "goal": "Improve performance by reusing database connections instead of creating new ones for each query",
+    "current_status": "Creating new connections for each database operation",
+    "target_files": [
+      "/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/ai-stack/mcp-servers/aidb/server.py"
+    ],
+    "requirements": [
+      "PostgreSQL connection pool: min=2, max=10 connections",
+      "Qdrant connection pool: max=5 connections",
+      "Connection pool health checks",
+      "Pool metrics (active, idle, waiting connections)",
+      "Graceful pool shutdown on service stop",
+      "Report pool metrics in /health endpoint"
+    ],
+    "success_criteria": [
+      "Connection pool created on service startup",
+      "Concurrent requests reuse pooled connections",
+      "/health endpoint shows pool metrics: active, idle, max",
+      "No connection leaks (all connections returned to pool)",
+      "Performance improvement: 20%+ faster under concurrent load",
+      "Tests pass showing connection reuse"
+    ]
+  },
+  "implementation_steps": [
+    {
+      "step": 1,
+      "description": "Add connection pooling dependencies",
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/requirements.txt",
+      "changes": [
+        "For PostgreSQL: psycopg2-pool or asyncpg",
+        "For Qdrant: existing qdrant-client supports pooling via http client"
+      ]
+    },
+    {
+      "step": 2,
+      "description": "Create PostgreSQL connection pool",
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "implementation": "Initialize asyncpg.create_pool(min_size=2, max_size=10) on startup"
+    },
+    {
+      "step": 3,
+      "description": "Configure Qdrant client with connection pooling",
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "implementation": "Configure QdrantClient with aiohttp connector pool_maxsize=5"
+    },
+    {
+      "step": 4,
+      "description": "Replace direct DB calls with pool.acquire()",
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "changes": [
+        "async with pool.acquire() as conn:",
+        "Use conn for all database operations",
+        "Ensure connections are released back to pool"
+      ]
+    },
+    {
+      "step": 5,
+      "description": "Add pool metrics to health endpoint",
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "metrics": [
+        "postgres_pool_size",
+        "postgres_pool_free_connections",
+        "postgres_pool_used_connections",
+        "qdrant_pool_max_size"
+      ]
+    },
+    {
+      "step": 6,
+      "description": "Implement graceful pool shutdown",
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "implementation": "Add shutdown handler: await pool.close(), wait for connections to finish"
+    },
+    {
+      "step": 7,
+      "description": "Write tests",
+      "file": "ai-stack/tests/test_connection_pooling.py",
+      "tests": [
+        "test_pool_created_on_startup",
+        "test_concurrent_requests_reuse_connections",
+        "test_pool_metrics_in_health",
+        "test_no_connection_leaks",
+        "test_pool_performance_under_load"
+      ]
+    }
+  ]
+}

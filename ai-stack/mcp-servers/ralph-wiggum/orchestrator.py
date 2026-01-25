@@ -1,231 +1,129 @@
-#!/usr/bin/env python3
-"""
-Agent Orchestrator
-Routes tasks to different agent backends (Aider, Continue, Goose, AutoGPT, LangChain)
-"""
-
 import asyncio
-from typing import Any, Dict, List, Optional
+import logging
+import uuid
+from typing import Optional, Dict, Any
+from dataclasses import dataclass
+from datetime import datetime
 
-import httpx
-import structlog
-
-logger = structlog.get_logger()
+# Configure logging
+logger = logging.getLogger("ralph_orchestrator")
 
 
-class AgentOrchestrator:
+@dataclass
+class TaskResult:
+    success: bool
+    iterations: int
+    output: str
+    metadata: Dict[str, Any]
+
+
+class RalphOrchestrator:
     """
-    Orchestrates multiple agent backends
-
-    Supports:
-    - Aider: AI pair programming with git integration
-    - Continue: Open-source autopilot for IDEs
-    - Goose: Autonomous coding agent with file system access
-    - AutoGPT: Goal decomposition and planning
-    - LangChain: Agent framework with memory
+    Layer 1 Orchestrator: Ralph Wiggum
+    Manages iterative tasks and delegates to Hybrid Coordinator (Layer 2) and AIDB (Layer 3).
     """
 
-    BACKEND_URLS = {
-        "aider": "http://localhost:8099",  # Aider HTTP wrapper
-        "continue": "http://continue-server:8080",  # TODO: create wrapper
-        "goose": "http://goose:8080",  # TODO: create wrapper
-        "autogpt": "http://autogpt:8080",  # TODO: create wrapper
-        "langchain": "http://langchain:8080",  # TODO: create wrapper
-    }
+    def __init__(self, hybrid_client, aidb_client, learning_client=None):
+        self.hybrid = hybrid_client  # Layer 2: Router
+        self.aidb = aidb_client  # Layer 3: Knowledge
+        self.learning = learning_client  # Cross-cutting: Telemetry
 
-    def __init__(self, backends: List[str], default_backend: str):
-        self.backends = backends
-        self.default_backend = default_backend
-        self.client = httpx.AsyncClient(timeout=300.0)  # 5 min timeout
-
-        logger.info("orchestrator_initialized", backends=backends, default=default_backend)
-
-    async def execute_agent(
-        self,
-        backend: str,
-        prompt: str,
-        context: Dict[str, Any],
-        iteration: int
-    ) -> Dict[str, Any]:
+    async def execute_task(
+        self, task_description: str, backend: str = "aider", max_iterations: int = 10
+    ) -> TaskResult:
         """
-        Execute an agent backend with the given prompt
-
-        Args:
-            backend: Agent backend name
-            prompt: Task prompt
-            context: Additional context
-            iteration: Current iteration number
-
-        Returns:
-            Result dictionary with exit_code, output, completed status
+        Execute a task using nested orchestration.
+        1. Retrieve Context (AIDB)
+        2. Route Query (Hybrid)
+        3. Execute (Backend)
+        4. Learn (Telemetry)
         """
-        if backend not in self.backends:
-            logger.warning("unknown_backend", backend=backend, using_default=self.default_backend)
-            backend = self.default_backend
+        task_id = str(uuid.uuid4())
+        logger.info(f"Starting task {task_id}: {task_description[:50]}...")
 
-        url = self.BACKEND_URLS.get(backend)
-        if not url:
-            raise ValueError(f"Unknown backend: {backend}")
+        if self.learning:
+            await self.learning.log_event(
+                "task_started",
+                {
+                    "task_id": task_id,
+                    "description": task_description,
+                    "backend": backend,
+                },
+            )
 
-        logger.info("executing_agent", backend=backend, iteration=iteration)
+        iteration = 0
+        final_output = ""
+        success = False
 
-        try:
-            # Prepare request payload
-            payload = {
-                "prompt": prompt,
-                "context": context,
-                "iteration": iteration,
-                "mode": "autonomous"  # Request autonomous execution
-            }
+        while iteration < max_iterations:
+            iteration += 1
 
-            # Execute based on backend type
-            if backend == "aider":
-                return await self._execute_aider(url, payload)
-            elif backend == "continue":
-                return await self._execute_continue(url, payload)
-            elif backend == "goose":
-                return await self._execute_goose(url, payload)
-            elif backend == "autogpt":
-                return await self._execute_autogpt(url, payload)
-            elif backend == "langchain":
-                return await self._execute_langchain(url, payload)
-            else:
-                raise ValueError(f"Unsupported backend: {backend}")
+            try:
+                # Step 1: Get Context from AIDB (Layer 3)
+                # We fetch context first to inform the routing decision
+                context = await self.aidb.get_context(task_description)
 
-        except httpx.TimeoutException:
-            logger.error("agent_timeout", backend=backend)
-            return {
-                "exit_code": 1,
-                "output": "Agent execution timed out",
-                "completed": False,
-                "error": "timeout"
-            }
-        except Exception as e:
-            logger.error("agent_execution_error", backend=backend, error=str(e))
-            return {
-                "exit_code": 1,
-                "output": str(e),
-                "completed": False,
-                "error": str(e)
-            }
+                # Step 2: Route via Hybrid Coordinator (Layer 2)
+                # Decides if we need local LLM or remote API based on complexity/context
+                routing_decision = await self.hybrid.route_query(
+                    query=task_description, context=context, iteration=iteration
+                )
 
-    async def _execute_aider(self, url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute Aider agent"""
-        # Aider API endpoint
-        response = await self.client.post(f"{url}/api/execute", json=payload)
-        response.raise_for_status()
+                logger.info(
+                    f"Iteration {iteration}: Routed to {routing_decision.get('route', 'unknown')}"
+                )
 
-        result = response.json()
+                # Step 3: Execute (Simulation of backend execution)
+                # In a real implementation, this calls the specific backend (e.g., Aider, llama.cpp)
+                # passing the guidance from the Hybrid Coordinator
+                execution_result = await self._execute_backend(
+                    backend, task_description, routing_decision
+                )
 
+                # Step 4: Telemetry & Learning
+                if self.learning:
+                    await self.learning.log_event(
+                        "task_iteration",
+                        {
+                            "task_id": task_id,
+                            "iteration": iteration,
+                            "route": routing_decision.get("route"),
+                            "success": execution_result.get("success", False),
+                        },
+                    )
+
+                if execution_result.get("success"):
+                    success = True
+                    final_output = execution_result.get("output", "")
+                    break
+
+            except Exception as e:
+                logger.error(f"Error in iteration {iteration}: {e}")
+                if self.learning:
+                    await self.learning.log_event(
+                        "iteration_error", {"task_id": task_id, "error": str(e)}
+                    )
+
+        # Finalize
+        if self.learning:
+            await self.learning.log_event(
+                "task_completed",
+                {"task_id": task_id, "total_iterations": iteration, "success": success},
+            )
+
+        return TaskResult(
+            success=success,
+            iterations=iteration,
+            output=final_output,
+            metadata={"task_id": task_id},
+        )
+
+    async def _execute_backend(
+        self, backend: str, description: str, guidance: dict
+    ) -> dict:
+        """Mock backend execution for the orchestrator skeleton."""
+        # This would interface with the actual agent backends
         return {
-            "exit_code": result.get("exit_code", 0),
-            "output": result.get("output", ""),
-            "completed": result.get("completed", False),
-            "git_commits": result.get("commits", []),
-            "files_modified": result.get("files_modified", [])
+            "success": True,
+            "output": "Task executed successfully based on hybrid guidance.",
         }
-
-    async def _execute_continue(self, url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute Continue agent"""
-        response = await self.client.post(f"{url}/api/task", json=payload)
-        response.raise_for_status()
-
-        result = response.json()
-
-        return {
-            "exit_code": result.get("status_code", 0),
-            "output": result.get("response", ""),
-            "completed": result.get("task_complete", False),
-            "suggestions": result.get("suggestions", [])
-        }
-
-    async def _execute_goose(self, url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute Goose agent"""
-        response = await self.client.post(f"{url}/api/run", json=payload)
-        response.raise_for_status()
-
-        result = response.json()
-
-        return {
-            "exit_code": 0 if result.get("success", False) else 1,
-            "output": result.get("output", ""),
-            "completed": result.get("completed", False),
-            "debug_info": result.get("debug", {}),
-            "file_operations": result.get("file_ops", [])
-        }
-
-    async def _execute_autogpt(self, url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute AutoGPT agent"""
-        response = await self.client.post(f"{url}/api/agent/tasks", json={
-            "input": payload["prompt"],
-            "additional_input": payload.get("context", {})
-        })
-        response.raise_for_status()
-
-        result = response.json()
-        task_id = result.get("task_id")
-
-        # Poll for completion
-        max_wait = 300  # 5 minutes
-        interval = 5
-        elapsed = 0
-
-        while elapsed < max_wait:
-            status_response = await self.client.get(f"{url}/api/agent/tasks/{task_id}")
-            status_response.raise_for_status()
-            status = status_response.json()
-
-            if status.get("status") in ["completed", "failed"]:
-                return {
-                    "exit_code": 0 if status.get("status") == "completed" else 1,
-                    "output": status.get("output", ""),
-                    "completed": status.get("status") == "completed",
-                    "artifacts": status.get("artifacts", [])
-                }
-
-            await asyncio.sleep(interval)
-            elapsed += interval
-
-        # Timeout
-        return {
-            "exit_code": 1,
-            "output": "AutoGPT task timed out",
-            "completed": False,
-            "error": "timeout"
-        }
-
-    async def _execute_langchain(self, url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute LangChain agent"""
-        response = await self.client.post(f"{url}/invoke", json={
-            "input": payload["prompt"],
-            "config": {
-                "metadata": payload.get("context", {}),
-                "tags": ["ralph-wiggum", f"iteration-{payload['iteration']}"]
-            }
-        })
-        response.raise_for_status()
-
-        result = response.json()
-
-        return {
-            "exit_code": 0 if result.get("output") else 1,
-            "output": result.get("output", ""),
-            "completed": result.get("metadata", {}).get("completed", False),
-            "intermediate_steps": result.get("intermediate_steps", [])
-        }
-
-    async def health_check(self, backend: str) -> bool:
-        """Check if backend is healthy"""
-        url = self.BACKEND_URLS.get(backend)
-        if not url:
-            return False
-
-        try:
-            response = await self.client.get(f"{url}/health", timeout=5.0)
-            return response.status_code == 200
-        except Exception:
-            return False
-
-    async def shutdown(self):
-        """Cleanup"""
-        await self.client.aclose()

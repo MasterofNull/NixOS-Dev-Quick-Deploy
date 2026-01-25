@@ -1,0 +1,145 @@
+{
+  "task_id": "fix-dashboard-integration",
+  "description": "Fix all dashboard health check failures and integrate new API endpoints for real-time monitoring",
+  "backend": "aider",
+  "max_iterations": 20,
+  "require_approval": false,
+  "context": {
+    "goal": "Make dashboard display all system features and capabilities with real-time data",
+    "current_problems": [
+      "AIDB health checks failing (silent failures with .catch(() => null))",
+      "Security monitoring not working (missing null checks)",
+      "Circuit breaker stats not displayed",
+      "Learning stats not shown",
+      "Ralph task status not visible",
+      "Prometheus/Grafana/Jaeger not integrated",
+      "WebSocket failures with no user feedback",
+      "No timeout on fetch calls (hangs indefinitely)"
+    ],
+    "new_api_endpoints_available": [
+      "http://localhost:8889/api/stats/learning - Continuous learning statistics",
+      "http://localhost:8889/api/stats/circuit-breakers - Circuit breaker states",
+      "http://localhost:8889/api/health/aggregate - All service health",
+      "http://localhost:8889/api/ralph/stats - Ralph task statistics",
+      "http://localhost:8889/api/ralph/tasks - Ralph active tasks",
+      "http://localhost:8889/api/prometheus/query - Prometheus proxy"
+    ],
+    "target_file": "/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/dashboard.html",
+    "success_criteria": [
+      "Dashboard loads without any 404, 500, or console errors",
+      "AIDB health checks display correctly with green/yellow/red indicators",
+      "Security monitoring shows real data from API",
+      "Circuit breaker section displays all 7 breakers with states",
+      "Learning stats update every 30 seconds automatically",
+      "Ralph status section shows active tasks and iterations",
+      "Links to Prometheus (port 9090), Grafana (port 3002), Jaeger (port 16686)",
+      "All fetch calls have 5-second timeout",
+      "Error messages displayed to user when endpoints fail",
+      "Auto-refresh working on all monitoring sections",
+      "Production hardening progress shows 14/16 (87.5%) or 16/16 when P3 tasks complete"
+    ]
+  },
+  "implementation_steps": [
+    {
+      "step": 1,
+      "description": "Fix AIDB health check error handling",
+      "file": "dashboard.html",
+      "location": "Lines 3697-3743",
+      "current_code": "fetch(url).then(r => r.json()).catch(() => null)",
+      "new_code": "Add timeout, proper error handling, user feedback on failure"
+    },
+    {
+      "step": 2,
+      "description": "Wire up learning stats API",
+      "file": "dashboard.html",
+      "location": "Continuous Learning Status section",
+      "changes": [
+        "Change fetch URL to http://localhost:8889/api/stats/learning",
+        "Add error handling",
+        "Display: checkpoints, backpressure, deduplication stats",
+        "Auto-refresh every 30 seconds"
+      ]
+    },
+    {
+      "step": 3,
+      "description": "Wire up circuit breaker API",
+      "file": "dashboard.html",
+      "location": "Circuit Breaker Status section",
+      "changes": [
+        "Change fetch URL to http://localhost:8889/api/stats/circuit-breakers",
+        "Parse circuit_breakers object",
+        "Display each breaker with color-coded state (GREEN/YELLOW/RED)",
+        "Count open breakers for badge",
+        "Auto-refresh every 30 seconds"
+      ]
+    },
+    {
+      "step": 4,
+      "description": "Create Ralph Status Section",
+      "file": "dashboard.html",
+      "location": "Add new section after Production Hardening Progress",
+      "content": "Ralph Wiggum Task Status section with:",
+      "elements": [
+        "Active tasks count from /api/ralph/stats",
+        "List of running tasks from /api/ralph/tasks",
+        "Task progress bars showing iteration count",
+        "Link to Ralph API: http://localhost:8098",
+        "Auto-refresh every 10 seconds"
+      ]
+    },
+    {
+      "step": 5,
+      "description": "Fix security monitoring section",
+      "file": "dashboard.html",
+      "location": "Lines 2779-2828",
+      "changes": [
+        "Add null checks before accessing nested properties",
+        "Use optional chaining: data?.security?.status",
+        "Provide fallback values",
+        "Display error message if data incomplete"
+      ]
+    },
+    {
+      "step": 6,
+      "description": "Add monitoring system links",
+      "file": "dashboard.html",
+      "location": "Add new Monitoring Tools section",
+      "content": "Create section with links to:",
+      "links": [
+        "Prometheus: http://localhost:9090",
+        "Grafana: http://localhost:3002",
+        "Jaeger: http://localhost:16686",
+        "Ralph Wiggum: http://localhost:8098"
+      ]
+    },
+    {
+      "step": 7,
+      "description": "Add global fetch wrapper with timeout",
+      "file": "dashboard.html",
+      "location": "JavaScript section",
+      "implementation": "Create fetchWithTimeout(url, timeout=5000) function wrapping all API calls"
+    },
+    {
+      "step": 8,
+      "description": "Update Production Hardening Progress",
+      "file": "dashboard.html",
+      "location": "Lines 1671, 1677, 1680",
+      "changes": [
+        "Show current status: 14/16 (87.5%)",
+        "Update P3 to show 1/3 complete",
+        "Add note: '2 optional optimizations remaining (query caching, connection pooling)'"
+      ]
+    },
+    {
+      "step": 9,
+      "description": "Test all sections load correctly",
+      "validation": [
+        "Open dashboard in browser",
+        "Check console for errors (should be 0)",
+        "Verify all sections show live data",
+        "Wait 30 seconds, verify auto-refresh updates data",
+        "Test with network offline - should show error messages to user"
+      ]
+    }
+  ]
+}

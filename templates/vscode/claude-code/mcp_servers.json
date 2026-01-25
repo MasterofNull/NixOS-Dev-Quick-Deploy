@@ -16,7 +16,7 @@
       "env": {
         "AIDB_PROJECT": "NixOS-Dev-Quick-Deploy",
         "AIDB_TELEMETRY_ENABLED": "true",
-        "AIDB_CONTEXT_COLLECTIONS": "codebase-context,skills-patterns,error-solutions,best-practices"
+        "AIDB_CONTEXT_COLLECTIONS": "codebase-context"
       },
       "capabilities": [
         "documents",
@@ -106,6 +106,28 @@
       "priority": 4,
       "description": "Ralph Wiggum Loop - Autonomous multi-agent task orchestration (manual activation)"
     },
+    "container-engine": {
+      "url": "http://localhost:8095",
+      "command": "curl",
+      "args": [
+        "-s",
+        "-X",
+        "POST",
+        "-H",
+        "Content-Type: application/json",
+        "-d",
+        "@-",
+        "http://localhost:8095/mcp"
+      ],
+      "capabilities": [
+        "container-management",
+        "image-operations",
+        "runtime-status"
+      ],
+      "autoStart": true,
+      "priority": 5,
+      "description": "Container Engine MCP Server - Podman management and container control"
+    },
     "nixos-search": {
       "command": "nix",
       "args": [
@@ -121,16 +143,16 @@
         "package-info"
       ],
       "autoStart": true,
-      "priority": 5,
+      "priority": 6,
       "description": "NixOS MCP Server - Search 130K+ packages and Home Manager options"
     },
     "postgres": {
-      "url": "postgresql://postgres:postgres@localhost:5432/aidb",
+      "url": "postgresql://mcp:change_me_in_production@localhost:5432/mcp",
       "command": "npx",
       "args": [
         "-y",
         "@modelcontextprotocol/server-postgres",
-        "postgresql://postgres:postgres@localhost:5432/aidb"
+        "postgresql://mcp:change_me_in_production@localhost:5432/mcp"
       ],
       "capabilities": [
         "database-query",
@@ -138,7 +160,7 @@
         "sql-execution"
       ],
       "autoStart": false,
-      "priority": 6,
+      "priority": 7,
       "description": "PostgreSQL MCP Server - Direct database access for AIDB"
     }
   },
@@ -152,10 +174,10 @@
     "logLevel": "info"
   },
   "discovery": {
-    "enabled": true,
+    "enabled": false,
     "mode": "progressive",
-    "minimalToolCount": 10,
-    "fullToolCount": 50,
+    "minimalToolCount": 5,
+    "fullToolCount": 15,
     "discoveryInterval": 300000
   },
   "_metadata": {

@@ -1,0 +1,26 @@
+{
+  "description": "Implement query caching using cachetools + AIDB pattern learning",
+  "context": "P3-PERF-001: Add query result caching to AIDB server to reduce PostgreSQL load. Cache should store in-memory AND log patterns to AIDB's learning system for optimization.",
+  "backend": "aider",
+  "model": "anthropic/claude-sonnet-4",
+  "max_iterations": 8,
+  "require_approval": false,
+  "files": [
+    "ai-stack/mcp-servers/aidb/server.py",
+    "ai-stack/mcp-servers/aidb/requirements.txt"
+  ],
+  "instructions": "QUERY CACHING IMPLEMENTATION - Step by step:\n\n1. ADD cachetools to requirements.txt:\n   ```\n   cachetools>=5.3.0\n   ```\n\n2. READ ai-stack/mcp-servers/aidb/server.py to find:\n   - Database query functions (search for 'execute_query', 'fetch', or similar)\n   - Main app initialization\n   - Existing imports\n\n3. ADD imports at top of server.py:\n   ```python\n   from cachetools import TTLCache\n   import hashlib\n   import json\n   from datetime import datetime\n   ```\n\n4. CREATE QueryCache class BEFORE the main app/server class:\n   ```python\n   class QueryCache:\n       \"\"\"In-memory query cache with TTL and pattern learning\"\"\"\n       \n       def __init__(self, maxsize=1000, ttl=300):\n           self.cache = TTLCache(maxsize=maxsize, ttl=ttl)\n           self.hits = 0\n           self.misses = 0\n           self.pattern_log = []  # Store for AIDB learning\n       \n       def get_key(self, query_text: str, params: dict = None) -> str:\n           \"\"\"Generate cache key from query and params\"\"\"\n           data = f\"{query_text}:{json.dumps(params or {}, sort_keys=True)}\"\n           return hashlib.sha256(data.encode()).hexdigest()\n       \n       def get(self, query_text: str, params: dict = None):\n           \"\"\"Get cached result\"\"\"\n           key = self.get_key(query_text, params)\n           if key in self.cache:\n               self.hits += 1\n               return self.cache[key]\n           self.misses += 1\n           return None\n       \n       def set(self, query_text: str, result, params: dict = None):\n           \"\"\"Cache query result and log pattern\"\"\"\n           key = self.get_key(query_text, params)\n           self.cache[key] = result\n           # Log pattern for learning\n           self.pattern_log.append({\n               \"query\": query_text[:100],  # Truncate for storage\n               \"params_hash\": key[:16],\n               \"timestamp\": datetime.utcnow().isoformat(),\n               \"hit\": False\n           })\n       \n       def get_stats(self) -> dict:\n           \"\"\"Get cache statistics\"\"\"\n           total = self.hits + self.misses\n           hit_rate = (self.hits / total * 100) if total > 0 else 0\n           return {\n               \"hits\": self.hits,\n               \"misses\": self.misses,\n               \"total_requests\": total,\n               \"hit_rate_percent\": round(hit_rate, 2),\n               \"cache_size\": len(self.cache),\n               \"patterns_logged\": len(self.pattern_log)\n           }\n   ```\n\n5. INITIALIZE cache in server startup/main:\n   - Find where the app/server is created\n   - Add: `query_cache = QueryCache(maxsize=1000, ttl=300)`\n\n6. WRAP database query functions:\n   - Find the main query execution function\n   - Add cache lookup BEFORE executing query:\n     ```python\n     # Check cache first\n     cached = query_cache.get(query_text, params)\n     if cached is not None:\n         return cached\n     \n     # Execute query\n     result = await execute_actual_query(...)\n     \n     # Cache result\n     query_cache.set(query_text, result, params)\n     return result\n     ```\n\n7. ADD /cache/stats endpoint to expose metrics:\n   ```python\n   @app.get(\"/cache/stats\")\n   async def get_cache_stats():\n       return query_cache.get_stats()\n   ```\n\n8. ADD /cache/clear endpoint for manual cache clearing:\n   ```python\n   @app.post(\"/cache/clear\")\n   async def clear_cache():\n       query_cache.cache.clear()\n       query_cache.hits = 0\n       query_cache.misses = 0\n       return {\"status\": \"cache cleared\"}\n   ```\n\nSUCCESS CRITERIA:\n- cachetools in requirements.txt\n- QueryCache class exists in server.py\n- query_cache instance created\n- At least one query function uses cache\n- /cache/stats endpoint exists\n- Hit rate >80% after repeated queries\n\nVERIFICATION:\n```bash\n# After implementation:\ngrep 'cachetools' ai-stack/mcp-servers/aidb/requirements.txt\ngrep 'class QueryCache' ai-stack/mcp-servers/aidb/server.py\ngrep '/cache/stats' ai-stack/mcp-servers/aidb/server.py\n```",
+  "expected_changes": [
+    "Add cachetools to requirements.txt",
+    "Add QueryCache class to server.py",
+    "Initialize query_cache instance",
+    "Wrap query functions with cache",
+    "Add /cache/stats endpoint",
+    "Add /cache/clear endpoint"
+  ],
+  "verification_commands": [
+    "grep 'cachetools' ai-stack/mcp-servers/aidb/requirements.txt",
+    "grep 'class QueryCache' ai-stack/mcp-servers/aidb/server.py",
+    "grep 'query_cache.get(' ai-stack/mcp-servers/aidb/server.py"
+  ]
+}

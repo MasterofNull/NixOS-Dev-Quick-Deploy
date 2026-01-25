@@ -1,0 +1,8 @@
+apiVersion: v1
+data:
+  tool_schemas.json: '[]'
+kind: ConfigMap
+metadata:
+  labels:
+    io.kompose.service: aidb
+  name: aidb-cm2

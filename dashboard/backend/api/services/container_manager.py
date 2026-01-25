@@ -1,18 +1,41 @@
-"""Container management using Podman"""
-import subprocess
+"""Container management using Podman or Kubernetes"""
 import json
-from typing import List, Dict, Any
+import os
+import subprocess
+from typing import List, Dict, Any, Optional
 import logging
+import ssl
+from pathlib import Path
+
+import aiohttp
 
 logger = logging.getLogger(__name__)
 
 
 class ContainerManager:
     """Manages Podman containers"""
-    
+
+    def __init__(self):
+        self.namespace = os.getenv("AI_STACK_NAMESPACE", "ai-stack")
+        self.mode = self._detect_mode()
+        self.k8s_host = os.getenv("KUBERNETES_SERVICE_HOST", "kubernetes.default.svc")
+        self.k8s_port = os.getenv("KUBERNETES_SERVICE_PORT_HTTPS", "443")
+        self.k8s_token_path = Path("/var/run/secrets/kubernetes.io/serviceaccount/token")
+        self.k8s_ca_path = Path("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+
+    def _detect_mode(self) -> str:
+        """Detect runtime mode (podman vs k8s)."""
+        explicit = os.getenv("DASHBOARD_MODE", "").lower()
+        if explicit in ("k8s", "kubernetes"):
+            return "k8s"
+        return "podman"
+
     async def list_containers(self) -> List[Dict[str, Any]]:
         """List all containers"""
         try:
+            if self.mode == "k8s":
+                return await self._list_k8s_pods()
+
             result = subprocess.run(
                 ["podman", "ps", "-a", "--format", "json"],
                 capture_output=True,
@@ -41,6 +64,14 @@ class ContainerManager:
     async def start_container(self, container_id: str) -> Dict[str, Any]:
         """Start a container"""
         try:
+            if self.mode == "k8s":
+                return {
+                    "container": container_id,
+                    "action": "start",
+                    "success": False,
+                    "message": "Kubernetes pods are managed by deployments; use service controls."
+                }
+
             result = subprocess.run(
                 ["podman", "start", container_id],
                 capture_output=True,
@@ -64,6 +95,15 @@ class ContainerManager:
     async def stop_container(self, container_id: str) -> Dict[str, Any]:
         """Stop a container"""
         try:
+            if self.mode == "k8s":
+                result = await self._k8s_delete_pod(container_id)
+                return {
+                    "container": container_id,
+                    "action": "stop",
+                    "success": result["success"],
+                    "message": result["message"]
+                }
+
             result = subprocess.run(
                 ["podman", "stop", container_id],
                 capture_output=True,
@@ -87,6 +127,15 @@ class ContainerManager:
     async def restart_container(self, container_id: str) -> Dict[str, Any]:
         """Restart a container"""
         try:
+            if self.mode == "k8s":
+                result = await self._k8s_delete_pod(container_id)
+                return {
+                    "container": container_id,
+                    "action": "restart",
+                    "success": result["success"],
+                    "message": result["message"]
+                }
+
             result = subprocess.run(
                 ["podman", "restart", container_id],
                 capture_output=True,
@@ -110,6 +159,9 @@ class ContainerManager:
     async def get_logs(self, container_id: str, tail: int = 100) -> str:
         """Get container logs"""
         try:
+            if self.mode == "k8s":
+                return await self._k8s_get_pod_logs(container_id, tail)
+
             result = subprocess.run(
                 ["podman", "logs", "--tail", str(tail), container_id],
                 capture_output=True,
@@ -123,6 +175,9 @@ class ContainerManager:
 
     async def _get_ai_stack_containers(self) -> List[str]:
         """Get list of AI stack container names"""
+        if self.mode == "k8s":
+            return []
+
         ai_containers = [
             "local-ai-qdrant",
             "local-ai-postgres",
@@ -152,6 +207,87 @@ class ContainerManager:
             logger.error(f"Error getting AI stack containers: {e}")
 
         return existing
+
+    async def _list_k8s_pods(self) -> List[Dict[str, Any]]:
+        """List pods as containers for Kubernetes mode."""
+        try:
+            payload = await self._k8s_get_json(f"/api/v1/namespaces/{self.namespace}/pods")
+            if not payload:
+                return []
+            pods = payload.get("items", [])
+            entries = []
+            for pod in pods:
+                name = pod.get("metadata", {}).get("name", "")
+                phase = pod.get("status", {}).get("phase", "unknown").lower()
+                containers = pod.get("spec", {}).get("containers", [])
+                image = containers[0].get("image", "") if containers else ""
+                entries.append({
+                    "id": name,
+                    "name": name,
+                    "image": image,
+                    "status": phase,
+                    "created": pod.get("metadata", {}).get("creationTimestamp", ""),
+                })
+            return entries
+        except Exception as e:
+            logger.error(f"Error listing pods: {e}")
+            return []
+
+    async def _k8s_get_json(self, path: str) -> Optional[Dict[str, Any]]:
+        token = self._read_k8s_token()
+        if not token:
+            logger.error("k8s_token_missing")
+            return None
+
+        url = f"https://{self.k8s_host}:{self.k8s_port}{path}"
+        ssl_ctx = ssl.create_default_context(cafile=str(self.k8s_ca_path))
+        headers = {"Authorization": f"Bearer {token}"}
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, ssl=ssl_ctx, timeout=5) as resp:
+                if resp.status != 200:
+                    logger.error(f"k8s_api_error: {resp.status} {path}")
+                    return None
+                return await resp.json()
+
+    async def _k8s_delete_pod(self, name: str) -> Dict[str, Any]:
+        token = self._read_k8s_token()
+        if not token:
+            return {"success": False, "message": "Missing service account token"}
+
+        url = f"https://{self.k8s_host}:{self.k8s_port}/api/v1/namespaces/{self.namespace}/pods/{name}"
+        ssl_ctx = ssl.create_default_context(cafile=str(self.k8s_ca_path))
+        headers = {"Authorization": f"Bearer {token}"}
+
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, headers=headers, ssl=ssl_ctx, timeout=5) as resp:
+                text = await resp.text()
+                return {"success": resp.status in (200, 202), "message": text}
+
+    async def _k8s_get_pod_logs(self, name: str, tail: int) -> str:
+        token = self._read_k8s_token()
+        if not token:
+            return "Missing service account token"
+
+        url = (
+            f"https://{self.k8s_host}:{self.k8s_port}/api/v1/namespaces/{self.namespace}/pods/{name}/log"
+            f"?tailLines={tail}"
+        )
+        ssl_ctx = ssl.create_default_context(cafile=str(self.k8s_ca_path))
+        headers = {"Authorization": f"Bearer {token}"}
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, ssl=ssl_ctx, timeout=5) as resp:
+                if resp.status != 200:
+                    return f"Error fetching logs: {resp.status}"
+                return await resp.text()
+
+    def _read_k8s_token(self) -> Optional[str]:
+        try:
+            return self.k8s_token_path.read_text().strip()
+        except Exception as e:
+            logger.error(f"k8s_token_read_failed: {e}")
+            return None
 
     async def start_ai_stack(self) -> Dict[str, Any]:
         """Start all AI stack containers using podman-compose"""

@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
+    kompose.version: 1.37.0 (HEAD)
+    nixos.quick-deploy.ai-stack: "true"
+    nixos.quick-deploy.service: aider
+  labels:
+    io.kompose.service: aider
+  name: aider
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: aider
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
+        kompose.version: 1.37.0 (HEAD)
+        nixos.quick-deploy.ai-stack: "true"
+        nixos.quick-deploy.service: aider
+      labels:
+        io.kompose.service: aider
+    spec:
+      containers:
+        - env:
+            - name: AIDER_AUTO_COMMITS
+              value: "true"
+            - name: AIDER_GIT_DRY_RUN
+              value: "false"
+            - name: AIDER_MODEL
+              value: qwen2.5-coder-7b-instruct
+            - name: AIDER_PORT
+              value: "8093"
+            - name: OPENAI_API_BASE_URL
+              value: http://llama-cpp:8080/v1
+            - name: OPENAI_API_KEY
+              value: sk-000000000000000000000000000000000000000000000000
+          image: docker.io/paulgauthier/aider@sha256:c315ff23cd5242d8e1a6f20de610cb844c86e566714b5f3098d873e74b226ac9
+          name: local-ai-aider
+          ports:
+            - containerPort: 8093
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "2"
+              memory: "2147483648"
+            requests:
+              cpu: 500m
+              memory: "536870912"
+          volumeMounts:
+            - mountPath: /data
+              name: aider-claim0
+            - mountPath: /workspace
+              name: aider-cm1
+          workingDir: /app
+      restartPolicy: Always
+      volumes:
+        - name: aider-claim0
+          persistentVolumeClaim:
+            claimName: aider-claim0
+        - name: aider-cm1
+          emptyDir: {}

@@ -37,7 +37,8 @@ load_ai_stack_env() {
     fi
 
     warning "Missing AI stack env file: ${AI_STACK_ENV_FILE}"
-    warning "Run: ${PROJECT_ROOT}/scripts/setup-ai-stack-secrets.sh"
+    warning "Run: ${PROJECT_ROOT}/scripts/setup-config.sh"
+    warning "Then run: ${PROJECT_ROOT}/scripts/setup-ai-stack-secrets.sh"
     return 1
 }
 

@@ -1,0 +1,26 @@
+[Unit]
+Description=Telemetry Log Rotation
+Documentation=file:///home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/rotate-telemetry.sh
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/rotate-telemetry.sh
+User=%u
+StandardOutput=journal
+StandardError=journal
+
+# Environment
+Environment="TELEMETRY_DIR=%h/.local/share/nixos-ai-stack/telemetry"
+Environment="KEEP_DAYS=30"
+Environment="COMPRESS_DAYS=7"
+
+# Security
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/nixos-ai-stack/telemetry
+
+[Install]
+WantedBy=default.target

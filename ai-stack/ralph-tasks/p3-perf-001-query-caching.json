@@ -1,0 +1,76 @@
+{
+  "task_id": "p3-perf-001-query-caching",
+  "description": "Implement query result caching for Qdrant vector searches with 5-minute TTL",
+  "backend": "aider",
+  "max_iterations": 15,
+  "require_approval": false,
+  "context": {
+    "goal": "Improve query performance by caching frequent Qdrant vector search results",
+    "current_status": "No caching implemented, every query hits Qdrant directly",
+    "target_files": [
+      "/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/ai-stack/mcp-servers/aidb/server.py"
+    ],
+    "requirements": [
+      "Implement in-memory LRU cache for query results",
+      "TTL of 5 minutes (300 seconds)",
+      "Cache key based on query hash (query text + parameters)",
+      "Add cache hit/miss metrics to /health endpoint",
+      "Add cache statistics endpoint",
+      "Test with 100 identical queries to verify cache working"
+    ],
+    "success_criteria": [
+      "Second identical query returns from cache (sub-millisecond response)",
+      "/health endpoint shows cache_hits and cache_misses metrics",
+      "Cache automatically expires after 5 minutes",
+      "Memory usage bounded (max 1000 cached queries)",
+      "Tests pass showing cache hit rate > 90% for repeated queries"
+    ]
+  },
+  "implementation_steps": [
+    {
+      "step": 1,
+      "description": "Add cachetools dependency to requirements.txt",
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/requirements.txt",
+      "change": "Add: cachetools>=5.3.0"
+    },
+    {
+      "step": 2,
+      "description": "Create query cache class",
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/query_cache.py",
+      "implementation": "Create QueryCache class using cachetools.TTLCache with maxsize=1000, ttl=300"
+    },
+    {
+      "step": 3,
+      "description": "Integrate cache into vector search",
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "changes": [
+        "Import QueryCache",
+        "Initialize cache on startup",
+        "Wrap Qdrant search calls with cache lookup",
+        "Track cache hits/misses"
+      ]
+    },
+    {
+      "step": 4,
+      "description": "Add cache metrics to health endpoint",
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "changes": [
+        "Add cache_hits, cache_misses, cache_size to /health response",
+        "Calculate hit rate percentage"
+      ]
+    },
+    {
+      "step": 5,
+      "description": "Write tests",
+      "file": "ai-stack/tests/test_query_cache.py",
+      "tests": [
+        "test_cache_hit_on_repeat_query",
+        "test_cache_miss_on_new_query",
+        "test_cache_expiration_after_ttl",
+        "test_cache_max_size_limit",
+        "test_cache_metrics_in_health"
+      ]
+    }
+  ]
+}

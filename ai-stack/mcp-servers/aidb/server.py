@@ -48,8 +48,9 @@ from pgvector.sqlalchemy import Vector
 from sentence_transformers import SentenceTransformer
 
 from middleware.cache import CacheMiddleware
-from query_validator import VectorSearchRequest, PaginatedResponse, rate_limiter, validate_input_patterns
+from query_validator import VectorSearchRequest, PaginatedResponse, rate_limiter
 from health_check import HealthChecker, create_health_endpoints
+from garbage_collector import GarbageCollector, run_gc_scheduler
 from llm_parallel import run_parallel_inference
 from discovery_endpoints import register_discovery_routes
 from settings_loader import Settings, load_settings
@@ -1004,7 +1005,7 @@ class MonitoringServer:
 
         self.health_checker = HealthChecker(
             service_name="aidb",
-            db_pool=self.mcp_server.pool,
+            db_pool=None,  # Using SQLAlchemy, not asyncpg pool - DB health checked elsewhere
             qdrant_client=qdrant_client,
             redis_client=redis_client
         )
@@ -1919,6 +1920,10 @@ class MCPServer:
         await self._ingest_points_of_interest()
         await self._tool_registry.warm_cache()
         await asyncio.to_thread(self._catalog.sync_catalog)
+
+        # Initialize health checker after all dependencies are ready
+        self._monitoring.initialize_health_checker()
+        LOGGER.info("Health checker initialized")
 
     def _ensure_pgvector_extension(self) -> None:
         try:

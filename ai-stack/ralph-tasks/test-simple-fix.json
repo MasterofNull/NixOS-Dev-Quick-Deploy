@@ -1,0 +1,12 @@
+{
+  "description": "Simple test: Add docstring to a Python function",
+  "context": "Test that Ralph can successfully execute tasks via aider-wrapper",
+  "backend": "aider",
+  "model": "anthropic/claude-sonnet-4",
+  "max_iterations": 3,
+  "require_approval": false,
+  "files": [
+    "ai-stack/mcp-servers/container-engine/server.py"
+  ],
+  "instructions": "Add a docstring to the health() function if it doesn't have one.\n\nThe function is at approximately line 95 in ai-stack/mcp-servers/container-engine/server.py.\n\nIf it already has a docstring, add a comment explaining what the health check verifies.\n\nThis is just a test to verify Ralph → Aider workflow is functioning."
+}

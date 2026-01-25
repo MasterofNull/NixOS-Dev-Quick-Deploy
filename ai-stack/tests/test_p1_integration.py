@@ -26,7 +26,7 @@ from qdrant_client import QdrantClient
 sys.path.insert(0, str(Path(__file__).parent.parent / "mcp-servers" / "aidb"))
 sys.path.insert(0, str(Path(__file__).parent.parent / "mcp-servers" / "hybrid-coordinator"))
 
-from query_validator import VectorSearchRequest, RateLimiter, validate_input_patterns
+from query_validator import VectorSearchRequest, RateLimiter
 from garbage_collector import GarbageCollector
 
 

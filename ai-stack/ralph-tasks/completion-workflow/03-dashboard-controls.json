@@ -1,0 +1,11 @@
+{
+  "prompt": "Add Ralph Wiggum controls and container monitoring to control-center.html dashboard. Create 'Ralph Controls' section with: (1) Range sliders for RALPH_MAX_ITERATIONS_SIMPLE (5-20), MEDIUM (15-40), COMPLEX (30-70) with current values displayed, (2) Toggle switch for RALPH_ADAPTIVE_ITERATIONS, (3) 'Apply Settings' button that calls POST /api/ralph/config. Create API endpoints in dashboard/backend/api/routes/aistack.py: POST /api/ralph/config to update ~/.config/nixos-ai-stack/.env and restart Ralph container, GET /api/containers/health to fetch all container status (name, state, health, uptime, errors). Add 'Container Health' grid showing service cards with status badges (green/yellow/red). Integrate Chart.js for live telemetry visualization (task completion rate, iteration distribution). Add WebSocket updates for real-time status. Style with existing dashboard theme.",
+  "backend": "aider",
+  "max_iterations": 50,
+  "require_approval": false,
+  "context": {
+    "purpose": "Real-time control and observability for operators",
+    "files": ["control-center.html", "dashboard/backend/api/routes/aistack.py"],
+    "features": ["iteration limit sliders", "container health grid", "telemetry charts"]
+  }
+}

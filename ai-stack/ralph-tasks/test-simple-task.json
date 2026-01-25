@@ -1,0 +1,21 @@
+{
+  "task_id": "test-simple-task",
+  "description": "Test Ralph Wiggum system with a simple task",
+  "backend": "aider",
+  "max_iterations": 3,
+  "require_approval": false,
+  "context": {
+    "goal": "Verify Ralph Wiggum is working correctly",
+    "files_to_check": [
+      "/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/SYSTEM-STATUS-SUMMARY.md"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "task-1",
+      "name": "Read system status summary",
+      "description": "Read the SYSTEM-STATUS-SUMMARY.md file and confirm it exists and is readable",
+      "success_criteria": "File read successfully, contains production hardening status"
+    }
+  ]
+}

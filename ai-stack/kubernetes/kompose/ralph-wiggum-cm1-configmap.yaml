@@ -1,0 +1,7 @@
+apiVersion: v1
+data: {}
+kind: ConfigMap
+metadata:
+  labels:
+    io.kompose.service: ralph-wiggum-cm1
+  name: ralph-wiggum-cm1

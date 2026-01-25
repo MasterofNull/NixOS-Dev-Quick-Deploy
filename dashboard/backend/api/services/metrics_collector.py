@@ -1,4 +1,6 @@
 """Metrics collection service"""
+import json
+import os
 import psutil
 import platform
 import subprocess
@@ -16,6 +18,15 @@ class MetricsCollector:
     def __init__(self):
         self.history: Dict[str, List] = {}
         self.max_history = 1000
+        self.namespace = os.getenv("AI_STACK_NAMESPACE", "ai-stack")
+        self.mode = self._detect_mode()
+
+    def _detect_mode(self) -> str:
+        """Detect runtime mode (podman vs k8s)."""
+        explicit = os.getenv("DASHBOARD_MODE", "").lower()
+        if explicit in ("k8s", "kubernetes"):
+            return "k8s"
+        return "podman"
     
     async def get_current_metrics(self) -> Dict[str, Any]:
         """Get all current system metrics"""
@@ -139,6 +150,9 @@ class MetricsCollector:
     async def get_container_stats(self) -> Dict[str, Any]:
         """Get Podman container statistics"""
         try:
+            if self.mode == "k8s":
+                return await self._get_k8s_pod_stats()
+
             # Get list of running containers
             result = subprocess.run(
                 ["podman", "ps", "--format", "{{.Names}}"],
@@ -180,4 +194,47 @@ class MetricsCollector:
             }
         except Exception as e:
             logger.error(f"Error getting container stats: {e}")
+            return {"count": 0, "running": [], "stats": {}}
+
+    async def _get_k8s_pod_stats(self) -> Dict[str, Any]:
+        """Get Kubernetes pod stats (basic readiness + restarts)."""
+        try:
+            result = subprocess.run(
+                ["kubectl", "get", "pods", "-n", self.namespace, "-o", "json"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode != 0:
+                logger.error("k8s_pods_failed", error=result.stderr)
+                return {"count": 0, "running": [], "stats": {}}
+
+            payload = json.loads(result.stdout)
+            pods = payload.get("items", [])
+            stats = {}
+            running = []
+
+            for pod in pods:
+                name = pod.get("metadata", {}).get("name", "")
+                status = pod.get("status", {})
+                phase = status.get("phase", "unknown")
+                container_statuses = status.get("containerStatuses", []) or []
+                ready = all(cs.get("ready", False) for cs in container_statuses) if container_statuses else False
+                restarts = sum(cs.get("restartCount", 0) for cs in container_statuses)
+
+                stats[name] = {
+                    "status": phase,
+                    "ready": ready,
+                    "restarts": restarts,
+                }
+                if phase == "Running":
+                    running.append(name)
+
+            return {
+                "count": len(pods),
+                "running": running,
+                "stats": stats,
+            }
+        except Exception as e:
+            logger.error(f"Error getting k8s pod stats: {e}")
             return {"count": 0, "running": [], "stats": {}}

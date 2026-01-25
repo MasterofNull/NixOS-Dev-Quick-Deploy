@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
+    kompose.version: 1.37.0 (HEAD)
+    nixos.quick-deploy.ai-stack: "true"
+    nixos.quick-deploy.service: open-webui
+  labels:
+    io.kompose.service: open-webui
+  name: open-webui
+spec:
+  ports:
+    - name: "3001"
+      port: 3001
+      targetPort: 3001
+  selector:
+    io.kompose.service: open-webui

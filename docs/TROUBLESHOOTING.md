@@ -161,6 +161,57 @@ After configuration:
 
 ---
 
+## Learning Stats Missing or Dataset Not Generated
+
+**Symptoms:**
+- `curl http://localhost:8092/learning/stats` returns zeros
+- `~/.local/share/nixos-ai-stack/fine-tuning/dataset.jsonl` missing
+
+**Fix:**
+1. Confirm the hybrid coordinator is healthy:
+   ```bash
+   curl http://localhost:8092/health
+   ```
+2. Generate a learning-compatible telemetry event (writes to the container volume):
+   ```bash
+   podman exec local-ai-hybrid-coordinator sh -c 'task_id="test-task-$(date +%s)"; timestamp="$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")"; printf "{\\"event\\":\\"task_completed\\",\\"task_id\\":\\"%s\\",\\"status\\":\\"completed\\",\\"total_iterations\\":2,\\"task\\":{\\"task_id\\":\\"%s\\",\\"prompt\\":\\"Verify learning pipeline telemetry processing\\",\\"output\\":\\"Processed telemetry and generated dataset entry.\\",\\"iteration\\":2,\\"backend\\":\\"aider\\",\\"context\\":{\\"source\\":\\"manual-test\\"}},\\"timestamp\\":\\"%s\\"}\\n" "$task_id" "$task_id" "$timestamp" >> /data/telemetry/ralph-events.jsonl'
+   ```
+3. Trigger a one-off learning batch:
+   ```bash
+   podman exec local-ai-hybrid-coordinator python - <<'PY'
+   import asyncio, os
+   from qdrant_client import QdrantClient
+   from shared.postgres_client import PostgresClient
+   from shared.stack_settings import HybridSettings
+   from continuous_learning import ContinuousLearningPipeline
+
+   async def main():
+       settings = HybridSettings.load()
+       qdrant = QdrantClient(url=os.getenv("QDRANT_URL", "http://qdrant:6333"))
+       postgres = PostgresClient(
+           host=os.getenv("POSTGRES_HOST", "postgres"),
+           port=int(os.getenv("POSTGRES_PORT", "5432")),
+           database=os.getenv("POSTGRES_DB", "mcp"),
+           user=os.getenv("POSTGRES_USER", "mcp"),
+           password=os.getenv("POSTGRES_PASSWORD", "postgres"),
+       )
+       await postgres.connect()
+       pipeline = ContinuousLearningPipeline(settings, qdrant, postgres)
+       patterns = await pipeline.process_telemetry_batch()
+       if patterns:
+           pipeline.patterns.extend(patterns)
+           examples = await pipeline.generate_finetuning_examples(patterns)
+           await pipeline._save_finetuning_examples(examples)
+           await pipeline._index_patterns(patterns)
+       await pipeline._write_stats_snapshot()
+       await postgres.close()
+
+   asyncio.run(main())
+   PY
+   ```
+
+---
+
 ## Duplicate Applications in Menu
 
 ### Why This Happens

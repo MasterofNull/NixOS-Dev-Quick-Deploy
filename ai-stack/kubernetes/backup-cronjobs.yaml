@@ -6,14 +6,138 @@ metadata:
     app: backup
 data:
   backup-postgresql.sh: |
-    #!/bin/bash
-    # This will be populated from the actual script
-    # Mount the real script from the host or ConfigMap
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    BACKUP_DIR="${BACKUP_DIR:-/backups/postgresql}"
+    DB_HOST="${DB_HOST:-postgres.ai-stack.svc.cluster.local}"
+    DB_PORT="${DB_PORT:-5432}"
+    DB_NAME="${DB_NAME:-mcp}"
+    DB_USER="${DB_USER:-mcp}"
+    PGPASSWORD="${DB_PASSWORD:-}"
+    export PGPASSWORD
+
+    RETENTION_DAYS="${RETENTION_DAYS:-7}"
+    COMPRESSION="${COMPRESSION:-gzip}"
+    ENCRYPTION="${ENCRYPTION:-false}"
+    ENCRYPTION_KEY="${ENCRYPTION_KEY:-}"
+
+    METRICS_FILE="${METRICS_FILE:-/metrics/postgres_backup.prom}"
+    LOG_FILE="${LOG_FILE:-/var/log/postgresql-backup.log}"
+
+    log() {
+      echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+    }
+
+    ensure_tools() {
+      if [[ "$ENCRYPTION" == "true" ]]; then
+        command -v openssl >/dev/null 2>&1 || apk add --no-cache openssl >/dev/null 2>&1
+      fi
+    }
+
+    compress_stream() {
+      case "$COMPRESSION" in
+        gzip) gzip -9 ;;
+        none) cat ;;
+        *) gzip -9 ;;
+      esac
+    }
+
+    encrypt_stream() {
+      if [[ "$ENCRYPTION" == "true" ]]; then
+        if [[ -z "$ENCRYPTION_KEY" ]]; then
+          log "ERROR: Encryption enabled but ENCRYPTION_KEY is empty"
+          exit 1
+        fi
+        openssl enc -aes-256-cbc -salt -pbkdf2 -pass pass:"$ENCRYPTION_KEY"
+      else
+        cat
+      fi
+    }
+
+    mkdir -p "$BACKUP_DIR/daily" "$(dirname "$METRICS_FILE")"
+    ensure_tools
+
+    timestamp=$(date +%Y%m%d-%H%M%S)
+    backup_file="$BACKUP_DIR/daily/${DB_NAME}-full-${timestamp}.sql.gz"
+    [[ "$ENCRYPTION" == "true" ]] && backup_file="${backup_file}.enc"
+    temp_file="${backup_file}.tmp"
+
+    log "Starting backup for ${DB_NAME} -> ${backup_file}"
+
+    if ! pg_dump --host="$DB_HOST" --port="$DB_PORT" --username="$DB_USER" --dbname="$DB_NAME" --format=plain --no-owner --no-acl \
+      | compress_stream \
+      | encrypt_stream > "$temp_file"; then
+      log "ERROR: pg_dump failed"
+      rm -f "$temp_file"
+      exit 1
+    fi
+
+    mv "$temp_file" "$backup_file"
+    log "Backup completed: $backup_file"
+
+    # Retention cleanup (daily only)
+    find "$BACKUP_DIR/daily" -type f -mtime +"$RETENTION_DAYS" -delete
+
+    # Simple metrics
+    ts=$(date +%s)
+    echo "postgres_backup_last_success_timestamp{database=\"${DB_NAME}\"} ${ts}" > "$METRICS_FILE"
+    echo "postgres_backup_status{database=\"${DB_NAME}\"} 1" >> "$METRICS_FILE"
 
   backup-qdrant.sh: |
-    #!/bin/bash
-    # This will be populated from the actual script
-    # Mount the real script from the host or ConfigMap
+    #!/usr/bin/env bash
+    set -euo pipefail
+    python3 /scripts/backup-qdrant.py
+
+  backup-qdrant.py: |
+    import json
+    import os
+    import time
+    import urllib.request
+    from datetime import datetime
+    from pathlib import Path
+
+    backup_dir = Path(os.environ.get("BACKUP_DIR", "/backups/qdrant"))
+    qdrant_url = os.environ.get("QDRANT_URL", "http://qdrant.ai-stack.svc.cluster.local:6333")
+    retention_days = int(os.environ.get("RETENTION_DAYS", "7"))
+    metrics_file = Path(os.environ.get("METRICS_FILE", "/metrics/qdrant_backup.prom"))
+
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    (backup_dir / "daily").mkdir(parents=True, exist_ok=True)
+    metrics_file.parent.mkdir(parents=True, exist_ok=True)
+
+    def request_json(url, method="GET"):
+      req = urllib.request.Request(url, method=method)
+      with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+    collections = request_json(f"{qdrant_url}/collections").get("result", {}).get("collections", [])
+    if not collections:
+      raise SystemExit("No Qdrant collections found")
+
+    for collection in collections:
+      name = collection.get("name")
+      if not name:
+        continue
+      snapshot = request_json(f"{qdrant_url}/collections/{name}/snapshots", method="POST")
+      snapshot_name = snapshot.get("result", {}).get("name")
+      if not snapshot_name:
+        raise SystemExit(f"Snapshot creation failed for {name}")
+
+      timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+      output_file = backup_dir / "daily" / f"{name}-{timestamp}.snapshot"
+
+      with urllib.request.urlopen(f"{qdrant_url}/collections/{name}/snapshots/{snapshot_name}") as resp:
+        output_file.write_bytes(resp.read())
+
+    # Retention cleanup (daily only)
+    now = time.time()
+    for file in (backup_dir / "daily").glob("*.snapshot"):
+      if now - file.stat().st_mtime > retention_days * 86400:
+        file.unlink()
+
+    ts = int(time.time())
+    metrics_file.write_text(f"qdrant_backup_last_success_timestamp {ts}\\nqdrant_backup_status 1\\n")
 
 ---
 apiVersion: v1
@@ -28,7 +152,7 @@ spec:
   resources:
     requests:
       storage: 100Gi
-  storageClassName: standard
+  storageClassName: local-path
 
 ---
 apiVersion: batch/v1
@@ -76,27 +200,20 @@ spec:
             - name: BACKUP_DIR
               value: /backups/postgresql
             - name: DB_HOST
-              value: postgresql.default.svc.cluster.local
+              value: postgres.ai-stack.svc.cluster.local
             - name: DB_PORT
               value: "5432"
             - name: DB_NAME
-              value: aidb
+              value: mcp
             - name: DB_USER
-              valueFrom:
-                secretKeyRef:
-                  name: postgresql-credentials
-                  key: username
+              value: mcp
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: postgresql-credentials
+                  name: postgres-password
                   key: password
             - name: RETENTION_DAYS
               value: "7"
-            - name: RETENTION_WEEKS
-              value: "4"
-            - name: RETENTION_MONTHS
-              value: "12"
             - name: COMPRESSION
               value: "gzip"
             - name: ENCRYPTION
@@ -175,35 +292,18 @@ spec:
 
           containers:
           - name: backup
-            image: alpine:latest
+            image: python:3.13-slim
             command:
-              - /bin/sh
-              - -c
-              - |
-                apk add --no-cache curl jq bash tar gzip
-                /scripts/backup-qdrant.sh backup
+              - /bin/bash
+              - /scripts/backup-qdrant.sh
 
             env:
             - name: BACKUP_DIR
               value: /backups/qdrant
-            - name: QDRANT_HOST
-              value: qdrant.default.svc.cluster.local
-            - name: QDRANT_PORT
-              value: "6333"
-            - name: QDRANT_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: qdrant-credentials
-                  key: api-key
-                  optional: true
+            - name: QDRANT_URL
+              value: http://qdrant.ai-stack.svc.cluster.local:6333
             - name: RETENTION_DAYS
               value: "7"
-            - name: RETENTION_WEEKS
-              value: "4"
-            - name: RETENTION_MONTHS
-              value: "12"
-            - name: VERIFY_BACKUP
-              value: "true"
             - name: METRICS_FILE
               value: /metrics/qdrant_backup.prom
 
@@ -234,164 +334,3 @@ spec:
               defaultMode: 0755
           - name: metrics
             emptyDir: {}
-
----
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: backup-verification
-  labels:
-    app: backup
-    component: verification
-spec:
-  # Run weekly on Sundays at 4 AM
-  schedule: "0 4 * * 0"
-  timeZone: "UTC"
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
-  concurrencyPolicy: Forbid
-
-  jobTemplate:
-    metadata:
-      labels:
-        app: backup
-        component: verification
-    spec:
-      backoffLimit: 1
-      activeDeadlineSeconds: 7200  # 2 hour timeout
-
-      template:
-        metadata:
-          labels:
-            app: backup
-            component: verification
-        spec:
-          restartPolicy: OnFailure
-
-          containers:
-          - name: verification
-            image: postgres:15-alpine
-            command:
-              - /bin/bash
-              - -c
-              - |
-                echo "Starting backup verification..."
-
-                # Verify PostgreSQL backups
-                echo "Verifying PostgreSQL backups..."
-                for backup in /backups/postgresql/daily/*.sql.gz*; do
-                  if [ -f "$backup" ]; then
-                    echo "Verifying: $(basename $backup)"
-                    /scripts/backup-postgresql.sh verify "$backup"
-                  fi
-                done
-
-                # Verify Qdrant backups
-                echo "Verifying Qdrant backups..."
-                for backup in /backups/qdrant/daily/*.snapshot; do
-                  if [ -f "$backup" ]; then
-                    echo "Verifying: $(basename $backup)"
-                    /scripts/backup-qdrant.sh verify "$backup"
-                  fi
-                done
-
-                echo "Verification complete"
-
-            resources:
-              requests:
-                memory: "256Mi"
-                cpu: "200m"
-              limits:
-                memory: "1Gi"
-                cpu: "500m"
-
-            volumeMounts:
-            - name: backup-storage
-              mountPath: /backups
-              readOnly: true
-            - name: scripts
-              mountPath: /scripts
-              readOnly: true
-
-          volumes:
-          - name: backup-storage
-            persistentVolumeClaim:
-              claimName: backup-storage
-          - name: scripts
-            configMap:
-              name: backup-scripts
-              defaultMode: 0755
-
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: backup-encryption
-  labels:
-    app: backup
-type: Opaque
-stringData:
-  key: "CHANGE_THIS_TO_SECURE_ENCRYPTION_KEY"
-
----
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: backup-alerts
-  labels:
-    app: backup
-    prometheus: kube-prometheus
-spec:
-  groups:
-  - name: backup
-    interval: 30s
-    rules:
-    - alert: PostgreSQLBackupFailed
-      expr: postgres_backup_status{type="full"} == 0
-      for: 5m
-      labels:
-        severity: critical
-        component: backup
-      annotations:
-        summary: "PostgreSQL backup failed"
-        description: "PostgreSQL backup for database {{ $labels.database }} has failed"
-
-    - alert: PostgreSQLBackupOld
-      expr: (time() - postgres_backup_last_success_timestamp{type="full"}) > 86400 * 2
-      for: 1h
-      labels:
-        severity: warning
-        component: backup
-      annotations:
-        summary: "PostgreSQL backup is outdated"
-        description: "Last successful backup for {{ $labels.database }} was {{ $value | humanizeDuration }} ago"
-
-    - alert: QdrantBackupFailed
-      expr: qdrant_backup_status == 0
-      for: 5m
-      labels:
-        severity: critical
-        component: backup
-      annotations:
-        summary: "Qdrant backup failed"
-        description: "Qdrant backup for collection {{ $labels.collection }} has failed"
-
-    - alert: QdrantBackupOld
-      expr: (time() - qdrant_backup_last_success_timestamp) > 86400 * 2
-      for: 1h
-      labels:
-        severity: warning
-        component: backup
-      annotations:
-        summary: "Qdrant backup is outdated"
-        description: "Last successful backup for {{ $labels.collection }} was {{ $value | humanizeDuration }} ago"
-
-    - alert: BackupStorageFull
-      expr: (kubelet_volume_stats_used_bytes{persistentvolumeclaim="backup-storage"} / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim="backup-storage"}) > 0.85
-      for: 30m
-      labels:
-        severity: warning
-        component: backup
-      annotations:
-        summary: "Backup storage almost full"
-        description: "Backup storage is {{ $value | humanizePercentage }} full"

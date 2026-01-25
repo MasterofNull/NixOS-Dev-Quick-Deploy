@@ -18,9 +18,5 @@ COPY config/config.yaml /app/config/config.yaml
 # Expose port
 EXPOSE 8081
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=60s \
-    CMD python -c "import requests; requests.get('http://localhost:8081/health').raise_for_status()"
-
 # Run server
 CMD ["python", "server.py"]

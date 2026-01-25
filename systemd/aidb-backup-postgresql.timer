@@ -1,0 +1,21 @@
+[Unit]
+Description=AIDB PostgreSQL Backup Timer
+Documentation=https://www.postgresql.org/docs/current/backup-dump.html
+Requires=aidb-backup-postgresql.service
+
+[Timer]
+# Run daily at 2:00 AM local time
+OnCalendar=daily
+OnCalendar=*-*-* 02:00:00
+
+# If system was off at scheduled time, run shortly after boot
+Persistent=true
+
+# Add random delay of 0-300 seconds to prevent thundering herd
+RandomizedDelaySec=300
+
+# Ensure timer is accurate
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

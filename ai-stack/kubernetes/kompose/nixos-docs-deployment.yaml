@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
+    kompose.version: 1.37.0 (HEAD)
+    nixos.quick-deploy.ai-stack: "true"
+    nixos.quick-deploy.service: nixos-docs
+  labels:
+    io.kompose.service: nixos-docs
+  name: nixos-docs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: nixos-docs
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
+        kompose.version: 1.37.0 (HEAD)
+        nixos.quick-deploy.ai-stack: "true"
+        nixos.quick-deploy.service: nixos-docs
+      labels:
+        io.kompose.service: nixos-docs
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - env:
+            - name: NIXOS_CACHE_DIR
+              value: /data/cache
+            - name: NIXOS_CACHE_TTL
+              value: "86400"
+            - name: NIXOS_DOCS_API_KEY_FILE
+              value: /run/secrets/nixos-docs-api-key
+            - name: NIXOS_REPOS_DIR
+              value: /data/repos
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://jaeger:4317
+            - name: OTEL_TRACES_SAMPLER
+              value: parentbased_traceidratio
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: "1.0"
+            - name: OTEL_TRACING_ENABLED
+              value: "true"
+            - name: REDIS_HOST
+              value: redis
+            - name: REDIS_PORT
+              value: "6379"
+          image: localhost/compose_nixos-docs:latest
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - import urllib.request; r=urllib.request.urlopen('http://localhost:8094/health', timeout=5); r.read(); import sys; sys.exit(0)
+            failureThreshold: 5
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+          name: local-ai-nixos-docs
+          ports:
+            - containerPort: 8094
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "2"
+              memory: "4294967296"
+            requests:
+              cpu: 500m
+              memory: "536870912"
+          volumeMounts:
+            - mountPath: /run/secrets/nixos-docs-api-key
+              name: nixos-docs-api-key
+              subPath: nixos-docs-api-key
+            - mountPath: /run/secrets/redis-password
+              name: redis-password
+              subPath: redis-password
+      restartPolicy: Always
+      volumes:
+        - name: nixos-docs-api-key
+          secret:
+            defaultMode: 292
+            items:
+              - key: nixos-docs-api-key
+                path: nixos-docs-api-key
+            secretName: nixos-docs-api-key
+        - name: redis-password
+          secret:
+            defaultMode: 292
+            items:
+              - key: redis-password
+                path: redis-password
+            secretName: redis-password

@@ -1,0 +1,135 @@
+{
+  "task_id": "04-p3-perf-002-connection-pool-real",
+  "description": "Implement ACTUAL asyncpg connection pool (NOT just add to requirements.txt like last time)",
+  "backend": "aider",
+  "max_iterations": 12,
+  "require_approval": false,
+  "context": {
+    "previous_failure": "Ralph added asyncpg to requirements.txt but never wrote pool initialization code. Every query still creates new connection.",
+    "goal": "Create PostgreSQL connection pool (min=2, max=10), reuse connections across queries",
+    "performance_target": "20%+ improvement for concurrent queries, connection reuse visible in pool metrics"
+  },
+  "step_by_step_requirements": {
+    "step_1_dependency": {
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/requirements.txt",
+      "action": "ADD or VERIFY exists",
+      "line_to_add": "asyncpg>=0.31.0",
+      "verification": "grep 'asyncpg' requirements.txt"
+    },
+    "step_2_module_level_variable": {
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "action": "ADD at module level (top of file, after imports)",
+      "code": "# Global connection pool\npg_pool: Optional[asyncpg.Pool] = None",
+      "location": "After imports, before any functions",
+      "verification": "grep 'pg_pool.*Optional\\[asyncpg.Pool\\]' server.py"
+    },
+    "step_3_create_init_function": {
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "action": "CREATE new async function",
+      "exact_code": "async def init_pools():\n    \"\"\"Initialize database connection pools.\"\"\"\n    global pg_pool\n    \n    try:\n        pg_pool = await asyncpg.create_pool(\n            database=os.getenv('POSTGRES_DB', 'aidb'),\n            user=os.getenv('POSTGRES_USER', 'postgres'),\n            password=os.getenv('POSTGRES_PASSWORD', 'postgres'),\n            host='postgres',  # Container name in docker network\n            port=5432,\n            min_size=2,  # Always keep 2 connections open\n            max_size=10,  # Pool can grow to 10 connections\n            command_timeout=60,  # 60 second query timeout\n            max_queries=50000,  # Recycle connection after 50k queries\n            max_inactive_connection_lifetime=300  # Close idle connections after 5 min\n        )\n        logger.info(f'PostgreSQL pool created: min=2, max=10, host=postgres')\n    except Exception as e:\n        logger.error(f'Failed to create PostgreSQL pool: {e}')\n        raise",
+      "location": "Add after all imports, before main() function",
+      "must_include": "min_size=2, max_size=10, host='postgres' (container name)",
+      "verification": "grep 'async def init_pools' server.py"
+    },
+    "step_4_call_init_in_main": {
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "action": "FIND main() function, ADD pool initialization",
+      "find": "Search for 'async def main():' or 'def main():'",
+      "add_before_server_start": "# Initialize connection pools\nawait init_pools()\n\nlogger.info(f'Starting HTTP server on port {port}')",
+      "location": "AFTER logger setup, BEFORE runner = web.AppRunner(http_app)",
+      "verification": "grep -A 5 'async def main' server.py | grep 'await init_pools'"
+    },
+    "step_5_replace_direct_connections": {
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "action": "FIND all direct PostgreSQL queries, REPLACE with pool pattern",
+      "search_for": "Search for 'psycopg', 'conn =', 'connect(' to find direct connections",
+      "old_pattern": "conn = await psycopg.connect(...)\nresult = await conn.fetch('SELECT ...')\nawait conn.close()",
+      "new_pattern": "async with pg_pool.acquire() as conn:\n    result = await conn.fetch('SELECT ...')\n# Connection automatically returned to pool",
+      "example": "# OLD (creates new connection):\nconn = await asyncpg.connect(dsn=...)\nrows = await conn.fetch('SELECT * FROM table')\nawait conn.close()\n\n# NEW (uses pool):\nasync with pg_pool.acquire() as conn:\n    rows = await conn.fetch('SELECT * FROM table')\n# conn automatically released back to pool",
+      "must_replace_all": "Find EVERY database query, replace with pool.acquire() pattern",
+      "verification": "grep 'pg_pool.acquire' server.py | wc -l",
+      "expected_count": "At least 3 (one per query location)"
+    },
+    "step_6_add_pool_metrics": {
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "action": "MODIFY /health endpoint to include pool stats",
+      "find": "Search for 'async def handle_health' or /health endpoint",
+      "add_to_response": "return web.json_response({\n    'status': 'healthy',\n    'service': 'hybrid-coordinator',\n    'postgres_pool': {\n        'size': pg_pool.get_size(),\n        'free': pg_pool.get_size() - pg_pool._holders.__len__(),\n        'max_size': pg_pool.get_max_size(),\n        'min_size': pg_pool.get_min_size()\n    } if pg_pool else None,\n    ...\n})",
+      "verification": "curl http://localhost:8092/health | jq .postgres_pool",
+      "must_show": "size, free, max_size metrics"
+    },
+    "step_7_graceful_shutdown": {
+      "file": "ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "action": "CREATE cleanup function and register it",
+      "cleanup_function": "async def cleanup_pools():\n    \"\"\"Close connection pools on shutdown.\"\"\"\n    global pg_pool\n    \n    if pg_pool:\n        logger.info('Closing PostgreSQL pool...')\n        await pg_pool.close()\n        logger.info('PostgreSQL pool closed')\n        pg_pool = None",
+      "register_cleanup": "# In main() function, add:\nhttp_app.on_cleanup.append(lambda app: cleanup_pools())\n\n# OR if using aiohttp differently:\nrunner = web.AppRunner(http_app)\nawait runner.setup()\n# ... start server ...\n# On shutdown:\nawait cleanup_pools()",
+      "verification": "grep 'async def cleanup_pools' server.py && grep 'on_cleanup.append' server.py"
+    },
+    "step_8_write_tests": {
+      "file": "ai-stack/tests/test_connection_pooling.py",
+      "action": "CREATE comprehensive test file",
+      "required_tests": [
+        "test_pool_created_on_startup - Verify pg_pool is not None after init",
+        "test_pool_has_correct_params - Check min_size=2, max_size=10",
+        "test_concurrent_queries_reuse_connections - Run 20 concurrent queries, verify pool doesn't exceed max_size",
+        "test_pool_metrics_in_health - GET /health returns postgres_pool with size/free/max",
+        "test_no_connection_leaks - Run 100 queries, pool size should stabilize (not grow unbounded)",
+        "test_connection_returned_to_pool - Acquire connection, use it, verify it's back in pool",
+        "test_performance_improvement - Benchmark: 10 concurrent queries with pool vs without, verify 20%+ faster"
+      ],
+      "benchmark_test": "import asyncio\nimport time\n\nasync def test_performance_with_pool():\n    # Run 100 queries concurrently\n    start = time.time()\n    tasks = [run_query() for _ in range(100)]\n    await asyncio.gather(*tasks)\n    duration_with_pool = time.time() - start\n    \n    # Compare to baseline (if possible)\n    # Assert: duration_with_pool < duration_without_pool * 0.8  # 20% faster",
+      "must_include": "Performance benchmark showing pool is faster than creating new connections"
+    }
+  },
+  "verification_commands": [
+    {
+      "command": "grep 'asyncpg' ai-stack/mcp-servers/hybrid-coordinator/requirements.txt",
+      "expected": "asyncpg>=0.31.0"
+    },
+    {
+      "command": "grep 'pg_pool.*Optional\\[asyncpg.Pool\\]' ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "expected": "Module-level pg_pool variable declaration"
+    },
+    {
+      "command": "grep 'await init_pools()' ai-stack/mcp-servers/hybrid-coordinator/server.py",
+      "expected": "init_pools() called in main()"
+    },
+    {
+      "command": "grep 'pg_pool.acquire' ai-stack/mcp-servers/hybrid-coordinator/server.py | wc -l",
+      "expected": "At least 3 (showing pool is used)"
+    },
+    {
+      "command": "curl -s http://localhost:8092/health | jq .postgres_pool",
+      "expected": "{\"size\": 2-10, \"free\": 0-10, \"max_size\": 10, \"min_size\": 2}"
+    },
+    {
+      "command": "pytest ai-stack/tests/test_connection_pooling.py -v",
+      "expected": "All 7 tests pass"
+    }
+  ],
+  "success_criteria": {
+    "critical": [
+      "pg_pool variable declared at module level",
+      "init_pools() function creates pool with min=2, max=10",
+      "init_pools() called in main() before server starts",
+      "All database queries use 'async with pg_pool.acquire()'",
+      "/health endpoint shows postgres_pool metrics",
+      "cleanup_pools() registered for shutdown",
+      "Tests pass, performance benchmark shows 20%+ improvement",
+      "Pool size stays 2-10, doesn't grow to 100+"
+    ]
+  },
+  "what_NOT_to_do": [
+    "DO NOT just add asyncpg to requirements.txt (already tried that)",
+    "DO NOT skip pool initialization (MUST have init_pools() called in main)",
+    "DO NOT keep using direct connections (MUST replace with pool.acquire)",
+    "DO NOT skip metrics (MUST add to /health endpoint)",
+    "DO NOT skip cleanup (MUST have on_cleanup handler)",
+    "DO NOT skip tests (MUST have test_connection_pooling.py)"
+  ],
+  "debugging_tips": {
+    "if_pool_none": "Check that init_pools() is called BEFORE any queries run",
+    "if_connection_error": "Verify host='postgres' (container name), not 'localhost'",
+    "if_pool_not_used": "Search for 'asyncpg.connect' or 'psycopg.connect' - these should be REPLACED with pool.acquire"
+  }
+}

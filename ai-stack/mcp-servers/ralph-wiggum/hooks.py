@@ -6,6 +6,7 @@ Implements the core hook system for exit blocking and context recovery
 
 import asyncio
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 

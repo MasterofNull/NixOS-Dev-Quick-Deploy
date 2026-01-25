@@ -11,14 +11,17 @@ Features:
 - Outcome tracking and value scoring
 - Pattern extraction and storage
 - Fine-tuning data generation
+- Telemetry file locking (P2-REL-003)
 """
 
 import asyncio
+import fcntl  # P2-REL-003: File locking for telemetry
 import json
 import logging
 import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
@@ -49,6 +52,7 @@ from qdrant_client.models import (
 )
 
 from shared.stack_settings import HybridSettings
+from shared.auth_http_client import create_embeddings_client
 SERVICE_NAME = "hybrid-coordinator"
 SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
 HYBRID_SETTINGS = HybridSettings.load()
@@ -117,6 +121,7 @@ embedding_client: Optional[httpx.AsyncClient] = None
 multi_turn_manager: Optional[Any] = None
 feedback_api: Optional[Any] = None
 progressive_disclosure: Optional[Any] = None
+learning_pipeline: Optional[Any] = None  # Continuous learning pipeline
 
 TELEMETRY_PATH = os.path.expanduser(
     os.getenv(
@@ -188,8 +193,15 @@ def record_telemetry_event(event_type: str, payload: Dict[str, Any]) -> None:
         **payload,
     }
     os.makedirs(os.path.dirname(TELEMETRY_PATH), exist_ok=True)
+
+    # P2-REL-003: Write with file locking to prevent corruption
     with open(TELEMETRY_PATH, "a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload) + "\n")
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            handle.write(json.dumps(payload) + "\n")
+            handle.flush()
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def error_payload(message: str, exc: Exception) -> Dict[str, str]:
@@ -223,6 +235,10 @@ class Config:
 
     EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", HYBRID_SETTINGS.embedding_model)
     EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIMENSIONS", HYBRID_SETTINGS.embedding_dimensions))
+    EMBEDDING_SERVICE_URL = os.getenv("EMBEDDING_SERVICE_URL", "")
+    EMBEDDING_API_KEY_FILE = os.getenv("EMBEDDING_API_KEY_FILE", "")
+    EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY", "")
+    AIDB_URL = os.getenv("AIDB_URL", os.getenv("AIDB_BASE_URL", "http://aidb:8091"))
 
     LOCAL_CONFIDENCE_THRESHOLD = float(
         os.getenv("LOCAL_CONFIDENCE_THRESHOLD", HYBRID_SETTINGS.local_confidence_threshold)
@@ -231,6 +247,13 @@ class Config:
     PATTERN_EXTRACTION_ENABLED = os.getenv(
         "PATTERN_EXTRACTION_ENABLED", str(HYBRID_SETTINGS.pattern_extraction_enabled)
     ).lower() == "true"
+
+    # Token Optimization Flags (Day 1)
+    QUERY_EXPANSION_ENABLED = os.getenv("QUERY_EXPANSION_ENABLED", "false").lower() == "true"
+    REMOTE_LLM_FEEDBACK_ENABLED = os.getenv("REMOTE_LLM_FEEDBACK_ENABLED", "false").lower() == "true"
+    MULTI_TURN_QUERY_EXPANSION = os.getenv("MULTI_TURN_QUERY_EXPANSION", "false").lower() == "true"
+    DEFAULT_MAX_TOKENS = int(os.getenv("DEFAULT_MAX_TOKENS", "1000"))
+    CONTEXT_COMPRESSION_ENABLED = os.getenv("CONTEXT_COMPRESSION_ENABLED", "true").lower() == "true"
 
     FINETUNE_DATA_PATH = os.path.expanduser(
         os.getenv(
@@ -255,6 +278,8 @@ def _read_secret(path: str) -> str:
 
 if not Config.API_KEY and Config.API_KEY_FILE:
     Config.API_KEY = _read_secret(Config.API_KEY_FILE)
+if not Config.EMBEDDING_API_KEY and Config.EMBEDDING_API_KEY_FILE:
+    Config.EMBEDDING_API_KEY = _read_secret(Config.EMBEDDING_API_KEY_FILE)
 
 
 # ============================================================================
@@ -382,7 +407,7 @@ async def initialize_collections():
 async def embed_text(text: str) -> List[float]:
     """
     Generate embedding for text using local embedding model
-    (llama.cpp OpenAI-compatible embeddings)
+    (prefers embeddings service, falls back to AIDB, then llama.cpp)
     """
     global embedding_client
 
@@ -391,7 +416,50 @@ async def embed_text(text: str) -> List[float]:
         attributes={"text_length": len(text)},
     ) as span:
         try:
-            # Using llama.cpp embedding endpoint
+            def _extract_embedding(payload: Dict[str, Any]) -> List[float]:
+                if "data" in payload:
+                    return payload.get("data", [{}])[0].get("embedding", [])
+                if "embeddings" in payload:
+                    embeddings = payload.get("embeddings") or []
+                    return embeddings[0] if embeddings else []
+                if isinstance(payload, list):
+                    return payload[0] if payload else []
+                return []
+
+            async def _request_embedding(
+                url: str,
+                body: Dict[str, Any],
+                headers: Optional[Dict[str, str]] = None,
+            ) -> List[float]:
+                response = await embedding_client.post(url, json=body, headers=headers or {}, timeout=30.0)
+                response.raise_for_status()
+                embedding = _extract_embedding(response.json())
+                if not embedding:
+                    raise ValueError("No embedding returned")
+                return embedding
+
+            if Config.EMBEDDING_SERVICE_URL:
+                headers: Dict[str, str] = {}
+                if Config.EMBEDDING_API_KEY:
+                    headers["X-API-Key"] = Config.EMBEDDING_API_KEY
+                try:
+                    return await _request_embedding(
+                        f"{Config.EMBEDDING_SERVICE_URL}/v1/embeddings",
+                        {"input": text},
+                        headers=headers,
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.warning("Embedding service failed, falling back", exc_info=True)
+
+            if Config.AIDB_URL:
+                try:
+                    return await _request_embedding(
+                        f"{Config.AIDB_URL}/vector/embed",
+                        {"texts": [text]},
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.warning("AIDB embedding fallback failed, using llama.cpp", exc_info=True)
+
             response = await embedding_client.post(
                 f"{Config.LLAMA_CPP_URL}/v1/embeddings",
                 json={"model": "nomic-embed-text", "input": text},
@@ -405,7 +473,6 @@ async def embed_text(text: str) -> List[float]:
             span.record_exception(e)
             span.set_status(Status(StatusCode.ERROR, str(e)))
             logger.error(f"Embedding error: {e}")
-            # Fallback: return zero vector
             return [0.0] * Config.EMBEDDING_DIM
 
 
@@ -1170,7 +1237,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
 
 async def initialize_server():
     """Initialize global clients and collections"""
-    global qdrant_client, llama_cpp_client, embedding_client, multi_turn_manager, feedback_api, progressive_disclosure
+    global qdrant_client, llama_cpp_client, embedding_client, multi_turn_manager, feedback_api, progressive_disclosure, learning_pipeline
 
     logger.info("Initializing Hybrid Agent Coordinator...")
 
@@ -1181,14 +1248,14 @@ async def initialize_server():
         timeout=30.0,
     )
 
-    # Initialize llama.cpp client
+    # Initialize llama.cpp client (external service, no auth)
     llama_cpp_client = httpx.AsyncClient(
         base_url=Config.LLAMA_CPP_URL,
         timeout=120.0,
     )
 
-    # Initialize embedding client
-    embedding_client = httpx.AsyncClient(timeout=30.0)
+    # Initialize embedding client (internal service, with auth)
+    embedding_client = create_embeddings_client(timeout=30.0)
 
     # Create collections
     await initialize_collections()
@@ -1203,14 +1270,18 @@ async def initialize_server():
     await multi_turn_manager.initialize()
     logger.info("✓ Multi-turn context manager initialized")
 
-    # Initialize feedback API
-    from remote_llm_feedback import RemoteLLMFeedback
-    feedback_api = RemoteLLMFeedback(
-        qdrant_client=qdrant_client,
-        multi_turn_manager=multi_turn_manager,
-        llama_cpp_url=Config.LLAMA_CPP_URL
-    )
-    logger.info("✓ Remote LLM feedback API initialized")
+    # Initialize feedback API (OPTIONAL - disabled by default for token optimization)
+    feedback_api = None
+    if Config.REMOTE_LLM_FEEDBACK_ENABLED:
+        from remote_llm_feedback import RemoteLLMFeedback
+        feedback_api = RemoteLLMFeedback(
+            qdrant_client=qdrant_client,
+            multi_turn_manager=multi_turn_manager,
+            llama_cpp_url=Config.LLAMA_CPP_URL
+        )
+        logger.info("✓ Remote LLM feedback API initialized")
+    else:
+        logger.info("⚠ Remote LLM feedback DISABLED (token optimization)")
 
     # Initialize progressive disclosure API
     from progressive_disclosure import ProgressiveDisclosure
@@ -1220,6 +1291,34 @@ async def initialize_server():
         feedback_api=feedback_api
     )
     logger.info("✓ Progressive disclosure API initialized")
+
+    # Initialize continuous learning pipeline
+    if os.getenv("CONTINUOUS_LEARNING_ENABLED", "true").lower() == "true":
+        from continuous_learning import ContinuousLearningPipeline
+        from shared.postgres_client import PostgresClient
+
+        # Initialize PostgreSQL client for learning pipeline
+        postgres_client = PostgresClient(
+            host=os.getenv("POSTGRES_HOST", "postgres"),
+            port=int(os.getenv("POSTGRES_PORT", "5432")),
+            database=os.getenv("POSTGRES_DB", "aidb"),
+            user=os.getenv("POSTGRES_USER", "mcp"),
+            password=os.getenv("POSTGRES_PASSWORD", "postgres")
+        )
+        await postgres_client.connect()
+
+        learning_pipeline = ContinuousLearningPipeline(
+            settings=HYBRID_SETTINGS,
+            qdrant_client=qdrant_client,
+            postgres_client=postgres_client
+        )
+
+        # Start background learning task
+        asyncio.create_task(learning_pipeline.start())
+        logger.info("✓ Continuous learning pipeline started")
+    else:
+        learning_pipeline = None
+        logger.info("⚠ Continuous learning DISABLED")
 
     logger.info("✓ Hybrid Agent Coordinator initialized successfully")
 
@@ -1303,11 +1402,24 @@ async def main():
             return await handler(request)
 
         async def handle_health(request):
-            """Health check endpoint"""
+            """Health check endpoint with circuit breakers"""
+            # Get circuit breaker states from continuous learning
+            try:
+                from continuous_learning import learning_pipeline
+                if learning_pipeline and hasattr(learning_pipeline, 'circuit_breakers'):
+                    breakers = {}
+                    for name, breaker in learning_pipeline.circuit_breakers._breakers.items():
+                        breakers[name] = breaker.state.name
+                else:
+                    breakers = {}
+            except:
+                breakers = {}
+
             return web.json_response({
                 "status": "healthy",
                 "service": "hybrid-coordinator",
-                "collections": list(COLLECTIONS.keys())
+                "collections": list(COLLECTIONS.keys()),
+                "circuit_breakers": breakers
             })
 
         async def handle_stats(request):
@@ -1321,12 +1433,18 @@ async def main():
 
         async def handle_augment_query(request):
             """HTTP endpoint for query augmentation"""
-            data = await request.json()
-            query = data.get("query", "")
-            agent_type = data.get("agent_type", "remote")
+            try:
+                data = await request.json()
+                query = data.get("query", "")
+                agent_type = data.get("agent_type", "remote")
 
-            result = await augment_query_with_context(query, agent_type)
-            return web.json_response(result)
+                result = await augment_query_with_context(query, agent_type)
+                return web.json_response(result)
+            except Exception as exc:  # noqa: BLE001
+                return web.json_response(
+                    {"error": "augment_query_failed", "detail": str(exc)},
+                    status=500,
+                )
 
         async def handle_multi_turn_context(request):
             """HTTP endpoint for multi-turn context requests"""
@@ -1484,6 +1602,36 @@ async def main():
             )
 
         http_app.router.add_get('/metrics', handle_metrics)
+
+        # Learning stats endpoint for dashboard
+        async def handle_learning_stats(_request):
+            """Return learning system statistics"""
+            try:
+                stats_path = Path(
+                    os.getenv(
+                        "CONTINUOUS_LEARNING_STATS_PATH",
+                        "/data/telemetry/continuous_learning_stats.json",
+                    )
+                )
+                if stats_path.exists():
+                    with open(stats_path, "r") as f:
+                        stats = __import__("json").load(f)
+                    return web.json_response(stats)
+                if learning_pipeline:
+                    stats = await learning_pipeline.get_statistics()
+                    return web.json_response(stats)
+            except Exception as e:
+                return web.json_response({"error": str(e)}, status=500)
+
+            # Return default stats
+            return web.json_response({
+                "checkpoints": {"total": 0, "last_checkpoint": None},
+                "backpressure": {"unprocessed_mb": 0, "paused": False},
+                "backpressure_threshold_mb": 100,
+                "deduplication": {"total_patterns": 0, "duplicates_found": 0, "unique_patterns": 0}
+            })
+
+        http_app.router.add_get('/learning/stats', handle_learning_stats)
 
         port = int(os.getenv("MCP_SERVER_PORT", "8092"))
         logger.info(f"Starting HTTP server on port {port}")
