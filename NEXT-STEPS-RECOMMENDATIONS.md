@@ -399,10 +399,21 @@ I've created the complete migration plan: **[K3S-PORTAINER-MIGRATION-PLAN.md](K3
 - [x] Phase 7: Container recovery test (hybrid-coordinator pod recycle)
 - [x] Rebuild hybrid-coordinator image (local compose image refreshed)
 - [x] Import/redeploy hybrid-coordinator to k3s to activate proposal engine
+- [x] Fix ralph-wiggum state persistence (PVC for /data)
+- [x] Fix embeddings API key mounts (embeddings + hybrid-coordinator + aidb)
+- [x] Hotfix telemetry schema (added `llm_used` column)
 - [x] Phase 3: Install Portainer for K3s (portainer namespace + NodePort service)
 - [x] Phase 4: Convert docker-compose to Kubernetes (kompose manifests active)
 
-**All current migration TODOs complete.**
+**Migration tasks complete; operational verification still in progress.**
+
+## ⏳ Pending Verification Tasks
+
+- [ ] Rebuild + import AIDB image to K3s (trust_remote_code + tool discovery timezone fix)
+- [ ] Rerun hospital E2E test after AIDB import
+- [ ] Verify telemetry flow (Ralph → Hybrid → AIDB) after AIDB import
+- [ ] Confirm embeddings auth end-to-end (hybrid → embeddings)
+  - Latest E2E: telemetry flow failed (aidb_events=0, hybrid_events=1)
 
 ## ✅ Post-Migration Hardening (Jan 25, 2026)
 
