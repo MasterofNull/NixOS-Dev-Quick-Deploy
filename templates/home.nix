@@ -2828,12 +2828,6 @@ EOF
       executable = true;
     };
 
-    # P10k Setup Wizard
-    ".local/bin/p10k-setup-wizard.sh" = {
-      source = ./p10k-setup-wizard.sh;
-      executable = true;
-    };
-
     # Launcher for the Gitea editor that prefers Flatpak but falls back to native binaries
     ".local/bin/gitea-editor" = {
       text = ''
@@ -3551,7 +3545,15 @@ EOF
       ExecStart=${podmanWaitForNetworkScript}
     '';
 
-  } // (lib.mkIf LOCAL_AI_STACK_ENABLED_PLACEHOLDER {
+  }
+  // lib.optionalAttrs (builtins.pathExists ./p10k-setup-wizard.sh) {
+    # P10k Setup Wizard
+    ".local/bin/p10k-setup-wizard.sh" = {
+      source = ./p10k-setup-wizard.sh;
+      executable = true;
+    };
+  }
+  // (lib.mkIf LOCAL_AI_STACK_ENABLED_PLACEHOLDER {
     ".config/systemd/user/podman-local-ai-network.service.d/override.conf".text = ''
       [Unit]
       X-SwitchMethod=keep-old
@@ -4268,8 +4270,8 @@ PLUGINCFG
           in toString resolvedUid}/containers";
         graphroot = "${config.home.homeDirectory}/.local/share/containers/storage";
         rootless_storage_path = "${config.home.homeDirectory}/.local/share/containers/storage";
-      };
     };
+  };
 
     networks."${podmanAiStackNetworkName}" = {
       description = "Isolated network for the local AI development stack";

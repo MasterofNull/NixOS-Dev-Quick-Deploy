@@ -141,7 +141,7 @@
 - [x] Container recovery test executed (hybrid-coordinator pod recycle)
 
 **Latest test (2026-01-25) - K3s Kubernetes:**
-- ✅ Hospital E2E test: 18/18 passed (`/tmp/hospital_e2e_latest.txt`)
+- ✅ Hospital E2E test: 18/18 passed (2026-01-25, `/tmp/hospital_e2e_latest.txt`)
 - ✅ AIDB: {"status":"ok","database":"ok","redis":"ok","circuit_breakers":"CLOSED"}
 - ✅ llama-cpp: {"status":"ok"} with Qwen2.5-Coder model loaded
 - ✅ PostgreSQL: accepting connections
@@ -150,7 +150,7 @@
 - ✅ Embeddings: BGE-small-en-v1.5 model loaded
 - ✅ Grafana: v11.2.0 (ClusterIP 3002)
 - ⚠️ Open WebUI: CrashLoopBackOff (optional)
-- ⚠️ Prometheus target `ralph-wiggum:8098` down (404 on `/metrics`) until image refresh
+- ✅ Prometheus target `ralph-wiggum:8098` up after image refresh
 
 ### 7.2 Documentation verification
 - [ ] All commands tested and working
@@ -183,7 +183,7 @@
 **Phase 5 Validation**: Hybrid-coordinator redeployed with proposal engine on January 25, 2026
 **Phase 6**: 100% complete (DEPLOYMENT.md created, templates updated)
 **Phase 7**: 100% complete (K3s verification + container recovery test executed)
-**Monitoring Gap**: Ralph Prometheus `/metrics` endpoint requires image refresh in k3s
+**Monitoring Gap**: Resolved (Ralph `/metrics` now available)
 **Test Update**: `test_hospital_e2e.py` now fails Prometheus target check if any expected target is down
 
 **Updated**: January 25, 2026
