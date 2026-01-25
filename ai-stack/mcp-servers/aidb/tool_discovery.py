@@ -14,7 +14,7 @@ Features:
 import asyncio
 import httpx
 from typing import Dict, List, Optional, Any
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 import structlog
 from pydantic import BaseModel, Field
