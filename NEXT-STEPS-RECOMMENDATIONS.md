@@ -92,7 +92,7 @@ If you are on K3s, the dashboard launcher now starts a `kubectl port-forward` so
 - ✅ 18/18 tests passed (`python3 ai-stack/tests/test_hospital_e2e.py`)
 - ✅ Telemetry flow verified (Ralph → Hybrid → AIDB)
 - ✅ Grafana accessible (ClusterIP 3002 via port-forward)
-- ⚠️ Prometheus target `ralph-wiggum:8098` down (404 on `/metrics`) pending image refresh
+- ✅ Prometheus targets all up (Ralph `/metrics` restored)
 
 ---
 
