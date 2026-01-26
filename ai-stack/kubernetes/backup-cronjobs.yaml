@@ -2,6 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: backup-scripts
+  namespace: backups
   labels:
     app: backup
 data:
@@ -144,6 +145,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: backup-storage
+  namespace: backups
   labels:
     app: backup
 spec:
@@ -159,6 +161,7 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: backup-postgresql
+  namespace: backups
   labels:
     app: backup
     component: postgresql
@@ -211,7 +214,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: postgres-password
-                  key: password
+                  key: postgres-password
             - name: RETENTION_DAYS
               value: "7"
             - name: COMPRESSION
@@ -261,6 +264,7 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: backup-qdrant
+  namespace: backups
   labels:
     app: backup
     component: qdrant
