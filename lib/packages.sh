@@ -471,13 +471,7 @@ PY
 # ============================================================================
 cleanup_preflight_profile_packages() {
     if ! command -v nix-env >/dev/null 2>&1; then
-        return 0
-    fi
-
-    local installed
-    installed=$(run_as_primary_user nix-env -q 2>/dev/null || true)
-    if [[ -z "$installed" ]]; then
-        return 0
+        :
     fi
 
     local -a patterns=(
@@ -492,30 +486,88 @@ cleanup_preflight_profile_packages() {
         '^git($|[^a-zA-Z0-9])'
     )
 
-    local removed_any=false
-    local pkg
-    while IFS= read -r pkg; do
-        [[ -z "$pkg" ]] && continue
-        local matched=false
-        local pattern
-        for pattern in "${patterns[@]}"; do
-            if [[ "$pkg" =~ $pattern ]]; then
-                matched=true
-                break
+    # --------------------------------------------------------------------
+    # 1) Remove from legacy nix-env profile (if present)
+    # --------------------------------------------------------------------
+    local installed
+    installed=$(run_as_primary_user nix-env -q 2>/dev/null || true)
+    if [[ -n "$installed" ]]; then
+        local removed_any=false
+        local pkg
+        while IFS= read -r pkg; do
+            [[ -z "$pkg" ]] && continue
+            local matched=false
+            local pattern
+            for pattern in "${patterns[@]}"; do
+                if [[ "$pkg" =~ $pattern ]]; then
+                    matched=true
+                    break
+                fi
+            done
+            if [[ "$matched" == true ]]; then
+                if run_as_primary_user nix-env -e "$pkg" >/dev/null 2>&1; then
+                    print_success "Removed preflight nix-env package: $pkg"
+                    removed_any=true
+                else
+                    print_warning "Failed to remove preflight nix-env package: $pkg"
+                fi
             fi
-        done
-        if [[ "$matched" == true ]]; then
-            if run_as_primary_user nix-env -e "$pkg" >/dev/null 2>&1; then
-                print_success "Removed preflight nix-env package: $pkg"
-                removed_any=true
-            else
-                print_warning "Failed to remove preflight nix-env package: $pkg"
+        done <<< "$installed"
+
+        if [[ "$removed_any" == true ]]; then
+            print_info "Preflight nix-env packages cleaned to avoid home-manager path conflicts"
+        fi
+    fi
+
+    # --------------------------------------------------------------------
+    # 2) Remove from nix profile (nix profile install ...)
+    # --------------------------------------------------------------------
+    if command -v nix >/dev/null 2>&1; then
+        local profile_json
+        profile_json=$(nix profile list --json 2>/dev/null || true)
+
+        if [[ -n "$profile_json" && "$profile_json" != "[]" ]]; then
+            local removal_indices=""
+
+            if command -v jq >/dev/null 2>&1; then
+                removal_indices=$(printf '%s' "$profile_json" | jq -r '
+                  .[]? | select(.name != null) |
+                  (.name | tostring) as $n |
+                  if ($n|test("^(python3|python3Full|python3Minimal|python3[0-9]|shellcheck|slirp4netns|fuse3|huggingface-hub|git)([^a-zA-Z0-9]|$)"))
+                  then .index else empty end' 2>/dev/null || true)
+            elif command -v python3 >/dev/null 2>&1; then
+                removal_indices=$(PROFILE_JSON="$profile_json" python3 - <<'PY'
+import json, os, re, sys
+raw = os.environ.get("PROFILE_JSON", "[]")
+try:
+    entries = json.loads(raw)
+except Exception:
+    sys.exit(0)
+pattern = re.compile(r"^(python3|python3Full|python3Minimal|python3[0-9]|shellcheck|slirp4netns|fuse3|huggingface-hub|git)([^a-zA-Z0-9]|$)")
+for entry in entries or []:
+    if not isinstance(entry, dict):
+        continue
+    name = str(entry.get("name") or "")
+    if pattern.search(name):
+        idx = entry.get("index")
+        if idx is not None:
+            print(idx)
+PY
+                )
+            fi
+
+            if [[ -n "$removal_indices" ]]; then
+                local idx
+                while IFS= read -r idx; do
+                    [[ -z "$idx" ]] && continue
+                    if nix profile remove "$idx" >/dev/null 2>&1; then
+                        print_success "Removed nix profile entry at index $idx (preflight package)"
+                    else
+                        print_warning "Failed to remove nix profile entry at index $idx"
+                    fi
+                done <<< "$removal_indices"
             fi
         fi
-    done <<< "$installed"
-
-    if [[ "$removed_any" == true ]]; then
-        print_info "Preflight nix-env packages cleaned to avoid home-manager path conflicts"
     fi
 
     return 0
