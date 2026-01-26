@@ -194,34 +194,55 @@ ensure_prerequisite_installed() {
     local install_method=""
     local exit_code=0
 
-    # Try nix-env with nixos channel first (primary method)
-    if command -v nix-env >/dev/null 2>&1; then
-        print_warning "$description not found – installing via nix-env -iA nixos.$attr_path"
-        log INFO "Attempting nix-env installation for $cmd using nixos channel"
-
-        if run_as_primary_user nix-env -iA "nixos.$attr_path" >"$install_log" 2>&1; then
-            install_succeeded=true
-            install_method="nix-env (nixos channel)"
-        else
-            exit_code=$?
-            log WARNING "nix-env -iA nixos.$attr_path for $cmd failed with exit code $exit_code, trying nixpkgs fallback"
-
-            # Fallback to nixpkgs if nixos channel fails
-            print_warning "$description installation retry via nix-env -f '<nixpkgs>' -iA $attr_path"
-            log INFO "Attempting nix-env installation for $cmd using nixpkgs"
-
-            if run_as_primary_user nix-env -f '<nixpkgs>' -iA "$attr_path" >>"$install_log" 2>&1; then
+    # Prefer installing into a dedicated preflight profile (avoids profile collisions).
+    if command -v nix >/dev/null 2>&1 && nix profile --help >/dev/null 2>&1; then
+        local preflight_profile="${CACHE_DIR:-$HOME/.cache/nixos-quick-deploy}/preflight-profile"
+        if mkdir -p "$(dirname "$preflight_profile")" 2>/dev/null; then
+            print_warning "$description not found – installing into preflight profile"
+            log INFO "Attempting nix profile installation for $cmd into $preflight_profile"
+            if run_as_primary_user nix profile install --profile "$preflight_profile" "$pkg_ref" >"$install_log" 2>&1; then
                 install_succeeded=true
-                install_method="nix-env (nixpkgs)"
+                install_method="nix profile (preflight)"
+                export PATH="$preflight_profile/bin:$PATH"
             else
                 exit_code=$?
-                log ERROR "nix-env -f '<nixpkgs>' -iA $attr_path for $cmd failed with exit code $exit_code"
+                log WARNING "nix profile install for $cmd failed with exit code $exit_code, trying nix-env fallback"
             fi
+        else
+            log WARNING "Unable to create preflight profile directory; falling back to nix-env"
         fi
-    else
-        log ERROR "nix-env command not available"
-        print_error "Failed to install $description – nix-env not found"
-        return 1
+    fi
+
+    # Fallback: nix-env with nixos channel first (legacy method)
+    if [[ "$install_succeeded" == false ]]; then
+        if command -v nix-env >/dev/null 2>&1; then
+            print_warning "$description not found – installing via nix-env -iA nixos.$attr_path"
+            log INFO "Attempting nix-env installation for $cmd using nixos channel"
+
+            if run_as_primary_user nix-env -iA "nixos.$attr_path" >"$install_log" 2>&1; then
+                install_succeeded=true
+                install_method="nix-env (nixos channel)"
+            else
+                exit_code=$?
+                log WARNING "nix-env -iA nixos.$attr_path for $cmd failed with exit code $exit_code, trying nixpkgs fallback"
+
+                # Fallback to nixpkgs if nixos channel fails
+                print_warning "$description installation retry via nix-env -f '<nixpkgs>' -iA $attr_path"
+                log INFO "Attempting nix-env installation for $cmd using nixpkgs"
+
+                if run_as_primary_user nix-env -f '<nixpkgs>' -iA "$attr_path" >>"$install_log" 2>&1; then
+                    install_succeeded=true
+                    install_method="nix-env (nixpkgs)"
+                else
+                    exit_code=$?
+                    log ERROR "nix-env -f '<nixpkgs>' -iA $attr_path for $cmd failed with exit code $exit_code"
+                fi
+            fi
+        else
+            log ERROR "nix-env command not available"
+            print_error "Failed to install $description – nix-env not found"
+            return 1
+        fi
     fi
 
     # Check installation result
@@ -567,6 +588,28 @@ PY
                     fi
                 done <<< "$removal_indices"
             fi
+        else
+            # Fallback: parse human-readable output if JSON unavailable
+            local line_indices=""
+            line_indices=$(nix profile list 2>/dev/null | awk '
+                NF>=2 {
+                    idx=$1;
+                    name=$2;
+                    if (name ~ /^(python3|python3Full|python3Minimal|python3[0-9]|shellcheck|slirp4netns|fuse3|huggingface-hub|git)([^a-zA-Z0-9]|$)/) {
+                        print idx
+                    }
+                }' || true)
+            if [[ -n "$line_indices" ]]; then
+                local idx
+                while IFS= read -r idx; do
+                    [[ -z "$idx" ]] && continue
+                    if nix profile remove "$idx" >/dev/null 2>&1; then
+                        print_success "Removed nix profile entry at index $idx (preflight package)"
+                    else
+                        print_warning "Failed to remove nix profile entry at index $idx"
+                    fi
+                done <<< "$line_indices"
+            fi
         fi
     fi
 
@@ -616,6 +659,28 @@ PY
                             print_warning "Failed to remove home-manager profile entry at index $hm_idx"
                         fi
                     done <<< "$hm_indices"
+                fi
+            else
+                # Fallback: parse human-readable output if JSON unavailable
+                local hm_line_indices=""
+                hm_line_indices=$(nix profile list --profile "$hm_profile" 2>/dev/null | awk '
+                    NF>=2 {
+                        idx=$1;
+                        name=$2;
+                        if (name ~ /^(python3|python3Full|python3Minimal|python3[0-9]|shellcheck|slirp4netns|fuse3|huggingface-hub|git)([^a-zA-Z0-9]|$)/) {
+                            print idx
+                        }
+                    }' || true)
+                if [[ -n "$hm_line_indices" ]]; then
+                    local hm_idx
+                    while IFS= read -r hm_idx; do
+                        [[ -z "$hm_idx" ]] && continue
+                        if nix profile remove "$hm_idx" --profile "$hm_profile" >/dev/null 2>&1; then
+                            print_success "Removed home-manager profile entry at index $hm_idx (preflight package)"
+                        else
+                            print_warning "Failed to remove home-manager profile entry at index $hm_idx"
+                        fi
+                    done <<< "$hm_line_indices"
                 fi
             fi
         fi
