@@ -570,5 +570,56 @@ PY
         fi
     fi
 
+    # --------------------------------------------------------------------
+    # 3) Remove from home-manager profile (if present)
+    # --------------------------------------------------------------------
+    if command -v nix >/dev/null 2>&1; then
+        local hm_profile="${HOME}/.local/state/nix/profiles/home-manager"
+        if [[ -L "$hm_profile" || -d "$hm_profile" ]]; then
+            local hm_json=""
+            hm_json=$(nix profile list --json --profile "$hm_profile" 2>/dev/null || true)
+            if [[ -n "$hm_json" && "$hm_json" != "[]" ]]; then
+                local hm_indices=""
+                if command -v jq >/dev/null 2>&1; then
+                    hm_indices=$(printf '%s' "$hm_json" | jq -r '
+                      .[]? | select(.name != null) |
+                      (.name | tostring) as $n |
+                      if ($n|test("^(python3|python3Full|python3Minimal|python3[0-9]|shellcheck|slirp4netns|fuse3|huggingface-hub|git)([^a-zA-Z0-9]|$)"))
+                      then .index else empty end' 2>/dev/null || true)
+                elif command -v python3 >/dev/null 2>&1; then
+                    hm_indices=$(PROFILE_JSON="$hm_json" python3 - <<'PY'
+import json, os, re, sys
+raw = os.environ.get("PROFILE_JSON", "[]")
+try:
+    entries = json.loads(raw)
+except Exception:
+    sys.exit(0)
+pattern = re.compile(r"^(python3|python3Full|python3Minimal|python3[0-9]|shellcheck|slirp4netns|fuse3|huggingface-hub|git)([^a-zA-Z0-9]|$)")
+for entry in entries or []:
+    if not isinstance(entry, dict):
+        continue
+    name = str(entry.get("name") or "")
+    if pattern.search(name):
+        idx = entry.get("index")
+        if idx is not None:
+            print(idx)
+PY
+                    )
+                fi
+                if [[ -n "$hm_indices" ]]; then
+                    local hm_idx
+                    while IFS= read -r hm_idx; do
+                        [[ -z "$hm_idx" ]] && continue
+                        if nix profile remove "$hm_idx" --profile "$hm_profile" >/dev/null 2>&1; then
+                            print_success "Removed home-manager profile entry at index $hm_idx (preflight package)"
+                        else
+                            print_warning "Failed to remove home-manager profile entry at index $hm_idx"
+                        fi
+                    done <<< "$hm_indices"
+                fi
+            fi
+        fi
+    fi
+
     return 0
 }
