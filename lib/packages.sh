@@ -460,3 +460,63 @@ PY
 
     return 0
 }
+
+# ============================================================================
+# Cleanup Preflight Nix-Env Packages (avoid home-manager path collisions)
+# ============================================================================
+# Purpose: Remove preflight-installed packages from the user profile so
+# home-manager can own those paths without file collisions.
+# Returns:
+#   0 - Success (cleaned up or nothing to remove)
+# ============================================================================
+cleanup_preflight_profile_packages() {
+    if ! command -v nix-env >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local installed
+    installed=$(run_as_primary_user nix-env -q 2>/dev/null || true)
+    if [[ -z "$installed" ]]; then
+        return 0
+    fi
+
+    local -a patterns=(
+        '^python3($|[^a-zA-Z0-9])'
+        '^python3Full'
+        '^python3Minimal'
+        '^python3[0-9]'
+        '^shellcheck'
+        '^slirp4netns'
+        '^fuse3'
+        'huggingface-hub'
+        '^git($|[^a-zA-Z0-9])'
+    )
+
+    local removed_any=false
+    local pkg
+    while IFS= read -r pkg; do
+        [[ -z "$pkg" ]] && continue
+        local matched=false
+        local pattern
+        for pattern in "${patterns[@]}"; do
+            if [[ "$pkg" =~ $pattern ]]; then
+                matched=true
+                break
+            fi
+        done
+        if [[ "$matched" == true ]]; then
+            if run_as_primary_user nix-env -e "$pkg" >/dev/null 2>&1; then
+                print_success "Removed preflight nix-env package: $pkg"
+                removed_any=true
+            else
+                print_warning "Failed to remove preflight nix-env package: $pkg"
+            fi
+        fi
+    done <<< "$installed"
+
+    if [[ "$removed_any" == true ]]; then
+        print_info "Preflight nix-env packages cleaned to avoid home-manager path conflicts"
+    fi
+
+    return 0
+}
