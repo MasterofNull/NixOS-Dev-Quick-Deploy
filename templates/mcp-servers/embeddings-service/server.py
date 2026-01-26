@@ -15,7 +15,7 @@ logger = logging.getLogger("embeddings-service")
 app = Flask(__name__)
 
 # Load model on startup
-model_name = os.getenv("EMBEDDING_MODEL", "nomic-ai/nomic-embed-text-v1.5")
+model_name = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 logger.info(f"Loading embedding model: {model_name}")
 model = SentenceTransformer(model_name)
 logger.info(f"Model loaded successfully. Dimensions: {model.get_sentence_embedding_dimension()}")

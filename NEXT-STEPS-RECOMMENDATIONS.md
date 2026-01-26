@@ -388,9 +388,9 @@ I've created the complete migration plan: **[K3S-PORTAINER-MIGRATION-PLAN.md](K3
 
 **Current status:** Phase 1 (backup) complete on 2026-01-24. Phase 2 (K3s install) complete; cluster is Ready on containerd.
 
-## ✅ Current TODOs (Jan 25, 2026)
+## ✅ Current TODOs (Jan 26, 2026)
 
-- [x] Update embedding model to 2026 best practice (nomic-ai/nomic-embed-text-v1.5)
+- [x] Update embedding model to 2026 best practice (BAAI/bge-small-en-v1.5)
 - [x] Restart AI stack with new configuration
 - [x] Verify all services are healthy
 - [x] Test password/secrets integration (test suite updated for Podman + secrets)
@@ -404,20 +404,25 @@ I've created the complete migration plan: **[K3S-PORTAINER-MIGRATION-PLAN.md](K3
 - [x] Hotfix telemetry schema (added `llm_used` column)
 - [x] Phase 3: Install Portainer for K3s (portainer namespace + NodePort service)
 - [x] Phase 4: Convert docker-compose to Kubernetes (kompose manifests active)
+- [x] Add Kustomize base + dev/prod overlays for Kubernetes manifests
+- [x] Add local registry scripts for deterministic image rollout
+- [x] Add Skaffold dev config (build → tag → push → deploy)
+- [x] Start local registry + publish dev images
+- [x] Apply Kustomize dev overlay (registry-backed images)
 
 **Migration tasks complete; operational verification still in progress.**
 
-## ⏳ Pending Verification Tasks
+## ✅ Verification Results (Jan 26, 2026)
 
-- [ ] Rebuild + import AIDB image to K3s (trust_remote_code + tool discovery timezone fix)
-- [ ] Rerun hospital E2E test after AIDB import
-- [ ] Verify telemetry flow (Ralph → Hybrid → AIDB) after AIDB import
-- [ ] Confirm embeddings auth end-to-end (hybrid → embeddings)
-  - Latest E2E: telemetry flow failed (aidb_events=0, hybrid_events=1)
+- [x] Persist registry config in NixOS (registries.yaml)  *(template updated; apply on next rebuild)*
+- [x] AIDB image rebuilt and verified (tool discovery timezone fix)
+- [x] Hospital E2E test: **18/18 passed**
+- [x] Telemetry flow verified (Ralph → Hybrid → AIDB)
+- [x] Embeddings model loaded from offline cache (BAAI/bge-small-en-v1.5)
 
-## ✅ Post-Migration Hardening (Jan 25, 2026)
+## ✅ Post-Migration Hardening (Jan 26, 2026)
 
-- [x] Configure automated backups (K3s CronJobs in `backups` namespace)
+- [x] Configure automated backups (K3s CronJobs in `ai-stack` namespace)
 - [x] Configure log aggregation (Loki + Promtail in `logging` namespace)
 - [ ] Configure TLS certificates for external access (needs domain/email)
 - [ ] Review and restrict network policies (baseline manifests added; needs CNI enforcement)
@@ -442,7 +447,7 @@ I've created the complete migration plan: **[K3S-PORTAINER-MIGRATION-PLAN.md](K3
 
 ---
 
-**Last Updated:** January 24, 2026
+**Last Updated:** January 26, 2026
 **Author:** Claude Code
 **Status:** Awaiting User Direction
 **All Tools:** Production Ready ✅

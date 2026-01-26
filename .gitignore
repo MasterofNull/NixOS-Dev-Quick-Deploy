@@ -77,6 +77,7 @@ ai-stack/compose/secrets/*
 **/nixos-system-dashboard/
 **/nixos-ai-stack/telemetry/aidb-events.jsonl
 **/nixos-ai-stack/telemetry/hybrid-events.jsonl
+data/registry/
 
 # BUT: Keep federated learning data in repo
 !data/

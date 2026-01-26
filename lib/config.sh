@@ -3486,6 +3486,14 @@ EOF
     local nix_core_limit_value="${nix_parallelism_settings[1]:-0}"
     local nix_throttle_message="${nix_parallelism_settings[2]:-}"
 
+    if [[ "$nix_max_jobs_value" != "auto" && ! "$nix_max_jobs_value" =~ ^-?[0-9]+$ ]]; then
+        nix_max_jobs_value="auto"
+    fi
+
+    if ! [[ "$nix_core_limit_value" =~ ^-?[0-9]+$ ]]; then
+        nix_core_limit_value="0"
+    fi
+
     local nix_max_jobs_literal
     if [[ "$nix_max_jobs_value" == "auto" ]]; then
         nix_max_jobs_literal='"auto"'

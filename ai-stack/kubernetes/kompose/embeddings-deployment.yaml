@@ -42,16 +42,22 @@ spec:
               value: /app/config/config.yaml
             - name: HF_HOME
               value: /data/cache
+            - name: HF_HUB_DISABLE_TELEMETRY
+              value: "1"
+            - name: HF_HUB_OFFLINE
+              value: "1"
             - name: PORT
               value: "8081"
             - name: STACK_ENV
             - name: TRANSFORMERS_CACHE
-              value: /data/cache
+              value: /data/cache/hub
+            - name: TRANSFORMERS_OFFLINE
+              value: "1"
           envFrom:
             - configMapRef:
                 name: env
-          image: localhost/compose_embeddings:latest
-          imagePullPolicy: IfNotPresent
+          image: localhost:5000/compose_embeddings:latest
+          imagePullPolicy: Always
           livenessProbe:
             exec:
               command:
@@ -71,12 +77,14 @@ spec:
               cpu: "2"
               memory: "3221225472"
             requests:
-              cpu: 500m
-              memory: "1073741824"
+              cpu: 100m
+              memory: "536870912"
           volumeMounts:
             - mountPath: /run/secrets/embeddings_api_key
               name: embeddings-api-key
               subPath: embeddings_api_key
+            - mountPath: /data/cache
+              name: embeddings-cache
       restartPolicy: Always
       volumes:
         - name: embeddings-api-key
@@ -86,3 +94,7 @@ spec:
               - key: embeddings_api_key
                 path: embeddings_api_key
             secretName: embeddings-api-key
+        - name: embeddings-cache
+          hostPath:
+            path: /home/hyperd/.local/share/nixos-ai-stack/embeddings-cache
+            type: DirectoryOrCreate
