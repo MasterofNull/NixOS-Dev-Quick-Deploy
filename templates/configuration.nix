@@ -689,6 +689,10 @@ in
   services.gnome.gnome-keyring.enable = true;
   services.gnome.gcr-ssh-agent.enable = true;
 
+  # Disable GNOME Tracker to avoid user service failures during activation.
+  services.gnome.tracker.enable = false;
+  services.gnome.tracker-miner.enable = false;
+
   # Enable GNOME Keyring integration for all login services
   security.pam.services.greetd.enableGnomeKeyring = true;
   security.pam.services.login.enableGnomeKeyring = true;

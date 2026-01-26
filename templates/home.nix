@@ -4250,7 +4250,7 @@ PLUGINCFG
     # Rootless storage tuning for AI stack containers
     settings.storage = {
       storage = {
-        driver = "vfs";
+        driver = "overlay";
         runroot = "/run/user/${let
           hmUid = if config.home ? uidNumber then config.home.uidNumber else null;
           osUsers =
@@ -4265,13 +4265,16 @@ PLUGINCFG
           resolvedUid =
             if hmUid != null then hmUid
             else if osUserUid != null then osUserUid
-            else if accountUid != null then accountUid
+          else if accountUid != null then accountUid
           else 1000;
           in toString resolvedUid}/containers";
         graphroot = "${config.home.homeDirectory}/.local/share/containers/storage";
         rootless_storage_path = "${config.home.homeDirectory}/.local/share/containers/storage";
+      };
+      storage.options = {
+        mount_program = "${pkgs.fuse-overlayfs}/bin/fuse-overlayfs";
+      };
     };
-  };
 
     networks."${podmanAiStackNetworkName}" = {
       description = "Isolated network for the local AI development stack";
