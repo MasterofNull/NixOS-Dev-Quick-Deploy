@@ -372,6 +372,25 @@ phase_05_declarative_deployment() {
     print_info "This configures your user environment declaratively..."
     echo ""
 
+    # Clean preflight profile packages early to avoid home-manager-path collisions.
+    if declare -F cleanup_preflight_profile_packages >/dev/null 2>&1; then
+        print_info "Cleaning preflight nix profiles before Home Manager setup..."
+        cleanup_preflight_profile_packages
+        echo ""
+    fi
+
+    # Hard-stop if python3 still exists in the home-manager profile (causes file collisions).
+    local hm_profile="${HOME}/.local/state/nix/profiles/home-manager"
+    if command -v nix >/dev/null 2>&1 && [[ -e "$hm_profile" ]]; then
+        if nix profile list --profile "$hm_profile" 2>/dev/null | rg -q "^\\d+\\s+python3|\\bpython3"; then
+            print_error "home-manager profile still contains python3; this will collide with home-manager-path."
+            print_info "Fix by removing it before retrying:"
+            print_info "  nix profile list --profile $hm_profile"
+            print_info "  nix profile remove <index> --profile $hm_profile"
+            return 1
+        fi
+    fi
+
     # Ensure supporting scripts referenced by the flake are available
     local p10k_source="$BOOTSTRAP_SCRIPT_DIR/scripts/p10k-setup-wizard.sh"
     local p10k_destination="$HM_CONFIG_DIR/p10k-setup-wizard.sh"
