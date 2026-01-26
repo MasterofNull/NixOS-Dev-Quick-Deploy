@@ -19,6 +19,7 @@
 # - Phase 6: Additional Tooling - Install non-declarative tools (Claude Code)
 # - Phase 7: Post-deployment Validation - Verify packages and services
 # - Phase 8: Finalization and Report - Complete setup, generate report
+# - Phase 9: K3s + Portainer + K8s Stack - Deploy AI stack into K3s and apply manifests
 #
 # Directory structure:
 # nixos-quick-deploy.sh (this file) - Main entry point
@@ -131,6 +132,8 @@ RESTORE_KNOWN_GOOD_FLAKE_LOCK=false
 FORCE_HF_DOWNLOAD=false
 RUN_AI_PREP=false
 RUN_AI_MODEL=true  # Default: Enable AI stack auto-deploy
+RUN_K8S_STACK=true
+RUN_K8S_E2E=false
 AI_STACK_POSTGRES_DB="mcp"
 AI_STACK_POSTGRES_USER="mcp"
 AI_STACK_POSTGRES_PASSWORD=""
@@ -169,6 +172,7 @@ get_phase_name() {
         6) echo "additional-tooling" ;;
         7) echo "post-deployment-validation" ;;
         8) echo "finalization-and-report" ;;
+        9) echo "k3s-portainer" ;;
         *) echo "unknown" ;;
     esac
 }
@@ -184,6 +188,7 @@ get_phase_description() {
         6) echo "Additional tooling - install non-declarative tools (Claude Code, etc.)" ;;
         7) echo "Post-deployment validation - verify packages and services running" ;;
         8) echo "Finalization and report - complete setup, validate Hybrid Stack, generate report" ;;
+        9) echo "K3s + Portainer + K8s AI stack - deploy AI stack into K3s and apply manifests" ;;
         *) echo "Unknown phase" ;;
     esac
 }
@@ -201,6 +206,7 @@ get_phase_dependencies() {
         6) echo "1,2,3,4,5" ;;
         7) echo "1,2,3,4,5,6" ;;
         8) echo "1,2,3,4,5,6,7" ;;
+        9) echo "1,2,3,4,5,6,7,8" ;;
         *) echo "" ;;
     esac
 }
@@ -356,7 +362,9 @@ BASIC OPTIONS:
         --with-ai-prep          Run the optional AI-Optimizer preparation phase after Phase 8
         --with-ai-model         Force enable Hybrid Learning Stack deployment (default: disabled)
         --without-ai-model      Skip AI model deployment phase (disable default prompt)
-        --with-ai-stack         Convenience alias for --with-ai-prep --with-ai-model
+        --with-k8s-stack        (deprecated) K3s + Portainer + K8s AI stack is now always enabled
+        --with-k8s-e2e          Run hospital K3s E2E tests after K8s deployment
+        --without-k8s-e2e       Skip hospital K3s E2E tests
         --prompt-switch         Prompt before running system/home switches
         --prompt-system-switch  Prompt before running nixos-rebuild switch
         --prompt-home-switch    Prompt before running home-manager switch
@@ -384,6 +392,7 @@ PHASE OVERVIEW:
     Phase 6:  Additional Tooling          - Install non-declarative tools
     Phase 7:  Post-deployment Validation  - Verify packages and services
     Phase 8:  Finalization and Report     - Complete setup, validate Hybrid Stack, generate report
+    Phase 9:  K3s + Portainer + K8s Stack - Deploy AI stack into K3s and apply manifests
 
 EXAMPLES:
     # Normal deployment (resumes from last failure if any)
@@ -598,8 +607,20 @@ parse_arguments() {
                 shift
                 ;;
             --with-ai-stack)
-                RUN_AI_PREP=true
-                RUN_AI_MODEL=true
+                print_warning "Flag --with-ai-stack is deprecated; K3s + Portainer + K8s AI stack is always enabled."
+                RUN_K8S_STACK=true
+                shift
+                ;;
+            --with-k8s-stack)
+                print_warning "Flag --with-k8s-stack is deprecated; K3s + Portainer + K8s AI stack is always enabled."
+                shift
+                ;;
+            --with-k8s-e2e)
+                RUN_K8S_E2E=true
+                shift
+                ;;
+            --without-k8s-e2e)
+                RUN_K8S_E2E=false
                 shift
                 ;;
             *)
@@ -628,7 +649,7 @@ list_phases() {
     source "$LIB_DIR/colors.sh" 2>/dev/null || true
     source "$CONFIG_DIR/variables.sh" 2>/dev/null || true
 
-    for phase_num in {1..8}; do
+    for phase_num in {1..9}; do
         local phase_name=$(get_phase_name "$phase_num")
         local phase_desc=$(get_phase_description "$phase_num")
         local status="PENDING"
@@ -656,8 +677,8 @@ list_phases() {
 show_phase_info() {
     local phase_num="$1"
 
-    if [[ ! "$phase_num" =~ ^[0-9]+$ ]] || [[ "$phase_num" -lt 1 ]] || [[ "$phase_num" -gt 8 ]]; then
-        echo "ERROR: Invalid phase number. Must be 1-8" >&2
+    if [[ ! "$phase_num" =~ ^[0-9]+$ ]] || [[ "$phase_num" -lt 1 ]] || [[ "$phase_num" -gt 9 ]]; then
+        echo "ERROR: Invalid phase number. Must be 1-9" >&2
         exit 1
     fi
 
@@ -1049,7 +1070,7 @@ print_header() {
     echo ""
     echo "============================================"
     echo "  NixOS Quick Deploy v$SCRIPT_VERSION"
-    echo "  8-Phase Modular Deployment"
+    echo "  9-Phase Modular Deployment"
     echo "============================================"
     echo ""
 
@@ -1442,11 +1463,6 @@ main() {
             print_warning "Hybrid learning setup is already running (setup-hybrid-learning-auto.sh)."
             stack_conflict=true
         fi
-        if pgrep -f "podman-compose.*${SCRIPT_DIR}/ai-stack/compose" >/dev/null 2>&1; then
-            print_warning "podman-compose is already running for the AI stack."
-            stack_conflict=true
-        fi
-
         if [[ "$stack_conflict" == "true" ]]; then
             if [[ "$auto_stop_stack" == "true" && -x "${SCRIPT_DIR}/scripts/stop-ai-stack.sh" ]]; then
                 print_warning "AUTO_STOP_STACK_ON_CONFLICT=true; stopping AI stack to continue."
@@ -1490,7 +1506,7 @@ main() {
     fi
 
     # Validate starting phase number
-    if [[ ! "$start_phase" =~ ^[0-9]+$ ]] || [[ "$start_phase" -lt 1 ]] || [[ "$start_phase" -gt 8 ]]; then
+    if [[ ! "$start_phase" =~ ^[0-9]+$ ]] || [[ "$start_phase" -lt 1 ]] || [[ "$start_phase" -gt 9 ]]; then
         print_error "Invalid starting phase: $start_phase"
         exit 1
     fi
@@ -1503,11 +1519,11 @@ main() {
 
     # Execute phases sequentially
     echo ""
-    print_section "Starting 8-Phase Deployment Workflow"
+    print_section "Starting 9-Phase Deployment Workflow"
     log INFO "Starting deployment from phase $start_phase"
     echo ""
 
-    for phase_num in $(seq $start_phase 8); do
+    for phase_num in $(seq $start_phase 9); do
         # Check if phase should be skipped
         if should_skip_phase "$phase_num"; then
             log INFO "Skipping phase $phase_num (user requested)"

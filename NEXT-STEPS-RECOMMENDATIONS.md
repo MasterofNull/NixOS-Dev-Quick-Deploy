@@ -2,7 +2,7 @@
 
 **Status:** ✅ K3s + Portainer migration complete (core services running)
 **Current State:** Core services healthy; optional UI services degraded (Open WebUI)
-**Next Phase:** Operational hardening + monitoring polish
+**Next Phase:** Single-path K3s hardening + monitoring polish
 
 ---
 
@@ -12,7 +12,6 @@ We've completed comprehensive research on container orchestration for 2026 and c
 
 1. **K3s Migration** (⭐ Recommended for production) - 2-3 days, best long-term (in progress)
 2. **Portainer Addition** (Quick win) - 1 day, immediate improvement (done via K3s)
-3. **Current Setup + Tools** (Minimal change) - Continue with podman-compose + custom tools
 
 ---
 
@@ -23,17 +22,12 @@ We've completed comprehensive research on container orchestration for 2026 and c
 **Created:** [CONTAINER-ORCHESTRATION-ANALYSIS-2026.md](CONTAINER-ORCHESTRATION-ANALYSIS-2026.md)
 
 **Key Findings:**
-- ✅ Podman 5.7.0 - You're on latest (excellent!)
-- ⚠️ podman-compose 1.5.0 - Causing friction, limited features
-- ⭐ K3s - Industry standard for 2026, 10x faster than Docker Desktop
-- ⭐ Podman AI Lab - Best tool for local LLM workloads
-- ✅ Rootless containers - You're already compliant (security win!)
+- ⭐ K3s + containerd is the single, standard runtime for 2026
+- ✅ Kubernetes-native tooling (kubectl, kustomize) reduces deployment drift
+- ✅ Security posture improved with namespace isolation + K8s secrets
 
 **Research Sources:**
-- [Why Podman and containerd 2.0 are Replacing Docker in 2026](https://dev.to/dataformathub/deep-dive-why-podman-and-containerd-20-are-replacing-docker-in-2026-32ak)
-- [Docker vs Podman 2026 Comparison](https://www.bnxt.ai/blog/docker-vs-podman-a-complete-container-comparison-for-2026)
 - [Kubernetes Alternatives 2026](https://attuneops.io/kubernetes-alternatives/)
-- [Podman AI Lab Official Docs](https://podman-desktop.io/docs/ai-lab)
 
 ### 2. Secrets Management Tool (Production-Ready!)
 
@@ -98,6 +92,42 @@ If you are on K3s, the dashboard launcher now starts a `kubectl port-forward` so
 
 ## 🚀 Recommended Path Forward
 
+### 🧭 Full Agent-Agnostic Integration Roadmap (All Phases)
+
+**Goal:** Any local or remote agent can use the system end-to-end (data + tools + monitoring).
+
+**Phase A — K3s + Portainer Bootstrap**
+- [ ] Run quick-deploy (K3s is now the default path): `./nixos-quick-deploy.sh`
+- [ ] Verify namespaces: `ai-stack`, `backups`, `logging`, `portainer`
+- [ ] Confirm Portainer web UI reachable + onboarding wizard reset
+
+**Phase B — Secrets + Backups**
+- [ ] Ensure secrets exist in `ai-stack/compose/secrets/`
+- [ ] Apply K8s secrets into `ai-stack` + `backups`
+- [ ] Verify backup cronjobs and metrics in `backups` namespace
+
+**Phase C — Images + Rollout**
+- [ ] Build + push images to registry (skaffold recommended)
+- [ ] Rollout restart critical deployments (aidb, embeddings, hybrid-coordinator, ralph-wiggum)
+- [ ] Validate `kubectl get pods -n ai-stack` all Running
+
+**Phase D — Monitoring + Dashboards**
+- [ ] Validate Prometheus targets all up
+- [ ] Verify Grafana dashboards (system + container views)
+- [ ] Confirm command center dashboard uses K8s data sources
+
+**Phase E — Agent Utilization**
+- [ ] Run full hospital E2E tests: `python3 ai-stack/tests/test_hospital_e2e.py`
+- [ ] Verify telemetry flow (Ralph → Hybrid → AIDB)
+- [ ] Confirm AIDB tool discovery + MCP endpoints
+
+**Phase F — Remote Agent Enablement**
+- [ ] Document endpoints + ports in `DEPLOYMENT.md`
+- [ ] Sync templates + quick-deploy so new installs inherit all fixes
+- [ ] Add monitoring runbook for operators and remote agents
+
+---
+
 ### ⭐ K3s + Portainer (RECOMMENDED COMBINATION)
 
 **These work TOGETHER, not as alternatives!**
@@ -108,15 +138,15 @@ Portainer Web UI (Management)
      ↓
 K3s Kubernetes (Orchestration)
      ↓
-Podman 5.7.0 (Container Runtime)
+containerd (Runtime)
      ↓
 Your AI Stack (Applications)
 ```
 
 **Why This Combination:**
 - ✅ **K3s** = Industry-standard Kubernetes orchestration (self-healing, rolling updates, scaling)
-- ✅ **Portainer** = Beautiful web UI for managing K3s (secrets, deployments, logs, monitoring)
-- ✅ **Podman** = Secure rootless container runtime (what you already have)
+- ✅ **Portainer** = Web UI for managing K3s (secrets, deployments, logs, monitoring)
+- ✅ **containerd** = K3s-native runtime (single-path deployment)
 - ✅ Best of all worlds: Power + Usability + Security
 
 **What You Get:**
@@ -155,26 +185,6 @@ See **[K3S-PORTAINER-MIGRATION-PLAN.md](K3S-PORTAINER-MIGRATION-PLAN.md)** for c
 
 ---
 
-### Alternative: Stay Current (Not Recommended)
-
-**Why you might:**
-- No migration needed
-- We just built a great secrets tool
-- Can evolve incrementally
-
-**Effort:** 0 days (already done!)
-**Risk:** Low
-**Long-term Value:** ⭐⭐
-
-**What You Get:**
-- ✅ Secrets management tool (done!)
-- ✅ All P0 vulnerabilities fixed
-- ⚠️ Still dealing with podman-compose quirks
-- ⚠️ No web UI for management
-- ⚠️ No self-healing or advanced orchestration
-
----
-
 ## 📋 Immediate Tasks (Choose Your Path)
 
 ### K3s Migration (In Progress):
@@ -185,7 +195,7 @@ See **[K3S-PORTAINER-MIGRATION-PLAN.md](K3S-PORTAINER-MIGRATION-PLAN.md)** for c
 - [x] Verify core system pods
 
 **Day 2:**
-- [x] Convert docker-compose.yml using Kompose
+- [x] Kompose manifests active (compose is legacy source only)
 - [x] Review generated manifests in `ai-stack/kubernetes/kompose/`
 - [x] Create Kubernetes Secrets from current secrets (Phase 5)
 - [x] Deploy core services (postgres, redis, grafana) on K3s
@@ -216,28 +226,12 @@ See **[K3S-PORTAINER-MIGRATION-PLAN.md](K3S-PORTAINER-MIGRATION-PLAN.md)** for c
 - [x] Use secrets management tool ✅ (already built!)
 - [ ] Test secret rotation workflow
 - [ ] Create backup before any changes
-- [ ] Document remaining podman-compose workarounds
-- [ ] Optional: Explore Podman Desktop (GUI alternative)
-
+- [ ] Document remaining legacy compose references
 ---
 
 ## 🔧 Quick Wins You Can Do Right Now
 
-### 1. Install Podman Desktop (GUI Management)
-
-```bash
-# Download from https://podman-desktop.io/
-# Or with nix:
-nix-env -iA nixos.podman-desktop
-```
-
-**Benefits:**
-- Visual container management
-- Podman AI Lab integration (for LLMs)
-- Image management UI
-- No migration needed
-
-### 2. Use the Secrets Manager
+### 1. Use the Secrets Manager
 
 ```bash
 # See current status
@@ -250,64 +244,17 @@ nix-env -iA nixos.podman-desktop
 ./scripts/manage-secrets.sh validate
 ```
 
-### 3. Improve Docker Compose Error Handling
-
-The issues we found with `AI_STACK_ENV_FILE` and secret permissions are now documented. Review:
-- [DAY5-INTEGRATION-TESTING-RESULTS.md](DAY5-INTEGRATION-TESTING-RESULTS.md) - All fixes documented
-- [SECRETS-MANAGEMENT-GUIDE.md](SECRETS-MANAGEMENT-GUIDE.md) - How to avoid future issues
-
 ---
 
-## 📊 Decision Matrix
+## ✅ Standardized Deployment Path
 
-| Criterion | K3s + Portainer | Current Setup |
-|-----------|-----------------|---------------|
-| **Implementation Time** | 2-3 days | 0 days (done!) ✅ |
-| **Learning Curve** | Medium (Portainer makes it easier) | Low ✅ |
-| **Long-term Value** | ⭐⭐⭐⭐⭐ | ⭐⭐ |
-| **Management UI** | Beautiful Portainer web UI ✅ | None ❌ |
-| **Secrets Management** | Kubernetes Secrets + Portainer UI ✅ | Custom CLI tool ⚠️ |
-| **Orchestration** | Full Kubernetes (self-healing, scaling) ✅ | Basic compose ❌ |
-| **Industry Standard** | Yes (Kubernetes) ✅ | No ❌ |
-| **GPU Management** | Advanced (device plugins) ✅ | Manual (works) ⚠️ |
-| **Monitoring** | Prometheus + Grafana + Portainer ✅ | Prometheus + Grafana ⚠️ |
-| **Friction** | None ✅ | Medium (env vars, compatibility) ⚠️ |
-| **Auto-Healing** | Pods restart automatically ✅ | Manual restart ❌ |
-| **Rolling Updates** | Zero-downtime deployments ✅ | Manual with downtime ❌ |
-| **Production Ready** | ✅ Excellent | ⚠️ Works but limited |
-| **Skills Transfer** | Kubernetes everywhere ✅ | Limited ❌ |
+This stack now uses **one** path: **K3s + Portainer + K8s manifests**.
 
-**Scoring:**
-- **K3s + Portainer:** 10/10 - Industry best practice for 2026
-- **Current Setup:** 5/10 - Works but outdated approach
-
----
-
-## 💡 My Recommendation
-
-**For you specifically:**
-
-Given that you:
-- ✅ Have Podman 5.7.0 (latest)
-- ✅ Are running AI workloads locally
-- ✅ Want to eliminate friction
-- ✅ Want a management UI
-- ✅ Have time for a 2-3 day project
-
-**I strongly recommend: K3s + Portainer Together**
-
-This is NOT two separate options - they work together perfectly:
-- **K3s** = The orchestration engine (Kubernetes)
-- **Portainer** = The management UI for K3s (web interface)
-
-**Why This Combination:**
-1. **Eliminates ALL friction** - No more podman-compose issues
-2. **Beautiful Management UI** - Portainer makes K3s easy to use
-3. **Industry standard** - Kubernetes skills transfer anywhere
-4. **Best for AI workloads** - Superior GPU and resource management
-5. **Built-in secrets with UI** - Manage secrets via Portainer web interface
-6. **Self-healing** - Pods restart automatically on failure
-7. **Zero-downtime updates** - Rolling deployments built-in
+**Why this matters:**
+1. **Single runtime** - containerd only
+2. **Single deployment method** - `kubectl apply -k`
+3. **Single monitoring path** - Prometheus/Grafana + Portainer
+4. **Less drift** - no compose/runtime split
 8. **Future-proof** - This is THE standard for 2026
 
 **Migration Path:**
@@ -341,9 +288,9 @@ This is NOT two separate options - they work together perfectly:
 3. `scripts/test-password-migration.sh` - Integration test suite
 
 ### Configuration
-1. `ai-stack/compose/docker-compose.yml` - Updated with secrets
-2. `ai-stack/compose/secrets/` - All secrets properly configured
-3. `ai-stack/mcp-servers/shared/secrets_loader.py` - Python helper library
+1. `ai-stack/kubernetes/kompose/` - Active manifests
+2. `ai-stack/compose/secrets/` - Secret source-of-truth
+3. `ai-stack/kubernetes/kustomization.yaml` - Single deploy entry point
 
 ---
 
@@ -358,25 +305,12 @@ This is NOT two separate options - they work together perfectly:
 - ✅ Automated testing and validation tools
 
 ### What's Next:
-- ⏳ Choose orchestration path (K3s / Portainer / Current)
-- ⏳ Implement chosen solution
+- ⏳ Complete K3s-only documentation sweep
+- ⏳ Fix remaining monitoring gaps (AIDB telemetry + circuit breaker check)
 - ⏳ Week 2: P1 security issues
 - ⏳ Week 3-4: Advanced features
 
 ---
-
-## ❓ Questions to Consider
-
-Before choosing your path, think about:
-
-1. **Timeline:** Do you need this working today, or can you invest 2-3 days?
-2. **Skills:** Are you comfortable learning Kubernetes basics?
-3. **Scale:** Will this stay single-node, or might you add more machines later?
-4. **AI Workload:** How important is advanced GPU management?
-5. **Team:** Will others need to manage this (UI helpful)?
-6. **Production:** Is this dev only, or heading to production?
-
-**My Suggestion:** Start with our secrets tool TODAY (no migration!), test it thoroughly, then schedule K3s migration for next week when you have a 2-3 day window.
 
 ---
 
@@ -403,7 +337,7 @@ I've created the complete migration plan: **[K3S-PORTAINER-MIGRATION-PLAN.md](K3
 - [x] Fix embeddings API key mounts (embeddings + hybrid-coordinator + aidb)
 - [x] Hotfix telemetry schema (added `llm_used` column)
 - [x] Phase 3: Install Portainer for K3s (portainer namespace + NodePort service)
-- [x] Phase 4: Convert docker-compose to Kubernetes (kompose manifests active)
+- [x] Phase 4: Kubernetes manifests active (kompose output)
 - [x] Add Kustomize base + dev/prod overlays for Kubernetes manifests
 - [x] Add local registry scripts for deterministic image rollout
 - [x] Add Skaffold dev config (build → tag → push → deploy)

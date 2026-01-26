@@ -1,0 +1,49 @@
+# ArgoCD Application for Logging Stack
+# Manages Loki + Promtail for HIPAA audit logging
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ai-stack-logging
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: ai-stack-logging
+    app.kubernetes.io/part-of: hospital-ai
+    hipaa-compliance: required
+    hipaa-category: audit-controls
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: ai-stack
+
+  source:
+    repoURL: https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy.git
+    targetRevision: main
+    path: ai-stack/kubernetes/logging
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: logging
+
+  syncPolicy:
+    automated:
+      prune: false  # Never auto-delete logging (HIPAA)
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+
+  ignoreDifferences:
+    - group: apps
+      kind: DaemonSet
+      jsonPointers:
+        - /spec/template/spec/containers/0/resources
+
+  revisionHistoryLimit: 10  # Keep more history for audit trail

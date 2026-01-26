@@ -1,0 +1,127 @@
+# RBAC Roles for Hospital AI Stack
+# Follows principle of least privilege for HIPAA compliance
+---
+# AIDB Role - read secrets for API keys, access configmaps
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: aidb-role
+  namespace: ai-stack
+  labels:
+    hipaa-compliance: required
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["aidb-api-key", "postgres-credentials"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["aidb-config"]
+    verbs: ["get"]
+---
+# Embeddings Role - minimal permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: embeddings-role
+  namespace: ai-stack
+  labels:
+    hipaa-compliance: required
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["embeddings-config"]
+    verbs: ["get"]
+---
+# Hybrid Coordinator Role - needs to read API keys
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: hybrid-coordinator-role
+  namespace: ai-stack
+  labels:
+    hipaa-compliance: required
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["hybrid-coordinator-api-key", "aidb-api-key"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
+---
+# Ralph Wiggum Role - needs broader access for orchestration
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ralph-wiggum-role
+  namespace: ai-stack
+  labels:
+    hipaa-compliance: required
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["ralph-wiggum-api-key", "aidb-api-key", "hybrid-coordinator-api-key"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+# Prometheus Role - needs to discover services and read metrics
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: prometheus-role
+  namespace: ai-stack
+  labels:
+    hipaa-compliance: required
+rules:
+  - apiGroups: [""]
+    resources: ["services", "endpoints", "pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get"]
+---
+# Prometheus ClusterRole for cross-namespace scraping
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-cluster-role
+  labels:
+    hipaa-compliance: required
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/proxy", "nodes/metrics"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["services", "endpoints", "pods"]
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics", "/metrics/cadvisor"]
+    verbs: ["get"]
+---
+# Backup Jobs Role - needs access to data volumes
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: backup-jobs-role
+  namespace: ai-stack
+  labels:
+    hipaa-compliance: required
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["postgres-credentials", "backup-encryption-key"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create"]

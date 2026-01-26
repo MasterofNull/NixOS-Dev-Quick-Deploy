@@ -7,10 +7,9 @@
 
 ## Overview
 
-This guide covers deploying the NixOS AI Stack in two configurations:
+This guide covers deploying the NixOS AI Stack using the single supported path:
 
-1. **K3s Kubernetes** (Recommended for production/hospital environments)
-2. **Podman Compose** (Development/testing)
+1. **K3s Kubernetes + Portainer** (Production + Development)
 
 ---
 
@@ -35,7 +34,7 @@ This guide covers deploying the NixOS AI Stack in two configurations:
 
 ## Quick Start (5 Minutes)
 
-### Option A: K3s (Production)
+### K3s (Single Supported Path)
 
 ```bash
 # 1. Clone the repository
@@ -48,36 +47,12 @@ cd NixOS-Dev-Quick-Deploy
 # 3. Verify K3s is running
 kubectl get nodes
 
-# 4. Deploy to K3s
-kubectl apply -f ai-stack/kubernetes/kompose/ -n ai-stack
+# 4. Deploy via quick-deploy (includes Portainer + K8s stack)
+./nixos-quick-deploy.sh --with-k8s-stack
 
 # 5. Verify services
 kubectl get pods -n ai-stack
 ```
-
-### Option B: Podman Compose (Development)
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy.git
-cd NixOS-Dev-Quick-Deploy
-
-# 2. Initialize configuration
-./scripts/setup-config.sh
-
-# 3. Initialize secrets
-./scripts/manage-secrets.sh init
-
-# 4. Start the stack
-export AI_STACK_ENV_FILE=$(pwd)/ai-stack/compose/.env
-cd ai-stack/compose
-podman compose up -d
-
-# 5. Verify services
-podman compose ps
-```
-
----
 
 ## Detailed K3s Deployment
 
@@ -116,6 +91,7 @@ kubectl get nodes  # Should show "Ready"
 ```bash
 # Create namespace
 kubectl create namespace ai-stack
+kubectl create namespace backups
 
 # Initialize secrets locally first
 ./scripts/manage-secrets.sh init
@@ -141,13 +117,26 @@ for key in aidb aider-wrapper container-engine dashboard embeddings \
     --from-file=${key}-api-key=secrets/${key//-/_}_api_key \
     -n ai-stack 2>/dev/null || true
 done
+
+# Backup encryption key (for postgres backups)
+kubectl create secret generic backup-encryption \
+  --from-literal=key="$(openssl rand -base64 48)" \
+  -n backups
+
+# Backups namespace needs postgres password too
+kubectl create secret generic postgres-password \
+  --from-file=postgres-password=secrets/postgres_password \
+  -n backups
 ```
 
 ### Step 4: Deploy Services
 
 ```bash
-# Apply all manifests
-kubectl apply -f ai-stack/kubernetes/kompose/ -n ai-stack
+# Apply all manifests via kustomize (includes logging + backups)
+kubectl apply -k ai-stack/kubernetes
+
+# Apply Portainer (optional UI)
+kubectl apply -f portainer-k8s.yaml
 
 # Watch deployment progress
 kubectl get pods -n ai-stack -w
@@ -244,22 +233,21 @@ cp ai-stack/compose/.env.example ~/.config/nixos-ai-stack/.env
 ### Step 3: Start Services
 
 ```bash
-export AI_STACK_ENV_FILE=/home/$USER/NixOS-Dev-Quick-Deploy/ai-stack/compose/.env
-cd ai-stack/compose
-podman compose up -d
+kubectl apply -k ai-stack/kubernetes
+kubectl apply -f portainer-k8s.yaml
 ```
 
 ### Step 4: Verify Services
 
 ```bash
 # Check service status
-podman compose ps
+kubectl get pods -n ai-stack
 
 # Test health endpoints
 curl -s http://localhost:8091/health | jq .
 
 # View logs
-podman compose logs -f aidb
+kubectl logs -n ai-stack deployment/aidb --tail=100
 ```
 
 ---
@@ -366,12 +354,6 @@ if command -v kubectl &>/dev/null; then
     kubectl get pods -n ai-stack --no-headers | awk '{print $1, $3}'
 fi
 
-# For Podman
-if command -v podman &>/dev/null; then
-    echo "Podman Containers:"
-    podman ps --format "{{.Names}} {{.Status}}" | grep local-ai
-fi
-
 # Test endpoints
 echo ""
 echo "Service Health:"
@@ -446,8 +428,8 @@ chmod 644 ai-stack/compose/secrets/*
 This usually means k3s is running an older Ralph image without `/metrics`.
 
 ```bash
-# Rebuild image
-AI_STACK_ENV_FILE=ai-stack/compose/.env podman-compose -f ai-stack/compose/docker-compose.yml build ralph-wiggum
+# Rebuild image using your preferred build pipeline so the image tag exists as
+# localhost/compose_ralph-wiggum:latest.
 
 # Import updated image into k3s (requires sudo)
 ONLY_IMAGES="ralph-wiggum" FORCE_IMPORT=1 sudo -E ./scripts/import-k3s-images.sh
@@ -583,8 +565,7 @@ kubectl apply -k ai-stack/kustomize/overlays/dev
 ### Skaffold (optional)
 
 ```bash
-DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock \
-  skaffold dev
+skaffold dev
 ```
 
 ---
@@ -601,4 +582,4 @@ DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock \
 
 **Version:** 6.0.0
 **Deployment Target:** K3s v1.34.2+k3s1
-**Container Runtime:** containerd/Podman 5.7.0
+**Container Runtime:** containerd (K3s)
