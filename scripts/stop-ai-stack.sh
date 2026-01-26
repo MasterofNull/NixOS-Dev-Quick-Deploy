@@ -8,6 +8,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
+# Source container registry for complete container list
+source "$PROJECT_ROOT/lib/ai-stack-containers.sh"
+
 echo "🛑 Stopping AI Stack services..."
 
 # Optional tools
@@ -32,11 +35,7 @@ fi
 
 # Force stop specific containers if they're still running
 echo "  Force stopping containers..."
-for container in local-ai-qdrant local-ai-llama-cpp local-ai-open-webui \
-                 local-ai-postgres local-ai-redis local-ai-mindsdb \
-                 local-ai-health-monitor local-ai-nixos-docs \
-                 local-ai-aidb local-ai-hybrid-coordinator \
-                 local-ai-ralph-wiggum local-ai-aider local-ai-autogpt; do
+for container in "${AI_STACK_CONTAINERS[@]}"; do
     if podman ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
         echo "    Stopping $container..."
         podman stop "$container" 2>/dev/null || true
@@ -45,11 +44,7 @@ done
 
 # Remove stopped containers to avoid name conflicts on next start
 echo "  Removing stale containers..."
-for container in local-ai-qdrant local-ai-llama-cpp local-ai-open-webui \
-                 local-ai-postgres local-ai-redis local-ai-mindsdb \
-                 local-ai-health-monitor local-ai-nixos-docs \
-                 local-ai-aidb local-ai-hybrid-coordinator \
-                 local-ai-ralph-wiggum local-ai-aider local-ai-autogpt; do
+for container in "${AI_STACK_CONTAINERS[@]}"; do
     if podman ps -a --format '{{.Names}} {{.Status}}' | grep -q "^${container} "; then
         if ! podman ps --format '{{.Names}}' | grep -q "^${container}$"; then
             echo "    Removing $container..."
@@ -60,9 +55,8 @@ done
 
 # Kill host processes on conflicting ports
 echo "  Checking for port conflicts..."
-# AI stack ports: 8091 (aidb), 8791 (aidb websocket), 8092 (hybrid-coordinator),
-# 8094 (nixos-docs), 3001 (open-webui), 8098 (ralph-wiggum)
-for port in 8091 8791 8092 8094 3001 8098; do
+# Use ports from the shared container registry
+for port in "${AI_STACK_PORTS[@]}"; do
     if [ "$have_lsof" = true ]; then
         if lsof -ti:$port >/dev/null 2>&1; then
             pid=$(lsof -ti:$port)
@@ -99,7 +93,7 @@ sleep 2
 # Verify ports are free
 echo "  Verifying ports are free..."
 all_clear=true
-for port in 8091 8791 8092 8094 3001 8098; do
+for port in "${AI_STACK_PORTS[@]}"; do
     if [ "$have_lsof" = true ]; then
         if lsof -ti:$port >/dev/null 2>&1; then
             pid=$(lsof -ti:$port 2>/dev/null || echo "unknown")
