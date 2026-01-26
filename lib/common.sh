@@ -376,34 +376,55 @@ ensure_prerequisite_installed() {
     local install_method=""
     local exit_code=0
 
-    # Try nix-env with nixos channel first (primary method)
-    if command -v nix-env >/dev/null 2>&1; then
-        print_warning "$description not found – installing via nix-env -iA nixos.$attr_path"
-        log INFO "Attempting nix-env installation for $cmd using nixos channel"
-
-        if run_as_primary_user nix-env -iA "nixos.$attr_path" >"$install_log" 2>&1; then
-            install_succeeded=true
-            install_method="nix-env (nixos channel)"
-        else
-            exit_code=$?
-            log WARNING "nix-env -iA nixos.$attr_path for $cmd failed with exit code $exit_code, trying nixpkgs fallback"
-
-            # Fallback to nixpkgs if nixos channel fails
-            print_warning "$description installation retry via nix-env -f '<nixpkgs>' -iA $attr_path"
-            log INFO "Attempting nix-env installation for $cmd using nixpkgs"
-
-            if run_as_primary_user nix-env -f '<nixpkgs>' -iA "$attr_path" >>"$install_log" 2>&1; then
+    # Prefer installing into a dedicated preflight profile (avoids profile collisions).
+    if command -v nix >/dev/null 2>&1 && nix profile --help >/dev/null 2>&1; then
+        local preflight_profile="${CACHE_DIR:-$HOME/.cache/nixos-quick-deploy}/preflight-profile"
+        if mkdir -p "$(dirname "$preflight_profile")" 2>/dev/null; then
+            print_warning "$description not found – installing into preflight profile"
+            log INFO "Attempting nix profile installation for $cmd into $preflight_profile"
+            if run_as_primary_user nix profile install --profile "$preflight_profile" "$pkg_ref" >"$install_log" 2>&1; then
                 install_succeeded=true
-                install_method="nix-env (nixpkgs)"
+                install_method="nix profile (preflight)"
+                export PATH="$preflight_profile/bin:$PATH"
             else
                 exit_code=$?
-                log ERROR "nix-env -f '<nixpkgs>' -iA $attr_path for $cmd failed with exit code $exit_code"
+                log WARNING "nix profile install for $cmd failed with exit code $exit_code, trying nix-env fallback"
             fi
+        else
+            log WARNING "Unable to create preflight profile directory; falling back to nix-env"
         fi
-    else
-        log ERROR "nix-env command not available"
-        print_error "Failed to install $description – nix-env not found"
-        return 1
+    fi
+
+    # Fallback: nix-env with nixos channel first (legacy method)
+    if [[ "$install_succeeded" == false ]]; then
+        if command -v nix-env >/dev/null 2>&1; then
+            print_warning "$description not found – installing via nix-env -iA nixos.$attr_path"
+            log INFO "Attempting nix-env installation for $cmd using nixos channel"
+
+            if run_as_primary_user nix-env -iA "nixos.$attr_path" >"$install_log" 2>&1; then
+                install_succeeded=true
+                install_method="nix-env (nixos channel)"
+            else
+                exit_code=$?
+                log WARNING "nix-env -iA nixos.$attr_path for $cmd failed with exit code $exit_code, trying nixpkgs fallback"
+
+                # Fallback to nixpkgs if nixos channel fails
+                print_warning "$description installation retry via nix-env -f '<nixpkgs>' -iA $attr_path"
+                log INFO "Attempting nix-env installation for $cmd using nixpkgs"
+
+                if run_as_primary_user nix-env -f '<nixpkgs>' -iA "$attr_path" >>"$install_log" 2>&1; then
+                    install_succeeded=true
+                    install_method="nix-env (nixpkgs)"
+                else
+                    exit_code=$?
+                    log ERROR "nix-env -f '<nixpkgs>' -iA $attr_path for $cmd failed with exit code $exit_code"
+                fi
+            fi
+        else
+            log ERROR "nix-env command not available"
+            print_error "Failed to install $description – nix-env not found"
+            return 1
+        fi
     fi
 
     if [[ "$install_succeeded" == true ]]; then
