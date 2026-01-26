@@ -1,0 +1,23 @@
+# K3s Server Configuration for HIPAA Audit Logging
+# Copy this to /etc/rancher/k3s/config.yaml and restart K3s
+#
+# Installation steps (requires sudo):
+# 1. sudo cp audit-policy.yaml /etc/rancher/k3s/audit-policy.yaml
+# 2. sudo cp k3s-audit-config.yaml /etc/rancher/k3s/config.yaml
+# 3. sudo mkdir -p /var/log/kubernetes
+# 4. sudo systemctl restart k3s
+#
+# Verify with: sudo tail -f /var/log/kubernetes/audit.log
+
+# API Server audit configuration
+kube-apiserver-arg:
+  - "audit-log-path=/var/log/kubernetes/audit.log"
+  - "audit-log-maxage=90"                    # Keep logs for 90 days (HIPAA requires 6 years, archive separately)
+  - "audit-log-maxbackup=10"                 # Keep 10 rotated files
+  - "audit-log-maxsize=100"                  # Max 100MB per file
+  - "audit-policy-file=/etc/rancher/k3s/audit-policy.yaml"
+  - "audit-log-format=json"                  # JSON for structured logging
+
+# Additional hardening (optional)
+protect-kernel-defaults: true
+secrets-encryption: true

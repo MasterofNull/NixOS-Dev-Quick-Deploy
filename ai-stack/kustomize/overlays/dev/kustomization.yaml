@@ -1,7 +1,15 @@
+# Development Environment Overlay
+# Fast iteration with debug capabilities
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 namespace: ai-stack
+
+labels:
+  - pairs:
+      environment: dev
+      app.kubernetes.io/part-of: hospital-ai
+    includeSelectors: false
 
 resources:
   - ../../../kubernetes

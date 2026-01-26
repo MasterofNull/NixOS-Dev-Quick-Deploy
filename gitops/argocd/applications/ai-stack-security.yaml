@@ -1,0 +1,43 @@
+# ArgoCD Application for Security Configuration
+# Manages Network Policies and HIPAA Alerts
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ai-stack-security
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: ai-stack-security
+    app.kubernetes.io/part-of: hospital-ai
+    hipaa-compliance: required
+    hipaa-category: technical-safeguards
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: ai-stack
+
+  source:
+    repoURL: https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy.git
+    targetRevision: main
+    path: ai-stack/kubernetes/security
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ai-stack
+
+  syncPolicy:
+    automated:
+      prune: false  # Never auto-delete security policies
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=false
+      - PruneLast=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 2m
+
+  revisionHistoryLimit: 10

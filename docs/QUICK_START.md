@@ -321,8 +321,8 @@ After successful deployment:
    # Try the AI tools
    ollama --help
 
-   # Try the container tools
-   podman --version
+   # Try the Kubernetes tools
+   kubectl version --client
 
    # List Flatpak apps
    flatpak list

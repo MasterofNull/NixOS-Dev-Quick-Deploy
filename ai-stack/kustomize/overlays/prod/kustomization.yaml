@@ -1,7 +1,16 @@
+# Production Environment Overlay
+# HIPAA-compliant production configuration
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 namespace: ai-stack
+
+labels:
+  - pairs:
+      environment: production
+      hipaa-compliance: required
+      app.kubernetes.io/part-of: hospital-ai
+    includeSelectors: false
 
 resources:
   - ../../../kubernetes

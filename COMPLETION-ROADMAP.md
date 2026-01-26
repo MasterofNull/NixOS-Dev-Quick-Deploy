@@ -106,25 +106,24 @@
   - Add container-engine MCP server
 - [x] templates/home.nix
   - Include AI stack env/data variables
-- [x] templates/local-ai-stack/docker-compose.yml
+- [x] Legacy compose templates retired (K3s-only path)
   - Update env var handling
   - Add dashboard-api service
   - Add container-engine service
 
 ### 6.2 Update deployment scripts
-- [x] scripts/hybrid-ai-stack.sh
-  - Clarify .env setup helper
-- [x] Create scripts/setup-config.sh
+- [x] Deprecate compose/podman entrypoints in scripts (K3s-only)
+- [x] scripts/setup-config.sh
   - Initialize .env from template
   - Set default values
-- [x] Add scripts/local-registry.sh
+- [x] scripts/local-registry.sh
   - Local registry start/stop/status
-- [x] Add scripts/publish-local-registry.sh
+- [x] scripts/publish-local-registry.sh
   - Tag + push immutable images to localhost:5000
 
 ### 6.3 Documentation updates
 - [x] README.md - Add new deployment workflow
-- [x] Add DEPLOYMENT.md with step-by-step guide (K3s + Podman)
+- [x] Add DEPLOYMENT.md with step-by-step guide (K3s-only)
 - [ ] Update architecture diagrams
 - [x] Add troubleshooting section
 - [x] HOSPITAL-DEPLOYMENT-STATUS.md created
@@ -171,6 +170,84 @@
 
 ---
 
+## Phase 8: K3s + Portainer Full Integration (Agent-Agnostic)
+
+### 8.1 Quick-deploy orchestration
+- [x] Add Phase 9: K3s + Portainer + K8s AI stack in `nixos-quick-deploy.sh`
+- [x] Make K3s the default single-path deployment (podman retired)
+- [x] Ensure K3s phase runs after Phase 8 completion
+
+### 8.2 Kubernetes baseline resources
+- [x] Add `ai-stack` namespace manifest
+- [x] Add `backups` namespace manifest
+- [x] Keep logging namespace + Loki/Promtail in kustomize base
+- [x] Apply `ai-stack/kubernetes` kustomization in deployment phase
+
+### 8.3 Secrets + backups wiring
+- [x] Apply K8s secrets from `ai-stack/compose/secrets`
+- [x] Create `backup-encryption` secret in `backups` namespace
+- [x] Fix backup cronjob secret key reference (`postgres-password`)
+- [x] Ensure backups namespace has `postgres-password` secret
+
+### 8.4 Image/registry hygiene
+- [x] Deprecate local image import in favor of registry-based workflow
+- [x] Provide local registry helpers for dev/staging
+- [ ] Document immutable image tagging and registry push flow for all services
+
+### 8.5 Operator UX + monitoring
+- [x] Apply Portainer manifest from repo (`portainer-k8s.yaml`)
+- [ ] Validate Portainer login + initial wizard reset flow
+
+---
+
+## Phase 9: Agent-Agnostic Integration & Monitoring (NEW)
+
+### 9.1 Single-path deployment contract
+- [ ] Remove remaining legacy references in kustomize/kompose manifests
+- [ ] Standardize image registry naming (no compose/podman tags)
+- [ ] Ensure local/remote registry parity for all environments
+
+### 9.2 Agent integration readiness
+- [ ] Define MCP service contracts + health endpoints for all agents
+- [ ] Provide AIDB indexing + telemetry schema guarantees
+- [ ] Verify agent auth secrets rotation per deployment
+
+### 9.3 Monitoring + reliability
+- [ ] Dashboard health: stale data detection + alerting
+- [ ] Prometheus rules for AI stack SLOs
+- [ ] End-to-end telemetry flow verification (Ralph → Hybrid → AIDB)
+
+**Expected Outcome**: Single-path, agent-agnostic K3s deployment with complete monitoring and reliable integration.
+- [ ] Wire dashboard data refresh to K8s mode by default
+- [ ] Add guidance for Prometheus/Grafana + Portainer dashboards
+
+**Expected Outcome**: Agent-agnostic K3s + Portainer deployment path with secrets, monitoring, and reproducible image rollout.
+
+---
+
+## Phase 9: Agent-Agnostic Operations & Monitoring
+
+### 9.1 K3s-only documentation sweep
+- [ ] Remove remaining Podman/compose runtime references in active docs
+- [ ] Replace legacy compose runbooks with kubectl equivalents
+- [ ] Mark legacy compose docs as archived (keep for history only)
+
+### 9.2 Monitoring + telemetry validation
+- [ ] Verify Prometheus targets for every AI service
+- [ ] Validate Grafana dashboards render live data
+- [ ] Confirm Ralph → Hybrid → AIDB telemetry flow (non-zero events)
+- [ ] Confirm dashboard API pulls K8s data by default
+
+### 9.3 Agent access + tooling
+- [ ] Validate AIDB query endpoint for remote agents (`/documents?search=...`)
+- [ ] Confirm MCP server discovery works with K8s deployments
+- [ ] Document required env vars + ports for remote agents
+- [ ] Add a single “agent bootstrap” command block in docs
+
+**Expected Outcome**: Any local/remote agent can use the stack end-to-end with observability + data access.
+
+---
+
 ## Success Criteria
 
 - ✅ Continuous learning pipeline actively processing telemetry
@@ -193,11 +270,13 @@
 **Phase 5 Validation**: Hybrid-coordinator redeployed with proposal engine on January 25, 2026
 **Phase 6**: 100% complete (DEPLOYMENT.md created, templates updated)
 **Phase 7**: 100% complete (E2E test suite passing)
+**Phase 8**: 60% complete (K3s + Portainer phase wired; registry publish + monitoring UX pending)
+**Phase 9**: 0% complete (agent-agnostic ops + monitoring)
 **Monitoring Gap**: Resolved (Ralph `/metrics` now available)
 **Test Update**: `test_hospital_e2e.py` now fails Prometheus target check if any expected target is down
 
 **Updated**: January 26, 2026
-**Overall Progress**: 7/7 phases complete (100%)
+**Overall Progress**: 7/9 phases complete (78%)
 **K3s Deployment**: 18/18 services running; backup jobs healthy
 **Hospital Ready**: Core services yes; telemetry flow validation pending
 
@@ -211,7 +290,8 @@
 4. **Then**: Phase 3 (dashboard - operator visibility)
 5. **Then**: Phase 4 (adaptive limits - intelligent automation)
 6. **Then**: Phase 5 (optimization proposals - self-improvement)
-7. **Finally**: Phase 7 (verification - prove it works)
+7. **Then**: Phase 8 (K3s + Portainer hardening)
+8. **Finally**: Phase 9 (agent-agnostic ops + monitoring)
 
-**Estimated Time**: 3-4 hours total work across multiple sessions
+**Estimated Time**: 4-6 hours total work across multiple sessions
 **Priority**: Phases 1 and 6 are CRITICAL - must complete before session ends
