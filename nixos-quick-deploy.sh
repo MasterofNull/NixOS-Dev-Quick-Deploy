@@ -1204,6 +1204,7 @@ ensure_ai_stack_env() {
             local existing_grafana_password
             local existing_embedding_model
             local existing_llama_model
+            local existing_llama_model_file
             existing_db=$(read_env_value "POSTGRES_DB" "$env_file")
             existing_user=$(read_env_value "POSTGRES_USER" "$env_file")
             existing_password=$(read_env_value "POSTGRES_PASSWORD" "$env_file")
@@ -1211,6 +1212,7 @@ ensure_ai_stack_env() {
             existing_grafana_password=$(read_env_value "GRAFANA_ADMIN_PASSWORD" "$env_file")
             existing_embedding_model=$(read_env_value "EMBEDDING_MODEL" "$env_file")
             existing_llama_model=$(read_env_value "LLAMA_CPP_DEFAULT_MODEL" "$env_file")
+            existing_llama_model_file=$(read_env_value "LLAMA_CPP_MODEL_FILE" "$env_file")
 
             if [[ -z "$existing_db" ]]; then
                 existing_db=$(prompt_user "Postgres database name" "${AI_STACK_POSTGRES_DB:-mcp}")
@@ -1259,6 +1261,11 @@ ensure_ai_stack_env() {
                 set_env_value "LLAMA_CPP_DEFAULT_MODEL" "$existing_llama_model" "$env_file"
             fi
 
+            if [[ -z "$existing_llama_model_file" ]]; then
+                existing_llama_model_file="${LLAMA_CPP_MODEL_FILE:-qwen2.5-coder-7b-instruct-q4_k_m.gguf}"
+                set_env_value "LLAMA_CPP_MODEL_FILE" "$existing_llama_model_file" "$env_file"
+            fi
+
             chmod 600 "$env_file" 2>/dev/null || true
             return 0
         fi
@@ -1294,6 +1301,7 @@ GRAFANA_ADMIN_USER=${AI_STACK_GRAFANA_ADMIN_USER}
 GRAFANA_ADMIN_PASSWORD=${AI_STACK_GRAFANA_ADMIN_PASSWORD}
 EMBEDDING_MODEL=${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
 LLAMA_CPP_DEFAULT_MODEL=${LLAMA_CPP_DEFAULT_MODEL:-unsloth/Qwen3-4B-Instruct-2507-GGUF}
+LLAMA_CPP_MODEL_FILE=${LLAMA_CPP_MODEL_FILE:-qwen2.5-coder-7b-instruct-q4_k_m.gguf}
 EOF
 
     chmod 600 "$env_file" 2>/dev/null || true

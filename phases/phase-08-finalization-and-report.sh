@@ -185,6 +185,30 @@ phase_08_finalization_and_report() {
             print_warning "Feedback verification script not found at $feedback_script"
         fi
 
+        if declare -f ensure_ai_stack_env >/dev/null 2>&1; then
+            ensure_ai_stack_env
+        fi
+
+        # Backfill critical llama.cpp keys if the env file exists but is missing them.
+        local env_file="${AI_STACK_ENV_FILE:-$HOME/.config/nixos-ai-stack/.env}"
+        if [[ -f "$env_file" ]]; then
+            backfill_env_key() {
+                local key="$1"
+                local value="$2"
+                local file="$3"
+                if grep -qE "^[[:space:]]*${key}=" "$file" 2>/dev/null; then
+                    # Replace empty value if present
+                    if grep -qE "^[[:space:]]*${key}=$" "$file" 2>/dev/null; then
+                        sed -i "s|^[[:space:]]*${key}=.*|${key}=${value}|" "$file"
+                    fi
+                else
+                    printf '%s=%s\n' "$key" "$value" >> "$file"
+                fi
+            }
+            backfill_env_key "LLAMA_CPP_DEFAULT_MODEL" "${LLAMA_CPP_DEFAULT_MODEL:-unsloth/Qwen3-4B-Instruct-2507-GGUF}" "$env_file"
+            backfill_env_key "LLAMA_CPP_MODEL_FILE" "${LLAMA_CPP_MODEL_FILE:-qwen2.5-coder-7b-instruct-q4_k_m.gguf}" "$env_file"
+        fi
+
         local drift_script="$SCRIPT_DIR/scripts/validate-ai-stack-env-drift.sh"
         local enforce_drift_check="${ENFORCE_ENV_DRIFT_CHECK:-true}"
         if [[ -x "$drift_script" ]]; then

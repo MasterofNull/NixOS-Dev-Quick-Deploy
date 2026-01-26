@@ -226,6 +226,49 @@ phase_09_ai_stack_deployment() {
     log_info "Starting AI stack containers..."
     log_info "This may take several minutes on first run..."
 
+    ensure_rootless_podman_overlay() {
+        local storage_conf="${HOME}/.config/containers/storage.conf"
+        local storage_dir
+        storage_dir="$(dirname "$storage_conf")"
+        local fuse_overlayfs_path=""
+
+        if command -v fuse-overlayfs >/dev/null 2>&1; then
+            fuse_overlayfs_path="$(command -v fuse-overlayfs)"
+        else
+            fuse_overlayfs_path="/run/current-system/sw/bin/fuse-overlayfs"
+        fi
+
+        if [[ -f "$storage_conf" ]] && grep -q 'driver *= *"overlay"' "$storage_conf"; then
+            return 0
+        fi
+
+        mkdir -p "$storage_dir"
+        cat > "$storage_conf" <<EOF
+[storage]
+driver = "overlay"
+graphroot = "${HOME}/.local/share/containers/storage"
+rootless_storage_path = "${HOME}/.local/share/containers/storage"
+runroot = "/run/user/${UID}/containers"
+
+[storage.options]
+mount_program = "${fuse_overlayfs_path}"
+EOF
+    }
+
+    ensure_rootless_podman_overlay
+
+    local podman_driver=""
+    podman_driver=$(podman info --format '{{.Store.GraphDriverName}}' 2>/dev/null || true)
+    if [[ "$podman_driver" == "vfs" ]]; then
+        log_warning "Podman is using the vfs storage driver; switching to overlay improves reliability."
+        if podman ps -a --format '{{.ID}}' 2>/dev/null | grep -q . || podman images --format '{{.ID}}' 2>/dev/null | grep -q .; then
+            log_warning "Existing containers/images detected; run 'podman system reset --force' to apply the overlay driver."
+        else
+            log_info "Resetting empty Podman storage to apply overlay driver..."
+            podman system reset --force >/dev/null 2>&1 || log_warning "Podman storage reset failed; continuing with current driver."
+        fi
+    fi
+
     pushd "${AI_STACK_COMPOSE}" >/dev/null 2>&1
 
     if podman-compose up -d 2>&1 | tee /tmp/podman-compose-up.log; then
