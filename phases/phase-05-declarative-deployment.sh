@@ -493,7 +493,10 @@ phase_05_declarative_deployment() {
         rm -f "$HOME/.npmrc.backup" "$HOME/.config/VSCodium/User/settings.json.backup" 2>/dev/null || true
 
         local tmp_dir="${TMP_DIR:-/tmp}"
-        if $hm_cmd switch --flake "$hm_flake_target" -b backup 2>&1 | tee "${tmp_dir}/home-manager-switch.log"; then
+        local hm_profile="${HOME}/.local/state/nix/profiles/home-manager"
+        local -a hm_env=(env HOME_MANAGER_PROFILE="$hm_profile" NIX_PROFILE="$hm_profile")
+        print_info "Using Home Manager profile: $hm_profile"
+        if "${hm_env[@]}" $hm_cmd switch --flake "$hm_flake_target" -b backup 2>&1 | tee "${tmp_dir}/home-manager-switch.log"; then
             print_success "✓ Home manager configuration applied!"
             print_success "✓ User packages now managed declaratively"
             HOME_CONFIGURATION_APPLIED="true"
