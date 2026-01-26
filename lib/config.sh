@@ -3496,7 +3496,7 @@ EOF
 
     local nix_max_jobs_literal
     if [[ "$nix_max_jobs_value" == "auto" ]]; then
-        nix_max_jobs_literal='"auto"'
+        nix_max_jobs_literal="0"
     else
         nix_max_jobs_literal="$nix_max_jobs_value"
     fi
@@ -3507,7 +3507,7 @@ EOF
     if [[ -n "$nix_throttle_message" ]]; then
         nix_parallel_comment="capped at ${nix_max_jobs_value} job(s) / ${nix_core_limit_value} core(s) for ${total_ram_value}GB RAM"
     else
-        nix_parallel_comment="using upstream defaults (auto jobs, 0 cores)"
+        nix_parallel_comment="using upstream defaults (0 jobs=auto, 0 cores)"
     fi
 
     if ! hydrate_primary_user_password_block; then
