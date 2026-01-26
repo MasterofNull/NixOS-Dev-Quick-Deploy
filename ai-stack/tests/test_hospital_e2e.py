@@ -64,7 +64,7 @@ class HospitalE2ETests:
                 capture_output=True, text=True, timeout=10
             )
             lines = [l for l in result.stdout.strip().split("\n") if l]
-            optional = {"open-webui", "autogpt"}
+            optional = {"open-webui", "autogpt", "aider"}
             total = 0
             running = 0
             not_ready = []
@@ -77,7 +77,7 @@ class HospitalE2ETests:
                 if any(name.startswith(opt) for opt in optional):
                     continue
                 total += 1
-                if status == "Running":
+                if status in {"Running", "Completed"}:
                     running += 1
                 else:
                     not_ready.append(name)

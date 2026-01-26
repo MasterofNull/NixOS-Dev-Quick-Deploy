@@ -14,7 +14,7 @@ Features:
 import asyncio
 import httpx
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import structlog
 from pydantic import BaseModel, Field
@@ -138,7 +138,7 @@ class ToolDiscoveryEngine:
                 # Check server health
                 is_healthy = await self._check_server_health(server)
                 server.is_healthy = is_healthy
-                server.last_check = datetime.now(datetime.UTC)
+                server.last_check = datetime.now(timezone.utc)
 
                 if not is_healthy:
                     logger.warning("server_unhealthy", server=server.name)

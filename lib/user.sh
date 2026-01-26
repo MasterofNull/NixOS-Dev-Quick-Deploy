@@ -603,23 +603,21 @@ prompt_huggingface_token() {
         # Model configuration (choose embedding + coder)
         echo ""
         print_section "RAG Embedding Model Selection"
-        local default_embedding="${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5}"
+        local default_embedding="${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}"
         print_info "Default embedding model: ${default_embedding}"
         print_info "Options:"
-        print_info "  1) nomic-ai/nomic-embed-text-v1.5 (default)"
-        print_info "  2) BAAI/bge-small-en-v1.5"
-        print_info "  3) BAAI/bge-base-en-v1.5"
-        print_info "  4) sentence-transformers/all-MiniLM-L6-v2"
+        print_info "  1) BAAI/bge-small-en-v1.5 (default)"
+        print_info "  2) BAAI/bge-base-en-v1.5"
+        print_info "  3) sentence-transformers/all-MiniLM-L6-v2"
 
         local embedding_choice="1"
         if declare -F prompt_user >/dev/null 2>&1; then
-            embedding_choice=$(prompt_user "Select embedding model [1-4]" "1")
+            embedding_choice=$(prompt_user "Select embedding model [1-3]" "1")
         fi
 
         case "${embedding_choice}" in
-            2) EMBEDDING_MODEL="BAAI/bge-small-en-v1.5" ;;
-            3) EMBEDDING_MODEL="BAAI/bge-base-en-v1.5" ;;
-            4) EMBEDDING_MODEL="sentence-transformers/all-MiniLM-L6-v2" ;;
+            2) EMBEDDING_MODEL="BAAI/bge-base-en-v1.5" ;;
+            3) EMBEDDING_MODEL="sentence-transformers/all-MiniLM-L6-v2" ;;
             *) EMBEDDING_MODEL="${default_embedding}" ;;
         esac
         export EMBEDDING_MODEL

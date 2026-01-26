@@ -30,7 +30,7 @@ data:
     }
 
     ensure_tools() {
-      if [[ "$ENCRYPTION" == "true" ]]; then
+    if [[ "$ENCRYPTION" == "true" ]]; then
         command -v openssl >/dev/null 2>&1 || apk add --no-cache openssl >/dev/null 2>&1
       fi
     }
@@ -190,11 +190,11 @@ spec:
 
           containers:
           - name: backup
-            image: postgres:15-alpine
+            image: postgres:18
             command:
-              - /bin/bash
-              - /scripts/backup-postgresql.sh
-              - backup
+            - /bin/bash
+            - /scripts/backup-postgresql.sh
+            - backup
 
             env:
             - name: BACKUP_DIR

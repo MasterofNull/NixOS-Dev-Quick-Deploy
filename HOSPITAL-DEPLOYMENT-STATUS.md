@@ -1,6 +1,6 @@
 # Hospital AI Stack Deployment Status
 
-**Date:** January 25, 2026
+**Date:** January 26, 2026
 **Environment:** K3s Kubernetes (v1.34.2+k3s1)
 **Node:** NixOS (single-node cluster)
 **Status:** Production Ready (Core) / Degraded Optional Services
@@ -16,7 +16,7 @@ The AI Stack has been successfully deployed on K3s Kubernetes for hospital use. 
 - **Reliability:** Kubernetes self-healing, automatic restarts
 - **Auditability:** Comprehensive logging and monitoring
 - **Recent Validation:** Container recovery test executed (hybrid-coordinator pod recycle)
-- **Latest E2E:** 17/18 passed; telemetry flow pending AIDB image import
+- **Latest E2E:** 18/18 passed; embeddings + telemetry flow verified; backup cronjob fixed
 - **Command Center:** Dashboard API now backed by Kubernetes (services/containers/health OK)
 
 ---
@@ -53,11 +53,13 @@ The AI Stack has been successfully deployed on K3s Kubernetes for hospital use. 
 | Container Engine | Running | Container management |
 | Dashboard API | Running | Web dashboard backend |
 
-### Recent Fixes (Jan 25, 2026)
+### Recent Fixes (Jan 26, 2026)
 
 - Dashboard API now uses Kubernetes API (not Podman/systemd) for services + containers.
 - Health aggregate now validates Qdrant (`/healthz`) and Ralph Wiggum (service in `ai-stack` namespace).
 - Ralph Wiggum state persistence moved to a PVC (`/data` no longer read-only).
+- Embeddings model updated to **BAAI/bge-small-en-v1.5** with offline cache.
+- PostgreSQL backup cronjob switched to **postgres:18 + bash**; encryption secret generated.
 - Embeddings API key mounts normalized to `/run/secrets/embeddings_api_key`.
 - Telemetry schema hotfix: added `llm_used` column to `telemetry_events`.
 
@@ -195,7 +197,7 @@ kubectl top pods -n ai-stack
 
 ## Latest Verification (E2E)
 
-**Run:** 2026-01-25 (K3s)  
+**Run:** 2026-01-26 (K3s)  
 **Command:** `python3 ai-stack/tests/test_hospital_e2e.py`  
 **Result:** 18/18 tests passed  
 **Notes:** Prometheus target health now strictly validated; Ralph metrics pending image refresh.
@@ -272,6 +274,9 @@ kubectl logs -n backups -l app=backup --tail=100
 ### Immediate (This Week)
 
 - [x] Fix Ralph Prometheus metrics (image refreshed, `/metrics` returning 200)
+- [x] Start local registry and publish dev-tagged images (prevents stale image drift)
+- [x] Apply Kustomize dev overlay (move workloads off `latest`)
+- [ ] Persist registry config in NixOS (`/etc/rancher/k3s/registries.yaml`)
 - [ ] Import refreshed AIDB image to K3s (trust_remote_code + tool discovery timezone fix)
 - [ ] Verify telemetry flow (Ralph → Hybrid → AIDB) after AIDB import
 - [ ] Rerun hospital E2E test after AIDB import

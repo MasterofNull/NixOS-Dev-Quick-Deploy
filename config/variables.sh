@@ -167,6 +167,13 @@ fi
 # After this block, HOME and USER always refer to the target user regardless of
 # whether the script was invoked directly or through sudo.
 
+# Warn if the home directory itself is a git repo; this breaks nix flake eval
+# when dotfiles live under $HOME but are not tracked by that repo.
+if [[ -n "${HOME:-}" && -d "${HOME}/.git" ]]; then
+    echo "Warning: ${HOME} is a git repository. Untracked dotfiles under ${HOME} can break nix flake evaluation." >&2
+    echo "Consider removing ${HOME}/.git or moving DOTFILES_ROOT outside the repo." >&2
+fi
+
 # Ensure HOME points to a real user directory even in Nix build/sandbox contexts.
 # Some launchers can set HOME to /nix/store/*-source or other transient paths.
 if [[ -n "${USER:-}" ]]; then

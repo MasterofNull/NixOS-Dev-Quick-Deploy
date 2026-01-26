@@ -317,7 +317,14 @@ def load_model_with_retry() -> SentenceTransformer:
             # Load model with timeout (prevent hanging on network issues)
             @timeout_decorator(120)  # 2 minute timeout for model download
             def load():
-                return SentenceTransformer(MODEL_NAME, device="cpu")
+                cache_dir = os.getenv("TRANSFORMERS_CACHE") or os.getenv("HF_HOME")
+                return SentenceTransformer(
+                    MODEL_NAME,
+                    device="cpu",
+                    trust_remote_code=True,
+                    cache_folder=cache_dir,
+                    local_files_only=True,
+                )
 
             model = load()
 

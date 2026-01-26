@@ -36,7 +36,7 @@ spec:
             - name: PODMAN_API_VERSION
               value: v4.0.0
           image: localhost/compose_container-engine:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           livenessProbe:
             exec:
               command:
