@@ -451,6 +451,11 @@ phase_05_declarative_deployment() {
             return 1
         fi
 
+        if declare -F cleanup_preflight_profile_packages >/dev/null 2>&1; then
+            print_info "Cleaning preflight nix-env packages to prevent file collisions..."
+            cleanup_preflight_profile_packages
+        fi
+
         if [[ -d "$HM_CONFIG_DIR" ]]; then
             local hm_backup_issue=false
             while IFS= read -r backup_path; do
