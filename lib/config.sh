@@ -2438,10 +2438,16 @@ generate_nixos_system_config() {
 
     if [[ "$NIXOS_VERSION" != "unstable" ]]; then
         local resolved_state_version
+        local requested_state_version
+        requested_state_version=$(normalize_release_version "$NIXOS_VERSION")
         resolved_state_version=$(resolve_nixos_release_version "$NIXOS_VERSION")
         emit_nixos_channel_fallback_notice
         NIXOS_VERSION="$resolved_state_version"
-        STATE_VERSION="$resolved_state_version"
+        if [[ "$requested_state_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            STATE_VERSION="$requested_state_version"
+        else
+            STATE_VERSION="$resolved_state_version"
+        fi
     else
         # When tracking unstable, keep detected release information for templates/stateVersion
         STATE_VERSION="$DETECTED_NIXOS_VERSION"
@@ -3842,8 +3848,13 @@ create_home_manager_config() {
 
     local selected_state="${SELECTED_NIXOS_VERSION:-$STATE_VERSION}"
     if [[ "$selected_state" != "unstable" ]]; then
+        local requested_state_version
+        requested_state_version=$(normalize_release_version "$selected_state")
         STATE_VERSION=$(resolve_nixos_release_version "$selected_state")
         emit_nixos_channel_fallback_notice
+        if [[ "$requested_state_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            STATE_VERSION="$requested_state_version"
+        fi
     fi
     local HM_CHANNEL_NAME="${HOME_MANAGER_CHANNEL_REF:-$(normalize_channel_name "$HM_CHANNEL")}"
     local resolved_hm_version=""

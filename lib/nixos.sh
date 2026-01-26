@@ -108,6 +108,32 @@ normalize_channel_name() {
 }
 
 # ============================================================================
+# Normalize Release Version
+# ============================================================================
+# Purpose: Extract a major.minor release string from mixed inputs.
+# Examples:
+#   "nixos-26.05" → "26.05"
+#   "26.05.20260115.abc123" → "26.05"
+#   "release-25.11" → "25.11"
+# ============================================================================
+normalize_release_version() {
+    local raw="$1"
+
+    if [[ -z "$raw" ]]; then
+        echo ""
+        return 0
+    fi
+
+    raw="${raw#nixos-}"
+    raw="${raw#release-}"
+    raw=$(printf '%s' "$raw" | cut -d'.' -f1-2)
+    raw=${raw%%pre*}
+    raw=${raw%%-*}
+
+    echo "$raw"
+}
+
+# ============================================================================
 # Extract URL Host
 # ============================================================================
 # Purpose: Return the hostname component of a URL. Helps preflight DNS

@@ -427,6 +427,210 @@ I've created the complete migration plan: **[K3S-PORTAINER-MIGRATION-PLAN.md](K3
 - [ ] Configure TLS certificates for external access (needs domain/email)
 - [ ] Review and restrict network policies (baseline manifests added; needs CNI enforcement)
 
+---
+
+## 🏥 Hospital AI HIPAA Compliance Recommendations (January 2026)
+
+Based on the latest HIPAA Security Rule updates (January 6, 2025) and OCR Cybersecurity Newsletter (January 2026), here are critical compliance requirements for your hospital AI stack.
+
+### Sources Consulted:
+- [HHS OCR Cybersecurity Newsletter - January 2026](https://www.hhs.gov/hipaa/for-professionals/security/guidance/cybersecurity-newsletter-january-2026/index.html)
+- [System Hardening, HIPAA, and ePHI Protection - Foley Hoag](https://foleyhoag.com/news-and-insights/blogs/security-privacy-and-the-law/2026/january/system-hardening-hipaa-and-the-practical-path-to-protecting-ephi/)
+- [HIPAA Compliance AI Best Practices - EdenLab](https://edenlab.io/blog/hipaa-compliant-ai-best-practices)
+- [Kubernetes Compliance Under HIPAA - ARMO](https://www.armosec.io/blog/kubernetes-compliance-under-hipaa/)
+- [HIPAA Compliance in Kubernetes - Hoop.dev](https://hoop.dev/blog/hipaa-compliance-in-kubernetes-guardrails-for-technical-safeguards/)
+
+### ✅ Current Compliance Status (Your Stack)
+
+| Requirement | Status | Notes |
+|------------|--------|-------|
+| **Local LLM (No Cloud PHI)** | ✅ Compliant | llama-cpp runs entirely on-premises |
+| **AutoGPT Disabled** | ✅ Compliant | Scaled to 0 replicas (no external API calls) |
+| **Strong Secrets** | ✅ Compliant | 256-bit entropy passwords, no defaults |
+| **Audit Logging** | ✅ Partial | Loki + Promtail deployed; K8s audit logs needed |
+| **Encryption at Rest** | ⚠️ Needed | PostgreSQL + Qdrant volumes need encryption |
+| **Encryption in Transit** | ⚠️ Needed | Internal services use HTTP; TLS recommended |
+| **RBAC** | ⚠️ Partial | K8s RBAC enabled; service accounts need review |
+| **Network Policies** | ⚠️ Needed | Pod-to-pod isolation not enforced |
+| **Backup Encryption** | ⚠️ Needed | CronJobs run but backups unencrypted |
+
+### 🔧 Recommended Actions
+
+#### Priority 1: System Hardening (OCR January 2026 Focus)
+
+Per the OCR Newsletter, system hardening is the process of reducing attack surface:
+
+```bash
+# 1. Enable Kubernetes Audit Logging
+# Add to /etc/rancher/k3s/config.yaml:
+kube-apiserver-arg:
+  - "audit-log-path=/var/log/kubernetes/audit.log"
+  - "audit-log-maxage=30"
+  - "audit-log-maxbackup=10"
+  - "audit-policy-file=/etc/rancher/k3s/audit-policy.yaml"
+
+# 2. Create audit policy for PHI access tracking
+cat > /etc/rancher/k3s/audit-policy.yaml << 'EOF'
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+  - level: RequestResponse
+    resources:
+    - group: ""
+      resources: ["secrets", "configmaps"]
+  - level: Metadata
+    resources:
+    - group: ""
+      resources: ["pods", "services"]
+EOF
+```
+
+#### Priority 2: Network Isolation
+
+```yaml
+# ai-stack/kubernetes/network-policies/deny-all.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: ai-stack
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+---
+# Allow only necessary internal traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ai-stack-internal
+  namespace: ai-stack
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ai-stack
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: ai-stack
+```
+
+#### Priority 3: PHI De-identification
+
+If processing patient data, implement Safe Harbor de-identification:
+
+```python
+# ai-stack/mcp-servers/shared/phi_deidentifier.py
+HIPAA_IDENTIFIERS = [
+    "name", "address", "dates", "phone", "fax", "email",
+    "ssn", "mrn", "health_plan_id", "account_number",
+    "certificate_license", "vehicle_id", "device_id",
+    "url", "ip_address", "biometric", "photo", "any_unique_id"
+]
+
+def deidentify_text(text: str) -> str:
+    """Remove all 18 HIPAA identifiers from text before LLM processing"""
+    # Use NLP/regex to detect and redact PHI
+    pass
+```
+
+#### Priority 4: Encryption Configuration
+
+```bash
+# Enable volume encryption (requires LUKS on NixOS)
+# In configuration.nix:
+boot.initrd.luks.devices."ai-data" = {
+  device = "/dev/disk/by-uuid/YOUR-UUID";
+  preLVM = true;
+};
+
+# TLS for internal services (cert-manager recommended)
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+```
+
+### 📋 HIPAA Compliance Checklist
+
+**Administrative Safeguards:**
+- [ ] Designate Security Officer for AI systems
+- [ ] Document AI system risk assessment
+- [ ] Create incident response plan for AI failures
+- [ ] Establish AI algorithm quality control process
+- [ ] Train staff on AI output interpretation
+
+**Physical Safeguards:**
+- [x] Server room access controls (NixOS host)
+- [ ] Device encryption (LUKS recommended)
+- [ ] Backup media encryption
+
+**Technical Safeguards:**
+- [x] Access controls (K8s RBAC, API keys)
+- [ ] Audit controls (K8s audit logging)
+- [x] Integrity controls (checksums, immutable images)
+- [ ] Transmission security (TLS everywhere)
+- [x] Authentication (API keys, no anonymous access)
+
+### 🚨 Business Associate Agreement (BAA) Notes
+
+Your current stack is **self-hosted and does not require a BAA** because:
+- ✅ No third-party AI APIs (local llama-cpp)
+- ✅ No cloud storage of PHI
+- ✅ All processing on-premises
+
+**Warning:** If you enable AutoGPT or use external LLM APIs, you MUST:
+1. Sign a BAA with the API provider
+2. Ensure the provider is HIPAA-eligible
+3. Document data flows in your risk assessment
+
+### 📊 Monitoring Requirements for Healthcare AI
+
+Per HIPAA audit control requirements, your Prometheus/Grafana stack should track:
+
+```yaml
+# Hospital AI Stack Alerts (add to Prometheus rules)
+groups:
+- name: hipaa-compliance
+  rules:
+  - alert: UnauthorizedAccessAttempt
+    expr: rate(aidb_http_requests_total{status="401"}[5m]) > 0.1
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Potential unauthorized access attempts detected"
+
+  - alert: CircuitBreakerOpen
+    expr: aidb_circuit_breaker_state != 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Service degradation - circuit breaker open"
+
+  - alert: AuditLogGap
+    expr: absent(up{job="loki"}) == 1
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Audit logging service unavailable - HIPAA violation risk"
+```
+
+### 🎯 Recommended Implementation Order
+
+1. **Week 1:** Enable K8s audit logging + network policies
+2. **Week 2:** Implement TLS for all internal services
+3. **Week 3:** Volume encryption + backup encryption
+4. **Week 4:** PHI de-identification pipeline (if processing patient data)
+5. **Ongoing:** Staff training, documentation, quarterly audits
+
 **Tell me what you want to do:**
 
 1. **"Let's start the migration"** - I'll begin Phase 1 (Backup) right now
