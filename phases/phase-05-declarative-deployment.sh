@@ -379,15 +379,29 @@ phase_05_declarative_deployment() {
         echo ""
     fi
 
-    # Hard-stop if python3 still exists in the home-manager profile (causes file collisions).
-    local hm_profile="${HOME}/.local/state/nix/profiles/home-manager"
-    if command -v nix >/dev/null 2>&1 && [[ -e "$hm_profile" ]]; then
-        if nix profile list --profile "$hm_profile" 2>/dev/null | rg -q "^\\d+\\s+python3|\\bpython3"; then
-            print_error "home-manager profile still contains python3; this will collide with home-manager-path."
-            print_info "Fix by removing it before retrying:"
-            print_info "  nix profile list --profile $hm_profile"
-            print_info "  nix profile remove <index> --profile $hm_profile"
+    # Aggressively clean the home-manager profile to prevent file collisions (frameobject.h, etc.)
+    if declare -F aggressively_clean_home_manager_profile >/dev/null 2>&1; then
+        if ! aggressively_clean_home_manager_profile; then
+            print_error "Failed to clean home-manager profile before switch"
+            print_error "This will cause file collisions (e.g., frameobject.h) and prevent deployment"
+            print_info "Manual cleanup required before retrying Phase 5"
             return 1
+        fi
+    else
+        # Fallback if the function isn't available (shouldn't happen, but defensive)
+        local hm_profile="${HOME}/.local/state/nix/profiles/home-manager"
+        if command -v nix >/dev/null 2>&1 && [[ -e "$hm_profile" ]]; then
+            local python_check
+            python_check=$(nix profile list --profile "$hm_profile" 2>/dev/null | grep -iE 'python3' || true)
+            if [[ -n "$python_check" ]]; then
+                print_error "home-manager profile still contains python3; this will collide with home-manager-path."
+                print_info "Detected packages:"
+                echo "$python_check" | sed 's/^/  /'
+                print_info "Fix by removing them before retrying:"
+                print_info "  nix profile list --profile $hm_profile"
+                print_info "  nix profile remove <index> --profile $hm_profile"
+                return 1
+            fi
         fi
     fi
 
@@ -470,9 +484,18 @@ phase_05_declarative_deployment() {
             return 1
         fi
 
+        # Final cleanup pass right before the switch
         if declare -F cleanup_preflight_profile_packages >/dev/null 2>&1; then
-            print_info "Cleaning preflight nix-env packages to prevent file collisions..."
+            print_info "Final cleanup of preflight nix-env packages to prevent file collisions..."
             cleanup_preflight_profile_packages
+        fi
+
+        # Double-check home-manager profile is clean right before switch
+        if declare -F aggressively_clean_home_manager_profile >/dev/null 2>&1; then
+            if ! aggressively_clean_home_manager_profile; then
+                print_error "Home-manager profile cleanup failed immediately before switch"
+                return 1
+            fi
         fi
 
         if [[ -d "$HM_CONFIG_DIR" ]]; then

@@ -619,6 +619,7 @@ PY
     if command -v nix >/dev/null 2>&1; then
         local hm_profile="${HOME}/.local/state/nix/profiles/home-manager"
         if [[ -L "$hm_profile" || -d "$hm_profile" ]]; then
+            print_info "Checking home-manager profile for conflicting packages..."
             local hm_json=""
             hm_json=$(nix profile list --json --profile "$hm_profile" 2>/dev/null || true)
             if [[ -n "$hm_json" && "$hm_json" != "[]" ]]; then
@@ -650,6 +651,7 @@ PY
                     )
                 fi
                 if [[ -n "$hm_indices" ]]; then
+                    print_warning "Found conflicting packages in home-manager profile, removing them..."
                     local hm_idx
                     while IFS= read -r hm_idx; do
                         [[ -z "$hm_idx" ]] && continue
@@ -659,6 +661,8 @@ PY
                             print_warning "Failed to remove home-manager profile entry at index $hm_idx"
                         fi
                     done <<< "$hm_indices"
+                else
+                    print_info "No conflicting packages found in home-manager profile (JSON check)"
                 fi
             else
                 # Fallback: parse human-readable output if JSON unavailable
@@ -672,6 +676,7 @@ PY
                         }
                     }' || true)
                 if [[ -n "$hm_line_indices" ]]; then
+                    print_warning "Found conflicting packages in home-manager profile, removing them..."
                     local hm_idx
                     while IFS= read -r hm_idx; do
                         [[ -z "$hm_idx" ]] && continue
@@ -681,10 +686,130 @@ PY
                             print_warning "Failed to remove home-manager profile entry at index $hm_idx"
                         fi
                     done <<< "$hm_line_indices"
+                else
+                    print_info "No conflicting packages found in home-manager profile (text check)"
                 fi
             fi
+        else
+            print_info "Home-manager profile not yet initialized"
         fi
     fi
 
+    return 0
+}
+
+# ============================================================================
+# Aggressively Clean Home Manager Profile
+# ============================================================================
+# Purpose: Nuclear option to ensure home-manager profile is completely clean
+# before home-manager switch to prevent frameobject.h and similar collisions
+# Returns:
+#   0 - Success (profile is clean)
+#   1 - Failed to clean (python3 or other conflicts still present)
+# ============================================================================
+aggressively_clean_home_manager_profile() {
+    local hm_profile="${HOME}/.local/state/nix/profiles/home-manager"
+
+    if ! command -v nix >/dev/null 2>&1; then
+        print_warning "nix command not available, cannot clean home-manager profile"
+        return 0
+    fi
+
+    # If profile doesn't exist yet, nothing to clean
+    if [[ ! -e "$hm_profile" ]]; then
+        print_info "Home-manager profile not yet initialized (nothing to clean)"
+        return 0
+    fi
+
+    print_section "Aggressively Cleaning Home-Manager Profile"
+    echo ""
+    print_info "Ensuring no conflicting packages exist in: $hm_profile"
+
+    # Show current profile contents for debugging
+    print_info "Current home-manager profile contents:"
+    if nix profile list --profile "$hm_profile" 2>/dev/null | head -20; then
+        echo ""
+    else
+        print_warning "Could not list home-manager profile contents"
+        return 0
+    fi
+
+    # Multiple cleanup passes to catch any stragglers
+    local cleanup_pass=1
+    local max_passes=3
+    local cleaned_something=false
+
+    while (( cleanup_pass <= max_passes )); do
+        print_info "Cleanup pass $cleanup_pass of $max_passes..."
+
+        local found_conflicts=false
+        local profile_output
+        profile_output=$(nix profile list --profile "$hm_profile" 2>/dev/null || true)
+
+        if [[ -z "$profile_output" ]]; then
+            print_info "Profile is empty or unreadable"
+            break
+        fi
+
+        # Check for python3 and other conflicting packages
+        # Look in both the package name and the store path
+        local conflict_lines
+        conflict_lines=$(echo "$profile_output" | grep -iE 'python3|huggingface-hub|shellcheck|slirp4netns|fuse3|^[[:space:]]*[0-9]+[[:space:]]+git[[:space:]]' || true)
+
+        if [[ -n "$conflict_lines" ]]; then
+            found_conflicts=true
+            print_warning "Found conflicting packages in pass $cleanup_pass:"
+            echo "$conflict_lines" | sed 's/^/  /'
+            echo ""
+
+            # Extract indices and remove them
+            local indices
+            indices=$(echo "$conflict_lines" | awk '{print $1}' | sed 's/://g')
+
+            if [[ -n "$indices" ]]; then
+                while IFS= read -r idx; do
+                    [[ -z "$idx" ]] && continue
+                    print_info "Removing profile entry at index: $idx"
+                    if nix profile remove "$idx" --profile "$hm_profile" 2>&1 | tee /dev/tty; then
+                        print_success "Removed index $idx"
+                        cleaned_something=true
+                    else
+                        print_error "Failed to remove index $idx from home-manager profile"
+                        print_info "You may need to manually run: nix profile remove $idx --profile $hm_profile"
+                    fi
+                done <<< "$indices"
+            fi
+        else
+            print_success "No conflicting packages found in pass $cleanup_pass"
+            break
+        fi
+
+        cleanup_pass=$((cleanup_pass + 1))
+        sleep 1  # Brief pause between passes
+    done
+
+    # Final verification
+    print_info "Final verification of home-manager profile..."
+    local final_check
+    final_check=$(nix profile list --profile "$hm_profile" 2>/dev/null | grep -iE 'python3|huggingface' || true)
+
+    if [[ -n "$final_check" ]]; then
+        print_error "Home-manager profile still contains conflicting packages after cleanup:"
+        echo "$final_check" | sed 's/^/  /'
+        echo ""
+        print_error "This will cause file collisions (frameobject.h) during home-manager switch"
+        print_info "Manual cleanup required:"
+        print_info "  nix profile list --profile $hm_profile"
+        print_info "  nix profile remove <index> --profile $hm_profile"
+        return 1
+    fi
+
+    if [[ "$cleaned_something" == true ]]; then
+        print_success "Successfully cleaned home-manager profile"
+    else
+        print_success "Home-manager profile was already clean"
+    fi
+
+    echo ""
     return 0
 }
