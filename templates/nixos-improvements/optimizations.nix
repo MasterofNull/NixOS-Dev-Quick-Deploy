@@ -21,7 +21,7 @@
   # =========================================================================
 
   # Enable Rust-based bashless initialization (20-30% faster boot)
-  boot.initrd.systemd.enable = true;
+  boot.initrd.systemd.enable = lib.mkDefault true;
 
   # NixOS-Init (available in 25.11+; enabled here for 26.05)
   # Faster boot times with no bash dependency in initrd
@@ -120,12 +120,12 @@
   nix.settings = {
     # Use all CPU cores for builds
     max-jobs = lib.mkDefault 0; # 0 means auto
-    cores = 0;  # Use all available cores per build
+    cores = lib.mkDefault 0;  # Use all available cores per build
 
     # Build optimization
-    builders-use-substitutes = true;
-    keep-outputs = true;
-    keep-derivations = true;
+    builders-use-substitutes = lib.mkDefault true;
+    keep-outputs = lib.mkDefault true;
+    keep-derivations = lib.mkDefault true;
 
     # Garbage collection thresholds
     min-free = lib.mkDefault (5 * 1024 * 1024 * 1024);   # Keep 5GB free
@@ -147,13 +147,13 @@
     ];
 
     # Auto-optimize store
-    auto-optimise-store = true;
+    auto-optimise-store = lib.mkDefault true;
   };
 
   # Automatic Nix store optimization (deduplicate files)
   nix.optimise = {
-    automatic = true;
-    dates = [ "weekly" ];
+    automatic = lib.mkDefault true;
+    dates = lib.mkDefault [ "weekly" ];
   };
 
   # =========================================================================
@@ -177,8 +177,8 @@
   # Reduce systemd timeout for faster service startup/shutdown
   systemd.settings = {
     Manager = {
-      DefaultTimeoutStartSec = "15s";
-      DefaultTimeoutStopSec = "15s";
+      DefaultTimeoutStartSec = lib.mkDefault "15s";
+      DefaultTimeoutStopSec = lib.mkDefault "15s";
     };
   };
 
@@ -198,8 +198,8 @@
   boot.loader.timeout = lib.mkDefault 3;
 
   # Keep fewer old generations in bootloader
-  boot.loader.grub.configurationLimit = 10;
-  boot.loader.systemd-boot.configurationLimit = 10;
+  boot.loader.grub.configurationLimit = lib.mkDefault 10;
+  boot.loader.systemd-boot.configurationLimit = lib.mkDefault 10;
 
   # =========================================================================
   # Development Tools Performance
@@ -231,7 +231,7 @@
 
   boot.tmp = {
     useTmpfs = lib.mkDefault true;
-    tmpfsSize = "50%";  # Use up to 50% of RAM for /tmp
+    tmpfsSize = lib.mkDefault "50%";  # Use up to 50% of RAM for /tmp
   };
 
   # =========================================================================
