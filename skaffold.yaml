@@ -1,0 +1,49 @@
+apiVersion: skaffold/v4beta7
+kind: Config
+metadata:
+  name: nixos-quick-deploy
+build:
+  tagPolicy:
+    gitCommit:
+      variant: AbbrevCommitSha
+  local:
+    push: true
+    useDockerCLI: true
+    useBuildkit: false
+  artifacts:
+    - image: localhost:5000/compose_aidb
+      context: ai-stack/mcp-servers
+      docker:
+        dockerfile: aidb/Dockerfile
+    - image: localhost:5000/compose_embeddings
+      context: ai-stack/mcp-servers
+      docker:
+        dockerfile: embeddings-service/Dockerfile
+    - image: localhost:5000/compose_hybrid-coordinator
+      context: ai-stack/mcp-servers
+      docker:
+        dockerfile: hybrid-coordinator/Dockerfile
+    - image: localhost:5000/compose_ralph-wiggum
+      context: ai-stack/mcp-servers
+      docker:
+        dockerfile: ralph-wiggum/Dockerfile
+    - image: localhost:5000/compose_container-engine
+      context: ai-stack/mcp-servers
+      docker:
+        dockerfile: container-engine/Dockerfile
+    - image: localhost:5000/compose_dashboard-api
+      context: dashboard/backend
+      docker:
+        dockerfile: Dockerfile
+    - image: localhost:5000/compose_aider-wrapper
+      context: ai-stack/mcp-servers
+      docker:
+        dockerfile: aider-wrapper/Dockerfile
+    - image: localhost:5000/compose_nixos-docs
+      context: ai-stack/mcp-servers
+      docker:
+        dockerfile: nixos-docs/Dockerfile
+manifests:
+  kustomize:
+    paths:
+      - ai-stack/kustomize/overlays/dev

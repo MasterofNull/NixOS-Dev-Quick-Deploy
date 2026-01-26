@@ -68,7 +68,7 @@ spec:
             - configMapRef:
                 name: env
           image: localhost/compose_ralph-wiggum:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           name: local-ai-ralph-wiggum
           ports:
             - containerPort: 8098

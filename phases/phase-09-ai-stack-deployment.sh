@@ -177,6 +177,7 @@ phase_09_ai_stack_deployment() {
     append_if_missing "LLAMA_PARALLEL" "4"
     append_if_missing "POSTGRES_DB" "mcp"
     append_if_missing "POSTGRES_USER" "mcp"
+    append_if_missing "EMBEDDING_MODEL" "BAAI/bge-small-en-v1.5"
     append_if_missing "HUGGING_FACE_HUB_TOKEN" "${HUGGINGFACEHUB_API_TOKEN:-}"
     append_if_missing "LOCAL_CONFIDENCE_THRESHOLD" "0.7"
     append_if_missing "HIGH_VALUE_THRESHOLD" "0.7"
@@ -207,6 +208,19 @@ phase_09_ai_stack_deployment() {
     set +a
 
     export POSTGRES_URL="postgresql://${POSTGRES_USER:-mcp}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB:-mcp}"
+
+    # Pre-warm embeddings cache for offline/air-gapped usage
+    local embeddings_cache_dir="${AI_STACK_DATA}/embeddings/cache"
+    if [[ -f "${SCRIPT_DIR}/scripts/download-embeddings-model.sh" ]]; then
+        log_info "Pre-warming embeddings cache (${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5})..."
+        mkdir -p "${embeddings_cache_dir}"
+        EMBEDDING_MODEL="${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}" \
+        EMBEDDINGS_CACHE_DIR="${embeddings_cache_dir}" \
+        bash "${SCRIPT_DIR}/scripts/download-embeddings-model.sh" \
+            || log_warning "Embeddings cache prewarm failed; service will attempt download at runtime."
+    else
+        log_warning "Embeddings download script not found; skipping prewarm."
+    fi
 
     # Start AI stack containers
     log_info "Starting AI stack containers..."

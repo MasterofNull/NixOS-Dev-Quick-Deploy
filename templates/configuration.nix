@@ -263,6 +263,17 @@ in
     ];
   };
 
+  # Local registry for deterministic image rollouts (k3s/containerd)
+  environment.etc."rancher/k3s/registries.yaml".text = ''
+    mirrors:
+      "localhost:5000":
+        endpoint:
+          - "http://localhost:5000"
+      "127.0.0.1:5000":
+        endpoint:
+          - "http://127.0.0.1:5000"
+  '';
+
   # Rootless Podman socket (user) + system-level symlink for K3s
   systemd.user.sockets.podman = {
     enable = true;

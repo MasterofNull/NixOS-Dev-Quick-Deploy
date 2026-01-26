@@ -560,6 +560,35 @@ resources:
 
 ---
 
+## Local Registry + Kustomize Workflow
+
+### Start local registry
+
+```bash
+./scripts/local-registry.sh start
+```
+
+### Publish locally built images
+
+```bash
+TAG=dev ALSO_TAG_DEV=1 ./scripts/publish-local-registry.sh
+```
+
+### Deploy with Kustomize (dev overlay)
+
+```bash
+kubectl apply -k ai-stack/kustomize/overlays/dev
+```
+
+### Skaffold (optional)
+
+```bash
+DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock \
+  skaffold dev
+```
+
+---
+
 ## Support
 
 - **Documentation:** See `/docs/` directory
