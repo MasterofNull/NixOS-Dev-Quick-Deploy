@@ -1,49 +1,246 @@
+# Skaffold Configuration for Hospital AI Stack
+# Supports dev, staging, and production workflows with GitOps integration
+# Version: 2.0.0 (January 2026)
 apiVersion: skaffold/v4beta7
 kind: Config
 metadata:
-  name: nixos-quick-deploy
+  name: hospital-ai-stack
+  annotations:
+    hipaa-compliance: required
+    maintainer: "AI Stack Team"
+
+# ============================================================================
+# Build Configuration - Common across all profiles
+# ============================================================================
 build:
   tagPolicy:
     gitCommit:
       variant: AbbrevCommitSha
+      ignoreChanges: true  # Use exact commit SHA, ignore dirty state
   local:
     push: true
     useDockerCLI: true
-    useBuildkit: false
+    useBuildkit: true
+    concurrency: 4  # Parallel builds for faster iteration
+
+  # Custom service images built from Dockerfiles
   artifacts:
+    # Core MCP Services
     - image: localhost:5000/compose_aidb
       context: ai-stack/mcp-servers
       docker:
         dockerfile: aidb/Dockerfile
+        cacheFrom:
+          - localhost:5000/compose_aidb:cache
+      sync:
+        manual:
+          - src: "aidb/**/*.py"
+            dest: /app
+
     - image: localhost:5000/compose_embeddings
       context: ai-stack/mcp-servers
       docker:
         dockerfile: embeddings-service/Dockerfile
+        cacheFrom:
+          - localhost:5000/compose_embeddings:cache
+
     - image: localhost:5000/compose_hybrid-coordinator
       context: ai-stack/mcp-servers
       docker:
         dockerfile: hybrid-coordinator/Dockerfile
+        cacheFrom:
+          - localhost:5000/compose_hybrid-coordinator:cache
+      sync:
+        manual:
+          - src: "hybrid-coordinator/**/*.py"
+            dest: /app
+
     - image: localhost:5000/compose_ralph-wiggum
       context: ai-stack/mcp-servers
       docker:
         dockerfile: ralph-wiggum/Dockerfile
+        cacheFrom:
+          - localhost:5000/compose_ralph-wiggum:cache
+      sync:
+        manual:
+          - src: "ralph-wiggum/**/*.py"
+            dest: /app
+
     - image: localhost:5000/compose_container-engine
       context: ai-stack/mcp-servers
       docker:
         dockerfile: container-engine/Dockerfile
+        cacheFrom:
+          - localhost:5000/compose_container-engine:cache
+
+    # Dashboard API
     - image: localhost:5000/compose_dashboard-api
       context: dashboard/backend
       docker:
         dockerfile: Dockerfile
+        cacheFrom:
+          - localhost:5000/compose_dashboard-api:cache
+
+    # Development Tools
     - image: localhost:5000/compose_aider-wrapper
       context: ai-stack/mcp-servers
       docker:
         dockerfile: aider-wrapper/Dockerfile
+        cacheFrom:
+          - localhost:5000/compose_aider-wrapper:cache
+
     - image: localhost:5000/compose_nixos-docs
       context: ai-stack/mcp-servers
       docker:
         dockerfile: nixos-docs/Dockerfile
+        cacheFrom:
+          - localhost:5000/compose_nixos-docs:cache
+
+# ============================================================================
+# Default Manifests (Dev Environment)
+# ============================================================================
 manifests:
   kustomize:
     paths:
       - ai-stack/kustomize/overlays/dev
+
+# ============================================================================
+# Deployment Configuration
+# ============================================================================
+deploy:
+  kubectl:
+    defaultNamespace: ai-stack
+    flags:
+      apply:
+        - "--validate=true"
+      delete:
+        - "--wait=true"
+  statusCheckDeadlineSeconds: 300
+
+# ============================================================================
+# Port Forwarding for Development
+# ============================================================================
+portForward:
+  - resourceType: service
+    resourceName: aidb
+    namespace: ai-stack
+    port: 8091
+    localPort: 8091
+  - resourceType: service
+    resourceName: grafana
+    namespace: ai-stack
+    port: 3002
+    localPort: 3002
+  - resourceType: service
+    resourceName: prometheus
+    namespace: ai-stack
+    port: 9090
+    localPort: 9090
+  - resourceType: service
+    resourceName: ralph-wiggum
+    namespace: ai-stack
+    port: 8098
+    localPort: 8098
+
+# ============================================================================
+# Profiles for Different Environments
+# ============================================================================
+profiles:
+  # Development Profile - Fast iteration with file sync
+  - name: dev
+    activation:
+      - kubeContext: default
+        command: dev
+    manifests:
+      kustomize:
+        paths:
+          - ai-stack/kustomize/overlays/dev
+    deploy:
+      statusCheckDeadlineSeconds: 180
+
+  # Staging Profile - Mirrors production but with debug capabilities
+  - name: staging
+    activation:
+      - kubeContext: staging
+    build:
+      tagPolicy:
+        sha256: {}
+    manifests:
+      kustomize:
+        paths:
+          - ai-stack/kustomize/overlays/staging
+    deploy:
+      statusCheckDeadlineSeconds: 300
+
+  # Production Profile - Full GitOps workflow via ArgoCD
+  - name: prod
+    activation:
+      - kubeContext: production
+    build:
+      tagPolicy:
+        gitCommit:
+          variant: Tags
+          ignoreChanges: false
+    manifests:
+      kustomize:
+        paths:
+          - ai-stack/kustomize/overlays/prod
+    deploy:
+      statusCheckDeadlineSeconds: 600
+      kubectl:
+        flags:
+          apply:
+            - "--validate=strict"
+            - "--dry-run=server"
+
+  # CI Profile - Build and push only (no deploy)
+  - name: ci
+    build:
+      tagPolicy:
+        sha256: {}
+      local:
+        push: true
+        useDockerCLI: true
+        useBuildkit: true
+    manifests:
+      rawYaml: []  # No manifests in CI, just build
+
+  # ArgoCD Sync Profile - Trigger ArgoCD sync after build
+  - name: gitops
+    build:
+      tagPolicy:
+        gitCommit:
+          variant: AbbrevCommitSha
+    manifests:
+      rawYaml: []  # ArgoCD manages manifests
+    deploy:
+      kubectl: {}
+    verify:
+      - name: argocd-sync
+        container:
+          name: argocd-cli
+          image: argoproj/argocd:v2.9.0
+          command: ["argocd"]
+          args:
+            - app
+            - sync
+            - ai-stack-core
+            - --server
+            - argocd-server.argocd.svc.cluster.local
+            - --insecure
+
+# ============================================================================
+# Resource Selectors for Partial Deploys
+# ============================================================================
+resourceSelector:
+  allow:
+    - groupKind: "Deployment.apps"
+    - groupKind: "Service"
+    - groupKind: "ConfigMap"
+    - groupKind: "Secret"
+    - groupKind: "ServiceAccount"
+    - groupKind: "PersistentVolumeClaim"
+  deny:
+    - groupKind: "LimitRange"
+    - groupKind: "ResourceQuota"
+

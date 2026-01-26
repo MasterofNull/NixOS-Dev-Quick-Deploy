@@ -1,0 +1,116 @@
+# HIPAA-Compliant Network Policies for Hospital AI Stack
+# Per OCR Cybersecurity Newsletter January 2026 - System Hardening Requirements
+# Requires a CNI that supports NetworkPolicy (e.g., Calico, Cilium)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: ai-stack
+  labels:
+    hipaa-compliance: required
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-internal-ai-stack
+  namespace: ai-stack
+  labels:
+    hipaa-compliance: required
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ai-stack
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ai-stack
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+---
+# Allow Prometheus to scrape all services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: ai-stack
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          io.kompose.service: prometheus
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 8081
+    - protocol: TCP
+      port: 8091
+    - protocol: TCP
+      port: 8092
+    - protocol: TCP
+      port: 8094
+    - protocol: TCP
+      port: 8098
+    - protocol: TCP
+      port: 9090
+---
+# Allow Grafana NodePort access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-grafana-external
+  namespace: ai-stack
+spec:
+  podSelector:
+    matchLabels:
+      io.kompose.service: grafana
+  policyTypes:
+  - Ingress
+  ingress:
+  - ports:
+    - protocol: TCP
+      port: 3002
+---
+# Allow Loki to receive logs from Promtail
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-loki-logging
+  namespace: logging
+spec:
+  podSelector:
+    matchLabels:
+      app: loki
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: logging
+    ports:
+    - protocol: TCP
+      port: 3100

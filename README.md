@@ -28,19 +28,8 @@ The AI stack is now a **first-class, public component** of this repository!
 ### Quick AI Stack Deployment
 
 ```bash
-# Deploy NixOS + complete AI development environment
-./nixos-quick-deploy.sh --with-ai-stack
-```
-
-### First-Time AI Stack Setup (Post-Deploy)
-
-```bash
-# Initialize local AI stack configuration
-./scripts/setup-config.sh
-./scripts/setup-ai-stack-secrets.sh
-
-# Start the services
-./scripts/ai-stack-manage.sh up
+# Deploy NixOS + complete AI development environment (single path)
+./nixos-quick-deploy.sh --with-k8s-stack
 ```
 
 This single command gives you:
@@ -109,9 +98,9 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`/docs/AI-STACK-FULL-INTEGRA
 **Quick Start:**
 
 ```bash
-./nixos-quick-deploy.sh --with-ai-stack  # Deploy everything
-./scripts/ai-stack-manage.sh up         # Start AI services
-./scripts/ai-stack-health.sh            # Check health
+./nixos-quick-deploy.sh --with-k8s-stack  # Deploy everything
+kubectl get pods -n ai-stack             # Check status
+python3 ai-stack/tests/test_hospital_e2e.py
 ```
 
 ### AI Stack Security Considerations
@@ -171,9 +160,7 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`/docs/AI-STACK-FULL-INTEGRA
 
 **Container Tools:**
 
-- Podman, Podman Compose
-- Buildah, Skopeo
-- Podman Desktop (Flatpak GUI)
+- K3s, kubectl, containerd
 
 **AI Services (Systemd):**
 
@@ -187,7 +174,7 @@ Pick the profile that matches your workflow during Phase 6:
 
 - **Core** – Balanced desktop with browsers, media tools, and developer essentials.
 - **AI Workstation** – Core profile plus Postman, DBeaver, VS Code, Bitwarden, and other data tooling.
-- **Minimal** – Lean recovery environment with Firefox, Obsidian, Flatseal, and Podman Desktop.
+- **Minimal** – Lean recovery environment with Firefox, Obsidian, Flatseal.
 
 The installer records your selection in `$STATE_DIR/preferences/flatpak-profile.env` and only applies deltas on future runs, dramatically cutting repeat deployment time. You can switch profiles any time—state is cached in `$STATE_DIR/preferences/flatpak-profile-state.env` so already-installed apps are preserved when possible.
 
@@ -266,7 +253,7 @@ The quick deploy runs this automatically after Phase 8, but you can rerun it any
 
 This will verify:
 
-- ✅ All core tools (podman, python3, node, etc.)
+- ✅ All core tools (k3s, kubectl, python3, node, etc.)
 - ✅ Nix ecosystem (home-manager, flakes)
 - ✅ AI tools (claude-wrapper, gpt-codex-wrapper, codex-wrapper, openai-wrapper, gooseai-wrapper, ollama, aider)
 - ✅ **Python AI/ML packages (60+ packages)**:
@@ -281,26 +268,15 @@ This will verify:
 - ✅ **AI Systemd Services** (Qdrant, Hugging Face TGI, Jupyter Lab, Gitea)
 - ✅ Environment variables & PATH
 
-### Podman Storage: Btrfs Recommended for AI Stack
+### K3s Runtime (Single Path)
 
-The deployer will prompt for the Podman storage driver. For AI stack workloads, use **Btrfs** when possible for fast snapshots and deduplication.
+The AI stack runs on K3s + containerd. Verify the runtime is ready:
 
-- **Sizing:** Minimum 150 GiB; **recommended 200–300 GiB** if you expect multiple large model images.
-- **Prepare a Btrfs data root** (if your root FS isn’t already Btrfs):
-  ```bash
-  sudo mkdir -p /var/lib/containers
-  sudo truncate -s 300G /var/lib/containers.btrfs
-  sudo mkfs.btrfs -L podman /var/lib/containers.btrfs
-  echo "/var/lib/containers.btrfs /var/lib/containers btrfs loop,compress=zstd,ssd,noatime 0 0" | sudo tee -a /etc/fstab
-  sudo mount -a
-  ```
-- **During the prompt:** select `btrfs`. If the backing FS is not Btrfs, you’ll see a warning reminding you to create the volume above.
-
-**Or verify manually:**
+**Verify manually:**
 
 ```bash
 # Check core tools
-podman --version
+kubectl version --client
 python3 --version
 node --version
 go version
@@ -366,7 +342,7 @@ home-manager switch --flake .#$(whoami)
 
 **Checks include:**
 
-- Core system tools (podman, git, curl, etc.)
+- Core system tools (k3s, kubectl, git, curl, etc.)
 - Programming languages (Python, Node.js, Go, Rust)
 - Nix ecosystem (home-manager, flakes)
 - AI tools (Claude Code, llama.cpp, Aider)
@@ -400,24 +376,13 @@ aidb-update      # Update flake dependencies
 source ~/.zshrc  # Or: exec zsh
 ```
 
-### AI Stack Management
-
-The local AI stack (llama.cpp, Open WebUI, Qdrant, MindsDB, AIDB) is managed via the `ai-stack-manage.sh` helper. The lower-level `hybrid-ai-stack.sh` still works, but `ai-stack-manage.sh` is the preferred entry point.
+### AI Stack Management (K3s)
 
 ```bash
-# Start or stop the entire stack
-./scripts/ai-stack-manage.sh up
-./scripts/ai-stack-manage.sh down
-
-# Check status or tail logs
-./scripts/ai-stack-manage.sh status
-./scripts/ai-stack-manage.sh logs
-
-# Restart if you change ai-optimizer configs
-./scripts/ai-stack-manage.sh restart
+kubectl get pods -n ai-stack
+kubectl rollout restart -n ai-stack deployment/aidb
+kubectl logs -n ai-stack deploy/aidb
 ```
-
-During NixOS Quick Deploy, Phase 5 prefetches every Podman image and Phase 6 downloads the default llama.cpp GGUF models (when that backend is selected and a Hugging Face token is present), so the first `ai-stack-manage.sh up` no longer stalls on multi-gigabyte downloads.
 
 ### CPU/iGPU-first model defaults
 
@@ -451,9 +416,8 @@ obsidian-ai-bootstrap
 ### Container Management
 
 ```bash
-podman pod ps       # List running pods
-podman ps           # List running containers
-podman-compose up   # Start services from compose file
+kubectl get pods -n ai-stack
+kubectl get svc -n ai-stack
 ```
 
 ### VSCodium / AI CLI wrappers
@@ -579,7 +543,7 @@ NixOS-Dev-Quick-Deploy/
 ```
 ✓ Backing up /etc/nixos/configuration.nix
 ✓ Adding COSMIC desktop configuration
-✓ Adding Podman virtualization
+✓ Adding K3s + containerd runtime support
 ✓ Enabling Nix flakes
 ✓ Allowing unfree packages
 Running: sudo nixos-rebuild switch
@@ -597,7 +561,6 @@ Running: home-manager switch
 ✓ Home-manager configuration applied!
 ✓ Updating current shell environment
 ✓ Verifying package installation
-  ✓ podman found at ~/.nix-profile/bin/podman
   ✓ python3 found at ~/.nix-profile/bin/python3
   ✓ All critical packages in PATH!
 ```
@@ -610,7 +573,6 @@ Running: home-manager switch
 ✓ Installing Obsidian
 ✓ Installing Cursor
 ✓ Installing LM Studio
-✓ Installing Podman Desktop
 ✓ Installing 7 more apps...
 ✓ All Flatpak applications installed!
 ```
@@ -841,7 +803,7 @@ You can still keep long-term configuration in `templates/home.nix → programs.v
 
 ### Packages Not in PATH
 
-**Issue:** `podman: command not found`, `home-manager: command not found`, or AI CLI wrappers (claude/gpt-codex/openai/gooseai) not found after installation
+**Issue:** `kubectl: command not found`, `home-manager: command not found`, or AI CLI wrappers (claude/gpt-codex/openai/gooseai) not found after installation
 
 **Solution:**
 
@@ -856,10 +818,14 @@ exec zsh
 source ~/.nix-profile/etc/profile.d/hm-session-vars.sh
 
 # Verify
-which podman
+which kubectl
 which home-manager
 which claude-wrapper
 which gpt-codex-wrapper
+which codex-wrapper
+which openai-wrapper
+which gooseai-wrapper
+```
 
 ### Boot Fails With "Root Account Is Locked" / Emergency Mode Loop
 
@@ -888,7 +854,7 @@ Additionally, the console font (`Lat2-Terminus16`) requires the `terminus_font` 
    ```bash
    sudo mount /dev/nvme0n1p2 /mnt  # Adjust device as needed
    sudo mount /dev/nvme0n1p1 /mnt/boot  # EFI partition
-````
+```
 
 3. Enter a chroot environment:
    ```bash
@@ -918,113 +884,29 @@ Additionally, the console font (`Lat2-Terminus16`) requires the `terminus_font` 
 [DEPEND] Dependency failed for Local File Systems
 ```
 
-**Cause:** Upstream Podman (and earlier revisions of this deploy script) defaulted to the kernel overlay driver, which is unsupported on filesystems such as ZFS. If an older configuration or manual override still points at `overlay`, systemd attempts to mount it during boot and fails before `local-fs.target` completes. Current releases fall back to the more conservative `vfs` driver when no filesystem-specific driver is detected, but lingering `overlay` entries from prior runs can still trigger the failure until the configuration is regenerated.
+**Cause:** Older Podman-based deployments could leave stale container storage configuration behind. The K3s path uses containerd, so legacy `/var/lib/containers` mounts should not be referenced by current runs. If you still see container storage mount failures, it usually means a legacy unit is still enabled.
 
-**Fix:** The generator now inspects the filesystem that backs `/var/lib/containers` and sets `virtualisation.containers.storage.settings.storage.driver` (for example `zfs`) so NixOS renders a compatible `/etc/containers/storage.conf`. When the existing file still pins a conflicting driver (for example a legacy `overlay` entry) the detector attempts to rewrite `/etc/containers/storage.conf` in place—saving a timestamped `.bak` next to the file **and** archiving a copy under `~/.cache/nixos-quick-deploy/backups/<timestamp>/etc/containers/storage.conf`—so the system starts using the new driver immediately. If permissions block the repair it prints a warning so you can regenerate before rebooting. Regenerate your configuration and rebuild:
-
-1. Confirm the backing filesystem (optional):
-   ```bash
-   findmnt -no FSTYPE,SOURCE /var/lib/containers
-   ```
-2. Regenerate configs so the new storage detection runs:
-   ```bash
-   cd ~/NixOS-Dev-Quick-Deploy
-   ./nixos-quick-deploy.sh --resume
-   ```
-3. Rebuild and activate the system profile:
-   ```bash
-   sudo nixos-rebuild switch --flake ~/.dotfiles/home-manager
-   ```
-4. Verify Podman is using the new driver:
-   ```bash
-   sudo podman info --format '{{.Store.GraphDriverName}}'
-   ```
-
-On the next reboot the mount units no longer reference overlay paths, so the system reaches the login screen normally.
-
-**Update:** Overlay storage support has been removed from the generator. Phase 1
-now enforces `vfs`, `btrfs`, or `zfs` and refuses to reintroduce legacy overlay
-entries, so regenerated configurations stop creating overlay mount units and
-systemd boots normally after the next rebuild.
-
-**Tip:** The deployment script now re-checks the container storage backend each time it regenerates `configuration.nix`, so resumed runs or flake edits pick up the correct driver automatically. Set `FORCE_CONTAINER_STORAGE_REDETECT=true` if you want to force a fresh probe, adjust the fallback with `DEFAULT_PODMAN_STORAGE_DRIVER=<driver>`, or export `PODMAN_STORAGE_DRIVER_OVERRIDE=<driver>` to bypass auto-detection intentionally. Set `PODMAN_AUTO_REPAIR_SYSTEM_STORAGE_CONF=false` to skip the automatic `/etc/containers/storage.conf` rewrite and keep the warning-only behaviour. Phase 1 now prompts for the Podman storage driver (default: `vfs`) so you can pick `vfs`, `btrfs`, `zfs`, or `auto` on each run without persisting the choice.
-
-When you force a driver, the detector still reports the filesystem that backs `/var/lib/containers` and warns if the override does not match the recommended driver for that filesystem. Review the warning output before rebuilding so you do not carry an incompatible combination into the generated configuration.
-which codex-wrapper
-which openai-wrapper
-which gooseai-wrapper
-
-```
-
-### Podman Service Fails With `overlay: unknown option vfs.ignore_chown_errors`
-
-**Symptom:** `nixos-rebuild switch` aborts while restarting `podman.service` and logs:
-
-```
-
-ERRO[0000] User-selected graph driver "vfs" overwritten by graph driver "overlay" from database
-Error: configure storage: overlay: unknown option vfs.ignore_chown_errors
-
-````
-
-**Cause:** Earlier deployments may have initialized `/var/lib/containers/storage` with the kernel `overlay` driver. Even after the generator switches to `vfs`, Podman keeps the old driver recorded in its BoltDB metadata and refuses to start because the VFS-only `ignore_chown_errors` option now appears alongside the overlay runtime.
-
-**Fix (current builds):** Phase 5 now runs `sudo podman info --format '{{.Store.GraphDriverName}}'` before `nixos-rebuild`. If the probe fails or reports a driver that differs from the generated value, the phase aborts early, runs the automated cleanup (`podman system reset --force`, `sudo podman system reset --force`, and `/var/lib/containers/storage` purges), and prints explicit remediation commands instead of letting `switch-to-configuration` hit the opaque systemd failure.
-
-**Manual reset (if the automated pass still reports a mismatch):**
-
+**Fix:** Re-run Quick Deploy with `--reset-state`, then rebuild:
 ```bash
-sudo systemctl stop podman.service podman.socket || true
-podman system reset --force && rm -rf ~/.local/share/containers/storage ~/.local/share/containers/cache
-sudo podman system reset --force
-sudo rm -rf /var/lib/containers/storage
-````
-
-Rerun `./nixos-quick-deploy.sh --resume` afterwards so Phase 5 re-probes the driver. Once the probe and configuration agree on `vfs`, Podman restarts cleanly and the generator re-adds the `ignore_chown_errors` flag only when the driver is actually `vfs`.
-
-### Rootless Podman Reports Driver Mismatch or Overlay Failures
-
-**Symptom:** Running `podman ps` or `podman info` as a non-root user prints messages such as:
-
-```
-ERRO[0000] User-selected graph driver "overlay" overwritten by graph driver "btrfs" from database
-Error: configure storage: "/home/<user>/.local/share/containers/storage/btrfs" is not on a btrfs filesystem
+cd ~/NixOS-Dev-Quick-Deploy
+./nixos-quick-deploy.sh --reset-state
+sudo nixos-rebuild switch --flake ~/.dotfiles/home-manager
 ```
 
-**Cause:** Earlier versions mirrored the system storage driver (for example `btrfs` or `zfs`) into `/etc/containers/storage.conf`. Rootless Podman reuses that driver for `~/.local/share/containers`, so a home directory on ext4/xfs would hit catastrophic driver mismatches.
-
-**Fix:** The generator now writes `~/.config/containers/storage.conf` via Home Manager. It compares the home filesystem with the system driver and falls back to `vfs` whenever the filesystem cannot host the selected native driver. Regenerate your configuration and reset the rootless store so the new override takes effect:
-
-1. Render the updated configs:
-   ```bash
-   cd ~/NixOS-Dev-Quick-Deploy
-   ./nixos-quick-deploy.sh --resume
-   ```
-2. Remove stale rootless storage metadata (only affects the current user's Podman images):
-   ```bash
-   rm -rf ~/.local/share/containers/storage ~/.local/share/containers/cache
-   ```
-   # or: podman system reset --force
-3. Apply the Home Manager profile and restart the shell to pick up the new `storage.conf`:
-   ```bash
-   cd ~/.dotfiles/home-manager
-   home-manager switch --flake .#$(whoami)
-   exec zsh
-   ```
-4. Confirm the driver now matches the override or the enforced fallback:
-   ```bash
-   podman info --format '{{.Store.GraphDriverName}}'
-   ```
-
-**If still not working:**
-
+If the error persists, check for lingering units:
 ```bash
-# Re-apply home-manager configuration
-cd ~/.dotfiles/home-manager
-home-manager switch --flake .#$(whoami)
+systemctl list-units | rg -i "podman|containers"
+```
 
-# Restart shell
-exec zsh
+### K3s Runtime Issues
+
+**Symptom:** Pods stuck in `ImagePullBackOff` or `CrashLoopBackOff`.
+
+**Fix:**
+```bash
+kubectl get pods -n ai-stack
+kubectl describe pod -n ai-stack <pod>
+kubectl logs -n ai-stack deploy/<service>
 ```
 
 ### COSMIC Desktop Not Appearing
@@ -1243,7 +1125,7 @@ home.packages = with pkgs; [
   # Add your packages here:
   terraform
   kubectl
-  docker-compose
+  k9s
 ];
 ```
 
@@ -1339,11 +1221,8 @@ lg     # lazygit
 ### 2. Quick Container AI Stack
 
 ```bash
-# Start all AI services (local stack)
-./scripts/ai-stack-manage.sh up
-
 # Check status
-./scripts/ai-stack-manage.sh status
+kubectl get pods -n ai-stack
 
 # Access Open WebUI at http://localhost:3001
 # Access llama.cpp at http://localhost:8080
@@ -1395,16 +1274,15 @@ flatpak update
 
 ### AI Runtime Orchestration
 
-- `./scripts/ai-stack-manage.sh up|down|restart` &mdash; manage the local AI stack containers.
-- `./scripts/ai-stack-manage.sh status` &mdash; show container status.
-- `./scripts/ai-stack-manage.sh logs` &mdash; stream stack logs.
-- `./scripts/ai-stack-health.sh` &mdash; run AI stack health checks.
+- `kubectl get pods -n ai-stack` &mdash; show container status.
+- `kubectl rollout restart -n ai-stack deployment/<service>` &mdash; restart a service.
+- `kubectl logs -n ai-stack deploy/<service>` &mdash; stream logs.
+- `python3 ai-stack/tests/test_hospital_e2e.py` &mdash; run the K3s health suite.
 
 ### Diagnostics & Recovery
 
-- `./scripts/ai-stack-manage.sh restart` &mdash; bounce the AI stack after changing models or GPU drivers.
-- `podman system reset --force` / `sudo podman system reset --force` &mdash; manual fallback for storage corruption (the deployer now attempts this automatically when stale overlay layers are detected).
-- `podman logs -f <container>` &mdash; detailed logs for the rootless containers.
+- `kubectl describe pod -n ai-stack <pod>` &mdash; show events + mount issues.
+- `kubectl rollout restart -n ai-stack deployment/<service>` &mdash; bounce a service after config/image changes.
 
 > ℹ️ **Automation note:** During Phase&nbsp;5 the deployer pauses managed services (systemd units and user-level Podman quadlets), cleans stale Podman storage if needed, applies `nixos-rebuild switch`, and then restores everything it stopped. You no longer need to stop the AI stack manually before a rebuild.
 
@@ -1597,7 +1475,7 @@ Built with these amazing technologies:
 - [COSMIC](https://system76.com/cosmic) - Modern desktop environment
 - [Anthropic Claude](https://anthropic.com/) - AI assistant
 - [Cursor](https://cursor.sh/) - AI-powered code editor
-- [Podman](https://podman.io/) - Daemonless container engine
+- [K3s](https://k3s.io/) - Lightweight Kubernetes distribution
 - [Powerlevel10k](https://github.com/romkatv/powerlevel10k) - Beautiful ZSH theme
 
 ---
