@@ -165,9 +165,9 @@ in
       timeout = lib.mkDefault 3;
     };
 
-    # Prefer the tuned 6.17 series first, then fall back to other low-latency kernels or latest upstream.
+    # Prefer the tuned 6.18 series first, then fall back to other low-latency kernels or latest upstream.
     kernelPackages = lib.mkDefault (
-      if pkgs ? linuxPackages_6_17 then pkgs.linuxPackages_6_17
+      if pkgs ? linuxPackages_6_18 then pkgs.linuxPackages_6_18
       else if pkgs ? linuxPackages_tkg then pkgs.linuxPackages_tkg
       else if pkgs ? linuxPackages_xanmod then pkgs.linuxPackages_xanmod
       else if pkgs ? linuxPackages_lqx then pkgs.linuxPackages_lqx
