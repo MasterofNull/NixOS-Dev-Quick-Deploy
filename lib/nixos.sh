@@ -33,7 +33,7 @@
 # ============================================================================
 
 # Supported release list (descending order) shared by both NixOS and home-manager
-SUPPORTED_NIX_RELEASES=("26.05" "25.11" "25.05" "24.11" "24.05" "23.11")
+SUPPORTED_NIX_RELEASES=("25.11" "25.05" "24.11" "24.05" "23.11")
 
 # Track fallback context so callers can emit user-facing notices without
 # polluting resolver stdout (which is frequently used inside command
