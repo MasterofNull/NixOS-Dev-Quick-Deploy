@@ -292,7 +292,7 @@ unset _persisted_zswap_override
 # Channel Preferences
 # ============================================================================
 
-DEFAULT_CHANNEL_TRACK="${DEFAULT_CHANNEL_TRACK:-unstable}"
+DEFAULT_CHANNEL_TRACK="${DEFAULT_CHANNEL_TRACK:-stable}"
 SYNCHRONIZED_NIXOS_CHANNEL=""
 SYNCHRONIZED_HOME_MANAGER_CHANNEL=""
 HOME_MANAGER_CHANNEL_REF=""
