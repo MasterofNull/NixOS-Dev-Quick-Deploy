@@ -2046,7 +2046,7 @@ resolve_preferred_kernel_package_attr() {
 let
   pkgs = import <nixpkgs> {};
 in
-  if pkgs ? linuxPackages_6_17 then "linuxPackages_6_17"
+  if pkgs ? linuxPackages_6_18 then "linuxPackages_6_18"
   else if pkgs ? linuxPackages_tkg then "linuxPackages_tkg"
   else if pkgs ? linuxPackages_xanmod then "linuxPackages_xanmod"
   else if pkgs ? linuxPackages_lqx then "linuxPackages_lqx"
