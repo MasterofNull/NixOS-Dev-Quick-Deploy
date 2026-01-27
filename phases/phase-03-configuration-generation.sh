@@ -15,7 +15,6 @@
 #   - lib/user.sh → gather_user_info()
 #   - lib/packages.sh → cleanup_conflicting_home_manager_profile()
 #   - lib/home-manager.sh → install_home_manager()
-#   - lib/common.sh → run_rootless_podman_diagnostics()
 #
 # Required Variables (from config/variables.sh):
 #   - GPU_TYPE → Detected GPU type (from Phase 1)
@@ -223,21 +222,17 @@ phase_03_config_generation() {
     fi
 
     # ========================================================================
-    # Step 4.4: Prepare Rootless Podman Environment
+    # Step 4.4: Verify Container Orchestration Prerequisites
     # ========================================================================
-    print_section "Container Runtime Preparation"
+    print_section "Container Orchestration Check"
     echo ""
 
-    print_info "Evaluating Podman rootless storage and namespace prerequisites..."
-    if declare -F run_rootless_podman_diagnostics >/dev/null 2>&1; then
-        if run_rootless_podman_diagnostics; then
-            print_success "Podman rootless diagnostics completed without blocking issues"
-        else
-            print_error "Podman diagnostics detected blocking issues; review the messages above."
-            return 1
-        fi
+    print_info "Verifying K3s prerequisites for container workloads..."
+    # K3s handles all container orchestration - deployed in Phase 9
+    if command -v kubectl >/dev/null 2>&1; then
+        print_success "kubectl available - K3s management ready"
     else
-        print_warning "run_rootless_podman_diagnostics helper not available; ensure libraries are up to date."
+        print_info "kubectl will be available after NixOS configuration is applied"
     fi
 
     # ========================================================================
