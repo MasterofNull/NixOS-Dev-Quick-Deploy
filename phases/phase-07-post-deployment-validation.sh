@@ -144,52 +144,50 @@ check_flatpak_remote_health() {
     return 1
 }
 
-check_podman_network_health() {
-    if ! command -v podman >/dev/null 2>&1; then
+check_k3s_cluster_health() {
+    if ! command -v kubectl >/dev/null 2>&1; then
+        print_info "kubectl not available yet (will be after reboot/relogin)"
         return 0
     fi
 
-    local network="${PODMAN_AI_STACK_NETWORK:-local-ai}"
-    if podman network exists "$network" >/dev/null 2>&1; then
-        print_success "Podman network '$network' available"
-        return 0
-    fi
-
-    if podman network create "$network" >/dev/null 2>&1; then
-        print_success "Podman network '$network' created"
-        return 0
-    fi
-
-    print_warning "Podman network '$network' not found and automatic creation failed; create it manually with 'podman network create ${network}'."
-    return 1
-}
-
-check_podman_desktop_flatpak() {
-    local app_id="io.podman_desktop.PodmanDesktop"
-
-    if ! command -v flatpak >/dev/null 2>&1; then
-        return 0
-    fi
-
-    if ! flatpak info --user "$app_id" >/dev/null 2>&1 && ! flatpak info --system "$app_id" >/dev/null 2>&1; then
-        return 0
-    fi
-
-    if ! command -v podman >/dev/null 2>&1; then
-        print_warning "Podman Desktop installed but podman CLI missing"
+    # Check if K3s is running
+    if ! systemctl is-active k3s >/dev/null 2>&1; then
+        print_warning "K3s service is not running"
+        print_info "Start it with: sudo systemctl start k3s"
         return 1
     fi
 
-    local connection_count
-    connection_count=$(podman system connection list --format "{{.Name}}" 2>/dev/null | sed '/^$/d' | wc -l | tr -d ' ')
-    if [[ "$connection_count" -gt 0 ]]; then
-        print_success "Podman Desktop connection configured"
+    # Check if cluster is accessible
+    if kubectl cluster-info >/dev/null 2>&1; then
+        print_success "K3s cluster is healthy"
         return 0
     fi
 
-    print_warning "Podman Desktop has no Podman connection configured"
-    print_info "Run: podman system connection add local unix:///run/user/$(id -u)/podman/podman.sock --default"
+    print_warning "K3s cluster not responding"
     return 1
+}
+
+check_k3s_ai_stack_health() {
+    if ! command -v kubectl >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local namespace="ai-stack"
+    if ! kubectl get namespace "$namespace" >/dev/null 2>&1; then
+        print_info "AI stack namespace not deployed yet (will be created in Phase 9)"
+        return 0
+    fi
+
+    local running_pods
+    running_pods=$(kubectl get pods -n "$namespace" --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l)
+
+    if [[ "$running_pods" -gt 0 ]]; then
+        print_success "K3s AI stack: $running_pods pods running in '$namespace' namespace"
+        return 0
+    fi
+
+    print_info "AI stack namespace exists but no pods running yet"
+    return 0
 }
 
 phase_07_post_deployment_validation() {
@@ -305,11 +303,11 @@ phase_07_post_deployment_validation() {
         ((fatal_failures++))
     fi
 
-    if ! check_podman_network_health; then
+    if ! check_k3s_cluster_health; then
         ((warning_failures++))
     fi
 
-    if ! check_podman_desktop_flatpak; then
+    if ! check_k3s_ai_stack_health; then
         ((warning_failures++))
     fi
 
@@ -329,7 +327,7 @@ phase_07_post_deployment_validation() {
     # What: Verify packages are in current PATH
     #
     # Critical packages checked:
-    # - podman: Container runtime (Docker alternative)
+    # - kubectl: K3s cluster management CLI
     # - python3: Python interpreter for development
     # - git: Version control system
     # - home-manager: User environment manager
@@ -357,7 +355,7 @@ phase_07_post_deployment_validation() {
     local missing_count=0
 
     # Loop through critical packages
-    local -a package_checks=(podman python3 git home-manager jq flatpak)
+    local -a package_checks=(kubectl python3 git home-manager jq flatpak)
 
     for pkg in "${package_checks[@]}"; do
         # command -v: Find command in PATH, return path or empty

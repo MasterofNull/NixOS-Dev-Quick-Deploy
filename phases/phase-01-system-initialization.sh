@@ -7,20 +7,9 @@
 # ============================================================================
 # DEPENDENCIES
 #
-# Podman storage driver selection prompt
-# PODMAN_STORAGE_DRIVER_OVERRIDE is defined/generated in lib/config.sh after
-# reading user preferences (see config/variables.sh for the state path).
+# Container orchestration: K3s only (Podman removed in v6.1.0)
+# All container workloads run in K3s cluster deployed in Phase 9.
 # ============================================================================
-prompt_podman_storage_driver_selection() {
-    local default_driver="${DEFAULT_PODMAN_STORAGE_DRIVER:-zfs}"
-    PODMAN_STORAGE_DRIVER_OVERRIDE="${PODMAN_STORAGE_DRIVER_OVERRIDE:-$default_driver}"
-    export PODMAN_STORAGE_DRIVER_OVERRIDE
-    print_info "Podman storage driver forced to ${PODMAN_STORAGE_DRIVER_OVERRIDE} (no prompt)."
-    if declare -F detect_container_storage_backend >/dev/null 2>&1; then
-        detect_container_storage_backend
-    fi
-    return 0
-}
 
 # ============================================================================
 #
@@ -211,32 +200,15 @@ phase_01_system_initialization() {
     detect_gpu_and_cpu
 
     # ========================================================================
-    # Step 1.10a: Container Storage Detection
+    # Step 1.10a: Container Orchestration Check (K3s)
     # ========================================================================
-    if declare -F detect_container_storage_backend >/dev/null 2>&1; then
-        detect_container_storage_backend
-    fi
-
-    prompt_podman_storage_driver_selection
-
-    # ========================================================================
-    # Step 1.10b: Rootless Podman Diagnostics
-    # ========================================================================
-    if declare -F run_rootless_podman_diagnostics >/dev/null 2>&1; then
-        print_section "Rootless Podman Diagnostics"
-        echo ""
-
-        if run_rootless_podman_diagnostics; then
-            print_info "Rootless Podman diagnostics completed."
-        else
-            print_warning "Rootless Podman diagnostics reported issues; review the output above before continuing."
-        fi
+    # All container workloads use K3s (deployed in Phase 9).
+    # This step verifies container prerequisites only.
+    print_info "Container orchestration: K3s (configured in Phase 9)"
+    if command -v kubectl >/dev/null 2>&1; then
+        print_success "kubectl available for K3s management"
     else
-        print_warning "Podman diagnostics helper unavailable; ensure library updates are applied."
-    fi
-
-    if declare -F verify_podman_storage_cleanliness >/dev/null 2>&1; then
-        verify_podman_storage_cleanliness "--warn-only"
+        print_info "kubectl will be installed during NixOS configuration"
     fi
 
     # ========================================================================

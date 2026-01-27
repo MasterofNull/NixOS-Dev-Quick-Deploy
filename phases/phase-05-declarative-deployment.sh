@@ -430,29 +430,8 @@ phase_05_declarative_deployment() {
     fi
     echo ""
 
-    # Ensure podman-ai-stack helper script is synced so Home Manager can install it
-    local podman_helper_source="$BOOTSTRAP_SCRIPT_DIR/scripts/podman-ai-stack.sh"
-    local podman_helper_destination="$HM_CONFIG_DIR/podman-ai-stack.sh"
-
-    print_info "Ensuring podman-ai-stack helper is available for Home Manager"
-    if [[ -f "$podman_helper_source" ]]; then
-        if [[ ! -d "$HM_CONFIG_DIR" ]]; then
-            if mkdir -p "$HM_CONFIG_DIR"; then
-                print_info "  Created Home Manager config directory at $HM_CONFIG_DIR"
-            else
-                print_warning "  ⚠ Unable to create $HM_CONFIG_DIR (continuing, but podman-ai-stack may be missing)"
-            fi
-        fi
-
-        if cp "$podman_helper_source" "$podman_helper_destination"; then
-            chmod +x "$podman_helper_destination" 2>/dev/null || true
-            print_success "  ✓ Synced podman-ai-stack helper"
-        else
-            print_warning "  ⚠ Failed to sync podman-ai-stack helper (Home Manager may fail to build the CLI)"
-        fi
-    else
-        print_warning "  ⚠ Source podman-ai-stack.sh not found at $podman_helper_source"
-    fi
+    # Note: AI stack is managed by K3s (deployed in Phase 9)
+    # No Podman helper scripts needed - all containers run in K3s cluster
     echo ""
 
     # Determine home-manager command
@@ -597,26 +576,11 @@ phase_05_declarative_deployment() {
     fi
 
     if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
-        print_section "Preparing Local AI Stack Assets"
-        print_info "Local AI services are now fully managed by the ai-optimizer Podman stack."
-        print_info "Images and containers (vLLM/Open WebUI/Qdrant/MindsDB) will be pulled the first time you run your ai-optimizer workflow."
+        print_section "Local AI Stack Configuration"
+        print_info "AI services are deployed via K3s in Phase 9."
+        print_info "Core services (llama-cpp, Qdrant, PostgreSQL, Grafana, etc.) run in the ai-stack namespace."
         echo ""
-
-        # Check for AI stack helper script
-        if command -v podman-ai-stack >/dev/null 2>&1; then
-            print_info "After deployment run: podman-ai-stack up"
-        elif [ -f "${SCRIPT_DIR}/scripts/podman-ai-stack.sh" ]; then
-            print_info "After deployment run: ./scripts/podman-ai-stack.sh up"
-        elif [ -f "${SCRIPT_DIR}/scripts/hybrid-ai-stack.sh" ]; then
-            print_info "After deployment run: ./scripts/hybrid-ai-stack.sh up"
-        else
-            print_info "After deployment run: cd ai-stack/compose && podman-compose up -d"
-        fi
-        print_info "This will pull/start the AI stack containers (llama.cpp, Open WebUI, Qdrant, MindsDB, etc.)"
-
-        if declare -F prefetch_podman_ai_stack_images >/dev/null 2>&1; then
-            prefetch_podman_ai_stack_images
-        fi
+        print_info "After Phase 9 completes, verify with: kubectl get pods -n ai-stack"
     fi
 
     # ========================================================================
@@ -678,48 +642,8 @@ phase_05_declarative_deployment() {
             stop_managed_services_before_switch
         fi
 
-        # Podman storage checks - only critical if AI stack or Podman is actually being used
-        # Use warn-only mode if Podman/AI stack is not enabled
-        local podman_storage_failed=false
-        local podman_warn_only="false"
-        
-        # Only enforce strict checks if AI stack is enabled
-        if [[ "${LOCAL_AI_STACK_ENABLED:-false}" != "true" ]]; then
-            podman_warn_only="true"
-        fi
-
-        if declare -F ensure_podman_storage_ready >/dev/null 2>&1; then
-            # Use warn-only mode if Podman is optional
-            local ensure_args=()
-            if [[ "$podman_warn_only" == "true" ]]; then
-                ensure_args+=("--warn-only")
-            fi
-            if ! ensure_podman_storage_ready "${ensure_args[@]}"; then
-                podman_storage_failed=true
-            fi
-        elif declare -F verify_podman_storage_cleanliness >/dev/null 2>&1; then
-            # Use warn-only mode if Podman is optional
-            local verify_args=()
-            if [[ "$podman_warn_only" == "true" ]]; then
-                verify_args+=("--warn-only")
-            fi
-            if ! verify_podman_storage_cleanliness "${verify_args[@]}"; then
-                podman_storage_failed=true
-            fi
-        fi
-
-        if [[ "$podman_storage_failed" == "true" ]]; then
-            if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
-                print_warning "Container storage health check failed, but continuing deployment..."
-                print_warning "Podman containers may not work until storage is fixed."
-                print_info "See docs/ROOTLESS_PODMAN.md for manual recovery steps."
-                print_info "You can fix this after deployment and restart Podman services."
-                # Don't return 1 - allow deployment to continue, user can fix storage later
-            else
-                print_info "Podman storage check had issues, but Podman/AI stack is not enabled."
-                print_info "Storage will be configured when you enable the AI stack."
-            fi
-        fi
+        # Note: Container workloads are managed by K3s (deployed in Phase 9)
+        # No Podman storage checks needed
 
         print_info "Running: $rebuild_display"
         print_info "This applies the declarative system configuration..."

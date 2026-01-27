@@ -80,12 +80,12 @@ phase_08_finalization_and_report() {
     # ========================================================================
 
     if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
-        print_info "Local AI stack images and containers are now managed by ai-optimizer."
-        print_info "After deployment run 'podman-ai-stack up' to pull/start the ai-optimizer Podman stack (vLLM, Open WebUI, Qdrant, MindsDB)."
+        print_info "AI stack services are deployed via K3s cluster (Phase 9)."
+        print_info "Check status with: kubectl get pods -n ai-stack"
         echo ""
     else
-        print_info "AI stack auto-start is enabled when selected during deployment."
-        print_info "If you skipped AI stack deployment, you can enable it later with --with-ai-model."
+        print_info "AI stack deployment is configured in Phase 9."
+        print_info "If you skipped AI stack, you can deploy it later with --with-ai-model."
         echo ""
     fi
 
@@ -144,15 +144,18 @@ phase_08_finalization_and_report() {
         local require_ai_running="${REQUIRE_AI_STACK_RUNNING:-false}"
         local ai_health_script="$SCRIPT_DIR/scripts/check-ai-stack-health-v2.py"
 
-        # If no AI stack containers are running, skip health checks unless explicitly required.
-        local running_ai_containers
-        running_ai_containers=$(podman ps --filter "label=nixos.quick-deploy.ai-stack=true" --format "{{.Names}}" 2>/dev/null || true)
-        if [[ -z "$running_ai_containers" ]]; then
+        # Check if AI stack pods are running in K3s
+        local running_ai_pods=0
+        if command -v kubectl >/dev/null 2>&1; then
+            running_ai_pods=$(kubectl get pods -n ai-stack --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l || echo "0")
+        fi
+
+        if [[ "$running_ai_pods" -eq 0 ]]; then
             if [[ "$require_ai_running" == "true" ]]; then
-                print_error "AI Stack containers are not running and REQUIRE_AI_STACK_RUNNING=true"
+                print_error "AI Stack pods are not running and REQUIRE_AI_STACK_RUNNING=true"
                 return 1
             fi
-            print_warning "AI Stack containers are not running; skipping AI health check."
+            print_warning "AI Stack pods are not running in K3s; skipping AI health check."
             goto_ai_health_checks_done=true
         fi
 
@@ -264,15 +267,18 @@ phase_08_finalization_and_report() {
     print_section "Step 8.4: Local AI Stack"
 
     if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
-        print_info "Hybrid Learning Stack (vLLM/Open WebUI/Qdrant/MindsDB) is managed by ai-optimizer."
-        print_info "Architecture: Hybrid Coordinator + Learning System (Context Augmentation enabled)."
-        print_info "Action: Run 'podman-ai-stack up' to activate the local inference and vector database."
-        print_info "Use 'podman-ai-stack status' or ai-servicectl stack status for health checks when ready."
-        print_info "If AI deployment is enabled, the stack will be started after this phase."
-        if curl -sf --max-time 3 http://localhost:8091/health >/dev/null 2>&1; then
-            print_success "AIDB is responding."
-        else
-            print_info "AIDB not responding yet; it will come online after you start the stack."
+        print_info "AI Stack (llama-cpp/Qdrant/PostgreSQL/Grafana) runs in K3s cluster."
+        print_info "Architecture: K3s orchestrated services in 'ai-stack' namespace."
+        print_info "Check status: kubectl get pods -n ai-stack"
+        print_info "View services: kubectl get svc -n ai-stack"
+        if command -v kubectl >/dev/null 2>&1; then
+            local running_pods
+            running_pods=$(kubectl get pods -n ai-stack --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l || echo "0")
+            if [[ "$running_pods" -gt 0 ]]; then
+                print_success "K3s AI stack: $running_pods pods running"
+            else
+                print_info "AI stack pods not running yet; they will start in Phase 9."
+            fi
         fi
     else
         print_info "Local AI stack disabled; skipping."
@@ -360,28 +366,24 @@ phase_08_finalization_and_report() {
     echo ""
 
     if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
+        # K3s AI stack uses PersistentVolumeClaims for data storage
+        # Backup is handled by the backup-cronjobs in K3s
+        print_info "K3s AI stack data is managed via PersistentVolumeClaims."
+        print_info "Automated backups run via CronJobs in the 'backups' namespace."
+        print_info "Check backup status: kubectl get cronjobs -n backups"
+
+        # Also check for any local AI data
         local ai_data_source="${HOME}/.local/share/nixos-ai-stack/"
         if [[ -d "$ai_data_source" ]]; then
             local backup_dest_dir="${BACKUP_ROOT}/ai-stack-backup-$(date +%Y%m%d_%H%M%S)"
             local backup_log="${LOG_DIR:-$HOME/.cache/nixos-quick-deploy/logs}/ai-stack-backup-$(date +%Y%m%d_%H%M%S).log"
-            print_info "Backing up AI stack data from $ai_data_source..."
+            print_info "Backing up local AI data from $ai_data_source..."
             mkdir -p "$backup_dest_dir"
-            if command -v podman >/dev/null 2>&1; then
-                if podman unshare tar -C "$ai_data_source" -cf "$backup_dest_dir/ai-stack-data.tar" . >"$backup_log" 2>&1; then
-                    print_success "AI stack data successfully backed up to $backup_dest_dir"
-                    print_info "Backup archive: $backup_dest_dir/ai-stack-data.tar"
-                else
-                    print_error "Failed to back up AI stack data. See $backup_log"
-                fi
+            if cp -a "$ai_data_source" "$backup_dest_dir/" >"$backup_log" 2>&1; then
+                print_success "Local AI data backed up to $backup_dest_dir"
             else
-                if cp -a "$ai_data_source" "$backup_dest_dir/" >"$backup_log" 2>&1; then
-                    print_success "AI stack data successfully backed up to $backup_dest_dir"
-                else
-                    print_error "Failed to back up AI stack data. See $backup_log"
-                fi
+                print_warning "Failed to back up local AI data. See $backup_log"
             fi
-        else
-            print_warning "AI stack data directory not found at $ai_data_source. Skipping backup."
         fi
     else
         print_info "AI Stack not enabled, skipping data backup."
@@ -414,16 +416,16 @@ phase_08_finalization_and_report() {
     # ========================================================================
     print_info "Installed Components:"
     echo "  • COSMIC Desktop Environment"
-    echo "  • Podman container runtime"
-    echo "  • PostgreSQL database"
+    echo "  • K3s container orchestration"
+    echo "  • PostgreSQL database (K3s)"
     echo "  • Python AI/ML environment"
     echo "  • Development CLI tools (100+)"
     echo "  • Claude Code integration"
     if [[ "${GITEA_ENABLE,,}" == "true" ]]; then
         echo "  • Gitea self-hosted Git service"
     fi
-    echo "  • Hybrid Learning Stack (Qdrant Vector DB + llama.cpp LLM + Ollama)"
-    echo "  • Agentic Capabilities: Context Augmentation & Token Reduction (30-50%)"
+    echo "  • AI Stack: Qdrant Vector DB + llama.cpp LLM (K3s orchestrated)"
+    echo "  • Monitoring: Grafana + Prometheus + Loki (K3s)"
     echo ""
 
     # ========================================================================
@@ -443,7 +445,7 @@ phase_08_finalization_and_report() {
     if [[ "${GITEA_ENABLE,,}" == "true" ]]; then
         echo -e "     ${YELLOW}systemctl status gitea${NC}"
     fi
-    echo -e "     ${YELLOW}podman-ai-stack status${NC}"
+    echo -e "     ${YELLOW}kubectl get pods -n ai-stack${NC}"
     echo ""
 
     echo -e "  ${GREEN}3.${NC} Check user services:"
