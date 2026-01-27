@@ -374,13 +374,12 @@ in
     extraGroups = [
       "networkmanager"  # Network configuration
       "wheel"           # Sudo access
-      "podman"          # Rootless containers
       "video"           # Hardware video acceleration
       "audio"           # Audio device access
       "input"           # Input device access (for Wayland)
       "libvirtd"        # Virtualization management
     ];
-    # Note: "docker" group removed - use podman's dockerCompat instead
+    # Note: Container workloads run in K3s cluster (no Podman/Docker)
     shell = pkgs.zsh;
 
     # Optional: Auto-login (DISABLED by default for security)
@@ -506,49 +505,22 @@ in
   };
 
   # ============================================================================
-  # AIDB: Podman Virtualization (Rootless, secure containers)
+  # Container Orchestration: K3s (unified approach)
   # ============================================================================
-  # Modern NixOS 25.05+ container configuration
+  # All container workloads run in K3s cluster. No Podman/Docker needed.
+  # K3s uses containerd internally for container runtime.
   virtualisation = {
-    containers.enable = true;  # Required for Podman per https://wiki.nixos.org/wiki/Podman
-    podman = {
-      enable = true;
-
-      # Docker CLI compatibility (no docker daemon)
-      dockerCompat = true;
-
-      # Enable Podman socket for podman-compose and docker-compose
-      dockerSocket.enable = true;
-
-      # Default network DNS for container name resolution
-      defaultNetwork.settings.dns_enabled = true;
-
-      # Automatic cleanup of unused images/containers
-      autoPrune = {
-        enable = true;
-        dates = "weekly";
-        flags = [ "--all" ];  # Remove all unused images, not just dangling
-      };
-
-      # Rootless networking helper (vfs storage by default)
-      extraPackages = with pkgs; [
-        slirp4netns
-      ];
-    };
+    containers.enable = true;  # Required for container tooling
   };
-
-  # ============================================================================
-  # Podman Storage Configuration (auto-detected)
-  # ============================================================================
-@PODMAN_STORAGE_BLOCK@
 
   @GLF_GAMING_STACK_SECTION@
 
   # ========================================================================
-  # AI Services - Rootless Podman AI Stack
+  # AI Services - K3s AI Stack
   # ========================================================================
-  # Legacy system services removed; use the containerized stack for llama.cpp/Ollama/Qdrant.
-  # See: ~/.config/ai-optimizer/ for Podman-based AI stack configuration and overrides.
+  # All AI services (llama.cpp, Qdrant, PostgreSQL, etc.) run in K3s.
+  # Managed via kubectl and deployed in Phase 9.
+  # See: ai-stack/kubernetes/ for Kubernetes manifests.
 
   # ========================================================================
   # Self-hosted Git Service (Gitea)
@@ -691,7 +663,6 @@ in
 
   # Disable GNOME Tracker to avoid user service failures during activation.
   services.gnome.tracker.enable = false;
-  services.gnome.tracker-miner.enable = false;
 
   # Enable GNOME Keyring integration for all login services
   security.pam.services.greetd.enableGnomeKeyring = true;
