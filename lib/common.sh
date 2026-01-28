@@ -2046,12 +2046,11 @@ resolve_preferred_kernel_package_attr() {
 let
   pkgs = import <nixpkgs> {};
 in
-  if pkgs ? linuxPackages_6_18 then "linuxPackages_6_18"
+  if pkgs ? linuxPackages_latest then "linuxPackages_latest"
   else if pkgs ? linuxPackages_tkg then "linuxPackages_tkg"
   else if pkgs ? linuxPackages_xanmod then "linuxPackages_xanmod"
   else if pkgs ? linuxPackages_lqx then "linuxPackages_lqx"
   else if pkgs ? linuxPackages_zen then "linuxPackages_zen"
-  else if pkgs ? linuxPackages_latest then "linuxPackages_latest"
   else "linuxPackages"
 EOF
 
