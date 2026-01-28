@@ -150,7 +150,7 @@ in
     ./nixos-improvements/networking.nix  # DNS resolution fix
     ./nixos-improvements/virtualization.nix
     ./nixos-improvements/optimizations.nix
-    ./nixos-improvements/podman.nix
+    #./nixos-improvements/podman.nix
     ./nixos-improvements/mobile-workstation.nix  # Laptop/battery/AMD iGPU optimizations
   ];
 
