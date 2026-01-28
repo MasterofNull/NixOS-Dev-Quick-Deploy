@@ -2702,12 +2702,11 @@ generate_nixos_system_config() {
     fi
 
     local -a performance_kernel_preference=(
-        "linuxPackages_6_18"
+        "linuxPackages_latest"
         "linuxPackages_tkg"
         "linuxPackages_xanmod"
         "linuxPackages_lqx"
         "linuxPackages_zen"
-        "linuxPackages_latest"
     )
 
     local kernel_preference_string
@@ -2865,8 +2864,8 @@ ${mangohud_definition}
     ++ lib.optionals (pkgs ? wineWowPackages && pkgs.wineWowPackages ? staging)
       [ pkgs.wineWowPackages.staging ]
     ++ lib.optionals (pkgs ? winetricks) [ pkgs.winetricks ]
-    ++ lib.optionals (lib.hasAttr "linux_6_18" pkgs.linuxKernel.packages)
-      [ pkgs.linuxKernel.packages.linux_6_18.hid-tmff2 ];
+    ++ lib.optionals (pkgs ? linuxPackages_latest && pkgs.linuxPackages_latest ? hid-tmff2)
+      [ pkgs.linuxPackages_latest.hid-tmff2 ];
   glfSteamPackage =
     if pkgs ? steam then
       pkgs.steam.override {
