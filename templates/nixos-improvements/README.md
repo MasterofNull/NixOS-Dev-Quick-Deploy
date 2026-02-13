@@ -15,7 +15,7 @@ This directory contains modular NixOS configuration improvements for the NixOS-D
 | `testing.nix` | pytest + testing infrastructure | **High** |
 | `optimizations.nix` | NixOS 26.05 performance tuning | **Medium** |
 | `mobile-workstation.nix` | Laptop/battery/AMD iGPU optimizations | **Medium** |
-| `podman.nix` | Rootless container configuration | **Medium** |
+| `podman.nix` | Rootless container configuration (legacy, K3s is primary) | **Medium** |
 | `ai-env.nix` | AI/ML development environment | **Medium** |
 
 ---

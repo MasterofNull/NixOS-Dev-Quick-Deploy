@@ -87,6 +87,8 @@ init_state() {
   "version": "$SCRIPT_VERSION",
   "started_at": "$(date -Iseconds)",
   "completed_steps": [],
+  "health_checks": [],
+  "metadata": {},
   "last_error": null,
   "last_exit_code": 0
 }
@@ -208,13 +210,42 @@ mark_step_complete() {
             log WARNING "jq failed to update state file"
             rm -f "$STATE_FILE.tmp" 2>/dev/null || true
         fi
+    elif command -v python3 &>/dev/null; then
+        # ====================================================================
+        # Fallback: use python3 when jq is unavailable
+        # ====================================================================
+        local tmp_file="${STATE_FILE}.tmp"
+        if python3 - "$STATE_FILE" "$tmp_file" "$step" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+
+src, dst, step = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(src, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+data.setdefault("completed_steps", [])
+data["completed_steps"].append({
+    "step": step,
+    "completed_at": datetime.now(timezone.utc).astimezone().isoformat()
+})
+with open(dst, "w", encoding="utf-8") as handle:
+    json.dump(data, handle, indent=2)
+PY
+        then
+            if mv "$tmp_file" "$STATE_FILE" 2>/dev/null; then
+                log INFO "Marked step complete: $step (python fallback)"
+            else
+                log WARNING "Failed to atomically update state file (python fallback)"
+                rm -f "$tmp_file" 2>/dev/null || true
+            fi
+        else
+            log WARNING "python3 failed to update state file"
+            rm -f "$tmp_file" 2>/dev/null || true
+        fi
     else
         # ====================================================================
-        # Fallback: jq not available
+        # Fallback: neither jq nor python3 available
         # ====================================================================
-        # This shouldn't happen in normal operation (jq is a critical dependency)
-        # But we handle it gracefully: log warning and continue
-        # The deployment can still proceed, just without state tracking
         log WARNING "jq not available, cannot update state file"
     fi
 }
@@ -223,11 +254,301 @@ mark_phase_complete() {
     local identifier="$1"
 
     if [[ "$identifier" =~ ^[0-9]+$ ]]; then
-        local formatted_step="phase-$(printf '%02d' "$identifier")"
+        local formatted_step
+        formatted_step="phase-$(printf '%02d' "$identifier")"
         mark_step_complete "$formatted_step"
     else
         mark_step_complete "$identifier"
     fi
+}
+
+# ============================================================================
+# Record Health Check Result
+# ============================================================================
+# Purpose: Record inter-phase health check results in state file
+# Parameters:
+#   $1 - Phase number or name
+#   $2 - Status (pass|warn|fail|skipped)
+#   $3 - Message/details
+# Returns: 0 on success, 1 on validation failure
+# ============================================================================
+record_health_check() {
+    local phase="${1:-}"
+    local status="${2:-}"
+    local message="${3:-}"
+
+    if [[ -z "$phase" || -z "$status" ]]; then
+        log WARNING "record_health_check called with missing phase/status"
+        return 1
+    fi
+
+    if [[ ! -f "$STATE_FILE" ]]; then
+        init_state
+    fi
+
+    if command -v jq &>/dev/null; then
+        if jq --arg phase "$phase" \
+           --arg status "$status" \
+           --arg message "$message" \
+           --arg timestamp "$(date -Iseconds)" \
+           '.health_checks = (.health_checks // []) | .health_checks += [{"phase": $phase, "status": $status, "message": $message, "checked_at": $timestamp}]' \
+           "$STATE_FILE" > "$STATE_FILE.tmp" 2>/dev/null; then
+            if mv "$STATE_FILE.tmp" "$STATE_FILE" 2>/dev/null; then
+                log INFO "Recorded health check: phase=${phase} status=${status}"
+            else
+                log WARNING "Failed to update state file with health check"
+                rm -f "$STATE_FILE.tmp" 2>/dev/null || true
+            fi
+        else
+            log WARNING "jq failed to record health check"
+            rm -f "$STATE_FILE.tmp" 2>/dev/null || true
+        fi
+    elif command -v python3 &>/dev/null; then
+        local tmp_file="${STATE_FILE}.tmp"
+        if python3 - "$STATE_FILE" "$tmp_file" "$phase" "$status" "$message" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+
+src, dst, phase, status, message = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+with open(src, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+data.setdefault("health_checks", [])
+data["health_checks"].append({
+    "phase": phase,
+    "status": status,
+    "message": message,
+    "checked_at": datetime.now(timezone.utc).astimezone().isoformat(),
+})
+with open(dst, "w", encoding="utf-8") as handle:
+    json.dump(data, handle, indent=2)
+PY
+        then
+            if mv "$tmp_file" "$STATE_FILE" 2>/dev/null; then
+                log INFO "Recorded health check: phase=${phase} status=${status} (python fallback)"
+            else
+                log WARNING "Failed to update state file with health check (python fallback)"
+                rm -f "$tmp_file" 2>/dev/null || true
+            fi
+        else
+            log WARNING "python3 failed to record health check"
+            rm -f "$tmp_file" 2>/dev/null || true
+        fi
+    else
+        log WARNING "jq not available, cannot record health check"
+    fi
+
+    return 0
+}
+
+# ============================================================================
+# Metadata Helpers
+# ============================================================================
+# Store/retrieve lightweight deployment metadata (template digests, flags, etc.)
+# ============================================================================
+state_get_metadata() {
+    local key="${1:-}"
+    if [[ -z "$key" || ! -f "$STATE_FILE" ]]; then
+        return 1
+    fi
+
+    if command -v jq &>/dev/null; then
+        jq -r --arg key "$key" '.metadata[$key] // empty' "$STATE_FILE" 2>/dev/null
+        return $?
+    elif command -v python3 &>/dev/null; then
+        if python3 - "$STATE_FILE" "$key" <<'PY'
+import json
+import sys
+
+state_file, key = sys.argv[1], sys.argv[2]
+with open(state_file, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+value = (data.get("metadata") or {}).get(key)
+if value is None:
+    sys.exit(1)
+print(value)
+PY
+        then
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+state_set_metadata() {
+    local key="${1:-}"
+    local value="${2:-}"
+    if [[ -z "$key" ]]; then
+        log WARNING "state_set_metadata called with empty key"
+        return 1
+    fi
+
+    if [[ ! -f "$STATE_FILE" ]]; then
+        init_state
+    fi
+
+    if command -v jq &>/dev/null; then
+        if jq --arg key "$key" \
+           --arg value "$value" \
+           '(.metadata // {}) as $meta | .metadata = $meta | .metadata[$key] = $value' \
+           "$STATE_FILE" > "$STATE_FILE.tmp" 2>/dev/null; then
+            if mv "$STATE_FILE.tmp" "$STATE_FILE" 2>/dev/null; then
+                log INFO "Updated state metadata: ${key}"
+                return 0
+            fi
+        fi
+        rm -f "$STATE_FILE.tmp" 2>/dev/null || true
+        log WARNING "Failed to update state metadata via jq"
+        return 1
+    elif command -v python3 &>/dev/null; then
+        local tmp_file="${STATE_FILE}.tmp"
+        if python3 - "$STATE_FILE" "$tmp_file" "$key" "$value" <<'PY'
+import json
+import sys
+
+src, dst, key, value = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+with open(src, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+meta = data.get("metadata") or {}
+meta[key] = value
+data["metadata"] = meta
+with open(dst, "w", encoding="utf-8") as handle:
+    json.dump(data, handle, indent=2)
+PY
+        then
+            if mv "$tmp_file" "$STATE_FILE" 2>/dev/null; then
+                log INFO "Updated state metadata: ${key} (python fallback)"
+                return 0
+            fi
+        fi
+        rm -f "$tmp_file" 2>/dev/null || true
+        log WARNING "Failed to update state metadata via python"
+        return 1
+    fi
+
+    log WARNING "state_set_metadata requires jq or python3"
+    return 1
+}
+
+state_remove_steps() {
+    if [[ ! -f "$STATE_FILE" ]]; then
+        return 0
+    fi
+    if [[ "$#" -eq 0 ]]; then
+        return 0
+    fi
+
+    if command -v jq &>/dev/null; then
+        local jq_steps
+        jq_steps=$(printf '%s\n' "$@" | jq -R . | jq -s .)
+        if jq --argjson steps "$jq_steps" \
+           '.completed_steps = [ .completed_steps[] | select(.step as $s | ($steps | index($s) | not)) ]' \
+           "$STATE_FILE" > "$STATE_FILE.tmp" 2>/dev/null; then
+            if mv "$STATE_FILE.tmp" "$STATE_FILE" 2>/dev/null; then
+                log INFO "Removed state steps: $*"
+                return 0
+            fi
+        fi
+        rm -f "$STATE_FILE.tmp" 2>/dev/null || true
+        log WARNING "Failed to remove state steps via jq"
+        return 1
+    elif command -v python3 &>/dev/null; then
+        local tmp_file="${STATE_FILE}.tmp"
+        if python3 - "$STATE_FILE" "$tmp_file" "$@" <<'PY'
+import json
+import sys
+
+src, dst, *steps = sys.argv[1:]
+with open(src, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+steps_set = set(steps)
+completed = data.get("completed_steps", [])
+data["completed_steps"] = [item for item in completed if item.get("step") not in steps_set]
+with open(dst, "w", encoding="utf-8") as handle:
+    json.dump(data, handle, indent=2)
+PY
+        then
+            if mv "$tmp_file" "$STATE_FILE" 2>/dev/null; then
+                log INFO "Removed state steps: $* (python fallback)"
+                return 0
+            fi
+        fi
+        rm -f "$tmp_file" 2>/dev/null || true
+        log WARNING "Failed to remove state steps via python"
+        return 1
+    fi
+
+    log WARNING "state_remove_steps requires jq or python3"
+    return 1
+}
+
+state_remove_phase_steps_from() {
+    local start_phase="${1:-}"
+    if [[ -z "$start_phase" || ! "$start_phase" =~ ^[0-9]+$ ]]; then
+        log WARNING "state_remove_phase_steps_from requires numeric phase"
+        return 1
+    fi
+    if [[ ! -f "$STATE_FILE" ]]; then
+        return 0
+    fi
+
+    if command -v jq &>/dev/null; then
+        if jq --argjson start "$start_phase" \
+           '.completed_steps = [ .completed_steps[] |
+             if (.step | test("^phase-[0-9]+$")) then
+               (.step | capture("^phase-(?<num>[0-9]+)$").num | tonumber) as $num |
+               if $num < $start then . else empty end
+             else
+               .
+             end
+           ]' \
+           "$STATE_FILE" > "$STATE_FILE.tmp" 2>/dev/null; then
+            if mv "$STATE_FILE.tmp" "$STATE_FILE" 2>/dev/null; then
+                log INFO "Removed phase steps from phase ${start_phase} onward"
+                return 0
+            fi
+        fi
+        rm -f "$STATE_FILE.tmp" 2>/dev/null || true
+        log WARNING "Failed to remove phase steps via jq"
+        return 1
+    elif command -v python3 &>/dev/null; then
+        local tmp_file="${STATE_FILE}.tmp"
+        if python3 - "$STATE_FILE" "$tmp_file" "$start_phase" <<'PY'
+import json
+import re
+import sys
+
+src, dst, start_phase = sys.argv[1], sys.argv[2], int(sys.argv[3])
+with open(src, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+completed = data.get("completed_steps", [])
+kept = []
+for item in completed:
+    step = item.get("step") or ""
+    match = re.match(r"^phase-(\d+)$", step)
+    if match:
+        if int(match.group(1)) < start_phase:
+            kept.append(item)
+    else:
+        kept.append(item)
+data["completed_steps"] = kept
+with open(dst, "w", encoding="utf-8") as handle:
+    json.dump(data, handle, indent=2)
+PY
+        then
+            if mv "$tmp_file" "$STATE_FILE" 2>/dev/null; then
+                log INFO "Removed phase steps from phase ${start_phase} onward (python fallback)"
+                return 0
+            fi
+        fi
+        rm -f "$tmp_file" 2>/dev/null || true
+        log WARNING "Failed to remove phase steps via python"
+        return 1
+    fi
+
+    log WARNING "state_remove_phase_steps_from requires jq or python3"
+    return 1
 }
 
 # ============================================================================
@@ -296,6 +617,23 @@ is_step_complete() {
             log DEBUG "Step already complete: $step"
             return 0  # Return success: step is complete
         fi
+    elif command -v python3 &>/dev/null; then
+        if python3 - "$STATE_FILE" "$step" <<'PY'
+import json
+import sys
+
+state_file, step = sys.argv[1], sys.argv[2]
+with open(state_file, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+for item in data.get("completed_steps", []):
+    if item.get("step") == step:
+        sys.exit(0)
+sys.exit(1)
+PY
+        then
+            log DEBUG "Step already complete: $step (python fallback)"
+            return 0
+        fi
     fi
 
     # If we reach here, either:
@@ -347,6 +685,75 @@ reset_state() {
     # Create fresh state file
     # init_state is idempotent and will create a new state file
     init_state
+}
+
+# ============================================================================
+# Validate State File Version Function
+# ============================================================================
+# Purpose: Compare state file version with current script version
+# Parameters:
+#   $1 - Mode: "check" (warn only) or "enforce" (fail on mismatch)
+# Returns:
+#   0 - Versions match or check not applicable
+#   1 - Versions differ and enforcement is active
+#
+# How it works:
+# 1. Reads version from state file
+# 2. Compares with current SCRIPT_VERSION
+# 3. Either warns or fails based on mode
+#
+# Why version validation?
+# - Prevents resuming deployment with incompatible state format
+# - Alerts user to potential issues when script is upgraded
+# - Maintains consistency between state and processing logic
+# ============================================================================
+validate_state_version() {
+    local mode="${1:-check}"  # Default to "check" mode
+    
+    # Check if state file exists
+    if [[ ! -f "$STATE_FILE" ]]; then
+        return 0  # No state file, no version to validate
+    fi
+
+    local state_version=""
+    
+    # Try to get version from state file
+    if command -v jq &>/dev/null; then
+        state_version=$(jq -r '.version // empty' "$STATE_FILE" 2>/dev/null)
+    elif command -v python3 &>/dev/null; then
+        state_version=$(python3 -c "
+import json
+import sys
+try:
+    with open('$STATE_FILE', 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    print(data.get('version', ''), end='')
+except:
+    pass
+" 2>/dev/null)
+    fi
+
+    # If we couldn't read the version, warn but continue
+    if [[ -z "$state_version" ]]; then
+        log WARNING "Could not read version from state file, skipping version validation"
+        return 0
+    fi
+
+    # Compare versions
+    if [[ "$state_version" != "$SCRIPT_VERSION" ]]; then
+        if [[ "$mode" == "enforce" ]]; then
+            log ERROR "State file version ($state_version) differs from script version ($SCRIPT_VERSION)"
+            log ERROR "Use --reset-state to clear old state or --force-resume to bypass this check"
+            return 1
+        else
+            log WARNING "State file version ($state_version) differs from script version ($SCRIPT_VERSION)"
+            log WARNING "This may cause unexpected behavior. Consider using --reset-state to start fresh."
+            return 0
+        fi
+    fi
+
+    # Versions match
+    return 0
 }
 
 # ============================================================================

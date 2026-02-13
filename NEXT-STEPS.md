@@ -46,9 +46,9 @@
 **Why**: These services are in the pod network, not published to host
 
 **Solutions**:
-1. **Option A**: Run dashboard API inside the pod network (as a container)
-2. **Option B**: Publish ports in docker-compose.yml
-3. **Option C**: Use podman pod network for API queries
+1. **Option A**: Run dashboard API inside the cluster (as a deployment)
+2. **Option B**: Publish ports via Kubernetes Service/Ingress
+3. **Option C**: Use `kubectl port-forward` for API queries
 
 **Recommended**: Option A - containerize the dashboard API
 
@@ -87,8 +87,8 @@ git diff ai-stack/mcp-servers/hybrid-coordinator/requirements.txt
 
 ### 2. Fix Container Network Access
 Either:
-- Publish ports in docker-compose.yml for development
-- Or containerize the dashboard API to run in the pod network
+- Publish ports via Kubernetes Service/Ingress for development
+- Or run the dashboard API inside the cluster
 
 ### 3. Test Dashboard with Real Data
 - Open http://localhost:8888/dashboard.html
@@ -99,8 +99,8 @@ Either:
 ### 4. Restart Containers if Needed
 If Ralph modified server.py files, containers need restart:
 ```bash
-podman restart local-ai-hybrid-coordinator
-podman restart local-ai-aidb
+kubectl rollout restart deploy -n ai-stack hybrid-coordinator
+kubectl rollout restart deploy -n ai-stack aidb
 ```
 
 ---
@@ -110,8 +110,8 @@ podman restart local-ai-aidb
 ### Short Term (This Week)
 1. **Containerize Dashboard API**
    - Create Dockerfile for dashboard-api
-   - Add to docker-compose.yml
-   - Rebuild and test
+   - Add to Kubernetes manifests
+   - Apply and test
 
 2. **Verify P3 Implementations**
    - Review Ralph's code changes

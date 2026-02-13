@@ -116,13 +116,13 @@ This matches the GNOME Resources monitor's 1-second update rate while being effi
 
 ### Background Runner Scripts
 
-- `/tmp/run-dashboard-collector-lite.sh`
+- `${TMPDIR:-/tmp}/run-dashboard-collector-lite.sh`
   - Infinite loop running lite collector every 2 seconds
-  - Logs to `/tmp/collector-lite.log`
+  - Logs to `${TMPDIR:-/tmp}/collector-lite.log`
 
-- `/tmp/run-dashboard-collector-full.sh`
+- `${TMPDIR:-/tmp}/run-dashboard-collector-full.sh`
   - Infinite loop running full collector every 60 seconds
-  - Logs to `/tmp/collector-full.log`
+  - Logs to `${TMPDIR:-/tmp}/collector-full.log`
 
 ### Management Script
 
@@ -180,8 +180,8 @@ bash scripts/manage-dashboard-collectors.sh restart
 bash scripts/manage-dashboard-collectors.sh logs
 
 # If needed, increase sleep intervals:
-# Edit /tmp/run-dashboard-collector-lite.sh - change 'sleep 2' to 'sleep 5'
-# Edit /tmp/run-dashboard-collector-full.sh - change 'sleep 60' to 'sleep 120'
+# Edit ${TMPDIR:-/tmp}/run-dashboard-collector-lite.sh - change 'sleep 2' to 'sleep 5'
+# Edit ${TMPDIR:-/tmp}/run-dashboard-collector-full.sh - change 'sleep 60' to 'sleep 120'
 ```
 
 ## System Resources
@@ -213,8 +213,8 @@ systemd.user.services.dashboard-collectors = {
 
   serviceConfig = {
     Type = "forking";
-    ExecStart = "${pkgs.bash}/bin/bash /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/manage-dashboard-collectors.sh start";
-    ExecStop = "${pkgs.bash}/bin/bash /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/manage-dashboard-collectors.sh stop";
+    ExecStart = "${pkgs.bash}/bin/bash /path/to/NixOS-Dev-Quick-Deploy/scripts/manage-dashboard-collectors.sh start";
+    ExecStop = "${pkgs.bash}/bin/bash /path/to/NixOS-Dev-Quick-Deploy/scripts/manage-dashboard-collectors.sh stop";
     Restart = "on-failure";
     RestartSec = 10;
   };

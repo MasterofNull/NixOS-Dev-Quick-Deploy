@@ -12,23 +12,25 @@ def _headers(api_key: str) -> dict:
 
 
 @pytest.mark.integration
-def test_compose_startup_order():
-    compose_path = Path("ai-stack/compose/docker-compose.yml")
+def test_k8s_manifest_contains_services():
+    kustomization_path = Path("ai-stack/kubernetes/kustomization.yaml")
     data = json.loads(
-        json.dumps(__import__("yaml").safe_load(compose_path.read_text(encoding="utf-8")))
+        json.dumps(__import__("yaml").safe_load(kustomization_path.read_text(encoding="utf-8")))
     )
-    services = data.get("services", {})
+    resources = data.get("resources", [])
+    assert "kompose" in resources
 
-    aidb_depends = services.get("aidb", {}).get("depends_on", {})
-    assert "postgres" in aidb_depends
-    assert "redis" in aidb_depends
-    assert "qdrant" in aidb_depends
-
-    hybrid_depends = services.get("hybrid-coordinator", {}).get("depends_on", {})
-    assert "postgres" in hybrid_depends
-    assert "redis" in hybrid_depends
-    assert "qdrant" in hybrid_depends
-    assert "embeddings" in hybrid_depends
+    required_manifests = {
+        "aidb-deployment.yaml",
+        "hybrid-coordinator-deployment.yaml",
+        "qdrant-deployment.yaml",
+        "postgres-deployment.yaml",
+        "redis-deployment.yaml",
+    }
+    kompose_dir = Path("ai-stack/kubernetes/kompose")
+    present = {p.name for p in kompose_dir.glob("*-deployment.yaml")}
+    missing = required_manifests - present
+    assert not missing, f"Missing manifests: {sorted(missing)}"
 
 
 @pytest.mark.integration

@@ -13,6 +13,10 @@
 #   Git user/email configured via programs.git.settings
 # Additional placeholders appear throughout for optional services (Gitea, etc.)
 # =============================================================================
+#
+# NOTE: Podman-based AI stack sections in this template are legacy and kept for
+# backward compatibility. The active deployment path uses K3s (Phase 9). New
+# changes should prefer K3s manifests in ai-stack/kubernetes + kustomize.
 
 { config, pkgs, lib, options, ... }:
 
@@ -153,7 +157,9 @@ let
     else
       pkgs.git;
   gitExecutablePath = lib.getExe gitPackage;
-  claudeWrapperPath = "${config.home.homeDirectory}/.npm-global/bin/claude-wrapper";
+  # Claude Code native installer places the binary at ~/.local/bin/claude
+  # (no longer installed via npm — Anthropic deprecated the npm method)
+  claudeWrapperPath = "${config.home.homeDirectory}/.local/bin/claude";
   claudeNodeModulesPath = "${config.home.homeDirectory}/.npm-global/lib/node_modules";
   gptCodexWrapperPath = "${config.home.homeDirectory}/.npm-global/bin/gpt-codex-wrapper";
   codexWrapperPath = "${config.home.homeDirectory}/.npm-global/bin/codex-wrapper";
@@ -182,8 +188,8 @@ let
     if cosmicOnlyShowInEnvironments == [ ] then "" else "${joined};";
   commonPythonOverrides = import ./python-overrides.nix;
   overridePythonPackages = pkgSet:
-    if pkgSet ? overrideScope' then
-      pkgSet.overrideScope' (self: super: commonPythonOverrides self super)
+    if pkgSet ? overrideScope then
+      pkgSet.overrideScope (self: super: commonPythonOverrides self super)
     else
       pkgSet;
   pythonOverridesOverlay =
@@ -203,11 +209,7 @@ let
       // (lib.optionalAttrs (prev ? python314Packages) {
         python314Packages = overridePythonPackages prev.python314Packages;
       });
-  pythonPreferLatest =
-    let
-      envPref = builtins.getEnv "PYTHON_PREFER_PY314";
-    in
-    envPref == "1" || envPref == "true";
+  pythonPreferLatest = PYTHON_PREFER_PY314_PLACEHOLDER;
   python14CompatibilityMask = [
     # Mask packages currently incompatible with Python 3.14 to avoid build failures.
     "llvmlite"
@@ -274,15 +276,18 @@ let
     # Populated by nixos-quick-deploy.sh to enable vendor-specific GPU monitors.
     with pkgs; @GPU_MONITORING_PACKAGES@;
   nvtopPackagesAttr = if pkgs ? nvtopPackages then pkgs.nvtopPackages else { };
+  nvtopFallbackPackage =
+    if nvtopPackagesAttr ? amd then nvtopPackagesAttr.amd
+    else if nvtopPackagesAttr ? nvidia then nvtopPackagesAttr.nvidia
+    else if nvtopPackagesAttr ? intel then nvtopPackagesAttr.intel
+    else if nvtopPackagesAttr ? default then nvtopPackagesAttr.default
+    else if pkgs ? nvtop then pkgs.nvtop
+    else null;
   fallbackNvtopPackages =
-    if gpuMonitoringPackages != [ ] then
+    if gpuMonitoringPackages != [ ] || nvtopFallbackPackage == null then
       [ ]
     else
-      (lib.optionals (pkgs ? nvtop) [ pkgs.nvtop ])
-      ++ (lib.optionals (nvtopPackagesAttr ? default) [ nvtopPackagesAttr.default ])
-      ++ (lib.optionals (nvtopPackagesAttr ? nvidia) [ nvtopPackagesAttr.nvidia ])
-      ++ (lib.optionals (nvtopPackagesAttr ? amd) [ nvtopPackagesAttr.amd ])
-      ++ (lib.optionals (nvtopPackagesAttr ? intel) [ nvtopPackagesAttr.intel ]);
+      [ nvtopFallbackPackage ];
   # ============================================================================
   # Flatpak Applications (USER CUSTOMIZATION ENTRY POINT)
   # ============================================================================
@@ -1454,8 +1459,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           # AIDB v4.0 Requirements (CRITICAL - Must be installed)
           # ========================================================================
 
-          podman                  # Container runtime for AIDB
-          podman-compose          # Docker-compose compatibility
+          podman                  # Container runtime for AIDB (legacy/local)
           podman-tui              # Terminal dashboard for Podman and containers
           sqlite                  # Tier 1 Guardian database
           openssl                 # Cryptographic operations
@@ -1518,7 +1522,6 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
           # Text editors
           # Note: vim installed via programs.vim below (prevents collision)
           neovim                  # Modern Vim fork with async support
-          # Note: vscodium installed via programs.vscode below
           code-cursor             # Cursor IDE (AI-powered editor)
 
           # Web browsers are now installed via Flatpak for better sandboxing:
@@ -1905,8 +1908,7 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       # Lazy tools
       lg = "lazygit";
       hf-sync = "hf-model-sync";
-      # AI services now managed via ai-optimizer Podman setup
-      # Use: cd ~/.config/ai-optimizer && docker-compose up/down
+      # AI services now managed via Kubernetes (K3s)
       ai-stack = "podman-ai-stack";
       gpt = "gpt-cli";
       cursor = "code-cursor";
@@ -2001,9 +2003,9 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
   # ========================================================================
   # Rootless Podman Storage Configuration
   # ========================================================================
-  # Configure overlay storage driver for rootless podman (user-level only).
-  # System-level podman stays on VFS to prevent boot issues from systemd mounts.
-  # Overlay with fuse-overlayfs provides efficient layer storage without VFS bloat.
+  # Configure VFS storage driver for rootless podman (user-level only).
+  # Overlay requires a clean storage DB; switching drivers without cleanup
+  # triggers podman errors during activation.
   #
   # Benefits:
   # - Prevents VFS bloat (424GB+ from duplicate layers)
@@ -2013,19 +2015,30 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
   #
   # Requirements:
   # - fuse-overlayfs package (added to system packages)
-  # - kernel.unprivileged_userns_clone = 1 (already configured)
+  # - user.max_user_namespaces set in configuration.nix
   # - subuid/subgid ranges (handled by autoSubUidGidRange = true)
 
   xdg.configFile."containers/storage.conf".text = ''
     [storage]
-    driver = "overlay"
+    driver = "vfs"
     graphroot = "${config.home.homeDirectory}/.local/share/containers/storage"
     rootless_storage_path = "${config.home.homeDirectory}/.local/share/containers/storage"
     runroot = "/run/user/''${UID}/containers"
 
-    [storage.options]
-    # Use fuse-overlayfs for rootless overlay (safer than kernel overlay)
-    mount_program = "${pkgs.fuse-overlayfs}/bin/fuse-overlayfs"
+  '';
+
+  # Rootless container registry short-name resolution (avoid interactive prompts).
+  xdg.configFile."containers/registries.conf".text = ''
+    short-name-mode = "permissive"
+
+    [registries.block]
+    registries = []
+
+    [registries.insecure]
+    registries = []
+
+    [registries.search]
+    registries = ["docker.io", "quay.io"]
   '';
 
   # ========================================================================
@@ -2158,318 +2171,25 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
     };
   };
 
-  # ========================================================================
-  # VSCodium (Insiders) Configuration (Declarative)
-  # ========================================================================
-
-  programs.vscode = {
-    enable = true;
-    package = pkgs.vscodium;
-
-    # Extensions installed declaratively
-    # Note: NixOS 25.11+ requires extensions and userSettings under profiles.default
-    profiles.default = {
-      extensions =
-      let
-        fetchExtension = name:
-          let
-            path = lib.splitString "." name;
-          in
-            if lib.hasAttrByPath path pkgs.vscode-extensions then
-              lib.getAttrFromPath path pkgs.vscode-extensions
-            else
-              null;
-        extensionNames = [
-          "jnoortheen.nix-ide"
-          "arrterian.nix-env-selector"
-          "eamodio.gitlens"
-          "editorconfig.editorconfig"
-          "esbenp.prettier-vscode"
-          "ms-python.python"
-          "ms-python.black-formatter"
-          "ms-python.vscode-pylance"
-          "ms-toolsai.jupyter"
-          "ms-toolsai.jupyter-keymap"
-          "ms-toolsai.jupyter-renderers"
-          # AI coding assistants (locally hosted capable)
-          "continue.continue"
-          "codeium.codeium"
-        ];
-        curated = lib.filter (pkg: pkg != null) (map fetchExtension extensionNames);
-        marketplaceExtensionNames = [
-          # Keep Claude Code available; remove deprecated Codex/ChatGPT entries
-          "Anthropic.claude-code"
-          "Google.gemini-code-assist"
-          "Kombai.kombai"  # Design-to-code AI tool (local-compatible)
-        ];
-        fetchMarketplaceExtension = name:
-          let
-            path = lib.splitString "." name;
-          in
-            if pkgs ? vscode-marketplace && lib.hasAttrByPath path pkgs.vscode-marketplace then
-              lib.getAttrFromPath path pkgs.vscode-marketplace
-            else
-              null;
-        marketplaceExtensions = lib.filter (pkg: pkg != null) (map fetchMarketplaceExtension marketplaceExtensionNames);
-      in
-        curated ++ marketplaceExtensions;
-
-      # VSCodium settings (declarative)
-      # Note: Claude Code paths will be added by bash script (dynamic)
-      userSettings = {
-      # Editor Configuration
-      "editor.fontSize" = 14;
-      "editor.fontFamily" = "'Fira Code', 'Droid Sans Mono', 'monospace'";
-      "editor.fontLigatures" = true;
-      "editor.formatOnSave" = true;
-      "editor.formatOnPaste" = true;
-      "editor.tabSize" = 2;
-      "editor.insertSpaces" = true;
-      "editor.detectIndentation" = true;
-      "editor.minimap.enabled" = true;
-      "editor.bracketPairColorization.enabled" = true;
-      "editor.guides.bracketPairs" = true;
-
-      # Nix-specific settings
-      "nix.enableLanguageServer" = true;
-      "nix.serverPath" = "nil";
-      "nix.formatterPath" = "nixpkgs-fmt";
-      "[nix]" = {
-        "editor.defaultFormatter" = "jnoortheen.nix-ide";
-        "editor.tabSize" = 2;
-      };
-
-      # Python & Jupyter integration
-      "python.defaultInterpreterPath" = pythonAiInterpreterPath;
-      "python.terminal.activateEnvironment" = true;
-      "python.languageServer" = "Pylance";
-      "python.analysis.typeCheckingMode" = "basic";
-      "python.analysis.autoImportCompletions" = true;
-      "python.formatting.provider" = "black";
-      "python.testing.pytestEnabled" = true;
-      "python.testing.unittestEnabled" = false;
-      "python.dataScience.jupyterServerURI" = "local";
-      "jupyter.askForKernelRestart" = false;
-      "jupyter.jupyterServerType" = "local";
-      "jupyter.notebookFileRoot" = "${config.home.homeDirectory}";
-      "[python]" = {
-        "editor.defaultFormatter" = "ms-python.black-formatter";
-        "editor.formatOnSave" = true;
-      };
-      "[jupyter]" = {
-        "editor.defaultFormatter" = "ms-toolsai.jupyter";
-      };
-
-      # Local AI endpoints
-      "huggingface.endpoint" = "${huggingfaceTgiEndpoint}";
-      "huggingface.defaultModel" = "${huggingfaceModelId}";
-      "huggingface.telemetry.enableTelemetry" = false;
-      "continue.defaultModel" = "Llama 4 Scout (TGI-8085)";
-      "continue.enableTelemetry" = false;
-      "continue.telemetryEnabled" = false;
-      "continue.serverUrl" = "${openWebUiUrl}";
-      "continue.models" = [
-        {
-          title = "Llama 3.2 Instruct (llama.cpp)";
-          provider = "openai";
-          model = "llama3.2";
-          baseUrl = "${llamaCppHost}/v1";
-        }
-        {
-          title = "DeepSeek R1 Distill 7B (coding)";
-          provider = "openai";
-          model = huggingfaceModelId;
-          baseUrl = "${huggingfaceTgiEndpoint}/v1";
-        }
-        {
-          title = "Llama 4 Scout 17B";
-          provider = "openai";
-          model = huggingfaceScoutModelId;
-          baseUrl = "${huggingfaceScoutTgiEndpoint}/v1";
-        }
-        {
-          title = "Phi-4 (llama.cpp)";
-          provider = "openai";
-          model = "phi4";
-          baseUrl = "${llamaCppHost}/v1";
-        }
-      ];
-      "codeium.enableTelemetry" = false;
-      "chatgpt.gpt3.apiBaseUrl" = "${huggingfaceTgiEndpoint}/v1";
-      "chatgpt.gpt3.model" = "${huggingfaceModelId}";
-      "chatgpt.response.showNotification" = false;
-
-      # Git configuration
-      "git.path" = gitExecutablePath;
-      "git.enableSmartCommit" = true;
-      "git.autofetch" = true;
-      "gitlens.codeLens.enabled" = true;
-
-      # Terminal
-      "terminal.integrated.defaultProfile.linux" = "zsh";
-      "terminal.integrated.fontSize" = 13;
-      "terminal.integrated.env.linux" = {
-        "OPENAI_API_BASE" = "${huggingfaceTgiEndpoint}/v1";
-        "LLAMA_CPP_BASE_URL" = "${llamaCppHost}/v1";
-        "GPT_CLI_BASE_URL" = "${huggingfaceTgiEndpoint}/v1";
-        "ANTHROPIC_BASE_URL" = "http://localhost:8094";
-        "HYBRID_COORDINATOR_URL" = "http://localhost:8092";
-        "AIDB_MCP_URL" = "http://localhost:8091";
-      };
-
-      # Claude Code integration (managed declaratively so the wrapper path is always correct)
-      "claudeCode.executablePath" = claudeWrapperPath;
-      "claudeCode.claudeProcessWrapper" = claudeWrapperPath;
-      "claudeCode.environmentVariables" = [
-        {
-          name = "PATH";
-          value = claudePathValue;
-        }
-        {
-          name = "NODE_PATH";
-          value = claudeNodeModulesPath;
-        }
-        {
-          name = "ANTHROPIC_BASE_URL";
-          value = "http://localhost:8094";
-        }
-        {
-          name = "HYBRID_COORDINATOR_URL";
-          value = "http://localhost:8092";
-        }
-        {
-          name = "AIDB_MCP_URL";
-          value = "http://localhost:8091";
-        }
-      ];
-      "claudeCode.autoStart" = true;
-      "claudeCode.enableContextSharing" = false;
-      "claudeCode.preferLocalInference" = true;
-
-      # Additional AI CLI wrappers (single config per tool, no duplicates)
-      "codex.executablePath" = codexWrapperPath;
-      "codex.environmentVariables" = [
-        {
-          name = "PATH";
-          value = aiPathValue;
-        }
-        {
-          name = "NODE_PATH";
-          value = aiNodeModulesPath;
-        }
-        {
-          name = "HYBRID_COORDINATOR_URL";
-          value = "http://localhost:8092";
-        }
-        {
-          name = "AIDB_MCP_URL";
-          value = "http://localhost:8091";
-        }
-      ];
-      "codex.autoStart" = true;
-
-      "openai.executablePath" = openaiWrapperPath;
-      "openai.environmentVariables" = [
-        {
-          name = "PATH";
-          value = aiPathValue;
-        }
-        {
-          name = "NODE_PATH";
-          value = aiNodeModulesPath;
-        }
-      ];
-      "openai.autoStart" = false;
-
-      "gooseai.executablePath" = gooseAiWrapperPath;
-      "gooseai.environmentVariables" = [
-        {
-          name = "PATH";
-          value = aiPathValue;
-        }
-        {
-          name = "NODE_PATH";
-          value = aiNodeModulesPath;
-        }
-      ];
-      "gooseai.autoStart" = false;
-
-      # Theme
-      "workbench.colorTheme" = "Default Dark Modern";
-
-      # File associations
-      "files.associations" = {
-        "*.nix" = "nix";
-        "flake.lock" = "json";
-      };
-
-      # Miscellaneous
-      "files.autoSave" = "afterDelay";
-      "files.autoSaveDelay" = 1000;
-      "explorer.confirmDelete" = false;
-      "explorer.confirmDragAndDrop" = false;
-      };
-    };
-  };
-
-  home.activation.vscodiumPersistSettings =
-    lib.hm.dag.entryBefore [ "linkGeneration" ] ''
-      set -eu
-
-      settings="$HOME/.config/VSCodium/User/settings.json"
-      rm -f "$settings.hm-bak" 2>/dev/null || true
-      backup_dir="$HOME/.local/share/nixos-quick-deploy/state/vscodium"
-      backup="$backup_dir/settings.json"
-
-      if [ -f "$settings" ] && [ ! -L "$settings" ]; then
-        mkdir -p "$backup_dir"
-        cp "$settings" "$backup" 2>/dev/null || true
-      fi
-    '';
-
-  home.activation.vscodiumMakeSettingsMutable =
+  # Clean up duplicate VSCodium desktop entries left by older activation logic.
+  home.activation.cleanupVscodiumDesktopEntries =
     lib.hm.dag.entryAfter [ "reloadSystemd" ] ''
       set -eu
+      codium_desktop="$HOME/.local/share/applications/codium.desktop"
+      codium_url="$HOME/.local/share/applications/codium-url-handler.desktop"
 
-      settings="$HOME/.config/VSCodium/User/settings.json"
-      settings_dir="$(dirname "$settings")"
-      backup_dir="$HOME/.local/share/nixos-quick-deploy/state/vscodium"
-      backup="$backup_dir/settings.json"
-      mkdir -p "$settings_dir"
-
-      restore_from_backup() {
-        if [ -f "$backup" ]; then
-          cp "$backup" "$settings" 2>/dev/null
-          return 0
+      if [[ -L "$codium_desktop" ]]; then
+        target="$(readlink "$codium_desktop" 2>/dev/null || true)"
+        if [[ "$target" == /nix/store/*/share/applications/codium.desktop ]]; then
+          rm -f "$codium_desktop"
         fi
-        return 1
-      }
-
-      if [ -L "$settings" ]; then
-        target="$(readlink -f "$settings" 2>/dev/null || true)"
-        rm -f "$settings"
-        if ! restore_from_backup; then
-          case "$target" in
-            /nix/store/*)
-              if [ -n "$target" ] && [ -f "$target" ]; then
-                cp "$target" "$settings" 2>/dev/null || printf '{}' >"$settings"
-              else
-                printf '{}' >"$settings"
-              fi
-              ;;
-            *)
-              printf '{}' >"$settings"
-              ;;
-          esac
-        fi
-      elif [ ! -e "$settings" ]; then
-        restore_from_backup || printf '{}' >"$settings"
       fi
 
-      if [ -f "$settings" ]; then
-        chmod u+rw "$settings" 2>/dev/null || true
-        mkdir -p "$backup_dir"
-        cp "$settings" "$backup" 2>/dev/null || true
+      if [[ -L "$codium_url" ]]; then
+        target="$(readlink "$codium_url" 2>/dev/null || true)"
+        if [[ "$target" == /nix/store/*/share/applications/codium-url-handler.desktop ]]; then
+          rm -f "$codium_url"
+        fi
       fi
     '';
 
@@ -2664,9 +2384,7 @@ EOF
           # Not a warning - auto-start is optional
           echo "Info: AI stack auto-start not configured (podman-ai-stack not in PATH)"
           echo "To start manually, run one of:"
-          echo "  - ./scripts/podman-ai-stack.sh up"
-          echo "  - ./scripts/hybrid-ai-stack.sh up"
-          echo "  - cd ai-stack/compose && podman-compose up -d"
+          echo "  - kubectl apply -k ai-stack/kubernetes"
         fi
       ''
     );
@@ -2734,6 +2452,7 @@ EOF
       GPT_CLI_DEFAULT_MODEL = "${huggingfaceModelId}";
       GPT_CLI_DEFAULT_PROVIDER = "openai";
       GPT_CLI_BASE_URL = "${huggingfaceTgiEndpoint}/v1";
+      PYTHON_AI_INTERPRETER = "${pythonAiInterpreterPath}";
       NIXOS_QUICK_DEPLOY_ROOT = "NIXOS_QUICK_DEPLOY_ROOT_PLACEHOLDER";
       # Podman AI Stack
       PODMAN_AI_STACK_NETWORK = "local-ai";
@@ -2746,6 +2465,8 @@ EOF
       # Ensure COSMIC sessions find the GNOME Keyring sockets started via systemd --user.
       GNOME_KEYRING_CONTROL = "$XDG_RUNTIME_DIR/keyring";
       SSH_AUTH_SOCK = "$XDG_RUNTIME_DIR/keyring/ssh";
+      # Ensure desktop entries from the home-manager profile are visible in app menus.
+      XDG_DATA_DIRS = "$HOME/.local/state/nix/profiles/home-manager/share:$XDG_DATA_DIRS";
     }
     // lib.optionalAttrs config.services.flatpak.enable {
       GITEA_WORK_DIR = "$HOME/${giteaFlatpakDataDir}";
@@ -2768,6 +2489,7 @@ EOF
   # are not accessible after login or in new terminal sessions
 
   home.sessionPath = [
+    "$HOME/.local/state/nix/profiles/home-manager/bin" # Home Manager profile (codium, node, home-manager)
     "$HOME/.local/bin"           # Custom user scripts and wrappers
     "$HOME/.npm-global/bin"      # NPM global packages (claude-wrapper, etc.)
   ];
@@ -2794,39 +2516,6 @@ EOF
     # Create Jupyter data directories
     ".local/share/jupyter/.keep".text = "";
     ".config/jupyter/.keep".text = "";
-
-    # Declarative VSCodium wrapper so the Claude CLI stays on PATH
-    ".local/bin/codium-wrapped" = {
-      text = ''
-        #!/usr/bin/env bash
-        set -euo pipefail
-
-        export NPM_CONFIG_PREFIX="$HOME/.npm-global"
-        export PATH="$HOME/.npm-global/bin:$HOME/.local/bin:$PATH"
-
-        codium_bin="''${CODIUM_BIN:-${pkgs.vscodium-insiders}/bin/codium-insiders}"
-        if [[ ! -x "''${codium_bin}" ]]; then
-          if command -v codium-insiders >/dev/null 2>&1; then
-            codium_bin="$(command -v codium-insiders)"
-          else
-            echo "codium-wrapped: unable to locate VSCodium Insiders binary" >&2
-            exit 127
-          fi
-        fi
-
-        exec "''${codium_bin}" "$@"
-      '';
-      executable = true;
-    };
-
-    ".local/bin/codium" = {
-      text = ''
-        #!/usr/bin/env bash
-        set -euo pipefail
-        exec "$HOME/.local/bin/codium-wrapped" "$@"
-      '';
-      executable = true;
-    };
 
     # Launcher for the Gitea editor that prefers Flatpak but falls back to native binaries
     ".local/bin/gitea-editor" = {
@@ -3213,8 +2902,8 @@ EOF
           fi
           
           # Gitea
-          if ${pkgs.curl}/bin/curl -s -o /dev/null --connect-timeout 1 http://localhost:3000 2>/dev/null; then
-            echo "  ''${GREEN}✓''${RESET} Gitea: http://localhost:3000"
+          if ${pkgs.curl}/bin/curl -s -o /dev/null --connect-timeout 1 http://localhost:3003 2>/dev/null; then
+            echo "  ''${GREEN}✓''${RESET} Gitea: http://localhost:3003"
           fi
           
           echo ""
@@ -4250,7 +3939,7 @@ PLUGINCFG
     # Rootless storage tuning for AI stack containers
     settings.storage = {
       storage = {
-        driver = "overlay";
+        driver = "vfs";
         runroot = "/run/user/${let
           hmUid = if config.home ? uidNumber then config.home.uidNumber else null;
           osUsers =
@@ -4270,11 +3959,8 @@ PLUGINCFG
           in toString resolvedUid}/containers";
         graphroot = "${config.home.homeDirectory}/.local/share/containers/storage";
         rootless_storage_path = "${config.home.homeDirectory}/.local/share/containers/storage";
-      };
-      storage.options = {
-        mount_program = "${pkgs.fuse-overlayfs}/bin/fuse-overlayfs";
-      };
     };
+  };
 
     networks."${podmanAiStackNetworkName}" = {
       description = "Isolated network for the local AI development stack";

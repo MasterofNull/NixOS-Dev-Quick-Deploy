@@ -97,7 +97,7 @@ Display all 8 phases with descriptions.
 
 **"Permission denied"**
 - Solution: Run with sudo or ensure user has necessary permissions
-- Check file ownership in `/home/hyperd/.dotfiles/home-manager/`
+- Check file ownership in `$HOME/.dotfiles/home-manager/`
 
 **"Flake evaluation failed"**
 - Solution: Check `flake.nix` syntax

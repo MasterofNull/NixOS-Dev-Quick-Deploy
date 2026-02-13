@@ -50,28 +50,48 @@
 
 # Red color - Used for errors and critical failures
 # Normal intensity (0;31) to avoid being too bright/jarring
-RED='\033[0;31m'
+# shellcheck disable=SC2034
+RED=$'\033[0;31m'
 
 # Green color - Used for success messages and confirmations
 # Normal intensity (0;32) for consistent appearance
-GREEN='\033[0;32m'
+# shellcheck disable=SC2034
+GREEN=$'\033[0;32m'
 
 # Yellow color - Used for warnings and important notices
 # Bold/bright (1;33) to make warnings stand out
-YELLOW='\033[1;33m'
+# shellcheck disable=SC2034
+YELLOW=$'\033[1;33m'
 
 # Blue color - Used for informational messages
 # Normal intensity (0;34) for casual information display
-BLUE='\033[0;34m'
+# shellcheck disable=SC2034
+BLUE=$'\033[0;34m'
+
+# Cyan color - Used for secondary highlights (dashboard callouts)
+# Normal intensity (0;36) for readability
+# shellcheck disable=SC2034
+CYAN=$'\033[0;36m'
 
 # Gray color - Used for neutral informational states (e.g., "not configured")
 # Bright black (0;90) provides contrast without appearing disabled/hidden
-GRAY='\033[0;90m'
+# shellcheck disable=SC2034
+GRAY=$'\033[0;90m'
 
 # No Color - Resets all text formatting attributes
 # CRITICAL: Always use this after colored text to prevent color bleeding
 # into subsequent output. Without this, all following text stays colored.
-NC='\033[0m'
+# shellcheck disable=SC2034
+NC=$'\033[0m'
+
+# Normalize accidental double-escaped color codes (e.g., "\\033[0;32m")
+# This prevents raw "\033" sequences from showing up in terminals/logs.
+for _color_var in RED GREEN YELLOW BLUE CYAN GRAY NC; do
+    _color_value="${!_color_var:-}"
+    if [[ "$_color_value" == *"\\033"* || "$_color_value" == *"\\e"* ]]; then
+        printf -v "$_color_var" '%b' "$_color_value"
+    fi
+done
 
 # ============================================================================
 # Why use ANSI codes instead of tput?

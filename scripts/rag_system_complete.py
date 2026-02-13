@@ -20,6 +20,7 @@ import json
 import uuid
 import time
 import hashlib
+import os
 import requests
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Any
@@ -28,9 +29,10 @@ from pathlib import Path
 import sqlite3
 
 # Configuration
+SERVICE_HOST = os.getenv("SERVICE_HOST", "localhost")
 CONFIG = {
-    "qdrant_url": "http://localhost:6333",
-    "llama_cpp_url": "http://localhost:8080",
+    "qdrant_url": os.getenv("QDRANT_URL", f"http://{SERVICE_HOST}:6333"),
+    "llama_cpp_url": os.getenv("LLAMA_URL", f"http://{SERVICE_HOST}:8080"),
     "embedding_model": "nomic-embed-text",
     "embedding_dimensions": 768,  # nomic-embed-text actual dimensions
     "local_confidence_threshold": 0.85,
@@ -181,6 +183,21 @@ class SemanticCache:
         """Generate hash for exact query matching"""
         return hashlib.sha256(query.encode()).hexdigest()
 
+    def _cosine_similarity(self, a: List[float], b: List[float]) -> float:
+        """Compute cosine similarity between two vectors."""
+        if not a or not b or len(a) != len(b):
+            return 0.0
+        dot = 0.0
+        norm_a = 0.0
+        norm_b = 0.0
+        for x, y in zip(a, b):
+            dot += x * y
+            norm_a += x * x
+            norm_b += y * y
+        if norm_a == 0.0 or norm_b == 0.0:
+            return 0.0
+        return dot / ((norm_a ** 0.5) * (norm_b ** 0.5))
+
     def get(self, query: str, query_embedding: List[float]) -> Optional[Dict]:
         """Try to get cached response"""
         # First try exact match
@@ -207,8 +224,41 @@ class SemanticCache:
                 "hit_count": row[6] + 1,
             }
 
-        # TODO: Semantic similarity search using embeddings
-        # For now, only exact matching
+        # Semantic similarity search using embeddings
+        cursor = self.conn.execute("""
+            SELECT id, query_text, query_embedding, response, llm_used, hit_count
+            FROM semantic_cache
+            WHERE expires_at > ?
+        """, (datetime.utcnow().isoformat(),))
+
+        best = None
+        best_score = 0.0
+        for row in cursor.fetchall():
+            try:
+                stored_embedding = json.loads(row[2])
+            except Exception:
+                continue
+            score = self._cosine_similarity(query_embedding, stored_embedding)
+            if score > best_score:
+                best_score = score
+                best = row
+
+        if best and best_score >= CONFIG["semantic_cache_threshold"]:
+            self.conn.execute("""
+                UPDATE semantic_cache
+                SET hit_count = hit_count + 1, last_hit_at = ?
+                WHERE id = ?
+            """, (datetime.utcnow().isoformat(), best[0]))
+            self.conn.commit()
+
+            return {
+                "response": best[3],
+                "llm_used": best[4],
+                "cache_hit": "semantic",
+                "similarity": round(best_score, 4),
+                "hit_count": best[5] + 1,
+            }
+
         return None
 
     def set(self, query: str, query_embedding: List[float], response: str,

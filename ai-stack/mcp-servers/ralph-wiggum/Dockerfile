@@ -3,7 +3,7 @@
 # Dockerfile for MCP Server
 # Version: 1.0.0 (December 2025)
 
-FROM python:3.12-slim
+FROM docker.io/library/python:3.12-slim
 
 LABEL maintainer="NixOS Quick Deploy AI Stack"
 LABEL description="Ralph Wiggum Loop - Continuous self-referential AI orchestration"
@@ -57,7 +57,7 @@ ENV RALPH_MCP_SERVER_PORT=8098
 ENV RALPH_LOOP_ENABLED=true
 
 # Health check (removed - OCI format doesn't support HEALTHCHECK directive)
-# Use podman-compose.yml healthcheck configuration instead:
+# Use Kubernetes probe configuration instead:
 # test: ["CMD", "curl", "-f", "http://localhost:8098/health"]
 
 # Expose port

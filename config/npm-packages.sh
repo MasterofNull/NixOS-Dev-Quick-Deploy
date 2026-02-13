@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # NPM package manifest for AI coding assistants installed by Phase 6.
 # Each entry format:
-#   package|display_name|bin_command|wrapper_name|extension_id|debug_env
+#   package|version|display_name|bin_command|wrapper_name|extension_id|debug_env
 # - package: npm identifier used with npm install -g
+# - version: pinned npm version (required; avoid "latest")
 # - display_name: human friendly name for logging
 # - bin_command: primary command exposed by the npm package (used to resolve bin script)
 # - wrapper_name: filename (without path) for the smart Node wrapper we create
@@ -15,19 +16,23 @@
 # the delimiter structure intact when adding new packages.
 
 NPM_AI_PACKAGE_MANIFEST=(
-  "@anthropic-ai/claude-code|Claude Code|claude|claude-wrapper|Anthropic.claude-code|CLAUDE_DEBUG"
-  "@openai/codex|GPT CodeX CLI|codex|gpt-codex-wrapper||GPT_CODEX_DEBUG"
-  "@openai/codex|Codex IDE|codex|codex-wrapper||CODEX_DEBUG"
-  "openai|OpenAI CLI|openai|openai-wrapper|openai.chatgpt|OPENAI_DEBUG"
-  "@gooseai/cli|Goose CLI|gooseai|gooseai-wrapper||GOOSEAI_DEBUG"
+  # NOTE: Claude Code removed from NPM manifest — now installed via native installer
+  # (curl -fsSL https://claude.ai/install.sh | bash). See lib/tools.sh install_claude_code_native().
+  "@openai/codex|0.28.0|GPT CodeX CLI|codex|gpt-codex-wrapper||GPT_CODEX_DEBUG"
+  "@openai/codex|0.28.0|Codex IDE|codex|codex-wrapper||CODEX_DEBUG"
+  "openai|6.16.0|OpenAI CLI|openai|openai-wrapper|openai.chatgpt|OPENAI_DEBUG"
+  "@google/gemini-cli|0.3.3|Gemini CLI|gemini|gemini-wrapper||GEMINI_DEBUG"
+  "@qwen-code/qwen-code|0.0.11|Qwen Code CLI|qwen|qwen-wrapper||QWEN_DEBUG"
 )
 
 declare -gA NPM_AI_PACKAGE_MANUAL_URLS=(
-  ["@gooseai/cli"]="https://block.github.io/goose/docs/getting-started/installation/"
+  ["@google/gemini-cli"]="https://github.com/google-gemini/gemini-cli"
+  ["@qwen-code/qwen-code"]="https://github.com/QwenLM/qwen-code"
+  ["@openai/codex"]="https://help.openai.com/en/articles/11096431-openai-codex-ci-getting-started"
+  ["openai"]="https://github.com/openai/openai-node"
 )
 
 declare -gA VSCODE_AI_EXTENSION_FALLBACK_URLS=(
   ["OpenAI.gpt-codex"]="https://marketplace.visualstudio.com/items?itemName=OpenAI.gpt-codex"
   ["OpenAI.codex-ide"]="https://marketplace.visualstudio.com/items?itemName=OpenAI.codex-ide"
-  ["GooseAI.gooseai-vscode"]="https://marketplace.visualstudio.com/items?itemName=GooseAI.gooseai-vscode"
 )

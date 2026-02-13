@@ -517,7 +517,7 @@ curl -X POST http://localhost:8091/tools/execute \
   -d '{
     "tool_name": "code_review",
     "parameters": {
-      "file_path": "/home/user/project/main.py",
+      "file_path": "/path/to/project/main.py",
       "checks": ["style", "security", "performance"]
     }
   }'

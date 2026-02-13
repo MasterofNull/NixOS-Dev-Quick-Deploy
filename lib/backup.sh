@@ -83,7 +83,7 @@ centralized_backup() {
     # ========================================================================
     # Remove $HOME prefix from source path to get relative path
     # ${parameter#pattern} removes shortest match of pattern from beginning
-    # Example: If source="/home/user/.config/file.txt" and HOME="/home/user"
+    # Example: If source="$HOME/.config/file.txt" and HOME="$HOME"
     # Then relative_path=".config/file.txt"
     #
     # This preserves directory structure in backup:
@@ -401,7 +401,8 @@ perform_rollback() {
         # jq -r = raw output (no JSON quotes)
         # '.description' = extract description field
         # || echo "unknown" = fallback if jq fails
-        local description=$(jq -r '.description' "$ROLLBACK_INFO_FILE" 2>/dev/null || echo "unknown")
+        local description
+        description=$(jq -r '.description' "$ROLLBACK_INFO_FILE" 2>/dev/null || echo "unknown")
 
         # Show user what rollback point they're reverting to
         print_info "Rollback point: $description"
@@ -497,7 +498,8 @@ perform_rollback() {
 
         # Extract Home Manager generation path from rollback info
         # This is a path like: /nix/store/...-home-manager-generation
-        local hm_gen=$(jq -r '.home_manager_generation' "$ROLLBACK_INFO_FILE" 2>/dev/null)
+        local hm_gen
+        hm_gen=$(jq -r '.home_manager_generation' "$ROLLBACK_INFO_FILE" 2>/dev/null)
 
         # Check if we have a valid Home Manager generation to rollback to
         # Multiple conditions checked with &&:
@@ -581,7 +583,7 @@ rollback_to_generation() {
     print_section "Rolling Back to Generation $target_gen"
 
     # Verify the generation exists
-    if ! sudo nix-env --list-generations -p /nix/var/nix/profiles/system 2>/dev/null | grep -q "^[[:space:]]*$target_gen[[:space:]]"; then
+    if ! sudo nix-env --list-generations -p /nix/var/nix/profiles/system 2>/dev/null | grep -q "^[[:space:]]*${target_gen}[[:space:]]"; then
         print_error "Generation $target_gen not found"
         print_info "Available generations:"
         sudo nix-env --list-generations -p /nix/var/nix/profiles/system 2>/dev/null || true

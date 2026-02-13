@@ -14,7 +14,22 @@
 #     --fix       Attempt basic remediation where possible
 # -----------------------------------------------------------------------------
 
+# NOTE: -e intentionally omitted — health checks must report ALL failures, not
+# stop at the first one.
 set -uo pipefail
+
+NONINTERACTIVE=false
+if [[ ! -t 0 ]]; then
+    NONINTERACTIVE=true
+fi
+
+HM_PROFILE_BIN="${HOME}/.local/state/nix/profiles/home-manager/bin"
+if [[ -d "$HM_PROFILE_BIN" ]]; then
+    case ":$PATH:" in
+        *":$HM_PROFILE_BIN:"*) ;;
+        *) PATH="$HM_PROFILE_BIN:$PATH" ;;
+    esac
+fi
 
 # -----------------------------------------------------------------------------
 # ANSI color palette for consistent messaging
@@ -26,18 +41,60 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # -----------------------------------------------------------------------------
+# Simple confirm prompt (local to this script)
+# -----------------------------------------------------------------------------
+confirm() {
+    local prompt="$1"
+    local default="${2:-n}"
+    local response=""
+
+    if [[ "$NONINTERACTIVE" == true ]]; then
+        [[ "$default" =~ ^[Yy]$ ]]
+        return $?
+    fi
+
+    if [[ "$default" == "y" ]]; then
+        prompt="$prompt [Y/n]: "
+    else
+        prompt="$prompt [y/N]: "
+    fi
+
+    read -p "$(echo -e ${BLUE}?${NC} $prompt)" response
+    response=${response:-$default}
+    [[ "$response" =~ ^[Yy]$ ]]
+}
+
+# -----------------------------------------------------------------------------
 # Check counters
 # -----------------------------------------------------------------------------
 TOTAL_CHECKS=0
 PASSED_CHECKS=0
 FAILED_CHECKS=0
 WARNING_CHECKS=0
+FIX_FAILURES=0
+FIX_SUCCESSES=0
 
 # -----------------------------------------------------------------------------
 # CLI flags
 # -----------------------------------------------------------------------------
 DETAILED=false
 FIX_ISSUES=false
+TMP_ROOT="${TMPDIR:-/${TMP_FALLBACK:-tmp}}"
+
+# -----------------------------------------------------------------------------
+# Fix tracking helpers
+# -----------------------------------------------------------------------------
+record_fix_success() {
+    local label="$1"
+    FIX_SUCCESSES=$((FIX_SUCCESSES + 1))
+    print_success "Fix succeeded: $label"
+}
+
+record_fix_failure() {
+    local label="$1"
+    FIX_FAILURES=$((FIX_FAILURES + 1))
+    print_fail "Fix failed: $label"
+}
 
 # -----------------------------------------------------------------------------
 # Parse arguments
@@ -69,8 +126,18 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 NPM_MANIFEST_FILE="$REPO_ROOT/config/npm-packages.sh"
+AI_STACK_NAMESPACE="${AI_STACK_NAMESPACE:-ai-stack}"
 
 : "${LOG_DIR:=$REPO_ROOT/logs}"
+
+if [[ -z "${KUBECONFIG:-}" && -f /etc/rancher/k3s/k3s.yaml ]]; then
+    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+fi
+
+KUBECTL_BIN="$(command -v kubectl 2>/dev/null || true)"
+if [[ -z "$KUBECTL_BIN" && -x /run/current-system/sw/bin/kubectl ]]; then
+    KUBECTL_BIN="/run/current-system/sw/bin/kubectl"
+fi
 
 if ! declare -F log >/dev/null 2>&1; then
     log() {
@@ -188,11 +255,10 @@ fix_shell_environment() {
         print_success "Sourced home-manager session variables"
     fi
 
-    # Reload shell config
+    # Avoid sourcing ~/.zshrc from bash (can exit or fail on zsh-specific syntax).
     if [ -f "$HOME/.zshrc" ]; then
-        print_detail "Reloading ZSH configuration"
-        source "$HOME/.zshrc" 2>/dev/null || true
-        print_success "Reloaded ZSH configuration"
+        print_detail "Skipping ~/.zshrc reload in non-interactive bash"
+        print_detail "Run: exec zsh"
     fi
 }
 
@@ -206,13 +272,30 @@ fix_home_manager() {
         local hm_target_user="${PRIMARY_USER:-${USER:-$(id -un 2>/dev/null || true)}}"
         local hm_flake=".#${hm_target_user}"
 
-        print_detail "Running: home-manager switch --flake $hm_flake"
-        if home-manager switch --flake "$hm_flake" 2>&1 | tee /tmp/hm-fix.log; then
+        local hm_cmd=()
+        local hm_env=()
+        local effective_max_jobs
+        effective_max_jobs=$(nix show-config 2>/dev/null | awk -F' = ' '/^max-jobs/ {print $2; exit}')
+        if [ "$effective_max_jobs" = "0" ]; then
+            print_detail "max-jobs=0 detected; forcing max-jobs=1 for home-manager switch"
+            hm_env=(env NIX_CONFIG="max-jobs = 1")
+        fi
+        if command -v home-manager >/dev/null 2>&1; then
+            hm_cmd=(home-manager)
+        else
+            hm_cmd=(nix run github:nix-community/home-manager --)
+        fi
+
+        local backup_suffix="backup-$(date +%Y%m%d_%H%M%S)"
+        print_detail "Running: ${hm_cmd[*]} switch --flake $hm_flake -b $backup_suffix"
+        local hm_fix_log="${TMP_ROOT}/hm-fix.log"
+        if "${hm_env[@]}" "${hm_cmd[@]}" switch --flake "$hm_flake" -b "$backup_suffix" \
+            > >(tee "$hm_fix_log") 2>&1; then
             print_success "Successfully applied home-manager configuration"
             fix_shell_environment
         else
             print_fail "Failed to apply home-manager configuration"
-            echo "  See /tmp/hm-fix.log for details"
+            echo "  See ${hm_fix_log} for details"
         fi
     else
         print_fail "home-manager configuration not found at ~/.dotfiles/home-manager"
@@ -222,8 +305,34 @@ fix_home_manager() {
 load_npm_manifest() {
     NPM_AI_PACKAGE_MANIFEST=()
     if [ -f "$NPM_MANIFEST_FILE" ]; then
-        # shellcheck disable=SC1090
-        source "$NPM_MANIFEST_FILE"
+        local manifest_path=""
+        local repo_root=""
+        manifest_path=$(readlink -f "$NPM_MANIFEST_FILE" 2>/dev/null || true)
+        repo_root=$(readlink -f "$REPO_ROOT" 2>/dev/null || true)
+        if [[ -z "$manifest_path" || -z "$repo_root" || "$manifest_path" != "$repo_root"* ]]; then
+            print_fail "Refusing to source npm manifest outside repo: $NPM_MANIFEST_FILE"
+            return 1
+        fi
+        local line entry
+        while IFS= read -r line; do
+            if [[ "$line" =~ \"([^\"]+)\" ]]; then
+                entry="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ \'([^\']+)\' ]]; then
+                entry="${BASH_REMATCH[1]}"
+            else
+                entry=""
+            fi
+            if [[ -n "$entry" ]]; then
+                NPM_AI_PACKAGE_MANIFEST+=("$entry")
+            fi
+        done < <(awk '
+            BEGIN { in_list=0 }
+            /^[[:space:]]*NPM_AI_PACKAGE_MANIFEST[[:space:]]*=[[:space:]]*[(][[:space:]]*$/ { in_list=1; next }
+            in_list {
+                if ($0 ~ /^[[:space:]]*[)][[:space:]]*$/) { in_list=0; next }
+                print
+            }
+        ' "$NPM_MANIFEST_FILE")
     fi
 }
 
@@ -300,9 +409,7 @@ DEBUG_FLAG="\${AI_TOOL_DEBUG:-0}"
 DEBUG_ENV_VAR="${debug_env_var}"
 
 if [ -n "\${DEBUG_ENV_VAR}" ]; then
-    DEBUG_ENV_VALUE=""
-    # shellcheck disable=SC2086
-    eval "DEBUG_ENV_VALUE=\"\\${${debug_env_var}:-}\""
+    DEBUG_ENV_VALUE="\${!DEBUG_ENV_VAR:-}"
     if [ -n "\${DEBUG_ENV_VALUE}" ]; then
         DEBUG_FLAG="\${DEBUG_ENV_VALUE}"
     fi
@@ -367,38 +474,165 @@ fix_npm_packages() {
 
     if [ ${#NPM_AI_PACKAGE_MANIFEST[@]} -eq 0 ]; then
         print_info "No AI CLI packages defined in manifest"
-        return
+        return 0
     fi
 
     local npm_prefix="$NPM_CONFIG_PREFIX"
     local npm_modules="$npm_prefix/lib/node_modules"
-    local entry package display bin_command wrapper_name extension_id debug_env
+    local entry package version display bin_command wrapper_name extension_id debug_env
+    local fix_failed=0
 
     for entry in "${NPM_AI_PACKAGE_MANIFEST[@]}"; do
-        IFS='|' read -r package display bin_command wrapper_name extension_id debug_env <<<"$entry"
-        local log_file="/tmp/${wrapper_name}-npm-fix.log"
+        IFS='|' read -r package version display bin_command wrapper_name extension_id debug_env <<<"$entry"
+        local log_file="${TMP_ROOT}/${wrapper_name}-npm-fix.log"
+        local audit_log="${TMP_ROOT}/${wrapper_name}-npm-audit.log"
+        local package_spec="${package}@${version}"
+        local package_dir="$npm_modules/$package"
+        local wrapper_path="$npm_prefix/bin/$wrapper_name"
+        local current_version=""
+
+        if [ -f "$package_dir/package.json" ]; then
+            current_version=$(node -e "const pkg=require(process.argv[1]); if(pkg && pkg.version){console.log(pkg.version);}" "$package_dir/package.json" 2>/dev/null || echo "")
+        fi
+
+        if [ -n "$current_version" ] && [ "$current_version" = "$version" ] && [ ! -f "$wrapper_path" ]; then
+            local cli_path
+            cli_path=$(resolve_manifest_cli_path "$package_dir" "$bin_command") || cli_path=""
+            if [ -n "$cli_path" ] && [ -f "$cli_path" ]; then
+                write_ai_wrapper "$wrapper_path" "$cli_path" "$display" "$debug_env"
+                print_success "Rebuilt wrapper: $wrapper_path"
+                continue
+            else
+                print_warning "Unable to locate CLI entry for $display (wrapper rebuild failed)"
+            fi
+        fi
+
+        if [[ -z "$version" || "$version" == "UNPINNED" ]]; then
+            print_fail "Skipping $package (unpinned version)"
+            fix_failed=1
+            continue
+        fi
         print_detail "Reinstalling $package"
 
-        if npm install -g "$package" 2>&1 | tee "$log_file"; then
+        if npm install -g --ignore-scripts "$package_spec" > >(tee "$log_file") 2>&1; then
             print_success "$display npm package installed"
 
-            local package_dir="$npm_modules/$package"
             local cli_path
             cli_path=$(resolve_manifest_cli_path "$package_dir" "$bin_command") || cli_path=""
 
             if [ -n "$cli_path" ] && [ -f "$cli_path" ]; then
-                local wrapper_path="$npm_prefix/bin/$wrapper_name"
                 write_ai_wrapper "$wrapper_path" "$cli_path" "$display" "$debug_env"
                 print_success "Updated wrapper: $wrapper_path"
             else
                 print_warning "Unable to locate CLI entry for $display"
                 print_detail "Check $log_file for npm output"
+                fix_failed=1
+            fi
+
+            if ! npm audit --global --audit-level=high > >(tee "$audit_log") 2>&1; then
+                if grep -qiE "EAUDITGLOBAL|does not support testing globals" "$audit_log" 2>/dev/null; then
+                    print_info "$display npm audit skipped (npm does not support --global audits)"
+                else
+                    print_warning "$display npm audit reported issues (see $audit_log)"
+                fi
             fi
         else
             print_fail "Failed to reinstall $display"
             echo "  See $log_file for details"
+            fix_failed=1
         fi
     done
+
+    if [[ "$fix_failed" -ne 0 ]]; then
+        return 1
+    fi
+    return 0
+}
+
+fix_claude_code_native() {
+    print_section "Attempting to fix Claude Code installation..."
+
+    local claude_bin="$HOME/.local/bin/claude"
+    local claude_alt="$HOME/.claude/bin/claude"
+
+    # Remove stale npm installation if present
+    local npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
+    local old_npm_dir="$npm_prefix/lib/node_modules/@anthropic-ai/claude-code"
+    if [ -d "$old_npm_dir" ]; then
+        print_detail "Removing deprecated npm Claude Code installation"
+        rm -rf "$old_npm_dir" 2>/dev/null || true
+    fi
+
+    mkdir -p "$HOME/.local/bin" 2>/dev/null || true
+
+    local log_file="${TMP_ROOT}/claude-native-fix.log"
+    print_detail "Installing Claude Code via native installer..."
+
+    local installer_tmp
+    installer_tmp="$(mktemp -p "$TMP_ROOT" claude-install.XXXXXX.sh)"
+    local installer_hash=""
+    local expected_hash="${CLAUDE_INSTALLER_SHA256:-}"
+
+    if curl --max-time 120 --connect-timeout 10 -fsSL "https://claude.ai/install.sh" -o "$installer_tmp"; then
+        if command -v sha256sum >/dev/null 2>&1; then
+            installer_hash="$(sha256sum "$installer_tmp" | awk '{print $1}')"
+        elif command -v shasum >/dev/null 2>&1; then
+            installer_hash="$(shasum -a 256 "$installer_tmp" | awk '{print $1}')"
+        fi
+
+        if [[ -n "$installer_hash" ]]; then
+            print_detail "Claude installer SHA-256: $installer_hash"
+        fi
+
+        if [[ -n "$expected_hash" && -n "$installer_hash" && "$installer_hash" != "$expected_hash" ]]; then
+            print_fail "Claude installer hash mismatch (expected $expected_hash)"
+            rm -f "$installer_tmp"
+            return 1
+        fi
+
+        if [[ "$NONINTERACTIVE" == true && "${TRUST_REMOTE_SCRIPTS:-false}" != "true" ]]; then
+            print_fail "Noninteractive mode blocks remote script execution without TRUST_REMOTE_SCRIPTS=true"
+            rm -f "$installer_tmp"
+            return 1
+        fi
+
+        if ! confirm "Run Claude installer script from https://claude.ai/install.sh?" "n"; then
+            print_fail "Claude installer aborted by user"
+            rm -f "$installer_tmp"
+            return 1
+        fi
+
+        if bash "$installer_tmp" > >(tee "$log_file") 2>&1; then
+
+        if [ -x "$claude_bin" ]; then
+            print_success "Claude Code installed at $claude_bin"
+        elif [ -x "$claude_alt" ]; then
+            ln -sf "$claude_alt" "$claude_bin" 2>/dev/null || true
+            print_success "Claude Code installed at $claude_alt (symlinked to $claude_bin)"
+        else
+            print_fail "Claude Code installer completed but binary not found"
+            print_detail "See $log_file for details"
+            return 1
+        fi
+
+        # Create backward-compatible symlink
+        if [ -d "$npm_prefix/bin" ]; then
+            ln -sf "$claude_bin" "$npm_prefix/bin/claude-wrapper" 2>/dev/null || true
+            print_detail "Created compatibility symlink: $npm_prefix/bin/claude-wrapper"
+        fi
+        else
+        print_fail "Failed to install Claude Code"
+        print_detail "See $log_file for details"
+        print_detail "Manual install: curl -fsSL --max-time 30 --connect-timeout 5 https://claude.ai/install.sh | bash"
+        rm -f "$installer_tmp"
+        return 1
+        fi
+    else
+        print_fail "Failed to download Claude installer script"
+        rm -f "$installer_tmp"
+        return 1
+    fi
+    rm -f "$installer_tmp"
 }
 
 # Check functions
@@ -416,6 +650,8 @@ detect_python_interpreter() {
     candidates+=(
         "$HOME/.nix-profile/bin/python3"
         "$HOME/.nix-profile/bin/python"
+        "$HOME/.local/state/nix/profiles/home-manager/bin/python3"
+        "$HOME/.local/state/nix/profiles/home-manager/bin/python"
         "/run/current-system/sw/bin/python3"
         "/run/current-system/sw/bin/python"
     )
@@ -519,12 +755,28 @@ fix_python_environment() {
         done
     fi
 
-    if command -v home-manager >/dev/null 2>&1 && [ -d "$HOME/.dotfiles/home-manager" ]; then
+    if [ -d "$HOME/.dotfiles/home-manager" ]; then
         local hm_target_user="${PRIMARY_USER:-${USER:-$(id -un 2>/dev/null || true)}}"
         local hm_python_target="$HOME/.dotfiles/home-manager#$hm_target_user"
+        local hm_cmd=()
+        local hm_env=()
+        local effective_max_jobs
+        effective_max_jobs=$(nix show-config 2>/dev/null | awk -F' = ' '/^max-jobs/ {print $2; exit}')
+        if [ "$effective_max_jobs" = "0" ]; then
+            print_detail "max-jobs=0 detected; forcing max-jobs=1 for home-manager switch"
+            hm_env=(env NIX_CONFIG="max-jobs = 1")
+        fi
+        if command -v home-manager >/dev/null 2>&1; then
+            hm_cmd=(home-manager)
+        else
+            hm_cmd=(nix run github:nix-community/home-manager --)
+        fi
         print_detail "Reapplying home-manager configuration to rebuild Python environment"
-        print_detail "Running: home-manager switch --flake $hm_python_target"
-        if home-manager switch --flake "$hm_python_target" 2>&1 | tee /tmp/hm-python-fix.log; then
+        local backup_suffix="backup-$(date +%Y%m%d_%H%M%S)"
+        print_detail "Running: ${hm_cmd[*]} switch --flake $hm_python_target -b $backup_suffix"
+        local hm_python_log="${TMP_ROOT}/hm-python-fix.log"
+        if "${hm_env[@]}" "${hm_cmd[@]}" switch --flake "$hm_python_target" -b "$backup_suffix" \
+            > >(tee "$hm_python_log") 2>&1; then
             print_success "Reapplied home-manager configuration"
             detect_python_interpreter >/dev/null 2>&1 || true
 
@@ -536,7 +788,7 @@ fix_python_environment() {
             fi
         else
             print_fail "Failed to apply home-manager configuration"
-            echo "  See /tmp/hm-python-fix.log for details"
+            echo "  See ${hm_python_log} for details"
         fi
     else
         print_warning "Home-manager configuration unavailable; install Python packages manually"
@@ -689,6 +941,11 @@ check_nix_channel() {
         fi
         local channel_output=""
         if ! channel_output=$(nix-channel --list --profile "$profile" 2>&1); then
+            if echo "$channel_output" | grep -qi "unsupported argument '--profile'\\|unknown option '--profile'"; then
+                print_success "$description (nix-channel lacks --profile flag; skipping system check)"
+                print_detail "Current nix-channel build does not expose --profile; run 'sudo nix-channel --list' manually if needed."
+                return 0
+            fi
             if echo "$channel_output" | grep -qi "permission denied"; then
                 print_success "$description (requires root access, skipping)"
                 print_detail "Run with: sudo nix-channel --list --profile '$profile'"
@@ -1042,7 +1299,7 @@ check_systemd_service_port() {
 
     # Only check port if service is running
     if systemctl --user is-active "$service" &> /dev/null; then
-        if curl -s "http://localhost:$port" &> /dev/null || nc -z localhost "$port" 2>/dev/null; then
+        if curl -s --max-time 2 --connect-timeout 1 "http://${SERVICE_HOST:-localhost}:$port" &> /dev/null || nc -z localhost "$port" 2>/dev/null; then
             print_detail "Service accessible on port $port"
             return 0
         else
@@ -1069,17 +1326,30 @@ run_all_checks() {
     # ==========================================================================
     print_section "Core System Tools"
 
-    check_command "podman" "Podman" true
+    local require_podman=true
+    if [[ "${REQUIRE_PODMAN:-}" == "true" ]]; then
+        require_podman=true
+    elif [[ "${REQUIRE_PODMAN:-}" == "false" ]]; then
+        require_podman=false
+    else
+        if command -v systemctl >/dev/null 2>&1 && systemctl is-active k3s >/dev/null 2>&1; then
+            require_podman=false
+        elif [[ -f "/etc/rancher/k3s/k3s.yaml" ]]; then
+            require_podman=false
+        fi
+    fi
+
+    check_command "podman" "Podman" "$require_podman"
 
     print_section "Rootless Podman Diagnostics"
-    if declare -F run_rootless_podman_diagnostics >/dev/null 2>&1; then
+    if command -v podman >/dev/null 2>&1 && declare -F run_rootless_podman_diagnostics >/dev/null 2>&1; then
         if run_rootless_podman_diagnostics "$PRIMARY_USER"; then
             print_info "Rootless Podman diagnostics completed."
         else
             print_info "Rootless Podman diagnostics detected issues; review the messages above."
         fi
     else
-        print_warning "Podman diagnostics helper unavailable; update the repository to enable automatic checks."
+        print_warning "Podman diagnostics skipped (podman not available or helper missing)."
     fi
     check_command "git" "Git" true
     check_command "curl" "cURL" true
@@ -1142,23 +1412,67 @@ run_all_checks() {
     # ==========================================================================
     print_section "Channel Alignment"
 
-    check_nix_channel "/nix/var/nix/profiles/per-user/root/channels" "nixos" "nixos-unstable" "System nixos channel"
-    check_nix_channel "" "nixpkgs" "nixos-unstable" "User nixpkgs channel"
-    check_nix_channel "" "home-manager" "master" "Home Manager channel"
+    local expected_nixpkgs="nixos-unstable"
+    local expected_home="master"
+    local nixos_version_raw=""
+    nixos_version_raw=$(nixos-version 2>/dev/null | awk '{print $1}')
+    if [[ "$nixos_version_raw" =~ ^([0-9]{2}\.[0-9]{2}) ]]; then
+        expected_nixpkgs="nixos-${BASH_REMATCH[1]}"
+        expected_home="release-${BASH_REMATCH[1]}"
+    fi
+
+    check_nix_channel "/nix/var/nix/profiles/per-user/root/channels" "nixos" "$expected_nixpkgs" "System nixos channel"
+    check_nix_channel "" "nixpkgs" "$expected_nixpkgs" "User nixpkgs channel"
+    check_nix_channel "" "home-manager" "$expected_home" "Home Manager channel"
 
     # ==========================================================================
     # AI Development Tools
     # ==========================================================================
     print_section "AI Development Tools"
 
+    # --- Claude Code (native installer) ---
+    local claude_native_bin="$HOME/.local/bin/claude"
+    local claude_alt_bin="$HOME/.claude/bin/claude"
+    local npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
+    local claude_legacy_wrapper="$npm_prefix/bin/claude-wrapper"
+
+    print_check "Claude Code (native binary)"
+    if [ -x "$claude_native_bin" ]; then
+        local claude_version
+        claude_version=$("$claude_native_bin" --version 2>/dev/null || echo "unknown")
+        print_success "Claude Code native binary available (${claude_version})"
+        print_detail "Binary: $claude_native_bin"
+    elif [ -x "$claude_alt_bin" ]; then
+        local claude_version
+        claude_version=$("$claude_alt_bin" --version 2>/dev/null || echo "unknown")
+        print_success "Claude Code native binary available (${claude_version})"
+        print_detail "Binary: $claude_alt_bin"
+        print_detail "Consider symlinking to $claude_native_bin for PATH consistency"
+    elif command -v claude >/dev/null 2>&1; then
+        local claude_location
+        claude_location=$(command -v claude)
+        local claude_version
+        claude_version=$(claude --version 2>/dev/null || echo "unknown")
+        print_success "Claude Code available (${claude_version})"
+        print_detail "Location: $claude_location"
+    elif [ -x "$claude_legacy_wrapper" ]; then
+        print_warning "Claude Code found at legacy npm wrapper path only"
+        print_detail "Legacy wrapper: $claude_legacy_wrapper"
+        print_detail "Upgrade: curl -fsSL --max-time 30 --connect-timeout 5 https://claude.ai/install.sh | bash"
+    else
+        print_fail "Claude Code not found"
+        print_detail "Install: curl -fsSL --max-time 30 --connect-timeout 5 https://claude.ai/install.sh | bash"
+        print_detail "Checked: $claude_native_bin, $claude_alt_bin, PATH, $claude_legacy_wrapper"
+    fi
+
+    # --- NPM-based AI CLIs (OpenAI, CodeX, Goose, etc.) ---
     if [ ${#NPM_AI_PACKAGE_MANIFEST[@]} -eq 0 ]; then
         print_info "No npm-based AI CLIs defined in manifest"
     else
-        local npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
         local npm_modules="$npm_prefix/lib/node_modules"
-        local entry package display bin_command wrapper_name extension_id debug_env
+        local entry package version display bin_command wrapper_name extension_id debug_env
         for entry in "${NPM_AI_PACKAGE_MANIFEST[@]}"; do
-            IFS='|' read -r package display bin_command wrapper_name extension_id debug_env <<<"$entry"
+            IFS='|' read -r package version display bin_command wrapper_name extension_id debug_env <<<"$entry"
             local required_package=true
             case "$package" in
                 "@gooseai/cli")
@@ -1184,7 +1498,14 @@ run_all_checks() {
                     print_warning "$display wrapper not found (optional)"
                 fi
                 print_detail "Expected at: $wrapper_path"
-                print_detail "Install with: npm install -g $package"
+                if [ "$package" = "@google/gemini-cli" ]; then
+                    print_detail "If Gemini CLI install fails, ensure ripgrep is installed or set RIPGREP_BINARY and rerun --fix."
+                fi
+                if [[ -n "$version" && "$version" != "UNPINNED" ]]; then
+                    print_detail "Install with: npm install -g ${package}@${version}"
+                else
+                    print_detail "Install with: npm install -g $package (version unpinned)"
+                fi
             fi
 
             print_check "$display npm package"
@@ -1203,7 +1524,11 @@ run_all_checks() {
                 else
                     print_warning "$display npm package not found (optional)"
                 fi
-                print_detail "Install with: npm install -g $package"
+                if [[ -n "$version" && "$version" != "UNPINNED" ]]; then
+                    print_detail "Install with: npm install -g ${package}@${version}"
+                else
+                    print_detail "Install with: npm install -g $package (version unpinned)"
+                fi
             fi
         done
     fi
@@ -1212,7 +1537,7 @@ run_all_checks() {
     check_command "aider" "Aider" true
     check_command "openskills" "OpenSkills CLI" true
 
-    local llama_cpp_url="${LLAMA_CPP_BASE_URL:-http://localhost:8080}"
+    local llama_cpp_url="${LLAMA_CPP_BASE_URL:-http://${SERVICE_HOST:-localhost}:8080}"
     local normalized_llama_cpp_url="${llama_cpp_url%/}"
     normalized_llama_cpp_url="${normalized_llama_cpp_url%/api/v1}"
     print_check "llama.cpp server health (${normalized_llama_cpp_url}/health)"
@@ -1220,7 +1545,7 @@ run_all_checks() {
         print_success "llama.cpp server reachable"
     else
         print_warning "llama.cpp server not reachable (optional)"
-        print_detail "Start via ./scripts/local-ai-starter.sh option 2 or docker compose up -d inside ~/Documents/local-ai-stack"
+        print_detail "Start via ./scripts/local-ai-starter.sh option 2 or kubectl --request-timeout=60s apply -k ai-stack/kubernetes"
     fi
 
     # ==========================================================================
@@ -1282,6 +1607,7 @@ run_all_checks() {
     # Testing Infrastructure (pytest)
     # ==========================================================================
     print_section "Testing Infrastructure"
+    detect_python_interpreter >/dev/null 2>&1 || true
 
     # Check pytest and plugins
     check_python_package "pytest" "pytest core" false
@@ -1416,7 +1742,7 @@ run_all_checks() {
 
     # Check tmpfs for /tmp
     print_check "Tmpfs for /tmp"
-    if mount | grep -q "tmpfs on /tmp"; then
+    if mount 2>/dev/null | grep -q "tmpfs on /tmp"; then
         local tmp_size=$(df -h /tmp 2>/dev/null | awk 'NR==2 {print $2}')
         print_success "Tmpfs enabled for /tmp (size: $tmp_size)"
         print_detail "Fast temporary file operations"
@@ -1565,17 +1891,95 @@ run_all_checks() {
     # ==========================================================================
     print_section "AI Stack Status"
 
-    if command -v podman-ai-stack >/dev/null 2>&1; then
-        if podman-ai-stack status >/tmp/podman-ai-stack-status.$$ 2>&1; then
-            print_success "podman-ai-stack helper available"
-            sed 's/^/  /' /tmp/podman-ai-stack-status.$$
+    local kubeconfig_path="${KUBECONFIG:-}"
+    if [[ -z "$kubeconfig_path" && -f /etc/rancher/k3s/k3s.yaml ]]; then
+        kubeconfig_path="/etc/rancher/k3s/k3s.yaml"
+    fi
+    if [[ -n "$kubeconfig_path" ]]; then
+        export KUBECONFIG="$kubeconfig_path"
+    fi
+    if [[ "$DETAILED" == "true" ]]; then
+        print_detail "kubectl: ${KUBECTL_BIN:-not found}"
+        print_detail "KUBECONFIG: ${kubeconfig_path:-<unset>}"
+    fi
+
+    print_check "K3s cluster connectivity"
+    local kube_err=""
+    if [[ -n "$KUBECTL_BIN" ]]; then
+        kube_err=$("$KUBECTL_BIN" get nodes >/dev/null 2>&1 || true)
+        if [[ -z "$kube_err" ]]; then
+            print_success "kubectl can reach the cluster"
         else
-            print_warning "podman-ai-stack status reported issues:"
-            sed 's/^/  /' /tmp/podman-ai-stack-status.$$
+            print_fail "kubectl unavailable or cluster unreachable"
+            if [[ "$DETAILED" == "true" ]]; then
+                print_detail "kubectl error: ${kube_err}"
+            fi
         fi
-        rm -f /tmp/podman-ai-stack-status.$$ || true
     else
-        print_info "podman-ai-stack helper not installed; run ai-servicectl stack status to inspect containers."
+        print_fail "kubectl unavailable or cluster unreachable"
+    fi
+
+    print_check "AI stack pods (${AI_STACK_NAMESPACE})"
+    local pods_output=""
+    local pods_err=""
+    if [[ -n "$KUBECTL_BIN" ]]; then
+        pods_output=$("$KUBECTL_BIN" --request-timeout="${KUBECTL_TIMEOUT:-60}s" get pods -n "$AI_STACK_NAMESPACE" --no-headers 2>/dev/null || true)
+        if [[ -z "$pods_output" ]]; then
+            pods_err=$("$KUBECTL_BIN" --request-timeout="${KUBECTL_TIMEOUT:-60}s" get pods -n "$AI_STACK_NAMESPACE" --no-headers 2>&1 || true)
+        fi
+    fi
+
+    if [[ -z "$pods_output" ]]; then
+        if [[ -n "$pods_err" ]]; then
+            print_warning "Unable to query pods in namespace '${AI_STACK_NAMESPACE}'"
+            if [[ "$DETAILED" == "true" ]]; then
+                print_detail "kubectl pods error: ${pods_err}"
+            fi
+        else
+            print_warning "No pods reported in namespace '${AI_STACK_NAMESPACE}'"
+        fi
+    else
+        local non_running=0
+        local crashloop=0
+        local imagepull=0
+        local high_restarts=0
+        local restart_threshold=5
+        local restart_details=()
+
+        while read -r name ready status restarts _rest; do
+            [[ -z "$name" ]] && continue
+            if [[ "$status" == "Completed" || "$status" == "Succeeded" ]]; then
+                continue
+            fi
+            if [[ "$status" != "Running" ]]; then
+                non_running=$((non_running + 1))
+            fi
+            if [[ "$status" == *CrashLoopBackOff* || "$status" == *Error* ]]; then
+                crashloop=$((crashloop + 1))
+            fi
+            if [[ "$status" == *ImagePullBackOff* || "$status" == *ErrImagePull* ]]; then
+                imagepull=$((imagepull + 1))
+            fi
+            if [[ "$restarts" =~ ^[0-9]+$ ]] && (( restarts > restart_threshold )); then
+                high_restarts=$((high_restarts + 1))
+                restart_details+=("${name}(${restarts})")
+            fi
+        done <<< "$pods_output"
+
+        if (( crashloop > 0 )); then
+            print_fail "CrashLoopBackOff detected for ${crashloop} pod(s)"
+        elif (( imagepull > 0 )); then
+            print_fail "Image pull failures detected for ${imagepull} pod(s)"
+        elif (( non_running > 0 )); then
+            print_warning "${non_running} pod(s) not in Running state"
+        else
+            print_success "All AI stack pods Running"
+        fi
+
+        if (( high_restarts > 0 )); then
+            local restart_list="${restart_details[*]}"
+            print_warning "${high_restarts} pod(s) restarted more than ${restart_threshold} times: ${restart_list}"
+        fi
     fi
 
     # Jupyter Lab (user service)
@@ -1592,24 +1996,28 @@ run_all_checks() {
     # ==========================================================================
     print_section "Nix Store & Profile Health"
 
-    # Check nix store
-    print_check "Nix store"
-    if [ -d "/nix/store" ]; then
-        local store_size=$(du -sh /nix/store 2>/dev/null | awk '{print $1}')
-        print_success "Nix store ($store_size)"
-        print_detail "Location: /nix/store"
+    if [[ "$NONINTERACTIVE" == true ]]; then
+        print_warning "Skipping Nix store/profile checks in non-interactive mode (sudo unavailable)."
     else
-        print_fail "Nix store not found"
-    fi
+        # Check nix store
+        print_check "Nix store"
+        if [ -d "/nix/store" ]; then
+            local store_size=$(du -sh /nix/store 2>/dev/null | awk '{print $1}')
+            print_success "Nix store ($store_size)"
+            print_detail "Location: /nix/store"
+        else
+            print_fail "Nix store not found"
+        fi
 
-    # Check nix profile
-    print_check "Nix profile"
-    if [ -d "$HOME/.nix-profile" ]; then
-        local profile_generation=$(nix-env --list-generations 2>/dev/null | tail -n1 | awk '{print $1}')
-        print_success "Nix profile (generation $profile_generation)"
-        print_detail "Location: $HOME/.nix-profile"
-    else
-        print_warning "Nix profile not found"
+        # Check nix profile
+        print_check "Nix profile"
+        if [ -d "$HOME/.nix-profile" ]; then
+            local profile_generation=$(nix-env --list-generations 2>/dev/null | tail -n1 | awk '{print $1}')
+            print_success "Nix profile (generation $profile_generation)"
+            print_detail "Location: $HOME/.nix-profile"
+        else
+            print_warning "Nix profile not found"
+        fi
     fi
 
     # Check for broken symlinks in PATH
@@ -1664,6 +2072,65 @@ run_all_checks() {
         print_warning "Git config not found"
     fi
 
+    # Check flake lock completeness
+    local hm_flake_dir="$HOME/.dotfiles/home-manager"
+    local hm_flake_file="$hm_flake_dir/flake.nix"
+    local hm_lock_file="$hm_flake_dir/flake.lock"
+    print_check "Flake lock completeness"
+    if [ -f "$hm_flake_file" ] && [ -f "$hm_lock_file" ] && command -v jq >/dev/null 2>&1; then
+        # Extract declared inputs from flake.nix
+        local declared_inputs
+        declared_inputs=$(awk '
+            BEGIN { in_inputs=0; depth=0 }
+            /^[[:space:]]*inputs[[:space:]]*=/ {
+                in_inputs=1
+                depth=1
+                next
+            }
+            in_inputs {
+                if (depth == 1) {
+                    if (match($0, /^[[:space:]]*([A-Za-z0-9_-]+)[[:space:]]*(=|\.|{)/, m)) {
+                        print m[1]
+                    }
+                }
+                open_braces = gsub(/{/, "{")
+                close_braces = gsub(/}/, "}")
+                depth += open_braces - close_braces
+                if (depth <= 0) {
+                    in_inputs=0
+                }
+            }
+        ' "$hm_flake_file" | sort -u)
+        # Extract locked inputs from flake.lock
+        local locked_inputs
+        locked_inputs=$(jq -r '.nodes.root.inputs // {} | keys[]' "$hm_lock_file" 2>/dev/null | sort -u)
+
+        local missing_lock_inputs=""
+        local input_name
+        while IFS= read -r input_name; do
+            [ -z "$input_name" ] && continue
+            if ! echo "$locked_inputs" | grep -Fxq "$input_name"; then
+                missing_lock_inputs="${missing_lock_inputs:+$missing_lock_inputs, }$input_name"
+            fi
+        done <<< "$declared_inputs"
+
+        if [ -z "$missing_lock_inputs" ]; then
+            local lock_count
+            lock_count=$(echo "$locked_inputs" | wc -l)
+            print_success "All flake inputs locked ($lock_count inputs)"
+        else
+            print_fail "Missing flake.lock entries: $missing_lock_inputs"
+            print_detail "Fix: cd $hm_flake_dir && nix flake lock"
+            print_detail "Or re-run deployment with --update-flake-inputs"
+        fi
+    elif [ ! -f "$hm_flake_file" ]; then
+        print_detail "Flake configuration not found (skipped)"
+    elif [ ! -f "$hm_lock_file" ]; then
+        print_warning "No flake.lock found — run: cd $hm_flake_dir && nix flake lock"
+    else
+        print_detail "jq not available; skipping flake lock check"
+    fi
+
     # ==========================================================================
     # Summary
     # ==========================================================================
@@ -1704,7 +2171,7 @@ run_all_checks() {
             local suggestion_index=1
 
             if ! command -v home-manager &> /dev/null; then
-                echo "  ${YELLOW}${suggestion_index}. Home Manager not in PATH:${NC}"
+                echo -e "  ${YELLOW}${suggestion_index}. Home Manager not in PATH:${NC}"
                 echo "     • Source session variables:"
                 echo "       source ~/.nix-profile/etc/profile.d/hm-session-vars.sh"
                 echo "     • Then reload shell:"
@@ -1716,26 +2183,47 @@ run_all_checks() {
                 suggestion_index=$((suggestion_index + 1))
             fi
 
+            # Check Claude Code (native installer)
+            local claude_missing=false
+            if [ ! -x "$HOME/.local/bin/claude" ] && [ ! -x "$HOME/.claude/bin/claude" ] && ! command -v claude >/dev/null 2>&1; then
+                claude_missing=true
+            fi
+
+            if [ "$claude_missing" = true ]; then
+                echo -e "  ${YELLOW}${suggestion_index}. Claude Code not installed:${NC}"
+                echo "     • Install via native installer:"
+                echo "       curl -fsSL --max-time 30 --connect-timeout 5 https://claude.ai/install.sh | bash"
+                echo "     • Or use auto-fix:"
+                echo "       $0 --fix"
+                echo ""
+                suggestion_index=$((suggestion_index + 1))
+            fi
+
+            # Check npm-based AI CLIs
             load_npm_manifest
             local missing_ai_tools=()
             if [ ${#NPM_AI_PACKAGE_MANIFEST[@]} -gt 0 ]; then
-                local entry package display bin_command wrapper_name extension_id debug_env
+                local entry package version display bin_command wrapper_name extension_id debug_env
                 for entry in "${NPM_AI_PACKAGE_MANIFEST[@]}"; do
-                    IFS='|' read -r package display bin_command wrapper_name extension_id debug_env <<<"$entry"
+                    IFS='|' read -r package version display bin_command wrapper_name extension_id debug_env <<<"$entry"
                     if [ ! -f "$HOME/.npm-global/bin/$wrapper_name" ]; then
-                        missing_ai_tools+=("$display|$package")
+                        missing_ai_tools+=("$display|$package|$version")
                     fi
                 done
             fi
 
             if [ ${#missing_ai_tools[@]} -gt 0 ]; then
-                echo "  ${YELLOW}${suggestion_index}. AI CLI tools missing:${NC}"
+                echo -e "  ${YELLOW}${suggestion_index}. AI CLI tools missing:${NC}"
                 echo "     • Install via NPM:"
                 echo "       export NPM_CONFIG_PREFIX=~/.npm-global"
                 local tool
                 for tool in "${missing_ai_tools[@]}"; do
-                    IFS='|' read -r display package <<<"$tool"
-                    echo "       npm install -g $package    # $display"
+                    IFS='|' read -r display package version <<<"$tool"
+                    if [[ -n "$version" && "$version" != "UNPINNED" ]]; then
+                        echo "       npm install -g ${package}@${version}    # $display"
+                    else
+                        echo "       npm install -g ${package}    # $display (version unpinned)"
+                    fi
                 done
                 echo "     • Or use auto-fix:"
                 echo "       $0 --fix"
@@ -1750,7 +2238,7 @@ run_all_checks() {
             mapfile -t missing_optional_python < <(get_missing_python_packages "optional")
 
             if [ ${#missing_required_python[@]} -gt 0 ]; then
-                echo "  ${YELLOW}${suggestion_index}. Python packages missing:${NC}"
+                echo -e "  ${YELLOW}${suggestion_index}. Python packages missing:${NC}"
                 echo "     • These should be installed via home-manager"
                 echo "     • If home-manager was just applied, reload your shell:"
                 echo "       exec zsh"
@@ -1767,7 +2255,7 @@ run_all_checks() {
             fi
 
             if [ ${#missing_optional_python[@]} -gt 0 ]; then
-                echo "  ${YELLOW}${suggestion_index}. Optional Python packages missing:${NC}"
+                echo -e "  ${YELLOW}${suggestion_index}. Optional Python packages missing:${NC}"
                 echo "     • These are not installed by default to avoid nixpkgs conflicts"
                 echo "     • Install via the optional agent requirements file:"
                 echo "       pip install -r ~/.config/ai-agents/requirements.txt"
@@ -1778,11 +2266,11 @@ run_all_checks() {
                 done
                 echo ""
             fi
-            echo "  ${YELLOW}Quick fix (attempts all repairs automatically):${NC}"
+            echo -e "  ${YELLOW}Quick fix (attempts all repairs automatically):${NC}"
             echo "     $0 --fix"
             echo ""
 
-            echo "  ${YELLOW}Manual verification after fixes:${NC}"
+            echo -e "  ${YELLOW}Manual verification after fixes:${NC}"
             echo "     • Reload shell: exec zsh"
             echo "     • Run health check again: $0"
             echo ""
@@ -1800,21 +2288,45 @@ main() {
         echo "Attempting to fix common issues..."
         echo ""
 
-        fix_shell_environment
-
-        if ! command -v home-manager &> /dev/null; then
-            fix_home_manager
+        if fix_shell_environment; then
+            record_fix_success "shell environment"
+        else
+            record_fix_failure "shell environment"
         fi
 
-        fix_python_environment
+        if ! command -v home-manager &> /dev/null; then
+            if fix_home_manager; then
+                record_fix_success "home-manager"
+            else
+                record_fix_failure "home-manager"
+            fi
+        fi
 
+        if fix_python_environment; then
+            record_fix_success "python environment"
+        else
+            record_fix_failure "python environment"
+        fi
+
+        # Fix Claude Code (native installer)
+        local claude_native_bin="$HOME/.local/bin/claude"
+        local claude_alt_bin="$HOME/.claude/bin/claude"
+        if [ ! -x "$claude_native_bin" ] && [ ! -x "$claude_alt_bin" ] && ! command -v claude >/dev/null 2>&1; then
+            if fix_claude_code_native; then
+                record_fix_success "claude code"
+            else
+                record_fix_failure "claude code"
+            fi
+        fi
+
+        # Fix npm-based AI CLIs
         load_npm_manifest
         local npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
         local ai_fix_needed=false
         if [ ${#NPM_AI_PACKAGE_MANIFEST[@]} -gt 0 ]; then
-            local entry package display bin_command wrapper_name extension_id debug_env
+            local entry package version display bin_command wrapper_name extension_id debug_env
             for entry in "${NPM_AI_PACKAGE_MANIFEST[@]}"; do
-                IFS='|' read -r package display bin_command wrapper_name extension_id debug_env <<<"$entry"
+                IFS='|' read -r package version display bin_command wrapper_name extension_id debug_env <<<"$entry"
                 if [ ! -f "$npm_prefix/bin/$wrapper_name" ]; then
                     ai_fix_needed=true
                     break
@@ -1823,16 +2335,80 @@ main() {
         fi
 
         if [ "$ai_fix_needed" = true ]; then
-            fix_npm_packages
+            if fix_npm_packages; then
+                record_fix_success "npm ai packages"
+            else
+                record_fix_failure "npm ai packages"
+            fi
+        fi
+
+        # Fix incomplete flake.lock (missing inputs like sops-nix, nix-vscode-extensions)
+        local hm_flake_dir="$HOME/.dotfiles/home-manager"
+        if [ -f "$hm_flake_dir/flake.nix" ] && [ -f "$hm_flake_dir/flake.lock" ] && command -v jq >/dev/null 2>&1; then
+            local declared_inputs locked_inputs
+            declared_inputs=$(awk '
+                BEGIN { in_inputs=0; depth=0 }
+                /^[[:space:]]*inputs[[:space:]]*=/ {
+                    in_inputs=1
+                    depth=1
+                    next
+                }
+                in_inputs {
+                    if (depth == 1) {
+                        if (match($0, /^[[:space:]]*([A-Za-z0-9_-]+)[[:space:]]*(=|\.|{)/, m)) {
+                            print m[1]
+                        }
+                    }
+                    open_braces = gsub(/{/, "{")
+                    close_braces = gsub(/}/, "}")
+                    depth += open_braces - close_braces
+                    if (depth <= 0) {
+                        in_inputs=0
+                    }
+                }
+            ' "$hm_flake_dir/flake.nix" | sort -u)
+            locked_inputs=$(jq -r '.nodes.root.inputs // {} | keys[]' "$hm_flake_dir/flake.lock" 2>/dev/null | sort -u)
+            local has_missing=false
+            while IFS= read -r input_name; do
+                [ -z "$input_name" ] && continue
+                if ! echo "$locked_inputs" | grep -Fxq "$input_name"; then
+                    has_missing=true
+                    break
+                fi
+            done <<< "$declared_inputs"
+            if [ "$has_missing" = true ]; then
+                print_section "Resolving missing flake.lock entries..."
+                local fix_effective_max_jobs
+                fix_effective_max_jobs=$(nix show-config 2>/dev/null | awk -F' = ' '/^max-jobs/ {print $2; exit}')
+                local -a fix_lock_cmd=(nix flake lock)
+                if [[ "$fix_effective_max_jobs" == "0" ]]; then
+                    fix_lock_cmd=(env NIX_CONFIG="max-jobs = 1" nix flake lock)
+                fi
+                if (cd "$hm_flake_dir" && "${fix_lock_cmd[@]}" 2>&1); then
+                    print_success "Resolved missing flake input locks"
+                    record_fix_success "flake.lock inputs"
+                else
+                    print_fail "Could not resolve flake.lock — run manually: cd $hm_flake_dir && nix flake lock"
+                    record_fix_failure "flake.lock inputs"
+                fi
+            fi
         fi
 
         echo ""
+        if [ "$FIX_FAILURES" -gt 0 ]; then
+            print_warning "Fix summary: $FIX_SUCCESSES succeeded, $FIX_FAILURES failed"
+        else
+            print_success "Fix summary: $FIX_SUCCESSES succeeded, 0 failed"
+        fi
         print_header "Running Health Check After Fixes"
         echo ""
     fi
 
     run_all_checks
     exit_code=$?
+    if [ "$FIX_FAILURES" -gt 0 ]; then
+        exit_code=1
+    fi
 
     echo ""
     echo "End time: $(date)"

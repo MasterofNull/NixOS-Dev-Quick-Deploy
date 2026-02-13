@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   annotations:
-    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
     kompose.version: 1.37.0 (HEAD)
     nixos.quick-deploy.ai-stack: "true"
     nixos.quick-deploy.service: container-engine-mcp
@@ -17,13 +16,15 @@ spec:
   template:
     metadata:
       annotations:
-        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
         kompose.version: 1.37.0 (HEAD)
         nixos.quick-deploy.ai-stack: "true"
         nixos.quick-deploy.service: container-engine-mcp
       labels:
         io.kompose.service: container-engine
     spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      serviceAccountName: container-engine
       automountServiceAccountToken: false
       containers:
         - env:
@@ -32,10 +33,17 @@ spec:
             - name: CONTAINER_ENGINE_ALLOWED_OPS
               value: list,inspect,logs
             - name: PODMAN_API_URL
-              value: http://192.168.86.145:2375
+              value: http://127.0.0.1:2375
             - name: PODMAN_API_VERSION
               value: v4.0.0
-          image: localhost/compose_container-engine:latest
+          image: localhost:5000/ai-stack-container-engine:dev
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           imagePullPolicy: Always
           livenessProbe:
             exec:
@@ -55,6 +63,9 @@ spec:
             limits:
               cpu: 500m
               memory: "268435456"
+            requests:
+              cpu: 100m
+              memory: 128Mi
           volumeMounts:
             - mountPath: /run/secrets/container-engine-api-key
               name: container-engine-api-key

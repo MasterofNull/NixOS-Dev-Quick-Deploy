@@ -103,34 +103,34 @@ subcmd_dashboards() {
     echo ""
     
     # Netdata
-    if curl -s -o /dev/null -w "" --connect-timeout 1 http://localhost:19999 2>/dev/null; then
-        echo -e "  ${GREEN}✓${RESET} Netdata: http://localhost:19999"
+    if curl -s -o /dev/null -w "" --max-time 1 --connect-timeout 1 http://${SERVICE_HOST:-localhost}:19999 2>/dev/null; then
+        echo -e "  ${GREEN}✓${RESET} Netdata: http://${SERVICE_HOST:-localhost}:19999"
     else
         echo -e "  ${RED}✗${RESET} Netdata: Not accessible (service may not be running)"
     fi
     
     # Prometheus
-    if curl -s -o /dev/null -w "" --connect-timeout 1 http://localhost:9090 2>/dev/null; then
-        echo -e "  ${GREEN}✓${RESET} Prometheus: http://localhost:9090"
+    if curl -s -o /dev/null -w "" --max-time 1 --connect-timeout 1 http://${SERVICE_HOST:-localhost}:9090 2>/dev/null; then
+        echo -e "  ${GREEN}✓${RESET} Prometheus: http://${SERVICE_HOST:-localhost}:9090"
     else
         echo -e "  ${YELLOW}○${RESET} Prometheus: Not enabled (see 'enable-monitoring' command)"
     fi
     
     # Grafana
-    if curl -s -o /dev/null -w "" --connect-timeout 1 http://localhost:3001 2>/dev/null; then
-        echo -e "  ${GREEN}✓${RESET} Grafana: http://localhost:3001"
+    if curl -s -o /dev/null -w "" --max-time 1 --connect-timeout 1 http://${SERVICE_HOST:-localhost}:3001 2>/dev/null; then
+        echo -e "  ${GREEN}✓${RESET} Grafana: http://${SERVICE_HOST:-localhost}:3001"
     else
         echo -e "  ${YELLOW}○${RESET} Grafana: Not enabled (see 'enable-monitoring' command)"
     fi
     
     # Gitea
-    if curl -s -o /dev/null -w "" --connect-timeout 1 http://localhost:3000 2>/dev/null; then
-        echo -e "  ${GREEN}✓${RESET} Gitea: http://localhost:3000"
+    if curl -s -o /dev/null -w "" --max-time 1 --connect-timeout 1 http://${SERVICE_HOST:-localhost}:${GITEA_PORT:-3003} 2>/dev/null; then
+        echo -e "  ${GREEN}✓${RESET} Gitea: http://${SERVICE_HOST:-localhost}:${GITEA_PORT:-3003}"
     fi
     
     echo ""
     echo "To open dashboards in browser:"
-    echo "  nix-shell -p firefox --run 'firefox http://localhost:19999'"
+    echo "  nix-shell -p firefox --run 'firefox http://${SERVICE_HOST:-localhost}:19999'"
 }
 
 subcmd_enable_monitoring() {
@@ -178,15 +178,15 @@ subcmd_flatseal() {
 
 subcmd_netdata() {
     print_section "Opening Netdata Dashboard"
-    if curl -s -o /dev/null --connect-timeout 1 http://localhost:19999 2>/dev/null; then
+    if curl -s -o /dev/null --max-time 1 --connect-timeout 1 http://${SERVICE_HOST:-localhost}:19999 2>/dev/null; then
         # Try native firefox first
         if command -v firefox &>/dev/null; then
-            firefox http://localhost:19999 &
+            firefox http://${SERVICE_HOST:-localhost}:19999 &
         else
-            nix-shell -p firefox --run "firefox http://localhost:19999" &
+            nix-shell -p firefox --run "firefox http://${SERVICE_HOST:-localhost}:19999" &
         fi
         disown
-        echo "Opening Netdata at http://localhost:19999"
+        echo "Opening Netdata at http://${SERVICE_HOST:-localhost}:19999"
     else
         echo -e "${RED}Netdata not running.${RESET}"
         echo "Start with: sudo systemctl start netdata"
@@ -225,5 +225,4 @@ case "${1:-help}" in
         exit 1
         ;;
 esac
-
 

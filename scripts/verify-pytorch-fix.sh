@@ -113,7 +113,7 @@ echo "Testing network connectivity..."
 echo ""
 
 # Check 7: Test PyPI connectivity
-if timeout 10 curl -sI https://pypi.org >/dev/null 2>&1; then
+if timeout 10 curl -sI --max-time 10 --connect-timeout 3 https://pypi.org >/dev/null 2>&1; then
     check "PyPI connectivity" 0
 else
     check "PyPI connectivity" 1
@@ -121,7 +121,7 @@ else
 fi
 
 # Check 8: Test PyTorch CDN connectivity
-if timeout 10 curl -sI https://download.pytorch.org >/dev/null 2>&1; then
+if timeout 10 curl -sI --max-time 10 --connect-timeout 3 https://download.pytorch.org >/dev/null 2>&1; then
     check "PyTorch CDN connectivity" 0
 else
     check "PyTorch CDN connectivity" 1

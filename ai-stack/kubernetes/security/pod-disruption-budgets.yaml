@@ -1,0 +1,65 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: aidb-pdb
+  namespace: ai-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      io.kompose.service: aidb
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: hybrid-coordinator-pdb
+  namespace: ai-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      io.kompose.service: hybrid-coordinator
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: postgres-pdb
+  namespace: ai-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      io.kompose.service: postgres
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: qdrant-pdb
+  namespace: ai-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      io.kompose.service: qdrant
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: redis-pdb
+  namespace: ai-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      io.kompose.service: redis
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: dashboard-api-pdb
+  namespace: ai-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      io.kompose.service: dashboard-api

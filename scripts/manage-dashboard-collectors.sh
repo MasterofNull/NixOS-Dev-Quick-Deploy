@@ -5,6 +5,11 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}"
+COLLECTOR_LITE_LOG="${RUNTIME_DIR}/collector-lite.log"
+COLLECTOR_FULL_LOG="${RUNTIME_DIR}/collector-full.log"
+
+mkdir -p "$RUNTIME_DIR" 2>/dev/null || true
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -16,6 +21,24 @@ info() { echo -e "${BLUE}ℹ${NC} $1"; }
 success() { echo -e "${GREEN}✓${NC} $1"; }
 warning() { echo -e "${YELLOW}⚠${NC} $1"; }
 error() { echo -e "${RED}✗${NC} $1"; }
+
+detect_runtime() {
+    if command -v kubectl >/dev/null 2>&1; then
+        if [[ -n "${KUBECONFIG:-}" ]] || [[ -f /etc/rancher/k3s/k3s.yaml ]]; then
+            echo "k8s"
+            return
+        fi
+    fi
+    if command -v podman >/dev/null 2>&1; then
+        echo "podman"
+        return
+    fi
+    if command -v docker >/dev/null 2>&1; then
+        echo "docker"
+        return
+    fi
+    echo ""
+}
 
 status() {
     info "Dashboard Collectors Status:"
@@ -47,6 +70,8 @@ status() {
 
 start() {
     info "Starting dashboard collectors..."
+    local runtime
+    runtime=$(detect_runtime)
 
     # Stop any existing collectors first
     stop
@@ -62,14 +87,16 @@ start() {
     fi
 
     # Start lite collector
-    nohup bash "${PROJECT_ROOT}/scripts/run-dashboard-collector-lite.sh" </dev/null >/tmp/collector-lite.log 2>&1 &
+    DASHBOARD_MODE="${runtime}" AI_STACK_NAMESPACE="${AI_STACK_NAMESPACE:-ai-stack}" \
+        nohup bash "${PROJECT_ROOT}/scripts/run-dashboard-collector-lite.sh" </dev/null >"$COLLECTOR_LITE_LOG" 2>&1 &
     local lite_pid=$!
     success "Started lite collector - PID $lite_pid"
 
     # Wait a moment then start full collector to avoid lock conflicts
     sleep 3
 
-    nohup bash "${PROJECT_ROOT}/scripts/run-dashboard-collector-full.sh" </dev/null >/tmp/collector-full.log 2>&1 &
+    DASHBOARD_MODE="${runtime}" AI_STACK_NAMESPACE="${AI_STACK_NAMESPACE:-ai-stack}" \
+        nohup bash "${PROJECT_ROOT}/scripts/run-dashboard-collector-full.sh" </dev/null >"$COLLECTOR_FULL_LOG" 2>&1 &
     local full_pid=$!
     success "Started full collector - PID $full_pid"
 
@@ -95,18 +122,18 @@ logs() {
     case "$which" in
         lite)
             info "Lite collector logs:"
-            tail -20 /tmp/collector-lite.log 2>/dev/null || warning "No logs found"
+            tail -20 "$COLLECTOR_LITE_LOG" 2>/dev/null || warning "No logs found"
             ;;
         full)
             info "Full collector logs:"
-            tail -20 /tmp/collector-full.log 2>/dev/null || warning "No logs found"
+            tail -20 "$COLLECTOR_FULL_LOG" 2>/dev/null || warning "No logs found"
             ;;
         *)
             info "Lite collector logs:"
-            tail -10 /tmp/collector-lite.log 2>/dev/null || warning "No logs found"
+            tail -10 "$COLLECTOR_LITE_LOG" 2>/dev/null || warning "No logs found"
             echo ""
             info "Full collector logs:"
-            tail -10 /tmp/collector-full.log 2>/dev/null || warning "No logs found"
+            tail -10 "$COLLECTOR_FULL_LOG" 2>/dev/null || warning "No logs found"
             ;;
     esac
 }

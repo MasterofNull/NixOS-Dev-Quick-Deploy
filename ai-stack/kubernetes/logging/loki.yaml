@@ -68,6 +68,8 @@ spec:
       labels:
         app: loki
     spec:
+      serviceAccountName: loki
+      automountServiceAccountToken: false
       containers:
         - name: loki
           image: grafana/loki:2.9.4

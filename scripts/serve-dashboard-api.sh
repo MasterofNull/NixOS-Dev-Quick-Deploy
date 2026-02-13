@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-export PATH="/run/current-system/sw/bin:/usr/bin:/bin:${HOME}/.nix-profile/bin"
+export PATH="/run/current-system/sw/bin:/usr/bin:/bin:${HOME}/.nix-profile/bin:${HOME}/.local/state/nix/profiles/home-manager/bin"
 
 SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
 SCRIPT_DIR="$(cd "$(/run/current-system/sw/bin/dirname "$SCRIPT_PATH")" && pwd)"
@@ -11,6 +11,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKEND_DIR="${PROJECT_ROOT}/dashboard/backend"
 VENV_DIR="${BACKEND_DIR}/venv"
 PORT="${DASHBOARD_API_PORT:-8889}"
+BIND_ADDRESS="${DASHBOARD_API_BIND_ADDRESS:-127.0.0.1}"
 
 if [[ ! -d "$BACKEND_DIR" ]]; then
     echo "ERROR: Backend directory not found: $BACKEND_DIR"
@@ -38,4 +39,4 @@ else
     echo "WARN: venv not found at $VENV_DIR; using system python."
 fi
 
-exec "$python_bin" -m uvicorn api.main:app --host 0.0.0.0 --port "$PORT"
+exec "$python_bin" -m uvicorn api.main:app --host "$BIND_ADDRESS" --port "$PORT"

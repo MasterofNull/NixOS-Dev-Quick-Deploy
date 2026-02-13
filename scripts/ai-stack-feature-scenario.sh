@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # End-to-end feature scenario runner for the AI stack.
 # Runs a test scenario, records results, and stores them in AIDB.
+#
+# Works with K3s (services exposed via NodePort or kubectl port-forward).
+# Override service URLs via environment variables if ports differ from defaults.
 
 set -euo pipefail
 
@@ -9,11 +12,13 @@ LOG_DIR="${LOG_DIR:-$HOME/.cache/nixos-quick-deploy/logs}"
 RUN_ID="$(date +%Y%m%d_%H%M%S)"
 RESULT_PATH="${LOG_DIR}/ai-stack-feature-scenario-${RUN_ID}.json"
 RESULTS_JSONL="$(mktemp)"
+trap 'rm -f "$RESULTS_JSONL"' EXIT
 
-AIDB_URL="${AIDB_URL:-http://localhost:8091}"
-HYBRID_URL="${HYBRID_URL:-http://localhost:8092}"
-QDRANT_URL="${QDRANT_URL:-http://localhost:6333}"
-LLAMA_URL="${LLAMA_URL:-http://localhost:8080}"
+# Service URLs — override these if using non-default NodePort/port-forward mappings
+AIDB_URL="${AIDB_URL:-http://${SERVICE_HOST:-localhost}:8091}"
+HYBRID_URL="${HYBRID_URL:-http://${SERVICE_HOST:-localhost}:8092}"
+QDRANT_URL="${QDRANT_URL:-http://${SERVICE_HOST:-localhost}:6333}"
+LLAMA_URL="${LLAMA_URL:-http://${SERVICE_HOST:-localhost}:8080}"
 OPEN_WEBUI_URL=""
 
 mkdir -p "$LOG_DIR" >/dev/null 2>&1 || true
@@ -79,10 +84,10 @@ require_cmd python3
 echo "ℹ Running AI stack feature scenario (${RUN_ID})..."
 
 # Detect Open WebUI port
-if curl -sf --max-time 3 http://localhost:3001 >/dev/null 2>&1; then
-    OPEN_WEBUI_URL="http://localhost:3001"
-elif curl -sf --max-time 3 http://localhost:3000 >/dev/null 2>&1; then
-    OPEN_WEBUI_URL="http://localhost:3000"
+if curl -sf --max-time 3 http://${SERVICE_HOST:-localhost}:3001 >/dev/null 2>&1; then
+    OPEN_WEBUI_URL="http://${SERVICE_HOST:-localhost}:3001"
+elif curl -sf --max-time 3 http://${SERVICE_HOST:-localhost}:3000 >/dev/null 2>&1; then
+    OPEN_WEBUI_URL="http://${SERVICE_HOST:-localhost}:3000"
 fi
 
 request "aidb.health" "GET" "${AIDB_URL}/health"

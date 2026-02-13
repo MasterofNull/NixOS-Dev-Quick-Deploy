@@ -31,7 +31,7 @@ metadata:
   namespace: ai-stack
 subjects:
   - kind: ServiceAccount
-    name: default
+    name: dashboard-api
     namespace: ai-stack
 roleRef:
   apiGroup: rbac.authorization.k8s.io

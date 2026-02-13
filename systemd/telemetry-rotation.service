@@ -1,11 +1,11 @@
 [Unit]
 Description=Telemetry Log Rotation
-Documentation=file:///home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/rotate-telemetry.sh
+Documentation=file://@PROJECT_ROOT@/scripts/rotate-telemetry.sh
 After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/rotate-telemetry.sh
+ExecStart=@PROJECT_ROOT@/scripts/rotate-telemetry.sh
 User=%u
 StandardOutput=journal
 StandardError=journal

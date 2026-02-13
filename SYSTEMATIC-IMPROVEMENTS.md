@@ -12,7 +12,7 @@
 
 **Root Causes**:
 1. No validation before deployment
-2. Configuration scattered (hardcoded, env files, compose vars)
+2. Configuration scattered (hardcoded, env files, legacy runtime vars)
 3. No systematic container lifecycle management
 4. Missing dependency checks
 5. Iteration limits too restrictive
@@ -40,7 +40,7 @@
 
 **A. Centralized Network Configuration**
 
-Create `/home/hyperd/.config/nixos-ai-stack/.env`:
+Create `$HOME/.config/nixos-ai-stack/.env`:
 ```bash
 # Service Discovery
 POSTGRES_HOST=postgres
@@ -415,12 +415,12 @@ def test_llama_cpp_availability():
 
 ### Current State
 - Hardcoded values: `localhost:8080`, `max_iterations: 3`
-- Docker compose env vars: `${LLAMA_CPP_PORT:-8080}`
+- Legacy runtime env vars: `${LLAMA_CPP_PORT:-8080}`
 - Missing .env files causing failures
 
 ### Solution
 
-**Single Source of Truth**: `/home/hyperd/.config/nixos-ai-stack/.env`
+**Single Source of Truth**: `$HOME/.config/nixos-ai-stack/.env`
 
 ```bash
 # ============================================================================
@@ -474,7 +474,7 @@ SELF_HEALING_ENABLED=false
 **Every service loads this file:**
 ```python
 from dotenv import load_dotenv
-load_dotenv("/home/hyperd/.config/nixos-ai-stack/.env")
+load_dotenv("$HOME/.config/nixos-ai-stack/.env")
 
 LLAMA_HOST = os.getenv("LLAMA_CPP_HOST", "llama-cpp")
 LLAMA_PORT = os.getenv("LLAMA_CPP_PORT", "8080")

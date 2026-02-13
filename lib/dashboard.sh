@@ -25,8 +25,8 @@ setup_system_dashboard() {
     #
     # Features:
     # - Real-time system monitoring (CPU, memory, disk, uptime)
-    # - AI stack status (Qdrant, Ollama, llama.cpp, PostgreSQL, Redis)
-    # - Container monitoring (Podman containers)
+    # - AI stack status (Qdrant, llama.cpp, PostgreSQL, Redis)
+    # - Container monitoring (K3s pods)
     # - Network & firewall status
     # - Security monitoring
     # - Database metrics
@@ -43,6 +43,12 @@ setup_system_dashboard() {
     #   1 → Error during setup
     # ========================================================================
 
+    : "${CYAN:=}"
+    : "${GREEN:=}"
+    : "${YELLOW:=}"
+    : "${BLUE:=}"
+    : "${NC:=}"
+
     print_info "Installing System Command Center Dashboard..."
     echo ""
 
@@ -57,7 +63,7 @@ setup_system_dashboard() {
     if /run/current-system/sw/bin/bash "$setup_script"; then
         print_success "System dashboard installed successfully"
         echo ""
-        print_info "Dashboard will be available at: ${BLUE}http://localhost:8888/dashboard.html${NC}"
+        print_info "Dashboard will be available at: ${BLUE}http://${SERVICE_HOST:-localhost}:8888/dashboard.html${NC}"
         print_info "Use 'dashboard' command to launch, or start systemd services"
         return 0
     else
@@ -85,12 +91,18 @@ install_dashboard_to_deployment() {
 
         if command -v systemctl >/dev/null 2>&1; then
             systemctl --user daemon-reload >/dev/null 2>&1 || true
-            systemctl --user start dashboard-collector.timer dashboard-server.service dashboard-api.service >/dev/null 2>&1 || \
-                print_warning "Dashboard services failed to start automatically"
+            if command -v kubectl >/dev/null 2>&1 && [[ -f /etc/rancher/k3s/k3s.yaml ]]; then
+                systemctl --user start dashboard-collector.timer dashboard-server.service dashboard-api-proxy.service >/dev/null 2>&1 || \
+                    print_warning "Dashboard services failed to start automatically"
+            else
+                systemctl --user start dashboard-collector.timer dashboard-server.service dashboard-api.service >/dev/null 2>&1 || \
+                    print_warning "Dashboard services failed to start automatically"
+            fi
         fi
 
         # Provide post-install instructions
-        cat <<EOF
+        local dashboard_message
+        dashboard_message=$(cat <<EOF
 ${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
 ${GREEN}📊 System Dashboard Installed!${NC}
 
@@ -103,7 +115,7 @@ ${YELLOW}Quick Start Options:${NC}
 2. ${CYAN}As Systemd Service${NC} (runs in background):
    ${NC}systemctl --user start dashboard-server
    systemctl --user start dashboard-collector.timer
-   xdg-open http://localhost:8888/dashboard.html${NC}
+   xdg-open http://${SERVICE_HOST:-localhost}:8888/dashboard.html${NC}
 
 3. ${CYAN}Shell Alias${NC} (after reloading shell):
    ${NC}source ~/.zshrc  # or restart terminal
@@ -112,7 +124,7 @@ ${YELLOW}Quick Start Options:${NC}
 ${YELLOW}Features:${NC}
 • Real-time monitoring (5-second refresh)
 • AI stack status (6 services)
-• Container management (Podman)
+• Container management (K3s)
 • Network & security monitoring
 • AI-agent friendly JSON export
 • Cyberpunk terminal aesthetic
@@ -123,6 +135,14 @@ ${YELLOW}Documentation:${NC}
 
 ${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
 EOF
+)
+        if [[ -t 1 ]]; then
+            printf '%b' "$dashboard_message"
+        else
+            # Strip ANSI codes when output isn't a TTY to avoid raw escape noise.
+            # Also strip literal \033[...] sequences if they were logged verbatim.
+            printf '%b' "$dashboard_message" | sed -E 's/\x1B\[[0-9;]*m//g; s/\\033\\[[0-9;]*m//g'
+        fi
         return 0
     else
         print_warning "Dashboard installation encountered issues (non-fatal)"

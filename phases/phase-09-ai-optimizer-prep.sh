@@ -15,6 +15,13 @@ phase_09_ai_optimizer_prep() {
         log_info "Phase 9: AI-Optimizer System Preparation (Optional)"
     fi
 
+    if [[ "${ENABLE_AI_OPTIMIZER_PREP:-false}" != "true" ]]; then
+        log_info "Skipping AI-Optimizer preparation (disabled by default)"
+        log_info "Set ENABLE_AI_OPTIMIZER_PREP=true to enable this optional step."
+        mark_phase_complete "phase-09-ai-optimizer-prep"
+        return 0
+    fi
+
     # Load integration hooks
     if [ -f "${SCRIPT_DIR}/lib/ai-optimizer-hooks.sh" ]; then
         if ! source "${SCRIPT_DIR}/lib/ai-optimizer-hooks.sh"; then
@@ -26,15 +33,8 @@ phase_09_ai_optimizer_prep() {
         return 1
     fi
 
-    # Check if user wants to prepare for AI-Optimizer
-    if ! prompt_ai_optimizer_prep; then
-        log_info "Skipping AI-Optimizer preparation"
-        mark_phase_complete "phase-09-ai-optimizer-prep"
-        return 0
-    fi
-
-    # Verify Docker/Podman is available
-    if ! check_docker_podman_ready; then
+    # Verify container runtime is available
+    if ! check_container_runtime_ready; then
         log_error "Docker/Podman not available"
         log_info "Please ensure virtualisation.podman or virtualisation.docker is enabled in configuration.nix"
         return 1
@@ -61,7 +61,7 @@ phase_09_ai_optimizer_prep() {
     fi
 
     # Ensure networking is ready
-    if ensure_docker_network_ready; then
+    if ensure_container_network_ready; then
         log_success "Container networking ready"
     else
         log_warning "Container networking may need configuration"
@@ -84,7 +84,8 @@ phase_09_ai_optimizer_prep() {
 
     # Check if AI-Optimizer is already installed
     if check_ai_optimizer_installed; then
-        local status=$(get_ai_optimizer_status)
+        local status
+        status=$(get_ai_optimizer_status)
         log_info "AI-Optimizer is already installed (status: $status)"
 
         show_ai_optimizer_info
@@ -115,7 +116,7 @@ Next Steps:
      nano .env  # Edit model selection and settings
 
   3. Deploy AI-Optimizer:
-     docker compose -f docker-compose.new.yml up -d
+     kubectl --request-timeout="${KUBECTL_TIMEOUT}s" apply -k ai-stack/kubernetes/
 
   4. Verify deployment:
      curl http://localhost:8091/health | jq .
@@ -140,46 +141,7 @@ EOF
     return 0
 }
 
-# ============================================================================
-# Helper Functions
-# ============================================================================
-
-prompt_ai_optimizer_prep() {
-    cat <<EOF
-
-╭───────────────────────────────────────────────────────────────────────────╮
-│ AI-Optimizer AIDB MCP Server Integration                                  │
-│                                                                            │
-│ Prepare NixOS system for optional AI-Optimizer installation?              │
-│                                                                            │
-│ This will:                                                                 │
-│  • Create shared persistent data directories                              │
-│  • Verify Docker/Podman prerequisites                                     │
-│  • Check for port conflicts                                               │
-│  • Configure container networking                                         │
-│  • Verify GPU acceleration (if NVIDIA GPU present)                        │
-│                                                                            │
-│ What is AI-Optimizer?                                                     │
-│  • Private AIDB MCP server with vLLM inference                            │
-│  • AI-powered NixOS configuration generation                              │
-│  • Intelligent code review and assistance                                 │
-│  • ML-based system monitoring                                             │
-│  • Persistent data across all hosts                                       │
-│                                                                            │
-│ Note: This only PREPARES the system. You install AI-Optimizer manually.   │
-│                                                                            │
-╰───────────────────────────────────────────────────────────────────────────╯
-
-EOF
-
-    read -p "Prepare system for AI-Optimizer? [Y/n]: " prep_confirm
-
-    if [[ "$prep_confirm" =~ ^[Nn]$ ]]; then
-        return 1
-    else
-        return 0
-    fi
-}
+## Prompt removed: AI-Optimizer prep is disabled by default and controlled via ENABLE_AI_OPTIMIZER_PREP.
 
 # ============================================================================
 # Phase Execution Check

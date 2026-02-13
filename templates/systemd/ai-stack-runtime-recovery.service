@@ -1,5 +1,6 @@
 # Systemd service to recover Podman runtime state on boot
 # Part of: NixOS-Dev-Quick-Deploy
+# LEGACY: Podman runtime recovery (deprecated). K3s is the supported path.
 # Install: sudo cp this file to /etc/systemd/system/
 # Enable: sudo systemctl enable ai-stack-runtime-recovery.service
 
@@ -11,9 +12,9 @@ Before=podman.service
 [Service]
 Type=oneshot
 User=root
-# Update these paths to match your installation
+# Update these paths to match your installation (replace @PROJECT_ROOT@)
 Environment="PODMAN_RUNTIME_UID=1000"
-ExecStart=/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/reset-podman-runtime.sh
+ExecStart=@PROJECT_ROOT@/scripts/reset-podman-runtime.sh
 StandardOutput=journal
 StandardError=journal
 RemainAfterExit=yes

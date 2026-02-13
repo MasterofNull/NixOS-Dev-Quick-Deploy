@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   annotations:
-    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
     kompose.version: 1.37.0 (HEAD)
     nixos.quick-deploy.ai-stack: "true"
     nixos.quick-deploy.service: dashboard-api
@@ -11,30 +10,45 @@ metadata:
   name: dashboard-api
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       io.kompose.service: dashboard-api
   template:
     metadata:
       annotations:
-        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
         kompose.version: 1.37.0 (HEAD)
         nixos.quick-deploy.ai-stack: "true"
         nixos.quick-deploy.service: dashboard-api
       labels:
         io.kompose.service: dashboard-api
     spec:
+      serviceAccountName: dashboard-api
+      automountServiceAccountToken: false
       containers:
         - env:
             - name: DASHBOARD_API_KEY_FILE
               value: /run/secrets/dashboard-api-key
+            - name: HYBRID_API_KEY_FILE
+              value: /run/secrets/hybrid-coordinator-api-key
             - name: DASHBOARD_MODE
               value: k8s
             - name: AI_STACK_NAMESPACE
               value: ai-stack
             - name: PYTHONUNBUFFERED
               value: "1"
-          image: localhost/compose_dashboard-api:latest
+          image: localhost:5000/ai-stack-dashboard-api:dev
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           imagePullPolicy: Always
           name: local-ai-dashboard-api
           ports:
@@ -44,10 +58,18 @@ spec:
             limits:
               cpu: "1"
               memory: "536870912"
+            requests:
+              cpu: 200m
+              memory: 256Mi
           volumeMounts:
             - mountPath: /run/secrets/dashboard-api-key
               name: dashboard-api-key
               subPath: dashboard-api-key
+              readOnly: true
+            - mountPath: /run/secrets/hybrid-coordinator-api-key
+              name: hybrid-coordinator-api-key
+              subPath: hybrid-coordinator-api-key
+              readOnly: true
       hostname: dashboard-api
       restartPolicy: Always
       volumes:
@@ -58,3 +80,10 @@ spec:
               - key: dashboard-api-key
                 path: dashboard-api-key
             secretName: dashboard-api-key
+        - name: hybrid-coordinator-api-key
+          secret:
+            defaultMode: 256
+            items:
+              - key: hybrid-coordinator-api-key
+                path: hybrid-coordinator-api-key
+            secretName: hybrid-coordinator-api-key

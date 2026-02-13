@@ -33,7 +33,7 @@ import_files() {
 }
 
 # Check if Qdrant is running
-if ! curl -s http://localhost:6333 > /dev/null 2>&1; then
+if ! curl -s --max-time 5 --connect-timeout 3 http://${SERVICE_HOST:-localhost}:6333 > /dev/null 2>&1; then
     echo "ERROR: Qdrant is not running at localhost:6333"
     echo "Please start the AI stack first:"
     echo "  ./scripts/start-ai-stack-and-dashboard.sh"
@@ -84,8 +84,8 @@ echo "-----------------------------"
 # MCP server code (Python and configs)
 import_files "MCP server code" "ai-stack/mcp-servers" .py .yml .yaml
 
-# Docker compose configurations
-import_files "Docker compose configs" "ai-stack/compose" .yml .yaml
+# Kubernetes manifests
+import_files "Kubernetes manifests" "ai-stack/kubernetes" .yml .yaml
 
 echo ""
 echo "==================================================================="
@@ -93,10 +93,10 @@ echo "  Knowledge Base Import Complete"
 echo "==================================================================="
 echo ""
 echo "Check Qdrant collection stats:"
-echo "  curl http://localhost:6333/collections/codebase-context | jq ."
+echo "  curl http://${SERVICE_HOST:-localhost}:6333/collections/codebase-context | jq ."
 echo ""
 echo "Test context retrieval:"
-echo "  curl -X POST http://localhost:8092/augment_query \\"
+echo "  curl -X POST http://${SERVICE_HOST:-localhost}:8092/augment_query \\"
 echo "    -H 'Content-Type: application/json' \\"
 echo "    -d '{\"query\": \"How to deploy NixOS?\", \"agent_type\": \"remote\"}' | jq ."
 echo ""

@@ -7,14 +7,19 @@ Adds widely-used knowledge for NixOS, containers, RAG, and LLM best practices
 import asyncio
 import hashlib
 import json
+import os
 from datetime import datetime
 from uuid import uuid4
+
 import httpx
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct
 
 # Initialize Qdrant client
-qdrant = QdrantClient(url="http://localhost:6333")
+SERVICE_HOST = os.getenv("SERVICE_HOST", "localhost")
+QDRANT_URL = os.getenv("QDRANT_URL", f"http://{SERVICE_HOST}:6333")
+LLAMA_URL = os.getenv("LLAMA_URL", f"http://{SERVICE_HOST}:8080")
+qdrant = QdrantClient(url=QDRANT_URL)
 
 # Embedding service (using llama.cpp)
 async def generate_embedding(text: str) -> list[float]:
@@ -22,7 +27,7 @@ async def generate_embedding(text: str) -> list[float]:
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             response = await client.post(
-                "http://localhost:8080/v1/embeddings",
+                f"{LLAMA_URL}/v1/embeddings",
                 json={"model": "nomic-embed-text", "input": text}
             )
             if response.status_code == 200:
@@ -248,7 +253,7 @@ BEST_PRACTICES = [
         "practice": "Use Health Checks in Container Definitions",
         "description": "Define HEALTHCHECK in Dockerfile or --health-cmd in podman run to enable automatic health monitoring and restart.",
         "rationale": "Health checks enable orchestration tools to detect failures and automatically restart unhealthy containers without human intervention.",
-        "implementation": "HEALTHCHECK --interval=30s --timeout=10s --retries=3 CMD curl -f http://localhost:8080/health || exit 1",
+        "implementation": f"HEALTHCHECK --interval=30s --timeout=10s --retries=3 CMD curl -f http://{SERVICE_HOST}:8080/health || exit 1",
         "source": "https://podman.io/docs",
         "endorsement_count": 12,
         "confidence_score": 0.85
@@ -375,7 +380,7 @@ async def main():
 
     print()
     print("Test the knowledge base:")
-    print("  curl -X POST http://localhost:8092/augment_query \\")
+    print(f"  curl -X POST http://{SERVICE_HOST}:8092/augment_query \\")
     print("    -H 'Content-Type: application/json' \\")
     print("    -d '{\"query\": \"SELinux permission denied on Podman volume\", \"agent_type\": \"remote\"}' | jq .")
 

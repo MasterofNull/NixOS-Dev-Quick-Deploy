@@ -43,6 +43,24 @@
 # PHASE IMPLEMENTATION
 # ============================================================================
 
+phase_06_update_remote_agents() {
+    print_section "Phase 6/8: Remote Agent Updates"
+
+    local previous_force_update="${FORCE_UPDATE:-false}"
+    FORCE_UPDATE=true
+
+    print_info "Running AI CLI updates (AUTO_UPDATE_REMOTE_AGENTS=true)"
+    if install_claude_code; then
+        configure_vscodium_for_claude || print_warning "VSCodium configuration had issues"
+        install_vscodium_extensions || print_warning "VSCodium extension installation had issues"
+    else
+        print_warning "Remote agent updates skipped due to Claude Code installer issues"
+    fi
+
+    FORCE_UPDATE="$previous_force_update"
+    return 0
+}
+
 phase_06_additional_tooling() {
     # ========================================================================
     # Phase 6: Additional Tooling
@@ -98,6 +116,11 @@ phase_06_additional_tooling() {
     # Resume Check: Skip if already completed
     # ------------------------------------------------------------------------
     if is_step_complete "$phase_name"; then
+        if [[ "${AUTO_UPDATE_REMOTE_AGENTS:-false}" == true ]]; then
+            print_info "Phase 6 already completed; refreshing remote agents"
+            phase_06_update_remote_agents
+            return 0
+        fi
         print_info "Phase 6 already completed (skipping)"
         return 0
     fi
@@ -359,6 +382,8 @@ phase_06_additional_tooling() {
     # State: "install_tools_services" marked complete
     # Next: Phase 8 will validate everything is working
     mark_step_complete "$phase_name"
+    # Ensure phase marker exists even if this script is run directly.
+    mark_step_complete "phase-06"
     print_success "Phase 6: Additional Tooling - COMPLETE"
     echo ""
 }

@@ -2,7 +2,7 @@
 # Record Claude Code VSCode Extension Errors
 # Date: 2026-01-08 22:28:10 - 22:28:40
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -36,8 +36,8 @@ echo "Recording Claude Code VSCode Extension errors..."
   --error "1P event logging: 2 events failed to export" \
   --error-type "ExportError" \
   --stack-trace "Error: Error: 1P event logging: 2 events failed to export
-    at \$i1.queueFailedEvents (file:///home/hyperd/.npm-global/lib/node_modules/@anthropic-ai/claude-code/cli.js:262:2038)
-    at async \$i1.doExport (file:///home/hyperd/.npm-global/lib/node_modules/@anthropic-ai/claude-code/cli.js:262:1195)" \
+    at \$i1.queueFailedEvents (file://$HOME/.npm-global/lib/node_modules/@anthropic-ai/claude-code/cli.js:262:2038)
+    at async \$i1.doExport (file://$HOME/.npm-global/lib/node_modules/@anthropic-ai/claude-code/cli.js:262:1195)" \
   --context '{"timestamp": "2026-01-09T06:28:30.486Z", "failed_events": 2, "operation": "telemetry export"}' \
   --fix "Implement local event queue persistence for offline scenarios" \
   --fix "Add retry logic with exponential backoff for event exports" \
@@ -57,8 +57,8 @@ echo "Recording Claude Code VSCode Extension errors..."
   --error "AggregateError in TLS socket connection" \
   --error-type "AggregateError" \
   --stack-trace "AggregateError: AggregateError
-    at r5A.from (file:///home/hyperd/.npm-global/lib/node_modules/@anthropic-ai/claude-code/cli.js:43:59581)
-    at yU.<anonymous> (file:///home/hyperd/.npm-global/lib/node_modules/@anthropic-ai/claude-code/cli.js:57:10021)
+    at r5A.from (file://$HOME/.npm-global/lib/node_modules/@anthropic-ai/claude-code/cli.js:43:59581)
+    at yU.<anonymous> (file://$HOME/.npm-global/lib/node_modules/@anthropic-ai/claude-code/cli.js:57:10021)
     at yU.emit (node:events:531:35)
     at yU.emit (node:domain:489:12)
     at ClientRequest.emit (node:events:531:35)

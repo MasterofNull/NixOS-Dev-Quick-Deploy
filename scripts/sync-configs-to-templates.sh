@@ -143,7 +143,7 @@ main() {
     fi
 
     # AI Stack .env (example only, not actual .env with secrets)
-    if [[ -f "${PROJECT_ROOT}/ai-stack/compose/.env" ]]; then
+    if [[ -f "${HOME}/.config/nixos-ai-stack/.env" ]]; then
         # Don't sync actual .env, only update .env.example with new keys
         log_info "Skipping .env sync (contains secrets), .env.example should be updated manually"
     fi

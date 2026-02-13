@@ -36,10 +36,10 @@ This single command gives you:
 
 - ✅ **AIDB MCP Server** - PostgreSQL + TimescaleDB + Qdrant vector database
 - ✅ **llama.cpp vLLM** - Local model inference (Qwen, DeepSeek, Phi, CodeLlama)
-- ✅ **29 Agent Skills** - Specialized AI agents for code, deployment, testing, design
+- ✅ **23 Agent Skills** - Specialized AI agents for code, deployment, testing, design
 - ✅ **MCP Servers** - Model Context Protocol servers for AIDB, NixOS, GitHub
 - ✅ **Embeddings Service** - Dedicated sentence-transformers API for fast RAG
-- ✅ **Hybrid Coordinator** - Local/remote routing with continuous learning
+- ✅ **Hybrid Coordinator** - Local/remote routing with telemetry-driven pattern extraction
 - ✅ **Nginx TLS Gateway** - HTTPS termination on `https://localhost:8443`
 - ✅ **Shared Data** - Persistent data that survives reinstalls (`~/.local/share/nixos-ai-stack`)
 
@@ -55,10 +55,10 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`/docs/AI-STACK-FULL-INTEGRA
 
 - **COSMIC Desktop** - Modern, fast desktop environment from System76
 - **Hyprland Wayland Session** - Latest Hyprland compositor alongside COSMIC for tiling workflows
-- **Performance Kernel Track** - Prefers the tuned `linuxPackages_6_17` build, then falls back to TKG, XanMod, Liquorix, Zen, and finally `linuxPackages_latest`
-- **800+ Packages** - Development tools, CLI utilities, and applications
+- **Performance Kernel Track** - Prefers the tuned `linuxPackages_6_18` build, then falls back to TKG, XanMod, Liquorix, Zen, and finally `linuxPackages_latest`
+- **225+ Packages** - Development tools, CLI utilities, and applications
 - **Nix Flakes** - Enabled and configured for reproducible builds
-- **Podman** - Rootless container runtime for local AI services
+- **K3s + containerd** - Kubernetes runtime for the integrated AI stack
 - **Flatpak** - Sandboxed desktop applications with profile-aware provisioning and incremental updates
 - **Home Manager** - Declarative user environment configuration
 - **ZSH + Powerlevel10k** - Beautiful, fast terminal with auto-configuration
@@ -72,12 +72,12 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`/docs/AI-STACK-FULL-INTEGRA
 | Component              | Location                        |   Status   | Purpose                                                                |
 | :--------------------- | :------------------------------ | :--------: | :--------------------------------------------------------------------- |
 | **AIDB MCP Server**    | `ai-stack/mcp-servers/aidb/`    | ✅ Active | PostgreSQL + TimescaleDB + Qdrant vector DB + FastAPI MCP server       |
-| **llama.cpp vLLM**      | `ai-stack/compose/`             | ✅ Active | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama)     |
-| **29 Agent Skills**    | `ai-stack/agents/skills/`       | ✅ Active | nixos-deployment, webapp-testing, code-review, canvas-design, and more |
+| **llama.cpp vLLM**      | `ai-stack/kubernetes/`          | ✅ Active | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama)     |
+| **23 Agent Skills**    | `ai-stack/agents/skills/`       | ✅ Active | nixos-deployment, webapp-testing, code-review, canvas-design, and more |
 | **Embeddings Service** | `ai-stack/mcp-servers/`         | ✅ Active | Sentence-transformers API for embeddings                               |
-| **Hybrid Coordinator** | `ai-stack/mcp-servers/`         | ✅ Active | Local/remote routing + continuous learning                              |
+| **Hybrid Coordinator** | `ai-stack/mcp-servers/`         | ✅ Active | Local/remote routing + telemetry-driven pattern extraction              |
 | **NixOS Docs MCP**     | `ai-stack/mcp-servers/`         | ✅ Active | NixOS/Nix documentation search API                                     |
-| **Nginx TLS Gateway**  | `ai-stack/compose/`             | ✅ Active | HTTPS termination on `https://localhost:8443`                          |
+| **Nginx TLS Gateway**  | `ai-stack/kubernetes/`          | ✅ Active | HTTPS termination on `https://localhost:8443`                          |
 | **MCP Servers**        | `ai-stack/mcp-servers/`         | ✅ Active | Model Context Protocol servers for AIDB, NixOS, GitHub                 |
 | **Model Registry**     | `ai-stack/models/registry.json` | ✅ Active | Model catalog with metadata, VRAM, speed, quality scores               |
 | **Vector Database**    | PostgreSQL + Qdrant             | ✅ Active | Semantic search and document embeddings                                |
@@ -106,7 +106,7 @@ python3 ai-stack/tests/test_hospital_e2e.py
 ### AI Stack Security Considerations
 
 - **TLS by default**: External APIs are exposed via nginx at `https://localhost:8443` (self-signed cert).
-- **API keys required**: Core APIs enforce `X-API-Key` from `ai-stack/compose/secrets/stack_api_key`.
+- **API keys required**: Core APIs enforce `X-API-Key` from the encrypted secrets bundle (`ai-stack/kubernetes/secrets/secrets.sops.yaml`).
 - **Local-only tools**: Open WebUI, MindsDB, and metrics UIs bind to `127.0.0.1`.
 - **Privileged self-heal**: The health monitor runs only under the `self-heal` profile (opt-in).
 
@@ -210,7 +210,7 @@ If you choose option 3, be ready to paste builder strings (e.g., `ssh://nix@buil
 
 The script automatically:
 
-- ✅ Updates NixOS system config (COSMIC, Podman, Flakes)
+- ✅ Updates NixOS system config (COSMIC, K3s, Flakes)
 - ✅ Runs `sudo nixos-rebuild switch`
 - ✅ Creates home-manager configuration (~100 packages)
 - ✅ Runs `home-manager switch`
@@ -361,6 +361,14 @@ hms              # Alias for: home-manager switch
 nfu              # Alias for: nix flake update
 ```
 
+**Flake Update Procedure:**
+```bash
+cd ~/.dotfiles/home-manager
+nix flake update                # or: nfu
+sudo nixos-rebuild switch --flake ~/.dotfiles/home-manager#$(hostname)
+home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)
+```
+
 ### Development Environments
 
 ```bash
@@ -493,6 +501,28 @@ flatpak install flathub ai.cursor.Cursor
 
 ---
 
+## 📁 Required Paths & Overrides
+
+These locations must be writable for a successful deploy. The script validates them at startup and will warn/fallback if overrides are unusable.
+
+| Path / Variable | Default | Purpose |
+| --- | --- | --- |
+| `XDG_CACHE_HOME` | `$HOME/.cache` | Base for quick-deploy cache + logs |
+| `XDG_STATE_HOME` | `$HOME/.local/state` | Base for AIDB runtime logs |
+| `XDG_DATA_HOME` | `$HOME/.local/share` | Base for AI stack persistent data |
+| `TMPDIR` | `/tmp` | Temporary files/logs during deploy & tooling |
+| `${XDG_CACHE_HOME:-$HOME/.cache}/nixos-quick-deploy` | (derived) | Deploy state + logs |
+| `${XDG_DATA_HOME:-$HOME/.local/share}/nixos-ai-stack` | (derived) | AI stack data (Qdrant, Postgres, Redis, etc.) |
+| `${XDG_DATA_HOME:-$HOME/.local/share}/nixos-system-dashboard` | (derived) | Dashboard JSON data cache |
+| `${XDG_STATE_HOME:-$HOME/.local/state}/nixos-ai-stack/aidb-mcp.log` | (derived) | AIDB MCP server log |
+
+Overrides:
+- Set `TMPDIR`, `XDG_CACHE_HOME`, `XDG_STATE_HOME`, or `XDG_DATA_HOME` before running the deploy script.
+- Use `./nixos-quick-deploy.sh --prefix /path/to/dotfiles` to relocate the generated Home Manager/NixOS config workspace.
+- For systemd templates that use `@PROJECT_ROOT@`/`@AI_STACK_DATA@`, run `scripts/apply-project-root.sh` before installing.
+
+---
+
 ## 📁 Project Structure
 
 ```
@@ -554,7 +584,7 @@ Running: sudo nixos-rebuild switch
 
 ```
 ✓ Creating ~/.dotfiles/home-manager/
-✓ Writing home.nix with ~100 packages
+✓ Writing home.nix with ~150 packages
 ✓ Writing flake.nix
 ✓ Creating flake.lock
 Running: home-manager switch
@@ -698,6 +728,58 @@ Next steps:
    cat ~/.config/VSCodium/User/settings.json | grep -A5 "claude-code"
    ```
 
+### ImagePullBackOff in ai-stack pods
+
+**Symptom:** `kubectl get pods -n ai-stack` shows `ImagePullBackOff` or `ErrImagePull`.
+
+**Fix:**
+```bash
+ONLY_IMAGES=aidb BUILD_TOOL=buildah SKIP_K3S_IMPORT=true ./scripts/build-k3s-images.sh
+ONLY_IMAGES=ai-stack-aidb CONTAINER_CLI=skopeo ./scripts/publish-local-registry.sh
+kubectl -n ai-stack rollout restart deploy/aidb
+```
+
+### K3s API not reachable from pods (connection refused)
+
+**Symptom:** Pods fail to access `https://kubernetes.default.svc/api` with connection refused.
+
+**Fix:**
+```bash
+sudo iptables -I INPUT -p tcp -s 10.42.0.0/16 --dport 6443 -j ACCEPT
+sudo iptables -I INPUT -p tcp -s 10.43.0.0/16 --dport 6443 -j ACCEPT
+```
+Then persist via NixOS rebuild (see `templates/configuration.nix` firewall allowlist notes).
+
+### Dashboard server service exits with code 127
+
+**Symptom:** `systemctl --user status dashboard-server.service` shows exit code 127.
+
+**Fix:**
+```bash
+./scripts/setup-dashboard.sh
+systemctl --user daemon-reload
+systemctl --user restart dashboard-server.service
+```
+
+### Health check fails on optional Python packages
+
+**Symptom:** Health check reports missing LlamaIndex/ChromaDB/Gradio.
+
+**Fix:**
+```bash
+pip install -r ~/.config/ai-agents/requirements.txt
+```
+
+### Nix channel update fails with max-jobs=0
+
+**Symptom:** `nix-channel --update` fails with “Unable to start any build”.
+
+**Fix:**
+```bash
+NIX_CONFIG="max-jobs = 1" nix-channel --update
+```
+Then set `nix.settings.max-jobs = "auto"` in the generated configs.
+
    Should show `executablePath` pointing to `~/.npm-global/bin/claude-wrapper`
 
 7. **Verify no Flatpak overrides exist:**
@@ -752,7 +834,7 @@ Unable to initialize Git; AggregateError(2)
 
 ```
 ℹ Adding Flathub Flatpak remote...
-    → error: Unable to create repository at /home/$USER/.local/share/flatpak/repo (Creating repo: mkdirat: No such file or directory)
+    → error: Unable to create repository at $HOME/.local/share/flatpak/repo (Creating repo: mkdirat: No such file or directory)
 ```
 
 **Cause:** When Phase 6 runs on its own (or after a cleanup flag), the user-level Flatpak directories may be missing or the repo path may be an empty placeholder without the expected `objects/` tree. In both cases `flatpak remote-add` fails before it can download anything.
@@ -884,7 +966,7 @@ Additionally, the console font (`Lat2-Terminus16`) requires the `terminus_font` 
 [DEPEND] Dependency failed for Local File Systems
 ```
 
-**Cause:** Older Podman-based deployments could leave stale container storage configuration behind. The K3s path uses containerd, so legacy `/var/lib/containers` mounts should not be referenced by current runs. If you still see container storage mount failures, it usually means a legacy unit is still enabled.
+**Cause:** Older container deployments could leave stale storage configuration behind. The K3s path uses containerd, so legacy `/var/lib/containers` mounts should not be referenced by current runs. If you still see container storage mount failures, it usually means a legacy unit is still enabled.
 
 **Fix:** Re-run Quick Deploy with `--reset-state`, then rebuild:
 ```bash
@@ -895,7 +977,7 @@ sudo nixos-rebuild switch --flake ~/.dotfiles/home-manager
 
 If the error persists, check for lingering units:
 ```bash
-systemctl list-units | rg -i "podman|containers"
+systemctl list-units | rg -i "containers"
 ```
 
 ### K3s Runtime Issues
@@ -1243,7 +1325,7 @@ export NPM_CONFIG_PREFIX=~/.npm-global
 npm install -g <package-name>
 
 # Or add to ~/.npmrc (already done by script):
-# prefix=/home/username/.npm-global
+# prefix=$HOME/.npm-global
 ```
 
 ### 5. Keep Your System Up to Date
@@ -1268,6 +1350,8 @@ flatpak update
 
 - `./nixos-quick-deploy.sh --resume` &mdash; continue the multi-phase installer from the last checkpoint.
 - `./nixos-quick-deploy.sh --resume --phase 5` &mdash; rerun the declarative deployment phase after editing templates.
+- `./nixos-quick-deploy.sh --rollback` &mdash; rollback to the last recorded generation (uses `rollback-info.json`).
+- `./nixos-quick-deploy.sh --test-rollback` &mdash; run a rollback + restore validation cycle after deployment.
 - `nrs` (`sudo nixos-rebuild switch`) &mdash; manual system rebuild; the deployer now pauses container services automatically when it runs this step.
 - `hms` (`home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)`) &mdash; apply user environment changes.
 - `nfu` (`nix flake update`) &mdash; refresh flake inputs before rebuilding.
@@ -1283,8 +1367,12 @@ flatpak update
 
 - `kubectl describe pod -n ai-stack <pod>` &mdash; show events + mount issues.
 - `kubectl rollout restart -n ai-stack deployment/<service>` &mdash; bounce a service after config/image changes.
+- **Rollback (manual):**
+  - System: `sudo nixos-rebuild switch --rollback`
+  - User: `home-manager --rollback` (or use the generation path stored in `~/.cache/nixos-quick-deploy/rollback-info.json`)
+  - Boot fallback: select a previous generation from the boot menu
 
-> ℹ️ **Automation note:** During Phase&nbsp;5 the deployer pauses managed services (systemd units and user-level Podman quadlets), cleans stale Podman storage if needed, applies `nixos-rebuild switch`, and then restores everything it stopped. You no longer need to stop the AI stack manually before a rebuild.
+> ℹ️ **Automation note:** During Phase&nbsp;5 the deployer pauses managed services (systemd units and user-level container services), cleans stale container storage if needed, applies `nixos-rebuild switch`, and then restores everything it stopped. You no longer need to stop the AI stack manually before a rebuild.
 
 ---
 
@@ -1456,7 +1544,21 @@ When reporting problems, please include:
 
 - NixOS version: `nixos-version`
 - Script output or error messages
-- Relevant logs from `/tmp/nixos-quick-deploy.log`
+- Relevant logs from `${TMPDIR:-/tmp}/nixos-quick-deploy.log`
+
+---
+
+## Known Limitations
+
+- **AI Stack requires K3s**: The integrated AI stack runs on Kubernetes (K3s). Legacy Podman-based deployments are deprecated.
+- **Hardware requirements**: The full AI stack (with local LLM inference) needs at least 16 GB RAM and 50 GB free disk. GPU inference requires an NVIDIA GPU with 4+ GB VRAM.
+- **Continuous learning is partial**: The Hybrid Coordinator collects interaction telemetry and extracts patterns, but automated model retraining and behavioral adaptation from feedback are not yet implemented.
+- **Agent skills are pre-packaged**: The 23 agent skills are static skill definitions (prompt templates + scripts); they do not autonomously learn or update themselves.
+- **NixOS only**: This project targets NixOS exclusively. It will not work on other Linux distributions, macOS, or WSL.
+- **Build times**: First deployment with source builds (no binary cache) can take 60-120 minutes depending on hardware.
+- **Python package overrides**: Some Python packages require Nix build overrides to compile. Updating nixpkgs may break overrides until they are re-adjusted.
+- **Single-node K3s**: The AI stack runs on a single-node K3s cluster. Multi-node distributed deployment is not supported.
+- **No automatic TLS renewal in dev mode**: Self-signed certificates are generated for local HTTPS but are not automatically renewed. See `scripts/renew-tls-certificate.sh` for manual renewal.
 
 ---
 

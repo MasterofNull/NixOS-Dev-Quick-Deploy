@@ -6,7 +6,20 @@ resources:
   - backups/namespace.yaml
   - kompose
   - backup-cronjobs.yaml
+  - learning-cronjobs.yaml
   - logging/namespace.yaml
   - logging/loki.yaml
   - logging/promtail.yaml
+  - network-policies/default-deny.yaml
   - network-policies/ai-stack-allow-internal.yaml
+  - network-policies/ai-stack-allow-kube-apiserver.yaml
+  - network-policies/ai-stack-allow-external-egress.yaml
+  - rbac/service-accounts.yaml
+  - rbac/roles.yaml
+  - rbac/role-bindings.yaml
+  - security/limit-range.yaml
+  - security/pod-disruption-budgets.yaml
+  - security/resource-quota.yaml
+  - tls/cluster-issuers.yaml
+  - tls/service-certificates.yaml
+  - tls/renewal-cronjob.yaml

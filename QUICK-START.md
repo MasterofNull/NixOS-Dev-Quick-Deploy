@@ -70,13 +70,13 @@ pkill -f serve-dashboard.sh
 ### Ralph Wiggum not responding
 ```bash
 # Check status
-podman ps | grep ralph
+kubectl get pods -n ai-stack | grep ralph
 
-# Restart container
-podman restart local-ai-ralph-wiggum
+# Restart deployment
+kubectl rollout restart deployment/ralph-wiggum -n ai-stack
 
 # Check logs
-podman logs local-ai-ralph-wiggum
+kubectl logs -n ai-stack deployment/ralph-wiggum --tail=100
 ```
 
 ### Configuration changes not saving
@@ -103,7 +103,7 @@ podman logs local-ai-ralph-wiggum
 
 ## 📚 Documentation
 
-- **Full Summary**: [DASHBOARD-AND-RALPH-COMPLETION-SUMMARY.md](DASHBOARD-AND-RALPH-COMPLETION-SUMMARY.md)
+- **Full Summary**: [docs/archive/DASHBOARD-AND-RALPH-COMPLETION-SUMMARY.md](docs/archive/DASHBOARD-AND-RALPH-COMPLETION-SUMMARY.md)
 - **Implementation Plan**: [DASHBOARD-INTEGRATION-PLAN.md](DASHBOARD-INTEGRATION-PLAN.md)
 - **Production Hardening**: [PRODUCTION-HARDENING-STATUS.md](PRODUCTION-HARDENING-STATUS.md)
 

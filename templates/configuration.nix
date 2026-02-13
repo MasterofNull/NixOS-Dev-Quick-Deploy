@@ -24,8 +24,8 @@
 { config, pkgs, lib, nixAiToolsPackages ? {}, ... }:
 
 let
-  # AI services run in user-level Podman (llama.cpp + Ollama + Qdrant)
-  # Legacy system services removed; use the rootless AI stack instead
+  # AI services run in K3s (ai-stack namespace + local registry)
+  # Legacy user-level Podman stack removed; use the K3s-backed AI stack instead
   giteaStateDir = "/var/lib/gitea";
   giteaAppDataDir = "${giteaStateDir}/data";
   giteaRepositoriesDir = "${giteaAppDataDir}/repositories";
@@ -125,7 +125,7 @@ let
       });
   pythonPreferLatest =
     let
-      envPref = builtins.getEnv "PYTHON_PREFER_PY314";
+      envPref = "PYTHON_PREFER_PY314_PLACEHOLDER";  # To be replaced by deployment script
     in
     envPref == "1" || envPref == "true";
   python14CompatibilityMask = [
@@ -150,7 +150,7 @@ in
     ./nixos-improvements/networking.nix  # DNS resolution fix
     ./nixos-improvements/virtualization.nix
     ./nixos-improvements/optimizations.nix
-    #./nixos-improvements/podman.nix
+    # ./nixos-improvements/podman.nix (legacy - podman runtime deprecated in favor of K3s)
     ./nixos-improvements/mobile-workstation.nix  # Laptop/battery/AMD iGPU optimizations
   ];
 
@@ -191,6 +191,8 @@ in
       # Note: kernel.unprivileged_userns_clone doesn't exist on modern kernels (6.1+)
       # User namespaces are enabled by default and required for rootless containers
       "net.core.bpf_jit_harden" = 2;
+      # Rootless containers/buildah require user namespaces (nonzero max)
+      "user.max_user_namespaces" = 111286;
 
       # GLF OS: Low-latency scheduling and memory tuning
       "kernel.split_lock_mitigate" = 0;
@@ -321,10 +323,10 @@ in
     firewall = {
       enable = true;
       allowedTCPPorts = [
-        3000  # Gitea HTTP interface
         2222  # Gitea built-in SSH server
         19999 # Netdata monitoring dashboard
         # Add ports only when needed:
+        # 3000  # Gitea HTTP (default binds to 127.0.0.1; use reverse proxy if exposing)
         # 8091  # AIDB API
         # 8080  # llama.cpp inference
         # 3001  # Open WebUI
@@ -335,6 +337,25 @@ in
       # Default: Block all incoming, allow all outgoing
       # Log rejected connections for security monitoring
       logRefusedConnections = lib.mkDefault true;  # Disable for reduced logging if needed
+
+      # Allow K3s control-plane access from pod/service CIDRs while keeping external access closed.
+      # Adjust CIDRs if you changed K3s defaults.
+      extraCommands = ''
+        iptables -I INPUT -p tcp -s 10.42.0.0/16 --dport 6443 -j ACCEPT
+        iptables -I INPUT -p tcp -s 10.43.0.0/16 --dport 6443 -j ACCEPT
+        iptables -I INPUT -p tcp -s 10.42.0.0/16 --dport 10250 -j ACCEPT
+        iptables -I INPUT -p tcp -s 10.43.0.0/16 --dport 10250 -j ACCEPT
+        iptables -I INPUT -p tcp -s 10.42.0.0/16 --dport 8095 -j ACCEPT
+        iptables -I INPUT -p tcp -s 10.43.0.0/16 --dport 8095 -j ACCEPT
+      '';
+      extraStopCommands = ''
+        iptables -D INPUT -p tcp -s 10.42.0.0/16 --dport 6443 -j ACCEPT || true
+        iptables -D INPUT -p tcp -s 10.43.0.0/16 --dport 6443 -j ACCEPT || true
+        iptables -D INPUT -p tcp -s 10.42.0.0/16 --dport 10250 -j ACCEPT || true
+        iptables -D INPUT -p tcp -s 10.43.0.0/16 --dport 10250 -j ACCEPT || true
+        iptables -D INPUT -p tcp -s 10.42.0.0/16 --dport 8095 -j ACCEPT || true
+        iptables -D INPUT -p tcp -s 10.43.0.0/16 --dport 8095 -j ACCEPT || true
+      '';
     };
   };
 
@@ -378,6 +399,7 @@ in
       "audio"           # Audio device access
       "input"           # Input device access (for Wayland)
       "libvirtd"        # Virtualization management
+      "wireshark"       # Packet capture access (tshark/wireshark)
     ];
     # Note: Container workloads run in K3s cluster (no Podman/Docker)
     shell = pkgs.zsh;
@@ -662,7 +684,7 @@ in
   services.gnome.gcr-ssh-agent.enable = true;
 
   # Disable GNOME Tracker to avoid user service failures during activation.
-  services.gnome.tracker.enable = false;
+  services.gnome.tinysparql.enable = false;
 
   # Enable GNOME Keyring integration for all login services
   security.pam.services.greetd.enableGnomeKeyring = true;
@@ -739,9 +761,19 @@ in
       # Preflight CLI dependencies (available before Home Manager activation)
       jq
 
-      # Container tools (system-level for rootless podman)
+      # Core developer tools that must be available before Home Manager
+      nodejs_22
+      vscodium
+
+      # Network discovery tools requiring root/capabilities
+      wireshark
+      tcpdump
+      nmap
+      mtr
+      traceroute
+
+      # Legacy container tools (podman runtime deprecated; K3s is primary)
       podman
-      podman-compose
       buildah
       skopeo
       crun
@@ -759,6 +791,9 @@ in
       # Essential system utilities only
       # All other tools installed via home-manager to prevent collisions
     ];
+
+  # Wireshark/tshark with group-based capture permissions
+  programs.wireshark.enable = true;
 
   # ============================================================================
   # Shell Configuration
@@ -1169,7 +1204,7 @@ in
     defaultSopsFormat = "yaml";
 
     # Age key for decryption (generated during Phase 1)
-    age.keyFile = "/home/@USER@/.config/sops/age/keys.txt";
+    age.keyFile = "${config.users.users.@USER@.home}/.config/sops/age/keys.txt";
 
     # Define secrets and their permissions
     secrets = lib.mkMerge [

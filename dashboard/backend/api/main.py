@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import asyncio
 import logging
+import os
 from typing import List
 from pathlib import Path
 
@@ -64,15 +65,18 @@ app = FastAPI(
 )
 
 # CORS middleware
+service_host = os.getenv("SERVICE_HOST", "localhost")
+cors_env = os.getenv("DASHBOARD_CORS_ORIGINS", "")
+if cors_env:
+    cors_origins = [origin.strip() for origin in cors_env.split(",") if origin.strip()]
+else:
+    cors_hosts = [service_host, "127.0.0.1"]
+    cors_ports = [8888, 8890, 5173]
+    cors_origins = [f"http://{host}:{port}" for host in cors_hosts for port in cors_ports]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8888",  # HTML dashboard
-        "http://localhost:8890",  # React dashboard
-        "http://localhost:5173",  # Vite dev
-        "http://127.0.0.1:8888",
-        "http://127.0.0.1:8890",
-    ],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -176,9 +180,10 @@ async def broadcast_metrics():
 
 if __name__ == "__main__":
     import uvicorn
+    bind_address = os.getenv("DASHBOARD_API_BIND_ADDRESS", "127.0.0.1")
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
+        host=bind_address,
         port=8889,
         reload=True,
         log_level="info"

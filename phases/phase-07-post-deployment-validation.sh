@@ -158,7 +158,7 @@ check_k3s_cluster_health() {
     fi
 
     # Check if cluster is accessible
-    if kubectl cluster-info >/dev/null 2>&1; then
+    if kubectl_safe cluster-info >/dev/null 2>&1; then
         print_success "K3s cluster is healthy"
         return 0
     fi
@@ -172,14 +172,14 @@ check_k3s_ai_stack_health() {
         return 0
     fi
 
-    local namespace="ai-stack"
-    if ! kubectl get namespace "$namespace" >/dev/null 2>&1; then
+    local namespace="${AI_STACK_NAMESPACE:-ai-stack}"
+    if ! kubectl_safe get namespace "$namespace" >/dev/null 2>&1; then
         print_info "AI stack namespace not deployed yet (will be created in Phase 9)"
         return 0
     fi
 
     local running_pods
-    running_pods=$(kubectl get pods -n "$namespace" --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l)
+    running_pods=$(kubectl_safe get pods -n "$namespace" --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l)
 
     if [[ "$running_pods" -gt 0 ]]; then
         print_success "K3s AI stack: $running_pods pods running in '$namespace' namespace"
@@ -355,7 +355,7 @@ phase_07_post_deployment_validation() {
     local missing_count=0
 
     # Loop through critical packages
-    local -a package_checks=(kubectl python3 git home-manager jq flatpak)
+    local -a package_checks=(kubectl python3 git home-manager jq flatpak claude codium)
 
     for pkg in "${package_checks[@]}"; do
         # command -v: Find command in PATH, return path or empty
@@ -387,6 +387,27 @@ phase_07_post_deployment_validation() {
         print_success "All critical packages verified!"
     fi
 
+    # Optional AI toolchain checks (Home Manager-scoped)
+    print_info "Verifying AI toolchain (Home Manager scoped)..."
+    local ai_missing=0
+    local -a ai_checks=(gpt4all aider llama-cpp)
+    for tool in "${ai_checks[@]}"; do
+        if command -v "$tool" &>/dev/null; then
+            print_success "$tool: $(command -v "$tool")"
+        else
+            print_warning "$tool: NOT FOUND (Home Manager)"
+            ((ai_missing++)) || true
+        fi
+    done
+
+    if [[ $ai_missing -gt 0 ]]; then
+        print_warning "$ai_missing AI tool(s) missing from PATH"
+        print_info "If Home Manager was not applied, run:"
+        print_info "  nix run home-manager -- switch --flake ${HM_CONFIG_DIR:-$HOME/.dotfiles/home-manager}#${PRIMARY_USER:-$USER}"
+    else
+        print_success "AI toolchain detected!"
+    fi
+
     if (( fatal_failures > 0 )); then
         print_warning "Critical validation checks failed (${fatal_failures})"
         print_info "Review the errors above; deployment continues so you can resolve them later."
@@ -414,6 +435,8 @@ phase_07_post_deployment_validation() {
     # State: "post_install_validation" marked complete
     # Next: Phase 9 will finalize system configuration
     mark_step_complete "$phase_name"
+    # Ensure phase marker exists even if this script is run directly.
+    mark_step_complete "phase-07"
     print_success "Phase 7: Post-Deployment Validation - COMPLETE"
     echo ""
 }

@@ -636,7 +636,7 @@ async def route_query(query: str, context: dict):
 
 ## Configuration
 
-**Environment Variables** (`ai-stack/compose/.env`):
+**Environment Variables** (`~/.config/nixos-ai-stack/.env`):
 
 ```bash
 # Hybrid Learning Configuration

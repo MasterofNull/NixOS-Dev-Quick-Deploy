@@ -4,6 +4,8 @@
 # Purpose: Reusable download caching with SHA256 verification
 
 DOWNLOAD_CACHE="${DOWNLOAD_CACHE:-${HOME}/.cache/nixos-quick-deploy/downloads}"
+CURL_TIMEOUT="${CURL_TIMEOUT:-120}"
+CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-30}"
 mkdir -p "$DOWNLOAD_CACHE"
 
 # Download file with caching and integrity check
@@ -58,7 +60,7 @@ cached_download() {
     # Create temporary file
     local temp_file="${cache_file}.tmp"
 
-    if curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 30 "$url" -o "$temp_file"; then
+    if curl -fsSL --retry 5 --retry-delay 3 --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" "$url" -o "$temp_file"; then
         # Verify integrity if checksum provided
         if [ -n "$expected_sha256" ]; then
             local actual_sha256=$(sha256sum "$temp_file" | awk '{print $1}')
@@ -96,7 +98,9 @@ cached_download_extract() {
     local expected_sha256="${3:-}"
     local tar_flags="${4:--xzf}"
 
-    local temp_file="/tmp/download-$$.tar.gz"
+    local tmp_root="${TMPDIR:-/${TMP_FALLBACK:-tmp}}"
+    local temp_file
+    temp_file="$(mktemp -p "$tmp_root" download-XXXXXX.tar.gz)"
 
     if cached_download "$url" "$temp_file" "$expected_sha256"; then
         mkdir -p "$dest_dir"
@@ -110,6 +114,7 @@ cached_download_extract() {
             return 1
         fi
     else
+        rm -f "$temp_file"
         return 1
     fi
 }

@@ -314,7 +314,8 @@ show_port_usage() {
 
 # Generate conflict resolution report
 generate_conflict_report() {
-    local report_file="${1:-/tmp/service-conflict-report.txt}"
+    local tmp_root="${TMPDIR:-/${TMP_FALLBACK:-tmp}}"
+    local report_file="${1:-${tmp_root}/service-conflict-report.txt}"
 
     {
         echo "Service Conflict Report"

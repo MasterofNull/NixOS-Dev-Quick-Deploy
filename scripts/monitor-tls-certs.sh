@@ -10,7 +10,7 @@ set -euo pipefail
 # 2. Exports Prometheus metrics to a file
 # 3. Can be run via cron or as a sidecar container
 
-CERT_DIR="${CERT_DIR:-ai-stack/compose/nginx/certs}"
+CERT_DIR="${CERT_DIR:-ai-stack/kubernetes/tls}"
 METRICS_FILE="${METRICS_FILE:-/var/lib/prometheus/node-exporter/tls-certs.prom}"
 CERT_FILE="${CERT_FILE:-${CERT_DIR}/localhost.crt}"
 

@@ -6,7 +6,7 @@
 ai-stack/
 ├── kubernetes/           # Kustomize base + kompose output
 ├── kustomize/            # Overlays (dev/prod)
-└── compose/secrets/      # Secret source-of-truth
+└── kubernetes/secrets/generated/  # Secret source-of-truth
 ```
 
 ## Operations
@@ -25,4 +25,3 @@ AIDB is exposed in-cluster. Use port-forward for local access:
 kubectl port-forward -n ai-stack svc/aidb 8091:8091
 curl http://localhost:8091/health
 ```
-

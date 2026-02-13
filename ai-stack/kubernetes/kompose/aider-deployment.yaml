@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   annotations:
-    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
     kompose.version: 1.37.0 (HEAD)
     nixos.quick-deploy.ai-stack: "true"
     nixos.quick-deploy.service: aider
@@ -10,7 +9,7 @@ metadata:
     io.kompose.service: aider
   name: aider
 spec:
-  replicas: 1
+  replicas: 0
   selector:
     matchLabels:
       io.kompose.service: aider
@@ -19,13 +18,14 @@ spec:
   template:
     metadata:
       annotations:
-        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
         kompose.version: 1.37.0 (HEAD)
         nixos.quick-deploy.ai-stack: "true"
         nixos.quick-deploy.service: aider
       labels:
         io.kompose.service: aider
     spec:
+      serviceAccountName: aider
+      automountServiceAccountToken: false
       containers:
         - env:
             - name: AIDER_AUTO_COMMITS
@@ -41,6 +41,13 @@ spec:
             - name: OPENAI_API_KEY
               value: sk-000000000000000000000000000000000000000000000000
           image: docker.io/paulgauthier/aider@sha256:c315ff23cd5242d8e1a6f20de610cb844c86e566714b5f3098d873e74b226ac9
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           name: local-ai-aider
           ports:
             - containerPort: 8093

@@ -1,10 +1,10 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 #
 # Initialize Package Versions Database
 # Populates PostgreSQL with package tracking information
 #
 
-set -e
+set -euo pipefail
 
 POSTGRES_HOST=${POSTGRES_HOST:-postgres}
 POSTGRES_PORT=${POSTGRES_PORT:-5432}

@@ -94,7 +94,7 @@ print_info() {
 # Visual format:
 #     → Message text (in blue, indented)
 #
-# Usage: print_detail "See /tmp/install.log for details"
+# Usage: print_detail "See \$TMPDIR/install.log for details"
 #
 # When to use:
 # - Follow-up information after a warning/error
@@ -230,6 +230,14 @@ confirm() {
     local default="${2:-n}"         # Default answer (n if not provided)
     local response                  # Will hold user's input
 
+    if [[ ! -t 0 ]]; then
+        # Non-interactive mode: honor default safely.
+        if [[ "$default" =~ ^[Yy]$ ]]; then
+            return 0
+        fi
+        return 1
+    fi
+
     # Adjust prompt text based on default answer
     # Capital letter indicates the default choice
     if [[ "$default" == "y" ]]; then
@@ -299,6 +307,16 @@ prompt_user() {
     local default="${2:-}"          # Default value (empty string if not provided)
     local response                  # Will hold user's input
 
+    if [[ ! -t 0 ]]; then
+        # Non-interactive mode: fall back to default if provided.
+        if [[ -n "$default" ]]; then
+            echo "$default"
+            return 0
+        fi
+        echo ""
+        return 0
+    fi
+
     # Check if default value was provided
     # -n tests if string is non-empty
     if [[ -n "$default" ]]; then
@@ -361,6 +379,11 @@ prompt_secret() {
     local prompt="$1"               # Main prompt text
     local note="${2:-}"             # Optional note/hint (empty if not provided)
     local message="$prompt"         # Will hold final prompt message
+
+    if [[ ! -t 0 ]]; then
+        echo ""
+        return 0
+    fi
 
     # If note was provided, append it to message
     # -n tests if string is non-empty

@@ -219,6 +219,9 @@ detect_gpu_hardware() {
         GPU_TYPE="software"
     fi
 
+    # Preserve package metadata for callers sourcing this library.
+    : "${GPU_PACKAGES}"
+
     echo ""  # Blank line for visual separation
     return 0  # Always return success
 }

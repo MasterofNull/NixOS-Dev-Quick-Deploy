@@ -208,8 +208,8 @@ cat templates/mcp-config-template.json | jq '.mcpServers.nixos'
 ## 🔐 AIDB Persistence
 
 ### Current Status
-**AIDB Container:** Running in ai-optimizer Podman stack
-**Data Location:** Persistent volume in Podman
+**AIDB Deployment:** Running in K3s (ai-stack namespace)
+**Data Location:** Kubernetes PVC (local-path)
 
 **What's Synced:**
 - All 9 documentation files
@@ -219,7 +219,7 @@ cat templates/mcp-config-template.json | jq '.mcpServers.nixos'
 ### AIDB Persistence Across Deployments
 
 **Container Data:**
-- Stored in Podman volumes (persists across deployments)
+- Stored in Kubernetes PVCs (persists across deployments)
 - PostgreSQL database: `/var/lib/postgresql/data`
 - Redis cache: Appendonly persistence
 
@@ -325,8 +325,8 @@ PYEOF
 ### What's Not in Git (Runtime/User-Specific)
 ❌ ~/.mcp/config.json (deployed from template)
 ❌ ~/.config/claude/mcp.json (symlink, created at runtime)
-❌ AIDB container data (Podman volumes, but can be re-imported)
-❌ /tmp/atomic-red-team (cloned at runtime, not persisted)
+❌ AIDB container data (PVCs, but can be re-imported)
+❌ ${TMPDIR:-/tmp}/atomic-red-team (cloned at runtime, not persisted)
 
 ### Future Deployments Will Have
 ✅ 25 unified skills in .agent/skills/

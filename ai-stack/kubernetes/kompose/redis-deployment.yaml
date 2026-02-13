@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   annotations:
-    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
     kompose.version: 1.37.0 (HEAD)
     nixos.quick-deploy.ai-stack: "true"
     nixos.quick-deploy.service: redis
@@ -19,13 +18,14 @@ spec:
   template:
     metadata:
       annotations:
-        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
         kompose.version: 1.37.0 (HEAD)
         nixos.quick-deploy.ai-stack: "true"
         nixos.quick-deploy.service: redis
       labels:
         io.kompose.service: redis
     spec:
+      serviceAccountName: redis
+      automountServiceAccountToken: false
       containers:
         - args:
             - sh
@@ -34,7 +34,16 @@ spec:
           envFrom:
             - configMapRef:
                 name: env
+            - secretRef:
+                name: huggingface-hub-token
           image: redis:8.4.0-alpine
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           livenessProbe:
             exec:
               command:
@@ -42,6 +51,16 @@ spec:
                 - -c
                 - redis-cli -a $(cat /run/secrets/redis-password) ping
             failureThreshold: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - redis-cli -a $(cat /run/secrets/redis-password) ping
+            failureThreshold: 3
+            initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 3
           name: local-ai-redis

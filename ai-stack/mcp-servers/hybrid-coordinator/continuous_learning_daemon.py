@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from continuous_learning import ContinuousLearningPipeline
+from shared.postgres_client import PostgresClient
 from pydantic import BaseModel
 
 logging.basicConfig(
@@ -56,7 +57,24 @@ async def main():
         logger.warning(f"Qdrant not available: {e}. Pattern indexing disabled.")
 
     # PostgreSQL client (optional)
-    postgres = None  # TODO: Add if needed for metrics storage
+    postgres = None
+    try:
+        postgres = PostgresClient(
+            host=os.getenv("POSTGRES_HOST", "postgres"),
+            port=int(os.getenv("POSTGRES_PORT", "5432")),
+            database=os.getenv("POSTGRES_DB", "aidb"),
+            user=os.getenv("POSTGRES_USER", "mcp"),
+            password=os.getenv("POSTGRES_PASSWORD", "postgres"),
+            sslmode=os.getenv("POSTGRES_SSLMODE"),
+            sslrootcert=os.getenv("POSTGRES_SSLROOTCERT"),
+            sslcert=os.getenv("POSTGRES_SSLCERT"),
+            sslkey=os.getenv("POSTGRES_SSLKEY"),
+        )
+        await postgres.connect()
+        logger.info("Connected to Postgres for learning metrics")
+    except Exception as e:
+        logger.warning(f"Postgres not available: {e}. Metrics persistence disabled.")
+        postgres = None
 
     # Create learning pipeline
     pipeline = ContinuousLearningPipeline(settings, qdrant, postgres)
@@ -85,9 +103,13 @@ async def main():
     except KeyboardInterrupt:
         logger.info("Shutting down Continuous Learning Pipeline")
         await pipeline.stop()
+        if postgres:
+            await postgres.close()
     except Exception as e:
         logger.error(f"Learning Pipeline error: {e}", exc_info=True)
         await pipeline.stop()
+        if postgres:
+            await postgres.close()
         return 1
 
     return 0

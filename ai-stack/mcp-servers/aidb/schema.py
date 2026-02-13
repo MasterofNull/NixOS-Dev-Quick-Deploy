@@ -94,6 +94,20 @@ TELEMETRY_EVENTS = sa.Table(
     sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
 )
 
+LEARNING_FEEDBACK = sa.Table(
+    "learning_feedback",
+    METADATA,
+    sa.Column("feedback_id", sa.String(64), primary_key=True),
+    sa.Column("interaction_id", sa.String(128), nullable=True),
+    sa.Column("query", sa.Text, nullable=False),
+    sa.Column("original_response", sa.Text, nullable=True),
+    sa.Column("correction", sa.Text, nullable=False),
+    sa.Column("rating", sa.Integer, nullable=True),
+    sa.Column("tags", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("source", sa.String(64), nullable=False, server_default=sa.text("'hybrid'")),
+    sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+)
+
 
 def document_embeddings_table(metadata: sa.MetaData, embedding_dimension: int) -> sa.Table:
     return sa.Table(

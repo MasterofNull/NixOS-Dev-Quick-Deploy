@@ -4,8 +4,8 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HYBRID_URL="${HYBRID_URL:-http://localhost:8092}"
-AIDB_URL="${AIDB_URL:-http://localhost:8091}"
+HYBRID_URL="${HYBRID_URL:-http://${SERVICE_HOST:-localhost}:8092}"
+AIDB_URL="${AIDB_URL:-http://${SERVICE_HOST:-localhost}:8091}"
 HYBRID_TELEMETRY_PATH="${HYBRID_TELEMETRY_PATH:-$HOME/.local/share/nixos-ai-stack/telemetry/hybrid-events.jsonl}"
 DASHBOARD_DATA_DIR="${DASHBOARD_DATA_DIR:-$HOME/.local/share/nixos-system-dashboard}"
 

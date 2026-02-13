@@ -80,13 +80,13 @@ check_redis() {
 }
 
 check_qdrant() {
-  log "Checking Qdrant (http://localhost:6333/readyz)"
+  log "Checking Qdrant (http://${SERVICE_HOST:-localhost}:6333/readyz)"
   if ! command_exists curl; then
     log "[ERROR] curl command not found. Install curl to verify Qdrant."
     return 1
   fi
 
-  if response="$(curl -fsS http://localhost:6333/readyz 2>/dev/null)"; then
+  if response="$(curl -fsS http://${SERVICE_HOST:-localhost}:6333/readyz 2>/dev/null)"; then
     log "[OK] Qdrant readiness: ${response}"
   else
     log "[ERROR] Unable to reach Qdrant on port 6333"

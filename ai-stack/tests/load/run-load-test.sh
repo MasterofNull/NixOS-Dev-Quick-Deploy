@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESULTS_DIR="${SCRIPT_DIR}/results"
 mkdir -p "$RESULTS_DIR"
 
-API_KEY_FILE="${AI_STACK_API_KEY_FILE:-ai-stack/compose/secrets/stack_api_key}"
+API_KEY_FILE="${AI_STACK_API_KEY_FILE:-ai-stack/kubernetes/secrets/generated/stack_api_key}"
 if [[ -f "$API_KEY_FILE" ]]; then
   export AI_STACK_API_KEY="$(cat "$API_KEY_FILE")"
 fi

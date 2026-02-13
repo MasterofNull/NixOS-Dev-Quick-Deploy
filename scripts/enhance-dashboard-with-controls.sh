@@ -8,6 +8,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DASHBOARD_HTML="$PROJECT_ROOT/dashboard.html"
 BACKUP_HTML="$PROJECT_ROOT/dashboard.html.backup-$(date +%Y%m%d-%H%M%S)"
+TMP_ROOT="${TMPDIR:-/${TMP_FALLBACK:-tmp}}"
+SECTION_SNIPPET="$(mktemp -p "$TMP_ROOT" dashboard-section-XXXX.html)"
+DASHBOARD_NEW="$(mktemp -p "$TMP_ROOT" dashboard-new-XXXX.html)"
+CSS_SNIPPET="$(mktemp -p "$TMP_ROOT" dashboard-css-XXXX.html)"
+DASHBOARD_CSS="$(mktemp -p "$TMP_ROOT" dashboard-css-new-XXXX.html)"
+
+cleanup() {
+    rm -f "$SECTION_SNIPPET" "$DASHBOARD_NEW" "$CSS_SNIPPET" "$DASHBOARD_CSS"
+}
+trap cleanup EXIT
 
 echo "🔧 Enhancing Port 8888 Dashboard with Service Controls"
 echo ""
@@ -19,7 +29,7 @@ echo "✅ Backed up original to: $BACKUP_HTML"
 # Create the enhanced dashboard HTML with service controls
 # We'll insert a new section after the container list
 
-cat > /tmp/service-control-section.html << 'EOF'
+cat > "$SECTION_SNIPPET" << 'EOF'
 
             <!-- AI Stack Services Control -->
             <div class="dashboard-section full-width">
@@ -51,15 +61,15 @@ fi
 echo "📍 Inserting service control section at line $INSERT_LINE"
 
 # Insert the new section
-head -n $((INSERT_LINE - 1)) "$DASHBOARD_HTML" > /tmp/dashboard-new.html
-cat /tmp/service-control-section.html >> /tmp/dashboard-new.html
-tail -n +$INSERT_LINE "$DASHBOARD_HTML" >> /tmp/dashboard-new.html
+head -n $((INSERT_LINE - 1)) "$DASHBOARD_HTML" > "$DASHBOARD_NEW"
+cat "$SECTION_SNIPPET" >> "$DASHBOARD_NEW"
+tail -n +$INSERT_LINE "$DASHBOARD_HTML" >> "$DASHBOARD_NEW"
 
-cp /tmp/dashboard-new.html "$DASHBOARD_HTML"
+cp "$DASHBOARD_NEW" "$DASHBOARD_HTML"
 echo "✅ Added service control section"
 
 # Now add the CSS for service control buttons
-cat > /tmp/service-control-css.html << 'EOF'
+cat > "$CSS_SNIPPET" << 'EOF'
 
         /* Service Control Styles */
         .service-item {
@@ -188,11 +198,11 @@ fi
 
 echo "📍 Adding service control CSS at line $CSS_END_LINE"
 
-head -n $((CSS_END_LINE - 1)) "$DASHBOARD_HTML" > /tmp/dashboard-css.html
-cat /tmp/service-control-css.html >> /tmp/dashboard-css.html
-tail -n +$CSS_END_LINE "$DASHBOARD_HTML" >> /tmp/dashboard-css.html
+head -n $((CSS_END_LINE - 1)) "$DASHBOARD_HTML" > "$DASHBOARD_CSS"
+cat "$CSS_SNIPPET" >> "$DASHBOARD_CSS"
+tail -n +$CSS_END_LINE "$DASHBOARD_HTML" >> "$DASHBOARD_CSS"
 
-cp /tmp/dashboard-css.html "$DASHBOARD_HTML"
+cp "$DASHBOARD_CSS" "$DASHBOARD_HTML"
 echo "✅ Added service control CSS"
 
 echo ""

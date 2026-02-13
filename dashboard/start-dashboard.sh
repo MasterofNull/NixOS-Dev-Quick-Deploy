@@ -3,6 +3,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DASHBOARD_API_BIND_ADDRESS="${DASHBOARD_API_BIND_ADDRESS:-127.0.0.1}"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}"
+BACKEND_PID_FILE="${RUNTIME_DIR}/dashboard-backend.pid"
+FRONTEND_PID_FILE="${RUNTIME_DIR}/dashboard-frontend.pid"
+export DASHBOARD_API_BIND_ADDRESS
+
+mkdir -p "$RUNTIME_DIR" 2>/dev/null || true
 
 echo "🚀 Starting NixOS System Dashboard v2.0..."
 echo ""
@@ -55,9 +62,9 @@ start_backend() {
     echo "🔧 Starting backend API on port 8889..."
     cd "$SCRIPT_DIR/backend"
     source venv/bin/activate
-    uvicorn api.main:app --host 0.0.0.0 --port 8889 --reload &
+    uvicorn api.main:app --host "$DASHBOARD_API_BIND_ADDRESS" --port 8889 --reload &
     BACKEND_PID=$!
-    echo $BACKEND_PID > /tmp/dashboard-backend.pid
+    echo $BACKEND_PID > "$BACKEND_PID_FILE"
     echo "✅ Backend started (PID: $BACKEND_PID)"
 }
 
@@ -67,7 +74,7 @@ start_frontend() {
     cd "$SCRIPT_DIR/frontend"
     pnpm run dev &
     FRONTEND_PID=$!
-    echo $FRONTEND_PID > /tmp/dashboard-frontend.pid
+    echo $FRONTEND_PID > "$FRONTEND_PID_FILE"
     echo "✅ Frontend started (PID: $FRONTEND_PID)"
 }
 
@@ -76,14 +83,14 @@ cleanup() {
     echo ""
     echo "🛑 Shutting down dashboard..."
     
-    if [ -f /tmp/dashboard-backend.pid ]; then
-        kill $(cat /tmp/dashboard-backend.pid) 2>/dev/null || true
-        rm /tmp/dashboard-backend.pid
+    if [ -f "$BACKEND_PID_FILE" ]; then
+        kill "$(cat "$BACKEND_PID_FILE")" 2>/dev/null || true
+        rm "$BACKEND_PID_FILE"
     fi
     
-    if [ -f /tmp/dashboard-frontend.pid ]; then
-        kill $(cat /tmp/dashboard-frontend.pid) 2>/dev/null || true
-        rm /tmp/dashboard-frontend.pid
+    if [ -f "$FRONTEND_PID_FILE" ]; then
+        kill "$(cat "$FRONTEND_PID_FILE")" 2>/dev/null || true
+        rm "$FRONTEND_PID_FILE"
     fi
     
     echo "👋 Dashboard stopped"

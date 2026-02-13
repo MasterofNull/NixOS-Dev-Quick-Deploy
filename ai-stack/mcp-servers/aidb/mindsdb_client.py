@@ -430,8 +430,8 @@ async def predict_workflow_success_rate(
 
     try:
         await mindsdb.get_model_status(model_name)
-    except:
-        # Train new model
+    except Exception as e:
+        logger.info("Model %s not found (%s), training new model", model_name, e)
         await mindsdb.create_predictor(
             name=model_name,
             from_data="aidb_postgres.codemachine_workflows",
@@ -471,8 +471,8 @@ async def forecast_agent_performance(
 
     try:
         await mindsdb.get_model_status(model_name)
-    except:
-        # Create time-series model
+    except Exception as e:
+        logger.info("Model %s not found (%s), creating time-series model", model_name, e)
         await mindsdb.create_time_series_forecast(
             name=model_name,
             source_table="aidb_postgres.agent_performance_metrics",

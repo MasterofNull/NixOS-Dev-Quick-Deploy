@@ -74,14 +74,21 @@ error_handler() {
     # ${var:-default} provides "main" if no function name (top-level code)
     local function_name=${FUNCNAME[1]:-"main"}
 
+    # Guard: ignore stray banner lines accidentally executed as commands.
+    if [[ "$exit_code" -eq 127 && "${BASH_COMMAND:-}" =~ ^=+$ ]]; then
+        log WARNING "Ignoring stray separator command error: ${BASH_COMMAND}"
+        return 0
+    fi
+
     # Log detailed error information to log file
     # This creates a permanent record for debugging
-    log ERROR "Script failed at line $line_number (function: $function_name) with exit code $exit_code"
+    log_error "$exit_code" "Script failed at line $line_number (function: $function_name)"
+    log_error "$exit_code" "Bash call line: $bash_lineno"
 
     # Log the actual command that failed
     # BASH_COMMAND contains the command string that was executing
     # This is invaluable for debugging: you see exactly what failed
-    log ERROR "Command: ${BASH_COMMAND}"
+    log_error "$exit_code" "Command: ${BASH_COMMAND}"
 
     # Display user-friendly error message to console
     # Using print_error() for colored output (defined in user-interaction.sh)
@@ -281,15 +288,21 @@ cleanup_on_exit() {
         if [[ -n "${STATE_FILE:-}" ]]; then
             rm -f "${STATE_FILE}.tmp" 2>/dev/null || true
         fi
-        # Clean deployment-related temp files older than 1 hour
-        find "${TMPDIR:-/tmp}" -maxdepth 1 -name "nixos-deploy-*.tmp" -type f -mmin +60 -delete 2>/dev/null || true
+        # Clean deployment-related temp files older than 1 hour (scoped to this PID)
+        find "${TMPDIR:-/tmp}" -maxdepth 1 -name "nixos-deploy-$$-*.tmp" -type f -mmin +60 -delete 2>/dev/null || true
     fi
 
     # ========================================================================
     # Cleanup lock files
     # ========================================================================
-    if [[ -n "${STATE_DIR:-}" && -d "$STATE_DIR" ]]; then
-        find "$STATE_DIR" -name "*.lock" -type f -delete 2>/dev/null || true
+    # Only delete the specific lock file created by this process, not all lock files
+    # This prevents one instance from deleting locks created by concurrent instances
+    if [[ -n "${DEPLOY_LOCK_FILE:-}" && -f "$DEPLOY_LOCK_FILE" ]]; then
+        rm -f "$DEPLOY_LOCK_FILE" 2>/dev/null || true
+    elif [[ -n "${STATE_DIR:-}" && -d "$STATE_DIR" ]]; then
+        # Fallback: if we don't have the specific lock file path, 
+        # only clean lock files with our process ID in the name
+        find "$STATE_DIR" -name "*-$$-*.lock" -type f -delete 2>/dev/null || true
     fi
 
     # Return the original exit code

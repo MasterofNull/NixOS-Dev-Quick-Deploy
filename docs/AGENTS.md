@@ -1,11 +1,755 @@
-# AI Agent Onboarding Guide (Mirror)
+# AI Agent Onboarding Guide
 
-**Canonical source:** `AGENTS.md` (root). Update that file only.
+**Version:** 1.0.0
+**Purpose:** Universal agent training for professional software development
+**Audience:** AI agents, LLMs, and autonomous coding systems
 
-This file exists as a lightweight pointer to reduce confusion and avoid
-duplicate edits. If you landed here, go to:
+---
 
-- `AGENTS.md` - Canonical onboarding and rules
+**Agent Docs Index (canonical links):**
+- `AGENTS.md` - Source of truth
+- `docs/AGENTS.md` - Mirror for quick reference
 - `docs/agent-guides/00-SYSTEM-OVERVIEW.md` - System map
 - `docs/agent-guides/01-QUICK-START.md` - Task-ready checklist
 - `ai-stack/agents/skills/AGENTS.md` - Skill usage and sync rules
+
+## 🎯 Core Philosophy
+
+**You are not just a tool—you are a professional software engineer.**
+
+This guide trains you to:
+- Write clean, maintainable code that humans will work with
+- Organize documentation professionally
+- Prevent "AI slop" (over-engineering, verbose code, documentation sprawl)
+- Collaborate effectively with other agents and humans
+- Deliver production-ready work without cleanup cycles
+
+---
+
+## ⚡ QUICK START: Essential Tools & Resources
+
+> **READ THIS FIRST** - Fresh AI agents start here for immediate access to all capabilities.
+
+### 🎯 Source of Truth Locations
+
+**Skills Directory (PRIMARY):** `.agent/skills/`
+- **Count:** 25 unified skills
+- **Symlink:** `.claude/skills/` → `.agent/skills/`
+- **Usage:** Skills are auto-loaded, reference in prompts: "use the webapp-testing skill"
+
+**MCP Server Configuration:** `~/.mcp/config.json`
+- **Symlink:** `~/.config/claude/mcp.json` → `~/.mcp/config.json`
+- **Currently Installed:** mcp-nixos (NixOS package search)
+- **Registry:** `~/.mcp/registry.json` (server metadata with security audits)
+
+**Knowledge Base (AIDB):** `http://localhost:8091`
+- **Project:** NixOS-Dev-Quick-Deploy
+- **Query:** `curl 'http://localhost:8091/documents?search=TOPIC&project=NixOS-Dev-Quick-Deploy'`
+- **Import:** `curl -X POST http://localhost:8091/documents -H "Content-Type: application/json" -d @data.json`
+
+### 📦 Available Skills (All in .agent/skills/)
+
+**Development:**
+- `ai-model-management` - vLLM/Ollama model lifecycle
+- `ai-service-management` - AI service orchestration
+- `nixos-deployment` - NixOS deployment automation
+- `webapp-testing` - Playwright web UI testing
+- `mcp-builder` - Create new MCP servers
+- `skill-creator` - Create new skills
+
+**Data & Analysis:**
+- `aidb-knowledge` - Query AIDB knowledge base
+- `xlsx` - Spreadsheet creation/analysis
+- `pdf` - PDF manipulation toolkit
+- `pptx` - PowerPoint operations
+
+**Design & Artifacts:**
+- `frontend-design` - Production-grade web interfaces
+- `canvas-design` - Visual art (.png, .pdf)
+- `brand-guidelines` - Anthropic brand styling
+- `theme-factory` - Theme generation
+- `web-artifacts-builder` - Complex React/Tailwind artifacts
+
+**Utilities:**
+- `health-monitoring` - System health tracking
+- `all-mcp-directory` - Browse MCP server directory
+- `mcp-server` - MCP server templates
+- `project-import` - Import external projects
+- `rag-techniques` - RAG implementation patterns
+- `system_bootstrap` - System bootstrapping
+
+**Communication:**
+- `internal-comms` - Internal communication templates
+- `slack-gif-creator` - Animated GIFs for Slack
+
+**Templates:**
+- `template-skill` - Skill boilerplate
+- `mcp-database-setup` - MCP database configuration
+
+### 🔌 MCP Servers Database
+
+**Query All MCP Servers:**
+```bash
+curl 'http://localhost:8091/documents?search=mcp-server&category=tools&project=NixOS-Dev-Quick-Deploy'
+```
+
+**Currently Installed:**
+1. **mcp-nixos** (⭐⭐⭐⭐⭐ 354 stars) - NixOS package/config search
+   - Command: `nix run github:utensils/mcp-nixos`
+   - Tools: nixos_search, nixos_info, home_manager_search, darwin_search
+
+**High Priority (Recommended):**
+- **postgres-mcp** - PostgreSQL/AIDB integration
+- **github-mcp** - Repository management
+- **SecureMCP** - MCP security auditing (red team)
+- **vulnicheck** - Vulnerability scanning
+
+**See Full Inventory:** `docs/SKILLS-AND-MCP-INVENTORY.md`
+**See Security Tools:** `docs/AGENT-AGNOSTIC-TOOLING-PLAN.md`
+
+### 🤖 Local AI Agent Integration
+
+**Offload Parallel Tasks to Local Agents:**
+
+When you have multiple independent tasks, delegate to local AI models:
+
+```bash
+# Check available local models
+curl http://localhost:11434/api/tags  # Ollama
+curl http://localhost:8080/v1/models  # vLLM
+
+# Example: Offload research task to local agent
+# Use the ai-service-management skill or direct API calls
+```
+
+**When to Use Local Agents:**
+- Parallel research tasks (multiple GitHub searches)
+- Code analysis on multiple files
+- Documentation generation
+- Data extraction/transformation
+- Testing and validation
+
+**Benefits:**
+- Reduces your token consumption
+- Speeds up execution (parallel processing)
+- Cost optimization (use free local models)
+
+**Integration Points:**
+- AIDB has query API for knowledge retrieval
+- Local models accessible via OpenAI-compatible API
+- Skills can be invoked by any agent
+
+### 📚 Essential Documentation Files
+
+**Read These First:**
+1. `AGENTS.md` (this file) - Agent onboarding and standards
+2. `docs/SKILLS-AND-MCP-INVENTORY.md` - Complete tool inventory
+3. `docs/AGENT-AGNOSTIC-TOOLING-PLAN.md` - Agent-agnostic architecture
+4. `docs/AVAILABLE_TOOLS.md` - Tool reference guide
+5. `README.md` - Project overview
+
+**Query AIDB for Any Topic:**
+```bash
+# Find documentation about MCP servers
+curl 'http://localhost:8091/documents?search=mcp&project=NixOS-Dev-Quick-Deploy'
+
+# Find deployment guides
+curl 'http://localhost:8091/documents?search=deployment&project=NixOS-Dev-Quick-Deploy'
+
+# Find recent session summaries
+curl 'http://localhost:8091/documents?search=session&type=summary&project=NixOS-Dev-Quick-Deploy'
+```
+
+### 🔄 Creating Skills and MCP Servers
+
+**Create New Skill:**
+```bash
+# Use the skill-creator skill
+# Reference: "use skill-creator to create a new skill for X"
+```
+
+**Create New MCP Server:**
+```bash
+# Use the mcp-builder skill
+# Reference: "use mcp-builder to create an MCP server for X"
+```
+
+**Update This File (AGENTS.md):**
+- This is the source of truth for agent onboarding
+- Keep the "Quick Start" section updated when adding new tools
+- Add new skills to the "Available Skills" list
+- Update MCP server list when installing new servers
+
+---
+
+## 🧹 Code Quality & Documentation Standards
+
+> **Critical:** This section prevents technical debt and reduces "cleanup cycles" after development.
+
+### Core Principles: CLEAN CODE, MINIMAL WASTE
+
+**The Problem:** "AI slop" - verbose code, unnecessary abstractions, scattered documentation, and over-engineering that creates maintenance burden.
+
+**The Solution:** Be **intentional, minimal, and organized** from the start.
+
+---
+
+## 1. Code Quality Standards
+
+### ✅ Write Code That Humans Will Maintain
+
+**DO:**
+- Write clear, self-documenting code with descriptive variable names
+- Use standard patterns from the existing codebase
+- Keep functions focused and under 50 lines when possible
+- Add comments ONLY where logic isn't obvious
+- Follow existing code style (check similar files first)
+
+**DON'T:**
+- Over-engineer simple tasks with unnecessary abstractions
+- Add framework features "just in case" (YAGNI principle)
+- Create utility functions for one-time operations
+- Add extensive docstrings to obvious functions
+- Prematurely optimize without profiling
+
+**Example - GOOD:**
+```python
+def validate_email(email: str) -> bool:
+    """Check if email format is valid."""
+    return "@" in email and "." in email.split("@")[1]
+```
+
+**Example - BAD (AI Slop):**
+```python
+class EmailValidationStrategy:
+    """
+    Advanced email validation strategy implementing the Strategy pattern
+    for flexible email validation across multiple contexts.
+
+    Attributes:
+        validator_type: The type of validator to use
+        config: Configuration object for validation rules
+        logger: Logger instance for validation events
+    """
+    def __init__(self, validator_type: str = "standard", config: dict = None):
+        self.validator_type = validator_type
+        self.config = config or {}
+        self.logger = logging.getLogger(__name__)
+
+    def validate(self, email: str) -> ValidationResult:
+        """Validate email with comprehensive error handling."""
+        # ... 50 more lines of over-engineering
+```
+
+### ✅ Function Documentation Standards
+
+**DO:**
+- Add a 1-2 line comment above non-trivial functions explaining intent and side effects
+- Document inputs/outputs via clear names; avoid long docstrings in shell scripts
+- Use `phase_XX_` prefixes for phase-local helpers to keep call chains readable
+- Split functions when they grow beyond ~50 lines
+
+### ✅ Security & Safety First
+
+**DO:**
+- Validate all user inputs at system boundaries
+- Use parameterized queries for SQL
+- Sanitize data before shell commands
+- Check file permissions before operations
+- Log security-relevant events
+
+**DON'T:**
+- Trust internal function parameters (validate at entry points only)
+- Add error handling for scenarios that can't happen
+- Create overly defensive code that obscures logic
+
+### ✅ Follow Existing Patterns
+
+Before writing new code:
+1. **Search for similar functionality** in the codebase
+2. **Match the existing style** (indentation, naming, structure)
+3. **Reuse existing utilities** instead of creating new ones
+4. **Check the database schema** before adding tables/columns
+
+**Find patterns with:**
+```bash
+# Search for similar functions
+grep -r "def function_name" .
+
+# Find API endpoint patterns
+grep -r "@app.route\|@router\|@endpoint" .
+
+# Check database models
+grep -r "class.*Model\|CREATE TABLE" .
+```
+
+---
+
+## 2. Documentation Management
+
+### ✅ File Organization Rules
+
+**Essential principle:** STOP before creating a new doc file. Ask:
+1. **Does this belong in an existing file?**
+2. **Is this temporary (should be in docs/archive/)?**
+3. **Will someone need this in 6 months?**
+
+### Where to Put Documentation
+
+| Content Type | Location | Examples |
+|-------------|----------|----------|
+| **System overview** | Root `README.md` | Project description, quick start |
+| **Agent training** | Root `AGENTS.md` | This file - comprehensive guide |
+| **User guides** | `docs/*.md` | Deployment, monitoring, APIs |
+| **Development notes** | `docs/development/` | Migration plans, decisions |
+| **Session reports** | `docs/archive/` | Status reports, test results |
+| **Code documentation** | Inline comments | Complex logic only |
+
+### ✅ Documentation Standards
+
+**DO:**
+- Update existing docs instead of creating new ones
+- Use clear, scannable formatting (headings, bullets, tables)
+- Include code examples that actually work
+- Date all documentation files
+- Keep root directory minimal (5-10 files max)
+
+**DON'T:**
+- Create "REPORT_FINAL_V3_UPDATED.md" files
+- Duplicate information across multiple files
+- Write essays when bullet points suffice
+- Create docs for temporary/debugging info
+- Leave TODO comments in documentation
+
+### ✅ Naming Conventions
+
+**GOOD File Names:**
+- `DEPLOYMENT_GUIDE.md` - Clear, permanent
+- `API_ENDPOINTS.md` - Descriptive
+- `SETUP_COMPLETE.md` - Status clear
+
+**BAD File Names:**
+- `STATUS_REPORT_V3_FINAL_UPDATED.md` - Version chaos
+- `NOTES.md` - Vague, will accumulate cruft
+- `TODO_LIST_DEC_3.md` - Temporary info in permanent file
+- `SYSTEM_IMPROVEMENTS_ROADMAP_V2_REVISED.md` - Too long, too versioned
+
+### ✅ Documentation Lifecycle
+
+**When to Archive:**
+- Development status reports → `docs/archive/` after completion
+- Migration plans → `docs/development/` after migration
+- Test results → `docs/archive/` after validation
+- Old architecture docs → `docs/legacy/` when replaced
+
+**When to Delete:**
+- Temporary debug files
+- Duplicate information
+- Outdated instructions that could confuse
+- Empty or near-empty files
+
+---
+
+## 3. Development Workflow Best Practices
+
+### ✅ Before You Start
+
+1. **Read existing code** in the area you're modifying
+2. **Check for similar implementations** to maintain consistency
+3. **Verify the database schema** if working with data
+4. **Look for existing utilities** before writing new ones
+
+### ✅ During Development
+
+1. **Make atomic commits** - one logical change per commit
+2. **Test incrementally** - don't write 500 lines then test
+3. **Clean up as you go** - remove debug code immediately
+4. **Update docs inline** - don't defer documentation
+5. **Quick-deploy first** - apply system changes to `nixos-quick-deploy.sh` and templates before runtime patches
+
+### ✅ After Development
+
+**Before calling it "done":**
+- [ ] Remove all debug print statements
+- [ ] Delete commented-out code
+- [ ] Update relevant documentation
+- [ ] Check for leftover TODO comments
+- [ ] Verify no temporary files created
+- [ ] Run tests if they exist
+- [ ] Check git status for unintended changes
+
+**The 5-Minute Cleanup:**
+```bash
+# 1. Check for debug statements
+grep -r "print\|console.log\|debugger" .
+
+# 2. Find TODO comments
+grep -r "TODO\|FIXME\|HACK" .
+
+# 3. List recently modified files
+git status
+
+# 4. Check for large uncommitted files
+git ls-files -o | xargs du -h | sort -h | tail -10
+
+# 5. Verify no sensitive data
+grep -r "password\|api_key\|secret" . --exclude-dir=.git
+```
+
+---
+
+## 4. AI-Specific Best Practices
+
+### ✅ Managing AI Output Quality
+
+**Problem:** AI models can be verbose, over-engineer, or create unnecessary complexity.
+
+**Solution - The Three Questions:**
+
+1. **"Is this the simplest solution?"**
+   - If you can do it in 10 lines instead of 100, do it
+   - Resist the urge to create frameworks for single use cases
+
+2. **"Does this follow existing patterns?"**
+   - Check the codebase first
+   - Match the style and structure already there
+
+3. **"Will this need cleanup later?"**
+   - If yes, clean it up NOW
+   - Don't defer technical debt
+
+### ✅ When Working with Multiple AI Agents
+
+**Coordinate to avoid:**
+- Creating duplicate documentation
+- Inconsistent coding styles
+- Overlapping functionality
+- Documentation sprawl
+
+**Best practices:**
+1. **Check recent commits** before starting work
+2. **Read the latest docs** to understand current state
+3. **Update shared docs** (like AGENTS.md) carefully
+4. **Use git to communicate** - commit messages matter
+
+### ✅ Preventing "AI Slop"
+
+**Red Flags - Stop and Simplify:**
+- Creating abstract base classes for 1-2 implementations
+- Adding configuration options "for flexibility" that aren't needed
+- Writing comprehensive error messages for errors that can't happen
+- Creating utility modules with one function
+- Adding extensive logging to obvious operations
+
+**Green Flags - You're Doing It Right:**
+- Code reads naturally without comments
+- Functions do one thing well
+- Documentation answers "why" not "what"
+- New code matches existing patterns
+- You deleted more code than you added
+
+---
+
+## 5. Common Pitfalls to Avoid
+
+### ❌ Documentation Anti-Patterns
+
+1. **Status Report Explosion**
+   - Don't create: `STATUS_V1.md`, `STATUS_V2.md`, `STATUS_FINAL.md`
+   - Do: Update one `CURRENT_STATUS.md` file
+
+2. **The Eternal TODO List**
+   - Don't: Leave TODO.md files that grow forever
+   - Do: Convert TODOs to issues/tasks or complete them
+
+3. **Implementation Report Spam**
+   - Don't: Create a report for every minor change
+   - Do: Update one completion report or commit message
+
+4. **README Confusion**
+   - Don't: Create `README_NEW.md`, `README_UPDATED.md`
+   - Do: Update the single `README.md`
+
+### ❌ Code Anti-Patterns
+
+1. **Premature Abstraction**
+   - Don't: Create frameworks before you need them
+   - Do: Write concrete code, refactor when you have 3+ examples
+
+2. **Configuration Explosion**
+   - Don't: Make everything configurable "just in case"
+   - Do: Hard-code reasonable defaults, add config only when needed
+
+3. **Error Handling Theater**
+   - Don't: Catch every possible exception defensively
+   - Do: Handle errors at boundaries, fail fast internally
+
+4. **The Utility Junk Drawer**
+   - Don't: Create `utils.py` with random helper functions
+   - Do: Put utilities near where they're used, or in focused modules
+
+---
+
+## 6. Measuring Quality
+
+**Good indicators:**
+- Git history shows small, focused commits
+- Root directory stays under 10 files
+- Documentation is easy to find
+- Code reviews take < 30 minutes
+- New contributors can onboard in < 1 hour
+
+**Bad indicators:**
+- Large commits with "various fixes"
+- Root directory has 50+ markdown files
+- Multiple docs covering the same topic
+- Code requires extensive comments to understand
+- "Cleanup" commits after every feature
+
+---
+
+## 7. Quick Reference Checklists
+
+### When Adding Code:
+1. ✅ Search for existing patterns first
+2. ✅ Keep it simple and focused
+3. ✅ Match existing style
+4. ✅ Test incrementally
+5. ✅ Clean up before committing
+
+### When Adding Documentation:
+1. ✅ Check if existing doc can be updated
+2. ✅ Use clear, scannable formatting
+3. ✅ Put it in the right place (see table above)
+4. ✅ Keep root directory minimal
+5. ✅ Archive old status reports
+
+### Before Calling It Done:
+1. ✅ No debug code remaining
+2. ✅ No commented-out code
+3. ✅ Docs updated
+4. ✅ Tests pass
+5. ✅ Git status clean
+
+### Quality Checkpoints (Before Committing):
+```bash
+# 1. Run linters (if available)
+ruff check . || flake8 . || pylint .
+
+# 2. Verify imports work
+python -c "import main_module"
+
+# 3. Check for secrets
+git diff | grep -i "password\|secret\|key\|token"
+
+# 4. Review changed files
+git diff --stat
+
+# 5. Test critical paths
+pytest tests/ || npm test || ./scripts/test.sh
+```
+
+---
+
+## 8. Available Tools & Resources
+
+> **Note:** This section should be customized per project. See [AVAILABLE_TOOLS.md](docs/AVAILABLE_TOOLS.md) for the current project's tool inventory.
+
+### Standard CLI Tools
+
+Most projects will have access to:
+- `git` - Version control
+- `grep/rg` - Code search
+- `find/fd` - File search
+- `jq` - JSON processing
+- `curl` - HTTP requests
+- Language-specific tools (`python`, `node`, `cargo`, etc.)
+
+### MCP Servers (If Available)
+
+MCP (Model Context Protocol) servers provide specialized capabilities:
+- File operations
+- Database queries
+- API integrations
+- System monitoring
+
+Check the project's `.mcp/` directory or MCP configuration for available servers.
+
+### Project-Specific Tools
+
+Look for:
+- `scripts/` directory - Common automation
+- `Makefile` - Build and test commands
+- `package.json` / `pyproject.toml` - Language tooling
+- `kustomization.yaml` / `Dockerfile` - Container commands
+
+---
+
+## 9. First Steps in a New Project
+
+### Onboarding Checklist:
+
+1. **Read Core Documentation (15 minutes)**
+   - [ ] README.md - Project overview
+   - [ ] AGENTS.md (this file) - Development standards
+   - [ ] QUICK_START.md or CONTRIBUTING.md (if exists)
+
+2. **Understand the Codebase (30 minutes)**
+   - [ ] Run: `tree -L 2 -d` to see structure
+   - [ ] Check: `git log --oneline -20` for recent activity
+   - [ ] Find: Main entry points (`main.py`, `index.js`, etc.)
+   - [ ] Review: Database schema (if applicable)
+
+3. **Set Up Your Environment (15 minutes)**
+   - [ ] Check available tools: [AVAILABLE_TOOLS.md](docs/AVAILABLE_TOOLS.md)
+   - [ ] Review MCP servers (if any): `.mcp/` directory
+   - [ ] Test basic commands: `make help` or `npm run`
+
+4. **Verify You Can Build/Test (15 minutes)**
+   - [ ] Follow build instructions in README
+   - [ ] Run tests: `pytest` / `npm test` / `make test`
+   - [ ] Check linters: `ruff check .` / `eslint .`
+
+**Total Time:** ~75 minutes to full productivity
+
+---
+
+## 10. Project-Specific Customization
+
+> **For Project Maintainers:** Customize these sections for your project.
+
+### Your Code Style
+
+Document your project's conventions:
+- Language version (Python 3.11+, Node 18+, etc.)
+- Formatting tools (Black, Prettier, etc.)
+- Import order conventions
+- Naming conventions (camelCase vs snake_case)
+- File organization patterns
+
+### Your Documentation Structure
+
+```
+your-project/
+├── README.md                # Project overview
+├── AGENTS.md               # This file
+├── docs/
+│   ├── AVAILABLE_TOOLS.md  # Tool inventory
+│   ├── ARCHITECTURE.md     # System design
+│   ├── API.md              # API reference
+│   ├── archive/            # Historical docs
+│   └── development/        # Dev notes
+└── examples/               # Code examples
+```
+
+### Your Testing Strategy
+
+- Unit test requirements
+- Integration test patterns
+- E2E test approach
+- Performance testing
+- Security testing
+
+### Your Deployment Process
+
+- How to deploy (manual, CI/CD, scripts)
+- Staging vs production
+- Rollback procedures
+- Monitoring and alerting
+
+---
+
+## 11. Additional Resources
+
+### Included in This Package:
+
+- [AVAILABLE_TOOLS.md](docs/AVAILABLE_TOOLS.md) - Complete tool inventory
+- [MCP_SERVERS.md](docs/MCP_SERVERS.md) - MCP server documentation
+- [CODE_EXAMPLES.md](examples/CODE_EXAMPLES.md) - Common patterns
+- [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Common issues
+
+### External Resources:
+
+- **The Three Questions Framework**: For preventing over-engineering
+- **YAGNI Principle**: "You Aren't Gonna Need It" - avoid premature features
+- **SOLID Principles**: Object-oriented design fundamentals
+- **12-Factor App**: Modern application best practices
+
+---
+
+## 12. Getting Help
+
+### When You're Stuck:
+
+1. **Search the codebase** for similar functionality
+2. **Check recent commits** for related changes
+3. **Read existing docs** in `docs/` directory
+4. **Look for examples** in `examples/` or test files
+5. **Ask specific questions** rather than broad ones
+
+### Good Questions:
+
+- "Where is email validation handled in this codebase?"
+- "What's the pattern for adding new API endpoints?"
+- "How do I run the test suite for the auth module?"
+
+### Bad Questions:
+
+- "How does this whole project work?"
+- "Can you explain everything about the architecture?"
+- "What should I do next?"
+
+---
+
+## 13. Success Metrics
+
+**You're doing it right when:**
+
+- Your commits are small and focused
+- Documentation is easy to find
+- Code reviews are quick
+- No "cleanup" commits needed
+- New features integrate cleanly
+- Root directory stays organized
+- Tests pass consistently
+- Other agents can understand your work
+
+**Warning signs:**
+
+- Large commits with many unrelated changes
+- Creating new docs instead of updating existing ones
+- Code requires extensive comments
+- Frequent merge conflicts
+- "Fix typo" commits after every feature
+- Documentation that's hard to navigate
+
+---
+
+## Summary: The Professional AI Agent
+
+**Before starting work:**
+- Read existing code and docs
+- Check for similar implementations
+- Ask The Three Questions
+
+**During work:**
+- Write clean, simple code
+- Test incrementally
+- Clean up as you go
+- Update docs inline
+
+**Before committing:**
+- Run The 5-Minute Cleanup
+- Use Quality Checkpoints
+- Verify no debug code
+- Check git status
+
+**The Result:**
+Production-ready work that requires no cleanup cycles, integrates smoothly, and maintains professional quality standards.
+
+---
+
+**Version:** 1.0.0
+**Last Updated:** 2025-12-03
+**License:** MIT (or customize)
+**Maintainer:** [Your Name/Team]

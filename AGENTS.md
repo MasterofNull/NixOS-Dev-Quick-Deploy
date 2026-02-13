@@ -241,6 +241,14 @@ class EmailValidationStrategy:
         # ... 50 more lines of over-engineering
 ```
 
+### ✅ Function Documentation Standards
+
+**DO:**
+- Add a 1-2 line comment above non-trivial functions explaining intent and side effects
+- Document inputs/outputs via clear names; avoid long docstrings in shell scripts
+- Use `phase_XX_` prefixes for phase-local helpers to keep call chains readable
+- Split functions when they grow beyond ~50 lines
+
 ### ✅ Security & Safety First
 
 **DO:**
@@ -573,7 +581,7 @@ Look for:
 - `scripts/` directory - Common automation
 - `Makefile` - Build and test commands
 - `package.json` / `pyproject.toml` - Language tooling
-- `docker-compose.yml` / `Dockerfile` - Container commands
+- `kustomization.yaml` / `Dockerfile` - Container commands
 
 ---
 

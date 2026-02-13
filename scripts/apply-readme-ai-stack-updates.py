@@ -56,7 +56,7 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRAT
 | Component | Location | Purpose |
 |-----------|----------|---------|
 | **AIDB MCP Server** | `ai-stack/mcp-servers/aidb/` | PostgreSQL + TimescaleDB + Qdrant vector DB + FastAPI MCP server |
-| **llama.cpp vLLM** | `ai-stack/compose/` | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |
+| **llama.cpp vLLM** | `ai-stack/kubernetes/` | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |
 | **29 Agent Skills** | `ai-stack/agents/skills/` | nixos-deployment, webapp-testing, code-review, canvas-design, and more |
 | **MCP Servers** | `ai-stack/mcp-servers/` | Model Context Protocol servers for AIDB, NixOS, GitHub |
 | **Model Registry** | `ai-stack/models/registry.json` | Model catalog with 6 AI models (metadata, VRAM, speed, quality scores) |
@@ -120,18 +120,18 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRAT
 ./scripts/ai-stack-manage.sh health
 
 # Test individual endpoints
-curl http://localhost:8091/health | jq .       # AIDB MCP server
-curl http://localhost:8080/health | jq .       # llama.cpp inference
-curl http://localhost:6333/collections | jq .  # Qdrant vector DB
+curl http://<service-host>:8091/health | jq .       # AIDB MCP server
+curl http://<service-host>:8080/health | jq .       # llama.cpp inference
+curl http://<service-host>:6333/collections | jq .  # Qdrant vector DB
 ```
 
 **Agent skills (29 available):**
 ```bash
 # List all skills
-curl http://localhost:8091/skills | jq .
+curl http://<service-host>:8091/skills | jq .
 
 # Execute a skill
-curl -X POST http://localhost:8091/skills/nixos-deployment/execute \\
+curl -X POST http://<service-host>:8091/skills/nixos-deployment/execute \\
   -H "Content-Type: application/json" \\
   -d '{"action": "generate_config", "packages": ["vim", "git"]}'
 ```

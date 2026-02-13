@@ -45,7 +45,7 @@
    - Automatic cleanup on exit via `TEMP_FILES` array
 
 7. **✅ Hardcoded Paths Replaced** (Multiple files)
-   - Replaced `/tmp/` with `${TMP_DIR:-/tmp}` variable
+   - Replaced `/tmp` with `${TMPDIR:-/tmp}` variable
    - Replaced `~` with `${HOME}` variable
    - Added path configuration variables in `config/variables.sh`
    - Updated 8+ files to use configurable paths
@@ -179,7 +179,7 @@ fi
 
 ```bash
 # Old way (hardcoded)
-log_file="/tmp/nixos-rebuild.log"
+log_file="${TMP_DIR:-/tmp}/nixos-rebuild.log"
 
 # New way (configurable)
 log_file="${TMP_DIR:-/tmp}/nixos-rebuild.log"
@@ -221,4 +221,3 @@ log_file="${TMP_DIR:-/tmp}/nixos-rebuild.log"
 ---
 
 **Implementation Complete:** All critical and high-priority improvements have been successfully implemented and tested.
-

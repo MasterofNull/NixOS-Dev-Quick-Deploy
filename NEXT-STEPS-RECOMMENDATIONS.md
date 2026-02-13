@@ -55,7 +55,7 @@ We've completed comprehensive research on container orchestration for 2026 and c
 
 ### 3. Integration Testing Complete
 
-**Documented:** [DAY5-INTEGRATION-TESTING-RESULTS.md](DAY5-INTEGRATION-TESTING-RESULTS.md)
+**Documented:** [docs/archive/DAY5-INTEGRATION-TESTING-RESULTS.md](docs/archive/DAY5-INTEGRATION-TESTING-RESULTS.md)
 
 **Tests Passed:** 10/10 (100%)
 - ✅ PostgreSQL new password works
@@ -102,7 +102,7 @@ If you are on K3s, the dashboard launcher now starts a `kubectl port-forward` so
 - [ ] Confirm Portainer web UI reachable + onboarding wizard reset
 
 **Phase B — Secrets + Backups**
-- [ ] Ensure secrets exist in `ai-stack/compose/secrets/`
+- [ ] Ensure secrets exist in `ai-stack/kubernetes/secrets/secrets.sops.yaml`
 - [ ] Apply K8s secrets into `ai-stack` + `backups`
 - [ ] Verify backup cronjobs and metrics in `backups` namespace
 
@@ -164,13 +164,13 @@ Your AI Stack (Applications)
 **Long-term Value:** ⭐⭐⭐⭐⭐
 
 **Migration Plan:**
-See **[K3S-PORTAINER-MIGRATION-PLAN.md](K3S-PORTAINER-MIGRATION-PLAN.md)** for complete step-by-step guide!
+See **[docs/archive/K3S-PORTAINER-MIGRATION-PLAN.md](docs/archive/K3S-PORTAINER-MIGRATION-PLAN.md)** for complete step-by-step guide!
 
 **Quick Overview:**
 1. Backup current setup (30 min) ✅ complete
 2. Install K3s with Podman runtime (1 hour) ✅ complete
 3. Install Portainer for K3s (30 min) ✅ complete
-4. Convert compose to Kubernetes manifests (2-3 hours) ✅ complete (`ai-stack/kubernetes/kompose/`)
+4. Convert legacy stack definitions to Kubernetes manifests (2-3 hours) ✅ complete (`ai-stack/kubernetes/kompose/`)
 5. Migrate secrets to Kubernetes (1 hour) ← **next**
 6. Deploy AI stack on K3s (2-3 hours)
 7. Configure GPU support (1 hour)
@@ -178,8 +178,7 @@ See **[K3S-PORTAINER-MIGRATION-PLAN.md](K3S-PORTAINER-MIGRATION-PLAN.md)** for c
 9. Testing and validation (2 hours)
 
 **Resources:**
-- [K3S-PORTAINER-MIGRATION-PLAN.md](K3S-PORTAINER-MIGRATION-PLAN.md) - Complete migration guide
-- [Kompose](https://kompose.io/) - Docker Compose → Kubernetes converter
+- [docs/archive/K3S-PORTAINER-MIGRATION-PLAN.md](docs/archive/K3S-PORTAINER-MIGRATION-PLAN.md) - Complete migration guide
 - [K3s Official](https://k3s.io/) - Lightweight Kubernetes
 - [Portainer for Kubernetes](https://www.portainer.io/kubernetes) - Official docs
 
@@ -195,7 +194,7 @@ See **[K3S-PORTAINER-MIGRATION-PLAN.md](K3S-PORTAINER-MIGRATION-PLAN.md)** for c
 - [x] Verify core system pods
 
 **Day 2:**
-- [x] Kompose manifests active (compose is legacy source only)
+- [x] K8s manifests active (legacy source only)
 - [x] Review generated manifests in `ai-stack/kubernetes/kompose/`
 - [x] Create Kubernetes Secrets from current secrets (Phase 5)
 - [x] Deploy core services (postgres, redis, grafana) on K3s
@@ -226,7 +225,7 @@ See **[K3S-PORTAINER-MIGRATION-PLAN.md](K3S-PORTAINER-MIGRATION-PLAN.md)** for c
 - [x] Use secrets management tool ✅ (already built!)
 - [ ] Test secret rotation workflow
 - [ ] Create backup before any changes
-- [ ] Document remaining legacy compose references
+- [ ] Document remaining legacy runtime references
 ---
 
 ## 🔧 Quick Wins You Can Do Right Now
@@ -254,19 +253,19 @@ This stack now uses **one** path: **K3s + Portainer + K8s manifests**.
 1. **Single runtime** - containerd only
 2. **Single deployment method** - `kubectl apply -k`
 3. **Single monitoring path** - Prometheus/Grafana + Portainer
-4. **Less drift** - no compose/runtime split
+4. **Less drift** - no legacy/runtime split
 8. **Future-proof** - This is THE standard for 2026
 
 **Migration Path:**
 1. **Today:** Use current setup (it works!)
-2. **This weekend:** Follow [K3S-PORTAINER-MIGRATION-PLAN.md](K3S-PORTAINER-MIGRATION-PLAN.md)
+2. **This weekend:** Follow [docs/archive/K3S-PORTAINER-MIGRATION-PLAN.md](docs/archive/K3S-PORTAINER-MIGRATION-PLAN.md)
 3. **2-3 days later:** Enjoy your new K3s + Portainer setup!
 
 **The migration plan covers:**
 - ✅ Backup everything first (safety!)
 - ✅ Install K3s with Podman runtime
 - ✅ Install Portainer for web management
-- ✅ Convert your compose files automatically (Kompose)
+- ✅ Review generated Kubernetes manifests
 - ✅ Migrate all secrets to Kubernetes
 - ✅ Deploy and test everything
 - ✅ Step-by-step with commands for each phase
@@ -276,20 +275,20 @@ This stack now uses **one** path: **K3s + Portainer + K8s manifests**.
 ## 📚 Resources Created
 
 ### Documentation
-1. [CONTAINER-ORCHESTRATION-ANALYSIS-2026.md](CONTAINER-ORCHESTRATION-ANALYSIS-2026.md) - Full analysis
+1. [docs/archive/CONTAINER-ORCHESTRATION-ANALYSIS-2026.md](docs/archive/CONTAINER-ORCHESTRATION-ANALYSIS-2026.md) - Full analysis
 2. [SECRETS-MANAGEMENT-GUIDE.md](SECRETS-MANAGEMENT-GUIDE.md) - Complete secrets guide
-3. [DAY5-INTEGRATION-TESTING-RESULTS.md](DAY5-INTEGRATION-TESTING-RESULTS.md) - Test results
-4. [TESTING-READINESS-STATUS.md](TESTING-READINESS-STATUS.md) - Test preparation
-5. [SESSION-CONTINUATION-JAN24.md](SESSION-CONTINUATION-JAN24.md) - Session summary
+3. [docs/archive/DAY5-INTEGRATION-TESTING-RESULTS.md](docs/archive/DAY5-INTEGRATION-TESTING-RESULTS.md) - Test results
+4. [docs/archive/TESTING-READINESS-STATUS.md](docs/archive/TESTING-READINESS-STATUS.md) - Test preparation
+5. [docs/archive/SESSION-CONTINUATION-JAN24.md](docs/archive/SESSION-CONTINUATION-JAN24.md) - Session summary
 
 ### Tools
 1. `scripts/manage-secrets.py` - Full-featured secrets manager (400+ lines)
 2. `scripts/manage-secrets.sh` - Bash wrapper
-3. `scripts/test-password-migration.sh` - Integration test suite
+3. `archive/scripts/test-password-migration.sh` - Integration test suite (archived)
 
 ### Configuration
 1. `ai-stack/kubernetes/kompose/` - Active manifests
-2. `ai-stack/compose/secrets/` - Secret source-of-truth
+2. `ai-stack/kubernetes/secrets/` - Secret source-of-truth
 3. `ai-stack/kubernetes/kustomization.yaml` - Single deploy entry point
 
 ---
@@ -318,7 +317,7 @@ This stack now uses **one** path: **K3s + Portainer + K8s manifests**.
 
 **Ready to migrate to K3s + Portainer?**
 
-I've created the complete migration plan: **[K3S-PORTAINER-MIGRATION-PLAN.md](K3S-PORTAINER-MIGRATION-PLAN.md)**
+I've created the complete migration plan: **[docs/archive/K3S-PORTAINER-MIGRATION-PLAN.md](docs/archive/K3S-PORTAINER-MIGRATION-PLAN.md)**
 
 **Current status:** Phase 1 (backup) complete on 2026-01-24. Phase 2 (K3s install) complete; cluster is Ready on containerd.
 
@@ -331,7 +330,7 @@ I've created the complete migration plan: **[K3S-PORTAINER-MIGRATION-PLAN.md](K3
 - [x] Continue Phase 2: K3s installation (nodes Ready)
 - [x] Phase 5: Learning-based optimization proposals (implemented in hybrid-coordinator)
 - [x] Phase 7: Container recovery test (hybrid-coordinator pod recycle)
-- [x] Rebuild hybrid-coordinator image (local compose image refreshed)
+- [x] Rebuild hybrid-coordinator image (local registry image refreshed)
 - [x] Import/redeploy hybrid-coordinator to k3s to activate proposal engine
 - [x] Fix ralph-wiggum state persistence (PVC for /data)
 - [x] Fix embeddings API key mounts (embeddings + hybrid-coordinator + aidb)

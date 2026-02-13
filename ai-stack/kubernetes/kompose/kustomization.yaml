@@ -1,8 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+namespace: ai-stack
 resources:
-  - aidb-api-key-secret.yaml
-  - aidb-cm1-configmap.yaml
   - aidb-cm2-configmap.yaml
   - aidb-deployment.yaml
   - aidb-service.yaml
@@ -10,30 +9,20 @@ resources:
   - aider-cm1-configmap.yaml
   - aider-deployment.yaml
   - aider-service.yaml
-  - aider-wrapper-api-key-secret.yaml
   - aider-wrapper-cm0-configmap.yaml
   - aider-wrapper-deployment.yaml
   - aider-wrapper-service.yaml
-  - autogpt-claim0-persistentvolumeclaim.yaml
-  - autogpt-cm1-configmap.yaml
-  - autogpt-deployment.yaml
-  - autogpt-service.yaml
-  - container-engine-api-key-secret.yaml
   - container-engine-deployment.yaml
   - container-engine-service.yaml
   - dashboard-api-deployment.yaml
-  - dashboard-api-key-secret.yaml
   - dashboard-api-rbac.yaml
   - dashboard-api-service.yaml
-  - embeddings-api-key-secret.yaml
   - embeddings-deployment.yaml
   - embeddings-service.yaml
   - env-configmap.yaml
-  - grafana-admin-password-secret.yaml
   - grafana-deployment.yaml
   - grafana-nodeport.yaml
   - grafana-service.yaml
-  - hybrid-coordinator-api-key-secret.yaml
   - hybrid-coordinator-cm1-configmap.yaml
   - hybrid-coordinator-cm2-configmap.yaml
   - hybrid-coordinator-deployment.yaml
@@ -45,19 +34,14 @@ resources:
   - mindsdb-deployment.yaml
   - mindsdb-service.yaml
   - nginx-cm0-configmap.yaml
-  - nginx-cm1-configmap.yaml
   - nginx-deployment.yaml
   - nginx-nodeport.yaml
   - nginx-service.yaml
-  - nixos-docs-api-key-secret.yaml
   - nixos-docs-deployment.yaml
   - nixos-docs-service.yaml
-  - open-webui-deployment.yaml
-  - open-webui-service.yaml
   - postgres-cm1-configmap.yaml
   - postgres-data-pvc.yaml
   - postgres-deployment.yaml
-  - postgres-password-secret.yaml
   - postgres-service.yaml
   - prometheus-cm0-configmap.yaml
   - prometheus-deployment.yaml
@@ -65,8 +49,6 @@ resources:
   - qdrant-data-pvc.yaml
   - qdrant-deployment.yaml
   - qdrant-service.yaml
-  - ralph-wiggum-api-key-secret.yaml
-  - ralph-wiggum-cm0-configmap.yaml
   - ralph-wiggum-cm1-configmap.yaml
   - ralph-wiggum-cm2-configmap.yaml
   - ralph-wiggum-data-pvc.yaml
@@ -74,6 +56,4 @@ resources:
   - ralph-wiggum-service.yaml
   - redis-data-pvc.yaml
   - redis-deployment.yaml
-  - redis-password-secret.yaml
   - redis-service.yaml
-  - stack-api-key-secret.yaml

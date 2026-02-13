@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   annotations:
-    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
     kompose.version: 1.37.0 (HEAD)
     nixos.quick-deploy.ai-stack: "true"
     nixos.quick-deploy.service: nginx
@@ -19,31 +18,55 @@ spec:
   template:
     metadata:
       annotations:
-        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
         kompose.version: 1.37.0 (HEAD)
         nixos.quick-deploy.ai-stack: "true"
         nixos.quick-deploy.service: nginx
       labels:
         io.kompose.service: nginx
     spec:
+      serviceAccountName: nginx
+      automountServiceAccountToken: false
       containers:
         - envFrom:
             - configMapRef:
                 name: env
+            - secretRef:
+                name: huggingface-hub-token
           image: nginx:1.27-alpine
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           name: local-ai-nginx
           ports:
             - containerPort: 80
               protocol: TCP
             - containerPort: 443
               protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: 80
+            failureThreshold: 3
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
           volumeMounts:
             - mountPath: /etc/nginx/nginx.conf
               name: nginx-cm0
               readOnly: true
               subPath: nginx.conf
             - mountPath: /etc/nginx/certs
-              name: nginx-cm1
+              name: nginx-tls
               readOnly: true
       restartPolicy: Always
       volumes:
@@ -53,6 +76,6 @@ spec:
                 path: nginx.conf
             name: nginx-cm0
           name: nginx-cm0
-        - configMap:
-            name: nginx-cm1
-          name: nginx-cm1
+        - secret:
+            secretName: nginx-tls-secret
+          name: nginx-tls

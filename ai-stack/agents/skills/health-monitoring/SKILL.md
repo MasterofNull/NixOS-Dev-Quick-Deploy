@@ -80,9 +80,9 @@ Use summary to document success in `DEPLOYMENT-SUCCESS-V5.md`.
 
 ### Example 2 – Detailed Investigation
 ```bash
-./scripts/system-health-check.sh --detailed | tee /tmp/health.log
+./scripts/system-health-check.sh --detailed | tee "${TMPDIR:-/tmp}/health.log"
 ```
-Attach `/tmp/health.log` to issue reports.
+Attach `${TMPDIR:-/tmp}/health.log` to issue reports.
 
 ### Example 3 – Optional Fixes
 ```bash

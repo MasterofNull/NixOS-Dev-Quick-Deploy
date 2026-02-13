@@ -5,18 +5,21 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-QDRANT_URL="${QDRANT_URL:-http://localhost:6333}"
-COORDINATOR_URL="${COORDINATOR_URL:-http://localhost:8092}"
+QDRANT_URL="${QDRANT_URL:-http://${SERVICE_HOST:-localhost}:6333}"
+COORDINATOR_URL="${COORDINATOR_URL:-http://${SERVICE_HOST:-localhost}:8092}"
+AIDB_URL="${AIDB_URL:-http://${SERVICE_HOST:-localhost}:8091}"
+CURL_TIMEOUT="${CURL_TIMEOUT:-10}"
+CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-3}"
 
 echo "🔄 Populating Qdrant collections..."
 
 # Check if services are available
-if ! curl -sf "${QDRANT_URL}/healthz" >/dev/null 2>&1; then
+if ! curl -sf --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" "${QDRANT_URL}/healthz" >/dev/null 2>&1; then
     echo "❌ Qdrant not available at ${QDRANT_URL}"
     exit 1
 fi
 
-if ! curl -sf "${COORDINATOR_URL}/health" >/dev/null 2>&1; then
+if ! curl -sf --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" "${COORDINATOR_URL}/health" >/dev/null 2>&1; then
     echo "❌ Hybrid Coordinator not available at ${COORDINATOR_URL}"
     exit 1
 fi
@@ -39,7 +42,7 @@ while read -r file; do
     content=$(cat "$file" | head -c 50000)  # Limit to 50KB
 
     # Send to AIDB for indexing
-    curl -s -X POST "http://localhost:8091/documents" \
+    curl -s --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" -X POST "${AIDB_URL}/documents" \
         -H "Content-Type: application/json" \
         -d "{
             \"content\": $(echo "$content" | jq -Rs .),
@@ -67,7 +70,7 @@ if [[ -d "$SKILLS_DIR" ]]; then
 
         content=$(cat "$skill_file")
 
-        curl -s -X POST "http://localhost:8091/documents" \
+        curl -s --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" -X POST "${AIDB_URL}/documents" \
             -H "Content-Type: application/json" \
             -d "{
                 \"content\": $(echo "$content" | jq -Rs .),
@@ -93,7 +96,7 @@ for doc in AGENTS.md AI-AGENT-START-HERE.md AI-AGENT-REFERENCE.md; do
         echo "  Importing: $doc"
         content=$(cat "${PROJECT_ROOT}/$doc")
 
-        curl -s -X POST "http://localhost:8091/documents" \
+        curl -s --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" -X POST "${AIDB_URL}/documents" \
             -H "Content-Type: application/json" \
             -d "{
                 \"content\": $(echo "$content" | jq -Rs .),
@@ -112,7 +115,9 @@ echo "✅ Documentation imported"
 # 4. Seed best practices
 echo ""
 echo "💡 Seeding best practices..."
-cat > /tmp/best-practices.json << 'PRACTICES'
+tmp_root="${TMPDIR:-/${TMP_FALLBACK:-tmp}}"
+tmp_best_practices="${tmp_root}/best-practices.json"
+cat > "$tmp_best_practices" << 'PRACTICES'
 [
     {
         "pattern": "error-resolution",
@@ -135,10 +140,10 @@ cat > /tmp/best-practices.json << 'PRACTICES'
 ]
 PRACTICES
 
-cat /tmp/best-practices.json | jq -c '.[]' | while read -r practice; do
+cat "$tmp_best_practices" | jq -c '.[]' | while read -r practice; do
     echo "  Adding: $(echo "$practice" | jq -r '.title')"
 
-    curl -s -X POST "http://localhost:8091/documents" \
+    curl -s --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" -X POST "${AIDB_URL}/documents" \
         -H "Content-Type: application/json" \
         -d "{
             \"content\": $(echo "$practice" | jq -c '.solution' | jq -Rs .),
@@ -148,13 +153,13 @@ cat /tmp/best-practices.json | jq -c '.[]' | while read -r practice; do
         }" >/dev/null 2>&1 || echo "    ⚠️  Failed"
 done
 
-rm /tmp/best-practices.json
+rm -f "$tmp_best_practices"
 echo "✅ Best practices seeded"
 
 # 5. Verify collections
 echo ""
 echo "🔍 Verifying Qdrant collections..."
-curl -s "${COORDINATOR_URL}/health" | python3 -c "
+curl -s --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" "${COORDINATOR_URL}/health" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 collections = data.get('collections', [])
@@ -167,6 +172,6 @@ echo ""
 echo "✅ Qdrant population complete!"
 echo ""
 echo "Next steps:"
-echo "  1. Query context: curl 'http://localhost:8091/documents?search=docker&limit=5'"
-echo "  2. Test retrieval: curl 'http://localhost:8092/tools/augment_query' -d '{\"query\":\"fix docker\"}'"
-echo "  3. Check dashboard: http://localhost:8888/dashboard.html"
+echo "  1. Query context: curl 'http://${SERVICE_HOST:-localhost}:8091/documents?search=docker&limit=5'"
+echo "  2. Test retrieval: curl 'http://${SERVICE_HOST:-localhost}:8092/tools/augment_query' -d '{\"query\":\"fix docker\"}'"
+echo "  3. Check dashboard: http://${SERVICE_HOST:-localhost}:8888/dashboard.html"

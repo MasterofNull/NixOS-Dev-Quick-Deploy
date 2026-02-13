@@ -447,9 +447,36 @@ Suggest 2-3 specific search queries (one per line):"""
                 "metadata": metadata or {}
             }
 
-            # For now, just log it
-            # TODO: Store in Qdrant interaction-history collection
-            logger.info(f"Recorded feedback for session {session_id}: confidence={confidence:.2f}")
+            embedding = await self.multi_turn_manager.embed_text(
+                f"{session_id} {' '.join(gaps)} {' '.join(suggested_queries)}"
+            )
+            if not embedding:
+                logger.warning("feedback_embedding_unavailable", session_id=session_id)
+                return
+
+            from qdrant_client.models import PointStruct
+
+            point_id = str(uuid4())
+            self.qdrant.upsert(
+                collection_name="interaction-history",
+                points=[
+                    PointStruct(
+                        id=point_id,
+                        vector=embedding,
+                        payload={
+                            **feedback_record,
+                            "type": "remote_llm_feedback",
+                        },
+                    )
+                ],
+            )
+
+            logger.info(
+                "feedback_recorded",
+                session_id=session_id,
+                point_id=point_id,
+                confidence=confidence,
+            )
 
         except Exception as e:
             logger.error(f"Error recording feedback: {e}")

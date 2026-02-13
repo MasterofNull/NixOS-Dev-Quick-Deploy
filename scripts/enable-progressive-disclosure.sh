@@ -33,7 +33,7 @@ if grep -q "register_discovery_routes" "$SERVER_FILE"; then
     echo "✓ Discovery routes already integrated"
     echo
     echo "To test:"
-    echo "  curl http://localhost:8091/discovery/info"
+    echo "  curl http://${SERVICE_HOST:-localhost}:8091/discovery/info"
     exit 0
 fi
 
@@ -97,19 +97,18 @@ echo
 echo "✅ Integration complete!"
 echo
 echo "Next steps:"
-echo "  1. Rebuild AIDB container:"
-echo "     cd $PROJECT_ROOT/ai-stack/compose"
-echo "     podman-compose build aidb"
+echo "  1. Apply updated manifests:"
+echo "     kubectl apply -k ai-stack/kubernetes"
 echo
 echo "  2. Restart AIDB service:"
-echo "     podman-compose up -d aidb"
+echo "     kubectl rollout restart deploy -n ai-stack aidb"
 echo
 echo "  3. Test discovery endpoints:"
-echo "     curl http://localhost:8091/discovery/info"
-echo "     curl http://localhost:8091/discovery/quickstart"
-echo "     curl http://localhost:8091/discovery/capabilities?level=standard"
+echo "     curl http://${SERVICE_HOST:-localhost}:8091/discovery/info"
+echo "     curl http://${SERVICE_HOST:-localhost}:8091/discovery/quickstart"
+echo "     curl http://${SERVICE_HOST:-localhost}:8091/discovery/capabilities?level=standard"
 echo
 echo "  4. Verify in logs:"
-echo "     podman logs local-ai-aidb | grep 'Discovery API'"
+echo "     kubectl logs -n ai-stack deploy/aidb | grep 'Discovery API'"
 echo
 echo "Backup saved to: $BACKUP_FILE"

@@ -54,6 +54,7 @@ from garbage_collector import GarbageCollector, run_gc_scheduler
 from llm_parallel import run_parallel_inference
 from discovery_endpoints import register_discovery_routes
 from settings_loader import Settings, load_settings
+from rag import RAGPipeline, RAGConfig
 from schema import (
     METADATA,
     TOOL_REGISTRY,
@@ -1630,6 +1631,8 @@ class MCPServer:
             exceptions=(sa.exc.OperationalError, Exception),
             operation_name="Database connection"
         )
+        self._ensure_telemetry_schema()
+        self._ensure_embedding_dimension()
 
         # Create Redis connection pool (will be tested on first use)
         self._redis_pool = redis_asyncio.ConnectionPool.from_url(
@@ -1656,6 +1659,15 @@ class MCPServer:
             trust_remote_code=settings.embedding_trust_remote_code,
         )
         self._vector_store = VectorStore(settings, self._engine)
+        self._rag_pipeline = RAGPipeline(
+            search_vectors=self.search_vectors,
+            get_document_content=self._get_document_content,
+            config=RAGConfig(
+                default_limit=self.settings.rag_default_limit,
+                default_context_chars=self.settings.rag_default_context_chars,
+                max_context_chars=self.settings.rag_max_context_chars,
+            ),
+        )
         self._rate_limiter = RateLimiter(
             enabled=self.settings.rate_limit_enabled,
             rpm=self.settings.rate_limit_rpm,
@@ -2011,6 +2023,11 @@ class MCPServer:
         except Exception as exc:  # noqa: BLE001
             status["federation"] = f"unavailable: {exc}"
 
+        try:
+            status["rag"] = self._rag_pipeline.status()
+        except Exception as exc:  # noqa: BLE001
+            status["rag"] = f"unavailable: {exc}"
+
         # Circuit breaker states
         status["circuit_breakers"] = {
             name: breaker.state
@@ -2041,6 +2058,114 @@ class MCPServer:
 
         return status
 
+    def _ensure_telemetry_schema(self) -> None:
+        try:
+            inspector = sa.inspect(self._engine)
+            if not inspector.has_table("telemetry_events"):
+                return
+            existing = {col["name"] for col in inspector.get_columns("telemetry_events")}
+            required_columns = {
+                "tokens_saved": "INTEGER",
+                "rag_hits": "INTEGER",
+                "collections_used": "JSONB",
+                "model": "VARCHAR(128)",
+                "latency_ms": "INTEGER",
+                "cache_hit": "BOOLEAN",
+                "metadata": "JSONB",
+            }
+            missing = [name for name in required_columns if name not in existing]
+            if not missing:
+                return
+            with self._engine.begin() as conn:
+                for name in missing:
+                    ddl_type = required_columns[name]
+                    conn.execute(sa.text(f"ALTER TABLE telemetry_events ADD COLUMN IF NOT EXISTS {name} {ddl_type}"))
+            LOGGER.info("telemetry_schema_updated: %s", ", ".join(missing))
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("telemetry_schema_update_failed: %s", exc)
+
+    def _ensure_embedding_dimension(self) -> None:
+        try:
+            with self._engine.begin() as conn:
+                current_dim = conn.execute(
+                    sa.text(
+                        """
+                        SELECT atttypmod
+                        FROM pg_attribute
+                        WHERE attrelid = 'document_embeddings'::regclass
+                          AND attname = 'embedding'
+                        """
+                    )
+                ).scalar()
+                if current_dim is None or current_dim <= 0:
+                    return
+                current_dim = int(current_dim)
+                if current_dim == self.settings.embedding_dimension:
+                    return
+
+                row_count = conn.execute(
+                    sa.text("SELECT COUNT(*) FROM document_embeddings")
+                ).scalar() or 0
+
+                if row_count:
+                    LOGGER.warning(
+                        "embedding_dimension_mismatch: current=%s expected=%s rows=%s",
+                        current_dim,
+                        self.settings.embedding_dimension,
+                        row_count,
+                    )
+                    return
+
+                conn.execute(sa.text("DROP INDEX IF EXISTS idx_document_embeddings_embedding_hnsw"))
+                conn.execute(
+                    sa.text(
+                        f"ALTER TABLE document_embeddings ALTER COLUMN embedding TYPE vector({self.settings.embedding_dimension})"
+                    )
+                )
+                LOGGER.info(
+                    "embedding_dimension_altered: previous=%s updated=%s",
+                    current_dim,
+                    self.settings.embedding_dimension,
+                )
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("embedding_dimension_update_failed: %s", exc)
+
+    async def _embed_via_service(self, texts: List[str]) -> List[List[float]]:
+        service_url = (self.settings.embedding_service_url or "").rstrip("/")
+        if not service_url:
+            raise ValueError("embedding_service_url_not_configured")
+
+        headers: Dict[str, str] = {}
+        if self.settings.embedding_service_api_key:
+            headers["X-API-Key"] = self.settings.embedding_service_api_key
+
+        if service_url.endswith("/v1/embeddings"):
+            payload = {"input": texts}
+            response = await self._external_http.post(service_url, json=payload, headers=headers, timeout=30.0)
+            response.raise_for_status()
+            data = response.json()
+            return [item["embedding"] for item in data.get("data", [])]
+
+        if service_url.endswith("/embed"):
+            target = service_url
+        else:
+            target = f"{service_url}/embed"
+        payload = {"inputs": texts}
+        response = await self._external_http.post(target, json=payload, headers=headers, timeout=30.0)
+        response.raise_for_status()
+        data = response.json()
+        if isinstance(data, list):
+            return data
+        raise ValueError("unexpected_embedding_service_response")
+
+    async def _embed_texts_backend(self, texts: List[str]) -> List[List[float]]:
+        if self.settings.embedding_service_url:
+            try:
+                return await self._embed_via_service(texts)
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.warning("embedding_service_failed", error=str(exc))
+        return await self._embedding_service.embed(texts)
+
     async def embed_texts(self, texts: List[str]) -> List[List[float]]:
         tracer = trace.get_tracer(SERVICE_NAME)
         with tracer.start_as_current_span(
@@ -2049,7 +2174,7 @@ class MCPServer:
         ) as span:
             try:
                 if not self.settings.embedding_cache_enabled:
-                    return await self._embedding_service.embed(texts)
+                    return await self._embed_texts_backend(texts)
 
                 keys = [self._embedding_cache_key(text) for text in texts]
                 embeddings: List[Optional[List[float]]] = [None] * len(texts)
@@ -2074,7 +2199,7 @@ class MCPServer:
                         CACHE_MISSES.labels(cache="embeddings").inc(len(missing_texts))
 
                     if missing_texts:
-                        fresh = await self._embedding_service.embed(missing_texts)
+                        fresh = await self._embed_texts_backend(missing_texts)
                         for idx, embedding in zip(missing_indexes, fresh):
                             embeddings[idx] = embedding
                         async with self._redis.pipeline(transaction=False) as pipe:
@@ -2087,7 +2212,7 @@ class MCPServer:
                             await pipe.execute()
                 except Exception:  # noqa: BLE001
                     LOGGER.debug("Embedding cache unavailable, falling back", exc_info=True)
-                    return await self._embedding_service.embed(texts)
+                    return await self._embed_texts_backend(texts)
 
                 if any(embedding is None for embedding in embeddings):
                     return await self._embedding_service.embed(texts)
@@ -2606,13 +2731,25 @@ class MCPServer:
 
             if action == "semantic_search":
                 query = message["query"]
-                results = await self.search_vectors(
+                return await self._rag_pipeline.semantic_search(
                     query_text=query.get("text") or query.get("query"),
                     embedding=query.get("embedding"),
                     limit=query.get("limit", 5),
                     project=message.get("project") or query.get("project"),
+                    include_context=bool(query.get("include_context", False)),
+                    max_context_chars=query.get("max_context_chars"),
                 )
-                return {"results": results}
+
+            if action == "get_related_docs":
+                query = message.get("query") or {}
+                return await self._rag_pipeline.get_related_docs(
+                    document_id=query.get("document_id"),
+                    query_text=query.get("text") or query.get("query"),
+                    limit=query.get("limit", 5),
+                    project=message.get("project") or query.get("project"),
+                    include_context=bool(query.get("include_context", False)),
+                    max_context_chars=query.get("max_context_chars"),
+                )
 
             if action == "discover_skills":
                 repo = message.get("repo", "numman-ali/openskills")

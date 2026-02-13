@@ -3,7 +3,7 @@
 # Generate API secrets for MCP services
 # =======================================================================
 # This script generates cryptographically secure API keys for all
-# HTTP-based MCP servers and stores them as Docker secrets.
+# HTTP-based MCP servers and stores them as Kubernetes secrets (sops-managed).
 #
 # Security features:
 # - 32 bytes (256 bits) of cryptographic randomness per key
@@ -26,6 +26,10 @@
 
 set -euo pipefail
 
+# Resolve project root for portable paths
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -34,7 +38,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-SECRETS_DIR="/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/ai-stack/compose/secrets"
+SECRETS_DIR="${PROJECT_ROOT}/ai-stack/kubernetes/secrets/generated"
 KEY_LENGTH=32  # bytes (will be hex-encoded to 64 characters)
 
 # Services that need API keys
@@ -116,21 +120,21 @@ echo -e "  • Key length: $((KEY_LENGTH * 2)) hex characters ($((KEY_LENGTH * 8
 echo -e "  • Format: Hexadecimal"
 echo ""
 echo -e "${YELLOW}IMPORTANT:${NC}"
-echo -e "  • These secrets will be mounted to containers at /run/secrets/"
-echo -e "  • Services read keys from files, NOT environment variables"
-echo -e "  • Add secrets/ directory to .gitignore to prevent accidental commits"
+echo -e "  • These secrets should be encrypted with sops before committing"
+echo -e "  • Services read keys from Kubernetes secrets"
+echo -e "  • Add generated/ directory to .gitignore to prevent accidental commits"
 echo -e "  • Backup secrets securely (encrypted storage)"
 echo ""
 echo -e "${BLUE}Next Steps:${NC}"
-echo -e "  1. Update docker-compose.yml to reference these secrets"
-echo -e "  2. Update service code to read from /run/secrets/<secret_name>"
-echo -e "  3. Restart services to apply new authentication"
+echo -e "  1. Encrypt secrets into ai-stack/kubernetes/secrets/secrets.sops.yaml"
+echo -e "  2. Apply manifests: kubectl apply -k ai-stack/kubernetes"
+echo -e "  3. Restart deployments: kubectl rollout restart deploy -n ai-stack --all"
 echo ""
 
 # Check .gitignore
-if ! grep -q "^secrets/\$" /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/.gitignore 2>/dev/null; then
+if ! grep -q "^ai-stack/kubernetes/secrets/generated/\$" "${PROJECT_ROOT}/.gitignore" 2>/dev/null; then
     echo -e "${YELLOW}⚠ Warning: secrets/ not found in .gitignore${NC}"
-    echo -e "${YELLOW}  Run: echo 'ai-stack/compose/secrets/' >> .gitignore${NC}"
+    echo -e "${YELLOW}  Run: echo 'ai-stack/kubernetes/secrets/generated/' >> .gitignore${NC}"
     echo ""
 fi
 
