@@ -189,6 +189,8 @@ spec:
             app: backup
             component: postgresql
         spec:
+          serviceAccountName: backup-jobs
+          automountServiceAccountToken: false
           restartPolicy: OnFailure
 
           containers:
@@ -292,6 +294,8 @@ spec:
             app: backup
             component: qdrant
         spec:
+          serviceAccountName: backup-jobs
+          automountServiceAccountToken: false
           restartPolicy: OnFailure
 
           containers:

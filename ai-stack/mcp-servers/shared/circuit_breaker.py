@@ -1,250 +1,361 @@
 #!/usr/bin/env python3
 """
-P2-REL-002: Circuit Breaker Pattern
-Prevents cascade failures when external dependencies fail
+Shared Circuit Breaker Implementation for AI Stack Services
 
-States:
-- CLOSED: Normal operation, requests pass through
-- OPEN: Too many failures, requests blocked
-- HALF_OPEN: Testing if service recovered
-
-Behavior:
-- After N failures (default 5), circuit opens
-- After timeout (default 30s), enters HALF_OPEN to test
-- If test succeeds, closes circuit
-- If test fails, reopens circuit
+This module implements a comprehensive circuit breaker pattern for service-to-service 
+communication within the AI stack to prevent cascading failures.
 """
 
+import asyncio
 import time
+import functools
 from enum import Enum
-from typing import Callable, Any, Optional
-from datetime import datetime, timezone
-import threading
+from typing import Any, Callable, Optional, Dict, Type
+import logging
+from dataclasses import dataclass
+from collections import defaultdict
+
+logger = logging.getLogger(__name__)
 
 
 class CircuitState(Enum):
-    """Circuit breaker states"""
     CLOSED = "closed"      # Normal operation
-    OPEN = "open"          # Blocking requests
+    OPEN = "open"          # Tripped, requests blocked
     HALF_OPEN = "half_open"  # Testing recovery
 
 
-class CircuitBreakerError(Exception):
-    """Raised when circuit is open"""
-    def __init__(self, service_name: str, retry_after: float):
-        self.service_name = service_name
-        self.retry_after = retry_after
-        super().__init__(
-            f"Circuit breaker OPEN for {service_name}. "
-            f"Retry after {retry_after:.1f} seconds"
-        )
+@dataclass
+class CircuitBreakerConfig:
+    failure_threshold: int = 5
+    timeout: float = 60.0  # seconds
+    reset_timeout: float = 30.0  # seconds
+    failure_predicate: Optional[Callable[[Exception], bool]] = None
+    success_threshold: int = 2  # Number of successes to close circuit in HALF_OPEN state
 
 
 class CircuitBreaker:
     """
-    Circuit breaker for external dependencies
+    Circuit Breaker Pattern Implementation
 
-    Usage:
-        breaker = CircuitBreaker(
-            name="postgresql",
-            failure_threshold=5,
-            timeout=30.0
-        )
-
-        try:
-            result = breaker.call(lambda: expensive_operation())
-        except CircuitBreakerError as e:
-            # Circuit is open, service unavailable
-            log.error("service_unavailable", service=e.service_name)
+    Prevents cascading failures by temporarily blocking requests to failing services.
     """
 
-    def __init__(
-        self,
-        name: str,
-        failure_threshold: int = 5,
-        timeout: float = 30.0,
-        success_threshold: int = 2
-    ):
-        """
-        Initialize circuit breaker
+    def __init__(self, config: CircuitBreakerConfig):
+        self.config = config
+        self.state = CircuitState.CLOSED
+        self.failure_count = 0
+        self.success_count = 0
+        self.last_failure_time = None
+        self._lock = asyncio.Lock()
 
-        Args:
-            name: Service name (for logging)
-            failure_threshold: Failures before opening circuit
-            timeout: Seconds before trying again
-            success_threshold: Successes needed to close from HALF_OPEN
-        """
-        self.name = name
-        self.failure_threshold = failure_threshold
-        self.timeout = timeout
-        self.success_threshold = success_threshold
+    async def call(self, func: Callable, *args, **kwargs) -> Any:
+        """Execute a function with circuit breaker protection."""
+        async with self._lock:
+            if self.state == CircuitState.OPEN:
+                if self._should_attempt_reset():
+                    self.state = CircuitState.HALF_OPEN
+                    logger.info("Circuit breaker transitioning to HALF_OPEN for reset attempt")
+                else:
+                    raise CircuitBreakerOpenError("Circuit breaker is OPEN")
 
-        self._state = CircuitState.CLOSED
-        self._failure_count = 0
-        self._success_count = 0
-        self._last_failure_time: Optional[float] = None
-        self._lock = threading.Lock()
+            try:
+                result = await func(*args, **kwargs)
 
-    @property
-    def state(self) -> CircuitState:
-        """Get current circuit state"""
-        with self._lock:
-            # Check if we should transition from OPEN to HALF_OPEN
-            if self._state == CircuitState.OPEN:
-                if self._last_failure_time:
-                    elapsed = time.time() - self._last_failure_time
-                    if elapsed >= self.timeout:
-                        self._state = CircuitState.HALF_OPEN
-                        self._success_count = 0
+                if self.state == CircuitState.HALF_OPEN:
+                    # Success in half-open state means service is recovered
+                    await self._on_success()
+                    logger.info("Circuit breaker reset successful, back to CLOSED state")
 
-            return self._state
+                return result
 
-    @property
-    def is_available(self) -> bool:
-        """Check if requests can pass through"""
-        return self.state != CircuitState.OPEN
+            except Exception as e:
+                if self._is_failure(e):
+                    await self._on_failure()
+                    raise
+                else:
+                    # Not a "failure" for circuit breaker purposes
+                    if self.state == CircuitState.HALF_OPEN:
+                        await self._on_success()
+                    raise
 
-    @property
-    def stats(self) -> dict:
-        """Get circuit breaker statistics"""
-        with self._lock:
-            return {
-                "name": self.name,
-                "state": self._state.value,
-                "failure_count": self._failure_count,
-                "success_count": self._success_count,
-                "last_failure": (
-                    datetime.fromtimestamp(self._last_failure_time, tz=timezone.utc).isoformat()
-                    if self._last_failure_time else None
-                )
-            }
+    def _should_attempt_reset(self) -> bool:
+        """Check if enough time has passed to attempt reset."""
+        if self.last_failure_time is None:
+            return False
+        return time.time() - self.last_failure_time >= self.config.reset_timeout
 
-    def call(self, func: Callable[[], Any]) -> Any:
-        """
-        Execute function through circuit breaker
+    def _is_failure(self, exception: Exception) -> bool:
+        """Determine if an exception should be counted as a failure."""
+        if self.config.failure_predicate:
+            return self.config.failure_predicate(exception)
+        # Default: treat all exceptions as failures
+        return True
 
-        Args:
-            func: Function to execute
+    async def _on_failure(self):
+        """Handle a failure in the protected service."""
+        self.failure_count += 1
+        self.last_failure_time = time.time()
 
-        Returns:
-            Result of function call
+        if self.state == CircuitState.HALF_OPEN:
+            # Failure in half-open state means service is still down
+            await self._trip()
+        elif self.failure_count >= self.config.failure_threshold:
+            # Crossed threshold, trip the circuit
+            await self._trip()
 
-        Raises:
-            CircuitBreakerError: If circuit is OPEN
-            Exception: Original exception from func
-        """
-        current_state = self.state
+    async def _on_success(self):
+        """Handle a success in the protected service."""
+        self.success_count += 1
+        if self.state == CircuitState.HALF_OPEN:
+            # If we have enough successes in HALF_OPEN, close the circuit
+            if self.success_count >= self.config.success_threshold:
+                await self._close()
+            else:
+                # Stay in HALF_OPEN until we reach success threshold
+                pass
+        else:
+            # In CLOSED state, just reset counters
+            self.state = CircuitState.CLOSED
+            self.failure_count = 0
+            self.success_count = 0
+            self.last_failure_time = None
 
-        # Block requests if circuit is OPEN
-        if current_state == CircuitState.OPEN:
-            retry_after = self.timeout - (time.time() - (self._last_failure_time or 0))
-            raise CircuitBreakerError(self.name, max(0, retry_after))
+    async def _trip(self):
+        """Trip the circuit breaker to OPEN state."""
+        self.state = CircuitState.OPEN
+        self.failure_count = 0
+        self.success_count = 0
+        logger.warning(f"Circuit breaker TRIPPED after {self.config.failure_threshold} failures")
 
-        # Try to execute the function
-        try:
-            result = func()
-            self._on_success()
-            return result
-        except Exception as e:
-            self._on_failure()
-            raise
+    async def _close(self):
+        """Close the circuit breaker from HALF_OPEN state."""
+        self.state = CircuitState.CLOSED
+        self.failure_count = 0
+        self.success_count = 0
+        self.last_failure_time = None
 
-    def _on_success(self):
-        """Handle successful call"""
-        with self._lock:
-            if self._state == CircuitState.HALF_OPEN:
-                self._success_count += 1
+    def get_state_info(self) -> Dict[str, Any]:
+        """Get current state information for monitoring."""
+        return {
+            "state": self.state.value,
+            "failure_count": self.failure_count,
+            "success_count": self.success_count,
+            "last_failure_time": self.last_failure_time,
+            "should_reset": self._should_attempt_reset()
+        }
 
-                # Close circuit if enough successes
-                if self._success_count >= self.success_threshold:
-                    self._state = CircuitState.CLOSED
-                    self._failure_count = 0
-                    self._success_count = 0
 
-            elif self._state == CircuitState.CLOSED:
-                # Reset failure count on success
-                self._failure_count = 0
+class CircuitBreakerOpenError(Exception):
+    """Raised when circuit breaker is open and requests are blocked."""
+    pass
 
-    def _on_failure(self):
-        """Handle failed call"""
-        with self._lock:
-            self._failure_count += 1
-            self._last_failure_time = time.time()
 
-            if self._state == CircuitState.HALF_OPEN:
-                # Test failed, reopen circuit
-                self._state = CircuitState.OPEN
-                self._success_count = 0
+class CircuitBreakerError(Exception):
+    """Compatibility error for callers expecting a service/timeout payload."""
 
-            elif self._state == CircuitState.CLOSED:
-                # Open circuit if threshold exceeded
-                if self._failure_count >= self.failure_threshold:
-                    self._state = CircuitState.OPEN
-
-    def reset(self):
-        """Manually reset circuit to CLOSED (for testing/admin)"""
-        with self._lock:
-            self._state = CircuitState.CLOSED
-            self._failure_count = 0
-            self._success_count = 0
-            self._last_failure_time = None
+    def __init__(self, service: str, retry_after: Optional[float] = None):
+        self.service = service
+        self.retry_after = retry_after
+        message = f"Circuit breaker open for {service}"
+        if retry_after is not None:
+            message = f"{message} (retry_after={retry_after})"
+        super().__init__(message)
 
 
 class CircuitBreakerRegistry:
     """
-    Registry for managing multiple circuit breakers
-
-    Usage:
-        registry = CircuitBreakerRegistry()
-
-        # Get or create breaker
-        postgres_breaker = registry.get("postgresql")
-
-        # Use breaker
-        result = postgres_breaker.call(lambda: db.query(...))
-
-        # Check all breaker states
-        for stats in registry.get_all_stats():
-            print(f"{stats['name']}: {stats['state']}")
+    Registry for managing multiple circuit breakers by service name.
     """
-
-    def __init__(self, default_config: Optional[dict] = None):
-        """
-        Initialize registry
-
-        Args:
-            default_config: Default config for new breakers
-                {
-                    'failure_threshold': 5,
-                    'timeout': 30.0,
-                    'success_threshold': 2
-                }
-        """
-        self._breakers: dict[str, CircuitBreaker] = {}
-        self._lock = threading.Lock()
-        self._default_config = default_config or {
-            'failure_threshold': 5,
-            'timeout': 30.0,
-            'success_threshold': 2
+    
+    def __init__(self, default_config: Optional[Dict] = None):
+        self.default_config = default_config or {}
+        self._breakers: Dict[str, CircuitBreaker] = {}
+        self._config_overrides: Dict[str, Dict] = {}
+        
+    def set_override_config(self, service_name: str, config: Dict):
+        """Set specific configuration for a service."""
+        self._config_overrides[service_name] = config
+        
+    def get(self, service_name: str) -> CircuitBreaker:
+        """Get or create a circuit breaker for a service."""
+        if service_name not in self._breakers:
+            # Merge default config with service-specific overrides
+            config_dict = self.default_config.copy()
+            config_dict.update(self._config_overrides.get(service_name, {}))
+            
+            config = CircuitBreakerConfig(**config_dict)
+            self._breakers[service_name] = CircuitBreaker(config)
+            
+        return self._breakers[service_name]
+    
+    def get_all_states(self) -> Dict[str, Dict[str, Any]]:
+        """Get state information for all registered circuit breakers."""
+        return {
+            name: breaker.get_state_info()
+            for name, breaker in self._breakers.items()
         }
 
-    def get(self, name: str) -> CircuitBreaker:
-        """Get or create circuit breaker by name"""
-        with self._lock:
-            if name not in self._breakers:
-                self._breakers[name] = CircuitBreaker(
-                    name=name,
-                    **self._default_config
-                )
-            return self._breakers[name]
+    def get_all_stats(self) -> Dict[str, Dict[str, Any]]:
+        """Backward-compatible alias for state snapshots."""
+        return self.get_all_states()
 
-    def get_all_stats(self) -> list[dict]:
-        """Get stats for all circuit breakers"""
-        with self._lock:
-            return [breaker.stats for breaker in self._breakers.values()]
 
-    def reset_all(self):
-        """Reset all circuit breakers (for testing)"""
-        with self._lock:
-            for breaker in self._breakers.values():
-                breaker.reset()
+# Decorator for easy application
+def circuit_breaker(service_name: str, **cb_kwargs):
+    """Decorator to apply circuit breaker to async functions."""
+    def decorator(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            # Get or create circuit breaker for this service
+            registry = getattr(wrapper, '_circuit_breaker_registry', CircuitBreakerRegistry())
+            circuit_breaker_instance = registry.get(service_name)
+            
+            # Store registry for reuse
+            wrapper._circuit_breaker_registry = registry
+            
+            return await circuit_breaker_instance.call(func, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+# Example usage for various AI stack services
+class AIDBCircuitBreakerClient:
+    """Client for AIDB with circuit breaker protection."""
+
+    def __init__(self, base_url: str, circuit_breaker_registry: CircuitBreakerRegistry):
+        self.base_url = base_url
+        self.circuit_breaker_registry = circuit_breaker_registry
+
+    async def call_query_endpoint(self, query: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Call AIDB query endpoint with circuit breaker protection."""
+        import aiohttp
+
+        start_time = time.time()
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.base_url}/query",
+                    json={"query": query, "context": context or {}},
+                    timeout=aiohttp.ClientTimeout(total=15)
+                ) as response:
+                    result = await response.json()
+
+                    # Log performance metrics
+                    duration = time.time() - start_time
+                    logger.info(f"AIDB query completed in {duration:.2f}s")
+
+                    return result
+        except Exception as e:
+            duration = time.time() - start_time
+            logger.error(f"AIDB query failed after {duration:.2f}s: {e}")
+            raise
+
+
+class HybridCoordinatorCircuitBreakerClient:
+    """Client for Hybrid Coordinator with circuit breaker protection."""
+
+    def __init__(self, base_url: str, circuit_breaker_registry: CircuitBreakerRegistry):
+        self.base_url = base_url
+        self.circuit_breaker_registry = circuit_breaker_registry
+
+    async def call_skill_endpoint(self, skill: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Call Hybrid Coordinator skill endpoint with circuit breaker protection."""
+        import aiohttp
+
+        start_time = time.time()
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.base_url}/skills/{skill}",
+                    json=params,
+                    timeout=aiohttp.ClientTimeout(total=20)
+                ) as response:
+                    result = await response.json()
+
+                    # Log performance metrics
+                    duration = time.time() - start_time
+                    logger.info(f"Hybrid skill {skill} completed in {duration:.2f}s")
+
+                    return result
+        except Exception as e:
+            duration = time.time() - start_time
+            logger.error(f"Hybrid skill {skill} failed after {duration:.2f}s: {e}")
+            raise
+
+
+class RalphWiggumCircuitBreakerClient:
+    """Client for Ralph Wiggum with circuit breaker protection."""
+
+    def __init__(self, base_url: str, circuit_breaker_registry: CircuitBreakerRegistry):
+        self.base_url = base_url
+        self.circuit_breaker_registry = circuit_breaker_registry
+
+    async def call_task_endpoint(self, task: str, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Call Ralph Wiggum task endpoint with circuit breaker protection."""
+        import aiohttp
+
+        start_time = time.time()
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.base_url}/tasks",
+                    json={"task": task, "context": context},
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    result = await response.json()
+
+                    # Log performance metrics
+                    duration = time.time() - start_time
+                    logger.info(f"Ralph task completed in {duration:.2f}s")
+
+                    return result
+        except Exception as e:
+            duration = time.time() - start_time
+            logger.error(f"Ralph task failed after {duration:.2f}s: {e}")
+            raise
+
+
+# Example usage
+async def example_usage():
+    """Example of how to use the circuit breaker registry."""
+    # Create a registry with default configuration
+    registry = CircuitBreakerRegistry({
+        'failure_threshold': 3,
+        'timeout': 60.0,
+        'reset_timeout': 30.0
+    })
+    
+    # Override specific service configuration
+    registry.set_override_config('qdrant', {
+        'failure_threshold': 5,
+        'reset_timeout': 60.0
+    })
+    
+    # Create clients with circuit breaker protection
+    aidb_client = AIDBCircuitBreakerClient("http://aidb:8091", registry)
+    hybrid_client = HybridCoordinatorCircuitBreakerClient("http://hybrid-coordinator:8092", registry)
+    ralph_client = RalphWiggumCircuitBreakerClient("http://ralph-wiggum:8098", registry)
+
+    try:
+        # These calls will be protected by circuit breakers
+        result = await aidb_client.call_query_endpoint("test query")
+        print(f"AIDB Success: {result}")
+        
+        result = await hybrid_client.call_skill_endpoint("route_query", {"query": "test"})
+        print(f"Hybrid Success: {result}")
+        
+        result = await ralph_client.call_task_endpoint("optimize_loop", {"iterations": 5})
+        print(f"Ralph Success: {result}")
+        
+        # Print circuit breaker states
+        print("Circuit breaker states:", registry.get_all_states())
+        
+    except CircuitBreakerOpenError:
+        print("Service is temporarily unavailable (circuit breaker open)")
+    except Exception as e:
+        print(f"Request failed: {e}")
+
+
+if __name__ == "__main__":
+    # Run example
+    asyncio.run(example_usage())

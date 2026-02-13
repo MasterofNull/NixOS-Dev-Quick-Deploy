@@ -16,7 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Model storage directory (user-level)
-# Standardized to nixos-ai-stack (matches docker-compose.yml AI_STACK_DATA)
+# Standardized to nixos-ai-stack (matches k8s AI_STACK_DATA)
 MODEL_DIR="${MODEL_DIR:-${HOME}/.local/share/nixos-ai-stack/llama-cpp-models}"
 CACHE_DIR="${HF_HOME:-${HOME}/.cache/huggingface}"
 HUGGINGFACE_TOKEN_FILE_DEFAULT="${HUGGINGFACE_TOKEN_FILE:-${HOME}/.cache/nixos-quick-deploy/preferences/huggingface-token.env}"
@@ -35,7 +35,7 @@ NC='\033[0m' # No Color
 # ============================================================================
 # Recommended GGUF Models for llama.cpp Stack
 # ============================================================================
-# Based on ai-stack/compose/docker-compose.yml configuration
+# Based on ai-stack/kubernetes configuration
 # All models use Q4_K_M quantization (4-bit) for optimal CPU performance
 
 declare -A MODELS=(

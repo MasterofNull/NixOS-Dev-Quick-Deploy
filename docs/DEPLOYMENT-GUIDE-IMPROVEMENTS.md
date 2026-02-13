@@ -96,7 +96,7 @@ templates/nixos-improvements/
 When running `nixos-quick-deploy.sh` for a fresh system deployment, the improvements will be automatically included:
 
 ```bash
-cd /home/hyperd/Documents/NixOS-Dev-Quick-Deploy
+cd ~/Documents/NixOS-Dev-Quick-Deploy
 sudo ./nixos-quick-deploy.sh
 ```
 
@@ -112,7 +112,7 @@ To apply improvements to an already deployed system:
 
 ```bash
 # 1. Copy improvement modules to the deployed configuration directory
-sudo cp -r /home/hyperd/Documents/NixOS-Dev-Quick-Deploy/templates/nixos-improvements /etc/nixos/
+sudo cp -r ~/Documents/NixOS-Dev-Quick-Deploy/templates/nixos-improvements /etc/nixos/
 
 # 2. Edit /etc/nixos/configuration.nix to add imports
 sudo nano /etc/nixos/configuration.nix
@@ -122,7 +122,7 @@ sudo nano /etc/nixos/configuration.nix
 sudo nixos-rebuild switch
 
 # 4. Copy testing.nix to home-manager config directory
-cp /home/hyperd/Documents/NixOS-Dev-Quick-Deploy/templates/nixos-improvements/testing.nix ~/.config/home-manager/nixos-improvements/
+cp ~/Documents/NixOS-Dev-Quick-Deploy/templates/nixos-improvements/testing.nix ~/.config/home-manager/nixos-improvements/
 
 # 5. Edit home.nix to add imports
 nano ~/.config/home-manager/home.nix
@@ -412,10 +412,10 @@ After deployment, check these system-generated files:
 5. Update IMPLEMENTATION-PROGRESS.md with results
 
 **Critical Files:**
-- Templates: `/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/templates/`
-- Improvements: `/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/templates/nixos-improvements/`
-- Progress: `/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/docs/IMPLEMENTATION-PROGRESS.md`
-- This Guide: `/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/docs/DEPLOYMENT-GUIDE-IMPROVEMENTS.md`
+- Templates: `~/Documents/NixOS-Dev-Quick-Deploy/templates/`
+- Improvements: `~/Documents/NixOS-Dev-Quick-Deploy/templates/nixos-improvements/`
+- Progress: `~/Documents/NixOS-Dev-Quick-Deploy/docs/IMPLEMENTATION-PROGRESS.md`
+- This Guide: `~/Documents/NixOS-Dev-Quick-Deploy/docs/DEPLOYMENT-GUIDE-IMPROVEMENTS.md`
 
 **AIDB Query:**
 ```bash

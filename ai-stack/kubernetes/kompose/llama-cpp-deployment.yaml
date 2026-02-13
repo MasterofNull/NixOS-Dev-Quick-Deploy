@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   annotations:
-    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
     kompose.version: 1.37.0 (HEAD)
     nixos.quick-deploy.ai-stack: "true"
     nixos.quick-deploy.service: llama_cpp
@@ -20,7 +19,6 @@ spec:
   template:
     metadata:
       annotations:
-        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
         kompose.version: 1.37.0 (HEAD)
         nixos.quick-deploy.ai-stack: "true"
         nixos.quick-deploy.service: llama_cpp
@@ -28,6 +26,8 @@ spec:
       labels:
         io.kompose.service: llama-cpp
     spec:
+      serviceAccountName: llama-cpp
+      automountServiceAccountToken: false
       containers:
         - args:
             - --model
@@ -62,7 +62,16 @@ spec:
           envFrom:
             - configMapRef:
                 name: env
+            - secretRef:
+                name: huggingface-hub-token
           image: ghcr.io/ggml-org/llama.cpp:server
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           livenessProbe:
             exec:
               command:
@@ -72,6 +81,15 @@ spec:
             failureThreshold: 5
             initialDelaySeconds: 120
             periodSeconds: 30
+            timeoutSeconds: 10
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - curl -sf http://localhost:8080/health | grep -q '"status":"ok"' || exit 1
+            failureThreshold: 40
+            periodSeconds: 10
             timeoutSeconds: 10
           name: local-ai-llama-cpp
           ports:

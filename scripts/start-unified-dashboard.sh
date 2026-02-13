@@ -6,6 +6,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DASHBOARD_BIND_ADDRESS="${DASHBOARD_BIND_ADDRESS:-127.0.0.1}"
+DASHBOARD_API_BIND_ADDRESS="${DASHBOARD_API_BIND_ADDRESS:-127.0.0.1}"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}"
+BACKEND_LOG_FILE="${RUNTIME_DIR}/dashboard-backend.log"
+FRONTEND_LOG_FILE="${RUNTIME_DIR}/dashboard-frontend.log"
+BACKEND_PID_FILE="${RUNTIME_DIR}/dashboard-backend.pid"
+FRONTEND_PID_FILE="${RUNTIME_DIR}/dashboard-frontend.pid"
+export DASHBOARD_BIND_ADDRESS DASHBOARD_API_BIND_ADDRESS
+
+mkdir -p "$RUNTIME_DIR" 2>/dev/null || true
 
 echo "🚀 Starting Unified NixOS System Dashboard"
 echo ""
@@ -38,7 +48,7 @@ start_backend() {
     if ! check_port 8889; then
         warn "Port 8889 already in use"
         info "Checking if it's our backend..."
-        if curl -sf --max-time 2 http://localhost:8889/api/health >/dev/null 2>&1; then
+        if curl -sf --max-time 2 http://${SERVICE_HOST:-localhost}:8889/api/health >/dev/null 2>&1; then
             success "FastAPI backend already running"
             return 0
         else
@@ -65,20 +75,20 @@ start_backend() {
     fi
 
     # Start backend
-    nohup uvicorn api.main:app --host 0.0.0.0 --port 8889 \
-        > /tmp/dashboard-backend.log 2>&1 &
-    echo $! > /tmp/dashboard-backend.pid
+    nohup uvicorn api.main:app --host "$DASHBOARD_API_BIND_ADDRESS" --port 8889 \
+        > "$BACKEND_LOG_FILE" 2>&1 &
+    echo $! > "$BACKEND_PID_FILE"
 
     # Wait for backend to be ready
     for i in {1..10}; do
         sleep 1
-        if curl -sf --max-time 2 http://localhost:8889/api/health >/dev/null 2>&1; then
-            success "FastAPI backend started (PID: $(cat /tmp/dashboard-backend.pid))"
+        if curl -sf --max-time 2 http://${SERVICE_HOST:-localhost}:8889/api/health >/dev/null 2>&1; then
+            success "FastAPI backend started (PID: $(cat "$BACKEND_PID_FILE"))"
             return 0
         fi
     done
 
-    warn "Backend may not be ready yet (check logs: tail -f /tmp/dashboard-backend.log)"
+    warn "Backend may not be ready yet (check logs: tail -f $BACKEND_LOG_FILE)"
     return 0
 }
 
@@ -89,7 +99,7 @@ start_frontend() {
     if ! check_port 8888; then
         warn "Port 8888 already in use"
         info "Checking if it's our dashboard..."
-        if curl -sf --max-time 2 http://localhost:8888/dashboard.html >/dev/null 2>&1; then
+        if curl -sf --max-time 2 http://${SERVICE_HOST:-localhost}:8888/dashboard.html >/dev/null 2>&1; then
             success "HTML dashboard already running"
             return 0
         else
@@ -102,19 +112,19 @@ start_frontend() {
 
     # Start dashboard server
     nohup "$SCRIPT_DIR/serve-dashboard.sh" \
-        > /tmp/dashboard-frontend.log 2>&1 &
-    echo $! > /tmp/dashboard-frontend.pid
+        > "$FRONTEND_LOG_FILE" 2>&1 &
+    echo $! > "$FRONTEND_PID_FILE"
 
     # Wait for frontend to be ready
     for i in {1..10}; do
         sleep 1
-        if curl -sf --max-time 2 http://localhost:8888/dashboard.html >/dev/null 2>&1; then
-            success "HTML dashboard started (PID: $(cat /tmp/dashboard-frontend.pid))"
+        if curl -sf --max-time 2 http://${SERVICE_HOST:-localhost}:8888/dashboard.html >/dev/null 2>&1; then
+            success "HTML dashboard started (PID: $(cat "$FRONTEND_PID_FILE"))"
             return 0
         fi
     done
 
-    warn "Dashboard may not be ready yet (check logs: tail -f /tmp/dashboard-frontend.log)"
+    warn "Dashboard may not be ready yet (check logs: tail -f $FRONTEND_LOG_FILE)"
     return 0
 }
 
@@ -123,15 +133,15 @@ cleanup() {
     echo ""
     info "Shutting down dashboard..."
 
-    if [ -f /tmp/dashboard-backend.pid ]; then
-        kill $(cat /tmp/dashboard-backend.pid) 2>/dev/null || true
-        rm /tmp/dashboard-backend.pid
+    if [ -f "$BACKEND_PID_FILE" ]; then
+        kill "$(cat "$BACKEND_PID_FILE")" 2>/dev/null || true
+        rm "$BACKEND_PID_FILE"
         success "Backend stopped"
     fi
 
-    if [ -f /tmp/dashboard-frontend.pid ]; then
-        kill $(cat /tmp/dashboard-frontend.pid) 2>/dev/null || true
-        rm /tmp/dashboard-frontend.pid
+    if [ -f "$FRONTEND_PID_FILE" ]; then
+        kill "$(cat "$FRONTEND_PID_FILE")" 2>/dev/null || true
+        rm "$FRONTEND_PID_FILE"
         success "Frontend stopped"
     fi
 
@@ -168,12 +178,12 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "  ✅ Unified Dashboard is Running!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "  📊 Dashboard:     http://localhost:8888/dashboard.html"
-echo "  🔧 Backend API:   http://localhost:8889"
-echo "  📖 API Docs:      http://localhost:8889/docs"
+echo "  📊 Dashboard:     http://${SERVICE_HOST:-localhost}:8888/dashboard.html"
+echo "  🔧 Backend API:   http://${SERVICE_HOST:-localhost}:8889"
+echo "  📖 API Docs:      http://${SERVICE_HOST:-localhost}:8889/docs"
 echo ""
-echo "  📁 Backend logs:  tail -f /tmp/dashboard-backend.log"
-echo "  📁 Frontend logs: tail -f /tmp/dashboard-frontend.log"
+echo "  📁 Backend logs:  tail -f $BACKEND_LOG_FILE"
+echo "  📁 Frontend logs: tail -f $FRONTEND_LOG_FILE"
 echo ""
 echo "  Press Ctrl+C to stop both services"
 echo ""
@@ -183,7 +193,7 @@ echo ""
 # Open browser if available
 if command -v xdg-open >/dev/null 2>&1; then
     sleep 2
-    xdg-open "http://localhost:8888/dashboard.html" 2>/dev/null &
+    xdg-open "http://${SERVICE_HOST:-localhost}:8888/dashboard.html" 2>/dev/null &
 fi
 
 # Keep script running

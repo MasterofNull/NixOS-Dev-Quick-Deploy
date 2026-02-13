@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   annotations:
-    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
     kompose.version: 1.37.0 (HEAD)
     nixos.quick-deploy.ai-stack: "true"
     nixos.quick-deploy.service: prometheus
@@ -19,23 +18,38 @@ spec:
   template:
     metadata:
       annotations:
-        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
         kompose.version: 1.37.0 (HEAD)
         nixos.quick-deploy.ai-stack: "true"
         nixos.quick-deploy.service: prometheus
       labels:
         io.kompose.service: prometheus
     spec:
+      serviceAccountName: prometheus
+      automountServiceAccountToken: false
       containers:
         - args:
             - --config.file=/etc/prometheus/prometheus.yml
             - --storage.tsdb.path=/prometheus
             - --storage.tsdb.retention.time=15d
           image: prom/prometheus:v2.54.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           name: local-ai-prometheus
           ports:
             - containerPort: 9090
               protocol: TCP
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
           volumeMounts:
             - mountPath: /etc/prometheus/prometheus.yml
               name: prometheus-cm0

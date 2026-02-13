@@ -28,6 +28,7 @@
 #   - get_home_manager_package_ref() → Get home-manager package ref
 #   - select_nixos_version() → Prompt user for NixOS version
 #   - emit_home_manager_fallback_notice() → Display fallback messaging when release mapping downgrades
+#   - get_effective_max_jobs() → Cached max-jobs value from nix show-config
 #   - update_nixos_channels() → Update and synchronize channels
 #
 # ============================================================================
@@ -42,6 +43,21 @@ SUPPORTED_NIX_RELEASES=("25.11" "25.05" "24.11" "24.05" "23.11")
 : "${NIXOS_CHANNEL_FALLBACK_RESOLVED:=}"
 : "${HOME_MANAGER_FALLBACK_REQUESTED:=}"
 : "${HOME_MANAGER_FALLBACK_RESOLVED:=}"
+
+# ============================================================================
+# Nix Max-Jobs Detection
+# ============================================================================
+# Cache the effective max-jobs value to avoid repeated `nix show-config` calls.
+# Returns "0" when local builds are disabled, otherwise the configured value.
+# ============================================================================
+_CACHED_EFFECTIVE_MAX_JOBS=""
+get_effective_max_jobs() {
+    if [[ -z "$_CACHED_EFFECTIVE_MAX_JOBS" ]]; then
+        _CACHED_EFFECTIVE_MAX_JOBS=$(nix show-config 2>/dev/null | awk -F' = ' '/^max-jobs/ {print $2; exit}')
+        _CACHED_EFFECTIVE_MAX_JOBS="${_CACHED_EFFECTIVE_MAX_JOBS:-auto}"
+    fi
+    printf '%s' "$_CACHED_EFFECTIVE_MAX_JOBS"
+}
 
 # ============================================================================
 # Derive System Release Version
@@ -255,6 +271,7 @@ emit_nixos_channel_fallback_notice() {
     if [[ -n "${NIXOS_CHANNEL_FALLBACK_REQUESTED:-}" && -n "${NIXOS_CHANNEL_FALLBACK_RESOLVED:-}" ]]; then
         print_warning "nixos-${NIXOS_CHANNEL_FALLBACK_REQUESTED} channel not yet available upstream."
         print_info "Using nixos-${NIXOS_CHANNEL_FALLBACK_RESOLVED} until the requested release is published."
+        print_info "To stay on a pre-release (e.g., 26.05), set DEFAULT_CHANNEL_TRACK=unstable."
         NIXOS_CHANNEL_FALLBACK_REQUESTED=""
         NIXOS_CHANNEL_FALLBACK_RESOLVED=""
     fi
@@ -367,7 +384,8 @@ select_nixos_version() {
     print_section "NixOS Version Selection"
 
     local track_preference="${DEFAULT_CHANNEL_TRACK,,}"
-    local CURRENT_VERSION=$(derive_system_release_version)
+    local CURRENT_VERSION
+    CURRENT_VERSION=$(derive_system_release_version)
 
     # Auto-select unstable if preference set
     if [[ "$track_preference" == "unstable" ]]; then
@@ -481,7 +499,8 @@ update_nixos_channels() {
     fi
 
     # Check if we need to upgrade channels
-    local EXISTING_CHANNEL=$(sudo nix-channel --list | grep '^nixos' | awk '{print $2}')
+    local EXISTING_CHANNEL
+    EXISTING_CHANNEL=$(sudo nix-channel --list | grep '^nixos' | awk '{print $2}')
 
     if [ -n "$EXISTING_CHANNEL" ] && [ "$EXISTING_CHANNEL" != "$CURRENT_NIXOS_CHANNEL" ]; then
         print_warning "Channel change detected"
@@ -498,10 +517,12 @@ update_nixos_channels() {
     fi
 
     # Extract channel name from URL
-    local NIXOS_CHANNEL_NAME=$(basename "$CURRENT_NIXOS_CHANNEL")
+    local NIXOS_CHANNEL_NAME
+    NIXOS_CHANNEL_NAME=$(basename "$CURRENT_NIXOS_CHANNEL")
     local NIXOS_CHANNEL_HOST
     NIXOS_CHANNEL_HOST=$(extract_url_host "$CURRENT_NIXOS_CHANNEL")
     print_info "Current NixOS channel: $NIXOS_CHANNEL_NAME"
+    # shellcheck disable=SC2034
     SYNCHRONIZED_NIXOS_CHANNEL="$NIXOS_CHANNEL_NAME"
 
     # Determine matching home-manager channel
@@ -543,6 +564,7 @@ update_nixos_channels() {
         HOME_MANAGER_CHANNEL_URL="$HM_CHANNEL_URL"
     fi
 
+    # shellcheck disable=SC2034
     SYNCHRONIZED_HOME_MANAGER_CHANNEL="$HM_CHANNEL_NAME"
     local HOME_MANAGER_CHANNEL_HOST
     HOME_MANAGER_CHANNEL_HOST=$(extract_url_host "$HOME_MANAGER_CHANNEL_URL")
@@ -615,14 +637,28 @@ update_nixos_channels() {
         channel_updates_skipped=true
         print_warning "Skipping nix-channel updates: unable to resolve ${unresolved_channel_hosts[*]}"
         print_info "Cached channel metadata will be used; rerun the updates once connectivity is restored."
+    elif [[ "${FLAKE_ONLY_MODE:-false}" == true ]]; then
+        channel_updates_skipped=true
+        print_info "Flake-only mode: skipping nix-channel updates (flake.lock handles package resolution)."
+        print_info "Channels are registered but not downloaded. Use --update-flake-inputs to refresh flake inputs."
     else
+        local -a channel_update_cmd=(sudo nix-channel --update)
+        local -a user_channel_update_cmd=(nix-channel --update)
+        if [[ "$(get_effective_max_jobs)" == "0" ]]; then
+            print_warning "max-jobs=0 disables local builds; forcing max-jobs=1 for nix-channel updates."
+            channel_update_cmd=(sudo env NIX_CONFIG="max-jobs = 1" nix-channel --update)
+            user_channel_update_cmd=(env NIX_CONFIG="max-jobs = 1" nix-channel --update)
+        fi
+
         print_info "Updating system channels (this may take a few minutes)..."
         echo ""
-        if sudo nix-channel --update 2>&1 | tee /tmp/nixos-channel-update.log; then
+        local tmp_dir="${TMP_DIR:-/tmp}"
+        local system_channel_log="${tmp_dir}/nixos-channel-update.log"
+        if "${channel_update_cmd[@]}" > >(tee "$system_channel_log") 2>&1; then
             print_success "NixOS system channels updated"
         else
             print_error "System channel update failed"
-            print_info "Log saved to: /tmp/nixos-channel-update.log"
+            print_info "Log saved to: $system_channel_log"
             exit 1
         fi
         echo ""
@@ -630,9 +666,8 @@ update_nixos_channels() {
         # Update user channels (home-manager)
         print_info "Updating user channels (home-manager)..."
         echo ""
-        local tmp_dir="${TMP_DIR:-/tmp}"
         local channel_log="${tmp_dir}/home-manager-channel-update.log"
-        if nix-channel --update 2>&1 | tee "$channel_log"; then
+        if "${user_channel_update_cmd[@]}" > >(tee "$channel_log") 2>&1; then
             print_success "User channels updated successfully"
         else
             print_error "User channel update failed"

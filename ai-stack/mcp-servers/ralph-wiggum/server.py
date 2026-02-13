@@ -38,7 +38,7 @@ try:
 except ImportError:
     from orchestrator import RalphOrchestrator as AgentOrchestrator
 from state_manager import StateManager
-from hooks import StopHook, ContextRecoveryHook
+from hooks import StopHook, ContextRecoveryHook, ResourceLimitHook
 
 # Add parent directory to path for shared imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -161,6 +161,11 @@ CONFIG = {
     "max_iterations_simple": int(os.getenv("RALPH_MAX_ITERATIONS_SIMPLE", "10")),
     "max_iterations_complex": int(os.getenv("RALPH_MAX_ITERATIONS_COMPLEX", "50")),
     "adaptive_iterations": os.getenv("RALPH_ADAPTIVE_ITERATIONS", "true").lower() == "true",
+    # Per-task timeout in seconds (Phase 13.2.3); 0 = no timeout
+    "task_timeout_seconds": int(os.getenv("RALPH_TASK_TIMEOUT_SECONDS", "3600")),
+    # How often (in iterations) to persist state during task execution (Phase 13.2.5)
+    "state_save_interval": int(os.getenv("RALPH_STATE_SAVE_INTERVAL", "5")),
+    "max_cpu_percent": float(os.getenv("RALPH_MAX_CPU_PERCENT", "85.0")),
     # Existing config
     "context_recovery": os.getenv("RALPH_CONTEXT_RECOVERY", "true").lower() == "true",
     "git_integration": os.getenv("RALPH_GIT_INTEGRATION", "true").lower() == "true",
@@ -245,8 +250,13 @@ async def lifespan(app: FastAPI):
     if CONFIG["loop_enabled"]:
         stop_hook = StopHook(loop_engine, CONFIG["exit_code_block"])
         recovery_hook = ContextRecoveryHook(state_manager, CONFIG["git_integration"])
+        resource_hook = ResourceLimitHook(
+            max_iterations_per_task=CONFIG["max_iterations"],
+            max_cpu_percent=CONFIG["max_cpu_percent"],
+        )
 
         loop_engine.add_hook("stop", stop_hook)
+        loop_engine.add_hook("iteration", resource_hook)
         if CONFIG["context_recovery"]:
             loop_engine.add_hook("recovery", recovery_hook)
 
@@ -359,6 +369,26 @@ async def get_task_status(task_id: str, auth: str = Depends(require_auth)):
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
 
     return TaskStatus(**status)
+
+
+@app.get("/tasks/{task_id}/result")
+async def get_task_result(task_id: str, auth: str = Depends(require_auth)):
+    """
+    Get full result of a task (Phase 13.2.6).
+
+    Returns iteration history, final output, and completion details.
+    Works for in-progress, completed, and failed tasks.
+    Also returns results from persisted state for tasks from previous runs.
+    """
+    if not loop_engine:
+        raise HTTPException(status_code=503, detail="Loop engine not initialized")
+
+    result = await loop_engine.get_task_result(task_id)
+
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+    return result
 
 
 @app.post("/tasks/{task_id}/stop")

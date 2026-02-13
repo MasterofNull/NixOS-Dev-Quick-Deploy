@@ -32,6 +32,8 @@ class RalphLoopEngine:
     - Human-in-the-loop approval gates
     - Telemetry and audit logging
     - Adaptive iteration limits (Phase 4)
+    - Per-task timeout (Phase 13.2.3)
+    - Periodic state persistence (Phase 13.2.5)
     """
 
     # Complexity keywords for prompt analysis
@@ -61,11 +63,22 @@ class RalphLoopEngine:
         self.is_running = False
         self.telemetry_file = open(config["telemetry_path"], "a")
 
+        # Per-task timeout in seconds (Phase 13.2.3); 0 = no timeout
+        self.task_timeout_seconds: int = config.get("task_timeout_seconds", 3600)
+
+        # How often to persist state during iteration (Phase 13.2.5)
+        self.state_save_interval: int = config.get("state_save_interval", 5)
+
         # Adaptive iteration tracking (Phase 4)
         self.task_history: Dict[str, List[Dict[str, Any]]] = {}  # task_type -> [results]
         self.adaptive_enabled = config.get("adaptive_iterations", True)
 
-        logger.info("loop_engine_initialized", config=config, adaptive_enabled=self.adaptive_enabled)
+        logger.info(
+            "loop_engine_initialized",
+            config=config,
+            adaptive_enabled=self.adaptive_enabled,
+            task_timeout=self.task_timeout_seconds,
+        )
 
     async def submit_task(
         self,
@@ -303,10 +316,14 @@ class RalphLoopEngine:
         """
         Main loop processor
 
-        Continuously processes tasks from the queue
+        Continuously processes tasks from the queue.
+        On startup, recovers any incomplete tasks from persisted state (Phase 13.2.5).
         """
         self.is_running = True
         logger.info("loop_engine_started")
+
+        # Phase 13.2.5: Recover incomplete tasks from previous run
+        await self._recover_queued_tasks()
 
         try:
             while self.is_running:
@@ -321,8 +338,27 @@ class RalphLoopEngine:
                     logger.warning("task_not_found", task_id=task_id)
                     continue
 
-                # Process the task with Ralph loop
-                await self._process_task_with_ralph_loop(task)
+                # Phase 13.2.3: Per-task timeout
+                if self.task_timeout_seconds > 0:
+                    try:
+                        await asyncio.wait_for(
+                            self._process_task_with_ralph_loop(task),
+                            timeout=self.task_timeout_seconds,
+                        )
+                    except asyncio.TimeoutError:
+                        logger.error(
+                            "task_timeout",
+                            task_id=task_id,
+                            timeout_seconds=self.task_timeout_seconds,
+                            iterations_completed=task.get("iteration", 0),
+                        )
+                        task["status"] = "failed"
+                        task["error"] = f"Task timed out after {self.task_timeout_seconds}s"
+                        task["completion_reason"] = "timeout"
+                        await self.state_manager.save_task_state(task)
+                        self._record_task_history(task)
+                else:
+                    await self._process_task_with_ralph_loop(task)
 
         except asyncio.CancelledError:
             logger.info("loop_engine_cancelled")
@@ -331,6 +367,46 @@ class RalphLoopEngine:
         finally:
             self.is_running = False
             logger.info("loop_engine_stopped")
+
+    async def _recover_queued_tasks(self):
+        """
+        Recover incomplete tasks from persisted state (Phase 13.2.5).
+
+        On startup, loads tasks that were 'running' or 'queued' when the
+        previous instance stopped, and re-enqueues them.
+        """
+        try:
+            all_tasks = await self.state_manager.get_all_tasks()
+            recovered = 0
+            for task_id, task_state in all_tasks.items():
+                status = task_state.get("status", "")
+                if status in ("running", "queued"):
+                    # Rebuild minimal task structure for re-processing
+                    task = {
+                        "task_id": task_id,
+                        "prompt": task_state.get("prompt", ""),
+                        "backend": task_state.get("backend", self.config.get("default_backend", "aider")),
+                        "max_iterations": task_state.get("max_iterations", self.config.get("max_iterations", 20)),
+                        "iteration_mode": task_state.get("iteration_mode", "fixed"),
+                        "original_max_iterations": task_state.get("original_max_iterations", -1),
+                        "require_approval": task_state.get("require_approval", False),
+                        "context": task_state.get("context_summary", {}),
+                        "status": "queued",
+                        "iteration": 0,  # restart from 0
+                        "started_at": task_state.get("started_at", datetime.now(timezone.utc).isoformat()),
+                        "last_update": datetime.now(timezone.utc).isoformat(),
+                        "results": [],
+                        "error": None,
+                        "awaiting_approval": False,
+                    }
+                    self.tasks[task_id] = task
+                    await self.task_queue.put(task_id)
+                    recovered += 1
+
+            if recovered:
+                logger.info("tasks_recovered", count=recovered)
+        except Exception as e:
+            logger.warning("task_recovery_failed", error=str(e))
 
     async def _process_task_with_ralph_loop(self, task: Dict[str, Any]):
         """
@@ -373,6 +449,11 @@ class RalphLoopEngine:
                     task["status"] = "rejected"
                     break
 
+            # Check if task was stopped externally
+            if task["status"] == "stopped":
+                logger.info("ralph_task_stopped_externally", task_id=task_id)
+                break
+
             # Execute the agent
             try:
                 result = await self.orchestrator.execute_agent(
@@ -388,6 +469,10 @@ class RalphLoopEngine:
                     "result": result
                 })
 
+                # Phase 13.2.5: Periodic state persistence
+                if iteration % self.state_save_interval == 0:
+                    await self.state_manager.save_task_state(task)
+
                 # Log telemetry
                 self._log_telemetry({
                     "event": "iteration_completed",
@@ -397,6 +482,13 @@ class RalphLoopEngine:
                     "exit_code": result.get("exit_code", 0),
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 })
+
+                # Run iteration hooks (resource limits, etc.)
+                await self._run_hooks("iteration", task, result)
+                if task["status"] == "failed":
+                    logger.warning("ralph_task_failed", task_id=task_id, error=task.get("error"))
+                    task["completion_reason"] = "resource_limit"
+                    break
 
                 # Check exit code
                 exit_code = result.get("exit_code", 0)
@@ -535,6 +627,54 @@ class RalphLoopEngine:
     async def get_task_status(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Get task status"""
         return self.tasks.get(task_id)
+
+    async def get_task_result(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get the full result of a completed/failed task (Phase 13.2.6).
+
+        Returns None if the task doesn't exist. Returns partial results
+        for tasks still in progress.
+        """
+        task = self.tasks.get(task_id)
+        if not task:
+            # Check persisted state as fallback
+            persisted = await self.state_manager.load_task_state(task_id)
+            if persisted:
+                return {
+                    "task_id": task_id,
+                    "status": persisted.get("status", "unknown"),
+                    "iteration": persisted.get("iteration", 0),
+                    "completion_reason": persisted.get("completion_reason"),
+                    "error": persisted.get("error"),
+                    "results": persisted.get("recent_results", []),
+                    "output": self._extract_final_output(persisted.get("recent_results", [])),
+                }
+            return None
+
+        return {
+            "task_id": task_id,
+            "status": task["status"],
+            "iteration": task["iteration"],
+            "backend": task["backend"],
+            "max_iterations": task["max_iterations"],
+            "iteration_mode": task.get("iteration_mode", "unknown"),
+            "started_at": task["started_at"],
+            "last_update": task["last_update"],
+            "completion_reason": task.get("completion_reason"),
+            "error": task.get("error"),
+            "results": task["results"][-10:],  # last 10 iterations
+            "output": self._extract_final_output(task["results"]),
+        }
+
+    @staticmethod
+    def _extract_final_output(results: List[Dict[str, Any]]) -> str:
+        """Extract the final output from the most recent successful iteration."""
+        for entry in reversed(results):
+            result = entry.get("result", {})
+            output = result.get("output", "")
+            if output:
+                return output
+        return ""
 
     async def stop_task(self, task_id: str) -> bool:
         """Stop a running task"""

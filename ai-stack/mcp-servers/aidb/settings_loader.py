@@ -3,10 +3,17 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import List, Optional
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 
 from shared.config_loader import load_config
 from pydantic import BaseModel, Field
+
+
+def _default_log_path() -> Path:
+    state_home = os.environ.get("XDG_STATE_HOME")
+    if state_home:
+        return Path(state_home) / "nixos-ai-stack" / "aidb-mcp.log"
+    return Path.home() / ".local" / "state" / "nixos-ai-stack" / "aidb-mcp.log"
 
 
 def _read_secret(path: Optional[str]) -> Optional[str]:
@@ -36,8 +43,13 @@ class Settings(BaseModel):
     api_port: int = 8091
     worker_count: int = 1
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
-    embedding_dimension: int = 768
+    embedding_dimension: int = 384
     embedding_trust_remote_code: bool = False
+    embedding_service_url: Optional[str] = None
+    embedding_service_api_key: Optional[str] = None
+    rag_default_limit: int = 5
+    rag_default_context_chars: int = 4000
+    rag_max_context_chars: int = 12000
     parallel_processing_enabled: bool = False
     parallel_simple_model: str = "GLM-4.5-Air-UD-Q4K-XL-GGUF"
     parallel_complex_model: str = "gpt-oss-20b-mxfp4-GGUF"
@@ -70,7 +82,7 @@ class Settings(BaseModel):
     full_tool_disclosure_requires_key: bool = True
     tool_cache_ttl: int = 3600
     log_level: str = "INFO"
-    log_file: Path = Field(default=Path("/tmp/aidb-mcp.log"))
+    log_file: Path = Field(default_factory=_default_log_path)
     log_max_bytes: int = 10 * 1024 * 1024
     log_backup_count: int = 5
     telemetry_enabled: bool = True
@@ -100,6 +112,7 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
     logging_cfg = raw.get("logging", {})
     security_cfg = raw.get("security", {})
     rag_cfg = raw.get("rag", {})
+    embeddings_cfg = raw.get("embeddings", {})
     embedding_trust_remote_code = rag_cfg.get("embedding_trust_remote_code")
     if embedding_trust_remote_code is None:
         env_flag = os.environ.get("AIDB_EMBEDDING_TRUST_REMOTE_CODE") or os.environ.get(
@@ -115,6 +128,19 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
                 "on",
             }
 
+    embedding_service_url = (
+        os.environ.get("AIDB_EMBEDDING_SERVICE_URL")
+        or os.environ.get("EMBEDDING_SERVICE_URL")
+        or os.environ.get("EMBEDDINGS_SERVICE_URL")
+    )
+    if not embedding_service_url:
+        embedding_service_url = embeddings_cfg.get("embedding_service_url") or embeddings_cfg.get("service_url")
+    if not embedding_service_url and os.environ.get("KUBERNETES_SERVICE_HOST"):
+        embedding_service_url = "http://embeddings:8081"
+
+    embedding_api_key_file = os.environ.get("EMBEDDINGS_API_KEY_FILE") or "/run/secrets/embeddings_api_key"
+    embedding_service_api_key = os.environ.get("EMBEDDINGS_API_KEY") or _read_secret(embedding_api_key_file)
+
     postgres_cfg = db_cfg.get("postgres", {})
     postgres_pool_cfg = postgres_cfg.get("pool", {})
     pg_password = (
@@ -122,15 +148,47 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
         or postgres_cfg.get("password", "")
         or os.environ.get("AIDB_POSTGRES_PASSWORD", "")
     )
+    postgres_host = (
+        os.environ.get("AIDB_POSTGRES_HOST")
+        or os.environ.get("POSTGRES_HOST")
+        or postgres_cfg.get("host", "localhost")
+    )
+    postgres_port = int(
+        os.environ.get("AIDB_POSTGRES_PORT")
+        or os.environ.get("POSTGRES_PORT")
+        or postgres_cfg.get("port", 5432)
+    )
+    postgres_db = (
+        os.environ.get("AIDB_POSTGRES_DB")
+        or os.environ.get("POSTGRES_DB")
+        or postgres_cfg.get("database", "mcp")
+    )
+    postgres_user = (
+        os.environ.get("AIDB_POSTGRES_USER")
+        or os.environ.get("POSTGRES_USER")
+        or postgres_cfg.get("user", "mcp")
+    )
+    postgres_sslmode = os.environ.get("AIDB_POSTGRES_SSLMODE") or postgres_cfg.get("sslmode")
+    postgres_sslrootcert = os.environ.get("AIDB_POSTGRES_SSLROOTCERT") or postgres_cfg.get("sslrootcert")
+    postgres_sslcert = os.environ.get("AIDB_POSTGRES_SSLCERT") or postgres_cfg.get("sslcert")
+    postgres_sslkey = os.environ.get("AIDB_POSTGRES_SSLKEY") or postgres_cfg.get("sslkey")
     quoted_pw = quote_plus(pg_password) if pg_password else ""
     if quoted_pw:
-        auth = f"{postgres_cfg.get('user','mcp')}:{quoted_pw}@"
+        auth = f"{postgres_user}:{quoted_pw}@"
     else:
-        auth = f"{postgres_cfg.get('user','mcp')}@"
-    postgres_dsn = (
-        f"postgresql+psycopg://{auth}"
-        f"{postgres_cfg.get('host','localhost')}:{postgres_cfg.get('port',5432)}/{postgres_cfg.get('database','mcp')}"
-    )
+        auth = f"{postgres_user}@"
+    postgres_dsn = f"postgresql+psycopg://{auth}{postgres_host}:{postgres_port}/{postgres_db}"
+    postgres_params = {}
+    if postgres_sslmode:
+        postgres_params["sslmode"] = postgres_sslmode
+    if postgres_sslrootcert:
+        postgres_params["sslrootcert"] = postgres_sslrootcert
+    if postgres_sslcert:
+        postgres_params["sslcert"] = postgres_sslcert
+    if postgres_sslkey:
+        postgres_params["sslkey"] = postgres_sslkey
+    if postgres_params:
+        postgres_dsn = f"{postgres_dsn}?{urlencode(postgres_params)}"
 
     redis_cfg = db_cfg.get("redis", {})
     redis_pool_cfg = redis_cfg.get("pool", {})
@@ -139,11 +197,43 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
         or redis_cfg.get("password", "")
         or os.environ.get("AIDB_REDIS_PASSWORD", "")
     )
+    redis_host = (
+        os.environ.get("AIDB_REDIS_HOST")
+        or os.environ.get("REDIS_HOST")
+        or redis_cfg.get("host", "localhost")
+    )
+    redis_port = int(
+        os.environ.get("AIDB_REDIS_PORT")
+        or os.environ.get("REDIS_PORT")
+        or redis_cfg.get("port", 6379)
+    )
+    redis_db = int(
+        os.environ.get("AIDB_REDIS_DB")
+        or os.environ.get("REDIS_DB")
+        or redis_cfg.get("db", 0)
+    )
+    redis_scheme = os.environ.get("AIDB_REDIS_SCHEME") or redis_cfg.get("scheme")
+    redis_tls_flag = os.environ.get("AIDB_REDIS_TLS") or redis_cfg.get("tls")
+    if not redis_scheme:
+        if str(redis_tls_flag).lower() in {"1", "true", "yes", "on"}:
+            redis_scheme = "rediss"
+        else:
+            redis_scheme = "redis"
+    redis_ssl_ca = os.environ.get("AIDB_REDIS_SSL_CA") or redis_cfg.get("ssl_ca")
+    redis_ssl_cert_reqs = os.environ.get("AIDB_REDIS_SSL_CERT_REQS") or redis_cfg.get("ssl_cert_reqs")
     if redis_password:
         redis_auth = f":{quote_plus(redis_password)}@"
     else:
         redis_auth = ""
-    redis_url = f"redis://{redis_auth}{redis_cfg.get('host','localhost')}:{redis_cfg.get('port',6379)}/{redis_cfg.get('db',0)}"
+    redis_url = f"{redis_scheme}://{redis_auth}{redis_host}:{redis_port}/{redis_db}"
+    if redis_scheme == "rediss":
+        redis_params = {}
+        if redis_ssl_ca:
+            redis_params["ssl_ca_certs"] = redis_ssl_ca
+        if redis_ssl_cert_reqs:
+            redis_params["ssl_cert_reqs"] = redis_ssl_cert_reqs
+        if redis_params:
+            redis_url = f"{redis_url}?{urlencode(redis_params)}"
 
     llama_cpp_cfg = llm_cfg.get("llama_cpp") or llm_cfg.get("llama-cpp") or {}
     llama_cpp_url = os.environ.get("LLAMA_CPP_BASE_URL") or llama_cpp_cfg.get("host") or "http://localhost:8080"
@@ -152,7 +242,7 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
     sandbox_cfg = tools_cfg.get("sandbox", {})
     cache_cfg = tools_cfg.get("cache", {})
 
-    log_path = Path(logging_cfg.get("file", "/tmp/aidb-mcp.log"))
+    log_path = Path(logging_cfg.get("file", str(_default_log_path())))
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
     log_size = logging_cfg.get("max_size", "10MB")
@@ -218,6 +308,11 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
         embedding_model=rag_cfg.get("embedding_model", "sentence-transformers/all-MiniLM-L6-v2"),
         embedding_dimension=int(rag_cfg.get("embedding_dimension", 768)),
         embedding_trust_remote_code=embedding_trust_remote_code,
+        embedding_service_url=embedding_service_url,
+        embedding_service_api_key=embedding_service_api_key,
+        rag_default_limit=int(rag_cfg.get("default_limit", 5)),
+        rag_default_context_chars=int(rag_cfg.get("default_context_chars", 4000)),
+        rag_max_context_chars=int(rag_cfg.get("max_context_chars", 12000)),
         pgvector_hnsw_m=int(rag_cfg.get("pgvector", {}).get("hnsw_m", 16)),
         pgvector_hnsw_ef_construction=int(rag_cfg.get("pgvector", {}).get("hnsw_ef_construction", 64)),
         parallel_processing_enabled=parallel_cfg.get("enabled", False),

@@ -80,7 +80,7 @@ readonly NETWORK_TIMEOUT=300
 # - 100+ CLI tools and development utilities
 # - Complete Python ML/AI environment (PyTorch, TensorFlow, LangChain, etc.)
 # - AI development tools (Ollama, GPT4All, llama.cpp models, Aider)
-# - Container stack (Podman, Buildah, Skopeo) + container images
+# - Container stack (K3s/containerd) + container images
 # - Desktop applications via Flatpak (Firefox, Obsidian, DBeaver, etc.)
 # - System services (Gitea, Qdrant, Jupyter, Hugging Face TGI)
 # Minimum: 50GB free space in /nix (recommended: 100GB+ for AI models)
@@ -144,12 +144,11 @@ if [[ -n "${SUDO_USER:-}" && "$EUID" -eq 0 ]]; then
     RESOLVED_HOME="$(getent passwd "$RESOLVED_USER" 2>/dev/null | cut -d: -f6)"
 
     if [[ -z "$RESOLVED_HOME" ]]; then
-        # Fallback: expand ~username if the NSS lookup did not return a home.
-        RESOLVED_HOME="$(eval echo "~$RESOLVED_USER" 2>/dev/null || true)"
-    fi
-
-    if [[ -z "$RESOLVED_HOME" && -d "/home/$RESOLVED_USER" ]]; then
-        RESOLVED_HOME="/home/$RESOLVED_USER"
+        # Fallback: construct home path from HOME_ROOT_DIR (no eval — SEC-03)
+        home_root="/${HOME_ROOT_DIR:-home}"
+        if [[ -d "${home_root}/${RESOLVED_USER}" ]]; then
+            RESOLVED_HOME="${home_root}/${RESOLVED_USER}"
+        fi
     fi
 
     if [[ -z "$RESOLVED_HOME" ]]; then
@@ -178,8 +177,11 @@ fi
 # Some launchers can set HOME to /nix/store/*-source or other transient paths.
 if [[ -n "${USER:-}" ]]; then
     _resolved_home="$(getent passwd "$USER" 2>/dev/null | cut -d: -f6)"
-    if [[ -z "$_resolved_home" && -d "/home/$USER" ]]; then
-        _resolved_home="/home/$USER"
+    if [[ -z "$_resolved_home" ]]; then
+        home_root="/${HOME_ROOT_DIR:-home}"
+        if [[ -d "${home_root}/${USER}" ]]; then
+            _resolved_home="${home_root}/${USER}"
+        fi
     fi
     if [[ -z "$_resolved_home" && "$USER" == "root" && -d "/root" ]]; then
         _resolved_home="/root"
@@ -243,6 +245,7 @@ readonly LLM_MODELS_PREFERENCE_FILE="$DEPLOYMENT_PREFERENCES_DIR/llm-models.env"
 : "${DRY_RUN:=false}"
 : "${FORCE_UPDATE:=false}"
 : "${SKIP_HEALTH_CHECK:=false}"
+: "${SKIP_AI_MODEL:=false}"
 : "${ENABLE_DEBUG:=false}"
 : "${AUTO_ROLLBACK_ENABLED:=true}"
 : "${AUTO_ROLLBACK_REQUESTED:=false}"
@@ -344,7 +347,6 @@ declare -ag FLATPAK_PROFILE_CORE_APPS=(
     
     # === Development Essentials ===
     "md.obsidian.Obsidian"               # Knowledge management
-    "io.podman_desktop.PodmanDesktop"    # Container management
     "org.sqlitebrowser.sqlitebrowser"    # Database browser
     "com.jgraph.drawio.desktop"          # Diagrams and flowcharts
     
@@ -427,7 +429,6 @@ declare -ag FLATPAK_PROFILE_MINIMAL_APPS=(
     "org.mozilla.firefox"
     "md.obsidian.Obsidian"
     "com.github.tchx84.Flatseal"
-    "io.podman_desktop.PodmanDesktop"
     "com.obsproject.Studio"
 )
 
@@ -548,7 +549,7 @@ GITEA_BOOTSTRAP_ADMIN="false"
 GITEA_ADMIN_PROMPTED="false"
 GITEA_PROMPT_CHANGED="false"
 
-# Hugging Face token (optional; controls local AI stack enablement)
+# Hugging Face token (optional; used for model downloads)
 if [[ -z "${HUGGINGFACEHUB_API_TOKEN:-}" && -f "$HUGGINGFACE_TOKEN_PREFERENCE_FILE" ]]; then
     _hf_cached_token=$(awk -F'=' '/^HUGGINGFACEHUB_API_TOKEN=/{print $2}' "$HUGGINGFACE_TOKEN_PREFERENCE_FILE" 2>/dev/null | tail -n1 | tr -d '\r')
     if [[ -n "$_hf_cached_token" ]]; then
@@ -568,9 +569,12 @@ if [[ -z "$LOCAL_AI_STACK_ENABLED" && -f "$LOCAL_AI_STACK_PREFERENCE_FILE" ]]; t
     esac
 fi
 if [[ -z "$LOCAL_AI_STACK_ENABLED" ]]; then
-    # Default to false - user will be prompted during interactive deployment
-    # This allows users to enable the AI stack independently of Hugging Face token
-    LOCAL_AI_STACK_ENABLED="false"
+    # Default to RUN_AI_MODEL (K3s is the supported runtime; prompt removed).
+    if [[ "${RUN_AI_MODEL:-true}" == "true" ]]; then
+        LOCAL_AI_STACK_ENABLED="true"
+    else
+        LOCAL_AI_STACK_ENABLED="false"
+    fi
 fi
 export LOCAL_AI_STACK_ENABLED
 unset _local_ai_cached
@@ -621,8 +625,8 @@ fi
 export LLM_MODELS
 unset _llm_models_cached
 
-# Primary model file for docker-compose
-# This is what gets loaded by llama-cpp container on startup
+# Primary model file for llama-cpp deployment
+# This is what gets loaded by the llama-cpp pod on startup
 readonly LLAMA_CPP_MODEL_FILE="${LLAMA_CPP_MODEL_FILE:-qwen2.5-coder-7b-instruct-q4_k_m.gguf}"
 export LLAMA_CPP_MODEL_FILE
 
@@ -688,16 +692,8 @@ HOST_SWAP_LIMIT_VALUE="${HOST_SWAP_LIMIT_VALUE:-}"
 CONTAINER_STORAGE_FS_TYPE="${CONTAINER_STORAGE_FS_TYPE:-unknown}"
 CONTAINER_STORAGE_SOURCE="${CONTAINER_STORAGE_SOURCE:-}"
 
-# Podman Storage Driver Selection (defaults to zfs)
-# ZFS:    Use zfs driver (native snapshots, compression)
-DEFAULT_PODMAN_STORAGE_DRIVER="${DEFAULT_PODMAN_STORAGE_DRIVER:-zfs}"
-PODMAN_AUTO_REPAIR_SYSTEM_STORAGE_CONF="${PODMAN_AUTO_REPAIR_SYSTEM_STORAGE_CONF:-true}"
-PODMAN_SYSTEM_STORAGE_REPAIR_NOTE="${PODMAN_SYSTEM_STORAGE_REPAIR_NOTE:-}"
-PODMAN_STORAGE_DRIVER="${PODMAN_STORAGE_DRIVER:-}"
-
-if [[ -z "${PODMAN_STORAGE_COMMENT:-}" ]]; then
-    PODMAN_STORAGE_COMMENT="Storage driver will be auto-detected based on filesystem type."
-fi
+# Container storage (K3s uses containerd, these are kept for backward compat)
+CONTAINER_STORAGE_DRIVER="${CONTAINER_STORAGE_DRIVER:-overlay}"
 
 ENABLE_GAMING_STACK="${ENABLE_GAMING_STACK:-true}"
 # ENABLE_LACT:
@@ -708,6 +704,8 @@ ENABLE_LACT="${ENABLE_LACT:-auto}"
 AUTO_APPLY_SYSTEM_CONFIGURATION="${AUTO_APPLY_SYSTEM_CONFIGURATION:-true}"
 AUTO_APPLY_HOME_CONFIGURATION="${AUTO_APPLY_HOME_CONFIGURATION:-true}"
 AUTO_UPDATE_FLAKE_INPUTS="${AUTO_UPDATE_FLAKE_INPUTS:-false}"
+FLAKE_ONLY_MODE="${FLAKE_ONLY_MODE:-false}"
+AUTO_UPDATE_REMOTE_AGENTS="${AUTO_UPDATE_REMOTE_AGENTS:-true}"
 AUTO_RESOLVE_SERVICE_CONFLICTS="${AUTO_RESOLVE_SERVICE_CONFLICTS:-true}"
 RESTORE_KNOWN_GOOD_FLAKE_LOCK="${RESTORE_KNOWN_GOOD_FLAKE_LOCK:-false}"
 PROMPT_BEFORE_SYSTEM_SWITCH="${PROMPT_BEFORE_SYSTEM_SWITCH:-false}"
@@ -719,7 +717,7 @@ HOME_SWITCH_SKIPPED_REASON=""
 
 # AI-Optimizer / AIDB integration defaults
 AI_ENABLED="${AI_ENABLED:-auto}"                        # auto, true, false
-AIDB_BASE_URL="${AIDB_BASE_URL:-http://localhost:8091}"
+AIDB_BASE_URL="${AIDB_BASE_URL:-http://localhost:${AIDB_PORT:-8091}}"
 AIDB_PROJECT_NAME="${AIDB_PROJECT_NAME:-NixOS-Dev-Quick-Deploy}"
 
 # High-level host role; used as a human- and agent-friendly
@@ -746,25 +744,38 @@ export AI_STACK_PROFILE
 # ============================================================================
 # AI Stack Service Configuration
 # ============================================================================
-# Service URLs for the Podman-based AI stack
-# All services are containerized via docker-compose.yml
+# Service URLs for the K3s-based AI stack
+# All services are deployed as Kubernetes pods in the ai-stack namespace
 
-readonly QDRANT_URL="http://localhost:6333"
-readonly QDRANT_GRPC_URL="http://localhost:6334"
-readonly LLAMA_CPP_API_URL="http://localhost:8080/v1"
-readonly OPEN_WEBUI_URL="http://localhost:3001"
-readonly POSTGRES_URL="postgresql://mcp:change_me_in_production@localhost:5432/mcp"
-readonly REDIS_URL="redis://localhost:6379"
-readonly HYBRID_COORDINATOR_URL="http://localhost:8092"
-readonly MINDSDB_URL="http://localhost:47334"
+readonly QDRANT_URL="http://localhost:${QDRANT_PORT:-6333}"
+readonly QDRANT_GRPC_URL="http://localhost:${QDRANT_GRPC_PORT:-6334}"
+readonly LLAMA_CPP_API_URL="http://localhost:${LLAMA_CPP_PORT:-8080}/v1"
+readonly OPEN_WEBUI_URL="http://localhost:${OPEN_WEBUI_PORT:-3001}"
+# POSTGRES_URL: Constructed from separate credentials. Password should be set via
+# POSTGRES_PASSWORD env var or SOPS secrets — never hardcode in config files.
+readonly POSTGRES_USER="${POSTGRES_USER:-mcp}"
+readonly POSTGRES_DB="${POSTGRES_DB:-mcp}"
+if [[ -n "${POSTGRES_PASSWORD:-}" ]]; then
+    readonly POSTGRES_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:${POSTGRES_PORT:-5432}/${POSTGRES_DB}"
+else
+    # URL without password — scripts that need DB access should set POSTGRES_PASSWORD
+    readonly POSTGRES_URL="postgresql://${POSTGRES_USER}@localhost:${POSTGRES_PORT:-5432}/${POSTGRES_DB}"
+fi
+readonly REDIS_URL="redis://localhost:${REDIS_PORT:-6379}"
+readonly HYBRID_COORDINATOR_URL="http://localhost:${HYBRID_COORDINATOR_PORT:-8092}"
+readonly MINDSDB_URL="http://localhost:${MINDSDB_PORT:-47334}"
 
 # AI Stack data directory
 readonly AI_STACK_DATA="${HOME}/.local/share/nixos-ai-stack"
-readonly AI_STACK_COMPOSE="${SCRIPT_DIR}/ai-stack/compose"
-readonly AI_STACK_ENV="${AI_STACK_COMPOSE}/.env"
+readonly AI_STACK_K8S="${SCRIPT_DIR}/ai-stack/kubernetes"
 
 export QDRANT_URL LLAMA_CPP_API_URL HYBRID_COORDINATOR_URL
-export AI_STACK_DATA AI_STACK_COMPOSE
+export AI_STACK_DATA AI_STACK_K8S
+
+# AI Stack config/env paths (allow overrides from config/settings.sh or env)
+AI_STACK_CONFIG_DIR="${AI_STACK_CONFIG_DIR:-${PRIMARY_HOME:-$HOME}/.config/nixos-ai-stack}"
+AI_STACK_ENV_FILE="${AI_STACK_ENV_FILE:-${AI_STACK_CONFIG_DIR}/.env}"
+export AI_STACK_CONFIG_DIR AI_STACK_ENV_FILE
 
 # User Information
 SELECTED_TIMEZONE=""

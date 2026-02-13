@@ -110,7 +110,7 @@ cleanup_on_exit() {
 # Cleanup temporary files (placeholder)
 # ========================================================================
 # Add cleanup logic here, for example:
-# - rm -f /tmp/nixos-deploy-*.tmp
+# - rm -f ${TMPDIR:-/tmp}/nixos-deploy-*.tmp
 # - rm -f "$STATE_DIR"/*.lock
 # - kill background processes if any
 # ========================================================================
@@ -152,14 +152,14 @@ cleanup_on_exit() {
 
 **Problem:**
 - Some functions use `mktemp` and clean up properly
-- Some use `/tmp/*.tmp` without cleanup
+- Some use `${TMPDIR:-/tmp}/*.tmp` without cleanup
 - No centralized temp file tracking
 - Some temp files may persist after script exit
 
 **Examples:**
 - `lib/tools.sh`: Uses `mktemp` and cleans up ✅
 - `lib/config.sh`: Uses `mktemp` but cleanup not guaranteed ⚠️
-- Various: Direct writes to `/tmp/*` without cleanup ❌
+- Various: Direct writes to `${TMPDIR:-/tmp}/*` without cleanup ❌
 
 **Fix:**
 - Use `mktemp` consistently
@@ -245,17 +245,17 @@ install_package() {
 **Location:** Various files
 
 **Problem:**
-- Hardcoded paths like `/tmp/`, `~/.local/bin`
+- Hardcoded paths like `${TMPDIR:-/tmp}/`, `~/.local/bin`
 - Should use variables or configuration
 - Makes testing and portability difficult
 
 **Examples:**
-- `/tmp/nixos-rebuild.log`
+- `${TMPDIR:-/tmp}/nixos-rebuild.log`
 - `~/.npm-global`
-- `/tmp/flake-check.log`
+- `${TMPDIR:-/tmp}/flake-check.log`
 
 **Fix:**
-- Use `$TMPDIR` instead of `/tmp/`
+- Use `$TMPDIR` instead of `${TMPDIR:-/tmp}/`
 - Use `$HOME` instead of `~`
 - Create configurable path variables
 

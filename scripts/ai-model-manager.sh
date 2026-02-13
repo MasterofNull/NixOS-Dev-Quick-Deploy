@@ -5,6 +5,11 @@
 
 set -euo pipefail
 
+# Paths
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+[[ -f "$SCRIPT_DIR/config/service-endpoints.sh" ]] && . "$SCRIPT_DIR/config/service-endpoints.sh"
+
 # Directories
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ai-models"
 PROFILES_DIR="$CONFIG_DIR/profiles"
@@ -229,7 +234,7 @@ show_status() {
     # Show llama.cpp models
     echo -e "${BOLD}${BLUE}═══ llama.cpp Models ═══${NC}\n"
     if command -v curl >/dev/null 2>&1; then
-        if ! curl -s http://localhost:8080/v1/models 2>/dev/null; then
+        if ! curl -s --max-time 5 --connect-timeout 3 "${LLAMA_URL:-http://${SERVICE_HOST:-localhost}:${LLAMA_CPP_PORT:-8080}}/v1/models" 2>/dev/null; then
             log_warn "llama.cpp server not responding"
         fi
     else

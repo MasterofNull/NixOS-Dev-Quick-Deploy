@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   annotations:
-    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
     kompose.version: 1.37.0 (HEAD)
     nixos.quick-deploy.ai-stack: "true"
     nixos.quick-deploy.service: autogpt
@@ -19,13 +18,14 @@ spec:
   template:
     metadata:
       annotations:
-        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
         kompose.version: 1.37.0 (HEAD)
         nixos.quick-deploy.ai-stack: "true"
         nixos.quick-deploy.service: autogpt
       labels:
         io.kompose.service: autogpt
     spec:
+      serviceAccountName: autogpt
+      automountServiceAccountToken: false
       containers:
         - env:
             - name: AUTOGPT_MODEL
@@ -47,6 +47,13 @@ spec:
             - name: WORKSPACE_PATH
               value: /workspace
           image: docker.io/significantgravitas/auto-gpt@sha256:6abda195ed28cc223138002ef457ffa407f510bc1da7d750583697ae4bf5b39f
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           name: local-ai-autogpt
           ports:
             - containerPort: 8097

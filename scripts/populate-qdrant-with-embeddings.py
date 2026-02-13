@@ -29,7 +29,8 @@ from qdrant_client.models import PointStruct
 
 # Configuration
 PROJECT_ROOT = Path(__file__).parent.parent
-QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
+SERVICE_HOST = os.getenv("SERVICE_HOST", "localhost")
+QDRANT_URL = os.getenv("QDRANT_URL", f"http://{SERVICE_HOST}:6333")
 
 # Initialize clients
 qdrant = QdrantClient(url=QDRANT_URL)
@@ -63,9 +64,9 @@ async def populate_best_practices():
                 "Using bridge network for localhost database connections",
                 "Hardcoding container-internal DNS names"
             ],
-            "references": ["docker-compose.yml", "AIDB Dockerfile"],
+            "references": ["kustomization.yaml", "AIDB Dockerfile"],
             "endorsement_count": 5,
-            "last_validated": int(Path(PROJECT_ROOT / "ai-stack/compose/docker-compose.yml").stat().st_mtime)
+            "last_validated": int(Path(PROJECT_ROOT / "ai-stack/kubernetes/kustomization.yaml").stat().st_mtime)
         },
         {
             "category": "systemd",

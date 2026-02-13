@@ -84,8 +84,8 @@ Created new management infrastructure:
 
 1. [scripts/generate-dashboard-data.sh](/scripts/generate-dashboard-data.sh) - Added `--lite-mode` flag
 2. [dashboard.html](dashboard.html) - Updated refresh intervals
-3. `/tmp/run-dashboard-collector-lite.sh` - Lite collector loop (new)
-4. `/tmp/run-dashboard-collector-full.sh` - Full collector loop (new)
+3. `${TMPDIR:-/tmp}/run-dashboard-collector-lite.sh` - Lite collector loop (new)
+4. `${TMPDIR:-/tmp}/run-dashboard-collector-full.sh` - Full collector loop (new)
 
 ## Files Created
 

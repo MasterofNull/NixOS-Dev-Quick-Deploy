@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Configuration
-CERT_DIR="ai-stack/compose/nginx/certs"
+CERT_DIR="ai-stack/kubernetes/tls/generated"
 KEY_FILE="${CERT_DIR}/server.key"
 CERT_FILE="${CERT_DIR}/server.crt"
 DAYS_VALID=365
@@ -29,6 +29,7 @@ fi
 # Generate configuration for SANs (Subject Alternative Names)
 # This is crucial for Chrome/modern browsers to accept localhost certs
 CATFILE=$(mktemp)
+trap 'rm -f "$CATFILE"' EXIT
 cat > "$CATFILE" <<EOF
 [req]
 default_bits = 4096
@@ -71,4 +72,5 @@ rm "$CATFILE"
 echo -e "${GREEN}✓ Certificates generated successfully!${NC}"
 echo -e "  Key:  $KEY_FILE (0600)"
 echo -e "  Cert: $CERT_FILE (0644)"
-echo -e "${YELLOW}Next step: Restart Nginx container to apply changes.${NC}"
+echo -e "${YELLOW}Next step: Create/update a TLS secret and apply manifests.${NC}"
+echo -e "${YELLOW}Example: kubectl -n ai-stack create secret tls nginx-tls-secret --cert=${CERT_FILE} --key=${KEY_FILE} --dry-run=client -o yaml | kubectl apply -f -${NC}"

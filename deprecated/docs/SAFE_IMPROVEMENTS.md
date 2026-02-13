@@ -114,7 +114,7 @@ aidb-shell
 
 This environment includes:
 - Python 3.11 with pip
-- Podman and podman-compose
+- Podman and podman (legacy)
 - SQLite
 - All development tools
 
@@ -147,8 +147,8 @@ aidb-info
 cd ~/NixOS-Dev-Quick-Deploy/.aidb/deployment/
 ./scripts/start.sh
 
-# Or if using podman-compose
-podman-compose up -d
+# Or if using podman (legacy)
+podman (legacy) up -d
 ```
 
 ## Step 6: Verify AIDB is Running
@@ -307,7 +307,7 @@ run_health_checks() {
     check "Neovim installed" "command -v nvim"
 
     # Container tools
-    check "Podman-compose installed" "command -v podman-compose"
+    check "Podman (legacy) installed" "command -v podman (legacy)"
 
     # Check Flatpak apps (if flatpak is available)
     if command -v flatpak >/dev/null 2>&1; then

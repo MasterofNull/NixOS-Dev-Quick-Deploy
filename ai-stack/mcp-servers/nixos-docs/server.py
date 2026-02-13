@@ -184,7 +184,8 @@ def _get_process_memory_bytes() -> int:
         with open("/proc/self/statm", "r", encoding="utf-8") as handle:
             rss_pages = int(handle.read().split()[1])
         return rss_pages * os.sysconf("SC_PAGE_SIZE")
-    except Exception:
+    except (OSError, ValueError, IndexError) as e:
+        logger.debug("Failed to read process memory: %s", e)
         return 0
 
 # Initialize cache
@@ -674,7 +675,8 @@ async def cache_stats(auth: str = Depends(require_auth)):
                 "hits": info.get("keyspace_hits", 0),
                 "misses": info.get("keyspace_misses", 0)
             }
-        except:
+        except Exception as e:
+            logger.warning("Redis stats unavailable: %s", e)
             stats["redis"] = {"connected": False}
 
     return stats
@@ -688,8 +690,8 @@ async def clear_cache():
     if redis_client:
         try:
             redis_client.flushdb()
-        except:
-            pass
+        except Exception as e:
+            logger.warning("Redis cache clear failed: %s", e)
 
     return {"status": "cache cleared"}
 

@@ -66,7 +66,7 @@ def main():
             new_lines.append('| Component | Location | Purpose |\n')
             new_lines.append('|-----------|----------|---------||\n')
             new_lines.append('| **AIDB MCP Server** | `ai-stack/mcp-servers/aidb/` | PostgreSQL + TimescaleDB + Qdrant vector DB + FastAPI MCP server |\n')
-            new_lines.append('| **llama.cpp vLLM** | `ai-stack/compose/` | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |\n')
+            new_lines.append('| **llama.cpp vLLM** | `ai-stack/kubernetes/` | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |\n')
             new_lines.append('| **29 Agent Skills** | `ai-stack/agents/skills/` | nixos-deployment, webapp-testing, code-review, canvas-design, and more |\n')
             new_lines.append('| **MCP Servers** | `ai-stack/mcp-servers/` | Model Context Protocol servers for AIDB, NixOS, GitHub |\n')
             new_lines.append('| **Model Registry** | `ai-stack/models/registry.json` | Model catalog with 6 AI models (metadata, VRAM, speed, quality scores) |\n')

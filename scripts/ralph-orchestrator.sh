@@ -6,8 +6,15 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=config/service-endpoints.sh
+if [[ -f "${SCRIPT_DIR}/config/service-endpoints.sh" ]]; then
+    source "${SCRIPT_DIR}/config/service-endpoints.sh"
+fi
+
 # Configuration
-RALPH_BASE_URL="${RALPH_BASE_URL:-http://localhost:8098}"
+SERVICE_HOST="${SERVICE_HOST:-localhost}"
+RALPH_BASE_URL="${RALPH_BASE_URL:-${RALPH_URL:-http://${SERVICE_HOST}:8098}}"
 TASK_DIR="${TASK_DIR:-./ai-stack/ralph-tasks}"
 LOG_DIR="${LOG_DIR:-$HOME/.local/share/nixos-ai-stack/logs}"
 TELEMETRY_DIR="${TELEMETRY_DIR:-$HOME/.local/share/nixos-ai-stack/telemetry}"
@@ -43,7 +50,7 @@ log_error() {
 check_ralph_health() {
     log_info "Checking Ralph Wiggum health..."
 
-    if ! response=$(curl -s -f "$RALPH_BASE_URL/health"); then
+    if ! response=$(curl -s -f --max-time 10 --connect-timeout 3 "$RALPH_BASE_URL/health"); then
         log_error "Ralph Wiggum is not responding at $RALPH_BASE_URL"
         return 1
     fi
@@ -105,7 +112,7 @@ $(echo "$task_json" | jq -c '.')"
 
     log_info "Submitting to Ralph API..."
 
-    if ! response=$(curl -s -f -X POST "$RALPH_BASE_URL/tasks" \
+    if ! response=$(curl -s -f --max-time 15 --connect-timeout 3 -X POST "$RALPH_BASE_URL/tasks" \
         -H "Content-Type: application/json" \
         -d "$payload"); then
         log_error "Failed to submit task to Ralph"
@@ -134,7 +141,7 @@ monitor_task() {
     log_info "Monitoring task: $task_id"
 
     while true; do
-        if ! response=$(curl -s -f "$RALPH_BASE_URL/tasks/$task_id"); then
+        if ! response=$(curl -s -f --max-time 10 --connect-timeout 3 "$RALPH_BASE_URL/tasks/$task_id"); then
             log_error "Failed to get task status"
             return 1
         fi
@@ -280,7 +287,7 @@ main() {
             echo "  help                - Show this help message"
             echo ""
             echo "Environment Variables:"
-            echo "  RALPH_BASE_URL      - Ralph API URL (default: http://localhost:8098)"
+            echo "  RALPH_BASE_URL      - Ralph API URL (default: http://${SERVICE_HOST}:8098)"
             echo "  TASK_DIR            - Task definitions directory (default: ./ai-stack/ralph-tasks)"
             echo "  LOG_DIR             - Log directory (default: ~/.local/share/nixos-ai-stack/logs)"
             ;;

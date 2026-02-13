@@ -112,7 +112,11 @@ FORCE_UPDATE=false
 # ENABLE_DEBUG defined above in EARLY LOGGING CONFIGURATION
 ROLLBACK=false
 RESET_STATE=false
+FORCE_RESUME=false
 SKIP_HEALTH_CHECK=false
+VALIDATE_STATE=false
+REPAIR_STATE=false
+TEST_ROLLBACK=false
 SHOW_HELP=false
 SHOW_VERSION=false
 QUIET_MODE=false
@@ -126,12 +130,16 @@ AUTO_APPLY_SYSTEM_CONFIGURATION=true
 AUTO_APPLY_HOME_CONFIGURATION=true
 PROMPT_BEFORE_SYSTEM_SWITCH=false
 PROMPT_BEFORE_HOME_SWITCH=false
+AUTO_REGEN_CONFIG_ON_TEMPLATE_CHANGE=true
 FLATPAK_REINSTALL_REQUEST=false
 AUTO_UPDATE_FLAKE_INPUTS=false
+FLAKE_ONLY_MODE=false
 RESTORE_KNOWN_GOOD_FLAKE_LOCK=false
 FORCE_HF_DOWNLOAD=false
 RUN_AI_PREP=false
 RUN_AI_MODEL=true  # Default: Enable AI stack auto-deploy
+SKIP_AI_MODEL=false
+ENABLE_AI_OPTIMIZER_PREP=false
 RUN_K8S_STACK=true
 RUN_K8S_E2E=false
 AI_STACK_POSTGRES_DB="mcp"
@@ -196,6 +204,496 @@ get_phase_description() {
 # Comma-separated dependency map per phase. These relationships ensure downstream
 # steps only run when prerequisite steps have completed and are also referenced
 # by `validate_phase_dependencies`.
+
+# ============================================================================
+# RUNTIME PATH VALIDATION
+# ============================================================================
+validate_runtime_paths() {
+    if [[ -z "${HOME:-}" || ! -d "${HOME}" ]]; then
+        print_error "HOME directory not found or invalid: ${HOME:-<unset>}"
+        return 1
+    fi
+
+    local required_dirs=(
+        "${LOG_DIR}"
+        "${CACHE_DIR}"
+        "${DOTFILES_ROOT:-}"
+        "${AI_STACK_CONFIG_DIR:-}"
+    )
+
+    local path
+    for path in "${required_dirs[@]}"; do
+        [[ -n "$path" ]] || continue
+        if ! mkdir -p "$path" 2>/dev/null; then
+            print_error "Unable to create required directory: $path"
+            return 1
+        fi
+        if [[ ! -w "$path" ]]; then
+            print_error "Required directory is not writable: $path"
+            return 1
+        fi
+    done
+
+    if [[ -n "${TMPDIR:-}" ]]; then
+        if [[ ! -d "${TMPDIR}" || ! -w "${TMPDIR}" ]]; then
+            print_warning "TMPDIR not usable (${TMPDIR}); falling back to /tmp"
+            export TMPDIR="/tmp"
+        fi
+    fi
+
+    if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
+        if [[ ! -d "${XDG_RUNTIME_DIR}" || ! -w "${XDG_RUNTIME_DIR}" ]]; then
+            print_warning "XDG_RUNTIME_DIR not usable (${XDG_RUNTIME_DIR}); unsetting to allow fallback"
+            unset XDG_RUNTIME_DIR
+        fi
+    fi
+
+    local xdg_var
+    for xdg_var in XDG_CACHE_HOME XDG_STATE_HOME XDG_DATA_HOME; do
+        local xdg_value="${!xdg_var:-}"
+        if [[ -n "$xdg_value" ]]; then
+            if ! mkdir -p "$xdg_value" 2>/dev/null || [[ ! -w "$xdg_value" ]]; then
+                print_warning "${xdg_var} not usable (${xdg_value}); unsetting to allow fallback"
+                unset "$xdg_var"
+            fi
+        fi
+    done
+
+    return 0
+}
+
+# ============================================================================
+# INTER-PHASE HEALTH CHECKS
+# ============================================================================
+HEALTH_CHECK_STATUS=""
+HEALTH_CHECK_MESSAGE=""
+
+reset_health_check_status() {
+    HEALTH_CHECK_STATUS=""
+    HEALTH_CHECK_MESSAGE=""
+}
+
+health_check_phase_1() {
+    reset_health_check_status
+    local issues=0
+    local warnings=0
+
+    # Swap verification (warn if missing)
+    if declare -F calculate_active_swap_total_gb >/dev/null 2>&1; then
+        local swap_total
+        swap_total=$(calculate_active_swap_total_gb 2>/dev/null || echo 0)
+        if [[ "$swap_total" =~ ^[0-9]+$ ]] && (( swap_total > 0 )); then
+            print_success "Health check: swap detected (${swap_total}GiB)"
+        else
+            print_warning "Health check: no active swap detected"
+            warnings=$((warnings + 1))
+        fi
+    fi
+
+    # Prerequisite commands
+    local cmd
+    for cmd in jq git systemctl; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            print_error "Health check: missing required command $cmd"
+            issues=$((issues + 1))
+        fi
+    done
+
+    if (( issues > 0 )); then
+        HEALTH_CHECK_STATUS="fail"
+        HEALTH_CHECK_MESSAGE="Missing critical prerequisites"
+        return 1
+    fi
+
+    if (( warnings > 0 )); then
+        HEALTH_CHECK_STATUS="warn"
+        HEALTH_CHECK_MESSAGE="Swap not detected"
+    else
+        HEALTH_CHECK_STATUS="pass"
+        HEALTH_CHECK_MESSAGE="Swap + prerequisites ok"
+    fi
+
+    return 0
+}
+
+health_check_phase_3() {
+    reset_health_check_status
+    local issues=0
+
+    local required_files=(
+        "${SYSTEM_CONFIG_FILE:-}"
+        "${HOME_MANAGER_FILE:-}"
+        "${FLAKE_FILE:-}"
+        "${HARDWARE_CONFIG_FILE:-}"
+    )
+
+    local path
+    for path in "${required_files[@]}"; do
+        if [[ -z "$path" || ! -s "$path" ]]; then
+            print_error "Health check: missing generated config file: $path"
+            issues=$((issues + 1))
+        fi
+    done
+
+    if (( issues > 0 )); then
+        HEALTH_CHECK_STATUS="fail"
+        HEALTH_CHECK_MESSAGE="Generated configs missing"
+        return 1
+    fi
+
+    HEALTH_CHECK_STATUS="pass"
+    HEALTH_CHECK_MESSAGE="Generated configs present"
+    return 0
+}
+
+health_check_phase_5() {
+    reset_health_check_status
+    local issues=0
+    local warnings=0
+
+    if [[ "$AUTO_APPLY_SYSTEM_CONFIGURATION" == true ]]; then
+        if [[ ! -e /run/current-system ]]; then
+            print_error "Health check: /run/current-system missing after switch"
+            issues=$((issues + 1))
+        fi
+    fi
+
+    if [[ "$AUTO_APPLY_HOME_CONFIGURATION" == true ]]; then
+        local hm_profile="/nix/var/nix/profiles/per-user/${USER}/home-manager"
+        local hm_profile_user="$HOME/.local/state/nix/profiles/home-manager"
+        if [[ ! -e "$hm_profile" && ! -e "$hm_profile_user" ]]; then
+            print_warning "Health check: home-manager profile not found at $hm_profile or $hm_profile_user"
+            warnings=$((warnings + 1))
+        fi
+    fi
+
+    if (( issues > 0 )); then
+        HEALTH_CHECK_STATUS="fail"
+        HEALTH_CHECK_MESSAGE="System switch validation failed"
+        return 1
+    fi
+
+    if (( warnings > 0 )); then
+        HEALTH_CHECK_STATUS="warn"
+        HEALTH_CHECK_MESSAGE="Home-manager profile missing"
+    else
+        HEALTH_CHECK_STATUS="pass"
+        HEALTH_CHECK_MESSAGE="System + home-manager OK"
+    fi
+
+    return 0
+}
+
+health_check_phase_9() {
+    reset_health_check_status
+    local issues=0
+    local warnings=0
+    local kubectl_timeout="${KUBECTL_TIMEOUT:-20}"
+    local namespace="${AI_STACK_NAMESPACE:-ai-stack}"
+
+    if [[ -z "${KUBECONFIG:-}" && -f /etc/rancher/k3s/k3s.yaml ]]; then
+        export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+    fi
+
+    if ! command -v kubectl >/dev/null 2>&1; then
+        print_error "Health check: kubectl not found"
+        issues=$((issues + 1))
+    else
+        if ! kubectl --request-timeout="${kubectl_timeout}s" get nodes >/dev/null 2>&1; then
+            print_error "Health check: kubectl cannot reach cluster"
+            issues=$((issues + 1))
+        fi
+
+        local pods
+        pods=$(kubectl --request-timeout="${kubectl_timeout}s" get pods -n "$namespace" --no-headers 2>/dev/null || true)
+        if [[ -z "$pods" ]]; then
+            print_warning "Health check: no ${namespace} pods reported"
+            warnings=$((warnings + 1))
+        else
+            local running_count
+            running_count=$(echo "$pods" | awk '$3 == "Running" || $3 == "Completed" {count++} END {print count+0}')
+            if (( running_count == 0 )); then
+                print_warning "Health check: ${namespace} pods not running yet"
+                warnings=$((warnings + 1))
+            fi
+        fi
+
+        if [[ "${AUTO_REPAIR_IMAGE_PULLS:-true}" == "true" ]]; then
+            if auto_repair_k8s_image_pulls "$namespace"; then
+                print_success "Health check: image pull failures auto-remediated"
+            else
+                print_warning "Health check: image pull auto-remediation not applied or failed"
+            fi
+        fi
+    fi
+
+    if (( issues > 0 )); then
+        HEALTH_CHECK_STATUS="fail"
+        HEALTH_CHECK_MESSAGE="Kubernetes cluster unavailable"
+        return 1
+    fi
+
+    if (( warnings > 0 )); then
+        HEALTH_CHECK_STATUS="warn"
+        HEALTH_CHECK_MESSAGE="AI stack pods not fully running"
+    else
+        HEALTH_CHECK_STATUS="pass"
+        HEALTH_CHECK_MESSAGE="Kubernetes cluster + AI stack OK"
+    fi
+
+    return 0
+}
+
+detect_k8s_image_pull_failures() {
+    local namespace="$1"
+    local kubectl_timeout="${KUBECTL_TIMEOUT:-20}"
+    local failures=""
+    local data
+    data=$(kubectl --request-timeout="${kubectl_timeout}s" get pods -n "$namespace" -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.state.waiting.reason}{"|"}{.image}{"\n"}{end}{range .status.initContainerStatuses[*]}{.state.waiting.reason}{"|"}{.image}{"\n"}{end}{end}' 2>/dev/null || true)
+    if [[ -z "$data" ]]; then
+        echo ""
+        return 0
+    fi
+    while IFS='|' read -r reason image; do
+        [[ -z "$reason" || -z "$image" ]] && continue
+        if [[ "$reason" == "ImagePullBackOff" || "$reason" == "ErrImagePull" ]]; then
+            failures+="${image} "
+        fi
+    done <<< "$data"
+    echo "${failures%% }"
+}
+
+map_image_to_build_dir() {
+    case "$1" in
+        ai-stack-aidb) echo "aidb" ;;
+        ai-stack-embeddings) echo "embeddings-service" ;;
+        ai-stack-hybrid-coordinator) echo "hybrid-coordinator" ;;
+        ai-stack-ralph-wiggum) echo "ralph-wiggum" ;;
+        ai-stack-container-engine) echo "container-engine" ;;
+        ai-stack-aider-wrapper) echo "aider-wrapper" ;;
+        ai-stack-nixos-docs) echo "nixos-docs" ;;
+        ai-stack-dashboard-api) echo "dashboard-api" ;;
+        ai-stack-health-monitor) echo "health-monitor" ;;
+        *) echo "" ;;
+    esac
+}
+
+map_image_to_deployment() {
+    case "$1" in
+        ai-stack-embeddings) echo "embeddings" ;;
+        ai-stack-dashboard-api) echo "dashboard-api" ;;
+        ai-stack-health-monitor) echo "health-monitor" ;;
+        ai-stack-container-engine) echo "container-engine" ;;
+        ai-stack-aider-wrapper) echo "aider-wrapper" ;;
+        ai-stack-nixos-docs) echo "nixos-docs" ;;
+        ai-stack-hybrid-coordinator) echo "hybrid-coordinator" ;;
+        ai-stack-ralph-wiggum) echo "ralph-wiggum" ;;
+        ai-stack-aidb) echo "aidb" ;;
+        *) echo "" ;;
+    esac
+}
+
+auto_repair_k8s_image_pulls() {
+    local namespace="$1"
+    local failures
+    local kubectl_timeout="${KUBECTL_TIMEOUT:-20}"
+    local rollout_timeout="${AI_STACK_ROLLOUT_TIMEOUT:-180}"
+    local build_script="${SCRIPT_DIR}/scripts/build-k3s-images.sh"
+    local publish_script="${SCRIPT_DIR}/scripts/publish-local-registry.sh"
+
+    failures=$(detect_k8s_image_pull_failures "$namespace")
+    if [[ -z "$failures" ]]; then
+        return 0
+    fi
+
+    if [[ ! -x "$build_script" || ! -x "$publish_script" ]]; then
+        print_warning "Auto-repair: build/publish scripts not available"
+        return 1
+    fi
+
+    if ! command -v buildah >/dev/null 2>&1; then
+        print_warning "Auto-repair: buildah not available"
+        return 1
+    fi
+
+    if ! command -v skopeo >/dev/null 2>&1; then
+        print_warning "Auto-repair: skopeo not available"
+        return 1
+    fi
+
+    declare -A build_dirs=()
+    declare -A restart_deploys=()
+    declare -A publish_by_tag=()
+
+    for image in $failures; do
+        local image_ref="${image##*/}"
+        local base="${image_ref%%:*}"
+        local tag="${image_ref#*:}"
+        if [[ "$tag" == "$base" ]]; then
+            tag="latest"
+        fi
+        local build_dir
+        build_dir=$(map_image_to_build_dir "$base")
+        if [[ -n "$build_dir" ]]; then
+            build_dirs["$build_dir"]=1
+            if [[ -z "${publish_by_tag[$tag]:-}" ]]; then
+                publish_by_tag["$tag"]="$base"
+            elif [[ " ${publish_by_tag[$tag]} " != *" ${base} "* ]]; then
+                publish_by_tag["$tag"]+=",${base}"
+            fi
+            local deploy
+            deploy=$(map_image_to_deployment "$base")
+            [[ -n "$deploy" ]] && restart_deploys["$deploy"]=1
+        else
+            print_warning "Auto-repair: unrecognized image ${base}, skipping"
+        fi
+    done
+
+    if (( ${#build_dirs[@]} == 0 )); then
+        print_warning "Auto-repair: no buildable images detected"
+        return 1
+    fi
+
+    local build_list
+    build_list=$(IFS=,; echo "${!build_dirs[*]}")
+
+    print_info "Auto-repair: building images (${build_list})"
+    if ! BUILD_TOOL=buildah SKIP_K3S_IMPORT=true ONLY_IMAGES="$build_list" "$build_script"; then
+        print_warning "Auto-repair: build failed"
+        return 1
+    fi
+
+    for tag in "${!publish_by_tag[@]}"; do
+        local publish_list="${publish_by_tag[$tag]}"
+        print_info "Auto-repair: publishing images (${publish_list}) with tag ${tag}"
+        if ! CONTAINER_CLI=skopeo ONLY_IMAGES="$publish_list" TAG="$tag" "$publish_script"; then
+            print_warning "Auto-repair: publish failed"
+            return 1
+        fi
+    done
+
+    if (( ${#restart_deploys[@]} > 0 )); then
+        local restart_list
+        local -a restart_args=()
+        local -a failed_deploys=()
+        local retry_on_failure="${AUTO_REPAIR_IMAGE_PULLS_RETRY:-true}"
+        restart_list=$(IFS=' '; echo "${!restart_deploys[*]}")
+        for deploy in "${!restart_deploys[@]}"; do
+            restart_args+=("deployment/${deploy}")
+        done
+        print_info "Auto-repair: restarting deployments (${restart_list})"
+        kubectl --request-timeout="${kubectl_timeout}s" rollout restart -n "$namespace" "${restart_args[@]}" >/dev/null 2>&1 || true
+
+        local rollout_failed=0
+        for deploy in "${!restart_deploys[@]}"; do
+            if ! kubectl --request-timeout="${kubectl_timeout}s" rollout status -n "$namespace" "deployment/${deploy}" --timeout="${rollout_timeout}s" >/dev/null 2>&1; then
+                rollout_failed=1
+                failed_deploys+=("$deploy")
+                print_warning "Auto-repair: rollout failed for ${deploy}"
+            fi
+        done
+        if (( rollout_failed > 0 )) && [[ "$retry_on_failure" == "true" ]]; then
+            print_warning "Auto-repair: retrying rollout once for failed deployments."
+            sleep 5
+            rollout_failed=0
+            for deploy in "${failed_deploys[@]}"; do
+                kubectl --request-timeout="${kubectl_timeout}s" rollout restart -n "$namespace" "deployment/${deploy}" >/dev/null 2>&1 || true
+                if ! kubectl --request-timeout="${kubectl_timeout}s" rollout status -n "$namespace" "deployment/${deploy}" --timeout="${rollout_timeout}s" >/dev/null 2>&1; then
+                    rollout_failed=1
+                    print_warning "Auto-repair: rollout retry failed for ${deploy}"
+                fi
+            done
+        fi
+        if (( rollout_failed > 0 )); then
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
+run_inter_phase_health_check() {
+    local phase_num="$1"
+
+    if [[ "$SKIP_HEALTH_CHECK" == true ]]; then
+        print_info "Skipping inter-phase health checks (--skip-health-check)"
+        if declare -F record_health_check >/dev/null 2>&1; then
+            record_health_check "$phase_num" "skipped" "Skipped via --skip-health-check"
+        fi
+        return 0
+    fi
+
+    case "$phase_num" in
+        1) health_check_phase_1 ;;
+        3) health_check_phase_3 ;;
+        5) health_check_phase_5 ;;
+        9) health_check_phase_9 ;;
+        *) return 0 ;;
+    esac
+
+    local exit_code=$?
+    local status="${HEALTH_CHECK_STATUS:-unknown}"
+    local message="${HEALTH_CHECK_MESSAGE:-}"
+
+    if declare -F record_health_check >/dev/null 2>&1; then
+        record_health_check "$phase_num" "$status" "$message"
+    fi
+
+    if [[ "$exit_code" -ne 0 ]]; then
+        print_error "Phase ${phase_num} health check failed: ${message}"
+        return "$exit_code"
+    fi
+
+    if [[ "$status" == "warn" ]]; then
+        print_warning "Phase ${phase_num} health check warning: ${message}"
+    else
+        print_success "Phase ${phase_num} health check passed"
+    fi
+
+    return 0
+}
+
+print_inter_phase_health_summary() {
+    if [[ ! -f "${STATE_FILE:-}" ]]; then
+        return 0
+    fi
+
+    print_section "Inter-Phase Health Summary"
+
+    if command -v jq >/dev/null 2>&1; then
+        local summary
+        summary=$(jq -r '.health_checks // [] | if length == 0 then "" else .[] | "\(.phase)\t\(.status)\t\(.checked_at)\t\(.message)" end' "$STATE_FILE" 2>/dev/null || true)
+        if [[ -z "$summary" ]]; then
+            print_info "No inter-phase health checks recorded."
+            return 0
+        fi
+        while IFS=$'\t' read -r phase status checked_at message; do
+            printf "  • Phase %s: %s (%s) %s\n" "$phase" "$status" "$checked_at" "$message"
+        done <<< "$summary"
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 - "$STATE_FILE" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+
+checks = data.get("health_checks", [])
+if not checks:
+    print("  • No inter-phase health checks recorded.")
+    sys.exit(0)
+
+for entry in checks:
+    phase = entry.get("phase", "?")
+    status = entry.get("status", "?")
+    checked_at = entry.get("checked_at", "unknown")
+    message = entry.get("message", "")
+    print(f"  • Phase {phase}: {status} ({checked_at}) {message}")
+PY
+    else
+        print_info "No JSON parser available to render health summary."
+    fi
+}
 get_phase_dependencies() {
     case $1 in
         1) echo "" ;;
@@ -211,6 +709,86 @@ get_phase_dependencies() {
     esac
 }
 
+# Treat a phase dependency as satisfied if either the phase marker or its
+# phase-specific completion marker exists. This also backfills missing
+# phase markers when the phase outputs are already present (e.g., phases
+# run directly without the main orchestrator).
+phase_dependency_satisfied() {
+    local phase_num="$1"
+    local phase_step
+    phase_step="phase-$(printf '%02d' "$phase_num")"
+
+    if is_step_complete "$phase_step"; then
+        return 0
+    fi
+
+    local fallback_step=""
+    case "$phase_num" in
+        1) fallback_step="system_initialization" ;;
+        2) fallback_step="comprehensive_backup" ;;
+        3) fallback_step="generate_validate_configs" ;;
+        4) fallback_step="pre_deployment_validation" ;;
+        5) fallback_step="deploy_configurations" ;;
+        6) fallback_step="install_tools_services" ;;
+        7) fallback_step="post_install_validation" ;;
+        8) fallback_step="finalization_and_report" ;;
+    esac
+
+    if [[ -n "$fallback_step" ]] && is_step_complete "$fallback_step"; then
+        print_warning "State backfill: marking ${phase_step} complete based on ${fallback_step}."
+        mark_step_complete "$phase_step"
+        return 0
+    fi
+
+    if [[ "$phase_num" == "3" ]]; then
+        local hm_dir="${HM_CONFIG_DIR:-$HOME/.dotfiles/home-manager}"
+        if [[ -f "$hm_dir/flake.nix" && -f "$hm_dir/home.nix" && -f "$hm_dir/configuration.nix" ]]; then
+            print_warning "State backfill: marking ${phase_step} complete based on generated configs."
+            mark_step_complete "$phase_step"
+            return 0
+        fi
+    fi
+
+    if [[ "$phase_num" == "1" ]]; then
+        local pref_dir="${DEPLOYMENT_PREFERENCES_DIR:-$HOME/.cache/nixos-quick-deploy/preferences}"
+        if [[ -d "$pref_dir" ]] && find "$pref_dir" -maxdepth 1 -type f -print -quit 2>/dev/null | grep -q .; then
+            print_warning "State backfill: marking ${phase_step} complete based on cached preferences."
+            mark_step_complete "$phase_step"
+            return 0
+        fi
+    fi
+
+    if [[ "$phase_num" == "2" ]]; then
+        local backups_dir="${STATE_DIR:-$HOME/.cache/nixos-quick-deploy}/backups"
+        if [[ -d "$backups_dir" ]] && find "$backups_dir" -type f -name "manifest.txt" -print -quit 2>/dev/null | grep -q .; then
+            print_warning "State backfill: marking ${phase_step} complete based on backup manifest."
+            mark_step_complete "$phase_step"
+            return 0
+        fi
+    fi
+
+    if [[ "$phase_num" == "4" ]]; then
+        local hm_dir="${HM_CONFIG_DIR:-$HOME/.dotfiles/home-manager}"
+        local sys_config="${SYSTEM_CONFIG_FILE:-$hm_dir/configuration.nix}"
+        if [[ -f "$hm_dir/flake.nix" && -f "$hm_dir/home.nix" && -f "$sys_config" ]]; then
+            print_warning "State backfill: marking ${phase_step} complete based on generated configs."
+            mark_step_complete "$phase_step"
+            return 0
+        fi
+    fi
+
+    if [[ "$phase_num" == "5" ]]; then
+        local hm_link_dir="$HOME/.config/home-manager"
+        if [[ -f "$hm_link_dir/flake.nix" && -f "$hm_link_dir/home.nix" ]]; then
+            print_warning "State backfill: marking ${phase_step} complete based on home-manager links."
+            mark_step_complete "$phase_step"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
 # ============================================================================
 # LIBRARY LOADING
 # ============================================================================
@@ -220,7 +798,9 @@ get_phase_dependencies() {
 # consumed later in the bootstrap.
 load_libraries() {
     local libs=(
+        "error-codes.sh"
         "colors.sh"
+        "logging-structured.sh"
         "logging.sh"
         "error-handling.sh"
         "state-management.sh"
@@ -238,6 +818,9 @@ load_libraries() {
         "user.sh"
         "config.sh"
         "flatpak.sh"
+        "timeout.sh"
+        "retry-backoff.sh"
+        "validation-input.sh"
         "tools.sh"
         "service-conflict-resolution.sh"
         "finalization.sh"
@@ -276,6 +859,7 @@ load_libraries() {
 # this stage strict mode is still relaxed so missing vars won't explode.
 load_configuration() {
     local configs=(
+        "settings.sh"
         "variables.sh"
         "defaults.sh"
     )
@@ -349,15 +933,21 @@ BASIC OPTIONS:
         --rollback              Rollback to previous state
         --reset-state           Clear state for fresh start
         --skip-health-check     Skip health check validation
+        --validate-state        Fail if resume state does not match expected outputs
+        --force-resume          Skip state version validation on resume
+        --repair-state          Clear mismatched phase entries from state before resume
+        --test-rollback         Perform a rollback + restore validation after deployment
         --enable-zswap          Force-enable zswap-backed hibernation setup (persists)
         --disable-zswap         Force-disable zswap-backed hibernation setup (persists)
         --zswap-auto            Return to automatic zswap detection (clears override)
         --skip-switch           Skip automatic nixos/home-manager switch steps
         --skip-system-switch    Skip automatic nixos-rebuild switch
         --skip-home-switch      Skip automatic home-manager switch
+        --prefix PATH           Override dotfiles root (default: ~/.dotfiles)
         --flatpak-reinstall     Force reinstall of managed Flatpaks (resets Flatpak state pre-switch)
         --force-hf-download     Force re-download of Hugging Face TGI models before the switch
         --update-flake-inputs   Run 'nix flake update' before activation (opt-in)
+        --flake-only            Skip nix-channel updates (flake handles package resolution)
         --restore-flake-lock    Re-seed flake.lock from the bundled baseline
         --with-ai-prep          Run the optional AI-Optimizer preparation phase after Phase 8
         --with-ai-model         Force enable Hybrid Learning Stack deployment (default: disabled)
@@ -483,6 +1073,22 @@ parse_arguments() {
                 SKIP_HEALTH_CHECK=true
                 shift
                 ;;
+            --validate-state)
+                VALIDATE_STATE=true
+                shift
+                ;;
+            --force-resume)
+                FORCE_RESUME=true
+                shift
+                ;;
+            --repair-state)
+                REPAIR_STATE=true
+                shift
+                ;;
+            --test-rollback)
+                TEST_ROLLBACK=true
+                shift
+                ;;
             --skip-switch)
                 AUTO_APPLY_SYSTEM_CONFIGURATION=false
                 AUTO_APPLY_HOME_CONFIGURATION=false
@@ -495,6 +1101,15 @@ parse_arguments() {
             --skip-home-switch)
                 AUTO_APPLY_HOME_CONFIGURATION=false
                 shift
+                ;;
+            --prefix)
+                if [[ -z "${2:-}" ]] || [[ "$2" =~ ^- ]]; then
+                    echo "ERROR: --prefix requires a path" >&2
+                    exit 1
+                fi
+                DOTFILES_ROOT_OVERRIDE="$2"
+                export DOTFILES_ROOT_OVERRIDE
+                shift 2
                 ;;
             --prompt-switch)
                 PROMPT_BEFORE_SYSTEM_SWITCH=true
@@ -588,6 +1203,10 @@ parse_arguments() {
                 ;;
             --update-flake-inputs)
                 AUTO_UPDATE_FLAKE_INPUTS=true
+                shift
+                ;;
+            --flake-only)
+                FLAKE_ONLY_MODE=true
                 shift
                 ;;
             --restore-flake-lock)
@@ -782,12 +1401,94 @@ get_resume_phase() {
     echo "1"
 }
 
+# ============================================================================
+# CONFIG TEMPLATE DIGEST (AUTO REGEN)
+# ============================================================================
+compute_config_templates_digest() {
+    if ! command -v python3 >/dev/null 2>&1; then
+        return 1
+    fi
+    python3 - "$SCRIPT_DIR" <<'PY'
+import hashlib
+import os
+import sys
+
+root = sys.argv[1]
+targets = [
+    os.path.join(root, "templates"),
+    os.path.join(root, "config"),
+    os.path.join(root, "lib", "config.sh"),
+]
+files = []
+for target in targets:
+    if os.path.isdir(target):
+        for dirpath, _, filenames in os.walk(target):
+            for name in filenames:
+                files.append(os.path.join(dirpath, name))
+    elif os.path.isfile(target):
+        files.append(target)
+
+files = sorted(set(files))
+digest = hashlib.sha256()
+for path in files:
+    digest.update(path.encode("utf-8"))
+    with open(path, "rb") as handle:
+        digest.update(handle.read())
+print(digest.hexdigest())
+PY
+}
+
+maybe_reset_config_phases_on_template_change() {
+    if [[ "$AUTO_REGEN_CONFIG_ON_TEMPLATE_CHANGE" != "true" ]]; then
+        return 0
+    fi
+
+    local current_digest
+    current_digest=$(compute_config_templates_digest 2>/dev/null || true)
+    if [[ -z "$current_digest" ]]; then
+        log WARNING "Unable to compute template digest; skipping auto-regeneration."
+        return 0
+    fi
+
+    local stored_digest=""
+    if declare -F state_get_metadata >/dev/null 2>&1; then
+        stored_digest=$(state_get_metadata "config_templates_digest" 2>/dev/null || true)
+    fi
+
+    if [[ -n "$stored_digest" && "$stored_digest" == "$current_digest" ]]; then
+        return 0
+    fi
+
+    if [[ -n "$stored_digest" ]]; then
+        print_warning "Template changes detected; re-running phases 3+."
+    else
+        print_info "No template digest recorded; ensuring phases 3+ run."
+    fi
+
+    if declare -F state_remove_phase_steps_from >/dev/null 2>&1; then
+        state_remove_phase_steps_from 3 || true
+    fi
+    if declare -F state_remove_steps >/dev/null 2>&1; then
+        state_remove_steps \
+            generate_validate_configs \
+            pre_deployment_validation \
+            deploy_configurations \
+            install_tools_services \
+            post_install_validation \
+            finalization_and_report || true
+    fi
+}
+
 # Cross-check the prerequisite list for a phase. Ensures the JSON state file
 # (managed via lib/state-management.sh) records completion entries for each
 # dependency before execution proceeds.
 validate_phase_dependencies() {
     local phase_num="$1"
     local deps=$(get_phase_dependencies "$phase_num")
+
+    if [[ -n "${TEST_PHASE:-}" && "$phase_num" == "$TEST_PHASE" ]]; then
+        return 0
+    fi
 
     if [[ -z "$deps" ]]; then
         return 0
@@ -801,14 +1502,232 @@ validate_phase_dependencies() {
     local missing_deps=()
     IFS=',' read -ra DEP_ARRAY <<< "$deps"
     for dep in "${DEP_ARRAY[@]}"; do
-        if ! jq -e --arg step "phase-$(printf '%02d' $dep)" '.completed_steps[] | select(.step == $step)' "$STATE_FILE" &>/dev/null; then
-            missing_deps+=("$dep")
+        if declare -F phase_dependency_satisfied >/dev/null 2>&1; then
+            if ! phase_dependency_satisfied "$dep"; then
+                missing_deps+=("$dep")
+            fi
+        else
+            local step_id="phase-$(printf '%02d' "$dep")"
+            if declare -F is_step_complete >/dev/null 2>&1; then
+                if ! is_step_complete "$step_id"; then
+                    missing_deps+=("$dep")
+                fi
+            else
+                if ! jq -e --arg step "$step_id" '.completed_steps[] | select(.step == $step)' "$STATE_FILE" &>/dev/null; then
+                    missing_deps+=("$dep")
+                fi
+            fi
         fi
     done
 
     if [[ ${#missing_deps[@]} -gt 0 ]]; then
         log ERROR "Phase $phase_num has missing dependencies: ${missing_deps[*]}"
         print_error "Cannot execute phase $phase_num: missing dependencies ${missing_deps[*]}"
+        if [[ "${DRY_RUN:-false}" == true ]]; then
+            print_warning "DRY RUN: Ignoring missing dependencies for phase $phase_num"
+            return 0
+        fi
+        return 1
+    fi
+
+    return 0
+}
+
+state_completed_steps_count() {
+    if [[ ! -f "$STATE_FILE" ]]; then
+        echo "0"
+        return 0
+    fi
+    if command -v jq >/dev/null 2>&1; then
+        jq -r '.completed_steps | length' "$STATE_FILE" 2>/dev/null || echo "0"
+        return 0
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "$STATE_FILE" <<'PY' 2>/dev/null || echo "0"
+import json
+import sys
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+print(len(data.get("completed_steps", [])))
+PY
+        return 0
+    fi
+    echo "0"
+}
+
+state_last_completed_at() {
+    if [[ ! -f "$STATE_FILE" ]]; then
+        return 1
+    fi
+    if command -v jq >/dev/null 2>&1; then
+        jq -r '.completed_steps | sort_by(.completed_at) | last(.[]?) | .completed_at // empty' "$STATE_FILE" 2>/dev/null
+        return 0
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "$STATE_FILE" <<'PY' 2>/dev/null || true
+import json
+import sys
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+steps = data.get("completed_steps", [])
+steps = [s for s in steps if isinstance(s, dict) and s.get("completed_at")]
+if not steps:
+    sys.exit(0)
+steps.sort(key=lambda s: s.get("completed_at"))
+print(steps[-1].get("completed_at", ""))
+PY
+        return 0
+    fi
+    return 1
+}
+
+state_remove_phase_steps_from() {
+    local min_phase="$1"
+    if [[ -z "$min_phase" ]]; then
+        return 1
+    fi
+    if [[ ! -f "$STATE_FILE" ]]; then
+        return 1
+    fi
+    if command -v jq >/dev/null 2>&1; then
+        if jq --argjson min "$min_phase" '
+            .completed_steps |= map(
+                if (.step | type == "string") and (.step | test("^phase-[0-9]{2}$")) then
+                    ( (.step | split("-")[1] | tonumber) < $min )
+                else
+                    true
+                end
+            )
+        ' "$STATE_FILE" > "${STATE_FILE}.tmp" 2>/dev/null && mv "${STATE_FILE}.tmp" "$STATE_FILE" 2>/dev/null; then
+            return 0
+        fi
+        rm -f "${STATE_FILE}.tmp" 2>/dev/null || true
+        return 1
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        if python3 - "$STATE_FILE" "$min_phase" <<'PY' 2>/dev/null; then
+import json
+import re
+import sys
+
+path = sys.argv[1]
+min_phase = int(sys.argv[2])
+with open(path, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+steps = data.get("completed_steps", [])
+filtered = []
+for item in steps:
+    step = item.get("step") if isinstance(item, dict) else None
+    if isinstance(step, str) and re.match(r"^phase-[0-9]{2}$", step):
+        phase_num = int(step.split("-")[1])
+        if phase_num >= min_phase:
+            continue
+    filtered.append(item)
+data["completed_steps"] = filtered
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(data, handle, indent=2)
+PY
+            return 0
+        fi
+        return 1
+    fi
+    return 1
+}
+
+validate_resume_state() {
+    local strict="${1:-false}"
+    local errors=0
+    local min_reset_phase=0
+
+    if [[ ! -f "$STATE_FILE" ]]; then
+        print_info "State file not found; resume will start from phase 1."
+        return 0
+    fi
+
+    if [[ "$FORCE_RESUME" == "true" ]]; then
+        print_warning "FORCE_RESUME enabled; skipping state version validation."
+    elif declare -F validate_state_version >/dev/null 2>&1; then
+        if [[ "$strict" == "true" ]]; then
+            if ! validate_state_version enforce; then
+                print_error "State version mismatch; use --reset-state or rerun without --validate-state."
+                return 1
+            fi
+        else
+            validate_state_version check || true
+        fi
+    fi
+
+    if ! command -v jq >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+        print_warning "State validation limited: jq/python3 unavailable."
+        return 0
+    fi
+
+    local completed_count
+    completed_count=$(state_completed_steps_count)
+    if [[ "$completed_count" == "0" ]]; then
+        print_info "State file has no completed steps; resume will start from phase 1."
+        return 0
+    fi
+
+    local last_completed
+    last_completed=$(state_last_completed_at || true)
+    if [[ -n "$last_completed" ]]; then
+        local last_epoch now_epoch
+        last_epoch=$(date -d "$last_completed" +%s 2>/dev/null || echo "")
+        now_epoch=$(date +%s 2>/dev/null || echo "")
+        if [[ -n "$last_epoch" && -n "$now_epoch" ]]; then
+            local age_sec=$((now_epoch - last_epoch))
+            if (( age_sec > 86400 )); then
+                print_warning "State file last updated more than 24h ago (${last_completed}); validate before resume."
+            fi
+        fi
+    fi
+
+    if is_step_complete "phase-03"; then
+        local missing=()
+        local hm_dir="${HM_CONFIG_DIR:-}"
+        if [[ -z "$hm_dir" || ! -d "$hm_dir" ]]; then
+            missing+=("HM_CONFIG_DIR")
+        else
+            [[ -f "$hm_dir/flake.nix" ]] || missing+=("flake.nix")
+            [[ -f "$hm_dir/home.nix" ]] || missing+=("home.nix")
+            [[ -f "$hm_dir/configuration.nix" ]] || missing+=("configuration.nix")
+            [[ -f "$hm_dir/hardware-configuration.nix" ]] || missing+=("hardware-configuration.nix")
+        fi
+        if (( ${#missing[@]} > 0 )); then
+            print_warning "State mismatch: phase 03 completed but config outputs missing (${missing[*]})."
+            errors=$((errors + 1))
+            min_reset_phase=3
+        fi
+    fi
+
+    if is_step_complete "phase-05"; then
+        local hm_link_dir="$HOME/.config/home-manager"
+        if [[ ! -f "$hm_link_dir/flake.nix" || ! -f "$hm_link_dir/home.nix" ]]; then
+            print_warning "State mismatch: phase 05 completed but home-manager links are missing under $hm_link_dir."
+            errors=$((errors + 1))
+            if (( min_reset_phase == 0 || min_reset_phase > 5 )); then
+                min_reset_phase=5
+            fi
+        fi
+    fi
+
+    if (( errors > 0 )) && [[ "$REPAIR_STATE" == "true" && "$min_reset_phase" -gt 0 ]]; then
+        print_warning "Repairing state: clearing completed phase entries from phase ${min_reset_phase} onward."
+        if state_remove_phase_steps_from "$min_reset_phase"; then
+            print_info "State repair complete. Resume will restart from phase ${min_reset_phase}."
+        else
+            print_error "State repair failed; unable to update ${STATE_FILE}."
+            if [[ "$strict" == "true" ]]; then
+                return 1
+            fi
+        fi
+    fi
+
+    if (( errors > 0 )) && [[ "$strict" == "true" ]]; then
+        print_error "State validation failed (${errors} issue(s)). Run with --reset-state or repair state before resuming."
         return 1
     fi
 
@@ -822,15 +1741,20 @@ execute_phase() {
     local phase_name=$(get_phase_name "$phase_num")
     local phase_script="$PHASES_DIR/phase-$(printf '%02d' $phase_num)-$phase_name.sh"
     local phase_step="phase-$(printf '%02d' $phase_num)"
+    local previous_log_component="${LOG_COMPONENT:-}"
 
     CURRENT_PHASE_NUM="$phase_num"
     CURRENT_PHASE_NAME="$phase_name"
     export CURRENT_PHASE_NUM CURRENT_PHASE_NAME
+    LOG_COMPONENT="phase-${phase_num}-${phase_name}"
+    export LOG_COMPONENT
 
     # Check if phase script exists
     if [[ ! -f "$phase_script" ]]; then
         log ERROR "Phase script not found: $phase_script"
         print_error "Phase $phase_num script not found"
+        LOG_COMPONENT="$previous_log_component"
+        export LOG_COMPONENT
         return 1
     fi
 
@@ -838,11 +1762,15 @@ execute_phase() {
     if [[ -z "$RESTART_PHASE" ]] && is_step_complete "$phase_step"; then
         log INFO "Phase $phase_num already completed (skipping)"
         print_info "Phase $phase_num: $phase_name [ALREADY COMPLETED]"
+        LOG_COMPONENT="$previous_log_component"
+        export LOG_COMPONENT
         return 0
     fi
 
     # Validate dependencies
     if ! validate_phase_dependencies "$phase_num"; then
+        LOG_COMPONENT="$previous_log_component"
+        export LOG_COMPONENT
         return 1
     fi
 
@@ -875,6 +1803,8 @@ execute_phase() {
         if declare -F dry_run_phase_validation >/dev/null 2>&1; then
             dry_run_phase_validation "$phase_num" "$phase_name" "$phase_script" || true
         fi
+        LOG_COMPONENT="$previous_log_component"
+        export LOG_COMPONENT
         return 0
     fi
 
@@ -886,7 +1816,15 @@ execute_phase() {
         local phase_end_time
         phase_end_time=$(date +%s)
         local phase_duration=$((phase_end_time - phase_start_time))
-        
+
+        if ! run_inter_phase_health_check "$phase_num"; then
+            log ERROR "Phase $phase_num failed health check"
+            print_error "Phase $phase_num health check failed"
+            LOG_COMPONENT="$previous_log_component"
+            export LOG_COMPONENT
+            return 1
+        fi
+
         # Track phase completion
         if declare -F track_phase_complete >/dev/null 2>&1; then
             track_phase_complete "$phase_num"
@@ -900,6 +1838,8 @@ execute_phase() {
         local completed_pct=$(( ((phase_num) * 100) / total_phases ))
         log INFO "Overall progress: $completed_pct% complete"
         
+        LOG_COMPONENT="$previous_log_component"
+        export LOG_COMPONENT
         return 0
     else
         local exit_code=$?
@@ -909,6 +1849,8 @@ execute_phase() {
         
         log ERROR "Phase $phase_num failed with exit code $exit_code after ${phase_duration}s"
         print_error "Phase $phase_num failed (exit code: $exit_code)"
+        LOG_COMPONENT="$previous_log_component"
+        export LOG_COMPONENT
         return $exit_code
     fi
 }
@@ -1060,6 +2002,127 @@ perform_rollback() {
     fi
 }
 
+get_current_generation() {
+    local gen_link
+    gen_link=$(readlink /nix/var/nix/profiles/system 2>/dev/null || true)
+    if [[ -n "$gen_link" ]]; then
+        local gen
+        gen=$(echo "$gen_link" | sed -n 's/.*system-\([0-9]\+\)-link/\1/p')
+        if [[ -n "$gen" ]]; then
+            echo "$gen"
+            return 0
+        fi
+    fi
+
+    if command -v nixos-rebuild >/dev/null 2>&1; then
+        local gen
+        gen=$(nixos-rebuild list-generations 2>/dev/null | awk '/current/ {print $1; exit}')
+        if [[ -n "$gen" ]]; then
+            echo "$gen"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+run_rollback_health_check() {
+    local label="$1"
+    if [[ "${ROLLBACK_TEST_HEALTH_CHECK:-true}" != true ]]; then
+        print_info "Skipping rollback health check ($label) (ROLLBACK_TEST_HEALTH_CHECK=false)"
+        return 0
+    fi
+
+    local health_script="$SCRIPT_DIR/scripts/system-health-check.sh"
+    if [[ -x "$health_script" ]]; then
+        print_info "Running rollback health check ($label) via $health_script"
+        if "$health_script" --detailed; then
+            print_success "Rollback health check passed ($label)"
+            return 0
+        fi
+        print_warning "Rollback health check reported issues ($label)"
+        return 1
+    fi
+
+    if declare -F run_system_health_check_stage >/dev/null 2>&1; then
+        print_info "Running rollback health check ($label) via run_system_health_check_stage"
+        if run_system_health_check_stage; then
+            print_success "Rollback health check passed ($label)"
+            return 0
+        fi
+        print_warning "Rollback health check reported issues ($label)"
+        return 1
+    fi
+
+    print_warning "Rollback health check skipped ($label) - no health checker found"
+    return 0
+}
+
+test_rollback_flow() {
+    print_section "Rollback Validation"
+
+    if [[ "$DRY_RUN" == true ]]; then
+        print_info "[DRY RUN] Would execute rollback validation"
+        return 0
+    fi
+
+    if [[ ! -f "$ROLLBACK_INFO_FILE" ]]; then
+        print_error "Rollback validation failed: rollback info file not found"
+        return 1
+    fi
+
+    local current_gen
+    current_gen=$(get_current_generation || true)
+    if [[ -z "$current_gen" ]]; then
+        print_error "Rollback validation failed: unable to determine current generation"
+        return 1
+    fi
+
+    if [[ "${AUTO_CONFIRM_ROLLBACK_TEST:-false}" != true ]]; then
+        echo ""
+        echo "Rollback validation will switch system generations twice."
+        read -p "Continue? [y/N]: " confirm
+        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+            print_warning "Rollback validation cancelled"
+            return 1
+        fi
+    fi
+
+    print_info "Current generation: $current_gen"
+    print_info "Rolling back to previous generation..."
+    if ! sudo nixos-rebuild switch --rollback; then
+        print_error "Rollback validation failed: rollback switch failed"
+        return 1
+    fi
+
+    local rollback_gen
+    rollback_gen=$(get_current_generation || true)
+    if [[ -z "$rollback_gen" || "$rollback_gen" == "$current_gen" ]]; then
+        print_error "Rollback validation failed: generation did not change after rollback"
+        return 1
+    fi
+
+    run_rollback_health_check "after rollback" || true
+
+    print_info "Restoring original generation..."
+    if ! sudo nixos-rebuild switch --rollback; then
+        print_error "Rollback validation failed: restore switch failed"
+        return 1
+    fi
+
+    local restored_gen
+    restored_gen=$(get_current_generation || true)
+    if [[ -z "$restored_gen" || "$restored_gen" != "$current_gen" ]]; then
+        print_error "Rollback validation failed: did not return to original generation"
+        return 1
+    fi
+
+    run_rollback_health_check "after restore" || true
+
+    print_success "Rollback validation completed (returned to generation $current_gen)"
+    return 0
+}
+
 # ============================================================================
 # MAIN INITIALIZATION
 # ============================================================================
@@ -1136,6 +2199,28 @@ ensure_nix_experimental_features_env() {
 # Sudo Keepalive
 # ============================================================================
 
+# Deployment-specific exit cleanup (wraps cleanup_on_exit from lib/error-handling.sh)
+# This function is set as the EXIT trap once and handles all deployment resources,
+# avoiding the previous bug where successive trap registrations overwrote each other.
+_deploy_exit_cleanup() {
+    # Kill sudo keepalive background process
+    if [[ -n "${SUDO_KEEPALIVE_PID:-}" ]]; then
+        kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
+    fi
+    # Release deploy lock (flock-based)
+    if [[ -n "${_DEPLOY_LOCK_FD:-}" ]]; then
+        flock -u "$_DEPLOY_LOCK_FD" 2>/dev/null || true
+    fi
+    # Remove lock file
+    if [[ -n "${_DEPLOY_LOCK_FILE:-}" ]]; then
+        rm -f "$_DEPLOY_LOCK_FILE" 2>/dev/null || true
+    fi
+    # Chain to original cleanup (state save, temp files, etc.)
+    if declare -F cleanup_on_exit >/dev/null 2>&1; then
+        cleanup_on_exit
+    fi
+}
+
 start_sudo_keepalive() {
     if [[ ${EUID:-0} -eq 0 ]]; then
         return 0
@@ -1153,7 +2238,7 @@ start_sudo_keepalive() {
             done
         ) &
         SUDO_KEEPALIVE_PID=$!
-        trap 'if [[ -n "${SUDO_KEEPALIVE_PID:-}" ]]; then kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true; fi' EXIT
+        # Note: SUDO_KEEPALIVE_PID is cleaned up by _deploy_exit_cleanup (no separate trap needed)
     else
         print_warning "sudo authentication failed; you may be prompted again later."
     fi
@@ -1166,6 +2251,10 @@ start_sudo_keepalive() {
 ensure_ai_stack_env() {
     if [[ "$RUN_AI_MODEL" != true && "${LOCAL_AI_STACK_ENABLED:-false}" != "true" ]]; then
         return 0
+    fi
+    local interactive=true
+    if [[ ! -t 0 ]]; then
+        interactive=false
     fi
 
     read_env_value() {
@@ -1191,8 +2280,8 @@ ensure_ai_stack_env() {
         fi
     }
 
-    local config_dir="${PRIMARY_HOME:-$HOME}/.config/nixos-ai-stack"
-    local env_file="${config_dir}/.env"
+    local config_dir="${AI_STACK_CONFIG_DIR:-${PRIMARY_HOME:-$HOME}/.config/nixos-ai-stack}"
+    local env_file="${AI_STACK_ENV_FILE:-${config_dir}/.env}"
     export AI_STACK_ENV_FILE="$env_file"
 
     if [[ -f "$env_file" ]]; then
@@ -1205,6 +2294,7 @@ ensure_ai_stack_env() {
             local existing_embedding_model
             local existing_llama_model
             local existing_llama_model_file
+            local existing_ai_stack_data
             existing_db=$(read_env_value "POSTGRES_DB" "$env_file")
             existing_user=$(read_env_value "POSTGRES_USER" "$env_file")
             existing_password=$(read_env_value "POSTGRES_PASSWORD" "$env_file")
@@ -1213,6 +2303,7 @@ ensure_ai_stack_env() {
             existing_embedding_model=$(read_env_value "EMBEDDING_MODEL" "$env_file")
             existing_llama_model=$(read_env_value "LLAMA_CPP_DEFAULT_MODEL" "$env_file")
             existing_llama_model_file=$(read_env_value "LLAMA_CPP_MODEL_FILE" "$env_file")
+            existing_ai_stack_data=$(read_env_value "AI_STACK_DATA" "$env_file")
 
             if [[ -z "$existing_db" ]]; then
                 existing_db=$(prompt_user "Postgres database name" "${AI_STACK_POSTGRES_DB:-mcp}")
@@ -1225,6 +2316,10 @@ ensure_ai_stack_env() {
             fi
 
             if [[ -z "$existing_password" ]]; then
+                if [[ "$interactive" != true ]]; then
+                    print_error "Non-interactive session: POSTGRES_PASSWORD missing in $env_file. Set it and rerun."
+                    return 1
+                fi
                 while true; do
                     existing_password=$(prompt_secret "Postgres password")
                     if [[ -n "$existing_password" ]]; then
@@ -1241,6 +2336,10 @@ ensure_ai_stack_env() {
             fi
 
             if [[ -z "$existing_grafana_password" ]]; then
+                if [[ "$interactive" != true ]]; then
+                    print_error "Non-interactive session: GRAFANA_ADMIN_PASSWORD missing in $env_file. Set it and rerun."
+                    return 1
+                fi
                 while true; do
                     existing_grafana_password=$(prompt_secret "Grafana admin password")
                     if [[ -n "$existing_grafana_password" ]]; then
@@ -1266,34 +2365,59 @@ ensure_ai_stack_env() {
                 set_env_value "LLAMA_CPP_MODEL_FILE" "$existing_llama_model_file" "$env_file"
             fi
 
+            if [[ -z "$existing_ai_stack_data" ]]; then
+                existing_ai_stack_data="${AI_STACK_DATA:-$HOME/.local/share/nixos-ai-stack}"
+                set_env_value "AI_STACK_DATA" "$existing_ai_stack_data" "$env_file"
+            fi
+
             chmod 600 "$env_file" 2>/dev/null || true
             return 0
         fi
     fi
 
     print_section "AI Stack Credentials"
-    AI_STACK_POSTGRES_DB=$(prompt_user "Postgres database name" "${AI_STACK_POSTGRES_DB:-mcp}")
-    AI_STACK_POSTGRES_USER=$(prompt_user "Postgres username" "${AI_STACK_POSTGRES_USER:-mcp}")
 
     while true; do
-        AI_STACK_POSTGRES_PASSWORD=$(prompt_secret "Postgres password")
-        if [[ -n "$AI_STACK_POSTGRES_PASSWORD" ]]; then
-            break
-        fi
-        print_warning "Postgres password cannot be empty."
+        AI_STACK_POSTGRES_DB=$(prompt_user "Postgres database name" "${AI_STACK_POSTGRES_DB:-mcp}")
+        if validate_username "$AI_STACK_POSTGRES_DB" 2>/dev/null; then break; fi
+        print_warning "Database name must be lowercase alphanumeric (letters, digits, underscores, hyphens)."
     done
 
-    AI_STACK_GRAFANA_ADMIN_USER=$(prompt_user "Grafana admin username" "${AI_STACK_GRAFANA_ADMIN_USER:-admin}")
     while true; do
-        AI_STACK_GRAFANA_ADMIN_PASSWORD=$(prompt_secret "Grafana admin password")
-        if [[ -n "$AI_STACK_GRAFANA_ADMIN_PASSWORD" ]]; then
-            break
+        AI_STACK_POSTGRES_USER=$(prompt_user "Postgres username" "${AI_STACK_POSTGRES_USER:-mcp}")
+        if validate_username "$AI_STACK_POSTGRES_USER" 2>/dev/null; then break; fi
+        print_warning "Username must start with a letter/underscore, then lowercase alphanumeric."
+    done
+
+    while true; do
+        if [[ "$interactive" != true ]]; then
+            print_error "Non-interactive session: POSTGRES_PASSWORD is required. Set it in $env_file and rerun."
+            return 1
         fi
-        print_warning "Grafana admin password cannot be empty."
+        AI_STACK_POSTGRES_PASSWORD=$(prompt_secret "Postgres password")
+        if validate_password_strength "$AI_STACK_POSTGRES_PASSWORD" 2>/dev/null; then break; fi
+        print_warning "Password must be 12+ characters with at least 3 of: uppercase, lowercase, digit, special char."
+    done
+
+    while true; do
+        AI_STACK_GRAFANA_ADMIN_USER=$(prompt_user "Grafana admin username" "${AI_STACK_GRAFANA_ADMIN_USER:-admin}")
+        if validate_username "$AI_STACK_GRAFANA_ADMIN_USER" 2>/dev/null; then break; fi
+        print_warning "Username must start with a letter/underscore, then lowercase alphanumeric."
+    done
+
+    while true; do
+        if [[ "$interactive" != true ]]; then
+            print_error "Non-interactive session: GRAFANA_ADMIN_PASSWORD is required. Set it in $env_file and rerun."
+            return 1
+        fi
+        AI_STACK_GRAFANA_ADMIN_PASSWORD=$(prompt_secret "Grafana admin password")
+        if validate_password_strength "$AI_STACK_GRAFANA_ADMIN_PASSWORD" 2>/dev/null; then break; fi
+        print_warning "Password must be 12+ characters with at least 3 of: uppercase, lowercase, digit, special char."
     done
 
     mkdir -p "$config_dir"
     cat > "$env_file" <<EOF
+AI_STACK_DATA=${AI_STACK_DATA:-$HOME/.local/share/nixos-ai-stack}
 POSTGRES_DB=${AI_STACK_POSTGRES_DB}
 POSTGRES_USER=${AI_STACK_POSTGRES_USER}
 POSTGRES_PASSWORD=${AI_STACK_POSTGRES_PASSWORD}
@@ -1308,27 +2432,161 @@ EOF
     print_success "Saved AI stack credentials to ${env_file}"
 }
 
+suggest_host_swap_limit_gb() {
+    local ram_gb="${TOTAL_RAM_GB:-}"
+    if ! [[ "$ram_gb" =~ ^[0-9]+$ ]] || (( ram_gb <= 0 )); then
+        if declare -F resolve_total_ram_gb >/dev/null 2>&1; then
+            ram_gb=$(resolve_total_ram_gb 2>/dev/null || echo 0)
+        else
+            ram_gb=0
+        fi
+    fi
+
+    local swap_gb=0
+    if declare -F calculate_active_swap_total_gb >/dev/null 2>&1; then
+        swap_gb=$(calculate_active_swap_total_gb 2>/dev/null || echo 0)
+    fi
+
+    if ! [[ "$swap_gb" =~ ^[0-9]+$ ]]; then
+        swap_gb=0
+    fi
+
+    if (( ram_gb <= 0 )); then
+        echo 0
+        return
+    fi
+
+    local recommended=$(( (ram_gb * 60 + 99) / 100 )) # ~60% of RAM, rounded up
+    if (( recommended < 2 )); then
+        recommended=2
+    elif (( recommended > 32 )); then
+        recommended=32
+    fi
+
+    if (( swap_gb > 0 && recommended > swap_gb )); then
+        recommended="$swap_gb"
+    fi
+
+    echo "$recommended"
+}
+
 configure_host_swap_limits() {
-    local default_swap_gb="${HOST_SWAP_LIMIT_GB:-0}"
+    local suggested_swap_gb
+    suggested_swap_gb=$(suggest_host_swap_limit_gb)
+    local default_swap_gb="${HOST_SWAP_LIMIT_GB:-}"
+    local swap_total_gb=0
+    if declare -F calculate_active_swap_total_gb >/dev/null 2>&1; then
+        swap_total_gb=$(calculate_active_swap_total_gb 2>/dev/null || echo 0)
+    fi
+
+    local ram_gb="${TOTAL_RAM_GB:-}"
+    if ! [[ "$ram_gb" =~ ^[0-9]+$ ]] || (( ram_gb <= 0 )); then
+        if declare -F resolve_total_ram_gb >/dev/null 2>&1; then
+            ram_gb=$(resolve_total_ram_gb 2>/dev/null || echo 0)
+        else
+            ram_gb=0
+        fi
+    fi
+
+    if [[ -z "$default_swap_gb" ]]; then
+        if [[ "$suggested_swap_gb" =~ ^[0-9]+$ && "$suggested_swap_gb" -gt 0 ]]; then
+            default_swap_gb="auto"
+        else
+            default_swap_gb="0"
+        fi
+    fi
+
+    local min_rec=0
+    local max_rec=0
+    if (( ram_gb > 0 )); then
+        min_rec=$(( (ram_gb * 25 + 99) / 100 ))
+        if (( min_rec < 2 )); then
+            min_rec=2
+        fi
+        max_rec=$(( (ram_gb * 75 + 99) / 100 ))
+        if (( max_rec < min_rec )); then
+            max_rec=$min_rec
+        fi
+        if (( swap_total_gb > 0 )); then
+            if (( min_rec > swap_total_gb )); then
+                min_rec=$swap_total_gb
+            fi
+            if (( max_rec > swap_total_gb )); then
+                max_rec=$swap_total_gb
+            fi
+        fi
+    fi
+
+    if [[ "${HOST_SWAP_LIMIT_ENABLED:-}" == "true" ]]; then
+        print_info "Host swap limits already enabled (${HOST_SWAP_LIMIT_VALUE:-${HOST_SWAP_LIMIT_GB}G}). Skipping prompt."
+        return 0
+    fi
+    if [[ "${HOST_SWAP_LIMIT_ENABLED:-}" == "false" && -n "${HOST_SWAP_LIMIT_VALUE:-}" ]]; then
+        print_info "Host swap limits explicitly disabled; skipping prompt."
+        return 0
+    fi
 
     if confirm "Configure host-level swap limits for systemd services (includes containers)?" "y"; then
-        local swap_input
-        swap_input=$(prompt_user "Default swap max per service in GB (0 = unlimited)" "$default_swap_gb")
-
-        if [[ "$swap_input" =~ ^[0-9]+$ ]]; then
-            HOST_SWAP_LIMIT_GB="$swap_input"
-            HOST_SWAP_LIMIT_ENABLED=true
-            if (( swap_input <= 0 )); then
-                HOST_SWAP_LIMIT_VALUE="infinity"
+        if [[ "$suggested_swap_gb" =~ ^[0-9]+$ && "$suggested_swap_gb" -gt 0 ]]; then
+            if [[ "$swap_total_gb" =~ ^[0-9]+$ && "$swap_total_gb" -gt 0 ]]; then
+                print_info "Suggested swap cap: ${suggested_swap_gb}GB (≈60% RAM, capped by total swap ${swap_total_gb}GB)."
             else
-                HOST_SWAP_LIMIT_VALUE="${swap_input}G"
+                print_info "Suggested swap cap: ${suggested_swap_gb}GB (≈60% RAM)."
             fi
-            export HOST_SWAP_LIMIT_ENABLED HOST_SWAP_LIMIT_GB HOST_SWAP_LIMIT_VALUE
-            print_success "Host swap limit set to ${HOST_SWAP_LIMIT_VALUE}"
         else
-            print_warning "Swap limit must be a number of GB; skipping host swap limits."
-            HOST_SWAP_LIMIT_ENABLED=false
+            print_info "No active swap detected; consider 'skip' to disable host swap limits."
         fi
+
+        if (( min_rec > 0 && max_rec > 0 )); then
+            print_info "Recommended per-service range: ${min_rec}-${max_rec}GB (adjust for workload spikes)."
+        fi
+        print_info "Examples: auto, 0 (no cap), ${suggested_swap_gb}, ${min_rec}, skip"
+
+        local swap_input
+        local attempts=0
+        while true; do
+            swap_input=$(prompt_user "Default swap max per service in GB (0=unlimited, 'auto'=suggested, 'skip'=disable)" "$default_swap_gb")
+            case "${swap_input,,}" in
+                ""|"auto"|"default"|"suggested"|"rec"|"recommended")
+                    if [[ "$suggested_swap_gb" =~ ^[0-9]+$ && "$suggested_swap_gb" -gt 0 ]]; then
+                        swap_input="$suggested_swap_gb"
+                    else
+                        swap_input="0"
+                    fi
+                    ;;
+                "skip"|"none"|"no")
+                    HOST_SWAP_LIMIT_ENABLED=false
+                    HOST_SWAP_LIMIT_VALUE=""
+                    print_info "Skipping host swap limits per user choice."
+                    return 0
+                    ;;
+            esac
+
+            if [[ "$swap_input" =~ ^[0-9]+$ ]]; then
+                if [[ "$swap_total_gb" =~ ^[0-9]+$ && "$swap_total_gb" -gt 0 && "$swap_input" -gt "$swap_total_gb" ]]; then
+                    print_warning "Requested swap cap (${swap_input}GB) exceeds total swap (${swap_total_gb}GB). Capping to ${swap_total_gb}GB."
+                    swap_input="$swap_total_gb"
+                fi
+                HOST_SWAP_LIMIT_GB="$swap_input"
+                HOST_SWAP_LIMIT_ENABLED=true
+                if (( swap_input <= 0 )); then
+                    HOST_SWAP_LIMIT_VALUE="infinity"
+                else
+                    HOST_SWAP_LIMIT_VALUE="${swap_input}G"
+                fi
+                export HOST_SWAP_LIMIT_ENABLED HOST_SWAP_LIMIT_GB HOST_SWAP_LIMIT_VALUE
+                print_success "Host swap limit set to ${HOST_SWAP_LIMIT_VALUE}"
+                break
+            fi
+
+            attempts=$((attempts + 1))
+            if (( attempts >= 3 )); then
+                print_warning "Swap limit must be a number of GB (or 'auto'/'skip'). Skipping host swap limits after ${attempts} invalid entries."
+                HOST_SWAP_LIMIT_ENABLED=false
+                break
+            fi
+            print_warning "Swap limit must be a number of GB (or 'auto'/'skip'). Try again."
+        done
     fi
 }
 
@@ -1336,60 +2594,16 @@ configure_host_swap_limits() {
 # MAIN FUNCTION
 # ============================================================================
 
-# End-to-end orchestrator: parses arguments, loads configuration, runs the
-# phase machine, optionally performs rollback, and executes the final health
-# check. Every helper above ultimately feeds into this function.
-main() {
-    # Parse arguments
-    parse_arguments "$@"
-
-    if [[ "$FLATPAK_REINSTALL_REQUEST" == true ]]; then
-        export RESET_FLATPAK_STATE_BEFORE_SWITCH="true"
-    fi
-
-    # Enable debug mode if requested
-    if [[ "$ENABLE_DEBUG" == true ]]; then
-        set -x
-    fi
-
-    # Configure logging level
-    if [[ "$QUIET_MODE" == true ]]; then
-        export LOG_LEVEL="WARNING"
-    elif [[ "$VERBOSE_MODE" == true ]]; then
-        export LOG_LEVEL="DEBUG"
-    else
-        export LOG_LEVEL="INFO"
-    fi
-
-    # Handle early-exit commands
-    if [[ "$SHOW_HELP" == true ]]; then
-        print_usage
-        exit 0
-    fi
-
-    if [[ "$SHOW_VERSION" == true ]]; then
-        print_version
-        exit 0
-    fi
-
-    if [[ "$LIST_PHASES" == true ]]; then
-        source "$LIB_DIR/colors.sh" 2>/dev/null || true
-        source "$CONFIG_DIR/variables.sh" 2>&1 | grep -v "readonly variable" >&2 || true
-        list_phases
-        exit 0
-    fi
-
-    if [[ -n "$SHOW_PHASE_INFO_NUM" ]]; then
-        source "$LIB_DIR/colors.sh" 2>/dev/null || true
-        source "$CONFIG_DIR/variables.sh" 2>&1 | grep -v "readonly variable" >&2 || true
-        show_phase_info "$SHOW_PHASE_INFO_NUM"
-        exit 0
-    fi
-
+# setup_environment: Load libraries, configuration, acquire deployment lock,
+# and run preflight checks. Returns non-zero on failure.
+setup_environment() {
     # Load core components
     load_libraries
     load_configuration
     synchronize_primary_user_path
+    if ! validate_config_settings; then
+        exit "${ERR_CONFIG_INVALID:-30}"
+    fi
 
     if [[ -n "$ZSWAP_CONFIGURATION_OVERRIDE_REQUEST" ]]; then
         case "$ZSWAP_CONFIGURATION_OVERRIDE_REQUEST" in
@@ -1434,8 +2648,18 @@ main() {
 
     # Initialize core systems
     init_logging
+    if ! validate_runtime_paths; then
+        exit 1
+    fi
     ensure_nix_experimental_features_env
     init_state
+    maybe_reset_config_phases_on_template_change
+    if [[ "$RESUME" == true ]]; then
+        print_info "Validating resume state..."
+        if ! validate_resume_state "$VALIDATE_STATE"; then
+            exit "${ERR_STATE_INVALID:-31}"
+        fi
+    fi
     configure_host_swap_limits
 
     # Prevent concurrent deployments (avoids overlapping Phase 9 runs)
@@ -1443,12 +2667,47 @@ main() {
     local lock_fd=200
     mkdir -p "$CACHE_DIR" >/dev/null 2>&1 || true
     if command -v flock >/dev/null 2>&1; then
-        eval "exec ${lock_fd}>\"${lock_file}\""
-        if ! flock -n "$lock_fd"; then
-            print_error "Another nixos-quick-deploy instance is running (lock: $lock_file)"
+        local lock_acquired=false
+        local lock_start_time
+        local lock_warned=false
+        local lock_timeout_sec="${DEPLOY_LOCK_TIMEOUT_SEC:-60}"
+        lock_start_time=$(date +%s)
+        while true; do
+            exec 200>"${lock_file}"
+            if flock -n "$lock_fd"; then
+                printf '%s\n' "$$" > "$lock_file"
+                lock_acquired=true
+                break
+            fi
+            local lock_pid
+            lock_pid=$(cat "$lock_file" 2>/dev/null || true)
+            if [[ -n "$lock_pid" ]] && ! kill -0 "$lock_pid" 2>/dev/null; then
+                print_warning "Stale deploy lock detected (PID $lock_pid not running); clearing lock."
+                rm -f "$lock_file" 2>/dev/null || true
+                continue
+            fi
+            local now elapsed
+            now=$(date +%s)
+            elapsed=$((now - lock_start_time))
+            if (( lock_timeout_sec > 0 && elapsed >= lock_timeout_sec )); then
+                print_error "Another nixos-quick-deploy instance is running (lock: $lock_file, waited ${elapsed}s)"
+                exit 1
+            fi
+            if [[ "$lock_warned" != true ]]; then
+                print_warning "Another nixos-quick-deploy instance is running; waiting for lock release..."
+                lock_warned=true
+            fi
+            sleep 2
+        done
+        if [[ "$lock_acquired" != true ]]; then
+            print_error "Unable to acquire deploy lock (lock: $lock_file)"
             exit 1
         fi
-        trap "flock -u ${lock_fd} 2>/dev/null || true" EXIT
+        _DEPLOY_LOCK_FD="$lock_fd"
+        _DEPLOY_LOCK_FILE="$lock_file"
+        DEPLOY_LOCK_FILE="$lock_file"
+        export DEPLOY_LOCK_FILE
+        trap _deploy_exit_cleanup EXIT
     else
         if [[ -f "$lock_file" ]]; then
             local lock_pid
@@ -1457,12 +2716,19 @@ main() {
                 print_error "Another nixos-quick-deploy instance is running (PID: $lock_pid)"
                 exit 1
             fi
+            if [[ -n "$lock_pid" ]]; then
+                print_warning "Stale deploy lock detected (PID $lock_pid not running); clearing lock."
+            fi
+            rm -f "$lock_file" 2>/dev/null || true
         fi
         echo "$$" > "$lock_file"
-        trap 'rm -f "$lock_file" 2>/dev/null || true' EXIT
+        _DEPLOY_LOCK_FILE="$lock_file"
+        DEPLOY_LOCK_FILE="$lock_file"
+        export DEPLOY_LOCK_FILE
+        trap _deploy_exit_cleanup EXIT
     fi
 
-    # Preflight: avoid overlapping AI stack setup/compose runs
+    # Preflight: avoid overlapping AI stack setup/stack runs
     local allow_running_stack_setup="${ALLOW_RUNNING_STACK_SETUP:-false}"
     local auto_stop_stack="${AUTO_STOP_STACK_ON_CONFLICT:-false}"
     if [[ "$allow_running_stack_setup" != "true" ]]; then
@@ -1483,7 +2749,11 @@ main() {
             fi
         fi
     fi
+}
 
+# run_deployment_phases: Execute the 9-phase deployment workflow plus optional
+# AI-Optimizer and AI Model phases.
+run_deployment_phases() {
     # Print deployment header
     print_header
 
@@ -1547,6 +2817,9 @@ main() {
         echo ""
     done
 
+    print_inter_phase_health_summary
+    echo ""
+
     if [[ "$RUN_AI_PREP" == true ]]; then
         print_section "Optional Phase: AI-Optimizer Preparation"
         if ! run_optional_phase_script "$PHASES_DIR/phase-09-ai-optimizer-prep.sh" phase_09_ai_optimizer_prep "AI-Optimizer preparation"; then
@@ -1558,6 +2831,18 @@ main() {
         print_section "Optional Phase: AI Model Deployment"
         if ! run_optional_phase_script "$PHASES_DIR/phase-09-ai-model-deployment.sh" phase_09_ai_model_deployment "AI model deployment"; then
             exit 1
+        fi
+    fi
+}
+
+# run_post_deployment: Execute post-deployment tasks including rollback tests,
+# AI stack startup, and final health checks. Returns the aggregate exit code.
+run_post_deployment() {
+    local rollback_test_exit=0
+    if [[ "$TEST_ROLLBACK" == true ]]; then
+        if ! test_rollback_flow; then
+            rollback_test_exit=$?
+            print_warning "Rollback validation reported issues."
         fi
     fi
 
@@ -1593,12 +2878,12 @@ main() {
     echo ""
 
     local health_exit=0
+    local health_script="$SCRIPT_DIR/scripts/system-health-check.sh"
     if [[ "$SKIP_HEALTH_CHECK" != true ]]; then
         if [[ "${FINAL_PHASE_HEALTH_CHECK_COMPLETED:-false}" == true ]]; then
             log INFO "Skipping redundant final health check (already run in Phase 8)"
             print_info "Final health check already completed during Phase 8"
         else
-            local health_script="$SCRIPT_DIR/scripts/system-health-check.sh"
             if [[ -x "$health_script" ]]; then
                 print_section "Final System Health Check"
                 log INFO "Running final system health check via $health_script"
@@ -1625,25 +2910,29 @@ main() {
 
     echo "============================================"
     local final_exit=0
-    if [[ $health_exit -ne 0 || $stack_exit -ne 0 ]]; then
+    if [[ $health_exit -ne 0 || $stack_exit -ne 0 || $rollback_test_exit -ne 0 ]]; then
         final_exit=1
     fi
 
     if [[ $final_exit -eq 0 ]]; then
         print_success "Deployment completed successfully!"
 
-        # Show AI Stack Monitor Dashboard info (if available)
-        local monitor_script="$SCRIPT_DIR/scripts/ai-stack-monitor.sh"
-        if [[ -x "$monitor_script" && "$SKIP_AI_MODEL" != true ]]; then
+        # Show AI Stack health check info (if available)
+        local health_monitor="$SCRIPT_DIR/scripts/ai-stack-health.sh"
+        if [[ -x "$health_monitor" && "${SKIP_AI_MODEL:-false}" != true ]]; then
             echo ""
-            print_info "AI Stack Monitor Dashboard available at: $monitor_script"
-            print_info "To view live monitoring, run: $monitor_script"
+            print_info "AI Stack health check available at: $health_monitor"
+            print_info "To check stack status, run: kubectl get pods -n ai-stack"
             echo ""
         fi
     else
         print_warning "Deployment completed with follow-up actions required."
         if [[ $health_exit -ne 0 ]]; then
             print_info "Review the health check summary above. You can rerun fixes with: $health_script --fix"
+        fi
+        if [[ $rollback_test_exit -ne 0 ]]; then
+            print_info "Rollback validation failed. You can rerun with: $SCRIPT_DIR/nixos-quick-deploy.sh --test-rollback"
+            print_info "Set AUTO_CONFIRM_ROLLBACK_TEST=true to skip the confirmation prompt."
         fi
         if [[ $stack_exit -ne 0 ]]; then
             print_info "AI stack + dashboard startup failed. Run: $SCRIPT_DIR/scripts/start-ai-stack-and-dashboard.sh"
@@ -1655,6 +2944,65 @@ main() {
     echo ""
 
     return $final_exit
+}
+
+# End-to-end orchestrator: parses arguments, sets up environment, runs the
+# phase machine, and executes post-deployment tasks.
+main() {
+    # Parse arguments
+    parse_arguments "$@"
+
+    if [[ "$FLATPAK_REINSTALL_REQUEST" == true ]]; then
+        export RESET_FLATPAK_STATE_BEFORE_SWITCH="true"
+    fi
+
+    # Enable debug mode if requested
+    if [[ "$ENABLE_DEBUG" == true ]]; then
+        set -x
+    fi
+
+    # Configure logging level
+    if [[ "$QUIET_MODE" == true ]]; then
+        export LOG_LEVEL="WARNING"
+    elif [[ "$VERBOSE_MODE" == true ]]; then
+        export LOG_LEVEL="DEBUG"
+    else
+        export LOG_LEVEL="INFO"
+    fi
+
+    # Handle early-exit commands
+    if [[ "$SHOW_HELP" == true ]]; then
+        print_usage
+        exit 0
+    fi
+
+    if [[ "$SHOW_VERSION" == true ]]; then
+        print_version
+        exit 0
+    fi
+
+    if [[ "$LIST_PHASES" == true ]]; then
+        source "$LIB_DIR/colors.sh" 2>/dev/null || true
+        source "$CONFIG_DIR/variables.sh" 2>&1 | grep -v "readonly variable" >&2 || true
+        list_phases
+        exit 0
+    fi
+
+    if [[ -n "$SHOW_PHASE_INFO_NUM" ]]; then
+        source "$LIB_DIR/colors.sh" 2>/dev/null || true
+        source "$CONFIG_DIR/variables.sh" 2>&1 | grep -v "readonly variable" >&2 || true
+        show_phase_info "$SHOW_PHASE_INFO_NUM"
+        exit 0
+    fi
+
+    # Phase 1: Setup environment, acquire lock, preflight checks
+    setup_environment
+
+    # Phase 2: Execute deployment phases (1-9 + optional AI phases)
+    run_deployment_phases
+
+    # Phase 3: Post-deployment tasks (rollback test, AI stack, health check)
+    run_post_deployment
 }
 
 # ============================================================================

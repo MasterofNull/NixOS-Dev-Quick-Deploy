@@ -94,6 +94,14 @@ phase_03_config_generation() {
     # ========================================================================
 
     local phase_name="generate_validate_configs"
+    local config_digest=""
+
+    if declare -F compute_config_templates_digest >/dev/null 2>&1; then
+        config_digest="$(compute_config_templates_digest 2>/dev/null || true)"
+        if [[ -n "$config_digest" ]]; then
+            log INFO "Config template digest: $config_digest"
+        fi
+    fi
 
     # ------------------------------------------------------------------------
     # Resume Check: Skip if already completed
@@ -262,6 +270,9 @@ phase_03_config_generation() {
     #
     # State: "generate_validate_configs" marked complete
     # Next: Phase 5 will clean up conflicts before deployment
+    if [[ -n "$config_digest" ]] && declare -F state_set_metadata >/dev/null 2>&1; then
+        state_set_metadata "config_templates_digest" "$config_digest" || true
+    fi
     mark_step_complete "$phase_name"
     print_success "Phase 3: Configuration Generation - COMPLETE"
     echo ""

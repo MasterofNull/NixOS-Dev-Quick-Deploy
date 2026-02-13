@@ -1,4 +1,4 @@
-FROM python:3.13-slim
+FROM docker.io/library/python:3.13-slim
 
 LABEL maintainer="NixOS Quick Deploy AI Stack"
 LABEL description="Container Engine MCP Server - Docker/Podman management and best practices"

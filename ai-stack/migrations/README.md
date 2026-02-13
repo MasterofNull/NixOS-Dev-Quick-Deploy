@@ -39,21 +39,21 @@ alembic -c ai-stack/migrations/alembic.ini stamp head
 Use a separate database for upgrade/downgrade validation:
 
 ```bash
-# Create a test database (inside Postgres container)
-podman exec local-ai-postgres psql -U mcp -d postgres -c "CREATE DATABASE mcp_migrations_test"
+# Create a test database (inside Postgres pod)
+kubectl exec -n ai-stack postgres -- psql -U mcp -d postgres -c "CREATE DATABASE mcp_migrations_test"
 
 # Minimal config for migrations
-cat <<'EOF' >/tmp/aidb-migrations-config.yaml
+cat <<'EOF' >${TMPDIR:-/tmp}/aidb-migrations-config.yaml
 database:
   postgres:
-    host: postgres
+    host: postgres.ai-stack.svc.cluster.local
     port: 5432
     user: mcp
     database: mcp_migrations_test
 EOF
 
-podman cp /tmp/aidb-migrations-config.yaml local-ai-aidb:/app/config/aidb-migrations-config.yaml
-podman cp ai-stack/migrations local-ai-aidb:/app/migrations
-podman exec -e PYTHONPATH=/app -e AIDB_CONFIG=/app/config/aidb-migrations-config.yaml \
-  local-ai-aidb alembic -c /app/migrations/alembic.ini upgrade head
+kubectl create configmap -n ai-stack aidb-migrations-config --from-file=${TMPDIR:-/tmp}/aidb-migrations-config.yaml --dry-run=client -o yaml | kubectl apply -f -
+kubectl cp ai-stack/migrations -n ai-stack aidb:/app/migrations
+kubectl exec -n ai-stack aidb -e PYTHONPATH=/app -e AIDB_CONFIG=/app/config/aidb-migrations-config.yaml \
+  -- alembic -c /app/migrations/alembic.ini upgrade head
 ```

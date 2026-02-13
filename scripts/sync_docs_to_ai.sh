@@ -6,7 +6,7 @@
 #   ./scripts/sync_docs_to_ai.sh [--docs DIR] [--project NAME]
 #
 # Environment variables:
-#   AIDB_BASE_URL   - Base URL for the AIDB MCP API (default: http://localhost:8091)
+#   AIDB_BASE_URL   - Base URL for the AIDB MCP API (default: http://${SERVICE_HOST:-localhost}:8091)
 #   DOCS_DIR        - Documentation directory to sync (default: ./docs)
 #   PROJECT_NAME    - Logical project name within AIDB (default: NixOS-Dev-Quick-Deploy)
 #
@@ -14,7 +14,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-AIDB_BASE_URL="${AIDB_BASE_URL:-http://localhost:8091}"
+AIDB_BASE_URL="${AIDB_BASE_URL:-http://${SERVICE_HOST:-localhost}:8091}"
 DOCS_DIR="${DOCS_DIR:-${SCRIPT_DIR}/docs}"
 PROJECT_NAME="${PROJECT_NAME:-${AIDB_PROJECT_NAME:-NixOS-Dev-Quick-Deploy}}"
 AIDB_API_KEY="${AIDB_API_KEY:-}"
@@ -110,7 +110,7 @@ while IFS= read -r -d '' doc_file; do
             content: ($content | fromjson)
         }')
 
-    response=$(curl -fsS -X POST "${AIDB_BASE_URL}/documents" \
+    response=$(curl -fsS --max-time 10 --connect-timeout 3 -X POST "${AIDB_BASE_URL}/documents" \
         "${curl_headers[@]}" \
         -d "$payload" \
         || true)

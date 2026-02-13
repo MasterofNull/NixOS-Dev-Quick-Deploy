@@ -49,7 +49,7 @@ done
 # Vector search events
 for i in {1..3}; do
     metadata=$(cat <<EOF
-{"search_term": "docker compose", "similarity_threshold": 0.8, "results": 5, "collection": "codebase-context"}
+{"search_term": "kubernetes", "similarity_threshold": 0.8, "results": 5, "collection": "codebase-context"}
 EOF
 )
     create_event "aidb" "vector_search" "$metadata" >> "$AIDB_FILE"
@@ -133,5 +133,5 @@ echo "✅ Test telemetry generation complete!"
 echo ""
 echo "Next steps:"
 echo "  1. Check learning daemon processes these: podman logs local-ai-hybrid-coordinator -f"
-echo "  2. Verify metrics update: curl http://localhost:8092/stats"
+echo "  2. Verify metrics update: curl http://${SERVICE_HOST:-localhost}:8092/stats"
 echo "  3. Check for fine-tuning samples in daemon logs"

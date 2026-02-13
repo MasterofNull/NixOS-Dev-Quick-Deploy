@@ -8,6 +8,10 @@ import urllib.request
 import urllib.error
 import json
 import ssl
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SERVE_DASHBOARD = PROJECT_ROOT / 'scripts' / 'serve-dashboard.sh'
 
 def test_allowed_endpoints():
     """Test that only whitelisted health endpoints are accessible"""
@@ -74,7 +78,7 @@ def test_no_subprocess():
     """Verify subprocess module is not used in proxy code"""
     print("\nChecking serve-dashboard.sh for subprocess in proxy...")
     try:
-        with open('/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/serve-dashboard.sh', 'r') as f:
+        with open(SERVE_DASHBOARD, 'r') as f:
             content = f.read()
             # Find the aidb proxy section
             lines = content.split('\n')

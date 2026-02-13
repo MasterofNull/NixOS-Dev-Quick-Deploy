@@ -76,10 +76,11 @@ track_phase_complete() {
     end_time=$(date +%s)
     local duration=$((end_time - start_time))
     
+    # shellcheck disable=SC2034
     PHASE_DURATIONS["$phase_num"]=$duration
     log DEBUG "Phase $phase_num completed in ${duration}s"
     
-    return $duration
+    return 0
 }
 
 # ============================================================================
@@ -190,4 +191,3 @@ estimate_time_remaining() {
     
     return 0
 }
-

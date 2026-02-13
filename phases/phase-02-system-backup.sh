@@ -55,7 +55,8 @@ phase_02_backup() {
 
     # Create backup root directory with timestamp
     # Stored under ~/.config-backups so it respects PRIMARY_HOME overrides
-    local backup_root_path="$HOME/.config-backups/pre-deployment-$(date +%Y%m%d_%H%M%S)"
+    local backup_root_path
+    backup_root_path="$HOME/.config-backups/pre-deployment-$(date +%Y%m%d_%H%M%S)"
     if ! safe_mkdir "$backup_root_path"; then
         print_error "Failed to create backup directory: $backup_root_path"
         return 1
@@ -87,7 +88,8 @@ phase_02_backup() {
     if command -v nix-env &>/dev/null; then
         print_info "Listing current nix-env packages..."
         nix-env -q > "$backup_root_path/nix-env-packages.txt" 2>/dev/null || true
-        local pkg_count=$(wc -l < "$backup_root_path/nix-env-packages.txt" 2>/dev/null || echo "0")
+        local pkg_count
+        pkg_count=$(wc -l < "$backup_root_path/nix-env-packages.txt" 2>/dev/null || echo "0")
         if [[ "$pkg_count" -gt 0 ]]; then
             print_info "Found $pkg_count nix-env packages (saved for reference)"
         else
@@ -159,8 +161,8 @@ phase_02_backup() {
         local full_path="$HOME/$config_dir"
         if [[ -d "$full_path" ]] && [[ $(du -s "$full_path" 2>/dev/null | cut -f1) -lt 102400 ]]; then
             # Only backup if < 100MB (avoid huge caches)
-            local dir_name=$(basename "$config_dir")
-            local parent=$(dirname "$config_dir")
+            local parent
+            parent=$(dirname "$config_dir")
             if safe_mkdir "$backup_root_path/$parent"; then
                 cp -a "$full_path" "$backup_root_path/$parent/" 2>/dev/null && \
                     print_success "✓ Backed up: ~/$config_dir"

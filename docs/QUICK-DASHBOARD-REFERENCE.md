@@ -56,11 +56,11 @@ bash scripts/manage-dashboard-collectors.sh restart
 
 ```bash
 # Edit lite collector interval (currently 2s)
-nano /tmp/run-dashboard-collector-lite.sh
+nano ${TMPDIR:-/tmp}/run-dashboard-collector-lite.sh
 # Change: sleep 2
 
 # Edit full collector interval (currently 60s)
-nano /tmp/run-dashboard-collector-full.sh
+nano ${TMPDIR:-/tmp}/run-dashboard-collector-full.sh
 # Change: sleep 60
 
 # Restart

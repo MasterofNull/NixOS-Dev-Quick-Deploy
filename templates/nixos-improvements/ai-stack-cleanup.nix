@@ -3,6 +3,7 @@
 # NixOS module for automatic AI stack orphaned process cleanup
 # Part of: NixOS-Dev-Quick-Deploy
 # Purpose: Prevents orphaned processes from previous container runs
+# LEGACY: Podman stack cleanup (deprecated). K3s handles lifecycle now.
 #
 # Usage:
 #   imports = [ ./ai-stack-cleanup.nix ];

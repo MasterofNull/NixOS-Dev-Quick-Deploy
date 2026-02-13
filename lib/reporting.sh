@@ -75,7 +75,9 @@ _reporting_unit_fragment_is_nixos_managed() {
 /nix/store/*-unit-*.path|\
 /nix/store/*-unit-*.timer|\
 /nix/store/*-unit-*.mount|\
-/nix/store/*-system-units/*)
+/nix/store/*-system-units/*|\
+/nix/store/*/etc/systemd/system/*|\
+/nix/store/*/lib/systemd/system/*)
             return 0
             ;;
     esac
@@ -422,6 +424,35 @@ _system_config_declares_service() {
     else
         grep -Fq "$search_pattern" "$SYSTEM_CONFIG_FILE" >/dev/null 2>&1
     fi
+}
+
+_reporting_lookup_service_option_path() {
+    local unit="$1"
+    local normalized="${unit%.service}"
+
+    local -a option_paths=()
+    case "$normalized" in
+        dbus)
+            option_paths=("services.dbus.enable")
+            ;;
+        polkit)
+            option_paths=("security.polkit.enable")
+            ;;
+    esac
+
+    if (( ${#option_paths[@]} == 0 )); then
+        return 1
+    fi
+
+    local option_path
+    for option_path in "${option_paths[@]}"; do
+        if _nixos_option_path_exists "$option_path"; then
+            echo "$option_path"
+            return 0
+        fi
+    done
+
+    return 1
 }
 
 _report_systemd_verify_output() {
@@ -797,6 +828,8 @@ inspect_single_service_unit() {
             elif _system_config_declares_service "${unit%.service}"; then
                 local source_file="${SYSTEM_CONFIG_FILE:-/etc/nixos/configuration.nix}"
                 print_detail "Declarative service definition detected in ${source_file}"
+            elif option_path=$(_reporting_lookup_service_option_path "$unit"); then
+                print_detail "Declarative service definition detected: $option_path"
             else
                 print_warning "No declarative service definition found at $option_path; ensure the service is managed declaratively or documented."
             fi
@@ -859,13 +892,15 @@ print_post_install() {
     echo ""
 
     # Current generation
-    local current_gen=$(sudo nix-env --list-generations -p /nix/var/nix/profiles/system 2>/dev/null | tail -1)
+    local current_gen
+    current_gen=$(sudo nix-env --list-generations -p /nix/var/nix/profiles/system 2>/dev/null | tail -1)
     if [[ -n "$current_gen" ]]; then
         echo "  Generation: $current_gen"
     fi
 
     # NixOS version
-    local nixos_version=$(nixos-version 2>/dev/null || echo "Unknown")
+    local nixos_version
+    nixos_version=$(nixos-version 2>/dev/null || echo "Unknown")
     echo "  Version: $nixos_version"
 
     # System configuration path
@@ -909,18 +944,21 @@ print_post_install() {
     echo ""
 
     # System packages
-    local system_pkg_count=$(nix-store --query --requisites /run/current-system 2>/dev/null | wc -l)
+    local system_pkg_count
+    system_pkg_count=$(nix-store --query --requisites /run/current-system 2>/dev/null | wc -l)
     echo "  System packages: $system_pkg_count"
 
     # User packages (if home-manager is active)
     if [[ -d "$HOME/.nix-profile" ]]; then
-        local user_pkg_count=$(nix-store --query --requisites "$HOME/.nix-profile" 2>/dev/null | wc -l)
+        local user_pkg_count
+        user_pkg_count=$(nix-store --query --requisites "$HOME/.nix-profile" 2>/dev/null | wc -l)
         echo "  User packages: $user_pkg_count"
     fi
 
     # Flatpak apps
     if command -v flatpak &>/dev/null; then
-        local flatpak_count=$(flatpak list --app 2>/dev/null | wc -l)
+        local flatpak_count
+        flatpak_count=$(flatpak list --app 2>/dev/null | wc -l)
         echo "  Flatpak apps: $flatpak_count"
     fi
     echo ""
@@ -981,17 +1019,49 @@ print_post_install() {
     echo ""
 
     # ========================================================================
+    # 4c. Deployment Error Summary
+    # ========================================================================
+    if declare -F aggregate_deployment_errors &>/dev/null; then
+        aggregate_deployment_errors
+        if [[ "${DEPLOY_ERRORS:-0}" -gt 0 || "${DEPLOY_WARNINGS:-0}" -gt 0 ]]; then
+            print_info "Deployment Error Summary:"
+            echo ""
+            echo "  Errors:   ${DEPLOY_ERRORS:-0}"
+            echo "  Warnings: ${DEPLOY_WARNINGS:-0}"
+            if [[ "${#DEPLOY_ERROR_SAMPLES[@]}" -gt 0 ]]; then
+                echo ""
+                echo "  Recent errors (last ${#DEPLOY_ERROR_SAMPLES[@]}):"
+                local sample
+                for sample in "${DEPLOY_ERROR_SAMPLES[@]}"; do
+                    # Trim to 120 chars for readability
+                    echo "    ${sample:0:120}"
+                done
+            fi
+            echo ""
+            echo "  Full log: ${LOG_FILE:-<not set>}"
+            echo ""
+        else
+            print_info "Deployment Error Summary:"
+            echo ""
+            echo "  No errors or warnings recorded."
+            echo ""
+        fi
+    fi
+
+    # ========================================================================
     # 5. Hardware Summary
     # ========================================================================
     print_info "Hardware Configuration:"
     echo ""
 
     # CPU
-    local cpu_model=$(lscpu | grep "Model name" | cut -d: -f2 | xargs)
+    local cpu_model
+    cpu_model=$(lscpu | grep "Model name" | cut -d: -f2 | xargs)
     echo "  CPU: $cpu_model"
 
     # Memory
-    local total_mem=$(free -h | awk '/^Mem:/ {print $2}')
+    local total_mem
+    total_mem=$(free -h | awk '/^Mem:/ {print $2}')
     echo "  Memory: $total_mem"
 
     # GPU
@@ -1000,9 +1070,12 @@ print_post_install() {
     fi
 
     # Disk space
-    local nix_total=$(df -h /nix | tail -1 | awk '{print $2}')
-    local nix_used=$(df -h /nix | tail -1 | awk '{print $3}')
-    local nix_avail=$(df -h /nix | tail -1 | awk '{print $4}')
+    local nix_total
+    local nix_used
+    local nix_avail
+    nix_total=$(df -h /nix | tail -1 | awk '{print $2}')
+    nix_used=$(df -h /nix | tail -1 | awk '{print $3}')
+    nix_avail=$(df -h /nix | tail -1 | awk '{print $4}')
     echo "  /nix storage: $nix_used used / $nix_total total ($nix_avail available)"
     echo ""
 

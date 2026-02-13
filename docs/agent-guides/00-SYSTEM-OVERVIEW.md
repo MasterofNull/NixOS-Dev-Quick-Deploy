@@ -13,7 +13,7 @@ A **unified AI development environment** that combines:
 - **Vector Database** (Qdrant) for context storage and retrieval
 - **Continuous Learning** that improves from every interaction
 - **Hybrid Architecture** that reduces remote API costs by 30-50%
-- **Podman-based AI stack** for reproducible, rootless services
+- **K3s-based AI stack** for reproducible services
 - **System dashboards + health checks** for operational visibility
 
 ---
@@ -36,9 +36,9 @@ A **unified AI development environment** that combines:
 
 ## Core Components
 
-### 0. **Podman AI Stack**
-- Rootless container orchestration for local AI services
-- Persistent data stored under `~/.local/share/nixos-ai-stack/`
+### 0. **K3s AI Stack**
+- Kubernetes orchestration for local AI services
+- Persistent data stored in K3s PersistentVolumeClaims
 
 ### 1. **Qdrant Vector Database** (Port 6333)
 - Stores embeddings of code, solutions, errors
@@ -67,6 +67,32 @@ A **unified AI development environment** that combines:
 ### 6. **System Command Center Dashboard** (Port 8888)
 - Real-time monitoring of services, data stores, and host health
 - Exports JSON for agent-friendly analysis
+
+---
+
+## System Architecture Diagram
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                          NixOS Host                              │
+│                                                                  │
+│  ┌────────────────────── K3s Cluster ─────────────────────────┐  │
+│  │                                                            │  │
+│  │  Namespace: ai-stack                                       │  │
+│  │    ├─ aidb (MCP server)                                    │  │
+│  │    ├─ hybrid-coordinator / embeddings                      │  │
+│  │    ├─ postgres / redis / qdrant                             │  │
+│  │    ├─ grafana / prometheus / loki / jaeger                  │  │
+│  │    └─ nginx (gateway)                                       │  │
+│  │                                                            │  │
+│  │  Secrets (SOPS): ai-stack/kubernetes/secrets/secrets.sops.yaml│ │
+│  │  PVCs: postgres-data, qdrant-data, redis-data, backups      │  │
+│  └────────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  Namespace: backups (cronjobs, snapshots)                        │
+│  Namespace: logging (promtail)                                   │
+└──────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -111,7 +137,7 @@ Load only what you need, not everything
 - **Vector Collections**: 5
 - **Token Reduction**: 30-50% average
 - **Response Time**: Local < 1s, Hybrid < 2s
-- **Data Storage**: `~/.local/share/nixos-ai-stack/`
+- **Data Storage**: PVC-backed volumes (`kubectl get pvc -n ai-stack`)
 
 ---
 

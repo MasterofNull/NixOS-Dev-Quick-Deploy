@@ -1,4 +1,5 @@
 [Unit]
+# LEGACY: Podman runtime startup (deprecated). K3s is the supported path.
 Description=AI Stack Automatic Startup Service
 Documentation=file://%h/Documents/try/NixOS-Dev-Quick-Deploy/DASHBOARD-FIX-REPORT-2025-12-31.md
 After=network-online.target podman.socket

@@ -4,5 +4,5 @@ The local AI stack is now deployed through **K3s + containerd**. Compose-based s
 
 Start here:
 - `DEPLOYMENT.md`
-- `K3S-PORTAINER-MIGRATION-PLAN.md`
+- `archive/K3S-PORTAINER-MIGRATION-PLAN.md`
 

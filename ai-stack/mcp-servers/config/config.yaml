@@ -78,8 +78,11 @@ continuous_learning:
 
 rag:
   embedding_model: BAAI/bge-small-en-v1.5
-  embedding_dimension: 768
+  embedding_dimension: 384
   embedding_trust_remote_code: true
+  default_limit: 5
+  default_context_chars: 4000
+  max_context_chars: 12000
   pgvector:
     hnsw_m: 16
     hnsw_ef_construction: 64
@@ -115,7 +118,7 @@ hybrid:
   llama_cpp_url: http://llama-cpp:8080
   embedding_service_url: http://embeddings:8081
   embedding_model: BAAI/bge-small-en-v1.5
-  embedding_dimensions: 768
+  embedding_dimensions: 384
   local_confidence_threshold: 0.7
   high_value_threshold: 0.7
   pattern_extraction_enabled: true

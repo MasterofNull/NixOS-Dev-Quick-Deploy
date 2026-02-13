@@ -5,7 +5,14 @@ REGISTRY_NAME="${REGISTRY_NAME:-local-registry}"
 REGISTRY_PORT="${REGISTRY_PORT:-5000}"
 REGISTRY_NAMESPACE="${REGISTRY_NAMESPACE:-ai-stack}"
 REGISTRY_MANIFEST="${REGISTRY_MANIFEST:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/ai-stack/kubernetes/registry/registry.yaml}"
-PORT_FORWARD_PID_FILE="${PORT_FORWARD_PID_FILE:-/tmp/local-registry-portforward.pid}"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-${TMPDIR:-/${TMP_FALLBACK:-tmp}}}"
+PORT_FORWARD_PID_FILE="${PORT_FORWARD_PID_FILE:-${RUNTIME_DIR}/local-registry-portforward.pid}"
+KUBECTL_TIMEOUT="${KUBECTL_TIMEOUT:-60}"
+KUBECONFIG="${KUBECONFIG:-}"
+
+if [[ -z "$KUBECONFIG" && -f "/etc/rancher/k3s/k3s.yaml" ]]; then
+  KUBECONFIG="/etc/rancher/k3s/k3s.yaml"
+fi
 
 usage() {
   cat <<USAGE
@@ -16,7 +23,7 @@ Env overrides:
   REGISTRY_PORT (default: 5000)
   REGISTRY_NAMESPACE (default: ai-stack)
   REGISTRY_MANIFEST (default: ai-stack/kubernetes/registry/registry.yaml)
-  PORT_FORWARD_PID_FILE (default: /tmp/local-registry-portforward.pid)
+  PORT_FORWARD_PID_FILE (default: ${XDG_RUNTIME_DIR:-${TMPDIR:-/${TMP_FALLBACK:-tmp}}}/local-registry-portforward.pid)
 USAGE
 }
 
@@ -33,9 +40,9 @@ case "$cmd" in
       exit 1
     fi
     echo "[INFO] Applying registry manifest"
-    kubectl apply -f "$REGISTRY_MANIFEST" >/dev/null
+    KUBECONFIG="$KUBECONFIG" kubectl --request-timeout="${KUBECTL_TIMEOUT}s" apply --validate=false -f "$REGISTRY_MANIFEST" >/dev/null
     echo "[INFO] Starting port-forward on localhost:${REGISTRY_PORT}"
-    kubectl -n "$REGISTRY_NAMESPACE" port-forward "svc/${REGISTRY_NAME}" "${REGISTRY_PORT}:5000" >/dev/null 2>&1 &
+    KUBECONFIG="$KUBECONFIG" kubectl --request-timeout="${KUBECTL_TIMEOUT}s" -n "$REGISTRY_NAMESPACE" port-forward "svc/${REGISTRY_NAME}" "${REGISTRY_PORT}:5000" >/dev/null 2>&1 &
     echo $! > "$PORT_FORWARD_PID_FILE"
     echo "[OK] Registry available on localhost:${REGISTRY_PORT}"
     ;;
@@ -44,11 +51,11 @@ case "$cmd" in
       kill "$(cat "$PORT_FORWARD_PID_FILE")" >/dev/null 2>&1 || true
       rm -f "$PORT_FORWARD_PID_FILE"
     fi
-    kubectl delete -f "$REGISTRY_MANIFEST" >/dev/null 2>&1 || true
+    KUBECONFIG="$KUBECONFIG" kubectl --request-timeout="${KUBECTL_TIMEOUT}s" delete -f "$REGISTRY_MANIFEST" >/dev/null 2>&1 || true
     echo "[OK] Registry stopped"
     ;;
   status)
-    kubectl -n "$REGISTRY_NAMESPACE" get deploy,svc -l app="${REGISTRY_NAME}"
+    KUBECONFIG="$KUBECONFIG" kubectl --request-timeout="${KUBECTL_TIMEOUT}s" -n "$REGISTRY_NAMESPACE" get deploy,svc -l app="${REGISTRY_NAME}"
     if [[ -f "$PORT_FORWARD_PID_FILE" ]]; then
       echo "[INFO] Port-forward PID: $(cat "$PORT_FORWARD_PID_FILE")"
     fi

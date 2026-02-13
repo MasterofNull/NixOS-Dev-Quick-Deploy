@@ -6,10 +6,14 @@ from typing import List, Dict, Any, Optional
 import logging
 import ssl
 from pathlib import Path
+from urllib.parse import quote
+from datetime import datetime, timezone
 
 import aiohttp
 
 logger = logging.getLogger(__name__)
+
+from ..config import service_endpoints  # noqa: E402
 
 
 class ContainerManager:
@@ -22,11 +26,14 @@ class ContainerManager:
         self.k8s_port = os.getenv("KUBERNETES_SERVICE_PORT_HTTPS", "443")
         self.k8s_token_path = Path("/var/run/secrets/kubernetes.io/serviceaccount/token")
         self.k8s_ca_path = Path("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+        self.endpoints = service_endpoints
 
     def _detect_mode(self) -> str:
         """Detect runtime mode (podman vs k8s)."""
         explicit = os.getenv("DASHBOARD_MODE", "").lower()
         if explicit in ("k8s", "kubernetes"):
+            return "k8s"
+        if self.k8s_token_path.exists() or os.getenv("KUBERNETES_SERVICE_HOST"):
             return "k8s"
         return "podman"
 
@@ -250,6 +257,74 @@ class ContainerManager:
                     return None
                 return await resp.json()
 
+    async def _k8s_patch(self, path: str, payload: Dict[str, Any]) -> bool:
+        token = self._read_k8s_token()
+        if not token:
+            logger.error("k8s_token_missing")
+            return False
+
+        url = f"https://{self.k8s_host}:{self.k8s_port}{path}"
+        ssl_ctx = ssl.create_default_context(cafile=str(self.k8s_ca_path))
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/merge-patch+json",
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(url, headers=headers, ssl=ssl_ctx, json=payload, timeout=5) as resp:
+                if resp.status not in (200, 201):
+                    logger.error(f"k8s_patch_error: {resp.status} {path}")
+                    return False
+                return True
+
+    async def _k8s_list_deployments(self) -> List[str]:
+        selector = quote("nixos.quick-deploy.ai-stack=true")
+        payload = await self._k8s_get_json(
+            f"/apis/apps/v1/namespaces/{self.namespace}/deployments?labelSelector={selector}"
+        )
+        if not payload:
+            return []
+        names = [item.get("metadata", {}).get("name", "") for item in payload.get("items", []) if item.get("metadata")]
+        include_agents = os.getenv("ENABLE_OPTIONAL_AGENTS", "false").lower() == "true"
+        if include_agents:
+            return names
+        return [name for name in names if name not in {"aider", "aider-wrapper"}]
+
+    async def _k8s_scale_deployments(self, replicas: int) -> Dict[str, Any]:
+        deployments = await self._k8s_list_deployments()
+        if not deployments:
+            return {"success": False, "message": "No deployments found", "updated": []}
+
+        updated = []
+        for name in deployments:
+            if not name:
+                continue
+            ok = await self._k8s_patch(
+                f"/apis/apps/v1/namespaces/{self.namespace}/deployments/{name}",
+                {"spec": {"replicas": replicas}},
+            )
+            if ok:
+                updated.append(name)
+        return {"success": len(updated) == len(deployments), "updated": updated}
+
+    async def _k8s_rollout_restart(self) -> Dict[str, Any]:
+        deployments = await self._k8s_list_deployments()
+        if not deployments:
+            return {"success": False, "message": "No deployments found", "updated": []}
+
+        timestamp = datetime.now(timezone.utc).isoformat()
+        updated = []
+        for name in deployments:
+            if not name:
+                continue
+            ok = await self._k8s_patch(
+                f"/apis/apps/v1/namespaces/{self.namespace}/deployments/{name}",
+                {"spec": {"template": {"metadata": {"annotations": {"kubectl.kubernetes.io/restartedAt": timestamp}}}}},
+            )
+            if ok:
+                updated.append(name)
+        return {"success": len(updated) == len(deployments), "updated": updated}
+
     async def _k8s_delete_pod(self, name: str) -> Dict[str, Any]:
         token = self._read_k8s_token()
         if not token:
@@ -290,33 +365,38 @@ class ContainerManager:
             return None
 
     async def start_ai_stack(self) -> Dict[str, Any]:
-        """Start all AI stack containers using podman-compose"""
+        """Start all AI stack containers"""
         try:
-            import os
-            project_root = os.path.expanduser("~/Documents/try/NixOS-Dev-Quick-Deploy")
-            compose_dir = f"{project_root}/ai-stack/compose"
+            if self.mode == "k8s":
+                result = await self._k8s_scale_deployments(1)
+                return {
+                    "action": "start_ai_stack",
+                    "success": result.get("success", False),
+                    "message": "Scaled AI stack deployments to 1" if result.get("success") else "Failed to scale deployments",
+                    "updated": result.get("updated", []),
+                }
 
-            # Use podman-compose up to start all containers
+            containers = await self._get_ai_stack_containers()
+            if not containers:
+                return {
+                    "action": "start_ai_stack",
+                    "success": False,
+                    "message": "No AI stack containers found",
+                    "output": ""
+                }
+
             result = subprocess.run(
-                ["podman-compose", "up", "-d"],
+                ["podman", "start"] + containers,
                 capture_output=True,
                 text=True,
-                cwd=compose_dir,
-                timeout=300
+                timeout=60
             )
 
             return {
                 "action": "start_ai_stack",
                 "success": result.returncode == 0,
-                "message": "AI stack started successfully" if result.returncode == 0 else "Failed to start AI stack",
-                "output": result.stdout[-1000:] if result.stdout else result.stderr[-1000:] if result.stderr else ""
-            }
-        except subprocess.TimeoutExpired:
-            return {
-                "action": "start_ai_stack",
-                "success": False,
-                "message": "Command timed out after 5 minutes",
-                "output": ""
+                "message": f"Started {len(containers)} containers" if result.returncode == 0 else "Failed to start AI stack",
+                "output": result.stdout if result.stdout else result.stderr if result.stderr else ""
             }
         except Exception as e:
             logger.error(f"Error starting AI stack: {e}")
@@ -330,6 +410,15 @@ class ContainerManager:
     async def stop_ai_stack(self) -> Dict[str, Any]:
         """Stop all AI stack containers"""
         try:
+            if self.mode == "k8s":
+                result = await self._k8s_scale_deployments(0)
+                return {
+                    "action": "stop_ai_stack",
+                    "success": result.get("success", False),
+                    "message": "Scaled AI stack deployments to 0" if result.get("success") else "Failed to scale deployments",
+                    "stopped": result.get("updated", []),
+                }
+
             containers = await self._get_ai_stack_containers()
 
             if not containers:
@@ -367,31 +456,36 @@ class ContainerManager:
     async def restart_ai_stack(self) -> Dict[str, Any]:
         """Restart all AI stack containers"""
         try:
-            import os
-            project_root = os.path.expanduser("~/Documents/try/NixOS-Dev-Quick-Deploy")
-            compose_dir = f"{project_root}/ai-stack/compose"
+            if self.mode == "k8s":
+                result = await self._k8s_rollout_restart()
+                return {
+                    "action": "restart_ai_stack",
+                    "success": result.get("success", False),
+                    "message": "Rolled out restart for AI stack deployments" if result.get("success") else "Failed to restart deployments",
+                    "restarted": result.get("updated", []),
+                }
 
-            # Use podman-compose restart
+            containers = await self._get_ai_stack_containers()
+            if not containers:
+                return {
+                    "action": "restart_ai_stack",
+                    "success": False,
+                    "message": "No AI stack containers found",
+                    "output": ""
+                }
+
             result = subprocess.run(
-                ["podman-compose", "restart"],
+                ["podman", "restart"] + containers,
                 capture_output=True,
                 text=True,
-                cwd=compose_dir,
-                timeout=300
+                timeout=60
             )
 
             return {
                 "action": "restart_ai_stack",
                 "success": result.returncode == 0,
-                "message": "AI stack restarted successfully" if result.returncode == 0 else "Failed to restart AI stack",
-                "output": result.stdout[-1000:] if result.stdout else result.stderr[-1000:] if result.stderr else ""
-            }
-        except subprocess.TimeoutExpired:
-            return {
-                "action": "restart_ai_stack",
-                "success": False,
-                "message": "Command timed out after 5 minutes",
-                "output": ""
+                "message": f"Restarted {len(containers)} containers" if result.returncode == 0 else "Failed to restart AI stack",
+                "output": result.stdout if result.stdout else result.stderr if result.stderr else ""
             }
         except Exception as e:
             logger.error(f"Error restarting AI stack: {e}")

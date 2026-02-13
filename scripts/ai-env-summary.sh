@@ -13,6 +13,8 @@ if [[ -f "$SCRIPT_DIR/config/variables.sh" ]]; then
   # shellcheck disable=SC1091
   . "$SCRIPT_DIR/config/variables.sh"
 fi
+# shellcheck disable=SC1091
+[[ -f "$SCRIPT_DIR/config/service-endpoints.sh" ]] && . "$SCRIPT_DIR/config/service-endpoints.sh"
 
 REGISTRY_PATH="${EDGE_MODEL_REGISTRY:-$SCRIPT_DIR/config/edge-model-registry.json}"
 
@@ -23,7 +25,7 @@ echo "Host profile (role):                ${HOST_PROFILE:-undefined}"
 echo "AI profile (edge LLM behavior):    ${AI_PROFILE:-undefined}"
 echo "AI stack profile (personal/guest): ${AI_STACK_PROFILE:-undefined}"
 echo "AI enabled mode:                   ${AI_ENABLED:-auto}"
-echo "AIDB base URL:                     ${AIDB_BASE_URL:-http://localhost:8091}"
+echo "AIDB base URL:                     ${AIDB_BASE_URL:-${AIDB_URL:-http://${SERVICE_HOST:-localhost}:${AIDB_PORT:-8091}}}"
 echo "AIDB project name:                 ${AIDB_PROJECT_NAME:-NixOS-Dev-Quick-Deploy}"
 echo "Edge model registry:               ${REGISTRY_PATH}"
 

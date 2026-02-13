@@ -4,7 +4,7 @@
 ## Scope
 
 This file records temporary security exceptions and triage decisions based on
-`data/security-scan-2026-01-07.txt`. Exceptions must have owners, expiry, and a
+`archive/data/security-scan-2026-01-07.txt`. Exceptions must have owners, expiry, and a
 remediation plan.
 
 ## Triage Summary (Latest Scan)
@@ -12,7 +12,7 @@ remediation plan.
 | Image | HIGH | CRITICAL | Decision |
 | --- | --- | --- | --- |
 | `docker.io/library/nginx:1.27-alpine` | 7 | 2 | Remediate (core entrypoint) |
-| `localhost/compose_aidb:latest` | 0 | 1 | Remediate (core) |
+| `localhost:5000/ai-stack-aidb:dev` | 0 | 1 | Remediate (core) |
 | `docker.io/pgvector/pgvector:0.8.1-pg18` | 2 | 0 | Remediate (core) |
 | `docker.io/prom/prometheus:v2.54.0` | 7 | 2 | Remediate (observability) |
 | `docker.io/jaegertracing/all-in-one:1.60` | 5 | 1 | Remediate (observability) |
@@ -21,9 +21,9 @@ remediation plan.
 | `docker.io/mindsdb/mindsdb:latest` | 5 | 1 | Exempt in dev only (optional) |
 | `docker.io/paulgauthier/aider:latest` | 8 | 0 | Exempt in dev only (optional) |
 | `docker.io/significantgravitas/auto-gpt:latest` | 27 | 3 | Exempt in dev only (optional) |
-| `localhost/compose_nixos-docs:latest` | 2 | 1 | Remediate (optional but recommended) |
-| `localhost/compose_aider-wrapper:latest` | 1 | 0 | Exempt in dev only (optional) |
-| `localhost/compose_ralph-wiggum:latest` | 5 | 0 | Exempt in dev only (optional) |
+| `localhost:5000/ai-stack-nixos-docs:dev` | 2 | 1 | Remediate (optional but recommended) |
+| `localhost:5000/ai-stack-aider-wrapper:dev` | 1 | 0 | Exempt in dev only (optional) |
+| `localhost:5000/ai-stack-ralph-wiggum:dev` | 5 | 0 | Exempt in dev only (optional) |
 
 ## Exceptions (Temporary)
 

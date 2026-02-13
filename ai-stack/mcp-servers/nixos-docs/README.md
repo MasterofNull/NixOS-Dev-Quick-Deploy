@@ -328,13 +328,12 @@ docs = await search_nixos_docs(f"how to configure {service_name}")
 
 ## Deployment
 
-### With Docker Compose
+### With K3s/Kubernetes
 
-Already configured in `ai-stack/compose/docker-compose.yml`:
+Already configured in `ai-stack/kubernetes` manifests:
 
 ```bash
-cd ai-stack/compose
-podman-compose up -d nixos-docs
+kubectl apply -k ai-stack/kubernetes
 ```
 
 ### Standalone
@@ -364,7 +363,7 @@ curl http://localhost:8094/cache/stats
 ### Container Logs
 
 ```bash
-podman logs -f local-ai-nixos-docs
+kubectl logs -f -n ai-stack nixos-docs
 ```
 
 ---
@@ -404,8 +403,8 @@ This is normal and the server will continue to function.
 Check network connectivity and disk space:
 
 ```bash
-podman exec local-ai-nixos-docs df -h
-podman exec local-ai-nixos-docs git config --global http.timeout 60
+kubectl exec -n ai-stack nixos-docs -- df -h
+kubectl exec -n ai-stack nixos-docs -- git config --global http.timeout 60
 ```
 
 ### Slow Searches
@@ -422,7 +421,7 @@ curl -X POST http://localhost:8094/sync
 
 3. Monitor container resources:
 ```bash
-podman stats local-ai-nixos-docs
+kubectl top pod -n ai-stack nixos-docs
 ```
 
 ---

@@ -1,6 +1,6 @@
 # AI Stack Secrets Management Guide
 
-**Last Updated:** January 24, 2026
+**Last Updated:** February 2, 2026
 **Tool Version:** 1.0.0
 **Status:** ✅ Production Ready
 
@@ -21,6 +21,75 @@
 This will generate:
 - 3 database passwords (32 bytes each, 256-bit entropy)
 - 9 API keys (64 bytes each, 512-bit entropy)
+
+## SOPS Bundle (Phase 9)
+
+The deployment now supports (and can enforce) a single encrypted secrets bundle:
+
+- **Bundle:** `ai-stack/kubernetes/secrets/secrets.sops.yaml`
+- **Config:** `.sops.yaml` (repo root)
+- **Enforce encrypted secrets:** set `REQUIRE_ENCRYPTED_SECRETS=true`
+
+### Deprecated Plaintext Manifests
+
+Plaintext Kompose secret manifests (`ai-stack/kubernetes/kompose/*-secret.yaml`) are deprecated and now contain only placeholders.
+All secret creation must happen via the SOPS bundle + Phase 9 gate.
+
+### History Cleanup (Requires Explicit Approval)
+
+Because gitleaks found historical secrets, the repo history must be rewritten and credentials rotated.
+Recommended approach:
+
+1. Ensure all secrets are rotated and re-applied (Phase 9) after the rewrite.
+2. Use `git filter-repo` to remove the leaked files from history.
+3. Force-push the rewritten history and notify collaborators.
+
+This is a destructive operation and should be done only after coordination.
+
+### Create or Refresh Bundle
+
+```bash
+bash -lc 'source lib/secrets-sops.sh && sops_encrypt_secrets_bundle ai-stack/kubernetes/secrets'
+```
+
+### Rotate Secrets (SOPS)
+
+```bash
+# Rotate all keys in the bundle
+./scripts/rotate-secrets.sh all
+
+# Rotate specific keys
+./scripts/rotate-secrets.sh postgres_password grafana_admin_password
+```
+
+After rotation, re-apply secrets to the cluster (Phase 9 or manual kubectl apply).
+
+### No-Downtime Rotation Procedure (K3s)
+
+```bash
+# 0) Ensure cluster is healthy before rotation
+./scripts/ai-stack-health.sh
+
+# 1) Rotate secrets (bundle update)
+./scripts/rotate-secrets.sh all
+
+# 2) Apply updated secrets to the cluster
+sops -d ai-stack/kubernetes/secrets/secrets.sops.yaml | kubectl apply -n ai-stack -f -
+
+# 3) Restart only the affected deployments (preferred) or all deployments
+# Example: restart all deployments in ai-stack
+kubectl -n ai-stack rollout restart deploy
+
+# 4) Wait for rollouts to complete
+kubectl -n ai-stack rollout status deploy --timeout=10m
+
+# 5) Verify stack health
+./scripts/ai-stack-health.sh
+```
+
+Notes:
+- Prefer restarting only deployments that consume the rotated secrets to minimize blast radius.
+- Some services read secrets only on startup; a rollout restart is required to pick up new values.
 
 ### Check Secret Status
 
@@ -184,8 +253,7 @@ chmod +x scripts/manage-secrets.py
 
 # 3. Start the stack
 export AI_STACK_ENV_FILE=/path/to/.env
-cd ai-stack/compose
-docker compose up -d
+kubectl apply -k ai-stack/kubernetes
 ```
 
 ### Rotate a Database Password
@@ -195,12 +263,12 @@ docker compose up -d
 ./scripts/manage-secrets.sh rotate postgres_password
 
 # 2. Update PostgreSQL user password (for existing databases)
-NEW_PASS=$(cat ai-stack/compose/secrets/postgres_password)
-docker compose exec postgres psql -U mcp -d mcp \
+NEW_PASS=$(cat ai-stack/kubernetes/secrets/generated/postgres_password)
+kubectl exec -n ai-stack deploy/postgres -- psql -U mcp -d mcp \
   -c "ALTER USER mcp WITH PASSWORD '$NEW_PASS';"
 
 # 3. Restart affected services
-docker compose restart postgres aidb hybrid-coordinator health-monitor ralph-wiggum
+kubectl rollout restart deploy -n ai-stack postgres aidb hybrid-coordinator health-monitor ralph-wiggum
 ```
 
 ### Rotate All API Keys
@@ -213,7 +281,7 @@ docker compose restart postgres aidb hybrid-coordinator health-monitor ralph-wig
 ./scripts/manage-secrets.sh rotate all
 
 # 3. Restart all services
-docker compose down && docker compose up -d
+kubectl rollout restart deploy -n ai-stack --all
 ```
 
 ### Backup Before Maintenance
@@ -237,7 +305,7 @@ docker compose down && docker compose up -d
 ./scripts/manage-secrets.sh restore backups/secrets/secrets_20260124_153045
 
 # Restart services
-docker compose down && docker compose up -d
+kubectl rollout restart deploy -n ai-stack --all
 ```
 
 ---
@@ -253,8 +321,8 @@ Permission denied reading /run/secrets/postgres_password
 
 **Fix:**
 ```bash
-# Secrets must be 644 for container access
-chmod 644 ai-stack/compose/secrets/*
+# Ensure secrets file is readable (sops-managed)
+chmod 600 ai-stack/kubernetes/secrets/secrets.sops.yaml
 ```
 
 ### Issue: Empty or Missing Secrets
@@ -295,8 +363,8 @@ chmod 644 ai-stack/compose/secrets/*
 # For existing databases, you must update the password manually
 
 # PostgreSQL:
-NEW_PASS=$(cat ai-stack/compose/secrets/postgres_password)
-docker compose exec postgres psql -U mcp -d mcp \
+NEW_PASS=$(cat ai-stack/kubernetes/secrets/generated/postgres_password)
+kubectl exec -n ai-stack deploy/postgres -- psql -U mcp -d mcp \
   -c "ALTER USER mcp WITH PASSWORD '$NEW_PASS';"
 
 # Grafana: Delete data directory and restart
@@ -305,7 +373,7 @@ podman unshare rm -rf ~/.local/share/nixos-ai-stack/grafana/*
 docker start local-ai-grafana
 
 # Redis: Just restart (reads password on startup)
-docker compose restart redis
+kubectl rollout restart deploy -n ai-stack redis
 ```
 
 ---
@@ -333,7 +401,7 @@ docker compose restart redis
 
 ### Secrets Directory
 ```
-ai-stack/compose/secrets/
+ai-stack/kubernetes/secrets/generated/
 ├── postgres_password           # 32B password
 ├── redis_password              # 32B password
 ├── grafana_admin_password      # 32B password
@@ -363,7 +431,7 @@ backups/secrets/
 
 ### Configuration File
 ```
-ai-stack/compose/.secrets-config.json
+ai-stack/kubernetes/secrets/.secrets-config.json
 {
   "postgres_password": {
     "created": "2026-01-24T12:00:00",
@@ -377,43 +445,24 @@ ai-stack/compose/.secrets-config.json
 
 ---
 
-## Integration with Docker Compose
+## Integration with Kubernetes Secrets
 
-### How Secrets Are Mounted
+### Apply Secrets (sops-managed)
 
-In `docker-compose.yml`:
-
-```yaml
-services:
-  postgres:
-    environment:
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-    secrets:
-      - postgres_password
-
-secrets:
-  postgres_password:
-    file: ./secrets/postgres_password
+```bash
+sops -d ai-stack/kubernetes/secrets/secrets.sops.yaml | kubectl apply -f -
 ```
 
 ### How Services Read Secrets
 
-**PostgreSQL (native support):**
-```bash
-# Reads directly from POSTGRES_PASSWORD_FILE
-POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
-```
-
-**Redis (shell substitution):**
-```bash
-# Reads via command substitution
---requirepass $(cat /run/secrets/redis_password)
-```
-
-**Grafana (native support):**
-```bash
-# Reads directly from GF_SECURITY_ADMIN_PASSWORD__FILE
-GF_SECURITY_ADMIN_PASSWORD__FILE=/run/secrets/grafana_admin_password
+**Kubernetes envFrom / secretKeyRef:**
+```yaml
+env:
+  - name: POSTGRES_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: postgres-password
+        key: password
 ```
 
 **Python services (helper library):**
@@ -447,9 +496,7 @@ cd /path/to/NixOS-Dev-Quick-Deploy
 ./scripts/manage-secrets.sh rotate all
 
 # Restart stack
-cd ai-stack/compose
-docker compose down
-docker compose up -d
+kubectl rollout restart deploy -n ai-stack --all
 
 # Send notification (optional)
 echo "AI Stack secrets rotated on $(date)" | mail -s "Secret Rotation" admin@example.com
@@ -486,7 +533,7 @@ jobs:
 
       - name: Commit changes
         run: |
-          git add ai-stack/compose/secrets/
+          git add ai-stack/kubernetes/secrets/secrets.sops.yaml
           git commit -m "chore: rotate secrets (automated)"
           git push
 ```
@@ -499,7 +546,7 @@ jobs:
 A: Restore from the most recent backup using `restore` command. If no backups exist, you'll need to reinitialize and manually update database passwords.
 
 **Q: Can I use my own passwords?**
-A: Not recommended. The tool generates cryptographically secure passwords. If you must, edit the files in `ai-stack/compose/secrets/` directly (not recommended).
+A: Not recommended. The tool generates cryptographically secure passwords. If you must, edit the files in `ai-stack/kubernetes/secrets/generated/` directly (not recommended).
 
 **Q: How often should I rotate secrets?**
 A: Quarterly rotation is recommended. Rotate immediately after:
@@ -518,19 +565,18 @@ A: Yes! The tool is production-ready. Just ensure:
 - Documented recovery procedures
 - Team training on secret rotation
 
-**Q: How do I migrate to Kubernetes Secrets later?**
-A: The values are compatible. Export secrets to Kubernetes:
+**Q: How do I apply secrets to Kubernetes?**
+A: Encrypt and apply the sops file:
 ```bash
-kubectl create secret generic postgres-password \
-  --from-file=password=ai-stack/compose/secrets/postgres_password
+sops -d ai-stack/kubernetes/secrets/secrets.sops.yaml | kubectl apply -f -
 ```
 
 ---
 
 ## Related Documentation
 
-- [DAY5-INTEGRATION-TESTING-RESULTS.md](DAY5-INTEGRATION-TESTING-RESULTS.md) - Password migration testing
-- [CONTAINER-ORCHESTRATION-ANALYSIS-2026.md](CONTAINER-ORCHESTRATION-ANALYSIS-2026.md) - Orchestration recommendations
+- [docs/archive/DAY5-INTEGRATION-TESTING-RESULTS.md](docs/archive/DAY5-INTEGRATION-TESTING-RESULTS.md) - Password migration testing
+- [docs/archive/CONTAINER-ORCHESTRATION-ANALYSIS-2026.md](docs/archive/CONTAINER-ORCHESTRATION-ANALYSIS-2026.md) - Orchestration recommendations
 - [90-DAY-REMEDIATION-PLAN.md](90-DAY-REMEDIATION-PLAN.md) - Security roadmap
 - [ai-stack/mcp-servers/shared/secrets_loader.py](ai-stack/mcp-servers/shared/secrets_loader.py) - Python helper library
 

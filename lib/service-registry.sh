@@ -124,7 +124,8 @@ generate_vscode_env() {
 # Returns: 0 if port is available, 1 if in use
 check_service_port() {
     local service="$1"
-    local port=$(get_service_port "$service")
+    local port
+    port=$(get_service_port "$service")
 
     if command -v nc >/dev/null 2>&1; then
         nc -z localhost "$port" 2>/dev/null && return 1 || return 0

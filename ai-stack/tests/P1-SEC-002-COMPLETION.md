@@ -112,16 +112,16 @@ PASS: Rate limit recovery
 ```
 
 ## Files Modified
-- `/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/serve-dashboard.sh`
+- `~/Documents/try/NixOS-Dev-Quick-Deploy/scripts/serve-dashboard.sh`
   - Added RateLimiter class (lines 66-107)
   - Added rate limit checks to do_GET (lines 119-132)
   - Added rate limit checks to do_POST (lines 243-256)
 
-- `/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/ai-stack/mcp-servers/config/config.yaml`
+- `~/Documents/try/NixOS-Dev-Quick-Deploy/ai-stack/mcp-servers/config/config.yaml`
   - Enabled rate limiting (line 68: `enabled: true`)
 
 ## Files Created
-- `/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/ai-stack/tests/test_rate_limiting.py`
+- `~/Documents/try/NixOS-Dev-Quick-Deploy/ai-stack/tests/test_rate_limiting.py`
   - Automated tests for rate limiting
   - Verifies 60 req/min limit enforced
   - Checks Retry-After header

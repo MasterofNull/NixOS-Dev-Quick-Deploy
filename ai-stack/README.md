@@ -20,22 +20,19 @@ The AI stack provides:
 # Deploy AI stack (from repo root)
 ./nixos-quick-deploy.sh --with-ai-stack
 
-# Manage AI stack
-./scripts/ai-stack-manage.sh up      # Start services
-./scripts/ai-stack-manage.sh status  # Check status
-./scripts/ai-stack-manage.sh logs    # View logs
-./scripts/ai-stack-manage.sh health  # Run health checks
+# Check AI stack status
+kubectl get pods -n ai-stack
+
+# View logs
+kubectl logs -n ai-stack deployment/aidb --tail=100
 ```
 
 ## Directory Structure
 
 ```
 ai-stack/
-├── compose/                 # Docker Compose configurations
-│   ├── docker-compose.yml   # Full production stack
-│   ├── docker-compose.dev.yml  # Development overrides
-│   ├── docker-compose.minimal.yml  # Minimal stack (llama.cpp only)
-│   └── .env.example         # Environment template
+├── kubernetes/              # K3s manifests (generated + curated)
+├── kustomize/               # Kustomize overlays (dev/prod/dev-agents)
 ├── mcp-servers/             # Model Context Protocol servers
 │   ├── aidb/                # AIDB MCP server (PostgreSQL + Qdrant + FastAPI)
 │   ├── nixos/               # NixOS-specific MCP server
@@ -69,33 +66,44 @@ ai-stack/
 | Qdrant | 6333 | Vector database |
 | Redis Insight | 5540 | Redis web UI |
 
-## Profiles
+## Service Dependencies
 
-- `full`: optional services (Grafana, Prometheus, agents, etc.)
-- `self-heal`: privileged health monitor (opt-in only)
+Startup dependencies are enforced with init containers in the K3s manifests to avoid race conditions.
+
+```
+Postgres ─┐
+Redis    ├─> AIDB ─┐
+Qdrant   ┘         ├─> Hybrid Coordinator ─┐
+Embeddings ────────┘                       ├─> Ralph Wiggum
+Postgres ──────────────────────────────────┘
+Redis    ──────────────────────────────────┘
+```
+
+Dependency waits are defined in:
+- `ai-stack/kubernetes/kompose/aidb-deployment.yaml`
+- `ai-stack/kubernetes/kompose/hybrid-coordinator-deployment.yaml`
+- `ai-stack/kubernetes/kompose/ralph-wiggum-deployment.yaml`
+
+## Kustomize Overlays
+
+- `dev`: development defaults
+- `prod`: production-hardened defaults
+- `dev-agents`: opt-in interactive agents (Aider)
 
 Examples:
 
 ```bash
-podman-compose --profile full up -d
-podman-compose --profile self-heal up -d
+kubectl apply -k ai-stack/kustomize/overlays/dev
+kubectl apply -k ai-stack/kustomize/overlays/dev-agents  # optional
 ```
 
 ## Data Persistence
 
-All data is stored in shared directories that persist across reinstalls:
+K3s uses PersistentVolumeClaims for durable storage:
 
-```
-~/.local/share/nixos-ai-stack/
-├── aidb/              # AIDB runtime data
-├── telemetry/         # AIDB + coordinator telemetry events
-├── postgres/          # PostgreSQL data
-├── redis/             # Redis persistence
-├── qdrant/            # Vector database
-├── llama-cpp-models/   # Downloaded models
-├── imports/           # Document imports
-├── exports/           # Exported data
-└── backups/           # Database backups
+```bash
+kubectl get pvc -n ai-stack
+kubectl get pvc -n backups
 ```
 
 ## Configuration
@@ -105,20 +113,16 @@ Active configuration:
 - `ai-stack/mcp-servers/config/config.dev.yaml` - Dev overrides (set `STACK_ENV=dev`)
 - `ai-stack/mcp-servers/config/config.staging.yaml` - Staging overrides (set `STACK_ENV=staging`)
 - `ai-stack/mcp-servers/config/config.prod.yaml` - Prod overrides (set `STACK_ENV=prod`)
-- `~/.config/nixos-ai-stack/.env` - Environment variables
+- `ai-stack/kubernetes/secrets/secrets.sops.yaml` - Encrypted secrets bundle (SOPS/age)
 - `~/.config/nixos-ai-stack/ai-optimizer.json` - Integration metadata
 
 Config overrides:
 - `STACK_ENV` applies env-specific overlays for AIDB, embeddings, and hybrid
 - `AIDB_CONFIG`, `EMBEDDINGS_CONFIG`, `HYBRID_CONFIG` override the config path
 
-Required secrets (export or set in your shell):
-- `POSTGRES_PASSWORD` (used by Postgres/AIDB/MindsDB/Ralph)
-- `GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD`
-
-Example:
+Required secrets are managed in the SOPS bundle:
 ```bash
-cp .env.example .env
+sops ai-stack/kubernetes/secrets/secrets.sops.yaml
 ```
 
 ## Documentation

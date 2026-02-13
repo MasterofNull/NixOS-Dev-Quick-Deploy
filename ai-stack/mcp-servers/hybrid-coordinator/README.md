@@ -118,6 +118,40 @@ This automatically:
 - Computes value score
 - Updates context success rates
 - Extracts patterns if high-value
+
+#### 4. `hybrid_search`
+Combine vector similarity and keyword matching.
+
+```python
+result = await mcp.call_tool("hybrid_search", {
+    "query": "NixOS K3s registry config",
+    "collections": ["codebase-context", "best-practices"],
+    "limit": 5,
+    "keyword_limit": 5
+})
+```
+
+#### 5. `route_query`
+Auto-route a query (sql/semantic/keyword/hybrid) and return routed results.
+
+```python
+result = await mcp.call_tool("route_query", {
+    "query": "How do I rotate K3s registry credentials?",
+    "mode": "auto",
+    "generate_response": false
+})
+```
+
+#### 6. `learning_feedback`
+Store user corrections for learning.
+
+```python
+result = await mcp.call_tool("learning_feedback", {
+    "query": "How do I configure Nginx in NixOS?",
+    "correction": "Use services.nginx.enable = true; and add virtualHosts.",
+    "rating": 1
+})
+```
 - Triggers fine-tuning data generation
 
 #### 4. `generate_training_data`
@@ -322,6 +356,9 @@ QDRANT_API_KEY=  # Optional
 # llama.cpp Configuration
 LLAMA_CPP_BASE_URL=http://localhost:8080
 
+# AIDB (optional)
+AIDB_URL=http://aidb:8091
+
 # Learning Configuration
 LOCAL_CONFIDENCE_THRESHOLD=0.7
 HIGH_VALUE_THRESHOLD=0.7
@@ -329,6 +366,18 @@ PATTERN_EXTRACTION_ENABLED=true
 
 # Paths
 FINETUNE_DATA_PATH=~/.local/share/nixos-ai-stack/fine-tuning/dataset.jsonl
+```
+
+Optional TLS (internal services):
+```bash
+# Postgres TLS (used by learning pipeline)
+POSTGRES_SSLMODE=verify-full
+POSTGRES_SSLROOTCERT=/etc/ssl/certs/ai-stack-ca.crt
+POSTGRES_SSLCERT=/etc/ssl/certs/hybrid-client.crt
+POSTGRES_SSLKEY=/etc/ssl/private/hybrid-client.key
+
+# Redis TLS (multi-turn context)
+REDIS_URL=rediss://redis.ai-stack.svc.cluster.local:6379
 ```
 
 ## Integration Examples
@@ -427,6 +476,29 @@ async def generate():
 
 asyncio.run(generate())
 "
+```
+
+```bash
+# Via HTTP endpoint (K3s)
+# Requires HYBRID_API_KEY if configured
+curl -X POST http://hybrid-coordinator.ai-stack:8092/learning/export \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $HYBRID_API_KEY"
+```
+
+```bash
+# Force a one-off telemetry processing batch
+curl -X POST http://hybrid-coordinator.ai-stack:8092/learning/process \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $HYBRID_API_KEY"
+```
+
+```bash
+# A/B comparison for feedback ratings (uses tags like variant:<name>)
+curl -X POST http://hybrid-coordinator.ai-stack:8092/learning/ab_compare \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $HYBRID_API_KEY" \
+  -d '{"variant_a":"a","variant_b":"b"}'
 ```
 
 ## Fine-Tuning Workflow

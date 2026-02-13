@@ -122,13 +122,13 @@ check_services() {
     fi
 
     # Check Qdrant
-    if ! curl -sf "http://localhost:${QDRANT_HTTP_PORT}/" >/dev/null 2>&1; then
+    if ! curl -sf --max-time 5 --connect-timeout 3 "http://${SERVICE_HOST:-localhost}:${QDRANT_HTTP_PORT}/" >/dev/null 2>&1; then
         log_warning "Qdrant not running on port ${QDRANT_HTTP_PORT}"
         services_ok=false
     fi
 
     # Check llama.cpp
-    if ! curl -sf "http://localhost:${LLAMA_CPP_PORT}/health" >/dev/null 2>&1; then
+    if ! curl -sf --max-time 5 --connect-timeout 3 "http://${SERVICE_HOST:-localhost}:${LLAMA_CPP_PORT}/health" >/dev/null 2>&1; then
         log_warning "llama.cpp not running on port ${LLAMA_CPP_PORT}"
         services_ok=false
     fi
@@ -263,7 +263,7 @@ setup_qdrant() {
     log_info "Setting up Qdrant collections..."
 
     # Create semantic search collection
-    curl -X PUT "http://localhost:${QDRANT_HTTP_PORT}/collections/mcp-semantic-search" \
+    curl --max-time 15 --connect-timeout 3 -X PUT "http://${SERVICE_HOST:-localhost}:${QDRANT_HTTP_PORT}/collections/mcp-semantic-search" \
         -H "Content-Type: application/json" \
         -d '{
             "vectors": {
@@ -317,7 +317,7 @@ database:
 
 llm:
   llama_cpp:
-    host: "http://localhost:${LLAMA_CPP_PORT}"
+    host: "http://${SERVICE_HOST:-localhost}:${LLAMA_CPP_PORT}"
     models:
       - qwen2.5-coder-7b-instruct-q4_k_m.gguf
 
@@ -535,7 +535,7 @@ main() {
     echo "  4. View logs:"
     echo "     journalctl --user -u aidb-mcp-server -f"
     echo "  5. Test API:"
-    echo "     curl http://localhost:${MCP_API_PORT}/health"
+    echo "     curl http://${SERVICE_HOST:-localhost}:${MCP_API_PORT}/health"
     echo ""
     echo "Server location: ${MCP_SERVER_DIR}"
     echo "Configuration: ${MCP_CONFIG_DIR}/config.yaml"

@@ -75,7 +75,7 @@ if [ "$TABLE_EXISTS" = "t" ]; then
         warning "    3. Events not being persisted"
         echo ""
         warning "  Fix: Check AIDB logs:"
-        echo "    podman logs local-ai-aidb | grep -i telemetry"
+        echo "    kubectl logs -n ai-stack deploy/aidb | grep -i telemetry"
     fi
 else
     error "Telemetry table does not exist!"
@@ -108,7 +108,7 @@ info "━━━━━━━━━━━━━━━━━━━━━━━━�
 
 # Check each collection
 for collection in interaction-history skills-patterns codebase-context error-solutions best-practices; do
-    COLLECTION_INFO=$(curl -sf --max-time 5 "http://localhost:6333/collections/$collection" 2>&1 || echo "FAILED")
+    COLLECTION_INFO=$(curl -sf --max-time 5 "http://${SERVICE_HOST:-localhost}:6333/collections/$collection" 2>&1 || echo "FAILED")
 
     if echo "$COLLECTION_INFO" | grep -q "points_count"; then
         POINT_COUNT=$(echo "$COLLECTION_INFO" | grep -o '"points_count":[0-9]*' | grep -o '[0-9]*')
@@ -122,7 +122,7 @@ for collection in interaction-history skills-patterns codebase-context error-sol
     else
         error "Collection '$collection' not accessible"
         error "  Fix: Recreate collection via hybrid-coordinator:"
-        echo "    curl -X POST http://localhost:8092/api/collections/init"
+        echo "    curl -X POST http://${SERVICE_HOST:-localhost}:8092/api/collections/init"
     fi
 done
 
@@ -136,7 +136,7 @@ info "Analysis 3: Dashboard Event Visibility"
 info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Check if dashboard backend is running
-DASHBOARD_RUNNING=$(curl -sf --max-time 3 http://localhost:8889/api/metrics/system >/dev/null 2>&1 && echo "true" || echo "false")
+DASHBOARD_RUNNING=$(curl -sf --max-time 3 http://${SERVICE_HOST:-localhost}:8889/api/metrics/system >/dev/null 2>&1 && echo "true" || echo "false")
 
 if [ "$DASHBOARD_RUNNING" = "true" ]; then
     success "Dashboard backend is running"
@@ -173,7 +173,7 @@ info "━━━━━━━━━━━━━━━━━━━━━━━━�
 # Test data flow: AIDB → Postgres
 info "Testing: AIDB → Postgres data flow"
 TEST_EVENT='{"event_type":"integration_test","test":"aidb_to_postgres","timestamp":"'$(date -Iseconds)'"}'
-AIDB_RESPONSE=$(curl -sf --max-time 5 -X POST http://localhost:8091/api/telemetry/event \
+AIDB_RESPONSE=$(curl -sf --max-time 5 -X POST http://${SERVICE_HOST:-localhost}:8091/api/telemetry/event \
   -H "Content-Type: application/json" \
   -d "$TEST_EVENT" 2>&1 || echo "FAILED")
 
@@ -187,13 +187,13 @@ if echo "$AIDB_RESPONSE" | grep -q "success\|recorded"; then
         error "AIDB → Postgres: BROKEN"
         error "  Events sent to AIDB but not appearing in Postgres"
         error "  Fix: Check AIDB database connection configuration"
-        echo "    podman logs local-ai-aidb | grep -i postgres"
+        echo "    kubectl logs -n ai-stack deploy/aidb | grep -i postgres"
     fi
 else
     error "AIDB API not responding to telemetry requests"
     error "  Fix: Check if AIDB is running and healthy"
-    echo "    podman ps | grep aidb"
-    echo "    curl http://localhost:8091/health"
+    echo "    kubectl get pods -n ai-stack | grep aidb"
+    echo "    curl http://${SERVICE_HOST:-localhost}:8091/health"
 fi
 
 echo ""
@@ -201,7 +201,7 @@ echo ""
 # Test data flow: Hybrid Coordinator → Qdrant
 info "Testing: Hybrid Coordinator → Qdrant data flow"
 TEST_CONTEXT='{"collection":"interaction-history","text":"Integration test context","metadata":{"test":"true"}}'
-HYBRID_RESPONSE=$(curl -sf --max-time 5 -X POST http://localhost:8092/api/context/add \
+HYBRID_RESPONSE=$(curl -sf --max-time 5 -X POST http://${SERVICE_HOST:-localhost}:8092/api/context/add \
   -H "Content-Type: application/json" \
   -d "$TEST_CONTEXT" 2>&1 || echo "FAILED")
 
@@ -210,7 +210,7 @@ if echo "$HYBRID_RESPONSE" | grep -q "success\|id"; then
 else
     error "Hybrid Coordinator → Qdrant: BROKEN"
     error "  Fix: Check hybrid-coordinator logs and Qdrant connection"
-    echo "    podman logs local-ai-hybrid-coordinator | grep -i qdrant"
+    echo "    kubectl logs -n ai-stack deploy/hybrid-coordinator | grep -i qdrant"
 fi
 
 echo ""
@@ -234,18 +234,18 @@ if [ "$PASS_RATE" -lt 80 ]; then
     error "Pass rate below 80% - immediate attention required"
     echo ""
     info "Common fixes:"
-    echo "  1. Restart failed containers:"
-    echo "     podman-compose restart aidb hybrid-coordinator"
+    echo "  1. Restart failed deployments:"
+    echo "     kubectl rollout restart deploy -n ai-stack aidb hybrid-coordinator"
     echo ""
-    echo "  2. Check container logs:"
-    echo "     podman logs local-ai-aidb"
-    echo "     podman logs local-ai-hybrid-coordinator"
+    echo "  2. Check deployment logs:"
+    echo "     kubectl logs -n ai-stack deploy/aidb"
+    echo "     kubectl logs -n ai-stack deploy/hybrid-coordinator"
     echo ""
     echo "  3. Verify database schema:"
     echo "     psql -h localhost -U mcp -d mcp -c '\dt'"
     echo ""
     echo "  4. Reset Qdrant collections:"
-    echo "     curl -X POST http://localhost:8092/api/collections/reset"
+    echo "     curl -X POST http://${SERVICE_HOST:-localhost}:8092/api/collections/reset"
 elif [ "$PASS_RATE" -lt 100 ]; then
     warning "Some tests failed - system partially functional"
     info "Review specific failures and apply targeted fixes"

@@ -30,7 +30,7 @@
 - [x] 3.5: Implement auto-refresh for all metrics (30-second intervals)
 
 ### Phase 4: NixOS Template Updates ⏳
-- [x] 4.1: Update compose templates with Ralph fixes
+- [x] 4.1: Update Kubernetes templates with Ralph fixes
 - [x] 4.2: Update systemd service templates
 - [x] 4.3: Update configuration templates
 - [ ] 4.4: Test full deployment from scratch
@@ -53,7 +53,7 @@ podman logs local-ai-ralph-wiggum
 
 ### Files to Update
 1. `ai-stack/mcp-servers/ralph-wiggum/requirements.txt`
-2. `ai-stack/compose/docker-compose.yml` (if Dockerfile changes)
+2. `ai-stack/kubernetes/kustomization.yaml` (if Dockerfile changes)
 3. NixOS deployment templates
 
 ### Steps
@@ -94,7 +94,7 @@ Updates config.yaml and restarts affected services
 def update_config(config: dict):
     # Validate config
     # Update ai-stack/mcp-servers/config/config.yaml
-    # Restart affected services via podman-compose
+    # Restart affected services via kubectl rollout restart
     return {"status": "success", "restarted": ["hybrid", "aidb"]}
 ```
 
@@ -192,8 +192,8 @@ Static display showing completion:
 # + Add missing ones discovered in Phase 1
 ```
 
-#### 2. Docker Compose
-`ai-stack/compose/docker-compose.yml`
+#### 2. Kubernetes Manifests
+`ai-stack/kubernetes/kustomization.yaml`
 Ensure Ralph service definition is correct with all dependencies.
 
 #### 3. Systemd Templates
@@ -297,7 +297,7 @@ Ralph uses:
 
 **Fixes Applied**:
 - Updated all 3 files to import `from datetime import datetime, timezone`
-- Rebuilt container: `localhost/compose_ralph-wiggum:latest`
+- Rebuilt container: `localhost/ralph-wiggum:latest`
 - Container now starts successfully
 
 **Testing Results**:
@@ -386,7 +386,7 @@ Need to ensure these fixes persist in deployment templates.
 ### 2026-01-10 01:15 - Phase 4 Template Updates In Progress
 **Template Updates Applied**:
 - Updated VSCodium Claude Code settings to disable context sharing by default
-- Synced local AI stack compose template (Ralph + aider profiles removed, resource limits aligned)
+- Synced local AI stack Kubernetes template (Ralph + aider profiles removed, resource limits aligned)
 - Added continuous learning + rate limit defaults to config template
 
 **Documentation**:

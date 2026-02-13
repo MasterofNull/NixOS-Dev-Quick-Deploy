@@ -8,6 +8,10 @@ import time
 import urllib.request
 import urllib.error
 import json
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CONFIG_PATH = PROJECT_ROOT / 'ai-stack' / 'mcp-servers' / 'config' / 'config.yaml'
 
 def test_dashboard_rate_limit():
     """Test that dashboard enforces rate limiting"""
@@ -55,8 +59,7 @@ def test_aidb_rate_limit():
 
     # Check if rate limiting is enabled in AIDB
     try:
-        config_path = '/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/ai-stack/mcp-servers/config/config.yaml'
-        with open(config_path, 'r') as f:
+        with open(CONFIG_PATH, 'r') as f:
             import yaml
             config = yaml.safe_load(f)
             rate_limit_enabled = config.get('security', {}).get('rate_limit', {}).get('enabled', False)

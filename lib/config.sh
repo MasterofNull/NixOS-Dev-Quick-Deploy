@@ -259,8 +259,6 @@ render_cosmic_blacklist_block() {
 # persisted to ensure MangoHud only overlays in the mangoapp window, not on COSMIC
 # applets or system windows.
 resolve_mangohud_preferences() {
-    local gaming_stack_enabled_flag="${1:-false}"
-
     local default_profile="desktop"
 
     local mangohud_profile="$default_profile"
@@ -948,7 +946,7 @@ determine_nixos_parallelism() {
     printf '%s\n' "$message"
 }
 
-compose_nixos_rebuild_options() {
+build_nixos_rebuild_options() {
     local use_caches="${1:-${USE_BINARY_CACHES:-true}}"
     local -a parallelism
     mapfile -t parallelism < <(determine_nixos_parallelism)
@@ -1122,6 +1120,7 @@ gather_remote_build_acceleration_preferences() {
             else
                 CACHIX_AUTH_ENABLED=false
             fi
+            : "${CACHIX_AUTH_ENABLED}"
 
             if ! command -v cachix >/dev/null 2>&1; then
                 if declare -F ensure_prerequisite_installed >/dev/null 2>&1; then
@@ -1204,8 +1203,11 @@ normalize_dotfiles_paths() {
         resolved_home=$(getent passwd "$resolved_user" 2>/dev/null | cut -d: -f6)
     fi
 
-    if [[ -z "$resolved_home" && -d "/home/$resolved_user" ]]; then
-        resolved_home="/home/$resolved_user"
+    if [[ -z "$resolved_home" ]]; then
+        home_root="/${HOME_ROOT_DIR:-home}"
+        if [[ -d "${home_root}/${resolved_user}" ]]; then
+            resolved_home="${home_root}/${resolved_user}"
+        fi
     fi
     if [[ -z "$resolved_home" && "$resolved_user" == "root" && -d "/root" ]]; then
         resolved_home="/root"
@@ -1368,6 +1370,166 @@ seed_flake_lock_from_template() {
 
     print_error "Failed to seed flake.lock from template baseline"
     return 1
+}
+
+# ============================================================================
+# Validate Flake Lock Completeness
+# ============================================================================
+# Purpose: Ensure flake.lock contains entries for ALL inputs declared in
+#          flake.nix. Missing entries cause silent failures during
+#          home-manager switch (e.g., nix-vscode-extensions overlay not
+#          available → VSCodium marketplace extensions not installed).
+#
+# How it works:
+#   1. Parse flake.nix to extract declared input names
+#   2. Parse flake.lock root.inputs to extract locked input names
+#   3. If any declared inputs are missing from the lock, run `nix flake lock`
+#      to resolve them WITHOUT updating already-pinned inputs
+#
+# Arguments:
+#   $1 - Path to the flake directory (defaults to $HM_CONFIG_DIR)
+#
+# Returns:
+#   0 - Lock file is complete (or was repaired)
+#   1 - Lock file could not be repaired
+# ============================================================================
+validate_flake_lock_inputs() {
+    local flake_dir="${1:-$HM_CONFIG_DIR}"
+    local flake_file="$flake_dir/flake.nix"
+    local lock_file="$flake_dir/flake.lock"
+
+    if [[ ! -f "$flake_file" ]]; then
+        return 0
+    fi
+
+    if [[ ! -f "$lock_file" ]]; then
+        print_warning "No flake.lock found — will be created on first evaluation"
+        return 0
+    fi
+
+    if ! command -v jq >/dev/null 2>&1; then
+        print_info "jq not available; skipping flake.lock completeness check"
+        return 0
+    fi
+
+    # Extract declared input names from flake.nix
+    # Matches patterns like:  home-manager = {   or   sops-nix = {
+    # Avoids matching attribute assignments like nixpkgs.url = ...
+    local -a declared_inputs=()
+    while IFS= read -r input_name; do
+        [[ -n "$input_name" ]] && declared_inputs+=("$input_name")
+    done < <(
+        awk '
+            BEGIN { in_inputs=0; depth=0 }
+            /^[[:space:]]*inputs[[:space:]]*=/ {
+                in_inputs=1
+                depth=1
+                next
+            }
+            in_inputs {
+                if (depth == 1) {
+                    if (match($0, /^[[:space:]]*([A-Za-z0-9_-]+)[[:space:]]*(=|\.|{)/, m)) {
+                        print m[1]
+                    }
+                }
+                open_braces = gsub(/{/, "{")
+                close_braces = gsub(/}/, "}")
+                depth += open_braces - close_braces
+                if (depth <= 0) {
+                    in_inputs=0
+                }
+            }
+        ' "$flake_file" | sort -u
+    )
+
+    if [[ ${#declared_inputs[@]} -eq 0 ]]; then
+        print_info "Could not parse flake inputs — skipping lock validation"
+        return 0
+    fi
+
+    # Extract locked input names from flake.lock root.inputs
+    local -a locked_inputs=()
+    while IFS= read -r input_name; do
+        [[ -n "$input_name" ]] && locked_inputs+=("$input_name")
+    done < <(jq -r '.nodes.root.inputs // {} | keys[]' "$lock_file" 2>/dev/null)
+
+    # Find missing inputs
+    local -a missing_inputs=()
+    for declared in "${declared_inputs[@]}"; do
+        local found=false
+        for locked in "${locked_inputs[@]}"; do
+            if [[ "$declared" == "$locked" ]]; then
+                found=true
+                break
+            fi
+        done
+        if [[ "$found" == false ]]; then
+            missing_inputs+=("$declared")
+        fi
+    done
+
+    if [[ ${#missing_inputs[@]} -eq 0 ]]; then
+        print_success "Flake lock file contains all declared inputs (${#declared_inputs[@]} inputs)"
+        return 0
+    fi
+
+    print_warning "Flake lock is missing ${#missing_inputs[@]} input(s): ${missing_inputs[*]}"
+    print_info "Running 'nix flake lock' to resolve missing inputs..."
+
+    # Ensure git tracking is up to date (flake eval requires tracked files)
+    ensure_flake_git_tracking
+
+    local -a flake_lock_cmd=(nix flake lock)
+    if [[ "$(get_effective_max_jobs)" == "0" ]]; then
+        print_warning "max-jobs=0 detected; forcing max-jobs=1 for nix flake lock."
+        flake_lock_cmd=(env NIX_CONFIG="max-jobs = 1" nix flake lock)
+    fi
+
+    local lock_output=""
+    local lock_status=0
+    if ! lock_output=$(cd "$flake_dir" && "${flake_lock_cmd[@]}" 2>&1); then
+        lock_status=$?
+    fi
+
+    if (( lock_status == 0 )); then
+        # Verify the lock was updated
+        local -a still_missing=()
+        local -a new_locked=()
+        while IFS= read -r input_name; do
+            [[ -n "$input_name" ]] && new_locked+=("$input_name")
+        done < <(jq -r '.nodes.root.inputs // {} | keys[]' "$lock_file" 2>/dev/null)
+
+        for missing in "${missing_inputs[@]}"; do
+            local resolved=false
+            for locked in "${new_locked[@]}"; do
+                if [[ "$missing" == "$locked" ]]; then
+                    resolved=true
+                    break
+                fi
+            done
+            if [[ "$resolved" == false ]]; then
+                still_missing+=("$missing")
+            fi
+        done
+
+        if [[ ${#still_missing[@]} -eq 0 ]]; then
+            print_success "Resolved all missing flake inputs: ${missing_inputs[*]}"
+            # Re-add the updated lock to git tracking
+            if [[ -d "$flake_dir/.git" ]] && command -v git >/dev/null 2>&1; then
+                git -C "$flake_dir" add flake.lock >/dev/null 2>&1 || true
+            fi
+            return 0
+        else
+            print_warning "Still missing after lock: ${still_missing[*]}"
+            print_info "These inputs may need manual resolution"
+            return 1
+        fi
+    else
+        print_warning "nix flake lock encountered issues:"
+        [[ -n "$lock_output" ]] && echo "$lock_output" | sed 's/^/  /'
+        print_info "The deployment will attempt to continue; nix may fetch missing inputs during evaluation"
+        return 1
+    fi
 }
 
 describe_binary_cache_usage() {
@@ -1585,10 +1747,14 @@ prompt_configure_gitea_admin() {
 
         local default_user="${GITEA_ADMIN_USER:-gitea-admin}"
         local admin_user
-        admin_user=$(prompt_user "Gitea admin username" "$default_user")
-        if [[ -z "$admin_user" ]]; then
-            admin_user="$default_user"
-        fi
+        while true; do
+            admin_user=$(prompt_user "Gitea admin username" "$default_user")
+            if [[ -z "$admin_user" ]]; then
+                admin_user="$default_user"
+            fi
+            if validate_username "$admin_user" 2>/dev/null; then break; fi
+            print_warning "Username must start with a letter/underscore, then lowercase alphanumeric."
+        done
         if [[ "$admin_user" != "$GITEA_ADMIN_USER" ]]; then
             GITEA_ADMIN_USER="$admin_user"
             changed="true"
@@ -1725,7 +1891,6 @@ ensure_gitea_secrets_ready() {
 
     # Generate secrets with fallback to openssl if generate_hex_secret fails
     # Define this helper function before using it
-    local generate_secret_with_fallback
     generate_secret_with_fallback() {
         local length="$1"
         local secret_name="$2"
@@ -2427,7 +2592,8 @@ generate_nixos_system_config() {
     DETECTED_NIXOS_VERSION=$(derive_system_release_version)
     local NIXOS_VERSION="${SELECTED_NIXOS_VERSION:-$DETECTED_NIXOS_VERSION}"
     local STATE_VERSION="$NIXOS_VERSION"
-    local SYSTEM_ARCH=$(uname -m)
+    local SYSTEM_ARCH
+    SYSTEM_ARCH=$(uname -m)
 
     # Convert arch names
     case "$SYSTEM_ARCH" in
@@ -2488,7 +2654,8 @@ generate_nixos_system_config() {
     # Detect Timezone and Locale
     # ========================================================================
     local TIMEZONE="${SELECTED_TIMEZONE:-$(timedatectl show --property=Timezone --value 2>/dev/null || echo "America/New_York")}"
-    local LOCALE=$(localectl status | grep "LANG=" | cut -d= -f2 | tr -d ' ' 2>/dev/null || echo "en_US.UTF-8")
+    local LOCALE
+    LOCALE=$(localectl status | grep "LANG=" | cut -d= -f2 | tr -d ' ' 2>/dev/null || echo "en_US.UTF-8")
 
     print_info "Timezone: $TIMEZONE"
     print_info "Locale: $LOCALE"
@@ -2501,7 +2668,8 @@ generate_nixos_system_config() {
         print_info "Creating configuration directory: $HM_CONFIG_DIR"
 
         # Create parent directory first if it doesn't exist
-        local PARENT_DIR=$(dirname "$HM_CONFIG_DIR")
+        local PARENT_DIR
+        PARENT_DIR=$(dirname "$HM_CONFIG_DIR")
         if [[ ! -d "$PARENT_DIR" ]]; then
             if ! mkdir -p "$PARENT_DIR"; then
                 print_error "Failed to create parent directory: $PARENT_DIR"
@@ -2535,7 +2703,8 @@ generate_nixos_system_config() {
     # ========================================================================
     # Backup Existing Configurations
     # ========================================================================
-    local BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    local BACKUP_TIMESTAMP
+    BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     local BACKUP_DIR="${HM_BACKUP_DIR}"
 
     backup_generated_file "$SYSTEM_CONFIG_FILE" "configuration.nix" "$BACKUP_DIR" "$BACKUP_TIMESTAMP" || true
@@ -2580,13 +2749,11 @@ generate_nixos_system_config() {
         mv "$tmp_normalized" "$SYSTEM_CONFIG_FILE"
     fi
 
-    local support_module
-    for support_module in "python-overrides.nix"; do
-        print_info "Syncing $support_module into system configuration workspace..."
-        if ! sync_support_module "$support_module" "$TEMPLATE_DIR" "$HM_CONFIG_DIR" "$BACKUP_DIR" "$BACKUP_TIMESTAMP"; then
-            return 1
-        fi
-    done
+    local support_module="python-overrides.nix"
+    print_info "Syncing $support_module into system configuration workspace..."
+    if ! sync_support_module "$support_module" "$TEMPLATE_DIR" "$HM_CONFIG_DIR" "$BACKUP_DIR" "$BACKUP_TIMESTAMP"; then
+        return 1
+    fi
 
     # ========================================================================
     # Copy NixOS Improvements Directory
@@ -2820,7 +2987,7 @@ generate_nixos_system_config() {
             ;;
     esac
 
-    resolve_mangohud_preferences "$gaming_stack_enabled"
+    resolve_mangohud_preferences
 
     local mangohud_profile="$RESOLVED_MANGOHUD_PROFILE"
     local mangohud_profile_origin="$RESOLVED_MANGOHUD_PROFILE_ORIGIN"
@@ -3501,7 +3668,7 @@ EOF
 
     local nix_max_jobs_literal
     if [[ "$nix_max_jobs_value" == "auto" ]]; then
-        nix_max_jobs_literal="0"
+        nix_max_jobs_literal="\"auto\""
     else
         nix_max_jobs_literal="$nix_max_jobs_value"
     fi
@@ -3512,7 +3679,7 @@ EOF
     if [[ -n "$nix_throttle_message" ]]; then
         nix_parallel_comment="capped at ${nix_max_jobs_value} job(s) / ${nix_core_limit_value} core(s) for ${total_ram_value}GB RAM"
     else
-        nix_parallel_comment="using upstream defaults (0 jobs=auto, 0 cores)"
+        nix_parallel_comment="using upstream defaults (auto jobs, 0 cores)"
     fi
 
     if ! hydrate_primary_user_password_block; then
@@ -3799,6 +3966,12 @@ EOF
         return 1
     fi
 
+    # Validate that all flake inputs are locked (e.g., sops-nix, nix-vscode-extensions)
+    # Missing lock entries cause silent failures during home-manager switch
+    if ! validate_flake_lock_inputs "$HM_CONFIG_DIR"; then
+        print_warning "Some flake inputs could not be locked — deployment will attempt to continue"
+    fi
+
     echo ""
 
     print_success "NixOS system configuration generated successfully"
@@ -3824,8 +3997,10 @@ create_home_manager_config() {
     # ========================================================================
     # Detect Versions
     # ========================================================================
-    local NIXOS_CHANNEL=$(sudo nix-channel --list 2>/dev/null | grep '^nixos' | awk '{print $2}')
-    local HM_CHANNEL=$(nix-channel --list 2>/dev/null | grep 'home-manager' | awk '{print $2}')
+    local NIXOS_CHANNEL
+    local HM_CHANNEL
+    NIXOS_CHANNEL=$(sudo nix-channel --list 2>/dev/null | grep '^nixos' | awk '{print $2}')
+    HM_CHANNEL=$(nix-channel --list 2>/dev/null | grep 'home-manager' | awk '{print $2}')
     local STATE_VERSION
 
     # Extract version from nixos channel
@@ -3878,7 +4053,8 @@ create_home_manager_config() {
         print_info "Creating home-manager directory: $HM_CONFIG_DIR"
 
         # Create parent directory first if it doesn't exist
-        local PARENT_DIR=$(dirname "$HM_CONFIG_DIR")
+        local PARENT_DIR
+        PARENT_DIR=$(dirname "$HM_CONFIG_DIR")
         if [[ ! -d "$PARENT_DIR" ]]; then
             if ! mkdir -p "$PARENT_DIR"; then
                 print_error "Failed to create parent directory: $PARENT_DIR"
@@ -3909,7 +4085,8 @@ create_home_manager_config() {
     # ========================================================================
     # Backup Existing Configuration
     # ========================================================================
-    local BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    local BACKUP_TIMESTAMP
+    BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     local BACKUP_DIR="${HM_BACKUP_DIR}"
     backup_generated_file "$HOME_MANAGER_FILE" "home.nix" "$BACKUP_DIR" "$BACKUP_TIMESTAMP" || true
 
@@ -3945,13 +4122,11 @@ create_home_manager_config() {
     # ========================================================================
     # Deploy Support Modules
     # ========================================================================
-    local support_module
-    for support_module in "python-overrides.nix"; do
-        print_info "Syncing $support_module into Home Manager workspace..."
-        if ! sync_support_module "$support_module" "$TEMPLATE_DIR" "$HM_CONFIG_DIR" "$BACKUP_DIR" "$BACKUP_TIMESTAMP"; then
-            return 1
-        fi
-    done
+    local support_module="python-overrides.nix"
+    print_info "Syncing $support_module into Home Manager workspace..."
+    if ! sync_support_module "$support_module" "$TEMPLATE_DIR" "$HM_CONFIG_DIR" "$BACKUP_DIR" "$BACKUP_TIMESTAMP"; then
+        return 1
+    fi
 
     # Ensure the Powerlevel10k setup wizard script is present for home.nix source reference.
     local p10k_source="${SCRIPT_DIR}/scripts/p10k-setup-wizard.sh"
@@ -3971,7 +4146,8 @@ create_home_manager_config() {
     # ========================================================================
     # Replace Placeholders
     # ========================================================================
-    local TEMPLATE_HASH=$(echo -n "AIDB-v4.0-packages-v${SCRIPT_VERSION:-4.0.0}" | sha256sum | cut -d' ' -f1 | cut -c1-16)
+    local TEMPLATE_HASH
+    TEMPLATE_HASH=$(echo -n "AIDB-v4.0-packages-v${SCRIPT_VERSION:-4.0.0}" | sha256sum | cut -d' ' -f1 | cut -c1-16)
     local DEFAULT_EDITOR="${DEFAULT_EDITOR:-nano}"
 
     local enable_gaming_value
@@ -4150,6 +4326,7 @@ EOF
     # replace_placeholder "$HOME_MANAGER_FILE" "@PODMAN_ROOTLESS_STORAGE@" "${PODMAN_ROOTLESS_STORAGE_BLOCK:-}"
     replace_placeholder "$HOME_MANAGER_FILE" "GIT_USER_SETTINGS_PLACEHOLDER" "$git_user_settings_block"
     replace_placeholder "$HOME_MANAGER_FILE" "LOCAL_AI_STACK_ENABLED_PLACEHOLDER" "${LOCAL_AI_STACK_ENABLED:-false}"
+    replace_placeholder "$HOME_MANAGER_FILE" "PYTHON_PREFER_PY314_PLACEHOLDER" "${PYTHON_PREFER_PY314:-false}"
     replace_placeholder "$HOME_MANAGER_FILE" "LLM_BACKEND_PLACEHOLDER" "$(nix_quote_string "${LLM_BACKEND:-llama_cpp}")"
     replace_placeholder "$HOME_MANAGER_FILE" "LLM_MODELS_PLACEHOLDER" "$(nix_quote_string "${LLM_MODELS:-qwen3-4b,sentence-transformers/all-MiniLM-L6-v2}")"
     replace_placeholder "$HOME_MANAGER_FILE" "NIXOS_QUICK_DEPLOY_ROOT_PLACEHOLDER" "$SCRIPT_DIR"
@@ -4160,7 +4337,8 @@ EOF
     replace_placeholder "$HOME_MANAGER_FILE" "HUGGINGFACE_TGI_CONTAINER_ENDPOINT_PLACEHOLDER" "$(nix_quote_string "$huggingface_tgi_container_endpoint")"
     replace_placeholder "$HOME_MANAGER_FILE" "DEFAULTEDITOR" "$DEFAULT_EDITOR"
 
-    local HOME_HOSTNAME=$(hostname)
+    local HOME_HOSTNAME
+    HOME_HOSTNAME=$(hostname)
     replace_placeholder "$HOME_MANAGER_FILE" "@HOSTNAME@" "$HOME_HOSTNAME"
     replace_placeholder "$HOME_MANAGER_FILE" "@GITEA_SECRET_KEY@" "$(nix_quote_string "$GITEA_SECRET_KEY")"
     replace_placeholder "$HOME_MANAGER_FILE" "@GITEA_INTERNAL_TOKEN@" "$(nix_quote_string "$GITEA_INTERNAL_TOKEN")"
@@ -4196,7 +4374,8 @@ EOF
     fi
 
     # Check file has content
-    local file_size=$(stat -c%s "$HOME_MANAGER_FILE" 2>/dev/null || echo "0")
+    local file_size
+    file_size=$(stat -c%s "$HOME_MANAGER_FILE" 2>/dev/null || echo "0")
     if [[ "$file_size" -eq 0 ]]; then
         print_error "VERIFICATION FAILED: home.nix is empty"
         return 1
@@ -4234,9 +4413,11 @@ materialize_hardware_configuration() {
 
     # Generate using nixos-generate-config
     print_info "Generating hardware configuration..."
-    local TEMP_DIR=$(mktemp -d)
+    local TEMP_DIR
+    TEMP_DIR=$(mktemp -d)
 
-    if sudo nixos-generate-config --dir "$TEMP_DIR" --show-hardware-config > "$HARDWARE_CONFIG" 2>/dev/null; then
+    if sudo nixos-generate-config --dir "$TEMP_DIR" --show-hardware-config \
+        > >(tee "$HARDWARE_CONFIG") 2>/dev/null; then
         safe_chown_user_dir "$HARDWARE_CONFIG"
         if ! sanitize_hardware_configuration "$HARDWARE_CONFIG"; then
             rm -rf "$TEMP_DIR"
@@ -4264,7 +4445,8 @@ validate_system_build_stage() {
     normalize_dotfiles_paths
     print_section "Validating Configuration"
 
-    local target_host=$(hostname)
+    local target_host
+    target_host=$(hostname)
     local tmp_dir="${TMP_DIR:-/tmp}"
     local log_path="${tmp_dir}/nixos-rebuild-dry-build.log"
 
@@ -4288,8 +4470,8 @@ validate_system_build_stage() {
         activate_build_acceleration_context
     fi
 
-    if declare -F compose_nixos_rebuild_options >/dev/null 2>&1; then
-        mapfile -t nixos_rebuild_opts < <(compose_nixos_rebuild_options "${USE_BINARY_CACHES:-true}")
+    if declare -F build_nixos_rebuild_options >/dev/null 2>&1; then
+        mapfile -t nixos_rebuild_opts < <(build_nixos_rebuild_options "${USE_BINARY_CACHES:-true}")
     fi
 
     local dry_build_display="sudo nixos-rebuild dry-build --flake \"$HM_CONFIG_DIR#$target_host\""
@@ -4309,7 +4491,8 @@ validate_system_build_stage() {
     fi
 
     # Run dry-build (doesn't actually build, just evaluates)
-    if sudo nixos-rebuild dry-build --flake "$HM_CONFIG_DIR#$target_host" "${nixos_rebuild_opts[@]}" 2>&1 | tee "$log_path"; then
+    if sudo nixos-rebuild dry-build --flake "$HM_CONFIG_DIR#$target_host" "${nixos_rebuild_opts[@]}" \
+        > >(tee "$log_path") 2>&1; then
         print_success "Configuration validation passed!"
         print_info "Log saved to: $log_path"
         echo ""

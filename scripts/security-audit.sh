@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-COMPOSE_FILE="ai-stack/compose/docker-compose.yml"
-SECRETS_DIR="ai-stack/compose/secrets"
-CERT_DIR="ai-stack/compose/nginx/certs"
+MANIFEST_ROOT="ai-stack/kubernetes"
+CONFIGMAP_FILE="ai-stack/kubernetes/kompose/env-configmap.yaml"
+SECRETS_FILE="ai-stack/kubernetes/secrets/secrets.sops.yaml"
+TLS_DIR="ai-stack/kubernetes/tls"
 
 fail_count=0
 
@@ -11,18 +12,22 @@ note() { printf "INFO: %s\n" "$1"; }
 warn() { printf "WARN: %s\n" "$1"; }
 fail() { printf "FAIL: %s\n" "$1"; fail_count=$((fail_count + 1)); }
 
-if [[ ! -f "$COMPOSE_FILE" ]]; then
-  fail "Missing compose file: $COMPOSE_FILE"
+if [[ ! -d "$MANIFEST_ROOT" ]]; then
+  fail "Missing Kubernetes manifests directory: $MANIFEST_ROOT"
   exit 1
 fi
 
-note "Running security audit checks against $COMPOSE_FILE"
+note "Running security audit checks against Kubernetes manifests"
 
 # Default credentials
-if rg -n "change_me_in_production|GRAFANA_ADMIN_PASSWORD:-admin|GRAFANA_ADMIN_USER:-admin" "$COMPOSE_FILE" >/dev/null; then
-  fail "Default credentials present in compose env defaults"
+if [[ -f "$CONFIGMAP_FILE" ]]; then
+  if rg -n "change_me_in_production|GRAFANA_ADMIN_PASSWORD:[[:space:]]*admin|GRAFANA_ADMIN_USER:[[:space:]]*admin" "$CONFIGMAP_FILE" >/dev/null; then
+    fail "Default credentials present in configmap defaults"
+  else
+    note "No default credential placeholders detected"
+  fi
 else
-  note "No default credential placeholders detected"
+  warn "Missing configmap file: $CONFIGMAP_FILE"
 fi
 
 # Latest/rolling tags
@@ -34,7 +39,7 @@ while IFS= read -r img; do
   if [[ "$img" != *:* ]] || [[ "$img" == *:latest ]] || [[ "$img" == *:main ]]; then
     rolling_images+="${img}"$'\n'
   fi
-done < <(rg -n "image:" "$COMPOSE_FILE" | awk -F'image:' '{gsub(/[[:space:]]/, "", $2); sub(/#.*/, "", $2); print $2}')
+done < <(rg -n --glob "*.y*ml" "image:" "$MANIFEST_ROOT" | awk -F'image:' '{gsub(/[[:space:]]/, "", $2); sub(/#.*/, "", $2); print $2}')
 if [[ -n "$rolling_images" ]]; then
   fail "Rolling image tags detected:\n$rolling_images"
 else
@@ -42,54 +47,35 @@ else
 fi
 
 # Privileged containers
-if rg -n "privileged: true" "$COMPOSE_FILE" >/dev/null; then
-  warn "Privileged container detected (health-monitor)"
+if rg -n --glob "*.y*ml" "privileged:[[:space:]]*true" "$MANIFEST_ROOT" >/dev/null; then
+  warn "Privileged container detected"
 else
   note "No privileged containers detected"
 fi
 
-# Host port bindings
-port_lines=$(rg -n "ports:" -n "$COMPOSE_FILE" -n | cut -d: -f1)
-exposed_unsafe=()
-while read -r line; do
-  port_block=$(sed -n "$line,${line}p" "$COMPOSE_FILE")
-  # no-op placeholder, actual parsing done below
-done <<< "$port_lines"
-
-unsafe_ports=$(
-  { rg -n "^[[:space:]]+- \"[0-9]" "$COMPOSE_FILE" || true; } | \
-    awk -F'"' '{print $2}' | \
-    awk -F: 'NF>=2 && $1!="127.0.0.1" {print $0}'
-)
-unsafe_ports+=$'\n'$(
-  { rg -n "0\\.0\\.0\\.0:" "$COMPOSE_FILE" || true; } | \
-    awk -F'"' '{print $2}'
-)
-unsafe_ports=$(echo "$unsafe_ports" | sed '/^$/d')
-if [[ -n "$unsafe_ports" ]]; then
-  fail "Host ports not bound to 127.0.0.1 detected:\n$unsafe_ports"
+# Host access exposure
+if rg -n --glob "*.y*ml" "hostPort:|hostNetwork:[[:space:]]*true" "$MANIFEST_ROOT" >/dev/null; then
+  warn "Host network/hostPort usage detected; verify isolation requirements"
 else
-  note "All exposed ports bound to 127.0.0.1"
+  note "No hostPort/hostNetwork settings detected"
 fi
 
-# Secrets file permissions
-api_key="$SECRETS_DIR/stack_api_key"
-if [[ -f "$api_key" ]]; then
-  perms=$(stat -c %a "$api_key")
-  if [[ "$perms" -gt 640 ]]; then
-    fail "API key file permissions too permissive ($perms): $api_key"
+# Secrets presence
+if [[ -f "$SECRETS_FILE" ]]; then
+  if rg -q "stack_api_key" "$SECRETS_FILE"; then
+    note "API key secret present in sops secrets"
   else
-    note "API key file permissions ok ($perms)"
+    fail "API key secret missing in sops secrets: stack_api_key"
   fi
 else
-  fail "Missing API key file: $api_key"
+  fail "Missing secrets file: $SECRETS_FILE"
 fi
 
-# TLS certs
-if [[ -f "$CERT_DIR/localhost.crt" && -f "$CERT_DIR/localhost.key" ]]; then
-  note "TLS certs present in $CERT_DIR"
+# TLS manifests
+if [[ -d "$TLS_DIR" ]] && rg -n --glob "*.y*ml" "Certificate|Issuer|ClusterIssuer" "$TLS_DIR" >/dev/null; then
+  note "TLS manifests present in $TLS_DIR"
 else
-  warn "TLS certs missing in $CERT_DIR (nginx TLS may not be available)"
+  warn "TLS manifests missing in $TLS_DIR"
 fi
 
 if [[ "$fail_count" -gt 0 ]]; then

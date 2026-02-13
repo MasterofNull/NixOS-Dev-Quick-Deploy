@@ -47,173 +47,85 @@
 # PHASE IMPLEMENTATION
 # ============================================================================
 
-phase_01_system_initialization() {
-    # ========================================================================
-    # Phase 1: System Initialization
-    # ========================================================================
-    # This is the first phase - it validates the system and installs
-    # temporary tools needed for deployment automation.
-    #
-    # Part 1: Validation (from old Phase 1)
-    # - Verify running on NixOS
-    # - Check permissions (not root)
-    # - Validate network connectivity
-    # - Check disk space
-    # - Detect hardware (GPU, CPU, memory)
-    # - Validate dependency chain
-    #
-    # Part 2: Temporary Tool Installation (from old Phase 2)
-    # - Install git, jq via nix-env (temporary)
-    # - Install home-manager
-    # - Verify Python runtime
-    # - These will be replaced by declarative packages in Phase 5
-    #
-    # Why merge these phases:
-    # - Both are initialization/setup tasks
-    # - No system changes yet (just validation + temp tools)
-    # - Streamlines workflow from 10 → 8 phases
-    # ========================================================================
-
-    local phase_name="system_initialization"
-
-    # ------------------------------------------------------------------------
-    # Resume Check: Skip if already completed
-    # ------------------------------------------------------------------------
-    if is_step_complete "$phase_name"; then
-        print_info "Phase 1 already completed (skipping)"
-        return 0
-    fi
-
-    print_section "Phase 1/8: System Initialization"
-    echo ""
-
-    local previous_imperative_flag="${IMPERATIVE_INSTALLS_ALLOWED:-false}"
-    export IMPERATIVE_INSTALLS_ALLOWED=true
-
-    # ========================================================================
-    # PART 1: SYSTEM VALIDATION
-    # ========================================================================
-
-    # ========================================================================
-    # Step 1.1: Verify Running on NixOS
-    # ========================================================================
-    # Why: This script uses NixOS-specific commands (nixos-rebuild, etc.)
-    # How: Accept either the traditional /etc/NIXOS marker (file or dir) or
-    #       an /etc/os-release with ID=nixos.
+phase_01_require_nixos() {
     if [[ ! -e /etc/NIXOS ]]; then
         if [[ -f /etc/os-release ]] && grep -Eq '^ID=nixos' /etc/os-release; then
-            true
-        else
-            print_error "This script must be run on NixOS"
-            return 1
+            return 0
         fi
+        print_error "This script must be run on NixOS"
+        return "${ERR_NOT_NIXOS:-13}"
     fi
     print_success "Running on NixOS"
+}
 
-    # ========================================================================
-    # Step 1.2: Verify NOT Running as Root
-    # ========================================================================
-    # Why: Running as root causes permission issues (files owned by root)
-    # Script will use 'sudo' when needed for specific commands
+phase_01_require_non_root() {
     if [[ $EUID -eq 0 ]]; then
         print_error "This script should NOT be run as root"
         print_info "It will use sudo when needed for system operations"
-        return 1
+        return "${ERR_RUNNING_AS_ROOT:-14}"
     fi
     print_success "Running with correct permissions (non-root)"
+}
 
-    # ========================================================================
-    # Step 1.3: Verify Critical NixOS Commands Available
-    # ========================================================================
-    # Essential commands: nixos-rebuild, nix-env, nix-channel
+phase_01_check_critical_commands() {
     local -a critical_commands=("nixos-rebuild" "nix-env" "nix-channel")
+    local cmd
     for cmd in "${critical_commands[@]}"; do
         if ! command -v "$cmd" &>/dev/null; then
             print_error "Critical command not found: $cmd"
-            return 1
+            return "${ERR_MISSING_COMMAND:-15}"
         fi
     done
     print_success "Critical NixOS commands available"
+}
 
-    # ========================================================================
-    # Step 1.4: Verify Sufficient Disk Space
-    # ========================================================================
-    # NixOS deployment requires significant disk space for packages,
-    # builds, and multiple system generations
+phase_01_validate_environment() {
+    print_section "Part 1: System Validation"
+    echo ""
+
+    phase_01_require_nixos || return $?
+    phase_01_require_non_root || return $?
+    phase_01_check_critical_commands || return $?
+
     if ! check_disk_space; then
         print_error "Insufficient disk space"
-        return 1
+        return "${ERR_DISK_SPACE:-11}"
     fi
 
-    # ========================================================================
-    # Step 1.5: Validate Network Connectivity
-    # ========================================================================
-    # Need internet to download packages from NixOS binary cache
     if ! check_network_connectivity; then
-        return 1
+        return "${ERR_NETWORK:-10}"
     fi
 
-    # ========================================================================
-    # Step 1.6: Validate Configuration Path Uniqueness
-    # ========================================================================
-    # Ensure no two config files try to use the same path
     if ! assert_unique_paths HOME_MANAGER_FILE SYSTEM_CONFIG_FILE HARDWARE_CONFIG_FILE; then
         print_error "Internal configuration path conflict detected"
-        return 1
+        return "${ERR_CONFIG_PATH_CONFLICT:-33}"
     fi
 
-    # ========================================================================
-    # Step 1.7: Check for Old Deployment Artifacts
-    # ========================================================================
-    # Warn about old monolithic script from v2.x
     print_info "Checking for old deployment artifacts..."
-    local OLD_SCRIPT="/home/$USER/Documents/nixos-quick-deploy.sh"
+    local OLD_SCRIPT="${HOME}/Documents/nixos-quick-deploy.sh"
     if [[ -f "$OLD_SCRIPT" ]]; then
         print_warning "Found old deployment script: $OLD_SCRIPT"
         print_info "This can be safely ignored or archived"
     fi
 
-    # ========================================================================
-    # Step 1.8: Validate Entire Dependency Chain
-    # ========================================================================
-    # Ensure all required packages available in Nix channels
     print_info "Validating dependency chain..."
     check_required_packages || {
         print_error "Required packages not available"
         return 1
     }
 
-    # ========================================================================
-    # Step 1.9: Hardware Detection - GPU
-    # ========================================================================
-    # Detect GPU type to install correct drivers:
-    # - NVIDIA: Proprietary nvidia drivers + CUDA
-    # - AMD: Mesa + AMDGPU drivers + ROCm
-    # - Intel: Mesa + i915/Xe drivers + oneAPI
-    # - Software: No GPU, CPU-only rendering
     detect_gpu_hardware
-
-    # ========================================================================
-    # Step 1.10: Hardware Detection - CPU and Memory
-    # ========================================================================
-    # Optimize configuration based on available resources
     detect_gpu_and_cpu
 
-    # ========================================================================
-    # Step 1.10a: Container Orchestration Check (K3s)
-    # ========================================================================
-    # All container workloads use K3s (deployed in Phase 9).
-    # This step verifies container prerequisites only.
     print_info "Container orchestration: K3s (configured in Phase 9)"
     if command -v kubectl >/dev/null 2>&1; then
         print_success "kubectl available for K3s management"
     else
         print_info "kubectl will be installed during NixOS configuration"
     fi
+}
 
-    # ========================================================================
-    # Step 1.11: Plan Swap and Hibernation Capacity
-    # ========================================================================
+phase_01_plan_swap_and_hibernation() {
     print_section "Swap & Hibernation Planning"
     echo ""
 
@@ -450,22 +362,15 @@ phase_01_system_initialization() {
         HIBERNATION_SWAP_SIZE_GB=""
         export HIBERNATION_SWAP_SIZE_GB
     fi
+}
 
+phase_01_start_tool_installation() {
     echo ""
     print_section "Part 2: Temporary Tool Installation"
     echo ""
+}
 
-    # ========================================================================
-    # PART 2: TEMPORARY TOOL INSTALLATION
-    # ========================================================================
-    # These tools are installed via nix-env (imperative) for immediate use
-    # during deployment. They will be REMOVED in Phase 5 and replaced with
-    # declarative packages from configuration.nix and home.nix
-    # ========================================================================
-
-    # ========================================================================
-    # Step 1.12: Select Build Strategy for Initial Deployment
-    # ========================================================================
+phase_01_select_build_strategy() {
     print_section "Build Strategy Selection"
     echo ""
     print_info "Choose how nixos-rebuild should source packages during the initial switch."
@@ -513,6 +418,7 @@ phase_01_system_initialization() {
     case "$build_choice" in
         3)
             USE_BINARY_CACHES="true"
+            # shellcheck disable=SC2034
             REMOTE_BUILD_ACCELERATION_MODE="remote-builders"
             print_success "Remote build acceleration selected – binary caches plus remote builders"
             if declare -F gather_remote_build_acceleration_preferences >/dev/null 2>&1; then
@@ -553,99 +459,78 @@ EOF
             print_warning "Could not prepare preference directory at $preference_dir; preference will not be cached."
         fi
     fi
+}
 
-    # ========================================================================
-    # Step 1.13: NixOS Version Selection
-    # ========================================================================
-    # Let user choose stable (24.05) or unstable (rolling)
+phase_01_select_nixos_release() {
     select_nixos_version
-
-    # ========================================================================
-    # Step 1.14: Update NixOS Channels
-    # ========================================================================
-    # Fetch latest package metadata and security updates
     update_nixos_channels
+}
 
-    # ========================================================================
-    # Step 1.15: Install Core Prerequisite Packages
-    # ========================================================================
-    # Install git, python, shellcheck, and rootless container helpers via nix-env
-    # for immediate availability. These are temporary and will be removed in
-    # Phase 5 once declarative packages take over.
+phase_01_install_prerequisites() {
     if ! ensure_preflight_core_packages; then
         print_error "Failed to install core prerequisite packages"
         return 1
     fi
 
-    # ========================================================================
-    # Step 1.16: Verify Python Runtime Available
-    # ========================================================================
-    # Python needed for configuration generation scripts
     print_info "Verifying Python runtime..."
     if ! ensure_python_runtime; then
         print_error "Unable to locate or provision a python interpreter"
         return 1
     fi
 
-    # Display Python runtime information
     if [[ "${PYTHON_BIN[0]}" == "nix" ]]; then
         print_success "Python runtime: ephemeral Nix shell"
     else
         print_success "Python runtime: ${PYTHON_BIN[0]} ($("${PYTHON_BIN[@]}" --version 2>&1))"
     fi
+}
 
-    # ========================================================================
-    # Step 1.17: Collect User Preferences & App Selections
-    # ========================================================================
+phase_01_collect_user_preferences() {
     print_section "User Preferences & Integrations"
     echo ""
     if ! ensure_user_settings_ready --interactive; then
         print_error "Failed to collect user preferences and integrations"
         return 1
     fi
+}
 
-    export IMPERATIVE_INSTALLS_ALLOWED="$previous_imperative_flag"
-
-    # ========================================================================
-    # Step 1.18: Initialize Secrets Infrastructure
-    # ========================================================================
-    # Install age and sops for secrets encryption (required for Phase 3)
-    # This ensures secrets management is ready before configuration generation
+phase_01_setup_secrets_infrastructure() {
     print_section "Secrets Infrastructure Setup"
     echo ""
 
     print_info "Installing secrets management dependencies..."
 
-    # Install age for encryption
     if ! command -v age-keygen >/dev/null 2>&1; then
         print_info "Installing age..."
-        if nix-env -iA nixpkgs.age 2>&1 | tee -a "$LOG_FILE"; then
+        if nix-env -iA nixpkgs.age > >(tee -a "$LOG_FILE") 2>&1; then
             print_success "age installed"
         else
             print_warning "age installation via nix-env failed, trying nix profile..."
-            nix profile install nixpkgs#age 2>&1 | tee -a "$LOG_FILE" || print_warning "Failed to install age"
+            if ! nix profile install nixpkgs#age > >(tee -a "$LOG_FILE") 2>&1; then
+                print_warning "Failed to install age"
+            fi
         fi
     else
         print_success "age already installed"
     fi
 
-    # Install sops for secret management
     if ! command -v sops >/dev/null 2>&1; then
         print_info "Installing sops..."
-        if nix-env -iA nixpkgs.sops 2>&1 | tee -a "$LOG_FILE"; then
+        if nix-env -iA nixpkgs.sops > >(tee -a "$LOG_FILE") 2>&1; then
             print_success "sops installed"
         else
             print_warning "sops installation via nix-env failed, trying nix profile..."
-            nix profile install nixpkgs#sops 2>&1 | tee -a "$LOG_FILE" || print_warning "Failed to install sops"
+            if ! nix profile install nixpkgs#sops > >(tee -a "$LOG_FILE") 2>&1; then
+                print_warning "Failed to install sops"
+            fi
         fi
     else
         print_success "sops already installed"
     fi
 
-    # Generate age key if it doesn't exist
     if declare -F init_sops >/dev/null 2>&1; then
         print_info "Initializing sops infrastructure..."
-        if init_sops 2>&1 | tee -a "$LOG_FILE"; then
+        if init_sops > >(tee -a "$LOG_FILE") 2>&1; then
             print_success "Secrets infrastructure initialized"
         else
             print_warning "Secrets initialization had issues (non-fatal, will retry in Phase 3)"
@@ -653,14 +538,49 @@ EOF
     else
         print_info "Secrets management will be initialized in Phase 3"
     fi
+}
 
-    # ------------------------------------------------------------------------
-    # Mark Phase Complete
-    # ------------------------------------------------------------------------
+phase_01_run() {
+    phase_01_validate_environment || return $?
+    phase_01_plan_swap_and_hibernation || return $?
+    phase_01_start_tool_installation
+    phase_01_select_build_strategy || return $?
+    phase_01_select_nixos_release || return $?
+    phase_01_install_prerequisites || return $?
+    phase_01_collect_user_preferences || return $?
+    phase_01_setup_secrets_infrastructure || return $?
+}
+
+phase_01_system_initialization() {
+    local phase_name="system_initialization"
+
+    if is_step_complete "$phase_name"; then
+        print_info "Phase 1 already completed (skipping)"
+        return 0
+    fi
+
+    print_section "Phase 1/8: System Initialization"
+    echo ""
+
+    local previous_imperative_flag="${IMPERATIVE_INSTALLS_ALLOWED:-false}"
+    export IMPERATIVE_INSTALLS_ALLOWED=true
+
+    local phase_status=0
+    if ! phase_01_run; then
+        phase_status=$?
+    fi
+
+    export IMPERATIVE_INSTALLS_ALLOWED="$previous_imperative_flag"
+
+    if (( phase_status != 0 )); then
+        return "$phase_status"
+    fi
+
     mark_step_complete "$phase_name"
     print_success "Phase 1: System Initialization - COMPLETE"
     echo ""
 }
+
 
 # Execute phase
 phase_01_system_initialization

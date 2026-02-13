@@ -182,14 +182,14 @@ The deployment runs in 8 sequential phases:
 - COSMIC desktop + Hyprland session
 - Kernel preference ladder (`linuxPackages_6_17` ➜ `linuxPackages_xanmod` ➜ `linuxPackages_lqx` ➜ `linuxPackages_zen` ➜ `linuxPackages_latest`)
 - GPU drivers, MangoHud overlays, and Gamescope tuned automatically
-- Rootless Podman defaults, PipeWire, ZRAM, nix-ld, and declarative Home Manager workspace
+- K3s + containerd runtime defaults, PipeWire, ZRAM, nix-ld, and declarative Home Manager workspace
 - Flatpak remotes, profile caching, and MangoHud preference files stored under `$STATE_DIR/preferences`
 
 ### Development Tools (Highlights)
 - **Languages:** Python 3.13/3.14 (mask-aware), Node.js 22, Go, Rust, Ruby, Java toolchains
 - **Version Control:** Git, Lazygit, git-credential-manager, GitHub CLI, Gitea server
 - **Editors:** VSCodium (with Claude/Continue/Codeium), Neovim, Cursor, Helix, JetBrains via Flatpak (optional)
-- **Container/Cloud:** Podman, Buildah, Skopeo, Podman Desktop, Docker-compatible CLI wrappers
+- **Container/Cloud:** K3s, kubectl, containerd tooling, Docker-compatible CLI wrappers
 - **Observability:** Netdata, Grafana + Loki + Promtail + Vector, Glances, Cockpit
 - **Modern CLI:** `ripgrep`, `fd`, `fzf`, `bat`, `eza`, `htop/btop`, `jq/yq`, `nix-tree`, `statix`, `nix-index`
 

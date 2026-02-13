@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AI Stack Secrets Manager - Interactive TUI for managing Docker/Podman secrets
+AI Stack Secrets Manager - Interactive TUI for managing Kubernetes secrets
 Supports: password generation, rotation, backup, restore, and validation
 
 Usage:
@@ -19,9 +19,12 @@ import shutil
 import subprocess
 import json
 import hashlib
+import logging
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 # Check for rich library
 try:
@@ -40,9 +43,9 @@ except ImportError:
 
 # Configuration
 PROJECT_ROOT = Path(__file__).parent.parent
-SECRETS_DIR = PROJECT_ROOT / "ai-stack" / "compose" / "secrets"
+SECRETS_DIR = PROJECT_ROOT / "ai-stack" / "kubernetes" / "secrets" / "generated"
 BACKUP_DIR = PROJECT_ROOT / "backups" / "secrets"
-CONFIG_FILE = PROJECT_ROOT / "ai-stack" / "compose" / ".secrets-config.json"
+CONFIG_FILE = PROJECT_ROOT / "ai-stack" / "kubernetes" / "secrets" / ".secrets-config.json"
 
 # Secret definitions
 SECRET_DEFS = {
@@ -198,8 +201,8 @@ class SecretsManager:
         if self.config_file.exists():
             try:
                 return json.loads(self.config_file.read_text())
-            except:
-                pass
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning("Failed to load secrets config %s: %s", self.config_file, e)
         return {}
 
     def _save_config(self, config: Dict):
@@ -310,7 +313,7 @@ class SecretsManager:
                 self._print("2. For existing databases, update password manually:")
                 if "postgres" in secret_def["services"]:
                     self._print(f"   PGPASSWORD=$(cat {self.secrets_dir / secret_name})")
-                    self._print("   docker compose exec postgres psql -U mcp -d mcp \\")
+                    self._print("   kubectl exec -n ai-stack deploy/postgres -- psql -U mcp -d mcp \\")
                     self._print("     -c \"ALTER USER mcp WITH PASSWORD '$(cat secrets/postgres_password)';\"")
         else:
             self._print(f"❌ Failed to rotate {secret_name}", "red")

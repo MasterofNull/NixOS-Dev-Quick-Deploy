@@ -5,16 +5,18 @@ Shows how AI agents SHOULD interact with the hybrid learning system
 """
 
 import json
+import os
 import requests
 import time
 from datetime import datetime
 from typing import Dict, List, Any
 
 # Service endpoints
-AIDB_MCP = "http://localhost:8091"
-HYBRID_COORDINATOR = "http://localhost:8092"
-LLAMA_CPP = "http://localhost:8080"
-QDRANT = "http://localhost:6333"
+SERVICE_HOST = os.getenv("SERVICE_HOST", "localhost")
+AIDB_MCP = os.getenv("AIDB_URL", f"http://{SERVICE_HOST}:8091")
+HYBRID_COORDINATOR = os.getenv("HYBRID_URL", f"http://{SERVICE_HOST}:8092")
+LLAMA_CPP = os.getenv("LLAMA_URL", f"http://{SERVICE_HOST}:8080")
+QDRANT = os.getenv("QDRANT_URL", f"http://{SERVICE_HOST}:6333")
 
 class LocalAIClient:
     """Proper client for local AI stack usage"""

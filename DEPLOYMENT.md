@@ -96,27 +96,8 @@ kubectl create namespace backups
 # Initialize secrets locally first
 ./scripts/manage-secrets.sh init
 
-# Create Kubernetes secrets from files
-cd ai-stack/compose
-kubectl create secret generic postgres-password \
-  --from-file=postgres-password=secrets/postgres_password \
-  -n ai-stack
-
-kubectl create secret generic redis-password \
-  --from-file=redis-password=secrets/redis_password \
-  -n ai-stack
-
-kubectl create secret generic grafana-admin-password \
-  --from-file=grafana-admin-password=secrets/grafana_admin_password \
-  -n ai-stack
-
-# Create API key secrets
-for key in aidb aider-wrapper container-engine dashboard embeddings \
-           hybrid-coordinator nixos-docs ralph-wiggum stack; do
-  kubectl create secret generic ${key}-api-key \
-    --from-file=${key}-api-key=secrets/${key//-/_}_api_key \
-    -n ai-stack 2>/dev/null || true
-done
+# Apply Kubernetes secrets (sops-managed)
+sops -d ai-stack/kubernetes/secrets/secrets.sops.yaml | kubectl apply -f -
 
 # Backup encryption key (for postgres backups)
 kubectl create secret generic backup-encryption \
@@ -165,10 +146,11 @@ curl -s http://localhost:9091/api/v1/targets | jq -r '.data.activeTargets[] | "\
 ```bash
 # Create backups namespace + secrets (once)
 kubectl create namespace backups
-kubectl get secret -n ai-stack postgres-password -o json > /tmp/postgres-password.json
+kubectl get secret -n ai-stack postgres-password -o json > "${TMPDIR:-/tmp}/postgres-password.json"
 python - <<'PY'
+import os
 import json
-with open("/tmp/postgres-password.json") as f:
+with open(os.path.join(os.environ.get("TMPDIR", "/tmp"), "postgres-password.json")) as f:
     secret = json.load(f)
 secret["metadata"]["namespace"] = "backups"
 for key in ["resourceVersion", "uid", "selfLink", "creationTimestamp", "managedFields", "ownerReferences"]:
@@ -205,7 +187,7 @@ kubectl apply -f ai-stack/kubernetes/network-policies/ai-stack-allow-internal.ya
 
 ---
 
-## Detailed Podman Compose Deployment
+## Detailed Kubernetes Deployment
 
 ### Step 1: Initialize Configuration
 
@@ -214,7 +196,7 @@ kubectl apply -f ai-stack/kubernetes/network-policies/ai-stack-allow-internal.ya
 mkdir -p ~/.config/nixos-ai-stack
 
 # Copy and customize environment
-cp ai-stack/compose/.env.example ~/.config/nixos-ai-stack/.env
+cp templates/local-ai-stack/.env.example ~/.config/nixos-ai-stack/.env
 
 # Or use setup script
 ./scripts/setup-config.sh
@@ -419,8 +401,8 @@ kubectl logs -n ai-stack deployment/llama-cpp --tail=50
 #### 5. Permission Denied on Secrets
 
 ```bash
-# Fix permissions (must be 644 for container access)
-chmod 644 ai-stack/compose/secrets/*
+# Ensure secrets file is readable (sops-managed)
+chmod 600 ai-stack/kubernetes/secrets/secrets.sops.yaml
 ```
 
 #### 6. Prometheus Target Down (Ralph `/metrics` 404)
@@ -429,7 +411,7 @@ This usually means k3s is running an older Ralph image without `/metrics`.
 
 ```bash
 # Rebuild image using your preferred build pipeline so the image tag exists as
-# localhost/compose_ralph-wiggum:latest.
+# localhost/ralph-wiggum:latest.
 
 # Import updated image into k3s (requires sudo)
 ONLY_IMAGES="ralph-wiggum" FORCE_IMPORT=1 sudo -E ./scripts/import-k3s-images.sh
@@ -556,6 +538,19 @@ resources:
 TAG=dev ALSO_TAG_DEV=1 ./scripts/publish-local-registry.sh
 ```
 
+### Buildah/Skopeo workflow (optional)
+
+```bash
+# Build MCP server images with Buildah and import into K3s
+sudo BUILD_TOOL=buildah ./scripts/build-k3s-images.sh
+
+# Rootless build only (skip k3s import)
+BUILD_TOOL=buildah SKIP_K3S_IMPORT=true ./scripts/build-k3s-images.sh
+
+# Publish from containers-storage using Skopeo
+CONTAINER_CLI=skopeo TAG=dev ALSO_TAG_DEV=1 ./scripts/publish-local-registry.sh
+```
+
 ### Deploy with Kustomize (dev overlay)
 
 ```bash
@@ -575,7 +570,7 @@ skaffold dev
 - **Documentation:** See `/docs/` directory
 - **Troubleshooting:** [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 - **Secrets Guide:** [SECRETS-MANAGEMENT-GUIDE.md](SECRETS-MANAGEMENT-GUIDE.md)
-- **K3s Migration:** [K3S-PORTAINER-MIGRATION-PLAN.md](K3S-PORTAINER-MIGRATION-PLAN.md)
+- **K3s Migration:** [docs/archive/K3S-PORTAINER-MIGRATION-PLAN.md](docs/archive/K3S-PORTAINER-MIGRATION-PLAN.md)
 - **Issues:** https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy/issues
 
 ---

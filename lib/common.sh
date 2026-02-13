@@ -43,6 +43,7 @@
 
 declare -a PODMAN_STORAGE_WARNINGS=()
 declare -a PODMAN_STORAGE_ERRORS=()
+# shellcheck disable=SC2034
 OVERLAY_METACOPY_SUPPORTED_CACHE=""
 
 # ============================================================================
@@ -87,6 +88,11 @@ create_tracked_temp_file() {
     local template="${1:-}"
     local var_name="${2:-tmp_file}"
     local tmp_path
+
+    if ! validate_var_name "$var_name"; then
+        log ERROR "Invalid variable name for temp file output: $var_name"
+        return 1
+    fi
     
     if [[ -n "$template" ]]; then
         tmp_path=$(mktemp "$template" 2>/dev/null) || {
@@ -105,6 +111,19 @@ create_tracked_temp_file() {
     # Set the variable in the calling scope
     printf -v "$var_name" '%s' "$tmp_path"
     return 0
+}
+
+# ============================================================================
+# Validate Shell Variable Name
+# ============================================================================
+# Purpose: Ensure variable names are safe for printf -v assignment
+# Parameters:
+#   $1 - Variable name
+# Returns: 0 if valid, 1 if invalid
+# ============================================================================
+validate_var_name() {
+    local var_name="${1:-}"
+    [[ "$var_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
 }
 
 # ============================================================================
@@ -612,6 +631,7 @@ build_primary_user_path() {
 
     local primary_profile_bin="${PRIMARY_PROFILE_BIN:-${PRIMARY_HOME:-$HOME}/.nix-profile/bin}"
     local primary_etc_profile_bin="${PRIMARY_ETC_PROFILE_BIN:-/etc/profiles/per-user/${PRIMARY_USER:-$USER}/bin}"
+    local primary_hm_profile_bin="${PRIMARY_HM_PROFILE_BIN:-${PRIMARY_HOME:-$HOME}/.local/state/nix/profiles/home-manager/bin}"
     local primary_local_bin="${PRIMARY_LOCAL_BIN:-${PRIMARY_HOME:-$HOME}/.local/bin}"
     local primary_npm_bin="${PRIMARY_NPM_BIN:-${PRIMARY_HOME:-$HOME}/.npm-global/bin}"
 
@@ -621,6 +641,10 @@ build_primary_user_path() {
 
     if [[ -d "$primary_etc_profile_bin" ]]; then
         path_parts+=("$primary_etc_profile_bin")
+    fi
+
+    if [[ -d "$primary_hm_profile_bin" ]]; then
+        path_parts+=("$primary_hm_profile_bin")
     fi
 
     if [[ -n "$primary_local_bin" ]]; then
@@ -923,6 +947,9 @@ detect_gpu_and_cpu() {
             zswap_percent=30
         fi
     fi
+
+    # Keep hardware metadata for callers sourcing this library.
+    : "${GPU_DRIVER}${GPU_PACKAGES}${CPU_VENDOR}${CPU_MICROCODE}"
 
     ZSWAP_MAX_POOL_PERCENT="$zswap_percent"
     print_info "Zswap pool limit: ${ZSWAP_MAX_POOL_PERCENT}% of RAM"
@@ -1420,14 +1447,14 @@ verify_podman_storage_cleanliness() {
             print_warning "Detected legacy overlay data under: ${joined_paths}. Clean the stores before applying the declarative Podman (driver=${configured_driver}) configuration."
             print_detail "User store cleanup: ${user_cleanup_hint}"
             print_detail "System store cleanup: ${system_cleanup_hint}"
-            print_detail "Refer to docs/ROOTLESS_PODMAN.md for full instructions."
+            print_detail "Refer to docs/archive/ROOTLESS_PODMAN.md for full instructions."
             return 0
         fi
 
         print_error "Podman storage check failed: legacy overlay data still exists under ${joined_paths} while the generated configuration uses driver '${configured_driver}'."
         print_detail "User cleanup: ${user_cleanup_hint}"
         print_detail "System cleanup: ${system_cleanup_hint}"
-        print_detail "See docs/ROOTLESS_PODMAN.md for recovery steps, then rerun the deployer."
+        print_detail "See docs/archive/ROOTLESS_PODMAN.md for recovery steps, then rerun the deployer."
         return 1
     fi
 
@@ -1456,14 +1483,14 @@ verify_podman_storage_cleanliness() {
                 print_warning "$probe_msg"
                 print_detail "User cleanup: ${user_cleanup_hint}"
                 print_detail "System cleanup: ${system_cleanup_hint}"
-                print_detail "Refer to docs/ROOTLESS_PODMAN.md for recovery steps."
+                print_detail "Refer to docs/archive/ROOTLESS_PODMAN.md for recovery steps."
                 return 0
             fi
 
             print_error "$probe_msg"
             print_detail "User cleanup: ${user_cleanup_hint}"
             print_detail "System cleanup: ${system_cleanup_hint}"
-            print_detail "See docs/ROOTLESS_PODMAN.md for remediation guidance."
+            print_detail "See docs/archive/ROOTLESS_PODMAN.md for remediation guidance."
             return 1
         fi
 
@@ -1482,7 +1509,7 @@ verify_podman_storage_cleanliness() {
             print_error "Podman storage probe returned an empty driver result. Clean the stores before rerunning the deployer."
             print_detail "User cleanup: ${user_cleanup_hint}"
             print_detail "System cleanup: ${system_cleanup_hint}"
-            print_detail "See docs/ROOTLESS_PODMAN.md for recovery steps."
+            print_detail "See docs/archive/ROOTLESS_PODMAN.md for recovery steps."
             return 1
         fi
 
@@ -1492,14 +1519,14 @@ verify_podman_storage_cleanliness() {
                 print_warning "$mismatch_msg"
                 print_detail "User cleanup: ${user_cleanup_hint}"
                 print_detail "System cleanup: ${system_cleanup_hint}"
-                print_detail "Refer to docs/ROOTLESS_PODMAN.md for the reset procedure."
+                print_detail "Refer to docs/archive/ROOTLESS_PODMAN.md for the reset procedure."
                 return 0
             fi
 
             print_error "$mismatch_msg"
             print_detail "User cleanup: ${user_cleanup_hint}"
             print_detail "System cleanup: ${system_cleanup_hint}"
-            print_detail "See docs/ROOTLESS_PODMAN.md for the cleanup sequence, then rerun the deployer."
+            print_detail "See docs/archive/ROOTLESS_PODMAN.md for the cleanup sequence, then rerun the deployer."
             return 1
         fi
     fi
@@ -1706,7 +1733,8 @@ auto_remediate_podman_storage() {
 
     # Step 4: Backup and remove storage.conf if it exists (allows podman reset to work)
     if [[ -f /etc/containers/storage.conf ]]; then
-        local backup_path="/etc/containers/storage.conf.pre-reset.$(date +%Y%m%d-%H%M%S)"
+        local backup_path
+        backup_path="/etc/containers/storage.conf.pre-reset.$(date +%Y%m%d-%H%M%S)"
         if sudo mv /etc/containers/storage.conf "$backup_path" 2>/dev/null; then
             print_detail "Backed up /etc/containers/storage.conf to $backup_path"
         fi
@@ -2266,9 +2294,9 @@ calculate_active_swap_total_gb() {
     fi
 
     local total_kib=0
-    local filename type size_kib used_kib priority
+    local filename type size_kib _ priority
 
-    while read -r filename type size_kib used_kib priority; do
+    while read -r filename type size_kib _ priority; do
         if [[ "$filename" == "Filename" ]]; then
             continue
         fi
@@ -2765,7 +2793,8 @@ safe_copy_file() {
     fi
 
     # Ensure destination directory exists
-    local dest_dir=$(dirname "$dest")
+    local dest_dir
+    dest_dir=$(dirname "$dest")
     if ! safe_mkdir "$dest_dir"; then
         return 1
     fi
@@ -2797,7 +2826,8 @@ safe_copy_file_silent() {
 
     [[ -f "$src" ]] || return 1
 
-    local dest_dir=$(dirname "$dest")
+    local dest_dir
+    dest_dir=$(dirname "$dest")
     mkdir -p "$dest_dir" 2>/dev/null || return 1
 
     cp "$src" "$dest" 2>/dev/null || return 1
@@ -3420,7 +3450,8 @@ verify_file_created() {
         return 1
     fi
 
-    local size=$(stat -c%s "$file" 2>/dev/null || echo "0")
+    local size
+    size=$(stat -c%s "$file" 2>/dev/null || echo "0")
     if [[ "$size" -eq 0 ]]; then
         print_error "$desc is empty: $file"
         return 1

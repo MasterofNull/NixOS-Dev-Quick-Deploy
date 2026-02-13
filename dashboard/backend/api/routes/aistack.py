@@ -1,11 +1,14 @@
 """AI Stack specific API endpoints for learning stats, circuit breakers, and Ralph"""
 from fastapi import APIRouter, HTTPException, Response
-from typing import Dict, Any, Optional
+from pydantic import BaseModel, Field
+from typing import Dict, Any, Optional, List
 import logging
 import asyncio
 import aiohttp
+import os
 from datetime import datetime
 from pathlib import Path
+from ..config import service_endpoints
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -77,11 +80,57 @@ async def fetch_text_with_fallback(url: str, fallback: Any = None) -> Any:
         return fallback
 
 
+async def post_with_fallback(url: str, payload: Dict[str, Any], headers: Optional[Dict[str, str]] = None) -> Any:
+    """POST JSON payload with error handling and fallback"""
+    try:
+        session = await get_http_session()
+        async with session.post(url, json=payload, headers=headers) as resp:
+            if resp.status == 200:
+                return await resp.json()
+            text = await resp.text()
+            logger.warning("Non-200 status from %s: %s %s", url, resp.status, text)
+            return None
+    except asyncio.TimeoutError:
+        logger.warning("Timeout posting to %s", url)
+        return None
+    except Exception as e:
+        logger.warning("Error posting to %s: %s", url, e)
+        return None
+
+
+def _load_hybrid_api_key() -> str:
+    direct = os.getenv("HYBRID_API_KEY", "").strip()
+    if direct:
+        return direct
+    key_file = os.getenv("HYBRID_API_KEY_FILE", "").strip()
+    if not key_file:
+        return ""
+    try:
+        return Path(key_file).read_text().strip()
+    except FileNotFoundError:
+        logger.warning("Hybrid API key file not found: %s", key_file)
+        return ""
+    except OSError as exc:
+        logger.warning("Failed reading hybrid API key file %s: %s", key_file, exc)
+        return ""
+
+
 def _normalize_status(raw: Any, ok_values: tuple[str, ...]) -> str:
     value = str(raw or "").lower()
     if value in ok_values:
         return ok_values[0]
     return value or "unknown"
+
+
+class FeedbackPayload(BaseModel):
+    query: str = Field(..., min_length=1)
+    correction: str = Field(..., min_length=1)
+    original_response: Optional[str] = None
+    interaction_id: Optional[str] = None
+    rating: Optional[int] = Field(default=None, ge=1, le=5)
+    tags: Optional[List[str]] = None
+    model: Optional[str] = None
+    variant: Optional[str] = None
 
 
 async def _fetch_qdrant_collection_points(collections: list[str]) -> Dict[str, int]:
@@ -94,6 +143,31 @@ async def _fetch_qdrant_collection_points(collections: list[str]) -> Dict[str, i
         points = info.get("result", {}).get("points_count", 0)
         results[name] = points if isinstance(points, int) else 0
     return results
+
+
+@router.post("/feedback")
+async def submit_feedback(payload: FeedbackPayload) -> Dict[str, Any]:
+    """Forward user feedback to the hybrid coordinator learning endpoint."""
+    api_key = _load_hybrid_api_key()
+    if not api_key:
+        raise HTTPException(status_code=503, detail="Hybrid API key not configured")
+
+    hybrid_base = SERVICES["hybrid"]
+    tags = list(payload.tags or [])
+    if payload.model:
+        tags.append(f"model:{payload.model}")
+    if payload.variant:
+        tags.append(f"variant:{payload.variant}")
+    payload_dict = payload.model_dump()
+    payload_dict["tags"] = tags or None
+    result = await post_with_fallback(
+        f"{hybrid_base}/feedback",
+        payload_dict,
+        headers={"X-API-Key": api_key},
+    )
+    if result is None:
+        raise HTTPException(status_code=503, detail="Hybrid feedback endpoint unavailable")
+    return result
 
 
 @router.get("/aidb/health/{probe}")
@@ -337,6 +411,6 @@ async def get_ralph_tasks() -> Dict[str, Any]:
 @router.get("/prometheus/query")
 async def proxy_prometheus_query(query: str) -> Dict[str, Any]:
     """Proxy Prometheus queries"""
-    prom_url = f"http://localhost:9090/api/v1/query?query={query}"
+    prom_url = f"{service_endpoints.K3S_PROMETHEUS_SVC}/api/v1/query?query={query}"
     result = await fetch_with_fallback(prom_url, {})
     return result

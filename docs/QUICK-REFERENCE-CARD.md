@@ -8,7 +8,7 @@
 ## 🎯 Critical Locations
 
 ```
-Project: /home/hyperd/Documents/NixOS-Dev-Quick-Deploy
+Project: ~/Documents/NixOS-Dev-Quick-Deploy
 Skills: .agent/skills/ (25 skills - SOURCE OF TRUTH)
 MCP Config: ~/.mcp/config.json
 AIDB: http://localhost:8091

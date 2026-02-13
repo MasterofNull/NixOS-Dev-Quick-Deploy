@@ -197,7 +197,7 @@ If a start/stop/restart action fails, you'll see an alert:
 
 **Check logs**:
 ```bash
-tail -f /tmp/dashboard-backend.log
+tail -f ${TMPDIR:-/tmp}/dashboard-backend.log
 ```
 
 ---
@@ -264,7 +264,7 @@ The dashboard tracks these services:
 ```
 
 **Service Types**:
-- `container` - Podman container
+- `container` - K3s pod
 - `systemd` - Systemd user service
 
 ---

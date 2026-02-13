@@ -15,8 +15,8 @@ phase_09_ai_model_deployment() {
         log_info "Phase 9: AI Model Deployment (Optional)"
     fi
 
-    # Respect global preference from the earlier prompt to avoid duplicate questions.
-    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" != "true" ]]; then
+    # Respect global AI stack flag to avoid duplicate questions.
+    if [[ "${RUN_AI_MODEL:-true}" != "true" || "${LOCAL_AI_STACK_ENABLED:-true}" != "true" ]]; then
         log_info "AI stack disabled earlier; skipping AI model deployment prompt"
         mark_phase_complete "phase-09-ai-model"
         return 0
@@ -34,8 +34,10 @@ phase_09_ai_model_deployment() {
     fi
 
     # Detect GPU and recommend model
-    local gpu_vram=$(detect_gpu_vram)
-    local gpu_name=$(detect_gpu_model)
+    local gpu_vram
+    local gpu_name
+    gpu_vram=$(detect_gpu_vram)
+    gpu_name=$(detect_gpu_model)
 
     if [ "$gpu_vram" -eq 0 ]; then
         log_warning "No NVIDIA GPU detected"
@@ -67,12 +69,16 @@ phase_09_ai_model_deployment() {
     local pref_file="${LLM_MODELS_PREFERENCE_FILE:-${CACHE_DIR}/preferences/llm-models.env}"
     mkdir -p "$(dirname "$pref_file")"
     if grep -q "^LLAMA_CPP_DEFAULT_MODEL=" "$pref_file" 2>/dev/null; then
-        sed -i "s|^LLAMA_CPP_DEFAULT_MODEL=.*|LLAMA_CPP_DEFAULT_MODEL=$selected_model|" "$pref_file" 2>/dev/null || true
+        if ! sed -i "s|^LLAMA_CPP_DEFAULT_MODEL=.*|LLAMA_CPP_DEFAULT_MODEL=$selected_model|" "$pref_file" 2>/dev/null; then
+            log_warning "Failed to update LLAMA_CPP_DEFAULT_MODEL in $pref_file"
+        fi
     else
         echo "LLAMA_CPP_DEFAULT_MODEL=$selected_model" >>"$pref_file"
     fi
     if grep -q "^GPU_VRAM=" "$pref_file" 2>/dev/null; then
-        sed -i "s|^GPU_VRAM=.*|GPU_VRAM=$gpu_vram|" "$pref_file" 2>/dev/null || true
+        if ! sed -i "s|^GPU_VRAM=.*|GPU_VRAM=$gpu_vram|" "$pref_file" 2>/dev/null; then
+            log_warning "Failed to update GPU_VRAM in $pref_file"
+        fi
     else
         echo "GPU_VRAM=$gpu_vram" >>"$pref_file"
     fi
@@ -82,15 +88,13 @@ phase_09_ai_model_deployment() {
     if [ -f "${SCRIPT_DIR}/scripts/download-llama-cpp-models.sh" ]; then
         local model_key
         local swap_keys
-        local download_selected="yes"
-        local download_swaps="no"
         local skip_selected_download="false"
         model_key=$(map_llama_model_to_download_key "$selected_model")
         swap_keys="qwen3-4b,qwen-coder,deepseek"
 
         # If the selected GGUF already exists (from Phase 6 or prior), skip all downloads.
         local model_file
-        local model_dir="${HOME}/.local/share/nixos-ai-stack/llama-cpp-models"
+        local model_dir="${AI_STACK_DATA:-$HOME/.local/share/nixos-ai-stack}/llama-cpp-models"
         local cache_dir="${HUGGINGFACE_HOME:-$HOME/.cache/huggingface}"
         model_file=$(get_model_filename_from_id "$selected_model")
         if [[ -n "$model_file" ]]; then
@@ -108,19 +112,15 @@ phase_09_ai_model_deployment() {
                 bash "${SCRIPT_DIR}/scripts/download-llama-cpp-models.sh" --model "$model_key" || {
                     log_warning "Model download incomplete. It will download on first container startup."
                 }
-                download_selected="yes"
             else
                 log_info "Selected model will download automatically on first container startup"
-                download_selected="no"
             fi
         else
             log_warning "No GGUF download key matched for selected model; skipping pre-download."
-            download_selected="no"
         fi
 
         read -p "Download additional swap models for quick testing? (qwen3-4b,qwen-coder,deepseek) [y/N]: " swap_confirm
         if [[ "$swap_confirm" =~ ^[Yy]$ ]]; then
-            download_swaps="yes"
             if [[ -n "$model_key" ]]; then
                 swap_keys=$(echo "$swap_keys" | awk -v key="$model_key" -F',' '{for (i=1;i<=NF;i++) if ($i!=key && $i!="") printf (out?"," :"")$i; out=1}')
             fi
@@ -180,14 +180,8 @@ phase_09_ai_model_deployment() {
     # Deploy AI stack with selected model
     log_info "Deploying AI stack with model: $selected_model"
 
-    if ai_deploy_llama_cpp "$selected_model" "${SCRIPT_DIR}/ai-stack/compose"; then
+    if ai_deploy_llama_cpp "$selected_model" "${SCRIPT_DIR}/ai-stack/kubernetes"; then
         log_success "AI stack deployment initiated"
-
-        # Detect container runtime for user instructions
-        local container_cmd="podman"
-        if command -v docker >/dev/null 2>&1 && systemctl is-active docker >/dev/null 2>&1; then
-            container_cmd="docker"
-        fi
 
         # Add monitoring instructions
         cat <<EOF
@@ -207,14 +201,14 @@ The first-time model download may take 10-45 minutes depending on:
   • HuggingFace server load
 
 Monitor Progress:
-  $container_cmd logs -f local-ai-llama-cpp
+  kubectl logs -n ai-stack deploy/llama-cpp -f
 
 Check Status:
-  $container_cmd ps | grep llama-cpp
-  curl http://localhost:8080/health
+  kubectl get pods -n ai-stack -l app=llama-cpp
+  kubectl get deploy -n ai-stack llama-cpp
 
 System Dashboard:
-  • Open: ai-stack/dashboard/index.html in your browser
+  • Open: ${SCRIPT_DIR}/ai-stack/dashboard/index.html in your browser
   • Monitor all services, learning metrics, and federation status
   • Access all documentation from one central hub
   • Real-time health checks every 30 seconds
@@ -276,13 +270,14 @@ wait_for_llama_cpp_ready() {
     log_info "This may take 10-45 minutes. Press Ctrl+C to skip and continue in background."
 
     while [ $elapsed -lt $max_wait ]; do
-        if curl -sf --max-time 5 http://localhost:8080/health > /dev/null 2>&1; then
+        if curl_safe -sf http://localhost:8080/health > /dev/null 2>&1; then
             log_success "llama.cpp is ready!"
             return 0
         fi
 
         # Show progress indicator
-        local dots=$(printf '.%.0s' $(seq 1 $((elapsed / 10 % 4))))
+        local dots
+        dots=$(printf '.%.0s' $(seq 1 $((elapsed / 10 % 4))))
         echo -ne "\r⏳ Waiting for model download$dots (${elapsed}s elapsed)   "
 
         sleep $interval

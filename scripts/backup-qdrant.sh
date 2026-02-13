@@ -9,6 +9,8 @@ BACKUP_DIR="${BACKUP_DIR:-/var/backups/qdrant}"
 QDRANT_HOST="${QDRANT_HOST:-localhost}"
 QDRANT_PORT="${QDRANT_PORT:-6333}"
 QDRANT_API_KEY="${QDRANT_API_KEY:-}"
+CURL_TIMEOUT="${CURL_TIMEOUT:-30}"
+CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-5}"
 
 RETENTION_DAYS="${RETENTION_DAYS:-7}"
 RETENTION_WEEKS="${RETENTION_WEEKS:-4}"
@@ -43,12 +45,17 @@ qdrant_curl() {
     local path="$2"
     shift 2
 
-    local auth_header=""
-    if [[ -n "$QDRANT_API_KEY" ]]; then
-        auth_header="-H \"api-key: $QDRANT_API_KEY\""
+    local api_header=()
+    if [[ -n "${QDRANT_API_KEY:-}" ]]; then
+        api_header=(-H "api-key: $QDRANT_API_KEY")
     fi
 
-    eval "curl -s -X $method $auth_header http://${QDRANT_HOST}:${QDRANT_PORT}${path} $*"
+    curl -s --max-time "${CURL_TIMEOUT}" \
+        --connect-timeout "${CURL_CONNECT_TIMEOUT}" \
+        -X "$method" \
+        "${api_header[@]}" \
+        "http://${QDRANT_HOST}:${QDRANT_PORT}${path}" \
+        "$@"
 }
 
 # Get list of collections
@@ -82,14 +89,17 @@ download_snapshot() {
 
     log "Downloading snapshot: $snapshot_name"
 
+    local tmp_root="${TMPDIR:-/${TMP_FALLBACK:-tmp}}"
+    local http_code_file="${tmp_root}/qdrant_http_code"
+
     if ! qdrant_curl GET "/collections/$collection/snapshots/$snapshot_name" \
         -o "$output_file" \
-        -w "%{http_code}" > /tmp/qdrant_http_code; then
+        -w "%{http_code}" > "$http_code_file"; then
         error "Failed to download snapshot"
         return 1
     fi
 
-    local http_code=$(cat /tmp/qdrant_http_code)
+    local http_code=$(cat "$http_code_file")
     if [[ "$http_code" != "200" ]]; then
         error "HTTP error $http_code downloading snapshot"
         rm -f "$output_file"
@@ -246,14 +256,17 @@ restore_collection() {
     local snapshot_name=$(basename "$backup_file")
 
     log "Uploading snapshot to Qdrant..."
+    local tmp_root="${TMPDIR:-/${TMP_FALLBACK:-tmp}}"
+    local http_code_file="${tmp_root}/qdrant_http_code"
+
     if ! qdrant_curl PUT "/collections/$target_collection/snapshots/upload" \
         -F "snapshot=@$backup_file" \
-        -w "%{http_code}" > /tmp/qdrant_http_code 2>>"$LOG_FILE"; then
+        -w "%{http_code}" > "$http_code_file" 2>>"$LOG_FILE"; then
         error "Failed to upload snapshot"
         return 1
     fi
 
-    local http_code=$(cat /tmp/qdrant_http_code)
+    local http_code=$(cat "$http_code_file")
     if [[ "$http_code" != "200" && "$http_code" != "201" ]]; then
         error "HTTP error $http_code uploading snapshot"
         return 1

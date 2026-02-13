@@ -184,7 +184,7 @@ The system is **well-equipped** for AIDB development with:
 **Development Tools:**
 - ✅ Git, Git LFS, Lazygit
 - ✅ Modern CLI tools (ripgrep, fd, fzf, jq, yq)
-- ✅ Container tools (podman-compose, buildah, skopeo)
+- ✅ Container tools (podman (legacy), buildah, skopeo)
 - ✅ Nix ecosystem tools
 
 ### Recommended Additions for AIDB

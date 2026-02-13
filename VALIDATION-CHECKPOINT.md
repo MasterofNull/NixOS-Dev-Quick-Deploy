@@ -16,7 +16,7 @@
 
 ⏸️ **Paused Before:**
 - Updating service code (health-monitor, ralph-wiggum, container-engine)
-- Updating docker-compose.yml
+- Updating Kubernetes manifests
 - Final deployment
 
 ---
@@ -38,7 +38,7 @@ As you correctly identified, it's critical to validate each step before moving f
 ### Step 1: Run Podman API Setup Script
 
 ```bash
-cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
+cd ~/Documents/try/NixOS-Dev-Quick-Deploy
 
 # Run the setup script
 ./scripts/setup-podman-api.sh
@@ -67,7 +67,7 @@ cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
 ### Step 2: Run Infrastructure Validation Tests
 
 ```bash
-cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
+cd ~/Documents/try/NixOS-Dev-Quick-Deploy
 
 # Run the test suite
 ./scripts/test-podman-api.sh
@@ -158,10 +158,10 @@ curl http://localhost:2375/v4.0.0/libpod/containers/CONTAINER_NAME/json | jq .
 ### Step 4: Verify .env Configuration
 
 ```bash
-cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
+cd ~/Documents/try/NixOS-Dev-Quick-Deploy
 
 # Check that Podman API configuration was added
-grep -A 20 "Secure Container Management" ai-stack/compose/.env
+grep -A 20 "Secure Container Management" ~/.config/nixos-ai-stack/.env
 ```
 
 **Expected output:**
@@ -204,7 +204,7 @@ Before proceeding to service updates, verify:
 1. Update health-monitor to use HTTP API
 2. Update ralph-wiggum to use HTTP API
 3. Update container-engine to use HTTP API
-4. Update docker-compose.yml to remove privileged/socket mounts
+4. Update Kubernetes manifests to remove privileged/socket mounts
 5. Test the integrated system
 
 ---
@@ -240,7 +240,7 @@ pip install httpx structlog
 ### Issue 4: Cannot reach host.containers.internal from container
 ```bash
 # This is expected if no containers are running
-# Will be fixed when we update docker-compose.yml with extra_hosts
+# Will be fixed when we update Kubernetes manifests with proper networking
 ```
 
 ---
@@ -261,7 +261,7 @@ Once validation passes, I will:
    - Replace socket-based API with HTTP API
    - Add operation allowlist
 
-4. **Update docker-compose.yml** (30 minutes)
+4. **Update Kubernetes manifests** (30 minutes)
    - Remove `privileged: true`
    - Remove socket mounts
    - Add `extra_hosts` configuration
@@ -279,7 +279,7 @@ Once validation passes, I will:
 
 ```bash
 # 1. Run setup script
-cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
+cd ~/Documents/try/NixOS-Dev-Quick-Deploy
 ./scripts/setup-podman-api.sh
 
 # 2. Run validation tests

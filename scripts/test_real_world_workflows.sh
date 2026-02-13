@@ -13,7 +13,7 @@ RAG_SKILL="$REPO_ROOT/.agent/skills/rag-techniques/SKILL.md"
 PROJECT_IMPORT_SKILL="$REPO_ROOT/.agent/skills/project-import/SKILL.md"
 SMART_CONFIG_GEN="$REPO_ROOT/scripts/smart_config_gen.sh"
 
-AIDB_BASE_URL="${AIDB_BASE_URL:-http://localhost:8091}"
+AIDB_BASE_URL="${AIDB_BASE_URL:-http://${SERVICE_HOST:-localhost}:8091}"
 
 tmp_config=""
 
@@ -32,7 +32,8 @@ echo "📥 Dry-run documentation sync"
 python "$PROJECT_IMPORT_SKILL" --dry-run || true
 
 echo "🧠 Attempting configuration generation"
-tmp_config="$(mktemp /tmp/aidb-config-XXXX.nix)"
+tmp_root="${TMPDIR:-/${TMP_FALLBACK:-tmp}}"
+tmp_config="$(mktemp -p "$tmp_root" aidb-config-XXXX.nix)"
 if curl -fs --max-time 3 "${AIDB_BASE_URL%/}/health" >/dev/null 2>&1; then
     if "$SMART_CONFIG_GEN" --description "Enable git + home-manager" --output "$tmp_config" >/dev/null 2>&1; then
         echo "✅ Generated config stored at $tmp_config"

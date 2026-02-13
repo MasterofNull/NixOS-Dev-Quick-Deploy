@@ -114,7 +114,7 @@ If you see `"limit": 60`, your token isn't being used correctly.
 Now run the discovery script:
 
 ```bash
-cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
+cd ~/Documents/try/NixOS-Dev-Quick-Deploy
 
 # Clean state for fresh start
 rm data/improvement-crawler-state.json
@@ -125,7 +125,7 @@ python3 scripts/discover-improvements.sh
 
 **Expected output**:
 ```
-Wrote discovery report: /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/docs/development/IMPROVEMENT-DISCOVERY-REPORT-2025-12-22.md
+Wrote discovery report: ~/Documents/try/NixOS-Dev-Quick-Deploy/docs/development/IMPROVEMENT-DISCOVERY-REPORT-2025-12-22.md
 ```
 
 ---

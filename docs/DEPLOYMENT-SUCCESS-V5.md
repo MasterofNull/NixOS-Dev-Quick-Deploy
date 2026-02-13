@@ -203,13 +203,13 @@ To trigger this manually:
 - **NixOS Version**: Latest stable
 - **Home Manager**: Integrated
 - **Flakes**: Enabled
-- **Container Runtime**: Podman (rootless)
+- **Container Runtime**: K3s + containerd
 - **AI Stack**: Ollama, Qdrant, MindsDB, Open WebUI
 - **Secret Management**: sops-nix (ready for next deployment)
 - **MCP Server**: Infrastructure ready
 
 ### Services Running
-- ✅ Podman containers (user-level)
+- ✅ K3s pods (ai-stack namespace)
 - ✅ AI services (when started with ai-servicectl)
 - ✅ System services (Gitea, if enabled)
 - ✅ Development tools (VSCodium, Claude Code, etc.)
@@ -295,7 +295,7 @@ To trigger this manually:
 - [ ] Per-GPU service assignment
 
 ### v5.3.0
-- [ ] Container orchestration (k3s/Docker Compose)
+- [ ] Container orchestration (k3s)
 - [ ] Health monitoring dashboard
 - [ ] Auto-restart policies
 
@@ -364,7 +364,7 @@ To trigger this manually:
 - **Home Manager** - Declarative user environment management
 - **sops-nix** - Secret operations for Nix
 - **age** - Modern encryption tool
-- **Podman** - Daemonless container engine
+- **K3s** - Kubernetes runtime (containerd)
 - **PostgreSQL, Redis, Qdrant** - Database stack
 - **Ollama, Open WebUI** - Local AI inference
 

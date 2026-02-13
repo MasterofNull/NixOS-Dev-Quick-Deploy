@@ -121,6 +121,13 @@ log() {
 }
 ```
 
+Structured logging (optional):
+```bash
+# Enable JSON log lines
+export LOG_FORMAT=json
+export LOG_COMPONENT="phase-01-system-initialization"
+```
+
 ## Heredoc Patterns
 
 ### Pattern 1: With Variable Expansion

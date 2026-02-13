@@ -8,8 +8,9 @@
 # All containers are mandatory - no optional profiles.
 # The agentic system manages container lifecycle dynamically.
 
-# Complete list of AI stack containers (matches docker-compose.yml)
+# Complete list of AI stack containers (Kubernetes deployments)
 # Order matters: infrastructure first, then services, then agents
+# shellcheck disable=SC2034
 AI_STACK_CONTAINERS=(
     # Core Infrastructure
     local-ai-qdrant           # Vector database
@@ -50,6 +51,7 @@ AI_STACK_CONTAINERS=(
 )
 
 # Ports used by AI stack services
+# shellcheck disable=SC2034
 AI_STACK_PORTS=(
     6333   # Qdrant HTTP
     6334   # Qdrant gRPC

@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   annotations:
-    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
     kompose.version: 1.37.0 (HEAD)
     nixos.quick-deploy.ai-stack: "true"
     nixos.quick-deploy.service: jaeger
@@ -17,13 +16,14 @@ spec:
   template:
     metadata:
       annotations:
-        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
         kompose.version: 1.37.0 (HEAD)
         nixos.quick-deploy.ai-stack: "true"
         nixos.quick-deploy.service: jaeger
       labels:
         io.kompose.service: jaeger
     spec:
+      serviceAccountName: jaeger
+      automountServiceAccountToken: false
       containers:
         - image: jaegertracing/jaeger:2.14.0
           name: local-ai-jaeger
@@ -34,4 +34,11 @@ spec:
               protocol: TCP
             - containerPort: 4318
               protocol: TCP
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
       restartPolicy: Always

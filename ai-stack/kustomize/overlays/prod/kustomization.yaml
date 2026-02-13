@@ -3,8 +3,6 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: ai-stack
-
 labels:
   - pairs:
       environment: production
@@ -16,32 +14,31 @@ resources:
   - ../../../kubernetes
 
 images:
-  - name: localhost/compose_aidb
-    newName: localhost:5000/compose_aidb
+  - name: localhost/ai-stack-aidb
+    newName: localhost:5000/ai-stack-aidb
     newTag: prod
-  - name: localhost/compose_embeddings
-    newName: localhost:5000/compose_embeddings
+  - name: localhost/ai-stack-embeddings
+    newName: localhost:5000/ai-stack-embeddings
     newTag: prod
-  - name: localhost/compose_hybrid-coordinator
-    newName: localhost:5000/compose_hybrid-coordinator
+  - name: localhost/ai-stack-hybrid-coordinator
+    newName: localhost:5000/ai-stack-hybrid-coordinator
     newTag: prod
-  - name: localhost/compose_ralph-wiggum
-    newName: localhost:5000/compose_ralph-wiggum
+  - name: localhost/ai-stack-ralph-wiggum
+    newName: localhost:5000/ai-stack-ralph-wiggum
     newTag: prod
-  - name: localhost/compose_container-engine
-    newName: localhost:5000/compose_container-engine
+  - name: localhost/ai-stack-container-engine
+    newName: localhost:5000/ai-stack-container-engine
     newTag: prod
-  - name: localhost/compose_dashboard-api
-    newName: localhost:5000/compose_dashboard-api
+  - name: localhost/ai-stack-dashboard-api
+    newName: localhost:5000/ai-stack-dashboard-api
     newTag: prod
-  - name: localhost/compose_aider-wrapper
-    newName: localhost:5000/compose_aider-wrapper
+  - name: localhost/ai-stack-aider-wrapper
+    newName: localhost:5000/ai-stack-aider-wrapper
     newTag: prod
-  - name: localhost/compose_nixos-docs
-    newName: localhost:5000/compose_nixos-docs
+  - name: localhost/ai-stack-nixos-docs
+    newName: localhost:5000/ai-stack-nixos-docs
     newTag: prod
 
 patches:
-  - path: patches/delete-aidb-cm1.yaml
   - path: patches/grafana-nodeport-clusterip.yaml
   - path: patches/nginx-nodeport-clusterip.yaml

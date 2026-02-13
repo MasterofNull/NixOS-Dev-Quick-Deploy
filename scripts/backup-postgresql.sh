@@ -116,59 +116,51 @@ backup_full() {
     echo "$backup_file"
 }
 
-# Compress and optionally encrypt backup
+# Compress and optionally encrypt backup (reads stdin, writes stdout)
 compress_and_encrypt() {
-    local pipeline=""
+    if [[ "$ENCRYPTION" == "true" ]] && [[ -z "${ENCRYPTION_KEY:-}" ]]; then
+        error "Encryption enabled but no key provided"
+        return 1
+    fi
 
     # Compression stage
     case "$COMPRESSION" in
-        gzip)
-            pipeline="gzip -9"
-            ;;
-        zstd)
-            pipeline="zstd -19 -T0"
-            ;;
-        none)
-            pipeline="cat"
-            ;;
-    esac
-
-    # Encryption stage
-    if [[ "$ENCRYPTION" == "true" ]]; then
-        if [[ -z "$ENCRYPTION_KEY" ]]; then
-            error "Encryption enabled but no key provided"
-            return 1
+        gzip) gzip -9 ;;
+        zstd) zstd -19 -T0 ;;
+        *)    cat ;;
+    esac | {
+        # Encryption stage
+        if [[ "$ENCRYPTION" == "true" ]]; then
+            openssl enc -aes-256-cbc -salt -pbkdf2 -pass "pass:${ENCRYPTION_KEY}"
+        else
+            cat
         fi
-        pipeline="$pipeline | openssl enc -aes-256-cbc -salt -pbkdf2 -pass pass:$ENCRYPTION_KEY"
-    fi
-
-    eval "$pipeline"
+    }
 }
 
-# Decompress and optionally decrypt backup
+# Decompress and optionally decrypt backup (reads file, writes stdout)
 decompress_and_decrypt() {
     local backup_file="$1"
-    local pipeline=""
 
-    # Decryption stage
+    # Decryption stage (reads file)
     if [[ "$backup_file" == *.enc ]]; then
-        if [[ -z "$ENCRYPTION_KEY" ]]; then
+        if [[ -z "${ENCRYPTION_KEY:-}" ]]; then
             error "Backup is encrypted but no key provided"
             return 1
         fi
-        pipeline="openssl enc -aes-256-cbc -d -pbkdf2 -pass pass:$ENCRYPTION_KEY"
+        openssl enc -aes-256-cbc -d -pbkdf2 -pass "pass:${ENCRYPTION_KEY}" < "$backup_file"
     else
-        pipeline="cat"
-    fi
-
-    # Decompression stage
-    if [[ "$backup_file" == *.gz* ]]; then
-        pipeline="$pipeline | gunzip"
-    elif [[ "$backup_file" == *.zst* ]]; then
-        pipeline="$pipeline | zstd -d"
-    fi
-
-    eval "$pipeline < $backup_file"
+        cat < "$backup_file"
+    fi | {
+        # Decompression stage
+        if [[ "$backup_file" == *.gz* ]]; then
+            gunzip
+        elif [[ "$backup_file" == *.zst* ]]; then
+            zstd -d
+        else
+            cat
+        fi
+    }
 }
 
 # Verify backup integrity

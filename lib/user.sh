@@ -68,7 +68,8 @@ gather_user_info() {
     # User Description
     # ========================================================================
     if [ -z "$USER_DESCRIPTION" ]; then
-        local current_user_info=$(getent passwd "$USER" | cut -d: -f5 | cut -d, -f1)
+        local current_user_info
+        current_user_info=$(getent passwd "$USER" | cut -d: -f5 | cut -d, -f1)
         if [ -n "$current_user_info" ] && [ "$current_user_info" != "$USER" ]; then
             USER_DESCRIPTION="$current_user_info"
             print_info "Using existing user description: $USER_DESCRIPTION"
@@ -83,7 +84,8 @@ gather_user_info() {
     # ========================================================================
     if [ -z "$SELECTED_SHELL" ]; then
         # Detect current shell
-        local current_shell=$(getent passwd "$USER" | cut -d: -f7 | xargs basename)
+        local current_shell
+        current_shell=$(getent passwd "$USER" | cut -d: -f7 | xargs basename)
         if [ -n "$current_shell" ]; then
             SELECTED_SHELL="$current_shell"
             print_info "Detected shell: $SELECTED_SHELL"
@@ -545,7 +547,12 @@ prompt_huggingface_token() {
             # If no preference but token exists, enable AI stack
             LOCAL_AI_STACK_ENABLED="true"
         else
-            LOCAL_AI_STACK_ENABLED="false"
+            # Default to RUN_AI_MODEL if no preference/token set
+            if [[ "${RUN_AI_MODEL:-true}" == "true" ]]; then
+                LOCAL_AI_STACK_ENABLED="true"
+            else
+                LOCAL_AI_STACK_ENABLED="false"
+            fi
         fi
         persist_local_ai_stack_preferences || true
         persist_huggingface_token_preferences || true
@@ -553,219 +560,18 @@ prompt_huggingface_token() {
     fi
 
     # Always show this section header in interactive mode
-    print_section "Local AI Stack (Podman Containers)"
-    print_info "The local AI stack includes Podman containers for:"
-    print_info "  • llama.cpp - Local LLM inference server (containerized)"
-    print_info "  • Open WebUI - Web interface for AI models"
-    print_info "  • Qdrant - Vector database for embeddings"
-    print_info "  • MindsDB - AI workflow orchestration"
-    echo ""
-
-    # First, ask if user wants to enable the AI stack
-    # In interactive mode, always show the prompt (even if previously set to false)
-    # This allows users to change their mind during deployment
-    local enable_ai_stack=false
-    
-    # Check if confirm function is available
-    if ! declare -F confirm >/dev/null 2>&1; then
-        print_error "confirm function not available - cannot prompt for AI stack"
-        enable_ai_stack=false
-        LOCAL_AI_STACK_ENABLED="false"
-    else
-        # Always prompt in interactive mode, but use previous selection as default
-        local default_choice="n"
-        if [[ "${LOCAL_AI_STACK_ENABLED:-}" == "true" ]]; then
-            default_choice="y"
-        fi
-        
-        if confirm "Enable local AI stack (Podman containers)?" "$default_choice"; then
-            enable_ai_stack=true
+    print_section "Local AI Stack (K3s)"
+    print_info "AI stack configuration is handled in Phase 9 (K3s)."
+    print_info "Use --without-ai-model to skip AI stack deployment."
+    if [[ -z "${LOCAL_AI_STACK_ENABLED:-}" ]]; then
+        if [[ "${RUN_AI_MODEL:-true}" == "true" ]]; then
             LOCAL_AI_STACK_ENABLED="true"
         else
-            enable_ai_stack=false
             LOCAL_AI_STACK_ENABLED="false"
         fi
     fi
-
-    # If AI stack is enabled, ask for LLM backend and optional Hugging Face token
-    if [[ "$enable_ai_stack" == "true" ]]; then
-        echo ""
-        print_section "LLM Backend Selection"
-        print_info "Using llama.cpp backend (served by the containerized server)."
-        if declare -p LLM_BACKEND 2>/dev/null | grep -q 'declare -r'; then
-            print_warning "LLM_BACKEND is readonly; keeping current value: ${LLM_BACKEND:-unknown}"
-        else
-            LLM_BACKEND="llama_cpp"
-        fi
-        print_success "Selected: ${LLM_BACKEND:-llama_cpp} (containerized server)"
-        export LLM_BACKEND
-        
-        # Model configuration (choose embedding + coder)
-        echo ""
-        print_section "RAG Embedding Model Selection"
-        local default_embedding="${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}"
-        print_info "Default embedding model: ${default_embedding}"
-        print_info "Options:"
-        print_info "  1) BAAI/bge-small-en-v1.5 (default)"
-        print_info "  2) BAAI/bge-base-en-v1.5"
-        print_info "  3) sentence-transformers/all-MiniLM-L6-v2"
-
-        local embedding_choice="1"
-        if declare -F prompt_user >/dev/null 2>&1; then
-            embedding_choice=$(prompt_user "Select embedding model [1-3]" "1")
-        fi
-
-        case "${embedding_choice}" in
-            2) EMBEDDING_MODEL="BAAI/bge-base-en-v1.5" ;;
-            3) EMBEDDING_MODEL="sentence-transformers/all-MiniLM-L6-v2" ;;
-            *) EMBEDDING_MODEL="${default_embedding}" ;;
-        esac
-        export EMBEDDING_MODEL
-        print_success "Embedding model: ${EMBEDDING_MODEL}"
-
-        echo ""
-        print_section "Coder LLM Selection"
-        local gpu_vram_gb=0
-        local ram_gb=0
-
-        if declare -F detect_gpu_vram >/dev/null 2>&1; then
-            gpu_vram_gb=$(detect_gpu_vram)
-        fi
-
-        if [[ -r /proc/meminfo ]]; then
-            ram_gb=$(awk '/MemTotal:/ {printf "%d", $2/1024/1024}' /proc/meminfo 2>/dev/null || echo 0)
-        fi
-
-        local default_coder="${CODER_MODEL:-qwen2.5-coder}"
-        if [[ "$gpu_vram_gb" -ge 24 ]]; then
-            default_coder="qwen2.5-coder-14b"
-        elif [[ "$gpu_vram_gb" -ge 16 ]]; then
-            default_coder="qwen2.5-coder"
-        elif [[ "$ram_gb" -ge 32 ]]; then
-            default_coder="qwen2.5-coder"
-        else
-            default_coder="qwen3-4b"
-        fi
-
-        print_info "Default coder model: ${default_coder}"
-        print_info "Options:"
-        print_info "  1) qwen3-4b (CPU/iGPU friendly)"
-        print_info "  2) qwen2.5-coder"
-        print_info "  3) qwen2.5-coder-14b"
-        print_info "  4) deepseek-coder-v2-lite"
-        print_info "  5) deepseek-coder-v2"
-
-        local coder_choice="2"
-        if declare -F prompt_user >/dev/null 2>&1; then
-            case "$default_coder" in
-                qwen3-4b)
-                    coder_choice=$(prompt_user "Select coder model [1-5]" "1")
-                    ;;
-                qwen2.5-coder)
-                    coder_choice=$(prompt_user "Select coder model [1-5]" "2")
-                    ;;
-                qwen2.5-coder-14b)
-                    coder_choice=$(prompt_user "Select coder model [1-5]" "3")
-                    ;;
-                deepseek-coder-v2-lite)
-                    coder_choice=$(prompt_user "Select coder model [1-5]" "4")
-                    ;;
-                deepseek-coder-v2)
-                    coder_choice=$(prompt_user "Select coder model [1-5]" "5")
-                    ;;
-                *)
-                    coder_choice=$(prompt_user "Select coder model [1-5]" "2")
-                    ;;
-            esac
-        fi
-
-        case "${coder_choice}" in
-            1) CODER_MODEL="qwen3-4b" ;;
-            2) CODER_MODEL="qwen2.5-coder" ;;
-            3) CODER_MODEL="qwen2.5-coder-14b" ;;
-            4) CODER_MODEL="deepseek-coder-v2-lite" ;;
-            5) CODER_MODEL="deepseek-coder-v2" ;;
-            *) CODER_MODEL="${default_coder}" ;;
-        esac
-        export CODER_MODEL
-        print_success "Coder model: ${CODER_MODEL}"
-
-        local coder_model_id=""
-        case "${CODER_MODEL}" in
-            qwen3-4b|qwen3-4b-instruct)
-                coder_model_id="unsloth/Qwen3-4B-Instruct-2507-GGUF"
-                ;;
-            qwen2.5-coder|qwen2.5-coder-7b|qwen2.5-coder-7b-instruct)
-                coder_model_id="Qwen/Qwen2.5-Coder-7B-Instruct"
-                ;;
-            qwen2.5-coder-14b|qwen2.5-coder-14b-instruct)
-                coder_model_id="Qwen/Qwen2.5-Coder-14B-Instruct"
-                ;;
-            deepseek-coder-v2-lite|deepseek-lite)
-                coder_model_id="deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
-                ;;
-            deepseek-coder-v2|deepseek-v2)
-                coder_model_id="deepseek-ai/DeepSeek-Coder-V2-Instruct"
-                ;;
-        esac
-
-        if [[ -n "$coder_model_id" ]]; then
-            LLAMA_CPP_DEFAULT_MODEL="$coder_model_id"
-            export LLAMA_CPP_DEFAULT_MODEL
-            persist_llama_cpp_model_preferences || true
-            print_success "llama.cpp model: ${LLAMA_CPP_DEFAULT_MODEL}"
-        fi
-
-        LLM_MODELS="${CODER_MODEL},${EMBEDDING_MODEL}"
-        export LLM_MODELS
-        print_success "Models configured: ${LLM_MODELS}"
-        
-        # Optionally ask for Hugging Face token
-        echo ""
-        print_section "Hugging Face Token (Optional)"
-        print_info "A Hugging Face token enables additional AI features:"
-        print_info "  • Access to Hugging Face model repositories"
-        print_info "  • TGI (Text Generation Inference) integration"
-        print_info "  • Enhanced Continue.dev presets"
-        print_info "You can skip this and add a token later if needed."
-
-        if [[ -n "${HUGGINGFACEHUB_API_TOKEN:-}" ]]; then
-            print_info "Detected an existing Hugging Face token; press Enter to keep it or enter a new one."
-        fi
-
-        local token_input
-        token_input=$(prompt_secret "Hugging Face token (blank to skip)")
-
-        if [[ -z "$token_input" ]]; then
-            if [[ -n "${HUGGINGFACEHUB_API_TOKEN:-}" ]]; then
-                token_input="$HUGGINGFACEHUB_API_TOKEN"
-            fi
-        fi
-
-        if [[ -n "$token_input" ]]; then
-            HUGGINGFACEHUB_API_TOKEN="$token_input"
-            export HUGGINGFACEHUB_API_TOKEN
-            ensure_huggingface_token_file "$token_input" || true
-            print_success "Hugging Face token saved."
-        else
-            print_info "Skipping Hugging Face token (can be added later)."
-        fi
-
-        persist_local_ai_stack_preferences || true
-        persist_llm_backend_preferences || true
-        persist_llm_models_preferences || true
-        persist_huggingface_token_preferences || true
-        export LOCAL_AI_STACK_ENABLED
-
-        print_success "Local AI stack enabled with $LLM_BACKEND backend."
-    else
-        LOCAL_AI_STACK_ENABLED="false"
-        unset HUGGINGFACEHUB_API_TOKEN
-        persist_local_ai_stack_preferences || true
-        persist_huggingface_token_preferences || true
-        print_info "Local AI stack disabled."
-    fi
-
+    persist_local_ai_stack_preferences || true
+    persist_huggingface_token_preferences || true
     return 0
 }
 

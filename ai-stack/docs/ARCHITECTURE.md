@@ -51,11 +51,11 @@ The AI Stack is a fully integrated, production-ready AI development environment 
 │ └──────────┘  └────────┘  └─────────┘                          │
 └─────────────────────────────────────────────────────────────────┘
                            ▲
-                           │ Podman Compose
+                           │ K3s (containerd)
                            ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ Layer 2: Container Runtime                                      │
-│ Podman (rootless), Podman Compose, Buildah                      │
+│ K3s (containerd), local registry, Buildah/Skopeo                │
 └─────────────────────────────────────────────────────────────────┘
                            ▲
                            │ NixOS Services
@@ -69,6 +69,24 @@ The AI Stack is a fully integrated, production-ready AI development environment 
 ---
 
 ## Component Architecture
+
+## Service Dependency Graph
+
+Startup dependencies are enforced via init containers in the K3s manifests.
+
+```
+Postgres ─┐
+Redis    ├─> AIDB ─┐
+Qdrant   ┘         ├─> Hybrid Coordinator ─┐
+Embeddings ────────┘                       ├─> Ralph Wiggum
+Postgres ──────────────────────────────────┘
+Redis    ──────────────────────────────────┘
+```
+
+Dependency waits are defined in:
+- `ai-stack/kubernetes/kompose/aidb-deployment.yaml`
+- `ai-stack/kubernetes/kompose/hybrid-coordinator-deployment.yaml`
+- `ai-stack/kubernetes/kompose/ralph-wiggum-deployment.yaml`
 
 ### 1. AIDB MCP Server
 
@@ -535,21 +553,23 @@ curl http://localhost:8091/health
 
 ```bash
 # Enable auto-reload and debug logging
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+kubectl apply -k ai-stack/kustomize/overlays/dev
 ```
 
 ### Minimal (llama.cpp Only)
 
 ```bash
 # Just model inference, no database
-docker compose -f docker-compose.minimal.yml up
+kubectl apply -k ai-stack/kubernetes
+kubectl scale -n ai-stack deploy --replicas=0 --all
+kubectl scale -n ai-stack deploy/llama-cpp --replicas=1
 ```
 
 ### Production
 
 ```bash
 # Full stack with all services
-docker compose up -d
+kubectl apply -k ai-stack/kustomize/overlays/prod
 ```
 
 ---

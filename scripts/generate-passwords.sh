@@ -9,7 +9,7 @@
 #
 # Security features:
 # - 32 bytes (256 bits) of cryptographic randomness per password
-# - Stored as Docker secrets (not environment variables)
+# - Stored as Kubernetes secrets (sops-managed)
 # - File permissions set to 600 (owner read/write only)
 # - Alphanumeric + special characters for database compatibility
 #
@@ -27,6 +27,10 @@
 
 set -euo pipefail
 
+# Resolve project root for portable paths
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -35,7 +39,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-SECRETS_DIR="/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/ai-stack/compose/secrets"
+SECRETS_DIR="${PROJECT_ROOT}/ai-stack/kubernetes/secrets/generated"
 PASSWORD_LENGTH=32  # characters (not bytes, for readability)
 
 # Passwords to generate
@@ -120,16 +124,15 @@ echo -e "  • redis_password - Redis cache"
 echo -e "  • grafana_admin_password - Grafana admin user"
 echo ""
 echo -e "${YELLOW}IMPORTANT:${NC}"
-echo -e "  • These secrets will be mounted to containers at /run/secrets/"
-echo -e "  • Services read passwords from files, NOT environment variables"
+echo -e "  • These secrets should be encrypted with sops before committing"
+echo -e "  • Services read passwords from Kubernetes secrets"
 echo -e "  • Backup these secrets securely (encrypted storage)"
-echo -e "  • Do NOT commit secrets/ directory to version control"
+echo -e "  • Do NOT commit generated/ secrets directly"
 echo ""
 echo -e "${BLUE}Next Steps:${NC}"
-echo -e "  1. Update docker-compose.yml to reference these secrets"
-echo -e "  2. Update service configurations to read from /run/secrets/"
-echo -e "  3. Remove plaintext passwords from .env file"
-echo -e "  4. Restart services to apply new passwords"
+echo -e "  1. Encrypt secrets into ai-stack/kubernetes/secrets/secrets.sops.yaml"
+echo -e "  2. Remove plaintext passwords from .env file if present"
+echo -e "  3. Apply manifests: kubectl apply -k ai-stack/kubernetes"
 echo ""
 echo -e "${BLUE}Grafana First Login:${NC}"
 echo -e "  • Username: admin"
@@ -138,7 +141,7 @@ echo -e "  • You will be prompted to change password on first login"
 echo ""
 
 # Verify .gitignore
-if ! grep -q "^ai-stack/compose/secrets/$" /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/.gitignore 2>/dev/null; then
+if ! grep -q "^ai-stack/kubernetes/secrets/generated/$" "${PROJECT_ROOT}/.gitignore" 2>/dev/null; then
     echo -e "${YELLOW}⚠ Warning: secrets/ not found in .gitignore${NC}"
     echo -e "${YELLOW}  Already added in Day 3, but verify:${NC}"
     echo -e "${YELLOW}  grep 'secrets/' .gitignore${NC}"

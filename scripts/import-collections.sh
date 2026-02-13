@@ -10,8 +10,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-QDRANT_URL="${QDRANT_URL:-http://localhost:6333}"
+QDRANT_URL="${QDRANT_URL:-http://${SERVICE_HOST:-localhost}:6333}"
 INPUT_DIR="$REPO_ROOT/data/collections/snapshots"
+CURL_TIMEOUT="${CURL_TIMEOUT:-10}"
+CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-3}"
 
 # Colors
 GREEN='\033[0;32m'
@@ -38,9 +40,9 @@ FEDERATED_COLLECTIONS=(
 check_qdrant() {
     log_info "Checking Qdrant availability..."
 
-    if ! curl -sf "$QDRANT_URL/healthz" >/dev/null 2>&1; then
+    if ! curl -sf --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" "$QDRANT_URL/healthz" >/dev/null 2>&1; then
         log_error "Qdrant is not accessible at $QDRANT_URL"
-        log_info "Start Qdrant with: podman-compose -f ai-stack/compose/docker-compose.yml up -d qdrant"
+        log_info "Start Qdrant with: kubectl apply -k ai-stack/kubernetes"
         return 1
     fi
 
@@ -55,7 +57,7 @@ ensure_collection() {
     local collection=$1
 
     # Check if collection exists
-    if curl -sf "$QDRANT_URL/collections/$collection" >/dev/null 2>&1; then
+    if curl -sf --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" "$QDRANT_URL/collections/$collection" >/dev/null 2>&1; then
         log_info "Collection '$collection' already exists"
         return 0
     fi
@@ -63,7 +65,7 @@ ensure_collection() {
     # Create collection (768-dim vectors for nomic-embed-text)
     log_info "Creating collection: $collection"
 
-    curl -sf -X PUT "$QDRANT_URL/collections/$collection" \
+    curl -sf --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" -X PUT "$QDRANT_URL/collections/$collection" \
         -H "Content-Type: application/json" \
         -d '{
             "vectors": {
@@ -112,7 +114,7 @@ import_collection() {
         if [[ ${#batch[@]} -ge $batch_size ]]; then
             local batch_json=$(printf '%s\n' "${batch[@]}" | jq -s -c '{points: .}')
 
-            curl -sf -X PUT "$QDRANT_URL/collections/$collection/points" \
+            curl -sf --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" -X PUT "$QDRANT_URL/collections/$collection/points" \
                 -H "Content-Type: application/json" \
                 -d "$batch_json" >/dev/null
 
@@ -124,7 +126,7 @@ import_collection() {
     if [[ ${#batch[@]} -gt 0 ]]; then
         local batch_json=$(printf '%s\n' "${batch[@]}" | jq -s -c '{points: .}')
 
-        curl -sf -X PUT "$QDRANT_URL/collections/$collection/points" \
+        curl -sf --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" -X PUT "$QDRANT_URL/collections/$collection/points" \
             -H "Content-Type: application/json" \
             -d "$batch_json" >/dev/null
     fi

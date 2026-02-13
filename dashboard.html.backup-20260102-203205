@@ -1790,16 +1790,16 @@
                 },
                 'persistence.json': {
                     timestamp: new Date().toISOString(),
-                    data_root: '/home/hyperd/.local/share/nixos-ai-stack',
+                    data_root: '$HOME/.local/share/nixos-ai-stack',
                     mount: { device: '/dev/nvme0n1p2', filesystem: 'btrfs', mount_point: '/' },
                     paths: [
-                        { name: 'qdrant', path: '/home/hyperd/.local/share/nixos-ai-stack/qdrant', exists: true, size: '1.2G' },
-                        { name: 'llama_cpp', path: '/home/hyperd/.local/share/nixos-ai-stack/llama-cpp-models', exists: true, size: '9.6G' },
-                        { name: 'open-webui', path: '/home/hyperd/.local/share/nixos-ai-stack/open-webui', exists: true, size: '240M' },
-                        { name: 'postgres', path: '/home/hyperd/.local/share/nixos-ai-stack/postgres', exists: true, size: '620M' },
-                        { name: 'redis', path: '/home/hyperd/.local/share/nixos-ai-stack/redis', exists: true, size: '180M' },
-                        { name: 'mindsdb', path: '/home/hyperd/.local/share/nixos-ai-stack/mindsdb', exists: false, size: '0' },
-                        { name: 'huggingface-cache', path: '/home/hyperd/.cache/huggingface', exists: true, size: '12G' }
+                        { name: 'qdrant', path: '$HOME/.local/share/nixos-ai-stack/qdrant', exists: true, size: '1.2G' },
+                        { name: 'llama_cpp', path: '$HOME/.local/share/nixos-ai-stack/llama-cpp-models', exists: true, size: '9.6G' },
+                        { name: 'open-webui', path: '$HOME/.local/share/nixos-ai-stack/open-webui', exists: true, size: '240M' },
+                        { name: 'postgres', path: '$HOME/.local/share/nixos-ai-stack/postgres', exists: true, size: '620M' },
+                        { name: 'redis', path: '$HOME/.local/share/nixos-ai-stack/redis', exists: true, size: '180M' },
+                        { name: 'mindsdb', path: '$HOME/.local/share/nixos-ai-stack/mindsdb', exists: false, size: '0' },
+                        { name: 'huggingface-cache', path: '$HOME/.cache/huggingface', exists: true, size: '12G' }
                     ]
                 },
                 'telemetry.json': {
@@ -1811,7 +1811,7 @@
                         remote_events: 14,
                         tokens_saved: 52000,
                         last_event_at: new Date().toISOString(),
-                        telemetry_path: '/home/hyperd/.local/share/nixos-ai-stack/telemetry/aidb-events.jsonl',
+                        telemetry_path: '$HOME/.local/share/nixos-ai-stack/telemetry/aidb-events.jsonl',
                         enabled: true,
                         local_usage_rate: 0.887
                     }
@@ -1820,13 +1820,13 @@
                     timestamp: new Date().toISOString(),
                     aidb_status: 'online',
                     telemetry: {
-                        path: '/home/hyperd/.local/share/nixos-ai-stack/telemetry/aidb-events.jsonl',
+                        path: '$HOME/.local/share/nixos-ai-stack/telemetry/aidb-events.jsonl',
                         exists: true,
                         bytes: 128000,
                         last_event_at: new Date().toISOString()
                     },
                     hybrid: {
-                        path: '/home/hyperd/.local/share/nixos-ai-stack/telemetry/hybrid-events.jsonl',
+                        path: '$HOME/.local/share/nixos-ai-stack/telemetry/hybrid-events.jsonl',
                         exists: true,
                         bytes: 64000,
                         last_event_at: new Date().toISOString()
@@ -1834,13 +1834,13 @@
                 },
                 'config.json': {
                     timestamp: new Date().toISOString(),
-                    env_file: '/home/hyperd/.config/nixos-ai-stack/.env',
+                    env_file: '$HOME/.config/nixos-ai-stack/.env',
                     required_services: ['qdrant', 'llama_cpp', 'postgres', 'redis', 'open_webui', 'aidb', 'mindsdb'],
                     settings: [
-                        { label: 'AI Stack Data Root', value: '/home/hyperd/.local/share/nixos-ai-stack', path: '/home/hyperd/.config/nixos-ai-stack/.env', hint: 'Set AI_STACK_DATA to relocate persisted services.' },
-                        { label: 'AIDB Port', value: '8091', path: '/home/hyperd/.config/nixos-ai-stack/.env', hint: 'Controls AIDB MCP server port.' },
-                        { label: 'llama.cpp Port', value: '8080', path: '/home/hyperd/.config/nixos-ai-stack/.env', hint: 'Controls llama.cpp inference port.' },
-                        { label: 'Qdrant Port', value: '6333', path: '/home/hyperd/.config/nixos-ai-stack/.env', hint: 'Controls Qdrant HTTP port.' },
+                        { label: 'AI Stack Data Root', value: '$HOME/.local/share/nixos-ai-stack', path: '$HOME/.config/nixos-ai-stack/.env', hint: 'Set AI_STACK_DATA to relocate persisted services.' },
+                        { label: 'AIDB Port', value: '8091', path: '$HOME/.config/nixos-ai-stack/.env', hint: 'Controls AIDB MCP server port.' },
+                        { label: 'llama.cpp Port', value: '8080', path: '$HOME/.config/nixos-ai-stack/.env', hint: 'Controls llama.cpp inference port.' },
+                        { label: 'Qdrant Port', value: '6333', path: '$HOME/.config/nixos-ai-stack/.env', hint: 'Controls Qdrant HTTP port.' },
                         { label: 'Dashboard Refresh (seconds)', value: '15', path: 'launch-dashboard.sh', hint: 'Set DASHBOARD_COLLECT_INTERVAL to adjust refresh cadence.' },
                         { label: 'Telemetry Stale Threshold (minutes)', value: '30', path: 'scripts/verify-local-llm-feedback.sh', hint: 'Set TELEMETRY_STALE_MINUTES to change stale warnings.' }
                     ],
@@ -1856,7 +1856,7 @@
                     rag: { qdrant_collections: ['skills-patterns', 'codebase-context'], collection_count: 2 },
                     llm: { llama_cpp_models: 1 },
                     skills: { count: 24, samples: ['nixos-deployment', 'webapp-testing'] },
-                    telemetry: { path: '/home/hyperd/.local/share/nixos-ai-stack/telemetry/aidb-events.jsonl', events: 128, last_event: { timestamp: new Date().toISOString(), event_type: 'tool_execute', source: 'aidb', llm_used: 'local', model: 'Qwen' } },
+                    telemetry: { path: '$HOME/.local/share/nixos-ai-stack/telemetry/aidb-events.jsonl', events: 128, last_event: { timestamp: new Date().toISOString(), event_type: 'tool_execute', source: 'aidb', llm_used: 'local', model: 'Qwen' } },
                     orchestration: { runtime: 'podman', containers_running: 6 }
                 },
                 'hybrid-coordinator.json': {
@@ -1864,7 +1864,7 @@
                     status: 'online',
                     health: { status: 'healthy' },
                     telemetry: {
-                        path: '/home/hyperd/.local/share/nixos-ai-stack/telemetry/hybrid-events.jsonl',
+                        path: '$HOME/.local/share/nixos-ai-stack/telemetry/hybrid-events.jsonl',
                         events: 12,
                         last_event: { timestamp: new Date().toISOString(), value_score: 0.82 },
                         avg_value_score: 0.74,
@@ -1873,7 +1873,7 @@
                     },
                     learning: {
                         pattern_extractions: 4,
-                        finetune_dataset_path: '/home/hyperd/.local/share/nixos-ai-stack/fine-tuning/dataset.jsonl',
+                        finetune_dataset_path: '$HOME/.local/share/nixos-ai-stack/fine-tuning/dataset.jsonl',
                         finetune_records: 18
                     }
                 },
@@ -1882,7 +1882,7 @@
                     interactions: { total: 42, high_value: 12, last_7d: 20, last_7d_high_value: 6 },
                     patterns: { extractions: 4, learning_rate: 0.19 },
                     value_scoring: { avg_score: 0.72, threshold: 0.7 },
-                    fine_tuning: { dataset_path: '/home/hyperd/.local/share/nixos-ai-stack/fine-tuning/dataset.jsonl', samples: 18 }
+                    fine_tuning: { dataset_path: '$HOME/.local/share/nixos-ai-stack/fine-tuning/dataset.jsonl', samples: 18 }
                 },
                 'token-savings.json': {
                     timestamp: new Date().toISOString(),

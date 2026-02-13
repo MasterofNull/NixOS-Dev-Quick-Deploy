@@ -45,7 +45,8 @@ install_home_manager() {
     # The home-manager install script may try to use existing home.nix, which could be broken
     if [ -d "$HOME/.config/home-manager" ]; then
         print_info "Found existing home-manager config, backing up..."
-        local BACKUP_DIR="$HOME/.config-backups/pre-install-$(date +%Y%m%d_%H%M%S)"
+        local BACKUP_DIR
+        BACKUP_DIR="$HOME/.config-backups/pre-install-$(date +%Y%m%d_%H%M%S)"
 
         if ! safe_mkdir "$BACKUP_DIR"; then
             print_warning "Could not create backup directory, skipping backup"
@@ -95,7 +96,8 @@ install_home_manager() {
         local tmp_dir="${TMP_DIR:-/tmp}"
         local bootstrap_log="${tmp_dir}/home-manager-bootstrap.log"
         print_info "Pre-fetching home-manager CLI via nix run (no profile install)..."
-        if nix run --accept-flake-config "$hm_pkg_ref" -- --version 2>&1 | tee "$bootstrap_log"; then
+        if nix run --accept-flake-config "$hm_pkg_ref" -- --version \
+            > >(tee "$bootstrap_log") 2>&1; then
             print_success "home-manager CLI accessible via nix run"
             print_info "Log saved to: $bootstrap_log"
         else

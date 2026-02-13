@@ -10,4 +10,4 @@
 #   See: ai-stack/systemd/tls-cert-monitor.timer
 
 # Run every 6 hours
-0 */6 * * * root cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy && ./scripts/monitor-tls-certs.sh --metrics-file /var/lib/prometheus/node-exporter/tls-certs.prom >> /var/log/tls-cert-monitor.log 2>&1
+0 */6 * * * root cd @PROJECT_ROOT@ && ./scripts/monitor-tls-certs.sh --metrics-file /var/lib/prometheus/node-exporter/tls-certs.prom >> /var/log/tls-cert-monitor.log 2>&1

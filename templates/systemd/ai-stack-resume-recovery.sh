@@ -5,8 +5,8 @@
 
 set -euo pipefail
 
-export PROJECT_ROOT="/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy"
-export AI_STACK_USER="hyperd"
-export AI_STACK_UID="1000"
+export PROJECT_ROOT="@PROJECT_ROOT@"
+export AI_STACK_USER="@AI_STACK_USER@"
+export AI_STACK_UID="@AI_STACK_UID@"
 
 exec "${PROJECT_ROOT}/scripts/ai-stack-resume-recovery.sh" "$@"

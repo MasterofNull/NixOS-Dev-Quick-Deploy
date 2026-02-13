@@ -20,8 +20,10 @@ AIDB_BASE_URL="${AIDB_BASE_URL:-http://localhost:8091}"
 LLAMA_CPP_BASE_URL="${LLAMA_CPP_BASE_URL:-http://localhost:8080}"
 AI_ENABLED="${AI_ENABLED:-auto}"  # auto, true, false
 AI_AVAILABLE=false
+KUBECTL_TIMEOUT="${KUBECTL_TIMEOUT:-60}"
 
 # Model catalog for interactive selection
+# shellcheck disable=SC2034
 declare -A AI_MODELS=(
     ["qwen-7b"]="Qwen/Qwen2.5-Coder-7B-Instruct"
     ["qwen-14b"]="Qwen/Qwen2.5-Coder-14B-Instruct"
@@ -32,6 +34,7 @@ declare -A AI_MODELS=(
 )
 
 # Model metadata
+# shellcheck disable=SC2034
 declare -A MODEL_VRAM=(
     ["qwen-7b"]="16"
     ["qwen-14b"]="24"
@@ -41,6 +44,7 @@ declare -A MODEL_VRAM=(
     ["codellama-13b"]="24"
 )
 
+# shellcheck disable=SC2034
 declare -A MODEL_SPEED=(
     ["qwen-7b"]="40-60"
     ["qwen-14b"]="30-45"
@@ -50,6 +54,7 @@ declare -A MODEL_SPEED=(
     ["codellama-13b"]="20-35"
 )
 
+# shellcheck disable=SC2034
 declare -A MODEL_QUALITY=(
     ["qwen-7b"]="88.4%"
     ["qwen-14b"]="89.7%"
@@ -92,19 +97,19 @@ ai_check_availability() {
     fi
 
     # Check AIDB MCP Server
-    if curl -sf --max-time 2 "$AIDB_BASE_URL/health" > /dev/null 2>&1; then
+    if curl_safe -sf "$AIDB_BASE_URL/health" > /dev/null 2>&1; then
         AI_AVAILABLE=true
-        return 0
     else
         AI_AVAILABLE=false
-        return 1
     fi
+
+    [ "$AI_AVAILABLE" = true ]
 }
 
 ai_check_llama_cpp() {
     local base="${LLAMA_CPP_BASE_URL%/}"
     base="${base%/api/v1}"
-    if curl -sf --max-time 2 "$base/health" > /dev/null 2>&1; then
+    if curl_safe -sf "$base/health" > /dev/null 2>&1; then
         return 0
     else
         return 1
@@ -128,9 +133,8 @@ aidb_post_with_fallback() {
             continue
         fi
 
-        response=$(curl -s -X POST "$AIDB_BASE_URL/$endpoint" \
+        response=$(curl_safe -s -X POST "$AIDB_BASE_URL/$endpoint" \
             -H "Content-Type: application/json" \
-            --max-time "$timeout" \
             -d "$payload")
 
         if echo "$response" | jq -e '.success == true' > /dev/null 2>&1; then
@@ -234,8 +238,8 @@ EOF
 # Detect already downloaded models from cache
 ai_detect_cached_models() {
     local hf_cache="${HOME}/.cache/huggingface"
-    local ai_stack_models="${HOME}/.local/share/nixos-ai-stack/llama-cpp-models"
-    local podman_models="${HOME}/.local/share/podman-ai-stack/llama-cpp-models"
+    local ai_stack_models="${AI_STACK_DATA:-$HOME/.local/share/nixos-ai-stack}/llama-cpp-models"
+    local podman_models="${HOME}/.local/share/podman-ai-stack/llama-cpp-models"  # legacy path
     declare -A cached_models
 
     # Helper function to check if a model file exists in any location
@@ -278,12 +282,12 @@ ai_detect_cached_models() {
     check_model_file "qwen2.5-coder-14b-instruct-q4_k_m.gguf" "qwen-14b" "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF"
 
     # Return the keys of cached models
-    echo "${!cached_models[@]}"
+    printf '%s\n' "${!cached_models[@]}"
 }
 
 # Display menu showing ONLY cached models
 ai_display_cached_model_menu() {
-    local -a cached=($1)
+    local -a cached=("$@")
     local count=${#cached[@]}
 
     if [ $count -eq 0 ]; then
@@ -341,16 +345,18 @@ EOF
 }
 
 ai_select_model() {
-    local gpu_vram=$(detect_gpu_vram)
-    local gpu_name=$(detect_gpu_model)
+    local gpu_vram
+    local gpu_name
+    gpu_vram=$(detect_gpu_vram)
+    gpu_name=$(detect_gpu_model)
 
     # Detect cached models
-    local cached_models=$(ai_detect_cached_models)
-    local -a cached_array=($cached_models)
+    local -a cached_array=()
+    mapfile -t cached_array < <(ai_detect_cached_models)
     local count=${#cached_array[@]}
 
     # Display menu with only cached models (send to stderr so it shows when output captured)
-    ai_display_cached_model_menu "$cached_models" >&2
+    ai_display_cached_model_menu "${cached_array[@]}" >&2
 
     if [ $count -eq 0 ]; then
         # No cached models - skip
@@ -409,7 +415,8 @@ ai_generate_nix_config() {
 
     log_info "Generating NixOS configuration with AI..."
 
-    local payload=$(jq -n \
+    local payload
+    payload=$(jq -n \
         --arg desc "$description" \
         --arg ctx "$context" \
         '{description: $desc, context: $ctx}')
@@ -419,7 +426,8 @@ ai_generate_nix_config() {
         echo "$response" | jq -r '.nix_code'
         return 0
     else
-        local error=$(echo "$response" | jq -r '.error // "Unknown error"')
+        local error
+        error=$(echo "$response" | jq -r '.error // "Unknown error"')
         log_error "Failed to generate configuration: $error"
         return 1
     fi
@@ -440,8 +448,10 @@ ai_review_config() {
 
     log_info "Reviewing configuration with AI..."
 
-    local code=$(cat "$config_file")
-    local payload=$(jq -n \
+    local code
+    local payload
+    code=$(cat "$config_file")
+    payload=$(jq -n \
         --arg code "$code" \
         '{code: $code, language: "nix"}')
 
@@ -463,7 +473,8 @@ ai_explain_code() {
         return 1
     fi
 
-    local payload=$(jq -n \
+    local payload
+    payload=$(jq -n \
         --arg code "$code" \
         --arg lang "$language" \
         '{code: $code, language: $lang}')
@@ -485,7 +496,8 @@ ai_chat() {
         return 1
     fi
 
-    local payload=$(jq -n \
+    local payload
+    payload=$(jq -n \
         --arg sys "$system_prompt" \
         --arg user "$question" \
         '{
@@ -541,7 +553,8 @@ EOF
             read -p "Describe what you want to configure: " description
             echo ""
             log_info "Generating configuration..."
-            local generated=$(ai_generate_nix_config "$description")
+            local generated
+            generated=$(ai_generate_nix_config "$description")
             if [ $? -eq 0 ]; then
                 echo ""
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -563,7 +576,8 @@ EOF
             read -p "Path to configuration file: " config_path
             echo ""
             log_info "Reviewing configuration..."
-            local review=$(ai_review_config "$config_path")
+            local review
+            review=$(ai_review_config "$config_path")
             if [ $? -eq 0 ]; then
                 echo ""
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -576,12 +590,14 @@ EOF
         e|E)
             echo ""
             echo "Paste code to explain (Ctrl+D when done):"
-            local code=$(cat)
+            local code
+            code=$(cat)
             echo ""
             read -p "Language [nix]: " language
             language="${language:-nix}"
             log_info "Generating explanation..."
-            local explanation=$(ai_explain_code "$code" "$language")
+            local explanation
+            explanation=$(ai_explain_code "$code" "$language")
             if [ $? -eq 0 ]; then
                 echo ""
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -596,7 +612,8 @@ EOF
             read -p "Your question: " question
             echo ""
             log_info "Thinking..."
-            local answer=$(ai_chat "$question")
+            local answer
+            answer=$(ai_chat "$question")
             if [ $? -eq 0 ]; then
                 echo ""
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -643,7 +660,8 @@ get_model_filename_from_id() {
             ;;
         *)
             # Try to extract filename from model ID
-            local base=$(basename "$model_id")
+            local base
+            base=$(basename "$model_id")
             if [[ "$base" == *.gguf ]]; then
                 echo "$base"
             else
@@ -655,8 +673,9 @@ get_model_filename_from_id() {
 
 ai_deploy_llama_cpp() {
     local model_id="$1"
-    local ai_stack_dir="${2:-${SCRIPT_DIR}/ai-stack/compose}"
+    local k8s_dir="${2:-${PROJECT_ROOT:-$SCRIPT_DIR}/ai-stack/kubernetes}"
     export AI_STACK_ENV_FILE="${AI_STACK_ENV_FILE:-$HOME/.config/nixos-ai-stack/.env}"
+    local env_file="$AI_STACK_ENV_FILE"
 
     if [ "$model_id" = "SKIP" ]; then
         log_info "Skipping AI model installation"
@@ -665,76 +684,62 @@ ai_deploy_llama_cpp() {
 
     log_info "Deploying llama.cpp with model: $model_id"
 
-    # Check if AI stack directory exists
-    if [ ! -d "$ai_stack_dir" ]; then
-        log_error "AI stack directory not found at: $ai_stack_dir"
+    # Check if AI stack k8s directory exists
+    if [ ! -d "$k8s_dir" ]; then
+        log_error "AI stack k8s directory not found at: $k8s_dir"
         return 1
     fi
 
-    cd "$ai_stack_dir"
-
-    # Detect container runtime
-    local compose_cmd=""
-    if command -v podman-compose >/dev/null 2>&1; then
-        compose_cmd="podman-compose"
-    elif command -v docker-compose >/dev/null 2>&1; then
-        compose_cmd="docker-compose"
-    elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-        compose_cmd="docker compose"
-    else
-        log_error "No container runtime found (podman-compose, docker-compose, or docker compose)"
+    if ! command -v kubectl >/dev/null 2>&1 || ! kubectl --request-timeout="${KUBECTL_TIMEOUT}s" cluster-info &>/dev/null; then
+        log_error "Kubernetes is required to deploy the AI stack (kubectl/K3s not available)."
         return 1
     fi
-
-    log_info "Using container runtime: $compose_cmd"
 
     # Update .env with selected model
-    if [ -f ".env" ]; then
-        # Update existing .env
-        if grep -q "^LLAMA_CPP_DEFAULT_MODEL=" .env; then
-            sed -i "s|^LLAMA_CPP_DEFAULT_MODEL=.*|LLAMA_CPP_DEFAULT_MODEL=$model_id|" .env
+    if [ -f "$env_file" ]; then
+        if grep -q "^LLAMA_CPP_DEFAULT_MODEL=" "$env_file"; then
+            sed -i "s|^LLAMA_CPP_DEFAULT_MODEL=.*|LLAMA_CPP_DEFAULT_MODEL=$model_id|" "$env_file"
         else
-            echo "LLAMA_CPP_DEFAULT_MODEL=$model_id" >> .env
+            echo "LLAMA_CPP_DEFAULT_MODEL=$model_id" >> "$env_file"
         fi
 
-        local embedding_model="${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}"
-        if grep -q "^EMBEDDING_MODEL=" .env; then
-            sed -i "s|^EMBEDDING_MODEL=.*|EMBEDDING_MODEL=$embedding_model|" .env
+        local embedding_model
+        embedding_model="${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}"
+        if grep -q "^EMBEDDING_MODEL=" "$env_file"; then
+            sed -i "s|^EMBEDDING_MODEL=.*|EMBEDDING_MODEL=$embedding_model|" "$env_file"
         else
-            echo "EMBEDDING_MODEL=$embedding_model" >> .env
+            echo "EMBEDDING_MODEL=$embedding_model" >> "$env_file"
         fi
 
         # Add LLAMA_CPP_MODEL_FILE if not present
-        local model_file=$(get_model_filename_from_id "$model_id")
+        local model_file
+        model_file=$(get_model_filename_from_id "$model_id")
         if [ -n "$model_file" ]; then
-            if grep -q "^LLAMA_CPP_MODEL_FILE=" .env; then
-                sed -i "s|^LLAMA_CPP_MODEL_FILE=.*|LLAMA_CPP_MODEL_FILE=$model_file|" .env
+            if grep -q "^LLAMA_CPP_MODEL_FILE=" "$env_file"; then
+                sed -i "s|^LLAMA_CPP_MODEL_FILE=.*|LLAMA_CPP_MODEL_FILE=$model_file|" "$env_file"
             else
-                echo "LLAMA_CPP_MODEL_FILE=$model_file" >> .env
+                echo "LLAMA_CPP_MODEL_FILE=$model_file" >> "$env_file"
             fi
         fi
     else
-        log_error ".env file not found at: $ai_stack_dir/.env"
+        log_error "Env file not found at: $env_file"
         return 1
     fi
 
     log_info "Updated .env with model: $model_id"
 
     # Deploy stack
-    log_info "Deploying AI stack with $compose_cmd..."
-    if $compose_cmd up -d 2>&1 | tee /tmp/ai-stack-deploy.log; then
-        log_success "AI stack deployment initiated"
+    log_info "Deploying AI stack with Kubernetes..."
+    local tmp_root="${TMPDIR:-/${TMP_FALLBACK:-tmp}}"
+    local deploy_log="${tmp_root}/ai-stack-deploy.log"
+    if kubectl --request-timeout="${KUBECTL_TIMEOUT}s" apply -k "$k8s_dir" \
+        > >(tee "$deploy_log") 2>&1; then
+        log_success "AI stack deployment initiated via Kubernetes"
         log_info "Model download may take 10-45 minutes depending on model size"
-
-        # Provide correct monitoring commands based on runtime
-        local container_cmd="podman"
-        if [[ "$compose_cmd" == *"docker"* ]]; then
-            container_cmd="docker"
-        fi
-        log_info "Monitor progress: $container_cmd logs -f local-ai-llama-cpp"
-        log_info "Check status: $container_cmd ps"
+        log_info "Monitor progress: kubectl logs -n ai-stack deploy/llama-cpp -f"
+        log_info "Check status: kubectl get pods -n ai-stack"
     else
-        log_error "Failed to deploy AI stack. Check logs at: /tmp/ai-stack-deploy.log"
+        log_error "Failed to deploy AI stack. Check logs at: $deploy_log"
         return 1
     fi
 

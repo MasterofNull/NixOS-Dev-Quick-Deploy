@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.3
 
-FROM python:3.11-slim
+FROM docker.io/library/python:3.11-slim
 
 WORKDIR /app
 
@@ -56,7 +56,7 @@ RUN chmod +x /app/start_server.sh
 EXPOSE 8094
 
 # Health check (removed - OCI format doesn't support HEALTHCHECK directive)
-# Use docker-compose.yml healthcheck configuration instead:
+# Use Kubernetes probe configuration instead:
 # healthcheck:
 #   test: ["CMD", "curl", "-f", "http://localhost:8094/health"]
 #   interval: 30s

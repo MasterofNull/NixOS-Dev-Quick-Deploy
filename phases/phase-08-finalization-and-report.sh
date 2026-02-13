@@ -42,46 +42,24 @@
 # PHASE IMPLEMENTATION
 # ============================================================================
 
-phase_08_finalization_and_report() {
-    # ========================================================================
-    # Phase 8: System Finalization & Deployment Report
-    # ========================================================================
-    # This is the final phase - complete post-install configuration and
-    # generate comprehensive deployment report.
-    #
-    # Part 1: System Health Check
-    # - Run comprehensive validation of services, resources, and connectivity
-    # - Respect --skip-health-check for faster deployments
-    #
-    # Part 2: Final System Configuration
-    # - Apply final service configuration that requires live services
-    # - Finalize permissions and remove temporary resources
-    #
-    # Part 3: Deployment Report
-    # - Generate comprehensive post-install report
-    # - Display configuration status, next steps, and troubleshooting info
-    # ========================================================================
+phase_08_backfill_env_key() {
+    local key="$1"
+    local value="$2"
+    local file="$3"
 
-    local phase_name="finalization_and_report"
-
-    # ------------------------------------------------------------------------
-    # Resume Check: Skip if already completed
-    # ------------------------------------------------------------------------
-    if is_step_complete "$phase_name"; then
-        print_info "Phase 8 already completed (skipping)"
-        return 0
+    if grep -qE "^[[:space:]]*${key}=" "$file" 2>/dev/null; then
+        if grep -qE "^[[:space:]]*${key}=$" "$file" 2>/dev/null; then
+            sed -i "s|^[[:space:]]*${key}=.*|${key}=${value}|" "$file"
+        fi
+    else
+        printf '%s=%s\n' "$key" "$value" >> "$file"
     fi
+}
 
-    print_section "Phase 8/8: System Finalization & Deployment Report"
-    echo ""
-
-    # ========================================================================
-    # PART 1: SYSTEM HEALTH CHECK
-    # ========================================================================
-
+phase_08_run_system_health_check() {
     if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
         print_info "AI stack services are deployed via K3s cluster (Phase 9)."
-        print_info "Check status with: kubectl get pods -n ai-stack"
+        print_info "Check status with: kubectl get pods -n ${PHASE_08_AI_STACK_NS}"
         echo ""
     else
         print_info "AI stack deployment is configured in Phase 9."
@@ -92,188 +70,168 @@ phase_08_finalization_and_report() {
     print_section "Part 1: System Health Check"
     echo ""
 
-    # ========================================================================
-    # Step 8.1: Run Comprehensive Health Check
-    # ========================================================================
     local strict_health_checks="${STRICT_HEALTH_CHECKS:-true}"
     if [[ "$SKIP_HEALTH_CHECK" == true ]]; then
         print_info "Skipping system health check (--skip-health-check flag detected)"
-    else
-        local health_script="$SCRIPT_DIR/scripts/system-health-check.sh"
-        local health_status=0
-        local previous_errexit="$-"
-
-        if [[ -x "$health_script" ]]; then
-            print_info "Running detailed health check via $health_script"
-            set +e
-            "$health_script" --detailed
-            health_status=$?
-        else
-            print_warning "Health check script not found at $health_script; running internal validation fallback"
-            set +e
-            run_system_health_check_stage
-            health_status=$?
-        fi
-
-        case "$previous_errexit" in
-            *e*) set -e ;;
-            *)   set +e ;;
-        esac
-
-        if [[ $health_status -eq 0 ]]; then
-            print_success "System health check completed"
-        else
-            if [[ "$strict_health_checks" == "true" ]]; then
-                print_error "System health check failed with STRICT_HEALTH_CHECKS=true"
-                return 1
-            fi
-            print_warning "System health check reported issues (review output above)"
-        fi
-
-        FINAL_PHASE_HEALTH_CHECK_COMPLETED=true
-        export FINAL_PHASE_HEALTH_CHECK_COMPLETED
+        echo ""
+        return 0
     fi
 
-    echo ""
+    local health_script="$SCRIPT_DIR/scripts/system-health-check.sh"
+    local health_status=0
+    local previous_errexit="$-"
 
-    # ========================================================================
-    # Step 8.1b: AI Stack Health Check
-    # ========================================================================
-    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
-        local enforce_ai_health="${ENFORCE_AI_STACK_HEALTH:-true}"
-        local require_ai_running="${REQUIRE_AI_STACK_RUNNING:-false}"
-        local ai_health_script="$SCRIPT_DIR/scripts/check-ai-stack-health-v2.py"
-
-        # Check if AI stack pods are running in K3s
-        local running_ai_pods=0
-        if command -v kubectl >/dev/null 2>&1; then
-            running_ai_pods=$(kubectl get pods -n ai-stack --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l || echo "0")
-        fi
-
-        if [[ "$running_ai_pods" -eq 0 ]]; then
-            if [[ "$require_ai_running" == "true" ]]; then
-                print_error "AI Stack pods are not running and REQUIRE_AI_STACK_RUNNING=true"
-                return 1
-            fi
-            print_warning "AI Stack pods are not running in K3s; skipping AI health check."
-            goto_ai_health_checks_done=true
-        fi
-
-        if [[ "${goto_ai_health_checks_done:-false}" == "true" ]]; then
-            :
-        elif [[ -f "$ai_health_script" ]]; then
-            print_info "Running AI Stack health check..."
-            if python3 "$ai_health_script" -v; then
-                print_success "AI Stack health check passed."
-            else
-                if [[ "$enforce_ai_health" == "true" ]]; then
-                    print_error "AI Stack health check failed with ENFORCE_AI_STACK_HEALTH=true"
-                    return 1
-                fi
-                print_warning "AI Stack health check reported issues. Review output."
-            fi
-        else
-            print_warning "AI Stack health check script not found at $ai_health_script"
-        fi
-        unset goto_ai_health_checks_done
-        local feedback_script="$SCRIPT_DIR/scripts/verify-local-llm-feedback.sh"
-        if [[ -x "$feedback_script" ]]; then
-            print_info "Running feedback pipeline verification..."
-            if "$feedback_script"; then
-                print_success "Feedback pipeline verification complete."
-            else
-                print_warning "Feedback pipeline verification reported issues."
-            fi
-        else
-            print_warning "Feedback verification script not found at $feedback_script"
-        fi
-
-        if declare -f ensure_ai_stack_env >/dev/null 2>&1; then
-            ensure_ai_stack_env
-        fi
-
-        # Backfill critical llama.cpp keys if the env file exists but is missing them.
-        local env_file="${AI_STACK_ENV_FILE:-$HOME/.config/nixos-ai-stack/.env}"
-        if [[ -f "$env_file" ]]; then
-            backfill_env_key() {
-                local key="$1"
-                local value="$2"
-                local file="$3"
-                if grep -qE "^[[:space:]]*${key}=" "$file" 2>/dev/null; then
-                    # Replace empty value if present
-                    if grep -qE "^[[:space:]]*${key}=$" "$file" 2>/dev/null; then
-                        sed -i "s|^[[:space:]]*${key}=.*|${key}=${value}|" "$file"
-                    fi
-                else
-                    printf '%s=%s\n' "$key" "$value" >> "$file"
-                fi
-            }
-            backfill_env_key "LLAMA_CPP_DEFAULT_MODEL" "${LLAMA_CPP_DEFAULT_MODEL:-unsloth/Qwen3-4B-Instruct-2507-GGUF}" "$env_file"
-            backfill_env_key "LLAMA_CPP_MODEL_FILE" "${LLAMA_CPP_MODEL_FILE:-qwen2.5-coder-7b-instruct-q4_k_m.gguf}" "$env_file"
-        fi
-
-        local drift_script="$SCRIPT_DIR/scripts/validate-ai-stack-env-drift.sh"
-        local enforce_drift_check="${ENFORCE_ENV_DRIFT_CHECK:-true}"
-        if [[ -x "$drift_script" ]]; then
-            print_info "Running AI stack env drift check..."
-            if "$drift_script"; then
-                print_success "AI stack env drift check passed."
-            else
-                if [[ "$enforce_drift_check" == "true" ]]; then
-                    print_error "AI stack env drift check failed with ENFORCE_ENV_DRIFT_CHECK=true"
-                    return 1
-                fi
-                print_warning "AI stack env drift check reported issues."
-            fi
-        else
-            print_warning "AI stack env drift check script not found at $drift_script"
-        fi
+    if [[ -x "$health_script" ]]; then
+        print_info "Running detailed health check via $health_script"
+        set +e
+        "$health_script" --detailed
+        health_status=$?
     else
+        print_warning "Health check script not found at $health_script; running internal validation fallback"
+        set +e
+        run_system_health_check_stage
+        health_status=$?
+    fi
+
+    case "$previous_errexit" in
+        *e*) set -e ;;
+        *)   set +e ;;
+    esac
+
+    if [[ $health_status -eq 0 ]]; then
+        print_success "System health check completed"
+    else
+        if [[ "$strict_health_checks" == "true" ]]; then
+            print_error "System health check failed with STRICT_HEALTH_CHECKS=true"
+            return 1
+        fi
+        print_warning "System health check reported issues (review output above)"
+    fi
+
+    FINAL_PHASE_HEALTH_CHECK_COMPLETED=true
+    export FINAL_PHASE_HEALTH_CHECK_COMPLETED
+    echo ""
+}
+
+phase_08_run_ai_stack_health_check() {
+    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" != "true" ]]; then
         print_info "AI Stack not enabled, skipping AI health check."
+        echo ""
+        return 0
     fi
+
+    local enforce_ai_health="${ENFORCE_AI_STACK_HEALTH:-true}"
+    local require_ai_running="${REQUIRE_AI_STACK_RUNNING:-false}"
+    local ai_health_script="$SCRIPT_DIR/scripts/check-ai-stack-health-v2.py"
+
+    local running_ai_pods=0
+    if command -v kubectl >/dev/null 2>&1; then
+        if declare -F kubectl_safe >/dev/null 2>&1; then
+            running_ai_pods=$(kubectl_safe get pods -n "${PHASE_08_AI_STACK_NS}" --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l || echo "0")
+        else
+            running_ai_pods=$(kubectl --request-timeout="${KUBECTL_TIMEOUT:-60}s" get pods -n "${PHASE_08_AI_STACK_NS}" --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l || echo "0")
+        fi
+    fi
+
+    if [[ "$running_ai_pods" -eq 0 ]]; then
+        if [[ "$require_ai_running" == "true" ]]; then
+            print_error "AI Stack pods are not running and REQUIRE_AI_STACK_RUNNING=true"
+            return 1
+        fi
+        print_warning "AI Stack pods are not running in K3s; skipping AI health check."
+    elif [[ -f "$ai_health_script" ]]; then
+        print_info "Running AI Stack health check..."
+        local python_bin
+        python_bin="$(command -v python3 2>/dev/null || true)"
+        if [[ -z "$python_bin" ]]; then
+            local hm_python="$HOME/.local/state/nix/profiles/home-manager/bin/python3"
+            if [[ -x "$hm_python" ]]; then
+                python_bin="$hm_python"
+            fi
+        fi
+        if [[ -z "$python_bin" ]]; then
+            print_warning "python3 not available; skipping AI Stack health check."
+        elif "$python_bin" "$ai_health_script" -v; then
+            print_success "AI Stack health check passed."
+        else
+            if [[ "$enforce_ai_health" == "true" ]]; then
+                print_error "AI Stack health check failed with ENFORCE_AI_STACK_HEALTH=true"
+                return 1
+            fi
+            print_warning "AI Stack health check reported issues. Review output."
+        fi
+    else
+        print_warning "AI Stack health check script not found at $ai_health_script"
+    fi
+
+    local feedback_script="$SCRIPT_DIR/scripts/verify-local-llm-feedback.sh"
+    if [[ -x "$feedback_script" ]]; then
+        print_info "Running feedback pipeline verification..."
+        if "$feedback_script"; then
+            print_success "Feedback pipeline verification complete."
+        else
+            print_warning "Feedback pipeline verification reported issues."
+        fi
+    else
+        print_warning "Feedback verification script not found at $feedback_script"
+    fi
+
+    if declare -f ensure_ai_stack_env >/dev/null 2>&1; then
+        ensure_ai_stack_env
+    fi
+
+    local env_file="${AI_STACK_ENV_FILE:-${AI_STACK_CONFIG_DIR:-$HOME/.config/nixos-ai-stack}/.env}"
+    if [[ -f "$env_file" ]]; then
+        local ai_stack_data_default
+        ai_stack_data_default="${AI_STACK_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/nixos-ai-stack}"
+        phase_08_backfill_env_key "AI_STACK_DATA" "$ai_stack_data_default" "$env_file"
+        phase_08_backfill_env_key "LLAMA_CPP_DEFAULT_MODEL" "${LLAMA_CPP_DEFAULT_MODEL:-unsloth/Qwen3-4B-Instruct-2507-GGUF}" "$env_file"
+        phase_08_backfill_env_key "LLAMA_CPP_MODEL_FILE" "${LLAMA_CPP_MODEL_FILE:-qwen2.5-coder-7b-instruct-q4_k_m.gguf}" "$env_file"
+    fi
+
+    local drift_script="$SCRIPT_DIR/scripts/validate-ai-stack-env-drift.sh"
+    local enforce_drift_check="${ENFORCE_ENV_DRIFT_CHECK:-true}"
+    if [[ -x "$drift_script" ]]; then
+        print_info "Running AI stack env drift check..."
+        if "$drift_script"; then
+            print_success "AI stack env drift check passed."
+        else
+            if [[ "$enforce_drift_check" == "true" ]]; then
+                print_error "AI stack env drift check failed with ENFORCE_ENV_DRIFT_CHECK=true"
+                return 1
+            fi
+            print_warning "AI stack env drift check reported issues."
+        fi
+    else
+        print_warning "AI stack env drift check script not found at $drift_script"
+    fi
+
     echo ""
+}
 
-    # ========================================================================
-    # PART 2: FINAL SYSTEM CONFIGURATION
-    # ========================================================================
-
+phase_08_run_final_system_config() {
     print_section "Part 2: Final System Configuration"
     echo ""
 
-    # ========================================================================
-    # Step 8.2: Apply Final System Configuration
-    # ========================================================================
-    # Complete system configuration that requires services running:
-    # - Database initialization (PostgreSQL databases for Gitea)
-    # - Service configuration (Gitea and other system services; ai-optimizer handles AI containers)
-    # - Integration setup (service-to-service authentication)
-    # - Permission finalization (service directory ownership)
     apply_final_system_configuration
-
-    # ========================================================================
-    # Step 8.3: Finalize Configuration Activation
-    # ========================================================================
-    # Ensure all configurations active and services using them:
-    # - Reload service configurations (systemctl daemon-reload)
-    # - Restart services if needed
-    # - Enable user services (systemctl --user enable)
-    # - Verify service dependencies
-    # - Clean up temporary files
     finalize_configuration_activation
+}
 
-    # ========================================================================
-    # Step 8.4: Local AI Stack
-    # ========================================================================
+phase_08_report_ai_stack_status() {
     print_section "Step 8.4: Local AI Stack"
 
     if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
         print_info "AI Stack (llama-cpp/Qdrant/PostgreSQL/Grafana) runs in K3s cluster."
-        print_info "Architecture: K3s orchestrated services in 'ai-stack' namespace."
-        print_info "Check status: kubectl get pods -n ai-stack"
-        print_info "View services: kubectl get svc -n ai-stack"
+        print_info "Architecture: K3s orchestrated services in '${PHASE_08_AI_STACK_NS}' namespace."
+        print_info "Check status: kubectl get pods -n ${PHASE_08_AI_STACK_NS}"
+        print_info "View services: kubectl get svc -n ${PHASE_08_AI_STACK_NS}"
         if command -v kubectl >/dev/null 2>&1; then
             local running_pods
-            running_pods=$(kubectl get pods -n ai-stack --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l || echo "0")
+            if declare -F kubectl_safe >/dev/null 2>&1; then
+                running_pods=$(kubectl_safe get pods -n "${PHASE_08_AI_STACK_NS}" --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l || echo "0")
+            else
+                running_pods=$(kubectl --request-timeout="${KUBECTL_TIMEOUT:-60}s" get pods -n "${PHASE_08_AI_STACK_NS}" --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l || echo "0")
+            fi
             if [[ "$running_pods" -gt 0 ]]; then
                 print_success "K3s AI stack: $running_pods pods running"
             else
@@ -285,13 +243,11 @@ phase_08_finalization_and_report() {
     fi
 
     echo ""
+}
 
-    # ========================================================================
-    # Step 8.5: System Monitoring Dashboard
-    # ========================================================================
+phase_08_install_dashboard() {
     print_section "Step 8.5: System Monitoring Dashboard"
 
-    # Install dashboard (non-fatal if it fails)
     if command -v install_dashboard_to_deployment >/dev/null 2>&1; then
         install_dashboard_to_deployment || print_warning "Dashboard installation skipped (non-fatal)"
     else
@@ -301,88 +257,79 @@ phase_08_finalization_and_report() {
     echo ""
     print_success "System finalization complete"
     echo ""
+}
 
-    # TEMP_SWAP_* exported by ensure_low_memory_swap() (phase 5). Clean up here so
-    # temp swapfiles don't stick around across reboots.
-    if [[ "${TEMP_SWAP_CREATED:-false}" == true && -n "${TEMP_SWAP_FILE:-}" ]]; then
-        print_section "Cleaning Up Temporary Swapfile"
-
-        local -a active_swap_devices=()
-        mapfile -t active_swap_devices < <(swapon --show=NAME --noheadings 2>/dev/null || true)
-
-        local has_alternative_swap=false
-        local device
-        for device in "${active_swap_devices[@]}"; do
-            if [[ -n "$device" && "$device" != "$TEMP_SWAP_FILE" ]]; then
-                has_alternative_swap=true
-                break
-            fi
-        done
-
-        if [[ "$has_alternative_swap" == true ]]; then
-            print_info "Permanent swap detected; removing temporary swapfile $TEMP_SWAP_FILE."
-            if sudo swapoff "$TEMP_SWAP_FILE" 2>/dev/null; then
-                print_success "Temporary swapfile deactivated."
-            else
-                print_warning "Unable to deactivate temporary swapfile $TEMP_SWAP_FILE automatically."
-            fi
-
-            if sudo rm -f "$TEMP_SWAP_FILE" 2>/dev/null; then
-                print_success "Temporary swapfile removed."
-                unset TEMP_SWAP_CREATED TEMP_SWAP_FILE TEMP_SWAP_SIZE_GB
-            else
-                print_warning "Failed to delete $TEMP_SWAP_FILE. Remove manually with: sudo rm -f $TEMP_SWAP_FILE"
-            fi
-        else
-            print_info "Temporary swapfile $TEMP_SWAP_FILE remains active because no alternative swap device is present. Remove manually once permanent swap is configured: sudo swapoff $TEMP_SWAP_FILE && sudo rm -f $TEMP_SWAP_FILE"
-        fi
-
-        echo ""
+phase_08_cleanup_temp_swap() {
+    if [[ "${TEMP_SWAP_CREATED:-false}" != true || -z "${TEMP_SWAP_FILE:-}" ]]; then
+        return 0
     fi
 
-    # ========================================================================
-    # PART 3: DEPLOYMENT REPORT
-    # ========================================================================
+    print_section "Cleaning Up Temporary Swapfile"
 
+    local -a active_swap_devices=()
+    mapfile -t active_swap_devices < <(swapon --show=NAME --noheadings 2>/dev/null || true)
+
+    local has_alternative_swap=false
+    local device
+    for device in "${active_swap_devices[@]}"; do
+        if [[ -n "$device" && "$device" != "$TEMP_SWAP_FILE" ]]; then
+            has_alternative_swap=true
+            break
+        fi
+    done
+
+    if [[ "$has_alternative_swap" == true ]]; then
+        print_info "Permanent swap detected; removing temporary swapfile $TEMP_SWAP_FILE."
+        if sudo -n swapoff "$TEMP_SWAP_FILE" 2>/dev/null; then
+            print_success "Temporary swapfile deactivated."
+        else
+            print_warning "Unable to deactivate temporary swapfile $TEMP_SWAP_FILE automatically."
+        fi
+
+        if sudo -n rm -f "$TEMP_SWAP_FILE" 2>/dev/null; then
+            print_success "Temporary swapfile removed."
+            unset TEMP_SWAP_CREATED TEMP_SWAP_FILE TEMP_SWAP_SIZE_GB
+        else
+            print_warning "Failed to delete $TEMP_SWAP_FILE. Remove manually with: sudo rm -f $TEMP_SWAP_FILE"
+        fi
+    else
+        print_info "Temporary swapfile $TEMP_SWAP_FILE remains active because no alternative swap device is present. Remove manually once permanent swap is configured: sudo swapoff $TEMP_SWAP_FILE && sudo rm -f $TEMP_SWAP_FILE"
+    fi
+
+    echo ""
+}
+
+phase_08_generate_report() {
     print_section "Part 3: Deployment Report"
     echo ""
-
-    # ========================================================================
-    # Step 8.5: Generate Comprehensive Post-Install Report
-    # ========================================================================
-    # Detailed information about what was installed:
-    # - NixOS generation information
-    # - Home-manager generation information
-    # - Installed package counts
-    # - Service status summary
-    # - Hardware configuration summary
     print_post_install
+}
 
-    # ========================================================================
-    # PART 4: AI STACK DATA BACKUP
-    # ========================================================================
-
+phase_08_backup_ai_stack_data() {
     print_section "Part 4: AI Stack Data Backup"
     echo ""
 
     if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
-        # K3s AI stack uses PersistentVolumeClaims for data storage
-        # Backup is handled by the backup-cronjobs in K3s
         print_info "K3s AI stack data is managed via PersistentVolumeClaims."
         print_info "Automated backups run via CronJobs in the 'backups' namespace."
         print_info "Check backup status: kubectl get cronjobs -n backups"
 
-        # Also check for any local AI data
-        local ai_data_source="${HOME}/.local/share/nixos-ai-stack/"
+        local ai_data_source="${AI_STACK_DATA:-$HOME/.local/share/nixos-ai-stack/}"
         if [[ -d "$ai_data_source" ]]; then
-            local backup_dest_dir="${BACKUP_ROOT}/ai-stack-backup-$(date +%Y%m%d_%H%M%S)"
-            local backup_log="${LOG_DIR:-$HOME/.cache/nixos-quick-deploy/logs}/ai-stack-backup-$(date +%Y%m%d_%H%M%S).log"
+            local backup_dest_dir
+            local backup_log
+            backup_dest_dir="${BACKUP_ROOT}/ai-stack-backup-$(date +%Y%m%d_%H%M%S)"
+            backup_log="${LOG_DIR:-$HOME/.cache/nixos-quick-deploy/logs}/ai-stack-backup-$(date +%Y%m%d_%H%M%S).log"
             print_info "Backing up local AI data from $ai_data_source..."
             mkdir -p "$backup_dest_dir"
-            if cp -a "$ai_data_source" "$backup_dest_dir/" >"$backup_log" 2>&1; then
+            if tar --ignore-failed-read -cf - -C "$ai_data_source" . 2>"$backup_log" | tar -xf - -C "$backup_dest_dir" 2>>"$backup_log"; then
                 print_success "Local AI data backed up to $backup_dest_dir"
             else
-                print_warning "Failed to back up local AI data. See $backup_log"
+                if grep -q "Permission denied" "$backup_log" 2>/dev/null; then
+                    print_warning "Local AI data backup completed with unreadable paths. See $backup_log"
+                else
+                    print_warning "Failed to back up local AI data. See $backup_log"
+                fi
             fi
         fi
     else
@@ -390,30 +337,26 @@ phase_08_finalization_and_report() {
     fi
 
     echo ""
+}
 
-
-    # ========================================================================
-    # Step 8.6: Display Success Banner
-    # ========================================================================
+phase_08_print_success_banner() {
     echo ""
     echo -e "${GREEN}╔════════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║${NC}  Deployment Complete - All 8 Phases Successful!               ${GREEN}║${NC}"
     echo -e "${GREEN}╚════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
+}
 
-    # ========================================================================
-    # Step 8.7: Configuration Status Summary
-    # ========================================================================
+phase_08_print_status_summary() {
     print_info "Configuration Status:"
     echo -e "  ${GREEN}✓${NC} NixOS system configuration applied"
     echo -e "  ${GREEN}✓${NC} Home-manager user environment active"
     echo -e "  ${GREEN}✓${NC} Flatpak applications installed"
     echo -e "  ${GREEN}✓${NC} Development tools configured"
     echo ""
+}
 
-    # ========================================================================
-    # Step 8.8: Installed Components List
-    # ========================================================================
+phase_08_print_installed_components() {
     print_info "Installed Components:"
     echo "  • COSMIC Desktop Environment"
     echo "  • K3s container orchestration"
@@ -427,10 +370,9 @@ phase_08_finalization_and_report() {
     echo "  • AI Stack: Qdrant Vector DB + llama.cpp LLM (K3s orchestrated)"
     echo "  • Monitoring: Grafana + Prometheus + Loki (K3s)"
     echo ""
+}
 
-    # ========================================================================
-    # Step 8.9: Next Steps Guide
-    # ========================================================================
+phase_08_print_next_steps() {
     local git_identity_hint="${GIT_IDENTITY_PREFERENCE_FILE:-$DEPLOYMENT_PREFERENCES_DIR/git-identity.env}"
     local gitea_secrets_hint="${GITEA_SECRETS_CACHE_FILE:-$PRIMARY_HOME/.config/nixos-quick-deploy/gitea-secrets.env}"
 
@@ -445,7 +387,7 @@ phase_08_finalization_and_report() {
     if [[ "${GITEA_ENABLE,,}" == "true" ]]; then
         echo -e "     ${YELLOW}systemctl status gitea${NC}"
     fi
-    echo -e "     ${YELLOW}kubectl get pods -n ai-stack${NC}"
+    echo -e "     ${YELLOW}kubectl get pods -n ${PHASE_08_AI_STACK_NS}${NC}"
     echo ""
 
     echo -e "  ${GREEN}3.${NC} Check user services:"
@@ -462,8 +404,8 @@ phase_08_finalization_and_report() {
 
     echo -e "  ${GREEN}6.${NC} Adjust git identity later if needed:"
     echo -e "     ${YELLOW}./nixos-quick-deploy.sh --resume 1${NC} to rerun Phase 1 prompts"
-    echo -e "     ${YELLOW}git config --global user.name \"Your Name\"${NC}"
-    echo -e "     ${YELLOW}git config --global user.email \"you@example.com\"${NC}"
+    echo -e "     ${YELLOW}git config --global user.name "Your Name"${NC}"
+    echo -e "     ${YELLOW}git config --global user.email "you@example.com"${NC}"
     if [[ -n "$git_identity_hint" ]]; then
         echo -e "     or edit ${YELLOW}$git_identity_hint${NC} (user.name/user.email) and rerun Phase 1."
     fi
@@ -477,12 +419,9 @@ phase_08_finalization_and_report() {
         fi
         echo ""
     fi
+}
 
-
-    # ========================================================================
-    # Step 8.10: Reboot Recommendation (Conditional)
-    # ========================================================================
-    # Recommend reboot if kernel/init system updated
+phase_08_print_reboot_recommendation() {
     if [[ -L "/run/booted-system" && -L "/run/current-system" ]]; then
         if [[ "$(readlink /run/booted-system)" != "$(readlink /run/current-system)" ]]; then
             echo -e "${YELLOW}⚠ Reboot Recommended:${NC}"
@@ -492,36 +431,26 @@ phase_08_finalization_and_report() {
             echo ""
         fi
     fi
+}
 
-    # ========================================================================
-    # Step 8.11: Configuration File Locations
-    # ========================================================================
+phase_08_print_config_locations() {
     print_info "Configuration Files:"
     echo "  • System: $SYSTEM_CONFIG_FILE"
     echo "  • Home: $HOME_MANAGER_FILE"
     echo "  • Flake: $FLAKE_FILE"
     echo "  • Hardware: $HARDWARE_CONFIG_FILE"
     echo ""
+}
 
-    # ========================================================================
-    # Step 8.12: Logs and Troubleshooting Resources
-    # ========================================================================
+phase_08_print_logs_resources() {
     print_info "Logs & Troubleshooting:"
     echo "  • Deployment log: $LOG_FILE"
     echo "  • State file: $STATE_FILE"
     echo "  • Backup location: $BACKUP_ROOT"
     echo ""
+}
 
-    # ------------------------------------------------------------------------
-    # Mark Phase Complete
-    # ------------------------------------------------------------------------
-    mark_step_complete "$phase_name"
-    print_success "Phase 8: System Finalization & Deployment Report - COMPLETE"
-    echo ""
-
-    # ========================================================================
-    # Final Success Banner
-    # ========================================================================
+phase_08_print_final_banner() {
     echo ""
     echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
     echo -e "${GREEN}✓ NixOS Quick Deploy v$SCRIPT_VERSION completed successfully!${NC}"
@@ -529,6 +458,44 @@ phase_08_finalization_and_report() {
     echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
     echo ""
 }
+
+phase_08_finalization_and_report() {
+    local phase_name="finalization_and_report"
+    PHASE_08_AI_STACK_NS="${AI_STACK_NAMESPACE:-ai-stack}"
+
+    if is_step_complete "$phase_name"; then
+        print_info "Phase 8 already completed (skipping)"
+        return 0
+    fi
+
+    print_section "Phase 8/8: System Finalization & Deployment Report"
+    echo ""
+
+    phase_08_run_system_health_check || return $?
+    phase_08_run_ai_stack_health_check || return $?
+    phase_08_run_final_system_config
+    phase_08_report_ai_stack_status
+    phase_08_install_dashboard
+    phase_08_cleanup_temp_swap
+    phase_08_generate_report
+    phase_08_backup_ai_stack_data
+    phase_08_print_success_banner
+    phase_08_print_status_summary
+    phase_08_print_installed_components
+    phase_08_print_next_steps
+    phase_08_print_reboot_recommendation
+    phase_08_print_config_locations
+    phase_08_print_logs_resources
+
+    mark_step_complete "$phase_name"
+    # Ensure phase marker exists even if this script is run directly.
+    mark_step_complete "phase-08"
+    print_success "Phase 8: System Finalization & Deployment Report - COMPLETE"
+    echo ""
+
+    phase_08_print_final_banner
+}
+
 
 # Execute phase
 phase_08_finalization_and_report

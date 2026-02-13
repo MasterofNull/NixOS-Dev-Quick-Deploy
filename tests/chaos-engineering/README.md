@@ -258,8 +258,8 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # Test configuration
 BASE_URL="https://localhost:8443"
-CACERT="${PROJECT_ROOT}/ai-stack/compose/nginx/certs/localhost.crt"
-API_KEY_FILE="${PROJECT_ROOT}/ai-stack/compose/secrets/stack_api_key"
+CACERT="${PROJECT_ROOT}/ai-stack/kubernetes/tls/localhost.crt"
+API_KEY_FILE="${PROJECT_ROOT}/ai-stack/kubernetes/secrets/generated/stack_api_key"
 
 # Test logic here
 test_something() {
@@ -397,7 +397,7 @@ Based on code review, expect to find:
 
 **Questions?** Review:
 - `CRITICAL-SYSTEM-REVIEW.md` - Detailed failure analysis
-- Individual test logs in `/tmp/chaos-test-*.log`
+- Individual test logs in `${TMPDIR:-/tmp}/chaos-test-*.log`
 - Comprehensive report in `99-comprehensive-report/`
 
 **Found a new edge case?** Add a test and submit a PR!

@@ -62,3 +62,9 @@ jobs:
             node_modules
             .git
         continue-on-error: true
+
+      - name: Lint curl/kubectl timeouts
+        run: |
+          chmod +x scripts/lint-timeouts.sh
+          ./scripts/lint-timeouts.sh --ci
+        continue-on-error: true

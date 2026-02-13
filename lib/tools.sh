@@ -58,6 +58,10 @@ ai_vscode_cache_get() {
 ai_vscode_cache_set() {
     local var
     var=$(ai_vscode_cache_var "$1")
+    if ! ai_validate_var_name "$var"; then
+        print_warning "Invalid cache key name; skipping cache write"
+        return 1
+    fi
     printf -v "$var" '%s' "$2"
 }
 
@@ -103,7 +107,7 @@ open_vsx_extension_available() {
     LAST_OPEN_VSX_URL="$url"
 
     local status
-    status=$(curl -sS --max-time 8 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || echo "000")
+    status=$(curl_safe -sS -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || echo "000")
     LAST_OPEN_VSX_STATUS="$status"
 
     if [[ "$status" == "000" ]]; then
@@ -156,7 +160,7 @@ EOF
 )
 
     local response
-    response=$(curl -fsSL \
+    response=$(curl_safe -fsSL \
         -H "Content-Type: application/json" \
         -H "Accept: application/json;api-version=7.1-preview.1" \
         -X POST \
@@ -263,7 +267,7 @@ install_extension_from_marketplace() {
     tmp_vsix=$(mktemp --suffix ".vsix") || return 1
 
     print_info "Downloading VS Marketplace package for $name"
-    if ! curl -fsSL "$vsix_url" -o "$tmp_vsix"; then
+    if ! curl_safe -fsSL "$vsix_url" -o "$tmp_vsix"; then
         rm -f "$tmp_vsix"
         return 1
     fi
@@ -361,7 +365,7 @@ report_flatpak_user_state() {
     if [[ "$repo_relative" == "$repo_path" ]]; then
         repo_relative="$repo_path"
     else
-        repo_relative="~/$repo_relative"
+        repo_relative="$HOME/$repo_relative"
     fi
 
     if flatpak_user_repo_initialized; then
@@ -396,7 +400,7 @@ ensure_flatpak_repo_integrity() {
     if [[ "$repo_relative" == "$repo_dir" ]]; then
         repo_relative="$repo_dir"
     else
-        repo_relative="~/$repo_relative"
+        repo_relative="$HOME/$repo_relative"
     fi
 
     if [[ -f "$repo_dir/config" && -d "$repo_dir/objects" ]]; then
@@ -471,7 +475,7 @@ ensure_flatpak_user_dirs() {
             if [[ "$rel" == "$dir" ]]; then
                 relative_created+=("$dir")
             else
-                relative_created+=("~/$rel")
+                relative_created+=("$HOME/$rel")
             fi
         done
         created=$(printf '%s, ' "${relative_created[@]}")
@@ -915,7 +919,6 @@ flatpak_install_app_list() {
     run_as_primary_user flatpak --user repair >/dev/null 2>&1 || true
 
     declare -A flatpak_support_status=()
-    declare -A flatpak_query_cache=()
     local -a primary_queue=()
     local -a deferred_queue=()
 
@@ -923,8 +926,6 @@ flatpak_install_app_list() {
         flatpak_query_application_support "$app_id"
         local support_status=$?
         flatpak_support_status["$app_id"]=$support_status
-        flatpak_query_cache["$app_id"]="$LAST_FLATPAK_QUERY_MESSAGE"
-
         case "$support_status" in
             0)
                 primary_queue+=("$app_id")
@@ -1417,6 +1418,41 @@ ai_cli_manifest_path() {
     echo "$manifest_dir/npm-packages.sh"
 }
 
+ai_validate_var_name() {
+    local candidate="$1"
+    [[ "$candidate" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+}
+
+load_npm_manifest() {
+    local manifest="$1"
+    NPM_AI_PACKAGE_MANIFEST=()
+
+    if [[ -z "$manifest" || ! -f "$manifest" ]]; then
+        return 0
+    fi
+
+    local line entry
+    while IFS= read -r line; do
+        if [[ "$line" =~ \"([^\"]+)\" ]]; then
+            entry="${BASH_REMATCH[1]}"
+        elif [[ "$line" =~ \'([^\']+)\' ]]; then
+            entry="${BASH_REMATCH[1]}"
+        else
+            entry=""
+        fi
+        if [[ -n "$entry" ]]; then
+            NPM_AI_PACKAGE_MANIFEST+=("$entry")
+        fi
+        done < <(awk '
+            BEGIN { in_list=0 }
+            /^[[:space:]]*NPM_AI_PACKAGE_MANIFEST[[:space:]]*=[[:space:]]*[(][[:space:]]*$/ { in_list=1; next }
+            in_list {
+                if ($0 ~ /^[[:space:]]*[)][[:space:]]*$/) { in_list=0; next }
+                print
+            }
+        ' "$manifest")
+}
+
 resolve_ai_cli_path() {
     local package_dir="$1"
     local bin_command="$2"
@@ -1456,6 +1492,25 @@ try {
   process.exit(3);
 }
 NODE
+}
+
+run_npm_audit_global() {
+    local display="$1"
+    local audit_log="$2"
+    local npm_prefix="$3"
+
+    if run_as_primary_user env NPM_CONFIG_PREFIX="$npm_prefix" npm audit --global --audit-level=high \
+        > >(tee "$audit_log") 2>&1; then
+        return 0
+    fi
+
+    if grep -qiE "EAUDITGLOBAL|does not support testing globals" "$audit_log" 2>/dev/null; then
+        print_info "$display npm audit skipped (npm does not support --global audits)"
+        return 0
+    fi
+
+    print_warning "$display npm audit reported issues (see $audit_log)"
+    return 1
 }
 
 create_ai_cli_wrapper() {
@@ -1625,7 +1680,7 @@ fetch_latest_goose_release() {
     local api_url="https://api.github.com/repos/block/goose/releases/latest"
     local release_json
 
-    release_json=$(curl -fsSL "$api_url" 2>/dev/null) || return 1
+    release_json=$(curl_safe -fsSL "$api_url" 2>/dev/null) || return 1
 
     if [ -z "$release_json" ] || [ "$release_json" = "null" ]; then
         return 1
@@ -1684,6 +1739,7 @@ install_goose_cli_from_release() {
         create_goose_cli_wrapper "$wrapper_path" "$cli_path" "$display" "$debug_env"
         run_as_primary_user install -d -m 755 "$user_home/.local/bin" >/dev/null 2>&1 || true
         run_as_primary_user ln -sf "$cli_path" "$user_home/.local/bin/goose" >/dev/null 2>&1 || true
+        # shellcheck disable=SC2034
         GOOSE_CLI_BIN_PATH="$cli_path"
         return 0
     fi
@@ -1697,7 +1753,7 @@ install_goose_cli_from_release() {
     }
     archive_path="$tmp_dir/$asset_name"
 
-    if ! curl -fsSL "$cli_url" -o "$archive_path"; then
+    if ! curl_safe -fsSL "$cli_url" -o "$archive_path"; then
         rm -rf "$tmp_dir"
         print_warning "Failed to download $display from $cli_url"
         return 1
@@ -1730,6 +1786,7 @@ install_goose_cli_from_release() {
     rm -rf "$tmp_dir"
 
     print_success "$display installed ($release_tag)"
+    # shellcheck disable=SC2034
     GOOSE_CLI_BIN_PATH="$cli_path"
     return 0
 }
@@ -1816,7 +1873,7 @@ install_goose_desktop_from_release() {
     deb_path="$tmp_dir/${desktop_name:-goose-desktop.deb}"
     extract_dir="$tmp_dir/extracted"
 
-    if ! curl -fsSL "$desktop_url" -o "$deb_path"; then
+    if ! curl_safe -fsSL "$desktop_url" -o "$deb_path"; then
         rm -rf "$tmp_dir"
         print_warning "Failed to download Goose Desktop from $desktop_url"
         return 1
@@ -1932,6 +1989,7 @@ install_goose_toolchain() {
     if [[ -n "$goose_bin" && -x "$goose_bin" ]]; then
         print_success "Goose CLI provided via nixpkgs: $goose_bin"
         create_goose_cli_wrapper "$wrapper_path" "$goose_bin" "$display" "$debug_env"
+        # shellcheck disable=SC2034
         GOOSE_CLI_BIN_PATH="$goose_bin"
         if [ -n "$extension_id" ]; then
             AI_VSCODE_EXTENSIONS+=("$extension_id")
@@ -1988,12 +2046,17 @@ install_goose_toolchain() {
 
 install_single_ai_cli() {
     local descriptor="$1"
-    local package display bin_command wrapper_name extension_id debug_env
+    local package version display bin_command wrapper_name extension_id debug_env
 
-    IFS='|' read -r package display bin_command wrapper_name extension_id debug_env <<<"$descriptor"
+    IFS='|' read -r package version display bin_command wrapper_name extension_id debug_env <<<"$descriptor"
 
-    if [ -z "$package" ] || [ -z "$display" ] || [ -z "$bin_command" ] || [ -z "$wrapper_name" ]; then
+    if [ -z "$package" ] || [ -z "$version" ] || [ -z "$display" ] || [ -z "$bin_command" ] || [ -z "$wrapper_name" ]; then
         print_warning "Invalid manifest entry: $descriptor"
+        return 1
+    fi
+
+    if [[ "$version" == "UNPINNED" ]]; then
+        print_warning "$display is unpinned in npm manifest; skipping install for supply chain safety"
         return 1
     fi
 
@@ -2013,25 +2076,25 @@ install_single_ai_cli() {
 
     local install_needed=false
     local current_version=""
-    local latest_version=""
 
     if [ -f "$package_dir/package.json" ]; then
         current_version=$(node -e "const pkg=require(process.argv[1]); if(pkg && pkg.version){console.log(pkg.version);}" "$package_dir/package.json" 2>/dev/null || echo "")
     fi
 
-    latest_version=$(run_as_primary_user npm view "$package" version 2>/dev/null || echo "")
-
     if [ "$FORCE_UPDATE" = true ]; then
         install_needed=true
     elif [ -z "$current_version" ]; then
         install_needed=true
-    elif [ -n "$latest_version" ] && [ "$current_version" != "$latest_version" ]; then
-        print_info "$display update available: $current_version → $latest_version"
+    elif [ "$current_version" != "$version" ]; then
+        print_info "$display update available: $current_version → $version"
         install_needed=true
     fi
 
     if [ "$install_needed" = true ]; then
-        local log_file="/tmp/${wrapper_name}-npm-install.log"
+        local package_spec="${package}@${version}"
+        local tmp_root="${TMPDIR:-/${TMP_FALLBACK:-tmp}}"
+        local log_file="${tmp_root}/${wrapper_name}-npm-install.log"
+        local audit_log="${tmp_root}/${wrapper_name}-npm-audit.log"
         local attempt=1
         local max_attempts=$RETRY_MAX_ATTEMPTS
         local timeout=2
@@ -2040,9 +2103,12 @@ install_single_ai_cli() {
         print_info "Installing $display via npm..."
 
         while (( attempt <= max_attempts )); do
-            run_as_primary_user env NPM_CONFIG_PREFIX="$npm_prefix" npm install -g "$package" \
-                2>&1 | tee "$log_file"
-            install_exit=${PIPESTATUS[0]}
+            if run_as_primary_user env NPM_CONFIG_PREFIX="$npm_prefix" npm install -g --ignore-scripts "$package_spec" \
+                > >(tee "$log_file") 2>&1; then
+                install_exit=0
+            else
+                install_exit=$?
+            fi
 
             if (( install_exit == 0 )); then
                 print_success "$display npm package installed"
@@ -2074,15 +2140,20 @@ install_single_ai_cli() {
                 print_warning "$display installation failed after $max_attempts attempts (exit code $install_exit)"
             fi
             print_detail "See $log_file for details"
-            print_detail "Manual install: npm install -g $package"
+            print_detail "Manual install: npm install -g $package_spec"
             if [[ -n "$manual_url" ]]; then
                 print_detail "Reference: $manual_url"
+            fi
+            if [[ "$package" == "@google/gemini-cli" ]]; then
+                if grep -qiE "ripgrep|rg" "$log_file" 2>/dev/null; then
+                    print_detail "Gemini CLI may fail if ripgrep download blocks; install ripgrep manually or set RIPGREP_BINARY, then retry."
+                fi
             fi
             if (( not_found == 1 )); then
                 {
                     echo "#!/usr/bin/env bash"
                     echo "echo \"[$display] npm package $package is not currently available.\" >&2"
-                    echo "echo \"Install it manually once published: npm install -g $package\" >&2"
+                    echo "echo \"Install it manually once published: npm install -g $package_spec\" >&2"
                     if [[ -n "$manual_url" ]]; then
                         echo "echo \"See $manual_url for the latest guidance.\" >&2"
                     fi
@@ -2093,6 +2164,8 @@ install_single_ai_cli() {
             fi
             return 1
         fi
+
+        run_npm_audit_global "$display" "$audit_log" "$npm_prefix" >/dev/null || true
     else
         print_success "$display already up-to-date (v${current_version:-unknown})"
     fi
@@ -2119,21 +2192,220 @@ install_single_ai_cli() {
     return 0
 }
 
+# ============================================================================
+# Install Claude Code via Native Installer
+# ============================================================================
+# Anthropic deprecated the npm method (@anthropic-ai/claude-code) in favor
+# of a native installer that does not depend on npm or Node.js.
+#
+# The native installer:
+#   - Downloads the correct binary for the current OS/arch
+#   - Installs to ~/.local/bin/claude (symlink)
+#   - Supports auto-updates (unlike the npm method)
+#   - Uses the Bun runtime internally (faster startup)
+#
+# Reference: https://code.claude.com/docs/en/troubleshooting
+# ============================================================================
+install_claude_code_native() {
+    local claude_bin="${PRIMARY_HOME:-$HOME}/.local/bin/claude"
+    local claude_alt="${PRIMARY_HOME:-$HOME}/.claude/bin/claude"
+
+    # Check if already installed and up-to-date
+    if [ -x "$claude_bin" ] && [ "$FORCE_UPDATE" != true ]; then
+        local current_version
+        current_version=$("$claude_bin" --version 2>/dev/null || echo "unknown")
+        print_success "Claude Code already installed (${current_version})"
+        return 0
+    fi
+
+    # Clean up stale npm installation if present
+    local npm_prefix="${NPM_CONFIG_PREFIX:-${PRIMARY_HOME:-$HOME}/.npm-global}"
+    local old_npm_dir="$npm_prefix/lib/node_modules/@anthropic-ai/claude-code"
+    if [ -d "$old_npm_dir" ]; then
+        print_info "Removing deprecated npm Claude Code installation..."
+        rm -rf "$old_npm_dir" 2>/dev/null || true
+        # Remove old npm wrapper (will be replaced with symlink below)
+        rm -f "$npm_prefix/bin/claude-wrapper" 2>/dev/null || true
+        rm -f "$npm_prefix/bin/claude" 2>/dev/null || true
+    fi
+
+    # Ensure ~/.local/bin exists
+    run_as_primary_user install -d -m 755 "${PRIMARY_HOME:-$HOME}/.local/bin" >/dev/null 2>&1 || \
+        install -d -m 755 "${PRIMARY_HOME:-$HOME}/.local/bin" >/dev/null 2>&1 || true
+
+    # Install via native installer with retry logic
+    local attempt=1
+    local max_attempts=${RETRY_MAX_ATTEMPTS:-4}
+    local timeout=2
+    local install_exit=0
+    local tmp_root="${TMPDIR:-/${TMP_FALLBACK:-tmp}}"
+    local log_file="${tmp_root}/claude-native-install.log"
+
+    print_info "Installing Claude Code via native installer..."
+
+    while (( attempt <= max_attempts )); do
+        local installer_tmp
+        installer_tmp="$(mktemp -p "$tmp_root" claude-install.XXXXXX.sh)"
+        local installer_hash=""
+        local expected_hash="${CLAUDE_INSTALLER_SHA256:-}"
+
+        if command -v curl_safe >/dev/null 2>&1; then
+            if ! curl_safe -fsSL "https://claude.ai/install.sh" -o "$installer_tmp"; then
+                print_warning "Failed to download Claude installer"
+                rm -f "$installer_tmp"
+                install_exit=1
+                break
+            fi
+        else
+            if ! curl --max-time 120 --connect-timeout 10 -fsSL "https://claude.ai/install.sh" -o "$installer_tmp"; then
+                print_warning "Failed to download Claude installer"
+                rm -f "$installer_tmp"
+                install_exit=1
+                break
+            fi
+        fi
+
+        if command -v sha256sum >/dev/null 2>&1; then
+            installer_hash="$(sha256sum "$installer_tmp" | awk '{print $1}')"
+        elif command -v shasum >/dev/null 2>&1; then
+            installer_hash="$(shasum -a 256 "$installer_tmp" | awk '{print $1}')"
+        fi
+
+        if [[ -n "$installer_hash" ]]; then
+            print_info "Claude installer SHA-256: $installer_hash"
+        fi
+
+        if [[ -n "$expected_hash" && -n "$installer_hash" && "$installer_hash" != "$expected_hash" ]]; then
+            print_error "Claude installer hash mismatch (expected $expected_hash)"
+            rm -f "$installer_tmp"
+            install_exit=1
+            break
+        fi
+
+        if [[ "${NONINTERACTIVE:-false}" == "true" && "${TRUST_REMOTE_SCRIPTS:-false}" != "true" ]]; then
+            print_warning "Noninteractive mode blocks remote script execution without TRUST_REMOTE_SCRIPTS=true"
+            rm -f "$installer_tmp"
+            install_exit=1
+            break
+        fi
+
+        if declare -F confirm >/dev/null 2>&1; then
+            if ! confirm "Run Claude installer script from https://claude.ai/install.sh?" "n"; then
+                print_warning "Claude installer aborted by user"
+                rm -f "$installer_tmp"
+                install_exit=1
+                break
+            fi
+        fi
+
+        # Download installer to temp file first to verify integrity before execution
+        local installer_url="https://claude.ai/install.sh"
+        local download_tmp="${TMPDIR:-/tmp}/claude-installer-$$.sh"
+        
+        # Download with timeout and verify download succeeded
+        if ! curl --max-time 30 --connect-timeout 10 -fsSL "$installer_url" -o "$download_tmp"; then
+            print_error "Failed to download Claude installer from $installer_url"
+            install_exit=1
+            rm -f "$download_tmp" 2>/dev/null || true
+            break
+        fi
+        
+        # Verify the downloaded file has content before executing
+        if [[ ! -s "$download_tmp" ]]; then
+            print_error "Downloaded installer is empty"
+            install_exit=1
+            rm -f "$download_tmp" 2>/dev/null || true
+            break
+        fi
+        
+        # Execute the downloaded script and capture exit code
+        if run_as_primary_user bash "$download_tmp" > >(tee "$log_file") 2>&1; then
+            install_exit=0
+        else
+            install_exit=$?
+        fi
+        
+        # Clean up temp files
+        rm -f "$download_tmp" 2>/dev/null || true
+
+        if (( install_exit == 0 )); then
+            break
+        fi
+
+        if (( attempt < max_attempts )); then
+            print_warning "Claude Code install attempt $attempt/$max_attempts failed; retrying in ${timeout}s"
+            sleep "$timeout"
+            timeout=$(( timeout * ${RETRY_BACKOFF_MULTIPLIER:-2} ))
+        fi
+
+        attempt=$(( attempt + 1 ))
+    done
+
+    if (( install_exit != 0 )); then
+        print_warning "Claude Code native installation failed after $max_attempts attempts (exit code $install_exit)"
+        print_detail "See $log_file for details"
+        print_detail "Manual install: curl -fsSL --max-time 30 --connect-timeout 5 https://claude.ai/install.sh | bash"
+        return 1
+    fi
+
+    # Verify installation — check primary path then fallback
+    local actual_bin=""
+    if [ -x "$claude_bin" ]; then
+        actual_bin="$claude_bin"
+    elif [ -x "$claude_alt" ]; then
+        actual_bin="$claude_alt"
+        # Create symlink at expected path
+        ln -sf "$claude_alt" "$claude_bin" 2>/dev/null || true
+    fi
+
+    if [ -z "$actual_bin" ]; then
+        print_warning "Claude Code installer completed but binary not found at expected paths"
+        print_detail "Checked: $claude_bin, $claude_alt"
+        print_detail "Try: which claude"
+        return 1
+    fi
+
+    local installed_version
+    installed_version=$("$actual_bin" --version 2>/dev/null || echo "unknown")
+    print_success "Claude Code installed (${installed_version}) at $actual_bin"
+
+    # Create backward-compatible claude-wrapper symlink for existing VSCodium configs
+    if [ -d "$npm_prefix/bin" ]; then
+        ln -sf "$actual_bin" "$npm_prefix/bin/claude-wrapper" 2>/dev/null || true
+        print_detail "Created compatibility symlink: $npm_prefix/bin/claude-wrapper → $actual_bin"
+    fi
+
+    return 0
+}
+
 install_claude_code() {
     print_section "Installing AI Coding CLIs"
 
-    # Validate required commands using validation helpers
+    AI_VSCODE_EXTENSIONS=()
+
+    # -----------------------------------------------------------------------
+    # Step 1: Install Claude Code via native installer (no npm/Node required)
+    # -----------------------------------------------------------------------
+    if ! install_claude_code_native; then
+        print_warning "Claude Code native installation had issues"
+    fi
+    # Always register the VSCodium extension for installation
+    AI_VSCODE_EXTENSIONS+=("Anthropic.claude-code")
+
+    # -----------------------------------------------------------------------
+    # Step 2: Install remaining AI CLIs via npm (OpenAI, CodeX, Goose, etc.)
+    # -----------------------------------------------------------------------
     if ! validate_command_available "npm" 2>/dev/null; then
         if ! command -v npm >/dev/null 2>&1; then
-            print_warning "npm not available – skipping AI CLI installation"
-            return 1
+            print_warning "npm not available – skipping npm-based AI CLI installation"
+            return 0
         fi
     fi
 
     if ! validate_command_available "node" 2>/dev/null; then
         if ! command -v node >/dev/null 2>&1; then
-            print_warning "Node.js not available – skipping AI CLI installation"
-            return 1
+            print_warning "Node.js not available – skipping npm-based AI CLI installation"
+            return 0
         fi
     fi
 
@@ -2144,18 +2416,15 @@ install_claude_code() {
 
     if [ ! -f "$manifest" ]; then
         print_warning "AI CLI manifest not found at $manifest"
-        return 1
-    fi
-
-    # shellcheck disable=SC1090
-    source "$manifest"
-
-    if [ ${#NPM_AI_PACKAGE_MANIFEST[@]} -eq 0 ]; then
-        print_info "No AI CLI packages defined in manifest"
         return 0
     fi
 
-    AI_VSCODE_EXTENSIONS=()
+    load_npm_manifest "$manifest"
+
+    if [ ${#NPM_AI_PACKAGE_MANIFEST[@]} -eq 0 ]; then
+        print_info "No additional npm AI CLI packages defined in manifest"
+        return 0
+    fi
 
     local overall_status=0
     local entry
@@ -2254,8 +2523,7 @@ configure_vscodium_for_claude() {
         return 0
     fi
 
-    # shellcheck disable=SC1090
-    source "$manifest"
+    load_npm_manifest "$manifest"
 
     local npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
     local wrapper_dir="$npm_prefix/bin"
@@ -2279,9 +2547,9 @@ configure_vscodium_for_claude() {
             fi
         }
 
-        local entry package display bin_command wrapper_name extension_id debug_env
+        local entry package version display bin_command wrapper_name extension_id debug_env
         for entry in "${NPM_AI_PACKAGE_MANIFEST[@]}"; do
-            IFS='|' read -r package display bin_command wrapper_name extension_id debug_env <<<"$entry"
+            IFS='|' read -r package version display bin_command wrapper_name extension_id debug_env <<<"$entry"
             local keys=()
             local extra=()
             case "$package" in
@@ -2481,10 +2749,10 @@ configure_vscodium_for_claude() {
         return 1
     }
 
-    local entry package display bin_command wrapper_name extension_id debug_env
+    local entry package version display bin_command wrapper_name extension_id debug_env
     local overall_status=0
     for entry in "${NPM_AI_PACKAGE_MANIFEST[@]}"; do
-        IFS='|' read -r package display bin_command wrapper_name extension_id debug_env <<<"$entry"
+        IFS='|' read -r package version display bin_command wrapper_name extension_id debug_env <<<"$entry"
         local wrapper_path="$wrapper_dir/$wrapper_name"
         local keys=()
         local extra=()
@@ -2569,8 +2837,7 @@ install_vscodium_extensions() {
     manifest=$(ai_cli_manifest_path)
 
     if [ -f "$manifest" ]; then
-        # shellcheck disable=SC1090
-        source "$manifest"
+        load_npm_manifest "$manifest"
     else
         NPM_AI_PACKAGE_MANIFEST=()
     fi
@@ -2607,16 +2874,15 @@ install_vscodium_extensions() {
             extensions+=("$ext|AI Tool")
         done
     else
-        local entry package display bin_command wrapper_name extension_id debug_env
+        local entry package version display bin_command wrapper_name extension_id debug_env
         for entry in "${NPM_AI_PACKAGE_MANIFEST[@]}"; do
-            IFS='|' read -r package display bin_command wrapper_name extension_id debug_env <<<"$entry"
+            IFS='|' read -r package version display bin_command wrapper_name extension_id debug_env <<<"$entry"
             if [ -n "$extension_id" ]; then
                 extensions+=("$extension_id|$display")
             fi
         done
     fi
 
-    local install_ext
     install_ext() {
         local ext_id="$1"
         local name="$2"
@@ -2695,6 +2961,10 @@ install_openskills_tooling() {
         print_warning "npm not available; skipping OpenSkills installation"
         return 0
     fi
+    if ! validate_command_available "node"; then
+        print_warning "node not available; skipping OpenSkills installation"
+        return 0
+    fi
 
     ensure_npm_global_prefix
 
@@ -2710,30 +2980,47 @@ install_openskills_tooling() {
         current_version=$(node -e "const pkg=require(process.argv[1]); if(pkg && pkg.version){console.log(pkg.version);}" "$package_dir/package.json" 2>/dev/null || echo "")
     fi
 
+    local desired_version="${OPEN_SKILLS_VERSION:-}"
     local latest_version=""
-    latest_version=$(run_as_primary_user npm view "$package" version 2>/dev/null || echo "")
+    if [[ -z "$desired_version" ]]; then
+        latest_version=$(run_as_primary_user npm view "$package" version 2>/dev/null || echo "")
+    fi
 
     local need_install=false
     if [[ "${FORCE_UPDATE:-false}" == true ]]; then
         need_install=true
     elif [[ -z "$current_version" ]]; then
         need_install=true
-    elif [[ -n "$latest_version" && "$current_version" != "$latest_version" ]]; then
-        print_info "OpenSkills update available: $current_version → $latest_version"
+    elif [[ -n "$desired_version" && "$current_version" != "$desired_version" ]]; then
+        print_info "OpenSkills update available: $current_version → $desired_version"
+        need_install=true
+    elif [[ -z "$desired_version" && -n "$latest_version" && "$current_version" != "$latest_version" ]]; then
+        print_warning "OpenSkills version unpinned; update available: $current_version → $latest_version"
         need_install=true
     fi
 
     if [[ "$need_install" == true ]]; then
         print_info "Installing OpenSkills via npm..."
         local log_file="${LOG_DIR:-/tmp}/openskills-npm-install.log"
+        local audit_log="${LOG_DIR:-/tmp}/openskills-npm-audit.log"
+        local package_spec="$package"
+        if [[ -n "$desired_version" ]]; then
+            package_spec="${package}@${desired_version}"
+        fi
         mkdir -p "$(dirname "$log_file")" 2>/dev/null || true
-        run_as_primary_user env NPM_CONFIG_PREFIX="$npm_prefix" npm install -g "$package" 2>&1 | tee "$log_file"
-        local npm_status=${PIPESTATUS[0]}
+        local npm_status=0
+        if run_as_primary_user env NPM_CONFIG_PREFIX="$npm_prefix" npm install -g --ignore-scripts "$package_spec" \
+            > >(tee "$log_file") 2>&1; then
+            npm_status=0
+        else
+            npm_status=$?
+        fi
         if [[ $npm_status -ne 0 ]]; then
             print_error "OpenSkills npm install failed (exit code $npm_status)"
             print_detail "See $log_file for details"
             return 1
         fi
+        run_npm_audit_global "OpenSkills" "$audit_log" "$npm_prefix" >/dev/null || true
         current_version=$(node -e "const pkg=require(process.argv[1]); if(pkg && pkg.version){console.log(pkg.version);}" "$package_dir/package.json" 2>/dev/null || echo "")
         print_success "OpenSkills tooling installed${current_version:+ (v$current_version)}"
     else
@@ -2818,12 +3105,18 @@ setup_flake_environment() {
         print_info "Manual activation: nix develop"
     fi
 
-    # Check if our flake configuration is valid
+    # Validate flake lock completeness (catch missing inputs like nix-vscode-extensions)
     if [[ -f "$HM_CONFIG_DIR/flake.nix" ]]; then
+        if declare -F validate_flake_lock_inputs >/dev/null 2>&1; then
+            validate_flake_lock_inputs "$HM_CONFIG_DIR" || \
+                print_warning "Flake lock validation had issues (non-critical)"
+        fi
+
+        # Check if our flake configuration is valid
         print_info "Validating flake configuration..."
         local tmp_dir="${TMP_DIR:-/tmp}"
         local flake_check_log="${tmp_dir}/flake-check.log"
-        if nix flake check "$HM_CONFIG_DIR" 2>&1 | tee "$flake_check_log"; then
+        if nix flake check "$HM_CONFIG_DIR" > >(tee "$flake_check_log") 2>&1; then
             print_success "Flake configuration is valid"
         else
             print_warning "Flake validation had issues (see $flake_check_log)"

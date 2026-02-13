@@ -39,7 +39,7 @@ This single command gives you:
 ```
 NixOS-Dev-Quick-Deploy/
 ├── ai-stack/                    # Complete AI development stack
-│   ├── compose/                 # Docker Compose configurations
+│   ├── kubernetes/              # Kubernetes manifests (K3s)
 │   ├── mcp-servers/             # AIDB, NixOS, GitHub MCP servers
 │   ├── agents/                  # Agentic skills (nixos-deployment, code-review, etc.)
 │   ├── models/                  # Model management and registry
@@ -74,7 +74,7 @@ Replace the existing table with:
 | Component | Integration | Purpose |
 |-----------|-------------|---------|
 | **AIDB MCP Server** | Phase 9 deployment | PostgreSQL + TimescaleDB + Qdrant vector DB + FastAPI MCP server |
-| **llama.cpp vLLM** | Podman Compose | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |
+| **llama.cpp vLLM** | K3s (Kustomize) | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |
 | **Agentic Skills** | `ai-stack/agents/` | Specialized agents: nixos-deployment, webapp-testing, code-review, canvas-design |
 | **MCP Servers** | `ai-stack/mcp-servers/` | Model Context Protocol servers for NixOS, GitHub, and custom integrations |
 | **Model Registry** | `ai-stack/models/` | Model catalog, download scripts, and management tools |
@@ -84,7 +84,7 @@ Replace the existing table with:
 | **Codeium** | VSCodium extension | Free AI autocomplete |
 | **GPT CLI** | Command-line tool | Query OpenAI-compatible endpoints (local llama.cpp or remote) |
 | **Aider** | CLI code assistant | AI pair programming from terminal |
-| **Redis + Insight** | Podman Compose | Caching and visualization for AI agents |
+| **Redis + Insight** | K3s (Kustomize) | Caching and visualization for AI agents |
 | **LM Studio** | Flatpak app | Desktop LLM manager |
 
 **Deploy:** `./nixos-quick-deploy.sh --with-ai-stack`
