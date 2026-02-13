@@ -10,7 +10,7 @@ def pytest_configure():
 
 @pytest.fixture(scope="session")
 def api_key() -> str:
-    key_path = Path(os.getenv("AI_STACK_API_KEY_FILE", "ai-stack/compose/secrets/stack_api_key"))
+    key_path = Path(os.getenv("AI_STACK_API_KEY_FILE", "ai-stack/kubernetes/secrets/generated/stack_api_key"))
     if key_path.exists():
         return key_path.read_text(encoding="utf-8").strip()
     return ""

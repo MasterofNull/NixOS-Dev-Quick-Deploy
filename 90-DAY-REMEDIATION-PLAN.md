@@ -52,7 +52,7 @@ This project is currently **NOT PRODUCTION-READY** with critical security vulner
 **2. Remove Privileged Containers** ✅ COMPLETE (Day 2)
 - **Issue:** Ralph Wiggum and Health Monitor run with `privileged: true`
 - **Files:**
-  - `ai-stack/compose/docker-compose.yml` (lines 778-827, 922-990)
+  - `ai-stack/kubernetes/kustomization.yaml`
 - **ACTUAL IMPLEMENTATION:**
   - ✅ Created Podman REST API infrastructure (TCP port 2375)
   - ✅ Built shared API client library (`shared/podman_api_client.py`)
@@ -64,11 +64,11 @@ This project is currently **NOT PRODUCTION-READY** with critical security vulner
 - **Test Results:** ✅ PASSED - Zero privileged containers, zero socket mounts
 - **Owner:** Completed
 - **Completion Date:** January 23, 2026
-- **Documentation:** `DAY2-SECURE-CONTAINER-MANAGEMENT-COMPLETE.md`
+- **Documentation:** `docs/archive/DAY2-SECURE-CONTAINER-MANAGEMENT-COMPLETE.md`
 
 **3. Remove Container Engine Socket Exposure** ✅ COMPLETE (Day 2)
 - **Issue:** Podman socket mounted in Container Engine MCP = host compromise
-- **File:** `ai-stack/compose/docker-compose.yml` (lines 1027-1053)
+- **File:** `ai-stack/kubernetes/kustomization.yaml`
 - **ACTUAL IMPLEMENTATION:**
   - ✅ Removed `/var/run/podman/podman.sock` mount from container-engine
   - ✅ Converted container-engine to use Podman REST API (HTTP)
@@ -78,11 +78,11 @@ This project is currently **NOT PRODUCTION-READY** with critical security vulner
 - **Test Results:** ✅ PASSED - No socket access, API-only operations
 - **Owner:** Completed
 - **Completion Date:** January 23, 2026
-- **Documentation:** `DAY2-SECURE-CONTAINER-MANAGEMENT-COMPLETE.md`
+- **Documentation:** `docs/archive/DAY2-SECURE-CONTAINER-MANAGEMENT-COMPLETE.md`
 
 **4. Implement API Authentication** ✅ COMPLETE (Day 3)
 - **Issue:** Only AIDB has API key auth, other 8 servers are unauthenticated
-- **Files:** All MCP server files, docker-compose.yml, Dockerfiles
+- **Files:** All MCP server files, Kubernetes manifests, Dockerfiles
 - **ACTUAL IMPLEMENTATION:**
   - ✅ Created shared authentication middleware (`shared/auth_middleware.py`, 313 lines)
   - ✅ Generated 9 cryptographically secure API keys (32 bytes = 256 bits each)
@@ -101,7 +101,7 @@ This project is currently **NOT PRODUCTION-READY** with critical security vulner
 
 **5. Fix Default Passwords**
 - **Issue:** `POSTGRES_PASSWORD=change_me_in_production`, `GRAFANA_ADMIN_PASSWORD=admin`
-- **Files:** `.env`, `docker-compose.yml`
+- **Files:** `.env`, `ai-stack/kubernetes/kompose/env-configmap.yaml`
 - **Action:**
   - Generate random passwords on first run (script)
   - Store in Docker secrets
@@ -116,7 +116,7 @@ This project is currently **NOT PRODUCTION-READY** with critical security vulner
 **6. Disable Token-Burning Features** ✅ COMPLETE (Day 1)
 - **Issue:** 7-11 LLM calls per user query (continuous learning overhead)
 - **Files:**
-  - `ai-stack/compose/.env`
+  - `~/.config/nixos-ai-stack/.env`
   - `ai-stack/mcp-servers/hybrid-coordinator/server.py`
 - **ACTUAL IMPLEMENTATION:**
   - ✅ Disabled query expansion (`QUERY_EXPANSION_ENABLED=false`)
@@ -128,7 +128,7 @@ This project is currently **NOT PRODUCTION-READY** with critical security vulner
 - **Test Results:** ✅ Expected 70-85% reduction in remote API token usage
 - **Owner:** Completed
 - **Completion Date:** January 23, 2026
-- **Documentation:** `DAY1-TOKEN-OPTIMIZATION-RESULTS.md`
+- **Documentation:** `docs/archive/DAY1-TOKEN-OPTIMIZATION-RESULTS.md`
 
 **7. Fix Telemetry File Locking**
 - **Issue:** P2-REL-003 - JSONL files corrupted by concurrent writes
@@ -295,7 +295,7 @@ This project is currently **NOT PRODUCTION-READY** with critical security vulner
 - **Steps:**
   - Linting (ruff, black, mypy)
   - Unit tests (pytest)
-  - Integration tests (docker-compose.test.yml)
+  - Integration tests (Kubernetes test manifests)
   - Security scanning (Trivy, Bandit)
   - Code coverage report (codecov)
 - **Deadline:** Day 35
@@ -932,7 +932,7 @@ performance:
 - `test_integration/test_telemetry.py` (observability)
 
 **Tools:**
-- docker-compose.test.yml
+- Kubernetes test manifests
 - pytest-docker
 - testcontainers-python
 
@@ -954,7 +954,7 @@ performance:
 **Tools:**
 - Selenium (if web UI)
 - httpx (API testing)
-- docker-compose
+- kubectl
 
 ### Performance Tests
 
@@ -1059,13 +1059,13 @@ jobs:
           safety check
 
       - name: Build containers
-        run: docker-compose build
+        run: kubectl apply -k ai-stack/kubernetes
 
       - name: E2E tests
         run: |
-          docker-compose -f docker-compose.test.yml up -d
+          kubectl apply -k ai-stack/kubernetes
           pytest tests/e2e/ -v
-          docker-compose -f docker-compose.test.yml down
+          kubectl delete -k ai-stack/kubernetes
 
       - name: Coverage report
         run: |

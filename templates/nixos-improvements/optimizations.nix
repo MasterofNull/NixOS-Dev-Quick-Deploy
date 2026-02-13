@@ -119,7 +119,7 @@
 
   nix.settings = {
     # Use all CPU cores for builds
-    max-jobs = lib.mkDefault 0; # 0 means auto
+    max-jobs = lib.mkDefault "auto";
     cores = lib.mkDefault 0;  # Use all available cores per build
 
     # Build optimization

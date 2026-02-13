@@ -30,6 +30,7 @@ from pydantic import BaseModel
 # P2-REL-002: Import circuit breaker for preventing cascade failures
 sys.path.insert(0, str(Path(__file__).parent.parent / "shared"))
 from shared.circuit_breaker import CircuitBreakerRegistry
+from shared.auth_http_client import create_embeddings_client
 
 logger = structlog.get_logger()
 
@@ -148,6 +149,11 @@ class ContinuousLearningPipeline:
         self.settings = settings
         self.qdrant = qdrant_client
         self.postgres = postgres_client
+        self.embedding_service_url = getattr(settings, "embedding_service_url", None) or os.getenv(
+            "EMBEDDING_SERVICE_URL", "http://embeddings:8081"
+        )
+        self.embedding_dimensions = getattr(settings, "embedding_dimensions", 384)
+        self.embeddings_client = create_embeddings_client(timeout=30.0)
 
         # Telemetry paths
         self.telemetry_paths = [
@@ -513,6 +519,10 @@ class ContinuousLearningPipeline:
                 await self.learning_task
             except asyncio.CancelledError:
                 pass
+        try:
+            await self.embeddings_client.aclose()
+        except Exception:
+            pass
         logger.info("continuous_learning_stopped")
 
     async def _learning_loop(self):
@@ -889,6 +899,28 @@ class ContinuousLearningPipeline:
         except Exception as e:
             logger.error("stats_snapshot_failed", error=str(e))
 
+    async def _fetch_embeddings(self, texts: List[str]) -> List[List[float]]:
+        """Fetch embeddings from the embeddings service."""
+        if not texts:
+            return []
+
+        try:
+            response = await self.embeddings_client.post(
+                f"{self.embedding_service_url}/embed",
+                json={"inputs": texts},
+                timeout=30.0,
+            )
+            response.raise_for_status()
+            embeddings = response.json()
+            if not isinstance(embeddings, list):
+                raise ValueError("Embeddings response must be a list")
+            if len(embeddings) != len(texts):
+                raise ValueError("Embeddings response length mismatch")
+            return embeddings
+        except Exception as e:
+            logger.warning("embeddings_fetch_failed", error=str(e), count=len(texts))
+            return []
+
     async def _index_patterns(self, patterns: List[InteractionPattern]):
         """Index patterns in Qdrant for retrieval"""
         if not patterns:
@@ -898,14 +930,17 @@ class ContinuousLearningPipeline:
             from qdrant_client.models import PointStruct
 
             points = []
+            searchable_texts = []
 
             for pattern in patterns:
-                # Create searchable text
-                searchable = f"{pattern.prompt} {pattern.response}"
+                searchable_texts.append(f"{pattern.prompt} {pattern.response}")
 
-                # Generate embedding (placeholder - would use llama.cpp)
-                embedding = [0.0] * 384  # TODO: Use real embeddings
+            embeddings = await self._fetch_embeddings(searchable_texts)
+            if not embeddings:
+                logger.warning("pattern_embeddings_unavailable", count=len(patterns))
+                return
 
+            for pattern, embedding in zip(patterns, embeddings):
                 point = PointStruct(
                     id=hash(pattern.pattern_id) % (10 ** 8),
                     vector=embedding,

@@ -3,8 +3,8 @@
 
 set -euo pipefail
 
-AIDB_URL="${AIDB_URL:-http://localhost:8091}"
-LLAMA_CPP_URL="${LLAMA_CPP_BASE_URL:-http://localhost:8080}"
+AIDB_URL="${AIDB_URL:-http://${SERVICE_HOST:-localhost}:8091}"
+LLAMA_CPP_URL="${LLAMA_CPP_BASE_URL:-http://${SERVICE_HOST:-localhost}:8080}"
 TELEMETRY_PATH="${AIDB_TELEMETRY_PATH:-$HOME/.local/share/nixos-ai-stack/telemetry/aidb-events.jsonl}"
 HYBRID_TELEMETRY_PATH="${HYBRID_TELEMETRY_PATH:-$HOME/.local/share/nixos-ai-stack/telemetry/hybrid-events.jsonl}"
 AI_STACK_DATA="${AI_STACK_DATA:-$HOME/.local/share/nixos-ai-stack}"
@@ -38,14 +38,14 @@ stale_warning() {
 }
 
 info "Checking llama.cpp health..."
-if curl -sf "${LLAMA_CPP_URL%/}/health" >/dev/null 2>&1; then
+if curl -sf --max-time 5 --connect-timeout 3 "${LLAMA_CPP_URL%/}/health" >/dev/null 2>&1; then
   success "llama.cpp reachable at ${LLAMA_CPP_URL%/}/health"
 else
   warn "llama.cpp not reachable at ${LLAMA_CPP_URL%/}/health"
 fi
 
 info "Triggering AIDB telemetry probe (local LLM call)..."
-if curl -sf -X POST "$AIDB_URL/telemetry/probe" \
+if curl -sf --max-time 10 --connect-timeout 3 -X POST "$AIDB_URL/telemetry/probe" \
   -H "Content-Type: application/json" \
   -d '{"prompt":"Telemetry probe: confirm local LLM route.","max_tokens":32}' \
   >/dev/null; then
@@ -55,7 +55,7 @@ else
 fi
 
 info "Reading telemetry summary..."
-if curl -sf "$AIDB_URL/telemetry/summary" | jq .; then
+if curl -sf --max-time 5 --connect-timeout 3 "$AIDB_URL/telemetry/summary" | jq .; then
   success "Telemetry summary retrieved"
 else
   warn "Telemetry summary unavailable"

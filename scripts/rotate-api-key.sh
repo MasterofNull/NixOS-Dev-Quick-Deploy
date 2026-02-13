@@ -6,7 +6,7 @@ set -euo pipefail
 #   ./rotate-api-key.sh --service aidb     # Rotate service-specific key
 #   ./rotate-api-key.sh                    # Rotate master stack_api_key
 
-SECRETS_DIR="${SECRETS_DIR:-$(pwd)/ai-stack/compose/secrets}"
+SECRETS_DIR="${SECRETS_DIR:-$(pwd)/ai-stack/kubernetes/secrets/generated}"
 SERVICE=""
 FORCE=false
 
@@ -85,11 +85,11 @@ fi
 echo ""
 echo "📝 Next steps:"
 if [[ -n "${SERVICE}" ]]; then
-  echo "   1. Restart service: podman-compose restart ${SERVICE}"
+  echo "   1. Restart service: kubectl rollout restart deploy -n ai-stack ${SERVICE}"
   echo "   2. Verify health: curl -H 'X-API-Key: \$(cat ${KEY_FILE})' https://localhost:8443/${SERVICE}/health"
 else
-  echo "   1. Restart all services: podman-compose restart"
-  echo "   2. Verify health: ./scripts/health-check.sh"
+  echo "   1. Restart all services: kubectl rollout restart deploy -n ai-stack --all"
+  echo "   2. Verify health: ./scripts/system-health-check.sh"
 fi
 echo ""
 echo "   Backup retained for 90 days at: ${BACKUP_FILE}"

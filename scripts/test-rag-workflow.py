@@ -6,6 +6,7 @@ Purpose: Test RAG (Retrieval Augmented Generation) workflow
 Following: docs/agent-guides/21-RAG-CONTEXT.md
 """
 
+import os
 import sys
 import requests
 from qdrant_client import QdrantClient
@@ -35,7 +36,9 @@ class RAGWorkflowTester:
     """Test RAG workflow components"""
 
     def __init__(self):
-        self.client = QdrantClient(url="http://localhost:6333")
+        service_host = os.getenv("SERVICE_HOST", "localhost")
+        qdrant_url = os.getenv("QDRANT_URL", f"http://{service_host}:6333")
+        self.client = QdrantClient(url=qdrant_url)
         self.test_results = []
 
     def log_test(self, name: str, passed: bool, message: str = ""):

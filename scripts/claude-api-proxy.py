@@ -3,7 +3,7 @@
 Claude API Proxy - Intercepts Claude Code API calls and routes through local AI stack
 
 This proxy server:
-1. Listens on localhost:8094 mimicking Anthropic API
+1. Listens on SERVICE_HOST:8094 mimicking Anthropic API
 2. Receives requests from Claude Code CLI
 3. Routes simple queries to local LLM via hybrid coordinator
 4. Routes complex queries to real Anthropic API
@@ -15,14 +15,14 @@ Usage:
     python3 scripts/claude-api-proxy.py
 
     # In another terminal, set environment variable before launching Claude
-    export ANTHROPIC_BASE_URL=http://localhost:8094
+    export ANTHROPIC_BASE_URL=http://<service-host>:8094
     claude
 
 Environment Variables:
     ANTHROPIC_API_KEY - Real API key for remote routing
-    ANTHROPIC_BASE_URL - Set to http://localhost:8094 to use proxy
-    HYBRID_COORDINATOR_URL - Override coordinator URL (default: http://localhost:8092)
-    AIDB_MCP_URL - Override AIDB URL (default: http://localhost:8091)
+    ANTHROPIC_BASE_URL - Set to http://<service-host>:8094 to use proxy
+    HYBRID_COORDINATOR_URL - Override coordinator URL (default: http://<service-host>:8092)
+    AIDB_MCP_URL - Override AIDB URL (default: http://<service-host>:8091)
 """
 
 import os
@@ -37,8 +37,9 @@ import urllib.request
 import urllib.error
 
 # Service endpoints
-HYBRID_COORDINATOR = os.getenv("HYBRID_COORDINATOR_URL", "http://localhost:8092")
-AIDB_MCP = os.getenv("AIDB_MCP_URL", "http://localhost:8091")
+SERVICE_HOST = os.getenv("SERVICE_HOST", "localhost")
+HYBRID_COORDINATOR = os.getenv("HYBRID_COORDINATOR_URL", f"http://{SERVICE_HOST}:8092")
+AIDB_MCP = os.getenv("AIDB_MCP_URL", f"http://{SERVICE_HOST}:8091")
 REAL_ANTHROPIC_API = "https://api.anthropic.com"
 TELEMETRY_DIR = os.path.expanduser("~/.local/share/nixos-ai-stack/telemetry")
 
@@ -129,8 +130,8 @@ class ClaudeAPIProxy(BaseHTTPRequestHandler):
             health_check = urllib.request.urlopen(f"{HYBRID_COORDINATOR}/health", timeout=2)
             if health_check.status == 200:
                 return True
-        except:
-            pass
+        except (urllib.error.URLError, OSError) as e:
+            logger.debug("Hybrid coordinator health check failed: %s", e)
 
         return False
 

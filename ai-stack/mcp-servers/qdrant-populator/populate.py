@@ -43,10 +43,10 @@ async def populate_best_practices():
         {
             "category": "containerization",
             "title": "Container DNS Resolution with host networking",
-            "description": "Use network_mode: host for containers accessing localhost services. Bridge networking breaks localhost DNS resolution.",
-            "examples": ["network_mode: host in docker-compose.yml"],
+            "description": "Use Kubernetes Service/Ingress for host access. Avoid relying on localhost from within pods.",
+            "examples": ["Expose services via ClusterIP + port-forward or Ingress"],
             "anti_patterns": ["Using bridge network for localhost DB connections"],
-            "references": ["docker-compose.yml"],
+            "references": ["kustomization.yaml"],
             "endorsement_count": 5,
             "last_validated": 1735000000
         },

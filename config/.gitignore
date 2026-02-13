@@ -1,0 +1,5 @@
+# Temporary and backup config files
+*.tmp
+*.backup
+*.bak
+*.swp

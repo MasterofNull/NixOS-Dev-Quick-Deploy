@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   annotations:
-    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
     kompose.version: 1.37.0 (HEAD)
     nixos.quick-deploy.ai-stack: "true"
     nixos.quick-deploy.embedding-dimensions: "384"
@@ -20,14 +19,18 @@ spec:
   template:
     metadata:
       annotations:
-        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
         kompose.version: 1.37.0 (HEAD)
         nixos.quick-deploy.ai-stack: "true"
         nixos.quick-deploy.embedding-dimensions: "384"
         nixos.quick-deploy.service: embeddings
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: "/metrics"
       labels:
         io.kompose.service: embeddings
     spec:
+      serviceAccountName: embeddings
+      automountServiceAccountToken: false
       containers:
         - env:
             - name: BATCH_MAX_LATENCY_MS
@@ -56,7 +59,16 @@ spec:
           envFrom:
             - configMapRef:
                 name: env
-          image: localhost:5000/compose_embeddings:latest
+            - secretRef:
+                name: huggingface-hub-token
+          image: localhost:5000/ai-stack-embeddings:dev
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           imagePullPolicy: Always
           livenessProbe:
             exec:
@@ -68,6 +80,15 @@ spec:
             initialDelaySeconds: 180
             periodSeconds: 30
             timeoutSeconds: 10
+          startupProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - import urllib.request; r=urllib.request.urlopen('http://localhost:8081/health', timeout=5); body=r.read().decode(); import sys; sys.exit(0 if '"status":"ok"' in body else 1)
+            failureThreshold: 40
+            periodSeconds: 10
+            timeoutSeconds: 5
           name: local-ai-embeddings
           ports:
             - containerPort: 8081
@@ -96,5 +117,5 @@ spec:
             secretName: embeddings-api-key
         - name: embeddings-cache
           hostPath:
-            path: /home/hyperd/.local/share/nixos-ai-stack/embeddings-cache
+            path: "/home/hyperd/.local/share/nixos-ai-stack/embeddings-cache"
             type: DirectoryOrCreate

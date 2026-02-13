@@ -10,9 +10,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-QDRANT_URL="${QDRANT_URL:-http://localhost:6333}"
+QDRANT_URL="${QDRANT_URL:-http://${SERVICE_HOST:-localhost}:6333}"
 OUTPUT_DIR="$REPO_ROOT/data/collections/snapshots"
 DATE=$(date +%Y-%m-%d)
+CURL_TIMEOUT="${CURL_TIMEOUT:-10}"
+CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-3}"
 
 # Colors
 GREEN='\033[0;32m'
@@ -39,9 +41,9 @@ FEDERATED_COLLECTIONS=(
 check_qdrant() {
     log_info "Checking Qdrant availability..."
 
-    if ! curl -sf "$QDRANT_URL/healthz" >/dev/null 2>&1; then
+    if ! curl -sf --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" "$QDRANT_URL/healthz" >/dev/null 2>&1; then
         log_error "Qdrant is not accessible at $QDRANT_URL"
-        log_info "Start Qdrant with: podman-compose -f ai-stack/compose/docker-compose.yml up -d qdrant"
+        log_info "Start Qdrant with: kubectl apply -k ai-stack/kubernetes"
         return 1
     fi
 
@@ -59,13 +61,14 @@ export_collection() {
     log_info "Exporting collection: $collection"
 
     # Check if collection exists
-    if ! curl -sf "$QDRANT_URL/collections/$collection" >/dev/null 2>&1; then
+    if ! curl -sf --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" "$QDRANT_URL/collections/$collection" >/dev/null 2>&1; then
         log_warning "Collection '$collection' does not exist, skipping"
         return
     fi
 
     # Get collection info
-    local info=$(curl -sf "$QDRANT_URL/collections/$collection")
+    local info
+    info=$(curl -sf --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" "$QDRANT_URL/collections/$collection")
     local points_count=$(echo "$info" | jq -r '.result.points_count // 0')
 
     if [[ "$points_count" -eq 0 ]]; then
@@ -74,7 +77,8 @@ export_collection() {
     fi
 
     # Export points (payload only, no vectors to save space)
-    local export_data=$(curl -sf -X POST "$QDRANT_URL/collections/$collection/points/scroll" \
+    local export_data
+    export_data=$(curl -sf --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" -X POST "$QDRANT_URL/collections/$collection/points/scroll" \
         -H "Content-Type: application/json" \
         -d '{
             "limit": 10000,

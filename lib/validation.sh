@@ -52,30 +52,8 @@
 # 2. Correctness: Ensure hostname will work in DNS and networking
 # 3. Standards: Enforce RFC compliance
 # 4. Early error detection: Fail fast with clear message
-#
-# Examples:
-#   Valid: "nixos", "my-laptop", "server01", "WEB-SERVER"
-#   Invalid: "-nixos", "nixos-", "my_laptop", "server 01", ""
-# ============================================================================
-validate_hostname() {
-    # Capture hostname parameter
-    local hostname="$1"
-
-    # Test hostname against regex pattern
-    # [[ ]] = bash extended test
-    # ! = negation (test for NOT matching)
-    # =~ = regex match operator
-    # If hostname does NOT match pattern, it's invalid
-    if [[ ! "$hostname" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]]; then
-        # Hostname is invalid, display error messages
-        print_error "Invalid hostname: $hostname"
-        print_info "Hostname must be alphanumeric with optional hyphens"
-        return 1  # Return failure
-    fi
-
-    # Hostname is valid
-    return 0  # Return success
-}
+# NOTE: validate_hostname() is defined in validation-input.sh (canonical location).
+# Duplicate removed in Phase 17.2.1 to avoid shadowing.
 
 # ============================================================================
 # Validate GitHub Username Function
@@ -138,9 +116,9 @@ validate_github_username() {
 #   1 - Duplicate paths detected
 #
 # Usage example:
-#   BACKUP_DIR="/home/user/.backup"
-#   STATE_DIR="/home/user/.state"
-#   LOG_DIR="/home/user/.backup"  # DUPLICATE!
+#   BACKUP_DIR="$HOME/.backup"
+#   STATE_DIR="$HOME/.state"
+#   LOG_DIR="$HOME/.backup"  # DUPLICATE!
 #   assert_unique_paths BACKUP_DIR STATE_DIR LOG_DIR  # Returns 1
 #
 # How it works:

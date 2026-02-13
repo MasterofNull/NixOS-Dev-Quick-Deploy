@@ -89,12 +89,17 @@ class StateManager:
         # Store minimal state (avoid huge payloads)
         task_state = {
             "task_id": task_id,
+            "prompt": task.get("prompt", ""),
             "status": task["status"],
             "iteration": task["iteration"],
             "backend": task["backend"],
+            "max_iterations": task.get("max_iterations", 0),
+            "iteration_mode": task.get("iteration_mode", "fixed"),
+            "require_approval": task.get("require_approval", False),
             "started_at": task["started_at"],
             "last_update": task["last_update"],
             "error": task.get("error"),
+            "completion_reason": task.get("completion_reason"),
             # Store only last 10 results to avoid bloat
             "recent_results": task["results"][-10:] if len(task["results"]) > 10 else task["results"],
             "context_summary": {

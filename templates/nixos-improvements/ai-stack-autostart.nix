@@ -1,5 +1,5 @@
 # NixOS module for AI Stack auto-start on boot
-# Ensures podman-compose AI stack starts automatically after system reboot
+# NOTE: K3s is the primary runtime (Phase 9).
 #
 # Usage: Add to configuration.nix imports:
 #   imports = [ ./ai-stack-autostart.nix ];
@@ -7,30 +7,18 @@
 { config, pkgs, lib, ... }:
 
 let
-  aiStackPath = "/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/ai-stack/compose";
-  userName = "hyperd";
+  # Replace @PROJECT_ROOT@ before importing this module.
+  aiStackPath = "@PROJECT_ROOT@/ai-stack/kubernetes";
+  kubeconfig = "/etc/rancher/k3s/k3s.yaml";
 in
 {
-  # Enable podman and podman-compose
-  virtualisation.podman = {
-    enable = true;
-    dockerCompat = false;  # Don't create docker alias
-    defaultNetwork.settings.dns_enabled = true;
-  };
-
-  # Ensure podman-compose is available
-  environment.systemPackages = with pkgs; [
-    podman-compose
-  ];
-
   # Create systemd service for AI stack
   systemd.services.ai-stack = {
-    description = "NixOS AI Stack (Podman Compose)";
+    description = "NixOS AI Stack (K3s)";
     documentation = [ "https://github.com/NixOS/NixOS-Dev-Quick-Deploy" ];
 
     # Service dependencies
-    requires = [ "podman.service" ];
-    after = [ "network-online.target" "podman.service" ];
+    after = [ "network-online.target" "k3s.service" ];
     wants = [ "network-online.target" ];
     wantedBy = [ "multi-user.target" ];
 
@@ -44,18 +32,14 @@ in
       ExecStartPre = "${pkgs.coreutils}/bin/sleep 5";
 
       # Start AI stack
-      ExecStart = "${pkgs.podman-compose}/bin/podman-compose up -d";
+      ExecStart = "${pkgs.kubectl}/bin/kubectl --kubeconfig=${kubeconfig} apply -k ${aiStackPath}";
 
       # Stop AI stack gracefully
-      ExecStop = "${pkgs.podman-compose}/bin/podman-compose down";
+      ExecStop = "${pkgs.kubectl}/bin/kubectl --kubeconfig=${kubeconfig} scale deploy -n ai-stack --replicas=0 --all";
 
       # Timeout settings
       TimeoutStartSec = 300;
       TimeoutStopSec = 120;
-
-      # Run as user, not root
-      User = userName;
-      Group = "users";
 
       # Environment
       Environment = "PATH=/run/current-system/sw/bin";
@@ -77,27 +61,16 @@ in
     description = "AI Stack Health Check";
     serviceConfig = {
       Type = "oneshot";
-      User = userName;
       ExecStart = pkgs.writeShellScript "ai-stack-health-check" ''
         #!/bin/bash
-        cd ${aiStackPath}
+        export KUBECONFIG=${kubeconfig}
 
-        # Check if containers are running
-        RUNNING=$(${pkgs.podman}/bin/podman ps -q | wc -l)
-
-        if [ "$RUNNING" -lt 5 ]; then
-          echo "WARNING: Less than 5 containers running. Expected at least 10."
-          # Auto-restart if needed
-          ${pkgs.podman-compose}/bin/podman-compose up -d
+        # Check if deployments are ready
+        READY_COUNT=$(${pkgs.kubectl}/bin/kubectl get deploy -n ai-stack -o jsonpath='{range .items[*]}{.status.readyReplicas}{"\n"}{end}' | awk '$1>0{c++} END{print c+0}')
+        if [ "$READY_COUNT" -lt 3 ]; then
+          echo "WARNING: Less than 3 deployments ready. Rolling out restart..."
+          ${pkgs.kubectl}/bin/kubectl rollout restart deploy -n ai-stack --all
         fi
-
-        # Check critical services
-        for service in local-ai-llama-cpp local-ai-qdrant local-ai-redis; do
-          if ! ${pkgs.podman}/bin/podman ps --format '{{.Names}}' | grep -q "^$service$"; then
-            echo "ERROR: $service is not running. Attempting restart..."
-            ${pkgs.podman-compose}/bin/podman-compose restart "$service" || true
-          fi
-        done
       '';
     };
   };
@@ -108,7 +81,7 @@ in
 
     serviceConfig = {
       Type = "simple";
-      ExecStart = "/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai-stack-monitor.sh";
+      ExecStart = "@PROJECT_ROOT@/scripts/ai-stack-monitor.sh";
       Restart = "on-failure";
       RestartSec = 10;
     };

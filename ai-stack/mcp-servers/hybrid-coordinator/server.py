@@ -19,10 +19,11 @@ import fcntl  # P2-REL-003: File locking for telemetry
 import json
 import logging
 import os
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 import httpx
@@ -41,6 +42,7 @@ from mcp.types import TextContent
 from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
+    CollectionInfo,
     Distance,
     FieldCondition,
     Filter,
@@ -53,6 +55,7 @@ from qdrant_client.models import (
 
 from shared.stack_settings import HybridSettings
 from shared.auth_http_client import create_embeddings_client
+from shared.circuit_breaker import CircuitBreakerError, CircuitBreakerRegistry, CircuitState
 SERVICE_NAME = "hybrid-coordinator"
 SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
 HYBRID_SETTINGS = HybridSettings.load()
@@ -118,10 +121,20 @@ app = Server("hybrid-coordinator")
 qdrant_client: Optional[QdrantClient] = None
 llama_cpp_client: Optional[httpx.AsyncClient] = None
 embedding_client: Optional[httpx.AsyncClient] = None
+aidb_client: Optional[httpx.AsyncClient] = None
 multi_turn_manager: Optional[Any] = None
 feedback_api: Optional[Any] = None
 progressive_disclosure: Optional[Any] = None
 learning_pipeline: Optional[Any] = None  # Continuous learning pipeline
+postgres_client: Optional[Any] = None
+
+CIRCUIT_BREAKERS = CircuitBreakerRegistry(
+    default_config={
+        "failure_threshold": int(os.getenv("HYBRID_CB_FAILURE_THRESHOLD", "5")),
+        "timeout": float(os.getenv("HYBRID_CB_TIMEOUT_SECONDS", "30")),
+        "success_threshold": int(os.getenv("HYBRID_CB_SUCCESS_THRESHOLD", "2")),
+    }
+)
 
 TELEMETRY_PATH = os.path.expanduser(
     os.getenv(
@@ -159,6 +172,16 @@ PROCESS_MEMORY_BYTES = Gauge(
     "hybrid_process_memory_bytes",
     "Hybrid coordinator process resident memory in bytes",
 )
+ROUTE_DECISIONS = Counter(
+    "hybrid_route_decisions_total",
+    "Hybrid coordinator route decisions",
+    ["route"],
+)
+ROUTE_ERRORS = Counter(
+    "hybrid_route_errors_total",
+    "Hybrid coordinator route errors",
+    ["route"],
+)
 
 
 def _get_process_memory_bytes() -> int:
@@ -166,7 +189,8 @@ def _get_process_memory_bytes() -> int:
         with open("/proc/self/statm", "r", encoding="utf-8") as handle:
             rss_pages = int(handle.read().split()[1])
         return rss_pages * os.sysconf("SC_PAGE_SIZE")
-    except Exception:
+    except (OSError, ValueError, IndexError) as e:
+        logger.debug("Failed to read process memory: %s", e)
         return 0
 
 
@@ -208,6 +232,59 @@ def error_payload(message: str, exc: Exception) -> Dict[str, str]:
     error_id = uuid4().hex[:12]
     logger.exception("%s error_id=%s", message, error_id)
     return {"error": message, "error_id": error_id}
+
+
+def _call_with_breaker(name: str, func: Callable[[], Any]) -> Any:
+    breaker = CIRCUIT_BREAKERS.get(name)
+    return breaker.call(func)
+
+
+async def _call_with_breaker_async(name: str, coro: Callable[[], Any]) -> Any:
+    breaker = CIRCUIT_BREAKERS.get(name)
+    if breaker.state == CircuitState.OPEN:
+        raise CircuitBreakerError(name, breaker.timeout)
+    try:
+        result = await coro()
+        await breaker._on_success()
+        return result
+    except Exception:
+        await breaker._on_failure()
+        raise
+
+
+def _looks_like_sql(query: str) -> bool:
+    normalized = query.strip().lower()
+    if not normalized:
+        return False
+    sql_start = ("select", "with", "insert", "update", "delete")
+    if normalized.startswith(sql_start):
+        return True
+    if ";" in normalized and (" from " in normalized or " where " in normalized):
+        return True
+    return False
+
+
+def _normalize_tokens(query: str) -> List[str]:
+    tokens = re.findall(r"[a-zA-Z0-9_\-]{2,}", query.lower())
+    stopwords = {
+        "the", "and", "for", "with", "that", "this", "from", "into", "http", "https",
+        "you", "your", "are", "was", "were", "can", "could", "should", "would",
+    }
+    return [t for t in tokens if t not in stopwords]
+
+
+def _payload_matches_tokens(payload: Dict[str, Any], tokens: List[str]) -> Tuple[bool, int]:
+    if not tokens or not payload:
+        return False, 0
+    haystacks: List[str] = []
+    for value in payload.values():
+        if isinstance(value, str):
+            haystacks.append(value.lower())
+        elif isinstance(value, list):
+            haystacks.extend([str(item).lower() for item in value if isinstance(item, (str, int))])
+    combined = " ".join(haystacks)
+    matches = sum(1 for token in tokens if token in combined)
+    return matches > 0, matches
 
 
 # ============================================================================
@@ -364,12 +441,41 @@ COLLECTIONS = {
             "last_validated": "integer",
         },
     },
+    "learning-feedback": {
+        "vector_size": Config.EMBEDDING_DIM,
+        "distance": Distance.COSINE,
+        "payload_schema": {
+            "feedback_id": "string",
+            "interaction_id": "string",
+            "query": "text",
+            "original_response": "text",
+            "correction": "text",
+            "rating": "integer",
+            "tags": "array",
+            "timestamp": "integer",
+        },
+    },
 }
 
 
 async def initialize_collections():
     """Initialize Qdrant collections if they don't exist"""
     global qdrant_client
+
+    def _extract_vector_size(info: CollectionInfo) -> Optional[int]:
+        try:
+            vectors = info.config.params.vectors
+            if hasattr(vectors, "size"):
+                return int(vectors.size)
+            if isinstance(vectors, dict) and vectors:
+                first = next(iter(vectors.values()))
+                if hasattr(first, "size"):
+                    return int(first.size)
+                if isinstance(first, dict) and "size" in first:
+                    return int(first["size"])
+        except Exception:
+            return None
+        return None
 
     for collection_name, schema in COLLECTIONS.items():
         try:
@@ -393,7 +499,46 @@ async def initialize_collections():
                 )
                 logger.info(f"✓ Collection created: {collection_name}")
             else:
-                logger.info(f"✓ Collection exists: {collection_name}")
+                info = qdrant_client.get_collection(collection_name)
+                current_size = _extract_vector_size(info)
+                expected_size = schema["vector_size"]
+                points_count = getattr(info, "points_count", 0) or 0
+                if current_size is not None and current_size != expected_size:
+                    if points_count > 0:
+                        logger.error(
+                            "Collection dimension mismatch",
+                            extra={
+                                "collection": collection_name,
+                                "current": current_size,
+                                "expected": expected_size,
+                                "points": points_count,
+                            },
+                        )
+                    else:
+                        logger.warning(
+                            "Recreating collection due to dimension mismatch",
+                            extra={
+                                "collection": collection_name,
+                                "current": current_size,
+                                "expected": expected_size,
+                            },
+                        )
+                        qdrant_client.delete_collection(collection_name=collection_name)
+                        qdrant_client.create_collection(
+                            collection_name=collection_name,
+                            vectors_config=VectorParams(
+                                size=expected_size,
+                                distance=schema["distance"],
+                                hnsw_config=HnswConfigDiff(
+                                    m=Config.QDRANT_HNSW_M,
+                                    ef_construct=Config.QDRANT_HNSW_EF_CONSTRUCT,
+                                    full_scan_threshold=Config.QDRANT_HNSW_FULL_SCAN_THRESHOLD,
+                                ),
+                            ),
+                        )
+                        logger.info(f"✓ Collection recreated: {collection_name}")
+                else:
+                    logger.info(f"✓ Collection exists: {collection_name}")
 
         except Exception as e:
             logger.error(f"Error creating collection {collection_name}: {e}")
@@ -585,7 +730,7 @@ async def augment_query_with_context(
                     if snippet:
                         results_text.append(f"  ```{payload.get('language', '')}\n  {snippet[:200]}...\n  ```\n")
         except Exception as e:
-            logger.warning(f"Error searching codebase-context: {e}")
+            logger.warning("Error searching codebase-context: %s", e)
 
         # 3. Search skills/patterns
         try:
@@ -608,7 +753,7 @@ async def augment_query_with_context(
                     results_text.append(f"- **{payload.get('skill_name', 'Unknown Skill')}**\n")
                     results_text.append(f"  {payload.get('description', 'No description')}\n")
         except Exception as e:
-            logger.warning(f"Error searching skills-patterns: {e}")
+            logger.warning("Error searching skills-patterns: %s", e)
 
         # 4. Search error solutions
         try:
@@ -633,7 +778,7 @@ async def augment_query_with_context(
                     confidence = payload.get('confidence_score', 0)
                     results_text.append(f"  **Confidence**: {confidence:.2f}\n")
         except Exception as e:
-            logger.warning(f"Error searching error-solutions: {e}")
+            logger.warning("Error searching error-solutions: %s", e)
 
         # 5. Search best practices
         try:
@@ -656,7 +801,7 @@ async def augment_query_with_context(
                     results_text.append(f"- **{payload.get('title', 'Unknown')}** ({payload.get('category', 'general')})\n")
                     results_text.append(f"  {payload.get('description', 'No description')}\n")
         except Exception as e:
-            logger.warning(f"Error searching best-practices: {e}")
+            logger.warning("Error searching best-practices: %s", e)
 
         if not results_text:
             span.set_attribute("context_found", False)
@@ -689,6 +834,344 @@ Please use this context to provide a more accurate and efficient response.
         "context_ids": context_ids,
         "original_query": query,
         "context_count": len(context_ids),
+    }
+
+
+async def hybrid_search(
+    query: str,
+    collections: Optional[List[str]] = None,
+    limit: int = 5,
+    keyword_limit: int = 5,
+    score_threshold: float = 0.7,
+    keyword_pool: int = 60,
+) -> Dict[str, Any]:
+    """Hybrid search combining vector similarity + keyword matches."""
+    global qdrant_client
+
+    collections = collections or list(COLLECTIONS.keys())
+    query_embedding = await embed_text(query)
+    tokens = _normalize_tokens(query)
+
+    semantic_results: List[Dict[str, Any]] = []
+    keyword_results: List[Dict[str, Any]] = []
+
+    for collection in collections:
+        try:
+            points = _call_with_breaker(
+                "qdrant",
+                lambda: qdrant_client.query_points(
+                    collection_name=collection,
+                    query=query_embedding,
+                    limit=limit,
+                    score_threshold=score_threshold,
+                ).points,
+            )
+            for point in points:
+                semantic_results.append(
+                    {
+                        "collection": collection,
+                        "id": str(point.id),
+                        "score": point.score,
+                        "payload": point.payload,
+                        "source": "semantic",
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("semantic_search_failed collection=%s error=%s", collection, exc)
+
+        if tokens:
+            try:
+                points, _ = _call_with_breaker(
+                    "qdrant",
+                    lambda: qdrant_client.scroll(
+                        collection_name=collection,
+                        limit=keyword_pool,
+                        with_payload=True,
+                        with_vectors=False,
+                    ),
+                )
+                for point in points:
+                    matched, score = _payload_matches_tokens(point.payload or {}, tokens)
+                    if not matched:
+                        continue
+                    keyword_results.append(
+                        {
+                            "collection": collection,
+                            "id": str(point.id),
+                            "score": float(score),
+                            "payload": point.payload,
+                            "source": "keyword",
+                        }
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("keyword_search_failed collection=%s error=%s", collection, exc)
+
+    keyword_results.sort(key=lambda item: item["score"], reverse=True)
+    keyword_results = keyword_results[:keyword_limit]
+
+    combined: Dict[str, Dict[str, Any]] = {}
+    for item in semantic_results + keyword_results:
+        key = f"{item['collection']}:{item['id']}"
+        if key not in combined:
+            combined[key] = {**item, "sources": {item["source"]}}
+        else:
+            combined[key]["sources"].add(item["source"])
+            combined[key]["score"] = max(combined[key]["score"], item["score"])
+    combined_results = []
+    for item in combined.values():
+        item["sources"] = sorted(item["sources"])
+        combined_results.append(item)
+
+    record_telemetry_event(
+        "hybrid_search",
+        {
+            "query": query[:200],
+            "collections": collections,
+            "semantic_results": len(semantic_results),
+            "keyword_results": len(keyword_results),
+        },
+    )
+
+    return {
+        "query": query,
+        "collections": collections,
+        "semantic_results": semantic_results,
+        "keyword_results": keyword_results,
+        "combined_results": combined_results,
+        "tokens": tokens,
+    }
+
+
+def _summarize_results(items: List[Dict[str, Any]], max_items: int = 3) -> str:
+    lines: List[str] = []
+    for item in items[:max_items]:
+        payload = item.get("payload") or {}
+        title = (
+            payload.get("title")
+            or payload.get("file_path")
+            or payload.get("skill_name")
+            or payload.get("error_type")
+            or payload.get("category")
+            or "result"
+        )
+        sources = item.get("sources") or [item.get("source")] if item.get("source") else []
+        source_text = ",".join(sources) if isinstance(sources, list) else str(sources)
+        lines.append(f"- {title} (score={item.get('score', 0):.2f}, source={source_text})")
+    return "\n".join(lines) if lines else "No results."
+
+
+async def route_query(
+    query: str,
+    mode: str = "auto",
+    prefer_local: bool = True,
+    context: Optional[Dict[str, Any]] = None,
+    limit: int = 5,
+    keyword_limit: int = 5,
+    score_threshold: float = 0.7,
+    generate_response: bool = False,
+) -> Dict[str, Any]:
+    """Route query to SQL, semantic, keyword, or hybrid search."""
+    start = time.time()
+    normalized_mode = (mode or "auto").lower()
+    route = normalized_mode
+
+    if normalized_mode == "auto":
+        if _looks_like_sql(query):
+            route = "sql"
+        else:
+            token_count = len(_normalize_tokens(query))
+            if token_count <= 3:
+                route = "keyword"
+            else:
+                route = "hybrid"
+
+    results: Dict[str, Any] = {}
+    response_text = ""
+
+    try:
+        if route == "sql":
+            response_text = (
+                "SQL routing detected. Execution is disabled by default for safety. "
+                "Set HYBRID_ALLOW_SQL_EXECUTION=true to enable read-only queries."
+            )
+        elif route == "keyword":
+            hybrid_results = await hybrid_search(
+                query=query,
+                collections=list(COLLECTIONS.keys()),
+                limit=limit,
+                keyword_limit=keyword_limit,
+                score_threshold=score_threshold,
+            )
+            results = {"keyword_results": hybrid_results["keyword_results"]}
+            response_text = _summarize_results(hybrid_results["keyword_results"])
+        elif route == "semantic":
+            hybrid_results = await hybrid_search(
+                query=query,
+                collections=list(COLLECTIONS.keys()),
+                limit=limit,
+                keyword_limit=0,
+                score_threshold=score_threshold,
+            )
+            results = {"semantic_results": hybrid_results["semantic_results"]}
+            response_text = _summarize_results(hybrid_results["semantic_results"])
+        else:
+            hybrid_results = await hybrid_search(
+                query=query,
+                collections=list(COLLECTIONS.keys()),
+                limit=limit,
+                keyword_limit=keyword_limit,
+                score_threshold=score_threshold,
+            )
+            results = hybrid_results
+            response_text = _summarize_results(hybrid_results["combined_results"])
+
+        if generate_response and llama_cpp_client:
+            prompt = (
+                f"User query: {query}\n\nContext:\n{response_text}\n\n"
+                "Provide a concise response using the context."
+            )
+            try:
+                llm_resp = await llama_cpp_client.post(
+                    "/chat/completions",
+                    json={
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.2,
+                        "max_tokens": 400,
+                    },
+                    timeout=60.0,
+                )
+                llm_resp.raise_for_status()
+                llm_json = llm_resp.json()
+                response_text = llm_json["choices"][0]["message"]["content"]
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("route_query_llm_failed error=%s", exc)
+
+        ROUTE_DECISIONS.labels(route=route).inc()
+        record_telemetry_event(
+            "route_query",
+            {
+                "query": query[:200],
+                "route": route,
+                "prefer_local": prefer_local,
+                "context_keys": list((context or {}).keys()),
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        ROUTE_ERRORS.labels(route=route).inc()
+        logger.error("route_query_failed route=%s error=%s", route, exc)
+        raise
+
+    latency_ms = int((time.time() - start) * 1000)
+    return {
+        "route": route,
+        "backend": route,
+        "response": response_text,
+        "results": results,
+        "latency_ms": latency_ms,
+    }
+
+
+async def record_learning_feedback(
+    query: str,
+    correction: str,
+    original_response: Optional[str] = None,
+    interaction_id: Optional[str] = None,
+    rating: Optional[int] = None,
+    tags: Optional[List[str]] = None,
+    model: Optional[str] = None,
+    variant: Optional[str] = None,
+) -> str:
+    """Store user corrections for learning."""
+    global qdrant_client, postgres_client
+
+    feedback_id = str(uuid4())
+    resolved_tags = list(tags or [])
+    if model:
+        resolved_tags.append(f"model:{model}")
+    if variant:
+        resolved_tags.append(f"variant:{variant}")
+    payload = {
+        "feedback_id": feedback_id,
+        "interaction_id": interaction_id,
+        "query": query,
+        "original_response": original_response,
+        "correction": correction,
+        "rating": rating,
+        "tags": resolved_tags,
+        "model": model,
+        "variant": variant,
+        "timestamp": int(datetime.now().timestamp()),
+    }
+
+    embedding = await embed_text(f"{query}\n{correction}")
+    try:
+        qdrant_client.upsert(
+            collection_name="learning-feedback",
+            points=[PointStruct(id=feedback_id, vector=embedding, payload=payload)],
+        )
+        if postgres_client is not None:
+            try:
+                await postgres_client.execute(
+                    """
+                    INSERT INTO learning_feedback (
+                        feedback_id,
+                        interaction_id,
+                        query,
+                        original_response,
+                        correction,
+                        rating,
+                        tags,
+                        source
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                    """,
+                    feedback_id,
+                    interaction_id,
+                    query,
+                    original_response,
+                    correction,
+                    rating,
+                    json.dumps(resolved_tags),
+                    "hybrid-coordinator",
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("learning_feedback_postgres_failed error=%s", exc)
+        record_telemetry_event("learning_feedback", {"feedback_id": feedback_id})
+    except Exception as exc:  # noqa: BLE001
+        logger.error("learning_feedback_store_failed error=%s", exc)
+        return ""
+
+    return feedback_id
+
+
+async def get_feedback_variant_stats(tag: str, days: Optional[int] = None) -> Dict[str, Any]:
+    """Summarize feedback ratings for a tag (e.g., variant:model-a)."""
+    global postgres_client
+    if postgres_client is None:
+        raise RuntimeError("Postgres client not configured")
+
+    query = """
+        SELECT
+            COUNT(*) AS total,
+            COUNT(rating) AS rated,
+            AVG(rating)::float AS avg_rating
+        FROM learning_feedback
+        WHERE tags ? %s
+    """
+    params: List[Any] = [tag]
+    if days and days > 0:
+        query += " AND created_at >= NOW() - (%s || ' days')::interval"
+        params.append(str(days))
+
+    rows = await postgres_client.fetch_all(query, *params)
+    if not rows:
+        return {"tag": tag, "total": 0, "rated": 0, "avg_rating": None}
+    row = rows[0]
+    return {
+        "tag": tag,
+        "total": int(row.get("total", 0) or 0),
+        "rated": int(row.get("rated", 0) or 0),
+        "avg_rating": row.get("avg_rating"),
     }
 
 
@@ -1144,6 +1627,61 @@ async def list_tools() -> List[Tool]:
                 "required": ["query", "collection"],
             },
         ),
+        Tool(
+            name="hybrid_search",
+            description="Run hybrid search combining vector similarity and keyword matching",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "collections": {"type": "array", "items": {"type": "string"}},
+                    "limit": {"type": "integer", "default": 5},
+                    "keyword_limit": {"type": "integer", "default": 5},
+                    "score_threshold": {"type": "number", "default": 0.7},
+                },
+                "required": ["query"],
+            },
+        ),
+        Tool(
+            name="route_query",
+            description="Route a query to SQL, semantic, keyword, or hybrid search",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "mode": {
+                        "type": "string",
+                        "enum": ["auto", "sql", "semantic", "keyword", "hybrid"],
+                        "default": "auto",
+                    },
+                    "prefer_local": {"type": "boolean", "default": True},
+                    "context": {"type": "object"},
+                    "limit": {"type": "integer", "default": 5},
+                    "keyword_limit": {"type": "integer", "default": 5},
+                    "score_threshold": {"type": "number", "default": 0.7},
+                    "generate_response": {"type": "boolean", "default": False},
+                },
+                "required": ["query"],
+            },
+        ),
+        Tool(
+            name="learning_feedback",
+            description="Store user corrections and feedback for learning",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "correction": {"type": "string"},
+                    "original_response": {"type": "string"},
+                    "interaction_id": {"type": "string"},
+                    "rating": {"type": "integer", "minimum": -1, "maximum": 1},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                    "model": {"type": "string"},
+                    "variant": {"type": "string"},
+                },
+                "required": ["query", "correction"],
+            },
+        ),
     ]
 
 
@@ -1226,6 +1764,60 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             )
         ]
 
+    elif name == "hybrid_search":
+        result = await hybrid_search(
+            query=arguments.get("query", ""),
+            collections=arguments.get("collections"),
+            limit=arguments.get("limit", 5),
+            keyword_limit=arguments.get("keyword_limit", 5),
+            score_threshold=arguments.get("score_threshold", 0.7),
+        )
+
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(result, indent=2),
+            )
+        ]
+
+    elif name == "route_query":
+        result = await route_query(
+            query=arguments.get("query", ""),
+            mode=arguments.get("mode", "auto"),
+            prefer_local=arguments.get("prefer_local", True),
+            context=arguments.get("context"),
+            limit=arguments.get("limit", 5),
+            keyword_limit=arguments.get("keyword_limit", 5),
+            score_threshold=arguments.get("score_threshold", 0.7),
+            generate_response=arguments.get("generate_response", False),
+        )
+
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(result, indent=2),
+            )
+        ]
+
+    elif name == "learning_feedback":
+        feedback_id = await record_learning_feedback(
+            query=arguments.get("query", ""),
+            correction=arguments.get("correction", ""),
+            original_response=arguments.get("original_response"),
+            interaction_id=arguments.get("interaction_id"),
+            rating=arguments.get("rating"),
+            tags=arguments.get("tags"),
+            model=arguments.get("model"),
+            variant=arguments.get("variant"),
+        )
+
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps({"feedback_id": feedback_id}),
+            )
+        ]
+
     else:
         raise ValueError(f"Unknown tool: {name}")
 
@@ -1237,7 +1829,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
 
 async def initialize_server():
     """Initialize global clients and collections"""
-    global qdrant_client, llama_cpp_client, embedding_client, multi_turn_manager, feedback_api, progressive_disclosure, learning_pipeline
+    global qdrant_client, llama_cpp_client, embedding_client, aidb_client, multi_turn_manager, feedback_api, progressive_disclosure, learning_pipeline, postgres_client
 
     logger.info("Initializing Hybrid Agent Coordinator...")
 
@@ -1256,6 +1848,12 @@ async def initialize_server():
 
     # Initialize embedding client (internal service, with auth)
     embedding_client = create_embeddings_client(timeout=30.0)
+
+    # Initialize AIDB client (optional, for hybrid routing)
+    aidb_client = httpx.AsyncClient(
+        base_url=Config.AIDB_URL,
+        timeout=30.0,
+    )
 
     # Create collections
     await initialize_collections()
@@ -1303,7 +1901,11 @@ async def initialize_server():
             port=int(os.getenv("POSTGRES_PORT", "5432")),
             database=os.getenv("POSTGRES_DB", "aidb"),
             user=os.getenv("POSTGRES_USER", "mcp"),
-            password=os.getenv("POSTGRES_PASSWORD", "postgres")
+            password=os.getenv("POSTGRES_PASSWORD", "postgres"),
+            sslmode=os.getenv("POSTGRES_SSLMODE"),
+            sslrootcert=os.getenv("POSTGRES_SSLROOTCERT"),
+            sslcert=os.getenv("POSTGRES_SSLCERT"),
+            sslkey=os.getenv("POSTGRES_SSLKEY"),
         )
         await postgres_client.connect()
 
@@ -1412,14 +2014,15 @@ async def main():
                         breakers[name] = breaker.state.name
                 else:
                     breakers = {}
-            except:
+            except (ImportError, AttributeError) as e:
+                logger.debug("Circuit breaker state unavailable: %s", e)
                 breakers = {}
 
             return web.json_response({
                 "status": "healthy",
                 "service": "hybrid-coordinator",
                 "collections": list(COLLECTIONS.keys()),
-                "circuit_breakers": breakers
+                "circuit_breakers": breakers or CIRCUIT_BREAKERS.get_all_stats(),
             })
 
         async def handle_stats(request):
@@ -1429,6 +2032,7 @@ async def main():
                 "service": "hybrid-coordinator",
                 "stats": snapshot_stats(),
                 "collections": list(COLLECTIONS.keys()),
+                "circuit_breakers": CIRCUIT_BREAKERS.get_all_stats(),
             })
 
         async def handle_augment_query(request):
@@ -1443,6 +2047,30 @@ async def main():
             except Exception as exc:  # noqa: BLE001
                 return web.json_response(
                     {"error": "augment_query_failed", "detail": str(exc)},
+                    status=500,
+                )
+
+        async def handle_query(request):
+            """HTTP endpoint for query routing"""
+            try:
+                data = await request.json()
+                query = data.get("prompt") or data.get("query") or ""
+                if not query:
+                    return web.json_response({"error": "query required"}, status=400)
+                result = await route_query(
+                    query=query,
+                    mode=data.get("mode", "auto"),
+                    prefer_local=bool(data.get("prefer_local", True)),
+                    context=data.get("context"),
+                    limit=int(data.get("limit", 5)),
+                    keyword_limit=int(data.get("keyword_limit", 5)),
+                    score_threshold=float(data.get("score_threshold", 0.7)),
+                    generate_response=bool(data.get("generate_response", False)),
+                )
+                return web.json_response(result)
+            except Exception as exc:  # noqa: BLE001
+                return web.json_response(
+                    {"error": "route_query_failed", "detail": str(exc)},
                     status=500,
                 )
 
@@ -1468,6 +2096,39 @@ async def main():
 
                 return web.json_response(response.dict())
 
+            except Exception as e:
+                return web.json_response(error_payload("internal_error", e), status=500)
+
+        async def handle_feedback(request):
+            """HTTP endpoint for feedback ingestion"""
+            try:
+                data = await request.json()
+                interaction_id = data.get("interaction_id")
+                outcome = data.get("outcome")
+                user_feedback = data.get("user_feedback", 0)
+                correction = data.get("correction")
+                if correction:
+                    feedback_id = await record_learning_feedback(
+                        query=data.get("query", ""),
+                        correction=correction,
+                        original_response=data.get("original_response"),
+                        interaction_id=interaction_id,
+                        rating=data.get("rating"),
+                        tags=data.get("tags"),
+                        model=data.get("model"),
+                        variant=data.get("variant"),
+                    )
+                    return web.json_response({"status": "recorded", "feedback_id": feedback_id})
+
+                if interaction_id and outcome:
+                    await update_interaction_outcome(
+                        interaction_id=interaction_id,
+                        outcome=outcome,
+                        user_feedback=user_feedback,
+                    )
+                    return web.json_response({"status": "updated"})
+
+                return web.json_response({"error": "missing_feedback_fields"}, status=400)
             except Exception as e:
                 return web.json_response(error_payload("internal_error", e), status=500)
 
@@ -1583,6 +2244,8 @@ async def main():
         http_app.router.add_get('/health', handle_health)
         http_app.router.add_get('/stats', handle_stats)
         http_app.router.add_post('/augment_query', handle_augment_query)
+        http_app.router.add_post('/query', handle_query)
+        http_app.router.add_post('/feedback', handle_feedback)
 
         # New RLM endpoints
         http_app.router.add_post('/context/multi_turn', handle_multi_turn_context)
@@ -1631,7 +2294,87 @@ async def main():
                 "deduplication": {"total_patterns": 0, "duplicates_found": 0, "unique_patterns": 0}
             })
 
+        async def handle_learning_process(_request):
+            """Trigger a one-off telemetry processing cycle."""
+            if not learning_pipeline:
+                return web.json_response({"status": "disabled"}, status=503)
+            try:
+                patterns = await learning_pipeline.process_telemetry_batch()
+                examples_count = 0
+                if patterns:
+                    examples = await learning_pipeline.generate_finetuning_examples(patterns)
+                    examples_count = len(examples)
+                    await learning_pipeline._save_finetuning_examples(examples)
+                    await learning_pipeline._index_patterns(patterns)
+                await learning_pipeline._write_stats_snapshot()
+                return web.json_response({
+                    "status": "ok",
+                    "patterns": len(patterns),
+                    "examples": examples_count,
+                })
+            except Exception as e:
+                return web.json_response({"status": "error", "detail": str(e)}, status=500)
+
+        async def handle_learning_export(_request):
+            """Export the fine-tuning dataset for retraining."""
+            try:
+                dataset_path = ""
+                if learning_pipeline:
+                    dataset_path = await learning_pipeline.export_dataset_for_training()
+                else:
+                    dataset_path = await generate_fine_tuning_dataset()
+                count = 0
+                if dataset_path and Path(dataset_path).exists():
+                    with open(dataset_path, "r") as f:
+                        count = sum(1 for _ in f)
+                return web.json_response({
+                    "status": "ok",
+                    "dataset_path": dataset_path,
+                    "examples": count,
+                })
+            except Exception as e:
+                return web.json_response({"status": "error", "detail": str(e)}, status=500)
+
+        async def handle_learning_ab_compare(request):
+            """Compare feedback ratings between two variants."""
+            try:
+                data = await request.json()
+                tag_prefix = data.get("tag_prefix", "variant:")
+                tag_a = data.get("tag_a")
+                tag_b = data.get("tag_b")
+                variant_a = data.get("variant_a")
+                variant_b = data.get("variant_b")
+                days = data.get("days")
+                if not tag_a and variant_a:
+                    tag_a = f"{tag_prefix}{variant_a}"
+                if not tag_b and variant_b:
+                    tag_b = f"{tag_prefix}{variant_b}"
+                if not tag_a or not tag_b:
+                    return web.json_response({"error": "variant_a/variant_b or tag_a/tag_b required"}, status=400)
+
+                stats_a = await get_feedback_variant_stats(tag_a, days)
+                stats_b = await get_feedback_variant_stats(tag_b, days)
+                avg_a = stats_a.get("avg_rating")
+                avg_b = stats_b.get("avg_rating")
+                delta = None
+                if avg_a is not None and avg_b is not None:
+                    delta = float(avg_a) - float(avg_b)
+
+                return web.json_response({
+                    "status": "ok",
+                    "variant_a": stats_a,
+                    "variant_b": stats_b,
+                    "delta": {"avg_rating": delta},
+                })
+            except RuntimeError as e:
+                return web.json_response({"error": str(e)}, status=503)
+            except Exception as e:
+                return web.json_response({"error": str(e)}, status=500)
+
         http_app.router.add_get('/learning/stats', handle_learning_stats)
+        http_app.router.add_post('/learning/process', handle_learning_process)
+        http_app.router.add_post('/learning/export', handle_learning_export)
+        http_app.router.add_post('/learning/ab_compare', handle_learning_ab_compare)
 
         port = int(os.getenv("MCP_SERVER_PORT", "8092"))
         logger.info(f"Starting HTTP server on port {port}")

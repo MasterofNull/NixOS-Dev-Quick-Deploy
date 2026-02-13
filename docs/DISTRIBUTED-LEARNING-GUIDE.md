@@ -142,7 +142,7 @@ systemctl start hybrid-learning-backup
 
 ```bash
 # Automated export
-python3 -m federation_sync --export /tmp/my-learning-data.json
+python3 -m federation_sync --export ${TMPDIR:-/tmp}/my-learning-data.json
 
 # Or via systemd
 systemctl start hybrid-learning-export
@@ -482,10 +482,10 @@ You have an existing system with valuable learning data and want to deploy to a 
 ```bash
 # On existing system
 sudo python3 /var/lib/hybrid-learning/coordinator/federation_sync.py \
-  --export /tmp/my-learning-snapshot.json
+  --export ${TMPDIR:-/tmp}/my-learning-snapshot.json
 
 # Copy to new system
-scp /tmp/my-learning-snapshot.json newmachine:/tmp/
+scp ${TMPDIR:-/tmp}/my-learning-snapshot.json newmachine:${TMPDIR:-/tmp}/
 ```
 
 **Import on new system**:
@@ -493,7 +493,7 @@ scp /tmp/my-learning-snapshot.json newmachine:/tmp/
 ```bash
 # On new system (after NixOS deployment)
 sudo python3 /var/lib/hybrid-learning/coordinator/federation_sync.py \
-  --import /tmp/my-learning-snapshot.json
+  --import ${TMPDIR:-/tmp}/my-learning-snapshot.json
 
 # Verify
 curl http://localhost:6333/collections | jq
@@ -551,8 +551,8 @@ cp /var/lib/hybrid-learning/exports/snapshot-*.json /media/usb/
 
 ```bash
 # On destination system
-cp /media/usb/snapshot-*.json /tmp/
-sudo python3 -m federation_sync --import /tmp/snapshot-*.json
+cp /media/usb/snapshot-*.json ${TMPDIR:-/tmp}/
+sudo python3 -m federation_sync --import ${TMPDIR:-/tmp}/snapshot-*.json
 ```
 
 ---
@@ -724,17 +724,17 @@ jobs:
     steps:
       - name: Export learning data
         run: |
-          python3 -m federation_sync --export /tmp/ci-learning.json
+          python3 -m federation_sync --export ${TMPDIR:-/tmp}/ci-learning.json
 
       - name: Upload to S3
         run: |
-          aws s3 cp /tmp/ci-learning.json s3://company-learning-data/$(date +%Y%m%d)/
+          aws s3 cp ${TMPDIR:-/tmp}/ci-learning.json s3://company-learning-data/$(date +%Y%m%d)/
 
       - name: Distribute to nodes
         run: |
           for node in node1 node2 node3; do
-            scp /tmp/ci-learning.json $node:/tmp/
-            ssh $node "python3 -m federation_sync --import /tmp/ci-learning.json"
+            scp ${TMPDIR:-/tmp}/ci-learning.json $node:${TMPDIR:-/tmp}/
+            ssh $node "python3 -m federation_sync --import ${TMPDIR:-/tmp}/ci-learning.json"
           done
 ```
 

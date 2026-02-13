@@ -1,0 +1,30 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: ai-stack-allow-external-fqdn
+  namespace: ai-stack
+spec:
+  endpointSelector:
+    matchLabels:
+      egress-allow: "external"
+  egress:
+    - toFQDNs:
+        - matchName: channels.nixos.org
+        - matchName: cache.nixos.org
+        - matchName: github.com
+        - matchName: api.github.com
+        - matchName: raw.githubusercontent.com
+        - matchName: dl.flathub.org
+        - matchName: flathub.org
+        - matchName: huggingface.co
+        - matchName: hf.co
+        - matchName: cdn-lfs.huggingface.co
+        - matchName: api.openai.com
+        - matchName: api.anthropic.com
+        - matchName: openrouter.ai
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "80"
+              protocol: TCP

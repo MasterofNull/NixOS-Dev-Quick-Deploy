@@ -31,7 +31,7 @@
   "mcpServers": {
     "local-ai-stack": {
       "command": "python3",
-      "args": ["/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/claude-local-wrapper.py"],
+      "args": ["/path/to/NixOS-Dev-Quick-Deploy/scripts/claude-local-wrapper.py"],
       "env": {
         "HYBRID_COORDINATOR_URL": "http://localhost:8092",
         "AIDB_MCP_URL": "http://localhost:8091"

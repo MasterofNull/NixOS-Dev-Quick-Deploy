@@ -5,6 +5,7 @@ Implements the core hook system for exit blocking and context recovery
 """
 
 import asyncio
+import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -245,4 +246,19 @@ class ResourceLimitHook(Hook):
             task["status"] = "failed"
             task["error"] = f"Exceeded maximum iterations ({self.max_iterations_per_task})"
 
-        # TODO: Add CPU monitoring if needed
+        # CPU load check (approximate using 1-minute load average)
+        try:
+            load1, _, _ = os.getloadavg()
+            cores = os.cpu_count() or 1
+            cpu_percent = (load1 / cores) * 100
+            if cpu_percent > self.max_cpu_percent:
+                logger.warning(
+                    "cpu_limit_exceeded",
+                    task_id=task["task_id"],
+                    cpu_percent=round(cpu_percent, 2),
+                    threshold=self.max_cpu_percent
+                )
+                task["status"] = "failed"
+                task["error"] = f"CPU load too high ({cpu_percent:.1f}% > {self.max_cpu_percent}%)"
+        except Exception as e:
+            logger.debug("cpu_check_failed", error=str(e))

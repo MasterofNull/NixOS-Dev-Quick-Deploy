@@ -13,6 +13,9 @@ from typing import List, Dict, Any
 
 import requests
 
+# Service host (for AIDB export defaults)
+SERVICE_HOST = os.environ.get("SERVICE_HOST", "localhost")
+
 # GitHub API configuration
 GITHUB_API = "https://api.github.com"
 
@@ -293,7 +296,7 @@ class MCPServerDiscovery:
             'servers': sorted_servers
         }
 
-    def export_to_aidb(self, results: Dict[str, Any], aidb_url: str = "http://localhost:8091/documents") -> bool:
+    def export_to_aidb(self, results: Dict[str, Any], aidb_url: str = f"http://{SERVICE_HOST}:8091/documents") -> bool:
         """Export results to AIDB"""
         # Create comprehensive document
         document = {
@@ -339,7 +342,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--aidb-url",
-        default=os.environ.get("AIDB_URL", "http://localhost:8091/documents"),
+        default=os.environ.get("AIDB_URL", f"http://{SERVICE_HOST}:8091/documents"),
         help="AIDB documents endpoint (default: %(default)s or $AIDB_URL if set).",
     )
     return parser.parse_args()

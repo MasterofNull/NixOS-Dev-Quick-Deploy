@@ -13,9 +13,6 @@ QDRANT_DISTANCE="${QDRANT_DISTANCE:-Cosine}"
 SETUP_TIMEOUT="${HYBRID_LEARNING_SETUP_TIMEOUT:-900}"
 STATE_DIR="${HYBRID_LEARNING_STATE_DIR:-$HOME/.cache/nixos-quick-deploy}"
 MARKER_FILE="${HYBRID_LEARNING_MARKER_FILE:-$STATE_DIR/hybrid-learning-ready}"
-ENABLE_CLEAN_RESTART="${HYBRID_LEARNING_CLEAN_RESTART:-true}"
-SKIP_COMPOSE_IF_RUNNING="${HYBRID_LEARNING_SKIP_IF_RUNNING:-true}"
-
 mkdir -p "$STATE_DIR" >/dev/null 2>&1 || true
 
 timeout_cmd=()
@@ -23,21 +20,9 @@ if command -v timeout >/dev/null 2>&1; then
     timeout_cmd=(timeout "${SETUP_TIMEOUT}")
 fi
 
-# Determine compose command
-if command -v podman-compose >/dev/null 2>&1; then
-    COMPOSE_CMD="podman-compose"
-elif command -v docker-compose >/dev/null 2>&1; then
-    COMPOSE_CMD="docker-compose"
-elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-    COMPOSE_CMD="docker compose"
-else
-    echo "Error: Neither podman-compose nor docker-compose found"
-    exit 1
-fi
-
 echo "==> Step 0: Checking existing hybrid learning setup..."
 if [[ -f "$MARKER_FILE" ]]; then
-    if curl -sf --max-time 3 http://localhost:6333/healthz >/dev/null 2>&1; then
+    if curl -sf --max-time 3 http://${SERVICE_HOST:-localhost}:6333/healthz >/dev/null 2>&1; then
         echo "✓ Hybrid learning already initialized (marker: $MARKER_FILE)"
         exit 0
     fi
@@ -71,9 +56,11 @@ else
 fi
 
 echo "==> Step 2: Configuring environment..."
-ENV_FILE="${PROJECT_ROOT}/ai-stack/compose/.env"
+ENV_FILE="${AI_STACK_ENV_FILE:-$HOME/.config/nixos-ai-stack/.env}"
 if [ ! -f "$ENV_FILE" ]; then
-    cp "${PROJECT_ROOT}/ai-stack/compose/.env.example" "$ENV_FILE"
+    echo "✗ Missing AI stack env file: $ENV_FILE"
+    echo "  Re-run nixos-quick-deploy.sh to set AI stack credentials."
+    exit 1
 fi
 
 if ! grep -q "HYBRID_MODE_ENABLED" "$ENV_FILE"; then
@@ -96,43 +83,29 @@ mkdir -p ~/.cache/huggingface
 echo "✓ Directories created"
 
 echo "==> Step 4: Starting AI stack..."
-cd "${PROJECT_ROOT}/ai-stack/compose"
-stack_running=false
-if command -v podman >/dev/null 2>&1; then
-    if podman ps --format '{{.Names}}' | grep -qE '^local-ai-(qdrant|llama-cpp|postgres|redis)'; then
-        stack_running=true
-    fi
+if ! command -v kubectl >/dev/null 2>&1; then
+    echo "✗ kubectl not found. K3s/Kubernetes is required."
+    exit 1
 fi
-
-compose_busy=false
-if pgrep -f "podman-compose.*${PROJECT_ROOT}/ai-stack/compose" >/dev/null 2>&1; then
-    compose_busy=true
+if ! kubectl --request-timeout=30s cluster-info >/dev/null 2>&1; then
+    echo "✗ Kubernetes cluster not reachable. Start K3s and try again."
+    exit 1
 fi
-
-if [[ "$SKIP_COMPOSE_IF_RUNNING" == "true" && ( "$stack_running" == "true" || "$compose_busy" == "true" ) ]]; then
-    echo "✓ AI stack already running (skipping compose up)"
+tmp_root="${TMPDIR:-/${TMP_FALLBACK:-tmp}}"
+hybrid_log="${tmp_root}/hybrid-learning-k8s.log"
+if "${timeout_cmd[@]}" kubectl --request-timeout=30s apply -k "${PROJECT_ROOT}/ai-stack/kubernetes" \
+  > >(tee "$hybrid_log") 2>&1; then
+    echo "✓ AI stack deployment initiated"
 else
-    if [[ "$ENABLE_CLEAN_RESTART" == "true" ]]; then
-        clean_script="${PROJECT_ROOT}/scripts/compose-clean-restart.sh"
-        if [[ -x "$clean_script" ]]; then
-            echo "  Running clean restart to avoid container name conflicts..."
-            COMPOSE_FILE="${PROJECT_ROOT}/ai-stack/compose/docker-compose.yml" \
-                "${clean_script}" >/tmp/hybrid-learning-clean-restart.log 2>&1 || true
-        fi
-    fi
-    if "${timeout_cmd[@]}" $COMPOSE_CMD up -d 2>&1 | tee /tmp/hybrid-learning-compose.log; then
-        echo "✓ AI stack containers started"
-    else
-        echo "✗ Failed to start AI stack containers"
-        echo "  Check logs: /tmp/hybrid-learning-compose.log"
-        exit 1
-    fi
+    echo "✗ Failed to apply AI stack manifests"
+    echo "  Check logs: $hybrid_log"
+    exit 1
 fi
 
 echo "==> Step 5: Waiting for services..."
 qdrant_ready=false
 for i in $(seq 1 30); do
-    if curl -sf --max-time 3 http://localhost:6333/healthz >/dev/null 2>&1; then
+    if curl -sf --max-time 3 http://${SERVICE_HOST:-localhost}:6333/healthz >/dev/null 2>&1; then
         qdrant_ready=true
         echo "✓ Qdrant is ready"
         break
@@ -161,13 +134,13 @@ for name in "${collections[@]}"; do
 {"vectors":{"size":${QDRANT_VECTOR_SIZE},"distance":"${QDRANT_DISTANCE}"}}
 EOF
 )
-    if curl -sf --max-time 5 -X PUT "http://localhost:6333/collections/${name}" \
+    if curl -sf --max-time 5 -X PUT "http://${SERVICE_HOST:-localhost}:6333/collections/${name}" \
         -H "Content-Type: application/json" \
         -d "${payload}" >/dev/null 2>&1; then
         echo "✓ Created collection '${name}'"
         continue
     fi
-    if curl -sf --max-time 5 "http://localhost:6333/collections/${name}" >/dev/null 2>&1; then
+    if curl -sf --max-time 5 "http://${SERVICE_HOST:-localhost}:6333/collections/${name}" >/dev/null 2>&1; then
         echo "✓ Collection '${name}' exists"
     else
         echo "✗ Failed to create collection '${name}'"
@@ -186,10 +159,10 @@ echo ""
 echo "✅ Hybrid Learning System Setup Complete!"
 echo ""
 echo "Services running:"
-echo "  • Qdrant:     http://localhost:6333"
-echo "  • llama.cpp:   http://localhost:8080"
-echo "  • Ollama:     http://localhost:11434"
-echo "  • Open WebUI: http://localhost:3001"
+echo "  • Qdrant:     http://${SERVICE_HOST:-localhost}:6333"
+echo "  • llama.cpp:   http://${SERVICE_HOST:-localhost}:8080"
+echo "  • Ollama:     http://${SERVICE_HOST:-localhost}:11434"
+echo "  • Open WebUI: http://${SERVICE_HOST:-localhost}:3001"
 echo "  • PostgreSQL: localhost:5432"
 echo "  • Redis:      localhost:6379"
 echo ""

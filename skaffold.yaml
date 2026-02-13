@@ -26,75 +26,75 @@ build:
   # Custom service images built from Dockerfiles
   artifacts:
     # Core MCP Services
-    - image: localhost:5000/compose_aidb
+    - image: localhost:5000/ai-stack-aidb
       context: ai-stack/mcp-servers
       docker:
         dockerfile: aidb/Dockerfile
         cacheFrom:
-          - localhost:5000/compose_aidb:cache
+          - localhost:5000/ai-stack-aidb:cache
       sync:
         manual:
           - src: "aidb/**/*.py"
             dest: /app
 
-    - image: localhost:5000/compose_embeddings
+    - image: localhost:5000/ai-stack-embeddings
       context: ai-stack/mcp-servers
       docker:
         dockerfile: embeddings-service/Dockerfile
         cacheFrom:
-          - localhost:5000/compose_embeddings:cache
+          - localhost:5000/ai-stack-embeddings:cache
 
-    - image: localhost:5000/compose_hybrid-coordinator
+    - image: localhost:5000/ai-stack-hybrid-coordinator
       context: ai-stack/mcp-servers
       docker:
         dockerfile: hybrid-coordinator/Dockerfile
         cacheFrom:
-          - localhost:5000/compose_hybrid-coordinator:cache
+          - localhost:5000/ai-stack-hybrid-coordinator:cache
       sync:
         manual:
           - src: "hybrid-coordinator/**/*.py"
             dest: /app
 
-    - image: localhost:5000/compose_ralph-wiggum
+    - image: localhost:5000/ai-stack-ralph-wiggum
       context: ai-stack/mcp-servers
       docker:
         dockerfile: ralph-wiggum/Dockerfile
         cacheFrom:
-          - localhost:5000/compose_ralph-wiggum:cache
+          - localhost:5000/ai-stack-ralph-wiggum:cache
       sync:
         manual:
           - src: "ralph-wiggum/**/*.py"
             dest: /app
 
-    - image: localhost:5000/compose_container-engine
+    - image: localhost:5000/ai-stack-container-engine
       context: ai-stack/mcp-servers
       docker:
         dockerfile: container-engine/Dockerfile
         cacheFrom:
-          - localhost:5000/compose_container-engine:cache
+          - localhost:5000/ai-stack-container-engine:cache
 
     # Dashboard API
-    - image: localhost:5000/compose_dashboard-api
+    - image: localhost:5000/ai-stack-dashboard-api
       context: dashboard/backend
       docker:
         dockerfile: Dockerfile
         cacheFrom:
-          - localhost:5000/compose_dashboard-api:cache
+          - localhost:5000/ai-stack-dashboard-api:cache
 
     # Development Tools
-    - image: localhost:5000/compose_aider-wrapper
+    - image: localhost:5000/ai-stack-aider-wrapper
       context: ai-stack/mcp-servers
       docker:
         dockerfile: aider-wrapper/Dockerfile
         cacheFrom:
-          - localhost:5000/compose_aider-wrapper:cache
+          - localhost:5000/ai-stack-aider-wrapper:cache
 
-    - image: localhost:5000/compose_nixos-docs
+    - image: localhost:5000/ai-stack-nixos-docs
       context: ai-stack/mcp-servers
       docker:
         dockerfile: nixos-docs/Dockerfile
         cacheFrom:
-          - localhost:5000/compose_nixos-docs:cache
+          - localhost:5000/ai-stack-nixos-docs:cache
 
 # ============================================================================
 # Default Manifests (Dev Environment)

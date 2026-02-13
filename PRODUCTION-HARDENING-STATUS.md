@@ -281,7 +281,7 @@ Features:
 
 ### Created Documentation
 
-1. [PHASE-1-COMPLETE.md](PHASE-1-COMPLETE.md) - Phase 1 security summary
+1. [docs/archive/PHASE-1-COMPLETE.md](docs/archive/PHASE-1-COMPLETE.md) - Phase 1 security summary
 2. [SECURITY-SETUP.md](SECURITY-SETUP.md) - Production security guide
 3. [CONTROL-CENTER-SETUP.md](CONTROL-CENTER-SETUP.md) - Control center guide
 4. [PRODUCTION-HARDENING-ROADMAP.md](PRODUCTION-HARDENING-ROADMAP.md) - Full roadmap

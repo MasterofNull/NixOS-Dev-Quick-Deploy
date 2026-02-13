@@ -10,5 +10,4 @@ kubectl get pods -n ai-stack
 kubectl logs -n ai-stack deployment/aidb --tail=100
 ```
 
-Legacy compose paths are retired and kept only for historical reference.
-
+Legacy container runtime paths are retired and kept only for historical reference.

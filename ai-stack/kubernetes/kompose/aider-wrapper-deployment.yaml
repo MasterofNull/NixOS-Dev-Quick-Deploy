@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   annotations:
-    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
     kompose.version: 1.37.0 (HEAD)
     nixos.quick-deploy.agent-backend: aider
     nixos.quick-deploy.ai-stack: "true"
@@ -20,7 +19,6 @@ spec:
   template:
     metadata:
       annotations:
-        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
         kompose.version: 1.37.0 (HEAD)
         nixos.quick-deploy.agent-backend: aider
         nixos.quick-deploy.ai-stack: "true"
@@ -28,6 +26,8 @@ spec:
       labels:
         io.kompose.service: aider-wrapper
     spec:
+      serviceAccountName: aider-wrapper
+      automountServiceAccountToken: false
       containers:
         - env:
             - name: AIDER_WRAPPER_API_KEY_FILE
@@ -36,7 +36,14 @@ spec:
               value: "8099"
             - name: PYTHONUNBUFFERED
               value: "1"
-          image: localhost/compose_aider-wrapper:latest
+          image: localhost:5000/ai-stack-aider-wrapper:dev
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           imagePullPolicy: Always
           name: local-ai-aider-wrapper
           ports:

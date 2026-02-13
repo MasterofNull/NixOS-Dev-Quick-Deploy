@@ -325,6 +325,30 @@ Is this a critical operation?
 
 ---
 
+## Error Code Reference
+
+Source of truth: `lib/error-codes.sh`
+
+| Range | Meaning | Examples |
+| --- | --- | --- |
+| 0 | Success | `ERR_SUCCESS` |
+| 1 | Generic failure | `ERR_GENERIC` |
+| 10-19 | System prerequisites | `ERR_NETWORK`, `ERR_DISK_SPACE`, `ERR_PERMISSION`, `ERR_NOT_NIXOS`, `ERR_RUNNING_AS_ROOT`, `ERR_MISSING_COMMAND` |
+| 20-29 | Dependencies | `ERR_DEPENDENCY`, `ERR_PACKAGE_INSTALL`, `ERR_PACKAGE_REMOVE`, `ERR_CHANNEL_UPDATE`, `ERR_PROFILE_CONFLICT` |
+| 30-39 | Configuration | `ERR_CONFIG_INVALID`, `ERR_CONFIG_GENERATION`, `ERR_TEMPLATE_SUBSTITUTION`, `ERR_CONFIG_PATH_CONFLICT` |
+| 40-49 | System rebuild | `ERR_NIXOS_REBUILD`, `ERR_HOME_MANAGER`, `ERR_FLAKE_LOCK`, `ERR_SYSTEM_SWITCH` |
+| 50-59 | K3s/K8s deploy | `ERR_K3S_DEPLOY`, `ERR_K3S_NOT_RUNNING`, `ERR_K3S_NAMESPACE`, `ERR_K3S_MANIFEST`, `ERR_IMAGE_BUILD`, `ERR_IMAGE_IMPORT` |
+| 60-69 | Secrets | `ERR_SECRET_DECRYPT`, `ERR_SECRET_MISSING`, `ERR_SECRET_INVALID`, `ERR_AGE_KEY_MISSING` |
+| 70-79 | Timeouts | `ERR_TIMEOUT`, `ERR_TIMEOUT_KUBECTL`, `ERR_TIMEOUT_REBUILD`, `ERR_TIMEOUT_NETWORK` |
+| 80-89 | User/input | `ERR_USER_ABORT`, `ERR_INVALID_INPUT` |
+| 90-99 | Backup/rollback | `ERR_BACKUP_FAILED`, `ERR_ROLLBACK_FAILED`, `ERR_BACKUP_DIR` |
+
+Guidance:
+- Return the most specific `ERR_*` code available.
+- Log the exit code when failures occur to aid debugging.
+
+---
+
 ## Examples by Context
 
 ### Phase Scripts
@@ -381,4 +405,3 @@ fi
 - Use appropriate return codes
 - Clean up resources on error
 - Document error conditions
-

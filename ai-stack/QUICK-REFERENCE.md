@@ -4,18 +4,17 @@
 
 ```bash
 # 1. Copy environment template
-cp ai-stack/compose/.env.example ai-stack/compose/.env
+cp templates/local-ai-stack/.env.example ~/.config/nixos-ai-stack/.env
 
 # 2. Edit .env and uncomment:
 LLAMA_VULKAN_ENABLE=1
 LLAMA_GPU_LAYERS=33
 
 # 3. Restart llama.cpp
-cd ai-stack/compose
-podman-compose restart llama-cpp
+kubectl rollout restart deploy -n ai-stack llama-cpp
 
 # 4. Verify (should see "using Vulkan")
-podman logs local-ai-llama-cpp | grep -i vulkan
+kubectl logs -n ai-stack deploy/llama-cpp | grep -i vulkan
 ```
 
 ## 📊 New Tools
@@ -46,16 +45,41 @@ intel_gpu_top
 vulkaninfo | grep driver
 
 # Container GPU access
-podman exec local-ai-llama-cpp ls -l /dev/dri
+kubectl exec -n ai-stack deploy/llama-cpp -- ls -l /dev/dri
 ```
 
 ## ⚙️ Configuration Files
 
 | File | Purpose |
 |------|---------|
-| `ai-stack/compose/.env` | Environment variables |
-| `ai-stack/compose/docker-compose.yml` | Service definitions (updated!) |
-| `ai-stack/UPGRADES-2025.md` | Full upgrade documentation |
+| `~/.config/nixos-ai-stack/.env` | Environment variables |
+| `ai-stack/kubernetes/kustomization.yaml` | Service definitions (updated!) |
+| `docs/archive/AI-STACK-UPGRADES-2025.md` | Full upgrade documentation |
+
+## 🔗 Dependency Order & Readiness
+
+**Startup order (recommended):**
+1) Postgres → 2) Redis → 3) Qdrant → 4) Embeddings → 5) AIDB → 6) Hybrid → 7) Ralph → 8) MindsDB → 9) llama-cpp → 10) Open WebUI
+
+**Dependency gates (K8s initContainers):**
+- `aidb` waits for Postgres/Redis/Qdrant/Embeddings.
+- `hybrid-coordinator` waits for Postgres/Redis/Qdrant/Embeddings/AIDB.
+- `ralph-wiggum` waits for Postgres/Redis/Hybrid/AIDB.
+
+**Startup probes (heavy services):**
+- `aidb`, `embeddings`, `mindsdb`, `llama-cpp`, `ralph-wiggum` use `startupProbe` to avoid premature restarts during cold start.
+
+**Quick checks:**
+```bash
+# List deployments and confirm names
+kubectl get deploy -n ai-stack
+
+# Watch rollout readiness (replace <service> with actual deployment names)
+kubectl rollout status -n ai-stack deploy/<service>
+
+# Verify pods are healthy
+kubectl get pods -n ai-stack
+```
 
 ## 📈 Performance Comparison
 
@@ -73,20 +97,20 @@ ls /dev/dri
 vulkaninfo
 
 # Check permissions
-podman exec local-ai-llama-cpp ls -l /dev/dri
+kubectl exec -n ai-stack deploy/llama-cpp -- ls -l /dev/dri
 ```
 
 **Still using CPU?**
 ```bash
 # Verify environment
-podman exec local-ai-llama-cpp env | grep VULKAN
+kubectl exec -n ai-stack deploy/llama-cpp -- env | grep VULKAN
 
 # Check logs
-podman logs local-ai-llama-cpp --tail 50
+kubectl logs -n ai-stack deploy/llama-cpp --tail 50
 ```
 
 ## 📚 Full Docs
 
-- [Complete Upgrade Guide](./UPGRADES-2025.md)
+- [Complete Upgrade Guide](../docs/archive/AI-STACK-UPGRADES-2025.md)
 - [Main AI Stack README](../README.md)
 - [Docker Model Runner Comparison](./UPGRADES-2025.md#comparison)

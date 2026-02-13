@@ -439,6 +439,27 @@ pytest ai-stack/tests/ -v
 psql -h localhost -U aidb -d aidb_test -c "SELECT COUNT(*) FROM solved_issues;"
 ```
 
+### Restore Drill Script (Recommended)
+
+Use the non-destructive restore drill to validate recoverability without touching production data.
+By default it performs a dry-run and shows the commands it would execute.
+
+```bash
+# Dry-run (safe)
+./scripts/restore-drill.sh
+
+# Execute restore drill and clean up temporary DB/collection afterwards
+./scripts/restore-drill.sh --execute --cleanup
+
+# Run only PostgreSQL or only Qdrant drill
+./scripts/restore-drill.sh --execute --postgres-only
+./scripts/restore-drill.sh --execute --qdrant-only
+```
+
+**Expected recovery time (estimate):**
+- PostgreSQL restore to temp DB: ~5–20 minutes depending on backup size and disk speed.
+- Qdrant restore to temp collection: ~5–25 minutes depending on snapshot size and I/O throughput.
+
 ### Disaster Recovery Drill
 
 Schedule regular DR drills (quarterly recommended):

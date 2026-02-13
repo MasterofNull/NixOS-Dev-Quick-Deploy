@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
-# Validate AI stack env drift between .env and compose defaults
+# Validate AI stack env drift between .env and k8s defaults
 #
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${AI_STACK_ENV_FILE:-$HOME/.config/nixos-ai-stack/.env}"
-COMPOSE_FILE="${SCRIPT_DIR}/ai-stack/compose/docker-compose.yml"
 TEMPLATE_ENV="${SCRIPT_DIR}/templates/local-ai-stack/.env.example"
+K8S_ENV_CONFIGMAP="${SCRIPT_DIR}/ai-stack/kubernetes/kompose/env-configmap.yaml"
 
 error() { echo "[ERROR] $*" >&2; }
 info() { echo "[INFO] $*"; }
@@ -18,10 +18,11 @@ if [[ ! -f "$ENV_FILE" ]]; then
     exit 1
 fi
 
-if [[ ! -f "$COMPOSE_FILE" ]]; then
-    error "Missing compose file: $COMPOSE_FILE"
+if [[ ! -f "$K8S_ENV_CONFIGMAP" ]]; then
+    error "Missing k8s env configmap; cannot validate drift."
     exit 1
 fi
+info "Using k8s env configmap for defaults."
 
 required_keys=(
     "AI_STACK_DATA"
@@ -35,9 +36,9 @@ required_keys=(
     "EMBEDDING_MODEL"
 )
 
-compose_has_default() {
+configmap_has_key() {
     local key="$1"
-    grep -qE "\\$\\{${key}:-[^}]+\\}" "$COMPOSE_FILE"
+    grep -qE "^[[:space:]]+${key}:[[:space:]]+.+$" "$K8S_ENV_CONFIGMAP"
 }
 
 env_has_key() {
@@ -47,8 +48,8 @@ env_has_key() {
 
 secret_exists() {
     local name="$1"
-    local secrets_dir="${SCRIPT_DIR}/ai-stack/compose/secrets"
-    [[ -f "${secrets_dir}/${name}" ]]
+    local k8s_secrets_file="${SCRIPT_DIR}/ai-stack/kubernetes/secrets/secrets.sops.yaml"
+    [[ -f "$k8s_secrets_file" ]] && rg -q "^[[:space:]]+${name}:" "$k8s_secrets_file"
 }
 
 missing=()
@@ -59,7 +60,7 @@ for key in "${required_keys[@]}"; do
 
     case "$key" in
         POSTGRES_DB|POSTGRES_USER)
-            if compose_has_default "$key"; then
+            if configmap_has_key "$key"; then
                 continue
             fi
             ;;
@@ -85,8 +86,8 @@ if (( ${#missing[@]} > 0 )); then
     exit 1
 fi
 
-if grep -qE "EMBEDDING_MODEL: [^$]" "$COMPOSE_FILE"; then
-    error "Compose file still hardcodes EMBEDDING_MODEL; expected env interpolation."
+if ! grep -qE "^[[:space:]]+EMBEDDING_MODEL:[[:space:]]+.+$" "$K8S_ENV_CONFIGMAP"; then
+    error "K8s env configmap missing EMBEDDING_MODEL."
     exit 1
 fi
 

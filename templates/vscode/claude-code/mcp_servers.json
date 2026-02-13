@@ -147,12 +147,12 @@
       "description": "NixOS MCP Server - Search 130K+ packages and Home Manager options"
     },
     "postgres": {
-      "url": "postgresql://mcp:change_me_in_production@localhost:5432/mcp",
+      "url": "postgresql://mcp:${POSTGRES_PASSWORD}@localhost:5432/mcp",
       "command": "npx",
       "args": [
         "-y",
         "@modelcontextprotocol/server-postgres",
-        "postgresql://mcp:change_me_in_production@localhost:5432/mcp"
+        "postgresql://mcp:${POSTGRES_PASSWORD}@localhost:5432/mcp"
       ],
       "capabilities": [
         "database-query",

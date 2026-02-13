@@ -15,14 +15,31 @@ spec:
       labels:
         app: local-registry
     spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      automountServiceAccountToken: false
       containers:
         - name: registry
           image: registry:2
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - containerPort: 5000
           env:
             - name: REGISTRY_STORAGE_DELETE_ENABLED
               value: "true"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
           volumeMounts:
             - name: registry-data
               mountPath: /var/lib/registry

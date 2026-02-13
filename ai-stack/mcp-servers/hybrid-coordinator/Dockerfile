@@ -2,7 +2,7 @@
 # Hybrid Coordinator MCP Server Dockerfile
 # Multi-stage build for optimal image size
 
-FROM python:3.13-slim AS builder
+FROM docker.io/library/python:3.13-slim AS builder
 
 # Set environment for non-interactive apt and faster downloads
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -34,7 +34,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # ============================================================================
 # Final Stage
 # ============================================================================
-FROM python:3.13-slim
+FROM docker.io/library/python:3.13-slim
 
 # Set environment for non-interactive apt
 ENV DEBIAN_FRONTEND=noninteractive
@@ -46,11 +46,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app user and directory
-RUN useradd --create-home --shell /bin/bash coordinator
+RUN useradd --create-home --home-dir /opt/coordinator --shell /bin/bash coordinator
 WORKDIR /app
 
 # Copy Python packages from builder
-COPY --from=builder /build/.local /home/coordinator/.local
+COPY --from=builder /build/.local /opt/coordinator/.local
 
 # Copy application code
 COPY hybrid-coordinator/server.py .
@@ -71,22 +71,22 @@ COPY config/config.yaml /app/config/config.yaml
 # Create data directories and set permissions
 RUN mkdir -p /data/telemetry /data/fine-tuning /data/collections && \
     chmod +x /app/start_with_learning.sh && \
-    chown -R coordinator:coordinator /data /app
+    chown -R coordinator:coordinator /data /app /opt/coordinator
 
 # Switch to app user
 USER coordinator
 
 # Add local Python packages to PATH
-ENV PATH="/home/coordinator/.local/bin:${PATH}" \
+ENV HOME="/opt/coordinator" \
+    PATH="/opt/coordinator/.local/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
 # Expose MCP server port
 EXPOSE 8092
 
-# Health check (removed - will be handled by podman-compose healthcheck section)
+# Health check (removed - will be handled by Kubernetes probes)
 # OCI format doesn't support HEALTHCHECK directive
-# Use podman-compose.yml healthcheck configuration instead
 
 # Start server with continuous learning daemon
 CMD ["/app/start_with_learning.sh"]

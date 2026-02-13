@@ -6,6 +6,7 @@ Purpose: Test continuous learning system components
 Following: docs/agent-guides/22-CONTINUOUS-LEARNING.md
 """
 
+import os
 import sys
 import requests
 from qdrant_client import QdrantClient
@@ -13,6 +14,9 @@ from qdrant_client.models import PointStruct
 import uuid
 from datetime import datetime
 from sentence_transformers import SentenceTransformer
+
+SERVICE_HOST = os.getenv("SERVICE_HOST", "localhost")
+QDRANT_URL = os.getenv("QDRANT_URL", f"http://{SERVICE_HOST}:6333")
 
 # Initialize embedding model (matches AIDB architecture)
 embedding_model = None
@@ -91,7 +95,7 @@ def get_embedding(text: str, model: str = None, base_url: str = None) -> list:
 def store_interaction(query: str, response: str, metadata: dict) -> str:
     """Store interaction with value scoring"""
 
-    client = QdrantClient(url="http://localhost:6333")
+    client = QdrantClient(url=QDRANT_URL)
 
     # Calculate value score
     value_score = calculate_value_score(metadata)
@@ -140,7 +144,7 @@ def store_interaction(query: str, response: str, metadata: dict) -> str:
 def store_error_solution(error: str, solution: str, root_cause: str = None, severity: str = "medium") -> str:
     """Store error and solution"""
 
-    client = QdrantClient(url="http://localhost:6333")
+    client = QdrantClient(url=QDRANT_URL)
 
     # Create embedding
     embedding = get_embedding(error)
@@ -175,7 +179,7 @@ class ContinuousLearningTester:
     """Test continuous learning workflow"""
 
     def __init__(self):
-        self.client = QdrantClient(url="http://localhost:6333")
+        self.client = QdrantClient(url=QDRANT_URL)
         self.test_results = []
         self.test_point_ids = []
 

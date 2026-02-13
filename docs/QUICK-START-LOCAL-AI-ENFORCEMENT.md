@@ -41,7 +41,7 @@ bash scripts/start-ai-stack-and-dashboard.sh
 
 ```bash
 # 1. Navigate to project
-cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
+cd ~/Documents/try/NixOS-Dev-Quick-Deploy
 
 # 2. Run setup script
 bash scripts/setup-claude-proxy.sh

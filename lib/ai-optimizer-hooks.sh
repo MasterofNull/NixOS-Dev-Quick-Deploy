@@ -22,14 +22,17 @@ AI_OPTIMIZER_DIR="${AI_OPTIMIZER_DIR:-$HOME/Documents/AI-Optimizer}"
 
 # Logical stack profile (personal, guest, none)
 AI_STACK_PROFILE="${AI_STACK_PROFILE:-personal}"
+KUBECTL_TIMEOUT="${KUBECTL_TIMEOUT:-60}"
 
 # ============================================================================
 # Prerequisite Checks
 # ============================================================================
 
-check_docker_podman_ready() {
-    # Check if Docker or Podman is available (configured by NixOS)
-    if command -v docker &> /dev/null; then
+check_container_runtime_ready() {
+    # Check if a container runtime is available — prefer K3s (kubectl)
+    if command -v kubectl &> /dev/null && kubectl --request-timeout="${KUBECTL_TIMEOUT}s" cluster-info &>/dev/null; then
+        return 0
+    elif command -v docker &> /dev/null; then
         return 0
     elif command -v podman &> /dev/null; then
         return 0
@@ -101,7 +104,8 @@ detect_port_conflicts() {
 
     for port in "${ports[@]}"; do
         if ss -tuln 2>/dev/null | grep -q ":$port "; then
-            local process=$(ss -tlnp 2>/dev/null | grep ":$port " | awk '{print $6}' | cut -d'"' -f2 || echo "unknown")
+            local process
+            process=$(ss -tlnp 2>/dev/null | grep ":$port " | awk '{print $6}' | cut -d'"' -f2 || echo "unknown")
             conflicts+=("$port:$process")
         fi
     done
@@ -121,11 +125,15 @@ detect_port_conflicts() {
 # Network Configuration
 # ============================================================================
 
-ensure_docker_network_ready() {
-    # Ensure Docker/Podman networking is properly configured
-    # AI-Optimizer creates 'aidb-network' bridge
+ensure_container_network_ready() {
+    # Ensure container networking is properly configured
+    # K3s: networking handled by flannel/CNI automatically
+    # Docker/Podman: AI-Optimizer creates 'aidb-network' bridge
 
-    if command -v docker &> /dev/null; then
+    if command -v kubectl &> /dev/null && kubectl --request-timeout="${KUBECTL_TIMEOUT}s" cluster-info &>/dev/null; then
+        # K3s handles networking via flannel CNI
+        return 0
+    elif command -v docker &> /dev/null; then
         # Docker is available - nothing to do, AI-Optimizer will create network
         return 0
     elif command -v podman &> /dev/null; then
@@ -156,6 +164,7 @@ save_integration_status() {
   "config_root": "$AI_OPTIMIZER_CONFIG_ROOT",
   "expected_location": "$AI_OPTIMIZER_DIR",
    "stack_profile": "$AI_STACK_PROFILE",
+  "k3s_available": $(command -v kubectl &> /dev/null && kubectl --request-timeout="${KUBECTL_TIMEOUT}s" cluster-info &>/dev/null && echo "true" || echo "false"),
   "docker_available": $(command -v docker &> /dev/null && echo "true" || echo "false"),
   "podman_available": $(command -v podman &> /dev/null && echo "true" || echo "false"),
   "nvidia_toolkit_available": $(command -v nvidia-container-cli &> /dev/null && echo "true" || echo "false"),
@@ -167,12 +176,11 @@ EOF
 }
 
 check_ai_optimizer_installed() {
-    # Check if AI-Optimizer is already installed
-    if [ -d "$AI_OPTIMIZER_DIR" ] && [ -f "$AI_OPTIMIZER_DIR/docker-compose.new.yml" ]; then
+    # Check if AI-Optimizer is already installed — K3s deployment
+    if command -v kubectl &>/dev/null && kubectl --request-timeout="${KUBECTL_TIMEOUT}s" get deploy -n ai-stack aidb &>/dev/null 2>&1; then
         return 0
-    else
-        return 1
     fi
+    return 1
 }
 
 get_ai_optimizer_status() {
@@ -182,17 +190,9 @@ get_ai_optimizer_status() {
         return 1
     fi
 
-    # Check if services are running
-    if command -v docker &> /dev/null; then
-        if docker ps | grep -q aidb-mcp; then
-            echo "running"
-            return 0
-        else
-            echo "stopped"
-            return 1
-        fi
-    elif command -v podman &> /dev/null; then
-        if podman ps | grep -q aidb-mcp; then
+    # Check if services are running — K3s only
+    if command -v kubectl &> /dev/null && kubectl --request-timeout="${KUBECTL_TIMEOUT}s" cluster-info &>/dev/null; then
+        if kubectl --request-timeout="${KUBECTL_TIMEOUT}s" get deploy -n ai-stack aidb -o jsonpath='{.status.readyReplicas}' 2>/dev/null | grep -q '[1-9]'; then
             echo "running"
             return 0
         else
@@ -210,7 +210,8 @@ get_ai_optimizer_status() {
 # ============================================================================
 
 show_ai_optimizer_info() {
-    local status=$(get_ai_optimizer_status)
+    local status
+    status=$(get_ai_optimizer_status)
 
     case "$status" in
         not_installed)
@@ -228,8 +229,7 @@ To install AI-Optimizer:
 
   2. Deploy stack:
      cd ~/Documents/AI-Optimizer
-     cp .env.example .env
-     docker compose -f docker-compose.new.yml up -d
+     kubectl --request-timeout="${KUBECTL_TIMEOUT}s" apply -k ai-stack/kubernetes/
 
 Shared data directories prepared:
   • Data:   $AI_OPTIMIZER_DATA_ROOT
@@ -262,9 +262,9 @@ EOF
 │ AI-Optimizer AIDB MCP Server - Installed but Stopped                      │
 ╰────────────────────────────────────────────────────────────────────────────╯
 
-To start services:
-  cd ~/Documents/AI-Optimizer
-  docker compose -f docker-compose.new.yml up -d
+To start services (K3s):
+  kubectl --request-timeout="${KUBECTL_TIMEOUT}s" apply -k ai-stack/kubernetes/
+  kubectl --request-timeout="${KUBECTL_TIMEOUT}s" get pods -n ai-stack
 
 EOF
             ;;
@@ -277,11 +277,11 @@ EOF
 # Export Functions
 # ============================================================================
 
-export -f check_docker_podman_ready
+export -f check_container_runtime_ready
 export -f check_nvidia_container_toolkit
 export -f prepare_shared_data_directories
 export -f detect_port_conflicts
-export -f ensure_docker_network_ready
+export -f ensure_container_network_ready
 export -f save_integration_status
 export -f check_ai_optimizer_installed
 export -f get_ai_optimizer_status

@@ -4,13 +4,28 @@
 
 set -euo pipefail
 
-export PATH="/run/current-system/sw/bin:/usr/bin:/bin:${HOME}/.nix-profile/bin"
+export PATH="/run/current-system/sw/bin:/usr/bin:/bin:${HOME}/.nix-profile/bin:${HOME}/.local/state/nix/profiles/home-manager/bin"
 
 SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
 SCRIPT_DIR="$(cd "$(/run/current-system/sw/bin/dirname "$SCRIPT_PATH")" && pwd)"
 DASHBOARD_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DATA_DIR="${HOME}/.local/share/nixos-system-dashboard"
 PORT="${DASHBOARD_PORT:-8888}"
+export DASHBOARD_BIND_ADDRESS="${DASHBOARD_BIND_ADDRESS:-127.0.0.1}"
+BIND_ADDRESS="${DASHBOARD_BIND_ADDRESS}"
+
+# Source centralized service endpoints (optional)
+# shellcheck source=config/service-endpoints.sh
+if [[ -f "${DASHBOARD_DIR}/config/service-endpoints.sh" ]]; then
+    source "${DASHBOARD_DIR}/config/service-endpoints.sh"
+fi
+
+# Export endpoint vars for the embedded Python server
+export SERVICE_HOST
+export AIDB_URL
+export HYBRID_URL
+export DASHBOARD_API_URL
+export NGINX_HTTPS_URL
 
 # Bail early if port is already in use to avoid Python traceback.
 if command -v ss >/dev/null 2>&1; then
@@ -28,9 +43,10 @@ mkdir -p "$DATA_DIR"
 cd "$DASHBOARD_DIR"
 
 echo "🌐 Starting NixOS System Dashboard Server..."
-echo "📊 Dashboard: http://localhost:$PORT/dashboard.html"
-echo "📁 Data API: http://localhost:$PORT/data/"
-echo "🧩 Actions API: http://localhost:$PORT/action"
+echo "📊 Dashboard: http://${SERVICE_HOST:-localhost}:$PORT/dashboard.html"
+echo "📁 Data API: http://${SERVICE_HOST:-localhost}:$PORT/data/"
+echo "🧩 Actions API: http://${SERVICE_HOST:-localhost}:$PORT/action"
+echo "🔒 Bind address: ${BIND_ADDRESS}"
 echo ""
 echo "Press Ctrl+C to stop"
 
@@ -61,7 +77,32 @@ from datetime import datetime, timedelta
 import threading
 
 PORT = int(os.getenv('DASHBOARD_PORT', '8888'))
+BIND_ADDRESS = os.getenv('DASHBOARD_BIND_ADDRESS', '127.0.0.1')
 DATA_DIR = Path.home() / '.local/share/nixos-system-dashboard'
+HOME_DASHBOARD_PREFIX = f"{DATA_DIR}/"
+SERVICE_HOST = os.getenv('SERVICE_HOST', 'localhost')
+HYBRID_URL = os.getenv('HYBRID_URL', f'http://{SERVICE_HOST}:8092')
+AIDB_URL = os.getenv('AIDB_URL', f'http://{SERVICE_HOST}:8091')
+NGINX_HTTPS_URL = os.getenv('NGINX_HTTPS_URL', f'https://{SERVICE_HOST}:8443')
+
+def is_k8s_mode() -> bool:
+    explicit = os.getenv('DASHBOARD_MODE', '').lower()
+    if explicit in ('k8s', 'kubernetes'):
+        return True
+    if os.getenv('KUBECONFIG') or os.path.exists('/etc/rancher/k3s/k3s.yaml'):
+        return True
+    return False
+
+def restart_service_k8s(service_name: str) -> bool:
+    try:
+        result = subprocess.run(
+            ['kubectl', 'rollout', 'restart', f'deployment/{service_name}', '-n', os.getenv('AI_STACK_NAMESPACE', 'ai-stack')],
+            capture_output=True,
+            timeout=30
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
 
 class RateLimiter:
     """
@@ -187,7 +228,7 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                 import urllib.request
                 import urllib.error
                 # Fetch from hybrid coordinator learning stats endpoint
-                stats_url = 'http://localhost:8092/learning/stats'
+                stats_url = f'{HYBRID_URL}/learning/stats'
                 req = urllib.request.Request(stats_url, headers={'User-Agent': 'Dashboard/1.0'})
 
                 with urllib.request.urlopen(req, timeout=5) as response:
@@ -211,7 +252,7 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                 import urllib.request
                 import urllib.error
                 # Fetch from hybrid coordinator health endpoint
-                health_url = 'http://localhost:8092/health'
+                health_url = f'{HYBRID_URL}/health'
                 req = urllib.request.Request(health_url, headers={'User-Agent': 'Dashboard/1.0'})
 
                 with urllib.request.urlopen(req, timeout=5) as response:
@@ -250,7 +291,7 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     return
 
                 # Use HTTP client to access AIDB via nginx (no subprocess)
-                container_url = f'https://localhost:8443/aidb/{aidb_path}'
+                container_url = f'{NGINX_HTTPS_URL}/aidb/{aidb_path}'
 
                 # Create request with timeout
                 req = urllib.request.Request(container_url, headers={'User-Agent': 'Dashboard/1.0'})
@@ -311,8 +352,8 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                 with open(filepath, 'rb') as f:
                     self.wfile.write(f.read())
                 return
-        elif clean_path.startswith(f'/home/{os.getenv("USER", "hyperd")}/.local/share/nixos-system-dashboard/'):
-            filename = clean_path.replace(f'/home/{os.getenv("USER", "hyperd")}/.local/share/nixos-system-dashboard/', '')
+        elif clean_path.startswith(HOME_DASHBOARD_PREFIX):
+            filename = clean_path.replace(HOME_DASHBOARD_PREFIX, '')
             filepath = DATA_DIR / filename
 
             if filepath.exists() and filepath.suffix == '.json':
@@ -397,27 +438,33 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
 
                 # Restart affected services (hybrid-coordinator and aidb)
                 restarted = []
-                try:
-                    result = subprocess.run(
-                        ['podman', 'restart', 'local-ai-hybrid-coordinator'],
-                        capture_output=True,
-                        timeout=30
-                    )
-                    if result.returncode == 0:
+                if is_k8s_mode():
+                    if restart_service_k8s('hybrid-coordinator'):
                         restarted.append('hybrid-coordinator')
-                except Exception:
-                    pass
-
-                try:
-                    result = subprocess.run(
-                        ['podman', 'restart', 'local-ai-aidb'],
-                        capture_output=True,
-                        timeout=30
-                    )
-                    if result.returncode == 0:
+                    if restart_service_k8s('aidb'):
                         restarted.append('aidb')
-                except Exception:
-                    pass
+                else:
+                    try:
+                        result = subprocess.run(
+                            ['podman', 'restart', 'local-ai-hybrid-coordinator'],
+                            capture_output=True,
+                            timeout=30
+                        )
+                        if result.returncode == 0:
+                            restarted.append('hybrid-coordinator')
+                    except Exception:
+                        pass
+
+                    try:
+                        result = subprocess.run(
+                            ['podman', 'restart', 'local-ai-aidb'],
+                            capture_output=True,
+                            timeout=30
+                        )
+                        if result.returncode == 0:
+                            restarted.append('aidb')
+                    except Exception:
+                        pass
 
                 response = {
                     "status": "success",
@@ -526,7 +573,7 @@ class ThreadingHTTPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     allow_reuse_address = True
 
 
-with ThreadingHTTPServer(("", PORT), DashboardHandler) as httpd:
-    print(f"✅ Server running on port {PORT}")
+with ThreadingHTTPServer((BIND_ADDRESS, PORT), DashboardHandler) as httpd:
+    print(f"✅ Server running on {BIND_ADDRESS}:{PORT}")
     httpd.serve_forever()
 EOF

@@ -178,3 +178,29 @@ spec:
   privateKey:
     algorithm: ECDSA
     size: 256
+---
+# Nginx TLS Certificate (reverse proxy)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: nginx-tls
+  namespace: ai-stack
+  labels:
+    hipaa-compliance: required
+spec:
+  secretName: nginx-tls-secret
+  issuerRef:
+    name: hospital-ai-ca-issuer
+    kind: ClusterIssuer
+  commonName: nginx.ai-stack.svc.cluster.local
+  dnsNames:
+    - nginx
+    - nginx.ai-stack
+    - nginx.ai-stack.svc
+    - nginx.ai-stack.svc.cluster.local
+    - localhost
+  duration: 8760h
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256

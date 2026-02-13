@@ -6,8 +6,9 @@ Wants=hybrid-coordinator.service aidb-mcp.service
 [Service]
 Type=simple
 User=%u
-WorkingDirectory=/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
-ExecStart=/usr/bin/env python3 /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/claude-api-proxy.py
+# Set PROJECT_ROOT before installing this unit (replace @PROJECT_ROOT@)
+WorkingDirectory=@PROJECT_ROOT@
+ExecStart=/usr/bin/env python3 @PROJECT_ROOT@/scripts/claude-api-proxy.py
 Restart=on-failure
 RestartSec=5s
 

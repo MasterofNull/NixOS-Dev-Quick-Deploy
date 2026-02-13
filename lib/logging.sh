@@ -157,17 +157,17 @@ log() {
     # $* joins all arguments with spaces
     # Using "$*" preserves internal spaces in the message
     local message="$*"
+    if [[ "$level" == "ERROR" && ! "$message" =~ ^ERR= ]]; then
+        local fallback_code="${ERR_GENERIC:-1}"
+        message="ERR=${fallback_code} ${message}"
+    fi
 
     # Generate timestamp in human-readable format
     # Format: YYYY-MM-DD HH:MM:SS (24-hour clock)
     # Using '+%Y-%m-%d %H:%M:%S' format string
     # Note: Not using -Iseconds here for better readability
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-
-    # Write to log file with formatted output
-    # >> appends to file (vs > which overwrites)
-    # Format: [timestamp] [level] message
-    echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 
     # Check if this log level should be written based on LOG_LEVEL setting
     # Log levels in order: TRACE < DEBUG < INFO < WARNING < ERROR
@@ -212,20 +212,21 @@ log() {
             ;;
     esac
 
-    # If we shouldn't log this message, remove it from the log file
-    # (it was already written above, so we need to undo that)
     if [[ "$should_log" != true ]]; then
-        # Remove the last line from the log file (the one we just wrote)
-        # This is a simple approach - for high-volume logging, consider checking
-        # before writing instead
-        local log_size
-        log_size=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0")
-        if [[ $log_size -gt 0 ]]; then
-            head -n $((log_size - 1)) "$LOG_FILE" > "${LOG_FILE}.tmp" 2>/dev/null && \
-            mv "${LOG_FILE}.tmp" "$LOG_FILE" 2>/dev/null || true
-        fi
         return 0
     fi
+
+    local caller="${FUNCNAME[2]:-}"
+
+    if [[ "${LOG_FORMAT:-plain}" == "json" ]] && declare -F log_json_line >/dev/null 2>&1; then
+        log_json_line "$level" "$message" "$caller" >> "$LOG_FILE"
+        return 0
+    fi
+
+    # Write to log file with formatted output
+    # >> appends to file (vs > which overwrites)
+    # Format: [timestamp] [level] message
+    echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
 
     # Handle special cases based on log level
     # case statement is more efficient than multiple if/elif for string matching
@@ -237,17 +238,17 @@ log() {
             # FUNCNAME[1] = direct caller (e.g., print_error)
             # FUNCNAME[2] = the actual function where error occurred
             # The ${var:-default} syntax provides a default if var is unset
-            if [[ "${FUNCNAME[2]:-}" != "" ]]; then
+            if [[ -n "$caller" ]]; then
                 # Write enriched error message with function context
                 # This helps trace where errors originated in the code
-                echo "[$timestamp] [$level] [${FUNCNAME[2]}] $message" >> "$LOG_FILE"
+                echo "[$timestamp] [$level] [${caller}] $message" >> "$LOG_FILE"
             fi
             ;;
         TRACE|DEBUG)
             # TRACE and DEBUG messages include additional context
             # Show calling function and variable values if available
-            if [[ "${FUNCNAME[2]:-}" != "" ]]; then
-                echo "[$timestamp] [$level] [${FUNCNAME[2]}] $message" >> "$LOG_FILE"
+            if [[ -n "$caller" ]]; then
+                echo "[$timestamp] [$level] [${caller}] $message" >> "$LOG_FILE"
             fi
             ;;
         # Other levels (INFO, WARNING) fall through to default behavior
@@ -318,6 +319,12 @@ log_warning() {
 }
 
 log_error() {
+    local first_arg="${1:-}"
+    if [[ "$first_arg" =~ ^[0-9]+$ ]] && [[ $# -gt 1 ]]; then
+        shift
+        log ERROR "ERR=${first_arg} $*"
+        return 0
+    fi
     log ERROR "$@"
 }
 
@@ -331,6 +338,33 @@ log_trace() {
 
 log_success() {
     log INFO "$@"
+}
+
+# ============================================================================
+# Error Aggregation
+# ============================================================================
+# Parses the deployment log file and returns error/warning counts.
+# Outputs: DEPLOY_ERRORS DEPLOY_WARNINGS (global variables)
+# Also populates DEPLOY_ERROR_SAMPLES (array of up to 10 sample error lines).
+
+aggregate_deployment_errors() {
+    DEPLOY_ERRORS=0
+    DEPLOY_WARNINGS=0
+    DEPLOY_ERROR_SAMPLES=()
+
+    local log_file="${LOG_FILE:-}"
+    if [[ -z "$log_file" || ! -f "$log_file" ]]; then
+        return 0
+    fi
+
+    DEPLOY_ERRORS=$(grep -c '\[ERROR\]' "$log_file" 2>/dev/null || echo 0)
+    DEPLOY_WARNINGS=$(grep -c '\[WARNING\]' "$log_file" 2>/dev/null || echo 0)
+
+    # Collect up to 10 sample error lines (most recent first)
+    local line
+    while IFS= read -r line; do
+        DEPLOY_ERROR_SAMPLES+=("$line")
+    done < <(grep '\[ERROR\]' "$log_file" 2>/dev/null | tail -10)
 }
 
 # ============================================================================

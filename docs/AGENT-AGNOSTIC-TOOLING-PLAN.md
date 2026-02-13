@@ -57,7 +57,7 @@ Claude Code automatically loads from:
 **Implementation:**
 ```bash
 # Move custom skills from .agent/skills/ to .claude/skills/
-cd /home/hyperd/Documents/NixOS-Dev-Quick-Deploy
+cd ~/Documents/NixOS-Dev-Quick-Deploy
 
 # Copy custom skills (no overlap, safe to merge)
 for skill in .agent/skills/*; do
@@ -621,7 +621,7 @@ npm install -g mcp-cloud-compliance
 
 1. **Consolidate skills** (15 minutes)
    ```bash
-   cd /home/hyperd/Documents/NixOS-Dev-Quick-Deploy
+   cd ~/Documents/NixOS-Dev-Quick-Deploy
    cp -r .agent/skills/* .claude/skills/
    # Verify: ls .claude/skills/ | wc -l  # Should show 25
    ```

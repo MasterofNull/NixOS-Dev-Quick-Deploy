@@ -80,13 +80,13 @@ PASS: Blocked endpoints
 ```
 
 ## Files Modified
-- `/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/serve-dashboard.sh` (lines 76-130)
+- `~/Documents/try/NixOS-Dev-Quick-Deploy/scripts/serve-dashboard.sh` (lines 76-130)
   - Replaced subprocess proxy with urllib.request
   - Added endpoint whitelist
   - Improved error handling
 
 ## Files Created
-- `/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/ai-stack/tests/test_dashboard_security.py`
+- `~/Documents/try/NixOS-Dev-Quick-Deploy/ai-stack/tests/test_dashboard_security.py`
   - Security test suite for dashboard proxy
   - Tests subprocess removal
   - Tests endpoint whitelist

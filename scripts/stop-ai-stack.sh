@@ -23,35 +23,13 @@ if command -v pkill >/dev/null 2>&1; then
     have_pkill=true
 fi
 
-# Stop containers via compose
-cd "$PROJECT_ROOT/ai-stack/compose"
-if command -v podman-compose >/dev/null 2>&1; then
-    if [ -f docker-compose.yml ]; then
-        echo "  Stopping containers via podman-compose..."
-        podman-compose down 2>/dev/null || true
-        podman-compose down --remove-orphans 2>/dev/null || true
-    fi
+if command -v kubectl >/dev/null 2>&1; then
+    echo "  Stopping Kubernetes deployments..."
+    kubectl --request-timeout=30s scale deploy -n ai-stack --replicas=0 --all 2>/dev/null || true
+    kubectl --request-timeout=30s delete pod -n ai-stack --all 2>/dev/null || true
+else
+    echo "  kubectl not available; skipping Kubernetes stop"
 fi
-
-# Force stop specific containers if they're still running
-echo "  Force stopping containers..."
-for container in "${AI_STACK_CONTAINERS[@]}"; do
-    if podman ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
-        echo "    Stopping $container..."
-        podman stop "$container" 2>/dev/null || true
-    fi
-done
-
-# Remove stopped containers to avoid name conflicts on next start
-echo "  Removing stale containers..."
-for container in "${AI_STACK_CONTAINERS[@]}"; do
-    if podman ps -a --format '{{.Names}} {{.Status}}' | grep -q "^${container} "; then
-        if ! podman ps --format '{{.Names}}' | grep -q "^${container}$"; then
-            echo "    Removing $container..."
-            podman rm -f "$container" 2>/dev/null || true
-        fi
-    fi
-done
 
 # Kill host processes on conflicting ports
 echo "  Checking for port conflicts..."

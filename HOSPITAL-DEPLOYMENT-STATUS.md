@@ -207,7 +207,7 @@ kubectl top pods -n ai-stack
 ## Known Issues / Follow-ups
 
 1. **Ralph Prometheus metrics**: `/metrics` now returning 200; Prometheus target up.  
-   - **Fix applied:** imported updated `localhost/compose_ralph-wiggum:latest` into k3s and restarted deployment.  
+   - **Fix applied:** imported updated `localhost/ai-stack-ralph-wiggum:latest` into k3s and restarted deployment.  
    - **Status:** resolved (2026-01-25).
 
 2. **Open WebUI CrashLoopBackOff**: optional UI not required for HIPAA core flow.  
@@ -335,7 +335,7 @@ kubectl get secret postgres-password -n ai-stack -o jsonpath='{.data.password}' 
 ## Contact & Support
 
 - **Documentation:** [SECRETS-MANAGEMENT-GUIDE.md](SECRETS-MANAGEMENT-GUIDE.md)
-- **Migration Plan:** [K3S-PORTAINER-MIGRATION-PLAN.md](K3S-PORTAINER-MIGRATION-PLAN.md)
+- **Migration Plan:** [docs/archive/K3S-PORTAINER-MIGRATION-PLAN.md](docs/archive/K3S-PORTAINER-MIGRATION-PLAN.md)
 - **Troubleshooting:** [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 
 ---

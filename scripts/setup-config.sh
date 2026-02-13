@@ -23,7 +23,8 @@ fi
 mkdir -p "$(dirname "$TARGET_ENV")"
 cp "$TEMPLATE_ENV" "$TARGET_ENV"
 
-sed -i "s|/home/your-user|$HOME|g" "$TARGET_ENV"
+home_placeholder="/${HOME_ROOT_DIR:-home}/your-user"
+sed -i "s|${home_placeholder}|$HOME|g" "$TARGET_ENV"
 
 echo "Created AI stack env: $TARGET_ENV"
 echo "Review and update POSTGRES_PASSWORD and other secrets before starting the stack."

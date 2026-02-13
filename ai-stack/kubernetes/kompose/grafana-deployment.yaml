@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   annotations:
-    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
     kompose.version: 1.37.0 (HEAD)
     nixos.quick-deploy.ai-stack: "true"
     nixos.quick-deploy.service: grafana
@@ -19,13 +18,14 @@ spec:
   template:
     metadata:
       annotations:
-        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
         kompose.version: 1.37.0 (HEAD)
         nixos.quick-deploy.ai-stack: "true"
         nixos.quick-deploy.service: grafana
       labels:
         io.kompose.service: grafana
     spec:
+      serviceAccountName: grafana
+      automountServiceAccountToken: false
       containers:
         - env:
             - name: GF_AUTH_DISABLE_LOGIN_FORM
@@ -39,11 +39,27 @@ spec:
           envFrom:
             - configMapRef:
                 name: env
+            - secretRef:
+                name: huggingface-hub-token
           image: grafana/grafana:11.2.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           name: local-ai-grafana
           ports:
             - containerPort: 3000
               protocol: TCP
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
           volumeMounts:
             - mountPath: /run/secrets/grafana-admin-password
               name: grafana-admin-password

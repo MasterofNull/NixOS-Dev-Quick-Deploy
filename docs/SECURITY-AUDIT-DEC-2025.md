@@ -545,7 +545,7 @@ sops -e -i secrets/system.yaml
 {
   sops = {
     defaultSopsFile = ./secrets/system.yaml;
-    age.keyFile = "/home/@USER@/.config/sops/age/keys.txt";
+    age.keyFile = "${config.users.users.@USER@.home}/.config/sops/age/keys.txt";
 
     secrets = {
       mcp_postgres_password = {
@@ -579,52 +579,52 @@ echo "🔍 Running security scans..."
 
 # 1. Scan for vulnerabilities in Nix packages
 echo "Checking for CVEs in installed packages..."
-nix-shell -p vulnix --run "vulnix -S" > /tmp/vulnix-report.txt
+nix-shell -p vulnix --run "vulnix -S" > ${TMPDIR:-/tmp}/vulnix-report.txt
 
 # 2. Check for hardcoded secrets
 echo "Scanning for hardcoded secrets..."
-git secrets --scan > /tmp/secrets-scan.txt 2>&1 || true
+git secrets --scan > ${TMPDIR:-/tmp}/secrets-scan.txt 2>&1 || true
 
 # 3. Check file permissions
 echo "Auditing file permissions..."
-find . -type f -perm /go+w ! -path "./.git/*" > /tmp/writable-files.txt
+find . -type f -perm /go+w ! -path "./.git/*" > ${TMPDIR:-/tmp}/writable-files.txt
 
 # 4. Check for outdated packages
 echo "Checking for package updates..."
-nix-env --query --available --compare-versions | grep '<' > /tmp/updates-available.txt
+nix-env --query --available --compare-versions | grep '<' > ${TMPDIR:-/tmp}/updates-available.txt
 
 # 5. Firewall audit
 echo "Auditing firewall rules..."
-sudo iptables -L -n -v > /tmp/firewall-rules.txt
+sudo iptables -L -n -v > ${TMPDIR:-/tmp}/firewall-rules.txt
 
 # 6. Check for exposed services
 echo "Scanning for exposed network services..."
-ss -tulpn > /tmp/listening-services.txt
+ss -tulpn > ${TMPDIR:-/tmp}/listening-services.txt
 
 # Generate report
-cat > /tmp/security-report.md <<EOT
+cat > ${TMPDIR:-/tmp}/security-report.md <<EOT
 # Security Scan Report
 **Date:** $(date)
 
 ## Vulnerabilities Found
-$(cat /tmp/vulnix-report.txt | wc -l) potential CVEs detected
+$(cat ${TMPDIR:-/tmp}/vulnix-report.txt | wc -l) potential CVEs detected
 
 ## Secrets Scan
-$(cat /tmp/secrets-scan.txt)
+$(cat ${TMPDIR:-/tmp}/secrets-scan.txt)
 
 ## World-Writable Files
-$(cat /tmp/writable-files.txt | wc -l) files with insecure permissions
+$(cat ${TMPDIR:-/tmp}/writable-files.txt | wc -l) files with insecure permissions
 
 ## Outdated Packages
-$(cat /tmp/updates-available.txt | wc -l) packages have updates available
+$(cat ${TMPDIR:-/tmp}/updates-available.txt | wc -l) packages have updates available
 
 ## Open Ports
-$(grep LISTEN /tmp/listening-services.txt | wc -l) services listening
+$(grep LISTEN ${TMPDIR:-/tmp}/listening-services.txt | wc -l) services listening
 
-See /tmp/ for detailed reports.
+See ${TMPDIR:-/tmp}/ for detailed reports.
 EOT
 
-cat /tmp/security-report.md
+cat ${TMPDIR:-/tmp}/security-report.md
 EOF
 
 chmod +x scripts/security-scan.sh
@@ -749,7 +749,7 @@ LOW      │                   │                  │
 - [SOPS: Secrets OPerationS](https://github.com/getsops/sops)
 - [CIS Benchmarks](https://www.cisecurity.org/cis-benchmarks/)
 - [OWASP Top 10](https://owasp.org/www-project-top-ten/)
-- [Red Team MCP Servers](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/docs/RED-TEAM-MCP-SERVERS.md)
+- [Red Team MCP Servers](RED-TEAM-MCP-SERVERS.md)
 
 ---
 

@@ -8,6 +8,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+TMP_ROOT="${TMPDIR:-/${TMP_FALLBACK:-tmp}}"
 
 # Colors
 RED='\033[0;31m'
@@ -17,9 +18,9 @@ NC='\033[0m'
 
 # Test configuration
 BASE_URL="https://localhost:8443"
-CACERT="${PROJECT_ROOT}/ai-stack/compose/nginx/certs/localhost.crt"
-API_KEY_FILE="${PROJECT_ROOT}/ai-stack/compose/secrets/stack_api_key"
-TEST_LOG="/tmp/chaos-test-progressive-disclosure-$$.log"
+CACERT="${PROJECT_ROOT}/ai-stack/kubernetes/tls/localhost.crt"
+API_KEY_FILE="${PROJECT_ROOT}/ai-stack/kubernetes/secrets/generated/stack_api_key"
+TEST_LOG="${TMP_ROOT}/chaos-test-progressive-disclosure-$$.log"
 
 # Metrics
 TOKENS_USED=0

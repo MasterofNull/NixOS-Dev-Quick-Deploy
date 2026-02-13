@@ -100,8 +100,9 @@ phase_04_pre_deployment_validation() {
     print_success "flake.nix found and ready"
 
     # Check if configuration.nix exists
-    if [[ ! -f "/etc/nixos/configuration.nix" ]]; then
-        print_warning "configuration.nix not found at: /etc/nixos/configuration.nix"
+    local sys_config="${SYSTEM_CONFIG_FILE:-${HM_CONFIG_DIR:-$HOME/.dotfiles/home-manager}/configuration.nix}"
+    if [[ ! -f "$sys_config" ]]; then
+        print_warning "configuration.nix not found at: $sys_config"
         print_warning "System configuration may need to be generated"
     else
         print_success "configuration.nix found and ready"
@@ -142,15 +143,16 @@ phase_04_pre_deployment_validation() {
     print_info "Validating system build (dry run)..."
     local tmp_dir="${TMP_DIR:-/tmp}"
     local NIXOS_REBUILD_DRY_LOG="${tmp_dir}/nixos-rebuild-dry-run.log"
-    local target_host=$(hostname)
+    local target_host
+    target_host=$(hostname)
 
     local -a nixos_rebuild_opts=()
     if declare -F activate_build_acceleration_context >/dev/null 2>&1; then
         activate_build_acceleration_context
     fi
 
-    if declare -F compose_nixos_rebuild_options >/dev/null 2>&1; then
-        mapfile -t nixos_rebuild_opts < <(compose_nixos_rebuild_options "${USE_BINARY_CACHES:-true}")
+    if declare -F build_nixos_rebuild_options >/dev/null 2>&1; then
+        mapfile -t nixos_rebuild_opts < <(build_nixos_rebuild_options "${USE_BINARY_CACHES:-true}")
     fi
 
     local dry_run_display="sudo nixos-rebuild dry-run --flake \"$HM_CONFIG_DIR#$target_host\""
@@ -169,7 +171,8 @@ phase_04_pre_deployment_validation() {
     fi
 
     # Run nixos-rebuild dry-run to check for errors
-    if sudo nixos-rebuild dry-run --flake "$HM_CONFIG_DIR#$target_host" "${nixos_rebuild_opts[@]}" &> "$NIXOS_REBUILD_DRY_LOG"; then
+    if sudo nixos-rebuild dry-run --flake "$HM_CONFIG_DIR#$target_host" "${nixos_rebuild_opts[@]}" \
+        > >(tee "$NIXOS_REBUILD_DRY_LOG") 2>&1; then
         print_success "Dry run completed successfully (no changes applied)"
         print_info "Log saved to: $NIXOS_REBUILD_DRY_LOG"
         echo ""

@@ -19,8 +19,10 @@ from qdrant_client.models import PointStruct
 
 # Configuration
 PROJECT_ROOT = Path(__file__).parent.parent
-QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
-COORDINATOR_URL = os.getenv("COORDINATOR_URL", "http://localhost:8092")
+SERVICE_HOST = os.getenv("SERVICE_HOST", "localhost")
+QDRANT_URL = os.getenv("QDRANT_URL", f"http://{SERVICE_HOST}:6333")
+COORDINATOR_URL = os.getenv("COORDINATOR_URL", f"http://{SERVICE_HOST}:8092")
+AIDB_URL = os.getenv("AIDB_URL", f"http://{SERVICE_HOST}:8091")
 
 # Initialize clients
 qdrant = QdrantClient(url=QDRANT_URL)
@@ -32,7 +34,7 @@ async def get_embedding(text: str) -> List[float]:
         # Use coordinator's augment_query endpoint which includes embedding
         # We'll need to call AIDB's embedding endpoint instead
         response = await client.post(
-            "http://localhost:8091/embed",
+            f"{AIDB_URL}/embed",
             json={"text": text},
             timeout=30.0
         )
@@ -71,9 +73,9 @@ async def populate_best_practices():
                 "Using bridge network for localhost database connections",
                 "Hardcoding container-internal DNS names"
             ],
-            "references": ["docker-compose.yml", "AIDB Dockerfile"],
+            "references": ["kustomization.yaml", "AIDB Dockerfile"],
             "endorsement_count": 5,
-            "last_validated": int(Path(PROJECT_ROOT / "ai-stack/compose/docker-compose.yml").stat().st_mtime)
+            "last_validated": int(Path(PROJECT_ROOT / "ai-stack/kubernetes/kustomization.yaml").stat().st_mtime)
         },
         {
             "category": "systemd",

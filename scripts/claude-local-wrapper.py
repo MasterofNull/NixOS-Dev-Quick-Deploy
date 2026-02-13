@@ -10,8 +10,9 @@ import sys
 import requests
 from typing import Dict, Any
 
-HYBRID_COORDINATOR = os.getenv("HYBRID_COORDINATOR_URL", "http://localhost:8092")
-AIDB_MCP = os.getenv("AIDB_MCP_URL", "http://localhost:8091")
+SERVICE_HOST = os.getenv("SERVICE_HOST", "localhost")
+HYBRID_COORDINATOR = os.getenv("HYBRID_COORDINATOR_URL", f"http://{SERVICE_HOST}:8092")
+AIDB_MCP = os.getenv("AIDB_MCP_URL", f"http://{SERVICE_HOST}:8091")
 
 class LocalAIWrapper:
     """
@@ -95,7 +96,7 @@ class LocalAIWrapper:
     def _fallback_local(self, prompt: str, context: str) -> Dict[str, Any]:
         """Fallback to direct llama.cpp query"""
         try:
-            llama_url = "http://localhost:8080/v1/chat/completions"
+            llama_url = os.getenv("LLAMA_URL", f"http://{SERVICE_HOST}:8080") + "/v1/chat/completions"
 
             messages = []
             if context:

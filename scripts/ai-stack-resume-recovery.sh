@@ -8,9 +8,13 @@ if [[ "$mode" != "post" ]]; then
     exit 0
 fi
 
-PROJECT_ROOT="${PROJECT_ROOT:-/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy}"
-AI_STACK_USER="${AI_STACK_USER:-hyperd}"
-AI_STACK_UID="${AI_STACK_UID:-1000}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+AI_STACK_USER="${AI_STACK_USER:-${USER:-}}"
+AI_STACK_UID="${AI_STACK_UID:-$(id -u "${AI_STACK_USER:-}" 2>/dev/null || echo "")}"
+if [[ -z "$AI_STACK_UID" ]]; then
+    AI_STACK_UID="1000"
+fi
 LOG_FILE="${LOG_FILE:-/var/log/ai-stack-resume-recovery.log}"
 
 log() {

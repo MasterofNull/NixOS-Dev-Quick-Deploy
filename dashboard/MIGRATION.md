@@ -92,7 +92,7 @@ DATA_DIR="${HOME}/.local/share/nixos-system-dashboard"
 # Environment variables in backend/.env
 API_PORT=8889
 CORS_ORIGINS=http://localhost:8890
-AI_STACK_DATA=/home/${USER}/.local/share/nixos-ai-stack
+AI_STACK_DATA=$HOME/.local/share/nixos-ai-stack
 ```
 
 ## Systemd Services

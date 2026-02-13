@@ -1,39 +1,35 @@
 #!/usr/bin/env bash
-# Phase 9: AI Stack Deployment
+# Phase 9: AI Stack Deployment (K3s)
 # Part of: nixos-quick-deploy.sh
-# Version: 2.0.0 (Podman-based llama.cpp stack)
-# Purpose: Deploy containerized AI stack with llama.cpp
+# Version: 2.0.0 (Kubernetes-based AI stack)
+# Purpose: Deploy containerized AI stack with llama.cpp into K3s
 
 # ============================================================================
 # Phase 9: AI Stack Deployment
 # ============================================================================
 
 phase_09_ai_stack_deployment() {
-    log_phase_start 9 "AI Stack Deployment (Optional)"
+    log_phase_start 9 "AI Stack Deployment (K3s)"
 
-    # Check if user wants AI stack
-    if ! prompt_ai_stack_deployment; then
-        log_info "Skipping AI stack deployment"
+    # AI stack deployment is controlled by --without-ai-model or LOCAL_AI_STACK_ENABLED
+    local ai_stack_enabled="${LOCAL_AI_STACK_ENABLED:-${RUN_AI_MODEL:-true}}"
+    if [[ "${RUN_AI_MODEL:-true}" != "true" || "$ai_stack_enabled" != "true" ]]; then
+        log_info "Skipping AI stack deployment (disabled by flag or preferences)"
         mark_phase_complete "phase-09-ai-stack"
         return 0
     fi
 
-    # Ensure Podman is available
-    if ! command -v podman >/dev/null 2>&1; then
-        log_error "Podman not found. AI stack requires Podman."
-        log_info "Install via: nix-env -iA nixos.podman"
-        return 1
-    fi
-
-    if ! command -v podman-compose >/dev/null 2>&1; then
-        log_error "podman-compose not found. AI stack requires podman-compose."
-        log_info "Install via: nix-env -iA nixos.podman-compose"
+    if ! command -v kubectl >/dev/null 2>&1 || ! kubectl --request-timeout="${KUBECTL_TIMEOUT}s" cluster-info &>/dev/null; then
+        log_error "kubectl/K3s not available. AI stack requires Kubernetes."
+        log_info "Ensure K3s is running and kubectl is configured."
         return 1
     fi
 
     # Detect hardware for model recommendations
-    local gpu_vram=$(detect_gpu_vram)
-    local gpu_name=$(detect_gpu_model)
+    local gpu_vram
+    local gpu_name
+    gpu_vram=$(detect_gpu_vram)
+    gpu_name=$(detect_gpu_model)
     local ram_gb=0
     if declare -F detect_total_ram_gb >/dev/null 2>&1; then
         ram_gb=$(detect_total_ram_gb)
@@ -133,10 +129,10 @@ phase_09_ai_stack_deployment() {
     log_info "Creating AI stack data directories..."
     mkdir -p "${AI_STACK_DATA}"/{qdrant,llama-cpp-models,open-webui,postgres,redis,aidb,hybrid-coordinator,mindsdb,telemetry,fine-tuning,ralph-wiggum,health-monitor,workspace,logs}
 
-    # Ensure .env file for docker-compose
+    # Ensure .env file for AI stack configmap sync
     log_info "Ensuring AI stack configuration..."
 
-    local config_dir="${HOME}/.config/nixos-ai-stack"
+    local config_dir="${AI_STACK_CONFIG_DIR:-$HOME/.config/nixos-ai-stack}"
     local ai_stack_env="${config_dir}/.env"
     mkdir -p "$config_dir"
     AI_STACK_ENV="${AI_STACK_ENV:-$ai_stack_env}"
@@ -222,66 +218,20 @@ phase_09_ai_stack_deployment() {
         log_warning "Embeddings download script not found; skipping prewarm."
     fi
 
-    # Start AI stack containers
-    log_info "Starting AI stack containers..."
+    # Start AI stack with Kubernetes
+    log_info "Starting AI stack via Kubernetes..."
     log_info "This may take several minutes on first run..."
-
-    ensure_rootless_podman_overlay() {
-        local storage_conf="${HOME}/.config/containers/storage.conf"
-        local storage_dir
-        storage_dir="$(dirname "$storage_conf")"
-        local fuse_overlayfs_path=""
-
-        if command -v fuse-overlayfs >/dev/null 2>&1; then
-            fuse_overlayfs_path="$(command -v fuse-overlayfs)"
-        else
-            fuse_overlayfs_path="/run/current-system/sw/bin/fuse-overlayfs"
-        fi
-
-        if [[ -f "$storage_conf" ]] && grep -q 'driver *= *"overlay"' "$storage_conf"; then
-            return 0
-        fi
-
-        mkdir -p "$storage_dir"
-        cat > "$storage_conf" <<EOF
-[storage]
-driver = "overlay"
-graphroot = "${HOME}/.local/share/containers/storage"
-rootless_storage_path = "${HOME}/.local/share/containers/storage"
-runroot = "/run/user/${UID}/containers"
-
-[storage.options]
-mount_program = "${fuse_overlayfs_path}"
-EOF
-    }
-
-    ensure_rootless_podman_overlay
-
-    local podman_driver=""
-    podman_driver=$(podman info --format '{{.Store.GraphDriverName}}' 2>/dev/null || true)
-    if [[ "$podman_driver" == "vfs" ]]; then
-        log_warning "Podman is using the vfs storage driver; switching to overlay improves reliability."
-        if podman ps -a --format '{{.ID}}' 2>/dev/null | grep -q . || podman images --format '{{.ID}}' 2>/dev/null | grep -q .; then
-            log_warning "Existing containers/images detected; run 'podman system reset --force' to apply the overlay driver."
-        else
-            log_info "Resetting empty Podman storage to apply overlay driver..."
-            podman system reset --force >/dev/null 2>&1 || log_warning "Podman storage reset failed; continuing with current driver."
-        fi
-    fi
-
-    pushd "${AI_STACK_COMPOSE}" >/dev/null 2>&1
-
-    if podman-compose up -d 2>&1 | tee /tmp/podman-compose-up.log; then
-        log_success "AI stack containers started successfully"
+    local k8s_dir="${AI_STACK_K8S:-${SCRIPT_DIR}/ai-stack/kubernetes}"
+    local tmp_dir="${TMP_DIR:-/tmp}"
+    local apply_log="${tmp_dir}/k8s-ai-stack-apply.log"
+    if kubectl --request-timeout="${KUBECTL_TIMEOUT}s" apply -k "$k8s_dir" \
+        > >(tee "$apply_log") 2>&1; then
+        log_success "AI stack deployment initiated"
     else
-        log_error "Failed to start AI stack containers"
-        log_info "Check logs: podman-compose logs"
-        log_info "Full output: /tmp/podman-compose-up.log"
-        popd >/dev/null 2>&1
+        log_error "Failed to apply AI stack manifests"
+        log_info "Full output: $apply_log"
         return 1
     fi
-
-    popd >/dev/null 2>&1
 
     # Download model if needed (optional)
     log_info "Checking for model file: ${model_file}"
@@ -299,7 +249,7 @@ EOF
     local qdrant_healthy=false
 
     while [ $waited -lt $max_wait ]; do
-        if curl -sf "${QDRANT_URL}/health" >/dev/null 2>&1; then
+        if curl_safe -sf "${QDRANT_URL}/health" >/dev/null 2>&1; then
             log_success "Qdrant is healthy"
             qdrant_healthy=true
             break
@@ -362,11 +312,11 @@ System: ${ram_gb}GB RAM${gpu_vram:+ / ${gpu_vram}GB VRAM}
   • Health Monitor:         Auto-healing enabled (monitors all containers)
 
 📊 Management Commands:
-  • View status:   cd ${AI_STACK_COMPOSE} && podman-compose ps
-  • View logs:     cd ${AI_STACK_COMPOSE} && podman-compose logs -f [service]
-  • Stop stack:    cd ${AI_STACK_COMPOSE} && podman-compose down
-  • Start stack:   cd ${AI_STACK_COMPOSE} && podman-compose up -d
-  • Restart:       cd ${AI_STACK_COMPOSE} && podman-compose restart
+  • View status:   kubectl --request-timeout=60s get pods -n ai-stack
+  • View logs:     kubectl --request-timeout=60s logs -n ai-stack deploy/<service> -f
+  • Stop stack:    kubectl --request-timeout=60s scale deploy -n ai-stack --replicas=0 --all
+  • Start stack:   kubectl --request-timeout=60s scale deploy -n ai-stack --replicas=1 --all
+  • Restart:       kubectl --request-timeout=60s rollout restart deploy -n ai-stack --all
 
 📚 Quick Start:
   • Open WebUI:    xdg-open ${OPEN_WEBUI_URL}
@@ -389,7 +339,7 @@ System: ${ram_gb}GB RAM${gpu_vram:+ / ${gpu_vram}GB VRAM}
   1. Open WebUI: xdg-open ${OPEN_WEBUI_URL}
   2. Test llama.cpp: curl ${LLAMA_CPP_URL}/health
   3. Submit autonomous task to Ralph: curl -X POST http://localhost:8098/tasks -d '{"prompt":"Create hello world","backend":"aider"}'
-  4. Monitor self-healing: podman logs -f local-ai-health-monitor
+  4. Monitor self-healing: kubectl --request-timeout=60s logs -n ai-stack deploy/health-monitor -f
   5. Check tool discovery: curl http://localhost:8091/api/v1/tools/discover
   6. Read vibe coding guide: cat ${SCRIPT_DIR}/QUICK-START-VIBE-CODING.md
 
@@ -487,33 +437,7 @@ deploy_vscode_configs() {
     log_success "All VSCode configurations deployed successfully"
 }
 
-# Prompt user for AI stack deployment
-prompt_ai_stack_deployment() {
-    echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "Optional: Local AI Stack Deployment"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    echo "The AI stack provides:"
-    echo "  ✓ Local LLM inference (private, no API costs)"
-    echo "  ✓ Vector database for RAG/embeddings"
-    echo "  ✓ Web interface for chat"
-    echo "  ✓ MCP servers for AI agent integration"
-    echo "  ✓ Telemetry and continuous learning"
-    echo ""
-    echo "Requirements:"
-    echo "  • 8GB+ RAM (16GB recommended)"
-    echo "  • 20GB+ disk space"
-    echo "  • Podman installed"
-    echo ""
-    read -p "Deploy local AI stack? [Y/n]: " response
-
-    if [[ "$response" =~ ^[Nn]$ ]]; then
-        return 1
-    fi
-
-    return 0
-}
+## Prompt removed: deployment is controlled by flags and stored preferences.
 
 # Detect GPU VRAM (in GB)
 detect_gpu_vram() {
@@ -547,7 +471,8 @@ detect_gpu_model() {
 
 # Detect total RAM in GB
 detect_total_ram_gb() {
-    local ram_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    local ram_kb
+    ram_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
     echo $((ram_kb / 1024 / 1024))
 }
 

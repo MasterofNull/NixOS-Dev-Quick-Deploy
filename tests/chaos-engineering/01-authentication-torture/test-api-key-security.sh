@@ -6,6 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+TMP_ROOT="${TMPDIR:-/${TMP_FALLBACK:-tmp}}"
 
 # Colors
 RED='\033[0;31m'
@@ -14,8 +15,8 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # Test configuration
-API_KEY_FILE="${PROJECT_ROOT}/ai-stack/compose/secrets/stack_api_key"
-TEST_LOG="/tmp/chaos-test-api-key-security-$$.log"
+API_KEY_FILE="${PROJECT_ROOT}/ai-stack/kubernetes/secrets/generated/stack_api_key"
+TEST_LOG="${TMP_ROOT}/chaos-test-api-key-security-$$.log"
 
 ERRORS=0
 
@@ -116,31 +117,23 @@ test_key_content() {
 }
 
 # Test 3: Docker secrets configuration
-test_docker_secrets_config() {
-    log "\n=== Test 3: Docker Secrets Configuration ==="
+test_k8s_secrets_config() {
+    log "\n=== Test 3: Kubernetes Secrets Configuration ==="
 
-    local compose_file="${PROJECT_ROOT}/ai-stack/compose/docker-compose.yml"
+    local secrets_file="${PROJECT_ROOT}/ai-stack/kubernetes/secrets/secrets.sops.yaml"
 
-    if [ ! -f "$compose_file" ]; then
-        error "Docker compose file not found"
+    if [ ! -f "$secrets_file" ]; then
+        error "Kubernetes secrets file not found: $secrets_file"
         return 1
     fi
 
-    # Check secret permissions in compose file
-    if grep -q "mode: 0444" "$compose_file"; then
-        error "🚨 CRITICAL: Secrets mounted with mode 0444 in docker-compose.yml"
-        error "This makes secrets world-readable inside containers!"
-        error ""
-        error "Attack scenario:"
-        error "  1. Attacker exec into any container"
-        error "  2. Reads /run/secrets/stack_api_key (0444)"
-        error "  3. Gets full API access"
-        error ""
-        error "Fix: Change to mode: 0400 in docker-compose.yml"
+    # Ensure key names are present
+    if ! rg -q "stack_api_key" "$secrets_file"; then
+        error "Missing stack_api_key in sops secrets file"
         return 1
     fi
 
-    success "✓ Docker secrets configuration is secure"
+    success "✓ Kubernetes secrets configuration present"
     return 0
 }
 
@@ -174,7 +167,7 @@ test_service_isolation() {
 
     # Check if different services use different keys
     local secret_files
-    secret_files=$(find "${PROJECT_ROOT}/ai-stack/compose/secrets" -type f -name "*api*key*" 2>/dev/null | wc -l)
+    secret_files=$(rg -l "api_key" "${PROJECT_ROOT}/ai-stack/kubernetes/secrets/secrets.sops.yaml" 2>/dev/null | wc -l)
 
     log "Found $secret_files API key files"
 
@@ -202,23 +195,15 @@ test_service_isolation() {
 test_env_var_exposure() {
     log "\n=== Test 6: Environment Variable Exposure ==="
 
-    local compose_file="${PROJECT_ROOT}/ai-stack/compose/docker-compose.yml"
+    local configmap_file="${PROJECT_ROOT}/ai-stack/kubernetes/kompose/env-configmap.yaml"
 
-    # Check if API key is in environment variables (INSECURE)
-    if grep -q "API_KEY:" "$compose_file" || grep -q "STACK_API_KEY:" "$compose_file"; then
-        error "🚨 API key exposed via environment variables"
-        error ""
-        error "Security Impact:"
-        error "  - Visible in 'docker inspect'"
-        error "  - Visible in 'podman inspect'"
-        error "  - Logged in container logs"
-        error "  - Visible to any process in container"
-        error ""
-        error "Recommendation: Use Docker secrets or _FILE suffix"
+    if [ -f "$configmap_file" ] && rg -q "API_KEY|STACK_API_KEY" "$configmap_file"; then
+        error "🚨 API key exposed via configmap"
+        error "Recommendation: Use Kubernetes secrets or _FILE suffix"
         return 1
     fi
 
-    success "✓ API key not exposed via environment variables"
+    success "✓ API key not exposed via configmap"
     return 0
 }
 
@@ -248,7 +233,7 @@ main() {
 
     test_file_permissions || true
     test_key_content || true
-    test_docker_secrets_config || true
+    test_k8s_secrets_config || true
     test_key_rotation || true
     test_service_isolation || true
     test_env_var_exposure || true

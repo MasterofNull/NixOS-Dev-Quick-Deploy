@@ -1,5 +1,6 @@
 # Systemd service to cleanup orphaned AI stack processes on boot
 # Part of: NixOS-Dev-Quick-Deploy
+# LEGACY: Podman runtime cleanup (deprecated). K3s is the supported path.
 # Install: sudo cp this file to /etc/systemd/system/
 # Enable: sudo systemctl enable ai-stack-cleanup.service
 
@@ -13,8 +14,8 @@ Before=podman.service
 [Service]
 Type=oneshot
 User=root
-# Update this path to match your installation
-ExecStart=/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/cleanup-orphaned-ai-processes.sh
+# Update this path to match your installation (replace @PROJECT_ROOT@)
+ExecStart=@PROJECT_ROOT@/scripts/cleanup-orphaned-ai-processes.sh
 StandardOutput=journal
 StandardError=journal
 RemainAfterExit=yes

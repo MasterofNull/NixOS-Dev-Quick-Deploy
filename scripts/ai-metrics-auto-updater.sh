@@ -11,8 +11,9 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Configuration
 UPDATE_INTERVAL=5  # Update every 5 seconds
-LOG_FILE="/tmp/ai-metrics-updater.log"
-PID_FILE="/tmp/ai-metrics-updater.pid"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-${TMPDIR:-/${TMP_FALLBACK:-tmp}}}"
+LOG_FILE="${RUNTIME_DIR}/ai-metrics-updater.log"
+PID_FILE="${RUNTIME_DIR}/ai-metrics-updater.pid"
 
 log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"

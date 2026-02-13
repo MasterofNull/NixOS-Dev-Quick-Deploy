@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   annotations:
-    kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
     kompose.version: 1.37.0 (HEAD)
     nixos.quick-deploy.ai-stack: "true"
     nixos.quick-deploy.service: qdrant
@@ -19,13 +18,14 @@ spec:
   template:
     metadata:
       annotations:
-        kompose.cmd: /nix/store/x4z1n3wj7pscmifwnh2yvczxqg6vay39-kompose-1.37.0/bin/kompose convert -f ai-stack/compose/docker-compose.yml -o ai-stack/kubernetes/kompose
         kompose.version: 1.37.0 (HEAD)
         nixos.quick-deploy.ai-stack: "true"
         nixos.quick-deploy.service: qdrant
       labels:
         io.kompose.service: qdrant
     spec:
+      serviceAccountName: qdrant
+      automountServiceAccountToken: false
       containers:
         - env:
             - name: QDRANT__SERVICE__GRPC_PORT
@@ -35,13 +35,29 @@ spec:
           envFrom:
             - configMapRef:
                 name: env
+            - secretRef:
+                name: huggingface-hub-token
           image: qdrant/qdrant:v1.16.2
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           name: local-ai-qdrant
           ports:
             - containerPort: 6333
               protocol: TCP
             - containerPort: 6334
               protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: 6333
+            failureThreshold: 3
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
           volumeMounts:
             - mountPath: /qdrant/storage
               name: qdrant-data

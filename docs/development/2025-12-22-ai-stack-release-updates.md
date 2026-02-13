@@ -4,5 +4,5 @@ This document has been retired for the K3s-only runtime.
 
 Use the current runbook:
 - `DEPLOYMENT.md`
-- `K3S-PORTAINER-MIGRATION-PLAN.md`
+- `../archive/K3S-PORTAINER-MIGRATION-PLAN.md`
 

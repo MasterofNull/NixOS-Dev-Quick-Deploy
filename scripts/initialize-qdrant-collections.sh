@@ -5,9 +5,19 @@
 
 set -euo pipefail
 
-QDRANT_URL="${QDRANT_URL:-http://localhost:6333}"
+QDRANT_URL="${QDRANT_URL:-http://${SERVICE_HOST:-localhost}:6333}"
 EMBEDDING_MODEL="${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}"
-VECTOR_SIZE=768  # nomic-embed-text dimension
+VECTOR_SIZE="${EMBEDDING_DIMENSIONS:-}"
+if [[ -z "$VECTOR_SIZE" ]]; then
+    case "$EMBEDDING_MODEL" in
+        *bge-base* ) VECTOR_SIZE=768 ;;
+        *bge-small* ) VECTOR_SIZE=384 ;;
+        *MiniLM* ) VECTOR_SIZE=384 ;;
+        * ) VECTOR_SIZE=768 ;;
+    esac
+fi
+CURL_TIMEOUT="${CURL_TIMEOUT:-10}"
+CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-3}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -35,7 +45,7 @@ log_error() {
 # Check if Qdrant is accessible
 check_qdrant() {
     log_info "Checking Qdrant availability at $QDRANT_URL..."
-    if curl -sf "$QDRANT_URL/healthz" > /dev/null 2>&1; then
+    if curl -sf --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" "$QDRANT_URL/healthz" > /dev/null 2>&1; then
         log_success "Qdrant is accessible"
         return 0
     else
@@ -52,7 +62,7 @@ create_collection() {
     log_info "Creating collection: $collection_name"
 
     # Check if collection exists
-    if curl -sf "$QDRANT_URL/collections/$collection_name" > /dev/null 2>&1; then
+    if curl -sf --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" "$QDRANT_URL/collections/$collection_name" > /dev/null 2>&1; then
         log_warning "Collection '$collection_name' already exists, skipping creation"
         return 0
     fi
@@ -75,7 +85,7 @@ create_collection() {
 EOF
 )
 
-    if curl -sf -X PUT "$QDRANT_URL/collections/$collection_name" \
+    if curl -sf --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" -X PUT "$QDRANT_URL/collections/$collection_name" \
         -H "Content-Type: application/json" \
         -d "$payload" > /dev/null 2>&1; then
         log_success "Created collection: $collection_name"
@@ -102,7 +112,7 @@ create_payload_index() {
 EOF
 )
 
-    if curl -sf -X PUT "$QDRANT_URL/collections/$collection_name/index" \
+    if curl -sf --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" -X PUT "$QDRANT_URL/collections/$collection_name/index" \
         -H "Content-Type: application/json" \
         -d "$payload" > /dev/null 2>&1; then
         log_success "Created index on $field_name"
@@ -217,7 +227,7 @@ main() {
 
     # List all collections
     local collections
-    collections=$(curl -sf "$QDRANT_URL/collections" | jq -r '.result.collections[] | "\(.name): \(.points_count) points"' 2>/dev/null || echo "Unable to fetch collection info")
+    collections=$(curl -sf --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" "$QDRANT_URL/collections" | jq -r '.result.collections[] | "\(.name): \(.points_count) points"' 2>/dev/null || echo "Unable to fetch collection info")
 
     echo "$collections"
 
@@ -225,7 +235,7 @@ main() {
     log_success "✅ All collections initialized successfully!"
     echo
     log_info "Next steps:"
-    echo "  1. Deploy hybrid coordinator: podman-compose up -d hybrid-coordinator"
+    echo "  1. Deploy hybrid coordinator: kubectl rollout restart deploy -n ai-stack hybrid-coordinator"
     echo "  2. Populate collections via AIDB or hybrid coordinator endpoints"
     echo "  3. Test RAG workflow with sample queries"
     echo

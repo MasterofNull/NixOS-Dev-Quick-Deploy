@@ -180,7 +180,9 @@ check_templates() {
 test_encryption() {
     log_info "Testing encryption/decryption..."
 
-    local test_file="/tmp/sops-test-$$"
+    local tmp_root="${TMPDIR:-/${TMP_FALLBACK:-tmp}}"
+    local test_file
+    test_file="$(mktemp -p "$tmp_root" sops-test-XXXXXX)"
     local public_key="$1"
 
     # Create test file
@@ -192,7 +194,9 @@ test:
 EOF
 
     # Create test .sops.yaml
-    cat > "/tmp/.sops-test-$$.yaml" << EOF
+    local sops_config
+    sops_config="$(mktemp -p "$tmp_root" sops-test-XXXXXX.yaml)"
+    cat > "$sops_config" << EOF
 creation_rules:
   - age: >-
       $public_key
@@ -203,23 +207,22 @@ EOF
     export SOPS_AGE_RECIPIENTS="$public_key"
 
     # Test encryption
-    cd /tmp
-    if sops --config "/tmp/.sops-test-$$.yaml" -e -i "$test_file" 2>&1; then
+    if sops --config "$sops_config" -e -i "$test_file" 2>&1; then
         log_info "Encryption successful"
 
         # Test decryption
-        if sops --config "/tmp/.sops-test-$$.yaml" -d "$test_file" > /dev/null 2>&1; then
+        if sops --config "$sops_config" -d "$test_file" > /dev/null 2>&1; then
             log_success "Encryption/decryption test passed"
-            rm -f "$test_file" "/tmp/.sops-test-$$.yaml"
+            rm -f "$test_file" "$sops_config"
             return 0
         else
             log_error "Decryption failed"
-            rm -f "$test_file" "/tmp/.sops-test-$$.yaml"
+            rm -f "$test_file" "$sops_config"
             return 1
         fi
     else
         log_error "Encryption failed"
-        rm -f "$test_file" "/tmp/.sops-test-$$.yaml"
+        rm -f "$test_file" "$sops_config"
         return 1
     fi
 }

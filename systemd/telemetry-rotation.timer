@@ -1,6 +1,6 @@
 [Unit]
 Description=Daily Telemetry Log Rotation
-Documentation=file:///home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/rotate-telemetry.sh
+Documentation=file://@PROJECT_ROOT@/scripts/rotate-telemetry.sh
 
 [Timer]
 # Run daily at 3 AM

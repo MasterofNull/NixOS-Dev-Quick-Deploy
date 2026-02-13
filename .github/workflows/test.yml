@@ -190,6 +190,22 @@ jobs:
             exit 1
           fi
 
+  bats-tests:
+    name: BATS Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install bats
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y bats
+
+      - name: Run BATS unit tests
+        run: |
+          ./tests/run-unit-tests.sh
+
   smoke-tests:
     name: CLI Smoke Tests
     runs-on: ubuntu-latest

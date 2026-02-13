@@ -122,7 +122,7 @@ generate_age_key() {
         fi
     fi
 
-    if age-keygen -o "$SOPS_AGE_KEY_FILE" 2>&1 | tee -a "$LOG_FILE"; then
+    if age-keygen -o "$SOPS_AGE_KEY_FILE" > >(tee -a "$LOG_FILE") 2>&1; then
         chmod 600 "$SOPS_AGE_KEY_FILE"
         log INFO "Age key generated successfully"
         return 0
@@ -193,7 +193,7 @@ backup_plain_secrets() {
     local backup_dir="${SECRETS_BACKUP_DIR}/plain-secrets-${backup_timestamp}"
 
     if [[ -d "$PLAIN_SECRETS_DIR" ]]; then
-        if cp -r "$PLAIN_SECRETS_DIR" "$backup_dir" 2>&1 | tee -a "$LOG_FILE"; then
+        if cp -r "$PLAIN_SECRETS_DIR" "$backup_dir" > >(tee -a "$LOG_FILE") 2>&1; then
             log INFO "Plain secrets backed up to: $backup_dir"
             return 0
         else
@@ -255,6 +255,18 @@ EOF
 
     chmod 600 "${SECRETS_STATE_DIR}/extracted-secrets.env"
 
+    if [[ -n "$output_file" ]]; then
+        cat > "$output_file" << EOF
+HUGGINGFACE_TOKEN: "${hf_token}"
+GITEA_SECRET_KEY: "${gitea_secret_key}"
+GITEA_INTERNAL_TOKEN: "${gitea_internal_token}"
+GITEA_LFS_JWT_SECRET: "${gitea_lfs_jwt}"
+GITEA_JWT_SECRET: "${gitea_jwt}"
+EOF
+        chmod 600 "$output_file" 2>/dev/null || true
+        log INFO "Extracted secrets YAML saved to: $output_file"
+    fi
+
     log INFO "Secrets extracted to temporary storage"
     return 0
 }
@@ -315,7 +327,7 @@ encrypt_secrets_file() {
     fi
 
     # Encrypt the file in-place
-    if sops -e -i "$secrets_file" 2>&1 | tee -a "$LOG_FILE"; then
+    if sops -e -i "$secrets_file" > >(tee -a "$LOG_FILE") 2>&1; then
         log INFO "Secrets file encrypted successfully"
         return 0
     else
@@ -387,6 +399,8 @@ rotate_gitea_secrets() {
     log INFO "New Gitea secrets generated. Update secrets.yaml with:"
     log INFO "  secret_key: ${new_secret_key:0:20}..."
     log INFO "  internal_token: ${new_internal_token:0:20}..."
+    log INFO "  lfs_jwt_secret: ${new_lfs_jwt:0:20}..."
+    log INFO "  jwt_secret: ${new_jwt:0:20}..."
 
     return 0
 }
@@ -410,7 +424,7 @@ cleanup_plain_secrets() {
     # Securely delete preference files
     if [[ -d "$PLAIN_SECRETS_DIR" ]]; then
         log INFO "Securely deleting: $PLAIN_SECRETS_DIR"
-        if shred -vfz -n 3 "${PLAIN_SECRETS_DIR}"/*.env 2>&1 | tee -a "$LOG_FILE"; then
+        if shred -vfz -n 3 "${PLAIN_SECRETS_DIR}"/*.env > >(tee -a "$LOG_FILE") 2>&1; then
             log INFO "Plain secrets securely deleted"
         else
             log WARNING "shred failed, using rm"
@@ -421,7 +435,7 @@ cleanup_plain_secrets() {
     # Clean up /var/lib secrets (requires sudo)
     if [[ -d "/var/lib/nixos-quick-deploy/secrets" ]]; then
         log INFO "Cleaning up system secrets (requires sudo)"
-        sudo shred -vfz -n 3 /var/lib/nixos-quick-deploy/secrets/* 2>&1 | tee -a "$LOG_FILE" || true
+        sudo shred -vfz -n 3 /var/lib/nixos-quick-deploy/secrets/* > >(tee -a "$LOG_FILE") 2>&1 || true
     fi
 
     log INFO "Plain text secrets cleanup complete"
@@ -488,7 +502,7 @@ verify_sops_configuration() {
 
     export SOPS_AGE_KEY_FILE
 
-    if sops -e -i "$test_file" 2>&1 | tee -a "$LOG_FILE"; then
+    if sops -e -i "$test_file" > >(tee -a "$LOG_FILE") 2>&1; then
         if sops -d "$test_file" > /dev/null 2>&1; then
             rm -f "$test_file"
             log INFO "sops configuration verified successfully"

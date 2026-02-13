@@ -1,26 +1,27 @@
-COMPOSE_DIR := ai-stack/compose
-COMPOSE := podman-compose -f $(COMPOSE_DIR)/docker-compose.yml
-DEV_COMPOSE := $(COMPOSE) -f $(COMPOSE_DIR)/docker-compose.dev.yml
+K8S_DIR := ai-stack/kubernetes
+KUBECTL := kubectl --request-timeout=60s
+NAMESPACE := ai-stack
 
-.PHONY: up up-full down restart ps logs health metrics dev-up dev-down pull build security-audit security-scan
+.PHONY: up down restart ps logs health metrics security-audit security-scan
 
 up:
-	$(COMPOSE) up -d
-
-up-full:
-	$(COMPOSE) --profile full up -d
+	$(KUBECTL) apply -k $(K8S_DIR)
 
 down:
-	$(COMPOSE) down
+	$(KUBECTL) scale deploy -n $(NAMESPACE) --replicas=0 --all
 
 restart:
-	$(COMPOSE) restart
+	$(KUBECTL) rollout restart deploy -n $(NAMESPACE) --all
 
 ps:
-	$(COMPOSE) ps
+	$(KUBECTL) get pods -n $(NAMESPACE)
 
 logs:
-	$(COMPOSE) logs -f
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "Usage: make logs SERVICE=<deployment>"; \
+		exit 1; \
+	fi
+	$(KUBECTL) logs -n $(NAMESPACE) deploy/$(SERVICE) -f
 
 health:
 	./scripts/ai-stack-health.sh
@@ -33,15 +34,3 @@ security-audit:
 
 security-scan:
 	./scripts/security-scan.sh
-
-dev-up:
-	$(DEV_COMPOSE) up -d
-
-dev-down:
-	$(DEV_COMPOSE) down
-
-pull:
-	$(COMPOSE) pull
-
-build:
-	$(COMPOSE) build

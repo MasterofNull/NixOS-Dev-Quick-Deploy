@@ -44,7 +44,7 @@ apply_final_system_configuration() {
         print_success "PostgreSQL is running"
 
         # Check if gitea database exists
-        if sudo -u postgres psql -lqt 2>/dev/null | cut -d \| -f 1 | grep -qw gitea; then
+        if sudo -n -u postgres psql -lqt 2>/dev/null | cut -d \| -f 1 | grep -qw gitea; then
             print_success "Gitea database already exists"
         else
             print_info "Gitea database will be created on first Gitea start"
@@ -80,7 +80,7 @@ apply_final_system_configuration() {
     done
 
     if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
-        print_info "AI inference containers (vLLM/Open WebUI/Qdrant/MindsDB) are handled by the ai-optimizer Podman stack after deployment."
+        print_info "AI stack services are deployed via K3s (use kubectl get pods -n ai-stack)."
     fi
     echo ""
 
@@ -94,7 +94,8 @@ apply_final_system_configuration() {
         print_success "User systemd session available"
 
         # List user services (if any)
-        local user_services=$(systemctl --user list-unit-files --type=service --no-legend 2>/dev/null | wc -l)
+        local user_services
+        user_services=$(systemctl --user list-unit-files --type=service --no-legend 2>/dev/null | wc -l)
         print_info "  Found $user_services user service(s) configured"
     else
         print_info "User systemd session not yet active (will be available after relogin)"
@@ -109,7 +110,8 @@ apply_final_system_configuration() {
     # Ensure user owns their home directory configurations
     if [[ -d "$HOME/.config" ]]; then
         # Only fix if not already owned by user
-        local current_owner=$(stat -c %U "$HOME/.config" 2>/dev/null || echo "unknown")
+        local current_owner
+        current_owner=$(stat -c %U "$HOME/.config" 2>/dev/null || echo "unknown")
         local expected_owner="${SUDO_USER:-${PRIMARY_USER:-$USER}}"
         if [[ "$current_owner" != "$expected_owner" ]]; then
             if safe_chown_user_dir "$HOME/.config"; then
@@ -125,7 +127,8 @@ apply_final_system_configuration() {
     # Ensure dotfiles directory has correct ownership (DOTFILES_ROOT defined in
     # config/variables.sh:583)
     if [[ -d "$DOTFILES_ROOT" ]]; then
-        local current_owner=$(stat -c %U "$DOTFILES_ROOT" 2>/dev/null || echo "unknown")
+        local current_owner
+        current_owner=$(stat -c %U "$DOTFILES_ROOT" 2>/dev/null || echo "unknown")
         local expected_owner="${SUDO_USER:-${PRIMARY_USER:-$USER}}"
         if [[ "$current_owner" != "$expected_owner" ]]; then
             if safe_chown_user_dir "$DOTFILES_ROOT"; then
@@ -166,7 +169,7 @@ finalize_configuration_activation() {
     print_info "Reloading systemd configurations..."
 
     # Reload system daemon
-    if sudo systemctl daemon-reload 2>/dev/null; then
+    if sudo -n systemctl daemon-reload 2>/dev/null; then
         print_success "System daemon reloaded"
     else
         print_warning "Could not reload system daemon"
@@ -188,7 +191,8 @@ finalize_configuration_activation() {
     # Check if home-manager has set up any services
     local hm_services_dir="$HOME/.config/systemd/user"
     if [[ -d "$hm_services_dir" ]]; then
-        local service_count=$(find "$hm_services_dir" -name "*.service" -type f 2>/dev/null | wc -l)
+        local service_count
+        service_count=$(find "$hm_services_dir" -name "*.service" -type f 2>/dev/null | wc -l)
         if [[ $service_count -gt 0 ]]; then
             print_info "Found $service_count home-manager service(s)"
             print_info "Services will be activated on next login or via: systemctl --user start <service>"
@@ -203,14 +207,15 @@ finalize_configuration_activation() {
     # ========================================================================
     print_info "Cleaning up temporary files..."
 
+    local tmp_root="${TMP_DIR:-${TMPDIR:-/${TMP_FALLBACK:-tmp}}}"
     local temp_files=(
-        "${TMP_DIR:-/tmp}/nixos-rebuild-dry-run.log"
-        "${TMP_DIR:-/tmp}/nixos-rebuild-dry-build.log"
-        "${TMP_DIR:-/tmp}/home-manager-bootstrap.log"
-        "${TMP_DIR:-/tmp}/nixos-rebuild.log"
-        "${TMP_DIR:-/tmp}/home-manager-switch.log"
-        "${TMP_DIR:-/tmp}/flake-check.log"
-        "/tmp/flake-update.log"
+        "${tmp_root}/nixos-rebuild-dry-run.log"
+        "${tmp_root}/nixos-rebuild-dry-build.log"
+        "${tmp_root}/home-manager-bootstrap.log"
+        "${tmp_root}/nixos-rebuild.log"
+        "${tmp_root}/home-manager-switch.log"
+        "${tmp_root}/flake-check.log"
+        "${tmp_root}/flake-update.log"
     )
 
     local cleaned=0

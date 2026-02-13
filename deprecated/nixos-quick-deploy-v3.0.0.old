@@ -5147,7 +5147,7 @@ get_binary_cache_public_keys() {
     printf '%s\n' "${keys[@]}"
 }
 
-compose_nixos_rebuild_options() {
+build_nixos_rebuild_options() {
     local use_caches="${1:-true}"
     local -a opts=(
         "--option" "max-jobs" "auto"
@@ -5306,7 +5306,7 @@ run_nixos_rebuild_dry_run() {
     # CRITICAL: Pass build optimization flags directly to nixos-rebuild
     # These flags apply DURING the build, before the configuration takes effect
     local -a nix_opts=()
-    mapfile -t nix_opts < <(compose_nixos_rebuild_options "$USE_BINARY_CACHES")
+    mapfile -t nix_opts < <(build_nixos_rebuild_options "$USE_BINARY_CACHES")
     describe_binary_cache_usage "nixos-rebuild build"
 
     sudo nixos-rebuild build --flake "$HM_CONFIG_DIR#$target_host" "${nix_opts[@]}" 2>&1 | tee "$log_path"
@@ -5326,7 +5326,7 @@ run_nixos_rebuild_switch() {
     # CRITICAL: Pass build optimization flags directly to nixos-rebuild
     # These flags apply DURING the build, before the configuration takes effect
     local -a nix_opts=()
-    mapfile -t nix_opts < <(compose_nixos_rebuild_options "$USE_BINARY_CACHES")
+    mapfile -t nix_opts < <(build_nixos_rebuild_options "$USE_BINARY_CACHES")
     describe_binary_cache_usage "nixos-rebuild switch"
 
     sudo nixos-rebuild switch --flake "$HM_CONFIG_DIR#$target_host" "${nix_opts[@]}" 2>&1 | tee "$log_path"
@@ -6676,7 +6676,7 @@ aidb-info() {
     echo "  Update flake:   aidb-update"
     echo ""
     echo "Available in dev environment:"
-    echo "  - Podman + podman-compose"
+    echo "  - Podman + podman (legacy)"
     echo "  - Python 3.11 with cryptography, fastapi, uvicorn"
     echo "  - SQLite, OpenSSL, Git, jq, curl"
     echo "  - inotify-tools (for Guardian file watching)"
@@ -7251,7 +7251,7 @@ print_post_install() {
     echo "    • Unfree packages allowed"
     echo ""
     echo -e "  ${GREEN}AIDB Prerequisites (via home-manager):${NC}"
-    echo "    • Podman + podman-compose (container runtime)"
+    echo "    • Podman + podman (legacy) (container runtime)"
     echo "    • SQLite (Tier 1 Guardian database)"
     echo "    • Python 3.11 + pip + virtualenv"
     echo "    • OpenSSL, inotify-tools, bc"

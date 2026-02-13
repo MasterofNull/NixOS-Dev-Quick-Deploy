@@ -1,6 +1,6 @@
 # NixOS System Dashboard v2.0
 
-**Full-featured system monitor and control board for NixOS host and AI Podman stack**
+**Full-featured system monitor and control board for NixOS host and AI Kubernetes stack**
 
 ![Version](https://img.shields.io/badge/version-2.0.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -15,7 +15,7 @@
 
 ### Service Management
 - **AI Stack Services**: Start/Stop/Restart controls
-- **Container Operations**: Manage Podman containers
+- **Container Operations**: Manage Kubernetes pods
 - **Service Status**: Real-time health monitoring
 - **Bulk Actions**: Control multiple services at once
 
@@ -42,7 +42,7 @@
         ┌────────────┴────────────┐
         ▼                         ▼
 ┌─────────────┐          ┌─────────────────┐
-│   System    │          │  Podman/Systemd │
+│   System    │          │  Kubernetes/Systemd │
 │  (psutil)   │          │   (subprocess)  │
 └─────────────┘          └─────────────────┘
 ```
@@ -242,7 +242,7 @@ lsof -i :8890
 ### No metrics showing
 - Ensure backend has permissions to run systemctl
 - Check psutil can access /proc filesystem
-- Verify Podman is installed and accessible
+- Verify K3s is installed and accessible
 - Check API returns data: `curl http://localhost:8889/api/metrics/system`
 
 ## 🚧 Roadmap

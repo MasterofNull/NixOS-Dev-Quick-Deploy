@@ -49,25 +49,11 @@ if ! command -v pip3 &> /dev/null; then
 fi
 success "pip3 found"
 
-# Check Podman or Docker
-if command -v podman &> /dev/null; then
-    CONTAINER_CMD="podman"
-    COMPOSE_CMD="podman-compose"
-elif command -v docker &> /dev/null; then
-    CONTAINER_CMD="docker"
-    COMPOSE_CMD="docker-compose"
-else
-    error "Neither Podman nor Docker found"
+if ! command -v kubectl &> /dev/null; then
+    error "kubectl is required but not found"
     exit 1
 fi
-success "$CONTAINER_CMD found"
-
-# Check compose
-if ! command -v $COMPOSE_CMD &> /dev/null; then
-    error "$COMPOSE_CMD not found"
-    exit 1
-fi
-success "$COMPOSE_CMD found"
+success "kubectl found"
 
 echo ""
 
@@ -108,11 +94,11 @@ echo ""
 
 info "Step 3: Configuring environment..."
 
-ENV_FILE="${PROJECT_ROOT}/ai-stack/compose/.env"
+ENV_FILE="${AI_STACK_ENV_FILE:-$HOME/.config/nixos-ai-stack/.env}"
 
 if [ ! -f "$ENV_FILE" ]; then
-    warning ".env file not found, creating from template..."
-    cp "${PROJECT_ROOT}/ai-stack/compose/.env.example" "$ENV_FILE"
+    error "Missing AI stack env file: $ENV_FILE"
+    exit 1
 fi
 
 # Add hybrid learning configuration
@@ -184,13 +170,10 @@ echo ""
 # Step 6: Start AI Stack
 # ============================================================================
 
-info "Step 6: Starting AI stack containers..."
+info "Step 6: Starting AI stack..."
 
-cd "${PROJECT_ROOT}/ai-stack/compose"
-
-# Start services using hybrid compose file
-if $COMPOSE_CMD -f docker-compose.yml up -d; then
-    success "AI stack started"
+if kubectl --request-timeout=30s apply -k "${PROJECT_ROOT}/ai-stack/kubernetes"; then
+    success "AI stack deployment initiated"
 else
     error "Failed to start AI stack"
     exit 1
@@ -211,7 +194,7 @@ check_service() {
     local port=$2
     local endpoint=${3:-/health}
 
-    if curl -sf --max-time 5 "http://localhost:$port$endpoint" > /dev/null 2>&1; then
+    if curl -sf --max-time 5 "http://${SERVICE_HOST:-localhost}:$port$endpoint" > /dev/null 2>&1; then
         success "$name is running on port $port"
         return 0
     else
@@ -269,26 +252,30 @@ info "Step 9: Creating test interaction to verify system..."
 
 python3 << 'PYTHON_SCRIPT'
 import asyncio
+import os
+
 import httpx
 from qdrant_client import QdrantClient
+
+service_host = os.getenv("SERVICE_HOST", "localhost")
 
 async def test_system():
     try:
         # Test Qdrant
-        client = QdrantClient("http://localhost:6333")
+        client = QdrantClient(f"http://{service_host}:6333")
         collections = client.get_collections().collections
         print(f"✓ Qdrant collections: {len(collections)}")
 
         # Test llama.cpp
         async with httpx.AsyncClient() as http:
-            response = await http.get("http://localhost:8080/health", timeout=5.0)
+            response = await http.get(f"http://{service_host}:8080/health", timeout=5.0)
             if response.status_code == 200:
                 print("✓ llama.cpp inference ready")
 
         # Test embedding (Ollama)
         async with httpx.AsyncClient() as http:
             response = await http.post(
-                "http://localhost:11434/api/embeddings",
+                f"http://{service_host}:11434/api/embeddings",
                 json={"model": "nomic-embed-text", "prompt": "test"},
                 timeout=10.0
             )
@@ -314,12 +301,12 @@ echo ""
 success "Hybrid Local-Remote AI Learning System is ready!"
 echo ""
 echo "Service URLs:"
-echo "  • llama.cpp General:    http://localhost:8080"
-echo "  • llama.cpp Coder:      http://localhost:8001"
-echo "  • llama.cpp DeepSeek:   http://localhost:8003"
-echo "  • Qdrant Vector DB:    http://localhost:6333"
-echo "  • Ollama:              http://localhost:11434"
-echo "  • Open WebUI:          http://localhost:3001"
+echo "  • llama.cpp General:    http://${SERVICE_HOST:-localhost}:8080"
+echo "  • llama.cpp Coder:      http://${SERVICE_HOST:-localhost}:8001"
+echo "  • llama.cpp DeepSeek:   http://${SERVICE_HOST:-localhost}:8003"
+echo "  • Qdrant Vector DB:    http://${SERVICE_HOST:-localhost}:6333"
+echo "  • Ollama:              http://${SERVICE_HOST:-localhost}:11434"
+echo "  • Open WebUI:          http://${SERVICE_HOST:-localhost}:3001"
 echo ""
 echo "Qdrant Collections:"
 echo "  • codebase-context     - Code snippets and context"
@@ -337,8 +324,8 @@ echo "  5. Generate fine-tuning datasets when ready (500+ interactions)"
 echo ""
 echo "Monitoring:"
 echo "  • View logs:     ${COMPOSE_CMD} logs -f"
-echo "  • Check Qdrant:  curl http://localhost:6333/collections"
-echo "  • Test llama.cpp: curl http://localhost:8080/health"
+echo "  • Check Qdrant:  curl http://${SERVICE_HOST:-localhost}:6333/collections"
+echo "  • Test llama.cpp: curl http://${SERVICE_HOST:-localhost}:8080/health"
 echo ""
 echo "Documentation:"
 echo "  • Architecture:         ai-knowledge-base/HYBRID-LEARNING-ARCHITECTURE.md"

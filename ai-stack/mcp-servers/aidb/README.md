@@ -53,11 +53,21 @@ AIDB MCP Server (port 8091)
 
 ---
 
+## RAG Data Flow
+
+1. **Ingest** documents via `/documents` or `document_importer.py` into `imported_documents`.
+2. **Chunk** content with `ChunkingStrategy` and create embeddings via `embed_texts`.
+3. **Store** embeddings in Postgres `document_embeddings` (pgvector) via `index_embeddings`.
+4. **Retrieve** relevant chunks using `search_vectors` and the RAG pipeline (`rag/pipeline.py`).
+5. **Assemble** optional context in MCP actions `semantic_search` and `get_related_docs`.
+
+---
+
 ## Configuration
 
 ### Environment Variables
 
-See [`../compose/.env.example`](../compose/.env.example) for complete configuration.
+See [`../../../.env.example`](../../../.env.example) for the baseline variables and `~/.config/nixos-ai-stack/.env` for the active values.
 
 **Key Variables:**
 ```bash
@@ -76,9 +86,24 @@ AIDB_REDIS_PASSWORD=
 # Qdrant
 QDRANT_HOST=qdrant
 QDRANT_PORT=6333
+QDRANT_URL=http://qdrant:6333
 
 # llama.cpp
 LLAMA_CPP_BASE_URL=http://llama-cpp:8080
+```
+
+**Optional TLS (internal services):**
+```bash
+# Postgres TLS (psycopg)
+AIDB_POSTGRES_SSLMODE=verify-full
+AIDB_POSTGRES_SSLROOTCERT=/etc/ssl/certs/ai-stack-ca.crt
+AIDB_POSTGRES_SSLCERT=/etc/ssl/certs/aidb-client.crt
+AIDB_POSTGRES_SSLKEY=/etc/ssl/private/aidb-client.key
+
+# Redis TLS (redis-py)
+AIDB_REDIS_TLS=true
+AIDB_REDIS_SSL_CA=/etc/ssl/certs/ai-stack-ca.crt
+AIDB_REDIS_SSL_CERT_REQS=required
 ```
 
 ### Config File
@@ -213,14 +238,14 @@ export QDRANT_URL=http://localhost:6333
 uvicorn server:app --reload --port 8091
 ```
 
-### Running with Docker Compose
+### Running on K3s/Kubernetes
 
 ```bash
 # Development mode (auto-reload)
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+kubectl apply -k ai-stack/kustomize/overlays/dev
 
 # Production mode
-docker compose up -d aidb-mcp
+kubectl apply -k ai-stack/kubernetes
 ```
 
 ### Testing
@@ -338,7 +363,7 @@ docker ps | grep aidb
 docker logs ai-stack-aidb
 
 # Restart service
-docker compose restart aidb-mcp
+kubectl rollout restart deploy -n ai-stack aidb
 ```
 
 ### Database Migration Errors
@@ -348,11 +373,10 @@ docker compose restart aidb-mcp
 **Solution:**
 ```bash
 # Apply migrations
-docker compose exec aidb-mcp alembic upgrade head
+kubectl exec -n ai-stack deploy/aidb -- alembic upgrade head
 
 # Reset database (WARNING: data loss)
-docker compose down -v
-docker compose up -d
+kubectl rollout restart deploy -n ai-stack aidb
 ```
 
 ### Slow Performance

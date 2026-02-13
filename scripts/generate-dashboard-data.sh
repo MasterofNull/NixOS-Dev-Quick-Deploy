@@ -3,15 +3,22 @@
 # Collects real-time system, LLM, database, network, and security metrics
 # Outputs JSON for consumption by the dashboard UI
 
+# NOTE: -e intentionally omitted — data collection continues even when
+# individual metric sources are temporarily unavailable.
 set -uo pipefail
 
-# Resolve project root for reading compose env defaults.
+# Resolve project root for reading env defaults.
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Source centralized service endpoints
+# shellcheck source=config/service-endpoints.sh
+[[ -f "${PROJECT_ROOT}/config/service-endpoints.sh" ]] && source "${PROJECT_ROOT}/config/service-endpoints.sh"
 
 # Output directory for JSON data
 DATA_DIR="${HOME}/.local/share/nixos-system-dashboard"
 AI_STACK_DATA_ROOT="${AI_STACK_DATA:-$HOME/.local/share/nixos-ai-stack}"
 AIDB_LOCAL_CONFIG="${AIDB_CONFIG_PATH:-$HOME/Documents/AI-Optimizer/config/config.yaml}"
+KUBECTL_TIMEOUT="${KUBECTL_TIMEOUT:-60}"
 
 has_cmd() {
     command -v "$1" >/dev/null 2>&1
@@ -46,16 +53,17 @@ detect_container_runtime() {
             return
         fi
     fi
+    # Prefer K3s when k3s config exists or kubectl is available with cluster access
+    if has_cmd kubectl; then
+        if [[ -n "${KUBECONFIG:-}" ]] || [[ -f /etc/rancher/k3s/k3s.yaml ]]; then
+            echo "k8s"
+            return
+        fi
+    fi
     if has_cmd podman; then
         echo "podman"
     elif has_cmd docker; then
         echo "docker"
-    elif has_cmd kubectl; then
-        if [[ -n "${KUBECONFIG:-}" ]] || [[ -f /etc/rancher/k3s/k3s.yaml ]]; then
-            echo "k8s"
-        else
-            echo ""
-        fi
     else
         echo ""
     fi
@@ -69,7 +77,7 @@ k8s_pod_status_global() {
         return
     fi
     local status_json
-    status_json=$(run_timeout 3 kubectl get pods -n "$namespace" -l "io.kompose.service=${service}" -o json 2>/dev/null || echo "")
+    status_json=$(run_timeout 3 kubectl --request-timeout="${KUBECTL_TIMEOUT}s" get pods -n "$namespace" -l "io.kompose.service=${service}" -o json 2>/dev/null || echo "")
     if [[ -z "$status_json" ]]; then
         echo "offline"
         return
@@ -95,7 +103,7 @@ k8s_exec() {
     local service="$1"
     local cmd="$2"
     local namespace="${AI_STACK_NAMESPACE:-ai-stack}"
-    run_timeout 5 kubectl exec -n "$namespace" "deploy/${service}" -- sh -c "$cmd" 2>/dev/null || true
+    run_timeout 5 kubectl --request-timeout="${KUBECTL_TIMEOUT}s" exec -n "$namespace" "deploy/${service}" -- sh -c "$cmd" 2>/dev/null || true
 }
 
 k8s_file_line_count() {
@@ -618,7 +626,7 @@ collect_llm_metrics() {
     local embeddings_error_total=0
     local embeddings_memory_mb="0"
     local embeddings_metrics=""
-    local embeddings_endpoint="http://localhost:8081"
+    local embeddings_endpoint="${EMBEDDINGS_URL}"
     local embedding_model_name=""
     local env_file="${AI_STACK_CONFIG:-$HOME/.config/nixos-ai-stack/.env}"
     local namespace="${AI_STACK_NAMESPACE:-ai-stack}"
@@ -629,18 +637,18 @@ collect_llm_metrics() {
     }
 
     # Check Qdrant
-    if curl_fast http://localhost:6333/healthz > /dev/null 2>&1; then
+    if curl_fast "${QDRANT_URL}/healthz" > /dev/null 2>&1; then
         qdrant_status="online"
-        qdrant_collections=$(curl_fast http://localhost:6333/collections | maybe_jq -c '.result.collections | map(.name)' 2>/dev/null || echo "[]")
+        qdrant_collections=$(curl_fast "${QDRANT_URL}/collections" | maybe_jq -c '.result.collections | map(.name)' 2>/dev/null || echo "[]")
         qdrant_collection_count=$(echo "$qdrant_collections" | maybe_jq -r 'length' 2>/dev/null || echo "0")
     elif [[ "$container_runtime" == "k8s" ]]; then
         qdrant_status=$(k8s_pod_status "qdrant")
     fi
 
     # Check llama.cpp (llama.cpp server)
-    if curl_fast http://localhost:8080/health > /dev/null 2>&1; then
+    if curl_fast "${LLAMA_URL}/health" > /dev/null 2>&1; then
         llama_cpp_status="online"
-        llama_cpp_models=$(curl_fast http://localhost:8080/v1/models 2>/dev/null | maybe_jq -c '.data // []' || echo "[]")
+        llama_cpp_models=$(curl_fast "${LLAMA_URL}/v1/models" 2>/dev/null | maybe_jq -c '.data // []' || echo "[]")
     elif [[ "$container_runtime" == "k8s" ]]; then
         llama_cpp_status=$(k8s_pod_status "llama-cpp")
     fi
@@ -665,7 +673,6 @@ collect_llm_metrics() {
         fi
     elif [[ "$container_runtime" == "k8s" ]]; then
         embeddings_status=$(k8s_pod_status "embeddings")
-        embeddings_endpoint="http://embeddings:8081"
     fi
 
     # Detect cached GGUF models for llama.cpp
@@ -694,19 +701,18 @@ collect_llm_metrics() {
     fi
 
     # Check Open WebUI
-    # Note: Open WebUI doesn't have a health endpoint, check if container is running
     if [[ "$container_runtime" == "k8s" ]]; then
         open_webui_status=$(k8s_pod_status "open-webui")
     elif [[ "$container_runtime" == "podman" ]]; then
         if run_timeout 3 podman ps --filter "name=local-ai-open-webui" --filter "status=running" --format "{{.Names}}" 2>/dev/null | grep -q "local-ai-open-webui"; then
             open_webui_status="online"
         fi
-    elif curl_fast http://localhost:3001 > /dev/null 2>&1; then
+    elif curl_fast "${OPEN_WEBUI_URL}" > /dev/null 2>&1; then
         open_webui_status="online"
     fi
 
     # Check MindsDB (optional)
-    if curl_fast http://localhost:47334/api/util/ping > /dev/null 2>&1; then
+    if curl_fast "${MINDSDB_URL}/api/util/ping" > /dev/null 2>&1; then
         mindsdb_status="online"
     elif [[ "$container_runtime" == "k8s" ]]; then
         mindsdb_status=$(k8s_pod_status "mindsdb")
@@ -717,15 +723,15 @@ collect_llm_metrics() {
     fi
 
     # Check AIDB MCP Server
-    if curl_fast http://localhost:8091/health > /dev/null 2>&1; then
+    if curl_fast "${AIDB_URL}/health" > /dev/null 2>&1; then
         aidb_status="online"
-        aidb_services=$(curl_fast http://localhost:8091/health | maybe_jq -c '.services // {}' 2>/dev/null || echo "{}")
+        aidb_services=$(curl_fast "${AIDB_URL}/health" | maybe_jq -c '.services // {}' 2>/dev/null || echo "{}")
     elif [[ "$container_runtime" == "k8s" ]]; then
         aidb_status=$(k8s_pod_status "aidb")
     fi
 
     # Check Hybrid Coordinator MCP Server
-    if curl_fast http://localhost:8092/health > /dev/null 2>&1; then
+    if curl_fast "${HYBRID_URL}/health" > /dev/null 2>&1; then
         hybrid_coordinator_status="online"
     elif [[ "$container_runtime" == "k8s" ]]; then
         hybrid_coordinator_status=$(k8s_pod_status "hybrid-coordinator")
@@ -735,7 +741,7 @@ collect_llm_metrics() {
     local containers="[]"
     if [[ "$container_runtime" == "k8s" ]]; then
         if has_cmd kubectl; then
-            containers=$(run_timeout 3 kubectl get pods -n "$namespace" -o json 2>/dev/null | maybe_jq -c '[.items[] | {name: .metadata.name, status: (.status.phase | ascii_downcase), image: (.spec.containers[0].image // "")}]' 2>/dev/null || echo "[]")
+            containers=$(run_timeout 3 kubectl --request-timeout="${KUBECTL_TIMEOUT}s" get pods -n "$namespace" -o json 2>/dev/null | maybe_jq -c '[.items[] | {name: .metadata.name, status: (.status.phase | ascii_downcase), image: (.spec.containers[0].image // "")}]' 2>/dev/null || echo "[]")
         fi
     elif [[ "$container_runtime" == "podman" ]]; then
         containers=$(run_timeout 3 podman ps --format json 2>/dev/null | maybe_jq -c '[.[] | {name: .Names[0], status: .State, image: .Image}]' || echo "[]")
@@ -749,14 +755,14 @@ collect_llm_metrics() {
       "status": "$qdrant_status",
       "collections": ${qdrant_collection_count:-0},
       "collection_names": ${qdrant_collections:-[]},
-      "url": "http://localhost:6333"
+      "url": "${QDRANT_URL}"
     },
     "llama_cpp": {
       "status": "$llama_cpp_status",
       "models": ${llama_cpp_models:-[]},
       "cached_models": ${llama_cpp_cached_models:-[]},
       "cached_models_count": ${llama_cpp_cached_count:-0},
-      "url": "http://localhost:8080"
+      "url": "${LLAMA_URL}"
     },
     "embeddings": {
       "status": "$embeddings_status",
@@ -770,28 +776,28 @@ collect_llm_metrics() {
     },
     "postgres": {
       "status": "$postgres_status",
-      "url": "localhost:5432"
+      "url": "${POSTGRES_HOST:-localhost}:${POSTGRES_PORT:-5432}"
     },
     "redis": {
       "status": "$redis_status",
-      "url": "localhost:6379"
+      "url": "${REDIS_HOST:-localhost}:${REDIS_PORT:-6379}"
     },
     "open_webui": {
       "status": "$open_webui_status",
-      "url": "http://localhost:3001"
+      "url": "${OPEN_WEBUI_URL}"
     },
     "mindsdb": {
       "status": "$mindsdb_status",
-      "url": "http://localhost:47334"
+      "url": "${MINDSDB_URL}"
     },
     "aidb": {
       "status": "$aidb_status",
       "services": ${aidb_services},
-      "url": "http://localhost:8091"
+      "url": "${AIDB_URL}"
     },
     "hybrid_coordinator": {
       "status": "$hybrid_coordinator_status",
-      "url": "http://localhost:8092"
+      "url": "${HYBRID_URL}"
     }
   },
   "containers": ${containers}
@@ -996,7 +1002,7 @@ EOF
 }
 
 # ============================================================================
-# Database Metrics (PostgreSQL via Podman)
+# Database Metrics (PostgreSQL)
 # ============================================================================
 collect_database_metrics() {
     local pg_status="offline"
@@ -1010,7 +1016,7 @@ collect_database_metrics() {
     local mindsdb_status="offline"
     local container_runtime
     container_runtime=$(detect_container_runtime)
-    local env_file="$PROJECT_ROOT/ai-stack/compose/.env"
+    local env_file="${AI_STACK_ENV_FILE:-$HOME/.config/nixos-ai-stack/.env}"
     local pg_user="${AIDB_POSTGRES_USER:-${POSTGRES_USER:-}}"
     local pg_db="${AIDB_POSTGRES_DB:-${POSTGRES_DB:-}}"
     local pg_password="${AIDB_POSTGRES_PASSWORD:-${POSTGRES_PASSWORD:-}}"
@@ -1038,7 +1044,7 @@ collect_database_metrics() {
             return
         fi
         local status_json
-        status_json=$(run_timeout 3 kubectl get pods -n "${AI_STACK_NAMESPACE:-ai-stack}" -l "io.kompose.service=${service}" -o json 2>/dev/null || echo "")
+        status_json=$(run_timeout 3 kubectl --request-timeout="${KUBECTL_TIMEOUT}s" get pods -n "${AI_STACK_NAMESPACE:-ai-stack}" -l "io.kompose.service=${service}" -o json 2>/dev/null || echo "")
         if [[ -z "$status_json" ]]; then
             echo "offline"
             return
@@ -1068,7 +1074,7 @@ collect_database_metrics() {
 
         # Attempt to pull Qdrant collection count from dashboard-api
         local api_metrics
-        api_metrics=$(curl_fast "http://localhost:${DASHBOARD_API_PORT:-8889}/api/ai/metrics" 2>/dev/null || echo "")
+        api_metrics=$(curl_fast "${DASHBOARD_API_URL}/api/ai/metrics" 2>/dev/null || echo "")
         if echo "$api_metrics" | maybe_jq -e '.services.qdrant.metrics.collection_count' >/dev/null 2>&1; then
             qdrant_collections=$(echo "$api_metrics" | maybe_jq -r '.services.qdrant.metrics.collection_count' 2>/dev/null || echo "0")
         fi
@@ -1093,9 +1099,9 @@ collect_database_metrics() {
             redis_memory="unknown"
         fi
 
-        if curl_fast http://localhost:6333/collections > /dev/null 2>&1; then
+        if curl_fast "${QDRANT_URL}/collections" > /dev/null 2>&1; then
             qdrant_status="online"
-            qdrant_collections=$(curl_fast http://localhost:6333/collections | maybe_jq '.result.collections | length' 2>/dev/null || echo "0")
+            qdrant_collections=$(curl_fast "${QDRANT_URL}/collections" | maybe_jq '.result.collections | length' 2>/dev/null || echo "0")
         fi
 
         if podman ps --format '{{.Names}}' | grep -q '^local-ai-mindsdb$'; then
@@ -1153,7 +1159,7 @@ collect_telemetry_metrics() {
     local local_usage_rate=0.0
 
     # Check if AIDB is online
-    if curl_fast http://localhost:8091/health > /dev/null 2>&1; then
+    if curl_fast "${AIDB_URL}/health" > /dev/null 2>&1; then
         telemetry_status="online"
     elif [[ "$container_runtime" == "k8s" ]]; then
         telemetry_status=$(k8s_pod_status_global "aidb")
@@ -1263,14 +1269,14 @@ collect_hybrid_coordinator_metrics() {
     container_runtime=$(detect_container_runtime)
 
     # Check hybrid coordinator health
-    if curl_fast http://localhost:8092/health > /dev/null 2>&1; then
+    if curl_fast "${HYBRID_URL}/health" > /dev/null 2>&1; then
         coordinator_status="online"
-        coordinator_health=$(curl_fast http://localhost:8092/health | maybe_jq -c '.' 2>/dev/null || echo "{}")
+        coordinator_health=$(curl_fast "${HYBRID_URL}/health" | maybe_jq -c '.' 2>/dev/null || echo "{}")
     elif [[ "$container_runtime" == "k8s" ]]; then
         if has_cmd kubectl; then
             local namespace="${AI_STACK_NAMESPACE:-ai-stack}"
             local ready
-            ready=$(run_timeout 3 kubectl get pods -n "$namespace" -l "io.kompose.service=hybrid-coordinator" -o json 2>/dev/null | \
+            ready=$(run_timeout 3 kubectl --request-timeout="${KUBECTL_TIMEOUT}s" get pods -n "$namespace" -l "io.kompose.service=hybrid-coordinator" -o json 2>/dev/null | \
                 maybe_jq -r '[.items[]?.status.containerStatuses[]?.ready] | any' 2>/dev/null || echo "false")
             if [[ "$ready" == "true" ]]; then
                 coordinator_status="online"
@@ -1327,7 +1333,7 @@ collect_hybrid_coordinator_metrics() {
     "finetune_dataset_path": "$finetune_path",
     "finetune_records": $finetune_records
   },
-  "url": "http://localhost:8092"
+  "url": "${HYBRID_URL}"
 }
 EOF
 }
@@ -1344,12 +1350,12 @@ collect_rag_collections_metrics() {
     # Expected collections based on COMPREHENSIVE-SYSTEM-ANALYSIS.md
     local expected_collections='["codebase-context","skills-patterns","error-solutions","interaction-history","best-practices"]'
 
-    if curl_fast http://localhost:6333/collections > /dev/null 2>&1; then
+    if curl_fast "${QDRANT_URL}/collections" > /dev/null 2>&1; then
         qdrant_status="online"
 
         # Get all collections
         local all_collections
-        all_collections=$(curl_fast http://localhost:6333/collections | maybe_jq -c '.result.collections' 2>/dev/null || echo "[]")
+        all_collections=$(curl_fast "${QDRANT_URL}/collections" | maybe_jq -c '.result.collections' 2>/dev/null || echo "[]")
         total_collections=$(echo "$all_collections" | maybe_jq -r 'length' 2>/dev/null || echo "0")
 
         # Build detailed collection data
@@ -1359,10 +1365,10 @@ collect_rag_collections_metrics() {
             local points=0
             local vectors=0
 
-            if curl_fast "http://localhost:6333/collections/$collection" > /dev/null 2>&1; then
+            if curl_fast "${QDRANT_URL}/collections/$collection" > /dev/null 2>&1; then
                 exists="true"
                 local collection_info
-                collection_info=$(curl_fast "http://localhost:6333/collections/$collection" 2>/dev/null)
+                collection_info=$(curl_fast "${QDRANT_URL}/collections/$collection" 2>/dev/null)
                 points=$(echo "$collection_info" | maybe_jq -r '.result.points_count // 0' 2>/dev/null || echo "0")
                 vectors=$(echo "$collection_info" | maybe_jq -r '.result.vectors_count // 0' 2>/dev/null || echo "0")
                 total_points=$((total_points + points))
@@ -1397,7 +1403,7 @@ COLLECTION_EOF
   "total_points": $total_points,
   "expected_collections": $expected_collections,
   "collections": $collections_data,
-  "url": "http://localhost:6333/dashboard"
+  "url": "${QDRANT_URL}/dashboard"
 }
 EOF
 }
@@ -1734,7 +1740,7 @@ collect_feedback_pipeline_metrics() {
     local container_runtime
     container_runtime=$(detect_container_runtime)
 
-    if curl_fast http://localhost:8091/health > /dev/null 2>&1; then
+    if curl_fast "${AIDB_URL}/health" > /dev/null 2>&1; then
         aidb_status="online"
     elif [[ "$container_runtime" == "k8s" ]]; then
         aidb_status=$(k8s_pod_status_global "aidb")
@@ -1813,22 +1819,22 @@ collect_local_proof_metrics() {
         last_telemetry_event=$(tail -n 1 "$telemetry_path" | maybe_jq -c '{timestamp: .timestamp, event_type: .event_type, source: .source, llm_used: .llm_used, model: .model}' 2>/dev/null || echo "{}")
     fi
 
-    if curl_fast http://localhost:8091/health > /dev/null 2>&1; then
+    if curl_fast "${AIDB_URL}/health" > /dev/null 2>&1; then
         aidb_status="online"
     fi
 
-    if curl_fast http://localhost:6333/collections > /dev/null 2>&1; then
-        qdrant_collections=$(curl_fast http://localhost:6333/collections | maybe_jq -c '.result.collections | map(.name)' 2>/dev/null || echo "[]")
+    if curl_fast "${QDRANT_URL}/collections" > /dev/null 2>&1; then
+        qdrant_collections=$(curl_fast "${QDRANT_URL}/collections" | maybe_jq -c '.result.collections | map(.name)' 2>/dev/null || echo "[]")
         qdrant_collection_count=$(echo "$qdrant_collections" | maybe_jq -r 'length' 2>/dev/null || echo "0")
     fi
 
-    if curl_fast http://localhost:8080/v1/models > /dev/null 2>&1; then
-        llama_cpp_model_count=$(curl_fast http://localhost:8080/v1/models | maybe_jq -r '.data | length' 2>/dev/null || echo "0")
+    if curl_fast "${LLAMA_URL}/v1/models" > /dev/null 2>&1; then
+        llama_cpp_model_count=$(curl_fast "${LLAMA_URL}/v1/models" | maybe_jq -r '.data | length' 2>/dev/null || echo "0")
     fi
 
-    if curl_fast http://localhost:8091/skills > /dev/null 2>&1; then
+    if curl_fast "${AIDB_URL}/skills" > /dev/null 2>&1; then
         local skills_payload
-        skills_payload=$(curl_fast http://localhost:8091/skills | maybe_jq -c '.' 2>/dev/null || echo "[]")
+        skills_payload=$(curl_fast "${AIDB_URL}/skills" | maybe_jq -c '.' 2>/dev/null || echo "[]")
         skills_count=$(echo "$skills_payload" | maybe_jq -r 'length' 2>/dev/null || echo "0")
         skill_samples=$(echo "$skills_payload" | maybe_jq -c '.[0:5] | map(.slug // .name // .id)' 2>/dev/null || echo "[]")
     fi
@@ -1836,7 +1842,7 @@ collect_local_proof_metrics() {
     container_runtime=$(detect_container_runtime)
     if [[ "$container_runtime" == "k8s" ]]; then
         if has_cmd kubectl; then
-            container_count=$(run_timeout 3 kubectl get pods -n "${AI_STACK_NAMESPACE:-ai-stack}" -o json 2>/dev/null | maybe_jq -r '.items | length' 2>/dev/null || echo "0")
+            container_count=$(run_timeout 3 kubectl --request-timeout="${KUBECTL_TIMEOUT}s" get pods -n "${AI_STACK_NAMESPACE:-ai-stack}" -o json 2>/dev/null | maybe_jq -r '.items | length' 2>/dev/null || echo "0")
         fi
     elif [[ "$container_runtime" == "podman" ]]; then
         container_count=$(run_timeout 3 podman ps --format json 2>/dev/null | maybe_jq -r 'length' 2>/dev/null || echo "0")
@@ -1888,9 +1894,7 @@ collect_config_metrics() {
     local hybrid_telemetry_path="${HYBRID_TELEMETRY_PATH:-$(read_env_value "$env_file" "HYBRID_TELEMETRY_PATH")}"
     local dashboard_refresh="${DASHBOARD_COLLECT_INTERVAL:-15}"
     local telemetry_stale="${TELEMETRY_STALE_MINUTES:-30}"
-    local podman_socket="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
     local dashboard_data_dir="${HOME}/.local/share/nixos-system-dashboard"
-    local compose_file="ai-stack/compose/docker-compose.yml"
     local host_name
     local user_uid
     local sshd_password_auth
@@ -1915,6 +1919,19 @@ collect_config_metrics() {
     local swappiness
     local inotify_watches
     local ip_forward
+    local container_runtime
+    local ai_stack_start_cmd
+    local ai_stack_stop_cmd
+    local ai_stack_restart_cmd
+    local ai_stack_clean_restart_cmd
+    local ai_stack_clean_aidb_cmd
+    local ai_stack_logs_aidb_cmd
+    local ai_stack_logs_qdrant_cmd
+    local ai_stack_logs_llama_cmd
+    local ai_stack_logs_webui_cmd
+    local list_containers_cmd
+    local container_disk_cmd
+    local container_connections_cmd
 
     sshd_password_auth=$(read_sshd_config_value "PasswordAuthentication")
     sshd_root_login=$(read_sshd_config_value "PermitRootLogin")
@@ -1940,7 +1957,37 @@ collect_config_metrics() {
     ip_forward=$(sysctl_value "net.ipv4.ip_forward")
     host_name=$(hostname)
     user_uid=$(id -u)
+    container_runtime=$(detect_container_runtime)
 
+    ai_stack_start_cmd="podman start local-ai-qdrant local-ai-postgres local-ai-redis local-ai-llama-cpp local-ai-open-webui local-ai-aidb local-ai-hybrid-coordinator"
+    ai_stack_stop_cmd="podman stop local-ai-qdrant local-ai-postgres local-ai-redis local-ai-llama-cpp local-ai-open-webui local-ai-aidb local-ai-hybrid-coordinator"
+    ai_stack_restart_cmd="podman restart local-ai-qdrant local-ai-postgres local-ai-redis local-ai-llama-cpp local-ai-open-webui local-ai-aidb local-ai-hybrid-coordinator"
+    ai_stack_clean_restart_cmd="$ai_stack_restart_cmd"
+    ai_stack_clean_aidb_cmd="podman restart local-ai-aidb"
+    ai_stack_logs_aidb_cmd="podman logs --tail 200 local-ai-aidb"
+    ai_stack_logs_qdrant_cmd="podman logs --tail 200 local-ai-qdrant"
+    ai_stack_logs_llama_cmd="podman logs --tail 200 local-ai-llama-cpp"
+    ai_stack_logs_webui_cmd="podman logs --tail 200 local-ai-open-webui"
+    list_containers_cmd="podman ps --all"
+    container_disk_cmd="podman system df"
+    container_connections_cmd="podman system connection list"
+
+    if [[ "$container_runtime" == "k8s" ]]; then
+        ai_stack_start_cmd="kubectl --request-timeout=${KUBECTL_TIMEOUT}s -n ${AI_STACK_NAMESPACE:-ai-stack} scale deployment -l nixos.quick-deploy.ai-stack=true --replicas=1"
+        ai_stack_stop_cmd="kubectl --request-timeout=${KUBECTL_TIMEOUT}s -n ${AI_STACK_NAMESPACE:-ai-stack} scale deployment -l nixos.quick-deploy.ai-stack=true --replicas=0"
+        ai_stack_restart_cmd="kubectl --request-timeout=${KUBECTL_TIMEOUT}s -n ${AI_STACK_NAMESPACE:-ai-stack} rollout restart deployment -l nixos.quick-deploy.ai-stack=true"
+        ai_stack_clean_restart_cmd="./scripts/k8s-clean-restart.sh"
+        ai_stack_clean_aidb_cmd="kubectl --request-timeout=${KUBECTL_TIMEOUT}s -n ${AI_STACK_NAMESPACE:-ai-stack} rollout restart deployment/aidb"
+        ai_stack_logs_aidb_cmd="kubectl --request-timeout=${KUBECTL_TIMEOUT}s -n ${AI_STACK_NAMESPACE:-ai-stack} logs deploy/aidb --tail 200"
+        ai_stack_logs_qdrant_cmd="kubectl --request-timeout=${KUBECTL_TIMEOUT}s -n ${AI_STACK_NAMESPACE:-ai-stack} logs deploy/qdrant --tail 200"
+        ai_stack_logs_llama_cmd="kubectl --request-timeout=${KUBECTL_TIMEOUT}s -n ${AI_STACK_NAMESPACE:-ai-stack} logs deploy/llama-cpp --tail 200"
+        ai_stack_logs_webui_cmd="kubectl --request-timeout=${KUBECTL_TIMEOUT}s -n ${AI_STACK_NAMESPACE:-ai-stack} logs deploy/open-webui --tail 200"
+        list_containers_cmd="kubectl --request-timeout=${KUBECTL_TIMEOUT}s -n ${AI_STACK_NAMESPACE:-ai-stack} get pods"
+        container_disk_cmd="kubectl --request-timeout=${KUBECTL_TIMEOUT}s -n ${AI_STACK_NAMESPACE:-ai-stack} get pods -o wide"
+        container_connections_cmd="kubectl --request-timeout=${KUBECTL_TIMEOUT}s -n ${AI_STACK_NAMESPACE:-ai-stack} get svc"
+    fi
+
+    podman_socket="${podman_socket:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock}"
     aidb_port="${aidb_port:-8091}"
     llama_cpp_port="${llama_cpp_port:-8080}"
     qdrant_port="${qdrant_port:-6333}"
@@ -2094,8 +2141,8 @@ collect_config_metrics() {
     {
       "label": "Open WebUI Port",
       "value": "${open_webui_port}",
-      "path": "$compose_file",
-      "hint": "Open WebUI HTTP port mapping."
+      "path": "$env_file",
+      "hint": "Open WebUI service port."
     },
     {
       "label": "Qdrant Port",
@@ -2224,10 +2271,10 @@ collect_config_metrics() {
       "hint": "Fail2ban service state."
     },
     {
-      "label": "Compose File",
-      "value": "${compose_file}",
-      "path": "${compose_file}",
-      "hint": "Primary AI stack compose definition."
+      "label": "Kubernetes Manifests",
+      "value": "ai-stack/kubernetes/kustomization.yaml",
+      "path": "ai-stack/kubernetes/kustomization.yaml",
+      "hint": "Primary AI stack Kubernetes definition."
     }
   ],
   "actions": [
@@ -2371,49 +2418,49 @@ collect_config_metrics() {
     },
     {
       "label": "Start AI Stack",
-      "command": "podman-compose -f ai-stack/compose/docker-compose.yml up -d",
+      "command": "${ai_stack_start_cmd}",
       "mode": "run",
       "category": "AI Stack"
     },
     {
       "label": "Stop AI Stack",
-      "command": "podman-compose -f ai-stack/compose/docker-compose.yml down",
+      "command": "${ai_stack_stop_cmd}",
       "mode": "run",
       "category": "AI Stack"
     },
     {
       "label": "Clean Restart AI Stack",
-      "command": "./scripts/compose-clean-restart.sh",
+      "command": "${ai_stack_clean_restart_cmd}",
       "mode": "run",
       "category": "AI Stack"
     },
     {
       "label": "Clean Restart AIDB",
-      "command": "./scripts/compose-clean-restart.sh aidb",
+      "command": "${ai_stack_clean_aidb_cmd}",
       "mode": "run",
       "category": "AI Stack"
     },
     {
       "label": "AI Stack Logs (AIDB)",
-      "command": "podman-compose -f ai-stack/compose/docker-compose.yml logs --tail 200 aidb",
+      "command": "${ai_stack_logs_aidb_cmd}",
       "mode": "run",
       "category": "AI Stack"
     },
     {
       "label": "AI Stack Logs (Qdrant)",
-      "command": "podman-compose -f ai-stack/compose/docker-compose.yml logs --tail 200 qdrant",
+      "command": "${ai_stack_logs_qdrant_cmd}",
       "mode": "run",
       "category": "AI Stack"
     },
     {
       "label": "AI Stack Logs (llama.cpp)",
-      "command": "podman-compose -f ai-stack/compose/docker-compose.yml logs --tail 200 llama-cpp",
+      "command": "${ai_stack_logs_llama_cmd}",
       "mode": "run",
       "category": "AI Stack"
     },
     {
       "label": "AI Stack Logs (Open WebUI)",
-      "command": "podman-compose -f ai-stack/compose/docker-compose.yml logs --tail 200 open-webui",
+      "command": "${ai_stack_logs_webui_cmd}",
       "mode": "run",
       "category": "AI Stack"
     },
@@ -2437,19 +2484,19 @@ collect_config_metrics() {
     },
     {
       "label": "List Podman Containers",
-      "command": "podman ps --all",
+      "command": "${list_containers_cmd}",
       "mode": "run",
       "category": "Containers"
     },
     {
       "label": "Podman Disk Usage",
-      "command": "podman system df",
+      "command": "${container_disk_cmd}",
       "mode": "run",
       "category": "Containers"
     },
     {
       "label": "Podman Connections",
-      "command": "podman system connection list",
+      "command": "${container_connections_cmd}",
       "mode": "run",
       "category": "Containers"
     },
@@ -2498,7 +2545,7 @@ collect_ai_metrics() {
     fi
 
     if [[ "${DASHBOARD_MODE:-}" == "k8s" || "${DASHBOARD_MODE:-}" == "kubernetes" ]]; then
-        export AI_METRICS_ENDPOINT="${AI_METRICS_ENDPOINT:-http://localhost:${DASHBOARD_API_PORT:-8889}/api/ai/metrics}"
+        export AI_METRICS_ENDPOINT="${AI_METRICS_ENDPOINT:-${DASHBOARD_API_URL}/api/ai/metrics}"
     fi
 
     if ! run_timeout 6 bash "$collector" >/dev/null 2>&1; then
@@ -2558,33 +2605,33 @@ generate_quick_links() {
   "services": [
     {
       "name": "AIDB MCP Server",
-      "url": "http://localhost:8091/health",
+      "url": "${AIDB_URL}/health",
       "category": "ai"
     },
     {
       "name": "Open WebUI",
-      "url": "http://localhost:3001",
+      "url": "${OPEN_WEBUI_URL}",
       "category": "ai"
     },
     {
       "name": "Qdrant Dashboard",
-      "url": "http://localhost:6333/dashboard",
+      "url": "${QDRANT_URL}/dashboard",
       "category": "ai"
     },
     {
       "name": "llama.cpp Health",
-      "url": "http://localhost:8080/health",
+      "url": "${LLAMA_URL}/health",
       "category": "ai"
     },
     {
       "name": "Netdata Monitoring",
-      "url": "http://localhost:19999",
+      "url": "${NETDATA_URL}",
       "category": "monitoring"
     },
     {
-      "name": "Gitea",
-      "url": "http://localhost:3000",
-      "category": "development"
+      "name": "Grafana",
+      "url": "${GRAFANA_URL}",
+      "category": "monitoring"
     }
   ],
   "config_files": [
@@ -2594,8 +2641,8 @@ generate_quick_links() {
       "category": "system"
     },
     {
-      "title": "Docker Compose (AI Stack)",
-      "path": "ai-stack/compose/docker-compose.yml",
+      "title": "Kubernetes Manifests (AI Stack)",
+      "path": "ai-stack/kubernetes/kustomization.yaml",
       "category": "ai"
     },
     {

@@ -22,6 +22,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("import-documents")
+SERVICE_HOST = os.getenv("SERVICE_HOST", "localhost")
 
 
 def parse_args():
@@ -65,15 +66,15 @@ Examples:
     parser.add_argument(
         '--qdrant-url',
         type=str,
-        default=os.getenv('QDRANT_URL', 'http://localhost:6333'),
-        help='Qdrant server URL (default: http://localhost:6333)'
+        default=os.getenv('QDRANT_URL', f"http://{SERVICE_HOST}:6333"),
+        help=f"Qdrant server URL (default: http://{SERVICE_HOST}:6333)"
     )
 
     parser.add_argument(
         '--embedding-url',
         type=str,
-        default=os.getenv('EMBEDDING_SERVICE_URL', 'http://localhost:8081'),
-        help='Embedding service URL (default: http://localhost:8081 for TEI service)'
+        default=os.getenv('EMBEDDING_SERVICE_URL', f"http://{SERVICE_HOST}:8081"),
+        help=f"Embedding service URL (default: http://{SERVICE_HOST}:8081 for TEI service)"
     )
 
     parser.add_argument(

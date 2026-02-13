@@ -52,89 +52,9 @@
 # - API calls
 # - Package downloads
 #
-# Example usage:
-#   retry_with_backoff curl -f https://example.com/file.txt
-#   retry_with_backoff systemctl is-active myservice
-# ============================================================================
-retry_with_backoff() {
-    # Get maximum attempts from configuration
-    # This allows centralized control of retry behavior
-    local max_attempts=$RETRY_MAX_ATTEMPTS
-
-    # Initial timeout in seconds
-    # We start with 2 seconds and double each iteration
-    local timeout=2
-
-    # Current attempt counter (starts at 1)
-    local attempt=1
-
-    # Will store exit code of command attempts
-    local exit_code=0
-
-    # ========================================================================
-    # Retry loop: Continue until max attempts reached
-    # ========================================================================
-    # (( )) is arithmetic evaluation, more efficient than [[ ]] for numbers
-    while (( attempt <= max_attempts )); do
-        # Try to execute the command
-        # "$@" preserves all arguments exactly as passed, including:
-        # - Spaces in arguments
-        # - Special characters
-        # - Multiple arguments
-        # Example: retry_with_backoff curl -f "file with spaces.txt"
-        if "$@"; then
-            # Command succeeded! Return immediately with success
-            # No need to continue retrying
-            return 0
-        fi
-
-        # Command failed, capture its exit code
-        # Must capture immediately before any other command runs
-        exit_code=$?
-
-        # Check if we have more attempts remaining
-        if (( attempt < max_attempts )); then
-            # ================================================================
-            # Not the last attempt - wait and retry
-            # ================================================================
-
-            # Inform user about retry (important feedback for long operations)
-            print_warning "Attempt $attempt/$max_attempts failed, retrying in ${timeout}s..."
-
-            # Log retry for debugging
-            # Include full command in log for troubleshooting
-            log WARNING "Retry attempt $attempt failed for command: $*"
-
-            # Wait before next attempt
-            # Sleep duration increases each iteration (exponential backoff)
-            sleep $timeout
-
-            # Double the timeout for next iteration
-            # Uses arithmetic expansion: $(( expression ))
-            # RETRY_BACKOFF_MULTIPLIER typically set to 2 (doubling)
-            # Example: 2 → 4 → 8 → 16 seconds
-            timeout=$((timeout * RETRY_BACKOFF_MULTIPLIER))
-
-            # Increment attempt counter for next iteration
-            attempt=$((attempt + 1))
-        else
-            # ================================================================
-            # Last attempt failed - give up
-            # ================================================================
-
-            # Log final failure
-            log ERROR "All retry attempts failed for command: $*"
-
-            # Return the exit code from last attempt
-            # This allows caller to know why it failed
-            return $exit_code
-        fi
-    done
-
-    # Should never reach here (loop exits via return statements)
-    # But include for completeness
-    return $exit_code
-}
+# NOTE: retry_with_backoff() is defined in lib/retry-backoff.sh (canonical location).
+# Duplicate removed in Phase 17.2.4 — retry-backoff.sh is loaded after retry.sh and
+# provides a more capable implementation (configurable backoff, jitter, on-retry hook).
 
 # ============================================================================
 # With Progress Spinner Function

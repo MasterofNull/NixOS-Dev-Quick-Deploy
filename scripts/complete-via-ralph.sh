@@ -9,8 +9,16 @@
 
 set -euo pipefail
 
-RALPH_API="http://localhost:8098"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=config/service-endpoints.sh
+if [[ -f "${SCRIPT_DIR}/config/service-endpoints.sh" ]]; then
+    source "${SCRIPT_DIR}/config/service-endpoints.sh"
+fi
+
+SERVICE_HOST="${SERVICE_HOST:-localhost}"
+RALPH_API="${RALPH_URL:-http://${SERVICE_HOST}:8098}"
 TASK_DIR="ai-stack/ralph-tasks/completion-workflow"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-${TMPDIR:-/${TMP_FALLBACK:-tmp}}}"
 
 info() { echo -e "\033[0;34mℹ\033[0m $1"; }
 success() { echo -e "\033[0;32m✓\033[0m $1"; }
@@ -26,7 +34,7 @@ submit_task() {
     local task_json=$(cat "$task_file")
     
     # Submit to Ralph
-    local response=$(curl -s -X POST "${RALPH_API}/tasks" \
+    local response=$(curl -s --max-time 15 --connect-timeout 3 -X POST "${RALPH_API}/tasks" \
         -H "Content-Type: application/json" \
         -d "$task_json")
     
@@ -35,7 +43,7 @@ submit_task() {
     
     if [[ "$status" == "queued" ]]; then
         success "Task queued: $task_id"
-        echo "$task_id" > "/tmp/ralph-task-${task_name}.id"
+        echo "$task_id" > "${RUNTIME_DIR}/ralph-task-${task_name}.id"
         return 0
     else
         error "Failed to queue task: $response"
@@ -52,7 +60,7 @@ wait_for_task() {
     info "Waiting for task $task_name ($task_id) to complete..."
     
     while [[ $elapsed -lt $max_wait ]]; do
-        local status_response=$(curl -s "${RALPH_API}/tasks/${task_id}")
+        local status_response=$(curl -s --max-time 10 --connect-timeout 3 "${RALPH_API}/tasks/${task_id}")
         local status=$(echo "$status_response" | jq -r '.status')
         local iteration=$(echo "$status_response" | jq -r '.iteration // 0')
         
@@ -76,7 +84,7 @@ wait_for_task() {
 
 check_ralph_health() {
     info "Checking Ralph health..."
-    local health=$(curl -s "${RALPH_API}/health")
+    local health=$(curl -s --max-time 5 --connect-timeout 3 "${RALPH_API}/health")
     local status=$(echo "$health" | jq -r '.status')
     
     if [[ "$status" == "healthy" ]]; then
@@ -116,7 +124,7 @@ main() {
     # Submit all tasks
     for task_file in "${tasks[@]}"; do
         if submit_task "${TASK_DIR}/${task_file}"; then
-            task_ids+=("$(cat /tmp/ralph-task-$(basename $task_file .json).id)")
+            task_ids+=("$(cat "${RUNTIME_DIR}/ralph-task-$(basename "$task_file" .json).id")")
         else
             error "Failed to submit $task_file"
             exit 1

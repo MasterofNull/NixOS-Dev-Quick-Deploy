@@ -8,6 +8,28 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/download-cache.sh"
 
+BUILD_CACHE_ROOT="${BUILD_CACHE_ROOT:-${XDG_CACHE_HOME:-$HOME/.cache}/buildah-cache}"
+
+get_buildah_cache_dirs() {
+    local dirs=()
+
+    if compgen -G "${BUILD_CACHE_ROOT}*" > /dev/null 2>&1; then
+        dirs+=( "${BUILD_CACHE_ROOT}"* )
+    fi
+
+    if [ -d "/var" ]; then
+        while IFS= read -r dir; do
+            dirs+=( "$dir" )
+        done < <(find /var -maxdepth 2 -type d -name 'buildah-cache*' 2>/dev/null)
+    fi
+
+    if [ ${#dirs[@]} -eq 0 ]; then
+        return 0
+    fi
+
+    printf '%s\n' "${dirs[@]}" | awk '!seen[$0]++'
+}
+
 # Show all cache statistics
 show_all_stats() {
     echo "=== NixOS Quick Deploy - Cache Statistics ==="
@@ -15,11 +37,15 @@ show_all_stats() {
 
     # Pip cache (BuildKit cache mount)
     echo "📦 Pip Cache (BuildKit):"
-    if [ -d "/var/tmp/buildah-cache" ] || compgen -G "/var/tmp/buildah-cache-*" > /dev/null 2>&1; then
-        du -sh /var/tmp/buildah-cache* 2>/dev/null | while read size path; do
+    mapfile -t buildah_cache_dirs < <(get_buildah_cache_dirs)
+    if [ ${#buildah_cache_dirs[@]} -gt 0 ]; then
+        for path in "${buildah_cache_dirs[@]}"; do
+            local size
+            size=$(du -sh "$path" 2>/dev/null | awk '{print $1}' || echo "0")
             echo "  $size - $(basename "$path")"
         done
-        local total=$(du -sh /var/tmp/buildah-cache* 2>/dev/null | awk '{sum+=$1} END {print sum}' || echo "0")
+        local total
+        total=$(du -sh "${buildah_cache_dirs[@]}" 2>/dev/null | awk '{sum+=$1} END {print sum}' || echo "0")
         echo "  Total: ${total}"
     else
         echo "  (empty)"
@@ -74,8 +100,9 @@ show_all_stats() {
     echo "=== Total Cache Usage ==="
     local total_mb=0
 
-    if compgen -G "/var/tmp/buildah-cache*" > /dev/null 2>&1; then
-        local pip_mb=$(du -sm /var/tmp/buildah-cache* 2>/dev/null | awk '{sum+=$1} END {print sum}' || echo "0")
+    if [ ${#buildah_cache_dirs[@]} -gt 0 ]; then
+        local pip_mb
+        pip_mb=$(du -sm "${buildah_cache_dirs[@]}" 2>/dev/null | awk '{sum+=$1} END {print sum}' || echo "0")
         total_mb=$((total_mb + pip_mb))
     fi
 
@@ -116,9 +143,12 @@ clear_all_caches() {
     echo "🧹 Clearing all caches..."
 
     # Pip cache
-    if compgen -G "/var/tmp/buildah-cache*" > /dev/null 2>&1; then
+    mapfile -t buildah_cache_dirs < <(get_buildah_cache_dirs)
+    if [ ${#buildah_cache_dirs[@]} -gt 0 ]; then
         echo "  Clearing pip cache..."
-        rm -rf /var/tmp/buildah-cache* 2>/dev/null || sudo rm -rf /var/tmp/buildah-cache* 2>/dev/null || echo "  ⚠ Could not remove (requires sudo)"
+        for path in "${buildah_cache_dirs[@]}"; do
+            rm -rf "$path" 2>/dev/null || sudo rm -rf "$path" 2>/dev/null || echo "  ⚠ Could not remove (requires sudo): $path"
+        done
     fi
 
     # HuggingFace cache
@@ -203,7 +233,7 @@ Examples:
   $0 clean 60                 # Remove cache entries older than 60 days
 
 Cache Locations:
-  Pip:          /var/tmp/buildah-cache*
+  Pip:          ${BUILD_CACHE_ROOT}*
   HuggingFace:  ${HOME}/.cache/huggingface
   Podman Build: ${HOME}/.cache/podman-build-cache
   Downloads:    ${HOME}/.cache/nixos-quick-deploy/downloads

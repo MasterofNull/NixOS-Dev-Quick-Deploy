@@ -266,7 +266,7 @@
   ],
   "deployment_notes": {
     "aidb": "Already deployed in ai-stack/",
-    "external_servers": "Can be added to Podman compose stack",
+    "external_servers": "Can be added to the K3s stack",
     "mcp_integration": "Most support OpenAI-compatible APIs (llama.cpp/Ollama)"
   },
   "model_compatibility": {

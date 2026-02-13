@@ -285,7 +285,7 @@ Models load on first request (can take 30-60s). Be patient on initial request.
 
 - Default credentials: admin/admin
 - If locked out, wait 5 minutes
-- Check logs: `podman logs grafana`
+- Check logs: `kubectl logs -n ai-stack deployment/grafana --tail=100`
 
 ### More Help
 
@@ -303,7 +303,7 @@ AI-Optimizer/
 ├── START_HERE.md                   # New user onboarding
 ├── FINAL_STATUS.md                 # Current system status
 ├── deploy.sh                       # One-command deployment
-├── docker-compose.yml              # Container orchestration
+├── kustomization.yaml              # Kubernetes orchestration
 ├── mcp_server/                     # MCP server & CED engine
 ├── scripts/                        # Automation scripts
 ├── deployment/                     # Deployment configs

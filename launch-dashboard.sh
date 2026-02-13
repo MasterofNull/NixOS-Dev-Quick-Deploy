@@ -6,7 +6,15 @@ set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="${HOME}/.local/share/nixos-system-dashboard"
-DASHBOARD_URL="http://localhost:8888/dashboard.html"
+
+# Source centralized service endpoints (optional)
+# shellcheck source=config/service-endpoints.sh
+if [[ -f "${PROJECT_DIR}/config/service-endpoints.sh" ]]; then
+    source "${PROJECT_DIR}/config/service-endpoints.sh"
+fi
+
+DASHBOARD_HOST="${SERVICE_HOST:-localhost}"
+DASHBOARD_URL="http://${DASHBOARD_HOST}:${DASHBOARD_PORT:-8888}/dashboard.html"
 COLLECT_INTERVAL="${DASHBOARD_COLLECT_INTERVAL:-15}"
 API_PORT="${DASHBOARD_API_PORT:-8889}"
 
@@ -34,18 +42,44 @@ EOF
 echo -e "${NC}"
 
 # Check dependencies
+detect_runtime() {
+    if command -v kubectl >/dev/null 2>&1; then
+        if [[ -n "${KUBECONFIG:-}" ]] || [[ -f /etc/rancher/k3s/k3s.yaml ]]; then
+            echo "k8s"
+            return
+        fi
+    fi
+    if command -v podman >/dev/null 2>&1; then
+        echo "podman"
+        return
+    fi
+    if command -v docker >/dev/null 2>&1; then
+        echo "docker"
+        return
+    fi
+    echo ""
+}
+
 check_dependencies() {
     local missing_deps=()
 
     command -v python3 >/dev/null 2>&1 || missing_deps+=("python3")
     command -v jq >/dev/null 2>&1 || missing_deps+=("jq")
-    command -v podman >/dev/null 2>&1 || missing_deps+=("podman")
     command -v curl >/dev/null 2>&1 || missing_deps+=("curl")
+
+    local runtime
+    runtime=$(detect_runtime)
+    if [[ "$runtime" == "k8s" ]]; then
+        command -v kubectl >/dev/null 2>&1 || missing_deps+=("kubectl")
+    elif [[ "$runtime" == "podman" ]]; then
+        command -v podman >/dev/null 2>&1 || missing_deps+=("podman")
+    fi
 
     if [ ${#missing_deps[@]} -gt 0 ]; then
         echo -e "${YELLOW}⚠️  Missing dependencies: ${missing_deps[*]}${NC}"
         echo "Please install them first:"
-        echo "  nix-env -iA nixpkgs.python3 nixpkgs.jq nixpkgs.podman nixpkgs.curl"
+        echo "  nix-env -iA nixpkgs.python3 nixpkgs.jq nixpkgs.curl"
+        echo "  # plus nixpkgs.kubectl for K3s or nixpkgs.podman for Podman runtime"
         exit 1
     fi
 }
@@ -100,7 +134,7 @@ start_dashboard_server() {
     echo -e "${CYAN}║  ${DASHBOARD_URL}            ${CYAN}║${NC}"
     echo -e "${CYAN}║                                                       ║${NC}"
     echo -e "${CYAN}║  ${YELLOW}Data API:${NC}                                         ${CYAN}║${NC}"
-    echo -e "${CYAN}║  http://localhost:8888/data/                         ${CYAN}║${NC}"
+    echo -e "${CYAN}║  http://${DASHBOARD_HOST}:${DASHBOARD_PORT:-8888}/data/                         ${CYAN}║${NC}"
     echo -e "${CYAN}║                                                       ║${NC}"
     echo -e "${CYAN}║  ${YELLOW}Controls:${NC}                                         ${CYAN}║${NC}"
     echo -e "${CYAN}║  • Press Ctrl+C to stop all services                 ${CYAN}║${NC}"
@@ -119,7 +153,9 @@ start_dashboard_server() {
 
 # Start port-forward for the Dashboard API (K3s/Kubernetes)
 start_dashboard_api_proxy() {
-    if command -v kubectl >/dev/null 2>&1; then
+    local runtime
+    runtime=$(detect_runtime)
+    if [[ "$runtime" == "k8s" ]] && command -v kubectl >/dev/null 2>&1; then
         echo -e "${GREEN}🔌 Starting Dashboard API port-forward (${API_PORT})...${NC}"
         kubectl port-forward -n ai-stack svc/dashboard-api "${API_PORT}:8889" >/dev/null 2>&1 &
         echo "$!" > "$DATA_DIR/api.pid"
@@ -171,10 +207,14 @@ main() {
     # Generate initial data
     generate_initial_data
 
-    export DASHBOARD_MODE="k8s"
+    local runtime
+    runtime=$(detect_runtime)
+    if [[ "$runtime" == "k8s" ]]; then
+        export DASHBOARD_MODE="k8s"
+    fi
     export AI_STACK_NAMESPACE="${AI_STACK_NAMESPACE:-ai-stack}"
     export DASHBOARD_API_PORT="${API_PORT}"
-    export AI_METRICS_ENDPOINT="http://localhost:${API_PORT}/api/ai/metrics"
+    export AI_METRICS_ENDPOINT="${DASHBOARD_API_URL:-http://${DASHBOARD_HOST}:${API_PORT}}/api/ai/metrics"
 
     # Start services
     start_data_collection

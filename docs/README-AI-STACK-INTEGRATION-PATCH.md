@@ -51,7 +51,7 @@ See [`ai-stack/README.md`](/ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRA
 | Component | Location | Purpose |
 |-----------|----------|---------|
 | **AIDB MCP Server** | `ai-stack/mcp-servers/aidb/` | PostgreSQL + TimescaleDB + Qdrant vector DB + FastAPI MCP server |
-| **llama.cpp vLLM** | `ai-stack/compose/` | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |
+| **llama.cpp vLLM** | `ai-stack/kubernetes/` | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |
 | **29 Agent Skills** | `ai-stack/agents/skills/` | nixos-deployment, webapp-testing, code-review, canvas-design, and more |
 | **MCP Servers** | `ai-stack/mcp-servers/` | Model Context Protocol servers for AIDB, NixOS, GitHub |
 | **Model Registry** | `ai-stack/models/registry.json` | Model catalog with 6 AI models (metadata, VRAM, speed, quality scores) |
@@ -177,14 +177,14 @@ vim ~/.config/nixos-ai-stack/.env
 - [MCP Servers Guide](/docs/MCP_SERVERS.md) - Model Context Protocol server docs
 ```
 
-### 5. Remove/Update "Podman Storage" Section (Lines 209-222)
+### 5. Remove/Update "Legacy Container Storage" Section (Lines 209-222)
 
 **The Btrfs recommendation section can stay, but update the context:**
 
 ```markdown
-### Podman Storage: Btrfs Recommended for AI Stack
+### Legacy Container Storage: Btrfs Recommended for AI Stack
 
-The AI stack uses Podman containers for all services. For best performance, use **Btrfs** storage driver.
+Legacy container storage can still benefit from **Btrfs** for performance and snapshotting, but the current AI stack runs on K3s + containerd.
 
 - **Sizing:** Minimum 150 GiB; **recommended 200–300 GiB** for multiple AI models and vector databases.
 ```

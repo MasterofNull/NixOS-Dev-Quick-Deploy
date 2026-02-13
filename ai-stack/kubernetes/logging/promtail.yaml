@@ -67,6 +67,18 @@ data:
             separator: /
             source_labels: [__meta_kubernetes_pod_uid, __meta_kubernetes_pod_container_name]
             target_label: __path__
+        pipeline_stages:
+          - json:
+              expressions:
+                level: level
+                component: component
+                correlation_id: correlation_id
+                caller: caller
+          - labels:
+              level:
+              component:
+              correlation_id:
+              caller:
 
 ---
 apiVersion: apps/v1

@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """
-AI Stack Health Check Script
+AI Stack Health Check Script (v1 - DEPRECATED)
+
+DEPRECATED: Use check-ai-stack-health-v2.py instead, which supports K3s (kubectl exec)
+and provides better service discovery.
 
 Purpose: Comprehensive health checking for all AI stack services
 Following: docs/agent-guides/02-SERVICE-STATUS.md
 """
 
+import os
 import sys
 import json
 import requests
 from typing import Dict, List, Tuple
 from dataclasses import dataclass
 from datetime import datetime
+
+SERVICE_HOST = os.getenv("SERVICE_HOST", "localhost")
 
 
 @dataclass
@@ -96,12 +102,12 @@ class AIStackHealthChecker:
 
     def check_qdrant(self) -> ServiceCheck:
         """Check Qdrant vector database"""
-        check = self.check_service("Qdrant", "http://localhost:6333/healthz", "healthz")
+        check = self.check_service("Qdrant", f"http://{SERVICE_HOST}:6333/healthz", "healthz")
 
         if check.status == "ok":
             # Also check collections
             try:
-                response = requests.get("http://localhost:6333/collections", timeout=self.timeout)
+                response = requests.get(f"http://{SERVICE_HOST}:6333/collections", timeout=self.timeout)
                 if response.status_code == 200:
                     data = response.json()
                     collections = [c["name"] for c in data.get("result", {}).get("collections", [])]
@@ -126,12 +132,12 @@ class AIStackHealthChecker:
 
     def check_llama_cpp(self) -> ServiceCheck:
         """Check llama.cpp inference service"""
-        check = self.check_service("llama.cpp", "http://localhost:8080/health")
+        check = self.check_service("llama.cpp", f"http://{SERVICE_HOST}:8080/health")
 
         if check.status == "ok":
             # Try to get model info
             try:
-                response = requests.get("http://localhost:8080/v1/models", timeout=self.timeout)
+                response = requests.get(f"http://{SERVICE_HOST}:8080/v1/models", timeout=self.timeout)
                 if response.status_code == 200:
                     data = response.json()
                     models = data.get("data", [])
@@ -151,16 +157,36 @@ class AIStackHealthChecker:
 
     def check_open_webui(self) -> ServiceCheck:
         """Check Open WebUI"""
-        return self.check_service("Open WebUI", "http://localhost:3001")
+        return self.check_service("Open WebUI", f"http://{SERVICE_HOST}:3001")
+
+    def _detect_exec_cmd(self, k8s_label: str, container_name: str):
+        """Return (cmd_prefix, runtime) for executing inside a container.
+        Prefers kubectl (K3s), falls back to podman/docker."""
+        import shutil
+        if shutil.which("kubectl"):
+            return ["kubectl", "exec", "-n", "ai-stack", f"deploy/{k8s_label}", "--"], "k3s"
+        if shutil.which("podman"):
+            return ["podman", "exec", container_name], "podman"
+        if shutil.which("docker"):
+            return ["docker", "exec", container_name], "docker"
+        return None, None
 
     def check_postgres(self) -> ServiceCheck:
         """Check PostgreSQL database"""
-        # For PostgreSQL we need to check via container
         import subprocess
+
+        exec_prefix, runtime = self._detect_exec_cmd("postgres", "local-ai-postgres")
+        if exec_prefix is None:
+            return ServiceCheck(
+                name="PostgreSQL",
+                status="error",
+                message="No container runtime found (kubectl, podman, or docker)",
+                details={"error": "no_runtime"}
+            )
 
         try:
             result = subprocess.run(
-                ["podman", "exec", "local-ai-postgres", "pg_isready", "-U", "mcp"],
+                exec_prefix + ["pg_isready", "-U", "mcp"],
                 capture_output=True,
                 text=True,
                 timeout=self.timeout
@@ -170,8 +196,8 @@ class AIStackHealthChecker:
                 return ServiceCheck(
                     name="PostgreSQL",
                     status="ok",
-                    message="PostgreSQL is accepting connections",
-                    details={"output": result.stdout.strip()}
+                    message=f"PostgreSQL is accepting connections (via {runtime})",
+                    details={"output": result.stdout.strip(), "runtime": runtime}
                 )
             else:
                 return ServiceCheck(
@@ -185,8 +211,8 @@ class AIStackHealthChecker:
             return ServiceCheck(
                 name="PostgreSQL",
                 status="error",
-                message="podman command not found",
-                details={"error": "podman_not_found"}
+                message=f"{runtime} command not found",
+                details={"error": f"{runtime}_not_found"}
             )
         except subprocess.TimeoutExpired:
             return ServiceCheck(
@@ -207,9 +233,18 @@ class AIStackHealthChecker:
         """Check Redis cache"""
         import subprocess
 
+        exec_prefix, runtime = self._detect_exec_cmd("redis", "local-ai-redis")
+        if exec_prefix is None:
+            return ServiceCheck(
+                name="Redis",
+                status="error",
+                message="No container runtime found (kubectl, podman, or docker)",
+                details={"error": "no_runtime"}
+            )
+
         try:
             result = subprocess.run(
-                ["podman", "exec", "local-ai-redis", "redis-cli", "ping"],
+                exec_prefix + ["redis-cli", "ping"],
                 capture_output=True,
                 text=True,
                 timeout=self.timeout
@@ -219,8 +254,8 @@ class AIStackHealthChecker:
                 return ServiceCheck(
                     name="Redis",
                     status="ok",
-                    message="Redis is responding",
-                    details={"output": result.stdout.strip()}
+                    message=f"Redis is responding (via {runtime})",
+                    details={"output": result.stdout.strip(), "runtime": runtime}
                 )
             else:
                 return ServiceCheck(
@@ -321,22 +356,24 @@ class AIStackHealthChecker:
                     print(f"\n{result.name}:")
                     print(f"  Issue: {result.message}")
 
-                    # Specific recommendations
+                    # Specific recommendations (K3s-aware)
+                    svc_slug = result.name.lower().replace(' ', '-')
                     if "connection refused" in result.message.lower():
-                        print(f"  Fix: Start the service:")
-                        print(f"       podman start local-ai-{result.name.lower().replace(' ', '-')}")
+                        print(f"  Fix: Check the deployment is running:")
+                        print(f"       kubectl get deploy -n ai-stack {svc_slug}")
+                        print(f"       kubectl rollout restart deploy/{svc_slug} -n ai-stack")
 
                     elif "timeout" in result.message.lower():
                         print(f"  Fix: Check service logs:")
-                        print(f"       podman logs local-ai-{result.name.lower().replace(' ', '-')}")
+                        print(f"       kubectl logs -n ai-stack deploy/{svc_slug}")
 
                     elif "missing collections" in result.message.lower():
                         print(f"  Fix: Re-initialize Qdrant collections:")
                         print(f"       ./scripts/setup-hybrid-learning-auto.sh")
 
                     elif "model not found" in result.message.lower() or "no models loaded" in result.message.lower():
-                        print(f"  Fix: Wait for model download or pull manually:")
-                        print(f"       podman logs -f local-ai-{result.name.lower().replace(' ', '-')}")
+                        print(f"  Fix: Wait for model download or check logs:")
+                        print(f"       kubectl logs -n ai-stack deploy/{svc_slug} -f")
 
         print()
 
@@ -369,6 +406,9 @@ def main():
     )
 
     args = parser.parse_args()
+
+    print("WARNING: This script (v1) is deprecated. Use check-ai-stack-health-v2.py instead.", file=sys.stderr)
+    print(file=sys.stderr)
 
     checker = AIStackHealthChecker(verbose=args.verbose, timeout=args.timeout)
     results = checker.run_all_checks()

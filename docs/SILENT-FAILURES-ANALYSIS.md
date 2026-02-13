@@ -141,15 +141,15 @@ DEFAULT_ACTIONS_URL = "https://gitea.com";  # Fails in Gitea 1.25+
 
 ---
 
-### 9. Podman Storage Checks
+### 9. Legacy Container Storage Checks
 
 **Location:** `phases/phase-05-declarative-deployment.sh:589-605`
 
 **Status:** Returns 1 if fails, stops deployment
 
-**Impact:** Medium - Might be too strict if Podman is optional
+**Impact:** Medium - Might be too strict if legacy container storage is optional
 
-**Recommendation:** Consider making this a warning if Podman containers aren't critical
+**Recommendation:** Consider making this a warning if legacy container storage isn't critical
 
 ---
 
@@ -251,6 +251,5 @@ DEFAULT_ACTIONS_URL = "https://gitea.com";  # Fails in Gitea 1.25+
 
 **Last Updated:** 2025-01-20  
 **Status:** Critical issues fixed, monitoring for additional silent failures
-
 
 

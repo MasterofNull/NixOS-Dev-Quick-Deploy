@@ -20,13 +20,13 @@
 # - Generate dashboard data every 5 minutes (for monitoring)
 
 # Every hour: Sync high-value patterns from runtime to git repo
-0 * * * * bash /home/$USER/Documents/try/NixOS-Dev-Quick-Deploy/scripts/sync-learning-data.sh >> /var/log/federated-sync.log 2>&1
+0 * * * * bash "$HOME/Documents/try/NixOS-Dev-Quick-Deploy/scripts/sync-learning-data.sh" >> /var/log/federated-sync.log 2>&1
 
 # Every Sunday at 2 AM: Export Qdrant collections to git repo
-0 2 * * 0 bash /home/$USER/Documents/try/NixOS-Dev-Quick-Deploy/scripts/export-collections.sh >> /var/log/federated-export.log 2>&1
+0 2 * * 0 bash "$HOME/Documents/try/NixOS-Dev-Quick-Deploy/scripts/export-collections.sh" >> /var/log/federated-export.log 2>&1
 
 # Every 5 minutes: Generate dashboard metrics
-*/5 * * * * bash /home/$USER/Documents/try/NixOS-Dev-Quick-Deploy/scripts/generate-dashboard-data.sh >> /var/log/dashboard-metrics.log 2>&1
+*/5 * * * * bash "$HOME/Documents/try/NixOS-Dev-Quick-Deploy/scripts/generate-dashboard-data.sh" >> /var/log/dashboard-metrics.log 2>&1
 
 
 # ============================================================================
@@ -37,13 +37,13 @@
 # - Generate dashboard data every minute
 
 # Every 15 minutes: Sync patterns
-*/15 * * * * bash /home/$USER/Documents/try/NixOS-Dev-Quick-Deploy/scripts/sync-learning-data.sh >> /var/log/federated-sync.log 2>&1
+*/15 * * * * bash "$HOME/Documents/try/NixOS-Dev-Quick-Deploy/scripts/sync-learning-data.sh" >> /var/log/federated-sync.log 2>&1
 
 # Daily at 3 AM: Export collections
-0 3 * * * bash /home/$USER/Documents/try/NixOS-Dev-Quick-Deploy/scripts/export-collections.sh >> /var/log/federated-export.log 2>&1
+0 3 * * * bash "$HOME/Documents/try/NixOS-Dev-Quick-Deploy/scripts/export-collections.sh" >> /var/log/federated-export.log 2>&1
 
 # Every minute: Dashboard metrics
-* * * * * bash /home/$USER/Documents/try/NixOS-Dev-Quick-Deploy/scripts/generate-dashboard-data.sh >> /var/log/dashboard-metrics.log 2>&1
+* * * * * bash "$HOME/Documents/try/NixOS-Dev-Quick-Deploy/scripts/generate-dashboard-data.sh" >> /var/log/dashboard-metrics.log 2>&1
 
 
 # ============================================================================
@@ -54,13 +54,13 @@
 # - Generate dashboard data hourly
 
 # Daily at 1 AM: Sync patterns
-0 1 * * * bash /home/$USER/Documents/try/NixOS-Dev-Quick-Deploy/scripts/sync-learning-data.sh >> /var/log/federated-sync.log 2>&1
+0 1 * * * bash "$HOME/Documents/try/NixOS-Dev-Quick-Deploy/scripts/sync-learning-data.sh" >> /var/log/federated-sync.log 2>&1
 
 # First day of month at 2 AM: Export collections
-0 2 1 * * bash /home/$USER/Documents/try/NixOS-Dev-Quick-Deploy/scripts/export-collections.sh >> /var/log/federated-export.log 2>&1
+0 2 1 * * bash "$HOME/Documents/try/NixOS-Dev-Quick-Deploy/scripts/export-collections.sh" >> /var/log/federated-export.log 2>&1
 
 # Hourly: Dashboard metrics
-0 * * * * bash /home/$USER/Documents/try/NixOS-Dev-Quick-Deploy/scripts/generate-dashboard-data.sh >> /var/log/dashboard-metrics.log 2>&1
+0 * * * * bash "$HOME/Documents/try/NixOS-Dev-Quick-Deploy/scripts/generate-dashboard-data.sh" >> /var/log/dashboard-metrics.log 2>&1
 
 
 # ============================================================================
@@ -69,7 +69,7 @@
 # Automatically commit synced data to git every 6 hours
 # WARNING: This will create many commits. Consider using a dedicated branch.
 
-0 */6 * * * cd /home/$USER/Documents/try/NixOS-Dev-Quick-Deploy && git add data/ && git commit -m "Automated federated data sync - $(date +\%Y-\%m-\%d\ \%H:\%M)" && git push origin main >> /var/log/federated-git.log 2>&1
+0 */6 * * * cd "$HOME/Documents/try/NixOS-Dev-Quick-Deploy" && git add data/ && git commit -m "Automated federated data sync - $(date +\%Y-\%m-\%d\ \%H:\%M)" && git push origin main >> /var/log/federated-git.log 2>&1
 
 
 # ============================================================================
@@ -87,7 +87,7 @@
 # Run health checks and log results
 
 # Every 30 minutes: Check AI stack health
-*/30 * * * * python3 /home/$USER/Documents/try/NixOS-Dev-Quick-Deploy/scripts/check-ai-stack-health-v2.py -v >> /var/log/ai-stack-health.log 2>&1
+*/30 * * * * python3 "$HOME/Documents/try/NixOS-Dev-Quick-Deploy/scripts/check-ai-stack-health-v2.py" -v >> /var/log/ai-stack-health.log 2>&1
 
 
 # ============================================================================
@@ -105,7 +105,7 @@
 # [Service]
 # Type=oneshot
 # User=$USER
-# ExecStart=/usr/bin/bash /home/$USER/Documents/try/NixOS-Dev-Quick-Deploy/scripts/sync-learning-data.sh
+# ExecStart=/usr/bin/bash $HOME/Documents/try/NixOS-Dev-Quick-Deploy/scripts/sync-learning-data.sh
 # StandardOutput=append:/var/log/federated-sync.log
 # StandardError=append:/var/log/federated-sync.log
 #
@@ -145,7 +145,7 @@
 #    - /var/log/ai-stack-health.log   - Health check logs
 #
 # 2. Before Enabling:
-#    - Replace $USER with your actual username
+#    - Replace $HOME if your repo lives outside your home directory
 #    - Verify script paths match your installation
 #    - Ensure scripts are executable (chmod +x)
 #    - Test scripts manually first

@@ -51,7 +51,7 @@ Current configurable parameters:
 
 **Note**: Changes are currently client-side only. For production:
 - Update `ai-stack/mcp-servers/config/config.yaml`
-- Restart services with `podman-compose restart`
+- Restart services with `kubectl rollout restart` (K3s)
 
 ### 5. All Dashboards & Services
 
@@ -245,16 +245,16 @@ Modify CSS variables in `<style>`:
 ss -tlnp | grep 8888
 
 # Restart if needed
-./scripts/serve-dashboard.sh > /tmp/dashboard.log 2>&1 &
+./scripts/serve-dashboard.sh > "${TMPDIR:-/tmp}/dashboard.log" 2>&1 &
 ```
 
 ### Links Not Working
 ```bash
 # Verify services are running
-podman ps | grep -E "(aidb|nginx|grafana|prometheus)"
+kubectl get pods -n ai-stack | egrep "(aidb|nginx|grafana|prometheus)"
 
-# Start missing services
-podman-compose up -d
+# Re-apply manifests if needed
+kubectl apply -k ai-stack/kustomize/overlays/dev
 ```
 
 ### Configuration Not Applying
@@ -262,7 +262,8 @@ podman-compose up -d
 # Currently changes are client-side only
 # To apply, manually edit config and restart:
 nano ai-stack/mcp-servers/config/config.yaml
-podman-compose restart aidb hybrid-coordinator
+kubectl rollout restart deployment/aidb -n ai-stack
+kubectl rollout restart deployment/hybrid-coordinator -n ai-stack
 ```
 
 ## Roadmap
@@ -286,7 +287,7 @@ Future enhancements:
 - [Production Hardening Roadmap](./PRODUCTION-HARDENING-ROADMAP.md)
 - [Security Setup Guide](./SECURITY-SETUP.md)
 - [Orchestration Visual Summary](./ORCHESTRATION-VISUAL-SUMMARY.md)
-- [Phase 1 Complete](./PHASE-1-COMPLETE.md)
+- [Phase 1 Complete](./docs/archive/PHASE-1-COMPLETE.md)
 
 ---
 

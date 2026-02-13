@@ -44,7 +44,7 @@ class QueryExpander:
         # Domain-specific expansions
         self.domain_expansions = {
             "nixos": ["NixOS", "Nix", "nix-shell", "nixpkgs", "home-manager"],
-            "podman": ["Podman", "podman-compose", "containers", "OCI"],
+            "podman": ["Podman", "containers", "OCI"],
             "llm": ["LLM", "language model", "AI model", "inference"],
             "qdrant": ["Qdrant", "vector database", "vector search", "embeddings"],
         }

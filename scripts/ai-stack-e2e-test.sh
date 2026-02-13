@@ -38,6 +38,41 @@ error() { echo -e "${RED}✗${NC} $1" | tee -a "$TEST_LOG"; }
 TESTS_PASSED=0
 TESTS_FAILED=0
 declare -a FAILED_TESTS=()
+declare -a PORT_FORWARD_PIDS=()
+
+port_in_use() {
+    local port="$1"
+    if command -v ss >/dev/null 2>&1; then
+        ss -ltn | awk '{print $4}' | grep -Eq ":${port}$" && return 0
+        return 1
+    fi
+    return 1
+}
+
+start_port_forward() {
+    local namespace="$1"
+    local service="$2"
+    local local_port="$3"
+    local remote_port="$4"
+    local kubectl_bin="$5"
+
+    if port_in_use "$local_port"; then
+        info "Port $local_port already in use; skipping port-forward for $service"
+        return 0
+    fi
+
+    "$kubectl_bin" --request-timeout=60s -n "$namespace" port-forward "svc/${service}" "${local_port}:${remote_port}" \
+        >/dev/null 2>&1 &
+    PORT_FORWARD_PIDS+=("$!")
+}
+
+cleanup_port_forwards() {
+    if [ ${#PORT_FORWARD_PIDS[@]} -gt 0 ]; then
+        for pid in "${PORT_FORWARD_PIDS[@]}"; do
+            kill "$pid" >/dev/null 2>&1 || true
+        done
+    fi
+}
 
 test_start() {
     local test_name="$1"
@@ -65,6 +100,54 @@ info "Test Run ID: $TEST_RUN_ID"
 info "Log file: $TEST_LOG"
 echo "" | tee -a "$TEST_LOG"
 
+# If running in K8s, start port-forwards for local testing
+K8S_NAMESPACE="${AI_STACK_NAMESPACE:-ai-stack}"
+KUBECTL_BIN="kubectl"
+if [ -x /run/current-system/sw/bin/kubectl ]; then
+    KUBECTL_BIN="/run/current-system/sw/bin/kubectl"
+fi
+
+if command -v "$KUBECTL_BIN" >/dev/null 2>&1 && "$KUBECTL_BIN" -n "$K8S_NAMESPACE" get svc >/dev/null 2>&1; then
+    info "Detected K8s services in ${K8S_NAMESPACE}; starting port-forwards for local E2E checks..."
+    start_port_forward "$K8S_NAMESPACE" "qdrant" 6333 6333 "$KUBECTL_BIN"
+    start_port_forward "$K8S_NAMESPACE" "llama-cpp" 8080 8080 "$KUBECTL_BIN"
+    start_port_forward "$K8S_NAMESPACE" "postgres" 5432 5432 "$KUBECTL_BIN"
+    start_port_forward "$K8S_NAMESPACE" "redis" 6379 6379 "$KUBECTL_BIN"
+    start_port_forward "$K8S_NAMESPACE" "aidb" 8091 8091 "$KUBECTL_BIN"
+    start_port_forward "$K8S_NAMESPACE" "hybrid-coordinator" 8092 8092 "$KUBECTL_BIN"
+    start_port_forward "$K8S_NAMESPACE" "nixos-docs" 8094 8094 "$KUBECTL_BIN"
+    start_port_forward "$K8S_NAMESPACE" "ralph-wiggum" 8098 8098 "$KUBECTL_BIN"
+    start_port_forward "$K8S_NAMESPACE" "dashboard-api" 8889 8889 "$KUBECTL_BIN"
+    sleep 3
+    trap cleanup_port_forwards EXIT
+
+    # Load API keys and passwords from K8s secrets if not already set
+    if [ -z "${AIDB_API_KEY:-}" ]; then
+        AIDB_API_KEY=$("$KUBECTL_BIN" -n "$K8S_NAMESPACE" get secret aidb-api-key -o jsonpath='{.data.aidb-api-key}' 2>/dev/null | base64 -d 2>/dev/null || true)
+        if [ -z "$AIDB_API_KEY" ]; then
+            AIDB_API_KEY=$("$KUBECTL_BIN" -n "$K8S_NAMESPACE" get secret aidb-api-key -o jsonpath='{.data.api-key}' 2>/dev/null | base64 -d 2>/dev/null || true)
+        fi
+    fi
+    if [ -z "${HYBRID_API_KEY:-}" ]; then
+        HYBRID_API_KEY=$("$KUBECTL_BIN" -n "$K8S_NAMESPACE" get secret hybrid-coordinator-api-key -o jsonpath='{.data.hybrid-coordinator-api-key}' 2>/dev/null | base64 -d 2>/dev/null || true)
+        if [ -z "$HYBRID_API_KEY" ]; then
+            HYBRID_API_KEY=$("$KUBECTL_BIN" -n "$K8S_NAMESPACE" get secret hybrid-coordinator-api-key -o jsonpath='{.data.api-key}' 2>/dev/null | base64 -d 2>/dev/null || true)
+        fi
+    fi
+    if [ -z "${RALPH_WIGGUM_API_KEY:-}" ]; then
+        RALPH_WIGGUM_API_KEY=$("$KUBECTL_BIN" -n "$K8S_NAMESPACE" get secret ralph-wiggum-api-key -o jsonpath='{.data.ralph-wiggum-api-key}' 2>/dev/null | base64 -d 2>/dev/null || true)
+        if [ -z "$RALPH_WIGGUM_API_KEY" ]; then
+            RALPH_WIGGUM_API_KEY=$("$KUBECTL_BIN" -n "$K8S_NAMESPACE" get secret ralph-wiggum-api-key -o jsonpath='{.data.api-key}' 2>/dev/null | base64 -d 2>/dev/null || true)
+        fi
+    fi
+    if [ -z "${POSTGRES_PASSWORD:-}" ]; then
+        POSTGRES_PASSWORD=$("$KUBECTL_BIN" -n "$K8S_NAMESPACE" get secret postgres-password -o jsonpath='{.data.postgres-password}' 2>/dev/null | base64 -d 2>/dev/null || true)
+    fi
+    if [ -z "${REDIS_PASSWORD:-}" ]; then
+        REDIS_PASSWORD=$("$KUBECTL_BIN" -n "$K8S_NAMESPACE" get secret redis-password -o jsonpath='{.data.redis-password}' 2>/dev/null | base64 -d 2>/dev/null || true)
+    fi
+fi
+
 # ============================================================================
 # Phase 1: Pre-flight Checks - Verify All Services Running
 # ============================================================================
@@ -72,9 +155,24 @@ info "━━━━━━━━━━━━━━━━━━━━━━━━�
 info "Phase 1: Pre-flight Checks"
 info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+# Optional API keys (if services enforce auth)
+AIDB_HEADERS=()
+HYBRID_HEADERS=()
+RALPH_HEADERS=()
+
+if [ -n "${AIDB_API_KEY:-}" ]; then
+    AIDB_HEADERS+=("-H" "X-API-Key: ${AIDB_API_KEY}")
+fi
+if [ -n "${HYBRID_API_KEY:-}" ]; then
+    HYBRID_HEADERS+=("-H" "X-API-Key: ${HYBRID_API_KEY}")
+fi
+if [ -n "${RALPH_WIGGUM_API_KEY:-}" ]; then
+    RALPH_HEADERS+=("-H" "X-API-Key: ${RALPH_WIGGUM_API_KEY}")
+fi
+
 # Test 1.1: Qdrant
 test_start "Qdrant Vector Database"
-if curl -sf --max-time 5 http://localhost:6333/healthz >/dev/null 2>&1; then
+if curl -sf --max-time 5 http://${SERVICE_HOST:-localhost}:6333/healthz >/dev/null 2>&1; then
     test_pass "Qdrant health check"
 else
     test_fail "Qdrant health check" "Service not responding"
@@ -82,7 +180,7 @@ fi
 
 # Test 1.2: llama.cpp
 test_start "llama.cpp LLM Server"
-if curl -sf --max-time 5 http://localhost:8080/v1/models >/dev/null 2>&1; then
+if curl -sf --max-time 5 http://${SERVICE_HOST:-localhost}:8080/v1/models >/dev/null 2>&1; then
     test_pass "llama.cpp health check"
 else
     test_fail "llama.cpp health check" "Service not responding"
@@ -98,7 +196,7 @@ fi
 
 # Test 1.4: Redis
 test_start "Redis Cache"
-if redis-cli -h localhost -p 6379 PING 2>/dev/null | grep -q PONG; then
+if redis-cli -h localhost -p 6379 ${REDIS_PASSWORD:+-a "$REDIS_PASSWORD"} PING 2>/dev/null | grep -q PONG; then
     test_pass "Redis health check"
 else
     test_fail "Redis health check" "Service not responding"
@@ -106,7 +204,7 @@ fi
 
 # Test 1.5: AIDB MCP
 test_start "AIDB MCP Server"
-AIDB_HEALTH=$(curl -s http://localhost:8091/health 2>&1 || echo "")
+AIDB_HEALTH=$(curl -s --max-time 5 --connect-timeout 3 "${AIDB_HEADERS[@]}" http://${SERVICE_HOST:-localhost}:8091/health 2>&1 || echo "")
 if echo "$AIDB_HEALTH" | grep -q "status"; then
     test_pass "AIDB MCP health check"
 else
@@ -115,7 +213,7 @@ fi
 
 # Test 1.6: Hybrid Coordinator
 test_start "Hybrid Coordinator MCP"
-HYBRID_HEALTH=$(curl -sf --max-time 10 http://localhost:8092/health 2>&1)
+HYBRID_HEALTH=$(curl -sf --max-time 10 http://${SERVICE_HOST:-localhost}:8092/health 2>&1)
 if echo "$HYBRID_HEALTH" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"healthy"'; then
     test_pass "Hybrid Coordinator health check"
     # Verify collections exist
@@ -131,11 +229,20 @@ fi
 
 # Test 1.7: NixOS Docs MCP
 test_start "NixOS Docs MCP Server"
-NIXOS_HEALTH=$(curl -sf --max-time 5 http://localhost:8094/health 2>&1)
+NIXOS_HEALTH=$(curl -sf --max-time 5 http://${SERVICE_HOST:-localhost}:8094/health 2>&1)
 if echo "$NIXOS_HEALTH" | grep -q '"status":"healthy"'; then
     test_pass "NixOS Docs MCP health check"
 else
     test_fail "NixOS Docs MCP health check" "Service not responding"
+fi
+
+# Test 1.8: Ralph Wiggum MCP
+test_start "Ralph Wiggum MCP Server"
+RALPH_HEALTH=$(curl -sf --max-time 5 "${RALPH_HEADERS[@]}" http://${SERVICE_HOST:-localhost}:8098/health 2>&1 || echo "")
+if echo "$RALPH_HEALTH" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"(healthy|degraded)"'; then
+    test_pass "Ralph Wiggum health check"
+else
+    warning "Ralph Wiggum health check failed (optional if loop disabled)"
 fi
 
 echo "" | tee -a "$TEST_LOG"
@@ -174,12 +281,13 @@ import uuid
 print(uuid.uuid4())
 PY
 )
-FEATURE_EMBED=$(curl -sf --max-time 20 -X POST http://localhost:8091/vector/embed \
+FEATURE_EMBED=$(curl -sf --max-time 20 -X POST http://${SERVICE_HOST:-localhost}:8091/vector/embed \
+  "${AIDB_HEADERS[@]}" \
   -H "Content-Type: application/json" \
   -d "{\"texts\": [\"$FEATURE_TEXT\"]}" | jq -c '.embeddings[0]' 2>/dev/null || echo "")
 
 if [ -n "$FEATURE_EMBED" ] && [ "$FEATURE_EMBED" != "null" ]; then
-    QDRANT_STORE_RESULT=$(curl -sf --max-time 10 -X PUT "http://localhost:6333/collections/interaction-history/points?wait=true" \
+    QDRANT_STORE_RESULT=$(curl -sf --max-time 10 -X PUT "http://${SERVICE_HOST:-localhost}:6333/collections/interaction-history/points?wait=true" \
       -H "Content-Type: application/json" \
       -d "{
         \"points\": [{
@@ -206,7 +314,8 @@ fi
 
 # Test 2.1b: Hybrid augmentation endpoint
 test_start "Hybrid Coordinator augment query"
-HYBRID_AUGMENT=$(curl -sf --max-time 10 -X POST http://localhost:8092/augment_query \
+HYBRID_AUGMENT=$(curl -sf --max-time 10 -X POST http://${SERVICE_HOST:-localhost}:8092/augment_query \
+  "${HYBRID_HEADERS[@]}" \
   -H "Content-Type: application/json" \
   -d "{
     \"query\": \"auto-commit feature request implementation\",
@@ -219,11 +328,27 @@ else
     test_fail "Hybrid augmentation" "No response: $HYBRID_AUGMENT"
 fi
 
+# Test 2.1c: Hybrid query endpoint (RAG)
+test_start "Hybrid Coordinator RAG query"
+HYBRID_QUERY=$(curl -sf --max-time 20 -X POST http://${SERVICE_HOST:-localhost}:8092/query \
+  "${HYBRID_HEADERS[@]}" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"query\": \"How do I enable Wireshark capture on NixOS?\",
+    \"context\": {\"source\": \"e2e-test\", \"test_run\": \"${TEST_RUN_ID}\"}
+  }" 2>&1 || echo "FAILED")
+
+if echo "$HYBRID_QUERY" | grep -q "\"response\""; then
+    test_pass "Hybrid query endpoint (RAG) responded"
+else
+    test_fail "Hybrid query endpoint (RAG)" "No response: $HYBRID_QUERY"
+fi
+
 # Test 2.2: Query LLM for implementation plan
 test_start "Query llama.cpp for implementation plan"
 LLM_PROMPT="Reply with exactly three words: auto commit ok"
 
-LLM_RESPONSE=$(curl -sf --max-time 90 -X POST http://localhost:8080/v1/chat/completions \
+LLM_RESPONSE=$(curl -sf --max-time 90 -X POST http://${SERVICE_HOST:-localhost}:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d "{
     \"model\": \"qwen2.5-coder-7b-instruct-q4_k_m.gguf\",
@@ -259,12 +384,13 @@ import uuid
 print(uuid.uuid4())
 PY
 )
-    PATTERN_EMBED=$(curl -sf --max-time 20 -X POST http://localhost:8091/vector/embed \
+PATTERN_EMBED=$(curl -sf --max-time 20 -X POST http://${SERVICE_HOST:-localhost}:8091/vector/embed \
+      "${AIDB_HEADERS[@]}" \
       -H "Content-Type: application/json" \
       -d "{\"texts\": [\"$PATTERN_TEXT\"]}" | jq -c '.embeddings[0]' 2>/dev/null || echo "")
 
     if [ -n "$PATTERN_EMBED" ] && [ "$PATTERN_EMBED" != "null" ]; then
-        PATTERN_STORE=$(curl -sf --max-time 10 -X PUT "http://localhost:6333/collections/skills-patterns/points?wait=true" \
+        PATTERN_STORE=$(curl -sf --max-time 10 -X PUT "http://${SERVICE_HOST:-localhost}:6333/collections/skills-patterns/points?wait=true" \
           -H "Content-Type: application/json" \
           -d "{
             \"points\": [{
@@ -294,11 +420,12 @@ fi
 
 # Test 2.4: Retrieve similar patterns (context augmentation)
 test_start "Query Qdrant for similar patterns (context augmentation)"
-SEARCH_EMBED=$(curl -sf --max-time 20 -X POST http://localhost:8091/vector/embed \
+SEARCH_EMBED=$(curl -sf --max-time 20 -X POST http://${SERVICE_HOST:-localhost}:8091/vector/embed \
+  "${AIDB_HEADERS[@]}" \
   -H "Content-Type: application/json" \
   -d "{\"texts\": [\"git commit automation implementation\"]}" | jq -c '.embeddings[0]' 2>/dev/null || echo "")
 if [ -n "$SEARCH_EMBED" ] && [ "$SEARCH_EMBED" != "null" ]; then
-    SIMILAR_PATTERNS=$(curl -sf --max-time 10 -X POST http://localhost:6333/collections/skills-patterns/points/search \
+    SIMILAR_PATTERNS=$(curl -sf --max-time 10 -X POST http://${SERVICE_HOST:-localhost}:6333/collections/skills-patterns/points/search \
       -H "Content-Type: application/json" \
       -d "{
         \"vector\": $SEARCH_EMBED,
@@ -328,7 +455,7 @@ info "━━━━━━━━━━━━━━━━━━━━━━━━�
 
 # Test 3.1: Send telemetry event
 test_start "Send telemetry event to AIDB"
-TELEMETRY_RESULT=$(curl -sf --max-time 10 "http://localhost:8091/documents?limit=1" 2>&1 || echo "FAILED")
+TELEMETRY_RESULT=$(curl -sf --max-time 10 "${AIDB_HEADERS[@]}" "http://${SERVICE_HOST:-localhost}:8091/documents?limit=1" 2>&1 || echo "FAILED")
 
 if echo "$TELEMETRY_RESULT" | grep -q "\"documents\""; then
     test_pass "Telemetry event recorded"
@@ -349,25 +476,58 @@ fi
 # Test 3.3: Check Redis caching
 test_start "Verify Redis caching is working"
 REDIS_TEST_KEY="test:${TEST_RUN_ID}:cache"
-redis-cli -h localhost -p 6379 SET "$REDIS_TEST_KEY" "test_value" EX 60 >/dev/null 2>&1
-REDIS_VALUE=$(redis-cli -h localhost -p 6379 GET "$REDIS_TEST_KEY" 2>/dev/null)
+redis-cli -h localhost -p 6379 ${REDIS_PASSWORD:+-a "$REDIS_PASSWORD"} SET "$REDIS_TEST_KEY" "test_value" EX 60 >/dev/null 2>&1
+REDIS_VALUE=$(redis-cli -h localhost -p 6379 ${REDIS_PASSWORD:+-a "$REDIS_PASSWORD"} GET "$REDIS_TEST_KEY" 2>/dev/null)
 
 if [ "$REDIS_VALUE" = "test_value" ]; then
     test_pass "Redis caching verified"
-    redis-cli -h localhost -p 6379 DEL "$REDIS_TEST_KEY" >/dev/null 2>&1
+    redis-cli -h localhost -p 6379 ${REDIS_PASSWORD:+-a "$REDIS_PASSWORD"} DEL "$REDIS_TEST_KEY" >/dev/null 2>&1
 else
     test_fail "Redis caching" "Cache read/write failed"
 fi
 
 # Test 3.4: Trigger continuous learning (if enabled)
 test_start "Verify continuous learning daemon"
-LEARNING_STATUS=$(curl -sf --max-time 5 http://localhost:8092/learning/stats 2>&1 || echo "FAILED")
+LEARNING_STATUS=$(curl -sf --max-time 5 http://${SERVICE_HOST:-localhost}:8092/learning/stats 2>&1 || echo "FAILED")
 
 if echo "$LEARNING_STATUS" | grep -q "status\\|patterns\\|quality"; then
     test_pass "Continuous learning daemon accessible"
     info "Learning stats captured"
 else
     warning "Continuous learning status endpoint not available (may not be implemented)"
+fi
+
+# Test 3.5: Ralph → Hybrid → AIDB chain
+test_start "Ralph → Hybrid → AIDB chain execution"
+RALPH_TASK_RESPONSE=$(curl -sf --max-time 10 -X POST http://${SERVICE_HOST:-localhost}:8098/tasks \
+  "${RALPH_HEADERS[@]}" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"prompt\": \"Reply with exactly three words: ralph chain ok\",
+    \"max_iterations\": 2,
+    \"require_approval\": false
+  }" 2>&1 || echo "FAILED")
+
+RALPH_TASK_ID=$(echo "$RALPH_TASK_RESPONSE" | jq -r '.task_id // empty' 2>/dev/null || echo "")
+if [ -n "$RALPH_TASK_ID" ]; then
+    task_deadline=$(( $(date +%s) + 60 ))
+    task_status=""
+    while [ "$(date +%s)" -lt "$task_deadline" ]; do
+        task_status=$(curl -sf --max-time 5 "${RALPH_HEADERS[@]}" http://${SERVICE_HOST:-localhost}:8098/tasks/${RALPH_TASK_ID} 2>/dev/null || echo "")
+        if echo "$task_status" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"(completed|failed)"'; then
+            break
+        fi
+        sleep 2
+    done
+
+    task_result=$(curl -sf --max-time 10 "${RALPH_HEADERS[@]}" http://${SERVICE_HOST:-localhost}:8098/tasks/${RALPH_TASK_ID}/result 2>/dev/null || echo "")
+    if echo "$task_result" | grep -q "\"output\""; then
+        test_pass "Ralph chain execution completed"
+    else
+        test_fail "Ralph chain execution" "No result output: ${task_result:-missing}"
+    fi
+else
+    test_fail "Ralph chain execution" "Failed to create task: $RALPH_TASK_RESPONSE"
 fi
 
 echo "" | tee -a "$TEST_LOG"
@@ -381,7 +541,7 @@ info "━━━━━━━━━━━━━━━━━━━━━━━━�
 
 # Test 4.1: Check if dashboard backend is running
 test_start "Dashboard backend API"
-if curl -sf --max-time 5 http://localhost:8889/api/metrics/system >/dev/null 2>&1; then
+if curl -sf --max-time 5 http://${SERVICE_HOST:-localhost}:8889/api/metrics/system >/dev/null 2>&1; then
     test_pass "Dashboard backend accessible"
 else
     warning "Dashboard backend not running (optional service)"
@@ -412,7 +572,7 @@ info "━━━━━━━━━━━━━━━━━━━━━━━━�
 # Test 5.1: Verify Qdrant collection counts
 test_start "Qdrant collection integrity check"
 for collection in codebase-context skills-patterns error-solutions interaction-history best-practices; do
-    COLLECTION_INFO=$(curl -sf --max-time 5 "http://localhost:6333/collections/$collection" 2>&1 || echo "FAILED")
+    COLLECTION_INFO=$(curl -sf --max-time 5 "http://${SERVICE_HOST:-localhost}:6333/collections/$collection" 2>&1 || echo "FAILED")
     if echo "$COLLECTION_INFO" | grep -q "points_count"; then
         POINT_COUNT=$(echo "$COLLECTION_INFO" | grep -o '"points_count":[0-9]*' | grep -o '[0-9]*')
         info "Collection '$collection': $POINT_COUNT points"

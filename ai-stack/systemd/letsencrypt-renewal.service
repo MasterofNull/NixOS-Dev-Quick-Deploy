@@ -1,13 +1,13 @@
 [Unit]
-Description=Let's Encrypt Certificate Renewal
-After=network.target podman.service
+Description=AI Stack TLS Renewal (cert-manager)
+After=network.target k3s.service
 Requires=network.target
 
 [Service]
 Type=oneshot
 User=root
-WorkingDirectory=/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
-ExecStart=/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/renew-tls-certificate.sh --domain localhost --email admin@localhost
+WorkingDirectory=@PROJECT_ROOT@
+ExecStart=@PROJECT_ROOT@/scripts/renew-tls-certificate.sh --namespace ai-stack --k8s-dir ai-stack/kubernetes/tls
 StandardOutput=journal
 StandardError=journal
 
@@ -16,7 +16,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/prometheus/node-exporter /etc/letsencrypt /var/log
+ReadWritePaths=/var/log
 
 [Install]
 WantedBy=multi-user.target

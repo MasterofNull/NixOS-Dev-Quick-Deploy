@@ -288,7 +288,7 @@ environment.systemPackages = with pkgs;
   ++ [
     # Container tools
     podman
-    podman-compose
+    podman (legacy)
     buildah
     skopeo
     crun

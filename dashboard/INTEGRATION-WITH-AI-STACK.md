@@ -211,8 +211,8 @@ After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/dashboard
-ExecStart=/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/dashboard/start-dashboard.sh
+WorkingDirectory=/path/to/NixOS-Dev-Quick-Deploy/dashboard
+ExecStart=/path/to/NixOS-Dev-Quick-Deploy/dashboard/start-dashboard.sh
 Restart=on-failure
 RestartSec=10s
 
@@ -258,7 +258,7 @@ Add to `~/.bashrc`:
 if command -v tmux &>/dev/null && [[ -z "$TMUX" ]]; then
   if ! tmux has-session -t ai-monitor 2>/dev/null; then
     tmux new-session -d -s ai-monitor \
-      '/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai-stack-monitor.sh'
+      '~/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai-stack-monitor.sh'
   fi
 fi
 ```

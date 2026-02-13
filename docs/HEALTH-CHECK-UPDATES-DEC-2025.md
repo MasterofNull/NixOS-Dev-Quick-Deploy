@@ -178,7 +178,7 @@ Shows additional information like:
 
 ### Basic Health Check
 ```bash
-cd /home/hyperd/Documents/NixOS-Dev-Quick-Deploy
+cd ~/Documents/NixOS-Dev-Quick-Deploy
 ./scripts/system-health-check.sh
 ```
 

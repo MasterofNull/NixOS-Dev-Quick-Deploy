@@ -346,14 +346,13 @@ class TestLetsEncryptRenewal:
         assert timer_path.exists(), "Timer file should exist"
         assert service_path.exists(), "Service file should exist"
 
-    def test_nginx_acme_challenge_configured(self):
-        """Nginx should have ACME challenge location configured"""
-        nginx_conf = Path(__file__).parent.parent / "compose" / "nginx" / "nginx.conf"
-        assert nginx_conf.exists(), "Nginx config should exist"
-
-        content = nginx_conf.read_text()
-        assert "/.well-known/acme-challenge/" in content, "Should have ACME challenge location"
-        assert "/var/www/letsencrypt" in content, "Should have webroot configured"
+    def test_tls_manifests_configured(self):
+        """TLS manifests should be configured for cert-manager"""
+        tls_dir = Path(__file__).parent.parent / "kubernetes" / "tls"
+        certs = tls_dir / "service-certificates.yaml"
+        issuers = tls_dir / "cluster-issuers.yaml"
+        assert certs.exists(), "TLS certificate manifests should exist"
+        assert issuers.exists(), "ClusterIssuer manifests should exist"
 
 
 class TestEndToEndSecurity:
