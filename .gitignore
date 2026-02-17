@@ -64,6 +64,8 @@ ai-stack/compose/secrets/*
 !CONTRIBUTING.md
 !LICENSE.md
 !HOSPITAL-DEPLOYMENT-STATUS.md
+!SYSTEM-UPGRADE-ROADMAP.md
+!SYSTEM-UPGRADE-ROADMAP-UPDATES.md
 
 # Fallback reports directory (when database unavailable)
 .reports/
