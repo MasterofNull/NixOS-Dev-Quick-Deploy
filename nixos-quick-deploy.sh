@@ -138,6 +138,7 @@ FLAKE_ONLY_MODE=false
 FLAKE_FIRST_MODE=true
 LEGACY_PHASES_MODE=false
 FLAKE_FIRST_PROFILE="ai-dev"
+FLAKE_FIRST_PROFILE_EXPLICIT=false
 FLAKE_FIRST_TARGET=""
 FLAKE_FIRST_DEPLOY_MODE="switch"
 RESTORE_KNOWN_GOOD_FLAKE_LOCK=false
@@ -1057,6 +1058,8 @@ FOR MORE INFORMATION:
 
 ENVIRONMENT OVERRIDES:
     ALLOW_ROOT_DEPLOY=true     Allow running as root/sudo (not recommended)
+    AUTO_PROMPT_PROFILE_SELECTION=false
+                              Disable interactive profile prompt when profile flag is omitted
 
 EOF
 }
@@ -1275,6 +1278,7 @@ parse_arguments() {
                     exit 1
                 fi
                 FLAKE_FIRST_PROFILE="$2"
+                FLAKE_FIRST_PROFILE_EXPLICIT=true
                 shift 2
                 ;;
             --flake-first-target)
@@ -2880,6 +2884,28 @@ run_flake_first_deployment() {
     print_section "Flake-First Deployment Mode"
 
     local profile="${FLAKE_FIRST_PROFILE:-ai-dev}"
+    if [[ "${AUTO_PROMPT_PROFILE_SELECTION:-true}" == "true" && "${FLAKE_FIRST_PROFILE_EXPLICIT:-false}" != "true" && -t 0 && -t 1 ]]; then
+        print_info "Select flake-first profile:"
+        echo "  1) ai-dev   (AI/dev workstation stack)"
+        echo "  2) gaming   (gaming-focused desktop stack)"
+        echo "  3) minimal  (minimal base system)"
+        local profile_choice=""
+        if declare -F prompt_user >/dev/null 2>&1; then
+            profile_choice="$(prompt_user "Choose profile [1-3 or name]" "$profile")"
+        else
+            read -r -p "Choose profile [1-3 or name] (default: ${profile}): " profile_choice
+            profile_choice="${profile_choice:-$profile}"
+        fi
+        case "${profile_choice,,}" in
+            1|ai|ai-dev|aidev) profile="ai-dev" ;;
+            2|gaming|game) profile="gaming" ;;
+            3|min|minimal) profile="minimal" ;;
+            "") ;;
+            *)
+                print_warning "Unknown profile selection '${profile_choice}', keeping '${profile}'."
+                ;;
+        esac
+    fi
     case "$profile" in
         ai-dev|gaming|minimal) ;;
         *)
