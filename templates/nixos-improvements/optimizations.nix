@@ -15,6 +15,11 @@
 
 { config, pkgs, lib, ... }:
 
+let
+  hasNixosInit = lib.versionAtLeast lib.version "25.11";
+  hasLact = lib.versionAtLeast lib.version "26.05";
+  hasAmdGpu = builtins.elem "amdgpu" (config.services.xserver.videoDrivers or []);
+in
 {
   # =========================================================================
   # NixOS 26.05+: Rust-based Systemd Initrd
@@ -23,11 +28,8 @@
   # Enable Rust-based bashless initialization (20-30% faster boot)
   boot.initrd.systemd.enable = lib.mkDefault true;
 
-  # NixOS-Init (available in 25.11+; enabled here for 26.05)
+  # NixOS-Init (available in 25.11+; enabled where supported)
   # Faster boot times with no bash dependency in initrd
-  system.nixos-init.enable = lib.mkDefault true;
-  system.etc.overlay.enable = lib.mkDefault true;
-  services.userborn.enable = lib.mkDefault true;
 
   # =========================================================================
   # Memory Management: Zswap
@@ -78,11 +80,6 @@
 
     # Increase file descriptor limit
     "fs.file-max" = lib.mkDefault 2097152;
-
-    # Increase inotify watchers (for development tools)
-    "fs.inotify.max_user_watches" = lib.mkDefault 524288;
-    "fs.inotify.max_user_instances" = lib.mkDefault 512;
-    "fs.inotify.max_queued_events" = lib.mkDefault 32768;
 
     # Increase AIO limits (for databases)
     "fs.aio-max-nr" = lib.mkDefault 1048576;
@@ -157,30 +154,24 @@
   };
 
   # =========================================================================
-  # LACT GPU Monitoring (NixOS 26.05+)
+  # LACT GPU Monitoring
   # =========================================================================
 
-  # Auto-enable when GPU detected
-  services.lact = {
-    enable = lib.mkDefault "auto";
-  };
+  # Enable LACT where supported by the current nixpkgs release.
+  # Note: services.lact.enable is boolean; "auto" is not a valid value.
 
   # AMD GPU overclocking/undervolting (if AMD detected)
   hardware.amdgpu.overdrive = {
-    enable = lib.mkDefault (config.hardware.cpu.amd.updateMicrocode or false);
+    enable = lib.mkDefault hasAmdGpu;
   };
 
   # =========================================================================
   # System Responsiveness
   # =========================================================================
 
-  # Reduce systemd timeout for faster service startup/shutdown
-  systemd.settings = {
-    Manager = {
-      DefaultTimeoutStartSec = lib.mkDefault "15s";
-      DefaultTimeoutStopSec = lib.mkDefault "15s";
-    };
-  };
+  # Note: systemd Manager timeout tuning removed from this module because
+  # nixpkgs option paths transitioned (`systemd.settings.Manager` vs
+  # `systemd.extraConfig`) across pinned revisions.
 
   # Increase process limits
   security.pam.loginLimits = [
@@ -189,6 +180,21 @@
     { domain = "*"; type = "soft"; item = "nproc"; value = "32768"; }
     { domain = "*"; type = "hard"; item = "nproc"; value = "1048576"; }
   ];
+
+  # =========================================================================
+  # Version-gated options (inline lib.mkIf — safe with NixOS module deep merge)
+  # =========================================================================
+
+  # NixOS-Init: Rust-based bashless initrd (available in 25.11+)
+  # Using lib.mkIf here (NOT // operator) so the module system deep-merges
+  # these into the existing `system` and `services` attrsets rather than
+  # replacing them wholesale (Nix // is a shallow merge).
+  system.nixos-init.enable = lib.mkIf hasNixosInit (lib.mkDefault true);
+  system.etc.overlay.enable = lib.mkIf hasNixosInit (lib.mkDefault true);
+  services.userborn.enable = lib.mkIf hasNixosInit (lib.mkDefault true);
+
+  # LACT GPU overclocking/monitoring daemon (available in 26.05+)
+  services.lact.enable = lib.mkIf hasLact (lib.mkDefault true);
 
   # =========================================================================
   # Boot Optimization
@@ -219,11 +225,12 @@
       stress-ng         # Stress testing
 
       # Performance analysis
-      perf              # Linux perf tools
       hotspot           # perf GUI
       flamegraph        # Flame graph visualization
     ])
-    ++ lib.optional (pkgs ? nvtop) pkgs.nvtop;  # Include nvtop when available
+    ++ lib.optional (pkgs ? nvtop) pkgs.nvtop
+    ++ lib.optionals (pkgs ? perf) [ pkgs.perf ]
+    ++ lib.optionals (!(pkgs ? perf) && pkgs ? linuxPackages && pkgs.linuxPackages ? perf) [ pkgs.linuxPackages.perf ];  # Include perf fallback when available
 
   # =========================================================================
   # Tmpfs for /tmp (faster temporary files)

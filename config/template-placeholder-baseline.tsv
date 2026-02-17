@@ -1,0 +1,5 @@
+# count<TAB>path
+48	templates/configuration.nix
+8	templates/home.nix
+3	templates/nixos-improvements/ai-stack-autostart.nix
+1	templates/mcp-config-template.json

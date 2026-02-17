@@ -494,6 +494,38 @@ phase_01_collect_user_preferences() {
     fi
 }
 
+phase_01_detect_hardware() {
+    print_section "Hardware Auto-Detection"
+    echo ""
+
+    local hw_hostname
+    hw_hostname=$(hostname)
+    local hw_user="${PRIMARY_USER:-${USER:-$(id -un)}}"
+    local hw_profile="${FLAKE_FIRST_PROFILE:-minimal}"
+    local hw_project_root="${BOOTSTRAP_SCRIPT_DIR:-${SCRIPT_DIR}}"
+    local hw_enable_hibernation="${ENABLE_ZSWAP_CONFIGURATION:-false}"
+    local hw_swap_gb="${HIBERNATION_SWAP_SIZE_GB:-0}"
+
+    if ! declare -F detect_and_write_hardware_facts >/dev/null 2>&1; then
+        print_warning "detect_and_write_hardware_facts not available; skipping hardware detection"
+        return 0
+    fi
+
+    if ! detect_and_write_hardware_facts \
+            "$hw_hostname" \
+            "$hw_user" \
+            "$hw_profile" \
+            "$hw_project_root" \
+            "$hw_enable_hibernation" \
+            "$hw_swap_gb"; then
+        print_warning "Hardware detection encountered errors; facts.nix may be incomplete"
+        return 0
+    fi
+
+    print_success "Hardware facts written to nix/hosts/${hw_hostname}/facts.nix"
+    echo ""
+}
+
 phase_01_setup_secrets_infrastructure() {
     print_section "Secrets Infrastructure Setup"
     echo ""
@@ -543,6 +575,7 @@ phase_01_setup_secrets_infrastructure() {
 phase_01_run() {
     phase_01_validate_environment || return $?
     phase_01_plan_swap_and_hibernation || return $?
+    phase_01_detect_hardware || return $?
     phase_01_start_tool_installation
     phase_01_select_build_strategy || return $?
     phase_01_select_nixos_release || return $?

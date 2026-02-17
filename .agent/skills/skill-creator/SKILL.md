@@ -55,6 +55,7 @@ skill-name/
 │   │   ├── name: (required)
 │   │   └── description: (required)
 │   └── Markdown instructions (required)
+│   └── Maintenance & Versioning (recommended)
 └── Bundled Resources (optional)
     ├── scripts/          - Executable code (Python/Bash/etc.)
     ├── references/       - Documentation intended to be loaded into context as needed
@@ -67,6 +68,7 @@ Every SKILL.md consists of:
 
 - **Frontmatter** (YAML): Contains `name` and `description` fields. These are the only fields that Claude reads to determine when the skill gets used, thus it is very important to be clear and comprehensive in describing what the skill is, and when it should be used.
 - **Body** (Markdown): Instructions and guidance for using the skill. Only loaded AFTER the skill triggers (if at all).
+
 
 #### Bundled Resources (optional)
 
@@ -111,13 +113,15 @@ A skill should only contain essential files that directly support its functional
 
 The skill should only contain the information needed for an AI agent to do the job at hand. It should not contain auxilary context about the process that went into creating it, setup and testing procedures, user-facing documentation, etc. Creating additional documentation files just adds clutter and confusion.
 
-### Progressive Disclosure Design Principle
+### Progressive Disclosure Design Principle (Optional)
 
 Skills use a three-level loading system to manage context efficiently:
 
 1. **Metadata (name + description)** - Always in context (~100 words)
 2. **SKILL.md body** - When skill triggers (<5k words)
 3. **Bundled resources** - As needed by Claude (Unlimited because scripts can be executed without reading into context window)
+
+Default to a single-file SKILL-first baseline. Add `references/`, `scripts/`, or `assets/` only when there is a concrete need.
 
 #### Progressive Disclosure Patterns
 
@@ -197,7 +201,14 @@ Claude reads REDLINING.md or OOXML.md only when the user needs those features.
 **Important guidelines:**
 
 - **Avoid deeply nested references** - Keep references one level deep from SKILL.md. All reference files should link directly from SKILL.md.
+- **Treat one-hop references as a hard constraint** - Avoid `references/deeper/file.md`; prefer `references/file.md`.
 - **Structure longer reference files** - For files longer than 100 lines, include a table of contents at the top so Claude can see the full scope when previewing.
+
+### Reference Integrity and Fallbacks
+
+- Treat missing `references/`, `scripts/`, or `assets/` links as skill defects and report them immediately.
+- When optional references are unavailable, continue using SKILL.md core workflow and clearly note reduced context.
+- Prefer one-hop references from `SKILL.md`; avoid chaining references through other references.
 
 ## Skill Creation Process
 
@@ -312,6 +323,12 @@ Write the YAML frontmatter with `name` and `description`:
   - Example description for a `docx` skill: "Comprehensive document creation, editing, and analysis with support for tracked changes, comments, formatting preservation, and text extraction. Use when Claude needs to work with professional documents (.docx files) for: (1) Creating new documents, (2) Modifying or editing content, (3) Working with tracked changes, (4) Adding comments, or any other document tasks"
 
 Do not include any other fields in YAML frontmatter.
+
+##### Maintenance Section
+
+Include a brief section at the end of the Body regarding maintenance:
+- **Dependencies**: List external URLs or tools this skill relies on.
+- **Update Triggers**: When should this skill be updated? (e.g., "Update when API v2 is released").
 
 ##### Body
 

@@ -560,9 +560,12 @@ register_remote_builder_spec() {
     fi
 }
 
-# Remove transient Podman/overlay fileSystems entries from a generated
-# hardware-configuration.nix so nixos-rebuild does not try to mount ephemeral
-# runtime paths (which breaks local-fs.target).
+# Sanitize a generated hardware-configuration.nix by removing:
+#   1. Transient Podman/overlay fileSystems entries (prevents nixos-rebuild from
+#      trying to mount ephemeral runtime paths, which breaks local-fs.target).
+#   2. Stale UUID-based fileSystems entries whose /dev/disk/by-uuid/ symlink no
+#      longer exists on the running system (prevents systemd-fsck@ failures at
+#      boot when disks are removed or repartitioned).
 # Sanitize HM hardware config (defaults defined in config/variables.sh:589) so
 # nixos-rebuild ignores transient container mounts added by Podman.
 sanitize_hardware_configuration() {
@@ -576,6 +579,7 @@ sanitize_hardware_configuration() {
     if ! mapfile -t removed_mounts < <(
         python3 - "$config_file" <<'PY'
 import pathlib
+import re
 import sys
 
 config_path = pathlib.Path(sys.argv[1])
@@ -583,10 +587,14 @@ text = config_path.read_text(encoding="utf-8")
 lines = text.splitlines()
 endswith_newline = text.endswith("\n")
 
-prefixes = (
+# Transient container mount prefixes to always drop
+container_prefixes = (
     "/var/lib/containers/storage/overlay",
     "/var/lib/containers/storage/overlay-containers",
 )
+
+# Regex to extract a by-uuid device path from a fileSystems block
+uuid_device_re = re.compile(r'device\s*=\s*"(/dev/disk/by-uuid/[^"]+)"')
 
 result = []
 removed = []
@@ -617,10 +625,20 @@ while i < total:
             result.extend(block)
             continue
 
+        # Check 1: transient container overlay mounts
         should_drop = any(
             mount == prefix or mount.startswith(f"{prefix}/")
-            for prefix in prefixes
+            for prefix in container_prefixes
         )
+
+        # Check 2: stale UUID-based device references
+        if not should_drop:
+            block_text = "\n".join(block)
+            uuid_match = uuid_device_re.search(block_text)
+            if uuid_match:
+                device_path = pathlib.Path(uuid_match.group(1))
+                if not device_path.exists():
+                    should_drop = True
 
         if should_drop:
             removed.append(mount)
@@ -648,7 +666,7 @@ PY
     fi
 
     if (( ${#removed_mounts[@]} > 0 )); then
-        print_info "Removed transient container mounts from $(basename "$config_file"):"
+        print_info "Removed stale or transient mounts from $(basename "$config_file"):"
         local mount_point
         for mount_point in "${removed_mounts[@]}"; do
             print_info "  - $mount_point"
@@ -2274,7 +2292,7 @@ hydrate_primary_user_password_block() {
     local temp_password=""
     if temp_password=$(generate_password 20); then
         USER_TEMP_PASSWORD="$temp_password"
-        printf -v USER_PASSWORD_BLOCK '    initialPassword = "%s";\n    forceInitialPassword = true;\n' "$temp_password"
+        printf -v USER_PASSWORD_BLOCK '    initialPassword = "%s";\n' "$temp_password"
         print_warning "No existing password configuration found. Generated temporary password for $PRIMARY_USER."
         print_info "Temporary password (change after first login): $USER_TEMP_PASSWORD"
         return 0
@@ -2764,26 +2782,31 @@ generate_nixos_system_config() {
         print_info "Syncing nixos-improvements modules to system configuration..."
         local system_improvements_dir="/etc/nixos/nixos-improvements"
 
-        # Create backup if directory already exists
+        local system_improvements_synced=false
+
+        # Create backup if directory already exists.
+        # Best-effort only: missing sudo auth should not abort template rendering.
         if [[ -d "$system_improvements_dir" ]]; then
             local backup_improvements_dir="$BACKUP_DIR/nixos-improvements-$BACKUP_TIMESTAMP"
             print_info "Backing up existing nixos-improvements to $backup_improvements_dir"
-            if ! sudo cp -r "$system_improvements_dir" "$backup_improvements_dir" 2>/dev/null; then
-                print_warning "Could not backup existing nixos-improvements directory"
+            if ! sudo -n cp -r "$system_improvements_dir" "$backup_improvements_dir" 2>/dev/null; then
+                print_warning "Could not backup existing nixos-improvements directory (sudo auth unavailable or copy failed)"
             fi
         fi
 
-        # Copy improvements to system config
-        if ! sudo cp -r "$TEMPLATE_DIR/nixos-improvements" "/etc/nixos/"; then
-            print_error "Failed to copy nixos-improvements to /etc/nixos/"
-            return 1
+        # Copy improvements to system config.
+        # Non-fatal when sudo auth is unavailable (for non-interactive/test runs).
+        if sudo -n cp -r "$TEMPLATE_DIR/nixos-improvements" "/etc/nixos/" 2>/dev/null; then
+            system_improvements_synced=true
+            print_success "NixOS improvements modules copied to /etc/nixos/nixos-improvements"
+        else
+            print_warning "Skipping /etc/nixos/nixos-improvements sync (sudo auth unavailable or copy failed)"
         fi
-        print_success "NixOS improvements modules copied to /etc/nixos/nixos-improvements"
 
         local mobile_workstation_file="$system_improvements_dir/mobile-workstation.nix"
-        if [[ -f "$mobile_workstation_file" ]]; then
+        if [[ "$system_improvements_synced" == true && -f "$mobile_workstation_file" ]]; then
             print_info "Ensuring lid close uses suspend-then-hibernate (12h) in $mobile_workstation_file"
-            sudo sed -i \
+            sudo -n sed -i \
                 -e 's/HandleLidSwitch = lib.mkDefault "[^"]*";/HandleLidSwitch = lib.mkDefault "suspend-then-hibernate";/' \
                 -e 's/HandleLidSwitchDocked = lib.mkDefault "[^"]*";/HandleLidSwitchDocked = lib.mkDefault "suspend-then-hibernate";/' \
                 -e 's/HandleLidSwitchExternalPower = lib.mkDefault "[^"]*";/HandleLidSwitchExternalPower = lib.mkDefault "suspend-then-hibernate";/' \
@@ -2917,20 +2940,69 @@ generate_nixos_system_config() {
     esac
 
     local -a initrd_kernel_modules_entries=()
-    case "${CPU_VENDOR:-}" in
+    local early_kms_policy
+    early_kms_policy=$(printf '%s' "${EARLY_KMS_POLICY:-off}" | tr '[:upper:]' '[:lower:]')
+    local early_kms_module=""
+    local early_kms_label=""
+    case "${GPU_TYPE:-unknown}" in
         intel)
-            initrd_kernel_modules_entries+=(
-                "      # Intel GPU early KMS"
-                '      "i915"'
-            )
+            early_kms_module="i915"
+            early_kms_label="Intel"
             ;;
         amd)
-            initrd_kernel_modules_entries+=(
-                "      # AMD GPU early KMS"
-                '      "amdgpu"'
-            )
+            early_kms_module="amdgpu"
+            early_kms_label="AMD"
             ;;
     esac
+
+    local enable_early_kms=true
+    case "$early_kms_policy" in
+        off|false|0|disable)
+            enable_early_kms=false
+            ;;
+        auto|"")
+            early_kms_policy="auto"
+            ;;
+        force|on|true|1|enable)
+            early_kms_policy="force"
+            ;;
+        *)
+            print_warning "Unknown EARLY_KMS_POLICY='$early_kms_policy'; using off."
+            early_kms_policy="off"
+            ;;
+    esac
+
+    if [[ -n "$early_kms_module" && "$enable_early_kms" == true ]]; then
+        local module_available=true
+        local module_skip_reason=""
+        if [[ "$early_kms_policy" == "auto" ]]; then
+            # Guardrail: avoid forcing AMD initrd early-KMS in auto mode.
+            # Some systems still boot more reliably when amdgpu is left to
+            # hardware-configuration defaults or loaded later in userspace.
+            if [[ "$early_kms_module" == "amdgpu" ]]; then
+                module_available=false
+                module_skip_reason="auto mode skips forced amdgpu initrd preload (use EARLY_KMS_POLICY=force to override)"
+            elif command -v modinfo >/dev/null 2>&1; then
+                if ! modinfo "$early_kms_module" >/dev/null 2>&1; then
+                    module_available=false
+                    module_skip_reason="module not available on current kernel"
+                fi
+            fi
+        fi
+
+        if [[ "$module_available" == true ]]; then
+            initrd_kernel_modules_entries+=(
+                "      # ${early_kms_label} GPU early KMS (auto-detected)"
+                "      \"${early_kms_module}\""
+            )
+        else
+            if [[ -n "$module_skip_reason" ]]; then
+                print_warning "Skipping early KMS module '${early_kms_module}' (${module_skip_reason})."
+            else
+                print_warning "Skipping early KMS module '${early_kms_module}'."
+            fi
+        fi
+    fi
 
     if [[ "${enable_zswap,,}" == "true" && "${zswap_zpool}" != "zsmalloc" ]]; then
         initrd_kernel_modules_entries+=(
@@ -2945,9 +3017,9 @@ generate_nixos_system_config() {
         local initrd_lines
         printf -v initrd_lines '%s\n' "${initrd_kernel_modules_entries[@]}"
         initrd_lines=${initrd_lines%$'\n'}
-        initrd_kernel_modules=$'    initrd.kernelModules = [\n'"${initrd_lines}"$'\n    ];'
+        initrd_kernel_modules=$'    initrd.availableKernelModules = [\n'"${initrd_lines}"$'\n    ];'
     else
-        initrd_kernel_modules="    # initrd.kernelModules handled by hardware-configuration.nix"
+        initrd_kernel_modules="    # initrd.availableKernelModules handled by hardware-configuration.nix"
     fi
 
     local microcode_section="# hardware.cpu microcode updates managed automatically"
@@ -2958,14 +3030,14 @@ generate_nixos_system_config() {
     case "${CPU_VENDOR:-unknown}" in
         intel)
             if [[ -n "${CPU_MICROCODE:-}" ]]; then
-                print_success "Enabling Intel microcode updates and initrd i915 early KMS."
+                print_success "Enabling Intel microcode updates."
             else
                 print_warning "Intel CPU detected but microcode package unavailable; leaving microcode settings unchanged."
             fi
             ;;
         amd)
             if [[ -n "${CPU_MICROCODE:-}" ]]; then
-                print_success "Enabling AMD microcode updates and initrd amdgpu early KMS."
+                print_success "Enabling AMD microcode updates."
             else
                 print_warning "AMD CPU detected but microcode package unavailable; leaving microcode settings unchanged."
             fi
@@ -2974,6 +3046,16 @@ generate_nixos_system_config() {
             print_info "CPU vendor unknown; microcode updates and early KMS stay at distro defaults."
             ;;
     esac
+
+    if [[ -n "$early_kms_module" && "$enable_early_kms" == true ]]; then
+        if [[ "$early_kms_policy" == "force" ]]; then
+            print_warning "Early KMS policy 'force': module '${early_kms_module}' will be preloaded in initrd."
+        else
+            print_info "Early KMS policy '${early_kms_policy}': module '${early_kms_module}' configured when available."
+        fi
+    elif [[ "$enable_early_kms" != true ]]; then
+        print_info "Early KMS policy disabled via EARLY_KMS_POLICY=${early_kms_policy}."
+    fi
 
     local binary_cache_settings
     binary_cache_settings=$(generate_binary_cache_settings "${USE_BINARY_CACHES:-true}")
@@ -3022,7 +3104,8 @@ ${mangohud_definition}
       null;
   glfGamingPackages =
     lib.optionals (glfLutrisWithGtk != null) [ glfLutrisWithGtk ]
-    ++ lib.optionals (pkgs ? heroic) [ pkgs.heroic ]
+    # Heroic is currently excluded from defaults because the electron build in
+    # nixos-25.05 is marked insecure and breaks evaluation.
     ++ lib.optionals (pkgs ? joystickwake) [ pkgs.joystickwake ]
     ++ lib.optionals (pkgs ? mangohud) [ pkgs.mangohud ]
     ++ lib.optionals (pkgs ? mesa-demos) [ pkgs.mesa-demos ]
@@ -3520,11 +3603,9 @@ EOF
         if [[ -n "$swap_limit_value" ]]; then
             host_swap_limits_block=$(cat <<EOF
 
-  # Host-level swap accounting + limits for systemd units (includes containers)
-  systemd.settings.Manager = {
-    DefaultMemoryAccounting = "yes";
-    DefaultMemorySwapMax = "${swap_limit_value}";
-  };
+  # Swap accounting + limit for user units.
+  # System-wide Manager limit is intentionally omitted to stay compatible
+  # across nixpkgs option transitions (systemd.settings.Manager vs extraConfig).
 
   systemd.user.extraConfig = ''
     DefaultMemoryAccounting=yes
@@ -3650,6 +3731,58 @@ EOF
         kernel_modules_placeholder=${kernel_modules_placeholder%$'\n'}
     else
         kernel_modules_placeholder="      # No additional kernel modules configured by the generator"
+    fi
+
+    # -----------------------------------------------------------------------
+    # Kernel module blacklist: prevent loading drivers for absent hardware.
+    # Reduces attack surface and avoids known CVEs in vendor-specific modules
+    # (e.g., Huawei/HiSilicon crypto and perf drivers).
+    # Users can extend via EXTRA_BLACKLISTED_KERNEL_MODULES in variables.sh.
+    # -----------------------------------------------------------------------
+    local -a blacklisted_modules=(
+        # Huawei/HiSilicon crypto drivers (CVE-2024-42147, CVE-2024-47730)
+        "hisi_zip"
+        "hisi_hpre"
+        "hisi_sec2"
+        "hisi_qm"
+        # Huawei/HiSilicon perf and network drivers (CVE-2024-38568, CVE-2024-38569)
+        "hisi_pcie_pmu"
+        "hns3"
+        "hns_roce"
+        "hclge"
+        "hclgevf"
+        "hnae3"
+        # Huawei/HiSilicon misc
+        "hisi_sas_main"
+        "hisi_sas_v3_hw"
+    )
+
+    # Append user-defined extra blacklist entries if provided
+    if [[ -n "${EXTRA_BLACKLISTED_KERNEL_MODULES:-}" ]]; then
+        local mod
+        for mod in $EXTRA_BLACKLISTED_KERNEL_MODULES; do
+            blacklisted_modules+=("$mod")
+        done
+    fi
+
+    local blacklisted_kernel_modules_block
+    if ((${#blacklisted_modules[@]} > 0)); then
+        local -a nix_mod_lines=()
+        local mod
+        for mod in "${blacklisted_modules[@]}"; do
+            nix_mod_lines+=("      \"${mod}\"")
+        done
+        local nix_mod_joined
+        printf -v nix_mod_joined '%s\n' "${nix_mod_lines[@]}"
+        nix_mod_joined=${nix_mod_joined%$'\n'}
+        blacklisted_kernel_modules_block=$(cat <<EOF
+    blacklistedKernelModules = [
+${nix_mod_joined}
+    ];
+EOF
+)
+    else
+        blacklisted_kernel_modules_block="    # blacklistedKernelModules: none configured"
     fi
 
     local -a nix_parallelism_settings
@@ -3875,30 +4008,30 @@ EOF
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GENERATED_AT@" "$generated_at"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@HOSTNAME@" "$HOSTNAME"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@USER@" "$primary_user"
-    replace_placeholder "$SYSTEM_CONFIG_FILE" "@CPU_VENDOR_LABEL@" "$cpu_vendor_label"
-    replace_placeholder "$SYSTEM_CONFIG_FILE" "@INITRD_KERNEL_MODULES@" "$initrd_kernel_modules"
-    replace_placeholder "$SYSTEM_CONFIG_FILE" "@KERNEL_MODULES_PLACEHOLDER@" "$kernel_modules_placeholder"
-    replace_placeholder "$SYSTEM_CONFIG_FILE" "@KERNEL_SYSCTL_TUNABLES@" "$kernel_sysctl_tunables"
+    # @CPU_VENDOR_LABEL@, @INITRD_KERNEL_MODULES@, @KERNEL_MODULES_PLACEHOLDER@,
+    # @KERNEL_SYSCTL_TUNABLES@, @BOOT_KERNEL_PARAMETERS_BLOCK@, @MICROCODE_SECTION@,
+    # @BINARY_CACHE_SETTINGS@, @GPU_HARDWARE_SECTION@, @GPU_SESSION_VARIABLES@,
+    # @GPU_DRIVER_PACKAGES@: removed from templates/configuration.nix.
+    # Hardware configuration is now fully declarative via nix/modules/hardware/.
+    # CPU/GPU/storage/RAM modules are loaded by the flake through facts.nix
+    # (generated at Phase 1 by lib/hardware-detect.sh::detect_and_write_hardware_facts).
+    #
+    # @BLACKLISTED_KERNEL_MODULES_BLOCK@: retained — user-extensible via
+    # EXTRA_BLACKLISTED_KERNEL_MODULES in config/variables.sh.
+    replace_placeholder "$SYSTEM_CONFIG_FILE" "@BLACKLISTED_KERNEL_MODULES_BLOCK@" "$blacklisted_kernel_modules_block"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@RESUME_DEVICE_DIRECTIVE@" "$resume_device_directive"
-    replace_placeholder "$SYSTEM_CONFIG_FILE" "@BOOT_KERNEL_PARAMETERS_BLOCK@" "$kernel_params_block"
-    replace_placeholder "$SYSTEM_CONFIG_FILE" "@MICROCODE_SECTION@" "$microcode_section"
-    replace_placeholder "$SYSTEM_CONFIG_FILE" "@BINARY_CACHE_SETTINGS@" "$binary_cache_settings"
-    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GPU_HARDWARE_SECTION@" "$gpu_hardware_section"
-    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GPU_SESSION_VARIABLES@" "$gpu_session_variables"
-    replace_placeholder "$SYSTEM_CONFIG_FILE" "@GPU_DRIVER_PACKAGES@" "$gpu_driver_packages_block"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GLF_OS_DEFINITIONS@" "$glf_os_definitions"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@GLF_GAMING_STACK_SECTION@" "$glf_gaming_stack_section"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@FLATPAK_MANAGED_PACKAGES@" "$flatpak_packages_block"
-    replace_placeholder "$SYSTEM_CONFIG_FILE" "@LACT_SERVICE_BLOCK@" "$lact_service_block"
+    # @LACT_SERVICE_BLOCK@: removed — handled by nix/modules/hardware/gpu/amd.nix
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@PODMAN_STORAGE_BLOCK@" "$podman_storage_block"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@SELECTED_TIMEZONE@" "$TIMEZONE"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@CURRENT_LOCALE@" "$LOCALE"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@NIXOS_VERSION@" "$NIXOS_VERSION"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@STATE_VERSION@" "$STATE_VERSION"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@SWAP_AND_HIBERNATION_BLOCK@" "$swap_and_hibernation_block"
-    replace_placeholder "$SYSTEM_CONFIG_FILE" "@NIX_MAX_JOBS@" "$nix_max_jobs_literal"
-    replace_placeholder "$SYSTEM_CONFIG_FILE" "@NIX_BUILD_CORES@" "$nix_cores_literal"
-    replace_placeholder "$SYSTEM_CONFIG_FILE" "@NIX_PARALLEL_COMMENT@" "$nix_parallel_comment"
+    # @NIX_MAX_JOBS@, @NIX_BUILD_CORES@, @NIX_PARALLEL_COMMENT@: removed.
+    # Adaptive Nix build parallelism is now set by nix/modules/hardware/ram-tuning.nix.
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@USERS_MUTABLE@" "${USERS_MUTABLE_SETTING:-true}"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@USER_PASSWORD_BLOCK@" "$user_password_block"
     replace_placeholder "$SYSTEM_CONFIG_FILE" "@ROOT_PASSWORD_BLOCK@" "$root_password_block"
@@ -4194,7 +4327,8 @@ ${mangohud_definition}
     if ${gaming_stack_enabled_literal} then
       (
         lib.optionals (glfLutrisWithGtk != null) [ glfLutrisWithGtk ]
-        ++ lib.optionals (pkgs ? heroic) [ pkgs.heroic ]
+        # Heroic is currently excluded from defaults because the electron build in
+        # nixos-25.05 is marked insecure and breaks evaluation.
         ++ lib.optionals (pkgs ? joystickwake) [ pkgs.joystickwake ]
         ++ lib.optionals (pkgs ? mangohud) [ pkgs.mangohud ]
         ++ lib.optionals (pkgs ? mesa-demos) [ pkgs.mesa-demos ]

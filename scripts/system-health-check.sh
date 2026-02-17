@@ -1310,6 +1310,58 @@ check_systemd_service_port() {
     return 0
 }
 
+check_guardrail_monitor() {
+    local service="$1"
+    local timer="$2"
+    local description="$3"
+
+    print_check "$description"
+
+    if ! command -v systemctl >/dev/null 2>&1; then
+        print_warning "$description check skipped (systemctl unavailable)"
+        return 2
+    fi
+
+    if ! systemctl list-unit-files 2>/dev/null | grep -q "^${service}.service"; then
+        print_warning "$description not configured"
+        return 2
+    fi
+
+    local timer_active="unknown"
+    local timer_enabled="unknown"
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${timer}.timer"; then
+        timer_active="$(systemctl is-active "${timer}.timer" 2>/dev/null || echo "unknown")"
+        timer_enabled="$(systemctl is-enabled "${timer}.timer" 2>/dev/null || echo "unknown")"
+    fi
+
+    local unit_active="unknown"
+    local unit_result="unknown"
+    unit_active="$(systemctl is-active "${service}.service" 2>/dev/null || echo "unknown")"
+    unit_result="$(systemctl show -p Result --value "${service}.service" 2>/dev/null || echo "unknown")"
+
+    if systemctl is-failed --quiet "${service}.service" 2>/dev/null || [[ "$unit_result" == "failed" ]]; then
+        print_fail "$description failed (result: $unit_result)"
+        if [ "$DETAILED" = true ]; then
+            print_detail "Recent logs: journalctl -u ${service}.service -n 30 --no-pager"
+        fi
+        return 1
+    fi
+
+    if [[ "$timer_active" == "active" ]]; then
+        print_success "$description healthy (timer: active/$timer_enabled, last result: $unit_result)"
+    elif [[ "$timer_active" == "unknown" ]]; then
+        print_warning "$description timer status unavailable"
+    else
+        print_warning "$description timer not active (timer: $timer_active/$timer_enabled, last result: $unit_result)"
+    fi
+
+    if [ "$DETAILED" = true ]; then
+        print_detail "Service state: ${unit_active}, result: ${unit_result}"
+    fi
+
+    return 0
+}
+
 # Main checks
 run_all_checks() {
     print_header "NixOS Dev Quick Deploy - System Health Check"
@@ -2072,6 +2124,32 @@ run_all_checks() {
         print_warning "Git config not found"
     fi
 
+    # ==========================================================================
+    # Boot + Filesystem Guardrails
+    # ==========================================================================
+    print_section "Boot + Filesystem Guardrails"
+
+    check_command "fs-integrity-check" "Filesystem integrity checker" false
+    check_command "disk-health-check" "Disk health checker" false
+
+    check_guardrail_monitor "fs-integrity-monitor" "fs-integrity-monitor" "Filesystem integrity monitor"
+    check_guardrail_monitor "disk-health-monitor" "disk-health-monitor" "Disk health monitor"
+
+    print_check "Guardrail alert backlog"
+    local guardrail_alert_dir="/var/lib/nixos-quick-deploy/alerts"
+    if [[ -d "$guardrail_alert_dir" ]]; then
+        local alert_count=0
+        alert_count=$(find "$guardrail_alert_dir" -maxdepth 1 -type f | wc -l)
+        if [[ "$alert_count" -eq 0 ]]; then
+            print_success "No guardrail alerts queued"
+        else
+            print_warning "$alert_count guardrail alert file(s) present at $guardrail_alert_dir"
+            print_detail "Review with: sudo ls -lt $guardrail_alert_dir"
+        fi
+    else
+        print_success "No guardrail alert directory present"
+    fi
+
     # Check flake lock completeness
     local hm_flake_dir="$HOME/.dotfiles/home-manager"
     local hm_flake_file="$hm_flake_dir/flake.nix"
@@ -2169,6 +2247,16 @@ run_all_checks() {
 
             # Check for common issues and provide specific guidance
             local suggestion_index=1
+
+            if ! command -v git &> /dev/null; then
+                echo -e "  ${YELLOW}${suggestion_index}. Git not available:${NC}"
+                echo "     • Immediate fallback (no rebuild needed):"
+                echo "       ./scripts/git-safe.sh status"
+                echo "     • Declarative fix:"
+                echo "       run deploy/switch to apply base system packages that include git"
+                echo ""
+                suggestion_index=$((suggestion_index + 1))
+            fi
 
             if ! command -v home-manager &> /dev/null; then
                 echo -e "  ${YELLOW}${suggestion_index}. Home Manager not in PATH:${NC}"

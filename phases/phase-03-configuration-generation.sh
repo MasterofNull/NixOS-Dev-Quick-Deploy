@@ -230,6 +230,19 @@ phase_03_config_generation() {
     fi
 
     # ========================================================================
+    # Step 4.3.5: Optional Nix Static Analysis (Non-Blocking)
+    # ========================================================================
+    # Keep this non-blocking so fresh hosts without lint tooling are not blocked.
+    local nix_lint_script="${SCRIPT_DIR}/scripts/nix-static-analysis.sh"
+    if [[ -x "$nix_lint_script" ]]; then
+        if ! "$nix_lint_script" --non-blocking --quiet; then
+            print_warning "Nix static analysis reported warnings (non-blocking)."
+        fi
+    else
+        print_info "Skipping optional Nix static analysis (script not present)."
+    fi
+
+    # ========================================================================
     # Step 4.4: Verify Container Orchestration Prerequisites
     # ========================================================================
     print_section "Container Orchestration Check"

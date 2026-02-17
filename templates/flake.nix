@@ -21,6 +21,12 @@
       url = "github:nix-community/home-manager?ref=HM_CHANNEL_PLACEHOLDER";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # nixos-hardware: pre-built hardware modules for specific machines.
+    # The correct module is selected at deploy time via mySystem.hardware.nixosHardwareModule
+    # in nix/hosts/<hostname>/facts.nix (written by lib/hardware-detect.sh).
+    nixos-hardware.url = "github:NixOS/nixos-hardware";
+    disko.url = "github:nix-community/disko";
+    lanzaboote.url = "github:nix-community/lanzaboote";
     #nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
     nix-flatpak = {
       url = "github:gmodena/nix-flatpak";
@@ -39,7 +45,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, home-manager, nix-flatpak, sops-nix, nixAiTools, nix-vscode-extensions, ... }:
+  outputs = { self, nixpkgs, home-manager, nixos-hardware, disko, lanzaboote, nix-flatpak, sops-nix, nixAiTools, nix-vscode-extensions, ... }:
     let
       lib = nixpkgs.lib;
       system = "SYSTEM_PLACEHOLDER";
@@ -54,18 +60,62 @@
       };
     in
     {
-      nixosConfigurations."HOSTNAME_PLACEHOLDER" = nixpkgs.lib.nixosSystem {
-        inherit system;
-        specialArgs = {
-          inherit nixAiToolsPackages;
+      nixosConfigurations."HOSTNAME_PLACEHOLDER" =
+        let
+          # Load per-host hardware facts (written by lib/hardware-detect.sh at Phase 1).
+          # facts.nix sets mySystem.hardware.{cpuVendor, gpuVendor, storageType, ...}
+          # which drives all hardware-conditional modules below.
+          hostFacts = (import ./nix/hosts/HOSTNAME_PLACEHOLDER/facts.nix { }).mySystem;
+          hwModuleName = hostFacts.hardware.nixosHardwareModule or null;
+          hwModuleExists =
+            hwModuleName != null
+            && builtins.hasAttr hwModuleName nixos-hardware.nixosModules;
+          wantsDisko = (hostFacts.disk.layout or "none") != "none";
+          hasDiskoModule = disko ? nixosModules && disko.nixosModules ? disko;
+          wantsSecureboot = hostFacts.secureboot.enable or false;
+          hasLanzabooteModule = lanzaboote ? nixosModules && lanzaboote.nixosModules ? lanzaboote;
+        in
+        nixpkgs.lib.nixosSystem {
+          inherit system;
+          specialArgs = {
+            inherit nixAiToolsPackages;
+          };
+          modules = [
+            # Declarative options schema (mySystem.* namespace)
+            ./nix/modules/core/options.nix
+            # Per-host hardware facts (sets mySystem.hardware.* values)
+            ./nix/hosts/HOSTNAME_PLACEHOLDER/facts.nix
+            # Hardware-conditional modules (CPU, GPU, storage, RAM tuning, mobile)
+            # Each module gates itself on mySystem.hardware.* — safe to import unconditionally.
+            ./nix/modules/hardware/default.nix
+            ./nix/modules/disk/default.nix
+            ./nix/modules/secureboot.nix
+          ]
+          # nixos-hardware: import the machine-specific upstream module if detected.
+          # Provides additional kernel/firmware tuning specific to the exact hardware model.
+          ++ lib.optionals hwModuleExists [
+            nixos-hardware.nixosModules.${hwModuleName}
+          ]
+          ++ lib.optionals (wantsDisko && hasDiskoModule) [
+            disko.nixosModules.disko
+          ]
+          ++ lib.optionals (wantsSecureboot && hasLanzabooteModule) [
+            lanzaboote.nixosModules.lanzaboote
+          ]
+          ++ [
+            sops-nix.nixosModules.sops
+            ./configuration.nix
+            # Note: home-manager is used standalone (via homeConfigurations below)
+            # Not as a NixOS module to avoid dependency issues during nixos-rebuild
+          ];
+          warnings =
+            lib.optional (hwModuleName != null && !hwModuleExists)
+              "nixos-hardware module '${hwModuleName}' requested in facts.nix but not found in input."
+            ++ lib.optional (wantsDisko && !hasDiskoModule)
+              "Disk layout '${hostFacts.disk.layout or "none"}' requested but disko module export is unavailable."
+            ++ lib.optional (wantsSecureboot && !hasLanzabooteModule)
+              "Secure boot requested but lanzaboote module export is unavailable.";
         };
-        modules = [
-          sops-nix.nixosModules.sops
-          ./configuration.nix
-          # Note: home-manager is used standalone (via homeConfigurations below)
-          # Not as a NixOS module to avoid dependency issues during nixos-rebuild
-        ];
-      };
 
       homeConfigurations."HOME_USERNAME_PLACEHOLDER" = home-manager.lib.homeManagerConfiguration {
         pkgs = import nixpkgs {
@@ -84,6 +134,17 @@
       };
 
       devShells.${system} = {
+        default = devPkgs.mkShell {
+          packages = with devPkgs; [
+            statix
+            deadnix
+            alejandra
+          ];
+          shellHook = ''
+            echo "Nix lint shell ready (statix, deadnix, alejandra)."
+          '';
+        };
+
         # PCB / electronics design environment
         # Note: KiCad, FreeCAD, OpenSCAD available via Flatpak
         pcb-design = devPkgs.mkShell {

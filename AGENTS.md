@@ -34,7 +34,7 @@ This guide trains you to:
 
 **Skills Directory (PRIMARY):** `.agent/skills/`
 - **Count:** 25 unified skills
-- **Symlink:** `.claude/skills/` → `.agent/skills/`
+- **Policy:** `.agent/skills/` is canonical; do not create `.claude/skills*` backup trees
 - **Usage:** Skills are auto-loaded, reference in prompts: "use the webapp-testing skill"
 
 **MCP Server Configuration:** `~/.mcp/config.json`
@@ -147,6 +147,10 @@ curl http://localhost:8080/v1/models  # vLLM
 3. `docs/AGENT-AGNOSTIC-TOOLING-PLAN.md` - Agent-agnostic architecture
 4. `docs/AVAILABLE_TOOLS.md` - Tool reference guide
 5. `README.md` - Project overview
+6. `docs/REPOSITORY-SCOPE-CONTRACT.md` - Repository boundaries and ownership
+7. `docs/SKILL-BACKUP-POLICY.md` - Skill backup and restore policy
+8. `docs/AQD-CLI-USAGE.md` - CLI-first workflow usage
+9. `docs/SKILL-MINIMUM-STANDARD.md` - Minimum viable skill standard
 
 **Query AIDB for Any Topic:**
 ```bash
@@ -365,7 +369,7 @@ grep -r "class.*Model\|CREATE TABLE" .
 2. **Test incrementally** - don't write 500 lines then test
 3. **Clean up as you go** - remove debug code immediately
 4. **Update docs inline** - don't defer documentation
-5. **Quick-deploy first** - apply system changes to `nixos-quick-deploy.sh` and templates before runtime patches
+5. **Flake-first + quick-deploy discipline** - prefer declarative module changes (`nix/` + flake path), keep `nixos-quick-deploy.sh` as orchestration/bootstrap, and only patch template-render path when required for legacy fallback
 
 ### ✅ After Development
 
@@ -579,6 +583,7 @@ Check the project's `.mcp/` directory or MCP configuration for available servers
 
 Look for:
 - `scripts/` directory - Common automation
+- `scripts/aqd` - CLI wrapper for skill/MCP workflows (`aqd skill ...`, `aqd mcp ...`)
 - `Makefile` - Build and test commands
 - `package.json` / `pyproject.toml` - Language tooling
 - `kustomization.yaml` / `Dockerfile` - Container commands

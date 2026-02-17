@@ -1,0 +1,178 @@
+# Claude Code — Project Intelligence for NixOS-Dev-Quick-Deploy
+
+This file is read automatically at session start. It encodes hard-won project
+knowledge, efficiency rules, and behavioral standards. Follow them strictly to
+minimise remote token consumption while maintaining quality.
+
+---
+
+## 1. Token Efficiency — Non-Negotiable Rules
+
+### Read minimally
+- **Grep first, read second.** Never open a full file to find something.
+  Use `Grep` with `-n` and `-C 3` to get exact line numbers + context, then
+  `Read` with `offset`+`limit` to fetch only those lines.
+- **Trust your edits.** After an `Edit` or `Write` call succeeds, do NOT
+  re-read the file to confirm. The tool guarantees the change was applied.
+- **One verification pass.** Run a single `bash` check at the end of a task,
+  not an incremental check after every individual edit.
+
+### Batch everything
+- Fire all independent tool calls in a single message (parallel).
+- Chain dependent calls with `&&` in one Bash invocation.
+- Never use separate Bash calls for things like `git status && git diff` —
+  combine them.
+
+### Document surgically
+- Update only the section of a roadmap/issue file that changed. Do not
+  rewrite surrounding context. Use a targeted `Edit` with the smallest
+  possible `old_string` that uniquely identifies the location.
+- Do not add explanatory prose to documents that already have it.
+
+### Skip noisy confirmation
+- Do not echo "OK" messages or print intermediate results unless the user
+  explicitly asked for them.
+- Do not use `echo` or `printf` in scripts just to confirm state that can
+  be inferred from a zero exit code.
+
+---
+
+## 2. Project Layout (fast reference — do not re-discover)
+
+```
+nixos-quick-deploy.sh       Main orchestrator script
+lib/config.sh               All config generation logic (3700+ lines)
+config/variables.sh         User-facing knobs (not committed)
+templates/
+  configuration.nix         System NixOS module (flat form)
+  flake.nix                 Flake template with placeholders
+  nixos-improvements/       Imported modules (all use flat form)
+    optimizations.nix       Kernel/I-O/memory tuning
+    mobile-workstation.nix  ThinkPad-specific power/thermal
+    networking.nix          Network stack hardening
+    security.nix            Kernel hardening / audit
+SYSTEM-UPGRADE-ROADMAP.md  Primary issue tracker (NIX-ISSUE-NNN)
+KNOWN_ISSUES_TROUBLESHOOTING.md  Resolved issues with recovery steps
+```
+
+---
+
+## 3. NixOS Module System — Rules Learned the Hard Way
+
+### Ownership rule
+Each option must have **exactly one owner module**. If two modules set the
+same option at the same `lib.mkDefault` priority with different values, NixOS
+aborts with "conflicting definition values". Resolve by removing the setting
+from all but one module.
+
+| Priority | Operator | Numeric | Use when |
+|---|---|---|---|
+| Lowest | `lib.mkDefault` | 1000 | "I suggest this, others can override" |
+| Normal | (bare value) | 100 | "This is my module's normal setting" |
+| Highest | `lib.mkForce` | 50 | "Override everything — no exceptions" |
+
+### Never use `//` for conditional options
+Nix `//` is a **shallow merge** — it replaces entire top-level keys. Use
+`lib.mkIf condition value` inline inside the module's `{ }` block instead.
+The NixOS module system deep-merges `lib.mkIf`-wrapped declarations safely.
+
+```nix
+# WRONG — silently drops services.udev.extraRules:
+} // lib.optionalAttrs someFlag { services.someOption = true; }
+
+# RIGHT — deep-merged by the module system:
+services.someOption = lib.mkIf someFlag true;
+```
+
+### Version guards
+Use `lib.versionAtLeast lib.version "X.Y"` to guard options that only exist
+in newer nixpkgs. Do **not** access `options.*` inside a module — it causes
+infinite recursion.
+
+---
+
+## 4. Hardware Context (ThinkPad P14s Gen 2a — AMD Ryzen)
+
+| Component | Detail |
+|---|---|
+| CPU | AMD Ryzen (AuthenticAMD) — `k10temp` driver |
+| Thermal daemon | `thermald` is Intel-only — **disabled on this machine** |
+| Fans | ACPI-controlled; `thinkpad-isa-0000` hwmon shows fan1/fan2 |
+| GPU | AMD integrated (`amdgpu`) + discrete (`/dev/dri/card1`) |
+| NVMe | `nvme0n1` — BFQ scheduler, state `live` |
+| Boot | systemd-boot, EFI partition `/dev/nvme0n1p1` (UUID `8D2E-EF0C`) |
+| Root | `/dev/nvme0n1p2` (UUID `b386ce56`, ext4) |
+| Swap | `/dev/nvme0n1p3` (UUID `dac1f455`) + zram |
+
+### Known-good settings for this machine
+- `services.thermald.enable = lib.mkDefault (config.hardware.cpu.intel.updateMicrocode or false)`
+  — evaluates `false` on AMD; Intel systems get thermald automatically.
+- `boot.loader.systemd-boot.graceful = lib.mkDefault true`
+  — prevents dirty-ESP dirty bit from aborting bootloader install.
+- `powerManagement.cpuFreqGovernor = lib.mkDefault "schedutil"` — fine for
+  AMD; `schedutil` is built into the kernel (not a loadable module).
+
+---
+
+## 5. Recurring Errors — Quick Reference
+
+| Error | Root Cause | Fix location |
+|---|---|---|
+| `services.gnome.gcr-ssh-agent does not exist` | nixos-25.11 doesn't have it | `lib.optionalAttrs (lib.versionAtLeast lib.version "26.05")` guard |
+| `conflicting definition values` for `thermald` | Two `lib.mkDefault` owners | Remove from `mobile-workstation.nix`; keep in `configuration.nix` |
+| `Failed to find module 'cpufreq_schedutil'` | Built-in governor, not loadable | Do not add to `boot.kernelModules` |
+| wireplumber SIGABRT / core dump | libcamera UVC `LOG(Fatal)` | `wireplumber.extraConfig."10-disable-libcamera"` |
+| COSMIC portals broken | `xdg-desktop-portal-gnome` requires gnome-shell | Remove from `extraPortals`; use `-cosmic` and `-hyprland` |
+| `services.lact.enable = "auto"` | String for boolean option | Use `true` |
+| `undefined variable 'perf'` | `perf` not in all nixpkgs | `lib.optionals (pkgs ? perf) [ pkgs.perf ]` |
+
+---
+
+## 6. Workflow Standards
+
+### Before touching any file
+1. `Grep` for the exact string — get line number.
+2. `Read` only the relevant range (offset + limit).
+3. Make the targeted `Edit`.
+4. Move on — do not re-read.
+
+### When adding a new issue
+1. Add `NIX-ISSUE-NNN` entry in the **Agent Review Findings** section of
+   `SYSTEM-UPGRADE-ROADMAP.md` (one line, marked `- [x]` if resolved).
+2. Add a subsection to the relevant Phase at the bottom of the roadmap.
+3. Add a numbered entry to `KNOWN_ISSUES_TROUBLESHOOTING.md` with status,
+   symptom, root cause, fix, and tracking reference.
+4. Do **not** rewrite the surrounding roadmap prose.
+
+### Placeholder completeness check
+Every `@PLACEHOLDER@` token in `templates/configuration.nix` must have a
+corresponding `replace_placeholder` call in `lib/config.sh`. Verify with:
+```bash
+grep -oh '@[A-Z_]*@' templates/configuration.nix | sort -u | while read p; do
+  grep -q "replace_placeholder.*$p" lib/config.sh || echo "MISSING: $p"
+done
+```
+
+### Syntax check
+```bash
+bash -n lib/config.sh
+```
+Run once after all changes to a session, not after every individual edit.
+
+---
+
+## 7. Local AI Stack Goal
+
+This project is a stepping stone to a self-hosted AI stack running on this
+ThinkPad P14s Gen 2a. When operational, it will replace remote API calls for
+routine tasks, making the workflow token-independent for everyday engineering
+work. Decisions made in this codebase should optimise for:
+
+- **Reproducibility** — NixOS declarative config must produce the same system
+  from a fresh install with no manual steps.
+- **Hardware fit** — configurations must match the AMD Ryzen ThinkPad profile,
+  not generic Intel assumptions.
+- **Forward compatibility** — use version guards rather than hard-coding to
+  a single nixpkgs revision.
+- **Minimal surface** — do not enable services, packages, or modules that are
+  not actively used. Every enabled service is a potential failure point.

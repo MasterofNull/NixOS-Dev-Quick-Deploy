@@ -76,6 +76,11 @@ DEFAULT_EDITOR="vim"  # Universal editor available everywhere
 
 DEFAULT_GPU_TYPE="software"      # Use software rendering if GPU not detected
 DEFAULT_CPU_VENDOR="unknown"     # Unknown CPU when detection fails
+# Early KMS preload policy for initrd modules (auto|off|force)
+# off   = safe default across mixed hardware; avoids forced GPU initrd preload.
+# auto  = driver-managed initialisation; useful for advanced troubleshooting.
+# force = always preload detected GPU module in initrd (expert/debug mode only).
+DEFAULT_EARLY_KMS_POLICY="off"
 
 # ============================================================================
 # Service Defaults

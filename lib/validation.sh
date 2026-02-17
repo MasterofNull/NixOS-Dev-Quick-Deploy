@@ -430,8 +430,9 @@ validate_gpu_driver() {
         amd)
             print_info "Validating AMD driver..."
             
-            # Check for amdgpu kernel module
-            if lsmod | grep -q amdgpu; then
+            # Check for amdgpu kernel module.
+            # /sys/module/amdgpu exists for both loadable and built-in kernels.
+            if [[ -d /sys/module/amdgpu ]] || lsmod | grep -q '^amdgpu'; then
                 print_success "amdgpu kernel module loaded"
             else
                 print_warning "amdgpu kernel module not loaded"
@@ -463,8 +464,9 @@ validate_gpu_driver() {
         intel)
             print_info "Validating Intel driver..."
             
-            # Check for i915 or xe kernel module
-            if lsmod | grep -qE 'i915|xe'; then
+            # Check for i915 or xe kernel module.
+            # /sys/module paths handle built-in kernels where lsmod may be empty.
+            if [[ -d /sys/module/i915 ]] || [[ -d /sys/module/xe ]] || lsmod | grep -qE '^(i915|xe)\b'; then
                 print_success "Intel GPU kernel module loaded"
             else
                 print_warning "Intel GPU kernel module not found"
@@ -591,11 +593,17 @@ run_system_health_check_stage() {
     
     if command -v podman &>/dev/null; then
         print_success "  Podman: installed"
-        
-        # Try to pull a small image
-        if podman pull --quiet alpine:latest &>/dev/null; then
+
+        # Try to pull a small image. Accept cached images to avoid transient
+        # network/registry warnings when runtime itself is healthy.
+        if podman pull --quiet docker.io/library/alpine:latest &>/dev/null || \
+           podman pull --quiet alpine:latest &>/dev/null; then
             print_success "  Container image pull: OK"
+            podman rmi docker.io/library/alpine:latest &>/dev/null || true
             podman rmi alpine:latest &>/dev/null || true
+        elif podman image exists docker.io/library/alpine:latest &>/dev/null || \
+             podman image exists alpine:latest &>/dev/null; then
+            print_info "  Container image pull: skipped (using cached alpine image)"
         else
             print_warning "  Container image pull: failed"
             ((issues_found++))

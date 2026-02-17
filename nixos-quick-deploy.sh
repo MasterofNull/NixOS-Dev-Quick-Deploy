@@ -126,6 +126,7 @@ RESUME=true
 RESTART_FAILED=false
 RESTART_FROM_SAFE_POINT=false
 ZSWAP_CONFIGURATION_OVERRIDE_REQUEST=""
+EARLY_KMS_POLICY_OVERRIDE_REQUEST=""
 AUTO_APPLY_SYSTEM_CONFIGURATION=true
 AUTO_APPLY_HOME_CONFIGURATION=true
 PROMPT_BEFORE_SYSTEM_SWITCH=false
@@ -134,6 +135,11 @@ AUTO_REGEN_CONFIG_ON_TEMPLATE_CHANGE=true
 FLATPAK_REINSTALL_REQUEST=false
 AUTO_UPDATE_FLAKE_INPUTS=false
 FLAKE_ONLY_MODE=false
+FLAKE_FIRST_MODE=true
+LEGACY_PHASES_MODE=false
+FLAKE_FIRST_PROFILE="ai-dev"
+FLAKE_FIRST_TARGET=""
+FLAKE_FIRST_DEPLOY_MODE="switch"
 RESTORE_KNOWN_GOOD_FLAKE_LOCK=false
 FORCE_HF_DOWNLOAD=false
 RUN_AI_PREP=false
@@ -150,6 +156,12 @@ AI_STACK_GRAFANA_ADMIN_PASSWORD=""
 HOST_SWAP_LIMIT_ENABLED=false
 HOST_SWAP_LIMIT_GB=""
 HOST_SWAP_LIMIT_VALUE=""
+
+# Declarative migration guardrails:
+# - Flake-first is the default execution path.
+# - Legacy phase/template rendering is maintenance mode (critical fixes only).
+# - New config behavior must land in Nix modules/options first.
+readonly TEMPLATE_PATH_FEATURE_POLICY="critical-fixes-only"
 
 # Phase control
 declare -a SKIP_PHASES=()
@@ -786,6 +798,16 @@ phase_dependency_satisfied() {
         fi
     fi
 
+    # Phase 8 depends on phases 6+7. If finalization completed, treat missing
+    # phase-06/07 markers as stale state and backfill them.
+    if [[ "$phase_num" == "6" || "$phase_num" == "7" ]]; then
+        if is_step_complete "phase-08" || is_step_complete "finalization_and_report"; then
+            print_warning "State backfill: marking ${phase_step} complete based on phase-08 completion."
+            mark_step_complete "$phase_step"
+            return 0
+        fi
+    fi
+
     return 1
 }
 
@@ -810,6 +832,7 @@ load_libraries() {
         "backup.sh"
         "secrets.sh"
         "gpu-detection.sh"
+        "hardware-detect.sh"
         "ai-optimizer.sh"
         "python.sh"
         "nixos.sh"
@@ -940,6 +963,9 @@ BASIC OPTIONS:
         --enable-zswap          Force-enable zswap-backed hibernation setup (persists)
         --disable-zswap         Force-disable zswap-backed hibernation setup (persists)
         --zswap-auto            Return to automatic zswap detection (clears override)
+        --disable-early-kms     Disable initrd early-KMS module preloading (safety fallback)
+        --early-kms-auto        Enable guarded automatic early-KMS module preloading policy
+        --force-early-kms       Force initrd early-KMS module preloading (advanced/debug)
         --skip-switch           Skip automatic nixos/home-manager switch steps
         --skip-system-switch    Skip automatic nixos-rebuild switch
         --skip-home-switch      Skip automatic home-manager switch
@@ -948,6 +974,12 @@ BASIC OPTIONS:
         --force-hf-download     Force re-download of Hugging Face TGI models before the switch
         --update-flake-inputs   Run 'nix flake update' before activation (opt-in)
         --flake-only            Skip nix-channel updates (flake handles package resolution)
+        --flake-first           Use direct flake-first deployment path (default)
+        --legacy-phases         Use legacy 9-phase pipeline (maintenance mode, critical fixes only)
+        --flake-first-profile P Select profile for flake-first mode (ai-dev|gaming|minimal)
+        --flake-first-target T  Override nixosConfigurations target in flake-first mode
+        --flake-first-deploy-mode M
+                                Deploy mode for flake-first path (switch|boot|build)
         --restore-flake-lock    Re-seed flake.lock from the bundled baseline
         --with-ai-prep          Run the optional AI-Optimizer preparation phase after Phase 8
         --with-ai-model         Force enable Hybrid Learning Stack deployment (default: disabled)
@@ -1011,6 +1043,9 @@ EXAMPLES:
 
     # Dry run to preview changes
     ./nixos-quick-deploy.sh --dry-run
+
+    # Flake-first with explicit deploy mode (no reboot unless mode=boot)
+    ./nixos-quick-deploy.sh --flake-first --flake-first-profile ai-dev --flake-first-deploy-mode switch
 
 SAFE RESTART POINTS:
     Phases 1, 3, and 8 are safe restart points. Other phases may require
@@ -1136,6 +1171,18 @@ parse_arguments() {
                 ZSWAP_CONFIGURATION_OVERRIDE_REQUEST="auto"
                 shift
                 ;;
+            --disable-early-kms)
+                EARLY_KMS_POLICY_OVERRIDE_REQUEST="off"
+                shift
+                ;;
+            --early-kms-auto)
+                EARLY_KMS_POLICY_OVERRIDE_REQUEST="auto"
+                shift
+                ;;
+            --force-early-kms)
+                EARLY_KMS_POLICY_OVERRIDE_REQUEST="force"
+                shift
+                ;;
             --skip-phase)
                 if [[ -z "${2:-}" ]] || [[ "$2" =~ ^- ]]; then
                     echo "ERROR: --skip-phase requires a phase number" >&2
@@ -1208,6 +1255,48 @@ parse_arguments() {
             --flake-only)
                 FLAKE_ONLY_MODE=true
                 shift
+                ;;
+            --flake-first)
+                FLAKE_FIRST_MODE=true
+                LEGACY_PHASES_MODE=false
+                shift
+                ;;
+            --legacy-phases)
+                FLAKE_FIRST_MODE=false
+                LEGACY_PHASES_MODE=true
+                shift
+                ;;
+            --flake-first-profile)
+                if [[ -z "${2:-}" ]] || [[ "$2" =~ ^- ]]; then
+                    echo "ERROR: --flake-first-profile requires ai-dev|gaming|minimal" >&2
+                    exit 1
+                fi
+                FLAKE_FIRST_PROFILE="$2"
+                shift 2
+                ;;
+            --flake-first-target)
+                if [[ -z "${2:-}" ]] || [[ "$2" =~ ^- ]]; then
+                    echo "ERROR: --flake-first-target requires a target name" >&2
+                    exit 1
+                fi
+                FLAKE_FIRST_TARGET="$2"
+                shift 2
+                ;;
+            --flake-first-deploy-mode)
+                if [[ -z "${2:-}" ]] || [[ "$2" =~ ^- ]]; then
+                    echo "ERROR: --flake-first-deploy-mode requires switch|boot|build" >&2
+                    exit 1
+                fi
+                case "${2,,}" in
+                    switch|boot|build)
+                        FLAKE_FIRST_DEPLOY_MODE="${2,,}"
+                        ;;
+                    *)
+                        echo "ERROR: Invalid --flake-first-deploy-mode '$2' (expected switch|boot|build)" >&2
+                        exit 1
+                        ;;
+                esac
+                shift 2
                 ;;
             --restore-flake-lock)
                 RESTORE_KNOWN_GOOD_FLAKE_LOCK=true
@@ -2601,7 +2690,7 @@ setup_environment() {
     load_libraries
     load_configuration
     synchronize_primary_user_path
-    if ! validate_config_settings; then
+    if ! validate_config; then
         exit "${ERR_CONFIG_INVALID:-30}"
     fi
 
@@ -2622,6 +2711,26 @@ setup_environment() {
                         ;;
                     auto)
                         print_info "Zswap override cleared; automatic detection restored."
+                        ;;
+                esac
+                ;;
+        esac
+    fi
+
+    if [[ -n "$EARLY_KMS_POLICY_OVERRIDE_REQUEST" ]]; then
+        case "$EARLY_KMS_POLICY_OVERRIDE_REQUEST" in
+            off|auto|force)
+                EARLY_KMS_POLICY="$EARLY_KMS_POLICY_OVERRIDE_REQUEST"
+                export EARLY_KMS_POLICY
+                case "$EARLY_KMS_POLICY" in
+                    off)
+                        print_warning "Early KMS module preloading disabled for this run (EARLY_KMS_POLICY=off)."
+                        ;;
+                    auto)
+                        print_info "Early KMS module preloading set to automatic mode."
+                        ;;
+                    force)
+                        print_warning "Early KMS module preloading forced for this run (EARLY_KMS_POLICY=force)."
                         ;;
                 esac
                 ;;
@@ -2751,9 +2860,145 @@ setup_environment() {
     fi
 }
 
+# run_flake_first_deployment: Execute a direct declarative deployment path.
+# This bypasses the 9-phase generator pipeline and applies the root flake.
+run_flake_first_deployment() {
+    print_section "Flake-First Deployment Mode"
+
+    local profile="${FLAKE_FIRST_PROFILE:-ai-dev}"
+    case "$profile" in
+        ai-dev|gaming|minimal) ;;
+        *)
+            print_error "Invalid --flake-first-profile '$profile' (expected ai-dev|gaming|minimal)"
+            return 1
+            ;;
+    esac
+
+    local deploy_mode="${FLAKE_FIRST_DEPLOY_MODE:-switch}"
+    case "$deploy_mode" in
+        switch|boot|build) ;;
+        *)
+            print_error "Invalid flake deploy mode '${deploy_mode}' (expected switch|boot|build)"
+            return 1
+            ;;
+    esac
+
+    local detected_host
+    detected_host=$(hostname -s 2>/dev/null || hostname)
+    detected_host=$(printf '%s' "$detected_host" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')
+    if [[ -z "$detected_host" ]]; then
+        detected_host="nixos"
+    fi
+
+    local flake_ref="path:${SCRIPT_DIR}"
+    local deploy_clean_script="${SCRIPT_DIR}/scripts/deploy-clean.sh"
+    local nixos_target="${FLAKE_FIRST_TARGET:-${detected_host}-${profile}}"
+
+    if [[ ! -x "$deploy_clean_script" ]]; then
+        print_error "Clean deploy script missing or not executable: $deploy_clean_script"
+        return 1
+    fi
+
+    if ! command -v nix >/dev/null 2>&1; then
+        print_error "nix command is required for --flake-first mode"
+        return 1
+    fi
+
+    local nix_cache_root="${XDG_CACHE_HOME:-$HOME/.cache}"
+    local -a nix_env=(env XDG_CACHE_HOME="$nix_cache_root" NIX_CONFIG="experimental-features = nix-command flakes")
+
+    if [[ "${PROMPT_BEFORE_SYSTEM_SWITCH,,}" == "true" ]]; then
+        print_info "Select flake-first deploy mode:"
+        echo "  1) switch (apply now, no reboot)"
+        echo "  2) boot   (stage next generation, reboot required)"
+        echo "  3) build  (dry-build only)"
+        read -r -p "Choose mode [1/2/3] (default: ${deploy_mode}): " mode_choice
+        case "${mode_choice,,}" in
+            2|b|boot) deploy_mode="boot" ;;
+            3|d|dry|build) deploy_mode="build" ;;
+            ""|1|s|switch) deploy_mode="switch" ;;
+            *)
+                print_warning "Unknown selection '${mode_choice}', keeping mode '${deploy_mode}'."
+                ;;
+        esac
+    fi
+
+    if [[ "${PROMPT_BEFORE_SYSTEM_SWITCH,,}" == "true" && "${deploy_mode}" == "switch" ]]; then
+        if ! confirm "Apply system configuration now via flake-first switch?" "y"; then
+            AUTO_APPLY_SYSTEM_CONFIGURATION=false
+        fi
+    fi
+
+    if [[ "${PROMPT_BEFORE_HOME_SWITCH,,}" == "true" ]]; then
+        if ! confirm "Apply Home Manager configuration now via flake-first switch/build?" "y"; then
+            AUTO_APPLY_HOME_CONFIGURATION=false
+        fi
+    fi
+
+    local -a deploy_args=(
+        --host "$detected_host"
+        --profile "$profile"
+        --flake-ref "$flake_ref"
+    )
+
+    if [[ -n "${FLAKE_FIRST_TARGET:-}" ]]; then
+        deploy_args+=(--nixos-target "$FLAKE_FIRST_TARGET")
+    fi
+
+    if [[ "${AUTO_UPDATE_FLAKE_INPUTS:-false}" == "true" ]]; then
+        deploy_args+=(--update-lock)
+    fi
+
+    if [[ "${SKIP_HEALTH_CHECK:-false}" == "true" ]]; then
+        deploy_args+=(--skip-health-check)
+    fi
+
+    if [[ "${AUTO_APPLY_SYSTEM_CONFIGURATION,,}" != "true" ]]; then
+        deploy_args+=(--skip-system-switch)
+    fi
+
+    if [[ "${AUTO_APPLY_HOME_CONFIGURATION,,}" != "true" ]]; then
+        deploy_args+=(--skip-home-switch)
+    fi
+
+    case "$deploy_mode" in
+        boot) deploy_args+=(--boot) ;;
+        build) deploy_args+=(--build-only) ;;
+    esac
+
+    if [[ "$DRY_RUN" == true ]]; then
+        print_info "[DRY RUN] Running flake check (no build): nix flake check --no-build ${flake_ref}"
+        if ! "${nix_env[@]}" nix flake check --no-build "$flake_ref"; then
+            print_error "Dry-run flake check failed for ${flake_ref}"
+            return 1
+        fi
+        print_success "Dry-run flake check passed"
+        print_info "[DRY RUN] Would run: ${deploy_clean_script} ${deploy_args[*]}"
+        return 0
+    fi
+
+    print_info "Using flake target: ${nixos_target} (mode=${deploy_mode})"
+    print_info "Executing declarative deploy via scripts/deploy-clean.sh"
+    if ! "$deploy_clean_script" "${deploy_args[@]}"; then
+        print_error "Flake-first deploy-clean execution failed"
+        return 1
+    fi
+
+    if declare -F mark_step_complete >/dev/null 2>&1; then
+        mark_step_complete "flake-first-switch" || true
+    fi
+
+    print_success "Flake-first deployment path completed"
+    return 0
+}
+
 # run_deployment_phases: Execute the 9-phase deployment workflow plus optional
 # AI-Optimizer and AI Model phases.
 run_deployment_phases() {
+    if [[ "${LEGACY_PHASES_MODE:-false}" == "true" ]]; then
+        print_warning "Legacy phase pipeline enabled (--legacy-phases). This path is maintenance mode; critical fixes only."
+    fi
+
     # Print deployment header
     print_header
 
@@ -2997,6 +3242,13 @@ main() {
 
     # Phase 1: Setup environment, acquire lock, preflight checks
     setup_environment
+
+    if [[ "$FLAKE_FIRST_MODE" == true ]]; then
+        if run_flake_first_deployment; then
+            exit 0
+        fi
+        exit 1
+    fi
 
     # Phase 2: Execute deployment phases (1-9 + optional AI phases)
     run_deployment_phases
