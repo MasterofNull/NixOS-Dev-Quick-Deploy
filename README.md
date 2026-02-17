@@ -4,6 +4,35 @@
 
 ---
 
+## Canonical Deployment Path (Clean)
+
+Use the clean flake-first entrypoint:
+
+```bash
+./scripts/deploy-clean.sh
+```
+
+For update/upgrade runs:
+
+```bash
+./scripts/deploy-clean.sh --update-lock
+```
+
+This path is the canonical workflow. Legacy phase/template flow remains migration debt.
+See:
+- `docs/CLEAN-SETUP.md`
+- `docs/REPOSITORY-SCOPE-CONTRACT.md`
+- `docs/AQD-CLI-USAGE.md`
+- `docs/SKILL-BACKUP-POLICY.md`
+- `docs/SKILL-MINIMUM-STANDARD.md`
+- `docs/CONFIGURATION-REFERENCE.md`
+- `docs/AI-STACK-DATA-FLOWS.md`
+- `docs/AI-STACK-TROUBLESHOOTING-GUIDE.md`
+- `docs/DEVELOPER-ONBOARDING.md`
+- `docs/SECURITY-BEST-PRACTICES.md`
+
+---
+
 ## 🚀 Quick Deploy (One Command)
 
 ```bash
@@ -20,6 +49,30 @@ chmod +x nixos-quick-deploy.sh
 ```
 
 **That's it!** Answer a few simple questions (including choosing between binary caches, remote builders/private Cachix, or local source builds), wait 20-120 minutes depending on your choice, reboot, and you're done.
+
+## 🧪 Quick-Deploy Script Modes
+
+`nixos-quick-deploy.sh` now uses the flake-first declarative path by default:
+
+```bash
+./nixos-quick-deploy.sh --flake-first-profile ai-dev
+```
+
+Optional controls:
+
+```bash
+# Dry-run output only
+./nixos-quick-deploy.sh --dry-run --skip-switch
+
+# Explicit output target
+./nixos-quick-deploy.sh --flake-first-target hyperd-gaming
+
+# Legacy 9-phase pipeline (maintenance mode)
+./nixos-quick-deploy.sh --legacy-phases
+```
+
+Current state: use `scripts/deploy-clean.sh` for standard operations.
+Legacy phase/template mode is deprecated with planned removal on **July 1, 2026**.
 
 ## ✨ NEW in v6.0.0: Fully Integrated AI Stack
 

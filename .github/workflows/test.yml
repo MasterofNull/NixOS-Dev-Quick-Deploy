@@ -7,6 +7,121 @@ on:
     branches: [ main ]
 
 jobs:
+  skill-governance-lint:
+    name: Skill Governance Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run skill source-of-truth lint
+        run: |
+          chmod +x scripts/check-skill-source-of-truth.sh
+          ./scripts/check-skill-source-of-truth.sh
+
+      - name: Run skill external dependency lint
+        run: |
+          chmod +x scripts/lint-skill-external-deps.sh
+          ./scripts/lint-skill-external-deps.sh
+
+      - name: Run skill reference integrity lint
+        run: |
+          chmod +x scripts/validate-skill-references.sh
+          ./scripts/validate-skill-references.sh
+
+      - name: Run skill template lint
+        run: |
+          chmod +x scripts/lint-skill-template.sh
+          ./scripts/lint-skill-template.sh
+
+  template-placeholder-lint:
+    name: Template Placeholder Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Lint placeholder proliferation
+        run: |
+          chmod +x scripts/lint-template-placeholders.sh
+          ./scripts/lint-template-placeholders.sh
+
+  flake-validation:
+    name: Flake Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v30
+        with:
+          nix_path: nixpkgs=channel:nixos-25.11
+
+      - name: Flake show/check
+        run: |
+          nix flake show --no-write-lock-file path:.
+          nix flake check --no-build path:.
+
+      - name: Profile eval smoke tests
+        run: |
+          set -euo pipefail
+          mapfile -t hosts < <(find nix/hosts -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+          profiles=(ai-dev gaming minimal)
+          for host in "${hosts[@]}"; do
+            for profile in "${profiles[@]}"; do
+              target="${host}-${profile}"
+              value=$(nix eval --raw "path:.#nixosConfigurations.${target}.config.mySystem.profile")
+              if [[ "$value" != "$profile" ]]; then
+                echo "Profile mismatch for ${target}: expected ${profile}, got ${value}" >&2
+                exit 1
+              fi
+            done
+          done
+
+      - name: Package count drift check
+        run: |
+          chmod +x scripts/generate-package-counts.sh scripts/check-package-count-drift.sh
+          ./scripts/check-package-count-drift.sh --flake-ref path:.
+
+      - name: Flake input validation and reporting
+        run: |
+          chmod +x scripts/validate-flake-inputs.sh
+          ./scripts/validate-flake-inputs.sh \
+            --flake-ref path:. \
+            --report-json reports/flake-validation-report.json \
+            --report-md reports/flake-validation-report.md
+
+      - name: Validate non-Nix tool management policy
+        run: |
+          chmod +x scripts/validate-tool-management-policy.sh
+          ./scripts/validate-tool-management-policy.sh
+
+      - name: Upload flake validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flake-validation-report
+          path: reports/flake-validation-report.*
+
+  nix-static-analysis:
+    name: Nix Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v30
+        with:
+          nix_path: nixpkgs=channel:nixos-25.11
+
+      - name: Run statix/deadnix/alejandra
+        run: |
+          chmod +x scripts/nix-static-analysis.sh
+          nix shell nixpkgs#statix nixpkgs#deadnix nixpkgs#alejandra --command \
+            ./scripts/nix-static-analysis.sh --non-blocking
+
   shellcheck:
     name: Shellcheck & Linting
     runs-on: ubuntu-latest
@@ -247,6 +362,11 @@ jobs:
             echo "Adjusted executable bit for $missing_exec phase scripts"
           fi
 
+      - name: Validate centralized config settings
+        run: |
+          chmod +x scripts/validate-config-settings.sh
+          ./scripts/validate-config-settings.sh
+
       - name: Run command smoke tests
         run: |
           export CI=true
@@ -262,6 +382,18 @@ jobs:
           echo ""
           echo "--- Phase Overview ---"
           cat /tmp/ci-phases.txt
+
+          echo ""
+          echo "Running AQD CLI smoke checks"
+          ./scripts/aqd --version > /tmp/ci-aqd-version.txt
+          ./scripts/aqd workflows list > /tmp/ci-aqd-workflows.txt
+          ./scripts/aqd skill validate > /tmp/ci-aqd-skill-validate.txt
+
+          echo "--- AQD Version ---"
+          cat /tmp/ci-aqd-version.txt
+          echo ""
+          echo "--- AQD Workflows ---"
+          cat /tmp/ci-aqd-workflows.txt
 
   security:
     name: Security Scanning

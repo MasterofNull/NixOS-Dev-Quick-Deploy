@@ -3,6 +3,14 @@
 **Version:** 1.0.0
 **Goal:** Unified, AI-agent/model-agnostic tooling accessible to all agents
 
+> Status: historical planning document.
+>
+> This file contains legacy `.claude/` references kept for audit context.
+> Active policy and implementation are defined in:
+> - `docs/REPOSITORY-SCOPE-CONTRACT.md`
+> - `docs/SKILL-BACKUP-POLICY.md`
+> - `docs/AQD-CLI-USAGE.md`
+
 ---
 
 ## 🎯 Current State Analysis

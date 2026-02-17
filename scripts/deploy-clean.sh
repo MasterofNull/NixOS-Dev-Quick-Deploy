@@ -1,0 +1,622 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+HOST_NAME="${HOSTNAME_OVERRIDE:-$(hostname -s 2>/dev/null || hostname)}"
+PRIMARY_USER="${PRIMARY_USER_OVERRIDE:-${USER:-$(id -un)}}"
+PROFILE="${PROFILE_OVERRIDE:-ai-dev}"
+FLAKE_REF="path:${REPO_ROOT}"
+MODE="switch" # switch|build|boot
+RUN_HEALTH_CHECK=true
+RUN_DISCOVERY=true
+UPDATE_FLAKE_LOCK=false
+RUN_PHASE0_DISKO=false
+RUN_SECUREBOOT_ENROLL=false
+RUN_FLATPAK_SYNC=true
+RECOVERY_MODE=false
+ALLOW_PREVIOUS_BOOT_FSCK_FAILURE=false
+SKIP_SYSTEM_SWITCH=false
+SKIP_HOME_SWITCH=false
+NIXOS_TARGET_OVERRIDE=""
+HM_TARGET_OVERRIDE=""
+AUTO_GUI_SWITCH_FALLBACK="${AUTO_GUI_SWITCH_FALLBACK:-true}"
+ALLOW_GUI_SWITCH="${ALLOW_GUI_SWITCH:-false}"
+
+usage() {
+  cat <<'USAGE'
+Usage: ./scripts/deploy-clean.sh [options]
+
+Flake-first deployment entrypoint for both:
+- fresh NixOS bootstrap (minimal host, missing optional tooling)
+- ongoing updates/upgrades on already-deployed systems
+
+No template rendering. No legacy phase path.
+
+Options:
+  --host NAME             Hostname for flake target (default: current host)
+  --user NAME             Home Manager user (default: current user)
+  --profile NAME          Profile: ai-dev | gaming | minimal (default: ai-dev)
+  --nixos-target NAME     Explicit nixosConfigurations target override
+  --home-target NAME      Explicit homeConfigurations target override
+  --flake-ref REF         Flake ref (default: path:<repo-root>)
+  --update-lock           Update flake.lock before build/switch
+  --boot                  Build and stage next boot generation (no live switch)
+  --recovery-mode         Force recovery-safe facts (root fsck skip + initrd emergency shell)
+  --allow-prev-fsck-fail  Continue even if previous boot had root fsck failure
+  --phase0-disko          Run optional disko pre-install partition/apply step (destructive)
+  --enroll-secureboot-keys
+                          Run optional sbctl key enrollment when secure boot is enabled
+  --build-only            Run dry-build/home build instead of switch
+  --allow-gui-switch      Allow live switch from graphical session
+  --no-gui-fallback       Disable auto-fallback to --boot in graphical session
+  --skip-system-switch    Skip system apply/build action
+  --skip-home-switch      Skip Home Manager apply/build action
+  --skip-health-check     Skip post-switch health check script
+  --skip-discovery        Skip hardware facts discovery
+  --skip-flatpak-sync     Skip declarative Flatpak profile sync
+  -h, --help              Show this help
+
+Environment overrides:
+  ALLOW_GUI_SWITCH=true     Allow live switch from graphical session
+  AUTO_GUI_SWITCH_FALLBACK=false
+                            Disable auto-fallback to --boot on graphical session
+  BOOT_ESP_MIN_FREE_MB=128  Override minimum required free space on ESP
+USAGE
+}
+
+log() {
+  printf '[clean-deploy] %s\n' "$*"
+}
+
+die() {
+  printf '[clean-deploy] ERROR: %s\n' "$*" >&2
+  exit 1
+}
+
+require_command() {
+  local cmd="$1"
+  command -v "$cmd" >/dev/null 2>&1 || die "'${cmd}' is required"
+}
+
+resolve_local_flake_path() {
+  local ref="${1:-}"
+  case "$ref" in
+    path:*) printf '%s\n' "${ref#path:}" ;;
+    /*) printf '%s\n' "$ref" ;;
+    .|./*|../*)
+      (cd "$ref" >/dev/null 2>&1 && pwd) || true
+      ;;
+    *) ;;
+  esac
+}
+
+ensure_flake_visible_to_nix() {
+  local ref="${1:-}"
+  local flake_path
+  flake_path="$(resolve_local_flake_path "$ref")"
+  [[ -n "$flake_path" ]] || return 0
+  [[ -d "$flake_path" ]] || return 0
+
+  if ! command -v git >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if ! git -C "$flake_path" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local file staged=false
+  for file in flake.nix flake.lock; do
+    if [[ -f "${flake_path}/${file}" ]] && ! git -C "$flake_path" ls-files --error-unmatch "$file" >/dev/null 2>&1; then
+      log "Auto-staging '${file}' so Nix can evaluate local flake in git worktree"
+      git -C "$flake_path" add "$file"
+      staged=true
+    fi
+  done
+
+  if [[ "$staged" == true ]]; then
+    log "Local flake files were staged for evaluation (commit when ready)."
+  fi
+}
+
+enable_flakes_runtime() {
+  local feature_line="experimental-features = nix-command flakes"
+  if [[ -n "${NIX_CONFIG:-}" ]]; then
+    export NIX_CONFIG="${NIX_CONFIG}"$'\n'"${feature_line}"
+  else
+    export NIX_CONFIG="${feature_line}"
+  fi
+}
+
+nix_eval_raw_safe() {
+  local expr="$1"
+  local timeout_secs="${NIX_EVAL_TIMEOUT_SECONDS:-45}"
+
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "${timeout_secs}" nix eval --raw "${expr}"
+  else
+    nix eval --raw "${expr}"
+  fi
+}
+
+update_flake_lock() {
+  local ref="$1"
+  local -a targets=()
+  local target=""
+
+  if [[ "$ref" == path:* ]]; then
+    targets+=("$ref" "${ref#path:}")
+  else
+    targets+=("$ref")
+  fi
+
+  for target in "${targets[@]}"; do
+    [[ -n "$target" ]] || continue
+
+    log "Updating flake lock: ${target}"
+    if nix flake update --flake "$target"; then
+      return 0
+    fi
+
+    log "Flake lock update failed for '${target}', retrying with ephemeral git toolchain"
+    if nix shell nixpkgs#git --command nix flake update --flake "$target"; then
+      return 0
+    fi
+  done
+
+  die "Unable to update flake lock for '${ref}'."
+}
+
+run_privileged() {
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    "$@"
+  else
+    require_command sudo
+    sudo "$@"
+  fi
+}
+
+extract_host_fs_field() {
+  local host_hw_file="$1"
+  local field="$2"
+  sed -n '/fileSystems\."\/"[[:space:]]*=/,/};/ s/.*'"${field}"'[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "${host_hw_file}" | head -n1
+}
+
+assert_previous_boot_fsck_clean() {
+  [[ "${ALLOW_PREVIOUS_BOOT_FSCK_FAILURE}" == true ]] && return 0
+  command -v journalctl >/dev/null 2>&1 || return 0
+
+  local previous_log fsck_unit_log
+  previous_log="$(journalctl -b -1 --no-pager 2>/dev/null || true)"
+  fsck_unit_log="$(journalctl -b -1 -u systemd-fsck-root.service --no-pager 2>/dev/null || true)"
+
+  if [[ -z "${previous_log}" && "${EUID:-$(id -u)}" -ne 0 ]] && command -v sudo >/dev/null 2>&1; then
+    previous_log="$(sudo -n journalctl -b -1 --no-pager 2>/dev/null || true)"
+    fsck_unit_log="$(sudo -n journalctl -b -1 -u systemd-fsck-root.service --no-pager 2>/dev/null || true)"
+  fi
+
+  [[ -n "${previous_log}${fsck_unit_log}" ]] || return 0
+
+  if echo "${previous_log}${fsck_unit_log}" | grep -Eiq \
+    "Failed to start File System Check on|Dependency failed for /sysroot|You are in emergency mode|systemd-fsck.*failed|systemd-fsck.*status=[14]|status=1/FAILURE|status=4|has unrepaired errors, please fix them manually|mounting fs with errors, running e2fsck is recommended|error count since last fsck"; then
+    if [[ "${MODE}" == "switch" ]]; then
+      die "Previous boot shows root filesystem integrity warnings/failures. Refusing live switch. Run offline fsck first (e2fsck -f /dev/disk/by-uuid/<root-uuid>). Use '--recovery-mode --boot' only as temporary fallback."
+    fi
+    die "Previous boot recorded root filesystem integrity warnings/failures. Run offline fsck first (for ext4: e2fsck -f /dev/disk/by-uuid/<root-uuid>) or rerun with --allow-prev-fsck-fail to bypass."
+  fi
+}
+
+assert_host_storage_config() {
+  local host_dir="${REPO_ROOT}/nix/hosts/${HOST_NAME}"
+  local facts_file="${host_dir}/facts.nix"
+  local host_hw_file="${host_dir}/hardware-configuration.nix"
+  local disk_layout="none"
+
+  if [[ -f "${facts_file}" ]]; then
+    disk_layout="$(sed -n 's/^[[:space:]]*layout[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "${facts_file}" | head -n1)"
+    [[ -n "${disk_layout}" ]] || disk_layout="none"
+  fi
+
+  if [[ "${disk_layout}" == "none" && ! -f "${host_hw_file}" ]]; then
+    die "Host '${HOST_NAME}' uses disk layout 'none' but '${host_hw_file}' is missing. Re-run discovery with HOST_HARDWARE_CONFIG_SOURCE=<path> if your hardware config lives outside /etc/nixos, or set --phase0-disko with a disko layout."
+  fi
+
+  if [[ "${disk_layout}" == "none" ]]; then
+    local host_root_device host_root_fstype
+    host_root_device="$(extract_host_fs_field "${host_hw_file}" "device")"
+    host_root_fstype="$(extract_host_fs_field "${host_hw_file}" "fsType")"
+    [[ -n "${host_root_device}" ]] || die "Host hardware config is missing fileSystems.\"/\".device in '${host_hw_file}'."
+
+    if [[ "${host_root_device}" == /dev/disk/by-uuid/* && ! -e "${host_root_device}" ]]; then
+      die "Host root device '${host_root_device}' from '${host_hw_file}' does not exist on this machine. Regenerate/copy hardware-configuration.nix from the running system."
+    fi
+
+    local runtime_root_source runtime_root_uuid runtime_root_uuid_path runtime_root_fstype
+    runtime_root_source="$(findmnt -no SOURCE / 2>/dev/null || true)"
+    runtime_root_uuid=""
+    runtime_root_uuid_path=""
+    if [[ -n "${runtime_root_source}" ]] && command -v blkid >/dev/null 2>&1; then
+      local runtime_root_real
+      runtime_root_real="$(readlink -f "${runtime_root_source}" 2>/dev/null || echo "${runtime_root_source}")"
+      if [[ -b "${runtime_root_real}" ]]; then
+        runtime_root_uuid="$(blkid -s UUID -o value "${runtime_root_real}" 2>/dev/null || true)"
+        [[ -n "${runtime_root_uuid}" ]] && runtime_root_uuid_path="/dev/disk/by-uuid/${runtime_root_uuid}"
+      fi
+    fi
+    runtime_root_fstype="$(findmnt -no FSTYPE / 2>/dev/null || true)"
+
+    if [[ -n "${runtime_root_source}" && "${host_root_device}" != "${runtime_root_source}" && "${host_root_device}" != "${runtime_root_uuid_path}" ]]; then
+      die "Host hardware root device '${host_root_device}' does not match running root '${runtime_root_source}'. Refusing deploy to avoid unbootable generation."
+    fi
+
+    if [[ -n "${host_root_fstype}" && -n "${runtime_root_fstype}" && "${host_root_fstype}" != "${runtime_root_fstype}" ]]; then
+      die "Host hardware root fsType '${host_root_fstype}' does not match running root fsType '${runtime_root_fstype}'. Refusing deploy."
+    fi
+  fi
+}
+
+assert_bootloader_preflight() {
+  [[ "${RUN_PHASE0_DISKO}" == true ]] && return 0
+
+  local systemd_boot_enabled grub_enabled
+  systemd_boot_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.boot.loader.systemd-boot.enable" 2>/dev/null || echo false)"
+  grub_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.boot.loader.grub.enable" 2>/dev/null || echo false)"
+
+  if [[ "${systemd_boot_enabled}" != "true" && "${grub_enabled}" != "true" ]]; then
+    die "Target '${NIXOS_TARGET}' does not enable a supported bootloader (systemd-boot/grub). Refusing deploy."
+  fi
+
+  [[ "${systemd_boot_enabled}" == "true" ]] || return 0
+
+  local bootctl_cmd=""
+  if command -v bootctl >/dev/null 2>&1; then
+    bootctl_cmd="$(command -v bootctl)"
+  elif [[ -x /run/current-system/sw/bin/bootctl ]]; then
+    bootctl_cmd="/run/current-system/sw/bin/bootctl"
+  fi
+
+  [[ -n "${bootctl_cmd}" ]] || die "systemd-boot target detected but 'bootctl' is not available on PATH."
+
+  if ! "${bootctl_cmd}" status >/dev/null 2>&1; then
+    die "bootctl status failed on this host. Refusing deploy to avoid staging an unbootable generation."
+  fi
+
+  local esp_mount esp_min_free_mb esp_free_mb
+  esp_mount="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.boot.loader.efi.efiSysMountPoint" 2>/dev/null || echo /boot)"
+  [[ -n "${esp_mount}" ]] || esp_mount="/boot"
+  esp_min_free_mb="${BOOT_ESP_MIN_FREE_MB:-$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.mySystem.deployment.bootloaderEspMinFreeMb" 2>/dev/null || echo 128)}"
+  [[ "${esp_min_free_mb}" =~ ^[0-9]+$ ]] || esp_min_free_mb=128
+
+  if ! findmnt "${esp_mount}" >/dev/null 2>&1; then
+    die "Configured EFI mount '${esp_mount}' is not mounted on this host."
+  fi
+
+  esp_free_mb="$(df -Pm "${esp_mount}" 2>/dev/null | awk 'NR==2 {print $4}')"
+  [[ "${esp_free_mb}" =~ ^[0-9]+$ ]] || die "Unable to determine free space for EFI mount '${esp_mount}'."
+
+  if (( esp_free_mb < esp_min_free_mb )); then
+    die "EFI partition low on space: ${esp_free_mb}MB free on '${esp_mount}' (minimum ${esp_min_free_mb}MB required)."
+  fi
+}
+
+assert_target_boot_mode() {
+  [[ "${ALLOW_HEADLESS_TARGET:-false}" == "true" ]] && return 0
+  command -v systemctl >/dev/null 2>&1 || return 0
+
+  if ! systemctl is-active --quiet display-manager 2>/dev/null; then
+    return 0
+  fi
+
+  local target_default_unit
+  if ! target_default_unit="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.systemd.defaultUnit" 2>/dev/null)"; then
+    if [[ "${MODE}" == "switch" && "${AUTO_GUI_SWITCH_FALLBACK}" == true ]]; then
+      MODE="boot"
+      log "Unable to evaluate target default unit for '${NIXOS_TARGET}' in graphical context. Auto-fallback: mode set to 'boot'."
+      return 0
+    fi
+    die "Unable to evaluate target default unit for '${NIXOS_TARGET}'. Refusing deploy on a graphical host."
+  fi
+
+  if [[ -z "${target_default_unit}" ]]; then
+    if [[ "${MODE}" == "switch" && "${AUTO_GUI_SWITCH_FALLBACK}" == true ]]; then
+      MODE="boot"
+      log "Target '${NIXOS_TARGET}' default unit resolved empty in graphical context. Auto-fallback: mode set to 'boot'."
+      return 0
+    fi
+    die "Target '${NIXOS_TARGET}' default unit resolved empty. Refusing deploy on a graphical host."
+  fi
+
+  if [[ "${target_default_unit}" != "graphical.target" ]]; then
+    die "Target '${NIXOS_TARGET}' default unit is '${target_default_unit}' while this host is currently graphical. Refusing deploy to avoid headless login regression. Set ALLOW_HEADLESS_TARGET=true to override."
+  fi
+}
+
+assert_safe_switch_context() {
+  [[ "${MODE}" == "switch" ]] || return 0
+  [[ "${ALLOW_GUI_SWITCH}" == "true" ]] && return 0
+
+  if [[ -n "${DISPLAY:-}" || -n "${WAYLAND_DISPLAY:-}" ]]; then
+    if [[ "${AUTO_GUI_SWITCH_FALLBACK}" == true ]]; then
+      MODE="boot"
+      log "Graphical session detected. Auto-fallback: switching deploy mode to 'boot' to avoid live-switch black screen. Reboot required to apply."
+      return 0
+    fi
+    die "Refusing live switch from a graphical session. Re-run from a TTY (Ctrl+Alt+F3) or use --boot. Set ALLOW_GUI_SWITCH=true to override."
+  fi
+}
+
+home_build() {
+  local hm_target="$1"
+  if command -v home-manager >/dev/null 2>&1; then
+    home-manager build --flake "${FLAKE_REF}#${hm_target}"
+    return
+  fi
+
+  nix build "${FLAKE_REF}#homeConfigurations.${hm_target}.activationPackage"
+}
+
+home_switch() {
+  local hm_target="$1"
+  if command -v home-manager >/dev/null 2>&1; then
+    home-manager switch --flake "${FLAKE_REF}#${hm_target}"
+    return
+  fi
+
+  local out_link
+  out_link="/tmp/home-activation-${hm_target//[^a-zA-Z0-9_.-]/_}-$$"
+  nix build --out-link "$out_link" "${FLAKE_REF}#homeConfigurations.${hm_target}.activationPackage"
+  "${out_link}/activate"
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --host)
+      HOST_NAME="${2:?missing value for --host}"
+      shift 2
+      ;;
+    --user)
+      PRIMARY_USER="${2:?missing value for --user}"
+      shift 2
+      ;;
+    --profile)
+      PROFILE="${2:?missing value for --profile}"
+      shift 2
+      ;;
+    --nixos-target)
+      NIXOS_TARGET_OVERRIDE="${2:?missing value for --nixos-target}"
+      shift 2
+      ;;
+    --home-target)
+      HM_TARGET_OVERRIDE="${2:?missing value for --home-target}"
+      shift 2
+      ;;
+    --flake-ref)
+      FLAKE_REF="${2:?missing value for --flake-ref}"
+      shift 2
+      ;;
+    --update-lock)
+      UPDATE_FLAKE_LOCK=true
+      shift
+      ;;
+    --boot)
+      MODE="boot"
+      shift
+      ;;
+    --recovery-mode)
+      RECOVERY_MODE=true
+      shift
+      ;;
+    --allow-prev-fsck-fail)
+      ALLOW_PREVIOUS_BOOT_FSCK_FAILURE=true
+      shift
+      ;;
+    --phase0-disko)
+      RUN_PHASE0_DISKO=true
+      shift
+      ;;
+    --enroll-secureboot-keys)
+      RUN_SECUREBOOT_ENROLL=true
+      shift
+      ;;
+    --build-only)
+      MODE="build"
+      shift
+      ;;
+    --allow-gui-switch)
+      ALLOW_GUI_SWITCH=true
+      shift
+      ;;
+    --no-gui-fallback)
+      AUTO_GUI_SWITCH_FALLBACK=false
+      shift
+      ;;
+    --skip-system-switch)
+      SKIP_SYSTEM_SWITCH=true
+      shift
+      ;;
+    --skip-home-switch)
+      SKIP_HOME_SWITCH=true
+      shift
+      ;;
+    --skip-health-check)
+      RUN_HEALTH_CHECK=false
+      shift
+      ;;
+    --skip-discovery)
+      RUN_DISCOVERY=false
+      shift
+      ;;
+    --skip-flatpak-sync)
+      RUN_FLATPAK_SYNC=false
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      die "Unknown argument: $1"
+      ;;
+  esac
+done
+
+case "$PROFILE" in
+  ai-dev|gaming|minimal) ;;
+  *) die "Unsupported profile '${PROFILE}'. Expected ai-dev|gaming|minimal." ;;
+esac
+
+if [[ "${RECOVERY_MODE}" == true ]]; then
+  ALLOW_PREVIOUS_BOOT_FSCK_FAILURE=true
+  if [[ "$MODE" == "switch" ]]; then
+    log "Recovery mode is active with switch mode (no reboot required). If switch hangs on your hardware, rerun with --boot."
+  fi
+fi
+
+require_command nix
+require_command nixos-rebuild
+enable_flakes_runtime
+ensure_flake_visible_to_nix "${FLAKE_REF}"
+
+if [[ "$UPDATE_FLAKE_LOCK" == true ]]; then
+  update_flake_lock "${FLAKE_REF}"
+fi
+
+if [[ "$RUN_DISCOVERY" == true ]]; then
+  log "Discovering hardware facts for host '${HOST_NAME}' profile '${PROFILE}'"
+  if [[ "${RECOVERY_MODE}" == true ]]; then
+    log "Recovery mode enabled: forcing rootFsckMode=skip, initrdEmergencyAccess=true, earlyKmsPolicy=off"
+    HOSTNAME_OVERRIDE="${HOST_NAME}" \
+    PRIMARY_USER_OVERRIDE="${PRIMARY_USER}" \
+    PROFILE_OVERRIDE="${PROFILE}" \
+    ROOT_FSCK_MODE_OVERRIDE="skip" \
+    INITRD_EMERGENCY_ACCESS_OVERRIDE="true" \
+    EARLY_KMS_POLICY_OVERRIDE="off" \
+    "${REPO_ROOT}/scripts/discover-system-facts.sh"
+  else
+    HOSTNAME_OVERRIDE="${HOST_NAME}" \
+    PRIMARY_USER_OVERRIDE="${PRIMARY_USER}" \
+    PROFILE_OVERRIDE="${PROFILE}" \
+    "${REPO_ROOT}/scripts/discover-system-facts.sh"
+  fi
+fi
+
+assert_host_storage_config
+assert_previous_boot_fsck_clean
+
+NIXOS_TARGET="${NIXOS_TARGET_OVERRIDE:-${HOST_NAME}-${PROFILE}}"
+HM_TARGET="${HM_TARGET_OVERRIDE:-${PRIMARY_USER}-${HOST_NAME}}"
+
+if [[ -z "${HM_TARGET_OVERRIDE}" ]] && ! nix_eval_raw_safe "${FLAKE_REF}#homeConfigurations.${HM_TARGET}.config.home.username" >/dev/null 2>&1; then
+  HM_TARGET="${PRIMARY_USER}"
+fi
+
+log "NixOS target: ${NIXOS_TARGET}"
+log "Home target: ${HM_TARGET}"
+
+assert_bootloader_preflight
+assert_target_boot_mode
+assert_safe_switch_context
+
+if [[ "$RUN_PHASE0_DISKO" == true ]]; then
+  if [[ "${DISKO_CONFIRM:-}" != "YES" ]]; then
+    die "--phase0-disko is destructive. Re-run with DISKO_CONFIRM=YES to proceed."
+  fi
+
+  disk_layout="$(nix eval --raw "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.mySystem.disk.layout" 2>/dev/null || echo none)"
+  if [[ "$disk_layout" == "none" ]]; then
+    die "--phase0-disko requested but mySystem.disk.layout is 'none' for ${NIXOS_TARGET}."
+  fi
+
+  log "Running Phase 0 disko apply for layout '${disk_layout}' on target '${NIXOS_TARGET}'"
+  run_privileged nix run github:nix-community/disko -- --mode disko "${FLAKE_REF}#${NIXOS_TARGET}"
+  log "Phase 0 disko apply complete"
+fi
+
+if [[ "$RUN_SECUREBOOT_ENROLL" == true ]]; then
+  secureboot_enabled="$(nix eval --raw "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.mySystem.secureboot.enable" 2>/dev/null || echo false)"
+  if [[ "$secureboot_enabled" != "true" ]]; then
+    die "--enroll-secureboot-keys requested but mySystem.secureboot.enable is not true for ${NIXOS_TARGET}."
+  fi
+
+  if [[ "${SECUREBOOT_ENROLL_CONFIRM:-}" != "YES" ]]; then
+    die "--enroll-secureboot-keys requires SECUREBOOT_ENROLL_CONFIRM=YES."
+  fi
+
+  require_command sbctl
+  log "Running sbctl key enrollment"
+  run_privileged sbctl enroll-keys -m
+  log "sbctl key enrollment complete"
+fi
+
+if [[ "$MODE" == "build" ]]; then
+  log "Running dry build"
+  if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
+    run_privileged nixos-rebuild dry-build --flake "${FLAKE_REF}#${NIXOS_TARGET}"
+  else
+    log "Skipping system dry-build (--skip-system-switch)"
+  fi
+  if [[ "${SKIP_HOME_SWITCH}" == false ]]; then
+    home_build "${HM_TARGET}"
+  else
+    log "Skipping Home Manager build (--skip-home-switch)"
+  fi
+  log "Dry build complete"
+  exit 0
+fi
+
+if [[ "$MODE" == "boot" ]]; then
+  log "Staging next boot generation"
+  if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
+    run_privileged nixos-rebuild boot --flake "${FLAKE_REF}#${NIXOS_TARGET}"
+  else
+    log "Skipping system boot staging (--skip-system-switch)"
+  fi
+  if [[ "${SKIP_HOME_SWITCH}" == false ]]; then
+    home_build "${HM_TARGET}"
+  else
+    log "Skipping Home Manager build (--skip-home-switch)"
+  fi
+  log "Boot generation staged. Reboot to apply the new system."
+  exit 0
+fi
+
+if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
+  log "Switching system configuration"
+  run_privileged nixos-rebuild switch --flake "${FLAKE_REF}#${NIXOS_TARGET}"
+else
+  log "Skipping system switch (--skip-system-switch)"
+fi
+
+if [[ "${SKIP_HOME_SWITCH}" == false ]]; then
+  log "Switching Home Manager configuration"
+  home_switch "${HM_TARGET}"
+else
+  log "Skipping Home Manager switch (--skip-home-switch)"
+fi
+
+if [[ "$RUN_FLATPAK_SYNC" == true && -x "${REPO_ROOT}/scripts/sync-flatpak-profile.sh" ]]; then
+  log "Syncing Flatpak apps for profile '${PROFILE}'"
+  if "${REPO_ROOT}/scripts/sync-flatpak-profile.sh" --flake-ref "${FLAKE_REF}" --target "${NIXOS_TARGET}"; then
+    log "Flatpak profile sync complete"
+  else
+    log "Flatpak profile sync reported issues (non-critical)"
+  fi
+fi
+
+if [[ "$RUN_HEALTH_CHECK" == true && -x "${REPO_ROOT}/scripts/system-health-check.sh" ]]; then
+  log "Running post-deploy health check"
+  "${REPO_ROOT}/scripts/system-health-check.sh" --detailed
+fi
+
+if [[ -x "${REPO_ROOT}/scripts/compare-installed-vs-intended.sh" ]]; then
+  log "Running installed-vs-intended package comparison"
+  if "${REPO_ROOT}/scripts/compare-installed-vs-intended.sh" --host "${HOST_NAME}" --profile "${PROFILE}" --flake-ref "${FLAKE_REF}"; then
+    log "Installed-vs-intended comparison passed"
+  else
+    log "Installed-vs-intended comparison reported gaps (non-critical)"
+  fi
+fi
+
+log "Clean deployment complete"
