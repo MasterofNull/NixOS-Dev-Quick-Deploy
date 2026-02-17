@@ -187,6 +187,14 @@ detect_is_mobile() {
   esac
 }
 
+detect_firmware_type() {
+  if [[ -d /sys/firmware/efi ]]; then
+    echo "efi"
+  else
+    echo "bios"
+  fi
+}
+
 detect_nixos_hardware_module() {
   local product_family
   product_family="$(cat /sys/class/dmi/id/product_family 2>/dev/null || true)"
@@ -241,6 +249,7 @@ igpu_vendor="${IGPU_VENDOR_OVERRIDE:-$(detect_igpu_vendor "$gpu_vendor")}"
 storage_type="${STORAGE_TYPE_OVERRIDE:-$(detect_storage_type)}"
 system_ram_gb="${SYSTEM_RAM_GB_OVERRIDE:-$(detect_system_ram_gb)}"
 is_mobile="${IS_MOBILE_OVERRIDE:-$(detect_is_mobile)}"
+firmware_type="${FIRMWARE_TYPE_OVERRIDE:-$(detect_firmware_type)}"
 nixos_hardware_module="${NIXOS_HARDWARE_MODULE_OVERRIDE:-$(detect_nixos_hardware_module)}"
 
 profile_value="${PROFILE_OVERRIDE:-ai-dev}"
@@ -301,6 +310,11 @@ fi
 
 if ! validate_bool "${is_mobile}"; then
   echo "Unsupported isMobile value '${is_mobile}'." >&2
+  exit 1
+fi
+
+if ! validate_enum "${firmware_type}" efi bios unknown; then
+  echo "Unsupported firmwareType '${firmware_type}'." >&2
   exit 1
 fi
 
@@ -464,6 +478,7 @@ cat > "${tmp_file}" <<FACTS
       storageType = "${storage_type}";
       systemRamGb = ${system_ram_gb};
       isMobile = ${is_mobile};
+      firmwareType = "${firmware_type}";
       earlyKmsPolicy = "${early_kms_policy}";
       nixosHardwareModule = ${nixos_hardware_module_value};
     };
@@ -497,4 +512,12 @@ if [[ -f "${out_file}" ]] && cmp -s "${tmp_file}" "${out_file}"; then
 fi
 
 mv "${tmp_file}" "${out_file}"
+chmod 0644 "${out_file}" 2>/dev/null || true
+if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+  owner_user="${SUDO_USER:-${PRIMARY_USER_OVERRIDE:-}}"
+  if [[ -n "${owner_user}" && "${owner_user}" != "root" ]]; then
+    owner_group="$(id -gn "${owner_user}" 2>/dev/null || echo users)"
+    chown "${owner_user}:${owner_group}" "${out_file}" 2>/dev/null || true
+  fi
+fi
 echo "Updated: ${out_file}"
