@@ -15,6 +15,8 @@ UPDATE_FLAKE_LOCK=false
 RUN_PHASE0_DISKO=false
 RUN_SECUREBOOT_ENROLL=false
 RUN_FLATPAK_SYNC=true
+RUN_READINESS_ANALYSIS=true
+ANALYZE_ONLY=false
 RECOVERY_MODE=false
 ALLOW_PREVIOUS_BOOT_FSCK_FAILURE=false
 SKIP_SYSTEM_SWITCH=false
@@ -56,6 +58,8 @@ Options:
   --skip-health-check     Skip post-switch health check script
   --skip-discovery        Skip hardware facts discovery
   --skip-flatpak-sync     Skip declarative Flatpak profile sync
+  --skip-readiness-check  Skip bootstrap/deploy readiness analysis preflight
+  --analyze-only          Run readiness analysis and exit (no build/switch)
   -h, --help              Show this help
 
 Environment overrides:
@@ -147,6 +151,29 @@ ensure_flake_visible_to_nix() {
   if [[ "$staged" == true ]]; then
     log "Local flake files were staged for evaluation (commit when ready)."
   fi
+}
+
+run_readiness_analysis() {
+  local analyzer="${REPO_ROOT}/scripts/analyze-clean-deploy-readiness.sh"
+  [[ "${RUN_READINESS_ANALYSIS}" == true ]] || return 0
+
+  if [[ ! -x "$analyzer" ]]; then
+    log "Readiness analyzer not executable (${analyzer}); skipping readiness preflight."
+    return 0
+  fi
+
+  local -a args=(
+    --host "${HOST_NAME}"
+    --profile "${PROFILE}"
+    --flake-ref "${FLAKE_REF}"
+  )
+
+  if [[ "${UPDATE_FLAKE_LOCK}" == true ]]; then
+    args+=(--update-lock)
+  fi
+
+  log "Running readiness analysis preflight"
+  "${analyzer}" "${args[@]}"
 }
 
 enable_flakes_runtime() {
@@ -624,6 +651,14 @@ while [[ $# -gt 0 ]]; do
       RUN_FLATPAK_SYNC=false
       shift
       ;;
+    --skip-readiness-check)
+      RUN_READINESS_ANALYSIS=false
+      shift
+      ;;
+    --analyze-only)
+      ANALYZE_ONLY=true
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -652,6 +687,12 @@ require_command nix
 require_command nixos-rebuild
 enable_flakes_runtime
 ensure_flake_visible_to_nix "${FLAKE_REF}"
+run_readiness_analysis
+
+if [[ "${ANALYZE_ONLY}" == true ]]; then
+  log "Readiness analysis complete (--analyze-only)."
+  exit 0
+fi
 
 if [[ "$UPDATE_FLAKE_LOCK" == true ]]; then
   update_flake_lock "${FLAKE_REF}"
