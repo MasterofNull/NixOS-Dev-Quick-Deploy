@@ -432,6 +432,44 @@ declare -ag FLATPAK_PROFILE_MINIMAL_APPS=(
     "com.obsproject.Studio"
 )
 
+# Phase 26: Prefer declarative profile data when available.
+# Falls back to inline arrays above when evaluation tools are unavailable.
+if [[ -n "${SCRIPT_DIR:-}" ]]; then
+    declarative_flatpak_profiles_file="${SCRIPT_DIR}/nix/data/flatpak-profiles.nix"
+    if [[ -f "$declarative_flatpak_profiles_file" ]] && command -v nix-instantiate >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+        declare -a _flatpak_profile_keys=("core" "ai_workstation" "gaming" "minimal")
+        declare -A _flatpak_profile_array_map=(
+            [core]="FLATPAK_PROFILE_CORE_APPS"
+            [ai_workstation]="FLATPAK_PROFILE_AI_WORKSTATION_APPS"
+            [gaming]="FLATPAK_PROFILE_GAMING_APPS"
+            [minimal]="FLATPAK_PROFILE_MINIMAL_APPS"
+        )
+
+        for _profile_key in "${_flatpak_profile_keys[@]}"; do
+            _profile_json="$(
+                DECLARATIVE_FLATPAK_FILE="$declarative_flatpak_profiles_file" \
+                    DECLARATIVE_FLATPAK_KEY="$_profile_key" \
+                    nix-instantiate --eval --strict --json --expr \
+                    'let profiles = import (builtins.getEnv "DECLARATIVE_FLATPAK_FILE"); key = builtins.getEnv "DECLARATIVE_FLATPAK_KEY"; in profiles.${key}' \
+                    2>/dev/null || true
+            )"
+
+            if [[ -z "$_profile_json" ]]; then
+                continue
+            fi
+
+            mapfile -t _loaded_apps < <(printf '%s' "$_profile_json" | jq -r '.[]' 2>/dev/null || true)
+            if (( ${#_loaded_apps[@]} == 0 )); then
+                continue
+            fi
+
+            _array_name="${_flatpak_profile_array_map[$_profile_key]}"
+            declare -n _array_ref="$_array_name"
+            _array_ref=("${_loaded_apps[@]}")
+        done
+    fi
+fi
+
 declare -Ag FLATPAK_PROFILE_LABELS=(
     [core]="Core desktop (browser, media, 3D printing, CAD, PCB design, VMs)"
     [ai_workstation]="AI workstation (core + AI tools, trading, API dev, CNC/CAM)"
@@ -696,6 +734,8 @@ CONTAINER_STORAGE_SOURCE="${CONTAINER_STORAGE_SOURCE:-}"
 CONTAINER_STORAGE_DRIVER="${CONTAINER_STORAGE_DRIVER:-overlay}"
 
 ENABLE_GAMING_STACK="${ENABLE_GAMING_STACK:-true}"
+# Early KMS initrd preload policy (auto|off|force).
+EARLY_KMS_POLICY="${EARLY_KMS_POLICY:-${DEFAULT_EARLY_KMS_POLICY:-off}}"
 # ENABLE_LACT:
 #   auto  -> enable when discrete GPU detected
 #   true  -> always enable services.lact

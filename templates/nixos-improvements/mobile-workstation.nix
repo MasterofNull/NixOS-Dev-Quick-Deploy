@@ -34,6 +34,7 @@ let
 
   # Detect AMD CPU/GPU
   hasAmdCpu = config.hardware.cpu.amd.updateMicrocode or false;
+  hasAmdGpu = builtins.elem "amdgpu" (config.services.xserver.videoDrivers or []);
 
   # Power management strategy:
   # - true = use power-profiles-daemon (COSMIC/GNOME GUI integration)
@@ -124,10 +125,10 @@ in
   # =========================================================================
   # Thermald - Intel Thermal Management
   # =========================================================================
-  # Automatically manages CPU temperature to prevent thermal throttling
-  # Primarily for Intel but also works on some AMD systems
-  
-  services.thermald.enable = lib.mkDefault true;
+  # NOTE: services.thermald.enable is set in configuration.nix with a CPU vendor
+  # guard: `lib.mkDefault (config.hardware.cpu.intel.updateMicrocode or false)`.
+  # thermald is Intel-only and crashes immediately on AMD CPUs.
+  # Do NOT set services.thermald.enable here — it conflicts with that guard.
 
   # =========================================================================
   # UPower - Battery Monitoring
@@ -148,31 +149,9 @@ in
   # Lid Close & Suspend Handling
   # =========================================================================
   
-  services.logind = {
-    # Idle action (auto-suspend after inactivity)
-    # Set to "ignore" to disable auto-suspend
-    # NixOS 25.05+: Use settings.Login instead of extraConfig
-    settings = {
-      Login = {
-        # Lid handling
-        HandleLidSwitch = lib.mkDefault "suspend-then-hibernate";
-        HandleLidSwitchDocked = lib.mkDefault "suspend-then-hibernate";
-        HandleLidSwitchExternalPower = lib.mkDefault "suspend-then-hibernate";
-
-        # Power/suspend keys
-        HandlePowerKey = lib.mkDefault "suspend";
-        HandlePowerKeyLongPress = lib.mkDefault "poweroff";
-        HandleSuspendKey = lib.mkDefault "suspend";
-        HandleHibernateKey = lib.mkDefault "hibernate";
-
-        # Session cleanup
-        KillUserProcesses = lib.mkDefault false;
-
-        IdleAction = lib.mkDefault "ignore";
-        IdleActionSec = lib.mkDefault "30min";
-      };
-    };
-  };
+  # NOTE: logind lid/power-key tuning was removed here because nixpkgs option
+  # paths changed between pinned revisions (`settings.Login` vs `extraConfig`).
+  # Keep module evaluation stable across releases and rely on upstream defaults.
 
   # =========================================================================
   # Hibernate Support
@@ -193,18 +172,16 @@ in
   # AMD iGPU Optimizations
   # =========================================================================
   
-  # AMD GPU power management
-  boot.kernelParams = lib.mkIf hasAmdCpu [
-    # AMD GPU power management
-    "amdgpu.ppfeaturemask=0xffffffff"  # Enable all power features
-    "amdgpu.dcdebugmask=0x10"          # Disable S0i3 reporting (power states)
-    
-    # AMD CPU power management
-    "amd_pstate=active"                 # Use AMD P-State driver (Zen 2+)
-  ];
+  # AMD CPU/GPU kernel tuning
+  # Keep defaults conservative to avoid boot regressions from aggressive
+  # amdgpu tuning flags. CPU pstate remains enabled for AMD CPUs.
+  boot.kernelParams =
+    lib.optionals hasAmdCpu [
+      "amd_pstate=active"  # Use AMD P-State driver (Zen 2+)
+    ];
   
   # Enable AMD GPU overclocking/undervolting support
-  hardware.amdgpu.overdrive.enable = lib.mkDefault hasAmdCpu;
+  hardware.amdgpu.overdrive.enable = lib.mkDefault hasAmdGpu;
   
   # Hardware video acceleration for AMD
   hardware.graphics = {
@@ -213,7 +190,7 @@ in
   };
   
   # ROCm OpenCL for AMD GPUs (AI/ML compute)
-  hardware.amdgpu.opencl.enable = lib.mkDefault hasAmdCpu;
+  hardware.amdgpu.opencl.enable = lib.mkDefault hasAmdGpu;
 
   # =========================================================================
   # Network Optimizations for Mobile

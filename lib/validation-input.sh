@@ -263,6 +263,13 @@ validate_config_settings() {
     local backups_ns="${BACKUPS_NAMESPACE:-backups}"
     local logging_ns="${LOGGING_NAMESPACE:-logging}"
 
+    for required_var in AI_STACK_NAMESPACE BACKUPS_NAMESPACE LOGGING_NAMESPACE K3S_KUBECONFIG AI_STACK_CONFIG_DIR AI_STACK_ENV_FILE; do
+        if [[ -z "${!required_var:-}" ]]; then
+            print_error "Required configuration variable is unset: ${required_var}"
+            failures=$((failures + 1))
+        fi
+    done
+
     if ! validate_k8s_namespace "$ai_ns"; then
         print_error "Invalid AI stack namespace: $ai_ns"
         failures=$((failures + 1))
@@ -304,9 +311,37 @@ validate_config_settings() {
         failures=$((failures + 1))
     fi
 
+    if [[ -n "${AI_STACK_CONFIG_DIR:-}" ]]; then
+        local config_parent
+        config_parent="$(dirname "${AI_STACK_CONFIG_DIR}")"
+        if [[ -e "${AI_STACK_CONFIG_DIR}" ]]; then
+            if [[ ! -w "${AI_STACK_CONFIG_DIR}" ]]; then
+                print_error "AI_STACK_CONFIG_DIR is not writable: ${AI_STACK_CONFIG_DIR}"
+                failures=$((failures + 1))
+            fi
+        elif [[ ! -w "${config_parent}" ]]; then
+            print_error "Parent directory for AI_STACK_CONFIG_DIR is not writable: ${config_parent}"
+            failures=$((failures + 1))
+        fi
+    fi
+
     if [[ -n "${AI_STACK_ENV_FILE:-}" ]] && ! validate_path "${AI_STACK_ENV_FILE}" >/dev/null; then
         print_error "Invalid AI_STACK_ENV_FILE path: ${AI_STACK_ENV_FILE}"
         failures=$((failures + 1))
+    fi
+
+    if [[ -n "${AI_STACK_ENV_FILE:-}" ]]; then
+        local env_parent
+        env_parent="$(dirname "${AI_STACK_ENV_FILE}")"
+        if [[ -e "${AI_STACK_ENV_FILE}" ]]; then
+            if [[ ! -w "${AI_STACK_ENV_FILE}" ]]; then
+                print_error "AI_STACK_ENV_FILE is not writable: ${AI_STACK_ENV_FILE}"
+                failures=$((failures + 1))
+            fi
+        elif [[ ! -w "${env_parent}" ]]; then
+            print_error "Parent directory for AI_STACK_ENV_FILE is not writable: ${env_parent}"
+            failures=$((failures + 1))
+        fi
     fi
 
     if [[ "$failures" -gt 0 ]]; then
@@ -315,4 +350,9 @@ validate_config_settings() {
     fi
 
     return 0
+}
+
+# Backward-compatible entrypoint used by roadmap task 18.5 and startup checks.
+validate_config() {
+    validate_config_settings
 }

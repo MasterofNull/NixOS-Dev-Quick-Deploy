@@ -270,3 +270,29 @@ setup() {
     result=$(sanitize_string "it's")
     [[ "$result" == *"\\'"* ]] || [[ "$result" == "it'\\''s" ]]
 }
+
+# ============================================================================
+# validate_config_settings / validate_config
+# ============================================================================
+
+@test "validate_config_settings: passes with default settings" {
+    run validate_config_settings
+    [[ "$status" -eq 0 ]]
+}
+
+@test "validate_config_settings: fails when required variable is empty" {
+    AI_STACK_NAMESPACE=""
+    run validate_config_settings
+    [[ "$status" -ne 0 ]]
+}
+
+@test "validate_config_settings: fails when env file parent is not writable" {
+    AI_STACK_ENV_FILE="/proc/1/blocked.env"
+    run validate_config_settings
+    [[ "$status" -ne 0 ]]
+}
+
+@test "validate_config: wrapper calls validate_config_settings" {
+    run validate_config
+    [[ "$status" -eq 0 ]]
+}

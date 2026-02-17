@@ -7,7 +7,8 @@
 # Placeholder tokens (replaced via lib/config.sh → replace_placeholder):
 #   SCRIPT_VERSION, GENERATED_AT, HOSTNAME, USER
 #   CPU_VENDOR_LABEL, INITRD_KERNEL_MODULES, KERNEL_MODULES_PLACEHOLDER,
-#   KERNEL_SYSCTL_TUNABLES, RESUME_DEVICE_DIRECTIVE, BOOT_KERNEL_PARAMETERS_BLOCK,
+#   KERNEL_SYSCTL_TUNABLES, BLACKLISTED_KERNEL_MODULES_BLOCK,
+#   RESUME_DEVICE_DIRECTIVE, BOOT_KERNEL_PARAMETERS_BLOCK,
 #   MICROCODE_SECTION, BINARY_CACHE_SETTINGS
 #   GPU_HARDWARE_SECTION, GPU_SESSION_VARIABLES, GPU_DRIVER_PACKAGES,
 #   GLF_OS_DEFINITIONS, GLF_GAMING_STACK_SECTION
@@ -159,7 +160,14 @@ in
   # ============================================================================
   boot = {
     loader = {
-      systemd-boot.enable = lib.mkDefault true;
+      systemd-boot = {
+        enable = lib.mkDefault true;
+        # Graceful mode: treat non-fatal EFI variable write errors as warnings
+        # rather than aborting the install. Prevents boot failures caused by
+        # firmware quirks or read-only EFI variable stores (e.g. some ThinkPads
+        # after a dirty shutdown leaves the FAT32 ESP with a dirty bit).
+        graceful = lib.mkDefault true;
+      };
       efi.canTouchEfiVariables = lib.mkDefault true;
       # Security: Timeout for boot menu
       timeout = lib.mkDefault 3;
@@ -176,15 +184,18 @@ in
       else pkgs.linuxPackages
     );
 
-    # CPU Microcode updates (auto-detected: @CPU_VENDOR_LABEL@ CPU)
-    # Critical security and performance updates from CPU vendor
-    @INITRD_KERNEL_MODULES@
+    # CPU/GPU early KMS and initrd modules are set by nix/modules/hardware/cpu/ and gpu/.
+    # They gate on mySystem.hardware.{cpuVendor,gpuVendor,earlyKmsPolicy} from facts.nix.
 
-    # Security: Enable kernel hardening
-    kernelModules = [
-      # Additional modules loaded after initial boot
-@KERNEL_MODULES_PLACEHOLDER@
-    ];
+    # Additional modules (zswap allocator, etc.) set by nix/modules/hardware/ram-tuning.nix.
+    # No static list here — avoids "Failed to find module 'cpufreq_schedutil'" class errors.
+
+    # Security: Prevent loading of kernel modules for absent hardware
+    # Reduces attack surface by blocking drivers with known CVEs for hardware
+    # not present on this system. Customize this list in config/variables.sh
+    # via BLACKLISTED_KERNEL_MODULES or edit directly after generation.
+@BLACKLISTED_KERNEL_MODULES_BLOCK@
+
     kernel.sysctl = {
       # Security: Disable unprivileged BPF
       "kernel.unprivileged_bpf_disabled" = 1;
@@ -200,8 +211,8 @@ in
       "kernel.printk" = "3 3 3 3";
       "kernel.kptr_restrict" = 2;
       "kernel.kexec_load_disabled" = 1;
-      "vm.swappiness" = 10;
-      "vm.vfs_cache_pressure" = 50;
+      # vm.swappiness, vm.dirty_ratio, vm.vfs_cache_pressure are set adaptively
+      # by nix/modules/hardware/ram-tuning.nix based on mySystem.hardware.systemRamGb.
       "vm.dirty_bytes" = 268435456;
       "vm.dirty_background_bytes" = 67108864;
       "vm.dirty_writeback_centisecs" = 1500;
@@ -217,19 +228,20 @@ in
       "net.ipv4.tcp_syncookies" = 1;
       "net.ipv4.conf.default.rp_filter" = 1;
       "net.ipv4.conf.all.rp_filter" = 1;
-@KERNEL_SYSCTL_TUNABLES@
     };
 
-    # Hibernation support (resume from swap)
-    # Populated automatically by the generator when swap-backed hibernation is enabled.
+    # Hibernation resume device — set only when deployment.enableHibernation = true.
+    # Device UUID and resume offset are injected by the deploy script (device path
+    # must be known at generation time; cannot be expressed as a pure Nix option).
     @RESUME_DEVICE_DIRECTIVE@
 
-    # Kernel parameters for better memory management and performance
-    @BOOT_KERNEL_PARAMETERS_BLOCK@
+    # Boot params: zswap, quiet/splash are set by ram-tuning.nix and mobile.nix.
+    # AMD P-state and NVMe power management set by cpu/amd.nix and storage.nix.
   };
-  @MICROCODE_SECTION@
 
-  @GPU_HARDWARE_SECTION@
+  # CPU microcode updates handled by nix/modules/hardware/cpu/{amd,intel}.nix.
+  # GPU hardware configuration (packages, VA-API, early KMS) handled by
+  # nix/modules/hardware/gpu/{amd,intel,nvidia}.nix.
 
   # ===========================================================================
   # System Optimizations & Storage Maintenance (GLF OS inspired)
@@ -486,9 +498,10 @@ in
       # Modern features
       experimental-features = [ "nix-command" "flakes" ];
 
-      # Build parallelism guardrail: @NIX_PARALLEL_COMMENT@
-      max-jobs = @NIX_MAX_JOBS@;
-      cores = @NIX_BUILD_CORES@;
+      # Build parallelism is set adaptively by nix/modules/hardware/ram-tuning.nix
+      # based on mySystem.hardware.systemRamGb (1 job per 4GB, min 2, max 16).
+      # Explicit values here would override those defaults — omit to let the
+      # hardware module tune them automatically.
 
       # Performance & security
       auto-optimise-store = true;
@@ -496,7 +509,19 @@ in
 
       # Security: Restrict nix-daemon network access
       allowed-users = [ "@wheel" ];
-@BINARY_CACHE_SETTINGS@
+
+      # Binary caches — community caches provide fast downloads for common packages.
+      # Extended via mySystem.deployment.nixBinaryCaches in facts.nix for private caches.
+      substituters = [
+        "https://cache.nixos.org"
+        "https://nix-community.cachix.org"
+        "https://devenv.cachix.org"
+      ];
+      trusted-public-keys = [
+        "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
+        "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+        "devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw="
+      ];
     };
 
     # Automatic garbage collection
@@ -663,11 +688,9 @@ in
     # COSMIC Greeter (Wayland-native login screen)
     cosmic-greeter.enable = true;
 
-    # Optional: Set default desktop session (DISABLED - not needed)
-    # Uncomment ONLY if you install multiple desktop environments
-    # Ensures COSMIC loads by default instead of others (GNOME, KDE, etc)
-    # Since only COSMIC is installed, this setting is redundant
-    # defaultSession = "cosmic";
+    # Force COSMIC as the default session so deploys do not fall back to a
+    # previously selected desktop (for example GNOME) at the greeter.
+    defaultSession = "cosmic";
 
     # Optional: Auto-login to skip password prompt (DISABLED for security)
     # Uncomment to boot directly to desktop without login screen
@@ -679,9 +702,9 @@ in
     # };
   };
 
-  # GNOME keyring still provides secrets/PKCS#11, but SSH agent moved to GCR.
+  # GNOME keyring provides secrets/PKCS#11 storage.
+  # SSH agent is handled by gcr-ssh-agent on NixOS 26.05+ (see bottom of file).
   services.gnome.gnome-keyring.enable = true;
-  services.gnome.gcr-ssh-agent.enable = true;
 
   # Disable GNOME Tracker to avoid user service failures during activation.
   services.gnome.tinysparql.enable = false;
@@ -698,12 +721,17 @@ in
     portalPackage = pkgs.xdg-desktop-portal-hyprland;
   };
 
-  # Ensure Wayland portals stay current for COSMIC + Hyprland workflows.
+  # XDG portal backends for COSMIC + Hyprland Wayland sessions.
+  # xdg-desktop-portal-gnome is intentionally EXCLUDED: it requires gnome-shell
+  # on D-Bus, which is absent in a COSMIC session. Including it causes the
+  # portal service to spam D-Bus errors and can block file-chooser and
+  # screenshot portals for COSMIC and Hyprland apps.
+  # COSMIC uses xdg-desktop-portal-cosmic; Hyprland uses xdg-desktop-portal-hyprland.
   xdg.portal = {
     enable = true;
     extraPortals =
-      [ pkgs.xdg-desktop-portal-hyprland pkgs.xdg-desktop-portal-gnome ]
-      ++ lib.optionals (pkgs ? xdg-desktop-portal-cosmic) [ pkgs.xdg-desktop-portal-cosmic ];
+      lib.optionals (pkgs ? xdg-desktop-portal-cosmic) [ pkgs.xdg-desktop-portal-cosmic ]
+      ++ [ pkgs.xdg-desktop-portal-hyprland ];
   };
 
   # Wayland-specific optimizations and COSMIC configuration
@@ -724,10 +752,12 @@ in
     MANGOHUD = if glfMangoHudInjectsIntoApps then "1" else "0";
     MANGOHUD_DESKTOP_MODE = if glfMangoHudDesktopMode then "1" else "0";
     MANGOHUD_CONFIGFILE = "$HOME/.config/MangoHud/MangoHud.conf";
-    @GPU_SESSION_VARIABLES@
+    # LIBVA_DRIVER_NAME and other GPU session variables are set by
+    # nix/modules/hardware/gpu/{amd,intel,nvidia}.nix via environment.sessionVariables.
   };
 
-  @LACT_SERVICE_BLOCK@
+  # services.lact (AMD GPU daemon) is enabled by nix/modules/hardware/gpu/amd.nix
+  # when mySystem.hardware.gpuVendor == "amd" and nixpkgs >= 26.05.
 
   # ============================================================================
   # System Packages (System-level only)
@@ -754,7 +784,8 @@ in
     ++ lib.optionals (pkgs ? cosmic-settings) [ pkgs.cosmic-settings ]
     ++ lib.optional (lib.hasAttr "default" nixAiToolsPackages)
       nixAiToolsPackages.default  # Provide CLI helpers from numtide/nix-ai-tools when available
-    ++ @GPU_DRIVER_PACKAGES@
+    # GPU driver packages (Mesa, intel-media-driver, nvidia-vaapi-driver, etc.) are
+    # added by nix/modules/hardware/gpu/*.nix via hardware.graphics.extraPackages.
     ++ glfSystemUtilities
     ++ glfGamingPackages
     ++ [
@@ -844,7 +875,20 @@ in
     jack.enable = true;
 
     # WirePlumber: Modern session manager for PipeWire
-    wireplumber.enable = true;
+    wireplumber = {
+      enable = true;
+      # Disable libcamera monitor to prevent wireplumber SIGABRT crash.
+      # Root cause: libcamera's UVC pipeline handler calls LOG(Fatal) when
+      # enumerating V4L2 devices on systems without camera hardware, aborting
+      # wireplumber via abort() in the LogMessage destructor.
+      # Stack: libcamera::PipelineHandlerUVC::match → CameraManager::addCamera
+      #        → LogMessage::~LogMessage → abort()
+      # Disabling the monitor prevents the enumeration entirely. Systems with
+      # cameras can re-enable this by removing this override in their local config.
+      extraConfig."10-disable-libcamera" = {
+        "wireplumber.profiles".main."monitor.libcamera" = "disabled";
+      };
+    };
   };
 
   # ============================================================================
@@ -890,9 +934,11 @@ in
   # Bluetooth (For wireless device monitoring)
   services.blueman.enable = true;
 
-  # Thermald (Intel thermal management - auto-thermal throttling)
-  # Enabled automatically on Intel systems for temperature management
-  services.thermald.enable = true;
+  # Thermald (Intel thermal management only — crashes on AMD with "Unsupported cpu model")
+  # Guard with Intel microcode flag: on AMD systems this evaluates false and the
+  # service is disabled entirely, allowing ACPI/hardware to control fans/throttling.
+  # AMD thermal management is handled via k10temp + auto-cpufreq (see mobile-workstation.nix).
+  services.thermald.enable = lib.mkDefault (config.hardware.cpu.intel.updateMicrocode or false);
 
   # ============================================================================
   # Geolocation Services (For COSMIC auto day/night theme)
@@ -1266,4 +1312,9 @@ in
   # System & Home Manager Version
   # ============================================================================
   system.stateVersion = "@STATE_VERSION@";
+}
+# Version-guarded options: gcr-ssh-agent decouples the SSH agent from
+# gnome-keyring (available in newer nixpkgs branches).
+// lib.optionalAttrs (lib.versionAtLeast lib.version "26.05") {
+  services.gnome.gcr-ssh-agent.enable = true;
 }

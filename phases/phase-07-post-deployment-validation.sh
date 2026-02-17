@@ -390,15 +390,30 @@ phase_07_post_deployment_validation() {
     # Optional AI toolchain checks (Home Manager-scoped)
     print_info "Verifying AI toolchain (Home Manager scoped)..."
     local ai_missing=0
-    local -a ai_checks=(gpt4all aider llama-cpp)
-    for tool in "${ai_checks[@]}"; do
-        if command -v "$tool" &>/dev/null; then
-            print_success "$tool: $(command -v "$tool")"
-        else
-            print_warning "$tool: NOT FOUND (Home Manager)"
-            ((ai_missing++)) || true
-        fi
-    done
+
+    if command -v gpt4all &>/dev/null; then
+        print_success "gpt4all: $(command -v gpt4all)"
+    else
+        print_warning "gpt4all: NOT FOUND (Home Manager)"
+        ((ai_missing++)) || true
+    fi
+
+    if command -v aider &>/dev/null; then
+        print_success "aider: $(command -v aider)"
+    else
+        print_warning "aider: NOT FOUND (Home Manager)"
+        ((ai_missing++)) || true
+    fi
+
+    # Nix packages expose llama.cpp as llama-cli/llama-server, not llama-cpp.
+    if command -v llama-cli &>/dev/null; then
+        print_success "llama-cli: $(command -v llama-cli)"
+    elif command -v llama-server &>/dev/null; then
+        print_success "llama-server: $(command -v llama-server)"
+    else
+        print_warning "llama.cpp CLI: NOT FOUND (expected llama-cli or llama-server)"
+        ((ai_missing++)) || true
+    fi
 
     if [[ $ai_missing -gt 0 ]]; then
         print_warning "$ai_missing AI tool(s) missing from PATH"

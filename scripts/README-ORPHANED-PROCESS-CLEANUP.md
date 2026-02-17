@@ -90,12 +90,12 @@ Processes killed: 2
 
 ### Option A: Traditional Systemd Service
 
-**File:** [`templates/systemd/ai-stack-cleanup.service`](../templates/systemd/ai-stack-cleanup.service)
+**File:** [`archive/templates/systemd-legacy/ai-stack-cleanup.service`](../archive/templates/systemd-legacy/ai-stack-cleanup.service)
 
 **Install:**
 ```bash
 # Copy service file
-sudo cp templates/systemd/ai-stack-cleanup.service /etc/systemd/system/
+sudo cp archive/templates/systemd-legacy/ai-stack-cleanup.service /etc/systemd/system/
 
 # Update ExecStart path if needed
 sudo nano /etc/systemd/system/ai-stack-cleanup.service

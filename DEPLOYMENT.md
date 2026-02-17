@@ -34,6 +34,18 @@ This guide covers deploying the NixOS AI Stack using the single supported path:
 
 ## Quick Start (5 Minutes)
 
+### Flake-First (Default Path)
+
+```bash
+# Discovery + direct flake switch path
+./nixos-quick-deploy.sh --flake-first-profile ai-dev
+```
+
+Notes:
+- This mode runs declarative discovery + flake switch and is now the default in `nixos-quick-deploy.sh`.
+- The legacy multi-phase template-render path remains available with `--legacy-phases`.
+- Legacy path deprecation target: **July 1, 2026**.
+
 ### K3s (Single Supported Path)
 
 ```bash

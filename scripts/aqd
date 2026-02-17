@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+AQD_VERSION="0.2.0"
+
+die() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'EOF'
+AQD CLI - Agent/Skill/MCP command wrapper
+
+Usage:
+  aqd --version
+
+  aqd skill validate
+  aqd skill quick-validate <skill-path>
+  aqd skill init <name> [--path <dir>]
+  aqd skill package <skill-path> [output-dir]
+
+  aqd mcp scaffold <name> [--type python|deno]
+  aqd mcp validate <name>
+  aqd mcp test <name>
+  aqd mcp evaluate <evaluation-xml> [evaluation-args...]
+  aqd mcp logs <name> [-f]
+  aqd mcp deploy-aidb
+
+  aqd workflows list
+
+Notes:
+  - Run from repository root or ensure this script can resolve repo paths.
+  - This wrapper is the pinned MCP/skill-to-CLI converter implementation.
+EOF
+}
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
+}
+
+cmd_workflows_list() {
+  cat <<'EOF'
+Priority workflow set (Phase 27.6):
+1. skill validate
+2. skill quick-validate
+3. skill init
+4. skill package
+5. mcp scaffold
+6. mcp validate
+7. mcp evaluate
+8. mcp logs
+9. mcp deploy-aidb
+EOF
+}
+
+cmd_skill_validate() {
+  "${REPO_ROOT}/scripts/check-skill-source-of-truth.sh"
+  "${REPO_ROOT}/scripts/lint-skill-external-deps.sh"
+  "${REPO_ROOT}/scripts/validate-skill-references.sh"
+  "${REPO_ROOT}/scripts/lint-skill-template.sh"
+}
+
+cmd_skill_quick_validate() {
+  local skill_path="${1:-}"
+  [[ -n "$skill_path" ]] || die "Usage: aqd skill quick-validate <skill-path>"
+  require_cmd python3
+  python3 "${REPO_ROOT}/.agent/skills/skill-creator/scripts/quick_validate.py" "$skill_path"
+}
+
+cmd_skill_init() {
+  local name="${1:-}"
+  shift || true
+  [[ -n "$name" ]] || die "Usage: aqd skill init <name> [--path <dir>]"
+  require_cmd python3
+  python3 "${REPO_ROOT}/.agent/skills/skill-creator/scripts/init_skill.py" "$name" "$@"
+}
+
+cmd_skill_package() {
+  local skill_path="${1:-}"
+  local output_dir="${2:-}"
+  [[ -n "$skill_path" ]] || die "Usage: aqd skill package <skill-path> [output-dir]"
+  require_cmd python3
+  if [[ -n "$output_dir" ]]; then
+    python3 "${REPO_ROOT}/.agent/skills/skill-creator/scripts/package_skill.py" "$skill_path" "$output_dir"
+  else
+    python3 "${REPO_ROOT}/.agent/skills/skill-creator/scripts/package_skill.py" "$skill_path"
+  fi
+}
+
+cmd_mcp_scaffold() {
+  local name="${1:-}"
+  shift || true
+  [[ -n "$name" ]] || die "Usage: aqd mcp scaffold <name> [--type python|deno]"
+
+  local template="python"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --type)
+        template="${2:-}"
+        shift 2
+        ;;
+      *)
+        die "Unknown option for mcp scaffold: $1"
+        ;;
+    esac
+  done
+
+  case "$template" in
+    python|deno)
+      ;;
+    *)
+      die "Invalid scaffold type: $template (expected python|deno)"
+      ;;
+  esac
+
+  "${REPO_ROOT}/scripts/mcp-server" init -t "$template" "$name"
+}
+
+cmd_mcp_test() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || die "Usage: aqd mcp test <name>"
+  "${REPO_ROOT}/scripts/mcp-server" test "$name"
+}
+
+cmd_mcp_validate() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || die "Usage: aqd mcp validate <name>"
+  "${REPO_ROOT}/scripts/mcp-server" test "$name"
+}
+
+cmd_mcp_evaluate() {
+  local eval_file="${1:-}"
+  shift || true
+  [[ -n "$eval_file" ]] || die "Usage: aqd mcp evaluate <evaluation-xml> [evaluation-args...]"
+
+  require_cmd python3
+
+  # Ensure optional mcp-builder evaluation deps are present before execution.
+  if ! python3 - <<'PY' >/dev/null 2>&1
+import importlib.util
+import sys
+missing = [mod for mod in ("anthropic", "mcp") if importlib.util.find_spec(mod) is None]
+sys.exit(0 if not missing else 1)
+PY
+  then
+    die "Missing Python deps for MCP evaluation. Install: pip install -r ${REPO_ROOT}/.agent/skills/mcp-builder/scripts/requirements.txt"
+  fi
+
+  python3 "${REPO_ROOT}/.agent/skills/mcp-builder/scripts/evaluation.py" "$eval_file" "$@"
+}
+
+cmd_mcp_logs() {
+  local name="${1:-}"
+  shift || true
+  [[ -n "$name" ]] || die "Usage: aqd mcp logs <name> [-f]"
+  "${REPO_ROOT}/scripts/mcp-server" logs "$@" "$name"
+}
+
+cmd_mcp_deploy_aidb() {
+  "${REPO_ROOT}/scripts/deploy-aidb-mcp-server.sh"
+}
+
+main() {
+  local topic="${1:-}"
+  local action="${2:-}"
+  shift 2 || true
+
+  case "$topic" in
+    --version|-V|version)
+      echo "aqd ${AQD_VERSION}"
+      return 0
+      ;;
+  esac
+
+  case "${topic}:${action}" in
+    skill:validate) cmd_skill_validate "$@" ;;
+    skill:quick-validate) cmd_skill_quick_validate "$@" ;;
+    skill:init) cmd_skill_init "$@" ;;
+    skill:package) cmd_skill_package "$@" ;;
+    mcp:scaffold) cmd_mcp_scaffold "$@" ;;
+    mcp:validate) cmd_mcp_validate "$@" ;;
+    mcp:test) cmd_mcp_test "$@" ;;
+    mcp:evaluate) cmd_mcp_evaluate "$@" ;;
+    mcp:logs) cmd_mcp_logs "$@" ;;
+    mcp:deploy-aidb) cmd_mcp_deploy_aidb "$@" ;;
+    workflows:list) cmd_workflows_list ;;
+    :|help:|--help:|-h:)
+      usage
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"
