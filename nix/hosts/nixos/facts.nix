@@ -9,9 +9,10 @@
       gpuVendor = "amd";
       igpuVendor = "none";
       cpuVendor = "amd";
-      storageType = "nvme";
+      storageType = "hdd";
       systemRamGb = 27;
       isMobile = true;
+      firmwareType = "efi";
       earlyKmsPolicy = "off";
       nixosHardwareModule = "lenovo-thinkpad-p14s-amd-gen2";
     };
