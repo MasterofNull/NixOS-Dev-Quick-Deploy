@@ -62,6 +62,7 @@ Environment overrides:
   ALLOW_GUI_SWITCH=true     Allow live switch from graphical session
   AUTO_GUI_SWITCH_FALLBACK=false
                             Disable auto-fallback to --boot on graphical session
+  ALLOW_ROOT_DEPLOY=true    Allow running this script as root (not recommended)
   BOOT_ESP_MIN_FREE_MB=128  Override minimum required free space on ESP
 USAGE
 }
@@ -73,6 +74,12 @@ log() {
 die() {
   printf '[clean-deploy] ERROR: %s\n' "$*" >&2
   exit 1
+}
+
+assert_non_root_entrypoint() {
+  if [[ "${EUID:-$(id -u)}" -eq 0 && "${ALLOW_ROOT_DEPLOY:-false}" != "true" ]]; then
+    die "Do not run deploy-clean.sh as root/sudo. Run as your normal user; the script escalates only privileged steps. Override only if required: ALLOW_ROOT_DEPLOY=true."
+  fi
 }
 
 require_command() {
@@ -631,6 +638,8 @@ case "$PROFILE" in
   ai-dev|gaming|minimal) ;;
   *) die "Unsupported profile '${PROFILE}'. Expected ai-dev|gaming|minimal." ;;
 esac
+
+assert_non_root_entrypoint
 
 if [[ "${RECOVERY_MODE}" == true ]]; then
   ALLOW_PREVIOUS_BOOT_FSCK_FAILURE=true
