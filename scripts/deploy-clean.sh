@@ -80,6 +80,25 @@ require_command() {
   command -v "$cmd" >/dev/null 2>&1 || die "'${cmd}' is required"
 }
 
+run_git_safe() {
+  if command -v git >/dev/null 2>&1; then
+    git "$@"
+    return
+  fi
+
+  if [[ -x "${REPO_ROOT}/scripts/git-safe.sh" ]]; then
+    "${REPO_ROOT}/scripts/git-safe.sh" "$@"
+    return
+  fi
+
+  if command -v nix >/dev/null 2>&1; then
+    nix --extra-experimental-features 'nix-command flakes' shell nixpkgs#git --command git "$@"
+    return
+  fi
+
+  return 127
+}
+
 resolve_local_flake_path() {
   local ref="${1:-}"
   case "$ref" in
@@ -99,22 +118,24 @@ ensure_flake_visible_to_nix() {
   [[ -n "$flake_path" ]] || return 0
   [[ -d "$flake_path" ]] || return 0
 
-  if ! command -v git >/dev/null 2>&1; then
+  if ! run_git_safe -C "$flake_path" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     return 0
   fi
 
-  if ! git -C "$flake_path" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    return 0
-  fi
+  local -a scope=(flake.nix flake.lock nix)
+  local -a untracked=()
+  local staged=false
 
-  local file staged=false
-  for file in flake.nix flake.lock; do
-    if [[ -f "${flake_path}/${file}" ]] && ! git -C "$flake_path" ls-files --error-unmatch "$file" >/dev/null 2>&1; then
-      log "Auto-staging '${file}' so Nix can evaluate local flake in git worktree"
-      git -C "$flake_path" add "$file"
-      staged=true
-    fi
-  done
+  while IFS= read -r path; do
+    [[ -n "${path}" ]] || continue
+    untracked+=("${path}")
+  done < <(run_git_safe -C "$flake_path" ls-files --others --exclude-standard -- "${scope[@]}" 2>/dev/null || true)
+
+  if (( ${#untracked[@]} > 0 )); then
+    log "Auto-staging ${#untracked[@]} untracked flake file(s) so Nix can evaluate local config"
+    run_git_safe -C "$flake_path" add -- "${untracked[@]}"
+    staged=true
+  fi
 
   if [[ "$staged" == true ]]; then
     log "Local flake files were staged for evaluation (commit when ready)."
@@ -132,7 +153,7 @@ enable_flakes_runtime() {
 
 nix_eval_raw_safe() {
   local expr="$1"
-  local timeout_secs="${NIX_EVAL_TIMEOUT_SECONDS:-45}"
+  local timeout_secs="${NIX_EVAL_TIMEOUT_SECONDS:-30}"
 
   if command -v timeout >/dev/null 2>&1; then
     timeout "${timeout_secs}" nix eval --raw "${expr}"
@@ -176,6 +197,142 @@ run_privileged() {
     require_command sudo
     sudo "$@"
   fi
+}
+
+nix_escape_string() {
+  local value="${1:-}"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  printf '%s' "$value"
+}
+
+nix_eval_expr_raw_safe() {
+  local expr="$1"
+  local timeout_secs="${NIX_EVAL_TIMEOUT_SECONDS:-30}"
+
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "${timeout_secs}" nix eval --impure --raw --expr "$expr"
+  else
+    nix eval --impure --raw --expr "$expr"
+  fi
+}
+
+is_locked_password_field() {
+  local value="${1:-}"
+  [[ -z "$value" || "$value" == "!" || "$value" == "*" || "$value" == "!!" || "$value" == \!* || "$value" == \** ]]
+}
+
+read_shadow_hash() {
+  local account="$1"
+  run_privileged awk -F: -v user="$account" '$1 == user { print $2; found = 1; exit } END { if (!found) exit 1 }' /etc/shadow 2>/dev/null
+}
+
+assert_runtime_account_unlocked() {
+  local account="$1"
+  local strict="${2:-true}"
+  local hash=""
+
+  if ! getent passwd "$account" >/dev/null 2>&1; then
+    if [[ "$strict" == "true" ]]; then
+      die "Account '${account}' does not exist on this host. Refusing deploy."
+    fi
+    log "Account '${account}' not present on this host; skipping lock check."
+    return 0
+  fi
+
+  if ! hash="$(read_shadow_hash "$account" 2>/dev/null || true)"; then
+    hash=""
+  fi
+
+  if is_locked_password_field "$hash"; then
+    die "Account '${account}' is locked on the running system. Unlock/reset it before deploy (example: sudo passwd ${account}; sudo usermod -U ${account})."
+  fi
+}
+
+ensure_host_facts_access() {
+  local facts_file="${REPO_ROOT}/nix/hosts/${HOST_NAME}/facts.nix"
+  [[ -e "$facts_file" ]] || return 0
+
+  if [[ -r "$facts_file" && -w "$facts_file" ]]; then
+    return 0
+  fi
+
+  local target_user target_group
+  target_user="${SUDO_USER:-${USER:-$(id -un)}}"
+  target_group="$(id -gn "$target_user" 2>/dev/null || id -gn 2>/dev/null || echo users)"
+
+  log "Repairing permissions for '${facts_file}' so flake evaluation can read host facts"
+  run_privileged chown "${target_user}:${target_group}" "$facts_file" || true
+  run_privileged chmod 0644 "$facts_file" || true
+
+  [[ -r "$facts_file" ]] || die "facts file is not readable after permission repair: ${facts_file}"
+}
+
+assert_target_account_guardrails() {
+  local escaped_flake escaped_target escaped_user expr result
+  escaped_flake="$(nix_escape_string "$FLAKE_REF")"
+  escaped_target="$(nix_escape_string "$NIXOS_TARGET")"
+  escaped_user="$(nix_escape_string "$PRIMARY_USER")"
+
+  read -r -d '' expr <<EOF || true
+let
+  flake = builtins.getFlake "${escaped_flake}";
+  cfg = flake.nixosConfigurations."${escaped_target}".config;
+  users = cfg.users.users or {};
+  primaryName = "${escaped_user}";
+  hasPrimary = builtins.hasAttr primaryName users;
+  primary = if hasPrimary then builtins.getAttr primaryName users else {};
+  hasRoot = builtins.hasAttr "root" users;
+  rootUser = if hasRoot then users.root else {};
+  hasPassword = u:
+    (u ? hashedPassword)
+    || (u ? hashedPasswordFile)
+    || (u ? initialPassword)
+    || (u ? initialHashedPassword)
+    || (u ? passwordFile);
+  isLocked = u: (u ? hashedPassword) && ((builtins.match "^[!*].*" u.hashedPassword) != null);
+  mutableUsers = cfg.users.mutableUsers or true;
+  initrdEmergencyAccess =
+    if cfg ? mySystem && cfg.mySystem ? deployment && cfg.mySystem.deployment ? initrdEmergencyAccess then
+      cfg.mySystem.deployment.initrdEmergencyAccess
+    else
+      false;
+in
+  if isLocked primary then "primary-hash-locked"
+  else if (!mutableUsers && !hasPrimary) then "missing-primary-user"
+  else if (!mutableUsers && hasPrimary && !hasPassword primary) then "missing-primary-password"
+  else if (initrdEmergencyAccess && hasRoot && isLocked rootUser) then "root-hash-locked"
+  else if (initrdEmergencyAccess && hasRoot && !hasPassword rootUser) then "root-missing-password"
+  else "ok"
+EOF
+
+  if ! result="$(nix_eval_expr_raw_safe "$expr" 2>/dev/null || true)"; then
+    result=""
+  fi
+
+  case "$result" in
+    ok)
+      return 0
+      ;;
+    primary-hash-locked)
+      die "Target config declares locked hashedPassword for primary user '${PRIMARY_USER}'. Refusing deploy."
+      ;;
+    missing-primary-user)
+      die "Target config sets users.mutableUsers=false but does not declare primary user '${PRIMARY_USER}'. Refusing deploy."
+      ;;
+    missing-primary-password)
+      die "Target config declares primary user '${PRIMARY_USER}' without a password while users.mutableUsers=false. Refusing deploy."
+      ;;
+    root-hash-locked)
+      die "Target config declares a locked root hashedPassword while initrd emergency access is enabled. Refusing deploy."
+      ;;
+    root-missing-password)
+      die "Target config enables initrd emergency access but root user is declared without a password directive. Refusing deploy."
+      ;;
+    *)
+      log "Account guardrail preflight could not fully evaluate target config in time; continuing with runtime checks."
+      ;;
+  esac
 }
 
 extract_host_fs_field() {
@@ -261,8 +418,15 @@ assert_bootloader_preflight() {
   [[ "${RUN_PHASE0_DISKO}" == true ]] && return 0
 
   local systemd_boot_enabled grub_enabled
-  systemd_boot_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.boot.loader.systemd-boot.enable" 2>/dev/null || echo false)"
-  grub_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.boot.loader.grub.enable" 2>/dev/null || echo false)"
+  if ! systemd_boot_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.boot.loader.systemd-boot.enable" 2>/dev/null)"; then
+    log "Bootloader preflight: unable to evaluate systemd-boot enable flag in time; skipping strict bootloader assertion."
+    return 0
+  fi
+
+  if ! grub_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.boot.loader.grub.enable" 2>/dev/null)"; then
+    log "Bootloader preflight: unable to evaluate grub enable flag in time; skipping strict bootloader assertion."
+    return 0
+  fi
 
   if [[ "${systemd_boot_enabled}" != "true" && "${grub_enabled}" != "true" ]]; then
     die "Target '${NIXOS_TARGET}' does not enable a supported bootloader (systemd-boot/grub). Refusing deploy."
@@ -302,6 +466,7 @@ assert_bootloader_preflight() {
 }
 
 assert_target_boot_mode() {
+  [[ "${MODE}" == "build" ]] && return 0
   [[ "${ALLOW_HEADLESS_TARGET:-false}" == "true" ]] && return 0
   command -v systemctl >/dev/null 2>&1 || return 0
 
@@ -483,6 +648,7 @@ if [[ "$UPDATE_FLAKE_LOCK" == true ]]; then
   update_flake_lock "${FLAKE_REF}"
 fi
 
+ensure_host_facts_access
 if [[ "$RUN_DISCOVERY" == true ]]; then
   log "Discovering hardware facts for host '${HOST_NAME}' profile '${PROFILE}'"
   if [[ "${RECOVERY_MODE}" == true ]]; then
@@ -502,8 +668,10 @@ if [[ "$RUN_DISCOVERY" == true ]]; then
   fi
 fi
 
+ensure_host_facts_access
 assert_host_storage_config
 assert_previous_boot_fsck_clean
+assert_runtime_account_unlocked "${PRIMARY_USER}" false
 
 NIXOS_TARGET="${NIXOS_TARGET_OVERRIDE:-${HOST_NAME}-${PROFILE}}"
 HM_TARGET="${HM_TARGET_OVERRIDE:-${PRIMARY_USER}-${HOST_NAME}}"
@@ -515,6 +683,7 @@ fi
 log "NixOS target: ${NIXOS_TARGET}"
 log "Home target: ${HM_TARGET}"
 
+assert_target_account_guardrails
 assert_bootloader_preflight
 assert_target_boot_mode
 assert_safe_switch_context
@@ -524,7 +693,7 @@ if [[ "$RUN_PHASE0_DISKO" == true ]]; then
     die "--phase0-disko is destructive. Re-run with DISKO_CONFIRM=YES to proceed."
   fi
 
-  disk_layout="$(nix eval --raw "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.mySystem.disk.layout" 2>/dev/null || echo none)"
+  disk_layout="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.mySystem.disk.layout" 2>/dev/null || echo none)"
   if [[ "$disk_layout" == "none" ]]; then
     die "--phase0-disko requested but mySystem.disk.layout is 'none' for ${NIXOS_TARGET}."
   fi
@@ -535,7 +704,7 @@ if [[ "$RUN_PHASE0_DISKO" == true ]]; then
 fi
 
 if [[ "$RUN_SECUREBOOT_ENROLL" == true ]]; then
-  secureboot_enabled="$(nix eval --raw "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.mySystem.secureboot.enable" 2>/dev/null || echo false)"
+  secureboot_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.mySystem.secureboot.enable" 2>/dev/null || echo false)"
   if [[ "$secureboot_enabled" != "true" ]]; then
     die "--enroll-secureboot-keys requested but mySystem.secureboot.enable is not true for ${NIXOS_TARGET}."
   fi
@@ -595,6 +764,8 @@ if [[ "${SKIP_HOME_SWITCH}" == false ]]; then
 else
   log "Skipping Home Manager switch (--skip-home-switch)"
 fi
+
+assert_runtime_account_unlocked "${PRIMARY_USER}" true
 
 if [[ "$RUN_FLATPAK_SYNC" == true && -x "${REPO_ROOT}/scripts/sync-flatpak-profile.sh" ]]; then
   log "Syncing Flatpak apps for profile '${PROFILE}'"

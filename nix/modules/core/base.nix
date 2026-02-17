@@ -2,8 +2,21 @@
 let
   cfg = config.mySystem;
   bootFsType = lib.attrByPath [ "fileSystems" "/boot" "fsType" ] null config;
-  hostHasEfiFirmware = builtins.pathExists "/sys/firmware/efi";
-  useSystemdBoot = (!cfg.secureboot.enable) && (bootFsType == "vfat" || hostHasEfiFirmware);
+  useSystemdBoot = (!cfg.secureboot.enable) && (cfg.hardware.firmwareType == "efi" || bootFsType == "vfat");
+  usersCfg = config.users.users or { };
+  hasPrimaryUserDecl = builtins.hasAttr cfg.primaryUser usersCfg;
+  primaryUserCfg = if hasPrimaryUserDecl then usersCfg.${cfg.primaryUser} else { };
+  hasRootDecl = builtins.hasAttr "root" usersCfg;
+  rootUserCfg = if hasRootDecl then usersCfg.root else { };
+  hasPasswordDirective = userCfg:
+    (userCfg ? hashedPassword)
+    || (userCfg ? hashedPasswordFile)
+    || (userCfg ? initialPassword)
+    || (userCfg ? initialHashedPassword)
+    || (userCfg ? passwordFile);
+  hashedPasswordLocked = userCfg:
+    (userCfg ? hashedPassword)
+    && (lib.hasPrefix "!" userCfg.hashedPassword || lib.hasPrefix "*" userCfg.hashedPassword);
   basePackageNames = [
     "curl"
     "flatpak"
@@ -39,6 +52,30 @@ in
     warnings = lib.optionals (missingPackageNames != [ ]) [
       "Ignoring unknown package names in mySystem.profileData.systemPackageNames: ${lib.concatStringsSep ", " missingPackageNames}"
     ];
+
+    assertions =
+      [
+        {
+          assertion = !(hashedPasswordLocked primaryUserCfg);
+          message = "Primary user '${cfg.primaryUser}' has a locked hashedPassword in declarative config. Refusing build to prevent account lockout.";
+        }
+        {
+          assertion = !(cfg.deployment.initrdEmergencyAccess && hasRootDecl && hashedPasswordLocked rootUserCfg);
+          message = "Root user has a locked hashedPassword while mySystem.deployment.initrdEmergencyAccess=true. Refusing build to preserve recovery login.";
+        }
+        {
+          assertion = !(!config.users.mutableUsers && hasPrimaryUserDecl && !hasPasswordDirective primaryUserCfg);
+          message = "users.mutableUsers=false requires a password directive for users.users.${cfg.primaryUser}.";
+        }
+        {
+          assertion = !(!config.users.mutableUsers && !hasPrimaryUserDecl);
+          message = "users.mutableUsers=false requires declaring users.users.${cfg.primaryUser}.";
+        }
+        {
+          assertion = !(cfg.deployment.initrdEmergencyAccess && hasRootDecl && !hasPasswordDirective rootUserCfg);
+          message = "mySystem.deployment.initrdEmergencyAccess=true requires a password directive on users.users.root when root is declared.";
+        }
+      ];
 
     # This keeps the scaffold evaluable while migration progresses.
     system.stateVersion = lib.mkDefault "25.11";
