@@ -1055,6 +1055,9 @@ FOR MORE INFORMATION:
     Visit: https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy
     Logs: ~/.cache/nixos-quick-deploy/logs/
 
+ENVIRONMENT OVERRIDES:
+    ALLOW_ROOT_DEPLOY=true     Allow running as root/sudo (not recommended)
+
 EOF
 }
 
@@ -1338,6 +1341,17 @@ parse_arguments() {
                 ;;
         esac
     done
+}
+
+# Entry-point guardrail: require running as a normal user so generated files
+# stay user-owned and only privileged sub-steps use sudo.
+assert_non_root_entrypoint() {
+    if [[ "${EUID:-$(id -u)}" -eq 0 && "${ALLOW_ROOT_DEPLOY:-false}" != "true" ]]; then
+        echo "ERROR: Do not run nixos-quick-deploy.sh as root/sudo." >&2
+        echo "Run as your normal user; the script escalates only privileged steps." >&2
+        echo "Override only if required: ALLOW_ROOT_DEPLOY=true ./nixos-quick-deploy.sh ..." >&2
+        exit 1
+    fi
 }
 
 # ============================================================================
@@ -3239,6 +3253,8 @@ main() {
         show_phase_info "$SHOW_PHASE_INFO_NUM"
         exit 0
     fi
+
+    assert_non_root_entrypoint
 
     # Phase 1: Setup environment, acquire lock, preflight checks
     setup_environment
