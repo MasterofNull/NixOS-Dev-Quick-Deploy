@@ -62,6 +62,12 @@
         description = "True for laptops/mobile workstations. Enables power profiles, lid handling, and battery tuning.";
       };
 
+      firmwareType = lib.mkOption {
+        type = lib.types.enum [ "efi" "bios" "unknown" ];
+        default = "unknown";
+        description = "Detected firmware boot mode. Used for bootloader defaults.";
+      };
+
       earlyKmsPolicy = lib.mkOption {
         type = lib.types.enum [ "auto" "force" "off" ];
         default = "off";

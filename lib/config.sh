@@ -31,6 +31,20 @@
 # Internal helpers
 # ============================================================================
 
+run_git_safe() {
+    if command -v git >/dev/null 2>&1; then
+        git "$@"
+        return
+    fi
+
+    if command -v nix >/dev/null 2>&1; then
+        nix --extra-experimental-features 'nix-command flakes' shell nixpkgs#git --command git "$@"
+        return
+    fi
+
+    return 127
+}
+
 # Replace placeholder tokens in template files using a Python helper to safely
 # handle multi-line replacements. The helper is used extensively when writing
 # templates/home.nix and templates/configuration.nix.
@@ -1331,20 +1345,16 @@ ensure_flake_git_tracking() {
         return 0
     fi
 
-    if ! command -v git >/dev/null 2>&1; then
-        return 0
-    fi
-
     local toplevel=""
-    toplevel=$(git -C "$HM_CONFIG_DIR" rev-parse --show-toplevel 2>/dev/null || true)
+    toplevel=$(run_git_safe -C "$HM_CONFIG_DIR" rev-parse --show-toplevel 2>/dev/null || true)
 
     # If the flake lives inside another repo, create a nested repo to avoid
     # "path is not tracked by git" errors during nix flake evaluation.
     if [[ -n "$toplevel" && "$toplevel" != "$HM_CONFIG_DIR" ]]; then
         if [[ ! -d "$HM_CONFIG_DIR/.git" ]]; then
-            git -C "$HM_CONFIG_DIR" init -q >/dev/null 2>&1 || return 0
+            run_git_safe -C "$HM_CONFIG_DIR" init -q >/dev/null 2>&1 || return 0
         fi
-        git -C "$HM_CONFIG_DIR" add -A >/dev/null 2>&1 || true
+        run_git_safe -C "$HM_CONFIG_DIR" add -A >/dev/null 2>&1 || true
     fi
 }
 
@@ -1533,8 +1543,8 @@ validate_flake_lock_inputs() {
         if [[ ${#still_missing[@]} -eq 0 ]]; then
             print_success "Resolved all missing flake inputs: ${missing_inputs[*]}"
             # Re-add the updated lock to git tracking
-            if [[ -d "$flake_dir/.git" ]] && command -v git >/dev/null 2>&1; then
-                git -C "$flake_dir" add flake.lock >/dev/null 2>&1 || true
+            if [[ -d "$flake_dir/.git" ]]; then
+                run_git_safe -C "$flake_dir" add flake.lock >/dev/null 2>&1 || true
             fi
             return 0
         else
@@ -2146,11 +2156,16 @@ get_shadow_password_hash() {
     local hash
     hash=$(printf '%s' "$entry" | cut -d: -f2)
 
-    if [[ -z "$hash" || "$hash" == "!" || "$hash" == "*" ]]; then
+    if is_locked_password_field "$hash"; then
         return 0
     fi
 
     printf '%s' "$hash"
+}
+
+is_locked_password_field() {
+    local value="$1"
+    [[ -z "$value" || "$value" == "!" || "$value" == "*" || "$value" == "!!" || "$value" == \!* || "$value" == \** ]]
 }
 
 extract_user_password_snippet_from_config() {
@@ -2270,6 +2285,13 @@ hydrate_primary_user_password_block() {
         local snippet=""
         if snippet=$(extract_user_password_snippet_from_config "$candidate" "$PRIMARY_USER"); then
             if [[ -n "$snippet" ]]; then
+                if [[ "$snippet" =~ hashedPassword[[:space:]]*=[[:space:]]*\"([^\"]+)\" ]]; then
+                    local preserved_hash="${BASH_REMATCH[1]}"
+                    if is_locked_password_field "$preserved_hash"; then
+                        print_warning "Ignoring locked hashedPassword directive for $PRIMARY_USER from ${candidate}"
+                        continue
+                    fi
+                fi
                 USER_PASSWORD_BLOCK="$snippet"
                 [[ "$USER_PASSWORD_BLOCK" != *$'\n' ]] && USER_PASSWORD_BLOCK+=$'\n'
                 print_success "Preserved password directives for $PRIMARY_USER from ${candidate}"
@@ -2386,6 +2408,10 @@ resolve_primary_user_password_hash() {
         if shadow_hash=$(get_shadow_password_hash "$PRIMARY_USER" 2>/dev/null || true); then
             extracted="$shadow_hash"
         fi
+    fi
+
+    if is_locked_password_field "$extracted"; then
+        extracted=""
     fi
 
     printf '%s' "$extracted"
