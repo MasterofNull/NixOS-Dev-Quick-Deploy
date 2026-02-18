@@ -13,6 +13,17 @@
       description = "Primary local user name.";
     };
 
+    sshAuthorizedKeys = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "ssh-ed25519 AAAA... user@hostname" ];
+      description = ''
+        SSH public keys authorized for the primary user.
+        Set in nix/hosts/<host>/default.nix so each machine declares its own
+        keys without hard-coding them in shared modules.
+      '';
+    };
+
     system = lib.mkOption {
       type = lib.types.str;
       default = "x86_64-linux";

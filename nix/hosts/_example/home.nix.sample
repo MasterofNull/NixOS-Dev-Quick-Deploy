@@ -1,0 +1,45 @@
+{ lib, pkgs, ... }:
+# ---------------------------------------------------------------------------
+# Per-host Home Manager configuration — SAMPLE FILE
+#
+# Copy to nix/hosts/<your-hostname>/home.nix (remove .sample suffix).
+#
+# home.username and home.homeDirectory are set by flake.nix from
+# mySystem.primaryUser — do NOT declare them here.
+#
+# This file overrides defaults in nix/home/base.nix.
+# ---------------------------------------------------------------------------
+{
+  # =========================================================================
+  # GIT IDENTITY
+  # Required for git commits.  Overrides the "NixOS User / user@localhost"
+  # placeholders in nix/home/base.nix.
+  # =========================================================================
+  programs.git = {
+    userName  = lib.mkDefault "Your Name";
+    userEmail = lib.mkDefault "you@example.com";
+  };
+
+  # =========================================================================
+  # EDITOR
+  # =========================================================================
+  # home.sessionVariables.EDITOR = "nvim";
+  # home.sessionVariables.VISUAL = "nvim";
+
+  # =========================================================================
+  # MACHINE-SPECIFIC PACKAGES
+  # Packages in nix/home/base.nix (ripgrep, fd, jq, git, gh, btop, etc.)
+  # are already present — only add extras unique to this machine.
+  # =========================================================================
+  # home.packages = with pkgs; [
+  #   signal-desktop
+  #   spotify
+  # ];
+
+  # =========================================================================
+  # ZSH / SHELL ALIASES (per-machine overrides)
+  # =========================================================================
+  # programs.zsh.shellAliases = {
+  #   myalias = "some-command";
+  # };
+}
