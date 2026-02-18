@@ -9,25 +9,34 @@ ROOTS=(
   "ai-stack/agents/skills"
 )
 
-if ! command -v rg >/dev/null 2>&1; then
-  echo "ERROR: rg is required for lint-skill-external-deps.sh" >&2
-  exit 2
-fi
+PATTERN='raw\.githubusercontent\.com/.*/(main|master)/|github\.com/.*/blob/(main|master)/'
 
 tmp_hits="$(mktemp)"
 trap 'rm -f "$tmp_hits"' EXIT
 
 status=0
 
+scan_root() {
+  local root="$1"
+
+  if command -v rg >/dev/null 2>&1; then
+    rg -n \
+      -g 'SKILL.md' \
+      -g '*.md' \
+      -e 'raw\.githubusercontent\.com/.*/(main|master)/' \
+      -e 'github\.com/.*/blob/(main|master)/' \
+      "$root" || true
+    return
+  fi
+
+  while IFS= read -r file; do
+    grep -nHE "$PATTERN" "$file" || true
+  done < <(find "$root" -type f \( -name 'SKILL.md' -o -name '*.md' \) | sort)
+}
+
 for root in "${ROOTS[@]}"; do
   [[ -d "$root" ]] || continue
-
-  rg -n \
-    -g 'SKILL.md' \
-    -g '*.md' \
-    -e 'raw\.githubusercontent\.com/.*/(main|master)/' \
-    -e 'github\.com/.*/blob/(main|master)/' \
-    "$root" >>"$tmp_hits" || true
+  scan_root "$root" >>"$tmp_hits"
 done
 
 if [[ -s "$tmp_hits" ]]; then

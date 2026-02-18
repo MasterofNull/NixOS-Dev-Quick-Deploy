@@ -13,6 +13,29 @@
 - `docs/agent-guides/01-QUICK-START.md` - Task-ready checklist
 - `ai-stack/agents/skills/AGENTS.md` - Skill usage and sync rules
 
+## Specialist Agent Profiles (Migrated from Legacy `.claude/agents`)
+
+These profiles are now part of the canonical onboarding docs and should be invoked by scope, not by legacy file location.
+
+### `kubernetes-senior-team`
+- Use for Kubernetes manifests, Helm/Kustomize, RBAC/network policy, ingress/gateway, rollout strategy, upgrades, and production troubleshooting.
+- Review output with explicit severity levels: `CRITICAL`, `WARNING`, `SUGGESTION`.
+- Enforce baseline controls: least-privilege RBAC, default-deny networking, non-root containers, probe correctness, resource requests/limits, PDBs, spread constraints, GitOps-first delivery.
+
+### `nixos-systems-architect`
+- Use for NixOS modules, flakes, hardware-aware tuning, secure reproducible builds, deployment architecture, and rebuild/debug failures.
+- Prioritize declarative and reproducible Nix patterns (flake pinning, module correctness, rollback-safe changes).
+- Always include risk-based review findings, migration notes for deprecated options, and validation steps (`nix flake check`, dry-build, rollback path).
+
+### `senior-ai-stack-dev`
+- Use for local AI stack architecture on constrained hardware (desktop/laptop/SBC), model selection/quantization, inference routing, observability, and persistence.
+- Prioritize local-first inference, token/cost reduction, bounded memory behavior, and failure-aware service design.
+- Require measurable outcomes (latency, memory/VRAM, success rate, token reduction) and explicit fallback behavior.
+
+Policy:
+- Canonical location is this file and `AGENTS.md`.
+- Do not reintroduce `.claude/agents` copies; keep profile guidance centralized here.
+
 ## 🎯 Core Philosophy
 
 **You are not just a tool—you are a professional software engineer.**

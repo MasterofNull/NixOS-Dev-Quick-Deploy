@@ -13,11 +13,6 @@ ROOTS=(
 
 warnings=0
 
-if ! command -v rg >/dev/null 2>&1; then
-  echo "ERROR: rg is required for lint-skill-template.sh" >&2
-  exit 2
-fi
-
 trim_target() {
   local t="$1"
   t="${t//[[:space:]]/}"
@@ -43,11 +38,11 @@ check_frontmatter() {
     return
   fi
 
-  if ! printf '%s\n' "$fm" | rg -q '^name:'; then
+  if ! printf '%s\n' "$fm" | grep -q '^name:'; then
     echo "WARN: missing required frontmatter key 'name' in ${skill_file}" >&2
     ((warnings++)) || true
   fi
-  if ! printf '%s\n' "$fm" | rg -q '^description:'; then
+  if ! printf '%s\n' "$fm" | grep -q '^description:'; then
     echo "WARN: missing required frontmatter key 'description' in ${skill_file}" >&2
     ((warnings++)) || true
   fi
@@ -104,7 +99,7 @@ check_reference_depth() {
 
 check_maintenance_stanza() {
   local skill_file="$1"
-  if ! rg -qi 'maintenance|version' "$skill_file"; then
+  if ! grep -Eqi 'maintenance|version' "$skill_file"; then
     echo "WARN: no maintenance/version stanza detected in ${skill_file}" >&2
     ((warnings++)) || true
   fi
