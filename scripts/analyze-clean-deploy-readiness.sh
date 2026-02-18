@@ -8,11 +8,12 @@ HOST_NAME="$(hostname -s 2>/dev/null || hostname)"
 PROFILE="ai-dev"
 FLAKE_REF="path:${REPO_ROOT}"
 CHECK_UPDATE_LOCK=false
-NIX_EVAL_TIMEOUT_SECONDS="${NIX_EVAL_TIMEOUT_SECONDS:-20}"
+NIX_EVAL_TIMEOUT_SECONDS="${NIX_EVAL_TIMEOUT_SECONDS:-60}"
 HOST_EXPLICIT=false
 
 FAIL_COUNT=0
 WARN_COUNT=0
+INFO_COUNT=0
 PASS_COUNT=0
 
 usage() {
@@ -44,6 +45,12 @@ warn() {
   printf '[WARN] %s\n' "$1"
 }
 
+info() {
+  INFO_COUNT=$((INFO_COUNT + 1))
+  printf '[INFO] %s\n' "$1"
+}
+
+
 fail() {
   FAIL_COUNT=$((FAIL_COUNT + 1))
   printf '[FAIL] %s\n' "$1"
@@ -66,7 +73,7 @@ check_optional_cmd() {
   if command -v "$cmd" >/dev/null 2>&1; then
     pass "$present_msg"
   else
-    warn "$missing_msg"
+    info "$missing_msg"
   fi
 }
 
@@ -283,7 +290,7 @@ check_eval_capability
 
 check_update_lock_dependencies
 
-printf '\n[readiness] Summary: %d pass, %d warn, %d fail\n' "$PASS_COUNT" "$WARN_COUNT" "$FAIL_COUNT"
+printf '\n[readiness] Summary: %d pass, %d info, %d warn, %d fail\n' "$PASS_COUNT" "$INFO_COUNT" "$WARN_COUNT" "$FAIL_COUNT"
 
 if (( FAIL_COUNT > 0 )); then
   cat <<'REMEDIATION'
