@@ -1,0 +1,22 @@
+# Global fallback
+* @MasterofNull
+
+# Declarative system/deploy surfaces
+/flake.nix @MasterofNull
+/nix/ @MasterofNull
+/scripts/deploy-clean.sh @MasterofNull
+/scripts/discover-system-facts.sh @MasterofNull
+
+# Skill and governance surfaces
+/.agent/skills/ @MasterofNull
+/ai-stack/agents/skills/ @MasterofNull
+/scripts/aqd @MasterofNull
+/scripts/check-skill-source-of-truth.sh @MasterofNull
+/scripts/lint-skill-external-deps.sh @MasterofNull
+/scripts/validate-skill-references.sh @MasterofNull
+
+# CI / policy
+/.github/workflows/ @MasterofNull
+/docs/REPOSITORY-SCOPE-CONTRACT.md @MasterofNull
+/docs/SKILL-BACKUP-POLICY.md @MasterofNull
+/docs/AQD-CLI-USAGE.md @MasterofNull
