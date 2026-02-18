@@ -21,6 +21,8 @@ in
         "input"           # evdev device access for Wayland compositors
       ];
       shell = lib.mkDefault pkgs.zsh;
+      # SSH authorized keys — set mySystem.sshAuthorizedKeys in per-host default.nix.
+      openssh.authorizedKeys.keys = lib.mkDefault cfg.sshAuthorizedKeys;
     };
 
     # zsh must be enabled system-wide when used as a login shell.
