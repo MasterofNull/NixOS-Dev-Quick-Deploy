@@ -230,6 +230,12 @@ confirm() {
     local default="${2:-n}"         # Default answer (n if not provided)
     local response                  # Will hold user's input
 
+    if [[ "${AUTO_CONFIRM:-false}" == "true" ]]; then
+        # Automation mode: never block on prompts, use the declared default.
+        [[ "$default" =~ ^[Yy]$ ]]
+        return $?
+    fi
+
     if [[ ! -t 0 ]]; then
         # Non-interactive mode: honor default safely.
         if [[ "$default" =~ ^[Yy]$ ]]; then
