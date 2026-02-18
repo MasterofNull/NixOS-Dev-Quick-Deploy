@@ -1,3 +1,17 @@
+## Phase 28 Update (2026-02-18): Roadmap Verifier Host Compatibility Fallback
+
+### 28.H10 Make flake-first roadmap verification independent of ripgrep availability
+
+**Changes Applied:**
+- [x] Updated `scripts/verify-flake-first-roadmap-completion.sh` to detect `rg` availability and use `grep -E` fallback when `rg` is not installed.
+- [x] Added verifier preflight logging so fallback mode is explicit in execution output.
+- [x] Preserved all existing roadmap marker checks while removing false-negative failure mode on hosts missing ripgrep.
+
+**Validation:**
+- `bash -n scripts/verify-flake-first-roadmap-completion.sh` → PASS
+- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS
+- `PATH="/usr/bin:/bin" ./scripts/verify-flake-first-roadmap-completion.sh` → PASS (grep fallback)
+
 ## Phase 28 Update (2026-02-18): CI Enforcement for Flake-First Roadmap Completion
 
 ### 28.H9 Add workflow gate for roadmap verifier and entrypoint syntax
