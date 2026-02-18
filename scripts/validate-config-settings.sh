@@ -76,4 +76,4 @@ if ! validate_config_settings; then
   exit "${ERR_CONFIG_INVALID:-30}"
 fi
 
-print_info "Configuration validation passed."
+printf 'Configuration validation passed.\n'

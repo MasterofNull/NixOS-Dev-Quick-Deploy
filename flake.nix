@@ -120,9 +120,9 @@
                   ++ lib.optional (wantsSecureboot && hasLanzabooteInput && !hasLanzabooteModule)
                     "Secure boot requested but lanzaboote module export is unavailable.";
               })
-            ({ ... }: {
-              mySystem.hostName = hostName;
-              mySystem.profile = profile;
+            ({ lib, ... }: {
+              mySystem.hostName = lib.mkDefault hostName;
+              mySystem.profile = lib.mkForce profile;
             })
             ({ lib, ... }: {
               assertions = lib.optional (!hasHostHardwareConfig && (hostFacts.disk.layout or "none") == "none") {

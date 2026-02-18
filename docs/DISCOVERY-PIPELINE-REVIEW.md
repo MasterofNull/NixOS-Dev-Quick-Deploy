@@ -423,7 +423,7 @@ function updateDiscoverySignals(data) {
         const hint = document.createElement('div');
         hint.className = 'data-item';
         hint.style.color = 'var(--text-muted)';
-        hint.innerHTML = 'No discovery report found. Run:<br><code>python3 scripts/discover-improvements.sh</code>';
+        hint.innerHTML = 'No discovery report found. Run:<br><code>scripts/discover-improvements.sh</code>';
         candidatesEl.appendChild(hint);
         return;
     }
