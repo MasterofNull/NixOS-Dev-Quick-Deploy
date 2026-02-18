@@ -103,8 +103,8 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        if: always() && hashFiles(format('trivy-results-{0}.sarif', hashFiles(matrix.image))) != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
         with:
           sarif_file: 'trivy-results-${{ hashFiles(matrix.image) }}.sarif'
           category: trivy-${{ matrix.image }}
@@ -156,8 +156,8 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.service)) != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
         with:
           sarif_file: 'trivy-${{ matrix.service }}.sarif'
           category: trivy-custom-${{ matrix.service }}
@@ -245,8 +245,8 @@ jobs:
             --exit-code 1
 
       - name: Upload Gitleaks SARIF
-        if: always() && hashFiles('gitleaks-security.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('gitleaks-security.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: gitleaks-security.sarif
           category: gitleaks-security
