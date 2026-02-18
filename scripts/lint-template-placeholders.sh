@@ -13,6 +13,15 @@ fi
 declare -A baseline_counts=()
 declare -A current_counts=()
 
+list_placeholder_template_paths() {
+  if command -v rg >/dev/null 2>&1; then
+    rg -n "@[A-Z0-9_]+@" "${PROJECT_ROOT}/templates" -S | awk -F: '{print $1}' || true
+    return
+  fi
+
+  grep -RInE "@[A-Z0-9_]+@" "${PROJECT_ROOT}/templates" 2>/dev/null | awk -F: '{print $1}' || true
+}
+
 while IFS=$'\t' read -r count path; do
   [[ -n "${count:-}" && -n "${path:-}" ]] || continue
   [[ "$count" =~ ^[0-9]+$ ]] || continue
@@ -25,7 +34,7 @@ while IFS= read -r line; do
   [[ -n "${count:-}" && -n "${path:-}" ]] || continue
   current_counts["$path"]="$count"
 done < <(
-  rg -n "@[A-Z0-9_]+@" "${PROJECT_ROOT}/templates" -S | awk -F: '{print $1}' | \
+  list_placeholder_template_paths | \
     sed "s#^${PROJECT_ROOT}/##" | sort | uniq -c | awk '{print $1 " " $2}'
 )
 

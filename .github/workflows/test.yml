@@ -261,6 +261,10 @@ jobs:
           required_files=(
             "README.md"
             "LICENSE"
+            "AGENTS.md"
+            "CLAUDE.md"
+            "SKILLS.md"
+            "MCP.md"
             "nixos-quick-deploy.sh"
             "config/defaults.sh"
             "config/variables.sh"
@@ -280,6 +284,12 @@ jobs:
             "scripts/mcp-server"
             "templates/configuration.nix"
             "templates/flake.nix"
+            "docs/AGENTS.md"
+            "docs/AVAILABLE_TOOLS.md"
+            "docs/AQD-CLI-USAGE.md"
+            "docs/MCP_SETUP.md"
+            "docs/MCP_SERVERS.md"
+            "docs/SKILLS-AND-MCP-INVENTORY.md"
             "docs/QUICK_START.md"
             "docs/TROUBLESHOOTING.md"
           )
@@ -344,8 +354,27 @@ jobs:
           phase_count=$(find phases -maxdepth 1 -type f -name 'phase-*.sh' | wc -l)
           echo "Detected $phase_count phase implementations"
 
-          if [ "$phase_count" -ne 8 ]; then
-            echo "✗ Expected 8 phase scripts but found $phase_count"
+          required_core=(
+            "phase-01-system-initialization.sh"
+            "phase-02-system-backup.sh"
+            "phase-03-configuration-generation.sh"
+            "phase-04-pre-deployment-validation.sh"
+            "phase-05-declarative-deployment.sh"
+            "phase-06-additional-tooling.sh"
+            "phase-07-post-deployment-validation.sh"
+            "phase-08-finalization-and-report.sh"
+          )
+
+          missing_core=0
+          for phase in "${required_core[@]}"; do
+            if [ ! -f "phases/$phase" ]; then
+              echo "✗ Missing required core phase: $phase"
+              missing_core=$((missing_core + 1))
+            fi
+          done
+
+          if [ "$missing_core" -ne 0 ]; then
+            echo "✗ Missing $missing_core required core phase script(s)"
             exit 1
           fi
 

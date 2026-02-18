@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 DEFAULT_OUTPUT="${PROJECT_ROOT}/config/package-count-baseline.json"
 NIX_EVAL_TIMEOUT_SECONDS="${NIX_EVAL_TIMEOUT_SECONDS:-45}"
+NIX_EXPERIMENTAL_FEATURES="nix-command flakes"
 
 FLAKE_REF="path:${PROJECT_ROOT}"
 OUTPUT_PATH=""
@@ -37,10 +38,11 @@ require_command() {
 }
 
 nix_eval() {
+  local -a nix_cmd=(nix --extra-experimental-features "$NIX_EXPERIMENTAL_FEATURES" eval "$@")
   if command -v timeout >/dev/null 2>&1; then
-    timeout "${NIX_EVAL_TIMEOUT_SECONDS}s" nix eval "$@"
+    timeout "${NIX_EVAL_TIMEOUT_SECONDS}s" "${nix_cmd[@]}"
   else
-    nix eval "$@"
+    "${nix_cmd[@]}"
   fi
 }
 

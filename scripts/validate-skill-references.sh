@@ -15,11 +15,6 @@ else
   )
 fi
 
-if ! command -v rg >/dev/null 2>&1; then
-  echo "ERROR: rg is required for validate-skill-references.sh" >&2
-  exit 2
-fi
-
 status=0
 
 check_target() {
