@@ -2071,14 +2071,16 @@ run_optional_phase_script() {
         return 1
     fi
 
-    if "$function_name"; then
-        print_success "$label completed"
-        echo ""
-        return 0
+    # Phase scripts in this repository self-execute when sourced. Calling the
+    # exported phase function again causes a duplicate run and confusing
+    # "already completed" messages.
+    if [[ -n "$function_name" ]] && ! declare -F "$function_name" >/dev/null 2>&1; then
+        print_warning "$label script did not export expected function '$function_name'"
     fi
 
-    print_error "$label failed"
-    return 1
+    print_success "$label completed"
+    echo ""
+    return 0
 }
 
 # Interactive failure handler invoked whenever execute_phase returns non-zero.
@@ -2481,9 +2483,41 @@ suggest_ai_stack_llama_defaults() {
     printf '%s|%s\n' "$model_id" "$model_file"
 }
 
+resolve_flake_first_ai_stack_backend() {
+    local host_name="$1"
+    local host_dir="${SCRIPT_DIR}/nix/hosts/${host_name}"
+    local deploy_file="${host_dir}/deploy-options.nix"
+
+    if [[ ! -f "$deploy_file" ]]; then
+        printf 'ollama\n'
+        return 0
+    fi
+
+    local backend
+    backend=$(sed -nE 's/.*backend[[:space:]]*=[[:space:]]*lib\.mk(Default|Force)[[:space:]]*"([^"]+)".*/\2/p' "$deploy_file" | head -n1)
+    if [[ -z "$backend" ]]; then
+        backend=$(sed -nE 's/.*backend[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$deploy_file" | head -n1)
+    fi
+
+    printf '%s\n' "${backend:-ollama}"
+}
+
 # prewarm_ai_stack_embeddings_cache: mirror legacy phase behavior by attempting
 # an embeddings model cache warm-up before first runtime requests.
 prewarm_ai_stack_embeddings_cache() {
+    local host_name="${1:-${FLAKE_FIRST_TARGET:-nixos}}"
+
+    if [[ "${RUN_AI_MODEL:-false}" != "true" ]]; then
+        return 0
+    fi
+
+    local backend
+    backend="$(resolve_flake_first_ai_stack_backend "$host_name")"
+    if [[ "$backend" != "ollama" ]]; then
+        print_info "Skipping embeddings cache prewarm (backend=${backend})"
+        return 0
+    fi
+
     local embeddings_script="$SCRIPT_DIR/scripts/download-embeddings-model.sh"
     if [[ ! -x "$embeddings_script" ]]; then
         return 0
@@ -2835,7 +2869,7 @@ configure_host_swap_limits() {
         return 0
     fi
 
-    if confirm "Configure host-level swap limits for systemd services (includes containers)?" "y"; then
+    if confirm "Configure host-level swap limits for systemd services?" "y"; then
         if [[ "$suggested_swap_gb" =~ ^[0-9]+$ && "$suggested_swap_gb" -gt 0 ]]; then
             if [[ "$swap_total_gb" =~ ^[0-9]+$ && "$swap_total_gb" -gt 0 ]]; then
                 print_info "Suggested swap cap: ${suggested_swap_gb}GB (≈60% RAM, capped by total swap ${swap_total_gb}GB)."
@@ -2854,7 +2888,7 @@ configure_host_swap_limits() {
         local swap_input
         local attempts=0
         while true; do
-            swap_input=$(prompt_user "Default swap max per service in GB (0=unlimited, 'auto'=suggested, 'skip'=disable)" "$default_swap_gb")
+            swap_input=$(prompt_user "Default host service swap max in GB (0=unlimited, 'auto'=suggested, 'skip'=disable)" "$default_swap_gb")
             case "${swap_input,,}" in
                 ""|"auto"|"default"|"suggested"|"rec"|"recommended")
                     if [[ "$suggested_swap_gb" =~ ^[0-9]+$ && "$suggested_swap_gb" -gt 0 ]]; then
@@ -3161,12 +3195,36 @@ persist_flake_first_host_options() {
 
     resolve_flake_first_model_selection
 
+    local existing_backend existing_accel existing_ui_enable existing_vector_enable existing_listen_lan existing_models
+    existing_backend="$(resolve_flake_first_ai_stack_backend "$host_name")"
+    existing_accel=$(sed -nE 's/.*acceleration[[:space:]]*=[[:space:]]*lib\.mk(Default|Force)[[:space:]]*"([^"]+)".*/\2/p' "$deploy_file" | head -n1)
+    [[ -z "$existing_accel" ]] && existing_accel="auto"
+
+    existing_ui_enable=$(sed -nE 's/.*ui\.enable[[:space:]]*=[[:space:]]*lib\.mk(Default|Force)[[:space:]]*(true|false).*/\2/p' "$deploy_file" | head -n1)
+    [[ -z "$existing_ui_enable" ]] && existing_ui_enable="true"
+
+    existing_vector_enable=$(sed -nE 's/.*vectorDb\.enable[[:space:]]*=[[:space:]]*lib\.mk(Default|Force)[[:space:]]*(true|false).*/\2/p' "$deploy_file" | head -n1)
+    [[ -z "$existing_vector_enable" ]] && existing_vector_enable="false"
+
+    existing_listen_lan=$(sed -nE 's/.*listenOnLan[[:space:]]*=[[:space:]]*lib\.mk(Default|Force)[[:space:]]*(true|false).*/\2/p' "$deploy_file" | head -n1)
+    [[ -z "$existing_listen_lan" ]] && existing_listen_lan="false"
+
+    existing_models=$(sed -nE 's/.*models[[:space:]]*=[[:space:]]*lib\.mk(Default|Force)[[:space:]]*(\[.*\]).*/\2/p' "$deploy_file" | head -n1)
+    [[ -z "$existing_models" ]] && existing_models='[ "qwen2.5-coder:7b" ]'
+
     cat > "$deploy_file" <<EOF
 { lib, ... }:
 {
   mySystem.roles.aiStack.enable = lib.mkForce ${RUN_AI_MODEL};
   mySystem.aiStack = {
     enable = lib.mkForce ${RUN_AI_MODEL};
+    backend = lib.mkForce "${existing_backend}";
+    acceleration = lib.mkForce "${existing_accel}";
+    models = lib.mkForce ${existing_models};
+    ui.enable = lib.mkForce ${existing_ui_enable};
+    vectorDb.enable = lib.mkForce ${existing_vector_enable};
+    listenOnLan = lib.mkForce ${existing_listen_lan};
+
     modelProfile = lib.mkForce "${FLAKE_FIRST_MODEL_PROFILE}";
     embeddingModel = lib.mkForce "${FLAKE_FIRST_EMBEDDING_MODEL}";
     llamaDefaultModel = lib.mkForce "${FLAKE_FIRST_LLM_MODEL}";
@@ -3182,6 +3240,15 @@ EOF
 # apply_flake_first_ai_stack_toggle: persist the --without-ai-model choice for
 # declarative reconciliation by writing/removing the AI stack disable marker.
 apply_flake_first_ai_stack_toggle() {
+    local host_name="${1:-${FLAKE_FIRST_TARGET:-nixos}}"
+    local backend
+    backend="$(resolve_flake_first_ai_stack_backend "$host_name")"
+
+    if [[ "$backend" != "k3s" ]]; then
+        print_info "Skipping AI stack disable marker management (backend=${backend})"
+        return 0
+    fi
+
     local marker_path="${AI_STACK_DISABLE_MARKER:-/var/lib/nixos-quick-deploy/disable-ai-stack}"
     local marker_dir
     marker_dir="$(dirname "$marker_path")"
@@ -3354,6 +3421,7 @@ run_flake_first_deployment() {
         --host "$detected_host"
         --profile "$profile"
         --flake-ref "$flake_ref"
+        --skip-roadmap-verification
     )
 
     if [[ -n "${FLAKE_FIRST_TARGET:-}" ]]; then
@@ -3416,9 +3484,9 @@ run_flake_first_deployment() {
         return 1
     fi
 
-    prewarm_ai_stack_embeddings_cache
+    prewarm_ai_stack_embeddings_cache "$detected_host"
 
-    if ! apply_flake_first_ai_stack_toggle; then
+    if ! apply_flake_first_ai_stack_toggle "$detected_host"; then
         print_error "Failed to persist AI stack declarative toggle state"
         return 1
     fi
