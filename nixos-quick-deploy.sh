@@ -2561,11 +2561,25 @@ ensure_ai_stack_env() {
         local key="$1"
         local value="$2"
         local file="$3"
-        if grep -qE "^[[:space:]]*${key}=" "$file" 2>/dev/null; then
-            sed -i "s|^[[:space:]]*${key}=.*|${key}=${value}|" "$file"
-        else
-            printf '%s=%s\n' "$key" "$value" >> "$file"
-        fi
+        local tmp_file
+        tmp_file=$(mktemp)
+
+        awk -v target="$key" -v replacement="$value" '
+            BEGIN { updated = 0 }
+            $0 ~ "^[[:space:]]*" target "=" {
+                print target "=" replacement
+                updated = 1
+                next
+            }
+            { print }
+            END {
+                if (updated == 0) {
+                    print target "=" replacement
+                }
+            }
+        ' "$file" > "$tmp_file"
+
+        mv "$tmp_file" "$file"
     }
 
     local config_dir="${AI_STACK_CONFIG_DIR:-${PRIMARY_HOME:-$HOME}/.config/nixos-ai-stack}"
