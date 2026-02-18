@@ -142,6 +142,7 @@ FLAKE_FIRST_PROFILE_EXPLICIT=false
 FLAKE_FIRST_TARGET=""
 FLAKE_FIRST_DEPLOY_MODE="switch"
 RESTORE_KNOWN_GOOD_FLAKE_LOCK=false
+SKIP_ROADMAP_VERIFICATION=false
 FORCE_HF_DOWNLOAD=false
 RUN_AI_PREP=false
 RUN_AI_MODEL=true  # Default: Enable AI stack auto-deploy
@@ -988,6 +989,8 @@ BASIC OPTIONS:
         --flake-first-deploy-mode M
                                 Deploy mode for flake-first path (switch|boot|build)
         --restore-flake-lock    Re-seed flake.lock from the bundled baseline
+        --skip-roadmap-verification
+                                Skip flake-first roadmap-completion verifier preflight
         --with-ai-prep          Run the optional AI-Optimizer preparation phase after Phase 8
         --with-ai-model         Force enable Hybrid Learning Stack deployment (default: disabled)
         --without-ai-model      Skip AI model deployment phase (disable default prompt)
@@ -1317,6 +1320,10 @@ parse_arguments() {
                 ;;
             --restore-flake-lock)
                 RESTORE_KNOWN_GOOD_FLAKE_LOCK=true
+                shift
+                ;;
+            --skip-roadmap-verification)
+                SKIP_ROADMAP_VERIFICATION=true
                 shift
                 ;;
             --with-ai-prep)
@@ -3197,6 +3204,29 @@ apply_flake_first_ai_stack_toggle() {
     fi
 }
 
+# run_flake_first_roadmap_verification: enforce roadmap-complete flake-first
+# implementation markers before running declarative deployment.
+run_flake_first_roadmap_verification() {
+    if [[ "${SKIP_ROADMAP_VERIFICATION:-false}" == "true" ]]; then
+        print_info "Skipping roadmap-completion verification (--skip-roadmap-verification)"
+        return 0
+    fi
+
+    local verifier="${SCRIPT_DIR}/scripts/verify-flake-first-roadmap-completion.sh"
+    if [[ ! -x "$verifier" ]]; then
+        print_warning "Roadmap-completion verifier not executable (${verifier}); skipping verification."
+        return 0
+    fi
+
+    print_info "Verifying roadmap-complete flake-first requirements"
+    if ! "$verifier"; then
+        print_error "Roadmap-completion verification failed. Resolve missing items or rerun with --skip-roadmap-verification."
+        return 1
+    fi
+
+    return 0
+}
+
 # run_flake_first_deployment: Execute a direct declarative deployment path.
 # This bypasses the 9-phase generator pipeline and applies the root flake.
 run_flake_first_deployment() {
@@ -3349,6 +3379,10 @@ run_flake_first_deployment() {
     fi
 
     print_info "Using flake target: ${nixos_target} (mode=${deploy_mode})"
+
+    if ! run_flake_first_roadmap_verification; then
+        return 1
+    fi
 
     if ! persist_flake_first_host_options "$detected_host"; then
         print_error "Failed to persist host-scoped declarative deploy options"

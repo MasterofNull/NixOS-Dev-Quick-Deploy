@@ -35,6 +35,7 @@
       hostHardwarePath = hostName: hostPath hostName + "/hardware-configuration.nix";
       hostDeployOptionsPath = hostName: hostPath hostName + "/deploy-options.nix";
       hostHomePath = hostName: hostPath hostName + "/home.nix";
+      hostHomeDeployOptionsPath = hostName: hostPath hostName + "/home-deploy-options.nix";
 
       hostEntries = builtins.readDir ./nix/hosts;
       hostDirs =
@@ -163,6 +164,7 @@
           hostModules =
             [ ./nix/home/base.nix ]
             ++ lib.optionals (builtins.pathExists (hostHomePath hostName)) [ (hostHomePath hostName) ]
+            ++ lib.optionals (builtins.pathExists (hostHomeDeployOptionsPath hostName)) [ (hostHomeDeployOptionsPath hostName) ]
             ++ [
               ({ lib, ... }: {
                 home.username = lib.mkDefault hostUser;
