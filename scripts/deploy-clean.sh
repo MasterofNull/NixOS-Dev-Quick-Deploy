@@ -28,6 +28,9 @@ HOST_EXPLICIT=false
 AUTO_GUI_SWITCH_FALLBACK="${AUTO_GUI_SWITCH_FALLBACK:-false}"
 ALLOW_GUI_SWITCH="${ALLOW_GUI_SWITCH:-true}"
 HOME_MANAGER_BACKUP_EXTENSION="${HOME_MANAGER_BACKUP_EXTENSION:-backup}"
+REQUIRE_HOME_MANAGER_CLI="${REQUIRE_HOME_MANAGER_CLI:-false}"
+PREFER_NIX_RUN_HOME_MANAGER="${PREFER_NIX_RUN_HOME_MANAGER:-true}"
+HOME_MANAGER_NIX_RUN_REF="${HOME_MANAGER_NIX_RUN_REF:-github:nix-community/home-manager/release-25.11#home-manager}"
 
 usage() {
   cat <<'USAGE'
@@ -59,6 +62,8 @@ Options:
   --skip-system-switch    Skip system apply/build action
   --skip-home-switch      Skip Home Manager apply/build action
   --skip-health-check     Skip post-switch health check script
+  --require-home-manager-cli
+                          Fail if home-manager binary is not already in PATH
   --skip-discovery        Skip hardware facts discovery
   --skip-flatpak-sync     Skip declarative Flatpak profile sync
   --skip-readiness-check  Skip bootstrap/deploy readiness analysis preflight
@@ -73,6 +78,12 @@ Environment overrides:
                             Keep switch mode in graphical sessions (default)
   HOME_MANAGER_BACKUP_EXTENSION=backup
                             Backup suffix used for Home Manager file collisions
+  REQUIRE_HOME_MANAGER_CLI=false
+                            Require home-manager command in PATH (disable fallback paths)
+  PREFER_NIX_RUN_HOME_MANAGER=true
+                            Try `nix run` home-manager before activation fallback when CLI missing
+  HOME_MANAGER_NIX_RUN_REF=github:nix-community/home-manager/release-25.11#home-manager
+                            Flake ref used for nix-run Home Manager fallback
   ALLOW_ROOT_DEPLOY=true    Allow running this script as root (not recommended)
   BOOT_ESP_MIN_FREE_MB=128  Override minimum required free space on ESP
 USAGE
@@ -651,20 +662,66 @@ home_build() {
     return
   fi
 
-  nix build "${FLAKE_REF}#homeConfigurations.\"${hm_target}\".activationPackage"
+  if [[ "${REQUIRE_HOME_MANAGER_CLI}" == "true" ]]; then
+    die "home-manager CLI is required but not found in PATH. Install it or re-run without --require-home-manager-cli."
+  fi
+
+  if [[ "${PREFER_NIX_RUN_HOME_MANAGER}" == "true" ]] && command -v nix >/dev/null 2>&1; then
+    if nix run --accept-flake-config "${HOME_MANAGER_NIX_RUN_REF}" -- build --flake "${FLAKE_REF}#${hm_target}"; then
+      return
+    fi
+    log "nix run Home Manager build fallback failed (${HOME_MANAGER_NIX_RUN_REF}); using activationPackage build path."
+  fi
+
+  nix build "${FLAKE_REF}#homeConfigurations."${hm_target}".activationPackage"
+}
+
+verify_home_manager_cli_post_switch() {
+  # Surface actionable guidance after activation so operators understand whether
+  # the CLI is now available or still only accessible via nix run.
+  if command -v home-manager >/dev/null 2>&1; then
+    log "home-manager CLI available in PATH: $(command -v home-manager)"
+    return 0
+  fi
+
+  if [[ "${PREFER_NIX_RUN_HOME_MANAGER}" == "true" ]] && command -v nix >/dev/null 2>&1; then
+    if nix run --accept-flake-config "${HOME_MANAGER_NIX_RUN_REF}" -- --version >/dev/null 2>&1; then
+      log "home-manager CLI is not in PATH yet. You can run it via: nix run --accept-flake-config ${HOME_MANAGER_NIX_RUN_REF} -- <args>"
+      return 0
+    fi
+  fi
+
+  log "home-manager CLI remains unavailable after activation. Ensure programs.home-manager.enable is set or install home-manager into your user profile."
+  return 0
 }
 
 home_switch() {
   local hm_target="$1"
   if command -v home-manager >/dev/null 2>&1; then
     home-manager switch -b "${HOME_MANAGER_BACKUP_EXTENSION}" --flake "${FLAKE_REF}#${hm_target}"
+    verify_home_manager_cli_post_switch
     return
+  fi
+
+  if [[ "${REQUIRE_HOME_MANAGER_CLI}" == "true" ]]; then
+    die "home-manager CLI is required but not found in PATH. Install it or re-run without --require-home-manager-cli."
+  fi
+
+  if [[ "${PREFER_NIX_RUN_HOME_MANAGER}" == "true" ]] && command -v nix >/dev/null 2>&1; then
+    if nix run --accept-flake-config "${HOME_MANAGER_NIX_RUN_REF}" -- switch -b "${HOME_MANAGER_BACKUP_EXTENSION}" --flake "${FLAKE_REF}#${hm_target}"; then
+      verify_home_manager_cli_post_switch
+      return
+    fi
+    log "nix run Home Manager switch fallback failed (${HOME_MANAGER_NIX_RUN_REF}); using activationPackage fallback."
   fi
 
   local out_link
   out_link="/tmp/home-activation-${hm_target//[^a-zA-Z0-9_.-]/_}-$$"
-  nix build --out-link "$out_link" "${FLAKE_REF}#homeConfigurations.\"${hm_target}\".activationPackage"
-  "${out_link}/activate"
+  nix build --out-link "$out_link" "${FLAKE_REF}#homeConfigurations."${hm_target}".activationPackage"
+  # home-manager CLI may be unavailable on fresh systems; mirror `-b <ext>` by
+  # exporting HOME_MANAGER_BACKUP_EXT for direct activationPackage execution.
+  HOME_MANAGER_BACKUP_EXT="${HOME_MANAGER_BACKUP_EXTENSION}" "${out_link}/activate"
+  verify_home_manager_cli_post_switch
 }
 
 # persist_home_git_credentials_declarative: project git identity into
@@ -807,6 +864,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-health-check)
       RUN_HEALTH_CHECK=false
+      shift
+      ;;
+    --require-home-manager-cli)
+      REQUIRE_HOME_MANAGER_CLI=true
       shift
       ;;
     --skip-discovery)
