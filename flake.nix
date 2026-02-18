@@ -33,7 +33,9 @@
       factsPath = hostName: hostPath hostName + "/facts.nix";
       hostDefaultPath = hostName: hostPath hostName + "/default.nix";
       hostHardwarePath = hostName: hostPath hostName + "/hardware-configuration.nix";
+      hostDeployOptionsPath = hostName: hostPath hostName + "/deploy-options.nix";
       hostHomePath = hostName: hostPath hostName + "/home.nix";
+      hostHomeDeployOptionsPath = hostName: hostPath hostName + "/home-deploy-options.nix";
 
       hostEntries = builtins.readDir ./nix/hosts;
       hostDirs =
@@ -71,6 +73,7 @@
             ./nix/modules/core/fs-integrity-monitor.nix
             ./nix/modules/core/disk-health-monitor.nix
             ./nix/modules/roles/default.nix
+            ./nix/modules/services/default.nix
             ./nix/modules/profiles/minimal.nix
             ./nix/modules/profiles/ai-dev.nix
             ./nix/modules/profiles/gaming.nix
@@ -131,6 +134,9 @@
               };
             })
             (hostDefaultPath hostName)
+            ({ lib, ... }: {
+              imports = lib.optionals (builtins.pathExists (hostDeployOptionsPath hostName)) [ (hostDeployOptionsPath hostName) ];
+            })
           ];
         };
 
@@ -156,6 +162,7 @@
           hostModules =
             [ ./nix/home/base.nix ]
             ++ lib.optionals (builtins.pathExists (hostHomePath hostName)) [ (hostHomePath hostName) ]
+            ++ lib.optionals (builtins.pathExists (hostHomeDeployOptionsPath hostName)) [ (hostHomeDeployOptionsPath hostName) ]
             ++ [
               ({ lib, ... }: {
                 home.username = lib.mkDefault hostUser;
