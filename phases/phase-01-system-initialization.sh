@@ -494,6 +494,166 @@ phase_01_collect_user_preferences() {
     fi
 }
 
+# ---------------------------------------------------------------------------
+# phase_01_configure_ai_stack
+#
+# Interactively asks the user whether to enable the local AI stack and which
+# models to deploy.  Results are exported as shell variables that are later
+# consumed by phase_01_detect_hardware → detect_and_write_hardware_facts →
+# facts.nix:
+#
+#   _AI_STACK_ENABLED  — "true" | "false"
+#   _AI_BACKEND        — "ollama" | "k3s"
+#   _AI_MODELS_CSV     — comma-separated ollama model tags
+#   _AI_UI_ENABLED     — "true" | "false"
+#   _AI_VECTOR_DB_ENABLED — "true" | "false"
+#
+# If --without-ai-model was passed on the CLI (RUN_AI_MODEL=false), the
+# function sets everything to disabled without prompting.
+# ---------------------------------------------------------------------------
+phase_01_configure_ai_stack() {
+    print_section "AI Stack Configuration"
+    echo ""
+
+    # Respect the CLI flag --without-ai-model.
+    if [[ "${RUN_AI_MODEL:-true}" == "false" ]]; then
+        print_info "AI stack disabled via --without-ai-model flag"
+        export _AI_STACK_ENABLED="false"
+        export _AI_BACKEND="ollama"
+        export _AI_MODELS_CSV="qwen2.5-coder:7b"
+        export _AI_UI_ENABLED="true"
+        export _AI_VECTOR_DB_ENABLED="false"
+        echo ""
+        return 0
+    fi
+
+    # Quick hardware probe to suggest appropriate model defaults.
+    # These use the same detection helpers as detect_and_write_hardware_facts.
+    local _probe_ram_gb=8
+    local _probe_gpu_vendor="none"
+    local _probe_vram_gb=0
+    if declare -F _detect_ram_gb >/dev/null 2>&1; then
+        _probe_ram_gb=$(_detect_ram_gb)
+    elif [[ -r /proc/meminfo ]]; then
+        _probe_ram_gb=$(awk '/MemTotal/{print int($2/1024/1024)}' /proc/meminfo 2>/dev/null || echo 8)
+    fi
+    if declare -F _detect_gpu_vendor >/dev/null 2>&1; then
+        _probe_gpu_vendor=$(_detect_gpu_vendor)
+    fi
+    # Attempt VRAM detection (best-effort; silent failure is fine).
+    if [[ "$_probe_gpu_vendor" == "amd" ]]; then
+        # amdgpu sysfs: /sys/class/drm/card*/device/mem_info_vram_total (bytes)
+        local _vram_bytes
+        _vram_bytes=$(cat /sys/class/drm/card*/device/mem_info_vram_total 2>/dev/null | head -1 || echo 0)
+        if [[ "$_vram_bytes" -gt 0 ]]; then
+            _probe_vram_gb=$(( _vram_bytes / 1024 / 1024 / 1024 ))
+        fi
+    elif [[ "$_probe_gpu_vendor" == "nvidia" ]]; then
+        if command -v nvidia-smi >/dev/null 2>&1; then
+            _probe_vram_gb=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null \
+                | awk '{print int($1/1024)}' | head -1 || echo 0)
+        fi
+    fi
+
+    # Choose hardware-appropriate default model tag.
+    local _default_model="qwen2.5-coder:7b"
+    if [[ "$_probe_vram_gb" -ge 14 ]]; then
+        _default_model="qwen2.5-coder:14b"
+    elif [[ "$_probe_ram_gb" -lt 16 && "$_probe_vram_gb" -lt 6 ]]; then
+        _default_model="qwen2.5-coder:7b-q4_K_M"
+    fi
+
+    print_info "Detected: ${_probe_ram_gb}GB RAM, GPU: ${_probe_gpu_vendor}$(
+        [[ "$_probe_vram_gb" -gt 0 ]] && echo " (${_probe_vram_gb}GB VRAM)" || true
+    )"
+    echo ""
+
+    # ---- Ask: enable AI stack? ----
+    local _ans_enable
+    read -r -p "  Enable local AI stack (services.ollama + optional web UI)? [Y/n]: " _ans_enable
+    _ans_enable="${_ans_enable:-y}"
+    if [[ "$_ans_enable" =~ ^[Nn] ]]; then
+        print_info "AI stack will be disabled."
+        export _AI_STACK_ENABLED="false"
+        export _AI_BACKEND="ollama"
+        export _AI_MODELS_CSV="qwen2.5-coder:7b"
+        export _AI_UI_ENABLED="true"
+        export _AI_VECTOR_DB_ENABLED="false"
+        echo ""
+        return 0
+    fi
+
+    export _AI_STACK_ENABLED="true"
+
+    # ---- Model selection ----
+    echo ""
+    print_info "Select model(s) to deploy (default: ${_default_model}):"
+    echo "    1) qwen2.5-coder:7b           ~4GB  — best all-round coding model"
+    echo "    2) qwen2.5-coder:7b-q4_K_M   ~4GB  — same, quantized (lower RAM)"
+    echo "    3) qwen2.5-coder:14b          ~8GB  — higher quality, needs 14GB+ VRAM"
+    echo "    4) phi3:mini                  ~2GB  — fast, minimal, CPU-friendly"
+    echo "    5) deepseek-coder:6.7b        ~4GB  — strong code completion"
+    echo "    6) Custom — enter your own ollama tag(s)"
+    echo ""
+    local _ans_model
+    read -r -p "  Choice [1-6] (default maps to '${_default_model}'): " _ans_model
+    _ans_model="${_ans_model:-0}"
+
+    local _models_csv
+    case "$_ans_model" in
+        1|"")  _models_csv="qwen2.5-coder:7b" ;;
+        2)     _models_csv="qwen2.5-coder:7b-q4_K_M" ;;
+        3)     _models_csv="qwen2.5-coder:14b" ;;
+        4)     _models_csv="phi3:mini" ;;
+        5)     _models_csv="deepseek-coder:6.7b" ;;
+        6)
+            read -r -p "  Enter comma-separated ollama tags (e.g. qwen2.5-coder:7b,phi3:mini): " _models_csv
+            _models_csv="${_models_csv:-qwen2.5-coder:7b}"
+            ;;
+        0)     _models_csv="$_default_model" ;;
+        *)     _models_csv="qwen2.5-coder:7b" ;;
+    esac
+    export _AI_MODELS_CSV="$_models_csv"
+    print_info "Models: ${_AI_MODELS_CSV}"
+
+    # ---- Web UI ----
+    echo ""
+    local _ans_ui
+    read -r -p "  Enable Open WebUI (browser chat interface on port 3000)? [Y/n]: " _ans_ui
+    _ans_ui="${_ans_ui:-y}"
+    if [[ "$_ans_ui" =~ ^[Nn] ]]; then
+        export _AI_UI_ENABLED="false"
+    else
+        export _AI_UI_ENABLED="true"
+    fi
+
+    # ---- Vector DB ----
+    local _ans_vdb
+    read -r -p "  Enable Qdrant vector database (for RAG / embeddings)? [y/N]: " _ans_vdb
+    _ans_vdb="${_ans_vdb:-n}"
+    if [[ "$_ans_vdb" =~ ^[Yy] ]]; then
+        export _AI_VECTOR_DB_ENABLED="true"
+    else
+        export _AI_VECTOR_DB_ENABLED="false"
+    fi
+
+    # ---- Backend ----
+    # K3s is an advanced opt-in; default is native ollama services.
+    local _ans_k3s
+    read -r -p "  Use full K3s orchestration instead of native services? (advanced) [y/N]: " _ans_k3s
+    _ans_k3s="${_ans_k3s:-n}"
+    if [[ "$_ans_k3s" =~ ^[Yy] ]]; then
+        export _AI_BACKEND="k3s"
+        print_info "K3s backend selected — phase 9 will orchestrate the full stack."
+    else
+        export _AI_BACKEND="ollama"
+    fi
+
+    echo ""
+    print_success "AI stack: enabled (${_AI_BACKEND}) | models: ${_AI_MODELS_CSV} | ui: ${_AI_UI_ENABLED} | vectordb: ${_AI_VECTOR_DB_ENABLED}"
+    echo ""
+}
+
 phase_01_detect_hardware() {
     print_section "Hardware Auto-Detection"
     echo ""
@@ -506,6 +666,13 @@ phase_01_detect_hardware() {
     local hw_enable_hibernation="${ENABLE_ZSWAP_CONFIGURATION:-false}"
     local hw_swap_gb="${HIBERNATION_SWAP_SIZE_GB:-0}"
 
+    # AI stack preferences collected by phase_01_configure_ai_stack (called earlier).
+    local hw_ai_enabled="${_AI_STACK_ENABLED:-false}"
+    local hw_ai_backend="${_AI_BACKEND:-ollama}"
+    local hw_ai_models="${_AI_MODELS_CSV:-qwen2.5-coder:7b}"
+    local hw_ai_ui="${_AI_UI_ENABLED:-true}"
+    local hw_ai_vector_db="${_AI_VECTOR_DB_ENABLED:-false}"
+
     if ! declare -F detect_and_write_hardware_facts >/dev/null 2>&1; then
         print_warning "detect_and_write_hardware_facts not available; skipping hardware detection"
         return 0
@@ -517,7 +684,12 @@ phase_01_detect_hardware() {
             "$hw_profile" \
             "$hw_project_root" \
             "$hw_enable_hibernation" \
-            "$hw_swap_gb"; then
+            "$hw_swap_gb" \
+            "$hw_ai_enabled" \
+            "$hw_ai_backend" \
+            "$hw_ai_models" \
+            "$hw_ai_ui" \
+            "$hw_ai_vector_db"; then
         print_warning "Hardware detection encountered errors; facts.nix may be incomplete"
         return 0
     fi
@@ -575,6 +747,7 @@ phase_01_setup_secrets_infrastructure() {
 phase_01_run() {
     phase_01_validate_environment || return $?
     phase_01_plan_swap_and_hibernation || return $?
+    phase_01_configure_ai_stack || return $?
     phase_01_detect_hardware || return $?
     phase_01_start_tool_installation
     phase_01_select_build_strategy || return $?

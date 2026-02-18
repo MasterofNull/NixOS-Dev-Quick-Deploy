@@ -67,6 +67,8 @@
           modules = [
             ./nix/modules/core/options.nix
             ./nix/modules/core/base.nix
+            ./nix/modules/core/network.nix
+            ./nix/modules/core/users.nix
             ./nix/modules/core/guardrail-alerts.nix
             ./nix/modules/core/fs-integrity-monitor.nix
             ./nix/modules/core/disk-health-monitor.nix
