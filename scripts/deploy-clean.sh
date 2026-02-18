@@ -817,6 +817,17 @@ fi
 ensure_host_facts_access
 if [[ "$RUN_DISCOVERY" == true ]]; then
   log "Discovering hardware facts for host '${HOST_NAME}' profile '${PROFILE}'"
+
+  # AI stack discovery env — honour caller-supplied overrides or fall through
+  # to the defaults in discover-system-facts.sh (auto from profile + RAM).
+  local_ai_env=(
+    ${AI_STACK_ENABLED_OVERRIDE:+AI_STACK_ENABLED_OVERRIDE="${AI_STACK_ENABLED_OVERRIDE}"}
+    ${AI_BACKEND_OVERRIDE:+AI_BACKEND_OVERRIDE="${AI_BACKEND_OVERRIDE}"}
+    ${AI_MODELS_OVERRIDE:+AI_MODELS_OVERRIDE="${AI_MODELS_OVERRIDE}"}
+    ${AI_UI_ENABLED_OVERRIDE:+AI_UI_ENABLED_OVERRIDE="${AI_UI_ENABLED_OVERRIDE}"}
+    ${AI_VECTOR_DB_ENABLED_OVERRIDE:+AI_VECTOR_DB_ENABLED_OVERRIDE="${AI_VECTOR_DB_ENABLED_OVERRIDE}"}
+  )
+
   if [[ "${RECOVERY_MODE}" == true ]]; then
     log "Recovery mode enabled: forcing rootFsckMode=skip, initrdEmergencyAccess=true, earlyKmsPolicy=off"
     HOSTNAME_OVERRIDE="${HOST_NAME}" \
@@ -825,11 +836,13 @@ if [[ "$RUN_DISCOVERY" == true ]]; then
     ROOT_FSCK_MODE_OVERRIDE="skip" \
     INITRD_EMERGENCY_ACCESS_OVERRIDE="true" \
     EARLY_KMS_POLICY_OVERRIDE="off" \
+    "${local_ai_env[@]}" \
     "${REPO_ROOT}/scripts/discover-system-facts.sh"
   else
     HOSTNAME_OVERRIDE="${HOST_NAME}" \
     PRIMARY_USER_OVERRIDE="${PRIMARY_USER}" \
     PROFILE_OVERRIDE="${PROFILE}" \
+    "${local_ai_env[@]}" \
     "${REPO_ROOT}/scripts/discover-system-facts.sh"
   fi
 fi
@@ -951,6 +964,50 @@ if [[ "$RUN_FLATPAK_SYNC" == true && -x "${REPO_ROOT}/scripts/sync-flatpak-profi
     log "Flatpak profile sync complete"
   else
     log "Flatpak profile sync reported issues (non-critical)"
+  fi
+fi
+
+# ---- K3s AI stack backend --------------------------------------------------
+# When mySystem.aiStack.backend = "k3s" the declarative Nix config only installs
+# the K3s binary; actual cluster bootstrap and workload deployment is handled by
+# the phase-09 bash orchestration (too stateful/imperative for pure Nix).
+# We check the evaluated config and delegate to the legacy phase scripts.
+if [[ "${MODE}" != "build" ]]; then
+  ai_backend_val=""
+  if ai_backend_val="$(nix_eval_raw_safe \
+      "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.mySystem.aiStack.backend" \
+      2>/dev/null || true)"; then
+    true
+  fi
+
+  if [[ "${ai_backend_val}" == "k3s" ]]; then
+    phase09_script="${REPO_ROOT}/phases/phase-09-k3s-portainer.sh"
+    phase09_ai="${REPO_ROOT}/phases/phase-09-ai-stack-deployment.sh"
+    if [[ -x "${phase09_script}" ]]; then
+      log "AI stack backend=k3s: delegating to phase-09 K3s orchestration"
+      # Source the main orchestrator to pick up the required lib/ functions,
+      # then invoke the phase functions directly.
+      # The main script sources lib/ on load; we source just enough to run phase 9.
+      if [[ -x "${REPO_ROOT}/nixos-quick-deploy.sh" ]]; then
+        RUN_AI_MODEL=true \
+        SCRIPT_DIR="${REPO_ROOT}" \
+        bash -c "source '${REPO_ROOT}/nixos-quick-deploy.sh' --phases-only 2>/dev/null || true; \
+                 source '${phase09_script}'; phase_09_k3s_portainer 2>&1" \
+          || log "Phase 09 K3s setup reported issues (check output above)"
+        if [[ -x "${phase09_ai}" ]]; then
+          RUN_AI_MODEL=true \
+          SCRIPT_DIR="${REPO_ROOT}" \
+          bash -c "source '${REPO_ROOT}/nixos-quick-deploy.sh' --phases-only 2>/dev/null || true; \
+                   source '${phase09_ai}'; phase_09_ai_stack_deployment 2>&1" \
+            || log "Phase 09 AI stack deployment reported issues (check output above)"
+        fi
+      else
+        log "Cannot find nixos-quick-deploy.sh to source lib functions; skipping K3s orchestration."
+        log "Run phases/phase-09-k3s-portainer.sh manually after deploy."
+      fi
+    else
+      log "Phase 09 K3s script not found (${phase09_script}); skipping K3s orchestration."
+    fi
   fi
 fi
 

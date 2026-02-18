@@ -263,6 +263,77 @@ disk_device="${DISK_DEVICE_OVERRIDE:-/dev/disk/by-id/CHANGE-ME}"
 disk_luks_enable="${DISK_LUKS_ENABLE_OVERRIDE:-false}"
 secureboot_enable="${SECUREBOOT_ENABLE_OVERRIDE:-false}"
 
+# ---------------------------------------------------------------------------
+# Orthogonal role toggles — not derived from profile; override via env vars
+# for non-interactive scripting.  Profiles already set roles.desktop,
+# roles.aiStack, and roles.gaming via lib.mkDefault in their modules.
+# These cover the remaining composable roles written into facts.nix.
+# ---------------------------------------------------------------------------
+server_role_enabled="${SERVER_ROLE_OVERRIDE:-false}"
+mobile_role_enabled="${MOBILE_ROLE_OVERRIDE:-${is_mobile}}"
+virtualization_role_enabled="${VIRTUALIZATION_ROLE_OVERRIDE:-false}"
+
+# ---------------------------------------------------------------------------
+# AI stack preferences — set via environment overrides or left at defaults.
+# These are written into facts.nix and consumed by roles/ai-stack.nix.
+# The flake-first deploy path (deploy-clean.sh) passes these through
+# AI_STACK_ENABLED_OVERRIDE, AI_BACKEND_OVERRIDE, etc.
+# The legacy path (phase-01) sets _AI_STACK_ENABLED etc. and calls
+# lib/hardware-detect.sh instead; this script is the flake-first equivalent.
+# ---------------------------------------------------------------------------
+# Derive default: ai-dev profile always enables the AI stack.
+if [[ "${profile_value}" == "ai-dev" ]]; then
+  ai_stack_enabled_default="true"
+else
+  ai_stack_enabled_default="false"
+fi
+ai_stack_enabled="${AI_STACK_ENABLED_OVERRIDE:-${ai_stack_enabled_default}}"
+ai_backend="${AI_BACKEND_OVERRIDE:-ollama}"
+# Default model: suggest based on available RAM; a human can override.
+ai_models_default="qwen2.5-coder:7b"
+if [[ "${system_ram_gb}" -lt 16 ]]; then
+  ai_models_default="qwen2.5-coder:7b-q4_K_M"
+fi
+ai_models_csv="${AI_MODELS_OVERRIDE:-${ai_models_default}}"
+ai_ui_enabled="${AI_UI_ENABLED_OVERRIDE:-true}"
+ai_vector_db_enabled="${AI_VECTOR_DB_ENABLED_OVERRIDE:-false}"
+
+# Convert comma-separated models to a Nix list literal.
+# Input:  "qwen2.5-coder:7b,phi3:mini"
+# Output: [ "qwen2.5-coder:7b" "phi3:mini" ]
+ai_models_nix='[ "qwen2.5-coder:7b" ]'
+if [[ -n "${ai_models_csv}" ]]; then
+  _models_inner=""
+  IFS=',' read -ra _model_arr <<< "${ai_models_csv}"
+  for _m in "${_model_arr[@]}"; do
+    _m="${_m#"${_m%%[![:space:]]*}"}"
+    _m="${_m%"${_m##*[![:space:]]}"}"
+    [[ -z "$_m" ]] && continue
+    _models_inner+=" \"${_m}\""
+  done
+  ai_models_nix="[${_models_inner} ]"
+fi
+
+if ! validate_bool "${ai_stack_enabled}"; then
+  echo "Unsupported ai_stack_enabled value '${ai_stack_enabled}'." >&2
+  exit 1
+fi
+
+if ! validate_enum "${ai_backend}" ollama k3s; then
+  echo "Unsupported ai_backend value '${ai_backend}'. Expected ollama|k3s." >&2
+  exit 1
+fi
+
+if ! validate_bool "${ai_ui_enabled}"; then
+  echo "Unsupported ai_ui_enabled value '${ai_ui_enabled}'." >&2
+  exit 1
+fi
+
+if ! validate_bool "${ai_vector_db_enabled}"; then
+  echo "Unsupported ai_vector_db_enabled value '${ai_vector_db_enabled}'." >&2
+  exit 1
+fi
+
 if ! validate_hostname "${hostname_value}"; then
   echo "Invalid hostname '${hostname_value}' (expected alnum + dash)." >&2
   exit 1
@@ -380,12 +451,76 @@ mkdir -p "$(dirname "${out_file}")"
 
 default_host_file="${host_dir}/default.nix"
 if [[ "${create_host_scaffold}" == "true" && ! -f "${default_host_file}" ]]; then
-  cat > "${default_host_file}" <<'HOST'
-{ lib, ... }:
+  # Use unquoted heredoc so shell expands hostname_value / user_value in comments.
+  # Nix string interpolation (\${...}) is not used in this template so no escaping needed.
+  cat > "${default_host_file}" <<HOST
+{ lib, pkgs, ... }:
+# ---------------------------------------------------------------------------
+# Per-host NixOS configuration for ${hostname_value}.
+# Overrides stack up on top of:
+#   nix/modules/core/options.nix  — typed option declarations
+#   nix/modules/core/users.nix    — primary user (${user_value})
+#   nix/modules/roles/*.nix       — feature roles (desktop, gaming, …)
+#   facts.nix                     — auto-generated hardware / profile facts
+# ---------------------------------------------------------------------------
 {
   imports =
     [ ./facts.nix ]
     ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix) [ ./hardware-configuration.nix ];
+
+  # ---- SSH authorized keys ------------------------------------------------
+  # Add at least one key so you can log in over SSH after deployment.
+  # mySystem.sshAuthorizedKeys = [
+  #   "ssh-ed25519 AAAA... ${user_value}@${hostname_value}"
+  # ];
+
+  # ---- Role overrides ------------------------------------------------------
+  # Enable roles not set by your profile.  Use lib.mkForce to override facts.nix.
+  # mySystem.roles.server.enable         = true;  # headless / SSH-only
+  # mySystem.roles.virtualization.enable = true;  # KVM/QEMU + virt-manager
+  # mySystem.roles.mobile.enable         = true;  # laptop power management
+  # mySystem.roles.desktop.enable        = lib.mkForce false;  # override profile
+
+  # ---- Desktop auto-login -------------------------------------------------
+  # Uncomment on personal single-user workstations (off by default for security).
+  # services.displayManager.autoLogin.enable = true;
+
+  # ---- Extra system packages ----------------------------------------------
+  # environment.systemPackages = with pkgs; [ ];
+
+  # ---- Firewall -----------------------------------------------------------
+  # Open additional TCP ports beyond role defaults (22 is always open on server).
+  # networking.firewall.allowedTCPPorts = [ 80 443 ];
+}
+HOST
+fi
+
+home_host_file="${host_dir}/home.nix"
+if [[ "${create_host_scaffold}" == "true" && ! -f "${home_host_file}" ]]; then
+  cat > "${home_host_file}" <<HOST
+{ lib, ... }:
+# ---------------------------------------------------------------------------
+# Per-host Home Manager configuration for ${user_value}@${hostname_value}.
+# Overrides nix/home/base.nix defaults.
+# home.username and home.homeDirectory are set by flake.nix — do NOT declare
+# them here.
+# ---------------------------------------------------------------------------
+{
+  # ---- Git identity -------------------------------------------------------
+  # Replace with your real name and email; these override the placeholders in
+  # nix/home/base.nix which default to "NixOS User" / "user@localhost".
+  # programs.git = {
+  #   userName  = lib.mkDefault "Your Name";
+  #   userEmail = lib.mkDefault "you@example.com";
+  # };
+
+  # ---- Session variables --------------------------------------------------
+  # Override the default editor (micro is set in base.nix):
+  # home.sessionVariables.EDITOR = "nvim";
+
+  # ---- Machine-specific packages ------------------------------------------
+  # Packages already in nix/home/base.nix do not need to be repeated here.
+  # home.packages = with pkgs; [ ];
 }
 HOST
 fi
@@ -495,6 +630,25 @@ cat > "${tmp_file}" <<FACTS
       btrfsSubvolumes = [ "@root" "@home" "@nix" ];
     };
     secureboot.enable = ${secureboot_enable};
+
+    # Role enables — profiles set desktop/gaming/aiStack via lib.mkDefault.
+    # Override any of these in nix/hosts/<host>/default.nix with lib.mkForce.
+    roles.aiStack.enable         = ${ai_stack_enabled};
+    roles.server.enable          = ${server_role_enabled};
+    roles.mobile.enable          = ${mobile_role_enabled};
+    roles.virtualization.enable  = ${virtualization_role_enabled};
+
+    # AI stack configuration — consumed by nix/modules/roles/ai-stack.nix.
+    # Only meaningful when roles.aiStack.enable = true.
+    aiStack = {
+      backend            = "${ai_backend}";
+      acceleration       = "auto";
+      models             = ${ai_models_nix};
+      ui.enable          = ${ai_ui_enabled};
+      vectorDb.enable    = ${ai_vector_db_enabled};
+      listenOnLan        = false;
+      rocmGfxOverride    = null;
+    };
   };
 }
 FACTS
