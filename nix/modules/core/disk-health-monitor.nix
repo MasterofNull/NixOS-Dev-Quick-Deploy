@@ -7,6 +7,7 @@ let
     name = "disk-health-check";
     runtimeInputs = with pkgs; [
       coreutils
+      gawk
       gnugrep
       util-linux
       smartmontools
