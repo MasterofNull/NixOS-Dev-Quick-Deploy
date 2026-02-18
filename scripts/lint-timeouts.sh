@@ -35,7 +35,7 @@ curl_matches=$(echo "$curl_matches" | rg -v "^[^:]+:[0-9]+:[[:space:]]*#" || tru
 kubectl_matches=$(echo "$kubectl_matches" | rg -v "^[^:]+:[0-9]+:[[:space:]]*#" || true)
 
 # Filter out non-runtime instructional lines (echo/printf/require_cmd/command -v)
-curl_matches=$(echo "$curl_matches" | rg -v "command -v|require_cmd|check_command|package_checks|for cmd in|log_info|log_warn|log_error|log_success|print_info|print_warning|print_error|print_success|^[^:]+:[0-9]+:[[:space:]]*echo|^[^:]+:[0-9]+:[[:space:]]*printf|\"context\":|\"curl|'curl|•|^[^:]+:[0-9]+:[[:space:]]+curl http|^[^:]+:[0-9]+:[[:space:]]+[0-9]+\\." || true)
+curl_matches=$(echo "$curl_matches" | rg -v "command -v|require_cmd|check_command|package_checks|for cmd in|log_info|log_warn|log_error|log_success|print_info|print_warning|print_error|print_success|intended_commands\\+=|browser_commands\\+=|^[^:]+:[0-9]+:[[:space:]]*echo|^[^:]+:[0-9]+:[[:space:]]*printf|\"context\":|\"curl|'curl|•|^[^:]+:[0-9]+:[[:space:]]+curl http|^[^:]+:[0-9]+:[[:space:]]+[0-9]+\\." || true)
 kubectl_matches=$(echo "$kubectl_matches" | rg -v "command -v|require_cmd|check_command|package_checks|has_cmd kubectl|KUBECTL=|KUBECTL_BIN|kubectl_bin|/run/current-system/sw/bin/kubectl|ExecStart=|log_info|log_warn|log_error|log_success|print_info|print_warning|print_error|print_success|^[^:]+:[0-9]+:[[:space:]]*echo|^[^:]+:[0-9]+:[[:space:]]*printf|\"kubectl|'kubectl|Phase 9 or kubectl" || true)
 
 status=0

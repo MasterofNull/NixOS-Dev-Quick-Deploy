@@ -10,7 +10,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-# Import functions from discover-improvements.sh
+# Import functions from discover-improvements.py
 sys.path.insert(0, str(Path(__file__).parent))
 
 

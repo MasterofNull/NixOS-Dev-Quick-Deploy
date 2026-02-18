@@ -40,6 +40,65 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
 }
 
+run_python() {
+  local -a args=("$@")
+
+  if command -v python3 >/dev/null 2>&1; then
+    python3 "${args[@]}"
+    return
+  fi
+
+  if command -v nix-shell >/dev/null 2>&1; then
+    local cmd="python3"
+    local arg
+    for arg in "${args[@]}"; do
+      cmd+=" $(printf '%q' "$arg")"
+    done
+    nix-shell -p python3 --run "$cmd"
+    return
+  fi
+
+  if command -v nix >/dev/null 2>&1; then
+    nix --extra-experimental-features "nix-command flakes" shell nixpkgs#python3 --command python3 "${args[@]}"
+    return
+  fi
+
+  die "required command not found: python3 (and nix fallback unavailable)"
+}
+
+run_python_with_yaml() {
+  local -a args=("$@")
+
+  if command -v python3 >/dev/null 2>&1; then
+    if python3 - <<'PY' >/dev/null 2>&1
+import yaml  # noqa: F401
+PY
+    then
+      python3 "${args[@]}"
+      return
+    fi
+  fi
+
+  if command -v nix-shell >/dev/null 2>&1; then
+    local cmd="python3"
+    local arg
+    for arg in "${args[@]}"; do
+      cmd+=" $(printf '%q' "$arg")"
+    done
+    nix-shell -p python3 python3Packages.pyyaml --run "$cmd"
+    return
+  fi
+
+  if command -v nix >/dev/null 2>&1; then
+    nix --extra-experimental-features "nix-command flakes" shell \
+      nixpkgs#python3 nixpkgs#python3Packages.pyyaml \
+      --command python3 "${args[@]}"
+    return
+  fi
+
+  die "required dependency missing: python3 + PyYAML (and nix fallback unavailable)"
+}
+
 cmd_workflows_list() {
   cat <<'EOF'
 Priority workflow set (Phase 27.6):
@@ -65,27 +124,24 @@ cmd_skill_validate() {
 cmd_skill_quick_validate() {
   local skill_path="${1:-}"
   [[ -n "$skill_path" ]] || die "Usage: aqd skill quick-validate <skill-path>"
-  require_cmd python3
-  python3 "${REPO_ROOT}/.agent/skills/skill-creator/scripts/quick_validate.py" "$skill_path"
+  run_python_with_yaml "${REPO_ROOT}/.agent/skills/skill-creator/scripts/quick_validate.py" "$skill_path"
 }
 
 cmd_skill_init() {
   local name="${1:-}"
   shift || true
   [[ -n "$name" ]] || die "Usage: aqd skill init <name> [--path <dir>]"
-  require_cmd python3
-  python3 "${REPO_ROOT}/.agent/skills/skill-creator/scripts/init_skill.py" "$name" "$@"
+  run_python "${REPO_ROOT}/.agent/skills/skill-creator/scripts/init_skill.py" "$name" "$@"
 }
 
 cmd_skill_package() {
   local skill_path="${1:-}"
   local output_dir="${2:-}"
   [[ -n "$skill_path" ]] || die "Usage: aqd skill package <skill-path> [output-dir]"
-  require_cmd python3
   if [[ -n "$output_dir" ]]; then
-    python3 "${REPO_ROOT}/.agent/skills/skill-creator/scripts/package_skill.py" "$skill_path" "$output_dir"
+    run_python_with_yaml "${REPO_ROOT}/.agent/skills/skill-creator/scripts/package_skill.py" "$skill_path" "$output_dir"
   else
-    python3 "${REPO_ROOT}/.agent/skills/skill-creator/scripts/package_skill.py" "$skill_path"
+    run_python_with_yaml "${REPO_ROOT}/.agent/skills/skill-creator/scripts/package_skill.py" "$skill_path"
   fi
 }
 
@@ -135,10 +191,8 @@ cmd_mcp_evaluate() {
   shift || true
   [[ -n "$eval_file" ]] || die "Usage: aqd mcp evaluate <evaluation-xml> [evaluation-args...]"
 
-  require_cmd python3
-
   # Ensure optional mcp-builder evaluation deps are present before execution.
-  if ! python3 - <<'PY' >/dev/null 2>&1
+  if ! run_python - <<'PY' >/dev/null 2>&1
 import importlib.util
 import sys
 missing = [mod for mod in ("anthropic", "mcp") if importlib.util.find_spec(mod) is None]
@@ -148,7 +202,7 @@ PY
     die "Missing Python deps for MCP evaluation. Install: pip install -r ${REPO_ROOT}/.agent/skills/mcp-builder/scripts/requirements.txt"
   fi
 
-  python3 "${REPO_ROOT}/.agent/skills/mcp-builder/scripts/evaluation.py" "$eval_file" "$@"
+  run_python "${REPO_ROOT}/.agent/skills/mcp-builder/scripts/evaluation.py" "$eval_file" "$@"
 }
 
 cmd_mcp_logs() {

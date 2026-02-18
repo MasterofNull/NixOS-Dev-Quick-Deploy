@@ -16,6 +16,8 @@ let
     || (userCfg ? passwordFile);
   hashedPasswordLocked = userCfg:
     (userCfg ? hashedPassword)
+    && (userCfg.hashedPassword != null)
+    && builtins.isString userCfg.hashedPassword
     && (lib.hasPrefix "!" userCfg.hashedPassword || lib.hasPrefix "*" userCfg.hashedPassword);
   basePackageNames = [
     "curl"
