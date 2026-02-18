@@ -38,21 +38,63 @@
 
     hardware = {
       gpuVendor = lib.mkOption {
-        type = lib.types.enum [ "amd" "intel" "nvidia" "none" ];
+        type = lib.types.enum [
+          # ── x86_64 ──────────────────────────────────────────────────────────
+          "amd"           # AMD Radeon (RDNA/GCN) — Mesa radeonsi + LACT
+          "intel"         # Intel HD/Iris/UHD (integrated, Gen 4–13+) — i915/xe
+          "intel-arc"     # Intel Arc A/B-series discrete — xe driver
+          "nvidia"        # NVIDIA GeForce/Quadro — proprietary driver
+          # ── ARM / SoC ───────────────────────────────────────────────────────
+          "adreno"        # Qualcomm Adreno — Mesa freedreno + Turnip Vulkan
+          "mali"          # ARM Mali (Bifrost/Valhall) — Panfrost/Lima open-source
+          "apple"         # Apple AGX (M-series) — Asahi Mesa honeykrisp/agx
+          # ── Catch-all ───────────────────────────────────────────────────────
+          "none"          # No discrete GPU / headless
+        ];
         default = "none";
-        description = "Primary (discrete) GPU vendor. On hybrid systems this is the dGPU (Nvidia/AMD).";
+        description = ''
+          Primary (discrete) GPU vendor.
+          On hybrid systems this is the dGPU; the iGPU goes in igpuVendor.
+          "apple" requires the Asahi Linux kernel and mesa-asahi-edge overlay.
+          "mali" enables Panfrost (open) — proprietary Mali requires manual setup.
+        '';
       };
 
       igpuVendor = lib.mkOption {
-        type = lib.types.enum [ "amd" "intel" "none" ];
+        type = lib.types.enum [
+          "amd"     # AMD APU integrated GPU (e.g. Ryzen iGPU alongside Radeon dGPU)
+          "intel"   # Intel iGPU alongside a discrete dGPU (Optimus, MUX)
+          "apple"   # Apple AGX when used as iGPU on M-series with external GPU
+          "none"    # No secondary iGPU (single-GPU or CPU-only)
+        ];
         default = "none";
-        description = "Secondary integrated GPU vendor. Set when dGPU+iGPU coexist (e.g. Intel iGPU + Nvidia dGPU). Enables PRIME/hybrid graphics support.";
+        description = ''
+          Secondary integrated GPU vendor.
+          Set when dGPU + iGPU coexist and need PRIME/hybrid graphics support.
+          Leave "none" for single-GPU systems.
+        '';
       };
 
       cpuVendor = lib.mkOption {
-        type = lib.types.enum [ "amd" "intel" "unknown" ];
+        type = lib.types.enum [
+          # ── x86_64 ──────────────────────────────────────────────────────────
+          "amd"        # AMD Ryzen/EPYC — AMD P-state, k10temp, schedutil
+          "intel"      # Intel Core/Xeon — Intel P-state/EPP, thermald, powersave
+          # ── AArch64 (ARM64) ─────────────────────────────────────────────────
+          "arm"        # Generic ARM Cortex-A (Raspberry Pi, AllWinner, etc.)
+          "qualcomm"   # Qualcomm Snapdragon — cpuidle, Adreno GPU, ACPI tables
+          "apple"      # Apple M-series — Asahi Linux kernel, efficiency/perf cores
+          # ── Other architectures ─────────────────────────────────────────────
+          "riscv"      # RISC-V (SiFive, StarFive, AllWinner D1, etc.)
+          # ── Fallback ────────────────────────────────────────────────────────
+          "unknown"    # Undetected — safe no-op; extend discover-system-facts.sh
+        ];
         default = "unknown";
-        description = "Detected CPU vendor.";
+        description = ''
+          Detected CPU / SoC vendor.
+          Set automatically by scripts/discover-system-facts.sh.
+          Override in nix/hosts/<host>/facts.nix if auto-detection is wrong.
+        '';
       };
 
       storageType = lib.mkOption {
