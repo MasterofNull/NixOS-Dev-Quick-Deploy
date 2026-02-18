@@ -27,6 +27,7 @@ HM_TARGET_OVERRIDE=""
 HOST_EXPLICIT=false
 AUTO_GUI_SWITCH_FALLBACK="${AUTO_GUI_SWITCH_FALLBACK:-false}"
 ALLOW_GUI_SWITCH="${ALLOW_GUI_SWITCH:-true}"
+HOME_MANAGER_BACKUP_EXTENSION="${HOME_MANAGER_BACKUP_EXTENSION:-backup}"
 
 usage() {
   cat <<'USAGE'
@@ -70,6 +71,8 @@ Environment overrides:
   ALLOW_GUI_SWITCH=true     Allow live switch from graphical session (default)
   AUTO_GUI_SWITCH_FALLBACK=false
                             Keep switch mode in graphical sessions (default)
+  HOME_MANAGER_BACKUP_EXTENSION=backup
+                            Backup suffix used for Home Manager file collisions
   ALLOW_ROOT_DEPLOY=true    Allow running this script as root (not recommended)
   BOOT_ESP_MIN_FREE_MB=128  Override minimum required free space on ESP
 USAGE
@@ -654,7 +657,7 @@ home_build() {
 home_switch() {
   local hm_target="$1"
   if command -v home-manager >/dev/null 2>&1; then
-    home-manager switch --flake "${FLAKE_REF}#${hm_target}"
+    home-manager switch -b "${HOME_MANAGER_BACKUP_EXTENSION}" --flake "${FLAKE_REF}#${hm_target}"
     return
   fi
 
