@@ -20,8 +20,10 @@ jobs:
         with:
           args: >
             --redact
+            --config .gitleaks.toml
             --report-format sarif
             --report-path gitleaks.sarif
+            --no-git
             --exit-code 0
 
       - name: Upload SARIF
