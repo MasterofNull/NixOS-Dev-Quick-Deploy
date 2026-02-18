@@ -25,7 +25,6 @@ in
 
     # ---- Performance utilities -----------------------------------------
     programs.gamemode.enable = lib.mkDefault true;
-    programs.mangohud.enable = lib.mkDefault true;
 
     # ---- 32-bit graphics support (required for many Windows games) -----
     hardware.graphics = {
@@ -39,6 +38,7 @@ in
       winetricks    # Wine prefix configuration helper
       lutris        # Game launcher with Wine/Proton management
       heroic        # Epic Games / GOG / Amazon launcher
+      mangohud      # Performance overlay (MangoHud NixOS module removed upstream)
     ];
   };
 }
