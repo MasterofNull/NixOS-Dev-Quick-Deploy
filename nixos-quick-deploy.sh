@@ -3289,7 +3289,7 @@ resolve_deploy_option_list() {
 persist_flake_first_host_options() {
     local host_name="$1"
     local host_dir="${SCRIPT_DIR}/nix/hosts/${host_name}"
-    local deploy_file="${host_dir}/deploy-options.nix"
+    local deploy_file="${host_dir}/deploy-options.local.nix"
 
     if [[ ! -d "$host_dir" ]]; then
         print_error "Host directory not found for declarative options: $host_dir"
