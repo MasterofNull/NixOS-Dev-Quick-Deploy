@@ -14,16 +14,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          GITLEAKS_VERSION=8.24.3
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          install -m 0755 gitleaks /usr/local/bin/gitleaks
 
       - name: Run gitleaks (non-blocking)
-        uses: gitleaks/gitleaks-action@v2
-        with:
-          args: >
-            --redact
-            --config .gitleaks.toml
-            --no-git
-            --report-format sarif
-            --report-path gitleaks.sarif
+        run: |
+          gitleaks detect \
+            --redact \
+            --config .gitleaks.toml \
+            --source . \
+            --no-git \
+            --report-format sarif \
+            --report-path gitleaks.sarif \
             --exit-code 0
 
       - name: Upload SARIF
