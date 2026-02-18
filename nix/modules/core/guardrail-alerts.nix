@@ -14,7 +14,7 @@ let
       unit_name="''${1:-unknown.service}"
       timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
       alert_dir="/var/lib/nixos-quick-deploy/alerts"
-      safe_unit="${unit_name//[![:alnum:]_.-]/_}"
+      safe_unit="''${unit_name//[![:alnum:]_.-]/_}"
       alert_file="''${alert_dir}/''${safe_unit}-''${timestamp}.log"
 
       mkdir -p "$alert_dir"
