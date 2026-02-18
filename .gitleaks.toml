@@ -1,0 +1,25 @@
+title = "NixOS-Dev-Quick-Deploy Gitleaks Configuration"
+
+[extend]
+useDefault = true
+
+# These files intentionally contain authentication-header examples or public-key
+# metadata used for documentation and test fixtures.
+[[allowlists]]
+description = "Public age key metadata in SOPS config"
+paths = [
+  '''^\.sops\.yaml$''',
+]
+
+[[allowlists]]
+description = "Documentation and test fixture auth-header examples"
+paths = [
+  '''^AGENT_AUTH_SECRETS_ROTATION\.md$''',
+  '''^docs/PROGRESSIVE-DISCLOSURE-GUIDE\.md$''',
+  '''^docs/AI-AGENT-PROGRESSIVE-DISCLOSURE-README\.md$''',
+  '''^docs/archive/DAY5-INTEGRATION-TESTING-RESULTS\.md$''',
+  '''^docs/archive/PROGRESSIVE-DISCLOSURE-IMPLEMENTATION\.md$''',
+  '''^tests/chaos-engineering/06-full-agent-lifecycle/test-agent-progressive-disclosure\.sh$''',
+  '''^tests/progressive-disclosure-validation\.py$''',
+  '''^archive/scripts/test-password-migration\.sh$''',
+]
