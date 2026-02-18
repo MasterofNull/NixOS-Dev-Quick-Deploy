@@ -1,3 +1,29 @@
+## Phase 28 Update (2026-02-18): Password Provisioning Safety Guardrails
+
+### 28.H12 Prevent unintended user/root password resets during config rendering
+
+**Changes Applied:**
+- [x] Removed automatic temporary-password generation fallback in `hydrate_primary_user_password_block()` when existing password directives cannot be derived.
+- [x] Changed `provision_primary_user_password()` to default to **skip** instead of generating a new password hash.
+- [x] Added non-interactive safeguard to skip password provisioning entirely, avoiding silent credential drift in unattended runs.
+
+**Validation:**
+- `bash -n lib/config.sh nixos-quick-deploy.sh` → PASS
+- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS
+
+## Phase 28 Update (2026-02-18): AI Stack Env Writer Robustness
+
+### 28.H11 Prevent sed substitution failures on secret values
+
+**Changes Applied:**
+- [x] Reworked `set_env_value()` in `nixos-quick-deploy.sh` to avoid `sed` replacement for `.env` writes.
+- [x] Switched to an `awk` rewrite flow that safely persists values containing characters like `|`, `/`, and `&` without regex/sed escaping failures.
+- [x] Fixed the interactive AI-stack credential path where Grafana password input could trigger `sed: unterminated 's' command` when special characters were entered.
+
+**Validation:**
+- `bash -n nixos-quick-deploy.sh` → PASS
+- `python /tmp/test_set_env_value.py` (function-equivalent harness with special-character secrets) → PASS
+
 ## Phase 28 Update (2026-02-18): Roadmap Verifier Host Compatibility Fallback
 
 ### 28.H10 Make flake-first roadmap verification independent of ripgrep availability
