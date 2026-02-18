@@ -9,18 +9,29 @@ on:
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [aidb, hybrid-coordinator, nixos-docs]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install dependencies
+
+      - name: Install service dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r ai-stack/mcp-servers/aidb/requirements.txt \
-            -r ai-stack/mcp-servers/hybrid-coordinator/requirements.txt \
-            -r ai-stack/mcp-servers/nixos-docs/requirements.txt
-      - name: Run unit tests
+          pip install -r ai-stack/mcp-servers/${{ matrix.service }}/requirements.txt
+
+      - name: Run service unit tests
         run: |
-          pytest -m "not integration" --cov=ai-stack/mcp-servers --cov-report=term-missing
+          set +e
+          pytest ai-stack/mcp-servers/${{ matrix.service }} -m "not integration" --cov=ai-stack/mcp-servers/${{ matrix.service }} --cov-report=term-missing
+          rc=$?
+          if [ "$rc" -eq 5 ]; then
+            echo "No pytest test files collected for ${{ matrix.service }}; skipping."
+            exit 0
+          fi
+          exit "$rc"
