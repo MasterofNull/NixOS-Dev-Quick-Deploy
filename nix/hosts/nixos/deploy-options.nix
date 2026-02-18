@@ -2,10 +2,17 @@
 {
   mySystem.roles.aiStack.enable = lib.mkDefault true;
   mySystem.aiStack = {
-    enable = lib.mkDefault true;
-    modelProfile = lib.mkDefault "auto";
-    embeddingModel = lib.mkDefault "BAAI/bge-small-en-v1.5";
-    llamaDefaultModel = lib.mkDefault "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF";
-    llamaModelFile = lib.mkDefault "qwen2.5-coder-7b-instruct-q4_k_m.gguf";
+    # ollama backend: native NixOS systemd services (no K3s, no containers).
+    # Switch to "k3s" only once the Kubernetes stack is operational.
+    backend      = lib.mkDefault "ollama";
+    acceleration = lib.mkDefault "auto";  # auto → rocm for AMD GPU
+
+    # Models pulled by the ollama-model-pull oneshot on first boot.
+    # Add or swap tags here; see https://ollama.com/library for available models.
+    models = lib.mkDefault [ "qwen2.5-coder:7b" ];
+
+    ui.enable      = lib.mkDefault true;   # Open WebUI on :3000
+    vectorDb.enable = lib.mkDefault false; # Qdrant — enable when RAG is needed
+    listenOnLan    = lib.mkDefault false;  # loopback only (127.0.0.1)
   };
 }
