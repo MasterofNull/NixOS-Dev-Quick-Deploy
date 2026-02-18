@@ -9,6 +9,7 @@ PROFILE="ai-dev"
 FLAKE_REF="path:${REPO_ROOT}"
 CHECK_UPDATE_LOCK=false
 NIX_EVAL_TIMEOUT_SECONDS="${NIX_EVAL_TIMEOUT_SECONDS:-20}"
+HOST_EXPLICIT=false
 
 FAIL_COUNT=0
 WARN_COUNT=0
@@ -81,6 +82,39 @@ resolve_local_flake_path() {
   esac
 }
 
+
+
+list_flake_hosts() {
+  local flake_path
+  flake_path="$(resolve_local_flake_path "$FLAKE_REF")"
+  [[ -n "$flake_path" && -d "$flake_path/nix/hosts" ]] || return 0
+
+  find "$flake_path/nix/hosts" -mindepth 1 -maxdepth 1 -type d -printf '%f\n'     | while IFS= read -r host; do
+        [[ -f "$flake_path/nix/hosts/$host/default.nix" ]] && printf '%s\n' "$host"
+      done     | sort -u
+}
+
+resolve_host_from_flake_if_needed() {
+  [[ "$HOST_EXPLICIT" == true ]] && return 0
+
+  local flake_path host_dir
+  flake_path="$(resolve_local_flake_path "$FLAKE_REF")"
+  [[ -n "$flake_path" ]] || return 0
+
+  host_dir="$flake_path/nix/hosts/$HOST_NAME"
+  if [[ -d "$host_dir" && -f "$host_dir/default.nix" ]]; then
+    return 0
+  fi
+
+  local -a detected_hosts=()
+  mapfile -t detected_hosts < <(list_flake_hosts)
+  if [[ ${#detected_hosts[@]} -eq 1 ]]; then
+    printf '[readiness] Host %s not found in flake; using discovered host %s
+' "$HOST_NAME" "${detected_hosts[0]}"
+    HOST_NAME="${detected_hosts[0]}"
+  fi
+}
+
 check_account_lock_state() {
   local target_user="${SUDO_USER:-${USER:-$(id -un)}}"
   local status_line status_code
@@ -98,7 +132,11 @@ check_account_lock_state() {
 
   status_code="$(printf '%s\n' "$status_line" | awk '{print $2}')"
   if [[ "$status_code" == "L" ]]; then
-    fail "Primary operator account '${target_user}' is locked."
+    if [[ "$target_user" == "root" ]]; then
+      warn "Root account is locked by policy on this host; continuing (non-interactive root login commonly disabled)."
+    else
+      fail "Primary operator account '${target_user}' is locked."
+    fi
   else
     pass "Primary operator account '${target_user}' is not locked (${status_code:-unknown})."
   fi
@@ -153,7 +191,7 @@ check_host_paths() {
 
 check_eval_capability() {
   local expr output
-  expr="${FLAKE_REF}#nixosConfigurations.${HOST_NAME}-${PROFILE}.config.system.stateVersion"
+  expr="${FLAKE_REF}#nixosConfigurations.\"${HOST_NAME}-${PROFILE}\".config.system.stateVersion"
   if command -v timeout >/dev/null 2>&1; then
     output="$(timeout "${NIX_EVAL_TIMEOUT_SECONDS}" nix eval --raw "$expr" 2>/dev/null || true)"
   else
@@ -189,6 +227,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --host)
       HOST_NAME="${2:?missing value for --host}"
+      HOST_EXPLICIT=true
       shift 2
       ;;
     --profile)
@@ -213,6 +252,8 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+resolve_host_from_flake_if_needed
 
 log_section "Core Commands"
 need_cmd "nix" "nix command available."

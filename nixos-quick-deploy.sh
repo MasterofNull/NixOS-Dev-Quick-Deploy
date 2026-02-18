@@ -142,9 +142,16 @@ FLAKE_FIRST_PROFILE_EXPLICIT=false
 FLAKE_FIRST_TARGET=""
 FLAKE_FIRST_DEPLOY_MODE="switch"
 RESTORE_KNOWN_GOOD_FLAKE_LOCK=false
+SKIP_ROADMAP_VERIFICATION=false
 FORCE_HF_DOWNLOAD=false
 RUN_AI_PREP=false
 RUN_AI_MODEL=true  # Default: Enable AI stack auto-deploy
+AI_STACK_DISABLE_MARKER="/var/lib/nixos-quick-deploy/disable-ai-stack"
+FLAKE_FIRST_AI_STACK_EXPLICIT=false
+FLAKE_FIRST_MODEL_PROFILE="auto"
+FLAKE_FIRST_EMBEDDING_MODEL=""
+FLAKE_FIRST_LLM_MODEL=""
+FLAKE_FIRST_LLM_MODEL_FILE=""
 SKIP_AI_MODEL=false
 ENABLE_AI_OPTIMIZER_PREP=false
 RUN_K8S_STACK=true
@@ -982,9 +989,15 @@ BASIC OPTIONS:
         --flake-first-deploy-mode M
                                 Deploy mode for flake-first path (switch|boot|build)
         --restore-flake-lock    Re-seed flake.lock from the bundled baseline
+        --skip-roadmap-verification
+                                Skip flake-first roadmap-completion verifier preflight
         --with-ai-prep          Run the optional AI-Optimizer preparation phase after Phase 8
         --with-ai-model         Force enable Hybrid Learning Stack deployment (default: disabled)
         --without-ai-model      Skip AI model deployment phase (disable default prompt)
+        --flake-first-ai-stack [on|off]
+                                Override declarative AI stack role for flake-first runs
+        --flake-first-model-profile P
+                                Model profile for flake-first (auto|small|medium|large)
         --with-k8s-stack        (deprecated) K3s + Portainer + K8s AI stack is now always enabled
         --with-k8s-e2e          Run hospital K3s E2E tests after K8s deployment
         --without-k8s-e2e       Skip hospital K3s E2E tests
@@ -1309,6 +1322,10 @@ parse_arguments() {
                 RESTORE_KNOWN_GOOD_FLAKE_LOCK=true
                 shift
                 ;;
+            --skip-roadmap-verification)
+                SKIP_ROADMAP_VERIFICATION=true
+                shift
+                ;;
             --with-ai-prep)
                 RUN_AI_PREP=true
                 shift
@@ -1319,7 +1336,45 @@ parse_arguments() {
                 ;;
             --without-ai-model)
                 RUN_AI_MODEL=false
+                FLAKE_FIRST_AI_STACK_EXPLICIT=true
                 shift
+                ;;
+            --flake-first-ai-stack)
+                if [[ -z "${2:-}" ]] || [[ "$2" =~ ^- ]]; then
+                    echo "ERROR: --flake-first-ai-stack requires on|off" >&2
+                    exit 1
+                fi
+                case "${2,,}" in
+                    on|true|yes|y|1)
+                        RUN_AI_MODEL=true
+                        FLAKE_FIRST_AI_STACK_EXPLICIT=true
+                        ;;
+                    off|false|no|n|0)
+                        RUN_AI_MODEL=false
+                        FLAKE_FIRST_AI_STACK_EXPLICIT=true
+                        ;;
+                    *)
+                        echo "ERROR: Invalid --flake-first-ai-stack '$2' (expected on|off)" >&2
+                        exit 1
+                        ;;
+                esac
+                shift 2
+                ;;
+            --flake-first-model-profile)
+                if [[ -z "${2:-}" ]] || [[ "$2" =~ ^- ]]; then
+                    echo "ERROR: --flake-first-model-profile requires auto|small|medium|large" >&2
+                    exit 1
+                fi
+                case "${2,,}" in
+                    auto|small|medium|large)
+                        FLAKE_FIRST_MODEL_PROFILE="${2,,}"
+                        ;;
+                    *)
+                        echo "ERROR: Invalid --flake-first-model-profile '$2' (expected auto|small|medium|large)" >&2
+                        exit 1
+                        ;;
+                esac
+                shift 2
                 ;;
             --with-ai-stack)
                 print_warning "Flag --with-ai-stack is deprecated; K3s + Portainer + K8s AI stack is always enabled."
@@ -1741,6 +1796,44 @@ PY
         return 1
     fi
     return 1
+}
+
+bootstrap_resume_validation_tools() {
+    # Resume validation can use jq/python3; install them early when available.
+    local strict="${1:-false}"
+    local missing=0
+    local previous_imperative_flag="${IMPERATIVE_INSTALLS_ALLOWED:-false}"
+
+    # setup_environment runs before phase-01, so imperative installs are not yet
+    # enabled by default. Temporarily allow preflight bootstrap installs here.
+    export IMPERATIVE_INSTALLS_ALLOWED=true
+
+    if ! command -v jq >/dev/null 2>&1; then
+        missing=1
+        if declare -F ensure_prerequisite_installed >/dev/null 2>&1; then
+            ensure_prerequisite_installed "jq" "nixpkgs#jq" "jq (JSON parser)" || true
+        fi
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        missing=1
+        if declare -F ensure_prerequisite_installed >/dev/null 2>&1; then
+            ensure_prerequisite_installed "python3" "nixpkgs#python3" "python3 (Python interpreter)" || true
+        fi
+    fi
+
+    export IMPERATIVE_INSTALLS_ALLOWED="$previous_imperative_flag"
+
+    if [[ "$strict" == "true" ]] && ! command -v jq >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+        print_error "State validation requires jq or python3. Install one of them and retry."
+        return 1
+    fi
+
+    if [[ "$missing" == "1" ]] && ! command -v jq >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+        print_warning "Proceeding without jq/python3; resume state validation will be limited."
+    fi
+
+    return 0
 }
 
 validate_resume_state() {
@@ -2355,6 +2448,94 @@ start_sudo_keepalive() {
 # AI Stack Credentials + Host Swap Limits
 # ============================================================================
 
+# suggest_ai_stack_llama_defaults: pick legacy-parity llama.cpp defaults from
+# detected GPU VRAM / host RAM for first-run AI stack configuration.
+suggest_ai_stack_llama_defaults() {
+    local gpu_vram=0
+    local ram_gb=0
+
+    if command -v nvidia-smi >/dev/null 2>&1; then
+        gpu_vram=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | awk '{print int($1/1024)}' || echo 0)
+    elif command -v rocm-smi >/dev/null 2>&1; then
+        gpu_vram=$(rocm-smi --showmeminfo vram --csv 2>/dev/null | tail -1 | awk -F',' '{print int($2/1024)}' || echo 0)
+    fi
+
+    if [[ -r /proc/meminfo ]]; then
+        ram_gb=$(awk '/MemTotal:/ {printf "%d", $2/1024/1024}' /proc/meminfo 2>/dev/null || echo 0)
+    fi
+
+    local model_id="unsloth/Qwen3-4B-Instruct-2507-GGUF"
+    local model_file="Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+
+    if [[ "$gpu_vram" =~ ^[0-9]+$ ]] && (( gpu_vram >= 24 )); then
+        model_id="Qwen/Qwen2.5-Coder-14B-Instruct"
+        model_file="qwen2.5-coder-14b-instruct-q4_k_m.gguf"
+    elif [[ "$gpu_vram" =~ ^[0-9]+$ ]] && (( gpu_vram >= 16 )); then
+        model_id="Qwen/Qwen2.5-Coder-7B-Instruct"
+        model_file="qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+    elif [[ "$ram_gb" =~ ^[0-9]+$ ]] && (( ram_gb >= 32 )); then
+        model_id="Qwen/Qwen2.5-Coder-7B-Instruct"
+        model_file="qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+    fi
+
+    printf '%s|%s\n' "$model_id" "$model_file"
+}
+
+# prewarm_ai_stack_embeddings_cache: mirror legacy phase behavior by attempting
+# an embeddings model cache warm-up before first runtime requests.
+prewarm_ai_stack_embeddings_cache() {
+    local embeddings_script="$SCRIPT_DIR/scripts/download-embeddings-model.sh"
+    if [[ ! -x "$embeddings_script" ]]; then
+        return 0
+    fi
+
+    local env_file="${AI_STACK_ENV_FILE:-${AI_STACK_CONFIG_DIR:-${PRIMARY_HOME:-$HOME}/.config/nixos-ai-stack}/.env}"
+    local embedding_model="sentence-transformers/all-MiniLM-L6-v2"
+    local ai_stack_data="${AI_STACK_DATA:-$HOME/.local/share/nixos-ai-stack}"
+
+    if [[ -f "$env_file" ]]; then
+        local val
+        val=$(awk -F= '/^EMBEDDING_MODEL=/{sub("^[^=]*=", "", $0); print $0; exit}' "$env_file" 2>/dev/null || true)
+        [[ -n "$val" ]] && embedding_model="$val"
+        val=$(awk -F= '/^AI_STACK_DATA=/{sub("^[^=]*=", "", $0); print $0; exit}' "$env_file" 2>/dev/null || true)
+        [[ -n "$val" ]] && ai_stack_data="$val"
+    fi
+
+    local embeddings_cache_dir="${ai_stack_data}/embeddings/cache"
+    mkdir -p "$embeddings_cache_dir"
+
+    print_info "Pre-warming embeddings cache (${embedding_model})"
+    EMBEDDING_MODEL="$embedding_model" \
+    EMBEDDINGS_CACHE_DIR="$embeddings_cache_dir" \
+    "$embeddings_script" >/dev/null 2>&1 || print_warning "Embeddings cache prewarm failed; runtime download fallback remains available."
+}
+
+# wait_for_ai_stack_readiness: best-effort post-switch readiness check so
+# flake-first keeps legacy parity observability without imperative apply steps.
+wait_for_ai_stack_readiness() {
+    if [[ "$RUN_AI_MODEL" != true ]]; then
+        return 0
+    fi
+
+    if ! command -v kubectl >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if ! kubectl --request-timeout=15s cluster-info >/dev/null 2>&1; then
+        print_warning "Kubernetes API not reachable yet; skipping AI stack readiness wait."
+        return 0
+    fi
+
+    local namespace="${AI_STACK_NAMESPACE:-ai-stack}"
+    print_info "Checking AI stack readiness in namespace '${namespace}'"
+
+    kubectl --request-timeout=30s -n "$namespace" get deploy >/dev/null 2>&1 || return 0
+    kubectl --request-timeout=120s -n "$namespace" rollout status deploy/aidb >/dev/null 2>&1 || \
+        print_warning "AIDB deployment is not ready yet (non-fatal; reconciliation will continue)."
+    kubectl --request-timeout=120s -n "$namespace" rollout status deploy/qdrant >/dev/null 2>&1 || \
+        print_warning "Qdrant deployment is not ready yet (non-fatal; reconciliation will continue)."
+}
+
 ensure_ai_stack_env() {
     if [[ "$RUN_AI_MODEL" != true && "${LOCAL_AI_STACK_ENABLED:-false}" != "true" ]]; then
         return 0
@@ -2380,11 +2561,25 @@ ensure_ai_stack_env() {
         local key="$1"
         local value="$2"
         local file="$3"
-        if grep -qE "^[[:space:]]*${key}=" "$file" 2>/dev/null; then
-            sed -i "s|^[[:space:]]*${key}=.*|${key}=${value}|" "$file"
-        else
-            printf '%s=%s\n' "$key" "$value" >> "$file"
-        fi
+        local tmp_file
+        tmp_file=$(mktemp)
+
+        awk -v target="$key" -v replacement="$value" '
+            BEGIN { updated = 0 }
+            $0 ~ "^[[:space:]]*" target "=" {
+                print target "=" replacement
+                updated = 1
+                next
+            }
+            { print }
+            END {
+                if (updated == 0) {
+                    print target "=" replacement
+                }
+            }
+        ' "$file" > "$tmp_file"
+
+        mv "$tmp_file" "$file"
     }
 
     local config_dir="${AI_STACK_CONFIG_DIR:-${PRIMARY_HOME:-$HOME}/.config/nixos-ai-stack}"
@@ -2458,17 +2653,21 @@ ensure_ai_stack_env() {
             fi
 
             if [[ -z "$existing_embedding_model" ]]; then
-                existing_embedding_model="${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}"
+                existing_embedding_model="${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}"
                 set_env_value "EMBEDDING_MODEL" "$existing_embedding_model" "$env_file"
             fi
 
             if [[ -z "$existing_llama_model" ]]; then
-                existing_llama_model="${LLAMA_CPP_DEFAULT_MODEL:-unsloth/Qwen3-4B-Instruct-2507-GGUF}"
+                local llama_defaults
+                llama_defaults=$(suggest_ai_stack_llama_defaults)
+                existing_llama_model="${LLAMA_CPP_DEFAULT_MODEL:-${llama_defaults%%|*}}"
                 set_env_value "LLAMA_CPP_DEFAULT_MODEL" "$existing_llama_model" "$env_file"
             fi
 
             if [[ -z "$existing_llama_model_file" ]]; then
-                existing_llama_model_file="${LLAMA_CPP_MODEL_FILE:-qwen2.5-coder-7b-instruct-q4_k_m.gguf}"
+                local llama_defaults
+                llama_defaults=$(suggest_ai_stack_llama_defaults)
+                existing_llama_model_file="${LLAMA_CPP_MODEL_FILE:-${llama_defaults##*|}}"
                 set_env_value "LLAMA_CPP_MODEL_FILE" "$existing_llama_model_file" "$env_file"
             fi
 
@@ -2522,6 +2721,9 @@ ensure_ai_stack_env() {
         print_warning "Password must be 12+ characters with at least 3 of: uppercase, lowercase, digit, special char."
     done
 
+    local llama_defaults
+    llama_defaults=$(suggest_ai_stack_llama_defaults)
+
     mkdir -p "$config_dir"
     cat > "$env_file" <<EOF
 AI_STACK_DATA=${AI_STACK_DATA:-$HOME/.local/share/nixos-ai-stack}
@@ -2530,9 +2732,9 @@ POSTGRES_USER=${AI_STACK_POSTGRES_USER}
 POSTGRES_PASSWORD=${AI_STACK_POSTGRES_PASSWORD}
 GRAFANA_ADMIN_USER=${AI_STACK_GRAFANA_ADMIN_USER}
 GRAFANA_ADMIN_PASSWORD=${AI_STACK_GRAFANA_ADMIN_PASSWORD}
-EMBEDDING_MODEL=${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
-LLAMA_CPP_DEFAULT_MODEL=${LLAMA_CPP_DEFAULT_MODEL:-unsloth/Qwen3-4B-Instruct-2507-GGUF}
-LLAMA_CPP_MODEL_FILE=${LLAMA_CPP_MODEL_FILE:-qwen2.5-coder-7b-instruct-q4_k_m.gguf}
+EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}
+LLAMA_CPP_DEFAULT_MODEL=${LLAMA_CPP_DEFAULT_MODEL:-${llama_defaults%%|*}}
+LLAMA_CPP_MODEL_FILE=${LLAMA_CPP_MODEL_FILE:-${llama_defaults##*|}}
 EOF
 
     chmod 600 "$env_file" 2>/dev/null || true
@@ -2783,6 +2985,9 @@ setup_environment() {
     maybe_reset_config_phases_on_template_change
     if [[ "$RESUME" == true ]]; then
         print_info "Validating resume state..."
+        if ! bootstrap_resume_validation_tools "$VALIDATE_STATE"; then
+            exit "${ERR_STATE_INVALID:-31}"
+        fi
         if ! validate_resume_state "$VALIDATE_STATE"; then
             exit "${ERR_STATE_INVALID:-31}"
         fi
@@ -2878,6 +3083,164 @@ setup_environment() {
     fi
 }
 
+# maybe_prompt_flake_first_ai_stack: collect declarative AI stack and model choices
+# early in flake-first flow so selections become host-scoped Nix options.
+maybe_prompt_flake_first_ai_stack() {
+    if [[ "$FLAKE_FIRST_AI_STACK_EXPLICIT" == true || ! -t 0 || ! -t 1 ]]; then
+        return 0
+    fi
+
+    local default_answer="n"
+    if [[ "$profile" == "ai-dev" ]]; then
+        default_answer="y"
+    fi
+    if confirm "Enable declarative AI stack services for this host/profile?" "$default_answer"; then
+        RUN_AI_MODEL=true
+    else
+        RUN_AI_MODEL=false
+    fi
+
+    if [[ "$RUN_AI_MODEL" != true ]]; then
+        return 0
+    fi
+
+    if [[ "${FLAKE_FIRST_MODEL_PROFILE}" == "auto" ]]; then
+        local prompt_profile
+        prompt_profile=$(prompt_user "Model profile [auto|small|medium|large]" "auto")
+        case "${prompt_profile,,}" in
+            auto|small|medium|large) FLAKE_FIRST_MODEL_PROFILE="${prompt_profile,,}" ;;
+            *) print_warning "Unknown model profile '${prompt_profile}', keeping auto." ;;
+        esac
+    fi
+}
+
+# resolve_flake_first_model_selection: map model profile selection to concrete
+# embedding + llama defaults that are persisted declaratively per host.
+resolve_flake_first_model_selection() {
+    local llama_defaults
+    llama_defaults=$(suggest_ai_stack_llama_defaults)
+    local default_model="${llama_defaults%%|*}"
+    local default_file="${llama_defaults##*|}"
+    local embed_default="${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}"
+
+    case "${FLAKE_FIRST_MODEL_PROFILE:-auto}" in
+        small)
+            FLAKE_FIRST_EMBEDDING_MODEL="BAAI/bge-small-en-v1.5"
+            FLAKE_FIRST_LLM_MODEL="Qwen/Qwen2.5-Coder-3B-Instruct-GGUF"
+            FLAKE_FIRST_LLM_MODEL_FILE="qwen2.5-coder-3b-instruct-q4_k_m.gguf"
+            ;;
+        medium)
+            FLAKE_FIRST_EMBEDDING_MODEL="BAAI/bge-small-en-v1.5"
+            FLAKE_FIRST_LLM_MODEL="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
+            FLAKE_FIRST_LLM_MODEL_FILE="qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+            ;;
+        large)
+            FLAKE_FIRST_EMBEDDING_MODEL="BAAI/bge-base-en-v1.5"
+            FLAKE_FIRST_LLM_MODEL="Qwen/Qwen2.5-Coder-14B-Instruct-GGUF"
+            FLAKE_FIRST_LLM_MODEL_FILE="qwen2.5-coder-14b-instruct-q4_k_m.gguf"
+            ;;
+        *)
+            FLAKE_FIRST_EMBEDDING_MODEL="$embed_default"
+            FLAKE_FIRST_LLM_MODEL="${LLAMA_CPP_DEFAULT_MODEL:-$default_model}"
+            FLAKE_FIRST_LLM_MODEL_FILE="${LLAMA_CPP_MODEL_FILE:-$default_file}"
+            ;;
+    esac
+}
+
+# persist_flake_first_host_options: write host-scoped declarative deploy options
+# consumed by flake.nix for AI-stack enablement and model selection.
+persist_flake_first_host_options() {
+    local host_name="$1"
+    local host_dir="${SCRIPT_DIR}/nix/hosts/${host_name}"
+    local deploy_file="${host_dir}/deploy-options.nix"
+
+    if [[ ! -d "$host_dir" ]]; then
+        print_error "Host directory not found for declarative options: $host_dir"
+        return 1
+    fi
+
+    resolve_flake_first_model_selection
+
+    cat > "$deploy_file" <<EOF
+{ lib, ... }:
+{
+  mySystem.roles.aiStack.enable = lib.mkForce ${RUN_AI_MODEL};
+  mySystem.aiStack = {
+    enable = lib.mkForce ${RUN_AI_MODEL};
+    modelProfile = lib.mkForce "${FLAKE_FIRST_MODEL_PROFILE}";
+    embeddingModel = lib.mkForce "${FLAKE_FIRST_EMBEDDING_MODEL}";
+    llamaDefaultModel = lib.mkForce "${FLAKE_FIRST_LLM_MODEL}";
+    llamaModelFile = lib.mkForce "${FLAKE_FIRST_LLM_MODEL_FILE}";
+  };
+}
+EOF
+
+    print_info "Updated declarative deploy options: ${deploy_file}"
+    return 0
+}
+
+# apply_flake_first_ai_stack_toggle: persist the --without-ai-model choice for
+# declarative reconciliation by writing/removing the AI stack disable marker.
+apply_flake_first_ai_stack_toggle() {
+    local marker_path="${AI_STACK_DISABLE_MARKER:-/var/lib/nixos-quick-deploy/disable-ai-stack}"
+    local marker_dir
+    marker_dir="$(dirname "$marker_path")"
+
+    if [[ "$DRY_RUN" == true ]]; then
+        if [[ "$RUN_AI_MODEL" == true ]]; then
+            print_info "[DRY RUN] Would remove AI stack disable marker: ${marker_path}"
+        else
+            print_info "[DRY RUN] Would create AI stack disable marker: ${marker_path}"
+        fi
+        return 0
+    fi
+
+    if [[ "$RUN_AI_MODEL" == true ]]; then
+        if sudo rm -f "$marker_path"; then
+            print_info "AI stack disable marker removed (${marker_path}); declarative reconciliation enabled."
+        else
+            print_error "Failed to remove AI stack disable marker: ${marker_path}"
+            return 1
+        fi
+        return 0
+    fi
+
+    if ! sudo mkdir -p "$marker_dir"; then
+        print_error "Failed to create marker directory: ${marker_dir}"
+        return 1
+    fi
+
+    if sudo touch "$marker_path"; then
+        print_info "AI stack disable marker created (${marker_path}); declarative reconciliation disabled."
+    else
+        print_error "Failed to create AI stack disable marker: ${marker_path}"
+        return 1
+    fi
+}
+
+# run_flake_first_roadmap_verification: enforce roadmap-complete flake-first
+# implementation markers before running declarative deployment.
+run_flake_first_roadmap_verification() {
+    if [[ "${SKIP_ROADMAP_VERIFICATION:-false}" == "true" ]]; then
+        print_info "Skipping roadmap-completion verification (--skip-roadmap-verification)"
+        return 0
+    fi
+
+    local verifier="${SCRIPT_DIR}/scripts/verify-flake-first-roadmap-completion.sh"
+    if [[ ! -x "$verifier" ]]; then
+        print_warning "Roadmap-completion verifier not executable (${verifier}); skipping verification."
+        return 0
+    fi
+
+    print_info "Verifying roadmap-complete flake-first requirements"
+    if ! "$verifier"; then
+        print_error "Roadmap-completion verification failed. Resolve missing items or rerun with --skip-roadmap-verification."
+        return 1
+    fi
+
+    return 0
+}
+
 # run_flake_first_deployment: Execute a direct declarative deployment path.
 # This bypasses the 9-phase generator pipeline and applies the root flake.
 run_flake_first_deployment() {
@@ -2914,6 +3277,8 @@ run_flake_first_deployment() {
             ;;
     esac
 
+    maybe_prompt_flake_first_ai_stack
+
     local deploy_mode="${FLAKE_FIRST_DEPLOY_MODE:-switch}"
     case "$deploy_mode" in
         switch|boot|build) ;;
@@ -2928,6 +3293,16 @@ run_flake_first_deployment() {
     detected_host=$(printf '%s' "$detected_host" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')
     if [[ -z "$detected_host" ]]; then
         detected_host="nixos"
+    fi
+
+    local hosts_root="${SCRIPT_DIR}/nix/hosts"
+    if [[ ! -f "${hosts_root}/${detected_host}/default.nix" && -d "$hosts_root" ]]; then
+        local -a detected_hosts=()
+        mapfile -t detected_hosts < <(find "$hosts_root" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | while IFS= read -r host; do [[ -f "$hosts_root/$host/default.nix" ]] && printf '%s\n' "$host"; done | sort -u)
+        if [[ ${#detected_hosts[@]} -eq 1 ]]; then
+            print_warning "Detected hostname '${detected_host}' has no flake host directory; using '${detected_hosts[0]}'"
+            detected_host="${detected_hosts[0]}"
+        fi
     fi
 
     local flake_ref="path:${SCRIPT_DIR}"
@@ -3018,9 +3393,41 @@ run_flake_first_deployment() {
     fi
 
     print_info "Using flake target: ${nixos_target} (mode=${deploy_mode})"
+
+    if ! run_flake_first_roadmap_verification; then
+        return 1
+    fi
+
+    if ! persist_flake_first_host_options "$detected_host"; then
+        print_error "Failed to persist host-scoped declarative deploy options"
+        return 1
+    fi
+
+    if ! ensure_ai_stack_env; then
+        print_error "Failed to prepare AI stack environment configuration"
+        return 1
+    fi
+
+    prewarm_ai_stack_embeddings_cache
+
+    if ! apply_flake_first_ai_stack_toggle; then
+        print_error "Failed to persist AI stack declarative toggle state"
+        return 1
+    fi
+
+    if ! run_optional_phase_script "$PHASES_DIR/phase-02-system-backup.sh" phase_02_backup "Comprehensive backup"; then
+        print_error "Flake-first backup parity task failed"
+        return 1
+    fi
+
     print_info "Executing declarative deploy via scripts/deploy-clean.sh"
     if ! "$deploy_clean_script" "${deploy_args[@]}"; then
         print_error "Flake-first deploy-clean execution failed"
+        return 1
+    fi
+
+    if ! run_flake_first_legacy_outcome_tasks "$deploy_mode"; then
+        print_error "Flake-first legacy completion tasks failed"
         return 1
     fi
 
@@ -3029,6 +3436,45 @@ run_flake_first_deployment() {
     fi
 
     print_success "Flake-first deployment path completed"
+    return 0
+}
+
+# run_flake_first_legacy_outcome_tasks: execute legacy parity tasks that remain
+# relevant for flake-first mode (tooling, validation, reporting, and optional
+# runtime AI stack gates) while keeping declarative system/profile deployment.
+run_flake_first_legacy_outcome_tasks() {
+    local deploy_mode="$1"
+
+    # In boot mode, system-level changes are staged and may require reboot before
+    # downstream runtime expectations (desktop/session, user auth) are visible.
+    if [[ "$deploy_mode" == "boot" ]]; then
+        print_warning "System changes are staged for next boot. Reboot required for desktop/user/service changes."
+    fi
+
+    print_section "Flake-First Completion: Legacy-Parity Tasks"
+
+    if ! run_optional_phase_script "$PHASES_DIR/phase-06-additional-tooling.sh" phase_06_additional_tooling "Additional tooling"; then
+        return 1
+    fi
+
+    if ! run_optional_phase_script "$PHASES_DIR/phase-07-post-deployment-validation.sh" phase_07_post_deployment_validation "Post-deployment validation"; then
+        return 1
+    fi
+
+    if ! run_optional_phase_script "$PHASES_DIR/phase-08-finalization-and-report.sh" phase_08_finalization_and_report "Finalization and report"; then
+        return 1
+    fi
+
+    if [[ "$RUN_AI_PREP" == true ]]; then
+        if ! run_optional_phase_script "$PHASES_DIR/phase-09-ai-optimizer-prep.sh" phase_09_ai_optimizer_prep "AI-Optimizer preparation"; then
+            return 1
+        fi
+    fi
+
+    if [[ "$RUN_AI_MODEL" == true ]]; then
+        print_info "Phase 9 imperative stack/model scripts skipped in flake-first; declarative AI stack module owns deployment."
+    fi
+
     return 0
 }
 
@@ -3139,6 +3585,7 @@ run_post_deployment() {
             log INFO "Starting AI stack + dashboard via $startup_script"
             if "$startup_script"; then
                 print_success "AI stack + dashboard startup completed"
+                wait_for_ai_stack_readiness || true
                 echo ""
             else
                 stack_exit=$?
@@ -3287,7 +3734,10 @@ main() {
 
     if [[ "$FLAKE_FIRST_MODE" == true ]]; then
         if run_flake_first_deployment; then
-            exit 0
+            # Keep post-deploy behavior consistent with legacy mode so AI stack
+            # startup, rollback checks, and health checks still run.
+            run_post_deployment
+            exit $?
         fi
         exit 1
     fi
