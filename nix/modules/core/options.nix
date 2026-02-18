@@ -218,6 +218,12 @@
         default = false;
         description = "Layer desktop/workstation defaults (display manager, audio, Bluetooth, XDG portals).";
       };
+
+      virtualization.enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Layer KVM/QEMU virtualization (libvirtd, virt-manager, OVMF UEFI firmware).";
+      };
     };
 
     # ---------------------------------------------------------------------------
