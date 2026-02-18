@@ -56,6 +56,7 @@
       hostDefaultPath = hostName: hostPath hostName + "/default.nix";
       hostHardwarePath = hostName: hostPath hostName + "/hardware-configuration.nix";
       hostDeployOptionsPath = hostName: hostPath hostName + "/deploy-options.nix";
+      hostDeployOptionsLocalPath = hostName: hostPath hostName + "/deploy-options.local.nix";
       hostHomePath = hostName: hostPath hostName + "/home.nix";
       hostHomeDeployOptionsPath = hostName: hostPath hostName + "/home-deploy-options.nix";
 
@@ -164,6 +165,9 @@
             (hostDefaultPath hostName)
             ({ lib, ... }: {
               imports = lib.optionals (builtins.pathExists (hostDeployOptionsPath hostName)) [ (hostDeployOptionsPath hostName) ];
+            })
+            ({ lib, ... }: {
+              imports = lib.optionals (builtins.pathExists (hostDeployOptionsLocalPath hostName)) [ (hostDeployOptionsLocalPath hostName) ];
             })
           ];
         };
