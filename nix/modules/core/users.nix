@@ -25,6 +25,10 @@ in
       openssh.authorizedKeys.keys = lib.mkDefault cfg.sshAuthorizedKeys;
     };
 
+    # Set the global default shell so primary user shell does not conflict
+    # with NixOS user module defaults at equal priority.
+    users.defaultUserShell = lib.mkDefault pkgs.zsh;
+
     # zsh must be enabled system-wide when used as a login shell.
     programs.zsh.enable = lib.mkDefault true;
   };
