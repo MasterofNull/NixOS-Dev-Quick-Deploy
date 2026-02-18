@@ -148,6 +148,9 @@
                     "Secure boot requested but lanzaboote module export is unavailable.";
               })
             ({ lib, ... }: {
+              nixpkgs.config.allowUnfreePredicate = pkg:
+                builtins.elem (lib.getName pkg) [ "open-webui" ];
+
               mySystem.hostName = lib.mkDefault hostName;
               mySystem.profile = lib.mkForce profile;
             })
