@@ -20,7 +20,7 @@ in
         "audio"           # ALSA fallback (PipeWire covers most cases)
         "input"           # evdev device access for Wayland compositors
       ];
-      shell = lib.mkDefault pkgs.zsh;
+      shell = lib.mkForce pkgs.zsh;
       # SSH authorized keys — set mySystem.sshAuthorizedKeys in per-host default.nix.
       openssh.authorizedKeys.keys = lib.mkDefault cfg.sshAuthorizedKeys;
     };
