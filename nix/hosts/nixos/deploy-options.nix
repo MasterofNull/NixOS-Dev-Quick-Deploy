@@ -1,18 +1,20 @@
-{ lib, ... }:
+{ lib, config, ... }:
 {
-  mySystem.roles.aiStack.enable = lib.mkDefault true;
-  mySystem.aiStack = {
-    # ollama backend: native NixOS systemd services (no K3s, no containers).
-    # Switch to "k3s" only once the Kubernetes stack is operational.
-    backend      = lib.mkDefault "ollama";
-    acceleration = lib.mkDefault "auto";  # auto → rocm for AMD GPU
+  config = lib.mkIf (config.mySystem.profile == "ai-dev") {
+    mySystem.roles.aiStack.enable = lib.mkDefault true;
+    mySystem.aiStack = {
+      # ollama backend: native NixOS systemd services (no K3s, no containers).
+      # Switch to "k3s" only once the Kubernetes stack is operational.
+      backend      = lib.mkDefault "ollama";
+      acceleration = lib.mkDefault "auto";  # auto → rocm for AMD GPU
 
-    # Models pulled by the ollama-model-pull oneshot on first boot.
-    # Add or swap tags here; see https://ollama.com/library for available models.
-    models = lib.mkDefault [ "qwen2.5-coder:7b" ];
+      # Models pulled by the ollama-model-pull oneshot on first boot.
+      # Add or swap tags here; see https://ollama.com/library for available models.
+      models = lib.mkDefault [ "qwen2.5-coder:7b" ];
 
-    ui.enable      = lib.mkDefault true;   # Open WebUI on :3000
-    vectorDb.enable = lib.mkDefault false; # Qdrant — enable when RAG is needed
-    listenOnLan    = lib.mkDefault false;  # loopback only (127.0.0.1)
+      ui.enable      = lib.mkDefault true;   # Open WebUI on :3000
+      vectorDb.enable = lib.mkDefault false; # Qdrant — enable when RAG is needed
+      listenOnLan    = lib.mkDefault false;  # loopback only (127.0.0.1)
+    };
   };
 }
