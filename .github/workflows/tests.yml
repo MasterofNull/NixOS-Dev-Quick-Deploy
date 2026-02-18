@@ -19,6 +19,13 @@ jobs:
       - name: Verify flake-first roadmap completion markers
         run: ./scripts/verify-flake-first-roadmap-completion.sh
 
+      - name: Guard against unsupported gitleaks-action args usage
+        run: |
+          if rg -n "gitleaks/gitleaks-action@v2" .github/workflows; then
+            echo "Unsupported gitleaks-action usage detected. Use explicit gitleaks CLI steps instead." >&2
+            exit 1
+          fi
+
   unit-tests:
     runs-on: ubuntu-latest
     strategy:
