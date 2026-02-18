@@ -5,9 +5,9 @@
 {
   # ---- Git identity -------------------------------------------------------
   # Override the placeholder identity set in nix/home/base.nix.
-  programs.git = {
-    userName  = lib.mkDefault "NixOS User";
-    userEmail = lib.mkDefault "user@localhost";
+  programs.git.settings = {
+    user.name = lib.mkDefault "NixOS User";
+    user.email = lib.mkDefault "user@localhost";
   };
 
   # ---- Machine-specific packages ------------------------------------------
