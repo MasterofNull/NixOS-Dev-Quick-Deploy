@@ -33,6 +33,7 @@
       factsPath = hostName: hostPath hostName + "/facts.nix";
       hostDefaultPath = hostName: hostPath hostName + "/default.nix";
       hostHardwarePath = hostName: hostPath hostName + "/hardware-configuration.nix";
+      hostDeployOptionsPath = hostName: hostPath hostName + "/deploy-options.nix";
       hostHomePath = hostName: hostPath hostName + "/home.nix";
 
       hostEntries = builtins.readDir ./nix/hosts;
@@ -73,6 +74,7 @@
             ./nix/modules/core/fs-integrity-monitor.nix
             ./nix/modules/core/disk-health-monitor.nix
             ./nix/modules/roles/default.nix
+            ./nix/modules/services/default.nix
             ./nix/modules/profiles/minimal.nix
             ./nix/modules/profiles/ai-dev.nix
             ./nix/modules/profiles/gaming.nix
@@ -133,6 +135,9 @@
               };
             })
             (hostDefaultPath hostName)
+            ({ lib, ... }: {
+              imports = lib.optionals (builtins.pathExists (hostDeployOptionsPath hostName)) [ (hostDeployOptionsPath hostName) ];
+            })
           ];
         };
 
