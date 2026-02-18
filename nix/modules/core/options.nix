@@ -13,6 +13,17 @@
       description = "Primary local user name.";
     };
 
+    sshAuthorizedKeys = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "ssh-ed25519 AAAA... user@hostname" ];
+      description = ''
+        SSH public keys authorized for the primary user.
+        Set in nix/hosts/<host>/default.nix so each machine declares its own
+        keys without hard-coding them in shared modules.
+      '';
+    };
+
     system = lib.mkOption {
       type = lib.types.str;
       default = "x86_64-linux";
@@ -217,6 +228,89 @@
         type = lib.types.bool;
         default = false;
         description = "Layer desktop/workstation defaults (display manager, audio, Bluetooth, XDG portals).";
+      };
+
+      virtualization.enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Layer KVM/QEMU virtualization (libvirtd, virt-manager, OVMF UEFI firmware).";
+      };
+    };
+
+    # ---------------------------------------------------------------------------
+    # AI stack configuration — consumed by nix/modules/roles/ai-stack.nix.
+    # These options are only active when roles.aiStack.enable = true.
+    # ---------------------------------------------------------------------------
+    aiStack = {
+      backend = lib.mkOption {
+        type = lib.types.enum [ "ollama" "k3s" ];
+        default = "ollama";
+        description = ''
+          Inference backend.
+          - ollama: native NixOS systemd services (services.ollama + open-webui + qdrant).
+            Recommended for single-workstation AI development.
+          - k3s: full Kubernetes-orchestrated stack (AIDB, hybrid-coordinator, ralph-wiggum).
+            Only needed for multi-service production deployments.
+        '';
+      };
+
+      acceleration = lib.mkOption {
+        type = lib.types.enum [ "auto" "rocm" "cuda" "cpu" ];
+        default = "auto";
+        description = ''
+          GPU acceleration for inference.
+          "auto" derives from hardware.gpuVendor: amd→rocm, nvidia→cuda, else→cpu.
+          Override only when auto detection is incorrect for your hardware.
+        '';
+      };
+
+      models = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ "qwen2.5-coder:7b" ];
+        example = [ "qwen2.5-coder:7b" "phi3:mini" "deepseek-coder:6.7b" ];
+        description = ''
+          Ollama model tags to pull on first boot.
+          Pulled by a oneshot systemd service after ollama starts.
+          Idempotent: ollama pull is a no-op when the model is already present.
+          See https://ollama.com/library for available tags.
+        '';
+      };
+
+      ui = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable Open WebUI browser interface on port 3000. Connects to local ollama automatically.";
+        };
+      };
+
+      vectorDb = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable Qdrant vector database on port 6333. Required for RAG workflows and the AIDB embeddings service.";
+        };
+      };
+
+      listenOnLan = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Expose ollama (11434), Open WebUI (3000), and Qdrant (6333) on all
+          network interfaces. Default: loopback-only (127.0.0.1).
+          Only enable on a trusted local network.
+        '';
+      };
+
+      rocmGfxOverride = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "11.0.0";
+        description = ''
+          ROCm GFX architecture version override (e.g. "11.0.0" for RDNA3).
+          Required for AMD GPUs not yet in the official ROCm support matrix.
+          null = let ROCm auto-detect (correct for most supported GPUs).
+        '';
       };
     };
 
