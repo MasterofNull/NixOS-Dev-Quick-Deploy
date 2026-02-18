@@ -235,13 +235,25 @@ enable_flakes_runtime() {
 
 nix_eval_raw_safe() {
   local expr="$1"
-  local timeout_secs="${NIX_EVAL_TIMEOUT_SECONDS:-30}"
+  run_nix_eval_with_timeout nix eval --raw "${expr}"
+}
 
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "${timeout_secs}" nix eval --raw "${expr}"
-  else
-    nix eval --raw "${expr}"
+run_nix_eval_with_timeout() {
+  local timeout_secs="${NIX_EVAL_TIMEOUT_SECONDS:-60}"
+  local retry_timeout_secs="${NIX_EVAL_RETRY_TIMEOUT_SECONDS:-$((timeout_secs * 2))}"
+
+  if ! command -v timeout >/dev/null 2>&1; then
+    "$@"
+    return $?
   fi
+
+  timeout "${timeout_secs}" "$@"
+  local rc=$?
+  if [[ $rc -ne 124 && $rc -ne 137 ]]; then
+    return $rc
+  fi
+
+  timeout "${retry_timeout_secs}" "$@"
 }
 
 update_flake_lock() {
@@ -290,13 +302,7 @@ nix_escape_string() {
 
 nix_eval_expr_raw_safe() {
   local expr="$1"
-  local timeout_secs="${NIX_EVAL_TIMEOUT_SECONDS:-30}"
-
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "${timeout_secs}" nix eval --impure --raw --expr "$expr"
-  else
-    nix eval --impure --raw --expr "$expr"
-  fi
+  run_nix_eval_with_timeout nix eval --impure --raw --expr "$expr"
 }
 
 is_locked_password_field() {
@@ -678,10 +684,22 @@ persist_home_git_credentials_declarative() {
       git_email="${git_email:-$(git config --global user.email 2>/dev/null || true)}"
       git_helper="${git_helper:-$(git config --global credential.helper 2>/dev/null || true)}"
     fi
+
+    if [[ -n "${REPO_ROOT:-}" && -d "${REPO_ROOT}/.git" ]]; then
+      if [[ "${EUID:-$(id -u)}" -eq 0 && -n "${PRIMARY_USER:-}" ]]; then
+        git_name="${git_name:-$(sudo -u "$PRIMARY_USER" git -C "$REPO_ROOT" config --get user.name 2>/dev/null || true)}"
+        git_email="${git_email:-$(sudo -u "$PRIMARY_USER" git -C "$REPO_ROOT" config --get user.email 2>/dev/null || true)}"
+        git_helper="${git_helper:-$(sudo -u "$PRIMARY_USER" git -C "$REPO_ROOT" config --get credential.helper 2>/dev/null || true)}"
+      else
+        git_name="${git_name:-$(git -C "$REPO_ROOT" config --get user.name 2>/dev/null || true)}"
+        git_email="${git_email:-$(git -C "$REPO_ROOT" config --get user.email 2>/dev/null || true)}"
+        git_helper="${git_helper:-$(git -C "$REPO_ROOT" config --get credential.helper 2>/dev/null || true)}"
+      fi
+    fi
   fi
 
   if [[ -z "$git_name" || -z "$git_email" ]]; then
-    log "Declarative git identity not updated (set GIT_USER_NAME/GIT_USER_EMAIL or git config --global user.name/user.email)."
+    log "Declarative git identity not updated (non-blocking). Set GIT_USER_NAME/GIT_USER_EMAIL or run: git config --global user.name <name> && git config --global user.email <email>."
     return 0
   fi
 
