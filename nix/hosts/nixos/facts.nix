@@ -9,7 +9,7 @@
       gpuVendor = "amd";
       igpuVendor = "none";
       cpuVendor = "amd";
-      storageType = "hdd";
+      storageType = "nvme";
       systemRamGb = 27;
       isMobile = true;
       firmwareType = "efi";
