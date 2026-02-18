@@ -32,6 +32,11 @@ REQUIRE_HOME_MANAGER_CLI="${REQUIRE_HOME_MANAGER_CLI:-false}"
 PREFER_NIX_RUN_HOME_MANAGER="${PREFER_NIX_RUN_HOME_MANAGER:-true}"
 HOME_MANAGER_NIX_RUN_REF="${HOME_MANAGER_NIX_RUN_REF:-github:nix-community/home-manager/release-25.11#home-manager}"
 
+AUTO_STAGED_FLAKE_PATH=""
+# Tracks untracked files we temporarily add so Nix can evaluate local git flakes.
+# We unstage them on exit to avoid leaving a dirty index that blocks `git pull --rebase`.
+declare -a AUTO_STAGED_FLAKE_FILES=()
+
 usage() {
   cat <<'USAGE'
 Usage: ./scripts/deploy-clean.sh [options]
@@ -184,22 +189,38 @@ ensure_flake_visible_to_nix() {
 
   local -a scope=(flake.nix flake.lock nix)
   local -a untracked=()
-  local staged=false
 
   while IFS= read -r path; do
     [[ -n "${path}" ]] || continue
     untracked+=("${path}")
   done < <(run_git_safe -C "$flake_path" ls-files --others --exclude-standard -- "${scope[@]}" 2>/dev/null || true)
 
-  if (( ${#untracked[@]} > 0 )); then
-    log "Auto-staging ${#untracked[@]} untracked flake file(s) so Nix can evaluate local config"
-    run_git_safe -C "$flake_path" add -- "${untracked[@]}"
-    staged=true
+  if (( ${#untracked[@]} == 0 )); then
+    return 0
   fi
 
-  if [[ "$staged" == true ]]; then
-    log "Local flake files were staged for evaluation (commit when ready)."
+  log "Temporarily staging ${#untracked[@]} untracked flake file(s) so Nix can evaluate local config"
+  run_git_safe -C "$flake_path" add -- "${untracked[@]}"
+  AUTO_STAGED_FLAKE_PATH="$flake_path"
+  AUTO_STAGED_FLAKE_FILES=("${untracked[@]}")
+}
+
+cleanup_auto_staged_flake_files() {
+  if [[ -z "${AUTO_STAGED_FLAKE_PATH}" || ${#AUTO_STAGED_FLAKE_FILES[@]} -eq 0 ]]; then
+    return 0
   fi
+
+  if run_git_safe -C "${AUTO_STAGED_FLAKE_PATH}" restore --staged -- "${AUTO_STAGED_FLAKE_FILES[@]}" >/dev/null 2>&1; then
+    log "Restored git index after temporary flake staging"
+    return 0
+  fi
+
+  if run_git_safe -C "${AUTO_STAGED_FLAKE_PATH}" reset -q -- "${AUTO_STAGED_FLAKE_FILES[@]}" >/dev/null 2>&1; then
+    log "Restored git index after temporary flake staging"
+    return 0
+  fi
+
+  log "Could not automatically unstage temporary flake files; run: git -C '${AUTO_STAGED_FLAKE_PATH}' restore --staged -- ${AUTO_STAGED_FLAKE_FILES[*]}"
 }
 
 run_roadmap_completion_verification() {
@@ -904,6 +925,8 @@ case "$PROFILE" in
   ai-dev|gaming|minimal) ;;
   *) die "Unsupported profile '${PROFILE}'. Expected ai-dev|gaming|minimal." ;;
 esac
+
+trap cleanup_auto_staged_flake_files EXIT
 
 assert_non_root_entrypoint
 
