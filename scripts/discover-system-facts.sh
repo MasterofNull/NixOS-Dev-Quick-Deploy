@@ -263,6 +263,67 @@ disk_device="${DISK_DEVICE_OVERRIDE:-/dev/disk/by-id/CHANGE-ME}"
 disk_luks_enable="${DISK_LUKS_ENABLE_OVERRIDE:-false}"
 secureboot_enable="${SECUREBOOT_ENABLE_OVERRIDE:-false}"
 
+# ---------------------------------------------------------------------------
+# AI stack preferences — set via environment overrides or left at defaults.
+# These are written into facts.nix and consumed by roles/ai-stack.nix.
+# The flake-first deploy path (deploy-clean.sh) passes these through
+# AI_STACK_ENABLED_OVERRIDE, AI_BACKEND_OVERRIDE, etc.
+# The legacy path (phase-01) sets _AI_STACK_ENABLED etc. and calls
+# lib/hardware-detect.sh instead; this script is the flake-first equivalent.
+# ---------------------------------------------------------------------------
+# Derive default: ai-dev profile always enables the AI stack.
+if [[ "${profile_value}" == "ai-dev" ]]; then
+  ai_stack_enabled_default="true"
+else
+  ai_stack_enabled_default="false"
+fi
+ai_stack_enabled="${AI_STACK_ENABLED_OVERRIDE:-${ai_stack_enabled_default}}"
+ai_backend="${AI_BACKEND_OVERRIDE:-ollama}"
+# Default model: suggest based on available RAM; a human can override.
+ai_models_default="qwen2.5-coder:7b"
+if [[ "${system_ram_gb}" -lt 16 ]]; then
+  ai_models_default="qwen2.5-coder:7b-q4_K_M"
+fi
+ai_models_csv="${AI_MODELS_OVERRIDE:-${ai_models_default}}"
+ai_ui_enabled="${AI_UI_ENABLED_OVERRIDE:-true}"
+ai_vector_db_enabled="${AI_VECTOR_DB_ENABLED_OVERRIDE:-false}"
+
+# Convert comma-separated models to a Nix list literal.
+# Input:  "qwen2.5-coder:7b,phi3:mini"
+# Output: [ "qwen2.5-coder:7b" "phi3:mini" ]
+ai_models_nix='[ "qwen2.5-coder:7b" ]'
+if [[ -n "${ai_models_csv}" ]]; then
+  _models_inner=""
+  IFS=',' read -ra _model_arr <<< "${ai_models_csv}"
+  for _m in "${_model_arr[@]}"; do
+    _m="${_m#"${_m%%[![:space:]]*}"}"
+    _m="${_m%"${_m##*[![:space:]]}"}"
+    [[ -z "$_m" ]] && continue
+    _models_inner+=" \"${_m}\""
+  done
+  ai_models_nix="[${_models_inner} ]"
+fi
+
+if ! validate_bool "${ai_stack_enabled}"; then
+  echo "Unsupported ai_stack_enabled value '${ai_stack_enabled}'." >&2
+  exit 1
+fi
+
+if ! validate_enum "${ai_backend}" ollama k3s; then
+  echo "Unsupported ai_backend value '${ai_backend}'. Expected ollama|k3s." >&2
+  exit 1
+fi
+
+if ! validate_bool "${ai_ui_enabled}"; then
+  echo "Unsupported ai_ui_enabled value '${ai_ui_enabled}'." >&2
+  exit 1
+fi
+
+if ! validate_bool "${ai_vector_db_enabled}"; then
+  echo "Unsupported ai_vector_db_enabled value '${ai_vector_db_enabled}'." >&2
+  exit 1
+fi
+
 if ! validate_hostname "${hostname_value}"; then
   echo "Invalid hostname '${hostname_value}' (expected alnum + dash)." >&2
   exit 1
@@ -495,6 +556,20 @@ cat > "${tmp_file}" <<FACTS
       btrfsSubvolumes = [ "@root" "@home" "@nix" ];
     };
     secureboot.enable = ${secureboot_enable};
+
+    roles.aiStack.enable = ${ai_stack_enabled};
+
+    # AI stack configuration — consumed by nix/modules/roles/ai-stack.nix.
+    # Only meaningful when roles.aiStack.enable = true.
+    aiStack = {
+      backend            = "${ai_backend}";
+      acceleration       = "auto";
+      models             = ${ai_models_nix};
+      ui.enable          = ${ai_ui_enabled};
+      vectorDb.enable    = ${ai_vector_db_enabled};
+      listenOnLan        = false;
+      rocmGfxOverride    = null;
+    };
   };
 }
 FACTS

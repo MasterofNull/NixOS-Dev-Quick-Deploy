@@ -49,6 +49,11 @@ in
     boot.loader.systemd-boot.graceful = lib.mkIf useSystemdBoot (lib.mkDefault true);
     boot.loader.grub.enable = lib.mkDefault false;
 
+    # Systemd-based initrd: no bash in initrd, ~20-30% faster boot.
+    # Available on all supported kernels in 25.11. Safe default for EFI hosts;
+    # BIOS hosts may need to set this false in local-overrides.nix.
+    boot.initrd.systemd.enable = lib.mkDefault true;
+
     environment.systemPackages = resolvedPackages;
 
     warnings = lib.optionals (missingPackageNames != [ ]) [
