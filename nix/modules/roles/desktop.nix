@@ -72,6 +72,18 @@ in
       pulse.enable      = lib.mkDefault true;
     };
 
+    # Disable wireplumber's libcamera UVC monitor to prevent SIGABRT crash.
+    # Root cause: libcamera's PipelineHandlerUVC::match() calls LOG(Fatal) when
+    # the UVC pipeline cannot bind, which invokes abort() via LogMessage dtor.
+    # wireplumber then receives SIGABRT and core-dumps.
+    # Fix: disable the "monitor.libcamera" component in the main wireplumber profile.
+    # This has no effect on USB webcams through the kernel V4L2 path, which
+    # wireplumber's "monitor.v4l2" handles independently.
+    # Reference: NIX-ISSUE-010 / CLAUDE.md recurring errors table.
+    services.pipewire.wireplumber.extraConfig."10-disable-libcamera" = {
+      "wireplumber.profiles".main."monitor.libcamera" = "disabled";
+    };
+
     # ---- Networking --------------------------------------------------------
     networking.networkmanager.enable = lib.mkDefault true;
 
@@ -128,6 +140,38 @@ in
           + "https://dl.flathub.org/repo/flathub.flatpakrepo";
       };
     };
+
+    # ---- Geolocation (GeoClue2) --------------------------------------------
+    # Required by COSMIC settings daemon for automatic day/night theme switching
+    # and timezone detection.  Privacy note: location is only exposed to apps
+    # that have been granted access (see services.geoclue2.appConfig).
+    services.geoclue2 = {
+      enable = lib.mkDefault true;
+      appConfig."com.system76.CosmicSettings" = {
+        isAllowed = true;
+        isSystem  = true;
+        users     = [ ];
+      };
+    };
+
+    # ---- cosmic-greeter runtime directories --------------------------------
+    # cosmic-greeter requires several config subdirectories to exist under
+    # /var/lib/cosmic-greeter at first boot, otherwise the greeter silently
+    # falls back to a blank session or fails to start.
+    # Created via systemd-tmpfiles so they survive across nixos-rebuild.
+    systemd.tmpfiles.rules = lib.mkAfter [
+      "d /var/lib/cosmic-greeter                                             0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config                                     0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic                              0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicComp      0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicComp/v1   0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTheme.Dark 0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTheme.Dark/v1 0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTheme.Mode 0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTheme.Mode/v1 0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTk        0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTk/v1     0750 cosmic-greeter cosmic-greeter -"
+    ];
 
     # ---- Printing ----------------------------------------------------------
     services.printing.enable = lib.mkDefault true;
