@@ -20,14 +20,12 @@ in
         "audio"           # ALSA fallback (PipeWire covers most cases)
         "input"           # evdev device access for Wayland compositors
       ];
-      shell = lib.mkForce pkgs.zsh;
       # SSH authorized keys — set mySystem.sshAuthorizedKeys in per-host default.nix.
       openssh.authorizedKeys.keys = lib.mkDefault cfg.sshAuthorizedKeys;
     };
 
-    # Set the global default shell so primary user shell does not conflict
-    # with NixOS user module defaults at equal priority.
-    users.defaultUserShell = lib.mkDefault pkgs.zsh;
+    # Force default login shell to zsh so it wins over upstream bash defaults.
+    users.defaultUserShell = lib.mkForce pkgs.zsh;
 
     # zsh must be enabled system-wide when used as a login shell.
     programs.zsh.enable = lib.mkDefault true;
