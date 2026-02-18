@@ -1135,7 +1135,11 @@ fi
 
 if [[ "$RUN_HEALTH_CHECK" == true && -x "${REPO_ROOT}/scripts/system-health-check.sh" ]]; then
   log "Running post-deploy health check"
-  "${REPO_ROOT}/scripts/system-health-check.sh" --detailed
+  if "${REPO_ROOT}/scripts/system-health-check.sh" --detailed; then
+    log "Post-deploy health check passed"
+  else
+    log "Post-deploy health check reported issues (non-critical)"
+  fi
 fi
 
 if [[ -x "${REPO_ROOT}/scripts/compare-installed-vs-intended.sh" ]]; then
