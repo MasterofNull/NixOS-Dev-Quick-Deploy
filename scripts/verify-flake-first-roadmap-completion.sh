@@ -7,11 +7,24 @@ cd "$REPO_ROOT"
 pass_count=0
 fail_count=0
 
+if command -v rg >/dev/null 2>&1; then
+  SEARCH_TOOL="rg"
+else
+  SEARCH_TOOL="grep"
+  echo "[verify] ripgrep not found; using grep fallback"
+fi
+
 check_pattern() {
   local file="$1"
   local pattern="$2"
   local label="$3"
-  if rg -n "$pattern" "$file" >/dev/null 2>&1; then
+  if [[ "$SEARCH_TOOL" == "rg" ]]; then
+    rg -n "$pattern" "$file" >/dev/null 2>&1
+  else
+    grep -nE "$pattern" "$file" >/dev/null 2>&1
+  fi
+
+  if [[ $? -eq 0 ]]; then
     printf '[PASS] %s\n' "$label"
     pass_count=$((pass_count + 1))
   else
