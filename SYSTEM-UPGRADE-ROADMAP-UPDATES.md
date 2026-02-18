@@ -1,3 +1,176 @@
+## Phase 28 Update (2026-02-18): Password Provisioning Safety Guardrails
+
+### 28.H12 Prevent unintended user/root password resets during config rendering
+
+**Changes Applied:**
+- [x] Removed automatic temporary-password generation fallback in `hydrate_primary_user_password_block()` when existing password directives cannot be derived.
+- [x] Changed `provision_primary_user_password()` to default to **skip** instead of generating a new password hash.
+- [x] Added non-interactive safeguard to skip password provisioning entirely, avoiding silent credential drift in unattended runs.
+
+**Validation:**
+- `bash -n lib/config.sh nixos-quick-deploy.sh` → PASS
+- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS
+
+## Phase 28 Update (2026-02-18): AI Stack Env Writer Robustness
+
+### 28.H11 Prevent sed substitution failures on secret values
+
+**Changes Applied:**
+- [x] Reworked `set_env_value()` in `nixos-quick-deploy.sh` to avoid `sed` replacement for `.env` writes.
+- [x] Switched to an `awk` rewrite flow that safely persists values containing characters like `|`, `/`, and `&` without regex/sed escaping failures.
+- [x] Fixed the interactive AI-stack credential path where Grafana password input could trigger `sed: unterminated 's' command` when special characters were entered.
+
+**Validation:**
+- `bash -n nixos-quick-deploy.sh` → PASS
+- `python /tmp/test_set_env_value.py` (function-equivalent harness with special-character secrets) → PASS
+
+## Phase 28 Update (2026-02-18): Roadmap Verifier Host Compatibility Fallback
+
+### 28.H10 Make flake-first roadmap verification independent of ripgrep availability
+
+**Changes Applied:**
+- [x] Updated `scripts/verify-flake-first-roadmap-completion.sh` to detect `rg` availability and use `grep -E` fallback when `rg` is not installed.
+- [x] Added verifier preflight logging so fallback mode is explicit in execution output.
+- [x] Preserved all existing roadmap marker checks while removing false-negative failure mode on hosts missing ripgrep.
+
+**Validation:**
+- `bash -n scripts/verify-flake-first-roadmap-completion.sh` → PASS
+- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS
+- `PATH="/usr/bin:/bin" ./scripts/verify-flake-first-roadmap-completion.sh` → PASS (grep fallback)
+
+## Phase 28 Update (2026-02-18): CI Enforcement for Flake-First Roadmap Completion
+
+### 28.H9 Add workflow gate for roadmap verifier and entrypoint syntax
+
+**Changes Applied:**
+- [x] Updated `.github/workflows/tests.yml` with a dedicated `flake-first-roadmap-verifier` job.
+- [x] Added CI syntax checks for flake-first entrypoints and verifier script:
+  - `nixos-quick-deploy.sh`
+  - `scripts/deploy-clean.sh`
+  - `scripts/analyze-clean-deploy-readiness.sh`
+  - `scripts/verify-flake-first-roadmap-completion.sh`
+- [x] Added CI execution of `./scripts/verify-flake-first-roadmap-completion.sh` so roadmap-complete flake-first markers are enforced in PR/push checks.
+
+**Validation:**
+- `bash -n .github/workflows/tests.yml scripts/verify-flake-first-roadmap-completion.sh` → PASS
+- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS (15 checks)
+
+## Phase 28 Update (2026-02-18): Enforced Roadmap-Completion Preflight in Deploy Paths
+
+### 28.H8 Wire roadmap verifier into quick-deploy and deploy-clean execution
+
+**Changes Applied:**
+- [x] Added `run_flake_first_roadmap_verification()` in `nixos-quick-deploy.sh` and execute it in flake-first flow before declarative apply.
+- [x] Added `run_roadmap_completion_verification()` in `scripts/deploy-clean.sh` and execute it before readiness/build steps.
+- [x] Added escape-hatch flags for controlled troubleshooting:
+  - `nixos-quick-deploy.sh --skip-roadmap-verification`
+  - `scripts/deploy-clean.sh --skip-roadmap-verification`
+
+**Validation:**
+- `bash -n nixos-quick-deploy.sh scripts/deploy-clean.sh scripts/verify-flake-first-roadmap-completion.sh` → PASS
+- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS
+
+## Phase 28 Update (2026-02-18): Flake-First Completion Verification Gate
+
+### 28.H7 Add deterministic verifier for roadmap-complete flake-first items
+
+**Changes Applied:**
+- [x] Added `scripts/verify-flake-first-roadmap-completion.sh` to assert presence of key roadmap-complete flake-first implementations:
+  - flake-first default + deploy-clean orchestration path,
+  - host auto-resolution in deploy-clean and readiness analyzer,
+  - account-lock safety behavior,
+  - declarative git identity + credential-helper projection,
+  - host-scoped deploy/home overlay wiring in `flake.nix`,
+  - supporting reliability helpers (`append_log_line`, `find_existing_parent`, `AUTO_CONFIRM` guard).
+- [x] Script exits non-zero when any expected implementation marker is missing, so it can be reused as a CI/readiness guard.
+
+**Validation:**
+- `bash -n scripts/verify-flake-first-roadmap-completion.sh` → PASS
+- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS (15 checks)
+
+## Phase 28 Update (2026-02-18): Declarative Git Credential Helper Parity + Safer Primary User Resolution
+
+### 28.H6 Preserve git credential helper declaratively and avoid root-user drift
+
+**Changes Applied:**
+- [x] Updated deploy-clean primary-user default resolution:
+  - `PRIMARY_USER` now prefers `SUDO_USER` over `USER` to avoid accidental root-profile targeting in escalated contexts.
+- [x] Extended declarative git projection to include credential helper:
+  - `scripts/deploy-clean.sh` now reads `git config --global credential.helper` (or `GIT_CREDENTIAL_HELPER`) and writes it into host-scoped Home Manager options.
+- [x] Reworked git option escaping to reuse `nix_escape_string()` for safe Nix string rendering.
+
+**Validation:**
+- `bash -n scripts/deploy-clean.sh scripts/analyze-clean-deploy-readiness.sh nixos-quick-deploy.sh` → PASS
+- `rg -n "GIT_CREDENTIAL_HELPER|credential.helper|PRIMARY_USER_OVERRIDE:-\$\{SUDO_USER" scripts/deploy-clean.sh` → PASS
+
+## Phase 28 Update (2026-02-18): Account Lock Safety + Declarative Git Identity Parity
+
+### 28.H5 Prevent false lockouts and restore declarative git credential behavior
+
+**Changes Applied:**
+- [x] Hardened runtime account lock checks in `scripts/deploy-clean.sh`:
+  - unreadable `/etc/shadow` states no longer get interpreted as locked passwords,
+  - lock checks now fail only on explicit lock markers (`!`, `*`, `!!`, prefixed lock markers).
+- [x] Relaxed readiness account check behavior for locked root account in analyzer:
+  - `scripts/analyze-clean-deploy-readiness.sh` now treats locked root as warning (common policy) instead of hard failure.
+- [x] Added declarative git identity persistence to flake-first deploy path:
+  - `scripts/deploy-clean.sh` now writes `nix/hosts/<host>/home-deploy-options.nix` with `programs.git.userName/userEmail` from env or existing global git config.
+- [x] Wired root flake home config loading for host-scoped home deploy options:
+  - `flake.nix` now imports optional `nix/hosts/<host>/home-deploy-options.nix` into `homeConfigurations`.
+
+**Validation:**
+- `bash -n scripts/deploy-clean.sh scripts/analyze-clean-deploy-readiness.sh` → PASS (shell syntax + parse targets where applicable)
+- `rg -n "persist_home_git_credentials_declarative|home-deploy-options.nix|is_locked_password_field|Could not read password hash state" scripts/deploy-clean.sh flake.nix` → PASS
+
+## Phase 28 Update (2026-02-18): Flake Host Resolution Guardrail for Fresh Installs
+
+### 28.H4 Hostname/target mismatch remediation in deploy-clean readiness
+
+**Changes Applied:**
+- [x] Added host auto-resolution guardrail in `scripts/deploy-clean.sh`:
+  - when runtime hostname has no matching `nix/hosts/<hostname>/default.nix`, deploy-clean now auto-selects the only discovered host directory in the flake.
+- [x] Added identical host auto-resolution logic in `scripts/analyze-clean-deploy-readiness.sh`:
+  - readiness checks now evaluate the discovered host target instead of warning/failing on a hostname-only mismatch.
+- [x] Added flake-first host fallback in `nixos-quick-deploy.sh` before calling deploy-clean:
+  - if detected hostname has no host dir and exactly one host exists, it uses that host for `--host`/target construction.
+
+**Validation:**
+- `bash -n scripts/deploy-clean.sh scripts/analyze-clean-deploy-readiness.sh nixos-quick-deploy.sh` → PASS
+- `./scripts/analyze-clean-deploy-readiness.sh --flake-ref path:. --profile ai-dev` → PASS/WARN (no false hostname mismatch warning when a single host is present)
+
+## Phase 26 Update (2026-02-18): Flake-First Declarative AI Stack Parity Audit + Option Wiring
+
+### 26.H12 Declarative ownership restored for optional AI stack/model choices
+
+**Changes Applied:**
+- [x] Added host-scoped deploy option import path in root flake:
+  - `flake.nix` now conditionally imports `nix/hosts/<host>/deploy-options.nix` when present.
+- [x] Added baseline host deploy options:
+  - `nix/hosts/nixos/deploy-options.nix` captures AI stack enable + model defaults as declarative `mySystem.*` options.
+- [x] Extended declarative AI stack module options:
+  - `mySystem.aiStack.modelProfile`
+  - `mySystem.aiStack.embeddingModel`
+  - `mySystem.aiStack.llamaDefaultModel`
+  - `mySystem.aiStack.llamaModelFile`
+  - `mySystem.aiStack.namespace`
+- [x] Reconciler now patches model defaults into Kubernetes env ConfigMap declaratively on each reconcile run:
+  - `nix/modules/services/ai-stack.nix` patches `ConfigMap/env` keys (`EMBEDDING_MODEL`, `LLAMA_CPP_DEFAULT_MODEL`, `LLAMA_CPP_MODEL_FILE`) after `kubectl apply -k`.
+- [x] Flake-first installer now asks for optional AI stack enablement/model profile at start (interactive mode) and persists choices into host declarative options:
+  - `--flake-first-ai-stack on|off`
+  - `--flake-first-model-profile auto|small|medium|large`
+  - `nixos-quick-deploy.sh` writes `nix/hosts/<host>/deploy-options.nix` before deployment.
+- [x] Removed imperative Phase 9 AI stack/model execution from flake-first completion path:
+  - `run_flake_first_legacy_outcome_tasks()` now keeps parity tooling/validation/reporting but skips imperative phase-09 deployment scripts in flake-first mode.
+
+**Roadmap Alignment Check (high-level):**
+- Phase 26 goal (“bash only for orchestration/bootstrap, features in Nix options/modules”) is now applied for optional AI stack role + model selection.
+- Phase 28 convergence goal (“keep flake-first declarative deploy path”) remains intact: deployment still routes through `scripts/deploy-clean.sh`, with AI stack rollout via declarative NixOS + systemd reconciliation.
+
+**Validation:**
+- `bash -n nixos-quick-deploy.sh` → PASS
+- `rg -n "deploy-options\.nix|hostDeployOptionsPath" flake.nix nixos-quick-deploy.sh` → PASS
+- `rg -n "modelProfile|embeddingModel|llamaDefaultModel|llamaModelFile|patch configmap env" nix/modules/services/ai-stack.nix` → PASS
+
 ## Phase 26 Update (2026-02-16): Flake Hardware Wiring + Facts Schema Expansion
 
 ### 26.H9 Critical Declarative Path Corrections
