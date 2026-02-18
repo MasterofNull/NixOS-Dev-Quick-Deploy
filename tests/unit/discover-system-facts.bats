@@ -42,10 +42,10 @@ teardown() {
   [[ "$status" -eq 0 ]]
   [[ -f "$output_path" ]]
 
-  run rg -n 'hostName = "test-host";|primaryUser = "tester";|profile = "minimal";|gpuVendor = "amd";|igpuVendor = "none";|storageType = "nvme";|systemRamGb = 32;|isMobile = true;|earlyKmsPolicy = "off";|layout = "gpt-efi-ext4";|device = "/dev/vda";|luks.enable = false;|secureboot.enable = false;' "$output_path"
+  run grep -nE 'hostName = "test-host";|primaryUser = "tester";|profile = "minimal";|gpuVendor = "amd";|igpuVendor = "none";|storageType = "nvme";|systemRamGb = 32;|isMobile = true;|earlyKmsPolicy = "off";|layout = "gpt-efi-ext4";|device = "/dev/vda";|luks.enable = false;|secureboot.enable = false;' "$output_path"
   [[ "$status" -eq 0 ]]
 
-  run rg -n 'rootFsckMode = "check";|initrdEmergencyAccess = true;' "$output_path"
+  run grep -nE 'rootFsckMode = "check";|initrdEmergencyAccess = true;' "$output_path"
   [[ "$status" -eq 0 ]]
 
   run env \
