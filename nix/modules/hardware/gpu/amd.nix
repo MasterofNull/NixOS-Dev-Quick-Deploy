@@ -39,8 +39,11 @@ in
       )
     );
 
-    # 32-bit Mesa for Steam Proton / Wine. mesa here is the 32-bit variant.
-    extraPackages32 = with pkgs.pkgsi686Linux; lib.mkAfter [ mesa ];
+    # 32-bit Mesa for Steam Proton / Wine (x86_64 only; no-op on aarch64).
+    extraPackages32 = lib.mkAfter (
+      lib.optionals (pkgs ? pkgsi686Linux && pkgs.pkgsi686Linux ? mesa)
+        [ pkgs.pkgsi686Linux.mesa ]
+    );
   };
 
   # Note: hardware.amdgpu.amdvlk was removed in newer NixOS releases.
