@@ -43,14 +43,50 @@ validate_enum() {
 
 detect_cpu_vendor() {
   local cpu_vendor_local="unknown"
+  local arch_local
+  arch_local="$(uname -m 2>/dev/null || echo unknown)"
+
+  # ── x86_64: use lscpu Vendor ID ─────────────────────────────────────────
   if command -v lscpu >/dev/null 2>&1; then
     local lscpu_vendor
     lscpu_vendor="$(lscpu 2>/dev/null | awk -F: '/Vendor ID:/ {gsub(/^[ \t]+/,"",$2); print tolower($2)}')"
     case "${lscpu_vendor}" in
-      *amd*) cpu_vendor_local="amd" ;;
-      *intel*) cpu_vendor_local="intel" ;;
+      *amd*|*authenticamd*)   cpu_vendor_local="amd" ;;
+      *intel*|*genuineintel*) cpu_vendor_local="intel" ;;
     esac
+    [[ "${cpu_vendor_local}" != "unknown" ]] && { echo "$cpu_vendor_local"; return 0; }
   fi
+
+  # ── AArch64 / ARM64 ────────────────────────────────────────────────────
+  if [[ "${arch_local}" == "aarch64" || "${arch_local}" == "arm64" ]]; then
+    # Check /proc/cpuinfo for Qualcomm, Apple, or generic ARM indicators.
+    local cpuinfo_hardware=""
+    if [[ -r /proc/cpuinfo ]]; then
+      cpuinfo_hardware="$(grep -m1 -iE 'Hardware|implementer' /proc/cpuinfo 2>/dev/null | head -1 || true)"
+    fi
+
+    # Qualcomm: Snapdragon SoCs report "Qualcomm" in Hardware or /sys/firmware/devicetree
+    if grep -qiE "qualcomm|Snapdragon" /proc/cpuinfo 2>/dev/null \
+        || [[ -f /sys/firmware/devicetree/base/compatible ]] \
+           && grep -qiE "qcom" /sys/firmware/devicetree/base/compatible 2>/dev/null; then
+      cpu_vendor_local="qualcomm"
+
+    # Apple Silicon: detecteable via sysfs board-id or /proc/cpuinfo "Apple"
+    elif grep -qiE "apple" /proc/cpuinfo 2>/dev/null \
+        || [[ -f /sys/firmware/devicetree/base/compatible ]] \
+           && grep -qiE "apple,arm-platform" /sys/firmware/devicetree/base/compatible 2>/dev/null; then
+      cpu_vendor_local="apple"
+
+    else
+      # Generic ARM (Raspberry Pi, AllWinner, Rockchip, etc.)
+      cpu_vendor_local="arm"
+    fi
+
+  # ── RISC-V ─────────────────────────────────────────────────────────────
+  elif [[ "${arch_local}" == riscv* ]]; then
+    cpu_vendor_local="riscv"
+  fi
+
   echo "$cpu_vendor_local"
 }
 
@@ -68,18 +104,27 @@ read_drm_vendor_lines() {
 
 detect_gpu_vendor() {
   local gpu_vendor_local="none"
+  local arch_local
+  arch_local="$(uname -m 2>/dev/null || echo unknown)"
+
+  # ── x86_64 / PCI-based GPUs ─────────────────────────────────────────────
   if command -v lspci >/dev/null 2>&1; then
     local gpu_info
     gpu_info="$(lspci 2>/dev/null | filter_gpu_lines || true)"
     if [[ "${gpu_info}" =~ AMD|ATI|Radeon ]]; then
+      # Distinguish Intel Arc discrete from integrated Intel GPU.
+      # Arc reports "Intel Corporation" but with "Arc" in the model string.
       gpu_vendor_local="amd"
     elif [[ "${gpu_info}" =~ NVIDIA ]]; then
       gpu_vendor_local="nvidia"
+    elif [[ "${gpu_info}" =~ Intel.*Arc|Arc.*Intel ]]; then
+      gpu_vendor_local="intel-arc"
     elif [[ "${gpu_info}" =~ Intel ]]; then
       gpu_vendor_local="intel"
     fi
   fi
 
+  # ── PCI vendor ID fallback (when lspci unavailable) ─────────────────────
   if [[ "${gpu_vendor_local}" == "none" ]]; then
     local vendors
     vendors="$(read_drm_vendor_lines || true)"
@@ -89,6 +134,35 @@ detect_gpu_vendor() {
       gpu_vendor_local="amd"
     elif echo "${vendors}" | grep -q "0x8086"; then
       gpu_vendor_local="intel"
+    fi
+  fi
+
+  # ── ARM / SoC: detect Adreno, Mali, Apple AGX via DRM sysfs ────────────
+  if [[ "${gpu_vendor_local}" == "none" && ( "${arch_local}" == "aarch64" || "${arch_local}" == "arm64" ) ]]; then
+    # Check DRM driver names exposed in /sys/class/drm/card*/device/driver
+    local drm_drivers=""
+    drm_drivers="$(ls -1 /sys/class/drm/card*/device/driver 2>/dev/null | xargs -I{} basename {} 2>/dev/null | sort -u || true)"
+
+    if echo "${drm_drivers}" | grep -qiE "^msm$"; then
+      # Qualcomm MSM DRM driver — Adreno GPU
+      gpu_vendor_local="adreno"
+    elif echo "${drm_drivers}" | grep -qiE "^panfrost$|^lima$"; then
+      # ARM Mali GPU (open-source Panfrost or Lima driver)
+      gpu_vendor_local="mali"
+    elif echo "${drm_drivers}" | grep -qiE "^asahi$"; then
+      # Apple AGX (Asahi Linux DRM driver)
+      gpu_vendor_local="apple"
+    else
+      # Try /sys/firmware/devicetree compatible string as last resort
+      local dt_compat=""
+      dt_compat="$(cat /sys/firmware/devicetree/base/compatible 2>/dev/null | tr '\0' '\n' || true)"
+      if echo "${dt_compat}" | grep -qiE "qcom,adreno"; then
+        gpu_vendor_local="adreno"
+      elif echo "${dt_compat}" | grep -qiE "arm,mali"; then
+        gpu_vendor_local="mali"
+      elif echo "${dt_compat}" | grep -qiE "apple,agx"; then
+        gpu_vendor_local="apple"
+      fi
     fi
   fi
 
@@ -354,17 +428,17 @@ if ! validate_enum "${profile_value}" ai-dev minimal gaming; then
   exit 1
 fi
 
-if ! validate_enum "${gpu_vendor}" amd intel nvidia none; then
+if ! validate_enum "${gpu_vendor}" amd intel intel-arc nvidia adreno mali apple none; then
   echo "Unsupported GPU vendor '${gpu_vendor}'." >&2
   exit 1
 fi
 
-if ! validate_enum "${igpu_vendor}" amd intel none; then
+if ! validate_enum "${igpu_vendor}" amd intel apple none; then
   echo "Unsupported iGPU vendor '${igpu_vendor}'." >&2
   exit 1
 fi
 
-if ! validate_enum "${cpu_vendor}" amd intel unknown; then
+if ! validate_enum "${cpu_vendor}" amd intel arm qualcomm apple riscv unknown; then
   echo "Unsupported CPU vendor '${cpu_vendor}'." >&2
   exit 1
 fi
