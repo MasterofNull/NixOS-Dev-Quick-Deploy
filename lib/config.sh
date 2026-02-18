@@ -2310,17 +2310,7 @@ hydrate_primary_user_password_block() {
             return 0
         fi
     fi
-
-    local temp_password=""
-    if temp_password=$(generate_password 20); then
-        USER_TEMP_PASSWORD="$temp_password"
-        printf -v USER_PASSWORD_BLOCK '    initialPassword = "%s";\n' "$temp_password"
-        print_warning "No existing password configuration found. Generated temporary password for $PRIMARY_USER."
-        print_info "Temporary password (change after first login): $USER_TEMP_PASSWORD"
-        return 0
-    fi
-
-    print_warning "Unable to derive password settings automatically for $PRIMARY_USER."
+    print_warning "Unable to derive password settings automatically for $PRIMARY_USER. Leaving password directives unchanged."
     return 1
 }
 
@@ -2330,12 +2320,19 @@ provision_primary_user_password() {
     fi
 
     print_info "No existing password directives detected for $PRIMARY_USER"
-    echo "  1) Generate a salted password hash now (recommended)"
+    echo "  1) Generate a salted password hash now"
     echo "  2) Provide an existing hashed password string"
-    echo "  3) Skip (retain manual placeholder in configuration.nix)"
+    echo "  3) Skip (do not modify user/root password directives)"
+
+    if [[ ! -t 0 ]]; then
+        USER_PASSWORD_BLOCK=$'    # (no password directives detected; left unchanged intentionally)
+'
+        print_warning "Non-interactive run: skipping password provisioning to avoid unintended credential changes."
+        return 0
+    fi
 
     local choice
-    choice=$(prompt_user "Select password provisioning option (1-3)" "1")
+    choice=$(prompt_user "Select password provisioning option (1-3)" "3")
 
     case "$choice" in
         2)
