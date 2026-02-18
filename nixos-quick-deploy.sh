@@ -1822,6 +1822,14 @@ bootstrap_resume_validation_tools() {
         fi
     fi
 
+    # Roadmap verification prefers rg, but can fallback to grep. Install rg in
+    # the same preflight profile when absent to keep output quieter and faster.
+    if ! command -v rg >/dev/null 2>&1; then
+        if declare -F ensure_prerequisite_installed >/dev/null 2>&1; then
+            ensure_prerequisite_installed "rg" "nixpkgs#ripgrep" "rg (ripgrep search tool)" || true
+        fi
+    fi
+
     export IMPERATIVE_INSTALLS_ALLOWED="$previous_imperative_flag"
 
     if [[ "$strict" == "true" ]] && ! command -v jq >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
