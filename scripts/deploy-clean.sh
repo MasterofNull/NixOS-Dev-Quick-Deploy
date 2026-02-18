@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 HOST_NAME="${HOSTNAME_OVERRIDE:-$(hostname -s 2>/dev/null || hostname)}"
-PRIMARY_USER="${PRIMARY_USER_OVERRIDE:-${USER:-$(id -un)}}"
+PRIMARY_USER="${PRIMARY_USER_OVERRIDE:-${SUDO_USER:-${USER:-$(id -un)}}}"
 PROFILE="${PROFILE_OVERRIDE:-ai-dev}"
 FLAKE_REF="path:${REPO_ROOT}"
 MODE="switch" # switch|build|boot
@@ -17,6 +17,7 @@ RUN_SECUREBOOT_ENROLL=false
 RUN_FLATPAK_SYNC=true
 RUN_READINESS_ANALYSIS=true
 ANALYZE_ONLY=false
+SKIP_ROADMAP_VERIFICATION=false
 RECOVERY_MODE=false
 ALLOW_PREVIOUS_BOOT_FSCK_FAILURE=false
 SKIP_SYSTEM_SWITCH=false
@@ -61,6 +62,8 @@ Options:
   --skip-flatpak-sync     Skip declarative Flatpak profile sync
   --skip-readiness-check  Skip bootstrap/deploy readiness analysis preflight
   --analyze-only          Run readiness analysis and exit (no build/switch)
+  --skip-roadmap-verification
+                          Skip flake-first roadmap completion verification preflight
   -h, --help              Show this help
 
 Environment overrides:
@@ -185,6 +188,19 @@ ensure_flake_visible_to_nix() {
   fi
 }
 
+run_roadmap_completion_verification() {
+  [[ "${SKIP_ROADMAP_VERIFICATION}" == true ]] && return 0
+
+  local verifier="${REPO_ROOT}/scripts/verify-flake-first-roadmap-completion.sh"
+  if [[ ! -x "$verifier" ]]; then
+    log "Roadmap-completion verifier missing/not executable (${verifier}); skipping verification."
+    return 0
+  fi
+
+  log "Running roadmap-completion verification preflight"
+  "$verifier"
+}
+
 run_readiness_analysis() {
   local analyzer="${REPO_ROOT}/scripts/analyze-clean-deploy-readiness.sh"
   [[ "${RUN_READINESS_ANALYSIS}" == true ]] || return 0
@@ -285,7 +301,7 @@ nix_eval_expr_raw_safe() {
 
 is_locked_password_field() {
   local value="${1:-}"
-  [[ -z "$value" || "$value" == "!" || "$value" == "*" || "$value" == "!!" || "$value" == \!* || "$value" == \** ]]
+  [[ "$value" == "!" || "$value" == "*" || "$value" == "!!" || "$value" == \!* || "$value" == \** ]]
 }
 
 read_shadow_hash() {
@@ -308,6 +324,11 @@ assert_runtime_account_unlocked() {
 
   if ! hash="$(read_shadow_hash "$account" 2>/dev/null || true)"; then
     hash=""
+  fi
+
+  if [[ -z "$hash" ]]; then
+    log "Could not read password hash state for '${account}' (insufficient privileges or non-shadow auth); skipping lock assertion."
+    return 0
   fi
 
   if is_locked_password_field "$hash"; then
@@ -484,12 +505,12 @@ assert_bootloader_preflight() {
   [[ "${RUN_PHASE0_DISKO}" == true ]] && return 0
 
   local systemd_boot_enabled grub_enabled
-  if ! systemd_boot_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations."${NIXOS_TARGET}".config.boot.loader.systemd-boot.enable" 2>/dev/null)"; then
+  if ! systemd_boot_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.boot.loader.systemd-boot.enable" 2>/dev/null)"; then
     log "Bootloader preflight: unable to evaluate systemd-boot enable flag in time; skipping strict bootloader assertion."
     return 0
   fi
 
-  if ! grub_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations."${NIXOS_TARGET}".config.boot.loader.grub.enable" 2>/dev/null)"; then
+  if ! grub_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.boot.loader.grub.enable" 2>/dev/null)"; then
     log "Bootloader preflight: unable to evaluate grub enable flag in time; skipping strict bootloader assertion."
     return 0
   fi
@@ -514,9 +535,9 @@ assert_bootloader_preflight() {
   fi
 
   local esp_mount esp_min_free_mb esp_free_mb
-  esp_mount="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations."${NIXOS_TARGET}".config.boot.loader.efi.efiSysMountPoint" 2>/dev/null || echo /boot)"
+  esp_mount="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.boot.loader.efi.efiSysMountPoint" 2>/dev/null || echo /boot)"
   [[ -n "${esp_mount}" ]] || esp_mount="/boot"
-  esp_min_free_mb="${BOOT_ESP_MIN_FREE_MB:-$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations."${NIXOS_TARGET}".config.mySystem.deployment.bootloaderEspMinFreeMb" 2>/dev/null || echo 128)}"
+  esp_min_free_mb="${BOOT_ESP_MIN_FREE_MB:-$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.deployment.bootloaderEspMinFreeMb" 2>/dev/null || echo 128)}"
   [[ "${esp_min_free_mb}" =~ ^[0-9]+$ ]] || esp_min_free_mb=128
 
   if ! findmnt "${esp_mount}" >/dev/null 2>&1; then
@@ -541,7 +562,7 @@ assert_target_boot_mode() {
   fi
 
   local target_default_unit
-  if ! target_default_unit="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations."${NIXOS_TARGET}".config.systemd.defaultUnit" 2>/dev/null)"; then
+  if ! target_default_unit="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.systemd.defaultUnit" 2>/dev/null)"; then
     if [[ "${MODE}" == "switch" && "${AUTO_GUI_SWITCH_FALLBACK}" == true ]]; then
       MODE="boot"
       log "Unable to evaluate target default unit for '${NIXOS_TARGET}' in graphical context. Auto-fallback: mode set to 'boot'."
@@ -585,7 +606,7 @@ home_build() {
     return
   fi
 
-  nix build "${FLAKE_REF}#homeConfigurations."${hm_target}".activationPackage"
+  nix build "${FLAKE_REF}#homeConfigurations.\"${hm_target}\".activationPackage"
 }
 
 home_switch() {
@@ -597,8 +618,63 @@ home_switch() {
 
   local out_link
   out_link="/tmp/home-activation-${hm_target//[^a-zA-Z0-9_.-]/_}-$$"
-  nix build --out-link "$out_link" "${FLAKE_REF}#homeConfigurations."${hm_target}".activationPackage"
+  nix build --out-link "$out_link" "${FLAKE_REF}#homeConfigurations.\"${hm_target}\".activationPackage"
   "${out_link}/activate"
+}
+
+# persist_home_git_credentials_declarative: project git identity into
+# host-scoped Home Manager options so git credentials remain declarative.
+persist_home_git_credentials_declarative() {
+  local host_dir="${REPO_ROOT}/nix/hosts/${HOST_NAME}"
+  [[ -d "$host_dir" ]] || return 0
+
+  local git_name="${GIT_USER_NAME:-${GIT_AUTHOR_NAME:-}}"
+  local git_email="${GIT_USER_EMAIL:-${GIT_AUTHOR_EMAIL:-}}"
+  local git_helper="${GIT_CREDENTIAL_HELPER:-}"
+
+  if command -v git >/dev/null 2>&1; then
+    if [[ "${EUID:-$(id -u)}" -eq 0 && -n "${PRIMARY_USER:-}" ]]; then
+      git_name="${git_name:-$(sudo -u "$PRIMARY_USER" git config --global user.name 2>/dev/null || true)}"
+      git_email="${git_email:-$(sudo -u "$PRIMARY_USER" git config --global user.email 2>/dev/null || true)}"
+      git_helper="${git_helper:-$(sudo -u "$PRIMARY_USER" git config --global credential.helper 2>/dev/null || true)}"
+    else
+      git_name="${git_name:-$(git config --global user.name 2>/dev/null || true)}"
+      git_email="${git_email:-$(git config --global user.email 2>/dev/null || true)}"
+      git_helper="${git_helper:-$(git config --global credential.helper 2>/dev/null || true)}"
+    fi
+  fi
+
+  if [[ -z "$git_name" || -z "$git_email" ]]; then
+    log "Declarative git identity not updated (set GIT_USER_NAME/GIT_USER_EMAIL or git config --global user.name/user.email)."
+    return 0
+  fi
+
+  local escaped_name escaped_email escaped_helper target helper_block=""
+  escaped_name="$(nix_escape_string "$git_name")"
+  escaped_email="$(nix_escape_string "$git_email")"
+  escaped_helper="$(nix_escape_string "$git_helper")"
+
+  if [[ -n "$git_helper" ]]; then
+    helper_block=$'    extraConfig = {
+      credential.helper = lib.mkForce "'"${escaped_helper}"'";
+    };
+'
+  fi
+
+  target="${host_dir}/home-deploy-options.nix"
+
+  cat > "$target" <<EOF
+{ lib, ... }:
+{
+  programs.git = {
+    enable = lib.mkDefault true;
+    userName = lib.mkForce "${escaped_name}";
+    userEmail = lib.mkForce "${escaped_email}";
+${helper_block}  };
+}
+EOF
+
+  log "Updated declarative git identity: ${target}"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -692,6 +768,10 @@ while [[ $# -gt 0 ]]; do
       ANALYZE_ONLY=true
       shift
       ;;
+    --skip-roadmap-verification)
+      SKIP_ROADMAP_VERIFICATION=true
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -721,6 +801,8 @@ require_command nixos-rebuild
 enable_flakes_runtime
 ensure_flake_visible_to_nix "${FLAKE_REF}"
 resolve_host_from_flake_if_needed
+persist_home_git_credentials_declarative
+run_roadmap_completion_verification
 run_readiness_analysis
 
 if [[ "${ANALYZE_ONLY}" == true ]]; then
@@ -773,7 +855,7 @@ assert_runtime_account_unlocked "${PRIMARY_USER}" false
 NIXOS_TARGET="${NIXOS_TARGET_OVERRIDE:-${HOST_NAME}-${PROFILE}}"
 HM_TARGET="${HM_TARGET_OVERRIDE:-${PRIMARY_USER}-${HOST_NAME}}"
 
-if [[ -z "${HM_TARGET_OVERRIDE}" ]] && ! nix_eval_raw_safe "${FLAKE_REF}#homeConfigurations."${HM_TARGET}".config.home.username" >/dev/null 2>&1; then
+if [[ -z "${HM_TARGET_OVERRIDE}" ]] && ! nix_eval_raw_safe "${FLAKE_REF}#homeConfigurations.\"${HM_TARGET}\".config.home.username" >/dev/null 2>&1; then
   HM_TARGET="${PRIMARY_USER}"
 fi
 
@@ -790,7 +872,7 @@ if [[ "$RUN_PHASE0_DISKO" == true ]]; then
     die "--phase0-disko is destructive. Re-run with DISKO_CONFIRM=YES to proceed."
   fi
 
-  disk_layout="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations."${NIXOS_TARGET}".config.mySystem.disk.layout" 2>/dev/null || echo none)"
+  disk_layout="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.disk.layout" 2>/dev/null || echo none)"
   if [[ "$disk_layout" == "none" ]]; then
     die "--phase0-disko requested but mySystem.disk.layout is 'none' for ${NIXOS_TARGET}."
   fi
@@ -801,7 +883,7 @@ if [[ "$RUN_PHASE0_DISKO" == true ]]; then
 fi
 
 if [[ "$RUN_SECUREBOOT_ENROLL" == true ]]; then
-  secureboot_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations."${NIXOS_TARGET}".config.mySystem.secureboot.enable" 2>/dev/null || echo false)"
+  secureboot_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.secureboot.enable" 2>/dev/null || echo false)"
   if [[ "$secureboot_enabled" != "true" ]]; then
     die "--enroll-secureboot-keys requested but mySystem.secureboot.enable is not true for ${NIXOS_TARGET}."
   fi

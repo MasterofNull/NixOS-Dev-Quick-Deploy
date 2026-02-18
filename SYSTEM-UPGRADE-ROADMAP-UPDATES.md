@@ -1,3 +1,87 @@
+## Phase 28 Update (2026-02-18): CI Enforcement for Flake-First Roadmap Completion
+
+### 28.H9 Add workflow gate for roadmap verifier and entrypoint syntax
+
+**Changes Applied:**
+- [x] Updated `.github/workflows/tests.yml` with a dedicated `flake-first-roadmap-verifier` job.
+- [x] Added CI syntax checks for flake-first entrypoints and verifier script:
+  - `nixos-quick-deploy.sh`
+  - `scripts/deploy-clean.sh`
+  - `scripts/analyze-clean-deploy-readiness.sh`
+  - `scripts/verify-flake-first-roadmap-completion.sh`
+- [x] Added CI execution of `./scripts/verify-flake-first-roadmap-completion.sh` so roadmap-complete flake-first markers are enforced in PR/push checks.
+
+**Validation:**
+- `bash -n .github/workflows/tests.yml scripts/verify-flake-first-roadmap-completion.sh` → PASS
+- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS (15 checks)
+
+## Phase 28 Update (2026-02-18): Enforced Roadmap-Completion Preflight in Deploy Paths
+
+### 28.H8 Wire roadmap verifier into quick-deploy and deploy-clean execution
+
+**Changes Applied:**
+- [x] Added `run_flake_first_roadmap_verification()` in `nixos-quick-deploy.sh` and execute it in flake-first flow before declarative apply.
+- [x] Added `run_roadmap_completion_verification()` in `scripts/deploy-clean.sh` and execute it before readiness/build steps.
+- [x] Added escape-hatch flags for controlled troubleshooting:
+  - `nixos-quick-deploy.sh --skip-roadmap-verification`
+  - `scripts/deploy-clean.sh --skip-roadmap-verification`
+
+**Validation:**
+- `bash -n nixos-quick-deploy.sh scripts/deploy-clean.sh scripts/verify-flake-first-roadmap-completion.sh` → PASS
+- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS
+
+## Phase 28 Update (2026-02-18): Flake-First Completion Verification Gate
+
+### 28.H7 Add deterministic verifier for roadmap-complete flake-first items
+
+**Changes Applied:**
+- [x] Added `scripts/verify-flake-first-roadmap-completion.sh` to assert presence of key roadmap-complete flake-first implementations:
+  - flake-first default + deploy-clean orchestration path,
+  - host auto-resolution in deploy-clean and readiness analyzer,
+  - account-lock safety behavior,
+  - declarative git identity + credential-helper projection,
+  - host-scoped deploy/home overlay wiring in `flake.nix`,
+  - supporting reliability helpers (`append_log_line`, `find_existing_parent`, `AUTO_CONFIRM` guard).
+- [x] Script exits non-zero when any expected implementation marker is missing, so it can be reused as a CI/readiness guard.
+
+**Validation:**
+- `bash -n scripts/verify-flake-first-roadmap-completion.sh` → PASS
+- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS (15 checks)
+
+## Phase 28 Update (2026-02-18): Declarative Git Credential Helper Parity + Safer Primary User Resolution
+
+### 28.H6 Preserve git credential helper declaratively and avoid root-user drift
+
+**Changes Applied:**
+- [x] Updated deploy-clean primary-user default resolution:
+  - `PRIMARY_USER` now prefers `SUDO_USER` over `USER` to avoid accidental root-profile targeting in escalated contexts.
+- [x] Extended declarative git projection to include credential helper:
+  - `scripts/deploy-clean.sh` now reads `git config --global credential.helper` (or `GIT_CREDENTIAL_HELPER`) and writes it into host-scoped Home Manager options.
+- [x] Reworked git option escaping to reuse `nix_escape_string()` for safe Nix string rendering.
+
+**Validation:**
+- `bash -n scripts/deploy-clean.sh scripts/analyze-clean-deploy-readiness.sh nixos-quick-deploy.sh` → PASS
+- `rg -n "GIT_CREDENTIAL_HELPER|credential.helper|PRIMARY_USER_OVERRIDE:-\$\{SUDO_USER" scripts/deploy-clean.sh` → PASS
+
+## Phase 28 Update (2026-02-18): Account Lock Safety + Declarative Git Identity Parity
+
+### 28.H5 Prevent false lockouts and restore declarative git credential behavior
+
+**Changes Applied:**
+- [x] Hardened runtime account lock checks in `scripts/deploy-clean.sh`:
+  - unreadable `/etc/shadow` states no longer get interpreted as locked passwords,
+  - lock checks now fail only on explicit lock markers (`!`, `*`, `!!`, prefixed lock markers).
+- [x] Relaxed readiness account check behavior for locked root account in analyzer:
+  - `scripts/analyze-clean-deploy-readiness.sh` now treats locked root as warning (common policy) instead of hard failure.
+- [x] Added declarative git identity persistence to flake-first deploy path:
+  - `scripts/deploy-clean.sh` now writes `nix/hosts/<host>/home-deploy-options.nix` with `programs.git.userName/userEmail` from env or existing global git config.
+- [x] Wired root flake home config loading for host-scoped home deploy options:
+  - `flake.nix` now imports optional `nix/hosts/<host>/home-deploy-options.nix` into `homeConfigurations`.
+
+**Validation:**
+- `bash -n scripts/deploy-clean.sh scripts/analyze-clean-deploy-readiness.sh` → PASS (shell syntax + parse targets where applicable)
+- `rg -n "persist_home_git_credentials_declarative|home-deploy-options.nix|is_locked_password_field|Could not read password hash state" scripts/deploy-clean.sh flake.nix` → PASS
+
 ## Phase 28 Update (2026-02-18): Flake Host Resolution Guardrail for Fresh Installs
 
 ### 28.H4 Hostname/target mismatch remediation in deploy-clean readiness
