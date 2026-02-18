@@ -255,6 +255,25 @@ sanitize_string() {
 # Ensures central config values are valid before proceeding.
 # Returns ERR_CONFIG_INVALID on failure.
 # ============================================================================
+# Determine the nearest existing parent directory for a target path.
+# This supports writability checks when intermediate path segments are absent.
+find_existing_parent() {
+    local target="$1"
+    local candidate
+    candidate="$(dirname "$target")"
+
+    while [[ "$candidate" != "/" && ! -d "$candidate" ]]; do
+        candidate="$(dirname "$candidate")"
+    done
+
+    if [[ -d "$candidate" ]]; then
+        printf '%s\n' "$candidate"
+    else
+        printf '/\n'
+    fi
+}
+
+
 validate_config_settings() {
     local failures=0
     local err_code="${ERR_CONFIG_INVALID:-30}"
@@ -310,10 +329,9 @@ validate_config_settings() {
         print_error "Invalid AI_STACK_CONFIG_DIR path: ${AI_STACK_CONFIG_DIR}"
         failures=$((failures + 1))
     fi
-
     if [[ -n "${AI_STACK_CONFIG_DIR:-}" ]]; then
         local config_parent
-        config_parent="$(dirname "${AI_STACK_CONFIG_DIR}")"
+        config_parent="$(find_existing_parent "${AI_STACK_CONFIG_DIR}")"
         if [[ -e "${AI_STACK_CONFIG_DIR}" ]]; then
             if [[ ! -w "${AI_STACK_CONFIG_DIR}" ]]; then
                 print_error "AI_STACK_CONFIG_DIR is not writable: ${AI_STACK_CONFIG_DIR}"
@@ -332,7 +350,7 @@ validate_config_settings() {
 
     if [[ -n "${AI_STACK_ENV_FILE:-}" ]]; then
         local env_parent
-        env_parent="$(dirname "${AI_STACK_ENV_FILE}")"
+        env_parent="$(find_existing_parent "${AI_STACK_ENV_FILE}")"
         if [[ -e "${AI_STACK_ENV_FILE}" ]]; then
             if [[ ! -w "${AI_STACK_ENV_FILE}" ]]; then
                 print_error "AI_STACK_ENV_FILE is not writable: ${AI_STACK_ENV_FILE}"
