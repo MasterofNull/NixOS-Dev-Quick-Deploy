@@ -3394,6 +3394,14 @@ run_flake_first_deployment() {
 
     print_info "Using flake target: ${nixos_target} (mode=${deploy_mode})"
 
+    # Password preservation guarantee:
+    # The flake-first path sets users.mutableUsers = true in
+    # nix/modules/core/users.nix.  With mutableUsers = true NixOS preserves
+    # the login password from /etc/shadow across every nixos-rebuild — the
+    # deploy script NEVER prompts for or modifies the login password.
+    # To change your password run: passwd
+    print_info "Password policy: login password is PRESERVED (mutableUsers = true)"
+
     if ! run_flake_first_roadmap_verification; then
         return 1
     fi
