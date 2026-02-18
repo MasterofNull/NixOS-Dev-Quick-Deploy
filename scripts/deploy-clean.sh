@@ -23,8 +23,9 @@ SKIP_SYSTEM_SWITCH=false
 SKIP_HOME_SWITCH=false
 NIXOS_TARGET_OVERRIDE=""
 HM_TARGET_OVERRIDE=""
-AUTO_GUI_SWITCH_FALLBACK="${AUTO_GUI_SWITCH_FALLBACK:-true}"
-ALLOW_GUI_SWITCH="${ALLOW_GUI_SWITCH:-false}"
+HOST_EXPLICIT=false
+AUTO_GUI_SWITCH_FALLBACK="${AUTO_GUI_SWITCH_FALLBACK:-false}"
+ALLOW_GUI_SWITCH="${ALLOW_GUI_SWITCH:-true}"
 
 usage() {
   cat <<'USAGE'
@@ -63,9 +64,9 @@ Options:
   -h, --help              Show this help
 
 Environment overrides:
-  ALLOW_GUI_SWITCH=true     Allow live switch from graphical session
+  ALLOW_GUI_SWITCH=true     Allow live switch from graphical session (default)
   AUTO_GUI_SWITCH_FALLBACK=false
-                            Disable auto-fallback to --boot on graphical session
+                            Keep switch mode in graphical sessions (default)
   ALLOW_ROOT_DEPLOY=true    Allow running this script as root (not recommended)
   BOOT_ESP_MIN_FREE_MB=128  Override minimum required free space on ESP
 USAGE
@@ -120,6 +121,37 @@ resolve_local_flake_path() {
       ;;
     *) ;;
   esac
+}
+
+
+list_flake_hosts() {
+  local flake_path
+  flake_path="$(resolve_local_flake_path "$FLAKE_REF")"
+  [[ -n "$flake_path" && -d "$flake_path/nix/hosts" ]] || return 0
+
+  find "$flake_path/nix/hosts" -mindepth 1 -maxdepth 1 -type d -printf '%f\n'     | while IFS= read -r host; do
+        [[ -f "$flake_path/nix/hosts/$host/default.nix" ]] && printf '%s\n' "$host"
+      done     | sort -u
+}
+
+resolve_host_from_flake_if_needed() {
+  [[ "$HOST_EXPLICIT" == true ]] && return 0
+
+  local flake_path host_dir
+  flake_path="$(resolve_local_flake_path "$FLAKE_REF")"
+  [[ -n "$flake_path" ]] || return 0
+
+  host_dir="$flake_path/nix/hosts/$HOST_NAME"
+  if [[ -d "$host_dir" && -f "$host_dir/default.nix" ]]; then
+    return 0
+  fi
+
+  local -a detected_hosts=()
+  mapfile -t detected_hosts < <(list_flake_hosts)
+  if [[ ${#detected_hosts[@]} -eq 1 ]]; then
+    log "Host '${HOST_NAME}' not found in flake; using discovered host '${detected_hosts[0]}'"
+    HOST_NAME="${detected_hosts[0]}"
+  fi
 }
 
 ensure_flake_visible_to_nix() {
@@ -452,12 +484,12 @@ assert_bootloader_preflight() {
   [[ "${RUN_PHASE0_DISKO}" == true ]] && return 0
 
   local systemd_boot_enabled grub_enabled
-  if ! systemd_boot_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.boot.loader.systemd-boot.enable" 2>/dev/null)"; then
+  if ! systemd_boot_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations."${NIXOS_TARGET}".config.boot.loader.systemd-boot.enable" 2>/dev/null)"; then
     log "Bootloader preflight: unable to evaluate systemd-boot enable flag in time; skipping strict bootloader assertion."
     return 0
   fi
 
-  if ! grub_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.boot.loader.grub.enable" 2>/dev/null)"; then
+  if ! grub_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations."${NIXOS_TARGET}".config.boot.loader.grub.enable" 2>/dev/null)"; then
     log "Bootloader preflight: unable to evaluate grub enable flag in time; skipping strict bootloader assertion."
     return 0
   fi
@@ -482,9 +514,9 @@ assert_bootloader_preflight() {
   fi
 
   local esp_mount esp_min_free_mb esp_free_mb
-  esp_mount="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.boot.loader.efi.efiSysMountPoint" 2>/dev/null || echo /boot)"
+  esp_mount="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations."${NIXOS_TARGET}".config.boot.loader.efi.efiSysMountPoint" 2>/dev/null || echo /boot)"
   [[ -n "${esp_mount}" ]] || esp_mount="/boot"
-  esp_min_free_mb="${BOOT_ESP_MIN_FREE_MB:-$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.mySystem.deployment.bootloaderEspMinFreeMb" 2>/dev/null || echo 128)}"
+  esp_min_free_mb="${BOOT_ESP_MIN_FREE_MB:-$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations."${NIXOS_TARGET}".config.mySystem.deployment.bootloaderEspMinFreeMb" 2>/dev/null || echo 128)}"
   [[ "${esp_min_free_mb}" =~ ^[0-9]+$ ]] || esp_min_free_mb=128
 
   if ! findmnt "${esp_mount}" >/dev/null 2>&1; then
@@ -509,7 +541,7 @@ assert_target_boot_mode() {
   fi
 
   local target_default_unit
-  if ! target_default_unit="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.systemd.defaultUnit" 2>/dev/null)"; then
+  if ! target_default_unit="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations."${NIXOS_TARGET}".config.systemd.defaultUnit" 2>/dev/null)"; then
     if [[ "${MODE}" == "switch" && "${AUTO_GUI_SWITCH_FALLBACK}" == true ]]; then
       MODE="boot"
       log "Unable to evaluate target default unit for '${NIXOS_TARGET}' in graphical context. Auto-fallback: mode set to 'boot'."
@@ -553,7 +585,7 @@ home_build() {
     return
   fi
 
-  nix build "${FLAKE_REF}#homeConfigurations.${hm_target}.activationPackage"
+  nix build "${FLAKE_REF}#homeConfigurations."${hm_target}".activationPackage"
 }
 
 home_switch() {
@@ -565,7 +597,7 @@ home_switch() {
 
   local out_link
   out_link="/tmp/home-activation-${hm_target//[^a-zA-Z0-9_.-]/_}-$$"
-  nix build --out-link "$out_link" "${FLAKE_REF}#homeConfigurations.${hm_target}.activationPackage"
+  nix build --out-link "$out_link" "${FLAKE_REF}#homeConfigurations."${hm_target}".activationPackage"
   "${out_link}/activate"
 }
 
@@ -573,6 +605,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --host)
       HOST_NAME="${2:?missing value for --host}"
+      HOST_EXPLICIT=true
       shift 2
       ;;
     --user)
@@ -687,6 +720,7 @@ require_command nix
 require_command nixos-rebuild
 enable_flakes_runtime
 ensure_flake_visible_to_nix "${FLAKE_REF}"
+resolve_host_from_flake_if_needed
 run_readiness_analysis
 
 if [[ "${ANALYZE_ONLY}" == true ]]; then
@@ -726,7 +760,7 @@ assert_runtime_account_unlocked "${PRIMARY_USER}" false
 NIXOS_TARGET="${NIXOS_TARGET_OVERRIDE:-${HOST_NAME}-${PROFILE}}"
 HM_TARGET="${HM_TARGET_OVERRIDE:-${PRIMARY_USER}-${HOST_NAME}}"
 
-if [[ -z "${HM_TARGET_OVERRIDE}" ]] && ! nix_eval_raw_safe "${FLAKE_REF}#homeConfigurations.${HM_TARGET}.config.home.username" >/dev/null 2>&1; then
+if [[ -z "${HM_TARGET_OVERRIDE}" ]] && ! nix_eval_raw_safe "${FLAKE_REF}#homeConfigurations."${HM_TARGET}".config.home.username" >/dev/null 2>&1; then
   HM_TARGET="${PRIMARY_USER}"
 fi
 
@@ -743,7 +777,7 @@ if [[ "$RUN_PHASE0_DISKO" == true ]]; then
     die "--phase0-disko is destructive. Re-run with DISKO_CONFIRM=YES to proceed."
   fi
 
-  disk_layout="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.mySystem.disk.layout" 2>/dev/null || echo none)"
+  disk_layout="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations."${NIXOS_TARGET}".config.mySystem.disk.layout" 2>/dev/null || echo none)"
   if [[ "$disk_layout" == "none" ]]; then
     die "--phase0-disko requested but mySystem.disk.layout is 'none' for ${NIXOS_TARGET}."
   fi
@@ -754,7 +788,7 @@ if [[ "$RUN_PHASE0_DISKO" == true ]]; then
 fi
 
 if [[ "$RUN_SECUREBOOT_ENROLL" == true ]]; then
-  secureboot_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.mySystem.secureboot.enable" 2>/dev/null || echo false)"
+  secureboot_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations."${NIXOS_TARGET}".config.mySystem.secureboot.enable" 2>/dev/null || echo false)"
   if [[ "$secureboot_enabled" != "true" ]]; then
     die "--enroll-secureboot-keys requested but mySystem.secureboot.enable is not true for ${NIXOS_TARGET}."
   fi
@@ -792,12 +826,24 @@ if [[ "$MODE" == "boot" ]]; then
   else
     log "Skipping system boot staging (--skip-system-switch)"
   fi
+
   if [[ "${SKIP_HOME_SWITCH}" == false ]]; then
-    home_build "${HM_TARGET}"
+    log "Applying Home Manager configuration in boot mode"
+    home_switch "${HM_TARGET}"
   else
-    log "Skipping Home Manager build (--skip-home-switch)"
+    log "Skipping Home Manager switch (--skip-home-switch)"
   fi
-  log "Boot generation staged. Reboot to apply the new system."
+
+  if [[ "$RUN_FLATPAK_SYNC" == true && -x "${REPO_ROOT}/scripts/sync-flatpak-profile.sh" ]]; then
+    log "Syncing Flatpak apps for profile '${PROFILE}' (boot mode)"
+    if "${REPO_ROOT}/scripts/sync-flatpak-profile.sh" --flake-ref "${FLAKE_REF}" --target "${NIXOS_TARGET}"; then
+      log "Flatpak profile sync complete"
+    else
+      log "Flatpak profile sync reported issues (non-critical)"
+    fi
+  fi
+
+  log "Boot generation staged. Reboot to apply system-level changes (desktop, users, passwords, services)."
   exit 0
 fi
 

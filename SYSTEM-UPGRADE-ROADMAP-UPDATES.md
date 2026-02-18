@@ -1,3 +1,52 @@
+## Phase 28 Update (2026-02-18): Flake Host Resolution Guardrail for Fresh Installs
+
+### 28.H4 Hostname/target mismatch remediation in deploy-clean readiness
+
+**Changes Applied:**
+- [x] Added host auto-resolution guardrail in `scripts/deploy-clean.sh`:
+  - when runtime hostname has no matching `nix/hosts/<hostname>/default.nix`, deploy-clean now auto-selects the only discovered host directory in the flake.
+- [x] Added identical host auto-resolution logic in `scripts/analyze-clean-deploy-readiness.sh`:
+  - readiness checks now evaluate the discovered host target instead of warning/failing on a hostname-only mismatch.
+- [x] Added flake-first host fallback in `nixos-quick-deploy.sh` before calling deploy-clean:
+  - if detected hostname has no host dir and exactly one host exists, it uses that host for `--host`/target construction.
+
+**Validation:**
+- `bash -n scripts/deploy-clean.sh scripts/analyze-clean-deploy-readiness.sh nixos-quick-deploy.sh` → PASS
+- `./scripts/analyze-clean-deploy-readiness.sh --flake-ref path:. --profile ai-dev` → PASS/WARN (no false hostname mismatch warning when a single host is present)
+
+## Phase 26 Update (2026-02-18): Flake-First Declarative AI Stack Parity Audit + Option Wiring
+
+### 26.H12 Declarative ownership restored for optional AI stack/model choices
+
+**Changes Applied:**
+- [x] Added host-scoped deploy option import path in root flake:
+  - `flake.nix` now conditionally imports `nix/hosts/<host>/deploy-options.nix` when present.
+- [x] Added baseline host deploy options:
+  - `nix/hosts/nixos/deploy-options.nix` captures AI stack enable + model defaults as declarative `mySystem.*` options.
+- [x] Extended declarative AI stack module options:
+  - `mySystem.aiStack.modelProfile`
+  - `mySystem.aiStack.embeddingModel`
+  - `mySystem.aiStack.llamaDefaultModel`
+  - `mySystem.aiStack.llamaModelFile`
+  - `mySystem.aiStack.namespace`
+- [x] Reconciler now patches model defaults into Kubernetes env ConfigMap declaratively on each reconcile run:
+  - `nix/modules/services/ai-stack.nix` patches `ConfigMap/env` keys (`EMBEDDING_MODEL`, `LLAMA_CPP_DEFAULT_MODEL`, `LLAMA_CPP_MODEL_FILE`) after `kubectl apply -k`.
+- [x] Flake-first installer now asks for optional AI stack enablement/model profile at start (interactive mode) and persists choices into host declarative options:
+  - `--flake-first-ai-stack on|off`
+  - `--flake-first-model-profile auto|small|medium|large`
+  - `nixos-quick-deploy.sh` writes `nix/hosts/<host>/deploy-options.nix` before deployment.
+- [x] Removed imperative Phase 9 AI stack/model execution from flake-first completion path:
+  - `run_flake_first_legacy_outcome_tasks()` now keeps parity tooling/validation/reporting but skips imperative phase-09 deployment scripts in flake-first mode.
+
+**Roadmap Alignment Check (high-level):**
+- Phase 26 goal (“bash only for orchestration/bootstrap, features in Nix options/modules”) is now applied for optional AI stack role + model selection.
+- Phase 28 convergence goal (“keep flake-first declarative deploy path”) remains intact: deployment still routes through `scripts/deploy-clean.sh`, with AI stack rollout via declarative NixOS + systemd reconciliation.
+
+**Validation:**
+- `bash -n nixos-quick-deploy.sh` → PASS
+- `rg -n "deploy-options\.nix|hostDeployOptionsPath" flake.nix nixos-quick-deploy.sh` → PASS
+- `rg -n "modelProfile|embeddingModel|llamaDefaultModel|llamaModelFile|patch configmap env" nix/modules/services/ai-stack.nix` → PASS
+
 ## Phase 26 Update (2026-02-16): Flake Hardware Wiring + Facts Schema Expansion
 
 ### 26.H9 Critical Declarative Path Corrections
