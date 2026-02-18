@@ -84,9 +84,33 @@ fi
 mapfile -t desired_apps <<<"$apps_raw"
 mapfile -t installed_apps < <(flatpak list --app --columns=application 2>/dev/null || true)
 
-if ! flatpak remotes --columns=name 2>/dev/null | grep -Fxq "flathub"; then
-  echo "Adding flathub remote..."
-  flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+ensure_flathub_remote() {
+  local remote_url="https://flathub.org/repo/flathub.flatpakrepo"
+
+  if ! flatpak remotes --columns=name 2>/dev/null | grep -Fxq "flathub"; then
+    echo "Adding flathub remote..."
+    flatpak remote-add --if-not-exists flathub "$remote_url"
+  fi
+
+  if flatpak remote-ls flathub --app >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "Flathub remote has no refs; repairing remote metadata..."
+  flatpak remote-delete --user flathub >/dev/null 2>&1 || true
+  flatpak remote-delete flathub >/dev/null 2>&1 || true
+  flatpak remote-add --if-not-exists --user flathub "$remote_url"
+
+  if ! flatpak remote-ls flathub --app >/dev/null 2>&1; then
+    echo "Unable to refresh flathub metadata; skipping app installation." >&2
+    return 1
+  fi
+
+  return 0
+}
+
+if ! ensure_flathub_remote; then
+  exit 1
 fi
 
 declare -a install_cmd=(flatpak install --user flathub)
