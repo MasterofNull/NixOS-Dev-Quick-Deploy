@@ -103,6 +103,37 @@ die() {
   exit 1
 }
 
+current_system_generation() {
+  readlink -f /nix/var/nix/profiles/system 2>/dev/null || true
+}
+
+current_home_generation() {
+  local home_profile="${HOME_MANAGER_PROFILE_PATH:-$HOME/.local/state/nix/profiles/home-manager}"
+  readlink -f "$home_profile" 2>/dev/null || true
+}
+
+assert_post_switch_desktop_outcomes() {
+  [[ "${MODE}" == "switch" ]] || return 0
+  [[ "${SKIP_SYSTEM_SWITCH}" == false ]] || return 0
+
+  local desktop_enabled="false"
+  desktop_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.mySystem.roles.desktop.enable" 2>/dev/null || true)"
+  if [[ "${desktop_enabled}" != "true" ]]; then
+    return 0
+  fi
+
+  local cosmic_session="/run/current-system/sw/share/wayland-sessions/cosmic.desktop"
+  if [[ ! -f "${cosmic_session}" ]]; then
+    die "Desktop role is enabled but COSMIC session file is missing (${cosmic_session}). nixos-rebuild switch may not have applied the intended desktop generation."
+  fi
+
+  if command -v systemctl >/dev/null 2>&1; then
+    if ! systemctl is-enabled --quiet display-manager 2>/dev/null; then
+      die "Desktop role is enabled but display-manager is not enabled after switch."
+    fi
+  fi
+}
+
 assert_non_root_entrypoint() {
   if [[ "${EUID:-$(id -u)}" -eq 0 && "${ALLOW_ROOT_DEPLOY:-false}" != "true" ]]; then
     die "Do not run deploy-clean.sh as root/sudo. Run as your normal user; the script escalates only privileged steps. Override only if required: ALLOW_ROOT_DEPLOY=true."
@@ -803,8 +834,10 @@ persist_home_git_credentials_declarative() {
 {
   programs.git = {
     enable = lib.mkDefault true;
-    userName = lib.mkForce "${escaped_name}";
-    userEmail = lib.mkForce "${escaped_email}";
+    settings = {
+      user.name = lib.mkForce "${escaped_name}";
+      user.email = lib.mkForce "${escaped_email}";
+    };
 ${helper_block}  };
 }
 EOF
@@ -1041,6 +1074,9 @@ if [[ "$RUN_SECUREBOOT_ENROLL" == true ]]; then
   log "sbctl key enrollment complete"
 fi
 
+SYSTEM_GENERATION_BEFORE="$(current_system_generation)"
+HOME_GENERATION_BEFORE="$(current_home_generation)"
+
 if [[ "$MODE" == "build" ]]; then
   log "Running dry build"
   if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
@@ -1102,6 +1138,18 @@ fi
 assert_runtime_account_unlocked "${PRIMARY_USER}" true
 # Verify the switch did not unexpectedly reset the login password.
 assert_password_unchanged "${PRIMARY_USER}"
+assert_post_switch_desktop_outcomes
+
+SYSTEM_GENERATION_AFTER="$(current_system_generation)"
+HOME_GENERATION_AFTER="$(current_home_generation)"
+
+if [[ "${SKIP_SYSTEM_SWITCH}" == false && -n "${SYSTEM_GENERATION_BEFORE}" && -n "${SYSTEM_GENERATION_AFTER}" && "${SYSTEM_GENERATION_BEFORE}" == "${SYSTEM_GENERATION_AFTER}" ]]; then
+  log "WARNING: system generation link did not change after switch (${SYSTEM_GENERATION_AFTER})."
+fi
+
+if [[ "${SKIP_HOME_SWITCH}" == false && -n "${HOME_GENERATION_BEFORE}" && -n "${HOME_GENERATION_AFTER}" && "${HOME_GENERATION_BEFORE}" == "${HOME_GENERATION_AFTER}" ]]; then
+  log "WARNING: Home Manager generation link did not change after switch (${HOME_GENERATION_AFTER})."
+fi
 
 if [[ "$RUN_FLATPAK_SYNC" == true && -x "${REPO_ROOT}/scripts/sync-flatpak-profile.sh" ]]; then
   log "Syncing Flatpak apps for profile '${PROFILE}'"
