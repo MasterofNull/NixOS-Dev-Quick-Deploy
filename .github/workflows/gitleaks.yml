@@ -21,6 +21,7 @@ jobs:
           args: >
             --redact
             --config .gitleaks.toml
+            --no-git
             --report-format sarif
             --report-path gitleaks.sarif
             --exit-code 0

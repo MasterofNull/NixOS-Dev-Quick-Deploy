@@ -230,6 +230,7 @@ jobs:
           args: >
             --redact
             --config .gitleaks.toml
+            --no-git
             --report-format sarif
             --report-path gitleaks-security.sarif
             --exit-code 1
