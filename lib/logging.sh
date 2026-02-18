@@ -108,6 +108,25 @@ init_logging() {
     log INFO "Working directory: $(pwd)"
 }
 
+append_log_line() {
+    # Append a line to the current log file without surfacing noisy shell
+    # redirection errors when the destination is temporarily unavailable.
+    local line="$1"
+    local log_target="${LOG_FILE:-}"
+
+    if [[ -z "$log_target" ]]; then
+        return 0
+    fi
+
+    local log_parent
+    log_parent="$(dirname "$log_target")"
+    if [[ ! -d "$log_parent" ]]; then
+        safe_mkdir "$log_parent" >/dev/null 2>&1 || return 0
+    fi
+
+    printf '%s\n' "$line" | tee -a "$log_target" >/dev/null 2>&1 || true
+}
+
 # ============================================================================
 # Main Logging Function
 # ============================================================================
@@ -219,14 +238,13 @@ log() {
     local caller="${FUNCNAME[2]:-}"
 
     if [[ "${LOG_FORMAT:-plain}" == "json" ]] && declare -F log_json_line >/dev/null 2>&1; then
-        log_json_line "$level" "$message" "$caller" >> "$LOG_FILE"
+        append_log_line "$(log_json_line "$level" "$message" "$caller")"
         return 0
     fi
 
     # Write to log file with formatted output
-    # >> appends to file (vs > which overwrites)
     # Format: [timestamp] [level] message
-    echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
+    append_log_line "[$timestamp] [$level] $message"
 
     # Handle special cases based on log level
     # case statement is more efficient than multiple if/elif for string matching
@@ -241,14 +259,14 @@ log() {
             if [[ -n "$caller" ]]; then
                 # Write enriched error message with function context
                 # This helps trace where errors originated in the code
-                echo "[$timestamp] [$level] [${caller}] $message" >> "$LOG_FILE"
+                append_log_line "[$timestamp] [$level] [${caller}] $message"
             fi
             ;;
         TRACE|DEBUG)
             # TRACE and DEBUG messages include additional context
             # Show calling function and variable values if available
             if [[ -n "$caller" ]]; then
-                echo "[$timestamp] [$level] [${caller}] $message" >> "$LOG_FILE"
+                append_log_line "[$timestamp] [$level] [${caller}] $message"
             fi
             ;;
         # Other levels (INFO, WARNING) fall through to default behavior
