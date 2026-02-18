@@ -66,7 +66,8 @@ jobs:
       - name: Profile eval smoke tests
         run: |
           set -euo pipefail
-          mapfile -t hosts < <(find nix/hosts -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+          mapfile -t hosts < <(find nix/hosts -mindepth 1 -maxdepth 1 -type d \
+            -exec test -f '{}/default.nix' ';' -printf '%f\n' | sort)
           profiles=(ai-dev gaming minimal)
           for host in "${hosts[@]}"; do
             for profile in "${profiles[@]}"; do
