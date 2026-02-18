@@ -31,9 +31,9 @@ The discovery crawler fetches release information from GitHub repos like:
 
 4. Click **"Generate token"**
 
-5. **IMPORTANT**: Copy the token immediately (starts with `ghp_...`)
+5. **IMPORTANT**: Copy the token immediately (starts with the GitHub token prefix (for example `github_pat_...` or classic `ghp_...`))
    - You won't be able to see it again!
-   - Example: `ghp_1234567890abcdefghijklmnopqrstuvwxyz`
+   - Example: `<YOUR_GITHUB_TOKEN>`
 
 ---
 
@@ -42,13 +42,13 @@ The discovery crawler fetches release information from GitHub repos like:
 ### Option A: Temporary (Current Session Only)
 
 ```bash
-export GITHUB_TOKEN=ghp_your_token_here
+export GITHUB_TOKEN=<YOUR_GITHUB_TOKEN>
 ```
 
 **Test it works**:
 ```bash
 echo $GITHUB_TOKEN
-# Should output: ghp_your_token_here
+# Should output: <YOUR_GITHUB_TOKEN>
 ```
 
 ---
@@ -59,19 +59,19 @@ Add to your shell configuration file:
 
 **For bash**:
 ```bash
-echo 'export GITHUB_TOKEN=ghp_your_token_here' >> ~/.bashrc
+echo 'export GITHUB_TOKEN=<YOUR_GITHUB_TOKEN>' >> ~/.bashrc
 source ~/.bashrc
 ```
 
 **For zsh**:
 ```bash
-echo 'export GITHUB_TOKEN=ghp_your_token_here' >> ~/.zshrc
+echo 'export GITHUB_TOKEN=<YOUR_GITHUB_TOKEN>' >> ~/.zshrc
 source ~/.zshrc
 ```
 
 **For fish**:
 ```bash
-echo 'set -gx GITHUB_TOKEN ghp_your_token_here' >> ~/.config/fish/config.fish
+echo 'set -gx GITHUB_TOKEN <YOUR_GITHUB_TOKEN>' >> ~/.config/fish/config.fish
 source ~/.config/fish/config.fish
 ```
 
