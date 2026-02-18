@@ -1,11 +1,14 @@
 { lib, config, pkgs, ... }:
 let
   cfg = config.mySystem;
-  mobile = cfg.hardware.isMobile;
+  # Active when the hardware flag OR the explicit role toggle is set.
+  # roles.mobile.enable lets users force mobile power management on machines
+  # that are not auto-detected as laptops (e.g. a NUC running on battery).
+  mobile = cfg.hardware.isMobile || cfg.roles.mobile.enable;
 in
 {
   # Mobile / laptop platform settings.
-  # Gates on mySystem.hardware.isMobile so desktop deployments are unaffected.
+  # Gates on hardware.isMobile OR roles.mobile.enable.
 
   powerManagement = lib.mkIf mobile {
     enable = lib.mkDefault true;
