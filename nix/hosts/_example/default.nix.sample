@@ -1,0 +1,72 @@
+{ lib, pkgs, ... }:
+# ---------------------------------------------------------------------------
+# Per-host NixOS configuration — SAMPLE FILE
+#
+# Copy this directory to nix/hosts/<your-hostname>/ and rename the files
+# (remove the ".sample" suffix).  Then run:
+#
+#   ./scripts/discover-system-facts.sh   # generates facts.nix
+#   sudo nixos-generate-config \
+#     --dir nix/hosts/<your-hostname>    # generates hardware-configuration.nix
+#   ./scripts/deploy-clean.sh --host <your-hostname> --profile ai-dev
+#
+# IMPORTANT: facts.nix and hardware-configuration.nix are auto-generated.
+# Do not edit them by hand — re-run discover-system-facts.sh to update.
+# ---------------------------------------------------------------------------
+{
+  imports =
+    [ ./facts.nix ]
+    ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix) [ ./hardware-configuration.nix ];
+
+  # =========================================================================
+  # SSH AUTHORIZED KEYS — Set at least one key before deploying.
+  # Without a key you will be locked out of a server deployment.
+  # =========================================================================
+  mySystem.sshAuthorizedKeys = [
+    # "ssh-ed25519 AAAA... youruser@yourmachine"
+    # "ssh-rsa AAAA...    youruser@workstation"
+  ];
+
+  # =========================================================================
+  # ROLE OVERRIDES
+  # Profiles (ai-dev / gaming / minimal) already set the main roles.
+  # Use these to add orthogonal capabilities not covered by the profile,
+  # or to forcibly override a profile default.
+  # =========================================================================
+
+  # Headless / SSH-only server (disables display manager, adds fail2ban):
+  # mySystem.roles.server.enable = true;
+
+  # KVM/QEMU virtualization host (libvirtd, virt-manager, OVMF):
+  # mySystem.roles.virtualization.enable = true;
+
+  # Force mobile power management on a non-auto-detected machine:
+  # mySystem.roles.mobile.enable = true;
+
+  # Override a profile default (e.g. disable desktop on ai-dev machine):
+  # mySystem.roles.desktop.enable = lib.mkForce false;
+
+  # =========================================================================
+  # DESKTOP AUTO-LOGIN
+  # Disabled by default for security.  Enable on personal single-user machines.
+  # =========================================================================
+  # services.displayManager.autoLogin.enable = true;
+
+  # =========================================================================
+  # NETWORKING
+  # =========================================================================
+  # Open extra firewall ports (22 is always open when server role is active):
+  # networking.firewall.allowedTCPPorts = [ 80 443 8080 ];
+
+  # Static hostname override (facts.nix sets this from detect; use mkForce):
+  # networking.hostName = lib.mkForce "myhostname";
+
+  # =========================================================================
+  # SYSTEM PACKAGES
+  # =========================================================================
+  # Additional packages beyond the profile + role defaults:
+  # environment.systemPackages = with pkgs; [
+  #   neovim
+  #   tmux
+  # ];
+}
