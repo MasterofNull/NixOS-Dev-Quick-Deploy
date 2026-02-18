@@ -1,0 +1,6 @@
+{ ... }:
+{
+  imports = [
+    ./ai-stack.nix
+  ];
+}
