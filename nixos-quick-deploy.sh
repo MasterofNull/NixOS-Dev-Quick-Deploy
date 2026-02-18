@@ -2078,9 +2078,21 @@ run_optional_phase_script() {
         print_warning "$label script did not export expected function '$function_name'"
     fi
 
-    print_success "$label completed"
-    echo ""
     return 0
+}
+
+run_optional_phase_by_number() {
+    local phase_num="$1"
+    local script_path="$2"
+    local function_name="$3"
+    local label="$4"
+
+    if should_skip_phase "$phase_num"; then
+        print_info "Skipping ${label} (--skip-phase ${phase_num})"
+        return 0
+    fi
+
+    run_optional_phase_script "$script_path" "$function_name" "$label"
 }
 
 # Interactive failure handler invoked whenever execute_phase returns non-zero.
@@ -3181,6 +3193,89 @@ resolve_flake_first_model_selection() {
     esac
 }
 
+resolve_deploy_option_rhs() {
+    local deploy_file="$1"
+    local option_path="$2"
+
+    if [[ ! -f "$deploy_file" ]]; then
+        return 0
+    fi
+
+    local option_regex
+    option_regex=$(printf '%s' "$option_path" | sed 's/[][\.^$*+?(){}|]/\\&/g')
+    sed -nE "s/^[[:space:]]*${option_regex}[[:space:]]*=[[:space:]]*(.+)[[:space:]]*;[[:space:]]*$/\1/p" "$deploy_file" | head -n1
+}
+
+unwrap_lib_mk_value() {
+    local value="$1"
+
+    value="${value#lib.mkDefault }"
+    value="${value#lib.mkForce }"
+    printf '%s\n' "$value"
+}
+
+resolve_deploy_option_string() {
+    local deploy_file="$1"
+    local option_path="$2"
+    local default_value="$3"
+    local raw
+
+    raw="$(resolve_deploy_option_rhs "$deploy_file" "$option_path")"
+    if [[ -z "$raw" ]]; then
+        printf '%s\n' "$default_value"
+        return 0
+    fi
+
+    raw="$(unwrap_lib_mk_value "$raw")"
+    raw="${raw#\"}"
+    raw="${raw%\"}"
+
+    if [[ -z "$raw" ]]; then
+        printf '%s\n' "$default_value"
+    else
+        printf '%s\n' "$raw"
+    fi
+}
+
+resolve_deploy_option_bool() {
+    local deploy_file="$1"
+    local option_path="$2"
+    local default_value="$3"
+    local raw
+
+    raw="$(resolve_deploy_option_rhs "$deploy_file" "$option_path")"
+    if [[ -z "$raw" ]]; then
+        printf '%s\n' "$default_value"
+        return 0
+    fi
+
+    raw="$(unwrap_lib_mk_value "$raw")"
+    case "${raw,,}" in
+        true|false) printf '%s\n' "${raw,,}" ;;
+        *) printf '%s\n' "$default_value" ;;
+    esac
+}
+
+resolve_deploy_option_list() {
+    local deploy_file="$1"
+    local option_path="$2"
+    local default_value="$3"
+    local raw
+
+    raw="$(resolve_deploy_option_rhs "$deploy_file" "$option_path")"
+    if [[ -z "$raw" ]]; then
+        printf '%s\n' "$default_value"
+        return 0
+    fi
+
+    raw="$(unwrap_lib_mk_value "$raw")"
+    if [[ "$raw" =~ ^\[.*\]$ ]]; then
+        printf '%s\n' "$raw"
+    else
+        printf '%s\n' "$default_value"
+    fi
+}
+
 # persist_flake_first_host_options: write host-scoped declarative deploy options
 # consumed by flake.nix for AI-stack enablement and model selection.
 persist_flake_first_host_options() {
@@ -3196,20 +3291,12 @@ persist_flake_first_host_options() {
     resolve_flake_first_model_selection
 
     local existing_backend existing_accel existing_ui_enable existing_vector_enable existing_listen_lan existing_models
-    existing_backend="$(resolve_flake_first_ai_stack_backend "$host_name")"
-    existing_accel=$(sed -nE 's/.*acceleration[[:space:]]*=[[:space:]]*lib\.mk(Default|Force)[[:space:]]*"([^"]+)".*/\2/p' "$deploy_file" | head -n1)
-    [[ -z "$existing_accel" ]] && existing_accel="auto"
-
-    existing_ui_enable=$(sed -nE 's/.*ui\.enable[[:space:]]*=[[:space:]]*lib\.mk(Default|Force)[[:space:]]*(true|false).*/\2/p' "$deploy_file" | head -n1)
-    [[ -z "$existing_ui_enable" ]] && existing_ui_enable="true"
-
-    existing_vector_enable=$(sed -nE 's/.*vectorDb\.enable[[:space:]]*=[[:space:]]*lib\.mk(Default|Force)[[:space:]]*(true|false).*/\2/p' "$deploy_file" | head -n1)
-    [[ -z "$existing_vector_enable" ]] && existing_vector_enable="false"
-
-    existing_listen_lan=$(sed -nE 's/.*listenOnLan[[:space:]]*=[[:space:]]*lib\.mk(Default|Force)[[:space:]]*(true|false).*/\2/p' "$deploy_file" | head -n1)
-    [[ -z "$existing_listen_lan" ]] && existing_listen_lan="false"
-
-    existing_models=$(sed -nE 's/.*models[[:space:]]*=[[:space:]]*lib\.mk(Default|Force)[[:space:]]*(\[.*\]).*/\2/p' "$deploy_file" | head -n1)
+    existing_backend="$(resolve_deploy_option_string "$deploy_file" "backend" "ollama")"
+    existing_accel="$(resolve_deploy_option_string "$deploy_file" "acceleration" "auto")"
+    existing_ui_enable="$(resolve_deploy_option_bool "$deploy_file" "ui.enable" "true")"
+    existing_vector_enable="$(resolve_deploy_option_bool "$deploy_file" "vectorDb.enable" "false")"
+    existing_listen_lan="$(resolve_deploy_option_bool "$deploy_file" "listenOnLan" "false")"
+    existing_models="$(resolve_deploy_option_list "$deploy_file" "models" '[ "qwen2.5-coder:7b" ]')"
     [[ -z "$existing_models" ]] && existing_models='[ "qwen2.5-coder:7b" ]'
 
     cat > "$deploy_file" <<EOF
@@ -3491,7 +3578,7 @@ run_flake_first_deployment() {
         return 1
     fi
 
-    if ! run_optional_phase_script "$PHASES_DIR/phase-02-system-backup.sh" phase_02_backup "Comprehensive backup"; then
+    if ! run_optional_phase_by_number 2 "$PHASES_DIR/phase-02-system-backup.sh" phase_02_backup "Comprehensive backup"; then
         print_error "Flake-first backup parity task failed"
         return 1
     fi
@@ -3529,20 +3616,20 @@ run_flake_first_legacy_outcome_tasks() {
 
     print_section "Flake-First Completion: Legacy-Parity Tasks"
 
-    if ! run_optional_phase_script "$PHASES_DIR/phase-06-additional-tooling.sh" phase_06_additional_tooling "Additional tooling"; then
+    if ! run_optional_phase_by_number 6 "$PHASES_DIR/phase-06-additional-tooling.sh" phase_06_additional_tooling "Additional tooling"; then
         return 1
     fi
 
-    if ! run_optional_phase_script "$PHASES_DIR/phase-07-post-deployment-validation.sh" phase_07_post_deployment_validation "Post-deployment validation"; then
+    if ! run_optional_phase_by_number 7 "$PHASES_DIR/phase-07-post-deployment-validation.sh" phase_07_post_deployment_validation "Post-deployment validation"; then
         return 1
     fi
 
-    if ! run_optional_phase_script "$PHASES_DIR/phase-08-finalization-and-report.sh" phase_08_finalization_and_report "Finalization and report"; then
+    if ! run_optional_phase_by_number 8 "$PHASES_DIR/phase-08-finalization-and-report.sh" phase_08_finalization_and_report "Finalization and report"; then
         return 1
     fi
 
     if [[ "$RUN_AI_PREP" == true ]]; then
-        if ! run_optional_phase_script "$PHASES_DIR/phase-09-ai-optimizer-prep.sh" phase_09_ai_optimizer_prep "AI-Optimizer preparation"; then
+        if ! run_optional_phase_by_number 9 "$PHASES_DIR/phase-09-ai-optimizer-prep.sh" phase_09_ai_optimizer_prep "AI-Optimizer preparation"; then
             return 1
         fi
     fi
@@ -3629,7 +3716,7 @@ run_deployment_phases() {
 
     if [[ "$RUN_AI_PREP" == true ]]; then
         print_section "Optional Phase: AI-Optimizer Preparation"
-        if ! run_optional_phase_script "$PHASES_DIR/phase-09-ai-optimizer-prep.sh" phase_09_ai_optimizer_prep "AI-Optimizer preparation"; then
+        if ! run_optional_phase_by_number 9 "$PHASES_DIR/phase-09-ai-optimizer-prep.sh" phase_09_ai_optimizer_prep "AI-Optimizer preparation"; then
             exit 1
         fi
     fi
