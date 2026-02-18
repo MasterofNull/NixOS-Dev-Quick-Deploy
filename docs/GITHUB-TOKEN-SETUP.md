@@ -120,7 +120,7 @@ cd ~/Documents/try/NixOS-Dev-Quick-Deploy
 rm data/improvement-crawler-state.json
 
 # Run discovery
-python3 scripts/discover-improvements.sh
+scripts/discover-improvements.sh
 ```
 
 **Expected output**:
@@ -280,7 +280,7 @@ Once the token is working:
 3. ✅ No more rate limit errors in reports
 
 You can now:
-- Run discovery manually: `python3 scripts/discover-improvements.sh`
+- Run discovery manually: `scripts/discover-improvements.sh`
 - Set up automated runs (see `DISCOVERY-PIPELINE-REVIEW.md` for cron/systemd timers)
 - Adjust source weights in `config/improvement-sources.json`
 

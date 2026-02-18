@@ -73,10 +73,32 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if ! command -v jq >/dev/null 2>&1; then
-  echo "ERROR: jq is required for flake input validation." >&2
+run_jq() {
+  local -a args=("$@")
+
+  if command -v jq >/dev/null 2>&1; then
+    jq "${args[@]}"
+    return
+  fi
+
+  if command -v nix-shell >/dev/null 2>&1; then
+    local cmd="jq"
+    local arg
+    for arg in "${args[@]}"; do
+      cmd+=" $(printf '%q' "$arg")"
+    done
+    nix-shell -p jq --run "$cmd"
+    return
+  fi
+
+  if command -v nix >/dev/null 2>&1; then
+    nix --extra-experimental-features "nix-command flakes" shell nixpkgs#jq --command jq "${args[@]}"
+    return
+  fi
+
+  echo "ERROR: jq is required for flake input validation (no nix fallback available)." >&2
   exit 2
-fi
+}
 
 LOCAL_FLAKE_PATH="$(resolve_local_flake_path "$FLAKE_REF")"
 if [[ -z "$LOCK_FILE" ]]; then
@@ -112,7 +134,7 @@ add_pass() {
 
 json_array_from_file() {
   local file="$1"
-  jq -Rsc 'split("\n")[:-1]' "$file"
+  run_jq -Rsc 'split("\n")[:-1]' "$file"
 }
 
 declared_nixpkgs_ref() {
@@ -133,7 +155,7 @@ declared_home_manager_follows() {
 validate_dependency_graph() {
   local missing_links
   missing_links="$(
-    jq -r '
+    run_jq -r '
       .nodes as $nodes
       | .nodes
       | to_entries[]
@@ -167,7 +189,7 @@ validate_dependency_graph() {
 
 validate_integrity_and_security() {
   local missing_hashes
-  missing_hashes="$(jq -r '
+  missing_hashes="$(run_jq -r '
     .nodes
     | to_entries[]
     | select(.key != "root")
@@ -185,7 +207,7 @@ validate_integrity_and_security() {
   fi
 
   local missing_revs
-  missing_revs="$(jq -r '
+  missing_revs="$(run_jq -r '
     .nodes
     | to_entries[]
     | select(.key != "root")
@@ -204,7 +226,7 @@ validate_integrity_and_security() {
   fi
 
   local insecure_urls
-  insecure_urls="$(jq -r '
+  insecure_urls="$(run_jq -r '
     .nodes
     | to_entries[]
     | select(.key != "root")
@@ -228,7 +250,7 @@ validate_integrity_and_security() {
   fi
 
   local floating_refs
-  floating_refs="$(jq -r '
+  floating_refs="$(run_jq -r '
     .nodes
     | to_entries[]
     | select(.key != "root")
@@ -248,7 +270,7 @@ validate_integrity_and_security() {
   fi
 
   local local_paths
-  local_paths="$(jq -r '
+  local_paths="$(run_jq -r '
     .nodes
     | to_entries[]
     | select(.key != "root")
@@ -268,11 +290,11 @@ validate_integrity_and_security() {
 
 validate_compatibility() {
   local root_nixpkgs_node root_nixpkgs_ref hm_lock_ref hm_follows_lock
-  root_nixpkgs_node="$(jq -r '.nodes.root.inputs.nixpkgs // empty' "$LOCK_FILE")"
+  root_nixpkgs_node="$(run_jq -r '.nodes.root.inputs.nixpkgs // empty' "$LOCK_FILE")"
   if [[ -z "$root_nixpkgs_node" ]]; then
     add_error "Root flake input 'nixpkgs' is missing from lock graph."
   else
-    root_nixpkgs_ref="$(jq -r --arg node "$root_nixpkgs_node" '.nodes[$node].original.ref // empty' "$LOCK_FILE")"
+    root_nixpkgs_ref="$(run_jq -r --arg node "$root_nixpkgs_node" '.nodes[$node].original.ref // empty' "$LOCK_FILE")"
     if [[ -n "$root_nixpkgs_ref" ]]; then
       add_pass "Root nixpkgs lock ref: ${root_nixpkgs_ref}"
     else
@@ -280,14 +302,14 @@ validate_compatibility() {
     fi
   fi
 
-  hm_lock_ref="$(jq -r '.nodes["home-manager"].original.ref // empty' "$LOCK_FILE")"
+  hm_lock_ref="$(run_jq -r '.nodes["home-manager"].original.ref // empty' "$LOCK_FILE")"
   if [[ -n "$hm_lock_ref" ]]; then
     add_pass "Home Manager lock ref: ${hm_lock_ref}"
   else
     add_warning "Could not determine Home Manager ref from lock metadata."
   fi
 
-  hm_follows_lock="$(jq -r '
+  hm_follows_lock="$(run_jq -r '
     .nodes["home-manager"].inputs.nixpkgs as $x
     | if ($x | type) == "string" then $x
       elif ($x | type) == "array" then ($x | last)
@@ -361,7 +383,7 @@ passes_json="$(json_array_from_file "$passes_file")"
 mkdir -p "$(dirname "$REPORT_JSON")" "$(dirname "$REPORT_MD")"
 timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
-jq -n \
+run_jq -n \
   --arg timestamp "$timestamp" \
   --arg flake_ref "$FLAKE_REF" \
   --arg lock_file "$LOCK_FILE" \
@@ -393,23 +415,23 @@ jq -n \
   echo
   echo "## Summary"
   echo
-  echo "- Errors: $(jq -r '.summary.errors' "$REPORT_JSON")"
-  echo "- Warnings: $(jq -r '.summary.warnings' "$REPORT_JSON")"
-  echo "- Passed checks: $(jq -r '.summary.passed' "$REPORT_JSON")"
+  echo "- Errors: $(run_jq -r '.summary.errors' "$REPORT_JSON")"
+  echo "- Warnings: $(run_jq -r '.summary.warnings' "$REPORT_JSON")"
+  echo "- Passed checks: $(run_jq -r '.summary.passed' "$REPORT_JSON")"
   echo
   echo "## Errors"
-  jq -r '.checks.errors[]? | "- " + .' "$REPORT_JSON"
+  run_jq -r '.checks.errors[]? | "- " + .' "$REPORT_JSON"
   echo
   echo "## Warnings"
-  jq -r '.checks.warnings[]? | "- " + .' "$REPORT_JSON"
+  run_jq -r '.checks.warnings[]? | "- " + .' "$REPORT_JSON"
   echo
   echo "## Passed Checks"
-  jq -r '.checks.passed[]? | "- " + .' "$REPORT_JSON"
+  run_jq -r '.checks.passed[]? | "- " + .' "$REPORT_JSON"
 } >"$REPORT_MD"
 
-error_count="$(jq -r '.summary.errors' "$REPORT_JSON")"
-warning_count="$(jq -r '.summary.warnings' "$REPORT_JSON")"
-pass_count="$(jq -r '.summary.passed' "$REPORT_JSON")"
+error_count="$(run_jq -r '.summary.errors' "$REPORT_JSON")"
+warning_count="$(run_jq -r '.summary.warnings' "$REPORT_JSON")"
+pass_count="$(run_jq -r '.summary.passed' "$REPORT_JSON")"
 
 echo "Flake validation complete: ${pass_count} passed, ${warning_count} warnings, ${error_count} errors."
 echo "JSON report: ${REPORT_JSON}"

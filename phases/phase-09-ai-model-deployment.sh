@@ -201,11 +201,11 @@ The first-time model download may take 10-45 minutes depending on:
   • HuggingFace server load
 
 Monitor Progress:
-  kubectl logs -n ai-stack deploy/llama-cpp -f
+  kubectl logs --request-timeout=30s -n ai-stack deploy/llama-cpp -f
 
 Check Status:
-  kubectl get pods -n ai-stack -l app=llama-cpp
-  kubectl get deploy -n ai-stack llama-cpp
+  kubectl get pods --request-timeout=30s -n ai-stack -l app=llama-cpp
+  kubectl get deploy --request-timeout=30s -n ai-stack llama-cpp
 
 System Dashboard:
   • Open: ${SCRIPT_DIR}/ai-stack/dashboard/index.html in your browser
