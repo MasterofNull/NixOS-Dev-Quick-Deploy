@@ -58,15 +58,15 @@
 
   # ---- Git -----------------------------------------------------------------
   programs.git = {
-    enable   = true;
-    userName = lib.mkDefault "NixOS User";
-    userEmail = lib.mkDefault "user@localhost";
-    extraConfig = {
-      init.defaultBranch      = "main";
-      pull.rebase             = true;
-      push.autoSetupRemote    = true;
-      core.autocrlf           = "input";
-      diff.colorMoved         = "default";
+    enable = true;
+    settings = {
+      user.name = lib.mkDefault "NixOS User";
+      user.email = lib.mkDefault "user@localhost";
+      init.defaultBranch = "main";
+      pull.rebase = true;
+      push.autoSetupRemote = true;
+      core.autocrlf = "input";
+      diff.colorMoved = "default";
     };
   };
 
@@ -119,11 +119,16 @@
 
   # ---- SSH client ---------------------------------------------------------
   programs.ssh = {
-    enable              = true;
-    addKeysToAgent      = "yes";
-    serverAliveInterval = 60;
-    serverAliveCountMax = 3;
-    extraConfig         = "HashKnownHosts yes";
+    enable = true;
+    enableDefaultConfig = false;
+    matchBlocks."*" = {
+      addKeysToAgent = "yes";
+      serverAliveInterval = 60;
+      serverAliveCountMax = 3;
+      extraOptions = {
+        HashKnownHosts = "yes";
+      };
+    };
   };
 
   # ---- Session variables --------------------------------------------------
