@@ -1743,6 +1743,44 @@ PY
     return 1
 }
 
+bootstrap_resume_validation_tools() {
+    # Resume validation can use jq/python3; install them early when available.
+    local strict="${1:-false}"
+    local missing=0
+    local previous_imperative_flag="${IMPERATIVE_INSTALLS_ALLOWED:-false}"
+
+    # setup_environment runs before phase-01, so imperative installs are not yet
+    # enabled by default. Temporarily allow preflight bootstrap installs here.
+    export IMPERATIVE_INSTALLS_ALLOWED=true
+
+    if ! command -v jq >/dev/null 2>&1; then
+        missing=1
+        if declare -F ensure_prerequisite_installed >/dev/null 2>&1; then
+            ensure_prerequisite_installed "jq" "nixpkgs#jq" "jq (JSON parser)" || true
+        fi
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        missing=1
+        if declare -F ensure_prerequisite_installed >/dev/null 2>&1; then
+            ensure_prerequisite_installed "python3" "nixpkgs#python3" "python3 (Python interpreter)" || true
+        fi
+    fi
+
+    export IMPERATIVE_INSTALLS_ALLOWED="$previous_imperative_flag"
+
+    if [[ "$strict" == "true" ]] && ! command -v jq >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+        print_error "State validation requires jq or python3. Install one of them and retry."
+        return 1
+    fi
+
+    if [[ "$missing" == "1" ]] && ! command -v jq >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+        print_warning "Proceeding without jq/python3; resume state validation will be limited."
+    fi
+
+    return 0
+}
+
 validate_resume_state() {
     local strict="${1:-false}"
     local errors=0
@@ -2783,6 +2821,9 @@ setup_environment() {
     maybe_reset_config_phases_on_template_change
     if [[ "$RESUME" == true ]]; then
         print_info "Validating resume state..."
+        if ! bootstrap_resume_validation_tools "$VALIDATE_STATE"; then
+            exit "${ERR_STATE_INVALID:-31}"
+        fi
         if ! validate_resume_state "$VALIDATE_STATE"; then
             exit "${ERR_STATE_INVALID:-31}"
         fi
