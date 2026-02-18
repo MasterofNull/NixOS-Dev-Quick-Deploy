@@ -132,7 +132,11 @@ check_account_lock_state() {
 
   status_code="$(printf '%s\n' "$status_line" | awk '{print $2}')"
   if [[ "$status_code" == "L" ]]; then
-    fail "Primary operator account '${target_user}' is locked."
+    if [[ "$target_user" == "root" ]]; then
+      warn "Root account is locked by policy on this host; continuing (non-interactive root login commonly disabled)."
+    else
+      fail "Primary operator account '${target_user}' is locked."
+    fi
   else
     pass "Primary operator account '${target_user}' is not locked (${status_code:-unknown})."
   fi
@@ -187,7 +191,7 @@ check_host_paths() {
 
 check_eval_capability() {
   local expr output
-  expr="${FLAKE_REF}#nixosConfigurations."${HOST_NAME}-${PROFILE}".config.system.stateVersion"
+  expr="${FLAKE_REF}#nixosConfigurations.\"${HOST_NAME}-${PROFILE}\".config.system.stateVersion"
   if command -v timeout >/dev/null 2>&1; then
     output="$(timeout "${NIX_EVAL_TIMEOUT_SECONDS}" nix eval --raw "$expr" 2>/dev/null || true)"
   else

@@ -7,6 +7,18 @@ on:
     branches: [ "main" ]
 
 jobs:
+  flake-first-roadmap-verifier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax checks for deploy entrypoints and verifier
+        run: |
+          bash -n nixos-quick-deploy.sh scripts/deploy-clean.sh scripts/analyze-clean-deploy-readiness.sh scripts/verify-flake-first-roadmap-completion.sh
+
+      - name: Verify flake-first roadmap completion markers
+        run: ./scripts/verify-flake-first-roadmap-completion.sh
+
   unit-tests:
     runs-on: ubuntu-latest
     strategy:
