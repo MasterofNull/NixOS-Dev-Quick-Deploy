@@ -94,7 +94,7 @@ in
     };
   };
 
-  config = lib.mkIf (roleEnabled && cfg.enable) {
+  config = lib.mkIf (roleEnabled && cfg.enable && config.mySystem.aiStack.backend == "k3s") {
     services.k3s = {
       enable = lib.mkDefault true;
       role = lib.mkDefault "server";

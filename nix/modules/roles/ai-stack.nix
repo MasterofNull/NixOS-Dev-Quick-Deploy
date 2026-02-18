@@ -92,6 +92,10 @@ in
         # Set WEBUI_AUTH = "true" in facts.nix if this machine is shared.
         WEBUI_AUTH    = lib.mkDefault "false";
         ENABLE_SIGNUP = lib.mkDefault "false";
+      } // lib.optionalAttrs (ai.vectorDb.enable && hasQdrant) {
+        # Wire open-webui to the local Qdrant instance for RAG vector search.
+        VECTOR_DB  = "qdrant";
+        QDRANT_URI = "http://127.0.0.1:6333";
       };
     };
 
