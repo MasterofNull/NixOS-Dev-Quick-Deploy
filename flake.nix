@@ -16,12 +16,34 @@
     lanzaboote = {
       url = "github:nix-community/lanzaboote";
     };
+    # Apple Silicon (Asahi Linux) — only needed for Apple M-series hosts.
+    # When cpuVendor = "apple", set mySystem.hardware.nixosHardwareModule = "apple-m1"
+    # (or apple-m2) in facts.nix to pull in the Asahi kernel + Mesa overlay via
+    # nixos-hardware.  Alternatively, use the community nixos-apple-silicon flake:
+    #   nixos-apple-silicon.url = "github:tpwrules/nixos-apple-silicon";
+    # and add its module manually in the host's default.nix.
+    # The placeholder below is commented out to avoid unnecessary fetches on
+    # non-Apple hardware; uncomment and add to outputs.inputs when needed.
+    # nixos-apple-silicon = {
+    #   url = "github:tpwrules/nixos-apple-silicon";
+    #   inputs.nixpkgs.follows = "nixpkgs";
+    # };
   };
 
   outputs = inputs@{ self, nixpkgs, home-manager, ... }:
     let
       lib = nixpkgs.lib;
+      # nixosConfigurations supports any system declared in a host's facts.nix.
+      # Supported system values for mySystem.system:
+      #   "x86_64-linux"   — AMD/Intel desktops, laptops, servers
+      #   "aarch64-linux"  — ARM64 SBCs (Qualcomm ThinkPad X13s, Raspberry Pi 4/5,
+      #                      Rockchip boards) and Apple Silicon (via Asahi Linux)
+      #   "riscv64-linux"  — RISC-V boards (SiFive HiFive Unmatched, StarFive VisionFive 2)
+      # The system is read from nix/hosts/<host>/facts.nix → mySystem.system.
+      # Defaults to defaultSystem when facts.nix is absent.
       defaultSystem = "x86_64-linux";
+      # devShell systems: build the developer shell for common cross-compilation hosts.
+      devSystems = [ "x86_64-linux" "aarch64-linux" ];
       profiles = [ "ai-dev" "gaming" "minimal" ];
       mkPkgs = system': import nixpkgs {
         system = system';
@@ -194,12 +216,15 @@
     {
       nixosConfigurations = mkHostConfigs;
       homeConfigurations = mkHomeConfigs;
-      devShells.${defaultSystem}.default = defaultPkgs.mkShell {
-        packages = with defaultPkgs; [
-          statix
-          deadnix
-          alejandra
-        ];
-      };
+      devShells = lib.genAttrs devSystems (system':
+        let pkgs' = mkPkgs system'; in {
+          default = pkgs'.mkShell {
+            packages = with pkgs'; [
+              statix
+              deadnix
+              alejandra
+            ];
+          };
+        });
     };
 }
