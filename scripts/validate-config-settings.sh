@@ -52,8 +52,12 @@ fi
 source "${PROJECT_ROOT}/config/settings.sh"
 # shellcheck source=/dev/null
 source "${PROJECT_ROOT}/lib/error-codes.sh"
-# shellcheck source=/dev/null
-source "${PROJECT_ROOT}/lib/logging.sh"
+# logging.sh is optional in this standalone validator; avoid hard failure if
+# logging dependencies or environment assumptions differ in CI shells.
+if [[ -f "${PROJECT_ROOT}/lib/logging.sh" ]]; then
+  # shellcheck source=/dev/null
+  source "${PROJECT_ROOT}/lib/logging.sh" || true
+fi
 
 # Minimal fallbacks when called outside the full deploy script.
 if ! declare -F print_error >/dev/null 2>&1; then

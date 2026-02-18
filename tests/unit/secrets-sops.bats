@@ -41,7 +41,7 @@ teardown() {
   run sops_encrypt_secrets_bundle "$SECRETS_DIR"
   [[ "$status" -eq 0 ]]
   [[ -f "$SECRETS_DIR/secrets.sops.yaml" ]]
-  run rg -n "^sops:" "$SECRETS_DIR/secrets.sops.yaml"
+  run grep -nE "^sops:" "$SECRETS_DIR/secrets.sops.yaml"
   [[ "$status" -eq 0 ]]
 }
 

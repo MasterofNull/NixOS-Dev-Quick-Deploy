@@ -3,17 +3,11 @@ title = "NixOS-Dev-Quick-Deploy Gitleaks Configuration"
 [extend]
 useDefault = true
 
-# These files intentionally contain authentication-header examples or public-key
-# metadata used for documentation and test fixtures.
-[[allowlists]]
-description = "Public age key metadata in SOPS config"
+# Keep compatibility with older gitleaks versions used by GitHub Action v2.
+[allowlist]
+description = "Known non-secret documentation and fixture patterns"
 paths = [
   '''^\.sops\.yaml$''',
-]
-
-[[allowlists]]
-description = "Documentation and test fixture auth-header examples"
-paths = [
   '''^AGENT_AUTH_SECRETS_ROTATION\.md$''',
   '''^docs/PROGRESSIVE-DISCLOSURE-GUIDE\.md$''',
   '''^docs/AI-AGENT-PROGRESSIVE-DISCLOSURE-README\.md$''',

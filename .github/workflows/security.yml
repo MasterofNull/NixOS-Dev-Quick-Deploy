@@ -232,14 +232,13 @@ jobs:
             --config .gitleaks.toml
             --report-format sarif
             --report-path gitleaks-security.sarif
-            --no-git
             --exit-code 1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
       - name: Upload Gitleaks SARIF
-        if: always()
+        if: always() && hashFiles('gitleaks-security.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: gitleaks-security.sarif
