@@ -56,6 +56,25 @@ in
 
     environment.systemPackages = resolvedPackages;
 
+    # ---- Security hardening (system-wide baseline) -------------------------
+    # These mirror the security block in templates/configuration.nix so that
+    # the flake-first path provides equivalent hardening without the template.
+
+    # polkit: privilege escalation daemon required by GUI apps (e.g. COSMIC
+    # settings, NetworkManager applet, package managers).
+    security.polkit.enable = lib.mkDefault true;
+
+    # sudo: restrict to wheel group; require password for every invocation.
+    security.sudo = {
+      enable           = lib.mkDefault true;
+      execWheelOnly    = lib.mkDefault true;   # wheel group only — no free sudo
+      wheelNeedsPassword = lib.mkDefault true; # no passwordless sudo by default
+    };
+
+    # AppArmor: mandatory access control — defence-in-depth for confined
+    # services. Does not interfere with normal user operations.
+    security.apparmor.enable = lib.mkDefault true;
+
     warnings = lib.optionals (missingPackageNames != [ ]) [
       "Ignoring unknown package names in mySystem.profileData.systemPackageNames: ${lib.concatStringsSep ", " missingPackageNames}"
     ];

@@ -336,6 +336,42 @@ assert_runtime_account_unlocked() {
   fi
 }
 
+# snapshot_password_hash: read and store the current shadow hash for an
+# account so we can detect if it changed after nixos-rebuild switch.
+# Stored in a shell variable named _PWHASH_SNAPSHOT_<sanitised_user>.
+# Non-fatal if /etc/shadow is unreadable (non-root context).
+snapshot_password_hash() {
+  local account="$1"
+  local hash=""
+  if hash="$(read_shadow_hash "$account" 2>/dev/null || true)" && [[ -n "$hash" ]]; then
+    # Sanitise: replace non-alphanumeric chars with underscore for var name.
+    local var_name="_PWHASH_SNAPSHOT_${account//[^a-zA-Z0-9]/_}"
+    printf -v "$var_name" '%s' "$hash"
+  fi
+}
+
+# assert_password_unchanged: compare current shadow hash to the snapshot.
+# Emits a hard warning (not a fatal error) if the hash changed, so the
+# operator knows the deploy unexpectedly modified the login password.
+# With users.mutableUsers = true (our default) this should NEVER fire.
+assert_password_unchanged() {
+  local account="$1"
+  local var_name="_PWHASH_SNAPSHOT_${account//[^a-zA-Z0-9]/_}"
+  local before="${!var_name:-}"
+  [[ -z "$before" ]] && return 0  # no snapshot — skip
+
+  local after=""
+  after="$(read_shadow_hash "$account" 2>/dev/null || true)"
+  [[ -z "$after" ]] && return 0  # cannot read — skip
+
+  if [[ "$before" != "$after" ]]; then
+    log "WARNING: password hash for '${account}' changed during nixos-rebuild switch."
+    log "  This should not happen with users.mutableUsers = true."
+    log "  If your password stopped working, run: passwd ${account}"
+    log "  Check that no NixOS module sets hashedPassword/initialPassword for this user."
+  fi
+}
+
 ensure_host_facts_access() {
   local facts_file="${REPO_ROOT}/nix/hosts/${HOST_NAME}/facts.nix"
   [[ -e "$facts_file" ]] || return 0
@@ -851,6 +887,8 @@ ensure_host_facts_access
 assert_host_storage_config
 assert_previous_boot_fsck_clean
 assert_runtime_account_unlocked "${PRIMARY_USER}" false
+# Snapshot current password hash so we can detect accidental changes post-switch.
+snapshot_password_hash "${PRIMARY_USER}"
 
 NIXOS_TARGET="${NIXOS_TARGET_OVERRIDE:-${HOST_NAME}-${PROFILE}}"
 HM_TARGET="${HM_TARGET_OVERRIDE:-${PRIMARY_USER}-${HOST_NAME}}"
@@ -957,6 +995,8 @@ else
 fi
 
 assert_runtime_account_unlocked "${PRIMARY_USER}" true
+# Verify the switch did not unexpectedly reset the login password.
+assert_password_unchanged "${PRIMARY_USER}"
 
 if [[ "$RUN_FLATPAK_SYNC" == true && -x "${REPO_ROOT}/scripts/sync-flatpak-profile.sh" ]]; then
   log "Syncing Flatpak apps for profile '${PROFILE}'"

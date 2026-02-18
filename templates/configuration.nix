@@ -239,9 +239,22 @@ in
     # AMD P-state and NVMe power management set by cpu/amd.nix and storage.nix.
   };
 
-  # CPU microcode updates handled by nix/modules/hardware/cpu/{amd,intel}.nix.
-  # GPU hardware configuration (packages, VA-API, early KMS) handled by
-  # nix/modules/hardware/gpu/{amd,intel,nvidia}.nix.
+  # CPU modules (nix/modules/hardware/cpu/) — selected via mySystem.hardware.cpuVendor in facts.nix:
+  #   amd.nix         AMD Ryzen/EPYC (amd-ucode, k10temp, amd-pstate, thermald disabled)
+  #   intel.nix       Intel Core/Xeon (intel-ucode, thermald, intel_pstate)
+  #   arm.nix         Generic ARM64 Cortex-A (Raspberry Pi, AllWinner, Rockchip SBCs)
+  #   qualcomm.nix    Qualcomm Snapdragon (ThinkPad X13s, Snapdragon X Elite, cpufreq-hw)
+  #   apple-silicon.nix  Apple M-series via Asahi Linux (m1n1+U-Boot, notch param, Asahi kernel)
+  #   riscv64.nix     RISC-V 64-bit (SiFive HiFive, StarFive VisionFive 2, QEMU virt)
+  #
+  # GPU modules (nix/modules/hardware/gpu/) — selected via mySystem.hardware.gpuVendor:
+  #   amd.nix         AMD Radeon (amdgpu, LACT daemon, ROCm OpenCL, VA-API)
+  #   intel.nix       Intel integrated (i915, iHD VA-API, intel-media-driver)
+  #   intel-arc.nix   Intel Arc A/B discrete (xe driver on 26.05+, ANV Vulkan, NEO OpenCL)
+  #   nvidia.nix      NVIDIA (proprietary or nouveau, CUDA, NVENC/NVDEC VA-API)
+  #   adreno.nix      Qualcomm Adreno SoC (Mesa freedreno + Turnip Vulkan)
+  #   mali.nix        ARM Mali SoC (Mesa Panfrost/Lima, no OpenCL)
+  #   apple.nix       Apple AGX (mesa-asahi-edge overlay, requires Asahi kernel)
 
   # ===========================================================================
   # System Optimizations & Storage Maintenance (GLF OS inspired)

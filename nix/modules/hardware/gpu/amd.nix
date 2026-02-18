@@ -3,9 +3,15 @@ let
   cfg = config.mySystem;
   isAmd        = cfg.hardware.gpuVendor == "amd";
   isMobile     = cfg.hardware.isMobile;
+  # AMD iGPU in a hybrid system (AMD Ryzen iGPU + NVIDIA/Intel dGPU).
+  # e.g. Ryzen 7 5800H + RTX 3080 on ASUS ROG: gpuVendor="nvidia", igpuVendor="amd".
+  # The AMD iGPU still needs Mesa packages and the amdgpu kernel module.
+  isAmdIgpu    = cfg.hardware.igpuVendor == "amd";
+  # True when AMD is involved as primary or integrated GPU.
+  hasAmd       = isAmd || isAmdIgpu;
   # Dual-AMD: APU + discrete AMD dGPU (e.g. Ryzen APU + RX 6700M on ASUS ROG G14).
   # igpuVendor = "amd" is set by hardware-detect.sh when two AMD PCI entries found.
-  isDualAmd    = isAmd && cfg.hardware.igpuVendor == "amd";
+  isDualAmd    = isAmd && isAmdIgpu;
   # Discrete AMD on a laptop (not APU-only): enable runtime PM.
   isMobileDiscreteAmd = isAmd && isMobile && isDualAmd;
   hasLact      = lib.versionAtLeast lib.version "26.05";
@@ -13,9 +19,11 @@ in
 {
   # ---------------------------------------------------------------------------
   # AMD GPU: Mesa, Vulkan, VA-API, ROCm (gated on aiStack role), LACT.
+  # Activates when AMD is the primary dGPU (isAmd) OR the iGPU in a hybrid
+  # system (isAmdIgpu), e.g. Ryzen iGPU + NVIDIA dGPU (ASUS ROG laptops).
   # ---------------------------------------------------------------------------
 
-  hardware.graphics = lib.mkIf isAmd {
+  hardware.graphics = lib.mkIf hasAmd {
     enable      = lib.mkDefault true;
     enable32Bit = lib.mkDefault true;   # 32-bit games and Steam Proton
 
@@ -31,18 +39,23 @@ in
       )
     );
 
-    # 32-bit Mesa for Steam Proton / Wine. mesa here is the 32-bit variant.
-    extraPackages32 = with pkgs.pkgsi686Linux; lib.mkAfter [ mesa ];
+    # 32-bit Mesa for Steam Proton / Wine (x86_64 only; no-op on aarch64).
+    extraPackages32 = lib.mkAfter (
+      lib.optionals (pkgs ? pkgsi686Linux && pkgs.pkgsi686Linux ? mesa)
+        [ pkgs.pkgsi686Linux.mesa ]
+    );
   };
 
   # Note: hardware.amdgpu.amdvlk was removed in newer NixOS releases.
   # RADV (Mesa Vulkan) is enabled by default and is the supported path.
 
-  # amdgpu initrd: only load in initrd when earlyKmsPolicy = "force".
-  # Default "auto" lets the driver initialise itself — correct for AMD APU.
-  boot.initrd.kernelModules = lib.mkIf (isAmd && cfg.hardware.earlyKmsPolicy == "force")
+  # amdgpu initrd: load for any system with AMD GPU (primary or iGPU in hybrid).
+  # Only force-loaded in initrd when earlyKmsPolicy = "force"; default "auto"
+  # lets the driver initialise itself — correct for AMD APU and hybrid iGPU.
+  boot.initrd.kernelModules = lib.mkIf (hasAmd && cfg.hardware.earlyKmsPolicy == "force")
     (lib.mkAfter [ "amdgpu" ]);
 
+  # kernel params only meaningful when AMD is the primary/sole GPU.
   boot.kernelParams = lib.mkIf isAmd (lib.mkAfter (
     [
       # GPU hang recovery: reset GPU on detected hang rather than requiring reboot.
