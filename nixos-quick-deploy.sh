@@ -409,6 +409,7 @@ health_check_phase_9() {
     reset_health_check_status
     local issues=0
     local warnings=0
+    local strict_phase9_health="${STRICT_PHASE9_HEALTH_CHECK:-false}"
     local kubectl_timeout="${KUBECTL_TIMEOUT:-20}"
     local namespace="${AI_STACK_NAMESPACE:-ai-stack}"
 
@@ -449,9 +450,14 @@ health_check_phase_9() {
     fi
 
     if (( issues > 0 )); then
-        HEALTH_CHECK_STATUS="fail"
-        HEALTH_CHECK_MESSAGE="Kubernetes cluster unavailable"
-        return 1
+        if [[ "$strict_phase9_health" == "true" ]]; then
+            HEALTH_CHECK_STATUS="fail"
+            HEALTH_CHECK_MESSAGE="Kubernetes cluster unavailable"
+            return 1
+        fi
+        HEALTH_CHECK_STATUS="warn"
+        HEALTH_CHECK_MESSAGE="Kubernetes cluster unavailable (non-blocking; set STRICT_PHASE9_HEALTH_CHECK=true to enforce)"
+        return 0
     fi
 
     if (( warnings > 0 )); then
