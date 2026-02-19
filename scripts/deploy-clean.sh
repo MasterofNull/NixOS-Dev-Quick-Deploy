@@ -368,6 +368,16 @@ nix_eval_raw_safe() {
   run_nix_eval_with_timeout nix eval --raw "${expr}"
 }
 
+nix_eval_bool_safe() {
+  local expr="$1"
+  local raw
+  raw="$(run_nix_eval_with_timeout nix eval --json "${expr}")" || return 1
+  case "$raw" in
+    true|false) printf '%s\n' "$raw" ;;
+    *) return 1 ;;
+  esac
+}
+
 run_nix_eval_with_timeout() {
   local timeout_secs="${NIX_EVAL_TIMEOUT_SECONDS:-60}"
   local retry_timeout_secs="${NIX_EVAL_RETRY_TIMEOUT_SECONDS:-$((timeout_secs * 2))}"
@@ -565,33 +575,47 @@ in
   else "ok"
 EOF
 
-  if ! result="$(nix_eval_expr_raw_safe "$expr" 2>/dev/null || true)"; then
+  local eval_err
+  eval_err="$(mktemp)"
+  if ! result="$(nix_eval_expr_raw_safe "$expr" 2>"${eval_err}")"; then
     result=""
   fi
 
   case "$result" in
     ok)
-      return 0
       ;;
     primary-hash-locked)
+      rm -f "${eval_err}" >/dev/null 2>&1 || true
       die "Target config declares locked hashedPassword for primary user '${PRIMARY_USER}'. Refusing deploy."
       ;;
     missing-primary-user)
+      rm -f "${eval_err}" >/dev/null 2>&1 || true
       die "Target config sets users.mutableUsers=false but does not declare primary user '${PRIMARY_USER}'. Refusing deploy."
       ;;
     missing-primary-password)
+      rm -f "${eval_err}" >/dev/null 2>&1 || true
       die "Target config declares primary user '${PRIMARY_USER}' without a password while users.mutableUsers=false. Refusing deploy."
       ;;
     root-hash-locked)
+      rm -f "${eval_err}" >/dev/null 2>&1 || true
       die "Target config declares a locked root hashedPassword while initrd emergency access is enabled. Refusing deploy."
       ;;
     root-missing-password)
+      rm -f "${eval_err}" >/dev/null 2>&1 || true
       die "Target config enables initrd emergency access but root user is declared without a password directive. Refusing deploy."
       ;;
     *)
-      log "Account guardrail preflight could not fully evaluate target config in time; continuing with runtime checks."
+      local reason=""
+      reason="$(tr '\n' ' ' < "${eval_err}" 2>/dev/null | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//')"
+      if [[ -n "${reason}" ]]; then
+        log "Account guardrail preflight could not fully evaluate target config; continuing with runtime checks (${reason})."
+      else
+        log "Account guardrail preflight could not fully evaluate target config; continuing with runtime checks."
+      fi
       ;;
   esac
+
+  rm -f "${eval_err}" >/dev/null 2>&1 || true
 }
 
 extract_host_fs_field() {
@@ -677,13 +701,13 @@ assert_bootloader_preflight() {
   [[ "${RUN_PHASE0_DISKO}" == true ]] && return 0
 
   local systemd_boot_enabled grub_enabled
-  if ! systemd_boot_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.boot.loader.systemd-boot.enable" 2>/dev/null)"; then
-    log "Bootloader preflight: unable to evaluate systemd-boot enable flag in time; skipping strict bootloader assertion."
+  if ! systemd_boot_enabled="$(nix_eval_bool_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.boot.loader.systemd-boot.enable" 2>/dev/null)"; then
+    log "Bootloader preflight: unable to evaluate systemd-boot enable flag; skipping strict bootloader assertion."
     return 0
   fi
 
-  if ! grub_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.boot.loader.grub.enable" 2>/dev/null)"; then
-    log "Bootloader preflight: unable to evaluate grub enable flag in time; skipping strict bootloader assertion."
+  if ! grub_enabled="$(nix_eval_bool_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.boot.loader.grub.enable" 2>/dev/null)"; then
+    log "Bootloader preflight: unable to evaluate grub enable flag; skipping strict bootloader assertion."
     return 0
   fi
 
