@@ -69,6 +69,26 @@ in
       enable           = lib.mkDefault true;
       execWheelOnly    = lib.mkDefault true;   # wheel group only — no free sudo
       wheelNeedsPassword = lib.mkDefault true; # no passwordless sudo by default
+
+      # Extend credential cache to 60 minutes so a single deploy run (nixos-rebuild
+      # → home-manager → flatpak sync) does not prompt for password multiple times.
+      # The default 5-minute timeout expires mid-deploy when operations take >5 min.
+      extraConfig = lib.mkDefault ''
+        Defaults timestamp_timeout=60
+      '';
+
+      # Allow wheel members to run bootctl status without a password.
+      # deploy-clean.sh calls bootctl status as the non-root operator user to
+      # validate the bootloader before switching; without this rule the preflight
+      # silently skips all bootloader checks.
+      extraRules = lib.mkDefault [
+        {
+          groups   = [ "wheel" ];
+          commands = [
+            { command = "${pkgs.systemd}/bin/bootctl"; options = [ "NOPASSWD" ]; }
+          ];
+        }
+      ];
     };
 
     # AppArmor: mandatory access control — defence-in-depth for confined

@@ -3421,14 +3421,25 @@ run_flake_first_deployment() {
         return 1
     fi
 
-    if ! ensure_ai_stack_env; then
-        print_error "Failed to prepare AI stack environment configuration"
-        return 1
+    # Detect backend from the just-written deploy-options file.
+    # K3s-specific steps (Postgres/Grafana credentials, embeddings prewarm)
+    # are irrelevant for the ollama backend and must not prompt/fail there.
+    local _deploy_opts="${SCRIPT_DIR}/nix/hosts/${detected_host}/deploy-options.nix"
+    local _ai_backend="ollama"
+    if grep -qE 'backend\s*=.*"k3s"' "$_deploy_opts" 2>/dev/null; then
+        _ai_backend="k3s"
     fi
 
-    # Embeddings prewarm is only relevant for the K3s backend (sentence-transformers
-    # sidecar). Skip for the ollama backend where models are pulled by ollama itself.
-    # prewarm_ai_stack_embeddings_cache
+    if [[ "$_ai_backend" == "k3s" ]]; then
+        if ! ensure_ai_stack_env; then
+            print_error "Failed to prepare AI stack environment configuration"
+            return 1
+        fi
+        # Embeddings prewarm: sentence-transformers sidecar, k3s backend only.
+        prewarm_ai_stack_embeddings_cache
+    else
+        print_info "Skipping K3s credentials and embeddings prewarm (backend=${_ai_backend})"
+    fi
 
     if ! apply_flake_first_ai_stack_toggle; then
         print_error "Failed to persist AI stack declarative toggle state"
