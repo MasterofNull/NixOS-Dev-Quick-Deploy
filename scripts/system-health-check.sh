@@ -1085,20 +1085,23 @@ check_shell_alias() {
 
     print_check "$description"
 
-    # Check if alias exists
-    if alias "$alias_name" &> /dev/null 2>&1; then
-        local alias_value=$(alias "$alias_name" 2>&1 | sed "s/^$alias_name=//")
-        print_success "$description"
-        print_detail "Alias: $alias_value"
-        return 0
-    # Check if it's a function
-    elif declare -f "$alias_name" &> /dev/null; then
-        print_success "$description (function)"
-        return 0
-    else
-        print_fail "$description not found"
+    if ! command -v zsh >/dev/null 2>&1; then
+        print_fail "$description not found (zsh unavailable)"
         return 1
     fi
+
+    local probe_script='source "$HOME/.zshrc" 2>/dev/null || true; alias '"$alias_name"' 2>/dev/null || whence -w '"$alias_name"' 2>/dev/null'
+    local probe_output=""
+    probe_output=$(zsh -ic "$probe_script" 2>/dev/null || true)
+
+    if [ -n "$probe_output" ]; then
+        print_success "$description"
+        print_detail "Resolved in zsh: $probe_output"
+        return 0
+    fi
+
+    print_fail "$description not found"
+    return 1
 }
 
 check_path_variable() {
@@ -1836,23 +1839,15 @@ run_all_checks() {
     check_file_exists "$HOME/.zshrc" "ZSH configuration" true
     check_command "zsh" "ZSH shell" true
 
-    # Check aliases and functions
-    if [ -n "${ZSH_VERSION:-}" ] || [ "$SHELL" = "/bin/zsh" ] || [ "$SHELL" = "$HOME/.nix-profile/bin/zsh" ]; then
-        # Source zshrc to get aliases
-        source "$HOME/.zshrc" 2>/dev/null || true
+    # Check aliases/functions directly in a zsh subshell so results are stable
+    # even when this health check is launched from bash/systemd.
+    check_shell_alias "aidb-dev" "aidb-dev alias/function"
+    check_shell_alias "aidb-shell" "aidb-shell alias"
+    check_shell_alias "hms" "hms alias (home-manager switch)"
+    check_shell_alias "nrs" "nrs alias (nixos-rebuild switch)"
 
-        check_shell_alias "aidb-dev" "aidb-dev alias/function"
-        check_shell_alias "aidb-shell" "aidb-shell alias"
-        check_shell_alias "hms" "hms alias (home-manager switch)"
-        check_shell_alias "nrs" "nrs alias (nixos-rebuild switch)"
-    else
-        print_warning "Not running in ZSH - skipping alias checks"
-        ((TOTAL_CHECKS+=4))
-        ((WARNING_CHECKS+=4))
-    fi
-
-    # Check Powerlevel10k
-    check_file_exists "$HOME/.config/p10k/.configured" "Powerlevel10k configured" false
+    # Powerlevel10k is required for this workstation baseline.
+    check_file_exists "$HOME/.config/p10k/.configured" "Powerlevel10k configured" true
 
     # ==========================================================================
     # Flatpak Applications
