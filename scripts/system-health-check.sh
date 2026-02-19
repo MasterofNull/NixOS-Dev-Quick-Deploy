@@ -238,6 +238,14 @@ print_info() {
     echo -e "  ${BLUE}•${NC} $1"
 }
 
+version_ge() {
+    local current="${1:-0.0.0}"
+    local required="${2:-0.0.0}"
+    local first
+    first=$(printf '%s\n%s\n' "$required" "$current" | sort -V | head -n1)
+    [[ "$first" == "$required" ]]
+}
+
 print_detail() {
     if [ "$DETAILED" = true ]; then
         echo -e "    ${BLUE}→${NC} $1"
@@ -1489,9 +1497,18 @@ run_all_checks() {
         local claude_location
         claude_location=$(command -v claude)
         local claude_version
+        local claude_version_norm
+        local claude_min_version="${CLAUDE_CODE_MIN_VERSION:-2.1.47}"
         claude_version=$(claude --version 2>/dev/null || echo "unknown")
-        print_success "Claude Code available (${claude_version})"
-        print_detail "Location: $claude_location"
+        claude_version_norm=$(printf '%s' "$claude_version" | sed -E 's/[^0-9]*([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+        if [[ "$claude_location" == *".nix-profile"* ]] && [[ -n "$claude_version_norm" ]] && ! version_ge "$claude_version_norm" "$claude_min_version"; then
+            print_fail "Claude Code pinned via Nix profile is outdated (${claude_version})"
+            print_detail "Location: $claude_location"
+            print_detail "Declarative fix: remove pkgs.claude-code and let native installer manage updates"
+        else
+            print_success "Claude Code available (${claude_version})"
+            print_detail "Location: $claude_location"
+        fi
     elif [ -x "$claude_legacy_wrapper" ]; then
         print_warning "Claude Code found at legacy npm wrapper path only"
         print_detail "Legacy wrapper: $claude_legacy_wrapper"
@@ -1967,8 +1984,8 @@ run_all_checks() {
 
     print_check "K3s cluster connectivity"
     if [[ "$k3s_expected" != "true" ]]; then
-        print_fail "K3s backend not configured on this host"
-        print_detail "Run Phase 9 to provision K3s and AI stack resources"
+        print_warning "K3s backend not configured on this host"
+        print_detail "This is expected when running the llama.cpp backend"
     elif [[ -n "$KUBECTL_BIN" ]]; then
         local kube_err=""
         local -a kube_args=(--request-timeout="${KUBECTL_TIMEOUT:-60}s")
@@ -2002,7 +2019,9 @@ run_all_checks() {
         fi
     fi
 
-    if [[ -z "$pods_output" ]]; then
+    if [[ "$k3s_expected" != "true" ]]; then
+        print_warning "K3s pod checks skipped (backend not configured)"
+    elif [[ -z "$pods_output" ]]; then
         if [[ -n "$pods_err" ]]; then
             print_fail "Unable to query pods in namespace '${AI_STACK_NAMESPACE}'"
             if [[ "$DETAILED" == "true" ]]; then
