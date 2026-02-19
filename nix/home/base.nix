@@ -8,9 +8,30 @@
 #   - XDG user directories
 #   - Direnv: automatic .envrc / nix develop shell loading
 #   - SSH client defaults
+#   - VSCodium: declarative extensions, settings, wrapper, Continue.dev config
 #
 # Per-host customisation goes in nix/hosts/<host>/home.nix.
 # ---------------------------------------------------------------------------
+let
+  # Guard helper — silently skips an extension when its scope or name is
+  # absent from pkgs.vscode-extensions (e.g. older or slimmer channels).
+  vsExt = scope: name:
+    lib.optionals
+      (pkgs ? vscode-extensions
+        && pkgs.vscode-extensions ? ${scope}
+        && pkgs.vscode-extensions.${scope} ? ${name})
+      [ pkgs.vscode-extensions.${scope}.${name} ];
+
+  # Nix store paths for tools the code-nix wrapper needs on its PATH.
+  # These packages are in home.packages below so they're always present.
+  vsWrapperPath = lib.makeBinPath (with pkgs; [
+    nil alejandra deadnix statix   # Nix LSP + formatters
+    shellcheck                      # Shell script linting
+    python3                         # Python runtime
+    go                              # Go runtime
+    cargo                           # Rust toolchain
+  ]);
+in
 {
   home.stateVersion = "25.11";
   programs.home-manager.enable = true;
@@ -49,10 +70,21 @@
     # Core dev/tooling runtimes (critical for quick-deploy workflows)
     git gh tree file xxd
     nodejs go cargo ruby
-    neovim vscodium kubectl
+    # vscodium is installed via programs.vscode below; listing it here too
+    # would create a duplicate entry in the nix profile.
+    neovim kubectl
 
     # Nix utilities
     nix-tree nix-diff nvd
+
+    # Nix tooling — also on the VSCodium wrapper PATH (vsWrapperPath above)
+    nil alejandra deadnix statix
+
+    # Shell linting — used by the shellcheck VSCodium extension
+    shellcheck
+
+    # Terminal markdown viewer
+    glow
 
     # Python AI/dev toolchain expected by system health checks
     (python3.withPackages (ps: with ps; [
@@ -172,4 +204,198 @@
     PAGER   = "less";
     LESS    = "-FRX";
   };
+
+  # =========================================================================
+  # VSCodium — declarative extensions, settings, wrapper, Continue.dev
+  #
+  # Applies to every host/profile because VSCodium ships in all three
+  # profileData.systemPackageNames lists (ai-dev, gaming, minimal).
+  # Per-host home.nix files may extend userSettings or add extensions via
+  # programs.vscode.extensions using the same vsExt guard pattern.
+  # =========================================================================
+
+  # ---- programs.vscode (vscodium) -----------------------------------------
+  # The module writes ~/.config/VSCodium/User/settings.json and links
+  # extensions into the VSCodium extensions directory.
+  # Do NOT create home.file.".config/VSCodium/User/settings.json" in any
+  # other module — that would conflict with this managed file.
+  programs.vscode = {
+    enable  = true;
+    package = pkgs.vscodium;
+
+    # mutableExtensionsDir = true lets users install extra extensions at
+    # runtime (Open VSX, .vsix drag-drop) without losing them on switch.
+    mutableExtensionsDir = true;
+
+    extensions =
+      # ── Nix ──────────────────────────────────────────────────────────────
+      vsExt "jnoortheen" "nix-ide"            # Nix language + nil LSP
+      # ── Python ───────────────────────────────────────────────────────────
+      ++ vsExt "ms-python"   "python"         # Python language support
+      ++ vsExt "ms-python"   "debugpy"        # Python debugger
+      ++ vsExt "ms-pyright"  "pyright"        # Static type checker
+      # ── Go ───────────────────────────────────────────────────────────────
+      ++ vsExt "golang"      "go"             # Go language support
+      # ── Rust ─────────────────────────────────────────────────────────────
+      ++ vsExt "rust-lang"   "rust-analyzer"  # Rust LSP
+      # ── Git / version control ─────────────────────────────────────────────
+      ++ vsExt "eamodio"     "gitlens"        # Git supercharged
+      ++ vsExt "mhutchie"    "git-graph"      # Git branch graph
+      # ── AI coding assistant ───────────────────────────────────────────────
+      ++ vsExt "continue"    "continue"       # Continue.dev → local Ollama
+      # ── Data / serialisation formats ──────────────────────────────────────
+      ++ vsExt "redhat"      "vscode-yaml"
+      ++ vsExt "tamasfe"     "even-better-toml"
+      ++ vsExt "mechatroner" "rainbow-csv"
+      # ── Shell scripting ───────────────────────────────────────────────────
+      ++ vsExt "timonwong"   "shellcheck"     # Powered by shellcheck binary
+      # ── Formatting / editing quality-of-life ─────────────────────────────
+      ++ vsExt "esbenp"      "prettier-vscode"
+      ++ vsExt "streetsidesoftware" "code-spell-checker"
+      # ── Markdown ─────────────────────────────────────────────────────────
+      ++ vsExt "yzhang"      "markdown-all-in-one"
+      # ── Docker / containers ───────────────────────────────────────────────
+      ++ vsExt "ms-azuretools" "vscode-docker";
+
+    userSettings = {
+      # ── Editor ───────────────────────────────────────────────────────────
+      "editor.fontSize"               = 14;
+      "editor.tabSize"                = 2;
+      "editor.insertSpaces"           = true;
+      "editor.formatOnSave"           = true;
+      "editor.formatOnPaste"          = false;
+      "editor.minimap.enabled"        = false;
+      "editor.wordWrap"               = "on";
+      "editor.rulers"                 = [ 80 120 ];
+      "editor.bracketPairColorization.enabled" = true;
+      "editor.guides.bracketPairs"    = "active";
+      "editor.inlineSuggest.enabled"  = true;
+      "editor.suggestSelection"       = "first";
+
+      # ── Files ─────────────────────────────────────────────────────────────
+      "files.trimTrailingWhitespace"  = true;
+      "files.insertFinalNewline"      = true;
+      "files.trimFinalNewlines"       = true;
+      "files.eol"                     = "\n";
+      "files.autoSave"                = "onFocusChange";
+      "files.exclude" = {
+        "**/.git"        = true;
+        "**/.DS_Store"   = true;
+        "**/node_modules" = true;
+        "**/__pycache__" = true;
+        "**/.mypy_cache" = true;
+        "**/.ruff_cache" = true;
+        "**/result"      = true;   # nix build results
+        "**/result-*"    = true;
+      };
+
+      # ── Terminal ──────────────────────────────────────────────────────────
+      "terminal.integrated.defaultProfile.linux" = "zsh";
+      "terminal.integrated.fontSize"             = 13;
+      "terminal.integrated.scrollback"           = 10000;
+
+      # ── Workbench ─────────────────────────────────────────────────────────
+      "workbench.colorTheme"           = "Default Dark Modern";
+      "workbench.iconTheme"            = "vs-seti";
+      "workbench.startupEditor"        = "none";
+      "workbench.editor.enablePreview" = false;
+
+      # ── Nix (jnoortheen.nix-ide + nil LSP) ───────────────────────────────
+      "nix.enableLanguageServer"                  = true;
+      "nix.serverPath"                            = "nil";
+      "nix.serverSettings".nil.formatting.command = [ "alejandra" ];
+      "[nix]"."editor.defaultFormatter"           = "jnoortheen.nix-ide";
+
+      # ── Python ────────────────────────────────────────────────────────────
+      "python.defaultInterpreterPath"       = "python3";
+      "python.analysis.typeCheckingMode"    = "basic";
+      "[python]"."editor.defaultFormatter" = "ms-python.python";
+
+      # ── Go ────────────────────────────────────────────────────────────────
+      "go.useLanguageServer"           = true;
+      "go.toolsManagement.autoUpdate"  = false;   # nixpkgs manages go tools
+      "[go]"."editor.formatOnSave"     = true;
+      "[go]"."editor.defaultFormatter" = "golang.go";
+
+      # ── Rust ──────────────────────────────────────────────────────────────
+      "rust-analyzer.checkOnSave.command"  = "clippy";
+      "rust-analyzer.inlayHints.enable"    = true;
+      "[rust]"."editor.defaultFormatter"   = "rust-lang.rust-analyzer";
+
+      # ── YAML ──────────────────────────────────────────────────────────────
+      "[yaml]"."editor.defaultFormatter"   = "redhat.vscode-yaml";
+      "yaml.validate"                      = true;
+
+      # ── Continue.dev — wired to local Ollama (port 11434) ─────────────────
+      "continue.telemetryEnabled"          = false;
+
+      # ── Git ───────────────────────────────────────────────────────────────
+      "git.enableSmartCommit"              = true;
+      "git.confirmSync"                    = false;
+      "git.autofetch"                      = true;
+      "gitlens.telemetry.enabled"          = false;
+
+      # ── Shell ─────────────────────────────────────────────────────────────
+      "shellcheck.enable"                  = true;
+      "shellcheck.executablePath"          = "shellcheck";
+
+      # ── Prettier ──────────────────────────────────────────────────────────
+      "[javascript]"."editor.defaultFormatter" = "esbenp.prettier-vscode";
+      "[typescript]"."editor.defaultFormatter" = "esbenp.prettier-vscode";
+      "[json]"."editor.defaultFormatter"       = "esbenp.prettier-vscode";
+      "[jsonc]"."editor.defaultFormatter"      = "esbenp.prettier-vscode";
+      "[markdown]"."editor.defaultFormatter"   = "yzhang.markdown-all-in-one";
+
+      # ── Telemetry — all off ────────────────────────────────────────────────
+      "telemetry.telemetryLevel"           = "off";
+      "redhat.telemetry.enabled"           = false;
+
+      # ── Auto-update — disabled (nixpkgs manages VSCodium version) ─────────
+      "update.mode"                        = "none";
+    };
+  };
+
+  # ---- VSCodium launch wrapper ---------------------------------------------
+  # Prepends Nix-managed tool paths so language servers and linters work when
+  # VSCodium is launched from the COSMIC app launcher (stripped PATH) rather
+  # than a shell session that sources ~/.nix-profile/etc/profile.d/hm-session-vars.sh.
+  home.file.".local/bin/code-nix" = {
+    executable = true;
+    text = ''
+      #!/usr/bin/env bash
+      # VSCodium wrapper — prepends nix-managed tool paths.
+      export PATH="${vsWrapperPath}:$PATH"
+      exec ${pkgs.vscodium}/bin/codium "$@"
+    '';
+  };
+
+  # ---- Continue.dev config — llama.cpp backend --------------------------------
+  # Written once on first activation; not managed as a symlink so the user
+  # can edit it without home-manager clobbering their changes on switch.
+  # Points at the llama-server OpenAI-compatible API on :8080.
+  home.activation.createContinueConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    if [ ! -f "$HOME/.continue/config.json" ]; then
+      mkdir -p "$HOME/.continue"
+      cat > "$HOME/.continue/config.json" << 'CONTINUE_EOF'
+{
+  "models": [
+    {
+      "title": "llama.cpp (local :8080)",
+      "provider": "openai",
+      "apiKey": "dummy",
+      "apiBase": "http://127.0.0.1:8080/v1"
+    }
+  ],
+  "tabAutocompleteModel": {
+    "title": "llama.cpp autocomplete",
+    "provider": "openai",
+    "apiKey": "dummy",
+    "apiBase": "http://127.0.0.1:8080/v1",
+    "model": "local-model"
+  },
+  "allowAnonymousTelemetry": false
+}
+CONTINUE_EOF
+    fi
+  '';
 }
