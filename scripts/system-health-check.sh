@@ -1858,6 +1858,34 @@ run_all_checks() {
     check_directory_exists "$HOME/.config/VSCodium/User" "VSCodium config directory" true
     check_file_exists "$HOME/.config/VSCodium/User/settings.json" "VSCodium settings.json" true
 
+    # Declarative AI extension set verification (warn-only).
+    if command -v codium >/dev/null 2>&1; then
+        local codium_extensions
+        codium_extensions=$(codium --list-extensions 2>/dev/null || true)
+        local expected_exts=("Anthropic.claude-code" "continue.continue")
+        local entry package version display bin_command wrapper_name extension_id debug_env
+        for entry in "${NPM_AI_PACKAGE_MANIFEST[@]}"; do
+            IFS='|' read -r package version display bin_command wrapper_name extension_id debug_env <<<"$entry"
+            if [[ -n "$extension_id" ]]; then
+                expected_exts+=("$extension_id")
+            fi
+        done
+
+        local ext_id
+        local -A seen_ext=()
+        for ext_id in "${expected_exts[@]}"; do
+            [[ -n "${seen_ext[$ext_id]:-}" ]] && continue
+            seen_ext[$ext_id]=1
+            print_check "VSCodium extension ${ext_id}"
+            if echo "$codium_extensions" | tr '[:upper:]' '[:lower:]' | grep -qx "$(echo "$ext_id" | tr '[:upper:]' '[:lower:]')"; then
+                print_success "${ext_id} installed"
+            else
+                print_warning "${ext_id} missing"
+                print_detail "Attempt install: codium --install-extension ${ext_id}"
+            fi
+        done
+    fi
+
     # ==========================================================================
     # Shell Configuration
     # ==========================================================================

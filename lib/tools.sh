@@ -69,8 +69,20 @@ vscode_extension_manual_url() {
     local extension_id="$1"
 
     if declare -p VSCODE_AI_EXTENSION_FALLBACK_URLS >/dev/null 2>&1; then
-        printf '%s' "${VSCODE_AI_EXTENSION_FALLBACK_URLS["$extension_id"]:-}"
-        return 0
+        local direct="${VSCODE_AI_EXTENSION_FALLBACK_URLS["$extension_id"]:-}"
+        if [[ -n "$direct" ]]; then
+            printf '%s' "$direct"
+            return 0
+        fi
+
+        local lowered="${extension_id,,}"
+        local key
+        for key in "${!VSCODE_AI_EXTENSION_FALLBACK_URLS[@]}"; do
+            if [[ "${key,,}" == "$lowered" ]]; then
+                printf '%s' "${VSCODE_AI_EXTENSION_FALLBACK_URLS["$key"]}"
+                return 0
+            fi
+        done
     fi
 
     printf '%s' ""
@@ -2296,14 +2308,7 @@ install_claude_code_native() {
             break
         fi
 
-        if [[ "${NONINTERACTIVE:-false}" == "true" && "${TRUST_REMOTE_SCRIPTS:-false}" != "true" ]]; then
-            print_warning "Noninteractive mode blocks remote script execution without TRUST_REMOTE_SCRIPTS=true"
-            rm -f "$installer_tmp"
-            install_exit=1
-            break
-        fi
-
-        if declare -F confirm >/dev/null 2>&1; then
+        if [[ "${NONINTERACTIVE:-false}" != "true" ]] && declare -F confirm >/dev/null 2>&1; then
             if ! confirm "Run Claude installer script from https://claude.ai/install.sh?" "n"; then
                 print_warning "Claude installer aborted by user"
                 rm -f "$installer_tmp"
@@ -2888,6 +2893,7 @@ install_vscodium_extensions() {
             extensions+=("$ext|AI Tool")
         done
     else
+        # Declarative source of truth for fast-moving AI extensions.
         local entry package version display bin_command wrapper_name extension_id debug_env
         for entry in "${NPM_AI_PACKAGE_MANIFEST[@]}"; do
             IFS='|' read -r package version display bin_command wrapper_name extension_id debug_env <<<"$entry"

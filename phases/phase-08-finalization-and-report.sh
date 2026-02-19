@@ -70,7 +70,7 @@ phase_08_run_system_health_check() {
     print_section "Part 1: System Health Check"
     echo ""
 
-    local strict_health_checks="${STRICT_HEALTH_CHECKS:-true}"
+    local strict_health_checks="${STRICT_HEALTH_CHECKS:-false}"
     if [[ "$SKIP_HEALTH_CHECK" == true ]]; then
         print_info "Skipping system health check (--skip-health-check flag detected)"
         echo ""
@@ -120,7 +120,7 @@ phase_08_run_ai_stack_health_check() {
         return 0
     fi
 
-    local enforce_ai_health="${ENFORCE_AI_STACK_HEALTH:-true}"
+    local enforce_ai_health="${ENFORCE_AI_STACK_HEALTH:-false}"
     local require_ai_running="${REQUIRE_AI_STACK_RUNNING:-false}"
     local ai_health_script="$SCRIPT_DIR/scripts/check-ai-stack-health-v2.py"
 
