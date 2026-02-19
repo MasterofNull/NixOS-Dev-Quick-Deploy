@@ -1590,10 +1590,15 @@ run_all_checks() {
     # ==========================================================================
     print_section "Virtualization Stack"
 
+    local virtualization_required=true
+    if [[ "${VIRTUALIZATION_REQUIRED_OVERRIDE:-true}" == "false" ]]; then
+        virtualization_required=false
+    fi
+
     # Check core virtualization tools
-    check_command "virsh" "Virsh (libvirt CLI)" true
-    check_command "virt-manager" "Virt-Manager (VM GUI)" true
-    check_command "qemu-system-x86_64" "QEMU" true
+    check_command "virsh" "Virsh (libvirt CLI)" "$virtualization_required"
+    check_command "virt-manager" "Virt-Manager (VM GUI)" "$virtualization_required"
+    check_command "qemu-system-x86_64" "QEMU" "$virtualization_required"
 
     # Check KVM module loaded
     print_check "KVM kernel module"
@@ -1628,7 +1633,7 @@ run_all_checks() {
     fi
 
     # Check libvirtd service
-    check_system_service "libvirtd" "Libvirtd daemon" false true
+    check_system_service "libvirtd" "Libvirtd daemon" false "$virtualization_required"
 
     # Check if user is in libvirtd group
     print_check "Libvirtd group membership"
@@ -1641,9 +1646,9 @@ run_all_checks() {
     fi
 
     # Check VM helper scripts
-    check_command "vm-create-nixos" "vm-create-nixos helper" true
-    check_command "vm-list" "vm-list helper" true
-    check_command "vm-snapshot" "vm-snapshot helper" true
+    check_command "vm-create-nixos" "vm-create-nixos helper" "$virtualization_required"
+    check_command "vm-list" "vm-list helper" "$virtualization_required"
+    check_command "vm-snapshot" "vm-snapshot helper" "$virtualization_required"
 
     # ==========================================================================
     # Testing Infrastructure (pytest)
@@ -1943,16 +1948,27 @@ run_all_checks() {
         print_detail "KUBECONFIG: ${kubeconfig_path:-<unset>}"
     fi
 
+    local k3s_required=false
+    if [[ "${LOCAL_AI_STACK_ENABLED:-false}" == "true" ]]; then
+        k3s_required=true
+    fi
+    if [[ "${AI_BACKEND:-}" == "k3s" || "${AI_BACKEND_OVERRIDE:-}" == "k3s" ]]; then
+        k3s_required=true
+    fi
+
     local k3s_expected=false
     if [[ -n "$kubeconfig_path" || -f /etc/rancher/k3s/k3s.yaml ]]; then
         k3s_expected=true
     elif systemctl list-unit-files 2>/dev/null | grep -q '^k3s\.service'; then
         k3s_expected=true
+    elif [[ "$k3s_required" == "true" ]]; then
+        k3s_expected=true
     fi
 
     print_check "K3s cluster connectivity"
     if [[ "$k3s_expected" != "true" ]]; then
-        print_info "K3s backend not configured on this host (llama.cpp-only mode)"
+        print_fail "K3s backend not configured on this host"
+        print_detail "Run Phase 9 to provision K3s and AI stack resources"
     elif [[ -n "$KUBECTL_BIN" ]]; then
         local kube_err=""
         local -a kube_args=(--request-timeout="${KUBECTL_TIMEOUT:-60}s")
