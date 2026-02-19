@@ -59,6 +59,7 @@ Type=oneshot
 ExecStart=${SCRIPT_DIR}/scripts/generate-dashboard-data.sh
 Environment="DASHBOARD_MODE=${RUNTIME_MODE}"
 Environment="AI_STACK_NAMESPACE=${AI_STACK_NAMESPACE:-ai-stack}"
+Environment="KUBECONFIG=${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
 Environment="PATH=/run/current-system/sw/bin:/usr/bin:/bin:%h/.nix-profile/bin:%h/.local/state/nix/profiles/home-manager/bin"
 NoNewPrivileges=true
 PrivateTmp=true
@@ -108,6 +109,7 @@ Environment="DASHBOARD_BIND_ADDRESS=${DASHBOARD_BIND_ADDRESS:-127.0.0.1}"
 Environment="SERVICE_HOST=${SERVICE_HOST:-localhost}"
 Environment="DASHBOARD_MODE=${RUNTIME_MODE}"
 Environment="AI_STACK_NAMESPACE=${AI_STACK_NAMESPACE:-ai-stack}"
+Environment="KUBECONFIG=${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
 Environment="PATH=/run/current-system/sw/bin:/usr/bin:/bin:%h/.nix-profile/bin"
 NoNewPrivileges=true
 PrivateTmp=true
@@ -167,6 +169,7 @@ ExecStart=/run/current-system/sw/bin/kubectl --request-timeout=60s --address=${D
 Restart=on-failure
 RestartSec=5s
 Environment="PATH=/run/current-system/sw/bin:/usr/bin:/bin:%h/.nix-profile/bin"
+Environment="KUBECONFIG=${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
 Environment="DASHBOARD_API_BIND_ADDRESS=${DASHBOARD_API_BIND_ADDRESS:-127.0.0.1}"
 NoNewPrivileges=true
 PrivateTmp=true
