@@ -1221,6 +1221,16 @@ if [[ "$MODE" == "boot" ]]; then
     fi
   fi
 
+  # npm AI CLI tools (boot mode)
+  if [[ -x "${REPO_ROOT}/scripts/sync-npm-ai-tools.sh" ]]; then
+    log "Syncing npm AI CLI tools (boot mode)"
+    if "${REPO_ROOT}/scripts/sync-npm-ai-tools.sh"; then
+      log "npm AI CLI tools sync complete"
+    else
+      log "npm AI CLI tools sync reported issues (non-critical)"
+    fi
+  fi
+
   log "Boot generation staged. Reboot to apply system-level changes (desktop, users, passwords, services)."
   exit 0
 fi
@@ -1261,6 +1271,19 @@ if [[ "$RUN_FLATPAK_SYNC" == true && -x "${REPO_ROOT}/scripts/sync-flatpak-profi
     log "Flatpak profile sync complete"
   else
     die "Flatpak profile sync failed; declarative app state is not converged."
+  fi
+fi
+
+# ---- npm AI CLI tools (flake-first replaces Phase 6) -----------------------
+# In flake-first mode the legacy Phase 6 is skipped.  This sync step ensures
+# npm-based AI wrappers, OpenSkills, and the Claude Code native binary are
+# installed after the NixOS + Home Manager switch.
+if [[ -x "${REPO_ROOT}/scripts/sync-npm-ai-tools.sh" ]]; then
+  log "Syncing npm AI CLI tools"
+  if "${REPO_ROOT}/scripts/sync-npm-ai-tools.sh"; then
+    log "npm AI CLI tools sync complete"
+  else
+    log "npm AI CLI tools sync reported issues (non-critical)"
   fi
 fi
 
