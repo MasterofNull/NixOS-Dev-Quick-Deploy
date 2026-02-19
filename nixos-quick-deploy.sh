@@ -3617,6 +3617,13 @@ run_flake_first_deployment() {
         return 1
     fi
 
+    # deploy-clean already runs the comprehensive system health check in switch
+    # mode unless explicitly skipped. Mark it complete so finalization does not
+    # execute the same health script a second time.
+    if [[ "$deploy_mode" == "switch" && "${SKIP_HEALTH_CHECK:-false}" != "true" ]]; then
+        FINAL_PHASE_HEALTH_CHECK_COMPLETED=true
+    fi
+
     if ! run_flake_first_legacy_outcome_tasks "$deploy_mode"; then
         print_error "Flake-first legacy completion tasks failed"
         return 1
