@@ -751,9 +751,18 @@ assert_bootloader_preflight() {
   elif [[ ! -d /sys/firmware/efi ]]; then
     log "Bootloader preflight: host runtime does not expose EFI firmware; skipping strict bootloader checks."
     strict_bootloader_checks=false
-  elif ! "${bootctl_cmd}" status >/dev/null 2>&1; then
-    log "Bootloader preflight: bootctl status failed in current runtime; skipping strict bootloader checks."
-    strict_bootloader_checks=false
+  else
+    local bootctl_status_ok=false
+    if "${bootctl_cmd}" status >/dev/null 2>&1; then
+      bootctl_status_ok=true
+    elif command -v sudo >/dev/null 2>&1 && sudo -n "${bootctl_cmd}" status >/dev/null 2>&1; then
+      bootctl_status_ok=true
+    fi
+
+    if [[ "${bootctl_status_ok}" != "true" ]]; then
+      log "Bootloader preflight: bootctl status failed in current runtime (including sudo -n fallback); skipping strict bootloader checks."
+      strict_bootloader_checks=false
+    fi
   fi
 
   [[ "${strict_bootloader_checks}" == "true" ]] || return 0
