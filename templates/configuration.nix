@@ -329,6 +329,13 @@ in
       enable = true;
       execWheelOnly = true;  # Only wheel group can sudo
       wheelNeedsPassword = true;
+      # Keep the credential valid for 10 minutes after each successful
+      # refresh.  The deploy script's keepalive calls sudo every 30 s, so
+      # the token stays alive throughout multi-hour Flatpak downloads.
+      # NixOS defaults to timestamp_type=tty (per-terminal), so credentials
+      # are isolated to the deploy session and cannot be used by other ttys
+      # or by the Flatpak user-install process which never calls sudo.
+      extraConfig = "Defaults timestamp_timeout=10";
     };
     # Polkit for privilege escalation (required for GUI apps)
     polkit.enable = true;
