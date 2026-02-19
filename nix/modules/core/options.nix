@@ -297,12 +297,12 @@
       };
 
       backend = lib.mkOption {
-        type = lib.types.enum [ "ollama" "k3s" ];
-        default = "ollama";
+        type = lib.types.enum [ "llamacpp" "k3s" ];
+        default = "llamacpp";
         description = ''
           Inference backend.
-          - ollama: native NixOS systemd services (services.ollama + open-webui + qdrant).
-            Recommended for single-workstation AI development.
+          - llamacpp: native llama.cpp server (OpenAI-compatible API on :8080).
+            Default for single-workstation AI development; no daemon overhead.
           - k3s: full Kubernetes-orchestrated stack (AIDB, hybrid-coordinator, ralph-wiggum).
             Only needed for multi-service production deployments.
         '';
@@ -318,31 +318,20 @@
         '';
       };
 
-      models = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [ "qwen2.5-coder:7b" ];
-        example = [ "qwen2.5-coder:7b" "phi3:mini" "deepseek-coder:6.7b" ];
-        description = ''
-          Ollama model tags to pull on first boot.
-          Pulled by a oneshot systemd service after ollama starts.
-          Idempotent: ollama pull is a no-op when the model is already present.
-          See https://ollama.com/library for available tags.
-        '';
-      };
 
       ui = {
         enable = lib.mkOption {
           type = lib.types.bool;
           default = true;
-          description = "Enable Open WebUI browser interface on port 3000. Connects to local ollama automatically.";
+          description = "Enable Open WebUI browser interface on port 3000. Connects to the local inference server.";
         };
       };
 
       llamaCpp = {
         enable = lib.mkOption {
           type = lib.types.bool;
-          default = false;
-          description = "Enable a native llama.cpp OpenAI-compatible server alongside Ollama.";
+          default = true;
+          description = "Enable native llama.cpp OpenAI-compatible inference server on port 8080.";
         };
 
         host = lib.mkOption {
@@ -382,9 +371,8 @@
         type = lib.types.bool;
         default = false;
         description = ''
-          Expose ollama (11434), Open WebUI (3000), and Qdrant (6333) on all
-          network interfaces. Default: loopback-only (127.0.0.1).
-          Only enable on a trusted local network.
+          Expose inference servers and Open WebUI on all network interfaces.
+          Default: loopback-only (127.0.0.1). Only enable on a trusted LAN.
         '';
       };
 

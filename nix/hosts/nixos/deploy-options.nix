@@ -1,22 +1,36 @@
 { lib, config, ... }:
 {
   config = lib.mkIf (config.mySystem.profile == "ai-dev") {
-    mySystem.roles.aiStack.enable = lib.mkDefault true;
+    mySystem.roles.aiStack.enable        = lib.mkDefault true;
     mySystem.roles.virtualization.enable = lib.mkDefault true;
     mySystem.aiStack = {
-      # ollama backend: native NixOS systemd services (no K3s, no containers).
-      # Switch to "k3s" only once the Kubernetes stack is operational.
-      backend      = lib.mkDefault "ollama";
-      acceleration = lib.mkDefault "auto";  # auto → rocm for AMD GPU
+      # llama.cpp backend: native OpenAI-compatible inference server.
+      # No Ollama daemon — models are loaded directly from GGUF files in
+      # /var/lib/llama-cpp/models/.
+      backend = lib.mkDefault "llamacpp";
 
-      # Models pulled by the ollama-model-pull oneshot on first boot.
-      # Add or swap tags here; see https://ollama.com/library for available models.
-      models = lib.mkDefault [ "qwen2.5-coder:7b" ];
+      # llamaCpp service settings.
+      # Place a GGUF file at the path below, then:
+      #   systemctl start llama-cpp
+      # The service starts automatically on subsequent boots once the file exists.
+      llamaCpp = {
+        enable    = lib.mkDefault true;
+        host      = lib.mkDefault "127.0.0.1";  # loopback-only
+        port      = lib.mkDefault 8080;
+        model     = lib.mkDefault "/var/lib/llama-cpp/models/model.gguf";
+        # Example GPU acceleration flags for AMD ROCm (ThinkPad P14s Gen 2a):
+        #   extraArgs = [ "--gpu-layers" "99" "--threads" "8" ];
+        extraArgs = lib.mkDefault [ ];
+      };
 
-      ui.enable      = lib.mkDefault true;   # Open WebUI on :3000
-      llamaCpp.enable = lib.mkDefault true;   # Native llama.cpp server on :8080
-      vectorDb.enable = lib.mkDefault false; # Qdrant — enable when RAG is needed
-      listenOnLan    = lib.mkDefault false;  # loopback only (127.0.0.1)
+      # Open WebUI browser interface — connects to llama-server on :8080.
+      ui.enable = lib.mkDefault true;
+
+      # Qdrant vector DB — enable when RAG or embedding workflows are needed.
+      vectorDb.enable = lib.mkDefault false;
+
+      # Expose inference server and Open WebUI on LAN (default: loopback only).
+      listenOnLan = lib.mkDefault false;
     };
   };
 }

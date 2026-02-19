@@ -1,9 +1,13 @@
-{ lib, pkgs, config, ... }:
+{ lib, pkgs, ... }:
 # ---------------------------------------------------------------------------
 # Per-host Home Manager module for the "nixos" host.
 #
-# Adds packages and configuration that the legacy templates/home.nix provided
-# but which are missing from the minimal nix/home/base.nix base module.
+# Base module (nix/home/base.nix) already provides:
+#   - VSCodium with extensions, settings, wrapper, Continue.dev config
+#   - nil, alejandra, deadnix, statix, shellcheck, glow
+#   - Python AI toolchain, zsh, starship, direnv, ssh, git
+#
+# This file adds only packages and config that are specific to this host.
 # ---------------------------------------------------------------------------
 let
   aiderPackage =
@@ -12,15 +16,15 @@ let
     else [ ];
 in
 {
-  # ---- Additional packages --------------------------------------------------
+  # ---- Host-specific packages -----------------------------------------------
   home.packages = with pkgs;
     [
       # Gitea + Tea CLI for local forge workflows
       gitea
       tea
 
-      # Nix development / linting
-      statix deadnix alejandra nixpkgs-fmt nil
+      # Additional Nix formatter (alejandra is in base; nixpkgs-fmt for compat)
+      nixpkgs-fmt
 
       # Modern CLI replacements
       fzf bat eza dust duf
@@ -36,31 +40,15 @@ in
     ]
     ++ aiderPackage;
 
-  # ---- VSCodium declarative settings ----------------------------------------
-  # Create the config directory and a baseline settings.json so the health
-  # check passes even before the first manual launch of VSCodium.
-  home.file.".config/VSCodium/User/settings.json" = {
-    text = builtins.toJSON {
-      "editor.fontSize" = 14;
-      "editor.tabSize" = 2;
-      "editor.formatOnSave" = true;
-      "editor.minimap.enabled" = false;
-      "editor.wordWrap" = "on";
-      "files.trimTrailingWhitespace" = true;
-      "files.insertFinalNewline" = true;
-      "terminal.integrated.defaultProfile.linux" = "zsh";
-      "nix.enableLanguageServer" = true;
-      "nix.serverPath" = "nil";
-      "nix.serverSettings".nil.formatting.command = [ "alejandra" ];
-    };
-  };
-
   # ---- NPM global prefix (needed for AI CLI wrappers) ----------------------
   home.sessionVariables = {
     NPM_CONFIG_PREFIX = "$HOME/.npm-global";
     # AI tool defaults
     AIDER_DEFAULT_MODEL = "gpt-4o-mini";
     AIDER_LOG_DIR = "$HOME/.local/share/aider/logs";
+    # Point AI tools at local llama.cpp inference server
+    OPENAI_API_BASE = "http://127.0.0.1:8080/v1";
+    OPENAI_API_KEY  = "dummy";  # llama-server requires a key header but ignores the value
   };
 
   # ---- Session PATH additions -----------------------------------------------
