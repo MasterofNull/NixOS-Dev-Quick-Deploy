@@ -74,7 +74,6 @@ in
     # vscodium is installed via programs.vscode below; listing it here too
     # would create a duplicate entry in the nix profile.
     neovim kubectl
-    claude-code
 
     # Nix utilities
     nix-tree nix-diff nvd

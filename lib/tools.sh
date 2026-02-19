@@ -2206,16 +2206,30 @@ install_single_ai_cli() {
 #
 # Reference: https://code.claude.com/docs/en/troubleshooting
 # ============================================================================
+claude_version_ge() {
+    local current="${1:-0.0.0}"
+    local required="${2:-0.0.0}"
+    local first
+    first=$(printf '%s\n%s\n' "$required" "$current" | sort -V | head -n1)
+    [[ "$first" == "$required" ]]
+}
+
 install_claude_code_native() {
     local claude_bin="${PRIMARY_HOME:-$HOME}/.local/bin/claude"
     local claude_alt="${PRIMARY_HOME:-$HOME}/.claude/bin/claude"
 
     # Check if already installed and up-to-date
+    local min_claude_version="${CLAUDE_CODE_MIN_VERSION:-2.1.47}"
     if [ -x "$claude_bin" ] && [ "$FORCE_UPDATE" != true ]; then
         local current_version
+        local current_version_norm
         current_version=$("$claude_bin" --version 2>/dev/null || echo "unknown")
-        print_success "Claude Code already installed (${current_version})"
-        return 0
+        current_version_norm=$(printf '%s' "$current_version" | sed -E 's/[^0-9]*([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+        if [[ -n "$current_version_norm" ]] && claude_version_ge "$current_version_norm" "$min_claude_version"; then
+            print_success "Claude Code already installed (${current_version})"
+            return 0
+        fi
+        print_warning "Claude Code ${current_version} is below required minimum ${min_claude_version}; upgrading"
     fi
 
     # Clean up stale npm installation if present
