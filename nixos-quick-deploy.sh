@@ -2088,6 +2088,24 @@ run_optional_phase_script() {
         return 0
     fi
 
+    print_error "$label failed"
+    return 1
+}
+
+# run_optional_phase_by_number: honour --skip-phase flags for optional phases
+# that are identified by number but executed via script sourcing (not the main
+# execute_phase loop).  Args: phase_num script_path function_name label
+run_optional_phase_by_number() {
+    local phase_num="$1"
+    local script_path="$2"
+    local function_name="$3"
+    local label="$4"
+
+    if should_skip_phase "$phase_num"; then
+        print_info "Skipping phase $phase_num ($label) (--skip-phase)"
+        return 0
+    fi
+
     run_optional_phase_script "$script_path" "$function_name" "$label"
 }
 
