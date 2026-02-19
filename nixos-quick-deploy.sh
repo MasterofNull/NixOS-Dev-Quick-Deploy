@@ -3159,18 +3159,22 @@ persist_flake_first_host_options() {
         return 1
     fi
 
-    resolve_flake_first_model_selection
-
     cat > "$deploy_file" <<EOF
 { lib, ... }:
 {
-  mySystem.roles.aiStack.enable = lib.mkForce ${RUN_AI_MODEL};
+  mySystem.roles.aiStack.enable = lib.mkDefault ${RUN_AI_MODEL};
   mySystem.aiStack = {
-    enable = lib.mkForce ${RUN_AI_MODEL};
-    modelProfile = lib.mkForce "${FLAKE_FIRST_MODEL_PROFILE}";
-    embeddingModel = lib.mkForce "${FLAKE_FIRST_EMBEDDING_MODEL}";
-    llamaDefaultModel = lib.mkForce "${FLAKE_FIRST_LLM_MODEL}";
-    llamaModelFile = lib.mkForce "${FLAKE_FIRST_LLM_MODEL_FILE}";
+    # ollama backend: native NixOS systemd services (no K3s, no containers).
+    # Switch to "k3s" only once the Kubernetes stack is operational.
+    backend      = lib.mkDefault "ollama";
+    acceleration = lib.mkDefault "auto";  # auto -> rocm for AMD GPU
+
+    # Models pulled by the ollama-model-pull oneshot on first boot.
+    models = lib.mkDefault [ "qwen2.5-coder:7b" ];
+
+    ui.enable       = lib.mkDefault true;   # Open WebUI on :3000
+    vectorDb.enable = lib.mkDefault false;  # Qdrant -- enable when RAG is needed
+    listenOnLan     = lib.mkDefault false;  # loopback only (127.0.0.1)
   };
 }
 EOF
@@ -3416,7 +3420,9 @@ run_flake_first_deployment() {
         return 1
     fi
 
-    prewarm_ai_stack_embeddings_cache
+    # Embeddings prewarm is only relevant for the K3s backend (sentence-transformers
+    # sidecar). Skip for the ollama backend where models are pulled by ollama itself.
+    # prewarm_ai_stack_embeddings_cache
 
     if ! apply_flake_first_ai_stack_toggle; then
         print_error "Failed to persist AI stack declarative toggle state"
