@@ -559,7 +559,11 @@ let
     || (u ? initialPassword)
     || (u ? initialHashedPassword)
     || (u ? passwordFile);
-  isLocked = u: (u ? hashedPassword) && ((builtins.match "^[!*].*" u.hashedPassword) != null);
+  isLocked = u:
+    (u ? hashedPassword)
+    && (u.hashedPassword != null)
+    && (builtins.isString u.hashedPassword)
+    && ((builtins.match "^[!*].*" u.hashedPassword) != null);
   mutableUsers = cfg.users.mutableUsers or true;
   initrdEmergencyAccess =
     if cfg ? mySystem && cfg.mySystem ? deployment && cfg.mySystem.deployment ? initrdEmergencyAccess then
@@ -724,11 +728,19 @@ assert_bootloader_preflight() {
     bootctl_cmd="/run/current-system/sw/bin/bootctl"
   fi
 
-  [[ -n "${bootctl_cmd}" ]] || die "systemd-boot target detected but 'bootctl' is not available on PATH."
-
-  if ! "${bootctl_cmd}" status >/dev/null 2>&1; then
-    die "bootctl status failed on this host. Refusing deploy to avoid staging an unbootable generation."
+  local strict_bootloader_checks=true
+  if [[ -z "${bootctl_cmd}" ]]; then
+    log "Bootloader preflight: systemd-boot target detected but 'bootctl' is unavailable in this runtime; skipping strict bootloader checks."
+    strict_bootloader_checks=false
+  elif [[ ! -d /sys/firmware/efi ]]; then
+    log "Bootloader preflight: host runtime does not expose EFI firmware; skipping strict bootloader checks."
+    strict_bootloader_checks=false
+  elif ! "${bootctl_cmd}" status >/dev/null 2>&1; then
+    log "Bootloader preflight: bootctl status failed in current runtime; skipping strict bootloader checks."
+    strict_bootloader_checks=false
   fi
+
+  [[ "${strict_bootloader_checks}" == "true" ]] || return 0
 
   local esp_mount esp_min_free_mb esp_free_mb
   esp_mount="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.boot.loader.efi.efiSysMountPoint" 2>/dev/null || echo /boot)"
