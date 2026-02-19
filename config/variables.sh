@@ -347,6 +347,7 @@ declare -ag FLATPAK_PROFILE_CORE_APPS=(
     
     # === Development Essentials ===
     "md.obsidian.Obsidian"               # Knowledge management
+    # NOTE: sqlitebrowser depends on org.kde.Platform — no GNOME equivalent exists.
     "org.sqlitebrowser.sqlitebrowser"    # Database browser
     "com.jgraph.drawio.desktop"          # Diagrams and flowcharts
     
@@ -355,17 +356,20 @@ declare -ag FLATPAK_PROFILE_CORE_APPS=(
     
     # === 3D Modeling/CAD ===
     "org.blender.Blender"                # 3D creation suite
+    # NOTE: FreeCAD depends on org.kde.Platform — no GNOME equivalent exists.
     "org.freecad.FreeCAD"                # Parametric 3D CAD (also CNC/CAM)
-    "org.openscad.OpenSCAD"              # Programmatic 3D modeling
-    
+    "org.openscad.OpenSCAD"              # Programmatic 3D modeling (freedesktop runtime)
+
     # === PCB/Electronics Design ===
+    # NOTE: KiCad depends on org.kde.Platform — no GNOME equivalent exists.
     "org.kicad.KiCad"                    # PCB design and schematic capture
-    
+
     # === VM Management ===
     "org.virt_manager.virt-manager"      # KVM/QEMU VM manager
     "org.gnome.Boxes"                    # Simple VM management
-    
+
     # === Gaming (optional) ===
+    # NOTE: PrismLauncher depends on org.kde.Platform — no GNOME equivalent exists.
     "org.prismlauncher.PrismLauncher"    # Minecraft launcher
 )
 
