@@ -911,7 +911,10 @@ persist_home_git_credentials_declarative() {
   fi
 
   if [[ -z "$git_name" || -z "$git_email" ]]; then
-    log "Declarative git identity not updated (non-blocking). Set GIT_USER_NAME/GIT_USER_EMAIL or run: git config --global user.name <name> && git config --global user.email <email>."
+    # Non-critical: git identity is optional for the deploy to succeed.
+    # Only surface the hint in verbose mode to avoid noisy output.
+    [[ "${VERBOSE_MODE:-false}" == "true" ]] && \
+      log "Declarative git identity not updated (set GIT_USER_NAME/GIT_USER_EMAIL or git config --global user.name/user.email)."
     return 0
   fi
 
