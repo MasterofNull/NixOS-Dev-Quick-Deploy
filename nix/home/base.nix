@@ -74,6 +74,7 @@ in
     # vscodium is installed via programs.vscode below; listing it here too
     # would create a duplicate entry in the nix profile.
     neovim kubectl
+    claude-code
 
     # Nix utilities
     nix-tree nix-diff nvd
@@ -202,35 +203,6 @@ in
     (( ''${+functions[p10k]} )) && p10k reload
   '';
 
-  # Keep Claude CLI installation on the current upstream-supported curl installer,
-  # but enforce it declaratively via Home Manager activation.
-  home.activation.installClaudeCode =
-    lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      CLAUDE_BIN="$HOME/.local/bin/claude"
-      if [ ! -x "$CLAUDE_BIN" ]; then
-        echo "[home-manager] Installing Claude Code via native installer"
-        ${pkgs.curl}/bin/curl -fsSL https://claude.ai/install.sh | ${pkgs.bash}/bin/bash || true
-      fi
-    '';
-
-  systemd.user.timers.claude-code-updater = {
-    Unit.Description = "Periodic Claude Code native installer refresh";
-    Timer = {
-      OnBootSec = "10m";
-      OnUnitActiveSec = "24h";
-      RandomizedDelaySec = "30m";
-      Unit = "claude-code-updater.service";
-    };
-    Install.WantedBy = [ "timers.target" ];
-  };
-
-  systemd.user.services.claude-code-updater = {
-    Unit.Description = "Refresh Claude Code via official native installer";
-    Service = {
-      Type = "oneshot";
-      ExecStart = "${pkgs.bash}/bin/bash -lc '${pkgs.curl}/bin/curl -fsSL https://claude.ai/install.sh | ${pkgs.bash}/bin/bash'";
-    };
-  };
 
   # ---- Direnv: auto-activate nix develop environments --------------------
   programs.direnv = {
@@ -258,8 +230,13 @@ in
     VISUAL  = "micro";
     PAGER   = "less";
     LESS    = "-FRX";
-    KUBECONFIG = "/etc/rancher/k3s/k3s.yaml";
   };
+
+  home.sessionVariablesExtra = ''
+    if [ -f /etc/rancher/k3s/k3s.yaml ]; then
+      export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+    fi
+  '';
 
   # =========================================================================
   # VSCodium — declarative extensions, settings, wrapper, Continue.dev
