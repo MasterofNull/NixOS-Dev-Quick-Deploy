@@ -59,6 +59,12 @@ in
 {
   config = lib.mkMerge [
 
+    (lib.mkIf (roleEnabled && ai.models != [ ]) {
+      warnings = [
+        "mySystem.aiStack.models is deprecated and ignored for llama.cpp. Set mySystem.aiStack.llamaCpp.model to a GGUF path instead."
+      ];
+    })
+
     # ── llama.cpp — active when llamaCpp.enable regardless of backend ─────────
     # The llama-server provides an OpenAI-compatible HTTP API on :8080.
     # Model path is controlled by mySystem.aiStack.llamaCpp.model; the unit
@@ -110,7 +116,7 @@ in
       );
     })
 
-    # ── Open WebUI — active for llamacpp and ollama backends ──────────────────
+    # ── Open WebUI — active for all non-k3s AI backends ───────────────────────────
     (lib.mkIf (roleEnabled && ai.backend != "k3s" && ai.ui.enable && hasOpenWebui) {
       services.open-webui = {
         enable      = true;

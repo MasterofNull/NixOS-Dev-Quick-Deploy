@@ -327,6 +327,15 @@
         };
       };
 
+      # Deprecated compatibility shim for pre-llamaCpp deploy options.
+      # Legacy files may still set `mySystem.aiStack.models = [ "model:tag" ]`.
+      # The native llama.cpp path now uses `mySystem.aiStack.llamaCpp.model`.
+      models = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "DEPRECATED: legacy Ollama-era model tags. Ignored by the llama.cpp backend.";
+      };
+
       llamaCpp = {
         enable = lib.mkOption {
           type = lib.types.bool;
