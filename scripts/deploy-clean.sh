@@ -27,7 +27,7 @@ HM_TARGET_OVERRIDE=""
 HOST_EXPLICIT=false
 AUTO_GUI_SWITCH_FALLBACK="${AUTO_GUI_SWITCH_FALLBACK:-false}"
 ALLOW_GUI_SWITCH="${ALLOW_GUI_SWITCH:-true}"
-HOME_MANAGER_BACKUP_EXTENSION="${HOME_MANAGER_BACKUP_EXTENSION:-backup}"
+HOME_MANAGER_BACKUP_EXTENSION="${HOME_MANAGER_BACKUP_EXTENSION:-backup-$(date +%Y%m%d%H%M%S)}"
 REQUIRE_HOME_MANAGER_CLI="${REQUIRE_HOME_MANAGER_CLI:-false}"
 PREFER_NIX_RUN_HOME_MANAGER="${PREFER_NIX_RUN_HOME_MANAGER:-true}"
 HOME_MANAGER_NIX_RUN_REF="${HOME_MANAGER_NIX_RUN_REF:-github:nix-community/home-manager/release-25.11#home-manager}"
@@ -85,8 +85,10 @@ Environment overrides:
   ALLOW_GUI_SWITCH=true     Allow live switch from graphical session (default)
   AUTO_GUI_SWITCH_FALLBACK=false
                             Keep switch mode in graphical sessions (default)
-  HOME_MANAGER_BACKUP_EXTENSION=backup
-                            Backup suffix used for Home Manager file collisions
+  HOME_MANAGER_BACKUP_EXTENSION=backup-<timestamp>
+                            Backup suffix used for Home Manager file collisions.
+                            Default is timestamped per run to prevent clobbering
+                            existing *.backup files.
   REQUIRE_HOME_MANAGER_CLI=false
                             Require home-manager command in PATH (disable fallback paths)
   PREFER_NIX_RUN_HOME_MANAGER=true
