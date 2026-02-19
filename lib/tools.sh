@@ -69,8 +69,20 @@ vscode_extension_manual_url() {
     local extension_id="$1"
 
     if declare -p VSCODE_AI_EXTENSION_FALLBACK_URLS >/dev/null 2>&1; then
-        printf '%s' "${VSCODE_AI_EXTENSION_FALLBACK_URLS["$extension_id"]:-}"
-        return 0
+        local direct="${VSCODE_AI_EXTENSION_FALLBACK_URLS["$extension_id"]:-}"
+        if [[ -n "$direct" ]]; then
+            printf '%s' "$direct"
+            return 0
+        fi
+
+        local lowered="${extension_id,,}"
+        local key
+        for key in "${!VSCODE_AI_EXTENSION_FALLBACK_URLS[@]}"; do
+            if [[ "${key,,}" == "$lowered" ]]; then
+                printf '%s' "${VSCODE_AI_EXTENSION_FALLBACK_URLS["$key"]}"
+                return 0
+            fi
+        done
     fi
 
     printf '%s' ""
@@ -2206,16 +2218,30 @@ install_single_ai_cli() {
 #
 # Reference: https://code.claude.com/docs/en/troubleshooting
 # ============================================================================
+claude_version_ge() {
+    local current="${1:-0.0.0}"
+    local required="${2:-0.0.0}"
+    local first
+    first=$(printf '%s\n%s\n' "$required" "$current" | sort -V | head -n1)
+    [[ "$first" == "$required" ]]
+}
+
 install_claude_code_native() {
     local claude_bin="${PRIMARY_HOME:-$HOME}/.local/bin/claude"
     local claude_alt="${PRIMARY_HOME:-$HOME}/.claude/bin/claude"
 
     # Check if already installed and up-to-date
+    local min_claude_version="${CLAUDE_CODE_MIN_VERSION:-2.1.47}"
     if [ -x "$claude_bin" ] && [ "$FORCE_UPDATE" != true ]; then
         local current_version
+        local current_version_norm
         current_version=$("$claude_bin" --version 2>/dev/null || echo "unknown")
-        print_success "Claude Code already installed (${current_version})"
-        return 0
+        current_version_norm=$(printf '%s' "$current_version" | sed -E 's/[^0-9]*([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+        if [[ -n "$current_version_norm" ]] && claude_version_ge "$current_version_norm" "$min_claude_version"; then
+            print_success "Claude Code already installed (${current_version})"
+            return 0
+        fi
+        print_warning "Claude Code ${current_version} is below required minimum ${min_claude_version}; upgrading"
     fi
 
     # Clean up stale npm installation if present
@@ -2282,14 +2308,7 @@ install_claude_code_native() {
             break
         fi
 
-        if [[ "${NONINTERACTIVE:-false}" == "true" && "${TRUST_REMOTE_SCRIPTS:-false}" != "true" ]]; then
-            print_warning "Noninteractive mode blocks remote script execution without TRUST_REMOTE_SCRIPTS=true"
-            rm -f "$installer_tmp"
-            install_exit=1
-            break
-        fi
-
-        if declare -F confirm >/dev/null 2>&1; then
+        if [[ "${NONINTERACTIVE:-false}" != "true" ]] && declare -F confirm >/dev/null 2>&1; then
             if ! confirm "Run Claude installer script from https://claude.ai/install.sh?" "n"; then
                 print_warning "Claude installer aborted by user"
                 rm -f "$installer_tmp"
@@ -2874,6 +2893,7 @@ install_vscodium_extensions() {
             extensions+=("$ext|AI Tool")
         done
     else
+        # Declarative source of truth for fast-moving AI extensions.
         local entry package version display bin_command wrapper_name extension_id debug_env
         for entry in "${NPM_AI_PACKAGE_MANIFEST[@]}"; do
             IFS='|' read -r package version display bin_command wrapper_name extension_id debug_env <<<"$entry"
