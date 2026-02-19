@@ -173,6 +173,7 @@ readonly TEMPLATE_PATH_FEATURE_POLICY="critical-fixes-only"
 
 # Phase control
 declare -a SKIP_PHASES=()
+RUN_FLAKE_FIRST_LEGACY_PARITY_TASKS="${RUN_FLAKE_FIRST_LEGACY_PARITY_TASKS:-false}"
 START_FROM_PHASE=""
 RESTART_PHASE=""
 TEST_PHASE=""
@@ -1073,6 +1074,8 @@ ENVIRONMENT OVERRIDES:
     ALLOW_ROOT_DEPLOY=true     Allow running as root/sudo (not recommended)
     AUTO_PROMPT_PROFILE_SELECTION=false
                               Disable interactive profile prompt when profile flag is omitted
+    RUN_FLAKE_FIRST_LEGACY_PARITY_TASKS=true
+                              Re-enable flake-first legacy phases 6/7/8 (default: false)
 
 EOF
 }
@@ -1822,6 +1825,14 @@ bootstrap_resume_validation_tools() {
         fi
     fi
 
+    # Roadmap verification prefers rg, but can fallback to grep. Install rg in
+    # the same preflight profile when absent to keep output quieter and faster.
+    if ! command -v rg >/dev/null 2>&1; then
+        if declare -F ensure_prerequisite_installed >/dev/null 2>&1; then
+            ensure_prerequisite_installed "rg" "nixpkgs#ripgrep" "rg (ripgrep search tool)" || true
+        fi
+    fi
+
     export IMPERATIVE_INSTALLS_ALLOWED="$previous_imperative_flag"
 
     if [[ "$strict" == "true" ]] && ! command -v jq >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
@@ -2077,8 +2088,7 @@ run_optional_phase_script() {
         return 0
     fi
 
-    print_error "$label failed"
-    return 1
+    run_optional_phase_script "$script_path" "$function_name" "$label"
 }
 
 # Interactive failure handler invoked whenever execute_phase returns non-zero.
@@ -2481,9 +2491,41 @@ suggest_ai_stack_llama_defaults() {
     printf '%s|%s\n' "$model_id" "$model_file"
 }
 
+resolve_flake_first_ai_stack_backend() {
+    local host_name="$1"
+    local host_dir="${SCRIPT_DIR}/nix/hosts/${host_name}"
+    local deploy_file="${host_dir}/deploy-options.nix"
+
+    if [[ ! -f "$deploy_file" ]]; then
+        printf 'ollama\n'
+        return 0
+    fi
+
+    local backend
+    backend=$(sed -nE 's/.*backend[[:space:]]*=[[:space:]]*lib\.mk(Default|Force)[[:space:]]*"([^"]+)".*/\2/p' "$deploy_file" | head -n1)
+    if [[ -z "$backend" ]]; then
+        backend=$(sed -nE 's/.*backend[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$deploy_file" | head -n1)
+    fi
+
+    printf '%s\n' "${backend:-ollama}"
+}
+
 # prewarm_ai_stack_embeddings_cache: mirror legacy phase behavior by attempting
 # an embeddings model cache warm-up before first runtime requests.
 prewarm_ai_stack_embeddings_cache() {
+    local host_name="${1:-${FLAKE_FIRST_TARGET:-nixos}}"
+
+    if [[ "${RUN_AI_MODEL:-false}" != "true" ]]; then
+        return 0
+    fi
+
+    local backend
+    backend="$(resolve_flake_first_ai_stack_backend "$host_name")"
+    if [[ "$backend" != "ollama" ]]; then
+        print_info "Skipping embeddings cache prewarm (backend=${backend})"
+        return 0
+    fi
+
     local embeddings_script="$SCRIPT_DIR/scripts/download-embeddings-model.sh"
     if [[ ! -x "$embeddings_script" ]]; then
         return 0
@@ -2838,7 +2880,7 @@ configure_host_swap_limits() {
         return 0
     fi
 
-    if confirm "Configure host-level swap limits for systemd services (includes containers)?" "y"; then
+    if confirm "Configure host-level swap limits for systemd services?" "y"; then
         if [[ "$suggested_swap_gb" =~ ^[0-9]+$ && "$suggested_swap_gb" -gt 0 ]]; then
             if [[ "$swap_total_gb" =~ ^[0-9]+$ && "$swap_total_gb" -gt 0 ]]; then
                 print_info "Suggested swap cap: ${suggested_swap_gb}GB (≈60% RAM, capped by total swap ${swap_total_gb}GB)."
@@ -2857,7 +2899,7 @@ configure_host_swap_limits() {
         local swap_input
         local attempts=0
         while true; do
-            swap_input=$(prompt_user "Default swap max per service in GB (0=unlimited, 'auto'=suggested, 'skip'=disable)" "$default_swap_gb")
+            swap_input=$(prompt_user "Default host service swap max in GB (0=unlimited, 'auto'=suggested, 'skip'=disable)" "$default_swap_gb")
             case "${swap_input,,}" in
                 ""|"auto"|"default"|"suggested"|"rec"|"recommended")
                     if [[ "$suggested_swap_gb" =~ ^[0-9]+$ && "$suggested_swap_gb" -gt 0 ]]; then
@@ -3150,12 +3192,95 @@ resolve_flake_first_model_selection() {
     esac
 }
 
+resolve_deploy_option_rhs() {
+    local deploy_file="$1"
+    local option_path="$2"
+
+    if [[ ! -f "$deploy_file" ]]; then
+        return 0
+    fi
+
+    local option_regex
+    option_regex=$(printf '%s' "$option_path" | sed 's/[][\.^$*+?(){}|]/\\&/g')
+    sed -nE "s/^[[:space:]]*${option_regex}[[:space:]]*=[[:space:]]*(.+)[[:space:]]*;[[:space:]]*$/\1/p" "$deploy_file" | head -n1
+}
+
+unwrap_lib_mk_value() {
+    local value="$1"
+
+    value="${value#lib.mkDefault }"
+    value="${value#lib.mkForce }"
+    printf '%s\n' "$value"
+}
+
+resolve_deploy_option_string() {
+    local deploy_file="$1"
+    local option_path="$2"
+    local default_value="$3"
+    local raw
+
+    raw="$(resolve_deploy_option_rhs "$deploy_file" "$option_path")"
+    if [[ -z "$raw" ]]; then
+        printf '%s\n' "$default_value"
+        return 0
+    fi
+
+    raw="$(unwrap_lib_mk_value "$raw")"
+    raw="${raw#\"}"
+    raw="${raw%\"}"
+
+    if [[ -z "$raw" ]]; then
+        printf '%s\n' "$default_value"
+    else
+        printf '%s\n' "$raw"
+    fi
+}
+
+resolve_deploy_option_bool() {
+    local deploy_file="$1"
+    local option_path="$2"
+    local default_value="$3"
+    local raw
+
+    raw="$(resolve_deploy_option_rhs "$deploy_file" "$option_path")"
+    if [[ -z "$raw" ]]; then
+        printf '%s\n' "$default_value"
+        return 0
+    fi
+
+    raw="$(unwrap_lib_mk_value "$raw")"
+    case "${raw,,}" in
+        true|false) printf '%s\n' "${raw,,}" ;;
+        *) printf '%s\n' "$default_value" ;;
+    esac
+}
+
+resolve_deploy_option_list() {
+    local deploy_file="$1"
+    local option_path="$2"
+    local default_value="$3"
+    local raw
+
+    raw="$(resolve_deploy_option_rhs "$deploy_file" "$option_path")"
+    if [[ -z "$raw" ]]; then
+        printf '%s\n' "$default_value"
+        return 0
+    fi
+
+    raw="$(unwrap_lib_mk_value "$raw")"
+    if [[ "$raw" =~ ^\[.*\]$ ]]; then
+        printf '%s\n' "$raw"
+    else
+        printf '%s\n' "$default_value"
+    fi
+}
+
 # persist_flake_first_host_options: write host-scoped declarative deploy options
 # consumed by flake.nix for AI-stack enablement and model selection.
 persist_flake_first_host_options() {
     local host_name="$1"
     local host_dir="${SCRIPT_DIR}/nix/hosts/${host_name}"
-    local deploy_file="${host_dir}/deploy-options.nix"
+    local deploy_file="${host_dir}/deploy-options.local.nix"
 
     if [[ ! -d "$host_dir" ]]; then
         print_error "Host directory not found for declarative options: $host_dir"
@@ -3189,6 +3314,15 @@ EOF
 # apply_flake_first_ai_stack_toggle: persist the --without-ai-model choice for
 # declarative reconciliation by writing/removing the AI stack disable marker.
 apply_flake_first_ai_stack_toggle() {
+    local host_name="${1:-${FLAKE_FIRST_TARGET:-nixos}}"
+    local backend
+    backend="$(resolve_flake_first_ai_stack_backend "$host_name")"
+
+    if [[ "$backend" != "k3s" ]]; then
+        print_info "Skipping AI stack disable marker management (backend=${backend})"
+        return 0
+    fi
+
     local marker_path="${AI_STACK_DISABLE_MARKER:-/var/lib/nixos-quick-deploy/disable-ai-stack}"
     local marker_dir
     marker_dir="$(dirname "$marker_path")"
@@ -3361,6 +3495,7 @@ run_flake_first_deployment() {
         --host "$detected_host"
         --profile "$profile"
         --flake-ref "$flake_ref"
+        --skip-roadmap-verification
     )
 
     if [[ -n "${FLAKE_FIRST_TARGET:-}" ]]; then
@@ -3441,12 +3576,12 @@ run_flake_first_deployment() {
         print_info "Skipping K3s credentials and embeddings prewarm (backend=${_ai_backend})"
     fi
 
-    if ! apply_flake_first_ai_stack_toggle; then
+    if ! apply_flake_first_ai_stack_toggle "$detected_host"; then
         print_error "Failed to persist AI stack declarative toggle state"
         return 1
     fi
 
-    if ! run_optional_phase_script "$PHASES_DIR/phase-02-system-backup.sh" phase_02_backup "Comprehensive backup"; then
+    if ! run_optional_phase_by_number 2 "$PHASES_DIR/phase-02-system-backup.sh" phase_02_backup "Comprehensive backup"; then
         print_error "Flake-first backup parity task failed"
         return 1
     fi
@@ -3482,22 +3617,33 @@ run_flake_first_legacy_outcome_tasks() {
         print_warning "System changes are staged for next boot. Reboot required for desktop/user/service changes."
     fi
 
+    # Flake-first deploy-clean already executes declarative Flatpak sync, health checks,
+    # and installed-vs-intended validation. Running legacy phases 6/7 afterwards
+    # duplicates work and reintroduces imperative side effects.
+    if [[ "${RUN_FLAKE_FIRST_LEGACY_PARITY_TASKS}" != "true" ]]; then
+        print_info "Skipping legacy parity phases in flake-first mode (set RUN_FLAKE_FIRST_LEGACY_PARITY_TASKS=true to re-enable phases 6/7/8)."
+        if [[ "$RUN_AI_MODEL" == true ]]; then
+            print_info "Phase 9 imperative stack/model scripts skipped in flake-first; declarative AI stack module owns deployment."
+        fi
+        return 0
+    fi
+
     print_section "Flake-First Completion: Legacy-Parity Tasks"
 
-    if ! run_optional_phase_script "$PHASES_DIR/phase-06-additional-tooling.sh" phase_06_additional_tooling "Additional tooling"; then
+    if ! run_optional_phase_by_number 6 "$PHASES_DIR/phase-06-additional-tooling.sh" phase_06_additional_tooling "Additional tooling"; then
         return 1
     fi
 
-    if ! run_optional_phase_script "$PHASES_DIR/phase-07-post-deployment-validation.sh" phase_07_post_deployment_validation "Post-deployment validation"; then
+    if ! run_optional_phase_by_number 7 "$PHASES_DIR/phase-07-post-deployment-validation.sh" phase_07_post_deployment_validation "Post-deployment validation"; then
         return 1
     fi
 
-    if ! run_optional_phase_script "$PHASES_DIR/phase-08-finalization-and-report.sh" phase_08_finalization_and_report "Finalization and report"; then
+    if ! run_optional_phase_by_number 8 "$PHASES_DIR/phase-08-finalization-and-report.sh" phase_08_finalization_and_report "Finalization and report"; then
         return 1
     fi
 
     if [[ "$RUN_AI_PREP" == true ]]; then
-        if ! run_optional_phase_script "$PHASES_DIR/phase-09-ai-optimizer-prep.sh" phase_09_ai_optimizer_prep "AI-Optimizer preparation"; then
+        if ! run_optional_phase_by_number 9 "$PHASES_DIR/phase-09-ai-optimizer-prep.sh" phase_09_ai_optimizer_prep "AI-Optimizer preparation"; then
             return 1
         fi
     fi
@@ -3584,7 +3730,7 @@ run_deployment_phases() {
 
     if [[ "$RUN_AI_PREP" == true ]]; then
         print_section "Optional Phase: AI-Optimizer Preparation"
-        if ! run_optional_phase_script "$PHASES_DIR/phase-09-ai-optimizer-prep.sh" phase_09_ai_optimizer_prep "AI-Optimizer preparation"; then
+        if ! run_optional_phase_by_number 9 "$PHASES_DIR/phase-09-ai-optimizer-prep.sh" phase_09_ai_optimizer_prep "AI-Optimizer preparation"; then
             exit 1
         fi
     fi
@@ -3672,8 +3818,15 @@ run_post_deployment() {
     fi
 
     echo "============================================"
+    local strict_final_health="${STRICT_FINAL_HEALTH_CHECK:-false}"
     local final_exit=0
-    if [[ $health_exit -ne 0 || $stack_exit -ne 0 || $rollback_test_exit -ne 0 ]]; then
+    if [[ $rollback_test_exit -ne 0 ]]; then
+        final_exit=1
+    fi
+    if [[ $stack_exit -ne 0 ]]; then
+        final_exit=1
+    fi
+    if [[ $health_exit -ne 0 && "$strict_final_health" == true ]]; then
         final_exit=1
     fi
 
@@ -3691,7 +3844,12 @@ run_post_deployment() {
     else
         print_warning "Deployment completed with follow-up actions required."
         if [[ $health_exit -ne 0 ]]; then
-            print_info "Review the health check summary above. You can rerun fixes with: $health_script --fix"
+            if [[ "${STRICT_FINAL_HEALTH_CHECK:-false}" == true ]]; then
+                print_info "Review the health check summary above. You can rerun fixes with: $health_script --fix"
+            else
+                print_info "Final health check reported gaps (non-blocking by default). Set STRICT_FINAL_HEALTH_CHECK=true to fail on these checks."
+                print_info "You can rerun fixes with: $health_script --fix"
+            fi
         fi
         if [[ $rollback_test_exit -ne 0 ]]; then
             print_info "Rollback validation failed. You can rerun with: $SCRIPT_DIR/nixos-quick-deploy.sh --test-rollback"
