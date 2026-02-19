@@ -1233,11 +1233,11 @@ SYSTEM_GENERATION_AFTER="$(current_system_generation)"
 HOME_GENERATION_AFTER="$(current_home_generation)"
 
 if [[ "${SKIP_SYSTEM_SWITCH}" == false && -n "${SYSTEM_GENERATION_BEFORE}" && -n "${SYSTEM_GENERATION_AFTER}" && "${SYSTEM_GENERATION_BEFORE}" == "${SYSTEM_GENERATION_AFTER}" ]]; then
-  log "WARNING: system generation link did not change after switch (${SYSTEM_GENERATION_AFTER})."
+  log "System generation link unchanged after switch (${SYSTEM_GENERATION_AFTER}); this is expected when there are no system-level config changes."
 fi
 
 if [[ "${SKIP_HOME_SWITCH}" == false && -n "${HOME_GENERATION_BEFORE}" && -n "${HOME_GENERATION_AFTER}" && "${HOME_GENERATION_BEFORE}" == "${HOME_GENERATION_AFTER}" ]]; then
-  log "WARNING: Home Manager generation link did not change after switch (${HOME_GENERATION_AFTER})."
+  log "Home Manager generation link unchanged after switch (${HOME_GENERATION_AFTER}); this is expected when there are no Home Manager config changes."
 fi
 
 if [[ "$RUN_FLATPAK_SYNC" == true && -x "${REPO_ROOT}/scripts/sync-flatpak-profile.sh" ]]; then

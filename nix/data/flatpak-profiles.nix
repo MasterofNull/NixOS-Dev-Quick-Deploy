@@ -48,6 +48,7 @@ let
 
   minimal = [
     "org.mozilla.firefox"
+    "com.google.Chrome"
     "md.obsidian.Obsidian"
     "com.github.tchx84.Flatseal"
     "com.obsproject.Studio"
