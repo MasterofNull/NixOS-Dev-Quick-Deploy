@@ -53,9 +53,9 @@
 
     # AI stack — only meaningful when roles.aiStack.enable = true.
     aiStack = {
-      backend         = "ollama";  # ollama | k3s
+      backend         = "llamacpp";  # llamacpp | k3s
       acceleration    = "auto";    # auto | rocm | cuda | cpu
-      models          = [ "qwen2.5-coder:7b" ];
+      llamaCpp.model  = "/var/lib/llama-cpp/models/model.gguf";
       ui.enable       = true;
       vectorDb.enable = false;
       listenOnLan     = false;
