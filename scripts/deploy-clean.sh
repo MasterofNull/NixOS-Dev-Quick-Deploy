@@ -1202,7 +1202,7 @@ if [[ "$MODE" == "boot" ]]; then
     if "${REPO_ROOT}/scripts/sync-flatpak-profile.sh" --flake-ref "${FLAKE_REF}" --target "${NIXOS_TARGET}"; then
       log "Flatpak profile sync complete"
     else
-      log "Flatpak profile sync reported issues (non-critical)"
+      die "Flatpak profile sync failed in boot mode; declarative app state is not converged."
     fi
   fi
 
@@ -1245,7 +1245,7 @@ if [[ "$RUN_FLATPAK_SYNC" == true && -x "${REPO_ROOT}/scripts/sync-flatpak-profi
   if "${REPO_ROOT}/scripts/sync-flatpak-profile.sh" --flake-ref "${FLAKE_REF}" --target "${NIXOS_TARGET}"; then
     log "Flatpak profile sync complete"
   else
-    log "Flatpak profile sync reported issues (non-critical)"
+    die "Flatpak profile sync failed; declarative app state is not converged."
   fi
 fi
 
