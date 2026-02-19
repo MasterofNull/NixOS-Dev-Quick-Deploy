@@ -369,6 +369,18 @@ in
     '';
   };
 
+  # ---- Flatpak user-scope Flathub remote --------------------------------------
+  # Ensures the Flathub remote exists at user scope so sync-flatpak-profile.sh
+  # --scope user (the default) can install apps without system-level privileges.
+  # Running at user scope means no polkit prompts and no system-scope installs,
+  # which prevents duplicate app entries in the COSMIC launcher.
+  home.activation.addFlathubUserRemote = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    if command -v flatpak >/dev/null 2>&1; then
+      flatpak remote-add --user --if-not-exists flathub \
+        https://dl.flathub.org/repo/flathub.flatpakrepo 2>/dev/null || true
+    fi
+  '';
+
   # ---- Continue.dev config — llama.cpp backend --------------------------------
   # Written once on first activation; not managed as a symlink so the user
   # can edit it without home-manager clobbering their changes on switch.
