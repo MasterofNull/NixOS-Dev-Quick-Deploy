@@ -116,12 +116,18 @@ phase_06_additional_tooling() {
     # Resume Check: Skip if already completed
     # ------------------------------------------------------------------------
     if is_step_complete "$phase_name"; then
-        if [[ "${AUTO_UPDATE_REMOTE_AGENTS:-false}" == true ]]; then
-            print_info "Phase 6 already completed; refreshing remote agents"
-            phase_06_update_remote_agents
-            return 0
+        print_info "Phase 6 already completed; refreshing Claude Code native install"
+        local previous_force_update="${FORCE_UPDATE:-false}"
+        FORCE_UPDATE=true
+        if ! install_claude_code; then
+            print_warning "Claude Code refresh encountered issues"
         fi
-        print_info "Phase 6 already completed (skipping)"
+        FORCE_UPDATE="$previous_force_update"
+
+        if [[ "${AUTO_UPDATE_REMOTE_AGENTS:-false}" == true ]]; then
+            print_info "AUTO_UPDATE_REMOTE_AGENTS=true; refreshing remote agents"
+            phase_06_update_remote_agents
+        fi
         return 0
     fi
 

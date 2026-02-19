@@ -15,6 +15,26 @@ NPM_MANIFEST_FILE="${REPO_ROOT}/config/npm-packages.sh"
 
 log() { echo "[npm-ai-sync] $*"; }
 
+resolve_target_user() {
+  if [[ -n "${PRIMARY_USER:-}" ]]; then
+    printf '%s' "$PRIMARY_USER"
+  elif [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
+    printf '%s' "$SUDO_USER"
+  else
+    id -un
+  fi
+}
+
+run_as_target_user() {
+  local target_user
+  target_user="$(resolve_target_user)"
+  if [[ "$target_user" == "$(id -un)" ]]; then
+    "$@"
+  else
+    sudo -H -u "$target_user" "$@"
+  fi
+}
+
 # ---- Defaults ---------------------------------------------------------------
 NPM_CONFIG_PREFIX="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
 export NPM_CONFIG_PREFIX
@@ -132,7 +152,41 @@ else
   log "OpenSkills already available"
 fi
 
-# ---- Claude Code is managed declaratively by Nix/home-manager -----------------
-log "Skipping Claude Code install in npm sync (managed declaratively via Nix packages)"
+# ---- Claude Code native updater ------------------------------------------------
+# Always invoke the native installer on each deploy rerun so Claude Code can
+# self-update whenever Anthropic publishes a newer release.
+update_claude_code_native() {
+  local target_user
+  target_user="$(resolve_target_user)"
+
+  # Use the official Anthropic install command exactly as documented.
+  if run_as_target_user bash -lc 'curl -fsSL https://claude.ai/install.sh | bash' >/dev/null 2>&1; then
+    local detected_bin="/home/${target_user}/.local/bin/claude"
+    if [[ "$target_user" == "$(id -un)" ]]; then
+      detected_bin="$HOME/.local/bin/claude"
+    fi
+
+    if run_as_target_user bash -lc 'command -v claude >/dev/null 2>&1'; then
+      local claude_version
+      claude_version="$(run_as_target_user bash -lc 'claude --version 2>/dev/null || echo unknown')"
+      log "  ✓ Claude Code ensured/updated (${claude_version})"
+    elif [[ -x "$detected_bin" ]]; then
+      local claude_version
+      claude_version="$(run_as_target_user "$detected_bin" --version 2>/dev/null || echo unknown)"
+      log "  ✓ Claude Code ensured/updated (${claude_version})"
+    else
+      log "  ⚠ Claude installer ran but claude binary not detected for user ${target_user}"
+      return 1
+    fi
+  else
+    log "  ⚠ Claude Code installer execution failed (non-critical)"
+    return 1
+  fi
+
+  return 0
+}
+
+log "Ensuring Claude Code native install is current"
+update_claude_code_native || true
 
 log "npm AI tools sync complete"
