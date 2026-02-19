@@ -32,6 +32,15 @@ REQUIRE_HOME_MANAGER_CLI="${REQUIRE_HOME_MANAGER_CLI:-false}"
 PREFER_NIX_RUN_HOME_MANAGER="${PREFER_NIX_RUN_HOME_MANAGER:-true}"
 HOME_MANAGER_NIX_RUN_REF="${HOME_MANAGER_NIX_RUN_REF:-github:nix-community/home-manager/release-25.11#home-manager}"
 
+AUTO_STAGED_FLAKE_PATH=""
+# Tracks untracked files we temporarily add so Nix can evaluate local git flakes.
+# We unstage them on exit to avoid leaving a dirty index that blocks `git pull --rebase`.
+declare -a AUTO_STAGED_FLAKE_FILES=()
+
+RESTORE_GENERATED_REPO_FILES="${RESTORE_GENERATED_REPO_FILES:-true}"
+GENERATED_FILE_SNAPSHOT_DIR=""
+declare -a GENERATED_FILE_SNAPSHOT_TARGETS=()
+
 usage() {
   cat <<'USAGE'
 Usage: ./scripts/deploy-clean.sh [options]
@@ -86,6 +95,8 @@ Environment overrides:
                             Flake ref used for nix-run Home Manager fallback
   ALLOW_ROOT_DEPLOY=true    Allow running this script as root (not recommended)
   BOOT_ESP_MIN_FREE_MB=128  Override minimum required free space on ESP
+  RESTORE_GENERATED_REPO_FILES=true
+                            Restore generated host files (facts/home-deploy-options) on exit
 USAGE
 }
 
@@ -96,6 +107,37 @@ log() {
 die() {
   printf '[clean-deploy] ERROR: %s\n' "$*" >&2
   exit 1
+}
+
+current_system_generation() {
+  readlink -f /nix/var/nix/profiles/system 2>/dev/null || true
+}
+
+current_home_generation() {
+  local home_profile="${HOME_MANAGER_PROFILE_PATH:-$HOME/.local/state/nix/profiles/home-manager}"
+  readlink -f "$home_profile" 2>/dev/null || true
+}
+
+assert_post_switch_desktop_outcomes() {
+  [[ "${MODE}" == "switch" ]] || return 0
+  [[ "${SKIP_SYSTEM_SWITCH}" == false ]] || return 0
+
+  local desktop_enabled="false"
+  desktop_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.${NIXOS_TARGET}.config.mySystem.roles.desktop.enable" 2>/dev/null || true)"
+  if [[ "${desktop_enabled}" != "true" ]]; then
+    return 0
+  fi
+
+  local cosmic_session="/run/current-system/sw/share/wayland-sessions/cosmic.desktop"
+  if [[ ! -f "${cosmic_session}" ]]; then
+    die "Desktop role is enabled but COSMIC session file is missing (${cosmic_session}). nixos-rebuild switch may not have applied the intended desktop generation."
+  fi
+
+  if command -v systemctl >/dev/null 2>&1; then
+    if ! systemctl is-enabled --quiet display-manager 2>/dev/null; then
+      die "Desktop role is enabled but display-manager is not enabled after switch."
+    fi
+  fi
 }
 
 assert_non_root_entrypoint() {
@@ -184,22 +226,96 @@ ensure_flake_visible_to_nix() {
 
   local -a scope=(flake.nix flake.lock nix)
   local -a untracked=()
-  local staged=false
 
   while IFS= read -r path; do
     [[ -n "${path}" ]] || continue
     untracked+=("${path}")
   done < <(run_git_safe -C "$flake_path" ls-files --others --exclude-standard -- "${scope[@]}" 2>/dev/null || true)
 
-  if (( ${#untracked[@]} > 0 )); then
-    log "Auto-staging ${#untracked[@]} untracked flake file(s) so Nix can evaluate local config"
-    run_git_safe -C "$flake_path" add -- "${untracked[@]}"
-    staged=true
+  if (( ${#untracked[@]} == 0 )); then
+    return 0
   fi
 
-  if [[ "$staged" == true ]]; then
-    log "Local flake files were staged for evaluation (commit when ready)."
+  log "Temporarily staging ${#untracked[@]} untracked flake file(s) so Nix can evaluate local config"
+  run_git_safe -C "$flake_path" add -- "${untracked[@]}"
+  AUTO_STAGED_FLAKE_PATH="$flake_path"
+  AUTO_STAGED_FLAKE_FILES=("${untracked[@]}")
+}
+
+cleanup_auto_staged_flake_files() {
+  if [[ -z "${AUTO_STAGED_FLAKE_PATH}" || ${#AUTO_STAGED_FLAKE_FILES[@]} -eq 0 ]]; then
+    return 0
   fi
+
+  if run_git_safe -C "${AUTO_STAGED_FLAKE_PATH}" restore --staged -- "${AUTO_STAGED_FLAKE_FILES[@]}" >/dev/null 2>&1; then
+    log "Restored git index after temporary flake staging"
+    return 0
+  fi
+
+  if run_git_safe -C "${AUTO_STAGED_FLAKE_PATH}" reset -q -- "${AUTO_STAGED_FLAKE_FILES[@]}" >/dev/null 2>&1; then
+    log "Restored git index after temporary flake staging"
+    return 0
+  fi
+
+  log "Could not automatically unstage temporary flake files; run: git -C '${AUTO_STAGED_FLAKE_PATH}' restore --staged -- ${AUTO_STAGED_FLAKE_FILES[*]}"
+}
+
+
+snapshot_generated_repo_files() {
+  [[ "${RESTORE_GENERATED_REPO_FILES}" == "true" ]] || return 0
+
+  local flake_path host_dir
+  flake_path="$(resolve_local_flake_path "${FLAKE_REF}")"
+  [[ -n "${flake_path}" && -d "${flake_path}" ]] || return 0
+
+  if ! run_git_safe -C "${flake_path}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return 0
+  fi
+
+  host_dir="${flake_path}/nix/hosts/${HOST_NAME}"
+  [[ -d "${host_dir}" ]] || return 0
+
+  GENERATED_FILE_SNAPSHOT_DIR="$(mktemp -d)"
+  GENERATED_FILE_SNAPSHOT_TARGETS=(
+    "${host_dir}/facts.nix"
+    "${host_dir}/home-deploy-options.nix"
+  )
+
+  local target key
+  for target in "${GENERATED_FILE_SNAPSHOT_TARGETS[@]}"; do
+    key="$(printf '%s' "${target}" | sha256sum | awk '{print $1}')"
+    if [[ -f "${target}" ]]; then
+      cp -f "${target}" "${GENERATED_FILE_SNAPSHOT_DIR}/${key}.snapshot"
+      printf 'present\n' > "${GENERATED_FILE_SNAPSHOT_DIR}/${key}.state"
+    else
+      printf 'absent\n' > "${GENERATED_FILE_SNAPSHOT_DIR}/${key}.state"
+    fi
+  done
+}
+
+restore_generated_repo_files() {
+  [[ "${RESTORE_GENERATED_REPO_FILES}" == "true" ]] || return 0
+  [[ -n "${GENERATED_FILE_SNAPSHOT_DIR}" && -d "${GENERATED_FILE_SNAPSHOT_DIR}" ]] || return 0
+
+  local target key state
+  for target in "${GENERATED_FILE_SNAPSHOT_TARGETS[@]}"; do
+    key="$(printf '%s' "${target}" | sha256sum | awk '{print $1}')"
+    state="$(cat "${GENERATED_FILE_SNAPSHOT_DIR}/${key}.state" 2>/dev/null || echo absent)"
+
+    if [[ "${state}" == "present" ]]; then
+      install -m 0644 "${GENERATED_FILE_SNAPSHOT_DIR}/${key}.snapshot" "${target}"
+    else
+      rm -f "${target}" >/dev/null 2>&1 || true
+    fi
+  done
+
+  rm -rf "${GENERATED_FILE_SNAPSHOT_DIR}" >/dev/null 2>&1 || true
+  GENERATED_FILE_SNAPSHOT_DIR=""
+}
+
+cleanup_on_exit() {
+  cleanup_auto_staged_flake_files
+  restore_generated_repo_files
 }
 
 run_roadmap_completion_verification() {
@@ -250,6 +366,16 @@ enable_flakes_runtime() {
 nix_eval_raw_safe() {
   local expr="$1"
   run_nix_eval_with_timeout nix eval --raw "${expr}"
+}
+
+nix_eval_bool_safe() {
+  local expr="$1"
+  local raw
+  raw="$(run_nix_eval_with_timeout nix eval --json "${expr}")" || return 1
+  case "$raw" in
+    true|false) printf '%s\n' "$raw" ;;
+    *) return 1 ;;
+  esac
 }
 
 run_nix_eval_with_timeout() {
@@ -449,33 +575,47 @@ in
   else "ok"
 EOF
 
-  if ! result="$(nix_eval_expr_raw_safe "$expr" 2>/dev/null || true)"; then
+  local eval_err
+  eval_err="$(mktemp)"
+  if ! result="$(nix_eval_expr_raw_safe "$expr" 2>"${eval_err}")"; then
     result=""
   fi
 
   case "$result" in
     ok)
-      return 0
       ;;
     primary-hash-locked)
+      rm -f "${eval_err}" >/dev/null 2>&1 || true
       die "Target config declares locked hashedPassword for primary user '${PRIMARY_USER}'. Refusing deploy."
       ;;
     missing-primary-user)
+      rm -f "${eval_err}" >/dev/null 2>&1 || true
       die "Target config sets users.mutableUsers=false but does not declare primary user '${PRIMARY_USER}'. Refusing deploy."
       ;;
     missing-primary-password)
+      rm -f "${eval_err}" >/dev/null 2>&1 || true
       die "Target config declares primary user '${PRIMARY_USER}' without a password while users.mutableUsers=false. Refusing deploy."
       ;;
     root-hash-locked)
+      rm -f "${eval_err}" >/dev/null 2>&1 || true
       die "Target config declares a locked root hashedPassword while initrd emergency access is enabled. Refusing deploy."
       ;;
     root-missing-password)
+      rm -f "${eval_err}" >/dev/null 2>&1 || true
       die "Target config enables initrd emergency access but root user is declared without a password directive. Refusing deploy."
       ;;
     *)
-      log "Account guardrail preflight could not fully evaluate target config in time; continuing with runtime checks."
+      local reason=""
+      reason="$(tr '\n' ' ' < "${eval_err}" 2>/dev/null | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//')"
+      if [[ -n "${reason}" ]]; then
+        log "Account guardrail preflight could not fully evaluate target config; continuing with runtime checks (${reason})."
+      else
+        log "Account guardrail preflight could not fully evaluate target config; continuing with runtime checks."
+      fi
       ;;
   esac
+
+  rm -f "${eval_err}" >/dev/null 2>&1 || true
 }
 
 extract_host_fs_field() {
@@ -561,13 +701,13 @@ assert_bootloader_preflight() {
   [[ "${RUN_PHASE0_DISKO}" == true ]] && return 0
 
   local systemd_boot_enabled grub_enabled
-  if ! systemd_boot_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.boot.loader.systemd-boot.enable" 2>/dev/null)"; then
-    log "Bootloader preflight: unable to evaluate systemd-boot enable flag in time; skipping strict bootloader assertion."
+  if ! systemd_boot_enabled="$(nix_eval_bool_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.boot.loader.systemd-boot.enable" 2>/dev/null)"; then
+    log "Bootloader preflight: unable to evaluate systemd-boot enable flag; skipping strict bootloader assertion."
     return 0
   fi
 
-  if ! grub_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.boot.loader.grub.enable" 2>/dev/null)"; then
-    log "Bootloader preflight: unable to evaluate grub enable flag in time; skipping strict bootloader assertion."
+  if ! grub_enabled="$(nix_eval_bool_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.boot.loader.grub.enable" 2>/dev/null)"; then
+    log "Bootloader preflight: unable to evaluate grub enable flag; skipping strict bootloader assertion."
     return 0
   fi
 
@@ -782,8 +922,10 @@ persist_home_git_credentials_declarative() {
 {
   programs.git = {
     enable = lib.mkDefault true;
-    userName = lib.mkForce "${escaped_name}";
-    userEmail = lib.mkForce "${escaped_email}";
+    settings = {
+      user.name = lib.mkForce "${escaped_name}";
+      user.email = lib.mkForce "${escaped_email}";
+    };
 ${helper_block}  };
 }
 EOF
@@ -905,6 +1047,8 @@ case "$PROFILE" in
   *) die "Unsupported profile '${PROFILE}'. Expected ai-dev|gaming|minimal." ;;
 esac
 
+trap cleanup_on_exit EXIT
+
 assert_non_root_entrypoint
 
 if [[ "${RECOVERY_MODE}" == true ]]; then
@@ -919,6 +1063,7 @@ require_command nixos-rebuild
 enable_flakes_runtime
 ensure_flake_visible_to_nix "${FLAKE_REF}"
 resolve_host_from_flake_if_needed
+snapshot_generated_repo_files
 persist_home_git_credentials_declarative
 run_roadmap_completion_verification
 run_readiness_analysis
@@ -1018,6 +1163,9 @@ if [[ "$RUN_SECUREBOOT_ENROLL" == true ]]; then
   log "sbctl key enrollment complete"
 fi
 
+SYSTEM_GENERATION_BEFORE="$(current_system_generation)"
+HOME_GENERATION_BEFORE="$(current_home_generation)"
+
 if [[ "$MODE" == "build" ]]; then
   log "Running dry build"
   if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
@@ -1079,6 +1227,18 @@ fi
 assert_runtime_account_unlocked "${PRIMARY_USER}" true
 # Verify the switch did not unexpectedly reset the login password.
 assert_password_unchanged "${PRIMARY_USER}"
+assert_post_switch_desktop_outcomes
+
+SYSTEM_GENERATION_AFTER="$(current_system_generation)"
+HOME_GENERATION_AFTER="$(current_home_generation)"
+
+if [[ "${SKIP_SYSTEM_SWITCH}" == false && -n "${SYSTEM_GENERATION_BEFORE}" && -n "${SYSTEM_GENERATION_AFTER}" && "${SYSTEM_GENERATION_BEFORE}" == "${SYSTEM_GENERATION_AFTER}" ]]; then
+  log "System generation link unchanged after switch (${SYSTEM_GENERATION_AFTER}); this is expected when there are no system-level config changes."
+fi
+
+if [[ "${SKIP_HOME_SWITCH}" == false && -n "${HOME_GENERATION_BEFORE}" && -n "${HOME_GENERATION_AFTER}" && "${HOME_GENERATION_BEFORE}" == "${HOME_GENERATION_AFTER}" ]]; then
+  log "Home Manager generation link unchanged after switch (${HOME_GENERATION_AFTER}); this is expected when there are no Home Manager config changes."
+fi
 
 if [[ "$RUN_FLATPAK_SYNC" == true && -x "${REPO_ROOT}/scripts/sync-flatpak-profile.sh" ]]; then
   log "Syncing Flatpak apps for profile '${PROFILE}'"
@@ -1135,7 +1295,11 @@ fi
 
 if [[ "$RUN_HEALTH_CHECK" == true && -x "${REPO_ROOT}/scripts/system-health-check.sh" ]]; then
   log "Running post-deploy health check"
-  "${REPO_ROOT}/scripts/system-health-check.sh" --detailed
+  if "${REPO_ROOT}/scripts/system-health-check.sh" --detailed; then
+    log "Post-deploy health check passed"
+  else
+    log "Post-deploy health check reported issues (non-critical)"
+  fi
 fi
 
 if [[ -x "${REPO_ROOT}/scripts/compare-installed-vs-intended.sh" ]]; then
