@@ -132,7 +132,43 @@ else
   log "OpenSkills already available"
 fi
 
-# ---- Claude Code is managed declaratively by Nix/home-manager -----------------
-log "Skipping Claude Code install in npm sync (managed declaratively via Nix packages)"
+# ---- Claude Code native updater ------------------------------------------------
+# Always invoke the native installer on each deploy rerun so Claude Code can
+# self-update whenever Anthropic publishes a newer release.
+update_claude_code_native() {
+  local installer_url="https://claude.ai/install.sh"
+  local installer_tmp
+  installer_tmp="$(mktemp -t claude-install.XXXXXX.sh)"
+
+  if ! curl --max-time 120 --connect-timeout 10 -fsSL "$installer_url" -o "$installer_tmp"; then
+    log "  ⚠ Claude Code installer download failed (non-critical)"
+    rm -f "$installer_tmp" 2>/dev/null || true
+    return 1
+  fi
+
+  if [[ ! -s "$installer_tmp" ]]; then
+    log "  ⚠ Claude Code installer was empty (non-critical)"
+    rm -f "$installer_tmp" 2>/dev/null || true
+    return 1
+  fi
+
+  if bash "$installer_tmp" >/dev/null 2>&1; then
+    if command -v claude >/dev/null 2>&1; then
+      log "  ✓ Claude Code ensured/updated ($(claude --version 2>/dev/null || echo unknown))"
+    else
+      log "  ✓ Claude installer ran"
+    fi
+  else
+    log "  ⚠ Claude Code installer execution failed (non-critical)"
+    rm -f "$installer_tmp" 2>/dev/null || true
+    return 1
+  fi
+
+  rm -f "$installer_tmp" 2>/dev/null || true
+  return 0
+}
+
+log "Ensuring Claude Code native install is current"
+update_claude_code_native || true
 
 log "npm AI tools sync complete"
