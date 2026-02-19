@@ -1932,19 +1932,19 @@ run_all_checks() {
     fi
 
     print_check "K3s cluster connectivity"
-    local kube_err=""
     if [[ -n "$KUBECTL_BIN" ]]; then
-        kube_err=$("$KUBECTL_BIN" get nodes >/dev/null 2>&1 || true)
-        if [[ -z "$kube_err" ]]; then
+        local kube_err=""
+        kube_err=$("$KUBECTL_BIN" get nodes --request-timeout="${KUBECTL_TIMEOUT:-60}s" 2>&1 >/dev/null) || true
+        if "$KUBECTL_BIN" get nodes --request-timeout="${KUBECTL_TIMEOUT:-60}s" >/dev/null 2>&1; then
             print_success "kubectl can reach the cluster"
         else
-            print_fail "kubectl unavailable or cluster unreachable"
-            if [[ "$DETAILED" == "true" ]]; then
+            print_warning "kubectl available but cluster unreachable (K3s may not be running)"
+            if [[ "$DETAILED" == "true" && -n "$kube_err" ]]; then
                 print_detail "kubectl error: ${kube_err}"
             fi
         fi
     else
-        print_fail "kubectl unavailable or cluster unreachable"
+        print_warning "kubectl binary not found"
     fi
 
     print_check "AI stack pods (${AI_STACK_NAMESPACE})"
@@ -2089,9 +2089,9 @@ run_all_checks() {
         print_detail "Create with: echo 'prefix=\$HOME/.npm-global' > ~/.npmrc"
     fi
 
-    # Check gitconfig
-    print_check "Git configuration (~/.gitconfig)"
-    if [ -f "$HOME/.gitconfig" ]; then
+    # Check gitconfig (Home Manager uses XDG path ~/.config/git/config)
+    print_check "Git configuration"
+    if [ -f "$HOME/.gitconfig" ] || [ -f "$HOME/.config/git/config" ]; then
         local git_user=$(git config --global user.name 2>/dev/null || echo "not set")
         local git_email=$(git config --global user.email 2>/dev/null || echo "not set")
         print_success "Git config (user: $git_user)"
