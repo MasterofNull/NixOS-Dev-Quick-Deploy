@@ -2076,30 +2076,15 @@ run_optional_phase_script() {
         return 1
     fi
 
+    # Phase scripts call their own entry-point function as a bare call at the
+    # bottom (e.g. `phase_02_backup`). Sourcing the script is sufficient —
+    # the bare call runs the function and its return code becomes the exit
+    # status of `source`. Calling "$function_name" explicitly after source
+    # would run the function a second time (double-report bug).
     # shellcheck source=/dev/null
-    if ! source "$script_path"; then
-        print_error "Failed to load $label script ($script_path)"
-        return 1
-    fi
-
-    # Phase scripts in this repository self-execute when sourced. Calling the
-    # exported phase function again causes a duplicate run and confusing
-    # "already completed" messages.
-    if [[ -n "$function_name" ]] && ! declare -F "$function_name" >/dev/null 2>&1; then
-        print_warning "$label script did not export expected function '$function_name'"
-    fi
-
-    return 0
-}
-
-run_optional_phase_by_number() {
-    local phase_num="$1"
-    local script_path="$2"
-    local function_name="$3"
-    local label="$4"
-
-    if should_skip_phase "$phase_num"; then
-        print_info "Skipping ${label} (--skip-phase ${phase_num})"
+    if source "$script_path"; then
+        print_success "$label completed"
+        echo ""
         return 0
     fi
 
@@ -2887,8 +2872,11 @@ configure_host_swap_limits() {
         print_info "Host swap limits already enabled (${HOST_SWAP_LIMIT_VALUE:-${HOST_SWAP_LIMIT_GB}G}). Skipping prompt."
         return 0
     fi
-    if [[ "${HOST_SWAP_LIMIT_ENABLED:-}" == "false" && -n "${HOST_SWAP_LIMIT_VALUE:-}" ]]; then
-        print_info "Host swap limits explicitly disabled; skipping prompt."
+    # HOST_SWAP_LIMIT_ENABLED defaults to "false" (no containers).
+    # Respect the default without requiring HOST_SWAP_LIMIT_VALUE to be set —
+    # the old guard `false && -n VALUE` never matched on a fresh run, causing
+    # the prompt to always appear even when containers are not in use.
+    if [[ "${HOST_SWAP_LIMIT_ENABLED:-}" == "false" ]]; then
         return 0
     fi
 
@@ -3299,34 +3287,22 @@ persist_flake_first_host_options() {
         return 1
     fi
 
-    resolve_flake_first_model_selection
-
-    local existing_backend existing_accel existing_ui_enable existing_vector_enable existing_listen_lan existing_models
-    existing_backend="$(resolve_deploy_option_string "$deploy_file" "backend" "ollama")"
-    existing_accel="$(resolve_deploy_option_string "$deploy_file" "acceleration" "auto")"
-    existing_ui_enable="$(resolve_deploy_option_bool "$deploy_file" "ui.enable" "true")"
-    existing_vector_enable="$(resolve_deploy_option_bool "$deploy_file" "vectorDb.enable" "false")"
-    existing_listen_lan="$(resolve_deploy_option_bool "$deploy_file" "listenOnLan" "false")"
-    existing_models="$(resolve_deploy_option_list "$deploy_file" "models" '[ "qwen2.5-coder:7b" ]')"
-    [[ -z "$existing_models" ]] && existing_models='[ "qwen2.5-coder:7b" ]'
-
     cat > "$deploy_file" <<EOF
 { lib, ... }:
 {
-  mySystem.roles.aiStack.enable = lib.mkForce ${RUN_AI_MODEL};
+  mySystem.roles.aiStack.enable = lib.mkDefault ${RUN_AI_MODEL};
   mySystem.aiStack = {
-    enable = lib.mkForce ${RUN_AI_MODEL};
-    backend = lib.mkForce "${existing_backend}";
-    acceleration = lib.mkForce "${existing_accel}";
-    models = lib.mkForce ${existing_models};
-    ui.enable = lib.mkForce ${existing_ui_enable};
-    vectorDb.enable = lib.mkForce ${existing_vector_enable};
-    listenOnLan = lib.mkForce ${existing_listen_lan};
+    # ollama backend: native NixOS systemd services (no K3s, no containers).
+    # Switch to "k3s" only once the Kubernetes stack is operational.
+    backend      = lib.mkDefault "ollama";
+    acceleration = lib.mkDefault "auto";  # auto -> rocm for AMD GPU
 
-    modelProfile = lib.mkForce "${FLAKE_FIRST_MODEL_PROFILE}";
-    embeddingModel = lib.mkForce "${FLAKE_FIRST_EMBEDDING_MODEL}";
-    llamaDefaultModel = lib.mkForce "${FLAKE_FIRST_LLM_MODEL}";
-    llamaModelFile = lib.mkForce "${FLAKE_FIRST_LLM_MODEL_FILE}";
+    # Models pulled by the ollama-model-pull oneshot on first boot.
+    models = lib.mkDefault [ "qwen2.5-coder:7b" ];
+
+    ui.enable       = lib.mkDefault true;   # Open WebUI on :3000
+    vectorDb.enable = lib.mkDefault false;  # Qdrant -- enable when RAG is needed
+    listenOnLan     = lib.mkDefault false;  # loopback only (127.0.0.1)
   };
 }
 EOF
@@ -3571,18 +3547,34 @@ run_flake_first_deployment() {
     if ! run_flake_first_roadmap_verification; then
         return 1
     fi
+    # Roadmap verification already passed above. Tell deploy-clean.sh to skip
+    # its own copy so the checks don't run (and print) twice.
+    export SKIP_ROADMAP_VERIFICATION=true
 
     if ! persist_flake_first_host_options "$detected_host"; then
         print_error "Failed to persist host-scoped declarative deploy options"
         return 1
     fi
 
-    if ! ensure_ai_stack_env; then
-        print_error "Failed to prepare AI stack environment configuration"
-        return 1
+    # Detect backend from the just-written deploy-options file.
+    # K3s-specific steps (Postgres/Grafana credentials, embeddings prewarm)
+    # are irrelevant for the ollama backend and must not prompt/fail there.
+    local _deploy_opts="${SCRIPT_DIR}/nix/hosts/${detected_host}/deploy-options.nix"
+    local _ai_backend="ollama"
+    if grep -qE 'backend\s*=.*"k3s"' "$_deploy_opts" 2>/dev/null; then
+        _ai_backend="k3s"
     fi
 
-    prewarm_ai_stack_embeddings_cache "$detected_host"
+    if [[ "$_ai_backend" == "k3s" ]]; then
+        if ! ensure_ai_stack_env; then
+            print_error "Failed to prepare AI stack environment configuration"
+            return 1
+        fi
+        # Embeddings prewarm: sentence-transformers sidecar, k3s backend only.
+        prewarm_ai_stack_embeddings_cache
+    else
+        print_info "Skipping K3s credentials and embeddings prewarm (backend=${_ai_backend})"
+    fi
 
     if ! apply_flake_first_ai_stack_toggle "$detected_host"; then
         print_error "Failed to persist AI stack declarative toggle state"
