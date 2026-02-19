@@ -22,15 +22,7 @@ export NPM_CONFIG_PREFIX
 # ---- Ensure npm global prefix directories exist ----------------------------
 mkdir -p "${NPM_CONFIG_PREFIX}/bin" "${NPM_CONFIG_PREFIX}/lib/node_modules" 2>/dev/null || true
 
-# ---- Write .npmrc if missing -----------------------------------------------
-npmrc="$HOME/.npmrc"
-if [[ ! -f "$npmrc" ]]; then
-  printf 'prefix=%s\n' "$NPM_CONFIG_PREFIX" > "$npmrc"
-  log "Created $npmrc"
-elif ! grep -q "^prefix=" "$npmrc" 2>/dev/null; then
-  printf '\nprefix=%s\n' "$NPM_CONFIG_PREFIX" >> "$npmrc"
-  log "Appended prefix to $npmrc"
-fi
+# .npmrc is managed declaratively by Home Manager (nix/hosts/nixos/home.nix).
 
 # ---- Helper: resolve CLI entry point from package.json .bin ----------------
 resolve_cli_path() {
