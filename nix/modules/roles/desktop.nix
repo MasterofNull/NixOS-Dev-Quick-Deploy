@@ -126,6 +126,20 @@ in
     # after nixos-rebuild (the app list comes from mySystem.profileData.flatpakApps).
     services.flatpak.enable = lib.mkDefault true;
 
+    # Allow wheel-group members to install/update/remove Flatpak apps and manage
+    # remotes without repeated polkit password prompts.
+    # Root cause of the repeated "[sudo] password for hyperd:" prompts during
+    # the deploy script's flatpak sync: each batch of runtime/app installs triggers
+    # a separate flatpak-system-helper polkit authorisation round.
+    security.polkit.extraConfig = ''
+      polkit.addRule(function(action, subject) {
+        if (action.id.startsWith("org.freedesktop.Flatpak") &&
+            subject.isInGroup("wheel")) {
+          return polkit.Result.YES;
+        }
+      });
+    '';
+
     # Add Flathub remote via a one-shot systemd service (idempotent, online only).
     systemd.services.flatpak-add-flathub = {
       description   = "Add Flathub remote to Flatpak system installation";
