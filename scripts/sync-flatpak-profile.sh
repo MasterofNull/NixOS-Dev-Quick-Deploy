@@ -11,7 +11,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 FLAKE_REF="path:${REPO_ROOT}"
 TARGET=""
 NON_INTERACTIVE=true
-INSTALL_SCOPE="system"
+INSTALL_SCOPE="user"
 
 usage() {
   cat <<'USAGE'
@@ -21,7 +21,7 @@ Options:
   --target NAME      nixos target name (<host>-<profile>) [required]
   --flake-ref REF    flake reference (default: path:<repo-root>)
   --interactive      allow interactive flatpak prompts
-  --scope SCOPE      install scope: system|user (default: system)
+  --scope SCOPE      install scope: system|user (default: user)
   -h, --help         show this help
 USAGE
 }

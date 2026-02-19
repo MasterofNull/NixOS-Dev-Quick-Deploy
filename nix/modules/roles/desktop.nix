@@ -62,7 +62,11 @@ in
       NIXOS_OZONE_WL              = lib.mkDefault "1";
       COSMIC_DATA_CONTROL_ENABLED = lib.mkDefault "1";
       XDG_DATA_HOME               = lib.mkDefault "$HOME/.local/share";
-      XDG_DATA_DIRS               = lib.mkDefault "$HOME/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/run/current-system/sw/share";
+      # XDG_DATA_DIRS is NOT set here.  services.flatpak.enable handles
+      # adding /var/lib/flatpak/exports/share and the per-user export path
+      # via /etc/profile.d/flatpak.sh.  Hardcoding it here caused both paths
+      # to be inserted TWICE, making every Flatpak app appear twice in the
+      # COSMIC launcher (NIX-ISSUE: fix-duplicate-flatpaks-whq2y).
     };
 
     # ---- Audio -------------------------------------------------------------
@@ -124,38 +128,14 @@ in
     };
 
     # ---- Flatpak -----------------------------------------------------------
-    # Declarative Flatpak app sync is performed by scripts/sync-flatpak-profile.sh
-    # after nixos-rebuild (the app list comes from mySystem.profileData.flatpakApps).
+    # Only the system Flatpak daemon is enabled here (required for portal
+    # infrastructure and xdg-desktop-portal integration).  All app installs
+    # are done at user-scope via home.activation.addFlathubUserRemote in
+    # nix/home/base.nix and scripts/sync-flatpak-profile.sh --scope user.
+    # This prevents every app from appearing twice in the COSMIC launcher:
+    # the launcher scans both system and user export paths, so installing the
+    # same app at both levels creates duplicates.
     services.flatpak.enable = lib.mkDefault true;
-
-    # Allow wheel-group members to install/update/remove Flatpak apps and manage
-    # remotes without repeated polkit password prompts.
-    # Root cause of the repeated "[sudo] password for hyperd:" prompts during
-    # the deploy script's flatpak sync: each batch of runtime/app installs triggers
-    # a separate flatpak-system-helper polkit authorisation round.
-    security.polkit.extraConfig = ''
-      polkit.addRule(function(action, subject) {
-        if (action.id.startsWith("org.freedesktop.Flatpak") &&
-            subject.isInGroup("wheel")) {
-          return polkit.Result.YES;
-        }
-      });
-    '';
-
-    # Add Flathub remote via a one-shot systemd service (idempotent, online only).
-    systemd.services.flatpak-add-flathub = {
-      description   = "Add Flathub remote to Flatpak system installation";
-      wantedBy      = [ "multi-user.target" ];
-      after         = [ "network-online.target" "flatpak-system-helper.service" ];
-      wants         = [ "network-online.target" ];
-      serviceConfig = {
-        Type            = "oneshot";
-        RemainAfterExit = true;
-        ExecStart       = "${pkgs.flatpak}/bin/flatpak remote-add "
-          + "--if-not-exists flathub "
-          + "https://dl.flathub.org/repo/flathub.flatpakrepo";
-      };
-    };
 
     # ---- Geolocation (GeoClue2) --------------------------------------------
     # Required by COSMIC settings daemon for automatic day/night theme switching
