@@ -2065,13 +2065,13 @@ run_optional_phase_script() {
         return 1
     fi
 
+    # Phase scripts call their own entry-point function as a bare call at the
+    # bottom (e.g. `phase_02_backup`). Sourcing the script is sufficient —
+    # the bare call runs the function and its return code becomes the exit
+    # status of `source`. Calling "$function_name" explicitly after source
+    # would run the function a second time (double-report bug).
     # shellcheck source=/dev/null
-    if ! source "$script_path"; then
-        print_error "Failed to load $label script ($script_path)"
-        return 1
-    fi
-
-    if "$function_name"; then
+    if source "$script_path"; then
         print_success "$label completed"
         echo ""
         return 0
@@ -2830,8 +2830,11 @@ configure_host_swap_limits() {
         print_info "Host swap limits already enabled (${HOST_SWAP_LIMIT_VALUE:-${HOST_SWAP_LIMIT_GB}G}). Skipping prompt."
         return 0
     fi
-    if [[ "${HOST_SWAP_LIMIT_ENABLED:-}" == "false" && -n "${HOST_SWAP_LIMIT_VALUE:-}" ]]; then
-        print_info "Host swap limits explicitly disabled; skipping prompt."
+    # HOST_SWAP_LIMIT_ENABLED defaults to "false" (no containers).
+    # Respect the default without requiring HOST_SWAP_LIMIT_VALUE to be set —
+    # the old guard `false && -n VALUE` never matched on a fresh run, causing
+    # the prompt to always appear even when containers are not in use.
+    if [[ "${HOST_SWAP_LIMIT_ENABLED:-}" == "false" ]]; then
         return 0
     fi
 
@@ -3409,6 +3412,9 @@ run_flake_first_deployment() {
     if ! run_flake_first_roadmap_verification; then
         return 1
     fi
+    # Roadmap verification already passed above. Tell deploy-clean.sh to skip
+    # its own copy so the checks don't run (and print) twice.
+    export SKIP_ROADMAP_VERIFICATION=true
 
     if ! persist_flake_first_host_options "$detected_host"; then
         print_error "Failed to persist host-scoped declarative deploy options"
