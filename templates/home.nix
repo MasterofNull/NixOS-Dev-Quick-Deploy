@@ -788,6 +788,17 @@ OSTREE_CONFIG
 
         ensure_remote || exit 1
 
+        # Update existing apps and runtimes before install checks so that any
+        # already-installed KDE Platform refs are bumped to the latest
+        # non-EOL version, eliminating "is end-of-life" warnings during the
+        # install loop below.
+        log "Updating existing Flatpak apps and runtimes..."
+        flatpak --user update --noninteractive --appstream 2>/dev/null || true
+        flatpak --user update --noninteractive 2>/dev/null \
+          || log "Flatpak pre-update failed (continuing)" >&2
+        log "Pruning unused runtimes (removes end-of-life runtime versions)..."
+        flatpak --user uninstall --unused --noninteractive 2>/dev/null || true
+
         # shellcheck disable=SC2206
         packages=( ${packageArgs} )
         if [ ''${#packages[@]} -eq 0 ]; then
@@ -834,6 +845,8 @@ OSTREE_CONFIG
         log "Refreshing Flatpak metadata..."
         flatpak --user update --noninteractive --appstream || log "Appstream refresh failed (continuing)" >&2
         flatpak --user update --noninteractive || log "Flatpak update failed (continuing)" >&2
+        flatpak --user uninstall --unused --noninteractive \
+          || log "Unused runtime pruning failed (continuing)" >&2
 
         # Final summary
         final_installed=$(flatpak --user list --app --columns=application 2>/dev/null | wc -l)
