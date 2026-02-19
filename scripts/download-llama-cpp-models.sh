@@ -39,13 +39,16 @@ NC='\033[0m' # No Color
 # All models use Q4_K_M quantization (4-bit) for optimal CPU performance
 
 declare -A MODELS=(
-    # General Purpose Model (llama-cpp:8080)
+    # General Purpose / low-VRAM fallback (≤16 GB GPU, <32 GB RAM)
     ["qwen3-4b"]="unsloth/Qwen3-4B-Instruct-2507-GGUF:Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 
-    # Code Generation Model (optional secondary endpoint)
+    # Code Generation — 7B (≥16 GB GPU or ≥32 GB RAM)
     ["qwen-coder"]="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:qwen2.5-coder-7b-instruct-q4_k_m.gguf"
 
-    # Code Analysis Model (optional secondary endpoint)
+    # Code Generation — 14B (≥24 GB GPU VRAM)
+    ["qwen-coder-14b"]="Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:qwen2.5-coder-14b-instruct-q4_k_m.gguf"
+
+    # Code Analysis Model (alternative 7B)
     ["deepseek"]="TheBloke/deepseek-coder-6.7B-instruct-GGUF:deepseek-coder-6.7b-instruct.Q4_K_M.gguf"
 )
 
@@ -53,14 +56,16 @@ declare -A MODELS=(
 declare -A MODEL_SIZES=(
     ["qwen3-4b"]="2.4 GB"
     ["qwen-coder"]="4.3 GB"
+    ["qwen-coder-14b"]="8.7 GB"
     ["deepseek"]="3.8 GB"
 )
 
 # Model descriptions
 declare -A MODEL_DESCRIPTIONS=(
-    ["qwen3-4b"]="General reasoning and task execution"
-    ["qwen-coder"]="Advanced code generation and completion"
-    ["deepseek"]="Code analysis and understanding"
+    ["qwen3-4b"]="General reasoning and task execution (low-VRAM / RAM-constrained)"
+    ["qwen-coder"]="Advanced code generation and completion (7B — ≥16 GB GPU or ≥32 GB RAM)"
+    ["qwen-coder-14b"]="High-quality code generation (14B — requires ≥24 GB GPU VRAM)"
+    ["deepseek"]="Code analysis and understanding (alternative 7B)"
 )
 
 # ============================================================================

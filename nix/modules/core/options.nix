@@ -297,14 +297,12 @@
       };
 
       backend = lib.mkOption {
-        type = lib.types.enum [ "llamacpp" "ollama" "k3s" ];
+        type = lib.types.enum [ "llamacpp" "k3s" ];
         default = "llamacpp";
         description = ''
           Inference backend.
           - llamacpp: native llama.cpp server (OpenAI-compatible API on :8080).
-            Recommended for single-workstation AI development; no daemon overhead.
-          - ollama: native NixOS systemd services (services.ollama + open-webui + qdrant).
-            Use only when Ollama-specific features (model library, pull UI) are needed.
+            Default for single-workstation AI development; no daemon overhead.
           - k3s: full Kubernetes-orchestrated stack (AIDB, hybrid-coordinator, ralph-wiggum).
             Only needed for multi-service production deployments.
         '';
@@ -320,15 +318,6 @@
         '';
       };
 
-      models = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [ ];
-        example = [ "qwen2.5-coder:7b" "phi3:mini" "deepseek-coder:6.7b" ];
-        description = ''
-          Ollama model tags to pull on first boot (ollama backend only).
-          Has no effect when backend = "llamacpp".
-        '';
-      };
 
       ui = {
         enable = lib.mkOption {

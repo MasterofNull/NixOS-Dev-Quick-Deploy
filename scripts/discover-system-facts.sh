@@ -362,39 +362,47 @@ else
   ai_stack_enabled_default="false"
 fi
 ai_stack_enabled="${AI_STACK_ENABLED_OVERRIDE:-${ai_stack_enabled_default}}"
-ai_backend="${AI_BACKEND_OVERRIDE:-ollama}"
-# Default model: suggest based on available RAM; a human can override.
-ai_models_default="qwen2.5-coder:7b"
-if [[ "${system_ram_gb}" -lt 16 ]]; then
-  ai_models_default="qwen2.5-coder:7b-q4_K_M"
+ai_backend="${AI_BACKEND_OVERRIDE:-llamacpp}"
+
+# Hardware-aware GGUF model selection (mirrors suggest_ai_stack_llama_defaults in
+# nixos-quick-deploy.sh).  Probes GPU VRAM first, falls back to host RAM.
+# Tier map:  ≥24 GB GPU → 14B coder,  ≥16 GB GPU or ≥32 GB RAM → 7B coder,  else → 4B.
+_gpu_vram_gb=0
+if [[ "${gpu_vendor}" == "nvidia" ]] && command -v nvidia-smi >/dev/null 2>&1; then
+  _gpu_vram_gb=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null \
+    | head -1 | awk '{print int($1/1024)}' || echo 0)
+elif [[ "${gpu_vendor}" == "amd" ]] && command -v rocm-smi >/dev/null 2>&1; then
+  _gpu_vram_gb=$(rocm-smi --showmeminfo vram --csv 2>/dev/null \
+    | tail -1 | awk -F',' '{print int($2/1024)}' || echo 0)
 fi
-ai_models_csv="${AI_MODELS_OVERRIDE:-${ai_models_default}}"
+_gpu_vram_gb="${_gpu_vram_gb:-0}"
+
+ai_llama_model_id="unsloth/Qwen3-4B-Instruct-2507-GGUF"
+ai_llama_model_file="Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+if [[ "${_gpu_vram_gb}" =~ ^[0-9]+$ ]] && (( _gpu_vram_gb >= 24 )); then
+  ai_llama_model_id="Qwen/Qwen2.5-Coder-14B-Instruct-GGUF"
+  ai_llama_model_file="qwen2.5-coder-14b-instruct-q4_k_m.gguf"
+elif [[ "${_gpu_vram_gb}" =~ ^[0-9]+$ ]] && (( _gpu_vram_gb >= 16 )); then
+  ai_llama_model_id="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
+  ai_llama_model_file="qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+elif [[ "${system_ram_gb}" =~ ^[0-9]+$ ]] && (( system_ram_gb >= 32 )); then
+  ai_llama_model_id="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
+  ai_llama_model_file="qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+fi
+# Allow explicit overrides (e.g. when a different GGUF is already downloaded).
+ai_llama_model_file="${AI_LLAMA_MODEL_FILE_OVERRIDE:-${ai_llama_model_file}}"
+ai_llama_model_id="${AI_LLAMA_MODEL_ID_OVERRIDE:-${ai_llama_model_id}}"
+
 ai_ui_enabled="${AI_UI_ENABLED_OVERRIDE:-true}"
 ai_vector_db_enabled="${AI_VECTOR_DB_ENABLED_OVERRIDE:-false}"
-
-# Convert comma-separated models to a Nix list literal.
-# Input:  "qwen2.5-coder:7b,phi3:mini"
-# Output: [ "qwen2.5-coder:7b" "phi3:mini" ]
-ai_models_nix='[ "qwen2.5-coder:7b" ]'
-if [[ -n "${ai_models_csv}" ]]; then
-  _models_inner=""
-  IFS=',' read -ra _model_arr <<< "${ai_models_csv}"
-  for _m in "${_model_arr[@]}"; do
-    _m="${_m#"${_m%%[![:space:]]*}"}"
-    _m="${_m%"${_m##*[![:space:]]}"}"
-    [[ -z "$_m" ]] && continue
-    _models_inner+=" \"${_m}\""
-  done
-  ai_models_nix="[${_models_inner} ]"
-fi
 
 if ! validate_bool "${ai_stack_enabled}"; then
   echo "Unsupported ai_stack_enabled value '${ai_stack_enabled}'." >&2
   exit 1
 fi
 
-if ! validate_enum "${ai_backend}" ollama k3s; then
-  echo "Unsupported ai_backend value '${ai_backend}'. Expected ollama|k3s." >&2
+if ! validate_enum "${ai_backend}" llamacpp k3s; then
+  echo "Unsupported ai_backend value '${ai_backend}'. Expected llamacpp|k3s." >&2
   exit 1
 fi
 
@@ -717,7 +725,7 @@ cat > "${tmp_file}" <<FACTS
     aiStack = {
       backend            = "${ai_backend}";
       acceleration       = "auto";
-      models             = ${ai_models_nix};
+      llamaCpp.model     = "/var/lib/llama-cpp/models/${ai_llama_model_file}";
       ui.enable          = ${ai_ui_enabled};
       vectorDb.enable    = ${ai_vector_db_enabled};
       listenOnLan        = false;
