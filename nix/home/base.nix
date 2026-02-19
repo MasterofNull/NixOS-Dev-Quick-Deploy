@@ -211,7 +211,7 @@ in
   # Applies to every host/profile because VSCodium ships in all three
   # profileData.systemPackageNames lists (ai-dev, gaming, minimal).
   # Per-host home.nix files may extend userSettings or add extensions via
-  # programs.vscode.extensions using the same vsExt guard pattern.
+  # programs.vscode.profiles.default.* using the same vsExt guard pattern.
   # =========================================================================
 
   # ---- programs.vscode (vscodium) -----------------------------------------
@@ -227,37 +227,38 @@ in
     # runtime (Open VSX, .vsix drag-drop) without losing them on switch.
     mutableExtensionsDir = true;
 
-    extensions =
-      # ── Nix ──────────────────────────────────────────────────────────────
-      vsExt "jnoortheen" "nix-ide"            # Nix language + nil LSP
-      # ── Python ───────────────────────────────────────────────────────────
-      ++ vsExt "ms-python"   "python"         # Python language support
-      ++ vsExt "ms-python"   "debugpy"        # Python debugger
-      ++ vsExt "ms-pyright"  "pyright"        # Static type checker
-      # ── Go ───────────────────────────────────────────────────────────────
-      ++ vsExt "golang"      "go"             # Go language support
-      # ── Rust ─────────────────────────────────────────────────────────────
-      ++ vsExt "rust-lang"   "rust-analyzer"  # Rust LSP
-      # ── Git / version control ─────────────────────────────────────────────
-      ++ vsExt "eamodio"     "gitlens"        # Git supercharged
-      ++ vsExt "mhutchie"    "git-graph"      # Git branch graph
-      # ── AI coding assistant ───────────────────────────────────────────────
-      ++ vsExt "continue"    "continue"       # Continue.dev → local Ollama
-      # ── Data / serialisation formats ──────────────────────────────────────
-      ++ vsExt "redhat"      "vscode-yaml"
-      ++ vsExt "tamasfe"     "even-better-toml"
-      ++ vsExt "mechatroner" "rainbow-csv"
-      # ── Shell scripting ───────────────────────────────────────────────────
-      ++ vsExt "timonwong"   "shellcheck"     # Powered by shellcheck binary
-      # ── Formatting / editing quality-of-life ─────────────────────────────
-      ++ vsExt "esbenp"      "prettier-vscode"
-      ++ vsExt "streetsidesoftware" "code-spell-checker"
-      # ── Markdown ─────────────────────────────────────────────────────────
-      ++ vsExt "yzhang"      "markdown-all-in-one"
-      # ── Docker / containers ───────────────────────────────────────────────
-      ++ vsExt "ms-azuretools" "vscode-docker";
+    profiles.default = {
+      extensions =
+        # ── Nix ────────────────────────────────────────────────────────────
+        vsExt "jnoortheen" "nix-ide"            # Nix language + nil LSP
+        # ── Python ─────────────────────────────────────────────────────────
+        ++ vsExt "ms-python"   "python"         # Python language support
+        ++ vsExt "ms-python"   "debugpy"        # Python debugger
+        ++ vsExt "ms-pyright"  "pyright"        # Static type checker
+        # ── Go ─────────────────────────────────────────────────────────────
+        ++ vsExt "golang"      "go"             # Go language support
+        # ── Rust ───────────────────────────────────────────────────────────
+        ++ vsExt "rust-lang"   "rust-analyzer"  # Rust LSP
+        # ── Git / version control ──────────────────────────────────────────
+        ++ vsExt "eamodio"     "gitlens"        # Git supercharged
+        ++ vsExt "mhutchie"    "git-graph"      # Git branch graph
+        # ── AI coding assistant ────────────────────────────────────────────
+        ++ vsExt "continue"    "continue"       # Continue.dev → local Ollama
+        # ── Data / serialisation formats ───────────────────────────────────
+        ++ vsExt "redhat"      "vscode-yaml"
+        ++ vsExt "tamasfe"     "even-better-toml"
+        ++ vsExt "mechatroner" "rainbow-csv"
+        # ── Shell scripting ─────────────────────────────────────────────────
+        ++ vsExt "timonwong"   "shellcheck"     # Powered by shellcheck binary
+        # ── Formatting / editing quality-of-life ───────────────────────────
+        ++ vsExt "esbenp"      "prettier-vscode"
+        ++ vsExt "streetsidesoftware" "code-spell-checker"
+        # ── Markdown ───────────────────────────────────────────────────────
+        ++ vsExt "yzhang"      "markdown-all-in-one"
+        # ── Docker / containers ─────────────────────────────────────────────
+        ++ vsExt "ms-azuretools" "vscode-docker";
 
-    userSettings = {
+      userSettings = {
       # ── Editor ───────────────────────────────────────────────────────────
       "editor.fontSize"               = 14;
       "editor.tabSize"                = 2;
@@ -352,6 +353,7 @@ in
 
       # ── Auto-update — disabled (nixpkgs manages VSCodium version) ─────────
       "update.mode"                        = "none";
+      };
     };
   };
 
