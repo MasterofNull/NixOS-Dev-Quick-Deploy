@@ -2522,7 +2522,7 @@ resolve_flake_first_ai_stack_backend() {
     local deploy_file="${host_dir}/deploy-options.nix"
 
     if [[ ! -f "$deploy_file" ]]; then
-        printf 'ollama\n'
+        printf 'llamacpp\n'
         return 0
     fi
 
@@ -2532,7 +2532,7 @@ resolve_flake_first_ai_stack_backend() {
         backend=$(sed -nE 's/.*backend[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$deploy_file" | head -n1)
     fi
 
-    printf '%s\n' "${backend:-ollama}"
+    printf '%s\n' "${backend:-llamacpp}"
 }
 
 # prewarm_ai_stack_embeddings_cache: mirror legacy phase behavior by attempting
@@ -2546,8 +2546,8 @@ prewarm_ai_stack_embeddings_cache() {
 
     local backend
     backend="$(resolve_flake_first_ai_stack_backend "$host_name")"
-    if [[ "$backend" != "ollama" ]]; then
-        print_info "Skipping embeddings cache prewarm (backend=${backend})"
+    if [[ "$backend" == "k3s" ]]; then
+        print_info "Skipping embeddings pre-download (k3s manages its own model pulls)"
         return 0
     fi
 

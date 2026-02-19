@@ -26,6 +26,10 @@
     "fuse-overlayfs"
     "btrfs-progs"
     "pciutils"
+    # Local LLM desktop UI alongside the llama.cpp / Open WebUI stack.
+    # base.nix resolves package names via builtins.hasAttr — if gpt4all is not
+    # in the current nixpkgs channel the missing entry is silently skipped.
+    "gpt4all"
   ];
 
   gaming = [
