@@ -1441,18 +1441,23 @@ run_all_checks() {
     # ==========================================================================
     print_section "Channel Alignment"
 
-    local expected_nixpkgs="nixos-unstable"
-    local expected_home="master"
-    local nixos_version_raw=""
-    nixos_version_raw=$(nixos-version 2>/dev/null | awk '{print $1}')
-    if [[ "$nixos_version_raw" =~ ^([0-9]{2}\.[0-9]{2}) ]]; then
-        expected_nixpkgs="nixos-${BASH_REMATCH[1]}"
-        expected_home="release-${BASH_REMATCH[1]}"
-    fi
+    if [ -f "$REPO_ROOT/flake.nix" ]; then
+        print_success "Flake-first workflow detected (channel checks skipped)"
+        print_detail "This repository pins nixpkgs/home-manager via flake inputs."
+    else
+        local expected_nixpkgs="nixos-unstable"
+        local expected_home="master"
+        local nixos_version_raw=""
+        nixos_version_raw=$(nixos-version 2>/dev/null | awk '{print $1}')
+        if [[ "$nixos_version_raw" =~ ^([0-9]{2}\.[0-9]{2}) ]]; then
+            expected_nixpkgs="nixos-${BASH_REMATCH[1]}"
+            expected_home="release-${BASH_REMATCH[1]}"
+        fi
 
-    check_nix_channel "/nix/var/nix/profiles/per-user/root/channels" "nixos" "$expected_nixpkgs" "System nixos channel"
-    check_nix_channel "" "nixpkgs" "$expected_nixpkgs" "User nixpkgs channel"
-    check_nix_channel "" "home-manager" "$expected_home" "Home Manager channel"
+        check_nix_channel "/nix/var/nix/profiles/per-user/root/channels" "nixos" "$expected_nixpkgs" "System nixos channel"
+        check_nix_channel "" "nixpkgs" "$expected_nixpkgs" "User nixpkgs channel"
+        check_nix_channel "" "home-manager" "$expected_home" "Home Manager channel"
+    fi
 
     # ==========================================================================
     # AI Development Tools
@@ -1679,7 +1684,12 @@ run_all_checks() {
     for disk in /sys/block/*/queue/scheduler; do
         if [ -f "$disk" ]; then
             disk_count=$((disk_count + 1))
-            local current_scheduler=$(cat "$disk" | grep -oP '\[\K[^\]]+')
+            local scheduler_raw current_scheduler
+            scheduler_raw=$(cat "$disk" 2>/dev/null || true)
+            current_scheduler=$(printf '%s' "$scheduler_raw" | sed -n 's/.*\[\([^]]*\)\].*/\1/p')
+            if [ -z "$current_scheduler" ]; then
+                current_scheduler=$(printf '%s' "$scheduler_raw" | awk '{print $1}')
+            fi
             local disk_name=$(echo "$disk" | cut -d'/' -f4)
             local disk_type="unknown"
 
@@ -1717,8 +1727,8 @@ run_all_checks() {
             print_warning "I/O schedulers partially optimized ($optimized_count/$disk_count disks)"
             print_detail "Check optimizations.nix for proper scheduler configuration"
         else
-            print_warning "I/O schedulers using defaults"
-            print_detail "Enable optimization in optimizations.nix"
+            print_warning "I/O schedulers not optimized ($optimized_count/$disk_count disks)"
+            print_detail "Review scheduler policy in nix/modules/hardware/storage.nix"
         fi
     else
         print_warning "No block devices found to check"
@@ -1875,7 +1885,7 @@ run_all_checks() {
         check_flatpak_app "io.mpv.Mpv" "MPV" false
 
         # Database Tools
-        check_flatpak_app "com.dbeaver.DBeaverCommunity" "DBeaver Community" false
+        check_flatpak_app "io.dbeaver.DBeaverCommunity" "DBeaver Community" false
         check_flatpak_app "org.sqlitebrowser.sqlitebrowser" "SQLite Browser" false
 
         # Check for duplicate runtimes
@@ -2017,7 +2027,7 @@ run_all_checks() {
     fi
 
     # Gitea development forge (system service)
-    check_system_service "gitea" "Gitea (development forge)" true false
+    check_system_service "gitea" "Gitea (development forge)" false false
 
     # ==========================================================================
     # Nix Store & Profile Health
@@ -2091,11 +2101,19 @@ run_all_checks() {
 
     # Check gitconfig (Home Manager uses XDG path ~/.config/git/config)
     print_check "Git configuration"
-    if [ -f "$HOME/.gitconfig" ] || [ -f "$HOME/.config/git/config" ]; then
-        local git_user=$(git config --global user.name 2>/dev/null || echo "not set")
-        local git_email=$(git config --global user.email 2>/dev/null || echo "not set")
+    local git_cfg_path=""
+    if [ -f "$HOME/.config/git/config" ]; then
+        git_cfg_path="$HOME/.config/git/config"
+    elif [ -f "$HOME/.gitconfig" ]; then
+        git_cfg_path="$HOME/.gitconfig"
+    fi
+
+    if [ -n "$git_cfg_path" ]; then
+        local git_user=$(git config --file "$git_cfg_path" user.name 2>/dev/null || echo "not set")
+        local git_email=$(git config --file "$git_cfg_path" user.email 2>/dev/null || echo "not set")
         print_success "Git config (user: $git_user)"
         print_detail "Email: $git_email"
+        print_detail "Source: $git_cfg_path"
     else
         print_warning "Git config not found"
     fi
