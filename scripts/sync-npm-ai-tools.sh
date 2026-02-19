@@ -132,36 +132,7 @@ else
   log "OpenSkills already available"
 fi
 
-# ---- Install Claude Code native binary if missing --------------------------
-claude_bin="$HOME/.local/bin/claude"
-claude_alt="$HOME/.claude/bin/claude"
-if [[ -x "$claude_bin" || -x "$claude_alt" ]] || command -v claude >/dev/null 2>&1; then
-  log "Claude Code already installed"
-else
-  log "Installing Claude Code via native installer"
-  mkdir -p "$HOME/.local/bin" 2>/dev/null || true
-  installer_tmp="$(mktemp /tmp/claude-install.XXXXXX.sh)"
-  if curl --max-time 120 --connect-timeout 10 -fsSL "https://claude.ai/install.sh" -o "$installer_tmp" 2>/dev/null; then
-    if bash "$installer_tmp" >/dev/null 2>&1; then
-      if [[ -x "$claude_bin" ]]; then
-        log "  ✓ Claude Code installed at $claude_bin"
-      elif [[ -x "$claude_alt" ]]; then
-        ln -sf "$claude_alt" "$claude_bin" 2>/dev/null || true
-        log "  ✓ Claude Code installed at $claude_alt"
-      else
-        log "  ⚠ Claude Code installer ran but binary not found"
-      fi
-      # Backward-compatible symlink
-      if [[ -d "${NPM_CONFIG_PREFIX}/bin" && -x "$claude_bin" ]]; then
-        ln -sf "$claude_bin" "${NPM_CONFIG_PREFIX}/bin/claude-wrapper" 2>/dev/null || true
-      fi
-    else
-      log "  ✗ Claude Code installer failed (critical)"
-    fi
-  else
-    log "  ✗ Could not download Claude installer (critical network/install issue)"
-  fi
-  rm -f "$installer_tmp" 2>/dev/null || true
-fi
+# ---- Claude Code is managed declaratively by Nix/home-manager -----------------
+log "Skipping Claude Code install in npm sync (managed declaratively via Nix packages)"
 
 log "npm AI tools sync complete"
