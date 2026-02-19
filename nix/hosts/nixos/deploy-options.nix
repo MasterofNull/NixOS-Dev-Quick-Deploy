@@ -18,8 +18,10 @@
         host      = lib.mkDefault "127.0.0.1";  # loopback-only
         port      = lib.mkDefault 8080;
         model     = lib.mkDefault "/var/lib/llama-cpp/models/model.gguf";
-        # Example GPU acceleration flags for AMD ROCm (ThinkPad P14s Gen 2a):
-        #   extraArgs = [ "--gpu-layers" "99" "--threads" "8" ];
+        # GPU offload defaults are now derived from mySystem.aiStack.acceleration
+        # (auto -> rocm/cuda/cpu based on hardware.gpuVendor) in roles/ai-stack.nix.
+        # Set extraArgs only when you want to override/tune defaults, e.g.:
+        #   extraArgs = [ "--n-gpu-layers" "64" "--threads" "8" ];
         extraArgs = lib.mkDefault [ ];
       };
 
