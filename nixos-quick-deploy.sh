@@ -2091,6 +2091,28 @@ run_optional_phase_script() {
     run_optional_phase_script "$script_path" "$function_name" "$label"
 }
 
+# run_optional_phase_by_number: convenience wrapper around run_optional_phase_script
+# that resolves the phase script and function name from a phase number.
+# Usage: run_optional_phase_by_number <phase_num> [description]
+run_optional_phase_by_number() {
+    local phase_num="$1"
+    local description="${2:-Phase ${phase_num}}"
+    local padded
+    padded=$(printf '%02d' "$phase_num")
+    # Discover the single script whose name starts with "phase-<NN>-".
+    local script_path=""
+    local f
+    for f in "${PHASES_DIR}/phase-${padded}-"*.sh; do
+        [[ -f "$f" ]] && script_path="$f" && break
+    done
+    if [[ -z "$script_path" ]]; then
+        print_warning "Phase ${phase_num} script not found in ${PHASES_DIR}"
+        return 0
+    fi
+    local phase_id="phase_${padded}"
+    run_optional_phase_script "$script_path" "$phase_id" "$description"
+}
+
 # Interactive failure handler invoked whenever execute_phase returns non-zero.
 # Provides retry/skip/rollback/exit prompts so operators can steer recovery.
 handle_phase_failure() {
