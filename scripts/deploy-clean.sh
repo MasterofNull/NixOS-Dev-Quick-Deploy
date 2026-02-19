@@ -685,13 +685,29 @@ assert_host_storage_config() {
       local runtime_root_real
       runtime_root_real="$(readlink -f "${runtime_root_source}" 2>/dev/null || echo "${runtime_root_source}")"
       if [[ -b "${runtime_root_real}" ]]; then
-        runtime_root_uuid="$(blkid -s UUID -o value "${runtime_root_real}" 2>/dev/null || true)"
+        # Try blkid without sudo first; fall back to sudo -n for non-root callers.
+        runtime_root_uuid="$(blkid -s UUID -o value "${runtime_root_real}" 2>/dev/null \
+          || sudo -n blkid -s UUID -o value "${runtime_root_real}" 2>/dev/null \
+          || true)"
         [[ -n "${runtime_root_uuid}" ]] && runtime_root_uuid_path="/dev/disk/by-uuid/${runtime_root_uuid}"
       fi
     fi
     runtime_root_fstype="$(findmnt -no FSTYPE / 2>/dev/null || true)"
 
-    if [[ -n "${runtime_root_source}" && "${host_root_device}" != "${runtime_root_source}" && "${host_root_device}" != "${runtime_root_uuid_path}" ]]; then
+    # Resolve the host's by-uuid symlink to a canonical device path.
+    # This covers the case where blkid is unavailable or requires root:
+    # if /dev/disk/by-uuid/<uuid> → /dev/nvme0n1p2 and findmnt reports
+    # /dev/nvme0n1p2 as the running root, the deploy is safe even if blkid
+    # could not derive runtime_root_uuid_path (NIX-ISSUE: fix-duplicate-flatpaks).
+    local host_root_via_symlink=""
+    if [[ "${host_root_device}" == /dev/disk/by-uuid/* && -L "${host_root_device}" ]]; then
+      host_root_via_symlink="$(readlink -f "${host_root_device}" 2>/dev/null || true)"
+    fi
+
+    if [[ -n "${runtime_root_source}" \
+        && "${host_root_device}" != "${runtime_root_source}" \
+        && "${host_root_device}" != "${runtime_root_uuid_path}" \
+        && ( -z "${host_root_via_symlink}" || "${host_root_via_symlink}" != "${runtime_root_source}" ) ]]; then
       die "Host hardware root device '${host_root_device}' does not match running root '${runtime_root_source}'. Refusing deploy to avoid unbootable generation."
     fi
 
