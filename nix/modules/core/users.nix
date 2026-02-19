@@ -30,7 +30,6 @@ in
 
     users.users.${cfg.primaryUser} = {
       isNormalUser = true;
-      shell = lib.mkDefault pkgs.zsh;
       extraGroups  = lib.mkDefault [
         "wheel"           # sudo / polkit access
         "networkmanager"  # manage network connections without sudo
