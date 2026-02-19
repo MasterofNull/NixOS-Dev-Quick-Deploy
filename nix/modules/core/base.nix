@@ -25,6 +25,12 @@ let
     "git"
     "jq"
     "ripgrep"
+    "nodejs"
+    "go"
+    "cargo"
+    "ruby"
+    "neovim"
+    "kubectl"
   ];
   mergedPackageNames = lib.unique (basePackageNames ++ cfg.profileData.systemPackageNames);
   missingPackageNames = builtins.filter (name: !(builtins.hasAttr name pkgs)) mergedPackageNames;
