@@ -26,6 +26,22 @@ let
   hasOpenWebui = lib.versionAtLeast lib.version "24.11";
   hasQdrant    = lib.versionAtLeast lib.version "24.11";
 
+  resolvedAccel =
+    if ai.acceleration != "auto" then ai.acceleration
+    else if cfg.hardware.gpuVendor == "amd" then "rocm"
+    else if cfg.hardware.gpuVendor == "nvidia" then "cuda"
+    else "cpu";
+
+  hasGpuLayersArg = lib.any (arg:
+    lib.hasPrefix "--n-gpu-layers" arg || lib.hasPrefix "--gpu-layers" arg
+  ) llama.extraArgs;
+
+  accelArgs = lib.optionals (resolvedAccel != "cpu" && !hasGpuLayersArg) [
+    "--n-gpu-layers" "99"
+  ];
+
+  llamaArgs = accelArgs ++ llama.extraArgs;
+
   # Open WebUI environment — wired to llama-server (OpenAI-compatible API).
   openWebuiEnv =
     {
@@ -82,7 +98,7 @@ in
             "--host" (lib.escapeShellArg llama.host)
             "--port" (toString llama.port)
             "--model" (lib.escapeShellArg llama.model)
-          ] ++ (map lib.escapeShellArg llama.extraArgs));
+          ] ++ (map lib.escapeShellArg llamaArgs));
         };
       };
 
