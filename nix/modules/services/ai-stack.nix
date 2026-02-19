@@ -35,7 +35,7 @@ let
   '';
 in
 {
-  # The ollama backend is handled by nix/modules/roles/ai-stack.nix.
+  # The llama.cpp backend is handled by nix/modules/roles/ai-stack.nix.
   # This module only handles the K3s backend.
   config = lib.mkIf (roleEnabled && cfg.enable) (lib.mkMerge [
 
