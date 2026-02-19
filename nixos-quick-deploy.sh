@@ -2461,8 +2461,15 @@ start_sudo_keepalive() {
     if sudo -v; then
         (
             while true; do
-                sudo -n -v >/dev/null 2>&1 || exit 0
-                sleep 60
+                # Refresh the credential. On some sudo builds -v alone does not
+                # extend the timestamp; running a no-op command is a reliable
+                # fallback.  Never exit on failure — a single transient error
+                # must not kill the keepalive and leave the token to expire
+                # during a long Flatpak download.
+                sudo -n -v >/dev/null 2>&1 \
+                    || sudo -n true >/dev/null 2>&1 \
+                    || true
+                sleep 30
             done
         ) &
         SUDO_KEEPALIVE_PID=$!
