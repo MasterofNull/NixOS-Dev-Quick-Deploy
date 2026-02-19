@@ -677,11 +677,11 @@ Building flake development environment...
 ### 7. AI CLI Integration
 
 ```
-✓ Installing @anthropic-ai/claude-code via npm
+✓ Installing Claude Code via native installer (https://claude.ai/install.sh)
 ✓ Installing @openai/codex (GPT CodeX CLI) via npm
 ✓ Installing openai via npm
 ✓ Goose CLI detected via nixpkgs (goose-cli)
-✓ Claude Code npm package installed
+✓ Claude Code native binary installed
 ✓ GPT CodeX wrapper created from @openai/codex
 ✓ OpenAI CLI npm package installed
 ℹ Registering Goose Desktop launcher
@@ -722,7 +722,7 @@ Next steps:
   1. Reboot: sudo reboot
   2. Select "Cosmic" at login
   3. Open terminal (P10k wizard auto-runs)
-  4. Verify: codium, claude-wrapper --version, gpt-codex-wrapper --version, codex-wrapper --version, openai-wrapper --version, gooseai-wrapper --version, goose --version
+  4. Verify: codium, claude --version, claude-wrapper --version, gpt-codex-wrapper --version, codex-wrapper --version, openai-wrapper --version, gooseai-wrapper --version, goose --version
 ```
 
 </details>
@@ -768,11 +768,10 @@ Next steps:
    home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)
    ```
 
-5. **Reinstall Claude Code:**
+5. **Reinstall Claude Code (native installer):**
 
    ```bash
-   export NPM_CONFIG_PREFIX=~/.npm-global
-   npm install -g @anthropic-ai/claude-code
+   curl -fsSL --max-time 30 --connect-timeout 5 https://claude.ai/install.sh | bash
    ```
 
 6. **Check VSCodium settings:**

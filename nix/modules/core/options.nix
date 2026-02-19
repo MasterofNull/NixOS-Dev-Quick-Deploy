@@ -159,6 +159,12 @@
         description = "Allow initrd emergency shell access for local recovery when boot dependencies fail.";
       };
 
+      tmpUseTmpfs = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Mount /tmp as tmpfs for faster temporary I/O.";
+      };
+
       nixBinaryCaches = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [
@@ -329,6 +335,38 @@
           type = lib.types.bool;
           default = true;
           description = "Enable Open WebUI browser interface on port 3000. Connects to local ollama automatically.";
+        };
+      };
+
+      llamaCpp = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable a native llama.cpp OpenAI-compatible server alongside Ollama.";
+        };
+
+        host = lib.mkOption {
+          type = lib.types.str;
+          default = "127.0.0.1";
+          description = "Bind address for llama.cpp server.";
+        };
+
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 8080;
+          description = "TCP port for llama.cpp server.";
+        };
+
+        model = lib.mkOption {
+          type = lib.types.str;
+          default = "/var/lib/llama-cpp/models/model.gguf";
+          description = "Path to the GGUF model file loaded by llama.cpp.";
+        };
+
+        extraArgs = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          description = "Additional CLI flags passed to llama-server.";
         };
       };
 

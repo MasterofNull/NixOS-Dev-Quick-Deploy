@@ -31,6 +31,7 @@ let
     else "cpu";
 
   listenAddr = if ai.listenOnLan then "0.0.0.0" else "127.0.0.1";
+  llama = ai.llamaCpp;
 
   # open-webui arrived in nixpkgs ~24.11; qdrant has been available longer.
   hasOpenWebui = lib.versionAtLeast lib.version "24.11";
@@ -107,10 +108,35 @@ in
     };
 
     # -------------------------------------------------------------------------
+    # Optional native llama.cpp server (OpenAI-compatible on :8080 by default)
+    # -------------------------------------------------------------------------
+    systemd.services.llama-cpp = lib.mkIf llama.enable {
+      description = "llama.cpp OpenAI-compatible inference server";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "network.target" ];
+      serviceConfig = {
+        Type = "simple";
+        User = "ollama";
+        Group = "ollama";
+        Restart = "on-failure";
+        RestartSec = "5s";
+        StateDirectory = "llama-cpp";
+        RuntimeDirectory = "llama-cpp";
+        ExecStart = lib.concatStringsSep " " ([
+          "${pkgs.llama-cpp}/bin/llama-server"
+          "--host" (lib.escapeShellArg llama.host)
+          "--port" (toString llama.port)
+          "--model" (lib.escapeShellArg llama.model)
+        ] ++ (map lib.escapeShellArg llama.extraArgs));
+      };
+    };
+
+    # -------------------------------------------------------------------------
     # Firewall — only punch holes when explicitly exposing on LAN
     # -------------------------------------------------------------------------
     networking.firewall.allowedTCPPorts = lib.mkIf ai.listenOnLan (
       [ 11434 ]                                                  # ollama
+      ++ lib.optional llama.enable llama.port                         # llama.cpp
       ++ lib.optional (ai.ui.enable && hasOpenWebui) 3000        # open-webui
       ++ lib.optional (ai.vectorDb.enable && hasQdrant) 6333     # qdrant HTTP
       ++ lib.optional (ai.vectorDb.enable && hasQdrant) 6334     # qdrant gRPC
