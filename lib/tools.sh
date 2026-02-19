@@ -1004,7 +1004,7 @@ flatpak_install_app_list() {
             local attempt
             local installed=0
             for attempt in 1 2 3; do
-                local -a install_cmd=(flatpak --noninteractive --assumeyes install --user)
+                local -a install_cmd=(flatpak --noninteractive --assumeyes --no-static-deltas install --user)
                 flatpak_append_arch_flag install_cmd
                 install_cmd+=("$remote_name" "$queue_app_id")
                 local install_output
