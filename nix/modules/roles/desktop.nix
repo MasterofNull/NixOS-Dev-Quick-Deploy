@@ -128,72 +128,14 @@ in
     };
 
     # ---- Flatpak -----------------------------------------------------------
-    # Declarative Flatpak app sync is performed by scripts/sync-flatpak-profile.sh
-    # after nixos-rebuild (the app list comes from mySystem.profileData.flatpakApps).
+    # Only the system Flatpak daemon is enabled here (required for portal
+    # infrastructure and xdg-desktop-portal integration).  All app installs
+    # are done at user-scope via home.activation.addFlathubUserRemote in
+    # nix/home/base.nix and scripts/sync-flatpak-profile.sh --scope user.
+    # This prevents every app from appearing twice in the COSMIC launcher:
+    # the launcher scans both system and user export paths, so installing the
+    # same app at both levels creates duplicates.
     services.flatpak.enable = lib.mkDefault true;
-
-    # Allow wheel-group members to install/update/remove Flatpak apps and manage
-    # remotes without repeated polkit password prompts.
-    # Root cause of the repeated "[sudo] password for hyperd:" prompts during
-    # the deploy script's flatpak sync: each batch of runtime/app installs triggers
-    # a separate flatpak-system-helper polkit authorisation round.
-    security.polkit.extraConfig = ''
-      polkit.addRule(function(action, subject) {
-        if (action.id.startsWith("org.freedesktop.Flatpak") &&
-            subject.isInGroup("wheel")) {
-          return polkit.Result.YES;
-        }
-      });
-    '';
-
-    # ---- Flatpak user-scope deduplication ------------------------------------
-    # Removes any user-scope Flatpak apps that are already installed system-wide.
-    # Root cause: COSMIC's app launcher (and any graphical Flatpak client) scans
-    # both /var/lib/flatpak/exports/share/applications/ (system) and
-    # ~/.local/share/flatpak/exports/share/applications/ (user).  If the same
-    # app is installed at both levels, it appears twice in the launcher.
-    # This oneshot runs at login as the primary user and removes user-scope
-    # duplicates, making the system the single source of truth for Flatpak apps
-    # that were installed declaratively via sync-flatpak-profile.sh.
-    systemd.user.services.flatpak-dedup-user-apps = {
-      description = "Remove user-scope Flatpak apps already installed system-wide";
-      wantedBy    = [ "default.target" ];
-      after       = [ "flatpak-system-helper.service" ];
-      serviceConfig = {
-        Type            = "oneshot";
-        RemainAfterExit = false;
-        ExecStart = pkgs.writeShellScript "flatpak-dedup-user-apps" ''
-          set -euo pipefail
-          flatpak=${pkgs.flatpak}/bin/flatpak
-          # List system-installed app IDs.
-          mapfile -t sys_apps < <("$flatpak" list --system --app --columns=application 2>/dev/null || true)
-          [[ ''${#sys_apps[@]} -eq 0 ]] && exit 0
-          # For each system app, uninstall the user-scope copy if it exists.
-          mapfile -t user_apps < <("$flatpak" list --user --app --columns=application 2>/dev/null || true)
-          for app in "''${user_apps[@]}"; do
-            if printf '%s\n' "''${sys_apps[@]}" | grep -Fxq "$app"; then
-              echo "flatpak-dedup: removing user-scope duplicate: $app"
-              "$flatpak" uninstall --user --noninteractive "$app" 2>/dev/null || true
-            fi
-          done
-        '';
-      };
-    };
-
-    # Add Flathub remote via a one-shot systemd service (idempotent, online only).
-    systemd.services.flatpak-add-flathub = {
-      description   = "Add Flathub remote to Flatpak system installation";
-      wantedBy      = [ "multi-user.target" ];
-      after         = [ "network-online.target" "flatpak-system-helper.service" ];
-      wants         = [ "network-online.target" ];
-      serviceConfig = {
-        Type            = "oneshot";
-        RemainAfterExit = true;
-        ExecStart       = "${pkgs.flatpak}/bin/flatpak remote-add "
-          + "--if-not-exists flathub "
-          + "https://dl.flathub.org/repo/flathub.flatpakrepo";
-      };
-    };
 
     # ---- Geolocation (GeoClue2) --------------------------------------------
     # Required by COSMIC settings daemon for automatic day/night theme switching
