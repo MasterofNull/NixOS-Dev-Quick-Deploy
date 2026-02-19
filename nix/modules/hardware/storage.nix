@@ -7,12 +7,24 @@ let
   hibernate = cfg.deployment.enableHibernation;
 in
 {
-  # I/O scheduler: BFQ for all block devices (replaces @KERNEL_SYSCTL_TUNABLES@ I/O section).
-  # Applied via udev rule so it handles NVMe, SATA, and USB drives uniformly.
+  # I/O scheduler policy by media type.
+  # - NVMe: none (device has its own multi-queue logic)
+  # - SSD/SATA: mq-deadline (good latency/throughput balance)
+  # - HDD: bfq (fairness on rotational media)
   services.udev.extraRules = lib.mkAfter ''
-    # Pin block devices to BFQ without touching zram or partitions.
-    ACTION=="add|change", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", \
-      KERNEL!="zram*", TEST=="queue/scheduler", ATTR{queue/scheduler}="bfq"
+    # NVMe drives
+    ACTION=="add|change", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", KERNEL=="nvme*", \
+      TEST=="queue/scheduler", ATTR{queue/scheduler}="none"
+
+    # SATA/SAS SSDs (non-rotational)
+    ACTION=="add|change", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", KERNEL!="nvme*", \
+      KERNEL!="zram*", ATTR{queue/rotational}=="0", TEST=="queue/scheduler", \
+      ATTR{queue/scheduler}="mq-deadline"
+
+    # HDDs (rotational)
+    ACTION=="add|change", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", KERNEL!="nvme*", \
+      KERNEL!="zram*", ATTR{queue/rotational}=="1", TEST=="queue/scheduler", \
+      ATTR{queue/scheduler}="bfq"
   '';
 
   # Periodic TRIM for SSDs and NVMe (ext4 / btrfs).

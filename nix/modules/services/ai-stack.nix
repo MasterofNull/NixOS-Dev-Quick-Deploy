@@ -2,6 +2,8 @@
 let
   cfg = config.mySystem.aiStack;
   roleEnabled = config.mySystem.roles.aiStack.enable;
+  primaryUser = config.mySystem.primaryUser;
+  primaryHome = "/home/${primaryUser}";
 
   # K3s ConfigMap reconciler script — only active when backend = "k3s".
   reconcilerScript = pkgs.writeShellScript "nixos-ai-stack-reconcile" ''
@@ -45,7 +47,13 @@ in
       services.k3s = {
         enable = lib.mkDefault true;
         role = lib.mkDefault "server";
+        extraFlags = lib.mkAfter [
+          "--write-kubeconfig=/etc/rancher/k3s/k3s.yaml"
+          "--write-kubeconfig-mode=0644"
+        ];
       };
+
+      environment.sessionVariables.KUBECONFIG = lib.mkDefault "/etc/rancher/k3s/k3s.yaml";
 
       environment.systemPackages = [
         pkgs.kubectl
@@ -72,6 +80,32 @@ in
           OnUnitActiveSec = "${toString cfg.reconcileIntervalMinutes}m";
           Unit = "nixos-ai-stack-reconcile.service";
         };
+      };
+
+      # Ensure kubectl works for the primary user without requiring manual
+      # export/bootstrapping: seed ~/.kube/config from the K3s kubeconfig.
+      systemd.services.nixos-ai-stack-kubeconfig-bootstrap = {
+        description = "Bootstrap primary-user kubeconfig for K3s AI stack";
+        after = [ "k3s.service" ];
+        wants = [ "k3s.service" ];
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          User = "root";
+        };
+        script = ''
+          set -euo pipefail
+          kube_src="/etc/rancher/k3s/k3s.yaml"
+          kube_dir="${primaryHome}/.kube"
+          kube_dst="${primaryHome}/.kube/config"
+
+          if [[ ! -f "$kube_src" ]]; then
+            exit 0
+          fi
+
+          install -d -m 0750 -o ${primaryUser} -g ${primaryUser} "$kube_dir"
+          install -m 0600 -o ${primaryUser} -g ${primaryUser} "$kube_src" "$kube_dst"
+        '';
       };
     })
 
