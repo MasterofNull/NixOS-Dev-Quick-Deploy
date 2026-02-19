@@ -284,6 +284,12 @@
     # These options are only active when roles.aiStack.enable = true.
     # ---------------------------------------------------------------------------
     aiStack = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Enable declarative AI stack runtime services when the aiStack role is active.";
+      };
+
       backend = lib.mkOption {
         type = lib.types.enum [ "ollama" "k3s" ];
         default = "ollama";
@@ -353,6 +359,61 @@
           Required for AMD GPUs not yet in the official ROCm support matrix.
           null = let ROCm auto-detect (correct for most supported GPUs).
         '';
+      };
+
+      # ── K3s / Kubernetes options (backend = "k3s") ──────────────────────────
+      modelProfile = lib.mkOption {
+        type = lib.types.enum [ "auto" "small" "medium" "large" ];
+        default = "auto";
+        description = "Requested model profile tier for K3s AI stack defaults.";
+      };
+
+      embeddingModel = lib.mkOption {
+        type = lib.types.str;
+        default = "BAAI/bge-small-en-v1.5";
+        description = "Default embedding model written into the AI stack env ConfigMap (k3s backend).";
+      };
+
+      llamaDefaultModel = lib.mkOption {
+        type = lib.types.str;
+        default = "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF";
+        description = "Default llama.cpp model identifier written into the AI stack env ConfigMap (k3s backend).";
+      };
+
+      llamaModelFile = lib.mkOption {
+        type = lib.types.str;
+        default = "qwen2.5-coder-7b-instruct-q4_k_m.gguf";
+        description = "Default llama.cpp GGUF filename written into the AI stack env ConfigMap (k3s backend).";
+      };
+
+      namespace = lib.mkOption {
+        type = lib.types.str;
+        default = "ai-stack";
+        description = "Kubernetes namespace containing the AI stack resources (k3s backend).";
+      };
+
+      manifestPath = lib.mkOption {
+        type = lib.types.path;
+        default = ../../.. + "/ai-stack/kubernetes";
+        description = "Path to the AI stack Kubernetes kustomization directory (k3s backend).";
+      };
+
+      reconcileIntervalMinutes = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 15;
+        description = "How often to re-run Kubernetes reconciliation for the AI stack manifests (k3s backend).";
+      };
+
+      kubectlTimeout = lib.mkOption {
+        type = lib.types.str;
+        default = "60s";
+        description = "kubectl request timeout for API checks and apply operations (k3s backend).";
+      };
+
+      disableMarkerPath = lib.mkOption {
+        type = lib.types.str;
+        default = "/var/lib/nixos-quick-deploy/disable-ai-stack";
+        description = "When this marker file exists, K3s manifest reconciliation is skipped (k3s backend).";
       };
     };
 
