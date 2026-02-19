@@ -76,7 +76,10 @@
       accelerate
       datasets
       tensorflow
-      ps."llama-index"
+      # `llama-index` and `llama-index-cli` currently install the same
+      # `bin/llamaindex-cli` entrypoint, which breaks buildEnv with a path
+      # collision during Home Manager activation.
+      # Install llama-index via project-local virtualenv/pip when needed.
       chromadb
       faiss
       dask
