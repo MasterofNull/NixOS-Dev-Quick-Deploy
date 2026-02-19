@@ -3,7 +3,7 @@
 # Home Manager base module — applies to every user on every host.
 #
 # Provides:
-#   - Shell: zsh with history, completion, aliases, and starship prompt
+#   - Shell: zsh with history, completion, aliases, and Powerlevel10k prompt
 #   - Core dev tools: git, ripgrep, fd, jq, btop, nix utilities
 #   - XDG user directories
 #   - Direnv: automatic .envrc / nix develop shell loading
@@ -64,8 +64,9 @@ in
     # Network
     wget curl socat
 
-    # System inspection
+    # System inspection / modern CLI tools
     htop btop lsof pciutils usbutils nvme-cli smartmontools
+    eza bat dust duf
 
     # Core dev/tooling runtimes (critical for quick-deploy workflows)
     git gh tree file xxd
@@ -161,19 +162,61 @@ in
       nrd = "sudo nixos-rebuild dry-build --flake .";
       hms = "home-manager switch --flake .";
     };
+
+    initContent = ''
+      # Powerlevel10k instant prompt (must stay near the top of init).
+      if [[ -r "''${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-''${(%):-%n}.zsh" ]]; then
+        source "''${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-''${(%):-%n}.zsh"
+      fi
+
+      # Prefer Powerlevel10k for this workstation baseline.
+      source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme
+      [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+    '';
   };
 
-  # ---- Starship prompt ----------------------------------------------------
-  programs.starship = {
-    enable = true;
-    settings = {
-      add_newline      = true;
-      command_timeout  = 1000;
-      character = {
-        success_symbol = "[➜](bold green)";
-        error_symbol   = "[✗](bold red)";
-      };
-      nix_shell.disabled = false;
+  # Health checks require this marker and users can still rerun `p10k configure`
+  # at any time to regenerate ~/.p10k.zsh interactively.
+  home.file.".config/p10k/.configured".text = ''
+    managed-by-home-manager
+  '';
+
+  # Default prompt config so fresh systems render cleanly before first manual tune.
+  home.file.".p10k.zsh".text = ''
+    typeset -g POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(dir vcs)
+    typeset -g POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=(status command_execution_time background_jobs time)
+    typeset -g POWERLEVEL9K_MODE=nerdfont-complete
+    typeset -g POWERLEVEL9K_PROMPT_ADD_NEWLINE=true
+    (( ''${+functions[p10k]} )) && p10k reload
+  '';
+
+  # Keep Claude CLI installation on the current upstream-supported curl installer,
+  # but enforce it declaratively via Home Manager activation.
+  home.activation.installClaudeCode =
+    lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      CLAUDE_BIN="$HOME/.local/bin/claude"
+      if [ ! -x "$CLAUDE_BIN" ]; then
+        echo "[home-manager] Installing Claude Code via native installer"
+        ${pkgs.curl}/bin/curl -fsSL --max-time 120 --connect-timeout 10 https://claude.ai/install.sh | ${pkgs.bash}/bin/bash || true
+      fi
+    '';
+
+  systemd.user.timers.claude-code-updater = {
+    Unit.Description = "Periodic Claude Code native installer refresh";
+    Timer = {
+      OnBootSec = "10m";
+      OnUnitActiveSec = "24h";
+      RandomizedDelaySec = "30m";
+      Unit = "claude-code-updater.service";
+    };
+    Install.WantedBy = [ "timers.target" ];
+  };
+
+  systemd.user.services.claude-code-updater = {
+    Unit.Description = "Refresh Claude Code via official native installer";
+    Service = {
+      Type = "oneshot";
+      ExecStart = "${pkgs.bash}/bin/bash -lc '${pkgs.curl}/bin/curl -fsSL --max-time 120 --connect-timeout 10 https://claude.ai/install.sh | ${pkgs.bash}/bin/bash'";
     };
   };
 
@@ -203,6 +246,7 @@ in
     VISUAL  = "micro";
     PAGER   = "less";
     LESS    = "-FRX";
+    KUBECONFIG = "/etc/rancher/k3s/k3s.yaml";
   };
 
   # =========================================================================
@@ -233,7 +277,12 @@ in
         vsExt "jnoortheen" "nix-ide"            # Nix language + nil LSP
         # ── Python ─────────────────────────────────────────────────────────
         ++ vsExt "ms-python"   "python"         # Python language support
+        ++ vsExt "ms-python"   "black-formatter" # Python formatter
+        ++ vsExt "ms-python"   "vscode-pylance"  # Python language server
         ++ vsExt "ms-python"   "debugpy"        # Python debugger
+        ++ vsExt "ms-toolsai"  "jupyter"        # Notebooks
+        ++ vsExt "ms-toolsai"  "jupyter-keymap"
+        ++ vsExt "ms-toolsai"  "jupyter-renderers"
         ++ vsExt "ms-pyright"  "pyright"        # Static type checker
         # ── Go ─────────────────────────────────────────────────────────────
         ++ vsExt "golang"      "go"             # Go language support
@@ -243,7 +292,12 @@ in
         ++ vsExt "eamodio"     "gitlens"        # Git supercharged
         ++ vsExt "mhutchie"    "git-graph"      # Git branch graph
         # ── AI coding assistant ────────────────────────────────────────────
+        ++ vsExt "anthropic"   "claude-code"    # Claude Code
+        ++ vsExt "openai"      "gpt-codex"      # OpenAI Codex
+        ++ vsExt "openai"      "codex-ide"      # OpenAI Codex IDE
         ++ vsExt "continue"    "continue"       # Continue.dev → local Ollama
+        ++ vsExt "codeium"     "codeium"        # Codeium
+        ++ vsExt "kombai"      "kombai"         # Kombai
         # ── Data / serialisation formats ───────────────────────────────────
         ++ vsExt "redhat"      "vscode-yaml"
         ++ vsExt "tamasfe"     "even-better-toml"
@@ -251,7 +305,10 @@ in
         # ── Shell scripting ─────────────────────────────────────────────────
         ++ vsExt "timonwong"   "shellcheck"     # Powered by shellcheck binary
         # ── Formatting / editing quality-of-life ───────────────────────────
+        ++ vsExt "editorconfig" "editorconfig"
         ++ vsExt "esbenp"      "prettier-vscode"
+        ++ vsExt "dbaeumer"    "vscode-eslint"
+        ++ vsExt "usernamehw"  "errorlens"
         ++ vsExt "streetsidesoftware" "code-spell-checker"
         # ── Markdown ───────────────────────────────────────────────────────
         ++ vsExt "yzhang"      "markdown-all-in-one"
@@ -356,6 +413,47 @@ in
       };
     };
   };
+
+  # Keep VSCodium settings mutable across Home Manager switches:
+  # 1) snapshot writable user settings before the symlink stage
+  # 2) restore after the symlink stage so settings.json remains editable
+  home.activation.backupVscodiumMutableSettings = lib.hm.dag.entryBefore [ "writeBoundary" ] ''
+    settings_file="$HOME/.config/VSCodium/User/settings.json"
+    state_dir="$HOME/.local/share/nixos-quick-deploy/state/vscodium"
+    backup_file="$state_dir/settings.json"
+
+    mkdir -p "$state_dir"
+
+    if [ -f "$settings_file" ] && [ ! -L "$settings_file" ]; then
+      cp -f "$settings_file" "$backup_file"
+    fi
+  '';
+
+  home.activation.restoreVscodiumMutableSettings = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    settings_dir="$HOME/.config/VSCodium/User"
+    settings_file="$settings_dir/settings.json"
+    state_dir="$HOME/.local/share/nixos-quick-deploy/state/vscodium"
+    backup_file="$state_dir/settings.json"
+
+    mkdir -p "$settings_dir" "$state_dir"
+
+    if [ -f "$backup_file" ]; then
+      rm -f "$settings_file"
+      cp -f "$backup_file" "$settings_file"
+      chmod u+rw "$settings_file" 2>/dev/null || true
+    elif [ -L "$settings_file" ]; then
+      resolved_settings="$(readlink -f "$settings_file" 2>/dev/null || true)"
+      if [ -n "$resolved_settings" ] && [ -f "$resolved_settings" ]; then
+        rm -f "$settings_file"
+        cp -f "$resolved_settings" "$settings_file"
+        chmod u+rw "$settings_file" 2>/dev/null || true
+      fi
+    fi
+
+    if [ -f "$settings_file" ] && [ ! -L "$settings_file" ]; then
+      cp -f "$settings_file" "$backup_file"
+    fi
+  '';
 
   # ---- VSCodium launch wrapper ---------------------------------------------
   # Prepends Nix-managed tool paths so language servers and linters work when
