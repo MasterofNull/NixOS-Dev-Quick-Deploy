@@ -3301,7 +3301,7 @@ resolve_deploy_option_list() {
 }
 
 # persist_flake_first_host_options: write host-scoped declarative deploy options
-# consumed by flake.nix for AI-stack enablement and model selection.
+# consumed by flake.nix for AI-stack enablement and llama.cpp runtime settings.
 persist_flake_first_host_options() {
     local host_name="$1"
     local host_dir="${SCRIPT_DIR}/nix/hosts/${host_name}"
@@ -3317,13 +3317,14 @@ persist_flake_first_host_options() {
 {
   mySystem.roles.aiStack.enable = lib.mkDefault ${RUN_AI_MODEL};
   mySystem.aiStack = {
-    # ollama backend: native NixOS systemd services (no K3s, no containers).
+    # llama.cpp backend: native NixOS systemd services (no K3s, no Ollama).
     # Switch to "k3s" only once the Kubernetes stack is operational.
-    backend      = lib.mkDefault "ollama";
+    backend      = lib.mkDefault "llamacpp";
     acceleration = lib.mkDefault "auto";  # auto -> rocm for AMD GPU
 
-    # Models pulled by the ollama-model-pull oneshot on first boot.
-    models = lib.mkDefault [ "qwen2.5-coder:7b" ];
+    # llama.cpp model path (GGUF) consumed by the llama-cpp systemd unit.
+    # Replace model.gguf with your actual downloaded filename.
+    llamaCpp.model = lib.mkDefault "/var/lib/llama-cpp/models/model.gguf";
 
     ui.enable       = lib.mkDefault true;   # Open WebUI on :3000
     vectorDb.enable = lib.mkDefault false;  # Qdrant -- enable when RAG is needed
@@ -3581,12 +3582,13 @@ run_flake_first_deployment() {
         return 1
     fi
 
-    # Detect backend from the just-written deploy-options file.
+    # Detect backend from deploy options (prefer local overrides when present).
     # K3s-specific steps (Postgres/Grafana credentials, embeddings prewarm)
-    # are irrelevant for the ollama backend and must not prompt/fail there.
-    local _deploy_opts="${SCRIPT_DIR}/nix/hosts/${detected_host}/deploy-options.nix"
-    local _ai_backend="ollama"
-    if grep -qE 'backend\s*=.*"k3s"' "$_deploy_opts" 2>/dev/null; then
+    # are irrelevant for the llama.cpp backend and must not prompt/fail there.
+    local _deploy_opts_local="${SCRIPT_DIR}/nix/hosts/${detected_host}/deploy-options.local.nix"
+    local _deploy_opts_base="${SCRIPT_DIR}/nix/hosts/${detected_host}/deploy-options.nix"
+    local _ai_backend="llamacpp"
+    if grep -qE 'backend\s*=.*"k3s"' "$_deploy_opts_local" "$_deploy_opts_base" 2>/dev/null; then
         _ai_backend="k3s"
     fi
 
@@ -3612,7 +3614,10 @@ run_flake_first_deployment() {
     fi
 
     print_info "Executing declarative deploy via scripts/deploy-clean.sh"
-    if ! "$deploy_clean_script" "${deploy_args[@]}"; then
+    # On graphical hosts, deploy-clean can safely stage a boot generation when
+    # target default unit checks cannot be evaluated during preflight.
+    local _gui_fallback="${AUTO_GUI_SWITCH_FALLBACK:-true}"
+    if ! AUTO_GUI_SWITCH_FALLBACK="${_gui_fallback}" "$deploy_clean_script" "${deploy_args[@]}"; then
         print_error "Flake-first deploy-clean execution failed"
         return 1
     fi
