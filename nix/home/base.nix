@@ -209,7 +209,7 @@ in
       CLAUDE_BIN="$HOME/.local/bin/claude"
       if [ ! -x "$CLAUDE_BIN" ]; then
         echo "[home-manager] Installing Claude Code via native installer"
-        ${pkgs.curl}/bin/curl -fsSL --max-time 120 --connect-timeout 10 https://claude.ai/install.sh | ${pkgs.bash}/bin/bash || true
+        ${pkgs.curl}/bin/curl -fsSL https://claude.ai/install.sh | ${pkgs.bash}/bin/bash || true
       fi
     '';
 
@@ -228,7 +228,7 @@ in
     Unit.Description = "Refresh Claude Code via official native installer";
     Service = {
       Type = "oneshot";
-      ExecStart = "${pkgs.bash}/bin/bash -lc '${pkgs.curl}/bin/curl -fsSL --max-time 120 --connect-timeout 10 https://claude.ai/install.sh | ${pkgs.bash}/bin/bash'";
+      ExecStart = "${pkgs.bash}/bin/bash -lc '${pkgs.curl}/bin/curl -fsSL https://claude.ai/install.sh | ${pkgs.bash}/bin/bash'";
     };
   };
 
