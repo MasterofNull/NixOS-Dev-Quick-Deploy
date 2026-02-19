@@ -265,9 +265,9 @@ fix_shell_environment() {
 fix_home_manager() {
     print_section "Attempting to fix home-manager..."
 
-    if [ -d "$HOME/.dotfiles/home-manager" ]; then
-        print_detail "Found home-manager configuration at ~/.dotfiles/home-manager"
-        cd "$HOME/.dotfiles/home-manager"
+    if [ -d "$REPO_ROOT" ]; then
+        print_detail "Found home-manager configuration at $REPO_ROOT"
+        cd "$REPO_ROOT"
 
         local hm_target_user="${PRIMARY_USER:-${USER:-$(id -un 2>/dev/null || true)}}"
         local hm_flake=".#${hm_target_user}"
@@ -298,7 +298,7 @@ fix_home_manager() {
             echo "  See ${hm_fix_log} for details"
         fi
     else
-        print_fail "home-manager configuration not found at ~/.dotfiles/home-manager"
+        print_fail "home-manager configuration not found at $REPO_ROOT"
     fi
 }
 
@@ -755,9 +755,9 @@ fix_python_environment() {
         done
     fi
 
-    if [ -d "$HOME/.dotfiles/home-manager" ]; then
+    if [ -d "$REPO_ROOT" ]; then
         local hm_target_user="${PRIMARY_USER:-${USER:-$(id -un 2>/dev/null || true)}}"
-        local hm_python_target="$HOME/.dotfiles/home-manager#$hm_target_user"
+        local hm_python_target="$REPO_ROOT#$hm_target_user"
         local hm_cmd=()
         local hm_env=()
         local effective_max_jobs
@@ -808,7 +808,7 @@ check_command() {
             go)
                 version=$($cmd version 2>&1 | head -n1)
                 ;;
-            podman|python3|node|cargo|aider|nvim)
+            python3|node|cargo|aider|nvim)
                 version=$($cmd --version 2>&1 | head -n1)
                 ;;
             home-manager)
@@ -967,7 +967,7 @@ check_nix_channel() {
     actual_url=$(printf '%s\n' "$list_output" | awk -v target="$alias" '$1 == target {print $2}' | tail -n1)
 
     if [ -z "$actual_url" ]; then
-        print_fail "$alias channel not configured"
+        print_warning "$alias channel not configured"
         return 1
     fi
 
@@ -1378,31 +1378,8 @@ run_all_checks() {
     # ==========================================================================
     print_section "Core System Tools"
 
-    local require_podman=true
-    if [[ "${REQUIRE_PODMAN:-}" == "true" ]]; then
-        require_podman=true
-    elif [[ "${REQUIRE_PODMAN:-}" == "false" ]]; then
-        require_podman=false
-    else
-        if command -v systemctl >/dev/null 2>&1 && systemctl is-active k3s >/dev/null 2>&1; then
-            require_podman=false
-        elif [[ -f "/etc/rancher/k3s/k3s.yaml" ]]; then
-            require_podman=false
-        fi
-    fi
-
-    check_command "podman" "Podman" "$require_podman"
-
-    print_section "Rootless Podman Diagnostics"
-    if command -v podman >/dev/null 2>&1 && declare -F run_rootless_podman_diagnostics >/dev/null 2>&1; then
-        if run_rootless_podman_diagnostics "$PRIMARY_USER"; then
-            print_info "Rootless Podman diagnostics completed."
-        else
-            print_info "Rootless Podman diagnostics detected issues; review the messages above."
-        fi
-    else
-        print_warning "Podman diagnostics skipped (podman not available or helper missing)."
-    fi
+    # Legacy container-runtime checks removed (project is K3s/Kubernetes-first).
+    print_info "Skipping legacy container-runtime checks (K3s/Kubernetes-first)."
     check_command "git" "Git" true
     check_command "curl" "cURL" true
     check_command "wget" "wget" true
@@ -1440,7 +1417,7 @@ run_all_checks() {
             print_detail "Not in PATH but accessible via Nix flakes"
         else
             print_warning "Home Manager not found"
-            print_detail "May need to run: home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)"
+            print_detail "May need to run: home-manager switch --flake $REPO_ROOT#$(whoami)"
             ((WARNING_CHECKS++))
             ((TOTAL_CHECKS++))
         fi
@@ -1455,9 +1432,9 @@ run_all_checks() {
     fi
 
     # Check home-manager configuration
-    check_directory_exists "$HOME/.dotfiles/home-manager" "Home Manager config directory" true
-    check_file_exists "$HOME/.dotfiles/home-manager/flake.nix" "Home Manager flake.nix" true
-    check_file_exists "$HOME/.dotfiles/home-manager/home.nix" "Home Manager home.nix" true
+    check_directory_exists "$REPO_ROOT/nix/home" "Home Manager config directory" true
+    check_file_exists "$REPO_ROOT/flake.nix" "Home Manager flake.nix" true
+    check_file_exists "$REPO_ROOT/nix/home/base.nix" "Home Manager home.nix" true
 
     # ==========================================================================
     # Channel Alignment
@@ -1879,7 +1856,7 @@ run_all_checks() {
         ((FAILED_CHECKS++))
     else
         check_flatpak_remote "flathub" "Flathub remote" true
-        check_flatpak_remote "flathub-beta" "Flathub Beta remote" true
+        check_flatpak_remote "flathub-beta" "Flathub Beta remote" false
 
         # Core applications
         check_flatpak_app "com.google.Chrome" "Google Chrome" true
@@ -1887,7 +1864,6 @@ run_all_checks() {
         check_flatpak_app "md.obsidian.Obsidian" "Obsidian" true
         check_flatpak_app "ai.cursor.Cursor" "Cursor IDE" false
         check_flatpak_app "com.lmstudio.LMStudio" "LM Studio" false
-        check_flatpak_app "io.podman_desktop.PodmanDesktop" "Podman Desktop" false
 
         # Utilities
         check_flatpak_app "com.github.tchx84.Flatseal" "Flatseal" false
@@ -2151,7 +2127,7 @@ run_all_checks() {
     fi
 
     # Check flake lock completeness
-    local hm_flake_dir="$HOME/.dotfiles/home-manager"
+    local hm_flake_dir="$REPO_ROOT"
     local hm_flake_file="$hm_flake_dir/flake.nix"
     local hm_lock_file="$hm_flake_dir/flake.lock"
     print_check "Flake lock completeness"
@@ -2238,7 +2214,7 @@ run_all_checks() {
     else
         echo -e "${RED}✗ System health check FAILED${NC}"
         echo ""
-        echo "Some required components are missing or misconfigured."
+        echo "Some required components are missing or optional components are not configured."
         echo ""
 
         if [ "$FIX_ISSUES" = false ]; then
@@ -2265,7 +2241,7 @@ run_all_checks() {
                 echo "     • Then reload shell:"
                 echo "       exec zsh"
                 echo "     • If still missing, re-apply home-manager:"
-                echo "       cd ~/.dotfiles/home-manager"
+                echo "       cd $REPO_ROOT"
                 echo "       nix run home-manager/master -- switch --flake .#$(whoami)"
                 echo ""
                 suggestion_index=$((suggestion_index + 1))
@@ -2333,7 +2309,7 @@ run_all_checks() {
                 echo "     • If still missing, check if packages built successfully:"
                 echo "       nix-store --verify-path ~/.nix-profile"
                 echo "     • Re-apply home-manager to rebuild Python environment:"
-                echo "       cd ~/.dotfiles/home-manager && home-manager switch --flake .#$(whoami)"
+                echo "       cd $REPO_ROOT && home-manager switch --flake .#$(whoami)"
                 echo "     • Missing modules detected:"
                 for missing_entry in "${missing_required_python[@]}"; do
                     IFS='|' read -r _module missing_desc _requirement <<<"$missing_entry"
@@ -2431,7 +2407,7 @@ main() {
         fi
 
         # Fix incomplete flake.lock (missing inputs like sops-nix, nix-vscode-extensions)
-        local hm_flake_dir="$HOME/.dotfiles/home-manager"
+        local hm_flake_dir="$REPO_ROOT"
         if [ -f "$hm_flake_dir/flake.nix" ] && [ -f "$hm_flake_dir/flake.lock" ] && command -v jq >/dev/null 2>&1; then
             local declared_inputs locked_inputs
             declared_inputs=$(awk '

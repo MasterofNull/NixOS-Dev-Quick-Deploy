@@ -10,7 +10,7 @@ if command -v kubectl >/dev/null 2>&1 && [[ -f /etc/rancher/k3s/k3s.yaml ]]; the
     exit 0
 fi
 
-echo "[DEPRECATED] This script targets the retired legacy container runtime." >&2
+echo "[DEPRECATED] Legacy container runtime startup is disabled (K3s-first architecture)." >&2
 echo "Use Kubernetes commands from DEPLOYMENT.md instead." >&2
 echo "Dashboard can be started with: ${SCRIPT_DIR}/launch-dashboard.sh" >&2
-exit 1
+exit 0
