@@ -26,10 +26,11 @@
     "fuse-overlayfs"
     "btrfs-progs"
     "pciutils"
-    # Local LLM desktop UI alongside the llama.cpp / Open WebUI stack.
-    # base.nix resolves package names via builtins.hasAttr — if gpt4all is not
-    # in the current nixpkgs channel the missing entry is silently skipped.
-    "gpt4all"
+    # NOTE: gpt4all is intentionally excluded from systemPackageNames because
+    # recent nixpkgs revisions can evaluate but fail to build it (Qt6 private
+    # target mismatch), which breaks full system deploys.
+    # Declarative GPT4All install is provided via Flatpak profile data
+    # (see nix/data/flatpak-profiles.nix: io.gpt4all.gpt4all).
   ];
 
   gaming = [

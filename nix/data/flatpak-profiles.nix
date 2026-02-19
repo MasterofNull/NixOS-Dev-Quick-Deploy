@@ -23,6 +23,9 @@ let
   ];
 
   aiWorkstation = core ++ [
+    # Keep GPT4All declarative without gating system closure builds on nixpkgs
+    # C++/Qt build health.
+    "io.gpt4all.gpt4all"
     "org.jupyter.JupyterLab"
     "com.getpostman.Postman"
     "rest.insomnia.Insomnia"
