@@ -46,11 +46,34 @@
     # System inspection
     htop btop lsof pciutils usbutils nvme-cli smartmontools
 
-    # Dev
+    # Core dev/tooling runtimes (critical for quick-deploy workflows)
     git gh tree file xxd
+    nodejs go cargo ruby
+    neovim vscodium kubectl
 
     # Nix utilities
     nix-tree nix-diff nvd
+
+    # Python AI/dev toolchain expected by system health checks
+    (python3.withPackages (ps: with ps; [
+      pandas
+      numpy
+      ps."scikit-learn"
+      torch
+      openai
+      anthropic
+      langchain
+      ps."qdrant-client"
+      ps."sentence-transformers"
+      polars
+      black
+      ruff
+      mypy
+      jupyterlab
+      transformers
+      accelerate
+      datasets
+    ]))
 
     # Lightweight fallback editor (override in per-host home.nix)
     micro

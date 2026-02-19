@@ -10,6 +10,7 @@
     "ruby"
     "neovim"
     "python3"
+    "kubectl"
     "sqlite"
     "wireshark"
     "tcpdump"
@@ -36,6 +37,7 @@
     "ruby"
     "neovim"
     "python3"
+    "kubectl"
     "sqlite"
     "buildah"
     "skopeo"
@@ -49,5 +51,12 @@
 
   minimal = [
     "vscodium"
+    "nodejs"
+    "go"
+    "cargo"
+    "ruby"
+    "neovim"
+    "python3"
+    "kubectl"
   ];
 }
