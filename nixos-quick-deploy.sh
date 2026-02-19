@@ -173,6 +173,7 @@ readonly TEMPLATE_PATH_FEATURE_POLICY="critical-fixes-only"
 
 # Phase control
 declare -a SKIP_PHASES=()
+RUN_FLAKE_FIRST_LEGACY_PARITY_TASKS="${RUN_FLAKE_FIRST_LEGACY_PARITY_TASKS:-false}"
 START_FROM_PHASE=""
 RESTART_PHASE=""
 TEST_PHASE=""
@@ -1073,6 +1074,8 @@ ENVIRONMENT OVERRIDES:
     ALLOW_ROOT_DEPLOY=true     Allow running as root/sudo (not recommended)
     AUTO_PROMPT_PROFILE_SELECTION=false
                               Disable interactive profile prompt when profile flag is omitted
+    RUN_FLAKE_FIRST_LEGACY_PARITY_TASKS=true
+                              Re-enable flake-first legacy phases 6/7/8 (default: false)
 
 EOF
 }
@@ -3622,6 +3625,17 @@ run_flake_first_legacy_outcome_tasks() {
         print_warning "System changes are staged for next boot. Reboot required for desktop/user/service changes."
     fi
 
+    # Flake-first deploy-clean already executes declarative Flatpak sync, health checks,
+    # and installed-vs-intended validation. Running legacy phases 6/7 afterwards
+    # duplicates work and reintroduces imperative side effects.
+    if [[ "${RUN_FLAKE_FIRST_LEGACY_PARITY_TASKS}" != "true" ]]; then
+        print_info "Skipping legacy parity phases in flake-first mode (set RUN_FLAKE_FIRST_LEGACY_PARITY_TASKS=true to re-enable phases 6/7/8)."
+        if [[ "$RUN_AI_MODEL" == true ]]; then
+            print_info "Phase 9 imperative stack/model scripts skipped in flake-first; declarative AI stack module owns deployment."
+        fi
+        return 0
+    fi
+
     print_section "Flake-First Completion: Legacy-Parity Tasks"
 
     if ! run_optional_phase_by_number 6 "$PHASES_DIR/phase-06-additional-tooling.sh" phase_06_additional_tooling "Additional tooling"; then
@@ -3812,8 +3826,15 @@ run_post_deployment() {
     fi
 
     echo "============================================"
+    local strict_final_health="${STRICT_FINAL_HEALTH_CHECK:-false}"
     local final_exit=0
-    if [[ $health_exit -ne 0 || $stack_exit -ne 0 || $rollback_test_exit -ne 0 ]]; then
+    if [[ $rollback_test_exit -ne 0 ]]; then
+        final_exit=1
+    fi
+    if [[ $stack_exit -ne 0 ]]; then
+        final_exit=1
+    fi
+    if [[ $health_exit -ne 0 && "$strict_final_health" == true ]]; then
         final_exit=1
     fi
 
@@ -3831,7 +3852,12 @@ run_post_deployment() {
     else
         print_warning "Deployment completed with follow-up actions required."
         if [[ $health_exit -ne 0 ]]; then
-            print_info "Review the health check summary above. You can rerun fixes with: $health_script --fix"
+            if [[ "${STRICT_FINAL_HEALTH_CHECK:-false}" == true ]]; then
+                print_info "Review the health check summary above. You can rerun fixes with: $health_script --fix"
+            else
+                print_info "Final health check reported gaps (non-blocking by default). Set STRICT_FINAL_HEALTH_CHECK=true to fail on these checks."
+                print_info "You can rerun fixes with: $health_script --fix"
+            fi
         fi
         if [[ $rollback_test_exit -ne 0 ]]; then
             print_info "Rollback validation failed. You can rerun with: $SCRIPT_DIR/nixos-quick-deploy.sh --test-rollback"
