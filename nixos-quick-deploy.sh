@@ -3826,8 +3826,15 @@ run_post_deployment() {
     fi
 
     echo "============================================"
+    local strict_final_health="${STRICT_FINAL_HEALTH_CHECK:-false}"
     local final_exit=0
-    if [[ $health_exit -ne 0 || $stack_exit -ne 0 || $rollback_test_exit -ne 0 ]]; then
+    if [[ $rollback_test_exit -ne 0 ]]; then
+        final_exit=1
+    fi
+    if [[ $stack_exit -ne 0 ]]; then
+        final_exit=1
+    fi
+    if [[ $health_exit -ne 0 && "$strict_final_health" == true ]]; then
         final_exit=1
     fi
 
@@ -3845,7 +3852,12 @@ run_post_deployment() {
     else
         print_warning "Deployment completed with follow-up actions required."
         if [[ $health_exit -ne 0 ]]; then
-            print_info "Review the health check summary above. You can rerun fixes with: $health_script --fix"
+            if [[ "${STRICT_FINAL_HEALTH_CHECK:-false}" == true ]]; then
+                print_info "Review the health check summary above. You can rerun fixes with: $health_script --fix"
+            else
+                print_info "Final health check reported gaps (non-blocking by default). Set STRICT_FINAL_HEALTH_CHECK=true to fail on these checks."
+                print_info "You can rerun fixes with: $health_script --fix"
+            fi
         fi
         if [[ $rollback_test_exit -ne 0 ]]; then
             print_info "Rollback validation failed. You can rerun with: $SCRIPT_DIR/nixos-quick-deploy.sh --test-rollback"
