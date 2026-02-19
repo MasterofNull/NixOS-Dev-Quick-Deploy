@@ -107,6 +107,14 @@ in
       enable = true;
     };
 
+    # Dedicated service identity for llama.cpp (separate from ollama daemon).
+    users.groups.llama = lib.mkIf llama.enable { };
+    users.users.llama = lib.mkIf llama.enable {
+      isSystemUser = true;
+      group = "llama";
+      description = "llama.cpp service user";
+    };
+
     # -------------------------------------------------------------------------
     # Optional native llama.cpp server (OpenAI-compatible on :8080 by default)
     # -------------------------------------------------------------------------
@@ -114,10 +122,13 @@ in
       description = "llama.cpp OpenAI-compatible inference server";
       wantedBy = [ "multi-user.target" ];
       after = [ "network.target" ];
+      # Avoid hard deployment failures when the GGUF is not provisioned yet.
+      # The unit is skipped until the configured model path exists.
+      unitConfig.ConditionPathExists = llama.model;
       serviceConfig = {
         Type = "simple";
-        User = "ollama";
-        Group = "ollama";
+        User = "llama";
+        Group = "llama";
         Restart = "on-failure";
         RestartSec = "5s";
         StateDirectory = "llama-cpp";
