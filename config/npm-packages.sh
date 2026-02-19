@@ -18,10 +18,10 @@
 NPM_AI_PACKAGE_MANIFEST=(
   # NOTE: Claude Code removed from NPM manifest — now installed via native installer
   # (curl -fsSL https://claude.ai/install.sh | bash). See lib/tools.sh install_claude_code_native().
-  "@openai/codex|0.28.0|GPT CodeX CLI|codex|gpt-codex-wrapper||GPT_CODEX_DEBUG"
-  "@openai/codex|0.28.0|Codex IDE|codex|codex-wrapper||CODEX_DEBUG"
-  "openai|6.16.0|OpenAI CLI|openai|openai-wrapper|openai.chatgpt|OPENAI_DEBUG"
-  "@google/gemini-cli|0.3.3|Gemini CLI|gemini|gemini-wrapper||GEMINI_DEBUG"
+  "@openai/codex|0.28.0|GPT CodeX CLI|codex|gpt-codex-wrapper|OpenAI.gpt-codex|GPT_CODEX_DEBUG"
+  "@openai/codex|0.28.0|Codex IDE|codex|codex-wrapper|OpenAI.codex-ide|CODEX_DEBUG"
+  "openai|6.16.0|OpenAI CLI|openai|openai-wrapper|OpenAI.chatgpt|OPENAI_DEBUG"
+  "@google/gemini-cli|0.3.3|Gemini CLI|gemini|gemini-wrapper|Google.geminicodeassist|GEMINI_DEBUG"
   "@qwen-code/qwen-code|0.0.11|Qwen Code CLI|qwen|qwen-wrapper||QWEN_DEBUG"
 )
 
@@ -35,4 +35,7 @@ declare -gA NPM_AI_PACKAGE_MANUAL_URLS=(
 declare -gA VSCODE_AI_EXTENSION_FALLBACK_URLS=(
   ["OpenAI.gpt-codex"]="https://marketplace.visualstudio.com/items?itemName=OpenAI.gpt-codex"
   ["OpenAI.codex-ide"]="https://marketplace.visualstudio.com/items?itemName=OpenAI.codex-ide"
+  ["OpenAI.chatgpt"]="https://marketplace.visualstudio.com/items?itemName=OpenAI.chatgpt"
+  ["Google.geminicodeassist"]="https://marketplace.visualstudio.com/items?itemName=Google.geminicodeassist"
 )
+
