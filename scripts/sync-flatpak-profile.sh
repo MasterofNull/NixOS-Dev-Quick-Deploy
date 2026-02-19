@@ -84,10 +84,59 @@ fi
 mapfile -t desired_apps <<<"$apps_raw"
 mapfile -t installed_apps < <(flatpak list --app --columns=application 2>/dev/null || true)
 
-if ! flatpak remotes --columns=name 2>/dev/null | grep -Fxq "flathub"; then
-  echo "Adding flathub remote..."
-  flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+ensure_flathub_remote() {
+  # Keep remote scope aligned with install scope (`flatpak install --user ...`).
+  local remote_url="https://dl.flathub.org/repo/flathub.flatpakrepo"
+  local refs=""
+
+  if ! flatpak remotes --user --columns=name 2>/dev/null | grep -Fxq "flathub"; then
+    echo "Adding user flathub remote..."
+    flatpak remote-add --user --if-not-exists flathub "$remote_url"
+  fi
+
+  refs="$(flatpak remote-ls --user flathub --app --columns=application 2>/dev/null || true)"
+  if [[ -n "$refs" ]]; then
+    return 0
+  fi
+
+  echo "User flathub remote has no refs; repairing user remote metadata..."
+  flatpak remote-delete --user flathub >/dev/null 2>&1 || true
+  flatpak remote-add --user --if-not-exists flathub "$remote_url"
+
+  refs="$(flatpak remote-ls --user flathub --app --columns=application 2>/dev/null || true)"
+  if [[ -z "$refs" ]]; then
+    echo "Unable to refresh user flathub metadata; skipping app installation." >&2
+    return 1
+  fi
+
+  return 0
+}
+
+if ! ensure_flathub_remote; then
+  exit 1
 fi
+
+install_flatpak_app() {
+  local app="$1"
+  local output=""
+
+  if output="$("${install_cmd[@]}" "$app" 2>&1)"; then
+    printf '%s\n' "$output"
+    return 0
+  fi
+
+  printf '%s\n' "$output" >&2
+  if printf '%s\n' "$output" | grep -Fq "No remote refs found for"; then
+    echo "    ↻ retrying after flathub remote repair" >&2
+    if ensure_flathub_remote && output="$("${install_cmd[@]}" "$app" 2>&1)"; then
+      printf '%s\n' "$output"
+      return 0
+    fi
+    printf '%s\n' "$output" >&2
+  fi
+
+  return 1
+}
 
 declare -a install_cmd=(flatpak install --user flathub)
 if [[ "$NON_INTERACTIVE" == true ]]; then
@@ -103,7 +152,7 @@ for app in "${desired_apps[@]}"; do
   fi
 
   echo "  → installing $app"
-  if "${install_cmd[@]}" "$app"; then
+  if install_flatpak_app "$app"; then
     echo "    ✓ installed $app"
   else
     echo "    ✗ failed to install $app"
