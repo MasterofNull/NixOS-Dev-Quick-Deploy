@@ -2089,9 +2089,9 @@ run_all_checks() {
         print_detail "Create with: echo 'prefix=\$HOME/.npm-global' > ~/.npmrc"
     fi
 
-    # Check gitconfig
-    print_check "Git configuration (~/.gitconfig)"
-    if [ -f "$HOME/.gitconfig" ]; then
+    # Check gitconfig (Home Manager uses XDG path ~/.config/git/config)
+    print_check "Git configuration"
+    if [ -f "$HOME/.gitconfig" ] || [ -f "$HOME/.config/git/config" ]; then
         local git_user=$(git config --global user.name 2>/dev/null || echo "not set")
         local git_email=$(git config --global user.email 2>/dev/null || echo "not set")
         print_success "Git config (user: $git_user)"

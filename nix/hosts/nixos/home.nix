@@ -69,6 +69,9 @@ in
     "$HOME/.local/bin"
   ];
 
+  # ---- NPM config (.npmrc) --------------------------------------------------
+  home.file.".npmrc".text = "prefix=\${HOME}/.npm-global\n";
+
   # ---- Aider default config -------------------------------------------------
   home.file.".config/aider/config.toml".text = ''
     # Aider configuration tailored for NixOS & Gitea workflows
