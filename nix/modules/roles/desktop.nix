@@ -61,6 +61,8 @@ in
       MOZ_ENABLE_WAYLAND          = lib.mkDefault "1";
       NIXOS_OZONE_WL              = lib.mkDefault "1";
       COSMIC_DATA_CONTROL_ENABLED = lib.mkDefault "1";
+      XDG_DATA_HOME               = lib.mkDefault "$HOME/.local/share";
+      XDG_DATA_DIRS               = lib.mkDefault "$HOME/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/run/current-system/sw/share";
     };
 
     # ---- Audio -------------------------------------------------------------
@@ -185,6 +187,12 @@ in
       "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTheme.Mode/v1 0750 cosmic-greeter cosmic-greeter -"
       "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTk        0750 cosmic-greeter cosmic-greeter -"
       "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTk/v1     0750 cosmic-greeter cosmic-greeter -"
+      # Keep user Flatpak exports writable so per-user app sync can update icons/desktop exports.
+      "d /home/${cfg.primaryUser}/.local/share/flatpak/exports                 0755 ${cfg.primaryUser} ${cfg.primaryUser} -"
+      "d /home/${cfg.primaryUser}/.local/share/flatpak/exports/share           0755 ${cfg.primaryUser} ${cfg.primaryUser} -"
+      "d /home/${cfg.primaryUser}/.local/share/flatpak/exports/share/icons     0755 ${cfg.primaryUser} ${cfg.primaryUser} -"
+      "d /home/${cfg.primaryUser}/.local/share/flatpak/exports/share/icons/hicolor 0755 ${cfg.primaryUser} ${cfg.primaryUser} -"
+      "z /home/${cfg.primaryUser}/.local/share/flatpak/exports                 - ${cfg.primaryUser} ${cfg.primaryUser} -"
     ];
 
     # ---- Printing ----------------------------------------------------------

@@ -46,11 +46,34 @@
     # System inspection
     htop btop lsof pciutils usbutils nvme-cli smartmontools
 
-    # Dev
+    # Core dev/tooling runtimes (critical for quick-deploy workflows)
     git gh tree file xxd
+    nodejs go cargo ruby
+    neovim vscodium kubectl
 
     # Nix utilities
     nix-tree nix-diff nvd
+
+    # Python AI/dev toolchain expected by system health checks
+    (python3.withPackages (ps: with ps; [
+      pandas
+      numpy
+      ps."scikit-learn"
+      torch
+      openai
+      anthropic
+      langchain
+      ps."qdrant-client"
+      ps."sentence-transformers"
+      polars
+      black
+      ruff
+      mypy
+      jupyterlab
+      transformers
+      accelerate
+      datasets
+    ]))
 
     # Lightweight fallback editor (override in per-host home.nix)
     micro
@@ -58,15 +81,15 @@
 
   # ---- Git -----------------------------------------------------------------
   programs.git = {
-    enable   = true;
-    userName = lib.mkDefault "NixOS User";
-    userEmail = lib.mkDefault "user@localhost";
-    extraConfig = {
-      init.defaultBranch      = "main";
-      pull.rebase             = true;
-      push.autoSetupRemote    = true;
-      core.autocrlf           = "input";
-      diff.colorMoved         = "default";
+    enable = true;
+    settings = {
+      user.name = lib.mkDefault "NixOS User";
+      user.email = lib.mkDefault "user@localhost";
+      init.defaultBranch = "main";
+      pull.rebase = true;
+      push.autoSetupRemote = true;
+      core.autocrlf = "input";
+      diff.colorMoved = "default";
     };
   };
 
@@ -119,11 +142,16 @@
 
   # ---- SSH client ---------------------------------------------------------
   programs.ssh = {
-    enable              = true;
-    addKeysToAgent      = "yes";
-    serverAliveInterval = 60;
-    serverAliveCountMax = 3;
-    extraConfig         = "HashKnownHosts yes";
+    enable = true;
+    enableDefaultConfig = false;
+    matchBlocks."*" = {
+      addKeysToAgent = "yes";
+      serverAliveInterval = 60;
+      serverAliveCountMax = 3;
+      extraOptions = {
+        HashKnownHosts = "yes";
+      };
+    };
   };
 
   # ---- Session variables --------------------------------------------------
