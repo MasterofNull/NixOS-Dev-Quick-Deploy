@@ -156,10 +156,10 @@ else
         ln -sf "$claude_bin" "${NPM_CONFIG_PREFIX}/bin/claude-wrapper" 2>/dev/null || true
       fi
     else
-      log "  ⚠ Claude Code installer failed (non-critical)"
+      log "  ✗ Claude Code installer failed (critical)"
     fi
   else
-    log "  ⚠ Could not download Claude installer (network issue)"
+    log "  ✗ Could not download Claude installer (critical network/install issue)"
   fi
   rm -f "$installer_tmp" 2>/dev/null || true
 fi
