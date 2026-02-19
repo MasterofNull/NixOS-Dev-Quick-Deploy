@@ -173,6 +173,7 @@ readonly TEMPLATE_PATH_FEATURE_POLICY="critical-fixes-only"
 
 # Phase control
 declare -a SKIP_PHASES=()
+RUN_FLAKE_FIRST_LEGACY_PARITY_TASKS="${RUN_FLAKE_FIRST_LEGACY_PARITY_TASKS:-false}"
 START_FROM_PHASE=""
 RESTART_PHASE=""
 TEST_PHASE=""
@@ -1073,6 +1074,8 @@ ENVIRONMENT OVERRIDES:
     ALLOW_ROOT_DEPLOY=true     Allow running as root/sudo (not recommended)
     AUTO_PROMPT_PROFILE_SELECTION=false
                               Disable interactive profile prompt when profile flag is omitted
+    RUN_FLAKE_FIRST_LEGACY_PARITY_TASKS=true
+                              Re-enable flake-first legacy phases 6/7/8 (default: false)
 
 EOF
 }
@@ -3620,6 +3623,17 @@ run_flake_first_legacy_outcome_tasks() {
     # downstream runtime expectations (desktop/session, user auth) are visible.
     if [[ "$deploy_mode" == "boot" ]]; then
         print_warning "System changes are staged for next boot. Reboot required for desktop/user/service changes."
+    fi
+
+    # Flake-first deploy-clean already executes declarative Flatpak sync, health checks,
+    # and installed-vs-intended validation. Running legacy phases 6/7 afterwards
+    # duplicates work and reintroduces imperative side effects.
+    if [[ "${RUN_FLAKE_FIRST_LEGACY_PARITY_TASKS}" != "true" ]]; then
+        print_info "Skipping legacy parity phases in flake-first mode (set RUN_FLAKE_FIRST_LEGACY_PARITY_TASKS=true to re-enable phases 6/7/8)."
+        if [[ "$RUN_AI_MODEL" == true ]]; then
+            print_info "Phase 9 imperative stack/model scripts skipped in flake-first; declarative AI stack module owns deployment."
+        fi
+        return 0
     fi
 
     print_section "Flake-First Completion: Legacy-Parity Tasks"
