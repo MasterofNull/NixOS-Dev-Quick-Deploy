@@ -37,6 +37,10 @@ AUTO_STAGED_FLAKE_PATH=""
 # We unstage them on exit to avoid leaving a dirty index that blocks `git pull --rebase`.
 declare -a AUTO_STAGED_FLAKE_FILES=()
 
+RESTORE_GENERATED_REPO_FILES="${RESTORE_GENERATED_REPO_FILES:-true}"
+GENERATED_FILE_SNAPSHOT_DIR=""
+declare -a GENERATED_FILE_SNAPSHOT_TARGETS=()
+
 usage() {
   cat <<'USAGE'
 Usage: ./scripts/deploy-clean.sh [options]
@@ -91,6 +95,8 @@ Environment overrides:
                             Flake ref used for nix-run Home Manager fallback
   ALLOW_ROOT_DEPLOY=true    Allow running this script as root (not recommended)
   BOOT_ESP_MIN_FREE_MB=128  Override minimum required free space on ESP
+  RESTORE_GENERATED_REPO_FILES=true
+                            Restore generated host files (facts/home-deploy-options) on exit
 USAGE
 }
 
@@ -252,6 +258,64 @@ cleanup_auto_staged_flake_files() {
   fi
 
   log "Could not automatically unstage temporary flake files; run: git -C '${AUTO_STAGED_FLAKE_PATH}' restore --staged -- ${AUTO_STAGED_FLAKE_FILES[*]}"
+}
+
+
+snapshot_generated_repo_files() {
+  [[ "${RESTORE_GENERATED_REPO_FILES}" == "true" ]] || return 0
+
+  local flake_path host_dir
+  flake_path="$(resolve_local_flake_path "${FLAKE_REF}")"
+  [[ -n "${flake_path}" && -d "${flake_path}" ]] || return 0
+
+  if ! run_git_safe -C "${flake_path}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return 0
+  fi
+
+  host_dir="${flake_path}/nix/hosts/${HOST_NAME}"
+  [[ -d "${host_dir}" ]] || return 0
+
+  GENERATED_FILE_SNAPSHOT_DIR="$(mktemp -d)"
+  GENERATED_FILE_SNAPSHOT_TARGETS=(
+    "${host_dir}/facts.nix"
+    "${host_dir}/home-deploy-options.nix"
+  )
+
+  local target key
+  for target in "${GENERATED_FILE_SNAPSHOT_TARGETS[@]}"; do
+    key="$(printf '%s' "${target}" | sha256sum | awk '{print $1}')"
+    if [[ -f "${target}" ]]; then
+      cp -f "${target}" "${GENERATED_FILE_SNAPSHOT_DIR}/${key}.snapshot"
+      printf 'present\n' > "${GENERATED_FILE_SNAPSHOT_DIR}/${key}.state"
+    else
+      printf 'absent\n' > "${GENERATED_FILE_SNAPSHOT_DIR}/${key}.state"
+    fi
+  done
+}
+
+restore_generated_repo_files() {
+  [[ "${RESTORE_GENERATED_REPO_FILES}" == "true" ]] || return 0
+  [[ -n "${GENERATED_FILE_SNAPSHOT_DIR}" && -d "${GENERATED_FILE_SNAPSHOT_DIR}" ]] || return 0
+
+  local target key state
+  for target in "${GENERATED_FILE_SNAPSHOT_TARGETS[@]}"; do
+    key="$(printf '%s' "${target}" | sha256sum | awk '{print $1}')"
+    state="$(cat "${GENERATED_FILE_SNAPSHOT_DIR}/${key}.state" 2>/dev/null || echo absent)"
+
+    if [[ "${state}" == "present" ]]; then
+      install -m 0644 "${GENERATED_FILE_SNAPSHOT_DIR}/${key}.snapshot" "${target}"
+    else
+      rm -f "${target}" >/dev/null 2>&1 || true
+    fi
+  done
+
+  rm -rf "${GENERATED_FILE_SNAPSHOT_DIR}" >/dev/null 2>&1 || true
+  GENERATED_FILE_SNAPSHOT_DIR=""
+}
+
+cleanup_on_exit() {
+  cleanup_auto_staged_flake_files
+  restore_generated_repo_files
 }
 
 run_roadmap_completion_verification() {
@@ -959,7 +1023,7 @@ case "$PROFILE" in
   *) die "Unsupported profile '${PROFILE}'. Expected ai-dev|gaming|minimal." ;;
 esac
 
-trap cleanup_auto_staged_flake_files EXIT
+trap cleanup_on_exit EXIT
 
 assert_non_root_entrypoint
 
@@ -975,6 +1039,7 @@ require_command nixos-rebuild
 enable_flakes_runtime
 ensure_flake_visible_to_nix "${FLAKE_REF}"
 resolve_host_from_flake_if_needed
+snapshot_generated_repo_files
 persist_home_git_credentials_declarative
 run_roadmap_completion_verification
 run_readiness_analysis
