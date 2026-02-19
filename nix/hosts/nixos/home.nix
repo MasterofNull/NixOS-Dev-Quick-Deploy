@@ -5,7 +5,7 @@
 # Base module (nix/home/base.nix) already provides:
 #   - VSCodium with extensions, settings, wrapper, Continue.dev config
 #   - nil, alejandra, deadnix, statix, shellcheck, glow
-#   - Python AI toolchain, zsh, starship, direnv, ssh, git
+#   - Python AI toolchain, zsh (Powerlevel10k), direnv, ssh, git
 #
 # This file adds only packages and config that are specific to this host.
 # ---------------------------------------------------------------------------

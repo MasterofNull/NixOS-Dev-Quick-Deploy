@@ -1591,13 +1591,13 @@ run_all_checks() {
     print_section "Virtualization Stack"
 
     # Check core virtualization tools
-    check_command "virsh" "Virsh (libvirt CLI)" false
-    check_command "virt-manager" "Virt-Manager (VM GUI)" false
-    check_command "qemu-system-x86_64" "QEMU" false
+    check_command "virsh" "Virsh (libvirt CLI)" true
+    check_command "virt-manager" "Virt-Manager (VM GUI)" true
+    check_command "qemu-system-x86_64" "QEMU" true
 
     # Check KVM module loaded
     print_check "KVM kernel module"
-    if lsmod | grep -q '^kvm'; then
+    if command -v lsmod >/dev/null 2>&1 && lsmod | grep -q '^kvm'; then
         local kvm_type="unknown"
         if lsmod | grep -q 'kvm_intel'; then
             kvm_type="Intel VT-x"
@@ -1607,23 +1607,28 @@ run_all_checks() {
         print_success "KVM module loaded ($kvm_type)"
         print_detail "Virtualization enabled and ready"
     else
-        print_warning "KVM module not loaded (optional)"
+        print_fail "KVM module not loaded"
         print_detail "Enable virtualization in BIOS and load module: modprobe kvm_intel or kvm_amd"
     fi
 
     # Check CPU virtualization support
     print_check "CPU virtualization support"
-    local virt_support=$(egrep -c '(vmx|svm)' /proc/cpuinfo 2>/dev/null || echo "0")
+    local virt_support="0"
+    if [ -r /proc/cpuinfo ]; then
+        virt_support=$(grep -E -c '(vmx|svm)' /proc/cpuinfo 2>/dev/null || true)
+        virt_support="${virt_support//[^0-9]/}"
+        virt_support="${virt_support:-0}"
+    fi
     if [ "$virt_support" -gt 0 ]; then
         print_success "CPU supports virtualization ($virt_support cores)"
         print_detail "VT-x/AMD-V feature flags present"
     else
-        print_warning "CPU virtualization support not detected (optional)"
+        print_fail "CPU virtualization support not detected"
         print_detail "Enable VT-x/AMD-V in BIOS settings"
     fi
 
     # Check libvirtd service
-    check_system_service "libvirtd" "Libvirtd daemon" false false
+    check_system_service "libvirtd" "Libvirtd daemon" false true
 
     # Check if user is in libvirtd group
     print_check "Libvirtd group membership"
@@ -1631,14 +1636,14 @@ run_all_checks() {
         print_success "User in libvirtd group"
         print_detail "Can manage VMs without sudo"
     else
-        print_warning "User not in libvirtd group (optional)"
-        print_detail "Add with: sudo usermod -aG libvirtd $USER"
+        print_fail "User not in libvirtd group"
+        print_detail "Add with: sudo usermod -aG libvirtd $(id -un)"
     fi
 
     # Check VM helper scripts
-    check_command "vm-create-nixos" "vm-create-nixos helper" false
-    check_command "vm-list" "vm-list helper" false
-    check_command "vm-snapshot" "vm-snapshot helper" false
+    check_command "vm-create-nixos" "vm-create-nixos helper" true
+    check_command "vm-list" "vm-list helper" true
+    check_command "vm-snapshot" "vm-snapshot helper" true
 
     # ==========================================================================
     # Testing Infrastructure (pytest)
@@ -1848,6 +1853,8 @@ run_all_checks() {
 
     # Powerlevel10k is required for this workstation baseline.
     check_file_exists "$HOME/.config/p10k/.configured" "Powerlevel10k configured" true
+    check_file_exists "$HOME/.p10k.zsh" "Powerlevel10k prompt config" true
+    check_file_exists "$HOME/.cache/p10k-instant-prompt-$(id -un).zsh" "Powerlevel10k instant prompt cache" false
 
     # ==========================================================================
     # Flatpak Applications
@@ -1936,40 +1943,57 @@ run_all_checks() {
         print_detail "KUBECONFIG: ${kubeconfig_path:-<unset>}"
     fi
 
+    local k3s_expected=false
+    if [[ -n "$kubeconfig_path" || -f /etc/rancher/k3s/k3s.yaml ]]; then
+        k3s_expected=true
+    elif systemctl list-unit-files 2>/dev/null | grep -q '^k3s\.service'; then
+        k3s_expected=true
+    fi
+
     print_check "K3s cluster connectivity"
-    if [[ -n "$KUBECTL_BIN" ]]; then
+    if [[ "$k3s_expected" != "true" ]]; then
+        print_info "K3s backend not configured on this host (llama.cpp-only mode)"
+    elif [[ -n "$KUBECTL_BIN" ]]; then
         local kube_err=""
-        kube_err=$("$KUBECTL_BIN" get nodes --request-timeout="${KUBECTL_TIMEOUT:-60}s" 2>&1 >/dev/null) || true
-        if "$KUBECTL_BIN" get nodes --request-timeout="${KUBECTL_TIMEOUT:-60}s" >/dev/null 2>&1; then
+        local -a kube_args=(--request-timeout="${KUBECTL_TIMEOUT:-60}s")
+        if [[ -n "$kubeconfig_path" ]]; then
+            kube_args+=(--kubeconfig "$kubeconfig_path")
+        fi
+        kube_err=$("$KUBECTL_BIN" "${kube_args[@]}" get nodes 2>&1 >/dev/null) || true
+        if "$KUBECTL_BIN" "${kube_args[@]}" get nodes >/dev/null 2>&1; then
             print_success "kubectl can reach the cluster"
         else
-            print_warning "kubectl available but cluster unreachable (K3s may not be running)"
+            print_fail "kubectl available but cluster unreachable"
             if [[ "$DETAILED" == "true" && -n "$kube_err" ]]; then
                 print_detail "kubectl error: ${kube_err}"
             fi
         fi
     else
-        print_warning "kubectl binary not found"
+        print_fail "kubectl binary not found"
     fi
 
     print_check "AI stack pods (${AI_STACK_NAMESPACE})"
     local pods_output=""
     local pods_err=""
-    if [[ -n "$KUBECTL_BIN" ]]; then
-        pods_output=$("$KUBECTL_BIN" --request-timeout="${KUBECTL_TIMEOUT:-60}s" get pods -n "$AI_STACK_NAMESPACE" --no-headers 2>/dev/null || true)
+    if [[ "$k3s_expected" == "true" && -n "$KUBECTL_BIN" ]]; then
+        local -a pods_args=(--request-timeout="${KUBECTL_TIMEOUT:-60}s")
+        if [[ -n "$kubeconfig_path" ]]; then
+            pods_args+=(--kubeconfig "$kubeconfig_path")
+        fi
+        pods_output=$("$KUBECTL_BIN" "${pods_args[@]}" get pods -n "$AI_STACK_NAMESPACE" --no-headers 2>/dev/null || true)
         if [[ -z "$pods_output" ]]; then
-            pods_err=$("$KUBECTL_BIN" --request-timeout="${KUBECTL_TIMEOUT:-60}s" get pods -n "$AI_STACK_NAMESPACE" --no-headers 2>&1 || true)
+            pods_err=$("$KUBECTL_BIN" "${pods_args[@]}" get pods -n "$AI_STACK_NAMESPACE" --no-headers 2>&1 || true)
         fi
     fi
 
     if [[ -z "$pods_output" ]]; then
         if [[ -n "$pods_err" ]]; then
-            print_warning "Unable to query pods in namespace '${AI_STACK_NAMESPACE}'"
+            print_fail "Unable to query pods in namespace '${AI_STACK_NAMESPACE}'"
             if [[ "$DETAILED" == "true" ]]; then
                 print_detail "kubectl pods error: ${pods_err}"
             fi
         else
-            print_warning "No pods reported in namespace '${AI_STACK_NAMESPACE}'"
+            print_fail "No pods reported in namespace '${AI_STACK_NAMESPACE}'"
         fi
     else
         local non_running=0
