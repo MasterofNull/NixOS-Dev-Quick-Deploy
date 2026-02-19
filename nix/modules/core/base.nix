@@ -60,6 +60,9 @@ in
     # BIOS hosts may need to set this false in local-overrides.nix.
     boot.initrd.systemd.enable = lib.mkDefault true;
 
+    # Keep /tmp on tmpfs by default (legacy template parity, opt-out via facts).
+    boot.tmp.useTmpfs = lib.mkDefault cfg.deployment.tmpUseTmpfs;
+
     environment.systemPackages = resolvedPackages;
 
     # ---- Security hardening (system-wide baseline) -------------------------

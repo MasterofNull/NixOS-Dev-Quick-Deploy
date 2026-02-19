@@ -69,10 +69,18 @@
       black
       ruff
       mypy
+      pytest
       jupyterlab
+      notebook
       transformers
       accelerate
       datasets
+      tensorflow
+      ps."llama-index"
+      chromadb
+      faiss
+      dask
+      gradio
     ]))
 
     # Lightweight fallback editor (override in per-host home.nix)
