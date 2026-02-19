@@ -2588,10 +2588,18 @@ wait_for_ai_stack_readiness() {
         return 0
     fi
 
-    if ! kubectl --request-timeout=15s cluster-info >/dev/null 2>&1; then
-        print_warning "Kubernetes API not reachable yet; skipping AI stack readiness wait."
-        return 0
-    fi
+    local attempts=0
+    local max_attempts=6
+    while ! kubectl --request-timeout=15s cluster-info >/dev/null 2>&1; do
+        attempts=$((attempts + 1))
+        if (( attempts >= max_attempts )); then
+            print_warning "Kubernetes API not reachable yet; skipping AI stack readiness wait."
+            print_detail "Verify access with: kubectl cluster-info"
+            print_detail "If using K3s, confirm kubeconfig export: export KUBECONFIG=/etc/rancher/k3s/k3s.yaml"
+            return 0
+        fi
+        sleep 5
+    done
 
     local namespace="${AI_STACK_NAMESPACE:-ai-stack}"
     print_info "Checking AI stack readiness in namespace '${namespace}'"
