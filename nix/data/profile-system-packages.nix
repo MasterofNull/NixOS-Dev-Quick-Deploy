@@ -2,23 +2,52 @@
   # Profile package names only. Core packages are declared in
   # nix/modules/core/base.nix, and final package selection is deduplicated.
   ai-dev = [
-    "chromium"
-    "firefox"
+    "vscodium"
     "goose-cli"
+    "nodejs"
+    "go"
+    "cargo"
+    "ruby"
+    "neovim"
     "python3"
     "sqlite"
-    "podman"
+    "wireshark"
+    "tcpdump"
+    "nmap"
+    "mtr"
+    "traceroute"
+    "sops"
+    "age"
+    "buildah"
+    "skopeo"
+    "crun"
+    "slirp4netns"
+    "fuse-overlayfs"
+    "btrfs-progs"
+    "pciutils"
   ];
 
   gaming = [
-    "chromium"
-    "firefox"
+    "vscodium"
     "goose-cli"
+    "nodejs"
+    "go"
+    "cargo"
+    "ruby"
+    "neovim"
+    "python3"
+    "sqlite"
+    "buildah"
+    "skopeo"
+    "slirp4netns"
+    "fuse-overlayfs"
+    "btrfs-progs"
+    "pciutils"
     "mangohud"
     "gamemode"
   ];
 
   minimal = [
-    "firefox"
+    "vscodium"
   ];
 }
