@@ -635,6 +635,103 @@ fix_claude_code_native() {
     rm -f "$installer_tmp"
 }
 
+fix_aider() {
+    print_section "Attempting to fix Aider installation..."
+
+    # Prefer Nix-packaged aider-chat via home-manager rebuild
+    if [ -d "$REPO_ROOT" ]; then
+        local hm_target_user="${PRIMARY_USER:-${USER:-$(id -un 2>/dev/null || true)}}"
+        local hm_flake=".#${hm_target_user}"
+        local hm_cmd=()
+        local hm_env=()
+        local effective_max_jobs
+        effective_max_jobs=$(nix show-config 2>/dev/null | awk -F' = ' '/^max-jobs/ {print $2; exit}')
+        if [ "$effective_max_jobs" = "0" ]; then
+            hm_env=(env NIX_CONFIG="max-jobs = 1")
+        fi
+        if command -v home-manager >/dev/null 2>&1; then
+            hm_cmd=(home-manager)
+        else
+            hm_cmd=(nix run github:nix-community/home-manager --)
+        fi
+        local backup_suffix="backup-$(date +%Y%m%d_%H%M%S)"
+        local hm_aider_log="${TMP_ROOT}/hm-aider-fix.log"
+        print_detail "Rebuilding Home Manager to install aider-chat package"
+        if "${hm_env[@]}" "${hm_cmd[@]}" switch --flake "$hm_flake" -b "$backup_suffix" \
+            > >(tee "$hm_aider_log") 2>&1; then
+            if command -v aider >/dev/null 2>&1; then
+                print_success "Aider installed via home-manager rebuild"
+                return 0
+            fi
+        fi
+    fi
+
+    # Fallback: pip install
+    if command -v pip3 >/dev/null 2>&1; then
+        print_detail "Falling back to pip install aider-chat"
+        if pip3 install --user aider-chat >/dev/null 2>&1; then
+            print_success "Aider installed via pip"
+            return 0
+        fi
+    fi
+
+    print_fail "Could not install aider"
+    return 1
+}
+
+fix_openskills() {
+    print_section "Attempting to fix OpenSkills installation..."
+
+    ensure_npm_environment
+    local npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
+
+    print_detail "Installing openskills via npm"
+    if npm install -g openskills >/dev/null 2>&1; then
+        print_success "OpenSkills installed"
+        return 0
+    else
+        print_fail "Could not install OpenSkills"
+        return 1
+    fi
+}
+
+fix_vscodium_config() {
+    print_section "Attempting to fix VSCodium configuration..."
+
+    local config_dir="$HOME/.config/VSCodium/User"
+    local settings_file="$config_dir/settings.json"
+
+    mkdir -p "$config_dir" 2>/dev/null || true
+
+    if [ ! -f "$settings_file" ]; then
+        cat > "$settings_file" <<'SETTINGS'
+{
+  "editor.fontSize": 14,
+  "editor.tabSize": 2,
+  "editor.formatOnSave": true,
+  "editor.minimap.enabled": false,
+  "editor.wordWrap": "on",
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "terminal.integrated.defaultProfile.linux": "zsh",
+  "nix.enableLanguageServer": true,
+  "nix.serverPath": "nil",
+  "nix.serverSettings": {
+    "nil": {
+      "formatting": {
+        "command": ["alejandra"]
+      }
+    }
+  }
+}
+SETTINGS
+        print_success "Created VSCodium settings at $settings_file"
+    else
+        print_success "VSCodium settings already exist"
+    fi
+    return 0
+}
+
 # Check functions
 detect_python_interpreter() {
     if [ -n "$PYTHON_INTERPRETER" ] && [ -x "$PYTHON_INTERPRETER" ]; then
@@ -1932,19 +2029,19 @@ run_all_checks() {
     fi
 
     print_check "K3s cluster connectivity"
-    local kube_err=""
     if [[ -n "$KUBECTL_BIN" ]]; then
-        kube_err=$("$KUBECTL_BIN" get nodes >/dev/null 2>&1 || true)
-        if [[ -z "$kube_err" ]]; then
+        local kube_err=""
+        kube_err=$("$KUBECTL_BIN" get nodes --request-timeout="${KUBECTL_TIMEOUT:-60}s" 2>&1 >/dev/null) || true
+        if "$KUBECTL_BIN" get nodes --request-timeout="${KUBECTL_TIMEOUT:-60}s" >/dev/null 2>&1; then
             print_success "kubectl can reach the cluster"
         else
-            print_fail "kubectl unavailable or cluster unreachable"
-            if [[ "$DETAILED" == "true" ]]; then
+            print_warning "kubectl available but cluster unreachable (K3s may not be running)"
+            if [[ "$DETAILED" == "true" && -n "$kube_err" ]]; then
                 print_detail "kubectl error: ${kube_err}"
             fi
         fi
     else
-        print_fail "kubectl unavailable or cluster unreachable"
+        print_warning "kubectl binary not found"
     fi
 
     print_check "AI stack pods (${AI_STACK_NAMESPACE})"
@@ -2403,6 +2500,33 @@ main() {
                 record_fix_success "npm ai packages"
             else
                 record_fix_failure "npm ai packages"
+            fi
+        fi
+
+        # Fix Aider (Nix package or pip fallback)
+        if ! command -v aider >/dev/null 2>&1; then
+            if fix_aider; then
+                record_fix_success "aider"
+            else
+                record_fix_failure "aider"
+            fi
+        fi
+
+        # Fix OpenSkills (npm package)
+        if ! command -v openskills >/dev/null 2>&1; then
+            if fix_openskills; then
+                record_fix_success "openskills"
+            else
+                record_fix_failure "openskills"
+            fi
+        fi
+
+        # Fix VSCodium config directory + settings.json
+        if [ ! -f "$HOME/.config/VSCodium/User/settings.json" ]; then
+            if fix_vscodium_config; then
+                record_fix_success "vscodium config"
+            else
+                record_fix_failure "vscodium config"
             fi
         fi
 
