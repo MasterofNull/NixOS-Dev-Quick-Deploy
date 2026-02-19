@@ -62,7 +62,11 @@ in
       NIXOS_OZONE_WL              = lib.mkDefault "1";
       COSMIC_DATA_CONTROL_ENABLED = lib.mkDefault "1";
       XDG_DATA_HOME               = lib.mkDefault "$HOME/.local/share";
-      XDG_DATA_DIRS               = lib.mkDefault "$HOME/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/run/current-system/sw/share";
+      # XDG_DATA_DIRS is NOT set here.  services.flatpak.enable handles
+      # adding /var/lib/flatpak/exports/share and the per-user export path
+      # via /etc/profile.d/flatpak.sh.  Hardcoding it here caused both paths
+      # to be inserted TWICE, making every Flatpak app appear twice in the
+      # COSMIC launcher (NIX-ISSUE: fix-duplicate-flatpaks-whq2y).
     };
 
     # ---- Audio -------------------------------------------------------------
@@ -141,6 +145,40 @@ in
         }
       });
     '';
+
+    # ---- Flatpak user-scope deduplication ------------------------------------
+    # Removes any user-scope Flatpak apps that are already installed system-wide.
+    # Root cause: COSMIC's app launcher (and any graphical Flatpak client) scans
+    # both /var/lib/flatpak/exports/share/applications/ (system) and
+    # ~/.local/share/flatpak/exports/share/applications/ (user).  If the same
+    # app is installed at both levels, it appears twice in the launcher.
+    # This oneshot runs at login as the primary user and removes user-scope
+    # duplicates, making the system the single source of truth for Flatpak apps
+    # that were installed declaratively via sync-flatpak-profile.sh.
+    systemd.user.services.flatpak-dedup-user-apps = {
+      description = "Remove user-scope Flatpak apps already installed system-wide";
+      wantedBy    = [ "default.target" ];
+      after       = [ "flatpak-system-helper.service" ];
+      serviceConfig = {
+        Type            = "oneshot";
+        RemainAfterExit = false;
+        ExecStart = pkgs.writeShellScript "flatpak-dedup-user-apps" ''
+          set -euo pipefail
+          flatpak=${pkgs.flatpak}/bin/flatpak
+          # List system-installed app IDs.
+          mapfile -t sys_apps < <("$flatpak" list --system --app --columns=application 2>/dev/null || true)
+          [[ ''${#sys_apps[@]} -eq 0 ]] && exit 0
+          # For each system app, uninstall the user-scope copy if it exists.
+          mapfile -t user_apps < <("$flatpak" list --user --app --columns=application 2>/dev/null || true)
+          for app in "''${user_apps[@]}"; do
+            if printf '%s\n' "''${sys_apps[@]}" | grep -Fxq "$app"; then
+              echo "flatpak-dedup: removing user-scope duplicate: $app"
+              "$flatpak" uninstall --user --noninteractive "$app" 2>/dev/null || true
+            fi
+          done
+        '';
+      };
+    };
 
     # Add Flathub remote via a one-shot systemd service (idempotent, online only).
     systemd.services.flatpak-add-flathub = {
