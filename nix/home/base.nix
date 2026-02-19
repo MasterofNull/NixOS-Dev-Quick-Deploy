@@ -181,6 +181,18 @@ in
     managed-by-home-manager
   '';
 
+  # Remove legacy Starship bootstrap lines from pre-migration ~/.zshrc files.
+  # Prompt is managed by Powerlevel10k in this repository baseline.
+  home.activation.removeLegacyStarshipBootstrap = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    zshrc="$HOME/.zshrc"
+    if [ -f "$zshrc" ] && [ ! -L "$zshrc" ]; then
+      ${pkgs.gnused}/bin/sed -i \
+        -e '/\.nix-profile\/bin\/starship/d' \
+        -e '/starship init zsh/d' \
+        "$zshrc"
+    fi
+  '';
+
   # Default prompt config so fresh systems render cleanly before first manual tune.
   home.file.".p10k.zsh".text = ''
     typeset -g POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(dir vcs)
@@ -295,6 +307,8 @@ in
         ++ vsExt "anthropic"   "claude-code"    # Claude Code
         ++ vsExt "openai"      "gpt-codex"      # OpenAI Codex
         ++ vsExt "openai"      "codex-ide"      # OpenAI Codex IDE
+        ++ vsExt "google"      "geminicodeassist" # Gemini Code Assist
+        ++ vsExt "googlecloudtools" "gemini-code-assist" # Gemini Code Assist (alt id)
         ++ vsExt "continue"    "continue"       # Continue.dev → local Ollama
         ++ vsExt "codeium"     "codeium"        # Codeium
         ++ vsExt "kombai"      "kombai"         # Kombai
