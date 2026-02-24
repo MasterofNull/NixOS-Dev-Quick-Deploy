@@ -6,7 +6,7 @@
 #   ./scripts/sync_docs_to_ai.sh [--docs DIR] [--project NAME]
 #
 # Environment variables:
-#   AIDB_BASE_URL   - Base URL for the AIDB MCP API (default: http://${SERVICE_HOST:-localhost}:8091)
+#   AIDB_BASE_URL   - Base URL for the AIDB MCP API (default: from config/service-endpoints.sh)
 #   DOCS_DIR        - Documentation directory to sync (default: ./docs)
 #   PROJECT_NAME    - Logical project name within AIDB (default: NixOS-Dev-Quick-Deploy)
 #
@@ -14,10 +14,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-AIDB_BASE_URL="${AIDB_BASE_URL:-http://${SERVICE_HOST:-localhost}:8091}"
+# shellcheck source=../config/service-endpoints.sh
+source "${SCRIPT_DIR}/config/service-endpoints.sh"
+AIDB_BASE_URL="${AIDB_BASE_URL:-${AIDB_URL}}"
 DOCS_DIR="${DOCS_DIR:-${SCRIPT_DIR}/docs}"
 PROJECT_NAME="${PROJECT_NAME:-${AIDB_PROJECT_NAME:-NixOS-Dev-Quick-Deploy}}"
+AIDB_API_KEY_FILE="${AIDB_API_KEY_FILE:-/run/secrets/aidb_api_key}"
 AIDB_API_KEY="${AIDB_API_KEY:-}"
+if [[ -z "$AIDB_API_KEY" && -f "$AIDB_API_KEY_FILE" ]]; then
+    AIDB_API_KEY=$(<"$AIDB_API_KEY_FILE")
+fi
 
 usage() {
     cat <<EOF
@@ -30,6 +36,7 @@ Options:
 
 Environment variables:
   AIDB_BASE_URL   Override the MCP API endpoint
+  AIDB_API_KEY_FILE Path to AIDB API key file (default: /run/secrets/aidb_api_key)
   DOCS_DIR        Default documentation directory
   PROJECT_NAME    Default project name
 EOF

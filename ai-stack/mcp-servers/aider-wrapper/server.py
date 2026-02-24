@@ -44,12 +44,11 @@ logger = structlog.get_logger()
 
 # Load API key from secret file
 def load_api_key() -> Optional[str]:
-    """Load API key from Docker secret file"""
+    """Load API key from runtime secret file only."""
     secret_file = os.environ.get("AIDER_WRAPPER_API_KEY_FILE", "/run/secrets/aider_wrapper_api_key")
     if Path(secret_file).exists():
-        return Path(secret_file).read_text().strip()
-    # Fallback to environment variable for development
-    return os.environ.get("AIDER_WRAPPER_API_KEY")
+        return Path(secret_file).read_text(encoding="utf-8").strip()
+    return None
 
 # Initialize authentication dependency
 api_key = load_api_key()

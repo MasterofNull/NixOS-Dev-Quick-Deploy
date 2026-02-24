@@ -3,7 +3,7 @@
 Claude API Proxy - Intercepts Claude Code API calls and routes through local AI stack
 
 This proxy server:
-1. Listens on SERVICE_HOST:8094 mimicking Anthropic API
+1. Listens on SERVICE_HOST:ANTHROPIC_PROXY_PORT mimicking Anthropic API
 2. Receives requests from Claude Code CLI
 3. Routes simple queries to local LLM via hybrid coordinator
 4. Routes complex queries to real Anthropic API
@@ -15,14 +15,14 @@ Usage:
     python3 scripts/claude-api-proxy.py
 
     # In another terminal, set environment variable before launching Claude
-    export ANTHROPIC_BASE_URL=http://<service-host>:8094
+    export ANTHROPIC_BASE_URL=http://<service-host>:${ANTHROPIC_PROXY_PORT}
     claude
 
 Environment Variables:
     ANTHROPIC_API_KEY - Real API key for remote routing
-    ANTHROPIC_BASE_URL - Set to http://<service-host>:8094 to use proxy
-    HYBRID_COORDINATOR_URL - Override coordinator URL (default: http://<service-host>:8092)
-    AIDB_MCP_URL - Override AIDB URL (default: http://<service-host>:8091)
+    ANTHROPIC_BASE_URL - Set to proxy URL to use local routing
+    HYBRID_COORDINATOR_URL - Override coordinator URL (default: HYBRID_URL)
+    AIDB_MCP_URL - Override AIDB URL (default: AIDB_URL)
 """
 
 import os
@@ -38,8 +38,8 @@ import urllib.error
 
 # Service endpoints
 SERVICE_HOST = os.getenv("SERVICE_HOST", "localhost")
-HYBRID_COORDINATOR = os.getenv("HYBRID_COORDINATOR_URL", f"http://{SERVICE_HOST}:8092")
-AIDB_MCP = os.getenv("AIDB_MCP_URL", f"http://{SERVICE_HOST}:8091")
+HYBRID_COORDINATOR = os.getenv("HYBRID_COORDINATOR_URL", os.getenv("HYBRID_URL", "http://localhost"))
+AIDB_MCP = os.getenv("AIDB_MCP_URL", os.getenv("AIDB_URL", "http://localhost"))
 REAL_ANTHROPIC_API = "https://api.anthropic.com"
 TELEMETRY_DIR = os.path.expanduser("~/.local/share/nixos-ai-stack/telemetry")
 
@@ -316,8 +316,10 @@ class ClaudeAPIProxy(BaseHTTPRequestHandler):
         logger.debug(format % args)
 
 
-def start_proxy(host='127.0.0.1', port=8094):
+def start_proxy(host=os.getenv("SERVICE_HOST", "127.0.0.1"), port=None):
     """Start the Claude API proxy server"""
+    if port is None:
+        port = int(os.getenv("ANTHROPIC_PROXY_PORT", "0"))
 
     # Ensure telemetry directory exists
     os.makedirs(TELEMETRY_DIR, exist_ok=True)

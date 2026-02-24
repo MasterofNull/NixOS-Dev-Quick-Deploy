@@ -120,18 +120,18 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRAT
 ./scripts/ai-stack-manage.sh health
 
 # Test individual endpoints
-curl http://<service-host>:8091/health | jq .       # AIDB MCP server
-curl http://<service-host>:8080/health | jq .       # llama.cpp inference
-curl http://<service-host>:6333/collections | jq .  # Qdrant vector DB
+curl /health | jq .       # AIDB MCP server
+curl /health | jq .       # llama.cpp inference
+curl /collections | jq .  # Qdrant vector DB
 ```
 
 **Agent skills (29 available):**
 ```bash
 # List all skills
-curl http://<service-host>:8091/skills | jq .
+curl /skills | jq .
 
 # Execute a skill
-curl -X POST http://<service-host>:8091/skills/nixos-deployment/execute \\
+curl -X POST /skills/nixos-deployment/execute \\
   -H "Content-Type: application/json" \\
   -d '{"action": "generate_config", "packages": ["vim", "git"]}'
 ```

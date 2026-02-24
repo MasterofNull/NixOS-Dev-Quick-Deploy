@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(/run/current-system/sw/bin/dirname "$SCRIPT_PATH")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKEND_DIR="${PROJECT_ROOT}/dashboard/backend"
 VENV_DIR="${BACKEND_DIR}/venv"
-PORT="${DASHBOARD_API_PORT:-8889}"
+PORT="${DASHBOARD_API_PORT}"
 BIND_ADDRESS="${DASHBOARD_API_BIND_ADDRESS:-127.0.0.1}"
 
 if [[ ! -d "$BACKEND_DIR" ]]; then

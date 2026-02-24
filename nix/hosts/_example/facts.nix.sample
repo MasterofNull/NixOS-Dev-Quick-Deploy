@@ -28,6 +28,11 @@
       nixosHardwareModule  = null;    # e.g. "lenovo-thinkpad-p14s-amd-gen2"
     };
 
+    kernel = {
+      # latest-stable for x86_64 hosts; default for board/vendor kernel tracks.
+      track = "latest-stable";  # latest-stable | default
+    };
+
     deployment = {
       enableHibernation      = false;
       swapSizeGb             = 0;
@@ -53,7 +58,7 @@
 
     # AI stack — only meaningful when roles.aiStack.enable = true.
     aiStack = {
-      backend         = "llamacpp";  # llamacpp | k3s
+      backend         = "llamacpp";
       acceleration    = "auto";    # auto | rocm | cuda | cpu
       llamaCpp.model  = "/var/lib/llama-cpp/models/model.gguf";
       ui.enable       = true;

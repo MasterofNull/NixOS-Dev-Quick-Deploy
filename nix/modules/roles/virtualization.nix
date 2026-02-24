@@ -23,12 +23,21 @@ in
 {
   config = lib.mkIf virtEnabled {
 
+    # ---- KVM kernel modules -----------------------------------------------
+    # Explicitly load the appropriate KVM module so the health check finds it
+    # even on first boot before a reboot has loaded it from hardware-config.
+    boot.kernelModules = lib.mkDefault (
+      if cfg.hardware.cpuVendor == "amd"   then [ "kvm_amd"   ]
+      else if cfg.hardware.cpuVendor == "intel" then [ "kvm_intel" ]
+      else []
+    );
+
     # ---- libvirtd / QEMU --------------------------------------------------
     virtualisation.libvirtd = {
       enable = lib.mkDefault true;
       qemu = {
-        ovmf.enable = lib.mkDefault true;  # UEFI firmware for EFI guests
-        runAsRoot   = lib.mkDefault false; # run QEMU as qemu-kvm user
+        # ovmf.enable removed in NixOS 25.11 — OVMF is bundled by default.
+        runAsRoot = lib.mkDefault false; # run QEMU as qemu-kvm user
       };
     };
 

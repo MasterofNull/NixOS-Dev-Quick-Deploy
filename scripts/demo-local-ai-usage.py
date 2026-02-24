@@ -13,10 +13,10 @@ from typing import Dict, List, Any
 
 # Service endpoints
 SERVICE_HOST = os.getenv("SERVICE_HOST", "localhost")
-AIDB_MCP = os.getenv("AIDB_URL", f"http://{SERVICE_HOST}:8091")
-HYBRID_COORDINATOR = os.getenv("HYBRID_URL", f"http://{SERVICE_HOST}:8092")
-LLAMA_CPP = os.getenv("LLAMA_URL", f"http://{SERVICE_HOST}:8080")
-QDRANT = os.getenv("QDRANT_URL", f"http://{SERVICE_HOST}:6333")
+AIDB_MCP = os.getenv("AIDB_URL", "http://localhost")
+HYBRID_COORDINATOR = os.getenv("HYBRID_URL", "http://localhost")
+LLAMA_CPP = os.getenv("LLAMA_URL", "http://localhost")
+QDRANT = os.getenv("QDRANT_URL", "http://localhost")
 
 class LocalAIClient:
     """Proper client for local AI stack usage"""

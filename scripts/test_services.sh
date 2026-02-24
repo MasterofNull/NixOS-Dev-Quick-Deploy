@@ -9,9 +9,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 HEALTH_SCRIPT="$REPO_ROOT/scripts/system-health-check.sh"
+# shellcheck source=../config/service-endpoints.sh
+source "$REPO_ROOT/config/service-endpoints.sh"
 
-AIDB_BASE_URL="${AIDB_BASE_URL:-http://${SERVICE_HOST:-localhost}:8091}"
-LLAMA_CPP_BASE_URL="${LLAMA_CPP_BASE_URL:-http://${SERVICE_HOST:-localhost}:8080}"
+AIDB_BASE_URL="${AIDB_BASE_URL:-${AIDB_URL}}"
+LLAMA_CPP_BASE_URL="${LLAMA_CPP_BASE_URL:-${LLAMA_URL}}"
+REDISINSIGHT_BASE_URL="${REDISINSIGHT_BASE_URL:-${REDISINSIGHT_URL}}"
 
 run_health_check=true
 
@@ -67,6 +70,6 @@ check_endpoint "AIDB MCP" "${AIDB_BASE_URL%/}/health"
 llama_cpp_base="${LLAMA_CPP_BASE_URL%/}"
 llama_cpp_base="${llama_cpp_base%/api/v1}"
 check_endpoint "llama.cpp" "${llama_cpp_base}/health"
-check_endpoint "RedisInsight" "http://${SERVICE_HOST:-localhost}:5540"
+check_endpoint "RedisInsight" "${REDISINSIGHT_BASE_URL%/}"
 
 echo "\nDone. Review warnings above if any checks failed."

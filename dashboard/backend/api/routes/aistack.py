@@ -13,14 +13,14 @@ from ..config import service_endpoints
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# Service endpoints
+# Service endpoints (declarative + env-overridable)
 SERVICES = {
-    "ralph": "http://ralph-wiggum:8098",
-    "hybrid": "http://hybrid-coordinator:8092",
-    "aidb": "http://aidb:8091",
-    "qdrant": "http://qdrant:6333",
-    "llama_cpp": "http://llama-cpp:8080",
-    "embeddings": "http://embeddings:8081",
+    "ralph": service_endpoints.RALPH_URL,
+    "hybrid": service_endpoints.HYBRID_URL,
+    "aidb": service_endpoints.AIDB_URL,
+    "qdrant": service_endpoints.QDRANT_URL,
+    "llama_cpp": service_endpoints.LLAMA_URL,
+    "embeddings": os.getenv("EMBEDDINGS_URL", f"http://{service_endpoints.SERVICE_HOST}:8081"),
 }
 
 # Timeout for external requests
@@ -133,6 +133,27 @@ class FeedbackPayload(BaseModel):
     variant: Optional[str] = None
 
 
+class MemoryStorePayload(BaseModel):
+    memory_type: str = Field(..., pattern="^(episodic|semantic|procedural)$")
+    summary: str = Field(..., min_length=1)
+    content: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class MemoryRecallPayload(BaseModel):
+    query: str = Field(..., min_length=1)
+    memory_types: Optional[List[str]] = None
+    limit: Optional[int] = Field(default=None, ge=1, le=50)
+    retrieval_mode: str = Field(default="hybrid", pattern="^(hybrid|tree)$")
+
+
+class HarnessEvalPayload(BaseModel):
+    query: str = Field(..., min_length=1)
+    mode: str = Field(default="auto", pattern="^(auto|sql|semantic|keyword|tree|hybrid)$")
+    expected_keywords: Optional[List[str]] = None
+    max_latency_ms: Optional[int] = Field(default=None, ge=1)
+
+
 async def _fetch_qdrant_collection_points(collections: list[str]) -> Dict[str, int]:
     results: Dict[str, int] = {}
     if not collections:
@@ -218,6 +239,71 @@ async def get_circuit_breakers() -> Dict[str, Any]:
         "circuit_breakers": circuit_breakers,
         "timestamp": datetime.utcnow().isoformat()
     }
+
+
+@router.post("/memory/store")
+async def store_memory(payload: MemoryStorePayload) -> Dict[str, Any]:
+    """Store agent memory via hybrid coordinator."""
+    result = await post_with_fallback(
+        f"{SERVICES['hybrid']}/memory/store",
+        payload.model_dump(),
+    )
+    if result is None:
+        raise HTTPException(status_code=503, detail="Hybrid memory store endpoint unavailable")
+    return result
+
+
+@router.post("/memory/recall")
+async def recall_memory(payload: MemoryRecallPayload) -> Dict[str, Any]:
+    """Recall agent memory via hybrid coordinator."""
+    result = await post_with_fallback(
+        f"{SERVICES['hybrid']}/memory/recall",
+        payload.model_dump(exclude_none=True),
+    )
+    if result is None:
+        raise HTTPException(status_code=503, detail="Hybrid memory recall endpoint unavailable")
+    return result
+
+
+@router.post("/search/tree")
+async def tree_search(payload: MemoryRecallPayload) -> Dict[str, Any]:
+    """Run tree-search retrieval via hybrid coordinator."""
+    req = {
+        "query": payload.query,
+        "limit": payload.limit or 5,
+        "keyword_limit": payload.limit or 5,
+    }
+    result = await post_with_fallback(
+        f"{SERVICES['hybrid']}/search/tree",
+        req,
+    )
+    if result is None:
+        raise HTTPException(status_code=503, detail="Hybrid tree-search endpoint unavailable")
+    return result
+
+
+@router.post("/harness/eval")
+async def run_harness_eval(payload: HarnessEvalPayload) -> Dict[str, Any]:
+    """Run harness evaluation via hybrid coordinator."""
+    result = await post_with_fallback(
+        f"{SERVICES['hybrid']}/harness/eval",
+        payload.model_dump(exclude_none=True),
+    )
+    if result is None:
+        raise HTTPException(status_code=503, detail="Hybrid harness eval endpoint unavailable")
+    return result
+
+
+@router.get("/harness/stats")
+async def get_harness_stats() -> Dict[str, Any]:
+    """Fetch harness aggregate stats."""
+    result = await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/harness/stats",
+        None,
+    )
+    if result is None:
+        raise HTTPException(status_code=503, detail="Hybrid harness stats endpoint unavailable")
+    return result
 
 
 @router.get("/health/aggregate")
@@ -411,6 +497,6 @@ async def get_ralph_tasks() -> Dict[str, Any]:
 @router.get("/prometheus/query")
 async def proxy_prometheus_query(query: str) -> Dict[str, Any]:
     """Proxy Prometheus queries"""
-    prom_url = f"{service_endpoints.K3S_PROMETHEUS_SVC}/api/v1/query?query={query}"
+    prom_url = f"{service_endpoints.PROMETHEUS_URL}/api/v1/query?query={query}"
     result = await fetch_with_fallback(prom_url, {})
     return result

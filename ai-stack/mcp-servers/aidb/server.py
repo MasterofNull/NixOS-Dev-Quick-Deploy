@@ -2158,13 +2158,42 @@ class MCPServer:
             return data
         raise ValueError("unexpected_embedding_service_response")
 
+    async def _embed_via_llama_cpp(self, texts: List[str]) -> List[List[float]]:
+        """Fallback embeddings via local llama.cpp OpenAI-compatible endpoint."""
+        if not texts:
+            return []
+        payload = {
+            "input": texts,
+            # llama.cpp accepts model hints; keep aligned with configured model.
+            "model": self.settings.embedding_model,
+        }
+        response = await self._llama_cpp_client.post("/v1/embeddings", json=payload, timeout=30.0)
+        response.raise_for_status()
+        data = response.json()
+        vectors = [item.get("embedding") for item in data.get("data", []) if isinstance(item, dict)]
+        if len(vectors) != len(texts):
+            raise ValueError("unexpected_llama_cpp_embedding_response")
+        return vectors
+
     async def _embed_texts_backend(self, texts: List[str]) -> List[List[float]]:
+        errors: List[str] = []
         if self.settings.embedding_service_url:
             try:
                 return await self._embed_via_service(texts)
             except Exception as exc:  # noqa: BLE001
                 LOGGER.warning("embedding_service_failed", error=str(exc))
-        return await self._embedding_service.embed(texts)
+                errors.append(f"service:{exc}")
+        try:
+            return await self._embedding_service.embed(texts)
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("embedding_model_failed", error=str(exc))
+            errors.append(f"model:{exc}")
+        try:
+            return await self._embed_via_llama_cpp(texts)
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("embedding_llama_cpp_fallback_failed", error=str(exc))
+            errors.append(f"llama:{exc}")
+        raise RuntimeError(f"all_embedding_backends_failed ({'; '.join(errors)})")
 
     async def embed_texts(self, texts: List[str]) -> List[List[float]]:
         tracer = trace.get_tracer(SERVICE_NAME)

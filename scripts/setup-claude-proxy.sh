@@ -13,6 +13,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+# shellcheck source=../config/service-endpoints.sh
+source "${PROJECT_ROOT}/config/service-endpoints.sh"
 SYSTEMD_USER_DIR="${HOME}/.config/systemd/user"
 WRAPPER_PATH="${HOME}/.npm-global/bin/claude-wrapper"
 WRAPPER_BACKUP="${WRAPPER_PATH}.backup-$(date +%Y%m%d-%H%M%S)"
@@ -65,8 +67,8 @@ Restart=on-failure
 RestartSec=5s
 
 # Environment
-Environment="HYBRID_COORDINATOR_URL=http://${SERVICE_HOST:-localhost}:8092"
-Environment="AIDB_MCP_URL=http://${SERVICE_HOST:-localhost}:8091"
+Environment="HYBRID_COORDINATOR_URL=${HYBRID_URL}"
+Environment="AIDB_MCP_URL=${AIDB_URL}"
 
 # Logging
 StandardOutput=journal
@@ -114,7 +116,7 @@ if [ "${WRAPPER_EXISTS}" = "1" ]; then
         # Add environment variable before exec line
         sed -i '/^exec "${NODE_BIN}"/i \
 # Route Claude API calls through local AI stack proxy\
-export ANTHROPIC_BASE_URL="http://${SERVICE_HOST:-localhost}:8094"\
+export ANTHROPIC_BASE_URL="${ANTHROPIC_PROXY_URL}"\
 ' "${WRAPPER_PATH}"
 
         echo "✅ Wrapper updated"
@@ -126,10 +128,10 @@ fi
 echo "💡 Optional: Add to your shell profile for manual Claude usage"
 echo ""
 echo "   For bash (~/.bashrc):"
-echo "   echo 'export ANTHROPIC_BASE_URL=http://${SERVICE_HOST:-localhost}:8094' >> ~/.bashrc"
+echo "   echo 'export ANTHROPIC_BASE_URL=${ANTHROPIC_PROXY_URL}' >> ~/.bashrc"
 echo ""
 echo "   For zsh (~/.zshrc):"
-echo "   echo 'export ANTHROPIC_BASE_URL=http://${SERVICE_HOST:-localhost}:8094' >> ~/.zshrc"
+echo "   echo 'export ANTHROPIC_BASE_URL=${ANTHROPIC_PROXY_URL}' >> ~/.zshrc"
 echo ""
 
 # Step 6: Verify setup
@@ -143,7 +145,7 @@ echo ""
 echo "📝 Next Steps:"
 echo ""
 echo "1. Test the proxy manually:"
-echo "   curl http://${SERVICE_HOST:-localhost}:8094/health"
+echo "   curl ${ANTHROPIC_PROXY_URL}/health"
 echo ""
 echo "2. View proxy logs:"
 echo "   journalctl --user -u claude-api-proxy.service -f"
@@ -154,7 +156,7 @@ echo "4. Monitor telemetry:"
 echo "   tail -f ~/.local/share/nixos-ai-stack/telemetry/events-$(date +%Y-%m-%d).jsonl"
 echo ""
 echo "5. Check token savings on dashboard:"
-echo "   http://${SERVICE_HOST:-localhost}:8888/dashboard.html"
+echo "   ${DASHBOARD_URL}/dashboard.html"
 echo ""
 echo "🔧 Management Commands:"
 echo "   systemctl --user status claude-api-proxy"

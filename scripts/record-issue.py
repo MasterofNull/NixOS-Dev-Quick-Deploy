@@ -126,8 +126,8 @@ Examples:
     parser.add_argument(
         "--db-port",
         type=int,
-        default=5432,
-        help="Database port (default: 5432)"
+        default=int(os.getenv("POSTGRES_PORT", "0")),
+        help="Database port (default: POSTGRES_PORT)"
     )
 
     parser.add_argument(

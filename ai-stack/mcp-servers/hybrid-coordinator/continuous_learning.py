@@ -35,6 +35,15 @@ from shared.auth_http_client import create_embeddings_client
 logger = structlog.get_logger()
 
 
+def _read_secret(path: str) -> str:
+    if not path:
+        return ""
+    p = Path(path)
+    if not p.exists():
+        return ""
+    return p.read_text(encoding="utf-8").strip()
+
+
 class Checkpointer:
     """
     P2-REL-001: Checkpoint manager for crash recovery
@@ -196,7 +205,7 @@ class ContinuousLearningPipeline:
         )
         self.proposal_batch_limit = int(os.getenv("OPTIMIZATION_PROPOSAL_BATCH_LIMIT", "5"))
         self.ralph_url = os.getenv("RALPH_WIGGUM_URL", "http://ralph-wiggum:8098")
-        self.ralph_api_key = os.getenv("RALPH_WIGGUM_API_KEY", "")
+        self.ralph_api_key = _read_secret(os.getenv("RALPH_WIGGUM_API_KEY_FILE", "/run/secrets/ralph_wiggum_api_key"))
 
         # Batch insights (reset each telemetry batch)
         self._reset_batch_insights()

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Enhancement script to add service controls to port 8888 dashboard
-# This script adds the features from port 8890 (React) to port 8888 (HTML)
+# Enhancement script to add service controls to configured dashboard
+# This script adds the features from legacy React dashboard to current HTML dashboard
 
 set -euo pipefail
 
@@ -19,7 +19,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "🔧 Enhancing Port 8888 Dashboard with Service Controls"
+echo "🔧 Enhancing configured dashboard with Service Controls"
 echo ""
 
 # Backup original
@@ -212,6 +212,6 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 echo "Next steps:"
 echo "1. Add JavaScript functions for service control (see enhancement-js.txt)"
-echo "2. Start FastAPI backend on port 8889"
+echo "2. Start FastAPI backend on configured API port"
 echo "3. Test service control buttons"
 echo ""
