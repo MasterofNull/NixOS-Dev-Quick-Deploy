@@ -11,6 +11,8 @@ The Ralph Wiggum technique philosophy:
 """
 
 import asyncio
+import fcntl
+import hashlib
 import json
 import uuid
 from datetime import datetime, timezone
@@ -19,6 +21,17 @@ from typing import Any, Callable, Dict, List, Optional
 import structlog
 
 logger = structlog.get_logger()
+SENSITIVE_FIELD_TOKENS = (
+    "prompt",
+    "query",
+    "response",
+    "message",
+    "text",
+    "input",
+    "output",
+    "original_response",
+    "augmented_prompt",
+)
 
 
 class RalphLoopEngine:
@@ -61,7 +74,7 @@ class RalphLoopEngine:
         self.task_queue: asyncio.Queue = asyncio.Queue()
         self.hooks: Dict[str, List[Callable]] = {}
         self.is_running = False
-        self.telemetry_file = open(config["telemetry_path"], "a")
+        self.telemetry_file = open(config["telemetry_path"], "a") if config.get("audit_log") else None
 
         # Per-task timeout in seconds (Phase 13.2.3); 0 = no timeout
         self.task_timeout_seconds: int = config.get("task_timeout_seconds", 3600)
@@ -763,12 +776,29 @@ class RalphLoopEngine:
 
     def _log_telemetry(self, event: Dict[str, Any]):
         """Log telemetry event"""
-        if self.config["audit_log"]:
-            self.telemetry_file.write(json.dumps(event) + "\n")
+        if not self.config["audit_log"] or self.telemetry_file is None:
+            return
+
+        scrubbed = self._scrub_telemetry_event(event)
+        try:
+            fcntl.flock(self.telemetry_file.fileno(), fcntl.LOCK_EX)
+            self.telemetry_file.write(json.dumps(scrubbed) + "\n")
             self.telemetry_file.flush()
+        finally:
+            fcntl.flock(self.telemetry_file.fileno(), fcntl.LOCK_UN)
+
+    def _scrub_telemetry_event(self, value: Any, parent_key: str = "") -> Any:
+        if isinstance(value, dict):
+            return {k: self._scrub_telemetry_event(v, parent_key=k) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self._scrub_telemetry_event(v, parent_key=parent_key) for v in value]
+        if isinstance(value, str) and parent_key and any(token in parent_key.lower() for token in SENSITIVE_FIELD_TOKENS):
+            return f"sha256:{hashlib.sha256(value.encode('utf-8')).hexdigest()}"
+        return value
 
     async def shutdown(self):
         """Shutdown the engine"""
         self.is_running = False
-        self.telemetry_file.close()
+        if self.telemetry_file is not None:
+            self.telemetry_file.close()
         logger.info("loop_engine_shutdown")

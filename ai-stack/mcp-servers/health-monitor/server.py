@@ -114,29 +114,17 @@ class HealthMonitor:
             return {"error": f"Failed to read {filename}: {str(e)}"}
 
     def regenerate_dashboard_data(self) -> Dict[str, Any]:
-        """Regenerate all dashboard data"""
-        script_path = SCRIPTS_DIR / "generate-dashboard-data.sh"
-
-        if not script_path.exists():
-            return {"error": "Dashboard generator script not found"}
-
-        try:
-            result = subprocess.run(
-                ["bash", str(script_path)],
-                capture_output=True,
-                text=True,
-                timeout=60
-            )
-
-            return {
-                "success": result.returncode == 0,
-                "returncode": result.returncode,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "timestamp": datetime.now().isoformat()
-            }
-        except Exception as e:
-            return {"error": f"Failed to regenerate data: {str(e)}"}
+        """Legacy dashboard collector is deprecated in declarative mode."""
+        return {
+            "success": False,
+            "deprecated": True,
+            "error": "Legacy dashboard regeneration script is deprecated",
+            "next_steps": [
+                "Use declarative monitoring services (Prometheus/Node Exporter)",
+                "Check dashboard status with systemctl status command-center-dashboard.service"
+            ],
+            "timestamp": datetime.now().isoformat()
+        }
 
     def calculate_health_score(self, services: List[Dict[str, Any]]) -> float:
         """Calculate overall health score (0-100)"""

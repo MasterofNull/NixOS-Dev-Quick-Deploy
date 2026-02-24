@@ -139,14 +139,15 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
         embedding_service_url = "http://embeddings:8081"
 
     embedding_api_key_file = os.environ.get("EMBEDDINGS_API_KEY_FILE") or "/run/secrets/embeddings_api_key"
-    embedding_service_api_key = os.environ.get("EMBEDDINGS_API_KEY") or _read_secret(embedding_api_key_file)
+    embedding_service_api_key = _read_secret(embedding_api_key_file)
 
     postgres_cfg = db_cfg.get("postgres", {})
     postgres_pool_cfg = postgres_cfg.get("pool", {})
     pg_password = (
-        _read_secret(postgres_cfg.get("password_file"))
+        _read_secret(os.environ.get("AIDB_POSTGRES_PASSWORD_FILE"))
+        or _read_secret(os.environ.get("POSTGRES_PASSWORD_FILE"))
+        or _read_secret(postgres_cfg.get("password_file"))
         or postgres_cfg.get("password", "")
-        or os.environ.get("AIDB_POSTGRES_PASSWORD", "")
     )
     postgres_host = (
         os.environ.get("AIDB_POSTGRES_HOST")
@@ -193,9 +194,10 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
     redis_cfg = db_cfg.get("redis", {})
     redis_pool_cfg = redis_cfg.get("pool", {})
     redis_password = (
-        _read_secret(redis_cfg.get("password_file"))
+        _read_secret(os.environ.get("AIDB_REDIS_PASSWORD_FILE"))
+        or _read_secret(os.environ.get("REDIS_PASSWORD_FILE"))
+        or _read_secret(redis_cfg.get("password_file"))
         or redis_cfg.get("password", "")
-        or os.environ.get("AIDB_REDIS_PASSWORD", "")
     )
     redis_host = (
         os.environ.get("AIDB_REDIS_HOST")
@@ -254,7 +256,6 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
     api_key = (
         _read_secret(security_cfg.get("api_key_file"))
         or security_cfg.get("api_key")
-        or os.environ.get("AIDB_API_KEY")
     )
 
     telemetry_cfg = raw.get("telemetry", {})

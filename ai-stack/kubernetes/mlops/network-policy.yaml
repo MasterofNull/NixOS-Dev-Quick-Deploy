@@ -1,0 +1,62 @@
+---
+# NetworkPolicy: allow MinIO to be reached from MLflow and DVC client pods.
+# All other namespaces are denied by the default-deny policy.
+# Phase 29 — MLOps network isolation
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mlops-internal
+  namespace: ai-stack
+  labels:
+    component: mlops
+    tier: storage
+spec:
+  podSelector:
+    matchLabels:
+      component: artifact-store
+  policyTypes:
+    - Ingress
+  ingress:
+    # MLflow → MinIO S3 API
+    - from:
+        - podSelector:
+            matchLabels:
+              component: experiment-tracker
+      ports:
+        - port: 9000
+    # DVC client pods → MinIO S3 API
+    - from:
+        - podSelector:
+            matchLabels:
+              component: dvc-client
+      ports:
+        - port: 9000
+    # AI services → MinIO for embeddings cache
+    - from:
+        - podSelector:
+            matchLabels:
+              tier: backend
+      ports:
+        - port: 9000
+---
+# NetworkPolicy: allow AI services to reach MLflow tracking API.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mlflow-tracking
+  namespace: ai-stack
+  labels:
+    component: mlops
+    tier: mlops
+spec:
+  podSelector:
+    matchLabels:
+      component: experiment-tracker
+  policyTypes:
+    - Ingress
+  ingress:
+    # All ai-stack pods can log experiments to MLflow
+    - from:
+        - podSelector: {}
+      ports:
+        - port: 5000

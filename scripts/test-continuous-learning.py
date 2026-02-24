@@ -16,7 +16,7 @@ from datetime import datetime
 from sentence_transformers import SentenceTransformer
 
 SERVICE_HOST = os.getenv("SERVICE_HOST", "localhost")
-QDRANT_URL = os.getenv("QDRANT_URL", f"http://{SERVICE_HOST}:6333")
+QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost")
 
 # Initialize embedding model (matches AIDB architecture)
 embedding_model = None

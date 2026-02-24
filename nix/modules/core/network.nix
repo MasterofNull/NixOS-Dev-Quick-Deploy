@@ -33,6 +33,7 @@
 
   # Route NetworkManager DNS through systemd-resolved.
   networking.networkmanager.dns = lib.mkDefault "systemd-resolved";
+  networking.firewall.enable = lib.mkDefault true;
 
   # Ensure the stub-resolv.conf symlink is always present.
   # systemd-resolved manages /run/systemd/resolve/stub-resolv.conf; pointing
@@ -43,6 +44,7 @@
 
   # IPv6 privacy extensions: use temporary addresses for outbound connections.
   networking.tempAddresses = lib.mkDefault "default";
+  networking.firewall.logRefusedConnections = lib.mkDefault true;
 
   # Safety: ensure the symlink exists even before NM has run.
   systemd.tmpfiles.rules = lib.mkAfter [

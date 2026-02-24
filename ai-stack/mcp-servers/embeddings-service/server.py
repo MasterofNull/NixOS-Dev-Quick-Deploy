@@ -103,7 +103,7 @@ def read_secret(path: str) -> Optional[str]:
         return None
 
 
-API_KEY = os.getenv("EMBEDDINGS_API_KEY") or read_secret(API_KEY_FILE)
+API_KEY = read_secret(API_KEY_FILE)
 
 
 def error_payload(message: str, exc: Exception) -> Dict[str, str]:

@@ -25,6 +25,16 @@ logging.basicConfig(
 logger = logging.getLogger("hybrid_coordinator.continuous_learning_daemon")
 
 
+def _read_secret(path: str) -> str:
+    if not path:
+        return ""
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return handle.read().strip()
+    except OSError:
+        return ""
+
+
 class Settings(BaseModel):
     """Minimal settings for learning pipeline"""
     enabled: bool = True
@@ -59,12 +69,17 @@ async def main():
     # PostgreSQL client (optional)
     postgres = None
     try:
+        pg_password = (
+            _read_secret(os.getenv("POSTGRES_PASSWORD_FILE", ""))
+            or _read_secret("/run/secrets/postgres_password")
+            or ""
+        )
         postgres = PostgresClient(
             host=os.getenv("POSTGRES_HOST", "postgres"),
             port=int(os.getenv("POSTGRES_PORT", "5432")),
             database=os.getenv("POSTGRES_DB", "aidb"),
             user=os.getenv("POSTGRES_USER", "mcp"),
-            password=os.getenv("POSTGRES_PASSWORD", "postgres"),
+            password=pg_password,
             sslmode=os.getenv("POSTGRES_SSLMODE"),
             sslrootcert=os.getenv("POSTGRES_SSLROOTCERT"),
             sslcert=os.getenv("POSTGRES_SSLCERT"),

@@ -104,12 +104,11 @@ configure_tracing()
 
 # Load API key from secret file
 def load_api_key() -> Optional[str]:
-    """Load API key from Docker secret file"""
+    """Load API key from runtime secret file only."""
     secret_file = os.environ.get("NIXOS_DOCS_API_KEY_FILE", "/run/secrets/nixos_docs_api_key")
     if Path(secret_file).exists():
-        return Path(secret_file).read_text().strip()
-    # Fallback to environment variable for development
-    return os.environ.get("NIXOS_DOCS_API_KEY")
+        return Path(secret_file).read_text(encoding="utf-8").strip()
+    return None
 
 # Initialize authentication dependency
 api_key = load_api_key()
@@ -135,8 +134,7 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 CACHE_DIR = Path(os.getenv("NIXOS_CACHE_DIR", "/data/cache"))
 REPOS_DIR = Path(os.getenv("NIXOS_REPOS_DIR", "/data/repos"))
 CACHE_TTL = int(os.getenv("NIXOS_CACHE_TTL", "86400"))  # 24 hours
-API_KEY_FILE = os.getenv("NIXOS_DOCS_API_KEY_FILE", "")
-API_KEY = os.getenv("NIXOS_DOCS_API_KEY", "")
+API_KEY_FILE = os.getenv("NIXOS_DOCS_API_KEY_FILE", "/run/secrets/nixos_docs_api_key")
 
 
 def _read_secret(path: str) -> str:
@@ -149,8 +147,7 @@ def _read_secret(path: str) -> str:
         return ""
 
 
-if not API_KEY and API_KEY_FILE:
-    API_KEY = _read_secret(API_KEY_FILE)
+API_KEY = _read_secret(API_KEY_FILE)
 
 REQUEST_COUNT = Counter(
     "nixos_docs_requests_total",

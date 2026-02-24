@@ -8,6 +8,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+# shellcheck source=../config/service-endpoints.sh
+source "${PROJECT_ROOT}/config/service-endpoints.sh"
 
 echo "==================================================================="
 echo "  Importing Project Knowledge into Qdrant"
@@ -33,10 +35,10 @@ import_files() {
 }
 
 # Check if Qdrant is running
-if ! curl -s --max-time 5 --connect-timeout 3 http://${SERVICE_HOST:-localhost}:6333 > /dev/null 2>&1; then
-    echo "ERROR: Qdrant is not running at localhost:6333"
+if ! curl -s --max-time 5 --connect-timeout 3 "${QDRANT_URL}" > /dev/null 2>&1; then
+    echo "ERROR: Qdrant is not running at ${QDRANT_URL}"
     echo "Please start the AI stack first:"
-    echo "  ./scripts/start-ai-stack-and-dashboard.sh"
+    echo "  sudo systemctl status ai-stack.target"
     exit 1
 fi
 
@@ -93,10 +95,10 @@ echo "  Knowledge Base Import Complete"
 echo "==================================================================="
 echo ""
 echo "Check Qdrant collection stats:"
-echo "  curl http://${SERVICE_HOST:-localhost}:6333/collections/codebase-context | jq ."
+echo "  curl ${QDRANT_URL}/collections/codebase-context | jq ."
 echo ""
 echo "Test context retrieval:"
-echo "  curl -X POST http://${SERVICE_HOST:-localhost}:8092/augment_query \\"
+echo "  curl -X POST ${HYBRID_URL}/augment_query \\"
 echo "    -H 'Content-Type: application/json' \\"
 echo "    -d '{\"query\": \"How to deploy NixOS?\", \"agent_type\": \"remote\"}' | jq ."
 echo ""

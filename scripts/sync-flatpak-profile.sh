@@ -11,7 +11,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 FLAKE_REF="path:${REPO_ROOT}"
 TARGET=""
 NON_INTERACTIVE=true
-INSTALL_SCOPE="user"
+INSTALL_SCOPE="system"
 
 usage() {
   cat <<'USAGE'
@@ -210,6 +210,22 @@ done
 if [[ "$missing" -gt 0 ]]; then
   echo "Flatpak profile sync finished with ${missing} failed app install(s)."
   exit 1
+fi
+
+# ── Dedup: remove user-scope copies of apps now installed system-wide ────────
+# Only runs when installing at system scope. Prevents the same app appearing
+# twice in launchers (once from --user exports, once from --system exports).
+if [[ "$INSTALL_SCOPE" == "system" ]]; then
+  mapfile -t user_installed < <(flatpak list --user --app --columns=application 2>/dev/null || true)
+  if [[ ${#user_installed[@]} -gt 0 ]]; then
+    for app in "${desired_apps[@]}"; do
+      [[ -z "$app" ]] && continue
+      if printf '%s\n' "${user_installed[@]}" | grep -Fxq "$app"; then
+        echo "  ↳ removing user-scope duplicate: $app"
+        flatpak --noninteractive --assumeyes uninstall --user "$app" 2>/dev/null || true
+      fi
+    done
+  fi
 fi
 
 echo "Flatpak profile sync complete."

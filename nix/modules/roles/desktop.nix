@@ -46,6 +46,7 @@ in
     # screen and COSMIC handles the session.
     services.desktopManager.cosmic.enable      = lib.mkDefault true;
     services.displayManager.cosmic-greeter.enable = lib.mkDefault true;
+    services.displayManager.defaultSession = lib.mkDefault "cosmic";
 
     # Hyprland is available alongside COSMIC for users who prefer a tiling WM.
     programs.hyprland.enable = lib.mkDefault true;
@@ -71,11 +72,14 @@ in
 
     # ---- Audio -------------------------------------------------------------
     security.rtkit.enable = lib.mkDefault true;
+    services.pulseaudio.enable = lib.mkDefault false;
     services.pipewire = {
       enable            = lib.mkDefault true;
       alsa.enable       = lib.mkDefault true;
       alsa.support32Bit = lib.mkDefault true;
       pulse.enable      = lib.mkDefault true;
+      jack.enable       = lib.mkDefault true;
+      wireplumber.enable = lib.mkDefault true;
     };
 
     # Disable wireplumber's libcamera UVC monitor to prevent SIGABRT crash.
@@ -143,12 +147,18 @@ in
     # that have been granted access (see services.geoclue2.appConfig).
     services.geoclue2 = {
       enable = lib.mkDefault true;
+      enableWifi = lib.mkDefault true;
+      submitData = lib.mkDefault false;
+      geoProviderUrl = lib.mkDefault "https://api.beacondb.net/v1/geolocate";
       appConfig."com.system76.CosmicSettings" = {
         isAllowed = true;
         isSystem  = true;
         users     = [ ];
       };
     };
+
+    services.upower.enable = lib.mkDefault true;
+    programs.wireshark.enable = lib.mkDefault true;
 
     # ---- cosmic-greeter runtime directories --------------------------------
     # cosmic-greeter requires several config subdirectories to exist under
@@ -180,11 +190,17 @@ in
 
     # ---- Fonts -------------------------------------------------------------
     fonts.fontconfig.enable = lib.mkDefault true;
+    fonts.fontDir.enable = lib.mkDefault true;
     fonts.packages = lib.mkDefault (with pkgs; [
       noto-fonts
       noto-fonts-cjk-sans
-      noto-fonts-emoji
+      noto-fonts-color-emoji
       liberation_ttf
+      # Popular Nerd Fonts for terminal/prompt tooling (p10k, starship, etc).
+      nerd-fonts.meslo-lg
+      nerd-fonts.jetbrains-mono
+      nerd-fonts.fira-code
+      nerd-fonts.hack
     ]);
   };
 }

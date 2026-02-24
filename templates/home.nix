@@ -1934,24 +1934,6 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
 
     # NixOS 25.11+: Use 'initContent' instead of 'initExtra'
     initContent = ''
-      # Powerlevel10k First-Run Setup Wizard
-      P10K_MARKER="$HOME/.config/p10k/.configured"
-      P10K_WIZARD="$HOME/.local/bin/p10k-setup-wizard.sh"
-
-      # Run setup wizard on first shell launch
-      if [[ ! -f "$P10K_MARKER" && -f "$P10K_WIZARD" ]]; then
-        echo ""
-        echo "╔══════════════════════════════════════════════════════╗"
-        echo "║  Welcome to your new ZSH setup!                     ║"
-        echo "║  Let's configure Powerlevel10k...                   ║"
-        echo "╚══════════════════════════════════════════════════════╝"
-        echo ""
-        "$P10K_WIZARD"
-        echo ""
-        echo "Please restart your shell to see the changes: exec zsh"
-        return
-      fi
-
       # Powerlevel10k instant prompt
       if [[ -r "''${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-''${(%):-%n}.zsh" ]]; then
         source "''${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-''${(%):-%n}.zsh"
@@ -1960,7 +1942,24 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       # Load Powerlevel10k theme
       source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme
 
-      # P10k configuration (dynamic - adapts to user preferences)
+      # First interactive shell after switch: run wizard and then
+      # `p10k configure` to generate ~/.p10k.zsh.
+      if [[ -o interactive ]] && [[ -t 0 ]] && [[ -t 1 ]] && [[ -f "$HOME/.config/p10k/.pending-first-run" || ! -f "$HOME/.p10k.zsh" ]]; then
+        mkdir -p "$HOME/.config/p10k"
+        P10K_MARKER="$HOME/.config/p10k/.configured"
+        P10K_WIZARD="$HOME/.local/bin/p10k-setup-wizard.sh"
+        P10K_PENDING="$HOME/.config/p10k/.pending-first-run"
+        if [[ ! -f "$P10K_MARKER" && -x "$P10K_WIZARD" ]]; then
+          "$P10K_WIZARD" || true
+        fi
+        if [[ ! -f "$HOME/.p10k.zsh" ]] && (( ''${+functions[p10k]} )); then
+          p10k configure
+        fi
+        [[ -f "$HOME/.p10k.zsh" ]] && rm -f "$P10K_PENDING"
+        unset P10K_MARKER P10K_WIZARD P10K_PENDING
+      fi
+
+      # Load user-generated p10k configuration.
       [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
       # Enhanced command history with mcfly
@@ -1980,6 +1979,20 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
       export NIXPKGS_ALLOW_UNFREE=1
       '';
   };
+
+  # Queue first-run prompt setup for the next interactive terminal after
+  # each switch when ~/.p10k.zsh is missing.
+  home.activation.queueP10kFirstRun = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    _p10k_cfg_dir="$HOME/.config/p10k"
+    _p10k_pending="$_p10k_cfg_dir/.pending-first-run"
+    mkdir -p "$_p10k_cfg_dir"
+    if [ ! -f "$HOME/.p10k.zsh" ]; then
+      : > "$_p10k_pending"
+    else
+      rm -f "$_p10k_pending"
+    fi
+    unset _p10k_cfg_dir _p10k_pending
+  '';
 
   # ========================================================================
   # Cryptography & Secret Management
@@ -2053,6 +2066,16 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
     [registries.search]
     registries = ["docker.io", "quay.io"]
   '';
+
+  # Declarative COSMIC Terminal font for proper Powerlevel10k glyph rendering.
+  xdg.configFile."cosmic/com.system76.CosmicTerm/v1/font_name" = {
+    text = "\"MesloLGS Nerd Font Mono\"";
+    force = true;
+  };
+  xdg.configFile."cosmic/com.system76.CosmicTerm/v1/font_size" = {
+    text = "13.0";
+    force = true;
+  };
 
   # ========================================================================
   # Git Configuration
@@ -2203,6 +2226,37 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
         if [[ "$target" == /nix/store/*/share/applications/codium-url-handler.desktop ]]; then
           rm -f "$codium_url"
         fi
+      fi
+    '';
+
+  # Refresh font cache so newly installed user-profile fonts are picked up.
+  home.activation.refreshUserFontCache =
+    lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      ${pkgs.fontconfig}/bin/fc-cache -f "$HOME/.nix-profile/share/fonts" >/dev/null 2>&1 || true
+      ${pkgs.fontconfig}/bin/fc-cache -f "$HOME/.local/share/fonts" >/dev/null 2>&1 || true
+      ${pkgs.fontconfig}/bin/fc-cache -f "$HOME/.fonts" >/dev/null 2>&1 || true
+    '';
+
+  # Remove stale wants links and clear any failed state from retired units.
+  home.activation.cleanupCosmicFontUnitWants =
+    lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      rm -f "$HOME/.config/systemd/user/enforce-cosmic-term-font.service" 2>/dev/null || true
+      rm -f "$HOME/.config/systemd/user/enforce-cosmic-term-font.path" 2>/dev/null || true
+      rm -f "$HOME/.config/systemd/user/default.target.wants/enforce-cosmic-term-font.service" 2>/dev/null || true
+      rm -f "$HOME/.config/systemd/user/default.target.wants/enforce-cosmic-term-font.path" 2>/dev/null || true
+      if command -v systemctl >/dev/null 2>&1; then
+        systemctl --user disable --now enforce-cosmic-term-font.service enforce-cosmic-term-font.path >/dev/null 2>&1 || true
+        systemctl --user unmask enforce-cosmic-term-font.service enforce-cosmic-term-font.path >/dev/null 2>&1 || true
+        systemctl --user reset-failed enforce-cosmic-term-font.service enforce-cosmic-term-font.path >/dev/null 2>&1 || true
+      fi
+    '';
+
+  # Ensure degraded checks at reload time don't see stale failed font units.
+  home.activation.preReloadResetCosmicFontUnits =
+    lib.hm.dag.entryBefore [ "reloadSystemd" ] ''
+      if command -v systemctl >/dev/null 2>&1; then
+        systemctl --user disable --now enforce-cosmic-term-font.service enforce-cosmic-term-font.path >/dev/null 2>&1 || true
+        systemctl --user reset-failed enforce-cosmic-term-font.service enforce-cosmic-term-font.path >/dev/null 2>&1 || true
       fi
     '';
 
@@ -2522,6 +2576,13 @@ EOF
 
     # Create local bin directory
     ".local/bin/.keep".text = "";
+
+    # Retire legacy COSMIC font enforcement units/scripts from earlier generations.
+    ".local/bin/enforce-cosmic-term-font".enable = false;
+    ".config/systemd/user/enforce-cosmic-term-font.service".enable = false;
+    ".config/systemd/user/enforce-cosmic-term-font.path".enable = false;
+    ".config/systemd/user/default.target.wants/enforce-cosmic-term-font.service".enable = false;
+    ".config/systemd/user/default.target.wants/enforce-cosmic-term-font.path".enable = false;
 
     # Create Jupyter notebooks directory
     "notebooks/.keep".text = "# Jupyter notebooks directory\n";
@@ -3785,149 +3846,6 @@ PLUGINCFG
           - "%REPO%"
     '';
 
-    # P10k configuration (dynamic - loads user preferences)
-    ".p10k.zsh".text = ''
-      # Powerlevel10k configuration for NixOS
-      # This config adapts to your preferences set via p10k-setup-wizard
-      # To reconfigure: rm ~/.config/p10k/.configured && exec zsh
-
-      # Load user theme preferences (set by p10k-setup-wizard.sh)
-      THEME_FILE="$HOME/.config/p10k/theme.sh"
-      if [[ -f "$THEME_FILE" ]]; then
-        source "$THEME_FILE"
-      else
-        # Defaults if not configured yet
-        export P10K_STYLE="lean"
-        export P10K_COLORS="dark"
-        export P10K_SHOW_TIME=false
-        export P10K_SHOW_OS=true
-        export P10K_SHOW_CONTEXT=false
-        export P10K_TRANSIENT=true
-      fi
-
-      # Enable instant prompt
-      if [[ -r "''${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-''${(%):-%n}.zsh" ]]; then
-        source "''${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-''${(%):-%n}.zsh"
-      fi
-
-      # Build prompt elements based on user preferences
-      left_elements=(dir vcs prompt_char)
-      [[ "$P10K_SHOW_OS" == "true" ]] && left_elements=(os_icon "''${left_elements[@]}")
-
-      right_elements=(status command_execution_time background_jobs)
-      [[ "$P10K_SHOW_TIME" == "true" ]] && right_elements=(time "''${right_elements[@]}")
-      [[ "$P10K_SHOW_CONTEXT" == "true" ]] && right_elements+=(context)
-
-      typeset -g POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=("''${left_elements[@]}")
-      typeset -g POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=("''${right_elements[@]}")
-
-      # Visual style
-      typeset -g POWERLEVEL9K_MODE=nerdfont-complete
-      typeset -g POWERLEVEL9K_ICON_PADDING=moderate
-
-      # Prompt layout based on style
-      case "$P10K_STYLE" in
-        lean|pure)
-          typeset -g POWERLEVEL9K_PROMPT_ON_NEWLINE=false
-          typeset -g POWERLEVEL9K_RPROMPT_ON_NEWLINE=false
-          typeset -g POWERLEVEL9K_PROMPT_ADD_NEWLINE=true
-          ;;
-        classic|rainbow)
-          typeset -g POWERLEVEL9K_PROMPT_ON_NEWLINE=true
-          typeset -g POWERLEVEL9K_RPROMPT_ON_NEWLINE=false
-          typeset -g POWERLEVEL9K_PROMPT_ADD_NEWLINE=true
-          ;;
-      esac
-
-      # Transient prompt
-      [[ "$P10K_TRANSIENT" == "true" ]] && typeset -g POWERLEVEL9K_TRANSIENT_PROMPT=always
-
-      # Enhanced Color schemes with better contrast
-      case "$P10K_COLORS" in
-        high-contrast-dark)
-          # High contrast bright colors for dark terminals (RECOMMENDED)
-          typeset -g POWERLEVEL9K_DIR_FOREGROUND=51           # Bright cyan
-          typeset -g POWERLEVEL9K_VCS_CLEAN_FOREGROUND=46     # Bright green
-          typeset -g POWERLEVEL9K_VCS_MODIFIED_FOREGROUND=226 # Bright yellow
-          typeset -g POWERLEVEL9K_VCS_UNTRACKED_FOREGROUND=201 # Bright magenta
-          typeset -g POWERLEVEL9K_STATUS_ERROR_FOREGROUND=196 # Bright red
-          typeset -g POWERLEVEL9K_OS_ICON_FOREGROUND=231      # White
-          typeset -g POWERLEVEL9K_PROMPT_CHAR_OK_VIINS_FOREGROUND=46
-          typeset -g POWERLEVEL9K_PROMPT_CHAR_ERROR_VIINS_FOREGROUND=196
-          ;;
-        custom-high-contrast)
-          # Maximum contrast for accessibility
-          typeset -g POWERLEVEL9K_DIR_FOREGROUND=15           # White
-          typeset -g POWERLEVEL9K_VCS_CLEAN_FOREGROUND=10     # Bright green
-          typeset -g POWERLEVEL9K_VCS_MODIFIED_FOREGROUND=11  # Bright yellow
-          typeset -g POWERLEVEL9K_VCS_UNTRACKED_FOREGROUND=13 # Bright magenta
-          typeset -g POWERLEVEL9K_STATUS_ERROR_FOREGROUND=9   # Bright red
-          typeset -g POWERLEVEL9K_OS_ICON_FOREGROUND=15       # White
-          typeset -g POWERLEVEL9K_PROMPT_CHAR_OK_VIINS_FOREGROUND=10
-          typeset -g POWERLEVEL9K_PROMPT_CHAR_ERROR_VIINS_FOREGROUND=9
-          ;;
-        light)
-          # High contrast for light backgrounds
-          typeset -g POWERLEVEL9K_DIR_FOREGROUND=24
-          typeset -g POWERLEVEL9K_VCS_CLEAN_FOREGROUND=28
-          typeset -g POWERLEVEL9K_VCS_MODIFIED_FOREGROUND=130
-          typeset -g POWERLEVEL9K_VCS_UNTRACKED_FOREGROUND=21
-          typeset -g POWERLEVEL9K_STATUS_ERROR_FOREGROUND=124
-          typeset -g POWERLEVEL9K_OS_ICON_FOREGROUND=24
-          ;;
-        solarized)
-          # Solarized Dark colors (enhanced)
-          typeset -g POWERLEVEL9K_DIR_FOREGROUND=81           # Brighter blue
-          typeset -g POWERLEVEL9K_VCS_CLEAN_FOREGROUND=106    # Brighter green
-          typeset -g POWERLEVEL9K_VCS_MODIFIED_FOREGROUND=221 # Brighter yellow
-          typeset -g POWERLEVEL9K_VCS_UNTRACKED_FOREGROUND=125 # Brighter magenta
-          typeset -g POWERLEVEL9K_STATUS_ERROR_FOREGROUND=196 # Bright red
-          typeset -g POWERLEVEL9K_OS_ICON_FOREGROUND=81
-          ;;
-        gruvbox)
-          # Gruvbox colors (enhanced)
-          typeset -g POWERLEVEL9K_DIR_FOREGROUND=214
-          typeset -g POWERLEVEL9K_VCS_CLEAN_FOREGROUND=142
-          typeset -g POWERLEVEL9K_VCS_MODIFIED_FOREGROUND=208
-          typeset -g POWERLEVEL9K_VCS_UNTRACKED_FOREGROUND=175
-          typeset -g POWERLEVEL9K_STATUS_ERROR_FOREGROUND=167
-          typeset -g POWERLEVEL9K_OS_ICON_FOREGROUND=223
-          ;;
-        nord)
-          # Nord colors (enhanced)
-          typeset -g POWERLEVEL9K_DIR_FOREGROUND=111          # Brighter blue
-          typeset -g POWERLEVEL9K_VCS_CLEAN_FOREGROUND=150    # Brighter green
-          typeset -g POWERLEVEL9K_VCS_MODIFIED_FOREGROUND=228 # Bright yellow
-          typeset -g POWERLEVEL9K_VCS_UNTRACKED_FOREGROUND=147 # Brighter purple
-          typeset -g POWERLEVEL9K_STATUS_ERROR_FOREGROUND=210 # Bright red
-          typeset -g POWERLEVEL9K_OS_ICON_FOREGROUND=153
-          ;;
-        dracula)
-          # Dracula colors (enhanced)
-          typeset -g POWERLEVEL9K_DIR_FOREGROUND=141
-          typeset -g POWERLEVEL9K_VCS_CLEAN_FOREGROUND=121    # Brighter green
-          typeset -g POWERLEVEL9K_VCS_MODIFIED_FOREGROUND=228
-          typeset -g POWERLEVEL9K_VCS_UNTRACKED_FOREGROUND=177 # Brighter pink
-          typeset -g POWERLEVEL9K_STATUS_ERROR_FOREGROUND=212
-          typeset -g POWERLEVEL9K_OS_ICON_FOREGROUND=183
-          ;;
-        *)
-          # Dark (default) - bright colors
-          typeset -g POWERLEVEL9K_DIR_FOREGROUND=51           # Bright cyan
-          typeset -g POWERLEVEL9K_VCS_CLEAN_FOREGROUND=46     # Bright green
-          typeset -g POWERLEVEL9K_VCS_MODIFIED_FOREGROUND=226 # Bright yellow
-          typeset -g POWERLEVEL9K_VCS_UNTRACKED_FOREGROUND=201 # Bright magenta
-          typeset -g POWERLEVEL9K_STATUS_ERROR_FOREGROUND=196 # Bright red
-          typeset -g POWERLEVEL9K_OS_ICON_FOREGROUND=231      # White
-          ;;
-      esac
-
-      # Common settings
-      typeset -g POWERLEVEL9K_DIR_SHORTEN_STRATEGY=truncate_to_last
-      typeset -g POWERLEVEL9K_DIR_SHORTEN_DIR_LENGTH=3
-      typeset -g POWERLEVEL9K_STATUS_OK=false
-      typeset -g POWERLEVEL9K_LINUX_NIXOS_ICON='❄️'
-    '';
     }
     // lib.optionalAttrs config.services.flatpak.enable {
       "${giteaFlatpakConfigDir}/app.ini".text = giteaSharedAppIni;

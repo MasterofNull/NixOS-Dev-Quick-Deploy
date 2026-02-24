@@ -173,7 +173,7 @@ CONFIG = {
     "telemetry_path": os.getenv("RALPH_TELEMETRY_PATH", "/data/telemetry/ralph-events.jsonl"),
     "require_approval": os.getenv("RALPH_REQUIRE_APPROVAL", "false").lower() == "true",
     "approval_threshold": os.getenv("RALPH_APPROVAL_THRESHOLD", "high"),
-    "audit_log": os.getenv("RALPH_AUDIT_LOG", "true").lower() == "true",
+    "audit_log": os.getenv("RALPH_AUDIT_LOG", os.getenv("AI_TELEMETRY_ENABLED", "false")).lower() == "true",
     "agent_backends": os.getenv("RALPH_AGENT_BACKENDS", "aider,continue-server,goose,autogpt,langchain").split(","),
     "default_backend": os.getenv("RALPH_DEFAULT_BACKEND", "aider"),
 }
@@ -280,12 +280,11 @@ async def lifespan(app: FastAPI):
 
 # Load API key from secret file
 def load_api_key() -> Optional[str]:
-    """Load API key from Docker secret file"""
+    """Load API key from runtime secret file only."""
     secret_file = os.environ.get("RALPH_WIGGUM_API_KEY_FILE", "/run/secrets/ralph_wiggum_api_key")
     if Path(secret_file).exists():
-        return Path(secret_file).read_text().strip()
-    # Fallback to environment variable for development
-    return os.environ.get("RALPH_WIGGUM_API_KEY")
+        return Path(secret_file).read_text(encoding="utf-8").strip()
+    return None
 
 # Initialize authentication dependency
 api_key = load_api_key()

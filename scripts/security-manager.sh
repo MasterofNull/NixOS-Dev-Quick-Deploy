@@ -3,6 +3,10 @@
 # Part of NixOS-Dev-Quick-Deploy
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]})/.." && pwd)"
+# shellcheck source=../config/service-endpoints.sh
+source "$SCRIPT_DIR/config/service-endpoints.sh"
+
 SCRIPT_NAME="$(basename "$0")"
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
@@ -110,8 +114,8 @@ subcmd_dashboards() {
     fi
     
     # Prometheus
-    if curl -s -o /dev/null -w "" --max-time 1 --connect-timeout 1 http://${SERVICE_HOST:-localhost}:9090 2>/dev/null; then
-        echo -e "  ${GREEN}✓${RESET} Prometheus: http://${SERVICE_HOST:-localhost}:9090"
+    if curl -s -o /dev/null -w "" --max-time 1 --connect-timeout 1 ${PROMETHEUS_URL} 2>/dev/null; then
+        echo -e "  ${GREEN}✓${RESET} Prometheus: ${PROMETHEUS_URL}"
     else
         echo -e "  ${YELLOW}○${RESET} Prometheus: Not enabled (see 'enable-monitoring' command)"
     fi

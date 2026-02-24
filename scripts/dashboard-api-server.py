@@ -2,7 +2,7 @@
 """
 Dashboard Backend API Server (DEPRECATED)
 Aggregates health and metrics from all services for the dashboard.
-Port: 8889
+Port: DASHBOARD_API_PORT
 
 Use the FastAPI backend instead:
   dashboard/backend/api (run with uvicorn)
@@ -28,18 +28,18 @@ logger = logging.getLogger(__name__)
 
 DEPRECATION_MESSAGE = (
     "DEPRECATED: scripts/dashboard-api-server.py is superseded by the FastAPI backend. "
-    "Use `cd dashboard/backend && uvicorn api.main:app --host 0.0.0.0 --port 8889`."
+    "Use `cd dashboard/backend && uvicorn api.main:app --host 0.0.0.0 --port $DASHBOARD_API_PORT`."
 )
 
 # Service endpoints
 SERVICE_HOST = os.getenv("SERVICE_HOST", "localhost")
 SERVICES = {
-    "ralph": os.getenv("RALPH_URL", f"http://{SERVICE_HOST}:8098"),
-    "hybrid": os.getenv("HYBRID_URL", f"http://{SERVICE_HOST}:8092"),
-    "aidb": os.getenv("AIDB_URL", f"http://{SERVICE_HOST}:8091"),
-    "qdrant": os.getenv("QDRANT_URL", f"http://{SERVICE_HOST}:6333"),
-    "postgresql": os.getenv("POSTGRES_URL", f"http://{SERVICE_HOST}:5432"),
-    "prometheus": os.getenv("PROMETHEUS_URL", f"http://{SERVICE_HOST}:9090"),
+    "ralph": os.getenv("RALPH_URL", "http://localhost"),
+    "hybrid": os.getenv("HYBRID_URL", "http://localhost"),
+    "aidb": os.getenv("AIDB_URL", "http://localhost"),
+    "qdrant": os.getenv("QDRANT_URL", "http://localhost"),
+    "postgresql": os.getenv("POSTGRES_URL", "http://localhost"),
+    "prometheus": os.getenv("PROMETHEUS_URL", "http://localhost"),
 }
 
 # Timeouts for all external requests
@@ -329,10 +329,11 @@ async def create_app() -> web.Application:
 
 def main():
     """Main entry point"""
+    api_port = int(os.getenv("DASHBOARD_API_PORT", "0"))
     logger.warning(DEPRECATION_MESSAGE)
-    logger.info("Starting legacy Dashboard API Server on port 8889")
+    logger.info("Starting legacy Dashboard API Server on port %s", api_port)
     app = create_app()
-    web.run_app(app, host='0.0.0.0', port=8889)
+    web.run_app(app, host='0.0.0.0', port=api_port)
 
 
 if __name__ == '__main__':

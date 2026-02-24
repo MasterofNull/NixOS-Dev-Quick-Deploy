@@ -3,8 +3,11 @@
 
 set -euo pipefail
 
-AIDB_URL="${AIDB_URL:-http://${SERVICE_HOST:-localhost}:8091}"
-LLAMA_CPP_URL="${LLAMA_CPP_BASE_URL:-http://${SERVICE_HOST:-localhost}:8080}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=../config/service-endpoints.sh
+source "$SCRIPT_DIR/config/service-endpoints.sh"
+AIDB_URL="${AIDB_URL}"
+LLAMA_CPP_URL="${LLAMA_CPP_BASE_URL:-${LLAMA_URL}}"
 TELEMETRY_PATH="${AIDB_TELEMETRY_PATH:-$HOME/.local/share/nixos-ai-stack/telemetry/aidb-events.jsonl}"
 HYBRID_TELEMETRY_PATH="${HYBRID_TELEMETRY_PATH:-$HOME/.local/share/nixos-ai-stack/telemetry/hybrid-events.jsonl}"
 AI_STACK_DATA="${AI_STACK_DATA:-$HOME/.local/share/nixos-ai-stack}"

@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# MLOps Lifecycle Layer — Phase 29
+# Provides MinIO (artifact store) + MLflow (experiment tracker)
+# Apply: kubectl apply -k ai-stack/kubernetes/mlops/
+# Prerequisite: ai-stack namespace must exist (ai-stack/kubernetes/namespace.yaml)
+resources:
+  - minio.yaml
+  - mlflow.yaml
+  - network-policy.yaml
+
+commonLabels:
+  part-of: ai-stack-mlops
+  managed-by: nixos-quick-deploy

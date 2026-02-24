@@ -7,7 +7,7 @@ set -euo pipefail
 # Configuration
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/postgresql}"
 DB_HOST="${DB_HOST:-localhost}"
-DB_PORT="${DB_PORT:-5432}"
+DB_PORT="${DB_PORT:-${POSTGRES_PORT}}"
 DB_NAME="${DB_NAME:-aidb}"
 DB_USER="${DB_USER:-aidb}"
 PGPASSWORD="${DB_PASSWORD:-aidb_password}"
@@ -368,7 +368,7 @@ main() {
             echo "Environment variables:"
             echo "  BACKUP_DIR          - Backup directory (default: /var/backups/postgresql)"
             echo "  DB_HOST             - Database host (default: localhost)"
-            echo "  DB_PORT             - Database port (default: 5432)"
+            echo "  DB_PORT             - Database port (default: POSTGRES_PORT)"
             echo "  DB_NAME             - Database name (default: aidb)"
             echo "  DB_USER             - Database user (default: aidb)"
             echo "  DB_PASSWORD         - Database password"

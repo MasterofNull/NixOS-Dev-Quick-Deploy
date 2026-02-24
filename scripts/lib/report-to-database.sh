@@ -8,10 +8,14 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Database connection from environment or defaults
 DB_HOST="${POSTGRES_HOST:-localhost}"
-DB_PORT="${POSTGRES_PORT:-5432}"
+DB_PORT="${POSTGRES_PORT}"
 DB_NAME="${POSTGRES_DB:-mcp}"
 DB_USER="${POSTGRES_USER:-mcp}"
-DB_PASSWORD="${POSTGRES_PASSWORD:-change_me_in_production}"
+DB_PASSWORD_FILE="${POSTGRES_PASSWORD_FILE:-/run/secrets/postgres_password}"
+DB_PASSWORD=""
+if [[ -f "$DB_PASSWORD_FILE" ]]; then
+    DB_PASSWORD=$(<"$DB_PASSWORD_FILE")
+fi
 
 # Report types
 REPORT_TYPE_DEPLOYMENT="deployment"

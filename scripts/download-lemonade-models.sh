@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
-#
-# Backward-compatible wrapper for llama.cpp model downloads.
-#
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-exec "${SCRIPT_DIR}/download-llama-cpp-models.sh" "$@"
+echo "scripts/download-lemonade-models.sh is deprecated." >&2
+echo "Imperative model download forwarding is disabled." >&2
+exit 2

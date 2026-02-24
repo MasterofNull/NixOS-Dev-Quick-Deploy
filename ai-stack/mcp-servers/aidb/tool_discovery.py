@@ -12,6 +12,7 @@ Features:
 """
 
 import asyncio
+import json
 import httpx
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
@@ -98,6 +99,7 @@ class ToolDiscoveryEngine:
     async def start(self):
         """Start background discovery task"""
         logger.info("tool_discovery_starting")
+        await self._ensure_postgres_schema()
         self.discovery_task = asyncio.create_task(self._discovery_loop())
 
     async def stop(self):
@@ -168,8 +170,127 @@ class ToolDiscoveryEngine:
         for tool in all_tools:
             self.tool_cache[tool.tool_id] = tool
 
+        # Persist discovery metadata (best effort)
+        await self._persist_discovery_snapshot(all_tools)
+
         logger.info("tool_discovery_complete", total_tools=len(all_tools))
         return all_tools
+
+    async def _ensure_postgres_schema(self) -> None:
+        """Create optional Postgres tables used by discovery persistence."""
+        if not self.postgres:
+            return
+        try:
+            await self.postgres.execute(
+                """
+                CREATE TABLE IF NOT EXISTS aidb_tool_discovery_runs (
+                    id BIGSERIAL PRIMARY KEY,
+                    discovered_count INTEGER NOT NULL,
+                    healthy_servers INTEGER NOT NULL,
+                    unhealthy_servers INTEGER NOT NULL,
+                    server_snapshot JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            await self.postgres.execute(
+                """
+                CREATE TABLE IF NOT EXISTS aidb_discovered_tools (
+                    tool_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    server_name TEXT NOT NULL,
+                    server_url TEXT NOT NULL,
+                    endpoint TEXT NOT NULL,
+                    method TEXT NOT NULL,
+                    parameters JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    examples JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    cost_estimate TEXT NOT NULL,
+                    requires_auth BOOLEAN NOT NULL DEFAULT FALSE,
+                    discovered_at TIMESTAMPTZ NOT NULL,
+                    last_verified TIMESTAMPTZ NULL,
+                    is_available BOOLEAN NOT NULL DEFAULT TRUE,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+        except Exception as exc:
+            logger.warning("tool_discovery_postgres_schema_failed", error=str(exc))
+
+    async def _persist_discovery_snapshot(self, tools: List[ToolMetadata]) -> None:
+        """Persist run telemetry + latest discovered tool catalog to Postgres."""
+        if not self.postgres:
+            return
+
+        try:
+            healthy = [s.name for s in self.mcp_servers if s.is_healthy]
+            unhealthy = [s.name for s in self.mcp_servers if not s.is_healthy]
+            await self.postgres.execute(
+                """
+                INSERT INTO aidb_tool_discovery_runs (
+                    discovered_count,
+                    healthy_servers,
+                    unhealthy_servers,
+                    server_snapshot
+                ) VALUES (%s, %s, %s, %s::jsonb)
+                """,
+                len(tools),
+                len(healthy),
+                len(unhealthy),
+                json.dumps({"healthy": healthy, "unhealthy": unhealthy}),
+            )
+
+            for tool in tools:
+                payload = tool.model_dump(mode="json")
+                await self.postgres.execute(
+                    """
+                    INSERT INTO aidb_discovered_tools (
+                        tool_id, name, description, category,
+                        server_name, server_url, endpoint, method,
+                        parameters, examples, cost_estimate, requires_auth,
+                        discovered_at, last_verified, is_available, updated_at
+                    ) VALUES (
+                        %s, %s, %s, %s,
+                        %s, %s, %s, %s,
+                        %s::jsonb, %s::jsonb, %s, %s,
+                        %s::timestamptz, %s::timestamptz, %s, NOW()
+                    )
+                    ON CONFLICT (tool_id) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        description = EXCLUDED.description,
+                        category = EXCLUDED.category,
+                        server_name = EXCLUDED.server_name,
+                        server_url = EXCLUDED.server_url,
+                        endpoint = EXCLUDED.endpoint,
+                        method = EXCLUDED.method,
+                        parameters = EXCLUDED.parameters,
+                        examples = EXCLUDED.examples,
+                        cost_estimate = EXCLUDED.cost_estimate,
+                        requires_auth = EXCLUDED.requires_auth,
+                        discovered_at = EXCLUDED.discovered_at,
+                        last_verified = EXCLUDED.last_verified,
+                        is_available = EXCLUDED.is_available,
+                        updated_at = NOW()
+                    """,
+                    payload["tool_id"],
+                    payload["name"],
+                    payload["description"],
+                    payload["category"],
+                    payload["server_name"],
+                    payload["server_url"],
+                    payload["endpoint"],
+                    payload["method"],
+                    json.dumps(payload.get("parameters") or {}),
+                    json.dumps(payload.get("examples") or []),
+                    payload.get("cost_estimate", "unknown"),
+                    bool(payload.get("requires_auth", False)),
+                    payload.get("discovered_at"),
+                    payload.get("last_verified"),
+                    bool(payload.get("is_available", True)),
+                )
+        except Exception as exc:
+            logger.warning("tool_discovery_postgres_persist_failed", error=str(exc))
 
     async def _check_server_health(self, server: MCPServerInfo) -> bool:
         """Check if MCP server is healthy"""

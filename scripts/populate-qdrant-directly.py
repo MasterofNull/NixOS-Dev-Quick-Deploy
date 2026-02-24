@@ -20,9 +20,9 @@ from qdrant_client.models import PointStruct
 # Configuration
 PROJECT_ROOT = Path(__file__).parent.parent
 SERVICE_HOST = os.getenv("SERVICE_HOST", "localhost")
-QDRANT_URL = os.getenv("QDRANT_URL", f"http://{SERVICE_HOST}:6333")
-COORDINATOR_URL = os.getenv("COORDINATOR_URL", f"http://{SERVICE_HOST}:8092")
-AIDB_URL = os.getenv("AIDB_URL", f"http://{SERVICE_HOST}:8091")
+QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost")
+COORDINATOR_URL = os.getenv("COORDINATOR_URL", os.getenv("HYBRID_URL", "http://localhost"))
+AIDB_URL = os.getenv("AIDB_URL", "http://localhost")
 
 # Initialize clients
 qdrant = QdrantClient(url=QDRANT_URL)
@@ -67,7 +67,7 @@ async def populate_best_practices():
             "description": "Use network_mode: host for containers that need localhost access. When MCP servers need to access databases on localhost, bridge networking causes DNS issues.",
             "examples": [
                 "services:\n  mcp-server:\n    network_mode: host",
-                "environment:\n  DATABASE_URL: postgresql://localhost:5432/db"
+                "environment:\n  DATABASE_URL: postgresql://localhost:${POSTGRES_PORT}/db"
             ],
             "anti_patterns": [
                 "Using bridge network for localhost database connections",

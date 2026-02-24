@@ -60,6 +60,8 @@
     # ── Platform / system modules ───────────────────────────────────────────
     ./storage.nix
     ./ram-tuning.nix
+    ./zram.nix
+    ./network.nix
     ./mobile.nix
     ./recovery.nix
   ];

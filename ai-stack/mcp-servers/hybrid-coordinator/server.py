@@ -56,6 +56,7 @@ from qdrant_client.models import (
 from shared.stack_settings import HybridSettings
 from shared.auth_http_client import create_embeddings_client
 from shared.circuit_breaker import CircuitBreakerError, CircuitBreakerRegistry, CircuitState
+from shared.telemetry_privacy import scrub_telemetry_payload
 SERVICE_NAME = "hybrid-coordinator"
 SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
 HYBRID_SETTINGS = HybridSettings.load()
@@ -145,6 +146,10 @@ TELEMETRY_PATH = os.path.expanduser(
         ),
     )
 )
+TELEMETRY_ENABLED = os.getenv(
+    "HYBRID_TELEMETRY_ENABLED",
+    os.getenv("AI_TELEMETRY_ENABLED", "false"),
+).lower() == "true"
 
 HYBRID_STATS = {
     "total_queries": 0,
@@ -211,11 +216,15 @@ def snapshot_stats() -> Dict[str, Any]:
 
 
 def record_telemetry_event(event_type: str, payload: Dict[str, Any]) -> None:
+    if not TELEMETRY_ENABLED:
+        return
+
     payload = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "event_type": event_type,
         **payload,
     }
+    payload = scrub_telemetry_payload(payload)
     os.makedirs(os.path.dirname(TELEMETRY_PATH), exist_ok=True)
 
     # P2-REL-003: Write with file locking to prevent corruption
@@ -287,6 +296,62 @@ def _payload_matches_tokens(payload: Dict[str, Any], tokens: List[str]) -> Tuple
     return matches > 0, matches
 
 
+def _extract_text_from_result(item: Dict[str, Any]) -> str:
+    payload = item.get("payload") or {}
+    text_parts: List[str] = []
+    for key in (
+        "summary",
+        "description",
+        "usage_pattern",
+        "solution",
+        "response",
+        "query",
+        "content",
+        "procedure",
+        "title",
+    ):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            text_parts.append(value.strip())
+    return " ".join(text_parts).strip()
+
+
+def _keyword_relevance(text: str, expected_keywords: List[str]) -> float:
+    if not expected_keywords:
+        return 1.0
+    if not text:
+        return 0.0
+    normalized = text.lower()
+    hits = sum(1 for kw in expected_keywords if kw and kw.lower() in normalized)
+    return hits / max(len(expected_keywords), 1)
+
+
+def _classify_eval_failure(metrics: Dict[str, Any]) -> str:
+    if not metrics.get("response_non_empty", False):
+        return "empty_response"
+    if metrics.get("latency_ok") is False:
+        return "latency_slo_exceeded"
+    if float(metrics.get("relevance_score", 0.0)) < 0.5:
+        return "low_relevance"
+    return "score_below_threshold"
+
+
+def _tree_expand_queries(query: str, branch_factor: int) -> List[str]:
+    tokens = _normalize_tokens(query)
+    if not tokens:
+        return [query]
+    expansions: List[str] = [query]
+    top = tokens[: max(1, branch_factor)]
+    expansions.extend([f"{query} {token}" for token in top])
+    expansions.extend([" ".join(top[:idx + 1]) for idx in range(min(len(top), branch_factor))])
+    # preserve order while deduplicating
+    deduped: List[str] = []
+    for item in expansions:
+        if item not in deduped:
+            deduped.append(item)
+    return deduped[: max(1, branch_factor)]
+
+
 # ============================================================================
 # Configuration
 # ============================================================================
@@ -296,7 +361,8 @@ class Config:
     """Hybrid coordinator configuration"""
 
     QDRANT_URL = os.getenv("QDRANT_URL", HYBRID_SETTINGS.qdrant_url)
-    QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", None)
+    QDRANT_API_KEY_FILE = os.getenv("QDRANT_API_KEY_FILE", "")
+    QDRANT_API_KEY = ""
     QDRANT_HNSW_M = int(os.getenv("QDRANT_HNSW_M", HYBRID_SETTINGS.qdrant_hnsw_m))
     QDRANT_HNSW_EF_CONSTRUCT = int(os.getenv("QDRANT_HNSW_EF_CONSTRUCT", HYBRID_SETTINGS.qdrant_hnsw_ef_construct))
     QDRANT_HNSW_FULL_SCAN_THRESHOLD = int(
@@ -314,7 +380,7 @@ class Config:
     EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIMENSIONS", HYBRID_SETTINGS.embedding_dimensions))
     EMBEDDING_SERVICE_URL = os.getenv("EMBEDDING_SERVICE_URL", "")
     EMBEDDING_API_KEY_FILE = os.getenv("EMBEDDING_API_KEY_FILE", "")
-    EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY", "")
+    EMBEDDING_API_KEY = ""
     AIDB_URL = os.getenv("AIDB_URL", os.getenv("AIDB_BASE_URL", "http://aidb:8091"))
 
     LOCAL_CONFIDENCE_THRESHOLD = float(
@@ -340,7 +406,18 @@ class Config:
         )
     )
     API_KEY_FILE = os.getenv("HYBRID_API_KEY_FILE", HYBRID_SETTINGS.api_key_file or "")
-    API_KEY = os.getenv("HYBRID_API_KEY", "")
+    API_KEY = ""
+    AI_HARNESS_ENABLED = os.getenv("AI_HARNESS_ENABLED", "true").lower() == "true"
+    AI_MEMORY_ENABLED = os.getenv("AI_MEMORY_ENABLED", "true").lower() == "true"
+    AI_MEMORY_MAX_RECALL_ITEMS = int(os.getenv("AI_MEMORY_MAX_RECALL_ITEMS", "8"))
+    AI_TREE_SEARCH_ENABLED = os.getenv("AI_TREE_SEARCH_ENABLED", "true").lower() == "true"
+    AI_TREE_SEARCH_MAX_DEPTH = int(os.getenv("AI_TREE_SEARCH_MAX_DEPTH", "2"))
+    AI_TREE_SEARCH_BRANCH_FACTOR = int(os.getenv("AI_TREE_SEARCH_BRANCH_FACTOR", "3"))
+    AI_HARNESS_EVAL_ENABLED = os.getenv("AI_HARNESS_EVAL_ENABLED", "true").lower() == "true"
+    AI_HARNESS_MIN_ACCEPTANCE_SCORE = float(
+        os.getenv("AI_HARNESS_MIN_ACCEPTANCE_SCORE", "0.7")
+    )
+    AI_HARNESS_MAX_LATENCY_MS = int(os.getenv("AI_HARNESS_MAX_LATENCY_MS", "3000"))
 
 
 def _read_secret(path: str) -> str:
@@ -353,6 +430,8 @@ def _read_secret(path: str) -> str:
         return ""
 
 
+if not Config.QDRANT_API_KEY and Config.QDRANT_API_KEY_FILE:
+    Config.QDRANT_API_KEY = _read_secret(Config.QDRANT_API_KEY_FILE)
 if not Config.API_KEY and Config.API_KEY_FILE:
     Config.API_KEY = _read_secret(Config.API_KEY_FILE)
 if not Config.EMBEDDING_API_KEY and Config.EMBEDDING_API_KEY_FILE:
@@ -455,6 +534,56 @@ COLLECTIONS = {
             "timestamp": "integer",
         },
     },
+    "agent-memory-episodic": {
+        "vector_size": Config.EMBEDDING_DIM,
+        "distance": Distance.COSINE,
+        "payload_schema": {
+            "memory_type": "string",
+            "summary": "text",
+            "query": "text",
+            "response": "text",
+            "outcome": "string",
+            "tags": "array",
+            "timestamp": "integer",
+        },
+    },
+    "agent-memory-semantic": {
+        "vector_size": Config.EMBEDDING_DIM,
+        "distance": Distance.COSINE,
+        "payload_schema": {
+            "memory_type": "string",
+            "summary": "text",
+            "content": "text",
+            "tags": "array",
+            "timestamp": "integer",
+        },
+    },
+    "agent-memory-procedural": {
+        "vector_size": Config.EMBEDDING_DIM,
+        "distance": Distance.COSINE,
+        "payload_schema": {
+            "memory_type": "string",
+            "summary": "text",
+            "procedure": "text",
+            "trigger": "text",
+            "tags": "array",
+            "timestamp": "integer",
+        },
+    },
+}
+
+MEMORY_COLLECTIONS = {
+    "episodic": "agent-memory-episodic",
+    "semantic": "agent-memory-semantic",
+    "procedural": "agent-memory-procedural",
+}
+
+HARNESS_STATS = {
+    "total_runs": 0,
+    "passed": 0,
+    "failed": 0,
+    "failure_taxonomy": {},
+    "last_run_at": None,
 }
 
 
@@ -942,6 +1071,243 @@ async def hybrid_search(
     }
 
 
+async def tree_search(
+    query: str,
+    collections: Optional[List[str]] = None,
+    limit: int = 5,
+    keyword_limit: int = 5,
+    score_threshold: float = 0.7,
+) -> Dict[str, Any]:
+    """Branch-and-aggregate retrieval over query expansions."""
+    collections = collections or list(COLLECTIONS.keys())
+    max_depth = max(1, Config.AI_TREE_SEARCH_MAX_DEPTH)
+    branch_factor = max(1, Config.AI_TREE_SEARCH_BRANCH_FACTOR)
+
+    branches = [query]
+    all_results: Dict[str, Dict[str, Any]] = {}
+    branch_runs: List[Dict[str, Any]] = []
+
+    for depth in range(max_depth):
+        next_branches: List[str] = []
+        for branch_query in branches[:branch_factor]:
+            result = await hybrid_search(
+                query=branch_query,
+                collections=collections,
+                limit=limit,
+                keyword_limit=keyword_limit,
+                score_threshold=score_threshold,
+            )
+            branch_runs.append(
+                {
+                    "depth": depth,
+                    "query": branch_query,
+                    "semantic_results": len(result.get("semantic_results", [])),
+                    "keyword_results": len(result.get("keyword_results", [])),
+                }
+            )
+            for item in result.get("combined_results", []):
+                key = f"{item.get('collection')}:{item.get('id')}"
+                current = all_results.get(key)
+                if current is None or float(item.get("score", 0.0)) > float(current.get("score", 0.0)):
+                    all_results[key] = item
+            next_branches.extend(_tree_expand_queries(branch_query, branch_factor))
+        branches = next_branches
+
+    ranked = sorted(all_results.values(), key=lambda item: float(item.get("score", 0.0)), reverse=True)
+    ranked = ranked[: max(limit, keyword_limit, Config.AI_MEMORY_MAX_RECALL_ITEMS)]
+    return {
+        "query": query,
+        "search_mode": "tree",
+        "depth": max_depth,
+        "branch_factor": branch_factor,
+        "combined_results": ranked,
+        "branches": branch_runs,
+    }
+
+
+async def store_agent_memory(
+    memory_type: str,
+    summary: str,
+    *,
+    content: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Store agent memory in typed collections."""
+    if not Config.AI_MEMORY_ENABLED:
+        return {"status": "disabled"}
+    collection = MEMORY_COLLECTIONS.get(memory_type)
+    if not collection:
+        raise ValueError("memory_type must be episodic|semantic|procedural")
+    memory_id = str(uuid4())
+    payload = {
+        "memory_id": memory_id,
+        "memory_type": memory_type,
+        "summary": summary,
+        "content": content or summary,
+        "timestamp": int(datetime.now().timestamp()),
+    }
+    if metadata:
+        payload.update(metadata)
+    embedding = await embed_text(f"{memory_type}\n{summary}\n{content or ''}")
+    qdrant_client.upsert(
+        collection_name=collection,
+        points=[PointStruct(id=memory_id, vector=embedding, payload=payload)],
+    )
+    record_telemetry_event(
+        "agent_memory_store",
+        {"memory_id": memory_id, "memory_type": memory_type, "collection": collection},
+    )
+    return {"status": "stored", "memory_id": memory_id, "memory_type": memory_type}
+
+
+async def recall_agent_memory(
+    query: str,
+    memory_types: Optional[List[str]] = None,
+    limit: Optional[int] = None,
+    retrieval_mode: str = "hybrid",
+) -> Dict[str, Any]:
+    """Recall memories using hybrid/tree retrieval."""
+    if not Config.AI_MEMORY_ENABLED:
+        return {"status": "disabled", "results": []}
+
+    requested_types = memory_types or list(MEMORY_COLLECTIONS.keys())
+    collections = [MEMORY_COLLECTIONS[m] for m in requested_types if m in MEMORY_COLLECTIONS]
+    if not collections:
+        return {"status": "ok", "results": []}
+
+    limit_value = max(1, int(limit or Config.AI_MEMORY_MAX_RECALL_ITEMS))
+    use_tree = retrieval_mode == "tree" and Config.AI_TREE_SEARCH_ENABLED
+
+    if use_tree:
+        search_result = await tree_search(
+            query=query,
+            collections=collections,
+            limit=limit_value,
+            keyword_limit=limit_value,
+            score_threshold=0.6,
+        )
+        raw_results = search_result.get("combined_results", [])
+    else:
+        search_result = await hybrid_search(
+            query=query,
+            collections=collections,
+            limit=limit_value,
+            keyword_limit=limit_value,
+            score_threshold=0.6,
+        )
+        raw_results = search_result.get("combined_results", [])
+
+    memory_rows = []
+    for item in raw_results[:limit_value]:
+        payload = item.get("payload") or {}
+        memory_rows.append(
+            {
+                "memory_id": payload.get("memory_id") or item.get("id"),
+                "memory_type": payload.get("memory_type"),
+                "summary": payload.get("summary"),
+                "content": payload.get("content"),
+                "score": item.get("score"),
+                "sources": item.get("sources"),
+            }
+        )
+
+    record_telemetry_event(
+        "agent_memory_recall",
+        {
+            "query": query[:200],
+            "results": len(memory_rows),
+            "mode": "tree" if use_tree else "hybrid",
+            "memory_types": requested_types,
+        },
+    )
+    return {
+        "status": "ok",
+        "query": query,
+        "mode": "tree" if use_tree else "hybrid",
+        "results": memory_rows,
+    }
+
+
+async def run_harness_evaluation(
+    query: str,
+    *,
+    expected_keywords: Optional[List[str]] = None,
+    mode: str = "auto",
+    max_latency_ms: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Deterministic harness eval scorecard for prompt+retrieval behavior."""
+    if not Config.AI_HARNESS_EVAL_ENABLED:
+        return {"status": "disabled"}
+
+    start = time.time()
+    result = await route_query(
+        query=query,
+        mode=mode,
+        prefer_local=True,
+        limit=5,
+        keyword_limit=5,
+        score_threshold=0.7,
+        generate_response=True,
+    )
+    latency_ms = int((time.time() - start) * 1000)
+    response_text = (result.get("response") or "").strip()
+    keywords = [kw for kw in (expected_keywords or []) if isinstance(kw, str)]
+    relevance_score = _keyword_relevance(response_text, keywords)
+
+    latency_target = int(max_latency_ms or Config.AI_HARNESS_MAX_LATENCY_MS)
+    latency_ok = latency_ms <= latency_target
+    response_non_empty = bool(response_text)
+
+    # Weighted score keeps failure taxonomy deterministic.
+    score = (
+        (0.5 * relevance_score)
+        + (0.3 * (1.0 if latency_ok else 0.0))
+        + (0.2 * (1.0 if response_non_empty else 0.0))
+    )
+    passed = score >= Config.AI_HARNESS_MIN_ACCEPTANCE_SCORE
+    metrics = {
+        "relevance_score": round(relevance_score, 4),
+        "latency_ms": latency_ms,
+        "latency_target_ms": latency_target,
+        "latency_ok": latency_ok,
+        "response_non_empty": response_non_empty,
+        "overall_score": round(score, 4),
+    }
+    failure_category = None
+    if not passed:
+        failure_category = _classify_eval_failure(metrics)
+        HARNESS_STATS["failure_taxonomy"][failure_category] = (
+            HARNESS_STATS["failure_taxonomy"].get(failure_category, 0) + 1
+        )
+
+    HARNESS_STATS["total_runs"] += 1
+    HARNESS_STATS["passed"] += 1 if passed else 0
+    HARNESS_STATS["failed"] += 0 if passed else 1
+    HARNESS_STATS["last_run_at"] = datetime.now(timezone.utc).isoformat()
+
+    record_telemetry_event(
+        "harness_eval",
+        {
+            "query": query[:200],
+            "mode": mode,
+            "score": metrics["overall_score"],
+            "passed": passed,
+            "failure_category": failure_category,
+            "latency_ms": latency_ms,
+        },
+    )
+    return {
+        "status": "ok",
+        "query": query,
+        "mode": mode,
+        "passed": passed,
+        "min_acceptance_score": Config.AI_HARNESS_MIN_ACCEPTANCE_SCORE,
+        "metrics": metrics,
+        "failure_category": failure_category,
+        "route_result": result,
+    }
+
+
 def _summarize_results(items: List[Dict[str, Any]], max_items: int = 3) -> str:
     lines: List[str] = []
     for item in items[:max_items]:
@@ -970,7 +1336,7 @@ async def route_query(
     score_threshold: float = 0.7,
     generate_response: bool = False,
 ) -> Dict[str, Any]:
-    """Route query to SQL, semantic, keyword, or hybrid search."""
+    """Route query to SQL, semantic, keyword, tree, or hybrid search."""
     start = time.time()
     normalized_mode = (mode or "auto").lower()
     route = normalized_mode
@@ -982,6 +1348,8 @@ async def route_query(
             token_count = len(_normalize_tokens(query))
             if token_count <= 3:
                 route = "keyword"
+            elif Config.AI_TREE_SEARCH_ENABLED and token_count >= 8:
+                route = "tree"
             else:
                 route = "hybrid"
 
@@ -1014,6 +1382,16 @@ async def route_query(
             )
             results = {"semantic_results": hybrid_results["semantic_results"]}
             response_text = _summarize_results(hybrid_results["semantic_results"])
+        elif route == "tree":
+            tree_results = await tree_search(
+                query=query,
+                collections=list(COLLECTIONS.keys()),
+                limit=limit,
+                keyword_limit=keyword_limit,
+                score_threshold=score_threshold,
+            )
+            results = tree_results
+            response_text = _summarize_results(tree_results["combined_results"])
         else:
             hybrid_results = await hybrid_search(
                 query=query,
@@ -1109,6 +1487,17 @@ async def record_learning_feedback(
             collection_name="learning-feedback",
             points=[PointStruct(id=feedback_id, vector=embedding, payload=payload)],
         )
+        if Config.AI_MEMORY_ENABLED:
+            await store_agent_memory(
+                "semantic",
+                summary=f"User correction for query: {query[:120]}",
+                content=correction,
+                metadata={
+                    "query": query,
+                    "interaction_id": interaction_id,
+                    "tags": resolved_tags,
+                },
+            )
         if postgres_client is not None:
             try:
                 await postgres_client.execute(
@@ -1226,6 +1615,18 @@ async def track_interaction(
                 )
             ],
         )
+        if Config.AI_MEMORY_ENABLED:
+            await store_agent_memory(
+                "episodic",
+                summary=f"{agent_type} interaction: {query[:120]}",
+                content=response[:600],
+                metadata={
+                    "query": query,
+                    "response": response[:2000],
+                    "outcome": outcome,
+                    "tags": [f"model:{model_used}", f"agent:{agent_type}"],
+                },
+            )
         logger.info(f"Tracked interaction: {interaction_id}")
         record_telemetry_event(
             "interaction_tracked",
@@ -1287,6 +1688,18 @@ async def update_interaction_outcome(
         # If high-value, extract patterns
         if value_score >= Config.HIGH_VALUE_THRESHOLD and Config.PATTERN_EXTRACTION_ENABLED:
             await extract_patterns(interaction)
+            if Config.AI_MEMORY_ENABLED and outcome == "success":
+                await store_agent_memory(
+                    "procedural",
+                    summary=f"Successful procedure: {interaction.get('query', '')[:120]}",
+                    content=interaction.get("response", "")[:1500],
+                    metadata={
+                        "trigger": interaction.get("query", ""),
+                        "procedure": interaction.get("response", "")[:2000],
+                        "outcome": outcome,
+                        "value_score": value_score,
+                    },
+                )
 
         # Update context success rates
         if interaction.get("context_provided"):
@@ -1644,14 +2057,14 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="route_query",
-            description="Route a query to SQL, semantic, keyword, or hybrid search",
+            description="Route a query to SQL, semantic, keyword, tree, or hybrid search",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "query": {"type": "string"},
                     "mode": {
                         "type": "string",
-                        "enum": ["auto", "sql", "semantic", "keyword", "hybrid"],
+                        "enum": ["auto", "sql", "semantic", "keyword", "tree", "hybrid"],
                         "default": "auto",
                     },
                     "prefer_local": {"type": "boolean", "default": True},
@@ -1663,6 +2076,64 @@ async def list_tools() -> List[Tool]:
                 },
                 "required": ["query"],
             },
+        ),
+        Tool(
+            name="store_agent_memory",
+            description="Store episodic, semantic, or procedural memory items",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "memory_type": {
+                        "type": "string",
+                        "enum": ["episodic", "semantic", "procedural"],
+                    },
+                    "summary": {"type": "string"},
+                    "content": {"type": "string"},
+                    "metadata": {"type": "object"},
+                },
+                "required": ["memory_type", "summary"],
+            },
+        ),
+        Tool(
+            name="recall_agent_memory",
+            description="Recall memory using hybrid or tree retrieval mode",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "memory_types": {"type": "array", "items": {"type": "string"}},
+                    "limit": {"type": "integer", "default": 8},
+                    "retrieval_mode": {
+                        "type": "string",
+                        "enum": ["hybrid", "tree"],
+                        "default": "hybrid",
+                    },
+                },
+                "required": ["query"],
+            },
+        ),
+        Tool(
+            name="run_harness_eval",
+            description="Run deterministic harness evaluation with scorecard output",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "mode": {
+                        "type": "string",
+                        "enum": ["auto", "sql", "semantic", "keyword", "tree", "hybrid"],
+                        "default": "auto",
+                    },
+                    "expected_keywords": {"type": "array", "items": {"type": "string"}},
+                    "max_latency_ms": {"type": "integer"},
+                },
+                "required": ["query"],
+            },
+        ),
+        Tool(
+            name="harness_stats",
+            description="Get cumulative harness evaluation statistics and failure taxonomy",
+            inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
             name="learning_feedback",
@@ -1799,6 +2270,36 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             )
         ]
 
+    elif name == "store_agent_memory":
+        result = await store_agent_memory(
+            memory_type=arguments.get("memory_type", ""),
+            summary=arguments.get("summary", ""),
+            content=arguments.get("content"),
+            metadata=arguments.get("metadata"),
+        )
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "recall_agent_memory":
+        result = await recall_agent_memory(
+            query=arguments.get("query", ""),
+            memory_types=arguments.get("memory_types"),
+            limit=arguments.get("limit"),
+            retrieval_mode=arguments.get("retrieval_mode", "hybrid"),
+        )
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "run_harness_eval":
+        result = await run_harness_evaluation(
+            query=arguments.get("query", ""),
+            expected_keywords=arguments.get("expected_keywords"),
+            mode=arguments.get("mode", "auto"),
+            max_latency_ms=arguments.get("max_latency_ms"),
+        )
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "harness_stats":
+        return [TextContent(type="text", text=json.dumps(HARNESS_STATS, indent=2))]
+
     elif name == "learning_feedback":
         feedback_id = await record_learning_feedback(
             query=arguments.get("query", ""),
@@ -1895,13 +2396,19 @@ async def initialize_server():
         from continuous_learning import ContinuousLearningPipeline
         from shared.postgres_client import PostgresClient
 
+        pg_password = (
+            _read_secret(os.getenv("POSTGRES_PASSWORD_FILE", ""))
+            or _read_secret("/run/secrets/postgres_password")
+            or ""
+        )
+
         # Initialize PostgreSQL client for learning pipeline
         postgres_client = PostgresClient(
             host=os.getenv("POSTGRES_HOST", "postgres"),
             port=int(os.getenv("POSTGRES_PORT", "5432")),
             database=os.getenv("POSTGRES_DB", "aidb"),
             user=os.getenv("POSTGRES_USER", "mcp"),
-            password=os.getenv("POSTGRES_PASSWORD", "postgres"),
+            password=pg_password,
             sslmode=os.getenv("POSTGRES_SSLMODE"),
             sslrootcert=os.getenv("POSTGRES_SSLROOTCERT"),
             sslcert=os.getenv("POSTGRES_SSLCERT"),
@@ -2022,6 +2529,12 @@ async def main():
                 "status": "healthy",
                 "service": "hybrid-coordinator",
                 "collections": list(COLLECTIONS.keys()),
+                "ai_harness": {
+                    "enabled": Config.AI_HARNESS_ENABLED,
+                    "memory_enabled": Config.AI_MEMORY_ENABLED,
+                    "tree_search_enabled": Config.AI_TREE_SEARCH_ENABLED,
+                    "eval_enabled": Config.AI_HARNESS_EVAL_ENABLED,
+                },
                 "circuit_breakers": breakers or CIRCUIT_BREAKERS.get_all_stats(),
             })
 
@@ -2032,6 +2545,7 @@ async def main():
                 "service": "hybrid-coordinator",
                 "stats": snapshot_stats(),
                 "collections": list(COLLECTIONS.keys()),
+                "harness_stats": HARNESS_STATS,
                 "circuit_breakers": CIRCUIT_BREAKERS.get_all_stats(),
             })
 
@@ -2073,6 +2587,76 @@ async def main():
                     {"error": "route_query_failed", "detail": str(exc)},
                     status=500,
                 )
+
+        async def handle_tree_search(request):
+            """HTTP endpoint for tree-search retrieval."""
+            try:
+                data = await request.json()
+                query = data.get("query") or data.get("prompt") or ""
+                if not query:
+                    return web.json_response({"error": "query required"}, status=400)
+                result = await tree_search(
+                    query=query,
+                    collections=data.get("collections"),
+                    limit=int(data.get("limit", 5)),
+                    keyword_limit=int(data.get("keyword_limit", 5)),
+                    score_threshold=float(data.get("score_threshold", 0.7)),
+                )
+                return web.json_response(result)
+            except Exception as exc:  # noqa: BLE001
+                return web.json_response({"error": "tree_search_failed", "detail": str(exc)}, status=500)
+
+        async def handle_memory_store(request):
+            """HTTP endpoint for agent memory writes."""
+            try:
+                data = await request.json()
+                result = await store_agent_memory(
+                    memory_type=data.get("memory_type", ""),
+                    summary=data.get("summary", ""),
+                    content=data.get("content"),
+                    metadata=data.get("metadata"),
+                )
+                return web.json_response(result)
+            except Exception as exc:  # noqa: BLE001
+                return web.json_response({"error": "memory_store_failed", "detail": str(exc)}, status=500)
+
+        async def handle_memory_recall(request):
+            """HTTP endpoint for agent memory recall."""
+            try:
+                data = await request.json()
+                query = data.get("query") or data.get("prompt") or ""
+                if not query:
+                    return web.json_response({"error": "query required"}, status=400)
+                result = await recall_agent_memory(
+                    query=query,
+                    memory_types=data.get("memory_types"),
+                    limit=data.get("limit"),
+                    retrieval_mode=data.get("retrieval_mode", "hybrid"),
+                )
+                return web.json_response(result)
+            except Exception as exc:  # noqa: BLE001
+                return web.json_response({"error": "memory_recall_failed", "detail": str(exc)}, status=500)
+
+        async def handle_harness_eval(request):
+            """HTTP endpoint for harness scoring."""
+            try:
+                data = await request.json()
+                query = data.get("query") or data.get("prompt") or ""
+                if not query:
+                    return web.json_response({"error": "query required"}, status=400)
+                result = await run_harness_evaluation(
+                    query=query,
+                    expected_keywords=data.get("expected_keywords"),
+                    mode=data.get("mode", "auto"),
+                    max_latency_ms=data.get("max_latency_ms"),
+                )
+                return web.json_response(result)
+            except Exception as exc:  # noqa: BLE001
+                return web.json_response({"error": "harness_eval_failed", "detail": str(exc)}, status=500)
+
+        async def handle_harness_stats(_request):
+            """HTTP endpoint for harness aggregate stats."""
+            return web.json_response(HARNESS_STATS)
 
         async def handle_multi_turn_context(request):
             """HTTP endpoint for multi-turn context requests"""
@@ -2245,6 +2829,11 @@ async def main():
         http_app.router.add_get('/stats', handle_stats)
         http_app.router.add_post('/augment_query', handle_augment_query)
         http_app.router.add_post('/query', handle_query)
+        http_app.router.add_post('/search/tree', handle_tree_search)
+        http_app.router.add_post('/memory/store', handle_memory_store)
+        http_app.router.add_post('/memory/recall', handle_memory_recall)
+        http_app.router.add_post('/harness/eval', handle_harness_eval)
+        http_app.router.add_get('/harness/stats', handle_harness_stats)
         http_app.router.add_post('/feedback', handle_feedback)
 
         # New RLM endpoints
