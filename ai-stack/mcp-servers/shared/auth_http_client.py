@@ -24,7 +24,6 @@ Author: NixOS AI Stack Team
 Date: January 2026
 """
 
-import os
 from pathlib import Path
 from typing import Optional
 import httpx
@@ -56,15 +55,7 @@ def load_service_api_key(service_name: str) -> Optional[str]:
         except Exception as e:
             logger.warning("failed_to_read_secret", service=service_name, error=str(e))
 
-    # Fallback to environment variable (development mode)
-    env_var_name = service_name.upper()
-    api_key = os.environ.get(env_var_name)
-    if api_key:
-        logger.debug("loaded_api_key_from_env", service=service_name)
-        return api_key
-
-    logger.warning("no_api_key_found", service=service_name,
-                   secret_file=secret_file, env_var=env_var_name)
+    logger.warning("no_api_key_found", service=service_name, secret_file=secret_file)
     return None
 
 

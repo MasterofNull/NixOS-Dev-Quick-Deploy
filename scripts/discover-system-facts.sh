@@ -307,6 +307,24 @@ derive_early_kms_policy() {
   fi
 }
 
+derive_kernel_track() {
+  local cpu_vendor_local="$1"
+  local system_value_local="$2"
+
+  # Keep board/vendor kernels as defaults on non-x86 Linux targets.
+  # x86_64 hosts track latest stable by default.
+  case "${cpu_vendor_local}" in
+    arm|qualcomm|apple|riscv) echo "default" ;;
+    *)
+      if [[ "${system_value_local}" == "x86_64-linux" ]]; then
+        echo "latest-stable"
+      else
+        echo "default"
+      fi
+      ;;
+  esac
+}
+
 hostname_value="${HOSTNAME_OVERRIDE:-$(hostname -s 2>/dev/null || hostname)}"
 user_value="${PRIMARY_USER_OVERRIDE:-${USER:-$(id -un)}}"
 arch_value="${ARCH_OVERRIDE:-$(uname -m)}"
@@ -328,6 +346,7 @@ nixos_hardware_module="${NIXOS_HARDWARE_MODULE_OVERRIDE:-$(detect_nixos_hardware
 
 profile_value="${PROFILE_OVERRIDE:-ai-dev}"
 early_kms_policy="${EARLY_KMS_POLICY_OVERRIDE:-$(derive_early_kms_policy "$gpu_vendor" "$igpu_vendor")}"
+kernel_track="${KERNEL_TRACK_OVERRIDE:-$(derive_kernel_track "$cpu_vendor" "$system_value")}"
 enable_hibernation="${ENABLE_HIBERNATION_OVERRIDE:-false}"
 swap_size_gb="${SWAP_SIZE_GB_OVERRIDE:-0}"
 root_fsck_mode="${ROOT_FSCK_MODE_OVERRIDE:-check}"
@@ -401,8 +420,8 @@ if ! validate_bool "${ai_stack_enabled}"; then
   exit 1
 fi
 
-if ! validate_enum "${ai_backend}" llamacpp k3s; then
-  echo "Unsupported ai_backend value '${ai_backend}'. Expected llamacpp|k3s." >&2
+if ! validate_enum "${ai_backend}" llamacpp; then
+  echo "Unsupported ai_backend value '${ai_backend}'. Expected llamacpp." >&2
   exit 1
 fi
 
@@ -473,6 +492,11 @@ fi
 
 if ! validate_enum "${early_kms_policy}" auto force off; then
   echo "Unsupported earlyKmsPolicy '${early_kms_policy}'." >&2
+  exit 1
+fi
+
+if ! validate_enum "${kernel_track}" latest-stable default; then
+  echo "Unsupported kernel track '${kernel_track}'." >&2
   exit 1
 fi
 
@@ -698,6 +722,9 @@ cat > "${tmp_file}" <<FACTS
       firmwareType = "${firmware_type}";
       earlyKmsPolicy = "${early_kms_policy}";
       nixosHardwareModule = ${nixos_hardware_module_value};
+    };
+    kernel = {
+      track = "${kernel_track}";
     };
     deployment = {
       enableHibernation = ${enable_hibernation};

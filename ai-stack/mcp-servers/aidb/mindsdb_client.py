@@ -7,11 +7,21 @@ import logging
 import httpx
 import asyncio
 import os
+from pathlib import Path
 from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass
 from enum import Enum
 
 logger = logging.getLogger(__name__)
+
+
+def _read_secret(path: str) -> str:
+    if not path:
+        return ""
+    secret = Path(path)
+    if not secret.exists():
+        return ""
+    return secret.read_text(encoding="utf-8").strip()
 
 
 class MindsDBModelStatus(Enum):
@@ -158,7 +168,7 @@ class MindsDBClient:
             "port": os.getenv("AIDB_POSTGRES_PORT", "5432"),
             "database": os.getenv("AIDB_POSTGRES_DB", "mcp"),
             "user": os.getenv("AIDB_POSTGRES_USER", "mcp"),
-            "password": os.getenv("AIDB_POSTGRES_PASSWORD", "mcp_dev_password_change_me"),
+            "password": _read_secret(os.getenv("AIDB_POSTGRES_PASSWORD_FILE", "/run/secrets/postgres_password")) or "",
             "schema": "public"
         }
 

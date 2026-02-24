@@ -9,19 +9,19 @@ set -euo pipefail
 # Service port registry
 # Override any port via environment variable: export AIDB_MCP_PORT=9091
 declare -gA SERVICE_PORTS=(
-    [AIDB_MCP]="${AIDB_MCP_PORT:-8091}"
-    [HYBRID_COORDINATOR]="${HYBRID_COORDINATOR_PORT:-8092}"
-    [LLAMA_CPP]="${LLAMA_CPP_PORT:-8080}"
-    [QDRANT_HTTP]="${QDRANT_HTTP_PORT:-6333}"
-    [QDRANT_GRPC]="${QDRANT_GRPC_PORT:-6334}"
-    [POSTGRES]="${POSTGRES_PORT:-5432}"
-    [REDIS]="${REDIS_PORT:-6379}"
-    [OPEN_WEBUI]="${OPEN_WEBUI_PORT:-3001}"
-    [MINDSDB]="${MINDSDB_PORT:-47334}"
-    [RALPH_WIGGUM]="${RALPH_WIGGUM_PORT:-8098}"
-    [HEALTH_MONITOR]="${HEALTH_MONITOR_PORT:-8099}"
-    [AIDER]="${AIDER_PORT:-8093}"
-    [AUTOGPT]="${AUTOGPT_PORT:-8097}"
+    [AIDB_MCP]="${AIDB_MCP_PORT:-${AIDB_PORT:-}}"
+    [HYBRID_COORDINATOR]="${HYBRID_COORDINATOR_PORT:-${HYBRID_PORT:-}}"
+    [LLAMA_CPP]="${LLAMA_CPP_PORT:-}"
+    [QDRANT_HTTP]="${QDRANT_HTTP_PORT:-${QDRANT_PORT:-}}"
+    [QDRANT_GRPC]="${QDRANT_GRPC_PORT:-}"
+    [POSTGRES]="${POSTGRES_PORT:-}"
+    [REDIS]="${REDIS_PORT:-}"
+    [OPEN_WEBUI]="${OPEN_WEBUI_PORT:-}"
+    [MINDSDB]="${MINDSDB_PORT:-}"
+    [RALPH_WIGGUM]="${RALPH_WIGGUM_PORT:-${RALPH_PORT:-}}"
+    [HEALTH_MONITOR]="${HEALTH_MONITOR_PORT:-}"
+    [AIDER]="${AIDER_PORT:-}"
+    [AUTOGPT]="${AUTOGPT_PORT:-}"
     # Removed unused services: CONTINUE (8094), GOOSE (8095), LANGCHAIN (8096)
 )
 
@@ -45,7 +45,7 @@ declare -gA SERVICE_HOSTS=(
 
 # Get service URL
 # Usage: get_service_url SERVICE_NAME
-# Example: get_service_url AIDB_MCP  # Returns: http://localhost:8091
+# Example: get_service_url AIDB_MCP
 get_service_url() {
     local service="$1"
 
@@ -62,7 +62,7 @@ get_service_url() {
 
 # Get service port
 # Usage: get_service_port SERVICE_NAME
-# Example: get_service_port LLAMA_CPP  # Returns: 8080
+# Example: get_service_port LLAMA_CPP
 get_service_port() {
     local service="$1"
 

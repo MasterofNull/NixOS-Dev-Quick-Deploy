@@ -41,8 +41,12 @@ minimise remote token consumption while maintaining quality.
 
 ```
 nixos-quick-deploy.sh       Main orchestrator script
-lib/config.sh               All config generation logic (3700+ lines)
-config/variables.sh         User-facing knobs (not committed)
+lib/
+  tools.sh                  AI CLI native installers (Claude, Gemini, Qwen, Codex)
+  config.sh                 All config generation logic (3700+ lines)
+config/
+  variables.sh              User-facing knobs (not committed)
+  npm-packages.sh           NPM fallback packages (native installers preferred)
 templates/
   configuration.nix         System NixOS module (flat form)
   flake.nix                 Flake template with placeholders
@@ -176,3 +180,138 @@ work. Decisions made in this codebase should optimise for:
   a single nixpkgs revision.
 - **Minimal surface** — do not enable services, packages, or modules that are
   not actively used. Every enabled service is a potential failure point.
+
+---
+
+## 8. Using Gemini CLI, Qwen CLI, and Codex CLI for Large Codebase Analysis
+
+When analyzing large codebases or multiple files that might exceed context limits, use CLI tools with large context windows. Three primary options are available:
+
+| Tool | Command | Context Strength | Best For |
+|------|---------|------------------|----------|
+| **Gemini CLI** | `gemini -p` | Massive (1M+ tokens) | Full codebase analysis, architecture reviews |
+| **Qwen CLI** | `qwen` | Very Large | Deep code understanding, multi-file refactoring |
+| **Codex CLI** | `codex` | Large | Pattern detection, security audits, test generation |
+
+### File and Directory Inclusion Syntax
+
+All three tools use the `@` syntax to include files and directories. Paths are relative to where you run the command:
+
+```bash
+# Single file
+gemini -p "@src/main.py Explain this file's purpose and structure"
+qwen "@src/main.py Explain this file's purpose and structure"
+codex "@src/main.py Explain this file's purpose and structure"
+
+# Multiple files
+gemini -p "@package.json @src/index.js Analyze the dependencies used in the code"
+qwen "@package.json @src/index.js Analyze the dependencies used in the code"
+codex "@package.json @src/index.js Analyze the dependencies used in the code"
+
+# Entire directory
+gemini -p "@src/ Summarize the architecture of this codebase"
+qwen "@src/ Summarize the architecture of this codebase"
+codex "@src/ Summarize the architecture of this codebase"
+
+# Multiple directories
+gemini -p "@src/ @tests/ Analyze test coverage for the source code"
+qwen "@src/ @tests/ Analyze test coverage for the source code"
+codex "@src/ @tests/ Analyze test coverage for the source code"
+
+# Current directory and subdirectories
+gemini -p "@./ Give me an overview of this entire project"
+qwen "@./ Give me an overview of this entire project"
+codex "@./ Give me an overview of this entire project"
+
+# Or use --all_files flag (Gemini only)
+gemini --all_files -p "Analyze the project structure and dependencies"
+```
+
+### Implementation Verification Examples
+
+```bash
+# Check if a feature is implemented
+gemini -p "@src/ @lib/ Has dark mode been implemented? Show relevant files and functions"
+qwen "@src/ @lib/ Has dark mode been implemented? Show relevant files and functions"
+codex "@src/ @lib/ Has dark mode been implemented? Show relevant files and functions"
+
+# Verify authentication implementation
+gemini -p "@src/ @middleware/ Is JWT authentication implemented? List all auth-related endpoints"
+qwen "@src/ @middleware/ Is JWT authentication implemented? List all auth-related endpoints"
+codex "@src/ @middleware/ Is JWT authentication implemented? List all auth-related endpoints"
+
+# Check for specific patterns
+gemini -p "@src/ Are there any React hooks that handle WebSocket connections? List them with file paths"
+qwen "@src/ Are there any React hooks that handle WebSocket connections? List them with file paths"
+codex "@src/ Are there any React hooks that handle WebSocket connections? List them with file paths"
+
+# Verify error handling
+gemini -p "@src/ @api/ Is proper error handling implemented for all API endpoints?"
+qwen "@src/ @api/ Is proper error handling implemented for all API endpoints?"
+codex "@src/ @api/ Is proper error handling implemented for all API endpoints?"
+
+# Check for rate limiting
+gemini -p "@backend/ @middleware/ Is rate limiting implemented? Show the implementation details"
+qwen "@backend/ @middleware/ Is rate limiting implemented? Show the implementation details"
+codex "@backend/ @middleware/ Is rate limiting implemented? Show the implementation details"
+
+# Verify caching strategy
+gemini -p "@src/ @lib/ @services/ Is Redis caching implemented? List all cache-related functions"
+qwen "@src/ @lib/ @services/ Is Redis caching implemented? List all cache-related functions"
+codex "@src/ @lib/ @services/ Is Redis caching implemented? List all cache-related functions"
+
+# Check for security measures
+gemini -p "@src/ @api/ Are SQL injection protections implemented? Show how inputs are sanitized"
+qwen "@src/ @api/ Are SQL injection protections implemented? Show how inputs are sanitized"
+codex "@src/ @api/ Are SQL injection protections implemented? Show how inputs are sanitized"
+
+# Verify test coverage
+gemini -p "@src/payment/ @tests/ Is the payment processing module fully tested? List all test cases"
+qwen "@src/payment/ @tests/ Is the payment processing module fully tested? List all test cases"
+codex "@src/payment/ @tests/ Is the payment processing module fully tested? List all test cases"
+```
+
+### When to Use Each CLI Tool
+
+**Use `gemini -p` when:**
+- Analyzing entire codebases or large directories
+- Comparing multiple large files
+- Need to understand project-wide patterns or architecture
+- Working with files totaling more than 100KB
+- Maximum context window is required (1M+ tokens)
+
+**Use `qwen` when:**
+- Deep code understanding and reasoning is needed
+- Multi-file refactoring tasks
+- Complex logic analysis across modules
+- Code explanation with architectural insights
+- When you need nuanced understanding of code intent
+
+**Use `codex` when:**
+- Pattern detection across the codebase
+- Security audits and vulnerability scanning
+- Test generation and coverage analysis
+- Code quality assessment
+- Finding duplicate code or anti-patterns
+
+### Tool Selection Quick Reference
+
+| Task Type | Primary Tool | Alternative |
+|-----------|-------------|-------------|
+| Full codebase architecture review | `gemini -p` | `qwen` |
+| Security audit | `codex` | `gemini -p` |
+| Multi-file refactoring plan | `qwen` | `gemini -p` |
+| Test coverage analysis | `codex` | `qwen` |
+| Pattern/anti-pattern detection | `codex` | `qwen` |
+| Deep code explanation | `qwen` | `gemini -p` |
+| Dependency analysis | `gemini -p` | `codex` |
+| API endpoint inventory | `codex` | `gemini -p` |
+
+### Important Notes
+
+- Paths in `@` syntax are relative to your current working directory when invoking the CLI
+- All CLIs include file contents directly in the context
+- No `--yolo` flag needed for read-only analysis
+- When checking implementations, be specific about what you're looking for to get accurate results
+- For very large codebases, start with `gemini -p` for overview, then use `qwen` or `codex` for deep dives
+- Cross-verify critical findings (security, architecture) using multiple tools

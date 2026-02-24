@@ -19,6 +19,10 @@ in
   # ---- Host-specific packages -----------------------------------------------
   home.packages = with pkgs;
     [
+      # Steam launcher available in the user profile (system integration and
+      # runtime dependencies come from NixOS programs.steam in roles/gaming.nix).
+      steam
+
       # Gitea + Tea CLI for local forge workflows
       gitea
       tea
@@ -29,9 +33,6 @@ in
       # Modern CLI replacements
       fzf bat eza dust duf
 
-      # Container / image tooling (complements system podman)
-      podman-tui
-
       # Git power-tools
       tig lazygit git-lfs git-crypt
 
@@ -40,9 +41,7 @@ in
     ]
     ++ aiderPackage;
 
-  # ---- NPM global prefix (needed for AI CLI wrappers) ----------------------
   home.sessionVariables = {
-    NPM_CONFIG_PREFIX = "$HOME/.npm-global";
     # AI tool defaults
     AIDER_DEFAULT_MODEL = "gpt-4o-mini";
     AIDER_LOG_DIR = "$HOME/.local/share/aider/logs";
@@ -53,12 +52,8 @@ in
 
   # ---- Session PATH additions -----------------------------------------------
   home.sessionPath = [
-    "$HOME/.npm-global/bin"
     "$HOME/.local/bin"
   ];
-
-  # ---- NPM config (.npmrc) --------------------------------------------------
-  home.file.".npmrc".text = "prefix=\${HOME}/.npm-global\n";
 
   # ---- Aider default config -------------------------------------------------
   home.file.".config/aider/config.toml".text = ''

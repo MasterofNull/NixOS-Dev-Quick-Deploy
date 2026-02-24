@@ -7,7 +7,7 @@ set -euo pipefail
 # Configuration
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/qdrant}"
 QDRANT_HOST="${QDRANT_HOST:-localhost}"
-QDRANT_PORT="${QDRANT_PORT:-6333}"
+QDRANT_PORT="${QDRANT_PORT}"
 QDRANT_API_KEY="${QDRANT_API_KEY:-}"
 CURL_TIMEOUT="${CURL_TIMEOUT:-30}"
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-5}"
@@ -410,7 +410,7 @@ main() {
             echo "Environment variables:"
             echo "  BACKUP_DIR          - Backup directory (default: /var/backups/qdrant)"
             echo "  QDRANT_HOST         - Qdrant host (default: localhost)"
-            echo "  QDRANT_PORT         - Qdrant port (default: 6333)"
+            echo "  QDRANT_PORT         - Qdrant port (default: QDRANT_PORT env)"
             echo "  QDRANT_API_KEY      - Qdrant API key (optional)"
             echo "  RETENTION_DAYS      - Daily retention (default: 7)"
             echo "  RETENTION_WEEKS     - Weekly retention (default: 4)"

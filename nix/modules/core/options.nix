@@ -134,6 +134,19 @@
       };
     };
 
+    kernel = {
+      track = lib.mkOption {
+        type = lib.types.enum [ "latest-stable" "default" ];
+        default = "latest-stable";
+        description = ''
+          Kernel package selection policy.
+          - latest-stable: use pkgs.linuxPackages_latest when available.
+          - default: use pkgs.linuxPackages (board/vendor defaults).
+          This is generated from local hardware facts during deployment.
+        '';
+      };
+    };
+
     deployment = {
       enableHibernation = lib.mkOption {
         type = lib.types.bool;
@@ -210,6 +223,74 @@
       };
     };
 
+    logging = {
+      audit = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable Linux audit subsystem (auditd) for host audit trails.";
+        };
+
+        watchPaths = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [
+            "/var/lib/aidb"
+            "/var/lib/postgresql"
+            "/var/lib/redis"
+            "/srv/patient-data"
+          ];
+          example = [ "/srv/patient-data" "/var/lib/aidb" ];
+          description = ''
+            Filesystem paths to watch with auditd.
+            Each path is tracked with read/write/execute/attribute access and
+            tagged with mySystem.logging.audit.key.
+          '';
+        };
+
+        key = lib.mkOption {
+          type = lib.types.str;
+          default = "patient-data-access";
+          description = "Audit key used for watched patient-data paths.";
+        };
+
+        immutableRules = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = ''
+            Lock audit rules after boot (`-e 2`) so runtime tampering requires
+            a reboot to change policy.
+          '';
+        };
+      };
+
+      remoteSyslog = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Forward logs to a remote syslog collector.";
+        };
+
+        host = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+          example = "10.42.0.20";
+          description = "Remote syslog collector host or IP.";
+        };
+
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 6514;
+          description = "Remote syslog collector port.";
+        };
+
+        protocol = lib.mkOption {
+          type = lib.types.enum [ "tcp" "udp" ];
+          default = "tcp";
+          description = "Transport protocol used for remote syslog forwarding.";
+        };
+      };
+    };
+
     disk = {
       layout = lib.mkOption {
         type = lib.types.enum [ "none" "gpt-efi-ext4" "gpt-efi-btrfs" "gpt-luks-ext4" ];
@@ -240,6 +321,58 @@
       type = lib.types.bool;
       default = false;
       description = "Enable secure boot integration (lanzaboote) when available.";
+    };
+
+    secrets = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Enable declarative sops-nix secret decryption into /run/secrets.";
+      };
+
+      sopsFile = lib.mkOption {
+        type = lib.types.str;
+        default = "/etc/nixos/secrets/secrets.sops.yaml";
+        description = "Absolute path to the SOPS-encrypted secrets file.";
+      };
+
+      ageKeyFile = lib.mkOption {
+        type = lib.types.str;
+        default = "/var/lib/sops-nix/key.txt";
+        description = "Path to the AGE private key used by sops-nix at activation time.";
+      };
+
+      names = {
+        aidbApiKey = lib.mkOption {
+          type = lib.types.str;
+          default = "aidb_api_key";
+          description = "SOPS key name for AIDB API auth secret.";
+        };
+
+        hybridApiKey = lib.mkOption {
+          type = lib.types.str;
+          default = "hybrid_coordinator_api_key";
+          description = "SOPS key name for Hybrid Coordinator API auth secret.";
+        };
+
+        embeddingsApiKey = lib.mkOption {
+          type = lib.types.str;
+          default = "embeddings_api_key";
+          description = "SOPS key name for embeddings API auth secret.";
+        };
+
+        postgresPassword = lib.mkOption {
+          type = lib.types.str;
+          default = "postgres_password";
+          description = "SOPS key name for PostgreSQL password secret.";
+        };
+
+        redisPassword = lib.mkOption {
+          type = lib.types.str;
+          default = "redis_password";
+          description = "SOPS key name for Redis password secret.";
+        };
+      };
     };
 
     # ---------------------------------------------------------------------------
@@ -297,14 +430,12 @@
       };
 
       backend = lib.mkOption {
-        type = lib.types.enum [ "llamacpp" "k3s" ];
+        type = lib.types.enum [ "llamacpp" ];
         default = "llamacpp";
         description = ''
           Inference backend.
           - llamacpp: native llama.cpp server (OpenAI-compatible API on :8080).
             Default for single-workstation AI development; no daemon overhead.
-          - k3s: full Kubernetes-orchestrated stack (AIDB, hybrid-coordinator, ralph-wiggum).
-            Only needed for multi-service production deployments.
         '';
       };
 
@@ -366,6 +497,85 @@
           default = [ ];
           description = "Additional CLI flags passed to llama-server.";
         };
+
+        huggingFaceRepo = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "unsloth/Qwen3-4B-Instruct-2507-GGUF";
+          description = ''
+            HuggingFace repo (org/name) from which to download the model GGUF
+            on first boot if the file at `model` is absent.
+            null = disable automatic download (model must be placed manually).
+          '';
+        };
+
+        huggingFaceFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
+          description = ''
+            Filename within the HuggingFace repo to download.
+            Defaults to the basename of `model` when null.
+          '';
+        };
+
+        sha256 = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "5b3e7f...";
+          description = "Required SHA256 (hex) for downloaded chat GGUF model when huggingFaceRepo is set.";
+        };
+      };
+
+      embeddingServer = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = ''
+            Enable a dedicated llama.cpp embedding server on a separate port.
+            Serves /v1/embeddings for RAG ingestion (Qdrant) and Open WebUI.
+            Runs independently from the chat inference server.
+          '';
+        };
+
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 8081;
+          description = "TCP port for the embedding llama.cpp instance.";
+        };
+
+        model = lib.mkOption {
+          type = lib.types.str;
+          default = "/var/lib/llama-cpp/models/embed.gguf";
+          description = "Path to the GGUF embedding model file (e.g. nomic-embed-text, bge-small-en).";
+        };
+
+        huggingFaceRepo = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "nomic-ai/nomic-embed-text-v1.5-GGUF";
+          description = "HuggingFace repo for auto-download of the embedding model on first boot.";
+        };
+
+        huggingFaceFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "nomic-embed-text-v1.5.Q8_0.gguf";
+          description = "Filename within the HuggingFace repo. Defaults to basename of model when null.";
+        };
+
+        sha256 = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "c2f9a1...";
+          description = "Required SHA256 (hex) for downloaded embedding GGUF model when huggingFaceRepo is set.";
+        };
+
+        extraArgs = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          description = "Additional CLI flags for the embedding llama-server instance.";
+        };
       };
 
       vectorDb = {
@@ -396,59 +606,373 @@
         '';
       };
 
-      # ── K3s / Kubernetes options (backend = "k3s") ──────────────────────────
-      modelProfile = lib.mkOption {
-        type = lib.types.enum [ "auto" "small" "medium" "large" ];
-        default = "auto";
-        description = "Requested model profile tier for K3s AI stack defaults.";
+      # ── Switchboard: local/remote LLM routing proxy ─────────────────────────
+      switchboard = {
+        enable = lib.mkOption {
+          type    = lib.types.bool;
+          default = false;
+          description = "Enable AI Switchboard OpenAI-compatible proxy on port 8085 for local/remote LLM routing.";
+        };
+        port = lib.mkOption {
+          type    = lib.types.port;
+          default = 8085;
+          description = "TCP port for the AI Switchboard proxy.";
+        };
+      };
+
+      # ── AI harness architecture (memory + eval + tree-search retrieval) ─────
+      aiHarness = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable harness-engineering runtime features for the AI stack.";
+        };
+
+        memory = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Enable tiered agent memory (episodic, semantic, procedural).";
+          };
+
+          maxRecallItems = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 8;
+            description = "Maximum memory entries returned per recall request.";
+          };
+        };
+
+        retrieval = {
+          treeSearchEnable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Enable tree-search retrieval expansion in hybrid coordinator.";
+          };
+
+          treeSearchMaxDepth = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 2;
+            description = "Maximum tree-search depth for retrieval branching.";
+          };
+
+          treeSearchBranchFactor = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 3;
+            description = "Maximum branches evaluated per tree-search depth level.";
+          };
+        };
+
+        eval = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Enable harness evaluation endpoints and scorecards.";
+          };
+
+          minAcceptanceScore = lib.mkOption {
+            type = lib.types.float;
+            default = 0.7;
+            description = "Minimum overall harness score required to pass.";
+          };
+
+          maxLatencyMs = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 3000;
+            description = "Default latency SLO target (ms) for harness evaluations.";
+          };
+        };
+      };
+    };
+
+    # ---------------------------------------------------------------------------
+    # Monitoring stack (Prometheus + Node Exporter).
+    # Replaces ad-hoc dashboard collector parsing with stable metrics endpoints.
+    # ---------------------------------------------------------------------------
+    monitoring = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Enable declarative Prometheus + node_exporter system monitoring.";
+      };
+
+      listenOnLan = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Expose Prometheus and node_exporter ports on LAN.";
+      };
+
+      prometheusPort = lib.mkOption {
+        type = lib.types.port;
+        default = 9090;
+        description = "Prometheus HTTP listen port.";
+      };
+
+      nodeExporterPort = lib.mkOption {
+        type = lib.types.port;
+        default = 9100;
+        description = "node_exporter listen port.";
+      };
+
+      commandCenter = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable declarative command-center dashboard services and collectors.";
+        };
+
+        bindAddress = lib.mkOption {
+          type = lib.types.str;
+          default = "127.0.0.1";
+          description = "Bind address for command-center frontend and API.";
+        };
+
+        frontendPort = lib.mkOption {
+          type = lib.types.port;
+          default = 8888;
+          description = "Command-center dashboard frontend port.";
+        };
+
+        apiPort = lib.mkOption {
+          type = lib.types.port;
+          default = 8889;
+          description = "Command-center dashboard API backend port.";
+        };
+
+        dataDir = lib.mkOption {
+          type = lib.types.str;
+          default = "/var/lib/nixos-system-dashboard";
+          description = "Persistent command-center dashboard data directory.";
+        };
+
+        collectorLiteIntervalSeconds = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 5;
+          description = "Fast collector interval (seconds) for system/network metrics.";
+        };
+
+        collectorFullIntervalSeconds = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 60;
+          description = "Full collector interval (seconds) for deeper stack metrics.";
+        };
+      };
+    };
+
+
+    # ---------------------------------------------------------------------------
+    # Central host-mode port registry.
+    # Single source of truth for localhost service bindings.
+    # ---------------------------------------------------------------------------
+    ports = {
+      llamaCpp = lib.mkOption {
+        type = lib.types.port;
+        default = 8080;
+        description = "llama.cpp inference HTTP port.";
+      };
+
+      embedding = lib.mkOption {
+        type = lib.types.port;
+        default = 8081;
+        description = "llama.cpp embedding HTTP port.";
+      };
+
+      qdrantHttp = lib.mkOption {
+        type = lib.types.port;
+        default = 6333;
+        description = "Qdrant HTTP API port.";
+      };
+
+      qdrantGrpc = lib.mkOption {
+        type = lib.types.port;
+        default = 6334;
+        description = "Qdrant gRPC API port.";
+      };
+
+      postgres = lib.mkOption {
+        type = lib.types.port;
+        default = 5432;
+        description = "PostgreSQL TCP port.";
+      };
+
+      redis = lib.mkOption {
+        type = lib.types.port;
+        default = 6379;
+        description = "Redis TCP port.";
+      };
+
+      mcpAidb = lib.mkOption {
+        type = lib.types.port;
+        default = 8002;
+        description = "AIDB MCP HTTP port.";
+      };
+
+      mcpHybrid = lib.mkOption {
+        type = lib.types.port;
+        default = 8003;
+        description = "Hybrid coordinator MCP HTTP port.";
+      };
+
+      mcpRalph = lib.mkOption {
+        type = lib.types.port;
+        default = 8004;
+        description = "Ralph orchestrator MCP HTTP port.";
+      };
+
+      switchboard = lib.mkOption {
+        type = lib.types.port;
+        default = 8085;
+        description = "AI switchboard proxy port.";
+      };
+
+      prometheus = lib.mkOption {
+        type = lib.types.port;
+        default = 9090;
+        description = "Prometheus HTTP port.";
+      };
+
+      nodeExporter = lib.mkOption {
+        type = lib.types.port;
+        default = 9100;
+        description = "Node exporter HTTP port.";
+      };
+
+      commandCenterFrontend = lib.mkOption {
+        type = lib.types.port;
+        default = 8888;
+        description = "Command-center frontend port.";
+      };
+
+      commandCenterApi = lib.mkOption {
+        type = lib.types.port;
+        default = 8889;
+        description = "Command-center API port.";
+      };
+    };
+
+    localhostIsolation = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Enable nftables localhost service-segmentation for internal AI/data ports.";
+      };
+
+      allowedServiceGids = lib.mkOption {
+        type = lib.types.listOf lib.types.int;
+        default = [ 0 35010 35011 35012 ];
+        description = "Allowed Linux GIDs for loopback access to restricted internal service ports.";
+      };
+    };
+    # MCP (Model Context Protocol) server configuration.
+    # Declarative systemd services for the local AI stack MCP tier.
+    # These are only active when roles.aiStack.enable = true and
+    # aiStack.backend = "llamacpp" (K3s backend uses Kubernetes for MCP).
+    # ---------------------------------------------------------------------------
+    mcpServers = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Enable declarative MCP server services (embeddings, aidb,
+          hybrid-coordinator, ralph-wiggum) as native NixOS systemd units.
+          Requires roles.aiStack.enable = true and backend = "llamacpp".
+        '';
+      };
+      repoPath = lib.mkOption {
+        type = lib.types.str;
+        default = "/opt/nixos-quick-deploy";
+        description = ''
+          Absolute path to the NixOS-Dev-Quick-Deploy repository root on the
+          deployed system. MCP server Python source is read from
+          <repoPath>/ai-stack/mcp-servers/.
+        '';
+      };
+
+      dataDir = lib.mkOption {
+        type = lib.types.str;
+        default = "/var/lib/ai-stack";
+        description = "Persistent state directory for all MCP services.";
       };
 
       embeddingModel = lib.mkOption {
         type = lib.types.str;
         default = "BAAI/bge-small-en-v1.5";
-        description = "Default embedding model written into the AI stack env ConfigMap (k3s backend).";
+        description = "HuggingFace model ID for the local embeddings service.";
       };
 
-      llamaDefaultModel = lib.mkOption {
-        type = lib.types.str;
-        default = "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF";
-        description = "Default llama.cpp model identifier written into the AI stack env ConfigMap (k3s backend).";
+      embeddingsPort = lib.mkOption {
+        type = lib.types.port;
+        default = 8001;
+        description = "TCP port for the embeddings HTTP service.";
       };
 
-      llamaModelFile = lib.mkOption {
-        type = lib.types.str;
-        default = "qwen2.5-coder-7b-instruct-q4_k_m.gguf";
-        description = "Default llama.cpp GGUF filename written into the AI stack env ConfigMap (k3s backend).";
+      aidbPort = lib.mkOption {
+        type = lib.types.port;
+        default = 8002;
+        description = "TCP port for the AIDB MCP server HTTP endpoint.";
       };
 
-      namespace = lib.mkOption {
-        type = lib.types.str;
-        default = "ai-stack";
-        description = "Kubernetes namespace containing the AI stack resources (k3s backend).";
+      hybridPort = lib.mkOption {
+        type = lib.types.port;
+        default = 8003;
+        description = "TCP port for the hybrid-coordinator MCP server.";
       };
 
-      manifestPath = lib.mkOption {
-        type = lib.types.path;
-        default = ../../.. + "/ai-stack/kubernetes";
-        description = "Path to the AI stack Kubernetes kustomization directory (k3s backend).";
+      ralphPort = lib.mkOption {
+        type = lib.types.port;
+        default = 8004;
+        description = "TCP port for the ralph-wiggum loop MCP server.";
       };
 
-      reconcileIntervalMinutes = lib.mkOption {
-        type = lib.types.ints.positive;
-        default = 15;
-        description = "How often to re-run Kubernetes reconciliation for the AI stack manifests (k3s backend).";
+      postgres = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable PostgreSQL for AIDB telemetry and tool-discovery persistence.";
+        };
+
+        database = lib.mkOption {
+          type = lib.types.str;
+          default = "aidb";
+          description = "PostgreSQL database name for the AI stack.";
+        };
+
+        user = lib.mkOption {
+          type = lib.types.str;
+          default = "aidb";
+          description = "PostgreSQL user for the AI stack.";
+        };
       };
 
-      kubectlTimeout = lib.mkOption {
-        type = lib.types.str;
-        default = "60s";
-        description = "kubectl request timeout for API checks and apply operations (k3s backend).";
-      };
+      redis = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable Redis cache service for MCP stack.";
+        };
 
-      disableMarkerPath = lib.mkOption {
-        type = lib.types.str;
-        default = "/var/lib/nixos-quick-deploy/disable-ai-stack";
-        description = "When this marker file exists, K3s manifest reconciliation is skipped (k3s backend).";
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 6379;
+          description = "Redis TCP port for MCP services.";
+        };
+
+        bind = lib.mkOption {
+          type = lib.types.str;
+          default = "127.0.0.1";
+          description = "Redis bind address.";
+        };
+
+        maxmemory = lib.mkOption {
+          type = lib.types.str;
+          default = "512mb";
+          description = "Redis maxmemory setting.";
+        };
+
+        maxmemoryPolicy = lib.mkOption {
+          type = lib.types.str;
+          default = "allkeys-lru";
+          description = "Redis maxmemory-policy setting.";
+        };
       };
     };
 

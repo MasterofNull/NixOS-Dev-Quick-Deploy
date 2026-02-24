@@ -1,5 +1,22 @@
 # Known Issues & Troubleshooting
 
+## Phase 30 — Virtualization Stack
+
+#### NIX-ISSUE-024: `virtualisation.libvirtd.qemu.ovmf` removed in NixOS 25.11 (Fixed)
+- **Date**: 2026-02-20
+- **Status**: ✅ Fixed in `nix/modules/roles/virtualization.nix`
+- **Symptom**: Enabling `roles.virtualization.enable = true` fails evaluation with:
+  ```
+  Failed assertions:
+  - The 'virtualisation.libvirtd.qemu.ovmf' submodule has been removed.
+    All OVMF images distributed with QEMU are now available by default.
+  ```
+- **Root Cause**: `virtualization.nix` set `virtualisation.libvirtd.qemu.ovmf.enable = lib.mkDefault true`. This submodule was removed in NixOS 25.11; OVMF firmware is now bundled automatically with the libvirt QEMU driver and no longer requires opt-in.
+- **Fix**: Removed `ovmf.enable = lib.mkDefault true;` from the `qemu {}` block. The submodule must not appear at all in NixOS 25.11+.
+- **Tracking**: NIX-ISSUE-024, Phase 30
+
+---
+
 ## Phase 7 - Documentation Verification
 
 ### Known Issues

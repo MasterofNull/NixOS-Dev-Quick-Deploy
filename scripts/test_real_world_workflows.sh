@@ -8,12 +8,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=../config/service-endpoints.sh
+source "$REPO_ROOT/config/service-endpoints.sh"
 KNOWLEDGE_SKILL="$REPO_ROOT/.agent/skills/aidb-knowledge/SKILL.md"
 RAG_SKILL="$REPO_ROOT/.agent/skills/rag-techniques/SKILL.md"
 PROJECT_IMPORT_SKILL="$REPO_ROOT/.agent/skills/project-import/SKILL.md"
 SMART_CONFIG_GEN="$REPO_ROOT/scripts/smart_config_gen.sh"
 
-AIDB_BASE_URL="${AIDB_BASE_URL:-http://${SERVICE_HOST:-localhost}:8091}"
+AIDB_BASE_URL="${AIDB_BASE_URL:-${AIDB_URL}}"
 
 tmp_config=""
 

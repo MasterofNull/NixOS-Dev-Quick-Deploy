@@ -1,33 +1,30 @@
-K8S_DIR := ai-stack/kubernetes
-KUBECTL := kubectl --request-timeout=60s
-NAMESPACE := ai-stack
-
 .PHONY: up down restart ps logs health metrics security-audit security-scan
 
 up:
-	$(KUBECTL) apply -k $(K8S_DIR)
+	sudo systemctl start ai-stack.target command-center-dashboard-api.service command-center-dashboard-frontend.service
 
 down:
-	$(KUBECTL) scale deploy -n $(NAMESPACE) --replicas=0 --all
+	sudo systemctl stop command-center-dashboard-frontend.service command-center-dashboard-api.service ai-stack.target
 
 restart:
-	$(KUBECTL) rollout restart deploy -n $(NAMESPACE) --all
+	sudo systemctl restart ai-stack.target command-center-dashboard-api.service command-center-dashboard-frontend.service
 
 ps:
-	$(KUBECTL) get pods -n $(NAMESPACE)
+	systemctl --no-pager --type=service | rg 'ai-stack|llama-cpp|qdrant|redis|postgresql|command-center-dashboard'
 
 logs:
 	@if [ -z "$(SERVICE)" ]; then \
-		echo "Usage: make logs SERVICE=<deployment>"; \
+		echo "Usage: make logs SERVICE=<systemd-unit>"; \
 		exit 1; \
 	fi
-	$(KUBECTL) logs -n $(NAMESPACE) deploy/$(SERVICE) -f
+	journalctl -u $(SERVICE) -f
 
 health:
 	./scripts/ai-stack-health.sh
 
 metrics:
-	./scripts/collect-ai-metrics.sh
+	systemctl status --no-pager prometheus.service prometheus-node-exporter.service
+	bash -lc '. ./config/service-endpoints.sh; curl -fsS "${PROMETHEUS_URL%/}/-/healthy"'
 
 security-audit:
 	./scripts/security-audit.sh

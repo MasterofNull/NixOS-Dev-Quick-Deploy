@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List
 import json
 import os
+import hashlib
 import fcntl  # P2-REL-003: File locking
 from pathlib import Path
 
@@ -22,6 +23,18 @@ TELEMETRY_FILE = TELEMETRY_DIR / "vscode-events.jsonl"
 
 # Ensure telemetry directory exists
 TELEMETRY_DIR.mkdir(parents=True, exist_ok=True)
+TELEMETRY_ENABLED = os.getenv("AIDB_VSCODE_TELEMETRY_ENABLED", os.getenv("AI_TELEMETRY_ENABLED", "false")).lower() == "true"
+SENSITIVE_TOKENS = ("prompt", "query", "response", "message", "text", "input", "output")
+
+
+def _scrub_payload(value: Any, parent_key: str = "") -> Any:
+    if isinstance(value, dict):
+        return {k: _scrub_payload(v, parent_key=k) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_scrub_payload(v, parent_key=parent_key) for v in value]
+    if isinstance(value, str) and parent_key and any(token in parent_key.lower() for token in SENSITIVE_TOKENS):
+        return f"sha256:{hashlib.sha256(value.encode('utf-8')).hexdigest()}"
+    return value
 
 
 class VscodeEvent(BaseModel):
@@ -75,6 +88,9 @@ async def collect_event(event: VscodeEvent):
     in a JSONL file for analysis and dashboard display.
     """
     try:
+        if not TELEMETRY_ENABLED:
+            return {"status": "disabled", "timestamp": datetime.now(timezone.utc).isoformat()}
+
         # Auto-generate timestamp if not provided
         if not event.timestamp:
             event.timestamp = datetime.now(timezone.utc)
@@ -82,6 +98,7 @@ async def collect_event(event: VscodeEvent):
         # Convert to dict for JSON serialization
         event_dict = event.model_dump()
         event_dict['timestamp'] = event.timestamp.isoformat()
+        event_dict = _scrub_payload(event_dict)
 
         # P2-REL-003: Append to JSONL file with file locking to prevent corruption
         with open(TELEMETRY_FILE, "a") as f:

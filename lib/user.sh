@@ -560,8 +560,8 @@ prompt_huggingface_token() {
     fi
 
     # Always show this section header in interactive mode
-    print_section "Local AI Stack (K3s)"
-    print_info "AI stack configuration is handled in Phase 9 (K3s)."
+    print_section "Local AI Stack"
+    print_info "AI stack configuration is handled declaratively by NixOS modules."
     print_info "Use --without-ai-model to skip AI stack deployment."
     if [[ -z "${LOCAL_AI_STACK_ENABLED:-}" ]]; then
         if [[ "${RUN_AI_MODEL:-true}" == "true" ]]; then

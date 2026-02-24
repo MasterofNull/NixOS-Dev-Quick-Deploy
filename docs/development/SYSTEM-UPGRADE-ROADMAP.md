@@ -74,6 +74,12 @@ This document outlines the comprehensive system upgrade for the NixOS Quick Depl
 | 27 | Repository Governance + Skill/MCP CLI Convergence | CRITICAL | PLANNED | 5-7 days |
 | 28 | K3s-First Service Ops + Flake Orchestrator Convergence | CRITICAL | IN PROGRESS | 3-5 days |
 | 29 | K3s-First MLOps Lifecycle Layer | HIGH | PLANNED | 5-8 days |
+| 30 | Virtualization Stack | HIGH | IN PROGRESS | 1-2 days |
+| 31 | Hardware Performance Fit | HIGH | IN PROGRESS | 1-2 days |
+| 32 | AI Stack Strategy Layer | HIGH | IN PROGRESS | 5-7 days |
+| 33 | Observability & Monitoring | MEDIUM | PLANNED | 3-4 days |
+| 34 | Declarative Hardening Conversion | CRITICAL | PLANNED | 4-6 days |
+| 35 | AI Harness Architecture (Memory + Eval + Tree Search) | HIGH | IN PROGRESS | 3-5 days |
 
 ---
 
@@ -103,11 +109,11 @@ This document outlines the comprehensive system upgrade for the NixOS Quick Depl
 - [x] **AI-ISSUE-003** `ai-stack/mcp-servers/hybrid-coordinator/continuous_learning_daemon.py` had TODO for Postgres metrics storage. Implemented optional Postgres client wiring for metrics persistence. (Maps to Phase 13.7)
 - [x] **AI-ISSUE-004** `ai-stack/mcp-servers/ralph-wiggum/hooks.py` had TODO for CPU monitoring. Added CPU load checks and enforced resource limit hook per iteration. (Maps to Phase 10.39/10.40)
 - [x] **AI-ISSUE-005** `scripts/rag_system_complete.py` had TODO for semantic similarity search using embeddings. Implemented cosine similarity cache hit logic. (Maps to Phase 13.6)
-- [ ] **AI-ISSUE-006** `ai-stack/mcp-servers/aidb/tool_discovery_daemon.py` has TODO for Postgres integration. Decide whether to add metrics/history storage and implement if required. (Maps to Phase 10.39)
+- [x] **AI-ISSUE-006** `ai-stack/mcp-servers/aidb/tool_discovery_daemon.py` now initializes optional Postgres and persists discovery run metrics + latest discovered tool catalog into `aidb_tool_discovery_runs`/`aidb_discovered_tools` tables. (Maps to Phase 10.39)
 - [x] **AI-ISSUE-007** Gemini CLI installs can fail when the bundled ripgrep download fails on some platforms; added installer fallback guidance in tooling output + health check. (Maps to Phase 19.17)
 - [x] **AI-ISSUE-008** AI userland tools (gpt4all, aider, llama.cpp CLI) are Home Manager-scoped; when HM is not applied they appear missing. Added post-deploy validation warning + HM switch command in Phase 7 to surface missing tools. (Maps to Phase 16 + Phase 14)
-- [ ] **AI-ISSUE-009** AIDB embedding generation fails in K8s when HuggingFace egress is blocked; add embedding-service fallback or preload model artifacts. (Maps to Phase 10.39 + Phase 16.3)
-- [ ] **AI-ISSUE-010** `telemetry_events` table missing new columns (`tokens_saved`, `rag_hits`, etc.) causing 500s. Add schema sync/migration during AIDB startup. (Maps to Phase 10.39 + Phase 16.3)
+- [x] **AI-ISSUE-009** Added resilient embedding fallback chain in AIDB: embedding-service URL (if configured) → local SentenceTransformer → llama.cpp `/v1/embeddings`, preventing hard failure when HuggingFace model download/egress fails. (Maps to Phase 10.39 + Phase 16.3)
+- [x] **AI-ISSUE-010** `telemetry_events` schema sync is enforced at AIDB startup via `_ensure_telemetry_schema()` (adds `tokens_saved`, `rag_hits`, and related columns with `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`). (Maps to Phase 10.39 + Phase 16.3)
 - [x] **AI-ISSUE-011** Hybrid/AIDB embedding dimension mismatch (384 vs 768) broke Qdrant/AIDB and E2E RAG; aligned config to 384 and added auto-migrate/collection recreation when empty. (Maps to Phase 10 + Phase 16)
 - [x] **AI-ISSUE-012** AIDB startup crash due to structlog-style kwargs in stdlib logger; switched to formatted logging to avoid `TypeError`. (Maps to Phase 10)
 - [x] **AI-ISSUE-013** Hybrid readiness failure due to missing circuit breaker stats accessor (`get_all_stats`) and missing `CircuitBreakerError` import; added both and rebuilt. (Maps to Phase 10)
@@ -143,6 +149,10 @@ This document outlines the comprehensive system upgrade for the NixOS Quick Depl
 **Architecture Findings (2026-02-15) — Declarative Migration**
 
 - [x] **NIX-ISSUE-016** Bash code-generation for hardware configuration. Root cause: 52 `@PLACEHOLDER@` tokens in `templates/configuration.nix` were replaced by Nix code strings assembled in `lib/config.sh`. Hardware settings (GPU packages, CPU microcode, kernel modules, sysctl, build parallelism, binary caches) were expressed as generated text rather than Nix module declarations, making the system bash-dependent for every rebuild and preventing hardware-agnostic reuse. Fix (Phase 26): replaced 14 hardware-specific placeholders with declarative Nix modules in `nix/modules/hardware/`; added hardware auto-detection (`lib/hardware-detect.sh`) that writes per-host `facts.nix`; added `nixos-hardware` flake input with automatic module lookup. Template reduced from 52 to 24 placeholders. (Maps to Phase 26)
+
+**NixOS Systems Architect Findings (2026-02-20) — Phase 30-33 Implementation**
+
+- [x] **NIX-ISSUE-024** `virtualisation.libvirtd.qemu.ovmf` submodule removed in NixOS 25.11. Root cause: `nix/modules/roles/virtualization.nix` set `virtualisation.libvirtd.qemu.ovmf.enable = lib.mkDefault true` — this submodule was removed in NixOS 25.11; OVMF firmware images distributed with QEMU are now bundled by default and no longer require explicit opt-in. The option no longer exists and NixOS aborts with a failed assertion on first enable of `roles.virtualization`. Fix: removed the `ovmf.enable` line from `qemu {}` block in `virtualization.nix`. (Maps to Phase 30)
 
 ## Active Priority Queue (2026-02-15)
 
@@ -188,6 +198,164 @@ These are the next actions agreed by the specialty agents, ordered by risk and i
    - Digest pinning (K8S-ISSUE-006)
    - Host networking removal (K8S-ISSUE-007)
    - Workload securityContext gaps (K8S-ISSUE-008)
+
+## Phase 34: Declarative Hardening Conversion (Planned 2026-02-24)
+
+**Status:** PLANNED (no implementation executed yet)
+
+**Objective:** Replace fragile imperative/scripted behaviors with declarative NixOS modules and privacy-safe telemetry defaults.
+
+### Scope
+
+- [ ] **34.1 Monitoring migration (remove human-output parsing)**
+  - Replace dashboard collector dependencies on `scripts/generate-dashboard-data.sh` with Prometheus + Node Exporter metrics.
+  - Remove any remaining `top`/`df -h` parsing paths from production monitoring.
+  - Delivery target:
+    - `nix/modules/services/monitoring.nix` (new)
+    - `nix/modules/services/default.nix` imports monitoring module
+    - `mySystem.monitoring.*` options in `nix/modules/core/options.nix`
+  - Validation:
+    - `nix flake check`
+    - `systemctl status prometheus node-exporter`
+    - `curl -sf http://127.0.0.1:9100/metrics | rg '^node_cpu_seconds_total'`
+    - `curl -sf 'http://127.0.0.1:9090/api/v1/query?query=node_filesystem_size_bytes'`
+
+- [x] **34.2 Nixify MCP databases (remove imperative DB setup script)**
+  - Decommission `scripts/setup-mcp-databases.sh` as an active deployment path.
+  - Standardize on declarative `services.postgresql` and `services.redis` with systemd dependency ordering.
+  - Ensure deployment docs and health checks reference declarative services only.
+  - Validation:
+    - `nix flake check`
+    - `systemctl status postgresql redis-mcp`
+    - `scripts/mcp-db-setup`
+
+- [x] **34.3 Remove sudo keepalive background loop**
+  - Remove `start_sudo_keepalive` and related lifecycle hooks from `nixos-quick-deploy.sh`.
+  - Enforce explicit privilege boundaries (single sudo prompt + grouped privileged operations).
+  - Validation:
+    - `bash -n nixos-quick-deploy.sh`
+    - Run deploy dry-run, interrupt, and verify no orphan keepalive loop:
+      - `pgrep -af 'sudo -n -v'` returns no background keepalive process.
+
+- [x] **34.4 Eliminate split-brain k3s imperative branching**
+  - Remove `scripts/deploy-clean.sh` logic that introspects Nix values and runs phase scripts for `k3s` backend.
+  - Keep activation logic in declarative modules / activation scripts only.
+  - Validation:
+    - `bash -n scripts/deploy-clean.sh`
+    - `rg -n 'phase-09-k3s|nix_eval_raw_safe.*aiStack.backend' scripts/deploy-clean.sh` returns no active orchestration block.
+
+- [x] **34.5 Model supply-chain hardening (hash pinning)**
+  - Add a pinned hash manifest for GGUF model artifacts.
+  - Update `scripts/download-llama-cpp-models.sh` to verify SHA256 for every downloaded artifact before acceptance.
+  - Fail closed when hash entry is missing or mismatched.
+  - Validation:
+    - Positive: valid hash downloads successfully.
+    - Negative: tampered artifact fails with non-zero exit.
+    - `sha256sum -c` style verification logs present.
+
+- [x] **34.6 Telemetry privacy hardening (opt-in + redaction before disk write)**
+  - Make file telemetry opt-in by default.
+  - Add deterministic scrubbing/hashing for free-text fields (`prompt`, `query`, `response`, equivalents) before JSONL writes.
+  - Apply to runtime telemetry producers (not only test generators).
+  - Validation:
+    - With telemetry disabled: no new JSONL records.
+    - With telemetry enabled: records exist but sensitive fields are redacted/hashed.
+    - `rg -n '"prompt"|"query"|"response"' ~/.local/share/nixos-ai-stack/telemetry/*.jsonl` does not expose plaintext user text.
+
+- [ ] **34.7 Documentation and rollout control**
+  - Update roadmap status and migration notes after each subtask.
+  - Add rollback notes per subtask (generation rollback + service restart plan).
+  - Gate merge on passing checks below.
+
+### Phase 34 Test Gate (must pass before marking DONE)
+
+- [x] `nix flake check` (validated with `nix flake check --no-build path:/home/hyperd/Documents/NixOS-Dev-Quick-Deploy`)
+- [x] `bash -n nixos-quick-deploy.sh scripts/deploy-clean.sh scripts/download-llama-cpp-models.sh`
+- [ ] `tests/run-unit-tests.sh`
+- [ ] `tests/run-integration-tests.sh` (with applicable flags)
+- [ ] Manual security checks for:
+  - no sudo keepalive process
+  - telemetry plaintext redaction/opt-in behavior
+  - model hash mismatch hard-fail
+  - Prometheus/Node Exporter metric availability
+
+### Phase 34 Execution Update (2026-02-24)
+
+- Implemented:
+  - Declarative monitoring module added (`nix/modules/services/monitoring.nix`) and imported via services default.
+  - Declarative Redis option set + service wiring in MCP stack (`mySystem.mcpServers.redis.*` + `services.redis.servers.mcp`).
+  - `scripts/setup-mcp-databases.sh` converted to declarative deprecation wrapper.
+  - Removed sudo keepalive loop and related cleanup logic from `nixos-quick-deploy.sh`.
+  - Removed imperative K3s backend orchestration branch from `scripts/deploy-clean.sh`.
+  - Added pinned GGUF SHA256 manifest (`config/llama-cpp-models.sha256`) and downloader verification (fail-closed).
+  - Added telemetry opt-in defaults + redaction hashing for runtime writers (Hybrid, Ralph, VSCode telemetry endpoint).
+  - Updated dashboard collector CPU/disk collection to avoid `top`/`df -h` parsing (`/proc/stat`, `df -B1`).
+- Validation run:
+  - `bash -n` checks passed for modified shell scripts.
+  - Python compile checks passed for modified runtime telemetry modules.
+  - `nix flake check --no-build path:/home/hyperd/Documents/NixOS-Dev-Quick-Deploy` passed.
+
+### Risk Notes
+
+- Removing imperative fallbacks may expose hidden dependencies in legacy workflows; keep changes behind explicit phase gating until tests pass.
+- Hash pinning is intentionally fail-closed and may require initial manifest population work.
+- Telemetry redaction may affect downstream analytics expectations; update parsers before rollout.
+
+---
+
+## Phase 35: AI Harness Architecture (Started 2026-02-24)
+
+**Status:** IN PROGRESS
+
+**Objective:** Implement declarative harness-engineering patterns across the local AI stack: tiered memory, deterministic eval scorecards, and tree-search retrieval.
+
+### Scope
+
+- [x] **35.1 Declarative Nix options for harness controls**
+  - Added `mySystem.aiStack.aiHarness.*` in `nix/modules/core/options.nix`:
+    - memory controls (`enable`, `maxRecallItems`)
+    - retrieval controls (`treeSearchEnable`, `treeSearchMaxDepth`, `treeSearchBranchFactor`)
+    - eval controls (`enable`, `minAcceptanceScore`, `maxLatencyMs`)
+
+- [x] **35.2 Hybrid service env wiring (flake-first)**
+  - Wired `mySystem.aiStack.aiHarness.*` into `nix/modules/services/mcp-servers.nix` env vars for `ai-hybrid-coordinator`.
+  - No imperative startup scripts added.
+
+- [x] **35.3 Tiered memory in hybrid coordinator**
+  - Added Qdrant collections:
+    - `agent-memory-episodic`
+    - `agent-memory-semantic`
+    - `agent-memory-procedural`
+  - Added storage/recall paths and auto-capture hooks from interactions and feedback.
+
+- [x] **35.4 Tree-search retrieval mode**
+  - Added branch-and-aggregate retrieval (`tree_search`) with depth and branch factor controls.
+  - Added routing mode `tree` and endpoint `POST /search/tree`.
+
+- [x] **35.5 Harness-eval scorecards**
+  - Added deterministic eval runner (`run_harness_evaluation`) with:
+    - relevance score (keyword hit ratio)
+    - latency SLO check
+    - response completeness check
+    - pass/fail and failure taxonomy
+  - Added endpoints:
+    - `POST /harness/eval`
+    - `GET /harness/stats`
+
+- [x] **35.6 MCP tool surface for harness capabilities**
+  - Added tools:
+    - `store_agent_memory`
+    - `recall_agent_memory`
+    - `run_harness_eval`
+    - `harness_stats`
+
+### Validation
+
+- [x] `python -m py_compile ai-stack/mcp-servers/hybrid-coordinator/server.py`
+- [x] `nix flake check --no-build path:/home/hyperd/Documents/NixOS-Dev-Quick-Deploy`
+- [ ] Integration test run against live hybrid service (`/memory/*`, `/search/tree`, `/harness/*`)
+
+---
 
 ## Phase 1: Security Hardening
 
@@ -5384,3 +5552,188 @@ Added `igpuVendor` option to `options.nix`. Added `_detect_igpu_vendor()` to `ha
 - [x] Missing optional packages on fresh systems are surfaced as warnings with fallback paths.
 - [ ] Readiness analysis passes on target host with no hard failures.
 - [ ] First post-reinstall clean deployment completes using flake-first path (`switch` mode) without manual file ownership repair.
+
+---
+
+## Phase 30: Virtualization Stack
+
+**Goal:** Fully functional KVM/QEMU host on the ThinkPad P14s Gen 2a AMD — VM creation, SPICE display, USB pass-through, and network bridging for guest VMs.
+
+**Tasks:**
+- [x] **30.1** Enable `mySystem.roles.virtualization.enable = true` in `nix/hosts/nixos/facts.nix`
+- [x] **30.2** KVM module `kvm_amd` loaded at boot (handled by `virtualization.nix`)
+- [x] **30.3** `libvirtd` + QEMU running as non-root (`runAsRoot = false`)
+- [x] **30.4** OVMF UEFI firmware for EFI guest VMs
+- [x] **30.5** SPICE USB redirection daemon + spice-gtk client libraries
+- [x] **30.6** `virt-manager` GTK management UI available
+- [x] **30.7** Primary user added to `libvirtd` and `kvm` groups
+- [ ] **30.8** Default network bridge `virbr0` (NAT) confirmed active post-deploy
+- [ ] **30.9** Add `virtio` kernel modules to `boot.kernelModules` for paravirt NIC/disk in guests
+- [ ] **30.10** Enable `virtualisation.libvirtd.onBoot = "start"` for persistent VMs
+- [ ] **30.11** Add Windows 11 VM helper using VirtIO drivers ISO
+
+**Verification:**
+```bash
+virsh list --all
+systemctl status libvirtd
+kvm-ok  # or: ls /dev/kvm
+```
+
+---
+
+## Phase 31: Hardware Performance Fit
+
+**Goal:** Extract full performance from the ThinkPad P14s Gen 2a AMD Ryzen — zram swap, TCP BBR, NVMe tuning, and AI workload memory policy.
+
+### 31.1 zram Compressed Swap
+
+**Tasks:**
+- [x] **31.1.1** Add `nix/modules/hardware/zram.nix` — declarative zram swap, 30% RAM, zstd
+- [x] **31.1.2** Import in `hardware/default.nix`
+- [ ] **31.1.3** Verify `swapon --show` includes zram0 after deploy
+
+### 31.2 Network Performance Tuning
+
+**Tasks:**
+- [x] **31.2.1** Add `nix/modules/hardware/network.nix` — TCP BBR, fq qdisc, large socket buffers
+- [x] **31.2.2** Import in `hardware/default.nix`
+- [ ] **31.2.3** Verify: `sysctl net.ipv4.tcp_congestion_control` returns `bbr`
+
+### 31.3 AI Workload Memory Policy
+
+**Tasks:**
+- [ ] **31.3.1** Enable `vm.overcommit_memory = 1` for llama.cpp model mmap (prevents false OOM)
+- [ ] **31.3.2** Enable `earlyoom` or `systemd-oomd` to kill runaway inference processes
+- [ ] **31.3.3** Add `nohang` or `oomd` tuning for AI workload stability
+
+### 31.4 Success Criteria
+
+- [ ] `zramSwap` device visible in `swapon --show`
+- [ ] TCP BBR active: `sysctl net.ipv4.tcp_congestion_control` = `bbr`
+- [ ] AI model loads without OOM during concurrent context windows
+
+---
+
+## Phase 32: AI Stack Strategy Layer
+
+**Goal:** Implement the six architectural strategies — Index Card, Librarian, Switchboard, Scribe, Mechanic, Gatekeeper — as declarative NixOS services layered on the existing llama.cpp + MCP stack.
+
+### 32.1 Mechanic — Self-Healing Services
+
+Systemd watchdog + restart policies on all AI services.
+
+**Tasks:**
+- [x] **32.1.1** Add `WatchdogSec = "60s"` and `StartLimitBurst = 5` to all MCP services
+- [x] **32.1.2** Add `CapabilityBoundingSet = ""` + `RestrictSUIDSGID = true` to MCP services
+- [x] **32.1.3** Fix `ProtectHome` bug: add `ReadOnlyPaths = [ repoPath ]` so services can read Python scripts
+- [ ] **32.1.4** Add `OnFailure = systemd-notify-failure@%n.service` alert hook
+
+### 32.2 Gatekeeper — Sandboxing & Least Privilege
+
+Systemd security hardening on all AI services.
+
+**Tasks:**
+- [x] **32.2.1** `ProtectSystem = "strict"` + `PrivateTmp = true` (already present)
+- [x] **32.2.2** `CapabilityBoundingSet = ""` + `RestrictSUIDSGID = true` added
+- [x] **32.2.3** `LockPersonality = true` + `RestrictNamespaces = true` added
+- [x] **32.2.4** `ReadOnlyPaths = [ repoPath ]` fixes the ProtectHome access regression
+- [ ] **32.2.5** `sudo` rules: allow `ai-stack` user to `systemctl restart ai-*.service` without password
+
+### 32.3 Index Card — Capability Registry
+
+Build-time JSON manifest of all enabled AI capabilities.
+
+**Tasks:**
+- [x] **32.3.1** Add `nix/modules/services/capability-registry.nix` — generates `/etc/ai-stack/capabilities.json` via `environment.etc`
+- [x] **32.3.2** Import in `services/default.nix`
+- [ ] **32.3.3** Add a `capability-server` MCP tool that serves `list_capabilities()` by reading this file
+
+### 32.4 Switchboard — Hybrid LLM Router
+
+FastAPI proxy that routes requests to local llama.cpp or a remote API.
+
+**Tasks:**
+- [x] **32.4.1** Add `nix/modules/services/switchboard.nix` — FastAPI routing proxy on :8085
+- [x] **32.4.2** Add `mySystem.aiStack.switchboard.enable` option
+- [x] **32.4.3** Import in `services/default.nix`
+- [ ] **32.4.4** Add PII detection regex (credit cards, SSN) → force local route
+- [ ] **32.4.5** Add complexity scoring (token count + keyword) → route to remote when configured
+- [ ] **32.4.6** Update `home.sessionVariables.OPENAI_API_BASE` to point at switchboard when enabled
+
+### 32.5 Librarian — Context Broker (MinIO + Qdrant + Ingest)
+
+Event-driven ingestion pipeline from MinIO `inputs` bucket into Qdrant.
+
+**Tasks:**
+- [x] **32.5.1** Enable `mySystem.aiStack.vectorDb.enable = true` in `facts.nix`
+- [x] **32.5.2** Enable embedding server (`embeddingServer.enable = true`)
+- [ ] **32.5.3** Add `nix/modules/services/ingest-d.nix` — watches MinIO `inputs` bucket, embeds + upserts to Qdrant
+- [ ] **32.5.4** Add MinIO `inputs` bucket creation to `mlops-minio-init.service`
+- [ ] **32.5.5** Document: drop file to `s3://inputs/` → auto-indexed into AIDB
+
+### 32.6 Scribe — Telemetry & Episodic Memory
+
+Nightly log shipping from journald to MinIO, with LLM reflection.
+
+**Tasks:**
+- [x] **32.6.1** Add `nix/modules/services/scribe.nix` — systemd timer + Python shipper
+- [x] **32.6.2** Add `mySystem.aiStack.scribe.enable` option
+- [x] **32.6.3** Import in `services/default.nix`
+- [ ] **32.6.4** Add nightly reflection job: reads yesterday's logs + asks local LLM for lessons
+- [ ] **32.6.5** Feed reflection output back into Qdrant `lessons` collection via AIDB
+
+### 32.7 Success Criteria
+
+- [ ] All 6 MCP services pass `systemctl is-active`
+- [ ] `/etc/ai-stack/capabilities.json` readable and valid JSON
+- [ ] Switchboard `:8085` responds to `/v1/chat/completions`
+- [ ] Qdrant `:6333` API healthy: `curl http://localhost:6333/health`
+- [ ] Embedding server `:8081` responds to `/health`
+
+---
+
+## Phase 33: Observability & Monitoring
+
+**Goal:** Zero-config per-second metrics on all AI services, systemd units, hardware, and network — using Netdata (lightweight, NixOS-native, no cloud required).
+
+**Tasks:**
+- [ ] **33.1** Add `services.netdata.enable = true` with AI-stack plugin config
+- [ ] **33.2** Configure Netdata to monitor: systemd services (ai-*, llama-*), Postgres, MinIO, Qdrant
+- [ ] **33.3** Add hardware monitoring: `k10temp` (CPU temp), `amdgpu` (GPU), `nvme` health
+- [ ] **33.4** Add Prometheus exporter endpoint on llama.cpp (`/metrics`)
+- [ ] **33.5** Add Grafana dashboard (optional, Netdata UI may suffice)
+- [ ] **33.6** Alert on: service restart loop (>3 in 5min), RAM > 90%, GPU temp > 85°C
+
+**Verification:**
+```bash
+curl http://localhost:19999/api/v1/info  # Netdata running
+```
+
+---
+
+## Phase 34: Declarative Runtime Purge (2026-02-24)
+
+**Goal:** Eliminate remaining active imperative runtime/telemetry/model setup paths and enforce systemd+Nix operational entrypoints.
+
+**Tasks:**
+- [x] **34.1** Deprecate legacy telemetry scripts:
+  - `scripts/collect-ai-metrics.sh`
+  - `scripts/rotate-telemetry.sh`
+  - `scripts/ai-metrics-auto-updater.sh`
+- [x] **34.2** Move telemetry rotation unit templates out of active path:
+  - `systemd/telemetry-rotation.service`
+  - `systemd/telemetry-rotation.timer`
+- [x] **34.3** Deprecate imperative model bootstrap script:
+  - `scripts/ai-model-setup.sh`
+- [x] **34.4** Deprecate duplicate package counting scripts:
+  - `scripts/count-packages-accurately.sh`
+  - `scripts/count-packages-simple.sh`
+- [x] **34.5** Remove cron-based dashboard collector generation path:
+  - `scripts/cron-templates.sh`
+- [x] **34.6** Replace `Makefile` Kubernetes operations with systemd-native operations (`ai-stack.target`, dashboard units, journald logs).
+
+**Verification:**
+```bash
+bash -n scripts/collect-ai-metrics.sh scripts/rotate-telemetry.sh scripts/ai-metrics-auto-updater.sh scripts/ai-model-setup.sh scripts/count-packages-accurately.sh scripts/count-packages-simple.sh scripts/cron-templates.sh
+rg -n "collect-ai-metrics\.sh|rotate-telemetry\.sh|generate-dashboard-data\.sh" scripts lib phases Makefile nixos-quick-deploy.sh --glob '!deprecated/**'
+```

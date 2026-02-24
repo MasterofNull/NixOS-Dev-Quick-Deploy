@@ -14,7 +14,7 @@ fi
 
 # Configuration
 SERVICE_HOST="${SERVICE_HOST:-localhost}"
-RALPH_BASE_URL="${RALPH_BASE_URL:-${RALPH_URL:-http://${SERVICE_HOST}:8098}}"
+RALPH_BASE_URL="${RALPH_BASE_URL:-${RALPH_URL}}"
 TASK_DIR="${TASK_DIR:-./ai-stack/ralph-tasks}"
 LOG_DIR="${LOG_DIR:-$HOME/.local/share/nixos-ai-stack/logs}"
 TELEMETRY_DIR="${TELEMETRY_DIR:-$HOME/.local/share/nixos-ai-stack/telemetry}"
@@ -287,7 +287,7 @@ main() {
             echo "  help                - Show this help message"
             echo ""
             echo "Environment Variables:"
-            echo "  RALPH_BASE_URL      - Ralph API URL (default: http://${SERVICE_HOST}:8098)"
+            echo "  RALPH_BASE_URL      - Ralph API URL (default: from config/service-endpoints.sh)"
             echo "  TASK_DIR            - Task definitions directory (default: ./ai-stack/ralph-tasks)"
             echo "  LOG_DIR             - Log directory (default: ~/.local/share/nixos-ai-stack/logs)"
             ;;

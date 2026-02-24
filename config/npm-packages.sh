@@ -11,18 +11,23 @@
 # - debug_env: optional environment variable that enables verbose wrapper logging
 #
 # Wrapper files are created under ~/.npm-global/bin and point at the resolved bin
-# entry inside ~/.npm-global/lib/node_modules/<package>. The manifest is parsed
-# by lib/tools.sh (install_claude_code()/install_vscodium_extensions()) so keep
-# the delimiter structure intact when adding new packages.
+# entry inside ~/.npm-global/lib/node_modules/<package>. The manifest is parsed by
+# lib/tools.sh (install_claude_code()/install_vscodium_extensions()) so keep the
+# delimiter structure intact when adding new packages.
+#
+# NOTE: Primary AI CLIs now use native installers (lib/tools.sh):
+#   - Claude Code: install_claude_code_native()
+#   - Gemini CLI: install_gemini_cli_native()
+#   - Qwen Code:  install_qwen_code_native()
+#   - Codex CLI:  install_codex_cli_native()
+#
+# NPM packages below are FALLBACK only - used when native installer fails or
+# for systems that cannot run native installers.
 
 NPM_AI_PACKAGE_MANIFEST=(
-  # NOTE: Claude Code removed from NPM manifest — now installed via native installer
-  # (curl -fsSL https://claude.ai/install.sh | bash). See lib/tools.sh install_claude_code_native().
-  "@openai/codex|0.28.0|GPT CodeX CLI|codex|gpt-codex-wrapper|OpenAI.gpt-codex|GPT_CODEX_DEBUG"
-  "@openai/codex|0.28.0|Codex IDE|codex|codex-wrapper|OpenAI.codex-ide|CODEX_DEBUG"
-  "openai|6.16.0|OpenAI CLI|openai|openai-wrapper|OpenAI.chatgpt|OPENAI_DEBUG"
-  "@google/gemini-cli|0.3.3|Gemini CLI|gemini|gemini-wrapper|Google.geminicodeassist|GEMINI_DEBUG"
-  "@qwen-code/qwen-code|0.0.11|Qwen Code CLI|qwen|qwen-wrapper||QWEN_DEBUG"
+  # Fallback packages - only installed if native installer fails
+  "@openai/codex|0.28.0|GPT CodeX CLI (fallback)|codex|gpt-codex-wrapper|OpenAI.gpt-codex|GPT_CODEX_DEBUG"
+  "openai|6.16.0|OpenAI CLI (fallback)|openai|openai-wrapper|OpenAI.chatgpt|OPENAI_DEBUG"
 )
 
 declare -gA NPM_AI_PACKAGE_MANUAL_URLS=(

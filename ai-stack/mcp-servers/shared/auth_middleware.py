@@ -27,7 +27,6 @@ Author: NixOS AI Stack Team
 Date: January 2026
 """
 
-import os
 import secrets
 from typing import Optional
 from fastapi import HTTPException, Request, Depends
@@ -85,9 +84,7 @@ class APIKeyAuth:
         self.optional = optional
 
         # Load expected key
-        self.expected_key = expected_key or (
-            os.environ.get(env_var_name) if env_var_name else None
-        )
+        self.expected_key = expected_key
 
         if not self.expected_key and not self.optional:
             logger.warning(
@@ -238,11 +235,11 @@ def generate_api_key(length: int = 32) -> str:
 
 
 # Convenience function for simple use cases
-def require_api_key(request: Request) -> None:
+def require_api_key(request: Request, expected_key: Optional[str] = None) -> None:
     """
     Simple authentication check for routes.
 
-    Reads API key from AISTACK_API_KEY environment variable.
+    Uses explicitly provided expected_key from declarative secret loaders.
 
     Usage:
         @app.get("/protected")
@@ -256,7 +253,6 @@ def require_api_key(request: Request) -> None:
     Raises:
         HTTPException: 401 if authentication fails
     """
-    expected_key = os.environ.get("AISTACK_API_KEY")
     if not expected_key:
         return  # Optional auth - no key configured
 

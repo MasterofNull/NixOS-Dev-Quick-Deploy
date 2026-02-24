@@ -622,9 +622,9 @@ export LOCAL_AI_STACK_ENABLED
 unset _local_ai_cached
 
 # LLM Backend: llama.cpp server (ghcr.io/ggml-org/llama.cpp:server)
-# Serves GGUF models via OpenAI-compatible API on port 8080
+# Serves GGUF models via OpenAI-compatible API on configured LLAMA_CPP_PORT
 LLM_BACKEND="${LLM_BACKEND:-llama_cpp}"
-readonly LLAMA_CPP_URL="http://localhost:8080"
+readonly LLAMA_CPP_URL="${LLAMA_CPP_URL:-${LLAMA_URL:-http://${SERVICE_HOST:-localhost}:${LLAMA_CPP_PORT}}}"
 readonly LLAMA_CPP_HEALTH_URL="${LLAMA_CPP_URL}/health"
 export LLM_BACKEND LLAMA_CPP_URL
 
@@ -761,7 +761,7 @@ HOME_SWITCH_SKIPPED_REASON=""
 
 # AI-Optimizer / AIDB integration defaults
 AI_ENABLED="${AI_ENABLED:-auto}"                        # auto, true, false
-AIDB_BASE_URL="${AIDB_BASE_URL:-http://localhost:${AIDB_PORT:-8091}}"
+AIDB_BASE_URL="${AIDB_BASE_URL:-${AIDB_URL:-http://${SERVICE_HOST:-localhost}:${AIDB_PORT}}}"
 AIDB_PROJECT_NAME="${AIDB_PROJECT_NAME:-NixOS-Dev-Quick-Deploy}"
 
 # High-level host role; used as a human- and agent-friendly
@@ -791,23 +791,23 @@ export AI_STACK_PROFILE
 # Service URLs for the K3s-based AI stack
 # All services are deployed as Kubernetes pods in the ai-stack namespace
 
-readonly QDRANT_URL="http://localhost:${QDRANT_PORT:-6333}"
-readonly QDRANT_GRPC_URL="http://localhost:${QDRANT_GRPC_PORT:-6334}"
-readonly LLAMA_CPP_API_URL="http://localhost:${LLAMA_CPP_PORT:-8080}/v1"
-readonly OPEN_WEBUI_URL="http://localhost:${OPEN_WEBUI_PORT:-3001}"
+readonly QDRANT_URL="${QDRANT_URL:-http://${SERVICE_HOST:-localhost}:${QDRANT_PORT}}"
+readonly QDRANT_GRPC_URL="${QDRANT_GRPC_URL:-http://${SERVICE_HOST:-localhost}:${QDRANT_GRPC_PORT}}"
+readonly LLAMA_CPP_API_URL="${LLAMA_CPP_API_URL:-${LLAMA_URL:-http://${SERVICE_HOST:-localhost}:${LLAMA_CPP_PORT}}/v1}"
+readonly OPEN_WEBUI_URL="${OPEN_WEBUI_URL:-http://${SERVICE_HOST:-localhost}:${OPEN_WEBUI_PORT}}"
 # POSTGRES_URL: Constructed from separate credentials. Password should be set via
 # POSTGRES_PASSWORD env var or SOPS secrets — never hardcode in config files.
 readonly POSTGRES_USER="${POSTGRES_USER:-mcp}"
 readonly POSTGRES_DB="${POSTGRES_DB:-mcp}"
 if [[ -n "${POSTGRES_PASSWORD:-}" ]]; then
-    readonly POSTGRES_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:${POSTGRES_PORT:-5432}/${POSTGRES_DB}"
+    readonly POSTGRES_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-${SERVICE_HOST:-localhost}}:${POSTGRES_PORT}/${POSTGRES_DB}"
 else
     # URL without password — scripts that need DB access should set POSTGRES_PASSWORD
-    readonly POSTGRES_URL="postgresql://${POSTGRES_USER}@localhost:${POSTGRES_PORT:-5432}/${POSTGRES_DB}"
+    readonly POSTGRES_URL="postgresql://${POSTGRES_USER}@${POSTGRES_HOST:-${SERVICE_HOST:-localhost}}:${POSTGRES_PORT}/${POSTGRES_DB}"
 fi
-readonly REDIS_URL="redis://localhost:${REDIS_PORT:-6379}"
-readonly HYBRID_COORDINATOR_URL="http://localhost:${HYBRID_COORDINATOR_PORT:-8092}"
-readonly MINDSDB_URL="http://localhost:${MINDSDB_PORT:-47334}"
+readonly REDIS_URL="${REDIS_URL:-redis://${REDIS_HOST:-${SERVICE_HOST:-localhost}}:${REDIS_PORT}}"
+readonly HYBRID_COORDINATOR_URL="${HYBRID_COORDINATOR_URL:-${HYBRID_URL:-http://${SERVICE_HOST:-localhost}:${HYBRID_COORDINATOR_PORT}}}"
+readonly MINDSDB_URL="${MINDSDB_URL:-http://${SERVICE_HOST:-localhost}:${MINDSDB_PORT}}"
 
 # AI Stack data directory
 readonly AI_STACK_DATA="${HOME}/.local/share/nixos-ai-stack"

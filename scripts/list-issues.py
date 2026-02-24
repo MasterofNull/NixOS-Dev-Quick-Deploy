@@ -68,7 +68,7 @@ async def list_issues_cli():
         "--db-host", default="localhost", help="Database host"
     )
     parser.add_argument(
-        "--db-port", type=int, default=5432, help="Database port"
+        "--db-port", type=int, default=int(os.getenv("POSTGRES_PORT", "0")), help="Database port"
     )
     parser.add_argument(
         "--db-name", default="aidb", help="Database name"

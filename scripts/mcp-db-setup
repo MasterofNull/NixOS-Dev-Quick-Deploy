@@ -12,6 +12,15 @@
 
 set -eu
 
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../config/service-endpoints.sh
+source "$SCRIPT_DIR/config/service-endpoints.sh"
+
+PG_HOST="${POSTGRES_HOST:-${SERVICE_HOST:-localhost}}"
+PG_PORT="${POSTGRES_PORT}"
+REDIS_PORT="${REDIS_PORT}"
+QDRANT_HTTP_PORT="${QDRANT_PORT}"
+
 # -----------------------------------------------------------------------------
 # Shared helpers
 # -----------------------------------------------------------------------------
@@ -49,7 +58,7 @@ check_postgres() {
 
   status=0
   for db in mcp mcp_tools mcp_logs; do
-    if PGPASSWORD="${PGPASSWORD:-}" psql "postgresql://mcp@localhost:5432/${db}" -c 'SELECT 1;' >/dev/null 2>&1; then
+    if PGPASSWORD="${PGPASSWORD:-}" psql "postgresql://mcp@${PG_HOST}:${PG_PORT}/${db}" -c 'SELECT 1;' >/dev/null 2>&1; then
       log "[OK] Connected to database '${db}' as user mcp"
     else
       log "[ERROR] Unable to connect to database '${db}' as user mcp"
@@ -60,36 +69,36 @@ check_postgres() {
 }
 
 check_redis() {
-  log "Checking Redis (localhost:6379, 512MB LRU)"
+  log "Checking Redis (${SERVICE_HOST:-localhost}:${REDIS_PORT}, 512MB LRU)"
   if ! command_exists redis-cli; then
     log "[ERROR] redis-cli command not found. Install redis client tools."
     return 1
   fi
 
-  if redis-cli -h localhost -p 6379 PING >/dev/null 2>&1; then
+  if redis-cli -h "${SERVICE_HOST:-localhost}" -p "${REDIS_PORT}" PING >/dev/null 2>&1; then
     log "[OK] Redis responded to PING"
   else
-    log "[ERROR] Unable to reach Redis at localhost:6379"
+    log "[ERROR] Unable to reach Redis at ${SERVICE_HOST:-localhost}:${REDIS_PORT}"
     return 1
   fi
 
-  maxmemory="$(redis-cli -h localhost -p 6379 CONFIG GET maxmemory | awk 'NR==2 {print}')"
-  policy="$(redis-cli -h localhost -p 6379 CONFIG GET maxmemory-policy | awk 'NR==2 {print}')"
+  maxmemory="$(redis-cli -h "${SERVICE_HOST:-localhost}" -p "${REDIS_PORT}" CONFIG GET maxmemory | awk 'NR==2 {print}')"
+  policy="$(redis-cli -h "${SERVICE_HOST:-localhost}" -p "${REDIS_PORT}" CONFIG GET maxmemory-policy | awk 'NR==2 {print}')"
   log "      maxmemory=${maxmemory:-unknown} bytes policy=${policy:-unknown}"
   return 0
 }
 
 check_qdrant() {
-  log "Checking Qdrant (http://${SERVICE_HOST:-localhost}:6333/readyz)"
+  log "Checking Qdrant (http://${SERVICE_HOST:-localhost}:${QDRANT_HTTP_PORT}/readyz)"
   if ! command_exists curl; then
     log "[ERROR] curl command not found. Install curl to verify Qdrant."
     return 1
   fi
 
-  if response="$(curl -fsS http://${SERVICE_HOST:-localhost}:6333/readyz 2>/dev/null)"; then
+  if response="$(curl -fsS http://${SERVICE_HOST:-localhost}:${QDRANT_HTTP_PORT}/readyz 2>/dev/null)"; then
     log "[OK] Qdrant readiness: ${response}"
   else
-    log "[ERROR] Unable to reach Qdrant on port 6333"
+    log "[ERROR] Unable to reach Qdrant on port ${QDRANT_HTTP_PORT}"
     return 1
   fi
   return 0

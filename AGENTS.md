@@ -323,14 +323,14 @@ grep -r "class.*Model\|CREATE TABLE" .
 
 ### Where to Put Documentation
 
-| Content Type | Location | Examples |
-|-------------|----------|----------|
-| **System overview** | Root `README.md` | Project description, quick start |
-| **Agent training** | Root `AGENTS.md` | This file - comprehensive guide |
-| **User guides** | `docs/*.md` | Deployment, monitoring, APIs |
-| **Development notes** | `docs/development/` | Migration plans, decisions |
-| **Session reports** | `docs/archive/` | Status reports, test results |
-| **Code documentation** | Inline comments | Complex logic only |
+| Content Type           | Location            | Examples                         |
+| ---------------------- | ------------------- | -------------------------------- |
+| **System overview**    | Root `README.md`    | Project description, quick start |
+| **Agent training**     | Root `AGENTS.md`    | This file - comprehensive guide  |
+| **User guides**        | `docs/*.md`         | Deployment, monitoring, APIs     |
+| **Development notes**  | `docs/development/` | Migration plans, decisions       |
+| **Session reports**    | `docs/archive/`     | Status reports, test results     |
+| **Code documentation** | Inline comments     | Complex logic only               |
 
 ### ✅ Documentation Standards
 

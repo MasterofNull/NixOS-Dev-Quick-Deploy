@@ -16,7 +16,7 @@ if [[ -f "${SCRIPT_DIR}/config/service-endpoints.sh" ]]; then
 fi
 
 SERVICE_HOST="${SERVICE_HOST:-localhost}"
-RALPH_API="${RALPH_URL:-http://${SERVICE_HOST}:8098}"
+RALPH_API="${RALPH_URL}"
 TASK_DIR="ai-stack/ralph-tasks/completion-workflow"
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-${TMPDIR:-/${TMP_FALLBACK:-tmp}}}"
 

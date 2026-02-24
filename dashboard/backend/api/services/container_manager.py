@@ -21,11 +21,11 @@ class ContainerManager:
 
     def __init__(self):
         self.namespace = os.getenv("AI_STACK_NAMESPACE", "ai-stack")
-        self.mode = self._detect_mode()
-        self.k8s_host = os.getenv("KUBERNETES_SERVICE_HOST", "kubernetes.default.svc")
-        self.k8s_port = os.getenv("KUBERNETES_SERVICE_PORT_HTTPS", "443")
         self.k8s_token_path = Path("/var/run/secrets/kubernetes.io/serviceaccount/token")
         self.k8s_ca_path = Path("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+        self.k8s_host = os.getenv("KUBERNETES_SERVICE_HOST", "kubernetes.default.svc")
+        self.k8s_port = os.getenv("KUBERNETES_SERVICE_PORT_HTTPS", "443")
+        self.mode = self._detect_mode()
         self.endpoints = service_endpoints
 
     def _detect_mode(self) -> str:

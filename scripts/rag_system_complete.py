@@ -31,8 +31,8 @@ import sqlite3
 # Configuration
 SERVICE_HOST = os.getenv("SERVICE_HOST", "localhost")
 CONFIG = {
-    "qdrant_url": os.getenv("QDRANT_URL", f"http://{SERVICE_HOST}:6333"),
-    "llama_cpp_url": os.getenv("LLAMA_URL", f"http://{SERVICE_HOST}:8080"),
+    "qdrant_url": os.getenv("QDRANT_URL", "http://localhost"),
+    "llama_cpp_url": os.getenv("LLAMA_URL", "http://localhost"),
     "embedding_model": "nomic-embed-text",
     "embedding_dimensions": 768,  # nomic-embed-text actual dimensions
     "local_confidence_threshold": 0.85,

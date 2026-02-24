@@ -16,6 +16,10 @@
     lanzaboote = {
       url = "github:nix-community/lanzaboote";
     };
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     # Apple Silicon (Asahi Linux) — only needed for Apple M-series hosts.
     # When cpuVendor = "apple", set mySystem.hardware.nixosHardwareModule = "apple-m1"
     # (or apple-m2) in facts.nix to pull in the Asahi kernel + Mesa overlay via
@@ -84,6 +88,7 @@
         let
           system' = resolveHostSystem hostName;
           hostFacts = resolveHostFacts hostName;
+          hasHostFacts = builtins.pathExists (factsPath hostName);
           requestedNixosHardwareModule = hostFacts.hardware.nixosHardwareModule or null;
           hasHostHardwareConfig = builtins.pathExists (hostHardwarePath hostName);
         in
@@ -93,7 +98,10 @@
             ./nix/modules/core/options.nix
             ./nix/modules/core/base.nix
             ./nix/modules/core/network.nix
+            ./nix/modules/core/logging.nix
+            ./nix/modules/core/localhost-isolation.nix
             ./nix/modules/core/users.nix
+            ./nix/modules/core/secrets.nix
             ./nix/modules/core/guardrail-alerts.nix
             ./nix/modules/core/fs-integrity-monitor.nix
             ./nix/modules/core/disk-health-monitor.nix
@@ -105,6 +113,7 @@
             ./nix/modules/hardware/default.nix
             ./nix/modules/disk/default.nix
             ./nix/modules/secureboot.nix
+            inputs.sops-nix.nixosModules.sops
             ({ lib, config, ... }:
               let
                 moduleName = requestedNixosHardwareModule;
@@ -157,10 +166,17 @@
               mySystem.profile = lib.mkForce profile;
             })
             ({ lib, ... }: {
-              assertions = lib.optional (!hasHostHardwareConfig && (hostFacts.disk.layout or "none") == "none") {
-                assertion = false;
-                message = "Host '${hostName}' uses disk layout 'none' but '${toString (hostHardwarePath hostName)}' is missing. Add host hardware-configuration.nix or set mySystem.disk.layout to a disko layout.";
-              };
+              assertions =
+                [
+                  {
+                    assertion = hasHostFacts;
+                    message = "Host '${hostName}' is missing '${toString (factsPath hostName)}'. Run scripts/discover-system-facts.sh before flake evaluation/deploy so hardware/kernel settings are generated from the local machine.";
+                  }
+                ]
+                ++ lib.optional (!hasHostHardwareConfig && (hostFacts.disk.layout or "none") == "none") {
+                  assertion = false;
+                  message = "Host '${hostName}' uses disk layout 'none' but '${toString (hostHardwarePath hostName)}' is missing. Add host hardware-configuration.nix or set mySystem.disk.layout to a disko layout.";
+                };
             })
             (hostDefaultPath hostName)
             ({ lib, ... }: {

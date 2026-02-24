@@ -21,7 +21,6 @@ Author: NixOS AI Stack Team
 Date: January 2026
 """
 
-import os
 from pathlib import Path
 from typing import Optional
 import structlog
@@ -29,19 +28,18 @@ import structlog
 logger = structlog.get_logger()
 
 
-def load_secret(secret_name: str, fallback_env_var: Optional[str] = None) -> Optional[str]:
+def load_secret(secret_name: str) -> Optional[str]:
     """
-    Load a secret from Docker secrets or fall back to environment variable.
+    Load a secret from runtime secret files only.
 
     Args:
         secret_name: Name of the secret file (e.g., "postgres_password")
-        fallback_env_var: Environment variable to check if secret file not found
 
     Returns:
         Secret value as string, or None if not found
 
     Example:
-        password = load_secret("postgres_password", "POSTGRES_PASSWORD")
+        password = load_secret("postgres_password")
     """
     # Try Docker secret first
     secret_path = Path(f"/run/secrets/{secret_name}")
@@ -53,45 +51,38 @@ def load_secret(secret_name: str, fallback_env_var: Optional[str] = None) -> Opt
         except Exception as e:
             logger.warning("failed_to_read_secret", secret=secret_name, error=str(e))
 
-    # Fall back to environment variable
-    if fallback_env_var:
-        value = os.environ.get(fallback_env_var)
-        if value:
-            logger.debug("loaded_secret_from_env", secret=secret_name, env_var=fallback_env_var)
-            return value
-
-    logger.warning("secret_not_found", secret=secret_name, env_var=fallback_env_var)
+    logger.warning("secret_not_found", secret=secret_name)
     return None
 
 
 def get_postgres_password() -> Optional[str]:
     """
-    Get PostgreSQL password from Docker secret or environment variable.
+    Get PostgreSQL password from runtime secret file.
 
     Returns:
         PostgreSQL password, or None if not configured
     """
-    return load_secret("postgres_password", "POSTGRES_PASSWORD")
+    return load_secret("postgres_password")
 
 
 def get_redis_password() -> Optional[str]:
     """
-    Get Redis password from Docker secret or environment variable.
+    Get Redis password from runtime secret file.
 
     Returns:
         Redis password, or None if not configured
     """
-    return load_secret("redis_password", "REDIS_PASSWORD")
+    return load_secret("redis_password")
 
 
 def get_grafana_admin_password() -> Optional[str]:
     """
-    Get Grafana admin password from Docker secret or environment variable.
+    Get Grafana admin password from runtime secret file.
 
     Returns:
         Grafana admin password, or None if not configured
     """
-    return load_secret("grafana_admin_password", "GRAFANA_ADMIN_PASSWORD")
+    return load_secret("grafana_admin_password")
 
 
 def build_postgres_url(

@@ -37,7 +37,7 @@ class RAGWorkflowTester:
 
     def __init__(self):
         service_host = os.getenv("SERVICE_HOST", "localhost")
-        qdrant_url = os.getenv("QDRANT_URL", f"http://{service_host}:6333")
+        qdrant_url = os.getenv("QDRANT_URL", "http://localhost")
         self.client = QdrantClient(url=qdrant_url)
         self.test_results = []
 

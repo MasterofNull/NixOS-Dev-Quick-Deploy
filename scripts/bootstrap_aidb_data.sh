@@ -3,9 +3,11 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=../config/service-endpoints.sh
+source "${REPO_ROOT}/config/service-endpoints.sh"
 SQL_FILE="${SQL_FILE:-$REPO_ROOT/docs/sql/aidb-timeseries-schema.sql}"
 PSQL_BIN="${PSQL_BIN:-psql}"
-POSTGRES_DSN="${AIDB_POSTGRES_DSN:-postgres://mcp:change_me@localhost:5432/mcp}"
+POSTGRES_DSN="${AIDB_POSTGRES_DSN:-postgres://mcp:change_me@${POSTGRES_HOST:-${SERVICE_HOST:-localhost}}:${POSTGRES_PORT}/mcp}"
 
 usage() {
     cat <<EOF

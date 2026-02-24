@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Unified Dashboard Startup Script
-# Starts both the HTML dashboard (port 8888) and FastAPI backend (port 8889)
+# Starts both the HTML dashboard and FastAPI backend using configured ports.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=../config/service-endpoints.sh
+source "$PROJECT_ROOT/config/service-endpoints.sh"
 DASHBOARD_BIND_ADDRESS="${DASHBOARD_BIND_ADDRESS:-127.0.0.1}"
 DASHBOARD_API_BIND_ADDRESS="${DASHBOARD_API_BIND_ADDRESS:-127.0.0.1}"
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}"
@@ -14,6 +16,11 @@ FRONTEND_LOG_FILE="${RUNTIME_DIR}/dashboard-frontend.log"
 BACKEND_PID_FILE="${RUNTIME_DIR}/dashboard-backend.pid"
 FRONTEND_PID_FILE="${RUNTIME_DIR}/dashboard-frontend.pid"
 export DASHBOARD_BIND_ADDRESS DASHBOARD_API_BIND_ADDRESS
+
+DASHBOARD_FRONTEND_URL="${DASHBOARD_URL%/}/dashboard.html"
+DASHBOARD_API_HEALTH_URL="${DASHBOARD_API_URL%/}/api/health"
+DASHBOARD_FRONTEND_PORT="${DASHBOARD_PORT}"
+DASHBOARD_API_PORT_VAL="${DASHBOARD_API_PORT}"
 
 mkdir -p "$RUNTIME_DIR" 2>/dev/null || true
 
@@ -41,18 +48,18 @@ check_port() {
     return 0
 }
 
-# Start FastAPI backend on port 8889
+# Start FastAPI backend
 start_backend() {
-    info "Starting FastAPI backend on port 8889..."
+    info "Starting FastAPI backend on port ${DASHBOARD_API_PORT_VAL}..."
 
-    if ! check_port 8889; then
-        warn "Port 8889 already in use"
+    if ! check_port "${DASHBOARD_API_PORT_VAL}"; then
+        warn "Port ${DASHBOARD_API_PORT_VAL} already in use"
         info "Checking if it's our backend..."
-        if curl -sf --max-time 2 http://${SERVICE_HOST:-localhost}:8889/api/health >/dev/null 2>&1; then
+        if curl -sf --max-time 2 "${DASHBOARD_API_HEALTH_URL}" >/dev/null 2>&1; then
             success "FastAPI backend already running"
             return 0
         else
-            warn "Port 8889 occupied by another process"
+            warn "Port ${DASHBOARD_API_PORT_VAL} occupied by another process"
             return 1
         fi
     fi
@@ -75,14 +82,14 @@ start_backend() {
     fi
 
     # Start backend
-    nohup uvicorn api.main:app --host "$DASHBOARD_API_BIND_ADDRESS" --port 8889 \
+    nohup uvicorn api.main:app --host "$DASHBOARD_API_BIND_ADDRESS" --port "${DASHBOARD_API_PORT_VAL}" \
         > "$BACKEND_LOG_FILE" 2>&1 &
     echo $! > "$BACKEND_PID_FILE"
 
     # Wait for backend to be ready
     for i in {1..10}; do
         sleep 1
-        if curl -sf --max-time 2 http://${SERVICE_HOST:-localhost}:8889/api/health >/dev/null 2>&1; then
+        if curl -sf --max-time 2 "${DASHBOARD_API_HEALTH_URL}" >/dev/null 2>&1; then
             success "FastAPI backend started (PID: $(cat "$BACKEND_PID_FILE"))"
             return 0
         fi
@@ -92,18 +99,18 @@ start_backend() {
     return 0
 }
 
-# Start HTML dashboard on port 8888
+# Start HTML dashboard
 start_frontend() {
-    info "Starting HTML dashboard on port 8888..."
+    info "Starting HTML dashboard on port ${DASHBOARD_FRONTEND_PORT}..."
 
-    if ! check_port 8888; then
-        warn "Port 8888 already in use"
+    if ! check_port "${DASHBOARD_FRONTEND_PORT}"; then
+        warn "Port ${DASHBOARD_FRONTEND_PORT} already in use"
         info "Checking if it's our dashboard..."
-        if curl -sf --max-time 2 http://${SERVICE_HOST:-localhost}:8888/dashboard.html >/dev/null 2>&1; then
+        if curl -sf --max-time 2 "${DASHBOARD_FRONTEND_URL}" >/dev/null 2>&1; then
             success "HTML dashboard already running"
             return 0
         else
-            warn "Port 8888 occupied by another process"
+            warn "Port ${DASHBOARD_FRONTEND_PORT} occupied by another process"
             return 1
         fi
     fi
@@ -118,7 +125,7 @@ start_frontend() {
     # Wait for frontend to be ready
     for i in {1..10}; do
         sleep 1
-        if curl -sf --max-time 2 http://${SERVICE_HOST:-localhost}:8888/dashboard.html >/dev/null 2>&1; then
+        if curl -sf --max-time 2 "${DASHBOARD_FRONTEND_URL}" >/dev/null 2>&1; then
             success "HTML dashboard started (PID: $(cat "$FRONTEND_PID_FILE"))"
             return 0
         fi
@@ -178,9 +185,9 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "  ✅ Unified Dashboard is Running!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "  📊 Dashboard:     http://${SERVICE_HOST:-localhost}:8888/dashboard.html"
-echo "  🔧 Backend API:   http://${SERVICE_HOST:-localhost}:8889"
-echo "  📖 API Docs:      http://${SERVICE_HOST:-localhost}:8889/docs"
+echo "  📊 Dashboard:     ${DASHBOARD_FRONTEND_URL}"
+echo "  🔧 Backend API:   ${DASHBOARD_API_URL}"
+echo "  📖 API Docs:      ${DASHBOARD_API_URL%/}/docs"
 echo ""
 echo "  📁 Backend logs:  tail -f $BACKEND_LOG_FILE"
 echo "  📁 Frontend logs: tail -f $FRONTEND_LOG_FILE"
@@ -193,7 +200,7 @@ echo ""
 # Open browser if available
 if command -v xdg-open >/dev/null 2>&1; then
     sleep 2
-    xdg-open "http://${SERVICE_HOST:-localhost}:8888/dashboard.html" 2>/dev/null &
+    xdg-open "${DASHBOARD_FRONTEND_URL}" 2>/dev/null &
 fi
 
 # Keep script running

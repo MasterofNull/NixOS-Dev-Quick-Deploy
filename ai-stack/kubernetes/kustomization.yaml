@@ -23,3 +23,5 @@ resources:
   - tls/cluster-issuers.yaml
   - tls/service-certificates.yaml
   - tls/renewal-cronjob.yaml
+  # Phase 29: MLOps Lifecycle Layer (MinIO artifact store + MLflow tracker)
+  - mlops

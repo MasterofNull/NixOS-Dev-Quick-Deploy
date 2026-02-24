@@ -19,9 +19,14 @@ in
       enable = lib.mkDefault true;
       # Open firewall ports for Steam Remote Play.
       remotePlay.openFirewall = lib.mkDefault true;
+      # Open firewall ports for local network game transfers.
+      localNetworkGameTransfers.openFirewall = lib.mkDefault true;
       # Gamescope compositor session for better game compatibility and HDR.
       gamescopeSession.enable = lib.mkDefault true;
     };
+
+    # Explicit for clarity; also implied by programs.steam.enable.
+    hardware.steam-hardware.enable = lib.mkDefault true;
 
     # ---- Performance utilities -----------------------------------------
     programs.gamemode.enable = lib.mkDefault true;
