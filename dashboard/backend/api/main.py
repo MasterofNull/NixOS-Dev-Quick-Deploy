@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 active_connections: List[WebSocket] = []
 connections_lock = asyncio.Lock()  # Protect against race conditions
 metrics_collector: MetricsCollector = None
+METRICS_BROADCAST_INTERVAL_SECONDS = float(os.getenv("DASHBOARD_METRICS_INTERVAL_SECONDS", "1.0"))
 
 
 @asynccontextmanager
@@ -144,7 +145,7 @@ async def broadcast_metrics():
         # Create snapshot under lock
         async with connections_lock:
             if not active_connections:
-                await asyncio.sleep(2)
+                await asyncio.sleep(METRICS_BROADCAST_INTERVAL_SECONDS)
                 continue
             connections_snapshot = list(active_connections)
 
@@ -174,8 +175,7 @@ async def broadcast_metrics():
         except Exception as e:
             logger.error(f"Error broadcasting metrics: {e}")
 
-        # Update every 2 seconds
-        await asyncio.sleep(2)
+        await asyncio.sleep(METRICS_BROADCAST_INTERVAL_SECONDS)
 
 
 if __name__ == "__main__":
