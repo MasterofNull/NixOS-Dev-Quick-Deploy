@@ -24,6 +24,7 @@ Author: NixOS AI Stack Team
 Date: January 2026
 """
 
+import os
 from pathlib import Path
 from typing import Optional
 import httpx
@@ -172,11 +173,11 @@ def create_authenticated_client(
     Example:
         # Create async client for embeddings service
         client = create_authenticated_client("embeddings_api_key", timeout=60.0)
-        response = await client.post("http://embeddings:8081/embed", json=data)
+        response = await client.post(f"{os.getenv('EMBEDDING_SERVICE_URL')}/embed", json=data)
 
         # Create sync client
         client = create_authenticated_client("aidb_api_key", async_client=False)
-        response = client.get("http://aidb:8091/health")
+        response = client.get(f"{os.getenv('AIDB_URL')}/health")
     """
     if async_client:
         return AuthenticatedAsyncClient(

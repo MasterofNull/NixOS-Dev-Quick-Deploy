@@ -89,7 +89,9 @@ def configure_logging() -> None:
 def configure_tracing() -> None:
     if os.getenv("OTEL_TRACING_ENABLED", "true").lower() != "true":
         return
-    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://jaeger:4317")
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+    if not endpoint:
+        return
     resource = Resource.create({"service.name": SERVICE_NAME})
     sample_rate = float(os.getenv("OTEL_SAMPLE_RATE", "1.0"))
     sampler = ParentBased(TraceIdRatioBased(sample_rate))

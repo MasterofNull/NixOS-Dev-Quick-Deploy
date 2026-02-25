@@ -5,10 +5,13 @@ from typing import Dict, Any, Optional, List
 import logging
 import asyncio
 import aiohttp
+import json
 import os
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from ..config import service_endpoints
+from ..services.systemd_units import get_ai_runtime_units
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -20,11 +23,15 @@ SERVICES = {
     "aidb": service_endpoints.AIDB_URL,
     "qdrant": service_endpoints.QDRANT_URL,
     "llama_cpp": service_endpoints.LLAMA_URL,
-    "embeddings": os.getenv("EMBEDDINGS_URL", f"http://{service_endpoints.SERVICE_HOST}:8081"),
+    "embeddings": service_endpoints.EMBEDDINGS_URL,
+    "switchboard": service_endpoints.SWITCHBOARD_URL,
 }
 
 # Timeout for external requests
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=5)
+HARNESS_EVAL_TIMEOUT = aiohttp.ClientTimeout(
+    total=float(os.getenv("HARNESS_EVAL_TIMEOUT_SECONDS", "15"))
+)
 
 # Global aiohttp session (reused across requests)
 _http_session: Optional[aiohttp.ClientSession] = None
@@ -45,11 +52,15 @@ async def close_http_session():
         await _http_session.close()
 
 
-async def fetch_with_fallback(url: str, fallback: Any = None) -> Any:
+async def fetch_with_fallback(
+    url: str,
+    fallback: Any = None,
+    headers: Optional[Dict[str, str]] = None,
+) -> Any:
     """Fetch URL with error handling and fallback"""
     try:
         session = await get_http_session()
-        async with session.get(url) as resp:
+        async with session.get(url, headers=headers) as resp:
             if resp.status == 200:
                 return await resp.json()
             else:
@@ -80,11 +91,16 @@ async def fetch_text_with_fallback(url: str, fallback: Any = None) -> Any:
         return fallback
 
 
-async def post_with_fallback(url: str, payload: Dict[str, Any], headers: Optional[Dict[str, str]] = None) -> Any:
+async def post_with_fallback(
+    url: str,
+    payload: Dict[str, Any],
+    headers: Optional[Dict[str, str]] = None,
+    timeout: Optional[aiohttp.ClientTimeout] = None,
+) -> Any:
     """POST JSON payload with error handling and fallback"""
     try:
         session = await get_http_session()
-        async with session.post(url, json=payload, headers=headers) as resp:
+        async with session.post(url, json=payload, headers=headers, timeout=timeout) as resp:
             if resp.status == 200:
                 return await resp.json()
             text = await resp.text()
@@ -113,6 +129,11 @@ def _load_hybrid_api_key() -> str:
     except OSError as exc:
         logger.warning("Failed reading hybrid API key file %s: %s", key_file, exc)
         return ""
+
+
+def _hybrid_headers() -> Optional[Dict[str, str]]:
+    api_key = _load_hybrid_api_key()
+    return {"X-API-Key": api_key} if api_key else None
 
 
 def _normalize_status(raw: Any, ok_values: tuple[str, ...]) -> str:
@@ -152,6 +173,89 @@ class HarnessEvalPayload(BaseModel):
     mode: str = Field(default="auto", pattern="^(auto|sql|semantic|keyword|tree|hybrid)$")
     expected_keywords: Optional[List[str]] = None
     max_latency_ms: Optional[int] = Field(default=None, ge=1)
+
+
+class HarnessMaintenancePayload(BaseModel):
+    action: str = Field(
+        ...,
+        pattern="^(phase_plan|research_sync|catalog_sync|acceptance_checks)$",
+    )
+
+
+def _repo_root() -> Path:
+    # dashboard/backend/api/routes -> repo root
+    return Path(__file__).resolve().parents[4]
+
+
+def _script_path(name: str) -> Path:
+    return _repo_root() / "scripts" / name
+
+
+def _safe_script_status(name: str) -> Dict[str, Any]:
+    path = _script_path(name)
+    return {
+        "name": name,
+        "path": str(path),
+        "exists": path.exists(),
+        "executable": path.is_file() and os.access(path, os.X_OK),
+    }
+
+
+def _weekly_research_state() -> Dict[str, Any]:
+    scorecard = _repo_root() / "data" / "ai-research-scorecard.json"
+    if not scorecard.exists():
+        return {
+            "available": False,
+            "path": str(scorecard),
+            "generated_at": None,
+            "candidate_count": 0,
+            "sources_scanned": 0,
+        }
+    try:
+        payload = json.loads(scorecard.read_text(encoding="utf-8"))
+        return {
+            "available": True,
+            "path": str(scorecard),
+            "generated_at": payload.get("generated_at"),
+            "candidate_count": payload.get("candidate_count", 0),
+            "sources_scanned": payload.get("sources_scanned", 0),
+            "report_path": payload.get("report_path"),
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "available": False,
+            "path": str(scorecard),
+            "error": str(exc),
+        }
+
+
+async def _run_harness_script(script_name: str, args: Optional[List[str]] = None) -> Dict[str, Any]:
+    path = _script_path(script_name)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Script not found: {path}")
+    if not os.access(path, os.X_OK):
+        raise HTTPException(status_code=400, detail=f"Script not executable: {path}")
+    argv = [str(path)] + (args or [])
+    try:
+        result = await asyncio.to_thread(
+            subprocess.run,
+            argv,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=180,
+            cwd=str(_repo_root()),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=504, detail=f"Script timeout: {script_name}") from exc
+    return {
+        "script": script_name,
+        "args": args or [],
+        "exit_code": result.returncode,
+        "success": result.returncode == 0,
+        "stdout": (result.stdout or "")[-2000:],
+        "stderr": (result.stderr or "")[-2000:],
+    }
 
 
 async def _fetch_qdrant_collection_points(collections: list[str]) -> Dict[str, int]:
@@ -216,13 +320,16 @@ async def proxy_aidb_metrics() -> Response:
 async def get_learning_stats() -> Dict[str, Any]:
     """Get continuous learning statistics from hybrid coordinator"""
     hybrid_base = SERVICES["hybrid"]
+    api_key = _load_hybrid_api_key()
+    headers = {"X-API-Key": api_key} if api_key else None
     stats = await fetch_with_fallback(
         f"{hybrid_base}/learning/stats",
         {
             "checkpoints": {"total": 0, "last_checkpoint": None},
             "backpressure": {"unprocessed_mb": 0, "paused": False},
             "deduplication": {"total_patterns": 0, "duplicates_found": 0, "unique_patterns": 0}
-        }
+        },
+        headers=headers,
     )
     return stats
 
@@ -247,6 +354,7 @@ async def store_memory(payload: MemoryStorePayload) -> Dict[str, Any]:
     result = await post_with_fallback(
         f"{SERVICES['hybrid']}/memory/store",
         payload.model_dump(),
+        headers=_hybrid_headers(),
     )
     if result is None:
         raise HTTPException(status_code=503, detail="Hybrid memory store endpoint unavailable")
@@ -259,6 +367,7 @@ async def recall_memory(payload: MemoryRecallPayload) -> Dict[str, Any]:
     result = await post_with_fallback(
         f"{SERVICES['hybrid']}/memory/recall",
         payload.model_dump(exclude_none=True),
+        headers=_hybrid_headers(),
     )
     if result is None:
         raise HTTPException(status_code=503, detail="Hybrid memory recall endpoint unavailable")
@@ -276,6 +385,7 @@ async def tree_search(payload: MemoryRecallPayload) -> Dict[str, Any]:
     result = await post_with_fallback(
         f"{SERVICES['hybrid']}/search/tree",
         req,
+        headers=_hybrid_headers(),
     )
     if result is None:
         raise HTTPException(status_code=503, detail="Hybrid tree-search endpoint unavailable")
@@ -288,6 +398,8 @@ async def run_harness_eval(payload: HarnessEvalPayload) -> Dict[str, Any]:
     result = await post_with_fallback(
         f"{SERVICES['hybrid']}/harness/eval",
         payload.model_dump(exclude_none=True),
+        headers=_hybrid_headers(),
+        timeout=HARNESS_EVAL_TIMEOUT,
     )
     if result is None:
         raise HTTPException(status_code=503, detail="Hybrid harness eval endpoint unavailable")
@@ -297,70 +409,199 @@ async def run_harness_eval(payload: HarnessEvalPayload) -> Dict[str, Any]:
 @router.get("/harness/stats")
 async def get_harness_stats() -> Dict[str, Any]:
     """Fetch harness aggregate stats."""
+    api_key = _load_hybrid_api_key()
+    headers = {"X-API-Key": api_key} if api_key else None
     result = await fetch_with_fallback(
         f"{SERVICES['hybrid']}/harness/stats",
-        None,
+        {
+            "status": "degraded",
+            "available": False,
+            "reason": "hybrid_harness_stats_unavailable",
+            "timestamp": datetime.utcnow().isoformat(),
+        },
+        headers=headers,
     )
-    if result is None:
-        raise HTTPException(status_code=503, detail="Hybrid harness stats endpoint unavailable")
+    if not isinstance(result, dict):
+        return {
+            "status": "degraded",
+            "available": False,
+            "reason": "invalid_harness_stats_payload",
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    result.setdefault("available", True)
+    result.setdefault("status", "ok")
     return result
+
+
+@router.get("/harness/scorecard")
+async def get_harness_scorecard() -> Dict[str, Any]:
+    """Fetch harness scorecard; fallback to /stats when endpoint requires auth."""
+    headers = _hybrid_headers()
+    result = await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/harness/scorecard",
+        None,
+        headers=headers,
+    )
+    if isinstance(result, dict):
+        result.setdefault("available", True)
+        return result
+
+    stats = await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/stats",
+        {"status": "degraded", "available": False, "reason": "scorecard_unavailable"},
+        headers=headers,
+    )
+    if not isinstance(stats, dict):
+        return {
+            "status": "degraded",
+            "available": False,
+            "reason": "invalid_scorecard_payload",
+        }
+    return {
+        "available": True,
+        "fallback": True,
+        "acceptance": {
+            "total": stats.get("harness_stats", {}).get("total_runs", 0),
+            "passed": stats.get("harness_stats", {}).get("passed", 0),
+            "failed": stats.get("harness_stats", {}).get("failed", 0),
+        },
+        "discovery": stats.get("capability_discovery", {}),
+        "inference_optimizations": {
+            "prompt_cache_policy_enabled": True,
+            "speculative_decoding_enabled": False,
+            "context_compression_enabled": True,
+        },
+    }
+
+
+@router.get("/harness/overview")
+async def get_harness_overview() -> Dict[str, Any]:
+    """Aggregate AI harness operations, policies, and maintenance script status."""
+    harness_stats = await get_harness_stats()
+    harness_scorecard = await get_harness_scorecard()
+    aidb_health = await fetch_with_fallback(f"{SERVICES['aidb']}/health", {})
+    hybrid_health = await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/health",
+        {},
+        headers=_hybrid_headers(),
+    )
+
+    scripts = [
+        "run-ai-harness-phase-plan.sh",
+        "run-acceptance-checks.sh",
+        "sync-ai-research-knowledge.sh",
+        "update-ai-research-now.sh",
+        "install-ai-research-sync-timer.sh",
+        "sync-aidb-library-catalog.sh",
+    ]
+    script_status = [_safe_script_status(name) for name in scripts]
+    operational_count = sum(1 for item in script_status if item["exists"] and item["executable"])
+
+    return {
+        "timestamp": datetime.utcnow().isoformat(),
+        "status": "ok",
+        "harness": {
+            "stats": harness_stats,
+            "scorecard": harness_scorecard,
+            "capability_discovery": (
+                hybrid_health.get("capability_discovery")
+                or harness_scorecard.get("discovery")
+                or {}
+            ),
+            "hybrid_harness": hybrid_health.get("ai_harness", {}),
+        },
+        "policies": {
+            "tool_execution_policy": aidb_health.get("tool_execution_policy", {}),
+            "outbound_http_policy": aidb_health.get("outbound_http_policy", {}),
+        },
+        "maintenance": {
+            "scripts": script_status,
+            "operational_scripts": operational_count,
+            "total_scripts": len(script_status),
+            "weekly_research": _weekly_research_state(),
+        },
+    }
+
+
+@router.post("/harness/maintenance/run")
+async def run_harness_maintenance(payload: HarnessMaintenancePayload) -> Dict[str, Any]:
+    """Run allowlisted harness maintenance actions from dashboard."""
+    action_map: Dict[str, tuple[str, List[str]]] = {
+        "phase_plan": ("run-ai-harness-phase-plan.sh", []),
+        "research_sync": ("sync-ai-research-knowledge.sh", []),
+        "catalog_sync": ("sync-aidb-library-catalog.sh", []),
+        "acceptance_checks": ("run-acceptance-checks.sh", []),
+    }
+    script_name, args = action_map[payload.action]
+    result = await _run_harness_script(script_name, args=args)
+    return {
+        "action": payload.action,
+        **result,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
 
 
 @router.get("/health/aggregate")
 async def get_health_aggregate() -> Dict[str, Any]:
-    """Get aggregated health status from all AI stack services"""
-    health_checks = {}
+    """Get aggregated health status based on systemd AI stack runtime units."""
+    def systemd_state(unit_name: str) -> str:
+        unit = f"{unit_name}.service"
+        result = subprocess.run(
+            ["systemctl", "is-active", unit],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return (result.stdout or "").strip().lower() or "unknown"
 
-    # Ralph Wiggum
-    ralph_health = await fetch_with_fallback(f"{SERVICES['ralph']}/health")
-    health_checks["ralph"] = {
-        "status": ralph_health.get("status", "unknown") if ralph_health else "unhealthy",
-        "details": ralph_health or {}
-    }
+    def map_state_to_health(raw_state: str) -> str:
+        if raw_state == "active":
+            return "healthy"
+        if raw_state in ("activating", "reloading"):
+            return "degraded"
+        if raw_state in ("inactive", "failed", "deactivating", "unknown"):
+            return "unhealthy"
+        return "degraded"
 
-    # Hybrid Coordinator
-    hybrid_health = await fetch_with_fallback(f"{SERVICES['hybrid']}/health")
-    health_checks["hybrid"] = {
-        "status": hybrid_health.get("status", "unknown") if hybrid_health else "unhealthy",
-        "details": hybrid_health or {}
-    }
+    health_checks: Dict[str, Dict[str, Any]] = {}
+    runtime_units = get_ai_runtime_units()
 
-    # AIDB
-    aidb_health = await fetch_with_fallback(f"{SERVICES['aidb']}/health")
-    aidb_status = "unhealthy"
-    if aidb_health:
-        raw_status = str(aidb_health.get("status", "")).lower()
-        aidb_status = "healthy" if raw_status in ("healthy", "ok") else raw_status or "unknown"
-    health_checks["aidb"] = {
-        "status": aidb_status,
-        "details": aidb_health or {}
-    }
+    for unit in runtime_units:
+        raw_state = systemd_state(unit)
+        health_checks[unit] = {
+            "status": map_state_to_health(raw_state),
+            "details": {
+                "unit": f"{unit}.service",
+                "active_state": raw_state,
+            },
+        }
 
-    # Qdrant
-    qdrant_health = await fetch_text_with_fallback(f"{SERVICES['qdrant']}/healthz")
-    if not qdrant_health:
-        qdrant_health = await fetch_text_with_fallback(f"{SERVICES['qdrant']}/readyz")
-    health_checks["qdrant"] = {
-        "status": "healthy" if qdrant_health else "unhealthy",
-        "details": {"response": qdrant_health} if qdrant_health else {}
-    }
+    unhealthy_count = sum(1 for check in health_checks.values() if check["status"] == "unhealthy")
+    degraded_count = sum(1 for check in health_checks.values() if check["status"] == "degraded")
 
-    # Overall status
-    all_healthy = all(
-        check["status"] == "healthy"
-        for check in health_checks.values()
-    )
+    if unhealthy_count > 0:
+        overall_status = "unhealthy"
+    elif degraded_count > 0:
+        overall_status = "degraded"
+    else:
+        overall_status = "healthy"
 
     return {
-        "overall_status": "healthy" if all_healthy else "degraded",
+        "overall_status": overall_status,
         "services": health_checks,
-        "timestamp": datetime.utcnow().isoformat()
+        "summary": {
+            "total": len(health_checks),
+            "healthy": sum(1 for check in health_checks.values() if check["status"] == "healthy"),
+            "degraded": degraded_count,
+            "unhealthy": unhealthy_count,
+        },
+        "timestamp": datetime.utcnow().isoformat(),
     }
 
 
 @router.get("/ai/metrics")
 async def get_ai_metrics() -> Dict[str, Any]:
-    """Aggregate AI metrics for dashboard consumption (K8s-aware)."""
+    """Aggregate AI metrics for dashboard consumption (systemd-host mode)."""
     aidb_health = await fetch_with_fallback(f"{SERVICES['aidb']}/health", {})
     aidb_status = _normalize_status(aidb_health.get("status"), ("online", "ok", "healthy"))
     if aidb_status in ("ok", "healthy"):
@@ -380,8 +621,24 @@ async def get_ai_metrics() -> Dict[str, Any]:
 
     embeddings_health = await fetch_with_fallback(f"{SERVICES['embeddings']}/health", {})
     embeddings_status = _normalize_status(embeddings_health.get("status"), ("ok", "healthy"))
+    embeddings_models = await fetch_with_fallback(f"{SERVICES['embeddings']}/v1/models", {})
     embeddings_model = embeddings_health.get("model", "unknown")
-    embeddings_dimensions = embeddings_health.get("dimensions") or embeddings_health.get("dim") or 384
+    if isinstance(embeddings_models, dict):
+        data = embeddings_models.get("data") or []
+        if data and isinstance(data, list):
+            embeddings_model = data[0].get("id", embeddings_model)
+        elif embeddings_model == "unknown":
+            models = embeddings_models.get("models") or []
+            if models and isinstance(models, list):
+                embeddings_model = models[0].get("model", embeddings_model)
+    embeddings_dimensions = (
+        embeddings_health.get("dimensions")
+        or embeddings_health.get("dim")
+        or service_endpoints.EMBEDDING_DIMENSIONS
+    )
+
+    switchboard_health = await fetch_with_fallback(f"{SERVICES['switchboard']}/health", {})
+    switchboard_status = _normalize_status(switchboard_health.get("status"), ("ok", "healthy"))
 
     qdrant_health = await fetch_text_with_fallback(f"{SERVICES['qdrant']}/healthz")
     if not qdrant_health:
@@ -398,11 +655,21 @@ async def get_ai_metrics() -> Dict[str, Any]:
         ]
     collection_points = await _fetch_qdrant_collection_points(collection_names)
     total_points = sum(collection_points.values())
+    harness_stats = await get_harness_stats()
+    harness_scorecard = await get_harness_scorecard()
+    harness_overview = await get_harness_overview()
 
     knowledge_collections = {
         "codebase_context": collection_points.get("codebase-context", 0),
         "error_solutions": collection_points.get("error-solutions", 0),
         "best_practices": collection_points.get("best-practices", 0),
+    }
+
+    hybrid_service = {
+        "service": "hybrid_coordinator",
+        "status": hybrid_status,
+        "port": service_endpoints.HYBRID_COORDINATOR_PORT,
+        "health_check": hybrid_health,
     }
 
     return {
@@ -411,19 +678,16 @@ async def get_ai_metrics() -> Dict[str, Any]:
             "aidb": {
                 "service": "aidb",
                 "status": aidb_status,
-                "port": 8091,
+                "port": service_endpoints.AIDB_PORT,
                 "health_check": aidb_health,
             },
-            "hybrid_coordinator": {
-                "service": "hybrid_coordinator",
-                "status": hybrid_status,
-                "port": 8092,
-                "health_check": hybrid_health,
-            },
+            "hybrid_coordinator": hybrid_service,
+            # Backward-compat alias for clients that still expect `services.hybrid`.
+            "hybrid": hybrid_service,
             "qdrant": {
                 "service": "qdrant",
                 "status": qdrant_status,
-                "port": 6333,
+                "port": service_endpoints.QDRANT_PORT,
                 "metrics": {
                     "collection_count": len(collection_names),
                     "total_vectors": total_points,
@@ -432,16 +696,25 @@ async def get_ai_metrics() -> Dict[str, Any]:
             "llama_cpp": {
                 "service": "llama_cpp",
                 "status": llama_status,
-                "port": 8080,
+                "port": service_endpoints.LLAMA_CPP_PORT,
                 "model": llama_model,
             },
             "embeddings": {
                 "service": "embeddings",
                 "status": embeddings_status,
-                "port": 8081,
+                "port": service_endpoints.EMBEDDINGS_PORT,
                 "model": embeddings_model,
                 "dimensions": embeddings_dimensions,
                 "endpoint": SERVICES["embeddings"],
+            },
+            "switchboard": {
+                "service": "switchboard",
+                "status": switchboard_status,
+                "port": service_endpoints.SWITCHBOARD_PORT,
+                "endpoint": SERVICES["switchboard"],
+                "routing_mode": switchboard_health.get("routing_mode", "unknown"),
+                "default_provider": switchboard_health.get("default_provider", "unknown"),
+                "remote_configured": bool(switchboard_health.get("remote_configured", False)),
             },
         },
         "knowledge_base": {
@@ -454,11 +727,76 @@ async def get_ai_metrics() -> Dict[str, Any]:
             },
         },
         "effectiveness": {
-            "overall_score": 0,
-            "total_events_processed": 0,
-            "local_query_percentage": 0,
+            "overall_score": round(
+                (
+                    float(harness_scorecard.get("acceptance", {}).get("pass_rate", 0.0) or 0.0) * 100
+                ),
+                2,
+            ),
+            "total_events_processed": int(
+                harness_stats.get("total_runs", 0)
+                or harness_stats.get("acceptance", {}).get("total", 0)
+                or 0
+            ),
+            "local_query_percentage": round(
+                float(harness_scorecard.get("discovery", {}).get("cache_hit_rate", 0.0) or 0.0) * 100,
+                2,
+            ),
             "estimated_tokens_saved": 0,
             "knowledge_base_vectors": total_points,
+        },
+        "harness": {
+            "stats": harness_stats,
+            "scorecard": harness_scorecard,
+            "overview": harness_overview,
+        },
+    }
+
+
+@router.get("/ports/registry")
+async def get_port_registry() -> Dict[str, Any]:
+    """Expose centralized service endpoint registry for dashboard/UI fallback usage."""
+    return {
+        "host": service_endpoints.SERVICE_HOST,
+        "services": {
+            "aidb": {"port": service_endpoints.AIDB_PORT, "url": service_endpoints.AIDB_URL},
+            "hybrid_coordinator": {
+                "port": service_endpoints.HYBRID_COORDINATOR_PORT,
+                "url": service_endpoints.HYBRID_URL,
+            },
+            "qdrant": {"port": service_endpoints.QDRANT_PORT, "url": service_endpoints.QDRANT_URL},
+            "llama_cpp": {"port": service_endpoints.LLAMA_CPP_PORT, "url": service_endpoints.LLAMA_URL},
+            "embeddings": {
+                "port": service_endpoints.EMBEDDINGS_PORT,
+                "url": service_endpoints.EMBEDDINGS_URL,
+            },
+            "switchboard": {
+                "port": service_endpoints.SWITCHBOARD_PORT,
+                "url": service_endpoints.SWITCHBOARD_URL,
+            },
+            "open_webui": {
+                "port": service_endpoints.OPEN_WEBUI_PORT,
+                "url": service_endpoints.OPEN_WEBUI_URL,
+            },
+            "mindsdb": {"port": service_endpoints.MINDSDB_PORT, "url": service_endpoints.MINDSDB_URL},
+            "postgres": {
+                "port": service_endpoints.POSTGRES_PORT,
+                "url": f"{service_endpoints.SERVICE_HOST}:{service_endpoints.POSTGRES_PORT}",
+            },
+            "redis": {
+                "port": service_endpoints.REDIS_PORT,
+                "url": f"{service_endpoints.SERVICE_HOST}:{service_endpoints.REDIS_PORT}",
+            },
+            "dashboard_api": {
+                "port": service_endpoints.DASHBOARD_API_PORT,
+                "url": f"http://{service_endpoints.SERVICE_HOST}:{service_endpoints.DASHBOARD_API_PORT}",
+            },
+            "grafana": {"port": service_endpoints.GRAFANA_PORT, "url": service_endpoints.GRAFANA_URL},
+            "prometheus": {
+                "port": service_endpoints.PROMETHEUS_PORT,
+                "url": service_endpoints.PROMETHEUS_URL,
+            },
+            "ralph": {"port": service_endpoints.RALPH_PORT, "url": service_endpoints.RALPH_URL},
         },
     }
 

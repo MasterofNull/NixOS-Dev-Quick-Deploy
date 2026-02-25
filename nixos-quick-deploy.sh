@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "${SCRIPT_DIR}/flake.nix" && -d "${SCRIPT_DIR}/nix" ]]; then
@@ -20,6 +20,8 @@ RUN_PHASE0_DISKO=false
 RUN_SECUREBOOT_ENROLL=false
 RUN_FLATPAK_SYNC=true
 RUN_READINESS_ANALYSIS=true
+RUN_AI_SECRETS_BOOTSTRAP=true
+FORCE_AI_SECRETS_BOOTSTRAP=false
 ANALYZE_ONLY=false
 SKIP_ROADMAP_VERIFICATION=false
 RECOVERY_MODE=false
@@ -35,13 +37,18 @@ HOME_MANAGER_BACKUP_EXTENSION="${HOME_MANAGER_BACKUP_EXTENSION:-backup-$(date +%
 REQUIRE_HOME_MANAGER_CLI="${REQUIRE_HOME_MANAGER_CLI:-false}"
 PREFER_NIX_RUN_HOME_MANAGER="${PREFER_NIX_RUN_HOME_MANAGER:-true}"
 HOME_MANAGER_NIX_RUN_REF="${HOME_MANAGER_NIX_RUN_REF:-github:nix-community/home-manager/release-25.11#home-manager}"
+AI_SECRETS_BOOTSTRAP_STATUS="not-evaluated"
 
 AUTO_STAGED_FLAKE_PATH=""
 # Tracks untracked files we temporarily add so Nix can evaluate local git flakes.
 # We unstage them on exit to avoid leaving a dirty index that blocks `git pull --rebase`.
 declare -a AUTO_STAGED_FLAKE_FILES=()
 
-RESTORE_GENERATED_REPO_FILES="${RESTORE_GENERATED_REPO_FILES:-true}"
+# Generated host file restore policy:
+#   auto  -> restore only for --analyze-only runs
+#   true  -> always restore generated files on exit (temporary projection)
+#   false -> persist generated files to repo (declarative update)
+RESTORE_GENERATED_REPO_FILES="${RESTORE_GENERATED_REPO_FILES:-auto}"
 GENERATED_FILE_SNAPSHOT_DIR=""
 declare -a GENERATED_FILE_SNAPSHOT_TARGETS=()
 
@@ -80,9 +87,18 @@ Options:
   --skip-discovery        Skip hardware facts discovery
   --skip-flatpak-sync     Skip declarative Flatpak profile sync
   --skip-readiness-check  Skip bootstrap/deploy readiness analysis preflight
+  --skip-ai-secrets-bootstrap
+                          Skip interactive AI stack secrets bootstrap prompt
+  --ai-secrets-bootstrap  Enable interactive AI stack secrets bootstrap prompt
+  --force-ai-secrets-bootstrap
+                          Force interactive AI stack secrets bootstrap prompt
   --analyze-only          Run readiness analysis and exit (no build/switch)
   --skip-roadmap-verification
                           Skip flake-first roadmap completion verification preflight
+  --restore-generated-files
+                          Restore generated host files on exit (temporary run projection)
+  --persist-generated-files
+                          Persist generated host files after run (declarative update)
   -h, --help              Show this help
 
 Environment overrides:
@@ -101,8 +117,10 @@ Environment overrides:
                             Flake ref used for nix-run Home Manager fallback
   ALLOW_ROOT_DEPLOY=true    Allow running this script as root (not recommended)
   BOOT_ESP_MIN_FREE_MB=128  Override minimum required free space on ESP
-  RESTORE_GENERATED_REPO_FILES=true
-                            Restore generated host files (facts/home-deploy-options) on exit
+  RESTORE_GENERATED_REPO_FILES=auto
+                            auto: restore only for --analyze-only runs
+                            true: always restore generated files on exit
+                            false: persist generated files after run
 USAGE
 }
 
@@ -219,6 +237,20 @@ resolve_host_from_flake_if_needed() {
   fi
 }
 
+list_configuration_names() {
+  local attrset="$1"
+  nix eval --json "${FLAKE_REF}#${attrset}" --apply 'x: builtins.attrNames x' 2>/dev/null \
+    | tr -d '[]\" ' | tr ',' ' '
+}
+
+has_configuration_name() {
+  local attrset="$1"
+  local target="$2"
+  local names
+  names="$(list_configuration_names "$attrset")"
+  [[ " ${names} " == *" ${target} "* ]]
+}
+
 ensure_flake_visible_to_nix() {
   local ref="${1:-}"
   local flake_path
@@ -309,19 +341,41 @@ restore_generated_repo_files() {
     state="$(cat "${GENERATED_FILE_SNAPSHOT_DIR}/${key}.state" 2>/dev/null || echo absent)"
 
     if [[ "${state}" == "present" ]]; then
-      install -m 0644 "${GENERATED_FILE_SNAPSHOT_DIR}/${key}.snapshot" "${target}"
+      if ! install -m 0644 "${GENERATED_FILE_SNAPSHOT_DIR}/${key}.snapshot" "${target}"; then
+        log "WARNING: Failed to restore generated file snapshot: ${target}"
+      fi
     else
-      rm -f "${target}" >/dev/null 2>&1 || true
+      if ! rm -f "${target}" >/dev/null 2>&1; then
+        log "WARNING: Failed to remove generated file on cleanup: ${target}"
+      fi
     fi
   done
 
   rm -rf "${GENERATED_FILE_SNAPSHOT_DIR}" >/dev/null 2>&1 || true
   GENERATED_FILE_SNAPSHOT_DIR=""
+  return 0
 }
 
 cleanup_on_exit() {
   cleanup_auto_staged_flake_files
   restore_generated_repo_files
+}
+
+on_unexpected_error() {
+  local rc="${1:-1}"
+  local line="${2:-unknown}"
+  local cmd="${3:-unknown}"
+
+  log "Deployment failed at line ${line} (exit=${rc}): ${cmd}"
+  log "Cleanup trap executed (temporary git index / generated file projections restored as configured)."
+
+  if [[ "${MODE:-switch}" == "switch" ]]; then
+    log "Rollback guidance: sudo nixos-rebuild switch --rollback"
+    log "If system is degraded, reboot and select a previous generation in the boot menu."
+  elif [[ "${MODE:-switch}" == "boot" ]]; then
+    log "Boot mode rollback guidance: reboot and select a previous generation in the boot menu."
+    log "Optional: sudo nixos-rebuild switch --rollback after boot."
+  fi
 }
 
 run_roadmap_completion_verification() {
@@ -402,6 +456,332 @@ run_nix_eval_with_timeout() {
   timeout "${retry_timeout_secs}" "$@"
 }
 
+is_interactive_tty() {
+  [[ -t 0 && -t 1 ]]
+}
+
+generate_secret_value() {
+  local kind="${1:-token}"
+  local target_len generated
+  case "${kind}" in
+    password) target_len=32 ;;
+    *) target_len=48 ;;
+  esac
+
+  # Prefer openssl when available, but fall back to python3 for minimal hosts.
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -base64 48 | tr -d '\n' | tr -d '/+=' | cut -c1-"${target_len}"
+    return 0
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    generated="$(
+      python3 - <<'PY'
+import secrets
+print(secrets.token_urlsafe(64))
+PY
+    )"
+    printf '%s\n' "${generated}" | tr -d '\n' | cut -c1-"${target_len}"
+    return 0
+  fi
+
+  die "Unable to generate secrets automatically: neither 'openssl' nor 'python3' is available."
+}
+
+secret_value_is_safe_yaml_scalar() {
+  local value="${1:-}"
+  [[ -n "${value}" ]] || return 1
+  [[ "${value}" =~ ^[A-Za-z0-9._~+=-]+$ ]]
+}
+
+read_secret_value() {
+  local label="${1:?missing label}"
+  local value confirm
+  while true; do
+    read -r -s -p "${label}: " value
+    printf '\n'
+    [[ -n "${value}" ]] || { log "Value cannot be empty."; continue; }
+    if ! secret_value_is_safe_yaml_scalar "${value}"; then
+      log "Only characters [A-Za-z0-9._~+=-] are supported for interactive secrets."
+      continue
+    fi
+    read -r -s -p "Confirm ${label}: " confirm
+    printf '\n'
+    [[ "${value}" == "${confirm}" ]] || { log "Values did not match. Try again."; continue; }
+    printf '%s\n' "${value}"
+    return 0
+  done
+}
+
+create_or_update_host_deploy_options_local() {
+  local host_dir="${1:?missing host dir}"
+  local primary_user="${2:?missing primary user}"
+  local secrets_file="${3:?missing secrets file}"
+  local target="${host_dir}/deploy-options.local.nix"
+  local age_key_file="/home/${primary_user}/.config/sops/age/keys.txt"
+  local escaped_secrets_file escaped_age_key_file
+
+  escaped_secrets_file="$(nix_escape_string "${secrets_file}")"
+  escaped_age_key_file="$(nix_escape_string "${age_key_file}")"
+
+  cat > "${target}" <<EOF
+{ lib, ... }:
+{
+  mySystem.secrets.enable = lib.mkForce true;
+  mySystem.secrets.sopsFile = lib.mkForce "${escaped_secrets_file}";
+  mySystem.secrets.ageKeyFile = lib.mkForce "${escaped_age_key_file}";
+}
+EOF
+  log "Updated declarative secrets override: ${target}"
+}
+
+bootstrap_ai_stack_secrets_if_needed() {
+  [[ "${RUN_AI_SECRETS_BOOTSTRAP}" == true ]] || return 0
+  [[ "${SKIP_SYSTEM_SWITCH}" == false ]] || return 0
+
+  local ai_enabled secrets_enabled profile_hint
+  if ! ai_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.roles.aiStack.enable" 2>/dev/null)"; then
+    ai_enabled="unknown"
+  fi
+  if ! secrets_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.secrets.enable" 2>/dev/null)"; then
+    secrets_enabled="unknown"
+  fi
+  if [[ "${ai_enabled}" == "unknown" ]]; then
+    profile_hint="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.profile" 2>/dev/null || true)"
+    if [[ "${profile_hint}" == "ai-dev" ]]; then
+      ai_enabled="true"
+      log "AI secrets bootstrap fallback: profile '${profile_hint}' implies aiStack enabled."
+    else
+      ai_enabled="false"
+      log "AI secrets bootstrap fallback: unable to evaluate aiStack role; defaulting to disabled."
+    fi
+  fi
+  if [[ "${secrets_enabled}" == "unknown" ]]; then
+    secrets_enabled="false"
+    log "AI secrets bootstrap fallback: unable to evaluate secrets role; defaulting to disabled."
+  fi
+  log "AI secrets bootstrap check: aiStack=${ai_enabled}, secrets=${secrets_enabled}"
+
+  if [[ "${ai_enabled}" != "true" && "${FORCE_AI_SECRETS_BOOTSTRAP}" != "true" ]]; then
+    AI_SECRETS_BOOTSTRAP_STATUS="skipped:ai-stack-disabled"
+    return 0
+  fi
+  if [[ "${secrets_enabled}" == "true" && "${FORCE_AI_SECRETS_BOOTSTRAP}" != "true" ]]; then
+    log "AI stack secrets already enabled; skipping bootstrap prompt."
+    AI_SECRETS_BOOTSTRAP_STATUS="skipped:already-enabled"
+    return 0
+  fi
+
+  if ! is_interactive_tty; then
+    die "AI stack is enabled but secrets are disabled and no interactive TTY is available. Rerun interactively to bootstrap secrets or preconfigure mySystem.secrets in deploy-options.local.nix."
+  fi
+
+  local choice host_dir secrets_root secrets_file sops_cfg age_key_dir age_key_file public_key
+  local legacy_secrets_file legacy_sops_cfg
+  local aidb_key_name hybrid_key_name embeddings_key_name postgres_key_name redis_key_name
+  local aidb_api_key hybrid_api_key embeddings_api_key postgres_password redis_password
+  local plain_tmp summary_tmp
+
+  read -r -p "AI stack secrets are disabled for ${NIXOS_TARGET}. Bootstrap now? [Y/n]: " choice
+  choice="${choice:-Y}"
+  if [[ ! "${choice}" =~ ^[Yy]$ && "${FORCE_AI_SECRETS_BOOTSTRAP}" != "true" ]]; then
+    die "AI stack secrets are required when aiStack is enabled. Bootstrap was declined."
+  fi
+
+  require_command sops
+  require_command age-keygen
+
+  host_dir="${REPO_ROOT}/nix/hosts/${HOST_NAME}"
+  secrets_root="/home/${PRIMARY_USER}/.local/share/nixos-quick-deploy/secrets/${HOST_NAME}"
+  secrets_file="${secrets_root}/secrets.sops.yaml"
+  sops_cfg="${secrets_root}/.sops.yaml"
+  legacy_secrets_file="${host_dir}/secrets.sops.yaml"
+  legacy_sops_cfg="${host_dir}/.sops.yaml"
+  age_key_dir="/home/${PRIMARY_USER}/.config/sops/age"
+  age_key_file="${age_key_dir}/keys.txt"
+
+  aidb_key_name="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.secrets.names.aidbApiKey" 2>/dev/null || echo "aidb_api_key")"
+  hybrid_key_name="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.secrets.names.hybridApiKey" 2>/dev/null || echo "hybrid_coordinator_api_key")"
+  embeddings_key_name="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.secrets.names.embeddingsApiKey" 2>/dev/null || echo "embeddings_api_key")"
+  postgres_key_name="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.secrets.names.postgresPassword" 2>/dev/null || echo "postgres_password")"
+  redis_key_name="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.secrets.names.redisPassword" 2>/dev/null || echo "redis_password")"
+
+  install -d -m 0700 "${secrets_root}" 2>/dev/null || true
+  if [[ ! -d "${secrets_root}" ]]; then
+    run_privileged install -d -m 0700 "${secrets_root}"
+  fi
+  run_privileged chown "${PRIMARY_USER}:$(id -gn "${PRIMARY_USER}" 2>/dev/null || echo "${PRIMARY_USER}")" "${secrets_root}" 2>/dev/null || true
+
+  # Migrate old repo-local secrets to strict external storage (one-time).
+  if [[ ! -s "${secrets_file}" && -s "${legacy_secrets_file}" ]]; then
+    cp "${legacy_secrets_file}" "${secrets_file}"
+    chmod 0600 "${secrets_file}"
+    log "Migrated legacy repo-local secrets to ${secrets_file}"
+  fi
+  if [[ ! -f "${sops_cfg}" && -f "${legacy_sops_cfg}" ]]; then
+    cp "${legacy_sops_cfg}" "${sops_cfg}"
+    chmod 0600 "${sops_cfg}"
+  fi
+  # Enforce strict zero-secrets-in-repo behavior.
+  rm -f "${legacy_secrets_file}" "${legacy_sops_cfg}" >/dev/null 2>&1 || true
+
+  if [[ -f "${secrets_file}" ]] && SOPS_AGE_KEY_FILE="${age_key_file}" sops -d "${secrets_file}" >/dev/null 2>&1; then
+    create_or_update_host_deploy_options_local "${host_dir}" "${PRIMARY_USER}" "${secrets_file}"
+    log "Existing encrypted secrets file detected (${secrets_file}); bootstrap skipped."
+    AI_SECRETS_BOOTSTRAP_STATUS="skipped:existing-secrets-file"
+    return 0
+  fi
+
+  local primary_group
+  primary_group="$(id -gn "${PRIMARY_USER}" 2>/dev/null || echo "${PRIMARY_USER}")"
+
+  # Prefer a user-owned age key directory so interactive sops usage works.
+  install -d -m 0700 "${age_key_dir}" 2>/dev/null || true
+  if [[ ! -d "${age_key_dir}" ]]; then
+    run_privileged install -d -m 0700 "${age_key_dir}"
+  fi
+  if [[ ! -w "${age_key_dir}" || ! -x "${age_key_dir}" ]]; then
+    run_privileged chown "${PRIMARY_USER}:${primary_group}" "${age_key_dir}" 2>/dev/null || true
+    run_privileged chmod 0700 "${age_key_dir}" 2>/dev/null || true
+  fi
+
+  if run_privileged test -e "${age_key_file}"; then
+    if ! run_privileged test -f "${age_key_file}"; then
+      die "AGE key path exists but is not a regular file: ${age_key_file}"
+    fi
+    run_privileged chown "${PRIMARY_USER}:${primary_group}" "${age_key_file}" 2>/dev/null || true
+    run_privileged chmod 0600 "${age_key_file}" 2>/dev/null || true
+    log "Using existing age key for sops at ${age_key_file}"
+  else
+    log "Generating age key for sops at ${age_key_file}"
+    age-keygen -o "${age_key_file}" >/dev/null
+    run_privileged chown "${PRIMARY_USER}:${primary_group}" "${age_key_file}" 2>/dev/null || true
+    chmod 0600 "${age_key_file}" 2>/dev/null || run_privileged chmod 0600 "${age_key_file}"
+  fi
+
+  public_key="$(run_privileged awk '/^# public key:/ {print $4; exit}' "${age_key_file}" 2>/dev/null || true)"
+  [[ -n "${public_key}" ]] || die "Unable to read AGE public key from ${age_key_file}"
+
+  if [[ ! -f "${sops_cfg}" ]]; then
+    cat > "${sops_cfg}" <<EOF
+creation_rules:
+  - path_regex: .*secrets\\.sops\\.yaml$
+    age: >-
+      ${public_key}
+EOF
+    chmod 0600 "${sops_cfg}"
+    log "Created SOPS config: ${sops_cfg}"
+  fi
+
+  printf 'Select secrets input mode:\n'
+  printf '  1) Enter my own values\n'
+  printf '  2) Auto-generate secure values\n'
+  read -r -p "Choice [1/2, default 1]: " choice
+  choice="${choice:-1}"
+
+  case "${choice}" in
+    1)
+      local shared_choice shared_secret
+      read -r -p "Use one shared secret for all AI stack keys/passwords? [y/N]: " shared_choice
+      shared_choice="${shared_choice:-N}"
+      if [[ "${shared_choice}" =~ ^[Yy]$ ]]; then
+        shared_secret="$(read_secret_value "Shared AI stack secret")"
+        aidb_api_key="${shared_secret}"
+        hybrid_api_key="${shared_secret}"
+        embeddings_api_key="${shared_secret}"
+        postgres_password="${shared_secret}"
+        redis_password="${shared_secret}"
+      else
+        aidb_api_key="$(read_secret_value "AIDB API key")"
+        hybrid_api_key="$(read_secret_value "Hybrid coordinator API key")"
+        embeddings_api_key="$(read_secret_value "Embeddings API key")"
+        postgres_password="$(read_secret_value "Postgres password")"
+        redis_password="$(read_secret_value "Redis password")"
+      fi
+      ;;
+    2)
+      aidb_api_key="$(generate_secret_value token)"
+      hybrid_api_key="$(generate_secret_value token)"
+      embeddings_api_key="$(generate_secret_value token)"
+      postgres_password="$(generate_secret_value password)"
+      redis_password="$(generate_secret_value password)"
+      ;;
+    *)
+      die "Invalid secrets mode '${choice}'. Expected 1 or 2."
+      ;;
+  esac
+
+  plain_tmp="$(mktemp)"
+  summary_tmp="$(mktemp)"
+  chmod 0600 "${plain_tmp}" "${summary_tmp}"
+
+  AIDB_KEY_NAME="${aidb_key_name}" \
+  HYBRID_KEY_NAME="${hybrid_key_name}" \
+  EMBEDDINGS_KEY_NAME="${embeddings_key_name}" \
+  POSTGRES_KEY_NAME="${postgres_key_name}" \
+  REDIS_KEY_NAME="${redis_key_name}" \
+  AIDB_API_KEY="${aidb_api_key}" \
+  HYBRID_API_KEY="${hybrid_api_key}" \
+  EMBEDDINGS_API_KEY="${embeddings_api_key}" \
+  POSTGRES_PASSWORD="${postgres_password}" \
+  REDIS_PASSWORD="${redis_password}" \
+  python3 - <<'PY' > "${plain_tmp}"
+import json
+import os
+
+payload = {
+    os.environ["AIDB_KEY_NAME"]: os.environ["AIDB_API_KEY"],
+    os.environ["HYBRID_KEY_NAME"]: os.environ["HYBRID_API_KEY"],
+    os.environ["EMBEDDINGS_KEY_NAME"]: os.environ["EMBEDDINGS_API_KEY"],
+    os.environ["POSTGRES_KEY_NAME"]: os.environ["POSTGRES_PASSWORD"],
+    os.environ["REDIS_KEY_NAME"]: os.environ["REDIS_PASSWORD"],
+}
+print(json.dumps(payload, ensure_ascii=True))
+PY
+
+  # Encrypt temp file using the target filename for config/type matching.
+  SOPS_AGE_KEY_FILE="${age_key_file}" sops \
+    --encrypt \
+    --age "${public_key}" \
+    --input-type json \
+    --output-type yaml \
+    --filename-override "secrets.sops.yaml" \
+    "${plain_tmp}" > "${secrets_file}"
+  chmod 0600 "${secrets_file}"
+  rm -f "${plain_tmp}"
+
+  cat > "${summary_tmp}" <<EOF
+AI stack initial secrets for ${NIXOS_TARGET} (${HOST_NAME})
+Generated on: $(date -Is)
+
+${aidb_key_name}=${aidb_api_key}
+${hybrid_key_name}=${hybrid_api_key}
+${embeddings_key_name}=${embeddings_api_key}
+${postgres_key_name}=${postgres_password}
+${redis_key_name}=${redis_password}
+EOF
+  run_privileged install -m 0600 "${summary_tmp}" "/root/ai-stack-initial-secrets-${HOST_NAME}.txt"
+  rm -f "${summary_tmp}"
+
+  create_or_update_host_deploy_options_local "${host_dir}" "${PRIMARY_USER}" "${secrets_file}"
+  rm -f "${legacy_secrets_file}" "${legacy_sops_cfg}" >/dev/null 2>&1 || true
+
+  printf '\n[clean-deploy] Initial AI stack secrets have been configured.\n'
+  printf '[clean-deploy] Encrypted secrets file: %s\n' "${secrets_file}"
+  printf '[clean-deploy] One-time recovery copy (root-only): /root/ai-stack-initial-secrets-%s.txt\n' "${HOST_NAME}"
+  printf '[clean-deploy] Record these values now. They will not be printed again.\n'
+  if [[ "${choice}" == "2" ]]; then
+    printf '[clean-deploy] Auto-generated values:\n'
+    printf '  %s=%s\n' "${aidb_key_name}" "${aidb_api_key}"
+    printf '  %s=%s\n' "${hybrid_key_name}" "${hybrid_api_key}"
+    printf '  %s=%s\n' "${embeddings_key_name}" "${embeddings_api_key}"
+    printf '  %s=%s\n' "${postgres_key_name}" "${postgres_password}"
+    printf '  %s=%s\n' "${redis_key_name}" "${redis_password}"
+  fi
+  read -r -p "Press Enter after you have securely recorded these secrets. " _
+  AI_SECRETS_BOOTSTRAP_STATUS="configured"
+}
+
 update_flake_lock() {
   local ref="$1"
   local -a targets=()
@@ -458,6 +838,7 @@ is_locked_password_field() {
 
 read_shadow_hash() {
   local account="$1"
+  # shellcheck disable=SC2016
   run_privileged awk -F: -v user="$account" '$1 == user { print $2; found = 1; exit } END { if (!found) exit 1 }' /etc/shadow 2>/dev/null
 }
 
@@ -824,6 +1205,41 @@ assert_target_boot_mode() {
   fi
 }
 
+assert_targets_exist() {
+  local nixos_target="${1:?missing nixos target}"
+  local hm_target="${2:?missing home target}"
+  local available_nixos available_home
+  local eval_err reason
+
+  available_nixos="$(list_configuration_names "nixosConfigurations" || true)"
+  if ! has_configuration_name "nixosConfigurations" "${nixos_target}"; then
+    die "NixOS target '${nixos_target}' not found in flake. Available nixosConfigurations: ${available_nixos:-<unavailable>}."
+  fi
+
+  eval_err="$(mktemp)"
+  if ! nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${nixos_target}\".config.system.stateVersion" >/dev/null 2>"${eval_err}"; then
+    reason="$(tr '\n' ' ' < "${eval_err}" 2>/dev/null | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//')"
+    rm -f "${eval_err}" >/dev/null 2>&1 || true
+    die "NixOS target '${nixos_target}' exists but failed to evaluate. ${reason:-Check target module syntax/import errors.}"
+  fi
+  rm -f "${eval_err}" >/dev/null 2>&1 || true
+
+  [[ "${SKIP_HOME_SWITCH}" == false ]] || return 0
+
+  available_home="$(list_configuration_names "homeConfigurations" || true)"
+  if ! has_configuration_name "homeConfigurations" "${hm_target}"; then
+    die "Home target '${hm_target}' not found in flake. Available homeConfigurations: ${available_home:-<unavailable>}."
+  fi
+
+  eval_err="$(mktemp)"
+  if ! nix_eval_raw_safe "${FLAKE_REF}#homeConfigurations.\"${hm_target}\".activationPackage.drvPath" >/dev/null 2>"${eval_err}"; then
+    reason="$(tr '\n' ' ' < "${eval_err}" 2>/dev/null | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//')"
+    rm -f "${eval_err}" >/dev/null 2>&1 || true
+    die "Home target '${hm_target}' exists but failed to evaluate. ${reason:-Check Home Manager module syntax/import errors.}"
+  fi
+  rm -f "${eval_err}" >/dev/null 2>&1 || true
+}
+
 assert_safe_switch_context() {
   [[ "${MODE}" == "switch" ]] || return 0
   [[ "${ALLOW_GUI_SWITCH}" == "true" ]] && return 0
@@ -856,7 +1272,7 @@ home_build() {
     log "nix run Home Manager build fallback failed (${HOME_MANAGER_NIX_RUN_REF}); using activationPackage build path."
   fi
 
-  nix build "${FLAKE_REF}#homeConfigurations."${hm_target}".activationPackage"
+  nix build "${FLAKE_REF}#homeConfigurations.\"${hm_target}\".activationPackage"
 }
 
 verify_home_manager_cli_post_switch() {
@@ -900,7 +1316,7 @@ home_switch() {
 
   local out_link
   out_link="/tmp/home-activation-${hm_target//[^a-zA-Z0-9_.-]/_}-$$"
-  nix build --out-link "$out_link" "${FLAKE_REF}#homeConfigurations."${hm_target}".activationPackage"
+  nix build --out-link "$out_link" "${FLAKE_REF}#homeConfigurations.\"${hm_target}\".activationPackage"
   # home-manager CLI may be unavailable on fresh systems; mirror `-b <ext>` by
   # exporting HOME_MANAGER_BACKUP_EXT for direct activationPackage execution.
   HOME_MANAGER_BACKUP_EXT="${HOME_MANAGER_BACKUP_EXTENSION}" "${out_link}/activate"
@@ -976,7 +1392,11 @@ ${helper_block}  };
 }
 EOF
 
-  log "Updated declarative git identity: ${target}"
+  if [[ "${RESTORE_GENERATED_REPO_FILES}" == "true" ]]; then
+    log "Projected declarative git identity for this run: ${target} (will be restored on exit)"
+  else
+    log "Updated declarative git identity: ${target}"
+  fi
 }
 
 while [[ $# -gt 0 ]]; do
@@ -1070,12 +1490,32 @@ while [[ $# -gt 0 ]]; do
       RUN_READINESS_ANALYSIS=false
       shift
       ;;
+    --skip-ai-secrets-bootstrap)
+      RUN_AI_SECRETS_BOOTSTRAP=false
+      shift
+      ;;
+    --ai-secrets-bootstrap)
+      RUN_AI_SECRETS_BOOTSTRAP=true
+      shift
+      ;;
+    --force-ai-secrets-bootstrap)
+      FORCE_AI_SECRETS_BOOTSTRAP=true
+      shift
+      ;;
     --analyze-only)
       ANALYZE_ONLY=true
       shift
       ;;
     --skip-roadmap-verification)
       SKIP_ROADMAP_VERIFICATION=true
+      shift
+      ;;
+    --restore-generated-files)
+      RESTORE_GENERATED_REPO_FILES=true
+      shift
+      ;;
+    --persist-generated-files)
+      RESTORE_GENERATED_REPO_FILES=false
       shift
       ;;
     -h|--help)
@@ -1093,7 +1533,22 @@ case "$PROFILE" in
   *) die "Unsupported profile '${PROFILE}'. Expected ai-dev|gaming|minimal." ;;
 esac
 
+case "${RESTORE_GENERATED_REPO_FILES}" in
+  auto)
+    if [[ "${ANALYZE_ONLY}" == true ]]; then
+      RESTORE_GENERATED_REPO_FILES=true
+    else
+      RESTORE_GENERATED_REPO_FILES=false
+    fi
+    ;;
+  true|false) ;;
+  *)
+    die "Invalid RESTORE_GENERATED_REPO_FILES='${RESTORE_GENERATED_REPO_FILES}'. Expected: auto|true|false."
+    ;;
+esac
+
 trap cleanup_on_exit EXIT
+trap 'on_unexpected_error "$?" "${LINENO}" "${BASH_COMMAND}"' ERR
 
 assert_non_root_entrypoint
 
@@ -1166,9 +1621,18 @@ snapshot_password_hash "${PRIMARY_USER}"
 NIXOS_TARGET="${NIXOS_TARGET_OVERRIDE:-${HOST_NAME}-${PROFILE}}"
 HM_TARGET="${HM_TARGET_OVERRIDE:-${PRIMARY_USER}-${HOST_NAME}}"
 
-if [[ -z "${HM_TARGET_OVERRIDE}" ]] && ! nix_eval_raw_safe "${FLAKE_REF}#homeConfigurations.\"${HM_TARGET}\".config.home.username" >/dev/null 2>&1; then
+if [[ -z "${HM_TARGET_OVERRIDE}" ]] && ! has_configuration_name "homeConfigurations" "${HM_TARGET}"; then
   HM_TARGET="${PRIMARY_USER}"
 fi
+
+assert_targets_exist "${NIXOS_TARGET}" "${HM_TARGET}"
+
+if [[ "${RUN_AI_SECRETS_BOOTSTRAP}" == true || "${FORCE_AI_SECRETS_BOOTSTRAP}" == true ]]; then
+  bootstrap_ai_stack_secrets_if_needed
+else
+  AI_SECRETS_BOOTSTRAP_STATUS="skipped:cli-disabled"
+fi
+log "AI secrets bootstrap status: ${AI_SECRETS_BOOTSTRAP_STATUS}"
 
 log "NixOS target: ${NIXOS_TARGET}"
 log "Home target: ${HM_TARGET}"

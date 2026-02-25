@@ -18,8 +18,8 @@ NC='\033[0m'
 
 # Test configuration
 BASE_URL="https://localhost:8443"
-CACERT="${PROJECT_ROOT}/ai-stack/kubernetes/tls/localhost.crt"
-API_KEY_FILE="${PROJECT_ROOT}/ai-stack/kubernetes/secrets/generated/stack_api_key"
+CACERT="${PROJECT_ROOT}/ai-stack/tls/localhost.crt"
+API_KEY_FILE="${PROJECT_ROOT}/ai-stack/secrets/generated/stack_api_key"
 TEST_LOG="${TMP_ROOT}/chaos-test-progressive-disclosure-$$.log"
 
 # Metrics

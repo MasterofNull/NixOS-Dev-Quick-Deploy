@@ -39,7 +39,7 @@ When `LOCAL_AI_STACK_ENABLED=false`, the entire `services.podman` block (includi
    
    # Re-run the configuration generation (Phase 3)
    # This will regenerate templates/home.nix with containers enabled
-   ./nixos-quick-deploy.sh --skip-phases 1,2,4,5,6,7,8,9
+   ./nixos-quick-deploy.sh --build-only --skip-system-switch --skip-home-switch
    
    # Or manually rebuild Home Manager
    home-manager switch --flake ~/.config/home-manager#$(hostname)

@@ -1,0 +1,28 @@
+[Unit]
+Description=AIDB Library Catalog Sync Service
+Documentation=https://registry.modelcontextprotocol.io
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__PROJECT_ROOT__
+Environment=PATH=/run/current-system/sw/bin:/home/hyperd/.nix-profile/bin:/usr/bin:/bin
+
+# Sync MCP registry + curated skills into AIDB and validate counts.
+ExecStart=/run/current-system/sw/bin/bash __PROJECT_ROOT__/scripts/sync-aidb-library-catalog.sh
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aidb-library-catalog-sync
+
+# Hardening
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.cache
+ReadWritePaths=/tmp
+
+[Install]
+WantedBy=default.target

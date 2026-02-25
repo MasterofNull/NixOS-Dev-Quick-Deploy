@@ -13,7 +13,6 @@ The dashboard API provides several health check endpoints:
 GET  /api/health                      - Overall dashboard health
 GET  /api/health/services            - Individual service health
 GET  /api/health/containers          - Container health status
-GET  /api/health/kubernetes          - Kubernetes connectivity
 GET  /api/health/database            - Database connectivity
 GET  /api/health/metrics             - Metrics collection status
 ```
@@ -31,7 +30,6 @@ GET  /api/health/metrics             - Metrics collection status
     "ralph_wiggum": "degraded",
     "embeddings": "healthy"
   },
-  "kubernetes": {
     "connected": true,
     "namespace": "ai-stack",
     "pods_monitored": 8
@@ -303,14 +301,11 @@ curl http://localhost:8889/api/health
 wscat -c ws://localhost:8889/ws/metrics
 
 # View dashboard logs
-kubectl logs -f deployment/dashboard-api -n ai-stack
 
 # Check metrics collection
 curl http://localhost:8889/api/metrics/system
 
 # Verify service connectivity
-kubectl get pods -n ai-stack
-kubectl get svc -n ai-stack
 ```
 
 This provides comprehensive dashboard health monitoring and stale data detection capabilities.

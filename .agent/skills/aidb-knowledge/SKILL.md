@@ -1,3 +1,8 @@
+---
+name: aidb-knowledge
+description: Instructions and workflow for the aidb-knowledge skill.
+---
+
 #!/usr/bin/env python3
 """
 # Skill: aidb-knowledge
@@ -120,3 +125,5 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(main())
+
+## Maintenance

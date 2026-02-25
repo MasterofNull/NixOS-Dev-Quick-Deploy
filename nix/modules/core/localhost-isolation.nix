@@ -2,6 +2,15 @@
 let
   cfg = config.mySystem;
   ports = cfg.ports;
+  primaryGroupName = lib.attrByPath [ "users" "users" cfg.primaryUser "group" ] null config;
+  primaryGroupGid =
+    if primaryGroupName == null then null
+    else lib.attrByPath [ "users" "groups" primaryGroupName "gid" ] null config;
+  effectiveAllowedGids =
+    lib.unique (
+      cfg.localhostIsolation.allowedServiceGids
+      ++ lib.optional (primaryGroupGid != null) primaryGroupGid
+    );
 
   protectedPorts = lib.unique [
     ports.postgres
@@ -14,7 +23,7 @@ let
   ];
 
   portSet = lib.concatStringsSep ", " (map toString protectedPorts);
-  gidSet = lib.concatStringsSep ", " (map toString cfg.localhostIsolation.allowedServiceGids);
+  gidSet = lib.concatStringsSep ", " (map toString effectiveAllowedGids);
 in
 {
   config = lib.mkIf cfg.localhostIsolation.enable {

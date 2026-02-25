@@ -251,7 +251,7 @@ pip install torch==2.5.1+cpu --index-url https://download.pytorch.org/whl/cpu
 codium --install-extension Kombai.kombai
 
 # Or rerun phase 6
-./nixos-quick-deploy.sh --start-from-phase 6
+./nixos-quick-deploy.sh --build-only
 ```
 
 ---

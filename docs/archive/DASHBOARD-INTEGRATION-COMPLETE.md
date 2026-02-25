@@ -211,7 +211,7 @@ kill %1
 
 ```bash
 # Run deployment (use --dry-run for safety)
-./nixos-quick-deploy.sh --dry-run
+./nixos-quick-deploy.sh --build-only
 
 # Check Phase 8 logs
 tail -100 ~/.cache/nixos-quick-deploy/logs/*.log | grep -A 30 "Step 8.5"

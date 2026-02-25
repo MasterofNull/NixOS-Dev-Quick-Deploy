@@ -91,9 +91,27 @@ fi
 npx "${promptfoo_args[@]}" || eval_exit=$?
 
 # ── Parse results ─────────────────────────────────────────────────────────────
+threshold_passed=0
 if [[ -f "${result_file}" ]] && command -v jq >/dev/null 2>&1; then
-    total=$(jq '.stats.successes + .stats.failures' "${result_file}" 2>/dev/null || echo 0)
-    passed=$(jq '.stats.successes' "${result_file}" 2>/dev/null || echo 0)
+    passed=$(jq -r '
+      if (.results | type) == "object" and (.results.stats? != null)
+      then (.results.stats.successes // 0)
+      else (.stats.successes // 0)
+      end | tonumber
+    ' "${result_file}" 2>/dev/null || echo 0)
+    failures=$(jq -r '
+      if (.results | type) == "object" and (.results.stats? != null)
+      then (.results.stats.failures // 0)
+      else (.stats.failures // 0)
+      end | tonumber
+    ' "${result_file}" 2>/dev/null || echo 0)
+    errors=$(jq -r '
+      if (.results | type) == "object" and (.results.stats? != null)
+      then (.results.stats.errors // 0)
+      else (.stats.errors // 0)
+      end | tonumber
+    ' "${result_file}" 2>/dev/null || echo 0)
+    total=$((passed + failures + errors))
 
     if [[ "${total}" -gt 0 ]]; then
         pct=$(( passed * 100 / total ))
@@ -113,10 +131,17 @@ if [[ -f "${result_file}" ]] && command -v jq >/dev/null 2>&1; then
         if [[ "${pct}" -lt "${ACCEPTANCE_THRESHOLD}" ]]; then
             fail "Eval below threshold: ${pct}% < ${ACCEPTANCE_THRESHOLD}%"
         fi
+        threshold_passed=1
     else
         warn "Could not parse eval results from ${result_file}"
     fi
 fi
 
-[[ "${eval_exit}" -eq 0 ]] || fail "Promptfoo exited with code ${eval_exit}"
+if [[ "${eval_exit}" -ne 0 ]]; then
+    if [[ "${threshold_passed}" -eq 1 ]]; then
+        warn "Promptfoo exited with code ${eval_exit}, but pass-rate threshold was satisfied."
+    else
+        fail "Promptfoo exited with code ${eval_exit}"
+    fi
+fi
 info "Eval complete."

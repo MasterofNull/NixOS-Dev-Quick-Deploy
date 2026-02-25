@@ -31,3 +31,4 @@ security-audit:
 
 security-scan:
 	./scripts/security-scan.sh
+

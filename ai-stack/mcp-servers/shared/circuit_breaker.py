@@ -7,6 +7,7 @@ communication within the AI stack to prevent cascading failures.
 """
 
 import asyncio
+import os
 import time
 import functools
 from enum import Enum
@@ -332,9 +333,9 @@ async def example_usage():
     })
     
     # Create clients with circuit breaker protection
-    aidb_client = AIDBCircuitBreakerClient("http://aidb:8091", registry)
-    hybrid_client = HybridCoordinatorCircuitBreakerClient("http://hybrid-coordinator:8092", registry)
-    ralph_client = RalphWiggumCircuitBreakerClient("http://ralph-wiggum:8098", registry)
+    aidb_client = AIDBCircuitBreakerClient(os.getenv("AIDB_URL", ""), registry)
+    hybrid_client = HybridCoordinatorCircuitBreakerClient(os.getenv("HYBRID_COORDINATOR_URL", ""), registry)
+    ralph_client = RalphWiggumCircuitBreakerClient(os.getenv("RALPH_URL", ""), registry)
 
     try:
         # These calls will be protected by circuit breakers

@@ -1,0 +1,41 @@
+{
+  "version": "2026-02-25",
+  "name": "agent-agnostic-capability-contract",
+  "workflow": [
+    "discover",
+    "plan",
+    "execute",
+    "verify",
+    "learn"
+  ],
+  "required_services": {
+    "aidb": {
+      "health": "/health",
+      "tools": "/tools",
+      "skills": "/skills",
+      "documents": "/documents",
+      "execute_tool": "/tools/execute"
+    },
+    "hybrid": {
+      "health": "/health",
+      "query": "/query",
+      "augment": "/augment_query",
+      "stats": "/stats"
+    }
+  },
+  "required_behaviors": {
+    "autonomous_capability_discovery": true,
+    "intent_gated_lookup": true,
+    "discovery_cache": true,
+    "risk_tiered_tool_execution": true,
+    "weekly_research_sync": true
+  },
+  "observability": {
+    "required_health_fields": [
+      "ai_harness.capability_discovery_enabled",
+      "ai_harness.capability_discovery_on_query",
+      "capability_discovery.invoked",
+      "capability_discovery.skipped"
+    ]
+  }
+}

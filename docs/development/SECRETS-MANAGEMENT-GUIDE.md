@@ -26,13 +26,11 @@ This will generate:
 
 The deployment now supports (and can enforce) a single encrypted secrets bundle:
 
-- **Bundle:** `ai-stack/kubernetes/secrets/secrets.sops.yaml`
 - **Config:** `.sops.yaml` (repo root)
 - **Enforce encrypted secrets:** set `REQUIRE_ENCRYPTED_SECRETS=true`
 
 ### Deprecated Plaintext Manifests
 
-Plaintext Kompose secret manifests (`ai-stack/kubernetes/kompose/*-secret.yaml`) are deprecated and now contain only placeholders.
 All secret creation must happen via the SOPS bundle + Phase 9 gate.
 
 ### History Cleanup (Requires Explicit Approval)
@@ -49,7 +47,6 @@ This is a destructive operation and should be done only after coordination.
 ### Create or Refresh Bundle
 
 ```bash
-bash -lc 'source lib/secrets-sops.sh && sops_encrypt_secrets_bundle ai-stack/kubernetes/secrets'
 ```
 
 ### Rotate Secrets (SOPS)
@@ -62,7 +59,6 @@ bash -lc 'source lib/secrets-sops.sh && sops_encrypt_secrets_bundle ai-stack/kub
 ./scripts/rotate-secrets.sh postgres_password grafana_admin_password
 ```
 
-After rotation, re-apply secrets to the cluster (Phase 9 or manual kubectl apply).
 
 ### No-Downtime Rotation Procedure (K3s)
 
@@ -74,14 +70,11 @@ After rotation, re-apply secrets to the cluster (Phase 9 or manual kubectl apply
 ./scripts/rotate-secrets.sh all
 
 # 2) Apply updated secrets to the cluster
-sops -d ai-stack/kubernetes/secrets/secrets.sops.yaml | kubectl apply -n ai-stack -f -
 
 # 3) Restart only the affected deployments (preferred) or all deployments
 # Example: restart all deployments in ai-stack
-kubectl -n ai-stack rollout restart deploy
 
 # 4) Wait for rollouts to complete
-kubectl -n ai-stack rollout status deploy --timeout=10m
 
 # 5) Verify stack health
 ./scripts/ai-stack-health.sh
@@ -253,7 +246,6 @@ chmod +x scripts/manage-secrets.py
 
 # 3. Start the stack
 export AI_STACK_ENV_FILE=/path/to/.env
-kubectl apply -k ai-stack/kubernetes
 ```
 
 ### Rotate a Database Password
@@ -263,12 +255,9 @@ kubectl apply -k ai-stack/kubernetes
 ./scripts/manage-secrets.sh rotate postgres_password
 
 # 2. Update PostgreSQL user password (for existing databases)
-NEW_PASS=$(cat ai-stack/kubernetes/secrets/generated/postgres_password)
-kubectl exec -n ai-stack deploy/postgres -- psql -U mcp -d mcp \
   -c "ALTER USER mcp WITH PASSWORD '$NEW_PASS';"
 
 # 3. Restart affected services
-kubectl rollout restart deploy -n ai-stack postgres aidb hybrid-coordinator health-monitor ralph-wiggum
 ```
 
 ### Rotate All API Keys
@@ -281,7 +270,6 @@ kubectl rollout restart deploy -n ai-stack postgres aidb hybrid-coordinator heal
 ./scripts/manage-secrets.sh rotate all
 
 # 3. Restart all services
-kubectl rollout restart deploy -n ai-stack --all
 ```
 
 ### Backup Before Maintenance
@@ -305,7 +293,6 @@ kubectl rollout restart deploy -n ai-stack --all
 ./scripts/manage-secrets.sh restore backups/secrets/secrets_20260124_153045
 
 # Restart services
-kubectl rollout restart deploy -n ai-stack --all
 ```
 
 ---
@@ -322,7 +309,6 @@ Permission denied reading /run/secrets/postgres_password
 **Fix:**
 ```bash
 # Ensure secrets file is readable (sops-managed)
-chmod 600 ai-stack/kubernetes/secrets/secrets.sops.yaml
 ```
 
 ### Issue: Empty or Missing Secrets
@@ -363,8 +349,6 @@ chmod 600 ai-stack/kubernetes/secrets/secrets.sops.yaml
 # For existing databases, you must update the password manually
 
 # PostgreSQL:
-NEW_PASS=$(cat ai-stack/kubernetes/secrets/generated/postgres_password)
-kubectl exec -n ai-stack deploy/postgres -- psql -U mcp -d mcp \
   -c "ALTER USER mcp WITH PASSWORD '$NEW_PASS';"
 
 # Grafana: Delete data directory and restart
@@ -373,7 +357,6 @@ podman unshare rm -rf ~/.local/share/nixos-ai-stack/grafana/*
 docker start local-ai-grafana
 
 # Redis: Just restart (reads password on startup)
-kubectl rollout restart deploy -n ai-stack redis
 ```
 
 ---
@@ -401,7 +384,6 @@ kubectl rollout restart deploy -n ai-stack redis
 
 ### Secrets Directory
 ```
-ai-stack/kubernetes/secrets/generated/
 ├── postgres_password           # 32B password
 ├── redis_password              # 32B password
 ├── grafana_admin_password      # 32B password
@@ -431,7 +413,6 @@ backups/secrets/
 
 ### Configuration File
 ```
-ai-stack/kubernetes/secrets/.secrets-config.json
 {
   "postgres_password": {
     "created": "2026-01-24T12:00:00",
@@ -450,7 +431,6 @@ ai-stack/kubernetes/secrets/.secrets-config.json
 ### Apply Secrets (sops-managed)
 
 ```bash
-sops -d ai-stack/kubernetes/secrets/secrets.sops.yaml | kubectl apply -f -
 ```
 
 ### How Services Read Secrets
@@ -496,7 +476,6 @@ cd /path/to/NixOS-Dev-Quick-Deploy
 ./scripts/manage-secrets.sh rotate all
 
 # Restart stack
-kubectl rollout restart deploy -n ai-stack --all
 
 # Send notification (optional)
 echo "AI Stack secrets rotated on $(date)" | mail -s "Secret Rotation" admin@example.com
@@ -533,7 +512,6 @@ jobs:
 
       - name: Commit changes
         run: |
-          git add ai-stack/kubernetes/secrets/secrets.sops.yaml
           git commit -m "chore: rotate secrets (automated)"
           git push
 ```
@@ -546,7 +524,6 @@ jobs:
 A: Restore from the most recent backup using `restore` command. If no backups exist, you'll need to reinitialize and manually update database passwords.
 
 **Q: Can I use my own passwords?**
-A: Not recommended. The tool generates cryptographically secure passwords. If you must, edit the files in `ai-stack/kubernetes/secrets/generated/` directly (not recommended).
 
 **Q: How often should I rotate secrets?**
 A: Quarterly rotation is recommended. Rotate immediately after:
@@ -568,7 +545,6 @@ A: Yes! The tool is production-ready. Just ensure:
 **Q: How do I apply secrets to Kubernetes?**
 A: Encrypt and apply the sops file:
 ```bash
-sops -d ai-stack/kubernetes/secrets/secrets.sops.yaml | kubectl apply -f -
 ```
 
 ---

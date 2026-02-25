@@ -81,7 +81,6 @@ deduplicate_similarity: 0.95
 **Changes Made:**
 - Created [renew-tls-certificate.sh](scripts/renew-tls-certificate.sh) renewal script
 - Added systemd timer and service files
-- Updated nginx ConfigMap with ACME challenge support (`ai-stack/kubernetes/kompose/nginx-cm0-configmap.yaml`)
 - Implemented Prometheus metrics export
 
 **Features:**
@@ -207,7 +206,6 @@ pytest ai-stack/tests/test_p1_integration.py -v
    - Added `garbage_collection` section (lines 114-125)
    - Added `query_validation` section (lines 127-139)
 
-2. `ai-stack/kubernetes/kompose/nginx-cm0-configmap.yaml`
    - Added ACME challenge location in the nginx ConfigMap
 
 3. `ai-stack/mcp-servers/aidb/server.py`

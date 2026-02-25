@@ -7,6 +7,7 @@ between AIDB and Hybrid Coordinator to prevent cascading failures.
 """
 
 import asyncio
+import os
 import time
 import functools
 from enum import Enum
@@ -174,7 +175,7 @@ class AIDBHybridClient:
 # Example usage
 async def example_usage():
     """Example of how to use the circuit breaker."""
-    client = AIDBHybridClient("http://hybrid-coordinator:8092")
+    client = AIDBHybridClient(os.getenv("HYBRID_COORDINATOR_URL", ""))
     
     try:
         result = await client.query_hybrid_coordinator("test query")

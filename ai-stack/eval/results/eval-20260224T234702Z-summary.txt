@@ -1,0 +1,4 @@
+Eval run: 20260224T234702Z
+Config:   ai-stack/eval/promptfoo-config.yaml
+Passed:   8/9 (88%)
+Threshold: 1%

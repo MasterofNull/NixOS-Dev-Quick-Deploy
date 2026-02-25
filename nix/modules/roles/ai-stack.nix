@@ -20,6 +20,7 @@ let
   roleEnabled = cfg.roles.aiStack.enable;
   listenAddr  = if ai.listenOnLan then "0.0.0.0" else "127.0.0.1";
   llama       = ai.llamaCpp;
+  swb         = ai.switchboard;
 
   hasOpenWebui = lib.versionAtLeast lib.version "24.11";
   hasQdrant    = lib.versionAtLeast lib.version "24.11";
@@ -94,7 +95,7 @@ let
   # Open WebUI environment — wired to llama-server (OpenAI-compatible API).
   openWebuiEnv =
     {
-      OPENAI_API_BASE_URLS = "http://127.0.0.1:${toString llama.port}";
+      OPENAI_API_BASE_URLS = "http://127.0.0.1:${toString (if swb.enable then swb.port else llama.port)}";
       OPENAI_API_KEYS      = "dummy";  # llama-server ignores the value
       OLLAMA_BASE_URL      = "";       # disable built-in Ollama probe
       WEBUI_AUTH           = lib.mkDefault "false";
@@ -140,7 +141,7 @@ in
     # starts automatically once a GGUF file exists at that path.
     (lib.mkIf (roleEnabled && llama.enable) {
 
-      users.groups.llama = { gid = 35011; };
+      users.groups.llama = { };
       users.users.llama = {
         isSystemUser = true;
         group        = "llama";
@@ -258,6 +259,7 @@ in
 
       networking.firewall.allowedTCPPorts = lib.mkIf ai.listenOnLan (
         [ llama.port ]
+        ++ lib.optional swb.enable swb.port
         ++ lib.optional (ai.ui.enable && hasOpenWebui) 3000
         ++ lib.optional (ai.vectorDb.enable && hasQdrant) ports.qdrantHttp
         ++ lib.optional (ai.vectorDb.enable && hasQdrant) ports.qdrantGrpc

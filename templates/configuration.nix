@@ -151,7 +151,6 @@ in
     ./nixos-improvements/networking.nix  # DNS resolution fix
     ./nixos-improvements/virtualization.nix
     ./nixos-improvements/optimizations.nix
-    # ./nixos-improvements/podman.nix (legacy - podman runtime deprecated in favor of K3s)
     ./nixos-improvements/mobile-workstation.nix  # Laptop/battery/AMD iGPU optimizations
   ];
 
@@ -275,31 +274,6 @@ in
     enable = true;
     binfmt = true;
   };
-
-  # ============================================================================
-  # K3s (Kubernetes) with Podman runtime
-  # ============================================================================
-  services.k3s = {
-    enable = true;
-    role = "server";
-    extraFlags = toString [
-      # NOTE: Podman does not expose a CRI endpoint. Use k3s default (containerd).
-      "--write-kubeconfig-mode 644"
-      "--disable traefik"
-      "--disable servicelb"
-    ];
-  };
-
-  # Local registry for deterministic image rollouts (k3s/containerd)
-  environment.etc."rancher/k3s/registries.yaml".text = ''
-    mirrors:
-      "localhost:5000":
-        endpoint:
-          - "http://localhost:5000"
-      "127.0.0.1:5000":
-        endpoint:
-          - "http://127.0.0.1:5000"
-  '';
 
   # ============================================================================
   # Security Hardening
@@ -564,11 +538,10 @@ in
   @GLF_GAMING_STACK_SECTION@
 
   # ========================================================================
-  # AI Services - K3s AI Stack
+  # AI Services
   # ========================================================================
-  # All AI services (llama.cpp, Qdrant, PostgreSQL, etc.) run in K3s.
-  # Managed via kubectl and deployed in Phase 9.
-  # See: ai-stack/kubernetes/ for Kubernetes manifests.
+  # AI services (llama.cpp, Qdrant, PostgreSQL, etc.) are managed
+  # by the declarative flake-first runtime modules.
 
   # ========================================================================
   # Self-hosted Git Service (Gitea)

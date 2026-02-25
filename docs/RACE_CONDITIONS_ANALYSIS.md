@@ -194,7 +194,7 @@ local flatpak_pid=$!
 1. **Stress test parallel npm installs:**
    ```bash
    # Run deployment multiple times rapidly
-   for i in {1..5}; do ./nixos-quick-deploy.sh --phase 6 & done
+   for i in {1..5}; do ./nixos-quick-deploy.sh --build-only & done
    wait
    ```
 
@@ -218,4 +218,3 @@ local flatpak_pid=$!
 The most critical race condition (Flatpak installation) has been fixed. The remaining potential issues are low to medium risk and mostly mitigated by atomic write patterns. The NPM .npmrc race condition should be addressed as a medium-priority improvement, but is not blocking.
 
 **Overall Assessment:** ✅ **SAFE FOR PRODUCTION** with recommended improvements.
-

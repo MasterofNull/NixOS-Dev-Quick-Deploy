@@ -278,11 +278,11 @@ validate_config_settings() {
     local failures=0
     local err_code="${ERR_CONFIG_INVALID:-30}"
 
-    local ai_ns="${AI_STACK_NAMESPACE:-${K3S_AI_NAMESPACE:-ai-stack}}"
+    local ai_ns="${AI_STACK_NAMESPACE:-ai-stack}"
     local backups_ns="${BACKUPS_NAMESPACE:-backups}"
     local logging_ns="${LOGGING_NAMESPACE:-logging}"
 
-    for required_var in AI_STACK_NAMESPACE BACKUPS_NAMESPACE LOGGING_NAMESPACE K3S_KUBECONFIG AI_STACK_CONFIG_DIR AI_STACK_ENV_FILE; do
+    for required_var in AI_STACK_NAMESPACE BACKUPS_NAMESPACE LOGGING_NAMESPACE AI_STACK_CONFIG_DIR AI_STACK_ENV_FILE; do
         if [[ -z "${!required_var:-}" ]]; then
             print_error "Required configuration variable is unset: ${required_var}"
             failures=$((failures + 1))
@@ -304,7 +304,7 @@ validate_config_settings() {
         failures=$((failures + 1))
     fi
 
-    for timeout_var in KUBECTL_TIMEOUT CURL_TIMEOUT CURL_CONNECT_TIMEOUT NIXOS_REBUILD_TIMEOUT HOME_MANAGER_TIMEOUT GENERIC_TIMEOUT; do
+    for timeout_var in DEPLOY_API_TIMEOUT CURL_TIMEOUT CURL_CONNECT_TIMEOUT NIXOS_REBUILD_TIMEOUT HOME_MANAGER_TIMEOUT GENERIC_TIMEOUT; do
         local timeout_val="${!timeout_var:-}"
         if [[ -n "$timeout_val" ]] && ! validate_integer "$timeout_val" 1 86400; then
             print_error "Invalid ${timeout_var} value: ${timeout_val} (must be >= 1)"

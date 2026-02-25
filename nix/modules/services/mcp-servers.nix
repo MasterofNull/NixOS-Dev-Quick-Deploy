@@ -26,16 +26,89 @@ let
   ai       = cfg.aiStack;
   sec      = cfg.secrets;
   llama    = ai.llamaCpp;
+  svcUser  = cfg.primaryUser;
+  svcGroup = lib.attrByPath [ "users" "users" svcUser "group" ] "users" config;
 
   active = cfg.roles.aiStack.enable && mcp.enable && ai.backend == "llamacpp";
 
   repoMcp  = "${mcp.repoPath}/ai-stack/mcp-servers";
   dataDir  = mcp.dataDir;
   migrationsIni = "${mcp.repoPath}/ai-stack/migrations/alembic.ini";
+  aidbConfig = pkgs.writeText "aidb-config.yaml" ''
+    server:
+      host: 127.0.0.1
+      api_port: ${toString mcp.aidbPort}
+      workers: 1
+
+    database:
+      postgres:
+        host: 127.0.0.1
+        port: ${toString ports.postgres}
+        database: ${mcp.postgres.database}
+        user: ${mcp.postgres.user}
+      redis:
+        host: 127.0.0.1
+        port: ${toString mcp.redis.port}
+        db: 0
+
+    llm:
+      llama_cpp:
+        host: http://127.0.0.1:${toString llama.port}
+
+    logging:
+      level: INFO
+      file: ${dataDir}/aidb/logs/aidb-mcp.log
+      max_size: 10MB
+      backup_count: 5
+
+    telemetry:
+      enabled: false
+      path: ${dataDir}/aidb/telemetry/aidb-events.jsonl
+
+    security:
+      api_key_file: ${if sec.enable then secretPath aidbApiKeySecret else "/dev/null"}
+      rate_limit:
+        enabled: true
+        requests_per_minute: 60
+
+    rag:
+      embedding_model: BAAI/bge-small-en-v1.5
+      embedding_dimension: 384
+      default_limit: 5
+      default_context_chars: 4000
+      max_context_chars: 12000
+      pgvector:
+        hnsw_m: 16
+        hnsw_ef_construction: 64
+  '';
 
   # ── Shared Python environment (packages used by ≥2 services) ─────────────
   # Individual services extend this with their own extras.
-  sharedPythonPackages = ps: with ps; [
+  sharedPythonPackages = ps:
+    let
+      pyAttrOrNull = names:
+        let
+          found = builtins.filter (n: builtins.hasAttr n ps) names;
+        in
+        if found == [ ] then null else builtins.getAttr (builtins.head found) ps;
+      otelPkgs = builtins.filter (x: x != null) [
+        (pyAttrOrNull [ "opentelemetry-api" "opentelemetry_api" ])
+        (pyAttrOrNull [ "opentelemetry-sdk" "opentelemetry_sdk" ])
+        (pyAttrOrNull [ "opentelemetry-exporter-otlp" "opentelemetry_exporter_otlp" ])
+        (pyAttrOrNull [ "opentelemetry-exporter-otlp-proto-grpc" "opentelemetry_exporter_otlp_proto_grpc" ])
+        (pyAttrOrNull [ "opentelemetry-instrumentation-fastapi" "opentelemetry_instrumentation_fastapi" ])
+      ];
+      aidbExtraPkgs = builtins.filter (x: x != null) [
+        (pyAttrOrNull [ "sentence-transformers" "sentence_transformers" ])
+        (pyAttrOrNull [ "transformers" ])
+        (pyAttrOrNull [ "huggingface-hub" "huggingface_hub" ])
+        (pyAttrOrNull [ "scikit-learn" "scikit_learn" ])
+        (pyAttrOrNull [ "numpy" ])
+        (pyAttrOrNull [ "scipy" ])
+        (pyAttrOrNull [ "pandas" ])
+      ];
+    in
+    (with ps; [
     # HTTP servers / clients
     flask
     aiohttp
@@ -46,14 +119,16 @@ let
     pydantic
     pydantic-settings
 
-    # MCP protocol
-    mcp
+    # MCP protocol (must use ps.mcp; local `mcp` is module config attrset)
+    ps.mcp
 
     # Vector DB client
     qdrant-client
 
     # Database
+    psycopg
     psycopg2
+    asyncpg
 
     # Observability
     prometheus-client
@@ -65,7 +140,7 @@ let
     tenacity
     openai
     anthropic
-  ];
+  ]) ++ otelPkgs ++ aidbExtraPkgs;
 
   # ── Per-service Python envs ───────────────────────────────────────────────
   # Note: no separate embeddingsPython env — embeddings are served by
@@ -76,6 +151,7 @@ let
   aidbPython = pkgs.python3.withPackages (ps: sharedPythonPackages ps ++ (with ps; [
     sqlalchemy
     alembic
+    pgvector
   ]));
 
   hybridPython = pkgs.python3.withPackages (ps: sharedPythonPackages ps ++ (with ps; [
@@ -96,15 +172,13 @@ let
   # ProtectHome fix: ReadOnlyPaths overrides ProtectHome to allow reading repo
   #   scripts (needed when mcpServers.repoPath is under /home/).
   commonServiceConfig = {
-    User                     = "ai-stack";
-    Group                    = "ai-stack";
+    User                     = svcUser;
+    Group                    = svcGroup;
     Restart                  = "on-failure";
     RestartSec               = "10s";
-    StartLimitIntervalSec    = "300";
-    StartLimitBurst          = 5;
     NoNewPrivileges          = true;
     ProtectSystem            = "strict";
-    ProtectHome              = true;
+    ProtectHome              = "read-only";
     ReadWritePaths           = [ dataDir "/tmp" ];
     ReadOnlyPaths            = [ mcp.repoPath ];
     PrivateTmp               = true;
@@ -129,9 +203,54 @@ let
 
   embedEnabled = ai.embeddingServer.enable;
   redisUnit = "redis-mcp.service";
+  authSelfTestUnit = "ai-auth-selftest.service";
+  otlpCollectorUnit = "ai-otel-collector.service";
+  otlpEndpoint = "http://127.0.0.1:${toString ports.otlpGrpc}";
+  otelCollectorConfig = pkgs.writeText "ai-otel-collector.yaml" ''
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 127.0.0.1:${toString ports.otlpGrpc}
+          http:
+            endpoint: 127.0.0.1:${toString ports.otlpHttp}
+
+    processors:
+      batch: {}
+
+    exporters:
+      nop: {}
+
+    service:
+      telemetry:
+        logs:
+          level: "warn"
+        metrics:
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: 127.0.0.1
+                    port: ${toString ports.otelCollectorMetrics}
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [nop]
+  '';
+  requiredSecretFiles =
+    [
+      (secretPath aidbApiKeySecret)
+      (secretPath hybridApiKeySecret)
+      (secretPath embeddingsApiKeySecret)
+      (secretPath postgresPasswordSecret)
+    ];
 
   aiStackTargetWants =
     [ "ai-aidb.service" "ai-hybrid-coordinator.service" "ai-ralph-wiggum.service" ]
+    ++ lib.optional sec.enable authSelfTestUnit
+    ++ [ otlpCollectorUnit ]
+    ++ lib.optional mcp.postgres.enable "ai-pgvector-bootstrap.service"
     ++ lib.optional llama.enable "llama-cpp.service"
     ++ lib.optional embedEnabled "llama-cpp-embed.service"
     ++ lib.optional ai.vectorDb.enable "qdrant.service"
@@ -140,6 +259,9 @@ let
 
   aidbDeps =
     [ "network-online.target" ]
+    ++ [ otlpCollectorUnit ]
+    ++ lib.optional sec.enable authSelfTestUnit
+    ++ lib.optional mcp.postgres.enable "ai-pgvector-bootstrap.service"
     ++ lib.optional embedEnabled "llama-cpp-embed.service"
     ++ lib.optional mcp.postgres.enable "postgresql.service"
     ++ lib.optional mcp.redis.enable redisUnit
@@ -147,6 +269,8 @@ let
 
   hybridDeps =
     [ "network-online.target" "ai-aidb.service" ]
+    ++ [ otlpCollectorUnit ]
+    ++ lib.optional sec.enable authSelfTestUnit
     ++ lib.optional embedEnabled "llama-cpp-embed.service"
     ++ lib.optional mcp.postgres.enable "postgresql.service"
     ++ lib.optional mcp.redis.enable redisUnit
@@ -154,6 +278,8 @@ let
 
   ralphDeps =
     [ "network-online.target" "ai-hybrid-coordinator.service" "ai-aidb.service" ]
+    ++ [ otlpCollectorUnit ]
+    ++ lib.optional sec.enable authSelfTestUnit
     ++ lib.optional mcp.postgres.enable "postgresql.service"
     ++ lib.optional mcp.redis.enable redisUnit;
 
@@ -163,25 +289,29 @@ in
 
     # ── Activation guard: only meaningful changes when fully enabled ──────────
     (lib.mkIf active {
+      assertions = [
+        {
+          assertion = sec.enable;
+          message = ''
+            mySystem.mcpServers requires mySystem.secrets.enable=true when
+            mySystem.roles.aiStack.enable=true.
+          '';
+        }
+      ];
 
       # ── System user / group ─────────────────────────────────────────────────
-      users.groups.ai-stack = { gid = 35010; };
-      users.users.ai-stack = {
-        isSystemUser = true;
-        group        = "ai-stack";
-        description  = "AI stack MCP services";
-        home         = dataDir;
-        createHome   = true;
-      };
-
       # ── State directories ───────────────────────────────────────────────────
       systemd.tmpfiles.rules = [
-        "d ${dataDir}                    0750 ai-stack ai-stack -"
-        "d ${dataDir}/aidb               0750 ai-stack ai-stack -"
-        "d ${dataDir}/hybrid             0750 ai-stack ai-stack -"
-        "d ${dataDir}/ralph              0750 ai-stack ai-stack -"
-        "d ${dataDir}/qdrant-collections 0750 ai-stack ai-stack -"
-        "d /var/log/ai-stack             0750 ai-stack ai-stack -"
+        "d ${dataDir}                    0750 ${svcUser} ${svcGroup} -"
+        "d ${dataDir}/aidb               0750 ${svcUser} ${svcGroup} -"
+        "d ${dataDir}/aidb/logs          0750 ${svcUser} ${svcGroup} -"
+        "d ${dataDir}/aidb/telemetry     0750 ${svcUser} ${svcGroup} -"
+        "d ${dataDir}/hybrid             0750 ${svcUser} ${svcGroup} -"
+        "d ${dataDir}/ralph              0750 ${svcUser} ${svcGroup} -"
+        "d ${dataDir}/ralph/state        0750 ${svcUser} ${svcGroup} -"
+        "d ${dataDir}/ralph/telemetry    0750 ${svcUser} ${svcGroup} -"
+        "d ${dataDir}/qdrant-collections 0750 ${svcUser} ${svcGroup} -"
+        "d /var/log/ai-stack             0750 ${svcUser} ${svcGroup} -"
       ];
 
       # ── Firewall: expose MCP ports on LAN when requested ───────────────────
@@ -201,21 +331,154 @@ in
 
     })
 
+    (lib.mkIf active {
+      systemd.services.ai-otel-collector = {
+        description = "AI stack OpenTelemetry collector";
+        wantedBy = [ "ai-stack.target" ];
+        partOf = [ "ai-stack.target" ];
+        after = [ "network-online.target" ];
+        wants = [ "network-online.target" ];
+        serviceConfig = {
+          Type = "simple";
+          User = svcUser;
+          Group = svcGroup;
+          Restart = "on-failure";
+          RestartSec = "5s";
+          ExecStart = lib.escapeShellArgs [
+            "${pkgs.opentelemetry-collector-contrib}/bin/otelcol-contrib"
+            "--config"
+            otelCollectorConfig
+          ];
+        };
+      };
+    })
+
     # ── PostgreSQL — optional, for AIDB tool-discovery persistence ────────────
     (lib.mkIf (active && mcp.postgres.enable) {
 
       services.postgresql = {
         enable  = lib.mkDefault true;
+        extensions = ps: with ps; [ pgvector ];
         ensureDatabases = [ mcp.postgres.database ];
         ensureUsers = [{
           name           = mcp.postgres.user;
           ensureDBOwnership = true;
         }];
         settings.port = ports.postgres;
+        authentication = lib.mkIf (!sec.enable) ''
+          local all postgres                                peer map=postgres
+          local ${mcp.postgres.database} ${mcp.postgres.user} trust
+          host  ${mcp.postgres.database} ${mcp.postgres.user} 127.0.0.1/32 trust
+          host  ${mcp.postgres.database} ${mcp.postgres.user} ::1/128      trust
+        '';
       };
 
       systemd.services.postgresql.partOf = [ "ai-stack.target" ];
 
+      systemd.services.ai-pgvector-bootstrap = {
+        description = "Bootstrap pgvector extension for AIDB database";
+        wantedBy = [ "ai-stack.target" ];
+        partOf = [ "ai-stack.target" ];
+        after = [ "postgresql.service" "postgresql-setup.service" ];
+        requires = [ "postgresql.service" "postgresql-setup.service" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+        script = ''
+          set -euo pipefail
+
+          ${lib.optionalString sec.enable ''
+          secret_file=${lib.escapeShellArg (secretPath postgresPasswordSecret)}
+          for _ in $(seq 1 30); do
+            [[ -r "$secret_file" ]] && break
+            sleep 1
+          done
+          [[ -r "$secret_file" ]] || {
+            echo "postgres password secret file is not readable: $secret_file" >&2
+            exit 1
+          }
+          pg_pw="$(${pkgs.coreutils}/bin/tr -d '\n' < "$secret_file")"
+          pw_tag='$nqd_pw$'
+          if [[ "$pg_pw" == *"$pw_tag"* ]]; then
+            echo "postgres password contains unsupported marker sequence: $pw_tag" >&2
+            exit 1
+          fi
+          sql="ALTER ROLE \"${mcp.postgres.user}\" WITH PASSWORD ''${pw_tag}"
+          sql+="''${pg_pw}"
+          sql+="''${pw_tag};"
+          ${pkgs.util-linux}/bin/runuser -u postgres -- \
+            ${config.services.postgresql.finalPackage}/bin/psql \
+              --set=ON_ERROR_STOP=1 \
+              --no-psqlrc \
+              --dbname=${lib.escapeShellArg mcp.postgres.database} \
+              --command="$sql"
+          ''}
+
+          ${pkgs.util-linux}/bin/runuser -u postgres -- \
+          ${config.services.postgresql.finalPackage}/bin/psql \
+            --set=ON_ERROR_STOP=1 \
+            --no-psqlrc \
+            --dbname=${lib.escapeShellArg mcp.postgres.database} \
+            --command="CREATE EXTENSION IF NOT EXISTS vector;"
+        '';
+      };
+
+    })
+
+    (lib.mkIf (active && sec.enable) {
+      systemd.services.ai-auth-selftest = {
+        description = "AI auth self-test (secrets wiring + DB auth)";
+        wantedBy = [ "ai-stack.target" ];
+        partOf = [ "ai-stack.target" ];
+        wants = [ "network-online.target" ];
+        after =
+          [ "network-online.target" ]
+          ++ lib.optional mcp.postgres.enable "postgresql.service"
+          ++ lib.optional mcp.postgres.enable "ai-pgvector-bootstrap.service";
+        requires =
+          lib.optional mcp.postgres.enable "postgresql.service"
+          ++ lib.optional mcp.postgres.enable "ai-pgvector-bootstrap.service";
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          User = svcUser;
+          Group = svcGroup;
+        };
+        script = ''
+          set -euo pipefail
+
+          check_secret_file() {
+            local path="$1"
+            if [[ ! -r "$path" ]]; then
+              echo "missing or unreadable secret: $path" >&2
+              exit 1
+            fi
+            if [[ ! -s "$path" ]]; then
+              echo "empty secret file: $path" >&2
+              exit 1
+            fi
+          }
+
+          ${lib.concatMapStringsSep "\n" (path: "check_secret_file ${lib.escapeShellArg path}") requiredSecretFiles}
+
+          ${lib.optionalString mcp.postgres.enable ''
+          pg_pw="$(${pkgs.coreutils}/bin/tr -d '\n' < ${lib.escapeShellArg (secretPath postgresPasswordSecret)})"
+          [[ -n "$pg_pw" ]] || { echo "postgres password secret is empty" >&2; exit 1; }
+          export PGPASSWORD="$pg_pw"
+          ${config.services.postgresql.finalPackage}/bin/psql \
+            --set=ON_ERROR_STOP=1 \
+            --no-psqlrc \
+            --host=127.0.0.1 \
+            --port=${toString ports.postgres} \
+            --username=${lib.escapeShellArg mcp.postgres.user} \
+            --dbname=${lib.escapeShellArg mcp.postgres.database} \
+            --command='SELECT 1;' \
+            >/dev/null
+          unset PGPASSWORD
+          ''}
+        '';
+      };
     })
 
     # ── Redis — optional, for MCP caching/queue workloads ─────────────────────
@@ -251,6 +514,7 @@ in
       systemd.services.ai-aidb = {
         description = "AIDB MCP server (tool-discovery + RAG)";
         wantedBy    = [ "ai-stack.target" ];
+        partOf      = [ "ai-stack.target" ];
         after       = aidbDeps;
         requires    = aidbDeps;
         wants       = [ "network-online.target" ];
@@ -259,29 +523,47 @@ in
           export AIDB_POSTGRES_PORT=${toString ports.postgres}
           export AIDB_POSTGRES_DB=${mcp.postgres.database}
           export AIDB_POSTGRES_USER=${mcp.postgres.user}
-          export AIDB_POSTGRES_PASSWORD_FILE=${if sec.enable then secretPath postgresPasswordSecret else ""}
+          ${lib.optionalString sec.enable ''
+            export AIDB_POSTGRES_PASSWORD_FILE=${secretPath postgresPasswordSecret}
+          ''}
           ${aidbPython}/bin/alembic -c ${migrationsIni} upgrade head
         '';
         serviceConfig = commonServiceConfig // {
-          PartOf = [ "ai-stack.target" ];
           ExecStart = lib.escapeShellArgs [
             "${aidbPython}/bin/python3"
             "${repoMcp}/aidb/server.py"
           ];
           Environment = [
+            "AIDB_CONFIG=${aidbConfig}"
+            "AI_STRICT_ENV=true"
             "PORT=${toString mcp.aidbPort}"
             "HOST=127.0.0.1"
             "QDRANT_URL=${qdrantUrl}"
             "EMBEDDING_SERVICE_URL=${embedUrl}"
-            "EMBEDDINGS_API_KEY_FILE=${if sec.enable then secretPath embeddingsApiKeySecret else ""}"
             "LLAMA_CPP_BASE_URL=http://127.0.0.1:${toString llama.port}"
-            "EMBEDDING_DIMENSIONS=768"
+            "EMBEDDING_DIMENSIONS=${toString ai.embeddingDimensions}"
+            "OTEL_TRACING_ENABLED=true"
+            "OTEL_EXPORTER_OTLP_ENDPOINT=${otlpEndpoint}"
+            "OTEL_SAMPLE_RATE=1.0"
             "DATA_DIR=${dataDir}/aidb"
-            "AIDB_API_KEY_FILE=${if sec.enable then secretPath aidbApiKeySecret else ""}"
-            "AIDB_POSTGRES_PASSWORD_FILE=${if sec.enable then secretPath postgresPasswordSecret else ""}"
-            "AIDB_REDIS_PASSWORD_FILE=${if sec.enable then secretPath redisPasswordSecret else ""}"
+            "XDG_STATE_HOME=${dataDir}/aidb/state"
+            "AIDB_VSCODE_TELEMETRY_DIR=${dataDir}/aidb/telemetry"
+            "POSTGRES_HOST=127.0.0.1"
+            "POSTGRES_PORT=${toString ports.postgres}"
+            "POSTGRES_DB=${mcp.postgres.database}"
+            "POSTGRES_USER=${mcp.postgres.user}"
+            "AIDB_REDIS_HOST=127.0.0.1"
+            "AIDB_REDIS_PORT=${toString mcp.redis.port}"
+            "AIDB_REDIS_DB=0"
+            "AIDB_URL=http://127.0.0.1:${toString mcp.aidbPort}"
+            "HYBRID_COORDINATOR_URL=http://127.0.0.1:${toString mcp.hybridPort}"
+            "RALPH_URL=http://127.0.0.1:${toString mcp.ralphPort}"
+            "PYTHONPATH=${repoMcp}:${repoMcp}/aidb"
           ] ++ lib.optional mcp.postgres.enable
-            "DATABASE_URL=${pgUrl}";
+            "DATABASE_URL=${pgUrl}"
+            ++ lib.optional sec.enable "EMBEDDINGS_API_KEY_FILE=${secretPath embeddingsApiKeySecret}"
+            ++ lib.optional sec.enable "AIDB_API_KEY_FILE=${secretPath aidbApiKeySecret}"
+            ++ lib.optional sec.enable "AIDB_POSTGRES_PASSWORD_FILE=${secretPath postgresPasswordSecret}";
         } // lib.optionalAttrs embedEnabled {
           ExecStartPre = pkgs.writeShellScript "aidb-wait-deps" ''
             set -e
@@ -308,28 +590,42 @@ in
       systemd.services.ai-hybrid-coordinator = {
         description = "AI hybrid coordinator (local/remote LLM routing)";
         wantedBy    = [ "ai-stack.target" ];
+        partOf      = [ "ai-stack.target" ];
         after       = hybridDeps;
         requires    = hybridDeps;
         wants       = [ "network-online.target" ];
         serviceConfig = commonServiceConfig // {
-          PartOf = [ "ai-stack.target" ];
           ExecStart = lib.escapeShellArgs [
             "${hybridPython}/bin/python3"
             "${repoMcp}/hybrid-coordinator/server.py"
           ];
           Environment = [
             "PORT=${toString mcp.hybridPort}"
+            "AI_STRICT_ENV=true"
+            "MCP_SERVER_MODE=http"
+            "MCP_SERVER_PORT=${toString mcp.hybridPort}"
             "HOST=127.0.0.1"
             "LLAMA_CPP_BASE_URL=http://127.0.0.1:${toString llama.port}"
             "EMBEDDING_SERVICE_URL=${embedUrl}"
-            "EMBEDDING_API_KEY_FILE=${if sec.enable then secretPath embeddingsApiKeySecret else ""}"
-            "HYBRID_API_KEY_FILE=${if sec.enable then secretPath hybridApiKeySecret else ""}"
             "AIDB_URL=http://127.0.0.1:${toString mcp.aidbPort}"
             "QDRANT_URL=${qdrantUrl}"
-            "EMBEDDING_DIMENSIONS=384"
+            "EMBEDDING_DIMENSIONS=${toString ai.embeddingDimensions}"
+            "OTEL_TRACING_ENABLED=true"
+            "OTEL_EXPORTER_OTLP_ENDPOINT=${otlpEndpoint}"
+            "OTEL_SAMPLE_RATE=1.0"
             "DATA_DIR=${dataDir}/hybrid"
-            "POSTGRES_PASSWORD_FILE=${if sec.enable then secretPath postgresPasswordSecret else ""}"
-            "REDIS_PASSWORD_FILE=${if sec.enable then secretPath redisPasswordSecret else ""}"
+            "XDG_STATE_HOME=${dataDir}/hybrid/state"
+            "CONTINUOUS_LEARNING_DATA_ROOT=${dataDir}/hybrid"
+            "CONTINUOUS_LEARNING_TELEMETRY_DIR=${dataDir}/hybrid/telemetry"
+            "CONTINUOUS_LEARNING_STATS_PATH=${dataDir}/hybrid/telemetry/continuous_learning_stats.json"
+            "OPTIMIZATION_PROPOSALS_PATH=${dataDir}/hybrid/telemetry/optimization_proposals.jsonl"
+            "CONTINUOUS_LEARNING_CHECKPOINT_DIR=${dataDir}/hybrid/checkpoints"
+            "FINETUNE_DATA_PATH=${dataDir}/hybrid/fine-tuning/dataset.jsonl"
+            "POSTGRES_HOST=127.0.0.1"
+            "POSTGRES_PORT=${toString ports.postgres}"
+            "POSTGRES_DB=${mcp.postgres.database}"
+            "POSTGRES_USER=${mcp.postgres.user}"
+            "REDIS_URL=redis://127.0.0.1:${toString mcp.redis.port}/0"
             "AI_HARNESS_ENABLED=${if ai.aiHarness.enable then "true" else "false"}"
             "AI_MEMORY_ENABLED=${if ai.aiHarness.memory.enable then "true" else "false"}"
             "AI_MEMORY_MAX_RECALL_ITEMS=${toString ai.aiHarness.memory.maxRecallItems}"
@@ -339,9 +635,12 @@ in
             "AI_HARNESS_EVAL_ENABLED=${if ai.aiHarness.eval.enable then "true" else "false"}"
             "AI_HARNESS_MIN_ACCEPTANCE_SCORE=${toString ai.aiHarness.eval.minAcceptanceScore}"
             "AI_HARNESS_MAX_LATENCY_MS=${toString ai.aiHarness.eval.maxLatencyMs}"
-            "PYTHONPATH=${repoMcp}/shared:${repoMcp}/hybrid-coordinator"
+            "PYTHONPATH=${repoMcp}:${repoMcp}/hybrid-coordinator"
           ] ++ lib.optional mcp.postgres.enable
-            "DATABASE_URL=${pgUrl}";
+            "DATABASE_URL=${pgUrl}"
+            ++ lib.optional sec.enable "EMBEDDING_API_KEY_FILE=${secretPath embeddingsApiKeySecret}"
+            ++ lib.optional sec.enable "HYBRID_API_KEY_FILE=${secretPath hybridApiKeySecret}"
+            ++ lib.optional sec.enable "POSTGRES_PASSWORD_FILE=${secretPath postgresPasswordSecret}";
         };
       };
 
@@ -353,26 +652,34 @@ in
       systemd.services.ai-ralph-wiggum = {
         description = "AI ralph-wiggum loop orchestrator";
         wantedBy    = [ "ai-stack.target" ];
+        partOf      = [ "ai-stack.target" ];
         after       = ralphDeps;
         requires    = ralphDeps;
         wants       = [ "network-online.target" ];
         serviceConfig = commonServiceConfig // {
-          PartOf = [ "ai-stack.target" ];
           ExecStart = lib.escapeShellArgs [
             "${ralphPython}/bin/python3"
             "${repoMcp}/ralph-wiggum/server.py"
           ];
           Environment = [
+            "AI_STRICT_ENV=true"
             "PORT=${toString mcp.ralphPort}"
             "HOST=127.0.0.1"
             "LLAMA_CPP_BASE_URL=http://127.0.0.1:${toString llama.port}"
             "HYBRID_COORDINATOR_URL=http://127.0.0.1:${toString mcp.hybridPort}"
             "AIDB_URL=http://127.0.0.1:${toString mcp.aidbPort}"
             "DATA_DIR=${dataDir}/ralph"
-            "RALPH_WIGGUM_API_KEY_FILE=${if sec.enable then secretPath aidbApiKeySecret else ""}"
-            "PYTHONPATH=${repoMcp}/shared:${repoMcp}/ralph-wiggum"
+            "XDG_STATE_HOME=${dataDir}/ralph/state"
+            "RALPH_STATE_FILE=${dataDir}/ralph/ralph-state.json"
+            "RALPH_TELEMETRY_PATH=${dataDir}/ralph/telemetry/ralph-events.jsonl"
+            "POSTGRES_HOST=127.0.0.1"
+            "POSTGRES_PORT=${toString ports.postgres}"
+            "POSTGRES_DB=${mcp.postgres.database}"
+            "POSTGRES_USER=${mcp.postgres.user}"
+            "PYTHONPATH=${repoMcp}:${repoMcp}/ralph-wiggum"
           ] ++ lib.optional mcp.postgres.enable
-            "DATABASE_URL=${pgUrl}";
+            "DATABASE_URL=${pgUrl}"
+            ++ lib.optional sec.enable "RALPH_WIGGUM_API_KEY_FILE=${secretPath aidbApiKeySecret}";
         };
       };
 

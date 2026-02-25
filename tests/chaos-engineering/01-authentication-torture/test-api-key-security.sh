@@ -15,7 +15,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # Test configuration
-API_KEY_FILE="${PROJECT_ROOT}/ai-stack/kubernetes/secrets/generated/stack_api_key"
+API_KEY_FILE="${PROJECT_ROOT}/ai-stack/secrets/generated/stack_api_key"
 TEST_LOG="${TMP_ROOT}/chaos-test-api-key-security-$$.log"
 
 ERRORS=0
@@ -120,7 +120,7 @@ test_key_content() {
 test_k8s_secrets_config() {
     log "\n=== Test 3: Kubernetes Secrets Configuration ==="
 
-    local secrets_file="${PROJECT_ROOT}/ai-stack/kubernetes/secrets/secrets.sops.yaml"
+    local secrets_file="${PROJECT_ROOT}/ai-stack/secrets/secrets.sops.yaml"
 
     if [ ! -f "$secrets_file" ]; then
         error "Kubernetes secrets file not found: $secrets_file"
@@ -167,7 +167,7 @@ test_service_isolation() {
 
     # Check if different services use different keys
     local secret_files
-    secret_files=$(rg -l "api_key" "${PROJECT_ROOT}/ai-stack/kubernetes/secrets/secrets.sops.yaml" 2>/dev/null | wc -l)
+    secret_files=$(rg -l "api_key" "${PROJECT_ROOT}/ai-stack/secrets/secrets.sops.yaml" 2>/dev/null | wc -l)
 
     log "Found $secret_files API key files"
 
@@ -195,7 +195,7 @@ test_service_isolation() {
 test_env_var_exposure() {
     log "\n=== Test 6: Environment Variable Exposure ==="
 
-    local configmap_file="${PROJECT_ROOT}/ai-stack/kubernetes/kompose/env-configmap.yaml"
+    local configmap_file="${PROJECT_ROOT}/ai-stack/kompose/env-configmap.yaml"
 
     if [ -f "$configmap_file" ] && rg -q "API_KEY|STACK_API_KEY" "$configmap_file"; then
         error "🚨 API key exposed via configmap"

@@ -18,8 +18,8 @@ if [[ -z "${AI_STACK_NAMESPACE:-}" ]]; then
 fi
 
 # ============================================================================
-# Service Host - defaults to localhost for NodePort/port-forward access
-# Override SERVICE_HOST for remote or ingress-based access
+# Service Host - defaults to localhost for host-local services
+# Override SERVICE_HOST for remote access
 # ============================================================================
 
 : "${SERVICE_HOST:=localhost}"
@@ -41,6 +41,7 @@ fi
 : "${DASHBOARD_API_URL:=http://${SERVICE_HOST}:${DASHBOARD_API_PORT}}"
 : "${DASHBOARD_URL:=http://${SERVICE_HOST}:${DASHBOARD_PORT}}"
 : "${EMBEDDINGS_URL:=http://${SERVICE_HOST}:${EMBEDDINGS_PORT}}"
+: "${SWITCHBOARD_URL:=http://${SERVICE_HOST}:${SWITCHBOARD_PORT:-8085}}"
 : "${NETDATA_URL:=http://${SERVICE_HOST}:${NETDATA_PORT:-19999}}"
 : "${OLLAMA_URL:=http://${SERVICE_HOST}:${OLLAMA_PORT:-11434}}"
 : "${GITEA_URL:=http://${SERVICE_HOST}:${GITEA_PORT:-3003}}"
@@ -54,5 +55,5 @@ fi
 : "${POSTGRES_HOST:=${SERVICE_HOST}}"
 : "${REDIS_HOST:=${SERVICE_HOST}}"
 
-# Note: K8s/K3s in-cluster service DNS endpoints were intentionally removed.
-# Host-mode runtime is authoritative; use localhost URLs above.
+# In-cluster DNS endpoints were intentionally removed.
+# Host-mode declarative runtime is authoritative; use localhost URLs above.

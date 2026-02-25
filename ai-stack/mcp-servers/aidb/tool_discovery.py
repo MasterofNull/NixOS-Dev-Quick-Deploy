@@ -14,6 +14,7 @@ Features:
 import asyncio
 import json
 import httpx
+import os
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 from pathlib import Path
@@ -72,22 +73,27 @@ class ToolDiscoveryEngine:
         self.postgres = postgres_client
         self.settings = settings
         self.http_client = httpx.AsyncClient(timeout=30.0)
+        aidb_url = (os.getenv("AIDB_URL") or "").strip()
+        hybrid_url = (os.getenv("HYBRID_COORDINATOR_URL") or "").strip()
+        ralph_url = (os.getenv("RALPH_URL") or "").strip()
+        if not aidb_url or not hybrid_url or not ralph_url:
+            raise ValueError("AIDB_URL, HYBRID_COORDINATOR_URL, and RALPH_URL must be set for tool discovery")
 
         # Known MCP servers
         self.mcp_servers: List[MCPServerInfo] = [
             MCPServerInfo(
                 name="aidb",
-                url="http://aidb:8091",
+                url=aidb_url,
                 capabilities_endpoint="/api/v1/discovery/capabilities"
             ),
             MCPServerInfo(
                 name="hybrid-coordinator",
-                url="http://hybrid-coordinator:8092",
+                url=hybrid_url,
                 capabilities_endpoint="/api/v1/capabilities"
             ),
             MCPServerInfo(
                 name="ralph-wiggum",
-                url="http://ralph-wiggum:8098",
+                url=ralph_url,
                 capabilities_endpoint="/api/v1/capabilities"
             ),
         ]

@@ -138,7 +138,7 @@ jobs:
       - name: Collect shell scripts
         run: |
           mapfile -t shell_files < <(git ls-files '*.sh' ':!:deprecated/**')
-          extras=(scripts/mcp-db-setup scripts/mcp-server)
+          extras=(scripts/mcp-db-validate scripts/mcp-server)
 
           for extra in "${extras[@]}"; do
             if [ -f "$extra" ]; then
@@ -198,7 +198,7 @@ jobs:
         run: |
           echo "Validating bash syntax..."
           mapfile -t shell_files < <(git ls-files '*.sh' ':!:deprecated/**')
-          extras=(scripts/mcp-db-setup scripts/mcp-server)
+          extras=(scripts/mcp-db-validate scripts/mcp-server)
 
           for extra in "${extras[@]}"; do
             if [ -f "$extra" ]; then
@@ -281,7 +281,7 @@ jobs:
             "phases/phase-07-post-deployment-validation.sh"
             "phases/phase-08-finalization-and-report.sh"
             "scripts/system-health-check.sh"
-            "scripts/mcp-db-setup"
+            "scripts/mcp-db-validate"
             "scripts/mcp-server"
             "templates/configuration.nix"
             "templates/flake.nix"
@@ -343,7 +343,7 @@ jobs:
       - name: Ensure scripts are executable
         run: |
           git ls-files '*.sh' ':!:deprecated/**' | xargs -r chmod +x
-          for extra in scripts/mcp-db-setup scripts/mcp-server; do
+          for extra in scripts/mcp-db-validate scripts/mcp-server; do
             if [ -f "$extra" ]; then
               chmod +x "$extra"
             fi

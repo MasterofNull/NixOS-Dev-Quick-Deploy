@@ -66,7 +66,7 @@ def main():
             new_lines.append('| Component | Location | Purpose |\n')
             new_lines.append('|-----------|----------|---------||\n')
             new_lines.append('| **AIDB MCP Server** | `ai-stack/mcp-servers/aidb/` | PostgreSQL + TimescaleDB + Qdrant vector DB + FastAPI MCP server |\n')
-            new_lines.append('| **llama.cpp vLLM** | `ai-stack/kubernetes/` | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |\n')
+            new_lines.append('| **llama.cpp vLLM** | `nix/modules/roles/ai-stack.nix` | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |\n')
             new_lines.append('| **29 Agent Skills** | `ai-stack/agents/skills/` | nixos-deployment, webapp-testing, code-review, canvas-design, and more |\n')
             new_lines.append('| **MCP Servers** | `ai-stack/mcp-servers/` | Model Context Protocol servers for AIDB, NixOS, GitHub |\n')
             new_lines.append('| **Model Registry** | `ai-stack/models/registry.json` | Model catalog with 6 AI models (metadata, VRAM, speed, quality scores) |\n')
@@ -102,13 +102,13 @@ def main():
             new_lines.append('\n')
             continue
 
-        # 3. Update Podman Storage title
+        # 3. Update legacy storage title
         if '### Podman Storage: Btrfs Recommended for AI-Optimizer' in line:
-            new_lines.append('### Podman Storage: Btrfs Recommended for AI Stack\n')
+            new_lines.append('### Container Storage: Btrfs Recommended for AI Stack\n')
             i += 1
             # Update next line if it mentions AI-Optimizer
             if i < len(lines) and 'AI-Optimizer workloads' in lines[i]:
-                new_lines.append('\nThe deployer will prompt for the Podman storage driver. For AI stack workloads, use **Btrfs** when possible for fast snapshots and deduplication.\n')
+                new_lines.append('\nThe deployer may prompt for container storage tuning. For AI stack workloads, use **Btrfs** when possible for fast snapshots and deduplication.\n')
                 i += 1
             continue
 
@@ -141,7 +141,7 @@ def main():
     print("\nKey changes:")
     print("  1. ✅ Added v6.0.0 AI stack announcement")
     print("  2. ✅ Updated AI Development Stack table")
-    print("  3. ✅ Updated Podman storage references")
+    print("  3. ✅ Updated legacy container storage references")
     print("  4. ✅ Added AI Stack documentation section")
     print("\nReview with: git diff README.md")
 

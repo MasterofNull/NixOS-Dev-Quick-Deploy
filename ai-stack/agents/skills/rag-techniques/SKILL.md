@@ -1,3 +1,8 @@
+---
+name: rag-techniques
+description: Instructions and workflow for the rag-techniques skill.
+---
+
 #!/usr/bin/env python3
 """
 Reference curated RAG patterns/checklists.
@@ -80,3 +85,7 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+## Maintenance
+- Version: 1.0.0
+- Keep this skill aligned with current repository workflows.
