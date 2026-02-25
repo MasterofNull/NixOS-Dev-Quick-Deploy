@@ -1,7 +1,0 @@
-apiVersion: v1
-data: {}
-kind: ConfigMap
-metadata:
-  labels:
-    io.kompose.service: hybrid-coordinator-cm1
-  name: hybrid-coordinator-cm1

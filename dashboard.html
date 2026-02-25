@@ -1207,7 +1207,7 @@
                     </div>
                     <div class="collapsible-content">
                         <!-- Health Probes Status -->
-                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Kubernetes-Style Health Probes</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Service Health Probes</div>
                         <div class="status-grid" id="healthProbes">
                             <div class="status-item">
                                 <span class="status-label">🫀 Liveness</span>
@@ -1278,7 +1278,7 @@
                             <span class="collapsible-arrow">▼</span>
                             <h2 class="card-title">Stack Health (Aggregate)</h2>
                         </div>
-                        <span class="card-badge" id="stackHealthBadge">Cluster Status</span>
+                        <span class="card-badge" id="stackHealthBadge">Stack Health</span>
                     </div>
                     <div class="collapsible-content">
                         <div class="metrics-grid">
@@ -1518,12 +1518,12 @@
                                 <div class="metric-value" id="proofRag">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">llama.cpp Models</div>
-                                <div class="metric-value" id="proofLlamaCpp">--</div>
+                                <div class="metric-label">LLM Model</div>
+                                <div class="metric-value" id="proofLlmModel">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">llama.cpp Models</div>
-                                <div class="metric-value" id="proofLlamaCpp">--</div>
+                                <div class="metric-label">Embedding Model</div>
+                                <div class="metric-value" id="proofEmbeddingModel">--</div>
                             </div>
                             <div class="metric">
                                 <div class="metric-label">Skills Loaded</div>
@@ -1771,6 +1771,60 @@
                     <div class="collapsible-content">
                         <div id="circuitBreakerList" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                             <div class="loading"><div class="spinner"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Harness Operations -->
+            <div class="dashboard-section full-width">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">AI Harness Operations</h2>
+                        </div>
+                        <span class="card-badge" id="harnessOpsBadge">Initializing...</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="metrics-grid">
+                            <div class="metric">
+                                <div class="metric-label">Acceptance Pass Rate</div>
+                                <div class="metric-value" id="harnessPassRate">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Discovery Invoked</div>
+                                <div class="metric-value" id="harnessDiscoveryInvoked">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Discovery Cache Hit</div>
+                                <div class="metric-value" id="harnessDiscoveryCache">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Policy Status</div>
+                                <div class="metric-value" id="harnessPolicyStatus">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Operational Scripts</div>
+                                <div class="metric-value" id="harnessScriptsReady">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Research Candidates</div>
+                                <div class="metric-value" id="harnessResearchCandidates">--</div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Harness Tooling</div>
+                            <div class="data-list" id="harnessScriptList">
+                                <div class="loading"><div class="spinner"></div></div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            <button onclick="runHarnessMaintenance('phase_plan')" class="action-btn" style="background: var(--accent-cyan); color: var(--bg-primary); border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 600;">Run Harness Phases</button>
+                            <button onclick="runHarnessMaintenance('research_sync')" class="action-btn" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-primary); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">Run Research Sync</button>
+                            <button onclick="runHarnessMaintenance('catalog_sync')" class="action-btn" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-primary); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">Sync Library Catalog</button>
+                            <button onclick="runHarnessMaintenance('acceptance_checks')" class="action-btn" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-primary); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">Run Acceptance</button>
+                            <div id="harnessActionStatus" style="margin-left: auto; font-size: 0.8rem; color: var(--text-muted);"></div>
                         </div>
                     </div>
                 </div>
@@ -2038,6 +2092,9 @@
         let networkRxHistory = [];
         let networkTxHistory = [];
         let lastNetSample = null;
+        const LIVE_METRICS_POLL_INTERVAL_MS = 1000;
+        let serviceRegistry = {};
+        let serviceRegistryInitialized = false;
 
         // Data directory (update this path if needed)
         const DATA_DIR = `${window.location.origin}/data`;
@@ -2061,8 +2118,8 @@
             // Connect WebSocket for real-time metrics (2-second updates)
             connectMetricsWebSocket();
 
-            // Fallback polling if WebSocket fails (2-second updates)
-            setInterval(loadMetricsFromAPI, 2000);
+            // Fallback polling if WebSocket fails (1-second updates)
+            setInterval(loadMetricsFromAPI, LIVE_METRICS_POLL_INTERVAL_MS);
 
             // Refresh full dashboard less frequently (60 seconds)
             setInterval(loadData, 60000);
@@ -2281,11 +2338,9 @@
         // Load only system metrics for fast updates (graphs)
         async function loadSystemMetricsOnly() {
             try {
-                const system = await fetchJSON('system.json');
-                const network = await fetchJSON('network.json');
-
-                updateSystemMetrics(system);
-                updateNetworkMetrics(network);
+                const systemMetrics = await fetchSystemMetrics();
+                updateSystemMetricsFromAPI(systemMetrics);
+                updateNetworkMetrics(buildNetworkData(systemMetrics));
             } catch (error) {
                 console.error('Error loading system metrics:', error);
             }
@@ -2294,31 +2349,88 @@
         // Load all dashboard data
         async function loadData() {
             try {
-                const [system, llm, network, security, database, links, persistence, telemetry, feedback, config, proof, hybrid, learning, tokenSavings, keywordSignals, aiMetrics] = await Promise.all([
-                    fetchJSON('system.json'),
-                    fetchJSON('llm.json'),
-                    fetchJSON('network.json'),
-                    fetchJSON('security.json'),
-                    fetchJSON('database.json'),
-                    fetchJSON('links.json'),
-                    fetchJSON('persistence.json'),
-                    fetchJSON('telemetry.json'),
-                    fetchJSON('feedback.json'),
-                    fetchJSON('config.json'),
-                    fetchJSON('proof.json'),
-                    fetchJSON('hybrid-coordinator.json'),
-                    fetchJSON('learning-metrics.json'),
-                    fetchJSON('token-savings.json'),
-                    fetchJSON('keyword-signals.json'),
-                    fetchJSON('ai_metrics.json')
+                await loadPortRegistry();
+                hideLegacySections();
+
+                const [
+                    systemMetrics,
+                    aiMetrics,
+                    services,
+                    containers,
+                    actions,
+                    learningStats,
+                    circuitStats,
+                    aidbDetailed,
+                    harnessStats,
+                    keywordSignals
+                ] = await Promise.all([
+                    fetchSystemMetrics(),
+                    fetchAIMetrics(),
+                    fetchServices(),
+                    fetchContainers(),
+                    fetchActions(),
+                    fetchLearningStats(),
+                    fetchCircuitBreakers(),
+                    fetchAidbDetailedHealth(),
+                    fetchHarnessStats(),
+                    fetchJSON('keyword-signals.json')
                 ]);
 
-                dashboardData = { system, llm, network, security, database, links, persistence, telemetry, feedback, config, proof, hybrid, learning, tokenSavings, keywordSignals, aiMetrics };
+                const system = normalizeSystemData(systemMetrics);
+                const llm = buildLLMData(aiMetrics, containers);
+                const network = buildNetworkData(systemMetrics);
+                const security = buildSecurityData(aidbDetailed, systemMetrics);
+                const database = buildDatabaseData(aiMetrics);
+                const links = buildLinksData();
+                const persistence = buildPersistenceData(services, aiMetrics);
+                const feedback = buildFeedbackData(aiMetrics, learningStats);
+                const config = buildConfigData(actions);
+                const proof = buildProofData(aiMetrics, services, learningStats);
+                const hybrid = buildHybridData(aiMetrics, learningStats);
+                const learning = normalizeLearningData(learningStats);
+                const tokenSavings = {
+                    routing: { local_percent: Number(aiMetrics?.effectiveness?.local_query_percentage ?? 0) },
+                    cache: { hit_rate: 0 }
+                };
+                const telemetry = {
+                    summary: {
+                        total_events: Number(aiMetrics?.effectiveness?.total_events_processed ?? 0),
+                        local_usage_rate: Number(aiMetrics?.effectiveness?.local_query_percentage ?? 0) / 100,
+                        tokens_saved: Number(aiMetrics?.effectiveness?.estimated_tokens_saved ?? 0),
+                        last_event_at: aiMetrics?.timestamp || new Date().toISOString()
+                    }
+                };
 
-                updateSystemMetrics(system);
+                dashboardData = {
+                    system,
+                    llm,
+                    network,
+                    security,
+                    database,
+                    links,
+                    persistence,
+                    telemetry,
+                    feedback,
+                    config,
+                    proof,
+                    hybrid,
+                    learning,
+                    tokenSavings,
+                    keywordSignals,
+                    aiMetrics: {
+                        ...(aiMetrics || {}),
+                        harness: {
+                            ...(aiMetrics?.harness || {}),
+                            ...(harnessStats ? { stats: harnessStats } : {})
+                        },
+                        circuit_breakers: circuitStats || {}
+                    }
+                };
+
+                updateSystemMetricsFromAPI(systemMetrics);
                 updateLLMStatus(llm);
-                updateAgenticReadiness(aiMetrics);
-                updateKnowledgeBase(aiMetrics);
+                updateAgenticReadiness(dashboardData.aiMetrics);
+                updateKnowledgeBase(dashboardData.aiMetrics);
                 updateNetworkMetrics(network);
                 updateSecurityStatus(security);
                 updateDatabaseMetrics(database);
@@ -2331,11 +2443,410 @@
                 updateFeedbackMetrics(feedback);
                 updateConfigMetrics(config);
                 updateProofMetrics(proof);
+                updateHarnessOverview(dashboardData.aiMetrics);
                 updateHealthScore();
                 updateLastUpdate();
             } catch (error) {
                 console.error('Error loading dashboard data:', error);
             }
+        }
+
+        async function fetchSystemMetrics() {
+            const response = await fetch(`${FASTAPI_BASE}/api/metrics/system`, { cache: 'no-store' });
+            if (!response.ok) throw new Error(`system metrics unavailable (${response.status})`);
+            return response.json();
+        }
+
+        async function fetchServices() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/services`, { cache: 'no-store' });
+                if (!response.ok) return [];
+                return await response.json();
+            } catch (_) {
+                return [];
+            }
+        }
+
+        async function fetchContainers() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/containers`, { cache: 'no-store' });
+                if (!response.ok) return [];
+                return await response.json();
+            } catch (_) {
+                return [];
+            }
+        }
+
+        async function fetchActions() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/actions/`, { cache: 'no-store' });
+                if (!response.ok) return [];
+                return await response.json();
+            } catch (_) {
+                return [];
+            }
+        }
+
+        async function fetchLearningStats() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/stats/learning`, { cache: 'no-store' });
+                if (!response.ok) return {};
+                return await response.json();
+            } catch (_) {
+                return {};
+            }
+        }
+
+        async function fetchCircuitBreakers() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/stats/circuit-breakers`, { cache: 'no-store' });
+                if (!response.ok) return {};
+                return await response.json();
+            } catch (_) {
+                return {};
+            }
+        }
+
+        async function fetchAidbDetailedHealth() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/aidb/health/detailed`, { cache: 'no-store' });
+                if (!response.ok) return {};
+                return await response.json();
+            } catch (_) {
+                return {};
+            }
+        }
+
+        async function fetchHarnessStats() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/harness/stats`, { cache: 'no-store' });
+                if (!response.ok) return null;
+                return await response.json();
+            } catch (_) {
+                return null;
+            }
+        }
+
+        function normalizeSystemData(metrics) {
+            const diskPercent = Number(metrics?.disk?.percent ?? 0);
+            const usedDiskGB = Number(metrics?.disk?.used ?? 0) / (1024 ** 3);
+            const totalDiskGB = Number(metrics?.disk?.total ?? 0) / (1024 ** 3);
+            return {
+                timestamp: new Date().toISOString(),
+                host_name: metrics?.hostname || 'localhost',
+                cpu: {
+                    usage_percent: Number(metrics?.cpu?.usage_percent ?? 0),
+                    temperature: metrics?.cpu?.temperature || 'N/A',
+                    model: metrics?.cpu?.model || 'Unknown',
+                    arch: metrics?.cpu?.arch || 'Unknown'
+                },
+                gpu: metrics?.gpu || {},
+                memory: {
+                    percent: Number(metrics?.memory?.percent ?? 0)
+                },
+                disk: {
+                    used: `${usedDiskGB.toFixed(1)} GB`,
+                    total: `${totalDiskGB.toFixed(1)} GB`,
+                    percent: `${diskPercent.toFixed(1)}%`
+                },
+                uptime_seconds: Number(metrics?.uptime ?? 0),
+                load_average: metrics?.load_average || 'N/A'
+            };
+        }
+
+        function buildLLMData(aiMetrics, containers) {
+            const aiServices = aiMetrics?.services || {};
+            const normalize = (status) => {
+                const value = String(status || '').toLowerCase();
+                if (value === 'healthy' || value === 'ok' || value === 'running') return 'online';
+                if (value === 'unhealthy' || value === 'stopped' || value === 'failed') return 'offline';
+                return value || 'unknown';
+            };
+
+            const mappedServices = {
+                aidb: { status: normalize(aiServices?.aidb?.status), url: registryServiceUrl('aidb'), services: {} },
+                hybrid_coordinator: { status: normalize(aiServices?.hybrid_coordinator?.status), url: registryServiceUrl('hybrid_coordinator') },
+                qdrant: { status: normalize(aiServices?.qdrant?.status), url: registryServiceUrl('qdrant') },
+                llama_cpp: {
+                    status: normalize(aiServices?.llama_cpp?.status),
+                    url: registryServiceUrl('llama_cpp'),
+                    models: aiServices?.llama_cpp?.model ? [{ id: aiServices.llama_cpp.model }] : [],
+                    cached_models: []
+                },
+                embeddings: {
+                    status: normalize(aiServices?.embeddings?.status),
+                    endpoint: registryServiceUrl('embeddings'),
+                    model: aiServices?.embeddings?.model || 'unknown',
+                    dimensions: aiServices?.embeddings?.dimensions || 0,
+                    models: []
+                },
+                switchboard: { status: normalize(aiServices?.switchboard?.status), url: registryServiceUrl('switchboard') }
+            };
+
+            const containerRows = Array.isArray(containers)
+                ? containers.map((svc) => ({
+                    name: svc.name || svc.id || 'unknown',
+                    status: svc.status || 'unknown',
+                    image: 'systemd unit'
+                }))
+                : [];
+
+            return { services: mappedServices, containers: containerRows };
+        }
+
+        function buildNetworkData(metrics) {
+            const ports = Object.values(serviceRegistry || {})
+                .map((service) => service?.port)
+                .filter((port) => port !== undefined && port !== null)
+                .map(String);
+            const iface = metrics?.network?.interface || 'unknown';
+            return {
+                timestamp: new Date().toISOString(),
+                connections: { active: '--' },
+                firewall: { rules_count: '--' },
+                dns: { status: 'managed declaratively' },
+                listening_ports: ports,
+                neighbors: [],
+                traffic: {
+                    iface,
+                    rx_bytes: Number(metrics?.network?.bytes_recv ?? 0),
+                    tx_bytes: Number(metrics?.network?.bytes_sent ?? 0)
+                }
+            };
+        }
+
+        function buildSecurityData(aidbDetailed, systemMetrics) {
+            const readinessHealthy = aidbDetailed?.readiness?.status === 'healthy';
+            const sec = systemMetrics?.security || {};
+            const firewall = sec.firewall || {};
+            const apparmor = sec.mandatory_access_control || {};
+            const firewallStatus = firewall.active ? 'active' : 'inactive';
+            const apparmorStatus = apparmor.apparmor_active ? 'active' : 'inactive';
+            return {
+                authentication: { failed_logins_1h: 0 },
+                mandatory_access_control: { apparmor: { status: apparmorStatus, profiles_loaded: 'systemd' } },
+                firewall: { status: firewallStatus, provider: firewall.provider || 'nftables', enabled: !!firewall.enabled },
+                updates: { available: 'N/A' },
+                aidb_readiness: readinessHealthy ? 'healthy' : 'degraded'
+            };
+        }
+
+        function buildDatabaseData(aiMetrics) {
+            const services = aiMetrics?.services || {};
+            return {
+                postgresql: { status: 'online', database_size: '--', active_connections: '--' },
+                redis: { status: 'online', keys: '--', memory_used: '--' },
+                qdrant: {
+                    status: String(services?.qdrant?.status || 'unknown').toLowerCase(),
+                    collections: services?.qdrant?.metrics?.collection_count ?? 0
+                },
+                mindsdb: { status: 'not-used' }
+            };
+        }
+
+        function buildHybridData(aiMetrics, learningStats) {
+            return {
+                status: aiMetrics?.services?.hybrid_coordinator?.status || 'unknown',
+                telemetry: {
+                    events: Number(learningStats?.total_metrics_tracked ?? 0),
+                    avg_value_score: 0,
+                    high_value_count: 0,
+                    value_scores_recent: []
+                },
+                learning: {
+                    pattern_extractions: Number(learningStats?.total_patterns_learned ?? 0)
+                }
+            };
+        }
+
+        function buildLinksData() {
+            const docs = [
+                { title: 'Agent Guide', path: 'docs/agent-guides/00-SYSTEM-OVERVIEW.md' },
+                { title: 'Quick Start', path: 'docs/QUICK_START.md' },
+                { title: 'README', path: 'README.md' }
+            ];
+            const services = [
+                { name: 'Dashboard API', url: `${FASTAPI_BASE}/docs` },
+                { name: 'Prometheus', url: registryServiceUrl('prometheus') },
+                { name: 'Grafana', url: registryServiceUrl('grafana') },
+                { name: 'Qdrant', url: registryDashboardUrl('qdrant', '/dashboard') },
+                { name: 'llama.cpp', url: registryServiceUrl('llama_cpp') },
+                { name: 'Embeddings', url: registryServiceUrl('embeddings') }
+            ];
+            return { documentation: docs, services };
+        }
+
+        function buildPersistenceData(services, aiMetrics) {
+            const running = new Set(
+                (services || [])
+                    .filter((svc) => svc.status === 'running')
+                    .map((svc) => svc.id || svc.name)
+            );
+            const root = '/home/hyperd/.local/share/nixos-ai-stack';
+            const paths = [
+                { name: 'qdrant', path: `${root}/qdrant`, exists: running.has('qdrant') || running.has('qdrant.service'), size: 'managed' },
+                { name: 'postgres', path: `${root}/postgres`, exists: running.has('postgresql') || running.has('postgresql.service'), size: 'managed' },
+                { name: 'redis', path: `${root}/redis`, exists: running.has('redis-mcp') || running.has('redis-mcp.service'), size: 'managed' },
+                { name: 'llama.cpp models', path: `${root}/llama-cpp-models`, exists: true, size: 'managed' },
+                { name: 'telemetry', path: `${root}/telemetry`, exists: true, size: `${Number(aiMetrics?.effectiveness?.total_events_processed ?? 0)} events` }
+            ];
+            return {
+                data_root: root,
+                mount: { device: 'declarative-managed', filesystem: 'nixos' },
+                paths
+            };
+        }
+
+        function buildFeedbackData(aiMetrics, learningStats) {
+            const sizes = learningStats?.backpressure?.file_sizes || {};
+            const aidbBytes = Number(sizes['aidb-events.jsonl'] ?? 0);
+            const hybridBytes = Number(sizes['hybrid-events.jsonl'] ?? 0);
+            const nowTs = aiMetrics?.timestamp || new Date().toISOString();
+            return {
+                aidb_status: aiMetrics?.services?.aidb?.status || 'unknown',
+                telemetry: {
+                    exists: aidbBytes >= 0,
+                    bytes: aidbBytes,
+                    last_event_at: nowTs
+                },
+                hybrid: {
+                    exists: hybridBytes >= 0,
+                    bytes: hybridBytes,
+                    last_event_at: nowTs
+                }
+            };
+        }
+
+        function buildConfigData(actions) {
+            const settings = [
+                { label: 'Dashboard API', value: FASTAPI_BASE, path: 'runtime', hint: 'Current API base URL used by dashboard.' },
+                { label: 'AIDB Endpoint', value: registryServiceUrl('aidb'), path: 'registry', hint: 'Centralized service registry value.' },
+                { label: 'Hybrid Endpoint', value: registryServiceUrl('hybrid_coordinator'), path: 'registry', hint: 'Centralized service registry value.' },
+                { label: 'Qdrant Endpoint', value: registryServiceUrl('qdrant'), path: 'registry', hint: 'Centralized service registry value.' },
+                { label: 'llama.cpp Endpoint', value: registryServiceUrl('llama_cpp'), path: 'registry', hint: 'Centralized service registry value.' },
+                { label: 'Embeddings Endpoint', value: registryServiceUrl('embeddings'), path: 'registry', hint: 'Centralized service registry value.' }
+            ];
+
+            const filteredActions = (actions || []).filter((action) => {
+                const cmd = String(action.command || '').toLowerCase();
+                if (!cmd) return false;
+                if (cmd.includes('podman ') || cmd.includes('kubernetes') || cmd.includes('k3s')) return false;
+                if (cmd.includes('generate-dashboard-data.sh')) return false;
+                if (cmd.includes('check-ai-stack-health-v2.py')) return false;
+                return true;
+            });
+
+            return { settings, actions: filteredActions };
+        }
+
+        function buildProofData(aiMetrics, services, learningStats) {
+            const runningCount = (services || []).filter((svc) => svc.status === 'running').length;
+            const collectionCount = Number(aiMetrics?.services?.qdrant?.metrics?.collection_count ?? 0);
+            const telemetryEvents = Number(aiMetrics?.effectiveness?.total_events_processed ?? 0);
+            const sampleSkills = ['aidb-knowledge', 'nixos-deployment', 'health-monitoring'];
+            const llmModelRaw = aiMetrics?.services?.llama_cpp?.model || '';
+            const embedModelRaw = aiMetrics?.services?.embeddings?.model || '';
+            const llmModel = llmModelRaw ? llmModelRaw.split('/').pop() : 'N/A';
+            const embeddingModel = embedModelRaw ? embedModelRaw.split('/').pop() : 'N/A';
+            return {
+                aidb_status: aiMetrics?.services?.aidb?.status || 'unknown',
+                rag: { collection_count: collectionCount },
+                llm: { model_name: llmModel, embedding_model_name: embeddingModel },
+                skills: { count: sampleSkills.length, samples: sampleSkills },
+                telemetry: {
+                    events: telemetryEvents,
+                    last_event: {
+                        event_type: 'dashboard-refresh',
+                        source: 'dashboard-api',
+                        llm_used: 'local-first',
+                        model: aiMetrics?.services?.llama_cpp?.model || 'unknown'
+                    }
+                },
+                orchestration: {
+                    runtime: 'systemd',
+                    containers_running: runningCount
+                }
+            };
+        }
+
+        function normalizeLearningData(learningStats) {
+            return {
+                interactions: {
+                    total: Number(learningStats?.total_metrics_tracked ?? 0),
+                    high_value: 0
+                },
+                patterns: {
+                    extractions: Number(learningStats?.total_patterns_learned ?? 0),
+                    learning_rate: Number(learningStats?.deduplication?.deduplication_rate ?? 0)
+                },
+                value_scoring: {
+                    avg_score: 0
+                },
+                fine_tuning: {
+                    samples: Number(learningStats?.finetuning_dataset_size ?? 0)
+                }
+            };
+        }
+
+        function hideLegacySections() {
+            const legacyTitles = new Set([
+                'System Overview (Container)',
+                'Production Hardening Progress'
+            ]);
+            const cards = document.querySelectorAll('.card');
+            cards.forEach((card) => {
+                const title = card.querySelector('.card-title')?.textContent?.trim();
+                if (!title || !legacyTitles.has(title)) return;
+                const section = card.closest('.dashboard-section');
+                if (section) section.style.display = 'none';
+            });
+        }
+
+        async function fetchAIMetrics() {
+            try {
+                if (typeof FASTAPI_BASE !== 'undefined' && FASTAPI_BASE) {
+                    const response = await fetch(`${FASTAPI_BASE}/api/ai/metrics`, { cache: 'no-store' });
+                    if (response.ok) {
+                        return await response.json();
+                    }
+                }
+            } catch (_) {
+                // Fall back to static JSON data path resolution below.
+            }
+            return fetchJSON('ai_metrics.json');
+        }
+
+        async function loadPortRegistry() {
+            if (serviceRegistryInitialized) return;
+
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/ports/registry`, { cache: 'no-store' });
+                if (response.ok) {
+                    const payload = await response.json();
+                    serviceRegistry = payload.services || {};
+                    serviceRegistryInitialized = true;
+                }
+            } catch (_) {
+                // Keep fallback registry empty; mock data will show registry-managed placeholders.
+            }
+        }
+
+        function registryServiceUrl(name) {
+            const url = serviceRegistry?.[name]?.url;
+            return typeof url === 'string' && url.length > 0 ? url : 'registry-managed';
+        }
+
+        function registryServicePort(name) {
+            const port = serviceRegistry?.[name]?.port;
+            return port !== undefined && port !== null ? String(port) : 'registry-managed';
+        }
+
+        function registryDashboardUrl(name, suffix = '') {
+            const base = registryServiceUrl(name);
+            if (!base.startsWith('http://') && !base.startsWith('https://')) {
+                return base;
+            }
+            return `${base.replace(/\/+$/, '')}${suffix}`;
         }
 
         // Fetch JSON with fallback
@@ -2384,14 +2895,14 @@
                 'llm.json': {
                     timestamp: new Date().toISOString(),
                     services: {
-                        qdrant: { status: 'online', collections: 5, collection_names: ['codebase-context', 'skills-patterns', 'error-solutions'], url: 'http://localhost:6333' },
-                        llama_cpp: { status: 'online', models: [{id: 'qwen2.5-coder-7b'}], cached_models: ['qwen2.5-coder-7b-instruct-q4_k_m.gguf', 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf', 'deepseek-coder-6.7b-instruct.Q4_K_M.gguf'], cached_models_count: 3, url: 'http://localhost:8080' },
-                        embeddings: { status: 'online', model: 'sentence-transformers/all-MiniLM-L6-v2', models: ['sentence-transformers/all-MiniLM-L6-v2', 'BAAI/bge-small-en-v1.5'], source: 'huggingface-cache', request_total: 1280, error_total: 2, memory_mb: 512.4, endpoint: 'http://localhost:8081' },
-                        postgres: { status: 'online', url: 'localhost:5432' },
-                        redis: { status: 'online', url: 'localhost:6379' },
-                        open_webui: { status: 'online', url: 'http://localhost:3001' },
-                        mindsdb: { status: 'offline', url: 'http://localhost:47334' },
-                        aidb: { status: 'online', url: 'http://localhost:8091', services: { qdrant: true, redis: true, postgres: true } }
+                        qdrant: { status: 'online', collections: 5, collection_names: ['codebase-context', 'skills-patterns', 'error-solutions'], url: registryServiceUrl('qdrant') },
+                        llama_cpp: { status: 'online', models: [{id: 'qwen2.5-coder-7b'}], cached_models: ['qwen2.5-coder-7b-instruct-q4_k_m.gguf', 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf', 'deepseek-coder-6.7b-instruct.Q4_K_M.gguf'], cached_models_count: 3, url: registryServiceUrl('llama_cpp') },
+                        embeddings: { status: 'online', model: 'sentence-transformers/all-MiniLM-L6-v2', models: ['sentence-transformers/all-MiniLM-L6-v2', 'BAAI/bge-small-en-v1.5'], source: 'huggingface-cache', request_total: 1280, error_total: 2, memory_mb: 512.4, endpoint: registryServiceUrl('embeddings') },
+                        postgres: { status: 'online', url: registryServiceUrl('postgres') },
+                        redis: { status: 'online', url: registryServiceUrl('redis') },
+                        open_webui: { status: 'online', url: registryServiceUrl('open_webui') },
+                        mindsdb: { status: 'offline', url: registryServiceUrl('mindsdb') },
+                        aidb: { status: 'online', url: registryServiceUrl('aidb'), services: { qdrant: true, redis: true, postgres: true } }
                     },
                     containers: [
                         { name: 'local-ai-qdrant', status: 'running', image: 'qdrant/qdrant:v1.16.2' },
@@ -2408,7 +2919,15 @@
                         { ip: '192.168.86.1', mac: 'aa:bb:cc:dd:ee:ff', state: 'REACHABLE', dev: 'wlan0' },
                         { ip: '192.168.86.50', mac: '11:22:33:44:55:66', state: 'STALE', dev: 'wlan0' }
                     ],
-                    listening_ports: ['22', '80', '443', '3000', '3001', '6333', '8080']
+                    listening_ports: [
+                        registryServicePort('grafana'),
+                        registryServicePort('open_webui'),
+                        registryServicePort('qdrant'),
+                        registryServicePort('llama_cpp'),
+                        registryServicePort('embeddings'),
+                        registryServicePort('aidb'),
+                        registryServicePort('hybrid_coordinator')
+                    ]
                 },
                 'security.json': {
                     timestamp: new Date().toISOString(),
@@ -2431,8 +2950,8 @@
                         { title: 'DNS Resolution Fix', path: 'DNS-RESOLUTION-FIX.md', category: 'networking' }
                     ],
                     services: [
-                        { name: 'Open WebUI', url: 'http://localhost:3001', category: 'ai' },
-                        { name: 'Qdrant Dashboard', url: 'http://localhost:6333/dashboard', category: 'ai' }
+                        { name: 'Open WebUI', url: registryServiceUrl('open_webui'), category: 'ai' },
+                        { name: 'Qdrant Dashboard', url: registryDashboardUrl('qdrant', '/dashboard'), category: 'ai' }
                     ],
                     config_files: [
                         { title: 'NixOS Configuration', path: '/etc/nixos/configuration.nix', category: 'system' }
@@ -2488,15 +3007,15 @@
                     required_services: ['qdrant', 'llama_cpp', 'postgres', 'redis', 'open_webui', 'aidb', 'mindsdb'],
                     settings: [
                         { label: 'AI Stack Data Root', value: '$HOME/.local/share/nixos-ai-stack', path: '$HOME/.config/nixos-ai-stack/.env', hint: 'Set AI_STACK_DATA to relocate persisted services.' },
-                        { label: 'AIDB Port', value: '8091', path: '$HOME/.config/nixos-ai-stack/.env', hint: 'Controls AIDB MCP server port.' },
-                        { label: 'llama.cpp Port', value: '8080', path: '$HOME/.config/nixos-ai-stack/.env', hint: 'Controls llama.cpp inference port.' },
-                        { label: 'Qdrant Port', value: '6333', path: '$HOME/.config/nixos-ai-stack/.env', hint: 'Controls Qdrant HTTP port.' },
+                        { label: 'AIDB Port', value: registryServicePort('aidb'), path: '$HOME/.config/nixos-ai-stack/.env', hint: 'Controls AIDB MCP server port.' },
+                        { label: 'llama.cpp Port', value: registryServicePort('llama_cpp'), path: '$HOME/.config/nixos-ai-stack/.env', hint: 'Controls llama.cpp inference port.' },
+                        { label: 'Qdrant Port', value: registryServicePort('qdrant'), path: '$HOME/.config/nixos-ai-stack/.env', hint: 'Controls Qdrant HTTP port.' },
                         { label: 'Dashboard Refresh (seconds)', value: '15', path: 'launch-dashboard.sh', hint: 'Set DASHBOARD_COLLECT_INTERVAL to adjust refresh cadence.' },
                         { label: 'Telemetry Stale Threshold (minutes)', value: '30', path: 'scripts/verify-local-llm-feedback.sh', hint: 'Set TELEMETRY_STALE_MINUTES to change stale warnings.' }
                     ],
                     actions: [
-                        { label: 'Grant Podman Desktop Socket', command: 'flatpak override --user --filesystem=xdg-run/podman io.podman_desktop.PodmanDesktop', mode: 'run', category: 'Desktop' },
-                        { label: 'Create Podman Connection', command: 'podman system connection add local unix:///run/user/1000/podman/podman.sock --default', mode: 'run', category: 'Containers' },
+                        { label: 'Restart AI Stack Target', command: 'sudo systemctl restart ai-stack.target', mode: 'run', category: 'Systemd' },
+                        { label: 'Show AI Stack Units', command: 'systemctl --no-pager --type=service | rg \"ai-|command-center|prometheus\"', mode: 'run', category: 'Systemd' },
                         { label: 'Reload NixOS Config', command: 'sudo nixos-rebuild switch', mode: 'run', category: 'System' }
                     ]
                 },
@@ -2507,7 +3026,7 @@
                     llm: { llama_cpp_models: 1 },
                     skills: { count: 24, samples: ['nixos-deployment', 'webapp-testing'] },
                     telemetry: { path: '$HOME/.local/share/nixos-ai-stack/telemetry/aidb-events.jsonl', events: 128, last_event: { timestamp: new Date().toISOString(), event_type: 'tool_execute', source: 'aidb', llm_used: 'local', model: 'Qwen' } },
-                    orchestration: { runtime: 'podman', containers_running: 6 }
+                    orchestration: { runtime: 'systemd', services_running: 11 }
                 },
                 'hybrid-coordinator.json': {
                     timestamp: new Date().toISOString(),
@@ -2797,7 +3316,7 @@
             // Update embeddings info
             const embeddingsModel = embeddings.model || 'unknown';
             const embeddingsDims = embeddings.dimensions || 384;
-            const embeddingsEndpoint = embeddings.endpoint || 'http://localhost:8081';
+            const embeddingsEndpoint = embeddings.endpoint || registryServiceUrl('embeddings');
             document.getElementById('embeddingsInfo').textContent =
                 `${embeddingsModel} (${embeddingsDims}D) @ ${embeddingsEndpoint}`;
         }
@@ -2925,7 +3444,7 @@
                 },
                 {
                     label: 'Firewall',
-                    value: data.firewall.status,
+                    value: `${data.firewall.status}${data.firewall.provider ? ` (${data.firewall.provider}, ${data.firewall.enabled ? 'enabled' : 'disabled'})` : ''}`,
                     status: data.firewall.status === 'active' ? 'online' : 'offline'
                 },
                 {
@@ -3067,6 +3586,102 @@
             document.getElementById('learningFinetune').textContent = fineTuning.samples ?? 0;
         }
 
+        function updateHarnessOverview(aiMetrics) {
+            const harness = aiMetrics?.harness || {};
+            const overview = harness.overview || {};
+            const scorecard = harness.scorecard || {};
+            const stats = harness.stats || {};
+            const acceptance = scorecard.acceptance || {};
+            const maintenance = overview.maintenance || {};
+            const policies = overview.policies || {};
+            const discovery = scorecard.discovery || {};
+            const scripts = Array.isArray(maintenance.scripts) ? maintenance.scripts : [];
+            const totalRuns = Number(acceptance.total ?? stats.total_runs ?? 0);
+            const passedRuns = Number(acceptance.passed ?? stats.passed ?? 0);
+            const passRate = totalRuns > 0 ? (passedRuns / totalRuns) * 100 : null;
+            const scriptsReady = Number.isFinite(Number(maintenance.operational_scripts)) ? Number(maintenance.operational_scripts) : null;
+            const scriptsTotal = Number.isFinite(Number(maintenance.total_scripts)) ? Number(maintenance.total_scripts) : null;
+            const researchRaw = maintenance.weekly_research?.candidate_count;
+            const researchCandidates = Number.isFinite(Number(researchRaw)) && maintenance.weekly_research?.available !== false
+                ? Number(researchRaw)
+                : null;
+            const discoveryInvoked = Number.isFinite(Number(discovery.invoked)) ? Number(discovery.invoked) : null;
+            const discoveryCache = Number.isFinite(Number(discovery.cache_hit_rate))
+                ? Number(discovery.cache_hit_rate) * 100
+                : null;
+
+            document.getElementById('harnessPassRate').textContent = passRate === null ? 'N/A' : `${passRate.toFixed(1)}%`;
+            document.getElementById('harnessDiscoveryInvoked').textContent = discoveryInvoked === null ? 'N/A' : `${discoveryInvoked}`;
+            document.getElementById('harnessDiscoveryCache').textContent = discoveryCache === null ? 'N/A' : `${discoveryCache.toFixed(1)}%`;
+            document.getElementById('harnessScriptsReady').textContent =
+                scriptsReady === null || scriptsTotal === null ? 'N/A' : `${scriptsReady}/${scriptsTotal}`;
+            document.getElementById('harnessResearchCandidates').textContent = researchCandidates === null ? 'N/A' : `${researchCandidates}`;
+
+            const toolPolicyPresent = Object.keys(policies.tool_execution_policy || {}).length > 0;
+            const outboundPolicyPresent = Object.keys(policies.outbound_http_policy || {}).length > 0;
+            document.getElementById('harnessPolicyStatus').textContent =
+                toolPolicyPresent || outboundPolicyPresent ? 'CONFIGURED' : 'UNSET';
+
+            const badge = document.getElementById('harnessOpsBadge');
+            if (badge) {
+                const healthy = passRate !== null && passRate >= 70 && totalRuns > 0;
+                badge.textContent = healthy ? 'Operational' : 'Needs Attention';
+                badge.style.background = healthy ? 'var(--status-online)' : 'var(--status-warning)';
+                badge.style.color = healthy ? 'var(--bg-primary)' : 'var(--bg-primary)';
+            }
+
+            const list = document.getElementById('harnessScriptList');
+            if (list) {
+                if (!scripts.length) {
+                    list.innerHTML = `<div class="data-item"><span>Harness script inventory unavailable in current API build</span><span class="data-meta">limited</span></div>`;
+                } else {
+                    list.innerHTML = scripts.map((script) => {
+                        const ok = script.exists && script.executable;
+                        const state = ok ? 'ready' : 'missing';
+                        return `
+                            <div class="data-item">
+                                <span>${script.name}</span>
+                                <span class="data-meta ${ok ? 'status-online' : 'status-offline'}">${state}</span>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+        }
+
+        async function runHarnessMaintenance(action) {
+            const statusEl = document.getElementById('harnessActionStatus');
+            if (statusEl) {
+                statusEl.textContent = `Running ${action}...`;
+                statusEl.style.color = 'var(--status-warning)';
+            }
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/harness/maintenance/run`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action })
+                });
+                if (response.status === 404) {
+                    throw new Error('maintenance endpoint not available in current API build');
+                }
+                const payload = await response.json();
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload?.stderr || payload?.detail || `HTTP ${response.status}`);
+                }
+                if (statusEl) {
+                    statusEl.textContent = `${action}: success`;
+                    statusEl.style.color = 'var(--status-online)';
+                }
+                await refreshDashboard();
+            } catch (error) {
+                if (statusEl) {
+                    statusEl.textContent = `${action}: failed`;
+                    statusEl.style.color = 'var(--status-error)';
+                }
+                console.error(`Harness maintenance action failed (${action}):`, error);
+            }
+        }
+
         function updateDiscoverySignals(data) {
             if (!data) return;
 
@@ -3152,8 +3767,8 @@
 
             document.getElementById('proofAidb').textContent = (data.aidb_status || 'offline').toUpperCase();
             document.getElementById('proofRag').textContent = data.rag?.collection_count ?? '--';
-            document.getElementById('proofLlamaCpp').textContent = data.llm?.llama_cpp_models ?? '--';
-            document.getElementById('proofLlamaCpp').textContent = data.llm?.llama_cpp_models ?? '--';
+            document.getElementById('proofLlmModel').textContent = data.llm?.model_name || 'N/A';
+            document.getElementById('proofEmbeddingModel').textContent = data.llm?.embedding_model_name || 'N/A';
             document.getElementById('proofSkills').textContent = data.skills?.count ?? '--';
             document.getElementById('proofTelemetry').textContent = data.telemetry?.events ?? '--';
             document.getElementById('proofContainers').textContent = data.orchestration?.containers_running ?? '--';
@@ -3299,14 +3914,14 @@
                 status.textContent = `Running: ${label}...`;
             }
             try {
-                const response = await fetch('/action', {
+                const response = await fetch(`${FASTAPI_BASE}/api/actions/execute`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ label })
                 });
                 const payload = await response.json();
                 if (status) {
-                    status.textContent = payload.message || 'Action completed';
+                    status.textContent = payload.message || (payload.status === 'ok' ? 'Action completed' : 'Action failed');
                 }
                 if (payload.output) {
                     console.log(payload.output);
@@ -3367,7 +3982,12 @@
 
             // Security penalties
             if (data.security) {
-                if (data.security.firewall && data.security.firewall.status !== 'active') score -= 20;
+                if (data.security.firewall) {
+                    const firewallStatus = String(data.security.firewall.status || '').toLowerCase();
+                    if (['inactive', 'disabled', 'off', 'offline', 'failed'].includes(firewallStatus)) {
+                        score -= 20;
+                    }
+                }
                 if (data.security.authentication && data.security.authentication.failed_logins_1h > 10) score -= 10;
             }
 
@@ -3408,6 +4028,11 @@
             if (paramBase) {
                 return paramBase.replace(/\/+$/, '');
             }
+            // In TLS/ingress mode the API is reverse-proxied at same-origin /api.
+            const browserPort = window.location.port || '';
+            if (browserPort === '' || browserPort === '80' || browserPort === '443') {
+                return window.location.origin.replace(/\/+$/, '');
+            }
             const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
             const host = window.location.hostname;
             const port = paramPort || DEFAULT_API_PORT;
@@ -3432,7 +4057,7 @@
                     <div style="padding: 1rem; text-align: center; color: var(--text-muted);">
                         <p>⚠️ FastAPI backend not running</p>
                         <p style="font-size: 0.875rem; margin-top: 0.5rem;">
-                            Start backend: <code>cd dashboard/backend && uvicorn api.main:app --port 8889</code>
+                            Start backend: <code>cd dashboard/backend && uvicorn api.main:app</code>
                         </p>
                     </div>
                 `;
@@ -3582,12 +4207,8 @@
         }
 
         async function detectHostMetrics() {
-            try {
-                const response = await fetch('/data/system.json', { cache: 'no-store' });
-                useHostMetrics = response.ok;
-            } catch (err) {
-                useHostMetrics = false;
-            }
+            // API-first mode: static dashboard JSON snapshots are deprecated.
+            useHostMetrics = false;
         }
 
         function updateSystemMetricsFromAPI(metrics) {
@@ -3660,19 +4281,44 @@
 
                 document.getElementById('netRxRate').textContent = formatBytes(rxRate) + '/s';
                 document.getElementById('netTxRate').textContent = formatBytes(txRate) + '/s';
+
+                if (networkChart) {
+                    const rxKB = Math.max(rxRate / 1024, 0);
+                    const txKB = Math.max(txRate / 1024, 0);
+                    networkRxHistory.push(rxKB);
+                    networkTxHistory.push(txKB);
+                    if (networkRxHistory.length > 30) networkRxHistory.shift();
+                    if (networkTxHistory.length > 30) networkTxHistory.shift();
+                    networkChart.data.labels = networkRxHistory.map(() => '');
+                    networkChart.data.datasets[0].data = networkRxHistory;
+                    networkChart.data.datasets[1].data = networkTxHistory;
+                    networkChart.update('none');
+                }
             }
             lastNetworkSample = {
                 timestamp: now,
                 bytes_recv: metrics.network.bytes_recv,
                 bytes_sent: metrics.network.bytes_sent
             };
+            if (metrics?.network?.interface) {
+                document.getElementById('netIface').textContent = metrics.network.interface;
+            }
 
             // Update GPU if available
             if (metrics.gpu && metrics.gpu.name !== 'N/A') {
                 document.getElementById('gpuName').textContent = metrics.gpu.name;
-                document.getElementById('gpuBusy').textContent = metrics.gpu.usage || 'N/A';
-                document.getElementById('gpuVram').textContent = metrics.gpu.memory || 'N/A';
+                const gpuBusy = metrics.gpu.busy_percent !== null && metrics.gpu.busy_percent !== undefined
+                    ? `${metrics.gpu.busy_percent}%`
+                    : (metrics.gpu.usage || 'N/A');
+                const gpuVram = metrics.gpu.vram_used_mb !== null && metrics.gpu.vram_total_mb !== null
+                    ? `${metrics.gpu.vram_used_mb} / ${metrics.gpu.vram_total_mb} MB`
+                    : (metrics.gpu.memory || 'N/A');
+                document.getElementById('gpuBusy').textContent = gpuBusy;
+                document.getElementById('gpuVram').textContent = gpuVram;
             }
+
+            const gpuBusyPercent = Number(metrics?.gpu?.busy_percent ?? 0);
+            updateChartData(gpuChart, Number.isFinite(gpuBusyPercent) ? gpuBusyPercent : 0);
 
             // Update System Info
             document.getElementById('uptime').textContent = formatUptime(metrics.uptime);
@@ -3782,17 +4428,26 @@
                 const response = await fetch(`${FASTAPI_BASE}/api/services`, { cache: 'no-store' });
                 if (!response.ok) throw new Error('services fetch failed');
                 const services = await response.json();
-                const modes = new Set((services || []).map((s) => s.type));
-                if (modes.has('k8s')) {
-                    modeElement.textContent = 'k8s (cluster)';
-                } else if (modes.has('container') || modes.has('systemd')) {
-                    modeElement.textContent = 'podman/local';
-                } else {
-                    modeElement.textContent = 'unknown';
-                }
+                const hasSystemd = (services || []).some((s) => s.type === 'systemd');
+                modeElement.textContent = hasSystemd ? 'systemd/local' : 'unknown';
             } catch (err) {
                 modeElement.textContent = 'api offline';
             }
+        }
+
+        function updateChartData(chart, value) {
+            if (!chart) return;
+            const next = Number(value);
+            if (!Number.isFinite(next)) return;
+            const labels = chart.data.labels || [];
+            const data = chart.data.datasets?.[0]?.data || [];
+            labels.push('');
+            data.push(next);
+            if (labels.length > 20) labels.shift();
+            if (data.length > 20) data.shift();
+            chart.data.labels = labels;
+            chart.data.datasets[0].data = data;
+            chart.update('none');
         }
 
         // Collapsible sections
