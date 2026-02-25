@@ -1,9 +1,0 @@
-apiVersion: v1
-data:
-  dataset.jsonl: |
-    {"messages": [{"role": "system", "content": "You are a helpful AI coding assistant. Provide clear, efficient solutions."}, {"role": "user", "content": "Verify learning pipeline telemetry processing"}, {"role": "assistant", "content": "Processed telemetry and generated dataset entry."}], "metadata": {"pattern_id": "task_test-task-1768154574", "interaction_type": "task_completion", "backend": "aider", "iterations": 2, "timestamp": "2026-01-11T18:02:54+00:00", "success_metrics": {"iterations": 2.0, "efficiency": 0.5}}}
-kind: ConfigMap
-metadata:
-  labels:
-    io.kompose.service: hybrid-coordinator
-  name: hybrid-coordinator-cm2
