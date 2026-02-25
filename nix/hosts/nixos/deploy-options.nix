@@ -5,6 +5,14 @@
     mySystem.roles.virtualization.enable = lib.mkDefault true;
     mySystem.monitoring.enable           = lib.mkDefault true;
     mySystem.monitoring.commandCenter.enable = lib.mkDefault true;
+    # Keep ai-dev self-contained for flake evaluations done outside
+    # nixos-quick-deploy. deploy-options.local.nix is gitignored, so direct
+    # `nixos-rebuild --flake` must not rely on it for enabling secrets.
+    mySystem.secrets.enable = lib.mkDefault true;
+    mySystem.secrets.sopsFile =
+      lib.mkDefault "/home/${config.mySystem.primaryUser}/.local/share/nixos-quick-deploy/secrets/nixos/secrets.sops.yaml";
+    mySystem.secrets.ageKeyFile =
+      lib.mkDefault "/home/${config.mySystem.primaryUser}/.config/sops/age/keys.txt";
     mySystem.aiStack = {
       # llama.cpp backend: native OpenAI-compatible inference server.
       # No Ollama daemon — models are loaded directly from GGUF files in
