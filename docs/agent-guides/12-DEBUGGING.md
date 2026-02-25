@@ -92,7 +92,7 @@ sudo nixos-rebuild build
 sudo nixos-rebuild switch 2>&1 | tee build.log
 
 # Rollback if needed
-./nixos-quick-deploy.sh --rollback
+sudo nixos-rebuild switch --rollback
 ```
 
 ### 5. Python Package Issues
@@ -293,11 +293,10 @@ tar -xzf ai-stack-backup-DATE.tar.gz -C ~/.local/share/
 
 ```bash
 # Rollback NixOS
-./nixos-quick-deploy.sh --rollback
-
-# Or manual
 sudo nixos-rebuild switch --rollback
-home-manager switch --rollback
+
+# Home Manager rollback (activate prior generation manually)
+home-manager generations
 ```
 
 ---

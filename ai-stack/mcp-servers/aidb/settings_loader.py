@@ -25,6 +25,17 @@ def _read_secret(path: Optional[str]) -> Optional[str]:
     return secret_path.read_text(encoding="utf-8").strip()
 
 
+def _env_flag(name: str, default: str = "false") -> bool:
+    return os.environ.get(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _require_env(name: str) -> str:
+    value = (os.environ.get(name) or "").strip()
+    if not value:
+        raise ValueError(f"AI_STRICT_ENV requires environment variable: {name}")
+    return value
+
+
 def _parse_size(value: str) -> int:
     units = {"kb": 1024, "mb": 1024**2, "gb": 1024**3}
     value = value.strip().lower()
@@ -70,7 +81,7 @@ class Settings(BaseModel):
     embedding_cache_enabled: bool = True
     embedding_cache_ttl: int = 86400
     vector_search_cache_ttl: int = 300
-    llama_cpp_url: str = "http://localhost:8080"
+    llama_cpp_url: str
     llama_cpp_models: List[str] = Field(default_factory=list)
     tool_schema_cache: Path = Field(default=Path(".mcp_cache/tool_schemas.json"))
     sandbox_enabled: bool = True
@@ -113,6 +124,42 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
     security_cfg = raw.get("security", {})
     rag_cfg = raw.get("rag", {})
     embeddings_cfg = raw.get("embeddings", {})
+    strict_env = _env_flag("AI_STRICT_ENV", "true")
+
+    if strict_env:
+        required_env = [
+            "AIDB_CONFIG",
+            "EMBEDDING_SERVICE_URL",
+            "LLAMA_CPP_BASE_URL",
+            "POSTGRES_HOST",
+            "POSTGRES_PORT",
+            "POSTGRES_DB",
+            "POSTGRES_USER",
+            "AIDB_REDIS_HOST",
+            "AIDB_REDIS_PORT",
+            "AIDB_REDIS_DB",
+            "AIDB_POSTGRES_PASSWORD_FILE",
+            "AIDB_API_KEY_FILE",
+            "EMBEDDINGS_API_KEY_FILE",
+        ]
+        for env_name in required_env:
+            _require_env(env_name)
+
+        required_secret_files = [
+            "AIDB_POSTGRES_PASSWORD_FILE",
+            "AIDB_API_KEY_FILE",
+            "EMBEDDINGS_API_KEY_FILE",
+        ]
+        for env_name in required_secret_files:
+            secret_path = Path(_require_env(env_name))
+            if not secret_path.exists():
+                raise ValueError(
+                    f"AI_STRICT_ENV requires existing secret file for {env_name}: {secret_path}"
+                )
+            if not secret_path.is_file():
+                raise ValueError(
+                    f"AI_STRICT_ENV requires file path for {env_name}: {secret_path}"
+                )
     embedding_trust_remote_code = rag_cfg.get("embedding_trust_remote_code")
     if embedding_trust_remote_code is None:
         env_flag = os.environ.get("AIDB_EMBEDDING_TRUST_REMOTE_CODE") or os.environ.get(
@@ -131,12 +178,13 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
     embedding_service_url = (
         os.environ.get("AIDB_EMBEDDING_SERVICE_URL")
         or os.environ.get("EMBEDDING_SERVICE_URL")
-        or os.environ.get("EMBEDDINGS_SERVICE_URL")
     )
-    if not embedding_service_url:
+    if not strict_env and not embedding_service_url:
         embedding_service_url = embeddings_cfg.get("embedding_service_url") or embeddings_cfg.get("service_url")
-    if not embedding_service_url and os.environ.get("KUBERNETES_SERVICE_HOST"):
-        embedding_service_url = "http://embeddings:8081"
+    if strict_env:
+        embedding_service_url = _require_env("EMBEDDING_SERVICE_URL")
+    if not embedding_service_url:
+        raise ValueError("Missing required embedding service URL (EMBEDDING_SERVICE_URL)")
 
     embedding_api_key_file = os.environ.get("EMBEDDINGS_API_KEY_FILE") or "/run/secrets/embeddings_api_key"
     embedding_service_api_key = _read_secret(embedding_api_key_file)
@@ -152,23 +200,25 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
     postgres_host = (
         os.environ.get("AIDB_POSTGRES_HOST")
         or os.environ.get("POSTGRES_HOST")
-        or postgres_cfg.get("host", "localhost")
+        or postgres_cfg.get("host")
     )
     postgres_port = int(
         os.environ.get("AIDB_POSTGRES_PORT")
         or os.environ.get("POSTGRES_PORT")
-        or postgres_cfg.get("port", 5432)
+        or postgres_cfg.get("port")
     )
     postgres_db = (
         os.environ.get("AIDB_POSTGRES_DB")
         or os.environ.get("POSTGRES_DB")
-        or postgres_cfg.get("database", "mcp")
+        or postgres_cfg.get("database")
     )
     postgres_user = (
         os.environ.get("AIDB_POSTGRES_USER")
         or os.environ.get("POSTGRES_USER")
-        or postgres_cfg.get("user", "mcp")
+        or postgres_cfg.get("user")
     )
+    if not postgres_host or not postgres_db or not postgres_user:
+        raise ValueError("Missing required PostgreSQL settings (host/database/user)")
     postgres_sslmode = os.environ.get("AIDB_POSTGRES_SSLMODE") or postgres_cfg.get("sslmode")
     postgres_sslrootcert = os.environ.get("AIDB_POSTGRES_SSLROOTCERT") or postgres_cfg.get("sslrootcert")
     postgres_sslcert = os.environ.get("AIDB_POSTGRES_SSLCERT") or postgres_cfg.get("sslcert")
@@ -202,18 +252,20 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
     redis_host = (
         os.environ.get("AIDB_REDIS_HOST")
         or os.environ.get("REDIS_HOST")
-        or redis_cfg.get("host", "localhost")
+        or redis_cfg.get("host")
     )
     redis_port = int(
         os.environ.get("AIDB_REDIS_PORT")
         or os.environ.get("REDIS_PORT")
-        or redis_cfg.get("port", 6379)
+        or redis_cfg.get("port")
     )
     redis_db = int(
         os.environ.get("AIDB_REDIS_DB")
         or os.environ.get("REDIS_DB")
-        or redis_cfg.get("db", 0)
+        or redis_cfg.get("db")
     )
+    if not redis_host:
+        raise ValueError("Missing required Redis host (AIDB_REDIS_HOST/REDIS_HOST)")
     redis_scheme = os.environ.get("AIDB_REDIS_SCHEME") or redis_cfg.get("scheme")
     redis_tls_flag = os.environ.get("AIDB_REDIS_TLS") or redis_cfg.get("tls")
     if not redis_scheme:
@@ -238,7 +290,11 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
             redis_url = f"{redis_url}?{urlencode(redis_params)}"
 
     llama_cpp_cfg = llm_cfg.get("llama_cpp") or llm_cfg.get("llama-cpp") or {}
-    llama_cpp_url = os.environ.get("LLAMA_CPP_BASE_URL") or llama_cpp_cfg.get("host") or "http://localhost:8080"
+    llama_cpp_url = os.environ.get("LLAMA_CPP_BASE_URL") or llama_cpp_cfg.get("host")
+    if strict_env:
+        llama_cpp_url = _require_env("LLAMA_CPP_BASE_URL")
+    if not llama_cpp_url:
+        raise ValueError("Missing required llama.cpp base URL (LLAMA_CPP_BASE_URL)")
     llama_cpp_models = llama_cpp_cfg.get("models", [])
 
     sandbox_cfg = tools_cfg.get("sandbox", {})

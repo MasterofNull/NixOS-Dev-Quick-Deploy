@@ -279,8 +279,15 @@ in
             && ports.qdrantHttp != ports.mcpAidb
             && ports.mcpAidb != ports.mcpHybrid
             && ports.mcpAidb != ports.mcpRalph
-            && ports.mcpHybrid != ports.mcpRalph;
-          message = "ports registry conflict: postgres=${toString ports.postgres}, redis=${toString ports.redis}, qdrantHttp=${toString ports.qdrantHttp}, mcpAidb=${toString ports.mcpAidb}, mcpHybrid=${toString ports.mcpHybrid}, mcpRalph=${toString ports.mcpRalph} — all must be distinct.";
+            && ports.mcpHybrid != ports.mcpRalph
+            && ports.otelCollectorMetrics != ports.commandCenterFrontend
+            && ports.otelCollectorMetrics != ports.commandCenterApi
+            && ports.otelCollectorMetrics != ports.prometheus
+            && ports.otelCollectorMetrics != ports.nodeExporter
+            && ports.otelCollectorMetrics != ports.otlpGrpc
+            && ports.otelCollectorMetrics != ports.otlpHttp
+            && ports.otlpGrpc != ports.otlpHttp;
+          message = "ports registry conflict: postgres=${toString ports.postgres}, redis=${toString ports.redis}, qdrantHttp=${toString ports.qdrantHttp}, mcpAidb=${toString ports.mcpAidb}, mcpHybrid=${toString ports.mcpHybrid}, mcpRalph=${toString ports.mcpRalph}, otelCollectorMetrics=${toString ports.otelCollectorMetrics}, otlpGrpc=${toString ports.otlpGrpc}, otlpHttp=${toString ports.otlpHttp}, commandCenterFrontend=${toString ports.commandCenterFrontend}, commandCenterApi=${toString ports.commandCenterApi}, prometheus=${toString ports.prometheus}, nodeExporter=${toString ports.nodeExporter} — all constrained ports must be distinct.";
         }
 
         # MCP servers require the AI stack role to be enabled.

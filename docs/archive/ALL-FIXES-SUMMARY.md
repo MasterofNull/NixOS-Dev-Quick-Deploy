@@ -257,7 +257,7 @@ RUN_AI_MODEL=true  # Default: Show AI stack prompt
 ### Before Fixes
 
 ```
-./nixos-quick-deploy.sh --with-ai-stack  # Flag required
+./nixos-quick-deploy.sh --profile ai-dev  # Flag required
 ↓
 Phase 3: Configuration generation
   → DNS warnings (retry delays)

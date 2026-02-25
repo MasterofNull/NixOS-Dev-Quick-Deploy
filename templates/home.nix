@@ -14,9 +14,7 @@
 # Additional placeholders appear throughout for optional services (Gitea, etc.)
 # =============================================================================
 #
-# NOTE: Podman-based AI stack sections in this template are legacy and kept for
-# backward compatibility. The active deployment path uses K3s (Phase 9). New
-# changes should prefer K3s manifests in ai-stack/kubernetes + kustomize.
+# NOTE: Legacy container-orchestrator paths have been retired from active runtime.
 
 { config, pkgs, lib, options, ... }:
 
@@ -1771,7 +1769,6 @@ find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)' CMakeLists.txt
 
           # Kubernetes (Optional - for model deployment)
           # Uncomment if deploying ML models to Kubernetes
-          #kubectl                 # Kubernetes CLI
           #k9s                     # Kubernetes TUI
           #helm                    # Kubernetes package manager
 
@@ -2450,8 +2447,7 @@ EOF
         else
           # Not a warning - auto-start is optional
           echo "Info: AI stack auto-start not configured (podman-ai-stack not in PATH)"
-          echo "To start manually, run one of:"
-          echo "  - kubectl apply -k ai-stack/kubernetes"
+          echo "To start manually, use the declarative flake-first deploy workflow."
         fi
       ''
     );

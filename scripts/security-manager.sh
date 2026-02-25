@@ -3,7 +3,7 @@
 # Part of NixOS-Dev-Quick-Deploy
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]})/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=../config/service-endpoints.sh
 source "$SCRIPT_DIR/config/service-endpoints.sh"
 
@@ -121,8 +121,8 @@ subcmd_dashboards() {
     fi
     
     # Grafana
-    if curl -s -o /dev/null -w "" --max-time 1 --connect-timeout 1 http://${SERVICE_HOST:-localhost}:3001 2>/dev/null; then
-        echo -e "  ${GREEN}✓${RESET} Grafana: http://${SERVICE_HOST:-localhost}:3001"
+    if curl -s -o /dev/null -w "" --max-time 1 --connect-timeout 1 "${GRAFANA_URL}" 2>/dev/null; then
+        echo -e "  ${GREEN}✓${RESET} Grafana: ${GRAFANA_URL}"
     else
         echo -e "  ${YELLOW}○${RESET} Grafana: Not enabled (see 'enable-monitoring' command)"
     fi
@@ -152,7 +152,7 @@ subcmd_enable_monitoring() {
   # Enable Grafana
   services.grafana = {
     enable = true;
-    settings.server.http_port = 3001;
+    settings.server.http_port = ${GRAFANA_PORT:-3000};
     settings.security.admin_password = "changeme";  # CHANGE THIS!
   };
 
@@ -229,4 +229,3 @@ case "${1:-help}" in
         exit 1
         ;;
 esac
-

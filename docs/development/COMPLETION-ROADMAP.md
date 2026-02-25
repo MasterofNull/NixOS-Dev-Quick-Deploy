@@ -181,10 +181,8 @@
 - [x] Add `ai-stack` namespace manifest
 - [x] Add `backups` namespace manifest
 - [x] Keep logging namespace + Loki/Promtail in kustomize base
-- [x] Apply `ai-stack/kubernetes` kustomization in deployment phase
 
 ### 8.3 Secrets + backups wiring
-- [x] Apply K8s secrets from `ai-stack/kubernetes/secrets`
 - [x] Create `backup-encryption` secret in `backups` namespace
 - [x] Fix backup cronjob secret key reference (`postgres-password`)
 - [x] Ensure backups namespace has `postgres-password` secret
@@ -195,7 +193,6 @@
 - [x] Document immutable image tagging and registry push flow for all services - See REGISTRY_PUSH_FLOW.md
 
 ### 8.5 Operator UX + monitoring
-- [x] Apply Portainer manifest from repo (`portainer-k8s.yaml`)
 - [x] Validate Portainer login + initial wizard reset flow - See PORTAINER_SETUP_VALIDATION.md
 
 ---
@@ -229,7 +226,6 @@
 
 ### 9.1 K3s-only documentation sweep
 - [x] Remove remaining Podman legacy runtime references in active docs - Completed previously
-- [x] Replace legacy runbooks with kubectl equivalents - Completed previously
 - [x] Mark legacy runtime docs as archived (keep for history only) - Completed previously
 
 ### 9.2 Monitoring + telemetry validation

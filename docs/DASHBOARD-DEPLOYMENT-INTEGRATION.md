@@ -143,8 +143,8 @@ systemctl --user enable dashboard-collector.timer
 To verify integration works correctly:
 
 ```bash
-# Run deployment (with --dry-run for safety)
-./nixos-quick-deploy.sh --dry-run
+# Run build-only validation (no live switch)
+./nixos-quick-deploy.sh --build-only
 
 # Check Phase 8 logs for dashboard installation
 grep -A 20 "Step 8.5: System Monitoring Dashboard" ~/.cache/nixos-quick-deploy/logs/*.log

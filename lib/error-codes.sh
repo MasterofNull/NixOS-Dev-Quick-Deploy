@@ -33,10 +33,10 @@ readonly ERR_SUCCESS=0 \
     ERR_HOME_MANAGER=41 \
     ERR_FLAKE_LOCK=42 \
     ERR_SYSTEM_SWITCH=43 \
-    ERR_K3S_DEPLOY=50 \
-    ERR_K3S_NOT_RUNNING=51 \
-    ERR_K3S_NAMESPACE=52 \
-    ERR_K3S_MANIFEST=53 \
+    ERR_AI_STACK_DEPLOY=50 \
+    ERR_AI_STACK_RUNTIME=51 \
+    ERR_AI_STACK_NAMESPACE=52 \
+    ERR_AI_STACK_MANIFEST=53 \
     ERR_IMAGE_BUILD=54 \
     ERR_IMAGE_IMPORT=55 \
     ERR_SECRET_DECRYPT=60 \
@@ -79,10 +79,10 @@ error_code_name() {
         41) echo "HOME_MANAGER_FAILED" ;;
         42) echo "FLAKE_LOCK_ERROR" ;;
         43) echo "SYSTEM_SWITCH_FAILED" ;;
-        50) echo "K3S_DEPLOY_FAILED" ;;
-        51) echo "K3S_NOT_RUNNING" ;;
-        52) echo "K3S_NAMESPACE_ERROR" ;;
-        53) echo "K3S_MANIFEST_ERROR" ;;
+        50) echo "AI_STACK_DEPLOY_FAILED" ;;
+        51) echo "AI_STACK_RUNTIME_ERROR" ;;
+        52) echo "AI_STACK_NAMESPACE_ERROR" ;;
+        53) echo "AI_STACK_MANIFEST_ERROR" ;;
         54) echo "IMAGE_BUILD_FAILED" ;;
         55) echo "IMAGE_IMPORT_FAILED" ;;
         60) echo "SECRET_DECRYPT_FAILED" ;;

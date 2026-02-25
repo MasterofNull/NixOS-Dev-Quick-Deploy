@@ -164,27 +164,40 @@ class ContinuousLearningPipeline:
         self.embedding_dimensions = getattr(settings, "embedding_dimensions", 384)
         self.embeddings_client = create_embeddings_client(timeout=30.0)
 
+        # Base writable data root for continuous-learning artifacts.
+        data_root = Path(
+            os.path.expanduser(
+                os.getenv("CONTINUOUS_LEARNING_DATA_ROOT")
+                or os.getenv("DATA_DIR")
+                or "~/.local/share/nixos-ai-stack/hybrid"
+            )
+        )
+        telemetry_dir = Path(
+            os.getenv("CONTINUOUS_LEARNING_TELEMETRY_DIR", str(data_root / "telemetry"))
+        )
+
         # Telemetry paths
         self.telemetry_paths = [
-            Path("/data/telemetry/ralph-events.jsonl"),
-            Path("/data/telemetry/aidb-events.jsonl"),
-            Path("/data/telemetry/hybrid-events.jsonl"),
+            telemetry_dir / "ralph-events.jsonl",
+            telemetry_dir / "aidb-events.jsonl",
+            telemetry_dir / "hybrid-events.jsonl",
         ]
 
         # Fine-tuning dataset path
-        self.dataset_path = Path("/data/fine-tuning/dataset.jsonl")
+        dataset_default = (
+            os.getenv("FINETUNE_DATA_PATH")
+            or getattr(settings, "finetune_data_path", None)
+            or str(data_root / "fine-tuning" / "dataset.jsonl")
+        )
+        self.dataset_path = Path(os.path.expanduser(dataset_default))
         self.dataset_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Continuous learning stats snapshot path
-        self.stats_path = Path(
-            os.getenv("CONTINUOUS_LEARNING_STATS_PATH", "/data/telemetry/continuous_learning_stats.json")
-        )
+        self.stats_path = Path(os.getenv("CONTINUOUS_LEARNING_STATS_PATH", str(telemetry_dir / "continuous_learning_stats.json")))
         self.stats_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Optimization proposal log path
-        self.proposals_path = Path(
-            os.getenv("OPTIMIZATION_PROPOSALS_PATH", "/data/telemetry/optimization_proposals.jsonl")
-        )
+        self.proposals_path = Path(os.getenv("OPTIMIZATION_PROPOSALS_PATH", str(telemetry_dir / "optimization_proposals.jsonl")))
         self.proposals_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Pattern catalog
@@ -214,7 +227,10 @@ class ContinuousLearningPipeline:
         self.learning_task: Optional[asyncio.Task] = None
 
         # P2-REL-001: Initialize checkpointer for crash recovery
-        self.checkpointer = Checkpointer(Path("/data/checkpoints"))
+        checkpoints_dir = Path(
+            os.getenv("CONTINUOUS_LEARNING_CHECKPOINT_DIR", str(data_root / "checkpoints"))
+        )
+        self.checkpointer = Checkpointer(checkpoints_dir)
         self.checkpoint_interval = 100  # Checkpoint every N events
         self.processed_count = 0
 
@@ -295,7 +311,7 @@ class ContinuousLearningPipeline:
     def _extract_task_type(self, prompt: str) -> str:
         """Extract coarse task type from prompt text."""
         prompt_lower = prompt.lower()
-        if any(k in prompt_lower for k in ["deploy", "installation", "install", "k3s", "kubernetes"]):
+        if any(k in prompt_lower for k in ["deploy", "installation", "install"]):
             return "deployment"
         if any(k in prompt_lower for k in ["test", "validation", "verify", "health check"]):
             return "testing"
@@ -1146,7 +1162,12 @@ class ContinuousLearningPipeline:
     ) -> Path:
         """Export dataset in OpenAI fine-tuning format"""
         if output_path is None:
-            output_path = Path("/data/fine-tuning/dataset_export.jsonl")
+            output_path = Path(
+                os.path.expanduser(
+                    os.getenv("FINETUNE_EXPORT_PATH")
+                    or str(self.dataset_path.parent / "dataset_export.jsonl")
+                )
+            )
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
 

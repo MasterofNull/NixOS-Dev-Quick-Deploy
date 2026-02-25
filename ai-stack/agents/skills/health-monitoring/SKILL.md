@@ -1,3 +1,8 @@
+---
+name: health-monitoring
+description: Instructions and workflow for the health-monitoring skill.
+---
+
 # Skill Name: health-monitoring
 
 ## Description

@@ -192,7 +192,7 @@ log_file="${TMP_DIR:-/tmp}/nixos-rebuild.log"
 1. **Test Error Handling:**
    ```bash
    # Force error to verify ERR trap fires
-   ./nixos-quick-deploy.sh --phase 1
+   ./nixos-quick-deploy.sh --analyze-only
    # Introduce error and verify trap behavior
    ```
 

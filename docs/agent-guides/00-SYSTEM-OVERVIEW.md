@@ -37,7 +37,7 @@ A **unified AI development environment** that combines:
 ## Core Components
 
 ### 0. **K3s AI Stack**
-- Kubernetes orchestration for local AI services
+- Declarative systemd orchestration for local AI services
 - Persistent data stored in K3s PersistentVolumeClaims
 
 ### 1. **Qdrant Vector Database** (Port 6333)
@@ -85,7 +85,7 @@ A **unified AI development environment** that combines:
 │  │    ├─ grafana / prometheus / loki / jaeger                  │  │
 │  │    └─ nginx (gateway)                                       │  │
 │  │                                                            │  │
-│  │  Secrets (SOPS): ai-stack/kubernetes/secrets/secrets.sops.yaml│ │
+│  │  Secrets (SOPS): ai-stack/secrets/secrets.sops.yaml          │ │
 │  │  PVCs: postgres-data, qdrant-data, redis-data, backups      │  │
 │  └────────────────────────────────────────────────────────────┘  │
 │                                                                  │
@@ -137,7 +137,7 @@ Load only what you need, not everything
 - **Vector Collections**: 5
 - **Token Reduction**: 30-50% average
 - **Response Time**: Local < 1s, Hybrid < 2s
-- **Data Storage**: PVC-backed volumes (`kubectl get pvc -n ai-stack`)
+- **Data Storage**: local service volumes managed declaratively
 
 ---
 

@@ -9,7 +9,7 @@
 # ============================================================================
 
 : "${SOPS_AGE_KEY_FILE:=${HOME}/.config/sops/age/keys.txt}"
-: "${SECRETS_DIR:=${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/ai-stack/kubernetes/secrets}"
+: "${SECRETS_DIR:=${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/ai-stack/secrets}"
 
 # ============================================================================
 # Check SOPS/Age prerequisites
@@ -80,9 +80,9 @@ sops_init_config() {
 # SOPS configuration for NixOS Quick Deploy secrets
 # Age public key: ${public_key}
 creation_rules:
-  - path_regex: ai-stack/kubernetes/secrets/.*\.enc\.yaml$
+  - path_regex: ai-stack/secrets/.*\.enc\.yaml$
     age: ${public_key}
-  - path_regex: ai-stack/kubernetes/secrets/.*\.enc\.json$
+  - path_regex: ai-stack/secrets/.*\.enc\.json$
     age: ${public_key}
   - path_regex: .*secrets\.sops\.yaml$
     age: ${public_key}

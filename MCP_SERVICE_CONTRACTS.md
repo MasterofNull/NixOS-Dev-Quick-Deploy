@@ -23,7 +23,6 @@ GET  /capabilities    - Available capabilities
 ### Individual Service Contracts
 
 #### 1. AIDB MCP Server (Port 8091)
-- **Base URL**: `http://aidb.ai-stack.svc.cluster.local:8091`
 
 **Endpoints**:
 ```
@@ -65,7 +64,6 @@ GET  /ml/models                       - Available ML models
 ```
 
 #### 2. Hybrid Coordinator (Port 8092)
-- **Base URL**: `http://hybrid-coordinator.ai-stack.svc.cluster.local:8092`
 
 **Endpoints**:
 ```
@@ -105,7 +103,6 @@ POST /telemetry                       - Record telemetry event
 ```
 
 #### 3. Ralph Wiggum (Port 8098)
-- **Base URL**: `http://ralph-wiggum.ai-stack.svc.cluster.local:8098`
 
 **Endpoints**:
 ```
@@ -141,7 +138,6 @@ PUT  /config                          - Update configuration
 ```
 
 #### 4. Embeddings Service (Port 8081)
-- **Base URL**: `http://embeddings.ai-stack.svc.cluster.local:8081`
 
 **Endpoints**:
 ```
@@ -171,7 +167,6 @@ GET  /config                          - Configuration
 ```
 
 #### 5. NixOS Docs Service (Port 8094)
-- **Base URL**: `http://nixos-docs.ai-stack.svc.cluster.local:8094`
 
 **Endpoints**:
 ```

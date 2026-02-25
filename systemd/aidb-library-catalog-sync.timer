@@ -1,0 +1,13 @@
+[Unit]
+Description=Weekly AIDB Library Catalog Sync Timer
+Requires=aidb-library-catalog-sync.service
+
+[Timer]
+# Run weekly Sunday at 03:30 local time.
+OnCalendar=Sun *-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=30min
+AccuracySec=5min
+
+[Install]
+WantedBy=timers.target

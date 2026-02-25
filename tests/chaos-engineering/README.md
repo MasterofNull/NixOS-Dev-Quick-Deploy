@@ -62,7 +62,6 @@ This test suite fills that gap.
 **Critical Findings Expected:**
 - No cert expiration monitoring
 - Manual renewal process (will be forgotten)
-- Hard-coded localhost:8443 (breaks in k8s)
 
 ---
 
@@ -258,8 +257,8 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # Test configuration
 BASE_URL="https://localhost:8443"
-CACERT="${PROJECT_ROOT}/ai-stack/kubernetes/tls/localhost.crt"
-API_KEY_FILE="${PROJECT_ROOT}/ai-stack/kubernetes/secrets/generated/stack_api_key"
+CACERT="${PROJECT_ROOT}/ai-stack/tls/localhost.crt"
+API_KEY_FILE="${PROJECT_ROOT}/ai-stack/secrets/generated/stack_api_key"
 
 # Test logic here
 test_something() {

@@ -82,7 +82,6 @@ The AI stack is now a **first-class, public component** of this repository!
 
 ```bash
 # Deploy NixOS + complete AI development environment (single path)
-./nixos-quick-deploy.sh --with-k8s-stack
 ```
 
 This single command gives you:
@@ -125,12 +124,10 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`/docs/AI-STACK-FULL-INTEGRA
 | Component              | Location                        |   Status   | Purpose                                                                |
 | :--------------------- | :------------------------------ | :--------: | :--------------------------------------------------------------------- |
 | **AIDB MCP Server**    | `ai-stack/mcp-servers/aidb/`    | ✅ Active | PostgreSQL + TimescaleDB + Qdrant vector DB + FastAPI MCP server       |
-| **llama.cpp vLLM**      | `ai-stack/kubernetes/`          | ✅ Active | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama)     |
 | **23 Agent Skills**    | `ai-stack/agents/skills/`       | ✅ Active | nixos-deployment, webapp-testing, code-review, canvas-design, and more |
 | **Embeddings Service** | `ai-stack/mcp-servers/`         | ✅ Active | Sentence-transformers API for embeddings                               |
 | **Hybrid Coordinator** | `ai-stack/mcp-servers/`         | ✅ Active | Local/remote routing + telemetry-driven pattern extraction              |
 | **NixOS Docs MCP**     | `ai-stack/mcp-servers/`         | ✅ Active | NixOS/Nix documentation search API                                     |
-| **Nginx TLS Gateway**  | `ai-stack/kubernetes/`          | ✅ Active | HTTPS termination on `https://localhost:8443`                          |
 | **MCP Servers**        | `ai-stack/mcp-servers/`         | ✅ Active | Model Context Protocol servers for AIDB, NixOS, GitHub                 |
 | **Model Registry**     | `ai-stack/models/registry.json` | ✅ Active | Model catalog with metadata, VRAM, speed, quality scores               |
 | **Vector Database**    | PostgreSQL + Qdrant             | ✅ Active | Semantic search and document embeddings                                |
@@ -151,15 +148,12 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`/docs/AI-STACK-FULL-INTEGRA
 **Quick Start:**
 
 ```bash
-./nixos-quick-deploy.sh --with-k8s-stack  # Deploy everything
-kubectl get pods -n ai-stack             # Check status
 python3 ai-stack/tests/test_hospital_e2e.py
 ```
 
 ### AI Stack Security Considerations
 
 - **TLS by default**: External APIs are exposed via nginx at `https://localhost:8443` (self-signed cert).
-- **API keys required**: Core APIs enforce `X-API-Key` from the encrypted secrets bundle (`ai-stack/kubernetes/secrets/secrets.sops.yaml`).
 - **Local-only tools**: Open WebUI, MindsDB, and metrics UIs bind to `127.0.0.1`.
 - **Privileged self-heal**: The health monitor runs only under the `self-heal` profile (opt-in).
 
@@ -213,7 +207,6 @@ python3 ai-stack/tests/test_hospital_e2e.py
 
 **Container Tools:**
 
-- K3s, kubectl, containerd
 
 **AI Services (Systemd):**
 
@@ -306,7 +299,6 @@ The quick deploy runs this automatically after Phase 8, but you can rerun it any
 
 This will verify:
 
-- ✅ All core tools (k3s, kubectl, python3, node, etc.)
 - ✅ Nix ecosystem (home-manager, flakes)
 - ✅ AI tools (claude-wrapper, gpt-codex-wrapper, codex-wrapper, openai-wrapper, gooseai-wrapper, ollama, aider)
 - ✅ **Python AI/ML packages (60+ packages)**:
@@ -329,7 +321,6 @@ The AI stack runs on K3s + containerd. Verify the runtime is ready:
 
 ```bash
 # Check core tools
-kubectl version --client
 python3 --version
 node --version
 go version
@@ -395,7 +386,6 @@ home-manager switch --flake .#$(whoami)
 
 **Checks include:**
 
-- Core system tools (k3s, kubectl, git, curl, etc.)
 - Programming languages (Python, Node.js, Go, Rust)
 - Nix ecosystem (home-manager, flakes)
 - AI tools (Claude Code, llama.cpp, Aider)
@@ -440,9 +430,6 @@ source ~/.zshrc  # Or: exec zsh
 ### AI Stack Management (K3s)
 
 ```bash
-kubectl get pods -n ai-stack
-kubectl rollout restart -n ai-stack deployment/aidb
-kubectl logs -n ai-stack deploy/aidb
 ```
 
 ### CPU/iGPU-first model defaults
@@ -477,8 +464,6 @@ obsidian-ai-bootstrap
 ### Container Management
 
 ```bash
-kubectl get pods -n ai-stack
-kubectl get svc -n ai-stack
 ```
 
 ### VSCodium / AI CLI wrappers
@@ -782,18 +767,14 @@ Next steps:
 
 ### ImagePullBackOff in ai-stack pods
 
-**Symptom:** `kubectl get pods -n ai-stack` shows `ImagePullBackOff` or `ErrImagePull`.
 
 **Fix:**
 ```bash
-ONLY_IMAGES=aidb BUILD_TOOL=buildah SKIP_K3S_IMPORT=true ./scripts/build-k3s-images.sh
 ONLY_IMAGES=ai-stack-aidb CONTAINER_CLI=skopeo ./scripts/publish-local-registry.sh
-kubectl -n ai-stack rollout restart deploy/aidb
 ```
 
 ### K3s API not reachable from pods (connection refused)
 
-**Symptom:** Pods fail to access `https://kubernetes.default.svc/api` with connection refused.
 
 **Fix:**
 ```bash
@@ -937,7 +918,6 @@ You can still keep long-term configuration in `templates/home.nix → programs.v
 
 ### Packages Not in PATH
 
-**Issue:** `kubectl: command not found`, `home-manager: command not found`, or AI CLI wrappers (claude/gpt-codex/openai/gooseai) not found after installation
 
 **Solution:**
 
@@ -952,7 +932,6 @@ exec zsh
 source ~/.nix-profile/etc/profile.d/hm-session-vars.sh
 
 # Verify
-which kubectl
 which home-manager
 which claude-wrapper
 which gpt-codex-wrapper
@@ -1038,9 +1017,6 @@ systemctl list-units | rg -i "containers"
 
 **Fix:**
 ```bash
-kubectl get pods -n ai-stack
-kubectl describe pod -n ai-stack <pod>
-kubectl logs -n ai-stack deploy/<service>
 ```
 
 ### COSMIC Desktop Not Appearing
@@ -1258,7 +1234,6 @@ home.packages = with pkgs; [
 
   # Add your packages here:
   terraform
-  kubectl
   k9s
 ];
 ```
@@ -1356,7 +1331,6 @@ lg     # lazygit
 
 ```bash
 # Check status
-kubectl get pods -n ai-stack
 
 # Access Open WebUI at http://localhost:3001
 # Access llama.cpp at http://localhost:8080
@@ -1410,15 +1384,10 @@ flatpak update
 
 ### AI Runtime Orchestration
 
-- `kubectl get pods -n ai-stack` &mdash; show container status.
-- `kubectl rollout restart -n ai-stack deployment/<service>` &mdash; restart a service.
-- `kubectl logs -n ai-stack deploy/<service>` &mdash; stream logs.
 - `python3 ai-stack/tests/test_hospital_e2e.py` &mdash; run the K3s health suite.
 
 ### Diagnostics & Recovery
 
-- `kubectl describe pod -n ai-stack <pod>` &mdash; show events + mount issues.
-- `kubectl rollout restart -n ai-stack deployment/<service>` &mdash; bounce a service after config/image changes.
 - **Rollback (manual):**
   - System: `sudo nixos-rebuild switch --rollback`
   - User: `home-manager --rollback` (or use the generation path stored in `~/.cache/nixos-quick-deploy/rollback-info.json`)
@@ -1445,7 +1414,6 @@ dbeaver         # Universal database IDE
 
 ```nix
 terraform       # Infrastructure as code
-kubectl         # Kubernetes CLI
 awscli2         # AWS command line
 google-cloud-sdk  # Google Cloud CLI
 azure-cli       # Azure command line
@@ -1629,7 +1597,6 @@ Built with these amazing technologies:
 - [COSMIC](https://system76.com/cosmic) - Modern desktop environment
 - [Anthropic Claude](https://anthropic.com/) - AI assistant
 - [Cursor](https://cursor.sh/) - AI-powered code editor
-- [K3s](https://k3s.io/) - Lightweight Kubernetes distribution
 - [Powerlevel10k](https://github.com/romkatv/powerlevel10k) - Beautiful ZSH theme
 
 ---

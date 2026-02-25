@@ -200,7 +200,7 @@ Deployment Progress:
 
 ```bash
 # Run with dry-run for comprehensive validation
-./nixos-quick-deploy.sh --dry-run
+./nixos-quick-deploy.sh --build-only
 
 # Output includes:
 # [DRY RUN] Phase 1 validation passed
@@ -251,7 +251,7 @@ find /tmp -name "*nixos*" -o -name "*deploy*"  # Should be minimal
 ### 4. Test Dry-Run
 ```bash
 # Verify dry-run catches issues
-./nixos-quick-deploy.sh --dry-run
+./nixos-quick-deploy.sh --build-only
 ```
 
 ### 5. Test Log Levels

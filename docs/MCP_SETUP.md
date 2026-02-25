@@ -53,11 +53,23 @@ sudo systemctl start qdrant
 
 ### Health checks
 
-Use the `scripts/mcp-db-setup` helper to verify connectivity, credentials, and
+Use the `scripts/mcp-db-validate` helper to verify connectivity, credentials, and
 configuration:
 
 ```
-./scripts/mcp-db-setup
+./scripts/mcp-db-validate
+```
+
+For CI/headless runs (no password prompts, no sudo dependency):
+
+```
+./scripts/mcp-db-validate --non-interactive
+```
+
+To enforce PostgreSQL credential checks in non-interactive runs:
+
+```
+./scripts/mcp-db-validate --non-interactive --require-db-auth
 ```
 
 The script reports service status and validates each PostgreSQL database,
@@ -144,7 +156,7 @@ All generated servers live under `mcp-servers/` by default. Override with the
 
 | Symptom | Resolution |
 |---------|------------|
-| `mcp-db-setup` reports PostgreSQL failures | Ensure the `mcp` role exists with access to `mcp`, `mcp_tools`, and `mcp_logs`. Check local `pg_hba.conf` rules. |
+| `mcp-db-validate` reports PostgreSQL failures | Ensure the `mcp` role exists with access to `mcp`, `mcp_tools`, and `mcp_logs`. Check local `pg_hba.conf` rules. |
 | Redis reports incorrect eviction policy | Update `/etc/redis/redis-mcp.conf` with `maxmemory-policy allkeys-lru` and restart the service. |
 | Qdrant readiness endpoint fails | Confirm the service is enabled (`sudo systemctl enable --now qdrant`) and that TLS/firewall rules permit local traffic. |
 | Sandboxed tool execution fails | Verify `bubblewrap`/`firejail` installation and adjust sandbox profiles for required mounts/network access. |
@@ -153,7 +165,7 @@ All generated servers live under `mcp-servers/` by default. Override with the
 ## Next Steps
 
 - Extend the templates with organisation-specific tools and authentication.
-- Configure CI pipelines to run `scripts/mcp-db-setup` and `scripts/mcp-server test`.
+- Configure CI pipelines to run `scripts/mcp-db-validate` and `scripts/mcp-server test`.
 - Integrate telemetry (OpenTelemetry, Prometheus) for production monitoring.
 - Harden sandbox profiles by whitelisting required binaries and paths only.
 

@@ -1,4 +1,4 @@
-{ lib, pkgs, config, ... }:
+{ lib, pkgs, config, osConfig ? {}, ... }:
 # ---------------------------------------------------------------------------
 # Home Manager base module — applies to every user on every host.
 #
@@ -13,9 +13,29 @@
 # Per-host customisation goes in nix/hosts/<host>/home.nix.
 # ---------------------------------------------------------------------------
 let
+  systemConfig =
+    if lib.hasAttrByPath [ "mySystem" ] osConfig
+    then osConfig
+    else config;
+  aiSwitchboardPort = lib.attrByPath [ "mySystem" "aiStack" "switchboard" "port" ] 8085 systemConfig;
+  aiLlamaPort = lib.attrByPath [ "mySystem" "aiStack" "llamaCpp" "port" ] 8080 systemConfig;
+  aiHybridPort = lib.attrByPath [ "mySystem" "mcpServers" "hybridPort" ] 8003 systemConfig;
+  aiAidbPort = lib.attrByPath [ "mySystem" "mcpServers" "aidbPort" ] 8002 systemConfig;
+  aiAnthropicProxyPort = lib.attrByPath [ "ports" "anthropicProxy" ] 8120 systemConfig;
+  aiOpenAIBaseUrl = "http://127.0.0.1:${toString aiSwitchboardPort}/v1";
+  continueApiBase =
+    if lib.attrByPath [ "mySystem" "aiStack" "switchboard" "enable" ] false systemConfig
+    then aiOpenAIBaseUrl
+    else "http://127.0.0.1:${toString aiLlamaPort}/v1";
   vscodiumPathValue = "${config.home.homeDirectory}/.local/bin:${config.home.homeDirectory}/.nix-profile/bin:/run/current-system/sw/bin:\${env:PATH}";
   vscodiumAiEnv = [
     { name = "PATH"; value = vscodiumPathValue; }
+    { name = "OPENAI_BASE_URL"; value = aiOpenAIBaseUrl; }
+    { name = "OPENAI_API_BASE"; value = aiOpenAIBaseUrl; }
+    { name = "OPENAI_API_KEY"; value = "dummy"; }
+    { name = "HYBRID_COORDINATOR_URL"; value = "http://127.0.0.1:${toString aiHybridPort}"; }
+    { name = "AIDB_URL"; value = "http://127.0.0.1:${toString aiAidbPort}"; }
+    { name = "ANTHROPIC_BASE_URL"; value = "http://127.0.0.1:${toString aiAnthropicProxyPort}"; }
   ];
 
   # openai.chatgpt — "Codex: OpenAI's coding agent" — not in nixpkgs 25.11;
@@ -54,19 +74,32 @@ let
 
   # Qwen Code VSCode IDE Companion — QwenLM's official AI coding assistant
   # Not in nixpkgs 25.11; packaged from Open VSX for declarative install.
-  qwenCodeCompanion = pkgs.vscode-utils.buildVscodeExtension {
-    pname              = "qwen-code-vscode-ide-companion";
-    version            = "0.10.0";
-    vscodeExtPublisher = "qwenlm";
-    vscodeExtName      = "qwen-code-vscode-ide-companion";
-    vscodeExtUniqueId  = "qwenlm.qwen-code-vscode-ide-companion";
-    vscodeExtVersion   = "0.10.0";
-    src = pkgs.fetchurl {
-      url    = "https://open-vsx.org/api/qwenlm/qwen-code-vscode-ide-companion/0.10.0/file/qwenlm.qwen-code-vscode-ide-companion-0.10.0.vsix";
-      sha256 = "sha256-PLACEHOLDER-run-nix-build-to-fetch=";
-      name   = "qwen-code-vscode-ide-companion.zip";
-    };
-  };
+  qwenCodeCompanionSha256 = null;
+  qwenCodeCompanion =
+    if qwenCodeCompanionSha256 == null then
+      null
+    else
+      pkgs.vscode-utils.buildVscodeExtension {
+        pname              = "qwen-code-vscode-ide-companion";
+        version            = "0.10.0";
+        vscodeExtPublisher = "qwenlm";
+        vscodeExtName      = "qwen-code-vscode-ide-companion";
+        vscodeExtUniqueId  = "qwenlm.qwen-code-vscode-ide-companion";
+        vscodeExtVersion   = "0.10.0";
+        src = pkgs.fetchurl {
+          url    = "https://open-vsx.org/api/qwenlm/qwen-code-vscode-ide-companion/0.10.0/file/qwenlm.qwen-code-vscode-ide-companion-0.10.0.vsix";
+          sha256 = qwenCodeCompanionSha256;
+          name   = "qwen-code-vscode-ide-companion.zip";
+        };
+      };
+
+  cyberpunkThemeArchive = pkgs.runCommand "max-ss.cyberpunk-1.2.14.zip" {
+    nativeBuildInputs = [ pkgs.zip ];
+  } ''
+    mkdir -p extension
+    cp -R ${../../templates/vscode/max-ss.cyberpunk-1.2.14-universal}/. extension/
+    ${pkgs.zip}/bin/zip -qr "$out" extension
+  '';
 
   cyberpunkThemeExtension = pkgs.vscode-utils.buildVscodeExtension {
     pname              = "max-ss-cyberpunk-theme";
@@ -75,10 +108,10 @@ let
     vscodeExtName      = "Cyberpunk";
     vscodeExtUniqueId  = "max-SS.Cyberpunk";
     vscodeExtVersion   = "1.2.14";
-    src                = ../../templates/vscode/max-ss.cyberpunk-1.2.14-universal;
+    src                = cyberpunkThemeArchive;
   };
 
-  cosmicThemeDarkPalette = builtins.readFile ../../templates/Royal\ Wine.ron;
+  cosmicThemeDarkPalette = builtins.readFile (../../templates + "/Royal Wine.ron");
   cosmicWallpaperPath = "${config.home.homeDirectory}/.local/share/wallpapers/current-desktop-background.png";
 
   # Baseline VSCodium settings — written once on first activation as a
@@ -116,6 +149,8 @@ let
     "terminal.integrated.fontSize"             = 13;
     "terminal.integrated.scrollback"           = 10000;
     "workbench.colorTheme"           = "Activate SCARLET protocol (beta)";
+    "workbench.preferredDarkColorTheme" = "Activate SCARLET protocol (beta)";
+    "window.autoDetectColorScheme"   = false;
     "workbench.iconTheme"            = "vs-seti";
     "workbench.startupEditor"        = "none";
     "workbench.editor.enablePreview" = false;
@@ -192,11 +227,14 @@ let
   # Guard helper — silently skips an extension when its scope or name is
   # absent from pkgs.vscode-extensions (e.g. older or slimmer channels).
   vsExt = scope: name:
-    lib.optionals
-      (pkgs ? vscode-extensions
-        && pkgs.vscode-extensions ? ${scope}
-        && pkgs.vscode-extensions.${scope} ? ${name})
-      [ pkgs.vscode-extensions.${scope}.${name} ];
+    let
+      hasScopes = pkgs ? vscode-extensions;
+      scopeSet = if hasScopes then pkgs.vscode-extensions else { };
+      hasScope = hasScopes && builtins.hasAttr scope scopeSet;
+      extSet = if hasScope then builtins.getAttr scope scopeSet else { };
+      hasName = hasScope && builtins.hasAttr name extSet;
+    in
+    lib.optionals hasName [ (builtins.getAttr name extSet) ];
 
   # Nix store paths for tools the code-nix wrapper needs on its PATH.
   # These packages are in home.packages below so they're always present.
@@ -592,7 +630,7 @@ in
         ++ vsExt "Google"      "gemini-cli-vscode-ide-companion" # Gemini CLI companion
         ++ [ geminiCodeAssist ]                                  # Gemini Code Assist (Open VSX)
         ++ [ openaiCodex ]                                       # Codex — OpenAI's coding agent (Open VSX)
-        ++ [ qwenCodeCompanion ]                                 # Qwen Code VSCode IDE Companion
+        ++ lib.optionals (qwenCodeCompanion != null) [ qwenCodeCompanion ]  # Qwen Code VSCode IDE Companion (pinned hash required)
         ++ [ cyberpunkThemeExtension ]                           # Cyberpunk theme (local template)
         # ── Data / serialisation formats ───────────────────────────────────
         ++ vsExt "redhat"      "vscode-yaml"
@@ -648,16 +686,39 @@ in
 
   home.activation.enforceVSCodiumTheme = lib.hm.dag.entryAfter [ "createVSCodiumSettings" ] ''
     _settings_file="$HOME/.config/VSCodium/User/settings.json"
+    _profiles_dir="$HOME/.config/VSCodium/User/profiles"
     if [ -f "$_settings_file" ] && command -v jq >/dev/null 2>&1; then
-      _tmp="$(mktemp)"
-      if jq '.["workbench.colorTheme"] = "Activate SCARLET protocol (beta)"' "$_settings_file" > "$_tmp"; then
-        mv "$_tmp" "$_settings_file"
-      else
-        rm -f "$_tmp"
+      _theme_filter='
+        .["workbench.colorTheme"] = "Activate SCARLET protocol (beta)" |
+        .["workbench.preferredDarkColorTheme"] = "Activate SCARLET protocol (beta)" |
+        .["window.autoDetectColorScheme"] = false
+      '
+
+      _apply_theme() {
+        _target="$1"
+        _tmp="$(mktemp)"
+        if ! jq empty "$_target" >/dev/null 2>&1; then
+          cp ${vscodiumSettingsJSON} "$_target"
+        fi
+        if jq "$_theme_filter" "$_target" > "$_tmp"; then
+          mv "$_tmp" "$_target"
+        else
+          rm -f "$_tmp"
+        fi
+        unset _target _tmp
+      }
+
+      _apply_theme "$_settings_file"
+      if [ -d "$_profiles_dir" ]; then
+        while IFS= read -r -d $'\0' _profile_settings; do
+          _apply_theme "$_profile_settings"
+        done < <(find "$_profiles_dir" -type f -name settings.json -print0 2>/dev/null || true)
       fi
-      unset _tmp
+
+      unset -f _apply_theme
+      unset _theme_filter
     fi
-    unset _settings_file
+    unset _settings_file _profiles_dir
   '';
 
   # ---- VSCodium launch wrapper ---------------------------------------------
@@ -682,7 +743,7 @@ in
     };
 
   home.file.".local/share/wallpapers/current-desktop-background.png".source =
-    ../../templates/ChatGPT\ Image\ Feb\ 21,\ 2026,\ 02_05_57\ PM.png;
+    (../../templates + "/ChatGPT Image Feb 21, 2026, 02_05_57 PM.png");
 
   # Retire legacy COSMIC font enforcement units/scripts from earlier generations.
   home.file.".local/bin/enforce-cosmic-term-font".enable = false;
@@ -709,23 +770,40 @@ in
 {
   "models": [
     {
-      "title": "llama.cpp (local :8080)",
+      "title": "AI Switchboard (local/remote)",
       "provider": "openai",
       "apiKey": "dummy",
-      "apiBase": "http://127.0.0.1:8080/v1"
+      "apiBase": "${continueApiBase}"
     }
   ],
   "tabAutocompleteModel": {
-    "title": "llama.cpp autocomplete",
+    "title": "switchboard autocomplete",
     "provider": "openai",
     "apiKey": "dummy",
-    "apiBase": "http://127.0.0.1:8080/v1",
+    "apiBase": "${continueApiBase}",
     "model": "local-model"
   },
   "allowAnonymousTelemetry": false
 }
 CONTINUE_EOF
     fi
+  '';
+
+  home.activation.migrateContinueConfigApiBase = lib.hm.dag.entryAfter [ "createContinueConfig" ] ''
+    cfg="$HOME/.continue/config.json"
+    if [ -f "$cfg" ] && command -v jq >/dev/null 2>&1; then
+      tmp="$(mktemp)"
+      if jq --arg newBase "${continueApiBase}" '
+        .models = ((.models // []) | map(if .apiBase == "http://127.0.0.1:8080/v1" then .apiBase = $newBase else . end)) |
+        .tabAutocompleteModel = ((.tabAutocompleteModel // {}) | if .apiBase == "http://127.0.0.1:8080/v1" then .apiBase = $newBase else . end)
+      ' "$cfg" > "$tmp"; then
+        mv "$tmp" "$cfg"
+      else
+        rm -f "$tmp"
+      fi
+      unset tmp
+    fi
+    unset cfg
   '';
 
   # Remove stale wants links and clear any failed state from retired units.

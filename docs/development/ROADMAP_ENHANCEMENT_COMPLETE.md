@@ -5,7 +5,6 @@
 I have successfully completed the following tasks using the three domain-specific Claude agents:
 
 ### 1. Agent Identification
-- **kubernetes-senior-team.md** - Kubernetes expert
 - **nixos-systems-architect.md** - NixOS Systems Architect  
 - **senior-ai-stack-dev.md** - Senior AI Stack Developer
 

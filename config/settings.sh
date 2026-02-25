@@ -5,7 +5,7 @@
 # Version: 6.1.0
 #
 # Override any setting via environment variables before sourcing this file.
-# Example: KUBECTL_TIMEOUT=120 ./nixos-quick-deploy.sh
+# Example: DEPLOY_API_TIMEOUT=120 ./nixos-quick-deploy.sh
 #
 # ============================================================================
 # DEPENDENCIES
@@ -26,7 +26,7 @@
 # Set higher values on slow hardware or unreliable networks.
 # ============================================================================
 
-: "${KUBECTL_TIMEOUT:=60}"              # kubectl API requests
+: "${DEPLOY_API_TIMEOUT:=60}"           # Deployment API requests
 : "${CURL_TIMEOUT:=10}"                 # curl total transfer time
 : "${CURL_CONNECT_TIMEOUT:=5}"          # curl TCP connect phase
 : "${NIXOS_REBUILD_TIMEOUT:=3600}"      # nixos-rebuild switch (1 hour)
@@ -52,34 +52,31 @@
 : "${MIN_PASSWORD_LENGTH:=12}"          # Minimum password length for generated creds
 
 # ============================================================================
-# K3s / Kubernetes Settings
+# AI Stack Runtime Resource Settings
 # ============================================================================
-# Resource governance for the AI stack namespace.
-# These are applied via LimitRange and ResourceQuota objects.
+# Resource governance defaults for AI stack workflows.
 # ============================================================================
 
 : "${AI_STACK_NAMESPACE:=ai-stack}"
 : "${BACKUPS_NAMESPACE:=backups}"
 : "${LOGGING_NAMESPACE:=logging}"
-: "${K3S_AI_NAMESPACE:=${AI_STACK_NAMESPACE}}"
-: "${K3S_KUBECONFIG:=/etc/rancher/k3s/k3s.yaml}"
 
 # Default container resource requests
-: "${K3S_DEFAULT_CPU_REQUEST:=100m}"
-: "${K3S_DEFAULT_MEM_REQUEST:=128Mi}"
+: "${AI_STACK_DEFAULT_CPU_REQUEST:=100m}"
+: "${AI_STACK_DEFAULT_MEM_REQUEST:=128Mi}"
 
 # Default container resource limits
-: "${K3S_DEFAULT_CPU_LIMIT:=500m}"
-: "${K3S_DEFAULT_MEM_LIMIT:=512Mi}"
+: "${AI_STACK_DEFAULT_CPU_LIMIT:=500m}"
+: "${AI_STACK_DEFAULT_MEM_LIMIT:=512Mi}"
 
 # Maximum per-container limits (enforced by LimitRange)
-: "${K3S_MAX_CPU_LIMIT:=4}"
-: "${K3S_MAX_MEM_LIMIT:=8Gi}"
+: "${AI_STACK_MAX_CPU_LIMIT:=4}"
+: "${AI_STACK_MAX_MEM_LIMIT:=8Gi}"
 
 # Namespace-wide quotas (enforced by ResourceQuota)
-: "${K3S_QUOTA_CPU:=8}"
-: "${K3S_QUOTA_MEM:=16Gi}"
-: "${K3S_QUOTA_PODS:=30}"
+: "${AI_STACK_QUOTA_CPU:=8}"
+: "${AI_STACK_QUOTA_MEM:=16Gi}"
+: "${AI_STACK_QUOTA_PODS:=30}"
 
 # ============================================================================
 # Disk Space Requirements (GB)
@@ -114,8 +111,8 @@
 # ============================================================================
 # Network / Service URLs
 # ============================================================================
-# Ports and endpoints for the K3s AI stack services.
-# Override to match custom NodePort or Ingress configurations.
+# Ports and endpoints for AI stack services.
+# Override to match your host-level declarative port registry.
 # ============================================================================
 
 : "${QDRANT_PORT:=6333}"
@@ -130,6 +127,7 @@
 : "${HYBRID_COORDINATOR_PORT:=8003}"
 : "${MINDSDB_PORT:=47334}"
 : "${EMBEDDINGS_PORT:=8081}"
+: "${SWITCHBOARD_PORT:=8085}"
 : "${DASHBOARD_API_PORT:=8889}"
 : "${NETDATA_PORT:=19999}"
 : "${DASHBOARD_PORT:=8888}"

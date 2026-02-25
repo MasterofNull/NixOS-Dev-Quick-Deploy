@@ -1,0 +1,226 @@
+#!/usr/bin/env bash
+# =============================================================================
+# MCP Database Stack Validator
+# =============================================================================
+# Validates PostgreSQL, Redis, and Qdrant health for MCP tooling.
+# Supports non-interactive mode without sudo or password prompts.
+# -----------------------------------------------------------------------------
+# Environment overrides:
+#   MCP_DB_USER          PostgreSQL user (default: mcp)
+#   MCP_DB_NAME_LIST     Space-separated DB list (default: "mcp mcp_tools mcp_logs")
+#   PGPASSWORD/PGPASSFILE/PGSERVICE/PGUSER standard PostgreSQL auth envs
+# -----------------------------------------------------------------------------
+# Usage:
+#   ./scripts/mcp-db-validate
+#   ./scripts/mcp-db-validate --non-interactive
+#   ./scripts/mcp-db-validate --non-interactive --require-db-auth
+# =============================================================================
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../config/service-endpoints.sh
+. "$SCRIPT_DIR/config/service-endpoints.sh"
+
+PG_HOST="${POSTGRES_HOST:-${SERVICE_HOST:-localhost}}"
+PG_PORT="${POSTGRES_PORT}"
+REDIS_PORT="${REDIS_PORT}"
+QDRANT_HTTP_PORT="${QDRANT_PORT}"
+MCP_DB_USER="${MCP_DB_USER:-${PGUSER:-mcp}}"
+MCP_DB_NAME_LIST="${MCP_DB_NAME_LIST:-mcp mcp_tools mcp_logs}"
+
+NON_INTERACTIVE=false
+REQUIRE_DB_AUTH=false
+
+usage() {
+  cat <<'USAGE'
+Usage: mcp-db-validate [--non-interactive] [--require-db-auth]
+
+Options:
+  --non-interactive   Disable any interactive behavior and never allow DB password prompts.
+  --require-db-auth   Fail when PostgreSQL auth checks fail, even in non-interactive mode.
+  -h, --help          Show this help text.
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --non-interactive)
+      NON_INTERACTIVE=true
+      shift
+      ;;
+    --require-db-auth)
+      REQUIRE_DB_AUTH=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+# Auto-enable non-interactive behavior in CI/non-TTY environments.
+if [[ ! -t 0 || "${CI:-}" == "true" || "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  NON_INTERACTIVE=true
+fi
+
+log() {
+  printf '%s %s\n' "$(date -Iseconds)" "$*"
+}
+
+command_exists() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+service_status() {
+  local service="$1"
+  local start_hint="$2"
+
+  if ! command_exists systemctl; then
+    log "[WARN] systemctl not available; skipping ${service} status check"
+    return 0
+  fi
+
+  if systemctl is-active --quiet "$service"; then
+    log "[OK] ${service} service is active"
+  else
+    log "[WARN] ${service} is not running"
+    log "      Start with: ${start_hint}"
+  fi
+}
+
+has_pg_auth_material() {
+  [[ -n "${PGPASSWORD:-}" || -n "${PGPASSFILE:-}" || -n "${PGSERVICE:-}" ]]
+}
+
+check_postgres_transport() {
+  if command_exists pg_isready; then
+    if pg_isready -h "$PG_HOST" -p "$PG_PORT" -q; then
+      log "[OK] PostgreSQL transport reachable (${PG_HOST}:${PG_PORT})"
+      return 0
+    fi
+    log "[ERROR] PostgreSQL transport unreachable (${PG_HOST}:${PG_PORT})"
+    return 1
+  fi
+
+  # Fallback when pg_isready is unavailable: TCP probe via psql without prompt.
+  if PGPASSWORD="${PGPASSWORD:-}" psql -w "postgresql://${MCP_DB_USER}@${PG_HOST}:${PG_PORT}/postgres" -c 'SELECT 1;' >/dev/null 2>&1; then
+    log "[OK] PostgreSQL responded to psql probe (${PG_HOST}:${PG_PORT})"
+    return 0
+  fi
+
+  log "[WARN] pg_isready unavailable and psql probe failed (${PG_HOST}:${PG_PORT})"
+  return 1
+}
+
+check_postgres_auth() {
+  local status=0
+  local auth_required=true
+
+  if [[ "$NON_INTERACTIVE" == "true" && "$REQUIRE_DB_AUTH" != "true" ]] && ! has_pg_auth_material; then
+    auth_required=false
+    log "[INFO] Non-interactive mode without PostgreSQL auth material; auth checks are advisory."
+    log "       Set PGPASSWORD (or PGPASSFILE/PGSERVICE) or pass --require-db-auth to enforce."
+  fi
+
+  for db in $MCP_DB_NAME_LIST; do
+    if PGPASSWORD="${PGPASSWORD:-}" psql -w "postgresql://${MCP_DB_USER}@${PG_HOST}:${PG_PORT}/${db}" -c 'SELECT 1;' >/dev/null 2>&1; then
+      log "[OK] Connected to database '${db}' as user ${MCP_DB_USER}"
+    else
+      if [[ "$auth_required" == "true" ]]; then
+        log "[ERROR] Unable to connect to database '${db}' as user ${MCP_DB_USER}"
+        status=1
+      else
+        log "[INFO] Authentication not verified for database '${db}' as ${MCP_DB_USER} (non-blocking in non-interactive mode)"
+      fi
+    fi
+  done
+
+  return "$status"
+}
+
+check_postgres() {
+  log "Checking PostgreSQL (${MCP_DB_NAME_LIST})"
+
+  if ! command_exists psql; then
+    log "[ERROR] psql command not found. Install postgresql client tools."
+    return 1
+  fi
+
+  local rc=0
+  check_postgres_transport || rc=1
+  check_postgres_auth || rc=1
+  return "$rc"
+}
+
+check_redis() {
+  log "Checking Redis (${SERVICE_HOST:-localhost}:${REDIS_PORT}, 512MB LRU)"
+  if ! command_exists redis-cli; then
+    log "[ERROR] redis-cli command not found. Install redis client tools."
+    return 1
+  fi
+
+  if redis-cli -h "${SERVICE_HOST:-localhost}" -p "${REDIS_PORT}" PING >/dev/null 2>&1; then
+    log "[OK] Redis responded to PING"
+  else
+    log "[ERROR] Unable to reach Redis at ${SERVICE_HOST:-localhost}:${REDIS_PORT}"
+    return 1
+  fi
+
+  local maxmemory
+  local policy
+  maxmemory="$(redis-cli -h "${SERVICE_HOST:-localhost}" -p "${REDIS_PORT}" CONFIG GET maxmemory | awk 'NR==2 {print}')"
+  policy="$(redis-cli -h "${SERVICE_HOST:-localhost}" -p "${REDIS_PORT}" CONFIG GET maxmemory-policy | awk 'NR==2 {print}')"
+  log "      maxmemory=${maxmemory:-unknown} bytes policy=${policy:-unknown}"
+  return 0
+}
+
+check_qdrant() {
+  log "Checking Qdrant (http://${SERVICE_HOST:-localhost}:${QDRANT_HTTP_PORT}/readyz)"
+  if ! command_exists curl; then
+    log "[ERROR] curl command not found. Install curl to verify Qdrant."
+    return 1
+  fi
+
+  local response
+  if response="$(curl -fsS --max-time 5 --connect-timeout 3 "http://${SERVICE_HOST:-localhost}:${QDRANT_HTTP_PORT}/readyz" 2>/dev/null)"; then
+    log "[OK] Qdrant readiness: ${response}"
+  else
+    log "[ERROR] Unable to reach Qdrant on port ${QDRANT_HTTP_PORT}"
+    return 1
+  fi
+  return 0
+}
+
+main() {
+  log "Model Context Protocol database validation started"
+  if [[ "$NON_INTERACTIVE" == "true" ]]; then
+    log "Mode: non-interactive"
+  else
+    log "Mode: standard"
+  fi
+
+  service_status postgresql "systemctl start postgresql"
+  service_status redis-mcp "systemctl start redis-mcp"
+  service_status qdrant "systemctl start qdrant"
+
+  local rc=0
+  check_postgres || rc=1
+  check_redis || rc=1
+  check_qdrant || rc=1
+
+  if [[ "$rc" -eq 0 ]]; then
+    log "All MCP data services are healthy"
+  else
+    log "One or more MCP data services reported issues"
+  fi
+  return "$rc"
+}
+
+main "$@"

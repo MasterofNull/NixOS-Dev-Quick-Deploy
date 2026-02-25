@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly AI research sync timer
+
+[Timer]
+OnCalendar=Sun *-*-* 04:00:00
+RandomizedDelaySec=30m
+Persistent=true
+Unit=ai-research-sync.service
+
+[Install]
+WantedBy=timers.target

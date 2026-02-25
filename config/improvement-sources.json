@@ -1,10 +1,5 @@
 [
   {
-    "url": "https://github.com/containers/podman/releases",
-    "type": "github_release",
-    "weight": 0.6
-  },
-  {
     "url": "https://github.com/qdrant/qdrant/releases",
     "type": "github_release",
     "weight": 0.7
@@ -102,12 +97,6 @@
   },
   {
     "url": "https://www.reddit.com/r/MLOps/",
-    "type": "social",
-    "weight": 0.08,
-    "cadence_hours": 168
-  },
-  {
-    "url": "https://www.reddit.com/r/kubernetes/",
     "type": "social",
     "weight": 0.08,
     "cadence_hours": 168

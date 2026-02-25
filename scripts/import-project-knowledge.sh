@@ -86,9 +86,6 @@ echo "-----------------------------"
 # MCP server code (Python and configs)
 import_files "MCP server code" "ai-stack/mcp-servers" .py .yml .yaml
 
-# Kubernetes manifests
-import_files "Kubernetes manifests" "ai-stack/kubernetes" .yml .yaml
-
 echo ""
 echo "==================================================================="
 echo "  Knowledge Base Import Complete"

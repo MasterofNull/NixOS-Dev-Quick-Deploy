@@ -97,6 +97,7 @@
           modules = [
             ./nix/modules/core/options.nix
             ./nix/modules/core/base.nix
+            ./nix/modules/core/hospital-classified.nix
             ./nix/modules/core/network.nix
             ./nix/modules/core/logging.nix
             ./nix/modules/core/localhost-isolation.nix

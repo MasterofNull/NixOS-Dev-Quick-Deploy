@@ -10,7 +10,7 @@ This repository documents MCP usage, setup, and inventory in:
 Operational entrypoints:
 - `scripts/aqd mcp ...`
 - `scripts/mcp-server`
-- `scripts/mcp-db-setup`
+- `scripts/mcp-db-validate`
 
 Related references:
 - `docs/AVAILABLE_TOOLS.md`

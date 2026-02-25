@@ -242,10 +242,10 @@ uvicorn server:app --reload --port 8091
 
 ```bash
 # Development mode (auto-reload)
-kubectl apply -k ai-stack/kustomize/overlays/dev
+sudo systemctl restart ai-stack.target
 
 # Production mode
-kubectl apply -k ai-stack/kubernetes
+sudo systemctl restart ai-stack.target
 ```
 
 ### Testing
@@ -363,7 +363,7 @@ docker ps | grep aidb
 docker logs ai-stack-aidb
 
 # Restart service
-kubectl rollout restart deploy -n ai-stack aidb
+sudo systemctl restart ai-aidb.service
 ```
 
 ### Database Migration Errors
@@ -373,10 +373,10 @@ kubectl rollout restart deploy -n ai-stack aidb
 **Solution:**
 ```bash
 # Apply migrations
-kubectl exec -n ai-stack deploy/aidb -- alembic upgrade head
+sudo systemctl restart ai-aidb.service
 
 # Reset database (WARNING: data loss)
-kubectl rollout restart deploy -n ai-stack aidb
+sudo systemctl restart ai-aidb.service
 ```
 
 ### Slow Performance

@@ -443,7 +443,7 @@ tail ~/.local/share/nixos-ai-stack/telemetry/ralph-events.jsonl | grep {task_id}
 export RALPH_MAX_CONCURRENT_TASKS=5
 
 # Restart Ralph
-kubectl rollout restart deployment/ralph-wiggum -n ai-stack
+sudo systemctl restart ai-ralph-wiggum.service
 ```
 
 ### Agent Backend Fails
@@ -456,7 +456,7 @@ kubectl rollout restart deployment/ralph-wiggum -n ai-stack
 curl http://localhost:8093/health
 
 # Restart backend
-kubectl rollout restart deployment/aider-wrapper -n ai-stack
+sudo systemctl restart ai-ralph-wiggum.service
 ```
 
 ---
@@ -507,7 +507,7 @@ curl -X POST http://localhost:8098/tasks \
   }'
 
 # Monitor logs
-kubectl logs -f -n ai-stack ralph-wiggum
+journalctl -u ai-ralph-wiggum.service -f
 ```
 
 ---

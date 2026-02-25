@@ -3,6 +3,8 @@
   config = lib.mkIf (config.mySystem.profile == "ai-dev") {
     mySystem.roles.aiStack.enable        = lib.mkDefault true;
     mySystem.roles.virtualization.enable = lib.mkDefault true;
+    mySystem.monitoring.enable           = lib.mkDefault true;
+    mySystem.monitoring.commandCenter.enable = lib.mkDefault true;
     mySystem.aiStack = {
       # llama.cpp backend: native OpenAI-compatible inference server.
       # No Ollama daemon — models are loaded directly from GGUF files in
@@ -30,6 +32,21 @@
 
       # Qdrant vector DB — enable when RAG or embedding workflows are needed.
       vectorDb.enable = lib.mkDefault false;
+
+      # Embedding server for RAG ingestion and harness memory retrieval.
+      embeddingDimensions = lib.mkDefault 768;
+      embeddingServer = {
+        enable = lib.mkDefault true;
+        port = lib.mkDefault 8081;
+        model = lib.mkDefault "/var/lib/llama-cpp/models/nomic-embed-text-v1.5.Q8_0.gguf";
+      };
+
+      # OpenAI-compatible gateway for agent/model agnostic local+remote routing.
+      switchboard = {
+        enable = lib.mkDefault true;
+        routingMode = lib.mkDefault "auto";
+        defaultProvider = lib.mkDefault "local";
+      };
 
       # Expose inference server and Open WebUI on LAN (default: loopback only).
       listenOnLan = lib.mkDefault false;

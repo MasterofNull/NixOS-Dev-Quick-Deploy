@@ -33,11 +33,11 @@ vim templates/home.nix
 # Deploy both (recommended)
 ./nixos-quick-deploy.sh
 
-# Deploy only system
-./nixos-quick-deploy.sh --system-only
+# Deploy with system switch only (skip Home Manager switch)
+./nixos-quick-deploy.sh --skip-home-switch
 
-# Deploy only home
-./nixos-quick-deploy.sh --home-only
+# Deploy with Home Manager switch only (skip system switch)
+./nixos-quick-deploy.sh --skip-system-switch
 ```
 
 ### 3. Verify Changes
@@ -53,12 +53,11 @@ home-manager generations
 ### 4. Rollback if Needed
 
 ```bash
-# Automatic rollback
-./nixos-quick-deploy.sh --rollback
-
-# Manual rollback
+# System rollback
 sudo nixos-rebuild switch --rollback
-home-manager switch --rollback
+
+# Home Manager rollback (activate prior generation manually)
+home-manager generations
 ```
 
 ---

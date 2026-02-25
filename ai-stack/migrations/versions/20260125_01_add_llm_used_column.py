@@ -15,8 +15,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("telemetry_events", sa.Column("llm_used", sa.String(32), nullable=True))
+    # Baseline revision already includes llm_used for fresh installs.
+    # Keep this migration idempotent for mixed historical states.
+    op.execute("ALTER TABLE telemetry_events ADD COLUMN IF NOT EXISTS llm_used VARCHAR(32)")
 
 
 def downgrade() -> None:
-    op.drop_column("telemetry_events", "llm_used")
+    op.execute("ALTER TABLE telemetry_events DROP COLUMN IF EXISTS llm_used")

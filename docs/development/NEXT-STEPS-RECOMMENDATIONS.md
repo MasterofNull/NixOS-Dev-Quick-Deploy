@@ -23,11 +23,9 @@ We've completed comprehensive research on container orchestration for 2026 and c
 
 **Key Findings:**
 - ⭐ K3s + containerd is the single, standard runtime for 2026
-- ✅ Kubernetes-native tooling (kubectl, kustomize) reduces deployment drift
 - ✅ Security posture improved with namespace isolation + K8s secrets
 
 **Research Sources:**
-- [Kubernetes Alternatives 2026](https://attuneops.io/kubernetes-alternatives/)
 
 ### 2. Secrets Management Tool (Production-Ready!)
 
@@ -79,7 +77,6 @@ We've completed comprehensive research on container orchestration for 2026 and c
 - Health aggregate uses Qdrant `/healthz` and correct Ralph service namespace.
 
 **Important:** The HTML dashboard at `http://localhost:8888/dashboard.html` expects the API at `http://localhost:8889`.
-If you are on K3s, the dashboard launcher now starts a `kubectl port-forward` so the API resolves.
 
 ### 5. Hospital E2E Validation (Jan 25, 2026)
 
@@ -102,14 +99,12 @@ If you are on K3s, the dashboard launcher now starts a `kubectl port-forward` so
 - [ ] Confirm Portainer web UI reachable + onboarding wizard reset
 
 **Phase B — Secrets + Backups**
-- [ ] Ensure secrets exist in `ai-stack/kubernetes/secrets/secrets.sops.yaml`
 - [ ] Apply K8s secrets into `ai-stack` + `backups`
 - [ ] Verify backup cronjobs and metrics in `backups` namespace
 
 **Phase C — Images + Rollout**
 - [ ] Build + push images to registry (skaffold recommended)
 - [ ] Rollout restart critical deployments (aidb, embeddings, hybrid-coordinator, ralph-wiggum)
-- [ ] Validate `kubectl get pods -n ai-stack` all Running
 
 **Phase D — Monitoring + Dashboards**
 - [ ] Validate Prometheus targets all up
@@ -170,7 +165,6 @@ See **[docs/archive/K3S-PORTAINER-MIGRATION-PLAN.md](docs/archive/K3S-PORTAINER-
 1. Backup current setup (30 min) ✅ complete
 2. Install K3s with Podman runtime (1 hour) ✅ complete
 3. Install Portainer for K3s (30 min) ✅ complete
-4. Convert legacy stack definitions to Kubernetes manifests (2-3 hours) ✅ complete (`ai-stack/kubernetes/kompose/`)
 5. Migrate secrets to Kubernetes (1 hour) ← **next**
 6. Deploy AI stack on K3s (2-3 hours)
 7. Configure GPU support (1 hour)
@@ -179,8 +173,6 @@ See **[docs/archive/K3S-PORTAINER-MIGRATION-PLAN.md](docs/archive/K3S-PORTAINER-
 
 **Resources:**
 - [docs/archive/K3S-PORTAINER-MIGRATION-PLAN.md](docs/archive/K3S-PORTAINER-MIGRATION-PLAN.md) - Complete migration guide
-- [K3s Official](https://k3s.io/) - Lightweight Kubernetes
-- [Portainer for Kubernetes](https://www.portainer.io/kubernetes) - Official docs
 
 ---
 
@@ -190,12 +182,10 @@ See **[docs/archive/K3S-PORTAINER-MIGRATION-PLAN.md](docs/archive/K3S-PORTAINER-
 
 **Day 1:**
 - [x] Install K3s and verify cluster readiness
-- [x] Ensure kubectl access works
 - [x] Verify core system pods
 
 **Day 2:**
 - [x] K8s manifests active (legacy source only)
-- [x] Review generated manifests in `ai-stack/kubernetes/kompose/`
 - [x] Create Kubernetes Secrets from current secrets (Phase 5)
 - [x] Deploy core services (postgres, redis, grafana) on K3s
 - [x] Validate base services
@@ -251,7 +241,6 @@ This stack now uses **one** path: **K3s + Portainer + K8s manifests**.
 
 **Why this matters:**
 1. **Single runtime** - containerd only
-2. **Single deployment method** - `kubectl apply -k`
 3. **Single monitoring path** - Prometheus/Grafana + Portainer
 4. **Less drift** - no legacy/runtime split
 8. **Future-proof** - This is THE standard for 2026
@@ -287,9 +276,6 @@ This stack now uses **one** path: **K3s + Portainer + K8s manifests**.
 3. `archive/scripts/test-password-migration.sh` - Integration test suite (archived)
 
 ### Configuration
-1. `ai-stack/kubernetes/kompose/` - Active manifests
-2. `ai-stack/kubernetes/secrets/` - Secret source-of-truth
-3. `ai-stack/kubernetes/kustomization.yaml` - Single deploy entry point
 
 ---
 
@@ -331,7 +317,6 @@ I've created the complete migration plan: **[docs/archive/K3S-PORTAINER-MIGRATIO
 - [x] Phase 5: Learning-based optimization proposals (implemented in hybrid-coordinator)
 - [x] Phase 7: Container recovery test (hybrid-coordinator pod recycle)
 - [x] Rebuild hybrid-coordinator image (local registry image refreshed)
-- [x] Import/redeploy hybrid-coordinator to k3s to activate proposal engine
 - [x] Fix ralph-wiggum state persistence (PVC for /data)
 - [x] Fix embeddings API key mounts (embeddings + hybrid-coordinator + aidb)
 - [x] Hotfix telemetry schema (added `llm_used` column)
@@ -370,8 +355,6 @@ Based on the latest HIPAA Security Rule updates (January 6, 2025) and OCR Cybers
 - [HHS OCR Cybersecurity Newsletter - January 2026](https://www.hhs.gov/hipaa/for-professionals/security/guidance/cybersecurity-newsletter-january-2026/index.html)
 - [System Hardening, HIPAA, and ePHI Protection - Foley Hoag](https://foleyhoag.com/news-and-insights/blogs/security-privacy-and-the-law/2026/january/system-hardening-hipaa-and-the-practical-path-to-protecting-ephi/)
 - [HIPAA Compliance AI Best Practices - EdenLab](https://edenlab.io/blog/hipaa-compliant-ai-best-practices)
-- [Kubernetes Compliance Under HIPAA - ARMO](https://www.armosec.io/blog/kubernetes-compliance-under-hipaa/)
-- [HIPAA Compliance in Kubernetes - Hoop.dev](https://hoop.dev/blog/hipaa-compliance-in-kubernetes-guardrails-for-technical-safeguards/)
 
 ### ✅ Current Compliance Status (Your Stack)
 
@@ -395,16 +378,11 @@ Per the OCR Newsletter, system hardening is the process of reducing attack surfa
 
 ```bash
 # 1. Enable Kubernetes Audit Logging
-# Add to /etc/rancher/k3s/config.yaml:
 kube-apiserver-arg:
-  - "audit-log-path=/var/log/kubernetes/audit.log"
   - "audit-log-maxage=30"
   - "audit-log-maxbackup=10"
-  - "audit-policy-file=/etc/rancher/k3s/audit-policy.yaml"
 
 # 2. Create audit policy for PHI access tracking
-cat > /etc/rancher/k3s/audit-policy.yaml << 'EOF'
-apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
   - level: RequestResponse
@@ -421,8 +399,6 @@ EOF
 #### Priority 2: Network Isolation
 
 ```yaml
-# ai-stack/kubernetes/network-policies/deny-all.yaml
-apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-all
@@ -434,7 +410,6 @@ spec:
   - Egress
 ---
 # Allow only necessary internal traffic
-apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-ai-stack-internal
@@ -486,7 +461,6 @@ boot.initrd.luks.devices."ai-data" = {
 };
 
 # TLS for internal services (cert-manager recommended)
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
 ```
 
 ### 📋 HIPAA Compliance Checklist

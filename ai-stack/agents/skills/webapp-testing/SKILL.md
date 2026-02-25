@@ -96,3 +96,7 @@ with sync_playwright() as p:
   - `element_discovery.py` - Discovering buttons, links, and inputs on a page
   - `static_html_automation.py` - Using file:// URLs for local HTML
   - `console_logging.py` - Capturing console logs during automation
+
+## Maintenance
+- Version: 1.0.0
+- Keep this skill aligned with current repository workflows.

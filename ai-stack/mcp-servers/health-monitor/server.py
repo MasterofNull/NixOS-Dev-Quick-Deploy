@@ -43,12 +43,12 @@ SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 
 # Service configuration
 SERVICES = {
-    "qdrant": {"url": "http://localhost:6333/healthz", "name": "Qdrant Vector DB"},
-    "llama_cpp": {"url": "http://localhost:8080/health", "name": "llama.cpp"},
-    "open_webui": {"url": "http://localhost:3001", "name": "Open WebUI"},
-    "aidb": {"url": "http://localhost:8091/health", "name": "AIDB MCP Server"},
-    "hybrid_coordinator": {"url": "http://localhost:8092/health", "name": "Hybrid Coordinator"},
-    "mindsdb": {"url": "http://localhost:47334", "name": "MindsDB"},
+    "qdrant": {"url": os.getenv("QDRANT_HEALTH_URL", f"{os.getenv('QDRANT_URL', 'http://127.0.0.1:6333')}/healthz"), "name": "Qdrant Vector DB"},
+    "llama_cpp": {"url": os.getenv("LLAMA_CPP_HEALTH_URL", f"{os.getenv('LLAMA_CPP_BASE_URL', 'http://127.0.0.1:8080')}/health"), "name": "llama.cpp"},
+    "open_webui": {"url": os.getenv("OPEN_WEBUI_HEALTH_URL", "http://127.0.0.1:3001"), "name": "Open WebUI"},
+    "aidb": {"url": os.getenv("AIDB_HEALTH_URL", f"{os.getenv('AIDB_URL', 'http://127.0.0.1:8002')}/health"), "name": "AIDB MCP Server"},
+    "hybrid_coordinator": {"url": os.getenv("HYBRID_HEALTH_URL", f"{os.getenv('HYBRID_COORDINATOR_URL', 'http://127.0.0.1:8003')}/health"), "name": "Hybrid Coordinator"},
+    "mindsdb": {"url": os.getenv("MINDSDB_HEALTH_URL", "http://127.0.0.1:47334"), "name": "MindsDB"},
 }
 
 # Create MCP server instance

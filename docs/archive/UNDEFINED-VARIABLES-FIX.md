@@ -126,7 +126,7 @@ Expected output should show all placeholder replacements around lines 3769-3773.
 ### 3. Test Configuration Generation
 ```bash
 # Generate config without applying
-./nixos-quick-deploy.sh --dry-run
+./nixos-quick-deploy.sh --build-only
 
 # Check generated home.nix for undefined variables
 grep -n "PLACEHOLDER" ~/.config/home-manager/home.nix

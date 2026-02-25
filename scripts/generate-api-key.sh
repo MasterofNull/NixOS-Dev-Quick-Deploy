@@ -6,7 +6,7 @@ set -euo pipefail
 #   ./generate-api-key.sh                    # Generate master stack_api_key
 #   ./generate-api-key.sh --service aidb     # Generate service-specific key
 
-SECRETS_DIR="${SECRETS_DIR:-$(pwd)/ai-stack/kubernetes/secrets/generated}"
+SECRETS_DIR="${SECRETS_DIR:-$(pwd)/ai-stack/secrets/generated}"
 SERVICE=""
 
 # Parse arguments
