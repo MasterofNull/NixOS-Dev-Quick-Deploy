@@ -105,8 +105,10 @@ in
     nix.settings = {
       experimental-features = [ "nix-command" "flakes" ];
       auto-optimise-store = lib.mkDefault true;
-      trusted-users = lib.mkDefault [ "root" "@wheel" ];
-      allowed-users = lib.mkDefault [ "@wheel" ];
+      # Explicit policy (not mkDefault) to prevent regressions where only
+      # root is trusted after a generation switch.
+      trusted-users = [ "root" "@wheel" cfg.primaryUser ];
+      allowed-users = [ "@wheel" cfg.primaryUser ];
       substituters = lib.mkDefault cfg.deployment.nixBinaryCaches;
     };
     nix.gc = {

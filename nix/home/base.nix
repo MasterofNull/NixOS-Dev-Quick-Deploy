@@ -17,11 +17,16 @@ let
     if lib.hasAttrByPath [ "mySystem" ] osConfig
     then osConfig
     else config;
-  aiSwitchboardPort = lib.attrByPath [ "mySystem" "aiStack" "switchboard" "port" ] 8085 systemConfig;
-  aiLlamaPort = lib.attrByPath [ "mySystem" "aiStack" "llamaCpp" "port" ] 8080 systemConfig;
-  aiHybridPort = lib.attrByPath [ "mySystem" "mcpServers" "hybridPort" ] 8003 systemConfig;
-  aiAidbPort = lib.attrByPath [ "mySystem" "mcpServers" "aidbPort" ] 8002 systemConfig;
-  aiAnthropicProxyPort = lib.attrByPath [ "ports" "anthropicProxy" ] 8120 systemConfig;
+  repoPath = lib.attrByPath [ "mySystem" "mcpServers" "repoPath" ] "${config.home.homeDirectory}/Documents/NixOS-Dev-Quick-Deploy" systemConfig;
+  sharedSkillsDir = "${repoPath}/.agent/skills";
+  portRegistry = lib.attrByPath [ "mySystem" "ports" ] { } systemConfig;
+  aiSwitchboardPort = lib.attrByPath [ "mySystem" "aiStack" "switchboard" "port" ] (lib.attrByPath [ "switchboard" ] 8085 portRegistry) systemConfig;
+  aiLlamaPort = lib.attrByPath [ "mySystem" "aiStack" "llamaCpp" "port" ] (lib.attrByPath [ "llamaCpp" ] 8080 portRegistry) systemConfig;
+  aiLlamaModel = lib.attrByPath [ "mySystem" "aiStack" "llamaCpp" "model" ] "local-model" systemConfig;
+  aiHybridPort = lib.attrByPath [ "mySystem" "mcpServers" "hybridPort" ] (lib.attrByPath [ "mcpHybrid" ] 8003 portRegistry) systemConfig;
+  aiAidbPort = lib.attrByPath [ "mySystem" "mcpServers" "aidbPort" ] (lib.attrByPath [ "mcpAidb" ] 8002 portRegistry) systemConfig;
+  aiAnthropicProxyPort = lib.attrByPath [ "mySystem" "ports" "anthropicProxy" ] 8120 systemConfig;
+  aiPostgresPort = lib.attrByPath [ "mySystem" "ports" "postgres" ] 5432 systemConfig;
   aiOpenAIBaseUrl = "http://127.0.0.1:${toString aiSwitchboardPort}/v1";
   continueApiBase =
     if lib.attrByPath [ "mySystem" "aiStack" "switchboard" "enable" ] false systemConfig
@@ -36,6 +41,8 @@ let
     { name = "HYBRID_COORDINATOR_URL"; value = "http://127.0.0.1:${toString aiHybridPort}"; }
     { name = "AIDB_URL"; value = "http://127.0.0.1:${toString aiAidbPort}"; }
     { name = "ANTHROPIC_BASE_URL"; value = "http://127.0.0.1:${toString aiAnthropicProxyPort}"; }
+    { name = "MCP_CONFIG_PATH"; value = "${config.home.homeDirectory}/.mcp/config.json"; }
+    { name = "AI_AGENT_SKILLS_DIR"; value = sharedSkillsDir; }
   ];
 
   # openai.chatgpt — "Codex: OpenAI's coding agent" — not in nixpkgs 25.11;
@@ -773,7 +780,8 @@ in
       "title": "AI Switchboard (local/remote)",
       "provider": "openai",
       "apiKey": "dummy",
-      "apiBase": "${continueApiBase}"
+      "apiBase": "${continueApiBase}",
+      "model": "${aiLlamaModel}"
     }
   ],
   "tabAutocompleteModel": {
@@ -781,7 +789,7 @@ in
     "provider": "openai",
     "apiKey": "dummy",
     "apiBase": "${continueApiBase}",
-    "model": "local-model"
+    "model": "${aiLlamaModel}"
   },
   "allowAnonymousTelemetry": false
 }
@@ -795,7 +803,9 @@ CONTINUE_EOF
       tmp="$(mktemp)"
       if jq --arg newBase "${continueApiBase}" '
         .models = ((.models // []) | map(if .apiBase == "http://127.0.0.1:8080/v1" then .apiBase = $newBase else . end)) |
-        .tabAutocompleteModel = ((.tabAutocompleteModel // {}) | if .apiBase == "http://127.0.0.1:8080/v1" then .apiBase = $newBase else . end)
+        .models = ((.models // []) | map(if ((.model // "") == "") then .model = "local-model" else . end)) |
+        .tabAutocompleteModel = ((.tabAutocompleteModel // {}) | if .apiBase == "http://127.0.0.1:8080/v1" then .apiBase = $newBase else . end) |
+        .tabAutocompleteModel = ((.tabAutocompleteModel // {}) | if ((.model // "") == "") then .model = "local-model" else . end)
       ' "$cfg" > "$tmp"; then
         mv "$tmp" "$cfg"
       else
@@ -804,6 +814,108 @@ CONTINUE_EOF
       unset tmp
     fi
     unset cfg
+  '';
+
+  # ---- MCP config bootstrap ---------------------------------------------------
+  # Keep a local MCP server catalog available for agent clients that read
+  # ~/.mcp/config.json and ~/.config/claude/mcp.json.
+  home.activation.createMcpConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    mkdir -p "$HOME/.mcp"
+    if [ ! -f "$HOME/.mcp/config.json" ]; then
+      cat > "$HOME/.mcp/config.json" << 'MCP_EOF'
+{
+  "mcpServers": {
+    "mcp-nixos": {
+      "command": "nix",
+      "args": ["run", "github:utensils/mcp-nixos"]
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${repoPath}"]
+    },
+    "git": {
+      "command": "npx",
+      "args": ["-y", "@cyanheads/git-mcp-server"]
+    },
+    "fetch": {
+      "command": "npx",
+      "args": ["-y", "mcp-server-fetch-typescript"]
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"]
+    },
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://mcp@127.0.0.1:${toString aiPostgresPort}/mcp"]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "set-me"
+      }
+    }
+  }
+}
+MCP_EOF
+    fi
+
+    if [ ! -f "$HOME/.mcp/registry.json" ]; then
+      cat > "$HOME/.mcp/registry.json" << 'MCP_REGISTRY_EOF'
+{
+  "servers": [
+    { "id": "mcp-nixos", "category": "nixos", "description": "NixOS package and option discovery" },
+    { "id": "filesystem", "category": "project", "description": "Project file read/write/search tools" },
+    { "id": "git", "category": "project", "description": "Repository status, diff, and commit tooling" },
+    { "id": "fetch", "category": "web", "description": "HTTP fetch for docs, APIs, and release notes" },
+    { "id": "memory", "category": "agent", "description": "Cross-session lightweight memory store" },
+    { "id": "postgres", "category": "database", "description": "PostgreSQL access for AIDB and ops data" },
+    { "id": "github", "category": "remote", "description": "GitHub repo/issue/PR automation" }
+  ]
+}
+MCP_REGISTRY_EOF
+    fi
+
+    mkdir -p "$HOME/.config/claude"
+    ln -sfn "$HOME/.mcp/config.json" "$HOME/.config/claude/mcp.json"
+  '';
+
+  # Make skills catalog agent-agnostic: Claude and Codex both read the same
+  # project skill definitions from .agent/skills, without duplicate installs.
+  home.activation.linkSharedAgentSkills = lib.hm.dag.entryAfter [ "createMcpConfig" ] ''
+    src="${sharedSkillsDir}"
+
+    if [ -d "$src" ]; then
+      mkdir -p "$HOME/.claude"
+      ln -sfn "$src" "$HOME/.claude/skills"
+
+      mkdir -p "$HOME/.codex/skills"
+      for d in "$src"/*; do
+        [ -d "$d" ] || continue
+        name="$(basename "$d")"
+        target="$HOME/.codex/skills/$name"
+        if [ -L "$target" ]; then
+          ln -sfn "$d" "$target"
+          continue
+        fi
+        if [ -e "$target" ]; then
+          continue
+        fi
+        ln -s "$d" "$target"
+      done
+      unset d name target
+    fi
+    unset src
+  '';
+
+  # Allow GPT4All Flatpak to read locally hosted llama.cpp models.
+  home.activation.configureGpt4AllModelAccess = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    if command -v flatpak >/dev/null 2>&1; then
+      if flatpak info io.gpt4all.gpt4all >/dev/null 2>&1; then
+        flatpak override --user --filesystem=/var/lib/llama-cpp:ro io.gpt4all.gpt4all >/dev/null 2>&1 || true
+      fi
+    fi
   '';
 
   # Remove stale wants links and clear any failed state from retired units.

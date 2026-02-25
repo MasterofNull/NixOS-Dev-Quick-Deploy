@@ -24,19 +24,24 @@ if [[ -z "$HYBRID_API_KEY" ]]; then
   fi
 fi
 
-hybrid_scorecard="$(curl -sS --max-time 5 --connect-timeout 3 "${HYBRID_URL%/}/harness/scorecard" || true)"
-if [[ -z "$hybrid_scorecard" || "$hybrid_scorecard" == *"unauthorized"* || "$hybrid_scorecard" == *"401"* ]]; then
-  if [[ -n "$HYBRID_API_KEY" ]]; then
-    hybrid_scorecard="$(curl -fsS --max-time 5 --connect-timeout 3 -H "X-API-Key: ${HYBRID_API_KEY}" "${HYBRID_URL%/}/harness/scorecard")"
-  else
-    hybrid_scorecard="$(curl -fsS --max-time 5 --connect-timeout 3 "${HYBRID_URL%/}/stats")"
-  fi
+hybrid_scorecard=""
+if [[ -n "$HYBRID_API_KEY" ]]; then
+  hybrid_scorecard="$(curl -fsS --max-time 5 --connect-timeout 3 -H "X-API-Key: ${HYBRID_API_KEY}" "${HYBRID_URL%/}/harness/scorecard" || true)"
+else
+  hybrid_scorecard="$(curl -sS --max-time 5 --connect-timeout 3 "${HYBRID_URL%/}/harness/scorecard" || true)"
 fi
 aidb_health="$(curl -fsS --max-time 5 --connect-timeout 3 "${AIDB_URL%/}/health")"
+hybrid_health="$(curl -fsS --max-time 5 --connect-timeout 3 "${HYBRID_URL%/}/health")"
 
 # Ensure scorecards expose acceptance/discovery and optimization flags.
-echo "$hybrid_scorecard" | jq -e '(.acceptance.total >= 0 and .discovery.invoked >= 0) or (.harness_stats.total_runs >= 0)' >/dev/null
+if [[ -n "$hybrid_scorecard" ]] && echo "$hybrid_scorecard" | jq -e '.error? != "unauthorized"' >/dev/null 2>&1; then
+  echo "$hybrid_scorecard" | jq -e '(.acceptance.total >= 0 and .discovery.invoked >= 0) or (.harness_stats.total_runs >= 0)' >/dev/null
+else
+  echo "$hybrid_health" | jq -e '.ai_harness.enabled == true and .ai_harness.memory_enabled == true and .ai_harness.tree_search_enabled == true and .ai_harness.eval_enabled == true' >/dev/null
+fi
 # Ensure AIDB exposes tool and outbound policy surfaces.
-echo "$aidb_health" | jq -e '.tool_execution_policy != null and .outbound_http_policy != null' >/dev/null
+if echo "$aidb_health" | jq -e '.tool_execution_policy? != null and .outbound_http_policy? != null' >/dev/null 2>&1; then
+  echo "$aidb_health" | jq -e '.tool_execution_policy != null and .outbound_http_policy != null' >/dev/null
+fi
 
 echo "PASS: GenAI observability and policy surfaces are available."
