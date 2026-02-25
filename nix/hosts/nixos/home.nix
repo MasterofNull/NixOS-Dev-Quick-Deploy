@@ -19,10 +19,6 @@ in
   # ---- Host-specific packages -----------------------------------------------
   home.packages = with pkgs;
     [
-      # Steam launcher available in the user profile (system integration and
-      # runtime dependencies come from NixOS programs.steam in roles/gaming.nix).
-      steam
-
       # Gitea + Tea CLI for local forge workflows
       gitea
       tea
@@ -54,6 +50,18 @@ in
   home.sessionPath = [
     "$HOME/.local/bin"
   ];
+
+  # Retire imperative legacy dashboard user units so declarative system units
+  # own the command-center ports without collisions.
+  home.activation.retireLegacyDashboardUserUnits = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    for unit in dashboard-server dashboard-api dashboard-collector; do
+      ${pkgs.systemd}/bin/systemctl --user disable --now "$unit.service" >/dev/null 2>&1 || true
+      rm -f "$HOME/.config/systemd/user/$unit.service"
+      rm -f "$HOME/.config/systemd/user/default.target.wants/$unit.service"
+      rm -f "$HOME/.config/systemd/user/timers.target.wants/$unit.timer"
+    done
+    ${pkgs.systemd}/bin/systemctl --user daemon-reload >/dev/null 2>&1 || true
+  '';
 
   # ---- Aider default config -------------------------------------------------
   home.file.".config/aider/config.toml".text = ''

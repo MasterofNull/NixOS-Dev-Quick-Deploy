@@ -38,8 +38,7 @@
     roles.aiStack.enable         = true;
     roles.server.enable          = false;
     roles.mobile.enable          = true;
-    roles.virtualization.enable  = true;
-    localhostIsolation.enable    = true;
+    roles.virtualization.enable  = false;
 
     # AI stack configuration — consumed by nix/modules/roles/ai-stack.nix.
     # Only meaningful when roles.aiStack.enable = true.
@@ -48,9 +47,8 @@
       acceleration       = "auto";
       llamaCpp.model     = "/var/lib/llama-cpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
       ui.enable          = true;
-      vectorDb.enable       = true;
-      embeddingServer.enable = true;
-      listenOnLan           = false;
+      vectorDb.enable    = false;
+      listenOnLan        = false;
       rocmGfxOverride    = null;
     };
   };

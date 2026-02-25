@@ -413,7 +413,7 @@ ai_review_config ~/.dotfiles/home-manager/configuration.nix
 
 # Deploy changes
 cd ~/Documents/NixOS-Dev-Quick-Deploy
-./nixos-quick-deploy.sh --start-from-phase 5
+./nixos-quick-deploy.sh --build-only
 
 # Validate with AI assistance
 ai_chat "What should I check after deploying new PostgreSQL configuration?"
@@ -579,7 +579,7 @@ vim postgres.nix
 ai_review_config postgres.nix
 
 # Deploy
-./nixos-quick-deploy.sh --start-from-phase 5
+./nixos-quick-deploy.sh --build-only
 ```
 
 ---

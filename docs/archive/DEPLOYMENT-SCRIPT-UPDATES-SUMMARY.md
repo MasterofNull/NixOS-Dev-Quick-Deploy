@@ -156,7 +156,7 @@ readonly AI_STACK_COMPOSE="${SCRIPT_DIR}/ai-stack/compose"
 - [ ] **Phase 9 Execution**:
   ```bash
   # Run deployment
-  bash nixos-quick-deploy.sh --phase 9
+  bash nixos-quick-deploy.sh --profile ai-dev
 
   # Or test phase directly (with proper environment)
   source config/variables.sh
@@ -229,7 +229,7 @@ If you have the old AI-Optimizer setup:
 
 3. **Run Phase 9**:
    ```bash
-   bash nixos-quick-deploy.sh --phase 9
+   bash nixos-quick-deploy.sh --profile ai-dev
    ```
 
 4. **Migrate data** (optional):

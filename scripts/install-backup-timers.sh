@@ -21,12 +21,16 @@ echo ""
 mkdir -p "$SYSTEMD_USER_DIR"
 echo "✓ Systemd user directory: $SYSTEMD_USER_DIR"
 
-# Copy service files
+# Render service files with absolute repo path
 echo ""
 echo "Installing service files..."
-cp "$PROJECT_ROOT/systemd/aidb-backup-postgresql.service" "$SYSTEMD_USER_DIR/"
+sed "s|__PROJECT_ROOT__|$PROJECT_ROOT|g" \
+  "$PROJECT_ROOT/systemd/aidb-backup-postgresql.service" \
+  > "$SYSTEMD_USER_DIR/aidb-backup-postgresql.service"
 cp "$PROJECT_ROOT/systemd/aidb-backup-postgresql.timer" "$SYSTEMD_USER_DIR/"
-cp "$PROJECT_ROOT/systemd/aidb-backup-qdrant.service" "$SYSTEMD_USER_DIR/"
+sed "s|__PROJECT_ROOT__|$PROJECT_ROOT|g" \
+  "$PROJECT_ROOT/systemd/aidb-backup-qdrant.service" \
+  > "$SYSTEMD_USER_DIR/aidb-backup-qdrant.service"
 cp "$PROJECT_ROOT/systemd/aidb-backup-qdrant.timer" "$SYSTEMD_USER_DIR/"
 echo "✓ Service files copied"
 

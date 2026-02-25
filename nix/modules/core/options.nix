@@ -336,6 +336,15 @@
         description = "Absolute path to the SOPS-encrypted secrets file.";
       };
 
+      allowRepoLocalSopsFile = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Allow using a repo-local SOPS file path (for example nix/hosts/<host>/secrets.sops.yaml).
+          Keep this false for strict zero-secrets-in-repo operation.
+        '';
+      };
+
       ageKeyFile = lib.mkOption {
         type = lib.types.str;
         default = "/var/lib/sops-nix/key.txt";
@@ -578,6 +587,16 @@
         };
       };
 
+      embeddingDimensions = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 768;
+        description = ''
+          Embedding vector dimension used by the active embedding model.
+          Keep this aligned with the embedding model served on
+          mySystem.aiStack.embeddingServer.port.
+        '';
+      };
+
       vectorDb = {
         enable = lib.mkOption {
           type = lib.types.bool;
@@ -617,6 +636,40 @@
           type    = lib.types.port;
           default = 8085;
           description = "TCP port for the AI Switchboard proxy.";
+        };
+
+        routingMode = lib.mkOption {
+          type = lib.types.enum [ "auto" "local_only" "remote_only" ];
+          default = "auto";
+          description = ''
+            Switchboard routing strategy.
+            auto: route by request hints/model prefix;
+            local_only: always use local llama.cpp;
+            remote_only: always use configured remote endpoint.
+          '';
+        };
+
+        defaultProvider = lib.mkOption {
+          type = lib.types.enum [ "local" "remote" ];
+          default = "local";
+          description = "Default provider used in auto mode when no explicit route hint is present.";
+        };
+
+        remoteUrl = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "https://openrouter.ai/api";
+          description = ''
+            OpenAI-compatible remote endpoint base URL.
+            Expected form: https://host[/api] (without /v1 suffix is preferred).
+          '';
+        };
+
+        remoteApiKeyFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "/run/secrets/remote_llm_api_key";
+          description = "Path to remote LLM API key file for switchboard upstream authentication.";
         };
       };
 
@@ -846,6 +899,24 @@
         type = lib.types.port;
         default = 8889;
         description = "Command-center API port.";
+      };
+
+      otlpGrpc = lib.mkOption {
+        type = lib.types.port;
+        default = 4317;
+        description = "OpenTelemetry OTLP gRPC receiver port.";
+      };
+
+      otlpHttp = lib.mkOption {
+        type = lib.types.port;
+        default = 4318;
+        description = "OpenTelemetry OTLP HTTP receiver port.";
+      };
+
+      otelCollectorMetrics = lib.mkOption {
+        type = lib.types.port;
+        default = 9464;
+        description = "OpenTelemetry collector internal Prometheus telemetry port.";
       };
     };
 

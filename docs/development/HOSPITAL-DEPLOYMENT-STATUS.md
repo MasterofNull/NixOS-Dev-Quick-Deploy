@@ -86,17 +86,13 @@ The AI Stack has been successfully deployed on K3s Kubernetes for hospital use. 
 
 ### Internal Services (ClusterIP)
 
-Access via `kubectl port-forward` or through Nginx gateway:
 
 ```bash
 # Example: Access Open WebUI (optional)
-kubectl port-forward -n ai-stack svc/open-webui 3001:3001
 
 # Example: Access Grafana
-kubectl port-forward -n ai-stack svc/grafana 3002:3002
 
 # Example: Access AIDB
-kubectl port-forward -n ai-stack svc/aidb 8091:8091
 ```
 
 ---
@@ -181,16 +177,12 @@ License: MIT
 
 ```bash
 # Overall cluster status
-kubectl get pods -n ai-stack
 
 # Check specific service health
-kubectl exec -n ai-stack deployment/aidb -- curl -s http://localhost:8091/health
 
 # View logs
-kubectl logs -n ai-stack deployment/llama-cpp --tail=50
 
 # Check resource usage
-kubectl top pods -n ai-stack
 ```
 
 ---
@@ -207,7 +199,6 @@ kubectl top pods -n ai-stack
 ## Known Issues / Follow-ups
 
 1. **Ralph Prometheus metrics**: `/metrics` now returning 200; Prometheus target up.  
-   - **Fix applied:** imported updated `localhost/ai-stack-ralph-wiggum:latest` into k3s and restarted deployment.  
    - **Status:** resolved (2026-01-25).
 
 2. **Open WebUI CrashLoopBackOff**: optional UI not required for HIPAA core flow.  
@@ -224,7 +215,6 @@ kubectl top pods -n ai-stack
 
 ```bash
 # PostgreSQL backup
-kubectl exec -n ai-stack deployment/postgres -- pg_dump -U mcp mcp > backup.sql
 
 # Qdrant backup (vector data)
 # Stored in: ~/.local/share/nixos-ai-stack/qdrant/
@@ -241,10 +231,8 @@ kubectl exec -n ai-stack deployment/postgres -- pg_dump -U mcp mcp > backup.sql
 
 ```bash
 # Backup CronJobs
-kubectl get cronjobs -n backups
 
 # Logs
-kubectl logs -n backups -l app=backup --tail=100
 ```
 
 ---
@@ -276,7 +264,6 @@ kubectl logs -n backups -l app=backup --tail=100
 - [x] Fix Ralph Prometheus metrics (image refreshed, `/metrics` returning 200)
 - [x] Start local registry and publish dev-tagged images (prevents stale image drift)
 - [x] Apply Kustomize dev overlay (move workloads off `latest`)
-- [ ] Persist registry config in NixOS (`/etc/rancher/k3s/registries.yaml`)
 - [ ] Import refreshed AIDB image to K3s (trust_remote_code + tool discovery timezone fix)
 - [ ] Verify telemetry flow (Ralph → Hybrid → AIDB) after AIDB import
 - [ ] Rerun hospital E2E test after AIDB import
@@ -308,10 +295,8 @@ kubectl logs -n backups -l app=backup --tail=100
 
 ```bash
 # Stop all pods
-kubectl scale deployment --all -n ai-stack --replicas=0
 
 # Start all pods
-kubectl scale deployment aidb aider-wrapper container-engine dashboard-api \
   embeddings grafana hybrid-coordinator jaeger llama-cpp mindsdb nginx \
   nixos-docs open-webui postgres prometheus qdrant ralph-wiggum redis \
   -n ai-stack --replicas=1
@@ -320,14 +305,11 @@ kubectl scale deployment aidb aider-wrapper container-engine dashboard-api \
 ### Restart a Service
 
 ```bash
-kubectl rollout restart deployment/<service-name> -n ai-stack
 ```
 
 ### View Secrets
 
 ```bash
-kubectl get secrets -n ai-stack
-kubectl get secret postgres-password -n ai-stack -o jsonpath='{.data.password}' | base64 -d
 ```
 
 ---

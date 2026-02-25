@@ -161,19 +161,14 @@ The next time you run the deployment, it will automatically:
 
 To trigger this manually:
 ```bash
-# Reset state to re-run Phase 1 with secret migration
-./nixos-quick-deploy.sh --reset-state
-# OR
-./nixos-quick-deploy.sh --restart-phase 1
+# Re-run deployment after updating encrypted secrets
+./nixos-quick-deploy.sh --host nixos --profile ai-dev
 ```
 
 #### 3. Verify Current System
 ```bash
-# Check version
-./nixos-quick-deploy.sh --version
-
-# List phases
-./nixos-quick-deploy.sh --list-phases
+# Show supported deploy options
+./nixos-quick-deploy.sh --help
 
 # Run health check
 ./scripts/system-health-check.sh --detailed
@@ -295,7 +290,6 @@ To trigger this manually:
 - [ ] Per-GPU service assignment
 
 ### v5.3.0
-- [ ] Container orchestration (k3s)
 - [ ] Health monitoring dashboard
 - [ ] Auto-restart policies
 

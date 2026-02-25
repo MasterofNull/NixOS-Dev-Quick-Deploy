@@ -17,11 +17,6 @@
 
 These profiles are now part of the canonical onboarding docs and should be invoked by scope, not by legacy file location.
 
-### `kubernetes-senior-team`
-- Use for Kubernetes manifests, Helm/Kustomize, RBAC/network policy, ingress/gateway, rollout strategy, upgrades, and production troubleshooting.
-- Review output with explicit severity levels: `CRITICAL`, `WARNING`, `SUGGESTION`.
-- Enforce baseline controls: least-privilege RBAC, default-deny networking, non-root containers, probe correctness, resource requests/limits, PDBs, spread constraints, GitOps-first delivery.
-
 ### `nixos-systems-architect`
 - Use for NixOS modules, flakes, hardware-aware tuning, secure reproducible builds, deployment architecture, and rebuild/debug failures.
 - Prioritize declarative and reproducible Nix patterns (flake pinning, module correctness, rollback-safe changes).
@@ -65,10 +60,10 @@ This guide trains you to:
 - **Currently Installed:** mcp-nixos (NixOS package search)
 - **Registry:** `~/.mcp/registry.json` (server metadata with security audits)
 
-**Knowledge Base (AIDB):** `http://localhost:8091`
+**Knowledge Base (AIDB):** `http://localhost:8002`
 - **Project:** NixOS-Dev-Quick-Deploy
-- **Query:** `curl 'http://localhost:8091/documents?search=TOPIC&project=NixOS-Dev-Quick-Deploy'`
-- **Import:** `curl -X POST http://localhost:8091/documents -H "Content-Type: application/json" -d @data.json`
+- **Query:** `curl 'http://localhost:8002/documents?search=TOPIC&project=NixOS-Dev-Quick-Deploy'`
+- **Import:** `curl -X POST http://localhost:8002/documents -H "Content-Type: application/json" -d @data.json`
 
 ### 📦 Available Skills (All in .agent/skills/)
 
@@ -113,7 +108,7 @@ This guide trains you to:
 
 **Query All MCP Servers:**
 ```bash
-curl 'http://localhost:8091/documents?search=mcp-server&category=tools&project=NixOS-Dev-Quick-Deploy'
+curl 'http://localhost:8002/documents?search=mcp-server&category=tools&project=NixOS-Dev-Quick-Deploy'
 ```
 
 **Currently Installed:**
@@ -178,13 +173,13 @@ curl http://localhost:8080/v1/models  # vLLM
 **Query AIDB for Any Topic:**
 ```bash
 # Find documentation about MCP servers
-curl 'http://localhost:8091/documents?search=mcp&project=NixOS-Dev-Quick-Deploy'
+curl 'http://localhost:8002/documents?search=mcp&project=NixOS-Dev-Quick-Deploy'
 
 # Find deployment guides
-curl 'http://localhost:8091/documents?search=deployment&project=NixOS-Dev-Quick-Deploy'
+curl 'http://localhost:8002/documents?search=deployment&project=NixOS-Dev-Quick-Deploy'
 
 # Find recent session summaries
-curl 'http://localhost:8091/documents?search=session&type=summary&project=NixOS-Dev-Quick-Deploy'
+curl 'http://localhost:8002/documents?search=session&type=summary&project=NixOS-Dev-Quick-Deploy'
 ```
 
 ### 🔄 Creating Skills and MCP Servers

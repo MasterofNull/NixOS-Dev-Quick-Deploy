@@ -2,6 +2,7 @@
 #
 # run-all-checks.sh
 # Aggregate runner for core validation scripts:
+#   - scripts/ai-stack-health.sh
 #   - scripts/system-health-check.sh
 #   - scripts/test_services.sh
 #   - scripts/test_real_world_workflows.sh
@@ -11,19 +12,24 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+STACK_HEALTH_SCRIPT="$SCRIPT_DIR/scripts/ai-stack-health.sh"
 HEALTH_SCRIPT="$SCRIPT_DIR/scripts/system-health-check.sh"
 SERVICES_SCRIPT="$SCRIPT_DIR/scripts/test_services.sh"
 WORKFLOWS_SCRIPT="$SCRIPT_DIR/scripts/test_real_world_workflows.sh"
-DRIFT_SCRIPT="$SCRIPT_DIR/scripts/validate-ai-stack-env-drift.sh"
+DOC_FLAGS_SCRIPT="$SCRIPT_DIR/scripts/validate-deploy-doc-flags.sh"
+PHASE_PLAN_SCRIPT="$SCRIPT_DIR/scripts/run-ai-harness-phase-plan.sh"
 
 print_usage() {
     cat <<EOF
 Usage: $(basename "$0") [--detailed]
 
 Runs the main validation scripts in sequence:
-  1) system-health-check.sh
-  2) test_services.sh
-  3) test_real_world_workflows.sh
+  1) validate-deploy-doc-flags.sh
+  2) ai-stack-health.sh
+  3) system-health-check.sh
+  4) test_services.sh
+  5) test_real_world_workflows.sh
+  6) run-ai-harness-phase-plan.sh
 
 Options:
   --detailed   Pass --detailed to system-health-check.sh
@@ -55,21 +61,37 @@ main() {
 
     local overall_exit=0
 
-    # 0) Env drift check
-    if [[ -x "$DRIFT_SCRIPT" ]]; then
-        echo "=== Running validate-ai-stack-env-drift.sh ==="
-        if "$DRIFT_SCRIPT"; then
-            echo ">>> validate-ai-stack-env-drift.sh: OK"
+    # 1) Deploy flag validation
+    if [[ -x "$DOC_FLAGS_SCRIPT" ]]; then
+        echo "=== Running validate-deploy-doc-flags.sh ==="
+        if "$DOC_FLAGS_SCRIPT"; then
+            echo ">>> validate-deploy-doc-flags.sh: OK"
         else
-            echo ">>> validate-ai-stack-env-drift.sh: FAILED"
+            echo ">>> validate-deploy-doc-flags.sh: FAILED"
             overall_exit=1
         fi
         echo
     else
-        echo ">>> Skipping validate-ai-stack-env-drift.sh (not found or not executable at $DRIFT_SCRIPT)"
+        echo ">>> Skipping validate-deploy-doc-flags.sh (not found or not executable at $DOC_FLAGS_SCRIPT)"
+        overall_exit=1
     fi
 
-    # 1) System health check
+    # 2) Declarative stack health gate
+    if [[ -x "$STACK_HEALTH_SCRIPT" ]]; then
+        echo "=== Running ai-stack-health.sh ==="
+        if "$STACK_HEALTH_SCRIPT"; then
+            echo ">>> ai-stack-health.sh: OK"
+        else
+            echo ">>> ai-stack-health.sh: FAILED"
+            overall_exit=1
+        fi
+        echo
+    else
+        echo ">>> Skipping ai-stack-health.sh (not found or not executable at $STACK_HEALTH_SCRIPT)"
+        overall_exit=1
+    fi
+
+    # 3) System health check
     if [[ -x "$HEALTH_SCRIPT" ]]; then
         echo "=== Running system-health-check.sh ==="
         if [[ "$detailed" == true ]]; then
@@ -93,7 +115,7 @@ main() {
         overall_exit=1
     fi
 
-    # 2) Service tests
+    # 4) Service tests
     if [[ -x "$SERVICES_SCRIPT" ]]; then
         echo "=== Running test_services.sh ==="
         if "$SERVICES_SCRIPT"; then
@@ -108,7 +130,7 @@ main() {
         overall_exit=1
     fi
 
-    # 3) Workflow tests
+    # 5) Workflow tests
     if [[ -x "$WORKFLOWS_SCRIPT" ]]; then
         echo "=== Running test_real_world_workflows.sh ==="
         if "$WORKFLOWS_SCRIPT"; then
@@ -120,6 +142,21 @@ main() {
         echo
     else
         echo ">>> Skipping test_real_world_workflows.sh (not found or not executable at $WORKFLOWS_SCRIPT)"
+        overall_exit=1
+    fi
+
+    # 6) AI harness optimization phases
+    if [[ -x "$PHASE_PLAN_SCRIPT" ]]; then
+        echo "=== Running run-ai-harness-phase-plan.sh ==="
+        if "$PHASE_PLAN_SCRIPT"; then
+            echo ">>> run-ai-harness-phase-plan.sh: OK"
+        else
+            echo ">>> run-ai-harness-phase-plan.sh: FAILED"
+            overall_exit=1
+        fi
+        echo
+    else
+        echo ">>> Skipping run-ai-harness-phase-plan.sh (not found or not executable at $PHASE_PLAN_SCRIPT)"
         overall_exit=1
     fi
 

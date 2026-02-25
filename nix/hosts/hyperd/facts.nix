@@ -32,6 +32,11 @@
       btrfsSubvolumes = [ "@root" "@home" "@nix" ];
     };
     secureboot.enable = false;
+    secrets.enable = true;
+
+    compliance.hospitalClassified = {
+      enable = true;
+    };
 
     # Role enables — profiles set desktop/gaming/aiStack via lib.mkDefault.
     # Override any of these in nix/hosts/<host>/default.nix with lib.mkForce.
@@ -40,6 +45,11 @@
     roles.mobile.enable          = true;
     roles.virtualization.enable  = false;
     localhostIsolation.enable    = true;
+
+    mcpServers = {
+      enable   = true;
+      repoPath = "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy";
+    };
 
     # AI stack configuration — consumed by nix/modules/roles/ai-stack.nix.
     # Only meaningful when roles.aiStack.enable = true.
@@ -54,6 +64,7 @@
       vectorDb.enable    = false;
       listenOnLan        = false;
       rocmGfxOverride    = null;
+      embeddingDimensions = 768;
       embeddingServer = {
         enable          = true;
         port            = 8081;
@@ -61,6 +72,11 @@
         huggingFaceRepo = "nomic-ai/nomic-embed-text-v1.5-GGUF";
         huggingFaceFile = "nomic-embed-text-v1.5.Q8_0.gguf";
         sha256 = "3e24342164b3d94991ba9692fdc0dd08e3fd7362e0aacc396a9a5c54a544c3b7";
+      };
+      switchboard = {
+        enable = true;
+        routingMode = "auto";
+        defaultProvider = "local";
       };
     };
   };

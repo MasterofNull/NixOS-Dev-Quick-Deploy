@@ -1,0 +1,4 @@
+# Temporary allowlist for hostNetwork/hostPort findings in active manifests.
+# Each entry must be an exact relative path and must have a linked remediation task.
+# Review cadence: every release.
+# Intentionally empty: no active manifest hostNetwork/hostPort exceptions approved.

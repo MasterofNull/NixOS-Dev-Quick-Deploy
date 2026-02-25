@@ -991,11 +991,9 @@
         function restartService(service) {
             if (service === 'all') {
                 if (confirm('Restart all services? This may cause brief downtime.')) {
-                    alert('Restarting all services...\n\nRun: kubectl rollout restart deployment -n ai-stack');
                 }
             } else {
                 if (confirm(`Restart ${service}?`)) {
-                    alert(`Restarting ${service}...\n\nRun: kubectl rollout restart deployment/${service} -n ai-stack`);
                 }
             }
         }
@@ -1015,11 +1013,8 @@
             console.log(`Running action: ${action}`);
 
             const actions = {
-                'restart-services': 'kubectl rollout restart deployment -n ai-stack',
                 'run-tests': 'cd ai-stack/tests && pytest -v',
                 'backup': './scripts/manage-secrets.sh backup',
-                'view-logs': 'kubectl logs -n ai-stack -l app=aidb --tail=100',
-                'health-check': 'kubectl get pods -n ai-stack'
             };
 
             const command = actions[action] || 'echo "Unknown action"';

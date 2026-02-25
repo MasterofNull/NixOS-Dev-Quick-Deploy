@@ -1,3 +1,8 @@
+---
+name: system_bootstrap
+description: Instructions and workflow for the system_bootstrap skill.
+---
+
 #!/usr/bin/env python3
 """
 Run the canonical health check (and optional doc sync) so agents can verify the
@@ -43,3 +48,7 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+## Maintenance
+- Version: 1.0.0
+- Keep this skill aligned with current repository workflows.

@@ -85,10 +85,10 @@ Legacy/template paths should be treated as migration debt and removed.
 
 ## 7. Legacy Fallback and Rollback
 
-Legacy phase/template mode remains for emergency-only recovery:
+Current flake-first mode remains the supported deployment path:
 
 ```bash
-./nixos-quick-deploy.sh --legacy-phases
+./nixos-quick-deploy.sh --host nixos --profile ai-dev
 ```
 
 Generation rollback commands:

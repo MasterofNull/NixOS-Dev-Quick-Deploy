@@ -287,3 +287,6 @@ The script returns JSON with error details:
 - Add comments to cells with complex formulas or important assumptions
 - Document data sources for hardcoded values
 - Include notes for key calculations and model sections
+## Maintenance
+- Version: 1.0.0
+- Keep this skill aligned with current repository workflows.

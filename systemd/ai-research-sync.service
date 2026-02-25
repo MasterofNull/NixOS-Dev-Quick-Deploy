@@ -1,0 +1,13 @@
+[Unit]
+Description=Weekly AI research sync and scoring
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__PROJECT_ROOT__
+ExecStart=/run/current-system/sw/bin/bash __PROJECT_ROOT__/scripts/sync-ai-research-knowledge.sh
+Environment=PATH=/run/current-system/sw/bin:/home/hyperd/.nix-profile/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target

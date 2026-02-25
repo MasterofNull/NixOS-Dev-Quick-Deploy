@@ -295,7 +295,6 @@ QDRANT_URL=http://local-ai-qdrant:6333
 - **Status**: Pending (needs container network access configuration)
 
 ### Kubernetes CronJobs
-- **Definition**: [ai-stack/kubernetes/backup-cronjobs.yaml](ai-stack/kubernetes/backup-cronjobs.yaml)
 - **PostgreSQL**: Daily at 2 AM
 - **Qdrant**: Daily at 3 AM
 - **Status**: Configuration ready, not yet deployed

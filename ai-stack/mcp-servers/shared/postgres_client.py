@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import socket
 from urllib.parse import urlencode
 
 import psycopg
@@ -23,6 +24,16 @@ class PostgresClient:
         sslcert: str | None = None,
         sslkey: str | None = None,
     ) -> None:
+        if not host:
+            host = "127.0.0.1"
+        else:
+            # Be defensive in service startup: fall back to loopback when a hostname
+            # from external config is not resolvable in this runtime.
+            try:
+                socket.getaddrinfo(host, port)
+            except OSError:
+                host = "127.0.0.1"
+
         base_dsn = f"postgresql://{user}:{password}@{host}:{port}/{database}"
         params = {}
         if sslmode:

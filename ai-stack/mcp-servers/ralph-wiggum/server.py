@@ -64,6 +64,14 @@ structlog.configure(
 )
 
 logger = structlog.get_logger()
+STRICT_ENV = os.getenv("AI_STRICT_ENV", "true").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _require_env(name: str) -> str:
+    value = (os.getenv(name) or "").strip()
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
 
 # ============================================================================
 # Prometheus Metrics
@@ -152,8 +160,12 @@ def validate_dependencies():
     logger.info("pre_flight_checks_complete")
 
 # Configuration from environment
+DEFAULT_DATA_DIR = os.getenv("DATA_DIR", "/var/lib/nixos-ai-stack/ralph").rstrip("/")
+DEFAULT_STATE_FILE = os.path.join(DEFAULT_DATA_DIR, "ralph-state.json")
+DEFAULT_TELEMETRY_PATH = os.path.join(DEFAULT_DATA_DIR, "telemetry", "ralph-events.jsonl")
+
 CONFIG = {
-    "port": int(os.getenv("RALPH_MCP_SERVER_PORT", "8098")),
+    "port": int(_require_env("PORT")),
     "loop_enabled": os.getenv("RALPH_LOOP_ENABLED", "true").lower() == "true",
     "exit_code_block": int(os.getenv("RALPH_EXIT_CODE_BLOCK", "2")),
     # NEW: Adaptive iteration limits from .env
@@ -169,8 +181,8 @@ CONFIG = {
     # Existing config
     "context_recovery": os.getenv("RALPH_CONTEXT_RECOVERY", "true").lower() == "true",
     "git_integration": os.getenv("RALPH_GIT_INTEGRATION", "true").lower() == "true",
-    "state_file": os.getenv("RALPH_STATE_FILE", "/data/ralph-state.json"),
-    "telemetry_path": os.getenv("RALPH_TELEMETRY_PATH", "/data/telemetry/ralph-events.jsonl"),
+    "state_file": os.getenv("RALPH_STATE_FILE", DEFAULT_STATE_FILE),
+    "telemetry_path": os.getenv("RALPH_TELEMETRY_PATH", DEFAULT_TELEMETRY_PATH),
     "require_approval": os.getenv("RALPH_REQUIRE_APPROVAL", "false").lower() == "true",
     "approval_threshold": os.getenv("RALPH_APPROVAL_THRESHOLD", "high"),
     "audit_log": os.getenv("RALPH_AUDIT_LOG", os.getenv("AI_TELEMETRY_ENABLED", "false")).lower() == "true",
@@ -230,8 +242,8 @@ async def lifespan(app: FastAPI):
 
     # Initialize components
     state_manager = StateManager(CONFIG["state_file"])
-    hybrid_url = os.getenv("RALPH_COORDINATOR_URL", "http://hybrid-coordinator:8092")
-    aidb_url = os.getenv("RALPH_AIDB_URL", "http://aidb:8091")
+    hybrid_url = _require_env("HYBRID_COORDINATOR_URL")
+    aidb_url = _require_env("AIDB_URL")
     hybrid_client = HybridClient(base_url=hybrid_url)
     aidb_client = AIDBClient(base_url=aidb_url)
     orchestrator = AgentOrchestrator(
@@ -474,9 +486,10 @@ def main():
 
     logger.info("ralph_starting", config=CONFIG)
 
+    host = _require_env("HOST")
     uvicorn.run(
         app,
-        host="0.0.0.0",
+        host=host,
         port=CONFIG["port"],
         log_level="info",
         access_log=True

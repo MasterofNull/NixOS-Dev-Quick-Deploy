@@ -195,17 +195,26 @@ in
     })
 
     (lib.mkIf logCfg.audit.enable {
+      # Ensure watched paths exist before auditctl loads rules.
+      # auditctl fails the unit when a -w target path is missing.
+      systemd.tmpfiles.rules =
+        map (path: "d ${path} 0750 root root -") logCfg.audit.watchPaths;
+
+      # When audit is already immutable (enabled=2), reloading rules during
+      # switch returns non-zero even though policy enforcement is active.
+      # Treat these auditctl statuses as non-fatal to keep switch idempotent.
+      systemd.services.audit-rules-nixos.serviceConfig.SuccessExitStatus = [ "1" "255" ];
+
       security.audit = {
         enable = true;
-        rules =
-          auditWatchRules
-          ++ lib.optional logCfg.audit.immutableRules "-e 2";
+        # Keep rules limited to watch declarations; NixOS appends control
+        # directives (including final -e) when rendering audit.rules.
+        # Appending our own -e 2 here conflicts with the generated tail and can
+        # produce auditctl load errors during boot.
+        rules = auditWatchRules;
+        backlogLimit = 8192;
       };
       security.auditd.enable = true;
-      boot.kernelParams = [
-        "audit=1"
-        "audit_backlog_limit=8192"
-      ];
     })
 
     (lib.mkIf logCfg.remoteSyslog.enable {

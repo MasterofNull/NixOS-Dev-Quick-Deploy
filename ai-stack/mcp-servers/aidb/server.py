@@ -6,11 +6,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
+import ipaddress
 import json
 import logging
 import os
 from logging.handlers import RotatingFileHandler
 import signal
+import socket
 import sys
 import threading
 import time
@@ -75,12 +77,175 @@ SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
 VECTOR_CACHE_EPOCH_KEY = "aidb:vector_search:epoch"
 
 LOGGER = logging.getLogger("aidb.mcp")
+RISK_ACK_PHRASE = "I_ACCEPT_HIGH_RISK_TOOL_EXECUTION"
+HIGH_RISK_TOOL_KEYWORDS = (
+    "shell",
+    "command",
+    "exec",
+    "execute",
+    "run_",
+    "sandbox",
+    "sudo",
+    "ssh",
+    "remote",
+    "delete",
+    "write",
+    "patch",
+    "deploy",
+    "install",
+)
+MEDIUM_RISK_TOOL_KEYWORDS = (
+    "crawl",
+    "fetch",
+    "sync",
+    "import",
+    "update",
+    "discover",
+)
+
+
+def _tool_risk_tier(tool_name: str) -> str:
+    normalized = (tool_name or "").strip().lower()
+    if not normalized:
+        return "unknown"
+    if any(keyword in normalized for keyword in HIGH_RISK_TOOL_KEYWORDS):
+        return "high"
+    if any(keyword in normalized for keyword in MEDIUM_RISK_TOOL_KEYWORDS):
+        return "medium"
+    return "low"
+
+
+def _tool_policy_config() -> Dict[str, Any]:
+    return {
+        "allow_medium_risk_tools": os.getenv("AIDB_ALLOW_MEDIUM_RISK_TOOLS", "true").lower() == "true",
+        "allow_high_risk_tools": os.getenv("AIDB_ALLOW_HIGH_RISK_TOOLS", "false").lower() == "true",
+        "high_risk_ack_phrase_required": RISK_ACK_PHRASE,
+    }
+
+
+def _enforce_tool_execution_policy(tool_name: str, parameters: Dict[str, Any]) -> None:
+    policy = _tool_policy_config()
+    risk_tier = _tool_risk_tier(tool_name)
+    if risk_tier == "medium" and not policy["allow_medium_risk_tools"]:
+        raise PermissionError(f"Tool '{tool_name}' blocked by tool risk policy (tier=medium)")
+    if risk_tier == "high":
+        ack = str(parameters.get("risk_ack", "")).strip()
+        if not policy["allow_high_risk_tools"] or ack != RISK_ACK_PHRASE:
+            raise PermissionError(
+                f"Tool '{tool_name}' blocked by tool risk policy (tier=high). "
+                "Set AIDB_ALLOW_HIGH_RISK_TOOLS=true and pass risk_ack to execute."
+            )
+
+
+def _ssrf_policy_config() -> Dict[str, Any]:
+    allowed_hosts_raw = os.getenv("AIDB_OUTBOUND_ALLOWLIST", "").strip()
+    allowlist = [item.strip().lower() for item in allowed_hosts_raw.split(",") if item.strip()]
+    return {
+        "allowlist": allowlist,
+        "block_private_ranges": os.getenv("AIDB_BLOCK_PRIVATE_EGRESS", "true").lower() == "true",
+        "allow_http": os.getenv("AIDB_ALLOW_PLAINTEXT_HTTP", "false").lower() == "true",
+    }
+
+
+def _looks_private_or_local(hostname: str) -> bool:
+    host = (hostname or "").strip().lower()
+    if not host:
+        return True
+    if host in {"localhost", "localhost.localdomain"}:
+        return True
+    if host.endswith(".local") or host.endswith(".localhost"):
+        return True
+    try:
+        addr = ipaddress.ip_address(host)
+        return (
+            addr.is_private
+            or addr.is_loopback
+            or addr.is_link_local
+            or addr.is_multicast
+            or addr.is_reserved
+            or addr.is_unspecified
+        )
+    except ValueError:
+        pass
+
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        # DNS failures should not bypass policy.
+        return True
+    for info in infos:
+        candidate = info[4][0]
+        try:
+            addr = ipaddress.ip_address(candidate)
+        except ValueError:
+            return True
+        if (
+            addr.is_private
+            or addr.is_loopback
+            or addr.is_link_local
+            or addr.is_multicast
+            or addr.is_reserved
+            or addr.is_unspecified
+        ):
+            return True
+    return False
+
+
+def _assert_safe_outbound_url(url: str, *, purpose: str = "outbound_request") -> None:
+    parsed = urlparse(url)
+    policy = _ssrf_policy_config()
+    host = (parsed.hostname or "").strip().lower()
+    scheme = (parsed.scheme or "").strip().lower()
+    if scheme not in {"http", "https"}:
+        raise PermissionError(f"{purpose}: unsupported URL scheme '{scheme}'")
+    if scheme == "http" and not policy["allow_http"]:
+        raise PermissionError(f"{purpose}: plaintext http is blocked by policy")
+    if not host:
+        raise PermissionError(f"{purpose}: missing hostname")
+
+    allowlist = policy["allowlist"]
+    if allowlist:
+        if host not in allowlist and not any(host.endswith(f".{item}") for item in allowlist):
+            raise PermissionError(f"{purpose}: host '{host}' is not allowlisted")
+
+    if policy["block_private_ranges"] and _looks_private_or_local(host):
+        raise PermissionError(f"{purpose}: host '{host}' resolves to private/local network space")
+
+
+def _guardrail_precheck(tool_name: str, parameters: Dict[str, Any]) -> None:
+    payload = json.dumps(parameters or {}, default=str).lower()
+    exfiltration_signals = (
+        "/etc/shadow",
+        "private key",
+        "aws_secret",
+        "x-api-key",
+        "bearer ",
+        "secrets",
+        "token",
+    )
+    if any(signal in payload for signal in exfiltration_signals):
+        raise PermissionError(f"Tool '{tool_name}' blocked by guardrail precheck: exfiltration signal")
+
+    for field in ("url", "source_url", "endpoint"):
+        value = parameters.get(field)
+        if isinstance(value, str) and value.strip():
+            _assert_safe_outbound_url(value, purpose=f"tool_precheck:{tool_name}")
+
+
+def _guardrail_postcheck(tool_name: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    redacted = json.loads(json.dumps(result, default=str))
+    text = json.dumps(redacted, default=str).lower()
+    if "-----begin private key-----" in text:
+        raise PermissionError(f"Tool '{tool_name}' blocked by guardrail postcheck: sensitive output")
+    return redacted
 
 
 def configure_tracing() -> None:
     if os.getenv("OTEL_TRACING_ENABLED", "true").lower() != "true":
         return
-    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://jaeger:4317")
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+    if not endpoint:
+        return
     resource = Resource.create({"service.name": SERVICE_NAME})
     sample_rate = float(os.getenv("OTEL_SAMPLE_RATE", "1.0"))
     sampler = ParentBased(TraceIdRatioBased(sample_rate))
@@ -1647,7 +1812,7 @@ class MCPServer:
 
         self._tool_registry = ToolRegistry(settings, self._engine, self._redis)
         self._sandbox = SandboxExecutor(settings)
-        self._external_http = httpx.AsyncClient(timeout=20.0)
+        self._external_http = httpx.AsyncClient(timeout=20.0, follow_redirects=False)
         self._monitoring = MonitoringServer(settings, self)
         self._catalog = CatalogBootstrapper(settings, self._engine)
         self._skills = OpenSkillsRepository(self._engine)
@@ -1672,9 +1837,24 @@ class MCPServer:
             enabled=self.settings.rate_limit_enabled,
             rpm=self.settings.rate_limit_rpm,
         )
+        data_root = Path(
+            os.getenv("AIDB_DATA_DIR")
+            or os.getenv("DATA_DIR")
+            or "/var/lib/nixos-ai-stack/aidb"
+        )
+        federation_storage = (
+            Path(os.getenv("AIDB_FEDERATION_STORAGE_PATH", ""))
+            if os.getenv("AIDB_FEDERATION_STORAGE_PATH")
+            else data_root / "federation" / "servers.json"
+        )
+        federation_sources = (
+            Path(os.getenv("AIDB_MCP_SOURCES_DIR", ""))
+            if os.getenv("AIDB_MCP_SOURCES_DIR")
+            else data_root / "mcp_sources"
+        )
         self._federation = FederationStore(
-            storage_path=self._repo_root / "data" / "federation" / "servers.json",
-            sources_dir=self._repo_root / "data" / "mcp_sources",
+            storage_path=federation_storage,
+            sources_dir=federation_sources,
         )
 
         # ML Engine integration
@@ -2028,6 +2208,13 @@ class MCPServer:
         except Exception as exc:  # noqa: BLE001
             status["rag"] = f"unavailable: {exc}"
 
+        status["tool_execution_policy"] = {
+            **_tool_policy_config(),
+            "high_risk_tool_keywords": list(HIGH_RISK_TOOL_KEYWORDS),
+            "medium_risk_tool_keywords": list(MEDIUM_RISK_TOOL_KEYWORDS),
+        }
+        status["outbound_http_policy"] = _ssrf_policy_config()
+
         # Circuit breaker states
         status["circuit_breakers"] = {
             name: breaker.state
@@ -2362,15 +2549,27 @@ class MCPServer:
         normalized = (tool_name or "").strip().lower()
         if not normalized:
             raise ValueError("tool_name must be provided")
+        risk_tier = _tool_risk_tier(tool_name)
+        tracer = trace.get_tracer(SERVICE_NAME)
+        with tracer.start_as_current_span(
+            "aidb.tool.execute",
+            attributes={
+                "gen_ai.tool.name": tool_name,
+                "gen_ai.tool.risk_tier": risk_tier,
+            },
+        ):
+            _enforce_tool_execution_policy(tool_name, parameters)
+            _guardrail_precheck(tool_name, parameters)
 
-        if "google" in normalized and "search" in normalized:
-            payload = await self._execute_google_websearch(tool_name, parameters)
-            return {"tool": tool_name, **payload}
+            if "google" in normalized and "search" in normalized:
+                payload = await self._execute_google_websearch(tool_name, parameters)
+                return _guardrail_postcheck(tool_name, {"tool": tool_name, **payload})
 
         raise ValueError(f"Tool '{tool_name}' is not yet supported for execution")
 
     async def _execute_google_websearch(self, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a Google Custom Search query."""
+        _assert_safe_outbound_url("https://www.googleapis.com/customsearch/v1", purpose="google_search")
         api_key = self.settings.google_api_key or os.environ.get("GOOGLE_SEARCH_API_KEY")
         cse_id = self.settings.google_cse_id or os.environ.get("GOOGLE_SEARCH_CX")
         if not api_key or not cse_id:
@@ -2462,6 +2661,10 @@ class MCPServer:
         return await self._federation.list_servers()
 
     async def register_federated_server(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        server_url = str(payload.get("server_url") or "").strip()
+        if not server_url:
+            raise ValueError("server_url is required")
+        _assert_safe_outbound_url(server_url, purpose="register_federated_server")
         return await self._federation.upsert(payload)
 
     async def crawl_federation(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -2471,6 +2674,7 @@ class MCPServer:
         registered: List[Dict[str, Any]] = []
         for url in discovered:
             try:
+                _assert_safe_outbound_url(url, purpose="crawl_federation")
                 record = await self.register_federated_server(
                     {
                         "server_url": url,
@@ -2648,6 +2852,7 @@ class MCPServer:
         return await self._persist_skill(skill)
 
     async def import_skill_from_url(self, url: str, slug: Optional[str] = None, managed_by: str = "agent") -> SkillRecord:
+        _assert_safe_outbound_url(url, purpose="import_skill_from_url")
         response = await self._external_http.get(url)
         response.raise_for_status()
         parsed = urlparse(url)

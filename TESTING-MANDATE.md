@@ -180,7 +180,6 @@ Every failure found in chaos testing is a **potential production disaster avoide
 #### API Keys (CRITICAL)
 ```bash
 # Current state:
-$ ls -la ai-stack/kubernetes/secrets/generated/stack_api_key
 -r--r--r--  # Mode 0444 = WORLD READABLE!
 
 # Docker secrets:
@@ -368,7 +367,6 @@ Day 5: Customer reports it (you find out last)
 1. **Fix API Key Security**
    ```bash
    # Fix file permissions
-   chmod 400 ai-stack/kubernetes/secrets/generated/stack_api_key
 
    # Create per-service keys
    ./scripts/generate-api-key.sh --service aidb

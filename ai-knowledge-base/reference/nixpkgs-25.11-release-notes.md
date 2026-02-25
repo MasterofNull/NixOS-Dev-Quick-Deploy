@@ -52,8 +52,6 @@
 - installShellFiles now allows installManPage to take a piped input, add the --name flag for renaming the file when installed. You can also append -- to opt-out of all subsequent parsing.
 - kbd package’s outputs now include a man and scripts outputs. The unicode_start and unicode_stop Bash scripts are now part of the scripts output, allowing most usages of the kbd package to not pull in bash .
 - k2pdfopt has been removed, as it’s broken.
-- k3s airgap images passthru attributes have changed: imagesList was removed airgapImages was renamed to airgap-images airgapImagesAmd64 was renamed to airgap-images-amd64-tar-zst airgapImagesArm64 was renamed to airgap-images-arm64-tar-zst airgapImagesArm was renamed to airgap-images-arm-tar-zst
-- k3s airgap images passthru attributes have changed:
 - imagesList was removed
 - airgapImages was renamed to airgap-images
 - airgapImagesAmd64 was renamed to airgap-images-amd64-tar-zst

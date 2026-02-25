@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Run all BATS integration tests
-# Usage: RUN_K3S_INTEGRATION=true ./tests/run-integration-tests.sh
+# Usage: RUN_CLUSTER_INTEGRATION=true ./tests/run-integration-tests.sh
 # Optional flags:
 #   RUN_NETPOL_TEST=true      # Enable NetworkPolicy enforcement test
 #   RUN_REGISTRY_TEST=true    # Enable local registry availability test

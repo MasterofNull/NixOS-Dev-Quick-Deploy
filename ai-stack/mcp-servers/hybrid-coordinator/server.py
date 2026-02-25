@@ -16,6 +16,7 @@ Features:
 
 import asyncio
 import fcntl  # P2-REL-003: File locking for telemetry
+import hashlib
 import json
 import logging
 import os
@@ -57,6 +58,7 @@ from shared.stack_settings import HybridSettings
 from shared.auth_http_client import create_embeddings_client
 from shared.circuit_breaker import CircuitBreakerError, CircuitBreakerRegistry, CircuitState
 from shared.telemetry_privacy import scrub_telemetry_payload
+from context_compression import ContextCompressor
 SERVICE_NAME = "hybrid-coordinator"
 SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
 HYBRID_SETTINGS = HybridSettings.load()
@@ -97,12 +99,55 @@ def configure_logging() -> None:
 
 configure_logging()
 logger = logging.getLogger(SERVICE_NAME)
+STRICT_ENV = os.getenv("AI_STRICT_ENV", "true").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _require_env(name: str) -> str:
+    value = (os.getenv(name) or "").strip()
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
+
+
+def _enforce_startup_env() -> None:
+    if not STRICT_ENV:
+        return
+
+    required_env = [
+        "QDRANT_URL",
+        "LLAMA_CPP_BASE_URL",
+        "EMBEDDING_SERVICE_URL",
+        "AIDB_URL",
+        "REDIS_URL",
+        "POSTGRES_HOST",
+        "POSTGRES_PORT",
+        "POSTGRES_DB",
+        "POSTGRES_USER",
+        "POSTGRES_PASSWORD_FILE",
+        "HYBRID_API_KEY_FILE",
+        "EMBEDDING_API_KEY_FILE",
+        "MCP_SERVER_MODE",
+        "MCP_SERVER_PORT",
+    ]
+    for env_name in required_env:
+        _require_env(env_name)
+
+    for secret_env in ("POSTGRES_PASSWORD_FILE", "HYBRID_API_KEY_FILE", "EMBEDDING_API_KEY_FILE"):
+        secret_file = Path(_require_env(secret_env))
+        if not secret_file.exists():
+            raise RuntimeError(f"AI_STRICT_ENV requires existing secret file for {secret_env}: {secret_file}")
+        if not secret_file.is_file():
+            raise RuntimeError(f"AI_STRICT_ENV requires file path for {secret_env}: {secret_file}")
 
 
 def configure_tracing() -> None:
     if os.getenv("OTEL_TRACING_ENABLED", "true").lower() != "true":
         return
-    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://jaeger:4317")
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+    if not endpoint:
+        if STRICT_ENV:
+            raise RuntimeError("AI_STRICT_ENV requires OTEL_EXPORTER_OTLP_ENDPOINT when OTEL_TRACING_ENABLED=true")
+        return
     resource = Resource.create({"service.name": SERVICE_NAME})
     sample_rate = float(os.getenv("OTEL_SAMPLE_RATE", "1.0"))
     sampler = ParentBased(TraceIdRatioBased(sample_rate))
@@ -128,6 +173,7 @@ feedback_api: Optional[Any] = None
 progressive_disclosure: Optional[Any] = None
 learning_pipeline: Optional[Any] = None  # Continuous learning pipeline
 postgres_client: Optional[Any] = None
+context_compressor: Optional[ContextCompressor] = None
 
 CIRCUIT_BREAKERS = CircuitBreakerRegistry(
     default_config={
@@ -156,7 +202,18 @@ HYBRID_STATS = {
     "context_hits": 0,
     "last_query_at": None,
     "agent_types": {},
+    "capability_discovery": {
+        "invoked": 0,
+        "skipped": 0,
+        "cache_hits": 0,
+        "errors": 0,
+        "last_decision": "unknown",
+        "last_reason": "not-evaluated",
+    },
 }
+
+DISCOVERY_CACHE: Dict[str, Dict[str, Any]] = {}
+DISCOVERY_CACHE_LOCK = asyncio.Lock()
 
 REQUEST_COUNT = Counter(
     "hybrid_requests_total",
@@ -186,6 +243,20 @@ ROUTE_ERRORS = Counter(
     "hybrid_route_errors_total",
     "Hybrid coordinator route errors",
     ["route"],
+)
+DISCOVERY_DECISIONS = Counter(
+    "hybrid_capability_discovery_decisions_total",
+    "Hybrid capability discovery decisions",
+    ["decision", "reason"],
+)
+DISCOVERY_LATENCY = Histogram(
+    "hybrid_capability_discovery_latency_seconds",
+    "Hybrid capability discovery latency in seconds",
+)
+AUTONOMY_BUDGET_EXCEEDED = Counter(
+    "hybrid_autonomy_budget_exceeded_total",
+    "Hybrid autonomy budget exceed events",
+    ["budget"],
 )
 
 
@@ -352,6 +423,271 @@ def _tree_expand_queries(query: str, branch_factor: int) -> List[str]:
     return deduped[: max(1, branch_factor)]
 
 
+DISCOVERY_DOMAIN_KEYWORDS = {
+    "tool", "tools", "mcp", "server", "servers", "skill", "skills",
+    "dataset", "datasets", "document", "documents", "catalog", "library",
+    "rag", "embedding", "embeddings", "vector", "workflow", "prompt",
+    "prompts", "agent", "agents", "extension", "extensions", "vscodium",
+}
+
+DISCOVERY_ACTION_KEYWORDS = {
+    "find", "discover", "list", "lookup", "search", "select", "choose",
+    "recommend", "use", "apply", "install", "configure", "integrate",
+    "wire", "map", "route", "optimize", "ingest",
+}
+
+
+def _update_capability_discovery_stats(decision: str, reason: str) -> None:
+    stats = HYBRID_STATS["capability_discovery"]
+    stats["last_decision"] = decision
+    stats["last_reason"] = reason
+    if decision == "invoked":
+        stats["invoked"] += 1
+    elif decision == "cache_hit":
+        stats["cache_hits"] += 1
+    elif decision == "skipped":
+        stats["skipped"] += 1
+    elif decision == "error":
+        stats["errors"] += 1
+    DISCOVERY_DECISIONS.labels(decision=decision, reason=reason).inc()
+
+
+def _build_discovery_cache_key(query: str, intent_tags: List[str]) -> str:
+    normalized_query = " ".join(_normalize_tokens(query))[:512]
+    normalized_tags = ",".join(sorted(intent_tags))
+    digest = hashlib.sha256(f"{normalized_query}|{normalized_tags}".encode("utf-8")).hexdigest()
+    return digest
+
+
+def _should_run_capability_discovery(query: str) -> Tuple[bool, str, List[str]]:
+    if not Config.AI_CAPABILITY_DISCOVERY_ENABLED:
+        return False, "disabled", []
+    if len(query.strip()) < Config.AI_CAPABILITY_DISCOVERY_MIN_QUERY_CHARS:
+        return False, "query-too-short", []
+
+    tokens = _normalize_tokens(query)
+    if not tokens:
+        return False, "no-meaningful-tokens", []
+
+    token_set = set(tokens)
+    domain_hits = sorted(t for t in token_set if t in DISCOVERY_DOMAIN_KEYWORDS)
+    action_hits = sorted(t for t in token_set if t in DISCOVERY_ACTION_KEYWORDS)
+
+    direct_triggers = {"mcp", "tools", "skills", "dataset", "datasets", "rag", "workflow"}
+    if token_set.intersection(direct_triggers):
+        return True, "explicit-discovery-intent", domain_hits or ["discovery"]
+
+    if domain_hits and action_hits:
+        return True, "domain-plus-action", domain_hits
+
+    return False, "no-discovery-intent", []
+
+
+def _rank_items_for_query(
+    items: List[Dict[str, Any]],
+    query: str,
+    *,
+    fields: List[str],
+    limit: int,
+) -> List[Dict[str, Any]]:
+    tokens = _normalize_tokens(query)
+    if not items:
+        return []
+    if not tokens:
+        return items[:limit]
+
+    scored: List[Tuple[int, Dict[str, Any]]] = []
+    for item in items:
+        text_parts: List[str] = []
+        for field in fields:
+            value = item.get(field)
+            if isinstance(value, str):
+                text_parts.append(value.lower())
+            elif isinstance(value, list):
+                text_parts.extend(str(v).lower() for v in value if isinstance(v, (str, int)))
+        corpus = " ".join(text_parts)
+        score = sum(2 if token == corpus else 1 for token in tokens if token in corpus)
+        if score > 0:
+            scored.append((score, item))
+    if not scored:
+        return items[:limit]
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    return [item for _, item in scored[:limit]]
+
+
+async def _discover_applicable_resources(query: str) -> Dict[str, Any]:
+    decision, reason, intent_tags = _should_run_capability_discovery(query)
+    if not decision:
+        _update_capability_discovery_stats("skipped", reason)
+        return {
+            "decision": "skipped",
+            "reason": reason,
+            "intent_tags": intent_tags,
+            "cache_hit": False,
+            "tools": [],
+            "skills": [],
+            "servers": [],
+            "datasets": [],
+        }
+
+    if aidb_client is None or not Config.AIDB_URL:
+        _update_capability_discovery_stats("skipped", "aidb-unavailable")
+        return {
+            "decision": "skipped",
+            "reason": "aidb-unavailable",
+            "intent_tags": intent_tags,
+            "cache_hit": False,
+            "tools": [],
+            "skills": [],
+            "servers": [],
+            "datasets": [],
+        }
+
+    cache_key = _build_discovery_cache_key(query, intent_tags)
+    now = time.time()
+    ttl = max(60, Config.AI_CAPABILITY_DISCOVERY_TTL_SECONDS)
+    async with DISCOVERY_CACHE_LOCK:
+        cached = DISCOVERY_CACHE.get(cache_key)
+        if cached and float(cached.get("expires_at", 0)) > now:
+            _update_capability_discovery_stats("cache_hit", "ttl-hit")
+            return {
+                **cached["payload"],
+                "cache_hit": True,
+                "decision": "cache_hit",
+                "reason": "ttl-hit",
+                "intent_tags": intent_tags,
+            }
+
+    start = time.time()
+
+    async def _fetch(path: str, params: Optional[Dict[str, Any]] = None) -> Any:
+        attempts = max(1, Config.AI_AUTONOMY_MAX_RETRIES + 1)
+        last_error: Optional[Exception] = None
+        for _ in range(attempts):
+            try:
+                response = await aidb_client.get(path, params=params, timeout=10.0)
+                response.raise_for_status()
+                return response.json()
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                await asyncio.sleep(0.1)
+        AUTONOMY_BUDGET_EXCEEDED.labels(budget="external_retries").inc()
+        raise last_error or RuntimeError("external_fetch_failed")
+
+    try:
+        fetch_plan = [
+            ("tools", "/tools", {"mode": "minimal"}),
+            ("skills", "/skills", {"include_pending": "false"}),
+            ("documents", "/documents", {"limit": 120, "include_content": "false", "include_pending": "false"}),
+            ("servers", "/api/v1/federation/servers", None),
+        ]
+        max_calls = max(1, Config.AI_AUTONOMY_MAX_EXTERNAL_CALLS)
+        if max_calls < len(fetch_plan):
+            AUTONOMY_BUDGET_EXCEEDED.labels(budget="external_calls").inc()
+        selected_plan = fetch_plan[:max_calls]
+        responses = await asyncio.gather(
+            *[_fetch(path, params) for _, path, params in selected_plan]
+        )
+        payload_map = {name: data for (name, _, _), data in zip(selected_plan, responses)}
+        tools_payload = payload_map.get("tools", {"tools": []})
+        skills_payload = payload_map.get("skills", [])
+        docs_payload = payload_map.get("documents", {"documents": []})
+        servers_payload = payload_map.get("servers", {"servers": []})
+
+        max_items = max(1, Config.AI_CAPABILITY_DISCOVERY_MAX_RESULTS)
+        tools = _rank_items_for_query(
+            tools_payload.get("tools", []),
+            query,
+            fields=["name", "description"],
+            limit=max_items,
+        )
+        skills = _rank_items_for_query(
+            skills_payload if isinstance(skills_payload, list) else [],
+            query,
+            fields=["name", "description", "tags"],
+            limit=max_items,
+        )
+        servers = _rank_items_for_query(
+            servers_payload.get("servers", []),
+            query,
+            fields=["name", "description", "server_type", "source_url"],
+            limit=max_items,
+        )
+        datasets = _rank_items_for_query(
+            docs_payload.get("documents", []),
+            query,
+            fields=["title", "relative_path", "project", "content_type"],
+            limit=max_items,
+        )
+
+        payload = {
+            "decision": "invoked",
+            "reason": "live-discovery",
+            "intent_tags": intent_tags,
+            "cache_hit": False,
+            "tools": tools,
+            "skills": skills,
+            "servers": servers,
+            "datasets": datasets,
+            "latency_ms": int((time.time() - start) * 1000),
+        }
+        async with DISCOVERY_CACHE_LOCK:
+            DISCOVERY_CACHE[cache_key] = {
+                "expires_at": now + ttl,
+                "payload": payload,
+            }
+        DISCOVERY_LATENCY.observe(time.time() - start)
+        _update_capability_discovery_stats("invoked", "live-discovery")
+        return payload
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("capability_discovery_failed error=%s", exc)
+        _update_capability_discovery_stats("error", "request-failed")
+        return {
+            "decision": "error",
+            "reason": "request-failed",
+            "intent_tags": intent_tags,
+            "cache_hit": False,
+            "tools": [],
+            "skills": [],
+            "servers": [],
+            "datasets": [],
+            "error": str(exc),
+        }
+
+
+def _format_discovery_context(discovery: Dict[str, Any]) -> str:
+    decision = discovery.get("decision", "unknown")
+    if decision in {"skipped", "error"}:
+        return ""
+
+    lines: List[str] = ["\n## Applicable Tools, Skills, MCP Servers, and Datasets\n"]
+    tools = discovery.get("tools") or []
+    skills = discovery.get("skills") or []
+    servers = discovery.get("servers") or []
+    datasets = discovery.get("datasets") or []
+
+    if tools:
+        lines.append("- Tools:\n")
+        for item in tools:
+            lines.append(f"  - {item.get('name', 'unknown')}: {item.get('description', 'No description')}\n")
+    if skills:
+        lines.append("- Skills:\n")
+        for item in skills:
+            lines.append(f"  - {item.get('name', item.get('slug', 'unknown'))}: {item.get('description', 'No description')}\n")
+    if servers:
+        lines.append("- MCP Servers:\n")
+        for item in servers:
+            lines.append(f"  - {item.get('name', 'unknown')}: {item.get('description', item.get('source_url', 'No description'))}\n")
+    if datasets:
+        lines.append("- Datasets/Documents:\n")
+        for item in datasets:
+            lines.append(f"  - {item.get('title', item.get('relative_path', 'unknown'))} ({item.get('project', 'default')})\n")
+
+    if len(lines) == 1:
+        return ""
+    return "".join(lines)
+
+
 # ============================================================================
 # Configuration
 # ============================================================================
@@ -360,7 +696,7 @@ def _tree_expand_queries(query: str, branch_factor: int) -> List[str]:
 class Config:
     """Hybrid coordinator configuration"""
 
-    QDRANT_URL = os.getenv("QDRANT_URL", HYBRID_SETTINGS.qdrant_url)
+    QDRANT_URL = _require_env("QDRANT_URL") if STRICT_ENV else os.getenv("QDRANT_URL", HYBRID_SETTINGS.qdrant_url)
     QDRANT_API_KEY_FILE = os.getenv("QDRANT_API_KEY_FILE", "")
     QDRANT_API_KEY = ""
     QDRANT_HNSW_M = int(os.getenv("QDRANT_HNSW_M", HYBRID_SETTINGS.qdrant_hnsw_m))
@@ -368,7 +704,7 @@ class Config:
     QDRANT_HNSW_FULL_SCAN_THRESHOLD = int(
         os.getenv("QDRANT_HNSW_FULL_SCAN_THRESHOLD", HYBRID_SETTINGS.qdrant_hnsw_full_scan_threshold)
     )
-    LLAMA_CPP_URL = os.getenv("LLAMA_CPP_BASE_URL", HYBRID_SETTINGS.llama_cpp_url)
+    LLAMA_CPP_URL = _require_env("LLAMA_CPP_BASE_URL") if STRICT_ENV else os.getenv("LLAMA_CPP_BASE_URL", HYBRID_SETTINGS.llama_cpp_url)
     LLAMA_CPP_CODER_URL = os.getenv(
         "LLAMA_CPP_CODER_URL", HYBRID_SETTINGS.llama_cpp_url
     )
@@ -378,10 +714,10 @@ class Config:
 
     EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", HYBRID_SETTINGS.embedding_model)
     EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIMENSIONS", HYBRID_SETTINGS.embedding_dimensions))
-    EMBEDDING_SERVICE_URL = os.getenv("EMBEDDING_SERVICE_URL", "")
+    EMBEDDING_SERVICE_URL = _require_env("EMBEDDING_SERVICE_URL") if STRICT_ENV else os.getenv("EMBEDDING_SERVICE_URL", "")
     EMBEDDING_API_KEY_FILE = os.getenv("EMBEDDING_API_KEY_FILE", "")
     EMBEDDING_API_KEY = ""
-    AIDB_URL = os.getenv("AIDB_URL", os.getenv("AIDB_BASE_URL", "http://aidb:8091"))
+    AIDB_URL = _require_env("AIDB_URL") if STRICT_ENV else os.getenv("AIDB_URL", "")
 
     LOCAL_CONFIDENCE_THRESHOLD = float(
         os.getenv("LOCAL_CONFIDENCE_THRESHOLD", HYBRID_SETTINGS.local_confidence_threshold)
@@ -405,7 +741,7 @@ class Config:
             or "~/.local/share/nixos-ai-stack/fine-tuning/dataset.jsonl",
         )
     )
-    API_KEY_FILE = os.getenv("HYBRID_API_KEY_FILE", HYBRID_SETTINGS.api_key_file or "")
+    API_KEY_FILE = _require_env("HYBRID_API_KEY_FILE") if STRICT_ENV else os.getenv("HYBRID_API_KEY_FILE", HYBRID_SETTINGS.api_key_file or "")
     API_KEY = ""
     AI_HARNESS_ENABLED = os.getenv("AI_HARNESS_ENABLED", "true").lower() == "true"
     AI_MEMORY_ENABLED = os.getenv("AI_MEMORY_ENABLED", "true").lower() == "true"
@@ -418,6 +754,49 @@ class Config:
         os.getenv("AI_HARNESS_MIN_ACCEPTANCE_SCORE", "0.7")
     )
     AI_HARNESS_MAX_LATENCY_MS = int(os.getenv("AI_HARNESS_MAX_LATENCY_MS", "3000"))
+    AI_CAPABILITY_DISCOVERY_ENABLED = os.getenv(
+        "AI_CAPABILITY_DISCOVERY_ENABLED",
+        "true",
+    ).lower() == "true"
+    AI_CAPABILITY_DISCOVERY_TTL_SECONDS = int(
+        os.getenv("AI_CAPABILITY_DISCOVERY_TTL_SECONDS", "1800")
+    )
+    AI_CAPABILITY_DISCOVERY_MIN_QUERY_CHARS = int(
+        os.getenv("AI_CAPABILITY_DISCOVERY_MIN_QUERY_CHARS", "18")
+    )
+    AI_CAPABILITY_DISCOVERY_MAX_RESULTS = int(
+        os.getenv("AI_CAPABILITY_DISCOVERY_MAX_RESULTS", "3")
+    )
+    AI_CAPABILITY_DISCOVERY_ON_QUERY = os.getenv(
+        "AI_CAPABILITY_DISCOVERY_ON_QUERY",
+        "true",
+    ).lower() == "true"
+    AI_AUTONOMY_MAX_EXTERNAL_CALLS = int(
+        os.getenv("AI_AUTONOMY_MAX_EXTERNAL_CALLS", "4")
+    )
+    AI_AUTONOMY_MAX_RETRIES = int(
+        os.getenv("AI_AUTONOMY_MAX_RETRIES", "1")
+    )
+    AI_AUTONOMY_MAX_RETRIEVAL_RESULTS = int(
+        os.getenv("AI_AUTONOMY_MAX_RETRIEVAL_RESULTS", "8")
+    )
+    AI_PROMPT_CACHE_POLICY_ENABLED = os.getenv(
+        "AI_PROMPT_CACHE_POLICY_ENABLED",
+        "true",
+    ).lower() == "true"
+    AI_PROMPT_CACHE_STATIC_PREFIX = os.getenv(
+        "AI_PROMPT_CACHE_STATIC_PREFIX",
+        "You are the NixOS AI stack coordinator. Prefer local-first secure execution.",
+    )
+    AI_SPECULATIVE_DECODING_ENABLED = os.getenv(
+        "AI_SPECULATIVE_DECODING_ENABLED",
+        "false",
+    ).lower() == "true"
+    AI_SPECULATIVE_DECODING_MODE = os.getenv(
+        "AI_SPECULATIVE_DECODING_MODE",
+        "draft-model",
+    )
+    AI_CONTEXT_TOKEN_BUDGET = int(os.getenv("AI_CONTEXT_TOKEN_BUDGET", "1200"))
 
 
 def _read_secret(path: str) -> str:
@@ -584,6 +963,7 @@ HARNESS_STATS = {
     "failed": 0,
     "failure_taxonomy": {},
     "last_run_at": None,
+    "scorecards_generated": 0,
 }
 
 
@@ -932,10 +1312,18 @@ async def augment_query_with_context(
         except Exception as e:
             logger.warning("Error searching best-practices: %s", e)
 
+        discovery = await _discover_applicable_resources(query)
+        discovery_context = _format_discovery_context(discovery)
+        if discovery_context:
+            results_text.append(discovery_context)
+
         if not results_text:
             span.set_attribute("context_found", False)
         else:
             span.set_attribute("context_found", True)
+        span.set_attribute("capability_discovery.decision", discovery.get("decision", "unknown"))
+        span.set_attribute("capability_discovery.reason", discovery.get("reason", "unknown"))
+        span.set_attribute("capability_discovery.cache_hit", bool(discovery.get("cache_hit", False)))
 
     # 6. Construct augmented prompt
     context_text = "".join(results_text) if results_text else "No relevant context found in local knowledge base."
@@ -954,6 +1342,16 @@ Please use this context to provide a more accurate and efficient response.
             "agent_type": agent_type,
             "context_count": len(context_ids),
             "collections": list(COLLECTIONS.keys()),
+            "capability_discovery": {
+                "decision": discovery.get("decision", "unknown"),
+                "reason": discovery.get("reason", "unknown"),
+                "cache_hit": bool(discovery.get("cache_hit", False)),
+                "intent_tags": discovery.get("intent_tags", []),
+                "tool_count": len(discovery.get("tools", [])),
+                "skill_count": len(discovery.get("skills", [])),
+                "server_count": len(discovery.get("servers", [])),
+                "dataset_count": len(discovery.get("datasets", [])),
+            },
         },
     )
     record_query_stats(agent_type, len(context_ids) > 0)
@@ -963,6 +1361,34 @@ Please use this context to provide a more accurate and efficient response.
         "context_ids": context_ids,
         "original_query": query,
         "context_count": len(context_ids),
+        "capability_discovery": {
+            "decision": discovery.get("decision", "unknown"),
+            "reason": discovery.get("reason", "unknown"),
+            "cache_hit": bool(discovery.get("cache_hit", False)),
+            "intent_tags": discovery.get("intent_tags", []),
+            "tools": [
+                {"name": item.get("name"), "description": item.get("description")}
+                for item in discovery.get("tools", [])
+            ],
+            "skills": [
+                {
+                    "name": item.get("name", item.get("slug")),
+                    "description": item.get("description"),
+                }
+                for item in discovery.get("skills", [])
+            ],
+            "servers": [
+                {"name": item.get("name"), "description": item.get("description")}
+                for item in discovery.get("servers", [])
+            ],
+            "datasets": [
+                {
+                    "title": item.get("title", item.get("relative_path")),
+                    "project": item.get("project"),
+                }
+                for item in discovery.get("datasets", [])
+            ],
+        },
     }
 
 
@@ -1050,6 +1476,11 @@ async def hybrid_search(
     for item in combined.values():
         item["sources"] = sorted(item["sources"])
         combined_results.append(item)
+    combined_results = _rerank_combined_results(query, combined_results)
+    max_results = max(1, Config.AI_AUTONOMY_MAX_RETRIEVAL_RESULTS)
+    if len(combined_results) > max_results:
+        AUTONOMY_BUDGET_EXCEEDED.labels(budget="retrieval_results").inc()
+        combined_results = combined_results[:max_results]
 
     record_telemetry_event(
         "hybrid_search",
@@ -1308,6 +1739,50 @@ async def run_harness_evaluation(
     }
 
 
+def build_harness_scorecard() -> Dict[str, Any]:
+    total = int(HARNESS_STATS.get("total_runs", 0) or 0)
+    passed = int(HARNESS_STATS.get("passed", 0) or 0)
+    failed = int(HARNESS_STATS.get("failed", 0) or 0)
+    pass_rate = (passed / total) if total else 0.0
+    discovery = HYBRID_STATS.get("capability_discovery", {})
+    discovery_invoked = int(discovery.get("invoked", 0) or 0)
+    discovery_skipped = int(discovery.get("skipped", 0) or 0)
+    discovery_hits = int(discovery.get("cache_hits", 0) or 0)
+    discovery_errors = int(discovery.get("errors", 0) or 0)
+    discovery_total = discovery_invoked + discovery_skipped + discovery_hits + discovery_errors
+    discovery_cache_rate = (discovery_hits / discovery_total) if discovery_total else 0.0
+    reliability_ok = pass_rate >= Config.AI_HARNESS_MIN_ACCEPTANCE_SCORE
+    discovery_error_rate = (discovery_errors / discovery_total) if discovery_total else 0.0
+    safety_ok = discovery_error_rate <= 0.05
+    HARNESS_STATS["scorecards_generated"] = int(HARNESS_STATS.get("scorecards_generated", 0) or 0) + 1
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "acceptance": {
+            "total": total,
+            "passed": passed,
+            "failed": failed,
+            "pass_rate": round(pass_rate, 4),
+            "target": Config.AI_HARNESS_MIN_ACCEPTANCE_SCORE,
+            "ok": reliability_ok,
+        },
+        "discovery": {
+            "invoked": discovery_invoked,
+            "skipped": discovery_skipped,
+            "cache_hits": discovery_hits,
+            "errors": discovery_errors,
+            "cache_hit_rate": round(discovery_cache_rate, 4),
+            "error_rate": round(discovery_error_rate, 4),
+            "ok": safety_ok,
+        },
+        "inference_optimizations": {
+            "prompt_cache_policy_enabled": Config.AI_PROMPT_CACHE_POLICY_ENABLED,
+            "speculative_decoding_enabled": Config.AI_SPECULATIVE_DECODING_ENABLED,
+            "speculative_decoding_mode": Config.AI_SPECULATIVE_DECODING_MODE,
+            "context_compression_enabled": Config.CONTEXT_COMPRESSION_ENABLED,
+        },
+    }
+
+
 def _summarize_results(items: List[Dict[str, Any]], max_items: int = 3) -> str:
     lines: List[str] = []
     for item in items[:max_items]:
@@ -1326,6 +1801,25 @@ def _summarize_results(items: List[Dict[str, Any]], max_items: int = 3) -> str:
     return "\n".join(lines) if lines else "No results."
 
 
+def _rerank_combined_results(query: str, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Apply a lightweight lexical+source-aware rerank pass over merged retrieval results."""
+    tokens = _normalize_tokens(query)
+    reranked: List[Dict[str, Any]] = []
+    for item in items:
+        payload = item.get("payload") or {}
+        text = " ".join(
+            str(payload.get(key, ""))
+            for key in ("title", "description", "content", "solution", "usage_pattern", "summary")
+        ).lower()
+        lexical_hits = sum(1 for token in tokens if token in text)
+        source_bonus = len(item.get("sources", [])) * 0.1
+        base_score = float(item.get("score", 0.0))
+        rerank_score = base_score + (0.05 * lexical_hits) + source_bonus
+        reranked.append({**item, "rerank_score": round(rerank_score, 4)})
+    reranked.sort(key=lambda row: float(row.get("rerank_score", 0.0)), reverse=True)
+    return reranked
+
+
 async def route_query(
     query: str,
     mode: str = "auto",
@@ -1338,6 +1832,8 @@ async def route_query(
 ) -> Dict[str, Any]:
     """Route query to SQL, semantic, keyword, tree, or hybrid search."""
     start = time.time()
+    limit = max(1, min(int(limit), Config.AI_AUTONOMY_MAX_RETRIEVAL_RESULTS))
+    keyword_limit = max(0, min(int(keyword_limit), Config.AI_AUTONOMY_MAX_RETRIEVAL_RESULTS))
     normalized_mode = (mode or "auto").lower()
     route = normalized_mode
 
@@ -1355,8 +1851,21 @@ async def route_query(
 
     results: Dict[str, Any] = {}
     response_text = ""
+    capability_discovery: Dict[str, Any] = {
+        "decision": "skipped",
+        "reason": "not-evaluated",
+        "cache_hit": False,
+        "intent_tags": [],
+        "tools": [],
+        "skills": [],
+        "servers": [],
+        "datasets": [],
+    }
 
     try:
+        if Config.AI_CAPABILITY_DISCOVERY_ON_QUERY:
+            capability_discovery = await _discover_applicable_resources(query)
+
         if route == "sql":
             response_text = (
                 "SQL routing detected. Execution is disabled by default for safety. "
@@ -1403,9 +1912,22 @@ async def route_query(
             results = hybrid_results
             response_text = _summarize_results(hybrid_results["combined_results"])
 
+        prompt_prefix = Config.AI_PROMPT_CACHE_STATIC_PREFIX if Config.AI_PROMPT_CACHE_POLICY_ENABLED else ""
+        prompt_prefix_hash = hashlib.sha256(prompt_prefix.encode("utf-8")).hexdigest()[:16] if prompt_prefix else ""
         if generate_response and llama_cpp_client:
+            discovery_context = _format_discovery_context(capability_discovery)
+            combined_context = f"{response_text}\n\n{discovery_context}".strip()
+            compressed_context = combined_context
+            compressed_tokens = 0
+            if Config.CONTEXT_COMPRESSION_ENABLED and context_compressor:
+                compressed_context, _, compressed_tokens = context_compressor.compress_to_budget(
+                    contexts=[{"id": "route-results", "text": combined_context, "score": 1.0}],
+                    max_tokens=Config.AI_CONTEXT_TOKEN_BUDGET,
+                    strategy="hybrid",
+                )
             prompt = (
-                f"User query: {query}\n\nContext:\n{response_text}\n\n"
+                f"{prompt_prefix}\n\n"
+                f"User query: {query}\n\nContext:\n{compressed_context}\n\n"
                 "Provide a concise response using the context."
             )
             try:
@@ -1421,6 +1943,23 @@ async def route_query(
                 llm_resp.raise_for_status()
                 llm_json = llm_resp.json()
                 response_text = llm_json["choices"][0]["message"]["content"]
+                usage = llm_json.get("usage", {}) if isinstance(llm_json, dict) else {}
+                cached_tokens = int(
+                    usage.get("cached_tokens")
+                    or (usage.get("prompt_tokens_details", {}) or {}).get("cached_tokens", 0)
+                    or 0
+                )
+                results["prompt_cache"] = {
+                    "policy_enabled": Config.AI_PROMPT_CACHE_POLICY_ENABLED,
+                    "prefix_hash": prompt_prefix_hash,
+                    "cached_tokens": cached_tokens,
+                }
+                if compressed_tokens:
+                    results["context_compression"] = {
+                        "enabled": True,
+                        "token_budget": Config.AI_CONTEXT_TOKEN_BUDGET,
+                        "compressed_tokens": compressed_tokens,
+                    }
             except Exception as exc:  # noqa: BLE001
                 logger.warning("route_query_llm_failed error=%s", exc)
 
@@ -1432,6 +1971,25 @@ async def route_query(
                 "route": route,
                 "prefer_local": prefer_local,
                 "context_keys": list((context or {}).keys()),
+                "prompt_cache_policy": {
+                    "enabled": Config.AI_PROMPT_CACHE_POLICY_ENABLED,
+                    "prefix_hash": prompt_prefix_hash,
+                },
+                "inference_optimizations": {
+                    "speculative_decoding_enabled": Config.AI_SPECULATIVE_DECODING_ENABLED,
+                    "speculative_decoding_mode": Config.AI_SPECULATIVE_DECODING_MODE,
+                    "context_compression_enabled": Config.CONTEXT_COMPRESSION_ENABLED,
+                },
+                "capability_discovery": {
+                    "decision": capability_discovery.get("decision", "unknown"),
+                    "reason": capability_discovery.get("reason", "unknown"),
+                    "cache_hit": bool(capability_discovery.get("cache_hit", False)),
+                    "intent_tags": capability_discovery.get("intent_tags", []),
+                    "tool_count": len(capability_discovery.get("tools", [])),
+                    "skill_count": len(capability_discovery.get("skills", [])),
+                    "server_count": len(capability_discovery.get("servers", [])),
+                    "dataset_count": len(capability_discovery.get("datasets", [])),
+                },
             },
         )
     except Exception as exc:  # noqa: BLE001
@@ -1446,6 +2004,34 @@ async def route_query(
         "response": response_text,
         "results": results,
         "latency_ms": latency_ms,
+        "capability_discovery": {
+            "decision": capability_discovery.get("decision", "unknown"),
+            "reason": capability_discovery.get("reason", "unknown"),
+            "cache_hit": bool(capability_discovery.get("cache_hit", False)),
+            "intent_tags": capability_discovery.get("intent_tags", []),
+            "tools": [
+                {"name": item.get("name"), "description": item.get("description")}
+                for item in capability_discovery.get("tools", [])
+            ],
+            "skills": [
+                {
+                    "name": item.get("name", item.get("slug")),
+                    "description": item.get("description"),
+                }
+                for item in capability_discovery.get("skills", [])
+            ],
+            "servers": [
+                {"name": item.get("name"), "description": item.get("description")}
+                for item in capability_discovery.get("servers", [])
+            ],
+            "datasets": [
+                {
+                    "title": item.get("title", item.get("relative_path")),
+                    "project": item.get("project"),
+                }
+                for item in capability_discovery.get("datasets", [])
+            ],
+        },
     }
 
 
@@ -2330,8 +2916,9 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
 
 async def initialize_server():
     """Initialize global clients and collections"""
-    global qdrant_client, llama_cpp_client, embedding_client, aidb_client, multi_turn_manager, feedback_api, progressive_disclosure, learning_pipeline, postgres_client
+    global qdrant_client, llama_cpp_client, embedding_client, aidb_client, multi_turn_manager, feedback_api, progressive_disclosure, learning_pipeline, postgres_client, context_compressor
 
+    _enforce_startup_env()
     logger.info("Initializing Hybrid Agent Coordinator...")
 
     # Initialize Qdrant client
@@ -2358,12 +2945,13 @@ async def initialize_server():
 
     # Create collections
     await initialize_collections()
+    context_compressor = ContextCompressor()
 
     # Initialize multi-turn context manager
     from multi_turn_context import MultiTurnContextManager
     multi_turn_manager = MultiTurnContextManager(
         qdrant_client=qdrant_client,
-        redis_url=os.getenv("REDIS_URL", "redis://localhost:6379"),
+        redis_url=_require_env("REDIS_URL"),
         llama_cpp_url=Config.LLAMA_CPP_URL
     )
     await multi_turn_manager.initialize()
@@ -2404,10 +2992,10 @@ async def initialize_server():
 
         # Initialize PostgreSQL client for learning pipeline
         postgres_client = PostgresClient(
-            host=os.getenv("POSTGRES_HOST", "postgres"),
-            port=int(os.getenv("POSTGRES_PORT", "5432")),
-            database=os.getenv("POSTGRES_DB", "aidb"),
-            user=os.getenv("POSTGRES_USER", "mcp"),
+            host=_require_env("POSTGRES_HOST"),
+            port=int(_require_env("POSTGRES_PORT")),
+            database=_require_env("POSTGRES_DB"),
+            user=_require_env("POSTGRES_USER"),
             password=pg_password,
             sslmode=os.getenv("POSTGRES_SSLMODE"),
             sslrootcert=os.getenv("POSTGRES_SSLROOTCERT"),
@@ -2442,7 +3030,7 @@ async def main():
     await initialize_server()
 
     # Check if running in HTTP mode (for container deployment)
-    mode = os.getenv("MCP_SERVER_MODE", "stdio")
+    mode = _require_env("MCP_SERVER_MODE")
 
     if mode == "http":
         # Run as HTTP server with health endpoint
@@ -2534,7 +3122,17 @@ async def main():
                     "memory_enabled": Config.AI_MEMORY_ENABLED,
                     "tree_search_enabled": Config.AI_TREE_SEARCH_ENABLED,
                     "eval_enabled": Config.AI_HARNESS_EVAL_ENABLED,
+                    "capability_discovery_enabled": Config.AI_CAPABILITY_DISCOVERY_ENABLED,
+                    "capability_discovery_ttl_seconds": Config.AI_CAPABILITY_DISCOVERY_TTL_SECONDS,
+                    "capability_discovery_on_query": Config.AI_CAPABILITY_DISCOVERY_ON_QUERY,
+                    "autonomy_max_external_calls": Config.AI_AUTONOMY_MAX_EXTERNAL_CALLS,
+                    "autonomy_max_retrieval_results": Config.AI_AUTONOMY_MAX_RETRIEVAL_RESULTS,
+                    "prompt_cache_policy_enabled": Config.AI_PROMPT_CACHE_POLICY_ENABLED,
+                    "speculative_decoding_enabled": Config.AI_SPECULATIVE_DECODING_ENABLED,
+                    "speculative_decoding_mode": Config.AI_SPECULATIVE_DECODING_MODE,
+                    "context_compression_enabled": Config.CONTEXT_COMPRESSION_ENABLED,
                 },
+                "capability_discovery": HYBRID_STATS["capability_discovery"],
                 "circuit_breakers": breakers or CIRCUIT_BREAKERS.get_all_stats(),
             })
 
@@ -2546,6 +3144,7 @@ async def main():
                 "stats": snapshot_stats(),
                 "collections": list(COLLECTIONS.keys()),
                 "harness_stats": HARNESS_STATS,
+                "capability_discovery": HYBRID_STATS["capability_discovery"],
                 "circuit_breakers": CIRCUIT_BREAKERS.get_all_stats(),
             })
 
@@ -2657,6 +3256,10 @@ async def main():
         async def handle_harness_stats(_request):
             """HTTP endpoint for harness aggregate stats."""
             return web.json_response(HARNESS_STATS)
+
+        async def handle_harness_scorecard(_request):
+            """HTTP endpoint for reliability/safety/performance scorecards."""
+            return web.json_response(build_harness_scorecard())
 
         async def handle_multi_turn_context(request):
             """HTTP endpoint for multi-turn context requests"""
@@ -2834,6 +3437,7 @@ async def main():
         http_app.router.add_post('/memory/recall', handle_memory_recall)
         http_app.router.add_post('/harness/eval', handle_harness_eval)
         http_app.router.add_get('/harness/stats', handle_harness_stats)
+        http_app.router.add_get('/harness/scorecard', handle_harness_scorecard)
         http_app.router.add_post('/feedback', handle_feedback)
 
         # New RLM endpoints
@@ -2860,9 +3464,15 @@ async def main():
             """Return learning system statistics"""
             try:
                 stats_path = Path(
-                    os.getenv(
-                        "CONTINUOUS_LEARNING_STATS_PATH",
-                        "/data/telemetry/continuous_learning_stats.json",
+                    os.path.expanduser(
+                        os.getenv(
+                            "CONTINUOUS_LEARNING_STATS_PATH",
+                            os.path.join(
+                                os.getenv("DATA_DIR", "~/.local/share/nixos-ai-stack/hybrid"),
+                                "telemetry",
+                                "continuous_learning_stats.json",
+                            ),
+                        )
                     )
                 )
                 if stats_path.exists():
@@ -2965,7 +3575,7 @@ async def main():
         http_app.router.add_post('/learning/export', handle_learning_export)
         http_app.router.add_post('/learning/ab_compare', handle_learning_ab_compare)
 
-        port = int(os.getenv("MCP_SERVER_PORT", "8092"))
+        port = int(_require_env("MCP_SERVER_PORT"))
         logger.info(f"Starting HTTP server on port {port}")
 
         runner = web.AppRunner(

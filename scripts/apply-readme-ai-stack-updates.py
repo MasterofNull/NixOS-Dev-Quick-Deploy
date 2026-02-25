@@ -56,7 +56,7 @@ See [`ai-stack/README.md`](ai-stack/README.md) and [`docs/AI-STACK-FULL-INTEGRAT
 | Component | Location | Purpose |
 |-----------|----------|---------|
 | **AIDB MCP Server** | `ai-stack/mcp-servers/aidb/` | PostgreSQL + TimescaleDB + Qdrant vector DB + FastAPI MCP server |
-| **llama.cpp vLLM** | `ai-stack/kubernetes/` | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |
+| **llama.cpp vLLM** | `nix/modules/roles/ai-stack.nix` | Local OpenAI-compatible inference (Qwen, DeepSeek, Phi, CodeLlama) |
 | **29 Agent Skills** | `ai-stack/agents/skills/` | nixos-deployment, webapp-testing, code-review, canvas-design, and more |
 | **MCP Servers** | `ai-stack/mcp-servers/` | Model Context Protocol servers for AIDB, NixOS, GitHub |
 | **Model Registry** | `ai-stack/models/registry.json` | Model catalog with 6 AI models (metadata, VRAM, speed, quality scores) |
@@ -175,10 +175,10 @@ curl -X POST /skills/nixos-deployment/execute \\
 
     content = re.sub(doc_pattern, new_doc_section, content)
 
-    # 5. Update Podman Storage section title
+    # 5. Update legacy storage section title
     content = content.replace(
         '### Podman Storage: Btrfs Recommended for AI-Optimizer',
-        '### Podman Storage: Btrfs Recommended for AI Stack'
+        '### Container Storage: Btrfs Recommended for AI Stack'
     )
     content = content.replace(
         'For AI-Optimizer workloads (see `~/Documents/AI-Optimizer`)',
@@ -194,7 +194,7 @@ curl -X POST /skills/nixos-deployment/execute \\
     print("  2. Updated AI Development Stack table")
     print("  3. Expanded AI Stack Management section")
     print("  4. Added AI Stack documentation links")
-    print("  5. Updated Podman storage references")
+    print("  5. Updated legacy container storage references")
     print("\nPlease review the changes with: git diff README.md")
 
 if __name__ == "__main__":

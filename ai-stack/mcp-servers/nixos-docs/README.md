@@ -330,10 +330,10 @@ docs = await search_nixos_docs(f"how to configure {service_name}")
 
 ### With K3s/Kubernetes
 
-Already configured in `ai-stack/kubernetes` manifests:
+Already configured in declarative module/service definitions:
 
 ```bash
-kubectl apply -k ai-stack/kubernetes
+sudo systemctl restart ai-stack.target
 ```
 
 ### Standalone
@@ -363,7 +363,7 @@ curl http://localhost:8094/cache/stats
 ### Container Logs
 
 ```bash
-kubectl logs -f -n ai-stack nixos-docs
+journalctl -u ai-aidb.service -f
 ```
 
 ---
@@ -403,8 +403,8 @@ This is normal and the server will continue to function.
 Check network connectivity and disk space:
 
 ```bash
-kubectl exec -n ai-stack nixos-docs -- df -h
-kubectl exec -n ai-stack nixos-docs -- git config --global http.timeout 60
+df -h
+git config --global http.timeout 60
 ```
 
 ### Slow Searches
@@ -421,7 +421,7 @@ curl -X POST http://localhost:8094/sync
 
 3. Monitor container resources:
 ```bash
-kubectl top pod -n ai-stack nixos-docs
+systemctl status ai-aidb.service --no-pager
 ```
 
 ---

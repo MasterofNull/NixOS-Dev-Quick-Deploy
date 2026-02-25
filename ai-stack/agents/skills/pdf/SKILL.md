@@ -292,3 +292,7 @@ with open("encrypted.pdf", "wb") as output:
 - For JavaScript libraries (pdf-lib), see reference.md
 - If you need to fill out a PDF form, follow the instructions in forms.md
 - For troubleshooting guides, see reference.md
+
+## Maintenance
+- Version: 1.0.0
+- Keep this skill aligned with current repository workflows.

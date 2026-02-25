@@ -4,6 +4,16 @@
 
 set -euo pipefail
 
+# Load centralized endpoint defaults when running from repo.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+if [[ -f "${REPO_ROOT}/config/service-endpoints.sh" ]]; then
+    # shellcheck source=../config/service-endpoints.sh
+    source "${REPO_ROOT}/config/service-endpoints.sh"
+fi
+
+: "${QDRANT_PORT:=6333}"
+
 # Configuration
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/qdrant}"
 QDRANT_HOST="${QDRANT_HOST:-localhost}"

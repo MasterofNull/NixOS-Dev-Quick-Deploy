@@ -1,3 +1,8 @@
+---
+name: nixos-deployment
+description: Instructions and workflow for the nixos-deployment skill.
+---
+
 # Skill Name: nixos-deployment
 
 ## Description

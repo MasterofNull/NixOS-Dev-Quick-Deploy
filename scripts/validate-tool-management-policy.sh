@@ -17,10 +17,10 @@ count_matches() {
   local pattern="$1"
   local file="$2"
   if command -v rg >/dev/null 2>&1; then
-    rg -n "$pattern" "$file" | wc -l | tr -d ' '
+    (rg -n "$pattern" "$file" || true) | wc -l | tr -d ' '
     return
   fi
-  grep -nE "$pattern" "$file" | wc -l | tr -d ' '
+  (grep -nE "$pattern" "$file" || true) | wc -l | tr -d ' '
 }
 
 fail() {
@@ -45,16 +45,16 @@ else
 fi
 
 goose_count="$(count_matches '"goose-cli"' nix/data/profile-system-packages.nix)"
-if [[ "$goose_count" -lt 2 ]]; then
-  fail "Expected goose-cli in at least ai-dev and gaming profile package lists."
+if [[ "$goose_count" -gt 0 ]]; then
+  fail "goose-cli should be removed from declarative profile package data."
 else
-  pass "goose-cli declared in profile system package data."
+  pass "goose-cli is absent from declarative profile package data."
 fi
 
-if ! search 'Goose CLI provided via nixpkgs' lib/tools.sh; then
-  fail "lib/tools.sh no longer advertises nixpkgs-first Goose behavior."
+if search 'goose' lib/tools.sh; then
+  fail "lib/tools.sh still references Goose tooling after deprecation."
 else
-  pass "Goose installer logic keeps nixpkgs-first behavior."
+  pass "lib/tools.sh has no Goose tooling references."
 fi
 
 if ! search 'install_claude_code_native' lib/tools.sh; then

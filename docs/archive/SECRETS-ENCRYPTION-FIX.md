@@ -444,7 +444,7 @@ echo "  $PUBLIC_KEY"
 
 2. **Then run deployment with verbose mode**:
    ```bash
-   ./nixos-quick-deploy.sh --verbose --debug
+   ./nixos-quick-deploy.sh --host nixos --profile ai-dev
    ```
 
 3. **Check logs for detailed error output**:

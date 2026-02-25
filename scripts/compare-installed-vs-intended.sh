@@ -81,9 +81,9 @@ declare -a missing_flatpaks=()
 intended_commands+=(git curl jq rg flatpak python3)
 
 if [[ "$PROFILE" == "gaming" ]]; then
-  intended_commands+=(goose node go cargo ruby nvim sqlite3 mangohud)
+  intended_commands+=(node go cargo ruby nvim sqlite3 mangohud)
 elif [[ "$PROFILE" == "ai-dev" ]]; then
-  intended_commands+=(goose node go cargo ruby nvim sqlite3)
+  intended_commands+=(node go cargo ruby nvim sqlite3)
 else
   intended_commands+=(sqlite3)
 fi

@@ -6,6 +6,7 @@ Implements robust retry mechanisms with exponential backoff for all external ser
 """
 
 import asyncio
+import os
 import time
 import random
 from typing import Any, Callable, Optional, Type, Union, List
@@ -210,6 +211,9 @@ class AIDBRetryClient:
     def __init__(self, circuit_breaker_registry):
         self.circuit_breaker_registry = circuit_breaker_registry
         self.retry_handler = CircuitBreakerRetryHandler(circuit_breaker_registry)
+        self.aidb_url = (os.getenv("AIDB_URL") or "").rstrip("/")
+        if not self.aidb_url:
+            raise ValueError("AIDB_URL must be set for AIDBRetryClient")
     
     @retryable(max_attempts=3, base_delay=1.0, max_delay=10.0)
     async def query_with_retry(self, query: str, context: dict = None):
@@ -220,7 +224,7 @@ class AIDBRetryClient:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    "http://aidb:8091/query",
+                    f"{self.aidb_url}/query",
                     json={"query": query, "context": context or {}},
                     timeout=aiohttp.ClientTimeout(total=30)
                 ) as response:
@@ -255,6 +259,9 @@ class HybridCoordinatorRetryClient:
     def __init__(self, circuit_breaker_registry):
         self.circuit_breaker_registry = circuit_breaker_registry
         self.retry_handler = CircuitBreakerRetryHandler(circuit_breaker_registry)
+        self.hybrid_url = (os.getenv("HYBRID_COORDINATOR_URL") or "").rstrip("/")
+        if not self.hybrid_url:
+            raise ValueError("HYBRID_COORDINATOR_URL must be set for HybridCoordinatorRetryClient")
     
     @retryable(max_attempts=3, base_delay=1.0, max_delay=15.0)
     async def call_skill_with_retry(self, skill: str, params: dict):
@@ -265,7 +272,7 @@ class HybridCoordinatorRetryClient:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    f"http://hybrid-coordinator:8092/skills/{skill}",
+                    f"{self.hybrid_url}/skills/{skill}",
                     json=params,
                     timeout=aiohttp.ClientTimeout(total=45)
                 ) as response:

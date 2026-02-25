@@ -53,7 +53,6 @@ podman logs local-ai-ralph-wiggum
 
 ### Files to Update
 1. `ai-stack/mcp-servers/ralph-wiggum/requirements.txt`
-2. `ai-stack/kubernetes/kustomization.yaml` (if Dockerfile changes)
 3. NixOS deployment templates
 
 ### Steps
@@ -94,7 +93,6 @@ Updates config.yaml and restarts affected services
 def update_config(config: dict):
     # Validate config
     # Update ai-stack/mcp-servers/config/config.yaml
-    # Restart affected services via kubectl rollout restart
     return {"status": "success", "restarted": ["hybrid", "aidb"]}
 ```
 
@@ -193,7 +191,6 @@ Static display showing completion:
 ```
 
 #### 2. Kubernetes Manifests
-`ai-stack/kubernetes/kustomization.yaml`
 Ensure Ralph service definition is correct with all dependencies.
 
 #### 3. Systemd Templates

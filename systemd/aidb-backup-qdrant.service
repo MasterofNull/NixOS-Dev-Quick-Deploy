@@ -8,10 +8,10 @@ Wants=network-online.target
 Type=oneshot
 User=%u
 Group=%u
-WorkingDirectory=%h/Documents/try/NixOS-Dev-Quick-Deploy
+WorkingDirectory=__PROJECT_ROOT__
 
 # Run the backup script
-ExecStart=%h/Documents/try/NixOS-Dev-Quick-Deploy/scripts/backup-qdrant.sh
+ExecStart=__PROJECT_ROOT__/scripts/backup-qdrant.sh
 
 # Logging
 StandardOutput=journal

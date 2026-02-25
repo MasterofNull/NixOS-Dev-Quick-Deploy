@@ -18,12 +18,31 @@ from pathlib import Path
 router = APIRouter(prefix="/telemetry/vscode", tags=["vscode-telemetry"])
 
 # Telemetry storage path
-TELEMETRY_DIR = Path.home() / ".local/share/nixos-ai-stack/telemetry"
+# Prefer explicit service path, then XDG state home, then user home fallback.
+_explicit_dir = os.getenv("AIDB_VSCODE_TELEMETRY_DIR")
+if _explicit_dir:
+    TELEMETRY_DIR = Path(_explicit_dir)
+else:
+    _state_home = os.getenv("XDG_STATE_HOME")
+    if _state_home:
+        TELEMETRY_DIR = Path(_state_home) / "nixos-ai-stack" / "telemetry"
+    else:
+        TELEMETRY_DIR = Path.home() / ".local/share/nixos-ai-stack/telemetry"
 TELEMETRY_FILE = TELEMETRY_DIR / "vscode-events.jsonl"
 
-# Ensure telemetry directory exists
-TELEMETRY_DIR.mkdir(parents=True, exist_ok=True)
-TELEMETRY_ENABLED = os.getenv("AIDB_VSCODE_TELEMETRY_ENABLED", os.getenv("AI_TELEMETRY_ENABLED", "false")).lower() == "true"
+# Ensure telemetry directory exists.
+# If storage cannot be created (e.g. read-only filesystem under systemd hardening),
+# keep the service alive and disable telemetry writes instead of crashing at import.
+_telemetry_storage_ready = True
+try:
+    TELEMETRY_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    _telemetry_storage_ready = False
+
+TELEMETRY_ENABLED = (
+    os.getenv("AIDB_VSCODE_TELEMETRY_ENABLED", os.getenv("AI_TELEMETRY_ENABLED", "false")).lower() == "true"
+    and _telemetry_storage_ready
+)
 SENSITIVE_TOKENS = ("prompt", "query", "response", "message", "text", "input", "output")
 
 

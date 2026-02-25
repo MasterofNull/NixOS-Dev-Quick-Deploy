@@ -240,3 +240,7 @@ Load these resources as needed during development:
 
 - If a referenced local file is missing, continue with the closest available guide and report the missing file explicitly.
 - If a pinned external SDK URL is unavailable, stop and request a lock update in `docs/skill-dependency-lock.md` before proceeding.
+
+## Maintenance
+- Version: 1.0.0
+- Keep this skill aligned with current repository workflows.

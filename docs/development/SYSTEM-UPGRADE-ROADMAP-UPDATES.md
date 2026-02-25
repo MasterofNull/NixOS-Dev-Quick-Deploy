@@ -1,3 +1,82 @@
+## Phase 37 Update (2026-02-24): Declarative AI Stack Compliance Gates + Execution Start
+
+### 37.H1 Add strict verifier guardrails for centralized ports and OTEL noise regressions
+
+**Changes Applied:**
+- [x] Extended `scripts/verify-flake-first-roadmap-completion.sh` with explicit checks for centralized AI/OTEL port registry coverage in `nix/modules/core/options.nix`:
+  - `qdrantHttp`, `qdrantGrpc`, `otlpGrpc`, `otlpHttp`, `otelCollectorMetrics`.
+- [x] Added checks that declarative MCP runtime wiring derives endpoints from `mySystem.ports` in `nix/modules/services/mcp-servers.nix`:
+  - `QDRANT_URL` from `ports.qdrantHttp`
+  - `OTEL_EXPORTER_OTLP_ENDPOINT` from `ports.otlpGrpc`.
+- [x] Added regression checks to fail if declarative OTEL wiring reintroduces:
+  - hardcoded `jaeger:4317`
+  - `debug` exporter.
+- [x] Added roadmap planning/execution block in `SYSTEM-UPGRADE-ROADMAP.md`:
+  - new `Phase 37: AI Stack Declarative Compliance Closure`
+  - phased tasks, hold-points, and success criteria
+
+**Validation:**
+- `bash -n scripts/verify-flake-first-roadmap-completion.sh docs/development/SYSTEM-UPGRADE-ROADMAP.md docs/development/SYSTEM-UPGRADE-ROADMAP-UPDATES.md` → PASS
+- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS (`28 pass, 0 fail`)
+- `rg -n "jaeger:4317|debug:\\s*\\{\\}|exporters:\\s*\\[debug\\]" nix/modules/services/mcp-servers.nix` → PASS (no matches)
+
+### 37.H2 Execute fallback inventory + regulated gate baseline
+
+**Changes Applied:**
+- [x] Started fallback inventory scan for runtime endpoint defaults in `ai-stack/mcp-servers` (excluding docs/requirements).
+- [x] Identified current high-priority candidates for strictification:
+  - `ai-stack/mcp-servers/health-monitor/server.py` (localhost hardcoded health defaults)
+  - `ai-stack/mcp-servers/hybrid-coordinator/federation_sync.py` (`QDRANT_URL` localhost fallback)
+  - `ai-stack/mcp-servers/nixos-docs/server.py` (`REDIS_HOST=localhost` fallback)
+- [x] Executed classified/hospital release gate baseline script.
+
+**Validation:**
+- `rg -n "os\\.getenv\\([^\\n]*(localhost|127\\.0\\.0\\.1|jaeger:4317|6333|8002|8003|8080|4317|4318)" ai-stack/mcp-servers --glob '!**/README.md' --glob '!**/requirements*.txt'` → PASS (inventory captured)
+- `./scripts/hospital-classified-gate.sh` → PASS (non-blocking warning: approved host-network exception file still present)
+
+### 37.H3 Harden core AI runtime defaults to fail-closed on env wiring
+
+**Changes Applied:**
+- [x] Updated strict-mode defaults for active MCP runtime services:
+  - `ai-stack/mcp-servers/hybrid-coordinator/server.py`: `AI_STRICT_ENV` default changed to `true`.
+  - `ai-stack/mcp-servers/ralph-wiggum/server.py`: `AI_STRICT_ENV` default changed to `true`.
+  - `ai-stack/mcp-servers/aidb/settings_loader.py`: strict-env default changed to `true`.
+- [x] Extended roadmap verifier checks so strict defaults are continuously enforced in CI/preflight.
+
+**Validation:**
+- `python3 -m py_compile ai-stack/mcp-servers/hybrid-coordinator/server.py ai-stack/mcp-servers/ralph-wiggum/server.py ai-stack/mcp-servers/aidb/settings_loader.py` → PASS
+- `bash -n scripts/verify-flake-first-roadmap-completion.sh` → PASS
+- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS (`31 pass, 0 fail`)
+
+
+**Changes Applied:**
+- [x] Removed legacy container-engine resources from active K8s deployment graph:
+- [x] Retired legacy host-networked container-engine manifests from active path:
+- [x] Removed host-network exception debt in compliance config:
+  - `config/hospital-gate-hostnetwork-allowlist.txt` now empty,
+  - `nix/hosts/hyperd/facts.nix` host-network allowlist reset to `[]`,
+  - `nix/modules/core/hospital-classified.nix` example updated away from legacy kompose path.
+- [x] Updated audit/gate scanners to treat deprecated manifests as non-active:
+  - `scripts/security-audit.sh` now excludes deprecated path globs,
+  - `scripts/hospital-classified-gate.sh` excludes deprecated path globs for host-network and rolling-tag checks.
+  - `ai-stack/systemd/letsencrypt-renewal.service` now uses `network-online.target`.
+
+**Validation:**
+- `bash scripts/security-audit.sh` → PASS
+- `./scripts/hospital-classified-gate.sh` → PASS
+- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS (`31 pass, 0 fail`)
+
+### 37.H5 Added angry-team release blockers to roadmap
+
+**Changes Applied:**
+- [x] Added `37.6 Angry-Team Release Blockers` to `SYSTEM-UPGRADE-ROADMAP.md` as explicit tasks + release criteria:
+  - legacy-path freeze/cutoff,
+  - exception expiry governance,
+  - signed evidence bundles per release,
+  - identity segmentation + short-lived credentials,
+  - failure-mode validation suite,
+  - threat-model-to-control evidence mapping.
+
 ## Phase 28 Update (2026-02-18): Password Provisioning Safety Guardrails
 
 ### 28.H12 Prevent unintended user/root password resets during config rendering
@@ -154,7 +233,6 @@
   - `mySystem.aiStack.llamaModelFile`
   - `mySystem.aiStack.namespace`
 - [x] Reconciler now patches model defaults into Kubernetes env ConfigMap declaratively on each reconcile run:
-  - `nix/modules/services/ai-stack.nix` patches `ConfigMap/env` keys (`EMBEDDING_MODEL`, `LLAMA_CPP_DEFAULT_MODEL`, `LLAMA_CPP_MODEL_FILE`) after `kubectl apply -k`.
 - [x] Flake-first installer now asks for optional AI stack enablement/model profile at start (interactive mode) and persists choices into host declarative options:
   - `--flake-first-ai-stack on|off`
   - `--flake-first-model-profile auto|small|medium|large`
@@ -281,8 +359,8 @@
 - [x] Added CI job:
   - `.github/workflows/test.yml` now runs `scripts/nix-static-analysis.sh` via `nix shell nixpkgs#statix nixpkgs#deadnix nixpkgs#alejandra`.
   - current mode is non-blocking baseline (`--non-blocking`) while legacy lint debt is normalized.
-- [x] Added dry-run flake-check guard in flake-first deploy path:
-  - `nixos-quick-deploy.sh --dry-run` now executes `nix flake check --no-build` before reporting would-switch actions.
+- [x] Added build-only flake-check guard in flake-first deploy path:
+  - `nixos-quick-deploy.sh --build-only` executes declarative evaluation/build without applying a live switch.
 - [x] Added non-blocking static analysis in Phase 3:
   - `phases/phase-03-configuration-generation.sh` now calls `scripts/nix-static-analysis.sh --non-blocking`.
 

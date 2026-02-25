@@ -80,7 +80,7 @@ readonly NETWORK_TIMEOUT=300
 # - 100+ CLI tools and development utilities
 # - Complete Python ML/AI environment (PyTorch, TensorFlow, LangChain, etc.)
 # - AI development tools (Ollama, GPT4All, llama.cpp models, Aider)
-# - Container stack (K3s/containerd) + container images
+# - AI service runtime + container images
 # - Desktop applications via Flatpak (Firefox, Obsidian, DBeaver, etc.)
 # - System services (Gitea, Qdrant, Jupyter, Hugging Face TGI)
 # Minimum: 50GB free space in /nix (recommended: 100GB+ for AI models)
@@ -130,7 +130,7 @@ readonly NIXOS_SECRETS_DIR="${VAR_LIB_DIR}/nixos-quick-deploy/secrets"
 #
 # Why this matters:
 # - NixOS/home-manager configs live in the invoking user's home
-# - Flatpaks and Podman data belong under the invoking user's XDG dirs
+# - Flatpaks and local AI runtime data belong under the invoking user's XDG dirs
 # - Preference caches must remain consistent between helper scripts
 # ============================================================================
 
@@ -611,7 +611,7 @@ if [[ -z "$LOCAL_AI_STACK_ENABLED" && -f "$LOCAL_AI_STACK_PREFERENCE_FILE" ]]; t
     esac
 fi
 if [[ -z "$LOCAL_AI_STACK_ENABLED" ]]; then
-    # Default to RUN_AI_MODEL (K3s is the supported runtime; prompt removed).
+    # Default to RUN_AI_MODEL for declarative AI runtime behavior.
     if [[ "${RUN_AI_MODEL:-true}" == "true" ]]; then
         LOCAL_AI_STACK_ENABLED="true"
     else
@@ -734,7 +734,7 @@ HOST_SWAP_LIMIT_VALUE="${HOST_SWAP_LIMIT_VALUE:-}"
 CONTAINER_STORAGE_FS_TYPE="${CONTAINER_STORAGE_FS_TYPE:-unknown}"
 CONTAINER_STORAGE_SOURCE="${CONTAINER_STORAGE_SOURCE:-}"
 
-# Container storage (K3s uses containerd, these are kept for backward compat)
+# Container storage defaults (kept for compatibility with older tooling)
 CONTAINER_STORAGE_DRIVER="${CONTAINER_STORAGE_DRIVER:-overlay}"
 
 ENABLE_GAMING_STACK="${ENABLE_GAMING_STACK:-true}"
@@ -788,8 +788,8 @@ export AI_STACK_PROFILE
 # ============================================================================
 # AI Stack Service Configuration
 # ============================================================================
-# Service URLs for the K3s-based AI stack
-# All services are deployed as Kubernetes pods in the ai-stack namespace
+# Service URLs for the declarative AI stack
+# Services are expected on host-local endpoints from the centralized port registry.
 
 readonly QDRANT_URL="${QDRANT_URL:-http://${SERVICE_HOST:-localhost}:${QDRANT_PORT}}"
 readonly QDRANT_GRPC_URL="${QDRANT_GRPC_URL:-http://${SERVICE_HOST:-localhost}:${QDRANT_GRPC_PORT}}"
@@ -811,10 +811,9 @@ readonly MINDSDB_URL="${MINDSDB_URL:-http://${SERVICE_HOST:-localhost}:${MINDSDB
 
 # AI Stack data directory
 readonly AI_STACK_DATA="${HOME}/.local/share/nixos-ai-stack"
-readonly AI_STACK_K8S="${SCRIPT_DIR}/ai-stack/kubernetes"
 
 export QDRANT_URL LLAMA_CPP_API_URL HYBRID_COORDINATOR_URL
-export AI_STACK_DATA AI_STACK_K8S
+export AI_STACK_DATA
 
 # AI Stack config/env paths (allow overrides from config/settings.sh or env)
 AI_STACK_CONFIG_DIR="${AI_STACK_CONFIG_DIR:-${PRIMARY_HOME:-$HOME}/.config/nixos-ai-stack}"

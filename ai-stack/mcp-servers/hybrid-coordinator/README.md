@@ -377,7 +377,7 @@ POSTGRES_SSLCERT=/etc/ssl/certs/hybrid-client.crt
 POSTGRES_SSLKEY=/etc/ssl/private/hybrid-client.key
 
 # Redis TLS (multi-turn context)
-REDIS_URL=rediss://redis.ai-stack.svc.cluster.local:6379
+REDIS_URL=rediss://127.0.0.1:6379
 ```
 
 ## Integration Examples

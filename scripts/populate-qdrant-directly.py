@@ -75,7 +75,7 @@ async def populate_best_practices():
             ],
             "references": ["kustomization.yaml", "AIDB Dockerfile"],
             "endorsement_count": 5,
-            "last_validated": int(Path(PROJECT_ROOT / "ai-stack/kubernetes/kustomization.yaml").stat().st_mtime)
+            "last_validated": int(Path(PROJECT_ROOT / "flake.nix").stat().st_mtime)
         },
         {
             "category": "systemd",
