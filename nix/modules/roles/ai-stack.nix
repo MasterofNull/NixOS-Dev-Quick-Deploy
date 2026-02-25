@@ -149,8 +149,10 @@ in
         home         = "/var/lib/llama-cpp";
         createHome   = true;
       };
+      users.users.${cfg.primaryUser}.extraGroups = lib.mkAfter [ "llama" ];
 
       systemd.tmpfiles.rules = [
+        "d /var/lib/llama-cpp 0750 llama llama -"
         "d /var/lib/llama-cpp/models 0750 llama llama -"
         # Log directory writable by llama service
         "d /var/log/llama-cpp 0750 llama llama -"

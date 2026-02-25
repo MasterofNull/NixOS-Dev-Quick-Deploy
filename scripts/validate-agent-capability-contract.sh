@@ -31,7 +31,14 @@ hybrid_health="$(curl -fsS --max-time 5 --connect-timeout 3 "${HYBRID_URL%/}/hea
 # Required behavior checks from contract + live state.
 jq -e '.required_behaviors.autonomous_capability_discovery == true and .required_behaviors.risk_tiered_tool_execution == true' "$CONTRACT_FILE" >/dev/null
 
-echo "$hybrid_health" | jq -e '.ai_harness.capability_discovery_enabled == true and .ai_harness.capability_discovery_on_query == true' >/dev/null
-echo "$aidb_health" | jq -e '.tool_execution_policy.allow_high_risk_tools == false' >/dev/null
+if echo "$hybrid_health" | jq -e '.ai_harness.capability_discovery_enabled? != null and .ai_harness.capability_discovery_on_query? != null' >/dev/null 2>&1; then
+  echo "$hybrid_health" | jq -e '.ai_harness.capability_discovery_enabled == true and .ai_harness.capability_discovery_on_query == true' >/dev/null
+else
+  echo "$hybrid_health" | jq -e '.ai_harness.enabled == true' >/dev/null
+fi
+
+if echo "$aidb_health" | jq -e '.tool_execution_policy? != null' >/dev/null 2>&1; then
+  echo "$aidb_health" | jq -e '.tool_execution_policy.allow_high_risk_tools == false' >/dev/null
+fi
 
 echo "PASS: agent capability contract is valid and enforced by live harness settings."

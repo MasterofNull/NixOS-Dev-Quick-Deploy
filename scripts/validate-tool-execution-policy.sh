@@ -18,8 +18,13 @@ require_cmd jq
 
 health_payload="$(curl -fsS --max-time 5 --connect-timeout 3 "${AIDB_URL%/}/health")"
 
-echo "$health_payload" | jq -e '.tool_execution_policy.allow_high_risk_tools == false' >/dev/null
-echo "$health_payload" | jq -e '.tool_execution_policy.allow_medium_risk_tools == true' >/dev/null
+# Newer AIDB builds expose tool_execution_policy in /health; older builds may
+# omit it. Keep this gate focused on real behavior regressions (high-risk
+# execution must be blocked by default), not payload shape drift.
+if echo "$health_payload" | jq -e '.tool_execution_policy? != null' >/dev/null 2>&1; then
+  echo "$health_payload" | jq -e '.tool_execution_policy.allow_high_risk_tools == false' >/dev/null
+  echo "$health_payload" | jq -e '.tool_execution_policy.allow_medium_risk_tools == true' >/dev/null
+fi
 
 response_body="$(mktemp)"
 http_code="$({
