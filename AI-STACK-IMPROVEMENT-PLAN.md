@@ -361,12 +361,15 @@
 
 - [x] **4.4.3** Create `scripts/sync-knowledge-sources` — iterates over enabled sources in the YAML registry, fetches content (GitHub README/files/etc.), and calls the AIDB `/api/v1/import` endpoint to index into Qdrant.
   *Success metric: `sync-knowledge-sources --list` shows registered sources; `--dry-run` shows fetch plan.*
+  *Update (2026-02-26): Script now targets canonical AIDB `POST /documents` import API (the `/api/v1/import` path no longer exists), with endpoint override via `AIDB_IMPORT_ENDPOINT`.*
 
-- [ ] **4.4.4** Add a weekly systemd timer (`ai-sync-knowledge-sources.timer`) that runs `sync-knowledge-sources` to keep the knowledge base current.
+- [x] **4.4.4** Add a weekly systemd timer (`ai-sync-knowledge-sources.timer`) that runs `sync-knowledge-sources` to keep the knowledge base current.
   *Success metric: `systemctl status ai-sync-knowledge-sources.timer` shows next trigger.*
+  *Done (2026-02-26): Added declarative `ai-sync-knowledge-sources.service` + `.timer` in `nix/modules/services/mcp-servers.nix`; config evaluates with `nix build` for `nixos-ai-dev`. Requires `nixos-rebuild switch` to activate on host.*
 
-- [ ] **4.4.5** Verify that `POST /query "what claude code skills are available for PDF processing"` returns results from the `claude-code-templates` collection after first sync.
+- [~] **4.4.5** Verify that `POST /query "what claude code skills are available for PDF processing"` returns results from the `claude-code-templates` collection after first sync.
   *Success metric: Response includes context from the claude-code-templates README or components.json.*
+  *In progress (2026-02-26): Source sync now imports into AIDB `claude-code-templates` project and `GET /documents?search=pdf&project=claude-code-templates` returns matching documents; coordinator `/query` verification is blocked from this shell by hybrid API key access.*
 
 ---
 

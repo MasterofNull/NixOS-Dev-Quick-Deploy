@@ -15,7 +15,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SOURCES_FILE="$REPO_ROOT/ai-stack/data/knowledge-sources.yaml"
-AIDB_URL="${AIDB_URL:-http://127.0.0.1:${AIDB_PORT:-8002}}"
+AIDB_URL="${AIDB_URL:-http://127.0.0.1:${AI_AIDB_PORT:-${AIDB_PORT:-8002}}}"
+AIDB_IMPORT_ENDPOINT="${AIDB_IMPORT_ENDPOINT:-/documents}"
 AIDB_KEY_FILE="${AIDB_API_KEY_FILE:-/run/secrets/aidb_api_key}"
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/nixos-ai-stack/knowledge-sources"
 
@@ -63,8 +64,8 @@ fi
 mkdir -p "$CACHE_DIR"
 
 # Parse YAML and process sources
-python3 - "$SOURCES_FILE" "$FILTER_ID" "$DRY_RUN" "$AIDB_URL" "$AIDB_KEY" "$CACHE_DIR" <<'PYEOF'
-import sys, json, os, hashlib, tempfile, subprocess
+python3 - "$SOURCES_FILE" "$FILTER_ID" "$DRY_RUN" "$AIDB_URL" "$AIDB_IMPORT_ENDPOINT" "$AIDB_KEY" "$CACHE_DIR" <<'PYEOF'
+import sys, json, os, hashlib, tempfile, subprocess, time
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -74,9 +75,12 @@ except ImportError:
     print("Error: pyyaml required (pip install pyyaml)", file=sys.stderr)
     sys.exit(1)
 
-sources_file, filter_id, dry_run_str, aidb_url, aidb_key, cache_dir = sys.argv[1:7]
+sources_file, filter_id, dry_run_str, aidb_url, aidb_import_endpoint, aidb_key, cache_dir = sys.argv[1:8]
 dry_run = dry_run_str == "True"
 cache_dir = Path(cache_dir)
+max_doc_bytes = int(os.getenv("AIDB_IMPORT_MAX_BYTES", "200000"))
+import_delay_ms = int(os.getenv("AIDB_IMPORT_DELAY_MS", "75"))
+max_retries = int(os.getenv("AIDB_IMPORT_MAX_RETRIES", "4"))
 
 with open(sources_file) as f:
     config = yaml.safe_load(f)
@@ -93,26 +97,57 @@ def gh_raw(owner_repo, path):
         print(f"  WARN: {url} → HTTP {e.code}", file=sys.stderr)
         return None
 
-def aidb_import(collection, content, source_id, aidb_url, aidb_key):
-    """POST content to AIDB /api/v1/import endpoint."""
-    import urllib.request, json as _json
+def split_content(text, max_bytes):
+    """Split text into UTF-8-safe chunks that fit within max_bytes (best effort)."""
+    if len(text.encode("utf-8")) <= max_bytes:
+        return [text]
+    data = text.encode("utf-8")
+    chunks = []
+    for i in range(0, len(data), max_bytes):
+        chunks.append(data[i:i + max_bytes].decode("utf-8", errors="ignore"))
+    return [c for c in chunks if c]
+
+
+def aidb_import(collection, content, source_id, aidb_url, endpoint, aidb_key):
+    """POST content to AIDB import endpoint (default: /documents)."""
+    import urllib.request, urllib.error, json as _json
     payload = _json.dumps({
-        "collection": collection,
+        "project": collection,
+        "relative_path": source_id,
+        "title": source_id.rsplit("/", 1)[-1],
+        "content_type": "text/markdown",
+        "checksum": hashlib.sha256(content.encode("utf-8")).hexdigest(),
         "content": content,
-        "source_id": source_id,
-        "imported_at": datetime.now(timezone.utc).isoformat(),
+        "status": "approved",
     }).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     if aidb_key:
         headers["X-API-Key"] = aidb_key
-    req = urllib.request.Request(f"{aidb_url}/api/v1/import", data=payload, headers=headers, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            result = _json.loads(resp.read())
-            return result
-    except Exception as e:
-        print(f"  ERROR importing to AIDB: {e}", file=sys.stderr)
-        return None
+    for attempt in range(max_retries + 1):
+        req = urllib.request.Request(f"{aidb_url}{endpoint}", data=payload, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                result = _json.loads(resp.read())
+                if import_delay_ms > 0:
+                    time.sleep(import_delay_ms / 1000.0)
+                return result
+        except urllib.error.HTTPError as e:
+            retriable = e.code in (429, 500, 502, 503, 504)
+            if retriable and attempt < max_retries:
+                backoff = min(2 ** attempt, 10)
+                print(f"  WARN: import retry ({e.code}) source={source_id} attempt={attempt+1}/{max_retries} backoff={backoff}s", file=sys.stderr)
+                time.sleep(backoff)
+                continue
+            print(f"  ERROR importing to AIDB: HTTP {e.code} source={source_id}", file=sys.stderr)
+            return None
+        except Exception as e:
+            if attempt < max_retries:
+                backoff = min(2 ** attempt, 10)
+                print(f"  WARN: import retry source={source_id} attempt={attempt+1}/{max_retries} backoff={backoff}s err={e}", file=sys.stderr)
+                time.sleep(backoff)
+                continue
+            print(f"  ERROR importing to AIDB: {e}", file=sys.stderr)
+            return None
 
 synced = 0
 skipped = 0
@@ -168,11 +203,16 @@ for source in config.get("sources", []):
             texts.append((str(p.relative_to(local)), p.read_text()))
 
     for name, text in texts:
-        print(f"  → importing {name} ({len(text):,} chars) into {collection}")
-        result = aidb_import(collection, text, f"{sid}/{name}", aidb_url, aidb_key)
-        if result:
-            print(f"    OK: {result.get('chunks_indexed', '?')} chunks")
-        synced += 1
+        parts = split_content(text, max_doc_bytes)
+        for idx, part in enumerate(parts, start=1):
+            source_id = f"{sid}/{name}" if len(parts) == 1 else f"{sid}/{name}#part-{idx}"
+            print(f"  → importing {source_id} ({len(part):,} chars) into {collection}")
+            result = aidb_import(collection, part, source_id, aidb_url, aidb_import_endpoint, aidb_key)
+            if result:
+                print(f"    OK: {result.get('status', 'ok')}")
+                synced += 1
+            else:
+                skipped += 1
 
 print(f"\n=== Done: {synced} imports, {skipped} skipped ===")
 PYEOF
