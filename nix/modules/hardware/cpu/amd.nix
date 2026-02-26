@@ -8,8 +8,22 @@ in
   # Owns services.thermald.enable for ALL profiles — Intel cpu/intel.nix sets it true.
   hardware.cpu.amd.updateMicrocode = lib.mkIf isAmd (lib.mkDefault true);
 
-  # schedutil is built into the kernel; no module load needed.
-  powerManagement.cpuFreqGovernor = lib.mkIf isAmd (lib.mkDefault "schedutil");
+  # Avoid NixOS cpu-freq.nix auto-loading cpufreq_schedutil as a kernel module.
+  # On this kernel schedutil is built in, so module load fails at boot.
+  powerManagement.cpuFreqGovernor = lib.mkIf isAmd (lib.mkForce null);
+  environment.systemPackages = lib.mkIf isAmd [ config.boot.kernelPackages.cpupower ];
+  systemd.services.cpu-governor-amd = lib.mkIf isAmd {
+    description = "Set AMD CPU governor to schedutil";
+    after = [ "systemd-modules-load.service" ];
+    wantedBy = [ "multi-user.target" ];
+    unitConfig.ConditionVirtualization = false;
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = "${config.boot.kernelPackages.cpupower}/bin/cpupower frequency-set --governor schedutil";
+      SuccessExitStatus = [ "0" "237" ];
+    };
+  };
 
   # Enable AMD P-state driver when the kvm-amd module is loaded (virtualisation or bare-metal).
   # lib.mkAfter ensures it appends after any hardware-configuration.nix params.
