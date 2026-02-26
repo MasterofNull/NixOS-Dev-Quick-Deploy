@@ -207,6 +207,19 @@
         description = "Binary cache substituter URLs. Extend in facts.nix for private caches.";
       };
 
+      nixTrustedPublicKeys = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [
+          "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
+          "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+          "devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw="
+        ];
+        description = ''
+          Trusted public keys for configured Nix binary caches.
+          Keep this list aligned with deployment.nixBinaryCaches.
+        '';
+      };
+
       fsIntegrityMonitor = {
         enable = lib.mkOption {
           type = lib.types.bool;
