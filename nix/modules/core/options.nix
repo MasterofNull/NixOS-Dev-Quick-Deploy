@@ -220,6 +220,29 @@
         '';
       };
 
+      nixAllowedUris = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [
+          "file:"
+          "git+file:"
+          "https://cache.nixos.org/"
+          "https://nix-community.cachix.org/"
+          "https://devenv.cachix.org/"
+          "https://github.com/"
+          "https://gitlab.com/"
+          "https://huggingface.co/"
+          "https://pypi.org/"
+          "https://files.pythonhosted.org/"
+          "https://registry.npmjs.org/"
+          "https://crates.io/"
+          "https://static.crates.io/"
+        ];
+        description = ''
+          Allowlist of URIs Nix evaluation is allowed to fetch from.
+          Applied when mySystem.roles.aiStack.enable = true.
+        '';
+      };
+
       fsIntegrityMonitor = {
         enable = lib.mkOption {
           type = lib.types.bool;
