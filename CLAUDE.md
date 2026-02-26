@@ -163,6 +163,19 @@ bash -n lib/config.sh
 ```
 Run once after all changes to a session, not after every individual edit.
 
+### Port and service URL policy — NON-NEGOTIABLE
+**Never hardcode port numbers or service URLs in any file.**
+This project has a single source of truth for all network settings:
+- **NixOS side:** `nix/modules/core/options.nix` — all ports defined as typed NixOS options here.
+- **Python services:** read URLs exclusively from environment variables injected by the systemd unit (e.g. `LLAMA_CPP_BASE_URL`, `AIDB_URL`, `REDIS_URL`). Fallback default values in `os.getenv("...", "default")` are only acceptable for local development; when `AI_STRICT_ENV=true` all URLs must be present.
+- **Shell scripts:** use env var overrides with sensible fallbacks (e.g. `REDIS_PORT="${REDIS_PORT:-6379}"`).
+- **NixOS modules:** use option references (e.g. `cfg.ports.llamaCpp`) — never literal integers.
+
+When adding a new service:
+1. Add its port option to `options.nix`.
+2. Reference that option from `ai-stack.nix` to inject the env var.
+3. Have the service read the env var. Do NOT hardcode the value.
+
 ---
 
 ## 7. Local AI Stack Goal
