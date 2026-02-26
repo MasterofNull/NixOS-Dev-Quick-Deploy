@@ -892,8 +892,9 @@ Not a current priority but track here for when it becomes one.
   *Success metric: `nix config show | grep require-sigs` returns `true`; setting it to false in a host config triggers a NixOS assertion failure.*
   *Done (2026-02-26): enforced in `nix/modules/core/base.nix` with `nix.settings.require-sigs = lib.mkForce true`; runtime check confirms `require-sigs = true`.*
 
-- [ ] **11.2.3** For the AI stack role, add `nix.settings.allowed-uris` to restrict which remote URIs `builtins.fetchurl` and `builtins.fetchTarball` can reach during evaluation.
+- [~] **11.2.3** For the AI stack role, add `nix.settings.allowed-uris` to restrict which remote URIs `builtins.fetchurl` and `builtins.fetchTarball` can reach during evaluation.
   *Success metric: An attempt to use a non-allowlisted URI in a Nix expression fails at eval time with a clear error.*
+  *In progress (2026-02-26): added centralized `mySystem.deployment.nixAllowedUris` and wired to `nix.settings.allowed-uris` for AI-stack hosts; flake eval confirms allowlist renders in `nixosConfigurations.nixos-ai-dev`. Runtime negative test requires rebuild/switch to apply host nix.conf.*
 
 ---
 
