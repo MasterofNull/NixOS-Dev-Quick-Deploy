@@ -30,13 +30,15 @@ class EmbeddingCache:
         redis_url: str = "redis://localhost:6379",
         ttl_seconds: int = 604800,  # 7 days
         key_prefix: str = "embedding:",
-        model_name: str = ""
+        model_name: str = "",
+        cache_epoch: int = 1,
     ):
         self.redis_url = redis_url
         self.redis: Optional[aioredis.Redis] = None
         self.ttl_seconds = ttl_seconds
         self.key_prefix = key_prefix
         self.model_name = model_name
+        self.cache_epoch = cache_epoch
 
         # Statistics
         self.stats = {
@@ -85,24 +87,27 @@ class EmbeddingCache:
         if self.redis:
             await self.redis.close()
 
-    def _text_to_key(self, text: str) -> str:
+    def _text_to_key(self, text: str, variant_tag: str = "A") -> str:
         """
-        Convert text to cache key using hash
+        Convert text to cache key using hash.
 
-        Key format: <prefix>m<model_slug>:<text_hash>
-        The model slug ensures vectors from different embedding spaces never
-        collide — a cache entry is only valid for the model that produced it.
+        Key format: <prefix>e<epoch>:m<model_slug>:v<variant>:<text_hash>
+
+        - epoch:      incrementing CACHE_EPOCH invalidates all old entries atomically
+        - model_slug: ensures vectors from different embedding models never collide
+        - variant:    A/B test tag so variants never share cache entries
         """
         model_slug = hashlib.sha256(self.model_name.encode()).hexdigest()[:16]
         text_hash = hashlib.sha256(text.encode('utf-8')).hexdigest()
-        return f"{self.key_prefix}m{model_slug}:{text_hash}"
+        return f"{self.key_prefix}e{self.cache_epoch}:m{model_slug}:v{variant_tag}:{text_hash}"
 
-    async def get(self, text: str) -> Optional[List[float]]:
+    async def get(self, text: str, variant_tag: str = "A") -> Optional[List[float]]:
         """
         Get embedding from cache
 
         Args:
             text: Text to get embedding for
+            variant_tag: A/B test variant (default "A")
 
         Returns:
             Embedding vector or None if not cached
@@ -111,7 +116,7 @@ class EmbeddingCache:
             return None
 
         try:
-            key = self._text_to_key(text)
+            key = self._text_to_key(text, variant_tag)
             cached = await self.redis.get(key)
 
             if cached:
@@ -130,13 +135,14 @@ class EmbeddingCache:
             logger.error(f"Error getting embedding from cache: {e}")
             return None
 
-    async def set(self, text: str, embedding: List[float]) -> bool:
+    async def set(self, text: str, embedding: List[float], variant_tag: str = "A") -> bool:
         """
         Set embedding in cache
 
         Args:
             text: Text that was embedded
             embedding: Embedding vector
+            variant_tag: A/B test variant (default "A")
 
         Returns:
             True if successful, False otherwise
@@ -145,7 +151,7 @@ class EmbeddingCache:
             return False
 
         try:
-            key = self._text_to_key(text)
+            key = self._text_to_key(text, variant_tag)
             # Store as JSON
             value = json.dumps(embedding)
             await self.redis.setex(key, self.ttl_seconds, value)
@@ -158,12 +164,13 @@ class EmbeddingCache:
             logger.error(f"Error setting embedding in cache: {e}")
             return False
 
-    async def get_many(self, texts: List[str]) -> List[Optional[List[float]]]:
+    async def get_many(self, texts: List[str], variant_tag: str = "A") -> List[Optional[List[float]]]:
         """
         Get multiple embeddings from cache
 
         Args:
             texts: List of texts to get embeddings for
+            variant_tag: A/B test variant (default "A")
 
         Returns:
             List of embeddings (None for cache misses)
@@ -172,7 +179,7 @@ class EmbeddingCache:
             return [None] * len(texts)
 
         try:
-            keys = [self._text_to_key(text) for text in texts]
+            keys = [self._text_to_key(text, variant_tag) for text in texts]
             cached_values = await self.redis.mget(keys)
 
             embeddings = []
@@ -191,13 +198,14 @@ class EmbeddingCache:
             logger.error(f"Error getting multiple embeddings from cache: {e}")
             return [None] * len(texts)
 
-    async def set_many(self, texts: List[str], embeddings: List[List[float]]) -> int:
+    async def set_many(self, texts: List[str], embeddings: List[List[float]], variant_tag: str = "A") -> int:
         """
         Set multiple embeddings in cache
 
         Args:
             texts: List of texts
             embeddings: List of embeddings
+            variant_tag: A/B test variant (default "A")
 
         Returns:
             Number of successfully cached embeddings
@@ -210,7 +218,7 @@ class EmbeddingCache:
             pipeline = self.redis.pipeline()
 
             for text, embedding in zip(texts, embeddings):
-                key = self._text_to_key(text)
+                key = self._text_to_key(text, variant_tag)
                 value = json.dumps(embedding)
                 pipeline.setex(key, self.ttl_seconds, value)
 
