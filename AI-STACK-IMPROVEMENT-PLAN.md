@@ -834,9 +834,9 @@ Not a current priority but track here for when it becomes one.
 
 ### TC3.5 — Performance Baseline (Pre-Hardening)
 
-- [x] **TC3.5.1** Record current p95 response latency for a standard query. Store in `ai-stack/eval/results/perf-baseline.json`.
+- [~] **TC3.5.1** Record current p95 response latency for a standard query. Store in `ai-stack/eval/results/perf-baseline.json`.
   *Run: `scripts/run-tc3-checks.sh --skip-nix` (requires hybrid-coordinator up). Pass: file written.*
-  *Done (2026-02-26): latest baseline recorded by TC3 harness (`p50_ms=9`, `p95_ms=10`).*
+  *In progress (2026-02-26): TC3 harness now requires successful HTTP 200 responses for latency samples; current run had 0/10 successful authenticated responses in-session, so p50/p95 remain null.*
 
 - [~] **TC3.5.2** Record current cache hit rate from Prometheus. Store in same baseline file.
   *Run: `scripts/run-tc3-checks.sh --perf-only` (requires Prometheus up). Pass: rate recorded.*
