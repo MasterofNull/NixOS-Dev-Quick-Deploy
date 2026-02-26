@@ -37,6 +37,7 @@ import capability_discovery
 from config import Config
 from metrics import ROUTE_DECISIONS, ROUTE_ERRORS
 from search_router import looks_like_sql as _looks_like_sql, normalize_tokens as _normalize_tokens
+from query_expansion import QueryExpander
 
 logger = logging.getLogger("hybrid-coordinator")
 
@@ -53,6 +54,7 @@ _context_compressor_ref: Optional[Callable] = None
 _llama_cpp_client_ref: Optional[Callable] = None
 _postgres_client_ref: Optional[Callable] = None
 _COLLECTIONS: Dict[str, Any] = {}
+_query_expander: Optional["QueryExpander"] = None
 
 
 def init(
@@ -72,6 +74,7 @@ def init(
     global _hybrid_search, _tree_search, _select_backend
     global _record_query_gap, _record_telemetry, _summarize
     global _context_compressor_ref, _llama_cpp_client_ref, _postgres_client_ref, _COLLECTIONS
+    global _query_expander
     _hybrid_search = hybrid_search_fn
     _tree_search = tree_search_fn
     _select_backend = select_backend_fn
@@ -82,6 +85,7 @@ def init(
     _llama_cpp_client_ref = llama_cpp_client_ref
     _postgres_client_ref = postgres_client_ref
     _COLLECTIONS = collections
+    _query_expander = QueryExpander(Config.LLAMA_CPP_URL)
 
 
 async def route_search(
@@ -114,6 +118,26 @@ async def route_search(
             else:
                 route = "hybrid"
 
+    # Phase 7.1.2 — LLM query expansion on semantic/hybrid routes
+    _working_query = query
+    _expansion_count = 1
+    if (
+        Config.AI_LLM_EXPANSION_ENABLED
+        and _query_expander is not None
+        and route in ("semantic", "hybrid")
+    ):
+        try:
+            _expanded = await asyncio.wait_for(
+                _query_expander.expand_with_llm(query, max_expansions=3),
+                timeout=Config.AI_LLM_EXPANSION_TIMEOUT_S,
+            )
+            if len(_expanded) > 1:
+                _working_query = _expanded[0]  # primary expansion for the main search
+                _expansion_count = len(_expanded)
+                logger.info("query_expansions", extra={"count": _expansion_count, "route": route})
+        except (asyncio.TimeoutError, Exception) as _exp_err:
+            logger.debug("llm_expansion_skipped", extra={"reason": str(_exp_err)})
+
     results: Dict[str, Any] = {}
     response_text = ""
     _cap_disc: Dict[str, Any] = {
@@ -139,7 +163,7 @@ async def route_search(
             response_text = _summarize(hybrid_results["keyword_results"])
         elif route == "semantic":
             hybrid_results = await _hybrid_search(
-                query=query, collections=list(_COLLECTIONS.keys()),
+                query=_working_query, collections=list(_COLLECTIONS.keys()),
                 limit=limit, keyword_limit=0, score_threshold=score_threshold,
             )
             results = {"semantic_results": hybrid_results["semantic_results"]}
@@ -153,7 +177,7 @@ async def route_search(
             response_text = _summarize(tree_results["combined_results"])
         else:
             hybrid_results = await _hybrid_search(
-                query=query, collections=list(_COLLECTIONS.keys()),
+                query=_working_query, collections=list(_COLLECTIONS.keys()),
                 limit=limit, keyword_limit=keyword_limit, score_threshold=score_threshold,
             )
             results = hybrid_results
