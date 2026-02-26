@@ -700,7 +700,7 @@ if __name__ == "__main__":
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8094,
+        port=int(os.getenv("NIXOS_DOCS_PORT", "8096")),
         log_level="info",
         log_config=None,
         access_log=False,
