@@ -128,6 +128,13 @@ class HealthResponse(BaseModel):
     llama_cpp_url: str
 
 
+class TaskSummaryResponse(BaseModel):
+    """Current queue depth and last observed terminal task state."""
+    active_tasks: int
+    last_task_status: str
+    last_task_id: Optional[str] = None
+
+
 # ============================================================================
 # FastAPI startup: initialise semaphore + verify aider binary
 # ============================================================================
@@ -399,6 +406,44 @@ async def get_task_status(task_id: str, auth: str = Depends(require_auth)):
     if "result" in entry:
         response["result"] = entry["result"]
     return response
+
+
+@app.get("/tasks/summary", response_model=TaskSummaryResponse)
+async def get_task_summary(auth: str = Depends(require_auth)):
+    """Return queue summary for dashboard polling."""
+    active_states = {"queued", "waiting", "running"}
+    terminal_states = {"success", "error"}
+
+    active_tasks = 0
+    last_task_id: Optional[str] = None
+    last_task_status = "none"
+    last_finished_epoch = -1.0
+
+    for task_id, entry in _tasks.items():
+        status = str(entry.get("status", "unknown"))
+        if status in active_states:
+            active_tasks += 1
+            continue
+        if status not in terminal_states:
+            continue
+
+        finished_at_raw = entry.get("finished_at")
+        finished_epoch = 0.0
+        if isinstance(finished_at_raw, str):
+            try:
+                finished_epoch = datetime.fromisoformat(finished_at_raw).timestamp()
+            except ValueError:
+                finished_epoch = 0.0
+        if finished_epoch >= last_finished_epoch:
+            last_finished_epoch = finished_epoch
+            last_task_id = task_id
+            last_task_status = status
+
+    return TaskSummaryResponse(
+        active_tasks=active_tasks,
+        last_task_status=last_task_status,
+        last_task_id=last_task_id,
+    )
 
 
 # ============================================================================

@@ -1433,6 +1433,35 @@
                 </div>
             </div>
 
+            <!-- AI Internals -->
+            <div class="dashboard-section">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">AI Internals</h2>
+                        </div>
+                        <span class="card-badge">Prometheus</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="metrics-grid">
+                            <div class="metric">
+                                <div class="metric-label">Embedding Cache Hit Rate</div>
+                                <div class="metric-value" id="aiInternalsCacheHit">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Tokens Compressed (1h)</div>
+                                <div class="metric-value" id="aiInternalsTokensCompressed">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Local Routing Split</div>
+                                <div class="metric-value" id="aiInternalsLocalRouting">--</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Continuous Improvement -->
             <div class="dashboard-section">
                 <div class="card">
@@ -2355,6 +2384,7 @@
                 const [
                     systemMetrics,
                     aiMetrics,
+                    aiInternals,
                     services,
                     containers,
                     actions,
@@ -2366,6 +2396,7 @@
                 ] = await Promise.all([
                     fetchSystemMetrics(),
                     fetchAIMetrics(),
+                    fetchAIInternals(),
                     fetchServices(),
                     fetchContainers(),
                     fetchActions(),
@@ -2417,6 +2448,7 @@
                     learning,
                     tokenSavings,
                     keywordSignals,
+                    aiInternals,
                     aiMetrics: {
                         ...(aiMetrics || {}),
                         harness: {
@@ -2444,6 +2476,7 @@
                 updateConfigMetrics(config);
                 updateProofMetrics(proof);
                 updateHarnessOverview(dashboardData.aiMetrics);
+                updateAIInternals(aiInternals);
                 updateHealthScore();
                 updateLastUpdate();
             } catch (error) {
@@ -2464,6 +2497,16 @@
                 return await response.json();
             } catch (_) {
                 return [];
+            }
+        }
+
+        async function fetchAIInternals() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/metrics`, { cache: 'no-store' });
+                if (!response.ok) return {};
+                return await response.json();
+            } catch (_) {
+                return {};
             }
         }
 
@@ -2580,7 +2623,8 @@
                     dimensions: aiServices?.embeddings?.dimensions || 0,
                     models: []
                 },
-                switchboard: { status: normalize(aiServices?.switchboard?.status), url: registryServiceUrl('switchboard') }
+                switchboard: { status: normalize(aiServices?.switchboard?.status), url: registryServiceUrl('switchboard') },
+                aider_wrapper: { status: normalize(aiServices?.aider_wrapper?.status), url: registryServiceUrl('aider_wrapper') }
             };
 
             const containerRows = Array.isArray(containers)
@@ -3584,6 +3628,17 @@
             document.getElementById('learningAvgScore').textContent = avgScore.toFixed(2);
             document.getElementById('learningPatterns').textContent = patterns.extractions ?? 0;
             document.getElementById('learningFinetune').textContent = fineTuning.samples ?? 0;
+        }
+
+        function updateAIInternals(data) {
+            const cacheHit = Number(data?.embedding_cache_hit_rate_pct ?? 0);
+            const localRouting = Number(data?.llm_routing_local_pct ?? 0);
+            const tokensCompressed = Number(data?.tokens_compressed_last_hour ?? 0);
+            document.getElementById('aiInternalsCacheHit').textContent = `${cacheHit.toFixed(1)}%`;
+            document.getElementById('aiInternalsLocalRouting').textContent = `${localRouting.toFixed(1)}%`;
+            document.getElementById('aiInternalsTokensCompressed').textContent = Number.isFinite(tokensCompressed)
+                ? `${Math.round(tokensCompressed)}`
+                : '0';
         }
 
         function updateHarnessOverview(aiMetrics) {
