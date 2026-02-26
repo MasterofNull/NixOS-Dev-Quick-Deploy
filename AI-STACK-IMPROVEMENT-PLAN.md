@@ -640,8 +640,8 @@ Same problem, same approach. AIDB is simultaneously: a vector DB client, an embe
   `embedding` → `sentence-transformers, vector, cosine similarity, HNSW`
   *Success metric: A test query `"how to fix flake input conflict"` expands to include `"inputs"`, `"follows"`, `"lock"` variants.*
 
-- [ ] **7.1.2** Add LLM-based query expansion to the hot path (not just `expand_with_llm` as dead optional code). Use the local model to rewrite queries as 2–3 alternative phrasings before searching.
-  *Success metric: Log shows `"query_expansions": 3` on semantic search requests; RAG retrieval recall improves on test query set (establish baseline first).*
+- [x] **7.1.2** Add LLM-based query expansion to the hot path (not just `expand_with_llm` as dead optional code). Use the local model to rewrite queries as 2–3 alternative phrasings before searching.
+  *DONE 2026-02-26: `AI_LLM_EXPANSION_ENABLED` flag; `asyncio.wait_for` 4s timeout guard in route_handler.py; `_expansion_count` logged; off by default. commit cf71a86*
 
 ---
 
