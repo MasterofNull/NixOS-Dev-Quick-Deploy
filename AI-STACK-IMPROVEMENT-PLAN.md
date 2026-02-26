@@ -800,20 +800,20 @@ Not a current priority but track here for when it becomes one.
 ### TC3.4 — Knowledge Base Quality Baseline
 
 - [ ] **TC3.4.1** Run a domain-specific query expansion test: verify NixOS synonym map fires.
-  *Pass: log shows `query_expansions: 3` for a NixOS terminology query.*
+  *Run: `scripts/run-tc3-checks.sh --skip-nix --skip-perf` (TC3.4 section). Pass: NixOS terms (inputs/follows/lock) appear in expansion for "flake" query.*
 
 - [ ] **TC3.4.2** Check vector timestamp fields are present on at least one ingested document.
-  *Pass: `redis-cli` or Qdrant API shows `ingested_at` field in vector payload.*
+  *Run: `scripts/run-tc3-checks.sh --skip-nix --skip-perf` (requires AIDB up). Pass: ingested_at / last_accessed_at present in payload.*
 
 ---
 
 ### TC3.5 — Performance Baseline (Pre-Hardening)
 
 - [ ] **TC3.5.1** Record current p95 response latency for a standard query. Store in `ai-stack/eval/results/perf-baseline.json`.
-  *Pass: file written; p95 < 30 s for a local-routed query.*
+  *Run: `scripts/run-tc3-checks.sh --skip-nix` (requires hybrid-coordinator up). Pass: file written.*
 
-- [ ] **TC3.5.2** Record current cache hit rate: `curl -s http://localhost:8003/metrics | grep cache_hits`. Store rate in same baseline file.
-  *Pass: hit rate recorded; any value acceptable as baseline.*
+- [ ] **TC3.5.2** Record current cache hit rate from Prometheus. Store in same baseline file.
+  *Run: `scripts/run-tc3-checks.sh --perf-only` (requires Prometheus up). Pass: rate recorded.*
 
 - [ ] **TC3.5.3** Confirm `nixos-unstable` migration track does not break any TC3.1 items (if Phase 10 was completed).
   *Pass: `nixos-rebuild build-vm` succeeds on unstable track; TC3.1 items pass inside VM.*
