@@ -381,6 +381,12 @@
           default = "redis_password";
           description = "SOPS key name for Redis password secret.";
         };
+
+        aiderWrapperApiKey = lib.mkOption {
+          type = lib.types.str;
+          default = "aider_wrapper_api_key";
+          description = "SOPS key name for aider-wrapper API auth secret.";
+        };
       };
     };
 

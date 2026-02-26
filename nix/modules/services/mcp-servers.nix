@@ -200,8 +200,9 @@ let
   aidbApiKeySecret = sec.names.aidbApiKey;
   hybridApiKeySecret = sec.names.hybridApiKey;
   embeddingsApiKeySecret = sec.names.embeddingsApiKey;
-  postgresPasswordSecret = sec.names.postgresPassword;
-  redisPasswordSecret = sec.names.redisPassword;
+  postgresPasswordSecret     = sec.names.postgresPassword;
+  redisPasswordSecret        = sec.names.redisPassword;
+  aiderWrapperApiKeySecret   = sec.names.aiderWrapperApiKey;
 
   embedEnabled = ai.embeddingServer.enable;
   redisUnit = "redis-mcp.service";
@@ -725,7 +726,7 @@ in
             "LLAMA_CPP_HOST=127.0.0.1"
             "LLAMA_CPP_PORT=${toString llama.port}"
             "PYTHONPATH=${repoMcp}:${repoMcp}/aider-wrapper"
-          ] ++ lib.optional sec.enable "AIDER_WRAPPER_API_KEY_FILE=${secretPath "aider_wrapper_api_key"}";
+          ] ++ lib.optional sec.enable "AIDER_WRAPPER_API_KEY_FILE=${secretPath aiderWrapperApiKeySecret}";
         };
       };
 
