@@ -45,6 +45,13 @@ let
         if builtins.hasAttr name pkgs then pkgs.${name} else null
       ) mergedPackageNames
     );
+  hardwareTier =
+    if cfg.hardware.systemRamGb >= 32 then
+      "high"
+    else if cfg.hardware.systemRamGb >= 16 then
+      "medium"
+    else
+      "low";
 
   # ── Dev testing helper scripts (referenced by system-health-check.sh) ──────
   # These are minimal wrappers installed as system commands so they appear in
@@ -88,6 +95,7 @@ in
 {
   config = {
     networking.hostName = lib.mkDefault cfg.hostName;
+    mySystem.hardwareTier = lib.mkDefault hardwareTier;
 
     # Centralized port registry wiring
     mySystem.aiStack.llamaCpp.port = lib.mkDefault ports.llamaCpp;

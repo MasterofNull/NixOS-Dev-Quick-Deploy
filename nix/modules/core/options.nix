@@ -36,6 +36,15 @@
       description = "Declarative system profile selector.";
     };
 
+    hardwareTier = lib.mkOption {
+      type = lib.types.enum [ "low" "medium" "high" ];
+      readOnly = true;
+      description = ''
+        Derived hardware capability tier used by validation and policy gates.
+        Computed from declared host hardware facts (for example, `systemRamGb`).
+      '';
+    };
+
     nixpkgsTrack = lib.mkOption {
       type = lib.types.enum [ "stable" "unstable" ];
       default = "stable";

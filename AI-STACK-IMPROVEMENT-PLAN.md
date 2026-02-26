@@ -799,9 +799,9 @@ Not a current priority but track here for when it becomes one.
 
 ### TC3.2 — Feedback Loop Validation
 
-- [~] **TC3.2.1** Submit a feedback rating via CLI: `aq-rate <last_interaction_id> good` — verify Postgres row inserted.
+- [x] **TC3.2.1** Submit a feedback rating via CLI: `aq-rate <last_interaction_id> good` — verify Postgres row inserted.
   *Pass: `psql -c "SELECT * FROM learning_feedback ORDER BY created_at DESC LIMIT 1"` returns a row within 5 s.*
-  *In progress (2026-02-26): second root cause identified in `/feedback/{interaction_id}` path: `record_simple_feedback()` awaited `PerformanceWindow.record()` even though `record()` is synchronous, causing `TypeError(\"object NoneType can't be used in 'await' expression\")` and HTTP 500. Patched to support sync/async `record()`; runtime verification is blocked until privileged restart (`sudo systemctl restart ai-hybrid-coordinator.service`).*
+  *Done (2026-02-26): after service restart, `aq-rate` returned `status=recorded` and Postgres confirms latest `learning_feedback` row (`feedback_id=cdf65ec7-bd36-4789-abc1-588a494f36fe`, `interaction_id=09bb803a-b8f9-4856-ba3d-052d3bafef0c`, `rating=1`, `source=user-rating`).*
 
 - [x] **TC3.2.2** Run `aq-gaps` — verify it executes without error (may output empty list if no low-confidence queries yet).
   *Pass: command exits 0; output is valid.*
@@ -811,13 +811,13 @@ Not a current priority but track here for when it becomes one.
 
 ### TC3.3 — NixOS Platform Validation
 
-- [~] **TC3.3.1** Run `nixos-rebuild dry-run` — no evaluation errors, no `lib.mkForce` conflicts.
+- [x] **TC3.3.1** Run `nixos-rebuild dry-run` — no evaluation errors, no `lib.mkForce` conflicts.
   *Pass: exit 0 with no error lines in output.*
-  *In progress (2026-02-26): `scripts/run-tc3-checks.sh` now handles non-interactive sessions; local run skipped this check because `sudo -n` is unavailable in the current terminal. Re-run interactively to complete.*
+  *Done (2026-02-26): `nixos-rebuild dry-run --flake .#nixos-ai-dev` completed successfully (`building the system configuration...` with no evaluation errors).*
 
-- [~] **TC3.3.2** Verify hardware-tier detection resolves correctly on this machine.
-  *Pass: `nix eval .#lib.hardware-tier {...}` returns `"medium"` (27 GB RAM, AMD iGPU, laptop).*
-  *In progress (2026-02-26): `scripts/run-tc3-checks.sh` currently reports this as skipped when flake eval target is unavailable in-session; requires interactive/local eval context.*
+- [x] **TC3.3.2** Verify hardware-tier detection resolves correctly on this machine.
+  *Pass: `nix eval --raw .#nixosConfigurations.nixos-ai-dev.config.mySystem.hardwareTier` returns `"medium"` (27 GB RAM, AMD iGPU, laptop).*
+  *Done (2026-02-26): added declarative derived option `mySystem.hardwareTier` and updated `scripts/run-tc3-checks.sh` host/profile resolution so TC3.3.2 now passes automatically.*
 
 - [x] **TC3.3.3** Run `nix flake check` — all checks pass.
   *Pass: exit 0.*

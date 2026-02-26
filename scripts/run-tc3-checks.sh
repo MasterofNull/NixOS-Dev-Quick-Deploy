@@ -29,6 +29,8 @@ SKIP_NIX=0
 SKIP_PERF=0
 PERF_ONLY=0
 PERF_BASELINE_FILE="${REPO_ROOT}/ai-stack/eval/results/perf-baseline.json"
+HOST_NAME="$(hostname -s 2>/dev/null || echo nixos)"
+FLAKE_CONFIG_NAME="${FLAKE_CONFIG_NAME:-${HOST_NAME}-ai-dev}"
 
 pass()  { printf '\033[0;32m[TC3 PASS] %s\033[0m\n' "$*"; }
 fail()  { printf '\033[0;31m[TC3 FAIL] %s\033[0m\n' "$*" >&2; FAILURES=$((FAILURES + 1)); }
@@ -36,6 +38,23 @@ skip()  { printf '\033[0;33m[TC3 SKIP] %s\033[0m\n' "$*"; }
 info()  { printf '\033[0;36m[TC3 INFO] %s\033[0m\n' "$*"; }
 
 FAILURES=0
+
+resolve_flake_config_name() {
+    local candidate="$FLAKE_CONFIG_NAME"
+    if nix eval --raw "${REPO_ROOT}#nixosConfigurations.${candidate}.config.system.stateVersion" >/dev/null 2>&1; then
+        printf '%s' "$candidate"
+        return 0
+    fi
+
+    local fallback
+    for fallback in "nixos-ai-dev" "hyperd-ai-dev" "nixos-minimal" "hyperd-minimal"; do
+        if nix eval --raw "${REPO_ROOT}#nixosConfigurations.${fallback}.config.system.stateVersion" >/dev/null 2>&1; then
+            printf '%s' "$fallback"
+            return 0
+        fi
+    done
+    return 1
+}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -60,11 +79,17 @@ done
 # ---------------------------------------------------------------------------
 if [[ "${SKIP_NIX}" -eq 0 && "${PERF_ONLY}" -eq 0 ]]; then
     info "TC3.3 — NixOS platform validation"
+    if resolved_config="$(resolve_flake_config_name)"; then
+        FLAKE_CONFIG_NAME="$resolved_config"
+        info "Using flake configuration: ${FLAKE_CONFIG_NAME}"
+    else
+        skip "TC3.3: unable to resolve nixosConfigurations.<host-profile> in current flake"
+    fi
 
     # TC3.3.1 — nixos-rebuild dry-run
     info "TC3.3.1: nixos-rebuild dry-run..."
     if sudo -n true >/dev/null 2>&1; then
-        if nixos_out="$(sudo -n nixos-rebuild dry-run --flake "${REPO_ROOT}#nixos" 2>&1)"; then
+        if nixos_out="$(sudo -n nixos-rebuild dry-run --flake "${REPO_ROOT}#${FLAKE_CONFIG_NAME}" 2>&1)"; then
             pass "TC3.3.1: nixos-rebuild dry-run OK"
         else
             fail "TC3.3.1: nixos-rebuild dry-run failed"
@@ -76,7 +101,7 @@ if [[ "${SKIP_NIX}" -eq 0 && "${PERF_ONLY}" -eq 0 ]]; then
 
     # TC3.3.2 — hardware-tier detection
     info "TC3.3.2: hardware-tier detection..."
-    tier_out="$(nix eval --raw "${REPO_ROOT}#nixosConfigurations.nixos.config.mySystem.hardwareTier" 2>/dev/null || echo "")"
+    tier_out="$(nix eval --raw "${REPO_ROOT}#nixosConfigurations.${FLAKE_CONFIG_NAME}.config.mySystem.hardwareTier" 2>/dev/null || echo "")"
     if [[ -n "${tier_out}" ]]; then
         pass "TC3.3.2: hardware tier resolved: ${tier_out}"
     else
