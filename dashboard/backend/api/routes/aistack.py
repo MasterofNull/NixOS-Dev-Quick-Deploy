@@ -23,6 +23,10 @@ except ImportError:
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# Prometheus-compatible in-memory gauges for dashboard infra probes.
+_REDIS_PING_OK_GAUGE: float = 0.0
+_POSTGRES_QUERY_OK_GAUGE: float = 0.0
+
 # Service endpoints (declarative + env-overridable)
 SERVICES = {
     "ralph": service_endpoints.RALPH_URL,
@@ -398,6 +402,32 @@ async def _postgres_select1_probe() -> Dict[str, Any]:
                 await conn.close()
             except Exception:  # noqa: BLE001
                 pass
+
+
+async def _aider_wrapper_task_summary() -> Dict[str, Any]:
+    """Fetch queue depth and last terminal task state from aider-wrapper."""
+    summary = await fetch_with_fallback(f"{SERVICES['aider_wrapper']}/tasks/summary", None)
+    if not isinstance(summary, dict):
+        return {"active_tasks": 0, "last_task_status": "unknown", "last_task_id": None}
+    return {
+        "active_tasks": int(summary.get("active_tasks", 0) or 0),
+        "last_task_status": str(summary.get("last_task_status", "unknown")),
+        "last_task_id": summary.get("last_task_id"),
+    }
+
+
+def render_prometheus_metrics() -> str:
+    """Return dashboard probe metrics in Prometheus exposition text format."""
+    lines = [
+        "# HELP redis_ping_ok Redis connectivity probe (1=healthy, 0=unhealthy)",
+        "# TYPE redis_ping_ok gauge",
+        f"redis_ping_ok {_REDIS_PING_OK_GAUGE:.1f}",
+        "# HELP postgres_query_ok PostgreSQL SELECT 1 probe (1=healthy, 0=unhealthy)",
+        "# TYPE postgres_query_ok gauge",
+        f"postgres_query_ok {_POSTGRES_QUERY_OK_GAUGE:.1f}",
+        "",
+    ]
+    return "\n".join(lines)
 
 
 async def _run_full_health_probe() -> Dict[str, Any]:
@@ -868,6 +898,7 @@ async def get_ai_metrics() -> Dict[str, Any]:
         qdrant_collections,
         redis_probe,
         postgres_probe,
+        aider_task_summary,
     ) = await asyncio.gather(
         fetch_with_fallback(f"{SERVICES['aidb']}/health", {}),
         fetch_with_fallback(f"{SERVICES['hybrid']}/health", {}),
@@ -881,6 +912,7 @@ async def get_ai_metrics() -> Dict[str, Any]:
         fetch_with_fallback(f"{SERVICES['qdrant']}/collections", {}),
         _redis_ping_probe(),
         _postgres_select1_probe(),
+        _aider_wrapper_task_summary(),
     )
 
     aidb_status = _normalize_status(aidb_health.get("status"), ("online", "ok", "healthy"))
@@ -949,6 +981,9 @@ async def get_ai_metrics() -> Dict[str, Any]:
     # a log-based exporter or a future /metrics endpoint can surface them.
     redis_ok_gauge = 1.0 if redis_probe.get("redis_ping_ok") else 0.0
     postgres_ok_gauge = 1.0 if postgres_probe.get("postgres_query_ok") else 0.0
+    global _REDIS_PING_OK_GAUGE, _POSTGRES_QUERY_OK_GAUGE
+    _REDIS_PING_OK_GAUGE = redis_ok_gauge
+    _POSTGRES_QUERY_OK_GAUGE = postgres_ok_gauge
     logger.info(
         "infra_probe gauge redis_ping_ok=%.0f postgres_query_ok=%.0f",
         redis_ok_gauge,
@@ -1005,6 +1040,9 @@ async def get_ai_metrics() -> Dict[str, Any]:
                 "port": service_endpoints.AIDER_WRAPPER_PORT,
                 "endpoint": SERVICES["aider_wrapper"],
                 "health_check": aider_wrapper_health,
+                "active_tasks": aider_task_summary.get("active_tasks", 0),
+                "last_task_status": aider_task_summary.get("last_task_status", "unknown"),
+                "last_task_id": aider_task_summary.get("last_task_id"),
             },
         },
         "infra_probes": {
