@@ -44,7 +44,9 @@ fi
 : "${DASHBOARD_URL:=http://${SERVICE_HOST}:${DASHBOARD_PORT:-8888}}"
 : "${EMBEDDINGS_URL:=http://${SERVICE_HOST}:${EMBEDDINGS_PORT:-8081}}"
 : "${SWITCHBOARD_URL:=http://${SERVICE_HOST}:${SWITCHBOARD_PORT:-8085}}"
+: "${AIDER_WRAPPER_URL:=http://${SERVICE_HOST}:${AIDER_WRAPPER_PORT:-8090}}"
 : "${NETDATA_URL:=http://${SERVICE_HOST}:${NETDATA_PORT:-19999}}"
+: "${NIXOS_DOCS_URL:=http://${SERVICE_HOST}:${NIXOS_DOCS_PORT:-8096}}"
 : "${OLLAMA_URL:=http://${SERVICE_HOST}:${OLLAMA_PORT:-11434}}"
 : "${GITEA_URL:=http://${SERVICE_HOST}:${GITEA_PORT:-3003}}"
 : "${REDISINSIGHT_URL:=http://${SERVICE_HOST}:${REDISINSIGHT_PORT:-5540}}"
@@ -56,6 +58,11 @@ fi
 # Database connection strings (used by exec-based health checks)
 : "${POSTGRES_HOST:=${SERVICE_HOST}}"
 : "${REDIS_HOST:=${SERVICE_HOST}}"
+
+# Backward-compatible aliases for older scripts.
+: "${LLAMA_CPP_URL:=${LLAMA_URL}}"
+: "${LLAMA_CPP_EMBED_URL:=${EMBEDDINGS_URL}}"
+: "${AIDER_URL:=${AIDER_WRAPPER_URL}}"
 
 # In-cluster DNS endpoints were intentionally removed.
 # Host-mode declarative runtime is authoritative; use localhost URLs above.
