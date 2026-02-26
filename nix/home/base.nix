@@ -19,7 +19,18 @@ let
     else config;
   repoPath = lib.attrByPath [ "mySystem" "mcpServers" "repoPath" ] "${config.home.homeDirectory}/Documents/NixOS-Dev-Quick-Deploy" systemConfig;
   sharedSkillsDir = "${repoPath}/.agent/skills";
-  portRegistry = lib.attrByPath [ "mySystem" "ports" ] { } systemConfig;
+  defaultPortRegistry = {
+    llamaCpp = 8080;
+    embedding = 8081;
+    mcpAidb = 8002;
+    mcpHybrid = 8003;
+    mcpRalph = 8004;
+    switchboard = 8085;
+    aiderWrapper = 8090;
+    anthropicProxy = 8120;
+    postgres = 5432;
+  };
+  portRegistry = lib.attrByPath [ "mySystem" "ports" ] defaultPortRegistry systemConfig;
   getRegistryPort = portName:
     lib.attrByPath [ portName ]
       (throw "Missing centralized port registry entry: mySystem.ports.${portName}")
@@ -31,7 +42,6 @@ let
   aiAidbPort = lib.attrByPath [ "mySystem" "mcpServers" "aidbPort" ] (getRegistryPort "mcpAidb") systemConfig;
   aiRalphPort = lib.attrByPath [ "mySystem" "mcpServers" "ralphPort" ] (getRegistryPort "mcpRalph") systemConfig;
   aiAiderPort = lib.attrByPath [ "mySystem" "mcpServers" "aiderWrapperPort" ] (getRegistryPort "aiderWrapper") systemConfig;
-  aiAnthropicProxyPort = lib.attrByPath [ "mySystem" "ports" "anthropicProxy" ] (getRegistryPort "anthropicProxy") systemConfig;
   aiPostgresPort = lib.attrByPath [ "mySystem" "ports" "postgres" ] (getRegistryPort "postgres") systemConfig;
   aiOpenAIBaseUrl = "http://127.0.0.1:${toString aiSwitchboardPort}/v1";
   continueApiBase =
@@ -46,7 +56,6 @@ let
     { name = "OPENAI_API_KEY"; value = "dummy"; }
     { name = "HYBRID_COORDINATOR_URL"; value = "http://127.0.0.1:${toString aiHybridPort}"; }
     { name = "AIDB_URL"; value = "http://127.0.0.1:${toString aiAidbPort}"; }
-    { name = "ANTHROPIC_BASE_URL"; value = "http://127.0.0.1:${toString aiAnthropicProxyPort}"; }
     { name = "MCP_CONFIG_PATH"; value = "${config.home.homeDirectory}/.mcp/config.json"; }
     { name = "AI_AGENT_SKILLS_DIR"; value = sharedSkillsDir; }
   ];
@@ -705,6 +714,28 @@ in
         .["workbench.colorTheme"] = "Activate SCARLET protocol (beta)" |
         .["workbench.preferredDarkColorTheme"] = "Activate SCARLET protocol (beta)" |
         .["window.autoDetectColorScheme"] = false
+      ' "$settings_file" > "$tmp"; then
+        mv "$tmp" "$settings_file"
+        chmod u+rw "$settings_file" || true
+      else
+        rm -f "$tmp"
+      fi
+      unset tmp
+    fi
+    unset settings_file
+  '';
+
+  # Remove stale Claude extension keys that can break startup:
+  #  - claudeProcessWrapper pointing to the same binary as executablePath
+  #  - ANTHROPIC_BASE_URL override to an unavailable local proxy
+  home.activation.migrateClaudeVscodeSettings = lib.hm.dag.entryAfter [ "enforceVSCodiumTheme" ] ''
+    settings_file="$HOME/.config/VSCodium/User/settings.json"
+    if [ -f "$settings_file" ] && command -v jq >/dev/null 2>&1; then
+      tmp="$(mktemp)"
+      if jq '
+        del(.["claude-code.claudeProcessWrapper"], .["claudeCode.claudeProcessWrapper"]) |
+        .["claude-code.environmentVariables"] = ((.["claude-code.environmentVariables"] // []) | map(select(.name != "ANTHROPIC_BASE_URL"))) |
+        .["claudeCode.environmentVariables"] = ((.["claudeCode.environmentVariables"] // []) | map(select(.name != "ANTHROPIC_BASE_URL")))
       ' "$settings_file" > "$tmp"; then
         mv "$tmp" "$settings_file"
         chmod u+rw "$settings_file" || true

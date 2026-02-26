@@ -9,8 +9,10 @@
 #
 # ============================================================================
 
-# Load port definitions from settings.sh if not already loaded
-if [[ -z "${AI_STACK_NAMESPACE:-}" ]]; then
+# Load port definitions from settings.sh when endpoint ports are not initialized.
+# AI_STACK_NAMESPACE may be exported without individual port vars, so key off
+# required port env vars instead of namespace presence.
+if [[ -z "${LLAMA_CPP_PORT:-}" || -z "${AIDB_PORT:-}" || -z "${SWITCHBOARD_PORT:-}" ]]; then
     _SE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     # shellcheck source=config/settings.sh
     [[ -f "${_SE_DIR}/settings.sh" ]] && source "${_SE_DIR}/settings.sh"
