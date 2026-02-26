@@ -11,12 +11,16 @@
 
 set -euo pipefail
 
-PG_HOST="${POSTGRES_HOST:-127.0.0.1}"
-PG_PORT="${POSTGRES_PORT:-5432}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../config/service-endpoints.sh
+source "${SCRIPT_DIR}/../config/service-endpoints.sh"
+
+PG_HOST="${POSTGRES_HOST}"
+PG_PORT="${POSTGRES_PORT}"
 PG_USER="${POSTGRES_USER:-aidb}"
 PG_DB="${POSTGRES_DB:-aidb}"
 PG_PASS_FILE="${POSTGRES_PASSWORD_FILE:-/run/secrets/postgres_password}"
-AIDB_URL="${AIDB_URL:-http://127.0.0.1:${AIDB_PORT:-8002}}"
+AIDB_URL="${AIDB_URL}"
 
 DAYS=7
 LIMIT=10
@@ -84,7 +88,7 @@ SELECT
 FROM query_gaps
 ${WHERE}
 GROUP BY query_hash, query_text
-ORDER BY occurrences DESC, min_score ASC
+ORDER BY occurrences DESC, MIN(score) ASC
 LIMIT ${LIMIT};
 SQL
     echo "# [${count}x, best score=${max_score}] ${query_text}"

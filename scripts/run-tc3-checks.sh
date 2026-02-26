@@ -169,7 +169,7 @@ if [[ "${SKIP_PERF}" -eq 0 ]]; then
     api_key_file="${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_coordinator_api_key}"
     api_key="${HYBRID_API_KEY:-}"
     if [[ -f "${api_key_file}" ]]; then
-        api_key="$(cat "${api_key_file}")"
+        api_key="$(tr -d '[:space:]' < "${api_key_file}")"
     fi
 
     # TC3.5.1 — p95 latency for a standard query
@@ -184,7 +184,7 @@ if [[ "${SKIP_PERF}" -eq 0 ]]; then
                 -H "X-API-Key: ${api_key}" \
                 -d '{"query":"what is lib.mkForce","limit":3}' \
                 -o /dev/null -w '%{http_code}' \
-                "${hybrid_url}/route_search" 2>/dev/null || echo "000")"
+                "${hybrid_url}/query" 2>/dev/null || echo "000")"
             t_end=$(date +%s%N)
             if [[ "${status_code}" == "200" ]]; then
                 latencies+=( $(( (t_end - t_start) / 1000000 )) )
@@ -215,20 +215,32 @@ if [[ "${SKIP_PERF}" -eq 0 ]]; then
     info "TC3.5.2: embedding cache hit rate..."
     prom_url="${PROMETHEUS_URL}"
     cache_hit_rate="null"
+    hits="0"
+    misses="0"
     if curl -fsS --max-time 5 --connect-timeout 3 "${prom_url}/-/healthy" >/dev/null 2>&1; then
         hits="$(curl -fsS --max-time 5 "${prom_url}/api/v1/query?query=embedding_cache_hits_total" 2>/dev/null \
             | python3 -c "import sys,json; d=json.load(sys.stdin); r=d['data']['result']; print(float(r[0]['value'][1]) if r else 0)" 2>/dev/null || echo 0)"
         misses="$(curl -fsS --max-time 5 "${prom_url}/api/v1/query?query=embedding_cache_misses_total" 2>/dev/null \
             | python3 -c "import sys,json; d=json.load(sys.stdin); r=d['data']['result']; print(float(r[0]['value'][1]) if r else 0)" 2>/dev/null || echo 0)"
-        total_em="$(python3 -c "print(${hits} + ${misses})" 2>/dev/null || echo 0)"
+    fi
+
+    total_em="$(python3 -c "print(${hits} + ${misses})" 2>/dev/null || echo 0)"
+    if python3 -c "exit(0 if float('${total_em}') > 0 else 1)" 2>/dev/null; then
+        cache_hit_rate="$(python3 -c "print(round(${hits} / ${total_em} * 100, 1))")"
+        pass "TC3.5.2: embedding cache hit rate = ${cache_hit_rate}% (hits=${hits}, misses=${misses}, source=prometheus)"
+    else
+        # Fallback: parse counters directly from hybrid-coordinator /metrics.
+        hybrid_hits="$(curl -fsS --max-time 5 --connect-timeout 3 "${hybrid_url}/metrics" 2>/dev/null \
+            | awk '/^embedding_cache_hits_total[[:space:]]+[0-9.]+$/ {print $2; exit}' || echo 0)"
+        hybrid_misses="$(curl -fsS --max-time 5 --connect-timeout 3 "${hybrid_url}/metrics" 2>/dev/null \
+            | awk '/^embedding_cache_misses_total[[:space:]]+[0-9.]+$/ {print $2; exit}' || echo 0)"
+        total_em="$(python3 -c "print(${hybrid_hits} + ${hybrid_misses})" 2>/dev/null || echo 0)"
         if python3 -c "exit(0 if float('${total_em}') > 0 else 1)" 2>/dev/null; then
-            cache_hit_rate="$(python3 -c "print(round(${hits} / ${total_em} * 100, 1))")"
-            pass "TC3.5.2: embedding cache hit rate = ${cache_hit_rate}% (hits=${hits}, misses=${misses})"
+            cache_hit_rate="$(python3 -c "print(round(${hybrid_hits} / ${total_em} * 100, 1))")"
+            pass "TC3.5.2: embedding cache hit rate = ${cache_hit_rate}% (hits=${hybrid_hits}, misses=${hybrid_misses}, source=hybrid-metrics)"
         else
             skip "TC3.5.2: no embedding cache metrics yet (hit+miss = 0)"
         fi
-    else
-        skip "TC3.5.2: Prometheus not reachable at ${prom_url} — skip"
     fi
 
     # Write baseline JSON
