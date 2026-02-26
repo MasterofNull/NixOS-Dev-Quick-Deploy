@@ -81,10 +81,22 @@ let
     };
   };
 
-  continueVsix = pkgs.fetchurl {
-    url    = "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.32/file/Continue.continue-1.3.32@linux-x64.vsix";
-    sha256 = "1nmw9p1jkjcf0gpwzzv836yhlrlf40ymdxyc8iql5hw5h8p433fc";
-    name   = "Continue.continue-1.3.32-linux-x64.vsix";
+  # Continue.dev AI coding assistant — built declaratively like other Open VSX
+  # extensions so it installs on every home-manager switch without needing
+  # VSCodium to be closed.  Rename .vsix → .vsix.zip so stdenv's unzip hook
+  # fires (same trick used by openaiCodex and geminiCodeAssist above).
+  continueExtension = pkgs.vscode-utils.buildVscodeExtension {
+    pname              = "Continue.continue";
+    version            = "1.3.32";
+    vscodeExtPublisher = "Continue";
+    vscodeExtName      = "continue";
+    vscodeExtUniqueId  = "Continue.continue";
+    vscodeExtVersion   = "1.3.32";
+    src = pkgs.fetchurl {
+      url    = "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.32/file/Continue.continue-1.3.32@linux-x64.vsix";
+      sha256 = "1nmw9p1jkjcf0gpwzzv836yhlrlf40ymdxyc8iql5hw5h8p433fc";
+      name   = "Continue.continue-1.3.32-linux-x64.vsix.zip";
+    };
   };
 
   # Qwen Code VSCode IDE Companion — QwenLM's official AI coding assistant
@@ -239,7 +251,7 @@ let
   vscodiumSettingsJSON = pkgs.writeText "vscodium-settings-baseline.json"
     (builtins.toJSON vscodiumSettings);
   vscodeMutableRuntimeExtensions = [
-    "continue.continue"
+    # continue.continue is now installed declaratively via continueExtension
     "ms-python.debugpy"
     "ms-toolsai.jupyter"
     "ms-toolsai.jupyter-keymap"
@@ -416,8 +428,9 @@ in
   programs.git = {
     enable = true;
     settings = {
-      user.name = lib.mkDefault "NixOS User";
-      user.email = lib.mkDefault "user@localhost";
+      # user.name and user.email are intentionally NOT set here — they are
+      # written directly to ~/.gitconfig by nixos-quick-deploy.sh so the user
+      # can change them with `git config --global` without a switch clobbering them.
       init.defaultBranch = "main";
       pull.rebase = true;
       push.autoSetupRemote = true;
@@ -648,6 +661,7 @@ in
         ++ vsExt "Google"      "gemini-cli-vscode-ide-companion" # Gemini CLI companion
         ++ [ geminiCodeAssist ]                                  # Gemini Code Assist (Open VSX)
         ++ [ openaiCodex ]                                       # Codex — OpenAI's coding agent (Open VSX)
+        ++ [ continueExtension ]                                 # Continue.dev AI coding assistant
         ++ lib.optionals (qwenCodeCompanion != null) [ qwenCodeCompanion ]  # Qwen Code VSCode IDE Companion (pinned hash required)
         ++ [ cyberpunkThemeExtension ]                           # Cyberpunk theme (local template)
         # ── Data / serialisation formats ───────────────────────────────────
@@ -736,17 +750,10 @@ in
       mkdir -p "$ext_root"
       for ext_id in ${lib.concatStringsSep " " vscodeMutableRuntimeExtensions}; do
         alias_path="$ext_root/$ext_id"
-        case "$ext_id" in
-          continue.continue) alias_path="$ext_root/Continue.continue" ;;
-        esac
         if [ -L "$alias_path" ]; then
           rm -f "$alias_path"
         fi
-        if [ "$ext_id" = "continue.continue" ]; then
-          codium --install-extension "${continueVsix}" --force >/dev/null 2>&1 || true
-        else
-          codium --install-extension "$ext_id" --force >/dev/null 2>&1 || true
-        fi
+        codium --install-extension "$ext_id" --force >/dev/null 2>&1 || true
       done
       unset ext_root ext_id alias_path
     fi
