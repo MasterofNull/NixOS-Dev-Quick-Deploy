@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
 Resilient Embedding Service using sentence-transformers
-Provides OpenAI-compatible and TEI-compatible APIs with production-grade error handling
+Provides OpenAI-compatible and TEI-compatible APIs with production-grade error handling.
+Migration: Flask → FastAPI (v2.0.0)
 
 Features:
 - Async model loading with retry logic
 - Request timeout and size validation
 - Graceful error handling
 - Health checks that accurately reflect readiness
-- Thread-safe model access
+- Thread-safe model access via EmbeddingBatcher daemon thread
+- asyncio.to_thread for non-blocking future.result() in async endpoints
 """
 
 import asyncio
@@ -23,7 +25,9 @@ from functools import wraps
 from concurrent.futures import Future, TimeoutError as FutureTimeout
 from queue import Queue, Empty
 
-from flask import Flask, jsonify, request, g, Response
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel
 from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from sentence_transformers import SentenceTransformer
 import structlog
@@ -32,7 +36,7 @@ from structlog.contextvars import bind_contextvars, merge_contextvars, clear_con
 from shared.stack_settings import EmbeddingsSettings
 
 SERVICE_NAME = "embeddings-service"
-SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
+SERVICE_VERSION = os.getenv("SERVICE_VERSION", "2.0.0")
 
 
 def configure_logging() -> None:
@@ -48,22 +52,12 @@ def configure_logging() -> None:
         processor=structlog.processors.JSONRenderer(),
         foreign_pre_chain=pre_chain,
     )
-
     handler = logging.StreamHandler()
     handler.setFormatter(formatter)
-
     root = logging.getLogger()
     root.handlers.clear()
     root.setLevel(logging.INFO)
     root.addHandler(handler)
-
-    werkzeug_logger = logging.getLogger("werkzeug")
-    werkzeug_logger.handlers.clear()
-    if root.handlers:
-        werkzeug_logger.addHandler(root.handlers[0])
-    werkzeug_logger.setLevel(logging.INFO)
-    werkzeug_logger.propagate = False
-
     structlog.configure(
         processors=pre_chain + [structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
         logger_factory=structlog.stdlib.LoggerFactory(),
@@ -78,18 +72,16 @@ logger = logging.getLogger(SERVICE_NAME)
 SETTINGS = EmbeddingsSettings.load()
 MODEL_NAME = os.getenv("EMBEDDING_MODEL", SETTINGS.model)
 PORT = int(os.getenv("PORT", SETTINGS.port))
-MAX_INPUT_LENGTH = int(os.getenv("MAX_INPUT_LENGTH", SETTINGS.max_input_length))  # Max characters per input
-MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", SETTINGS.max_batch_size))  # Max inputs per request
-REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", SETTINGS.request_timeout))  # Seconds
+MAX_INPUT_LENGTH = int(os.getenv("MAX_INPUT_LENGTH", SETTINGS.max_input_length))
+MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", SETTINGS.max_batch_size))
+REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", SETTINGS.request_timeout))
 MODEL_LOAD_RETRIES = int(os.getenv("MODEL_LOAD_RETRIES", SETTINGS.model_load_retries))
-MODEL_LOAD_RETRY_DELAY = int(os.getenv("MODEL_LOAD_RETRY_DELAY", SETTINGS.model_load_retry_delay))  # Seconds
+MODEL_LOAD_RETRY_DELAY = int(os.getenv("MODEL_LOAD_RETRY_DELAY", SETTINGS.model_load_retry_delay))
 BATCH_MAX_SIZE = int(os.getenv("BATCH_MAX_SIZE", SETTINGS.batch_max_size))
 BATCH_MAX_LATENCY_MS = int(os.getenv("BATCH_MAX_LATENCY_MS", SETTINGS.batch_max_latency_ms))
 BATCH_QUEUE_MAX = int(os.getenv("BATCH_QUEUE_MAX", SETTINGS.batch_queue_max))
 
-app = Flask(__name__)
-
-# API key handling
+# API key
 API_KEY_FILE = os.getenv("EMBEDDINGS_API_KEY_FILE") or (SETTINGS.api_key_file or "")
 
 
@@ -120,14 +112,22 @@ def _get_process_memory_bytes() -> int:
     except Exception:
         return 0
 
-# Global state
+
+# ============================================================================
+# Global model state
+# ============================================================================
+
 model_instance: Optional[SentenceTransformer] = None
 model_lock = threading.Lock()
 model_loading = False
 model_load_error: Optional[str] = None
 model_load_start_time: Optional[float] = None
 
-# Batching
+
+# ============================================================================
+# Batching (thread-based; encode is CPU-bound, runs in daemon thread)
+# ============================================================================
+
 class BatchRequest:
     def __init__(self, texts: List[str]):
         self.texts = texts
@@ -155,7 +155,7 @@ class EmbeddingBatcher:
         request_item = BatchRequest(texts)
         try:
             self._queue.put(request_item, timeout=0.1)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise RuntimeError("batch_queue_full") from exc
         BATCH_QUEUE_DEPTH.set(self._queue.qsize())
         return request_item.future
@@ -184,11 +184,9 @@ class EmbeddingBatcher:
                     next_item = self._queue.get(timeout=timeout)
                 except Empty:
                     break
-
                 if total + len(next_item.texts) > self._max_batch_size:
                     pending = next_item
                     break
-
                 batch.append(next_item)
                 total += len(next_item.texts)
 
@@ -198,12 +196,13 @@ class EmbeddingBatcher:
             try:
                 model = get_model()
                 merged: List[str] = []
-                slices: List[tuple[BatchRequest, int, int]] = []
+                slices: List[tuple] = []
                 for request_item in batch:
                     start = len(merged)
                     merged.extend(request_item.texts)
                     slices.append((request_item, start, len(merged)))
 
+                # CPU-bound: encode runs in this dedicated daemon thread, never on event loop
                 embeddings = model.encode(merged)
                 if hasattr(embeddings, "tolist"):
                     embeddings = embeddings.tolist()
@@ -214,14 +213,18 @@ class EmbeddingBatcher:
                     request_item.future.set_result(
                         [list(map(float, vector)) for vector in embeddings[start:end]]
                     )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 for request_item in batch:
                     request_item.future.set_exception(exc)
 
 
 batcher = EmbeddingBatcher(BATCH_MAX_SIZE, BATCH_MAX_LATENCY_MS, BATCH_QUEUE_MAX)
 
-# Metrics
+
+# ============================================================================
+# Prometheus metrics
+# ============================================================================
+
 REQUEST_COUNT = Counter(
     "embeddings_requests_total",
     "Total embedding service requests",
@@ -259,13 +262,16 @@ BATCH_WAIT_SECONDS = Histogram(
 )
 
 
+# ============================================================================
+# Model loading
+# ============================================================================
+
 class ValidationError(Exception):
-    """Input validation error"""
     pass
 
 
 def timeout_decorator(seconds: int):
-    """Decorator to add timeout to functions"""
+    """Threading-based timeout for synchronous model loading."""
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -285,25 +291,14 @@ def timeout_decorator(seconds: int):
 
             if thread.is_alive():
                 raise TimeoutError(f"Function {func.__name__} timed out after {seconds}s")
-
             if exception[0]:
                 raise exception[0]
-
             return result[0]
         return wrapper
     return decorator
 
 
 def load_model_with_retry() -> SentenceTransformer:
-    """
-    Load sentence-transformers model with retry logic
-
-    Handles:
-    - Network failures during model download
-    - Disk space issues
-    - Model corruption
-    - Hugging Face rate limiting
-    """
     global model_instance, model_loading, model_load_error, model_load_start_time
 
     model_loading = True
@@ -312,10 +307,9 @@ def load_model_with_retry() -> SentenceTransformer:
 
     for attempt in range(1, MODEL_LOAD_RETRIES + 1):
         try:
-            logger.info(f"Loading model '{MODEL_NAME}' (attempt {attempt}/{MODEL_LOAD_RETRIES})...")
+            logger.info("Loading model '%s' (attempt %d/%d)...", MODEL_NAME, attempt, MODEL_LOAD_RETRIES)
 
-            # Load model with timeout (prevent hanging on network issues)
-            @timeout_decorator(120)  # 2 minute timeout for model download
+            @timeout_decorator(120)
             def load():
                 cache_dir = os.getenv("TRANSFORMERS_CACHE") or os.getenv("HF_HOME")
                 return SentenceTransformer(
@@ -328,47 +322,39 @@ def load_model_with_retry() -> SentenceTransformer:
 
             model = load()
 
-            # Verify model loaded correctly
             test_embedding = model.encode("test")
             if test_embedding is None or len(test_embedding) == 0:
                 raise RuntimeError("Model loaded but failed test encoding")
 
+            load_time = time.time() - model_load_start_time
             logger.info(
-                f"Model loaded successfully. "
-                f"Dimensions: {model.get_sentence_embedding_dimension()}, "
-                f"Max sequence length: {model.max_seq_length}, "
-                f"Load time: {time.time() - model_load_start_time:.2f}s"
+                "Model loaded. dimensions=%d max_seq=%d load_time=%.2fs",
+                model.get_sentence_embedding_dimension(),
+                model.max_seq_length,
+                load_time,
             )
             if model_load_start_time is not None:
-                MODEL_LOAD_SECONDS.set(time.time() - model_load_start_time)
+                MODEL_LOAD_SECONDS.set(load_time)
 
             model_instance = model
             model_loading = False
             return model
 
         except TimeoutError as e:
-            error_msg = f"Model loading timed out on attempt {attempt}: {e}"
-            logger.error(error_msg)
-            model_load_error = error_msg
-
+            model_load_error = f"Model loading timed out on attempt {attempt}: {e}"
+            logger.error(model_load_error)
         except OSError as e:
-            # Disk full, network issues, etc.
-            error_msg = f"OS error during model loading (attempt {attempt}): {e}"
-            logger.error(error_msg)
-            model_load_error = error_msg
-
+            model_load_error = f"OS error during model loading (attempt {attempt}): {e}"
+            logger.error(model_load_error)
         except Exception as e:
-            error_msg = f"Unexpected error during model loading (attempt {attempt}): {e}"
-            logger.exception(error_msg)
-            model_load_error = error_msg
+            model_load_error = f"Unexpected error during model loading (attempt {attempt}): {e}"
+            logger.exception(model_load_error)
 
-        # Wait before retry (exponential backoff)
         if attempt < MODEL_LOAD_RETRIES:
-            delay = MODEL_LOAD_RETRY_DELAY * (2 ** (attempt - 1))  # Exponential backoff
-            logger.info(f"Retrying in {delay} seconds...")
+            delay = MODEL_LOAD_RETRY_DELAY * (2 ** (attempt - 1))
+            logger.info("Retrying in %d seconds...", delay)
             time.sleep(delay)
 
-    # All retries failed
     model_loading = False
     final_error = f"Failed to load model after {MODEL_LOAD_RETRIES} attempts: {model_load_error}"
     logger.error(final_error)
@@ -376,315 +362,226 @@ def load_model_with_retry() -> SentenceTransformer:
 
 
 def get_model() -> SentenceTransformer:
-    """
-    Get model instance with thread-safe lazy loading
-
-    Returns:
-        SentenceTransformer instance
-
-    Raises:
-        RuntimeError: If model failed to load
-    """
     global model_instance
-
-    # Fast path: model already loaded
     if model_instance is not None:
         return model_instance
-
-    # Model is being loaded by another thread
     if model_loading:
-        # Wait for loading to complete
-        max_wait = 180  # 3 minutes
+        max_wait = 180
         start = time.time()
         while model_loading and (time.time() - start) < max_wait:
             time.sleep(0.5)
-
         if model_instance is not None:
             return model_instance
-
         raise RuntimeError(f"Model loading timed out or failed: {model_load_error}")
-
-    # Need to load model
     with model_lock:
-        # Double-check after acquiring lock
         if model_instance is not None:
             return model_instance
-
         return load_model_with_retry()
 
 
 def validate_input(inputs: Union[str, List[str]]) -> List[str]:
-    """
-    Validate and normalize input
-
-    Args:
-        inputs: Single string or list of strings
-
-    Returns:
-        List of validated strings
-
-    Raises:
-        ValidationError: If input invalid
-    """
-    # Normalize to list
     if isinstance(inputs, str):
         texts = [inputs]
     elif isinstance(inputs, list):
         texts = inputs
     else:
         raise ValidationError("Input must be string or list of strings")
-
-    # Validate not empty
     if not texts:
         raise ValidationError("Input list cannot be empty")
-
-    # Validate batch size
     if len(texts) > MAX_BATCH_SIZE:
-        raise ValidationError(
-            f"Batch size {len(texts)} exceeds maximum {MAX_BATCH_SIZE}"
-        )
-
-    # Validate each text
+        raise ValidationError(f"Batch size {len(texts)} exceeds maximum {MAX_BATCH_SIZE}")
     validated = []
     for i, text in enumerate(texts):
         if not isinstance(text, str):
             raise ValidationError(f"Input at index {i} must be string, got {type(text)}")
-
         if not text.strip():
             raise ValidationError(f"Input at index {i} cannot be empty")
-
         if len(text) > MAX_INPUT_LENGTH:
             raise ValidationError(
                 f"Input at index {i} length {len(text)} exceeds maximum {MAX_INPUT_LENGTH}"
             )
-
         validated.append(text)
-
     return validated
 
 
-@app.before_request
-def enforce_api_key():
-    if request.path in ("/health", "/metrics"):
-        return None
-    if not API_KEY:
-        return None
-    token = request.headers.get("X-API-Key") or request.headers.get("Authorization", "")
-    if token.startswith("Bearer "):
-        token = token.split(" ", 1)[1]
-    if token != API_KEY:
-        return jsonify({"error": "unauthorized"}), 401
-    return None
+# ============================================================================
+# FastAPI app
+# ============================================================================
+
+app = FastAPI(
+    title="Embeddings Service",
+    description="Resilient embedding service using sentence-transformers",
+    version="2.0.0",
+)
 
 
-@app.before_request
-def assign_request_id():
-    g.request_id = request.headers.get("X-Request-ID") or uuid4().hex
-    g.request_start = time.time()
-    bind_contextvars(request_id=g.request_id)
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """Enforce API key on all paths except /health and /metrics."""
+    if request.url.path not in ("/health", "/metrics") and API_KEY:
+        token = request.headers.get("X-API-Key") or request.headers.get("Authorization", "")
+        if token.startswith("Bearer "):
+            token = token.split(" ", 1)[1]
+        if token != API_KEY:
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+    return await call_next(request)
 
 
-@app.after_request
-def add_request_id_header(response):
-    if hasattr(g, "request_id"):
-        response.headers["X-Request-ID"] = g.request_id
-    duration = time.time() - getattr(g, "request_start", time.time())
-    REQUEST_LATENCY.labels(request.path, request.method).observe(duration)
-    REQUEST_COUNT.labels(request.path, str(response.status_code)).inc()
+@app.middleware("http")
+async def request_tracking_middleware(request: Request, call_next):
+    """Assign request ID, measure latency, and update Prometheus counters."""
+    request_id = request.headers.get("X-Request-ID") or uuid4().hex
+    request.state.request_id = request_id
+    start = time.time()
+    bind_contextvars(request_id=request_id)
+    response = await call_next(request)
+    duration = time.time() - start
+    REQUEST_LATENCY.labels(request.url.path, request.method).observe(duration)
+    REQUEST_COUNT.labels(request.url.path, str(response.status_code)).inc()
     if response.status_code >= 400:
-        REQUEST_ERRORS.labels(request.path, request.method).inc()
+        REQUEST_ERRORS.labels(request.url.path, request.method).inc()
+    response.headers["X-Request-ID"] = request_id
     clear_contextvars()
     return response
 
 
-@app.route("/metrics", methods=["GET"])
-def metrics():
-    PROCESS_MEMORY_BYTES.set(_get_process_memory_bytes())
-    return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
-
-
-@app.route("/health", methods=["GET"])
-def health():
-    """
-    Health check endpoint with accurate readiness reporting
-
-    Returns:
-        200 OK if model loaded and ready
-        503 Service Unavailable if model still loading or failed
-    """
-    if model_instance is not None:
-        return jsonify({
-            "status": "ok",
-            "model": MODEL_NAME,
-            "ready": True
-        }), 200
-
-    if model_loading:
-        elapsed = time.time() - model_load_start_time if model_load_start_time else 0
-        return jsonify({
-            "status": "loading",
-            "model": MODEL_NAME,
-            "ready": False,
-            "loading_time_seconds": round(elapsed, 2)
-        }), 503
-
-    return jsonify({
-        "status": "error",
-        "model": MODEL_NAME,
-        "ready": False,
-        "error": model_load_error or "Model not loaded"
-    }), 503
-
-
-@app.route("/info", methods=["GET"])
-def info():
-    """Model information endpoint"""
-    try:
-        model = get_model()
-        return jsonify({
-            "model": MODEL_NAME,
-            "dimensions": model.get_sentence_embedding_dimension(),
-            "max_sequence_length": model.max_seq_length,
-            "status": "ready"
-        }), 200
-    except RuntimeError as e:
-        return jsonify(error_payload("model_not_ready", e)), 503
-
-
-@app.route("/embed", methods=["POST"])
-def embed():
-    """
-    TEI-compatible embedding endpoint
-
-    Request: {"inputs": "text"} or {"inputs": ["text1", "text2"]}
-    Response: [[embedding1], [embedding2]] or [[embedding]]
-    """
-    try:
-        # Get request data
-        data = request.get_json()
-        if data is None:
-            return jsonify({"error": "Request body must be JSON"}), 400
-
-        inputs = data.get("inputs")
-        if inputs is None:
-            return jsonify({"error": "Missing 'inputs' in request"}), 400
-
-        # Validate input
-        try:
-            texts = validate_input(inputs)
-        except ValidationError as e:
-            return jsonify({"error": str(e)}), 400
-
-        future = batcher.submit(texts)
-        embeddings = future.result(timeout=REQUEST_TIMEOUT)
-
-        return jsonify(embeddings), 200
-
-    except FutureTimeout:
-        logger.error(f"Embedding generation timed out after {REQUEST_TIMEOUT}s")
-        return jsonify({"error": "Request timed out"}), 504
-    except RuntimeError as e:
-        if str(e) == "batch_queue_full":
-            return jsonify({"error": "Service overloaded"}), 503
-        return jsonify(error_payload("service_not_ready", e)), 503
-
-    except RuntimeError as e:
-        return jsonify(error_payload("service_not_ready", e)), 503
-
-    except Exception as e:
-        return jsonify(error_payload("internal_error", e)), 500
-
-
-@app.route("/v1/embeddings", methods=["POST"])
-def openai_embeddings():
-    """
-    OpenAI-compatible embedding endpoint
-
-    Request: {"input": "text"} or {"input": ["text1", "text2"]}
-    Response: {"data": [{"embedding": [...], "index": 0}], "model": "...", ...}
-    """
-    try:
-        # Get request data
-        data = request.get_json()
-        if data is None:
-            return jsonify({"error": {"message": "Request body must be JSON", "type": "invalid_request_error"}}), 400
-
-        text_input = data.get("input")
-        if text_input is None:
-            return jsonify({"error": {"message": "Missing 'input' in request", "type": "invalid_request_error"}}), 400
-
-        # Validate input
-        try:
-            texts = validate_input(text_input)
-        except ValidationError as e:
-            return jsonify({"error": {"message": str(e), "type": "invalid_request_error"}}), 400
-
-        future = batcher.submit(texts)
-        embeddings = future.result(timeout=REQUEST_TIMEOUT)
-
-        # Format as OpenAI API response
-        response = {
-            "object": "list",
-            "data": [
-                {
-                    "object": "embedding",
-                    "embedding": emb,
-                    "index": idx
-                }
-                for idx, emb in enumerate(embeddings)
-            ],
-            "model": MODEL_NAME,
-            "usage": {
-                "prompt_tokens": sum(len(text.split()) for text in texts),
-                "total_tokens": sum(len(text.split()) for text in texts)
-            }
-        }
-
-        return jsonify(response), 200
-
-    except FutureTimeout:
-        logger.error(f"Embedding generation timed out after {REQUEST_TIMEOUT}s")
-        return jsonify({"error": {"message": "Request timed out", "type": "timeout"}}), 504
-
-    except RuntimeError as e:
-        if str(e) == "batch_queue_full":
-            return jsonify({"error": {"message": "Service overloaded", "type": "overloaded"}}), 503
-        payload = error_payload("service_not_ready", e)
-        return jsonify({"error": {"message": "Service not ready", "type": "service_unavailable", **payload}}), 503
-
-    except Exception as e:
-        payload = error_payload("internal_error", e)
-        return jsonify({"error": {"message": "Internal server error", "type": "internal_error", **payload}}), 500
-
-
-def startup_model_loading():
-    """
-    Start model loading in background thread during Flask startup
-
-    This allows the Flask server to start and respond to health checks
-    while the model loads in the background.
-    """
-    logger.info("Starting background model loading...")
+@app.on_event("startup")
+async def _startup():
+    logger.info("Starting Embeddings Service model=%s port=%d", MODEL_NAME, PORT)
     thread = threading.Thread(target=load_model_with_retry, daemon=True)
     thread.start()
     batcher.start()
 
 
+# ============================================================================
+# Endpoints
+# ============================================================================
+
+@app.get("/metrics")
+async def metrics_endpoint():
+    PROCESS_MEMORY_BYTES.set(_get_process_memory_bytes())
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+@app.get("/health")
+async def health():
+    if model_instance is not None:
+        return {"status": "ok", "model": MODEL_NAME, "ready": True}
+    if model_loading:
+        elapsed = time.time() - model_load_start_time if model_load_start_time else 0
+        return JSONResponse(
+            {"status": "loading", "model": MODEL_NAME, "ready": False,
+             "loading_time_seconds": round(elapsed, 2)},
+            status_code=503,
+        )
+    return JSONResponse(
+        {"status": "error", "model": MODEL_NAME, "ready": False,
+         "error": model_load_error or "Model not loaded"},
+        status_code=503,
+    )
+
+
+@app.get("/info")
+async def info():
+    try:
+        model = get_model()
+        return {
+            "model": MODEL_NAME,
+            "dimensions": model.get_sentence_embedding_dimension(),
+            "max_sequence_length": model.max_seq_length,
+            "status": "ready",
+        }
+    except RuntimeError as e:
+        return JSONResponse(error_payload("model_not_ready", e), status_code=503)
+
+
+class EmbedRequest(BaseModel):
+    inputs: Union[str, List[str]]
+
+
+@app.post("/embed")
+async def embed(body: EmbedRequest):
+    """TEI-compatible embedding endpoint."""
+    try:
+        texts = validate_input(body.inputs)
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    try:
+        future = batcher.submit(texts)
+        # future.result() blocks; run in thread pool to avoid blocking the event loop
+        embeddings = await asyncio.to_thread(future.result, REQUEST_TIMEOUT)
+        return embeddings
+    except FutureTimeout:
+        logger.error("Embedding generation timed out after %ds", REQUEST_TIMEOUT)
+        raise HTTPException(status_code=504, detail="Request timed out")
+    except RuntimeError as e:
+        if str(e) == "batch_queue_full":
+            raise HTTPException(status_code=503, detail="Service overloaded")
+        return JSONResponse(error_payload("service_not_ready", e), status_code=503)
+    except Exception as e:
+        return JSONResponse(error_payload("internal_error", e), status_code=500)
+
+
+class OpenAIEmbedRequest(BaseModel):
+    input: Union[str, List[str]]
+    model: Optional[str] = None
+
+
+@app.post("/v1/embeddings")
+async def openai_embeddings(body: OpenAIEmbedRequest):
+    """OpenAI-compatible embedding endpoint."""
+    try:
+        texts = validate_input(body.input)
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": str(e), "type": "invalid_request_error"},
+        )
+    try:
+        future = batcher.submit(texts)
+        embeddings = await asyncio.to_thread(future.result, REQUEST_TIMEOUT)
+        return {
+            "object": "list",
+            "data": [
+                {"object": "embedding", "embedding": emb, "index": idx}
+                for idx, emb in enumerate(embeddings)
+            ],
+            "model": MODEL_NAME,
+            "usage": {
+                "prompt_tokens": sum(len(t.split()) for t in texts),
+                "total_tokens": sum(len(t.split()) for t in texts),
+            },
+        }
+    except FutureTimeout:
+        logger.error("Embedding generation timed out after %ds", REQUEST_TIMEOUT)
+        raise HTTPException(
+            status_code=504,
+            detail={"message": "Request timed out", "type": "timeout"},
+        )
+    except RuntimeError as e:
+        if str(e) == "batch_queue_full":
+            raise HTTPException(
+                status_code=503,
+                detail={"message": "Service overloaded", "type": "overloaded"},
+            )
+        payload = error_payload("service_not_ready", e)
+        return JSONResponse(
+            {"error": {"message": "Service not ready", "type": "service_unavailable", **payload}},
+            status_code=503,
+        )
+    except Exception as e:
+        payload = error_payload("internal_error", e)
+        return JSONResponse(
+            {"error": {"message": "Internal server error", "type": "internal_error", **payload}},
+            status_code=500,
+        )
+
+
+# ============================================================================
+# Entry point
+# ============================================================================
+
 if __name__ == "__main__":
-    logger.info(f"Starting Embeddings Service")
-    logger.info(f"Model: {MODEL_NAME}")
-    logger.info(f"Port: {PORT}")
-    logger.info(f"Max input length: {MAX_INPUT_LENGTH} characters")
-    logger.info(f"Max batch size: {MAX_BATCH_SIZE}")
-    logger.info(f"Request timeout: {REQUEST_TIMEOUT}s")
-    logger.info(f"Batch max size: {BATCH_MAX_SIZE}")
-    logger.info(f"Batch max latency: {BATCH_MAX_LATENCY_MS}ms")
-    logger.info(f"Batch queue max: {BATCH_QUEUE_MAX}")
-
-    # Start model loading in background
-    startup_model_loading()
-
-    # Start Flask server
-    # Note: Flask development server is single-threaded
-    # For production, use gunicorn: gunicorn -w 4 -b 0.0.0.0:8081 server:app
-    app.run(host="0.0.0.0", port=PORT, threaded=True)
+    import uvicorn
+    logger.info("Starting Embeddings Service port=%d model=%s", PORT, MODEL_NAME)
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
