@@ -586,4 +586,4 @@ async def get_container_logs(container_id: str, tail: int = 100) -> Dict[str, An
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8095)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("CONTAINER_ENGINE_PORT", "8095")))

@@ -237,7 +237,7 @@ class ContinuousLearningPipeline:
             os.getenv("OPTIMIZATION_PROPOSAL_SUBMISSION_ENABLED", "true").lower() == "true"
         )
         self.proposal_batch_limit = int(os.getenv("OPTIMIZATION_PROPOSAL_BATCH_LIMIT", "5"))
-        self.ralph_url = os.getenv("RALPH_WIGGUM_URL", "http://ralph-wiggum:8098")
+        self.ralph_url = os.getenv("RALPH_WIGGUM_URL", "http://localhost:8004")
         self.ralph_api_key = _read_secret(os.getenv("RALPH_WIGGUM_API_KEY_FILE", "/run/secrets/ralph_wiggum_api_key"))
 
         # Batch insights (reset each telemetry batch)

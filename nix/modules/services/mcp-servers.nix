@@ -297,6 +297,22 @@ in
             mySystem.roles.aiStack.enable=true.
           '';
         }
+        # 6.5.3 — Port collision guard: service URL env vars must map to distinct ports.
+        {
+          assertion = mcp.aidbPort != mcp.hybridPort
+                   && mcp.aidbPort != mcp.ralphPort
+                   && mcp.hybridPort != mcp.ralphPort;
+          message = "MCP service port conflict: aidbPort=${toString mcp.aidbPort}, hybridPort=${toString mcp.hybridPort}, ralphPort=${toString mcp.ralphPort} must all be distinct.";
+        }
+        # 6.5.3 — Non-empty path guard: repoPath and dataDir must be set before env blocks are generated.
+        {
+          assertion = mcp.repoPath != "";
+          message = "mySystem.mcpServers.repoPath must be set to the repository root when MCP servers are active.";
+        }
+        {
+          assertion = mcp.dataDir != "";
+          message = "mySystem.mcpServers.dataDir must be set to a writable state directory when MCP servers are active.";
+        }
       ];
 
       # ── System user / group ─────────────────────────────────────────────────

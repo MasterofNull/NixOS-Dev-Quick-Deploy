@@ -316,8 +316,9 @@ class RalphWiggumRetryClient:
         start_time = time.time()
         try:
             async with aiohttp.ClientSession() as session:
+                ralph_url = os.getenv("RALPH_WIGGUM_URL", "http://localhost:8004")
                 async with session.post(
-                    "http://ralph-wiggum:8098/tasks",
+                    f"{ralph_url}/tasks",
                     json={"task": task, "context": context},
                     timeout=aiohttp.ClientTimeout(total=60)
                 ) as response:
