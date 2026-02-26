@@ -20,15 +20,19 @@ let
   repoPath = lib.attrByPath [ "mySystem" "mcpServers" "repoPath" ] "${config.home.homeDirectory}/Documents/NixOS-Dev-Quick-Deploy" systemConfig;
   sharedSkillsDir = "${repoPath}/.agent/skills";
   portRegistry = lib.attrByPath [ "mySystem" "ports" ] { } systemConfig;
-  aiSwitchboardPort = lib.attrByPath [ "mySystem" "aiStack" "switchboard" "port" ] (lib.attrByPath [ "switchboard" ] 8085 portRegistry) systemConfig;
-  aiLlamaPort = lib.attrByPath [ "mySystem" "aiStack" "llamaCpp" "port" ] (lib.attrByPath [ "llamaCpp" ] 8080 portRegistry) systemConfig;
+  getRegistryPort = portName:
+    lib.attrByPath [ portName ]
+      (throw "Missing centralized port registry entry: mySystem.ports.${portName}")
+      portRegistry;
+  aiSwitchboardPort = lib.attrByPath [ "mySystem" "aiStack" "switchboard" "port" ] (getRegistryPort "switchboard") systemConfig;
+  aiLlamaPort = lib.attrByPath [ "mySystem" "aiStack" "llamaCpp" "port" ] (getRegistryPort "llamaCpp") systemConfig;
   aiLlamaModel = lib.attrByPath [ "mySystem" "aiStack" "llamaCpp" "model" ] "local-model" systemConfig;
-  aiHybridPort = lib.attrByPath [ "mySystem" "mcpServers" "hybridPort" ] (lib.attrByPath [ "mcpHybrid" ] 8003 portRegistry) systemConfig;
-  aiAidbPort = lib.attrByPath [ "mySystem" "mcpServers" "aidbPort" ] (lib.attrByPath [ "mcpAidb" ] 8002 portRegistry) systemConfig;
-  aiRalphPort = lib.attrByPath [ "mySystem" "mcpServers" "ralphPort" ] (lib.attrByPath [ "mcpRalph" ] 8004 portRegistry) systemConfig;
-  aiAiderPort = lib.attrByPath [ "mySystem" "mcpServers" "aiderWrapperPort" ] (lib.attrByPath [ "aiderWrapper" ] 8090 portRegistry) systemConfig;
-  aiAnthropicProxyPort = lib.attrByPath [ "mySystem" "ports" "anthropicProxy" ] 8120 systemConfig;
-  aiPostgresPort = lib.attrByPath [ "mySystem" "ports" "postgres" ] 5432 systemConfig;
+  aiHybridPort = lib.attrByPath [ "mySystem" "mcpServers" "hybridPort" ] (getRegistryPort "mcpHybrid") systemConfig;
+  aiAidbPort = lib.attrByPath [ "mySystem" "mcpServers" "aidbPort" ] (getRegistryPort "mcpAidb") systemConfig;
+  aiRalphPort = lib.attrByPath [ "mySystem" "mcpServers" "ralphPort" ] (getRegistryPort "mcpRalph") systemConfig;
+  aiAiderPort = lib.attrByPath [ "mySystem" "mcpServers" "aiderWrapperPort" ] (getRegistryPort "aiderWrapper") systemConfig;
+  aiAnthropicProxyPort = lib.attrByPath [ "mySystem" "ports" "anthropicProxy" ] (getRegistryPort "anthropicProxy") systemConfig;
+  aiPostgresPort = lib.attrByPath [ "mySystem" "ports" "postgres" ] (getRegistryPort "postgres") systemConfig;
   aiOpenAIBaseUrl = "http://127.0.0.1:${toString aiSwitchboardPort}/v1";
   continueApiBase =
     if lib.attrByPath [ "mySystem" "aiStack" "switchboard" "enable" ] false systemConfig
@@ -81,24 +85,6 @@ let
     };
   };
 
-  # Continue.dev AI coding assistant — built declaratively like other Open VSX
-  # extensions so it installs on every home-manager switch without needing
-  # VSCodium to be closed.  Rename .vsix → .vsix.zip so stdenv's unzip hook
-  # fires (same trick used by openaiCodex and geminiCodeAssist above).
-  continueExtension = pkgs.vscode-utils.buildVscodeExtension {
-    pname              = "Continue.continue";
-    version            = "1.3.32";
-    vscodeExtPublisher = "Continue";
-    vscodeExtName      = "continue";
-    vscodeExtUniqueId  = "Continue.continue";
-    vscodeExtVersion   = "1.3.32";
-    src = pkgs.fetchurl {
-      url    = "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.32/file/Continue.continue-1.3.32@linux-x64.vsix";
-      sha256 = "1nmw9p1jkjcf0gpwzzv836yhlrlf40ymdxyc8iql5hw5h8p433fc";
-      name   = "Continue.continue-1.3.32-linux-x64.vsix.zip";
-    };
-  };
-
   # Qwen Code VSCode IDE Companion — QwenLM's official AI coding assistant
   # Not in nixpkgs 25.11; packaged from Open VSX for declarative install.
   qwenCodeCompanionSha256 = null;
@@ -119,6 +105,12 @@ let
           name   = "qwen-code-vscode-ide-companion.zip";
         };
       };
+
+  continueMutableVsix = pkgs.fetchurl {
+    url = "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.32/file/Continue.continue-1.3.32@linux-x64.vsix";
+    sha256 = "1nmw9p1jkjcf0gpwzzv836yhlrlf40ymdxyc8iql5hw5h8p433fc";
+    name = "Continue.continue-1.3.32-linux-x64.vsix";
+  };
 
   cyberpunkThemeArchive = pkgs.runCommand "max-ss.cyberpunk-1.2.14.zip" {
     nativeBuildInputs = [ pkgs.zip ];
@@ -252,7 +244,6 @@ let
   vscodiumSettingsJSON = pkgs.writeText "vscodium-settings-baseline.json"
     (builtins.toJSON vscodiumSettings);
   vscodeMutableRuntimeExtensions = [
-    # continue.continue is now installed declaratively via continueExtension
     "ms-python.debugpy"
     "ms-toolsai.jupyter"
     "ms-toolsai.jupyter-keymap"
@@ -662,7 +653,6 @@ in
         ++ vsExt "Google"      "gemini-cli-vscode-ide-companion" # Gemini CLI companion
         ++ [ geminiCodeAssist ]                                  # Gemini Code Assist (Open VSX)
         ++ [ openaiCodex ]                                       # Codex — OpenAI's coding agent (Open VSX)
-        ++ [ continueExtension ]                                 # Continue.dev AI coding assistant
         ++ lib.optionals (qwenCodeCompanion != null) [ qwenCodeCompanion ]  # Qwen Code VSCode IDE Companion (pinned hash required)
         ++ [ cyberpunkThemeExtension ]                           # Cyberpunk theme (local template)
         # ── Data / serialisation formats ───────────────────────────────────
@@ -744,17 +734,51 @@ in
     unset gdb ws_root
   '';
 
+  # Remove stale VSCodium obsolete markers that can hide declarative Continue
+  # installs after extension source/migration changes.
+  home.activation.clearContinueObsoleteMarker = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+    obsolete_file="$HOME/.vscode-oss/extensions/.obsolete"
+    if [ -f "$obsolete_file" ] && command -v python3 >/dev/null 2>&1; then
+      python3 - "$obsolete_file" <<'PYEOF'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    sys.exit(0)
+if not isinstance(data, dict):
+    sys.exit(0)
+removed = False
+for key in list(data.keys()):
+    if key.lower().startswith("continue.continue"):
+        data.pop(key, None)
+        removed = True
+if removed:
+    path.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
+PYEOF
+    fi
+    unset obsolete_file
+  '';
+
   # Install runtime-mutable extensions that write inside their own install dir.
   home.activation.ensureMutableRuntimeVscodeExtensions = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
     if command -v codium >/dev/null 2>&1 && ! pgrep -u "$USER" -x codium >/dev/null 2>&1; then
       ext_root="$HOME/.vscode-oss/extensions"
       mkdir -p "$ext_root"
+      # Clear stale Continue quarantine markers from earlier immutable installs.
+      rm -rf "$ext_root"/continue.continue-*.disabled >/dev/null 2>&1 || true
+      # Continue mutates files under its own extension dir; install a pinned
+      # writable VSIX copy instead of immutable Nix-store linkage.
+      env -u NIXOS_OZONE_WL codium --install-extension ${continueMutableVsix} --force >/dev/null 2>&1 || true
       for ext_id in ${lib.concatStringsSep " " vscodeMutableRuntimeExtensions}; do
         alias_path="$ext_root/$ext_id"
         if [ -L "$alias_path" ]; then
           rm -f "$alias_path"
         fi
-        codium --install-extension "$ext_id" --force >/dev/null 2>&1 || true
+        env -u NIXOS_OZONE_WL codium --install-extension "$ext_id" --force >/dev/null 2>&1 || true
       done
       unset ext_root ext_id alias_path
     fi
@@ -852,8 +876,8 @@ CONTINUE_EOF
     if [ -f "$cfg" ] && command -v jq >/dev/null 2>&1; then
       runtime_base="${continueApiBase}"
       if ${pkgs.curl}/bin/curl --silent --show-error --fail --max-time 5 \
-        "http://127.0.0.1:8085/v1/models" >/dev/null 2>&1; then
-        runtime_base="http://127.0.0.1:8085/v1"
+        "http://127.0.0.1:${toString aiSwitchboardPort}/v1/models" >/dev/null 2>&1; then
+        runtime_base="http://127.0.0.1:${toString aiSwitchboardPort}/v1"
       fi
 
       detected_model="$(${pkgs.curl}/bin/curl --silent --show-error --fail --max-time 10 \
@@ -1026,6 +1050,22 @@ MCP_REGISTRY_EOF
       fi
     fi
   '';
+
+  # Phase 8.1.4 — run eval regression check at user session startup.
+  # Never blocks login; threshold failures are logged as warnings.
+  systemd.user.services.ai-eval-startup = {
+    Unit = {
+      Description = "AI stack eval regression check on login";
+      After = [ "graphical-session.target" ];
+    };
+    Service = {
+      Type = "oneshot";
+      ExecStart = "${pkgs.bash}/bin/bash -lc '${repoPath}/scripts/run-eval.sh --threshold 60 --output ${repoPath}/ai-stack/eval/results || true'";
+    };
+    Install = {
+      WantedBy = [ "default.target" ];
+    };
+  };
 
   # Remove stale wants links and clear any failed state from retired units.
   home.activation.cleanupCosmicFontUnitWants = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
