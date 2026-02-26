@@ -22,7 +22,7 @@ providers:
       apiBaseUrl: "http://127.0.0.1:8080/v1"
       apiKey: "dummy"
       temperature: 0.1        # Low temperature for deterministic evals
-      max_tokens: 512
+      max_tokens: 192         # Keep eval latency bounded while preserving signal
 
 # ── Default prompt template ───────────────────────────────────────────────────
 defaultTest:

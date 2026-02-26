@@ -36,6 +36,16 @@
       description = "Declarative system profile selector.";
     };
 
+    nixpkgsTrack = lib.mkOption {
+      type = lib.types.enum [ "stable" "unstable" ];
+      default = "stable";
+      description = ''
+        Nixpkgs channel track for this host.
+        - stable: use flake input nixpkgs (default, pinned to 25.11)
+        - unstable: use flake input nixpkgs-unstable when available
+      '';
+    };
+
     hardware = {
       gpuVendor = lib.mkOption {
         type = lib.types.enum [
@@ -787,6 +797,12 @@
         description = "node_exporter listen port.";
       };
 
+      grafanaPort = lib.mkOption {
+        type = lib.types.port;
+        default = 3000;
+        description = "Grafana HTTP listen port.";
+      };
+
       commandCenter = {
         enable = lib.mkOption {
           type = lib.types.bool;
@@ -892,6 +908,18 @@
         description = "Ralph orchestrator MCP HTTP port.";
       };
 
+      aiderWrapper = lib.mkOption {
+        type = lib.types.port;
+        default = 8090;
+        description = "Aider-wrapper MCP HTTP port.";
+      };
+
+      anthropicProxy = lib.mkOption {
+        type = lib.types.port;
+        default = 8120;
+        description = "Local Anthropic-compatible proxy HTTP port.";
+      };
+
       switchboard = lib.mkOption {
         type = lib.types.port;
         default = 8085;
@@ -908,6 +936,12 @@
         type = lib.types.port;
         default = 9100;
         description = "Node exporter HTTP port.";
+      };
+
+      grafana = lib.mkOption {
+        type = lib.types.port;
+        default = 3000;
+        description = "Grafana HTTP port.";
       };
 
       commandCenterFrontend = lib.mkOption {
