@@ -17,6 +17,8 @@ import asyncio
 import hashlib  # P6-OPS-002: For pattern deduplication
 import json
 import os
+import shutil
+import subprocess
 import sys
 import re
 from collections import Counter
@@ -185,7 +187,7 @@ class ContinuousLearningPipeline:
         self.embeddings_client = create_embeddings_client(timeout=30.0)
 
         # Base writable data root for continuous-learning artifacts.
-        data_root = Path(
+        self.data_root = data_root = Path(
             os.path.expanduser(
                 os.getenv("CONTINUOUS_LEARNING_DATA_ROOT")
                 or os.getenv("DATA_DIR")
@@ -570,10 +572,62 @@ class ContinuousLearningPipeline:
             pass
         logger.info("continuous_learning_stopped")
 
+    def _check_disk_pressure(self, path: Path) -> bool:
+        """Return True if free space on the filesystem containing *path* is below 2 GB."""
+        usage = shutil.disk_usage(path)
+        if usage.free < 2 * 1024 ** 3:
+            logger.warning(
+                "disk_pressure_warning",
+                free_gb=round(usage.free / 1024 ** 3, 2),
+                path=str(path),
+            )
+            return True
+        return False
+
+    def _rotate_telemetry_if_oversized(self, path: Path) -> bool:
+        """Rotate *path* if it is >= 50 MB. Compresses with zstd; falls back to plain rename."""
+        if not path.exists():
+            return False
+        if path.stat().st_size < 50 * 1024 * 1024:
+            return False
+        archive_dir = path.parent / "archive"
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        archive_name = (
+            path.stem
+            + "-"
+            + datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+            + path.suffix
+            + ".zst"
+        )
+        archive_path = archive_dir / archive_name
+        result = subprocess.run(
+            ["zstd", "-q", "--rm", str(path), "-o", str(archive_path)],
+            check=False,
+            timeout=60,
+        )
+        compressed = result.returncode == 0
+        if not compressed:
+            plain_name = archive_name.replace(".zst", "")
+            archive_path = archive_dir / plain_name
+            path.rename(archive_path)
+        logger.info(
+            "telemetry_rotated",
+            path=str(path),
+            archive_path=str(archive_path),
+            compressed=compressed,
+        )
+        return True
+
     async def _learning_loop(self):
         """Background learning loop with backpressure monitoring"""
         while True:
             try:
+                # 9.1.1: Disk pressure guard — skip cycle if < 2 GB free
+                _disk_check_path = Path("/var") if Path("/var").exists() else self.data_root
+                if self._check_disk_pressure(_disk_check_path):
+                    await asyncio.sleep(300)
+                    continue
+
                 # P2-REL-004: Check backpressure before processing
                 backpressure_status = self._check_backpressure()
 
@@ -632,6 +686,10 @@ class ContinuousLearningPipeline:
         """Process new telemetry events and extract patterns"""
         self._reset_batch_insights()
         all_patterns: List[InteractionPattern] = []
+
+        # 9.1.2: Rotate oversized telemetry files before reading
+        for p in self.telemetry_paths:
+            self._rotate_telemetry_if_oversized(p)
 
         for telemetry_path in self.telemetry_paths:
             if not telemetry_path.exists():
