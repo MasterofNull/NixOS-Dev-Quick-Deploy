@@ -743,5 +743,40 @@ in
 
     })
 
+    # ── Knowledge Source Sync — weekly AIDB source refresh ───────────────────
+    (lib.mkIf active {
+
+      systemd.services.ai-sync-knowledge-sources = {
+        description = "AI knowledge source sync (AIDB import registry)";
+        after = [ "ai-aidb.service" "network-online.target" ];
+        requires = [ "ai-aidb.service" ];
+        wants = [ "network-online.target" ];
+        serviceConfig = commonServiceConfig // {
+          Type = "oneshot";
+          ExecStart = lib.escapeShellArgs [
+            "${pkgs.bash}/bin/bash"
+            "${mcp.repoPath}/scripts/sync-knowledge-sources"
+          ];
+          Environment = [
+            "AIDB_URL=http://127.0.0.1:${toString mcp.aidbPort}"
+            "XDG_CACHE_HOME=${dataDir}/hybrid/cache"
+          ] ++ lib.optional sec.enable "AIDB_API_KEY_FILE=${secretPath aidbApiKeySecret}";
+        };
+      };
+
+      systemd.timers.ai-sync-knowledge-sources = {
+        description = "Weekly AI knowledge source sync timer";
+        wantedBy = [ "timers.target" ];
+        partOf = [ "ai-stack.target" ];
+        timerConfig = {
+          OnCalendar = "weekly";
+          RandomizedDelaySec = "1h";
+          Persistent = true;
+          Unit = "ai-sync-knowledge-sources.service";
+        };
+      };
+
+    })
+
   ];
 }
