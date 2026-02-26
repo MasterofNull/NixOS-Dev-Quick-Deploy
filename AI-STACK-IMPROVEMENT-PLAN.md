@@ -175,6 +175,79 @@
 
 ---
 
+---
+
+## ✦ TEST CHECKPOINT 1 — Core Harness Integration Smoke Test
+**Trigger:** Phase 2 complete. Run before starting Phase 3.
+**Goal:** Confirm the harness routes queries, caches embeddings, compresses context, and surfaces metrics — before the feedback loop adds new state. A failed smoke test here is a green light to investigate; a passed one is a green light to continue.
+**Exit criteria:** All items below pass. If any fail, fix before Phase 3 begins.
+
+---
+
+### TC1.1 — MCP Server Health
+
+- [ ] **TC1.1.1** Run `scripts/check-mcp-health.sh` — all REQUIRED services (embeddings, aidb, hybrid-coordinator, ralph-wiggum, llama-cpp inference, llama-cpp embedding) return 2xx within 10 s.
+  *Pass: script exits 0. Fail: identify which service is down and resolve.*
+
+- [ ] **TC1.1.2** Run `scripts/check-mcp-health.sh --optional` — document which optional services are up/down but do not block on them.
+  *Pass: output recorded; no required service fails.*
+
+---
+
+### TC1.2 — Routing and Backend Selection
+
+- [ ] **TC1.2.1** Send `POST http://localhost:8003/query {"query": "what is nixos?", "prefer_local": true}` — response arrives within 30 s.
+  *Pass: HTTP 200 with non-empty response body.*
+
+- [ ] **TC1.2.2** After the above query, grep logs for `llm_backend_selected` — must contain `backend=` and `local_confidence_score=` fields.
+  *Pass: `journalctl -u ai-hybrid-coordinator | grep llm_backend_selected` returns at least one line.*
+
+- [ ] **TC1.2.3** Hit `GET http://localhost:8003/status` — verify JSON contains `loading`, `healthy`, `queue_depth`, `threshold` fields.
+  *Pass: `curl -s http://localhost:8003/status | python3 -m json.tool` exits 0 and shows expected keys.*
+
+- [ ] **TC1.2.4** Hit `GET http://localhost:8003/metrics` — verify `hybrid_llm_backend_selections_total` is present.
+  *Pass: `curl -s http://localhost:8003/metrics | grep hybrid_llm_backend_selections_total` returns output.*
+
+---
+
+### TC1.3 — Embedding Cache
+
+- [ ] **TC1.3.1** Send the same query string twice (any text). Check Redis for model-namespaced keys.
+  *Pass: `redis-cli --scan --pattern 'embedding:m*' | head -5` returns at least one key after the second query.*
+
+- [ ] **TC1.3.2** Check logs for a cache hit on the second request.
+  *Pass: `journalctl -u ai-hybrid-coordinator | grep "cache_hit"` returns at least one line.*
+
+---
+
+### TC1.4 — Context Compression
+
+- [ ] **TC1.4.1** Send a query that returns long RAG context (e.g., query the codebase collection). Check logs for compression firing.
+  *Pass: `journalctl -u ai-hybrid-coordinator | grep "context_compression tokens_before"` returns output.*
+
+---
+
+### TC1.5 — Preflight and Startup
+
+- [ ] **TC1.5.1** Restart the hybrid-coordinator service (`systemctl restart ai-hybrid-coordinator`) and check startup logs.
+  *Pass: `journalctl -u ai-hybrid-coordinator | grep "preflight_check status=passed"` returns output. No Redis/Qdrant/Postgres unreachable errors.*
+
+---
+
+### TC1.6 — Routing Config Hot-Reload
+
+- [ ] **TC1.6.1** Write `{"local_confidence_threshold": 0.99}` to `~/.local/share/nixos-ai-stack/routing-config.json`. Wait 65 s. Send a query. Check that routing decision uses the new threshold.
+  *Pass: log shows `context_quality_below_threshold_0.990` and backend=remote for a typical query.*
+
+- [ ] **TC1.6.2** Restore the original threshold value. Send a query to confirm return to baseline behaviour.
+  *Pass: routing resumes normal local/remote split.*
+
+---
+
+**TC1 Gate:** All TC1.1–TC1.6 items must pass before Phase 3 begins.
+
+---
+
 ## Phase 3 — Real Feedback Loop
 
 **Goal:** Capture actual quality signal from user and close the learning loop.
@@ -442,6 +515,72 @@ Same problem, same approach. AIDB is simultaneously: a vector DB client, an embe
 
 ---
 
+---
+
+## ✦ TEST CHECKPOINT 2 — Server Quality and Decomposition Smoke Test
+**Trigger:** Phase 6 complete. Run before starting Phase 7.
+**Goal:** Confirm server decomposition didn't break the routing + cache + metrics path; verify Flask→FastAPI migration and async aider queue work; confirm MCP contract tests pass. A refactor that silently drops functionality is worse than the original God Object.
+**Exit criteria:** All items below pass. If any fail, fix before Phase 7 begins.
+
+---
+
+### TC2.1 — Server Decomposition Integrity
+
+- [ ] **TC2.1.1** Import each extracted module in isolation: `python3 -c "from search_router import SearchRouter; from metrics import *; from semantic_cache import SemanticCache; from capability_discovery import discover"` — all must import without error.
+  *Pass: exit 0. Fail: fix broken import first.*
+
+- [ ] **TC2.1.2** Verify `server.py` line count dropped: `wc -l ai-stack/mcp-servers/hybrid-coordinator/server.py` returns < 800.
+  *Pass: number < 800. Fail: decomposition is incomplete.*
+
+- [ ] **TC2.1.3** Send a query via `POST http://localhost:8003/query` after decomposition — confirm routing, embedding, context compression, and Prometheus metrics all still fire.
+  *Pass: HTTP 200 + log shows `llm_backend_selected`, `context_compression`, `cache_hit` or `cache_miss`; `GET /metrics` shows updated counters.*
+
+---
+
+### TC2.2 — Embeddings Service (Flask → FastAPI)
+
+- [ ] **TC2.2.1** Verify service starts and health endpoint responds: `curl -sf http://localhost:8081/health` returns 2xx.
+  *Pass: HTTP 200 within 5 s.*
+
+- [ ] **TC2.2.2** Concurrency test: send 10 simultaneous embedding requests and confirm all complete without 500 errors.
+  *Pass: `ab -n 10 -c 10 -p /tmp/embed-body.json -T application/json http://localhost:8081/embed` returns 0 failed requests.*
+
+---
+
+### TC2.3 — AIDB Server
+
+- [ ] **TC2.3.1** Verify `sentence-transformers` is no longer loaded in-process: `curl -s http://localhost:8002/health | python3 -m json.tool` — confirm no `sentence_transformers_loaded` field set to true.
+  *Pass: field absent or false.*
+
+- [ ] **TC2.3.2** Ingest one test document and retrieve it: `POST /documents/ingest` followed by `GET /search?q=<text>` — result contains ingested content.
+  *Pass: search result text matches ingested document.*
+
+---
+
+### TC2.4 — Aider Wrapper Async Queue
+
+- [ ] **TC2.4.1** Submit a short aider task: `POST http://localhost:8005/tasks` — verify immediate response with a `task_id` field.
+  *Pass: HTTP 202 with `{"task_id": "..."}` within 500 ms.*
+
+- [ ] **TC2.4.2** Poll `GET /tasks/{id}/status` until terminal state. Health endpoint must respond throughout.
+  *Pass: health endpoint returns 200 while task runs; task reaches `completed` or `failed` state.*
+
+---
+
+### TC2.5 — MCP Contract Tests
+
+- [ ] **TC2.5.1** Run `pytest tests/integration/test_mcp_contracts.py -v` — all tests pass.
+  *Pass: exit 0. Fail: investigate individual test failures.*
+
+- [ ] **TC2.5.2** Run `make test` — contract tests included and passing.
+  *Pass: `make test` exits 0.*
+
+---
+
+**TC2 Gate:** All TC2.1–TC2.5 items must pass before Phase 7 begins.
+
+---
+
 ## Phase 7 — Query Expansion and Knowledge Base Quality
 
 **Goal:** Make the RAG system actually good at retrieving relevant context for this specific domain.
@@ -570,6 +709,78 @@ Not a current priority but track here for when it becomes one.
   *Note: Do not attempt until Phase 1–9 are complete. Secure Boot during heavy NixOS iteration adds recovery complexity.*
 
 ---
+
+---
+
+---
+
+## ✦ TEST CHECKPOINT 3 — Full Stack Security and Platform Validation
+**Trigger:** Phase 10 complete. Run before starting Phase 11.
+**Goal:** Confirm the full stack is production-stable on any supported tier before hardening the attack surface. Phase 11+ locks down the system — if something breaks after hardening, you want to know whether the bug was already there or introduced by the security work.
+**Exit criteria:** All items below pass. If any fail, fix before Phase 11 begins.
+
+---
+
+### TC3.1 — End-to-End AI Stack Validation
+
+- [ ] **TC3.1.1** Run the full TC1 battery (TC1.1–TC1.6) again. All items must still pass.
+  *Pass: All TC1 items exit green. If any regressed since TC1, fix before continuing.*
+
+- [ ] **TC3.1.2** Run the full TC2 battery (TC2.1–TC2.5). All items must still pass.
+  *Pass: All TC2 items exit green.*
+
+- [ ] **TC3.1.3** Run `scripts/run-eval.sh` — verify AI eval score ≥ 60% pass rate on the NixOS-specific eval suite from Phase 8.
+  *Pass: score logged to `ai-stack/eval/results/scores.csv`; pass rate ≥ 0.60.*
+
+---
+
+### TC3.2 — Feedback Loop Validation
+
+- [ ] **TC3.2.1** Submit a feedback rating via CLI: `aq-rate <last_interaction_id> good` — verify Postgres row inserted.
+  *Pass: `psql -c "SELECT * FROM feedback ORDER BY created_at DESC LIMIT 1"` returns a row within 5 s.*
+
+- [ ] **TC3.2.2** Run `aq-gaps` — verify it executes without error (may output empty list if no low-confidence queries yet).
+  *Pass: command exits 0; output is valid.*
+
+---
+
+### TC3.3 — NixOS Platform Validation
+
+- [ ] **TC3.3.1** Run `nixos-rebuild dry-run` — no evaluation errors, no `lib.mkForce` conflicts.
+  *Pass: exit 0 with no error lines in output.*
+
+- [ ] **TC3.3.2** Verify hardware-tier detection resolves correctly on this machine.
+  *Pass: `nix eval .#lib.hardware-tier {...}` returns `"medium"` (27 GB RAM, AMD iGPU, laptop).*
+
+- [ ] **TC3.3.3** Run `nix flake check` — all checks pass.
+  *Pass: exit 0.*
+
+---
+
+### TC3.4 — Knowledge Base Quality Baseline
+
+- [ ] **TC3.4.1** Run a domain-specific query expansion test: verify NixOS synonym map fires.
+  *Pass: log shows `query_expansions: 3` for a NixOS terminology query.*
+
+- [ ] **TC3.4.2** Check vector timestamp fields are present on at least one ingested document.
+  *Pass: `redis-cli` or Qdrant API shows `ingested_at` field in vector payload.*
+
+---
+
+### TC3.5 — Performance Baseline (Pre-Hardening)
+
+- [ ] **TC3.5.1** Record current p95 response latency for a standard query. Store in `ai-stack/eval/results/perf-baseline.json`.
+  *Pass: file written; p95 < 30 s for a local-routed query.*
+
+- [ ] **TC3.5.2** Record current cache hit rate: `curl -s http://localhost:8003/metrics | grep cache_hits`. Store rate in same baseline file.
+  *Pass: hit rate recorded; any value acceptable as baseline.*
+
+- [ ] **TC3.5.3** Confirm `nixos-unstable` migration track does not break any TC3.1 items (if Phase 10 was completed).
+  *Pass: `nixos-rebuild build-vm` succeeds on unstable track; TC3.1 items pass inside VM.*
+
+---
+
+**TC3 Gate:** All TC3.1–TC3.5 items must pass before Phase 11 begins.
 
 ---
 
