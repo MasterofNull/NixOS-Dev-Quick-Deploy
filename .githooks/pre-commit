@@ -1,68 +1,93 @@
 #!/usr/bin/env bash
-#
-# Pre-commit hook for Hyper-NixOS
-# Validates shell scripts before committing
-#
-# To install: ln -sf ../../.githooks/pre-commit .git/hooks/pre-commit
+set -euo pipefail
 
-set -e
+if ! command -v git >/dev/null 2>&1; then
+  echo "pre-commit: git not found" >&2
+  exit 1
+fi
 
 echo "Running pre-commit validation..."
 
-# Get list of staged shell scripts
-STAGED_SH_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(sh|bash)$' || true)
+run_secret_scan() {
+  # Phase 11.4.1 — block likely secrets from entering git history.
+  local regexes=(
+    'sk-[A-Za-z0-9]{48}'
+    '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'
+    'AKIA[0-9A-Z]{16}'
+    'ghp_[A-Za-z0-9]{36,}'
+  )
+  local files
+  local blocked=0
+  mapfile -t files < <(git diff --cached --name-only --diff-filter=ACM)
+  [[ ${#files[@]} -eq 0 ]] && return 0
 
-if [ -z "$STAGED_SH_FILES" ]; then
-    echo "✓ No shell scripts to validate"
-    exit 0
-fi
-
-# Check if validation script exists
-if [ ! -f "scripts/validate-echo-colors.sh" ]; then
-    echo "⚠ Warning: validate-echo-colors.sh not found, skipping validation"
-    exit 0
-fi
-
-# Run validation on staged files only
-echo "Validating echo commands with color codes..."
-
-ISSUES_FOUND=false
-
-for file in $STAGED_SH_FILES; do
-    if [ -f "$file" ]; then
-        # Check for echo without -e that contains color variables
-        if grep -qE 'echo[[:space:]]+"[^"]*\$\{[A-Z_]*\}' "$file" 2>/dev/null; then
-            if ! grep -qE 'echo[[:space:]]*-e[[:space:]]+"[^"]*\$\{[A-Z_]*\}' "$file" 2>/dev/null; then
-                # Check if this file actually has issues (not just correct usage)
-                PROBLEMATIC_LINES=$(grep -E 'echo[[:space:]]+"[^"]*\$\{[A-Z_]*\}' "$file" | grep -v 'echo[[:space:]]*-e' | wc -l)
-                if [ "$PROBLEMATIC_LINES" -gt 0 ]; then
-                    echo "✗ $file has echo commands with colors missing -e flag"
-                    ISSUES_FOUND=true
-                fi
-            fi
-        fi
+  for file in "${files[@]}"; do
+    if ! git cat-file -e ":${file}" 2>/dev/null; then
+      continue
     fi
-done
+    local content
+    content="$(git show ":${file}" 2>/dev/null || true)"
+    [[ -z "${content}" ]] && continue
 
-if [ "$ISSUES_FOUND" = true ]; then
-    echo
-    echo "❌ Commit blocked: Shell script validation failed"
-    echo
-    echo "Some echo commands with color codes are missing the -e flag."
-    echo "This causes escape sequences to display as literal text."
-    echo
-    echo "To fix automatically:"
-    echo "  ./scripts/validate-echo-colors.sh --fix"
-    echo
-    echo "Or manually add -e to echo commands with color variables:"
-    echo "  ❌ echo \"  \${GREEN}Success\${NC}\""
-    echo "  ✓  echo -e \"  \${GREEN}Success\${NC}\""
-    echo
-    echo "To skip this check (not recommended):"
-    echo "  git commit --no-verify"
-    echo
-    exit 1
-fi
+    for re in "${regexes[@]}"; do
+      if printf '%s' "${content}" | rg -n --pcre2 "${re}" >/dev/null 2>&1; then
+        echo "pre-commit: blocked potential secret in staged file '${file}' (pattern: ${re})" >&2
+        blocked=1
+      fi
+    done
+  done
 
-echo "✓ All shell scripts validated successfully"
+  if [[ "${blocked}" -ne 0 ]]; then
+    cat >&2 <<'EOF'
+Commit blocked by secret scanner.
+Fix:
+  1. Remove/redact the secret from staged files
+  2. Re-stage changes
+  3. Re-commit
+EOF
+    return 1
+  fi
+
+  return 0
+}
+
+run_shell_validation() {
+  local staged_sh_files
+  local issues_found=0
+
+  staged_sh_files="$(git diff --cached --name-only --diff-filter=ACM | rg -N '\.(sh|bash)$' || true)"
+  [[ -z "${staged_sh_files}" ]] && return 0
+
+  if [[ ! -f "scripts/validate-echo-colors.sh" ]]; then
+    echo "⚠ Warning: validate-echo-colors.sh not found, skipping shell echo validation"
+    return 0
+  fi
+
+  while IFS= read -r file; do
+    [[ -f "${file}" ]] || continue
+    if rg -N 'echo[[:space:]]+"[^"]*\$\{[A-Z_]*\}' "${file}" >/dev/null 2>&1; then
+      if ! rg -N 'echo[[:space:]]*-e[[:space:]]+"[^"]*\$\{[A-Z_]*\}' "${file}" >/dev/null 2>&1; then
+        if rg -N 'echo[[:space:]]+"[^"]*\$\{[A-Z_]*\}' "${file}" | rg -v 'echo[[:space:]]*-e' >/dev/null 2>&1; then
+          echo "✗ ${file} has echo commands with colors missing -e flag"
+          issues_found=1
+        fi
+      fi
+    fi
+  done <<< "${staged_sh_files}"
+
+  if [[ "${issues_found}" -ne 0 ]]; then
+    cat >&2 <<'EOF'
+Commit blocked: shell script validation failed.
+Some echo commands with color codes are missing -e.
+Run: ./scripts/validate-echo-colors.sh --fix
+EOF
+    return 1
+  fi
+
+  return 0
+}
+
+run_secret_scan
+run_shell_validation
+
 exit 0

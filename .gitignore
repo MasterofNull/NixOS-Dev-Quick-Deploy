@@ -27,7 +27,6 @@ result-*
 .nixos-deploy-last-backup
 
 # Git metadata that should not be versioned
-.githooks/
 ai-stack/mcp-servers/hybrid-coordinator/venv/
 
 # Python bytecode
