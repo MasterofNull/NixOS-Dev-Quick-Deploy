@@ -74,7 +74,7 @@ class EmbeddingCache:
                 count = 0
                 if keys:
                     count = await self.redis.delete(*keys)
-                logger.info("embedding_cache_legacy_keys_flushed", count=count)
+                logger.info("embedding_cache_legacy_keys_flushed count=%d", count)
 
         except Exception as e:
             logger.error(f"Failed to initialize embedding cache: {e}")
