@@ -2390,9 +2390,27 @@ async def route_search(
                 f"User query: {query}\n\nContext:\n{compressed_context}\n\n"
                 "Provide a concise response using the context."
             )
-            backend = "local"
-            reason = "prefer_local=True and llama_cpp_client available"
-            logger.info("llm_backend_selected backend=%s reason=%s", backend, reason)
+            # Phase 2: use routing intelligence rather than hardcoding local.
+            # Derive context quality from best search result score.
+            _all_results = (
+                results.get("combined_results") or
+                results.get("semantic_results") or
+                results.get("keyword_results") or []
+            )
+            context_quality = max(
+                (r.get("score", 0.0) for r in _all_results if isinstance(r, dict)),
+                default=0.5,
+            )
+            backend = await select_llm_backend(
+                query, context_quality,
+                force_local=prefer_local,
+            )
+            # Remote generation not yet wired in route_search; fall back to local.
+            if backend == "remote" and llama_cpp_client:
+                logger.info(
+                    "llm_backend_fallback_to_local reason=remote_not_available_in_route_search"
+                )
+                backend = "local"
             try:
                 llm_resp = await llama_cpp_client.post(
                     "/chat/completions",

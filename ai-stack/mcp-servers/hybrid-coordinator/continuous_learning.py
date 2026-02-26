@@ -1016,7 +1016,7 @@ class ContinuousLearningPipeline:
                             wait=True,
                         ))
 
-                    qdrant_breaker.call(_upsert)
+                    await qdrant_breaker.call(_upsert)
                     logger.info("patterns_indexed", count=len(points))
 
                 except Exception as e:
@@ -1060,7 +1060,7 @@ class ContinuousLearningPipeline:
                         metric.timestamp,
                     ))
 
-                postgres_breaker.call(_insert)
+                await postgres_breaker.call(_insert)
             except Exception as e:
                 logger.debug("metric_save_failed", error=str(e), circuit_state=postgres_breaker.state.value)
 
