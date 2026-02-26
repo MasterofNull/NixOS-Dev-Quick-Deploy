@@ -29,6 +29,7 @@ LLAMA_BASE_URL="${LLAMA_URL%/}"
 ACCEPTANCE_THRESHOLD="${ACCEPTANCE_THRESHOLD:-70}"   # percent
 CI_MODE="${CI_MODE:-0}"
 PROMPTFOO_VERSION="${PROMPTFOO_VERSION:-latest}"
+PROMPTFOO_MAX_CONCURRENCY="${PROMPTFOO_MAX_CONCURRENCY:-1}"
 
 info()    { printf '\033[0;32m[run-eval] %s\033[0m\n' "$*"; }
 warn()    { printf '\033[0;33m[run-eval] WARN: %s\033[0m\n' "$*" >&2; }
@@ -83,6 +84,7 @@ promptfoo_args=(
   eval
   --config "${EVAL_CONFIG}"
   --output "${result_file}"
+  --max-concurrency "${PROMPTFOO_MAX_CONCURRENCY}"
 )
 if [[ "${CI_MODE}" == "1" ]]; then
   promptfoo_args+=(--no-table)
@@ -135,6 +137,27 @@ if [[ -f "${result_file}" ]] && command -v jq >/dev/null 2>&1; then
         fi
         echo "${timestamp},${EVAL_CONFIG},${passed},${total},${pct}" >> "${scores_csv}"
         info "Score logged: ${scores_csv}"
+
+        # ── Append score to SQLite log (8.1.4) ──────────────────────────────
+        scores_db="${OUTPUT_DIR}/scores.sqlite"
+        if command -v sqlite3 >/dev/null 2>&1; then
+            sqlite3 "${scores_db}" <<SQL
+CREATE TABLE IF NOT EXISTS eval_scores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  timestamp TEXT NOT NULL,
+  config TEXT NOT NULL,
+  passed INTEGER NOT NULL,
+  total INTEGER NOT NULL,
+  pct_passed INTEGER NOT NULL,
+  threshold INTEGER NOT NULL
+);
+INSERT INTO eval_scores (timestamp, config, passed, total, pct_passed, threshold)
+VALUES ('${timestamp}', '$(printf "%s" "${EVAL_CONFIG}" | sed "s/'/''/g")', ${passed}, ${total}, ${pct}, ${ACCEPTANCE_THRESHOLD});
+SQL
+            info "Score logged: ${scores_db}"
+        else
+            warn "sqlite3 not found; skipping SQLite score logging."
+        fi
 
         # ── Regression warning: drop below 60% is always surfaced ─────────
         if [[ "${pct}" -lt 60 ]]; then
