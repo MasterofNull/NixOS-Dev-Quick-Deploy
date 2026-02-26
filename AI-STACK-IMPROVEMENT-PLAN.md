@@ -631,7 +631,7 @@ Same problem, same approach. AIDB is simultaneously: a vector DB client, an embe
 
 **Problem:** `query_expansion.py` has a hardcoded synonym map with generic developer vocabulary, not NixOS/AI inference domain vocabulary.
 
-- [ ] **7.1.1** Replace the generic synonym map with NixOS and AI-stack-specific expansions:
+- [x] **7.1.1** Replace the generic synonym map with NixOS and AI-stack-specific expansions:
   `flake` → `flake.nix, inputs, outputs, follows, lock`
   `module` → `NixOS module, nixos-module, options declaration, config`
   `derivation` → `mkDerivation, stdenv, buildInputs, nativeBuildInputs`
