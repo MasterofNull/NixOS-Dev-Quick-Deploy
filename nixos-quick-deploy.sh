@@ -1853,7 +1853,7 @@ if [[ "$RUN_HEALTH_CHECK" == true && -x "${REPO_ROOT}/scripts/check-mcp-health.s
 fi
 
 # ---- Command Center Dashboard post-flight ------------------------------------
-# Confirm the dashboard API is reachable and reports a healthy/degraded aggregate.
+# Confirm the dashboard API is reachable and reports a healthy/degraded probe result.
 # Non-fatal: a down dashboard never aborts a successful deploy.
 check_dashboard_postflight() {
   [[ "${RUN_HEALTH_CHECK}" == true ]] || return 0
@@ -1868,9 +1868,9 @@ check_dashboard_postflight() {
     [[ -n "${extracted}" ]] && dashboard_api_url="${extracted}"
   fi
 
-  local probe_url="${dashboard_api_url%/}/api/health/aggregate"
+  local probe_url="${dashboard_api_url%/}/api/health/probe"
   local status
-  if status="$(curl -fsS --max-time 10 --connect-timeout 3 "${probe_url}" 2>/dev/null \
+  if status="$(curl -fsS --max-time 15 --connect-timeout 3 "${probe_url}" 2>/dev/null \
       | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("overall_status","unknown"))' 2>/dev/null)"; then
     log "Dashboard OK — ${dashboard_api_url%/} (status: ${status})"
   else

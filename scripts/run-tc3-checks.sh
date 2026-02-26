@@ -63,11 +63,15 @@ if [[ "${SKIP_NIX}" -eq 0 && "${PERF_ONLY}" -eq 0 ]]; then
 
     # TC3.3.1 — nixos-rebuild dry-run
     info "TC3.3.1: nixos-rebuild dry-run..."
-    if nixos_out="$(sudo nixos-rebuild dry-run --flake "${REPO_ROOT}#nixos" 2>&1)"; then
-        pass "TC3.3.1: nixos-rebuild dry-run OK"
+    if sudo -n true >/dev/null 2>&1; then
+        if nixos_out="$(sudo -n nixos-rebuild dry-run --flake "${REPO_ROOT}#nixos" 2>&1)"; then
+            pass "TC3.3.1: nixos-rebuild dry-run OK"
+        else
+            fail "TC3.3.1: nixos-rebuild dry-run failed"
+            echo "${nixos_out}" >&2
+        fi
     else
-        fail "TC3.3.1: nixos-rebuild dry-run failed"
-        echo "${nixos_out}" >&2
+        skip "TC3.3.1: sudo non-interactive access unavailable in this session"
     fi
 
     # TC3.3.2 — hardware-tier detection
@@ -103,10 +107,14 @@ if [[ "${PERF_ONLY}" -eq 0 ]]; then
     else
         expanded="$(python3 - <<PYEOF 2>/dev/null
 import sys
+import os
+# Ensure both hybrid-coordinator and shared modules are importable.
+sys.path.insert(0, "${REPO_ROOT}/ai-stack/mcp-servers")
 sys.path.insert(0, "${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator")
+os.environ["AI_STRICT_ENV"] = "false"
 from query_expansion import QueryExpander
 qe = QueryExpander()
-result = qe.expand("how to fix flake input conflict")
+result = qe.expand_simple("how to fix flake input conflict", max_expansions=6)
 # result may be a string or list; stringify either way
 out = result if isinstance(result, str) else " ".join(str(r) for r in result)
 print(out)
@@ -134,10 +142,15 @@ if not docs:
     sys.exit(0)
 d = docs[0]
 payload = d.get('payload', d)
-has_ts = 'ingested_at' in payload or 'last_accessed_at' in payload or 'created_at' in payload
+has_ts = (
+    'ingested_at' in payload or
+    'last_accessed_at' in payload or
+    'created_at' in payload or
+    'imported_at' in payload
+)
 print('ok' if has_ts else 'missing')
 " 2>/dev/null | grep -q "ok"; then
-            pass "TC3.4.2: vector timestamp field (ingested_at / last_accessed_at) present"
+            pass "TC3.4.2: timestamp field present (ingested_at / last_accessed_at / imported_at)"
         else
             fail "TC3.4.2: no timestamp fields found on retrieved vector (or DB empty)"
         fi
@@ -207,12 +220,25 @@ if [[ "${SKIP_PERF}" -eq 0 ]]; then
     # Write baseline JSON
     mkdir -p "$(dirname "${PERF_BASELINE_FILE}")"
     python3 - <<PYEOF
-import json, datetime
+import datetime
+import json
+
+def _to_number(raw):
+    value = str(raw).strip()
+    if value in ("", "null", "None"):
+        return None
+    try:
+        if "." in value:
+            return float(value)
+        return int(value)
+    except ValueError:
+        return None
+
 data = {
-    "recorded_at": datetime.datetime.utcnow().isoformat() + "Z",
-    "p50_ms": ${p50},
-    "p95_ms": ${p95},
-    "embedding_cache_hit_rate_pct": ${cache_hit_rate},
+    "recorded_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    "p50_ms": _to_number("${p50}"),
+    "p95_ms": _to_number("${p95}"),
+    "embedding_cache_hit_rate_pct": _to_number("${cache_hit_rate}"),
 }
 with open("${PERF_BASELINE_FILE}", "w") as f:
     json.dump(data, f, indent=2)

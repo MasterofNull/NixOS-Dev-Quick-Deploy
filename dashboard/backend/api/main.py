@@ -6,7 +6,7 @@ Main application entry point with WebSocket support
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from contextlib import asynccontextmanager
 import asyncio
 import logging
@@ -110,6 +110,12 @@ async def health_check():
         "websocket_connections": len(active_connections),
         "metrics_collector": "running"
     }
+
+
+@app.get("/metrics", response_class=PlainTextResponse)
+async def prometheus_metrics():
+    """Prometheus exposition endpoint for dashboard-level probe gauges."""
+    return aistack.render_prometheus_metrics()
 
 
 # WebSocket endpoint for real-time metrics
