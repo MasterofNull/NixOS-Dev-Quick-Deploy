@@ -110,6 +110,11 @@ in
       trusted-users = [ "root" "@wheel" cfg.primaryUser ];
       allowed-users = [ "@wheel" cfg.primaryUser ];
       substituters = lib.mkDefault cfg.deployment.nixBinaryCaches;
+      # Phase 11.2.2 — require cryptographic signatures on all substituted
+      # store paths.  This is the NixOS default (true) but we set it
+      # explicitly here so no host config can accidentally override it to
+      # false and silently weaken supply-chain integrity.
+      require-sigs = lib.mkForce true;
     };
     nix.gc = {
       automatic = lib.mkDefault true;

@@ -140,6 +140,7 @@ let
     tenacity
     openai
     anthropic
+    watchfiles   # Phase 9.2.2: inotify-based telemetry file watching
   ]) ++ otelPkgs ++ aidbExtraPkgs;
 
   # ── Per-service Python envs ───────────────────────────────────────────────
@@ -190,6 +191,11 @@ let
     RestrictSUIDSGID         = true;
     LockPersonality          = true;
     RestrictNamespaces       = true;
+    # Phase 13.1.1 — restrict to necessary address families only
+    RestrictAddressFamilies  = [ "AF_UNIX" "AF_INET" "AF_INET6" ];
+    # Phase 13.1.2 — allow only the syscalls needed for normal service operation
+    SystemCallFilter         = [ "@system-service" ];
+    SystemCallErrorNumber    = "EPERM";
   };
 
   # ── PostgreSQL connection URL (when postgres enabled) ─────────────────────
@@ -703,6 +709,9 @@ in
           ] ++ lib.optional mcp.postgres.enable
             "DATABASE_URL=${pgUrl}"
             ++ lib.optional sec.enable "RALPH_WIGGUM_API_KEY_FILE=${secretPath aidbApiKeySecret}";
+          # Phase 13.1.1 — ralph only communicates with loopback services
+          IPAddressAllow = [ "127.0.0.1/8" "::1/128" ];
+          IPAddressDeny  = "any";
         };
       };
 
