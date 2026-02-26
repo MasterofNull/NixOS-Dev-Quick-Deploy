@@ -53,6 +53,7 @@ id_ecdsa
 secrets.yaml
 secrets.json
 secrets.toml
+*.sops.yaml
 
 # Local secrets (generated)
 ai-stack/compose/secrets/*
