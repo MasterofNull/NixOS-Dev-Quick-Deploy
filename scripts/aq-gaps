@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# aq-gaps — Phase 3.2.2/3.2.3: Show the top 10 most-repeated gap queries of the last 7 days.
+#
+# A "gap query" is one where the AI stack returned context with confidence < 0.4,
+# meaning the knowledge base probably lacks the relevant information.
+#
+# Usage:
+#   aq-gaps              # top 10 gaps from the last 7 days
+#   aq-gaps --days 30    # extend to last 30 days
+#   aq-gaps --all        # all time
+
+set -euo pipefail
+
+PG_HOST="${POSTGRES_HOST:-127.0.0.1}"
+PG_PORT="${POSTGRES_PORT:-5432}"
+PG_USER="${POSTGRES_USER:-aidb}"
+PG_DB="${POSTGRES_DB:-aidb}"
+PG_PASS_FILE="${POSTGRES_PASSWORD_FILE:-/run/secrets/postgres_password}"
+AIDB_URL="${AIDB_URL:-http://127.0.0.1:${AIDB_PORT:-8002}}"
+
+DAYS=7
+LIMIT=10
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --days) DAYS="$2"; shift 2 ;;
+        --limit) LIMIT="$2"; shift 2 ;;
+        --all) DAYS=0; shift ;;
+        -h|--help)
+            echo "Usage: aq-gaps [--days N] [--limit N] [--all]"
+            exit 0 ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+done
+
+# Read postgres password
+if [[ -r "$PG_PASS_FILE" ]]; then
+    export PGPASSWORD=$(tr -d '[:space:]' < "$PG_PASS_FILE")
+fi
+
+# Build WHERE clause
+if [[ "$DAYS" -gt 0 ]]; then
+    WHERE="WHERE created_at >= NOW() - INTERVAL '${DAYS} days'"
+    PERIOD="${DAYS} days"
+else
+    WHERE=""
+    PERIOD="all time"
+fi
+
+echo "=== Knowledge Gap Queries (last ${PERIOD}, top ${LIMIT} repeated) ==="
+echo ""
+
+psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" -t -A -F$'\t' <<SQL
+SELECT
+    COUNT(*)       AS occurrences,
+    MIN(score)     AS min_score,
+    MAX(score)     AS max_score,
+    query_text
+FROM query_gaps
+${WHERE}
+GROUP BY query_hash, query_text
+ORDER BY occurrences DESC, min_score ASC
+LIMIT ${LIMIT};
+SQL
+
+RESULT=$?
+
+if [[ $RESULT -ne 0 ]]; then
+    echo "Error querying database." >&2
+    exit 1
+fi
+
+echo ""
+echo "--- Suggested imports (run after reviewing) ---"
+echo ""
+
+# Re-run to generate suggestions
+psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" -t -A -F$'\t' <<SQL | while IFS=$'\t' read -r count min_score max_score query_text; do
+SELECT
+    COUNT(*) AS occurrences,
+    MIN(score)::text,
+    MAX(score)::text,
+    query_text
+FROM query_gaps
+${WHERE}
+GROUP BY query_hash, query_text
+ORDER BY occurrences DESC, min_score ASC
+LIMIT ${LIMIT};
+SQL
+    echo "# [${count}x, best score=${max_score}] ${query_text}"
+    echo "# Suggested: aidb import --collection nixos-docs --query \"${query_text}\""
+    echo ""
+done

@@ -2287,6 +2287,8 @@ async def route_search(
 ) -> Dict[str, Any]:
     """Route query to SQL, semantic, keyword, tree, or hybrid search."""
     start = time.time()
+    # Phase 3.1.1 — every query gets a stable interaction_id the user can reference for feedback.
+    interaction_id = str(uuid4())
     limit = max(1, min(int(limit), Config.AI_AUTONOMY_MAX_RETRIEVAL_RESULTS))
     keyword_limit = max(0, min(int(keyword_limit), Config.AI_AUTONOMY_MAX_RETRIEVAL_RESULTS))
     normalized_mode = (mode or "auto").lower()
@@ -2366,6 +2368,29 @@ async def route_search(
             )
             results = hybrid_results
             response_text = _summarize_results(hybrid_results["combined_results"])
+
+        # Phase 3.2.1 — Gap tracking: record low-confidence queries to query_gaps table.
+        _GAP_THRESHOLD = float(os.getenv("AI_GAP_SCORE_THRESHOLD", "0.4"))
+        _all_combined = (
+            results.get("combined_results") or
+            results.get("semantic_results") or
+            results.get("keyword_results") or []
+        )
+        _best_score = max(
+            (r.get("score", 0.0) for r in _all_combined if isinstance(r, dict)),
+            default=0.0,
+        )
+        if _best_score < _GAP_THRESHOLD and postgres_client is not None:
+            _query_hash = hashlib.sha256(query.encode()).hexdigest()[:64]
+            _collections_hit = ",".join(sorted(set(
+                r.get("collection", "") for r in _all_combined if isinstance(r, dict)
+            ))) or "unknown"
+            asyncio.create_task(_record_query_gap(
+                query_hash=_query_hash,
+                query_text=query[:500],
+                score=_best_score,
+                collection=_collections_hit,
+            ))
 
         prompt_prefix = Config.AI_PROMPT_CACHE_STATIC_PREFIX if Config.AI_PROMPT_CACHE_POLICY_ENABLED else ""
         prompt_prefix_hash = hashlib.sha256(prompt_prefix.encode("utf-8")).hexdigest()[:16] if prompt_prefix else ""
@@ -2485,6 +2510,7 @@ async def route_search(
         "response": response_text,
         "results": results,
         "latency_ms": latency_ms,
+        "interaction_id": interaction_id,  # Phase 3.1.1: used by POST /feedback/{id}
         "capability_discovery": {
             "decision": capability_discovery.get("decision", "unknown"),
             "reason": capability_discovery.get("reason", "unknown"),
@@ -2598,6 +2624,73 @@ async def record_learning_feedback(
         return ""
 
     return feedback_id
+
+
+# ============================================================================
+# Phase 3.1.1 — Simple thumbs-up/thumbs-down feedback
+# Phase 3.2.1 — Gap query recording
+# ============================================================================
+
+async def record_simple_feedback(
+    interaction_id: str,
+    rating: int,
+    note: str = "",
+    query: str = "",
+) -> str:
+    """Record a simple +1/-1 rating for an interaction to learning_feedback + PerformanceWindow."""
+    global postgres_client
+    feedback_id = str(uuid4())
+    if postgres_client is not None:
+        try:
+            await postgres_client.execute(
+                """
+                INSERT INTO learning_feedback (
+                    feedback_id, interaction_id, query,
+                    correction, rating, source
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                feedback_id,
+                interaction_id,
+                query[:500] if query else "",
+                note[:1000] if note else "",
+                rating,
+                "user-rating",
+            )
+        except Exception as exc:
+            logger.warning("feedback_postgres_failed error=%s", exc)
+    # Wire into 7-day performance window (Phase 2.2.3)
+    await performance_window.record("general", success=(rating > 0))
+    logger.info(
+        "simple_feedback_recorded interaction_id=%s rating=%d",
+        interaction_id, rating,
+    )
+    return feedback_id
+
+
+async def _record_query_gap(
+    query_hash: str,
+    query_text: str,
+    score: float,
+    collection: str = "unknown",
+) -> None:
+    """Phase 3.2.1 — Insert a low-confidence query into the query_gaps table."""
+    global postgres_client
+    if postgres_client is None:
+        return
+    try:
+        await postgres_client.execute(
+            """
+            INSERT INTO query_gaps (query_hash, query_text, score, collection)
+            VALUES (%s, %s, %s, %s)
+            """,
+            query_hash, query_text, score, collection,
+        )
+        logger.info(
+            "query_gap_recorded score=%.3f collection=%s",
+            score, collection,
+        )
+    except Exception as exc:
+        logger.debug("query_gap_insert_failed error=%s", exc)
 
 
 async def get_feedback_variant_stats(tag: str, days: Optional[int] = None) -> Dict[str, Any]:
@@ -3734,6 +3827,18 @@ async def main():
                     score_threshold=float(data.get("score_threshold", 0.7)),
                     generate_response=bool(data.get("generate_response", False)),
                 )
+                # Phase 3.1.2 — persist last interaction_id so `aq-rate last` works.
+                iid = result.get("interaction_id", "")
+                if iid:
+                    try:
+                        _last_id_path = os.path.expanduser(
+                            "~/.local/share/nixos-ai-stack/last-interaction"
+                        )
+                        os.makedirs(os.path.dirname(_last_id_path), exist_ok=True)
+                        with open(_last_id_path, "w") as _f:
+                            _f.write(iid)
+                    except OSError:
+                        pass  # non-critical
                 return web.json_response(result)
             except Exception as exc:  # noqa: BLE001
                 return web.json_response(
@@ -3873,6 +3978,33 @@ async def main():
             except Exception as e:
                 return web.json_response(error_payload("internal_error", e), status=500)
 
+        async def handle_simple_feedback(request):
+            """Phase 3.1.1 — POST /feedback/{interaction_id}
+            Body: {"rating": 1|-1, "note": "optional text"}
+            Returns: {"status": "recorded", "feedback_id": "<uuid>"}
+            """
+            try:
+                interaction_id = request.match_info.get("interaction_id", "")
+                if not interaction_id:
+                    return web.json_response({"error": "interaction_id required in path"}, status=400)
+                data = await request.json()
+                rating = data.get("rating")
+                if rating not in (1, -1):
+                    return web.json_response(
+                        {"error": "rating must be 1 (good) or -1 (bad)"}, status=400
+                    )
+                note = str(data.get("note", ""))[:1000]
+                query = str(data.get("query", ""))[:500]
+                feedback_id = await record_simple_feedback(
+                    interaction_id=interaction_id,
+                    rating=rating,
+                    note=note,
+                    query=query,
+                )
+                return web.json_response({"status": "recorded", "feedback_id": feedback_id})
+            except Exception as exc:
+                return web.json_response(error_payload("internal_error", exc), status=500)
+
         async def handle_feedback_evaluate(request):
             """HTTP endpoint for remote LLM feedback evaluation"""
             try:
@@ -3994,6 +4126,7 @@ async def main():
         http_app.router.add_get('/harness/stats', handle_harness_stats)
         http_app.router.add_get('/harness/scorecard', handle_harness_scorecard)
         http_app.router.add_post('/feedback', handle_feedback)
+        http_app.router.add_post('/feedback/{interaction_id}', handle_simple_feedback)  # Phase 3.1.1
 
         # New RLM endpoints
         http_app.router.add_post('/context/multi_turn', handle_multi_turn_context)
