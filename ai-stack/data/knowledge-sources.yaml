@@ -44,3 +44,136 @@ sources:
       - tools
     schedule: weekly
     enabled: true
+
+  # ---------------------------------------------------------------------------
+  # Local Agent Skills Directory
+  # ai-stack/agents/skills/ — 23 SKILL.md files covering MCP ops, NixOS
+  # deployment, document processing, health monitoring, web dev, AI services.
+  # ---------------------------------------------------------------------------
+  - id: local-agent-skills
+    type: local_dir
+    description: >
+      All agent skill definitions in this repository — workflow patterns,
+      implementation guides, and procedural knowledge for MCP server ops,
+      NixOS deployment, RAG techniques, health monitoring, and more.
+    url: ai-stack/agents/skills
+    fetch:
+      - glob:*.md
+    collection: agent-skills
+    tags:
+      - skills
+      - agents
+      - workflows
+      - mcp
+      - nixos
+      - local
+    schedule: daily
+    enabled: true
+
+  # ---------------------------------------------------------------------------
+  # allmcpservers.com — Community MCP Server Directory
+  # Public catalog of all known MCP servers. Used by all-mcp-directory skill.
+  # ---------------------------------------------------------------------------
+  - id: allmcp-catalog
+    type: url
+    description: >
+      Community directory of all publicly available MCP servers — names,
+      descriptions, tags, and repository URLs. Referenced by the
+      all-mcp-directory skill for federation discovery.
+    url: https://www.allmcpservers.com/api/servers.json
+    fetch:
+      - full
+    collection: mcp-server-catalog
+    tags:
+      - mcp
+      - catalog
+      - tools
+      - federation
+    schedule: weekly
+    enabled: true
+
+  # ---------------------------------------------------------------------------
+  # Model Context Protocol Specification
+  # https://modelcontextprotocol.io — Official MCP spec and documentation
+  # ---------------------------------------------------------------------------
+  - id: mcp-spec
+    type: url
+    description: >
+      Official Model Context Protocol specification and documentation.
+      Reference for MCP tool/resource/prompt schemas, transport protocols,
+      and server implementation guidelines.
+    url: https://modelcontextprotocol.io/specification/draft.md
+    fetch:
+      - full
+    collection: mcp-specification
+    tags:
+      - mcp
+      - specification
+      - protocol
+      - reference
+    schedule: weekly
+    enabled: true
+
+  # ---------------------------------------------------------------------------
+  # nix-community/nixpkgs-mcp — NixOS package query MCP server
+  # Referenced in all-mcp-directory skill fallback catalog.
+  # ---------------------------------------------------------------------------
+  - id: nixpkgs-mcp
+    type: github_repo
+    description: >
+      MCP server for querying nixpkgs — surface package metadata, option
+      docs, and NixOS module information directly from MCP agents.
+    url: nix-community/nixpkgs-mcp
+    fetch:
+      - readme
+    collection: nixpkgs-mcp
+    tags:
+      - nix
+      - nixpkgs
+      - mcp
+      - devtools
+    schedule: weekly
+    enabled: true
+
+  # ---------------------------------------------------------------------------
+  # open-webui/open-webui — Open WebUI MCP server package
+  # Referenced in all-mcp-directory skill. We run Open WebUI locally.
+  # ---------------------------------------------------------------------------
+  - id: open-webui-mcp
+    type: github_repo
+    description: >
+      Open WebUI MCP server — exposes Open WebUI automation hooks to MCP
+      agents. Relevant since Open WebUI is part of this AI stack.
+    url: open-webui/open-webui
+    fetch:
+      - file:packages/mcp-server/README.md
+    collection: open-webui-mcp
+    tags:
+      - open-webui
+      - mcp
+      - ui
+      - automation
+    schedule: weekly
+    enabled: true
+
+  # ---------------------------------------------------------------------------
+  # shadcn/ui component documentation
+  # Referenced by web-artifacts-builder and frontend-design skills.
+  # ---------------------------------------------------------------------------
+  - id: shadcn-ui-docs
+    type: url
+    description: >
+      shadcn/ui component documentation — React component library used by
+      web-artifacts-builder and frontend-design skills for artifact creation.
+    url: https://ui.shadcn.com/docs/components
+    fetch:
+      - full
+    collection: shadcn-ui-docs
+    tags:
+      - ui
+      - react
+      - components
+      - frontend
+      - shadcn
+    schedule: weekly
+    enabled: true
