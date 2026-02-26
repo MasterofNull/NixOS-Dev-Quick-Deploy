@@ -80,49 +80,53 @@ check_tcp() {
   fi
 }
 
+url_port() {
+  local url="$1"
+  # shellcheck disable=SC2001
+  sed -E 's#^[a-zA-Z]+://[^:/]+:([0-9]+).*$#\1#' <<<"$url"
+}
+
 # ── Infrastructure dependencies ───────────────────────────────────────────────
 echo "── Infrastructure ───────────────────────────────────────────"
 REDIS_HOST="${REDIS_HOST:-localhost}"
-REDIS_PORT="${REDIS_PORT:-6379}"
+REDIS_PORT="${REDIS_PORT}"
 check_tcp "INFRA" "Redis" "$REDIS_HOST" "$REDIS_PORT"
 
-QDRANT_HOST="${SERVICE_HOST:-localhost}"
-QDRANT_PORT="${QDRANT_HTTP_PORT:-6333}"
+QDRANT_HOST="${SERVICE_HOST}"
+QDRANT_PORT="${QDRANT_PORT}"
 check_tcp "INFRA" "Qdrant" "$QDRANT_HOST" "$QDRANT_PORT"
 
-POSTGRES_HOST="${POSTGRES_HOST:-localhost}"
-POSTGRES_PORT="${POSTGRES_PORT:-5432}"
+POSTGRES_HOST="${POSTGRES_HOST}"
+POSTGRES_PORT="${POSTGRES_PORT}"
 check_tcp "INFRA" "PostgreSQL" "$POSTGRES_HOST" "$POSTGRES_PORT"
 
 # ── Core HTTP MCP servers ─────────────────────────────────────────────────────
 echo "── Core MCP Servers ─────────────────────────────────────────"
-check_http "REQUIRED" "embeddings-service  (:8001)" "${EMBEDDINGS_URL%/}/health"
-check_http "REQUIRED" "aidb                (:8002)" "${AIDB_URL%/}/health"
-check_http "REQUIRED" "hybrid-coordinator  (:8003)" "${HYBRID_URL%/}/health"
-check_http "REQUIRED" "ralph-wiggum        (:8004)" "${RALPH_URL%/}/health"
+check_http "REQUIRED" "embeddings-service  (:$(url_port "${EMBEDDINGS_URL}"))" "${EMBEDDINGS_URL%/}/health"
+check_http "REQUIRED" "aidb                (:$(url_port "${AIDB_URL}"))" "${AIDB_URL%/}/health"
+check_http "REQUIRED" "hybrid-coordinator  (:$(url_port "${HYBRID_URL}"))" "${HYBRID_URL%/}/health"
+check_http "REQUIRED" "ralph-wiggum        (:$(url_port "${RALPH_URL}"))" "${RALPH_URL%/}/health"
 
 # ── LLM backend ───────────────────────────────────────────────────────────────
 echo "── LLM Backends ─────────────────────────────────────────────"
-LLAMA_URL="${LLAMA_CPP_URL:-http://${SERVICE_HOST}:8080}"
-check_http "REQUIRED" "llama-cpp inference (:8080)" "${LLAMA_URL%/}/health"
+LLAMA_URL="${LLAMA_CPP_URL}"
+check_http "REQUIRED" "llama-cpp inference (:$(url_port "${LLAMA_URL}"))" "${LLAMA_URL%/}/health"
 
-LLAMA_EMBED_URL="${LLAMA_CPP_EMBED_URL:-http://${SERVICE_HOST}:8081}"
-check_http "REQUIRED" "llama-cpp embedding (:8081)" "${LLAMA_EMBED_URL%/}/health"
+LLAMA_EMBED_URL="${LLAMA_CPP_EMBED_URL}"
+check_http "REQUIRED" "llama-cpp embedding (:$(url_port "${LLAMA_EMBED_URL}"))" "${LLAMA_EMBED_URL%/}/health"
 
 # ── Optional / supplementary ─────────────────────────────────────────────────
 if [[ "$SHOW_OPTIONAL" -eq 1 ]]; then
   echo "── Optional Services ────────────────────────────────────────"
-  SWITCHBOARD_URL="${SWITCHBOARD_URL:-http://${SERVICE_HOST}:8085}"
-  check_http "OPTIONAL" "switchboard         (:8085)" "${SWITCHBOARD_URL%/}/health"
+  check_http "OPTIONAL" "switchboard         (:$(url_port "${SWITCHBOARD_URL}"))" "${SWITCHBOARD_URL%/}/health"
 
-  AIDER_URL="${AIDER_URL:-http://${SERVICE_HOST}:8090}"
-  check_http "OPTIONAL" "aider-wrapper       (:8090)" "${AIDER_URL%/}/health"
+  AIDER_URL="${AIDER_URL}"
+  check_http "OPTIONAL" "aider-wrapper       (:$(url_port "${AIDER_URL}"))" "${AIDER_URL%/}/health"
 
-  CONTAINER_URL="${CONTAINER_URL:-http://${SERVICE_HOST}:8095}"
-  check_http "OPTIONAL" "container-engine    (:8095)" "${CONTAINER_URL%/}/health"
+  CONTAINER_URL="${CONTAINER_ENGINE_URL}"
+  check_http "OPTIONAL" "container-engine    (:$(url_port "${CONTAINER_URL}"))" "${CONTAINER_URL%/}/health"
 
-  NIXOS_DOCS_URL="${NIXOS_DOCS_URL:-http://${SERVICE_HOST}:8096}"
-  check_http "OPTIONAL" "nixos-docs          (:8096)" "${NIXOS_DOCS_URL%/}/health"
+  check_http "OPTIONAL" "nixos-docs          (:$(url_port "${NIXOS_DOCS_URL}"))" "${NIXOS_DOCS_URL%/}/health"
 
   QDRANT_HEALTH_URL="http://${QDRANT_HOST}:${QDRANT_PORT}/healthz"
   check_http "OPTIONAL" "Qdrant HTTP API     (:${QDRANT_PORT})" "$QDRANT_HEALTH_URL"

@@ -1859,13 +1859,11 @@ check_dashboard_postflight() {
   [[ "${RUN_HEALTH_CHECK}" == true ]] || return 0
 
   local endpoints_file="${REPO_ROOT}/config/service-endpoints.sh"
-  local dashboard_api_url="http://localhost:8889"
-  if [[ -f "${endpoints_file}" ]]; then
+  local dashboard_api_url="${DASHBOARD_API_URL:-}"
+  if [[ -z "${dashboard_api_url}" && -f "${endpoints_file}" ]]; then
     # shellcheck source=config/service-endpoints.sh
-    # Extract DASHBOARD_API_URL from the endpoints file without full sourcing
-    local extracted
-    extracted="$(grep 'DASHBOARD_API_URL' "${endpoints_file}" | grep -oP 'http://[^}\"]+' | head -1 || true)"
-    [[ -n "${extracted}" ]] && dashboard_api_url="${extracted}"
+    source "${endpoints_file}"
+    dashboard_api_url="${DASHBOARD_API_URL}"
   fi
 
   local probe_url="${dashboard_api_url%/}/api/health/probe"
