@@ -128,6 +128,19 @@ if [[ -f "${result_file}" ]] && command -v jq >/dev/null 2>&1; then
             echo "Threshold: ${ACCEPTANCE_THRESHOLD}%"
         } > "${summary_file}"
 
+        # ── Append score to CSV log (8.1.4) ──────────────────────────────────
+        scores_csv="${OUTPUT_DIR}/scores.csv"
+        if [[ ! -f "${scores_csv}" ]]; then
+            echo "timestamp,config,passed,total,pct_passed" > "${scores_csv}"
+        fi
+        echo "${timestamp},${EVAL_CONFIG},${passed},${total},${pct}" >> "${scores_csv}"
+        info "Score logged: ${scores_csv}"
+
+        # ── Regression warning: drop below 60% is always surfaced ─────────
+        if [[ "${pct}" -lt 60 ]]; then
+            warn "Eval regression: pass rate ${pct}% is below the 60% minimum floor — investigate immediately."
+        fi
+
         if [[ "${pct}" -lt "${ACCEPTANCE_THRESHOLD}" ]]; then
             fail "Eval below threshold: ${pct}% < ${ACCEPTANCE_THRESHOLD}%"
         fi

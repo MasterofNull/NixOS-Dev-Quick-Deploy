@@ -37,20 +37,90 @@ commandLineOptions:
 
 # ── Test cases ────────────────────────────────────────────────────────────────
 tests:
-  # ── Factual correctness ───────────────────────────────────────────────────
-  - description: "Basic arithmetic"
+  # ── NixOS error diagnosis (real errors from this project) ─────────────────
+  - description: "Error diagnosis: schedutil governor not loadable"
     vars:
-      prompt: "What is 17 × 23?"
+      prompt: |
+        On NixOS I get the error: "Failed to find module 'cpufreq_schedutil'"
+        after adding cpufreq_schedutil to boot.kernelModules. What is the fix?
     assert:
-      - type: contains
-        value: "391"
+      - type: contains-any
+        value:
+          - "built-in"
+          - "builtin"
+          - "kernel"
+          - "remove"
+          - "not a loadable"
+      - type: not-contains
+        value: "I cannot"
 
-  - description: "Capital city lookup"
+  - description: "Error diagnosis: gcr-ssh-agent does not exist"
     vars:
-      prompt: "What is the capital of France?"
+      prompt: |
+        On NixOS I get: "The option 'services.gnome.gcr-ssh-agent' does not exist"
+        when building my flake. How do I fix this?
+    assert:
+      - type: contains-any
+        value:
+          - "version"
+          - "guard"
+          - "versionAtLeast"
+          - "mkIf"
+          - "25."
+          - "26."
+          - "newer"
+      - type: not-contains
+        value: "I cannot"
+
+  - description: "Error diagnosis: conflicting definition values"
+    vars:
+      prompt: |
+        NixOS reports "error: The option 'services.thermald.enable' has conflicting
+        definition values". I have it set in two modules with lib.mkDefault.
+        How do I resolve this?
+    assert:
+      - type: contains-any
+        value:
+          - "one owner"
+          - "one module"
+          - "remove"
+          - "priority"
+          - "mkForce"
+          - "single"
+      - type: not-contains
+        value: "I cannot"
+
+  # ── NixOS module generation ───────────────────────────────────────────────
+  - description: "Generate NixOS module: enable zsh as default shell"
+    vars:
+      prompt: |
+        Write a minimal NixOS module snippet that enables zsh system-wide
+        and sets it as the default login shell. Return only the Nix code.
     assert:
       - type: contains
-        value: "Paris"
+        value: "programs.zsh.enable"
+      - type: contains-any
+        value:
+          - "defaultUserShell"
+          - "pkgs.zsh"
+      - type: not-contains
+        value: "I cannot"
+
+  - description: "Generate NixOS module: systemd hardened service"
+    vars:
+      prompt: |
+        Write a NixOS systemd service definition snippet that runs a script
+        at /usr/local/bin/myapp with DynamicUser=true and ProtectSystem=strict.
+        Return only the Nix attribute set for the service.
+    assert:
+      - type: contains
+        value: "DynamicUser"
+      - type: contains
+        value: "ProtectSystem"
+      - type: contains
+        value: "serviceConfig"
+      - type: not-contains
+        value: "I cannot"
 
   # ── Code generation ───────────────────────────────────────────────────────
   - description: "Python hello world"
@@ -78,20 +148,23 @@ tests:
         value: "I cannot"
 
   # ── NixOS / project-specific knowledge ───────────────────────────────────
-  - description: "NixOS module system knowledge"
+  - description: "NixOS module system: mkForce vs mkDefault priority numbers"
     vars:
       prompt: |
         In NixOS, what is the difference between lib.mkDefault and lib.mkForce?
-        Answer in 2 sentences.
+        Include the numeric priority values for each.
     assert:
+      - type: contains-any
+        value:
+          - "1000"
+          - "50"
+          - "100"
       - type: contains-any
         value:
           - "priority"
           - "override"
-          - "mkDefault"
-          - "mkForce"
       - type: llm-rubric
-        value: "The answer correctly explains that mkForce overrides mkDefault and describes priority levels"
+        value: "The answer correctly states that mkForce (priority 50) overrides mkDefault (priority 1000) and explains why lower numeric priority wins"
         provider: openai:chat:local-model
 
   - description: "Flake basics"
