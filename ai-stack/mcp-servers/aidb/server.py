@@ -77,6 +77,66 @@ SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
 VECTOR_CACHE_EPOCH_KEY = "aidb:vector_search:epoch"
 
 LOGGER = logging.getLogger("aidb.mcp")
+
+# ---------------------------------------------------------------------------
+# Relevance decay configuration (Task 3.3.2)
+# ---------------------------------------------------------------------------
+_DECAY_TIER1_DAYS = int(os.getenv("AI_VECTOR_DECAY_DAYS_TIER1", "90"))
+_DECAY_TIER2_DAYS = int(os.getenv("AI_VECTOR_DECAY_DAYS_TIER2", "180"))
+_DECAY_PENALTY_TIER1 = float(os.getenv("AI_VECTOR_DECAY_PENALTY_TIER1", "0.10"))
+_DECAY_PENALTY_TIER2 = float(os.getenv("AI_VECTOR_DECAY_PENALTY_TIER2", "0.25"))
+
+# GC configuration (Task 3.3.3)
+_GC_STALE_DAYS = int(os.getenv("AI_VECTOR_GC_STALE_DAYS", "180"))
+
+
+def _apply_relevance_decay(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Apply time-based score penalty to search results (Task 3.3.2).
+
+    Tiers (configurable via env vars):
+      < TIER1_DAYS  : multiplier 1.0  (no penalty)
+      TIER1..TIER2  : multiplier 1.0 - PENALTY_TIER1
+      > TIER2_DAYS  : multiplier 1.0 - PENALTY_TIER2
+
+    Adds ``score_original`` field preserving the raw score.
+    Skips rows where ``ingested_at`` is missing in the payload/metadata.
+    """
+    now = datetime.now(timezone.utc)
+    out = []
+    for row in results:
+        row = dict(row)
+        meta = row.get("metadata") or {}
+        ingested_raw = meta.get("ingested_at") if isinstance(meta, dict) else None
+        raw_score = row.get("score") or row.get("distance")
+        if ingested_raw is None or raw_score is None:
+            out.append(row)
+            continue
+        try:
+            ingested_dt = datetime.fromisoformat(ingested_raw)
+            if ingested_dt.tzinfo is None:
+                ingested_dt = ingested_dt.replace(tzinfo=timezone.utc)
+            age_days = (now - ingested_dt).days
+        except (ValueError, TypeError):
+            out.append(row)
+            continue
+
+        if age_days < _DECAY_TIER1_DAYS:
+            multiplier = 1.0
+        elif age_days < _DECAY_TIER2_DAYS:
+            multiplier = 1.0 - _DECAY_PENALTY_TIER1
+        else:
+            multiplier = 1.0 - _DECAY_PENALTY_TIER2
+
+        row["score_original"] = raw_score
+        if row.get("score") is not None:
+            row["score"] = row["score"] * multiplier
+        if row.get("distance") is not None:
+            # distance is inverse of similarity: higher = worse, so divide
+            row["distance"] = row["distance"] / multiplier if multiplier > 0 else row["distance"]
+        out.append(row)
+    return out
+
+
 RISK_ACK_PHRASE = "I_ACCEPT_HIGH_RISK_TOOL_EXECUTION"
 HIGH_RISK_TOOL_KEYWORDS = (
     "shell",
@@ -633,9 +693,22 @@ class VectorStore:
         """Insert or update embeddings. Returns count indexed."""
         session = self._session_factory()
         try:
+            now_iso = datetime.now(timezone.utc).isoformat()
             for item in items:
                 embedding = item["embedding"]
                 self._validate_embedding(embedding)
+                base_meta = dict(item.get("metadata") or {})
+                # Stamp ingested_at and last_accessed_at on first insert;
+                # preserve existing ingested_at on conflict (UPDATE path).
+                if "ingested_at" not in base_meta:
+                    base_meta["ingested_at"] = now_iso
+                if "last_accessed_at" not in base_meta:
+                    base_meta["last_accessed_at"] = base_meta["ingested_at"]
+                # For conflict updates, merge timestamps: preserve ingested_at
+                # from the existing row by using a SQL expression that keeps
+                # the stored value; only update last_accessed_at if already
+                # set. We pass the full merged dict for the INSERT path and
+                # rely on the UPDATE set_ to carry timestamps forward.
                 stmt = (
                     insert(self.table)
                     .values(
@@ -643,7 +716,7 @@ class VectorStore:
                         chunk_id=item.get("chunk_id"),
                         content=item["content"],
                         embedding=embedding,
-                        metadata=item.get("metadata") or {},
+                        metadata=base_meta,
                         score=item.get("score"),
                     )
                     .on_conflict_do_update(
@@ -651,7 +724,28 @@ class VectorStore:
                         set_={
                             "content": sa.cast(sa.literal(item["content"]), sa.Text),
                             "embedding": embedding,
-                            "metadata": item.get("metadata") or {},
+                            # Merge: keep ingested_at from existing row via
+                            # COALESCE on the excluded (new) value; carry
+                            # last_accessed_at from the existing row.
+                            "metadata": sa.func.jsonb_strip_nulls(
+                                sa.cast(self.table.c.metadata, sa.JSON).op("||")(
+                                    sa.cast(
+                                        sa.func.jsonb_build_object(
+                                            "ingested_at",
+                                            sa.func.coalesce(
+                                                sa.cast(self.table.c.metadata[sa.literal("ingested_at")], sa.Text),
+                                                sa.cast(sa.literal(base_meta["ingested_at"]), sa.Text),
+                                            ),
+                                            "last_accessed_at",
+                                            sa.func.coalesce(
+                                                sa.cast(self.table.c.metadata[sa.literal("last_accessed_at")], sa.Text),
+                                                sa.cast(sa.literal(base_meta["last_accessed_at"]), sa.Text),
+                                            ),
+                                        ),
+                                        sa.JSON,
+                                    )
+                                )
+                            ),
                             "score": item.get("score"),
                             "updated_at": sa.func.now(),
                         },
@@ -662,6 +756,26 @@ class VectorStore:
             return len(items)
         finally:
             session.close()
+
+    def update_last_accessed(self, row_ids: List[int]) -> None:
+        """Update last_accessed_at in the metadata JSON for the given row IDs."""
+        if not row_ids:
+            return
+        now_iso = datetime.now(timezone.utc).isoformat()
+        try:
+            with self.engine.begin() as conn:
+                conn.execute(
+                    sa.text(
+                        """
+                        UPDATE document_embeddings
+                        SET metadata = metadata || jsonb_build_object('last_accessed_at', :ts::text)
+                        WHERE id = ANY(:ids)
+                        """
+                    ),
+                    {"ts": now_iso, "ids": row_ids},
+                )
+        except Exception:  # noqa: BLE001
+            LOGGER.exception("Failed to update last_accessed_at for ids=%s", row_ids)
 
     def search(self, embedding: List[float], limit: int = 5, project: Optional[str] = None) -> List[Dict[str, Any]]:
         """Perform vector similarity search using L2 distance."""
@@ -1582,6 +1696,26 @@ class MonitoringServer:
                     detail=_error_detail("vector_search_failed", exc),
                 )
 
+
+        # Task 3.3.3 — Garbage-collection endpoint
+        @self.app.post("/gc")
+        async def gc_endpoint(payload: Dict[str, Any], request: Request) -> Dict[str, Any]:
+            """Run a GC pass to delete stale, never-accessed vectors.
+
+            Body: ``{"dry_run": true|false}``
+            Requires API key authentication (same as other admin endpoints).
+            """
+            self._require_api_key(request)
+            dry_run = bool(payload.get("dry_run", True))
+            try:
+                result = await self.mcp_server.run_gc_pass(dry_run=dry_run)
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.exception("GC endpoint failed")
+                raise HTTPException(
+                    status_code=500,
+                    detail=_error_detail("gc_failed", exc),
+                )
+            return {"status": "ok", **result}
 
         # ML endpoints
         @self.app.get("/ml/models")
@@ -2529,11 +2663,24 @@ class MCPServer:
                 results = await asyncio.to_thread(
                     self._vector_store.search, query_embedding, limit, project
                 )
+
+                # Task 3.3.1 — fire-and-forget background update of
+                # last_accessed_at for every returned row.
+                returned_ids = [r["id"] for r in results if r.get("id") is not None]
+                if returned_ids:
+                    asyncio.create_task(
+                        asyncio.to_thread(self._vector_store.update_last_accessed, returned_ids),
+                        name="update_last_accessed",
+                    )
+
+                # Task 3.3.2 — apply relevance decay multiplier to scores.
+                results = _apply_relevance_decay(results)
+
                 if cache_key:
                     try:
                         await self._redis.set(
                             cache_key,
-                            json.dumps(results),
+                            json.dumps(results, default=str),
                             ex=self.settings.vector_search_cache_ttl,
                         )
                     except Exception:  # noqa: BLE001
@@ -2543,6 +2690,91 @@ class MCPServer:
                 span.record_exception(exc)
                 span.set_status(Status(StatusCode.ERROR, str(exc)))
                 raise
+
+    async def run_gc_pass(self, dry_run: bool = False) -> Dict[str, Any]:
+        """Task 3.3.3 — Garbage-collect stale, never-accessed vectors.
+
+        Candidates satisfy ALL of:
+          - last_accessed_at == ingested_at  (never retrieved after ingestion)
+          - ingested_at older than _GC_STALE_DAYS
+          - No ``feedback_linked: true`` field in the metadata payload
+
+        Parameters
+        ----------
+        dry_run:
+            When True, log and return candidate counts without deleting.
+            When False, delete candidates and return deleted counts.
+        """
+        cutoff = datetime.now(timezone.utc).isoformat()
+        # Build the cutoff timestamp string for comparison inside JSON.
+        # We use a SQL expression that casts metadata JSON fields to text
+        # and compares them, since the values are stored as ISO 8601 strings.
+        sql_candidates = sa.text(
+            """
+            SELECT id
+            FROM document_embeddings
+            WHERE
+                (metadata->>'ingested_at') IS NOT NULL
+                AND (metadata->>'last_accessed_at') IS NOT NULL
+                AND (metadata->>'last_accessed_at') = (metadata->>'ingested_at')
+                AND (metadata->>'feedback_linked') IS DISTINCT FROM 'true'
+                AND (metadata->>'ingested_at')::timestamptz < NOW() - INTERVAL ':stale_days days'
+            """
+        )
+        # NOTE: interval interpolation via bindparams is dialect-specific;
+        # use plain string formatting for the integer day count (safe — it
+        # comes from an env var validated as int at module load time).
+        sql_candidates_safe = sa.text(
+            f"""
+            SELECT id
+            FROM document_embeddings
+            WHERE
+                (metadata->>'ingested_at') IS NOT NULL
+                AND (metadata->>'last_accessed_at') IS NOT NULL
+                AND (metadata->>'last_accessed_at') = (metadata->>'ingested_at')
+                AND (metadata->>'feedback_linked') IS DISTINCT FROM 'true'
+                AND (metadata->>'ingested_at')::timestamptz < NOW() - INTERVAL '{_GC_STALE_DAYS} days'
+            """
+        )
+        sql_delete = sa.text(
+            f"""
+            DELETE FROM document_embeddings
+            WHERE id = ANY(:ids)
+            """
+        )
+
+        summary: Dict[str, Any] = {"dry_run": dry_run, "collections": {}}
+        try:
+            with self._engine.connect() as conn:
+                rows = conn.execute(sql_candidates_safe).fetchall()
+                candidate_ids = [row[0] for row in rows]
+                count = len(candidate_ids)
+                summary["collections"]["document_embeddings"] = count
+                summary["total_candidates"] = count
+
+                if dry_run:
+                    LOGGER.info(
+                        "GC dry-run: %d stale vector(s) found (older than %d days, never accessed)",
+                        count,
+                        _GC_STALE_DAYS,
+                    )
+                    return summary
+
+                if candidate_ids:
+                    conn.execute(sql_delete, {"ids": candidate_ids})
+                    conn.commit()
+                    LOGGER.info(
+                        "GC pass: deleted %d stale vector(s) from document_embeddings",
+                        count,
+                    )
+                else:
+                    LOGGER.info("GC pass: no stale vectors found, nothing deleted")
+
+                summary["total_deleted"] = count
+                return summary
+        except Exception:  # noqa: BLE001
+            LOGGER.exception("GC pass failed")
+            raise
 
     async def execute_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Dispatch execution to supported tools."""
@@ -3118,6 +3350,17 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     parser.add_argument("--config", type=Path, help="Path to config YAML file")
     parser.add_argument("--mode", help="Override default tool discovery mode")
     parser.add_argument("--self-test", action="store_true")
+    # Task 3.3.3 — systemd-timer compatible GC entrypoint
+    parser.add_argument(
+        "--gc",
+        action="store_true",
+        help="Run a GC pass (deletes stale never-accessed vectors) and exit.",
+    )
+    parser.add_argument(
+        "--gc-dry-run",
+        action="store_true",
+        help="Run GC in dry-run mode (log candidates, no deletions) and exit.",
+    )
     return parser.parse_args(argv)
 
 
@@ -3131,6 +3374,22 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.self_test:
         return asyncio.run(self_test(settings))
+
+    # Task 3.3.3 — systemd-timer compatible GC entrypoints
+    if args.gc or args.gc_dry_run:
+        dry_run = args.gc_dry_run and not args.gc
+        server = MCPServer(settings)
+
+        async def _run_gc() -> int:
+            try:
+                result = await server.run_gc_pass(dry_run=dry_run)
+                LOGGER.info("GC result: %s", result)
+                return 0
+            except Exception:  # noqa: BLE001
+                LOGGER.exception("GC run failed")
+                return 1
+
+        return asyncio.run(_run_gc())
 
     server = MCPServer(settings)
     try:
