@@ -96,9 +96,11 @@ in
     mySystem.mcpServers.aidbPort = lib.mkDefault ports.mcpAidb;
     mySystem.mcpServers.hybridPort = lib.mkDefault ports.mcpHybrid;
     mySystem.mcpServers.ralphPort = lib.mkDefault ports.mcpRalph;
+    mySystem.mcpServers.aiderWrapperPort = lib.mkDefault ports.aiderWrapper;
     mySystem.mcpServers.redis.port = lib.mkDefault ports.redis;
     mySystem.monitoring.prometheusPort = lib.mkDefault ports.prometheus;
     mySystem.monitoring.nodeExporterPort = lib.mkDefault ports.nodeExporter;
+    mySystem.monitoring.grafanaPort = lib.mkDefault ports.grafana;
     mySystem.monitoring.commandCenter.frontendPort = lib.mkDefault ports.commandCenterFrontend;
     mySystem.monitoring.commandCenter.apiPort = lib.mkDefault ports.commandCenterApi;
 
@@ -287,14 +289,21 @@ in
             && ports.mcpAidb != ports.mcpHybrid
             && ports.mcpAidb != ports.mcpRalph
             && ports.mcpHybrid != ports.mcpRalph
+            && ports.mcpAidb != ports.aiderWrapper
+            && ports.mcpHybrid != ports.aiderWrapper
+            && ports.mcpRalph != ports.aiderWrapper
             && ports.otelCollectorMetrics != ports.commandCenterFrontend
             && ports.otelCollectorMetrics != ports.commandCenterApi
             && ports.otelCollectorMetrics != ports.prometheus
             && ports.otelCollectorMetrics != ports.nodeExporter
+            && ports.otelCollectorMetrics != ports.grafana
             && ports.otelCollectorMetrics != ports.otlpGrpc
             && ports.otelCollectorMetrics != ports.otlpHttp
+            && ports.aiderWrapper != ports.anthropicProxy
+            && ports.prometheus != ports.grafana
+            && ports.nodeExporter != ports.grafana
             && ports.otlpGrpc != ports.otlpHttp;
-          message = "ports registry conflict: postgres=${toString ports.postgres}, redis=${toString ports.redis}, qdrantHttp=${toString ports.qdrantHttp}, mcpAidb=${toString ports.mcpAidb}, mcpHybrid=${toString ports.mcpHybrid}, mcpRalph=${toString ports.mcpRalph}, otelCollectorMetrics=${toString ports.otelCollectorMetrics}, otlpGrpc=${toString ports.otlpGrpc}, otlpHttp=${toString ports.otlpHttp}, commandCenterFrontend=${toString ports.commandCenterFrontend}, commandCenterApi=${toString ports.commandCenterApi}, prometheus=${toString ports.prometheus}, nodeExporter=${toString ports.nodeExporter} — all constrained ports must be distinct.";
+          message = "ports registry conflict: postgres=${toString ports.postgres}, redis=${toString ports.redis}, qdrantHttp=${toString ports.qdrantHttp}, mcpAidb=${toString ports.mcpAidb}, mcpHybrid=${toString ports.mcpHybrid}, mcpRalph=${toString ports.mcpRalph}, aiderWrapper=${toString ports.aiderWrapper}, anthropicProxy=${toString ports.anthropicProxy}, otelCollectorMetrics=${toString ports.otelCollectorMetrics}, otlpGrpc=${toString ports.otlpGrpc}, otlpHttp=${toString ports.otlpHttp}, commandCenterFrontend=${toString ports.commandCenterFrontend}, commandCenterApi=${toString ports.commandCenterApi}, prometheus=${toString ports.prometheus}, nodeExporter=${toString ports.nodeExporter}, grafana=${toString ports.grafana} — all constrained ports must be distinct.";
         }
 
         # MCP servers require the AI stack role to be enabled.
