@@ -1493,7 +1493,7 @@ async def embed_text(text: str) -> List[float]:
     if embedding_cache:
         cached = await embedding_cache.get(text)
         if cached is not None:
-            logger.debug("embed_text cache_hit text_len=%d", len(text))
+            logger.info("embed_text cache_hit text_len=%d", len(text))
             return cached
 
     vector = await _embed_text_uncached(text)
