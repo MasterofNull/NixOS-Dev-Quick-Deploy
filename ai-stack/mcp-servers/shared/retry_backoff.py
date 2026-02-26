@@ -368,7 +368,7 @@ async def example_usage():
         result = await aidb_client.query_with_circuit_and_retry("test query")
         print(f"AIDB Success: {result}")
         
-        result = await hybrid_client.call_skill_with_circuit_and_retry("route_query", {"query": "test"})
+        result = await hybrid_client.call_skill_with_circuit_and_retry("route_search", {"query": "test"})
         print(f"Hybrid Success: {result}")
         
         result = await ralph_client.submit_task_with_circuit_and_retry("optimize_loop", {"iterations": 5})

@@ -24,13 +24,20 @@ in
     cores    = lib.mkDefault buildCores;
   };
 
-  # Zswap compressed swap cache (replaces bash-generated boot params).
-  boot.kernelParams = lib.mkAfter [
-    "zswap.enabled=1"
-    "zswap.compressor=${zswapCompressor}"
-    "zswap.max_pool_percent=${toString zswapPoolPct}"
-    "zswap.zpool=${zswapZpool}"
-  ];
+  # Zswap compressed swap cache + THP mode (Phase 5.1).
+  # Combined into one assignment — Nix does not allow duplicate attribute keys.
+  boot.kernelParams = lib.mkAfter (
+    # Zswap: compressed in-RAM swap cache, scales pool % with available RAM.
+    [
+      "zswap.enabled=1"
+      "zswap.compressor=${zswapCompressor}"
+      "zswap.max_pool_percent=${toString zswapPoolPct}"
+      "zswap.zpool=${zswapZpool}"
+    ]
+    # THP madvise: llama.cpp uses madvise(MADV_HUGEPAGE) for model weight buffers.
+    # Only beneficial above 4 GB RAM; on ≤4 GB the fragmentation cost dominates.
+    ++ lib.optionals (ram > 4) [ "transparent_hugepage=madvise" ]
+  );
 
   # VM pressure tunables adaptive to RAM (replaces @KERNEL_SYSCTL_TUNABLES@ vm.* section).
   boot.kernel.sysctl = {
@@ -39,4 +46,5 @@ in
     "vm.dirty_background_ratio" = lib.mkDefault 5;
     "vm.vfs_cache_pressure"     = lib.mkDefault (if ram <= 8 then 100 else 50);
   };
+
 }

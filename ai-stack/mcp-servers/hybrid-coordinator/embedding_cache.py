@@ -29,12 +29,14 @@ class EmbeddingCache:
         self,
         redis_url: str = "redis://localhost:6379",
         ttl_seconds: int = 604800,  # 7 days
-        key_prefix: str = "embedding:"
+        key_prefix: str = "embedding:",
+        model_name: str = ""
     ):
         self.redis_url = redis_url
         self.redis: Optional[aioredis.Redis] = None
         self.ttl_seconds = ttl_seconds
         self.key_prefix = key_prefix
+        self.model_name = model_name
 
         # Statistics
         self.stats = {
@@ -44,7 +46,7 @@ class EmbeddingCache:
             "errors": 0
         }
 
-    async def initialize(self):
+    async def initialize(self, flush_on_model_change: bool = False):
         """Initialize Redis connection"""
         try:
             self.redis = await aioredis.from_url(
@@ -54,6 +56,26 @@ class EmbeddingCache:
             )
             await self.redis.ping()
             logger.info("✓ Embedding cache initialized")
+
+            # Flush legacy keys that lack the model slug in their key format.
+            # These were written by an older version of _text_to_key and carry
+            # vectors from an unknown embedding space.
+            if flush_on_model_change:
+                # Legacy keys match the bare prefix with no "m<slug>:" segment.
+                # They look like  "embedding:<64-hex-chars>"  (no 'm' after prefix).
+                legacy_pattern = f"{self.key_prefix}[^m]*"
+                keys = []
+                async for key in self.redis.scan_iter(match=legacy_pattern):
+                    # Exclude keys that already carry the new model-slug format.
+                    key_str = key.decode("utf-8") if isinstance(key, bytes) else key
+                    suffix = key_str[len(self.key_prefix):]
+                    if not suffix.startswith("m"):
+                        keys.append(key)
+                count = 0
+                if keys:
+                    count = await self.redis.delete(*keys)
+                logger.info("embedding_cache_legacy_keys_flushed", count=count)
+
         except Exception as e:
             logger.error(f"Failed to initialize embedding cache: {e}")
             self.redis = None
@@ -67,10 +89,13 @@ class EmbeddingCache:
         """
         Convert text to cache key using hash
 
-        Uses SHA256 to create consistent keys from text
+        Key format: <prefix>m<model_slug>:<text_hash>
+        The model slug ensures vectors from different embedding spaces never
+        collide — a cache entry is only valid for the model that produced it.
         """
+        model_slug = hashlib.sha256(self.model_name.encode()).hexdigest()[:16]
         text_hash = hashlib.sha256(text.encode('utf-8')).hexdigest()
-        return f"{self.key_prefix}{text_hash}"
+        return f"{self.key_prefix}m{model_slug}:{text_hash}"
 
     async def get(self, text: str) -> Optional[List[float]]:
         """
