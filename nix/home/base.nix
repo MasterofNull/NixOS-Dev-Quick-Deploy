@@ -79,6 +79,12 @@ let
     };
   };
 
+  continueVsix = pkgs.fetchurl {
+    url    = "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.32/file/Continue.continue-1.3.32@linux-x64.vsix";
+    sha256 = "1nmw9p1jkjcf0gpwzzv836yhlrlf40ymdxyc8iql5hw5h8p433fc";
+    name   = "Continue.continue-1.3.32-linux-x64.vsix";
+  };
+
   # Qwen Code VSCode IDE Companion — QwenLM's official AI coding assistant
   # Not in nixpkgs 25.11; packaged from Open VSX for declarative install.
   qwenCodeCompanionSha256 = null;
@@ -121,9 +127,7 @@ let
   cosmicThemeDarkPalette = builtins.readFile (../../templates + "/Royal Wine.ron");
   cosmicWallpaperPath = "${config.home.homeDirectory}/.local/share/wallpapers/current-desktop-background.png";
 
-  # Baseline VSCodium settings — written once on first activation as a
-  # writable file so the user can save changes from within VSCodium.
-  # After the first deploy, home-manager never touches settings.json again.
+  # Declarative VSCodium settings managed by Home Manager.
   vscodiumSettings = {
     "editor.fontSize"               = 14;
     "editor.tabSize"                = 2;
@@ -178,6 +182,9 @@ let
     "[yaml]"."editor.defaultFormatter"   = "redhat.vscode-yaml";
     "yaml.validate"                      = true;
     "continue.telemetryEnabled"          = false;
+    "cSpell.import"                      = [ ];
+    "extensions.autoUpdate"              = false;
+    "extensions.autoCheckUpdates"        = false;
     "git.enableSmartCommit"              = true;
     "git.confirmSync"                    = false;
     "git.autofetch"                      = true;
@@ -226,10 +233,16 @@ let
     "update.mode"                        = "none";
   };
 
-  # Pre-serialised JSON written into the Nix store; the activation script
-  # copies it to ~/.config/VSCodium/User/settings.json on first run only.
+  # Baseline JSON used to seed a writable settings.json on first activation.
   vscodiumSettingsJSON = pkgs.writeText "vscodium-settings-baseline.json"
     (builtins.toJSON vscodiumSettings);
+  vscodeMutableRuntimeExtensions = [
+    "continue.continue"
+    "ms-python.debugpy"
+    "ms-toolsai.jupyter"
+    "ms-toolsai.jupyter-keymap"
+    "ms-toolsai.jupyter-renderers"
+  ];
 
   # Guard helper — silently skips an extension when its scope or name is
   # absent from pkgs.vscode-extensions (e.g. older or slimmer channels).
@@ -605,8 +618,8 @@ in
     enable  = true;
     package = pkgs.vscodium;
 
-    # mutableExtensionsDir = true lets users install extra extensions at
-    # runtime (Open VSX, .vsix drag-drop) without losing them on switch.
+    # Writable runtime extension dir is required for extensions that persist
+    # state directly under their extension folder (e.g. debugpy/jupyter).
     mutableExtensionsDir = true;
 
     profiles.default = {
@@ -617,10 +630,7 @@ in
         ++ vsExt "ms-python"   "python"         # Python language support
         ++ vsExt "ms-python"   "black-formatter" # Python formatter
         ++ vsExt "ms-python"   "vscode-pylance"  # Python language server
-        ++ vsExt "ms-python"   "debugpy"        # Python debugger
-        ++ vsExt "ms-toolsai"  "jupyter"        # Notebooks
-        ++ vsExt "ms-toolsai"  "jupyter-keymap"
-        ++ vsExt "ms-toolsai"  "jupyter-renderers"
+        # debugpy/jupyter are installed as mutable runtime extensions below.
         ++ vsExt "ms-pyright"  "pyright"        # Static type checker
         # ── Go ─────────────────────────────────────────────────────────────
         ++ vsExt "golang"      "go"             # Go language support
@@ -633,7 +643,6 @@ in
         # All extensions below are confirmed in nixpkgs 25.11.
         # Note: Google scope uses capital G (pkgs.vscode-extensions."Google").
         ++ vsExt "anthropic"   "claude-code"                    # Claude Code
-        ++ vsExt "continue"    "continue"                       # Continue.dev → local llama.cpp :8080
         ++ vsExt "Google"      "gemini-cli-vscode-ide-companion" # Gemini CLI companion
         ++ [ geminiCodeAssist ]                                  # Gemini Code Assist (Open VSX)
         ++ [ openaiCodex ]                                       # Codex — OpenAI's coding agent (Open VSX)
@@ -658,19 +667,87 @@ in
     };
   };
 
-  # Write VSCodium baseline settings once on first activation — never again.
-  # home-manager does NOT manage settings.json, so VSCodium can save freely.
-  # To reset to defaults: rm ~/.config/VSCodium/User/settings.json && home-manager switch
+  # Keep VSCodium user settings mutable so the UI can save changes.
+  # If HM left a symlink from prior declarative mode, replace it with a file.
   home.activation.createVSCodiumSettings = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    _settings_dir="$HOME/.config/VSCodium/User"
-    _settings_file="$_settings_dir/settings.json"
-    mkdir -p "$_settings_dir"
-    if [ ! -f "$_settings_file" ] || [ -L "$_settings_file" ]; then
-      rm -f "$_settings_file"
-      cp ${vscodiumSettingsJSON} "$_settings_file"
-      chmod u+rw "$_settings_file"
+    settings_dir="$HOME/.config/VSCodium/User"
+    settings_file="$settings_dir/settings.json"
+    mkdir -p "$settings_dir"
+
+    if [ -L "$settings_file" ]; then
+      tmp_file="$(mktemp)"
+      cp --dereference "$settings_file" "$tmp_file"
+      rm -f "$settings_file"
+      mv "$tmp_file" "$settings_file"
+      chmod u+rw "$settings_file"
+      unset tmp_file
+    elif [ ! -f "$settings_file" ]; then
+      cp ${vscodiumSettingsJSON} "$settings_file"
+      chmod u+rw "$settings_file"
     fi
-    unset _settings_dir _settings_file
+
+    unset settings_dir settings_file
+  '';
+
+  # Enforce the selected Cyberpunk theme in mutable settings.json.
+  home.activation.enforceVSCodiumTheme = lib.hm.dag.entryAfter [ "vscodeProfiles" ] ''
+    settings_file="$HOME/.config/VSCodium/User/settings.json"
+    if [ -f "$settings_file" ] && command -v jq >/dev/null 2>&1; then
+      tmp="$(mktemp)"
+      if jq '
+        .["workbench.colorTheme"] = "Activate SCARLET protocol (beta)" |
+        .["workbench.preferredDarkColorTheme"] = "Activate SCARLET protocol (beta)" |
+        .["window.autoDetectColorScheme"] = false
+      ' "$settings_file" > "$tmp"; then
+        mv "$tmp" "$settings_file"
+        chmod u+rw "$settings_file" || true
+      else
+        rm -f "$tmp"
+      fi
+      unset tmp
+    fi
+    unset settings_file
+  '';
+
+  # Reset stale Continue workspace/global state that can block client bootstrap
+  # after extension/config migrations.
+  home.activation.resetContinueVscodeState = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+    gdb="$HOME/.config/VSCodium/User/globalStorage/state.vscdb"
+    if [ -f "$gdb" ] && command -v sqlite3 >/dev/null 2>&1; then
+      sqlite3 "$gdb" "delete from ItemTable where key like '%continue%' or key like 'Continue.%';" >/dev/null 2>&1 || true
+    fi
+    ws_root="$HOME/.config/VSCodium/User/workspaceStorage"
+    if [ -d "$ws_root" ] && command -v sqlite3 >/dev/null 2>&1; then
+      for wdb in "$ws_root"/*/state.vscdb; do
+        [ -f "$wdb" ] || continue
+        sqlite3 "$wdb" "delete from ItemTable where key like '%continue%' or key like 'Continue.%' or value like '%continue%';" >/dev/null 2>&1 || true
+      done
+      unset wdb
+    fi
+    unset gdb ws_root
+  '';
+
+  # Install runtime-mutable extensions that write inside their own install dir.
+  home.activation.ensureMutableRuntimeVscodeExtensions = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+    if command -v codium >/dev/null 2>&1 && ! pgrep -u "$USER" -x codium >/dev/null 2>&1; then
+      ext_root="$HOME/.vscode-oss/extensions"
+      mkdir -p "$ext_root"
+      for ext_id in ${lib.concatStringsSep " " vscodeMutableRuntimeExtensions}; do
+        alias_path="$ext_root/$ext_id"
+        case "$ext_id" in
+          continue.continue) alias_path="$ext_root/Continue.continue" ;;
+        esac
+        if [ -L "$alias_path" ]; then
+          rm -f "$alias_path"
+        fi
+        if [ "$ext_id" = "continue.continue" ]; then
+          codium --install-extension "${continueVsix}" --force >/dev/null 2>&1 || true
+        else
+          codium --install-extension "$ext_id" --force >/dev/null 2>&1 || true
+        fi
+      done
+      unset ext_root ext_id alias_path
+    fi
   '';
 
   home.activation.cleanupVscodiumDesktopEntries = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
@@ -689,43 +766,6 @@ in
       esac
     fi
     unset codium_desktop codium_url target
-  '';
-
-  home.activation.enforceVSCodiumTheme = lib.hm.dag.entryAfter [ "createVSCodiumSettings" ] ''
-    _settings_file="$HOME/.config/VSCodium/User/settings.json"
-    _profiles_dir="$HOME/.config/VSCodium/User/profiles"
-    if [ -f "$_settings_file" ] && command -v jq >/dev/null 2>&1; then
-      _theme_filter='
-        .["workbench.colorTheme"] = "Activate SCARLET protocol (beta)" |
-        .["workbench.preferredDarkColorTheme"] = "Activate SCARLET protocol (beta)" |
-        .["window.autoDetectColorScheme"] = false
-      '
-
-      _apply_theme() {
-        _target="$1"
-        _tmp="$(mktemp)"
-        if ! jq empty "$_target" >/dev/null 2>&1; then
-          cp ${vscodiumSettingsJSON} "$_target"
-        fi
-        if jq "$_theme_filter" "$_target" > "$_tmp"; then
-          mv "$_tmp" "$_target"
-        else
-          rm -f "$_tmp"
-        fi
-        unset _target _tmp
-      }
-
-      _apply_theme "$_settings_file"
-      if [ -d "$_profiles_dir" ]; then
-        while IFS= read -r -d $'\0' _profile_settings; do
-          _apply_theme "$_profile_settings"
-        done < <(find "$_profiles_dir" -type f -name settings.json -print0 2>/dev/null || true)
-      fi
-
-      unset -f _apply_theme
-      unset _theme_filter
-    fi
-    unset _settings_file _profiles_dir
   '';
 
   # ---- VSCodium launch wrapper ---------------------------------------------
@@ -800,18 +840,37 @@ CONTINUE_EOF
   home.activation.migrateContinueConfigApiBase = lib.hm.dag.entryAfter [ "createContinueConfig" ] ''
     cfg="$HOME/.continue/config.json"
     if [ -f "$cfg" ] && command -v jq >/dev/null 2>&1; then
+      runtime_base="${continueApiBase}"
+      if ${pkgs.curl}/bin/curl --silent --show-error --fail --max-time 5 \
+        "http://127.0.0.1:8085/v1/models" >/dev/null 2>&1; then
+        runtime_base="http://127.0.0.1:8085/v1"
+      fi
+
+      detected_model="$(${pkgs.curl}/bin/curl --silent --show-error --fail --max-time 10 \
+        "$runtime_base/models" 2>/dev/null | jq -r '.data[0].id // empty' || true)"
+      if [ -z "$detected_model" ]; then
+        detected_model="${aiLlamaModel}"
+      fi
+
       tmp="$(mktemp)"
-      if jq --arg newBase "${continueApiBase}" '
-        .models = ((.models // []) | map(if .apiBase == "http://127.0.0.1:8080/v1" then .apiBase = $newBase else . end)) |
-        .models = ((.models // []) | map(if ((.model // "") == "") then .model = "local-model" else . end)) |
-        .tabAutocompleteModel = ((.tabAutocompleteModel // {}) | if .apiBase == "http://127.0.0.1:8080/v1" then .apiBase = $newBase else . end) |
-        .tabAutocompleteModel = ((.tabAutocompleteModel // {}) | if ((.model // "") == "") then .model = "local-model" else . end)
+      if jq --arg newBase "$runtime_base" --arg model "$detected_model" '
+        .models = ((.models // []) | map(
+          if ((.provider // "") == "openai") then
+            .apiBase = $newBase
+          else
+            .
+          end
+          | .model = $model
+        )) |
+        .tabAutocompleteModel = ((.tabAutocompleteModel // {})
+          | if ((.provider // "openai") == "openai") then .apiBase = $newBase else . end
+          | .model = $model)
       ' "$cfg" > "$tmp"; then
         mv "$tmp" "$cfg"
       else
         rm -f "$tmp"
       fi
-      unset tmp
+      unset tmp runtime_base detected_model
     fi
     unset cfg
   '';
@@ -914,6 +973,21 @@ MCP_REGISTRY_EOF
     if command -v flatpak >/dev/null 2>&1; then
       if flatpak info io.gpt4all.gpt4all >/dev/null 2>&1; then
         flatpak override --user --filesystem=/var/lib/llama-cpp:ro io.gpt4all.gpt4all >/dev/null 2>&1 || true
+        gpt4all_models_dir="$HOME/.var/app/io.gpt4all.gpt4all/data/nomic.ai/GPT4All/models"
+        mkdir -p "$(dirname "$gpt4all_models_dir")"
+        if [ -L "$gpt4all_models_dir" ]; then
+          ln -sfn /var/lib/llama-cpp/models "$gpt4all_models_dir"
+        elif [ -d "$gpt4all_models_dir" ]; then
+          if [ -z "$(find "$gpt4all_models_dir" -mindepth 1 -print -quit 2>/dev/null)" ]; then
+            rmdir "$gpt4all_models_dir"
+          else
+            mv "$gpt4all_models_dir" "$gpt4all_models_dir.backup.$(date +%Y%m%d%H%M%S)"
+          fi
+          ln -s /var/lib/llama-cpp/models "$gpt4all_models_dir"
+        elif [ ! -e "$gpt4all_models_dir" ]; then
+          ln -s /var/lib/llama-cpp/models "$gpt4all_models_dir"
+        fi
+        unset gpt4all_models_dir
       fi
     fi
   '';

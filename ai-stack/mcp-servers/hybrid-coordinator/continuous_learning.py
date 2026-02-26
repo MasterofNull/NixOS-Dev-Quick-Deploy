@@ -17,7 +17,6 @@ import asyncio
 import hashlib  # P6-OPS-002: For pattern deduplication
 import json
 import os
-import pickle
 import sys
 import re
 from collections import Counter
@@ -48,6 +47,7 @@ class Checkpointer:
     """
     P2-REL-001: Checkpoint manager for crash recovery
     Saves pipeline state periodically to prevent data loss
+    Uses JSON (not pickle) so checkpoints survive nixos-rebuild Python version changes.
     """
     def __init__(self, checkpoint_dir: Path):
         self.checkpoint_dir = checkpoint_dir
@@ -56,12 +56,12 @@ class Checkpointer:
     def save(self, state: dict):
         """Save checkpoint atomically to prevent corruption"""
         temp_path = self.checkpoint_dir / "checkpoint.tmp"
-        final_path = self.checkpoint_dir / "checkpoint.pkl"
+        final_path = self.checkpoint_dir / "checkpoint.json"
 
         try:
-            # Write to temp file first
-            with open(temp_path, "wb") as f:
-                pickle.dump(state, f)
+            # Write to temp file first (atomic write pattern)
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump({**state, "schema_version": 1}, f, default=str)
 
             # Atomic rename (prevents partial writes)
             temp_path.rename(final_path)
@@ -76,17 +76,37 @@ class Checkpointer:
 
     def load(self) -> dict:
         """Load last checkpoint if exists"""
-        checkpoint_path = self.checkpoint_dir / "checkpoint.pkl"
+        # Migration: legacy pickle checkpoint — cannot safely load without running
+        # pickle.load on an untrusted/version-mismatched file; discard and delete.
+        legacy_path = self.checkpoint_dir / "checkpoint.pkl"
+        if legacy_path.exists():
+            logger.warning("legacy_checkpoint_found",
+                           path=str(legacy_path),
+                           message="Discarding legacy pickle checkpoint; starting fresh")
+            try:
+                legacy_path.unlink()
+            except Exception as e:
+                logger.error("legacy_checkpoint_delete_failed", error=str(e))
+            return {}
+
+        checkpoint_path = self.checkpoint_dir / "checkpoint.json"
 
         if not checkpoint_path.exists():
             logger.info("no_checkpoint_found", message="Starting fresh")
             return {}
 
         try:
-            with open(checkpoint_path, "rb") as f:
-                state = pickle.load(f)
-                logger.info("checkpoint_loaded", state_keys=list(state.keys()))
-                return state
+            with open(checkpoint_path, "r", encoding="utf-8") as f:
+                state = json.load(f)
+
+            # If schema_version is missing this is an unknown legacy format; discard.
+            if "schema_version" not in state:
+                logger.warning("checkpoint_missing_schema_version",
+                               message="Treating as legacy; starting fresh")
+                return {}
+
+            logger.info("checkpoint_loaded", state_keys=list(state.keys()))
+            return state
 
         except Exception as e:
             logger.error("checkpoint_load_failed", error=str(e))
@@ -94,7 +114,7 @@ class Checkpointer:
 
     def clear(self):
         """Clear checkpoint (useful for testing or reset)"""
-        checkpoint_path = self.checkpoint_dir / "checkpoint.pkl"
+        checkpoint_path = self.checkpoint_dir / "checkpoint.json"
         if checkpoint_path.exists():
             checkpoint_path.unlink()
             logger.info("checkpoint_cleared")

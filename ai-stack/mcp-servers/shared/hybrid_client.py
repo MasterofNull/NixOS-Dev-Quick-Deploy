@@ -200,7 +200,7 @@ class HybridClient:
         client = HybridClient("http://localhost:8092")
 
         # Route a query
-        response = await client.route_query(
+        response = await client.route_search(
             prompt="What is NixOS?",
             prefer_local=True
         )
@@ -246,7 +246,7 @@ class HybridClient:
                 reset_timeout=circuit_breaker_reset_timeout
             )
 
-    async def route_query(
+    async def route_search(
         self,
         prompt: str,
         prefer_local: bool = True,

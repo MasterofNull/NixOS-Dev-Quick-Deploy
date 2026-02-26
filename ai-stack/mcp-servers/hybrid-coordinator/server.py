@@ -23,6 +23,7 @@ import os
 import re
 import time
 from datetime import datetime, timezone
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from uuid import uuid4
@@ -59,6 +60,7 @@ from shared.auth_http_client import create_embeddings_client
 from shared.circuit_breaker import CircuitBreakerError, CircuitBreakerRegistry, CircuitState
 from shared.telemetry_privacy import scrub_telemetry_payload
 from context_compression import ContextCompressor
+from embedding_cache import EmbeddingCache
 SERVICE_NAME = "hybrid-coordinator"
 SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
 HYBRID_SETTINGS = HybridSettings.load()
@@ -140,6 +142,49 @@ def _enforce_startup_env() -> None:
             raise RuntimeError(f"AI_STRICT_ENV requires file path for {secret_env}: {secret_file}")
 
 
+async def _preflight_check() -> None:
+    """
+    Phase 1.5.2 — TCP connectivity probe for hard dependencies before accepting requests.
+    Logs 'preflight_check: passed' on success; raises RuntimeError on any failure.
+    """
+    import socket
+    from urllib.parse import urlparse
+
+    deps: list[tuple[str, str, int]] = []
+
+    # Redis
+    redis_raw = os.getenv("REDIS_URL", "redis://localhost:6379")
+    r = urlparse(redis_raw)
+    deps.append(("Redis", r.hostname or "localhost", r.port or 6379))
+
+    # Qdrant
+    qdrant_raw = os.getenv("QDRANT_URL", "http://localhost:6333")
+    q = urlparse(qdrant_raw)
+    deps.append(("Qdrant", q.hostname or "localhost", q.port or 6333))
+
+    # Postgres
+    deps.append((
+        "PostgreSQL",
+        os.getenv("POSTGRES_HOST", "localhost"),
+        int(os.getenv("POSTGRES_PORT", "5432")),
+    ))
+
+    failed: list[str] = []
+    for name, host, port in deps:
+        try:
+            with socket.create_connection((host, port), timeout=5):
+                logger.info("preflight_check dep=%s host=%s port=%d status=reachable", name, host, port)
+        except OSError as exc:
+            logger.error("preflight_check dep=%s host=%s port=%d status=unreachable error=%s",
+                         name, host, port, exc)
+            failed.append(f"{name} ({host}:{port})")
+
+    if failed:
+        raise RuntimeError(f"preflight_check failed — unreachable dependencies: {', '.join(failed)}")
+
+    logger.info("preflight_check status=passed")
+
+
 def configure_tracing() -> None:
     if os.getenv("OTEL_TRACING_ENABLED", "true").lower() != "true":
         return
@@ -174,6 +219,7 @@ progressive_disclosure: Optional[Any] = None
 learning_pipeline: Optional[Any] = None  # Continuous learning pipeline
 postgres_client: Optional[Any] = None
 context_compressor: Optional[ContextCompressor] = None
+embedding_cache: Optional[EmbeddingCache] = None
 
 CIRCUIT_BREAKERS = CircuitBreakerRegistry(
     default_config={
@@ -257,6 +303,18 @@ AUTONOMY_BUDGET_EXCEEDED = Counter(
     "hybrid_autonomy_budget_exceeded_total",
     "Hybrid autonomy budget exceed events",
     ["budget"],
+)
+# Phase 2.3.3 — per-backend routing latency (p50/p95/p99 available via Prometheus)
+LLM_BACKEND_LATENCY = Histogram(
+    "hybrid_llm_backend_latency_seconds",
+    "End-to-end LLM call latency by backend (local=llama.cpp, remote=API)",
+    ["backend"],
+    buckets=[0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0],
+)
+LLM_BACKEND_SELECTIONS = Counter(
+    "hybrid_llm_backend_selections_total",
+    "LLM backend selection decisions",
+    ["backend", "reason_class"],
 )
 
 
@@ -732,7 +790,9 @@ class Config:
     REMOTE_LLM_FEEDBACK_ENABLED = os.getenv("REMOTE_LLM_FEEDBACK_ENABLED", "false").lower() == "true"
     MULTI_TURN_QUERY_EXPANSION = os.getenv("MULTI_TURN_QUERY_EXPANSION", "false").lower() == "true"
     DEFAULT_MAX_TOKENS = int(os.getenv("DEFAULT_MAX_TOKENS", "1000"))
-    CONTEXT_COMPRESSION_ENABLED = os.getenv("CONTEXT_COMPRESSION_ENABLED", "true").lower() == "true"
+    # Canonical name; CONTEXT_COMPRESSION_ENABLED kept as alias below for back-compat.
+    AI_CONTEXT_COMPRESSION_ENABLED = os.getenv("AI_CONTEXT_COMPRESSION_ENABLED",
+        os.getenv("CONTEXT_COMPRESSION_ENABLED", "true")).lower() == "true"
 
     FINETUNE_DATA_PATH = os.path.expanduser(
         os.getenv(
@@ -796,7 +856,7 @@ class Config:
         "AI_SPECULATIVE_DECODING_MODE",
         "draft-model",
     )
-    AI_CONTEXT_TOKEN_BUDGET = int(os.getenv("AI_CONTEXT_TOKEN_BUDGET", "1200"))
+    AI_CONTEXT_MAX_TOKENS = int(os.getenv("AI_CONTEXT_MAX_TOKENS", "3000"))
 
 
 def _read_secret(path: str) -> str:
@@ -815,6 +875,296 @@ if not Config.API_KEY and Config.API_KEY_FILE:
     Config.API_KEY = _read_secret(Config.API_KEY_FILE)
 if not Config.EMBEDDING_API_KEY and Config.EMBEDDING_API_KEY_FILE:
     Config.EMBEDDING_API_KEY = _read_secret(Config.EMBEDDING_API_KEY_FILE)
+
+
+# ============================================================================
+# Hot-reloadable Routing Config (Phase 2.2.1)
+# ============================================================================
+
+@dataclass
+class RoutingConfig:
+    """Hot-reloadable routing threshold configuration.
+
+    Reads ``~/.local/share/nixos-ai-stack/routing-config.json`` on each call
+    to ``get_threshold()`` if the cached value is older than 60 seconds.
+    Falls back to the env-var default when the file is absent or malformed.
+    """
+
+    threshold: float = field(
+        default_factory=lambda: float(
+            os.getenv("LOCAL_CONFIDENCE_THRESHOLD", HYBRID_SETTINGS.local_confidence_threshold)
+        )
+    )
+    _path: Path = field(
+        default_factory=lambda: Path.home() / ".local/share/nixos-ai-stack/routing-config.json",
+        repr=False,
+    )
+    _loaded_at: float = field(default=0.0, repr=False)
+    _ttl: float = field(default=60.0, repr=False)
+
+    async def get_threshold(self) -> float:
+        """Return current threshold, reloading from disk if TTL has expired."""
+        now = time.monotonic()
+        if now - self._loaded_at < self._ttl:
+            return self.threshold
+        # TTL expired — try to reload from the JSON file
+        if self._path.exists():
+            try:
+                raw = self._path.read_text(encoding="utf-8")
+                data = json.loads(raw)
+                value = float(data["local_confidence_threshold"])
+                self.threshold = value
+            except Exception:  # noqa: BLE001
+                pass  # keep existing cached value on parse error
+        self._loaded_at = now
+        return self.threshold
+
+    def write_threshold(self, value: float) -> None:
+        """Atomically write a new threshold to the config file."""
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self._path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"local_confidence_threshold": value}), encoding="utf-8")
+        tmp.replace(self._path)
+        self.threshold = value
+        self._loaded_at = time.monotonic()
+
+
+# Module-level singleton used by routing and proposal handlers.
+routing_config: RoutingConfig = RoutingConfig()
+
+# TODO Phase 2.2.2: wire routing_threshold_adjustment proposals to routing_config.write_threshold()
+
+
+# ============================================================================
+# Phase 2.2.3 — 7-Day Rolling Performance Window & Auto-Nudge
+# ============================================================================
+
+@dataclass
+class PerformanceWindow:
+    """Track local LLM success/failure per query-type bucket over a rolling 7-day window.
+
+    Records are stored in a JSON file keyed by ISO date → bucket → {success, total}.
+    When enough samples are collected, `maybe_nudge` adjusts the routing confidence
+    threshold up (if local is performing well) or down (if it is underperforming).
+
+    Wire `record(bucket, success=True/False)` into the feedback endpoint (Phase 3.1).
+    Call `maybe_nudge(routing_config)` from a periodic background task or on startup.
+    """
+
+    TARGET_SUCCESS_RATE: float = 0.80   # local LLM should get ≥80% of responses right
+    NUDGE_AMOUNT: float = 0.05          # threshold change per weekly adjustment
+    THRESHOLD_MIN: float = 0.30         # never drop below — prevents runaway local routing
+    THRESHOLD_MAX: float = 0.95         # never exceed — preserves some remote fallback
+    WINDOW_DAYS: int = 7
+    MIN_SAMPLES: int = 10               # require this many samples before nudging
+
+    _path: Path = field(
+        default_factory=lambda: Path.home() / ".local/share/nixos-ai-stack/performance-window.json",
+        repr=False,
+    )
+    _data: dict = field(default_factory=dict, repr=False)
+    _loaded: bool = field(default=False, repr=False)
+
+    def _load(self) -> None:
+        if self._loaded:
+            return
+        if self._path.exists():
+            try:
+                self._data = json.loads(self._path.read_text(encoding="utf-8"))
+            except Exception:
+                self._data = {}
+        self._loaded = True
+
+    def _save(self) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self._path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(self._data, indent=2), encoding="utf-8")
+        tmp.replace(self._path)
+
+    def _today(self) -> str:
+        from datetime import date
+        return date.today().isoformat()
+
+    def record(self, bucket: str, success: bool) -> None:
+        """Record one local-LLM response outcome for the given query-type bucket.
+
+        Call with bucket='nixos', 'code', 'general', etc. based on query classification.
+        success=True means user confirmed or heuristic-confirmed the response was useful.
+        """
+        self._load()
+        today = self._today()
+        buckets = self._data.setdefault("buckets", {})
+        day_data = buckets.setdefault(bucket, {}).setdefault(today, {"success": 0, "total": 0})
+        day_data["total"] += 1
+        if success:
+            day_data["success"] += 1
+        self._save()
+
+    def _window_stats(self) -> dict[str, dict[str, int]]:
+        """Return aggregated {bucket: {success, total}} over the last WINDOW_DAYS days."""
+        from datetime import date, timedelta
+        self._load()
+        cutoff = (date.today() - timedelta(days=self.WINDOW_DAYS)).isoformat()
+        agg: dict[str, dict[str, int]] = {}
+        for bucket, days in self._data.get("buckets", {}).items():
+            for day, counts in days.items():
+                if day >= cutoff:
+                    agg.setdefault(bucket, {"success": 0, "total": 0})
+                    agg[bucket]["success"] += counts.get("success", 0)
+                    agg[bucket]["total"] += counts.get("total", 0)
+        return agg
+
+    def maybe_nudge(self, cfg: "RoutingConfig") -> None:  # type: ignore[name-defined]
+        """Check 7-day performance and nudge the routing threshold if warranted.
+
+        Call this from a weekly background task. No-op if fewer than MIN_SAMPLES
+        total responses have been recorded (avoids nudging on noise).
+
+        Nudge logic:
+          - Overall success rate > TARGET: lower threshold → route more to local
+          - Overall success rate < TARGET: raise threshold → route more to remote
+        """
+        stats = self._window_stats()
+        total = sum(v["total"] for v in stats.values())
+        if total < self.MIN_SAMPLES:
+            logger.info(
+                "performance_window_nudge_skipped total_samples=%d min_required=%d",
+                total, self.MIN_SAMPLES,
+            )
+            return
+
+        success = sum(v["success"] for v in stats.values())
+        rate = success / total if total else 0.0
+        current = cfg.threshold
+        if rate >= self.TARGET_SUCCESS_RATE:
+            new_threshold = max(self.THRESHOLD_MIN, current - self.NUDGE_AMOUNT)
+            direction = "down"
+        else:
+            new_threshold = min(self.THRESHOLD_MAX, current + self.NUDGE_AMOUNT)
+            direction = "up"
+
+        if new_threshold != current:
+            cfg.write_threshold(new_threshold)
+            logger.info(
+                "performance_window_nudge direction=%s old=%.3f new=%.3f "
+                "success_rate=%.3f samples=%d",
+                direction, current, new_threshold, rate, total,
+            )
+        else:
+            logger.info(
+                "performance_window_nudge at_limit threshold=%.3f direction=%s success_rate=%.3f",
+                current, direction, rate,
+            )
+
+
+performance_window: PerformanceWindow = PerformanceWindow()
+
+
+# ============================================================================
+# Local LLM Liveness Probe + Model Loading Queue (Phase 2.3.1 / 2.4.1)
+# ============================================================================
+
+# Cached liveness state — re-checked at most every 10 seconds.
+_local_llm_healthy: bool = True
+_local_llm_loading: bool = False        # True when llama.cpp returns status="loading"
+_local_llm_checked_at: float = 0.0
+
+# Phase 2.4.1 — model-loading request queue.
+# asyncio.Event is set when the local model is ready; cleared during loading.
+# Callers wait on this event; _model_loading_queue_depth counts waiters.
+_model_load_event: asyncio.Event = asyncio.Event()
+_model_load_event.set()                 # starts as "ready"
+_model_loading_queue_depth: int = 0
+_MODEL_QUEUE_MAX: int = int(os.getenv("MODEL_LOADING_QUEUE_MAX", "10"))
+
+
+async def _check_local_llm_health() -> bool:
+    """Check whether the local llama.cpp server is reachable and ready.
+
+    Phase 2.3.1: 500 ms timeout, 10 s cache, logs only on state change.
+    Phase 2.4.1: distinguishes 'loading' from 'unreachable'; manages
+    _model_load_event so waiting callers are released when load completes.
+
+    Returns True when llama.cpp is reachable (even if still loading).
+    Returns False when unreachable/error.
+    """
+    global _local_llm_healthy, _local_llm_loading, _local_llm_checked_at
+    now = time.monotonic()
+    if now - _local_llm_checked_at <= 10.0:
+        return _local_llm_healthy
+
+    new_healthy = False
+    new_loading = False
+    try:
+        async with httpx.AsyncClient(timeout=0.5) as client:
+            resp = await client.get(f"{Config.LLAMA_CPP_URL}/health")
+            new_healthy = resp.is_success
+            if new_healthy:
+                try:
+                    body = resp.json()
+                    new_loading = body.get("status") == "loading"
+                except Exception:  # noqa: BLE001
+                    new_loading = False
+    except Exception:  # noqa: BLE001
+        new_healthy = False
+
+    _local_llm_checked_at = now
+
+    # Manage the load event — set when ready, cleared when loading.
+    if new_healthy and not new_loading:
+        if not _model_load_event.is_set():
+            logger.info("local_llm_model_ready queue_depth=%d", _model_loading_queue_depth)
+        _model_load_event.set()
+    elif new_healthy and new_loading:
+        _model_load_event.clear()
+    else:
+        # Unreachable — also clear so waiters don't block forever; they'll
+        # time out and be handled by the 503 path.
+        _model_load_event.clear()
+
+    if new_healthy != _local_llm_healthy:
+        if new_healthy:
+            logger.info("local_llm_health_changed healthy=True loading=%s", new_loading)
+        else:
+            logger.warning("local_llm_fallback_to_remote reason=local_unhealthy")
+
+    if new_loading != _local_llm_loading:
+        if new_loading:
+            logger.info("local_llm_loading_started model=%s", os.getenv("LLAMA_MODEL_NAME", "unknown"))
+        else:
+            logger.info("local_llm_loading_finished")
+
+    _local_llm_healthy = new_healthy
+    _local_llm_loading = new_loading
+    return _local_llm_healthy
+
+
+async def _wait_for_local_model(timeout: float = 30.0) -> bool:
+    """Phase 2.4.1 — Wait for the local model to finish loading.
+
+    Enqueues the caller into the loading-wait pool (up to _MODEL_QUEUE_MAX).
+    Returns True when the model becomes ready within `timeout` seconds.
+    Returns False immediately if the queue is full (caller should return 503).
+    Returns False on timeout (caller falls back to remote).
+    """
+    global _model_loading_queue_depth
+    if _model_load_event.is_set():
+        return True                         # fast path — already ready
+    if _model_loading_queue_depth >= _MODEL_QUEUE_MAX:
+        logger.warning(
+            "model_loading_queue_full depth=%d max=%d",
+            _model_loading_queue_depth, _MODEL_QUEUE_MAX,
+        )
+        return False
+    _model_loading_queue_depth += 1
+    try:
+        await asyncio.wait_for(_model_load_event.wait(), timeout=timeout)
+        return True
+    except asyncio.TimeoutError:
+        logger.warning("model_loading_wait_timeout timeout=%.1fs", timeout)
+        return False
+    finally:
+        _model_loading_queue_depth -= 1
 
 
 # ============================================================================
@@ -1058,10 +1408,11 @@ async def initialize_collections():
 # ============================================================================
 
 
-async def embed_text(text: str) -> List[float]:
+async def _embed_text_uncached(text: str) -> List[float]:
     """
-    Generate embedding for text using local embedding model
-    (prefers embeddings service, falls back to AIDB, then llama.cpp)
+    Generate embedding via HTTP — no caching. Called only by embed_text().
+    Fallback chain: embeddings-service → AIDB → llama.cpp.
+    Returns zero vector on all failures.
     """
     global embedding_client
 
@@ -1128,6 +1479,30 @@ async def embed_text(text: str) -> List[float]:
             span.set_status(Status(StatusCode.ERROR, str(e)))
             logger.error(f"Embedding error: {e}")
             return [0.0] * Config.EMBEDDING_DIM
+
+
+async def embed_text(text: str) -> List[float]:
+    """
+    Public embedding entry point with Redis cache.
+    Cache hit: returns in < 5 ms. Cache miss: delegates to _embed_text_uncached().
+    Zero-vector error fallbacks are not cached.
+    """
+    global embedding_cache
+
+    # Fast path — Redis cache hit
+    if embedding_cache:
+        cached = await embedding_cache.get(text)
+        if cached is not None:
+            logger.debug("embed_text cache_hit text_len=%d", len(text))
+            return cached
+
+    vector = await _embed_text_uncached(text)
+
+    # Cache only real vectors, never the zero-vector error fallback
+    if embedding_cache and vector and any(v != 0.0 for v in vector[:8]):
+        await embedding_cache.set(text, vector)
+
+    return vector
 
 
 # ============================================================================
@@ -1671,7 +2046,7 @@ async def run_harness_evaluation(
         return {"status": "disabled"}
 
     start = time.time()
-    result = await route_query(
+    result = await route_search(
         query=query,
         mode=mode,
         prefer_local=True,
@@ -1778,7 +2153,7 @@ def build_harness_scorecard() -> Dict[str, Any]:
             "prompt_cache_policy_enabled": Config.AI_PROMPT_CACHE_POLICY_ENABLED,
             "speculative_decoding_enabled": Config.AI_SPECULATIVE_DECODING_ENABLED,
             "speculative_decoding_mode": Config.AI_SPECULATIVE_DECODING_MODE,
-            "context_compression_enabled": Config.CONTEXT_COMPRESSION_ENABLED,
+            "context_compression_enabled": Config.AI_CONTEXT_COMPRESSION_ENABLED,
         },
     }
 
@@ -1820,7 +2195,87 @@ def _rerank_combined_results(query: str, items: List[Dict[str, Any]]) -> List[Di
     return reranked
 
 
-async def route_query(
+async def select_llm_backend(
+    prompt: str,
+    context_quality: float,
+    force_local: bool = False,
+    force_remote: bool = False,
+    requires_structured_output: bool = False,
+) -> str:
+    """Select 'local' or 'remote' LLM backend based on confidence and overrides.
+
+    Phase 2.1.2 / 2.2.1 / 2.3.1 / 2.3.2:
+    - Reads threshold from RoutingConfig (hot-reloadable JSON, 60 s TTL).
+    - Checks llama.cpp liveness before routing local (cached 10 s).
+    - Routes remote if prompt requires structured JSON output and local model
+      does not advertise function-calling support via LOCAL_MODEL_SUPPORTS_JSON env.
+
+    Args:
+        prompt: The prompt text.
+        context_quality: Retrieval confidence score in [0, 1].
+        force_local: Always return 'local'.
+        force_remote: Always return 'remote'.
+        requires_structured_output: Caller signals JSON schema / function-call needed.
+
+    Returns:
+        'local' or 'remote'.
+    """
+    # Phase 2.3.2 — structured output / function-calling check.
+    # Local GGUF models rarely support reliable JSON schema enforcement.
+    # If the caller needs structured output and the local model hasn't been
+    # explicitly marked as supporting it, route to remote.
+    _local_supports_json = os.getenv("LOCAL_MODEL_SUPPORTS_JSON", "false").lower() == "true"
+
+    if force_local:
+        backend = "local"
+        reason = "force_local_override"
+        reason_class = "override"
+    elif force_remote:
+        backend = "remote"
+        reason = "force_remote_override"
+        reason_class = "override"
+    elif requires_structured_output and not _local_supports_json:
+        backend = "remote"
+        reason = "structured_output_required"
+        reason_class = "capability"
+        logger.info("routing_override reason=structured_output_required local_supports_json=false")
+    elif not await _check_local_llm_health():
+        # Unreachable (not just loading) — fall back to remote immediately.
+        backend = "remote"
+        reason = "local_unhealthy"
+        reason_class = "health"
+    elif _local_llm_loading:
+        # Phase 2.4.1 — model is loading. Queue the request; wait up to 30 s.
+        # _wait_for_local_model returns False if queue full → caller returns 503.
+        ready = await _wait_for_local_model(timeout=30.0)
+        if ready:
+            backend = "local"
+            reason = "waited_for_model_load"
+            reason_class = "loading_queue"
+        else:
+            backend = "remote"
+            reason = "model_loading_queue_full_or_timeout"
+            reason_class = "loading_queue"
+    else:
+        threshold = await routing_config.get_threshold()
+        if context_quality >= threshold:
+            backend = "local"
+            reason = f"context_quality_above_threshold_{threshold:.3f}"
+            reason_class = "confidence"
+        else:
+            backend = "remote"
+            reason = f"context_quality_below_threshold_{threshold:.3f}"
+            reason_class = "confidence"
+
+    logger.info(
+        "llm_backend_selected backend=%s reason=%s local_confidence_score=%.3f",
+        backend, reason, context_quality,
+    )
+    LLM_BACKEND_SELECTIONS.labels(backend=backend, reason_class=reason_class).inc()
+    return backend
+
+
+async def route_search(
     query: str,
     mode: str = "auto",
     prefer_local: bool = True,
@@ -1919,17 +2374,25 @@ async def route_query(
             combined_context = f"{response_text}\n\n{discovery_context}".strip()
             compressed_context = combined_context
             compressed_tokens = 0
-            if Config.CONTEXT_COMPRESSION_ENABLED and context_compressor:
+            if Config.AI_CONTEXT_COMPRESSION_ENABLED and context_compressor and combined_context:
+                tokens_before = len(combined_context) // 4
                 compressed_context, _, compressed_tokens = context_compressor.compress_to_budget(
                     contexts=[{"id": "route-results", "text": combined_context, "score": 1.0}],
-                    max_tokens=Config.AI_CONTEXT_TOKEN_BUDGET,
+                    max_tokens=Config.AI_CONTEXT_MAX_TOKENS,
                     strategy="hybrid",
+                )
+                logger.info(
+                    "context_compression tokens_before=%d tokens_after=%d budget=%d",
+                    tokens_before, compressed_tokens, Config.AI_CONTEXT_MAX_TOKENS,
                 )
             prompt = (
                 f"{prompt_prefix}\n\n"
                 f"User query: {query}\n\nContext:\n{compressed_context}\n\n"
                 "Provide a concise response using the context."
             )
+            backend = "local"
+            reason = "prefer_local=True and llama_cpp_client available"
+            logger.info("llm_backend_selected backend=%s reason=%s", backend, reason)
             try:
                 llm_resp = await llama_cpp_client.post(
                     "/chat/completions",
@@ -1957,15 +2420,15 @@ async def route_query(
                 if compressed_tokens:
                     results["context_compression"] = {
                         "enabled": True,
-                        "token_budget": Config.AI_CONTEXT_TOKEN_BUDGET,
+                        "token_budget": Config.AI_CONTEXT_MAX_TOKENS,
                         "compressed_tokens": compressed_tokens,
                     }
             except Exception as exc:  # noqa: BLE001
-                logger.warning("route_query_llm_failed error=%s", exc)
+                logger.warning("route_search_llm_failed error=%s", exc)
 
         ROUTE_DECISIONS.labels(route=route).inc()
         record_telemetry_event(
-            "route_query",
+            "route_search",
             {
                 "query": query[:200],
                 "route": route,
@@ -1978,7 +2441,7 @@ async def route_query(
                 "inference_optimizations": {
                     "speculative_decoding_enabled": Config.AI_SPECULATIVE_DECODING_ENABLED,
                     "speculative_decoding_mode": Config.AI_SPECULATIVE_DECODING_MODE,
-                    "context_compression_enabled": Config.CONTEXT_COMPRESSION_ENABLED,
+                    "context_compression_enabled": Config.AI_CONTEXT_COMPRESSION_ENABLED,
                 },
                 "capability_discovery": {
                     "decision": capability_discovery.get("decision", "unknown"),
@@ -1994,7 +2457,7 @@ async def route_query(
         )
     except Exception as exc:  # noqa: BLE001
         ROUTE_ERRORS.labels(route=route).inc()
-        logger.error("route_query_failed route=%s error=%s", route, exc)
+        logger.error("route_search_failed route=%s error=%s", route, exc)
         raise
 
     latency_ms = int((time.time() - start) * 1000)
@@ -2642,7 +3105,7 @@ async def list_tools() -> List[Tool]:
             },
         ),
         Tool(
-            name="route_query",
+            name="route_search",
             description="Route a query to SQL, semantic, keyword, tree, or hybrid search",
             inputSchema={
                 "type": "object",
@@ -2837,8 +3300,8 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             )
         ]
 
-    elif name == "route_query":
-        result = await route_query(
+    elif name == "route_search":
+        result = await route_search(
             query=arguments.get("query", ""),
             mode=arguments.get("mode", "auto"),
             prefer_local=arguments.get("prefer_local", True),
@@ -2916,9 +3379,10 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
 
 async def initialize_server():
     """Initialize global clients and collections"""
-    global qdrant_client, llama_cpp_client, embedding_client, aidb_client, multi_turn_manager, feedback_api, progressive_disclosure, learning_pipeline, postgres_client, context_compressor
+    global qdrant_client, llama_cpp_client, embedding_client, aidb_client, multi_turn_manager, feedback_api, progressive_disclosure, learning_pipeline, postgres_client, context_compressor, embedding_cache
 
     _enforce_startup_env()
+    await _preflight_check()
     logger.info("Initializing Hybrid Agent Coordinator...")
 
     # Initialize Qdrant client
@@ -2936,6 +3400,15 @@ async def initialize_server():
 
     # Initialize embedding client (internal service, with auth)
     embedding_client = create_embeddings_client(timeout=30.0)
+
+    # Initialize embedding cache (Redis, keyed by model fingerprint)
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+    embedding_cache = EmbeddingCache(
+        redis_url=redis_url,
+        model_name=Config.EMBEDDING_MODEL,
+    )
+    await embedding_cache.initialize(flush_on_model_change=True)
+    logger.info("✓ Embedding cache initialized (model=%s)", Config.EMBEDDING_MODEL)
 
     # Initialize AIDB client (optional, for hybrid routing)
     aidb_client = httpx.AsyncClient(
@@ -3098,6 +3571,46 @@ async def main():
                 return web.json_response({"error": "unauthorized"}, status=401)
             return await handler(request)
 
+        async def handle_status(request):
+            """Phase 2.4.2 — Model loading status endpoint.
+
+            Returns current llama.cpp model state by querying its /health endpoint.
+            llama.cpp responds with {"status": "loading"} while a model is being loaded
+            and {"status": "ok"} once ready. Also reports the local LLM health cache state
+            and current routing threshold.
+
+            Success metric: curl /status returns correct loading: true/false.
+            """
+            import time as _time
+            try:
+                async with httpx.AsyncClient(timeout=2.0) as hc:
+                    resp = await hc.get(f"{Config.LLAMA_CPP_URL}/health")
+                    llama_data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+                    llama_status = llama_data.get("status", "unknown")
+                    loading = llama_status == "loading"
+            except Exception as exc:
+                llama_status = "unreachable"
+                loading = False
+                logger.debug("handle_status llama.cpp probe failed: %s", exc)
+
+            threshold = await routing_config.get_threshold()
+            return web.json_response({
+                "service": "hybrid-coordinator",
+                "local_llm": {
+                    "url": Config.LLAMA_CPP_URL,
+                    "status": llama_status,
+                    "loading": loading,
+                    "healthy": _local_llm_healthy,
+                    "model_name": os.getenv("LLAMA_MODEL_NAME", "unknown"),
+                    "queue_depth": _model_loading_queue_depth,
+                    "queue_max": _MODEL_QUEUE_MAX,
+                },
+                "routing": {
+                    "threshold": threshold,
+                    "local_supports_json": os.getenv("LOCAL_MODEL_SUPPORTS_JSON", "false").lower() == "true",
+                },
+            })
+
         async def handle_health(request):
             """Health check endpoint with circuit breakers"""
             # Get circuit breaker states from continuous learning
@@ -3130,7 +3643,7 @@ async def main():
                     "prompt_cache_policy_enabled": Config.AI_PROMPT_CACHE_POLICY_ENABLED,
                     "speculative_decoding_enabled": Config.AI_SPECULATIVE_DECODING_ENABLED,
                     "speculative_decoding_mode": Config.AI_SPECULATIVE_DECODING_MODE,
-                    "context_compression_enabled": Config.CONTEXT_COMPRESSION_ENABLED,
+                    "context_compression_enabled": Config.AI_CONTEXT_COMPRESSION_ENABLED,
                 },
                 "capability_discovery": HYBRID_STATS["capability_discovery"],
                 "circuit_breakers": breakers or CIRCUIT_BREAKERS.get_all_stats(),
@@ -3164,16 +3677,39 @@ async def main():
                 )
 
         async def handle_query(request):
-            """HTTP endpoint for query routing"""
+            """HTTP endpoint for query routing.
+
+            Phase 2.4.1: If the local model is loading and prefer_local=True,
+            the request is held in the loading queue (up to MODEL_LOADING_QUEUE_MAX
+            concurrent waiters). Returns HTTP 503 immediately when the queue is
+            full so callers can retry or escalate.
+            """
             try:
                 data = await request.json()
                 query = data.get("prompt") or data.get("query") or ""
                 if not query:
                     return web.json_response({"error": "query required"}, status=400)
-                result = await route_query(
+
+                # Phase 2.4.1 — pre-flight: if prefer_local and model loading,
+                # queue this request rather than falling through to an immediate 503.
+                prefer_local = bool(data.get("prefer_local", True))
+                if prefer_local and _local_llm_loading:
+                    ready = await _wait_for_local_model(timeout=30.0)
+                    if not ready:
+                        return web.json_response(
+                            {
+                                "error": "model_loading",
+                                "detail": "Local model is loading and the queue is full or timed out. Retry or set prefer_local=false.",
+                                "queue_depth": _model_loading_queue_depth,
+                                "queue_max": _MODEL_QUEUE_MAX,
+                            },
+                            status=503,
+                        )
+
+                result = await route_search(
                     query=query,
                     mode=data.get("mode", "auto"),
-                    prefer_local=bool(data.get("prefer_local", True)),
+                    prefer_local=prefer_local,
                     context=data.get("context"),
                     limit=int(data.get("limit", 5)),
                     keyword_limit=int(data.get("keyword_limit", 5)),
@@ -3183,7 +3719,7 @@ async def main():
                 return web.json_response(result)
             except Exception as exc:  # noqa: BLE001
                 return web.json_response(
-                    {"error": "route_query_failed", "detail": str(exc)},
+                    {"error": "route_search_failed", "detail": str(exc)},
                     status=500,
                 )
 
@@ -3429,6 +3965,7 @@ async def main():
         )
         # Existing endpoints
         http_app.router.add_get('/health', handle_health)
+        http_app.router.add_get('/status', handle_status)
         http_app.router.add_get('/stats', handle_stats)
         http_app.router.add_post('/augment_query', handle_augment_query)
         http_app.router.add_post('/query', handle_query)

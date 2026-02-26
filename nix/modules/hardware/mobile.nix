@@ -33,11 +33,31 @@ in
     };
   };
 
-  # Battery charge thresholds (ThinkPad-specific via tp_smapi / tpacpi-bat).
-  # These are no-ops on non-ThinkPad hardware.
-  services.tlp.settings = lib.mkIf (mobile && false) {  # disabled — tlp conflicts with ppd
-    START_CHARGE_THRESH_BAT0 = 20;
-    STOP_CHARGE_THRESH_BAT0  = 80;
+  # Phase 5.3.1 — Battery charge thresholds via thinkpad-acpi sysfs.
+  # Works with kernels 5.9+ and the thinkpad_acpi module. The systemd service
+  # conditions on the sysfs node existing, so it is a no-op on non-ThinkPad
+  # hardware (desktop, SBC, non-ThinkPad laptops).
+  # TLP is disabled above (conflicts with power-profiles-daemon); thresholds
+  # are written directly to /sys/class/power_supply/BAT*/charge_control_*.
+  systemd.services.battery-charge-thresholds = lib.mkIf mobile {
+    description = "Set battery charge start/stop thresholds via thinkpad-acpi";
+    wantedBy    = [ "multi-user.target" "suspend.target" ];
+    after       = [ "multi-user.target" ];
+    # Only run when the sysfs interface is present — no-op on non-ThinkPad.
+    unitConfig.ConditionPathExists = "/sys/class/power_supply/BAT0/charge_control_start_threshold";
+    serviceConfig = {
+      Type            = "oneshot";
+      RemainAfterExit = true;
+      ExecStart       = pkgs.writeShellScript "battery-thresholds" ''
+        set -euo pipefail
+        for bat in /sys/class/power_supply/BAT*/; do
+          start="''${bat}charge_control_start_threshold"
+          stop="''${bat}charge_control_end_threshold"
+          [[ -w "$start" ]] && echo 20 > "$start"
+          [[ -w "$stop"  ]] && echo 80 > "$stop"
+        done
+      '';
+    };
   };
 
   # Kernel parameters for mobile power management.

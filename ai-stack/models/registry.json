@@ -1,59 +1,278 @@
 {
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "last_updated": "2026-02-25",
+  "notes": "Multi-platform registry: embedded, SBC, laptop, desktop, server. All entries have Nix-declarable hf_repo/hf_file fields for use in the aiStack NixOS module.",
+
+  "hardware_tiers": {
+    "embedded":          { "ram_gb_typical": "1-4",   "gpu": "none/Mali/VideoCore", "model_tier": "nano" },
+    "sbc_capable":       { "ram_gb_typical": "4-16",  "gpu": "Mali G610 / limited RDNA", "model_tier": "micro" },
+    "laptop_budget":     { "ram_gb_typical": "8-16",  "gpu": "Intel UHD / AMD Vega iGPU", "model_tier": "small" },
+    "laptop_midrange":   { "ram_gb_typical": "16-32", "gpu": "AMD RDNA2/3 iGPU or entry discrete", "model_tier": "medium" },
+    "desktop_workstation":{ "ram_gb_typical": "32-64", "gpu": "RTX 3070-4090 / RX 6800-7900 (8-24GB VRAM)", "model_tier": "large" },
+    "personal_server":   { "ram_gb_typical": "32-128","gpu": "CPU-only or low-end discrete", "model_tier": "medium" }
+  },
+
   "models": {
-    "qwen-7b": {
-      "id": "Qwen/Qwen2.5-Coder-7B-Instruct",
-      "name": "Qwen2.5-Coder-7B",
-      "vram_gb": 16,
-      "speed_tokens_per_sec": "40-60",
-      "quality_score": "88.4%",
-      "recommended_for": ["general coding", "NixOS", "fast iteration"],
-      "download_url": "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct"
+    "smollm2-135m": {
+      "tier": "nano",
+      "hf_repo": "bartowski/SmolLM2-135M-Instruct-GGUF",
+      "hf_file": "SmolLM2-135M-Instruct-Q8_0.gguf",
+      "quantization": "Q8_0",
+      "context_length": 8192,
+      "ram_required_gb": 0.5,
+      "vram_required_gb": 0,
+      "speed_cpu_tok_s": "200-400",
+      "recommended_for": ["embedded", "Pi 4/5", "intent classification", "draft model", "routing"],
+      "notes": "Runs on 1GB devices. Routing/classification only, not complex reasoning."
     },
-    "qwen-14b": {
-      "id": "Qwen/Qwen2.5-Coder-14B-Instruct",
-      "name": "Qwen2.5-Coder-14B",
-      "vram_gb": 24,
-      "speed_tokens_per_sec": "30-45",
-      "quality_score": "89.7%",
-      "recommended_for": ["production workloads", "complex code"],
-      "download_url": "https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct"
+    "smollm2-360m": {
+      "tier": "nano",
+      "hf_repo": "bartowski/SmolLM2-360M-Instruct-GGUF",
+      "hf_file": "SmolLM2-360M-Instruct-Q4_K_M.gguf",
+      "quantization": "Q4_K_M",
+      "context_length": 8192,
+      "ram_required_gb": 0.4,
+      "vram_required_gb": 0,
+      "speed_cpu_tok_s": "100-200",
+      "recommended_for": ["embedded", "SBC", "speculative decoding draft model"],
+      "notes": "Best draft model for speculative decoding with larger primaries."
     },
-    "deepseek-lite": {
-      "id": "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
-      "name": "DeepSeek-Coder-V2-Lite",
-      "vram_gb": 20,
-      "speed_tokens_per_sec": "20-30",
-      "quality_score": "81.1%",
-      "recommended_for": ["algorithms", "math", "300+ languages"],
-      "download_url": "https://huggingface.co/deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
+    "qwen2.5-0.5b": {
+      "tier": "nano",
+      "hf_repo": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+      "hf_file": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+      "quantization": "Q4_K_M",
+      "context_length": 32768,
+      "ram_required_gb": 0.5,
+      "vram_required_gb": 0,
+      "speed_cpu_tok_s": "150-300",
+      "recommended_for": ["Pi 4", "NAS", "embedded assistant", "short-context tasks"],
+      "notes": "32K context at 0.5GB. Best for true embedded deployment."
     },
-    "deepseek-v2": {
-      "id": "deepseek-ai/DeepSeek-Coder-V2-Instruct",
-      "name": "DeepSeek-Coder-V2",
-      "vram_gb": 32,
-      "speed_tokens_per_sec": "15-25",
-      "quality_score": "84.5%",
-      "recommended_for": ["multi-GPU", "highest reasoning"],
-      "download_url": "https://huggingface.co/deepseek-ai/DeepSeek-Coder-V2-Instruct"
+    "phi-4-mini": {
+      "tier": "micro",
+      "hf_repo": "bartowski/Phi-4-mini-instruct-GGUF",
+      "hf_file": "Phi-4-mini-instruct-Q4_K_M.gguf",
+      "quantization": "Q4_K_M",
+      "context_length": 16384,
+      "ram_required_gb": 3.5,
+      "vram_required_gb": 3,
+      "speed_cpu_tok_s": "15-30",
+      "speed_igpu_tok_s": "40-80",
+      "recommended_for": ["Pi 5", "SBC", "budget laptops", "4-8GB RAM systems"],
+      "notes": "Phi-4-mini (Feb 2026) outperforms Phi-3-mini on reasoning. Best micro-tier model."
     },
-    "phi-mini": {
-      "id": "microsoft/Phi-3-mini-4k-instruct",
-      "name": "Phi-3-mini",
-      "vram_gb": 8,
-      "speed_tokens_per_sec": "60-80",
-      "quality_score": "68.3%",
-      "recommended_for": ["testing", "budget GPUs", "CPU-only"],
-      "download_url": "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct"
+    "qwen2.5-1.5b": {
+      "tier": "micro",
+      "hf_repo": "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+      "hf_file": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+      "quantization": "Q4_K_M",
+      "context_length": 32768,
+      "ram_required_gb": 1.5,
+      "vram_required_gb": 1.5,
+      "speed_cpu_tok_s": "60-120",
+      "speed_igpu_tok_s": "150-250",
+      "recommended_for": ["Orange Pi 5", "Rock 5", "SBC coder", "NixOS completions"],
+      "notes": "Strong coder for size. Good NixOS training data coverage."
     },
-    "codellama-13b": {
-      "id": "codellama/CodeLlama-13b-Instruct-hf",
-      "name": "CodeLlama-13B",
-      "vram_gb": 24,
-      "speed_tokens_per_sec": "20-35",
-      "quality_score": "78.2%",
-      "recommended_for": ["legacy compatibility", "well-tested"],
-      "download_url": "https://huggingface.co/codellama/CodeLlama-13b-Instruct-hf"
+    "gemma3-4b": {
+      "tier": "small",
+      "hf_repo": "bartowski/gemma-3-4b-it-GGUF",
+      "hf_file": "gemma-3-4b-it-Q4_K_M.gguf",
+      "quantization": "Q4_K_M",
+      "context_length": 128000,
+      "ram_required_gb": 3.5,
+      "vram_required_gb": 3,
+      "speed_cpu_tok_s": "20-40",
+      "speed_igpu_tok_s": "60-100",
+      "recommended_for": ["budget laptops", "8GB RAM", "long context tasks"],
+      "notes": "128K context. Vision variant: gemma-3-4b-vision."
+    },
+    "qwen2.5-coder-7b": {
+      "tier": "small",
+      "hf_repo": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+      "hf_file": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+      "quantization": "Q4_K_M",
+      "context_length": 131072,
+      "ram_required_gb": 5,
+      "vram_required_gb": 5,
+      "speed_cpu_tok_s": "8-15",
+      "speed_igpu_tok_s": "25-45",
+      "recommended_for": ["laptop_budget", "16GB RAM", "NixOS", "aider", "general coding"],
+      "notes": "Default for 8-16GB systems. Best small coder Feb 2026."
+    },
+    "deepseek-r1-distill-7b": {
+      "tier": "small",
+      "hf_repo": "bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF",
+      "hf_file": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
+      "quantization": "Q4_K_M",
+      "context_length": 32768,
+      "ram_required_gb": 5,
+      "vram_required_gb": 5,
+      "speed_cpu_tok_s": "8-15",
+      "speed_igpu_tok_s": "25-45",
+      "recommended_for": ["reasoning tasks", "debugging", "NixOS troubleshooting"],
+      "notes": "Distilled from DeepSeek-R1. Chain-of-thought reasoning."
+    },
+    "llama-3.2-3b": {
+      "tier": "small",
+      "hf_repo": "bartowski/Llama-3.2-3B-Instruct-GGUF",
+      "hf_file": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+      "quantization": "Q4_K_M",
+      "context_length": 131072,
+      "ram_required_gb": 2.5,
+      "vram_required_gb": 2,
+      "speed_cpu_tok_s": "30-60",
+      "speed_igpu_tok_s": "80-150",
+      "recommended_for": ["budget laptops", "personal servers", "general assistant", "fast responses"],
+      "notes": "128K context at 2.5GB. Fast general-purpose small model."
+    },
+    "qwen2.5-coder-14b": {
+      "tier": "medium",
+      "hf_repo": "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF",
+      "hf_file": "qwen2.5-coder-14b-instruct-q4_k_m.gguf",
+      "quantization": "Q4_K_M",
+      "context_length": 131072,
+      "ram_required_gb": 9,
+      "vram_required_gb": 9,
+      "speed_cpu_tok_s": "4-8",
+      "speed_igpu_tok_s": "12-22",
+      "recommended_for": ["laptop_midrange", "24GB+ RAM", "NixOS", "complex coding"],
+      "notes": "Primary for ThinkPad P14s Gen 2a (27GB RAM). Best medium-tier coder."
+    },
+    "deepseek-r1-distill-14b": {
+      "tier": "medium",
+      "hf_repo": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
+      "hf_file": "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+      "quantization": "Q4_K_M",
+      "context_length": 32768,
+      "ram_required_gb": 9,
+      "vram_required_gb": 9,
+      "speed_cpu_tok_s": "4-8",
+      "speed_igpu_tok_s": "12-20",
+      "recommended_for": ["complex reasoning", "architecture decisions", "debugging"],
+      "notes": "Best reasoning model for midrange hardware."
+    },
+    "phi-4": {
+      "tier": "medium",
+      "hf_repo": "bartowski/phi-4-GGUF",
+      "hf_file": "phi-4-Q4_K_M.gguf",
+      "quantization": "Q4_K_M",
+      "context_length": 16384,
+      "ram_required_gb": 9,
+      "vram_required_gb": 9,
+      "speed_cpu_tok_s": "4-8",
+      "speed_igpu_tok_s": "12-20",
+      "recommended_for": ["STEM reasoning", "math", "structured output"],
+      "notes": "Phi-4 (Jan 2025). Excellent reasoning-to-size ratio. Short context only."
+    },
+    "gemma3-12b": {
+      "tier": "medium",
+      "hf_repo": "bartowski/gemma-3-12b-it-GGUF",
+      "hf_file": "gemma-3-12b-it-Q4_K_M.gguf",
+      "quantization": "Q4_K_M",
+      "context_length": 128000,
+      "ram_required_gb": 8,
+      "vram_required_gb": 8,
+      "speed_cpu_tok_s": "4-8",
+      "speed_igpu_tok_s": "15-25",
+      "recommended_for": ["long context", "document analysis", "personal_server"],
+      "notes": "128K context. Vision variant available."
+    },
+    "llama-3.3-70b-iq2": {
+      "tier": "large",
+      "hf_repo": "bartowski/Llama-3.3-70B-Instruct-GGUF",
+      "hf_file": "Llama-3.3-70B-Instruct-IQ2_M.gguf",
+      "quantization": "IQ2_M",
+      "context_length": 131072,
+      "ram_required_gb": 24,
+      "vram_required_gb": 0,
+      "speed_cpu_tok_s": "2-5",
+      "recommended_for": ["personal_server", "32GB+ RAM CPU-only", "highest quality"],
+      "notes": "IQ2_M importance-matrix quant. Slow but strong on CPU-only systems."
+    },
+    "deepseek-r1-distill-32b": {
+      "tier": "large",
+      "hf_repo": "bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF",
+      "hf_file": "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
+      "quantization": "Q4_K_M",
+      "context_length": 32768,
+      "ram_required_gb": 20,
+      "vram_required_gb": 20,
+      "speed_cpu_tok_s": "2-4",
+      "speed_igpu_tok_s": "6-10",
+      "recommended_for": ["desktop_workstation", "24GB VRAM GPU"],
+      "notes": "Best reasoning <34B as of Feb 2026. Needs discrete GPU for usable speed."
+    },
+    "qwen2.5-coder-32b": {
+      "tier": "large",
+      "hf_repo": "Qwen/Qwen2.5-Coder-32B-Instruct-GGUF",
+      "hf_file": "qwen2.5-coder-32b-instruct-q4_k_m.gguf",
+      "quantization": "Q4_K_M",
+      "context_length": 131072,
+      "ram_required_gb": 20,
+      "vram_required_gb": 20,
+      "speed_cpu_tok_s": "2-4",
+      "speed_igpu_tok_s": "6-10",
+      "recommended_for": ["desktop_workstation", "24GB VRAM", "production coding"],
+      "notes": "Best full-stack coder at 32B. Target for high-end personal deployments."
+    }
+  },
+
+  "embedding_models": {
+    "nomic-embed-text-v1.5": {
+      "hf_repo": "nomic-ai/nomic-embed-text-v1.5",
+      "dimensions": 768,
+      "context_length": 8192,
+      "ram_required_gb": 0.3,
+      "recommended_for": ["all tiers", "default"],
+      "notes": "Default. 8K context. Matryoshka embeddings support dimension reduction to 64-512 dims."
+    },
+    "all-minilm-l6-v2": {
+      "hf_repo": "sentence-transformers/all-MiniLM-L6-v2",
+      "dimensions": 384,
+      "context_length": 512,
+      "ram_required_gb": 0.1,
+      "recommended_for": ["embedded", "minimum RAM only"],
+      "notes": "Legacy fallback. 512 token limit is a significant RAG constraint."
+    },
+    "bge-m3": {
+      "hf_repo": "BAAI/bge-m3",
+      "dimensions": 1024,
+      "context_length": 8192,
+      "ram_required_gb": 1.1,
+      "recommended_for": ["personal_server", "multilingual", "high accuracy"],
+      "notes": "Dense + sparse + colbert in one model. Best retrieval quality."
+    }
+  },
+
+  "hardware_recommendations": {
+    "by_ram": {
+      "1-2gb":   { "chat": "qwen2.5-0.5b",       "embed": "all-minilm-l6-v2" },
+      "4gb":     { "chat": "phi-4-mini",            "embed": "nomic-embed-text-v1.5" },
+      "8gb":     { "chat": "qwen2.5-coder-7b",     "embed": "nomic-embed-text-v1.5" },
+      "16gb":    { "chat": "qwen2.5-coder-7b",     "embed": "nomic-embed-text-v1.5" },
+      "24-32gb": { "chat": "qwen2.5-coder-14b",    "embed": "nomic-embed-text-v1.5" },
+      "48gb+":   { "chat": "qwen2.5-coder-32b",    "embed": "bge-m3" }
+    },
+    "by_gpu_vram": {
+      "none":    { "offload_layers": 0,  "note": "CPU-only. Pick model for your RAM tier." },
+      "2-4gb":   { "offload_layers": 16, "note": "Partial 7B offload." },
+      "6-8gb":   { "offload_layers": 32, "note": "Full 7B or partial 14B." },
+      "10-12gb": { "offload_layers": 40, "note": "Full 14B Q4_K_M." },
+      "16-24gb": { "offload_layers": 60, "note": "Full 14B-32B." },
+      "24gb+":   { "offload_layers": 99, "note": "Full 32B Q4_K_M or 70B IQ2_M." }
+    },
+    "by_platform": {
+      "raspberry_pi_4":    { "chat": "qwen2.5-0.5b",       "embed": "all-minilm-l6-v2" },
+      "raspberry_pi_5":    { "chat": "phi-4-mini",           "embed": "nomic-embed-text-v1.5" },
+      "orange_pi_5_plus":  { "chat": "qwen2.5-1.5b",       "embed": "nomic-embed-text-v1.5" },
+      "rock_5b":           { "chat": "qwen2.5-1.5b",       "embed": "nomic-embed-text-v1.5" },
+      "framework_13":      { "chat": "qwen2.5-coder-7b",   "embed": "nomic-embed-text-v1.5" },
+      "thinkpad_p14s_amd": { "chat": "qwen2.5-coder-14b",  "embed": "nomic-embed-text-v1.5" },
+      "home_server_cpu":   { "chat": "llama-3.3-70b-iq2",  "embed": "bge-m3" },
+      "rtx_3090_desktop":  { "chat": "qwen2.5-coder-32b",  "embed": "bge-m3" },
+      "rx_7900_xtx":       { "chat": "qwen2.5-coder-32b",  "embed": "bge-m3" }
     }
   }
 }
