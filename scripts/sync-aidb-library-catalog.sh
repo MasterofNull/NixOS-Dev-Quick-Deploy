@@ -12,7 +12,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # shellcheck source=../config/service-endpoints.sh
 source "${REPO_ROOT}/config/service-endpoints.sh"
 
-AIDB_BASE_URL="${AIDB_URL:-http://127.0.0.1:8002}"
+AIDB_BASE_URL="${AIDB_URL}"
 PROJECT="${PROJECT:-NixOS-Dev-Quick-Deploy}"
 MCP_REGISTRY_URL="${MCP_REGISTRY_URL:-https://registry.modelcontextprotocol.io/v0.1/servers?limit=100}"
 SKILL_LISTER="${SKILL_LISTER:-/home/hyperd/.codex/skills/.system/skill-installer/scripts/list-skills.py}"
@@ -48,7 +48,7 @@ write_existing_paths_json() {
     local pg_pass pg_host pg_port pg_db pg_user
     pg_pass="$(tr -d '\r\n' < "${POSTGRES_PASSWORD_FILE:-/run/secrets/postgres_password}")"
     pg_host="${POSTGRES_HOST:-127.0.0.1}"
-    pg_port="${POSTGRES_PORT:-5432}"
+    pg_port="${POSTGRES_PORT}"
     pg_db="${POSTGRES_DB:-aidb}"
     pg_user="${POSTGRES_USER:-aidb}"
 
@@ -85,7 +85,7 @@ validate_catalog() {
     local pg_pass pg_host pg_port pg_db pg_user
     pg_pass="$(tr -d '\r\n' < "${POSTGRES_PASSWORD_FILE:-/run/secrets/postgres_password}")"
     pg_host="${POSTGRES_HOST:-127.0.0.1}"
-    pg_port="${POSTGRES_PORT:-5432}"
+    pg_port="${POSTGRES_PORT}"
     pg_db="${POSTGRES_DB:-aidb}"
     pg_user="${POSTGRES_USER:-aidb}"
 

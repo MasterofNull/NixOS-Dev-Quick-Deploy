@@ -129,7 +129,7 @@ PYEOF
 
     # TC3.4.2 — vector timestamps present (requires AIDB running)
     info "TC3.4.2: vector timestamp fields in AIDB..."
-    aidb_url="${AIDB_URL:-http://localhost:8002}"
+    aidb_url="${AIDB_URL}"
     if curl -fsS --max-time 5 --connect-timeout 3 "${aidb_url}/health" >/dev/null 2>&1; then
         ts_result="$(curl -fsS --max-time 10 --connect-timeout 3 \
             "${aidb_url}/documents?limit=1" 2>/dev/null || echo "")"
@@ -165,7 +165,7 @@ fi
 if [[ "${SKIP_PERF}" -eq 0 ]]; then
     info "TC3.5 — Performance baseline"
 
-    hybrid_url="${HYBRID_URL:-http://localhost:8003}"
+    hybrid_url="${HYBRID_URL}"
     api_key_file="${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_coordinator_api_key}"
     api_key="${HYBRID_API_KEY:-}"
     if [[ -f "${api_key_file}" ]]; then
@@ -213,7 +213,7 @@ if [[ "${SKIP_PERF}" -eq 0 ]]; then
 
     # TC3.5.2 — cache hit rate from Prometheus metrics
     info "TC3.5.2: embedding cache hit rate..."
-    prom_url="${PROMETHEUS_URL:-http://localhost:9090}"
+    prom_url="${PROMETHEUS_URL}"
     cache_hit_rate="null"
     if curl -fsS --max-time 5 --connect-timeout 3 "${prom_url}/-/healthy" >/dev/null 2>&1; then
         hits="$(curl -fsS --max-time 5 "${prom_url}/api/v1/query?query=embedding_cache_hits_total" 2>/dev/null \
