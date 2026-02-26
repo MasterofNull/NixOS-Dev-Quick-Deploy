@@ -125,6 +125,11 @@ in
       # nix-community.cachix.org: community-maintained cache (overlays/tools)
       # devenv.cachix.org: devenv cache used by developer environments
       trusted-public-keys = lib.mkDefault cfg.deployment.nixTrustedPublicKeys;
+      # Phase 11.2.3 — restrict eval-time fetch URLs for AI stack hosts.
+      # Keep this allowlist centralized in mySystem.deployment.nixAllowedUris.
+      allowed-uris = lib.mkDefault (
+        if cfg.roles.aiStack.enable then cfg.deployment.nixAllowedUris else [ ]
+      );
       # Phase 11.2.2 — require cryptographic signatures on all substituted
       # store paths.  This is the NixOS default (true) but we set it
       # explicitly here so no host config can accidentally override it to
