@@ -132,7 +132,17 @@ in
           assertion = !hasEmbedAutoDownload || embedHfSha256Valid;
           message = "mySystem.aiStack.embeddingServer.huggingFaceRepo requires mySystem.aiStack.embeddingServer.sha256 (64 hex chars).";
         }
+        # Phase 5.2.4 — hard block: AI stack requires at least 12 GB to load any model.
+        {
+          assertion = cfg.hardware.systemRamGb >= 12;
+          message = "AI stack: minimum 12 GB RAM required (mySystem.hardware.systemRamGb = ${toString cfg.hardware.systemRamGb}). Disable mySystem.roles.aiStack.enable or increase RAM.";
+        }
       ];
+      # Phase 5.2.4 — advisory warning: 14B/13B models are marginal below 16 GB.
+      warnings = lib.optional (
+        cfg.hardware.systemRamGb < 16 &&
+        (lib.hasInfix "14b" (lib.toLower llama.model) || lib.hasInfix "13b" (lib.toLower llama.model))
+      ) "AI stack: a 14B/13B model is configured but mySystem.hardware.systemRamGb = ${toString cfg.hardware.systemRamGb} (< 16). Consider Qwen2.5-Coder-7B Q4_K_M instead.";
     })
 
     # ── llama.cpp — active when llamaCpp.enable regardless of backend ─────────
@@ -172,6 +182,9 @@ in
           RestartSec       = "5s";
           StateDirectory   = "llama-cpp";
           RuntimeDirectory = "llama-cpp";
+          # Phase 5.2.2: allow model weights to be locked in RAM (mlockall).
+          # Prevents OS from paging out model pages during inference under pressure.
+          LimitMEMLOCK     = "infinity";
           # ROCm environment variables for AMD GPU acceleration.
           # Empty list when resolvedAccel != "rocm" — no overhead.
           Environment      = rocmEnvList;
@@ -399,6 +412,7 @@ in
           RestartSec       = "5s";
           StateDirectory   = "llama-cpp";
           RuntimeDirectory = "llama-cpp-embed";
+          LimitMEMLOCK     = "infinity";
           Environment      = rocmEnvList;
           ExecStart = lib.concatStringsSep " " ([
             "${pkgs.llama-cpp}/bin/llama-server"
@@ -429,10 +443,30 @@ in
       boot.kernel.sysctl = {
         "kernel.numa_balancing"         = lib.mkDefault 0;
         "vm.nr_overcommit_hugepages"    = lib.mkDefault 0;
+        # Phase 5.2.1 — overcommit: prevents OOM kills during llama.cpp mmap+COW
+        # model loading. Mode 1 = always allow; ratio 100 = commit up to RAM+swap.
+        "vm.overcommit_memory"          = lib.mkDefault 1;
+        "vm.overcommit_ratio"           = lib.mkDefault 100;
       };
+      # Phase 5.1.4 — unlock full AMD GPU power management features.
+      # Required for LACT manual frequency control and ROCm compute workloads.
+      # ppfeaturemask=0xffffffff enables all amdgpu power management feature bits.
+      boot.kernelParams = lib.mkAfter [ "amdgpu.ppfeaturemask=0xffffffff" ];
     })
 
     # ── Qdrant vector database — shared across backends ───────────────────────
+    # ── Phase 5.5.2 — RAM-based default model selection ───────────────────────
+    # lib.mkDefault means the user can override with mySystem.aiStack.llamaCpp.model.
+    # These defaults assume HF auto-download will place the file at the path below.
+    # Also set huggingFaceRepo/huggingFaceFile to drive the download service.
+    (lib.mkIf (roleEnabled && llama.huggingFaceRepo == null) {
+      mySystem.aiStack.llamaCpp.model = lib.mkDefault (
+        if cfg.hardware.systemRamGb >= 20
+        then "/var/lib/llama-cpp/models/qwen2.5-coder-14b-instruct-q4_k_m.gguf"
+        else "/var/lib/llama-cpp/models/qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+      );
+    })
+
     (lib.mkIf (roleEnabled && ai.vectorDb.enable && hasQdrant) {
       services.qdrant.enable = true;
       services.qdrant.settings.service = {
