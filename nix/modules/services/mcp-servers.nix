@@ -166,6 +166,8 @@ let
     jsonschema
   ]));
 
+  aiderPython = pkgs.python3.withPackages (ps: sharedPythonPackages ps ++ (with ps; []));
+
   # ── Common service hardening ──────────────────────────────────────────────
   # Mechanic: burst-limited restarts (max 5 in 5 min) prevent crash-loop floods.
   # Gatekeeper: drop all Linux capabilities; block namespace/personality syscalls.
@@ -326,8 +328,10 @@ in
         "d ${dataDir}/ralph              0750 ${svcUser} ${svcGroup} -"
         "d ${dataDir}/ralph/state        0750 ${svcUser} ${svcGroup} -"
         "d ${dataDir}/ralph/telemetry    0750 ${svcUser} ${svcGroup} -"
-        "d ${dataDir}/qdrant-collections 0750 ${svcUser} ${svcGroup} -"
-        "d /var/log/ai-stack             0750 ${svcUser} ${svcGroup} -"
+        "d ${dataDir}/qdrant-collections          0750 ${svcUser} ${svcGroup} -"
+        "d /var/log/ai-stack                      0750 ${svcUser} ${svcGroup} -"
+        "d ${dataDir}/aider-wrapper               0750 ${svcUser} ${svcGroup} -"
+        "d ${dataDir}/aider-wrapper/workspace     0750 ${svcUser} ${svcGroup} -"
       ];
 
       # ── Firewall: expose MCP ports on LAN when requested ───────────────────
@@ -696,6 +700,32 @@ in
           ] ++ lib.optional mcp.postgres.enable
             "DATABASE_URL=${pgUrl}"
             ++ lib.optional sec.enable "RALPH_WIGGUM_API_KEY_FILE=${secretPath aidbApiKeySecret}";
+        };
+      };
+
+    })
+
+    # ── Aider Wrapper — async code modification MCP server ───────────────────
+    (lib.mkIf active {
+
+      systemd.services.ai-aider-wrapper = {
+        description = "Aider Wrapper MCP server (async code modification)";
+        wantedBy    = [ "ai-stack.target" ];
+        partOf      = [ "ai-stack.target" ];
+        after       = [ "network-online.target" ];
+        wants       = [ "network-online.target" ];
+        serviceConfig = commonServiceConfig // {
+          ExecStart = lib.escapeShellArgs [
+            "${aiderPython}/bin/python3"
+            "${repoMcp}/aider-wrapper/server.py"
+          ];
+          Environment = [
+            "AIDER_WRAPPER_PORT=${toString mcp.aiderWrapperPort}"
+            "AIDER_WORKSPACE=${dataDir}/aider-wrapper/workspace"
+            "LLAMA_CPP_HOST=127.0.0.1"
+            "LLAMA_CPP_PORT=${toString llama.port}"
+            "PYTHONPATH=${repoMcp}:${repoMcp}/aider-wrapper"
+          ] ++ lib.optional sec.enable "AIDER_WRAPPER_API_KEY_FILE=${secretPath "aider_wrapper_api_key"}";
         };
       };
 
