@@ -1365,14 +1365,26 @@ persist_home_git_credentials_declarative() {
     return 0
   fi
 
-  local escaped_name escaped_email escaped_helper target helper_block=""
-  escaped_name="$(nix_escape_string "$git_name")"
-  escaped_email="$(nix_escape_string "$git_email")"
+  local escaped_helper target helper_block=""
   escaped_helper="$(nix_escape_string "$git_helper")"
+
+  # Write user.name/email directly to ~/.gitconfig (mutable — survives switches)
+  # rather than via home-manager's programs.git.settings which overwrites the
+  # git config on every switch and prevents post-switch `git config` changes.
+  local git_cmd="git"
+  if [[ "${EUID:-$(id -u)}" -eq 0 && -n "${PRIMARY_USER:-}" ]]; then
+    git_cmd="sudo -u ${PRIMARY_USER} git"
+  fi
+  if [[ -n "$git_name" ]]; then
+    $git_cmd config --global user.name "$git_name" || true
+  fi
+  if [[ -n "$git_email" ]]; then
+    $git_cmd config --global user.email "$git_email" || true
+  fi
 
   if [[ -n "$git_helper" ]]; then
     helper_block=$'    extraConfig = {
-      credential.helper = lib.mkForce "'"${escaped_helper}"'";
+      credential.helper = lib.mkDefault "'"${escaped_helper}"'";
     };
 '
   fi
@@ -1382,12 +1394,11 @@ persist_home_git_credentials_declarative() {
   cat > "$target" <<EOF
 { lib, ... }:
 {
+  # Git identity (user.name, user.email) is written directly to ~/.gitconfig
+  # by nixos-quick-deploy.sh so it remains mutable after every switch.
+  # Only enable git and optionally set the credential helper here.
   programs.git = {
     enable = lib.mkDefault true;
-    settings = {
-      user.name = lib.mkForce "${escaped_name}";
-      user.email = lib.mkForce "${escaped_email}";
-    };
 ${helper_block}  };
 }
 EOF
@@ -1396,6 +1407,7 @@ EOF
     log "Projected declarative git identity for this run: ${target} (will be restored on exit)"
   else
     log "Updated declarative git identity: ${target}"
+    [[ -n "$git_name" ]] && log "Git identity written to ~/.gitconfig: ${git_name} <${git_email}>"
   fi
 }
 
@@ -1785,6 +1797,19 @@ if [[ -x "${REPO_ROOT}/scripts/compare-installed-vs-intended.sh" ]]; then
     log "Installed-vs-intended comparison passed"
   else
     log "Installed-vs-intended comparison reported gaps (non-critical)"
+  fi
+fi
+
+# ---- AI MCP stack post-flight ------------------------------------------------
+# Verify TCP connectivity to Redis/Qdrant/Postgres and HTTP /health endpoints
+# for all MCP services. Runs --optional to also report aider-wrapper and
+# supplementary services. Non-blocking: issues are logged but do not abort.
+if [[ "$RUN_HEALTH_CHECK" == true && -x "${REPO_ROOT}/scripts/check-mcp-health.sh" ]]; then
+  log "Running AI stack MCP health check"
+  if "${REPO_ROOT}/scripts/check-mcp-health.sh" --optional; then
+    log "AI MCP health check passed"
+  else
+    log "AI MCP health check reported issues — check 'scripts/check-mcp-health.sh --optional' for details (non-critical)"
   fi
 fi
 
