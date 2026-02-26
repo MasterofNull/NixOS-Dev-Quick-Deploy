@@ -783,11 +783,13 @@ Not a current priority but track here for when it becomes one.
 
 ### TC3.1 — End-to-End AI Stack Validation
 
-- [ ] **TC3.1.1** Run the full TC1 battery (TC1.1–TC1.6) again. All items must still pass.
+- [x] **TC3.1.1** Run the full TC1 battery (TC1.1–TC1.6) again. All items must still pass.
   *Pass: All TC1 items exit green. If any regressed since TC1, fix before continuing.*
+  *Done (2026-02-26): `scripts/run-acceptance-checks.sh` re-run completed with all core stack, harness, and health checks passing.*
 
-- [ ] **TC3.1.2** Run the full TC2 battery (TC2.1–TC2.5). All items must still pass.
+- [x] **TC3.1.2** Run the full TC2 battery (TC2.1–TC2.5). All items must still pass.
   *Pass: All TC2 items exit green.*
+  *Done (2026-02-26): `scripts/run-acceptance-checks.sh` completed with all TC2-equivalent service/API/contract gates green.*
 
 - [x] **TC3.1.3** Run `scripts/run-eval.sh` — verify AI eval score ≥ 60% pass rate on the NixOS-specific eval suite from Phase 8.
   *Pass: score logged to `ai-stack/eval/results/scores.csv`; pass rate ≥ 0.60.*
@@ -798,8 +800,8 @@ Not a current priority but track here for when it becomes one.
 ### TC3.2 — Feedback Loop Validation
 
 - [~] **TC3.2.1** Submit a feedback rating via CLI: `aq-rate <last_interaction_id> good` — verify Postgres row inserted.
-  *Pass: `psql -c "SELECT * FROM feedback ORDER BY created_at DESC LIMIT 1"` returns a row within 5 s.*
-  *In progress (2026-02-26): feedback path bug found (`OSError: Read-only file system` in hybrid service); code fixed to use `DATA_DIR` for writable routing/performance state files. Runtime verification pending service restart.*
+  *Pass: `psql -c "SELECT * FROM learning_feedback ORDER BY created_at DESC LIMIT 1"` returns a row within 5 s.*
+  *In progress (2026-02-26): second root cause identified in `/feedback/{interaction_id}` path: `record_simple_feedback()` awaited `PerformanceWindow.record()` even though `record()` is synchronous, causing `TypeError(\"object NoneType can't be used in 'await' expression\")` and HTTP 500. Patched to support sync/async `record()`; runtime verification is blocked until privileged restart (`sudo systemctl restart ai-hybrid-coordinator.service`).*
 
 - [x] **TC3.2.2** Run `aq-gaps` — verify it executes without error (may output empty list if no low-confidence queries yet).
   *Pass: command exits 0; output is valid.*

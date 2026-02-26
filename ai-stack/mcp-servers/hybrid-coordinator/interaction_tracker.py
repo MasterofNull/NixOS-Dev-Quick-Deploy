@@ -20,6 +20,7 @@ Usage:
 """
 
 import json
+import inspect
 import logging
 import os
 from datetime import datetime
@@ -137,7 +138,9 @@ async def record_simple_feedback(
         except Exception as exc:
             logger.warning("feedback_postgres_failed error=%s", exc)
     pw = _perf_window or _default_perf_window
-    await pw.record("general", success=(rating > 0))
+    record_result = pw.record("general", success=(rating > 0))
+    if inspect.isawaitable(record_result):
+        await record_result
     logger.info("simple_feedback_recorded interaction_id=%s rating=%d", interaction_id, rating)
     return feedback_id
 
