@@ -406,5 +406,5 @@ async def get_task_status(task_id: str, auth: str = Depends(require_auth)):
 # ============================================================================
 
 if __name__ == "__main__":
-    port = int(os.getenv("AIDER_WRAPPER_PORT", "8099"))
+    port = int(os.getenv("AIDER_WRAPPER_PORT", "8090"))
     uvicorn.run(app, host="0.0.0.0", port=port)
