@@ -33,6 +33,7 @@ check_unit ai-stack.target
 check_unit ai-aidb.service
 check_unit ai-hybrid-coordinator.service
 check_unit ai-ralph-wiggum.service
+check_unit ai-aider-wrapper.service
 check_unit ai-otel-collector.service
 check_unit ai-switchboard.service
 check_unit qdrant.service
