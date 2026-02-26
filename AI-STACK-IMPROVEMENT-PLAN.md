@@ -434,17 +434,21 @@
 
 **Problem:** Monitoring is Prometheus + Node Exporter only. No Grafana, no alertmanager, no GPU metrics, no ROCm memory utilization, no per-service memory tracking. You are flying blind during model inference.
 
-- [ ] **5.4.1** Add Grafana to the monitoring stack with a NixOS module. Pre-configure Prometheus as the default data source.
+- [x] **5.4.1** Add Grafana to the monitoring stack with a NixOS module. Pre-configure Prometheus as the default data source.
   *Success metric: `curl http://localhost:3000` returns Grafana login page; Prometheus datasource is pre-configured.*
+  *Done (2026-02-26): Declarative Grafana module enabled in `nix/modules/services/monitoring.nix` with provisioned Prometheus datasource and centralized `monitoring.grafanaPort` wired from `ports.grafana`.*
 
-- [ ] **5.4.2** Add `prometheus-amdgpu-exporter` or equivalent to expose GPU utilization, VRAM usage, temperature, and power draw as Prometheus metrics.
+- [x] **5.4.2** Add `prometheus-amdgpu-exporter` or equivalent to expose GPU utilization, VRAM usage, temperature, and power draw as Prometheus metrics.
   *Success metric: `curl http://localhost:9400/metrics | grep amdgpu` returns GPU metrics including `amdgpu_gpu_busy_percent` and `amdgpu_memory_used_bytes`.*
+  *Done (2026-02-26): Added declarative equivalent exporter via `ai-amdgpu-metrics-exporter` service+timer emitting `amdgpu_*.prom` into node_exporter textfile collector (`amdgpu_gpu_busy_percent`, VRAM used/total, temperature, power).*
 
-- [ ] **5.4.3** Add a pre-built Grafana dashboard for the AI inference stack showing: tokens/sec, GPU utilization, VRAM usage, RAM usage, cache hit rate, local/remote routing ratio, p95 latency per backend.
+- [x] **5.4.3** Add a pre-built Grafana dashboard for the AI inference stack showing: tokens/sec, GPU utilization, VRAM usage, RAM usage, cache hit rate, local/remote routing ratio, p95 latency per backend.
   *Success metric: Dashboard loads in Grafana; all panels show data after running 10 test queries.*
+  *Done (2026-02-26): Added provisioned dashboard `ai-stack-overview.json` with required panels and Prometheus queries; deployed declaratively via `/etc/grafana-dashboards`.*
 
-- [ ] **5.4.4** Add `prometheus.exporters.node` collectors: `hwmon` (temperature sensors), `nvme` (NVMe health/wear), `thermal_zone`.
+- [x] **5.4.4** Add `prometheus.exporters.node` collectors: `hwmon` (temperature sensors), `nvme` (NVMe health/wear), `thermal_zone`.
   *Success metric: `curl http://localhost:9100/metrics | grep node_hwmon_temp` returns ThinkPad temperature sensor values including `thinkpad-isa-0000` fan speeds.*
+  *Done (2026-02-26): Node exporter collectors explicitly enabled in `monitoring.nix` (`hwmon`, `nvme`, `thermal_zone`, plus `textfile` for custom GPU metrics).*
 
 ---
 
@@ -540,6 +544,7 @@ Same problem, same approach. AIDB is simultaneously: a vector DB client, an embe
 
 - [x] **6.5.2** Audit all shell scripts in `scripts/` for hardcoded port numbers not read from env vars. Fix any bare literals found.
   *DONE (2026-02-26): All scripts use ${VAR:-default} pattern correctly. No bare literals found in non-comment lines.*
+  *Update (2026-02-26): Home Manager port fallbacks were refactored to resolve exclusively via `mySystem.ports.*` registry keys (no numeric literals). Missing keys now fail fast during evaluation.*
 
 - [x] **6.5.3** Add a NixOS assertion in `ai-stack.nix`: verify that all service URL options are non-empty before generating the systemd environment block.
   *DONE (2026-02-26, commit 4a6ea2f): Added to mcp-servers.nix: port collision guard (aidbPort/hybridPort/ralphPort must be distinct) + non-empty path guard (repoPath/dataDir must be set).*
@@ -602,11 +607,11 @@ Same problem, same approach. AIDB is simultaneously: a vector DB client, an embe
 
 ### TC2.4 — Aider Wrapper Async Queue
 
-- [ ] **TC2.4.1** Submit a short aider task: `POST http://localhost:8090/tasks` — verify immediate response with a `task_id` field.
-  *BLOCKED: aider-wrapper has no NixOS systemd service unit. Provisioning tracked in Phase 6 cleanup. Port is 8090 (not 8005).*
+- [x] **TC2.4.1** Submit a short aider task: `POST http://localhost:8090/tasks` — verify immediate response with a `task_id` field.
+  *PASS (2026-02-26): `POST /tasks` returned immediate `task_id` (`fafabe0f-d7ee-4464-80c9-4853c6336ede`) and `status=queued` from running `ai-aider-wrapper.service`.*
 
-- [ ] **TC2.4.2** Poll `GET /tasks/{id}/status` until terminal state. Health endpoint must respond throughout.
-  *BLOCKED: same as TC2.4.1.*
+- [x] **TC2.4.2** Poll `GET /tasks/{id}/status` until terminal state. Health endpoint must respond throughout.
+  *PASS (2026-02-26): polled `GET /tasks/{id}/status` to terminal `status=error` (expected on host without `aider` binary); `/health` remained HTTP 200 throughout.*
 
 ---
 
