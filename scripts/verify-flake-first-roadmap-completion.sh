@@ -79,7 +79,7 @@ check_pattern "scripts/analyze-clean-deploy-readiness.sh" 'resolve_host_from_fla
 check_pattern "nixos-quick-deploy.sh" 'is_locked_password_field\(\)' 'Deploy entrypoint has explicit lock marker detector'
 check_pattern "nixos-quick-deploy.sh" 'Could not read password hash state' 'Unreadable password state is non-fatal'
 check_pattern "nixos-quick-deploy.sh" 'persist_home_git_credentials_declarative\(\)' 'Declarative git projection helper exists'
-check_pattern "nixos-quick-deploy.sh" 'credential.helper = lib.mkForce' 'Declarative git credential helper projection exists'
+check_pattern "nixos-quick-deploy.sh" 'credential.helper = lib.mkDefault' 'Declarative git credential helper projection exists'
 
 # Home/Nix wiring for host-scoped declarative overlays
 check_pattern "flake.nix" 'hostDeployOptionsPath' 'Root flake includes host deploy options path'
@@ -97,7 +97,7 @@ check_pattern "nix/modules/services/mcp-servers.nix" 'otlpEndpoint = "http://127
 check_pattern "nix/modules/services/mcp-servers.nix" 'nop: \{\}' 'OTEL collector uses nop exporter to suppress debug trace dumps'
 check_absent_pattern "nix/modules/services/mcp-servers.nix" 'jaeger:4317' 'No hardcoded Jaeger endpoint in declarative MCP services'
 check_absent_pattern "nix/modules/services/mcp-servers.nix" 'debug:' 'No debug exporter configured in declarative OTEL collector'
-check_pattern "ai-stack/mcp-servers/hybrid-coordinator/server.py" 'AI_STRICT_ENV", "true"' 'Hybrid coordinator defaults to strict env enforcement'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/config.py" 'AI_STRICT_ENV", "true"' 'Hybrid coordinator defaults to strict env enforcement'
 check_pattern "ai-stack/mcp-servers/ralph-wiggum/server.py" 'AI_STRICT_ENV", "true"' 'Ralph defaults to strict env enforcement'
 check_pattern "ai-stack/mcp-servers/aidb/settings_loader.py" 'AI_STRICT_ENV", "true"' 'AIDB settings loader defaults to strict env enforcement'
 

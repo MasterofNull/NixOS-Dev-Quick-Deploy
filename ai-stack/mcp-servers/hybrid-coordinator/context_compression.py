@@ -8,6 +8,8 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from metrics import CONTEXT_COMPRESSION_TOKENS_BEFORE, CONTEXT_COMPRESSION_TOKENS_AFTER
+
 logger = logging.getLogger("context-compression")
 
 
@@ -57,6 +59,13 @@ class ContextCompressor:
         if not contexts:
             return "", [], 0
 
+        # Count raw tokens across all contexts before compression
+        tokens_before = sum(
+            self.estimate_tokens(ctx.get('text', ctx.get('payload', {}).get('content', '')))
+            for ctx in contexts
+        )
+        CONTEXT_COMPRESSION_TOKENS_BEFORE.observe(tokens_before)
+
         # Sort by relevance score (highest first)
         sorted_contexts = sorted(
             contexts,
@@ -65,11 +74,14 @@ class ContextCompressor:
         )
 
         if strategy == "truncate":
-            return self._compress_truncate(sorted_contexts, max_tokens)
+            result = self._compress_truncate(sorted_contexts, max_tokens)
         elif strategy == "summarize":
-            return self._compress_summarize(sorted_contexts, max_tokens)
+            result = self._compress_summarize(sorted_contexts, max_tokens)
         else:  # hybrid (default)
-            return self._compress_hybrid(sorted_contexts, max_tokens)
+            result = self._compress_hybrid(sorted_contexts, max_tokens)
+
+        CONTEXT_COMPRESSION_TOKENS_AFTER.observe(result[2])
+        return result
 
     def _compress_truncate(
         self,

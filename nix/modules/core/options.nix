@@ -327,7 +327,22 @@
       enable = lib.mkOption {
         type = lib.types.bool;
         default = false;
-        description = "Enable declarative sops-nix secret decryption into /run/secrets.";
+        description = ''
+          Enable declarative sops-nix API key protection for AI stack services.
+
+          When true, each AI stack service (AIDB, hybrid coordinator, embeddings,
+          aider-wrapper, PostgreSQL, Redis) requires a matching API key or password
+          from /run/secrets/* before accepting requests.
+
+          When false (default), services start without authentication — any local
+          process can call them without credentials. This is convenient for isolated
+          development machines but is not recommended for shared or networked hosts.
+
+          The deploy script (nixos-quick-deploy.sh) will prompt to enable protection
+          on first run when the AI stack role is active. To enable manually, set
+          mySystem.secrets.enable = true in nix/hosts/<host>/deploy-options.local.nix
+          and rerun with --force-ai-secrets-bootstrap to generate the secrets file.
+        '';
       };
 
       sopsFile = lib.mkOption {

@@ -573,19 +573,42 @@ bootstrap_ai_stack_secrets_if_needed() {
   fi
 
   if ! is_interactive_tty; then
-    die "AI stack is enabled but secrets are disabled and no interactive TTY is available. Rerun interactively to bootstrap secrets or preconfigure mySystem.secrets in deploy-options.local.nix."
+    log "WARNING: AI stack API key protection is not configured. All AI stack services (AIDB, hybrid"
+    log "coordinator, embeddings, aider-wrapper) are reachable without authentication. To enable"
+    log "protection, rerun interactively or set mySystem.secrets in deploy-options.local.nix."
+    AI_SECRETS_BOOTSTRAP_STATUS="skipped:no-tty"
+    return 0
   fi
 
   local choice host_dir secrets_root secrets_file sops_cfg age_key_dir age_key_file public_key
   local legacy_secrets_file legacy_sops_cfg
-  local aidb_key_name hybrid_key_name embeddings_key_name postgres_key_name redis_key_name
-  local aidb_api_key hybrid_api_key embeddings_api_key postgres_password redis_password
+  local aidb_key_name hybrid_key_name embeddings_key_name postgres_key_name redis_key_name aider_wrapper_key_name
+  local aidb_api_key hybrid_api_key embeddings_api_key postgres_password redis_password aider_wrapper_api_key
   local plain_tmp summary_tmp
 
-  read -r -p "AI stack secrets are disabled for ${NIXOS_TARGET}. Bootstrap now? [Y/n]: " choice
+  printf '\n'
+  printf '[clean-deploy] ── AI Stack Security Setup ──────────────────────────────────────────\n'
+  printf '  The AI stack services on %s have no API key protection configured.\n' "${NIXOS_TARGET}"
+  printf '  Without protection, any local process can call AIDB, the hybrid coordinator,\n'
+  printf '  embeddings, aider-wrapper, and other services without a password or API key.\n'
+  printf '\n'
+  printf '  Enable protection now (recommended):\n'
+  printf '    Generates encrypted API keys and passwords for each service.\n'
+  printf '    Services will reject requests that do not present the correct key.\n'
+  printf '\n'
+  printf '  Skip protection (not recommended for shared or networked machines):\n'
+  printf '    Services start without authentication. You can enable protection\n'
+  printf '    later by rerunning with: --force-ai-secrets-bootstrap\n'
+  printf '[clean-deploy] ─────────────────────────────────────────────────────────────────────\n'
+  printf '\n'
+  read -r -p "Enable AI stack API key protection? [Y/n] (default: Yes — recommended): " choice
   choice="${choice:-Y}"
   if [[ ! "${choice}" =~ ^[Yy]$ && "${FORCE_AI_SECRETS_BOOTSTRAP}" != "true" ]]; then
-    die "AI stack secrets are required when aiStack is enabled. Bootstrap was declined."
+    printf '\n'
+    log "AI stack API key protection was skipped. Services will run WITHOUT authentication."
+    log "To enable protection at any time, rerun with: --force-ai-secrets-bootstrap"
+    AI_SECRETS_BOOTSTRAP_STATUS="skipped:declined"
+    return 0
   fi
 
   require_command sops
@@ -605,6 +628,7 @@ bootstrap_ai_stack_secrets_if_needed() {
   embeddings_key_name="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.secrets.names.embeddingsApiKey" 2>/dev/null || echo "embeddings_api_key")"
   postgres_key_name="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.secrets.names.postgresPassword" 2>/dev/null || echo "postgres_password")"
   redis_key_name="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.secrets.names.redisPassword" 2>/dev/null || echo "redis_password")"
+  aider_wrapper_key_name="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.secrets.names.aiderWrapperApiKey" 2>/dev/null || echo "aider_wrapper_api_key")"
 
   install -d -m 0700 "${secrets_root}" 2>/dev/null || true
   if [[ ! -d "${secrets_root}" ]]; then
@@ -691,12 +715,14 @@ EOF
         embeddings_api_key="${shared_secret}"
         postgres_password="${shared_secret}"
         redis_password="${shared_secret}"
+        aider_wrapper_api_key="${shared_secret}"
       else
         aidb_api_key="$(read_secret_value "AIDB API key")"
         hybrid_api_key="$(read_secret_value "Hybrid coordinator API key")"
         embeddings_api_key="$(read_secret_value "Embeddings API key")"
         postgres_password="$(read_secret_value "Postgres password")"
         redis_password="$(read_secret_value "Redis password")"
+        aider_wrapper_api_key="$(read_secret_value "Aider-wrapper API key")"
       fi
       ;;
     2)
@@ -705,6 +731,7 @@ EOF
       embeddings_api_key="$(generate_secret_value token)"
       postgres_password="$(generate_secret_value password)"
       redis_password="$(generate_secret_value password)"
+      aider_wrapper_api_key="$(generate_secret_value token)"
       ;;
     *)
       die "Invalid secrets mode '${choice}'. Expected 1 or 2."
@@ -720,11 +747,13 @@ EOF
   EMBEDDINGS_KEY_NAME="${embeddings_key_name}" \
   POSTGRES_KEY_NAME="${postgres_key_name}" \
   REDIS_KEY_NAME="${redis_key_name}" \
+  AIDER_WRAPPER_KEY_NAME="${aider_wrapper_key_name}" \
   AIDB_API_KEY="${aidb_api_key}" \
   HYBRID_API_KEY="${hybrid_api_key}" \
   EMBEDDINGS_API_KEY="${embeddings_api_key}" \
   POSTGRES_PASSWORD="${postgres_password}" \
   REDIS_PASSWORD="${redis_password}" \
+  AIDER_WRAPPER_API_KEY="${aider_wrapper_api_key}" \
   python3 - <<'PY' > "${plain_tmp}"
 import json
 import os
@@ -735,6 +764,7 @@ payload = {
     os.environ["EMBEDDINGS_KEY_NAME"]: os.environ["EMBEDDINGS_API_KEY"],
     os.environ["POSTGRES_KEY_NAME"]: os.environ["POSTGRES_PASSWORD"],
     os.environ["REDIS_KEY_NAME"]: os.environ["REDIS_PASSWORD"],
+    os.environ["AIDER_WRAPPER_KEY_NAME"]: os.environ["AIDER_WRAPPER_API_KEY"],
 }
 print(json.dumps(payload, ensure_ascii=True))
 PY
@@ -759,6 +789,7 @@ ${hybrid_key_name}=${hybrid_api_key}
 ${embeddings_key_name}=${embeddings_api_key}
 ${postgres_key_name}=${postgres_password}
 ${redis_key_name}=${redis_password}
+${aider_wrapper_key_name}=${aider_wrapper_api_key}
 EOF
   run_privileged install -m 0600 "${summary_tmp}" "/root/ai-stack-initial-secrets-${HOST_NAME}.txt"
   rm -f "${summary_tmp}"
@@ -777,6 +808,7 @@ EOF
     printf '  %s=%s\n' "${embeddings_key_name}" "${embeddings_api_key}"
     printf '  %s=%s\n' "${postgres_key_name}" "${postgres_password}"
     printf '  %s=%s\n' "${redis_key_name}" "${redis_password}"
+    printf '  %s=%s\n' "${aider_wrapper_key_name}" "${aider_wrapper_api_key}"
   fi
   read -r -p "Press Enter after you have securely recorded these secrets. " _
   AI_SECRETS_BOOTSTRAP_STATUS="configured"
@@ -1371,15 +1403,22 @@ persist_home_git_credentials_declarative() {
   # Write user.name/email directly to ~/.gitconfig (mutable — survives switches)
   # rather than via home-manager's programs.git.settings which overwrites the
   # git config on every switch and prevents post-switch `git config` changes.
-  local git_cmd="git"
+  # Use --file ~/.gitconfig (not --global) to bypass XDG ~/.config/git/config
+  # which is home-manager-managed and read-only after a switch.
+  local user_home="${HOME:-/home/${PRIMARY_USER:-}}"
   if [[ "${EUID:-$(id -u)}" -eq 0 && -n "${PRIMARY_USER:-}" ]]; then
-    git_cmd="sudo -u ${PRIMARY_USER} git"
+    user_home="$(getent passwd "$PRIMARY_USER" | cut -d: -f6)"
+  fi
+  local gitconfig_path="${user_home}/.gitconfig"
+  local git_file_cmd="git --git-dir=/dev/null config --file ${gitconfig_path}"
+  if [[ "${EUID:-$(id -u)}" -eq 0 && -n "${PRIMARY_USER:-}" ]]; then
+    git_file_cmd="sudo -u ${PRIMARY_USER} git --git-dir=/dev/null config --file ${gitconfig_path}"
   fi
   if [[ -n "$git_name" ]]; then
-    $git_cmd config --global user.name "$git_name" || true
+    $git_file_cmd user.name "$git_name" || true
   fi
   if [[ -n "$git_email" ]]; then
-    $git_cmd config --global user.email "$git_email" || true
+    $git_file_cmd user.email "$git_email" || true
   fi
 
   if [[ -n "$git_helper" ]]; then
@@ -1812,5 +1851,34 @@ if [[ "$RUN_HEALTH_CHECK" == true && -x "${REPO_ROOT}/scripts/check-mcp-health.s
     log "AI MCP health check reported issues — check 'scripts/check-mcp-health.sh --optional' for details (non-critical)"
   fi
 fi
+
+# ---- Command Center Dashboard post-flight ------------------------------------
+# Confirm the dashboard API is reachable and reports a healthy/degraded aggregate.
+# Non-fatal: a down dashboard never aborts a successful deploy.
+check_dashboard_postflight() {
+  [[ "${RUN_HEALTH_CHECK}" == true ]] || return 0
+
+  local endpoints_file="${REPO_ROOT}/config/service-endpoints.sh"
+  local dashboard_api_url="http://localhost:8889"
+  if [[ -f "${endpoints_file}" ]]; then
+    # shellcheck source=config/service-endpoints.sh
+    # Extract DASHBOARD_API_URL from the endpoints file without full sourcing
+    local extracted
+    extracted="$(grep 'DASHBOARD_API_URL' "${endpoints_file}" | grep -oP 'http://[^}\"]+' | head -1 || true)"
+    [[ -n "${extracted}" ]] && dashboard_api_url="${extracted}"
+  fi
+
+  local probe_url="${dashboard_api_url%/}/api/health/aggregate"
+  local status
+  if status="$(curl -fsS --max-time 10 --connect-timeout 3 "${probe_url}" 2>/dev/null \
+      | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("overall_status","unknown"))' 2>/dev/null)"; then
+    log "Dashboard OK — ${dashboard_api_url%/} (status: ${status})"
+  else
+    log "WARNING: Dashboard did not respond at ${probe_url}"
+    log "  Check: journalctl -u command-center-dashboard-api.service -n 20 --no-pager"
+    log "  Rerun: scripts/check-mcp-health.sh --optional"
+  fi
+}
+check_dashboard_postflight
 
 log "Clean deployment complete"

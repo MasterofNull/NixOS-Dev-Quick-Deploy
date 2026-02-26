@@ -689,6 +689,8 @@ in
             "LLAMA_CPP_BASE_URL=http://127.0.0.1:${toString llama.port}"
             "HYBRID_COORDINATOR_URL=http://127.0.0.1:${toString mcp.hybridPort}"
             "AIDB_URL=http://127.0.0.1:${toString mcp.aidbPort}"
+            "AIDER_WRAPPER_HOST=127.0.0.1"
+            "AIDER_WRAPPER_PORT=${toString mcp.aiderWrapperPort}"
             "DATA_DIR=${dataDir}/ralph"
             "XDG_STATE_HOME=${dataDir}/ralph/state"
             "RALPH_STATE_FILE=${dataDir}/ralph/ralph-state.json"

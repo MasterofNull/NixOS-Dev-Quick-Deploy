@@ -1196,4 +1196,120 @@ These are identified issues not assigned to a phase yet. Do not start these unti
 
 ---
 
-*Last updated: 2026-02-25. Update this document when a task status changes.*
+## Phase 17 — Command Center Dashboard: Full AI Stack Coverage
+**Goal:** Bring the Command Center Dashboard to 100% coverage of the running AI stack, replacing systemd-state-only health checks with real HTTP probes, adding all missing services, and removing the deprecated legacy server. Dashboard must be confirmed running as part of every `nixos-quick-deploy.sh` post-flight pass.
+**Audit baseline (2026-02-26):** Dashboard is ~70% complete. Seven AI services covered; aider-wrapper (8090) entirely absent; Redis/PostgreSQL lack actual connectivity probes; health aggregate uses `systemctl is-active` only; deprecated `scripts/dashboard-api-server.py` (aiohttp) still exists.
+
+Key files:
+- `dashboard/backend/api/routes/aistack.py` — AI service monitoring routes (841 lines)
+- `dashboard/backend/api/config/service_endpoints.py` — port/URL constants (59 lines)
+- `dashboard/backend/api/services/systemd_units.py` — monitored unit list
+- `nix/modules/services/command-center-dashboard.nix` — NixOS module, injects env vars
+- `nixos-quick-deploy.sh` — deploy script, post-flight checks
+
+---
+
+### 17.1 — Wire aider-wrapper into Dashboard
+
+**Problem:** `ai-aider-wrapper.service` (port 8090) is completely absent from every dashboard layer: env config, service endpoint registry, unit monitor list, and AI metrics route. Any aider task status is invisible in the dashboard.
+
+- [ ] **17.1.1** Add `AIDER_WRAPPER_PORT` to `dashboard/backend/api/config/service_endpoints.py` (sourced from `AI_AIDER_WRAPPER_PORT` env var, default 8090) and add `AIDER_WRAPPER_URL` construction alongside the existing URL constants.
+  *Success metric: `python3 -c "from config.service_endpoints import AIDER_WRAPPER_URL; print(AIDER_WRAPPER_URL)"` prints the correct URL without error.*
+
+- [ ] **17.1.2** Add `AIDER_WRAPPER_URL` env var injection to `nix/modules/services/command-center-dashboard.nix` (same pattern as existing `AIDB_URL`, `HYBRID_COORDINATOR_URL` injections). Source the value from `cfg.ports.aiderWrapper` via `options.nix`.
+  *Success metric: `systemctl show command-center-dashboard-api.service | grep AIDER` shows the env var with the correct port after `nixos-rebuild switch`.*
+
+- [ ] **17.1.3** Add `ai-aider-wrapper.service` to the monitored units list in `dashboard/backend/api/services/systemd_units.py`.
+  *Success metric: `GET /api/health` response includes `ai-aider-wrapper` in the services array.*
+
+- [ ] **17.1.4** Add aider-wrapper to the `SERVICES` dict in `dashboard/backend/api/routes/aistack.py` with an HTTP health probe to `AIDER_WRAPPER_URL/health` and a metrics collector for active tasks count and last task status. Wire into `get_ai_metrics()`.
+  *Success metric: `GET /api/aistack/metrics` returns an `aider_wrapper` key with `status`, `active_tasks`, and `last_task_status` fields.*
+
+---
+
+### 17.2 — Upgrade Health Aggregate from systemd-state to HTTP Probes
+
+**Problem:** `get_health_aggregate()` in `aistack.py` (lines 544–599) only calls `systemctl is-active` for each service. A service can be `active` but its HTTP endpoint unreachable (bad bind, port conflict, crash-loop with restart). This produces false-healthy results.
+
+- [ ] **17.2.1** Refactor `get_health_aggregate()` to run a lightweight HTTP `GET /health` probe (2 s timeout, no retry) for each service that exposes an HTTP endpoint, in addition to the systemd state check. Services without HTTP endpoints (PostgreSQL, Redis) remain systemd-only in this task.
+  *Success metric: Stopping llama.cpp's HTTP port (kill -STOP) while the systemd unit remains `active` causes `overall_status` to change from `healthy` to `degraded` within one poll cycle.*
+
+- [ ] **17.2.2** Add a `check_mode` field to each service entry in the health aggregate response: `"systemd"`, `"http"`, or `"systemd+http"`, so consumers know how each result was obtained.
+  *Success metric: `GET /api/health/aggregate` JSON contains `check_mode` for every service entry.*
+
+- [ ] **17.2.3** Expose a `/api/health/probe` endpoint that triggers an immediate on-demand health probe cycle (bypasses cache) and returns full results. Used by `nixos-quick-deploy.sh` post-flight.
+  *Success metric: `curl -s http://localhost:8889/api/health/probe | jq .overall_status` returns `healthy` or `degraded` (not an error) within 10 s.*
+
+---
+
+### 17.3 — Real Infrastructure Connectivity Probes (Redis + PostgreSQL)
+
+**Problem:** Redis and PostgreSQL are listed in the health aggregate as `active`/`inactive` based on systemd unit state only. No actual TCP connection or protocol-level health check is performed. A misconfigured PostgreSQL (wrong `pg_hba.conf`) would show green.
+
+- [ ] **17.3.1** Add a Redis PING probe in `aistack.py`: open a raw TCP socket to `${REDIS_URL}`, send `PING\r\n`, assert response starts with `+PONG`. Report `redis_latency_ms` in the metrics.
+  *Success metric: `GET /api/aistack/metrics` returns `redis_ping_ok: true` and `redis_latency_ms: <number>` when Redis is healthy.*
+
+- [ ] **17.3.2** Add a PostgreSQL `SELECT 1` probe using the existing `asyncpg` dependency (already in the Python env). Connect using `AIDB_DB_URL`, run `SELECT 1`, report latency. No persistent connection — open/close per probe cycle.
+  *Success metric: `GET /api/aistack/metrics` returns `postgres_query_ok: true` and `postgres_latency_ms: <number>` when PostgreSQL is healthy.*
+
+- [ ] **17.3.3** Expose `redis_ping_ok` and `postgres_query_ok` as Prometheus gauges via the existing metrics exporter so Prometheus can alert on connectivity loss independently of systemd unit state.
+  *Success metric: `curl -s http://localhost:8889/metrics | grep -E "redis_ping_ok|postgres_query_ok"` shows gauge values `1.0` on a healthy system.*
+
+---
+
+### 17.4 — Add Embedding Cache, Compression, and Routing Metrics
+
+**Problem:** The dashboard shows no data for the EmbeddingCache (hit/miss rate), ContextCompressor (compression ratio, tokens saved), or LLM routing decisions (local vs remote backend selection rate). These are the most important operational signals for Phase 1–3 features.
+
+- [ ] **17.4.1** Emit `embedding_cache_hits_total` and `embedding_cache_misses_total` Prometheus counters from `embedding_cache.py` `get()` path. Dashboard reads these via the Prometheus query API.
+  *Success metric: After 10 `embed_text()` calls (mix of hit/miss), `curl prometheus:9090/api/v1/query?query=embedding_cache_hits_total` returns a non-zero value.*
+
+- [ ] **17.4.2** Emit `context_compression_tokens_before` and `context_compression_tokens_after` Prometheus histograms from `context_compression.py` compress path.
+  *Success metric: `curl prometheus:9090/api/v1/query?query=context_compression_tokens_before_sum` returns a value after any compression call.*
+
+- [ ] **17.4.3** Add an "AI Internals" panel to the dashboard frontend (`dashboard.html` / frontend JS) showing: embedding cache hit rate (%), tokens compressed (last hour), local vs remote routing split (from `LLM_BACKEND_SELECTIONS` counter already emitted by Phase 2).
+  *Success metric: Dashboard frontend renders the "AI Internals" panel with live data; no JS console errors.*
+
+---
+
+### 17.5 — Delete Deprecated Legacy aiohttp Server
+
+**Problem:** `scripts/dashboard-api-server.py` is an old aiohttp-based dashboard server that predates the current FastAPI backend at `dashboard/backend/`. It is not referenced by any systemd unit or NixOS module but its presence creates confusion about which server is canonical.
+
+- [ ] **17.5.1** Confirm `scripts/dashboard-api-server.py` is not imported, exec'd, or referenced by any active NixOS module, systemd unit, or deploy script.
+  *Success metric: `grep -rn "dashboard-api-server" nix/ nixos-quick-deploy.sh scripts/` returns no matches (excluding the file itself).*
+
+- [ ] **17.5.2** Delete `scripts/dashboard-api-server.py`.
+  *Success metric: File is absent; `nixos-rebuild dry-run` still succeeds; `system-health-check.sh` still passes.*
+
+---
+
+### 17.6 — Dashboard Post-flight in Deploy Script
+
+**Problem:** After `nixos-quick-deploy.sh` completes, the operator has no confirmation that the dashboard is reachable. The script currently runs `system-health-check.sh` (systemd units) and `check-mcp-health.sh --optional` (AI MCP services) but does not verify the dashboard itself is serving.
+
+- [ ] **17.6.1** Add a `check_dashboard_postflight()` function to `nixos-quick-deploy.sh` that:
+  - Calls `/api/health/probe` (from 17.2.3) with a 15 s timeout.
+  - On success: prints `Dashboard OK — <URL>` and the aggregate `overall_status`.
+  - On failure: prints a warning (non-fatal) with the dashboard URL and `journalctl -u command-center-dashboard-api.service -n 20` hint.
+  *Success metric: Running `nixos-quick-deploy.sh` on a healthy system prints `Dashboard OK` near the end of output. Running with dashboard stopped prints a non-fatal warning without aborting the deploy.*
+
+- [ ] **17.6.2** Add `command-center-dashboard-api.service` and `command-center-dashboard-frontend.service` to the `system-health-check.sh` declarative unit checks (already partially present — verify and confirm both are listed).
+  *Success metric: `scripts/system-health-check.sh` reports `OK` or `FAIL` for both dashboard units explicitly.*
+
+---
+
+### Phase 17 Gate Conditions
+
+| Sub-phase | Gate |
+|-----------|------|
+| 17.1 | `GET /api/aistack/metrics` returns `aider_wrapper` key; `systemctl show` confirms `AIDER_WRAPPER_URL` injected |
+| 17.2 | Stopping llama.cpp HTTP port flips `overall_status` to `degraded`; `/api/health/probe` endpoint works |
+| 17.3 | `redis_ping_ok` and `postgres_query_ok` appear in Prometheus metrics with correct values |
+| 17.4 | "AI Internals" panel live in dashboard frontend; Prometheus counters emit after cache/compression calls |
+| 17.5 | `scripts/dashboard-api-server.py` deleted; no regressions |
+| 17.6 | Deploy script prints `Dashboard OK` on healthy system; non-fatal warning when dashboard is down |
+
+---
+
+*Last updated: 2026-02-26. Update this document when a task status changes.*
