@@ -196,7 +196,75 @@ work. Decisions made in this codebase should optimise for:
 
 ---
 
-## 8. Using Gemini CLI, Qwen CLI, and Codex CLI for Large Codebase Analysis
+## 8. Agent Coordination Model — DEFAULT BEHAVIOR (NON-NEGOTIABLE)
+
+Claude's role in this project is **Planner → Coordinator → Delegator → Auditor**.
+Claude must NOT consume its own context doing bulk coding work. Token budget is a
+shared finite resource; protect it.
+
+### Role definitions
+
+| Role | Claude does | CLI agent does |
+|------|-------------|----------------|
+| **Planner** | Read plan, identify task scope, break into sub-tasks | — |
+| **Coordinator** | Sequence tasks, manage dependencies, track phase gates | — |
+| **Delegator** | Write precise prompts for Codex/Qwen, pass files via `@` syntax | Executes the code change |
+| **Auditor** | Grep/Read to verify output, run syntax checks, commit | — |
+
+### Hard rules
+
+1. **Codex or Qwen does bulk coding** — any task that modifies >30 lines or
+   creates a new file goes to Codex or Qwen via `Bash` tool. Claude writes the
+   delegation prompt, not the code.
+2. **Gemini is search-only** — free tier, limited quota. Use only for quick web
+   lookups (docs, release notes, error messages). Never send full files to Gemini.
+3. **Claude writes no bulk code directly** — exception: single-line targeted fixes
+   that are faster than writing a delegation prompt.
+4. **Verify all delegated output** — after Codex/Qwen finishes, Claude runs
+   `Grep`/`Read` spot-checks + `python3 -m py_compile` or `bash -n` before commit.
+5. **One delegation prompt per logical sub-task** — do not combine unrelated
+   changes into one Codex/Qwen invocation; that makes auditing impossible.
+
+### Binary locations (all in ~/.npm-global/bin — must be in PATH)
+
+```bash
+export PATH="$HOME/.npm-global/bin:$PATH"
+# versions confirmed: codex 0.104.0, qwen 0.10.5, gemini 0.29.5
+```
+
+Always prepend this export to any Bash invocation that calls these tools.
+
+### Delegation template (Codex/Qwen)
+
+```bash
+codex "
+TASK: <one-sentence description>
+FILES: @path/to/file1.py @path/to/file2.py
+CONSTRAINT: <any hard rules, port policy, etc.>
+CHANGE:
+  1. <specific change 1>
+  2. <specific change 2>
+DO NOT: <list anything that must not be touched>
+OUTPUT: confirm each change with a diff-style summary
+"
+```
+
+### When to use which agent
+
+| Task | Agent |
+|------|-------|
+| Create new module (<200 lines) | `codex` |
+| Multi-file refactor | `qwen` |
+| Inline SQL / config extraction | `codex` |
+| Security / pattern audit | `codex` |
+| Web doc lookup | `gemini -p` |
+| Architecture analysis across dirs | `qwen` |
+| Targeted single-line fix | Claude directly |
+| Test generation | `codex` |
+
+---
+
+## 9. Using Gemini CLI, Qwen CLI, and Codex CLI for Large Codebase Analysis
 
 When analyzing large codebases or multiple files that might exceed context limits, use CLI tools with large context windows. Three primary options are available:
 
