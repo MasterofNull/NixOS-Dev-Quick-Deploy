@@ -342,7 +342,7 @@ async def example_usage():
         result = await aidb_client.call_query_endpoint("test query")
         print(f"AIDB Success: {result}")
         
-        result = await hybrid_client.call_skill_endpoint("route_query", {"query": "test"})
+        result = await hybrid_client.call_skill_endpoint("route_search", {"query": "test"})
         print(f"Hybrid Success: {result}")
         
         result = await ralph_client.call_task_endpoint("optimize_loop", {"iterations": 5})

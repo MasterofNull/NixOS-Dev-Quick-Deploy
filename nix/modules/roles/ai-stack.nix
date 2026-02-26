@@ -266,6 +266,36 @@ in
         ++ lib.optional (ai.vectorDb.enable && hasQdrant) ports.qdrantHttp
         ++ lib.optional (ai.vectorDb.enable && hasQdrant) ports.qdrantGrpc
       );
+
+      # Keep model files private, but grant explicit read access to the
+      # primary desktop user for local desktop clients (e.g. GPT4All).
+      systemd.services.ai-local-model-access = {
+        description = "Grant primary user ACL access to local llama.cpp models";
+        wantedBy = [ "multi-user.target" ];
+        after = [ "llama-cpp-model-fetch.service" "llama-cpp-embed-model-fetch.service" ];
+        wants = [ "llama-cpp-model-fetch.service" "llama-cpp-embed-model-fetch.service" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          User = "root";
+          ExecStart = pkgs.writeShellScript "ai-local-model-access" ''
+            set -euo pipefail
+            model_root="/var/lib/llama-cpp"
+            model_dir="/var/lib/llama-cpp/models"
+
+            if ! id "${cfg.primaryUser}" >/dev/null 2>&1; then
+              exit 0
+            fi
+            if [ ! -d "$model_dir" ]; then
+              exit 0
+            fi
+
+            ${pkgs.acl}/bin/setfacl -m "u:${cfg.primaryUser}:r-x" "$model_root" "$model_dir"
+            ${pkgs.acl}/bin/setfacl -d -m "u:${cfg.primaryUser}:r-x" "$model_dir"
+            find "$model_dir" -type f -print0 | xargs -0 -r ${pkgs.acl}/bin/setfacl -m "u:${cfg.primaryUser}:r--"
+          '';
+        };
+      };
     })
 
     # ── Open WebUI ────────────────────────────────────────────────────────────
@@ -386,6 +416,20 @@ in
       networking.firewall.allowedTCPPorts = lib.mkIf ai.listenOnLan [
         embed.port
       ];
+    })
+
+    # ── Phase 5.1.3 — AI workload kernel tuning ───────────────────────────────
+    # NUMA balancing causes periodic memory-page migrations that introduce
+    # latency spikes during LLM inference on single-socket AMD APUs/CPUs.
+    # Setting to 0 trades potential long-term NUMA locality gains for
+    # consistent low-latency inference on the common single-socket topology.
+    # vm.nr_overcommit_hugepages: allows transparent hugepage allocation even
+    # when the system is under memory pressure (llama.cpp benefits during load).
+    (lib.mkIf roleEnabled {
+      boot.kernel.sysctl = {
+        "kernel.numa_balancing"         = lib.mkDefault 0;
+        "vm.nr_overcommit_hugepages"    = lib.mkDefault 0;
+      };
     })
 
     # ── Qdrant vector database — shared across backends ───────────────────────

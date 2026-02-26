@@ -68,7 +68,7 @@ class RalphOrchestrator:
             merged_context = {**(context or {}), **aidb_context, "iteration": iteration}
 
             # Step 2: Route through Hybrid Coordinator
-            routing_result = await self.hybrid.route_query(
+            routing_result = await self.hybrid.route_search(
                 prompt=prompt,
                 prefer_local=True,
                 context=merged_context,

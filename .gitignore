@@ -34,6 +34,26 @@ ai-stack/mcp-servers/hybrid-coordinator/venv/
 __pycache__/
 *.pyc
 
+# ==============================================================================
+# Secrets and credentials — NEVER commit (Phase 11.4.3)
+# Rotate immediately if any of these are accidentally committed.
+# Use: git rm --cached <file> then rotate the credential.
+# ==============================================================================
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.csr
+*.age
+age.key
+id_rsa
+id_ed25519
+id_ecdsa
+secrets.yaml
+secrets.json
+secrets.toml
+
 # Local secrets (generated)
 ai-stack/compose/secrets/*
 !ai-stack/compose/secrets/.gitkeep
