@@ -221,12 +221,15 @@
 
   "embedding_models": {
     "nomic-embed-text-v1.5": {
-      "hf_repo": "nomic-ai/nomic-embed-text-v1.5",
+      "hf_repo": "nomic-ai/nomic-embed-text-v1.5-GGUF",
+      "hf_file": "nomic-embed-text-v1.5.Q8_0.gguf",
+      "quantization": "Q8_0",
       "dimensions": 768,
       "context_length": 8192,
       "ram_required_gb": 0.3,
+      "vram_required_gb": 0,
       "recommended_for": ["all tiers", "default"],
-      "notes": "Default. 8K context. Matryoshka embeddings support dimension reduction to 64-512 dims."
+      "notes": "Default embedding model. 8K context. Matryoshka embeddings support dimension reduction to 64-512 dims. Replaces all-MiniLM-L6-v2."
     },
     "all-minilm-l6-v2": {
       "hf_repo": "sentence-transformers/all-MiniLM-L6-v2",
