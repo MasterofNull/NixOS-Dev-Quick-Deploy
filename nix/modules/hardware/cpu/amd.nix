@@ -13,8 +13,11 @@ in
 
   # Enable AMD P-state driver when the kvm-amd module is loaded (virtualisation or bare-metal).
   # lib.mkAfter ensures it appends after any hardware-configuration.nix params.
+  # guided: kernel scheduler bounds frequency based on workload demand; hardware
+  # selects the actual P-state within that bound. Better inference latency than
+  # active (fully hardware-driven) with comparable energy efficiency.
   boot.kernelParams = lib.mkIf isAmd (lib.mkAfter [
-    "amd_pstate=active"
+    "amd_pstate=guided"
   ]);
 
   # thermald is Intel-only; explicitly disable on AMD to prevent crash loops.

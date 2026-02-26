@@ -8,10 +8,13 @@ in
   # compressed block device backed entirely by RAM; no disk I/O under memory
   # pressure.  On this machine (27 GB) memoryPercent = 30 yields ~8 GB of
   # compressed swap without touching the NVMe.
-  # zstd is faster than lz4 at comparable or better compression ratios on AMD.
+  # lz4: lower decompression latency than zstd — preferred for AI inference
+  # workloads where swap-pressure response time matters more than compression
+  # ratio. zstd is better if storage I/O is the bottleneck; lz4 wins when RAM
+  # bandwidth is the bottleneck (typical during large model loading).
   zramSwap = lib.mkIf (cfg.hardware.systemRamGb > 4) {
     enable        = true;
     memoryPercent = 30;
-    algorithm     = "zstd";
+    algorithm     = "lz4";
   };
 }

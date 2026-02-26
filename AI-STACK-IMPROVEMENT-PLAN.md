@@ -389,10 +389,10 @@
 - [x] **5.1.3** Add `vm.nr_overcommit_hugepages` and `kernel.numa_balancing=0` (NUMA balancing harms single-socket latency on most AMD APUs) to the AI stack sysctl configuration.
   *Success metric: `cat /proc/sys/kernel/numa_balancing` returns `0` when AI stack role is active.*
 
-- [ ] **5.1.4** Set `amdgpu.ppfeaturemask=0xffffffff` kernel param to unlock full GPU power management features including manual frequency control via LACT, gated behind `cfg.roles.aiStack.enable`.
+- [x] **5.1.4** Set `amdgpu.ppfeaturemask=0xffffffff` kernel param to unlock full GPU power management features including manual frequency control via LACT, gated behind `cfg.roles.aiStack.enable`.
   *Success metric: LACT can set manual GPU frequency profiles; `cat /sys/class/drm/card*/device/power_dpm_force_performance_level` shows `manual` when LACT profile is active.*
 
-- [ ] **5.1.5** Enable `amd_pstate=guided` (intermediate between passive and active) which allows both kernel and hardware to participate in P-state selection. Benchmark against current `active` setting.
+- [x] **5.1.5** Enable `amd_pstate=guided` (intermediate between passive and active) which allows both kernel and hardware to participate in P-state selection. Benchmark against current `active` setting.
   *Success metric: Both `active` and `guided` are tested with `stress-ng` and `llama-bench`; the better-performing setting is documented and committed.*
 
 ---
@@ -401,16 +401,16 @@
 
 **Problem:** The current zram/zswap configuration was tuned for general use. Loading a 14B Q4_K_M model (~8GB) plus Open WebUI + Qdrant + Postgres + embeddings service easily exhausts 27GB RAM. No memory pressure coordination exists between services.
 
-- [ ] **5.2.1** Add `vm.overcommit_memory=1` and `vm.overcommit_ratio=100` to the AI stack sysctl profile. This prevents OOM kills during model loading (llama.cpp mmap + COW behavior).
+- [x] **5.2.1** Add `vm.overcommit_memory=1` and `vm.overcommit_ratio=100` to the AI stack sysctl profile. This prevents OOM kills during model loading (llama.cpp mmap + COW behavior).
   *Success metric: Loading a 7B model with all services running does not trigger OOM killer. Check with `dmesg | grep -i "oom\|kill" after model load.*
 
-- [ ] **5.2.2** Add a `memlock` ulimit configuration for the llama.cpp systemd service to allow model weights to be locked in RAM (prevents paging during inference).
+- [x] **5.2.2** Add a `memlock` ulimit configuration for the llama.cpp systemd service to allow model weights to be locked in RAM (prevents paging during inference).
   *Success metric: `systemctl show llama-cpp | grep LimitMEMLOCK` shows a non-default value; `vmstat 1 10` during inference shows near-zero swap activity.*
 
-- [ ] **5.2.3** Configure `zram` algorithm to `lz4` instead of `zstd` for the AI stack profile. `lz4` has lower decompression latency, which matters more than compression ratio when swap pressure occurs during inference.
+- [x] **5.2.3** Configure `zram` algorithm to `lz4` instead of `zstd` for the AI stack profile. `lz4` has lower decompression latency, which matters more than compression ratio when swap pressure occurs during inference.
   *Success metric: `zramctl` shows `lz4` algorithm; inference latency P95 is measured before and after; use whichever is faster.*
 
-- [ ] **5.2.4** Add NixOS assertions that enforce: if `roles.aiStack.enable` and systemRamGb < 16, emit a warning recommending smaller quantization. If < 12 GB, block the 14B model from being set as default.
+- [x] **5.2.4** Add NixOS assertions that enforce: if `roles.aiStack.enable` and systemRamGb < 16, emit a warning recommending smaller quantization. If < 12 GB, block the 14B model from being set as default.
   *Success metric: Setting `llamaCpp.model` to a 14B path on a 12GB RAM system triggers a NixOS assertion failure with a clear message.*
 
 ---
@@ -449,13 +449,13 @@
 
 **Problem:** The model registry contains models that were current in mid-2024. Phi-3-mini has been superseded by Phi-4. DeepSeek-R1 distillations, Llama 3.3, Qwen2.5 (full series), Gemma 3, and SmolLM2 are missing. The VRAM estimates don't account for quantization variants.
 
-- [ ] **5.5.1** Update `ai-stack/models/registry.json` with current model recommendations for this hardware (27GB RAM, AMD ROCm iGPU):
+- [x] **5.5.1** Update `ai-stack/models/registry.json` with current model recommendations for this hardware (27GB RAM, AMD ROCm iGPU):
   Primary (fits in GPU VRAM): Qwen2.5-Coder-7B-Instruct Q4_K_M, DeepSeek-R1-Distill-Qwen-7B Q4_K_M, Phi-4 Q4_K_M
   Secondary (CPU + partial GPU offload): Qwen2.5-Coder-14B-Instruct Q4_K_M, Llama-3.3-70B-Instruct IQ2_M (CPU only)
   Embedding: nomic-embed-text-v1.5 (replaces all-MiniLM-L6-v2 for longer context)
   *Success metric: Registry JSON validates; each entry has fields: `id`, `hf_repo`, `hf_file`, `quantization`, `context_length`, `vram_required_gb`, `ram_required_gb`, `speed_tokens_per_sec_amd_igpu`, `recommended_for`.*
 
-- [ ] **5.5.2** Add quantization selection logic to the AI stack NixOS module: if `hardware.systemRamGb < 20`, default to 7B Q4_K_M; if >= 20, offer 14B Q4_K_M as default.
+- [x] **5.5.2** Add quantization selection logic to the AI stack NixOS module: if `hardware.systemRamGb < 20`, default to 7B Q4_K_M; if >= 20, offer 14B Q4_K_M as default.
   *Success metric: On a system with `systemRamGb = 16`, `mySystem.aiStack.llamaCpp.model` defaults to a 7B variant path; on 27GB, defaults to 14B.*
 
 ---
