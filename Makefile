@@ -1,4 +1,4 @@
-.PHONY: up down restart ps logs health metrics security-audit security-scan
+.PHONY: up down restart ps logs health metrics security-audit security-scan test
 
 up:
 	sudo systemctl start ai-stack.target command-center-dashboard-api.service command-center-dashboard-frontend.service
@@ -31,4 +31,7 @@ security-audit:
 
 security-scan:
 	./scripts/security-scan.sh
+
+test:
+	python3 -m pytest tests/integration/test_mcp_contracts.py -v
 
