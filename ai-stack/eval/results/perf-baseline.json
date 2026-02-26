@@ -1,6 +1,6 @@
 {
-  "recorded_at": "2026-02-26T23:01:12.286582+00:00",
-  "p50_ms": null,
-  "p95_ms": null,
-  "embedding_cache_hit_rate_pct": null
+  "recorded_at": "2026-02-26T23:13:53.163846+00:00",
+  "p50_ms": 11,
+  "p95_ms": 12,
+  "embedding_cache_hit_rate_pct": 94.3
 }

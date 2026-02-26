@@ -11,7 +11,11 @@
 
 set -euo pipefail
 
-HYBRID_URL="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:${HYBRID_COORDINATOR_PORT:-8003}}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../config/service-endpoints.sh
+source "${SCRIPT_DIR}/../config/service-endpoints.sh"
+
+HYBRID_URL="${HYBRID_URL}"
 HYBRID_KEY_FILE="${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_coordinator_api_key}"
 LAST_ID_FILE="${HOME}/.local/share/nixos-ai-stack/last-interaction"
 

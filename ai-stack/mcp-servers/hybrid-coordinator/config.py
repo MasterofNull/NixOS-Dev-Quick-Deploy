@@ -191,7 +191,17 @@ class RoutingConfig:
         )
     )
     _path: Path = field(
-        default_factory=lambda: Path.home() / ".local/share/nixos-ai-stack/routing-config.json",
+        default_factory=lambda: Path(
+            os.path.expanduser(
+                os.getenv(
+                    "ROUTING_CONFIG_PATH",
+                    os.path.join(
+                        os.getenv("DATA_DIR", "~/.local/share/nixos-ai-stack/hybrid"),
+                        "routing-config.json",
+                    ),
+                )
+            )
+        ),
         repr=False,
     )
     _loaded_at: float = field(default=0.0, repr=False)
@@ -318,7 +328,17 @@ class PerformanceWindow:
     MIN_SAMPLES: int = 10
 
     _path: Path = field(
-        default_factory=lambda: Path.home() / ".local/share/nixos-ai-stack/performance-window.json",
+        default_factory=lambda: Path(
+            os.path.expanduser(
+                os.getenv(
+                    "PERFORMANCE_WINDOW_PATH",
+                    os.path.join(
+                        os.getenv("DATA_DIR", "~/.local/share/nixos-ai-stack/hybrid"),
+                        "performance-window.json",
+                    ),
+                )
+            )
+        ),
         repr=False,
     )
     _data: dict = field(default_factory=dict, repr=False)
