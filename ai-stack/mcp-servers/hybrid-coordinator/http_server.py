@@ -16,6 +16,7 @@ Usage:
     await http_server.run_http_mode(port=port, access_log_format=..., ...)
 """
 
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -643,6 +644,33 @@ async def run_http_mode(port: int) -> None:
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=500)
 
+    _RELOAD_ALLOWLIST = {
+        "llama-cpp": "llama-cpp.service",
+        "ai-embeddings": "ai-embeddings.service",
+    }
+
+    async def handle_reload_model(request: web.Request) -> web.Response:
+        """POST /reload-model — restart a whitelisted systemd service."""
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        service = body.get("service", "llama-cpp")
+        if service not in _RELOAD_ALLOWLIST:
+            return web.json_response({"error": "service not in allowlist"}, status=400)
+        service_unit = _RELOAD_ALLOWLIST[service]
+        proc = await asyncio.create_subprocess_exec(
+            "systemctl", "restart", service_unit,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+        return web.json_response({
+            "status": "restarting",
+            "service": service_unit,
+            "note": "service will be unavailable briefly",
+        })
+
     # ------------------------------------------------------------------
     # App assembly and startup
     # ------------------------------------------------------------------
@@ -676,6 +704,7 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/learning/process", handle_learning_process)
     http_app.router.add_post("/learning/export", handle_learning_export)
     http_app.router.add_post("/learning/ab_compare", handle_learning_ab_compare)
+    http_app.router.add_post("/reload-model", handle_reload_model)
 
     runner = web.AppRunner(
         http_app,
@@ -689,5 +718,4 @@ async def run_http_mode(port: int) -> None:
     logger.info("✓ Hybrid Coordinator HTTP server running on http://0.0.0.0:%d", port)
 
     # Keep server running
-    import asyncio
     await asyncio.Event().wait()
