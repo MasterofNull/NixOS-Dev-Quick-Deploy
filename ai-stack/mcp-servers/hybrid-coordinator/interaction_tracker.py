@@ -452,3 +452,66 @@ async def generate_fine_tuning_dataset() -> str:
     except Exception as exc:
         logger.error("Error generating fine-tuning dataset: %s", exc)
         return ""
+
+
+async def record_learning_feedback(
+    query: str,
+    correction: str,
+    original_response: Optional[str] = None,
+    interaction_id: Optional[str] = None,
+    rating: Optional[int] = None,
+    tags: Optional[List[str]] = None,
+    model: Optional[str] = None,
+    variant: Optional[str] = None,
+) -> str:
+    """Store user corrections for learning."""
+    feedback_id = str(uuid4())
+    resolved_tags = list(tags or [])
+    if model:
+        resolved_tags.append(f"model:{model}")
+    if variant:
+        resolved_tags.append(f"variant:{variant}")
+    payload = {
+        "feedback_id": feedback_id,
+        "interaction_id": interaction_id,
+        "query": query,
+        "original_response": original_response,
+        "correction": correction,
+        "rating": rating,
+        "tags": resolved_tags,
+        "model": model,
+        "variant": variant,
+        "timestamp": int(datetime.now().timestamp()),
+    }
+    embedding = await _embed(f"{query}\n{correction}")
+    try:
+        _qdrant.upsert(
+            collection_name="learning-feedback",
+            points=[PointStruct(id=feedback_id, vector=embedding, payload=payload)],
+        )
+        if Config.AI_MEMORY_ENABLED and _store_memory:
+            await _store_memory(
+                "semantic",
+                summary=f"User correction for query: {query[:120]}",
+                content=correction,
+                metadata={"query": query, "interaction_id": interaction_id, "tags": resolved_tags},
+            )
+        if _postgres is not None:
+            try:
+                await _postgres.execute(
+                    """
+                    INSERT INTO learning_feedback (
+                        feedback_id, interaction_id, query, original_response,
+                        correction, rating, tags, source
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                    """,
+                    feedback_id, interaction_id, query, original_response,
+                    correction, rating, json.dumps(resolved_tags), "hybrid-coordinator",
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("learning_feedback_postgres_failed error=%s", exc)
+        _record_telemetry("learning_feedback", {"feedback_id": feedback_id})
+    except Exception as exc:  # noqa: BLE001
+        logger.error("learning_feedback_store_failed error=%s", exc)
+        return ""
+    return feedback_id
