@@ -186,60 +186,60 @@
 
 ### TC1.1 — MCP Server Health
 
-- [ ] **TC1.1.1** Run `scripts/check-mcp-health.sh` — all REQUIRED services (embeddings, aidb, hybrid-coordinator, ralph-wiggum, llama-cpp inference, llama-cpp embedding) return 2xx within 10 s.
+- [x] **TC1.1.1** Run `scripts/check-mcp-health.sh` — all REQUIRED services (embeddings, aidb, hybrid-coordinator, ralph-wiggum, llama-cpp inference, llama-cpp embedding) return 2xx within 10 s.
   *Pass: script exits 0. Fail: identify which service is down and resolve.*
 
-- [ ] **TC1.1.2** Run `scripts/check-mcp-health.sh --optional` — document which optional services are up/down but do not block on them.
+- [x] **TC1.1.2** Run `scripts/check-mcp-health.sh --optional` — document which optional services are up/down but do not block on them.
   *Pass: output recorded; no required service fails.*
 
 ---
 
 ### TC1.2 — Routing and Backend Selection
 
-- [ ] **TC1.2.1** Send `POST http://localhost:8003/query {"query": "what is nixos?", "prefer_local": true}` — response arrives within 30 s.
+- [x] **TC1.2.1** Send `POST http://localhost:8003/query {"query": "what is nixos?", "prefer_local": true}` — response arrives within 30 s.
   *Pass: HTTP 200 with non-empty response body.*
 
-- [ ] **TC1.2.2** After the above query, grep logs for `llm_backend_selected` — must contain `backend=` and `local_confidence_score=` fields.
+- [x] **TC1.2.2** After the above query, grep logs for `llm_backend_selected` — must contain `backend=` and `local_confidence_score=` fields.
   *Pass: `journalctl -u ai-hybrid-coordinator | grep llm_backend_selected` returns at least one line.*
 
-- [ ] **TC1.2.3** Hit `GET http://localhost:8003/status` — verify JSON contains `loading`, `healthy`, `queue_depth`, `threshold` fields.
+- [x] **TC1.2.3** Hit `GET http://localhost:8003/status` — verify JSON contains `loading`, `healthy`, `queue_depth`, `threshold` fields.
   *Pass: `curl -s http://localhost:8003/status | python3 -m json.tool` exits 0 and shows expected keys.*
 
-- [ ] **TC1.2.4** Hit `GET http://localhost:8003/metrics` — verify `hybrid_llm_backend_selections_total` is present.
+- [x] **TC1.2.4** Hit `GET http://localhost:8003/metrics` — verify `hybrid_llm_backend_selections_total` is present.
   *Pass: `curl -s http://localhost:8003/metrics | grep hybrid_llm_backend_selections_total` returns output.*
 
 ---
 
 ### TC1.3 — Embedding Cache
 
-- [ ] **TC1.3.1** Send the same query string twice (any text). Check Redis for model-namespaced keys.
+- [x] **TC1.3.1** Send the same query string twice (any text). Check Redis for model-namespaced keys.
   *Pass: `redis-cli --scan --pattern 'embedding:m*' | head -5` returns at least one key after the second query.*
 
-- [ ] **TC1.3.2** Check logs for a cache hit on the second request.
+- [x] **TC1.3.2** Check logs for a cache hit on the second request.
   *Pass: `journalctl -u ai-hybrid-coordinator | grep "cache_hit"` returns at least one line.*
 
 ---
 
 ### TC1.4 — Context Compression
 
-- [ ] **TC1.4.1** Send a query that returns long RAG context (e.g., query the codebase collection). Check logs for compression firing.
+- [x] **TC1.4.1** Send a query that returns long RAG context (e.g., query the codebase collection). Check logs for compression firing.
   *Pass: `journalctl -u ai-hybrid-coordinator | grep "context_compression tokens_before"` returns output.*
 
 ---
 
 ### TC1.5 — Preflight and Startup
 
-- [ ] **TC1.5.1** Restart the hybrid-coordinator service (`systemctl restart ai-hybrid-coordinator`) and check startup logs.
+- [x] **TC1.5.1** Restart the hybrid-coordinator service (`systemctl restart ai-hybrid-coordinator`) and check startup logs.
   *Pass: `journalctl -u ai-hybrid-coordinator | grep "preflight_check status=passed"` returns output. No Redis/Qdrant/Postgres unreachable errors.*
 
 ---
 
 ### TC1.6 — Routing Config Hot-Reload
 
-- [ ] **TC1.6.1** Write `{"local_confidence_threshold": 0.99}` to `~/.local/share/nixos-ai-stack/routing-config.json`. Wait 65 s. Send a query. Check that routing decision uses the new threshold.
+- [x] **TC1.6.1** Write `{"local_confidence_threshold": 0.99}` to `~/.local/share/nixos-ai-stack/routing-config.json`. Wait 65 s. Send a query. Check that routing decision uses the new threshold.
   *Pass: log shows `context_quality_below_threshold_0.990` and backend=remote for a typical query.*
 
-- [ ] **TC1.6.2** Restore the original threshold value. Send a query to confirm return to baseline behaviour.
+- [x] **TC1.6.2** Restore the original threshold value. Send a query to confirm return to baseline behaviour.
   *Pass: routing resumes normal local/remote split.*
 
 ---
@@ -258,10 +258,10 @@
 
 **Problem:** No friction-free path for the user to rate responses. The system only infers quality from iteration counts and error messages — never from whether the actual answer was useful.
 
-- [ ] **3.1.1** Add a thumbs-up / thumbs-down POST endpoint to the hybrid coordinator: `POST /feedback/{interaction_id}` with body `{"rating": 1|-1, "note": "optional"}`.
+- [x] **3.1.1** Add a thumbs-up / thumbs-down POST endpoint to the hybrid coordinator: `POST /feedback/{interaction_id}` with body `{"rating": 1|-1, "note": "optional"}`.
   *Success metric: Endpoint returns 200 and records feedback to the interactions table in Postgres.*
 
-- [ ] **3.1.2** Add a CLI alias `aq-rate <interaction_id> [good|bad]` (or similar) for quick terminal feedback without opening a browser.
+- [x] **3.1.2** Add a CLI alias `aq-rate <interaction_id> [good|bad]` (or similar) for quick terminal feedback without opening a browser.
   *Success metric: Running `aq-rate <last_id> good` inserts a feedback row and prints confirmation.*
 
 - [ ] **3.1.3** Add a feedback prompt to Open WebUI via its custom message action feature: after each response, show a small "👍 / 👎" button that calls the feedback endpoint.
@@ -273,13 +273,13 @@
 
 **Problem:** Zero-result and low-confidence queries are the highest-value signal for what knowledge needs to be added, but they are never surfaced or acted upon.
 
-- [ ] **3.2.1** Record every search that returns `context_score < 0.4` to a `query_gaps` table in Postgres with fields: `query_text_hash`, `query_text`, `timestamp`, `score`, `collection_searched`.
+- [x] **3.2.1** Record every search that returns `context_score < 0.4` to a `query_gaps` table in Postgres with fields: `query_text_hash`, `query_text`, `timestamp`, `score`, `collection_searched`.
   *Success metric: Table exists and receives inserts after low-confidence queries.*
 
-- [ ] **3.2.2** Add a weekly digest command `aq-gaps` that prints the top 10 most-repeated gap queries of the last 7 days.
+- [x] **3.2.2** Add a weekly digest command `aq-gaps` that prints the top 10 most-repeated gap queries of the last 7 days.
   *Success metric: Running `aq-gaps` prints a sorted list. Empty output if no gaps recorded yet.*
 
-- [ ] **3.2.3** For each gap query, add a suggested AIDB import command to the digest output.
+- [x] **3.2.3** For each gap query, add a suggested AIDB import command to the digest output.
   *Success metric: Each gap entry in the digest includes `# Suggested: aidb import --query "<text>"` beneath it.*
 
 ---
@@ -288,13 +288,13 @@
 
 **Problem:** Qdrant collections accumulate vectors indefinitely. Old, outdated, or incorrect knowledge is never aged out. A vector ingested during early setup (potentially wrong) has the same retrieval weight as yesterday's verified knowledge.
 
-- [ ] **3.3.1** Add `ingested_at` and `last_accessed_at` timestamps to all Qdrant vector payloads.
+- [x] **3.3.1** Add `ingested_at` and `last_accessed_at` timestamps to all Qdrant vector payloads.
   *Success metric: Querying any existing vector via the AIDB API returns a payload with both timestamp fields.*
 
-- [ ] **3.3.2** Add a relevance decay multiplier to similarity scores: vectors older than 90 days receive a score penalty of 10%; older than 180 days, 25%. Configurable via `AI_VECTOR_DECAY_DAYS` and `AI_VECTOR_DECAY_PENALTY`.
+- [x] **3.3.2** Add a relevance decay multiplier to similarity scores: vectors older than 90 days receive a score penalty of 10%; older than 180 days, 25%. Configurable via `AI_VECTOR_DECAY_DAYS` and `AI_VECTOR_DECAY_PENALTY`.
   *Success metric: A test vector with a forced old timestamp scores lower than an identical fresh vector in head-to-head comparison.*
 
-- [ ] **3.3.3** Implement a weekly garbage collection pass that deletes vectors that: (a) have never been accessed (last_accessed_at = ingested_at) AND (b) are older than 180 days AND (c) have no confirmed-good feedback linkage.
+- [x] **3.3.3** Implement a weekly garbage collection pass that deletes vectors that: (a) have never been accessed (last_accessed_at = ingested_at) AND (b) are older than 180 days AND (c) have no confirmed-good feedback linkage.
   *Success metric: Running the GC manually with `--dry-run` reports candidate vectors; running without dry-run deletes them and logs the count.*
 
 ---

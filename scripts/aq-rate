@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# aq-rate — Phase 3.1.2: Rate an AI response from the terminal.
+#
+# Usage:
+#   aq-rate <interaction_id> good
+#   aq-rate <interaction_id> bad
+#   aq-rate <interaction_id> good "optional note"
+#   aq-rate last good          # uses the last interaction_id from ~/.local/share/nixos-ai-stack/last-interaction
+#
+# The interaction_id is included in every /query response as the "interaction_id" field.
+
+set -euo pipefail
+
+HYBRID_URL="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:${HYBRID_COORDINATOR_PORT:-8003}}"
+HYBRID_KEY_FILE="${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_coordinator_api_key}"
+LAST_ID_FILE="${HOME}/.local/share/nixos-ai-stack/last-interaction"
+
+# Read API key
+if [[ -r "$HYBRID_KEY_FILE" ]]; then
+    HYBRID_KEY=$(tr -d '[:space:]' < "$HYBRID_KEY_FILE")
+else
+    HYBRID_KEY="${HYBRID_API_KEY:-}"
+fi
+
+usage() {
+    echo "Usage: aq-rate <interaction_id|last> <good|bad> [note]"
+    echo "  interaction_id  UUID from a previous query response (or 'last' for most recent)"
+    echo "  good|bad        Thumbs up (1) or thumbs down (-1)"
+    echo "  note            Optional explanation (quoted string)"
+    exit 1
+}
+
+[[ $# -lt 2 ]] && usage
+
+INTERACTION_ID="$1"
+VERDICT="$2"
+NOTE="${3:-}"
+
+# Resolve 'last' alias
+if [[ "$INTERACTION_ID" == "last" ]]; then
+    if [[ -r "$LAST_ID_FILE" ]]; then
+        INTERACTION_ID=$(cat "$LAST_ID_FILE")
+    else
+        echo "Error: no last interaction ID found (file $LAST_ID_FILE missing)" >&2
+        exit 1
+    fi
+fi
+
+case "$VERDICT" in
+    good|1)  RATING=1  ;;
+    bad|-1)  RATING=-1 ;;
+    *)       echo "Error: verdict must be 'good' or 'bad'"; usage ;;
+esac
+
+BODY=$(python3 -c "
+import json, sys
+d = {'rating': ${RATING}}
+note = sys.argv[1] if len(sys.argv) > 1 else ''
+if note:
+    d['note'] = note
+print(json.dumps(d))
+" "$NOTE")
+
+HTTP_STATUS=$(curl -sf -o /tmp/aq-rate-resp.json -w "%{http_code}" \
+    -X POST "${HYBRID_URL}/feedback/${INTERACTION_ID}" \
+    -H "Content-Type: application/json" \
+    -H "X-API-Key: ${HYBRID_KEY}" \
+    -d "$BODY" 2>/dev/null)
+
+if [[ "$HTTP_STATUS" == "200" ]]; then
+    FEEDBACK_ID=$(python3 -c "import json; d=json.load(open('/tmp/aq-rate-resp.json')); print(d.get('feedback_id','?'))")
+    echo "Recorded: ${VERDICT} (rating=${RATING}) for interaction ${INTERACTION_ID}"
+    echo "Feedback ID: ${FEEDBACK_ID}"
+else
+    echo "Error: HTTP ${HTTP_STATUS}" >&2
+    cat /tmp/aq-rate-resp.json 2>/dev/null >&2
+    exit 1
+fi
