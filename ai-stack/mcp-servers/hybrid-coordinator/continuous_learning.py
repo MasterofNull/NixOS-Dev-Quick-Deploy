@@ -27,6 +27,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import structlog
 from pydantic import BaseModel
+try:
+    from watchfiles import awatch
+except ImportError:  # pragma: no cover - fallback for non-Nix test envs
+    awatch = None
 
 # P2-REL-002: Import circuit breaker for preventing cascade failures
 sys.path.insert(0, str(Path(__file__).parent.parent / "shared"))
@@ -221,6 +225,18 @@ class ContinuousLearningPipeline:
         # Optimization proposal log path
         self.proposals_path = Path(os.getenv("OPTIMIZATION_PROPOSALS_PATH", str(telemetry_dir / "optimization_proposals.jsonl")))
         self.proposals_path.parent.mkdir(parents=True, exist_ok=True)
+        self.processing_interval_seconds = int(os.getenv("LEARNING_PROCESSING_INTERVAL", "3600"))
+        self.watch_enabled = os.getenv("CONTINUOUS_LEARNING_USE_WATCHFILES", "true").lower() == "true"
+        self.watch_debounce_ms = int(os.getenv("CONTINUOUS_LEARNING_WATCH_DEBOUNCE_MS", "1000"))
+        self.lockfile_path = Path(
+            os.path.expanduser(
+                os.getenv(
+                    "CONTINUOUS_LEARNING_LOCKFILE",
+                    str(data_root / "continuous-learning.pid"),
+                )
+            )
+        )
+        self._lock_acquired = False
 
         # Pattern catalog
         self.patterns: List[InteractionPattern] = []
@@ -555,6 +571,7 @@ class ContinuousLearningPipeline:
 
     async def start(self):
         """Start continuous learning pipeline"""
+        self._acquire_pid_lock()
         logger.info("continuous_learning_starting")
         self.learning_task = asyncio.create_task(self._learning_loop())
 
@@ -570,7 +587,53 @@ class ContinuousLearningPipeline:
             await self.embeddings_client.aclose()
         except Exception:
             pass
+        self._release_pid_lock()
         logger.info("continuous_learning_stopped")
+
+    def _acquire_pid_lock(self) -> None:
+        """9.2.1: PID lockfile guard to prevent concurrent writers."""
+        self.lockfile_path.parent.mkdir(parents=True, exist_ok=True)
+        if self.lockfile_path.exists():
+            try:
+                existing_pid = int(self.lockfile_path.read_text(encoding="utf-8").strip())
+                os.kill(existing_pid, 0)
+                raise RuntimeError(f"continuous learning already running with PID {existing_pid}")
+            except ProcessLookupError:
+                self.lockfile_path.unlink(missing_ok=True)
+            except ValueError:
+                self.lockfile_path.unlink(missing_ok=True)
+            except PermissionError as exc:
+                raise RuntimeError("continuous learning lockfile owned by another active process") from exc
+        self.lockfile_path.write_text(str(os.getpid()), encoding="utf-8")
+        self._lock_acquired = True
+        logger.info("continuous_learning_lock_acquired", lockfile=str(self.lockfile_path), pid=os.getpid())
+
+    def _release_pid_lock(self) -> None:
+        if self._lock_acquired:
+            self.lockfile_path.unlink(missing_ok=True)
+            self._lock_acquired = False
+            logger.info("continuous_learning_lock_released", lockfile=str(self.lockfile_path))
+
+    async def _wait_for_telemetry_change(self, timeout_seconds: int) -> bool:
+        """9.2.2: Wait for telemetry file updates via watchfiles/inotify."""
+        if awatch is None or not self.watch_enabled:
+            return False
+        watch_dirs = sorted({str(path.parent) for path in self.telemetry_paths if path.parent.exists()})
+        if not watch_dirs:
+            return False
+        tracked_files = {path.name for path in self.telemetry_paths}
+        watcher = awatch(*watch_dirs, debounce=self.watch_debounce_ms)
+        try:
+            while True:
+                changes = await asyncio.wait_for(watcher.__anext__(), timeout=timeout_seconds)
+                for _, changed_path in changes:
+                    if Path(changed_path).name in tracked_files:
+                        logger.info("telemetry_change_detected", path=changed_path)
+                        return True
+        except asyncio.TimeoutError:
+            return False
+        finally:
+            await watcher.aclose()
 
     def _check_disk_pressure(self, path: Path) -> bool:
         """Return True if free space on the filesystem containing *path* is below 2 GB."""
@@ -620,8 +683,16 @@ class ContinuousLearningPipeline:
 
     async def _learning_loop(self):
         """Background learning loop with backpressure monitoring"""
+        first_cycle = True
         while True:
             try:
+                if not first_cycle:
+                    if awatch is not None and self.watch_enabled:
+                        await self._wait_for_telemetry_change(self.processing_interval_seconds)
+                    else:
+                        await asyncio.sleep(self.processing_interval_seconds)
+                first_cycle = False
+
                 # 9.1.1: Disk pressure guard — skip cycle if < 2 GB free
                 _disk_check_path = Path("/var") if Path("/var").exists() else self.data_root
                 if self._check_disk_pressure(_disk_check_path):
@@ -673,14 +744,12 @@ class ContinuousLearningPipeline:
 
                 await self._write_stats_snapshot()
 
-                # Sleep for 1 hour between processing
-                await asyncio.sleep(3600)
-
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error("learning_loop_error", error=str(e))
                 await asyncio.sleep(300)  # Retry after 5 min on error
+        self._release_pid_lock()
 
     async def process_telemetry_batch(self) -> List[InteractionPattern]:
         """Process new telemetry events and extract patterns"""
