@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+# sync-knowledge-sources — import all enabled knowledge sources into AIDB.
+#
+# Reads ai-stack/data/knowledge-sources.yaml and, for each enabled source,
+# fetches content and pipes it to the AIDB import endpoint.
+#
+# Usage:
+#   sync-knowledge-sources              # sync all enabled sources
+#   sync-knowledge-sources --id claude-code-templates   # sync one source
+#   sync-knowledge-sources --dry-run    # show what would be synced
+#   sync-knowledge-sources --list       # list all registered sources
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SOURCES_FILE="$REPO_ROOT/ai-stack/data/knowledge-sources.yaml"
+AIDB_URL="${AIDB_URL:-http://127.0.0.1:${AIDB_PORT:-8002}}"
+AIDB_KEY_FILE="${AIDB_API_KEY_FILE:-/run/secrets/aidb_api_key}"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/nixos-ai-stack/knowledge-sources"
+
+DRY_RUN=false
+FILTER_ID=""
+LIST_ONLY=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run)   DRY_RUN=true; shift ;;
+        --id)        FILTER_ID="$2"; shift 2 ;;
+        --list)      LIST_ONLY=true; shift ;;
+        -h|--help)
+            echo "Usage: sync-knowledge-sources [--id ID] [--dry-run] [--list]"
+            exit 0 ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+done
+
+# Read AIDB API key
+AIDB_KEY=""
+if [[ -r "$AIDB_KEY_FILE" ]]; then
+    AIDB_KEY=$(tr -d '[:space:]' < "$AIDB_KEY_FILE")
+else
+    AIDB_KEY="${AIDB_API_KEY:-}"
+fi
+
+if ! command -v python3 &>/dev/null; then
+    echo "Error: python3 required" >&2; exit 1
+fi
+
+if [[ "$LIST_ONLY" == "true" ]]; then
+    echo "=== Registered Knowledge Sources ==="
+    python3 - "$SOURCES_FILE" <<'PYEOF'
+import sys, yaml
+with open(sys.argv[1]) as f:
+    config = yaml.safe_load(f)
+for s in config.get("sources", []):
+    status = "enabled" if s.get("enabled", True) else "disabled"
+    print(f"  [{status:8s}] {s['id']:40s} {s['type']:12s} {s['description'][:60]}...")
+PYEOF
+    exit 0
+fi
+
+mkdir -p "$CACHE_DIR"
+
+# Parse YAML and process sources
+python3 - "$SOURCES_FILE" "$FILTER_ID" "$DRY_RUN" "$AIDB_URL" "$AIDB_KEY" "$CACHE_DIR" <<'PYEOF'
+import sys, json, os, hashlib, tempfile, subprocess
+from pathlib import Path
+from datetime import datetime, timezone
+
+try:
+    import yaml
+except ImportError:
+    print("Error: pyyaml required (pip install pyyaml)", file=sys.stderr)
+    sys.exit(1)
+
+sources_file, filter_id, dry_run_str, aidb_url, aidb_key, cache_dir = sys.argv[1:7]
+dry_run = dry_run_str == "True"
+cache_dir = Path(cache_dir)
+
+with open(sources_file) as f:
+    config = yaml.safe_load(f)
+
+import urllib.request, urllib.error
+
+def gh_raw(owner_repo, path):
+    """Fetch a file from GitHub raw content."""
+    url = f"https://raw.githubusercontent.com/{owner_repo}/main/{path}"
+    try:
+        with urllib.request.urlopen(url, timeout=30) as resp:
+            return resp.read().decode("utf-8")
+    except urllib.error.HTTPError as e:
+        print(f"  WARN: {url} → HTTP {e.code}", file=sys.stderr)
+        return None
+
+def aidb_import(collection, content, source_id, aidb_url, aidb_key):
+    """POST content to AIDB /api/v1/import endpoint."""
+    import urllib.request, json as _json
+    payload = _json.dumps({
+        "collection": collection,
+        "content": content,
+        "source_id": source_id,
+        "imported_at": datetime.now(timezone.utc).isoformat(),
+    }).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if aidb_key:
+        headers["X-API-Key"] = aidb_key
+    req = urllib.request.Request(f"{aidb_url}/api/v1/import", data=payload, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            result = _json.loads(resp.read())
+            return result
+    except Exception as e:
+        print(f"  ERROR importing to AIDB: {e}", file=sys.stderr)
+        return None
+
+synced = 0
+skipped = 0
+
+for source in config.get("sources", []):
+    sid = source["id"]
+    if filter_id and sid != filter_id:
+        continue
+    if not source.get("enabled", True):
+        print(f"[skip] {sid} (disabled)")
+        skipped += 1
+        continue
+
+    print(f"\n[sync] {sid} ({source['type']})")
+    collection = source.get("collection", sid)
+    stype = source["type"]
+    fetch_specs = source.get("fetch", ["readme"])
+    if isinstance(fetch_specs, str):
+        fetch_specs = [fetch_specs]
+
+    if dry_run:
+        print(f"  DRY RUN: would fetch {fetch_specs} → collection={collection}")
+        continue
+
+    texts = []
+
+    if stype == "github_repo":
+        owner_repo = source["url"]
+        for spec in fetch_specs:
+            if spec == "readme":
+                content = gh_raw(owner_repo, "README.md")
+                if content:
+                    texts.append(("README.md", content))
+            elif spec.startswith("file:"):
+                path = spec[5:]
+                content = gh_raw(owner_repo, path)
+                if content:
+                    texts.append((path, content))
+
+    elif stype == "url":
+        import urllib.request as _ureq
+        try:
+            with _ureq.urlopen(source["url"], timeout=30) as resp:
+                texts.append((source["url"], resp.read().decode("utf-8")))
+        except Exception as e:
+            print(f"  ERROR fetching {source['url']}: {e}", file=sys.stderr)
+
+    elif stype == "local_dir":
+        local = Path(source["url"])
+        if not local.is_absolute():
+            local = Path(sources_file).parents[2] / local
+        for p in sorted(local.rglob("*.md")):
+            texts.append((str(p.relative_to(local)), p.read_text()))
+
+    for name, text in texts:
+        print(f"  → importing {name} ({len(text):,} chars) into {collection}")
+        result = aidb_import(collection, text, f"{sid}/{name}", aidb_url, aidb_key)
+        if result:
+            print(f"    OK: {result.get('chunks_indexed', '?')} chunks")
+        synced += 1
+
+print(f"\n=== Done: {synced} imports, {skipped} skipped ===")
+PYEOF

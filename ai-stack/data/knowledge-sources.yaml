@@ -1,0 +1,46 @@
+# AI Stack Knowledge Sources Registry
+#
+# Single source of truth for all external content indexed into the AIDB knowledge base.
+# Sync with: scripts/sync-knowledge-sources
+#
+# Fields:
+#   id          — unique slug, used as AIDB collection name
+#   type        — github_repo | url | local_dir
+#   description — human-readable purpose
+#   url         — source URL (github: owner/repo, url: full URL, local: relative path)
+#   fetch       — what to fetch: readme | components_json | full_repo | glob
+#   collection  — Qdrant collection name for RAG (default: same as id)
+#   tags        — search/filter tags
+#   schedule    — how often to re-sync (daily | weekly | manual)
+#   enabled     — false to skip during sync
+
+sources:
+
+  # ---------------------------------------------------------------------------
+  # Claude Code Tools & Templates Marketplace
+  # https://github.com/davila7/claude-code-templates
+  # Contains 100+ templates: skills, agents, slash commands, MCP integrations,
+  # hooks, settings — all for Claude Code. Community-maintained catalog.
+  # ---------------------------------------------------------------------------
+  - id: claude-code-templates
+    type: github_repo
+    description: >
+      Claude Code template marketplace — skills, agents, commands, MCP servers,
+      hooks, and settings templates. 100+ community-contributed components.
+      Source for discovering available Claude Code integrations.
+    url: davila7/claude-code-templates
+    fetch:
+      - readme              # README.md → RAG context
+      - file:docs/components.json          # Full component catalog (JSON)
+      - file:docs/components-metadata.json # Extended metadata
+    collection: claude-code-templates
+    tags:
+      - claude-code
+      - skills
+      - agents
+      - mcp
+      - hooks
+      - templates
+      - tools
+    schedule: weekly
+    enabled: true

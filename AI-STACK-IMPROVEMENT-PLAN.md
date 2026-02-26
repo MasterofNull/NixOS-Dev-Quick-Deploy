@@ -349,6 +349,27 @@
 
 ---
 
+### 4.4 — External Knowledge Source Registry
+
+**Problem:** The AIDB knowledge base is fed manually. There is no declarative registry of *which* external sources belong in the knowledge base, so sources go stale and the team has to remember what to re-import.
+
+- [x] **4.4.1** Create `ai-stack/data/knowledge-sources.yaml` as the single source of truth for all external content indexed into AIDB. Each entry specifies: id, type (github_repo/url/local_dir), collection name, fetch spec, schedule, and enabled flag.
+  *Success metric: File exists and is parseable by `sync-knowledge-sources`.*
+
+- [x] **4.4.2** Add `davila7/claude-code-templates` as the first registered source. This repo contains 100+ Claude Code component templates (skills, agents, commands, MCP integrations, hooks, settings) — useful for RAG queries about available integrations.
+  *Success metric: `sync-knowledge-sources --id claude-code-templates --dry-run` prints the fetch plan without error.*
+
+- [x] **4.4.3** Create `scripts/sync-knowledge-sources` — iterates over enabled sources in the YAML registry, fetches content (GitHub README/files/etc.), and calls the AIDB `/api/v1/import` endpoint to index into Qdrant.
+  *Success metric: `sync-knowledge-sources --list` shows registered sources; `--dry-run` shows fetch plan.*
+
+- [ ] **4.4.4** Add a weekly systemd timer (`ai-sync-knowledge-sources.timer`) that runs `sync-knowledge-sources` to keep the knowledge base current.
+  *Success metric: `systemctl status ai-sync-knowledge-sources.timer` shows next trigger.*
+
+- [ ] **4.4.5** Verify that `POST /query "what claude code skills are available for PDF processing"` returns results from the `claude-code-templates` collection after first sync.
+  *Success metric: Response includes context from the claude-code-templates README or components.json.*
+
+---
+
 ## Phase 5 — NixOS Build: Hardware Optimization
 
 **Goal:** Squeeze real inference performance out of the ThinkPad P14s Gen 2a AMD Ryzen hardware.
