@@ -5,6 +5,7 @@ import { DashboardAPI } from '@/lib/api';
 import { SystemOverview } from '@/components/SystemOverview';
 import { MetricsChart } from '@/components/MetricsChart';
 import { ServiceControl } from '@/components/ServiceControl';
+import { AIInternals } from '@/components/AIInternals';
 import { Activity } from 'lucide-react';
 
 const queryClient = new QueryClient();
@@ -89,7 +90,7 @@ function DashboardContent() {
       <main className="container mx-auto px-4 py-6">
         <div className="space-y-6">
           <SystemOverview />
-          
+
           <div className="grid gap-6 lg:grid-cols-3">
             <div className="lg:col-span-2">
               <MetricsChart />
@@ -98,6 +99,11 @@ function DashboardContent() {
               <ServiceControl />
             </div>
           </div>
+
+          <section>
+            <h2 className="text-lg font-semibold mb-4">AI Internals</h2>
+            <AIInternals />
+          </section>
         </div>
 
         {/* Footer */}

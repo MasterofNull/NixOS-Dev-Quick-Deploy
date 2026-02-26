@@ -11,6 +11,8 @@ from typing import List, Optional
 
 import redis.asyncio as aioredis
 
+from metrics import EMBEDDING_CACHE_HITS, EMBEDDING_CACHE_MISSES
+
 logger = logging.getLogger("embedding-cache")
 
 
@@ -121,12 +123,14 @@ class EmbeddingCache:
 
             if cached:
                 self.stats["hits"] += 1
+                EMBEDDING_CACHE_HITS.inc()
                 # Parse JSON-encoded embedding
                 embedding = json.loads(cached)
                 logger.debug(f"Cache hit for text (len={len(text)})")
                 return embedding
             else:
                 self.stats["misses"] += 1
+                EMBEDDING_CACHE_MISSES.inc()
                 logger.debug(f"Cache miss for text (len={len(text)})")
                 return None
 
@@ -186,9 +190,11 @@ class EmbeddingCache:
             for value in cached_values:
                 if value:
                     self.stats["hits"] += 1
+                    EMBEDDING_CACHE_HITS.inc()
                     embeddings.append(json.loads(value))
                 else:
                     self.stats["misses"] += 1
+                    EMBEDDING_CACHE_MISSES.inc()
                     embeddings.append(None)
 
             return embeddings

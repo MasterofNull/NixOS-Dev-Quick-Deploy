@@ -8,10 +8,17 @@ import aiohttp
 import json
 import os
 import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 from ..config import service_endpoints
 from ..services.systemd_units import get_ai_runtime_units
+
+try:
+    import asyncpg
+    _ASYNCPG_AVAILABLE = True
+except ImportError:
+    _ASYNCPG_AVAILABLE = False
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -25,6 +32,7 @@ SERVICES = {
     "llama_cpp": service_endpoints.LLAMA_URL,
     "embeddings": service_endpoints.EMBEDDINGS_URL,
     "switchboard": service_endpoints.SWITCHBOARD_URL,
+    "aider_wrapper": service_endpoints.AIDER_WRAPPER_URL,
 }
 
 # Timeout for external requests
@@ -32,6 +40,40 @@ REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=5)
 HARNESS_EVAL_TIMEOUT = aiohttp.ClientTimeout(
     total=float(os.getenv("HARNESS_EVAL_TIMEOUT_SECONDS", "15"))
 )
+# Lightweight timeout used exclusively for health-probe HTTP GETs (Task 17.2)
+_HEALTH_PROBE_TIMEOUT = aiohttp.ClientTimeout(total=2)
+
+# Map from systemd unit name → /health endpoint URL.
+# Only units listed here receive an HTTP probe in addition to systemd check.
+_UNIT_HTTP_HEALTH: Dict[str, str] = {
+    "ai-aidb": f"{service_endpoints.AIDB_URL}/health",
+    "ai-hybrid-coordinator": f"{service_endpoints.HYBRID_URL}/health",
+    "ai-ralph-wiggum": f"{service_endpoints.RALPH_URL}/health",
+    "llama-cpp": f"{service_endpoints.LLAMA_URL}/health",
+    "qdrant": f"{service_endpoints.QDRANT_URL}/healthz",
+    "ai-switchboard": f"{service_endpoints.SWITCHBOARD_URL}/health",
+    "ai-embeddings": f"{service_endpoints.EMBEDDINGS_URL}/health",
+    "ai-aider-wrapper": f"{service_endpoints.AIDER_WRAPPER_URL}/health",
+}
+
+# Units that have no HTTP endpoint — systemd check only.
+_SYSTEMD_ONLY_UNITS: frozenset = frozenset({
+    "postgresql",
+    "redis-mcp",
+    "ai-otel-collector",
+    "ai-auth-selftest",
+    "ai-pgvector-bootstrap",
+})
+
+# Critical units: overall_status is "healthy" only when all of these pass.
+_CRITICAL_UNITS: frozenset = frozenset({
+    "ai-aidb",
+    "ai-hybrid-coordinator",
+    "llama-cpp",
+    "qdrant",
+    "postgresql",
+    "redis-mcp",
+})
 
 # Global aiohttp session (reused across requests)
 _http_session: Optional[aiohttp.ClientSession] = None
@@ -255,6 +297,231 @@ async def _run_harness_script(script_name: str, args: Optional[List[str]] = None
         "success": result.returncode == 0,
         "stdout": (result.stdout or "")[-2000:],
         "stderr": (result.stderr or "")[-2000:],
+    }
+
+
+async def _http_health_probe(url: str) -> tuple[bool, Optional[str]]:
+    """Perform a lightweight HTTP GET to a /health endpoint (2 s timeout, no retry).
+
+    Returns ``(ok, error_message)``.  ``ok`` is True when the server responds
+    with any 2xx status code.
+    """
+    try:
+        # Use a dedicated short-timeout session so we never block on the
+        # shared REQUEST_TIMEOUT session.
+        timeout = _HEALTH_PROBE_TIMEOUT
+        async with aiohttp.ClientSession(timeout=timeout) as sess:
+            async with sess.get(url) as resp:
+                if 200 <= resp.status < 300:
+                    return True, None
+                return False, f"http_{resp.status}"
+    except asyncio.TimeoutError:
+        return False, "timeout"
+    except aiohttp.ClientConnectorError as exc:
+        return False, f"connection_refused: {exc.os_error}"
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)
+
+
+async def _redis_ping_probe() -> Dict[str, Any]:
+    """Send a raw RESP PING to Redis and return probe results.
+
+    Host/port are read from ``service_endpoints.SERVICE_HOST`` /
+    ``service_endpoints.REDIS_PORT`` so no values are hardcoded.
+    """
+    host = service_endpoints.SERVICE_HOST
+    port = service_endpoints.REDIS_PORT
+    t0 = time.monotonic()
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(host, port),
+            timeout=2.0,
+        )
+        writer.write(b"*1\r\n$4\r\nPING\r\n")
+        await writer.drain()
+        data = await asyncio.wait_for(reader.read(128), timeout=2.0)
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:  # noqa: BLE001
+            pass
+        latency_ms = round((time.monotonic() - t0) * 1000, 2)
+        ok = data.startswith(b"+PONG")
+        return {
+            "redis_ping_ok": ok,
+            "redis_latency_ms": latency_ms,
+            "redis_error": None if ok else f"unexpected_response: {data[:32]!r}",
+        }
+    except asyncio.TimeoutError:
+        return {"redis_ping_ok": False, "redis_latency_ms": None, "redis_error": "timeout"}
+    except OSError as exc:
+        return {"redis_ping_ok": False, "redis_latency_ms": None, "redis_error": str(exc)}
+    except Exception as exc:  # noqa: BLE001
+        return {"redis_ping_ok": False, "redis_latency_ms": None, "redis_error": str(exc)}
+
+
+async def _postgres_select1_probe() -> Dict[str, Any]:
+    """Run ``SELECT 1`` against PostgreSQL and return probe results.
+
+    The DSN is read from the ``AIDB_DB_URL`` environment variable.  If not
+    set, a default is constructed from ``SERVICE_HOST`` / ``POSTGRES_PORT``.
+    A fresh connection is opened and closed per call — no persistent pool.
+    """
+    if not _ASYNCPG_AVAILABLE:
+        return {
+            "postgres_query_ok": False,
+            "postgres_latency_ms": None,
+            "postgres_error": "asyncpg_not_installed",
+        }
+    dsn = os.getenv(
+        "AIDB_DB_URL",
+        f"postgresql://postgres@{service_endpoints.SERVICE_HOST}:{service_endpoints.POSTGRES_PORT}/aidb",
+    )
+    t0 = time.monotonic()
+    conn = None
+    try:
+        conn = await asyncio.wait_for(asyncpg.connect(dsn), timeout=3.0)
+        await asyncio.wait_for(conn.fetchval("SELECT 1"), timeout=2.0)
+        latency_ms = round((time.monotonic() - t0) * 1000, 2)
+        return {"postgres_query_ok": True, "postgres_latency_ms": latency_ms, "postgres_error": None}
+    except asyncio.TimeoutError:
+        return {"postgres_query_ok": False, "postgres_latency_ms": None, "postgres_error": "timeout"}
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "postgres_query_ok": False,
+            "postgres_latency_ms": None,
+            "postgres_error": str(exc),
+        }
+    finally:
+        if conn is not None:
+            try:
+                await conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+async def _run_full_health_probe() -> Dict[str, Any]:
+    """Core health-probe logic shared by ``get_health_aggregate`` and ``probe_health``.
+
+    For every runtime unit:
+    - If it is in ``_UNIT_HTTP_HEALTH``: run systemd check AND HTTP GET.
+      ``check_mode`` is ``"systemd+http"``.
+    - Otherwise: systemd only.  ``check_mode`` is ``"systemd"``.
+
+    Status mapping:
+    - systemd active + HTTP ok  → ``"healthy"``
+    - systemd active + HTTP fail → ``"degraded"``
+    - systemd !active            → ``"down"``
+
+    ``overall_status`` is ``"healthy"`` only when every critical unit reports
+    ``"healthy"``.
+    """
+    def _systemd_state(unit_name: str) -> str:
+        result = subprocess.run(
+            ["systemctl", "is-active", f"{unit_name}.service"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return (result.stdout or "").strip().lower() or "unknown"
+
+    def _map_systemd(raw: str) -> str:
+        if raw == "active":
+            return "healthy"
+        if raw in ("activating", "reloading"):
+            return "degraded"
+        return "down"
+
+    runtime_units = get_ai_runtime_units()
+
+    # Fire all systemd checks in thread pool concurrently.
+    systemd_states: Dict[str, str] = {}
+    loop = asyncio.get_event_loop()
+    tasks_sd = {unit: loop.run_in_executor(None, _systemd_state, unit) for unit in runtime_units}
+    for unit, fut in tasks_sd.items():
+        systemd_states[unit] = await fut
+
+    # Fire HTTP probes concurrently only for units that have them and are active.
+    http_tasks: Dict[str, asyncio.Task] = {}
+    for unit in runtime_units:
+        if unit in _UNIT_HTTP_HEALTH:
+            http_tasks[unit] = asyncio.create_task(
+                _http_health_probe(_UNIT_HTTP_HEALTH[unit])
+            )
+
+    http_results: Dict[str, tuple[bool, Optional[str]]] = {}
+    for unit, task in http_tasks.items():
+        http_results[unit] = await task
+
+    health_checks: Dict[str, Dict[str, Any]] = {}
+    for unit in runtime_units:
+        raw = systemd_states[unit]
+        has_http = unit in _UNIT_HTTP_HEALTH
+
+        if not has_http or unit in _SYSTEMD_ONLY_UNITS:
+            # Systemd-only path.
+            status = _map_systemd(raw)
+            health_checks[unit] = {
+                "status": status,
+                "check_mode": "systemd",
+                "details": {
+                    "unit": f"{unit}.service",
+                    "active_state": raw,
+                },
+            }
+        else:
+            # Systemd + HTTP path.
+            http_ok, http_err = http_results.get(unit, (False, "probe_skipped"))
+            if raw == "active" and http_ok:
+                status = "healthy"
+            elif raw == "active" and not http_ok:
+                status = "degraded"
+            else:
+                status = "down"
+
+            health_checks[unit] = {
+                "status": status,
+                "check_mode": "systemd+http",
+                "details": {
+                    "unit": f"{unit}.service",
+                    "active_state": raw,
+                    "http_url": _UNIT_HTTP_HEALTH[unit],
+                    "http_ok": http_ok,
+                    "http_error": http_err,
+                },
+            }
+
+    # overall_status: healthy only when ALL critical units are "healthy".
+    critical_statuses = [
+        health_checks[u]["status"]
+        for u in _CRITICAL_UNITS
+        if u in health_checks
+    ]
+    if any(s == "down" for s in critical_statuses):
+        overall_status = "unhealthy"
+    elif any(s == "degraded" for s in critical_statuses):
+        overall_status = "degraded"
+    elif all(s == "healthy" for s in critical_statuses) and critical_statuses:
+        overall_status = "healthy"
+    else:
+        # Fallback: derive from whole set.
+        if any(v["status"] == "down" for v in health_checks.values()):
+            overall_status = "unhealthy"
+        elif any(v["status"] == "degraded" for v in health_checks.values()):
+            overall_status = "degraded"
+        else:
+            overall_status = "healthy"
+
+    return {
+        "overall_status": overall_status,
+        "services": health_checks,
+        "summary": {
+            "total": len(health_checks),
+            "healthy": sum(1 for v in health_checks.values() if v["status"] == "healthy"),
+            "degraded": sum(1 for v in health_checks.values() if v["status"] == "degraded"),
+            "down": sum(1 for v in health_checks.values() if v["status"] == "down"),
+        },
+        "timestamp": datetime.utcnow().isoformat(),
     }
 
 
@@ -543,85 +810,93 @@ async def run_harness_maintenance(payload: HarnessMaintenancePayload) -> Dict[st
 
 @router.get("/health/aggregate")
 async def get_health_aggregate() -> Dict[str, Any]:
-    """Get aggregated health status based on systemd AI stack runtime units."""
-    def systemd_state(unit_name: str) -> str:
-        unit = f"{unit_name}.service"
-        result = subprocess.run(
-            ["systemctl", "is-active", unit],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        return (result.stdout or "").strip().lower() or "unknown"
+    """Get aggregated health status with systemd + HTTP probes for AI stack runtime units.
 
-    def map_state_to_health(raw_state: str) -> str:
-        if raw_state == "active":
-            return "healthy"
-        if raw_state in ("activating", "reloading"):
-            return "degraded"
-        if raw_state in ("inactive", "failed", "deactivating", "unknown"):
-            return "unhealthy"
-        return "degraded"
+    Services that expose a /health endpoint are checked via both systemd
+    is-active and a lightweight HTTP GET (2 s timeout).  PostgreSQL and Redis
+    units that have no HTTP endpoint are checked via systemd only.
 
-    health_checks: Dict[str, Dict[str, Any]] = {}
-    runtime_units = get_ai_runtime_units()
+    Each service entry in the response includes a ``check_mode`` field:
+    - ``"systemd+http"`` — both checks were run.
+    - ``"systemd"``      — systemd only (no HTTP endpoint for this unit).
 
-    for unit in runtime_units:
-        raw_state = systemd_state(unit)
-        health_checks[unit] = {
-            "status": map_state_to_health(raw_state),
-            "details": {
-                "unit": f"{unit}.service",
-                "active_state": raw_state,
-            },
-        }
+    Status values:
+    - ``"healthy"``  — systemd active AND (if applicable) HTTP probe succeeded.
+    - ``"degraded"`` — systemd active BUT HTTP probe failed.
+    - ``"down"``     — systemd reports the unit is not active.
 
-    unhealthy_count = sum(1 for check in health_checks.values() if check["status"] == "unhealthy")
-    degraded_count = sum(1 for check in health_checks.values() if check["status"] == "degraded")
+    ``overall_status`` is ``"healthy"`` only when all critical services pass
+    both checks.
+    """
+    return await _run_full_health_probe()
 
-    if unhealthy_count > 0:
-        overall_status = "unhealthy"
-    elif degraded_count > 0:
-        overall_status = "degraded"
-    else:
-        overall_status = "healthy"
 
-    return {
-        "overall_status": overall_status,
-        "services": health_checks,
-        "summary": {
-            "total": len(health_checks),
-            "healthy": sum(1 for check in health_checks.values() if check["status"] == "healthy"),
-            "degraded": degraded_count,
-            "unhealthy": unhealthy_count,
-        },
-        "timestamp": datetime.utcnow().isoformat(),
-    }
+@router.get("/health/probe")
+async def probe_health() -> Dict[str, Any]:
+    """Trigger an immediate, cache-bypassing full health probe cycle.
+
+    Returns the same JSON structure as ``GET /health/aggregate``.  Intended
+    for use by deploy post-flight checks where stale cached state is not
+    acceptable.
+    """
+    return await _run_full_health_probe()
 
 
 @router.get("/ai/metrics")
 async def get_ai_metrics() -> Dict[str, Any]:
-    """Aggregate AI metrics for dashboard consumption (systemd-host mode)."""
-    aidb_health = await fetch_with_fallback(f"{SERVICES['aidb']}/health", {})
+    """Aggregate AI metrics for dashboard consumption (systemd-host mode).
+
+    In addition to existing service health fetches, this endpoint runs:
+    - A raw RESP PING against Redis (Task 17.3) — fields: ``redis_ping_ok``,
+      ``redis_latency_ms``.
+    - A ``SELECT 1`` query against PostgreSQL via asyncpg (Task 17.3) —
+      fields: ``postgres_query_ok``, ``postgres_latency_ms``.
+
+    Both probes are exposed under the top-level ``"infra_probes"`` key.
+    """
+    # Fire all independent fetches and infra probes concurrently.
+    (
+        aidb_health,
+        hybrid_health,
+        llama_health,
+        llama_models,
+        embeddings_health,
+        embeddings_models,
+        switchboard_health,
+        aider_wrapper_health,
+        qdrant_health_raw,
+        qdrant_collections,
+        redis_probe,
+        postgres_probe,
+    ) = await asyncio.gather(
+        fetch_with_fallback(f"{SERVICES['aidb']}/health", {}),
+        fetch_with_fallback(f"{SERVICES['hybrid']}/health", {}),
+        fetch_with_fallback(f"{SERVICES['llama_cpp']}/health", {}),
+        fetch_with_fallback(f"{SERVICES['llama_cpp']}/v1/models", {}),
+        fetch_with_fallback(f"{SERVICES['embeddings']}/health", {}),
+        fetch_with_fallback(f"{SERVICES['embeddings']}/v1/models", {}),
+        fetch_with_fallback(f"{SERVICES['switchboard']}/health", {}),
+        fetch_with_fallback(f"{SERVICES['aider_wrapper']}/health", {}),
+        fetch_text_with_fallback(f"{SERVICES['qdrant']}/healthz"),
+        fetch_with_fallback(f"{SERVICES['qdrant']}/collections", {}),
+        _redis_ping_probe(),
+        _postgres_select1_probe(),
+    )
+
     aidb_status = _normalize_status(aidb_health.get("status"), ("online", "ok", "healthy"))
     if aidb_status in ("ok", "healthy"):
         aidb_status = "online"
 
-    hybrid_health = await fetch_with_fallback(f"{SERVICES['hybrid']}/health", {})
     hybrid_status = _normalize_status(hybrid_health.get("status"), ("healthy", "ok", "online"))
 
-    llama_health = await fetch_with_fallback(f"{SERVICES['llama_cpp']}/health", {})
     llama_status = _normalize_status(llama_health.get("status"), ("ok", "healthy"))
-    llama_models = await fetch_with_fallback(f"{SERVICES['llama_cpp']}/v1/models", {})
     llama_model = "unknown"
     if isinstance(llama_models, dict):
         data = llama_models.get("data") or []
         if data and isinstance(data, list):
             llama_model = data[0].get("id", "unknown")
 
-    embeddings_health = await fetch_with_fallback(f"{SERVICES['embeddings']}/health", {})
     embeddings_status = _normalize_status(embeddings_health.get("status"), ("ok", "healthy"))
-    embeddings_models = await fetch_with_fallback(f"{SERVICES['embeddings']}/v1/models", {})
     embeddings_model = embeddings_health.get("model", "unknown")
     if isinstance(embeddings_models, dict):
         data = embeddings_models.get("data") or []
@@ -637,15 +912,13 @@ async def get_ai_metrics() -> Dict[str, Any]:
         or service_endpoints.EMBEDDING_DIMENSIONS
     )
 
-    switchboard_health = await fetch_with_fallback(f"{SERVICES['switchboard']}/health", {})
     switchboard_status = _normalize_status(switchboard_health.get("status"), ("ok", "healthy"))
+    aider_wrapper_status = _normalize_status(aider_wrapper_health.get("status"), ("ok", "healthy"))
 
-    qdrant_health = await fetch_text_with_fallback(f"{SERVICES['qdrant']}/healthz")
-    if not qdrant_health:
-        qdrant_health = await fetch_text_with_fallback(f"{SERVICES['qdrant']}/readyz")
-    qdrant_status = "healthy" if qdrant_health else "unhealthy"
+    if not qdrant_health_raw:
+        qdrant_health_raw = await fetch_text_with_fallback(f"{SERVICES['qdrant']}/readyz")
+    qdrant_status = "healthy" if qdrant_health_raw else "unhealthy"
 
-    qdrant_collections = await fetch_with_fallback(f"{SERVICES['qdrant']}/collections", {})
     collection_names = []
     if isinstance(qdrant_collections, dict):
         collection_names = [
@@ -671,6 +944,16 @@ async def get_ai_metrics() -> Dict[str, Any]:
         "port": service_endpoints.HYBRID_COORDINATOR_PORT,
         "health_check": hybrid_health,
     }
+
+    # Prometheus gauge values (1.0 = up, 0.0 = down).  Emitted to the log so
+    # a log-based exporter or a future /metrics endpoint can surface them.
+    redis_ok_gauge = 1.0 if redis_probe.get("redis_ping_ok") else 0.0
+    postgres_ok_gauge = 1.0 if postgres_probe.get("postgres_query_ok") else 0.0
+    logger.info(
+        "infra_probe gauge redis_ping_ok=%.0f postgres_query_ok=%.0f",
+        redis_ok_gauge,
+        postgres_ok_gauge,
+    )
 
     return {
         "timestamp": datetime.utcnow().isoformat(),
@@ -716,6 +999,28 @@ async def get_ai_metrics() -> Dict[str, Any]:
                 "default_provider": switchboard_health.get("default_provider", "unknown"),
                 "remote_configured": bool(switchboard_health.get("remote_configured", False)),
             },
+            "aider_wrapper": {
+                "service": "aider-wrapper",
+                "status": aider_wrapper_status,
+                "port": service_endpoints.AIDER_WRAPPER_PORT,
+                "endpoint": SERVICES["aider_wrapper"],
+                "health_check": aider_wrapper_health,
+            },
+        },
+        "infra_probes": {
+            # Redis PING probe (Task 17.3).  Host/port from service_endpoints —
+            # no hardcoded values.
+            "redis_ping_ok": redis_probe.get("redis_ping_ok", False),
+            "redis_latency_ms": redis_probe.get("redis_latency_ms"),
+            "redis_error": redis_probe.get("redis_error"),
+            # PostgreSQL SELECT 1 probe (Task 17.3).  DSN from AIDB_DB_URL env
+            # var or constructed from service_endpoints constants.
+            "postgres_query_ok": postgres_probe.get("postgres_query_ok", False),
+            "postgres_latency_ms": postgres_probe.get("postgres_latency_ms"),
+            "postgres_error": postgres_probe.get("postgres_error"),
+            # Prometheus gauge equivalents exposed in the JSON response.
+            "redis_ping_ok_gauge": redis_ok_gauge,
+            "postgres_query_ok_gauge": postgres_ok_gauge,
         },
         "knowledge_base": {
             "total_points": total_points,
@@ -797,6 +1102,10 @@ async def get_port_registry() -> Dict[str, Any]:
                 "url": service_endpoints.PROMETHEUS_URL,
             },
             "ralph": {"port": service_endpoints.RALPH_PORT, "url": service_endpoints.RALPH_URL},
+            "aider_wrapper": {
+                "port": service_endpoints.AIDER_WRAPPER_PORT,
+                "url": service_endpoints.AIDER_WRAPPER_URL,
+            },
         },
     }
 
@@ -838,3 +1147,69 @@ async def proxy_prometheus_query(query: str) -> Dict[str, Any]:
     prom_url = f"{service_endpoints.PROMETHEUS_URL}/api/v1/query?query={query}"
     result = await fetch_with_fallback(prom_url, {})
     return result
+
+
+async def _prom_scalar(query: str) -> Optional[float]:
+    """Execute an instant Prometheus query and return the scalar result or None."""
+    url = f"{service_endpoints.PROMETHEUS_URL}/api/v1/query"
+    try:
+        session = await get_http_session()
+        async with session.get(url, params={"query": query}) as resp:
+            if resp.status != 200:
+                return None
+            payload = await resp.json()
+    except Exception:
+        return None
+
+    try:
+        result = payload.get("data", {}).get("result", [])
+        if result:
+            return float(result[0]["value"][1])
+    except (KeyError, IndexError, ValueError, TypeError):
+        pass
+    return None
+
+
+@router.get("/metrics")
+async def get_aistack_metrics() -> Dict[str, Any]:
+    """AI internals metrics for the dashboard 'AI Internals' panel.
+
+    Queries Prometheus for three derived metrics:
+    - embedding_cache_hit_rate_pct: hits / (hits + misses) * 100
+    - llm_routing_local_pct: local backend selections / total * 100
+    - tokens_compressed_last_hour: tokens saved by context compression in the last hour
+    """
+    hits_q = "embedding_cache_hits_total"
+    misses_q = "embedding_cache_misses_total"
+    local_q = 'hybrid_llm_backend_selections_total{backend="local"}'
+    total_q = "sum(hybrid_llm_backend_selections_total)"
+    before_q = "increase(context_compression_tokens_before_sum[1h])"
+    after_q = "increase(context_compression_tokens_after_sum[1h])"
+
+    hits, misses, local_sel, total_sel, before_sum, after_sum = await asyncio.gather(
+        _prom_scalar(hits_q),
+        _prom_scalar(misses_q),
+        _prom_scalar(local_q),
+        _prom_scalar(total_q),
+        _prom_scalar(before_q),
+        _prom_scalar(after_q),
+    )
+
+    h = hits or 0.0
+    m = misses or 0.0
+    embedding_cache_hit_rate_pct = round((h / (h + m) * 100) if (h + m) > 0 else 0.0, 2)
+
+    loc = local_sel or 0.0
+    tot = total_sel or 0.0
+    llm_routing_local_pct = round((loc / tot * 100) if tot > 0 else 0.0, 2)
+
+    b = before_sum or 0.0
+    a = after_sum or 0.0
+    tokens_compressed_last_hour = round(max(b - a, 0.0), 0)
+
+    return {
+        "embedding_cache_hit_rate_pct": embedding_cache_hit_rate_pct,
+        "llm_routing_local_pct": llm_routing_local_pct,
+        "tokens_compressed_last_hour": tokens_compressed_last_hour,
+        "timestamp": datetime.utcnow().isoformat(),
+    }

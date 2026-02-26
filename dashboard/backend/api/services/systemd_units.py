@@ -7,6 +7,7 @@ from typing import List
 
 DEFAULT_AI_STACK_UNITS: List[str] = [
     "ai-aidb",
+    "ai-aider-wrapper",
     "ai-hybrid-coordinator",
     "ai-ralph-wiggum",
     "ai-auth-selftest",
