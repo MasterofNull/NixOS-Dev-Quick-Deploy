@@ -26,6 +26,7 @@ import logging
 import os
 import re
 import time
+import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from config import Config, RoutingConfig
@@ -194,6 +195,13 @@ class SearchRouter:
     # Hybrid search
     # ------------------------------------------------------------------
 
+    async def _call_breaker_safe(self, name: str, fn: Callable[[], Any]) -> Any:
+        """Support sync or async circuit-breaker wrappers."""
+        result = self._call_breaker(name, fn)
+        if inspect.isawaitable(result):
+            return await result
+        return result
+
     async def hybrid_search(
         self,
         query: str,
@@ -213,7 +221,7 @@ class SearchRouter:
 
         for collection in collections:
             try:
-                points = self._call_breaker(
+                points = await self._call_breaker_safe(
                     "qdrant",
                     lambda col=collection: self._qdrant.query_points(
                         collection_name=col,
@@ -235,7 +243,7 @@ class SearchRouter:
 
             if tokens:
                 try:
-                    points, _ = self._call_breaker(
+                    points, _ = await self._call_breaker_safe(
                         "qdrant",
                         lambda col=collection: self._qdrant.scroll(
                             collection_name=col,
