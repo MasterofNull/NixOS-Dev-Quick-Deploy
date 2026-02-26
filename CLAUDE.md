@@ -202,9 +202,21 @@ When analyzing large codebases or multiple files that might exceed context limit
 
 | Tool | Command | Context Strength | Best For |
 |------|---------|------------------|----------|
-| **Gemini CLI** | `gemini -p` | Massive (1M+ tokens) | Full codebase analysis, architecture reviews |
-| **Qwen CLI** | `qwen` | Very Large | Deep code understanding, multi-file refactoring |
+| **Gemini CLI** | `gemini -p` | Small internet searches (free) | Quick web lookups, reference checks |
+| **Qwen CLI** | `qwen` | Very Large | Deep code understanding, multi-file analysis, audits |
 | **Codex CLI** | `codex` | Large | Pattern detection, security audits, test generation |
+
+### Verification Rule — NON-NEGOTIABLE
+
+**Output from `qwen` and `codex` MUST be verified before implementation.**
+
+These tools can hallucinate file paths, API signatures, or conclusions. Before acting on their output:
+1. **Cross-check** every file path and code reference against the actual codebase (`Grep`, `Read`).
+2. **Validate** any generated code with `python3 -m py_compile` or `bash -n` before committing.
+3. **Do not blindly accept** structural claims (e.g. "X is implemented", "Y does not exist") —
+   verify with a targeted `Grep` first.
+4. When qwen/codex output is used to *populate data* (e.g. YAML entries, documentation),
+   verify each entry is accurate before committing.
 
 ### File and Directory Inclusion Syntax
 
