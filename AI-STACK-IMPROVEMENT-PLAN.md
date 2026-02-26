@@ -309,14 +309,16 @@
 
 **Problem:** The pipeline generates JSONL training data in OpenAI chat format. The local model is a GGUF file served by llama.cpp. There is no mechanism to use that training data. Fine-tuning GGUF requires converting back to full weights, training with a LoRA adapter (e.g., via `llama.cpp/finetune` or `axolotl`/`unsloth`), then requantizing. None of this exists.
 
-- [ ] **4.1.1** Research and document the exact toolchain required to train a LoRA adapter on top of the current GGUF model and requantize it. Determine whether `llama.cpp finetune`, `unsloth`, or `axolotl` is the correct tool for this hardware (AMD ROCm, ~27GB RAM).
+- [x] **4.1.1** Research and document the exact toolchain required to train a LoRA adapter on top of the current GGUF model and requantize it. Determine whether `llama.cpp finetune`, `unsloth`, or `axolotl` is the correct tool for this hardware (AMD ROCm, ~27GB RAM).
   *Success metric: A written `docs/FINETUNING.md` that specifies the exact commands, estimated time, memory requirements, and output format.*
 
-- [ ] **4.1.2** Evaluate whether fine-tuning is the right mechanism at all for a personal, one-machine setup. Consider: in-context learning via long system prompts, retrieval-augmented generation with better knowledge, or prompt caching as alternatives.
+- [x] **4.1.2** Evaluate whether fine-tuning is the right mechanism at all for a personal, one-machine setup. Consider: in-context learning via long system prompts, retrieval-augmented generation with better knowledge, or prompt caching as alternatives.
   *Success metric: Written decision document (can be a section in `docs/FINETUNING.md`) with explicit conclusion: "we will / will not pursue fine-tuning, and the reason is..."*
+  *Decision: NOT viable. Unsloth=NVIDIA-only; axolotl breaks NixOS reproducibility; llama.cpp finetune experimental on ROCm. RAG (Phase 3) closes the loop instead. See `docs/FINETUNING.md`.*
 
-- [ ] **4.1.3** If fine-tuning is viable: add a `nixos-rebuild`-safe NixOS module that installs the chosen fine-tuning tool as a systemd one-shot service that runs on-demand. If not viable: rename the pipeline output directory from `fine-tuning/` to `interaction-archive/` and update all docs.
+- [x] **4.1.3** If fine-tuning is viable: add a `nixos-rebuild`-safe NixOS module that installs the chosen fine-tuning tool as a systemd one-shot service that runs on-demand. If not viable: rename the pipeline output directory from `fine-tuning/` to `interaction-archive/` and update all docs.
   *Success metric: Either the fine-tuning service starts and completes a test run, OR the directory rename is applied and all references updated.*
+  *Applied: directory renamed to `interaction-archive/` in Config.FINETUNE_DATA_PATH default and section comments.*
 
 ---
 
@@ -324,13 +326,13 @@
 
 **Problem:** Optimization proposals are natural language strings sent to Ralph. Ralph then tries to interpret them. This is not machine-readable. The proposals have no typed schema, no validation, and no deterministic implementation path.
 
-- [ ] **4.2.1** Define a typed proposal schema as a Pydantic model with fields: `proposal_type` (enum), `target_config_key` (string), `current_value` (float/int/string), `proposed_value` (same type), `evidence_summary` (string), `confidence` (float 0–1).
+- [x] **4.2.1** Define a typed proposal schema as a Pydantic model with fields: `proposal_type` (enum), `target_config_key` (string), `current_value` (float/int/string), `proposed_value` (same type), `evidence_summary` (string), `confidence` (float 0–1).
   *Success metric: All generated proposals validate against the Pydantic schema without error.*
 
-- [ ] **4.2.2** For proposals of type `routing_threshold_adjustment` and `iteration_limit_increase`, implement deterministic apply functions that directly write the new value to the config file (Phase 2.2.1) rather than creating a Ralph task.
+- [x] **4.2.2** For proposals of type `routing_threshold_adjustment` and `iteration_limit_increase`, implement deterministic apply functions that directly write the new value to the config file (Phase 2.2.1) rather than creating a Ralph task.
   *Success metric: Approving a `routing_threshold_adjustment` proposal writes the new float value to `routing-config.json`; no Ralph task is created.*
 
-- [ ] **4.2.3** For proposals that require code changes, create a structured issue in the project tracking document (this file) rather than submitting to Ralph.
+- [x] **4.2.3** For proposals that require code changes, create a structured issue in the project tracking document (this file) rather than submitting to Ralph.
   *Success metric: A test proposal with `proposal_type=code_change_required` results in a new entry appended to `AI-STACK-IMPROVEMENT-PLAN.md`, not a Ralph task.*
 
 ---
@@ -339,10 +341,10 @@
 
 **Problem:** No A/B test setup mechanism exists despite measurement infrastructure. Variant configuration is undefined.
 
-- [ ] **4.3.1** Add a `CACHE_EPOCH` integer to the embedding cache key scheme. Incrementing the epoch in the config file invalidates all existing cache entries atomically.
+- [x] **4.3.1** Add a `CACHE_EPOCH` integer to the embedding cache key scheme. Incrementing the epoch in the config file invalidates all existing cache entries atomically.
   *Success metric: Incrementing `CACHE_EPOCH` from 1 to 2 results in 100% cache misses on the next batch of requests; old epoch keys are marked for TTL expiry.*
 
-- [ ] **4.3.2** Add a variant routing field to the semantic cache: `variant_tag` (e.g., "A", "B") stored in the Redis key. A/B test configuration specifies what fraction of traffic gets each variant tag.
+- [x] **4.3.2** Add a variant routing field to the semantic cache: `variant_tag` (e.g., "A", "B") stored in the Redis key. A/B test configuration specifies what fraction of traffic gets each variant tag.
   *Success metric: Setting `AB_TEST_VARIANT_B_FRACTION=0.2` results in approximately 20% of requests tagged "B" in logs over 100 requests.*
 
 ---

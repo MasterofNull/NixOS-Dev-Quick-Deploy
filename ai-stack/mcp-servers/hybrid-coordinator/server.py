@@ -20,13 +20,17 @@ import hashlib
 import json
 import logging
 import os
+import random
 import re
 import time
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from uuid import uuid4
+
+from enum import Enum
+from pydantic import BaseModel, Field
 
 import httpx
 from opentelemetry import trace
@@ -798,9 +802,11 @@ class Config:
         os.getenv(
             "FINETUNE_DATA_PATH",
             HYBRID_SETTINGS.finetune_data_path
-            or "~/.local/share/nixos-ai-stack/fine-tuning/dataset.jsonl",
+            or "~/.local/share/nixos-ai-stack/interaction-archive/dataset.jsonl",
         )
     )
+    CACHE_EPOCH = int(os.getenv("CACHE_EPOCH", "1"))
+    AB_TEST_VARIANT_B_FRACTION = float(os.getenv("AB_TEST_VARIANT_B_FRACTION", "0.0"))
     API_KEY_FILE = _require_env("HYBRID_API_KEY_FILE") if STRICT_ENV else os.getenv("HYBRID_API_KEY_FILE", HYBRID_SETTINGS.api_key_file or "")
     API_KEY = ""
     AI_HARNESS_ENABLED = os.getenv("AI_HARNESS_ENABLED", "true").lower() == "true"
@@ -932,7 +938,87 @@ class RoutingConfig:
 # Module-level singleton used by routing and proposal handlers.
 routing_config: RoutingConfig = RoutingConfig()
 
-# TODO Phase 2.2.2: wire routing_threshold_adjustment proposals to routing_config.write_threshold()
+
+# ============================================================================
+# Phase 4.2 — Structured Optimization Proposal System
+# ============================================================================
+
+class OptimizationProposalType(str, Enum):
+    ROUTING_THRESHOLD_ADJUSTMENT = "routing_threshold_adjustment"
+    ITERATION_LIMIT_INCREASE      = "iteration_limit_increase"
+    MODEL_SWAP                    = "model_swap"
+    CODE_CHANGE_REQUIRED          = "code_change_required"
+
+
+class OptimizationProposal(BaseModel):
+    proposal_type:    OptimizationProposalType
+    target_config_key: str
+    current_value:    Union[float, int, str]
+    proposed_value:   Union[float, int, str]
+    evidence_summary: str
+    confidence:       float = Field(ge=0.0, le=1.0)
+
+
+async def apply_proposal(proposal: OptimizationProposal) -> dict:
+    """
+    Dispatch a validated OptimizationProposal to its deterministic apply function.
+
+    - routing_threshold_adjustment  → writes proposed_value to routing-config.json
+    - iteration_limit_increase      → writes proposed_value to routing-config.json
+    - model_swap                    → returns instructions (manual step required)
+    - code_change_required          → appends structured issue to AI-STACK-IMPROVEMENT-PLAN.md
+    """
+    ptype = proposal.proposal_type
+
+    if ptype in (
+        OptimizationProposalType.ROUTING_THRESHOLD_ADJUSTMENT,
+        OptimizationProposalType.ITERATION_LIMIT_INCREASE,
+    ):
+        new_val = float(proposal.proposed_value)
+        await routing_config.write_threshold(new_val)
+        logger.info(
+            "proposal_applied type=%s key=%s old=%s new=%s confidence=%.2f",
+            ptype, proposal.target_config_key,
+            proposal.current_value, new_val, proposal.confidence,
+        )
+        return {"status": "applied", "new_value": new_val}
+
+    if ptype == OptimizationProposalType.MODEL_SWAP:
+        logger.info(
+            "proposal_model_swap key=%s proposed=%s confidence=%.2f (manual step required)",
+            proposal.target_config_key, proposal.proposed_value, proposal.confidence,
+        )
+        return {
+            "status": "manual_required",
+            "instructions": f"Update AI_MODEL_NAME={proposal.proposed_value} in NixOS ai-stack.nix, then nixos-rebuild switch",
+        }
+
+    if ptype == OptimizationProposalType.CODE_CHANGE_REQUIRED:
+        return await _append_code_change_issue(proposal)
+
+    return {"status": "unknown_type", "proposal_type": ptype}
+
+
+async def _append_code_change_issue(proposal: OptimizationProposal) -> dict:
+    """Append a structured issue entry to AI-STACK-IMPROVEMENT-PLAN.md."""
+    plan_path = Path(__file__).parents[3] / "AI-STACK-IMPROVEMENT-PLAN.md"
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    entry = (
+        f"\n\n### AUTO-GENERATED PROPOSAL — {now}\n\n"
+        f"**Key:** `{proposal.target_config_key}`  \n"
+        f"**Current:** `{proposal.current_value}`  **Proposed:** `{proposal.proposed_value}`  \n"
+        f"**Confidence:** {proposal.confidence:.0%}  \n"
+        f"**Evidence:** {proposal.evidence_summary}\n\n"
+        f"- [ ] Review and implement: `{proposal.target_config_key}` → `{proposal.proposed_value}`\n"
+    )
+    try:
+        with open(plan_path, "a") as fh:
+            fh.write(entry)
+        logger.info("proposal_issue_appended key=%s plan=%s", proposal.target_config_key, plan_path)
+        return {"status": "issue_created", "plan_path": str(plan_path)}
+    except OSError as exc:
+        logger.error("proposal_issue_write_failed err=%s", exc)
+        return {"status": "error", "detail": str(exc)}
 
 
 # ============================================================================
@@ -1481,26 +1567,36 @@ async def _embed_text_uncached(text: str) -> List[float]:
             return [0.0] * Config.EMBEDDING_DIM
 
 
-async def embed_text(text: str) -> List[float]:
+async def embed_text(text: str, variant_tag: str = "") -> List[float]:
     """
     Public embedding entry point with Redis cache.
     Cache hit: returns in < 5 ms. Cache miss: delegates to _embed_text_uncached().
     Zero-vector error fallbacks are not cached.
+
+    variant_tag: optional A/B test tag included in the cache key so that
+                 variant A and B never share cached embeddings.
     """
     global embedding_cache
 
+    # Assign A/B variant if caller did not specify one
+    if not variant_tag:
+        fraction = Config.AB_TEST_VARIANT_B_FRACTION
+        variant_tag = "B" if (fraction > 0.0 and random.random() < fraction) else "A"
+        if variant_tag == "B":
+            logger.info("embed_text ab_variant=B fraction=%.2f", fraction)
+
     # Fast path — Redis cache hit
     if embedding_cache:
-        cached = await embedding_cache.get(text)
+        cached = await embedding_cache.get(text, variant_tag=variant_tag)
         if cached is not None:
-            logger.info("embed_text cache_hit text_len=%d", len(text))
+            logger.info("embed_text cache_hit text_len=%d variant=%s", len(text), variant_tag)
             return cached
 
     vector = await _embed_text_uncached(text)
 
     # Cache only real vectors, never the zero-vector error fallback
     if embedding_cache and vector and any(v != 0.0 for v in vector[:8]):
-        await embedding_cache.set(text, vector)
+        await embedding_cache.set(text, vector, variant_tag=variant_tag)
 
     return vector
 
@@ -3053,13 +3149,14 @@ async def store_pattern(pattern_data: Dict[str, Any], source_interaction: Dict[s
 
 
 # ============================================================================
-# Fine-Tuning Data Generation
+# Interaction Archive — training data export (Phase 4.1.3: fine-tuning not viable on this hardware)
 # ============================================================================
 
 
 async def generate_fine_tuning_dataset() -> str:
     """
-    Generate fine-tuning dataset from high-value interactions
+    Export high-value interactions to JSONL (OpenAI chat format) for archival and
+    potential off-device fine-tuning. Fine-tuning on-device is not viable (see docs/FINETUNING.md).
     """
     global qdrant_client
 
@@ -3176,7 +3273,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="generate_training_data",
-            description="Generate fine-tuning dataset from high-value interactions",
+            description="Export high-value interactions to JSONL interaction archive",
             inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
@@ -3517,6 +3614,7 @@ async def initialize_server():
     embedding_cache = EmbeddingCache(
         redis_url=redis_url,
         model_name=Config.EMBEDDING_MODEL,
+        cache_epoch=Config.CACHE_EPOCH,
     )
     await embedding_cache.initialize(flush_on_model_change=True)
     logger.info("✓ Embedding cache initialized (model=%s)", Config.EMBEDDING_MODEL)
@@ -4127,6 +4225,21 @@ async def main():
         http_app.router.add_get('/harness/scorecard', handle_harness_scorecard)
         http_app.router.add_post('/feedback', handle_feedback)
         http_app.router.add_post('/feedback/{interaction_id}', handle_simple_feedback)  # Phase 3.1.1
+
+        async def handle_apply_proposal(request: web.Request) -> web.Response:
+            """Apply a validated OptimizationProposal. Requires API key."""
+            key = request.headers.get("X-API-Key", "")
+            if Config.API_KEY and key != Config.API_KEY:
+                return web.json_response({"error": "unauthorized"}, status=401)
+            try:
+                body = await request.json()
+                proposal = OptimizationProposal(**body)
+            except Exception as exc:
+                return web.json_response({"error": "invalid_proposal", "detail": str(exc)}, status=400)
+            result = await apply_proposal(proposal)
+            return web.json_response(result)
+
+        http_app.router.add_post('/proposals/apply', handle_apply_proposal)
 
         # New RLM endpoints
         http_app.router.add_post('/context/multi_turn', handle_multi_turn_context)
