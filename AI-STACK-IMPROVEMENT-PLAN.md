@@ -917,11 +917,13 @@ Not a current priority but track here for when it becomes one.
 
 **Problem:** API keys, tokens, and secrets could accidentally be committed to the repository (e.g., in `.env` files, test configs, or debug output). No pre-commit hook or CI check currently prevents this.
 
-- [ ] **11.4.1** Add `git-secrets` or `trufflehog` as a pre-commit hook that scans staged files for secret patterns (API keys, tokens, private keys, passwords) before every commit.
+- [x] **11.4.1** Add `git-secrets` or `trufflehog` as a pre-commit hook that scans staged files for secret patterns (API keys, tokens, private keys, passwords) before every commit.
   *Success metric: Attempting to commit a file containing a string matching `sk-[A-Za-z0-9]{48}` (OpenAI key pattern) is blocked with a clear error message.*
+  *Done (2026-02-26): added repo-managed `.githooks/pre-commit` scanner + `scripts/install-git-hooks.sh`; validated by staging a test file with `sk-...` pattern and confirming hook exit `1` with block message.*
 
-- [ ] **11.4.2** Scan the existing git history for accidentally committed secrets.
+- [x] **11.4.2** Scan the existing git history for accidentally committed secrets.
   *Success metric: `trufflehog git file:///home/hyperd/Documents/NixOS-Dev-Quick-Deploy` completes with no high-confidence findings. Any findings are rotated and git-history-cleaned.*
+  *Done (2026-02-26): `nix run nixpkgs#trufflehog -- git file:///home/hyperd/Documents/NixOS-Dev-Quick-Deploy --results=verified,unknown --fail` completed with `verified_secrets: 0`, `unverified_secrets: 0`.*
 
 - [x] **11.4.3** Add `.env`, `*.key`, `*.pem`, `secrets.yaml`, `secrets.json`, `*.sops.yaml` to `.gitignore` with a comment explaining why.
   *Success metric: `git check-ignore -v .env` and `git check-ignore -v secrets.yaml` both return the `.gitignore` rule.*
