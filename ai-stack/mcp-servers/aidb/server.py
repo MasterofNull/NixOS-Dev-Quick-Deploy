@@ -47,12 +47,11 @@ from urllib.parse import urlparse
 import structlog
 from structlog.contextvars import bind_contextvars, merge_contextvars, clear_contextvars
 from pgvector.sqlalchemy import Vector
-from sentence_transformers import SentenceTransformer
 
 from middleware.cache import CacheMiddleware
+import gc_worker
 from query_validator import VectorSearchRequest, PaginatedResponse, rate_limiter
 from health_check import HealthChecker, create_health_endpoints
-from garbage_collector import GarbageCollector, run_gc_scheduler
 from llm_parallel import run_parallel_inference
 from discovery_endpoints import register_discovery_routes
 from settings_loader import Settings, load_settings
@@ -610,42 +609,6 @@ def _get_process_memory_bytes() -> int:
         return rss_pages * os.sysconf("SC_PAGE_SIZE")
     except Exception:  # noqa: BLE001
         return 0
-
-
-class EmbeddingService:
-    """Lightweight wrapper around SentenceTransformer with async helpers."""
-
-    def __init__(self, model_name: str, trust_remote_code: bool = False):
-        self.model_name = model_name
-        self.trust_remote_code = trust_remote_code
-        self._model: Optional[SentenceTransformer] = None
-        self._model_lock = threading.Lock()
-
-    def _load_model(self) -> SentenceTransformer:
-        if self._model is None:
-            with self._model_lock:
-                if self._model is None:
-                    self._model = SentenceTransformer(
-                        self.model_name,
-                        device="cpu",
-                        trust_remote_code=self.trust_remote_code,
-                    )
-        return self._model
-
-    async def embed(self, texts: List[str]) -> List[List[float]]:
-        if not texts:
-            return []
-
-        model = await asyncio.to_thread(self._load_model)
-        embeddings = await asyncio.to_thread(
-            model.encode,
-            texts,
-            convert_to_numpy=True,
-            normalize_embeddings=True,
-            show_progress_bar=False,
-        )
-        # Ensure pure Python lists for JSON serialization and DB binding
-        return [list(map(float, vector)) for vector in embeddings]
 
 
 class VectorStore:
@@ -1953,10 +1916,6 @@ class MCPServer:
         self._repo_root = Path(__file__).resolve().parents[1]
         self._server_task: Optional[asyncio.Task] = None
         self._monitor_task: Optional[asyncio.Task] = None
-        self._embedding_service = EmbeddingService(
-            settings.embedding_model,
-            trust_remote_code=settings.embedding_trust_remote_code,
-        )
         self._vector_store = VectorStore(settings, self._engine)
         self._rag_pipeline = RAGPipeline(
             search_vectors=self.search_vectors,
@@ -2497,6 +2456,12 @@ class MCPServer:
         return vectors
 
     async def _embed_texts_backend(self, texts: List[str]) -> List[List[float]]:
+        """Embed texts via HTTP: embeddings-service → llama.cpp fallback.
+
+        In-process SentenceTransformer removed (Phase 6.2.1). All embedding
+        now goes through the external embeddings-service HTTP endpoint or
+        llama.cpp as final fallback.
+        """
         errors: List[str] = []
         if self.settings.embedding_service_url:
             try:
@@ -2504,11 +2469,6 @@ class MCPServer:
             except Exception as exc:  # noqa: BLE001
                 LOGGER.warning("embedding_service_failed", error=str(exc))
                 errors.append(f"service:{exc}")
-        try:
-            return await self._embedding_service.embed(texts)
-        except Exception as exc:  # noqa: BLE001
-            LOGGER.warning("embedding_model_failed", error=str(exc))
-            errors.append(f"model:{exc}")
         try:
             return await self._embed_via_llama_cpp(texts)
         except Exception as exc:  # noqa: BLE001
@@ -2565,7 +2525,7 @@ class MCPServer:
                     return await self._embed_texts_backend(texts)
 
                 if any(embedding is None for embedding in embeddings):
-                    return await self._embedding_service.embed(texts)
+                    return await self._embed_texts_backend(texts)
                 return [embedding for embedding in embeddings]  # type: ignore[list-item]
             except Exception as exc:  # noqa: BLE001
                 span.record_exception(exc)
@@ -2705,76 +2665,7 @@ class MCPServer:
             When True, log and return candidate counts without deleting.
             When False, delete candidates and return deleted counts.
         """
-        cutoff = datetime.now(timezone.utc).isoformat()
-        # Build the cutoff timestamp string for comparison inside JSON.
-        # We use a SQL expression that casts metadata JSON fields to text
-        # and compares them, since the values are stored as ISO 8601 strings.
-        sql_candidates = sa.text(
-            """
-            SELECT id
-            FROM document_embeddings
-            WHERE
-                (metadata->>'ingested_at') IS NOT NULL
-                AND (metadata->>'last_accessed_at') IS NOT NULL
-                AND (metadata->>'last_accessed_at') = (metadata->>'ingested_at')
-                AND (metadata->>'feedback_linked') IS DISTINCT FROM 'true'
-                AND (metadata->>'ingested_at')::timestamptz < NOW() - INTERVAL ':stale_days days'
-            """
-        )
-        # NOTE: interval interpolation via bindparams is dialect-specific;
-        # use plain string formatting for the integer day count (safe — it
-        # comes from an env var validated as int at module load time).
-        sql_candidates_safe = sa.text(
-            f"""
-            SELECT id
-            FROM document_embeddings
-            WHERE
-                (metadata->>'ingested_at') IS NOT NULL
-                AND (metadata->>'last_accessed_at') IS NOT NULL
-                AND (metadata->>'last_accessed_at') = (metadata->>'ingested_at')
-                AND (metadata->>'feedback_linked') IS DISTINCT FROM 'true'
-                AND (metadata->>'ingested_at')::timestamptz < NOW() - INTERVAL '{_GC_STALE_DAYS} days'
-            """
-        )
-        sql_delete = sa.text(
-            f"""
-            DELETE FROM document_embeddings
-            WHERE id = ANY(:ids)
-            """
-        )
-
-        summary: Dict[str, Any] = {"dry_run": dry_run, "collections": {}}
-        try:
-            with self._engine.connect() as conn:
-                rows = conn.execute(sql_candidates_safe).fetchall()
-                candidate_ids = [row[0] for row in rows]
-                count = len(candidate_ids)
-                summary["collections"]["document_embeddings"] = count
-                summary["total_candidates"] = count
-
-                if dry_run:
-                    LOGGER.info(
-                        "GC dry-run: %d stale vector(s) found (older than %d days, never accessed)",
-                        count,
-                        _GC_STALE_DAYS,
-                    )
-                    return summary
-
-                if candidate_ids:
-                    conn.execute(sql_delete, {"ids": candidate_ids})
-                    conn.commit()
-                    LOGGER.info(
-                        "GC pass: deleted %d stale vector(s) from document_embeddings",
-                        count,
-                    )
-                else:
-                    LOGGER.info("GC pass: no stale vectors found, nothing deleted")
-
-                summary["total_deleted"] = count
-                return summary
-        except Exception:  # noqa: BLE001
-            LOGGER.exception("GC pass failed")
-            raise
+        return gc_worker.run_gc_pass_sync(self._engine, _GC_STALE_DAYS, dry_run=dry_run)
 
     async def execute_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Dispatch execution to supported tools."""
