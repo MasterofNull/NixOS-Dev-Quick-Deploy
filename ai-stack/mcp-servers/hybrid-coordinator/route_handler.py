@@ -38,8 +38,10 @@ from config import Config
 from metrics import ROUTE_DECISIONS, ROUTE_ERRORS
 from search_router import looks_like_sql as _looks_like_sql, normalize_tokens as _normalize_tokens
 from query_expansion import QueryExpander
+from prompt_injection import PromptInjectionScanner, sanitize_query
 
 logger = logging.getLogger("hybrid-coordinator")
+_injection_scanner = PromptInjectionScanner()
 
 # ---------------------------------------------------------------------------
 # Injected dependencies
@@ -99,6 +101,7 @@ async def route_search(
     generate_response: bool = False,
 ) -> Dict[str, Any]:
     """Route query to SQL, semantic, keyword, tree, or hybrid search."""
+    query = sanitize_query(query)
     start = time.time()
     interaction_id = str(uuid4())
     limit = max(1, min(int(limit), Config.AI_AUTONOMY_MAX_RETRIEVAL_RESULTS))
@@ -183,13 +186,25 @@ async def route_search(
             results = hybrid_results
             response_text = _summarize(hybrid_results["combined_results"])
 
-        # Phase 3.2.1 — Gap tracking
-        _GAP_THRESHOLD = float(os.getenv("AI_GAP_SCORE_THRESHOLD", "0.4"))
+        # Task 15.1.2 — Prompt injection filtering on retrieved chunks
         _all_combined = (
             results.get("combined_results") or
             results.get("semantic_results") or
             results.get("keyword_results") or []
         )
+        _all_combined, n_removed = _injection_scanner.filter_results(_all_combined, content_key="content")
+        if n_removed:
+            logger.warning("rag_injection_filtered", n_removed=n_removed)
+        # Reflect filtered list back into results so downstream consumers see clean data
+        if "combined_results" in results:
+            results["combined_results"] = _all_combined
+        elif "semantic_results" in results:
+            results["semantic_results"] = _all_combined
+        elif "keyword_results" in results:
+            results["keyword_results"] = _all_combined
+
+        # Phase 3.2.1 — Gap tracking
+        _GAP_THRESHOLD = float(os.getenv("AI_GAP_SCORE_THRESHOLD", "0.4"))
         _best_score = max(
             (r.get("score", 0.0) for r in _all_combined if isinstance(r, dict)),
             default=0.0,
