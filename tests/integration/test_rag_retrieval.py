@@ -46,6 +46,18 @@ def _read_api_key() -> str:
         return os.getenv("HYBRID_API_KEY", "")
 
 
+def _read_aidb_api_key() -> str:
+    key_file = os.getenv(
+        "AIDB_API_KEY_FILE",
+        "/run/secrets/aidb_api_key",
+    )
+    try:
+        with open(key_file) as f:
+            return f.read().strip()
+    except OSError:
+        return os.getenv("AIDB_API_KEY", "")
+
+
 @pytest.fixture(scope="session")
 def api_key():
     """Read the hybrid-coordinator API key, skipping if unavailable."""
@@ -74,8 +86,12 @@ def coordinator_client(api_key):
 @pytest.fixture(scope="session")
 def aidb_client():
     """Session-scoped httpx client for the AIDB service."""
+    aidb_key = _read_aidb_api_key()
+    headers = {"Content-Type": "application/json"}
+    if aidb_key:
+        headers["X-API-Key"] = aidb_key
     try:
-        with httpx.Client(base_url=AIDB_URL, timeout=30.0) as c:
+        with httpx.Client(base_url=AIDB_URL, headers=headers, timeout=30.0) as c:
             try:
                 c.get("/health", timeout=5.0)
             except (httpx.ConnectError, httpx.TimeoutException) as exc:
