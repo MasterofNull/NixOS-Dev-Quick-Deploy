@@ -12,6 +12,7 @@
 2. **Minimal footprint.** Python services use `python3.withPackages` (not venvs). Systemd units carry `DynamicUser=true`, `PrivateTmp=true`, `ProtectSystem=strict`, `MemoryMax=` as appropriate. Unused services must not be enabled.
 3. **Hardware-tier aware.** Any config that sets RAM/VRAM thresholds, model paths, or kernel parameters must select the correct value for the detected hardware tier — it must not hard-code ThinkPad P14s values.
 4. **Platform portability.** Supported target platforms: embedded/SBC (≤2 GB RAM), Pi-class SBC (4–8 GB), budget laptop (8–16 GB), midrange laptop/workstation (16–32 GB), high-end desktop/server (32 GB+). Optimizations specific to one tier must be guarded with `lib.mkIf`.
+5. **Encryption sequencing constraint.** Defer all new system/disk encryption changes until the full stack is complete and validated end-to-end.
 
 ---
 
@@ -883,11 +884,13 @@ Not a current priority but track here for when it becomes one.
 
 **Problem:** `flake.nix` trusts `cache.nixos.org`, `nix-community.cachix.org`, and `devenv.cachix.org`. Every substitution is a potential supply chain attack. No additional verification of substituted paths occurs beyond the Nix store hash.
 
-- [ ] **11.2.1** Audit the trusted public keys in `nix.settings.trusted-public-keys` — verify that all configured keys are intentional and current.
+- [x] **11.2.1** Audit the trusted public keys in `nix.settings.trusted-public-keys` — verify that all configured keys are intentional and current.
   *Success metric: Keys documented in `nix/modules/core/base.nix` with a comment explaining what each key is for and when it was last verified.*
+  *Done (2026-02-26): centralized keys into `mySystem.deployment.nixTrustedPublicKeys`; wired to `nix.settings.trusted-public-keys` with explicit purpose comments and verification date in `nix/modules/core/base.nix`.*
 
-- [ ] **11.2.2** Add `nix.settings.require-sigs = true` (NixOS default) and ensure it cannot be overridden to `false` by any host config.
+- [x] **11.2.2** Add `nix.settings.require-sigs = true` (NixOS default) and ensure it cannot be overridden to `false` by any host config.
   *Success metric: `nix config show | grep require-sigs` returns `true`; setting it to false in a host config triggers a NixOS assertion failure.*
+  *Done (2026-02-26): enforced in `nix/modules/core/base.nix` with `nix.settings.require-sigs = lib.mkForce true`; runtime check confirms `require-sigs = true`.*
 
 - [ ] **11.2.3** For the AI stack role, add `nix.settings.allowed-uris` to restrict which remote URIs `builtins.fetchurl` and `builtins.fetchTarball` can reach during evaluation.
   *Success metric: An attempt to use a non-allowlisted URI in a Nix expression fails at eval time with a clear error.*
@@ -919,8 +922,9 @@ Not a current priority but track here for when it becomes one.
 - [ ] **11.4.2** Scan the existing git history for accidentally committed secrets.
   *Success metric: `trufflehog git file:///home/hyperd/Documents/NixOS-Dev-Quick-Deploy` completes with no high-confidence findings. Any findings are rotated and git-history-cleaned.*
 
-- [ ] **11.4.3** Add `.env`, `*.key`, `*.pem`, `secrets.yaml`, `secrets.json`, `*.sops.yaml` to `.gitignore` with a comment explaining why.
+- [x] **11.4.3** Add `.env`, `*.key`, `*.pem`, `secrets.yaml`, `secrets.json`, `*.sops.yaml` to `.gitignore` with a comment explaining why.
   *Success metric: `git check-ignore -v .env` and `git check-ignore -v secrets.yaml` both return the `.gitignore` rule.*
+  *Done (2026-02-26): `.gitignore` updated to include `*.sops.yaml`; validated with `git check-ignore -v .env secrets.yaml test.sops.yaml`.*
 
 ---
 
