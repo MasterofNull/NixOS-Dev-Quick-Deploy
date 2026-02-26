@@ -59,15 +59,40 @@ from qdrant_client.models import (
     VectorParams,
 )
 
-from shared.stack_settings import HybridSettings
 from shared.auth_http_client import create_embeddings_client
 from shared.circuit_breaker import CircuitBreakerError, CircuitBreakerRegistry, CircuitState
 from shared.telemetry_privacy import scrub_telemetry_payload
 from context_compression import ContextCompressor
 from embedding_cache import EmbeddingCache
+# Phase 6.1 — extracted modules
+from metrics import (
+    REQUEST_COUNT, REQUEST_ERRORS, REQUEST_LATENCY, PROCESS_MEMORY_BYTES,
+    ROUTE_DECISIONS, ROUTE_ERRORS, DISCOVERY_DECISIONS, DISCOVERY_LATENCY,
+    AUTONOMY_BUDGET_EXCEEDED, LLM_BACKEND_LATENCY, LLM_BACKEND_SELECTIONS,
+)
+from config import (
+    HYBRID_SETTINGS, STRICT_ENV, _require_env, _enforce_startup_env,
+    Config, RoutingConfig, routing_config,
+    OptimizationProposalType, OptimizationProposal, apply_proposal,
+    PerformanceWindow, performance_window,
+)
+import capability_discovery
+import interaction_tracker
+from interaction_tracker import (
+    compute_value_score, track_interaction, update_interaction_outcome,
+    update_context_metrics, extract_patterns, store_pattern,
+    generate_fine_tuning_dataset, record_simple_feedback,
+    _record_query_gap, get_feedback_variant_stats,
+)
+from search_router import (
+    looks_like_sql as _looks_like_sql,
+    normalize_tokens as _normalize_tokens,
+    payload_matches_tokens as _payload_matches_tokens,
+    rerank_combined_results as _rerank_combined_results,
+    tree_expand_queries as _tree_expand_queries,
+)
 SERVICE_NAME = "hybrid-coordinator"
 SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
-HYBRID_SETTINGS = HybridSettings.load()
 
 
 def configure_logging() -> None:
@@ -105,45 +130,7 @@ def configure_logging() -> None:
 
 configure_logging()
 logger = logging.getLogger(SERVICE_NAME)
-STRICT_ENV = os.getenv("AI_STRICT_ENV", "true").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _require_env(name: str) -> str:
-    value = (os.getenv(name) or "").strip()
-    if not value:
-        raise RuntimeError(f"Missing required environment variable: {name}")
-    return value
-
-
-def _enforce_startup_env() -> None:
-    if not STRICT_ENV:
-        return
-
-    required_env = [
-        "QDRANT_URL",
-        "LLAMA_CPP_BASE_URL",
-        "EMBEDDING_SERVICE_URL",
-        "AIDB_URL",
-        "REDIS_URL",
-        "POSTGRES_HOST",
-        "POSTGRES_PORT",
-        "POSTGRES_DB",
-        "POSTGRES_USER",
-        "POSTGRES_PASSWORD_FILE",
-        "HYBRID_API_KEY_FILE",
-        "EMBEDDING_API_KEY_FILE",
-        "MCP_SERVER_MODE",
-        "MCP_SERVER_PORT",
-    ]
-    for env_name in required_env:
-        _require_env(env_name)
-
-    for secret_env in ("POSTGRES_PASSWORD_FILE", "HYBRID_API_KEY_FILE", "EMBEDDING_API_KEY_FILE"):
-        secret_file = Path(_require_env(secret_env))
-        if not secret_file.exists():
-            raise RuntimeError(f"AI_STRICT_ENV requires existing secret file for {secret_env}: {secret_file}")
-        if not secret_file.is_file():
-            raise RuntimeError(f"AI_STRICT_ENV requires file path for {secret_env}: {secret_file}")
+# STRICT_ENV, _require_env, _enforce_startup_env → imported from config
 
 
 async def _preflight_check() -> None:
@@ -265,61 +252,7 @@ HYBRID_STATS = {
 DISCOVERY_CACHE: Dict[str, Dict[str, Any]] = {}
 DISCOVERY_CACHE_LOCK = asyncio.Lock()
 
-REQUEST_COUNT = Counter(
-    "hybrid_requests_total",
-    "Total hybrid coordinator HTTP requests",
-    ["endpoint", "status"],
-)
-REQUEST_ERRORS = Counter(
-    "hybrid_request_errors_total",
-    "Total hybrid coordinator HTTP request errors",
-    ["endpoint", "method"],
-)
-REQUEST_LATENCY = Histogram(
-    "hybrid_request_latency_seconds",
-    "Hybrid coordinator HTTP request latency in seconds",
-    ["endpoint", "method"],
-)
-PROCESS_MEMORY_BYTES = Gauge(
-    "hybrid_process_memory_bytes",
-    "Hybrid coordinator process resident memory in bytes",
-)
-ROUTE_DECISIONS = Counter(
-    "hybrid_route_decisions_total",
-    "Hybrid coordinator route decisions",
-    ["route"],
-)
-ROUTE_ERRORS = Counter(
-    "hybrid_route_errors_total",
-    "Hybrid coordinator route errors",
-    ["route"],
-)
-DISCOVERY_DECISIONS = Counter(
-    "hybrid_capability_discovery_decisions_total",
-    "Hybrid capability discovery decisions",
-    ["decision", "reason"],
-)
-DISCOVERY_LATENCY = Histogram(
-    "hybrid_capability_discovery_latency_seconds",
-    "Hybrid capability discovery latency in seconds",
-)
-AUTONOMY_BUDGET_EXCEEDED = Counter(
-    "hybrid_autonomy_budget_exceeded_total",
-    "Hybrid autonomy budget exceed events",
-    ["budget"],
-)
-# Phase 2.3.3 — per-backend routing latency (p50/p95/p99 available via Prometheus)
-LLM_BACKEND_LATENCY = Histogram(
-    "hybrid_llm_backend_latency_seconds",
-    "End-to-end LLM call latency by backend (local=llama.cpp, remote=API)",
-    ["backend"],
-    buckets=[0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0],
-)
-LLM_BACKEND_SELECTIONS = Counter(
-    "hybrid_llm_backend_selections_total",
-    "LLM backend selection decisions",
-    ["backend", "reason_class"],
-)
+# Prometheus metrics → imported from metrics.py
 
 
 def _get_process_memory_bytes() -> int:
@@ -394,60 +327,6 @@ async def _call_with_breaker_async(name: str, coro: Callable[[], Any]) -> Any:
         raise
 
 
-def _looks_like_sql(query: str) -> bool:
-    normalized = query.strip().lower()
-    if not normalized:
-        return False
-    sql_start = ("select", "with", "insert", "update", "delete")
-    if normalized.startswith(sql_start):
-        return True
-    if ";" in normalized and (" from " in normalized or " where " in normalized):
-        return True
-    return False
-
-
-def _normalize_tokens(query: str) -> List[str]:
-    tokens = re.findall(r"[a-zA-Z0-9_\-]{2,}", query.lower())
-    stopwords = {
-        "the", "and", "for", "with", "that", "this", "from", "into", "http", "https",
-        "you", "your", "are", "was", "were", "can", "could", "should", "would",
-    }
-    return [t for t in tokens if t not in stopwords]
-
-
-def _payload_matches_tokens(payload: Dict[str, Any], tokens: List[str]) -> Tuple[bool, int]:
-    if not tokens or not payload:
-        return False, 0
-    haystacks: List[str] = []
-    for value in payload.values():
-        if isinstance(value, str):
-            haystacks.append(value.lower())
-        elif isinstance(value, list):
-            haystacks.extend([str(item).lower() for item in value if isinstance(item, (str, int))])
-    combined = " ".join(haystacks)
-    matches = sum(1 for token in tokens if token in combined)
-    return matches > 0, matches
-
-
-def _extract_text_from_result(item: Dict[str, Any]) -> str:
-    payload = item.get("payload") or {}
-    text_parts: List[str] = []
-    for key in (
-        "summary",
-        "description",
-        "usage_pattern",
-        "solution",
-        "response",
-        "query",
-        "content",
-        "procedure",
-        "title",
-    ):
-        value = payload.get(key)
-        if isinstance(value, str) and value.strip():
-            text_parts.append(value.strip())
-    return " ".join(text_parts).strip()
-
 
 def _keyword_relevance(text: str, expected_keywords: List[str]) -> float:
     if not expected_keywords:
@@ -469,681 +348,7 @@ def _classify_eval_failure(metrics: Dict[str, Any]) -> str:
     return "score_below_threshold"
 
 
-def _tree_expand_queries(query: str, branch_factor: int) -> List[str]:
-    tokens = _normalize_tokens(query)
-    if not tokens:
-        return [query]
-    expansions: List[str] = [query]
-    top = tokens[: max(1, branch_factor)]
-    expansions.extend([f"{query} {token}" for token in top])
-    expansions.extend([" ".join(top[:idx + 1]) for idx in range(min(len(top), branch_factor))])
-    # preserve order while deduplicating
-    deduped: List[str] = []
-    for item in expansions:
-        if item not in deduped:
-            deduped.append(item)
-    return deduped[: max(1, branch_factor)]
-
-
-DISCOVERY_DOMAIN_KEYWORDS = {
-    "tool", "tools", "mcp", "server", "servers", "skill", "skills",
-    "dataset", "datasets", "document", "documents", "catalog", "library",
-    "rag", "embedding", "embeddings", "vector", "workflow", "prompt",
-    "prompts", "agent", "agents", "extension", "extensions", "vscodium",
-}
-
-DISCOVERY_ACTION_KEYWORDS = {
-    "find", "discover", "list", "lookup", "search", "select", "choose",
-    "recommend", "use", "apply", "install", "configure", "integrate",
-    "wire", "map", "route", "optimize", "ingest",
-}
-
-
-def _update_capability_discovery_stats(decision: str, reason: str) -> None:
-    stats = HYBRID_STATS["capability_discovery"]
-    stats["last_decision"] = decision
-    stats["last_reason"] = reason
-    if decision == "invoked":
-        stats["invoked"] += 1
-    elif decision == "cache_hit":
-        stats["cache_hits"] += 1
-    elif decision == "skipped":
-        stats["skipped"] += 1
-    elif decision == "error":
-        stats["errors"] += 1
-    DISCOVERY_DECISIONS.labels(decision=decision, reason=reason).inc()
-
-
-def _build_discovery_cache_key(query: str, intent_tags: List[str]) -> str:
-    normalized_query = " ".join(_normalize_tokens(query))[:512]
-    normalized_tags = ",".join(sorted(intent_tags))
-    digest = hashlib.sha256(f"{normalized_query}|{normalized_tags}".encode("utf-8")).hexdigest()
-    return digest
-
-
-def _should_run_capability_discovery(query: str) -> Tuple[bool, str, List[str]]:
-    if not Config.AI_CAPABILITY_DISCOVERY_ENABLED:
-        return False, "disabled", []
-    if len(query.strip()) < Config.AI_CAPABILITY_DISCOVERY_MIN_QUERY_CHARS:
-        return False, "query-too-short", []
-
-    tokens = _normalize_tokens(query)
-    if not tokens:
-        return False, "no-meaningful-tokens", []
-
-    token_set = set(tokens)
-    domain_hits = sorted(t for t in token_set if t in DISCOVERY_DOMAIN_KEYWORDS)
-    action_hits = sorted(t for t in token_set if t in DISCOVERY_ACTION_KEYWORDS)
-
-    direct_triggers = {"mcp", "tools", "skills", "dataset", "datasets", "rag", "workflow"}
-    if token_set.intersection(direct_triggers):
-        return True, "explicit-discovery-intent", domain_hits or ["discovery"]
-
-    if domain_hits and action_hits:
-        return True, "domain-plus-action", domain_hits
-
-    return False, "no-discovery-intent", []
-
-
-def _rank_items_for_query(
-    items: List[Dict[str, Any]],
-    query: str,
-    *,
-    fields: List[str],
-    limit: int,
-) -> List[Dict[str, Any]]:
-    tokens = _normalize_tokens(query)
-    if not items:
-        return []
-    if not tokens:
-        return items[:limit]
-
-    scored: List[Tuple[int, Dict[str, Any]]] = []
-    for item in items:
-        text_parts: List[str] = []
-        for field in fields:
-            value = item.get(field)
-            if isinstance(value, str):
-                text_parts.append(value.lower())
-            elif isinstance(value, list):
-                text_parts.extend(str(v).lower() for v in value if isinstance(v, (str, int)))
-        corpus = " ".join(text_parts)
-        score = sum(2 if token == corpus else 1 for token in tokens if token in corpus)
-        if score > 0:
-            scored.append((score, item))
-    if not scored:
-        return items[:limit]
-    scored.sort(key=lambda pair: pair[0], reverse=True)
-    return [item for _, item in scored[:limit]]
-
-
-async def _discover_applicable_resources(query: str) -> Dict[str, Any]:
-    decision, reason, intent_tags = _should_run_capability_discovery(query)
-    if not decision:
-        _update_capability_discovery_stats("skipped", reason)
-        return {
-            "decision": "skipped",
-            "reason": reason,
-            "intent_tags": intent_tags,
-            "cache_hit": False,
-            "tools": [],
-            "skills": [],
-            "servers": [],
-            "datasets": [],
-        }
-
-    if aidb_client is None or not Config.AIDB_URL:
-        _update_capability_discovery_stats("skipped", "aidb-unavailable")
-        return {
-            "decision": "skipped",
-            "reason": "aidb-unavailable",
-            "intent_tags": intent_tags,
-            "cache_hit": False,
-            "tools": [],
-            "skills": [],
-            "servers": [],
-            "datasets": [],
-        }
-
-    cache_key = _build_discovery_cache_key(query, intent_tags)
-    now = time.time()
-    ttl = max(60, Config.AI_CAPABILITY_DISCOVERY_TTL_SECONDS)
-    async with DISCOVERY_CACHE_LOCK:
-        cached = DISCOVERY_CACHE.get(cache_key)
-        if cached and float(cached.get("expires_at", 0)) > now:
-            _update_capability_discovery_stats("cache_hit", "ttl-hit")
-            return {
-                **cached["payload"],
-                "cache_hit": True,
-                "decision": "cache_hit",
-                "reason": "ttl-hit",
-                "intent_tags": intent_tags,
-            }
-
-    start = time.time()
-
-    async def _fetch(path: str, params: Optional[Dict[str, Any]] = None) -> Any:
-        attempts = max(1, Config.AI_AUTONOMY_MAX_RETRIES + 1)
-        last_error: Optional[Exception] = None
-        for _ in range(attempts):
-            try:
-                response = await aidb_client.get(path, params=params, timeout=10.0)
-                response.raise_for_status()
-                return response.json()
-            except Exception as exc:  # noqa: BLE001
-                last_error = exc
-                await asyncio.sleep(0.1)
-        AUTONOMY_BUDGET_EXCEEDED.labels(budget="external_retries").inc()
-        raise last_error or RuntimeError("external_fetch_failed")
-
-    try:
-        fetch_plan = [
-            ("tools", "/tools", {"mode": "minimal"}),
-            ("skills", "/skills", {"include_pending": "false"}),
-            ("documents", "/documents", {"limit": 120, "include_content": "false", "include_pending": "false"}),
-            ("servers", "/api/v1/federation/servers", None),
-        ]
-        max_calls = max(1, Config.AI_AUTONOMY_MAX_EXTERNAL_CALLS)
-        if max_calls < len(fetch_plan):
-            AUTONOMY_BUDGET_EXCEEDED.labels(budget="external_calls").inc()
-        selected_plan = fetch_plan[:max_calls]
-        responses = await asyncio.gather(
-            *[_fetch(path, params) for _, path, params in selected_plan]
-        )
-        payload_map = {name: data for (name, _, _), data in zip(selected_plan, responses)}
-        tools_payload = payload_map.get("tools", {"tools": []})
-        skills_payload = payload_map.get("skills", [])
-        docs_payload = payload_map.get("documents", {"documents": []})
-        servers_payload = payload_map.get("servers", {"servers": []})
-
-        max_items = max(1, Config.AI_CAPABILITY_DISCOVERY_MAX_RESULTS)
-        tools = _rank_items_for_query(
-            tools_payload.get("tools", []),
-            query,
-            fields=["name", "description"],
-            limit=max_items,
-        )
-        skills = _rank_items_for_query(
-            skills_payload if isinstance(skills_payload, list) else [],
-            query,
-            fields=["name", "description", "tags"],
-            limit=max_items,
-        )
-        servers = _rank_items_for_query(
-            servers_payload.get("servers", []),
-            query,
-            fields=["name", "description", "server_type", "source_url"],
-            limit=max_items,
-        )
-        datasets = _rank_items_for_query(
-            docs_payload.get("documents", []),
-            query,
-            fields=["title", "relative_path", "project", "content_type"],
-            limit=max_items,
-        )
-
-        payload = {
-            "decision": "invoked",
-            "reason": "live-discovery",
-            "intent_tags": intent_tags,
-            "cache_hit": False,
-            "tools": tools,
-            "skills": skills,
-            "servers": servers,
-            "datasets": datasets,
-            "latency_ms": int((time.time() - start) * 1000),
-        }
-        async with DISCOVERY_CACHE_LOCK:
-            DISCOVERY_CACHE[cache_key] = {
-                "expires_at": now + ttl,
-                "payload": payload,
-            }
-        DISCOVERY_LATENCY.observe(time.time() - start)
-        _update_capability_discovery_stats("invoked", "live-discovery")
-        return payload
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("capability_discovery_failed error=%s", exc)
-        _update_capability_discovery_stats("error", "request-failed")
-        return {
-            "decision": "error",
-            "reason": "request-failed",
-            "intent_tags": intent_tags,
-            "cache_hit": False,
-            "tools": [],
-            "skills": [],
-            "servers": [],
-            "datasets": [],
-            "error": str(exc),
-        }
-
-
-def _format_discovery_context(discovery: Dict[str, Any]) -> str:
-    decision = discovery.get("decision", "unknown")
-    if decision in {"skipped", "error"}:
-        return ""
-
-    lines: List[str] = ["\n## Applicable Tools, Skills, MCP Servers, and Datasets\n"]
-    tools = discovery.get("tools") or []
-    skills = discovery.get("skills") or []
-    servers = discovery.get("servers") or []
-    datasets = discovery.get("datasets") or []
-
-    if tools:
-        lines.append("- Tools:\n")
-        for item in tools:
-            lines.append(f"  - {item.get('name', 'unknown')}: {item.get('description', 'No description')}\n")
-    if skills:
-        lines.append("- Skills:\n")
-        for item in skills:
-            lines.append(f"  - {item.get('name', item.get('slug', 'unknown'))}: {item.get('description', 'No description')}\n")
-    if servers:
-        lines.append("- MCP Servers:\n")
-        for item in servers:
-            lines.append(f"  - {item.get('name', 'unknown')}: {item.get('description', item.get('source_url', 'No description'))}\n")
-    if datasets:
-        lines.append("- Datasets/Documents:\n")
-        for item in datasets:
-            lines.append(f"  - {item.get('title', item.get('relative_path', 'unknown'))} ({item.get('project', 'default')})\n")
-
-    if len(lines) == 1:
-        return ""
-    return "".join(lines)
-
-
-# ============================================================================
-# Configuration
-# ============================================================================
-
-
-class Config:
-    """Hybrid coordinator configuration"""
-
-    QDRANT_URL = _require_env("QDRANT_URL") if STRICT_ENV else os.getenv("QDRANT_URL", HYBRID_SETTINGS.qdrant_url)
-    QDRANT_API_KEY_FILE = os.getenv("QDRANT_API_KEY_FILE", "")
-    QDRANT_API_KEY = ""
-    QDRANT_HNSW_M = int(os.getenv("QDRANT_HNSW_M", HYBRID_SETTINGS.qdrant_hnsw_m))
-    QDRANT_HNSW_EF_CONSTRUCT = int(os.getenv("QDRANT_HNSW_EF_CONSTRUCT", HYBRID_SETTINGS.qdrant_hnsw_ef_construct))
-    QDRANT_HNSW_FULL_SCAN_THRESHOLD = int(
-        os.getenv("QDRANT_HNSW_FULL_SCAN_THRESHOLD", HYBRID_SETTINGS.qdrant_hnsw_full_scan_threshold)
-    )
-    LLAMA_CPP_URL = _require_env("LLAMA_CPP_BASE_URL") if STRICT_ENV else os.getenv("LLAMA_CPP_BASE_URL", HYBRID_SETTINGS.llama_cpp_url)
-    LLAMA_CPP_CODER_URL = os.getenv(
-        "LLAMA_CPP_CODER_URL", HYBRID_SETTINGS.llama_cpp_url
-    )
-    LLAMA_CPP_DEEPSEEK_URL = os.getenv(
-        "LLAMA_CPP_DEEPSEEK_URL", HYBRID_SETTINGS.llama_cpp_url
-    )
-
-    EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", HYBRID_SETTINGS.embedding_model)
-    EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIMENSIONS", HYBRID_SETTINGS.embedding_dimensions))
-    EMBEDDING_SERVICE_URL = _require_env("EMBEDDING_SERVICE_URL") if STRICT_ENV else os.getenv("EMBEDDING_SERVICE_URL", "")
-    EMBEDDING_API_KEY_FILE = os.getenv("EMBEDDING_API_KEY_FILE", "")
-    EMBEDDING_API_KEY = ""
-    AIDB_URL = _require_env("AIDB_URL") if STRICT_ENV else os.getenv("AIDB_URL", "")
-
-    LOCAL_CONFIDENCE_THRESHOLD = float(
-        os.getenv("LOCAL_CONFIDENCE_THRESHOLD", HYBRID_SETTINGS.local_confidence_threshold)
-    )
-    HIGH_VALUE_THRESHOLD = float(os.getenv("HIGH_VALUE_THRESHOLD", HYBRID_SETTINGS.high_value_threshold))
-    PATTERN_EXTRACTION_ENABLED = os.getenv(
-        "PATTERN_EXTRACTION_ENABLED", str(HYBRID_SETTINGS.pattern_extraction_enabled)
-    ).lower() == "true"
-
-    # Token Optimization Flags (Day 1)
-    QUERY_EXPANSION_ENABLED = os.getenv("QUERY_EXPANSION_ENABLED", "false").lower() == "true"
-    REMOTE_LLM_FEEDBACK_ENABLED = os.getenv("REMOTE_LLM_FEEDBACK_ENABLED", "false").lower() == "true"
-    MULTI_TURN_QUERY_EXPANSION = os.getenv("MULTI_TURN_QUERY_EXPANSION", "false").lower() == "true"
-    DEFAULT_MAX_TOKENS = int(os.getenv("DEFAULT_MAX_TOKENS", "1000"))
-    # Canonical name; CONTEXT_COMPRESSION_ENABLED kept as alias below for back-compat.
-    AI_CONTEXT_COMPRESSION_ENABLED = os.getenv("AI_CONTEXT_COMPRESSION_ENABLED",
-        os.getenv("CONTEXT_COMPRESSION_ENABLED", "true")).lower() == "true"
-
-    FINETUNE_DATA_PATH = os.path.expanduser(
-        os.getenv(
-            "FINETUNE_DATA_PATH",
-            HYBRID_SETTINGS.finetune_data_path
-            or "~/.local/share/nixos-ai-stack/interaction-archive/dataset.jsonl",
-        )
-    )
-    CACHE_EPOCH = int(os.getenv("CACHE_EPOCH", "1"))
-    AB_TEST_VARIANT_B_FRACTION = float(os.getenv("AB_TEST_VARIANT_B_FRACTION", "0.0"))
-    API_KEY_FILE = _require_env("HYBRID_API_KEY_FILE") if STRICT_ENV else os.getenv("HYBRID_API_KEY_FILE", HYBRID_SETTINGS.api_key_file or "")
-    API_KEY = ""
-    AI_HARNESS_ENABLED = os.getenv("AI_HARNESS_ENABLED", "true").lower() == "true"
-    AI_MEMORY_ENABLED = os.getenv("AI_MEMORY_ENABLED", "true").lower() == "true"
-    AI_MEMORY_MAX_RECALL_ITEMS = int(os.getenv("AI_MEMORY_MAX_RECALL_ITEMS", "8"))
-    AI_TREE_SEARCH_ENABLED = os.getenv("AI_TREE_SEARCH_ENABLED", "true").lower() == "true"
-    AI_TREE_SEARCH_MAX_DEPTH = int(os.getenv("AI_TREE_SEARCH_MAX_DEPTH", "2"))
-    AI_TREE_SEARCH_BRANCH_FACTOR = int(os.getenv("AI_TREE_SEARCH_BRANCH_FACTOR", "3"))
-    AI_HARNESS_EVAL_ENABLED = os.getenv("AI_HARNESS_EVAL_ENABLED", "true").lower() == "true"
-    AI_HARNESS_MIN_ACCEPTANCE_SCORE = float(
-        os.getenv("AI_HARNESS_MIN_ACCEPTANCE_SCORE", "0.7")
-    )
-    AI_HARNESS_MAX_LATENCY_MS = int(os.getenv("AI_HARNESS_MAX_LATENCY_MS", "3000"))
-    AI_CAPABILITY_DISCOVERY_ENABLED = os.getenv(
-        "AI_CAPABILITY_DISCOVERY_ENABLED",
-        "true",
-    ).lower() == "true"
-    AI_CAPABILITY_DISCOVERY_TTL_SECONDS = int(
-        os.getenv("AI_CAPABILITY_DISCOVERY_TTL_SECONDS", "1800")
-    )
-    AI_CAPABILITY_DISCOVERY_MIN_QUERY_CHARS = int(
-        os.getenv("AI_CAPABILITY_DISCOVERY_MIN_QUERY_CHARS", "18")
-    )
-    AI_CAPABILITY_DISCOVERY_MAX_RESULTS = int(
-        os.getenv("AI_CAPABILITY_DISCOVERY_MAX_RESULTS", "3")
-    )
-    AI_CAPABILITY_DISCOVERY_ON_QUERY = os.getenv(
-        "AI_CAPABILITY_DISCOVERY_ON_QUERY",
-        "true",
-    ).lower() == "true"
-    AI_AUTONOMY_MAX_EXTERNAL_CALLS = int(
-        os.getenv("AI_AUTONOMY_MAX_EXTERNAL_CALLS", "4")
-    )
-    AI_AUTONOMY_MAX_RETRIES = int(
-        os.getenv("AI_AUTONOMY_MAX_RETRIES", "1")
-    )
-    AI_AUTONOMY_MAX_RETRIEVAL_RESULTS = int(
-        os.getenv("AI_AUTONOMY_MAX_RETRIEVAL_RESULTS", "8")
-    )
-    AI_PROMPT_CACHE_POLICY_ENABLED = os.getenv(
-        "AI_PROMPT_CACHE_POLICY_ENABLED",
-        "true",
-    ).lower() == "true"
-    AI_PROMPT_CACHE_STATIC_PREFIX = os.getenv(
-        "AI_PROMPT_CACHE_STATIC_PREFIX",
-        "You are the NixOS AI stack coordinator. Prefer local-first secure execution.",
-    )
-    AI_SPECULATIVE_DECODING_ENABLED = os.getenv(
-        "AI_SPECULATIVE_DECODING_ENABLED",
-        "false",
-    ).lower() == "true"
-    AI_SPECULATIVE_DECODING_MODE = os.getenv(
-        "AI_SPECULATIVE_DECODING_MODE",
-        "draft-model",
-    )
-    AI_CONTEXT_MAX_TOKENS = int(os.getenv("AI_CONTEXT_MAX_TOKENS", "3000"))
-
-
-def _read_secret(path: str) -> str:
-    if not path:
-        return ""
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            return handle.read().strip()
-    except FileNotFoundError:
-        return ""
-
-
-if not Config.QDRANT_API_KEY and Config.QDRANT_API_KEY_FILE:
-    Config.QDRANT_API_KEY = _read_secret(Config.QDRANT_API_KEY_FILE)
-if not Config.API_KEY and Config.API_KEY_FILE:
-    Config.API_KEY = _read_secret(Config.API_KEY_FILE)
-if not Config.EMBEDDING_API_KEY and Config.EMBEDDING_API_KEY_FILE:
-    Config.EMBEDDING_API_KEY = _read_secret(Config.EMBEDDING_API_KEY_FILE)
-
-
-# ============================================================================
-# Hot-reloadable Routing Config (Phase 2.2.1)
-# ============================================================================
-
-@dataclass
-class RoutingConfig:
-    """Hot-reloadable routing threshold configuration.
-
-    Reads ``~/.local/share/nixos-ai-stack/routing-config.json`` on each call
-    to ``get_threshold()`` if the cached value is older than 60 seconds.
-    Falls back to the env-var default when the file is absent or malformed.
-    """
-
-    threshold: float = field(
-        default_factory=lambda: float(
-            os.getenv("LOCAL_CONFIDENCE_THRESHOLD", HYBRID_SETTINGS.local_confidence_threshold)
-        )
-    )
-    _path: Path = field(
-        default_factory=lambda: Path.home() / ".local/share/nixos-ai-stack/routing-config.json",
-        repr=False,
-    )
-    _loaded_at: float = field(default=0.0, repr=False)
-    _ttl: float = field(default=60.0, repr=False)
-
-    async def get_threshold(self) -> float:
-        """Return current threshold, reloading from disk if TTL has expired."""
-        now = time.monotonic()
-        if now - self._loaded_at < self._ttl:
-            return self.threshold
-        # TTL expired — try to reload from the JSON file
-        if self._path.exists():
-            try:
-                raw = self._path.read_text(encoding="utf-8")
-                data = json.loads(raw)
-                value = float(data["local_confidence_threshold"])
-                self.threshold = value
-            except Exception:  # noqa: BLE001
-                pass  # keep existing cached value on parse error
-        self._loaded_at = now
-        return self.threshold
-
-    def write_threshold(self, value: float) -> None:
-        """Atomically write a new threshold to the config file."""
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self._path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"local_confidence_threshold": value}), encoding="utf-8")
-        tmp.replace(self._path)
-        self.threshold = value
-        self._loaded_at = time.monotonic()
-
-
-# Module-level singleton used by routing and proposal handlers.
-routing_config: RoutingConfig = RoutingConfig()
-
-
-# ============================================================================
-# Phase 4.2 — Structured Optimization Proposal System
-# ============================================================================
-
-class OptimizationProposalType(str, Enum):
-    ROUTING_THRESHOLD_ADJUSTMENT = "routing_threshold_adjustment"
-    ITERATION_LIMIT_INCREASE      = "iteration_limit_increase"
-    MODEL_SWAP                    = "model_swap"
-    CODE_CHANGE_REQUIRED          = "code_change_required"
-
-
-class OptimizationProposal(BaseModel):
-    proposal_type:    OptimizationProposalType
-    target_config_key: str
-    current_value:    Union[float, int, str]
-    proposed_value:   Union[float, int, str]
-    evidence_summary: str
-    confidence:       float = Field(ge=0.0, le=1.0)
-
-
-async def apply_proposal(proposal: OptimizationProposal) -> dict:
-    """
-    Dispatch a validated OptimizationProposal to its deterministic apply function.
-
-    - routing_threshold_adjustment  → writes proposed_value to routing-config.json
-    - iteration_limit_increase      → writes proposed_value to routing-config.json
-    - model_swap                    → returns instructions (manual step required)
-    - code_change_required          → appends structured issue to AI-STACK-IMPROVEMENT-PLAN.md
-    """
-    ptype = proposal.proposal_type
-
-    if ptype in (
-        OptimizationProposalType.ROUTING_THRESHOLD_ADJUSTMENT,
-        OptimizationProposalType.ITERATION_LIMIT_INCREASE,
-    ):
-        new_val = float(proposal.proposed_value)
-        await routing_config.write_threshold(new_val)
-        logger.info(
-            "proposal_applied type=%s key=%s old=%s new=%s confidence=%.2f",
-            ptype, proposal.target_config_key,
-            proposal.current_value, new_val, proposal.confidence,
-        )
-        return {"status": "applied", "new_value": new_val}
-
-    if ptype == OptimizationProposalType.MODEL_SWAP:
-        logger.info(
-            "proposal_model_swap key=%s proposed=%s confidence=%.2f (manual step required)",
-            proposal.target_config_key, proposal.proposed_value, proposal.confidence,
-        )
-        return {
-            "status": "manual_required",
-            "instructions": f"Update AI_MODEL_NAME={proposal.proposed_value} in NixOS ai-stack.nix, then nixos-rebuild switch",
-        }
-
-    if ptype == OptimizationProposalType.CODE_CHANGE_REQUIRED:
-        return await _append_code_change_issue(proposal)
-
-    return {"status": "unknown_type", "proposal_type": ptype}
-
-
-async def _append_code_change_issue(proposal: OptimizationProposal) -> dict:
-    """Append a structured issue entry to AI-STACK-IMPROVEMENT-PLAN.md."""
-    plan_path = Path(__file__).parents[3] / "AI-STACK-IMPROVEMENT-PLAN.md"
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    entry = (
-        f"\n\n### AUTO-GENERATED PROPOSAL — {now}\n\n"
-        f"**Key:** `{proposal.target_config_key}`  \n"
-        f"**Current:** `{proposal.current_value}`  **Proposed:** `{proposal.proposed_value}`  \n"
-        f"**Confidence:** {proposal.confidence:.0%}  \n"
-        f"**Evidence:** {proposal.evidence_summary}\n\n"
-        f"- [ ] Review and implement: `{proposal.target_config_key}` → `{proposal.proposed_value}`\n"
-    )
-    try:
-        with open(plan_path, "a") as fh:
-            fh.write(entry)
-        logger.info("proposal_issue_appended key=%s plan=%s", proposal.target_config_key, plan_path)
-        return {"status": "issue_created", "plan_path": str(plan_path)}
-    except OSError as exc:
-        logger.error("proposal_issue_write_failed err=%s", exc)
-        return {"status": "error", "detail": str(exc)}
-
-
-# ============================================================================
-# Phase 2.2.3 — 7-Day Rolling Performance Window & Auto-Nudge
-# ============================================================================
-
-@dataclass
-class PerformanceWindow:
-    """Track local LLM success/failure per query-type bucket over a rolling 7-day window.
-
-    Records are stored in a JSON file keyed by ISO date → bucket → {success, total}.
-    When enough samples are collected, `maybe_nudge` adjusts the routing confidence
-    threshold up (if local is performing well) or down (if it is underperforming).
-
-    Wire `record(bucket, success=True/False)` into the feedback endpoint (Phase 3.1).
-    Call `maybe_nudge(routing_config)` from a periodic background task or on startup.
-    """
-
-    TARGET_SUCCESS_RATE: float = 0.80   # local LLM should get ≥80% of responses right
-    NUDGE_AMOUNT: float = 0.05          # threshold change per weekly adjustment
-    THRESHOLD_MIN: float = 0.30         # never drop below — prevents runaway local routing
-    THRESHOLD_MAX: float = 0.95         # never exceed — preserves some remote fallback
-    WINDOW_DAYS: int = 7
-    MIN_SAMPLES: int = 10               # require this many samples before nudging
-
-    _path: Path = field(
-        default_factory=lambda: Path.home() / ".local/share/nixos-ai-stack/performance-window.json",
-        repr=False,
-    )
-    _data: dict = field(default_factory=dict, repr=False)
-    _loaded: bool = field(default=False, repr=False)
-
-    def _load(self) -> None:
-        if self._loaded:
-            return
-        if self._path.exists():
-            try:
-                self._data = json.loads(self._path.read_text(encoding="utf-8"))
-            except Exception:
-                self._data = {}
-        self._loaded = True
-
-    def _save(self) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self._path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self._data, indent=2), encoding="utf-8")
-        tmp.replace(self._path)
-
-    def _today(self) -> str:
-        from datetime import date
-        return date.today().isoformat()
-
-    def record(self, bucket: str, success: bool) -> None:
-        """Record one local-LLM response outcome for the given query-type bucket.
-
-        Call with bucket='nixos', 'code', 'general', etc. based on query classification.
-        success=True means user confirmed or heuristic-confirmed the response was useful.
-        """
-        self._load()
-        today = self._today()
-        buckets = self._data.setdefault("buckets", {})
-        day_data = buckets.setdefault(bucket, {}).setdefault(today, {"success": 0, "total": 0})
-        day_data["total"] += 1
-        if success:
-            day_data["success"] += 1
-        self._save()
-
-    def _window_stats(self) -> dict[str, dict[str, int]]:
-        """Return aggregated {bucket: {success, total}} over the last WINDOW_DAYS days."""
-        from datetime import date, timedelta
-        self._load()
-        cutoff = (date.today() - timedelta(days=self.WINDOW_DAYS)).isoformat()
-        agg: dict[str, dict[str, int]] = {}
-        for bucket, days in self._data.get("buckets", {}).items():
-            for day, counts in days.items():
-                if day >= cutoff:
-                    agg.setdefault(bucket, {"success": 0, "total": 0})
-                    agg[bucket]["success"] += counts.get("success", 0)
-                    agg[bucket]["total"] += counts.get("total", 0)
-        return agg
-
-    def maybe_nudge(self, cfg: "RoutingConfig") -> None:  # type: ignore[name-defined]
-        """Check 7-day performance and nudge the routing threshold if warranted.
-
-        Call this from a weekly background task. No-op if fewer than MIN_SAMPLES
-        total responses have been recorded (avoids nudging on noise).
-
-        Nudge logic:
-          - Overall success rate > TARGET: lower threshold → route more to local
-          - Overall success rate < TARGET: raise threshold → route more to remote
-        """
-        stats = self._window_stats()
-        total = sum(v["total"] for v in stats.values())
-        if total < self.MIN_SAMPLES:
-            logger.info(
-                "performance_window_nudge_skipped total_samples=%d min_required=%d",
-                total, self.MIN_SAMPLES,
-            )
-            return
-
-        success = sum(v["success"] for v in stats.values())
-        rate = success / total if total else 0.0
-        current = cfg.threshold
-        if rate >= self.TARGET_SUCCESS_RATE:
-            new_threshold = max(self.THRESHOLD_MIN, current - self.NUDGE_AMOUNT)
-            direction = "down"
-        else:
-            new_threshold = min(self.THRESHOLD_MAX, current + self.NUDGE_AMOUNT)
-            direction = "up"
-
-        if new_threshold != current:
-            cfg.write_threshold(new_threshold)
-            logger.info(
-                "performance_window_nudge direction=%s old=%.3f new=%.3f "
-                "success_rate=%.3f samples=%d",
-                direction, current, new_threshold, rate, total,
-            )
-        else:
-            logger.info(
-                "performance_window_nudge at_limit threshold=%.3f direction=%s success_rate=%.3f",
-                current, direction, rate,
-            )
-
-
-performance_window: PerformanceWindow = PerformanceWindow()
+# Config, RoutingConfig, OptimizationProposal, PerformanceWindow → imported from config.py
 
 
 # ============================================================================
@@ -1606,61 +811,6 @@ async def embed_text(text: str, variant_tag: str = "") -> List[float]:
 # ============================================================================
 
 
-def compute_value_score(interaction: Dict[str, Any]) -> float:
-    """
-    Score interaction value (0-1) based on multiple factors
-    """
-    score = 0.0
-
-    # 1. Outcome quality (40% weight)
-    if interaction.get("outcome") == "success":
-        score += 0.4
-    elif interaction.get("outcome") == "partial":
-        score += 0.2
-
-    # 2. User feedback (20% weight)
-    user_feedback = interaction.get("user_feedback", 0)
-    if user_feedback == 1:
-        score += 0.2
-    elif user_feedback == 0:
-        score += 0.1
-
-    # 3. Reusability potential (20% weight)
-    reusability = estimate_reusability(interaction.get("query", ""))
-    score += 0.2 * reusability
-
-    # 4. Complexity (10% weight)
-    complexity = estimate_complexity(interaction.get("response", ""))
-    score += 0.1 * complexity
-
-    # 5. Novelty (10% weight)
-    novelty = 0.5  # Simplified for now
-    score += 0.1 * novelty
-
-    return min(score, 1.0)
-
-
-def estimate_reusability(query: str) -> float:
-    """Estimate how likely this query pattern will recur"""
-    reusable_keywords = ["how to", "best practice", "configure", "setup", "install"]
-    keyword_count = sum(1 for kw in reusable_keywords if kw.lower() in query.lower())
-    return min(keyword_count * 0.25, 1.0)
-
-
-def estimate_complexity(response: str) -> float:
-    """Estimate response complexity"""
-    # Multi-step solutions
-    steps = response.count("1.") + response.count("2.") + response.count("3.")
-
-    # Code blocks
-    code_blocks = response.count("```")
-
-    # Length-based complexity
-    length_score = min(len(response) / 2000, 1.0)
-
-    return min((steps * 0.1 + code_blocks * 0.15 + length_score * 0.5), 1.0)
-
-
 # ============================================================================
 # Context Augmentation
 # ============================================================================
@@ -1783,8 +933,8 @@ async def augment_query_with_context(
         except Exception as e:
             logger.warning("Error searching best-practices: %s", e)
 
-        discovery = await _discover_applicable_resources(query)
-        discovery_context = _format_discovery_context(discovery)
+        discovery = await capability_discovery.discover(query)
+        discovery_context = capability_discovery.format_context(discovery)
         if discovery_context:
             results_text.append(discovery_context)
 
@@ -2404,7 +1554,7 @@ async def route_search(
 
     results: Dict[str, Any] = {}
     response_text = ""
-    capability_discovery: Dict[str, Any] = {
+    _cap_disc: Dict[str, Any] = {
         "decision": "skipped",
         "reason": "not-evaluated",
         "cache_hit": False,
@@ -2417,7 +1567,7 @@ async def route_search(
 
     try:
         if Config.AI_CAPABILITY_DISCOVERY_ON_QUERY:
-            capability_discovery = await _discover_applicable_resources(query)
+            _cap_disc = await capability_discovery.discover(query)
 
         if route == "sql":
             response_text = (
@@ -2491,7 +1641,7 @@ async def route_search(
         prompt_prefix = Config.AI_PROMPT_CACHE_STATIC_PREFIX if Config.AI_PROMPT_CACHE_POLICY_ENABLED else ""
         prompt_prefix_hash = hashlib.sha256(prompt_prefix.encode("utf-8")).hexdigest()[:16] if prompt_prefix else ""
         if generate_response and llama_cpp_client:
-            discovery_context = _format_discovery_context(capability_discovery)
+            discovery_context = capability_discovery.format_context(_cap_disc)
             combined_context = f"{response_text}\n\n{discovery_context}".strip()
             compressed_context = combined_context
             compressed_tokens = 0
@@ -2583,14 +1733,14 @@ async def route_search(
                     "context_compression_enabled": Config.AI_CONTEXT_COMPRESSION_ENABLED,
                 },
                 "capability_discovery": {
-                    "decision": capability_discovery.get("decision", "unknown"),
-                    "reason": capability_discovery.get("reason", "unknown"),
-                    "cache_hit": bool(capability_discovery.get("cache_hit", False)),
-                    "intent_tags": capability_discovery.get("intent_tags", []),
-                    "tool_count": len(capability_discovery.get("tools", [])),
-                    "skill_count": len(capability_discovery.get("skills", [])),
-                    "server_count": len(capability_discovery.get("servers", [])),
-                    "dataset_count": len(capability_discovery.get("datasets", [])),
+                    "decision": _cap_disc.get("decision", "unknown"),
+                    "reason": _cap_disc.get("reason", "unknown"),
+                    "cache_hit": bool(_cap_disc.get("cache_hit", False)),
+                    "intent_tags": _cap_disc.get("intent_tags", []),
+                    "tool_count": len(_cap_disc.get("tools", [])),
+                    "skill_count": len(_cap_disc.get("skills", [])),
+                    "server_count": len(_cap_disc.get("servers", [])),
+                    "dataset_count": len(_cap_disc.get("datasets", [])),
                 },
             },
         )
@@ -2608,31 +1758,31 @@ async def route_search(
         "latency_ms": latency_ms,
         "interaction_id": interaction_id,  # Phase 3.1.1: used by POST /feedback/{id}
         "capability_discovery": {
-            "decision": capability_discovery.get("decision", "unknown"),
-            "reason": capability_discovery.get("reason", "unknown"),
-            "cache_hit": bool(capability_discovery.get("cache_hit", False)),
-            "intent_tags": capability_discovery.get("intent_tags", []),
+            "decision": _cap_disc.get("decision", "unknown"),
+            "reason": _cap_disc.get("reason", "unknown"),
+            "cache_hit": bool(_cap_disc.get("cache_hit", False)),
+            "intent_tags": _cap_disc.get("intent_tags", []),
             "tools": [
                 {"name": item.get("name"), "description": item.get("description")}
-                for item in capability_discovery.get("tools", [])
+                for item in _cap_disc.get("tools", [])
             ],
             "skills": [
                 {
                     "name": item.get("name", item.get("slug")),
                     "description": item.get("description"),
                 }
-                for item in capability_discovery.get("skills", [])
+                for item in _cap_disc.get("skills", [])
             ],
             "servers": [
                 {"name": item.get("name"), "description": item.get("description")}
-                for item in capability_discovery.get("servers", [])
+                for item in _cap_disc.get("servers", [])
             ],
             "datasets": [
                 {
                     "title": item.get("title", item.get("relative_path")),
                     "project": item.get("project"),
                 }
-                for item in capability_discovery.get("datasets", [])
+                for item in _cap_disc.get("datasets", [])
             ],
         },
     }
@@ -2721,496 +1871,6 @@ async def record_learning_feedback(
 
     return feedback_id
 
-
-# ============================================================================
-# Phase 3.1.1 — Simple thumbs-up/thumbs-down feedback
-# Phase 3.2.1 — Gap query recording
-# ============================================================================
-
-async def record_simple_feedback(
-    interaction_id: str,
-    rating: int,
-    note: str = "",
-    query: str = "",
-) -> str:
-    """Record a simple +1/-1 rating for an interaction to learning_feedback + PerformanceWindow."""
-    global postgres_client
-    feedback_id = str(uuid4())
-    if postgres_client is not None:
-        try:
-            await postgres_client.execute(
-                """
-                INSERT INTO learning_feedback (
-                    feedback_id, interaction_id, query,
-                    correction, rating, source
-                ) VALUES (%s, %s, %s, %s, %s, %s)
-                """,
-                feedback_id,
-                interaction_id,
-                query[:500] if query else "",
-                note[:1000] if note else "",
-                rating,
-                "user-rating",
-            )
-        except Exception as exc:
-            logger.warning("feedback_postgres_failed error=%s", exc)
-    # Wire into 7-day performance window (Phase 2.2.3)
-    await performance_window.record("general", success=(rating > 0))
-    logger.info(
-        "simple_feedback_recorded interaction_id=%s rating=%d",
-        interaction_id, rating,
-    )
-    return feedback_id
-
-
-async def _record_query_gap(
-    query_hash: str,
-    query_text: str,
-    score: float,
-    collection: str = "unknown",
-) -> None:
-    """Phase 3.2.1 — Insert a low-confidence query into the query_gaps table."""
-    global postgres_client
-    if postgres_client is None:
-        return
-    try:
-        await postgres_client.execute(
-            """
-            INSERT INTO query_gaps (query_hash, query_text, score, collection)
-            VALUES (%s, %s, %s, %s)
-            """,
-            query_hash, query_text, score, collection,
-        )
-        logger.info(
-            "query_gap_recorded score=%.3f collection=%s",
-            score, collection,
-        )
-    except Exception as exc:
-        logger.debug("query_gap_insert_failed error=%s", exc)
-
-
-async def get_feedback_variant_stats(tag: str, days: Optional[int] = None) -> Dict[str, Any]:
-    """Summarize feedback ratings for a tag (e.g., variant:model-a)."""
-    global postgres_client
-    if postgres_client is None:
-        raise RuntimeError("Postgres client not configured")
-
-    query = """
-        SELECT
-            COUNT(*) AS total,
-            COUNT(rating) AS rated,
-            AVG(rating)::float AS avg_rating
-        FROM learning_feedback
-        WHERE tags ? %s
-    """
-    params: List[Any] = [tag]
-    if days and days > 0:
-        query += " AND created_at >= NOW() - (%s || ' days')::interval"
-        params.append(str(days))
-
-    rows = await postgres_client.fetch_all(query, *params)
-    if not rows:
-        return {"tag": tag, "total": 0, "rated": 0, "avg_rating": None}
-    row = rows[0]
-    return {
-        "tag": tag,
-        "total": int(row.get("total", 0) or 0),
-        "rated": int(row.get("rated", 0) or 0),
-        "avg_rating": row.get("avg_rating"),
-    }
-
-
-# ============================================================================
-# Interaction Tracking
-# ============================================================================
-
-
-async def track_interaction(
-    query: str,
-    response: str,
-    agent_type: str,
-    model_used: str,
-    context_ids: List[str],
-    outcome: str = "unknown",
-    user_feedback: int = 0,
-    tokens_used: int = 0,
-    latency_ms: int = 0,
-) -> str:
-    """
-    Store interaction in Qdrant for learning
-    """
-    global qdrant_client
-
-    interaction_id = str(uuid4())
-    timestamp = int(datetime.now().timestamp())
-
-    interaction = {
-        "query": query,
-        "response": response,
-        "agent_type": agent_type,
-        "model_used": model_used,
-        "context_provided": context_ids,
-        "outcome": outcome,
-        "user_feedback": user_feedback,
-        "tokens_used": tokens_used,
-        "latency_ms": latency_ms,
-        "timestamp": timestamp,
-        "value_score": 0.0,  # Computed later after outcome
-    }
-
-    # Embed the query for future similarity search
-    query_embedding = await embed_text(query)
-
-    # Store in Qdrant
-    try:
-        qdrant_client.upsert(
-            collection_name="interaction-history",
-            points=[
-                PointStruct(
-                    id=interaction_id, vector=query_embedding, payload=interaction
-                )
-            ],
-        )
-        if Config.AI_MEMORY_ENABLED:
-            await store_agent_memory(
-                "episodic",
-                summary=f"{agent_type} interaction: {query[:120]}",
-                content=response[:600],
-                metadata={
-                    "query": query,
-                    "response": response[:2000],
-                    "outcome": outcome,
-                    "tags": [f"model:{model_used}", f"agent:{agent_type}"],
-                },
-            )
-        logger.info(f"Tracked interaction: {interaction_id}")
-        record_telemetry_event(
-            "interaction_tracked",
-            {
-                "interaction_id": interaction_id,
-                "agent_type": agent_type,
-                "model_used": model_used,
-                "tokens_used": tokens_used,
-                "latency_ms": latency_ms,
-                "context_count": len(context_ids),
-            },
-        )
-        return interaction_id
-
-    except Exception as e:
-        logger.error(f"Error tracking interaction: {e}")
-        return ""
-
-
-async def update_interaction_outcome(
-    interaction_id: str, outcome: str, user_feedback: int = 0
-):
-    """
-    Update interaction with outcome and compute value score
-    """
-    global qdrant_client
-
-    try:
-        # Fetch interaction
-        result = qdrant_client.retrieve(
-            collection_name="interaction-history", ids=[interaction_id]
-        )
-
-        if not result:
-            logger.error(f"Interaction not found: {interaction_id}")
-            return
-
-        interaction = result[0].payload
-
-        # Update outcome
-        interaction["outcome"] = outcome
-        interaction["user_feedback"] = user_feedback
-
-        # Compute value score
-        value_score = compute_value_score(interaction)
-        interaction["value_score"] = value_score
-
-        # Update in Qdrant
-        qdrant_client.set_payload(
-            collection_name="interaction-history",
-            payload=interaction,
-            points=[interaction_id],
-        )
-
-        logger.info(
-            f"Updated interaction {interaction_id}: outcome={outcome}, value={value_score:.2f}"
-        )
-
-        # If high-value, extract patterns
-        if value_score >= Config.HIGH_VALUE_THRESHOLD and Config.PATTERN_EXTRACTION_ENABLED:
-            await extract_patterns(interaction)
-            if Config.AI_MEMORY_ENABLED and outcome == "success":
-                await store_agent_memory(
-                    "procedural",
-                    summary=f"Successful procedure: {interaction.get('query', '')[:120]}",
-                    content=interaction.get("response", "")[:1500],
-                    metadata={
-                        "trigger": interaction.get("query", ""),
-                        "procedure": interaction.get("response", "")[:2000],
-                        "outcome": outcome,
-                        "value_score": value_score,
-                    },
-                )
-
-        # Update context success rates
-        if interaction.get("context_provided"):
-            await update_context_metrics(
-                interaction["context_provided"], outcome == "success"
-            )
-
-    except Exception as e:
-        logger.error(f"Error updating interaction outcome: {e}")
-
-
-async def update_context_metrics(context_ids: List[str], success: bool):
-    """
-    Update success rates and access counts for context items
-    """
-    global qdrant_client
-
-    collections_to_update = [
-        "codebase-context",
-        "skills-patterns",
-        "error-solutions",
-        "best-practices",
-    ]
-
-    for collection_name in collections_to_update:
-        for context_id in context_ids:
-            try:
-                # Fetch current payload
-                result = qdrant_client.retrieve(
-                    collection_name=collection_name, ids=[context_id]
-                )
-
-                if result:
-                    payload = result[0].payload
-
-                    # Update metrics
-                    access_count = payload.get("access_count", 0) + 1
-                    payload["access_count"] = access_count
-                    payload["last_accessed"] = int(datetime.now().timestamp())
-
-                    # Update success rate
-                    if "success_rate" in payload:
-                        current_rate = payload.get("success_rate", 0.5)
-                        # Moving average
-                        new_rate = (
-                            current_rate * 0.9 + (1.0 if success else 0.0) * 0.1
-                        )
-                        payload["success_rate"] = new_rate
-
-                    # Update in Qdrant
-                    qdrant_client.set_payload(
-                        collection_name=collection_name,
-                        payload=payload,
-                        points=[context_id],
-                    )
-
-            except Exception as e:
-                logger.warning(
-                    f"Error updating context {context_id} in {collection_name}: {e}"
-                )
-
-
-# ============================================================================
-# Pattern Extraction
-# ============================================================================
-
-
-async def extract_patterns(interaction: Dict[str, Any]):
-    """
-    Extract reusable patterns from successful interactions using local LLM
-    """
-    global llama_cpp_client
-
-    prompt = f"""Analyze this successful interaction and extract reusable patterns:
-
-Query: {interaction.get('query', '')}
-Response: {interaction.get('response', '')[:500]}...
-
-Extract:
-1. What problem was solved?
-2. What approach was used?
-3. What skills/knowledge were applied?
-4. What can be generalized for future use?
-
-Return a JSON object with these fields:
-{{
-    "problem_type": "brief description",
-    "solution_approach": "general approach used",
-    "skills_used": ["skill1", "skill2"],
-    "generalizable_pattern": "reusable pattern description"
-}}
-
-JSON:"""
-
-    try:
-        # Use llama.cpp for pattern extraction
-        response = await llama_cpp_client.post(
-            "/chat/completions",
-            json={
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.3,
-                "max_tokens": 500,
-            },
-            timeout=60.0,
-        )
-        response.raise_for_status()
-        result = response.json()
-
-        # Parse LLM response
-        content = result["choices"][0]["message"]["content"]
-
-        # Extract JSON from response
-        if "```json" in content:
-            json_str = content.split("```json")[1].split("```")[0].strip()
-        elif "{" in content:
-            json_str = content[content.index("{") : content.rindex("}") + 1]
-        else:
-            json_str = content
-
-        pattern_data = json.loads(json_str)
-
-        # Store as new skill/pattern
-        await store_pattern(pattern_data, interaction)
-
-        logger.info(f"Extracted pattern: {pattern_data.get('problem_type', 'Unknown')}")
-
-    except Exception as e:
-        logger.error(f"Error extracting patterns: {e}")
-
-
-async def store_pattern(pattern_data: Dict[str, Any], source_interaction: Dict[str, Any]):
-    """
-    Store extracted pattern in skills-patterns collection
-    """
-    global qdrant_client
-
-    # Create skill/pattern payload
-    skill = {
-        "skill_name": pattern_data.get("problem_type", "Unknown Skill"),
-        "description": pattern_data.get("generalizable_pattern", ""),
-        "usage_pattern": pattern_data.get("solution_approach", ""),
-        "success_examples": [source_interaction.get("response", "")[:500]],
-        "failure_examples": [],
-        "prerequisites": [],
-        "related_skills": pattern_data.get("skills_used", []),
-        "value_score": source_interaction.get("value_score", 0.7),
-        "last_updated": int(datetime.now().timestamp()),
-    }
-
-    # Embed the description
-    embedding = await embed_text(skill["description"])
-
-    # Check if similar pattern exists
-    similar = qdrant_client.query_points(
-        collection_name="skills-patterns",
-        query=embedding,
-        limit=1,
-        score_threshold=0.9,
-    ).points
-
-    if similar:
-        # Update existing pattern
-        existing_id = str(similar[0].id)
-        existing_payload = similar[0].payload
-
-        # Add to success examples
-        existing_payload["success_examples"].append(skill["success_examples"][0])
-
-        # Update value score (moving average)
-        existing_value = existing_payload.get("value_score", 0.5)
-        new_value = existing_value * 0.8 + skill["value_score"] * 0.2
-        existing_payload["value_score"] = new_value
-        existing_payload["last_updated"] = skill["last_updated"]
-
-        qdrant_client.set_payload(
-            collection_name="skills-patterns",
-            payload=existing_payload,
-            points=[existing_id],
-        )
-
-        logger.info(f"Updated existing pattern: {existing_id}")
-    else:
-        # Create new pattern
-        pattern_id = str(uuid4())
-        qdrant_client.upsert(
-            collection_name="skills-patterns",
-            points=[PointStruct(id=pattern_id, vector=embedding, payload=skill)],
-        )
-
-        logger.info(f"Created new pattern: {pattern_id}")
-
-
-# ============================================================================
-# Interaction Archive — training data export (Phase 4.1.3: fine-tuning not viable on this hardware)
-# ============================================================================
-
-
-async def generate_fine_tuning_dataset() -> str:
-    """
-    Export high-value interactions to JSONL (OpenAI chat format) for archival and
-    potential off-device fine-tuning. Fine-tuning on-device is not viable (see docs/FINETUNING.md).
-    """
-    global qdrant_client
-
-    try:
-        # Query high-value successful interactions
-        high_value_interactions = qdrant_client.scroll(
-            collection_name="interaction-history",
-            scroll_filter=Filter(
-                must=[
-                    FieldCondition(
-                        key="value_score", range=Range(gte=Config.HIGH_VALUE_THRESHOLD)
-                    ),
-                    FieldCondition(key="outcome", match=MatchValue(value="success")),
-                ]
-            ),
-            limit=1000,
-        )[0]
-
-        # Format for fine-tuning (OpenAI format)
-        training_data = []
-        for point in high_value_interactions:
-            payload = point.payload
-            training_data.append(
-                {
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": "You are a helpful NixOS and coding assistant specialized in system configuration and development.",
-                        },
-                        {"role": "user", "content": payload.get("query", "")},
-                        {"role": "assistant", "content": payload.get("response", "")},
-                    ]
-                }
-            )
-
-        # Save to JSONL
-        os.makedirs(os.path.dirname(Config.FINETUNE_DATA_PATH), exist_ok=True)
-
-        with open(Config.FINETUNE_DATA_PATH, "w") as f:
-            for item in training_data:
-                f.write(json.dumps(item) + "\n")
-
-        logger.info(
-            f"Generated fine-tuning dataset: {len(training_data)} examples at {Config.FINETUNE_DATA_PATH}"
-        )
-
-        return Config.FINETUNE_DATA_PATH
-
-    except Exception as e:
-        logger.error(f"Error generating fine-tuning dataset: {e}")
-        return ""
-
-
-# ============================================================================
 # MCP Tool Definitions
 # ============================================================================
 
@@ -3624,6 +2284,11 @@ async def initialize_server():
         base_url=Config.AIDB_URL,
         timeout=30.0,
     )
+    # Phase 6.1 — wire extracted capability_discovery module
+    capability_discovery.init(
+        aidb_client=aidb_client,
+        stats=HYBRID_STATS["capability_discovery"],
+    )
 
     # Create collections
     await initialize_collections()
@@ -3698,6 +2363,18 @@ async def initialize_server():
     else:
         learning_pipeline = None
         logger.info("⚠ Continuous learning DISABLED")
+
+    # Phase 6.1 — wire extracted interaction_tracker module
+    interaction_tracker.init(
+        qdrant_client=qdrant_client,
+        postgres_client=postgres_client,
+        llama_cpp_client=llama_cpp_client,
+        embed_fn=embed_text,
+        store_memory_fn=store_agent_memory,
+        record_telemetry_fn=record_telemetry_event,
+        performance_window=performance_window,
+        collections=COLLECTIONS,
+    )
 
     logger.info("✓ Hybrid Agent Coordinator initialized successfully")
 
