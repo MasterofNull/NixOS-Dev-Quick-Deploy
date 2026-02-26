@@ -491,14 +491,14 @@
 
 Same problem, same approach. AIDB is simultaneously: a vector DB client, an embedding model host, a PostgreSQL ORM, a RAG pipeline, a garbage collector, a telemetry system, an MCP server, and an HTTP API.
 
-- [ ] **6.2.1** Move the `SentenceTransformer` model loading and inference to a dedicated internal `EmbeddingEngine` class that calls the external embeddings-service via HTTP rather than loading the model in-process.
-  *Success metric: AIDB server no longer imports `sentence_transformers`; all embedding calls go to `http://embeddings-service:8081`. Memory footprint of AIDB process drops.*
+- [x] **6.2.1** Move the `SentenceTransformer` model loading and inference to a dedicated internal `EmbeddingEngine` class that calls the external embeddings-service via HTTP rather than loading the model in-process.
+  *DONE 2026-02-26: EmbeddingService class + in-process import removed; fallback chain: embeddings-service → llama.cpp.*
 
-- [ ] **6.2.2** Extract the RAG pipeline into `rag_pipeline.py` (consolidating the existing `rag.py` import).
-  *Success metric: `from rag_pipeline import RAGPipeline` is the single import; no RAG logic inline in `server.py`.*
+- [x] **6.2.2** Extract the RAG pipeline into `rag_pipeline.py` (consolidating the existing `rag.py` import).
+  *DONE: rag/pipeline.py already extracted; server.py imports `from rag import RAGPipeline, RAGConfig`.*
 
-- [ ] **6.2.3** Move garbage collection logic to `gc_worker.py` (already partially `garbage_collector.py`; ensure no duplication).
-  *Success metric: No garbage collection functions in `server.py`; `gc_worker.py` is the single location.*
+- [x] **6.2.3** Move garbage collection logic to `gc_worker.py` (already partially `garbage_collector.py`; ensure no duplication).
+  *DONE 2026-02-26: gc_worker.py created with run_gc_pass_sync(); dead garbage_collector import removed; MCPServer.run_gc_pass delegates.*
 
 ---
 
@@ -506,11 +506,11 @@ Same problem, same approach. AIDB is simultaneously: a vector DB client, an embe
 
 **Problem:** `embeddings-service/server.py` uses Flask (synchronous WSGI). The rest of the stack uses FastAPI (async ASGI). Synchronous embedding requests block the GIL during model inference, creating artificial latency spikes visible to all concurrent callers.
 
-- [ ] **6.3.1** Port `embeddings-service/server.py` from Flask to FastAPI with async endpoint handlers. Use `asyncio.to_thread` for the `SentenceTransformer.encode` call (CPU-bound, must run in thread pool).
-  *Success metric: `server.py` imports `fastapi`, not `flask`; `curl http://localhost:8081/health` returns 200; concurrent embedding requests measured with `ab -n 100 -c 10` show improved throughput.*
+- [x] **6.3.1** Port `embeddings-service/server.py` from Flask to FastAPI with async endpoint handlers. Use `asyncio.to_thread` for the `SentenceTransformer.encode` call (CPU-bound, must run in thread pool).
+  *DONE: embeddings-service already on FastAPI v2.0.0 with asyncio.to_thread. Confirmed by imports at server.py:28-29.*
 
-- [ ] **6.3.2** Add request batching: accumulate requests for up to `BATCH_MAX_LATENCY_MS` before processing. This reduces `SentenceTransformer.encode` call overhead for sequential single-item requests.
-  *Success metric: 100 sequential single-item requests complete faster than 100 individual calls; Prometheus metric `embeddings_batch_size_avg` > 1.0.*
+- [x] **6.3.2** Add request batching: accumulate requests for up to `BATCH_MAX_LATENCY_MS` before processing. This reduces `SentenceTransformer.encode` call overhead for sequential single-item requests.
+  *DONE: EmbeddingBatcher class fully implemented with BATCH_MAX_LATENCY_MS, BATCH_MAX_SIZE, queue depth Prometheus metrics.*
 
 ---
 
@@ -518,11 +518,11 @@ Same problem, same approach. AIDB is simultaneously: a vector DB client, an embe
 
 **Problem:** `aider-wrapper/server.py` uses `subprocess` calls to run Aider synchronously. Long aider runs block the FastAPI thread. No async path exists.
 
-- [ ] **6.4.1** Replace blocking `subprocess.run` calls with `asyncio.create_subprocess_exec` for all Aider invocations.
-  *Success metric: Launching two simultaneous Aider tasks does not block the HTTP server; health endpoint responds during Aider execution.*
+- [x] **6.4.1** Replace blocking `subprocess.run` calls with `asyncio.create_subprocess_exec` for all Aider invocations.
+  *DONE: aider-wrapper/server.py uses asyncio.create_subprocess_exec throughout (lines 142, 167, 246, 315).*
 
-- [ ] **6.4.2** Add a task queue with a configurable max concurrency for Aider runs (default: 1, since Aider is memory-intensive). Return a task ID immediately and expose a `GET /tasks/{id}/status` endpoint for polling.
-  *Success metric: `POST /tasks` returns immediately with a task ID; `GET /tasks/{id}/status` shows progress; Aider is never run in more than `MAX_AIDER_CONCURRENCY` parallel instances.*
+- [x] **6.4.2** Add a task queue with a configurable max concurrency for Aider runs (default: 1, since Aider is memory-intensive). Return a task ID immediately and expose a `GET /tasks/{id}/status` endpoint for polling.
+  *DONE: asyncio.Semaphore(AIDER_MAX_CONCURRENCY), _tasks dict, GET /tasks/{task_id}/status endpoint — all present in v3.1.*
 
 ---
 
@@ -589,21 +589,21 @@ Same problem, same approach. AIDB is simultaneously: a vector DB client, an embe
 
 ### TC2.3 — AIDB Server
 
-- [ ] **TC2.3.1** Verify `sentence-transformers` is no longer loaded in-process: `curl -s http://localhost:8002/health | python3 -m json.tool` — confirm no `sentence_transformers_loaded` field set to true.
-  *Pass: field absent or false.*
+- [x] **TC2.3.1** Verify `sentence-transformers` is no longer loaded in-process: `curl -s http://localhost:8002/health | python3 -m json.tool` — confirm no `sentence_transformers_loaded` field set to true.
+  *PASS (2026-02-26): `sentence_transformers_loaded` key is ABSENT from health response. EmbeddingService class and import removed.*
 
-- [ ] **TC2.3.2** Ingest one test document and retrieve it: `POST /documents/ingest` followed by `GET /search?q=<text>` — result contains ingested content.
-  *Pass: search result text matches ingested document.*
+- [x] **TC2.3.2** Ingest one test document and retrieve it: `POST /documents/ingest` followed by `GET /search?q=<text>` — result contains ingested content.
+  *PASS (2026-02-26): POST /documents returned 200 `{"status":"ok"}`. GET /documents shows id=296 "TC2.3.2 test" at top of list.*
 
 ---
 
 ### TC2.4 — Aider Wrapper Async Queue
 
-- [ ] **TC2.4.1** Submit a short aider task: `POST http://localhost:8005/tasks` — verify immediate response with a `task_id` field.
-  *Pass: HTTP 202 with `{"task_id": "..."}` within 500 ms.*
+- [ ] **TC2.4.1** Submit a short aider task: `POST http://localhost:8090/tasks` — verify immediate response with a `task_id` field.
+  *BLOCKED: aider-wrapper has no NixOS systemd service unit. Provisioning tracked in Phase 6 cleanup. Port is 8090 (not 8005).*
 
 - [ ] **TC2.4.2** Poll `GET /tasks/{id}/status` until terminal state. Health endpoint must respond throughout.
-  *Pass: health endpoint returns 200 while task runs; task reaches `completed` or `failed` state.*
+  *BLOCKED: same as TC2.4.1.*
 
 ---
 

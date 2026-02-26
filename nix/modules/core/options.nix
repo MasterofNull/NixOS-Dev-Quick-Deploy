@@ -994,6 +994,12 @@
         description = "TCP port for the ralph-wiggum loop MCP server.";
       };
 
+      aiderWrapperPort = lib.mkOption {
+        type = lib.types.port;
+        default = 8090;
+        description = "TCP port for the aider-wrapper async coding assistant MCP server.";
+      };
+
       postgres = {
         enable = lib.mkOption {
           type = lib.types.bool;
