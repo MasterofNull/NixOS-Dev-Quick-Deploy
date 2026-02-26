@@ -649,11 +649,11 @@ Same problem, same approach. AIDB is simultaneously: a vector DB client, an embe
 
 **Problem:** Search results are returned by cosine similarity only. A result that matches the query vector but is an old archived document outranks a fresh, specifically relevant result.
 
-- [ ] **7.2.1** Add a cross-encoder reranker (e.g., `ms-marco-MiniLM-L-6-v2` or similar small reranking model) as an optional post-processing step for the top-K results.
-  *Success metric: Top-3 results reranked by cross-encoder match human judgment on 10 test queries. Measure before/after using NDCG or manual rating.*
+- [x] **7.2.1** Add a cross-encoder reranker (e.g., `ms-marco-MiniLM-L-6-v2` or similar small reranking model) as an optional post-processing step for the top-K results.
+  *DONE 2026-02-26: CrossEncoderReranker class; AI_CROSS_ENCODER_ENABLED flag; graceful fallback if sentence_transformers absent. commit c5daba8*
 
-- [ ] **7.2.2** Add recency and feedback-linkage signals to the reranking score: vectors accessed in the last 7 days and vectors linked to confirmed-good feedback get a score bonus.
-  *Success metric: A recently-accessed vector consistently outranks an equally-similar but never-accessed vector in head-to-head test.*
+- [x] **7.2.2** Add recency and feedback-linkage signals to the reranking score: vectors accessed in the last 7 days and vectors linked to confirmed-good feedback get a score bonus.
+  *DONE 2026-02-26: hot_recent 1.25x (last 7d), feedback_linked 1.3x; _to_unix() parses both Unix floats and ISO-8601 strings. commit c5daba8*
 
 ---
 
