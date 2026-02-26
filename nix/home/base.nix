@@ -25,6 +25,8 @@ let
   aiLlamaModel = lib.attrByPath [ "mySystem" "aiStack" "llamaCpp" "model" ] "local-model" systemConfig;
   aiHybridPort = lib.attrByPath [ "mySystem" "mcpServers" "hybridPort" ] (lib.attrByPath [ "mcpHybrid" ] 8003 portRegistry) systemConfig;
   aiAidbPort = lib.attrByPath [ "mySystem" "mcpServers" "aidbPort" ] (lib.attrByPath [ "mcpAidb" ] 8002 portRegistry) systemConfig;
+  aiRalphPort = lib.attrByPath [ "mySystem" "mcpServers" "ralphPort" ] (lib.attrByPath [ "mcpRalph" ] 8004 portRegistry) systemConfig;
+  aiAiderPort = lib.attrByPath [ "mySystem" "mcpServers" "aiderWrapperPort" ] (lib.attrByPath [ "aiderWrapper" ] 8090 portRegistry) systemConfig;
   aiAnthropicProxyPort = lib.attrByPath [ "mySystem" "ports" "anthropicProxy" ] 8120 systemConfig;
   aiPostgresPort = lib.attrByPath [ "mySystem" "ports" "postgres" ] 5432 systemConfig;
   aiOpenAIBaseUrl = "http://127.0.0.1:${toString aiSwitchboardPort}/v1";
@@ -966,6 +968,31 @@ MCP_REGISTRY_EOF
       unset d name target
     fi
     unset src
+  '';
+
+  # Seed ~/.claude/settings.json with the stdio MCP server catalog so Claude
+  # Code has access to all development tools (filesystem, git, fetch, etc.)
+  # on first login.  Only writes when mcpServers key is absent; safe to run
+  # on every home-manager switch — skips if already configured.
+  home.activation.seedClaudeSettings = lib.hm.dag.entryAfter [ "linkSharedAgentSkills" ] ''
+    mkdir -p "$HOME/.claude"
+    settings="$HOME/.claude/settings.json"
+    mcp_cfg="$HOME/.mcp/config.json"
+    if [ -f "$mcp_cfg" ] && ${pkgs.jq}/bin/jq -e '.mcpServers' "$mcp_cfg" > /dev/null 2>&1; then
+      if [ ! -f "$settings" ] || [ "$(${pkgs.jq}/bin/jq -r 'keys | length' "$settings" 2>/dev/null)" = "0" ]; then
+        # Empty or missing settings — seed with the MCP catalog
+        cp "$mcp_cfg" "$settings"
+      elif ! ${pkgs.jq}/bin/jq -e '.mcpServers' "$settings" > /dev/null 2>&1; then
+        # Has other settings but no mcpServers — merge without overwriting
+        tmp="$(mktemp)"
+        ${pkgs.jq}/bin/jq --slurpfile mcp "$mcp_cfg" \
+          '. * {"mcpServers": $mcp[0].mcpServers}' "$settings" > "$tmp" \
+          && mv "$tmp" "$settings" \
+          || rm -f "$tmp"
+        unset tmp
+      fi
+    fi
+    unset settings mcp_cfg
   '';
 
   # Allow GPT4All Flatpak to read locally hosted llama.cpp models.

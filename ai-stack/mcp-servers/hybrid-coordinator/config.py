@@ -24,6 +24,7 @@ logger = logging.getLogger("hybrid-coordinator")
 
 HYBRID_SETTINGS = HybridSettings.load()
 STRICT_ENV = os.getenv("AI_STRICT_ENV", "true").strip().lower() in {"1", "true", "yes", "on"}
+AI_CROSS_ENCODER_ENABLED = os.getenv("AI_CROSS_ENCODER_ENABLED", "false").lower() == "true"
 
 
 def _require_env(name: str) -> str:

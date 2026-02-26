@@ -6,9 +6,13 @@ Improves RAG retrieval quality through query expansion and result reranking
 
 import asyncio
 import logging
+import time
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
+
+from config import AI_CROSS_ENCODER_ENABLED
 
 logger = logging.getLogger("query-expansion")
 
@@ -186,6 +190,20 @@ Return ONLY the alternative queries, one per line, without numbering or explanat
         return query
 
 
+def _to_unix(value: Any) -> Optional[float]:
+    """Convert a Unix timestamp (float/int) or ISO-8601 string to a float epoch."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        pass
+    try:
+        return datetime.fromisoformat(str(value)).timestamp()
+    except (ValueError, TypeError):
+        return None
+
+
 class ResultReranker:
     """
     Rerank search results for better relevance
@@ -197,8 +215,8 @@ class ResultReranker:
     4. Diversity-aware reranking (avoid redundant results)
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, cross_encoder: Optional["CrossEncoderReranker"] = None):
+        self._cross_encoder = cross_encoder
 
     def rerank_by_metadata(
         self,
@@ -219,6 +237,8 @@ class ResultReranker:
             boost_factors = {
                 "verified": 1.5,        # Verified solutions get 50% boost
                 "high_success": 1.3,    # High success rate gets 30% boost
+                "feedback_linked": 1.3, # Feedback-linked content gets 30% boost
+                "hot_recent": 1.25,     # Last 7 days gets 25% boost
                 "recent": 1.2,          # Recent content gets 20% boost
                 "has_examples": 1.15,   # Content with examples gets 15% boost
             }
@@ -239,13 +259,19 @@ class ResultReranker:
             if success_rate >= 0.8:
                 boost *= boost_factors["high_success"]
 
+            # Boost feedback-linked vectors
+            if payload.get("feedback_linked") == "true":
+                boost *= boost_factors["feedback_linked"]
+
+            # Boost hot recent content (last 7 days)
+            hot_ts = _to_unix(payload.get("last_accessed_at") or payload.get("last_used"))
+            if hot_ts is not None and (time.time() - hot_ts) / 86400 <= 7:
+                boost *= boost_factors["hot_recent"]
+
             # Boost recent content (last 90 days)
-            import time
-            last_used = payload.get("last_used") or payload.get("last_updated")
-            if last_used:
-                days_old = (time.time() - last_used) / 86400
-                if days_old <= 90:
-                    boost *= boost_factors["recent"]
+            recent_ts = _to_unix(payload.get("last_used") or payload.get("last_updated"))
+            if recent_ts is not None and (time.time() - recent_ts) / 86400 <= 90:
+                boost *= boost_factors["recent"]
 
             # Boost content with code examples
             content = payload.get("content", "") or payload.get("solution", "")
@@ -344,7 +370,8 @@ class ResultReranker:
     def hybrid_rerank(
         self,
         results: List[Dict[str, Any]],
-        top_k: int = 10
+        top_k: int = 10,
+        query: str = ""
     ) -> List[Dict[str, Any]]:
         """
         Combined metadata boosting + diversity reranking
@@ -366,7 +393,65 @@ class ResultReranker:
             top_k=top_k
         )
 
+        # Third: optional cross-encoder rerank for final ordering
+        if self._cross_encoder and self._cross_encoder.is_available and AI_CROSS_ENCODER_ENABLED:
+            return self._cross_encoder.rerank_sync(query, diverse_results)[:top_k]
+
         return diverse_results
+
+
+class CrossEncoderReranker:
+    """Optional cross-encoder reranker with graceful fallback."""
+
+    def __init__(self):
+        self._model = None
+        self.is_available = False
+
+        if not AI_CROSS_ENCODER_ENABLED:
+            return
+
+        try:
+            from sentence_transformers.cross_encoder import CrossEncoder  # type: ignore
+        except ImportError:
+            logger.warning("Cross encoder disabled: sentence_transformers not installed")
+            return
+
+        for model_name in (
+            "cross-encoder/ms-marco-MiniLM-L-6-v2",
+            "ms-marco-MiniLM-L-6-v2",
+        ):
+            try:
+                self._model = CrossEncoder(model_name)
+                self.is_available = True
+                logger.info("Cross encoder enabled with model: %s", model_name)
+                break
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to load cross encoder model %s: %s", model_name, exc)
+
+    def _extract_text(self, result: Dict[str, Any]) -> str:
+        payload = result.get("payload", {})
+        return payload.get("content") or payload.get("solution") or ""
+
+    def rerank_sync(self, query: str, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not self.is_available or self._model is None or not results:
+            return results
+
+        try:
+            pairs = [(query, self._extract_text(result)) for result in results]
+            scores = self._model.predict(pairs)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Cross encoder rerank failed: %s", exc)
+            return results
+
+        reranked: List[Dict[str, Any]] = []
+        for result, score in zip(results, scores):
+            reranked.append({**result, "cross_encoder_score": float(score)})
+
+        reranked.sort(key=lambda item: item.get("cross_encoder_score", float("-inf")), reverse=True)
+        return reranked
+
+    async def rerank(self, query: str, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        return await asyncio.to_thread(self.rerank_sync, query, results)
 
 
 class QueryExpansionReranking:
@@ -376,7 +461,8 @@ class QueryExpansionReranking:
 
     def __init__(self, llama_cpp_url: str = "http://localhost:8080"):
         self.expander = QueryExpander(llama_cpp_url)
-        self.reranker = ResultReranker()
+        self._cross_encoder = CrossEncoderReranker()
+        self.reranker = ResultReranker(cross_encoder=self._cross_encoder)
 
     async def expand_query(
         self,
@@ -404,7 +490,8 @@ class QueryExpansionReranking:
         self,
         results: List[Dict[str, Any]],
         strategy: str = "hybrid",
-        top_k: int = 10
+        top_k: int = 10,
+        query: str = ""
     ) -> List[Dict[str, Any]]:
         """
         Rerank results using selected strategy
@@ -421,5 +508,9 @@ class QueryExpansionReranking:
             return self.reranker.rerank_by_metadata(results)[:top_k]
         elif strategy == "diversity":
             return self.reranker.rerank_for_diversity(results, top_k=top_k)
+        elif strategy == "cross_encoder":
+            if self._cross_encoder and self._cross_encoder.is_available and AI_CROSS_ENCODER_ENABLED:
+                return self._cross_encoder.rerank_sync(query, results)[:top_k]
+            return results[:top_k]
         else:  # hybrid
-            return self.reranker.hybrid_rerank(results, top_k=top_k)
+            return self.reranker.hybrid_rerank(results, top_k=top_k, query=query)
