@@ -14,7 +14,9 @@
   services.resolved = {
     enable     = lib.mkDefault true;
     dnssec     = lib.mkDefault "allow-downgrade";
-    dnsovertls = lib.mkDefault "opportunistic";
+    # Many consumer/campus resolvers advertise partial DoT support that causes
+    # repeated downgrade churn; prefer stable plaintext DNS on local links.
+    dnsovertls = lib.mkDefault "false";
     # Fallback DNS used when DHCP provides none or a broken nameserver.
     fallbackDns = lib.mkDefault [
       "1.1.1.1"          # Cloudflare
@@ -33,6 +35,8 @@
 
   # Route NetworkManager DNS through systemd-resolved.
   networking.networkmanager.dns = lib.mkDefault "systemd-resolved";
+  # Reduce Realtek roaming/power-save related disconnects on unstable APs.
+  networking.networkmanager.wifi.powersave = lib.mkDefault false;
   networking.firewall.enable = lib.mkDefault true;
 
   # Ensure the stub-resolv.conf symlink is always present.

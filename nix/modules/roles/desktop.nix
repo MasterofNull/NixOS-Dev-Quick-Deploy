@@ -20,6 +20,7 @@
 let
   cfg = config.mySystem;
   desktopEnabled = cfg.roles.desktop.enable;
+  primaryGroup = lib.attrByPath [ "users" "users" cfg.primaryUser "group" ] "users" config;
 
   # XDG portal backend selection.
   # xdg-desktop-portal-gnome requires gnome-shell running — do NOT add it when
@@ -178,11 +179,11 @@ in
       "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTk        0750 cosmic-greeter cosmic-greeter -"
       "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTk/v1     0750 cosmic-greeter cosmic-greeter -"
       # Keep user Flatpak exports writable so per-user app sync can update icons/desktop exports.
-      "d /home/${cfg.primaryUser}/.local/share/flatpak/exports                 0755 ${cfg.primaryUser} ${cfg.primaryUser} -"
-      "d /home/${cfg.primaryUser}/.local/share/flatpak/exports/share           0755 ${cfg.primaryUser} ${cfg.primaryUser} -"
-      "d /home/${cfg.primaryUser}/.local/share/flatpak/exports/share/icons     0755 ${cfg.primaryUser} ${cfg.primaryUser} -"
-      "d /home/${cfg.primaryUser}/.local/share/flatpak/exports/share/icons/hicolor 0755 ${cfg.primaryUser} ${cfg.primaryUser} -"
-      "z /home/${cfg.primaryUser}/.local/share/flatpak/exports                 - ${cfg.primaryUser} ${cfg.primaryUser} -"
+      "d /home/${cfg.primaryUser}/.local/share/flatpak/exports                 0755 ${cfg.primaryUser} ${primaryGroup} -"
+      "d /home/${cfg.primaryUser}/.local/share/flatpak/exports/share           0755 ${cfg.primaryUser} ${primaryGroup} -"
+      "d /home/${cfg.primaryUser}/.local/share/flatpak/exports/share/icons     0755 ${cfg.primaryUser} ${primaryGroup} -"
+      "d /home/${cfg.primaryUser}/.local/share/flatpak/exports/share/icons/hicolor 0755 ${cfg.primaryUser} ${primaryGroup} -"
+      "z /home/${cfg.primaryUser}/.local/share/flatpak/exports                 - ${cfg.primaryUser} ${primaryGroup} -"
     ];
 
     # ---- Printing ----------------------------------------------------------

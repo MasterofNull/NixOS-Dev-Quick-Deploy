@@ -212,11 +212,12 @@ let
     # CLI paths are declarative; no npm-global compatibility wrappers.
 
     "claude-code.executablePath"         = "${config.home.homeDirectory}/.local/bin/claude";
-    "claude-code.claudeProcessWrapper"   = "${config.home.homeDirectory}/.local/bin/claude";
+    # claudeProcessWrapper is intentionally omitted — setting it to the same
+    # binary as executablePath causes the extension to call 'claude claude ...'
+    # which crashes the extension host at startup.
     "claude-code.environmentVariables"   = vscodiumAiEnv;
     "claude-code.autoStart"              = false;
     "claudeCode.executablePath"          = "${config.home.homeDirectory}/.local/bin/claude";
-    "claudeCode.claudeProcessWrapper"    = "${config.home.homeDirectory}/.local/bin/claude";
     "claudeCode.environmentVariables"    = vscodiumAiEnv;
     "claudeCode.autoStart"               = false;
     "gpt-codex.executablePath"           = "codex";
@@ -644,9 +645,9 @@ in
         # ── Python ─────────────────────────────────────────────────────────
         ++ vsExt "ms-python"   "python"         # Python language support
         ++ vsExt "ms-python"   "black-formatter" # Python formatter
-        ++ vsExt "ms-python"   "vscode-pylance"  # Python language server
-        # debugpy/jupyter are installed as mutable runtime extensions below.
-        ++ vsExt "ms-pyright"  "pyright"        # Static type checker
+        ++ vsExt "ms-python"   "vscode-pylance"  # Python language server (bundles Pyright internally)
+        # Bare ms-pyright.pyright removed — Pylance already includes Pyright's
+        # type checker; running both causes duplicate diagnostics and conflicts.
         # ── Go ─────────────────────────────────────────────────────────────
         ++ vsExt "golang"      "go"             # Go language support
         # ── Rust ───────────────────────────────────────────────────────────

@@ -67,7 +67,7 @@ in
         LLAMA_URL = "http://127.0.0.1:${toString cfg.aiStack.llamaCpp.port}";
         EMBEDDINGS_URL = "http://127.0.0.1:${toString cfg.aiStack.embeddingServer.port}";
         SWITCHBOARD_URL = "http://127.0.0.1:${toString cfg.aiStack.switchboard.port}";
-        AIDER_WRAPPER_URL = "http://127.0.0.1:${toString ports.aiderWrapperPort}";
+        AIDER_WRAPPER_URL = "http://127.0.0.1:${toString mcp.aiderWrapperPort}";
         EMBEDDINGS_PORT = toString cfg.aiStack.embeddingServer.port;
         SWITCHBOARD_PORT = toString cfg.aiStack.switchboard.port;
         EMBEDDING_DIMENSIONS = toString cfg.aiStack.embeddingDimensions;
