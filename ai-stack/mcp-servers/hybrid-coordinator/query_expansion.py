@@ -29,24 +29,33 @@ class QueryExpander:
 
         # Common technical synonyms
         self.synonym_map = {
-            "error": ["error", "issue", "problem", "failure", "exception"],
-            "fix": ["fix", "solve", "resolve", "repair", "correct"],
-            "install": ["install", "setup", "configure", "deploy"],
-            "remove": ["remove", "delete", "uninstall", "purge"],
-            "update": ["update", "upgrade", "patch", "modify"],
-            "container": ["container", "pod", "podman", "docker"],
-            "service": ["service", "daemon", "systemd unit"],
-            "config": ["config", "configuration", "settings", "options"],
-            "deploy": ["deploy", "install", "setup", "provision"],
-            "build": ["build", "compile", "generate", "create"],
+            'flake': ['flake.nix', 'inputs', 'outputs', 'follows', 'lock', 'flake-utils'],
+            'module': ['NixOS module', 'nixos-module', 'options declaration', 'config block'],
+            'derivation': ['mkDerivation', 'stdenv', 'buildInputs', 'nativeBuildInputs'],
+            'quantization': ['GGUF', 'Q4_K_M', 'Q8_0', 'IQ2_M', 'bpw', 'bits-per-weight'],
+            'inference': ['llama.cpp', 'llama-server', 'context window', 'tokens/sec', 'KV cache'],
+            'embedding': ['sentence-transformers', 'vector', 'cosine similarity', 'HNSW'],
+            'error': ['error', 'issue', 'problem', 'failure', 'exception', 'traceback'],
+            'fix': ['fix', 'solve', 'resolve', 'repair', 'workaround'],
+            'config': ['configuration', 'options', 'settings', 'config attribute'],
+            'build': ['build', 'compile', 'nix build', 'nixos-rebuild'],
+            'service': ['systemd service', 'systemd unit', 'daemon'],
+            'package': ['pkgs', 'nixpkgs', 'derivation', 'nix expression'],
+            'deploy': ['nixos-rebuild switch', 'nixos-rebuild test', 'provision'],
+            'model': ['GGUF', 'weights', 'checkpoint', 'language model'],
+            'memory': ['RAM', 'VRAM', 'context length', 'KV cache', 'offload'],
         }
 
         # Domain-specific expansions
         self.domain_expansions = {
-            "nixos": ["NixOS", "Nix", "nix-shell", "nixpkgs", "home-manager"],
-            "podman": ["Podman", "containers", "OCI"],
-            "llm": ["LLM", "language model", "AI model", "inference"],
-            "qdrant": ["Qdrant", "vector database", "vector search", "embeddings"],
+            'nixos': ['NixOS', 'nixpkgs', 'nix-shell', 'home-manager', 'flake'],
+            'nix': ['Nix language', 'nix expression', 'derivation', 'nixpkgs'],
+            'llama': ['llama.cpp', 'llama-server', 'GGUF', 'llama-cpp', 'ggml'],
+            'qdrant': ['Qdrant', 'vector database', 'vector store', 'HNSW'],
+            'rag': ['retrieval', 'RAG pipeline', 'context injection', 'vector search'],
+            'amd': ['ROCm', 'AMD GPU', 'amdgpu', 'HIP', 'Radeon'],
+            'embedding': ['sentence-transformers', 'nomic-embed', 'bge', 'vector encoding'],
+            'rocm': ['ROCm', 'AMD compute', 'HIP', 'amdgpu', 'GPU acceleration'],
         }
 
     def expand_simple(self, query: str, max_expansions: int = 3) -> List[str]:
