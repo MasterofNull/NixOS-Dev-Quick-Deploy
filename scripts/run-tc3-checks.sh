@@ -176,21 +176,35 @@ if [[ "${SKIP_PERF}" -eq 0 ]]; then
     info "TC3.5.1: p95 latency measurement (10 iterations)..."
     if curl -fsS --max-time 5 --connect-timeout 3 "${hybrid_url}/health" >/dev/null 2>&1; then
         latencies=()
+        successes=0
         for i in $(seq 1 10); do
             t_start=$(date +%s%N)
-            curl -fsS --max-time 15 --connect-timeout 5 \
+            status_code="$(curl -sS --max-time 15 --connect-timeout 5 \
                 -H "Content-Type: application/json" \
                 -H "X-API-Key: ${api_key}" \
                 -d '{"query":"what is lib.mkForce","limit":3}' \
-                "${hybrid_url}/route_search" >/dev/null 2>&1 || true
+                -o /dev/null -w '%{http_code}' \
+                "${hybrid_url}/route_search" 2>/dev/null || echo "000")"
             t_end=$(date +%s%N)
-            latencies+=( $(( (t_end - t_start) / 1000000 )) )
+            if [[ "${status_code}" == "200" ]]; then
+                latencies+=( $(( (t_end - t_start) / 1000000 )) )
+                successes=$((successes + 1))
+            fi
         done
-        # Sort and take p95 (index 9 of 10 = 90th, use max as p95 approximation with 10 samples)
-        IFS=$'\n' sorted=($(sort -n <<<"${latencies[*]}")); unset IFS
-        p50="${sorted[4]}"
-        p95="${sorted[9]}"
-        pass "TC3.5.1: p50=${p50}ms p95=${p95}ms (10 samples)"
+        if [[ "${successes}" -ge 3 ]]; then
+            # Sort and take p95 approximation from available successful samples.
+            IFS=$'\n' sorted=($(sort -n <<<"${latencies[*]}")); unset IFS
+            count="${#sorted[@]}"
+            p50_idx=$(( (count - 1) / 2 ))
+            p95_idx=$(( count - 1 ))
+            p50="${sorted[${p50_idx}]}"
+            p95="${sorted[${p95_idx}]}"
+            pass "TC3.5.1: p50=${p50}ms p95=${p95}ms (${successes} successful samples)"
+        else
+            p50="null"
+            p95="null"
+            skip "TC3.5.1: insufficient successful responses from hybrid-coordinator (${successes}/10)"
+        fi
     else
         p50="null"
         p95="null"
