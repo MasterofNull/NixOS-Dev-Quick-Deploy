@@ -72,6 +72,7 @@ from metrics import (
 )
 from config import (
     HYBRID_SETTINGS, STRICT_ENV, _require_env, _enforce_startup_env,
+    _read_secret,
     Config, RoutingConfig, routing_config,
     OptimizationProposalType, OptimizationProposal, apply_proposal,
     PerformanceWindow, performance_window,

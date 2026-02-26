@@ -62,3 +62,23 @@ LLM_BACKEND_SELECTIONS = Counter(
     "LLM backend selection decisions",
     ["backend", "reason_class"],
 )
+# Phase 17.4.1 — embedding cache observability
+EMBEDDING_CACHE_HITS = Counter(
+    "embedding_cache_hits_total",
+    "Total embedding cache hits",
+)
+EMBEDDING_CACHE_MISSES = Counter(
+    "embedding_cache_misses_total",
+    "Total embedding cache misses",
+)
+# Phase 17.4.2 — context compression observability
+CONTEXT_COMPRESSION_TOKENS_BEFORE = Histogram(
+    "context_compression_tokens_before",
+    "Token count of context before compression",
+    buckets=[64, 128, 256, 512, 1024, 2048, 4096, 8192],
+)
+CONTEXT_COMPRESSION_TOKENS_AFTER = Histogram(
+    "context_compression_tokens_after",
+    "Token count of context after compression",
+    buckets=[64, 128, 256, 512, 1024, 2048, 4096, 8192],
+)

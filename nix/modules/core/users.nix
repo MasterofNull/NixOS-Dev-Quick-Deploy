@@ -30,7 +30,11 @@ in
 
     users.users.${cfg.primaryUser} = {
       isNormalUser = true;
-      extraGroups  = lib.mkDefault [
+      # Base groups at normal priority (100) so role modules using lib.mkAfter
+      # (also priority 100) correctly *merge* with this list via listOf's concat
+      # merge strategy, rather than replacing it (which lib.mkDefault would cause
+      # since mkDefault = priority 1000 loses to any normal-priority definition).
+      extraGroups = [
         "wheel"           # sudo / polkit access
         "networkmanager"  # manage network connections without sudo
         "video"           # GPU / backlight access
