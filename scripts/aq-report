@@ -1,0 +1,700 @@
+#!/usr/bin/env python3
+"""
+aq-report — AI Stack weekly performance digest (Phase 18.1.1)
+
+Synthesises tool_audit.jsonl, scores.sqlite, Postgres query_gaps, and
+Prometheus counters into a human-readable report that surfaces:
+  - Tool call latency (P50 / P95) and success rates
+  - Routing split (local vs remote %)
+  - Semantic cache hit rate
+  - Eval score trend
+  - Top recurring query gaps
+  - Workflow recommendations based on the above data
+
+Usage:
+  aq-report [--since=7d] [--format=md|text|json] [--aidb-import]
+
+Environment variables (all optional — uses sensible defaults):
+  TOOL_AUDIT_LOG_PATH    Path to tool-audit.jsonl
+  EVAL_SCORES_DB         Path to scores.sqlite
+  PROMETHEUS_URL         Prometheus base URL
+  POSTGRES_HOST / PORT / DB / USER / PASSWORD
+  AIDB_URL               Base URL for AIDB REST API (used by --aidb-import)
+"""
+
+import argparse
+import json
+import os
+import sqlite3
+import statistics
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+# ---------------------------------------------------------------------------
+# Configuration (env-var driven — never hardcoded per project policy)
+# ---------------------------------------------------------------------------
+
+TOOL_AUDIT_PATH = Path(
+    os.getenv("TOOL_AUDIT_LOG_PATH", "/var/log/nixos-ai-stack/tool-audit.jsonl")
+)
+AUDIT_FALLBACK_PATH = Path(
+    os.getenv("TOOL_AUDIT_LOG_PATH_FALLBACK",
+              "/var/log/ai-audit-sidecar/tool-audit.jsonl")
+)
+EVAL_SCORES_DB = Path(
+    os.getenv("EVAL_SCORES_DB",
+              str(Path(__file__).parent.parent / "ai-stack/eval/results/scores.sqlite"))
+)
+PROMETHEUS_URL = os.getenv(
+    "PROMETHEUS_URL",
+    f"http://{os.getenv('SERVICE_HOST', '127.0.0.1')}:{os.getenv('PROMETHEUS_PORT', '9090')}",
+)
+AIDB_URL = os.getenv("AIDB_URL", f"http://{os.getenv('SERVICE_HOST', '127.0.0.1')}:{os.getenv('AIDB_PORT', '8002')}")
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+
+
+def _parse_since(s: str) -> timedelta:
+    """Parse '7d', '30d', '1h' etc. into a timedelta."""
+    s = s.strip()
+    if s.endswith("d"):
+        return timedelta(days=int(s[:-1]))
+    if s.endswith("h"):
+        return timedelta(hours=int(s[:-1]))
+    if s.endswith("w"):
+        return timedelta(weeks=int(s[:-1]))
+    raise ValueError(f"Unknown --since format: {s!r}. Use Nd, Nh, or Nw.")
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="AI Stack performance digest",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("--since", default="7d", help="Time window, e.g. 7d, 30d, 1h (default: 7d)")
+    p.add_argument(
+        "--format", default="text", choices=["md", "text", "json"],
+        dest="fmt", help="Output format (default: text)"
+    )
+    p.add_argument(
+        "--aidb-import", action="store_true",
+        help="Ingest the generated report into AIDB after printing"
+    )
+    return p.parse_args()
+
+
+# ---------------------------------------------------------------------------
+# Data source helpers
+# ---------------------------------------------------------------------------
+
+
+def _tool_audit_path() -> Optional[Path]:
+    if TOOL_AUDIT_PATH.exists():
+        return TOOL_AUDIT_PATH
+    if AUDIT_FALLBACK_PATH.exists():
+        return AUDIT_FALLBACK_PATH
+    return None
+
+
+def read_tool_audit(since: datetime) -> List[dict]:
+    """Read tool_audit.jsonl entries newer than `since`."""
+    path = _tool_audit_path()
+    if not path:
+        return []
+    entries = []
+    try:
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                ts_raw = entry.get("timestamp", "")
+                try:
+                    ts = datetime.fromisoformat(ts_raw.rstrip("Z")).replace(tzinfo=timezone.utc)
+                    if ts >= since:
+                        entries.append(entry)
+                except (ValueError, AttributeError):
+                    continue
+    except OSError:
+        pass
+    return entries
+
+
+def read_eval_scores(since: datetime) -> List[dict]:
+    """Read eval_scores rows from scores.sqlite."""
+    if not EVAL_SCORES_DB.exists():
+        return []
+    try:
+        conn = sqlite3.connect(str(EVAL_SCORES_DB))
+        conn.row_factory = sqlite3.Row
+        cur = conn.execute(
+            "SELECT timestamp, config, passed, total, pct_passed, threshold "
+            "FROM eval_scores WHERE timestamp >= ? ORDER BY timestamp",
+            (since.isoformat(),),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+        conn.close()
+        return rows
+    except (sqlite3.Error, OSError):
+        return []
+
+
+def prom_query(metric: str) -> Optional[float]:
+    """Fetch an instant Prometheus metric value (scalar or single series)."""
+    url = f"{PROMETHEUS_URL}/api/v1/query?" + urllib.parse.urlencode({"query": metric})
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+        results = data.get("data", {}).get("result", [])
+        if not results:
+            return None
+        return float(results[0]["value"][1])
+    except Exception:
+        return None
+
+
+def prom_query_range(metric: str, start: datetime, step: str = "1h") -> List[Tuple[float, float]]:
+    """Fetch a Prometheus range query. Returns [(unix_ts, value), ...]."""
+    end_ts = datetime.now(tz=timezone.utc).timestamp()
+    start_ts = start.timestamp()
+    url = f"{PROMETHEUS_URL}/api/v1/query_range?" + urllib.parse.urlencode({
+        "query": metric,
+        "start": start_ts,
+        "end": end_ts,
+        "step": step,
+    })
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+        results = data.get("data", {}).get("result", [])
+        if not results:
+            return []
+        return [(float(v[0]), float(v[1])) for v in results[0].get("values", [])]
+    except Exception:
+        return []
+
+
+def read_query_gaps(since: datetime, limit: int = 10) -> List[dict]:
+    """Fetch top repeated query gaps from Postgres."""
+    try:
+        import psycopg  # type: ignore[import-untyped]
+    except ImportError:
+        return []
+
+    pg_host = os.getenv("POSTGRES_HOST", "")
+    pg_port = int(os.getenv("POSTGRES_PORT", "5432"))
+    pg_db = os.getenv("POSTGRES_DB", "")
+    pg_user = os.getenv("POSTGRES_USER", "")
+    pg_password = os.getenv("POSTGRES_PASSWORD", "")
+
+    if not (pg_host and pg_db and pg_user):
+        return []
+
+    try:
+        dsn = f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}"
+        conn = psycopg.connect(dsn, connect_timeout=5)
+        cur = conn.execute(
+            """
+            SELECT query_text, score, collection, COUNT(*) AS occurrences
+            FROM query_gaps
+            WHERE created_at >= %s
+            GROUP BY query_text, score, collection
+            ORDER BY occurrences DESC, score ASC
+            LIMIT %s
+            """,
+            (since, limit),
+        )
+        rows = [dict(r._mapping) for r in cur.fetchall()]
+        conn.close()
+        return rows
+    except Exception:
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Analysis helpers
+# ---------------------------------------------------------------------------
+
+
+def _percentile(data: List[float], pct: float) -> float:
+    """Return the p-th percentile of a sorted list."""
+    if not data:
+        return 0.0
+    data = sorted(data)
+    idx = (len(data) - 1) * pct / 100
+    lo, hi = int(idx), min(int(idx) + 1, len(data) - 1)
+    return data[lo] + (data[hi] - data[lo]) * (idx - lo)
+
+
+def aggregate_tool_audit(entries: List[dict]) -> Dict[str, dict]:
+    """Aggregate per-tool latency and outcome stats."""
+    per_tool: Dict[str, Dict[str, Any]] = {}
+    for e in entries:
+        name = e.get("tool_name", "unknown")
+        if name not in per_tool:
+            per_tool[name] = {"latencies": [], "success": 0, "error": 0}
+        lat = e.get("latency_ms")
+        if isinstance(lat, (int, float)):
+            per_tool[name]["latencies"].append(float(lat))
+        outcome = e.get("outcome", "")
+        if outcome == "success":
+            per_tool[name]["success"] += 1
+        else:
+            per_tool[name]["error"] += 1
+    result = {}
+    for tool, stats in per_tool.items():
+        lats = stats["latencies"]
+        total = stats["success"] + stats["error"]
+        result[tool] = {
+            "calls": total,
+            "p50_ms": _percentile(lats, 50),
+            "p95_ms": _percentile(lats, 95),
+            "success_pct": round(100 * stats["success"] / total, 1) if total else 0.0,
+        }
+    return result
+
+
+def routing_split() -> Dict[str, Any]:
+    """Fetch local vs remote routing split from Prometheus."""
+    local_val = prom_query('sum(LLM_BACKEND_SELECTIONS{backend="local"}) or vector(0)')
+    remote_val = prom_query('sum(LLM_BACKEND_SELECTIONS{backend="remote"}) or vector(0)')
+    if local_val is None and remote_val is None:
+        # Try alternative metric names used in Phase 2
+        local_val = prom_query('llm_backend_selections_total{backend="local"}')
+        remote_val = prom_query('llm_backend_selections_total{backend="remote"}')
+    local_n = local_val or 0.0
+    remote_n = remote_val or 0.0
+    total = local_n + remote_n
+    return {
+        "local_n": int(local_n),
+        "remote_n": int(remote_n),
+        "local_pct": round(100 * local_n / total, 1) if total else None,
+        "available": total > 0,
+    }
+
+
+def cache_hit_rate() -> Dict[str, Any]:
+    """Fetch embedding cache hit rate from Prometheus counters."""
+    hits = prom_query("sum(embedding_cache_hits_total) or vector(0)")
+    misses = prom_query("sum(embedding_cache_misses_total) or vector(0)")
+    if hits is None and misses is None:
+        # Fallback counter names (Phase 17.4.1)
+        hits = prom_query("EMBEDDING_CACHE_HITS_total")
+        misses = prom_query("EMBEDDING_CACHE_MISSES_total")
+    h = hits or 0.0
+    m = misses or 0.0
+    total = h + m
+    return {
+        "hits": int(h),
+        "misses": int(m),
+        "hit_pct": round(100 * h / total, 1) if total else None,
+        "available": total > 0,
+    }
+
+
+def eval_score_trend(rows: List[dict]) -> Dict[str, Any]:
+    """Compute eval score statistics over the window."""
+    if not rows:
+        return {"available": False}
+    pcts = [r["pct_passed"] for r in rows]
+    return {
+        "available": True,
+        "latest_pct": pcts[-1],
+        "mean_pct": round(statistics.mean(pcts), 1),
+        "min_pct": min(pcts),
+        "max_pct": max(pcts),
+        "trend": "rising" if len(pcts) >= 2 and pcts[-1] > pcts[0] else
+                 "falling" if len(pcts) >= 2 and pcts[-1] < pcts[0] else "stable",
+        "n_runs": len(rows),
+    }
+
+
+def build_recommendations(
+    tool_stats: Dict[str, dict],
+    route: Dict[str, Any],
+    cache: Dict[str, Any],
+    eval_trend: Dict[str, Any],
+    gaps: List[dict],
+) -> List[str]:
+    """Derive actionable workflow recommendations from measured data."""
+    recs: List[str] = []
+
+    # Routing
+    if route["available"]:
+        if route["local_pct"] is not None and route["local_pct"] < 30:
+            recs.append(
+                f"Local routing is low ({route['local_pct']}%). "
+                "Check `systemctl status ai-llama-cpp` and `llama.cpp` model load; "
+                "run `scripts/check-mcp-health.sh` to diagnose."
+            )
+    else:
+        recs.append(
+            "Routing metrics unavailable (Prometheus unreachable). "
+            "Verify `systemctl status prometheus` and that ai-hybrid-coordinator exposes /metrics."
+        )
+
+    # Cache
+    if cache["available"]:
+        if cache["hit_pct"] is not None and cache["hit_pct"] < 40:
+            recs.append(
+                f"Embedding cache hit rate is low ({cache['hit_pct']}%). "
+                "Consider pre-warming the cache by running common queries, "
+                "or increase `AI_CACHE_MAX_SIZE` if memory allows."
+            )
+    else:
+        recs.append(
+            "Cache metrics unavailable. "
+            "Ensure `embedding_cache.py` emits Prometheus counters and Prometheus scrapes the service."
+        )
+
+    # Query gaps
+    top_gaps = [g for g in gaps if g.get("occurrences", 1) >= 3]
+    for g in top_gaps[:3]:
+        topic = g["query_text"][:80].replace("\n", " ")
+        recs.append(
+            f"Recurring unanswered query ({g.get('occurrences', '?')}x): \"{topic}\". "
+            f"Run: aidb import --query \"{topic[:40]}\" to pull relevant docs."
+        )
+
+    # Eval trend
+    if eval_trend.get("available") and eval_trend.get("trend") == "falling":
+        recs.append(
+            f"Eval score trending down (latest: {eval_trend['latest_pct']}%, "
+            f"mean: {eval_trend['mean_pct']}%). "
+            "Review recent prompt changes and run `scripts/run-eval.sh --full` to confirm."
+        )
+
+    # Slow tools
+    slow_tools = [
+        (t, s) for t, s in tool_stats.items()
+        if s["p95_ms"] > 5000 and s["calls"] >= 5
+    ]
+    for tool, stats in sorted(slow_tools, key=lambda x: -x[1]["p95_ms"])[:2]:
+        recs.append(
+            f"Tool `{tool}` P95 latency is {stats['p95_ms']:.0f}ms — "
+            "consider caching, connection pooling, or model size reduction."
+        )
+
+    # Code-gen quality guidance (Phase 18 user goal: measure prompt efficiency for systems code gen)
+    code_gen_tools = {t: s for t, s in tool_stats.items()
+                     if any(kw in t.lower() for kw in ("aider", "code", "edit", "generate"))}
+    for tool, stats in code_gen_tools.items():
+        if stats["success_pct"] < 70:
+            recs.append(
+                f"Code-gen tool `{tool}` has low success rate ({stats['success_pct']}%). "
+                "Try more specific file context (--file flags), smaller task scope per request, "
+                "or a higher-tier model. See ai-stack/prompts/registry.yaml for vetted templates."
+            )
+
+    if not recs:
+        recs.append("No critical issues detected. System is operating within normal parameters.")
+
+    return recs
+
+
+# ---------------------------------------------------------------------------
+# Formatters
+# ---------------------------------------------------------------------------
+
+
+def _na(val: Optional[float], fmt: str = ".1f", suffix: str = "") -> str:
+    if val is None:
+        return "n/a"
+    return f"{val:{fmt}}{suffix}"
+
+
+def format_md(
+    since_label: str,
+    tool_stats: Dict[str, dict],
+    route: Dict[str, Any],
+    cache: Dict[str, Any],
+    eval_trend: Dict[str, Any],
+    gaps: List[dict],
+    recs: List[str],
+) -> str:
+    lines = [
+        f"# AI Stack Performance Report — last {since_label}",
+        f"*Generated: {datetime.now(tz=timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}*",
+        "",
+    ]
+
+    # 1. Tool performance
+    lines += ["## 1. Tool Call Performance", ""]
+    if tool_stats:
+        lines += [
+            "| Tool | Calls | P50 ms | P95 ms | Success % |",
+            "|------|------:|-------:|-------:|----------:|",
+        ]
+        for tool, s in sorted(tool_stats.items(), key=lambda x: -x[1]["calls"]):
+            lines.append(
+                f"| `{tool}` | {s['calls']} | {s['p50_ms']:.0f} | {s['p95_ms']:.0f} | {s['success_pct']} |"
+            )
+    else:
+        lines.append("*No tool audit entries found for this window.*")
+    lines.append("")
+
+    # 2. Routing split
+    lines += ["## 2. Routing Split", ""]
+    if route["available"]:
+        lines += [
+            f"- Local requests: **{route['local_n']}** ({_na(route['local_pct'], '.1f', '%')})",
+            f"- Remote requests: **{route['remote_n']}** ({_na(100 - route['local_pct'] if route['local_pct'] is not None else None, '.1f', '%')})",
+        ]
+    else:
+        lines.append("*Prometheus unreachable — routing metrics unavailable.*")
+    lines.append("")
+
+    # 3. Cache hit rate
+    lines += ["## 3. Semantic Cache", ""]
+    if cache["available"]:
+        lines += [
+            f"- Hits: **{cache['hits']}**, Misses: **{cache['misses']}**",
+            f"- Hit rate: **{_na(cache['hit_pct'], '.1f', '%')}**",
+        ]
+    else:
+        lines.append("*Cache metrics unavailable.*")
+    lines.append("")
+
+    # 4. Eval score trend
+    lines += ["## 4. Eval Score Trend", ""]
+    if eval_trend.get("available"):
+        lines += [
+            f"- Runs in window: {eval_trend['n_runs']}",
+            f"- Latest: **{eval_trend['latest_pct']}%**  |  Mean: {eval_trend['mean_pct']}%"
+            f"  |  Range: {eval_trend['min_pct']}–{eval_trend['max_pct']}%",
+            f"- Trend: **{eval_trend['trend']}**",
+        ]
+    else:
+        lines.append("*No eval runs found for this window.*")
+    lines.append("")
+
+    # 5. Query gaps
+    lines += ["## 5. Top Query Gaps", ""]
+    if gaps:
+        lines += [
+            "| # | Query | Score | Collection | Occurrences |",
+            "|---|-------|------:|-----------|------------:|",
+        ]
+        for i, g in enumerate(gaps[:10], 1):
+            q = str(g.get("query_text", ""))[:60].replace("|", "\\|")
+            lines.append(
+                f"| {i} | {q} | {g.get('score', 0):.2f} | {g.get('collection', '')} | {g.get('occurrences', 1)} |"
+            )
+        lines += [
+            "",
+            "*Import suggestion: `aidb import --query \"<query text>\"` to pull relevant docs.*",
+        ]
+    else:
+        lines.append("*No query gaps found (Postgres unreachable or table empty).*")
+    lines.append("")
+
+    # 6. Recommendations
+    lines += ["## 6. Workflow Recommendations", ""]
+    for i, rec in enumerate(recs, 1):
+        lines.append(f"{i}. {rec}")
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+def format_text(
+    since_label: str,
+    tool_stats: Dict[str, dict],
+    route: Dict[str, Any],
+    cache: Dict[str, Any],
+    eval_trend: Dict[str, Any],
+    gaps: List[dict],
+    recs: List[str],
+) -> str:
+    sep = "─" * 60
+    now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    lines = [
+        sep,
+        f"  AI STACK PERFORMANCE REPORT — last {since_label}",
+        f"  Generated: {now}",
+        sep,
+        "",
+        "[ 1. Tool Call Performance ]",
+    ]
+
+    if tool_stats:
+        lines.append(f"  {'Tool':<30} {'Calls':>6} {'P50ms':>7} {'P95ms':>7} {'OK%':>6}")
+        lines.append(f"  {'─'*30} {'─'*6} {'─'*7} {'─'*7} {'─'*6}")
+        for tool, s in sorted(tool_stats.items(), key=lambda x: -x[1]["calls"]):
+            lines.append(
+                f"  {tool:<30} {s['calls']:>6} {s['p50_ms']:>7.0f} {s['p95_ms']:>7.0f} {s['success_pct']:>5.1f}%"
+            )
+    else:
+        lines.append("  No tool audit data.")
+    lines.append("")
+
+    lines += ["[ 2. Routing Split ]"]
+    if route["available"]:
+        local_pct = route["local_pct"] or 0
+        remote_pct = 100 - local_pct
+        lines += [
+            f"  Local:  {route['local_n']:6d}  ({local_pct:.1f}%)",
+            f"  Remote: {route['remote_n']:6d}  ({remote_pct:.1f}%)",
+        ]
+    else:
+        lines.append("  Prometheus unreachable.")
+    lines.append("")
+
+    lines += ["[ 3. Semantic Cache ]"]
+    if cache["available"]:
+        lines += [
+            f"  Hits:    {cache['hits']}",
+            f"  Misses:  {cache['misses']}",
+            f"  Hit rate: {_na(cache['hit_pct'], '.1f', '%')}",
+        ]
+    else:
+        lines.append("  Cache metrics unavailable.")
+    lines.append("")
+
+    lines += ["[ 4. Eval Score Trend ]"]
+    if eval_trend.get("available"):
+        lines += [
+            f"  Runs: {eval_trend['n_runs']}  Latest: {eval_trend['latest_pct']}%"
+            f"  Mean: {eval_trend['mean_pct']}%  Range: {eval_trend['min_pct']}–{eval_trend['max_pct']}%",
+            f"  Trend: {eval_trend['trend'].upper()}",
+        ]
+    else:
+        lines.append("  No eval data.")
+    lines.append("")
+
+    lines += ["[ 5. Top Query Gaps ]"]
+    if gaps:
+        for i, g in enumerate(gaps[:5], 1):
+            q = str(g.get("query_text", ""))[:70].replace("\n", " ")
+            lines.append(f"  {i}. [{g.get('occurrences', 1)}x] {q}")
+    else:
+        lines.append("  No gaps data (Postgres unavailable or table empty).")
+    lines.append("")
+
+    lines += ["[ 6. Workflow Recommendations ]"]
+    for i, rec in enumerate(recs, 1):
+        # Wrap at ~72 chars
+        words = rec.split()
+        cur_line = f"  {i}. "
+        indent = "     "
+        for word in words:
+            if len(cur_line) + len(word) + 1 > 72 and len(cur_line) > len(indent):
+                lines.append(cur_line)
+                cur_line = indent + word
+            else:
+                cur_line = cur_line + (" " if len(cur_line) > len(indent) else "") + word
+        lines.append(cur_line)
+    lines += ["", sep]
+    return "\n".join(lines)
+
+
+def format_json(
+    since_label: str,
+    tool_stats: Dict[str, dict],
+    route: Dict[str, Any],
+    cache: Dict[str, Any],
+    eval_trend: Dict[str, Any],
+    gaps: List[dict],
+    recs: List[str],
+) -> str:
+    doc = {
+        "generated_at": datetime.now(tz=timezone.utc).isoformat(),
+        "window": since_label,
+        "tool_performance": tool_stats,
+        "routing": route,
+        "cache": cache,
+        "eval_trend": eval_trend,
+        "query_gaps": gaps[:10],
+        "recommendations": recs,
+    }
+    return json.dumps(doc, indent=2, default=str)
+
+
+# ---------------------------------------------------------------------------
+# AIDB import
+# ---------------------------------------------------------------------------
+
+
+def aidb_import(content: str, week_label: str) -> bool:
+    """POST the report to AIDB as a searchable document."""
+    url = f"{AIDB_URL}/import"
+    payload = json.dumps({
+        "text": content,
+        "metadata": {
+            "type": "weekly_report",
+            "week": week_label,
+            "source": "aq-report",
+        },
+    }).encode("utf-8")
+    try:
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status < 300
+    except Exception as exc:
+        print(f"[aq-report] AIDB import failed: {exc}", file=sys.stderr)
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+
+def main() -> None:
+    args = parse_args()
+    window = _parse_since(args.since)
+    since_dt = datetime.now(tz=timezone.utc) - window
+    since_label = args.since
+
+    # Collect data (independent sources — order doesn't matter)
+    audit_entries = read_tool_audit(since_dt)
+    eval_rows = read_eval_scores(since_dt)
+    gaps = read_query_gaps(since_dt, limit=10)
+
+    # Analyse
+    tool_stats = aggregate_tool_audit(audit_entries)
+    route = routing_split()
+    cache = cache_hit_rate()
+    eval_trend = eval_score_trend(eval_rows)
+    recs = build_recommendations(tool_stats, route, cache, eval_trend, gaps)
+
+    # Render
+    fmt_args = (since_label, tool_stats, route, cache, eval_trend, gaps, recs)
+    if args.fmt == "md":
+        output = format_md(*fmt_args)
+    elif args.fmt == "json":
+        output = format_json(*fmt_args)
+    else:
+        output = format_text(*fmt_args)
+
+    print(output)
+
+    # Optional AIDB import
+    if args.aidb_import:
+        week_label = (datetime.now(tz=timezone.utc) - timedelta(days=3)).strftime("W%W-%Y")
+        ok = aidb_import(output, week_label)
+        if ok:
+            print(f"\n[aq-report] Report imported to AIDB (week={week_label})", file=sys.stderr)
+        # failure already printed by aidb_import()
+
+
+if __name__ == "__main__":
+    main()

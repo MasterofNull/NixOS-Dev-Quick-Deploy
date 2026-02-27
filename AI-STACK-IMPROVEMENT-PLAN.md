@@ -1358,3 +1358,101 @@ Key files:
 ---
 
 *Last updated: 2026-02-26. Update this document when a task status changes.*
+
+---
+
+## Phase 18 — Empirical Workflow Measurement & User Guidance
+
+**Problem statement:** The AI stack collects rich telemetry (tool_audit.jsonl, scores.sqlite, PerformanceWindow, query_gaps table, Prometheus counters) but none of it is synthesised into actionable guidance for the operator. There is no systematic way to know which prompt structures, tool sequences, or routing strategies perform best — or to share that learning back to the user in an actionable form.
+
+**Goal:** Build a closed-loop measurement-to-guidance pipeline so that (a) the system learns which strategies work, and (b) the operator is prompted toward high-performing workflows rather than discovering them by trial and error.
+
+---
+
+### 18.1 — aq-report: Synthesis Script
+
+**Problem:** tool_audit.jsonl, scores.sqlite, query_gaps (Postgres), and PerformanceWindow each capture one slice of performance data. No tool cross-joins them into a human-readable weekly digest.
+
+- [x] **18.1.1** Create `scripts/aq-report` — reads tool_audit.jsonl (last 7d), scores.sqlite (eval scores), and Postgres `query_gaps` table; emits a Markdown + plain-text digest covering:
+  - Tool call latency P50/P95 per tool name
+  - Routing split (local % vs remote %) from `LLM_BACKEND_SELECTIONS` Prometheus counter
+  - Semantic cache hit rate from `embedding_cache_hits_total` / `misses_total`
+  - Top 5 query gaps (repeated unanswered questions) with `aidb import` suggestion
+  - Feedback score trend (last 7d average from `scores.sqlite`)
+  *Success metric: `scripts/aq-report` runs to completion on a machine with running services; output contains all 5 sections; no Python tracebacks.*
+
+- [ ] **18.1.2** Add `--since=Nd` flag (default: 7d) and `--format=md|text|json` flag to `aq-report`.
+  *Success metric: `aq-report --since=30d --format=json` produces valid JSON with all metric keys.*
+
+- [ ] **18.1.3** Add `scripts/aq-report` to the post-deploy post-flight section of `nixos-quick-deploy.sh` as an optional non-blocking call (prints report to stdout if AI stack is reachable).
+  *Success metric: After a successful deploy, the operator sees a one-page performance digest without extra commands.*
+
+---
+
+### 18.2 — Strategy Tagging in Harness / Eval
+
+**Problem:** harness_eval.py runs eval suites but does not record *which prompt structure*, *tool sequence*, or *retrieval strategy* was used for each scored run. This makes it impossible to compare strategies empirically.
+
+- [x] **18.2.1** Add a `strategy_tag` field (free-form string, max 64 chars) to `HarnessRun` in `harness_eval.py`. Persist it in scores.sqlite `eval_runs` table (add column via `ALTER TABLE … ADD COLUMN IF NOT EXISTS strategy_tag TEXT`).
+  *Success metric: `run-eval.sh --strategy=cross-encoder-v1` populates `strategy_tag` in scores.sqlite row.*
+
+- [ ] **18.2.2** Update `aq-report` (18.1.1) to group feedback scores and eval scores by `strategy_tag`, showing which tags score highest. Display top 3 strategies by mean score.
+  *Success metric: Report section "Strategy Leaderboard" appears in aq-report output when ≥2 distinct strategy tags exist in scores.sqlite.*
+
+- [ ] **18.2.3** Add `strategy_tag` to `tool_audit.jsonl` log entries emitted from `route_handler.py` so tool sequences can be correlated with strategy metadata.
+  *Success metric: `grep strategy_tag ai-stack/logs/tool_audit.jsonl` returns entries with non-null values after a tagged run.*
+
+---
+
+### 18.3 — Prompt Structure Registry
+
+**Problem:** Effective prompt templates are discovered ad-hoc and forgotten. There is no registry of vetted prompt patterns with measured performance.
+
+- [x] **18.3.1** Create `ai-stack/prompts/registry.yaml` — structured registry of prompt templates. Each entry: `id`, `name`, `description`, `template` (Jinja2-compatible), `tags` (list), `mean_score` (float, auto-updated), `last_evaluated` (ISO date). Seed with 5 current working templates (route_search system prompt, gap-detection prompt, memory recall prompt, aider task prompt, eval scorecard prompt).
+  *Success metric: File exists with ≥5 entries; each entry validates against a jsonschema schema.*
+
+- [ ] **18.3.2** Add `scripts/aq-prompt-eval` — runs each registry entry against a fixed evaluation harness (3 canonical queries) and updates `mean_score` + `last_evaluated` in registry.yaml.
+  *Success metric: `scripts/aq-prompt-eval` runs without error; registry.yaml `mean_score` fields are updated.*
+
+- [ ] **18.3.3** Surface top-3 prompt templates in the `aq-report` digest under a "Recommended Prompts" section.
+  *Success metric: aq-report output includes "Recommended Prompts" when registry.yaml contains ≥3 entries with `mean_score > 0`.*
+
+---
+
+### 18.4 — User Guidance Output (Operator-Facing)
+
+**Problem:** The measurement data exists in machine-readable form but is not surfaced to the operator as actionable guidance during normal workflow.
+
+- [ ] **18.4.1** Add a "Workflow Recommendations" section to `aq-report` output. Based on the last 7d data:
+  - If local routing < 30%: suggest checking llama.cpp health + model load status
+  - If cache hit rate < 40%: suggest prefilling cache with `aq-prefill-cache` (or note it as a gap)
+  - If top gap score > 0.6 appears ≥3 times: suggest `aidb import` for that topic
+  - If feedback score trend is negative (3d moving average falling): suggest reviewing recent prompt changes
+  *Success metric: At least one recommendation appears in aq-report output on a live system with 7d of data.*
+
+- [ ] **18.4.2** Add `MOTD_AI_REPORT=true` option to `nix/modules/roles/ai-stack.nix` that installs a `/etc/profile.d/ai-report-motd.sh` script. On login, if the last aq-report is >24h old, it runs `aq-report --format=text` and prints a condensed 5-line summary (top gap, routing %, cache %, feedback trend, one recommendation).
+  *Success metric: Opening a new shell on the system prints a ≤5 line AI stack digest when MOTD is enabled and report is stale.*
+
+---
+
+### 18.5 — Auto-Import Weekly Report into AIDB
+
+**Problem:** The weekly aq-report itself is not searchable via the AI stack's semantic search. Ironically, the operator cannot ask "what was our cache hit rate last week?" through the RAG interface.
+
+- [ ] **18.5.1** Add `--aidb-import` flag to `aq-report`. When set, after generating the digest it calls `scripts/aidb-import` (or the REST API `POST /import`) to ingest the report as a document with metadata `{type: "weekly_report", week: "YYYY-WNN"}`.
+  *Success metric: After `aq-report --aidb-import`, `POST /search {"query": "cache hit rate last week"}` returns the report document in results.*
+
+- [ ] **18.5.2** Add a systemd timer `ai-weekly-report.timer` (weekly, Sunday 08:00) + `ai-weekly-report.service` (oneshot, calls `aq-report --aidb-import --format=md`) to `mcp-servers.nix`. Gate on `roleEnabled`.
+  *Success metric: `systemctl list-timers` shows `ai-weekly-report.timer`; after first trigger, a document with `type=weekly_report` is findable in AIDB.*
+
+---
+
+### Phase 18 Gate Conditions
+
+| Sub-phase | Gate |
+|-----------|------|
+| 18.1 | `scripts/aq-report` produces 5-section digest in <30s on live system |
+| 18.2 | `scores.sqlite` rows have `strategy_tag` populated; aq-report groups by tag |
+| 18.3 | `ai-stack/prompts/registry.yaml` has ≥5 entries; `aq-prompt-eval` updates scores |
+| 18.4 | ≥1 workflow recommendation appears in aq-report; MOTD optional works |
+| 18.5 | Weekly report auto-imports to AIDB; timer active in NixOS |
