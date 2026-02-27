@@ -560,6 +560,9 @@ in
             "${aidbPython}/bin/python3"
             "${repoMcp}/aidb/server.py"
           ];
+          # Phase 13.1.1 — Network isolation: loopback only
+          IPAddressAllow = [ "127.0.0.1/8" "::1/128" ];
+          IPAddressDeny = [ "any" ];
           Environment = [
             "AIDB_CONFIG=${aidbConfig}"
             "AI_STRICT_ENV=true"
@@ -626,6 +629,9 @@ in
             "${hybridPython}/bin/python3"
             "${repoMcp}/hybrid-coordinator/server.py"
           ];
+          # Phase 13.1.1 — Network isolation: loopback only
+          IPAddressAllow = [ "127.0.0.1/8" "::1/128" ];
+          IPAddressDeny = [ "any" ];
           Environment = [
             "PORT=${toString mcp.hybridPort}"
             "AI_STRICT_ENV=true"
@@ -711,7 +717,7 @@ in
             ++ lib.optional sec.enable "RALPH_WIGGUM_API_KEY_FILE=${secretPath aidbApiKeySecret}";
           # Phase 13.1.1 — ralph only communicates with loopback services
           IPAddressAllow = [ "127.0.0.1/8" "::1/128" ];
-          IPAddressDeny  = "any";
+          IPAddressDeny = [ "any" ];
         };
       };
 
@@ -738,6 +744,9 @@ in
             "LLAMA_CPP_PORT=${toString llama.port}"
             "PYTHONPATH=${repoMcp}:${repoMcp}/aider-wrapper"
           ] ++ lib.optional sec.enable "AIDER_WRAPPER_API_KEY_FILE=${secretPath aiderWrapperApiKeySecret}";
+          # Phase 13.1.1 — aider-wrapper only communicates with loopback services
+          IPAddressAllow = [ "127.0.0.1/8" "::1/128" ];
+          IPAddressDeny = [ "any" ];
         };
       };
 
