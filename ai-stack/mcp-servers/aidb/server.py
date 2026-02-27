@@ -56,6 +56,7 @@ from llm_parallel import run_parallel_inference
 from discovery_endpoints import register_discovery_routes
 from settings_loader import Settings, load_settings
 from rag import RAGPipeline, RAGConfig
+from shared.tool_audit import write_audit_entry
 from schema import (
     METADATA,
     TOOL_REGISTRY,
@@ -2775,22 +2776,48 @@ class MCPServer:
         if not normalized:
             raise ValueError("tool_name must be provided")
         risk_tier = _tool_risk_tier(tool_name)
+        caller_identity = getattr(self, '_current_caller_id', None) or 'anonymous'
         tracer = trace.get_tracer(SERVICE_NAME)
-        with tracer.start_as_current_span(
-            "aidb.tool.execute",
-            attributes={
-                "gen_ai.tool.name": tool_name,
-                "gen_ai.tool.risk_tier": risk_tier,
-            },
-        ):
-            _enforce_tool_execution_policy(tool_name, parameters)
-            _guardrail_precheck(tool_name, parameters)
+        start = time.time()
+        try:
+            with tracer.start_as_current_span(
+                "aidb.tool.execute",
+                attributes={
+                    "gen_ai.tool.name": tool_name,
+                    "gen_ai.tool.risk_tier": risk_tier,
+                },
+            ):
+                _enforce_tool_execution_policy(tool_name, parameters)
+                _guardrail_precheck(tool_name, parameters)
 
-            if "google" in normalized and "search" in normalized:
-                payload = await self._execute_google_websearch(tool_name, parameters)
-                return _guardrail_postcheck(tool_name, {"tool": tool_name, **payload})
+                if "google" in normalized and "search" in normalized:
+                    payload = await self._execute_google_websearch(tool_name, parameters)
+                    result = _guardrail_postcheck(tool_name, {"tool": tool_name, **payload})
+                    write_audit_entry(
+                        service='aidb',
+                        tool_name=tool_name,
+                        caller_identity=caller_identity,
+                        parameters=parameters,
+                        risk_tier=risk_tier,
+                        outcome='success',
+                        error_message=None,
+                        latency_ms=(time.time() - start) * 1000,
+                    )
+                    return result
 
-        raise ValueError(f"Tool '{tool_name}' is not yet supported for execution")
+            raise ValueError(f"Tool '{tool_name}' is not yet supported for execution")
+        except Exception as exc:
+            write_audit_entry(
+                service='aidb',
+                tool_name=tool_name,
+                caller_identity=caller_identity,
+                parameters=parameters,
+                risk_tier=risk_tier,
+                outcome='error',
+                error_message=str(exc),
+                latency_ms=(time.time() - start) * 1000,
+            )
+            raise
 
     async def _execute_google_websearch(self, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a Google Custom Search query."""
