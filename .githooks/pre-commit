@@ -87,7 +87,50 @@ EOF
   return 0
 }
 
+run_syntax_check() {
+  # Phase 21.2 — block staged files with parse errors.
+  local staged_files issues=0
+  mapfile -t staged_files < <(git diff --cached --name-only --diff-filter=ACM)
+  [[ ${#staged_files[@]} -eq 0 ]] && return 0
+
+  for file in "${staged_files[@]}"; do
+    [[ -f "$file" ]] || continue
+    case "$file" in
+      *.sh|*.bash)
+        if ! bash -n "$file" 2>/dev/null; then
+          echo "pre-commit: bash syntax error in '${file}'" >&2
+          bash -n "$file" 2>&1 | head -5 >&2
+          issues=1
+        fi
+        ;;
+      *.py)
+        if ! python3 -m py_compile "$file" 2>/dev/null; then
+          echo "pre-commit: python syntax error in '${file}'" >&2
+          python3 -m py_compile "$file" 2>&1 | head -5 >&2
+          issues=1
+        fi
+        ;;
+      *.nix)
+        if command -v nix-instantiate >/dev/null 2>&1; then
+          if ! nix-instantiate --parse "$file" >/dev/null 2>&1; then
+            echo "pre-commit: nix parse error in '${file}'" >&2
+            nix-instantiate --parse "$file" 2>&1 | head -5 >&2
+            issues=1
+          fi
+        fi
+        ;;
+    esac
+  done
+
+  if [[ "$issues" -ne 0 ]]; then
+    echo "pre-commit: fix syntax errors above, then re-stage and commit." >&2
+    return 1
+  fi
+  return 0
+}
+
 run_secret_scan
 run_shell_validation
+run_syntax_check
 
 exit 0

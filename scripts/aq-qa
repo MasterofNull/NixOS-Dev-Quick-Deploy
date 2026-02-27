@@ -1,0 +1,296 @@
+#!/usr/bin/env bash
+# aq-qa — AI Stack QA phase runner (Phase 21.1)
+#
+# Runs discrete test checks for a given QA plan phase and outputs
+# structured pass/fail results. Replaces 10-20 individual Bash tool
+# calls per session with a single invocation.
+#
+# Usage:
+#   aq-qa 0               Run Phase 0 (pre-flight smoke)
+#   aq-qa 1               Run Phase 1 (infrastructure)
+#   aq-qa phase0          Same as aq-qa 0
+#   aq-qa all             Run all implemented phases
+#   aq-qa 0 --json        Machine-readable JSON output
+#   aq-qa 0 --sudo        Enable checks that require sudo (AppArmor)
+#
+# Exit codes: 0 = all pass, 1 = one or more failed, 2 = usage error
+
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# shellcheck source=../config/service-endpoints.sh
+source "${REPO_ROOT}/config/service-endpoints.sh"
+
+# ---------------------------------------------------------------------------
+# Options
+# ---------------------------------------------------------------------------
+PHASE="${1:-help}"
+JSON_OUTPUT=0
+USE_SUDO=0
+shift 2>/dev/null || true
+for arg in "$@"; do
+  case "$arg" in
+    --json)  JSON_OUTPUT=1 ;;
+    --sudo)  USE_SUDO=1 ;;
+    --help|-h) PHASE=help ;;
+  esac
+done
+
+PHASE="${PHASE#phase}"   # strip optional "phase" prefix
+
+# ---------------------------------------------------------------------------
+# Test result tracking
+# ---------------------------------------------------------------------------
+PASS=0
+FAIL=0
+SKIP=0
+RESULTS=()  # "PASS|FAIL|SKIP id description"
+START_TS=$(date +%s)
+
+_pass() { local id="$1" desc="$2"; PASS=$((PASS+1)); RESULTS+=("PASS|$id|$desc"); }
+_fail() { local id="$1" desc="$2" reason="${3:-}"; FAIL=$((FAIL+1)); RESULTS+=("FAIL|$id|$desc${reason:+ ($reason)}"); }
+_skip() { local id="$1" desc="$2" reason="${3:-}"; SKIP=$((SKIP+1)); RESULTS+=("SKIP|$id|$desc${reason:+ ($reason)}"); }
+
+# Run a command silently; pass/fail based on exit code.
+_check() {
+  local id="$1" desc="$2"; shift 2
+  if "$@" >/dev/null 2>&1; then
+    _pass "$id" "$desc"
+  else
+    _fail "$id" "$desc"
+  fi
+}
+
+# Run a command and check output matches a pattern.
+_check_output() {
+  local id="$1" desc="$2" pattern="$3"; shift 3
+  local out
+  out=$("$@" 2>&1) || { _fail "$id" "$desc" "command failed"; return; }
+  if printf '%s' "$out" | grep -qE "$pattern"; then
+    _pass "$id" "$desc"
+  else
+    _fail "$id" "$desc" "output: ${out:0:80}"
+  fi
+}
+
+# HTTP health check: curl URL, expect JSON with status=ok.
+_http_health() {
+  local id="$1" desc="$2" url="$3"
+  local status
+  status=$(curl -sf --max-time 5 "$url" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || true)
+  if [[ "$status" == "ok" ]]; then
+    _pass "$id" "$desc"
+  else
+    _fail "$id" "$desc" "status='$status' url=$url"
+  fi
+}
+
+# Port binding check.
+_port() {
+  local id="$1" desc="$2" port="$3"
+  if ss -tlnp 2>/dev/null | grep -q ":${port} "; then
+    _pass "$id" "$desc"
+  else
+    _fail "$id" "$desc" "port $port not bound"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Phase 0 — Pre-flight smoke tests
+# ---------------------------------------------------------------------------
+run_phase_0() {
+  # 0.1 systemd service health
+  for unit in llama-cpp.service ai-aidb.service ai-hybrid-coordinator.service \
+               ai-ralph-wiggum.service ai-embeddings.service ai-switchboard.service \
+               redis-mcp.service qdrant.service postgresql.service; do
+    local short="${unit%.service}"
+    if systemctl is-active --quiet "$unit" 2>/dev/null; then
+      _pass "0.1.1:$short" "unit $unit active"
+    else
+      _fail "0.1.1:$short" "unit $unit active" "not active"
+    fi
+  done
+
+  # 0.1.2 No failed AI units
+  local failed_units
+  failed_units=$(systemctl list-units 'ai-*' 'llama-*' --state=failed --no-legend 2>/dev/null || true)
+  if [[ -z "$failed_units" ]]; then
+    _pass "0.1.2" "no AI units in failed state"
+  else
+    _fail "0.1.2" "no AI units in failed state" "$failed_units"
+  fi
+
+  # 0.1.3 Timers scheduled
+  for timer in ai-mcp-integrity-check.timer ai-mcp-process-watch.timer \
+                ai-weekly-report.timer; do
+    if systemctl list-timers "$timer" --no-legend 2>/dev/null | grep -q "$timer"; then
+      _pass "0.1.3:$timer" "timer $timer scheduled"
+    else
+      _fail "0.1.3:$timer" "timer $timer scheduled" "not found in timers list"
+    fi
+  done
+
+  # 0.2 Port binding
+  local -A port_names=([6379]="redis" [5432]="postgres" [6333]="qdrant"
+                       [8080]="llama-cpp" [8081]="llama-embed" [8002]="aidb"
+                       [8003]="hybrid-coordinator" [8085]="ralph-wiggum"
+                       [3001]="open-webui" [9090]="prometheus")
+  for port in "${!port_names[@]}"; do
+    _port "0.2.1:${port_names[$port]}" "port ${port} (${port_names[$port]}) bound" "$port"
+  done
+
+  # 0.2.2 No service on port 3000 except Grafana
+  local p3000
+  p3000=$(ss -tlnp 2>/dev/null | grep ':3000 ' | grep -v grafana || true)
+  if [[ -z "$p3000" ]]; then
+    _pass "0.2.2" "port 3000 Grafana-only (no Open-WebUI regression)"
+  else
+    _fail "0.2.2" "port 3000 Grafana-only" "found: $p3000"
+  fi
+
+  # 0.3 AppArmor (needs sudo)
+  if [[ "$USE_SUDO" -eq 1 ]]; then
+    local aa_out
+    aa_out=$(sudo aa-status 2>/dev/null || true)
+    if printf '%s' "$aa_out" | grep -qE "ai-llama-cpp|ai-mcp-base"; then
+      _pass "0.3.1" "AppArmor profiles loaded (ai-llama-cpp, ai-mcp-base)"
+    else
+      _fail "0.3.1" "AppArmor profiles loaded" "profiles not found in aa-status"
+    fi
+    _check "0.3.2" "AppArmor service active" systemctl is-active apparmor
+  else
+    _skip "0.3.1" "AppArmor profiles loaded" "rerun with --sudo"
+    _skip "0.3.2" "AppArmor service active" "rerun with --sudo"
+  fi
+
+  # 0.4 Quick inference pings
+  _http_health "0.4.1" "llama-server /health" "${LLAMA_URL}/health"
+  _http_health "0.4.2" "embedding server /health" "http://127.0.0.1:8081/health"
+}
+
+# ---------------------------------------------------------------------------
+# Phase 1 — Infrastructure validation
+# ---------------------------------------------------------------------------
+run_phase_1() {
+  # 1.1 Redis
+  _check_output "1.1.1" "redis ping" "PONG" redis-cli ping
+  local redis_latency
+  redis_latency=$(redis-cli --latency-history -i 1 -c 3 2>&1 | awk '{print $NF}' | grep -E '^[0-9]+' | sort -n | tail -1 || echo 999)
+  if [[ "${redis_latency:-999}" -le 5 ]]; then
+    _pass "1.1.2" "redis latency <= 5ms (got ${redis_latency}ms)"
+  else
+    _fail "1.1.2" "redis latency <= 5ms" "got ${redis_latency}ms"
+  fi
+
+  # 1.2 PostgreSQL
+  local pg_out
+  pg_out=$(psql -U ai_user -d aidb -c "SELECT 1;" 2>&1 | grep -c "1 row" || echo 0)
+  if [[ "$pg_out" -ge 1 ]]; then
+    _pass "1.2.1" "postgres responds"
+  else
+    _fail "1.2.1" "postgres responds"
+  fi
+  _check_output "1.2.2" "AIDB schema tables present" \
+    "imported_documents|query_gaps|tool_audit|telemetry_events" \
+    psql -U ai_user -d aidb -c '\dt'
+
+  # 1.3 Qdrant
+  _check_output "1.3.1" "qdrant cluster info" "qdrant" \
+    bash -c "curl -sf '${QDRANT_URL}/' | python3 -c \"import sys,json; d=json.load(sys.stdin); print(d.get('title',''))\" 2>/dev/null"
+
+  # 1.4 AIDB
+  _http_health "1.4.1" "AIDB /health" "${AIDB_URL}/health"
+  local doc_count
+  doc_count=$(curl -sf "${AIDB_URL}/documents?limit=1" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('total',0))" 2>/dev/null || echo "err")
+  if [[ "$doc_count" != "err" ]]; then
+    _pass "1.4.2" "AIDB /documents returns (count=${doc_count})"
+  else
+    _fail "1.4.2" "AIDB /documents returns"
+  fi
+
+  # 1.5 Hybrid coordinator
+  _http_health "1.5.1" "hybrid-coordinator /health" "${HYBRID_URL}/health"
+  local hints_out
+  hints_out=$(curl -sf "${HYBRID_URL}/hints?q=test" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(type(d).__name__)" 2>/dev/null || echo "err")
+  if [[ "$hints_out" == "list" ]]; then
+    _pass "1.5.2" "hybrid-coordinator GET /hints returns list"
+  else
+    _fail "1.5.2" "hybrid-coordinator GET /hints returns list" "got: $hints_out"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Stub phases (not yet automated)
+# ---------------------------------------------------------------------------
+run_phase_stub() {
+  local phase="$1"
+  _skip "P${phase}" "Phase ${phase} automated runner" "see AI-STACK-QA-PLAN.md §Phase ${phase} — run manually"
+}
+
+# ---------------------------------------------------------------------------
+# Output
+# ---------------------------------------------------------------------------
+_render_results() {
+  local end_ts; end_ts=$(date +%s)
+  local duration=$((end_ts - START_TS))
+
+  if [[ "$JSON_OUTPUT" -eq 1 ]]; then
+    python3 - "$PHASE" "$PASS" "$FAIL" "$SKIP" "$duration" "${RESULTS[@]}" <<'PYEOF'
+import sys, json
+phase, passed, failed, skipped, duration = sys.argv[1:6]
+items = []
+for entry in sys.argv[6:]:
+    status, id_, desc = entry.split('|', 2)
+    items.append({"id": id_, "status": status, "description": desc})
+print(json.dumps({
+    "phase": phase, "passed": int(passed), "failed": int(failed),
+    "skipped": int(skipped), "duration_s": int(duration), "tests": items
+}, indent=2))
+PYEOF
+    return
+  fi
+
+  local GREEN='\033[0;32m' RED='\033[0;31m' YELLOW='\033[1;33m' BLUE='\033[0;34m' NC='\033[0m'
+  printf '\n%b━━━ aq-qa phase %s ━━━%b\n' "${BLUE}" "${PHASE}" "${NC}"
+  for entry in "${RESULTS[@]}"; do
+    IFS='|' read -r status id_ desc <<< "$entry"
+    case "$status" in
+      PASS) printf '%b✓%b %-14s %s\n' "${GREEN}" "${NC}" "$id_" "$desc" ;;
+      FAIL) printf '%b✗%b %-14s %s\n' "${RED}" "${NC}" "$id_" "$desc" ;;
+      SKIP) printf '%b–%b %-14s %s\n' "${YELLOW}" "${NC}" "$id_" "$desc" ;;
+    esac
+  done
+  printf '\n%b%d passed%b · %b%d failed%b · %d skipped · %ds\n\n' \
+    "${GREEN}" "${PASS}" "${NC}" "${RED}" "${FAIL}" "${NC}" "${SKIP}" "${duration}"
+}
+
+# ---------------------------------------------------------------------------
+# Main dispatch
+# ---------------------------------------------------------------------------
+case "$PHASE" in
+  help|"")
+    printf 'Usage: aq-qa <phase> [--json] [--sudo]\n'
+    printf '  phase: 0, 1, all, or help\n'
+    printf '  --json   Machine-readable JSON output\n'
+    printf '  --sudo   Enable checks requiring sudo (AppArmor)\n'
+    exit 0
+    ;;
+  0) run_phase_0 ;;
+  1) run_phase_1 ;;
+  2|3|4|5|6|7|8|9|10) run_phase_stub "$PHASE" ;;
+  all)
+    PHASE="all"
+    run_phase_0
+    run_phase_1
+    for p in 2 3 4 5 6 7 8 9 10; do run_phase_stub "$p"; done
+    ;;
+  *)
+    printf 'aq-qa: unknown phase "%s"\n' "$PHASE" >&2
+    exit 2
+    ;;
+esac
+
+_render_results
+[[ "$FAIL" -eq 0 ]]
