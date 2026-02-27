@@ -609,6 +609,68 @@ in
       };
     })
 
+    # Phase 18.4.2 — AI stack MOTD: condensed digest on login when report is stale.
+    # Enabled via mySystem.aiStack.motdReport = true (default: false).
+    (lib.mkIf (roleEnabled && cfg.aiStack.motdReport) {
+      environment.etc."profile.d/ai-report-motd.sh" = {
+        mode = "0644";
+        text = let repoPath = cfg.aiStack.repoPath; in ''
+          # AI Stack MOTD — Phase 18.4.2
+          # Prints a condensed digest if the last aq-report is >24h old.
+          _aq_motd() {
+            local stamp_file="/tmp/aq-report-motd-stamp"
+            local report_script="${repoPath}/scripts/aq-report"
+            [[ -x "$report_script" ]] || return 0
+            if [[ -f "$stamp_file" ]]; then
+              local age=$(( $(date +%s) - $(stat -c %Y "$stamp_file") ))
+              [[ $age -lt 86400 ]] && return 0
+            fi
+            touch "$stamp_file"
+            local out
+            out=$("$report_script" --since=7d --format=text 2>/dev/null) || return 0
+            # Print only the 5 most informative lines: routing, cache, trend, top gap, first rec
+            printf '\n── AI Stack Digest ──\n'
+            printf '%s\n' "$out" | grep -E '^\s+(Local:|Hits:|Runs:|  1\.|  1\. )' | head -5
+            printf '  Full report: %s --since=7d\n' "${repoPath}/scripts/aq-report"
+            printf '────────────────────\n\n'
+          }
+          _aq_motd
+        '';
+      };
+    })
+
+    # Phase 18.5.2 — Weekly report auto-imports to AIDB every Sunday 08:00.
+    (lib.mkIf roleEnabled {
+      systemd.services.ai-weekly-report = {
+        description = "AI Stack weekly performance report and AIDB import";
+        after = [ "network-online.target" "ai-stack.target" ];
+        wants = [ "network-online.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          User = "root";
+          ExecStart = let
+            script = "${cfg.aiStack.repoPath}/scripts/aq-report";
+          in "${script} --since=7d --format=md --aidb-import";
+          StandardOutput = "journal";
+          StandardError = "journal";
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          PrivateTmp = true;
+          MemoryMax = "256M";
+        };
+      };
+
+      systemd.timers.ai-weekly-report = {
+        description = "Weekly AI stack performance report timer";
+        wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnCalendar = "Sun 08:00:00";
+          Persistent = true;
+          RandomizedDelaySec = "15min";
+        };
+      };
+    })
+
     (lib.mkIf (roleEnabled && ai.vectorDb.enable && hasQdrant) {
       services.qdrant.enable = true;
       services.qdrant.settings.service = {

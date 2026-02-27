@@ -634,7 +634,7 @@ bootstrap_ai_stack_secrets_if_needed() {
   if [[ ! -d "${secrets_root}" ]]; then
     run_privileged install -d -m 0700 "${secrets_root}"
   fi
-  run_privileged chown "${PRIMARY_USER}:$(id -gn "${PRIMARY_USER}" 2>/dev/null || echo "${PRIMARY_USER}")" "${secrets_root}" 2>/dev/null || true
+  run_privileged chown "${PRIMARY_USER}:$(id -gn "${PRIMARY_USER}" 2>/dev/null || printf '%s\n' "${PRIMARY_USER}")" "${secrets_root}" 2>/dev/null || true
 
   # Migrate old repo-local secrets to strict external storage (one-time).
   if [[ ! -s "${secrets_file}" && -s "${legacy_secrets_file}" ]]; then
@@ -657,7 +657,7 @@ bootstrap_ai_stack_secrets_if_needed() {
   fi
 
   local primary_group
-  primary_group="$(id -gn "${PRIMARY_USER}" 2>/dev/null || echo "${PRIMARY_USER}")"
+  primary_group="$(id -gn "${PRIMARY_USER}" 2>/dev/null || printf '%s\n' "${PRIMARY_USER}")"
 
   # Prefer a user-owned age key directory so interactive sops usage works.
   install -d -m 0700 "${age_key_dir}" 2>/dev/null || true
@@ -1878,5 +1878,11 @@ check_dashboard_postflight() {
   fi
 }
 check_dashboard_postflight
+
+# ---- Phase 18.1.3: AI stack performance digest (non-blocking) ---------------
+if [[ -x "${REPO_ROOT}/scripts/aq-report" ]]; then
+  log "AI stack performance digest (last 7d):"
+  "${REPO_ROOT}/scripts/aq-report" --since=7d --format=text 2>/dev/null || true
+fi
 
 log "Clean deployment complete"

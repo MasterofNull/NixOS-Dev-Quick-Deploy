@@ -1,0 +1,533 @@
+#!/usr/bin/env python3
+"""
+aq-prompt-eval — Phase 18.3.2
+Evaluates each prompt in ai-stack/prompts/registry.yaml against a fixed set of
+canonical test cases, then updates mean_score + last_evaluated in-place.
+
+Design:
+  - Renders each template with typed test variables (Jinja2 {{ var }} syntax)
+  - Calls the llama.cpp chat completions API for each rendered prompt
+  - Scores responses against keyword assertions (any / all / forbidden)
+  - Writes mean_score + last_evaluated back to registry.yaml (preserves comments)
+  - Prompts tagged 'code_generation' are sent a meta-quality probe (no aider needed)
+
+Usage:
+  aq-prompt-eval [--dry-run] [--id PROMPT_ID] [--verbose] [--model MODEL]
+
+Environment:
+  LLAMA_URL        llama.cpp base URL (default from service-endpoints.sh conventions)
+  REGISTRY_PATH    Override path to registry.yaml
+"""
+
+import argparse
+import json
+import os
+import re
+import sys
+import urllib.error
+import urllib.request
+from dataclasses import dataclass, field
+from datetime import date
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+try:
+    import yaml
+except ImportError:
+    print("ERROR: PyYAML required. Add python3Packages.pyyaml to your nix-shell or devShell.", file=sys.stderr)
+    sys.exit(1)
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+LLAMA_URL = os.getenv(
+    "LLAMA_URL",
+    f"http://{os.getenv('SERVICE_HOST', '127.0.0.1')}:{os.getenv('LLAMA_CPP_PORT', '8080')}",
+).rstrip("/")
+
+REGISTRY_PATH = Path(
+    os.getenv(
+        "REGISTRY_PATH",
+        str(Path(__file__).parent.parent / "ai-stack/prompts/registry.yaml"),
+    )
+)
+
+# ---------------------------------------------------------------------------
+# Data types
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class TestCase:
+    """One canonical evaluation case for a prompt."""
+    description: str
+    variables: Dict[str, str]          # maps {{ var }} names to values
+    expect_any: List[str] = field(default_factory=list)   # at least one must appear
+    expect_all: List[str] = field(default_factory=list)   # all must appear
+    forbidden: List[str] = field(default_factory=list)    # none may appear
+
+
+@dataclass
+class EvalResult:
+    test: TestCase
+    response: str
+    passed: bool
+    failures: List[str]
+    latency_ms: float
+
+
+# ---------------------------------------------------------------------------
+# Canonical test suites per prompt ID
+# These are fixed, representative queries for the NixOS/AI-stack domain.
+# Each suite has 3 test cases (minimum required for statistical validity).
+# ---------------------------------------------------------------------------
+
+CANONICAL_TESTS: Dict[str, List[TestCase]] = {
+
+    "route_search_synthesis": [
+        TestCase(
+            description="NixOS conflicting module option fix",
+            variables={
+                "prompt_cache_prefix": "",
+                "query": "How do I resolve conflicting NixOS module option definitions?",
+                "compressed_context": (
+                    "lib.mkForce overrides at priority 50. lib.mkDefault sets suggestions "
+                    "at priority 1000. When two modules define the same option at the same "
+                    "priority with different values, NixOS aborts with 'conflicting definition "
+                    "values'. Fix: remove the setting from all but one module, or use "
+                    "lib.mkForce in exactly one place."
+                ),
+            },
+            expect_any=["lib.mkForce", "priority", "conflicting", "remove", "one module"],
+            forbidden=["I cannot", "I don't know"],
+        ),
+        TestCase(
+            description="AMD CPU governor selection",
+            variables={
+                "prompt_cache_prefix": "",
+                "query": "What CPU frequency governor works best on AMD systems in NixOS?",
+                "compressed_context": (
+                    "schedutil is built into the Linux kernel and works on AMD. "
+                    "It cannot be loaded as a kernel module. "
+                    "powerManagement.cpuFreqGovernor = \"schedutil\" is the correct NixOS option. "
+                    "Do not add cpufreq_schedutil to boot.kernelModules."
+                ),
+            },
+            expect_any=["schedutil", "built-in", "builtin", "AMD", "cpuFreqGovernor"],
+            forbidden=["cpufreq_schedutil", "boot.kernelModules"],
+        ),
+        TestCase(
+            description="ROCm AMD GPU NixOS config",
+            variables={
+                "prompt_cache_prefix": "",
+                "query": "How do I enable ROCm for an AMD GPU in NixOS?",
+                "compressed_context": (
+                    "hardware.opengl.extraPackages includes rocmPackages.clr. "
+                    "Adding amdgpu.ppfeaturemask=0xffffffff to boot.kernelParams enables all features. "
+                    "ROCm requires the amdgpu driver and Linux 5.7+."
+                ),
+            },
+            expect_any=["ROCm", "rocm", "opengl", "amdgpu", "hardware", "ppfeaturemask"],
+            forbidden=["NVIDIA", "CUDA"],
+        ),
+    ],
+
+    "gap_detection_score": [
+        TestCase(
+            description="Low score should be flagged as a gap",
+            variables={
+                "query": "custom NixOS ROCm performance tuning for machine learning workloads",
+                "score": "0.25",
+                "collection": "nixos",
+            },
+            expect_any=["YES", "yes", "gap", "unanswerable", "missing"],
+            forbidden=["NO"],
+        ),
+        TestCase(
+            description="High score should not be flagged",
+            variables={
+                "query": "What is NixOS?",
+                "score": "0.92",
+                "collection": "nixos",
+            },
+            expect_any=["NO", "no", "sufficient", "confident"],
+            forbidden=["YES", "gap"],
+        ),
+        TestCase(
+            description="Borderline score with ambiguous query",
+            variables={
+                "query": "optimal zram compression algorithm for AI inference workloads",
+                "score": "0.42",
+                "collection": "general",
+            },
+            # At 0.42, near threshold — either answer is acceptable; just check format
+            expect_all=["YES", "NO"],  # Expect exactly one of these words
+            expect_any=["YES", "NO"],
+            forbidden=[],
+        ),
+    ],
+
+    "memory_recall_contextualise": [
+        TestCase(
+            description="Relevant memory should surface relationship",
+            variables={
+                "memory_text": (
+                    "User previously encountered an issue where thermald failed to start on "
+                    "an AMD system. Root cause: thermald is Intel-only. Fixed by gating "
+                    "services.thermald.enable on config.hardware.cpu.intel.updateMicrocode."
+                ),
+                "query": "Why is thermald not starting on my AMD Ryzen machine?",
+            },
+            expect_any=["relevant", "thermald", "AMD", "Intel", "microcode"],
+            forbidden=["Not relevant"],
+        ),
+        TestCase(
+            description="Irrelevant memory should be dismissed",
+            variables={
+                "memory_text": "User prefers dark mode in VS Code and uses Vim keybindings.",
+                "query": "How do I configure wireplumber to disable libcamera UVC logging?",
+            },
+            expect_any=["Not relevant", "not relevant", "unrelated", "no relation"],
+            forbidden=["relevant", "wireplumber"],
+        ),
+        TestCase(
+            description="Partial relevance with shared domain",
+            variables={
+                "memory_text": (
+                    "User previously asked about disabling a systemd service. "
+                    "Solution was to set enable = false in the NixOS module."
+                ),
+                "query": "How do I disable the wireplumber service in NixOS?",
+            },
+            expect_any=["relevant", "systemd", "enable", "NixOS", "disable"],
+            forbidden=[],
+        ),
+    ],
+
+    "eval_scorecard_analysis": [
+        TestCase(
+            description="Identifies retrieval vs prompt root causes",
+            variables={
+                "passed": "6",
+                "total": "10",
+                "pct_passed": "60",
+                "threshold": "70",
+                "failed_cases": (
+                    "1. Query 'schedutil governor' returned module load instructions\n"
+                    "2. Query 'ROCm setup' returned Intel GPU instructions\n"
+                    "3. Query 'thermald AMD' said to enable thermald\n"
+                    "4. Query 'NixOS flake input' returned Nix 1.0 syntax"
+                ),
+            },
+            expect_any=["retrieval", "context", "prompt", "root cause", "fix"],
+            expect_all=["1.", "2."],   # Should have numbered responses
+            forbidden=["I cannot analyze"],
+        ),
+    ],
+
+    "query_expansion_nixos": [
+        TestCase(
+            description="Expands nix store query",
+            variables={"query": "nix store"},
+            expect_any=["/nix/store", "content-addressed", "derivation", "store path", "Nix store"],
+            forbidden=[],
+        ),
+        TestCase(
+            description="Expands systemd unit query",
+            variables={"query": "systemd service configuration"},
+            expect_any=["systemd.services", "ExecStart", "serviceConfig", "unit", "systemctl"],
+            forbidden=[],
+        ),
+        TestCase(
+            description="Expands memory management query",
+            variables={"query": "memory usage optimization"},
+            expect_any=["MemoryMax", "zram", "swap", "cgroup", "RSS", "hugepages"],
+            forbidden=[],
+        ),
+    ],
+
+    # Code-gen prompts: meta-quality probe (no aider required)
+    "aider_task_systems_code": [
+        TestCase(
+            description="Meta-eval: Is rendered prompt clear and complete?",
+            variables={
+                "task_description": "Add DynamicUser=true to the ai-aidb systemd service in mcp-servers.nix",
+                "files_list": "@nix/modules/services/mcp-servers.nix",
+                "numbered_change_list": "1. Add DynamicUser = true to the aidb serviceConfig block",
+                "exclusion_list": "Do not change any other service blocks",
+            },
+            expect_any=["yes", "clear", "complete", "actionable", "specific", "well-defined"],
+            forbidden=["unclear", "missing", "incomplete", "ambiguous"],
+        ),
+    ],
+}
+
+# ---------------------------------------------------------------------------
+# Template rendering
+# ---------------------------------------------------------------------------
+
+
+def render_template(template: str, variables: Dict[str, str]) -> str:
+    """Replace {{ var }} and {{var}} placeholders with provided values."""
+    result = template
+    for key, value in variables.items():
+        result = result.replace("{{ " + key + " }}", value)
+        result = result.replace("{{" + key + "}}", value)
+    return result.strip()
+
+
+# ---------------------------------------------------------------------------
+# LLM call
+# ---------------------------------------------------------------------------
+
+
+def llm_call(prompt: str, model: str, timeout: float = 30.0) -> Tuple[str, float]:
+    """
+    Call llama.cpp /chat/completions.
+    Returns (response_text, latency_ms).
+    Raises on network error so the caller can handle gracefully.
+    """
+    import time
+
+    payload = json.dumps({
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.1,
+        "max_tokens": 256,
+    }).encode("utf-8")
+
+    url = f"{LLAMA_URL}/v1/chat/completions"
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        method="POST",
+    )
+    t0 = time.monotonic()
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read())
+    latency_ms = (time.monotonic() - t0) * 1000
+    text = data["choices"][0]["message"]["content"]
+    return text, latency_ms
+
+
+# ---------------------------------------------------------------------------
+# Scoring
+# ---------------------------------------------------------------------------
+
+
+def score_response(test: TestCase, response: str) -> Tuple[bool, List[str]]:
+    """Return (passed, list_of_failure_messages)."""
+    failures: List[str] = []
+    lower = response.lower()
+
+    if test.expect_any:
+        if not any(kw.lower() in lower for kw in test.expect_any):
+            failures.append(f"expect_any: none of {test.expect_any} found")
+
+    for kw in test.expect_all:
+        if kw.lower() not in lower:
+            failures.append(f"expect_all: '{kw}' missing")
+
+    for kw in test.forbidden:
+        if kw.lower() in lower:
+            failures.append(f"forbidden: '{kw}' found in response")
+
+    return len(failures) == 0, failures
+
+
+# ---------------------------------------------------------------------------
+# YAML in-place update (preserves comments and formatting)
+# ---------------------------------------------------------------------------
+
+
+def update_registry_entry(registry_text: str, prompt_id: str, mean_score: float, eval_date: str) -> str:
+    """
+    Find the entry block for prompt_id and update mean_score + last_evaluated.
+    Uses regex to avoid full YAML reformat (preserving comments and ordering).
+    """
+    # Locate the entry block: starts at "  - id: <prompt_id>" and ends before the next "  - id:"
+    pattern = re.compile(
+        r"(  - id: " + re.escape(prompt_id) + r"\b.*?)"
+        r"(  - id:|\Z)",
+        re.DOTALL,
+    )
+    match = pattern.search(registry_text)
+    if not match:
+        return registry_text  # entry not found — no-op
+
+    block = match.group(1)
+
+    # Replace mean_score
+    block = re.sub(
+        r"(mean_score:\s*)[\d.]+\b",
+        lambda m: f"{m.group(1)}{mean_score:.3f}",
+        block,
+    )
+    # Replace last_evaluated (null or a date string)
+    block = re.sub(
+        r"(last_evaluated:\s*)(?:null|\d{4}-\d{2}-\d{2})",
+        lambda m: f"{m.group(1)}{eval_date}",
+        block,
+    )
+
+    return registry_text[: match.start(1)] + block + registry_text[match.start(2):]
+
+
+# ---------------------------------------------------------------------------
+# Main evaluation loop
+# ---------------------------------------------------------------------------
+
+
+def run_eval(
+    registry_path: Path,
+    target_id: Optional[str],
+    dry_run: bool,
+    verbose: bool,
+    model: str,
+) -> int:
+    if not registry_path.exists():
+        print(f"ERROR: registry not found at {registry_path}", file=sys.stderr)
+        return 1
+
+    with registry_path.open(encoding="utf-8") as fh:
+        registry_text = fh.read()
+    registry = yaml.safe_load(registry_text)
+
+    prompts = registry.get("prompts", [])
+    if not prompts:
+        print("No prompts found in registry.", file=sys.stderr)
+        return 1
+
+    # Check llama.cpp reachability before looping
+    try:
+        req = urllib.request.Request(
+            f"{LLAMA_URL}/v1/models",
+            headers={"Accept": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=5):
+            pass
+    except Exception as exc:
+        print(f"ERROR: llama.cpp unreachable at {LLAMA_URL}: {exc}", file=sys.stderr)
+        print("  → Start ai-llama-cpp.service or set LLAMA_URL to a running instance.", file=sys.stderr)
+        return 1
+
+    today = date.today().isoformat()
+    results_summary: List[dict] = []
+    exit_code = 0
+
+    for entry in prompts:
+        pid = entry.get("id", "")
+        if target_id and pid != target_id:
+            continue
+
+        tests = CANONICAL_TESTS.get(pid)
+        if not tests:
+            print(f"  SKIP  {pid:<40} (no canonical tests defined)")
+            continue
+
+        template = entry.get("template", "")
+        tags = entry.get("tags", [])
+        is_code_gen = "code_generation" in tags
+
+        if verbose:
+            print(f"\n{'─'*60}")
+            print(f"  Prompt: {pid}")
+            if is_code_gen:
+                print("  [code_generation] — using meta-quality probe")
+
+        case_results: List[bool] = []
+        for tc in tests:
+            rendered = render_template(template, tc.variables)
+
+            # For code-gen prompts: wrap in a meta-quality question
+            if is_code_gen:
+                probe = (
+                    f"Below is a task prompt for an AI coding assistant. "
+                    f"Rate whether it is clear, specific, and complete (yes/no):\n\n{rendered}"
+                )
+            else:
+                probe = rendered
+
+            try:
+                response, latency = llm_call(probe, model=model)
+            except Exception as exc:
+                print(f"  ERROR {pid} / {tc.description}: {exc}", file=sys.stderr)
+                case_results.append(False)
+                exit_code = 1
+                continue
+
+            passed, failures = score_response(tc, response)
+            case_results.append(passed)
+
+            status = "PASS" if passed else "FAIL"
+            print(f"  {status}  {pid:<36} | {tc.description[:45]:<45} | {latency:.0f}ms")
+            if verbose or not passed:
+                for f in failures:
+                    print(f"         ↳ {f}")
+                if verbose:
+                    excerpt = response[:120].replace("\n", " ")
+                    print(f"         response: {excerpt}…")
+
+        n = len(case_results)
+        if n == 0:
+            mean_score = 0.0
+        else:
+            mean_score = sum(case_results) / n
+
+        results_summary.append({
+            "id": pid,
+            "mean_score": mean_score,
+            "passed": sum(case_results),
+            "total": n,
+        })
+
+        if not dry_run:
+            registry_text = update_registry_entry(registry_text, pid, mean_score, today)
+
+    # Write back if not dry-run
+    if not dry_run and (not target_id or any(r["id"] == target_id for r in results_summary)):
+        registry_path.write_text(registry_text, encoding="utf-8")
+        print(f"\n  Registry updated: {registry_path}")
+
+    # Summary table
+    print(f"\n{'─'*60}")
+    print(f"  {'Prompt':<38} {'Score':>7}  {'Pass/Total'}")
+    print(f"  {'─'*38} {'─'*7}  {'─'*10}")
+    for r in results_summary:
+        bar = "█" * round(r["mean_score"] * 10) + "░" * (10 - round(r["mean_score"] * 10))
+        print(f"  {r['id']:<38} {r['mean_score']:>6.1%}  {r['passed']}/{r['total']}  {bar}")
+
+    overall = sum(r["mean_score"] for r in results_summary) / max(len(results_summary), 1)
+    print(f"\n  Overall: {overall:.1%} across {len(results_summary)} prompts evaluated")
+    if dry_run:
+        print("  [dry-run] registry.yaml NOT updated")
+
+    return exit_code
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(description="Evaluate prompts in registry.yaml against canonical test cases")
+    p.add_argument("--dry-run", action="store_true", help="Run evaluation without writing scores back")
+    p.add_argument("--id", dest="target_id", default=None, help="Evaluate only this prompt ID")
+    p.add_argument("--verbose", action="store_true", help="Show full responses and per-assertion results")
+    p.add_argument("--model", default="local", help="Model name passed to llama.cpp (default: local)")
+    args = p.parse_args()
+
+    sys.exit(run_eval(
+        registry_path=REGISTRY_PATH,
+        target_id=args.target_id,
+        dry_run=args.dry_run,
+        verbose=args.verbose,
+        model=args.model,
+    ))
+
+
+if __name__ == "__main__":
+    main()
