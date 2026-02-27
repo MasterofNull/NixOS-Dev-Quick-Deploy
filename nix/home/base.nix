@@ -96,24 +96,19 @@ let
 
   # Qwen Code VSCode IDE Companion — QwenLM's official AI coding assistant
   # Not in nixpkgs 25.11; packaged from Open VSX for declarative install.
-  qwenCodeCompanionSha256 = null;
-  qwenCodeCompanion =
-    if qwenCodeCompanionSha256 == null then
-      null
-    else
-      pkgs.vscode-utils.buildVscodeExtension {
-        pname              = "qwen-code-vscode-ide-companion";
-        version            = "0.10.0";
-        vscodeExtPublisher = "qwenlm";
-        vscodeExtName      = "qwen-code-vscode-ide-companion";
-        vscodeExtUniqueId  = "qwenlm.qwen-code-vscode-ide-companion";
-        vscodeExtVersion   = "0.10.0";
-        src = pkgs.fetchurl {
-          url    = "https://open-vsx.org/api/qwenlm/qwen-code-vscode-ide-companion/0.10.0/file/qwenlm.qwen-code-vscode-ide-companion-0.10.0.vsix";
-          sha256 = qwenCodeCompanionSha256;
-          name   = "qwen-code-vscode-ide-companion.zip";
-        };
-      };
+  qwenCodeCompanion = pkgs.vscode-utils.buildVscodeExtension {
+    pname              = "qwen-code-vscode-ide-companion";
+    version            = "0.10.6";
+    vscodeExtPublisher = "qwenlm";
+    vscodeExtName      = "qwen-code-vscode-ide-companion";
+    vscodeExtUniqueId  = "qwenlm.qwen-code-vscode-ide-companion";
+    vscodeExtVersion   = "0.10.6";
+    src = pkgs.fetchurl {
+      url    = "https://open-vsx.org/api/qwenlm/qwen-code-vscode-ide-companion/0.10.6/file/qwenlm.qwen-code-vscode-ide-companion-0.10.6.vsix";
+      sha256 = "1x02ari2d8nzyw1sgfy77lfphjc0vc43q5664pcakl8cb59595bb";
+      name   = "qwen-code-vscode-ide-companion.zip";
+    };
+  };
 
   continueMutableVsix = pkgs.fetchurl {
     url = "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.32/file/Continue.continue-1.3.32@linux-x64.vsix";
@@ -662,7 +657,7 @@ in
         ++ vsExt "Google"      "gemini-cli-vscode-ide-companion" # Gemini CLI companion
         ++ [ geminiCodeAssist ]                                  # Gemini Code Assist (Open VSX)
         ++ [ openaiCodex ]                                       # Codex — OpenAI's coding agent (Open VSX)
-        ++ lib.optionals (qwenCodeCompanion != null) [ qwenCodeCompanion ]  # Qwen Code VSCode IDE Companion (pinned hash required)
+        ++ [ qwenCodeCompanion ]  # Qwen Code VSCode IDE Companion v0.10.6
         ++ [ cyberpunkThemeExtension ]                           # Cyberpunk theme (local template)
         # ── Data / serialisation formats ───────────────────────────────────
         ++ vsExt "redhat"      "vscode-yaml"
