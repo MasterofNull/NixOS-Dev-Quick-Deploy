@@ -1456,3 +1456,96 @@ Key files:
 | 18.3 | `ai-stack/prompts/registry.yaml` has ≥5 entries; `aq-prompt-eval` updates scores |
 | 18.4 | ≥1 workflow recommendation appears in aq-report; MOTD optional works |
 | 18.5 | Weekly report auto-imports to AIDB; timer active in NixOS |
+
+---
+
+## Phase 19 — Agent-Agnostic Prompt Hint & Autocomplete System
+
+**Goal:** All agents (remote Claude, local Codex/Qwen, Continue.dev, Open WebUI,
+aider-wrapper, terminal human) receive ranked contextual hints from a single source of truth.
+Hints are derived from `registry.yaml` (prompt quality scores), `query_gaps` (recurring
+unanswered questions), `tool_audit.jsonl` (tool success rates), and `aq-report`
+recommendations.
+
+**Delivery channels (agent-agnostic):**
+- REST `POST /hints` on hybrid-coordinator — any agent over HTTP
+- MCP tool `get_workflow_hints` — Claude Code and any MCP-compatible agent
+- `scripts/aq-hints` CLI — terminal, shell pipelines, codex/qwen/aider via bash
+- `/etc/profile.d/aq-completions.sh` — bash/zsh tab-complete for humans
+- Continue.dev `@aq-hints` context provider — VSCode / VSCodium
+
+---
+
+### 19.1 — Core Hints Engine + CLI
+
+- [x] **19.1.1** Create `ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py` —
+  `HintsEngine` class ranking hints from: (a) `registry.yaml` by tag/keyword overlap +
+  mean_score weight; (b) `query_gaps` JSONL/Postgres fuzzy match; (c) static CLAUDE.md
+  patterns. Returns `List[Hint]` sorted by composite score. Fully synchronous.
+  *Success metric: `HintsEngine().rank("conflicting NixOS")` returns ≥1 hint with
+  `type="prompt_template"` and `score > 0.5` in <200ms.*
+
+- [x] **19.1.2** Create `scripts/aq-hints` — standalone Python CLI wrapping `HintsEngine`.
+  Flags: `[QUERY]`, `--format=json|text|shell-complete`, `--context=EXT`,
+  `--max=N` (default 5), `--agent=TYPE` (human|claude|codex|qwen|aider|continue).
+  *Success metric: `aq-hints "conflicting NixOS" --format=json | jq '.hints[0].type'`
+  returns `"prompt_template"` or `"gap_topic"`.*
+
+- [x] **19.1.3** Create `scripts/aq-completions.sh` — bash/zsh completion for all `aq-*`
+  tools sourcing `aq-hints --format=shell-complete` for dynamic query completions.
+  *Success metric: After sourcing, `aq-hints <TAB>` completes from live hint data.*
+
+- [x] **19.1.4** Add `mySystem.aiStack.shellCompletions` bool option to `options.nix`;
+  wire into `ai-stack.nix` to install `aq-completions.sh` as
+  `/etc/profile.d/aq-completions.sh`.
+  *Success metric: File exists after NixOS rebuild with `shellCompletions = true`.*
+
+---
+
+### 19.2 — Universal REST Hints API (hybrid-coordinator)
+
+- [x] **19.2.1** Add `POST /hints` handler to `http_server.py`. Body:
+  `{query?, context?: {file_ext?, agent_type?}, max_hints?}`. Uses `HintsEngine`.
+  *Success metric: `curl -X POST localhost:8003/hints -d '{"query":"nixos conflict"}'`
+  returns JSON with ≥1 hint.*
+
+- [x] **19.2.2** Add `GET /hints?q=` — same hints via query param for curl/browser use.
+  *Success metric: `curl "localhost:8003/hints?q=cache+hit+rate"` returns JSON hints.*
+
+- [x] **19.2.3** Expose `HINTS_URL=${HYBRID_URL}/hints` in `config/service-endpoints.sh`.
+  *Success metric: `source config/service-endpoints.sh && curl -sf "${HINTS_URL}?q=test"`
+  returns JSON.*
+
+---
+
+### 19.3 — Agent Integration Points
+
+- [x] **19.3.1** Add `get_workflow_hints` MCP tool to `mcp_handlers.py`. Input:
+  `{query: string, context?: string, max_hints?: int}`. Any MCP-compatible agent
+  (Claude Code, custom) calls this proactively before complex tasks.
+  *Success metric: MCP `get_workflow_hints({query: "systemd hardening"})` returns ≥1
+  hint referencing `aider_task_systems_code` template.*
+
+- [ ] **19.3.2** Add Continue.dev `@aq-hints` context provider to
+  `ai-stack/continue/config.json`. Managed declaratively via Home Manager
+  `home.file.".continue/config.json"`.
+  *Success metric: Typing `@aq-hints nixos` in Continue.dev shows hint suggestions.*
+
+- [ ] **19.3.3** aider-wrapper hint injection: when `AI_HINTS_ENABLED=true`, prepend
+  top-1 hint snippet from `/hints?q=<prompt_prefix>` to aider task. Gate behind env var.
+  *Success metric: Aider task logs show `hint_injected=true`.*
+
+- [ ] **19.3.4** Hint adoption tracking: add `hint_id` + `hint_accepted` to
+  `tool_audit.jsonl`; surface hint adoption rate in aq-report.
+  *Success metric: aq-report shows "Hint Adoption" section after ≥5 hinted tasks.*
+
+---
+
+### Phase 19 Gate Conditions
+
+| Sub-phase | Gate |
+|-----------|------|
+| 19.1 | `aq-hints "nixos conflict" --format=json` returns ≥1 hint in <500ms |
+| 19.2 | `POST /hints` on hybrid-coordinator returns JSON; curl test passes |
+| 19.3 | `get_workflow_hints` MCP tool live; Continue.dev @aq-hints works |
+| Feedback | Hint adoption rate visible in aq-report after ≥5 hinted aider tasks |
