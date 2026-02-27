@@ -78,8 +78,8 @@ let
         requests_per_minute: 60
 
     rag:
-      embedding_model: BAAI/bge-small-en-v1.5
-      embedding_dimension: 384
+      embedding_model: Qwen/Qwen3-Embedding-4B
+      embedding_dimension: ${toString ai.embeddingDimensions}
       default_limit: 5
       default_context_chars: 4000
       max_context_chars: 12000

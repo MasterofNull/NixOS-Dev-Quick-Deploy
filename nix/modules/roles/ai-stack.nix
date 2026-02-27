@@ -149,8 +149,10 @@ in {
           message = "mySystem.aiStack.llamaCpp.huggingFaceRepo requires mySystem.aiStack.llamaCpp.sha256 (64 hex chars).";
         }
         {
-          assertion = !hasEmbedAutoDownload || embedHfSha256Valid;
-          message = "mySystem.aiStack.embeddingServer.huggingFaceRepo requires mySystem.aiStack.embeddingServer.sha256 (64 hex chars).";
+          # sha256 = null is allowed (skips verification; set after first deploy).
+          # sha256 = "..." must be 64 hex chars if provided.
+          assertion = !hasEmbedAutoDownload || embedHfSha256 == null || embedHfSha256Valid;
+          message = "mySystem.aiStack.embeddingServer.sha256 must be 64 hex characters when set.";
         }
         # Phase 11.3.3 — Model allowlist enforcement
         {
@@ -454,14 +456,23 @@ in {
                   exit 1
                 fi
 
-                expected_sha="${embedHfSha256}"
                 actual_sha="$(${pkgs.coreutils}/bin/sha256sum "$tmp" | ${pkgs.gawk}/bin/awk '{print $1}')"
+                echo "llama-cpp-embed: sha256 = $actual_sha"
+                ${
+                  # Only verify if sha256 was provided; if null, print hash for user to record.
+                  if embedHfSha256Valid then ''
+                expected_sha="${embedHfSha256}"
                 if [ "$actual_sha" != "$expected_sha" ]; then
                   echo "llama-cpp-embed: SHA256 mismatch for downloaded model" >&2
                   echo "expected: $expected_sha" >&2
                   echo "actual:   $actual_sha" >&2
                   exit 1
                 fi
+                echo "llama-cpp-embed: SHA256 verified"
+                  '' else ''
+                echo "llama-cpp-embed: WARNING — no sha256 configured; add the hash above to facts.nix to enable integrity checking"
+                  ''
+                }
 
                 # Phase 11.3 — Model Weight Integrity: Run safety verification
                 # This checks for pickle magic bytes and records provenance metadata.
@@ -517,9 +528,9 @@ in {
               (lib.escapeShellArg embed.model)
               "--embedding" # embedding-only mode; disables chat completions
               "--pooling"
-              "mean" # mean pooling — correct for nomic/bge models
+              embed.pooling
               "--ctx-size"
-              "512" # embedding models use short contexts
+              (toString embed.ctxSize)
               "--threads"
               "4"
             ]
