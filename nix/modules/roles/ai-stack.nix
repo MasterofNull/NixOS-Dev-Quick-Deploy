@@ -609,6 +609,15 @@ in
       };
     })
 
+    # Phase 19.1.4 — shell tab-completions for aq-* tools.
+    (lib.mkIf (roleEnabled && cfg.aiStack.shellCompletions) {
+      environment.etc."profile.d/aq-completions.sh" = {
+        mode = "0644";
+        source = "${cfg.aiStack.repoPath}/scripts/aq-completions.sh";
+      };
+      environment.variables.AQ_HINTS_BIN = "${cfg.aiStack.repoPath}/scripts/aq-hints";
+    })
+
     # Phase 18.4.2 — AI stack MOTD: condensed digest on login when report is stale.
     # Enabled via mySystem.aiStack.motdReport = true (default: false).
     (lib.mkIf (roleEnabled && cfg.aiStack.motdReport) {
