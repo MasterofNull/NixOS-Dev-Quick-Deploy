@@ -16,15 +16,82 @@ Replaces ad-hoc manual verification with tracked, reproducible test gates.
 
 ---
 
+## Phase 21 — Dev Tooling & Token Efficiency ⬅ DO THIS FIRST
+**Goal:** Build automation that lets Claude verify the stack with 1-2 tool calls instead of 10-20.
+**Impact:** ~70% reduction in bash tool calls per QA session; catches regressions on commit.
+**Status:** IN PROGRESS
+
+### 21.1 — `aq-qa` Phase Runner CLI
+
+- [x] **21.1.1** `scripts/aq-qa` exists, is executable, and `aq-qa 0` runs Phase 0 checks.
+  ```bash
+  aq-qa 0 --json
+  ```
+  **Pass:** JSON with `passed`, `failed`, `phase` keys; exit 0 if all pass.
+
+- [ ] **21.1.2** `aq-qa 1` covers Redis, Postgres, Qdrant, AIDB, hybrid-coordinator checks.
+  ```bash
+  aq-qa 1
+  ```
+  **Pass:** All Phase 1 tests pass.
+
+- [ ] **21.1.3** `aq-qa all` runs all implemented phases in sequence.
+  ```bash
+  aq-qa all 2>&1 | tail -5
+  ```
+  **Pass:** Summary line shows total pass/fail counts; exit 0 iff zero failures.
+
+### 21.2 — Pre-commit Syntax Validation
+
+- [x] **21.2.1** `.githooks/pre-commit` runs `bash -n` on staged `.sh` files.
+  **Pass:** Committing a file with a bash syntax error is blocked with a clear message.
+
+- [x] **21.2.2** Pre-commit runs `python3 -m py_compile` on staged `.py` files.
+  **Pass:** Committing a `.py` file with a syntax error is blocked.
+
+- [x] **21.2.3** Pre-commit runs `nix-instantiate --parse` on staged `.nix` files.
+  **Pass:** Committing a `.nix` file with a parse error is blocked.
+
+### 21.3 — Claude Skill: `ai-stack-qa`
+
+- [x] **21.3.1** `~/.claude/skills/ai-stack-qa/SKILL.md` exists and teaches Claude the key QA commands.
+  ```bash
+  ls ~/.claude/skills/ai-stack-qa/SKILL.md
+  ```
+  **Pass:** File exists; contains `aq-qa`, `check-mcp-health.sh`, and AIDB curl one-liners.
+
+### 21.4 — MCP Tool: `run_qa_check` (future — requires deploy)
+
+- [ ] **21.4.1** hybrid-coordinator exposes `run_qa_check(phase)` tool.
+  **Pass:** `use_mcp_tool run_qa_check {"phase": "0"}` returns health JSON.
+  **Note:** Requires NixOS redeploy; implement after Phase 0 QA passes.
+
+### 21.5 — Post-deploy Auto Phase 0
+
+- [ ] **21.5.1** `nixos-quick-deploy.sh` calls `aq-qa 0` after successful switch.
+  **Pass:** Deploy output includes Phase 0 summary; deploy exits 1 if Phase 0 fails.
+  **Note:** Modify deploy script after `aq-qa 0` is stable.
+
+---
+
 ## Phase 0 — Pre-flight Smoke Tests
 **Goal:** Confirm the system is alive and all services are bound before any deeper testing.
 **Run time:** ~90 seconds.
 **Blocking:** All subsequent phases.
+**Primary tool:** `aq-qa 0` (runs all 0.x checks in one call; see Phase 21.1)
+
+```bash
+# Run all Phase 0 checks at once:
+aq-qa 0 --sudo
+# JSON output for scripting:
+aq-qa 0 --sudo --json
+```
 
 ### 0.1 — systemd Service Health
 
 - [ ] **0.1.1** All required AI stack systemd units are active.
   ```bash
+  # Automated by: aq-qa 0
   systemctl is-active llama-cpp ai-aidb ai-hybrid-coordinator ai-ralph-wiggum \
     ai-embeddings ai-switchboard aider-wrapper redis qdrant postgresql
   ```
@@ -94,6 +161,11 @@ Replaces ad-hoc manual verification with tracked, reproducible test gates.
 
 ## Phase 1 — Infrastructure Validation
 **Goal:** Verify every infrastructure component responds correctly and inter-service paths work.
+**Primary tool:** `aq-qa 1` (runs all 1.x checks; see Phase 21.1)
+
+```bash
+aq-qa 1
+```
 
 ### 1.1 — Redis
 
@@ -181,6 +253,7 @@ Replaces ad-hoc manual verification with tracked, reproducible test gates.
 
 ## Phase 2 — Core Feature Tests
 **Goal:** Each MCP server's primary function is verified end-to-end with real data.
+**Primary tool:** `bash scripts/check-mcp-health.sh` + `curl` one-liners below. `aq-qa 2` stub available (see Phase 21.1.3).
 
 ### 2.1 — Inference (llama.cpp)
 
@@ -319,6 +392,7 @@ Replaces ad-hoc manual verification with tracked, reproducible test gates.
 
 ## Phase 3 — Inference Quality & Reasoning Strategies
 **Goal:** Validate that the local LLM produces quality output and that advanced reasoning strategies improve it.
+**Primary tool:** `scripts/aq-prompt-eval` + `scripts/run-eval.sh` + `scripts/aq-report`
 
 ### 3.1 — Baseline Output Quality
 
@@ -438,6 +512,7 @@ Replaces ad-hoc manual verification with tracked, reproducible test gates.
 
 ## Phase 4 — Context Engineering
 **Goal:** Verify the hint system, context injection, and prompt engineering machinery work correctly.
+**Primary tool:** `scripts/aq-hints` + `scripts/aq-report §9` (hint adoption)
 
 ### 4.1 — `aq-hints` CLI
 
@@ -535,6 +610,7 @@ Replaces ad-hoc manual verification with tracked, reproducible test gates.
 
 ## Phase 5 — Security Hardening Tests
 **Goal:** Validate all security controls are active and functional.
+**Primary tool:** `sudo aa-status`, `scripts/check-mcp-integrity.sh`, `bash scripts/aq-qa 0 --sudo` (AppArmor checks)
 
 ### 5.1 — AppArmor Enforcement
 
@@ -638,6 +714,7 @@ Replaces ad-hoc manual verification with tracked, reproducible test gates.
 
 ## Phase 6 — Monitoring & Observability
 **Goal:** Verify that every observability layer produces real data and alerts route correctly.
+**Primary tool:** `scripts/aq-report` (§1-§8 digest) + Prometheus/Grafana endpoints
 
 ### 6.1 — Prometheus Metrics
 
@@ -742,6 +819,7 @@ Replaces ad-hoc manual verification with tracked, reproducible test gates.
 
 ## Phase 7 — Recursive Self-Improvement Loop
 **Goal:** Validate the eval harness, prompt scoring, and leaderboard machinery that enables the system to improve over time.
+**Primary tool:** `scripts/aq-prompt-eval`, `scripts/run-eval.sh --strategy LABEL`, `scripts/aq-report §5` (leaderboard)
 
 ### 7.1 — Eval Harness (`aq-prompt-eval`)
 
@@ -818,6 +896,7 @@ Replaces ad-hoc manual verification with tracked, reproducible test gates.
 
 ## Phase 8 — End-to-End Workflow Tests
 **Goal:** Real developer workflows pass from input to useful output using only the local stack.
+**Primary tool:** `scripts/aq-hints` (context injection) + `curl` to hybrid-coordinator `/query` + `aq-report §8` (E2E gaps)
 
 ### 8.1 — NixOS Help Workflow
 
@@ -965,6 +1044,7 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
 
 ## Phase 10 — Regression & Continuous Validation
 **Goal:** Ensure the above tests can be run as a repeatable suite and integrated into the deploy pipeline.
+**Primary tool:** `aq-qa all` (batch runner) + `.githooks/pre-commit` (syntax + secrets) + `systemctl list-timers ai-*` (scheduled integrity checks)
 
 ### 10.1 — Test Suite Automation
 
@@ -999,7 +1079,7 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
 
 ### 11.0 — AIDB Bug Fixes (blockers for all 11.x tasks)
 
-- [ ] **11.0.1** Fix missing `source_trust_level` column in `imported_documents` schema.
+- [x] **11.0.1** Fix missing `source_trust_level` column in `imported_documents` schema.
   **Root cause:** Phase 15.2.2 added the column to Python code but the Alembic/SQL migration was never applied to the running database.
   **Symptom:** `ProgrammingError: column imported_documents.source_trust_level does not exist`
   **Fix:** Find the schema definition and run the ALTER TABLE migration:
@@ -1010,7 +1090,7 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
   ```
   **Pass:** `POST /documents` with `source_trust_level: "trusted"` returns 200.
 
-- [ ] **11.0.2** Fix `'MonitoringServer' object has no attribute '_tiered_rate_limiter'`.
+- [x] **11.0.2** Fix `'MonitoringServer' object has no attribute '_tiered_rate_limiter'`.
   **Root cause:** `_tiered_rate_limiter` is initialized in one class but `MonitoringServer` inherits from a different path and misses it.
   **Symptom:** `AttributeError: 'MonitoringServer' object has no attribute '_tiered_rate_limiter'`
   **Fix:**
