@@ -1044,6 +1044,12 @@
         description = "Grafana HTTP port.";
       };
 
+      openWebui = lib.mkOption {
+        type = lib.types.port;
+        default = 3001;
+        description = "Open WebUI browser interface port.";
+      };
+
       commandCenterFrontend = lib.mkOption {
         type = lib.types.port;
         default = 8888;
