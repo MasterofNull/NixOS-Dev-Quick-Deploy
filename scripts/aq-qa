@@ -103,7 +103,7 @@ _port() {
 run_phase_0() {
   # 0.1 systemd service health
   for unit in llama-cpp.service ai-aidb.service ai-hybrid-coordinator.service \
-               ai-ralph-wiggum.service ai-embeddings.service ai-switchboard.service \
+               ai-ralph-wiggum.service llama-cpp-embed.service ai-switchboard.service \
                redis-mcp.service qdrant.service postgresql.service; do
     local short="${unit%.service}"
     if systemctl is-active --quiet "$unit" 2>/dev/null; then
@@ -141,13 +141,15 @@ run_phase_0() {
     _port "0.2.1:${port_names[$port]}" "port ${port} (${port_names[$port]}) bound" "$port"
   done
 
-  # 0.2.2 No service on port 3000 except Grafana
-  local p3000
-  p3000=$(ss -tlnp 2>/dev/null | grep ':3000 ' | grep -v grafana || true)
-  if [[ -z "$p3000" ]]; then
-    _pass "0.2.2" "port 3000 Grafana-only (no Open-WebUI regression)"
+  # 0.2.2 Port 3000 belongs to Grafana (Open-WebUI must be on 3001, not 3000)
+  # Use systemctl instead of ss process-name (requires no sudo)
+  if systemctl is-active --quiet grafana.service 2>/dev/null && \
+     ss -tlnp 2>/dev/null | grep -q ':3000 '; then
+    _pass "0.2.2" "port 3000 = Grafana (no Open-WebUI regression)"
+  elif ! ss -tlnp 2>/dev/null | grep -q ':3000 '; then
+    _skip "0.2.2" "port 3000 Grafana check" "port 3000 not bound (Grafana disabled?)"
   else
-    _fail "0.2.2" "port 3000 Grafana-only" "found: $p3000"
+    _fail "0.2.2" "port 3000 Grafana check" "Grafana inactive but port 3000 is bound"
   fi
 
   # 0.3 AppArmor (needs sudo)
