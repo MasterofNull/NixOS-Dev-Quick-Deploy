@@ -75,12 +75,46 @@ MODEL_NAME = os.getenv("LLAMA_CPP_MODEL", "qwen2.5-coder-7b-instruct-q4_k_m.gguf
 # Maximum concurrent Aider processes (memory-intensive; default 1)
 AIDER_MAX_CONCURRENCY = int(os.getenv("AIDER_MAX_CONCURRENCY", "1"))
 
+# Phase 14.1.1 — bubblewrap filesystem sandbox for Aider subprocess.
+# When AI_AIDER_SANDBOX=true: aider runs inside bwrap with /nix/store read-only,
+# workspace read-write, isolated /tmp, and full network (loopback for llama.cpp API).
+# Network is NOT isolated here; systemd IPAddressDeny at the service level restricts
+# egress to loopback only.
+AI_AIDER_SANDBOX = os.getenv("AI_AIDER_SANDBOX", "false").lower() == "true"
+BWRAP_PATH = os.getenv("BWRAP_PATH", "bwrap")
+
 # ============================================================================
 # In-memory task store
 # ============================================================================
 
 _tasks: Dict[str, dict] = {}
 _task_semaphore: Optional[asyncio.Semaphore] = None
+
+
+def _apply_bwrap(cmd: List[str], workspace: str) -> List[str]:
+    """Phase 14.1.1 — wrap cmd in a bubblewrap filesystem sandbox.
+
+    Security model:
+      - /nix/store bound read-only   — all Nix executables/libraries accessible
+      - workspace bound read-write   — aider is allowed to modify code files here
+      - /tmp as tmpfs                — isolated, cleared after each invocation
+      - /etc, /dev, /proc mounted    — needed for git, tty detection, process ops
+      - Network NOT isolated         — loopback needed for llama.cpp API on :8080;
+                                      systemd IPAddressDeny restricts actual egress
+    """
+    ws = str(workspace)
+    return [
+        BWRAP_PATH,
+        "--ro-bind", "/nix/store", "/nix/store",   # Nix executables (read-only)
+        "--bind", ws, ws,                           # workspace (read-write)
+        "--ro-bind", "/etc", "/etc",                # git config, passwd, CA certs
+        "--dev", "/dev",                            # /dev/null, /dev/urandom etc.
+        "--proc", "/proc",                          # needed by some git operations
+        "--tmpfs", "/tmp",                          # isolated temp directory
+        "--new-session",                            # detach from controlling tty
+        "--die-with-parent",                        # clean up on wrapper exit
+        "--",
+    ] + cmd
 
 
 # ============================================================================
@@ -242,6 +276,11 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
             else:
                 logger.warning("file_not_found", file=file)
         cmd.extend(["--message", task.prompt])
+
+        # Phase 14.1.1 — optionally wrap in bubblewrap filesystem sandbox.
+        if AI_AIDER_SANDBOX:
+            cmd = _apply_bwrap(cmd, task.workspace)
+            logger.info("aider_sandbox_enabled", bwrap=BWRAP_PATH)
 
         logger.info("executing_aider", command=" ".join(cmd[:10]))
 
