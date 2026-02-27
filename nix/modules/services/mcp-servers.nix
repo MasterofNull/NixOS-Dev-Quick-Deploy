@@ -778,5 +778,61 @@ in
 
     })
 
+    # ── Phase 11.5: Security Audit — weekly pip-audit + npm audit ───────────
+    (lib.mkIf active {
+
+      systemd.services.ai-security-audit = {
+        description = "AI Stack security vulnerability audit (pip-audit + npm audit)";
+        after = [ "network-online.target" ];
+        wants = [ "network-online.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          User = svcUser;
+          Group = svcGroup;
+          WorkingDirectory = mcp.repoPath;
+          ExecStart = lib.escapeShellArgs [
+            "${pkgs.bash}/bin/bash"
+            "${mcp.repoPath}/scripts/security-audit.sh"
+            "--repo-root" mcp.repoPath
+            "--output-dir" "${dataDir}/security"
+          ];
+          # Security hardening — read-only access except output dir
+          ReadOnlyPaths = [ "/" ];
+          ReadWritePaths = [ "${dataDir}/security" ];
+          PrivateTmp = true;
+          ProtectHome = true;
+          ProtectSystem = "strict";
+          NoNewPrivileges = true;
+          # Allow network access for vulnerability database lookups
+          PrivateNetwork = false;
+          # Restrict to minimal syscalls
+          SystemCallFilter = [ "@system-service" "~@privileged" ];
+          # Memory limit appropriate for audit tooling
+          MemoryMax = "1G";
+          # Log to journal
+          StandardOutput = "journal";
+          StandardError = "journal";
+        };
+        environment = {
+          # Pass configuration from options (Phase 11.5.2)
+          AI_SECURITY_AUDIT_HIGH_CVSS_THRESHOLD = toString cfg.deployment.securityAuditHighCvssThreshold;
+          AI_SECURITY_AUDIT_NOTIFY_USER = svcUser;
+        };
+      };
+
+      systemd.timers.ai-security-audit = {
+        description = "Weekly AI stack security audit timer";
+        wantedBy = [ "timers.target" ];
+        partOf = [ "ai-stack.target" ];
+        timerConfig = {
+          OnCalendar = "weekly";
+          RandomizedDelaySec = "2h";
+          Persistent = true;
+          Unit = "ai-security-audit.service";
+        };
+      };
+
+    })
+
   ];
 }
