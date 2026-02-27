@@ -192,6 +192,8 @@ let
     "[yaml]"."editor.defaultFormatter"   = "redhat.vscode-yaml";
     "yaml.validate"                      = true;
     "continue.telemetryEnabled"          = false;
+    "continue.enableTabAutocomplete"     = true;
+    "continue.showInlineTip"             = true;
     "cSpell.import"                      = [ ];
     "extensions.autoUpdate"              = false;
     "extensions.autoCheckUpdates"        = false;
@@ -701,7 +703,9 @@ in
   '';
 
   # Enforce the selected Cyberpunk theme in mutable settings.json.
-  home.activation.enforceVSCodiumTheme = lib.hm.dag.entryAfter [ "vscodeProfiles" ] ''
+  # Must run after createVSCodiumSettings which creates the file; vscodeProfiles
+  # runs before writeBoundary so cannot be used as a predecessor here.
+  home.activation.enforceVSCodiumTheme = lib.hm.dag.entryAfter [ "createVSCodiumSettings" ] ''
     settings_file="$HOME/.config/VSCodium/User/settings.json"
     if [ -f "$settings_file" ] && command -v jq >/dev/null 2>&1; then
       tmp="$(mktemp)"
@@ -791,20 +795,29 @@ PYEOF
 
   # Install runtime-mutable extensions that write inside their own install dir.
   home.activation.ensureMutableRuntimeVscodeExtensions = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
-    if command -v codium >/dev/null 2>&1 && ! pgrep -u "$USER" -x codium >/dev/null 2>&1; then
+    if ! command -v codium >/dev/null 2>&1; then
+      echo "[vscodium] codium not found; skipping mutable extension install"
+    elif pgrep -u "$USER" -x codium >/dev/null 2>&1; then
+      echo "[vscodium] codium is running; skipping extension install (run vscodium-repair after closing)"
+    else
       ext_root="$HOME/.vscode-oss/extensions"
       mkdir -p "$ext_root"
       # Clear stale Continue quarantine markers from earlier immutable installs.
-      rm -rf "$ext_root"/continue.continue-*.disabled >/dev/null 2>&1 || true
+      rm -rf "$ext_root"/continue.continue-*.disabled 2>/dev/null || true
       # Continue mutates files under its own extension dir; install a pinned
       # writable VSIX copy instead of immutable Nix-store linkage.
-      env -u NIXOS_OZONE_WL codium --install-extension ${continueMutableVsix} --force >/dev/null 2>&1 || true
+      echo "[vscodium] Installing Continue extension..."
+      if env -u NIXOS_OZONE_WL codium --install-extension ${continueMutableVsix} --force 2>&1 | tail -3; then
+        echo "[vscodium] Continue extension installed"
+      else
+        echo "[vscodium] WARNING: Continue extension install exited non-zero" >&2
+      fi
       for ext_id in ${lib.concatStringsSep " " vscodeMutableRuntimeExtensions}; do
         alias_path="$ext_root/$ext_id"
         if [ -L "$alias_path" ]; then
           rm -f "$alias_path"
         fi
-        env -u NIXOS_OZONE_WL codium --install-extension "$ext_id" --force >/dev/null 2>&1 || true
+        env -u NIXOS_OZONE_WL codium --install-extension "$ext_id" --force 2>/dev/null || true
       done
       unset ext_root ext_id alias_path
     fi
@@ -827,6 +840,103 @@ PYEOF
     fi
     unset codium_desktop codium_url target
   '';
+
+  # ---- vscodium-repair recovery script ------------------------------------
+  # Manual recovery tool: stops codium, clears stale state, reinstalls
+  # Continue extension, restores theme settings.  Run when Continue is
+  # broken, the theme reverts, or extensions stop loading.
+  home.file.".local/bin/vscodium-repair" = {
+    executable = true;
+    text = ''
+      #!/usr/bin/env bash
+      set -euo pipefail
+      echo "[vscodium-repair] Starting VSCodium recovery..."
+
+      # 1. Stop any running codium instance
+      if pgrep -u "$USER" -x codium >/dev/null 2>&1; then
+        echo "[vscodium-repair] Stopping running codium..."
+        pkill -u "$USER" -x codium || true
+        sleep 2
+      fi
+
+      ext_root="$HOME/.vscode-oss/extensions"
+      settings_file="$HOME/.config/VSCodium/User/settings.json"
+      mkdir -p "$ext_root"
+
+      # 2. Clear stale Continue obsolete markers
+      obsolete="$ext_root/.obsolete"
+      if [ -f "$obsolete" ] && command -v python3 >/dev/null 2>&1; then
+        echo "[vscodium-repair] Clearing Continue obsolete markers..."
+        python3 - "$obsolete" <<'PYEOF'
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    sys.exit(0)
+if not isinstance(data, dict):
+    sys.exit(0)
+removed = [k for k in list(data.keys()) if "continue" in k.lower()]
+for k in removed:
+    data.pop(k, None)
+if removed:
+    path.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
+    print(f"  Removed {len(removed)} marker(s): {removed}")
+PYEOF
+      fi
+
+      # 3. Remove disabled Continue extension dirs
+      for d in "$ext_root"/continue.continue-*.disabled; do
+        [ -d "$d" ] || continue
+        echo "[vscodium-repair] Removing disabled dir: $d"
+        rm -rf "$d"
+      done
+
+      # 4. Reinstall Continue extension from pinned VSIX
+      echo "[vscodium-repair] Reinstalling Continue extension..."
+      env -u NIXOS_OZONE_WL codium --install-extension ${continueMutableVsix} --force
+
+      # 5. Enforce theme and core settings
+      if [ -f "$settings_file" ] && command -v jq >/dev/null 2>&1; then
+        echo "[vscodium-repair] Enforcing theme settings..."
+        tmp="$(mktemp)"
+        if jq '
+          .["workbench.colorTheme"] = "Activate SCARLET protocol (beta)" |
+          .["workbench.preferredDarkColorTheme"] = "Activate SCARLET protocol (beta)" |
+          .["window.autoDetectColorScheme"] = false |
+          .["continue.enableTabAutocomplete"] = true |
+          .["continue.telemetryEnabled"] = false
+        ' "$settings_file" > "$tmp"; then
+          mv "$tmp" "$settings_file"
+          chmod u+rw "$settings_file"
+        else
+          rm -f "$tmp"
+        fi
+      fi
+
+      # 6. Reset Continue state in VSCodium global storage
+      gdb="$HOME/.config/VSCodium/User/globalStorage/state.vscdb"
+      if [ -f "$gdb" ] && command -v sqlite3 >/dev/null 2>&1; then
+        echo "[vscodium-repair] Clearing Continue global state..."
+        sqlite3 "$gdb" "delete from ItemTable where key like '%continue%' or key like 'Continue.%';" 2>/dev/null || true
+      fi
+
+      # 7. Force Continue config version bump so createContinueConfig rewrites it
+      cfg="$HOME/.continue/config.json"
+      if [ -f "$cfg" ] && command -v jq >/dev/null 2>&1; then
+        echo "[vscodium-repair] Resetting Continue config version (will regenerate on next hm switch)..."
+        tmp="$(mktemp)"
+        if jq '.__configVersion = "0"' "$cfg" > "$tmp"; then
+          mv "$tmp" "$cfg"
+        else
+          rm -f "$tmp"
+        fi
+      fi
+
+      echo "[vscodium-repair] Done. Launch VSCodium with: codium"
+      echo "  Run 'home-manager switch' to regenerate the Continue config."
+    '';
+  };
 
   # ---- VSCodium launch wrapper ---------------------------------------------
   # Prepends Nix-managed tool paths so language servers and linters work when
@@ -866,35 +976,90 @@ PYEOF
     ${pkgs.fontconfig}/bin/fc-cache -f "$HOME/.fonts" >/dev/null 2>&1 || true
   '';
 
-  # ---- Continue.dev config — llama.cpp backend --------------------------------
-  # Written once on first activation; not managed as a symlink so the user
-  # can edit it without home-manager clobbering their changes on switch.
-  # Points at the llama-server OpenAI-compatible API on :8080.
+  # ---- Continue.dev config — multi-model + aq-hints --------------------------
+  # Written on first activation or when __configVersion is outdated.
+  # Not managed as a symlink so the user can edit it without HM clobbering
+  # their changes on every switch (only rewrites when version bumps).
+  # Bump _config_version below when making config structure changes.
   home.activation.createContinueConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    if [ ! -f "$HOME/.continue/config.json" ]; then
+    _config_version="19.4"
+    _cfg="$HOME/.continue/config.json"
+    _needs_write=false
+
+    if [ ! -f "$_cfg" ]; then
+      _needs_write=true
+    elif command -v jq >/dev/null 2>&1; then
+      _existing_ver="$(jq -r '.__configVersion // "0"' "$_cfg" 2>/dev/null || echo "0")"
+      if [ "$_existing_ver" != "$_config_version" ]; then
+        _needs_write=true
+      fi
+      unset _existing_ver
+    fi
+
+    if [ "$_needs_write" = true ]; then
       mkdir -p "$HOME/.continue"
-      cat > "$HOME/.continue/config.json" << 'CONTINUE_EOF'
+      cat > "$_cfg" << 'CONTINUE_EOF'
 {
+  "__configVersion": "19.4",
   "models": [
     {
-      "title": "AI Switchboard (local/remote)",
+      "title": "Local llama.cpp",
       "provider": "openai",
       "apiKey": "dummy",
       "apiBase": "${continueApiBase}",
       "model": "${aiLlamaModel}"
+    },
+    {
+      "title": "Ollama (local)",
+      "provider": "ollama",
+      "model": "AUTODETECT"
+    },
+    {
+      "title": "Gemini 2.0 Flash",
+      "provider": "google",
+      "model": "gemini-2.0-flash"
+    },
+    {
+      "title": "Claude Sonnet 4.6",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-6"
     }
   ],
   "tabAutocompleteModel": {
-    "title": "switchboard autocomplete",
+    "title": "Local Autocomplete",
     "provider": "openai",
     "apiKey": "dummy",
     "apiBase": "${continueApiBase}",
     "model": "${aiLlamaModel}"
   },
+  "contextProviders": [
+    {
+      "name": "http",
+      "params": {
+        "url": "http://127.0.0.1:${toString aiHybridPort}/hints",
+        "title": "aq-hints",
+        "description": "Ranked AI workflow hints from registry.yaml, CLAUDE.md rules, and query gaps",
+        "displayTitle": "AI Stack Hints"
+      }
+    },
+    { "name": "code",     "params": {} },
+    { "name": "docs",     "params": {} },
+    { "name": "diff",     "params": {} },
+    { "name": "terminal", "params": {} },
+    { "name": "problems", "params": {} }
+  ],
+  "slashCommands": [
+    { "name": "edit",    "description": "Edit highlighted code" },
+    { "name": "comment", "description": "Write comments for highlighted code" },
+    { "name": "share",   "description": "Export conversation to markdown" },
+    { "name": "cmd",     "description": "Generate shell command" }
+  ],
   "allowAnonymousTelemetry": false
 }
 CONTINUE_EOF
+      echo "[createContinueConfig] Wrote Continue config v$_config_version"
     fi
+    unset _config_version _cfg _needs_write
   '';
 
   home.activation.migrateContinueConfigApiBase = lib.hm.dag.entryAfter [ "createContinueConfig" ] ''
@@ -916,15 +1081,13 @@ CONTINUE_EOF
       if jq --arg newBase "$runtime_base" --arg model "$detected_model" '
         .models = ((.models // []) | map(
           if ((.provider // "") == "openai") then
-            .apiBase = $newBase
+            .apiBase = $newBase | .model = $model
           else
             .
           end
-          | .model = $model
         )) |
         .tabAutocompleteModel = ((.tabAutocompleteModel // {})
-          | if ((.provider // "openai") == "openai") then .apiBase = $newBase else . end
-          | .model = $model)
+          | if ((.provider // "openai") == "openai") then .apiBase = $newBase | .model = $model else . end)
       ' "$cfg" > "$tmp"; then
         mv "$tmp" "$cfg"
       else

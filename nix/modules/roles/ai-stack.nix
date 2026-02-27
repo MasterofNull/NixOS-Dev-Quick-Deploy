@@ -610,71 +610,17 @@ in
     })
 
     # Phase 19.1.4 — shell tab-completions for aq-* tools.
-    # Phase 19.3.2 — Continue.dev @aq-hints HTTP context provider + local model config.
-    (lib.mkIf (roleEnabled && cfg.aiStack.shellCompletions) (
-      let
-        # Generate ~/.continue/config.json with real port values from options.
-        # Includes: aq-hints context provider, local llama.cpp, Ollama, and Gemini (remote).
-        continueConfig = pkgs.writeText "continue-config.json" (builtins.toJSON {
-          "$schema" = "https://raw.githubusercontent.com/continuedev/continue/main/extensions/vscode/config_schema.json";
-          contextProviders = [
-            {
-              name = "http";
-              params = {
-                url = "http://127.0.0.1:${toString cfg.mcpServers.hybridPort}/hints";
-                title = "aq-hints";
-                description = "Ranked AI workflow hints from registry.yaml, query gaps, and CLAUDE.md rules";
-                displayTitle = "AI Stack Hints";
-              };
-            }
-          ];
-          models = [
-            {
-              title = "Local llama.cpp";
-              provider = "openai";
-              apiBase = "http://127.0.0.1:${toString llama.port}/v1";
-              apiKey = "dummy";
-              model = "AUTODETECT";
-            }
-            {
-              title = "Ollama (local)";
-              provider = "ollama";
-              model = "AUTODETECT";
-            }
-            {
-              # Gemini via Google AI Studio — requires GOOGLE_API_KEY env var.
-              title = "Gemini 2.0 Flash";
-              provider = "google";
-              model = "gemini-2.0-flash";
-            }
-            {
-              # Anthropic Claude — requires ANTHROPIC_API_KEY env var.
-              title = "Claude Sonnet 4.6";
-              provider = "anthropic";
-              model = "claude-sonnet-4-6";
-            }
-          ];
-          tabAutocompleteModel = {
-            title = "Local Autocomplete";
-            provider = "openai";
-            apiBase = "http://127.0.0.1:${toString llama.port}/v1";
-            apiKey = "dummy";
-            model = "AUTODETECT";
-          };
-        });
-      in {
-        environment.etc."profile.d/aq-completions.sh" = {
-          mode = "0644";
-          source = "${cfg.aiStack.repoPath}/scripts/aq-completions.sh";
-        };
-        environment.variables.AQ_HINTS_BIN = "${cfg.aiStack.repoPath}/scripts/aq-hints";
-        # Phase 19.3.2 — symlink ~/.continue/config.json to the Nix-generated config.
-        # L+ creates a symlink, replacing any existing file.
-        systemd.tmpfiles.rules = [
-          "L+ /home/${cfg.primaryUser}/.continue/config.json - - - - ${continueConfig}"
-        ];
-      }
-    ))
+    # Phase 19.3.2 — Continue.dev @aq-hints HTTP context provider (config managed by HM base.nix).
+    # Note: ~/.continue/config.json is written by the HM createContinueConfig activation hook
+    # in nix/home/base.nix with a version sentinel; do NOT also manage it here with
+    # systemd.tmpfiles — that creates a read-only symlink that conflicts with the HM hooks.
+    (lib.mkIf (roleEnabled && cfg.aiStack.shellCompletions) {
+      environment.etc."profile.d/aq-completions.sh" = {
+        mode = "0644";
+        source = "${cfg.aiStack.repoPath}/scripts/aq-completions.sh";
+      };
+      environment.variables.AQ_HINTS_BIN = "${cfg.aiStack.repoPath}/scripts/aq-hints";
+    })
 
     # Phase 18.4.2 — AI stack MOTD: condensed digest on login when report is stale.
     # Enabled via mySystem.aiStack.motdReport = true (default: false).
