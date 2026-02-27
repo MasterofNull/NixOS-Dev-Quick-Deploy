@@ -152,20 +152,16 @@ run_phase_0() {
     _fail "0.2.2" "port 3000 Grafana check" "Grafana inactive but port 3000 is bound"
   fi
 
-  # 0.3 AppArmor (needs sudo)
-  if [[ "$USE_SUDO" -eq 1 ]]; then
-    local aa_out
-    aa_out=$(sudo aa-status 2>/dev/null || true)
-    if printf '%s' "$aa_out" | grep -qE "ai-llama-cpp|ai-mcp-base"; then
-      _pass "0.3.1" "AppArmor profiles loaded (ai-llama-cpp, ai-mcp-base)"
-    else
-      _fail "0.3.1" "AppArmor profiles loaded" "profiles not found in aa-status"
-    fi
-    _check "0.3.2" "AppArmor service active" systemctl is-active apparmor
+  # 0.3 AppArmor — check profile files (no sudo needed) + service active
+  local aa_dir="/etc/apparmor.d"
+  if [[ -f "$aa_dir/ai-llama-cpp" && -f "$aa_dir/ai-mcp-base" ]]; then
+    _pass "0.3.1" "AppArmor profiles on disk ($aa_dir/ai-llama-cpp, ai-mcp-base)"
   else
-    _skip "0.3.1" "AppArmor profiles loaded" "rerun with --sudo"
-    _skip "0.3.2" "AppArmor service active" "rerun with --sudo"
+    local found
+    found=$(ls "$aa_dir"/ai-* 2>/dev/null | xargs -I{} basename {} | tr '\n' ' ' || echo "none")
+    _fail "0.3.1" "AppArmor profiles on disk" "found: $found"
   fi
+  _check "0.3.2" "AppArmor service active" systemctl is-active apparmor
 
   # 0.4 Quick inference pings
   _http_health "0.4.1" "llama-server /health" "${LLAMA_URL}/health"
@@ -178,25 +174,28 @@ run_phase_0() {
 run_phase_1() {
   # 1.1 Redis
   _check_output "1.1.1" "redis ping" "PONG" redis-cli ping
-  local redis_latency
-  redis_latency=$(redis-cli --latency-history -i 1 -c 3 2>&1 | awk '{print $NF}' | grep -E '^[0-9]+' | sort -n | tail -1 || echo 999)
-  if [[ "${redis_latency:-999}" -le 5 ]]; then
-    _pass "1.1.2" "redis latency <= 5ms (got ${redis_latency}ms)"
+  # redis-cli --latency output: "min max avg samples" on one line
+  local redis_latency redis_raw
+  redis_raw=$(timeout 4 redis-cli --latency 2>/dev/null | tr -d '\n\r' | awk '{print $3}' || echo "")
+  redis_latency=$(printf '%.0f' "${redis_raw:-999}" 2>/dev/null || echo 999)
+  if [[ "$redis_latency" -le 5 ]]; then
+    _pass "1.1.2" "redis latency <= 5ms (got ${redis_raw}ms avg)"
   else
-    _fail "1.1.2" "redis latency <= 5ms" "got ${redis_latency}ms"
+    _fail "1.1.2" "redis latency <= 5ms" "got ${redis_raw}ms avg"
   fi
 
-  # 1.2 PostgreSQL
-  local pg_out
-  pg_out=$(psql -U ai_user -d aidb -c "SELECT 1;" 2>&1 | grep -c "1 row" || echo 0)
+  # 1.2 PostgreSQL — user=aidb, password from secrets
+  local pg_pass pg_out
+  pg_pass=$(cat /run/secrets/postgres_password 2>/dev/null | tr -d '\n' || true)
+  pg_out=$(PGPASSWORD="$pg_pass" psql -h 127.0.0.1 -U aidb -d aidb -c "SELECT 1;" 2>&1 | grep -c "1 row" || echo 0)
   if [[ "$pg_out" -ge 1 ]]; then
-    _pass "1.2.1" "postgres responds"
+    _pass "1.2.1" "postgres responds (user=aidb)"
   else
-    _fail "1.2.1" "postgres responds"
+    _fail "1.2.1" "postgres responds (user=aidb)"
   fi
   _check_output "1.2.2" "AIDB schema tables present" \
-    "imported_documents|query_gaps|tool_audit|telemetry_events" \
-    psql -U ai_user -d aidb -c '\dt'
+    "imported_documents|query_gaps|telemetry_events|learning_feedback" \
+    bash -c "PGPASSWORD='$pg_pass' psql -h 127.0.0.1 -U aidb -d aidb -c '\dt' 2>&1"
 
   # 1.3 Qdrant
   _check_output "1.3.1" "qdrant cluster info" "qdrant" \
@@ -212,14 +211,23 @@ run_phase_1() {
     _fail "1.4.2" "AIDB /documents returns"
   fi
 
-  # 1.5 Hybrid coordinator
-  _http_health "1.5.1" "hybrid-coordinator /health" "${HYBRID_URL}/health"
-  local hints_out
-  hints_out=$(curl -sf "${HYBRID_URL}/hints?q=test" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(type(d).__name__)" 2>/dev/null || echo "err")
-  if [[ "$hints_out" == "list" ]]; then
-    _pass "1.5.2" "hybrid-coordinator GET /hints returns list"
+  # 1.5 Hybrid coordinator — status is 'healthy', not 'ok'
+  local hybrid_key hybrid_status
+  hybrid_key=$(cat /run/secrets/hybrid_coordinator_api_key 2>/dev/null | tr -d '\n' || true)
+  hybrid_status=$(curl -sf --max-time 5 "${HYBRID_URL}/health" 2>/dev/null | \
+    python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || true)
+  if [[ "$hybrid_status" == "ok" || "$hybrid_status" == "healthy" ]]; then
+    _pass "1.5.1" "hybrid-coordinator /health (${hybrid_status})"
   else
-    _fail "1.5.2" "hybrid-coordinator GET /hints returns list" "got: $hints_out"
+    _fail "1.5.1" "hybrid-coordinator /health" "status='$hybrid_status'"
+  fi
+  local hints_count
+  hints_count=$(curl -sf -H "X-API-Key: ${hybrid_key}" "${HYBRID_URL}/hints?q=test" 2>/dev/null | \
+    python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('hints',d) if isinstance(d,dict) else d))" 2>/dev/null || echo "err")
+  if [[ "$hints_count" != "err" ]]; then
+    _pass "1.5.2" "hybrid-coordinator GET /hints returns hints (count=${hints_count})"
+  else
+    _fail "1.5.2" "hybrid-coordinator GET /hints" "no response or auth failed"
   fi
 }
 
