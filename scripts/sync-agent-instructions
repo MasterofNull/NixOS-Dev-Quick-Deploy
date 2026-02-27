@@ -26,7 +26,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
 CLAUDE_MD  = REPO_ROOT / "CLAUDE.md"
-MEMORY_MD  = REPO_ROOT / "memory" / "MEMORY.md"
+# Authoritative repo copy of agent memory (git-tracked).
+# sync_memory_md() keeps this in sync with the live Claude Code location.
+MEMORY_MD  = REPO_ROOT / "ai-stack" / "agent-memory" / "MEMORY.md"
 
 # Output files managed by this script
 AGENTS_MD         = REPO_ROOT / "AGENTS.md"
@@ -35,6 +37,10 @@ GEMINI_CONTEXT_MD = REPO_ROOT / ".gemini" / "context.md"
 
 GENERATED_MARKER = "<!-- sync-agent-instructions: auto-generated section -->"
 GENERATED_END    = "<!-- sync-agent-instructions: end -->"
+
+
+def _print_aidb_hint() -> None:
+    print("  → run 'bash scripts/import-agent-instructions.sh' to push to AIDB (requires AIDB bugs fixed first — see Phase 11 in AI-STACK-QA-PLAN.md)")
 
 
 def _parse_args() -> argparse.Namespace:
@@ -258,6 +264,38 @@ gemini -p "@ai-stack/mcp-servers/ Summarize the MCP server architecture"
     return _write_file(GEMINI_CONTEXT_MD, content, dry_run, verbose)
 
 
+def _claude_project_memory_path() -> Path:
+    """Compute the path where Claude Code stores this project's memory file.
+
+    Claude Code uses the absolute repo path, with '/' replaced by '-' and the
+    leading '-' stripped, as the project directory name under ~/.claude/projects/.
+    This is machine-specific (encodes the absolute path), so it is computed at
+    runtime rather than hard-coded.
+    """
+    # Claude Code encodes the absolute path as: replace '/' with '-', keeping leading '-'.
+    project_id = str(REPO_ROOT.resolve()).replace("/", "-")
+    return Path.home() / ".claude" / "projects" / project_id / "memory" / "MEMORY.md"
+
+
+def sync_memory_md(dry_run: bool, verbose: bool) -> bool:
+    """Copy the live Claude Code MEMORY.md → ai-stack/agent-memory/MEMORY.md.
+
+    The repo copy is the authoritative backup for portability.  On a fresh
+    deployment, copy ai-stack/agent-memory/MEMORY.md → the Claude project path
+    to restore memory.
+
+    Returns True if the repo copy was updated.
+    """
+    live = _claude_project_memory_path()
+    if not live.exists():
+        if verbose:
+            print(f"  [skip] MEMORY.md not found at {live}")
+        return False
+
+    live_content = live.read_text(encoding="utf-8")
+    return _write_file(MEMORY_MD, live_content, dry_run, verbose)
+
+
 def main() -> None:
     args = _parse_args()
     claude_md = _load_file(CLAUDE_MD)
@@ -267,6 +305,7 @@ def main() -> None:
 
     print(f"sync-agent-instructions: reading {CLAUDE_MD.relative_to(REPO_ROOT)}")
     changed = 0
+    changed += sync_memory_md(args.dry_run, args.verbose)
     changed += sync_agents_md(claude_md, args.dry_run, args.verbose)
     changed += sync_aider_md(claude_md, args.dry_run, args.verbose)
     changed += sync_gemini_context(claude_md, args.dry_run, args.verbose)
@@ -275,6 +314,8 @@ def main() -> None:
         print(f"dry-run: {changed} file(s) would change")
     else:
         print(f"done: {changed} file(s) updated")
+        if not args.dry_run:
+            _print_aidb_hint()
 
 
 if __name__ == "__main__":
