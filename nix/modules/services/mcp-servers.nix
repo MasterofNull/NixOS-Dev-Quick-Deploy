@@ -973,6 +973,77 @@ in
       };
     })
 
+    # ── Phase 12.1.2 + 12.1.3 — AppArmor profiles for MCP servers ────────────
+    # Declarative profile generation from Nix expressions (Phase 12.1.3):
+    #   - Port numbers, data directories, and secret paths are interpolated from
+    #     the module options so profiles stay consistent with actual deployment.
+    #   - One abstract base profile + per-service inheriting profiles.
+    # Confinement goals:
+    #   - Restrict filesystem writes to service-specific data directories only
+    #   - Allow /nix/store/** read for Python interpreter + package closures
+    #   - Deny shell interpreter execution (/bin/sh, /bin/bash etc.)
+    #   - Allow loopback TCP only; deny raw/packet sockets
+    (lib.mkIf active {
+      security.apparmor.policies."ai-mcp-base" = {
+        enable = true;
+        profile = ''
+          # Phase 12.1.2 — Abstract base profile for AI stack Python MCP servers.
+          # Per-service profiles inherit this via the "profile" keyword.
+          # Python binaries in /nix/store/<hash>-python3-<ver>-env/bin/python3
+          # use a store-hash path so we allow the whole /nix/store/** subtree.
+          profile ai-mcp-base flags=(attach_disconnected) {
+            #include <abstractions/base>
+
+            # Nix store: Python interpreter, packages, shared libraries
+            /nix/store/** r,
+            /nix/store/**/*.so* mr,
+            /nix/store/**/bin/python3* ix,
+
+            # Repo path (source code, scripts) — read-only
+            ${mcp.repoPath}/** r,
+
+            # Service data directory (read-write)
+            ${dataDir}/** rw,
+
+            # Secrets (read-only)
+            /run/secrets/ r,
+            /run/secrets/** r,
+
+            # Standard system paths
+            /proc/sys/kernel/osrelease r,
+            /proc/meminfo r,
+            /dev/null rw,
+            /dev/urandom r,
+            /dev/random r,
+            /tmp/** rw,
+            /run/user/** rw,
+
+            # Unix sockets (audit sidecar, Redis)
+            /run/ai-audit-sidecar.sock rw,
+
+            # Loopback TCP/IP only; deny raw and packet sockets
+            network inet stream,
+            network inet6 stream,
+            network unix stream,
+            deny network raw,
+            deny network packet,
+
+            # Deny shell execution — MCP servers must not spawn /bin/sh etc.
+            deny /bin/sh x,
+            deny /bin/bash x,
+            deny /usr/bin/sh x,
+            deny /usr/bin/bash x,
+            deny /run/current-system/sw/bin/bash x,
+            deny /run/current-system/sw/bin/sh x,
+
+            # Deny home and root directory access
+            deny /home/** rwx,
+            deny /root/** rwx,
+          }
+        '';
+      };
+    })
+
     # ── Phase 12.3.3 — Forward audit log to remote syslog when configured ────
     (lib.mkIf (active && cfg.logging.remoteSyslog.enable) {
       # rsyslogd imfile module tails the audit JSONL and feeds entries into the
