@@ -138,8 +138,10 @@ def read_eval_scores(since: datetime) -> List[dict]:
     try:
         conn = sqlite3.connect(str(EVAL_SCORES_DB))
         conn.row_factory = sqlite3.Row
+        # strategy_tag column added in Phase 18.2.1; use IFNULL for older DBs
         cur = conn.execute(
-            "SELECT timestamp, config, passed, total, pct_passed, threshold "
+            "SELECT timestamp, config, passed, total, pct_passed, threshold, "
+            "IFNULL(strategy_tag, '') AS strategy_tag "
             "FROM eval_scores WHERE timestamp >= ? ORDER BY timestamp",
             (since.isoformat(),),
         )
@@ -147,6 +149,37 @@ def read_eval_scores(since: datetime) -> List[dict]:
         conn.close()
         return rows
     except (sqlite3.Error, OSError):
+        return []
+
+
+def strategy_leaderboard(rows: List[dict]) -> List[dict]:
+    """Group eval rows by strategy_tag and compute mean pct_passed per tag."""
+    from collections import defaultdict
+    buckets: Dict[str, List[int]] = defaultdict(list)
+    for r in rows:
+        tag = r.get("strategy_tag") or "untagged"
+        buckets[tag].append(r["pct_passed"])
+    board = [
+        {"tag": tag, "mean_pct": round(sum(v) / len(v), 1), "runs": len(v)}
+        for tag, v in buckets.items()
+    ]
+    return sorted(board, key=lambda x: -x["mean_pct"])
+
+
+def read_prompt_registry() -> List[dict]:
+    """Load ai-stack/prompts/registry.yaml; return list of prompt entries."""
+    registry_path = Path(
+        os.getenv("REGISTRY_PATH",
+                  str(Path(__file__).parent.parent / "ai-stack/prompts/registry.yaml"))
+    )
+    if not registry_path.exists():
+        return []
+    try:
+        import yaml  # type: ignore[import-untyped]
+        with registry_path.open(encoding="utf-8") as fh:
+            data = yaml.safe_load(fh)
+        return data.get("prompts", []) if data else []
+    except Exception:
         return []
 
 
@@ -422,6 +455,8 @@ def format_md(
     route: Dict[str, Any],
     cache: Dict[str, Any],
     eval_trend: Dict[str, Any],
+    leaderboard: List[dict],
+    top_prompts: List[dict],
     gaps: List[dict],
     recs: List[str],
 ) -> str:
@@ -481,8 +516,36 @@ def format_md(
         lines.append("*No eval runs found for this window.*")
     lines.append("")
 
-    # 5. Query gaps
-    lines += ["## 5. Top Query Gaps", ""]
+    # 5. Strategy Leaderboard (18.2.2)
+    lines += ["## 5. Strategy Leaderboard", ""]
+    visible = [r for r in leaderboard if r["tag"] != "untagged"]
+    if len(visible) >= 2:
+        lines += [
+            "| Rank | Strategy | Mean % | Runs |",
+            "|-----:|----------|-------:|-----:|",
+        ]
+        for i, r in enumerate(visible[:5], 1):
+            lines.append(f"| {i} | `{r['tag']}` | {r['mean_pct']} | {r['runs']} |")
+        lines.append("")
+        lines.append(f"*Run `scripts/run-eval.sh --strategy <name>` to tag a new variant.*")
+    else:
+        lines.append("*No tagged strategy runs yet. Use `--strategy LABEL` with run-eval.sh.*")
+    lines.append("")
+
+    # 6. Recommended Prompts (18.3.3)
+    lines += ["## 6. Recommended Prompts", ""]
+    if top_prompts:
+        for p in top_prompts:
+            lines.append(
+                f"- **{p['name']}** (`{p['id']}`) — score {p['mean_score']:.1%}  \n"
+                f"  {p.get('description', '').strip()[:120]}"
+            )
+    else:
+        lines.append("*Run `scripts/aq-prompt-eval` to score prompts in registry.yaml.*")
+    lines.append("")
+
+    # 7. Query gaps
+    lines += ["## 7. Top Query Gaps", ""]
     if gaps:
         lines += [
             "| # | Query | Score | Collection | Occurrences |",
@@ -501,8 +564,8 @@ def format_md(
         lines.append("*No query gaps found (Postgres unreachable or table empty).*")
     lines.append("")
 
-    # 6. Recommendations
-    lines += ["## 6. Workflow Recommendations", ""]
+    # 8. Recommendations
+    lines += ["## 8. Workflow Recommendations", ""]
     for i, rec in enumerate(recs, 1):
         lines.append(f"{i}. {rec}")
     lines.append("")
@@ -516,6 +579,8 @@ def format_text(
     route: Dict[str, Any],
     cache: Dict[str, Any],
     eval_trend: Dict[str, Any],
+    leaderboard: List[dict],
+    top_prompts: List[dict],
     gaps: List[dict],
     recs: List[str],
 ) -> str:
@@ -575,7 +640,24 @@ def format_text(
         lines.append("  No eval data.")
     lines.append("")
 
-    lines += ["[ 5. Top Query Gaps ]"]
+    lines += ["[ 5. Strategy Leaderboard ]"]
+    visible = [r for r in leaderboard if r["tag"] != "untagged"]
+    if len(visible) >= 2:
+        for i, r in enumerate(visible[:5], 1):
+            lines.append(f"  {i}. {r['tag']:<40} {r['mean_pct']:>5.1f}%  ({r['runs']} runs)")
+    else:
+        lines.append("  No tagged strategies yet (use --strategy with run-eval.sh).")
+    lines.append("")
+
+    lines += ["[ 6. Recommended Prompts ]"]
+    if top_prompts:
+        for p in top_prompts:
+            lines.append(f"  {p['mean_score']:.0%}  {p['id']}  — {p.get('name', '')}")
+    else:
+        lines.append("  Run scripts/aq-prompt-eval to score registry prompts.")
+    lines.append("")
+
+    lines += ["[ 7. Top Query Gaps ]"]
     if gaps:
         for i, g in enumerate(gaps[:5], 1):
             q = str(g.get("query_text", ""))[:70].replace("\n", " ")
@@ -584,7 +666,7 @@ def format_text(
         lines.append("  No gaps data (Postgres unavailable or table empty).")
     lines.append("")
 
-    lines += ["[ 6. Workflow Recommendations ]"]
+    lines += ["[ 8. Workflow Recommendations ]"]
     for i, rec in enumerate(recs, 1):
         # Wrap at ~72 chars
         words = rec.split()
@@ -607,6 +689,8 @@ def format_json(
     route: Dict[str, Any],
     cache: Dict[str, Any],
     eval_trend: Dict[str, Any],
+    leaderboard: List[dict],
+    top_prompts: List[dict],
     gaps: List[dict],
     recs: List[str],
 ) -> str:
@@ -617,6 +701,11 @@ def format_json(
         "routing": route,
         "cache": cache,
         "eval_trend": eval_trend,
+        "strategy_leaderboard": leaderboard,
+        "top_prompts": [
+            {"id": p["id"], "name": p.get("name"), "mean_score": p.get("mean_score")}
+            for p in top_prompts
+        ],
         "query_gaps": gaps[:10],
         "recommendations": recs,
     }
@@ -668,16 +757,22 @@ def main() -> None:
     audit_entries = read_tool_audit(since_dt)
     eval_rows = read_eval_scores(since_dt)
     gaps = read_query_gaps(since_dt, limit=10)
+    prompts = read_prompt_registry()
 
     # Analyse
     tool_stats = aggregate_tool_audit(audit_entries)
     route = routing_split()
     cache = cache_hit_rate()
     eval_trend = eval_score_trend(eval_rows)
+    leaderboard = strategy_leaderboard(eval_rows)
+    top_prompts = sorted(
+        [p for p in prompts if isinstance(p.get("mean_score"), float) and p["mean_score"] > 0],
+        key=lambda x: -x["mean_score"],
+    )[:3]
     recs = build_recommendations(tool_stats, route, cache, eval_trend, gaps)
 
     # Render
-    fmt_args = (since_label, tool_stats, route, cache, eval_trend, gaps, recs)
+    fmt_args = (since_label, tool_stats, route, cache, eval_trend, leaderboard, top_prompts, gaps, recs)
     if args.fmt == "md":
         output = format_md(*fmt_args)
     elif args.fmt == "json":

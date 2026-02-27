@@ -559,6 +559,18 @@
         };
       };
 
+      # Phase 18.4.2 — MOTD digest on login (condensed aq-report).
+      motdReport = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          When true, install /etc/profile.d/ai-report-motd.sh which prints a
+          5-line AI stack digest (routing %, cache hit rate, eval trend, top gap,
+          first recommendation) on interactive shell login if the last report
+          is more than 24 hours old.
+        '';
+      };
+
       # Deprecated compatibility shim for pre-llamaCpp deploy options.
       # Legacy files may still set `mySystem.aiStack.models = [ "model:tag" ]`.
       # The native llama.cpp path now uses `mySystem.aiStack.llamaCpp.model`.
