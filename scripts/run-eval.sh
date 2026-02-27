@@ -28,6 +28,7 @@ OUTPUT_DIR="${OUTPUT_DIR:-ai-stack/eval/results}"
 LLAMA_BASE_URL="${LLAMA_URL%/}"
 ACCEPTANCE_THRESHOLD="${ACCEPTANCE_THRESHOLD:-70}"   # percent
 CI_MODE="${CI_MODE:-0}"
+STRATEGY_TAG="${STRATEGY_TAG:-}"   # Phase 18.2.1 — optional strategy label for leaderboard tracking
 PROMPTFOO_VERSION="${PROMPTFOO_VERSION:-latest}"
 PROMPTFOO_MAX_CONCURRENCY="${PROMPTFOO_MAX_CONCURRENCY:-1}"
 
@@ -42,6 +43,7 @@ while [[ $# -gt 0 ]]; do
         --config)    EVAL_CONFIG="$2"; shift 2 ;;
         --output)    OUTPUT_DIR="$2"; shift 2 ;;
         --threshold) ACCEPTANCE_THRESHOLD="$2"; shift 2 ;;
+        --strategy)  STRATEGY_TAG="$2"; shift 2 ;;
         --ci)        CI_MODE=1; shift ;;
         --help|-h)
             cat <<'HELP'
@@ -51,6 +53,7 @@ Options:
   --config FILE       Promptfoo config (default: ai-stack/eval/promptfoo-config.yaml)
   --output DIR        Output directory for eval results (default: ai-stack/eval/results)
   --threshold N       Minimum pass percentage (default: 70)
+  --strategy LABEL    Strategy tag for leaderboard tracking (e.g. cross-encoder-v1)
   --ci                CI mode — strip color, exit non-zero on failure
   --help              Show this message
 HELP
@@ -124,18 +127,18 @@ if [[ -f "${result_file}" ]] && command -v jq >/dev/null 2>&1; then
         # Also write a human-readable summary.
         summary_file="${OUTPUT_DIR}/eval-${timestamp}-summary.txt"
         {
-            echo "Eval run: ${timestamp}"
-            echo "Config:   ${EVAL_CONFIG}"
-            echo "Passed:   ${passed}/${total} (${pct}%)"
-            echo "Threshold: ${ACCEPTANCE_THRESHOLD}%"
+            printf 'Eval run: %s\n' "${timestamp}"
+            printf 'Config:   %s\n' "${EVAL_CONFIG}"
+            printf 'Passed:   %s/%s (%s%%)\n' "${passed}" "${total}" "${pct}"
+            printf 'Threshold: %s%%\n' "${ACCEPTANCE_THRESHOLD}"
         } > "${summary_file}"
 
         # ── Append score to CSV log (8.1.4) ──────────────────────────────────
         scores_csv="${OUTPUT_DIR}/scores.csv"
         if [[ ! -f "${scores_csv}" ]]; then
-            echo "timestamp,config,passed,total,pct_passed" > "${scores_csv}"
+            printf 'timestamp,config,passed,total,pct_passed\n' > "${scores_csv}"
         fi
-        echo "${timestamp},${EVAL_CONFIG},${passed},${total},${pct}" >> "${scores_csv}"
+        printf '%s,%s,%s,%s,%s\n' "${timestamp}" "${EVAL_CONFIG}" "${passed}" "${total}" "${pct}" >> "${scores_csv}"
         info "Score logged: ${scores_csv}"
 
         # ── Append score to SQLite log (8.1.4) ──────────────────────────────
@@ -149,10 +152,13 @@ CREATE TABLE IF NOT EXISTS eval_scores (
   passed INTEGER NOT NULL,
   total INTEGER NOT NULL,
   pct_passed INTEGER NOT NULL,
-  threshold INTEGER NOT NULL
+  threshold INTEGER NOT NULL,
+  strategy_tag TEXT
 );
-INSERT INTO eval_scores (timestamp, config, passed, total, pct_passed, threshold)
-VALUES ('${timestamp}', '$(printf "%s" "${EVAL_CONFIG}" | sed "s/'/''/g")', ${passed}, ${total}, ${pct}, ${ACCEPTANCE_THRESHOLD});
+-- Phase 18.2.1: add strategy_tag column to existing DBs
+ALTER TABLE eval_scores ADD COLUMN strategy_tag TEXT;
+INSERT INTO eval_scores (timestamp, config, passed, total, pct_passed, threshold, strategy_tag)
+VALUES ('${timestamp}', '$(printf "%s" "${EVAL_CONFIG}" | sed "s/'/''/g")', ${passed}, ${total}, ${pct}, ${ACCEPTANCE_THRESHOLD}, '$(printf "%s" "${STRATEGY_TAG}" | sed "s/'/''/g")');
 SQL
             info "Score logged: ${scores_db}"
         else

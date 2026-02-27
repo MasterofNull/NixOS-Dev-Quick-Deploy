@@ -1,0 +1,142 @@
+# Prompt Template Registry — Phase 18.3.1
+# Each entry describes a reusable prompt pattern used by the AI stack.
+# Fields:
+#   id           — unique snake_case identifier
+#   name         — human-readable label
+#   description  — what this prompt is for
+#   template     — Jinja2-compatible template string ({{ var }} for substitutions)
+#   tags         — list of category labels
+#   mean_score   — float 0-1, auto-updated by scripts/aq-prompt-eval
+#   last_evaluated — ISO date of last evaluation run
+#
+# IMPORTANT: Never hardcode model names, URLs, or port numbers here.
+# Templates are rendered by the calling service with injected context variables.
+
+prompts:
+
+  - id: route_search_synthesis
+    name: Route-Search Context Synthesis
+    description: >
+      Core RAG synthesis prompt used in route_handler.py to generate a concise
+      answer from retrieved context chunks.  Optimised for NixOS/AI-stack domain
+      queries.  The static prefix (AI_PROMPT_CACHE_STATIC_PREFIX) is prepended
+      when prompt caching is enabled.
+    template: |
+      {{ prompt_cache_prefix }}
+
+      User query: {{ query }}
+
+      Context:
+      {{ compressed_context }}
+
+      Provide a concise response using the context.
+    tags: [rag, synthesis, route_search, systems]
+    mean_score: 0.0
+    last_evaluated: null
+
+  - id: gap_detection_score
+    name: Query Gap Detection
+    description: >
+      Determines whether a low-confidence retrieval result (score < threshold)
+      represents a genuine knowledge gap that should be recorded in the
+      query_gaps table and surfaced in the weekly aq-report digest.
+    template: |
+      Query: {{ query }}
+      Retrieval score: {{ score }}
+      Collection: {{ collection }}
+
+      The retrieval confidence is low. Is this query unanswerable from the
+      current knowledge base? Reply YES or NO followed by a one-line reason.
+    tags: [gap_detection, retrieval, monitoring]
+    mean_score: 0.0
+    last_evaluated: null
+
+  - id: memory_recall_contextualise
+    name: Agent Memory Recall Contextualisation
+    description: >
+      Used by memory_manager.py when recalling stored agent memories to
+      contextualise them relative to the current query before returning
+      to the calling MCP tool.
+    template: |
+      Stored memory:
+      {{ memory_text }}
+
+      Current query: {{ query }}
+
+      Summarise the memory in one sentence and explain how it relates to
+      the current query.  If not relevant, say "Not relevant."
+    tags: [memory, recall, context, agent]
+    mean_score: 0.0
+    last_evaluated: null
+
+  - id: aider_task_systems_code
+    name: Aider Systems Code Generation Task
+    description: >
+      High-performance task prompt for aider-wrapper targeting NixOS modules,
+      systemd units, and Python service code.  Enforces project conventions:
+      env-var-driven ports, DynamicUser hardening, lib.mkIf guards, no
+      hardcoded values.  Designed to maximise first-attempt success rate on
+      systems-level changes (Phase 18 measurement target).
+    template: |
+      TASK: {{ task_description }}
+
+      FILES: {{ files_list }}
+
+      CONSTRAINTS:
+      - Never hardcode port numbers or service URLs; read from environment variables
+      - NixOS modules: use lib.mkIf for conditional options, never // operator
+      - Python services: use python3.withPackages, structlog for logging
+      - systemd units: include PrivateTmp, NoNewPrivileges, ProtectSystem=strict
+      - One logical change per invocation; do not touch unrelated code
+
+      CHANGE:
+      {{ numbered_change_list }}
+
+      DO NOT: {{ exclusion_list }}
+
+      OUTPUT: confirm each change with a diff-style summary line
+    tags: [code_generation, aider, systems, nixos, python, measurement_target]
+    mean_score: 0.0
+    last_evaluated: null
+
+  - id: eval_scorecard_analysis
+    name: Eval Scorecard Failure Analysis
+    description: >
+      Given a harness eval scorecard with failed test cases, produces a
+      structured failure analysis with root-cause hypotheses ranked by
+      likelihood.  Used to guide prompt refinement after a failing eval run.
+    template: |
+      Eval run results:
+      Passed: {{ passed }} / {{ total }} ({{ pct_passed }}%)
+      Threshold: {{ threshold }}%
+
+      Failed test cases:
+      {{ failed_cases }}
+
+      For each failure, identify:
+      1. Most likely root cause (retrieval, prompt, model, or data)
+      2. Suggested fix (one actionable sentence)
+      3. Which prompt template (from the registry) to update, if any
+
+      Output as a numbered list matching the failed cases.
+    tags: [eval, debugging, prompt_refinement, analysis]
+    mean_score: 0.0
+    last_evaluated: null
+
+  - id: query_expansion_nixos
+    name: NixOS Domain Query Expansion
+    description: >
+      Expands a user query with NixOS/AI-stack domain synonyms before
+      semantic search.  Used by query_expansion.py when
+      AI_LLM_EXPANSION_ENABLED=true.  Constrained to ≤3 expansions to
+      avoid query drift.
+    template: |
+      Original query: {{ query }}
+
+      Expand this query with up to 3 alternative phrasings or synonyms
+      specific to NixOS, Home Manager, systemd, or this AI stack.
+      Return ONLY the expanded queries, one per line, no explanations.
+      If no useful expansions exist, return the original query unchanged.
+    tags: [query_expansion, retrieval, nixos, domain]
+    mean_score: 0.0
+    last_evaluated: null
