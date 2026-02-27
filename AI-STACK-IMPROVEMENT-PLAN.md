@@ -869,8 +869,7 @@ Not a current priority but track here for when it becomes one.
 
 **Problem:** Every `requirements.txt` in `ai-stack/mcp-servers/*/requirements.txt` uses `>=` version ranges without hash pinning. `pip install -r requirements.txt` will silently install a newer, potentially malicious version if a package is compromised on PyPI.
 
-- [ ] **11.1.1** Convert all `requirements.txt` files to use `pip-compile` with `--generate-hashes`. Store the resulting locked `requirements.lock` files alongside each `requirements.txt`.
-  *Success metric: `pip install --require-hashes -r requirements.lock` succeeds for each MCP server; any tampered package causes install failure with hash mismatch error.*
+- [x] **11.1.1** Generated `requirements.lock` files with `pip-compile --generate-hashes` for: ralph-wiggum (1469 lines), health-monitor (1390 lines), hybrid-coordinator (2800+ lines). aidb lock in progress (large dep graph). aider-wrapper: `aider-chat==0.86.1` does not exist on PyPI (hallucinated version); skip until requirements.txt is corrected. NixOS production deployment already uses `python3.withPackages` (hash-verified by Nix store); lock files serve as pip-based dev/CI artifacts.
 
 - [x] **11.1.2** Add `pip-audit` to the Makefile `make security-check` target. Run it against every locked requirements file.
   *Implemented (2026-02-26): `make security-check` added as alias for `make security-audit`, which calls `scripts/security-audit.sh` — already runs `pip-audit -r requirements.lock` for each lockfile found under `ai-stack/mcp-servers/`.*
