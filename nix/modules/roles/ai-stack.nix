@@ -171,6 +171,15 @@ in
         ) "AI stack: a 32B model requires ~20 GB RAM but mySystem.hardware.systemRamGb = ${toString cfg.hardware.systemRamGb} (< 12).";
     })
 
+    # Phase 16.5.1 — aarch64 NEON build of llama.cpp.
+    # Inject the overlay only on aarch64-linux; on x86_64 it is a no-op.
+    # The overlay patches cmakeFlags to enable NEON and disable Metal/OpenCL.
+    (lib.mkIf (roleEnabled && pkgs.stdenv.hostPlatform.isAarch64) {
+      nixpkgs.overlays = [
+        (import ../../lib/overlays/llama-cpp-aarch64.nix)
+      ];
+    })
+
     # ── llama.cpp — active when llamaCpp.enable regardless of backend ─────────
     # The llama-server provides an OpenAI-compatible HTTP API on :8080.
     # Model path is controlled by mySystem.aiStack.llamaCpp.model; the unit
@@ -524,6 +533,15 @@ in
           };
         in
           tierModels.${cfg.hardwareTier}
+      );
+    })
+
+    # Phase 16.5.2 — skip Open WebUI on nano/micro tiers (too heavy for ≤2 GB RAM).
+    # The llama.cpp HTTP API remains available for direct OpenAI-compatible access.
+    # Users can override with: mySystem.aiStack.ui.enable = true;
+    (lib.mkIf roleEnabled {
+      mySystem.aiStack.ui.enable = lib.mkDefault (
+        cfg.hardwareTier != "nano" && cfg.hardwareTier != "micro"
       );
     })
 
