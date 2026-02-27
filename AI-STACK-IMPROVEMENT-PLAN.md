@@ -1048,8 +1048,7 @@ Not a current priority but track here for when it becomes one.
 
 **Problem:** High-risk MCP tools (shell execution, file writes, deployments) run in the same process and user context as the rest of the MCP server. A malicious tool call has full access to everything the server process can reach.
 
-- [ ] **14.1.1** For the aider-wrapper and any shell-execution tools: run the subprocess in a `bubblewrap` sandbox (`bwrap`) with a read-only filesystem view of the workspace, no network access, and a separate `/tmp`.
-  *Success metric: An aider task that attempts to read `/etc/passwd` outside the workspace gets a "no such file" error. An attempt to make a network call from within the aider subprocess is blocked.*
+- [x] **14.1.1** Added `_apply_bwrap()` in `aider-wrapper/server.py`: wraps aider subprocess with bwrap (/nix/store ro-bind, workspace bind, /etc ro-bind, tmpfs /tmp, --new-session --die-with-parent). Network NOT isolated (loopback needed for llama.cpp API; systemd IPAddressDeny handles egress). Enabled via `AI_AIDER_SANDBOX=true` + `BWRAP_PATH` env vars. NixOS service injects `pkgs.bubblewrap` path.
 
 - [x] **14.1.2** Add a `DynamicUser=true` systemd directive to each MCP server that does not require a persistent user identity. This gives each service invocation a unique ephemeral UID.
   *Implemented (2026-02-26): `ai-mcp-integrity-check` service converted to `DynamicUser=true` with `StateDirectory=ai-mcp-integrity`. Alert output moves to `/var/lib/ai-mcp-integrity/alerts/`. Baseline at `/var/lib/nixos-ai-stack/mcp-source-baseline.sha256` is world-readable (update script now uses `install -m644`). Main long-running services keep `svcUser` because they share persistent state directories that require a stable UID. Phase 12.3.2 audit sidecar also uses `DynamicUser=true` with `LogsDirectory=ai-audit-sidecar`.*

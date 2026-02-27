@@ -756,6 +756,9 @@ in
             "LLAMA_CPP_HOST=127.0.0.1"
             "LLAMA_CPP_PORT=${toString llama.port}"
             "PYTHONPATH=${repoMcp}:${repoMcp}/aider-wrapper"
+            # Phase 14.1.1 — bubblewrap filesystem sandbox for aider subprocess.
+            "AI_AIDER_SANDBOX=true"
+            "BWRAP_PATH=${pkgs.bubblewrap}/bin/bwrap"
           ] ++ lib.optional sec.enable "AIDER_WRAPPER_API_KEY_FILE=${secretPath aiderWrapperApiKeySecret}";
           # Phase 13.1.1 — aider-wrapper only communicates with loopback services
           IPAddressAllow = [ "127.0.0.1/8" "::1/128" ];
