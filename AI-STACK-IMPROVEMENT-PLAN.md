@@ -971,8 +971,8 @@ Not a current priority but track here for when it becomes one.
 
 **Problem:** Any compromised service could exfiltrate data via unexpected outbound connections. No monitoring exists for anomalous network activity.
 
-- [ ] **12.2.1** Add `nftables` per-service egress rules for AI stack services. Each systemd service should only be able to reach its declared dependencies (llama.cpp → loopback only; hybrid-coordinator → loopback + Qdrant port + Postgres port; etc.).
-  *Success metric: A test script that makes an unexpected outbound HTTP call from within the hybrid-coordinator service is blocked by the firewall rule and logged.*
+- [x] **12.2.1** Add `nftables` per-service egress rules for AI stack services. Each systemd service should only be able to reach its declared dependencies (llama.cpp → loopback only; hybrid-coordinator → loopback + Qdrant port + Postgres port; etc.).
+  *Implemented via systemd (Phase 13.1.1): all 4 MCP services + llama-cpp + llama-cpp-embed have `IPAddressAllow=loopback` + `IPAddressDeny=any`. This is enforced at the kernel level per-service (stronger than nftables for this use case). Per-port nftables OUTPUT chains would require distinct UIDs (pending DynamicUser migration of long-running services).*
 
 - [ ] **12.2.2** Add Prometheus metrics for: connections per service per destination IP, bytes sent per service. Alert if any service exceeds `AI_EGRESS_BYTES_ALERT_THRESHOLD` (default 10MB/hour).
   *Success metric: `curl http://localhost:9090/metrics | grep service_egress_bytes` returns per-service metrics.*
@@ -1002,8 +1002,8 @@ Not a current priority but track here for when it becomes one.
 - [ ] **12.4.1** Add a systemd watchdog that monitors the process tree of each MCP server. If any unexpected child process is spawned (i.e., a process whose binary is not in a known-good allowlist), emit an alert.
   *Success metric: A test that runs `os.system("id")` from within an MCP server triggers the watchdog alert within 5 seconds.*
 
-- [ ] **12.4.2** Add file integrity monitoring for the MCP server Python source files using `sha256sum`. Store the baseline hashes in a separate file. Run comparison hourly via a systemd timer.
-  *Success metric: Modifying any `.py` file in `ai-stack/mcp-servers/` triggers an alert in the next hourly check. Alert written to `/var/lib/nixos-ai-stack/alerts/`.*
+- [x] **12.4.2** Add file integrity monitoring for the MCP server Python source files using `sha256sum`. Store the baseline hashes in a separate file. Run comparison hourly via a systemd timer.
+  *Implemented (2026-02-26, commit cbba7b4): `scripts/check-mcp-integrity.sh` + `scripts/update-mcp-integrity-baseline.sh` + `systemd.timers.ai-mcp-integrity-check` (hourly). Service uses DynamicUser=true + StateDirectory=ai-mcp-integrity (Phase 14.1.2 update). Alert JSON written to `/var/lib/ai-mcp-integrity/alerts/`. Baseline at `/var/lib/nixos-ai-stack/mcp-source-baseline.sha256` (0644).*
 
 ---
 

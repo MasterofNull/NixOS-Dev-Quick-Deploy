@@ -37,11 +37,17 @@
     };
 
     hardwareTier = lib.mkOption {
-      type = lib.types.enum [ "low" "medium" "high" ];
+      type = lib.types.enum [ "nano" "micro" "small" "medium" "large" ];
       readOnly = true;
       description = ''
         Derived hardware capability tier used by validation and policy gates.
-        Computed from declared host hardware facts (for example, `systemRamGb`).
+        Computed by nix/lib/hardware-tier.nix from declared host hardware facts.
+        nano   — < 2 GB RAM   (SBC / embedded)
+        micro  — 2-7 GB RAM   (Raspberry Pi / light SBC)
+        small  — 8-15 GB RAM  (laptop / thin client)
+        medium — 16-31 GB RAM (workstation)
+        large  — ≥ 32 GB RAM  (high-end workstation / server)
+        A discrete GPU bumps the tier one level up.
       '';
     };
 
