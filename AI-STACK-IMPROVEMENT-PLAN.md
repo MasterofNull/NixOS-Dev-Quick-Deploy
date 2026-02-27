@@ -1055,8 +1055,8 @@ Not a current priority but track here for when it becomes one.
 - [ ] **14.1.2** Add a `DynamicUser=true` systemd directive to each MCP server that does not require a persistent user identity. This gives each service invocation a unique ephemeral UID.
   *Success metric: `systemctl show embeddings-service | grep DynamicUser` shows `yes`; the service runs as a random UID visible in `ps aux`.*
 
-- [ ] **14.1.3** Add mandatory `risk_ack` phrase requirement to ALL high-risk tool calls (not just the ones in `_tool_risk_tier`). Audit the keyword list — add: `patch`, `overwrite`, `truncate`, `drop`, `migrate`, `format`.
-  *Success metric: Calling any tool whose name contains `overwrite` without `risk_ack=I_ACCEPT_HIGH_RISK_TOOL_EXECUTION` returns 403. Updated keyword list committed.*
+- [x] **14.1.3** Add mandatory `risk_ack` phrase requirement to ALL high-risk tool calls (not just the ones in `_tool_risk_tier`). Audit the keyword list — add: `patch`, `overwrite`, `truncate`, `drop`, `migrate`, `format`.
+  *Implemented: overwrite/truncate/drop/migrate/format added to HIGH_RISK_TOOL_KEYWORDS in aidb/server.py (2026-02-26). Note: `patch` was already present.*
 
 ---
 
@@ -1064,11 +1064,11 @@ Not a current priority but track here for when it becomes one.
 
 **Problem:** No rate limiting exists on MCP tool calls. A runaway agent loop (Ralph) or a prompt-injected instruction could hammer expensive tools (shell execution, model inference, external API calls) at full speed.
 
-- [ ] **14.2.1** Add per-tool rate limits to the AIDB and hybrid-coordinator MCP servers. High-risk tools: max 10/minute. Medium-risk: max 60/minute. Low-risk: max 600/minute.
-  *Success metric: Sending 15 rapid high-risk tool calls returns HTTP 429 after the 10th call; counter resets after 60 seconds.*
+- [x] **14.2.1** Add per-tool rate limits to the AIDB and hybrid-coordinator MCP servers. High-risk tools: max 10/minute. Medium-risk: max 60/minute. Low-risk: max 600/minute.
+  *Implemented: TieredRateLimiter class in aidb/server.py with sliding-window enforcement; configurable via AIDB_RATE_LIMIT_* env vars (2026-02-26).*
 
-- [ ] **14.2.2** Add a global rate limit per API key: max 1000 total tool calls per hour across all tools. This bounds the blast radius of a compromised or looping agent.
-  *Success metric: 1001 sequential tool calls within one hour causes the 1001st to return 429 with a `"global_rate_limit_exceeded"` message.*
+- [x] **14.2.2** Add a global rate limit per API key: max 1000 total tool calls per hour across all tools. This bounds the blast radius of a compromised or looping agent.
+  *Implemented: global_rph=1000 hourly window in TieredRateLimiter (2026-02-26).*
 
 ---
 
@@ -1103,8 +1103,8 @@ Not a current priority but track here for when it becomes one.
 - [x] **15.2.2** Add a source trust level to ingested documents: `trusted` (manually added by user), `imported` (from external URL/file), `generated` (created by AI). RAG queries only return `trusted` and `imported` content by default; `generated` content requires explicit `include_generated=true`.
   *Implemented: `source_trust_level` column in `schema.py` + filter in `list_documents`; default `"imported"` (2026-02-26).*
 
-- [ ] **15.2.3** Add rate limiting on AIDB document ingestion: max 100 documents per minute per API key. Prevents a runaway agent from flooding the knowledge base.
-  *Success metric: A script that ingests 200 documents rapidly is throttled at 100/minute; the 101st call returns 429.*
+- [x] **15.2.3** Add rate limiting on AIDB document ingestion: max 100 documents per minute per API key. Prevents a runaway agent from flooding the knowledge base.
+  *Implemented: check_ingest() in TieredRateLimiter, wired to POST /documents handler in aidb/server.py (2026-02-26).*
 
 ---
 
