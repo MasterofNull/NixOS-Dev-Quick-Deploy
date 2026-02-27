@@ -151,6 +151,12 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
         for env_name in required_env:
             _require_env(env_name)
 
+        # Phase 13.2.1 — outbound allowlist must be explicit in production.
+        # An empty allowlist means "allow any non-private host" which is too
+        # permissive for a production deployment even when IPAddressDeny provides
+        # kernel-level isolation (defence-in-depth).
+        _require_env("AIDB_OUTBOUND_ALLOWLIST")
+
         required_secret_files = [
             "AIDB_POSTGRES_PASSWORD_FILE",
             "AIDB_API_KEY_FILE",
