@@ -1251,3 +1251,63 @@ async def get_aistack_metrics() -> Dict[str, Any]:
         "tokens_compressed_last_hour": tokens_compressed_last_hour,
         "timestamp": datetime.utcnow().isoformat(),
     }
+
+
+@router.get("/security/audit")
+async def get_security_audit() -> Dict[str, Any]:
+    """Security audit results from Phase 11.5 weekly pip-audit + npm audit.
+
+    Returns the latest security audit JSON report if available.
+    The audit runs weekly via systemd timer (ai-security-audit.timer).
+
+    Response fields:
+    - status: "ok" | "findings" | "no_report"
+    - generated_at: ISO timestamp of last audit run
+    - summary: pip and npm vulnerability counts
+    - high_severity_alert: present if CVSS >= threshold found
+    - report_path: path to full JSON report file
+    """
+    # Security audit report directory (Phase 11.5.1)
+    audit_dir = Path(os.getenv(
+        "AI_SECURITY_AUDIT_DIR",
+        Path.home() / ".local" / "share" / "nixos-ai-stack" / "security"
+    ))
+
+    latest_report = audit_dir / "latest-security-audit.json"
+    high_alert = audit_dir / "latest-high-cve-alert.json"
+
+    if not latest_report.exists():
+        return {
+            "status": "no_report",
+            "message": "No security audit report found. Run manually or wait for weekly timer.",
+            "report_path": str(latest_report),
+        }
+
+    try:
+        with open(latest_report) as f:
+            report_data = json.load(f)
+    except (json.JSONDecodeError, IOError) as e:
+        logger.error(f"Failed to read security audit report: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to parse audit report: {str(e)}",
+            "report_path": str(latest_report),
+        }
+
+    # Check for high severity alert
+    high_severity_alert = None
+    if high_alert.exists():
+        try:
+            with open(high_alert) as f:
+                high_severity_alert = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    return {
+        "status": report_data.get("status", "unknown"),
+        "generated_at": report_data.get("generated_at", "unknown"),
+        "summary": report_data.get("summary", {}),
+        "high_severity_alert": high_severity_alert,
+        "report_path": str(latest_report),
+        "timestamp": datetime.utcnow().isoformat(),
+    }
