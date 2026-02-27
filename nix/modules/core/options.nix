@@ -700,6 +700,22 @@
         '';
       };
 
+      modelAllowlist = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [
+          "unsloth/Qwen3-4B-Instruct-2507-GGUF"
+          "nomic-ai/nomic-embed-text-v1.5-GGUF"
+          "TheBloke/Llama-2-7B-Chat-GGUF"
+        ];
+        description = ''
+          Phase 11.3.3 — Model Weight Integrity: Allowlisted HuggingFace repos.
+          When non-empty, only models from these repos can be downloaded and loaded.
+          Empty list = no allowlist enforcement (any repo permitted).
+          Attempting to use an unlisted repo triggers a NixOS assertion failure.
+        '';
+      };
+
       rocmGfxOverride = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
