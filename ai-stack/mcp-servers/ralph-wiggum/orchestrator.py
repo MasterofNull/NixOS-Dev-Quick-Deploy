@@ -62,7 +62,7 @@ class RalphOrchestrator:
                 )
                 aidb_context = {"search_results": search_results}
             except Exception as e:
-                logger.warning("aidb_context_fetch_failed", error=str(e))
+                logger.warning("aidb_context_fetch_failed: %s", e)
 
             # Merge task context with AIDB context
             merged_context = {**(context or {}), **aidb_context, "iteration": iteration}
@@ -78,11 +78,8 @@ class RalphOrchestrator:
             response_text = routing_result.get("response", "")
 
             logger.info(
-                "agent_iteration_completed",
-                backend=backend,
-                route=route,
-                iteration=iteration,
-                response_length=len(response_text),
+                "agent_iteration_completed backend=%s route=%s iteration=%d resp_len=%d",
+                backend, route, iteration, len(response_text),
             )
 
             # Step 3: Telemetry
@@ -100,7 +97,7 @@ class RalphOrchestrator:
                         },
                     )
                 except Exception as e:
-                    logger.debug("telemetry_submit_failed", error=str(e))
+                    logger.debug("telemetry_submit_failed: %s", e)
 
             return {
                 "exit_code": 0,
@@ -111,7 +108,7 @@ class RalphOrchestrator:
             }
 
         except httpx.ConnectError as e:
-            logger.error("agent_connection_error", backend=backend, error=str(e))
+            logger.error("agent_connection_error backend=%s: %s", backend, e)
             return {
                 "exit_code": 1,
                 "output": "",
@@ -119,7 +116,7 @@ class RalphOrchestrator:
                 "error": f"Connection failed: {e}",
             }
         except httpx.TimeoutException as e:
-            logger.error("agent_timeout", backend=backend, error=str(e))
+            logger.error("agent_timeout backend=%s: %s", backend, e)
             return {
                 "exit_code": 1,
                 "output": "",
@@ -127,7 +124,7 @@ class RalphOrchestrator:
                 "error": f"Timeout: {e}",
             }
         except Exception as e:
-            logger.error("agent_execution_error", backend=backend, error=str(e))
+            logger.error("agent_execution_error backend=%s: %s", backend, e)
             return {
                 "exit_code": 1,
                 "output": "",
@@ -143,7 +140,7 @@ class RalphOrchestrator:
         Iterates calling execute_agent until success or max_iterations.
         """
         task_id = str(uuid.uuid4())
-        logger.info("starting_task", task_id=task_id, description=task_description[:50])
+        logger.info("starting_task task_id=%s desc=%s", task_id, task_description[:50])
 
         iteration = 0
         final_output = ""
