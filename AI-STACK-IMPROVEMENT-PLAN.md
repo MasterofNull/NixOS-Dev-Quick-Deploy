@@ -986,8 +986,8 @@ Not a current priority but track here for when it becomes one.
 
 **Problem:** When an MCP tool is called (especially high-risk tools like `shell_exec`, `write_file`, `deploy`), there is no tamper-resistant log of: who called it, with what arguments, at what time, and what the result was.
 
-- [ ] **12.3.1** Add a structured audit log to every MCP tool call in AIDB and hybrid-coordinator. Log fields: `timestamp`, `tool_name`, `caller_identity` (API key hash), `parameters_hash`, `risk_tier`, `outcome`.
-  *Success metric: Every tool call produces a JSON log line to `/var/log/nixos-ai-stack/tool-audit.jsonl`.*
+- [x] **12.3.1** Add a structured audit log to every MCP tool call in AIDB and hybrid-coordinator. Log fields: `timestamp`, `tool_name`, `caller_identity` (API key hash), `parameters_hash`, `risk_tier`, `outcome`.
+  *Implemented: shared/tool_audit.py + wired in aidb/server.py execute_tool() and hybrid-coordinator/mcp_handlers.py dispatch_tool() (2026-02-26).*
 
 - [ ] **12.3.2** Protect the tool audit log from modification by services: write it via a dedicated logging sidecar process (or systemd's journal with `Storage=persistent` and file locking). Services write to a Unix socket; the sidecar writes to the log file.
   *Success metric: An MCP server process cannot directly open or modify the audit log file; `stat /var/log/nixos-ai-stack/tool-audit.jsonl` shows ownership by the sidecar user, not the service user.*

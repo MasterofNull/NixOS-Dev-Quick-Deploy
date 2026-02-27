@@ -841,6 +841,33 @@ in
         };
       };
 
+      # Phase 12.4.2 — Hourly MCP source file integrity check
+      systemd.services.ai-mcp-integrity-check = {
+        description = "AI stack MCP source file integrity check";
+        after = [ "network.target" ];
+        serviceConfig = commonServiceConfig // {
+          Type            = "oneshot";
+          ExecStart       = "${pkgs.bash}/bin/bash ${mcp.repoPath}/scripts/check-mcp-integrity.sh";
+          SuccessExitStatus = [ 0 ];
+          Environment     = [
+            "MCP_SERVER_DIR=${mcp.repoPath}/ai-stack/mcp-servers"
+            "MCP_INTEGRITY_BASELINE=/var/lib/nixos-ai-stack/mcp-source-baseline.sha256"
+            "MCP_INTEGRITY_ALERT_DIR=/var/lib/nixos-ai-stack/alerts"
+          ];
+        };
+      };
+
+      systemd.timers.ai-mcp-integrity-check = {
+        description = "Hourly AI stack MCP source file integrity check timer";
+        wantedBy    = [ "timers.target" ];
+        timerConfig = {
+          OnCalendar         = "hourly";
+          RandomizedDelaySec = "5m";
+          Persistent         = true;
+          Unit               = "ai-mcp-integrity-check.service";
+        };
+      };
+
     })
 
   ];
