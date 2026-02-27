@@ -516,25 +516,25 @@ aq-qa 1
 
 ### 4.1 — `aq-hints` CLI
 
-- [ ] **4.1.1** `aq-hints` returns hints in text format.
+- [x] **4.1.1** `aq-hints` returns hints in text format. <!-- python3 scripts/aq-hints --format=text (script is Python, not shell) -->
   ```bash
   bash scripts/aq-hints --format=text | head -10
   ```
   **Pass:** Non-empty output with at least one line containing a hint.
 
-- [ ] **4.1.2** `aq-hints --format=json` returns valid JSON array.
+- [x] **4.1.2** `aq-hints --format=json` returns valid JSON array. <!-- count=3 -->
   ```bash
   bash scripts/aq-hints --format=json | jq 'length'
   ```
   **Pass:** Integer ≥ 1.
 
-- [ ] **4.1.3** `aq-hints --agent=aider` returns agent-filtered hints.
+- [!] **4.1.3** `aq-hints --agent=aider` returns agent-filtered hints. <!-- FAIL: returns 0 hints for agent=aider; hint engine has no aider-specific hints in registry -->
   ```bash
   bash scripts/aq-hints --agent=aider --format=json | jq '.[0].hint' | head -c 80
   ```
   **Pass:** Non-null string.
 
-- [ ] **4.1.4** `aq-hints --format=shell-complete` outputs completion-compatible lines.
+- [x] **4.1.4** `aq-hints --format=shell-complete` outputs completion-compatible lines.
   ```bash
   bash scripts/aq-hints --format=shell-complete 2>&1 | head -5
   ```
@@ -542,13 +542,13 @@ aq-qa 1
 
 ### 4.2 — Hint Injection via Hybrid Coordinator
 
-- [ ] **4.2.1** `GET /hints?q=nixos` from coordinator returns JSON array.
+- [x] **4.2.1** `GET /hints?q=nixos` from coordinator returns JSON array. <!-- type=list len=5 -->
   ```bash
   curl -sf "http://127.0.0.1:8003/hints?q=nixos" | jq 'type'
   ```
   **Pass:** `"array"`
 
-- [ ] **4.2.2** `POST /hints` with fullInput body returns results.
+- [x] **4.2.2** `POST /hints` with fullInput body returns results. <!-- count=1 -->
   ```bash
   curl -sf -X POST http://127.0.0.1:8003/hints \
     -H 'Content-Type: application/json' \
@@ -559,7 +559,7 @@ aq-qa 1
 
 ### 4.3 — Context Stuffing & Prompt Cache
 
-- [ ] **4.3.1** Large context (>2000 tokens) is processed without error.
+- [x] **4.3.1** Large context (>2000 tokens) is processed without error.
   ```bash
   LARGE=$(python3 -c "print('NixOS context. ' * 300)")
   curl -sf http://127.0.0.1:8080/v1/chat/completions \
@@ -569,7 +569,7 @@ aq-qa 1
   ```
   **Pass:** Non-empty string (even if incorrect — we're testing the context window doesn't crash).
 
-- [ ] **4.3.2** Prompt cache prefix in `registry.yaml` entries is non-empty for cacheable prompts.
+- [x] **4.3.2** Prompt cache prefix in `registry.yaml` entries is non-empty for cacheable prompts. <!-- cacheable=1 -->
   ```bash
   python3 -c "
   import yaml
@@ -582,25 +582,25 @@ aq-qa 1
 
 ### 4.4 — CLAUDE.md / AGENTS.md Injection
 
-- [ ] **4.4.1** `AGENTS.md` exists and is non-empty (agent instruction propagation).
+- [x] **4.4.1** `AGENTS.md` exists and is non-empty (agent instruction propagation). <!-- 994 lines -->
   ```bash
   wc -l AGENTS.md && head -5 AGENTS.md
   ```
   **Pass:** Line count > 10, header references NixOS-Dev-Quick-Deploy.
 
-- [ ] **4.4.2** `.aider.md` exists (aider-specific conventions).
+- [x] **4.4.2** `.aider.md` exists (aider-specific conventions). <!-- 88 lines -->
   ```bash
   wc -l .aider.md
   ```
   **Pass:** Line count > 5.
 
-- [ ] **4.4.3** `.gemini/context.md` exists.
+- [x] **4.4.3** `.gemini/context.md` exists.
   ```bash
   test -f .gemini/context.md && echo PASS || echo FAIL
   ```
   **Pass:** `PASS`
 
-- [ ] **4.4.4** `sync-agent-instructions` regenerates files without error.
+- [x] **4.4.4** `sync-agent-instructions` regenerates files without error.
   ```bash
   bash scripts/sync-agent-instructions 2>&1 | tail -3
   ```
