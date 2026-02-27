@@ -100,9 +100,14 @@ def parse_args() -> argparse.Namespace:
 
 
 def _tool_audit_path() -> Optional[Path]:
-    if TOOL_AUDIT_PATH.exists():
+    def _exists(p: Path) -> bool:
+        try:
+            return p.exists()
+        except PermissionError:
+            return False
+    if _exists(TOOL_AUDIT_PATH):
         return TOOL_AUDIT_PATH
-    if AUDIT_FALLBACK_PATH.exists():
+    if _exists(AUDIT_FALLBACK_PATH):
         return AUDIT_FALLBACK_PATH
     return None
 
