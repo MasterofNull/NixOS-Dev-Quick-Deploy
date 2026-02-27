@@ -2552,14 +2552,22 @@ class MCPServer:
             data = response.json()
             return [item["embedding"] for item in data.get("data", [])]
 
+        # llama.cpp embedding server uses OpenAI-compatible /v1/embeddings.
+        # Legacy HuggingFace-style services use /embed with {"inputs": ...}.
         if service_url.endswith("/embed"):
             target = service_url
+            payload_key = "inputs"
         else:
-            target = f"{service_url}/embed"
-        payload = {"inputs": texts}
+            target = f"{service_url}/v1/embeddings"
+            payload_key = "input"
+        payload = {payload_key: texts}
         response = await self._external_http.post(target, json=payload, headers=headers, timeout=30.0)
         response.raise_for_status()
         data = response.json()
+        # OpenAI-compatible: {"data": [{"embedding": [...]}]}
+        if isinstance(data, dict) and "data" in data:
+            return [item["embedding"] for item in data["data"]]
+        # Legacy HuggingFace style: bare list of embeddings
         if isinstance(data, list):
             return data
         raise ValueError("unexpected_embedding_service_response")
@@ -2593,12 +2601,12 @@ class MCPServer:
             try:
                 return await self._embed_via_service(texts)
             except Exception as exc:  # noqa: BLE001
-                LOGGER.warning("embedding_service_failed", error=str(exc))
+                LOGGER.warning("embedding_service_failed: %s", exc)
                 errors.append(f"service:{exc}")
         try:
             return await self._embed_via_llama_cpp(texts)
         except Exception as exc:  # noqa: BLE001
-            LOGGER.warning("embedding_llama_cpp_fallback_failed", error=str(exc))
+            LOGGER.warning("embedding_llama_cpp_fallback_failed: %s", exc)
             errors.append(f"llama:{exc}")
         raise RuntimeError(f"all_embedding_backends_failed ({'; '.join(errors)})")
 
