@@ -197,6 +197,10 @@ in
           # ROCm environment variables for AMD GPU acceleration.
           # Empty list when resolvedAccel != "rocm" — no overhead.
           Environment      = rocmEnvList;
+          # Phase 13.1.3 — inference server never needs internet access;
+          # model weights are fetched by a separate dedicated download service.
+          IPAddressAllow = [ "127.0.0.1/8" "::1/128" ];
+          IPAddressDeny  = [ "any" ];
           ExecStart = lib.concatStringsSep " " ([
             "${pkgs.llama-cpp}/bin/llama-server"
             "--host" (lib.escapeShellArg llama.host)
@@ -438,6 +442,9 @@ in
           StateDirectory   = "llama-cpp";
           RuntimeDirectory = "llama-cpp-embed";
           LimitMEMLOCK     = "infinity";
+          # Phase 13.1.3 — embedding server needs no internet access.
+          IPAddressAllow   = [ "127.0.0.1/8" "::1/128" ];
+          IPAddressDeny    = [ "any" ];
           Environment      = rocmEnvList;
           ExecStart = lib.concatStringsSep " " ([
             "${pkgs.llama-cpp}/bin/llama-server"
