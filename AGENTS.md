@@ -1,8 +1,224 @@
-# AI Agent Onboarding Guide
+# AI Agent Onboarding Guide — NixOS-Dev-Quick-Deploy
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Purpose:** Universal agent training for professional software development
-**Audience:** AI agents, LLMs, and autonomous coding systems
+**Audience:** AI agents, LLMs, and autonomous coding systems (Claude, Gemini, Codex, Qwen, aider, Continue.dev, Open WebUI, Ollama)
+
+> **Phase 19.4.1** — Project-specific rules prepended from CLAUDE.md. These override
+> any generic conventions below when there is a conflict.
+
+---
+
+<!-- sync-agent-instructions: auto-generated section -->
+<!-- Last synced: 2026-02-27 09:47 UTC from CLAUDE.md -->
+
+## PROJECT-SPECIFIC RULES — NixOS-Dev-Quick-Deploy (READ FIRST)
+
+### Port and URL Policy (Non-Negotiable)
+
+### Port and service URL policy — NON-NEGOTIABLE
+**Never hardcode port numbers or service URLs in any file.**
+This project has a single source of truth for all network settings:
+- **NixOS side:** `nix/modules/core/options.nix` — all ports defined as typed NixOS options here.
+- **Python services:** read URLs exclusively from environment variables injected by the systemd unit (e.g. `LLAMA_CPP_BASE_URL`, `AIDB_URL`, `REDIS_URL`). Fallback default values in `os.getenv("...", "default")` are only acceptable for local development; when `AI_STRICT_ENV=true` all URLs must be present.
+- **Shell scripts:** use env var overrides with sensible fallbacks (e.g. `REDIS_PORT="${REDIS_PORT:-6379}"`).
+- **NixOS modules:** use option references (e.g. `cfg.ports.llamaCpp`) — never literal integers.
+
+When adding a new service:
+1. Add its port option to `options.nix`.
+2. Reference that option from `ai-stack.nix` to inject the env var.
+3. Have the service read the env var. Do NOT hardcode the value.
+
+---
+
+### NixOS Module Rules
+
+### Ownership rule
+Each option must have **exactly one owner module**. If two modules set the
+same option at the same `lib.mkDefault` priority with different values, NixOS
+aborts with "conflicting definition values". Resolve by removing the setting
+from all but one module.
+
+| Priority | Operator | Numeric | Use when |
+|---|---|---|---|
+| Lowest | `lib.mkDefault` | 1000 | "I suggest this, others can override" |
+| Normal | (bare value) | 100 | "This is my module's normal setting" |
+| Highest | `lib.mkForce` | 50 | "Override everything — no exceptions" |
+
+### Never use `//` for conditional options
+Nix `//` is a **shallow merge** — it replaces entire top-level keys. Use
+`lib.mkIf condition value` inline inside the module's `{ }` block instead.
+The NixOS module system deep-merges `lib.mkIf`-wrapped declarations safely.
+
+```nix
+# WRONG — silently drops services.udev.extraRules:
+} // lib.optionalAttrs someFlag { services.someOption = true; }
+
+# RIGHT — deep-merged by the module system:
+services.someOption = lib.mkIf someFlag true;
+```
+
+### Version guards
+Use `lib.versionAtLeast lib.version "X.Y"` to guard options that only exist
+in newer nixpkgs. Do **not** access `options.*` inside a module — it causes
+infinite recursion.
+
+---
+
+### Recurring Errors — Quick Fix Reference
+
+| Error | Root Cause | Fix location |
+|---|---|---|
+| `services.gnome.gcr-ssh-agent does not exist` | nixos-25.11 doesn't have it | `lib.optionalAttrs (lib.versionAtLeast lib.version "26.05")` guard |
+| `conflicting definition values` for `thermald` | Two `lib.mkDefault` owners | Remove from `mobile-workstation.nix`; keep in `configuration.nix` |
+| `Failed to find module 'cpufreq_schedutil'` | Built-in governor, not loadable | Do not add to `boot.kernelModules` |
+| wireplumber SIGABRT / core dump | libcamera UVC `LOG(Fatal)` | `wireplumber.extraConfig."10-disable-libcamera"` |
+| COSMIC portals broken | `xdg-desktop-portal-gnome` requires gnome-shell | Remove from `extraPortals`; use `-cosmic` and `-hyprland` |
+| `services.lact.enable = "auto"` | String for boolean option | Use `true` |
+| `undefined variable 'perf'` | `perf` not in all nixpkgs | `lib.optionals (pkgs ? perf) [ pkgs.perf ]` |
+
+---
+
+### Agent Coordination Model
+
+Claude's role in this project is **Planner → Coordinator → Delegator → Auditor**.
+Claude must NOT consume its own context doing bulk coding work. Token budget is a
+shared finite resource; protect it.
+
+### Role definitions
+
+| Role | Claude does | CLI agent does |
+|------|-------------|----------------|
+| **Planner** | Read plan, identify task scope, break into sub-tasks | — |
+| **Coordinator** | Sequence tasks, manage dependencies, track phase gates | — |
+| **Delegator** | Write precise prompts for Codex/Qwen, pass files via `@` syntax | Executes the code change |
+| **Auditor** | Grep/Read to verify output, run syntax checks, commit | — |
+
+### Hard rules
+
+1. **Codex or Qwen does bulk coding** — any task that modifies >30 lines or
+   creates a new file goes to Codex or Qwen via `Bash` tool. Claude writes the
+   delegation prompt, not the code.
+2. **Gemini is search-only** — free tier, limited quota. Use only for quick web
+   lookups (docs, release notes, error messages). Never send full files to Gemini.
+3. **Claude writes no bulk code directly** — exception: single-line targeted fixes
+   that are faster than writing a delegation prompt.
+4. **Verify all delegated output** — after Codex/Qwen finishes, Claude runs
+   `Grep`/`Read` spot-checks + `python3 -m py_compile` or `bash -n` before commit.
+5. **One delegation prompt per logical sub-task** — do not combine unrelated
+   changes into one Codex/Qwen invocation; that makes auditing impossible.
+
+### Binary locations (all in ~/.npm-global/bin — must be in PATH)
+
+```bash
+export PATH="$HOME/.npm-global/bin:$PATH"
+# versions confirmed: codex 0.104.0, qwen 0.10.5, gemini 0.29.5
+```
+
+Always prepend this export to any Bash invocation that calls these tools.
+
+### Delegation template (Codex/Qwen)
+
+```bash
+codex "
+TASK: <one-sentence description>
+FILES: @path/to/file1.py @path/to/file2.py
+CONSTRAINT: <any hard rules, port policy, etc.>
+CHANGE:
+  1. <specific change 1>
+  2. <specific change 2>
+DO NOT: <list anything that must not be touched>
+OUTPUT: confirm each change with a diff-style summary
+"
+```
+
+### When to use which agent
+
+| Task | Agent |
+|------|-------|
+| Create new module (<200 lines) | `codex` |
+| Multi-file refactor | `qwen` |
+| Inline SQL / config extraction | `codex` |
+| Security / pattern audit | `codex` |
+| Web doc lookup | `gemini -p` |
+| Architecture analysis across dirs | `qwen` |
+| Targeted single-line fix | Claude directly |
+| Test generation | `codex` |
+
+---
+
+<!-- sync-agent-instructions: end -->
+
+## PROJECT-SPECIFIC RULES — NixOS-Dev-Quick-Deploy (READ FIRST)
+
+### Port and URL Policy — NON-NEGOTIABLE
+
+**Never hardcode port numbers or service URLs in any file.**
+
+| Layer | How to reference |
+|-------|-----------------|
+| NixOS options | `nix/modules/core/options.nix` — add a typed option, reference it as `cfg.mcpServers.hybridPort` |
+| Python services | `os.getenv("AIDB_URL")`, `os.getenv("LLAMA_URL")` — read from injected env vars |
+| Shell scripts | `PORT="${REDIS_PORT:-6379}"` — env var with fallback |
+| NixOS modules | `cfg.ports.llamaCpp` — option reference, never literal integers |
+
+When adding a new service: (1) add port option to `options.nix`, (2) reference from `ai-stack.nix`, (3) service reads env var. Never hardcode.
+
+### NixOS Module Rules
+
+- **One owner per option.** Conflicting `lib.mkDefault` values abort the build. Remove from all but one module.
+- **Use `lib.mkIf`, not `//`.** Nix `//` is a shallow merge that silently drops subkeys.
+- **Version guards.** `lib.versionAtLeast lib.version "X.Y"` for options that don't exist in all nixpkgs.
+- **Hardware-tier aware.** Do not hard-code ThinkPad P14s values; use `mySystem.hardware.tier` options.
+
+### Key File Locations
+
+```
+nix/modules/core/options.nix         ALL port options (single source of truth)
+nix/modules/roles/ai-stack.nix       Main AI stack NixOS module
+nix/modules/services/mcp-servers.nix MCP server systemd units
+ai-stack/mcp-servers/
+  hybrid-coordinator/                 Route-search, /hints REST API, memory
+  aidb/                              AIDB vector DB MCP server
+  aider-wrapper/server.py            Async aider integration
+ai-stack/prompts/registry.yaml       Prompt template registry
+scripts/aq-hints                     Workflow hint CLI (all agents)
+scripts/aq-report                    9-section performance digest
+config/service-endpoints.sh          Canonical service URL definitions
+```
+
+### Workflow Hints — Use aq-hints Before Complex Tasks
+
+All agents should query the hints endpoint before starting complex tasks:
+```bash
+# CLI (terminal agents, aider)
+aq-hints "nixos service conflict" --format=json --agent=codex
+
+# REST (any HTTP-capable agent)
+curl "http://127.0.0.1:8003/hints?q=nixos+conflict&agent=remote"
+
+# Continue.dev: type @aq-hints in the chat input
+```
+
+### Agent Coordination Model
+
+| Agent | Role |
+|-------|------|
+| Claude Code | Planner / Coordinator / Delegator / Auditor — NOT bulk coder |
+| Codex / Qwen | Bulk coding (>30 lines or new file) |
+| Gemini CLI | Web lookups only (free tier) |
+| aider-wrapper | Autonomous code modification via API |
+| Local LLMs | Inference via llama.cpp (ROCm) or Ollama |
+
+### Recurring Errors — Quick Fix Reference
+
+| Error | Fix |
+|-------|-----|
+| `conflicting definition values` | Remove duplicate `lib.mkDefault` — keep only one owner |
+| `Failed to find module 'cpufreq_schedutil'` | Remove from `boot.kernelModules` (it's built-in) |
+| wireplumber SIGABRT | Add `10-disable-libcamera` to wireplumber extraConfig |
+| COSMIC portals broken | Remove `xdg-desktop-portal-gnome` from extraPortals |
+| `undefined variable 'perf'` | Guard: `lib.optionals (pkgs ? perf) [ pkgs.perf ]` |
 
 ---
 
