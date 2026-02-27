@@ -169,6 +169,9 @@ let
 
   aiderPython = pkgs.python3.withPackages (ps: sharedPythonPackages ps ++ (with ps; []));
 
+  # Phase 12.3.2 — audit sidecar uses only stdlib (asyncio/json/socket).
+  auditSidecarPython = pkgs.python3;
+
   # ── Common service hardening ──────────────────────────────────────────────
   # Mechanic: burst-limited restarts (max 5 in 5 min) prevent crash-loop floods.
   # Gatekeeper: drop all Linux capabilities; block namespace/personality syscalls.
@@ -585,6 +588,12 @@ in
             "AIDB_REDIS_HOST=127.0.0.1"
             "AIDB_REDIS_PORT=${toString mcp.redis.port}"
             "AIDB_REDIS_DB=0"
+            # Phase 13.2.1 — explicit allowlist required by AI_STRICT_ENV.
+            # googleapis.com is the only external host aidb may call (Google Search tool).
+            # Actual egress is still gated by IPAddressDeny above; this is defence-in-depth.
+            "AIDB_OUTBOUND_ALLOWLIST=googleapis.com"
+            # Phase 12.3.2 — audit sidecar socket path (service writes here, never to file directly)
+            "AUDIT_SOCKET_PATH=/run/ai-audit-sidecar.sock"
             "AIDB_URL=http://127.0.0.1:${toString mcp.aidbPort}"
             "HYBRID_COORDINATOR_URL=http://127.0.0.1:${toString mcp.hybridPort}"
             "RALPH_URL=http://127.0.0.1:${toString mcp.ralphPort}"
@@ -669,6 +678,8 @@ in
             "AI_HARNESS_MIN_ACCEPTANCE_SCORE=${toString ai.aiHarness.eval.minAcceptanceScore}"
             "AI_HARNESS_MAX_LATENCY_MS=${toString ai.aiHarness.eval.maxLatencyMs}"
             "PYTHONPATH=${repoMcp}:${repoMcp}/hybrid-coordinator"
+            # Phase 12.3.2 — audit sidecar socket path
+            "AUDIT_SOCKET_PATH=/run/ai-audit-sidecar.sock"
           ] ++ lib.optional mcp.postgres.enable
             "DATABASE_URL=${pgUrl}"
             ++ lib.optional sec.enable "EMBEDDING_API_KEY_FILE=${secretPath embeddingsApiKeySecret}"
@@ -842,17 +853,82 @@ in
       };
 
       # Phase 12.4.2 — Hourly MCP source file integrity check
+      # ── Phase 12.3.2 — Tool audit log sidecar ────────────────────────────────
+      # The socket is group-writable (svcGroup) so MCP services can send entries.
+      # The sidecar (DynamicUser) owns the log file; service processes cannot
+      # open or modify /var/log/ai-audit-sidecar/ directly.
+      systemd.sockets.ai-audit-sidecar = {
+        description = "AI stack tool audit log Unix socket";
+        wantedBy    = [ "sockets.target" ];
+        socketConfig = {
+          ListenStream = "/run/ai-audit-sidecar.sock";
+          SocketMode    = "0660";
+          SocketGroup   = svcGroup;
+          Accept        = false;
+        };
+      };
+
+      systemd.services.ai-audit-sidecar = {
+        description = "AI stack tool audit log sidecar";
+        requires    = [ "ai-audit-sidecar.socket" ];
+        after       = [ "ai-audit-sidecar.socket" ];
+        serviceConfig = {
+          Type                    = "simple";
+          DynamicUser             = true;
+          LogsDirectory           = "ai-audit-sidecar";
+          ExecStart               = "${auditSidecarPython}/bin/python3 ${repoMcp}/shared/audit_sidecar.py";
+          Restart                 = "on-failure";
+          RestartSec              = "5s";
+          NoNewPrivileges         = true;
+          ProtectSystem           = "strict";
+          ProtectHome             = true;
+          CapabilityBoundingSet   = "";
+          RestrictSUIDSGID        = true;
+          LockPersonality         = true;
+          RestrictNamespaces      = true;
+          RestrictAddressFamilies = [ "AF_UNIX" ];
+          SystemCallFilter        = [ "@system-service" ];
+          SystemCallErrorNumber   = "EPERM";
+          Environment = [
+            "TOOL_AUDIT_LOG_PATH=/var/log/ai-audit-sidecar/tool-audit.jsonl"
+            "AUDIT_SOCKET_PATH=/run/ai-audit-sidecar.sock"
+            "PYTHONPATH=${repoMcp}"
+          ];
+        };
+      };
+
       systemd.services.ai-mcp-integrity-check = {
         description = "AI stack MCP source file integrity check";
-        after = [ "network.target" ];
-        serviceConfig = commonServiceConfig // {
-          Type            = "oneshot";
-          ExecStart       = "${pkgs.bash}/bin/bash ${mcp.repoPath}/scripts/check-mcp-integrity.sh";
-          SuccessExitStatus = [ 0 ];
-          Environment     = [
+        after = [ "local-fs.target" ];
+        serviceConfig = {
+          # Phase 14.1.2 — DynamicUser: ephemeral UID, no shared identity needed.
+          # Alerts are written to the service-owned StateDirectory; the baseline
+          # file lives at its canonical path and must be world-readable (0644),
+          # which update-mcp-integrity-baseline.sh now enforces with install -m644.
+          Type                    = "oneshot";
+          DynamicUser             = true;
+          StateDirectory          = "ai-mcp-integrity";
+          ReadOnlyPaths           = [
+            mcp.repoPath
+            "/var/lib/nixos-ai-stack/mcp-source-baseline.sha256"
+          ];
+          PrivateTmp              = true;
+          NoNewPrivileges         = true;
+          ProtectSystem           = "strict";
+          ProtectHome             = true;
+          CapabilityBoundingSet   = "";
+          RestrictSUIDSGID        = true;
+          LockPersonality         = true;
+          RestrictNamespaces      = true;
+          RestrictAddressFamilies = [ "AF_UNIX" ];
+          SystemCallFilter        = [ "@system-service" ];
+          SystemCallErrorNumber   = "EPERM";
+          ExecStart               = "${pkgs.bash}/bin/bash ${mcp.repoPath}/scripts/check-mcp-integrity.sh";
+          SuccessExitStatus       = [ 0 ];
+          Environment             = [
             "MCP_SERVER_DIR=${mcp.repoPath}/ai-stack/mcp-servers"
             "MCP_INTEGRITY_BASELINE=/var/lib/nixos-ai-stack/mcp-source-baseline.sha256"
-            "MCP_INTEGRITY_ALERT_DIR=/var/lib/nixos-ai-stack/alerts"
+            "MCP_INTEGRITY_ALERT_DIR=/var/lib/ai-mcp-integrity/alerts"
           ];
         };
       };

@@ -20,59 +20,35 @@ Usage in server.py:
         return await mcp_handlers.dispatch_tool(name, arguments)
 """
 
-import hashlib
 import json
 import logging
-import os as _os
 import time as _time
-from datetime import datetime as _dt
-from pathlib import Path as _Path
 from typing import Any, Callable, Dict, List, Optional
 
 from mcp.types import TextContent, Tool
+from shared.tool_audit import write_audit_entry as _write_audit_entry
 
 logger = logging.getLogger("hybrid-coordinator")
-
-# ---------------------------------------------------------------------------
-# Audit logging configuration
-# ---------------------------------------------------------------------------
-_audit_log_path = _Path(_os.getenv('TOOL_AUDIT_LOG_PATH', '/var/log/nixos-ai-stack/tool-audit.jsonl'))
 
 
 def _write_audit(
     tool_name: str,
     outcome: str,
-    error_message: str | None,
+    error_message: "str | None",
     latency_ms: float,
     parameters: Dict[str, Any],
 ) -> None:
-    """Write a structured audit log entry for a tool call."""
-    try:
-        parameters_hash = hashlib.sha256(
-            json.dumps(parameters, sort_keys=True).encode()
-        ).hexdigest()[:16]
-        caller_hash = hashlib.sha256('anonymous'.encode()).hexdigest()[:16]
-        
-        entry = {
-            'timestamp': _dt.utcnow().isoformat() + 'Z',
-            'service': 'hybrid-coordinator',
-            'tool_name': tool_name,
-            'caller_hash': caller_hash,
-            'parameters_hash': parameters_hash,
-            'risk_tier': 'low',
-            'outcome': outcome,
-            'error_message': error_message,
-            'latency_ms': latency_ms,
-        }
-        
-        parent_dir = _audit_log_path.parent
-        if not parent_dir.exists():
-            parent_dir.mkdir(parents=True, mode=0o755, exist_ok=True)
-        
-        with open(_audit_log_path, 'a', encoding='utf-8') as f:
-            f.write(json.dumps(entry) + '\n')
-    except Exception:  # noqa: BLE001 - audit failure must NEVER crash the service
-        logger.warning('audit_write_failed', tool_name=tool_name)
+    """Delegate to shared audit module (Phase 12.3.2: writes via sidecar socket)."""
+    _write_audit_entry(
+        service='hybrid-coordinator',
+        tool_name=tool_name,
+        caller_identity='anonymous',
+        parameters=parameters,
+        risk_tier='low',
+        outcome=outcome,
+        error_message=error_message,
+        latency_ms=latency_ms,
+    )
 
 # ---------------------------------------------------------------------------
 # Injected dependencies (set via init())

@@ -989,8 +989,8 @@ Not a current priority but track here for when it becomes one.
 - [x] **12.3.1** Add a structured audit log to every MCP tool call in AIDB and hybrid-coordinator. Log fields: `timestamp`, `tool_name`, `caller_identity` (API key hash), `parameters_hash`, `risk_tier`, `outcome`.
   *Implemented: shared/tool_audit.py + wired in aidb/server.py execute_tool() and hybrid-coordinator/mcp_handlers.py dispatch_tool() (2026-02-26).*
 
-- [ ] **12.3.2** Protect the tool audit log from modification by services: write it via a dedicated logging sidecar process (or systemd's journal with `Storage=persistent` and file locking). Services write to a Unix socket; the sidecar writes to the log file.
-  *Success metric: An MCP server process cannot directly open or modify the audit log file; `stat /var/log/nixos-ai-stack/tool-audit.jsonl` shows ownership by the sidecar user, not the service user.*
+- [x] **12.3.2** Protect the tool audit log from modification by services: write it via a dedicated logging sidecar process (or systemd's journal with `Storage=persistent` and file locking). Services write to a Unix socket; the sidecar writes to the log file.
+  *Implemented (2026-02-26): `shared/audit_sidecar.py` asyncio server with systemd socket activation. `systemd.sockets.ai-audit-sidecar` creates `/run/ai-audit-sidecar.sock` mode 0660 group=svcGroup. Sidecar runs DynamicUser=true, LogsDirectory=ai-audit-sidecar → log at `/var/log/ai-audit-sidecar/tool-audit.jsonl`. `shared/tool_audit.py` writes via socket first, falls back to direct file write (dev mode). `mcp_handlers.py` now delegates to `shared.tool_audit.write_audit_entry` (deduplication). AIDB and hybrid-coordinator get `AUDIT_SOCKET_PATH=/run/ai-audit-sidecar.sock` in environment.*
 
 - [ ] **12.3.3** Add audit log forwarding to the remote syslog configuration (`mySystem.logging.remoteSyslog`) when enabled.
   *Success metric: With remote syslog configured, tool audit events appear in the syslog collector.*
@@ -1030,8 +1030,8 @@ Not a current priority but track here for when it becomes one.
 
 ### 13.2 — Outbound Allowlist for MCP Servers
 
-- [ ] **13.2.1** Implement `AIDB_OUTBOUND_ALLOWLIST` (already exists as env var option in `aidb/server.py`) as a mandatory non-empty config when running in production mode. Default to loopback-only; explicitly add external services as needed.
-  *Success metric: Starting AIDB with empty allowlist and `AI_STRICT_ENV=true` fails startup with a clear config error.*
+- [x] **13.2.1** Implement `AIDB_OUTBOUND_ALLOWLIST` (already exists as env var option in `aidb/server.py`) as a mandatory non-empty config when running in production mode. Default to loopback-only; explicitly add external services as needed.
+  *Implemented (2026-02-26): settings_loader.py `strict_env` block calls `_require_env("AIDB_OUTBOUND_ALLOWLIST")` — raises ValueError if empty. mcp-servers.nix injects `AIDB_OUTBOUND_ALLOWLIST=googleapis.com` (only declared external service). Defence-in-depth: systemd `IPAddressDeny=any` already gates actual egress.*
 
 - [x] **13.2.2** Add the SSRF protection checks (`_looks_private_or_local`) that exist in `aidb/server.py` to the hybrid-coordinator's outbound HTTP client as well. Currently only AIDB has this protection.
   *Success metric: A test that instructs hybrid-coordinator to fetch `http://169.254.169.254/` (AWS metadata endpoint) is blocked with a `ssrf_blocked` log entry.*
@@ -1052,8 +1052,8 @@ Not a current priority but track here for when it becomes one.
 - [ ] **14.1.1** For the aider-wrapper and any shell-execution tools: run the subprocess in a `bubblewrap` sandbox (`bwrap`) with a read-only filesystem view of the workspace, no network access, and a separate `/tmp`.
   *Success metric: An aider task that attempts to read `/etc/passwd` outside the workspace gets a "no such file" error. An attempt to make a network call from within the aider subprocess is blocked.*
 
-- [ ] **14.1.2** Add a `DynamicUser=true` systemd directive to each MCP server that does not require a persistent user identity. This gives each service invocation a unique ephemeral UID.
-  *Success metric: `systemctl show embeddings-service | grep DynamicUser` shows `yes`; the service runs as a random UID visible in `ps aux`.*
+- [x] **14.1.2** Add a `DynamicUser=true` systemd directive to each MCP server that does not require a persistent user identity. This gives each service invocation a unique ephemeral UID.
+  *Implemented (2026-02-26): `ai-mcp-integrity-check` service converted to `DynamicUser=true` with `StateDirectory=ai-mcp-integrity`. Alert output moves to `/var/lib/ai-mcp-integrity/alerts/`. Baseline at `/var/lib/nixos-ai-stack/mcp-source-baseline.sha256` is world-readable (update script now uses `install -m644`). Main long-running services keep `svcUser` because they share persistent state directories that require a stable UID. Phase 12.3.2 audit sidecar also uses `DynamicUser=true` with `LogsDirectory=ai-audit-sidecar`.*
 
 - [x] **14.1.3** Add mandatory `risk_ack` phrase requirement to ALL high-risk tool calls (not just the ones in `_tool_risk_tier`). Audit the keyword list — add: `patch`, `overwrite`, `truncate`, `drop`, `migrate`, `format`.
   *Implemented: overwrite/truncate/drop/migrate/format added to HIGH_RISK_TOOL_KEYWORDS in aidb/server.py (2026-02-26). Note: `patch` was already present.*
