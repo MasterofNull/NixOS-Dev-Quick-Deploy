@@ -933,6 +933,43 @@ in
 
     })
 
+    # ── Phase 12.4.1 — MCP process tree watchdog timer ───────────────────────
+    # Scans each MCP service's cgroup for unexpected executables (non-Nix-store
+    # binaries).  Alerts written to /var/log/ai-mcp-process-watch/alerts/ as
+    # JSONL and also forwarded to the system journal via logger(1).
+    (lib.mkIf active {
+      systemd.services.ai-mcp-process-watch = {
+        description = "AI stack MCP process tree watchdog";
+        after = [ "local-fs.target" ];
+        serviceConfig = (mkHardenedService { tier = cfg.hardwareTier; memoryMax = "32M"; tasksMax = 16; }) // {
+          Type                    = "oneshot";
+          DynamicUser             = true;
+          LogsDirectory           = "ai-mcp-process-watch";
+          # Needs to read /proc and /sys/fs/cgroup; cannot use ProtectSystem=strict with these.
+          ProtectSystem           = "full";
+          ReadOnlyPaths           = [ "/proc" "/sys/fs/cgroup" ];
+          ExecStart               = "${pkgs.bash}/bin/bash ${mcp.repoPath}/scripts/check-mcp-processes.sh";
+          SuccessExitStatus       = [ 0 ];
+          Environment             = [
+            "MCP_SERVICES=ai-aidb.service ai-hybrid-coordinator.service ai-ralph-wiggum.service ai-embeddings.service ai-audit-sidecar.service"
+            "ALERT_DIR=/var/log/ai-mcp-process-watch/alerts"
+            "ALLOWLIST_FILE=/etc/ai-mcp-process-allowlist"
+          ];
+        };
+      };
+
+      systemd.timers.ai-mcp-process-watch = {
+        description = "Periodic MCP process tree watchdog";
+        wantedBy    = [ "timers.target" ];
+        timerConfig = {
+          OnCalendar         = "*:0/15";   # every 15 minutes
+          RandomizedDelaySec = "60s";
+          Persistent         = true;
+          Unit               = "ai-mcp-process-watch.service";
+        };
+      };
+    })
+
     # ── Phase 12.3.3 — Forward audit log to remote syslog when configured ────
     (lib.mkIf (active && cfg.logging.remoteSyslog.enable) {
       # rsyslogd imfile module tails the audit JSONL and feeds entries into the

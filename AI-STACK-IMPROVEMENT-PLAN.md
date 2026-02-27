@@ -999,8 +999,7 @@ Not a current priority but track here for when it becomes one.
 
 ### 12.4 — Process Anomaly Detection
 
-- [ ] **12.4.1** Add a systemd watchdog that monitors the process tree of each MCP server. If any unexpected child process is spawned (i.e., a process whose binary is not in a known-good allowlist), emit an alert.
-  *Success metric: A test that runs `os.system("id")` from within an MCP server triggers the watchdog alert within 5 seconds.*
+- [x] **12.4.1** Created `scripts/check-mcp-processes.sh` — scans each MCP service's cgroup for non-Nix-store executables. Alerts written to `/var/log/ai-mcp-process-watch/alerts/*.jsonl` + system journal. Wired as `systemd.timers.ai-mcp-process-watch` (every 15 min, DynamicUser, MemoryMax=32M). Also added `TasksMax=256` to `mkHardenedService` to bound child-process spawning per service. Note: alert latency is up to 15 min (polling), not 5 s.
 
 - [x] **12.4.2** Add file integrity monitoring for the MCP server Python source files using `sha256sum`. Store the baseline hashes in a separate file. Run comparison hourly via a systemd timer.
   *Implemented (2026-02-26, commit cbba7b4): `scripts/check-mcp-integrity.sh` + `scripts/update-mcp-integrity-baseline.sh` + `systemd.timers.ai-mcp-integrity-check` (hourly). Service uses DynamicUser=true + StateDirectory=ai-mcp-integrity (Phase 14.1.2 update). Alert JSON written to `/var/lib/ai-mcp-integrity/alerts/`. Baseline at `/var/lib/nixos-ai-stack/mcp-source-baseline.sha256` (0644).*

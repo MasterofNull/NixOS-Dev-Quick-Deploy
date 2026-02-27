@@ -35,6 +35,10 @@
 {
   tier      ? "medium",
   memoryMax ? null,
+  # tasksMax: maximum number of kernel tasks (threads + processes) for this unit.
+  # Prevents runaway child-process spawning.  Phase 12.4.1.
+  # null = use systemd default (4915 per DefaultTasksMax).
+  tasksMax  ? 256,
   extra     ? {},
 }:
 let
@@ -70,6 +74,12 @@ in
 
   # --- Memory ceiling (tier-appropriate) ------------------------------------
   MemoryMax             = resolvedMemory;
+
+  # --- Task count ceiling (Phase 12.4.1) ------------------------------------
+  # Limits the total number of kernel tasks (threads + child processes) to
+  # prevent runaway subprocess spawning.  256 is generous for Python asyncio
+  # services (they use ~10-30 threads normally).
+  TasksMax              = tasksMax;
 
   # --- Restart policy -------------------------------------------------------
   Restart               = "on-failure";
