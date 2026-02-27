@@ -695,6 +695,25 @@
           description = "Required SHA256 (hex) for downloaded embedding GGUF model when huggingFaceRepo is set.";
         };
 
+        pooling = lib.mkOption {
+          type = lib.types.enum [ "none" "mean" "cls" "last" "rank" ];
+          default = "mean";
+          description = ''
+            Pooling strategy passed to llama-server --pooling.
+            Use "mean" for encoder-style models (nomic-embed-text, bge-*).
+            Use "last" for decoder-style models (Qwen3-Embedding, LLM2Vec).
+          '';
+        };
+
+        ctxSize = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 512;
+          description = ''
+            Context window (tokens) for the embedding server.
+            Increase to 4096–8192 for models that handle long code/document chunks.
+          '';
+        };
+
         extraArgs = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ ];
