@@ -497,10 +497,14 @@ in
         "vm.overcommit_memory"          = lib.mkDefault 1;
         "vm.overcommit_ratio"           = lib.mkDefault 100;
       };
-      # Phase 5.1.4 — unlock full AMD GPU power management features.
+      # Phase 5.1.4 / 16.3.2 — unlock full AMD GPU power management features.
       # Required for LACT manual frequency control and ROCm compute workloads.
       # ppfeaturemask=0xffffffff enables all amdgpu power management feature bits.
-      boot.kernelParams = lib.mkAfter [ "amdgpu.ppfeaturemask=0xffffffff" ];
+      # Guard: only inject when an AMD GPU is actually present (resolvedAccel == "rocm").
+      # On Intel/NVIDIA/CPU-only hosts the parameter is silently ignored, but we
+      # avoid polluting the kernel command line unnecessarily.
+      boot.kernelParams = lib.mkIf (resolvedAccel == "rocm")
+        (lib.mkAfter [ "amdgpu.ppfeaturemask=0xffffffff" ]);
     })
 
     # ── Qdrant vector database — shared across backends ───────────────────────

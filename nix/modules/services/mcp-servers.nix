@@ -31,6 +31,12 @@ let
 
   active = cfg.roles.aiStack.enable && mcp.enable && ai.backend == "llamacpp";
 
+  # Phase 16.4.1/16.4.2 — tier-aware hardening base.
+  mkHardenedService = import ../../lib/hardened-service.nix { inherit lib; };
+  # Each MCP service gets a MemoryMax ceiling sized to the detected hardware tier
+  # (nano→256M, micro→512M, small→1G, medium→2G, large→4G).
+  hardenedBase = mkHardenedService { tier = cfg.hardwareTier; };
+
   repoMcp  = "${mcp.repoPath}/ai-stack/mcp-servers";
   dataDir  = mcp.dataDir;
   migrationsIni = "${mcp.repoPath}/ai-stack/migrations/alembic.ini";
@@ -173,27 +179,23 @@ let
   auditSidecarPython = pkgs.python3;
 
   # ── Common service hardening ──────────────────────────────────────────────
-  # Mechanic: burst-limited restarts (max 5 in 5 min) prevent crash-loop floods.
-  # Gatekeeper: drop all Linux capabilities; block namespace/personality syscalls.
-  # ProtectHome fix: ReadOnlyPaths overrides ProtectHome to allow reading repo
-  #   scripts (needed when mcpServers.repoPath is under /home/).
-  commonServiceConfig = {
+  # Built on top of mkHardenedService (Phase 16.4.1/16.4.2) which provides the
+  # tier-aware MemoryMax ceiling and core systemd hardening directives.
+  # Overrides:
+  #   ProtectHome = "read-only"   — repo scripts may live under /home/
+  #   Restart / RestartSec        — burst-limited restart policy for MCP services
+  #   ReadWritePaths/ReadOnlyPaths — service-specific paths
+  commonServiceConfig = hardenedBase // {
     User                     = svcUser;
     Group                    = svcGroup;
     Restart                  = "on-failure";
     RestartSec               = "10s";
-    NoNewPrivileges          = true;
-    ProtectSystem            = "strict";
+    # ProtectHome override: repo scripts may be under /home/; "read-only" allows
+    # reading them while still blocking writes to /home.
     ProtectHome              = "read-only";
     ReadWritePaths           = [ dataDir "/tmp" ];
     ReadOnlyPaths            = [ mcp.repoPath ];
-    PrivateTmp               = true;
     WorkingDirectory         = dataDir;
-    # Gatekeeper: minimal privilege surface
-    CapabilityBoundingSet    = "";
-    RestrictSUIDSGID         = true;
-    LockPersonality          = true;
-    RestrictNamespaces       = true;
     # Phase 13.1.1 — restrict to necessary address families only
     RestrictAddressFamilies  = [ "AF_UNIX" "AF_INET" "AF_INET6" ];
     # Phase 13.1.2 — allow only the syscalls needed for normal service operation
@@ -872,20 +874,13 @@ in
         description = "AI stack tool audit log sidecar";
         requires    = [ "ai-audit-sidecar.socket" ];
         after       = [ "ai-audit-sidecar.socket" ];
-        serviceConfig = {
+        serviceConfig = (mkHardenedService { tier = cfg.hardwareTier; memoryMax = "128M"; }) // {
           Type                    = "simple";
           DynamicUser             = true;
           LogsDirectory           = "ai-audit-sidecar";
           ExecStart               = "${auditSidecarPython}/bin/python3 ${repoMcp}/shared/audit_sidecar.py";
           Restart                 = "on-failure";
           RestartSec              = "5s";
-          NoNewPrivileges         = true;
-          ProtectSystem           = "strict";
-          ProtectHome             = true;
-          CapabilityBoundingSet   = "";
-          RestrictSUIDSGID        = true;
-          LockPersonality         = true;
-          RestrictNamespaces      = true;
           RestrictAddressFamilies = [ "AF_UNIX" ];
           SystemCallFilter        = [ "@system-service" ];
           SystemCallErrorNumber   = "EPERM";
@@ -900,7 +895,7 @@ in
       systemd.services.ai-mcp-integrity-check = {
         description = "AI stack MCP source file integrity check";
         after = [ "local-fs.target" ];
-        serviceConfig = {
+        serviceConfig = (mkHardenedService { tier = cfg.hardwareTier; memoryMax = "64M"; }) // {
           # Phase 14.1.2 — DynamicUser: ephemeral UID, no shared identity needed.
           # Alerts are written to the service-owned StateDirectory; the baseline
           # file lives at its canonical path and must be world-readable (0644),
@@ -912,14 +907,6 @@ in
             mcp.repoPath
             "/var/lib/nixos-ai-stack/mcp-source-baseline.sha256"
           ];
-          PrivateTmp              = true;
-          NoNewPrivileges         = true;
-          ProtectSystem           = "strict";
-          ProtectHome             = true;
-          CapabilityBoundingSet   = "";
-          RestrictSUIDSGID        = true;
-          LockPersonality         = true;
-          RestrictNamespaces      = true;
           RestrictAddressFamilies = [ "AF_UNIX" ];
           SystemCallFilter        = [ "@system-service" ];
           SystemCallErrorNumber   = "EPERM";
