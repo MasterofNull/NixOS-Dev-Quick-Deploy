@@ -1023,8 +1023,8 @@ Not a current priority but track here for when it becomes one.
   *Success metric: `systemctl cat hybrid-coordinator | grep SystemCallFilter` shows the filter; strace shows blocked syscalls.*
   *Done (2026-02-26, Qwen): `SystemCallFilter = [ "@system-service" ]` and `SystemCallErrorNumber = "EPERM"` added to `commonServiceConfig` in `nix/modules/services/mcp-servers.nix` — applies to all MCP servers using the common config template.*
 
-- [ ] **13.1.3** For the model downloader service (first-boot HuggingFace download), create a dedicated short-lived service that runs with internet access, downloads the model, verifies the hash, then terminates. The llama-cpp service itself never has internet access.
-  *Success metric: `systemctl show llama-cpp | grep IPAddressAllow` shows loopback only; `systemctl show model-downloader` shows HuggingFace CDN IPs allowed.*
+- [x] **13.1.3** For the model downloader service (first-boot HuggingFace download), create a dedicated short-lived service that runs with internet access, downloads the model, verifies the hash, then terminates. The llama-cpp service itself never has internet access.
+  *Implemented (2026-02-26): Added `IPAddressAllow = loopback` + `IPAddressDeny = any` to both `llama-cpp.service` and `llama-cpp-embed.service` in ai-stack.nix. The existing `llama-cpp-model-fetch` (oneshot, runs as root, reaches HuggingFace) retains unrestricted access. SHA256 verification and Phase 11.3 model safety check already in place in the downloader.*
 
 ---
 
