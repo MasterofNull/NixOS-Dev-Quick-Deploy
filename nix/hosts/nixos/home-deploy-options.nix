@@ -5,5 +5,8 @@
   # Only enable git and optionally set the credential helper here.
   programs.git = {
     enable = lib.mkDefault true;
+    settings = {
+      credential.helper = lib.mkDefault "manager-core";
+    };
   };
 }

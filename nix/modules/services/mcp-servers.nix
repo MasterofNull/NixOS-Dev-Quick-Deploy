@@ -902,12 +902,12 @@ in
         description = "AI stack MCP source file integrity check";
         after = [ "local-fs.target" ];
         serviceConfig = (mkHardenedService { tier = cfg.hardwareTier; memoryMax = "64M"; }) // {
-          # Phase 14.1.2 — DynamicUser: ephemeral UID, no shared identity needed.
-          # Alerts are written to the service-owned StateDirectory; the baseline
-          # file lives at its canonical path and must be world-readable (0644),
-          # which update-mcp-integrity-baseline.sh now enforces with install -m644.
+          # Phase 14.1.2 — Runs as primaryUser (not DynamicUser) because the repo
+          # lives under /home/<user> (mode 0700) which ephemeral UIDs cannot traverse.
           Type                    = "oneshot";
-          DynamicUser             = true;
+          User                    = svcUser;
+          Group                   = svcGroup;
+          ProtectHome             = "read-only";
           StateDirectory          = "ai-mcp-integrity";
           ReadOnlyPaths           = [
             mcp.repoPath
@@ -949,7 +949,9 @@ in
         after = [ "local-fs.target" ];
         serviceConfig = (mkHardenedService { tier = cfg.hardwareTier; memoryMax = "32M"; tasksMax = 16; }) // {
           Type                    = "oneshot";
-          DynamicUser             = true;
+          User                    = svcUser;
+          Group                   = svcGroup;
+          ProtectHome             = "read-only";
           LogsDirectory           = "ai-mcp-process-watch";
           # Needs to read /proc and /sys/fs/cgroup; cannot use ProtectSystem=strict with these.
           ProtectSystem           = "full";
@@ -957,7 +959,7 @@ in
           ExecStart               = "${pkgs.bash}/bin/bash ${mcp.repoPath}/scripts/check-mcp-processes.sh";
           SuccessExitStatus       = [ 0 ];
           Environment             = [
-            "MCP_SERVICES=ai-aidb.service ai-hybrid-coordinator.service ai-ralph-wiggum.service ai-embeddings.service ai-audit-sidecar.service"
+            "MCP_SERVICES=\"ai-aidb.service ai-hybrid-coordinator.service ai-ralph-wiggum.service ai-embeddings.service ai-audit-sidecar.service\""
             "ALERT_DIR=/var/log/ai-mcp-process-watch/alerts"
             "ALLOWLIST_FILE=/etc/ai-mcp-process-allowlist"
           ];
@@ -988,8 +990,9 @@ in
     #   - Allow loopback TCP only; deny raw/packet sockets
     (lib.mkIf active {
       security.apparmor.policies."ai-mcp-base" = {
-        enable = true;
+        state = "enforce";
         profile = ''
+          #include <tunables/global>
           # Phase 12.1.2 — Abstract base profile for AI stack Python MCP servers.
           # Per-service profiles inherit this via the "profile" keyword.
           # Python binaries in /nix/store/<hash>-python3-<ver>-env/bin/python3
