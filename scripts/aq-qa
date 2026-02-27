@@ -135,8 +135,8 @@ run_phase_0() {
   # 0.2 Port binding
   local -A port_names=([6379]="redis" [5432]="postgres" [6333]="qdrant"
                        [8080]="llama-cpp" [8081]="llama-embed" [8002]="aidb"
-                       [8003]="hybrid-coordinator" [8085]="ralph-wiggum"
-                       [3001]="open-webui" [9090]="prometheus")
+                       [8003]="hybrid-coordinator" [8004]="ralph-wiggum"
+                       [8085]="switchboard" [3001]="open-webui" [9090]="prometheus")
   for port in "${!port_names[@]}"; do
     _port "0.2.1:${port_names[$port]}" "port ${port} (${port_names[$port]}) bound" "$port"
   done
