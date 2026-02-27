@@ -1192,14 +1192,12 @@ These are identified issues not assigned to a phase yet. Do not start these unti
 
 **Problem:** Kernel modules and sysctl values differ between x86_64, aarch64, and riscv64. The current config assumes x86_64 throughout with no architecture guards.
 
-- [ ] **16.3.1** Wrap all x86_64-specific kernel module entries in `boot.kernelModules` with `lib.optionals (pkgs.stdenv.hostPlatform.isx86_64) [...]`.
-  *Success metric: `nixos-rebuild dry-run` on an aarch64 target no longer attempts to load `kvm-amd`, `msr`, or `cpuid` modules.*
+- [x] **16.3.1** Wrap all x86_64-specific kernel module entries in `boot.kernelModules` with `lib.optionals (pkgs.stdenv.hostPlatform.isx86_64) [...]`.
+  Audit confirmed: all entries already guarded via hardware vendor modules (intel-arc.nix, amd.nix, intel.nix); virtualization.nix uses cpuVendor check; tcp_bbr is arch-neutral.
 
-- [ ] **16.3.2** Wrap all AMD-specific settings (`k10temp`, ROCm env vars, `amdgpu`) with `lib.mkIf (config.hardware.cpu.amd.updateMicrocode or false)` or equivalent CPU-vendor detection.
-  *Success metric: Building for an Intel host does not include AMD-only options.*
+- [x] **16.3.2** Wrap AMD-specific `amdgpu.ppfeaturemask=0xffffffff` with `lib.mkIf (resolvedAccel == "rocm")` in ai-stack.nix. ROCm env vars already guarded via `rocmEnv`/`rocmEnvList`. k10temp is auto-detected by kernel (no explicit module entry).
 
-- [ ] **16.3.3** Wrap all `thermald`-related config with `lib.mkIf (config.hardware.cpu.intel.updateMicrocode or false)` (already partially done — audit and complete).
-  *Success metric: `grep -rn "thermald" nix/` shows no unconditional enables.*
+- [x] **16.3.3** Wrap all `thermald`-related config with CPU vendor detection (already complete). `cpu/amd.nix`: `lib.mkForce false` gated on `isAmd`; `cpu/intel.nix`: `lib.mkDefault true` gated on `isIntel`.
 
 ---
 
@@ -1207,14 +1205,11 @@ These are identified issues not assigned to a phase yet. Do not start these unti
 
 **Problem:** Python MCP server services have no memory caps, no user isolation, and full filesystem access. On an 8 GB SBC, a runaway embedding service can take down the entire system.
 
-- [ ] **16.4.1** Add a `lib.mkHardenedService` helper in `nix/lib/hardened-service.nix` that applies: `DynamicUser=true`, `PrivateTmp=true`, `ProtectSystem=strict`, `NoNewPrivileges=true`, `MemoryMax=<tier-appropriate value>`.
-  *Success metric: Helper is used by at least 3 existing MCP server unit definitions without breaking `nixos-rebuild`.*
+- [x] **16.4.1** Created `nix/lib/hardened-service.nix` — tier-aware helper returning serviceConfig base with MemoryMax, NoNewPrivileges, ProtectSystem=strict, PrivateTmp, PrivateDevices, ProtectKernelTunables/Modules, ProtectControlGroups, CapabilityBoundingSet="", RestrictSUIDSGID, LockPersonality, RestrictNamespaces.
 
-- [ ] **16.4.2** Set per-tier `MemoryMax` values: `nano`→256M, `micro`→512M, `small`→1G, `medium`→2G, `large`→4G per service.
-  *Success metric: `systemctl show ai-hybrid-coordinator.service | grep MemoryMax` returns the tier-appropriate value on a running system.*
+- [x] **16.4.2** Per-tier MemoryMax (nano→256M, micro→512M, small→1G, medium→2G, large→4G) wired into `commonServiceConfig` (4 main services) + audit sidecar (128M override) + integrity check (64M override). All use `mkHardenedService { tier = cfg.hardwareTier; }`.
 
-- [ ] **16.4.3** Replace bare `python3` invocations in MCP server unit `ExecStart` lines with `${python3.withPackages (ps: with ps; [...])}/bin/python3` so each service carries exactly its closure.
-  *Success metric: `nix path-info -r <store-path-of-hybrid-coordinator-service>` does not include `sentence-transformers` unless that service actually uses it.*
+- [x] **16.4.3** Already complete: all MCP service ExecStart lines use `${aidbPython}/bin/python3`, `${hybridPython}/bin/python3`, etc. — all are `pkgs.python3.withPackages` closures. `auditSidecarPython = pkgs.python3` (stdlib-only, intentional).
 
 ---
 
