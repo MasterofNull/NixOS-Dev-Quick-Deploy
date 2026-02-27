@@ -102,6 +102,12 @@ class Settings(BaseModel):
     )
     rate_limit_enabled: bool = False
     rate_limit_rpm: int = 60
+    tiered_rate_limit_enabled: bool = True
+    rate_limit_high_rpm: int = 10
+    rate_limit_medium_rpm: int = 60
+    rate_limit_low_rpm: int = 600
+    rate_limit_global_rph: int = 1000
+    rate_limit_ingest_rpm: int = 100
     api_key: Optional[str] = None
     catalog_path: Path
     google_api_key: Optional[str] = None
@@ -360,6 +366,12 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
         telemetry_path=telemetry_path,
         rate_limit_enabled=security_cfg.get("rate_limit", {}).get("enabled", False),
         rate_limit_rpm=security_cfg.get("rate_limit", {}).get("requests_per_minute", 60),
+        tiered_rate_limit_enabled=os.getenv('AIDB_TIERED_RATE_LIMIT_ENABLED', 'true').lower() == 'true',
+        rate_limit_high_rpm=int(os.getenv('AIDB_RATE_LIMIT_HIGH_RPM', '10')),
+        rate_limit_medium_rpm=int(os.getenv('AIDB_RATE_LIMIT_MEDIUM_RPM', '60')),
+        rate_limit_low_rpm=int(os.getenv('AIDB_RATE_LIMIT_LOW_RPM', '600')),
+        rate_limit_global_rph=int(os.getenv('AIDB_RATE_LIMIT_GLOBAL_RPH', '1000')),
+        rate_limit_ingest_rpm=int(os.getenv('AIDB_RATE_LIMIT_INGEST_RPM', '100')),
         api_key=api_key,
         catalog_path=catalog_path,
         embedding_model=rag_cfg.get("embedding_model", "sentence-transformers/all-MiniLM-L6-v2"),
