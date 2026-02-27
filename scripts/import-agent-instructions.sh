@@ -75,5 +75,21 @@ _post "ai-stack/prompts/registry.yaml" "Prompt Registry"                    "${R
 # --- Agent memory (repo copy is authoritative for AIDB; live copy synced by sync-agent-instructions) ---
 _post "ai-stack/agent-memory/MEMORY.md" "Agent Memory (MEMORY.md)"          "${REPO_ROOT}/ai-stack/agent-memory/MEMORY.md"
 
+# --- QA plan (tracks all phases, tasks, and success criteria) ---
+_post "AI-STACK-QA-PLAN.md"            "QA Plan (AI-STACK-QA-PLAN.md)"      "${REPO_ROOT}/AI-STACK-QA-PLAN.md"
+
+# --- Custom tooling scripts (indexed for RAG retrieval during QA/dev sessions) ---
+PROJECT="dev-tools"
+_post "scripts/aq-qa"                   "QA Phase Runner (aq-qa)"             "${REPO_ROOT}/scripts/aq-qa"            "text/x-shellscript"
+_post "scripts/aq-hints"                "Workflow Hints CLI (aq-hints)"        "${REPO_ROOT}/scripts/aq-hints"         "text/x-shellscript"
+_post "scripts/aq-report"              "AI Stack Report (aq-report)"          "${REPO_ROOT}/scripts/aq-report"        "text/x-shellscript"
+_post "scripts/aq-prompt-eval"         "Prompt Eval CLI (aq-prompt-eval)"     "${REPO_ROOT}/scripts/aq-prompt-eval"   "text/x-shellscript"
+_post "scripts/aq-gaps"                "Gap Detection CLI (aq-gaps)"          "${REPO_ROOT}/scripts/aq-gaps"          "text/x-shellscript"
+_post "scripts/check-mcp-health.sh"   "MCP Health Checker"                   "${REPO_ROOT}/scripts/check-mcp-health.sh"  "text/x-shellscript"
+_post "scripts/ai-stack-health.sh"    "AI Stack Health (ai-stack-health.sh)" "${REPO_ROOT}/scripts/ai-stack-health.sh"   "text/x-shellscript"
+_post "scripts/check-mcp-integrity.sh" "MCP Integrity Checker"               "${REPO_ROOT}/scripts/check-mcp-integrity.sh" "text/x-shellscript"
+_post "scripts/sync-agent-instructions" "Agent Instruction Sync"             "${REPO_ROOT}/scripts/sync-agent-instructions" "text/x-python"
+_post "config/service-endpoints.sh"   "Service Endpoints Config"             "${REPO_ROOT}/config/service-endpoints.sh"  "text/x-shellscript"
+
 printf '\nimport-agent-instructions: %d imported, %d failed\n' "${PASS}" "${FAIL}"
 [ "$FAIL" -eq 0 ] || exit 1
