@@ -150,6 +150,11 @@ HIGH_RISK_TOOL_KEYWORDS = (
     "delete",
     "write",
     "patch",
+    "overwrite",
+    "truncate",
+    "drop",
+    "migrate",
+    "format",
     "deploy",
     "install",
 )
@@ -925,6 +930,66 @@ class RateLimiter:
         window.append(now)
 
 
+class TieredRateLimiter:
+    def __init__(
+        self,
+        enabled: bool,
+        high_rpm: int = 10,
+        medium_rpm: int = 60,
+        low_rpm: int = 600,
+        global_rph: int = 1000,
+        ingest_rpm: int = 100,
+    ):
+        self.enabled = enabled
+        self._high_rpm = high_rpm
+        self._medium_rpm = medium_rpm
+        self._low_rpm = low_rpm
+        self._global_rph = global_rph
+        self._ingest_rpm = ingest_rpm
+        self._tier_windows: Dict[tuple, Deque[float]] = defaultdict(deque)
+        self._hour_windows: Dict[str, Deque[float]] = defaultdict(deque)
+        self._ingest_windows: Dict[str, Deque[float]] = defaultdict(deque)
+
+    def check_tool(self, client_id: str, tool_name: str) -> None:
+        if not self.enabled:
+            return
+        tier = _tool_risk_tier(tool_name)
+        tier_limits = {
+            'high': self._high_rpm,
+            'medium': self._medium_rpm,
+            'low': self._low_rpm,
+            'unknown': self._low_rpm,
+        }
+        tier_limit = tier_limits.get(tier, self._low_rpm)
+        now = time.time()
+
+        tier_key = (client_id, tier)
+        tier_window = self._tier_windows[tier_key]
+        while tier_window and now - tier_window[0] > 60:
+            tier_window.popleft()
+        if len(tier_window) >= tier_limit:
+            raise PermissionError(f"tier={tier} rate limit exceeded ({tier_limit}/min)")
+        tier_window.append(now)
+
+        hour_window = self._hour_windows[client_id]
+        while hour_window and now - hour_window[0] > 3600:
+            hour_window.popleft()
+        if len(hour_window) >= self._global_rph:
+            raise PermissionError(f"global hourly rate limit exceeded ({self._global_rph}/hour)")
+        hour_window.append(now)
+
+    def check_ingest(self, client_id: str) -> None:
+        if not self.enabled:
+            return
+        now = time.time()
+        ingest_window = self._ingest_windows[client_id]
+        while ingest_window and now - ingest_window[0] > 60:
+            ingest_window.popleft()
+        if len(ingest_window) >= self._ingest_rpm:
+            raise PermissionError(f"ingestion rate limit exceeded ({self._ingest_rpm}/min)")
+        ingest_window.append(now)
+
+
 class SandboxResult(BaseModel):
     stdout: str
     stderr: str
@@ -1536,6 +1601,11 @@ class MonitoringServer:
         @self.app.post("/documents")
         async def import_document(doc: Dict[str, Any], request: Request) -> Dict[str, Any]:
             self._require_api_key(request)
+            _ingest_client = request.headers.get('x-api-key') or request.client.host
+            try:
+                self._tiered_rate_limiter.check_ingest(_ingest_client)
+            except PermissionError as exc:
+                raise HTTPException(status_code=429, detail=_error_detail('ingest_rate_limited', exc))
             self.mcp_server.check_rate_limit(request)
             try:
                 self.mcp_server.validate_document(doc)
@@ -1953,6 +2023,14 @@ class MCPServer:
         self._rate_limiter = RateLimiter(
             enabled=self.settings.rate_limit_enabled,
             rpm=self.settings.rate_limit_rpm,
+        )
+        self._tiered_rate_limiter = TieredRateLimiter(
+            enabled=self.settings.tiered_rate_limit_enabled,
+            high_rpm=self.settings.rate_limit_high_rpm,
+            medium_rpm=self.settings.rate_limit_medium_rpm,
+            low_rpm=self.settings.rate_limit_low_rpm,
+            global_rph=self.settings.rate_limit_global_rph,
+            ingest_rpm=self.settings.rate_limit_ingest_rpm,
         )
         data_root = Path(
             os.getenv("AIDB_DATA_DIR")
@@ -2867,10 +2945,11 @@ class MCPServer:
             raise ValueError("resource not found")
         return updated
 
-    def check_rate_limit(self, request: Request) -> None:
+    def check_rate_limit(self, request: Request, tool_name: str = '') -> None:
         client_id = request.headers.get("x-api-key") or request.client.host
         try:
             self._rate_limiter.check(client_id)
+            self._tiered_rate_limiter.check_tool(client_id, tool_name)
         except PermissionError as exc:
             raise HTTPException(
                 status_code=429,
