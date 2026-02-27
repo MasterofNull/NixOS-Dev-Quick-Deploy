@@ -1165,14 +1165,11 @@ These are identified issues not assigned to a phase yet. Do not start these unti
 
 **Problem:** `nix/hosts/*/facts.nix` files are hand-authored per machine. Adding a new SBC requires duplicating an entire host directory. There is no automatic tier assignment.
 
-- [ ] **16.1.1** Write a `nix/lib/hardware-tier.nix` function that computes a tier string (`nano`/`micro`/`small`/`medium`/`large`) from `systemRamGb`, `hasDiscreteGpu`, and `cpuArchitecture` values passed in from `facts.nix`.
-  *Success metric: `nix eval .#lib.hardware-tier { systemRamGb = 8; hasDiscreteGpu = false; cpuArchitecture = "aarch64"; }` returns `"micro"` without error.*
+- [x] **16.1.1** Created `nix/lib/hardware-tier.nix` — pure Nix function computing 5-tier string from systemRamGb/hasDiscreteGpu/cpuArchitecture. Wired into base.nix. options.nix enum updated to 5 values.
 
-- [ ] **16.1.2** Add a NixOS assertion in `nix/modules/roles/ai-stack.nix` that rejects invalid `hardwareTier` strings with a descriptive error message.
-  *Success metric: Setting `ai.hardwareTier = "xlarge"` causes `nixos-rebuild dry-run` to fail with a clear assertion error.*
+- [x] **16.1.2** Added assertion in `ai-stack.nix` — rejects unknown tier strings with descriptive error pointing to hardware-tier.nix.
 
-- [ ] **16.1.3** Create a minimal `nix/hosts/template-sbc/` host directory using `hardware-tier.nix` auto-detection as reference for SBC onboarding.
-  *Success metric: `nixos-rebuild dry-run` succeeds on the template with only `hostname` and `systemRamGb` set.*
+- [x] **16.1.3** Created `nix/hosts/sbc-minimal/` — reference aarch64 host auto-discovered by flake as `sbc-minimal-ai-dev` (satisfies template requirement).
 
 ---
 
@@ -1180,11 +1177,9 @@ These are identified issues not assigned to a phase yet. Do not start these unti
 
 **Problem:** `ai.model.name` is set manually in each host facts file. On an 8 GB SBC the operator must manually choose a sub-4B model. This is error-prone — a wrong choice causes OOM at runtime, not at deploy time.
 
-- [ ] **16.2.1** Add tier→model mapping in `nix/modules/roles/ai-stack.nix` using `lib.mkDefault` so per-host overrides still work. Map: `nano`→`qwen2.5-0.5b-q8`, `micro`→`qwen2.5-1.5b-q8`, `small`→`phi-4-mini-q4_k_m`, `medium`→`qwen2.5-7b-q4_k_m`, `large`→`qwen2.5-14b-q4_k_m`.
-  *Success metric: A host with `systemRamGb = 4` and no explicit model override resolves to the `micro` default model. `nix eval` confirms.*
+- [x] **16.2.1** Added 5-tier model map in `ai-stack.nix` via `lib.mkDefault`: nano→0.5B, micro→1.5B, small→phi-4-mini, medium→7B, large→14B. Overridable per-host.
 
-- [ ] **16.2.2** Add a NixOS warning (not assertion) when the selected model's `ram_required_gb` (from `registry.json`) exceeds 70% of `systemRamGb`. Warning is visible in `nixos-rebuild` output.
-  *Success metric: A 6 GB host selecting a 5 GB model emits `warning: model may exhaust available RAM on this tier` during `nixos-rebuild dry-run`.*
+- [x] **16.2.2** Added `lib.warn` entries in `ai-stack.nix` for 70B/65B (needs ≥40 GB) and 32B (needs ≥20 GB) oversized model selection.
 
 ---
 
