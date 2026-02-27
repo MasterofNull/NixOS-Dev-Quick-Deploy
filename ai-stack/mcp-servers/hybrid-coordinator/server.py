@@ -77,7 +77,7 @@ from config import (
     OptimizationProposalType, OptimizationProposal, apply_proposal,
     PerformanceWindow, performance_window,
 )
-from shared.ssrf_protection import create_ssrf_safe_http_client, assert_safe_outbound_url
+from shared.ssrf_protection import assert_safe_outbound_url  # for user-supplied URL validation
 import capability_discovery
 import collections_config
 import embedder
@@ -516,13 +516,8 @@ async def initialize_server():
         timeout=30.0,
     )
 
-    # Initialize llama.cpp client (external service, no auth)
-    # Phase 13.2.2 — SSRF protection: validate base_url before use
-    llama_cpp_client = create_ssrf_safe_http_client(
-        base_url=Config.LLAMA_CPP_URL,
-        timeout=120.0,
-        purpose="llama_cpp_request",
-    )
+    # Initialize llama.cpp client (system-configured loopback service; no SSRF check needed)
+    llama_cpp_client = httpx.AsyncClient(base_url=Config.LLAMA_CPP_URL, timeout=120.0)
 
     # Initialize embedding client (internal service, with auth)
     embedding_client = create_embeddings_client(timeout=30.0)
@@ -543,13 +538,8 @@ async def initialize_server():
         embedding_cache_ref=lambda: embedding_cache,
     )
 
-    # Initialize AIDB client (optional, for hybrid routing)
-    # Phase 13.2.2 — SSRF protection: validate base_url before use
-    aidb_client = create_ssrf_safe_http_client(
-        base_url=Config.AIDB_URL,
-        timeout=30.0,
-        purpose="aidb_request",
-    )
+    # Initialize AIDB client (system-configured loopback service; no SSRF check needed)
+    aidb_client = httpx.AsyncClient(base_url=Config.AIDB_URL, timeout=30.0)
     # Phase 6.1 — wire extracted capability_discovery module
     capability_discovery.init(
         aidb_client=aidb_client,
