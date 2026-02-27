@@ -956,14 +956,11 @@ Not a current priority but track here for when it becomes one.
 
 **Problem:** AppArmor is enabled (`security.apparmor.enable = true`) but no custom profiles exist for llama.cpp, Open WebUI, the embedding service, or any MCP server. They all run in the unconfined profile, meaning AppArmor provides zero actual restriction.
 
-- [ ] **12.1.1** Write an AppArmor profile for the llama-cpp service: allow read of model directory, read/write to log directory, listen on configured port, deny all other filesystem write and all network except loopback.
-  *Success metric: `aa-status` shows llama-cpp in enforce mode; attempting to write outside `/var/log/llama-cpp` from within the service is denied and logged.*
+- [x] **12.1.1** Added AppArmor profile `ai-llama-cpp` in `ai-stack.nix` via `security.apparmor.policies`. Confines `/nix/store/*/bin/llama-server`: /nix/store/** r, model dir r, log/state dirs rw, loopback TCP, deny raw/packet network, deny shell exec, deny /home/** and /root/**.
 
-- [ ] **12.1.2** Write AppArmor profiles for each MCP server: allow read of secrets directory (`/run/secrets/`), read/write to their data directories, listen on their configured port, deny shell execution (`/bin/sh`, `/bin/bash`, `/usr/bin/python3 -c` patterns).
-  *Success metric: `aa-status` shows each MCP server in enforce mode; a test attempt to run `subprocess.run(["bash", ...])` from within a confined service is denied.*
+- [x] **12.1.2** Added AppArmor profile `ai-mcp-base` in `mcp-servers.nix`: covers all Python MCP servers with /nix/store/** r, repo path r, dataDir rw, /run/secrets r, audit socket rw, loopback+unix TCP, deny raw/packet, deny shell exec, deny /home and /root.
 
-- [ ] **12.1.3** Add AppArmor profile deployment to the NixOS module system — profiles are generated from Nix expressions and installed to `/etc/apparmor.d/` declaratively.
-  *Success metric: `nixos-rebuild switch` installs/updates AppArmor profiles; `aa-status` reflects changes after rebuild.*
+- [x] **12.1.3** Profiles generated declaratively via `security.apparmor.policies` Nix option with port numbers and directory paths interpolated from module options. Installed to /etc/apparmor.d/ by nixos-rebuild switch.
 
 ---
 

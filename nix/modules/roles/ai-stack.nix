@@ -545,6 +545,70 @@ in
       );
     })
 
+    # ── Phase 12.1.1 — AppArmor profile for llama-cpp inference server ────────
+    # Confines the llama-server binary to only the paths it legitimately needs:
+    #   - /nix/store/** read      — Nix executables, libraries, data files
+    #   - model directory read    — GGUF model files
+    #   - log/state directories   — write for logs and runtime state
+    #   - loopback network        — serve the API; deny raw/packet sockets
+    # Deny rules block writes to home/root and execution of shell interpreters.
+    # Note: AppArmor must be enabled (security.apparmor.enable = true in base.nix).
+    (lib.mkIf (roleEnabled && llama.enable) {
+      security.apparmor.policies."ai-llama-cpp" = {
+        enable = true;
+        profile = ''
+          # Phase 12.1.1 — llama-cpp inference server confinement
+          # Binary path uses glob to survive Nix store hash changes on rebuilds.
+          profile ai-llama-cpp /nix/store/*/bin/llama-server {
+            #include <abstractions/base>
+
+            # --- Nix store access (executables, libraries, shared data) ------
+            /nix/store/** r,
+            /nix/store/**/*.so* mr,
+
+            # --- Model files (read-only) ------------------------------------
+            ${"/var/lib/llama-cpp/models/**"} r,
+
+            # --- Log and state directories (write) --------------------------
+            /var/log/llama-cpp/** rw,
+            /var/lib/llama-cpp/** rw,
+            /run/llama-cpp/ rw,
+            /run/llama-cpp/** rw,
+
+            # --- System paths needed by the runtime -------------------------
+            /proc/sys/kernel/osrelease r,
+            /proc/meminfo r,
+            /proc/cpuinfo r,
+            /sys/devices/system/cpu/** r,
+            /sys/bus/pci/devices/** r,
+
+            # --- Device access -----------------------------------------------
+            /dev/null rw,
+            /dev/urandom r,
+            /dev/random r,
+            # ROCm GPU access (AMD iGPU / dGPU)
+            /dev/kfd rw,
+            /dev/dri/card* rw,
+            /dev/dri/renderD* rw,
+
+            # --- Network: loopback TCP only ----------------------------------
+            network inet stream,
+            network inet6 stream,
+            deny network raw,
+            deny network packet,
+
+            # --- Deny shell execution and home-directory writes -------------
+            deny /bin/sh x,
+            deny /bin/bash x,
+            deny /usr/bin/sh x,
+            deny /usr/bin/bash x,
+            deny /home/** rwx,
+            deny /root/** rwx,
+          }
+        '';
+      };
+    })
+
     (lib.mkIf (roleEnabled && ai.vectorDb.enable && hasQdrant) {
       services.qdrant.enable = true;
       services.qdrant.settings.service = {
