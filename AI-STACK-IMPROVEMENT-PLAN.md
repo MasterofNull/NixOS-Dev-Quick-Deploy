@@ -1033,8 +1033,9 @@ Not a current priority but track here for when it becomes one.
 - [ ] **13.2.1** Implement `AIDB_OUTBOUND_ALLOWLIST` (already exists as env var option in `aidb/server.py`) as a mandatory non-empty config when running in production mode. Default to loopback-only; explicitly add external services as needed.
   *Success metric: Starting AIDB with empty allowlist and `AI_STRICT_ENV=true` fails startup with a clear config error.*
 
-- [ ] **13.2.2** Add the SSRF protection checks (`_looks_private_or_local`) that exist in `aidb/server.py` to the hybrid-coordinator's outbound HTTP client as well. Currently only AIDB has this protection.
+- [x] **13.2.2** Add the SSRF protection checks (`_looks_private_or_local`) that exist in `aidb/server.py` to the hybrid-coordinator's outbound HTTP client as well. Currently only AIDB has this protection.
   *Success metric: A test that instructs hybrid-coordinator to fetch `http://169.254.169.254/` (AWS metadata endpoint) is blocked with a `ssrf_blocked` log entry.*
+  *Done (2026-02-26, Qwen): Created `ai-stack/mcp-servers/shared/ssrf_protection.py` with `_ssrf_policy_config()`, `_looks_private_or_local()`, and `assert_safe_outbound_url()` functions. Updated `hybrid-coordinator/server.py` to use `create_ssrf_safe_http_client()` for llama_cpp_client and aidb_client initialization. Blocks requests to private/local IP ranges including AWS metadata endpoint.*
 
 ---
 
