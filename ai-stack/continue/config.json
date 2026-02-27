@@ -1,0 +1,35 @@
+{
+  "$schema": "https://raw.githubusercontent.com/continuedev/continue/main/extensions/vscode/config_schema.json",
+  "contextProviders": [
+    {
+      "name": "http",
+      "params": {
+        "url": "http://127.0.0.1:${HYBRID_COORDINATOR_PORT:-8003}/hints",
+        "title": "aq-hints",
+        "description": "Ranked AI workflow hints from registry.yaml, query gaps, and CLAUDE.md rules",
+        "displayTitle": "AI Stack Hints"
+      }
+    }
+  ],
+  "models": [
+    {
+      "title": "Local llama.cpp",
+      "provider": "openai",
+      "apiBase": "http://127.0.0.1:${LLAMA_CPP_PORT:-8080}/v1",
+      "apiKey": "dummy",
+      "model": "AUTODETECT"
+    },
+    {
+      "title": "Ollama (local)",
+      "provider": "ollama",
+      "model": "AUTODETECT"
+    }
+  ],
+  "tabAutocompleteModel": {
+    "title": "Local Autocomplete",
+    "provider": "openai",
+    "apiBase": "http://127.0.0.1:${LLAMA_CPP_PORT:-8080}/v1",
+    "apiKey": "dummy",
+    "model": "AUTODETECT"
+  }
+}

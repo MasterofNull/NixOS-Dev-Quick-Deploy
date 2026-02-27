@@ -759,6 +759,9 @@ in
             # Phase 14.1.1 — bubblewrap filesystem sandbox for aider subprocess.
             "AI_AIDER_SANDBOX=true"
             "BWRAP_PATH=${pkgs.bubblewrap}/bin/bwrap"
+            # Phase 19.3.3 — prepend top aq-hint to aider --message for steered task execution.
+            "AI_HINTS_ENABLED=true"
+            "HINTS_URL=http://127.0.0.1:${toString mcp.hybridPort}/hints"
           ] ++ lib.optional sec.enable "AIDER_WRAPPER_API_KEY_FILE=${secretPath aiderWrapperApiKeySecret}";
           # Phase 13.1.1 — aider-wrapper only communicates with loopback services
           IPAddressAllow = [ "127.0.0.1/8" "::1/128" ];

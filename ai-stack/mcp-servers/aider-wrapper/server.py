@@ -11,6 +11,8 @@ import json
 import socket
 import time
 import logging
+import urllib.request
+import urllib.parse
 from pathlib import Path
 from typing import List, Optional, Dict
 from datetime import datetime
@@ -83,12 +85,45 @@ AIDER_MAX_CONCURRENCY = int(os.getenv("AIDER_MAX_CONCURRENCY", "1"))
 AI_AIDER_SANDBOX = os.getenv("AI_AIDER_SANDBOX", "false").lower() == "true"
 BWRAP_PATH = os.getenv("BWRAP_PATH", "bwrap")
 
+# Phase 19.3.3 — aq-hints injection: prepend top ranked hint to aider --message.
+# Fetches from HINTS_URL (hybrid-coordinator /hints), enriching the task with
+# context from registry.yaml, query gaps, and CLAUDE.md workflow rules.
+AI_HINTS_ENABLED = os.getenv("AI_HINTS_ENABLED", "false").lower() == "true"
+HINTS_URL = os.getenv(
+    "HINTS_URL",
+    f"http://127.0.0.1:{os.getenv('HYBRID_COORDINATOR_PORT', '8003')}/hints",
+)
+
+# Phase 19.3.4 — hint adoption tracking: written alongside tool-audit.jsonl.
+_audit_dir = Path(os.getenv(
+    "TOOL_AUDIT_LOG_PATH", "/var/log/nixos-ai-stack/tool-audit.jsonl"
+)).parent
+HINT_AUDIT_LOG_PATH = Path(os.getenv("HINT_AUDIT_LOG_PATH", str(_audit_dir / "hint-audit.jsonl")))
+
 # ============================================================================
 # In-memory task store
 # ============================================================================
 
 _tasks: Dict[str, dict] = {}
 _task_semaphore: Optional[asyncio.Semaphore] = None
+
+
+def _write_hint_audit(task_id: str, hint_id: str, hint_snippet: str, accepted: bool) -> None:
+    """Phase 19.3.4 — append a hint adoption record to hint-audit.jsonl."""
+    try:
+        entry = json.dumps({
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "service": "aider-wrapper",
+            "task_id": task_id,
+            "hint_id": hint_id,
+            "hint_snippet": hint_snippet[:80],
+            "hint_accepted": accepted,
+        })
+        HINT_AUDIT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with HINT_AUDIT_LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(entry + "\n")
+    except Exception as exc:
+        logger.debug("hint_audit_write_failed", error=str(exc))
 
 
 def _apply_bwrap(cmd: List[str], workspace: str) -> List[str]:
@@ -261,6 +296,34 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
                     prompt_length=len(task.prompt), files=task.files,
                     iteration=task.iteration, workspace=task.workspace)
 
+        # Phase 19.3.3 — fetch top aq-hint and prepend to prompt for steered execution.
+        hint_id = ""
+        hint_snippet = ""
+        hint_injected = False
+        message_for_aider = task.prompt
+        if AI_HINTS_ENABLED:
+            try:
+                params = urllib.parse.urlencode({"q": task.prompt[:100], "max": "1"})
+                req = urllib.request.Request(
+                    f"{HINTS_URL}?{params}",
+                    headers={"Accept": "application/json"},
+                )
+                loop = asyncio.get_event_loop()
+                def _fetch_hint():
+                    with urllib.request.urlopen(req, timeout=2) as r:
+                        return json.loads(r.read())
+                hints_data = await loop.run_in_executor(None, _fetch_hint)
+                top_hints = hints_data.get("hints", [])
+                if top_hints:
+                    top = top_hints[0]
+                    hint_id = top.get("id", "")
+                    hint_snippet = top.get("snippet", "")[:150]
+                    message_for_aider = f"CONTEXT (aq-hints): {hint_snippet}\n\n{task.prompt}"
+                    hint_injected = True
+                    logger.info("hint_injected", task_id=task_id, hint_id=hint_id)
+            except Exception as exc:
+                logger.debug("hint_fetch_skipped", task_id=task_id, error=str(exc))
+
         cmd = [
             "aider",
             "--yes",
@@ -275,7 +338,7 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
                 cmd.extend(["--file", str(file_path)])
             else:
                 logger.warning("file_not_found", file=file)
-        cmd.extend(["--message", task.prompt])
+        cmd.extend(["--message", message_for_aider])
 
         # Phase 14.1.1 — optionally wrap in bubblewrap filesystem sandbox.
         if AI_AIDER_SANDBOX:
@@ -382,6 +445,10 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
 
         logger.info("aider_task_complete", task_id=task_id, exit_code=returncode,
                     files_modified=len(files_modified), duration=duration, completed=completed)
+
+        # Phase 19.3.4 — record hint adoption outcome.
+        if hint_injected:
+            _write_hint_audit(task_id, hint_id, hint_snippet, accepted=completed)
 
         _tasks[task_id].update({
             "status": final_status,
