@@ -20,13 +20,59 @@ Usage in server.py:
         return await mcp_handlers.dispatch_tool(name, arguments)
 """
 
+import hashlib
 import json
 import logging
+import os as _os
+import time as _time
+from datetime import datetime as _dt
+from pathlib import Path as _Path
 from typing import Any, Callable, Dict, List, Optional
 
 from mcp.types import TextContent, Tool
 
 logger = logging.getLogger("hybrid-coordinator")
+
+# ---------------------------------------------------------------------------
+# Audit logging configuration
+# ---------------------------------------------------------------------------
+_audit_log_path = _Path(_os.getenv('TOOL_AUDIT_LOG_PATH', '/var/log/nixos-ai-stack/tool-audit.jsonl'))
+
+
+def _write_audit(
+    tool_name: str,
+    outcome: str,
+    error_message: str | None,
+    latency_ms: float,
+    parameters: Dict[str, Any],
+) -> None:
+    """Write a structured audit log entry for a tool call."""
+    try:
+        parameters_hash = hashlib.sha256(
+            json.dumps(parameters, sort_keys=True).encode()
+        ).hexdigest()[:16]
+        caller_hash = hashlib.sha256('anonymous'.encode()).hexdigest()[:16]
+        
+        entry = {
+            'timestamp': _dt.utcnow().isoformat() + 'Z',
+            'service': 'hybrid-coordinator',
+            'tool_name': tool_name,
+            'caller_hash': caller_hash,
+            'parameters_hash': parameters_hash,
+            'risk_tier': 'low',
+            'outcome': outcome,
+            'error_message': error_message,
+            'latency_ms': latency_ms,
+        }
+        
+        parent_dir = _audit_log_path.parent
+        if not parent_dir.exists():
+            parent_dir.mkdir(parents=True, mode=0o755, exist_ok=True)
+        
+        with open(_audit_log_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(entry) + '\n')
+    except Exception:  # noqa: BLE001 - audit failure must NEVER crash the service
+        logger.warning('audit_write_failed', tool_name=tool_name)
 
 # ---------------------------------------------------------------------------
 # Injected dependencies (set via init())
@@ -286,116 +332,132 @@ TOOL_DEFINITIONS: List[Tool] = [
 
 async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
     """Dispatch an MCP tool call by name."""
+    _start = _time.time()
+    try:
+        if name == "augment_query":
+            query = arguments.get("query", "")
+            agent_type = arguments.get("agent_type", "remote")
+            result = await _augment_query(query, agent_type)
+            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-    if name == "augment_query":
-        query = arguments.get("query", "")
-        agent_type = arguments.get("agent_type", "remote")
-        result = await _augment_query(query, agent_type)
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        elif name == "track_interaction":
+            interaction_id = await _track_interaction(
+                query=arguments.get("query", ""),
+                response=arguments.get("response", ""),
+                agent_type=arguments.get("agent_type", "unknown"),
+                model_used=arguments.get("model_used", "unknown"),
+                context_ids=arguments.get("context_ids", []),
+                tokens_used=arguments.get("tokens_used", 0),
+                latency_ms=arguments.get("latency_ms", 0),
+            )
+            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps({"interaction_id": interaction_id}))]
 
-    elif name == "track_interaction":
-        interaction_id = await _track_interaction(
-            query=arguments.get("query", ""),
-            response=arguments.get("response", ""),
-            agent_type=arguments.get("agent_type", "unknown"),
-            model_used=arguments.get("model_used", "unknown"),
-            context_ids=arguments.get("context_ids", []),
-            tokens_used=arguments.get("tokens_used", 0),
-            latency_ms=arguments.get("latency_ms", 0),
-        )
-        return [TextContent(type="text", text=json.dumps({"interaction_id": interaction_id}))]
+        elif name == "update_outcome":
+            await _update_outcome(
+                interaction_id=arguments.get("interaction_id", ""),
+                outcome=arguments.get("outcome", "unknown"),
+                user_feedback=arguments.get("user_feedback", 0),
+            )
+            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps({"status": "updated"}))]
 
-    elif name == "update_outcome":
-        await _update_outcome(
-            interaction_id=arguments.get("interaction_id", ""),
-            outcome=arguments.get("outcome", "unknown"),
-            user_feedback=arguments.get("user_feedback", 0),
-        )
-        return [TextContent(type="text", text=json.dumps({"status": "updated"}))]
+        elif name == "generate_training_data":
+            dataset_path = await _generate_dataset()
+            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps({"dataset_path": dataset_path}))]
 
-    elif name == "generate_training_data":
-        dataset_path = await _generate_dataset()
-        return [TextContent(type="text", text=json.dumps({"dataset_path": dataset_path}))]
+        elif name == "search_context":
+            query = arguments.get("query", "")
+            collection = arguments.get("collection", "codebase-context")
+            limit = arguments.get("limit", 5)
+            query_embedding = await _embed_fn(query)
+            results = _qdrant.query_points(
+                collection_name=collection,
+                query=query_embedding,
+                limit=limit,
+                score_threshold=0.7,
+            ).points
+            formatted = [{"id": str(r.id), "score": r.score, "payload": r.payload} for r in results]
+            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(formatted, indent=2))]
 
-    elif name == "search_context":
-        query = arguments.get("query", "")
-        collection = arguments.get("collection", "codebase-context")
-        limit = arguments.get("limit", 5)
-        query_embedding = await _embed_fn(query)
-        results = _qdrant.query_points(
-            collection_name=collection,
-            query=query_embedding,
-            limit=limit,
-            score_threshold=0.7,
-        ).points
-        formatted = [{"id": str(r.id), "score": r.score, "payload": r.payload} for r in results]
-        return [TextContent(type="text", text=json.dumps(formatted, indent=2))]
+        elif name == "hybrid_search":
+            result = await _hybrid_search(
+                query=arguments.get("query", ""),
+                collections=arguments.get("collections"),
+                limit=arguments.get("limit", 5),
+                keyword_limit=arguments.get("keyword_limit", 5),
+                score_threshold=arguments.get("score_threshold", 0.7),
+            )
+            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-    elif name == "hybrid_search":
-        result = await _hybrid_search(
-            query=arguments.get("query", ""),
-            collections=arguments.get("collections"),
-            limit=arguments.get("limit", 5),
-            keyword_limit=arguments.get("keyword_limit", 5),
-            score_threshold=arguments.get("score_threshold", 0.7),
-        )
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        elif name == "route_search":
+            result = await _route_search(
+                query=arguments.get("query", ""),
+                mode=arguments.get("mode", "auto"),
+                prefer_local=arguments.get("prefer_local", True),
+                context=arguments.get("context"),
+                limit=arguments.get("limit", 5),
+                keyword_limit=arguments.get("keyword_limit", 5),
+                score_threshold=arguments.get("score_threshold", 0.7),
+                generate_response=arguments.get("generate_response", False),
+            )
+            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-    elif name == "route_search":
-        result = await _route_search(
-            query=arguments.get("query", ""),
-            mode=arguments.get("mode", "auto"),
-            prefer_local=arguments.get("prefer_local", True),
-            context=arguments.get("context"),
-            limit=arguments.get("limit", 5),
-            keyword_limit=arguments.get("keyword_limit", 5),
-            score_threshold=arguments.get("score_threshold", 0.7),
-            generate_response=arguments.get("generate_response", False),
-        )
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        elif name == "store_agent_memory":
+            result = await _store_memory(
+                memory_type=arguments.get("memory_type", ""),
+                summary=arguments.get("summary", ""),
+                content=arguments.get("content"),
+                metadata=arguments.get("metadata"),
+            )
+            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-    elif name == "store_agent_memory":
-        result = await _store_memory(
-            memory_type=arguments.get("memory_type", ""),
-            summary=arguments.get("summary", ""),
-            content=arguments.get("content"),
-            metadata=arguments.get("metadata"),
-        )
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        elif name == "recall_agent_memory":
+            result = await _recall_memory(
+                query=arguments.get("query", ""),
+                memory_types=arguments.get("memory_types"),
+                limit=arguments.get("limit"),
+                retrieval_mode=arguments.get("retrieval_mode", "hybrid"),
+            )
+            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-    elif name == "recall_agent_memory":
-        result = await _recall_memory(
-            query=arguments.get("query", ""),
-            memory_types=arguments.get("memory_types"),
-            limit=arguments.get("limit"),
-            retrieval_mode=arguments.get("retrieval_mode", "hybrid"),
-        )
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        elif name == "run_harness_eval":
+            result = await _run_harness_eval(
+                query=arguments.get("query", ""),
+                expected_keywords=arguments.get("expected_keywords"),
+                mode=arguments.get("mode", "auto"),
+                max_latency_ms=arguments.get("max_latency_ms"),
+            )
+            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-    elif name == "run_harness_eval":
-        result = await _run_harness_eval(
-            query=arguments.get("query", ""),
-            expected_keywords=arguments.get("expected_keywords"),
-            mode=arguments.get("mode", "auto"),
-            max_latency_ms=arguments.get("max_latency_ms"),
-        )
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        elif name == "harness_stats":
+            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(_HARNESS_STATS, indent=2))]
 
-    elif name == "harness_stats":
-        return [TextContent(type="text", text=json.dumps(_HARNESS_STATS, indent=2))]
+        elif name == "learning_feedback":
+            feedback_id = await _record_learning_feedback(
+                query=arguments.get("query", ""),
+                correction=arguments.get("correction", ""),
+                original_response=arguments.get("original_response"),
+                interaction_id=arguments.get("interaction_id"),
+                rating=arguments.get("rating"),
+                tags=arguments.get("tags"),
+                model=arguments.get("model"),
+                variant=arguments.get("variant"),
+            )
+            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps({"feedback_id": feedback_id}))]
 
-    elif name == "learning_feedback":
-        feedback_id = await _record_learning_feedback(
-            query=arguments.get("query", ""),
-            correction=arguments.get("correction", ""),
-            original_response=arguments.get("original_response"),
-            interaction_id=arguments.get("interaction_id"),
-            rating=arguments.get("rating"),
-            tags=arguments.get("tags"),
-            model=arguments.get("model"),
-            variant=arguments.get("variant"),
-        )
-        return [TextContent(type="text", text=json.dumps({"feedback_id": feedback_id}))]
-
-    else:
-        raise ValueError(f"Unknown tool: {name}")
+        else:
+            raise ValueError(f"Unknown tool: {name}")
+    except Exception as exc:
+        _write_audit(name, 'error', str(exc), (_time.time() - _start) * 1000, arguments)
+        raise
