@@ -993,6 +993,174 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
 
 ---
 
+## Phase 11 — Agent Knowledge Portability & AIDB Persistence
+**Goal:** Agent instructions, memory, and behavior data survive re-deploys and are portable to new machines.
+**Status:** BLOCKED on two AIDB runtime bugs (see 11.0). Git-tracking parts are done.
+
+### 11.0 — AIDB Bug Fixes (blockers for all 11.x tasks)
+
+- [ ] **11.0.1** Fix missing `source_trust_level` column in `imported_documents` schema.
+  **Root cause:** Phase 15.2.2 added the column to Python code but the Alembic/SQL migration was never applied to the running database.
+  **Symptom:** `ProgrammingError: column imported_documents.source_trust_level does not exist`
+  **Fix:** Find the schema definition and run the ALTER TABLE migration:
+  ```bash
+  grep -rn "source_trust_level\|CREATE TABLE imported_documents" \
+    ai-stack/mcp-servers/aidb/ | grep -v ".pyc"
+  # Then apply: ALTER TABLE imported_documents ADD COLUMN source_trust_level TEXT DEFAULT 'imported';
+  ```
+  **Pass:** `POST /documents` with `source_trust_level: "trusted"` returns 200.
+
+- [ ] **11.0.2** Fix `'MonitoringServer' object has no attribute '_tiered_rate_limiter'`.
+  **Root cause:** `_tiered_rate_limiter` is initialized in one class but `MonitoringServer` inherits from a different path and misses it.
+  **Symptom:** `AttributeError: 'MonitoringServer' object has no attribute '_tiered_rate_limiter'`
+  **Fix:**
+  ```bash
+  grep -n "_tiered_rate_limiter\|MonitoringServer\|class.*Server" \
+    ai-stack/mcp-servers/aidb/server.py | head -20
+  # Ensure _tiered_rate_limiter is initialized in MonitoringServer.__init__ or base class
+  ```
+  **Pass:** `POST /documents` returns 200, no AttributeError in `journalctl -u ai-aidb`.
+
+- [ ] **11.0.3** Verify `POST /documents` end-to-end after both fixes.
+  ```bash
+  python3 - <<'EOF'
+  import httpx
+  KEY = open('/run/secrets/aidb_api_key').read().strip()
+  r = httpx.post('http://127.0.0.1:8002/documents',
+                 json={'project':'test','relative_path':'test.md',
+                       'title':'Test','content':'hello',
+                       'source_trust_level':'trusted','status':'approved'},
+                 headers={'Authorization': f'Bearer {KEY}'})
+  print(r.status_code, r.text[:100])
+  EOF
+  ```
+  **Pass:** HTTP 200.
+
+### 11.1 — Agent Instruction Files in Git (DONE ✓)
+
+- [x] **11.1.1** `CLAUDE.md` is tracked in git.
+  `git ls-files CLAUDE.md` → non-empty.
+
+- [x] **11.1.2** `AGENTS.md`, `.aider.md`, `.gemini/context.md` are tracked in git.
+  `git ls-files AGENTS.md .aider.md .gemini/context.md` → all 3 listed.
+
+- [x] **11.1.3** `ai-stack/prompts/registry.yaml` (prompt templates + scores) is tracked in git.
+  `git ls-files ai-stack/prompts/registry.yaml` → listed.
+
+- [x] **11.1.4** `ai-stack/agent-memory/MEMORY.md` exists and is git-tracked.
+  `git ls-files ai-stack/agent-memory/MEMORY.md` → listed.
+
+- [x] **11.1.5** `scripts/sync-agent-instructions` syncs live MEMORY.md → repo copy on every run.
+  `python3 scripts/sync-agent-instructions --verbose` → shows `[unchanged] ai-stack/agent-memory/MEMORY.md` or `[updated]`.
+
+- [x] **11.1.6** `scripts/import-agent-instructions.sh` exists and is executable.
+  `test -x scripts/import-agent-instructions.sh && echo OK`
+
+### 11.2 — AIDB Import of Agent Instructions (blocked on 11.0)
+
+- [ ] **11.2.1** Import all agent instruction files into AIDB after 11.0 fixes.
+  ```bash
+  AIDB_API_KEY=$(cat /run/secrets/aidb_api_key) \
+    bash scripts/import-agent-instructions.sh
+  ```
+  **Pass:** Output shows `OK` for all 6 files, exit 0.
+
+- [ ] **11.2.2** Agent instructions are retrievable via AIDB search.
+  ```bash
+  KEY=$(cat /run/secrets/aidb_api_key)
+  curl -sf -X POST http://127.0.0.1:8002/vector/search \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $KEY" \
+    -d '{"query":"port policy hardcoded numbers","limit":3}' \
+  | jq -r '.[0].title // .results[0].title'
+  ```
+  **Pass:** Returns `Project Rules (CLAUDE.md)` or similar.
+
+- [ ] **11.2.3** MEMORY.md is retrievable via AIDB search.
+  ```bash
+  KEY=$(cat /run/secrets/aidb_api_key)
+  curl -sf -X POST http://127.0.0.1:8002/vector/search \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $KEY" \
+    -d '{"query":"phase completion summary","limit":3}' \
+  | jq -r '.[0].title // .results[0].title'
+  ```
+  **Pass:** Returns `Agent Memory (MEMORY.md)`.
+
+- [ ] **11.2.4** `sync-agent-instructions` calls `import-agent-instructions.sh` automatically.
+  **Action:** Wire the AIDB import call into `sync-agent-instructions` `main()` after 11.0 is fixed (currently shows a hint only).
+  **Pass:** `python3 scripts/sync-agent-instructions` outputs `import-agent-instructions: 6 imported, 0 failed`.
+
+### 11.3 — Behavior Data Export to Git (Postgres snapshots)
+
+**Context:** These tables contain AI behavior data that should survive re-deploys:
+- `query_gaps` — what users asked that the AI couldn't answer (feeds improvement loop)
+- `tool_audit` aggregated stats — tool usage patterns (raw logs stay local)
+- Strategy leaderboard (if stored in Postgres; else already in `registry.yaml`)
+
+- [ ] **11.3.1** Identify which Postgres tables hold portable behavior data vs. project data.
+  ```bash
+  # List all tables in aidb
+  # Find the schema for each and classify as: behavior | project | transient
+  grep -n "CREATE TABLE\|sa.Table\|class.*Model" \
+    ai-stack/mcp-servers/aidb/server.py | head -30
+  ```
+  **Pass:** Table list with classification documented in a comment at top of this task.
+
+- [ ] **11.3.2** Create `scripts/export-ai-behavior-snapshot.sh` that exports behavior tables to `ai-stack/snapshots/`.
+  **Schema:**
+  ```
+  ai-stack/snapshots/
+    query-gaps.jsonl          — exported query_gaps rows
+    strategy-leaderboard.json — exported strategy/eval data
+    hint-adoption-summary.json — aggregated hint usage (not raw logs)
+  ```
+  **Pass:** Script exits 0, files are created with valid JSON/JSONL.
+
+- [ ] **11.3.3** Create `scripts/import-ai-behavior-snapshot.sh` for fresh-deploy seeding.
+  **Behavior:** Idempotent — use `ON CONFLICT DO NOTHING` so re-running on a live system doesn't overwrite current data.
+  **Pass:** After `scripts/export-ai-behavior-snapshot.sh && scripts/import-ai-behavior-snapshot.sh`, row counts in tables are unchanged on live system.
+
+- [ ] **11.3.4** Add snapshot export to the weekly report timer.
+  **Action:** Append to `ai-weekly-report.service` ExecStart or add a post-export hook.
+  **Pass:** `ai-stack/snapshots/*.jsonl` files have a modified timestamp within the last week.
+
+- [ ] **11.3.5** Commit snapshot files to git after export (or gitattributes diff driver).
+  **Note:** JSONL files may grow large — use `git add --patch` or a size gate (skip if >1MB).
+  **Pass:** `git diff --stat ai-stack/snapshots/` shows changes after a weekly export run.
+
+### 11.4 — Fresh Deploy Seeding
+
+- [ ] **11.4.1** Create `scripts/seed-fresh-deploy.sh` — one command that bootstraps a new machine.
+  **Steps it must perform in order:**
+  1. Wait for AIDB health (`/health` returns `ok`)
+  2. Copy `ai-stack/agent-memory/MEMORY.md` → `~/.claude/projects/<id>/memory/MEMORY.md`
+  3. Run `import-agent-instructions.sh` to populate AIDB with agent instructions
+  4. Run `import-ai-behavior-snapshot.sh` to restore behavior data
+  5. Run `update-mcp-integrity-baseline.sh` to seed the integrity check baseline
+  6. Print a summary
+  **Pass:** All steps complete with exit 0 on a fresh NixOS install.
+
+- [ ] **11.4.2** Add `seed-fresh-deploy.sh` call to the deploy script (guarded by `--fresh` flag).
+  **Pass:** `./nixos-quick-deploy.sh --host nixos --profile ai-dev --fresh` runs the seeding step.
+
+- [ ] **11.4.3** Document the portability workflow in `AI-STACK-QA-PLAN.md` and `KNOWN_ISSUES_TROUBLESHOOTING.md`.
+
+### 11.5 — Qdrant Vector Store Portability
+
+**Context:** Qdrant vectors are derived from documents — they can be rebuilt by re-embedding. No need to git-track binary vector data.
+
+- [ ] **11.5.1** Create `scripts/rebuild-qdrant-collections.sh` — re-embeds all AIDB documents into Qdrant.
+  ```bash
+  # For each document in AIDB project != "agent-instructions":
+  #   POST /vector/embed → Qdrant upsert
+  ```
+  **Pass:** Qdrant collection row count ≥ AIDB document count after run.
+
+- [ ] **11.5.2** Include `rebuild-qdrant-collections.sh` in `seed-fresh-deploy.sh` (after AIDB import).
+
+---
+
 ## Success Criteria Summary
 
 | Phase | Gate | Target |

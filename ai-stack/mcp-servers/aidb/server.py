@@ -1604,7 +1604,7 @@ class MonitoringServer:
             self._require_api_key(request)
             _ingest_client = request.headers.get('x-api-key') or request.client.host
             try:
-                self._tiered_rate_limiter.check_ingest(_ingest_client)
+                self.mcp_server._tiered_rate_limiter.check_ingest(_ingest_client)
             except PermissionError as exc:
                 raise HTTPException(status_code=429, detail=_error_detail('ingest_rate_limited', exc))
             self.mcp_server.check_rate_limit(request)
@@ -1989,6 +1989,7 @@ class MCPServer:
             operation_name="Database connection"
         )
         self._ensure_telemetry_schema()
+        self._ensure_imported_documents_schema()
         self._ensure_embedding_dimension()
 
         # Create Redis connection pool (will be tested on first use)
@@ -2466,6 +2467,28 @@ class MCPServer:
             LOGGER.info("telemetry_schema_updated: %s", ", ".join(missing))
         except Exception as exc:  # noqa: BLE001
             LOGGER.warning("telemetry_schema_update_failed: %s", exc)
+
+    def _ensure_imported_documents_schema(self) -> None:
+        """Apply incremental migrations to imported_documents (Phase 15.2.2 columns)."""
+        try:
+            inspector = sa.inspect(self._engine)
+            if not inspector.has_table("imported_documents"):
+                return
+            existing = {col["name"] for col in inspector.get_columns("imported_documents")}
+            required_columns = {
+                "source_trust_level": "VARCHAR(16) NOT NULL DEFAULT 'imported'",
+                "source_url": "TEXT",
+            }
+            missing = [name for name in required_columns if name not in existing]
+            if not missing:
+                return
+            with self._engine.begin() as conn:
+                for name in missing:
+                    ddl_type = required_columns[name]
+                    conn.execute(sa.text(f"ALTER TABLE imported_documents ADD COLUMN IF NOT EXISTS {name} {ddl_type}"))
+            LOGGER.info("imported_documents_schema_updated: %s", ", ".join(missing))
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("imported_documents_schema_update_failed: %s", exc)
 
     def _ensure_embedding_dimension(self) -> None:
         try:
