@@ -64,14 +64,23 @@
       vectorDb.enable    = false;
       listenOnLan        = false;
       rocmGfxOverride    = null;
-      embeddingDimensions = 768;
+      # Qwen3-Embedding-4B: decoder-based, last-token pooling, 2560-dim vectors.
+      # ~2.5 GB RAM at Q4_K_M; supports 32K context (ctxSize 8192 for code chunks).
+      # sha256 = null → first deploy downloads and prints hash; add it here afterwards.
+      # MIGRATION: drop and recreate the AIDB document_embeddings table after deploy
+      #   (dimension changed from 768 → 2560; existing vectors are incompatible).
+      #   Run: sudo -u postgres psql -d aidb -c "DROP TABLE document_embeddings CASCADE;"
+      #   Then: sudo systemctl restart ai-aidb.service  (recreates table at 2560 dims)
+      embeddingDimensions = 2560;
       embeddingServer = {
         enable          = true;
         port            = 8081;
-        model           = "/var/lib/llama-cpp/models/nomic-embed-text-v1.5.Q8_0.gguf";
-        huggingFaceRepo = "nomic-ai/nomic-embed-text-v1.5-GGUF";
-        huggingFaceFile = "nomic-embed-text-v1.5.Q8_0.gguf";
-        sha256 = "3e24342164b3d94991ba9692fdc0dd08e3fd7362e0aacc396a9a5c54a544c3b7";
+        model           = "/var/lib/llama-cpp/models/Qwen3-Embedding-4B-q4_k_m.gguf";
+        huggingFaceRepo = "Mungert/Qwen3-Embedding-4B-GGUF";
+        huggingFaceFile = "Qwen3-Embedding-4B-q4_k_m.gguf";
+        sha256          = null; # add after first deploy: sha256sum /var/lib/llama-cpp/models/Qwen3-Embedding-4B-q4_k_m.gguf
+        pooling         = "last";
+        ctxSize         = 8192;
       };
       switchboard = {
         enable = true;
