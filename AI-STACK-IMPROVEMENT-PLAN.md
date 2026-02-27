@@ -1217,14 +1217,11 @@ These are identified issues not assigned to a phase yet. Do not start these unti
 
 **Problem:** llama.cpp is compiled for generic x86_64 AVX2 by default in nixpkgs. On aarch64 SBCs this loses NEON/SVE acceleration. On embedded targets, the full Open WebUI container is too large (>500 MB container image).
 
-- [ ] **16.5.1** Add `nixpkgs.overlays` entry that sets `llama-cpp.cmakeFlags` for aarch64: `-DGGML_NEON=ON -DGGML_METAL=OFF -DGGML_OPENCL=OFF`.
-  *Success metric: `nix build .#packages.aarch64-linux.llama-cpp` completes; resulting binary includes NEON kernels.*
+- [x] **16.5.1** Created `nix/lib/overlays/llama-cpp-aarch64.nix` overlay setting GGML_NEON=ON, GGML_METAL=OFF, GGML_OPENCL=OFF. Wired into ai-stack.nix via `nixpkgs.overlays = lib.optional pkgs.stdenv.hostPlatform.isAarch64 (import ../../lib/overlays/llama-cpp-aarch64.nix)` gated on `roleEnabled && isAarch64`.
 
-- [ ] **16.5.2** Add a `ai.webui.enable = lib.mkDefault (tier != "nano" && tier != "micro")` guard so embedded/SBC deployments skip Open WebUI and expose only the llama.cpp HTTP API.
-  *Success metric: `nano` and `micro` tier hosts with default config have no Open WebUI systemd service.*
+- [x] **16.5.2** Added `mySystem.aiStack.ui.enable = lib.mkDefault (cfg.hardwareTier != "nano" && cfg.hardwareTier != "micro")` in ai-stack.nix roleEnabled block. nano/micro tiers default to no Open WebUI; users can override explicitly.
 
-- [ ] **16.5.3** Add a flake output `nixosConfigurations.sbc-minimal` demonstrating a full SBC-tier config that builds to under 2 GB closure size.
-  *Success metric: `nix path-info -rS .#nixosConfigurations.sbc-minimal.config.system.build.toplevel | tail -1` reports ≤ 2 GB.*
+- [x] **16.5.3** Created `nix/hosts/sbc-minimal/` — reference aarch64 config (RPi 4, 4 GB, micro tier). Auto-discovered as `nixosConfigurations.sbc-minimal-ai-dev` by flake. AI stack disabled by default (4 GB < 12 GB minimum); enables with ≥12 GB SBCs. MCP servers off, vectorDb off, embeddingServer off, ui.enable auto-disabled by tier guard.
 
 ---
 
