@@ -141,18 +141,25 @@ class PromptInjectionScanner:
         self,
         results: List[Dict[str, Any]],
         content_key: str = "content",
+        *,
+        quarantine_mode: bool = False,
+        quarantine_threshold: float = 0.5,
     ) -> Tuple[List[Dict[str, Any]], int]:
         """
-        Filter a list of result dicts, removing any where the scanned text
+        Filter a list of result dicts, removing or quarantining any where the scanned text
         contains prompt injection patterns.
 
         Args:
             results: List of result dicts from Qdrant / hybrid search.
             content_key: Key whose value is scanned. Supports both plain string
                          values and nested payload dicts.
+            quarantine_mode: If True, mark high-risk results with quarantine=true
+                             instead of removing them.
+            quarantine_threshold: Risk score threshold (0.0-1.0) for quarantine.
+                                  Results with risk_score >= threshold are quarantined.
 
         Returns:
-            (filtered_results, n_removed): clean list and count of dropped items.
+            (filtered_results, n_removed): clean list and count of dropped/quarantined items.
         """
         clean: List[Dict[str, Any]] = []
         n_removed = 0
@@ -167,8 +174,23 @@ class PromptInjectionScanner:
                     doc_id=str(item.get("id", "unknown")),
                     matched_pattern=scan_result["matched_pattern"],
                     risk_score=scan_result["risk_score"],
+                    quarantine=quarantine_mode,
                 )
-                n_removed += 1
+                # Phase 15.1.2 — quarantine mode: mark instead of remove
+                if quarantine_mode and scan_result["risk_score"] < quarantine_threshold:
+                    # Low risk: include but mark
+                    item["injection_risk_score"] = scan_result["risk_score"]
+                    item["injection_flagged"] = True
+                    clean.append(item)
+                elif quarantine_mode:
+                    # High risk: quarantine (mark but don't include in normal results)
+                    item["quarantine"] = True
+                    item["injection_risk_score"] = scan_result["risk_score"]
+                    item["injection_flagged"] = True
+                    n_removed += 1
+                else:
+                    # Legacy mode: remove entirely
+                    n_removed += 1
             else:
                 clean.append(item)
 

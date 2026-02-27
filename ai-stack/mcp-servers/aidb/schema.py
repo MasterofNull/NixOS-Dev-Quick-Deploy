@@ -29,6 +29,10 @@ IMPORTED_DOCUMENTS = sa.Table(
     sa.Column("imported_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     sa.Column("content", sa.Text, nullable=False),
     sa.Column("status", sa.String(16), nullable=False, server_default=sa.text("'approved'")),
+    # Phase 15.2.2 — Source trust level for RAG filtering
+    # trusted: manually added by user | imported: from external URL/file | generated: AI-created
+    sa.Column("source_trust_level", sa.String(16), nullable=False, server_default=sa.text("'imported'")),
+    sa.Column("source_url", sa.Text, nullable=True),  # Original URL if imported from web
     sa.UniqueConstraint("project", "relative_path", name="uq_imported_documents_path"),
 )
 
