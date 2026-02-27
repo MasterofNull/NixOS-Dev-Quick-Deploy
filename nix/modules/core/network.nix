@@ -39,6 +39,15 @@
   networking.networkmanager.wifi.powersave = lib.mkDefault false;
   networking.firewall.enable = lib.mkDefault true;
 
+  # Captive portal detection — without a check URI, NM reports any network
+  # as "full" even when a login page is required (hotel, airport, conference).
+  # With this set NM reports "portal" connectivity and the desktop environment
+  # (COSMIC/GNOME) shows a captive-portal notification so the user can log in.
+  networking.networkmanager.settings.connectivity = {
+    uri      = lib.mkDefault "http://nmcheck.gnome.org/check_network_status.txt";
+    interval = lib.mkDefault 300;
+  };
+
   # Ensure the stub-resolv.conf symlink is always present.
   # systemd-resolved manages /run/systemd/resolve/stub-resolv.conf; pointing
   # /etc/resolv.conf here prevents the race condition where NM writes a bare
