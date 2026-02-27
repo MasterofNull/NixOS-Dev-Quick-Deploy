@@ -1477,8 +1477,9 @@ class MonitoringServer:
             limit: int = 100,
             include_content: bool = False,
             include_pending: bool = False,
+            source_trust_level: Optional[str] = None,
         ) -> Dict[str, Any]:
-            """List imported documents, optionally filtered by project."""
+            """List imported documents, optionally filtered by project and trust level."""
             columns = [
                 IMPORTED_DOCUMENTS.c.id,
                 IMPORTED_DOCUMENTS.c.project,
@@ -1488,6 +1489,8 @@ class MonitoringServer:
                 IMPORTED_DOCUMENTS.c.size_bytes,
                 IMPORTED_DOCUMENTS.c.imported_at,
                 IMPORTED_DOCUMENTS.c.status,
+                IMPORTED_DOCUMENTS.c.source_trust_level,
+                IMPORTED_DOCUMENTS.c.source_url,
             ]
             if include_content:
                 columns.append(IMPORTED_DOCUMENTS.c.content)
@@ -1498,6 +1501,9 @@ class MonitoringServer:
                 query = query.where(IMPORTED_DOCUMENTS.c.project == project)
             if not include_pending:
                 query = query.where(IMPORTED_DOCUMENTS.c.status == "approved")
+            # Phase 15.2.2 — Filter by source trust level
+            if source_trust_level:
+                query = query.where(IMPORTED_DOCUMENTS.c.source_trust_level == source_trust_level)
 
             def _fetch():
                 with self.mcp_server._engine.connect() as conn:
@@ -1512,6 +1518,8 @@ class MonitoringServer:
                             "size_bytes": row.size_bytes,
                             "imported_at": row.imported_at.isoformat() if row.imported_at else None,
                             "status": row.status,
+                            "source_trust_level": row.source_trust_level,
+                            "source_url": row.source_url,
                             **({"content": row.content} if include_content else {}),
                         }
                         for row in result
@@ -1537,6 +1545,11 @@ class MonitoringServer:
                     detail=_error_detail("invalid_document", exc),
                 )
             """Import a single document into the database."""
+            # Phase 15.2.2 — Source trust level validation
+            source_trust_level = doc.get("source_trust_level", "imported")
+            if source_trust_level not in {"trusted", "imported", "generated"}:
+                raise ValueError("source_trust_level must be 'trusted', 'imported', or 'generated'")
+            
             def _insert():
                 stmt = insert(IMPORTED_DOCUMENTS).values(
                     project=doc.get("project", "default"),
@@ -1548,10 +1561,17 @@ class MonitoringServer:
                     modified_at=sa.func.now(),
                     content=doc.get("content", ""),
                     status=doc.get("status", "approved"),
+                    source_trust_level=source_trust_level,
+                    source_url=doc.get("source_url"),
                 )
                 stmt = stmt.on_conflict_do_update(
                     index_elements=["project", "relative_path"],
-                    set_={"content": stmt.excluded.content, "modified_at": sa.func.now()},
+                    set_={
+                        "content": stmt.excluded.content,
+                        "modified_at": sa.func.now(),
+                        "source_trust_level": stmt.excluded.source_trust_level,
+                        "source_url": stmt.excluded.source_url,
+                    },
                 )
                 with self.mcp_server._engine.begin() as conn:
                     conn.execute(stmt)
@@ -1560,7 +1580,11 @@ class MonitoringServer:
             await self.mcp_server.record_telemetry(
                 event_type="document_import",
                 source="aidb",
-                metadata={"project": doc.get("project", "default"), "title": doc.get("title")},
+                metadata={
+                    "project": doc.get("project", "default"),
+                    "title": doc.get("title"),
+                    "source_trust_level": source_trust_level,
+                },
             )
             return {"status": "ok", "message": "Document imported successfully"}
 
@@ -3002,18 +3026,16 @@ class MCPServer:
         content = doc.get("content") or ""
         if not content:
             raise ValueError("content is required")
-        if len(content) > 1_000_000:
-            raise ValueError("content exceeds 1MB limit")
+        # Phase 15.2.1 — Content size limit: 50KB per document
+        if len(content) > 51_200:  # 50KB = 51200 bytes
+            raise ValueError("content exceeds 50KB limit")
         if "\0" in content:
             raise ValueError("binary content not allowed")
-        secret_patterns = [
-            r"AKIA[0-9A-Z]{16}",
-            r"-----BEGIN (RSA|PRIVATE) KEY-----",
-            r"aws_secret_access_key",
-        ]
-        for pattern in secret_patterns:
-            if re.search(pattern, content, re.IGNORECASE):
-                raise ValueError("potential secret detected; import blocked")
+        # Phase 15.3.1 — Secrets scanner (use shared module patterns)
+        from shared.telemetry_privacy import redact_secrets
+        _, detected = redact_secrets(content)
+        if detected:
+            raise ValueError(f"potential secret detected ({','.join(detected)}); import blocked")
 
     async def discover_remote_skills(self, repo: str, base_path: str, branch: str, limit: int) -> List[Dict[str, Any]]:
         base_path = base_path.strip("/")
