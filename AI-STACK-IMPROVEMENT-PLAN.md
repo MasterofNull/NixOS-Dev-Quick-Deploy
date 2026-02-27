@@ -1526,18 +1526,60 @@ recommendations.
   *Success metric: MCP `get_workflow_hints({query: "systemd hardening"})` returns ≥1
   hint referencing `aider_task_systems_code` template.*
 
-- [ ] **19.3.2** Add Continue.dev `@aq-hints` context provider to
-  `ai-stack/continue/config.json`. Managed declaratively via Home Manager
-  `home.file.".continue/config.json"`.
+- [x] **19.3.2** Add Continue.dev `@aq-hints` context provider to
+  `ai-stack/continue/config.json`. HTTP context provider format detected via `fullInput`
+  body field or `?format=continue`. Nix-generated config includes aq-hints, local
+  llama.cpp, Ollama, Gemini 2.0 Flash, Claude Sonnet 4.6. Symlinked to
+  `~/.continue/config.json` via `systemd.tmpfiles`.
   *Success metric: Typing `@aq-hints nixos` in Continue.dev shows hint suggestions.*
 
-- [ ] **19.3.3** aider-wrapper hint injection: when `AI_HINTS_ENABLED=true`, prepend
-  top-1 hint snippet from `/hints?q=<prompt_prefix>` to aider task. Gate behind env var.
+- [x] **19.3.3** aider-wrapper hint injection: `AI_HINTS_ENABLED=true` + `HINTS_URL`
+  injected by `mcp-servers.nix`. `server.py` fetches top-1 hint from HINTS_URL,
+  prepends `"CONTEXT (aq-hints): <snippet>"` to aider `--message`.
   *Success metric: Aider task logs show `hint_injected=true`.*
 
-- [ ] **19.3.4** Hint adoption tracking: add `hint_id` + `hint_accepted` to
-  `tool_audit.jsonl`; surface hint adoption rate in aq-report.
-  *Success metric: aq-report shows "Hint Adoption" section after ≥5 hinted tasks.*
+- [x] **19.3.4** Hint adoption tracking: `_write_hint_audit()` writes `hint_id` +
+  `hint_accepted` to `hint-audit.jsonl` after each hinted aider task. `aq-report §9`
+  reads log and surfaces injection count, success rate, top hint IDs.
+  *Success metric: aq-report shows "§9 Hint Adoption" section after ≥5 hinted tasks.*
+
+---
+
+### 19.4 — Cross-Agent Instruction Propagation
+
+**Goal:** CLAUDE.md workflow rules, port policy, architectural constraints, and agent
+behavioral standards are automatically available to ALL agents — remote (Claude, Gemini,
+Codex, Qwen) and local (aider-wrapper, Open WebUI, llama.cpp, Ollama). Each agent type
+receives instructions in its native format. A sync script keeps agent files up to date.
+
+- [x] **19.4.1** Create `AGENTS.md` — universal agent instruction file read by Codex CLI,
+  Qwen CLI, OpenAI-compatible tools, and any agent that respects `AGENTS.md`. Distilled
+  from CLAUDE.md §2–§8 with agent-agnostic phrasing.
+  *Success metric: `codex --help` references AGENTS.md; `cat AGENTS.md` covers port policy.*
+
+- [x] **19.4.2** Create `.aider.md` — aider-specific project conventions loaded by aider
+  CLI automatically. Covers port policy, NixOS module ownership, lib.mkIf vs //, version
+  guards, and file layout.
+  *Success metric: `aider --show-repo-map` includes .aider.md content.*
+
+- [x] **19.4.3** Create `.gemini/context.md` — Gemini CLI project context auto-loaded
+  from `.gemini/` directory. Covers project overview, key file locations, port policy.
+  *Success metric: `gemini -p "@./ what is the port policy?"` references this file.*
+
+- [x] **19.4.4** Create `scripts/sync-agent-instructions` — regenerates all agent
+  instruction files from CLAUDE.md + MEMORY.md source of truth. Run after each
+  CLAUDE.md update. Validates generated files with bash -n (shell) or wc -l (text).
+  *Success metric: Script runs without error; AGENTS.md mtime updates.*
+
+- [ ] **19.4.5** Add CLAUDE.md + MEMORY.md to AIDB knowledge sync so local LLMs can
+  retrieve project rules via RAG. Update `scripts/sync-knowledge-sources` to POST
+  both files to AIDB `/documents`.
+  *Success metric: `aidb search "port policy"` returns a result from CLAUDE.md.*
+
+- [ ] **19.4.6** Add project system prompt to hybrid-coordinator's `augment_query_fn`
+  for local LLM calls: prepend top-3 CLAUDE.md rules as system context when routing
+  to local model. Gate behind `AI_LOCAL_SYSTEM_PROMPT=true` env var.
+  *Success metric: Local LLM response references "never hardcode port numbers" rule.*
 
 ---
 
