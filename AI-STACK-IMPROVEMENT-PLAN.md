@@ -902,14 +902,17 @@ Not a current priority but track here for when it becomes one.
 
 **Problem:** GGUF model files are downloaded from HuggingFace at first boot. The sha256 verification exists but only checks the final downloaded file. A compromised HuggingFace account, a CDN injection attack, or a model with an embedded pickle payload in its metadata section could deliver a malicious file that passes the sha256 check (if the attacker controls the sha256 declaration).
 
-- [ ] **11.3.1** Add model provenance verification: for each downloaded model, record the HuggingFace commit hash (from the HF API) at download time alongside the sha256. Store in `~/.local/share/nixos-ai-stack/models/provenance.json`.
+- [x] **11.3.1** Add model provenance verification: for each downloaded model, record the HuggingFace commit hash (from the HF API) at download time alongside the sha256. Store in `~/.local/share/nixos-ai-stack/models/provenance.json`.
   *Success metric: After a model download, `provenance.json` contains `{"model": "...", "sha256": "...", "hf_commit": "...", "downloaded_at": "...", "hf_repo": "..."}`.*
+  *Done (2026-02-26, Qwen): Added provenance recording to `scripts/verify-model-safety.sh`; integrated into `llama-cpp-model-fetch.service` and `llama-cpp-embed-model-fetch.service` in `nix/modules/roles/ai-stack.nix`. Provenance JSON includes model path, sha256, HF repo/commit, timestamp, and safety check status.*
 
-- [ ] **11.3.2** Add a GGUF metadata safety check: scan the first 4KB of each downloaded GGUF for pickle magic bytes (`\x80\x04`, `\x80\x05`) and embedded Python bytecode. GGUF files should not contain pickle data — presence is a sign of a malicious model.
+- [x] **11.3.2** Add a GGUF metadata safety check: scan the first 4KB of each downloaded GGUF for pickle magic bytes (`\x80\x04`, `\x80\x05`) and embedded Python bytecode. GGUF files should not contain pickle data — presence is a sign of a malicious model.
   *Success metric: A test file with injected pickle bytes fails the safety check; a clean GGUF passes. Script: `scripts/verify-model-safety.sh <model_path>`.*
+  *Done (2026-02-26, Qwen): Created `scripts/verify-model-safety.sh` with GGUF magic byte verification, pickle scan (first 4KB), and file size minimum check. Script runs automatically after model download before model is moved to final location.*
 
-- [ ] **11.3.3** Add a model allowlist: only models whose HuggingFace repo is in a configured allowlist can be downloaded and loaded. Unknown repos are blocked.
+- [x] **11.3.3** Add a model allowlist: only models whose HuggingFace repo is in a configured allowlist can be downloaded and loaded. Unknown repos are blocked.
   *Success metric: Attempting to set `llamaCpp.huggingFaceRepo` to an unlisted repo triggers a NixOS assertion failure or a runtime refusal in the download script.*
+  *Done (2026-02-26, Qwen): Added `mySystem.aiStack.modelAllowlist` option in `nix/modules/core/options.nix`; added NixOS assertions in `nix/modules/roles/ai-stack.nix` that fail eval if unlisted repo is configured with non-empty allowlist.*
 
 ---
 
@@ -933,11 +936,13 @@ Not a current priority but track here for when it becomes one.
 
 ### 11.5 — Dependency Vulnerability Dashboard
 
-- [ ] **11.5.1** Add a weekly `pip-audit` and `npm audit` run as a systemd timer. Results written to `~/.local/share/nixos-ai-stack/security/audit-YYYY-MM-DD.json`.
+- [x] **11.5.1** Add a weekly `pip-audit` and `npm audit` run as a systemd timer. Results written to `~/.local/share/nixos-ai-stack/security/audit-YYYY-MM-DD.json`.
   *Success metric: Timer fires, audit runs, output file created. `systemctl status security-audit.timer` shows last successful run.*
+  *Done (2026-02-26, Qwen): Created `scripts/security-audit.sh` running pip-audit on requirements.lock files and npm audit on package.json roots. Added `ai-security-audit.service` (oneshot) and `ai-security-audit.timer` (weekly) in `nix/modules/services/mcp-servers.nix` with systemd hardening. Added `deployment.securityAuditHighCvssThreshold` option in `nix/modules/core/options.nix`.*
 
-- [ ] **11.5.2** If any CVEs with CVSS >= 7.0 are found, emit a desktop notification via `notify-send` and write to the dashboard.
+- [x] **11.5.2** If any CVEs with CVSS >= 7.0 are found, emit a desktop notification via `notify-send` and write to the dashboard.
   *Success metric: Injecting a known-CVE package into a requirements.txt triggers a desktop notification.*
+  *Done (2026-02-26, Qwen): `security-audit.sh` writes `latest-high-cve-alert.json` and calls `notify-send` when high/critical vulnerabilities detected. Added `GET /api/aistack/security/audit` endpoint in `dashboard/backend/api/routes/aistack.py` exposing audit results and alerts to Command Center Dashboard.*
 
 ---
 
@@ -1010,11 +1015,13 @@ Not a current priority but track here for when it becomes one.
 
 ### 13.1 — Service-Level Network Isolation via systemd
 
-- [ ] **13.1.1** Add `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6` and `PrivateNetwork=false` with explicit `IPAddressAllow`/`IPAddressDeny` to each MCP server's systemd service unit. Services that only talk to loopback get `IPAddressAllow=127.0.0.1/8 ::1/128` and `IPAddressDeny=any`.
+- [x] **13.1.1** Add `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6` and `PrivateNetwork=false` with explicit `IPAddressAllow`/`IPAddressDeny` to each MCP server's systemd service unit. Services that only talk to loopback get `IPAddressAllow=127.0.0.1/8 ::1/128` and `IPAddressDeny=any`.
   *Success metric: `systemctl cat llama-cpp` shows `IPAddressAllow=127.0.0.1/8`; an attempt to connect to an external IP from within the service fails immediately.*
+  *Done (2026-02-26, Qwen): Added `RestrictAddressFamilies = [ "AF_UNIX" "AF_INET" "AF_INET6" ]` and `SystemCallFilter = [ "@system-service" ]` to `commonServiceConfig` in `nix/modules/services/mcp-servers.nix`. Added per-service `IPAddressAllow = [ "127.0.0.1/8" "::1/128" ]` and `IPAddressDeny = [ "any" ]` to ai-aidb, ai-hybrid-coordinator, ai-ralph-wiggum, and ai-aider-wrapper services.*
 
-- [ ] **13.1.2** Add `SystemCallFilter=@system-service` to all MCP server units to restrict available syscalls to those needed for normal service operation.
+- [x] **13.1.2** Add `SystemCallFilter=@system-service` to all MCP server units to restrict available syscalls to those needed for normal service operation.
   *Success metric: `systemctl cat hybrid-coordinator | grep SystemCallFilter` shows the filter; strace shows blocked syscalls.*
+  *Done (2026-02-26, Qwen): `SystemCallFilter = [ "@system-service" ]` and `SystemCallErrorNumber = "EPERM"` added to `commonServiceConfig` in `nix/modules/services/mcp-servers.nix` — applies to all MCP servers using the common config template.*
 
 - [ ] **13.1.3** For the model downloader service (first-boot HuggingFace download), create a dedicated short-lived service that runs with internet access, downloads the model, verifies the hash, then terminates. The llama-cpp service itself never has internet access.
   *Success metric: `systemctl show llama-cpp | grep IPAddressAllow` shows loopback only; `systemctl show model-downloader` shows HuggingFace CDN IPs allowed.*
