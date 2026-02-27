@@ -1,4 +1,4 @@
-.PHONY: up down restart ps logs health metrics security-audit security-scan test
+.PHONY: up down restart ps logs health metrics security-audit security-check security-scan test
 
 up:
 	sudo systemctl start ai-stack.target command-center-dashboard-api.service command-center-dashboard-frontend.service
@@ -28,6 +28,9 @@ metrics:
 
 security-audit:
 	./scripts/security-audit.sh
+
+# Phase 11.1.2 — canonical target name; runs pip-audit on all requirements.lock files
+security-check: security-audit
 
 security-scan:
 	./scripts/security-scan.sh

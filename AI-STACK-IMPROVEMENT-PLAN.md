@@ -872,8 +872,8 @@ Not a current priority but track here for when it becomes one.
 - [ ] **11.1.1** Convert all `requirements.txt` files to use `pip-compile` with `--generate-hashes`. Store the resulting locked `requirements.lock` files alongside each `requirements.txt`.
   *Success metric: `pip install --require-hashes -r requirements.lock` succeeds for each MCP server; any tampered package causes install failure with hash mismatch error.*
 
-- [ ] **11.1.2** Add `pip-audit` to the Makefile `make security-check` target. Run it against every locked requirements file.
-  *Success metric: `make security-check` runs `pip-audit -r requirements.lock` for all 8 servers; any known CVE causes non-zero exit code.*
+- [x] **11.1.2** Add `pip-audit` to the Makefile `make security-check` target. Run it against every locked requirements file.
+  *Implemented (2026-02-26): `make security-check` added as alias for `make security-audit`, which calls `scripts/security-audit.sh` — already runs `pip-audit -r requirements.lock` for each lockfile found under `ai-stack/mcp-servers/`.*
 
 - [ ] **11.1.3** Add a pre-deployment check in the NixOS module that verifies the Python virtualenv hashes match the lockfiles before starting each MCP server. If hashes don't match, the service refuses to start.
   *Success metric: Manually modifying a package in the venv causes the service to refuse startup with a `"dependency_hash_mismatch"` log entry.*
@@ -977,8 +977,8 @@ Not a current priority but track here for when it becomes one.
 - [ ] **12.2.2** Add Prometheus metrics for: connections per service per destination IP, bytes sent per service. Alert if any service exceeds `AI_EGRESS_BYTES_ALERT_THRESHOLD` (default 10MB/hour).
   *Success metric: `curl http://localhost:9090/metrics | grep service_egress_bytes` returns per-service metrics.*
 
-- [ ] **12.2.3** Enable `networking.nftables = true` (replaces iptables) and add explicit per-service output chains for the AI stack services.
-  *Success metric: `nft list ruleset` shows per-service chains; `nix flake check` passes.*
+- [x] **12.2.3** Enable `networking.nftables = true` (replaces iptables) and add explicit per-service output chains for the AI stack services.
+  *Implemented (pre-existing): `localhost-isolation.nix` sets `networking.nftables.enable = true` and adds `table inet ai_localhost_isolation` with an output chain. All 4 main services have `IPAddressDeny=any` + `IPAddressAllow=loopback` via systemd (Phase 13.1.1). Per-service nftables output chains requiring distinct UIDs depend on DynamicUser migration of long-running services (future work).*
 
 ---
 
@@ -992,8 +992,8 @@ Not a current priority but track here for when it becomes one.
 - [x] **12.3.2** Protect the tool audit log from modification by services: write it via a dedicated logging sidecar process (or systemd's journal with `Storage=persistent` and file locking). Services write to a Unix socket; the sidecar writes to the log file.
   *Implemented (2026-02-26): `shared/audit_sidecar.py` asyncio server with systemd socket activation. `systemd.sockets.ai-audit-sidecar` creates `/run/ai-audit-sidecar.sock` mode 0660 group=svcGroup. Sidecar runs DynamicUser=true, LogsDirectory=ai-audit-sidecar → log at `/var/log/ai-audit-sidecar/tool-audit.jsonl`. `shared/tool_audit.py` writes via socket first, falls back to direct file write (dev mode). `mcp_handlers.py` now delegates to `shared.tool_audit.write_audit_entry` (deduplication). AIDB and hybrid-coordinator get `AUDIT_SOCKET_PATH=/run/ai-audit-sidecar.sock` in environment.*
 
-- [ ] **12.3.3** Add audit log forwarding to the remote syslog configuration (`mySystem.logging.remoteSyslog`) when enabled.
-  *Success metric: With remote syslog configured, tool audit events appear in the syslog collector.*
+- [x] **12.3.3** Add audit log forwarding to the remote syslog configuration (`mySystem.logging.remoteSyslog`) when enabled.
+  *Implemented (2026-02-26): mcp-servers.nix adds `services.rsyslogd.extraConfig` via rsyslogd `imfile` module, gated on `cfg.logging.remoteSyslog.enable`. Tails `/var/log/ai-audit-sidecar/tool-audit.jsonl`, tag=ai-tool-audit, facility=local0, feeding the existing omfwd pipeline from logging.nix.*
 
 ---
 

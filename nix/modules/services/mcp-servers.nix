@@ -946,5 +946,21 @@ in
 
     })
 
+    # ── Phase 12.3.3 — Forward audit log to remote syslog when configured ────
+    (lib.mkIf (active && cfg.logging.remoteSyslog.enable) {
+      # rsyslogd imfile module tails the audit JSONL and feeds entries into the
+      # existing omfwd forwarding pipeline configured by logging.nix.
+      services.rsyslogd.extraConfig = lib.mkAfter ''
+        # Phase 12.3.3 — AI tool audit log forwarding
+        module(load="imfile")
+        input(type="imfile"
+              File="/var/log/ai-audit-sidecar/tool-audit.jsonl"
+              Tag="ai-tool-audit"
+              Severity="info"
+              Facility="local0"
+              reopenOnTruncate="on")
+      '';
+    })
+
   ];
 }
