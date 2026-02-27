@@ -676,19 +676,26 @@ async def run_http_mode(port: int) -> None:
     # ------------------------------------------------------------------
 
     async def handle_hints(request: web.Request) -> web.Response:
-        """POST /hints or GET /hints?q= — return ranked workflow hints for any agent."""
+        """POST /hints or GET /hints?q= — return ranked workflow hints for any agent.
+
+        Phase 19.3.2: When format=continue (GET param) or body contains 'fullInput'
+        (Continue.dev HTTP context provider), returns [{"name","description","content"}].
+        """
         try:
             if request.method == "POST":
                 try:
                     body = await request.json()
                 except Exception:
                     body = {}
-                query = body.get("query", "")
+                # Continue.dev HTTP context provider sends {"query":..., "fullInput":...}
+                is_continue = "fullInput" in body or body.get("format") == "continue"
+                query = body.get("query", "") or body.get("fullInput", "")
                 ctx = body.get("context", {})
                 file_ext = ctx.get("file_ext", "") if isinstance(ctx, dict) else str(ctx)
                 max_hints = int(body.get("max_hints", 5))
                 agent_type = ctx.get("agent_type", "remote") if isinstance(ctx, dict) else "remote"
             else:
+                is_continue = request.rel_url.query.get("format") == "continue"
                 query = request.rel_url.query.get("q", "")
                 file_ext = request.rel_url.query.get("context", "")
                 max_hints = int(request.rel_url.query.get("max", "5"))
@@ -711,6 +718,23 @@ async def run_http_mode(port: int) -> None:
                     "query": query,
                     "error": f"hints_engine unavailable: {exc}",
                 }
+
+            # Phase 19.3.2 — Continue.dev HTTP context provider format
+            if is_continue:
+                hints = result.get("hints", [])
+                content_lines = [f"# AI Stack Hints\n\n"]
+                for i, h in enumerate(hints, 1):
+                    score_pct = f"{h.get('score', 0):.0%}"
+                    content_lines.append(
+                        f"{i}. [{h.get('type', 'hint')}] {h.get('title', '')} ({score_pct})\n"
+                        f"   {h.get('snippet', '')[:120]}\n"
+                        f"   Reason: {h.get('reason', '')}\n\n"
+                    )
+                return web.json_response([{
+                    "name": "aq-hints",
+                    "description": f"AI Stack workflow hints" + (f" for: {query[:60]}" if query else ""),
+                    "content": "".join(content_lines) or "No hints available — run aq-prompt-eval to score registry prompts.",
+                }])
 
             # Agent-type-specific augmentation
             if result.get("hints") and agent_type in ("claude", "codex", "qwen", "aider"):
