@@ -45,13 +45,17 @@ let
         if builtins.hasAttr name pkgs then pkgs.${name} else null
       ) mergedPackageNames
     );
-  hardwareTier =
-    if cfg.hardware.systemRamGb >= 32 then
-      "high"
-    else if cfg.hardware.systemRamGb >= 16 then
-      "medium"
-    else
-      "low";
+  # Phase 16.1.1 — tier computed by shared library function.
+  _computeTier = import ../../lib/hardware-tier.nix { inherit lib; };
+  hardwareTier = _computeTier {
+    systemRamGb    = cfg.hardware.systemRamGb;
+    hasDiscreteGpu = cfg.hardware.gpuVendor != "none"
+                  && cfg.hardware.gpuVendor != "integrated";
+    cpuArchitecture =
+      if pkgs.stdenv.hostPlatform.isx86_64 then "x86_64"
+      else if pkgs.stdenv.hostPlatform.isAarch64 then "aarch64"
+      else "other";
+  };
 
   # ── Dev testing helper scripts (referenced by system-health-check.sh) ──────
   # These are minimal wrappers installed as system commands so they appear in

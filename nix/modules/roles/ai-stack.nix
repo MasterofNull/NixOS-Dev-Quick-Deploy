@@ -146,12 +146,29 @@ in
           assertion = cfg.hardware.systemRamGb >= 12;
           message = "AI stack: minimum 12 GB RAM required (mySystem.hardware.systemRamGb = ${toString cfg.hardware.systemRamGb}). Disable mySystem.roles.aiStack.enable or increase RAM.";
         }
+        # Phase 16.1.2 — reject invalid hardwareTier values with a descriptive message.
+        # The enum type in options.nix enforces this at parse time; this assertion
+        # provides a friendlier context-aware message in the AI stack module itself.
+        {
+          assertion = builtins.elem cfg.hardwareTier [ "nano" "micro" "small" "medium" "large" ];
+          message = "AI stack: mySystem.hardwareTier = \"${cfg.hardwareTier}\" is not valid. Expected one of: nano micro small medium large. Check nix/lib/hardware-tier.nix or override mySystem.hardwareTier in your host config.";
+        }
       ];
       # Phase 5.2.4 — advisory warning: 14B/13B models are marginal below 16 GB.
-      warnings = lib.optional (
-        cfg.hardware.systemRamGb < 16 &&
-        (lib.hasInfix "14b" (lib.toLower llama.model) || lib.hasInfix "13b" (lib.toLower llama.model))
-      ) "AI stack: a 14B/13B model is configured but mySystem.hardware.systemRamGb = ${toString cfg.hardware.systemRamGb} (< 16). Consider Qwen2.5-Coder-7B Q4_K_M instead.";
+      # Phase 16.2.2 — warn when configured model likely exceeds 70% of system RAM.
+      warnings =
+        lib.optional (
+          cfg.hardware.systemRamGb < 16 &&
+          (lib.hasInfix "14b" (lib.toLower llama.model) || lib.hasInfix "13b" (lib.toLower llama.model))
+        ) "AI stack: a 14B/13B model is configured but mySystem.hardware.systemRamGb = ${toString cfg.hardware.systemRamGb} (< 16). Consider Qwen2.5-Coder-7B Q4_K_M instead."
+        ++ lib.optional (
+          cfg.hardware.systemRamGb < 24 &&
+          (lib.hasInfix "70b" (lib.toLower llama.model) || lib.hasInfix "65b" (lib.toLower llama.model))
+        ) "AI stack: a 70B/65B model requires ~40 GB RAM but mySystem.hardware.systemRamGb = ${toString cfg.hardware.systemRamGb} (< 24). Inference will likely OOM."
+        ++ lib.optional (
+          cfg.hardware.systemRamGb < 12 &&
+          (lib.hasInfix "32b" (lib.toLower llama.model))
+        ) "AI stack: a 32B model requires ~20 GB RAM but mySystem.hardware.systemRamGb = ${toString cfg.hardware.systemRamGb} (< 12).";
     })
 
     # ── llama.cpp — active when llamaCpp.enable regardless of backend ─────────
@@ -487,15 +504,22 @@ in
     })
 
     # ── Qdrant vector database — shared across backends ───────────────────────
-    # ── Phase 5.5.2 — RAM-based default model selection ───────────────────────
+    # ── Phase 5.5.2 + 16.2.1 — Tier-based default model selection ─────────────
     # lib.mkDefault means the user can override with mySystem.aiStack.llamaCpp.model.
     # These defaults assume HF auto-download will place the file at the path below.
-    # Also set huggingFaceRepo/huggingFaceFile to drive the download service.
     (lib.mkIf (roleEnabled && llama.huggingFaceRepo == null) {
       mySystem.aiStack.llamaCpp.model = lib.mkDefault (
-        if cfg.hardware.systemRamGb >= 20
-        then "/var/lib/llama-cpp/models/qwen2.5-coder-14b-instruct-q4_k_m.gguf"
-        else "/var/lib/llama-cpp/models/qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+        let
+          modelDir = "/var/lib/llama-cpp/models";
+          tierModels = {
+            nano   = "${modelDir}/qwen2.5-0.5b-instruct-q8_0.gguf";
+            micro  = "${modelDir}/qwen2.5-1.5b-instruct-q8_0.gguf";
+            small  = "${modelDir}/phi-4-mini-instruct-q4_k_m.gguf";
+            medium = "${modelDir}/qwen2.5-coder-7b-instruct-q4_k_m.gguf";
+            large  = "${modelDir}/qwen2.5-coder-14b-instruct-q4_k_m.gguf";
+          };
+        in
+          tierModels.${cfg.hardwareTier}
       );
     })
 
