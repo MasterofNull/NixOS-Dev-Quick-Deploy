@@ -276,6 +276,16 @@
         default = 128;
         description = "Minimum free space required on the EFI System Partition before deploy proceeds.";
       };
+
+      securityAuditHighCvssThreshold = lib.mkOption {
+        type = lib.types.number;
+        default = 7.0;
+        description = ''
+          CVSS score threshold for high-severity vulnerability alerts.
+          Used by the weekly security audit timer (Phase 11.5).
+          Vulnerabilities with CVSS >= this value trigger desktop notifications.
+        '';
+      };
     };
 
     logging = {
