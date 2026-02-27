@@ -299,6 +299,43 @@ TOOL_DEFINITIONS: List[Tool] = [
             "required": ["query", "correction"],
         },
     ),
+    # Phase 19.3.1 — get_workflow_hints: agent-agnostic ranked hint retrieval
+    Tool(
+        name="get_workflow_hints",
+        description=(
+            "Get ranked workflow hints, prompt templates, and recommendations for the current "
+            "task context. Call this BEFORE starting a complex task (NixOS module changes, "
+            "systemd service additions, aider code generation, retrieval tuning) to receive "
+            "optimized patterns derived from historical performance data and the prompt registry. "
+            "Returns prompt template snippets, CLAUDE.md workflow rules, and recurring gap topics "
+            "relevant to the query. Works for all agent types."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Task description or partial query to match hints against",
+                },
+                "context": {
+                    "type": "string",
+                    "description": (
+                        "File extension or domain context to filter hints "
+                        "(e.g. '.nix', '.py', 'nixos', 'rag', 'aider', 'systemd')"
+                    ),
+                    "default": "",
+                },
+                "max_hints": {
+                    "type": "integer",
+                    "description": "Maximum number of hints to return (default: 3)",
+                    "default": 3,
+                    "minimum": 1,
+                    "maximum": 10,
+                },
+            },
+            "required": ["query"],
+        },
+    ),
 ]
 
 
@@ -431,6 +468,30 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
             )
             _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps({"feedback_id": feedback_id}))]
+
+        # Phase 19.3.1 — get_workflow_hints
+        elif name == "get_workflow_hints":
+            import sys as _sys
+            from pathlib import Path as _Path
+            _hints_dir = _Path(__file__).parent
+            if str(_hints_dir) not in _sys.path:
+                _sys.path.insert(0, str(_hints_dir))
+            try:
+                from hints_engine import HintsEngine  # type: ignore[import]
+                engine = HintsEngine()
+                result = engine.rank_as_dict(
+                    query=arguments.get("query", ""),
+                    context=arguments.get("context", ""),
+                    max_hints=int(arguments.get("max_hints", 3)),
+                )
+            except ImportError:
+                result = {
+                    "hints": [],
+                    "query": arguments.get("query", ""),
+                    "error": "hints_engine not available — run `scripts/aq-hints` from CLI instead",
+                }
+            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         else:
             raise ValueError(f"Unknown tool: {name}")

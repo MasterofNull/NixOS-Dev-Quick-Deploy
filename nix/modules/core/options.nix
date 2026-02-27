@@ -559,6 +559,17 @@
         };
       };
 
+      # Phase 19.1.4 — bash/zsh tab-completion for aq-* tools.
+      shellCompletions = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          When true, install /etc/profile.d/aq-completions.sh which provides
+          bash/zsh tab-completion for aq-hints, aq-report, and aq-prompt-eval.
+          Dynamic completions call aq-hints --format=shell-complete at tab time.
+        '';
+      };
+
       # Phase 18.4.2 — MOTD digest on login (condensed aq-report).
       motdReport = lib.mkOption {
         type = lib.types.bool;

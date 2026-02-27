@@ -672,6 +672,57 @@ async def run_http_mode(port: int) -> None:
         })
 
     # ------------------------------------------------------------------
+    # Phase 19.2.1/19.2.2 — /hints endpoint (agent-agnostic hint API)
+    # ------------------------------------------------------------------
+
+    async def handle_hints(request: web.Request) -> web.Response:
+        """POST /hints or GET /hints?q= — return ranked workflow hints for any agent."""
+        try:
+            if request.method == "POST":
+                try:
+                    body = await request.json()
+                except Exception:
+                    body = {}
+                query = body.get("query", "")
+                ctx = body.get("context", {})
+                file_ext = ctx.get("file_ext", "") if isinstance(ctx, dict) else str(ctx)
+                max_hints = int(body.get("max_hints", 5))
+                agent_type = ctx.get("agent_type", "remote") if isinstance(ctx, dict) else "remote"
+            else:
+                query = request.rel_url.query.get("q", "")
+                file_ext = request.rel_url.query.get("context", "")
+                max_hints = int(request.rel_url.query.get("max", "5"))
+                agent_type = request.rel_url.query.get("agent", "remote")
+
+            try:
+                import sys as _sys
+                from pathlib import Path as _Path
+                _hints_dir = _Path(__file__).parent
+                if str(_hints_dir) not in _sys.path:
+                    _sys.path.insert(0, str(_hints_dir))
+                from hints_engine import HintsEngine  # type: ignore[import]
+                engine = HintsEngine()
+                result = engine.rank_as_dict(query, context=file_ext, max_hints=max_hints)
+            except Exception as exc:
+                logger.warning("hints_engine_unavailable error=%s", exc)
+                result = {
+                    "hints": [],
+                    "generated_at": "",
+                    "query": query,
+                    "error": f"hints_engine unavailable: {exc}",
+                }
+
+            # Agent-type-specific augmentation
+            if result.get("hints") and agent_type in ("claude", "codex", "qwen", "aider"):
+                top = result["hints"][0]
+                result["inject_prefix"] = top.get("snippet", "")[:150]
+
+            return web.json_response(result)
+        except Exception as exc:
+            logger.error("handle_hints error=%s", exc)
+            return web.json_response({"error": str(exc)}, status=500)
+
+    # ------------------------------------------------------------------
     # App assembly and startup
     # ------------------------------------------------------------------
 
@@ -705,6 +756,8 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/learning/export", handle_learning_export)
     http_app.router.add_post("/learning/ab_compare", handle_learning_ab_compare)
     http_app.router.add_post("/reload-model", handle_reload_model)
+    http_app.router.add_post("/hints", handle_hints)           # Phase 19.2.1
+    http_app.router.add_get("/hints", handle_hints)            # Phase 19.2.2
 
     runner = web.AppRunner(
         http_app,

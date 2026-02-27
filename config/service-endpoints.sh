@@ -64,5 +64,8 @@ fi
 : "${LLAMA_CPP_EMBED_URL:=${EMBEDDINGS_URL}}"
 : "${AIDER_URL:=${AIDER_WRAPPER_URL}}"
 
+# Phase 19.2.3 — hints API endpoint (sub-path of hybrid-coordinator, no separate port)
+: "${HINTS_URL:=${HYBRID_URL}/hints}"
+
 # In-cluster DNS endpoints were intentionally removed.
 # Host-mode declarative runtime is authoritative; use localhost URLs above.

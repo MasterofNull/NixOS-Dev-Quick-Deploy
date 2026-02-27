@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+"""
+aq-hints — Agent-agnostic workflow hint CLI (Phase 19.1.2)
+
+Surfaces ranked hints from registry.yaml prompt scores, query gaps, and
+CLAUDE.md workflow rules. Consumed by any agent over stdout:
+
+  Human terminal:    aq-hints "conflicting nixos" --format=text
+  Claude Code:       aq-hints "systemd service" --format=json --agent=claude
+  Codex/Qwen pipe:   aq-hints "aider task" --format=json --agent=codex
+  aider-wrapper:     aq-hints "..." --format=json --agent=aider
+  Continue.dev:      aq-hints "..." --format=json --agent=continue
+  Shell complete:    aq-hints --format=shell-complete
+
+Falls back to REST GET /hints?q= on HYBRID_URL if local engine is unavailable.
+
+Usage:
+  aq-hints [QUERY] [--format=json|text|shell-complete]
+           [--context=EXT] [--max=N] [--agent=TYPE]
+
+Environment:
+  REGISTRY_PATH        Override path to registry.yaml
+  TOOL_AUDIT_LOG_PATH  Override tool-audit.jsonl path
+  HYBRID_URL           Hybrid coordinator base URL (REST fallback)
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+# ---------------------------------------------------------------------------
+# Engine import — local first, REST fallback
+# ---------------------------------------------------------------------------
+
+_REPO_ROOT = Path(__file__).parent.parent
+_ENGINE_DIR = _REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator"
+
+if str(_ENGINE_DIR) not in sys.path and _ENGINE_DIR.exists():
+    sys.path.insert(0, str(_ENGINE_DIR))
+
+try:
+    from hints_engine import HintsEngine  # type: ignore[import]
+    _ENGINE_AVAILABLE = True
+except ImportError:
+    _ENGINE_AVAILABLE = False
+
+HYBRID_URL = os.getenv(
+    "HYBRID_URL",
+    f"http://{os.getenv('SERVICE_HOST', '127.0.0.1')}:{os.getenv('HYBRID_COORDINATOR_PORT', '8003')}",
+).rstrip("/")
+
+# ---------------------------------------------------------------------------
+# Arg parsing
+# ---------------------------------------------------------------------------
+
+
+def _parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Ranked AI workflow hints for any agent",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("query", nargs="?", default="", help="Task description or partial query")
+    p.add_argument(
+        "--format", dest="fmt", default="text",
+        choices=["json", "text", "shell-complete"],
+        help="Output format (default: text)",
+    )
+    p.add_argument(
+        "--context", default="",
+        help="File extension or domain filter (e.g. .nix, .py, nixos, rag, aider, systemd)",
+    )
+    p.add_argument("--max", type=int, default=5, help="Max hints to return (default: 5)")
+    p.add_argument(
+        "--agent", default="human",
+        choices=["human", "claude", "codex", "qwen", "aider", "continue"],
+        help="Agent type — adjusts output verbosity and augments inject fields",
+    )
+    return p.parse_args()
+
+
+# ---------------------------------------------------------------------------
+# Data retrieval
+# ---------------------------------------------------------------------------
+
+
+def _fetch_local(query: str, context: str, max_hints: int) -> Optional[Dict[str, Any]]:
+    if not _ENGINE_AVAILABLE:
+        return None
+    try:
+        engine = HintsEngine()
+        return engine.rank_as_dict(query, context=context, max_hints=max_hints)
+    except Exception:
+        return None
+
+
+def _fetch_rest(query: str, context: str, max_hints: int) -> Optional[Dict[str, Any]]:
+    params = urllib.parse.urlencode({"q": query, "context": context, "max": max_hints})
+    url = f"{HYBRID_URL}/hints?{params}"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read())
+    except Exception:
+        return None
+
+
+def get_hints(query: str, context: str, max_hints: int) -> Dict[str, Any]:
+    result = _fetch_local(query, context, max_hints) or _fetch_rest(query, context, max_hints)
+    if result is None:
+        print(
+            "ERROR: hints_engine unavailable locally and REST fallback failed.\n"
+            f"  Local engine: {'OK' if _ENGINE_AVAILABLE else 'MISSING (check sys.path)'}\n"
+            f"  REST fallback: {HYBRID_URL}/hints (ensure hybrid-coordinator is running)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Agent-type augmentation
+# ---------------------------------------------------------------------------
+
+_ANSI_RESET = "\033[0m"
+_ANSI_BOLD  = "\033[1m"
+_ANSI_CYAN  = "\033[36m"
+_ANSI_GREEN = "\033[32m"
+_ANSI_DIM   = "\033[2m"
+_USE_COLOR  = sys.stdout.isatty()
+
+
+def _c(code: str, text: str) -> str:
+    return f"{code}{text}{_ANSI_RESET}" if _USE_COLOR else text
+
+
+def _augment_for_agent(result: Dict[str, Any], agent: str) -> Dict[str, Any]:
+    hints = result.get("hints", [])
+    if not hints:
+        return result
+    top = hints[0]
+    snippet = top.get("snippet", "")[:150]
+
+    if agent in ("claude", "codex", "qwen"):
+        result["inject_prefix"] = snippet
+        result["agent_note"] = (
+            f"Prepend inject_prefix to your next prompt for context-aware steering. "
+            f"Top hint: {top.get('title')} (score {top.get('score', 0):.0%})"
+        )
+    elif agent == "aider":
+        result["aider_message_prefix"] = f"CONTEXT (from aq-hints): {snippet}"
+        result["agent_note"] = "Prepend aider_message_prefix to your --message argument."
+    elif agent == "continue":
+        # Reformat as a Continue.dev context item
+        text_lines = [f"# AI Stack Hints for: {result.get('query', '')}\n"]
+        for i, h in enumerate(hints, 1):
+            text_lines.append(
+                f"{i}. [{h['type']}] {h['title']} ({h.get('score', 0):.0%})\n"
+                f"   {h.get('snippet', '')[:100]}\n"
+                f"   Reason: {h.get('reason', '')}\n"
+            )
+        result["continue_context"] = {
+            "name": "aq-hints",
+            "description": "AI Stack workflow hints",
+            "content": "\n".join(text_lines),
+        }
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Formatters
+# ---------------------------------------------------------------------------
+
+_TYPE_ICONS = {
+    "prompt_template": "📋",
+    "gap_topic":       "🔍",
+    "workflow_rule":   "📌",
+    "tool_warning":    "⚠️ ",
+}
+
+
+def _format_json(result: Dict[str, Any]) -> str:
+    return json.dumps(result, indent=2, default=str)
+
+
+def _format_text(result: Dict[str, Any], agent: str) -> str:
+    hints = result.get("hints", [])
+    query = result.get("query", "")
+    sep = "─" * 54
+
+    # aider gets a machine-readable prefix line first
+    if agent == "aider" and "aider_message_prefix" in result:
+        print(result["aider_message_prefix"])
+
+    lines = [
+        _c(_ANSI_BOLD, f"\n── AI Stack Hints {'─' * 34}"),
+    ]
+    if query:
+        lines.append(f"  Query: {_c(_ANSI_CYAN, repr(query))}   Agent: {agent}")
+    lines.append("")
+
+    if not hints:
+        lines.append("  No hints found. Run `scripts/aq-prompt-eval` to score registry prompts,")
+        lines.append("  or check that the hybrid-coordinator is running for gap data.")
+        lines.append("")
+    else:
+        for i, h in enumerate(hints, 1):
+            icon = _TYPE_ICONS.get(h.get("type", ""), "•")
+            score_pct = f"{h.get('score', 0):.0%}"
+            lines.append(
+                f"  {i}. {_c(_ANSI_GREEN, icon + ' ' + h.get('title', ''))}  "
+                f"({_c(_ANSI_BOLD, score_pct)})"
+            )
+            tags = h.get("tags", [])
+            if tags:
+                lines.append(f"     Tags: {_c(_ANSI_DIM, ', '.join(tags))}")
+            snippet = h.get("snippet", "")[:120]
+            if snippet:
+                lines.append(f"     → {snippet}{'…' if len(h.get('snippet','')) > 120 else ''}")
+            reason = h.get("reason", "")
+            if reason:
+                lines.append(f"     {_c(_ANSI_DIM, 'Reason: ' + reason)}")
+            lines.append("")
+
+    if "inject_prefix" in result:
+        lines.append(_c(_ANSI_DIM, f"  inject_prefix: {result['inject_prefix'][:80]}…"))
+        lines.append("")
+
+    lines.append(_c(_ANSI_BOLD, sep))
+    return "\n".join(lines)
+
+
+def _format_shell_complete(result: Dict[str, Any]) -> str:
+    """One candidate per line for compgen — no color, no headers."""
+    candidates: List[str] = []
+    for h in result.get("hints", []):
+        title_slug = h.get("title", "").lower().replace(" ", "-")
+        if title_slug:
+            candidates.append(title_slug)
+        for tag in h.get("tags", []):
+            if tag not in candidates:
+                candidates.append(tag)
+    return "\n".join(candidates)
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+
+def main() -> None:
+    args = _parse_args()
+    result = get_hints(args.query, args.context, args.max)
+    result = _augment_for_agent(result, args.agent)
+
+    if args.fmt == "json":
+        print(_format_json(result))
+    elif args.fmt == "shell-complete":
+        output = _format_shell_complete(result)
+        if output:
+            print(output)
+    else:
+        print(_format_text(result, args.agent))
+
+
+if __name__ == "__main__":
+    main()
