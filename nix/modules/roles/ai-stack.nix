@@ -132,6 +132,15 @@ in
           assertion = !hasEmbedAutoDownload || embedHfSha256Valid;
           message = "mySystem.aiStack.embeddingServer.huggingFaceRepo requires mySystem.aiStack.embeddingServer.sha256 (64 hex chars).";
         }
+        # Phase 11.3.3 — Model allowlist enforcement
+        {
+          assertion = cfg.aiStack.modelAllowlist == [ ] || builtins.elem hfRepo cfg.aiStack.modelAllowlist;
+          message = "mySystem.aiStack.llamaCpp.huggingFaceRepo \"${hfRepo}\" is not in mySystem.aiStack.modelAllowlist. Add to allowlist or change model repo.";
+        }
+        {
+          assertion = cfg.aiStack.modelAllowlist == [ ] || builtins.elem embedHfRepo cfg.aiStack.modelAllowlist;
+          message = "mySystem.aiStack.embeddingServer.huggingFaceRepo \"${embedHfRepo}\" is not in mySystem.aiStack.modelAllowlist. Add to allowlist or change model repo.";
+        }
         # Phase 5.2.4 — hard block: AI stack requires at least 12 GB to load any model.
         {
           assertion = cfg.hardware.systemRamGb >= 12;
@@ -256,6 +265,14 @@ in
               echo "actual:   $actual_sha" >&2
               exit 1
             fi
+
+            # Phase 11.3 — Model Weight Integrity: Run safety verification
+            # This checks for pickle magic bytes and records provenance metadata.
+            echo "llama-cpp: running Phase 11.3 model safety verification..."
+            ${pkgs.bash}/bin/bash ${mcp.repoPath}/scripts/verify-model-safety.sh \
+              --hf-repo "${hfRepo}" \
+              --provenance-dir "${dataDir}/models" \
+              "$tmp"
 
             mv "$tmp" "$model"
             chown llama:llama "$model"
@@ -382,6 +399,14 @@ in
               echo "actual:   $actual_sha" >&2
               exit 1
             fi
+
+            # Phase 11.3 — Model Weight Integrity: Run safety verification
+            # This checks for pickle magic bytes and records provenance metadata.
+            echo "llama-cpp-embed: running Phase 11.3 model safety verification..."
+            ${pkgs.bash}/bin/bash ${mcp.repoPath}/scripts/verify-model-safety.sh \
+              --hf-repo "${embedHfRepo}" \
+              --provenance-dir "${dataDir}/models" \
+              "$tmp"
 
             mv "$tmp" "$model"
             chown llama:llama "$model"
