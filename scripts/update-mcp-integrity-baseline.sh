@@ -18,5 +18,7 @@ find "$MCP_SERVER_DIR" -name "*.py" -type f | sort | while read -r f; do
 done > "$tmp"
 
 count=$(wc -l < "$tmp")
-mv "$tmp" "$BASELINE_FILE"
+# Install with 0644 so the DynamicUser integrity-check service can read it
+install -m 644 "$tmp" "$BASELINE_FILE"
+rm -f "$tmp"
 echo "[mcp-integrity-baseline] Wrote $count file hashes to $BASELINE_FILE"
