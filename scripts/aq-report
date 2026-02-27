@@ -46,6 +46,10 @@ AUDIT_FALLBACK_PATH = Path(
     os.getenv("TOOL_AUDIT_LOG_PATH_FALLBACK",
               "/var/log/ai-audit-sidecar/tool-audit.jsonl")
 )
+# Phase 19.3.4 — hint adoption log (written by aider-wrapper alongside tool-audit.jsonl)
+HINT_AUDIT_PATH = Path(
+    os.getenv("HINT_AUDIT_LOG_PATH", str(TOOL_AUDIT_PATH.parent / "hint-audit.jsonl"))
+)
 EVAL_SCORES_DB = Path(
     os.getenv("EVAL_SCORES_DB",
               str(Path(__file__).parent.parent / "ai-stack/eval/results/scores.sqlite"))
@@ -257,6 +261,52 @@ def read_query_gaps(since: datetime, limit: int = 10) -> List[dict]:
         return []
 
 
+def hint_adoption(since: datetime) -> Dict[str, Any]:
+    """Phase 19.3.4 — read hint-audit.jsonl and compute adoption stats.
+
+    'Adoption' = the aider task that received an injected hint completed
+    successfully (returncode 0 + at least one file modified).
+    """
+    if not HINT_AUDIT_PATH.exists():
+        return {"available": False}
+    total = 0
+    accepted = 0
+    top_hints: Dict[str, int] = {}
+    try:
+        with HINT_AUDIT_PATH.open(encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                ts_raw = entry.get("timestamp", "")
+                try:
+                    ts = datetime.fromisoformat(ts_raw.rstrip("Z")).replace(tzinfo=timezone.utc)
+                    if ts < since:
+                        continue
+                except (ValueError, AttributeError):
+                    continue
+                total += 1
+                if entry.get("hint_accepted"):
+                    accepted += 1
+                hid = entry.get("hint_id", "unknown")
+                top_hints[hid] = top_hints.get(hid, 0) + 1
+    except OSError:
+        return {"available": False}
+    if total == 0:
+        return {"available": True, "total": 0, "accepted": 0, "adoption_pct": None, "top_hints": []}
+    return {
+        "available": True,
+        "total": total,
+        "accepted": accepted,
+        "adoption_pct": round(100 * accepted / total, 1),
+        "top_hints": sorted(top_hints.items(), key=lambda x: -x[1])[:5],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Analysis helpers
 # ---------------------------------------------------------------------------
@@ -459,6 +509,7 @@ def format_md(
     top_prompts: List[dict],
     gaps: List[dict],
     recs: List[str],
+    adoption: Optional[Dict[str, Any]] = None,
 ) -> str:
     lines = [
         f"# AI Stack Performance Report — last {since_label}",
@@ -570,6 +621,29 @@ def format_md(
         lines.append(f"{i}. {rec}")
     lines.append("")
 
+    # 9. Hint Adoption (Phase 19.3.4)
+    lines += ["## 9. Hint Adoption (aq-hints → aider-wrapper)", ""]
+    if adoption and adoption.get("available"):
+        if adoption["total"] == 0:
+            lines.append("*No hint-injected aider tasks in this window.*")
+        else:
+            lines += [
+                f"- Tasks with hint injection: **{adoption['total']}**",
+                f"- Successful completions: **{adoption['accepted']}**",
+                f"- Adoption rate: **{_na(adoption['adoption_pct'], '.1f', '%')}**",
+            ]
+            if adoption.get("top_hints"):
+                lines += ["", "Top hints by injection frequency:", ""]
+                lines += [
+                    "| Hint ID | Injections |",
+                    "|---------|----------:|",
+                ]
+                for hid, count in adoption["top_hints"]:
+                    lines.append(f"| `{hid}` | {count} |")
+    else:
+        lines.append("*Hint audit unavailable — ensure AI_HINTS_ENABLED=true in aider-wrapper.*")
+    lines.append("")
+
     return "\n".join(lines)
 
 
@@ -583,6 +657,7 @@ def format_text(
     top_prompts: List[dict],
     gaps: List[dict],
     recs: List[str],
+    adoption: Optional[Dict[str, Any]] = None,
 ) -> str:
     sep = "─" * 60
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -679,6 +754,23 @@ def format_text(
             else:
                 cur_line = cur_line + (" " if len(cur_line) > len(indent) else "") + word
         lines.append(cur_line)
+    lines.append("")
+
+    lines += ["[ 9. Hint Adoption (aq-hints → aider-wrapper) ]"]
+    if adoption and adoption.get("available"):
+        if adoption["total"] == 0:
+            lines.append("  No hint-injected aider tasks in this window.")
+        else:
+            lines += [
+                f"  Injected: {adoption['total']}   Successful: {adoption['accepted']}"
+                f"   Rate: {_na(adoption['adoption_pct'], '.1f', '%')}",
+            ]
+            if adoption.get("top_hints"):
+                lines.append("  Top hints:")
+                for hid, count in adoption["top_hints"]:
+                    lines.append(f"    {count:3d}x  {hid}")
+    else:
+        lines.append("  Hint audit unavailable (AI_HINTS_ENABLED=true required).")
     lines += ["", sep]
     return "\n".join(lines)
 
@@ -693,6 +785,7 @@ def format_json(
     top_prompts: List[dict],
     gaps: List[dict],
     recs: List[str],
+    adoption: Optional[Dict[str, Any]] = None,
 ) -> str:
     doc = {
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
@@ -708,6 +801,7 @@ def format_json(
         ],
         "query_gaps": gaps[:10],
         "recommendations": recs,
+        "hint_adoption": adoption or {"available": False},
     }
     return json.dumps(doc, indent=2, default=str)
 
@@ -770,9 +864,10 @@ def main() -> None:
         key=lambda x: -x["mean_score"],
     )[:3]
     recs = build_recommendations(tool_stats, route, cache, eval_trend, gaps)
+    adoption = hint_adoption(since_dt)  # Phase 19.3.4
 
     # Render
-    fmt_args = (since_label, tool_stats, route, cache, eval_trend, leaderboard, top_prompts, gaps, recs)
+    fmt_args = (since_label, tool_stats, route, cache, eval_trend, leaderboard, top_prompts, gaps, recs, adoption)
     if args.fmt == "md":
         output = format_md(*fmt_args)
     elif args.fmt == "json":
