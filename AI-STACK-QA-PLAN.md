@@ -965,7 +965,7 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
 
 ### 9.1 — Inference Latency Optimisation
 
-- [ ] **9.1.1** Measure time-to-first-token (TTFT) baseline.
+- [x] **9.1.1** Measure time-to-first-token (TTFT) baseline. <!-- PASS: 0.848s < 3s target -->
   ```bash
   time curl -sf http://127.0.0.1:8080/v1/chat/completions \
     -H 'Content-Type: application/json' \
@@ -975,7 +975,7 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
   **Target:** TTFT < 3 seconds on "large" tier hardware.
   **Action if failing:** Check `HSA_ENABLE_SDMA=0`, verify ROCm is active (`rocminfo | grep "Agent Type"`), verify model is in RAM (not being re-mmap'd).
 
-- [ ] **9.1.2** GPU offload is active (non-zero GPU layers).
+- [!] **9.1.2** GPU offload is active (non-zero GPU layers). <!-- FAIL: "no usable GPU found, --gpu-layers ignored" — llama.cpp compiled without ROCm/GPU support -->
   ```bash
   journalctl -u llama-cpp --since "1 hour ago" | grep -i "gpu\|layers\|offload" | head -5
   ```
@@ -983,7 +983,7 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
 
 ### 9.2 — Semantic Cache Effectiveness
 
-- [ ] **9.2.1** Cache hit on repeated query.
+- [x] **9.2.1** Cache hit on repeated query. <!-- PASS: first=46ms second=15ms (15ms < 23ms = 50% of 46ms) -->
   ```bash
   Q='{"query":"What is NixOS?","mode":"local"}'
   T1=$(date +%s%N)
@@ -995,7 +995,7 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
   ```
   **Target:** Second call < 50% of first call latency (cache hit).
 
-- [ ] **9.2.2** Verify cache key is based on semantic similarity, not exact string match.
+- [!] **9.2.2** Verify cache key is based on semantic similarity, not exact string match. <!-- FAIL: no top-level cache_hit field in /query response; cache_hit only in capability_discovery sub-object -->
   ```bash
   curl -sf -X POST http://127.0.0.1:8003/query \
     -H 'Content-Type: application/json' \
@@ -1005,13 +1005,13 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
 
 ### 9.3 — Embedding Quality Improvement
 
-- [ ] **9.3.1** Verify nomic-embed-text model is loaded (not a smaller fallback).
+- [x] **9.3.1** Verify nomic-embed-text model is loaded (not a smaller fallback). <!-- PASS: nomic-embed-text-v1.5.Q8_0.gguf confirmed in journal -->
   ```bash
   journalctl -u ai-embeddings --since "24 hours ago" | grep -i "model\|nomic\|embed" | head -5
   ```
   **Target:** Log references `nomic-embed-text`.
 
-- [ ] **9.3.2** Measure embedding generation throughput.
+- [x] **9.3.2** Measure embedding generation throughput. <!-- PASS: 10 embeddings in 0.621s (~62ms/each) << 30s target -->
   ```bash
   time (for i in $(seq 1 10); do
     curl -sf -X POST http://127.0.0.1:8081/v1/embeddings \
@@ -1023,7 +1023,7 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
 
 ### 9.4 — Context Engineering Improvements (Open Tasks)
 
-- [ ] **9.4.1** Implement AIDB import of `CLAUDE.md` + `MEMORY.md` for local LLM RAG (Phase 19.4.5).
+- [s] **9.4.1** Implement AIDB import of `CLAUDE.md` + `MEMORY.md` for local LLM RAG (Phase 19.4.5). <!-- SKIP: blocked on ai-aidb.service restart (embed URL fix not loaded) -->
   ```bash
   # After implementing:
   curl -sf -X POST http://127.0.0.1:8002/search \
@@ -1033,7 +1033,7 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
   ```
   **Target:** Returns CLAUDE.md or MEMORY.md as a result.
 
-- [ ] **9.4.2** Implement local LLM system prompt injection with top-3 CLAUDE.md rules (Phase 19.4.6).
+- [s] **9.4.2** Implement local LLM system prompt injection with top-3 CLAUDE.md rules (Phase 19.4.6). <!-- SKIP: not yet implemented (Phase 19.4.6 open) -->
   ```bash
   # After implementing, verify system prompt is prepended:
   systemctl show llama-cpp -p Environment | grep "AI_LOCAL_SYSTEM_PROMPT"
@@ -1048,24 +1048,24 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
 
 ### 10.1 — Test Suite Automation
 
-- [ ] **10.1.1** Create `scripts/run-qa-suite.sh` that runs all Phase 0–6 smoke/feature tests.
+- [x] **10.1.1** Create `scripts/run-qa-suite.sh` that runs all Phase 0–6 smoke/feature tests. <!-- PASS: script created, executable, wraps aq-qa phases 0-6 -->
   **Success metric:** Script exists, is executable, and prints `PASS/FAIL` per test with a final summary.
 
-- [ ] **10.1.2** Add `qa-suite` step to `nixos-quick-deploy.sh` post-deploy checks.
+- [s] **10.1.2** Add `qa-suite` step to `nixos-quick-deploy.sh` post-deploy checks. <!-- SKIP: out of scope for this QA run; tracked as Phase 21.5 -->
   **Success metric:** Deploy output includes `QA Suite: N passed, 0 failed` after switch.
 
-- [ ] **10.1.3** All Phase 0–6 tests pass on a clean rebuild with current `main` branch.
+- [s] **10.1.3** All Phase 0–6 tests pass on a clean rebuild with current `main` branch. <!-- SKIP: requires clean rebuild; aq-qa 0 + 1 pass on current system -->
   **Success metric:** `bash scripts/run-qa-suite.sh` exits 0.
 
 ### 10.2 — Monitoring Continuity
 
-- [ ] **10.2.1** `aq-report` runs weekly via systemd timer (verify next trigger).
+- [x] **10.2.1** `aq-report` runs weekly via systemd timer (verify next trigger). <!-- PASS: next=Sun 2026-03-01 08:07:15 -->
   ```bash
   systemctl list-timers ai-weekly-report.timer
   ```
   **Pass:** Next trigger shows next Sunday ~08:00.
 
-- [ ] **10.2.2** Integrity check timer fires hourly (verify last trigger).
+- [x] **10.2.2** Integrity check timer fires hourly (verify last trigger). <!-- PASS: last trigger 26 min ago, next in 36 min -->
   ```bash
   systemctl list-timers ai-mcp-integrity-check.timer | awk '{print $1, $2}'
   ```
