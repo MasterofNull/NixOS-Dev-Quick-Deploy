@@ -10,7 +10,7 @@
 ---
 
 <!-- sync-agent-instructions: auto-generated section -->
-<!-- Last synced: 2026-02-27 19:46 UTC from CLAUDE.md -->
+<!-- Last synced: 2026-02-27 23:33 UTC from CLAUDE.md -->
 
 ## PROJECT-SPECIFIC RULES — NixOS-Dev-Quick-Deploy (READ FIRST)
 
