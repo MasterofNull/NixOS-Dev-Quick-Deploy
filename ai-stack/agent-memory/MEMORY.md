@@ -112,11 +112,63 @@ All 18.1–18.5 tasks done except 18.2.3 (strategy_tag in tool_audit.jsonl, open
 | Port conflict (Open WebUI vs Grafana both on 3000) | Grafana default is 3000; OWU was hardcoded | Added `ports.openWebui = 3001` in options.nix; OWU uses `ports.openWebui` |
 | HM `programs.git.extraConfig` warning | Option renamed to `settings` | Use `programs.git.settings = { ... }` |
 
+## Phase 11 — Agent Knowledge Portability (2026-02-27, commit 64cc7b5)
+- 11.0.1 DONE: `_ensure_imported_documents_schema()` added to MCPServer — ALTER TABLE migrates source_trust_level + source_url on startup
+- 11.0.2 DONE: MonitoringServer line 1607 fixed — `self._tiered_rate_limiter` → `self.mcp_server._tiered_rate_limiter`
+- 11.1 DONE: `ai-stack/agent-memory/MEMORY.md` git-tracked; `scripts/import-agent-instructions.sh` created
+- 11.0.3 + 11.2 PENDING: Requires `sudo systemctl restart ai-aidb.service` then `bash scripts/import-agent-instructions.sh`
+
+## AIDB git hooks pre-commit rule (important)
+`.githooks/pre-commit` blocks shell scripts (`.sh`) that use `echo "...${UPPERCASE_VAR}..."` without `-e` flag.
+Use `printf 'msg %s\n' "${VAR}"` in all new shell scripts to avoid false positives.
+Custom hooks path: `git config core.hookspath=.githooks`
+
+## Phase 21 — Dev Tooling (DONE, commit a1d6256 + 7994d74)
+- `scripts/aq-qa`: phase runner — `aq-qa 0` → 26 pass / 0 fail / 2 skip (AppArmor needs --sudo)
+  - Phase 0: all service/port/inference checks in one call
+  - Phase 1: redis/postgres/qdrant/aidb/hybrid in one call
+  - Unit name: llama-cpp-embed.service (not ai-embeddings.service)
+- `.githooks/pre-commit`: run_syntax_check() added — bash -n / py_compile / nix-instantiate
+- `~/.claude/skills/ai-stack-qa/SKILL.md`: Claude skill with port reference and token-efficient patterns
+- `import-agent-instructions.sh`: now imports QA plan + 10 custom scripts under project=dev-tools
+- All QA plan phases annotated with their primary tool (aq-qa, aq-report, aq-hints, etc.)
+
+## Service Port Map (verified 2026-02-27)
+| Service | Port | Auth Key Secret |
+|---------|------|-----------------|
+| Redis | 6379 | none |
+| PostgreSQL | 5432 | /run/secrets/postgres_password (user=aidb) |
+| Qdrant | 6333 | none |
+| llama.cpp | 8080 | none |
+| llama-embed | 8081 | none |
+| AIDB | 8002 | /run/secrets/aidb_api_key (X-API-Key, 6 chars) |
+| hybrid-coordinator | 8003 | /run/secrets/hybrid_coordinator_api_key |
+| ralph-wiggum | 8004 | /run/secrets/aidb_api_key (SHARED with AIDB) |
+| switchboard | 8085 | none (routing proxy) |
+| Open WebUI | 3001 | none |
+| Grafana | 3000 | none |
+| Prometheus | 9090 | none |
+Note: /run/secrets/ dir is not listable but individual files are readable by hyperd user.
+ralph-wiggum TaskRequest field is `prompt` (not `task`).
+AIDB POST /documents needs X-API-Key; GET /documents is open.
+AIDB vector search endpoint: POST /vector/search (not /search).
+
+## Phase 2 QA Status (2026-02-27, session ongoing)
+- 2.1.x inference/embedding: ALL PASS
+- 2.2.1-2 AIDB ingest/list: PASS (use X-API-Key for POST)
+- 2.2.3 AIDB vector search: BLOCKED pending ai-aidb.service restart (embed URL fix in 6cffb83)
+- 2.3.x hybrid coordinator: ALL PASS
+- 2.4.x ralph-wiggum tasks: PASS (AIDB key shared, prompt field)
+- 2.5.2 cosine similarity: PASS (0.714, strings from QA plan)
+
 ## Remaining High-Priority Open Work
+- **Phase 21.4**: MCP tool `run_qa_check` in hybrid-coordinator (requires deploy)
+- **Phase 21.5**: Post-deploy auto Phase 0 via `aq-qa 0` in nixos-quick-deploy.sh
+- Phase 11.0.3 + 11.2: Run import after `sudo systemctl restart ai-aidb.service`
 - Phase 11.1.1: aider-wrapper lock (aider-chat version invalid in requirements.txt)
 - Phase 11.1.3: pre-deployment hash check in NixOS module
 - Phase 12.2.2: Prometheus egress metrics
 - Phase 18.2.3: strategy_tag in tool_audit.jsonl from route_handler.py
-- Phase 19.4.5: AIDB import of CLAUDE.md + MEMORY.md for local LLM RAG
+- Phase 19.4.5: AIDB import of CLAUDE.md + MEMORY.md for local LLM RAG (blocked on restart + 11.2)
 - Phase 19.4.6: local LLM system prompt with top-3 CLAUDE.md rules (AI_LOCAL_SYSTEM_PROMPT=true)
-- **Phase 20 (NEW)**: Full QA plan tracked in `AI-STACK-QA-PLAN.md` — 10 phases, ~65 discrete tests covering smoke, features, reasoning, context engineering, security, monitoring, self-improvement, E2E workflows
+- **Phase 20**: Full QA plan tracked in `AI-STACK-QA-PLAN.md` — 10 phases, ~65 discrete tests

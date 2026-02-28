@@ -1236,6 +1236,7 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
 - [s] **11.4.2** Add `seed-fresh-deploy.sh` call to the deploy script (guarded by `--fresh` flag). <!-- SKIP: tracked as Phase 21.5 -->
   **Pass:** `./nixos-quick-deploy.sh --host nixos --profile ai-dev --fresh` runs the seeding step.
 
+
 - [x] **11.4.3** Document the portability workflow in `AI-STACK-QA-PLAN.md` and `KNOWN_ISSUES_TROUBLESHOOTING.md`. <!-- PASS: workflow documented in 11.3.1 classification comment + script headers -->
 
 ### 11.5 — Qdrant Vector Store Portability
@@ -1250,6 +1251,7 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
   **Pass:** Qdrant collection row count ≥ AIDB document count after run.
 
 - [s] **11.5.2** Include `rebuild-qdrant-collections.sh` in `seed-fresh-deploy.sh` (after AIDB import). <!-- SKIP: 500s on large docs make this unsafe to chain automatically; manual run preferred -->
+
 
 ---
 
