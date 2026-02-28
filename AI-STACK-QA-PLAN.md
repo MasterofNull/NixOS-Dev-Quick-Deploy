@@ -900,7 +900,7 @@ aq-qa 1
 
 ### 8.1 — NixOS Help Workflow
 
-- [ ] **8.1.1** Full RAG pipeline: seed NixOS docs → query → get accurate answer.
+- [!] **8.1.1** Full RAG pipeline: seed NixOS docs → query → get accurate answer. <!-- FAIL: same root cause as 3.3.1 — hybrid searches empty Qdrant collections, not AIDB Postgres docs -->
   ```bash
   # Seed a specific fact
   curl -sf -X POST http://127.0.0.1:8002/documents \
@@ -919,7 +919,7 @@ aq-qa 1
 
 ### 8.2 — Code Editing Workflow (Aider)
 
-- [ ] **8.2.1** Aider wrapper accepts a code task.
+- [s] **8.2.1** Aider wrapper accepts a code task. <!-- SKIP: aider-wrapper not running on :8090 (Phase 11.1.1 lock-file bug) -->
   ```bash
   curl -sf -X POST http://127.0.0.1:8090/task \
     -H 'Content-Type: application/json' \
@@ -930,7 +930,7 @@ aq-qa 1
 
 ### 8.3 — Hint-Augmented Code Workflow
 
-- [ ] **8.3.1** Hints are returned for a coding query and are contextually relevant.
+- [x] **8.3.1** Hints are returned for a coding query and are contextually relevant. <!-- nix_relevant=2/5 (nixos domain query expansion + route-search); JSON is dict wrapper, not bare list -->
   ```bash
   bash scripts/aq-hints --format=json | \
     python3 -c "
@@ -944,14 +944,14 @@ aq-qa 1
 
 ### 8.4 — Weekly Report Workflow
 
-- [ ] **8.4.1** Weekly report service runs on demand without error.
+- [s] **8.4.1** Weekly report service runs on demand without error. <!-- SKIP: requires sudo systemctl start -->
   ```bash
   sudo systemctl start ai-weekly-report.service && sleep 10 && \
     journalctl -u ai-weekly-report.service --since "1 min ago" | tail -5
   ```
   **Pass:** Service exits cleanly, journal shows report output.
 
-- [ ] **8.4.2** `aq-report --aidb-import` imports to AIDB without error.
+- [x] **8.4.2** `aq-report --aidb-import` imports to AIDB without error. <!-- PASS: exit 0, no ERROR in output -->
   ```bash
   bash scripts/aq-report --since=7d --format=md --aidb-import 2>&1 | tail -3
   ```
