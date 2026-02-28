@@ -273,7 +273,8 @@ def hint_adoption(since: datetime) -> Dict[str, Any]:
     successfully (returncode 0 + at least one file modified).
     """
     if not HINT_AUDIT_PATH.exists():
-        return {"available": False}
+        # File not yet written — normal on a fresh deploy; treat as zero activity
+        return {"available": True, "total": 0, "accepted": 0, "adoption_pct": None, "top_hints": []}
     total = 0
     accepted = 0
     top_hints: Dict[str, int] = {}
