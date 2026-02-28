@@ -1422,7 +1422,7 @@ persist_home_git_credentials_declarative() {
   fi
 
   if [[ -n "$git_helper" ]]; then
-    helper_block=$'    extraConfig = {
+    helper_block=$'    settings = {
       credential.helper = lib.mkDefault "'"${escaped_helper}"'";
     };
 '
@@ -1974,12 +1974,19 @@ autorecord_embedding_sha256() {
     --no-pager -n 200 2>/dev/null \
     | grep -oE 'sha256 = [a-f0-9]{64}' | tail -1 | awk '{print $3}' || true)"
 
-  # Fallback: compute directly from the model file if journal entry is absent
+  # Fallback: compute directly from the model file if journal entry is absent.
+  # Primary path: ask the running llama-cpp-embed service for its model path
+  # (faster and more reliable than a full nix config eval).
   if [[ -z "$recorded_sha" ]]; then
     local model_path
-    model_path="$(nix eval --raw --impure \
-      "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.aiStack.embeddingServer.model" \
-      2>/dev/null || echo "")"
+    model_path="$(systemctl show llama-cpp-embed.service -p ExecStart --value \
+      2>/dev/null | tr ' ' '\n' | grep -m1 '\.gguf$' || true)"
+    # Secondary: nix eval (slower, may fail on large configs)
+    if [[ -z "$model_path" ]]; then
+      model_path="$(nix eval --raw --impure \
+        "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.aiStack.embeddingServer.model" \
+        2>/dev/null || echo "")"
+    fi
     if [[ -n "$model_path" && -f "$model_path" ]]; then
       log "  Computing SHA256 from model file (journal entry not found)..."
       recorded_sha="$(sha256sum "$model_path" 2>/dev/null | awk '{print $1}' || true)"
