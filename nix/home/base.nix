@@ -702,7 +702,19 @@ in
   # other module — that would conflict with this managed file.
   programs.vscode = {
     enable  = true;
-    package = pkgs.vscodium;
+    # Wrap VSCodium so its extension host (Node.js) can load pre-compiled native
+    # addons (node_sqlite3.node, onnxruntime_binding.node, pty.node, etc.) that
+    # dynamically link libstdc++.so.6 — absent from LD_LIBRARY_PATH on NixOS.
+    # stdenv.cc.cc.lib provides the GCC runtime libraries in the Nix store.
+    package = pkgs.symlinkJoin {
+      name             = "vscodium-with-native-libs";
+      paths            = [ pkgs.vscodium ];
+      nativeBuildInputs = [ pkgs.makeWrapper ];
+      postBuild        = ''
+        wrapProgram $out/bin/codium \
+          --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ]}
+      '';
+    };
 
     # Writable runtime extension dir is required for extensions that persist
     # state directly under their extension folder (e.g. debugpy/jupyter).
