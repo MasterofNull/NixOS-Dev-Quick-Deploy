@@ -863,8 +863,8 @@ in
       # Phase 12.4.2 — Hourly MCP source file integrity check
       # ── Phase 12.3.2 — Tool audit log sidecar ────────────────────────────────
       # The socket is group-writable (svcGroup) so MCP services can send entries.
-      # The sidecar (DynamicUser) owns the log file; service processes cannot
-      # open or modify /var/log/ai-audit-sidecar/ directly.
+      # The sidecar runs as svcUser and owns the log dir; the socket is 0660 so
+      # only svcGroup members can send entries.
       systemd.sockets.ai-audit-sidecar = {
         description = "AI stack tool audit log Unix socket";
         wantedBy    = [ "sockets.target" ];
@@ -882,12 +882,11 @@ in
         after       = [ "ai-audit-sidecar.socket" ];
         serviceConfig = (mkHardenedService { tier = cfg.hardwareTier; memoryMax = "128M"; }) // {
           Type                    = "simple";
-          DynamicUser             = true;
-          # DynamicUser + mkHardenedService defaults to ProtectHome=true which
-          # blocks access to repoMcp (under /home/…). Override to "read-only"
-          # and expose only the mcp-servers tree, matching other MCP services.
-          ProtectHome             = "read-only";
-          ReadOnlyPaths           = [ mcp.repoPath ];
+          # Must run as svcUser (not DynamicUser) because the script lives under
+          # /home/<primaryUser> which is mode 0700 — a DynamicUser ephemeral UID
+          # cannot traverse it regardless of ProtectHome/ReadOnlyPaths overrides.
+          User                    = svcUser;
+          Group                   = svcGroup;
           LogsDirectory           = "ai-audit-sidecar";
           ExecStart               = "${auditSidecarPython}/bin/python3 ${repoMcp}/shared/audit_sidecar.py";
           Restart                 = "on-failure";
