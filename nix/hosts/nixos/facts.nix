@@ -58,6 +58,10 @@
         huggingFaceFile  = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
         # sha256 = ""; # populate after first download with: sha256sum /var/lib/llama-cpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
       };
+      embeddingServer = {
+        model  = "/var/lib/llama-cpp/models/nomic-embed-text-v1.5.Q8_0.gguf";
+        sha256 = null; # add after first deploy
+      };
       ui.enable          = true;
       vectorDb.enable    = false;
       listenOnLan        = false;
