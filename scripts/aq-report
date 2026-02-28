@@ -300,7 +300,8 @@ def hint_adoption(since: datetime) -> Dict[str, Any]:
                 hid = entry.get("hint_id", "unknown")
                 top_hints[hid] = top_hints.get(hid, 0) + 1
     except OSError:
-        return {"available": False}
+        # File not yet created — normal on a fresh deploy; treat as zero activity
+        return {"available": True, "total": 0, "accepted": 0, "adoption_pct": None, "top_hints": []}
     if total == 0:
         return {"available": True, "total": 0, "accepted": 0, "adoption_pct": None, "top_hints": []}
     return {
