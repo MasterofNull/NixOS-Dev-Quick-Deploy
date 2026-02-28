@@ -883,6 +883,11 @@ in
         serviceConfig = (mkHardenedService { tier = cfg.hardwareTier; memoryMax = "128M"; }) // {
           Type                    = "simple";
           DynamicUser             = true;
+          # DynamicUser + mkHardenedService defaults to ProtectHome=true which
+          # blocks access to repoMcp (under /home/…). Override to "read-only"
+          # and expose only the mcp-servers tree, matching other MCP services.
+          ProtectHome             = "read-only";
+          ReadOnlyPaths           = [ mcp.repoPath ];
           LogsDirectory           = "ai-audit-sidecar";
           ExecStart               = "${auditSidecarPython}/bin/python3 ${repoMcp}/shared/audit_sidecar.py";
           Restart                 = "on-failure";
