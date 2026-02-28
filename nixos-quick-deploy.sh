@@ -1939,41 +1939,85 @@ run_embedding_migration_if_needed() {
   fi
 }
 
-# ---- Embedding SHA256 hint (post-deploy) ------------------------------------
-# When embeddingServer.sha256 = null, the model-fetch service skips integrity
-# verification and prints the actual hash to the journal.  This function reads
-# that hash and prints the exact facts.nix line the user needs to add, so the
-# next deploy enables full integrity checking.
-capture_embedding_sha256_hint() {
+# ---- Embedding SHA256 auto-record (post-deploy) ------------------------------
+# When embeddingServer.sha256 = null, the model-fetch service downloads without
+# integrity verification and prints the actual hash to the journal.
+# This function captures that hash, writes it directly into facts.nix, and
+# commits the change — no manual editing required.
+autorecord_embedding_sha256() {
   local cfg_sha
   cfg_sha="$(nix eval --impure \
     "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.aiStack.embeddingServer.sha256" \
     2>/dev/null | tr -d '"' || echo "null")"
-  # If sha256 is already set, nothing to report
+  # sha256 already set — integrity checking already active
   [[ "$cfg_sha" == "null" || -z "$cfg_sha" ]] || return 0
 
-  # Wait briefly for model-fetch oneshot to finish downloading
+  # Wait for model-fetch oneshot to complete (up to 120s for slow connections)
   local waited=0
   while systemctl is-active --quiet llama-cpp-embed-model-fetch.service 2>/dev/null \
-        && [[ $waited -lt 60 ]]; do
-    sleep 3; waited=$(( waited + 3 ))
+        && [[ $waited -lt 120 ]]; do
+    log "  Waiting for embedding model download... (${waited}s elapsed)"
+    sleep 5; waited=$(( waited + 5 ))
   done
 
+  # Primary source: hash printed to journal by the download script
   local recorded_sha
   recorded_sha="$(journalctl -u llama-cpp-embed-model-fetch.service \
     --no-pager -n 200 2>/dev/null \
     | grep -oE 'sha256 = [a-f0-9]{64}' | tail -1 | awk '{print $3}' || true)"
 
-  if [[ -n "$recorded_sha" ]]; then
-    log "ACTION REQUIRED — record embedding model SHA256 in facts.nix to enable integrity checking:"
-    log "  File: nix/hosts/hyperd/facts.nix"
-    log "  Set:  embeddingServer.sha256 = \"${recorded_sha}\";"
-    log "  Then re-run: ./nixos-quick-deploy.sh"
+  # Fallback: compute directly from the model file if journal entry is absent
+  if [[ -z "$recorded_sha" ]]; then
+    local model_path
+    model_path="$(nix eval --raw --impure \
+      "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.aiStack.embeddingServer.model" \
+      2>/dev/null || echo "")"
+    if [[ -n "$model_path" && -f "$model_path" ]]; then
+      log "  Computing SHA256 from model file (journal entry not found)..."
+      recorded_sha="$(sha256sum "$model_path" 2>/dev/null | awk '{print $1}' || true)"
+    fi
+  fi
+
+  if [[ -z "$recorded_sha" ]]; then
+    log "  WARNING: Could not determine embedding model SHA256 — model may still be downloading."
+    log "    Re-run ./nixos-quick-deploy.sh once the download finishes to auto-record the hash."
+    return 0
+  fi
+
+  # Write the hash directly into facts.nix — no user action needed
+  local facts_file="${REPO_ROOT}/nix/hosts/${HOST_NAME}/facts.nix"
+  if [[ ! -f "$facts_file" ]]; then
+    log "  WARNING: facts.nix not found at ${facts_file} — SHA256 not auto-recorded"
+    log "    Add manually: embeddingServer.sha256 = \"${recorded_sha}\";"
+    return 0
+  fi
+
+  # The sentinel comment "# add after first deploy" is unique to the null sha256 line
+  sed -i "s|sha256.*= null;.*# add after first deploy.*|sha256          = \"${recorded_sha}\";|" \
+    "$facts_file"
+
+  # Verify the substitution actually changed the file
+  if sudo -u "${PRIMARY_USER}" git -C "${REPO_ROOT}" diff --quiet "${facts_file}" 2>/dev/null; then
+    log "  Embedding SHA256 already recorded in facts.nix (no change)"
+    return 0
+  fi
+
+  log "  Embedding SHA256 auto-recorded: ${recorded_sha}"
+
+  # Commit as the repo owner (not root)
+  if sudo -u "${PRIMARY_USER}" git -C "${REPO_ROOT}" add "${facts_file}" && \
+     sudo -u "${PRIMARY_USER}" git -C "${REPO_ROOT}" commit \
+       -m "chore(embed): auto-record Qwen3-Embedding-4B SHA256 — integrity checking now active" \
+       2>/dev/null; then
+    log "  Committed to repo — integrity checking enabled for all future deploys"
+  else
+    log "  WARNING: git commit failed; SHA256 written to ${facts_file} but not committed"
+    log "    Run: git add ${facts_file} && git commit -m 'chore: record embed sha256'"
   fi
 }
 
 run_embedding_migration_if_needed
-capture_embedding_sha256_hint
+autorecord_embedding_sha256
 
 # ---- Command Center Dashboard post-flight ------------------------------------
 # Confirm the dashboard API is reachable and reports a healthy/degraded probe result.
