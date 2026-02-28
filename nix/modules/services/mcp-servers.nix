@@ -565,9 +565,6 @@ in
             "${aidbPython}/bin/python3"
             "${repoMcp}/aidb/server.py"
           ];
-          # Phase 13.1.1 — Network isolation: loopback only
-          IPAddressAllow = [ "127.0.0.1/8" "::1/128" ];
-          IPAddressDeny = [ "any" ];
           Environment = [
             "AIDB_CONFIG=${aidbConfig}"
             "AI_STRICT_ENV=true"
@@ -592,7 +589,7 @@ in
             "AIDB_REDIS_DB=0"
             # Phase 13.2.1 — explicit allowlist required by AI_STRICT_ENV.
             # googleapis.com is the only external host aidb may call (Google Search tool).
-            # Actual egress is still gated by IPAddressDeny above; this is defence-in-depth.
+            # Application-level outbound allowlist is the egress defence-in-depth (Phase 13.2.1).
             "AIDB_OUTBOUND_ALLOWLIST=googleapis.com"
             # Phase 12.3.2 — audit sidecar socket path (service writes here, never to file directly)
             "AUDIT_SOCKET_PATH=/run/ai-audit-sidecar.sock"
@@ -640,9 +637,6 @@ in
             "${hybridPython}/bin/python3"
             "${repoMcp}/hybrid-coordinator/server.py"
           ];
-          # Phase 13.1.1 — Network isolation: loopback only
-          IPAddressAllow = [ "127.0.0.1/8" "::1/128" ];
-          IPAddressDeny = [ "any" ];
           Environment = [
             "PORT=${toString mcp.hybridPort}"
             "AI_STRICT_ENV=true"
