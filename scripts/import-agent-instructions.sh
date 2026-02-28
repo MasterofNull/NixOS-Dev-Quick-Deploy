@@ -17,6 +17,9 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 AIDB_URL="${AIDB_URL:-http://127.0.0.1:8002}"
+# Strip whitespace/newlines from key (secret files may have leading blank lines)
+AIDB_API_KEY="${AIDB_API_KEY:-$(cat /run/secrets/aidb_api_key 2>/dev/null || true)}"
+AIDB_API_KEY="${AIDB_API_KEY//[$'\t\r\n ']/}"
 PROJECT="agent-instructions"
 PASS=0
 FAIL=0
@@ -45,7 +48,7 @@ _post() {
             status:            "approved"
         }')
 
-    local args=(-sf -o /dev/null -w "%{http_code}"
+    local args=(-s -o /dev/null -w "%{http_code}"
                 -X POST "${AIDB_URL}/documents"
                 -H "Content-Type: application/json"
                 -d "$payload")
