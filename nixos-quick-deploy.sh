@@ -557,8 +557,19 @@ bootstrap_ai_stack_secrets_if_needed() {
     fi
   fi
   if [[ "${secrets_enabled}" == "unknown" ]]; then
-    secrets_enabled="false"
-    log "AI secrets bootstrap fallback: unable to evaluate secrets role; defaulting to disabled."
+    # Fallback 1: check deploy-options.local.nix for secrets.enable = true
+    local _local_opts="${REPO_ROOT}/nix/hosts/${HOST_NAME}/deploy-options.local.nix"
+    if grep -qE 'secrets\.enable\s*=.*true' "${_local_opts}" 2>/dev/null; then
+      secrets_enabled="true"
+      log "AI secrets bootstrap fallback: secrets.enable=true found in deploy-options.local.nix."
+    # Fallback 2: sops secrets file already exists → already bootstrapped
+    elif [[ -f "/home/${PRIMARY_USER}/.local/share/nixos-quick-deploy/secrets/${HOST_NAME}/secrets.sops.yaml" ]]; then
+      secrets_enabled="true"
+      log "AI secrets bootstrap fallback: secrets file exists — already bootstrapped."
+    else
+      secrets_enabled="false"
+      log "AI secrets bootstrap fallback: unable to evaluate secrets role; defaulting to disabled."
+    fi
   fi
   log "AI secrets bootstrap check: aiStack=${ai_enabled}, secrets=${secrets_enabled}"
 
@@ -1743,6 +1754,11 @@ if [[ "$MODE" == "build" ]]; then
   exit 0
 fi
 
+# ---- Pre-rebuild: download models + record SHA256 into facts.nix -------------
+# Runs for both boot and switch modes; skipped for dry-build (exited above).
+# Models are downloaded before nixos-rebuild so sha256 is set declaratively.
+pre_rebuild_model_download
+
 if [[ "$MODE" == "boot" ]]; then
   log "Staging next boot generation"
   if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
@@ -1939,96 +1955,96 @@ run_embedding_migration_if_needed() {
   fi
 }
 
-# ---- Embedding SHA256 auto-record (post-deploy) ------------------------------
-# When embeddingServer.sha256 = null, the model-fetch service downloads without
-# integrity verification and prints the actual hash to the journal.
-# This function captures that hash, writes it directly into facts.nix, and
-# commits the change — no manual editing required.
-autorecord_embedding_sha256() {
-  local cfg_sha
-  cfg_sha="$(nix eval --impure \
-    "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.aiStack.embeddingServer.sha256" \
-    2>/dev/null | tr -d '"' || echo "null")"
-  # sha256 already set — integrity checking already active
-  [[ "$cfg_sha" == "null" || -z "$cfg_sha" ]] || return 0
-
-  # Wait for model-fetch oneshot to complete.
-  # Use SubState==running, NOT is-active: oneshot services remain active (exited)
-  # after success, which would cause is-active to spin even when model is present.
-  # Timeout is configurable: MODEL_FETCH_TIMEOUT_S env var (default: unlimited).
-  # Set MODEL_FETCH_TIMEOUT_S=N to abort after N seconds if needed.
-  local waited=0
-  local max_wait="${MODEL_FETCH_TIMEOUT_S:-0}"  # 0 = wait indefinitely
-  while [[ "$(systemctl show -p SubState --value llama-cpp-embed-model-fetch.service 2>/dev/null)" == "running" ]]; do
-    log "  Waiting for embedding model download... (${waited}s elapsed)"
-    sleep 30; waited=$(( waited + 30 ))
-    if [[ $max_wait -gt 0 && $waited -ge $max_wait ]]; then
-      log "  MODEL_FETCH_TIMEOUT_S=${max_wait} reached — proceeding without SHA256."
-      break
-    fi
-  done
-
-  # Primary source: hash printed to journal by the download script
-  local recorded_sha
-  recorded_sha="$(journalctl -u llama-cpp-embed-model-fetch.service \
-    --no-pager -n 200 2>/dev/null \
-    | grep -oE 'sha256 = [a-f0-9]{64}' | tail -1 | awk '{print $3}' || true)"
-
-  # Fallback: compute directly from the model file if journal entry is absent.
-  # Primary path: ask the running llama-cpp-embed service for its model path
-  # (faster and more reliable than a full nix config eval).
-  if [[ -z "$recorded_sha" ]]; then
-    local model_path
-    model_path="$(systemctl show llama-cpp-embed.service -p ExecStart --value \
-      2>/dev/null | tr ' ' '\n' | grep -m1 '\.gguf$' || true)"
-    # Secondary: nix eval (slower, may fail on large configs)
-    if [[ -z "$model_path" ]]; then
-      model_path="$(nix eval --raw --impure \
-        "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.aiStack.embeddingServer.model" \
-        2>/dev/null || echo "")"
-    fi
-    if [[ -n "$model_path" && -f "$model_path" ]]; then
-      log "  Computing SHA256 from model file (journal entry not found)..."
-      recorded_sha="$(sha256sum "$model_path" 2>/dev/null | awk '{print $1}' || true)"
-    fi
-  fi
-
-  if [[ -z "$recorded_sha" ]]; then
-    log "  WARNING: Could not determine embedding model SHA256 — model may still be downloading."
-    log "    Re-run ./nixos-quick-deploy.sh once the download finishes to auto-record the hash."
-    return 0
-  fi
-
-  # Write the hash directly into facts.nix — no user action needed
+# ---- Pre-rebuild model download + SHA256 recording --------------------------
+# Downloads missing GGUF models from HuggingFace BEFORE nixos-rebuild so that
+# sha256 values are set declaratively in facts.nix at build time.
+#
+# facts.nix (generated by discover-system-facts.sh) always writes sha256 = null.
+# This function:
+#   1. Reads model paths + HuggingFace info from facts.nix
+#   2. Downloads each model if the file is absent
+#   3. Computes sha256sum of each file
+#   4. Patches facts.nix with the actual sha256 values
+#   5. Re-validates facts.nix with nix-instantiate
+pre_rebuild_model_download() {
+  [[ "${SKIP_SYSTEM_SWITCH}" == false ]] || return 0
   local facts_file="${REPO_ROOT}/nix/hosts/${HOST_NAME}/facts.nix"
-  if [[ ! -f "$facts_file" ]]; then
-    log "  WARNING: facts.nix not found at ${facts_file} — SHA256 not auto-recorded"
-    log "    Add manually: embeddingServer.sha256 = \"${recorded_sha}\";"
-    return 0
+  [[ -f "$facts_file" ]] || return 0
+
+  # Parse model info from the generated facts.nix lines
+  local chat_model_file chat_hf_repo chat_hf_file
+  local embed_model_file embed_hf_repo embed_hf_file
+  chat_model_file="$(grep -oP '(?<=llamaCpp\.model\s{0,30}=\s{0,5}")[^"]+' "$facts_file" | head -1 || true)"
+  chat_hf_repo="$(grep -oP '(?<=llamaCpp\.huggingFaceRepo\s{0,30}=\s{0,5}")[^"]+' "$facts_file" | head -1 || true)"
+  chat_hf_file="$(grep -oP '(?<=llamaCpp\.huggingFaceFile\s{0,30}=\s{0,5}")[^"]+' "$facts_file" | head -1 || true)"
+  embed_model_file="$(grep -oP '(?<=embeddingServer\.model\s{0,30}=\s{0,5}")[^"]+' "$facts_file" | head -1 || true)"
+  embed_hf_repo="$(grep -oP '(?<=embeddingServer\.huggingFaceRepo\s{0,30}=\s{0,5}")[^"]+' "$facts_file" | head -1 || true)"
+  embed_hf_file="$(grep -oP '(?<=embeddingServer\.huggingFaceFile\s{0,30}=\s{0,5}")[^"]+' "$facts_file" | head -1 || true)"
+
+  # Download a model from HuggingFace if it is not already present on disk.
+  _download_model_if_absent() {
+    local model_path="$1" hf_repo="$2" hf_file="$3"
+    [[ -n "$model_path" ]] || return 0
+    [[ -f "$model_path" ]] && return 0   # already present — skip
+    [[ -n "$hf_repo" && -n "$hf_file" ]] || {
+      log "  WARNING: model absent and no HuggingFace info — cannot auto-download: ${model_path}"
+      return 0
+    }
+    local url="https://huggingface.co/${hf_repo}/resolve/main/${hf_file}"
+    log "  Downloading: ${hf_file} from ${hf_repo}"
+    run_privileged mkdir -p "$(dirname "$model_path")"
+    local tmp_path="${model_path}.dl.tmp"
+    if ! run_privileged curl -L --retry 3 --retry-delay 10 \
+        --progress-bar -o "$tmp_path" "$url"; then
+      log "  ERROR: download failed for ${hf_file} — model will be fetched by systemd service on first boot"
+      run_privileged rm -f "$tmp_path" 2>/dev/null || true
+      return 0
+    fi
+    run_privileged mv "$tmp_path" "$model_path"
+    run_privileged chmod 0644 "$model_path"
+    log "  Downloaded: ${model_path}"
+  }
+
+  # Compute sha256 from file and patch the matching null sha256 line in facts.nix.
+  _record_sha256_in_facts() {
+    local model_path="$1" sed_key="$2"
+    [[ -n "$model_path" && -f "$model_path" ]] || return 0
+    local sha
+    log "  Computing SHA256: $(basename "$model_path")"
+    sha="$(sha256sum "$model_path" | awk '{print $1}')"
+    [[ -n "$sha" ]] || return 0
+    # Replace the null placeholder for this specific key; sed ERE
+    sed -i -E "s|(${sed_key}\\.sha256[[:space:]]*=[[:space:]]*)null;|\1\"${sha}\";|" "$facts_file"
+    log "  SHA256 recorded (${sed_key}): ${sha}"
+  }
+
+  log "Pre-rebuild: checking model files..."
+
+  _download_model_if_absent "$chat_model_file"  "$chat_hf_repo"  "$chat_hf_file"
+  _download_model_if_absent "$embed_model_file" "$embed_hf_repo" "$embed_hf_file"
+
+  _record_sha256_in_facts "$chat_model_file"  "llamaCpp"
+  _record_sha256_in_facts "$embed_model_file" "embeddingServer"
+
+  # Re-validate facts.nix after patching
+  if command -v nix-instantiate >/dev/null 2>&1; then
+    if ! nix-instantiate --parse "$facts_file" >/dev/null 2>&1; then
+      log "  WARNING: facts.nix parse error after SHA256 patch — reverting to null"
+      sed -i -E 's|(llamaCpp\.sha256[[:space:]]*=[[:space:]]*)\"[a-f0-9]{64}\";|\1null;|' "$facts_file"
+      sed -i -E 's|(embeddingServer\.sha256[[:space:]]*=[[:space:]]*)\"[a-f0-9]{64}\";|\1null;|' "$facts_file"
+    fi
   fi
+  log "Pre-rebuild: model check complete."
+}
 
-  # The sentinel comment "# add after first deploy" is unique to the null sha256 line
-  sed -i "s|sha256.*= null;.*# add after first deploy.*|sha256          = \"${recorded_sha}\";|" \
-    "$facts_file"
-
-  # Verify the substitution actually changed the file
-  if sudo -u "${PRIMARY_USER}" git -C "${REPO_ROOT}" diff --quiet "${facts_file}" 2>/dev/null; then
-    log "  Embedding SHA256 already recorded in facts.nix (no change)"
-    return 0
-  fi
-
-  log "  Embedding SHA256 auto-recorded: ${recorded_sha}"
-
-  # Commit as the repo owner (not root)
-  if sudo -u "${PRIMARY_USER}" git -C "${REPO_ROOT}" add "${facts_file}" && \
-     sudo -u "${PRIMARY_USER}" git -C "${REPO_ROOT}" commit \
-       -m "chore(embed): auto-record Qwen3-Embedding-4B SHA256 — integrity checking now active" \
-       2>/dev/null; then
-    log "  Committed to repo — integrity checking enabled for all future deploys"
-  else
-    log "  WARNING: git commit failed; SHA256 written to ${facts_file} but not committed"
-    log "    Run: git add ${facts_file} && git commit -m 'chore: record embed sha256'"
-  fi
+# ---- Embedding SHA256 auto-record (post-deploy — DEPRECATED) -----------------
+# Superseded by pre_rebuild_model_download() above which records sha256 BEFORE
+# nixos-rebuild so the declarative config is correct from the first switch.
+# Kept as a no-op stub to avoid breaking any external callers.
+autorecord_embedding_sha256() {
+  # Superseded by pre_rebuild_model_download() — sha256 is now recorded before
+  # nixos-rebuild so the declarative config is correct from the first switch.
+  return 0
 }
 
 run_embedding_migration_if_needed
