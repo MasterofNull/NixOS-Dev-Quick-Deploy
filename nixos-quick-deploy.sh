@@ -1852,6 +1852,129 @@ if [[ "$RUN_HEALTH_CHECK" == true && -x "${REPO_ROOT}/scripts/check-mcp-health.s
   fi
 fi
 
+# ---- Embedding dimension migration (post-deploy) ----------------------------
+# Detects a vector-dimension mismatch between the deployed config and the live
+# pgvector table.  Drops document_embeddings, restarts AIDB (which recreates
+# the table at the new dimension), then re-indexes agent instructions.
+# Idempotent: no-op when dimensions already match or table doesn't exist yet.
+run_embedding_migration_if_needed() {
+  [[ "$RUN_HEALTH_CHECK" == true ]] || return 0
+
+  # Only run when the embedding server is deployed for this host
+  if ! systemctl is-active --quiet llama-cpp-embed.service 2>/dev/null &&
+     ! systemctl is-activating --quiet llama-cpp-embed.service 2>/dev/null; then
+    return 0
+  fi
+
+  # Get target dimension from deployed NixOS config
+  local target_dim
+  target_dim="$(nix eval --raw --impure \
+    "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.aiStack.embeddingDimensions" \
+    2>/dev/null || echo "")"
+  if [[ -z "$target_dim" || ! "$target_dim" =~ ^[0-9]+$ ]]; then
+    return 0
+  fi
+
+  # Query current vector column typmod from pgvector
+  # vector(N) stores typmod = N + 4; typmod -1 means unconstrained
+  local current_typmod current_dim
+  current_typmod="$(sudo -u postgres psql -d aidb -At \
+    -c "SELECT a.atttypmod FROM pg_attribute a
+        JOIN pg_class c ON a.attrelid = c.oid
+        WHERE c.relname = 'document_embeddings'
+          AND a.attname = 'embedding'
+          AND c.relkind = 'r';" \
+    2>/dev/null | tr -d '[:space:]' || echo "")"
+
+  if [[ -z "$current_typmod" ]]; then
+    return 0  # table doesn't exist yet; AIDB will create it at target_dim on first start
+  fi
+
+  if [[ "$current_typmod" == "-1" ]]; then
+    current_dim="unconstrained"
+  else
+    current_dim=$(( current_typmod - 4 ))
+  fi
+
+  if [[ "$current_dim" == "$target_dim" ]]; then
+    log "Embedding dimension OK: ${target_dim}-dim vectors (no migration needed)"
+    return 0
+  fi
+
+  log "EMBEDDING MIGRATION: dimension mismatch (table=${current_dim}-dim, config=${target_dim}-dim)"
+  log "  Vectors cannot be resized in-place — dropping document_embeddings..."
+  if ! sudo -u postgres psql -d aidb \
+       -c "DROP TABLE IF EXISTS document_embeddings CASCADE;" 2>/dev/null; then
+    log "  WARNING: DROP TABLE failed — run manually:"
+    log "    sudo -u postgres psql -d aidb -c 'DROP TABLE document_embeddings CASCADE;'"
+    return 1
+  fi
+
+  log "  Restarting AIDB to recreate table at ${target_dim} dims..."
+  run_privileged systemctl restart ai-aidb.service 2>/dev/null || true
+
+  # Wait for AIDB /health to come back
+  local aidb_port="8002" waited=0 max_wait=90
+  while [[ $waited -lt $max_wait ]]; do
+    if curl -fsS --max-time 3 "http://127.0.0.1:${aidb_port}/health" >/dev/null 2>&1; then
+      log "  AIDB healthy — document_embeddings recreated at ${target_dim} dims"
+      break
+    fi
+    sleep 3; waited=$(( waited + 3 ))
+  done
+  if [[ $waited -ge $max_wait ]]; then
+    log "  WARNING: AIDB did not respond within ${max_wait}s"
+    log "    Check: journalctl -u ai-aidb.service -n 30 --no-pager"
+    return 1
+  fi
+
+  # Re-index agent instructions into the new embedding space
+  if [[ -x "${REPO_ROOT}/scripts/import-agent-instructions.sh" ]]; then
+    log "  Re-indexing agent instructions (new ${target_dim}-dim embedding space)..."
+    if "${REPO_ROOT}/scripts/import-agent-instructions.sh" 2>/dev/null; then
+      log "  Re-indexing complete"
+    else
+      log "  WARNING: Re-indexing failed — run manually: bash scripts/import-agent-instructions.sh"
+    fi
+  fi
+}
+
+# ---- Embedding SHA256 hint (post-deploy) ------------------------------------
+# When embeddingServer.sha256 = null, the model-fetch service skips integrity
+# verification and prints the actual hash to the journal.  This function reads
+# that hash and prints the exact facts.nix line the user needs to add, so the
+# next deploy enables full integrity checking.
+capture_embedding_sha256_hint() {
+  local cfg_sha
+  cfg_sha="$(nix eval --impure \
+    "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.aiStack.embeddingServer.sha256" \
+    2>/dev/null | tr -d '"' || echo "null")"
+  # If sha256 is already set, nothing to report
+  [[ "$cfg_sha" == "null" || -z "$cfg_sha" ]] || return 0
+
+  # Wait briefly for model-fetch oneshot to finish downloading
+  local waited=0
+  while systemctl is-active --quiet llama-cpp-embed-model-fetch.service 2>/dev/null \
+        && [[ $waited -lt 60 ]]; do
+    sleep 3; waited=$(( waited + 3 ))
+  done
+
+  local recorded_sha
+  recorded_sha="$(journalctl -u llama-cpp-embed-model-fetch.service \
+    --no-pager -n 200 2>/dev/null \
+    | grep -oE 'sha256 = [a-f0-9]{64}' | tail -1 | awk '{print $3}' || true)"
+
+  if [[ -n "$recorded_sha" ]]; then
+    log "ACTION REQUIRED — record embedding model SHA256 in facts.nix to enable integrity checking:"
+    log "  File: nix/hosts/hyperd/facts.nix"
+    log "  Set:  embeddingServer.sha256 = \"${recorded_sha}\";"
+    log "  Then re-run: ./nixos-quick-deploy.sh"
+  fi
+}
+
+run_embedding_migration_if_needed
+capture_embedding_sha256_hint
+
 # ---- Command Center Dashboard post-flight ------------------------------------
 # Confirm the dashboard API is reachable and reports a healthy/degraded probe result.
 # Non-fatal: a down dashboard never aborts a successful deploy.
