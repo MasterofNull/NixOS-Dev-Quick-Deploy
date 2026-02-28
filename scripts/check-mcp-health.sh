@@ -11,7 +11,6 @@
 # Service dependency tiers:
 #   REQUIRED  — MCP servers that must be healthy for the AI stack to function
 #   INFRA     — Infrastructure that required servers depend on
-#   OPTIONAL  — Servers that enhance but are not required for core routing
 #
 set -euo pipefail
 
@@ -20,12 +19,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../config/service-endpoints.sh"
 
 TIMEOUT=10
-SHOW_OPTIONAL=0
-
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --timeout) TIMEOUT="$2"; shift 2 ;;
-    --optional) SHOW_OPTIONAL=1; shift ;;
     *) echo "Unknown arg: $1" >&2; exit 1 ;;
   esac
 done
@@ -46,8 +42,6 @@ check_http() {
   local url="$3"
   local required_tier="${4:-REQUIRED}"  # unused, kept for symmetry
 
-  [[ "$tier" == "OPTIONAL" && "$SHOW_OPTIONAL" -eq 0 ]] && return 0
-
   local http_code
   http_code=$(curl -sS -o /dev/null -w "%{http_code}" \
     --max-time "$TIMEOUT" --connect-timeout 3 "$url" 2>/dev/null || echo "000")
@@ -55,8 +49,6 @@ check_http() {
   if [[ "$http_code" =~ ^2 ]]; then
     printf "${GREEN}PASS${RESET}  [%-8s] %s\n" "$tier" "$label"
     (( PASS++ )) || true
-  elif [[ "$tier" == "OPTIONAL" ]]; then
-    printf "${YELLOW}SKIP${RESET}  [%-8s] %s (HTTP %s)\n" "$tier" "$label" "$http_code"
   else
     printf "${RED}FAIL${RESET}  [%-8s] %s (HTTP %s — expected 2xx at %s)\n" \
       "$tier" "$label" "$http_code" "$url"
@@ -95,6 +87,8 @@ check_tcp "INFRA" "Redis" "$REDIS_HOST" "$REDIS_PORT"
 QDRANT_HOST="${SERVICE_HOST}"
 QDRANT_PORT="${QDRANT_PORT}"
 check_tcp "INFRA" "Qdrant" "$QDRANT_HOST" "$QDRANT_PORT"
+QDRANT_HEALTH_URL="http://${QDRANT_HOST}:${QDRANT_PORT}/healthz"
+check_http "INFRA" "Qdrant HTTP API     (:${QDRANT_PORT})" "$QDRANT_HEALTH_URL"
 
 POSTGRES_HOST="${POSTGRES_HOST}"
 POSTGRES_PORT="${POSTGRES_PORT}"
@@ -106,6 +100,8 @@ check_http "REQUIRED" "embeddings-service  (:$(url_port "${EMBEDDINGS_URL}"))" "
 check_http "REQUIRED" "aidb                (:$(url_port "${AIDB_URL}"))" "${AIDB_URL%/}/health"
 check_http "REQUIRED" "hybrid-coordinator  (:$(url_port "${HYBRID_URL}"))" "${HYBRID_URL%/}/health"
 check_http "REQUIRED" "ralph-wiggum        (:$(url_port "${RALPH_URL}"))" "${RALPH_URL%/}/health"
+check_http "REQUIRED" "switchboard         (:$(url_port "${SWITCHBOARD_URL}"))" "${SWITCHBOARD_URL%/}/health"
+check_http "REQUIRED" "aider-wrapper       (:$(url_port "${AIDER_URL}"))" "${AIDER_URL%/}/health"
 
 # ── LLM backend ───────────────────────────────────────────────────────────────
 echo "── LLM Backends ─────────────────────────────────────────────"
@@ -115,30 +111,12 @@ check_http "REQUIRED" "llama-cpp inference (:$(url_port "${LLAMA_URL}"))" "${LLA
 LLAMA_EMBED_URL="${LLAMA_CPP_EMBED_URL}"
 check_http "REQUIRED" "llama-cpp embedding (:$(url_port "${LLAMA_EMBED_URL}"))" "${LLAMA_EMBED_URL%/}/health"
 
-# ── Optional / supplementary ─────────────────────────────────────────────────
-if [[ "$SHOW_OPTIONAL" -eq 1 ]]; then
-  echo "── Optional Services ────────────────────────────────────────"
-  check_http "OPTIONAL" "switchboard         (:$(url_port "${SWITCHBOARD_URL}"))" "${SWITCHBOARD_URL%/}/health"
-
-  AIDER_URL="${AIDER_URL}"
-  check_http "OPTIONAL" "aider-wrapper       (:$(url_port "${AIDER_URL}"))" "${AIDER_URL%/}/health"
-
-  CONTAINER_URL="${CONTAINER_ENGINE_URL}"
-  check_http "OPTIONAL" "container-engine    (:$(url_port "${CONTAINER_URL}"))" "${CONTAINER_URL%/}/health"
-
-  check_http "OPTIONAL" "nixos-docs          (:$(url_port "${NIXOS_DOCS_URL}"))" "${NIXOS_DOCS_URL%/}/health"
-
-  QDRANT_HEALTH_URL="http://${QDRANT_HOST}:${QDRANT_PORT}/healthz"
-  check_http "OPTIONAL" "Qdrant HTTP API     (:${QDRANT_PORT})" "$QDRANT_HEALTH_URL"
-fi
-
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo "─────────────────────────────────────────────────────────────"
 printf "Result: %d passed, %d failed\n" "$PASS" "$FAIL"
 
 if [[ $FAIL -gt 0 ]]; then
-  echo "One or more required MCP health checks failed." >&2
-  echo "Tip: run with --optional to include non-critical services." >&2
+  echo "One or more MCP health checks failed." >&2
   exit 1
 fi
 
