@@ -716,7 +716,7 @@ in
         wrapProgram $out/bin/codium \
           --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ]}
       '';
-    }) // { inherit (pkgs.vscodium) version pname; };
+    }) // { inherit (pkgs.vscodium) version pname; meta = pkgs.vscodium.meta // { mainProgram = "codium"; }; };
 
     # Writable runtime extension dir is required for extensions that persist
     # state directly under their extension folder (e.g. debugpy/jupyter).
