@@ -39,13 +39,15 @@
   networking.networkmanager.wifi.powersave = lib.mkDefault false;
   networking.firewall.enable = lib.mkDefault true;
 
-  # Captive portal detection — without a check URI, NM reports any network
-  # as "full" even when a login page is required (hotel, airport, conference).
-  # With this set NM reports "portal" connectivity and the desktop environment
-  # (COSMIC/GNOME) shows a captive-portal notification so the user can log in.
+  # Captive portal + internet connectivity detection.
+  # NM checks this URI periodically; a 204 response means CONNECTIVITY_FULL,
+  # a redirect means CONNECTIVITY_PORTAL (captive portal), no response means
+  # CONNECTIVITY_LIMITED (network but no internet — WiFi icon shows warning).
+  # detectportal.firefox.com returns HTTP 204 reliably from Mozilla's CDN.
+  # 30s interval gives <30s lag when internet is lost/restored.
   networking.networkmanager.settings.connectivity = {
-    uri      = lib.mkDefault "http://nmcheck.gnome.org/check_network_status.txt";
-    interval = lib.mkDefault 300;
+    uri      = lib.mkDefault "http://detectportal.firefox.com/success.txt";
+    interval = lib.mkDefault 30;
   };
 
   # Ensure the stub-resolv.conf symlink is always present.

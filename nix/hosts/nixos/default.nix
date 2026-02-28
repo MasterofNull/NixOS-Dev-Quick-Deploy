@@ -12,7 +12,22 @@
   mySystem.mcpServers.repoPath =
     lib.mkDefault "/home/${config.mySystem.primaryUser}/Documents/NixOS-Dev-Quick-Deploy";
 
-  # Host-level font baseline: keep popular Nerd Fonts available system-wide
+  # ── ThinkPad P14s ClickPad — libinput tuning ─────────────────────────────
+  # Problem 1: two-finger scroll triggers middle-click → X11 PRIMARY paste.
+  #   Fix: middleEmulation=false + clickMethod=clickfinger (finger count
+  #   determines button, not pad zones — eliminates accidental middle clicks).
+  # Problem 2: touchpad glitchy / imprecise during fast gestures.
+  #   Fix: disableWhileTyping prevents mis-clicks when typing.
+  services.libinput.touchpad = {
+    middleEmulation   = lib.mkDefault false;
+    clickMethod       = lib.mkDefault "clickfinger";
+    disableWhileTyping = lib.mkDefault true;
+    tapping           = lib.mkDefault true;
+    scrollMethod      = lib.mkDefault "twofinger";
+    naturalScrolling  = lib.mkDefault false;
+  };
+
+  # ── Host-level font baseline: keep popular Nerd Fonts available system-wide
   # for COSMIC Terminal font picker and prompt glyph rendering.
   fonts = {
     fontconfig.enable = true;
