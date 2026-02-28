@@ -1952,10 +1952,13 @@ autorecord_embedding_sha256() {
   # sha256 already set — integrity checking already active
   [[ "$cfg_sha" == "null" || -z "$cfg_sha" ]] || return 0
 
-  # Wait for model-fetch oneshot to complete (up to 120s for slow connections)
+  # Wait for model-fetch oneshot to complete (up to 600s for large models).
+  # Use SubState==running, NOT is-active: oneshot services remain active (exited)
+  # after success, which would cause is-active to spin the full timeout even when
+  # the model is already present.
   local waited=0
-  while systemctl is-active --quiet llama-cpp-embed-model-fetch.service 2>/dev/null \
-        && [[ $waited -lt 120 ]]; do
+  while [[ "$(systemctl show -p SubState --value llama-cpp-embed-model-fetch.service 2>/dev/null)" == "running" ]] \
+        && [[ $waited -lt 600 ]]; do
     log "  Waiting for embedding model download... (${waited}s elapsed)"
     sleep 5; waited=$(( waited + 5 ))
   done
