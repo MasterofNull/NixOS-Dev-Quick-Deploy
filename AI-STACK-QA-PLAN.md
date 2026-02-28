@@ -823,13 +823,13 @@ aq-qa 1
 
 ### 7.1 — Eval Harness (`aq-prompt-eval`)
 
-- [ ] **7.1.1** `aq-prompt-eval` runs against registry without error.
+- [x] **7.1.1** `aq-prompt-eval` runs against registry without error. <!-- overall 27.8% across 6 prompts -->
   ```bash
   bash scripts/aq-prompt-eval 2>&1 | tail -10
   ```
   **Pass:** Exit 0, output includes `mean_score` for at least one prompt.
 
-- [ ] **7.1.2** Registry `mean_score` fields are updated after eval.
+- [x] **7.1.2** Registry `mean_score` fields are updated after eval. <!-- scored=4 prompts -->
   ```bash
   bash scripts/aq-prompt-eval 2>&1 > /dev/null
   python3 -c "
@@ -841,7 +841,7 @@ aq-qa 1
   ```
   **Pass:** `scored=` integer > 0.
 
-- [ ] **7.1.3** `run-eval.sh --strategy baseline` produces a leaderboard entry.
+- [x] **7.1.3** `run-eval.sh --strategy baseline` produces a leaderboard entry. <!-- baseline=66% in leaderboard -->
   ```bash
   bash scripts/run-eval.sh --strategy baseline 2>&1 | tail -5
   bash scripts/aq-report --since=1d --format=text | grep -A5 "Strategy Leaderboard"
@@ -850,7 +850,7 @@ aq-qa 1
 
 ### 7.2 — Gap Detection
 
-- [ ] **7.2.1** Gap detection fires on low-confidence query.
+- [x] **7.2.1** Gap detection fires on low-confidence query. <!-- max_score=0.0; all hybrid Qdrant collections empty -->
   ```bash
   # Query something unlikely to be in the knowledge base
   curl -sf -X POST http://127.0.0.1:8003/query \
@@ -860,7 +860,7 @@ aq-qa 1
   ```
   **Pass:** `max_score` < 0.4 (low confidence, confirms gap detection opportunity exists).
 
-- [ ] **7.2.2** `aq-gaps` script runs without error.
+- [x] **7.2.2** `aq-gaps` script runs without error. <!-- shows top-10 gap queries from Postgres; run as bash not python3 -->
   ```bash
   bash scripts/aq-gaps 2>&1 | head -10
   ```
@@ -868,7 +868,7 @@ aq-qa 1
 
 ### 7.3 — Prompt Registry Quality
 
-- [ ] **7.3.1** All 6 registry prompts have non-null IDs and templates.
+- [x] **7.3.1** All 6 registry prompts have non-null IDs and templates.
   ```bash
   python3 -c "
   import yaml
@@ -880,7 +880,7 @@ aq-qa 1
   ```
   **Pass:** `missing_templates=[]`, `total=6`.
 
-- [ ] **7.3.2** `route_search_synthesis` prompt scores ≥ 0.6 after eval.
+- [!] **7.3.2** `route_search_synthesis` prompt scores ≥ 0.6 after eval. <!-- FAIL: score=0.333 (33%) — template needs tuning; RAG collections empty reduces quality -->
   ```bash
   bash scripts/aq-prompt-eval 2>&1 > /dev/null
   python3 -c "
