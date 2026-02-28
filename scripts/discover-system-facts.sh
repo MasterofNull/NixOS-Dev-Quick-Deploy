@@ -412,6 +412,25 @@ fi
 ai_llama_model_file="${AI_LLAMA_MODEL_FILE_OVERRIDE:-${ai_llama_model_file}}"
 ai_llama_model_id="${AI_LLAMA_MODEL_ID_OVERRIDE:-${ai_llama_model_id}}"
 
+# Embedding model — hardware-tier aware.
+# Qwen3-Embedding-4B for machines with 24+ GB RAM; nomic-embed-text-v1.5 otherwise.
+if [[ "${system_ram_gb}" =~ ^[0-9]+$ ]] && (( system_ram_gb >= 24 )); then
+  ai_embed_model_id="Mungert/Qwen3-Embedding-4B-GGUF"
+  ai_embed_model_file="Qwen3-Embedding-4B-q4_k_m.gguf"
+  ai_embed_dims=2560
+  ai_embed_pooling="last"
+else
+  ai_embed_model_id="nomic-ai/nomic-embed-text-v1.5-GGUF"
+  ai_embed_model_file="nomic-embed-text-v1.5.Q8_0.gguf"
+  ai_embed_dims=768
+  ai_embed_pooling="mean"
+fi
+ai_embed_model_file="${AI_EMBED_MODEL_FILE_OVERRIDE:-${ai_embed_model_file}}"
+ai_embed_model_id="${AI_EMBED_MODEL_ID_OVERRIDE:-${ai_embed_model_id}}"
+ai_embed_dims="${AI_EMBED_DIMS_OVERRIDE:-${ai_embed_dims}}"
+ai_embed_pooling="${AI_EMBED_POOLING_OVERRIDE:-${ai_embed_pooling}}"
+ai_embed_enabled="${AI_EMBED_ENABLED_OVERRIDE:-true}"
+
 ai_ui_enabled="${AI_UI_ENABLED_OVERRIDE:-true}"
 ai_vector_db_enabled="${AI_VECTOR_DB_ENABLED_OVERRIDE:-false}"
 
@@ -750,13 +769,23 @@ cat > "${tmp_file}" <<FACTS
     # AI stack configuration — consumed by nix/modules/roles/ai-stack.nix.
     # Only meaningful when roles.aiStack.enable = true.
     aiStack = {
-      backend            = "${ai_backend}";
-      acceleration       = "auto";
-      llamaCpp.model     = "/var/lib/llama-cpp/models/${ai_llama_model_file}";
-      ui.enable          = ${ai_ui_enabled};
-      vectorDb.enable    = ${ai_vector_db_enabled};
-      listenOnLan        = false;
-      rocmGfxOverride    = null;
+      backend                          = "${ai_backend}";
+      acceleration                     = "auto";
+      llamaCpp.model                   = "/var/lib/llama-cpp/models/${ai_llama_model_file}";
+      llamaCpp.huggingFaceRepo         = "${ai_llama_model_id}";
+      llamaCpp.huggingFaceFile         = "${ai_llama_model_file}";
+      llamaCpp.sha256                  = null;
+      embeddingDimensions              = ${ai_embed_dims};
+      embeddingServer.enable           = ${ai_embed_enabled};
+      embeddingServer.model            = "/var/lib/llama-cpp/models/${ai_embed_model_file}";
+      embeddingServer.huggingFaceRepo  = "${ai_embed_model_id}";
+      embeddingServer.huggingFaceFile  = "${ai_embed_model_file}";
+      embeddingServer.sha256           = null;
+      embeddingServer.pooling          = "${ai_embed_pooling}";
+      ui.enable                        = ${ai_ui_enabled};
+      vectorDb.enable                  = ${ai_vector_db_enabled};
+      listenOnLan                      = false;
+      rocmGfxOverride                  = null;
     };
   };
 }
