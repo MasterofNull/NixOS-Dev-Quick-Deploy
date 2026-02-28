@@ -42,10 +42,22 @@
 
     # AI stack configuration — consumed by nix/modules/roles/ai-stack.nix.
     # Only meaningful when roles.aiStack.enable = true.
+    #
+    # ── Local model (single source of truth) ──────────────────────────────
+    # To swap the chat model: update llamaCpp.model + huggingFaceFile (+ sha256
+    # once known) and redeploy. The service will auto-download on first boot.
+    # ── Embedding model ────────────────────────────────────────────────────
+    # To swap the embedding model: update embeddingServer.model +
+    # embeddingServer.huggingFaceFile and redeploy.
     aiStack = {
       backend            = "llamacpp";
       acceleration       = "auto";
-      llamaCpp.model     = "/var/lib/llama-cpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
+      llamaCpp = {
+        model            = "/var/lib/llama-cpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
+        huggingFaceRepo  = "unsloth/Qwen3-4B-Instruct-2507-GGUF";
+        huggingFaceFile  = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
+        # sha256 = ""; # populate after first download with: sha256sum /var/lib/llama-cpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+      };
       ui.enable          = true;
       vectorDb.enable    = false;
       listenOnLan        = false;
