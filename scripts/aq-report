@@ -359,12 +359,8 @@ def aggregate_tool_audit(entries: List[dict]) -> Dict[str, dict]:
 
 def routing_split() -> Dict[str, Any]:
     """Fetch local vs remote routing split from Prometheus."""
-    local_val = prom_query('sum(LLM_BACKEND_SELECTIONS{backend="local"}) or vector(0)')
-    remote_val = prom_query('sum(LLM_BACKEND_SELECTIONS{backend="remote"}) or vector(0)')
-    if local_val is None and remote_val is None:
-        # Try alternative metric names used in Phase 2
-        local_val = prom_query('llm_backend_selections_total{backend="local"}')
-        remote_val = prom_query('llm_backend_selections_total{backend="remote"}')
+    local_val = prom_query('sum(hybrid_llm_backend_selections_total{backend="local"}) or vector(0)')
+    remote_val = prom_query('sum(hybrid_llm_backend_selections_total{backend="remote"}) or vector(0)')
     local_n = local_val or 0.0
     remote_n = remote_val or 0.0
     total = local_n + remote_n
