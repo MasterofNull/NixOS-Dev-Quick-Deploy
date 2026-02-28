@@ -229,38 +229,76 @@ def prom_query_range(metric: str, start: datetime, step: str = "1h") -> List[Tup
         return []
 
 
+def _pg_creds() -> tuple[str, int, str, str, str]:
+    """Return (host, port, db, user, password) with sensible defaults."""
+    host = os.getenv("POSTGRES_HOST", "127.0.0.1")
+    port = int(os.getenv("POSTGRES_PORT", "5432"))
+    db = os.getenv("POSTGRES_DB", "aidb")
+    user = os.getenv("POSTGRES_USER", "aidb")
+    password = os.getenv("POSTGRES_PASSWORD", "")
+    if not password:
+        secret = Path("/run/secrets/postgres_password")
+        if secret.exists():
+            password = secret.read_text().strip()
+    return host, port, db, user, password
+
+
 def read_query_gaps(since: datetime, limit: int = 10) -> List[dict]:
-    """Fetch top repeated query gaps from Postgres."""
+    """Fetch top repeated query gaps from Postgres.
+
+    Tries psycopg first (available in service envs), then falls back to
+    the psql CLI which is always present on this NixOS system.
+    """
+    host, port, db, user, password = _pg_creds()
+    dsn = f"postgresql://{user}:{password}@{host}:{port}/{db}"
+    query = (
+        "SELECT query_text, score, collection, COUNT(*) AS occurrences "
+        "FROM query_gaps "
+        f"WHERE created_at >= '{since.isoformat()}' "
+        "GROUP BY query_text, score, collection "
+        "ORDER BY occurrences DESC, score ASC "
+        f"LIMIT {limit};"
+    )
+
+    # ── psycopg path (fast, available inside systemd service environments) ──
     try:
         import psycopg  # type: ignore[import-untyped]
-    except ImportError:
-        return []
-
-    pg_host = os.getenv("POSTGRES_HOST", "")
-    pg_port = int(os.getenv("POSTGRES_PORT", "5432"))
-    pg_db = os.getenv("POSTGRES_DB", "")
-    pg_user = os.getenv("POSTGRES_USER", "")
-    pg_password = os.getenv("POSTGRES_PASSWORD", "")
-
-    if not (pg_host and pg_db and pg_user):
-        return []
-
-    try:
-        dsn = f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}"
         conn = psycopg.connect(dsn, connect_timeout=5)
         cur = conn.execute(
-            """
-            SELECT query_text, score, collection, COUNT(*) AS occurrences
-            FROM query_gaps
-            WHERE created_at >= %s
-            GROUP BY query_text, score, collection
-            ORDER BY occurrences DESC, score ASC
-            LIMIT %s
-            """,
+            "SELECT query_text, score, collection, COUNT(*) AS occurrences "
+            "FROM query_gaps WHERE created_at >= %s "
+            "GROUP BY query_text, score, collection "
+            "ORDER BY occurrences DESC, score ASC LIMIT %s",
             (since, limit),
         )
         rows = [dict(r._mapping) for r in cur.fetchall()]
         conn.close()
+        return rows
+    except ImportError:
+        pass
+    except Exception:
+        return []
+
+    # ── psql subprocess path (shell invocations where psycopg is absent) ──
+    import subprocess, csv, io
+    try:
+        result = subprocess.run(
+            ["psql", dsn, "--tuples-only", "--no-align",
+             "--field-separator=\t", "--command", query],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode != 0:
+            return []
+        rows = []
+        for line in csv.reader(io.StringIO(result.stdout), delimiter="\t"):
+            if len(line) < 4:
+                continue
+            rows.append({
+                "query_text": line[0],
+                "score": float(line[1]) if line[1] else None,
+                "collection": line[2],
+                "occurrences": int(line[3]),
+            })
         return rows
     except Exception:
         return []
