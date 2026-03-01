@@ -49,7 +49,6 @@
       llamaCpp.huggingFaceRepo         = "unsloth/Qwen3-4B-Instruct-2507-GGUF";
       llamaCpp.huggingFaceFile         = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
       llamaCpp.sha256                  = "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597";
-      llamaCpp.extraArgs               = [ "--jinja" ];
       embeddingDimensions              = 2560;
       embeddingServer.enable           = true;
       embeddingServer.model            = "/var/lib/llama-cpp/models/Qwen3-Embedding-4B-q4_k_m.gguf";
