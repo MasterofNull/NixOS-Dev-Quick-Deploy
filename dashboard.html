@@ -1782,6 +1782,13 @@
                                 <div id="patternsStatus" style="font-size: 1.1rem; font-weight: 600; color: var(--accent-yellow);">--</div>
                                 <div id="patternsDetails" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">Total patterns: --</div>
                             </div>
+
+                            <!-- PRSI Gap Loop -->
+                            <div style="padding: 1rem; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 8px; border-left: 3px solid var(--accent-cyan);">
+                                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">PRSI Gap Loop</div>
+                                <div id="prsiGapCount" style="font-size: 1.1rem; font-weight: 600; color: var(--accent-cyan);">--</div>
+                                <div id="prsiGapDetails" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">Synced: N | Feedback: N</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2809,6 +2816,15 @@
                 orchestration: {
                     runtime: 'systemd',
                     containers_running: runningCount
+                },
+                prsi: {
+                    gap_count: Number(aiMetrics?.prsi?.gap_count ?? 0),
+                    unique_gaps: Number(aiMetrics?.prsi?.unique_gaps ?? 0),
+                    synced_gaps: Number(aiMetrics?.prsi?.synced_gaps ?? 0),
+                    total_feedback: Number(aiMetrics?.prsi?.total_feedback_count ?? 0),
+                    negative_feedback: Number(aiMetrics?.prsi?.negative_feedback_count ?? 0),
+                    sync_loop_active: Boolean(aiMetrics?.prsi?.sync_loop_active ?? false),
+                    last_gap_at: aiMetrics?.prsi?.last_gap_at ?? null,
                 }
             };
         }
@@ -3837,6 +3853,12 @@
                     : 'last_event=--';
                 details.textContent = `skills=[${sampleSkills || '--'}] | ${eventLine}`;
             }
+
+            // Update PRSI Gap Loop
+            const prsiEl = document.getElementById('prsiGapCount');
+            if (prsiEl) prsiEl.textContent = data.prsi?.unique_gaps ?? '--';
+            const prsiDet = document.getElementById('prsiGapDetails');
+            if (prsiDet) prsiDet.textContent = 'Synced: ' + (data.prsi?.synced_gaps ?? '--') + ' | Feedback: ' + (data.prsi?.total_feedback ?? '--');
         }
 
         // Update quick links
