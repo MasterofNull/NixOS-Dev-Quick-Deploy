@@ -2077,6 +2077,21 @@ check_dashboard_postflight() {
 }
 check_dashboard_postflight
 
+# ---- Routing traffic seed (non-blocking) ------------------------------------
+# Sends a small batch of queries through hybrid-coordinator so that §2 routing
+# split and §3 semantic cache metrics are populated after every deploy.
+if [[ -x "${REPO_ROOT}/scripts/seed-routing-traffic.sh" ]]; then
+  log "Seeding routing traffic (bootstrap §2/§3 metrics)..."
+  "${REPO_ROOT}/scripts/seed-routing-traffic.sh" --count 4 2>/dev/null || true
+fi
+
+# ---- Rebuild Qdrant vector index (non-blocking) -----------------------------
+# Re-indexes any documents that were imported but not yet embedded.
+if [[ -x "${REPO_ROOT}/scripts/rebuild-qdrant-collections.sh" ]]; then
+  log "Rebuilding Qdrant vector index from AIDB documents..."
+  "${REPO_ROOT}/scripts/rebuild-qdrant-collections.sh" 2>/dev/null || true
+fi
+
 # ---- Phase 18.1.3: AI stack performance digest (non-blocking) ---------------
 if [[ -x "${REPO_ROOT}/scripts/aq-report" ]]; then
   log "AI stack performance digest (last 7d):"

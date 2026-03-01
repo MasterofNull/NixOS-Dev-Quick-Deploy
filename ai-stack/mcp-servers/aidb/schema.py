@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.dialects.postgresql import JSONB
 from pgvector.sqlalchemy import Vector
 
 METADATA = sa.MetaData()
@@ -127,7 +128,7 @@ def document_embeddings_table(metadata: sa.MetaData, embedding_dimension: int) -
         sa.Column("chunk_id", sa.String(length=128), nullable=True),
         sa.Column("content", sa.Text, nullable=False),
         sa.Column("embedding", Vector(embedding_dimension), nullable=False),
-        sa.Column("metadata", sa.JSON, nullable=False, server_default=sa.text("'{}'::jsonb")),
+        sa.Column("metadata", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
         sa.Column("score", sa.Float, nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column(

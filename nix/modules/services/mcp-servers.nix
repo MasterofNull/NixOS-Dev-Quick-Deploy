@@ -352,6 +352,11 @@ in
         "d ${dataDir}/ralph/telemetry    0750 ${svcUser} ${svcGroup} -"
         "d ${dataDir}/qdrant-collections          0750 ${svcUser} ${svcGroup} -"
         "d /var/log/ai-stack                      0750 ${svcUser} ${svcGroup} -"
+        # Tool audit log dir — written by shared/tool_audit.py fallback path
+        # and read by aq-report TOOL_AUDIT_PATH default.
+        "d /var/log/nixos-ai-stack                0750 ${svcUser} ${svcGroup} -"
+        # Audit sidecar log dir — used when socket-activated sidecar writes JSONL.
+        "d /var/log/ai-audit-sidecar              0750 ${svcUser} ${svcGroup} -"
         "d ${dataDir}/aider-wrapper               0750 ${svcUser} ${svcGroup} -"
         "d ${dataDir}/aider-wrapper/workspace     0750 ${svcUser} ${svcGroup} -"
         "d ${dataDir}/nixos-docs           0750 ${svcUser} ${svcGroup} -"
