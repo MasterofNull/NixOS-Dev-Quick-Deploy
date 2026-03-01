@@ -13,9 +13,15 @@ let
   cfg      = config.mySystem;
   ai       = cfg.aiStack;
   swb      = ai.switchboard;
+  sec      = cfg.secrets;
+  mcp      = cfg.mcpServers;
   llamaUrl = "http://${ai.llamaCpp.host}:${toString ai.llamaCpp.port}";
   remoteUrl = if swb.remoteUrl != null then swb.remoteUrl else "";
   remoteKeyFile = if swb.remoteApiKeyFile != null then swb.remoteApiKeyFile else "";
+  hybridUrl = "http://127.0.0.1:${toString mcp.hybridPort}";
+  hybridKeyFile = if sec.enable
+    then "/run/secrets/${sec.names.hybridApiKey}"
+    else "";
 
   switchboardPy = pkgs.python3.withPackages (ps: with ps; [
     fastapi
@@ -49,6 +55,17 @@ let
         "openrouter/",
         "custom/",
     )
+    HYBRID_URL      = os.environ.get("HYBRID_URL", "").rstrip("/")
+    HINTS_INJECT    = os.environ.get("HINTS_INJECT", "1").strip() not in ("0", "false", "no")
+    HINTS_LIMIT     = int(os.environ.get("HINTS_LIMIT", "2"))
+    _hybrid_key_file = os.environ.get("HYBRID_API_KEY_FILE", "").strip()
+    HYBRID_API_KEY  = ""
+    if _hybrid_key_file:
+        try:
+            with open(_hybrid_key_file) as _kf:
+                HYBRID_API_KEY = _kf.read().strip()
+        except OSError:
+            pass
 
     def _read_secret(path: str) -> str:
         if not path:
@@ -121,6 +138,36 @@ let
             payload["model"] = model[len("local/"):] or "local-model"
         return payload
 
+    async def _get_hints(query: str):
+        """Return a hints string from hybrid-coordinator, or None on any failure."""
+        if not HYBRID_URL or not query.strip():
+            return None
+        try:
+            from urllib.parse import urlencode
+            params = urlencode({"q": query[:200], "limit": HINTS_LIMIT})
+            hdrs = {}
+            if HYBRID_API_KEY:
+                hdrs["X-API-Key"] = HYBRID_API_KEY
+            async with httpx.AsyncClient(timeout=2.0) as hclient:
+                resp = await hclient.get(f"{HYBRID_URL}/hints?{params}", headers=hdrs)
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            hints_list = data.get("hints", []) if isinstance(data, dict) else []
+            if not hints_list:
+                return None
+            lines = ["[AI stack — tools available for this task]"]
+            for item in hints_list:
+                if isinstance(item, dict):
+                    name = item.get("name") or item.get("title") or item.get("id") or ""
+                    tip  = item.get("hint") or item.get("description") or item.get("text") or ""
+                    txt  = (f"{name}: {tip}".strip(": ")) if name else tip
+                    if txt:
+                        lines.append(f"- {txt}")
+            return "\n".join(lines) if len(lines) > 1 else None
+        except Exception:
+            return None
+
     @app.api_route("/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
     async def proxy(path: str, request: Request):
         body = await request.body()
@@ -138,6 +185,25 @@ let
             payload = _rewrite_model(payload)
             import json
             body = json.dumps(payload).encode("utf-8")
+
+        if HINTS_INJECT and path == "chat/completions" and isinstance(payload, dict):
+            messages = payload.get("messages") or []
+            first_user = next(
+                (m.get("content", "") for m in messages if m.get("role") == "user"),
+                "",
+            )
+            if first_user:
+                hint_text = await _get_hints(str(first_user))
+                if hint_text:
+                    sys_idxs = [i for i, m in enumerate(messages) if m.get("role") == "system"]
+                    if sys_idxs:
+                        i = sys_idxs[-1]
+                        messages[i] = dict(messages[i])
+                        messages[i]["content"] = messages[i]["content"].rstrip() + "\n\n" + hint_text
+                    else:
+                        messages = [{"role": "system", "content": hint_text}] + list(messages)
+                    payload["messages"] = messages
+                    body = json.dumps(payload).encode("utf-8")
 
         headers = {k: v for k, v in request.headers.items() if k.lower() != "host"}
         headers.pop("content-length", None)
@@ -188,6 +254,8 @@ in
           "DEFAULT_PROVIDER=${swb.defaultProvider}"
           "REMOTE_LLM_URL=${remoteUrl}"
           "REMOTE_LLM_API_KEY_FILE=${remoteKeyFile}"
+          "HYBRID_URL=${hybridUrl}"
+          "HYBRID_API_KEY_FILE=${hybridKeyFile}"
         ];
         User                  = cfg.primaryUser;
         Restart               = "on-failure";
