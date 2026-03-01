@@ -503,7 +503,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
 
 async def initialize_server():
     """Initialize global clients and collections"""
-    global qdrant_client, llama_cpp_client, embedding_client, aidb_client, multi_turn_manager, feedback_api, progressive_disclosure, learning_pipeline, postgres_client, context_compressor, embedding_cache
+    global qdrant_client, llama_cpp_client, switchboard_client, embedding_client, aidb_client, multi_turn_manager, feedback_api, progressive_disclosure, learning_pipeline, postgres_client, context_compressor, embedding_cache
 
     _enforce_startup_env()
     await _preflight_check()
@@ -518,6 +518,8 @@ async def initialize_server():
 
     # Initialize llama.cpp client (system-configured loopback service; no SSRF check needed)
     llama_cpp_client = httpx.AsyncClient(base_url=Config.LLAMA_CPP_URL, timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT)
+    # Switchboard client — routes complex tasks to remote LLM via x-ai-route header
+    switchboard_client = httpx.AsyncClient(base_url=Config.SWITCHBOARD_URL, timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT)
 
     # Initialize embedding client (internal service, with auth)
     embedding_client = create_embeddings_client(timeout=30.0)
@@ -719,6 +721,7 @@ async def initialize_server():
         summarize_fn=harness_eval._summarize_results,
         context_compressor_ref=lambda: context_compressor,
         llama_cpp_client_ref=lambda: llama_cpp_client,
+        switchboard_client_ref=lambda: switchboard_client,
         postgres_client_ref=lambda: postgres_client,
         collections=COLLECTIONS,
     )
