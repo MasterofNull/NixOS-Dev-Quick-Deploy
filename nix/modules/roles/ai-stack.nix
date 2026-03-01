@@ -812,6 +812,47 @@ in {
       };
     })
 
+    # PRSI — Weekly auto-import of knowledge for top recurring query gaps.
+    # Runs aq-gap-import which: reads query-gaps.jsonl → gemini generates docs
+    # → AIDB import → rebuild-qdrant-collections (closes gap→knowledge→Qdrant loop).
+    (lib.mkIf roleEnabled {
+      systemd.services.ai-gap-import = {
+        description = "AI gap knowledge auto-import (PRSI gap closure)";
+        after = ["network-online.target" "ai-aidb.service"];
+        wants = ["network-online.target"];
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.primaryUser;
+          WorkingDirectory = cfg.mcpServers.repoPath;
+          ExecStart = "${cfg.mcpServers.repoPath}/scripts/aq-gap-import";
+          StandardOutput = "journal";
+          StandardError  = "journal";
+          NoNewPrivileges = true;
+          ProtectSystem   = "strict";
+          ProtectHome     = "read-only";
+          PrivateTmp      = true;
+          # Needs network for Gemini API and Qdrant rebuild
+          PrivateNetwork  = false;
+          MemoryMax       = "512M";
+          Environment = [
+            "GAPS_JSONL=/var/log/nixos-ai-stack/query-gaps.jsonl"
+            "MIN_OCCURRENCES=3"
+            "MAX_GAPS=5"
+          ];
+        };
+      };
+
+      systemd.timers.ai-gap-import = {
+        description = "Weekly PRSI gap knowledge import timer";
+        wantedBy = ["timers.target"];
+        timerConfig = {
+          OnCalendar     = "Sat 03:00:00";
+          Persistent     = true;
+          RandomizedDelaySec = "30min";
+        };
+      };
+    })
+
     (lib.mkIf (roleEnabled && ai.vectorDb.enable && hasQdrant) {
       services.qdrant.enable = true;
       services.qdrant.settings.service = {

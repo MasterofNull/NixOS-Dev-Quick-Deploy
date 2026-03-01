@@ -632,6 +632,20 @@ async def initialize_server():
         collections=COLLECTIONS,
     )
 
+    # PRSI gap-sync: export PostgreSQL gaps + feedback corrections to hints JSONL every 5 min
+    async def _gap_sync_loop() -> None:
+        import interaction_tracker as _it
+        GAPS_JSONL = os.getenv(
+            "QUERY_GAPS_JSONL", "/var/log/nixos-ai-stack/query-gaps.jsonl"
+        )
+        while True:
+            await asyncio.sleep(300)
+            await _it.sync_query_gaps_to_jsonl(GAPS_JSONL)
+            await _it.sync_feedback_corrections_to_gaps(GAPS_JSONL)
+
+    asyncio.create_task(_gap_sync_loop())
+    logger.info("✓ PRSI gap-sync loop started (interval=300s)")
+
     # Phase 6.1 — wire extracted http_server module
     http_server.init(
         augment_query_fn=augment_query_with_context,
