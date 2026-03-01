@@ -579,6 +579,8 @@ in
       nrb = "sudo nixos-rebuild boot --flake .";
       nrd = "sudo nixos-rebuild dry-build --flake .";
       hms = "home-manager switch --flake .";
+      # pi-coding-agent wired to local switchboard (OpenAI-compatible proxy at :8085)
+      pi  = "OPENAI_BASE_URL=\"http://127.0.0.1:${toString aiSwitchboardPort}/v1\" OPENAI_API_KEY=dummy $HOME/.npm-global/bin/pi --provider openai";
     };
 
     # mkOrder 550 places this block before compinit (priority 550 = "before
@@ -698,6 +700,7 @@ in
 
   home.sessionPath = [
     "$HOME/.local/bin"
+    "$HOME/.npm-global/bin"    # codex, qwen, gemini, pi CLI agents
   ];
 
   # =========================================================================
