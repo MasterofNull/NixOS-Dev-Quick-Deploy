@@ -225,6 +225,8 @@ in {
         "d /var/lib/llama-cpp/models 0750 llama llama -"
         # Log directory writable by llama service
         "d /var/log/llama-cpp 0750 llama llama -"
+        # Optimizer state directory for PRSI self-optimization loop
+        "d /var/lib/nixos-ai-stack/optimizer 0750 ${cfg.primaryUser} users -"
       ];
 
       systemd.services.llama-cpp = {
@@ -849,6 +851,45 @@ in {
           OnCalendar     = "Sat 03:00:00";
           Persistent     = true;
           RandomizedDelaySec = "30min";
+        };
+      };
+
+      systemd.services.ai-optimizer = {
+        description = "AI stack agentic optimizer (PRSI action loop)";
+        after = [ "network-online.target" "ai-aidb.service" "ai-hybrid-coordinator.service" ];
+        wants = [ "network-online.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.primaryUser;
+          WorkingDirectory = cfg.mcpServers.repoPath;
+          ExecStart = "${cfg.mcpServers.repoPath}/scripts/aq-optimizer --since=1d";
+          StandardOutput = "journal";
+          StandardError  = "journal";
+          NoNewPrivileges = true;
+          ProtectSystem   = "strict";
+          ProtectHome     = "read-only";
+          PrivateTmp      = true;
+          PrivateNetwork  = false;
+          MemoryMax       = "256M";
+          ReadWritePaths  = [
+            "/var/lib/nixos-ai-stack/optimizer"
+            "/var/log/nixos-ai-stack"
+          ];
+          Environment = [
+            "AIDB_URL=http://127.0.0.1:${toString cfg.mcpServers.aidbPort}"
+            "PYTHONPATH=${cfg.mcpServers.repoPath}/scripts"
+          ] ++ lib.optional cfg.secrets.enable
+              "AIDB_API_KEY_FILE=/run/secrets/${cfg.secrets.names.aidbApiKey}";
+        };
+      };
+
+      systemd.timers.ai-optimizer = {
+        description = "Daily AI stack agentic optimizer timer";
+        wantedBy = ["timers.target"];
+        timerConfig = {
+          OnCalendar          = "daily";
+          Persistent          = true;
+          RandomizedDelaySec  = "15min";
         };
       };
     })

@@ -701,6 +701,7 @@ in
             ++ lib.optional sec.enable "EMBEDDING_API_KEY_FILE=${secretPath embeddingsApiKeySecret}"
             ++ lib.optional sec.enable "HYBRID_API_KEY_FILE=${secretPath hybridApiKeySecret}"
             ++ lib.optional sec.enable "POSTGRES_PASSWORD_FILE=${secretPath postgresPasswordSecret}";
+          EnvironmentFile = "-/var/lib/nixos-ai-stack/optimizer/overrides.env";
         };
       };
 
