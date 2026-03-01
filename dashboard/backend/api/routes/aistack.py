@@ -37,6 +37,7 @@ SERVICES = {
     "embeddings": service_endpoints.EMBEDDINGS_URL,
     "switchboard": service_endpoints.SWITCHBOARD_URL,
     "aider_wrapper": service_endpoints.AIDER_WRAPPER_URL,
+    "nixos_docs": service_endpoints.NIXOS_DOCS_URL,
 }
 
 # Timeout for external requests
@@ -58,6 +59,7 @@ _UNIT_HTTP_HEALTH: Dict[str, str] = {
     "ai-switchboard": f"{service_endpoints.SWITCHBOARD_URL}/health",
     "ai-embeddings": f"{service_endpoints.EMBEDDINGS_URL}/health",
     "ai-aider-wrapper": f"{service_endpoints.AIDER_WRAPPER_URL}/health",
+    "ai-nixos-docs": f"{service_endpoints.NIXOS_DOCS_URL}/health",
 }
 
 # Units that have no HTTP endpoint — systemd check only.
@@ -379,8 +381,16 @@ async def _postgres_select1_probe() -> Dict[str, Any]:
         }
     dsn = os.getenv(
         "AIDB_DB_URL",
-        f"postgresql://postgres@{service_endpoints.SERVICE_HOST}:{service_endpoints.POSTGRES_PORT}/aidb",
+        f"postgresql://aidb@{service_endpoints.SERVICE_HOST}:{service_endpoints.POSTGRES_PORT}/aidb",
     )
+    # Augment DSN with password from file if available and DSN has no password.
+    pg_pw_file = os.getenv("POSTGRES_PASSWORD_FILE")
+    if pg_pw_file and "://" in dsn and "@" in dsn and ":" not in dsn.split("@")[0]:
+        try:
+            pw = open(pg_pw_file).read().strip()  # noqa: WPS515
+            dsn = dsn.replace("://aidb@", f"://aidb:{pw}@", 1)
+        except OSError:
+            pass
     t0 = time.monotonic()
     conn = None
     try:
@@ -1121,7 +1131,7 @@ async def get_port_registry() -> Dict[str, Any]:
                 "port": service_endpoints.OPEN_WEBUI_PORT,
                 "url": service_endpoints.OPEN_WEBUI_URL,
             },
-            "mindsdb": {"port": service_endpoints.MINDSDB_PORT, "url": service_endpoints.MINDSDB_URL},
+            "nixos_docs": {"port": service_endpoints.NIXOS_DOCS_PORT, "url": service_endpoints.NIXOS_DOCS_URL},
             "postgres": {
                 "port": service_endpoints.POSTGRES_PORT,
                 "url": f"{service_endpoints.SERVICE_HOST}:{service_endpoints.POSTGRES_PORT}",

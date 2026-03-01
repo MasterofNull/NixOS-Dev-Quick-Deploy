@@ -102,6 +102,7 @@ check_http "REQUIRED" "hybrid-coordinator  (:$(url_port "${HYBRID_URL}"))" "${HY
 check_http "REQUIRED" "ralph-wiggum        (:$(url_port "${RALPH_URL}"))" "${RALPH_URL%/}/health"
 check_http "REQUIRED" "switchboard         (:$(url_port "${SWITCHBOARD_URL}"))" "${SWITCHBOARD_URL%/}/health"
 check_http "REQUIRED" "aider-wrapper       (:$(url_port "${AIDER_URL}"))" "${AIDER_URL%/}/health"
+check_http "REQUIRED" "nixos-docs          (:$(url_port "${NIXOS_DOCS_URL}"))" "${NIXOS_DOCS_URL%/}/health"
 
 # ── LLM backend ───────────────────────────────────────────────────────────────
 echo "── LLM Backends ─────────────────────────────────────────────"

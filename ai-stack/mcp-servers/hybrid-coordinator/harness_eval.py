@@ -185,7 +185,7 @@ def build_harness_scorecard() -> Dict[str, Any]:
     discovery_errors = int(discovery.get("errors", 0) or 0)
     discovery_total = discovery_invoked + discovery_skipped + discovery_hits + discovery_errors
     discovery_cache_rate = (discovery_hits / discovery_total) if discovery_total else 0.0
-    reliability_ok = pass_rate >= Config.AI_HARNESS_MIN_ACCEPTANCE_SCORE
+    reliability_ok = None if total == 0 else pass_rate >= Config.AI_HARNESS_MIN_ACCEPTANCE_SCORE
     discovery_error_rate = (discovery_errors / discovery_total) if discovery_total else 0.0
     safety_ok = discovery_error_rate <= 0.05
     _HARNESS_STATS["scorecards_generated"] = int(_HARNESS_STATS.get("scorecards_generated", 0) or 0) + 1

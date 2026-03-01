@@ -21,7 +21,7 @@ export function AIInternals() {
 
     const fetchData = async () => {
       try {
-        const response = await fetch('/api/aistack/metrics');
+        const response = await fetch('/api/metrics');
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }

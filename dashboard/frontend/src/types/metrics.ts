@@ -6,7 +6,7 @@ export interface SystemMetrics {
   network: NetworkMetrics;
   gpu: GPUMetrics;
   uptime: number;
-  load_average: string;
+  load_average: { one: number | null; five: number | null; fifteen: number | null };
   hostname: string;
 }
 

@@ -175,6 +175,15 @@ let
 
   aiderPython = pkgs.python3.withPackages (ps: sharedPythonPackages ps ++ (with ps; []));
 
+  nixosDocsPython = pkgs.python3.withPackages (ps: sharedPythonPackages ps ++ (with ps; [
+    diskcache
+    gitpython
+    beautifulsoup4
+    markdownify
+    lxml
+    redis
+  ]));
+
   # Phase 12.3.2 — audit sidecar uses only stdlib (asyncio/json/socket).
   auditSidecarPython = pkgs.python3;
 
@@ -214,6 +223,7 @@ let
   postgresPasswordSecret     = sec.names.postgresPassword;
   redisPasswordSecret        = sec.names.redisPassword;
   aiderWrapperApiKeySecret   = sec.names.aiderWrapperApiKey;
+  nixosDocsApiKeySecret      = sec.names.nixosDocsApiKey;
 
   embedEnabled = ai.embeddingServer.enable;
   redisUnit = "redis-mcp.service";
@@ -344,6 +354,9 @@ in
         "d /var/log/ai-stack                      0750 ${svcUser} ${svcGroup} -"
         "d ${dataDir}/aider-wrapper               0750 ${svcUser} ${svcGroup} -"
         "d ${dataDir}/aider-wrapper/workspace     0750 ${svcUser} ${svcGroup} -"
+        "d ${dataDir}/nixos-docs           0750 ${svcUser} ${svcGroup} -"
+        "d ${dataDir}/nixos-docs/cache     0750 ${svcUser} ${svcGroup} -"
+        "d ${dataDir}/nixos-docs/repos     0750 ${svcUser} ${svcGroup} -"
       ];
 
       # ── Firewall: expose MCP ports on LAN when requested ───────────────────
@@ -352,6 +365,7 @@ in
         mcp.aidbPort
         mcp.hybridPort
         mcp.ralphPort
+        mcp.nixosDocsPort
       ];
 
       systemd.targets.ai-stack = {
@@ -760,6 +774,40 @@ in
           # Phase 13.1.1 — aider-wrapper only communicates with loopback services
           IPAddressAllow = [ "127.0.0.1/8" "::1/128" ];
           IPAddressDeny = [ "any" ];
+        };
+      };
+
+    })
+
+    # ── NixOS Docs — documentation MCP server ─────────────────────────────────
+    (lib.mkIf active {
+
+      systemd.services.ai-nixos-docs = {
+        description = "NixOS documentation MCP server";
+        wantedBy    = [ "ai-stack.target" ];
+        partOf      = [ "ai-stack.target" ];
+        after       = [ "network-online.target" ]
+                    ++ lib.optional mcp.redis.enable redisUnit;
+        wants       = [ "network-online.target" ];
+        serviceConfig = commonServiceConfig // {
+          ExecStart = lib.escapeShellArgs [
+            "${nixosDocsPython}/bin/uvicorn"
+            "server:app"
+            "--host" "127.0.0.1"
+            "--port" (toString mcp.nixosDocsPort)
+            "--no-access-log"
+          ];
+          WorkingDirectory = "${repoMcp}/nixos-docs";
+          Environment = [
+            "NIXOS_DOCS_PORT=${toString mcp.nixosDocsPort}"
+            "REDIS_HOST=127.0.0.1"
+            "REDIS_PORT=${toString mcp.redis.port}"
+            "NIXOS_CACHE_DIR=${dataDir}/nixos-docs/cache"
+            "NIXOS_REPOS_DIR=${dataDir}/nixos-docs/repos"
+            "NIXOS_CACHE_TTL=86400"
+            "PYTHONPATH=${repoMcp}:${repoMcp}/nixos-docs"
+          ];
+          ReadWritePaths = [ dataDir "/tmp" "${dataDir}/nixos-docs" ];
         };
       };
 

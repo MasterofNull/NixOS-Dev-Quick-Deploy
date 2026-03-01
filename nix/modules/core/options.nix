@@ -473,6 +473,12 @@
           default = "aider_wrapper_api_key";
           description = "SOPS key name for aider-wrapper API auth secret.";
         };
+
+        nixosDocsApiKey = lib.mkOption {
+          type = lib.types.str;
+          default = "nixos_docs_api_key";
+          description = "SOPS key name for nixos-docs API auth secret.";
+        };
       };
     };
 
@@ -1178,6 +1184,12 @@
         type = lib.types.port;
         default = 8090;
         description = "TCP port for the aider-wrapper async coding assistant MCP server.";
+      };
+
+      nixosDocsPort = lib.mkOption {
+        type        = lib.types.port;
+        default     = 8096;
+        description = "TCP port for the nixos-docs MCP server.";
       };
 
       postgres = {
