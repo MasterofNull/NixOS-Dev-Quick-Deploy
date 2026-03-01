@@ -39,6 +39,7 @@ from metrics import ROUTE_DECISIONS, ROUTE_ERRORS
 from search_router import looks_like_sql as _looks_like_sql, normalize_tokens as _normalize_tokens
 from query_expansion import QueryExpander
 from prompt_injection import PromptInjectionScanner, sanitize_query
+import task_classifier
 
 logger = logging.getLogger("hybrid-coordinator")
 _injection_scanner = PromptInjectionScanner()
@@ -240,57 +241,85 @@ async def route_search(
                     "context_compression tokens_before=%d tokens_after=%d budget=%d",
                     tokens_before, compressed_tokens, Config.AI_CONTEXT_MAX_TOKENS,
                 )
-            prompt = (
-                f"{prompt_prefix}\n\n"
-                f"User query: {query}\n\nContext:\n{compressed_context}\n\n"
-                "Provide a concise response using the context."
-            )
-            _all_results = (
-                results.get("combined_results") or results.get("semantic_results") or
-                results.get("keyword_results") or []
-            )
-            context_quality = max(
-                (r.get("score", 0.0) for r in _all_results if isinstance(r, dict)), default=0.5,
-            )
-            backend = await _select_backend(query, context_quality, force_local=prefer_local)
-            if backend == "remote" and llama_cpp_client:
-                logger.info("llm_backend_fallback_to_local reason=remote_not_available_in_route_search")
-                backend = "local"
-            try:
-                llm_resp = await llama_cpp_client.post(
-                    "/chat/completions",
-                    json={"messages": [{"role": "user", "content": prompt}], "temperature": 0.2, "max_tokens": 400},
-                    timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT,
+            # Task complexity classification — skip synthesis if remote-required,
+            # use discrete bounded prompt if local-suitable.
+            _complexity = None
+            _skip_synthesis = False
+            if Config.AI_TASK_CLASSIFICATION_ENABLED:
+                _complexity = task_classifier.classify(
+                    query, compressed_context, max_output_tokens=400
                 )
-                llm_resp.raise_for_status()
-                llm_json = llm_resp.json()
-                response_text = llm_json["choices"][0]["message"]["content"]
-                usage = llm_json.get("usage", {}) if isinstance(llm_json, dict) else {}
-                cached_tokens = int(
-                    usage.get("cached_tokens")
-                    or (usage.get("prompt_tokens_details", {}) or {}).get("cached_tokens", 0)
-                    or 0
+                logger.info(
+                    "task_complexity type=%s tokens=%d local=%s reason=%s",
+                    _complexity.task_type,
+                    _complexity.token_estimate,
+                    _complexity.local_suitable,
+                    _complexity.reason,
                 )
-                results["prompt_cache"] = {
-                    "policy_enabled": Config.AI_PROMPT_CACHE_POLICY_ENABLED,
-                    "prefix_hash": prompt_prefix_hash,
-                    "cached_tokens": cached_tokens,
-                }
-                if compressed_tokens:
-                    results["context_compression"] = {
-                        "enabled": True,
-                        "token_budget": Config.AI_CONTEXT_MAX_TOKENS,
-                        "compressed_tokens": compressed_tokens,
+                if _complexity.remote_required:
+                    results["synthesis_skipped"] = True
+                    results["task_complexity"] = {
+                        "type": _complexity.task_type,
+                        "tokens": _complexity.token_estimate,
+                        "reason": _complexity.reason,
                     }
-            except Exception as exc:  # noqa: BLE001
-                _is_timeout = isinstance(exc, asyncio.TimeoutError) or "timeout" in type(exc).__name__.lower()
-                logger.warning("route_search_llm_failed error=%s timeout=%s", exc, _is_timeout)
-                if _is_timeout and _record_query_gap is not None and postgres_client is not None:
-                    _t_hash = hashlib.sha256(query.encode()).hexdigest()[:64]
-                    asyncio.create_task(_record_query_gap(
-                        query_hash=_t_hash, query_text=query[:500], score=-1.0,
-                        collection="inference_timeout",
-                    ))
+                    _skip_synthesis = True
+            if not _skip_synthesis:
+                if _complexity and _complexity.optimized_prompt:
+                    prompt = _complexity.optimized_prompt
+                else:
+                    prompt = (
+                        f"{prompt_prefix}\n\n"
+                        f"User query: {query}\n\nContext:\n{compressed_context}\n\n"
+                        "Provide a concise response using the context."
+                    )
+            if not _skip_synthesis:
+                _all_results = (
+                    results.get("combined_results") or results.get("semantic_results") or
+                    results.get("keyword_results") or []
+                )
+                context_quality = max(
+                    (r.get("score", 0.0) for r in _all_results if isinstance(r, dict)), default=0.5,
+                )
+                backend = await _select_backend(query, context_quality, force_local=prefer_local)
+                if backend == "remote" and llama_cpp_client:
+                    logger.info("llm_backend_fallback_to_local reason=remote_not_available_in_route_search")
+                    backend = "local"
+                try:
+                    llm_resp = await llama_cpp_client.post(
+                        "/chat/completions",
+                        json={"messages": [{"role": "user", "content": prompt}], "temperature": 0.2, "max_tokens": 400},
+                        timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT,
+                    )
+                    llm_resp.raise_for_status()
+                    llm_json = llm_resp.json()
+                    response_text = llm_json["choices"][0]["message"]["content"]
+                    usage = llm_json.get("usage", {}) if isinstance(llm_json, dict) else {}
+                    cached_tokens = int(
+                        usage.get("cached_tokens")
+                        or (usage.get("prompt_tokens_details", {}) or {}).get("cached_tokens", 0)
+                        or 0
+                    )
+                    results["prompt_cache"] = {
+                        "policy_enabled": Config.AI_PROMPT_CACHE_POLICY_ENABLED,
+                        "prefix_hash": prompt_prefix_hash,
+                        "cached_tokens": cached_tokens,
+                    }
+                    if compressed_tokens:
+                        results["context_compression"] = {
+                            "enabled": True,
+                            "token_budget": Config.AI_CONTEXT_MAX_TOKENS,
+                            "compressed_tokens": compressed_tokens,
+                        }
+                except Exception as exc:  # noqa: BLE001
+                    _is_timeout = isinstance(exc, asyncio.TimeoutError) or "timeout" in type(exc).__name__.lower()
+                    logger.warning("route_search_llm_failed error=%s timeout=%s", exc, _is_timeout)
+                    if _is_timeout and _record_query_gap is not None and postgres_client is not None:
+                        _t_hash = hashlib.sha256(query.encode()).hexdigest()[:64]
+                        asyncio.create_task(_record_query_gap(
+                            query_hash=_t_hash, query_text=query[:500], score=-1.0,
+                            collection="inference_timeout",
+                        ))
 
         ROUTE_DECISIONS.labels(route=route).inc()
         _record_telemetry(

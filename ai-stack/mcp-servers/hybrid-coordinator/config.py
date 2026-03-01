@@ -153,6 +153,9 @@ class Config:
     AI_SPECULATIVE_DECODING_ENABLED = os.getenv("AI_SPECULATIVE_DECODING_ENABLED", "false").lower() == "true"
     AI_SPECULATIVE_DECODING_MODE = os.getenv("AI_SPECULATIVE_DECODING_MODE", "draft-model")
     AI_CONTEXT_MAX_TOKENS = int(os.getenv("AI_CONTEXT_MAX_TOKENS", "3000"))
+    AI_TASK_CLASSIFICATION_ENABLED = os.getenv("AI_TASK_CLASSIFICATION_ENABLED", "true").lower() == "true"
+    LOCAL_MAX_INPUT_TOKENS = int(os.getenv("LOCAL_MAX_INPUT_TOKENS", "600"))
+    LOCAL_MAX_OUTPUT_TOKENS = int(os.getenv("LOCAL_MAX_OUTPUT_TOKENS", "300"))
 
 
 def _read_secret(path: str) -> str:
