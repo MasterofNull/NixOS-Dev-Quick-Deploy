@@ -114,33 +114,6 @@ async def prometheus_metrics():
     return aistack.render_prometheus_metrics()
 
 
-# ── Frontend static file serving (SPA) ───────────────────────────────────────
-# Mount compiled frontend dist directory.  The backend serves both the API
-# (at /api/*) and the React SPA (at /*).  html=True enables index.html
-# fallback so SPA client-side routing works.  Mounts are evaluated after
-# explicit routes so /api/* is never captured by StaticFiles.
-_FRONTEND_DIST = Path(
-    os.getenv(
-        "DASHBOARD_FRONTEND_DIST",
-        str(Path(__file__).parent.parent.parent / "frontend" / "dist"),
-    )
-)
-
-if _FRONTEND_DIST.is_dir():
-    app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True), name="static")
-    logger.info("Frontend dist mounted from %s", _FRONTEND_DIST)
-else:
-    logger.warning("Frontend dist not found at %s — run the build service first", _FRONTEND_DIST)
-
-    @app.get("/")
-    async def root():
-        return JSONResponse(
-            {"status": "online", "service": "NixOS Dashboard API", "version": "2.0.0",
-             "note": "Frontend not yet built. Run: sudo systemctl start command-center-dashboard-build"},
-            status_code=200,
-        )
-
-
 # WebSocket endpoint for real-time metrics
 @app.websocket("/ws/metrics")
 async def websocket_metrics(websocket: WebSocket):
@@ -166,6 +139,33 @@ async def websocket_metrics(websocket: WebSocket):
         async with connections_lock:
             if websocket in active_connections:
                 active_connections.remove(websocket)
+
+
+# ── Frontend static file serving (SPA) ───────────────────────────────────────
+# Mount compiled frontend dist directory.  The backend serves both the API
+# (at /api/*) and the React SPA (at /*).  html=True enables index.html
+# fallback so SPA client-side routing works.  Mounts are evaluated after
+# explicit routes so /api/* is never captured by StaticFiles.
+_FRONTEND_DIST = Path(
+    os.getenv(
+        "DASHBOARD_FRONTEND_DIST",
+        str(Path(__file__).parent.parent.parent / "frontend" / "dist"),
+    )
+)
+
+if _FRONTEND_DIST.is_dir():
+    app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True), name="static")
+    logger.info("Frontend dist mounted from %s", _FRONTEND_DIST)
+else:
+    logger.warning("Frontend dist not found at %s — run the build service first", _FRONTEND_DIST)
+
+    @app.get("/")
+    async def root():
+        return JSONResponse(
+            {"status": "online", "service": "NixOS Dashboard API", "version": "2.0.0",
+             "note": "Frontend not yet built. Run: sudo systemctl start command-center-dashboard-build"},
+            status_code=200,
+        )
 
 
 async def broadcast_metrics():
