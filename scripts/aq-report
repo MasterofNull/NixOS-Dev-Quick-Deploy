@@ -304,6 +304,38 @@ def read_query_gaps(since: datetime, limit: int = 10) -> List[dict]:
         return []
 
 
+def _count_aidb_docs_for_topic(topic: str) -> int:
+    """Return count of imported_documents whose title matches the topic keyword."""
+    host, port, db, user, password = _pg_creds()
+    keyword = topic[:40].replace("'", "''")
+    query = f"SELECT COUNT(*) FROM imported_documents WHERE title ILIKE '%{keyword}%';"
+    dsn = f"postgresql://{user}:{password}@{host}:{port}/{db}"
+    try:
+        import psycopg  # type: ignore[import-untyped]
+        conn = psycopg.connect(dsn, connect_timeout=3)
+        cur = conn.execute(
+            "SELECT COUNT(*) FROM imported_documents WHERE title ILIKE %s",
+            (f"%{topic[:40]}%",),
+        )
+        count = cur.fetchone()[0]
+        conn.close()
+        return int(count)
+    except ImportError:
+        pass
+    except Exception:
+        return 0
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["psql", dsn, "--tuples-only", "--no-align", "--command", query],
+            capture_output=True, text=True, timeout=5,
+        )
+        line = result.stdout.strip()
+        return int(line) if line.isdigit() else 0
+    except Exception:
+        return 0
+
+
 def hint_adoption(since: datetime) -> Dict[str, Any]:
     """Phase 19.3.4 — read hint-audit.jsonl and compute adoption stats.
 
@@ -406,7 +438,7 @@ def routing_split() -> Dict[str, Any]:
         "local_n": int(local_n),
         "remote_n": int(remote_n),
         "local_pct": round(100 * local_n / total, 1) if total else None,
-        "available": total > 0,
+        "available": local_val is not None,  # None only on connection error
     }
 
 
@@ -425,7 +457,7 @@ def cache_hit_rate() -> Dict[str, Any]:
         "hits": int(h),
         "misses": int(m),
         "hit_pct": round(100 * h / total, 1) if total else None,
-        "available": total > 0,
+        "available": hits is not None or misses is not None,  # None only on connection error
     }
 
 
@@ -484,14 +516,26 @@ def build_recommendations(
             "Ensure `embedding_cache.py` emits Prometheus counters and Prometheus scrapes the service."
         )
 
-    # Query gaps
+    # Query gaps — check AIDB for existing docs before recommending import
     top_gaps = [g for g in gaps if g.get("occurrences", 1) >= 3]
     for g in top_gaps[:3]:
         topic = g["query_text"][:80].replace("\n", " ")
-        recs.append(
-            f"Recurring unanswered query ({g.get('occurrences', '?')}x): \"{topic}\". "
-            f"Run: aidb import --query \"{topic[:40]}\" to pull relevant docs."
-        )
+        occurrences = g.get("occurrences", "?")
+        existing = _count_aidb_docs_for_topic(topic)
+        if existing > 0:
+            recs.append(
+                f"Recurring gap ({occurrences}x): \"{topic}\". "
+                f"Docs exist in AIDB ({existing} match{'es' if existing != 1 else ''}). "
+                f"Verify Qdrant embedding with: scripts/aq-qa 2. "
+                f"Clear stale gap: psql $AIDB_DSN -c \"DELETE FROM query_gaps "
+                f"WHERE query_text ILIKE '%{topic[:30]}%';\""
+            )
+        else:
+            recs.append(
+                f"Recurring unanswered query ({occurrences}x): \"{topic}\". "
+                f"No matching docs in AIDB. "
+                f"Import: scripts/aq-knowledge-import.sh \"{topic[:40]}\""
+            )
 
     # Eval trend
     if eval_trend.get("available") and eval_trend.get("trend") == "falling":
@@ -724,12 +768,18 @@ def format_text(
 
     lines += ["[ 2. Routing Split ]"]
     if route["available"]:
-        local_pct = route["local_pct"] or 0
-        remote_pct = 100 - local_pct
-        lines += [
-            f"  Local:  {route['local_n']:6d}  ({local_pct:.1f}%)",
-            f"  Remote: {route['remote_n']:6d}  ({remote_pct:.1f}%)",
-        ]
+        if route["local_pct"] is not None:
+            local_pct = route["local_pct"]
+            remote_pct = 100 - local_pct
+            lines += [
+                f"  Local:  {route['local_n']:6d}  ({local_pct:.1f}%)",
+                f"  Remote: {route['remote_n']:6d}  ({remote_pct:.1f}%)",
+            ]
+        else:
+            lines += [
+                f"  Local:  {route['local_n']:6d}  (n/a — no routing events yet)",
+                f"  Remote: {route['remote_n']:6d}  (n/a — no routing events yet)",
+            ]
     else:
         lines.append("  Prometheus unreachable.")
     lines.append("")

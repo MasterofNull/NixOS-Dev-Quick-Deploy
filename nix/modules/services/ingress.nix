@@ -5,8 +5,8 @@ let
   cc = mon.commandCenter;
   ing = cfg.ingress;
 
+  # Both API and SPA are served by the single FastAPI backend on apiPort.
   backendApi = "http://127.0.0.1:${toString cc.apiPort}";
-  backendUi = "http://127.0.0.1:${toString cc.frontendPort}";
 in
 {
   options.mySystem.ingress = {
@@ -72,8 +72,13 @@ in
       virtualHosts."${ing.domain}" = {
         forceSSL = true;
         enableACME = ing.useAcme;
-        locations."/".proxyPass = backendUi;
-        locations."/api/".proxyPass = backendApi;
+        locations."/".proxyPass = backendApi;
+        locations."/ws/".extraConfig = ''
+          proxy_pass ${backendApi};
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection "upgrade";
+        '';
       } // lib.optionalAttrs (!ing.useAcme) {
         sslCertificate = ing.tlsCertPath;
         sslCertificateKey = ing.tlsKeyPath;

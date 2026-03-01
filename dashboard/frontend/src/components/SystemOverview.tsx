@@ -82,7 +82,7 @@ export function SystemOverview() {
         <CardContent>
           <div className="text-2xl font-bold">{currentMetrics.hostname}</div>
           <p className="text-xs text-muted-foreground mt-2">
-            Load: {currentMetrics.load_average}
+            Load: {currentMetrics.load_average.one ?? "–"} / {currentMetrics.load_average.five ?? "–"} / {currentMetrics.load_average.fifteen ?? "–"}
           </p>
           <p className="text-xs text-muted-foreground">
             Uptime: {Math.floor(currentMetrics.uptime / 3600)}h {Math.floor((currentMetrics.uptime % 3600) / 60)}m

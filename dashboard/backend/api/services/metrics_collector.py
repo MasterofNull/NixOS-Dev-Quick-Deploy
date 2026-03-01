@@ -241,12 +241,12 @@ class MetricsCollector:
         except Exception:
             return 0
 
-    def _get_load_average(self) -> str:
+    def _get_load_average(self) -> dict:
         try:
             load = psutil.getloadavg()
-            return f"{load[0]:.2f}, {load[1]:.2f}, {load[2]:.2f}"
+            return {"one": round(load[0], 2), "five": round(load[1], 2), "fifteen": round(load[2], 2)}
         except Exception:
-            return "N/A"
+            return {"one": None, "five": None, "fifteen": None}
 
     def _get_security_signals(self) -> Dict[str, Any]:
         firewall_active = self._systemctl_is_active("nftables.service")
