@@ -882,6 +882,107 @@ async def probe_health() -> Dict[str, Any]:
     return await _run_full_health_probe()
 
 
+async def _fetch_prsi_stats() -> Dict[str, Any]:
+    """Fetch PRSI (Pessimistic Recursive Self-Improvement) stats from PostgreSQL and JSONL log.
+
+    Queries:
+    - query_gaps table: gap_count, unique_gaps, last_gap_at
+    - learning_feedback table: negative_feedback_count, total_feedback_count
+    - /var/log/nixos-ai-stack/query-gaps.jsonl: synced_gaps (line count)
+    """
+    if not _ASYNCPG_AVAILABLE:
+        return {
+            "available": False,
+            "gap_count": 0,
+            "unique_gaps": 0,
+            "negative_feedback_count": 0,
+            "total_feedback_count": 0,
+            "synced_gaps": 0,
+            "last_gap_at": None,
+            "sync_loop_active": False,
+        }
+
+    dsn = os.getenv(
+        "AIDB_DB_URL",
+        f"postgresql://aidb@{service_endpoints.SERVICE_HOST}:{service_endpoints.POSTGRES_PORT}/aidb",
+    )
+    # Augment DSN with password from file if available and DSN has no password.
+    pg_pw_file = os.getenv("POSTGRES_PASSWORD_FILE")
+    if pg_pw_file and "://" in dsn and "@" in dsn and ":" not in dsn.split("@")[0]:
+        try:
+            pw = open(pg_pw_file).read().strip()  # noqa: WPS515
+            dsn = dsn.replace("://aidb@", f"://aidb:{pw}@", 1)
+        except OSError:
+            pass
+
+    conn = None
+    try:
+        conn = await asyncio.wait_for(asyncpg.connect(dsn), timeout=3.0)
+
+        # Query query_gaps table
+        gap_row = await asyncio.wait_for(
+            conn.fetchrow(
+                "SELECT COUNT(*), COUNT(DISTINCT query_text), MAX(created_at) FROM query_gaps"
+            ),
+            timeout=2.0,
+        )
+        gap_count = gap_row[0] or 0
+        unique_gaps = gap_row[1] or 0
+        last_gap_at = gap_row[2].isoformat() if gap_row[2] else None
+
+        # Query learning_feedback table
+        negative_feedback_row = await asyncio.wait_for(
+            conn.fetchrow("SELECT COUNT(*) FROM learning_feedback WHERE rating < 0"),
+            timeout=2.0,
+        )
+        negative_feedback_count = negative_feedback_row[0] or 0
+
+        total_feedback_row = await asyncio.wait_for(
+            conn.fetchrow("SELECT COUNT(*) FROM learning_feedback"),
+            timeout=2.0,
+        )
+        total_feedback_count = total_feedback_row[0] or 0
+
+        # Count lines in JSONL file
+        jsonl_path = Path("/var/log/nixos-ai-stack/query-gaps.jsonl")
+        synced_gaps = 0
+        try:
+            synced_gaps = sum(1 for _ in jsonl_path.open(encoding="utf-8"))
+        except FileNotFoundError:
+            synced_gaps = 0
+        except OSError:
+            synced_gaps = 0
+
+        return {
+            "available": True,
+            "gap_count": int(gap_count),
+            "unique_gaps": int(unique_gaps),
+            "negative_feedback_count": int(negative_feedback_count),
+            "total_feedback_count": int(total_feedback_count),
+            "synced_gaps": synced_gaps,
+            "last_gap_at": last_gap_at,
+            "sync_loop_active": True,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "available": False,
+            "gap_count": 0,
+            "unique_gaps": 0,
+            "negative_feedback_count": 0,
+            "total_feedback_count": 0,
+            "synced_gaps": 0,
+            "last_gap_at": None,
+            "sync_loop_active": False,
+            "error": str(exc),
+        }
+    finally:
+        if conn is not None:
+            try:
+                await conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+
 @router.get("/ai/metrics")
 async def get_ai_metrics() -> Dict[str, Any]:
     """Aggregate AI metrics for dashboard consumption (systemd-host mode).
@@ -909,6 +1010,7 @@ async def get_ai_metrics() -> Dict[str, Any]:
         redis_probe,
         postgres_probe,
         aider_task_summary,
+        prsi_stats,
     ) = await asyncio.gather(
         fetch_with_fallback(f"{SERVICES['aidb']}/health", {}),
         fetch_with_fallback(f"{SERVICES['hybrid']}/health", {}),
@@ -923,6 +1025,7 @@ async def get_ai_metrics() -> Dict[str, Any]:
         _redis_ping_probe(),
         _postgres_select1_probe(),
         _aider_wrapper_task_summary(),
+        _fetch_prsi_stats(),
     )
 
     aidb_status = _normalize_status(aidb_health.get("status"), ("online", "ok", "healthy"))
@@ -1102,6 +1205,16 @@ async def get_ai_metrics() -> Dict[str, Any]:
             "stats": harness_stats,
             "scorecard": harness_scorecard,
             "overview": harness_overview,
+        },
+        "prsi": {
+            "available": prsi_stats.get("available", False),
+            "gap_count": prsi_stats.get("gap_count", 0),
+            "unique_gaps": prsi_stats.get("unique_gaps", 0),
+            "negative_feedback_count": prsi_stats.get("negative_feedback_count", 0),
+            "total_feedback_count": prsi_stats.get("total_feedback_count", 0),
+            "synced_gaps": prsi_stats.get("synced_gaps", 0),
+            "last_gap_at": prsi_stats.get("last_gap_at"),
+            "sync_loop_active": prsi_stats.get("sync_loop_active", False),
         },
     }
 
