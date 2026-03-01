@@ -9,11 +9,27 @@
         "description": "Ranked AI workflow hints from registry.yaml, query gaps, and CLAUDE.md rules",
         "displayTitle": "AI Stack Hints"
       }
+    },
+    {
+      "name": "http",
+      "params": {
+        "url": "http://127.0.0.1:${HYBRID_COORDINATOR_PORT:-8003}/discovery/capabilities",
+        "title": "ai-tools",
+        "description": "Live catalog of all AI stack tools, MCP endpoints, CLI scripts, and agents",
+        "displayTitle": "AI Stack Tools"
+      }
     }
   ],
   "models": [
     {
-      "title": "Local llama.cpp",
+      "title": "Local (via Switchboard)",
+      "provider": "openai",
+      "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
+      "apiKey": "dummy",
+      "model": "AUTODETECT"
+    },
+    {
+      "title": "Local llama.cpp (direct)",
       "provider": "openai",
       "apiBase": "http://127.0.0.1:${LLAMA_CPP_PORT:-8080}/v1",
       "apiKey": "dummy",
@@ -28,8 +44,17 @@
   "tabAutocompleteModel": {
     "title": "Local Autocomplete",
     "provider": "openai",
-    "apiBase": "http://127.0.0.1:${LLAMA_CPP_PORT:-8080}/v1",
+    "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
     "apiKey": "dummy",
     "model": "AUTODETECT"
+  },
+  "mcpServers": {
+    "hybrid-coordinator": {
+      "command": "bash",
+      "args": [
+        "-c",
+        "exec python3 /home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/mcp-bridge-hybrid.py"
+      ]
+    }
   }
 }
