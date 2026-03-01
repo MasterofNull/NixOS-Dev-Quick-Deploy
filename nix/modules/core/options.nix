@@ -937,8 +937,8 @@
 
         bindAddress = lib.mkOption {
           type = lib.types.str;
-          default = "127.0.0.1";
-          description = "Bind address for command-center frontend and API.";
+          default = "0.0.0.0";
+          description = "Bind address for command-center frontend and API. Use 0.0.0.0 to accept both IPv4 (127.0.0.1) and IPv6 (::1) loopback when localhost resolves to ::1.";
         };
 
         frontendPort = lib.mkOption {
