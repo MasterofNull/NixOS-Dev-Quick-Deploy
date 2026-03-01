@@ -76,6 +76,7 @@ LLAMA_CPP_URL = f"http://{os.getenv('LLAMA_CPP_HOST', 'llama-cpp')}:{os.getenv('
 MODEL_NAME = os.getenv("LLAMA_CPP_MODEL", "qwen2.5-coder-7b-instruct-q4_k_m.gguf")
 # Maximum concurrent Aider processes (memory-intensive; default 1)
 AIDER_MAX_CONCURRENCY = int(os.getenv("AIDER_MAX_CONCURRENCY", "1"))
+AIDER_TASK_TIMEOUT = float(os.getenv("AIDER_TASK_TIMEOUT_SECONDS", "600.0"))
 
 # Phase 14.1.1 — bubblewrap filesystem sandbox for Aider subprocess.
 # When AI_AIDER_SANDBOX=true: aider runs inside bwrap with /nix/store read-only,
@@ -359,7 +360,7 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                proc.communicate(), timeout=300.0
+                proc.communicate(), timeout=AIDER_TASK_TIMEOUT
             )
             output = stdout_bytes.decode("utf-8", errors="replace")
             returncode = proc.returncode

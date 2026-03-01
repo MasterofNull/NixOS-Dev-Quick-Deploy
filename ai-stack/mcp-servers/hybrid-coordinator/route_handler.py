@@ -260,7 +260,7 @@ async def route_search(
                 llm_resp = await llama_cpp_client.post(
                     "/chat/completions",
                     json={"messages": [{"role": "user", "content": prompt}], "temperature": 0.2, "max_tokens": 400},
-                    timeout=60.0,
+                    timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT,
                 )
                 llm_resp.raise_for_status()
                 llm_json = llm_resp.json()
@@ -283,7 +283,14 @@ async def route_search(
                         "compressed_tokens": compressed_tokens,
                     }
             except Exception as exc:  # noqa: BLE001
-                logger.warning("route_search_llm_failed error=%s", exc)
+                _is_timeout = isinstance(exc, asyncio.TimeoutError) or "timeout" in type(exc).__name__.lower()
+                logger.warning("route_search_llm_failed error=%s timeout=%s", exc, _is_timeout)
+                if _is_timeout and _record_query_gap is not None and postgres_client is not None:
+                    _t_hash = hashlib.sha256(query.encode()).hexdigest()[:64]
+                    asyncio.create_task(_record_query_gap(
+                        query_hash=_t_hash, query_text=query[:500], score=-1.0,
+                        collection="inference_timeout",
+                    ))
 
         ROUTE_DECISIONS.labels(route=route).inc()
         _record_telemetry(

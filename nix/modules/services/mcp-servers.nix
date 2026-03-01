@@ -663,6 +663,7 @@ in
             "MCP_SERVER_PORT=${toString mcp.hybridPort}"
             "HOST=127.0.0.1"
             "LLAMA_CPP_BASE_URL=http://127.0.0.1:${toString llama.port}"
+            "LLAMA_CPP_INFERENCE_TIMEOUT_SECONDS=${toString llama.inferenceTimeoutSeconds}"
             "EMBEDDING_SERVICE_URL=${embedUrl}"
             "AIDB_URL=http://127.0.0.1:${toString mcp.aidbPort}"
             "QDRANT_URL=${qdrantUrl}"
@@ -765,6 +766,7 @@ in
           ];
           Environment = [
             "AIDER_WRAPPER_PORT=${toString mcp.aiderWrapperPort}"
+            "AIDER_TASK_TIMEOUT_SECONDS=600"
             "AIDER_WORKSPACE=${dataDir}/aider-wrapper/workspace"
             "LLAMA_CPP_HOST=127.0.0.1"
             "LLAMA_CPP_PORT=${toString llama.port}"
