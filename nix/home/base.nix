@@ -268,6 +268,20 @@ let
     in
     lib.optionals hasName [ (builtins.getAttr name extSet) ];
 
+  # VSCodium wrapped with native-lib LD_LIBRARY_PATH so node_sqlite3.node
+  # (used by Continue) can dlopen libstdc++.so.6 from the GCC runtime.
+  # Extracted into let so the activation hook can reference the store path
+  # directly (PATH is incomplete during nixos-rebuild switch activation).
+  vscodiumWrapped = (pkgs.symlinkJoin {
+    name             = "vscodium-with-native-libs";
+    paths            = [ pkgs.vscodium ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild        = ''
+      wrapProgram $out/bin/codium \
+        --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ]}
+    '';
+  }) // { inherit (pkgs.vscodium) version pname; meta = pkgs.vscodium.meta // { mainProgram = "codium"; }; };
+
   # Nix store paths for tools the code-nix wrapper needs on its PATH.
   # These packages are in home.packages below so they're always present.
   vsWrapperPath = lib.makeBinPath (with pkgs; [
@@ -702,21 +716,9 @@ in
   # other module — that would conflict with this managed file.
   programs.vscode = {
     enable  = true;
-    # Wrap VSCodium so its extension host (Node.js) can load pre-compiled native
-    # addons (node_sqlite3.node, onnxruntime_binding.node, pty.node, etc.) that
-    # dynamically link libstdc++.so.6 — absent from LD_LIBRARY_PATH on NixOS.
-    # stdenv.cc.cc.lib provides the GCC runtime libraries in the Nix store.
-    # symlinkJoin doesn't propagate version/pname; extend with // to satisfy
-    # programs.vscode's `cfg.package.version` and `cfg.package.pname` reads.
-    package = (pkgs.symlinkJoin {
-      name             = "vscodium-with-native-libs";
-      paths            = [ pkgs.vscodium ];
-      nativeBuildInputs = [ pkgs.makeWrapper ];
-      postBuild        = ''
-        wrapProgram $out/bin/codium \
-          --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ]}
-      '';
-    }) // { inherit (pkgs.vscodium) version pname; meta = pkgs.vscodium.meta // { mainProgram = "codium"; }; };
+    # vscodiumWrapped defined in let block above — extracted so the
+    # activation hook can reference its store path directly.
+    package = vscodiumWrapped;
 
     # Writable runtime extension dir is required for extensions that persist
     # state directly under their extension folder (e.g. debugpy/jupyter).
@@ -882,8 +884,9 @@ PYEOF
 
   # Install runtime-mutable extensions that write inside their own install dir.
   home.activation.ensureMutableRuntimeVscodeExtensions = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
-    if ! command -v codium >/dev/null 2>&1; then
-      echo "[vscodium] codium not found; skipping mutable extension install"
+    _codium="${vscodiumWrapped}/bin/codium"
+    if [[ ! -x "$_codium" ]]; then
+      echo "[vscodium] codium not found at ${vscodiumWrapped}/bin/codium; skipping mutable extension install"
     elif pgrep -u "$USER" -x codium >/dev/null 2>&1; then
       echo "[vscodium] codium is running; skipping extension install (run vscodium-repair after closing)"
     else
@@ -894,7 +897,7 @@ PYEOF
       # Continue mutates files under its own extension dir; install a pinned
       # writable VSIX copy instead of immutable Nix-store linkage.
       echo "[vscodium] Installing Continue extension..."
-      if env -u NIXOS_OZONE_WL codium --install-extension ${continueMutableVsix} --force 2>&1 | tail -3; then
+      if env -u NIXOS_OZONE_WL "$_codium" --install-extension ${continueMutableVsix} --force 2>&1 | tail -3; then
         echo "[vscodium] Continue extension installed"
       else
         echo "[vscodium] WARNING: Continue extension install exited non-zero" >&2
@@ -904,7 +907,7 @@ PYEOF
         if [ -L "$alias_path" ]; then
           rm -f "$alias_path"
         fi
-        env -u NIXOS_OZONE_WL codium --install-extension "$ext_id" --force 2>/dev/null || true
+        env -u NIXOS_OZONE_WL "$_codium" --install-extension "$ext_id" --force 2>/dev/null || true
       done
       unset ext_root ext_id alias_path
     fi
