@@ -41,7 +41,10 @@ fi
 : "${RALPH_URL:=http://${SERVICE_HOST}:${RALPH_PORT:-8004}}"
 : "${MINDSDB_URL:=http://${SERVICE_HOST}:${MINDSDB_PORT:-47334}}"
 : "${DASHBOARD_API_URL:=http://${SERVICE_HOST}:${DASHBOARD_API_PORT:-8889}}"
-: "${DASHBOARD_URL:=http://${SERVICE_HOST}:${DASHBOARD_PORT:-8888}}"
+# DASHBOARD_URL is now the same port as DASHBOARD_API_URL — the FastAPI backend
+# serves both the SPA (/) and the API (/api/*) from a single port.
+# DASHBOARD_PORT kept for back-compat but defaults to the unified API port.
+: "${DASHBOARD_URL:=${DASHBOARD_API_URL}}"
 : "${EMBEDDINGS_URL:=http://${SERVICE_HOST}:${EMBEDDINGS_PORT:-8081}}"
 : "${SWITCHBOARD_URL:=http://${SERVICE_HOST}:${SWITCHBOARD_PORT:-8085}}"
 : "${AIDER_WRAPPER_URL:=http://${SERVICE_HOST}:${AIDER_WRAPPER_PORT:-8090}}"
