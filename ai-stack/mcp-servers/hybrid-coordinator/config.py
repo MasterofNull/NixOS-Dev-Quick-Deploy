@@ -85,6 +85,7 @@ class Config:
         os.getenv("QDRANT_HNSW_FULL_SCAN_THRESHOLD", HYBRID_SETTINGS.qdrant_hnsw_full_scan_threshold)
     )
     LLAMA_CPP_URL = _require_env("LLAMA_CPP_BASE_URL") if STRICT_ENV else os.getenv("LLAMA_CPP_BASE_URL", HYBRID_SETTINGS.llama_cpp_url)
+    SWITCHBOARD_URL = os.getenv("SWITCHBOARD_URL", "http://127.0.0.1:8085")
     LLAMA_CPP_CODER_URL = os.getenv("LLAMA_CPP_CODER_URL", HYBRID_SETTINGS.llama_cpp_url)
     LLAMA_CPP_DEEPSEEK_URL = os.getenv("LLAMA_CPP_DEEPSEEK_URL", HYBRID_SETTINGS.llama_cpp_url)
 

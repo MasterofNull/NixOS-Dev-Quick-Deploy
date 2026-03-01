@@ -664,6 +664,7 @@ in
             "HOST=127.0.0.1"
             "LLAMA_CPP_BASE_URL=http://127.0.0.1:${toString llama.port}"
             "LLAMA_CPP_INFERENCE_TIMEOUT_SECONDS=${toString llama.inferenceTimeoutSeconds}"
+            "SWITCHBOARD_URL=http://127.0.0.1:${toString mcp.switchboard}"
             "AI_TASK_CLASSIFICATION_ENABLED=true"
             "LOCAL_MAX_INPUT_TOKENS=600"
             "LOCAL_MAX_OUTPUT_TOKENS=300"
