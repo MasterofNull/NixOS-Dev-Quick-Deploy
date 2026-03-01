@@ -72,6 +72,10 @@ in
         # Redirect npm cache + logs out of ~/.npm (which may be read-only
         # under strict sandboxing) into cc.dataDir/npm-cache.
         npm_config_cache = "${cc.dataDir}/npm-cache";
+        # npm_config_script_shell: lifecycle scripts (esbuild postinstall, etc.)
+        # need an absolute shell path — npm falls back to /bin/sh which works
+        # on NixOS, but the explicit bash path avoids any PATH lookup ambiguity.
+        npm_config_script_shell = "${pkgs.bash}/bin/bash";
         # Suppress interactive prompts.
         CI = "true";
       };
@@ -82,7 +86,10 @@ in
         if [[ ! -d node_modules ]] || \
            [[ package-lock.json -nt node_modules/.package-lock.json ]]; then
           echo "Installing npm dependencies…"
-          npm ci 2>/dev/null || npm install
+          # --ignore-scripts skips esbuild/other postinstall hooks that need a
+          # shell; vite reads the esbuild binary from @esbuild/linux-x64 directly
+          # so esbuild's own install.js is not required for the build to succeed.
+          npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts
         fi
 
         echo "Building frontend (tsc + vite)…"
@@ -101,9 +108,12 @@ in
       after = [ "network-online.target" "prometheus.service"
                 "command-center-dashboard-build.service" ]
         ++ lib.optionals cfg.roles.aiStack.enable [ "ai-stack.target" ];
-      wants = [ "network-online.target" "prometheus.service"
-                "command-center-dashboard-build.service" ]
+      # Requires (not just Wants) so the API never starts without a successful
+      # build, and BindsTo ensures the API restarts when the build re-runs.
+      requires = [ "command-center-dashboard-build.service" ];
+      wants = [ "network-online.target" "prometheus.service" ]
         ++ lib.optionals cfg.roles.aiStack.enable [ "ai-stack.target" ];
+      bindsTo = [ "command-center-dashboard-build.service" ];
       serviceConfig = {
         Type = "simple";
         User = svcUser;
