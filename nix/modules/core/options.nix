@@ -655,6 +655,16 @@
           example = "5b3e7f...";
           description = "Required SHA256 (hex) for downloaded chat GGUF model when huggingFaceRepo is set.";
         };
+
+        inferenceTimeoutSeconds = lib.mkOption {
+          type    = lib.types.ints.positive;
+          default = 300;
+          description = ''
+            HTTP request timeout (seconds) for llama.cpp chat-completion calls.
+            Increase on slow hardware (CPU-only inference). Injected as
+            LLAMA_CPP_INFERENCE_TIMEOUT_SECONDS into the hybrid-coordinator service.
+          '';
+        };
       };
 
       embeddingServer = {

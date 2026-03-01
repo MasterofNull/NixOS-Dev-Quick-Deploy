@@ -517,7 +517,7 @@ async def initialize_server():
     )
 
     # Initialize llama.cpp client (system-configured loopback service; no SSRF check needed)
-    llama_cpp_client = httpx.AsyncClient(base_url=Config.LLAMA_CPP_URL, timeout=120.0)
+    llama_cpp_client = httpx.AsyncClient(base_url=Config.LLAMA_CPP_URL, timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT)
 
     # Initialize embedding client (internal service, with auth)
     embedding_client = create_embeddings_client(timeout=30.0)
