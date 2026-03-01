@@ -675,6 +675,13 @@ in {
         source = "${cfg.mcpServers.repoPath}/scripts/aq-completions.sh";
       };
       environment.variables.AQ_HINTS_BIN = "${cfg.mcpServers.repoPath}/scripts/aq-hints";
+      # Add aq-* scripts and MCP bridge to PATH so they work from any directory.
+      environment.etc."profile.d/aq-path.sh" = {
+        mode = "0644";
+        text = ''
+          export PATH="${cfg.mcpServers.repoPath}/scripts:$PATH"
+        '';
+      };
     })
 
     # Phase 18.4.2 — AI stack MOTD: condensed digest on login when report is stale.
