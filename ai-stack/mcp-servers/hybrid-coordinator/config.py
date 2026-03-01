@@ -108,6 +108,7 @@ class Config:
     REMOTE_LLM_FEEDBACK_ENABLED = os.getenv("REMOTE_LLM_FEEDBACK_ENABLED", "false").lower() == "true"
     MULTI_TURN_QUERY_EXPANSION = os.getenv("MULTI_TURN_QUERY_EXPANSION", "false").lower() == "true"
     DEFAULT_MAX_TOKENS = int(os.getenv("DEFAULT_MAX_TOKENS", "1000"))
+    LLAMA_CPP_INFERENCE_TIMEOUT = float(os.getenv("LLAMA_CPP_INFERENCE_TIMEOUT_SECONDS", "300.0"))
     # Canonical name; CONTEXT_COMPRESSION_ENABLED kept as alias below for back-compat.
     AI_CONTEXT_COMPRESSION_ENABLED = os.getenv(
         "AI_CONTEXT_COMPRESSION_ENABLED",
