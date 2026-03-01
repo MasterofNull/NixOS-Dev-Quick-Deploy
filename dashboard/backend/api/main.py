@@ -6,7 +6,8 @@ Main application entry point with WebSocket support
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import asyncio
 import logging
@@ -92,14 +93,31 @@ app.include_router(actions.router, prefix="/api/actions", tags=["actions"])
 app.include_router(aistack.router, prefix="/api", tags=["aistack"])
 
 
-@app.get("/")
-async def root():
-    """Health check endpoint"""
-    return {
-        "status": "online",
-        "service": "NixOS Dashboard API",
-        "version": "2.0.0"
-    }
+# ── Frontend static file serving (SPA) ───────────────────────────────────────
+# Mount compiled frontend dist directory.  The backend serves both the API
+# (at /api/*) and the React SPA (at /*).  html=True enables index.html
+# fallback so SPA client-side routing works.  Mounts are evaluated after
+# explicit routes so /api/* is never captured by StaticFiles.
+_FRONTEND_DIST = Path(
+    os.getenv(
+        "DASHBOARD_FRONTEND_DIST",
+        str(Path(__file__).parent.parent.parent / "frontend" / "dist"),
+    )
+)
+
+if _FRONTEND_DIST.is_dir():
+    app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True), name="static")
+    logger.info("Frontend dist mounted from %s", _FRONTEND_DIST)
+else:
+    logger.warning("Frontend dist not found at %s — run the build service first", _FRONTEND_DIST)
+
+    @app.get("/")
+    async def root():
+        return JSONResponse(
+            {"status": "online", "service": "NixOS Dashboard API", "version": "2.0.0",
+             "note": "Frontend not yet built. Run: sudo systemctl start command-center-dashboard-build"},
+            status_code=200,
+        )
 
 
 @app.get("/api/health")

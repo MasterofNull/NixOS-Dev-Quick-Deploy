@@ -1784,7 +1784,7 @@ pre_rebuild_model_download() {
   _download_model_if_absent() {
     local model_path="$1" hf_repo="$2" hf_file="$3"
     [[ -n "$model_path" ]] || return 0
-    [[ -f "$model_path" ]] && return 0   # already present — skip
+    run_privileged test -f "$model_path" && return 0   # already present — skip
     [[ -n "$hf_repo" && -n "$hf_file" ]] || {
       log "  WARNING: model absent and no HuggingFace info — cannot auto-download: ${model_path}"
       return 0
@@ -1807,10 +1807,11 @@ pre_rebuild_model_download() {
   # Compute sha256 from file and patch the matching null sha256 line in facts.nix.
   _record_sha256_in_facts() {
     local model_path="$1" sed_key="$2"
-    [[ -n "$model_path" && -f "$model_path" ]] || return 0
+    [[ -n "$model_path" ]] || return 0
+    run_privileged test -f "$model_path" || return 0
     local sha
     log "  Computing SHA256: $(basename "$model_path")"
-    sha="$(sha256sum "$model_path" | awk '{print $1}')"
+    sha="$(run_privileged sha256sum "$model_path" | awk '{print $1}')"
     [[ -n "$sha" ]] || return 0
     # Replace the null placeholder for this specific key; sed ERE
     sed -i -E "s|(${sed_key}\\.sha256[[:space:]]*=[[:space:]]*)null;|\1\"${sha}\";|" "$facts_file"

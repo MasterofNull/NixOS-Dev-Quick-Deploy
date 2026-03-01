@@ -42,30 +42,24 @@
 
     # AI stack configuration — consumed by nix/modules/roles/ai-stack.nix.
     # Only meaningful when roles.aiStack.enable = true.
-    #
-    # ── Local model (single source of truth) ──────────────────────────────
-    # To swap the chat model: update llamaCpp.model + huggingFaceFile (+ sha256
-    # once known) and redeploy. The service will auto-download on first boot.
-    # ── Embedding model ────────────────────────────────────────────────────
-    # To swap the embedding model: update embeddingServer.model +
-    # embeddingServer.huggingFaceFile and redeploy.
     aiStack = {
-      backend            = "llamacpp";
-      acceleration       = "auto";
-      llamaCpp = {
-        model            = "/var/lib/llama-cpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
-        huggingFaceRepo  = "unsloth/Qwen3-4B-Instruct-2507-GGUF";
-        huggingFaceFile  = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
-        # sha256 = ""; # populate after first download with: sha256sum /var/lib/llama-cpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
-      };
-      embeddingServer = {
-        model  = "/var/lib/llama-cpp/models/nomic-embed-text-v1.5.Q8_0.gguf";
-        sha256 = null; # add after first deploy
-      };
-      ui.enable          = true;
-      vectorDb.enable    = false;
-      listenOnLan        = false;
-      rocmGfxOverride    = null;
+      backend                          = "llamacpp";
+      acceleration                     = "auto";
+      llamaCpp.model                   = "/var/lib/llama-cpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
+      llamaCpp.huggingFaceRepo         = "unsloth/Qwen3-4B-Instruct-2507-GGUF";
+      llamaCpp.huggingFaceFile         = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
+      llamaCpp.sha256                  = "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597";
+      embeddingDimensions              = 2560;
+      embeddingServer.enable           = true;
+      embeddingServer.model            = "/var/lib/llama-cpp/models/Qwen3-Embedding-4B-q4_k_m.gguf";
+      embeddingServer.huggingFaceRepo  = "Mungert/Qwen3-Embedding-4B-GGUF";
+      embeddingServer.huggingFaceFile  = "Qwen3-Embedding-4B-q4_k_m.gguf";
+      embeddingServer.sha256           = "2a91ec30c4c694af60cbedfc2f30d6aa5fd69a5286a8fb5544aa47868243054e";
+      embeddingServer.pooling          = "last";
+      ui.enable                        = true;
+      vectorDb.enable                  = false;
+      listenOnLan                      = false;
+      rocmGfxOverride                  = null;
     };
   };
 }
