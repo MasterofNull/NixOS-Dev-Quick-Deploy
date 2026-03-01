@@ -52,6 +52,7 @@ discover what tools are available for a given task.
 | `scripts/aq-hints` | Query workflow hints from hybrid-coordinator | `--format=json\|text\|shell-complete`, `--agent=TYPE`, `-q QUERY` |
 | `scripts/aq-qa` | Phase-based QA runner for entire AI stack | `aq-qa 0` (all checks), `aq-qa 1` (infra), `aq-qa 2` (inference) |
 | `scripts/aq-prompt-eval` | Evaluate prompt registry against canonical tests | `--strategy LABEL`, `--aidb-import` |
+| `scripts/aq-gap-import` | Auto-import knowledge for top recurring query gaps | `MIN_OCCURRENCES=N`, `MAX_GAPS=N`, `SKIP_QDRANT_REBUILD=1` |
 | `scripts/run-eval.sh` | Full eval harness run | `--strategy LABEL` |
 | `scripts/rebuild-qdrant-collections.sh` | Re-embed all AIDB documents into Qdrant | — |
 | `scripts/check-mcp-health.sh` | Health check all 12 MCP services | `--optional` |
@@ -96,6 +97,7 @@ Use `@path/to/file` syntax to include files. Use `@dir/` for entire directories.
 |-------|----------|--------|
 | `ai-weekly-report.timer` | Sunday 08:00 | Run aq-report --aidb-import; MOTD refresh |
 | `ai-import-agent-instructions.timer` | Monday 00:03 | Import CLAUDE.md/AGENTS.md/registry.yaml into AIDB |
+| `ai-gap-import.timer` | Saturday 03:00 | PRSI: import knowledge for top recurring gaps → Qdrant rebuild |
 | `ai-sync-knowledge-sources.timer` | Monday weekly | Fetch and import enabled knowledge sources into AIDB |
 | `ai-prompt-eval.timer` | Wednesday 02:00 | Run aq-prompt-eval; update prompt leaderboard in AIDB |
 | `ai-security-audit.timer` | Monday 00:23 | pip-audit + npm audit; results to AIDB |
