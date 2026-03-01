@@ -56,7 +56,7 @@ check_http() {
 
 check_http "Prometheus ready endpoint" "${PROMETHEUS_URL%/}/-/ready"
 check_http "Dashboard API health endpoint" "${DASHBOARD_API_URL%/}/api/health"
-check_http "Dashboard frontend endpoint" "${DASHBOARD_URL%/}/dashboard.html"
+check_http "Dashboard SPA root" "${DASHBOARD_URL%/}/index.html"
 if systemctl list-unit-files --type=service --type=target 2>/dev/null | awk '{print $1}' | grep -qx "ai-switchboard.service"; then
   check_http "AI switchboard health endpoint" "${SWITCHBOARD_URL%/}/health"
 fi

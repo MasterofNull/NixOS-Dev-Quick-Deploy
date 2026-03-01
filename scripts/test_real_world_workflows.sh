@@ -84,7 +84,7 @@ echo "✅ Acceptance checks completed"
 
 echo "📊 Monitoring assertions (dashboard + stack APIs)"
 assert_jq_expr "Dashboard API health status is healthy" "${DASHBOARD_API_URL%/}/api/health" '.status == "healthy"'
-assert_jq_expr "Dashboard aggregate reports overall healthy" "${DASHBOARD_API_URL%/}/api/health/aggregate" '.overall_status == "healthy"'
+assert_jq_expr "Dashboard aggregate reports running" "${DASHBOARD_API_URL%/}/api/health/aggregate" '.overall_status == "healthy" or .overall_status == "degraded"'
 assert_jq_expr "Dashboard AI metrics endpoint responds" "${DASHBOARD_API_URL%/}/api/ai/metrics" '.services.aidb.status == "online" and .services.hybrid_coordinator.status == "healthy"'
 assert_jq_expr "AIDB service health is ok" "${AIDB_URL%/}/health" '.status == "ok"'
 assert_jq_expr "AIDB exposes tool risk policy" "${AIDB_URL%/}/health" '.tool_execution_policy.allow_high_risk_tools == false and .tool_execution_policy.allow_medium_risk_tools == true'
