@@ -65,3 +65,20 @@ for i in "${!QUERIES[@]}"; do
 done
 
 printf 'seed-routing-traffic: %d OK, %d FAIL\n' "$PASS" "$FAIL"
+
+# Send one short generation query to seed the backend-selection metric (§2).
+# Uses generate_response=true so hybrid-coordinator calls the LLM and increments
+# hybrid_llm_backend_selections_total.  max_tokens=32 keeps it fast even on
+# CPU-only llama.cpp.  Non-blocking: failure is silently ignored.
+GEN_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+  --max-time 120 --connect-timeout 5 \
+  -X POST "${HYBRID_URL%/}/query" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${HYBRID_KEY}" \
+  -d '{"query":"what is NixOS","mode":"auto","prefer_local":true,"limit":1,"generate_response":true,"max_tokens":32}' \
+  2>/dev/null) || GEN_CODE="000"
+if [[ "$GEN_CODE" =~ ^2 ]]; then
+  printf 'seed-routing-traffic: backend-selection seeded (HTTP %s)\n' "$GEN_CODE"
+else
+  printf 'seed-routing-traffic: backend-selection seed skipped (HTTP %s)\n' "$GEN_CODE" >&2
+fi

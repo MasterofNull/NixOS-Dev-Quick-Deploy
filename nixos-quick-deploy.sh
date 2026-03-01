@@ -2077,6 +2077,15 @@ check_dashboard_postflight() {
 }
 check_dashboard_postflight
 
+# ---- Restart Prometheus so it picks up new nftables GID allowlist -----------
+# After nixos-rebuild switch the nftables ai_localhost_isolation table is
+# updated but Prometheus may have cached a "no route to host" error from before
+# the prometheus GID was added to the loopback filter.  A restart clears that.
+if systemctl is-active prometheus.service &>/dev/null; then
+  log "Restarting prometheus (nftables GID allowlist updated)..."
+  sudo systemctl restart prometheus.service 2>/dev/null || true
+fi
+
 # ---- Routing traffic seed (non-blocking) ------------------------------------
 # Sends a small batch of queries through hybrid-coordinator so that §2 routing
 # split and §3 semantic cache metrics are populated after every deploy.
