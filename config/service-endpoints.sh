@@ -24,7 +24,7 @@ fi
 # Override SERVICE_HOST for remote access
 # ============================================================================
 
-: "${SERVICE_HOST:=localhost}"
+: "${SERVICE_HOST:=127.0.0.1}"
 
 # ============================================================================
 # Full Service URLs (built from host + port)
