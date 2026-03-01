@@ -55,6 +55,7 @@ _record_telemetry: Optional[Callable] = None
 _summarize: Optional[Callable] = None
 _context_compressor_ref: Optional[Callable] = None
 _llama_cpp_client_ref: Optional[Callable] = None
+_switchboard_client_ref: Optional[Callable] = None
 _postgres_client_ref: Optional[Callable] = None
 _COLLECTIONS: Dict[str, Any] = {}
 _query_expander: Optional["QueryExpander"] = None
@@ -70,13 +71,14 @@ def init(
     summarize_fn: Callable,
     context_compressor_ref: Callable,
     llama_cpp_client_ref: Callable,
+    switchboard_client_ref: Callable,
     postgres_client_ref: Callable,
     collections: Dict[str, Any],
 ) -> None:
     """Inject runtime dependencies. Call once from server.py initialize_server()."""
     global _hybrid_search, _tree_search, _select_backend
     global _record_query_gap, _record_telemetry, _summarize
-    global _context_compressor_ref, _llama_cpp_client_ref, _postgres_client_ref, _COLLECTIONS
+    global _context_compressor_ref, _llama_cpp_client_ref, _switchboard_client_ref, _postgres_client_ref, _COLLECTIONS
     global _query_expander
     _hybrid_search = hybrid_search_fn
     _tree_search = tree_search_fn
@@ -86,6 +88,7 @@ def init(
     _summarize = summarize_fn
     _context_compressor_ref = context_compressor_ref
     _llama_cpp_client_ref = llama_cpp_client_ref
+    _switchboard_client_ref = switchboard_client_ref
     _postgres_client_ref = postgres_client_ref
     _COLLECTIONS = collections
     _query_expander = QueryExpander(Config.LLAMA_CPP_URL)
@@ -257,13 +260,31 @@ async def route_search(
                     _complexity.reason,
                 )
                 if _complexity.remote_required:
-                    results["synthesis_skipped"] = True
-                    results["task_complexity"] = {
-                        "type": _complexity.task_type,
-                        "tokens": _complexity.token_estimate,
-                        "reason": _complexity.reason,
-                    }
-                    _skip_synthesis = True
+                    _swb = _switchboard_client_ref() if _switchboard_client_ref else None
+                    if _swb and Config.SWITCHBOARD_URL:
+                        _inference_client = _swb
+                        _inference_path = "/v1/chat/completions"
+                        _inference_headers = {"x-ai-route": "remote"}
+                        logger.info(
+                            "task_complexity_remote type=%s tokens=%d → switchboard",
+                            _complexity.task_type, _complexity.token_estimate,
+                        )
+                    else:
+                        results["synthesis_skipped"] = True
+                        results["task_complexity"] = {
+                            "type": _complexity.task_type,
+                            "tokens": _complexity.token_estimate,
+                            "reason": _complexity.reason,
+                        }
+                        _skip_synthesis = True
+                else:
+                    _inference_client = llama_cpp_client
+                    _inference_path = "/chat/completions"
+                    _inference_headers = {}
+            elif not _skip_synthesis:
+                _inference_client = llama_cpp_client
+                _inference_path = "/chat/completions"
+                _inference_headers = {}
             if not _skip_synthesis:
                 if _complexity and _complexity.optimized_prompt:
                     prompt = _complexity.optimized_prompt
@@ -281,13 +302,11 @@ async def route_search(
                 context_quality = max(
                     (r.get("score", 0.0) for r in _all_results if isinstance(r, dict)), default=0.5,
                 )
-                backend = await _select_backend(query, context_quality, force_local=prefer_local)
-                if backend == "remote" and llama_cpp_client:
-                    logger.info("llm_backend_fallback_to_local reason=remote_not_available_in_route_search")
-                    backend = "local"
+                backend = "remote" if _inference_headers.get("x-ai-route") == "remote" else "local"
                 try:
-                    llm_resp = await llama_cpp_client.post(
-                        "/chat/completions",
+                    llm_resp = await _inference_client.post(
+                        _inference_path,
+                        headers=_inference_headers,
                         json={"messages": [{"role": "user", "content": prompt}], "temperature": 0.2, "max_tokens": 400},
                         timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT,
                     )
