@@ -56,6 +56,7 @@
       embeddingServer.huggingFaceFile  = "Qwen3-Embedding-4B-q4_k_m.gguf";
       embeddingServer.sha256           = "2a91ec30c4c694af60cbedfc2f30d6aa5fd69a5286a8fb5544aa47868243054e";
       embeddingServer.pooling          = "last";
+      embeddingServer.ctxSize          = 8192;
       ui.enable                        = true;
       vectorDb.enable                  = false;
       listenOnLan                      = false;

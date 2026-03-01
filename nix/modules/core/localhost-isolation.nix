@@ -6,10 +6,14 @@ let
   primaryGroupGid =
     if primaryGroupName == null then null
     else lib.attrByPath [ "users" "groups" primaryGroupName "gid" ] null config;
+  prometheusGroupGid =
+    lib.attrByPath [ "users" "groups" "prometheus" "gid" ] null config;
+
   effectiveAllowedGids =
     lib.unique (
       cfg.localhostIsolation.allowedServiceGids
       ++ lib.optional (primaryGroupGid != null) primaryGroupGid
+      ++ lib.optional (prometheusGroupGid != null) prometheusGroupGid
     );
 
   protectedPorts = lib.unique [
