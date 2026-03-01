@@ -112,7 +112,7 @@ shared finite resource; protect it.
 
 ```bash
 export PATH="$HOME/.npm-global/bin:$PATH"
-# versions confirmed: codex 0.104.0, qwen 0.10.5, gemini 0.29.5
+# versions confirmed: codex 0.104.0, qwen 0.10.5, gemini 0.29.5, pi 0.55.3
 ```
 
 Always prepend this export to any Bash invocation that calls these tools.
@@ -141,6 +141,7 @@ OUTPUT: confirm each change with a diff-style summary
 | Inline SQL / config extraction | `codex` |
 | Security / pattern audit | `codex` |
 | Web doc lookup | `gemini -p` |
+| Bounded code edits, file transforms | `pi` |
 | Architecture analysis across dirs | `qwen` |
 | Targeted single-line fix | Claude directly |
 | Test generation | `codex` |

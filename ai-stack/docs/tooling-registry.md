@@ -73,6 +73,7 @@ discover what tools are available for a given task.
 | `qwen` | Multi-file refactor, deep code analysis | >30 lines new code, architecture analysis | Large context window; use `-y` for auto-approve |
 | `codex` | Pattern detection, security audit, test gen | Single module creation, inline fixes | QUOTA EXHAUSTED as of 2026-02-26; falls back to Claude |
 | `gemini -p` | Web search, doc lookup | Quick reference checks, release notes | Free tier, limited quota; search-only |
+| `pi` | Minimal terminal coding agent (read/write/edit/bash) | Bounded code editing tasks, file transforms, targeted fixes | Routes to switchboard; 4 tools only; fastest for small bounded tasks; `pi --provider openai` |
 
 Use `@path/to/file` syntax to include files. Use `@dir/` for entire directories.
 
