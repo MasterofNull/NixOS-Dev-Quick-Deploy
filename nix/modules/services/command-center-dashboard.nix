@@ -13,8 +13,9 @@ let
 
   dashboardRoot = "${mcp.repoPath}";
   dashboardBackendRoot = "${dashboardRoot}/dashboard/backend";
-  dashboardFrontendRoot = "${dashboardRoot}/dashboard/frontend";
-  dashboardFrontendDist = "${dashboardFrontendRoot}/dist";
+  # dashboard/public/index.html is a git-tracked symlink → ../../dashboard.html
+  # No build step required — dashboard.html is a self-contained single-file app.
+  dashboardPublicDir = "${dashboardRoot}/dashboard/public";
 
   dashboardPython = pkgs.python3.withPackages (ps: with ps; [
     fastapi
@@ -34,86 +35,19 @@ in
     systemd.tmpfiles.rules = [
       "d ${cc.dataDir} 0750 ${svcUser} ${svcGroup} -"
       "d ${cc.dataDir}/telemetry 0750 ${svcUser} ${svcGroup} -"
-      "d ${cc.dataDir}/npm-cache 0750 ${svcUser} ${svcGroup} -"
     ];
 
-    # ── Frontend TypeScript build (oneshot) ───────────────────────────────────
-    # Runs `npm run build` (tsc + vite) before the API service starts.
-    # Triggered automatically on: first boot, nixos-rebuild switch, or manual
-    # `systemctl start command-center-dashboard-build`.
-    # RemainAfterExit keeps the unit "active" so the API does not restart it.
-    systemd.services.command-center-dashboard-build = {
-      description = "Build NixOS Command Center Dashboard frontend (TypeScript → dist/)";
-      wantedBy = [ "command-center-dashboard-api.service" ];
-      before = [ "command-center-dashboard-api.service" ];
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        User = svcUser;
-        Group = svcGroup;
-        WorkingDirectory = dashboardFrontendRoot;
-        NoNewPrivileges = true;
-        # npm lifecycle scripts (esbuild, etc.) call spawn('sh'/'python3').
-        # Keep ProtectSystem strict but give write access to the build dirs
-        # and redirect npm cache so it stays inside cc.dataDir.
-        ProtectSystem = "strict";
-        ReadWritePaths = [
-          dashboardFrontendRoot
-          "${cc.dataDir}/npm-cache"
-          "/tmp"
-        ];
-        # Increase timeout for first-time npm install (large dep tree)
-        TimeoutStartSec = "300";
-      };
-      # PATH needs: node+npm, bash (sh alias), coreutils (cp/mkdir/…), python3
-      # (esbuild postinstall), git (some lifecycle hooks).
-      path = with pkgs; [ nodejs bash coreutils python3 git ];
-      environment = {
-        # Redirect npm cache + logs out of ~/.npm (which may be read-only
-        # under strict sandboxing) into cc.dataDir/npm-cache.
-        npm_config_cache = "${cc.dataDir}/npm-cache";
-        # npm_config_script_shell: lifecycle scripts (esbuild postinstall, etc.)
-        # need an absolute shell path — npm falls back to /bin/sh which works
-        # on NixOS, but the explicit bash path avoids any PATH lookup ambiguity.
-        npm_config_script_shell = "${pkgs.bash}/bin/bash";
-        # Suppress interactive prompts.
-        CI = "true";
-      };
-      script = ''
-        set -euo pipefail
-
-        # Install dependencies when node_modules is absent or stale.
-        if [[ ! -d node_modules ]] || \
-           [[ package-lock.json -nt node_modules/.package-lock.json ]]; then
-          echo "Installing npm dependencies…"
-          # --ignore-scripts skips esbuild/other postinstall hooks that need a
-          # shell; vite reads the esbuild binary from @esbuild/linux-x64 directly
-          # so esbuild's own install.js is not required for the build to succeed.
-          npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts
-        fi
-
-        echo "Building frontend (tsc + vite)…"
-        npm run build
-
-        echo "Frontend build complete: ${dashboardFrontendDist}"
-      '';
-    };
-
-    # ── API + SPA backend ─────────────────────────────────────────────────────
-    # Serves both the FastAPI backend (/api/*) and the compiled React SPA (/).
-    # Replaces the old python3 -m http.server frontend service.
+    # ── API + dashboard serving ────────────────────────────────────────────────
+    # Serves the FastAPI backend (/api/*) and dashboard.html (/) from a single
+    # port.  dashboard/public/index.html is a symlink to ../../dashboard.html —
+    # no npm/TypeScript build needed.
     systemd.services.command-center-dashboard-api = {
       description = "NixOS Command Center Dashboard API";
       wantedBy = [ "multi-user.target" ];
-      after = [ "network-online.target" "prometheus.service"
-                "command-center-dashboard-build.service" ]
+      after = [ "network-online.target" "prometheus.service" ]
         ++ lib.optionals cfg.roles.aiStack.enable [ "ai-stack.target" ];
-      # Requires (not just Wants) so the API never starts without a successful
-      # build, and BindsTo ensures the API restarts when the build re-runs.
-      requires = [ "command-center-dashboard-build.service" ];
       wants = [ "network-online.target" "prometheus.service" ]
         ++ lib.optionals cfg.roles.aiStack.enable [ "ai-stack.target" ];
-      bindsTo = [ "command-center-dashboard-build.service" ];
       serviceConfig = {
         Type = "simple";
         User = svcUser;
@@ -133,8 +67,7 @@ in
         DASHBOARD_API_BIND_ADDRESS = cc.bindAddress;
         DASHBOARD_API_PORT = toString cc.apiPort;
         DASHBOARD_MODE = "systemd";
-        # Frontend dist — served as SPA by FastAPI StaticFiles
-        DASHBOARD_FRONTEND_DIST = dashboardFrontendDist;
+        DASHBOARD_FRONTEND_DIST = dashboardPublicDir;
         AIDB_URL = "http://127.0.0.1:${toString mcp.aidbPort}";
         HYBRID_URL = "http://127.0.0.1:${toString mcp.hybridPort}";
         RALPH_URL = "http://127.0.0.1:${toString mcp.ralphPort}";
@@ -160,8 +93,6 @@ in
       '';
     };
 
-    # Dashboard is now single-port: the API serves both /api/* and the SPA.
-    # The old cc.frontendPort (python http.server) is retired.
     networking.firewall.allowedTCPPorts = lib.mkIf mon.listenOnLan [
       cc.apiPort
     ];

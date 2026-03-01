@@ -154,7 +154,7 @@ _FRONTEND_DIST = Path(
 )
 
 if _FRONTEND_DIST.is_dir():
-    app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True), name="static")
+    app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True, follow_symlink=True), name="static")
     logger.info("Frontend dist mounted from %s", _FRONTEND_DIST)
 else:
     logger.warning("Frontend dist not found at %s — run the build service first", _FRONTEND_DIST)

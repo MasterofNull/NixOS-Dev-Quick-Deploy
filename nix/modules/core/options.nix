@@ -713,10 +713,11 @@
 
         ctxSize = lib.mkOption {
           type = lib.types.ints.positive;
-          default = 512;
+          default = 4096;
           description = ''
             Context window (tokens) for the embedding server.
-            Increase to 4096–8192 for models that handle long code/document chunks.
+            Qwen3-Embedding-4B and similar models support up to 8192 tokens;
+            4096 is a safe default for long code/document chunks.
           '';
         };
 
