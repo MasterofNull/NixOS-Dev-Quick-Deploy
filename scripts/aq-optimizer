@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""
+aq-optimizer — agentic self-optimization loop for the AI stack.
+
+Reads aq-report --format=json, parses structured_actions, applies safe
+changes: routing overrides, knowledge imports, alert logging.
+Records all actions to AIDB and optimizer-actions.jsonl.
+
+Usage: aq-optimizer [--dry-run] [--since=Nd]
+"""
+import argparse
+import json
+import os
+import subprocess
+import sys
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+OVERRIDES_ENV_PATH = Path(os.getenv("OPTIMIZER_OVERRIDES_ENV", "/var/lib/nixos-ai-stack/optimizer/overrides.env"))
+ACTIONS_LOG_PATH = Path(os.getenv("OPTIMIZER_ACTIONS_LOG", "/var/log/nixos-ai-stack/optimizer-actions.jsonl"))
+AIDB_URL = os.getenv("AIDB_URL", "http://127.0.0.1:8002")
+AIDB_API_KEY_FILE = os.getenv("AIDB_API_KEY_FILE", "")
+
+
+def _aidb_key() -> str:
+    if not AIDB_API_KEY_FILE:
+        return ""
+    try:
+        return Path(AIDB_API_KEY_FILE).read_text().strip()
+    except OSError:
+        return ""
+
+
+def _log_action(record: dict) -> None:
+    try:
+        ACTIONS_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(ACTIONS_LOG_PATH, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+    except OSError as exc:
+        print("WARN  could not write actions log:", exc, file=sys.stderr)
+
+
+def _read_overrides() -> dict:
+    if not OVERRIDES_ENV_PATH.exists():
+        return {}
+    overrides = {}
+    for line in OVERRIDES_ENV_PATH.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        overrides[k.strip()] = v.strip()
+    return overrides
+
+
+def _write_overrides(overrides: dict) -> None:
+    OVERRIDES_ENV_PATH.parent.mkdir(parents=True, exist_ok=True)
+    lines = [f"{k}={v}" for k, v in overrides.items()]
+    tmp = OVERRIDES_ENV_PATH.with_suffix(".tmp")
+    tmp.write_text("\n".join(lines) + "\n")
+    tmp.replace(OVERRIDES_ENV_PATH)
+
+
+def _restart_service(svc: str, dry_run: bool) -> str:
+    if dry_run:
+        return "dry_run"
+    try:
+        result = subprocess.run(
+            ["systemctl", "restart", svc],
+            capture_output=True, text=True, timeout=30,
+        )
+        return "ok" if result.returncode == 0 else "failed:" + result.stderr.strip()[:80]
+    except Exception as exc:
+        return "error:" + str(exc)[:80]
+
+
+def _import_knowledge(topic: str, dry_run: bool) -> str:
+    import_script = SCRIPT_DIR / "aq-knowledge-import.sh"
+    if not import_script.exists():
+        return "skip:script_not_found"
+    if dry_run:
+        return "dry_run"
+    try:
+        result = subprocess.run(
+            ["bash", str(import_script), topic, "--project", "knowledge", "--clear-gaps"],
+            capture_output=True, text=True, timeout=300,
+        )
+        return "ok" if result.returncode == 0 else "failed:" + result.stderr.strip()[:80]
+    except Exception as exc:
+        return "error:" + str(exc)[:80]
+
+
+def _record_to_aidb(summary: str) -> bool:
+    key = _aidb_key()
+    payload = json.dumps({
+        "content": summary,
+        "project": "optimizer",
+        "relative_path": "optimizer-run-" + datetime.now(tz=timezone.utc).strftime("%Y-%m-%d") + ".md",
+        "title": "aq-optimizer run " + datetime.now(tz=timezone.utc).strftime("%Y-%m-%d"),
+    }).encode()
+    headers = {"Content-Type": "application/json"}
+    if key:
+        headers["X-API-Key"] = key
+    try:
+        req = urllib.request.Request(AIDB_URL + "/documents", data=payload, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status < 300
+    except Exception as exc:
+        print("WARN  AIDB import failed:", exc, file=sys.stderr)
+        return False
+
+
+def apply_routing(action: dict, dry_run: bool) -> list:
+    results = []
+    overrides = _read_overrides()
+    for k, v in action.get("env_overrides", {}).items():
+        overrides[k] = v
+    if not dry_run:
+        _write_overrides(overrides)
+    for svc in action.get("services", []):
+        outcome = _restart_service(svc, dry_run)
+        results.append({"service": svc, "outcome": outcome})
+    return results
+
+
+def apply_knowledge(action: dict, dry_run: bool) -> dict:
+    topic = action.get("topic", "")
+    if not topic:
+        return {"outcome": "skip:no_topic"}
+    outcome = _import_knowledge(topic, dry_run)
+    return {"topic": topic, "outcome": outcome}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="AI stack agentic optimizer")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--since", default="1d")
+    args = parser.parse_args()
+
+    dry_run = args.dry_run
+    if dry_run:
+        print("INFO  DRY-RUN mode — no changes will be applied")
+
+    # Run aq-report --format=json
+    try:
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT_DIR / "aq-report"), "--since=" + args.since, "--format=json"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            print("ERROR aq-report failed:", result.stderr[:200], file=sys.stderr)
+            sys.exit(1)
+        report = json.loads(result.stdout)
+    except Exception as exc:
+        print("ERROR could not run aq-report:", exc, file=sys.stderr)
+        sys.exit(1)
+
+    structured_actions = report.get("structured_actions", [])
+    if not structured_actions:
+        print("INFO  No structured actions — system within normal parameters")
+        return
+
+    applied = []
+    for action in structured_actions:
+        if not action.get("safe"):
+            continue
+        atype = action.get("type")
+        aname = action.get("action")
+        ts = datetime.now(tz=timezone.utc).isoformat()
+
+        if atype == "routing":
+            results = apply_routing(action, dry_run)
+            record = {"ts": ts, "type": atype, "action": aname, "reason": action.get("reason"),
+                      "dry_run": dry_run, "results": results}
+            print("INFO  routing:", aname, "—", action.get("reason"), "| results:", results)
+        elif atype == "knowledge" and aname == "import_gap":
+            result_info = apply_knowledge(action, dry_run)
+            record = {"ts": ts, "type": atype, "action": aname, "reason": action.get("reason"),
+                      "dry_run": dry_run, "result": result_info}
+            print("INFO  knowledge:", aname, "topic:", action.get("topic", "")[:60], "| outcome:", result_info.get("outcome"))
+        elif atype == "eval" and aname == "alert_human":
+            record = {"ts": ts, "type": atype, "action": aname, "reason": action.get("reason"),
+                      "dry_run": dry_run, "message": action.get("message")}
+            print("WARN  eval alert:", action.get("message"))
+        else:
+            continue
+
+        _log_action(record)
+        applied.append(record)
+
+    if not applied:
+        print("INFO  No actions applied")
+        return
+
+    summary_lines = [
+        "# aq-optimizer run " + datetime.now(tz=timezone.utc).strftime("%Y-%m-%d"),
+        "",
+        "Applied " + str(len(applied)) + " action(s) (dry_run=" + str(dry_run) + "):",
+        "",
+    ]
+    for a in applied:
+        summary_lines.append("- [" + a["type"] + "/" + a["action"] + "] " + (a.get("reason") or ""))
+    summary = "\n".join(summary_lines)
+    print(summary)
+
+    if not dry_run:
+        ok = _record_to_aidb(summary)
+        if ok:
+            print("INFO  Summary recorded to AIDB")
+
+
+if __name__ == "__main__":
+    main()
