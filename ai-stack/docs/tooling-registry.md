@@ -95,7 +95,9 @@ Use `@path/to/file` syntax to include files. Use `@dir/` for entire directories.
 | Timer | Schedule | Action |
 |-------|----------|--------|
 | `ai-weekly-report.timer` | Sunday 08:00 | Run aq-report --aidb-import; MOTD refresh |
-| `ai-sync-knowledge-sources.timer` | Monday 00:03 | Import agent instructions to AIDB |
+| `ai-import-agent-instructions.timer` | Monday 00:03 | Import CLAUDE.md/AGENTS.md/registry.yaml into AIDB |
+| `ai-sync-knowledge-sources.timer` | Monday weekly | Fetch and import enabled knowledge sources into AIDB |
+| `ai-prompt-eval.timer` | Wednesday 02:00 | Run aq-prompt-eval; update prompt leaderboard in AIDB |
 | `ai-security-audit.timer` | Monday 00:23 | pip-audit + npm audit; results to AIDB |
 | `ai-mcp-integrity-check.timer` | Every 30 min | Validate MCP source file hashes |
 | `ai-mcp-process-watch.timer` | Every 15 min | Monitor MCP process tree health |
