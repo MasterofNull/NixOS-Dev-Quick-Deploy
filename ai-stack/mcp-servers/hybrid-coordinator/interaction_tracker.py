@@ -24,6 +24,7 @@ import inspect
 import logging
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
 
@@ -193,6 +194,100 @@ async def get_feedback_variant_stats(tag: str, days: Optional[int] = None) -> Di
         "rated": int(row.get("rated", 0) or 0),
         "avg_rating": row.get("avg_rating"),
     }
+
+
+# ---------------------------------------------------------------------------
+# PRSI Gap Sync
+# ---------------------------------------------------------------------------
+
+async def sync_query_gaps_to_jsonl(
+    jsonl_path: str = "/var/log/nixos-ai-stack/query-gaps.jsonl",
+    limit: int = 200,
+) -> int:
+    """Export top recurring query gaps from PostgreSQL to JSONL consumed by hints_engine."""
+    if _postgres is None:
+        return 0
+    try:
+        rows = await _postgres.fetch_all(
+            """
+            SELECT query_text, COUNT(*) AS occurrences, AVG(score) AS avg_score
+            FROM query_gaps
+            GROUP BY query_text
+            ORDER BY occurrences DESC, avg_score ASC
+            LIMIT %s
+            """,
+            limit,
+        )
+        path = Path(jsonl_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            for row in rows:
+                fh.write(json.dumps({
+                    "query_text": row["query_text"],
+                    "occurrences": int(row.get("occurrences") or 1),
+                    "avg_score": float(row.get("avg_score") or 0),
+                }) + "\n")
+        tmp.replace(path)
+        logger.info("gap_sync_complete written=%d path=%s", len(rows), jsonl_path)
+        return len(rows)
+    except Exception as exc:
+        logger.warning("sync_query_gaps_failed error=%s", exc)
+        return 0
+
+
+async def sync_feedback_corrections_to_gaps(
+    jsonl_path: str = "/var/log/nixos-ai-stack/query-gaps.jsonl",
+    limit: int = 50,
+    min_occurrences: int = 2,
+) -> int:
+    """Append negatively-rated queries from learning_feedback into the gaps JSONL."""
+    if _postgres is None:
+        return 0
+    try:
+        rows = await _postgres.fetch_all(
+            """
+            SELECT query, COUNT(*) AS occurrences, AVG(rating) AS avg_rating
+            FROM learning_feedback
+            WHERE rating < 0 AND query != ''
+            GROUP BY query
+            HAVING COUNT(*) >= %s
+            ORDER BY occurrences DESC, avg_rating ASC
+            LIMIT %s
+            """,
+            min_occurrences, limit,
+        )
+        if not rows:
+            return 0
+        path = Path(jsonl_path)
+        existing: set = set()
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if line:
+                        try:
+                            existing.add(json.loads(line).get("query_text", ""))
+                        except Exception:
+                            pass
+        except FileNotFoundError:
+            pass
+        new_rows = [r for r in rows if r.get("query", "") not in existing]
+        if not new_rows:
+            return 0
+        with open(path, "a", encoding="utf-8") as fh:
+            for row in new_rows:
+                fh.write(json.dumps({
+                    "query_text": row["query"],
+                    "occurrences": int(row.get("occurrences") or 1),
+                    "avg_score": float(row.get("avg_rating") or -1.0),
+                    "source": "feedback_negative",
+                }) + "\n")
+        logger.info("feedback_corrections_synced appended=%d", len(new_rows))
+        return len(new_rows)
+    except Exception as exc:
+        logger.warning("sync_feedback_corrections_failed error=%s", exc)
+        return 0
 
 
 # ---------------------------------------------------------------------------

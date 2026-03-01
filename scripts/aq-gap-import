@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# aq-gap-import — auto-import knowledge for recurring query gaps into AIDB.
+#
+# Reads the top recurring gaps from /var/log/nixos-ai-stack/query-gaps.jsonl
+# (written by hybrid-coordinator's PRSI gap-sync loop), filters those that
+# exceed a minimum occurrence threshold, generates content via Gemini CLI,
+# imports each into AIDB, then rebuilds Qdrant embeddings for the new docs.
+#
+# Designed to run unattended as a systemd timer (ai-gap-import.timer).
+#
+# Environment:
+#   GAPS_JSONL           Path to query-gaps.jsonl  (default: /var/log/nixos-ai-stack/query-gaps.jsonl)
+#   MIN_OCCURRENCES      Minimum gap occurrences to warrant import  (default: 3)
+#   MAX_GAPS             Maximum gaps to import per run  (default: 5)
+#   AIDB_URL             Override AIDB base URL  (default: http://127.0.0.1:8002)
+#   AIDB_API_KEY_FILE    Path to AIDB API key file
+#   SKIP_QDRANT_REBUILD  Set to 1 to skip rebuild-qdrant-collections.sh
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+export PATH="$HOME/.npm-global/bin:$PATH"
+
+GAPS_JSONL="${GAPS_JSONL:-/var/log/nixos-ai-stack/query-gaps.jsonl}"
+MIN_OCCURRENCES="${MIN_OCCURRENCES:-3}"
+MAX_GAPS="${MAX_GAPS:-5}"
+SKIP_QDRANT_REBUILD="${SKIP_QDRANT_REBUILD:-0}"
+
+# ── Sanity checks ─────────────────────────────────────────────────────────────
+if [[ ! -r "$GAPS_JSONL" ]]; then
+  printf 'INFO  No gaps file at %s — nothing to import\n' "$GAPS_JSONL"
+  exit 0
+fi
+
+if ! command -v gemini &>/dev/null; then
+  printf 'ERROR gemini CLI not found in PATH (%s)\n' "$PATH" >&2
+  exit 1
+fi
+
+# ── Extract top recurring gaps ─────────────────────────────────────────────────
+# Parse JSONL: select entries with occurrences >= MIN_OCCURRENCES,
+# deduplicate by query_text, take top MAX_GAPS by occurrence count.
+mapfile -t TOP_GAPS < <(python3 - <<PYEOF
+import json, sys
+
+path = "${GAPS_JSONL}"
+min_occ = ${MIN_OCCURRENCES}
+max_gaps = ${MAX_GAPS}
+
+counts = {}
+with open(path, encoding="utf-8") as fh:
+    for line in fh:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        text = str(obj.get("query_text") or "").strip()
+        occ  = int(obj.get("occurrences") or 1)
+        if text:
+            counts[text] = max(counts.get(text, 0), occ)
+
+eligible = [(occ, text) for text, occ in counts.items() if occ >= min_occ]
+eligible.sort(reverse=True)
+for _, text in eligible[:max_gaps]:
+    print(text)
+PYEOF
+)
+
+if [[ ${#TOP_GAPS[@]} -eq 0 ]]; then
+  printf 'INFO  No gaps with occurrences >= %s — nothing to import\n' "$MIN_OCCURRENCES"
+  exit 0
+fi
+
+printf 'INFO  Found %d gap(s) to import (threshold=%s)\n' "${#TOP_GAPS[@]}" "$MIN_OCCURRENCES"
+
+# ── Import each gap ────────────────────────────────────────────────────────────
+IMPORTED=0
+FAILED=0
+for TOPIC in "${TOP_GAPS[@]}"; do
+  printf '\n--- Importing: %s\n' "$TOPIC"
+  if bash "${SCRIPT_DIR}/aq-knowledge-import.sh" "$TOPIC" --project knowledge --clear-gaps; then
+    IMPORTED=$((IMPORTED + 1))
+  else
+    printf 'WARN  Import failed for: %s (continuing)\n' "$TOPIC" >&2
+    FAILED=$((FAILED + 1))
+  fi
+done
+
+printf '\nINFO  Import complete: %d imported, %d failed\n' "$IMPORTED" "$FAILED"
+
+# ── Rebuild Qdrant embeddings if anything was imported ─────────────────────────
+if [[ "$IMPORTED" -gt 0 && "$SKIP_QDRANT_REBUILD" != "1" ]]; then
+  printf '\nINFO  Rebuilding Qdrant embeddings for new documents...\n'
+  if bash "${SCRIPT_DIR}/rebuild-qdrant-collections.sh"; then
+    printf 'INFO  Qdrant rebuild complete\n'
+  else
+    printf 'WARN  Qdrant rebuild failed — embeddings may be stale\n' >&2
+  fi
+fi
+
+printf '\nDone.\n'
