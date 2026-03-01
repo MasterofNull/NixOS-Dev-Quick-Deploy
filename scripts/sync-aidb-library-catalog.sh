@@ -108,17 +108,17 @@ validate_catalog() {
     skill_count="$(jq '[.documents[] | select((.relative_path // "") | startswith("catalog/skills/"))] | length' <<<"${payload}")"
   fi
 
-  echo "Catalog validation:"
-  echo "  project=${PROJECT}"
-  echo "  mcp_entries=${mcp_count}"
-  echo "  skill_entries=${skill_count}"
+  printf 'Catalog validation:\n  project=%s\n  mcp_entries=%s\n  skill_entries=%s\n' \
+    "${PROJECT}" "${mcp_count}" "${skill_count}"
 
   if [[ "${mcp_count}" -lt "${MIN_MCP_ENTRIES}" ]]; then
-    echo "Catalog validation failed: expected >=${MIN_MCP_ENTRIES} MCP entries, found ${mcp_count}." >&2
+    printf 'Catalog validation failed: expected >=%s MCP entries, found %s.\n' \
+      "${MIN_MCP_ENTRIES}" "${mcp_count}" >&2
     return 1
   fi
   if [[ "${skill_count}" -lt "${MIN_SKILL_ENTRIES}" ]]; then
-    echo "Catalog validation failed: expected >=${MIN_SKILL_ENTRIES} skill entries, found ${skill_count}." >&2
+    printf 'Catalog validation failed: expected >=%s skill entries, found %s.\n' \
+      "${MIN_SKILL_ENTRIES}" "${skill_count}" >&2
     return 1
   fi
 }
@@ -179,7 +179,10 @@ sync_mcp_catalog() {
   api_key="$(load_api_key)"
 
   echo "Fetching MCP registry catalog..."
-  curl -fsS "${MCP_REGISTRY_URL}" > "${tmp_dir}/mcp_registry.json"
+  if ! curl -fsS --max-time 30 "${MCP_REGISTRY_URL}" > "${tmp_dir}/mcp_registry.json" 2>/dev/null; then
+    echo "WARNING: Could not reach MCP registry (network unavailable or DNS failure). Skipping sync." >&2
+    exit 0
+  fi
   jq -c --arg project "${PROJECT}" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '
     (.servers // [])
     | map(.server)
