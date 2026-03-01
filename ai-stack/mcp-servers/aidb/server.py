@@ -38,7 +38,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from pydantic import BaseModel
 from prometheus_client import Counter, Gauge, Histogram, CONTENT_TYPE_LATEST, generate_latest
 from redis import asyncio as redis_asyncio
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.dialects.postgresql import insert, JSONB
 from sqlalchemy.orm import sessionmaker
 from websockets import serve
 import re
@@ -88,6 +88,9 @@ _DECAY_PENALTY_TIER2 = float(os.getenv("AI_VECTOR_DECAY_PENALTY_TIER2", "0.25"))
 
 # GC configuration (Task 3.3.3)
 _GC_STALE_DAYS = int(os.getenv("AI_VECTOR_GC_STALE_DAYS", "180"))
+
+# Embedding character limit (prevents HTTP 400 from embed server on large documents)
+_EMBED_MAX_CHARS: int = int(os.getenv('EMBED_MAX_CHARS', '6000'))
 
 
 def _apply_relevance_decay(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -697,7 +700,7 @@ class VectorStore:
                             # COALESCE on the excluded (new) value; carry
                             # last_accessed_at from the existing row.
                             "metadata": sa.func.jsonb_strip_nulls(
-                                sa.cast(self.table.c.metadata, sa.JSON).op("||")(
+                                sa.cast(self.table.c.metadata, JSONB).op("||")(
                                     sa.cast(
                                         sa.func.jsonb_build_object(
                                             "ingested_at",
@@ -711,7 +714,7 @@ class VectorStore:
                                                 sa.cast(sa.literal(base_meta["last_accessed_at"]), sa.Text),
                                             ),
                                         ),
-                                        sa.JSON,
+                                        JSONB,
                                     )
                                 )
                             ),
@@ -2596,6 +2599,8 @@ class MCPServer:
         now goes through the external embeddings-service HTTP endpoint or
         llama.cpp as final fallback.
         """
+        # Truncate texts to prevent HTTP 400 from embed server on large documents
+        texts = [t[:_EMBED_MAX_CHARS] for t in texts]
         errors: List[str] = []
         if self.settings.embedding_service_url:
             try:
