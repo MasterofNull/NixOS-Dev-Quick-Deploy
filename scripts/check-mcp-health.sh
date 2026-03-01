@@ -6,7 +6,6 @@
 # Usage:
 #   scripts/check-mcp-health.sh              # check all required services
 #   scripts/check-mcp-health.sh --timeout 30 # override per-service timeout (default 10s)
-#   scripts/check-mcp-health.sh --optional   # also report optional services
 #
 # Service dependency tiers:
 #   REQUIRED  — MCP servers that must be healthy for the AI stack to function
@@ -19,11 +18,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../config/service-endpoints.sh"
 
 TIMEOUT=10
-INCLUDE_OPTIONAL=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --timeout)  TIMEOUT="$2"; shift 2 ;;
-    --optional) INCLUDE_OPTIONAL=true; shift ;;
     *) echo "Unknown arg: $1" >&2; exit 1 ;;
   esac
 done
@@ -104,21 +101,7 @@ check_http "REQUIRED" "hybrid-coordinator  (:$(url_port "${HYBRID_URL}"))" "${HY
 check_http "REQUIRED" "ralph-wiggum        (:$(url_port "${RALPH_URL}"))" "${RALPH_URL%/}/health"
 check_http "REQUIRED" "switchboard         (:$(url_port "${SWITCHBOARD_URL}"))" "${SWITCHBOARD_URL%/}/health"
 check_http "REQUIRED" "aider-wrapper       (:$(url_port "${AIDER_URL}"))" "${AIDER_URL%/}/health"
-# nixos-docs is OPTIONAL until the nixos-docs service has been deployed.
-# Pass --optional to include it in the report without failing the exit code.
-if [[ "$INCLUDE_OPTIONAL" == true ]]; then
-  echo "── Optional MCP Servers ─────────────────────────────────────"
-  OPTIONAL_FAIL=0
-  opt_code=$(curl -sS -o /dev/null -w "%{http_code}" \
-    --max-time "$TIMEOUT" --connect-timeout 3 "${NIXOS_DOCS_URL%/}/health" 2>/dev/null || echo "000")
-  if [[ "$opt_code" =~ ^2 ]]; then
-    printf "${GREEN}PASS${RESET}  [%-8s] %s\n" "OPTIONAL" "nixos-docs          (:$(url_port "${NIXOS_DOCS_URL}"))"
-  else
-    printf "${YELLOW}WARN${RESET}  [%-8s] %s (HTTP %s — optional)\n" \
-      "OPTIONAL" "nixos-docs          (:$(url_port "${NIXOS_DOCS_URL}"))" "$opt_code"
-    (( OPTIONAL_FAIL++ )) || true
-  fi
-fi
+check_http "REQUIRED" "nixos-docs          (:$(url_port "${NIXOS_DOCS_URL}"))" "${NIXOS_DOCS_URL%/}/health"
 
 # ── LLM backend ───────────────────────────────────────────────────────────────
 echo "── LLM Backends ─────────────────────────────────────────────"
