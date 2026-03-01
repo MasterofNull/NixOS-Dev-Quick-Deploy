@@ -8,6 +8,11 @@
   # flake-first role model (drivers + 32-bit graphics from roles/gaming.nix).
   mySystem.roles.gaming.enable = lib.mkForce true;
   mySystem.localhostIsolation.enable = lib.mkDefault true;
+  # Pin prometheus GID so localhost-isolation.nix can auto-whitelist it in the
+  # nftables loopback filter (the filter blocks connections from unknown GIDs to
+  # AI service ports 8002/8003/etc).  Without a pinned GID the auto-assign
+  # happens at activation time, which is invisible to Nix evaluation.
+  users.groups.prometheus.gid = lib.mkDefault 255;
   mySystem.aiStack.vectorDb.enable = lib.mkForce true;
   mySystem.mcpServers.repoPath =
     lib.mkDefault "/home/${config.mySystem.primaryUser}/Documents/NixOS-Dev-Quick-Deploy";

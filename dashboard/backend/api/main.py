@@ -93,6 +93,27 @@ app.include_router(actions.router, prefix="/api/actions", tags=["actions"])
 app.include_router(aistack.router, prefix="/api", tags=["aistack"])
 
 
+# ── Direct routes — must be registered BEFORE the StaticFiles mount ──────────
+# app.mount("/", StaticFiles(...)) is a catch-all that shadows any route
+# registered after it.  Register /api/health and /metrics here so they are
+# evaluated first when Starlette iterates the route list.
+
+@app.get("/api/health")
+async def health_check():
+    """Detailed health check"""
+    return {
+        "status": "healthy",
+        "websocket_connections": len(active_connections),
+        "metrics_collector": "running"
+    }
+
+
+@app.get("/metrics", response_class=PlainTextResponse)
+async def prometheus_metrics():
+    """Prometheus exposition endpoint for dashboard-level probe gauges."""
+    return aistack.render_prometheus_metrics()
+
+
 # ── Frontend static file serving (SPA) ───────────────────────────────────────
 # Mount compiled frontend dist directory.  The backend serves both the API
 # (at /api/*) and the React SPA (at /*).  html=True enables index.html
@@ -118,22 +139,6 @@ else:
              "note": "Frontend not yet built. Run: sudo systemctl start command-center-dashboard-build"},
             status_code=200,
         )
-
-
-@app.get("/api/health")
-async def health_check():
-    """Detailed health check"""
-    return {
-        "status": "healthy",
-        "websocket_connections": len(active_connections),
-        "metrics_collector": "running"
-    }
-
-
-@app.get("/metrics", response_class=PlainTextResponse)
-async def prometheus_metrics():
-    """Prometheus exposition endpoint for dashboard-level probe gauges."""
-    return aistack.render_prometheus_metrics()
 
 
 # WebSocket endpoint for real-time metrics
