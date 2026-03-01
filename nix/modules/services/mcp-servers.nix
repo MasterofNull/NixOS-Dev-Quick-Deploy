@@ -776,6 +776,8 @@ in
             "AI_HINTS_ENABLED=true"
             "HINTS_URL=http://127.0.0.1:${toString mcp.hybridPort}/hints"
           ] ++ lib.optional sec.enable "AIDER_WRAPPER_API_KEY_FILE=${secretPath aiderWrapperApiKeySecret}";
+          # hint-audit.jsonl and tool-audit.jsonl both land in /var/log/nixos-ai-stack
+          ReadWritePaths = [ dataDir "/tmp" "/var/log/nixos-ai-stack" ];
           # Phase 13.1.1 — aider-wrapper only communicates with loopback services
           IPAddressAllow = [ "127.0.0.1/8" "::1/128" ];
           IPAddressDeny = [ "any" ];

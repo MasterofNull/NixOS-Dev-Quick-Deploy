@@ -748,6 +748,70 @@ in {
       };
     })
 
+    # Phase 18 — Bi-weekly prompt leaderboard update via aq-prompt-eval.
+    (lib.mkIf roleEnabled {
+      systemd.services.ai-prompt-eval = {
+        description = "AI stack prompt registry evaluation and leaderboard update";
+        after = ["network-online.target" "ai-stack.target"];
+        wants = ["network-online.target"];
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.primaryUser;
+          WorkingDirectory = cfg.mcpServers.repoPath;
+          ExecStart = "${cfg.mcpServers.repoPath}/scripts/aq-prompt-eval";
+          StandardOutput = "journal";
+          StandardError  = "journal";
+          NoNewPrivileges = true;
+          ProtectSystem   = "strict";
+          ProtectHome     = "read-only";
+          PrivateTmp      = true;
+          MemoryMax       = "256M";
+        };
+      };
+
+      systemd.timers.ai-prompt-eval = {
+        description = "Bi-weekly prompt eval leaderboard refresh timer";
+        wantedBy = ["timers.target"];
+        timerConfig = {
+          OnCalendar     = "Wed 02:00:00";
+          Persistent     = true;
+          RandomizedDelaySec = "30min";
+        };
+      };
+    })
+
+    # Phase 19 — Weekly CLAUDE.md / AGENTS.md / registry import into AIDB.
+    (lib.mkIf roleEnabled {
+      systemd.services.ai-import-agent-instructions = {
+        description = "Import agent instruction files (CLAUDE.md, AGENTS.md, registry) into AIDB";
+        after = ["network-online.target" "ai-aidb.service"];
+        wants = ["network-online.target"];
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.primaryUser;
+          WorkingDirectory = cfg.mcpServers.repoPath;
+          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/import-agent-instructions.sh";
+          StandardOutput = "journal";
+          StandardError  = "journal";
+          NoNewPrivileges = true;
+          ProtectSystem   = "strict";
+          ProtectHome     = "read-only";
+          PrivateTmp      = true;
+          MemoryMax       = "128M";
+        };
+      };
+
+      systemd.timers.ai-import-agent-instructions = {
+        description = "Weekly agent instruction AIDB import timer";
+        wantedBy = ["timers.target"];
+        timerConfig = {
+          OnCalendar     = "Mon 00:03:00";
+          Persistent     = true;
+          RandomizedDelaySec = "10min";
+        };
+      };
+    })
+
     (lib.mkIf (roleEnabled && ai.vectorDb.enable && hasQdrant) {
       services.qdrant.enable = true;
       services.qdrant.settings.service = {
