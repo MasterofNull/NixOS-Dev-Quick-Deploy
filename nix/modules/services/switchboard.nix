@@ -257,6 +257,7 @@ in
           "HYBRID_URL=${hybridUrl}"
           "HYBRID_API_KEY_FILE=${hybridKeyFile}"
         ];
+        EnvironmentFile = "-/var/lib/nixos-ai-stack/optimizer/overrides.env";
         User                  = cfg.primaryUser;
         Restart               = "on-failure";
         RestartSec            = "5s";
