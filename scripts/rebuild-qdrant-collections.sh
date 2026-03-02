@@ -50,50 +50,89 @@ if [[ "$_total" -eq 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Re-index each document
+# Re-index documents in batches (much faster than one-at-a-time)
 # ---------------------------------------------------------------------------
 _embedded=0
 _failed=0
-_idx=0
+_batch_size=10
+_batch=()
+_batch_ids=()
 
-while IFS=$'\t' read -r _doc_id _title; do
-    _idx=$((_idx + 1))
-    printf 'embedding doc %d/%d: %s\n' "$_idx" "$_total" "$_title"
-
-    _payload="$(printf '{"items":[{"document_id":%s}]}' "$_doc_id")"
-
-    _http_code="$(curl -s --max-time 60 \
+process_batch() {
+    local batch_json="$1"
+    local batch_ids="$2"
+    
+    _http_code="$(curl -s --max-time 300 \
         -o /tmp/_aidb_index_resp.json \
         -w '%{http_code}' \
         -X POST \
         -H "Content-Type: application/json" \
         -H "X-API-Key: ${AIDB_API_KEY}" \
-        -d "$_payload" \
+        -d "$batch_json" \
         "${AIDB_URL}/vector/index")"
-
+    
     if [[ "$_http_code" == "200" ]]; then
-        _embedded=$((_embedded + 1))
+        _embedded=$((_embedded + ${#batch_ids[@]}))
+        printf '  ✓ Batch of %d embedded OK\n' "${#batch_ids[@]}"
     else
         _body="$(cat /tmp/_aidb_index_resp.json 2>/dev/null || true)"
-        printf 'rebuild-qdrant-collections: WARN — doc %s returned HTTP %s: %s\n' \
-            "$_doc_id" "$_http_code" "$_body" >&2
-        _failed=$((_failed + 1))
+        printf '  ✗ Batch failed HTTP %s: %s\n' "$_http_code" "$_body" >&2
+        _failed=$((_failed + ${#batch_ids[@]}))
     fi
+}
 
-    # Gentle rate limiting to avoid overwhelming the embedding backend
-    sleep 0.1
+printf '\nProcessing documents in batches of %d...\n\n' "$_batch_size"
 
+# Initialize counters
+_idx=0
+_embedded=0
+_failed=0
+
+while IFS=$'\t' read -r _doc_id _title; do
+    _idx=$((_idx + 1))
+    
+    if [[ $((_idx % _batch_size)) -eq 1 ]]; then
+        # Start new batch
+        _batch=("{\"document_id\":$_doc_id}")
+        _batch_ids=("$_title")
+    else
+        # Add to batch
+        _batch+=(",{\"document_id\":$_doc_id}")
+        _batch_ids+=("$_title")
+    fi
+    
+    # Show progress
+    if [[ $((_idx % _batch_size)) -eq 0 ]] || [[ $_idx -eq $_total ]]; then
+        printf '[%d/%d] Embedding batch: %s\n' "$_idx" "$_total" "${_batch_ids[0]}"
+        if [[ ${#_batch_ids[@]} -gt 1 ]]; then
+            printf '         + %d more...\n' "$((${#_batch_ids[@]} - 1))"
+        fi
+        
+        # Process batch
+        _batch_json="{\"items\":[$(IFS=; echo "${_batch[*]}")]}"
+        process_batch "$_batch_json" "$_batch_ids"
+        
+        # Clear batch
+        _batch=()
+        _batch_ids=()
+        
+        # Small delay between batches (not between individual docs)
+        sleep 0.5
+    fi
 done < <(printf '%s' "$_list_resp" | jq -r '.documents[] | [.id, (.title // .relative_path // "untitled")] | @tsv')
 
 rm -f /tmp/_aidb_index_resp.json
 
 # ---------------------------------------------------------------------------
-printf 'rebuild: %d documents embedded' "$_embedded"
+# Summary
+# ---------------------------------------------------------------------------
+printf '\nrebuild-qdrant-collections summary:\n'
+printf '  embedded: %d/%d\n' "$_embedded" "$_total"
 if [[ $_failed -gt 0 ]]; then
-    printf ', %d failed' "$_failed"
+    printf '  failed:   %d\n' "$_failed"
 fi
-printf '\n'
 
 if [[ $_failed -gt 0 ]]; then
     exit 1
 fi
+printf '\nrebuild-qdrant-collections: complete\n'

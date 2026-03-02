@@ -107,11 +107,15 @@ class Settings(BaseModel):
     rate_limit_medium_rpm: int = 60
     rate_limit_low_rpm: int = 600
     rate_limit_global_rph: int = 1000
-    rate_limit_ingest_rpm: int = 100
+    rate_limit_ingest_rpm: int = 300  # Increased for catalog sync operations
     api_key: Optional[str] = None
     catalog_path: Path
     google_api_key: Optional[str] = None
     google_cse_id: Optional[str] = None
+    # pgvector index configuration
+    pgvector_hnsw_m: int = 16
+    pgvector_hnsw_ef_construction: int = 64
+    pgvector_ivfflat_nlists: int = 100  # For high-dimensional embeddings (>2000 dims)
 
 
 def load_settings(config_path: Optional[Path] = None) -> Settings:
