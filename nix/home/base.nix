@@ -1075,7 +1075,7 @@ PYEOF
   # their changes on every switch (only rewrites when version bumps).
   # Bump _config_version below when making config structure changes.
   home.activation.createContinueConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    _config_version="19.4"
+    _config_version="19.5"
     _cfg="$HOME/.continue/config.json"
     _needs_write=false
 
@@ -1093,59 +1093,33 @@ PYEOF
       mkdir -p "$HOME/.continue"
       cat > "$_cfg" << 'CONTINUE_EOF'
 {
-  "__configVersion": "19.4",
+  "__configVersion": "19.5",
   "models": [
     {
-      "title": "Local llama.cpp",
+      "title": "Qwen3-4B-Instruct (Local)",
       "provider": "openai",
-      "apiKey": "dummy",
+      "apiKey": "local-llama-cpp",
       "apiBase": "${continueApiBase}",
-      "model": "${aiLlamaModel}"
-    },
-    {
-      "title": "Ollama (local)",
-      "provider": "ollama",
-      "model": "AUTODETECT"
-    },
-    {
-      "title": "Gemini 2.0 Flash",
-      "provider": "google",
-      "model": "gemini-2.0-flash"
-    },
-    {
-      "title": "Claude Sonnet 4.6",
-      "provider": "anthropic",
-      "model": "claude-sonnet-4-6"
+      "model": "${aiLlamaModel}",
+      "contextLength": 32768,
+      "maxTokens": 2048
     }
   ],
   "tabAutocompleteModel": {
-    "title": "Local Autocomplete",
+    "title": "Tab Autocomplete (Local)",
     "provider": "openai",
-    "apiKey": "dummy",
+    "apiKey": "local-llama-cpp",
     "apiBase": "${continueApiBase}",
-    "model": "${aiLlamaModel}"
+    "model": "${aiLlamaModel}",
+    "maxTokens": 128
   },
   "contextProviders": [
-    {
-      "name": "http",
-      "params": {
-        "url": "http://127.0.0.1:${toString aiHybridPort}/hints",
-        "title": "aq-hints",
-        "description": "Ranked AI workflow hints from registry.yaml, CLAUDE.md rules, and query gaps",
-        "displayTitle": "AI Stack Hints"
-      }
-    },
-    { "name": "code",     "params": {} },
-    { "name": "docs",     "params": {} },
-    { "name": "diff",     "params": {} },
-    { "name": "terminal", "params": {} },
-    { "name": "problems", "params": {} }
+    { "name": "file", "params": {} },
+    { "name": "diff", "params": {} }
   ],
   "slashCommands": [
-    { "name": "edit",    "description": "Edit highlighted code" },
-    { "name": "comment", "description": "Write comments for highlighted code" },
-    { "name": "share",   "description": "Export conversation to markdown" },
-    { "name": "cmd",     "description": "Generate shell command" }
+    { "name": "edit", "description": "Edit highlighted code" },
+    { "name": "comment", "description": "Add comments" }
   ],
   "allowAnonymousTelemetry": false
 }

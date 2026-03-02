@@ -628,6 +628,12 @@
           description = "Additional CLI flags passed to llama-server.";
         };
 
+        ctxSize = lib.mkOption {
+          type = lib.types.int;
+          default = 32768;
+          description = "Context size (tokens) for llama.cpp server. Default is 32K for modern models.";
+        };
+
         huggingFaceRepo = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;

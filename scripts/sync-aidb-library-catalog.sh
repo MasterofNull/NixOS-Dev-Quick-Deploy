@@ -132,7 +132,8 @@ post_documents_jsonl() {
     [[ -z "${line}" ]] && continue
     local ok=0
     local last_code=""
-    for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    # Increased retry attempts and backoff for rate limit handling (100 RPM = 1.67 req/sec)
+    for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
       local http_code
       http_code="$(
         curl -sS -o /tmp/aidb-import-response.json -w '%{http_code}' \
@@ -148,7 +149,12 @@ post_documents_jsonl() {
       fi
       last_code="${http_code}"
       if [[ "${http_code}" == "429" ]]; then
-        sleep "$(awk "BEGIN {print ${attempt} * 0.3}")"
+        # Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s (cap at 30s)
+        local delay
+        delay="$(awk "BEGIN {d=${attempt}; if(d>5) d=5; print 2^d}")"
+        if [[ "${delay}" -gt 30 ]]; then delay=30; fi
+        echo "AIDB rate limited (attempt ${attempt}), backing off for ${delay}s..." >&2
+        sleep "${delay}"
         continue
       fi
       echo "AIDB import failed (http=${http_code}) for payload: ${line}" >&2
@@ -162,7 +168,7 @@ post_documents_jsonl() {
       failed=$((failed + 1))
     fi
     # Keep steady request pacing to avoid local rate limiting.
-    sleep 0.1
+    sleep 0.5
   done < "${jsonl_file}"
   if [[ "${failed}" -gt 0 ]]; then
     echo "AIDB import failures encountered: ${failed}" >&2

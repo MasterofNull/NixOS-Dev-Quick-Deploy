@@ -531,13 +531,36 @@ class IssueTracker:
 
 
 async def main():
-    """Example usage"""
+    """
+    Example usage - for local development testing ONLY.
+    
+    SECURITY NOTE: This example uses hardcoded credentials for local testing.
+    In production, credentials MUST be loaded from environment variables or
+    secret files (e.g., /run/secrets/* via sops-nix).
+    
+    For production deployment, use:
+      - AIDB_POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
+      - Or set DATABASE_URL with credentials from secrets manager
+    
+    NEVER commit real credentials to version control.
+    """
+    import os
+    from settings_loader import _read_secret
+    
+    # Load credentials from environment (production-safe pattern)
+    pg_password = (
+        _read_secret(os.environ.get("AIDB_POSTGRES_PASSWORD_FILE"))
+        or _read_secret("/run/secrets/postgres_password")
+        or os.environ.get("AIDB_POSTGRES_PASSWORD")
+        or "aidb_password"  # Fallback for local dev ONLY
+    )
+    
     # Create DB pool
     db_pool = await asyncpg.create_pool(
-        host="localhost",
-        database="aidb",
-        user="aidb",
-        password="aidb_password"
+        host=os.environ.get("AIDB_POSTGRES_HOST", "localhost"),
+        database=os.environ.get("AIDB_POSTGRES_DB", "aidb"),
+        user=os.environ.get("AIDB_POSTGRES_USER", "aidb"),
+        password=pg_password
     )
 
     tracker = IssueTracker(db_pool)

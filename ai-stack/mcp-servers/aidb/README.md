@@ -70,18 +70,30 @@ AIDB MCP Server (port 8091)
 See [`../../../.env.example`](../../../.env.example) for the baseline variables and `~/.config/nixos-ai-stack/.env` for the active values.
 
 **Key Variables:**
+
+> **⚠️ SECURITY WARNING:** Never use hardcoded passwords in production!
+> In production, credentials MUST be loaded from secret files managed by sops-nix:
+> - `AIDB_POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password`
+> - `AIDB_API_KEY_FILE=/run/secrets/aidb_api_key`
+> - `EMBEDDINGS_API_KEY_FILE=/run/secrets/embeddings_api_key`
+>
+> See `SECURITY-NOTES.md` for complete secrets management guidance.
+
 ```bash
-# Database
+# Database (use FILE-based secrets in production!)
 AIDB_POSTGRES_HOST=postgres
 AIDB_POSTGRES_PORT=5432
 AIDB_POSTGRES_DB=mcp
 AIDB_POSTGRES_USER=mcp
-AIDB_POSTGRES_PASSWORD=change_me
+# For local dev ONLY - use AIDB_POSTGRES_PASSWORD_FILE in production:
+AIDB_POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password  # ← PRODUCTION
+# AIDB_POSTGRES_PASSWORD=change_me  # ← LOCAL DEV ONLY, never commit!
 
-# Redis
+# Redis (use FILE-based secrets in production!)
 AIDB_REDIS_HOST=redis
 AIDB_REDIS_PORT=6379
-AIDB_REDIS_PASSWORD=
+# AIDB_REDIS_PASSWORD=  # ← LOCAL DEV ONLY
+AIDB_REDIS_PASSWORD_FILE=/run/secrets/redis_password  # ← PRODUCTION
 
 # Qdrant
 QDRANT_HOST=qdrant

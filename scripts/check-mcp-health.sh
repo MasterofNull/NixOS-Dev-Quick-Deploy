@@ -18,9 +18,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../config/service-endpoints.sh"
 
 TIMEOUT=10
+CHECK_OPTIONAL=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --timeout)  TIMEOUT="$2"; shift 2 ;;
+    --optional) CHECK_OPTIONAL=true; shift ;;
     *) echo "Unknown arg: $1" >&2; exit 1 ;;
   esac
 done
@@ -121,3 +123,22 @@ if [[ $FAIL -gt 0 ]]; then
 fi
 
 echo "All required MCP services are healthy."
+
+# ── Optional services (only checked with --optional flag) ─────────────────────
+if [[ "$CHECK_OPTIONAL" == "true" ]]; then
+  echo ""
+  echo "── Optional Services ──────────────────────────────────────"
+  check_http "OPTIONAL" "open-webui          (:$(url_port "${OPEN_WEBUI_URL}"))" "${OPEN_WEBUI_URL%/}/health"
+  check_http "OPTIONAL" "grafana             (:$(url_port "${GRAFANA_URL}"))" "${GRAFANA_URL%/}/api/health"
+  check_http "OPTIONAL" "prometheus          (:$(url_port "${PROMETHEUS_URL}"))" "${PROMETHEUS_URL%/}/-/healthy"
+  check_http "OPTIONAL" "dashboard-api       (:$(url_port "${DASHBOARD_API_URL}"))" "${DASHBOARD_API_URL%/}/api/health"
+  # Note: mindsdb, netdata, gitea, redisinsight are not deployed by default
+  # Uncomment below if you have these services configured
+  # check_http "OPTIONAL" "mindsdb             (:$(url_port "${MINDSDB_URL}"))" "${MINDSDB_URL%/}/api/util/ping"
+  # check_http "OPTIONAL" "netdata             (:$(url_port "${NETDATA_URL}"))" "${NETDATA_URL%/}/api/v1/info"
+  # check_http "OPTIONAL" "gitea               (:$(url_port "${GITEA_URL}"))" "${GITEA_URL%/}/api/v1/version"
+  # check_http "OPTIONAL" "redisinsight        (:$(url_port "${REDISINSIGHT_URL}"))" "${REDISINSIGHT_URL%/}/api/v1"
+  
+  echo "─────────────────────────────────────────────────────────────"
+  printf "Optional: %d passed, %d failed\n" "$PASS" "$FAIL"
+fi
