@@ -640,24 +640,49 @@ class VectorStore:
         index_name = "idx_document_embeddings_embedding_hnsw"
         start = time.time()
         try:
-            m_value = int(self.settings.pgvector_hnsw_m)
-            ef_value = int(self.settings.pgvector_hnsw_ef_construction)
-            with self.engine.begin() as conn:
-                conn.execute(
-                    sa.text(
-                        f"""
-                        CREATE INDEX IF NOT EXISTS {index_name}
-                        ON document_embeddings
-                        USING hnsw (embedding vector_l2_ops)
-                        WITH (m = {m_value}, ef_construction = {ef_value})
-                        """
-                    ),
+            # Check embedding dimension to choose appropriate index type
+            # HNSW supports up to 2000 dimensions, IVFFlat for higher dims
+            if self.settings.embedding_dimension > 2000:
+                # Use IVFFlat for high-dimensional embeddings (e.g., Qwen3-Embedding-4B = 2560)
+                index_name = "idx_document_embeddings_embedding_ivfflat"
+                nlists = int(self.settings.pgvector_ivfflat_nlists) if hasattr(self.settings, 'pgvector_ivfflat_nlists') else 100
+                with self.engine.begin() as conn:
+                    conn.execute(
+                        sa.text(
+                            f"""
+                            CREATE INDEX IF NOT EXISTS {index_name}
+                            ON document_embeddings
+                            USING ivfflat (embedding vector_l2_ops)
+                            WITH (lists = {nlists})
+                            """
+                        ),
+                    )
+                duration = time.time() - start
+                AIDB_PGVECTOR_INDEX_BUILD_SECONDS.labels(index=index_name).set(duration)
+                LOGGER.info(
+                    "Ensured pgvector IVFFlat index %s (%.2fs, lists=%s)", index_name, duration, nlists
                 )
-            duration = time.time() - start
-            AIDB_PGVECTOR_INDEX_BUILD_SECONDS.labels(index=index_name).set(duration)
-            LOGGER.info(
-                "Ensured pgvector HNSW index %s (%.2fs)", index_name, duration
-            )
+            else:
+                # Use HNSW for standard dimensions (<=2000)
+                index_name = "idx_document_embeddings_embedding_hnsw"
+                m_value = int(self.settings.pgvector_hnsw_m)
+                ef_value = int(self.settings.pgvector_hnsw_ef_construction)
+                with self.engine.begin() as conn:
+                    conn.execute(
+                        sa.text(
+                            f"""
+                            CREATE INDEX IF NOT EXISTS {index_name}
+                            ON document_embeddings
+                            USING hnsw (embedding vector_l2_ops)
+                            WITH (m = {m_value}, ef_construction = {ef_value})
+                            """
+                        ),
+                    )
+                duration = time.time() - start
+                AIDB_PGVECTOR_INDEX_BUILD_SECONDS.labels(index=index_name).set(duration)
+                LOGGER.info(
+                    "Ensured pgvector HNSW index %s (%.2fs)", index_name, duration
+                )
         except Exception:  # noqa: BLE001
             LOGGER.exception("Failed to ensure pgvector indexes")
 
@@ -2576,21 +2601,36 @@ class MCPServer:
         raise ValueError("unexpected_embedding_service_response")
 
     async def _embed_via_llama_cpp(self, texts: List[str]) -> List[List[float]]:
-        """Fallback embeddings via local llama.cpp OpenAI-compatible endpoint."""
+        """
+        Fallback embeddings via local llama.cpp embedding server.
+        
+        NOTE: This uses the dedicated embedding server (EMBEDDING_SERVICE_URL),
+        NOT the chat inference server (LLAMA_CPP_BASE_URL). The chat server
+        does NOT support /v1/embeddings endpoint (returns 501 Not Implemented).
+        """
         if not texts:
             return []
+        
+        # Use embedding service URL for fallback (not the chat server!)
+        embedding_url = (self.settings.embedding_service_url or "").rstrip("/")
+        if not embedding_url:
+            raise ValueError("embedding_service_url_not_configured_for_fallback")
+        
         payload = {
             "input": texts,
             # llama.cpp accepts model hints; keep aligned with configured model.
             "model": self.settings.embedding_model,
         }
-        response = await self._llama_cpp_client.post("/v1/embeddings", json=payload, timeout=30.0)
-        response.raise_for_status()
-        data = response.json()
-        vectors = [item.get("embedding") for item in data.get("data", []) if isinstance(item, dict)]
-        if len(vectors) != len(texts):
-            raise ValueError("unexpected_llama_cpp_embedding_response")
-        return vectors
+        
+        # Create temporary client for embedding server
+        async with httpx.AsyncClient(base_url=embedding_url, timeout=30.0) as client:
+            response = await client.post("/v1/embeddings", json=payload, timeout=30.0)
+            response.raise_for_status()
+            data = response.json()
+            vectors = [item.get("embedding") for item in data.get("data", []) if isinstance(item, dict)]
+            if len(vectors) != len(texts):
+                raise ValueError("unexpected_llama_cpp_embedding_response")
+            return vectors
 
     async def _embed_texts_backend(self, texts: List[str]) -> List[List[float]]:
         """Embed texts via HTTP: embeddings-service → llama.cpp fallback.
@@ -2688,26 +2728,38 @@ class MCPServer:
             attributes={"item_count": len(items)},
         ) as span:
             try:
+                # Phase 1: Collect all content that needs embedding
+                content_to_fetch: List[int] = []  # indexes of items needing content
+                contents: List[str] = []
+                
+                for i, item in enumerate(items):
+                    content = item.get("content")
+                    if content is None:
+                        document_id = item.get("document_id")
+                        if not document_id:
+                            raise ValueError("document_id is required when content not provided")
+                        content = self._get_document_content(document_id)
+                        item["content"] = content  # Cache for later
+                    contents.append(content)
+                
+                # Phase 2: Batch embed all texts at once (much faster than one-at-a-time)
+                embeddings = await self.embed_texts(contents)
+                
+                # Phase 3: Prepare all items for storage
                 prepared: List[Dict[str, Any]] = []
-                for item in items:
-                    document_id = item.get("document_id")
-                    if not document_id:
-                        raise ValueError("document_id is required for indexing")
-                    content = item.get("content") or self._get_document_content(document_id)
-                    embedding = item.get("embedding")
-                    if embedding is None:
-                        embedding = (await self.embed_texts([content]))[0]
+                for i, item in enumerate(items):
                     prepared.append(
                         {
-                            "document_id": document_id,
+                            "document_id": item["document_id"],
                             "chunk_id": item.get("chunk_id"),
-                            "content": content,
-                            "embedding": embedding,
+                            "content": item["content"],
+                            "embedding": embeddings[i],
                             "metadata": item.get("metadata") or {},
                             "score": item.get("score"),
                         }
                     )
 
+                # Phase 4: Store all embeddings in one transaction
                 result = await asyncio.to_thread(self._vector_store.index_embeddings, prepared)
                 await self._bump_vector_cache_epoch()
                 return result

@@ -261,6 +261,8 @@ in {
               (toString llama.port)
               "--model"
               (lib.escapeShellArg llama.model)
+              "--ctx-size"
+              (toString llama.ctxSize)
             ]
             ++ (map lib.escapeShellArg llamaArgs));
         };
@@ -534,7 +536,9 @@ in {
               "--ctx-size"
               (toString embed.ctxSize)
               "--threads"
-              "4"
+              "8"
+              "--n-gpu-layers"
+              "99"
             ]
             ++ (map lib.escapeShellArg embed.extraArgs));
         };

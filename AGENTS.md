@@ -1,11 +1,48 @@
 # AI Agent Onboarding Guide — NixOS-Dev-Quick-Deploy
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Purpose:** Universal agent training for professional software development
 **Audience:** AI agents, LLMs, and autonomous coding systems (Claude, Gemini, Codex, Qwen, aider, Continue.dev, Open WebUI, Ollama)
 
 > **Phase 19.4.1** — Project-specific rules prepended from CLAUDE.md. These override
 > any generic conventions below when there is a conflict.
+
+---
+
+## ⚠️ CRITICAL SECURITY NOTICE FOR AI AGENTS
+
+### Secrets Management Policy (NON-NEGOTIABLE)
+
+**YOU MUST NEVER:**
+1. Hardcode passwords, API keys, or secrets in code (including examples)
+2. Commit credentials to version control
+3. Log or print secret values
+4. Suggest using plaintext credentials in production
+
+**CORRECT PATTERN - Load Secrets Safely:**
+
+```python
+# ✅ PRODUCTION-SAFE
+from settings_loader import _read_secret
+import os
+
+password = _read_secret(
+    os.environ.get("AIDB_POSTGRES_PASSWORD_FILE")
+    or "/run/secrets/postgres_password"
+)
+```
+
+```python
+# ❌ NEVER DO THIS
+password = "aidb_password"  # HARDcoded = SECURITY VIOLATION
+```
+
+**Documentation:** See [`ai-stack/mcp-servers/aidb/SECURITY-NOTES.md`](ai-stack/mcp-servers/aidb/SECURITY-NOTES.md)
+
+**If you find hardcoded credentials:**
+1. Report immediately
+2. Replace with environment-based loading
+3. Add security warnings to documentation
 
 ---
 
