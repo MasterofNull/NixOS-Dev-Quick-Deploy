@@ -63,8 +63,8 @@
         # CPU threads: match physical cores (8) for best latency
         "--threads" "8"
         "--threads-batch" "8"
-        # Flash attention for faster prompt processing (ROCm)
-        "--flash-attn"
+        # Flash attention for faster prompt processing (ROCm) - requires explicit on/off/auto
+        "--flash-attn" "on"
         # Memory mapping for faster model loading
         "--mlock"
         # Reasoning format for Qwen3-Instruct models
@@ -80,7 +80,7 @@
       embeddingServer.extraArgs        = [
         "--threads" "8"
         "--batch-size" "512"
-        "--flash-attn"
+        "--flash-attn" "on"
       ];
       ui.enable                        = true;
       vectorDb.enable                  = false;
