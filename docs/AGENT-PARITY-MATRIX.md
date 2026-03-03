@@ -28,6 +28,13 @@ Against this repository's current AI stack implementation.
 | Feedback loop for quality improvement | Reviewer/iteration | Extension-driven | Implemented | Feedback endpoints and continuous learning pipeline exist. |
 | Model/provider flexibility | OpenRouter-first | Broad provider model | Implemented | Switchboard + local/remote profiles + OpenAI-compatible surfaces. |
 | Agent package ecosystem | Agent Store | Packages/extensions | Implemented | Added skill bundle registry/index and install flow via AQD (`skill bundle-index`, `skill bundle-install`). |
+| Tool/routing policy engine | Rule controls | Rule controls | Implemented | Added profile/task/tool policy evaluator with declarative policy config (`config/agent-routing-policy.json`). |
+| Regression quality gates | Yes | Yes | Implemented | Added golden eval gate script (`run-harness-regression-gate.sh`) with offline/online modes. |
+| Failure-injection smoke | Yes | Partial | Implemented | Added chaos smoke script for malformed input and invalid workflow transitions. |
+| Boot/shutdown integration checks | Yes | Partial | Implemented | Added boot/shutdown integration checker for systemd/journal regression patterns. |
+| API auth hardening checks | Yes | Yes | Implemented | Added static+runtime auth-hardening check script for hybrid API path. |
+| Runtime SLO guardrails | Yes | Partial | Implemented | Added SLO config and runtime validator script (`config/ai-slo-thresholds.json`). |
+| Cross-client compatibility suite | Yes | Yes | Implemented | Added client matrix smoke across HTTP, RPC, and Python SDK. |
 
 ## Newly Added Parity Closure
 
@@ -94,10 +101,37 @@ Guards:
 - `scripts/check-harness-sdk-version-parity.sh`
 - `scripts/smoke-harness-sdk-packaging.sh`
 
+### Advanced parity tooling
+
+Location:
+- `scripts/run-advanced-parity-suite.sh`
+- `scripts/evaluate-agent-policy.py`
+- `scripts/route-reasoning-mode.py`
+- `scripts/run-harness-regression-gate.sh`
+- `scripts/chaos-harness-smoke.sh`
+- `scripts/check-boot-shutdown-integration.sh`
+- `scripts/check-api-auth-hardening.sh`
+- `scripts/validate-ai-slo-runtime.sh`
+- `scripts/smoke-cross-client-compat.sh`
+- `.github/workflows/test.yml` (jobs: `advanced-parity-tooling`, `skill-bundle-parity`, `harness-sdk-parity`)
+
+### Signed skill registry + trust hooks
+
+Location:
+- `scripts/sign-skill-registry.sh`
+- `scripts/verify-skill-registry.sh`
+- `scripts/skill-bundle-registry.py` (`install --signature --public-key`)
+
+Purpose:
+- Enforce signed distribution flow for skill registry indexes before bundle install.
+
 ## Remaining High-Impact Gaps
 
-1. Add remote skill registry hosting + signatures
-- Bundle/index flow exists locally; signed remote distribution and trust policy are not yet wired.
+1. Add remote trust roots and key rotation policy for signed registries
+- Signature scripts are implemented; enterprise trust distribution/rotation workflow is not yet automated.
+
+2. Add full orchestration graph executor for staged agent pipelines
+- Staged workflows exist with session/tree controls, but a single DAG executor with retries/backoff is not yet implemented.
 
 ### RPC CLI wrapper
 
