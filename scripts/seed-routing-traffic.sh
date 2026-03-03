@@ -48,13 +48,14 @@ PASS=0; FAIL=0
 for i in "${!QUERIES[@]}"; do
   [[ $i -ge $QUERY_COUNT ]] && break
   Q="${QUERIES[$i]}"
-  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+  HTTP_CODE="$(curl -s -o /dev/null -w "%{http_code}" \
     --max-time 30 --connect-timeout 5 \
     -X POST "${HYBRID_URL%/}/query" \
     -H "Content-Type: application/json" \
     -H "X-API-Key: ${HYBRID_KEY}" \
-    -d "{\"query\":$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$Q"),\"mode\":\"auto\",\"prefer_local\":true,\"limit\":3}" \
-    2>/dev/null)
+    -d "{\"query\":$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$Q"),\"mode\":\"auto\",\"prefer_local\":true,\"limit\":3,\"context\":{\"skip_gap_tracking\":true,\"source\":\"seed-routing-traffic\"}}" \
+    2>/dev/null || true)"
+  [[ -n "$HTTP_CODE" ]] || HTTP_CODE="000"
   if [[ "$HTTP_CODE" =~ ^2 ]]; then
     printf '  OK  %s\n' "$Q"
     (( PASS++ )) || true
@@ -75,7 +76,7 @@ GEN_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
   -X POST "${HYBRID_URL%/}/query" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: ${HYBRID_KEY}" \
-  -d '{"query":"what is NixOS","mode":"auto","prefer_local":true,"limit":1,"generate_response":true,"max_tokens":32}' \
+  -d '{"query":"what is NixOS","mode":"auto","prefer_local":true,"limit":1,"generate_response":true,"max_tokens":32,"context":{"skip_gap_tracking":true,"source":"seed-routing-traffic"}}' \
   2>/dev/null) || GEN_CODE="000"
 if [[ "$GEN_CODE" =~ ^2 ]]; then
   printf 'seed-routing-traffic: backend-selection seeded (HTTP %s)\n' "$GEN_CODE"

@@ -71,6 +71,7 @@ _local_llm_loading_ref: Optional[Callable] = None   # lambda: _local_llm_loading
 _queue_depth_ref: Optional[Callable] = None          # lambda: _model_loading_queue_depth
 _queue_max_ref: Optional[Callable] = None            # lambda: _MODEL_QUEUE_MAX
 _workflow_sessions_lock = asyncio.Lock()
+_runtime_registry_lock = asyncio.Lock()
 
 
 def _workflow_tool_catalog(query: str) -> List[Dict[str, str]]:
@@ -117,6 +118,246 @@ def _workflow_sessions_path() -> Path:
         )
     )
     return data_dir / "workflow-sessions.json"
+
+
+def _runtime_registry_path() -> Path:
+    data_dir = Path(
+        os.path.expanduser(
+            os.getenv("DATA_DIR", "~/.local/share/nixos-ai-stack/hybrid")
+        )
+    )
+    return data_dir / "agent-runtimes.json"
+
+
+def _workflow_blueprints_path() -> Path:
+    return Path(
+        os.path.expanduser(
+            os.getenv("WORKFLOW_BLUEPRINTS_FILE", "config/workflow-blueprints.json")
+        )
+    )
+
+
+def _runtime_safety_policy_path() -> Path:
+    return Path(
+        os.path.expanduser(
+            os.getenv("RUNTIME_SAFETY_POLICY_FILE", "config/runtime-safety-policy.json")
+        )
+    )
+
+
+def _runtime_isolation_profiles_path() -> Path:
+    return Path(
+        os.path.expanduser(
+            os.getenv("RUNTIME_ISOLATION_PROFILES_FILE", "config/runtime-isolation-profiles.json")
+        )
+    )
+
+
+def _parity_scorecard_path() -> Path:
+    return Path(
+        os.path.expanduser(
+            os.getenv("PARITY_SCORECARD_FILE", "config/parity-scorecard.json")
+        )
+    )
+
+
+def _runtime_scheduler_policy_path() -> Path:
+    return Path(
+        os.path.expanduser(
+            os.getenv("RUNTIME_SCHEDULER_POLICY_FILE", "config/runtime-scheduler-policy.json")
+        )
+    )
+
+
+def _default_runtime_safety_policy() -> Dict[str, Any]:
+    return {
+        "modes": {
+            "plan-readonly": {
+                "allowed_risk_classes": ["safe"],
+                "requires_approval": ["review-required"],
+                "blocked": ["blocked"],
+            },
+            "execute-mutating": {
+                "allowed_risk_classes": ["safe"],
+                "requires_approval": ["review-required"],
+                "blocked": ["blocked"],
+            },
+        }
+    }
+
+
+def _load_runtime_safety_policy() -> Dict[str, Any]:
+    path = _runtime_safety_policy_path()
+    if not path.exists():
+        return _default_runtime_safety_policy()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("modes"), dict):
+            return data
+    except Exception:
+        pass
+    return _default_runtime_safety_policy()
+
+
+def _default_runtime_isolation_profiles() -> Dict[str, Any]:
+    return {
+        "default_profile_by_mode": {
+            "plan-readonly": "readonly-strict",
+            "execute-mutating": "execute-guarded",
+        },
+        "profiles": {
+            "readonly-strict": {
+                "workspace_root": "/tmp/agent-runs",
+                "allow_workspace_write": False,
+                "allowed_processes": ["rg", "cat", "ls", "jq", "sed"],
+                "network_policy": "none",
+            },
+            "execute-guarded": {
+                "workspace_root": "/tmp/agent-runs",
+                "allow_workspace_write": True,
+                "allowed_processes": ["rg", "cat", "ls", "jq", "sed", "bash", "python3", "node", "git"],
+                "network_policy": "loopback",
+            },
+        },
+    }
+
+
+def _load_runtime_isolation_profiles() -> Dict[str, Any]:
+    path = _runtime_isolation_profiles_path()
+    if not path.exists():
+        return _default_runtime_isolation_profiles()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("profiles"), dict):
+            return data
+    except Exception:
+        pass
+    return _default_runtime_isolation_profiles()
+
+
+def _default_runtime_scheduler_policy() -> Dict[str, Any]:
+    return {
+        "version": "1.0",
+        "selection": {
+            "max_candidates": 5,
+            "allowed_statuses": ["ready", "degraded"],
+            "require_all_tags": False,
+            "freshness_window_seconds": 3600,
+            "weights": {
+                "status": 0.45,
+                "runtime_class": 0.2,
+                "transport": 0.15,
+                "tag_overlap": 0.1,
+                "freshness": 0.1,
+            },
+        },
+        "status_weights": {
+            "ready": 1.0,
+            "degraded": 0.5,
+            "draining": 0.1,
+            "offline": 0.0,
+        },
+    }
+
+
+def _load_runtime_scheduler_policy() -> Dict[str, Any]:
+    path = _runtime_scheduler_policy_path()
+    if not path.exists():
+        return _default_runtime_scheduler_policy()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("selection"), dict):
+            return data
+    except Exception:
+        pass
+    return _default_runtime_scheduler_policy()
+
+
+def _normalize_tags(value: Any) -> List[str]:
+    if not isinstance(value, list):
+        return []
+    tags: List[str] = []
+    seen = set()
+    for raw in value:
+        tag = str(raw).strip().lower()
+        if tag and tag not in seen:
+            seen.add(tag)
+            tags.append(tag)
+    return tags
+
+
+def _runtime_schedule_score(
+    runtime: Dict[str, Any],
+    requirements: Dict[str, Any],
+    policy: Dict[str, Any],
+    now: int,
+) -> Dict[str, Any]:
+    selection = policy.get("selection", {}) if isinstance(policy, dict) else {}
+    weights = selection.get("weights", {}) if isinstance(selection, dict) else {}
+    status_weights = policy.get("status_weights", {}) if isinstance(policy, dict) else {}
+
+    runtime_status = str(runtime.get("status", "unknown")).strip().lower()
+    runtime_class = str(runtime.get("runtime_class", "")).strip().lower()
+    runtime_transport = str(runtime.get("transport", "")).strip().lower()
+    runtime_tags = _normalize_tags(runtime.get("tags", []))
+
+    req_class = str(requirements.get("runtime_class", "")).strip().lower()
+    req_transport = str(requirements.get("transport", "")).strip().lower()
+    req_tags = _normalize_tags(requirements.get("tags", []))
+
+    updated_at = int(runtime.get("updated_at") or 0)
+    freshness_window = max(1, int(selection.get("freshness_window_seconds", 3600)))
+
+    status_score = float(status_weights.get(runtime_status, 0.0))
+    class_score = 1.0 if req_class and runtime_class == req_class else (0.5 if not req_class else 0.0)
+    transport_score = 1.0 if req_transport and runtime_transport == req_transport else (0.5 if not req_transport else 0.0)
+    if req_tags:
+        overlap = len(set(req_tags) & set(runtime_tags))
+        tag_score = overlap / max(1, len(req_tags))
+    else:
+        tag_score = 0.5
+    age_s = max(0, now - updated_at) if updated_at > 0 else freshness_window * 4
+    freshness_score = max(0.0, min(1.0, 1.0 - (age_s / float(freshness_window))))
+
+    total = (
+        float(weights.get("status", 0.45)) * status_score
+        + float(weights.get("runtime_class", 0.2)) * class_score
+        + float(weights.get("transport", 0.15)) * transport_score
+        + float(weights.get("tag_overlap", 0.1)) * tag_score
+        + float(weights.get("freshness", 0.1)) * freshness_score
+    )
+    return {
+        "score": round(total, 6),
+        "components": {
+            "status": round(status_score, 4),
+            "runtime_class": round(class_score, 4),
+            "transport": round(transport_score, 4),
+            "tag_overlap": round(tag_score, 4),
+            "freshness": round(freshness_score, 4),
+        },
+    }
+
+
+async def _load_runtime_registry() -> Dict[str, Any]:
+    path = _runtime_registry_path()
+    if not path.exists():
+        return {"runtimes": {}}
+    try:
+        raw = path.read_text(encoding="utf-8")
+        data = json.loads(raw)
+        if isinstance(data, dict) and isinstance(data.get("runtimes"), dict):
+            return data
+    except Exception:
+        pass
+    return {"runtimes": {}}
+
+
+async def _save_runtime_registry(data: Dict[str, Any]) -> None:
+    path = _runtime_registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    tmp.replace(path)
 
 
 def _build_workflow_plan(query: str) -> Dict[str, Any]:
@@ -209,6 +450,108 @@ async def _save_workflow_sessions(data: Dict[str, Any]) -> None:
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
     tmp.replace(path)
+
+
+def _normalize_safety_mode(value: str) -> str:
+    mode = str(value or "").strip().lower()
+    if mode in {"plan-readonly", "plan_readonly", "readonly"}:
+        return "plan-readonly"
+    if mode in {"execute-mutating", "execute_mutating", "execute"}:
+        return "execute-mutating"
+    return "plan-readonly"
+
+
+def _default_budget(data: Dict[str, Any]) -> Dict[str, int]:
+    env_token_limit = int(os.getenv("AI_RUN_DEFAULT_TOKEN_LIMIT", "8000"))
+    env_tool_call_limit = int(os.getenv("AI_RUN_DEFAULT_TOOL_CALL_LIMIT", "40"))
+    return {
+        "token_limit": int(data.get("token_limit", env_token_limit)),
+        "tool_call_limit": int(data.get("tool_call_limit", env_tool_call_limit)),
+    }
+
+
+def _default_usage() -> Dict[str, int]:
+    return {"tokens_used": 0, "tool_calls_used": 0}
+
+
+def _ensure_session_runtime_fields(session: Dict[str, Any]) -> None:
+    default_mode = _normalize_safety_mode(os.getenv("AI_RUN_DEFAULT_SAFETY_MODE", "plan-readonly"))
+    default_token_limit = int(os.getenv("AI_RUN_DEFAULT_TOKEN_LIMIT", "8000"))
+    default_tool_call_limit = int(os.getenv("AI_RUN_DEFAULT_TOOL_CALL_LIMIT", "40"))
+    session.setdefault("safety_mode", default_mode)
+    session.setdefault("budget", {"token_limit": default_token_limit, "tool_call_limit": default_tool_call_limit})
+    session.setdefault("usage", {"tokens_used": 0, "tool_calls_used": 0})
+    session.setdefault("trajectory", [])
+    session.setdefault(
+        "isolation",
+        {
+            "profile": "",
+            "workspace_root": "",
+            "network_policy": "",
+        },
+    )
+
+
+def _budget_exceeded(session: Dict[str, Any]) -> Optional[str]:
+    budget = session.get("budget", {})
+    usage = session.get("usage", {})
+    token_limit = int(budget.get("token_limit", 0))
+    tool_call_limit = int(budget.get("tool_call_limit", 0))
+    tokens_used = int(usage.get("tokens_used", 0))
+    tool_calls_used = int(usage.get("tool_calls_used", 0))
+    if token_limit > 0 and tokens_used > token_limit:
+        return f"token budget exceeded: {tokens_used}>{token_limit}"
+    if tool_call_limit > 0 and tool_calls_used > tool_call_limit:
+        return f"tool-call budget exceeded: {tool_calls_used}>{tool_call_limit}"
+    return None
+
+
+def _resolve_isolation_profile(session: Dict[str, Any]) -> Dict[str, Any]:
+    cfg = _load_runtime_isolation_profiles()
+    profiles = cfg.get("profiles", {}) if isinstance(cfg, dict) else {}
+    isolation = session.get("isolation", {}) if isinstance(session.get("isolation"), dict) else {}
+    profile_name = str(isolation.get("profile", "")).strip()
+    if not profile_name:
+        by_mode = cfg.get("default_profile_by_mode", {}) if isinstance(cfg, dict) else {}
+        profile_name = str(by_mode.get(session.get("safety_mode", "plan-readonly"), "readonly-strict"))
+    profile = profiles.get(profile_name, profiles.get("readonly-strict", {}))
+    workspace_root = str(isolation.get("workspace_root", "")).strip() or str(profile.get("workspace_root", "/tmp/agent-runs"))
+    network_policy = str(isolation.get("network_policy", "")).strip() or str(profile.get("network_policy", "none"))
+    return {
+        "profile_name": profile_name,
+        "workspace_root": workspace_root,
+        "network_policy": network_policy,
+        "allow_workspace_write": bool(profile.get("allow_workspace_write", False)),
+        "allowed_processes": list(profile.get("allowed_processes", [])),
+    }
+
+
+def _check_isolation_constraints(session: Dict[str, Any], data: Dict[str, Any]) -> Optional[str]:
+    isolation = _resolve_isolation_profile(session)
+    exec_meta = data.get("execution", {}) if isinstance(data.get("execution"), dict) else {}
+    workspace_path = str(exec_meta.get("workspace_path", "")).strip()
+    process_exec = str(exec_meta.get("process_exec", "")).strip()
+    requested_network = str(exec_meta.get("network_access", "")).strip().lower()
+
+    if workspace_path:
+        root = os.path.abspath(isolation["workspace_root"])
+        wp = os.path.abspath(workspace_path)
+        if not (wp == root or wp.startswith(root.rstrip("/") + "/")):
+            return f"workspace path outside isolation root: {workspace_path}"
+
+    if process_exec:
+        exe_name = os.path.basename(process_exec)
+        allowed = set(isolation.get("allowed_processes", []))
+        if allowed and exe_name not in allowed:
+            return f"process not allowed by isolation profile: {exe_name}"
+
+    if requested_network:
+        policy = isolation.get("network_policy", "none")
+        order = {"none": 0, "loopback": 1, "egress": 2}
+        if order.get(requested_network, 99) > order.get(policy, 0):
+            return f"network access '{requested_network}' exceeds policy '{policy}'"
+
+    return None
 
 
 def init(
@@ -927,8 +1270,24 @@ async def run_http_mode(port: int) -> None:
                 "phase_state": phases,
                 "current_phase_index": 0,
                 "status": "in_progress",
+                "safety_mode": _normalize_safety_mode(str(data.get("safety_mode", "plan-readonly"))),
+                "budget": _default_budget(data),
+                "usage": _default_usage(),
+                "isolation": {
+                    "profile": str(data.get("isolation_profile", "")).strip(),
+                    "workspace_root": str(data.get("workspace_root", "")).strip(),
+                    "network_policy": str(data.get("network_policy", "")).strip(),
+                },
                 "created_at": int(time.time()),
                 "updated_at": int(time.time()),
+                "trajectory": [
+                    {
+                        "ts": int(time.time()),
+                        "event_type": "session_start",
+                        "phase_id": "discover",
+                        "detail": "workflow session created",
+                    }
+                ],
             }
             async with _workflow_sessions_lock:
                 sessions = await _load_workflow_sessions()
@@ -951,6 +1310,7 @@ async def run_http_mode(port: int) -> None:
                 session = sessions.get(session_id)
             if not session:
                 return web.json_response({"error": "session not found"}, status=404)
+            _ensure_session_runtime_fields(session)
             if include_lineage:
                 payload = dict(session)
                 payload["lineage"] = _session_lineage(sessions, session_id)
@@ -971,12 +1331,16 @@ async def run_http_mode(port: int) -> None:
                 current_phase = None
                 if 0 <= current_idx < len(phase_state):
                     current_phase = phase_state[current_idx].get("id")
+                _ensure_session_runtime_fields(sess)
                 items.append({
                     "session_id": sid,
                     "status": sess.get("status", "unknown"),
                     "objective": sess.get("objective", ""),
                     "current_phase": current_phase,
                     "current_phase_index": current_idx,
+                    "safety_mode": sess.get("safety_mode", "plan-readonly"),
+                    "budget": sess.get("budget", {}),
+                    "usage": sess.get("usage", {}),
                     "created_at": sess.get("created_at"),
                     "updated_at": sess.get("updated_at"),
                 })
@@ -1097,6 +1461,7 @@ async def run_http_mode(port: int) -> None:
                 session = sessions.get(session_id)
                 if not session:
                     return web.json_response({"error": "session not found"}, status=404)
+                _ensure_session_runtime_fields(session)
 
                 idx = int(session.get("current_phase_index", 0))
                 phases = session.get("phase_state", [])
@@ -1110,6 +1475,19 @@ async def run_http_mode(port: int) -> None:
                 phase = phases[idx]
                 if note:
                     phase.setdefault("notes", []).append({"ts": int(time.time()), "text": note})
+                phase_id = str(phase.get("id", f"phase-{idx}"))
+
+                # In plan-readonly mode, phase pass/skip/fail is allowed, but mutating notes must be explicit.
+                if session.get("safety_mode") == "plan-readonly":
+                    mutating_note = any(x in note.lower() for x in ("write", "apply", "edit", "delete", "execute"))
+                    if mutating_note and action == "note":
+                        return web.json_response(
+                            {
+                                "error": "plan-readonly mode blocks mutating action notes; switch to execute-mutating",
+                                "safety_mode": "plan-readonly",
+                            },
+                            status=403,
+                        )
 
                 if action in {"pass", "skip"}:
                     phase["status"] = "completed"
@@ -1132,6 +1510,27 @@ async def run_http_mode(port: int) -> None:
                     if phase.get("status") == "pending":
                         phase["status"] = "in_progress"
                         phase["started_at"] = int(time.time())
+
+                session["trajectory"].append(
+                    {
+                        "ts": int(time.time()),
+                        "event_type": "phase_advance",
+                        "phase_id": phase_id,
+                        "action": action,
+                        "note": note,
+                    }
+                )
+
+                budget_error = _budget_exceeded(session)
+                if budget_error:
+                    session["status"] = "failed"
+                    session["trajectory"].append(
+                        {
+                            "ts": int(time.time()),
+                            "event_type": "budget_violation",
+                            "detail": budget_error,
+                        }
+                    )
 
                 session["phase_state"] = phases
                 session["updated_at"] = int(time.time())
@@ -1216,6 +1615,579 @@ async def run_http_mode(port: int) -> None:
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
+    async def handle_workflow_run_start(request: web.Request) -> web.Response:
+        """Start a workflow run with explicit safety mode + budget contract."""
+        try:
+            data = await request.json()
+            query = (data.get("query") or data.get("prompt") or "").strip()
+            if not query:
+                return web.json_response({"error": "query required"}, status=400)
+            session_id = str(uuid4())
+            plan = _build_workflow_plan(query)
+            phases = []
+            for idx, phase in enumerate(plan.get("phases", [])):
+                phases.append({
+                    "id": phase.get("id", f"phase-{idx}"),
+                    "status": "in_progress" if idx == 0 else "pending",
+                    "started_at": int(time.time()) if idx == 0 else None,
+                    "completed_at": None,
+                    "notes": [],
+                })
+            now = int(time.time())
+            session = {
+                "session_id": session_id,
+                "objective": query,
+                "plan": plan,
+                "phase_state": phases,
+                "current_phase_index": 0,
+                "status": "in_progress",
+                "safety_mode": _normalize_safety_mode(str(data.get("safety_mode", "plan-readonly"))),
+                "budget": _default_budget(data),
+                "usage": _default_usage(),
+                "isolation": {
+                    "profile": str(data.get("isolation_profile", "")).strip(),
+                    "workspace_root": str(data.get("workspace_root", "")).strip(),
+                    "network_policy": str(data.get("network_policy", "")).strip(),
+                },
+                "created_at": now,
+                "updated_at": now,
+                "trajectory": [
+                    {
+                        "ts": now,
+                        "event_type": "run_start",
+                        "phase_id": "discover",
+                        "detail": "workflow run started",
+                    }
+                ],
+            }
+            async with _workflow_sessions_lock:
+                sessions = await _load_workflow_sessions()
+                sessions[session_id] = session
+                await _save_workflow_sessions(sessions)
+            return web.json_response(session)
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_workflow_run_get(request: web.Request) -> web.Response:
+        """Get workflow run state, including budget + usage + trajectory summary."""
+        try:
+            session_id = request.match_info.get("session_id", "")
+            include_replay = request.rel_url.query.get("replay", "false").lower() in {"1", "true", "yes"}
+            async with _workflow_sessions_lock:
+                sessions = await _load_workflow_sessions()
+                session = sessions.get(session_id)
+            if not session:
+                return web.json_response({"error": "session not found"}, status=404)
+            _ensure_session_runtime_fields(session)
+            payload = dict(session)
+            if not include_replay:
+                payload["trajectory_count"] = len(session.get("trajectory", []))
+                payload.pop("trajectory", None)
+            return web.json_response(payload)
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_workflow_run_mode(request: web.Request) -> web.Response:
+        """Switch run safety mode; moving to execute-mutating requires confirm=true."""
+        try:
+            session_id = request.match_info.get("session_id", "")
+            data = await request.json()
+            target_mode = _normalize_safety_mode(str(data.get("safety_mode", "plan-readonly")))
+            confirm = bool(data.get("confirm", False))
+            async with _workflow_sessions_lock:
+                sessions = await _load_workflow_sessions()
+                session = sessions.get(session_id)
+                if not session:
+                    return web.json_response({"error": "session not found"}, status=404)
+                _ensure_session_runtime_fields(session)
+                if target_mode == "execute-mutating" and not confirm:
+                    return web.json_response(
+                        {"error": "confirm=true required to switch to execute-mutating"},
+                        status=400,
+                    )
+                session["safety_mode"] = target_mode
+                session["updated_at"] = int(time.time())
+                session["trajectory"].append(
+                    {
+                        "ts": int(time.time()),
+                        "event_type": "mode_change",
+                        "phase_id": f"phase-{int(session.get('current_phase_index', 0))}",
+                        "detail": f"safety_mode -> {target_mode}",
+                    }
+                )
+                sessions[session_id] = session
+                await _save_workflow_sessions(sessions)
+            return web.json_response({"session_id": session_id, "safety_mode": target_mode})
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_workflow_run_isolation_get(request: web.Request) -> web.Response:
+        """Return current and resolved isolation profile for a run."""
+        try:
+            session_id = request.match_info.get("session_id", "")
+            async with _workflow_sessions_lock:
+                sessions = await _load_workflow_sessions()
+                session = sessions.get(session_id)
+            if not session:
+                return web.json_response({"error": "session not found"}, status=404)
+            _ensure_session_runtime_fields(session)
+            return web.json_response(
+                {
+                    "session_id": session_id,
+                    "isolation": session.get("isolation", {}),
+                    "resolved_profile": _resolve_isolation_profile(session),
+                }
+            )
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_workflow_run_isolation_set(request: web.Request) -> web.Response:
+        """Update isolation profile fields for a run."""
+        try:
+            session_id = request.match_info.get("session_id", "")
+            data = await request.json()
+            async with _workflow_sessions_lock:
+                sessions = await _load_workflow_sessions()
+                session = sessions.get(session_id)
+                if not session:
+                    return web.json_response({"error": "session not found"}, status=404)
+                _ensure_session_runtime_fields(session)
+                iso = dict(session.get("isolation", {}))
+                if "profile" in data:
+                    iso["profile"] = str(data.get("profile", "")).strip()
+                if "workspace_root" in data:
+                    iso["workspace_root"] = str(data.get("workspace_root", "")).strip()
+                if "network_policy" in data:
+                    iso["network_policy"] = str(data.get("network_policy", "")).strip()
+                session["isolation"] = iso
+                session["updated_at"] = int(time.time())
+                session["trajectory"].append(
+                    {
+                        "ts": int(time.time()),
+                        "event_type": "isolation_update",
+                        "phase_id": f"phase-{int(session.get('current_phase_index', 0))}",
+                        "detail": f"isolation -> {iso}",
+                    }
+                )
+                sessions[session_id] = session
+                await _save_workflow_sessions(sessions)
+            return web.json_response(
+                {
+                    "session_id": session_id,
+                    "isolation": session.get("isolation", {}),
+                    "resolved_profile": _resolve_isolation_profile(session),
+                }
+            )
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_workflow_run_event(request: web.Request) -> web.Response:
+        """Append run trajectory event and enforce safety mode + budget guardrails."""
+        try:
+            session_id = request.match_info.get("session_id", "")
+            data = await request.json()
+            event_type = str(data.get("event_type", "event")).strip().lower()
+            risk_class = str(data.get("risk_class", "safe")).strip().lower()
+            approved = bool(data.get("approved", False))
+            token_delta = int(data.get("token_delta", 0))
+            tool_call_delta = int(data.get("tool_call_delta", 0))
+            detail = str(data.get("detail", "")).strip()
+
+            async with _workflow_sessions_lock:
+                sessions = await _load_workflow_sessions()
+                session = sessions.get(session_id)
+                if not session:
+                    return web.json_response({"error": "session not found"}, status=404)
+                _ensure_session_runtime_fields(session)
+                mode = str(session.get("safety_mode", "plan-readonly"))
+                policy = _load_runtime_safety_policy()
+                mode_policy = (policy.get("modes", {}) or {}).get(mode, {})
+                allowed = set(mode_policy.get("allowed_risk_classes", ["safe"]))
+                requires_approval = set(mode_policy.get("requires_approval", ["review-required"]))
+                blocked = set(mode_policy.get("blocked", ["blocked"]))
+
+                if risk_class in blocked:
+                    return web.json_response({"error": "blocked risk_class cannot be executed"}, status=403)
+                if risk_class in requires_approval and not approved:
+                    return web.json_response({"error": "review-required event must include approved=true"}, status=403)
+                if risk_class not in allowed and risk_class not in requires_approval:
+                    return web.json_response(
+                        {
+                            "error": "risk_class not allowed by runtime safety policy",
+                            "risk_class": risk_class,
+                            "safety_mode": mode,
+                        },
+                        status=403,
+                    )
+
+                isolation_error = _check_isolation_constraints(session, data)
+                if isolation_error:
+                    return web.json_response(
+                        {
+                            "error": isolation_error,
+                            "isolation": session.get("isolation", {}),
+                            "resolved_profile": _resolve_isolation_profile(session),
+                        },
+                        status=403,
+                    )
+
+                usage = session.get("usage", {})
+                usage["tokens_used"] = int(usage.get("tokens_used", 0)) + max(0, token_delta)
+                usage["tool_calls_used"] = int(usage.get("tool_calls_used", 0)) + max(0, tool_call_delta)
+                session["usage"] = usage
+                budget_error = _budget_exceeded(session)
+                if budget_error:
+                    return web.json_response(
+                        {"error": budget_error, "usage": usage, "budget": session.get("budget", {})},
+                        status=429,
+                    )
+
+                current_idx = int(session.get("current_phase_index", 0))
+                phase_id = f"phase-{current_idx}"
+                phases = session.get("phase_state", [])
+                if 0 <= current_idx < len(phases):
+                    phase_id = str(phases[current_idx].get("id", phase_id))
+
+                session["trajectory"].append(
+                    {
+                        "ts": int(time.time()),
+                        "event_type": event_type,
+                        "phase_id": phase_id,
+                        "risk_class": risk_class,
+                        "approved": approved,
+                        "token_delta": token_delta,
+                        "tool_call_delta": tool_call_delta,
+                        "detail": detail,
+                    }
+                )
+                session["updated_at"] = int(time.time())
+                sessions[session_id] = session
+                await _save_workflow_sessions(sessions)
+
+            return web.json_response(
+                {
+                    "session_id": session_id,
+                    "usage": session.get("usage", {}),
+                    "budget": session.get("budget", {}),
+                    "trajectory_count": len(session.get("trajectory", [])),
+                }
+            )
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_workflow_run_replay(request: web.Request) -> web.Response:
+        """Replay stored trajectory with optional filtering."""
+        try:
+            session_id = request.match_info.get("session_id", "")
+            phase = str(request.rel_url.query.get("phase", "")).strip()
+            event_type = str(request.rel_url.query.get("event_type", "")).strip().lower()
+            async with _workflow_sessions_lock:
+                sessions = await _load_workflow_sessions()
+                session = sessions.get(session_id)
+            if not session:
+                return web.json_response({"error": "session not found"}, status=404)
+            _ensure_session_runtime_fields(session)
+            events = list(session.get("trajectory", []))
+            if phase:
+                events = [e for e in events if str(e.get("phase_id", "")) == phase]
+            if event_type:
+                events = [e for e in events if str(e.get("event_type", "")).lower() == event_type]
+            return web.json_response(
+                {
+                    "session_id": session_id,
+                    "count": len(events),
+                    "events": events,
+                    "usage": session.get("usage", {}),
+                    "budget": session.get("budget", {}),
+                }
+            )
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_workflow_blueprints(_request: web.Request) -> web.Response:
+        """Return curated MCP workflow blueprints for common coding-agent tasks."""
+        try:
+            path = _workflow_blueprints_path()
+            if not path.exists():
+                return web.json_response({"blueprints": [], "count": 0, "source": str(path)})
+            raw = path.read_text(encoding="utf-8")
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                items = data.get("blueprints", [])
+                return web.json_response({"blueprints": items, "count": len(items), "source": str(path)})
+            return web.json_response({"blueprints": [], "count": 0, "source": str(path)})
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_parity_scorecard(_request: web.Request) -> web.Response:
+        """Return declarative parity scorecard (from env path, fallback to repo config)."""
+        try:
+            path = _parity_scorecard_path()
+            if not path.exists():
+                return web.json_response({"scorecard": {}, "source": str(path), "exists": False})
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return web.json_response({"scorecard": data, "source": str(path), "exists": True})
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_runtime_register(request: web.Request) -> web.Response:
+        """Register or update an agent runtime in local control-plane state."""
+        try:
+            data = await request.json()
+            runtime_id = str(data.get("runtime_id") or uuid4())
+            now = int(time.time())
+            record = {
+                "runtime_id": runtime_id,
+                "name": str(data.get("name", runtime_id)),
+                "profile": str(data.get("profile", "default")),
+                "status": str(data.get("status", "ready")),
+                "runtime_class": str(data.get("runtime_class", "generic")),
+                "transport": str(data.get("transport", "http")),
+                "endpoint_env_var": str(data.get("endpoint_env_var", "")),
+                "tags": data.get("tags", []) if isinstance(data.get("tags", []), list) else [],
+                "updated_at": now,
+            }
+            async with _runtime_registry_lock:
+                registry = await _load_runtime_registry()
+                existing = registry["runtimes"].get(runtime_id, {})
+                record["created_at"] = int(existing.get("created_at", now))
+                record["deployments"] = existing.get("deployments", [])
+                registry["runtimes"][runtime_id] = record
+                await _save_runtime_registry(registry)
+            return web.json_response(record)
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_runtime_list(_request: web.Request) -> web.Response:
+        try:
+            async with _runtime_registry_lock:
+                registry = await _load_runtime_registry()
+            items = list(registry.get("runtimes", {}).values())
+            items.sort(key=lambda x: int(x.get("updated_at") or 0), reverse=True)
+            return web.json_response({"runtimes": items, "count": len(items)})
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_runtime_get(request: web.Request) -> web.Response:
+        try:
+            runtime_id = request.match_info.get("runtime_id", "")
+            async with _runtime_registry_lock:
+                registry = await _load_runtime_registry()
+                runtime = registry.get("runtimes", {}).get(runtime_id)
+            if not runtime:
+                return web.json_response({"error": "runtime not found"}, status=404)
+            return web.json_response(runtime)
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_runtime_status(request: web.Request) -> web.Response:
+        try:
+            runtime_id = request.match_info.get("runtime_id", "")
+            data = await request.json()
+            status = str(data.get("status", "ready"))
+            note = str(data.get("note", "")).strip()
+            async with _runtime_registry_lock:
+                registry = await _load_runtime_registry()
+                runtime = registry.get("runtimes", {}).get(runtime_id)
+                if not runtime:
+                    return web.json_response({"error": "runtime not found"}, status=404)
+                runtime["status"] = status
+                runtime["updated_at"] = int(time.time())
+                if note:
+                    runtime.setdefault("status_notes", []).append({"ts": int(time.time()), "text": note})
+                registry["runtimes"][runtime_id] = runtime
+                await _save_runtime_registry(registry)
+            return web.json_response(runtime)
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_runtime_deploy(request: web.Request) -> web.Response:
+        """Record deployment events for runtime rollout tracking."""
+        try:
+            runtime_id = request.match_info.get("runtime_id", "")
+            data = await request.json()
+            deployment = {
+                "deployment_id": str(data.get("deployment_id") or uuid4()),
+                "version": str(data.get("version", "")),
+                "profile": str(data.get("profile", "default")),
+                "target": str(data.get("target", "local")),
+                "status": str(data.get("status", "deployed")),
+                "created_at": int(time.time()),
+                "note": str(data.get("note", "")),
+            }
+            async with _runtime_registry_lock:
+                registry = await _load_runtime_registry()
+                runtime = registry.get("runtimes", {}).get(runtime_id)
+                if not runtime:
+                    return web.json_response({"error": "runtime not found"}, status=404)
+                runtime.setdefault("deployments", []).append(deployment)
+                runtime["updated_at"] = int(time.time())
+                registry["runtimes"][runtime_id] = runtime
+                await _save_runtime_registry(registry)
+            return web.json_response({"runtime_id": runtime_id, "deployment": deployment})
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_runtime_rollback(request: web.Request) -> web.Response:
+        """Record rollback requests against runtime deployment history."""
+        try:
+            runtime_id = request.match_info.get("runtime_id", "")
+            data = await request.json()
+            to_deployment_id = str(data.get("to_deployment_id", "")).strip()
+            reason = str(data.get("reason", "")).strip()
+            if not to_deployment_id:
+                return web.json_response({"error": "to_deployment_id required"}, status=400)
+            async with _runtime_registry_lock:
+                registry = await _load_runtime_registry()
+                runtime = registry.get("runtimes", {}).get(runtime_id)
+                if not runtime:
+                    return web.json_response({"error": "runtime not found"}, status=404)
+                runtime.setdefault("rollbacks", []).append(
+                    {
+                        "to_deployment_id": to_deployment_id,
+                        "reason": reason,
+                        "created_at": int(time.time()),
+                    }
+                )
+                runtime["updated_at"] = int(time.time())
+                registry["runtimes"][runtime_id] = runtime
+                await _save_runtime_registry(registry)
+            return web.json_response({"runtime_id": runtime_id, "to_deployment_id": to_deployment_id, "status": "recorded"})
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_runtime_schedule_policy(_request: web.Request) -> web.Response:
+        """Return active runtime scheduler policy (declarative source + defaults)."""
+        try:
+            path = _runtime_scheduler_policy_path()
+            policy = _load_runtime_scheduler_policy()
+            return web.json_response(
+                {
+                    "policy": policy,
+                    "source": str(path),
+                    "exists": path.exists(),
+                }
+            )
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_runtime_schedule(request: web.Request) -> web.Response:
+        """Select the best runtime candidate for a task objective + requirements."""
+        try:
+            data = await request.json()
+            objective = str(data.get("objective") or data.get("query") or "").strip()
+            requirements = data.get("requirements", {}) if isinstance(data.get("requirements"), dict) else {}
+            strategy = str(data.get("strategy", "weighted")).strip().lower()
+            include_degraded = bool(data.get("include_degraded", False))
+            policy = _load_runtime_scheduler_policy()
+            selection = policy.get("selection", {}) if isinstance(policy, dict) else {}
+            allowed_statuses = {
+                str(s).strip().lower()
+                for s in selection.get("allowed_statuses", ["ready"])
+                if str(s).strip()
+            }
+            if include_degraded:
+                allowed_statuses.add("degraded")
+            require_all_tags = bool(selection.get("require_all_tags", False))
+            max_candidates = max(1, int(selection.get("max_candidates", 5)))
+            req_tags = _normalize_tags(requirements.get("tags", []))
+            req_class = str(requirements.get("runtime_class", "")).strip().lower()
+            req_transport = str(requirements.get("transport", "")).strip().lower()
+            now = int(time.time())
+
+            async with _runtime_registry_lock:
+                registry = await _load_runtime_registry()
+                runtimes = list((registry.get("runtimes", {}) or {}).values())
+                candidates: List[Dict[str, Any]] = []
+                for runtime in runtimes:
+                    runtime_id = str(runtime.get("runtime_id", "")).strip()
+                    status = str(runtime.get("status", "unknown")).strip().lower()
+                    if not runtime_id:
+                        continue
+                    if allowed_statuses and status not in allowed_statuses:
+                        continue
+                    runtime_tags = _normalize_tags(runtime.get("tags", []))
+                    if req_tags:
+                        overlap = set(req_tags) & set(runtime_tags)
+                        if require_all_tags and not all(t in runtime_tags for t in req_tags):
+                            continue
+                        if not require_all_tags and not overlap:
+                            continue
+                    if req_class and str(runtime.get("runtime_class", "")).strip().lower() != req_class:
+                        continue
+                    if req_transport and str(runtime.get("transport", "")).strip().lower() != req_transport:
+                        continue
+
+                    scored = _runtime_schedule_score(runtime, requirements, policy, now)
+                    candidates.append(
+                        {
+                            "runtime_id": runtime_id,
+                            "name": runtime.get("name", runtime_id),
+                            "status": runtime.get("status", "unknown"),
+                            "runtime_class": runtime.get("runtime_class", "generic"),
+                            "transport": runtime.get("transport", "http"),
+                            "tags": _normalize_tags(runtime.get("tags", [])),
+                            "updated_at": int(runtime.get("updated_at") or 0),
+                            "score": scored["score"],
+                            "score_components": scored["components"],
+                        }
+                    )
+
+                candidates.sort(key=lambda x: (float(x.get("score", 0.0)), int(x.get("updated_at", 0))), reverse=True)
+                top_candidates = candidates[:max_candidates]
+                if not top_candidates:
+                    return web.json_response(
+                        {
+                            "error": "no_runtime_candidate",
+                            "objective": objective,
+                            "requirements": {
+                                "runtime_class": req_class,
+                                "transport": req_transport,
+                                "tags": req_tags,
+                            },
+                            "allowed_statuses": sorted(allowed_statuses),
+                        },
+                        status=404,
+                    )
+
+                selected = top_candidates[0]
+                selected_runtime = registry.get("runtimes", {}).get(selected["runtime_id"])
+                if isinstance(selected_runtime, dict):
+                    selected_runtime.setdefault("schedule_events", []).append(
+                        {
+                            "ts": now,
+                            "objective": objective[:500],
+                            "strategy": strategy,
+                            "score": selected.get("score", 0.0),
+                            "requirements": {
+                                "runtime_class": req_class,
+                                "transport": req_transport,
+                                "tags": req_tags,
+                            },
+                        }
+                    )
+                    selected_runtime["schedule_events"] = selected_runtime["schedule_events"][-50:]
+                    selected_runtime["updated_at"] = now
+                    registry["runtimes"][selected["runtime_id"]] = selected_runtime
+                    await _save_runtime_registry(registry)
+
+            return web.json_response(
+                {
+                    "objective": objective,
+                    "strategy": strategy,
+                    "selected": selected,
+                    "candidate_count": len(candidates),
+                    "candidates": top_candidates,
+                    "policy": {
+                        "allowed_statuses": sorted(allowed_statuses),
+                        "max_candidates": max_candidates,
+                        "require_all_tags": require_all_tags,
+                    },
+                }
+            )
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
     # ------------------------------------------------------------------
     # App assembly and startup
     # ------------------------------------------------------------------
@@ -1261,6 +2233,23 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/workflow/session/{session_id}/fork", handle_workflow_session_fork)
     http_app.router.add_post("/workflow/session/{session_id}/advance", handle_workflow_session_advance)
     http_app.router.add_post("/review/acceptance", handle_review_acceptance)
+    http_app.router.add_post("/workflow/run/start", handle_workflow_run_start)
+    http_app.router.add_get("/workflow/run/{session_id}", handle_workflow_run_get)
+    http_app.router.add_post("/workflow/run/{session_id}/mode", handle_workflow_run_mode)
+    http_app.router.add_get("/workflow/run/{session_id}/isolation", handle_workflow_run_isolation_get)
+    http_app.router.add_post("/workflow/run/{session_id}/isolation", handle_workflow_run_isolation_set)
+    http_app.router.add_post("/workflow/run/{session_id}/event", handle_workflow_run_event)
+    http_app.router.add_get("/workflow/run/{session_id}/replay", handle_workflow_run_replay)
+    http_app.router.add_get("/workflow/blueprints", handle_workflow_blueprints)
+    http_app.router.add_get("/parity/scorecard", handle_parity_scorecard)
+    http_app.router.add_post("/control/runtimes/register", handle_runtime_register)
+    http_app.router.add_get("/control/runtimes", handle_runtime_list)
+    http_app.router.add_get("/control/runtimes/{runtime_id}", handle_runtime_get)
+    http_app.router.add_post("/control/runtimes/{runtime_id}/status", handle_runtime_status)
+    http_app.router.add_post("/control/runtimes/{runtime_id}/deployments", handle_runtime_deploy)
+    http_app.router.add_post("/control/runtimes/{runtime_id}/rollback", handle_runtime_rollback)
+    http_app.router.add_get("/control/runtimes/schedule/policy", handle_runtime_schedule_policy)
+    http_app.router.add_post("/control/runtimes/schedule/select", handle_runtime_schedule)
 
     runner = web.AppRunner(
         http_app,

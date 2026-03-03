@@ -203,6 +203,70 @@
         description = "Mount /tmp as tmpfs for faster temporary I/O.";
       };
 
+      mutableSpaces = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = ''
+            Enable declarative mutable writable roots for user and program state.
+            Paths are provisioned via systemd-tmpfiles so they remain mutable
+            across rebuilds while all policy lives in Nix options.
+          '';
+        };
+
+        aiStackStateDir = lib.mkOption {
+          type = lib.types.str;
+          default = "/var/lib/nixos-ai-stack";
+          description = ''
+            Base mutable state directory for AI stack runtime metadata and
+            declarative helper artifacts (optimizer overrides, integrity baseline).
+          '';
+        };
+
+        aiStackOptimizerDir = lib.mkOption {
+          type = lib.types.str;
+          default = "/var/lib/nixos-ai-stack/optimizer";
+          description = ''
+            Mutable optimizer directory (for PRSI optimizer state and
+            switchboard/hybrid runtime override environment files).
+          '';
+        };
+
+        aiStackLogDir = lib.mkOption {
+          type = lib.types.str;
+          default = "/var/log/nixos-ai-stack";
+          description = ''
+            Mutable AI stack operational log directory used by optimization and
+            gap-closure loops.
+          '';
+        };
+
+        userWritablePaths = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [
+            "/var/lib/nixos-ai-stack/mutable/user"
+          ];
+          description = ''
+            Writable roots owned by the primary user for user-level mutable data.
+            Keep paths absolute and outside the Nix store.
+          '';
+        };
+
+        programWritablePaths = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [
+            "/var/lib/nixos-ai-stack/mutable/program"
+            "/var/lib/nixos-ai-stack"
+            "/var/lib/nixos-ai-stack/optimizer"
+            "/var/log/nixos-ai-stack"
+          ];
+          description = ''
+            Writable roots used by managed services/programs for mutable state.
+            These paths are also used by service hardening allowlists.
+          '';
+        };
+      };
+
       nixBinaryCaches = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [
@@ -905,6 +969,134 @@
             type = lib.types.ints.positive;
             default = 3000;
             description = "Default latency SLO target (ms) for harness evaluations.";
+          };
+        };
+
+        runtime = {
+          defaultSafetyMode = lib.mkOption {
+            type = lib.types.enum [ "plan-readonly" "execute-mutating" ];
+            default = "plan-readonly";
+            description = "Default workflow run safety mode for hybrid coordinator sessions.";
+          };
+
+          defaultTokenLimit = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 8000;
+            description = "Default per-run token budget when not explicitly provided by client.";
+          };
+
+          defaultToolCallLimit = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 40;
+            description = "Default per-run tool-call budget when not explicitly provided by client.";
+          };
+
+          safetyPolicy = lib.mkOption {
+            type = lib.types.attrs;
+            default = {
+              modes = {
+                "plan-readonly" = {
+                  allowed_risk_classes = [ "safe" ];
+                  requires_approval = [ "review-required" ];
+                  blocked = [ "blocked" ];
+                };
+                "execute-mutating" = {
+                  allowed_risk_classes = [ "safe" ];
+                  requires_approval = [ "review-required" ];
+                  blocked = [ "blocked" ];
+                };
+              };
+            };
+            description = "Declarative runtime safety policy consumed by hybrid coordinator.";
+          };
+
+          isolationProfiles = lib.mkOption {
+            type = lib.types.attrs;
+            default = {
+              default_profile_by_mode = {
+                "plan-readonly" = "readonly-strict";
+                "execute-mutating" = "execute-guarded";
+              };
+              profiles = {
+                "readonly-strict" = {
+                  workspace_root = "/var/lib/nixos-ai-stack/mutable/program/agent-runs";
+                  allow_workspace_write = false;
+                  allowed_processes = [ "rg" "cat" "ls" "jq" "sed" ];
+                  network_policy = "none";
+                };
+                "execute-guarded" = {
+                  workspace_root = "/var/lib/nixos-ai-stack/mutable/program/agent-runs";
+                  allow_workspace_write = true;
+                  allowed_processes = [ "rg" "cat" "ls" "jq" "sed" "bash" "python3" "node" "git" ];
+                  network_policy = "loopback";
+                };
+              };
+            };
+            description = "Declarative per-mode runtime isolation profiles for workflow runs.";
+          };
+
+          workflowBlueprints = lib.mkOption {
+            type = lib.types.attrs;
+            default = {
+              version = "1.0";
+              blueprints = [
+                {
+                  id = "coding-bugfix-safe";
+                  title = "Coding Bugfix (Safe First)";
+                  default_safety_mode = "plan-readonly";
+                  phases = [
+                    { id = "discover"; tools = [ "hints" "route_search" "tree_search" ]; }
+                    { id = "plan"; tools = [ "workflow_plan" ]; }
+                    { id = "execute"; tools = [ "route_search" "memory_recall" ]; requires_approval = true; }
+                    { id = "validate"; tools = [ "harness_eval" "health" ]; }
+                  ];
+                }
+              ];
+            };
+            description = "Declarative workflow blueprint catalog served by hybrid coordinator.";
+          };
+
+          schedulerPolicy = lib.mkOption {
+            type = lib.types.attrs;
+            default = {
+              version = "1.0";
+              selection = {
+                max_candidates = 5;
+                allowed_statuses = [ "ready" "degraded" ];
+                require_all_tags = false;
+                freshness_window_seconds = 3600;
+                weights = {
+                  status = 0.45;
+                  runtime_class = 0.2;
+                  transport = 0.15;
+                  tag_overlap = 0.1;
+                  freshness = 0.1;
+                };
+              };
+              status_weights = {
+                ready = 1.0;
+                degraded = 0.5;
+                draining = 0.1;
+                offline = 0.0;
+              };
+            };
+            description = "Declarative runtime scheduling policy for control-plane candidate selection.";
+          };
+
+          parityScorecard = lib.mkOption {
+            type = lib.types.attrs;
+            default = {
+              version = "1.0";
+              tracks = [
+                { id = "run_trajectory_replay"; weight = 0.2; status = "partial"; }
+                { id = "runtime_control_plane"; weight = 0.2; status = "partial"; }
+                { id = "runtime_safety_envelope"; weight = 0.2; status = "partial"; }
+                { id = "budget_guardrails"; weight = 0.15; status = "partial"; }
+                { id = "cli_workflow_ergonomics"; weight = 0.15; status = "partial"; }
+                { id = "mcp_workflow_blueprints"; weight = 0.1; status = "partial"; }
+              ];
+            };
+            description = "Declarative parity scorecard data source for runtime/reporting.";
           };
         };
       };

@@ -1,0 +1,50 @@
+{
+  "files": [
+    {
+      "path": "harness_sdk.d.ts",
+      "sha256": "c4e275907a493c5f259b3b373d3bd9290ffbb6e0180434d917da7ea36714e93a",
+      "size_bytes": 1130
+    },
+    {
+      "path": "harness_sdk.js",
+      "sha256": "c3e1530d6b5e08a182bfeef005187ee29d599dc0337462fc4aec4c647250e7b1",
+      "size_bytes": 4902
+    },
+    {
+      "path": "harness_sdk.py",
+      "sha256": "0864329e399c847eb33f293c047843319cbd86cfcb3e8d1e665ba9f9b652ff54",
+      "size_bytes": 10202
+    },
+    {
+      "path": "harness_sdk.ts",
+      "sha256": "8982156d47d89d3173202c0df64abdebddb94736cfc721167959f6bc54f83318",
+      "size_bytes": 6426
+    }
+  ],
+  "generated_at": "2026-03-03T12:11:42.441972+00:00",
+  "npm_package": {
+    "name": "@nixos-ai/harness-sdk",
+    "version": "0.1.0"
+  },
+  "python_package": {
+    "dependencies": [
+      "httpx>=0.27,<1.0"
+    ],
+    "name": "nixos-ai-harness-sdk",
+    "version": "0.1.0"
+  },
+  "sbom_minimal": {
+    "components": [
+      {
+        "name": "httpx",
+        "type": "python"
+      },
+      {
+        "name": "node-fetch-compatible-runtime",
+        "type": "javascript-runtime"
+      }
+    ],
+    "note": "Minimal generated SBOM; replace with syft/cyclonedx for full inventory."
+  },
+  "schema_version": 1
+}

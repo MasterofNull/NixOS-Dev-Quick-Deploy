@@ -30,6 +30,8 @@ let
   llama = ai.llamaCpp;
   swb = ai.switchboard;
   dataDir = "/var/lib/llama-cpp";
+  mutableOptimizerDir = cfg.deployment.mutableSpaces.aiStackOptimizerDir;
+  mutableLogDir = cfg.deployment.mutableSpaces.aiStackLogDir;
 
   hasOpenWebui = lib.versionAtLeast lib.version "24.11";
   hasQdrant = lib.versionAtLeast lib.version "24.11";
@@ -225,8 +227,6 @@ in {
         "d /var/lib/llama-cpp/models 0750 llama llama -"
         # Log directory writable by llama service
         "d /var/log/llama-cpp 0750 llama llama -"
-        # Optimizer state directory for PRSI self-optimization loop
-        "d /var/lib/nixos-ai-stack/optimizer 0750 ${cfg.primaryUser} users -"
       ];
 
       systemd.services.llama-cpp = {
@@ -736,6 +736,19 @@ in {
       };
     })
 
+    # Ensure aq-* scripts are always discoverable in interactive shells.
+    # This must not depend on shell-completions, otherwise aq-hints can be missing
+    # from PATH when completions are disabled.
+    (lib.mkIf roleEnabled {
+      environment.variables.AQ_HINTS_BIN = "${cfg.mcpServers.repoPath}/scripts/aq-hints";
+      environment.etc."profile.d/aq-path.sh" = {
+        mode = "0644";
+        text = ''
+          export PATH="${cfg.mcpServers.repoPath}/scripts:$PATH"
+        '';
+      };
+    })
+
     # Phase 19.1.4 — shell tab-completions for aq-* tools.
     # Phase 19.3.2 — Continue.dev @aq-hints HTTP context provider (config managed by HM base.nix).
     # Note: ~/.continue/config.json is written by the HM createContinueConfig activation hook
@@ -745,14 +758,6 @@ in {
       environment.etc."profile.d/aq-completions.sh" = {
         mode = "0644";
         source = "${cfg.mcpServers.repoPath}/scripts/aq-completions.sh";
-      };
-      environment.variables.AQ_HINTS_BIN = "${cfg.mcpServers.repoPath}/scripts/aq-hints";
-      # Add aq-* scripts and MCP bridge to PATH so they work from any directory.
-      environment.etc."profile.d/aq-path.sh" = {
-        mode = "0644";
-        text = ''
-          export PATH="${cfg.mcpServers.repoPath}/scripts:$PATH"
-        '';
       };
     })
 
@@ -907,7 +912,7 @@ in {
           PrivateNetwork  = false;
           MemoryMax       = "512M";
           Environment = [
-            "GAPS_JSONL=/var/log/nixos-ai-stack/query-gaps.jsonl"
+            "GAPS_JSONL=${mutableLogDir}/query-gaps.jsonl"
             "MIN_OCCURRENCES=3"
             "MAX_GAPS=5"
           ];
@@ -942,8 +947,8 @@ in {
           PrivateNetwork  = false;
           MemoryMax       = "256M";
           ReadWritePaths  = [
-            "/var/lib/nixos-ai-stack/optimizer"
-            "/var/log/nixos-ai-stack"
+            mutableOptimizerDir
+            mutableLogDir
           ];
           Environment = [
             "AIDB_URL=http://127.0.0.1:${toString cfg.mcpServers.aidbPort}"

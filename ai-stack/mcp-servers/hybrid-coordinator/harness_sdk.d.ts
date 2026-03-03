@@ -16,6 +16,22 @@ export interface ReviewAcceptanceRequest {
   run_harness_eval?: boolean;
 }
 
+export interface RuntimeScheduleRequest {
+  objective: string;
+  runtimeClass?: string;
+  transport?: string;
+  tags?: string[];
+  strategy?: string;
+  includeDegraded?: boolean;
+}
+
+export interface RunStartRequest {
+  query: string;
+  safety_mode?: "plan-readonly" | "execute-mutating";
+  token_limit?: number;
+  tool_call_limit?: number;
+}
+
 export declare class HarnessClient {
   constructor(opts?: HarnessClientOptions);
   plan(query: string): Promise<Json>;
@@ -28,4 +44,29 @@ export declare class HarnessClient {
   advanceSession(sessionId: string, action: "pass" | "fail" | "skip" | "note", note?: string): Promise<Json>;
   reviewAcceptance(payload: ReviewAcceptanceRequest): Promise<Json>;
   harnessEval(query: string, expectedKeywords?: string[], mode?: string): Promise<Json>;
+  runStart(payload: RunStartRequest): Promise<Json>;
+  runGet(sessionId: string, replay?: boolean): Promise<Json>;
+  runSetMode(sessionId: string, safetyMode: "plan-readonly" | "execute-mutating", confirm?: boolean): Promise<Json>;
+  runGetIsolation(sessionId: string): Promise<Json>;
+  runSetIsolation(sessionId: string, profile?: string, workspaceRoot?: string, networkPolicy?: string): Promise<Json>;
+  runEvent(
+    sessionId: string,
+    eventType: string,
+    riskClass?: "safe" | "review-required" | "blocked",
+    approved?: boolean,
+    tokenDelta?: number,
+    toolCallDelta?: number,
+    detail?: string,
+  ): Promise<Json>;
+  runReplay(sessionId: string): Promise<Json>;
+  listBlueprints(): Promise<Json>;
+  parityScorecard(): Promise<Json>;
+  registerRuntime(payload: Json): Promise<Json>;
+  listRuntimes(): Promise<Json>;
+  getRuntime(runtimeId: string): Promise<Json>;
+  updateRuntimeStatus(runtimeId: string, status: string, note?: string): Promise<Json>;
+  runtimeDeploy(runtimeId: string, payload: Json): Promise<Json>;
+  runtimeRollback(runtimeId: string, toDeploymentId: string, reason?: string): Promise<Json>;
+  runtimeSchedulePolicy(): Promise<Json>;
+  runtimeSchedule(payload: RuntimeScheduleRequest): Promise<Json>;
 }

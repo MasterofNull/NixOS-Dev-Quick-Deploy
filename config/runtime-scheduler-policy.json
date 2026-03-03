@@ -1,0 +1,25 @@
+{
+  "version": "1.0",
+  "selection": {
+    "max_candidates": 5,
+    "allowed_statuses": [
+      "ready",
+      "degraded"
+    ],
+    "require_all_tags": false,
+    "freshness_window_seconds": 3600,
+    "weights": {
+      "status": 0.45,
+      "runtime_class": 0.2,
+      "transport": 0.15,
+      "tag_overlap": 0.1,
+      "freshness": 0.1
+    }
+  },
+  "status_weights": {
+    "ready": 1.0,
+    "degraded": 0.5,
+    "draining": 0.1,
+    "offline": 0.0
+  }
+}

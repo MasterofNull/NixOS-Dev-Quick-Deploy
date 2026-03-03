@@ -1,0 +1,919 @@
+{
+  "generated_at": "2026-03-03T10:51:14.529196+00:00",
+  "seeds": [
+    {
+      "full_name": "cloudshipai/station",
+      "html_url": "https://github.com/cloudshipai/station",
+      "description": "Station is our open-source runtime that lets teams deploy agents on their own infrastructure with full control.",
+      "language": "Go",
+      "topics": [
+        "agents",
+        "ai",
+        "devops",
+        "go",
+        "golang",
+        "llm",
+        "llmops",
+        "mcp",
+        "oss",
+        "platform"
+      ],
+      "stargazers_count": 386,
+      "updated_at": "2026-03-03T01:36:24Z"
+    },
+    {
+      "full_name": "CodebuffAI/codebuff",
+      "html_url": "https://github.com/CodebuffAI/codebuff",
+      "description": "Generate code from the terminal!",
+      "language": "TypeScript",
+      "topics": [],
+      "stargazers_count": 3099,
+      "updated_at": "2026-03-03T10:27:20Z"
+    },
+    {
+      "full_name": "badlogic/pi-mono",
+      "html_url": "https://github.com/badlogic/pi-mono",
+      "description": "AI agent toolkit: coding agent CLI, unified LLM API, TUI & web UI libraries, Slack bot, vLLM pods",
+      "language": "TypeScript",
+      "topics": [],
+      "stargazers_count": 19227,
+      "updated_at": "2026-03-03T10:45:57Z"
+    }
+  ],
+  "queries": [
+    {
+      "query": "coding agent cli mcp runtime in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01",
+      "count": 50
+    },
+    {
+      "query": "ai agent runtime self-hosted mcp in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01",
+      "count": 50
+    },
+    {
+      "query": "agent harness code execution in:name,description,readme archived:false is:public stars:20..20000 pushed:>=2025-06-01",
+      "count": 50
+    },
+    {
+      "query": "software engineering agent cli in:name,description,readme archived:false is:public stars:20..20000 pushed:>=2025-06-01",
+      "count": 50
+    },
+    {
+      "query": "open-source coding assistant terminal in:name,description,readme archived:false is:public stars:20..30000 pushed:>=2025-06-01",
+      "count": 50
+    }
+  ],
+  "candidate_count": 31,
+  "top": [
+    {
+      "full_name": "RightNow-AI/openfang",
+      "html_url": "https://github.com/RightNow-AI/openfang",
+      "description": "Open-source Agent Operating System",
+      "language": "Rust",
+      "topics": [
+        "agent-framework",
+        "ai-agents",
+        "llm",
+        "mcp",
+        "open-source",
+        "openclaw",
+        "operating-system",
+        "rust"
+      ],
+      "stargazers_count": 9436,
+      "updated_at": "2026-03-03T10:50:14Z",
+      "matched_queries": [
+        "coding agent cli mcp runtime in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.09912,
+      "semantic_seed_avg": 0.043064,
+      "focused_score": 0.155468
+    },
+    {
+      "full_name": "VoltAgent/voltagent",
+      "html_url": "https://github.com/VoltAgent/voltagent",
+      "description": "AI Agent Engineering Platform built on an Open Source TypeScript AI Agent Framework",
+      "language": "TypeScript",
+      "topics": [
+        "agents",
+        "ai",
+        "ai-agents",
+        "ai-agents-framework",
+        "aiagentframework",
+        "chatbots",
+        "chatgpt",
+        "framework",
+        "javascript",
+        "llm",
+        "llm-observability",
+        "mcp",
+        "multiagent",
+        "nodejs",
+        "observability",
+        "open-source",
+        "openai",
+        "rag",
+        "tts",
+        "typescript"
+      ],
+      "stargazers_count": 6363,
+      "updated_at": "2026-03-03T08:46:50Z",
+      "matched_queries": [
+        "ai agent runtime self-hosted mcp in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01",
+        "coding agent cli mcp runtime in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.118667,
+      "semantic_seed_avg": 0.068686,
+      "focused_score": 0.150081
+    },
+    {
+      "full_name": "can1357/oh-my-pi",
+      "html_url": "https://github.com/can1357/oh-my-pi",
+      "description": "\u2325  AI Coding agent for the terminal \u2014 hash-anchored edits, optimized tool harness, LSP, Python, browser, subagents, and more",
+      "language": "TypeScript",
+      "topics": [
+        "ai-agent",
+        "ai-coding-agent",
+        "anthropic",
+        "bun",
+        "claude",
+        "cli",
+        "coding-assistant",
+        "llm",
+        "mcp",
+        "multi-provider",
+        "openai",
+        "rust",
+        "terminal",
+        "tui",
+        "typescript"
+      ],
+      "stargazers_count": 1616,
+      "updated_at": "2026-03-03T10:24:57Z",
+      "matched_queries": [
+        "ai agent runtime self-hosted mcp in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.150421,
+      "semantic_seed_avg": 0.079377,
+      "focused_score": 0.137107
+    },
+    {
+      "full_name": "bytedance/UI-TARS-desktop",
+      "html_url": "https://github.com/bytedance/UI-TARS-desktop",
+      "description": "The Open-Source Multimodal AI Agent Stack: Connecting Cutting-Edge AI Models and Agent Infra",
+      "language": "TypeScript",
+      "topics": [
+        "agent",
+        "agent-tars",
+        "browser-use",
+        "computer-use",
+        "cowork",
+        "gui-agent",
+        "gui-operator",
+        "mcp",
+        "mcp-server",
+        "multimodal",
+        "tars",
+        "ui-tars",
+        "vision",
+        "vlm"
+      ],
+      "stargazers_count": 28489,
+      "updated_at": "2026-03-03T10:04:25Z",
+      "matched_queries": [
+        "coding agent cli mcp runtime in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.06916,
+      "semantic_seed_avg": 0.036344,
+      "focused_score": 0.137064
+    },
+    {
+      "full_name": "NangoHQ/nango",
+      "html_url": "https://github.com/NangoHQ/nango",
+      "description": "API access for agents & apps.",
+      "language": "TypeScript",
+      "topics": [
+        "access-token",
+        "api",
+        "api-client",
+        "api-integration",
+        "api-integrations",
+        "integrations",
+        "oauth",
+        "oauth1",
+        "oauth2",
+        "product-integration",
+        "refresh-token",
+        "unified-api"
+      ],
+      "stargazers_count": 6733,
+      "updated_at": "2026-03-03T07:37:39Z",
+      "matched_queries": [
+        "ai agent runtime self-hosted mcp in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.103671,
+      "semantic_seed_avg": 0.039125,
+      "focused_score": 0.136332
+    },
+    {
+      "full_name": "refly-ai/refly",
+      "html_url": "https://github.com/refly-ai/refly",
+      "description": "The first open-source agent skills builder. Define skills by vibe workflow, run on Claude Code, Cursor, Codex & more. Build Clawdbot \ud83e\udd9e\u00b7 APIs for Lovable \u00b7 Bots for Slack & Lark/Feishu \u00b7 Skills are infrastructure, not prompts.",
+      "language": "TypeScript",
+      "topics": [
+        "agent",
+        "agent-skills",
+        "automation",
+        "claude",
+        "clawdbot",
+        "codex",
+        "cursor",
+        "lark-bot",
+        "lovable",
+        "n8n-alternative",
+        "skills",
+        "skills-builder",
+        "slack",
+        "slack-bot",
+        "vibe-coding",
+        "vibe-workflow",
+        "workflow"
+      ],
+      "stargazers_count": 6883,
+      "updated_at": "2026-03-03T10:44:37Z",
+      "matched_queries": [
+        "coding agent cli mcp runtime in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.091552,
+      "semantic_seed_avg": 0.044335,
+      "focused_score": 0.129849
+    },
+    {
+      "full_name": "BloopAI/vibe-kanban",
+      "html_url": "https://github.com/BloopAI/vibe-kanban",
+      "description": "Get 10X more out of Claude Code, Codex or any coding agent",
+      "language": "Rust",
+      "topics": [
+        "agent",
+        "ai-agents",
+        "kanban",
+        "management",
+        "task-manager"
+      ],
+      "stargazers_count": 22241,
+      "updated_at": "2026-03-03T10:49:42Z",
+      "matched_queries": [
+        "ai agent runtime self-hosted mcp in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01",
+        "coding agent cli mcp runtime in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.059584,
+      "semantic_seed_avg": 0.029334,
+      "focused_score": 0.128768
+    },
+    {
+      "full_name": "iOfficeAI/AionUi",
+      "html_url": "https://github.com/iOfficeAI/AionUi",
+      "description": "Free, local, open-source 24/7 Cowork app and OpenClaw for Gemini CLI, Claude Code, Codex, OpenCode, Qwen Code, Goose CLI, Auggie, and more | \ud83c\udf1f Star if you like it!",
+      "language": "TypeScript",
+      "topics": [
+        "acp",
+        "ai",
+        "ai-agent",
+        "chat",
+        "chatbot",
+        "claude-code",
+        "clawd",
+        "clawdbot",
+        "codex",
+        "cowork",
+        "gemini",
+        "gemini-cli",
+        "llm",
+        "nano-banana",
+        "office",
+        "openclaw",
+        "opencode",
+        "skills",
+        "webui"
+      ],
+      "stargazers_count": 17701,
+      "updated_at": "2026-03-03T10:44:59Z",
+      "matched_queries": [
+        "coding agent cli mcp runtime in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01",
+        "open-source coding assistant terminal in:name,description,readme archived:false is:public stars:20..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.052908,
+      "semantic_seed_avg": 0.03629,
+      "focused_score": 0.125352
+    },
+    {
+      "full_name": "shareAI-lab/learn-claude-code",
+      "html_url": "https://github.com/shareAI-lab/learn-claude-code",
+      "description": "Bash is all you need -  A nano Claude Code\u2013like agent, built from 0 to 1",
+      "language": "TypeScript",
+      "topics": [
+        "agent",
+        "agent-development",
+        "ai-agent",
+        "claude",
+        "claude-code",
+        "educational",
+        "llm",
+        "python",
+        "teaching",
+        "tutorial"
+      ],
+      "stargazers_count": 20669,
+      "updated_at": "2026-03-03T10:46:15Z",
+      "matched_queries": [
+        "coding agent cli mcp runtime in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01",
+        "open-source coding assistant terminal in:name,description,readme archived:false is:public stars:20..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.052265,
+      "semantic_seed_avg": 0.034365,
+      "focused_score": 0.124504
+    },
+    {
+      "full_name": "HKUDS/DeepCode",
+      "html_url": "https://github.com/HKUDS/DeepCode",
+      "description": "\"DeepCode: Open Agentic Coding (Paper2Code & Text2Web & Text2Backend)\"",
+      "language": "Python",
+      "topics": [
+        "agentic-coding",
+        "llm-agent"
+      ],
+      "stargazers_count": 14727,
+      "updated_at": "2026-03-03T10:42:03Z",
+      "matched_queries": [
+        "coding agent cli mcp runtime in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01",
+        "software engineering agent cli in:name,description,readme archived:false is:public stars:20..20000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.047802,
+      "semantic_seed_avg": 0.022343,
+      "focused_score": 0.118886
+    },
+    {
+      "full_name": "ruvnet/ruflo",
+      "html_url": "https://github.com/ruvnet/ruflo",
+      "description": "\ud83c\udf0a The leading agent orchestration platform for Claude. Deploy intelligent multi-agent swarms, coordinate autonomous workflows, and build conversational AI systems. Features    enterprise-grade architecture, distributed swarm intelligence, RAG integration, and native Claude Code / Codex Integration",
+      "language": "TypeScript",
+      "topics": [
+        "agentic-ai",
+        "agentic-engineering",
+        "agentic-framework",
+        "agentic-rag",
+        "agentic-workflow",
+        "agents",
+        "ai-assistant",
+        "ai-tools",
+        "anthropic-claude",
+        "autonomous-agents",
+        "claude-code",
+        "claude-code-skills",
+        "codex",
+        "huggingface",
+        "mcp-server",
+        "model-context-protocol",
+        "multi-agent",
+        "multi-agent-systems",
+        "swarm",
+        "swarm-intelligence"
+      ],
+      "stargazers_count": 18383,
+      "updated_at": "2026-03-03T10:50:01Z",
+      "matched_queries": [
+        "coding agent cli mcp runtime in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01",
+        "software engineering agent cli in:name,description,readme archived:false is:public stars:20..20000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.043429,
+      "semantic_seed_avg": 0.02988,
+      "focused_score": 0.117245
+    },
+    {
+      "full_name": "lastmile-ai/mcp-agent",
+      "html_url": "https://github.com/lastmile-ai/mcp-agent",
+      "description": "Build effective agents using Model Context Protocol and simple workflow patterns",
+      "language": "Python",
+      "topics": [
+        "agents",
+        "ai",
+        "ai-agents",
+        "llm",
+        "llms",
+        "mcp",
+        "model-context-protocol",
+        "python"
+      ],
+      "stargazers_count": 8075,
+      "updated_at": "2026-03-03T09:51:48Z",
+      "matched_queries": [
+        "coding agent cli mcp runtime in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.064917,
+      "semantic_seed_avg": 0.029155,
+      "focused_score": 0.117171
+    },
+    {
+      "full_name": "Fosowl/agenticSeek",
+      "html_url": "https://github.com/Fosowl/agenticSeek",
+      "description": "Fully Local Manus AI. No APIs, No $200 monthly bills. Enjoy an autonomous agent that thinks, browses the web, and code for the sole cost of electricity. \ud83d\udd14 Official updates only via twitter @Martin993886460 (Beware of fake account)",
+      "language": "Python",
+      "topics": [
+        "agentic-ai",
+        "agents",
+        "ai",
+        "autonomous-agents",
+        "deepseek-r1",
+        "llm",
+        "llm-agents",
+        "voice-assistant"
+      ],
+      "stargazers_count": 25394,
+      "updated_at": "2026-03-03T09:34:43Z",
+      "matched_queries": [
+        "open-source coding assistant terminal in:name,description,readme archived:false is:public stars:20..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.042802,
+      "semantic_seed_avg": 0.030012,
+      "focused_score": 0.116819
+    },
+    {
+      "full_name": "coder/coder",
+      "html_url": "https://github.com/coder/coder",
+      "description": "Secure environments for developers and their agents",
+      "language": "Go",
+      "topics": [
+        "agents",
+        "dev-tools",
+        "development-environment",
+        "go",
+        "golang",
+        "ide",
+        "jetbrains",
+        "remote-development",
+        "terraform",
+        "vscode"
+      ],
+      "stargazers_count": 12379,
+      "updated_at": "2026-03-03T10:50:47Z",
+      "matched_queries": [
+        "software engineering agent cli in:name,description,readme archived:false is:public stars:20..20000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.041279,
+      "semantic_seed_avg": 0.01376,
+      "focused_score": 0.112473
+    },
+    {
+      "full_name": "0x4m4/hexstrike-ai",
+      "html_url": "https://github.com/0x4m4/hexstrike-ai",
+      "description": "HexStrike AI MCP Agents is an advanced MCP server that lets AI agents (Claude, GPT, Copilot, etc.) autonomously run 150+ cybersecurity tools for automated pentesting, vulnerability discovery, bug bounty automation, and security research. Seamlessly bridge LLMs with real-world offensive security capabilities.",
+      "language": "Python",
+      "topics": [
+        "0x4m4",
+        "ai",
+        "ai-agents",
+        "ai-cybersecurity",
+        "ai-hacking",
+        "ai-penetration-testing",
+        "ai-security-tool",
+        "artificial-intelligence",
+        "ctf-tools",
+        "generative-ai",
+        "hexstrike",
+        "kali-linux",
+        "kali-tools",
+        "llm",
+        "llm-integration",
+        "mcp",
+        "mcp-server",
+        "mcp-tools",
+        "pentesting",
+        "pentesting-tools"
+      ],
+      "stargazers_count": 7190,
+      "updated_at": "2026-03-03T10:18:16Z",
+      "matched_queries": [
+        "coding agent cli mcp runtime in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01",
+        "software engineering agent cli in:name,description,readme archived:false is:public stars:20..20000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.063652,
+      "semantic_seed_avg": 0.028095,
+      "focused_score": 0.108969
+    },
+    {
+      "full_name": "qwibitai/nanoclaw",
+      "html_url": "https://github.com/qwibitai/nanoclaw",
+      "description": "A lightweight alternative to OpenClaw that runs in containers for security. Connects to WhatsApp, Telegram, Slack and other messaging apps,, has memory, scheduled jobs, and runs directly on Anthropic's Agents SDK",
+      "language": "TypeScript",
+      "topics": [
+        "ai-agents",
+        "ai-assistant",
+        "claude-code",
+        "claude-skills",
+        "clawdbot"
+      ],
+      "stargazers_count": 17910,
+      "updated_at": "2026-03-03T10:47:38Z",
+      "matched_queries": [
+        "open-source coding assistant terminal in:name,description,readme archived:false is:public stars:20..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.028042,
+      "semantic_seed_avg": 0.024114,
+      "focused_score": 0.105013
+    },
+    {
+      "full_name": "Yeachan-Heo/oh-my-claudecode",
+      "html_url": "https://github.com/Yeachan-Heo/oh-my-claudecode",
+      "description": "Teams-first Multi-agent orchestration for Claude Code",
+      "language": "TypeScript",
+      "topics": [
+        "agentic-coding",
+        "ai-agents",
+        "automation",
+        "claude",
+        "claude-code",
+        "multi-agent-systems",
+        "oh-my-opencode",
+        "opencode",
+        "parallel-execution",
+        "vibe-coding"
+      ],
+      "stargazers_count": 8074,
+      "updated_at": "2026-03-03T10:48:21Z",
+      "matched_queries": [
+        "coding agent cli mcp runtime in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.042768,
+      "semantic_seed_avg": 0.034074,
+      "focused_score": 0.1022
+    },
+    {
+      "full_name": "langchain-ai/deepagents",
+      "html_url": "https://github.com/langchain-ai/deepagents",
+      "description": "Deep Agents is an agent harness built on langchain and langgraph. Deep Agents are equipped with a planning tool, a filesystem backend, and the ability to spawn subagents - making them well-equipped to handle complex agentic tasks.",
+      "language": "Python",
+      "topics": [
+        "agents",
+        "deepagents",
+        "langchain",
+        "langgraph"
+      ],
+      "stargazers_count": 9815,
+      "updated_at": "2026-03-03T09:51:09Z",
+      "matched_queries": [
+        "coding agent cli mcp runtime in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01",
+        "open-source coding assistant terminal in:name,description,readme archived:false is:public stars:20..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.021753,
+      "semantic_seed_avg": 0.009661,
+      "focused_score": 0.096114
+    },
+    {
+      "full_name": "huggingface/smolagents",
+      "html_url": "https://github.com/huggingface/smolagents",
+      "description": "\ud83e\udd17 smolagents: a barebones library for agents that think in code.",
+      "language": "Python",
+      "topics": [],
+      "stargazers_count": 25710,
+      "updated_at": "2026-03-03T10:13:01Z",
+      "matched_queries": [
+        "coding agent cli mcp runtime in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.017671,
+      "semantic_seed_avg": 0.010462,
+      "focused_score": 0.094816
+    },
+    {
+      "full_name": "aden-hive/hive",
+      "html_url": "https://github.com/aden-hive/hive",
+      "description": "Outcome driven agent development framework that evolves",
+      "language": "Python",
+      "topics": [
+        "agent",
+        "agent-framework",
+        "agent-skills",
+        "ai-evaluation",
+        "anthropic",
+        "automation",
+        "autonomous-agents",
+        "awesome",
+        "claude",
+        "claude-code",
+        "human-in-the-loop",
+        "observability-ai",
+        "openai",
+        "python",
+        "self-hosted",
+        "self-improving",
+        "self-improving-agent",
+        "self-improving-ai"
+      ],
+      "stargazers_count": 8625,
+      "updated_at": "2026-03-03T10:45:38Z",
+      "matched_queries": [
+        "ai agent runtime self-hosted mcp in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01",
+        "coding agent cli mcp runtime in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.02764,
+      "semantic_seed_avg": 0.015423,
+      "focused_score": 0.091985
+    },
+    {
+      "full_name": "abhigyanpatwari/GitNexus",
+      "html_url": "https://github.com/abhigyanpatwari/GitNexus",
+      "description": "GitNexus: The Zero-Server Code Intelligence Engine -       GitNexus is a client-side knowledge graph creator that runs entirely in your browser. Drop in a GitHub repo or ZIP file, and get an interactive knowledge graph wit a built in Graph RAG Agent. Perfect for code exploration",
+      "language": "TypeScript",
+      "topics": [],
+      "stargazers_count": 8744,
+      "updated_at": "2026-03-03T10:48:27Z",
+      "matched_queries": [
+        "coding agent cli mcp runtime in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.023415,
+      "semantic_seed_avg": 0.010672,
+      "focused_score": 0.088945
+    },
+    {
+      "full_name": "TracecatHQ/tracecat",
+      "html_url": "https://github.com/TracecatHQ/tracecat",
+      "description": "The open source AI platform for secure enterprise agents.",
+      "language": "Python",
+      "topics": [
+        "agents",
+        "automation",
+        "event-driven",
+        "fastapi",
+        "llm",
+        "low-code",
+        "monitoring",
+        "nextjs",
+        "openapi",
+        "orchestration",
+        "pydantic",
+        "temporalio",
+        "workflow-engine"
+      ],
+      "stargazers_count": 3503,
+      "updated_at": "2026-03-03T08:33:34Z",
+      "matched_queries": [
+        "agent harness code execution in:name,description,readme archived:false is:public stars:20..20000 pushed:>=2025-06-01",
+        "ai agent runtime self-hosted mcp in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.070131,
+      "semantic_seed_avg": 0.030267,
+      "focused_score": 0.084572
+    },
+    {
+      "full_name": "Upsonic/Upsonic",
+      "html_url": "https://github.com/Upsonic/Upsonic",
+      "description": "Agent Framework For Fintech and Banks",
+      "language": "Python",
+      "topics": [
+        "agent",
+        "agent-framework",
+        "claude",
+        "computer-use",
+        "llms",
+        "mcp",
+        "model-context-protocol",
+        "openai",
+        "rag",
+        "reliability",
+        "ucp",
+        "universal-commerce-protocol"
+      ],
+      "stargazers_count": 7797,
+      "updated_at": "2026-03-03T06:10:41Z",
+      "matched_queries": [
+        "ai agent runtime self-hosted mcp in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.019574,
+      "semantic_seed_avg": 0.008838,
+      "focused_score": 0.078237
+    },
+    {
+      "full_name": "kyegomez/swarms",
+      "html_url": "https://github.com/kyegomez/swarms",
+      "description": "The Enterprise-Grade Production-Ready Multi-Agent Orchestration Framework. Website: https://swarms.ai",
+      "language": "Python",
+      "topics": [
+        "agentic-ai",
+        "agentic-workflow",
+        "agents",
+        "ai",
+        "artificial-intelligence",
+        "chatgpt",
+        "gpt4",
+        "gpt4all",
+        "huggingface",
+        "langchain",
+        "langchain-python",
+        "machine-learning",
+        "multi-agent-systems",
+        "prompt-engineering",
+        "prompt-toolkit",
+        "prompting",
+        "swarms",
+        "tree-of-thoughts"
+      ],
+      "stargazers_count": 5823,
+      "updated_at": "2026-03-03T10:28:27Z",
+      "matched_queries": [
+        "software engineering agent cli in:name,description,readme archived:false is:public stars:20..20000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.031688,
+      "semantic_seed_avg": 0.016807,
+      "focused_score": 0.072761
+    },
+    {
+      "full_name": "AI-QL/tuui",
+      "html_url": "https://github.com/AI-QL/tuui",
+      "description": "A desktop MCP client designed as a tool unitary utility integration, accelerating AI adoption through the Model Context Protocol (MCP) and enabling cross-vendor LLM API orchestration.",
+      "language": "TypeScript",
+      "topics": [
+        "agent",
+        "agentic-ai",
+        "ai",
+        "ai-playground",
+        "anthropic",
+        "claude",
+        "deepseek",
+        "dxt",
+        "llm",
+        "llm-eval",
+        "mcp",
+        "mcp-client",
+        "mcp-host",
+        "mcp-inspector",
+        "mcpb",
+        "model-context-protocol",
+        "openai-api",
+        "prompt",
+        "qwen",
+        "testing"
+      ],
+      "stargazers_count": 1129,
+      "updated_at": "2026-02-26T04:20:00Z",
+      "matched_queries": [
+        "ai agent runtime self-hosted mcp in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.067077,
+      "semantic_seed_avg": 0.040388,
+      "focused_score": 0.065405
+    },
+    {
+      "full_name": "Orchestra-Research/AI-Research-SKILLs",
+      "html_url": "https://github.com/Orchestra-Research/AI-Research-SKILLs",
+      "description": "Comprehensive open-source library of AI research and engineering skills for any AI model. Package the skills and your claude code/codex/gemini agent will be an AI research agent with full horsepower. Maintained by Orchestra Research.",
+      "language": "TeX",
+      "topics": [
+        "ai",
+        "ai-research",
+        "claude",
+        "claude-code",
+        "claude-skills",
+        "codex",
+        "gemini",
+        "gpt-5",
+        "grpo",
+        "huggingface",
+        "machine-leanring",
+        "megatron",
+        "skills",
+        "vllm"
+      ],
+      "stargazers_count": 4267,
+      "updated_at": "2026-03-03T10:33:05Z",
+      "matched_queries": [
+        "agent harness code execution in:name,description,readme archived:false is:public stars:20..20000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.029267,
+      "semantic_seed_avg": 0.022268,
+      "focused_score": 0.059662
+    },
+    {
+      "full_name": "getsentry/XcodeBuildMCP",
+      "html_url": "https://github.com/getsentry/XcodeBuildMCP",
+      "description": "A Model Context Protocol (MCP) server and CLI that provides tools for agent use when working on iOS and macOS projects.",
+      "language": "TypeScript",
+      "topics": [
+        "mcp",
+        "mcp-server",
+        "model-context-protocol",
+        "model-context-protocol-servers",
+        "tag-production",
+        "xcode",
+        "xcodebuild"
+      ],
+      "stargazers_count": 4532,
+      "updated_at": "2026-03-03T10:38:51Z",
+      "matched_queries": [
+        "coding agent cli mcp runtime in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.020654,
+      "semantic_seed_avg": 0.015081,
+      "focused_score": 0.054143
+    },
+    {
+      "full_name": "ValueCell-ai/ClawX",
+      "html_url": "https://github.com/ValueCell-ai/ClawX",
+      "description": "ClawX is a desktop app that provides a graphical interface for OpenClaw AI agents. It turns CLI-based AI orchestration into a desktop experience without using the terminal. We\u2019ve moved from clawx.dev to claw-x.com.",
+      "language": "TypeScript",
+      "topics": [
+        "agent",
+        "agentic-ai",
+        "agents",
+        "ai",
+        "clawdbot",
+        "moltbot",
+        "openclaw",
+        "skill"
+      ],
+      "stargazers_count": 2068,
+      "updated_at": "2026-03-03T10:50:50Z",
+      "matched_queries": [
+        "agent harness code execution in:name,description,readme archived:false is:public stars:20..20000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.034318,
+      "semantic_seed_avg": 0.03207,
+      "focused_score": 0.047667
+    },
+    {
+      "full_name": "metorial/metorial",
+      "html_url": "https://github.com/metorial/metorial",
+      "description": "Connect any AI model to 600+ integrations; powered by MCP \ud83d\udce1 \ud83d\ude80",
+      "language": "TypeScript",
+      "topics": [
+        "agent",
+        "agentic-ai",
+        "agentic-workflow",
+        "container",
+        "docker",
+        "mcp",
+        "modelcontextprotocol",
+        "security"
+      ],
+      "stargazers_count": 3226,
+      "updated_at": "2026-03-03T00:48:38Z",
+      "matched_queries": [
+        "ai agent runtime self-hosted mcp in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.021942,
+      "semantic_seed_avg": 0.017457,
+      "focused_score": 0.045098
+    },
+    {
+      "full_name": "wshobson/commands",
+      "html_url": "https://github.com/wshobson/commands",
+      "description": "A collection of production-ready slash commands for Claude Code",
+      "language": null,
+      "topics": [
+        "ai",
+        "ai-agents",
+        "anthropic",
+        "automation",
+        "claude",
+        "claude-code",
+        "claude-commands",
+        "claudecode",
+        "claudecode-config",
+        "orchestration",
+        "productivity",
+        "slash-command",
+        "slash-commands",
+        "slashcommands",
+        "workflows"
+      ],
+      "stargazers_count": 2049,
+      "updated_at": "2026-03-03T09:29:14Z",
+      "matched_queries": [
+        "agent harness code execution in:name,description,readme archived:false is:public stars:20..20000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.01688,
+      "semantic_seed_avg": 0.010719,
+      "focused_score": 0.03069
+    },
+    {
+      "full_name": "Marktechpost/AI-Tutorial-Codes-Included",
+      "html_url": "https://github.com/Marktechpost/AI-Tutorial-Codes-Included",
+      "description": "Codes/Notebooks for AI Projects",
+      "language": "Jupyter Notebook",
+      "topics": [
+        "aiagents",
+        "artificial-intelligence",
+        "data-science",
+        "dataengineering",
+        "deep-learning",
+        "machine-learning",
+        "neural-network"
+      ],
+      "stargazers_count": 2103,
+      "updated_at": "2026-03-03T09:33:47Z",
+      "matched_queries": [
+        "ai agent runtime self-hosted mcp in:name,description,readme archived:false is:public stars:40..30000 pushed:>=2025-06-01"
+      ],
+      "semantic_seed_max": 0.005604,
+      "semantic_seed_avg": 0.00366,
+      "focused_score": 0.021591
+    }
+  ]
+}
