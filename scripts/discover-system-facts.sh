@@ -364,7 +364,12 @@ secureboot_enable="${SECUREBOOT_ENABLE_OVERRIDE:-false}"
 # ---------------------------------------------------------------------------
 server_role_enabled="${SERVER_ROLE_OVERRIDE:-false}"
 mobile_role_enabled="${MOBILE_ROLE_OVERRIDE:-${is_mobile}}"
-virtualization_role_enabled="${VIRTUALIZATION_ROLE_OVERRIDE:-false}"
+# ai-dev profile needs virtualization for Podman containers and MCP servers
+if [[ "${profile_value}" == "ai-dev" ]]; then
+  virtualization_role_enabled="${VIRTUALIZATION_ROLE_OVERRIDE:-true}"
+else
+  virtualization_role_enabled="${VIRTUALIZATION_ROLE_OVERRIDE:-false}"
+fi
 
 # ---------------------------------------------------------------------------
 # AI stack preferences — set via environment overrides or left at defaults.
