@@ -569,22 +569,7 @@ in
         after       = aidbDeps;
         requires    = aidbDeps;
         wants       = [ "network-online.target" ];
-        # Wait for embedding server to be truly ready (not just started)
-        # Only wait if embedding is enabled
-        preStart = lib.optionalString embedEnabled ''
-          echo "Waiting for embedding server to be ready at ${embedUrl}..."
-          for i in $(seq 1 120); do
-            if curl -sf --connect-timeout 2 --max-time 5 "${embedUrl}/health" >/dev/null 2>&1; then
-              echo "✓ Embedding server is ready"
-              break
-            fi
-            if [ $i -eq 120 ]; then
-              echo "⚠ WARNING: Embedding server not ready after 120s, starting anyway" >&2
-              break
-            fi
-            sleep 1
-          done
-        '' + lib.optionalString mcp.postgres.enable ''
+        preStart = lib.optionalString mcp.postgres.enable ''
           export AIDB_POSTGRES_HOST=127.0.0.1
           export AIDB_POSTGRES_PORT=${toString ports.postgres}
           export AIDB_POSTGRES_DB=${mcp.postgres.database}
