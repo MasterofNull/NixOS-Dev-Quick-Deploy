@@ -44,9 +44,8 @@ let
   aiAiderPort = lib.attrByPath [ "mySystem" "mcpServers" "aiderWrapperPort" ] (getRegistryPort "aiderWrapper") systemConfig;
   aiPostgresPort = lib.attrByPath [ "mySystem" "ports" "postgres" ] (getRegistryPort "postgres") systemConfig;
   aiOpenAIBaseUrl = "http://127.0.0.1:${toString aiSwitchboardPort}/v1";
-  # Continue is pinned to direct local llama.cpp for stability.
-  # Switchboard remains available for other clients via OPENAI_BASE_URL.
-  continueApiBase = "http://127.0.0.1:${toString aiLlamaPort}/v1";
+  # Continue defaults to switchboard so profile routing/policies are active.
+  continueApiBase = "http://127.0.0.1:${toString aiSwitchboardPort}/v1";
   vscodiumPathValue = "${config.home.homeDirectory}/.local/bin:${config.home.homeDirectory}/.nix-profile/bin:/run/current-system/sw/bin:\${env:PATH}";
   vscodiumAiEnv = [
     { name = "PATH"; value = vscodiumPathValue; }
@@ -1034,7 +1033,7 @@ PYEOF
   # their changes on every switch (only rewrites when version bumps).
   # Bump _config_version below when making config structure changes.
   home.activation.createContinueConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    _config_version="19.5"
+    _config_version="19.9"
     _cfg="$HOME/.continue/config.json"
     _needs_write=false
 
@@ -1052,25 +1051,49 @@ PYEOF
       mkdir -p "$HOME/.continue"
       cat > "$_cfg" << 'CONTINUE_EOF'
 {
-  "__configVersion": "19.5",
+  "__configVersion": "19.9",
   "models": [
     {
-      "title": "Qwen3-4B-Instruct (Local)",
+      "title": "Local Fast (Embedded Assist)",
       "provider": "openai",
       "apiKey": "local-llama-cpp",
       "apiBase": "${continueApiBase}",
       "model": "${aiLlamaModel}",
-      "contextLength": 32768,
-      "maxTokens": 2048
+      "requestOptions": {
+        "headers": {
+          "X-AI-Profile": "embedded-assist"
+        }
+      },
+      "contextLength": 4096,
+      "maxTokens": 384
+    },
+    {
+      "title": "Local Stable (Continue Local)",
+      "provider": "openai",
+      "apiKey": "local-llama-cpp",
+      "apiBase": "${continueApiBase}",
+      "model": "${aiLlamaModel}",
+      "requestOptions": {
+        "headers": {
+          "X-AI-Profile": "continue-local"
+        }
+      },
+      "contextLength": 4096,
+      "maxTokens": 384
     }
   ],
   "tabAutocompleteModel": {
-    "title": "Tab Autocomplete (Local)",
+    "title": "Tab Autocomplete (Continue Local)",
     "provider": "openai",
     "apiKey": "local-llama-cpp",
     "apiBase": "${continueApiBase}",
     "model": "${aiLlamaModel}",
-    "maxTokens": 128
+    "requestOptions": {
+      "headers": {
+        "X-AI-Profile": "continue-local"
+      }
+    },
+    "maxTokens": 48
   },
   "contextProviders": [
     { "name": "file", "params": {} },
@@ -1092,10 +1115,6 @@ CONTINUE_EOF
     cfg="$HOME/.continue/config.json"
     if [ -f "$cfg" ] && command -v jq >/dev/null 2>&1; then
       runtime_base="${continueApiBase}"
-      if ${pkgs.curl}/bin/curl --silent --show-error --fail --max-time 5 \
-        "http://127.0.0.1:${toString aiSwitchboardPort}/v1/models" >/dev/null 2>&1; then
-        runtime_base="http://127.0.0.1:${toString aiSwitchboardPort}/v1"
-      fi
 
       detected_model="$(${pkgs.curl}/bin/curl --silent --show-error --fail --max-time 10 \
         "$runtime_base/models" 2>/dev/null | jq -r '.data[0].id // empty' || true)"

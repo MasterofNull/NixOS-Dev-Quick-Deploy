@@ -96,10 +96,11 @@ fi
 mkdir -p "${PROVENANCE_DIR}"
 
 # ── Safety Check 1: GGUF magic bytes ────────────────────────────────────────
-# GGUF files start with the 4-byte magic "GGUF" (0x47475546 in little-endian)
-gguf_magic="$(xxd -l 4 -p "${MODEL_PATH}" 2>/dev/null || echo "")"
-if [[ "${gguf_magic}" != "46554747" ]]; then
-  echo -e "ERROR: Invalid GGUF magic bytes. Expected 46554747 (GGUF), got: ${gguf_magic}" >&2
+# GGUF files start with the 4-byte ASCII magic "GGUF" (hex: 47 47 55 46).
+# Use od instead of xxd so this works in minimal systemd service environments.
+gguf_magic="$(od -An -tx1 -N4 "${MODEL_PATH}" 2>/dev/null | tr -d ' \n' || echo "")"
+if [[ "${gguf_magic}" != "47475546" ]]; then
+  echo -e "ERROR: Invalid GGUF magic bytes. Expected 47475546 (GGUF), got: ${gguf_magic}" >&2
   echo -e "This file may not be a valid GGUF model." >&2
   exit 1
 fi
@@ -109,7 +110,7 @@ echo -e "✓ GGUF magic bytes verified"
 # Python pickle protocol 4-5 use \\x80\\x04 or \\x80\\x05 as the first two bytes.
 # Malicious models could embed pickle payloads in metadata sections.
 # We scan the first 4KB for these patterns.
-first_4kb="$(xxd -l 4096 -p "${MODEL_PATH}" 2>/dev/null | tr -d '\n' || echo "")"
+first_4kb="$(od -An -tx1 -N4096 "${MODEL_PATH}" 2>/dev/null | tr -d ' \n' || echo "")"
 
 # Check for pickle protocol 4 (\\x80\\x04 = 8004 in hex)
 if echo "${first_4kb}" | grep -q "8004"; then

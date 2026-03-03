@@ -5,3 +5,4 @@ Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:qwen2.5-coder-7b-instruct-q4_k_m.gguf 509287
 Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:qwen2.5-coder-14b-instruct-q4_k_m.gguf c1e659736d89ac1065fb495330fb824d94001974a4bfa78e7270e43476a8d940
 TheBloke/deepseek-coder-6.7B-instruct-GGUF:deepseek-coder-6.7b-instruct.Q4_K_M.gguf 92da6238854f2fa902d8b2ad79d548536af1d3ab06821f323bd5bbcea2013276
 nomic-ai/nomic-embed-text-v1.5-GGUF:nomic-embed-text-v1.5.Q8_0.gguf 3e24342164b3d94991ba9692fdc0dd08e3fd7362e0aacc396a9a5c54a544c3b7
+Mungert/Qwen3-Embedding-4B-GGUF:Qwen3-Embedding-4B-q4_k_m.gguf 2a91ec30c4c694af60cbedfc2f30d6aa5fd69a5286a8fb5544aa47868243054e
