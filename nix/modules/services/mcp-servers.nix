@@ -570,16 +570,17 @@ in
         requires    = aidbDeps;
         wants       = [ "network-online.target" ];
         # Wait for embedding server to be truly ready (not just started)
-        preStart = ''
-          echo "Waiting for embedding server to be ready..."
-          for i in $(seq 1 60); do
-            if curl -sf "${embedUrl}/health" >/dev/null 2>&1; then
-              echo "Embedding server is ready"
+        # Only wait if embedding is enabled
+        preStart = lib.optionalString embedEnabled ''
+          echo "Waiting for embedding server to be ready at ${embedUrl}..."
+          for i in $(seq 1 120); do
+            if curl -sf --connect-timeout 2 --max-time 5 "${embedUrl}/health" >/dev/null 2>&1; then
+              echo "✓ Embedding server is ready"
               break
             fi
-            if [ $i -eq 60 ]; then
-              echo "ERROR: Embedding server not ready after 60s" >&2
-              exit 1
+            if [ $i -eq 120 ]; then
+              echo "⚠ WARNING: Embedding server not ready after 120s, starting anyway" >&2
+              break
             fi
             sleep 1
           done
