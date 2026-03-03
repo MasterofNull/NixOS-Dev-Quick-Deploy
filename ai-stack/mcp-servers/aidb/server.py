@@ -57,6 +57,7 @@ from discovery_endpoints import register_discovery_routes
 from settings_loader import Settings, load_settings
 from rag import RAGPipeline, RAGConfig
 from shared.tool_audit import write_audit_entry
+from shared.tool_security_auditor import ToolSecurityAuditor
 from schema import (
     METADATA,
     TOOL_REGISTRY,
@@ -1118,6 +1119,11 @@ class ToolRegistry:
             tools.append(ToolPayload(name=tool.name, description=tool.description, manifest=manifest))
         return tools
 
+    async def get_tool_definition(self, tool_name: str) -> Optional[ToolDefinition]:
+        if not self._tool_cache:
+            await self._refresh_from_database()
+        return self._tool_cache.get(tool_name)
+
     async def _refresh_from_database(self) -> None:
         query = sa.select(
             TOOL_REGISTRY.c.name,
@@ -2067,6 +2073,32 @@ class MCPServer:
             or os.getenv("DATA_DIR")
             or "/var/lib/nixos-ai-stack/aidb"
         )
+        audit_enabled = os.getenv("AIDB_TOOL_SECURITY_AUDIT_ENABLED", os.getenv("AI_TOOL_SECURITY_AUDIT_ENABLED", "true")).lower() == "true"
+        audit_enforce = os.getenv("AIDB_TOOL_SECURITY_AUDIT_ENFORCE", os.getenv("AI_TOOL_SECURITY_AUDIT_ENFORCE", "true")).lower() == "true"
+        audit_ttl_hours = int(
+            os.getenv("AIDB_TOOL_SECURITY_CACHE_TTL_HOURS", os.getenv("AI_TOOL_SECURITY_CACHE_TTL_HOURS", "168"))
+        )
+        policy_path = Path(
+            os.path.expanduser(
+                os.getenv("RUNTIME_TOOL_SECURITY_POLICY_FILE", "config/runtime-tool-security-policy.json")
+            )
+        )
+        audit_cache_path = Path(
+            os.path.expanduser(
+                os.getenv(
+                    "AIDB_TOOL_SECURITY_AUDIT_CACHE_FILE",
+                    str(data_root / "tool-security-audit-cache.json"),
+                )
+            )
+        )
+        self._tool_security_auditor = ToolSecurityAuditor(
+            service_name="aidb",
+            policy_path=policy_path,
+            cache_path=audit_cache_path,
+            enabled=audit_enabled,
+            enforce=audit_enforce,
+            cache_ttl_hours=audit_ttl_hours,
+        )
         federation_storage = (
             Path(os.getenv("AIDB_FEDERATION_STORAGE_PATH", ""))
             if os.getenv("AIDB_FEDERATION_STORAGE_PATH")
@@ -2863,6 +2895,22 @@ class MCPServer:
         normalized = (tool_name or "").strip().lower()
         if not normalized:
             raise ValueError("tool_name must be provided")
+        tool_def = await self._tool_registry.get_tool_definition(normalized)
+        audit_decision = self._tool_security_auditor.audit_tool(
+            normalized,
+            {
+                "manifest": tool_def.manifest if tool_def else {"name": normalized},
+                "parameters": parameters,
+            },
+        )
+        safe_metadata = audit_decision.get("sanitized_metadata", {})
+        safe_parameters = (
+            safe_metadata.get("parameters")
+            if isinstance(safe_metadata, dict) and isinstance(safe_metadata.get("parameters"), dict)
+            else parameters
+        )
+        if not isinstance(safe_parameters, dict):
+            safe_parameters = parameters
         risk_tier = _tool_risk_tier(tool_name)
         caller_identity = getattr(self, '_current_caller_id', None) or 'anonymous'
         tracer = trace.get_tracer(SERVICE_NAME)
@@ -2875,17 +2923,17 @@ class MCPServer:
                     "gen_ai.tool.risk_tier": risk_tier,
                 },
             ):
-                _enforce_tool_execution_policy(tool_name, parameters)
-                _guardrail_precheck(tool_name, parameters)
+                _enforce_tool_execution_policy(tool_name, safe_parameters)
+                _guardrail_precheck(tool_name, safe_parameters)
 
                 if "google" in normalized and "search" in normalized:
-                    payload = await self._execute_google_websearch(tool_name, parameters)
+                    payload = await self._execute_google_websearch(tool_name, safe_parameters)
                     result = _guardrail_postcheck(tool_name, {"tool": tool_name, **payload})
                     write_audit_entry(
                         service='aidb',
                         tool_name=tool_name,
                         caller_identity=caller_identity,
-                        parameters=parameters,
+                        parameters=safe_parameters,
                         risk_tier=risk_tier,
                         outcome='success',
                         error_message=None,
@@ -2899,7 +2947,7 @@ class MCPServer:
                 service='aidb',
                 tool_name=tool_name,
                 caller_identity=caller_identity,
-                parameters=parameters,
+                parameters=safe_parameters,
                 risk_tier=risk_tier,
                 outcome='error',
                 error_message=str(exc),

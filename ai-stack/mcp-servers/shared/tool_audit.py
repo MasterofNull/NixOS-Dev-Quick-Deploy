@@ -7,18 +7,21 @@ Falls back to direct file write only when the socket is absent (dev/test mode).
 
 import hashlib
 import json
+import logging
 import os
 import socket as _socket_module
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 
-import structlog
-
 _audit_log_path = Path(os.getenv('TOOL_AUDIT_LOG_PATH', '/var/log/nixos-ai-stack/tool-audit.jsonl'))
 _audit_socket_path = os.getenv('AUDIT_SOCKET_PATH', '/run/ai-audit-sidecar.sock')
 
-logger = structlog.get_logger(__name__)
+try:
+    import structlog
+    logger = structlog.get_logger(__name__)
+except Exception:  # pragma: no cover - fallback for lightweight environments
+    logger = logging.getLogger(__name__)
 
 
 def _send_via_socket(entry_json: str) -> bool:
