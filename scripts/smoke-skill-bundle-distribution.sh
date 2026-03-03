@@ -41,6 +41,14 @@ INSTALLED_DIR="$(find "${INSTALL_ROOT}" -mindepth 1 -maxdepth 1 -type d | head -
 [[ -f "${INSTALLED_DIR}/SKILL.md" ]] || fail "installed skill missing SKILL.md"
 pass "bundle install from index"
 
+# file:// URL install path (external-style index consumption)
+python "${ROOT}/scripts/skill-bundle-registry.py" install \
+  --index "file://${INDEX}" \
+  --skill-name "${SKILL_NAME}" \
+  --target-dir "${TMP_DIR}/url-installed" >/dev/null
+find "${TMP_DIR}/url-installed" -mindepth 2 -maxdepth 2 -type f -name SKILL.md | grep -q . || fail "url-based install missing SKILL.md"
+pass "bundle install via file URL index"
+
 if command -v openssl >/dev/null 2>&1; then
   openssl genrsa -out "${TMP_DIR}/private.pem" 2048 >/dev/null 2>&1
   openssl rsa -in "${TMP_DIR}/private.pem" -pubout -out "${TMP_DIR}/public.pem" >/dev/null 2>&1
@@ -51,7 +59,7 @@ if command -v openssl >/dev/null 2>&1; then
     --target-dir "${TMP_DIR}/signed-install" \
     --signature "${INDEX}.sig" \
     --public-key "${TMP_DIR}/public.pem" >/dev/null
-  [[ -f "${TMP_DIR}/signed-install"/*/SKILL.md ]] || fail "signed install missing SKILL.md"
+  find "${TMP_DIR}/signed-install" -mindepth 2 -maxdepth 2 -type f -name SKILL.md | grep -q . || fail "signed install missing SKILL.md"
   pass "signed bundle install with index verification"
 fi
 
