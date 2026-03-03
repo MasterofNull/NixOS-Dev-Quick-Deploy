@@ -775,6 +775,27 @@ cat > "${tmp_file}" <<FACTS
       llamaCpp.huggingFaceRepo         = "${ai_llama_model_id}";
       llamaCpp.huggingFaceFile         = "${ai_llama_model_file}";
       llamaCpp.sha256                  = null;
+      # Cezanne APU (Ryzen 5000U) uses gfx90c, which maps to ROCm gfx version 9.0.0
+      rocmGfxOverride                  = "9.0.0";
+      # llama.cpp extra args for stability and performance on AMD APU
+      llamaCpp.extraArgs               = [
+        # Prevent slot hangs: timeout after 120s
+        "--timeout" "120"
+        # Limit concurrent slots to prevent resource contention
+        "--parallel" "2"
+        # Optimize batch processing for interactive use
+        "--batch-size" "512"
+        "--ubatch-size" "64"
+        # CPU threads: match physical cores for best latency
+        "--threads" "8"
+        "--threads-batch" "8"
+        # Flash attention for faster prompt processing (ROCm)
+        "--flash-attn" "on"
+        # Memory mapping for faster model loading
+        "--mlock"
+        # Reasoning format for Qwen3-Instruct models
+        "--reasoning-format" "deepseek"
+      ];
       embeddingDimensions              = ${ai_embed_dims};
       embeddingServer.enable           = ${ai_embed_enabled};
       embeddingServer.model            = "/var/lib/llama-cpp/models/${ai_embed_model_file}";
@@ -782,10 +803,14 @@ cat > "${tmp_file}" <<FACTS
       embeddingServer.huggingFaceFile  = "${ai_embed_model_file}";
       embeddingServer.sha256           = null;
       embeddingServer.pooling          = "${ai_embed_pooling}";
+      embeddingServer.extraArgs        = [
+        "--threads" "8"
+        "--batch-size" "512"
+        "--flash-attn" "on"
+      ];
       ui.enable                        = ${ai_ui_enabled};
       vectorDb.enable                  = ${ai_vector_db_enabled};
       listenOnLan                      = false;
-      rocmGfxOverride                  = null;
     };
   };
 }
