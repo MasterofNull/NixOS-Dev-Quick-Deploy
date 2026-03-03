@@ -22,6 +22,9 @@ Owner: Phase 27 CLI conversion track
 ./scripts/aqd skill package .agent/skills/skill-creator dist
 ./scripts/aqd skill bundle-index .agent/skills dist/skills/bundles dist/skills/index.json
 ./scripts/aqd skill bundle-install dist/skills/index.json skill-creator /tmp/skills-install --force
+./scripts/aqd skill bundle-install dist/skills/index.json skill-creator /tmp/skills-install --signature dist/skills/index.json.sig --public-key config/keys/skill-registry-public.pem
+./scripts/aqd skill sign-index dist/skills/index.json config/keys/skill-registry-private.pem
+./scripts/aqd skill verify-index dist/skills/index.json config/keys/skill-registry-public.pem
 ```
 
 ### MCP workflows
@@ -40,6 +43,13 @@ Owner: Phase 27 CLI conversion track
 ```bash
 ./scripts/aqd workflows list
 ./scripts/aqd --version
+./scripts/aqd policy evaluate --profile continue-local --task "debug boot hang" --tool tree
+./scripts/aqd reasoning route --query "find exact nix option for switchboard port"
+./scripts/aqd parity advanced-suite
+./scripts/aqd parity regression-gate --offline
+./scripts/aqd parity generate-provenance
+./scripts/aqd parity check-auth
+./scripts/aqd parity check-slo
 ```
 
 ## Migration Mapping

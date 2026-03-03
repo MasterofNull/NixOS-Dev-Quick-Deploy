@@ -472,6 +472,39 @@ jobs:
           chmod +x scripts/smoke-skill-bundle-distribution.sh
           ./scripts/smoke-skill-bundle-distribution.sh
 
+  advanced-parity-tooling:
+    name: Advanced Parity Tooling
+    runs-on: ubuntu-latest
+    needs: [syntax]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install jq
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y jq
+
+      - name: Run advanced parity suite
+        run: |
+          chmod +x scripts/run-advanced-parity-suite.sh
+          chmod +x scripts/smoke-skill-bundle-distribution.sh
+          chmod +x scripts/run-harness-regression-gate.sh
+          chmod +x scripts/chaos-harness-smoke.sh
+          chmod +x scripts/check-boot-shutdown-integration.sh
+          chmod +x scripts/check-api-auth-hardening.sh
+          chmod +x scripts/validate-ai-slo-runtime.sh
+          chmod +x scripts/smoke-cross-client-compat.sh
+          chmod +x scripts/sign-skill-registry.sh
+          chmod +x scripts/verify-skill-registry.sh
+          chmod +x scripts/generate-harness-sdk-provenance.sh
+          ./scripts/run-advanced-parity-suite.sh
+
   security:
     name: Security Scanning
     runs-on: ubuntu-latest

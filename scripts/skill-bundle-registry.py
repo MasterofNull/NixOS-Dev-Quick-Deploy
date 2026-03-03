@@ -15,6 +15,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 import time
 import zipfile
@@ -132,6 +133,33 @@ def cmd_install(args: argparse.Namespace) -> int:
         print(f"ERROR: index not found: {index_path}")
         return 1
 
+    if args.signature and args.public_key:
+        sig = Path(args.signature).resolve()
+        pub = Path(args.public_key).resolve()
+        if not sig.is_file():
+            print(f"ERROR: signature not found: {sig}")
+            return 1
+        if not pub.is_file():
+            print(f"ERROR: public key not found: {pub}")
+            return 1
+        try:
+            verify = subprocess.run(
+                ["openssl", "dgst", "-sha256", "-verify", str(pub), "-signature", str(sig), str(index_path)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        except FileNotFoundError:
+            print("ERROR: openssl is required for signature verification but not found in PATH")
+            return 1
+        if verify.returncode != 0:
+            print("ERROR: index signature verification failed")
+            return 1
+        print(f"verified index signature: {sig}")
+    elif args.signature or args.public_key:
+        print("ERROR: --signature and --public-key must be provided together")
+        return 1
+
     data = json.loads(index_path.read_text(encoding="utf-8"))
     skills = data.get("skills", [])
     if not isinstance(skills, list):
@@ -213,6 +241,8 @@ def main() -> int:
     p_install.add_argument("--skill-name", required=True, help="Skill name or folder name in index")
     p_install.add_argument("--target-dir", required=True, help="Destination skill root directory")
     p_install.add_argument("--bundles-dir", default="", help="Optional override directory for bundle files")
+    p_install.add_argument("--signature", default="", help="Optional detached signature path for index.json")
+    p_install.add_argument("--public-key", default="", help="Optional public key for signature verification")
     p_install.add_argument("--force", action="store_true", help="Replace destination if skill already exists")
     p_install.set_defaults(func=cmd_install)
 
