@@ -39,6 +39,10 @@ let
 
   repoMcp  = "${mcp.repoPath}/ai-stack/mcp-servers";
   dataDir  = mcp.dataDir;
+  mutableStateDir = cfg.deployment.mutableSpaces.aiStackStateDir;
+  mutableOptimizerDir = cfg.deployment.mutableSpaces.aiStackOptimizerDir;
+  mutableLogDir = cfg.deployment.mutableSpaces.aiStackLogDir;
+  mcpIntegrityBaseline = "${mutableStateDir}/mcp-source-baseline.sha256";
   migrationsIni = "${mcp.repoPath}/ai-stack/migrations/alembic.ini";
   aidbConfig = pkgs.writeText "aidb-config.yaml" ''
     server:
@@ -87,6 +91,57 @@ let
         hnsw_m: 16
         hnsw_ef_construction: 64
   '';
+
+  runtimeSafetyPolicyJson =
+    pkgs.writeText "runtime-safety-policy.json" (builtins.toJSON ai.aiHarness.runtime.safetyPolicy);
+  runtimeIsolationProfilesJson =
+    pkgs.writeText "runtime-isolation-profiles.json" (builtins.toJSON ai.aiHarness.runtime.isolationProfiles);
+  workflowBlueprintsJson =
+    pkgs.writeText "workflow-blueprints.json" (builtins.toJSON ai.aiHarness.runtime.workflowBlueprints);
+  runtimeSchedulerPolicyJson =
+    pkgs.writeText "runtime-scheduler-policy.json" (builtins.toJSON ai.aiHarness.runtime.schedulerPolicy);
+  parityScorecardJson =
+    pkgs.writeText "parity-scorecard.json" (builtins.toJSON ai.aiHarness.runtime.parityScorecard);
+  auditSidecarScript =
+    pkgs.writeText "audit_sidecar.py" (builtins.readFile ../../../ai-stack/mcp-servers/shared/audit_sidecar.py);
+
+  runtimeSafetyModes =
+    if builtins.isAttrs ai.aiHarness.runtime.safetyPolicy
+      && builtins.hasAttr "modes" ai.aiHarness.runtime.safetyPolicy
+      && builtins.isAttrs ai.aiHarness.runtime.safetyPolicy.modes
+    then ai.aiHarness.runtime.safetyPolicy.modes
+    else {};
+
+  runtimeIsolationProfiles =
+    if builtins.isAttrs ai.aiHarness.runtime.isolationProfiles
+      && builtins.hasAttr "profiles" ai.aiHarness.runtime.isolationProfiles
+      && builtins.isAttrs ai.aiHarness.runtime.isolationProfiles.profiles
+    then ai.aiHarness.runtime.isolationProfiles.profiles
+    else {};
+
+  runtimeWorkspaceRoots =
+    let
+      values = builtins.attrValues runtimeIsolationProfiles;
+      roots = map (p:
+        if builtins.isAttrs p && builtins.hasAttr "workspace_root" p
+        then toString p.workspace_root
+        else ""
+      ) values;
+    in
+      lib.unique (builtins.filter (x: x != "") roots);
+
+  mutableProgramPaths =
+    if cfg.deployment.mutableSpaces.enable
+    then lib.unique (
+      cfg.deployment.mutableSpaces.programWritablePaths
+      ++ [ mutableStateDir mutableOptimizerDir mutableLogDir ]
+    )
+    else [ ];
+
+  serviceWritablePaths = lib.unique ([
+    dataDir
+    "/tmp"
+  ] ++ mutableProgramPaths ++ runtimeWorkspaceRoots);
 
   # ── Shared Python environment (packages used by ≥2 services) ─────────────
   # Individual services extend this with their own extras.
@@ -202,7 +257,7 @@ let
     # ProtectHome override: repo scripts may be under /home/; "read-only" allows
     # reading them while still blocking writes to /home.
     ProtectHome              = "read-only";
-    ReadWritePaths           = [ dataDir "/tmp" ];
+    ReadWritePaths           = serviceWritablePaths;
     ReadOnlyPaths            = [ mcp.repoPath ];
     WorkingDirectory         = dataDir;
     # Phase 13.1.1 — restrict to necessary address families only
@@ -227,6 +282,7 @@ let
 
   embedEnabled = ai.embeddingServer.enable;
   redisUnit = "redis-mcp.service";
+  mutableBootstrapUnit = "ai-mutable-path-bootstrap.service";
   authSelfTestUnit = "ai-auth-selftest.service";
   otlpCollectorUnit = "ai-otel-collector.service";
   otlpEndpoint = "http://127.0.0.1:${toString ports.otlpGrpc}";
@@ -282,7 +338,7 @@ let
     ++ lib.optional mcp.redis.enable redisUnit;
 
   aidbDeps =
-    [ "network-online.target" ]
+    [ "network-online.target" mutableBootstrapUnit ]
     ++ [ otlpCollectorUnit ]
     ++ lib.optional sec.enable authSelfTestUnit
     ++ lib.optional mcp.postgres.enable "ai-pgvector-bootstrap.service"
@@ -292,7 +348,7 @@ let
     ++ lib.optional ai.vectorDb.enable "qdrant.service";
 
   hybridDeps =
-    [ "network-online.target" "ai-aidb.service" ]
+    [ "network-online.target" mutableBootstrapUnit "ai-aidb.service" ]
     ++ [ otlpCollectorUnit ]
     ++ lib.optional sec.enable authSelfTestUnit
     ++ lib.optional embedEnabled "llama-cpp-embed.service"
@@ -301,7 +357,7 @@ let
     ++ lib.optional ai.vectorDb.enable "qdrant.service";
 
   ralphDeps =
-    [ "network-online.target" "ai-hybrid-coordinator.service" "ai-aidb.service" ]
+    [ "network-online.target" mutableBootstrapUnit "ai-hybrid-coordinator.service" "ai-aidb.service" ]
     ++ [ otlpCollectorUnit ]
     ++ lib.optional sec.enable authSelfTestUnit
     ++ lib.optional mcp.postgres.enable "postgresql.service"
@@ -337,7 +393,77 @@ in
           assertion = mcp.dataDir != "";
           message = "mySystem.mcpServers.dataDir must be set to a writable state directory when MCP servers are active.";
         }
+        {
+          assertion =
+            builtins.isAttrs ai.aiHarness.runtime.safetyPolicy
+            && builtins.hasAttr "modes" ai.aiHarness.runtime.safetyPolicy
+            && builtins.isAttrs ai.aiHarness.runtime.safetyPolicy.modes
+            && builtins.hasAttr "plan-readonly" ai.aiHarness.runtime.safetyPolicy.modes
+            && builtins.hasAttr "execute-mutating" ai.aiHarness.runtime.safetyPolicy.modes;
+          message = ''
+            mySystem.aiStack.aiHarness.runtime.safetyPolicy must define
+            modes.plan-readonly and modes.execute-mutating.
+          '';
+        }
+        {
+          assertion =
+            builtins.isAttrs ai.aiHarness.runtime.isolationProfiles
+            && builtins.hasAttr "profiles" ai.aiHarness.runtime.isolationProfiles
+            && builtins.isAttrs ai.aiHarness.runtime.isolationProfiles.profiles;
+          message = ''
+            mySystem.aiStack.aiHarness.runtime.isolationProfiles.profiles must be an attribute set.
+          '';
+        }
+        {
+          assertion =
+            builtins.isAttrs ai.aiHarness.runtime.workflowBlueprints
+            && builtins.hasAttr "blueprints" ai.aiHarness.runtime.workflowBlueprints;
+          message = ''
+            mySystem.aiStack.aiHarness.runtime.workflowBlueprints must contain a blueprints list.
+          '';
+        }
+        {
+          assertion =
+            builtins.isAttrs ai.aiHarness.runtime.schedulerPolicy
+            && builtins.hasAttr "selection" ai.aiHarness.runtime.schedulerPolicy;
+          message = ''
+            mySystem.aiStack.aiHarness.runtime.schedulerPolicy must contain selection.
+          '';
+        }
+        {
+          assertion =
+            builtins.isAttrs ai.aiHarness.runtime.parityScorecard
+            && builtins.hasAttr "tracks" ai.aiHarness.runtime.parityScorecard;
+          message = ''
+            mySystem.aiStack.aiHarness.runtime.parityScorecard must contain tracks.
+          '';
+        }
       ];
+
+      systemd.services.ai-mutable-path-bootstrap = {
+        description = "AI stack mutable path bootstrap";
+        wantedBy = [ "ai-stack.target" ];
+        partOf = [ "ai-stack.target" ];
+        before = [
+          "ai-aidb.service"
+          "ai-hybrid-coordinator.service"
+          "ai-ralph-wiggum.service"
+          "ai-aider-wrapper.service"
+          "ai-nixos-docs.service"
+        ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+        script = ''
+          set -euo pipefail
+          create_path() {
+            local path="$1"
+            ${pkgs.coreutils}/bin/install -d -m 0750 -o ${lib.escapeShellArg svcUser} -g ${lib.escapeShellArg svcGroup} "$path"
+          }
+          ${lib.concatMapStringsSep "\n" (path: "create_path ${lib.escapeShellArg path}") (lib.unique (runtimeWorkspaceRoots ++ mutableProgramPaths ++ cfg.deployment.mutableSpaces.userWritablePaths))}
+        '';
+      };
 
       # ── System user / group ─────────────────────────────────────────────────
       # ── State directories ───────────────────────────────────────────────────
@@ -352,9 +478,6 @@ in
         "d ${dataDir}/ralph/telemetry    0750 ${svcUser} ${svcGroup} -"
         "d ${dataDir}/qdrant-collections          0750 ${svcUser} ${svcGroup} -"
         "d /var/log/ai-stack                      0750 ${svcUser} ${svcGroup} -"
-        # Tool audit log dir — written by shared/tool_audit.py fallback path
-        # and read by aq-report TOOL_AUDIT_PATH default.
-        "d /var/log/nixos-ai-stack                0750 ${svcUser} ${svcGroup} -"
         # Audit sidecar log dir — used when socket-activated sidecar writes JSONL.
         "d /var/log/ai-audit-sidecar              0750 ${svcUser} ${svcGroup} -"
         "d ${dataDir}/aider-wrapper               0750 ${svcUser} ${svcGroup} -"
@@ -362,7 +485,7 @@ in
         "d ${dataDir}/nixos-docs           0750 ${svcUser} ${svcGroup} -"
         "d ${dataDir}/nixos-docs/cache     0750 ${svcUser} ${svcGroup} -"
         "d ${dataDir}/nixos-docs/repos     0750 ${svcUser} ${svcGroup} -"
-      ];
+      ] ++ map (root: "d ${root} 0750 ${svcUser} ${svcGroup} -") runtimeWorkspaceRoots;
 
       # ── Firewall: expose MCP ports on LAN when requested ───────────────────
       # embeddingsPort (:8001) omitted — embeddings served by llama-cpp-embed.
@@ -697,6 +820,14 @@ in
             "AI_HARNESS_EVAL_ENABLED=${if ai.aiHarness.eval.enable then "true" else "false"}"
             "AI_HARNESS_MIN_ACCEPTANCE_SCORE=${toString ai.aiHarness.eval.minAcceptanceScore}"
             "AI_HARNESS_MAX_LATENCY_MS=${toString ai.aiHarness.eval.maxLatencyMs}"
+            "AI_RUN_DEFAULT_SAFETY_MODE=${ai.aiHarness.runtime.defaultSafetyMode}"
+            "AI_RUN_DEFAULT_TOKEN_LIMIT=${toString ai.aiHarness.runtime.defaultTokenLimit}"
+            "AI_RUN_DEFAULT_TOOL_CALL_LIMIT=${toString ai.aiHarness.runtime.defaultToolCallLimit}"
+            "RUNTIME_SAFETY_POLICY_FILE=${runtimeSafetyPolicyJson}"
+            "RUNTIME_ISOLATION_PROFILES_FILE=${runtimeIsolationProfilesJson}"
+            "WORKFLOW_BLUEPRINTS_FILE=${workflowBlueprintsJson}"
+            "RUNTIME_SCHEDULER_POLICY_FILE=${runtimeSchedulerPolicyJson}"
+            "PARITY_SCORECARD_FILE=${parityScorecardJson}"
             "PYTHONPATH=${repoMcp}:${repoMcp}/hybrid-coordinator"
             # Phase 12.3.2 — audit sidecar socket path
             "AUDIT_SOCKET_PATH=/run/ai-audit-sidecar.sock"
@@ -705,7 +836,7 @@ in
             ++ lib.optional sec.enable "EMBEDDING_API_KEY_FILE=${secretPath embeddingsApiKeySecret}"
             ++ lib.optional sec.enable "HYBRID_API_KEY_FILE=${secretPath hybridApiKeySecret}"
             ++ lib.optional sec.enable "POSTGRES_PASSWORD_FILE=${secretPath postgresPasswordSecret}";
-          EnvironmentFile = "-/var/lib/nixos-ai-stack/optimizer/overrides.env";
+          EnvironmentFile = "-${mutableOptimizerDir}/overrides.env";
         };
       };
 
@@ -762,7 +893,8 @@ in
         description = "Aider Wrapper MCP server (async code modification)";
         wantedBy    = [ "ai-stack.target" ];
         partOf      = [ "ai-stack.target" ];
-        after       = [ "network-online.target" ];
+        after       = [ "network-online.target" mutableBootstrapUnit ];
+        requires    = [ mutableBootstrapUnit ];
         wants       = [ "network-online.target" ];
         serviceConfig = commonServiceConfig // {
           ExecStart = lib.escapeShellArgs [
@@ -772,6 +904,10 @@ in
           Environment = [
             "AIDER_WRAPPER_PORT=${toString mcp.aiderWrapperPort}"
             "AIDER_TASK_TIMEOUT_SECONDS=600"
+            "AIDER_TERMINATE_GRACE_SECONDS=5"
+            "AIDER_WATCHDOG_INTERVAL_SECONDS=10"
+            "AIDER_WATCHDOG_MAX_RUNTIME_SECONDS=180"
+            "AIDER_BIN=${pkgs."aider-chat"}/bin/aider"
             "AIDER_WORKSPACE=${dataDir}/aider-wrapper/workspace"
             "LLAMA_CPP_HOST=127.0.0.1"
             "LLAMA_CPP_PORT=${toString llama.port}"
@@ -779,12 +915,18 @@ in
             # Phase 14.1.1 — bubblewrap filesystem sandbox for aider subprocess.
             "AI_AIDER_SANDBOX=true"
             "BWRAP_PATH=${pkgs.bubblewrap}/bin/bwrap"
+            # If unprivileged user namespaces are disabled, retry once unsandboxed
+            # so hint/eval feedback loops still complete on constrained hosts.
+            "AI_AIDER_SANDBOX_FALLBACK_UNSAFE=true"
             # Phase 19.3.3 — prepend top aq-hint to aider --message for steered task execution.
             "AI_HINTS_ENABLED=true"
             "HINTS_URL=http://127.0.0.1:${toString mcp.hybridPort}/hints"
-          ] ++ lib.optional sec.enable "AIDER_WRAPPER_API_KEY_FILE=${secretPath aiderWrapperApiKeySecret}";
-          # hint-audit.jsonl and tool-audit.jsonl both land in /var/log/nixos-ai-stack
-          ReadWritePaths = [ dataDir "/tmp" "/var/log/nixos-ai-stack" ];
+            "HINT_AUDIT_LOG_PATH=${mutableLogDir}/hint-audit.jsonl"
+          ]
+            ++ lib.optional sec.enable "AIDER_WRAPPER_API_KEY_FILE=${secretPath aiderWrapperApiKeySecret}"
+            ++ lib.optional sec.enable "HYBRID_API_KEY_FILE=${secretPath hybridApiKeySecret}";
+          # hint-audit.jsonl and tool-audit.jsonl both land in the mutable AI log dir.
+          ReadWritePaths = [ dataDir "/tmp" mutableLogDir ];
           # Phase 13.1.1 — aider-wrapper only communicates with loopback services
           IPAddressAllow = [ "127.0.0.1/8" "::1/128" ];
           IPAddressDeny = [ "any" ];
@@ -800,7 +942,9 @@ in
         description = "NixOS documentation MCP server";
         wantedBy    = [ "ai-stack.target" ];
         partOf      = [ "ai-stack.target" ];
-        after       = [ "network-online.target" ]
+        after       = [ "network-online.target" mutableBootstrapUnit ]
+                    ++ lib.optional mcp.redis.enable redisUnit;
+        requires    = [ mutableBootstrapUnit ]
                     ++ lib.optional mcp.redis.enable redisUnit;
         wants       = [ "network-online.target" ];
         serviceConfig = commonServiceConfig // {
@@ -943,8 +1087,10 @@ in
           # cannot traverse it regardless of ProtectHome/ReadOnlyPaths overrides.
           User                    = svcUser;
           Group                   = svcGroup;
+          ProtectHome             = "read-only";
+          ReadOnlyPaths           = [ mcp.repoPath ];
           LogsDirectory           = "ai-audit-sidecar";
-          ExecStart               = "${auditSidecarPython}/bin/python3 ${repoMcp}/shared/audit_sidecar.py";
+          ExecStart               = "${auditSidecarPython}/bin/python3 ${auditSidecarScript}";
           Restart                 = "on-failure";
           RestartSec              = "5s";
           RestrictAddressFamilies = [ "AF_UNIX" ];
@@ -953,7 +1099,6 @@ in
           Environment = [
             "TOOL_AUDIT_LOG_PATH=/var/log/ai-audit-sidecar/tool-audit.jsonl"
             "AUDIT_SOCKET_PATH=/run/ai-audit-sidecar.sock"
-            "PYTHONPATH=${repoMcp}"
           ];
         };
       };
@@ -971,7 +1116,7 @@ in
           StateDirectory          = "ai-mcp-integrity";
           ReadOnlyPaths           = [
             mcp.repoPath
-            "/var/lib/nixos-ai-stack/mcp-source-baseline.sha256"
+            mcpIntegrityBaseline
           ];
           RestrictAddressFamilies = [ "AF_UNIX" ];
           SystemCallFilter        = [ "@system-service" ];
@@ -980,7 +1125,7 @@ in
           SuccessExitStatus       = [ 0 ];
           Environment             = [
             "MCP_SERVER_DIR=${mcp.repoPath}/ai-stack/mcp-servers"
-            "MCP_INTEGRITY_BASELINE=/var/lib/nixos-ai-stack/mcp-source-baseline.sha256"
+            "MCP_INTEGRITY_BASELINE=${mcpIntegrityBaseline}"
             "MCP_INTEGRITY_ALERT_DIR=/var/lib/ai-mcp-integrity/alerts"
           ];
         };

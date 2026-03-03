@@ -23,6 +23,22 @@ export interface ReviewAcceptanceRequest {
   run_harness_eval?: boolean;
 }
 
+export interface RunStartRequest {
+  query: string;
+  safety_mode?: "plan-readonly" | "execute-mutating";
+  token_limit?: number;
+  tool_call_limit?: number;
+}
+
+export interface RuntimeScheduleRequest {
+  objective: string;
+  runtimeClass?: string;
+  transport?: string;
+  tags?: string[];
+  strategy?: string;
+  includeDegraded?: boolean;
+}
+
 export class HarnessClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
@@ -131,6 +147,137 @@ export class HarnessClient {
         query,
         mode,
         expected_keywords: expectedKeywords,
+      }),
+    });
+  }
+
+  runStart(payload: RunStartRequest): Promise<Json> {
+    return this.request("/workflow/run/start", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  runGet(sessionId: string, replay = false): Promise<Json> {
+    return this.request(`/workflow/run/${sessionId}?replay=${replay ? "true" : "false"}`, { method: "GET" });
+  }
+
+  runSetMode(sessionId: string, safetyMode: "plan-readonly" | "execute-mutating", confirm = false): Promise<Json> {
+    return this.request(`/workflow/run/${sessionId}/mode`, {
+      method: "POST",
+      body: JSON.stringify({ safety_mode: safetyMode, confirm }),
+    });
+  }
+
+  runGetIsolation(sessionId: string): Promise<Json> {
+    return this.request(`/workflow/run/${sessionId}/isolation`, { method: "GET" });
+  }
+
+  runSetIsolation(
+    sessionId: string,
+    profile = "",
+    workspaceRoot = "",
+    networkPolicy = "",
+  ): Promise<Json> {
+    return this.request(`/workflow/run/${sessionId}/isolation`, {
+      method: "POST",
+      body: JSON.stringify({
+        profile,
+        workspace_root: workspaceRoot,
+        network_policy: networkPolicy,
+      }),
+    });
+  }
+
+  runEvent(
+    sessionId: string,
+    eventType: string,
+    riskClass: "safe" | "review-required" | "blocked" = "safe",
+    approved = false,
+    tokenDelta = 0,
+    toolCallDelta = 0,
+    detail = "",
+  ): Promise<Json> {
+    return this.request(`/workflow/run/${sessionId}/event`, {
+      method: "POST",
+      body: JSON.stringify({
+        event_type: eventType,
+        risk_class: riskClass,
+        approved,
+        token_delta: tokenDelta,
+        tool_call_delta: toolCallDelta,
+        detail,
+      }),
+    });
+  }
+
+  runReplay(sessionId: string): Promise<Json> {
+    return this.request(`/workflow/run/${sessionId}/replay`, { method: "GET" });
+  }
+
+  listBlueprints(): Promise<Json> {
+    return this.request("/workflow/blueprints", { method: "GET" });
+  }
+
+  parityScorecard(): Promise<Json> {
+    return this.request("/parity/scorecard", { method: "GET" });
+  }
+
+  registerRuntime(payload: Json): Promise<Json> {
+    return this.request("/control/runtimes/register", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  listRuntimes(): Promise<Json> {
+    return this.request("/control/runtimes", { method: "GET" });
+  }
+
+  getRuntime(runtimeId: string): Promise<Json> {
+    return this.request(`/control/runtimes/${runtimeId}`, { method: "GET" });
+  }
+
+  updateRuntimeStatus(runtimeId: string, status: string, note = ""): Promise<Json> {
+    return this.request(`/control/runtimes/${runtimeId}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status, note }),
+    });
+  }
+
+  runtimeDeploy(runtimeId: string, payload: Json): Promise<Json> {
+    return this.request(`/control/runtimes/${runtimeId}/deployments`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  runtimeRollback(runtimeId: string, toDeploymentId: string, reason = ""): Promise<Json> {
+    return this.request(`/control/runtimes/${runtimeId}/rollback`, {
+      method: "POST",
+      body: JSON.stringify({
+        to_deployment_id: toDeploymentId,
+        reason,
+      }),
+    });
+  }
+
+  runtimeSchedulePolicy(): Promise<Json> {
+    return this.request("/control/runtimes/schedule/policy", { method: "GET" });
+  }
+
+  runtimeSchedule(payload: RuntimeScheduleRequest): Promise<Json> {
+    return this.request("/control/runtimes/schedule/select", {
+      method: "POST",
+      body: JSON.stringify({
+        objective: payload.objective,
+        strategy: payload.strategy ?? "weighted",
+        include_degraded: payload.includeDegraded ?? false,
+        requirements: {
+          runtime_class: payload.runtimeClass ?? "",
+          transport: payload.transport ?? "",
+          tags: payload.tags ?? [],
+        },
       }),
     });
   }

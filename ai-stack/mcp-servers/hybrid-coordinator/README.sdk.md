@@ -70,6 +70,23 @@ Both SDKs cover:
 - `POST /workflow/session/{id}/advance`
 - `POST /review/acceptance`
 - `POST /harness/eval`
+- `POST /workflow/run/start`
+- `GET /workflow/run/{id}`
+- `POST /workflow/run/{id}/mode`
+- `GET /workflow/run/{id}/isolation`
+- `POST /workflow/run/{id}/isolation`
+- `POST /workflow/run/{id}/event`
+- `GET /workflow/run/{id}/replay`
+- `GET /workflow/blueprints`
+- `POST /control/runtimes/register`
+- `GET /control/runtimes`
+- `GET /control/runtimes/{id}`
+- `POST /control/runtimes/{id}/status`
+- `POST /control/runtimes/{id}/deployments`
+- `POST /control/runtimes/{id}/rollback`
+- `GET /control/runtimes/schedule/policy`
+- `POST /control/runtimes/schedule/select`
+- `GET /parity/scorecard`
 
 Generated API reference:
 - `docs/generated/HARNESS-SDK-API.md`

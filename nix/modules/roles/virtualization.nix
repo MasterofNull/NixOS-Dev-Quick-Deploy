@@ -35,6 +35,9 @@ in
     # ---- libvirtd / QEMU --------------------------------------------------
     virtualisation.libvirtd = {
       enable = lib.mkDefault true;
+      # Keep libvirtd resident to avoid idle-timeout forced shutdowns that can
+      # leave the legacy monolithic unit in failed state on some hosts.
+      extraOptions = lib.mkAfter [ "--timeout" "0" ];
       qemu = {
         # ovmf.enable removed in NixOS 25.11 — OVMF is bundled by default.
         runAsRoot = lib.mkDefault false; # run QEMU as qemu-kvm user

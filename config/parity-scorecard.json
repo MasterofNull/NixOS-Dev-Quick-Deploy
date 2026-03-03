@@ -1,0 +1,66 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-03-03",
+  "tracks": [
+    {
+      "id": "run_trajectory_replay",
+      "weight": 0.2,
+      "status": "partial",
+      "checks": [
+        "/workflow/run/start",
+        "/workflow/run/{id}/event",
+        "/workflow/run/{id}/replay"
+      ]
+    },
+    {
+      "id": "runtime_control_plane",
+      "weight": 0.2,
+      "status": "partial",
+      "checks": [
+        "/control/runtimes/register",
+        "/control/runtimes",
+        "/control/runtimes/{id}/deployments",
+        "/control/runtimes/{id}/rollback"
+      ]
+    },
+    {
+      "id": "runtime_safety_envelope",
+      "weight": 0.2,
+      "status": "partial",
+      "checks": [
+        "safety_mode",
+        "risk_class",
+        "approval_required"
+      ]
+    },
+    {
+      "id": "budget_guardrails",
+      "weight": 0.15,
+      "status": "partial",
+      "checks": [
+        "token_limit",
+        "tool_call_limit",
+        "budget_violation"
+      ]
+    },
+    {
+      "id": "cli_workflow_ergonomics",
+      "weight": 0.15,
+      "status": "partial",
+      "checks": [
+        "harness-rpc run-start",
+        "harness-rpc run-event",
+        "harness-rpc run-replay"
+      ]
+    },
+    {
+      "id": "mcp_workflow_blueprints",
+      "weight": 0.1,
+      "status": "partial",
+      "checks": [
+        "/workflow/blueprints",
+        "config/workflow-blueprints.json"
+      ]
+    }
+  ]
+}

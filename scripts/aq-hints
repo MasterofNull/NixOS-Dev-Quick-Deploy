@@ -40,7 +40,9 @@ from typing import Any, Dict, List, Optional
 # Engine import — local first, REST fallback
 # ---------------------------------------------------------------------------
 
-_REPO_ROOT = Path(__file__).parent.parent
+# Resolve symlinks so local-bin wrappers (e.g. ~/.local/bin/aq-hints -> repo script)
+# still compute the correct repository root.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
 _ENGINE_DIR = _REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator"
 
 if str(_ENGINE_DIR) not in sys.path and _ENGINE_DIR.exists():

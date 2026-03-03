@@ -12,6 +12,7 @@ let
   usersCfg = config.users.users or { };
   hasPrimaryUserDecl = builtins.hasAttr cfg.primaryUser usersCfg;
   primaryUserCfg = if hasPrimaryUserDecl then usersCfg.${cfg.primaryUser} else { };
+  primaryGroup = lib.attrByPath [ "users" "users" cfg.primaryUser "group" ] "users" config;
   hasRootDecl = builtins.hasAttr "root" usersCfg;
   rootUserCfg = if hasRootDecl then usersCfg.root else { };
   hasPasswordDirective = userCfg:
@@ -56,6 +57,15 @@ let
       else if pkgs.stdenv.hostPlatform.isAarch64 then "aarch64"
       else "other";
   };
+  mutableStateDir = cfg.deployment.mutableSpaces.aiStackStateDir;
+  mutableOptimizerDir = cfg.deployment.mutableSpaces.aiStackOptimizerDir;
+  mutableLogDir = cfg.deployment.mutableSpaces.aiStackLogDir;
+  mutableUserPaths = cfg.deployment.mutableSpaces.userWritablePaths;
+  mutableProgramPaths = lib.unique (
+    cfg.deployment.mutableSpaces.programWritablePaths
+    ++ [ mutableStateDir mutableOptimizerDir mutableLogDir ]
+  );
+  mutableAllPaths = mutableUserPaths ++ mutableProgramPaths;
 
   # ── Dev testing helper scripts (referenced by system-health-check.sh) ──────
   # These are minimal wrappers installed as system commands so they appear in
@@ -193,6 +203,11 @@ in
 
     environment.systemPackages = resolvedPackages ++ devHelperPackages;
 
+    systemd.tmpfiles.rules = lib.mkIf cfg.deployment.mutableSpaces.enable (
+      (map (path: "d ${path} 0750 ${cfg.primaryUser} ${primaryGroup} -") mutableUserPaths)
+      ++ (map (path: "d ${path} 0750 ${cfg.primaryUser} ${primaryGroup} -") mutableProgramPaths)
+    );
+
     # ---- Security hardening (system-wide baseline) -------------------------
     # These mirror the security block in templates/configuration.nix so that
     # the flake-first path provides equivalent hardening without the template.
@@ -268,6 +283,16 @@ in
         {
           assertion = !(!config.users.mutableUsers && !hasPrimaryUserDecl);
           message = "users.mutableUsers=false requires declaring users.users.${cfg.primaryUser}.";
+        }
+        {
+          assertion = !(cfg.deployment.mutableSpaces.enable)
+            || builtins.all (path: lib.hasPrefix "/" path) mutableAllPaths;
+          message = "mySystem.deployment.mutableSpaces.* paths must be absolute.";
+        }
+        {
+          assertion = !(cfg.deployment.mutableSpaces.enable)
+            || builtins.all (path: !(lib.hasPrefix "/nix/store" path)) mutableAllPaths;
+          message = "mySystem.deployment.mutableSpaces.* paths cannot be inside /nix/store.";
         }
         {
           assertion = !(cfg.deployment.initrdEmergencyAccess && hasRootDecl && !hasPasswordDirective rootUserCfg);

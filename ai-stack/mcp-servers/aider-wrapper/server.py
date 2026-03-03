@@ -74,9 +74,15 @@ app = FastAPI(
 WORKSPACE = os.getenv("AIDER_WORKSPACE", "/workspace")
 LLAMA_CPP_URL = f"http://{os.getenv('LLAMA_CPP_HOST', 'llama-cpp')}:{os.getenv('LLAMA_CPP_PORT', '8080')}"
 MODEL_NAME = os.getenv("LLAMA_CPP_MODEL", "qwen2.5-coder-7b-instruct-q4_k_m.gguf")
+AIDER_BIN = os.getenv("AIDER_BIN", "aider")
 # Maximum concurrent Aider processes (memory-intensive; default 1)
 AIDER_MAX_CONCURRENCY = int(os.getenv("AIDER_MAX_CONCURRENCY", "1"))
 AIDER_TASK_TIMEOUT = float(os.getenv("AIDER_TASK_TIMEOUT_SECONDS", "600.0"))
+AIDER_TERMINATE_GRACE_SECONDS = float(os.getenv("AIDER_TERMINATE_GRACE_SECONDS", "5.0"))
+AIDER_WATCHDOG_INTERVAL_SECONDS = float(os.getenv("AIDER_WATCHDOG_INTERVAL_SECONDS", "10.0"))
+AIDER_WATCHDOG_MAX_RUNTIME_SECONDS = float(
+    os.getenv("AIDER_WATCHDOG_MAX_RUNTIME_SECONDS", str(min(180.0, AIDER_TASK_TIMEOUT)))
+)
 
 # Phase 14.1.1 — bubblewrap filesystem sandbox for Aider subprocess.
 # When AI_AIDER_SANDBOX=true: aider runs inside bwrap with /nix/store read-only,
@@ -85,6 +91,9 @@ AIDER_TASK_TIMEOUT = float(os.getenv("AIDER_TASK_TIMEOUT_SECONDS", "600.0"))
 # egress to loopback only.
 AI_AIDER_SANDBOX = os.getenv("AI_AIDER_SANDBOX", "false").lower() == "true"
 BWRAP_PATH = os.getenv("BWRAP_PATH", "bwrap")
+AI_AIDER_SANDBOX_FALLBACK_UNSAFE = os.getenv(
+    "AI_AIDER_SANDBOX_FALLBACK_UNSAFE", "true"
+).lower() == "true"
 
 # Phase 19.3.3 — aq-hints injection: prepend top ranked hint to aider --message.
 # Fetches from HINTS_URL (hybrid-coordinator /hints), enriching the task with
@@ -94,6 +103,18 @@ HINTS_URL = os.getenv(
     "HINTS_URL",
     f"http://127.0.0.1:{os.getenv('HYBRID_COORDINATOR_PORT', '8003')}/hints",
 )
+HYBRID_API_KEY = os.getenv("HYBRID_API_KEY", "")
+HYBRID_API_KEY_FILE = os.getenv("HYBRID_API_KEY_FILE", "/run/secrets/hybrid_api_key")
+
+
+def _load_hybrid_api_key() -> str:
+    """Load hybrid API key for authenticated /hints calls."""
+    if HYBRID_API_KEY:
+        return HYBRID_API_KEY.strip()
+    p = Path(HYBRID_API_KEY_FILE)
+    if p.exists():
+        return p.read_text(encoding="utf-8").strip()
+    return ""
 
 # Phase 19.3.4 — hint adoption tracking: written alongside tool-audit.jsonl.
 _audit_dir = Path(os.getenv(
@@ -107,6 +128,9 @@ HINT_AUDIT_LOG_PATH = Path(os.getenv("HINT_AUDIT_LOG_PATH", str(_audit_dir / "hi
 
 _tasks: Dict[str, dict] = {}
 _task_semaphore: Optional[asyncio.Semaphore] = None
+_task_processes: Dict[str, asyncio.subprocess.Process] = {}
+_task_cancel_reasons: Dict[str, str] = {}
+_watchdog_task: Optional[asyncio.Task] = None
 
 
 def _write_hint_audit(task_id: str, hint_id: str, hint_snippet: str, accepted: bool) -> None:
@@ -211,13 +235,13 @@ class TaskSummaryResponse(BaseModel):
 
 @app.on_event("startup")
 async def _startup() -> None:
-    global _task_semaphore
+    global _task_semaphore, _watchdog_task
     _task_semaphore = asyncio.Semaphore(AIDER_MAX_CONCURRENCY)
     logger.info("aider_wrapper_starting", version="3.1.0", workspace=WORKSPACE,
                 max_concurrency=AIDER_MAX_CONCURRENCY)
     try:
         proc = await asyncio.create_subprocess_exec(
-            "aider", "--version",
+            AIDER_BIN, "--version",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -231,6 +255,97 @@ async def _startup() -> None:
     except Exception as exc:
         logger.error("aider_check_failed", error=str(exc))
 
+    _watchdog_task = asyncio.create_task(_task_watchdog_loop())
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    global _watchdog_task
+    if _watchdog_task and not _watchdog_task.done():
+        _watchdog_task.cancel()
+        try:
+            await _watchdog_task
+        except asyncio.CancelledError:
+            pass
+
+
+def _now_iso() -> str:
+    return datetime.now().isoformat()
+
+
+def _set_terminal_task(
+    task_id: str,
+    *,
+    status: str,
+    output: str,
+    error: str,
+    files_modified: List[str],
+    git_commits: List[str],
+    duration_seconds: float,
+    exit_code: int,
+    completed: bool,
+) -> None:
+    _tasks[task_id].update({
+        "status": status,
+        "finished_at": _now_iso(),
+        "result": {
+            "status": status,
+            "output": output,
+            "error": error,
+            "files_modified": files_modified,
+            "git_commits": git_commits,
+            "duration_seconds": duration_seconds,
+            "exit_code": exit_code,
+            "completed": completed,
+        },
+    })
+
+
+async def _terminate_process(task_id: str, proc: asyncio.subprocess.Process, reason: str) -> None:
+    """Graceful terminate with hard kill escalation."""
+    if proc.returncode is not None:
+        return
+    try:
+        proc.terminate()
+        await asyncio.wait_for(proc.wait(), timeout=AIDER_TERMINATE_GRACE_SECONDS)
+    except Exception:
+        try:
+            proc.kill()
+            await asyncio.wait_for(proc.wait(), timeout=2.0)
+        except Exception:
+            pass
+    logger.warning("aider_task_process_terminated", task_id=task_id, reason=reason)
+
+
+async def _task_watchdog_loop() -> None:
+    """Kill runaway running tasks that exceed watchdog runtime."""
+    while True:
+        try:
+            await asyncio.sleep(max(1.0, AIDER_WATCHDOG_INTERVAL_SECONDS))
+            now = datetime.now().timestamp()
+            for task_id, entry in list(_tasks.items()):
+                if entry.get("status") != "running":
+                    continue
+                started_raw = entry.get("started_at")
+                if not isinstance(started_raw, str):
+                    continue
+                try:
+                    started_ts = datetime.fromisoformat(started_raw).timestamp()
+                except ValueError:
+                    continue
+                runtime = now - started_ts
+                if runtime < AIDER_WATCHDOG_MAX_RUNTIME_SECONDS:
+                    continue
+                proc = _task_processes.get(task_id)
+                if proc is None:
+                    continue
+                _task_cancel_reasons[task_id] = "watchdog_timeout"
+                await _terminate_process(task_id, proc, "watchdog_timeout")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("aider_watchdog_error", error=str(exc))
+
 
 # ============================================================================
 # Health Check
@@ -242,7 +357,7 @@ async def health_check():
     aider_available = False
     try:
         proc = await asyncio.create_subprocess_exec(
-            "aider", "--version",
+            AIDER_BIN, "--version",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -271,26 +386,36 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
     """Run one Aider task, respecting the concurrency semaphore. Updates _tasks in place."""
     _tasks[task_id]["status"] = "waiting"
     async with _task_semaphore:
+        if task_id in _task_cancel_reasons:
+            _set_terminal_task(
+                task_id,
+                status="canceled",
+                output="",
+                error=_task_cancel_reasons.pop(task_id, "Task canceled before execution"),
+                files_modified=[],
+                git_commits=[],
+                duration_seconds=0.0,
+                exit_code=130,
+                completed=False,
+            )
+            return
         _tasks[task_id]["status"] = "running"
-        _tasks[task_id]["started_at"] = datetime.now().isoformat()
+        _tasks[task_id]["started_at"] = _now_iso()
         start_time = datetime.now()
 
         workspace_path = Path(task.workspace)
         if not workspace_path.exists():
-            _tasks[task_id].update({
-                "status": "error",
-                "finished_at": datetime.now().isoformat(),
-                "result": {
-                    "status": "error",
-                    "output": "",
-                    "error": f"Workspace does not exist: {task.workspace}",
-                    "files_modified": [],
-                    "git_commits": [],
-                    "duration_seconds": 0.0,
-                    "exit_code": 1,
-                    "completed": False,
-                },
-            })
+            _set_terminal_task(
+                task_id,
+                status="error",
+                output="",
+                error=f"Workspace does not exist: {task.workspace}",
+                files_modified=[],
+                git_commits=[],
+                duration_seconds=0.0,
+                exit_code=1,
+                completed=False,
+            )
             return
 
         logger.info("aider_task_start", task_id=task_id,
@@ -305,9 +430,13 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
         if AI_HINTS_ENABLED:
             try:
                 params = urllib.parse.urlencode({"q": task.prompt[:100], "max": "1"})
+                hints_headers = {"Accept": "application/json"}
+                hybrid_key = _load_hybrid_api_key()
+                if hybrid_key:
+                    hints_headers["X-API-Key"] = hybrid_key
                 req = urllib.request.Request(
                     f"{HINTS_URL}?{params}",
-                    headers={"Accept": "application/json"},
+                    headers=hints_headers,
                 )
                 loop = asyncio.get_event_loop()
                 def _fetch_hint():
@@ -325,8 +454,8 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
             except Exception as exc:
                 logger.debug("hint_fetch_skipped", task_id=task_id, error=str(exc))
 
-        cmd = [
-            "aider",
+        base_cmd = [
+            AIDER_BIN,
             "--yes",
             "--no-auto-commits",
             "--model", f"openai/{MODEL_NAME}",
@@ -336,14 +465,17 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
         for file in (task.files or []):
             file_path = workspace_path / file
             if file_path.exists():
-                cmd.extend(["--file", str(file_path)])
+                base_cmd.extend(["--file", str(file_path)])
             else:
                 logger.warning("file_not_found", file=file)
-        cmd.extend(["--message", message_for_aider])
+        base_cmd.extend(["--message", message_for_aider])
 
         # Phase 14.1.1 — optionally wrap in bubblewrap filesystem sandbox.
+        cmd = list(base_cmd)
+        sandbox_applied = False
         if AI_AIDER_SANDBOX:
             cmd = _apply_bwrap(cmd, task.workspace)
+            sandbox_applied = True
             logger.info("aider_sandbox_enabled", bwrap=BWRAP_PATH)
 
         logger.info("executing_aider", command=" ".join(cmd[:10]))
@@ -352,61 +484,80 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
         error_text: Optional[str] = None
         returncode = 1
 
-        try:
+        async def _run_command(exec_cmd: List[str]) -> tuple[str, str, int]:
             proc = await asyncio.create_subprocess_exec(
-                *cmd,
+                *exec_cmd,
                 cwd=task.workspace,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                proc.communicate(), timeout=AIDER_TASK_TIMEOUT
-            )
-            output = stdout_bytes.decode("utf-8", errors="replace")
-            returncode = proc.returncode
+            _task_processes[task_id] = proc
+            try:
+                stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                    proc.communicate(), timeout=AIDER_TASK_TIMEOUT
+                )
+                return (
+                    stdout_bytes.decode("utf-8", errors="replace"),
+                    stderr_bytes.decode("utf-8", errors="replace"),
+                    int(proc.returncode),
+                )
+            except asyncio.TimeoutError:
+                _task_cancel_reasons[task_id] = "timeout"
+                await _terminate_process(task_id, proc, "timeout")
+                raise
+            finally:
+                _task_processes.pop(task_id, None)
+
+        try:
+            output, stderr_text, returncode = await _run_command(cmd)
             if returncode != 0:
-                error_text = stderr_bytes.decode("utf-8", errors="replace")
+                error_text = stderr_text
+                if (
+                    sandbox_applied
+                    and AI_AIDER_SANDBOX_FALLBACK_UNSAFE
+                    and (
+                        "No permissions to creating new namespace" in stderr_text
+                        or "unprivileged_userns_clone" in stderr_text
+                        or "Operation not permitted" in stderr_text
+                    )
+                ):
+                    logger.warning(
+                        "aider_sandbox_fallback_unsandboxed task_id=%s reason=userns_unavailable",
+                        task_id,
+                    )
+                    output, stderr_text, returncode = await _run_command(base_cmd)
+                    error_text = stderr_text if returncode != 0 else None
 
         except asyncio.TimeoutError:
-            try:
-                proc.kill()
-            except Exception:
-                pass
             duration = (datetime.now() - start_time).total_seconds()
             logger.error("aider_timeout", task_id=task_id, duration=duration)
-            _tasks[task_id].update({
-                "status": "error",
-                "finished_at": datetime.now().isoformat(),
-                "result": {
-                    "status": "error",
-                    "output": "",
-                    "error": "Aider execution timed out after 5 minutes",
-                    "files_modified": [],
-                    "git_commits": [],
-                    "duration_seconds": duration,
-                    "exit_code": 124,
-                    "completed": False,
-                },
-            })
+            _set_terminal_task(
+                task_id,
+                status="error",
+                output="",
+                error="Aider execution timed out",
+                files_modified=[],
+                git_commits=[],
+                duration_seconds=duration,
+                exit_code=124,
+                completed=False,
+            )
             return
 
         except Exception as exc:
             duration = (datetime.now() - start_time).total_seconds()
             logger.error("aider_exception", task_id=task_id, error=str(exc), duration=duration)
-            _tasks[task_id].update({
-                "status": "error",
-                "finished_at": datetime.now().isoformat(),
-                "result": {
-                    "status": "error",
-                    "output": "",
-                    "error": f"Exception: {exc}",
-                    "files_modified": [],
-                    "git_commits": [],
-                    "duration_seconds": duration,
-                    "exit_code": 1,
-                    "completed": False,
-                },
-            })
+            _set_terminal_task(
+                task_id,
+                status="error",
+                output="",
+                error=f"Exception: {exc}",
+                files_modified=[],
+                git_commits=[],
+                duration_seconds=duration,
+                exit_code=1,
+                completed=False,
+            )
             return
 
         duration = (datetime.now() - start_time).total_seconds()
@@ -441,8 +592,12 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
         except Exception:
             pass
 
-        completed = returncode == 0 and len(files_modified) > 0
-        final_status = "success" if returncode == 0 else "error"
+        cancelled_reason = _task_cancel_reasons.pop(task_id, "")
+        cancelled = bool(cancelled_reason)
+        completed = (returncode == 0 and len(files_modified) > 0 and not cancelled)
+        final_status = "canceled" if cancelled else ("success" if returncode == 0 else "error")
+        if cancelled and not error_text:
+            error_text = cancelled_reason
 
         logger.info("aider_task_complete", task_id=task_id, exit_code=returncode,
                     files_modified=len(files_modified), duration=duration, completed=completed)
@@ -451,20 +606,17 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
         if hint_injected:
             _write_hint_audit(task_id, hint_id, hint_snippet, accepted=completed)
 
-        _tasks[task_id].update({
-            "status": final_status,
-            "finished_at": datetime.now().isoformat(),
-            "result": {
-                "status": final_status,
-                "output": output,
-                "error": error_text,
-                "files_modified": files_modified,
-                "git_commits": git_commits,
-                "duration_seconds": duration,
-                "exit_code": returncode,
-                "completed": completed,
-            },
-        })
+        _set_terminal_task(
+            task_id,
+            status=final_status,
+            output=output,
+            error=error_text or "",
+            files_modified=files_modified,
+            git_commits=git_commits,
+            duration_seconds=duration,
+            exit_code=returncode,
+            completed=completed,
+        )
 
 
 # ============================================================================
@@ -475,8 +627,8 @@ async def _do_submit(task: TaskRequest) -> TaskSubmitResponse:
     task_id = str(uuid4())
     _tasks[task_id] = {
         "status": "queued",
-        "submitted_at": datetime.now().isoformat(),
-        "request": task.dict(),
+        "submitted_at": _now_iso(),
+        "request": task.model_dump(),
     }
     asyncio.create_task(_run_aider_task(task_id, task))
     logger.info("aider_task_queued", task_id=task_id, workspace=task.workspace)
@@ -515,11 +667,45 @@ async def get_task_status(task_id: str, auth: str = Depends(require_auth)):
     return response
 
 
+@app.post("/tasks/{task_id}/stop")
+@app.post("/tasks/{task_id}/cancel")
+async def stop_task(task_id: str, auth: str = Depends(require_auth)):
+    """Cancel a queued/waiting/running task with kill escalation."""
+    if task_id not in _tasks:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+    entry = _tasks[task_id]
+    status = str(entry.get("status", "unknown"))
+    if status in {"success", "error", "canceled"}:
+        return {"task_id": task_id, "status": status, "message": "Task already terminal"}
+
+    _task_cancel_reasons[task_id] = "canceled_by_user"
+    proc = _task_processes.get(task_id)
+    if proc is not None:
+        await _terminate_process(task_id, proc, "canceled_by_user")
+        entry["status"] = "canceling"
+        return {"task_id": task_id, "status": "canceling", "message": "Cancellation requested"}
+
+    # queued/waiting state: mark immediately terminal and skip execution
+    _set_terminal_task(
+        task_id,
+        status="canceled",
+        output="",
+        error="canceled_by_user",
+        files_modified=[],
+        git_commits=[],
+        duration_seconds=0.0,
+        exit_code=130,
+        completed=False,
+    )
+    _task_cancel_reasons.pop(task_id, None)
+    return {"task_id": task_id, "status": "canceled", "message": "Task canceled"}
+
+
 @app.get("/tasks/summary", response_model=TaskSummaryResponse)
 async def get_task_summary(auth: str = Depends(require_auth)):
     """Return queue summary for dashboard polling."""
     active_states = {"queued", "waiting", "running"}
-    terminal_states = {"success", "error"}
+    terminal_states = {"success", "error", "canceled"}
 
     active_tasks = 0
     last_task_id: Optional[str] = None
