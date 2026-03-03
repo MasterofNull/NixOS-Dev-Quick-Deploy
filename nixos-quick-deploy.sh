@@ -1814,59 +1814,99 @@ pre_rebuild_model_download() {
 
   # Parse model info from the generated facts.nix lines
   local chat_model_file chat_hf_repo chat_hf_file
+  local chat_sha256 embed_sha256
   local embed_model_file embed_hf_repo embed_hf_file
   chat_model_file="$(grep -oP '(?<=llamaCpp\.model\s{0,30}=\s{0,5}")[^"]+' "$facts_file" | head -1 || true)"
   chat_hf_repo="$(grep -oP '(?<=llamaCpp\.huggingFaceRepo\s{0,30}=\s{0,5}")[^"]+' "$facts_file" | head -1 || true)"
   chat_hf_file="$(grep -oP '(?<=llamaCpp\.huggingFaceFile\s{0,30}=\s{0,5}")[^"]+' "$facts_file" | head -1 || true)"
+  chat_sha256="$(grep -oP '(?<=llamaCpp\.sha256\s{0,30}=\s{0,5}")[^"]+' "$facts_file" | head -1 || true)"
   embed_model_file="$(grep -oP '(?<=embeddingServer\.model\s{0,30}=\s{0,5}")[^"]+' "$facts_file" | head -1 || true)"
   embed_hf_repo="$(grep -oP '(?<=embeddingServer\.huggingFaceRepo\s{0,30}=\s{0,5}")[^"]+' "$facts_file" | head -1 || true)"
   embed_hf_file="$(grep -oP '(?<=embeddingServer\.huggingFaceFile\s{0,30}=\s{0,5}")[^"]+' "$facts_file" | head -1 || true)"
+  embed_sha256="$(grep -oP '(?<=embeddingServer\.sha256\s{0,30}=\s{0,5}")[^"]+' "$facts_file" | head -1 || true)"
 
-  # Download a model from HuggingFace if it is not already present on disk.
-  _download_model_if_absent() {
-    local model_path="$1" hf_repo="$2" hf_file="$3"
+  # Ensure model metadata for pre-rebuild.
+  # IMPORTANT: pre-rebuild is non-network and non-destructive by design.
+  # It must never download or replace model files.
+  _ensure_model_matches() {
+    local model_path="$1" hf_repo="$2" hf_file="$3" expected_sha="$4"
     [[ -n "$model_path" ]] || return 0
-    run_privileged test -f "$model_path" && return 0   # already present — skip
     [[ -n "$hf_repo" && -n "$hf_file" ]] || {
-      log "  WARNING: model absent and no HuggingFace info — cannot auto-download: ${model_path}"
+      log "  WARNING: no HuggingFace info — cannot validate model source: ${model_path}"
       return 0
     }
-    local url="https://huggingface.co/${hf_repo}/resolve/main/${hf_file}"
-    log "  Downloading: ${hf_file} from ${hf_repo}"
-    run_privileged mkdir -p "$(dirname "$model_path")"
-    local tmp_path="${model_path}.dl.tmp"
-    if ! run_privileged curl -L --retry 3 --retry-delay 10 \
-        --progress-bar -o "$tmp_path" "$url"; then
-      log "  ERROR: download failed for ${hf_file} — model will be fetched by systemd service on first boot"
-      run_privileged rm -f "$tmp_path" 2>/dev/null || true
+    local meta_path="${model_path}.source-meta"
+    local desired_ref="${hf_repo}:${hf_file}:${expected_sha:-null}"
+    local needs_download=true
+
+    if run_privileged test -f "$model_path"; then
+      local current_ref=""
+      if run_privileged test -f "$meta_path"; then
+        current_ref="$(run_privileged cat "$meta_path" 2>/dev/null || true)"
+      fi
+
+      if [[ "$current_ref" == "$desired_ref" ]]; then
+        needs_download=false
+      elif [[ -n "$expected_sha" ]]; then
+        local existing_sha
+        existing_sha="$(run_privileged sha256sum "$model_path" | awk '{print $1}')"
+        if [[ "$existing_sha" == "$expected_sha" ]]; then
+          run_privileged sh -c "printf '%s\n' '$desired_ref' > '$meta_path'"
+          run_privileged chmod 0644 "$meta_path"
+          needs_download=false
+        fi
+      elif [[ "$(basename "$model_path")" == "$hf_file" ]]; then
+        # No pinned sha yet: if filename already matches requested source,
+        # treat as converged and stamp metadata to avoid redundant downloads.
+        run_privileged sh -c "printf '%s\n' '$desired_ref' > '$meta_path'"
+        run_privileged chmod 0644 "$meta_path"
+        needs_download=false
+      fi
+
+      if [[ "$needs_download" == true ]]; then
+        log "  Model file exists but metadata/hash differs; skipping pre-rebuild replacement for ${model_path}"
+        log "  Runtime fetch unit will reconcile on switch if replacement is required."
+      fi
       return 0
     fi
-    run_privileged mv "$tmp_path" "$model_path"
-    run_privileged chmod 0644 "$model_path"
-    log "  Downloaded: ${model_path}"
+
+    log "  Model file missing; skipping pre-rebuild download for ${model_path}"
+    log "  Runtime fetch unit will download on switch if required."
+    return 0
   }
 
-  # Compute sha256 from file and patch the matching null sha256 line in facts.nix.
+  # Compute sha256 from file and patch the key in facts.nix.
   _record_sha256_in_facts() {
-    local model_path="$1" sed_key="$2"
+    local model_path="$1" sed_key="$2" hf_repo="$3" hf_file="$4"
     [[ -n "$model_path" ]] || return 0
     run_privileged test -f "$model_path" || return 0
+    local current_pinned
+    current_pinned="$(grep -oP "(?<=${sed_key}\\.sha256\\s{0,30}=\\s{0,5}\")[^\"]+" "$facts_file" | head -1 || true)"
+    if [[ "${current_pinned}" =~ ^[a-fA-F0-9]{64}$ ]]; then
+      log "  SHA256 already pinned (${sed_key}); skipping recompute."
+      return 0
+    fi
     local sha
     log "  Computing SHA256: $(basename "$model_path")"
     sha="$(run_privileged sha256sum "$model_path" | awk '{print $1}')"
     [[ -n "$sha" ]] || return 0
-    # Replace the null placeholder for this specific key; sed ERE
-    sed -i -E "s|(${sed_key}\\.sha256[[:space:]]*=[[:space:]]*)null;|\1\"${sha}\";|" "$facts_file"
+    # Always update this key so model changes cannot leave stale hashes.
+    sed -i -E "s#(${sed_key}\\.sha256[[:space:]]*=[[:space:]]*)(null|\"[a-fA-F0-9]{64}\");#\\1\"${sha}\";#" "$facts_file"
+    if [[ -n "$hf_repo" && -n "$hf_file" ]]; then
+      local meta_path="${model_path}.source-meta"
+      run_privileged sh -c "printf '%s\n' '${hf_repo}:${hf_file}:${sha}' > '$meta_path'"
+      run_privileged chmod 0644 "$meta_path"
+    fi
     log "  SHA256 recorded (${sed_key}): ${sha}"
   }
 
   log "Pre-rebuild: checking model files..."
 
-  _download_model_if_absent "$chat_model_file"  "$chat_hf_repo"  "$chat_hf_file"
-  _download_model_if_absent "$embed_model_file" "$embed_hf_repo" "$embed_hf_file"
+  _ensure_model_matches "$chat_model_file"  "$chat_hf_repo"  "$chat_hf_file" "$chat_sha256"
+  _ensure_model_matches "$embed_model_file" "$embed_hf_repo" "$embed_hf_file" "$embed_sha256"
 
-  _record_sha256_in_facts "$chat_model_file"  "llamaCpp"
-  _record_sha256_in_facts "$embed_model_file" "embeddingServer"
+  _record_sha256_in_facts "$chat_model_file"  "llamaCpp"        "$chat_hf_repo"  "$chat_hf_file"
+  _record_sha256_in_facts "$embed_model_file" "embeddingServer" "$embed_hf_repo" "$embed_hf_file"
 
   # Re-validate facts.nix after patching
   if command -v nix-instantiate >/dev/null 2>&1; then

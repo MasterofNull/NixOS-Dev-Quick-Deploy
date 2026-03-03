@@ -436,6 +436,30 @@ ai_embed_dims="${AI_EMBED_DIMS_OVERRIDE:-${ai_embed_dims}}"
 ai_embed_pooling="${AI_EMBED_POOLING_OVERRIDE:-${ai_embed_pooling}}"
 ai_embed_enabled="${AI_EMBED_ENABLED_OVERRIDE:-true}"
 
+# Resolve known model sha256 values from the repository checksum registry.
+# If a pair is unknown, we intentionally fall back to null (first-download record).
+sha_registry_file="${REPO_ROOT}/config/llama-cpp-models.sha256"
+lookup_model_sha() {
+  local repo_id="$1" file_name="$2"
+  [[ -f "${sha_registry_file}" ]] || return 0
+  awk -v key="${repo_id}:${file_name}" '
+    $0 !~ /^[[:space:]]*#/ && NF >= 2 && $1 == key { print $2; exit }
+  ' "${sha_registry_file}"
+}
+
+ai_llama_sha="$(lookup_model_sha "${ai_llama_model_id}" "${ai_llama_model_file}" || true)"
+ai_embed_sha="$(lookup_model_sha "${ai_embed_model_id}" "${ai_embed_model_file}" || true)"
+if [[ "${ai_llama_sha}" =~ ^[a-fA-F0-9]{64}$ ]]; then
+  ai_llama_sha_literal="\"${ai_llama_sha}\""
+else
+  ai_llama_sha_literal="null"
+fi
+if [[ "${ai_embed_sha}" =~ ^[a-fA-F0-9]{64}$ ]]; then
+  ai_embed_sha_literal="\"${ai_embed_sha}\""
+else
+  ai_embed_sha_literal="null"
+fi
+
 ai_ui_enabled="${AI_UI_ENABLED_OVERRIDE:-true}"
 ai_vector_db_enabled="${AI_VECTOR_DB_ENABLED_OVERRIDE:-false}"
 
@@ -779,7 +803,7 @@ cat > "${tmp_file}" <<FACTS
       llamaCpp.model                   = "/var/lib/llama-cpp/models/${ai_llama_model_file}";
       llamaCpp.huggingFaceRepo         = "${ai_llama_model_id}";
       llamaCpp.huggingFaceFile         = "${ai_llama_model_file}";
-      llamaCpp.sha256                  = null;
+      llamaCpp.sha256                  = ${ai_llama_sha_literal};
       # Cezanne APU (Ryzen 5000U) uses gfx90c, which maps to ROCm gfx version 9.0.0
       rocmGfxOverride                  = "9.0.0";
       # llama.cpp extra args for stability and performance on AMD APU
@@ -806,7 +830,7 @@ cat > "${tmp_file}" <<FACTS
       embeddingServer.model            = "/var/lib/llama-cpp/models/${ai_embed_model_file}";
       embeddingServer.huggingFaceRepo  = "${ai_embed_model_id}";
       embeddingServer.huggingFaceFile  = "${ai_embed_model_file}";
-      embeddingServer.sha256           = null;
+      embeddingServer.sha256           = ${ai_embed_sha_literal};
       embeddingServer.pooling          = "${ai_embed_pooling}";
       embeddingServer.extraArgs        = [
         "--threads" "8"

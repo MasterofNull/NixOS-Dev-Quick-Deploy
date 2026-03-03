@@ -285,13 +285,39 @@ in {
               set -euo pipefail
               model="${llama.model}"
               model_dir="$(dirname "$model")"
+              model_meta="${llama.model}.source-meta"
+              desired_ref="${hfRepo}:${hfFile}:${hfSha256}"
 
               # Ensure model directory exists with correct ownership.
               install -d -m 0750 -o llama -g llama "$model_dir"
 
               if [ -f "$model" ]; then
-                echo "llama-cpp: model already present at $model"
-                exit 0
+                if [ -f "$model_meta" ]; then
+                  current_ref="$(cat "$model_meta" 2>/dev/null || true)"
+                else
+                  current_ref=""
+                fi
+
+                if [ "$current_ref" = "$desired_ref" ]; then
+                  echo "llama-cpp: model already present and matches requested source at $model"
+                  exit 0
+                fi
+
+                # Backward compatibility: if metadata file is missing but hash matches,
+                # keep the model and stamp metadata so future runs are idempotent.
+                if [ -z "$current_ref" ]; then
+                  existing_sha="$(${pkgs.coreutils}/bin/sha256sum "$model" | ${pkgs.gawk}/bin/awk '{print $1}')"
+                  if [ "$existing_sha" = "${hfSha256}" ]; then
+                    echo "$desired_ref" > "$model_meta"
+                    chown llama:llama "$model_meta"
+                    chmod 0640 "$model_meta"
+                    echo "llama-cpp: model hash matches requested source; metadata recorded"
+                    exit 0
+                  fi
+                fi
+
+                echo "llama-cpp: existing model differs from requested source; downloading verified replacement before swap"
+                rm -f "$model_meta"
               fi
 
             ''
@@ -342,6 +368,9 @@ in {
                 mv "$tmp" "$model"
                 chown llama:llama "$model"
                 chmod 0640 "$model"
+                echo "$desired_ref" > "$model_meta"
+                chown llama:llama "$model_meta"
+                chmod 0640 "$model_meta"
                 trap - EXIT
                 echo "llama-cpp: model ready ($sz bytes) at $model"
               ''
@@ -425,11 +454,45 @@ in {
               set -euo pipefail
               model="${embed.model}"
               model_dir="$(dirname "$model")"
+              model_meta="${embed.model}.source-meta"
+              desired_ref="${embedHfRepo}:${embedHfFile}:${embedHfSha256}"
               install -d -m 0750 -o llama -g llama "$model_dir"
 
               if [ -f "$model" ]; then
-                echo "llama-cpp-embed: model already present at $model"
-                exit 0
+                if [ -f "$model_meta" ]; then
+                  current_ref="$(cat "$model_meta" 2>/dev/null || true)"
+                else
+                  current_ref=""
+                fi
+
+                if [ "$current_ref" = "$desired_ref" ]; then
+                  echo "llama-cpp-embed: model already present and matches requested source at $model"
+                  exit 0
+                fi
+
+                # If sha is pinned and matches, retain model and stamp metadata.
+                if [ -z "$current_ref" ] && [ -n "${embedHfSha256}" ]; then
+                  existing_sha="$(${pkgs.coreutils}/bin/sha256sum "$model" | ${pkgs.gawk}/bin/awk '{print $1}')"
+                  if [ "$existing_sha" = "${embedHfSha256}" ]; then
+                    echo "$desired_ref" > "$model_meta"
+                    chown llama:llama "$model_meta"
+                    chmod 0640 "$model_meta"
+                    echo "llama-cpp-embed: model hash matches requested source; metadata recorded"
+                    exit 0
+                  fi
+                fi
+
+                # If sha is not pinned, fallback to filename/source check.
+                if [ -z "$current_ref" ] && [ -z "${embedHfSha256}" ] && [ "$(basename "$model")" = "${embedHfFile}" ]; then
+                  echo "$desired_ref" > "$model_meta"
+                  chown llama:llama "$model_meta"
+                  chmod 0640 "$model_meta"
+                  echo "llama-cpp-embed: model filename matches requested source; metadata recorded"
+                  exit 0
+                fi
+
+                echo "llama-cpp-embed: existing model differs from requested source; downloading verified replacement before swap"
+                rm -f "$model_meta"
               fi
 
             ''
@@ -489,6 +552,9 @@ in {
                 mv "$tmp" "$model"
                 chown llama:llama "$model"
                 chmod 0640 "$model"
+                echo "$desired_ref" > "$model_meta"
+                chown llama:llama "$model_meta"
+                chmod 0640 "$model_meta"
                 trap - EXIT
                 echo "llama-cpp-embed: model ready ($sz bytes) at $model"
               ''
