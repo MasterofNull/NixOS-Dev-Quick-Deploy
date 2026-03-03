@@ -379,16 +379,18 @@ async def _postgres_select1_probe() -> Dict[str, Any]:
             "postgres_latency_ms": None,
             "postgres_error": "asyncpg_not_installed",
         }
+    pg_user = os.getenv("AIDB_DB_USER", "aidb")
+    pg_name = os.getenv("AIDB_DB_NAME", "aidb")
     dsn = os.getenv(
         "AIDB_DB_URL",
-        f"postgresql://aidb@{service_endpoints.SERVICE_HOST}:{service_endpoints.POSTGRES_PORT}/aidb",
+        f"postgresql://{pg_user}@{service_endpoints.SERVICE_HOST}:{service_endpoints.POSTGRES_PORT}/{pg_name}",
     )
     # Augment DSN with password from file if available and DSN has no password.
     pg_pw_file = os.getenv("POSTGRES_PASSWORD_FILE")
     if pg_pw_file and "://" in dsn and "@" in dsn and ":" not in dsn.split("@")[0]:
         try:
             pw = open(pg_pw_file).read().strip()  # noqa: WPS515
-            dsn = dsn.replace("://aidb@", f"://aidb:{pw}@", 1)
+            dsn = dsn.replace(f"://{pg_user}@", f"://{pg_user}:{pw}@", 1)
         except OSError:
             pass
     t0 = time.monotonic()
@@ -902,16 +904,18 @@ async def _fetch_prsi_stats() -> Dict[str, Any]:
             "sync_loop_active": False,
         }
 
+    pg_user = os.getenv("AIDB_DB_USER", "aidb")
+    pg_name = os.getenv("AIDB_DB_NAME", "aidb")
     dsn = os.getenv(
         "AIDB_DB_URL",
-        f"postgresql://aidb@{service_endpoints.SERVICE_HOST}:{service_endpoints.POSTGRES_PORT}/aidb",
+        f"postgresql://{pg_user}@{service_endpoints.SERVICE_HOST}:{service_endpoints.POSTGRES_PORT}/{pg_name}",
     )
     # Augment DSN with password from file if available and DSN has no password.
     pg_pw_file = os.getenv("POSTGRES_PASSWORD_FILE")
     if pg_pw_file and "://" in dsn and "@" in dsn and ":" not in dsn.split("@")[0]:
         try:
             pw = open(pg_pw_file).read().strip()  # noqa: WPS515
-            dsn = dsn.replace("://aidb@", f"://aidb:{pw}@", 1)
+            dsn = dsn.replace(f"://{pg_user}@", f"://{pg_user}:{pw}@", 1)
         except OSError:
             pass
 

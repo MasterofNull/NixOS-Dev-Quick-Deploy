@@ -205,10 +205,26 @@ let
                     payload["messages"] = messages
                     body = json.dumps(payload).encode("utf-8")
 
-        headers = {k: v for k, v in request.headers.items() if k.lower() != "host"}
-        headers.pop("content-length", None)
+        # Strip hop-by-hop headers and force non-compressed upstream responses.
+        # This avoids incomplete chunked-read failures from llama.cpp under load.
+        hop_by_hop = {
+            "host",
+            "connection",
+            "keep-alive",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "te",
+            "trailer",
+            "transfer-encoding",
+            "upgrade",
+            "content-length",
+            "accept-encoding",
+        }
+        headers = {k: v for k, v in request.headers.items() if k.lower() not in hop_by_hop}
         headers.pop(ROUTE_HINT_HEADER, None)
         headers.pop(PROVIDER_HINT_HEADER, None)
+        headers["Accept-Encoding"] = "identity"
+        headers["Connection"] = "close"
         if target_type == "remote" and REMOTE_API_KEY:
             headers["Authorization"] = f"Bearer {REMOTE_API_KEY}"
 
@@ -229,7 +245,7 @@ let
         return response
 
     if __name__ == "__main__":
-        uvicorn.run(app, host=HOST, port=PORT)
+        uvicorn.run(app, host=HOST, port=PORT, timeout_graceful_shutdown=5)
   '';
 in
 {
@@ -263,6 +279,8 @@ in
         RestartSec            = "5s";
         StartLimitIntervalSec = "300";
         StartLimitBurst       = 5;
+        TimeoutStopSec        = "15s";
+        KillMode              = "mixed";
         NoNewPrivileges       = true;
         ProtectSystem         = "strict";
         ProtectHome           = true;
