@@ -20,6 +20,8 @@ Owner: Phase 27 CLI conversion track
 ./scripts/aqd skill quick-validate .agent/skills/skill-creator
 ./scripts/aqd skill init my-new-skill --path .agent/skills
 ./scripts/aqd skill package .agent/skills/skill-creator dist
+./scripts/aqd skill bundle-index .agent/skills dist/skills/bundles dist/skills/index.json
+./scripts/aqd skill bundle-install dist/skills/index.json skill-creator /tmp/skills-install --force
 ```
 
 ### MCP workflows
@@ -45,6 +47,7 @@ Owner: Phase 27 CLI conversion track
 - manual governance lints -> `aqd skill validate`
 - direct `mcp-server test` -> `aqd mcp validate`
 - direct mcp evaluation harness -> `aqd mcp evaluate`
+- ad-hoc skill zip sharing -> `aqd skill bundle-index` + `aqd skill bundle-install`
 
 ## Notes
 
