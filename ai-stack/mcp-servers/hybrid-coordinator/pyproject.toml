@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nixos-ai-harness-sdk"
+version = "0.1.0"
+description = "Python SDK for the NixOS AI hybrid coordinator workflow/review/eval APIs"
+readme = "README.sdk.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+  { name = "NixOS AI Stack" }
+]
+dependencies = [
+  "httpx>=0.27,<1.0",
+]
+keywords = ["ai", "sdk", "workflow", "nixos", "harness"]
+
+[project.urls]
+Homepage = "https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy"
+Documentation = "https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy/blob/main/ai-stack/mcp-servers/hybrid-coordinator/README.sdk.md"
+
+[tool.setuptools]
+py-modules = ["harness_sdk"]

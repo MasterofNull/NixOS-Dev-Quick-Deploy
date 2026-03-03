@@ -1,0 +1,33 @@
+{
+  "name": "@nixos-ai/harness-sdk",
+  "version": "0.1.0",
+  "description": "TypeScript/JavaScript SDK for NixOS AI hybrid coordinator workflow APIs",
+  "type": "module",
+  "main": "./harness_sdk.js",
+  "module": "./harness_sdk.js",
+  "types": "./harness_sdk.d.ts",
+  "exports": {
+    ".": {
+      "types": "./harness_sdk.d.ts",
+      "import": "./harness_sdk.js"
+    }
+  },
+  "files": [
+    "harness_sdk.js",
+    "harness_sdk.d.ts",
+    "harness_sdk.ts",
+    "README.sdk.md"
+  ],
+  "scripts": {
+    "check": "node --check harness_sdk.js",
+    "pack:dry": "npm pack --dry-run"
+  },
+  "keywords": [
+    "ai",
+    "sdk",
+    "workflow",
+    "nixos",
+    "harness"
+  ],
+  "license": "MIT"
+}

@@ -17,8 +17,10 @@ Usage:
 """
 
 import asyncio
+import json
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
@@ -68,6 +70,145 @@ _local_llm_healthy_ref: Optional[Callable] = None   # lambda: _local_llm_healthy
 _local_llm_loading_ref: Optional[Callable] = None   # lambda: _local_llm_loading
 _queue_depth_ref: Optional[Callable] = None          # lambda: _model_loading_queue_depth
 _queue_max_ref: Optional[Callable] = None            # lambda: _MODEL_QUEUE_MAX
+_workflow_sessions_lock = asyncio.Lock()
+
+
+def _workflow_tool_catalog(query: str) -> List[Dict[str, str]]:
+    """Heuristic tool assignment for a structured execution plan."""
+    q = (query or "").lower()
+    tools: List[Dict[str, str]] = []
+    seen = set()
+
+    def add(name: str, endpoint: str, reason: str) -> None:
+        if name in seen:
+            return
+        seen.add(name)
+        tools.append({"name": name, "endpoint": endpoint, "reason": reason})
+
+    add("hints", "/hints", "Ranked workflow hints and known pitfalls for the query.")
+    add("discovery", "/discovery/capabilities", "Progressive disclosure of available stack capabilities.")
+
+    if any(k in q for k in ("find", "search", "retrieve", "context", "rag", "semantic", "lexical")):
+        add("route_search", "/query", "Hybrid retrieval path (semantic + lexical + routing).")
+        add("memory_recall", "/memory/recall", "Recall prior procedural/semantic memory for similar tasks.")
+
+    if any(k in q for k in ("nixos", "service", "systemd", "deploy", "boot", "shutdown")):
+        add("route_search", "/query", "Search indexed NixOS docs/rules and prior fixes.")
+        add("tree_search", "/search/tree", "Broader branch-and-aggregate retrieval for infra issues.")
+
+    if any(k in q for k in ("test", "validate", "verify", "smoke", "check")):
+        add("harness_eval", "/harness/eval", "Deterministic eval scorecard for acceptance checks.")
+        add("health", "/health", "Runtime stack health and capability flags.")
+
+    if any(k in q for k in ("feedback", "learn", "improve", "regression", "quality")):
+        add("feedback", "/feedback", "Capture outcome and correction data.")
+        add("learning_stats", "/learning/stats", "Inspect learning pipeline health and backlog.")
+
+    if "route_search" not in seen:
+        add("route_search", "/query", "Default execution path for response generation with retrieval.")
+
+    return tools
+
+
+def _workflow_sessions_path() -> Path:
+    data_dir = Path(
+        os.path.expanduser(
+            os.getenv("DATA_DIR", "~/.local/share/nixos-ai-stack/hybrid")
+        )
+    )
+    return data_dir / "workflow-sessions.json"
+
+
+def _build_workflow_plan(query: str) -> Dict[str, Any]:
+    tools = _workflow_tool_catalog(query)
+    return {
+        "objective": query,
+        "workflow_version": "1.1",
+        "phases": [
+            {
+                "id": "discover",
+                "goal": "Collect only high-signal context first.",
+                "tools": [t for t in tools if t["name"] in {"hints", "discovery", "route_search", "tree_search"}],
+                "exit_criteria": "Top risks and likely root causes identified.",
+            },
+            {
+                "id": "plan",
+                "goal": "Convert findings into discrete steps with verification points.",
+                "tools": [t for t in tools if t["name"] in {"hints", "discovery"}],
+                "exit_criteria": "Ordered task list with acceptance checks exists.",
+            },
+            {
+                "id": "execute",
+                "goal": "Apply changes in small reversible increments.",
+                "tools": [t for t in tools if t["name"] in {"route_search", "memory_recall", "feedback"}],
+                "exit_criteria": "Primary objective implemented.",
+            },
+            {
+                "id": "validate",
+                "goal": "Run smoke/eval checks and confirm expected behavior.",
+                "tools": [t for t in tools if t["name"] in {"harness_eval", "health", "learning_stats"}],
+                "exit_criteria": "All mandatory checks pass or failures are documented.",
+            },
+            {
+                "id": "handoff",
+                "goal": "Capture outcomes, residual risk, and rollback path.",
+                "tools": [t for t in tools if t["name"] in {"feedback", "learning_stats"}],
+                "exit_criteria": "Actionable handoff summary ready.",
+            },
+        ],
+        "token_policy": {
+            "approach": "progressive-disclosure",
+            "rules": [
+                "Start with concise hints/capability summaries.",
+                "Load deeper context only when a phase requires it.",
+                "Prefer retrieval over full-policy prompt stuffing.",
+            ],
+        },
+        "metadata": {
+            "query_length": len(query),
+            "capability_discovery_enabled": Config.AI_CAPABILITY_DISCOVERY_ENABLED,
+            "context_compression_enabled": Config.AI_CONTEXT_COMPRESSION_ENABLED,
+            "created_epoch_s": int(time.time()),
+        },
+    }
+
+
+def _session_lineage(sessions: Dict[str, Any], session_id: str) -> List[str]:
+    """Return root->...->session lineage for a session id."""
+    lineage: List[str] = []
+    seen = set()
+    current = session_id
+    while current and current not in seen and current in sessions:
+        seen.add(current)
+        lineage.append(current)
+        parent = (
+            sessions.get(current, {})
+            .get("fork", {})
+            .get("from_session_id")
+        )
+        current = parent if isinstance(parent, str) else ""
+    lineage.reverse()
+    return lineage
+
+
+async def _load_workflow_sessions() -> Dict[str, Any]:
+    path = _workflow_sessions_path()
+    if not path.exists():
+        return {}
+    try:
+        raw = path.read_text(encoding="utf-8")
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+async def _save_workflow_sessions(data: Dict[str, Any]) -> None:
+    path = _workflow_sessions_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    tmp.replace(path)
 
 
 def init(
@@ -746,6 +887,335 @@ async def run_http_mode(port: int) -> None:
             logger.error("handle_hints error=%s", exc)
             return web.json_response({"error": str(exc)}, status=500)
 
+    async def handle_workflow_plan(request: web.Request) -> web.Response:
+        """Build a structured phase plan with explicit tool assignments."""
+        try:
+            if request.method == "POST":
+                data = await request.json()
+                query = (data.get("query") or data.get("prompt") or "").strip()
+            else:
+                data = {}
+                query = (request.rel_url.query.get("q") or "").strip()
+            if not query:
+                return web.json_response({"error": "query required"}, status=400)
+            return web.json_response(_build_workflow_plan(query))
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_workflow_session_start(request: web.Request) -> web.Response:
+        """Start a persisted workflow session from a query."""
+        try:
+            data = await request.json()
+            query = (data.get("query") or data.get("prompt") or "").strip()
+            if not query:
+                return web.json_response({"error": "query required"}, status=400)
+            session_id = str(uuid4())
+            plan = _build_workflow_plan(query)
+            phases = []
+            for idx, phase in enumerate(plan.get("phases", [])):
+                phases.append({
+                    "id": phase.get("id", f"phase-{idx}"),
+                    "status": "in_progress" if idx == 0 else "pending",
+                    "started_at": int(time.time()) if idx == 0 else None,
+                    "completed_at": None,
+                    "notes": [],
+                })
+            session = {
+                "session_id": session_id,
+                "objective": query,
+                "plan": plan,
+                "phase_state": phases,
+                "current_phase_index": 0,
+                "status": "in_progress",
+                "created_at": int(time.time()),
+                "updated_at": int(time.time()),
+            }
+            async with _workflow_sessions_lock:
+                sessions = await _load_workflow_sessions()
+                sessions[session_id] = session
+                await _save_workflow_sessions(sessions)
+            return web.json_response(session)
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_workflow_session_get(request: web.Request) -> web.Response:
+        try:
+            session_id = request.match_info.get("session_id", "")
+            if not session_id:
+                return web.json_response({"error": "session_id required"}, status=400)
+            include_lineage = (
+                request.rel_url.query.get("lineage", "").lower() in {"1", "true", "yes"}
+            )
+            async with _workflow_sessions_lock:
+                sessions = await _load_workflow_sessions()
+                session = sessions.get(session_id)
+            if not session:
+                return web.json_response({"error": "session not found"}, status=404)
+            if include_lineage:
+                payload = dict(session)
+                payload["lineage"] = _session_lineage(sessions, session_id)
+                return web.json_response(payload)
+            return web.json_response(session)
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_workflow_sessions_list(_request: web.Request) -> web.Response:
+        """List persisted workflow sessions with compact metadata."""
+        try:
+            async with _workflow_sessions_lock:
+                sessions = await _load_workflow_sessions()
+            items = []
+            for sid, sess in sessions.items():
+                phase_state = sess.get("phase_state", [])
+                current_idx = int(sess.get("current_phase_index", 0))
+                current_phase = None
+                if 0 <= current_idx < len(phase_state):
+                    current_phase = phase_state[current_idx].get("id")
+                items.append({
+                    "session_id": sid,
+                    "status": sess.get("status", "unknown"),
+                    "objective": sess.get("objective", ""),
+                    "current_phase": current_phase,
+                    "current_phase_index": current_idx,
+                    "created_at": sess.get("created_at"),
+                    "updated_at": sess.get("updated_at"),
+                })
+            items.sort(key=lambda x: int(x.get("updated_at") or 0), reverse=True)
+            return web.json_response({"sessions": items, "count": len(items)})
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_workflow_tree(request: web.Request) -> web.Response:
+        """Return workflow session tree with parent/child relationships."""
+        try:
+            include_completed = (
+                request.rel_url.query.get("include_completed", "true").lower() in {"1", "true", "yes"}
+            )
+            include_failed = (
+                request.rel_url.query.get("include_failed", "true").lower() in {"1", "true", "yes"}
+            )
+            include_objective = (
+                request.rel_url.query.get("include_objective", "true").lower() in {"1", "true", "yes"}
+            )
+
+            async with _workflow_sessions_lock:
+                sessions = await _load_workflow_sessions()
+
+            nodes = []
+            edges = []
+            children_count: Dict[str, int] = {}
+
+            for sid, sess in sessions.items():
+                status = str(sess.get("status", "unknown"))
+                if status == "completed" and not include_completed:
+                    continue
+                if status == "failed" and not include_failed:
+                    continue
+
+                parent_id = (
+                    sess.get("fork", {})
+                    .get("from_session_id")
+                )
+                if isinstance(parent_id, str) and parent_id:
+                    edges.append({"from": parent_id, "to": sid, "type": "fork"})
+                    children_count[parent_id] = int(children_count.get(parent_id, 0)) + 1
+
+                node = {
+                    "session_id": sid,
+                    "status": status,
+                    "current_phase_index": int(sess.get("current_phase_index", 0)),
+                    "created_at": sess.get("created_at"),
+                    "updated_at": sess.get("updated_at"),
+                    "parent_session_id": parent_id if isinstance(parent_id, str) and parent_id else None,
+                }
+                if include_objective:
+                    node["objective"] = sess.get("objective", "")
+                nodes.append(node)
+
+            for node in nodes:
+                sid = node["session_id"]
+                node["children_count"] = int(children_count.get(sid, 0))
+
+            roots = [n["session_id"] for n in nodes if n.get("parent_session_id") is None]
+            nodes.sort(key=lambda n: int(n.get("updated_at") or 0), reverse=True)
+
+            return web.json_response({
+                "nodes": nodes,
+                "edges": edges,
+                "roots": roots,
+                "count": len(nodes),
+            })
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_workflow_session_fork(request: web.Request) -> web.Response:
+        """Fork a workflow session to create a branch from current state."""
+        try:
+            session_id = request.match_info.get("session_id", "")
+            if not session_id:
+                return web.json_response({"error": "session_id required"}, status=400)
+            data = await request.json() if request.can_read_body else {}
+            note = str(data.get("note", "forked session")).strip()
+            new_id = str(uuid4())
+            now = int(time.time())
+            async with _workflow_sessions_lock:
+                sessions = await _load_workflow_sessions()
+                source = sessions.get(session_id)
+                if not source:
+                    return web.json_response({"error": "session not found"}, status=404)
+                forked = json.loads(json.dumps(source))
+                forked["session_id"] = new_id
+                forked["status"] = "in_progress"
+                forked["created_at"] = now
+                forked["updated_at"] = now
+                forked.setdefault("fork", {})
+                forked["fork"] = {
+                    "from_session_id": session_id,
+                    "note": note,
+                    "forked_at": now,
+                }
+                sessions[new_id] = forked
+                await _save_workflow_sessions(sessions)
+            return web.json_response({"session_id": new_id, "forked_from": session_id, "status": "created"})
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_workflow_session_advance(request: web.Request) -> web.Response:
+        """Advance workflow state using actions: pass|fail|skip|note."""
+        try:
+            session_id = request.match_info.get("session_id", "")
+            if not session_id:
+                return web.json_response({"error": "session_id required"}, status=400)
+            data = await request.json()
+            action = str(data.get("action", "note")).strip().lower()
+            note = str(data.get("note", "")).strip()
+            if action not in {"pass", "fail", "skip", "note"}:
+                return web.json_response({"error": "action must be one of pass|fail|skip|note"}, status=400)
+
+            async with _workflow_sessions_lock:
+                sessions = await _load_workflow_sessions()
+                session = sessions.get(session_id)
+                if not session:
+                    return web.json_response({"error": "session not found"}, status=404)
+
+                idx = int(session.get("current_phase_index", 0))
+                phases = session.get("phase_state", [])
+                if not phases or idx >= len(phases):
+                    session["status"] = "completed"
+                    session["updated_at"] = int(time.time())
+                    sessions[session_id] = session
+                    await _save_workflow_sessions(sessions)
+                    return web.json_response(session)
+
+                phase = phases[idx]
+                if note:
+                    phase.setdefault("notes", []).append({"ts": int(time.time()), "text": note})
+
+                if action in {"pass", "skip"}:
+                    phase["status"] = "completed"
+                    phase["completed_at"] = int(time.time())
+                    idx += 1
+                    if idx < len(phases):
+                        phases[idx]["status"] = "in_progress"
+                        if not phases[idx].get("started_at"):
+                            phases[idx]["started_at"] = int(time.time())
+                        session["current_phase_index"] = idx
+                        session["status"] = "in_progress"
+                    else:
+                        session["status"] = "completed"
+                        session["current_phase_index"] = len(phases)
+                elif action == "fail":
+                    phase["status"] = "failed"
+                    phase["completed_at"] = int(time.time())
+                    session["status"] = "failed"
+                else:
+                    if phase.get("status") == "pending":
+                        phase["status"] = "in_progress"
+                        phase["started_at"] = int(time.time())
+
+                session["phase_state"] = phases
+                session["updated_at"] = int(time.time())
+                sessions[session_id] = session
+                await _save_workflow_sessions(sessions)
+            return web.json_response(session)
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_review_acceptance(request: web.Request) -> web.Response:
+        """Deterministic reviewer gate: criteria + keyword coverage scoring."""
+        try:
+            data = await request.json()
+            response_text = str(data.get("response", "") or "")
+            query = str(data.get("query", "") or "")
+            criteria = data.get("criteria", []) or []
+            expected_keywords = data.get("expected_keywords", []) or []
+            min_criteria_ratio = float(data.get("min_criteria_ratio", 0.7))
+            min_keyword_ratio = float(data.get("min_keyword_ratio", 0.6))
+            run_eval = bool(data.get("run_harness_eval", False))
+
+            if not response_text:
+                return web.json_response({"error": "response required"}, status=400)
+
+            text = response_text.lower()
+            criteria_hits = []
+            for criterion in criteria:
+                crit = str(criterion).strip()
+                if not crit:
+                    continue
+                hit = crit.lower() in text
+                criteria_hits.append({"criterion": crit, "hit": hit})
+            criteria_total = len(criteria_hits)
+            criteria_hit_count = len([c for c in criteria_hits if c["hit"]])
+            criteria_ratio = (criteria_hit_count / criteria_total) if criteria_total else 1.0
+
+            keyword_hits = []
+            for kw in expected_keywords:
+                item = str(kw).strip().lower()
+                if not item:
+                    continue
+                keyword_hits.append({"keyword": item, "hit": item in text})
+            keyword_total = len(keyword_hits)
+            keyword_hit_count = len([k for k in keyword_hits if k["hit"]])
+            keyword_ratio = (keyword_hit_count / keyword_total) if keyword_total else 1.0
+
+            harness_eval = None
+            if run_eval and query and expected_keywords and _run_harness_eval is not None:
+                try:
+                    harness_eval = await _run_harness_eval(
+                        query=query,
+                        expected_keywords=[str(k) for k in expected_keywords],
+                        mode="auto",
+                        max_latency_ms=None,
+                    )
+                except Exception as exc:
+                    harness_eval = {"error": str(exc)}
+
+            passed = criteria_ratio >= min_criteria_ratio and keyword_ratio >= min_keyword_ratio
+            if isinstance(harness_eval, dict) and harness_eval.get("passed") is False:
+                passed = False
+
+            return web.json_response({
+                "passed": passed,
+                "score": round((criteria_ratio + keyword_ratio) / 2.0, 4),
+                "criteria": {
+                    "hits": criteria_hits,
+                    "hit_count": criteria_hit_count,
+                    "total": criteria_total,
+                    "ratio": round(criteria_ratio, 4),
+                    "threshold": min_criteria_ratio,
+                },
+                "keywords": {
+                    "hits": keyword_hits,
+                    "hit_count": keyword_hit_count,
+                    "total": keyword_total,
+                    "ratio": round(keyword_ratio, 4),
+                    "threshold": min_keyword_ratio,
+                },
+                "harness_eval": harness_eval,
+            })
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
     # ------------------------------------------------------------------
     # App assembly and startup
     # ------------------------------------------------------------------
@@ -782,6 +1252,15 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/reload-model", handle_reload_model)
     http_app.router.add_post("/hints", handle_hints)           # Phase 19.2.1
     http_app.router.add_get("/hints", handle_hints)            # Phase 19.2.2
+    http_app.router.add_post("/workflow/plan", handle_workflow_plan)
+    http_app.router.add_get("/workflow/plan", handle_workflow_plan)
+    http_app.router.add_post("/workflow/session/start", handle_workflow_session_start)
+    http_app.router.add_get("/workflow/sessions", handle_workflow_sessions_list)
+    http_app.router.add_get("/workflow/tree", handle_workflow_tree)
+    http_app.router.add_get("/workflow/session/{session_id}", handle_workflow_session_get)
+    http_app.router.add_post("/workflow/session/{session_id}/fork", handle_workflow_session_fork)
+    http_app.router.add_post("/workflow/session/{session_id}/advance", handle_workflow_session_advance)
+    http_app.router.add_post("/review/acceptance", handle_review_acceptance)
 
     runner = web.AppRunner(
         http_app,
