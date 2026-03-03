@@ -427,8 +427,9 @@ free_blocked_ai_ports() {
       # Get the PID and process name
       local port_info
       port_info="$(ss -tlnp 2>/dev/null | grep ":${port} " | head -1)"
-      pid="$(echo "$port_info" | grep -oP 'pid=\K[0-9]+' | head -1)"
-      process_name="$(echo "$port_info" | grep -oP '\("\K[^"]+' | head -1)"
+      # Use portable sed instead of grep -oP (Perl regex)
+      pid="$(echo "$port_info" | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1)"
+      process_name="$(echo "$port_info" | sed -n 's/.*("\([^"]*\)".*/\1/p' | head -1)"
 
       if [[ -n "$pid" ]]; then
         # Check if this is a systemd-managed service (skip those)
