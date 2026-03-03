@@ -70,3 +70,7 @@ Both SDKs cover:
 - `POST /workflow/session/{id}/advance`
 - `POST /review/acceptance`
 - `POST /harness/eval`
+
+Generated API reference:
+- `docs/generated/HARNESS-SDK-API.md`
+- refresh/check via `scripts/generate-harness-sdk-api-docs.sh --write|--check`

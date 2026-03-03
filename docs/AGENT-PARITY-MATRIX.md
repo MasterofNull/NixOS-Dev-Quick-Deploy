@@ -82,8 +82,8 @@ Output:
 1. Add external package distribution for skills/workflows
 - Local skills are strong; publishing/install/version flow is still repo-local.
 
-2. Add generated SDK API docs automation
-- API docs exist (`README.sdk.md`) but automated generation/publishing pipeline is not yet wired.
+2. Add release publishing automation (PyPI/npm)
+- SDK packaging is implemented and smoke-tested; automated publish/release pipelines are still not wired.
 
 ### RPC CLI wrapper
 

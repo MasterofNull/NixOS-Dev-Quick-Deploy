@@ -23,6 +23,10 @@ pass "python sdk compile"
 node --check "${SDK_DIR}/harness_sdk.js" || fail "js sdk syntax failed"
 pass "js sdk syntax"
 
+# Generated SDK API docs drift check
+"${ROOT}/scripts/generate-harness-sdk-api-docs.sh" --check >/dev/null || fail "generated sdk API docs are out of date"
+pass "sdk API docs up-to-date"
+
 # Python package build smoke (sdist + wheel)
 (
   cd "${SDK_DIR}"
