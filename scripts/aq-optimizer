@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +23,9 @@ OVERRIDES_ENV_PATH = Path(os.getenv("OPTIMIZER_OVERRIDES_ENV", "/var/lib/nixos-a
 ACTIONS_LOG_PATH = Path(os.getenv("OPTIMIZER_ACTIONS_LOG", "/var/log/nixos-ai-stack/optimizer-actions.jsonl"))
 AIDB_URL = os.getenv("AIDB_URL", "http://127.0.0.1:8002")
 AIDB_API_KEY_FILE = os.getenv("AIDB_API_KEY_FILE", "")
+OPTIMIZER_RESTART_RETRIES = int(os.getenv("OPTIMIZER_RESTART_RETRIES", "3"))
+OPTIMIZER_RESTART_TIMEOUT_SECONDS = float(os.getenv("OPTIMIZER_RESTART_TIMEOUT_SECONDS", "120"))
+OPTIMIZER_RESTART_BACKOFF_SECONDS = float(os.getenv("OPTIMIZER_RESTART_BACKOFF_SECONDS", "5"))
 
 
 def _aidb_key() -> str:
@@ -74,14 +78,32 @@ def _write_overrides(overrides: dict) -> None:
 def _restart_service(svc: str, dry_run: bool) -> str:
     if dry_run:
         return "dry_run"
-    try:
-        result = subprocess.run(
-            ["systemctl", "restart", svc],
-            capture_output=True, text=True, timeout=30,
-        )
-        return "ok" if result.returncode == 0 else "failed:" + result.stderr.strip()[:80]
-    except Exception as exc:
-        return "error:" + str(exc)[:80]
+    last_error = ""
+    for attempt in range(1, OPTIMIZER_RESTART_RETRIES + 1):
+        try:
+            result = subprocess.run(
+                ["systemctl", "restart", svc],
+                capture_output=True,
+                text=True,
+                timeout=OPTIMIZER_RESTART_TIMEOUT_SECONDS,
+            )
+            if result.returncode == 0:
+                active = subprocess.run(
+                    ["systemctl", "is-active", "--quiet", svc],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                if active.returncode == 0:
+                    return "ok"
+                last_error = f"is-active-not-active(attempt={attempt})"
+            else:
+                last_error = (result.stderr or result.stdout or "").strip()[:160]
+        except Exception as exc:
+            last_error = str(exc)[:160]
+        if attempt < OPTIMIZER_RESTART_RETRIES:
+            time.sleep(OPTIMIZER_RESTART_BACKOFF_SECONDS * attempt)
+    return "failed:" + last_error
 
 
 def _import_knowledge(topic: str, dry_run: bool) -> str:

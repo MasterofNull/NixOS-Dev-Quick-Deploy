@@ -33,6 +33,8 @@ need_pattern "${ROOT}/nix/modules/core/options.nix" "safetyPolicy"
 need_pattern "${ROOT}/nix/modules/core/options.nix" "isolationProfiles"
 need_pattern "${ROOT}/nix/modules/core/options.nix" "workflowBlueprints"
 need_pattern "${ROOT}/nix/modules/core/options.nix" "schedulerPolicy"
+need_pattern "${ROOT}/nix/modules/core/options.nix" "semanticToolingAutorun"
+need_pattern "${ROOT}/nix/modules/core/options.nix" "aiderToolingPlanEnabled"
 need_pattern "${ROOT}/nix/modules/core/options.nix" "parityScorecard"
 
 need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "AI_RUN_DEFAULT_SAFETY_MODE="
@@ -42,6 +44,8 @@ need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "RUNTIME_SAFETY_POLI
 need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "RUNTIME_ISOLATION_PROFILES_FILE="
 need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "WORKFLOW_BLUEPRINTS_FILE="
 need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "RUNTIME_SCHEDULER_POLICY_FILE="
+need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "AI_SEMANTIC_TOOLING_AUTORUN="
+need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "AI_TOOLING_PLAN_ENABLED="
 need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "PARITY_SCORECARD_FILE="
 
 need_pattern "${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server.py" "AI_RUN_DEFAULT_SAFETY_MODE"

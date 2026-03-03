@@ -99,9 +99,14 @@ AI_AIDER_SANDBOX_FALLBACK_UNSAFE = os.getenv(
 # Fetches from HINTS_URL (hybrid-coordinator /hints), enriching the task with
 # context from registry.yaml, query gaps, and CLAUDE.md workflow rules.
 AI_HINTS_ENABLED = os.getenv("AI_HINTS_ENABLED", "false").lower() == "true"
+AI_TOOLING_PLAN_ENABLED = os.getenv("AI_TOOLING_PLAN_ENABLED", "true").lower() == "true"
 HINTS_URL = os.getenv(
     "HINTS_URL",
     f"http://127.0.0.1:{os.getenv('HYBRID_COORDINATOR_PORT', '8003')}/hints",
+)
+WORKFLOW_PLAN_URL = os.getenv(
+    "WORKFLOW_PLAN_URL",
+    f"http://127.0.0.1:{os.getenv('HYBRID_COORDINATOR_PORT', '8003')}/workflow/plan",
 )
 HYBRID_API_KEY = os.getenv("HYBRID_API_KEY", "")
 HYBRID_API_KEY_FILE = os.getenv("HYBRID_API_KEY_FILE", "/run/secrets/hybrid_api_key")
@@ -426,6 +431,14 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
         hint_id = ""
         hint_snippet = ""
         hint_injected = False
+        _tasks[task_id]["tooling"] = {
+            "hints_enabled": AI_HINTS_ENABLED,
+            "hint_injected": False,
+            "hint_id": "",
+            "tooling_plan_enabled": AI_TOOLING_PLAN_ENABLED,
+            "tooling_plan_injected": False,
+            "tooling_plan_phase_count": 0,
+        }
         message_for_aider = task.prompt
         if AI_HINTS_ENABLED:
             try:
@@ -450,9 +463,62 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
                     hint_snippet = top.get("snippet", "")[:150]
                     message_for_aider = f"CONTEXT (aq-hints): {hint_snippet}\n\n{task.prompt}"
                     hint_injected = True
+                    _tasks[task_id]["tooling"]["hint_injected"] = True
+                    _tasks[task_id]["tooling"]["hint_id"] = hint_id
                     logger.info("hint_injected", task_id=task_id, hint_id=hint_id)
             except Exception as exc:
                 logger.debug("hint_fetch_skipped", task_id=task_id, error=str(exc))
+
+        # Semantic tooling plan auto-injection: exposes planned tool phases to
+        # aider so task execution can follow the stack's orchestrated tool layer.
+        if AI_TOOLING_PLAN_ENABLED:
+            try:
+                plan_headers = {"Accept": "application/json", "Content-Type": "application/json"}
+                hybrid_key = _load_hybrid_api_key()
+                if hybrid_key:
+                    plan_headers["X-API-Key"] = hybrid_key
+                plan_req = urllib.request.Request(
+                    WORKFLOW_PLAN_URL,
+                    data=json.dumps({"query": task.prompt[:500]}).encode("utf-8"),
+                    headers=plan_headers,
+                    method="POST",
+                )
+                loop = asyncio.get_event_loop()
+                def _fetch_plan():
+                    with urllib.request.urlopen(plan_req, timeout=2) as r:
+                        return json.loads(r.read())
+                plan_data = await loop.run_in_executor(None, _fetch_plan)
+                phases: List[dict] = []
+                if isinstance(plan_data, dict):
+                    # Prefer current schema: top-level "phases".
+                    top_level = plan_data.get("phases", [])
+                    if isinstance(top_level, list):
+                        phases = [p for p in top_level if isinstance(p, dict)]
+                    # Backward-compatible fallback: nested under "plan.phases".
+                    if not phases:
+                        legacy = plan_data.get("plan", {})
+                        legacy_phases = legacy.get("phases", []) if isinstance(legacy, dict) else []
+                        if isinstance(legacy_phases, list):
+                            phases = [p for p in legacy_phases if isinstance(p, dict)]
+                if phases:
+                    phase_lines = []
+                    for phase in phases[:3]:
+                        pid = str(phase.get("id", "phase")).strip()
+                        tools = [
+                            str(t.get("name", "")).strip()
+                            for t in (phase.get("tools", []) if isinstance(phase.get("tools", []), list) else [])
+                            if isinstance(t, dict) and str(t.get("name", "")).strip()
+                        ]
+                        if tools:
+                            phase_lines.append(f"- {pid}: {', '.join(tools[:4])}")
+                    if phase_lines:
+                        plan_prefix = "TOOLING PLAN (auto):\n" + "\n".join(phase_lines) + "\n\n"
+                        message_for_aider = plan_prefix + message_for_aider
+                        _tasks[task_id]["tooling"]["tooling_plan_injected"] = True
+                        _tasks[task_id]["tooling"]["tooling_plan_phase_count"] = len(phase_lines)
+                        logger.info("tooling_plan_injected", task_id=task_id, phases=len(phase_lines))
+            except Exception as exc:
+                logger.debug("tooling_plan_fetch_skipped", task_id=task_id, error=str(exc))
 
         base_cmd = [
             AIDER_BIN,
@@ -603,8 +669,11 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
                     files_modified=len(files_modified), duration=duration, completed=completed)
 
         # Phase 19.3.4 — record hint adoption outcome.
+        # Consider a hint successful when task execution succeeds, even if no
+        # file mutation was required (for example, analysis-only or no-op fixes).
+        hint_accepted = final_status == "success"
         if hint_injected:
-            _write_hint_audit(task_id, hint_id, hint_snippet, accepted=completed)
+            _write_hint_audit(task_id, hint_id, hint_snippet, accepted=hint_accepted)
 
         _set_terminal_task(
             task_id,
@@ -629,6 +698,14 @@ async def _do_submit(task: TaskRequest) -> TaskSubmitResponse:
         "status": "queued",
         "submitted_at": _now_iso(),
         "request": task.model_dump(),
+        "tooling": {
+            "hints_enabled": AI_HINTS_ENABLED,
+            "hint_injected": False,
+            "hint_id": "",
+            "tooling_plan_enabled": AI_TOOLING_PLAN_ENABLED,
+            "tooling_plan_injected": False,
+            "tooling_plan_phase_count": 0,
+        },
     }
     asyncio.create_task(_run_aider_task(task_id, task))
     logger.info("aider_task_queued", task_id=task_id, workspace=task.workspace)
@@ -662,6 +739,8 @@ async def get_task_status(task_id: str, auth: str = Depends(require_auth)):
     for key in ("submitted_at", "started_at", "finished_at"):
         if key in entry:
             response[key] = entry[key]
+    if "tooling" in entry:
+        response["tooling"] = entry["tooling"]
     if "result" in entry:
         response["result"] = entry["result"]
     return response

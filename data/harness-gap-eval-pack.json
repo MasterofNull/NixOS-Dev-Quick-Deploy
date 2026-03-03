@@ -1,0 +1,31 @@
+{
+  "version": "1.0",
+  "name": "harness-gap-eval-pack",
+  "description": "Targeted harness evaluation pack for recurring NixOS/system gaps.",
+  "cases": [
+    {
+      "id": "mkif-mkforce-basics",
+      "query": "Explain lib.mkIf and lib.mkForce in NixOS modules in 3 bullet points",
+      "expected_keywords": ["mkIf", "mkForce", "merge", "override", "module"],
+      "mode": "auto"
+    },
+    {
+      "id": "flake-follows-lock",
+      "query": "Explain nix flake inputs follows lock behavior",
+      "expected_keywords": ["flake.lock", "inputs", "follows", "pin", "nixpkgs"],
+      "mode": "auto"
+    },
+    {
+      "id": "tc3-feedback-validation",
+      "query": "tc3 feedback validation after patch",
+      "expected_keywords": ["aq-report", "routing", "hint", "validation", "health"],
+      "mode": "auto"
+    },
+    {
+      "id": "nixos-module-options",
+      "query": "NixOS module options basics",
+      "expected_keywords": ["options", "mkOption", "types", "config", "lib"],
+      "mode": "auto"
+    }
+  ]
+}

@@ -1083,6 +1083,44 @@
             description = "Declarative runtime scheduling policy for control-plane candidate selection.";
           };
 
+          cachePrewarm = {
+            enable = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = "Enable periodic semantic-cache/routing prewarm using seed-routing-traffic.sh.";
+            };
+
+            queryCount = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 8;
+              description = "Number of seeded queries per prewarm run.";
+            };
+
+            intervalMinutes = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 30;
+              description = "How often to run cache prewarm timer.";
+            };
+          };
+
+          semanticToolingAutorun = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = ''
+              Automatically run semantic tooling orchestration (hints + capability
+              discovery + planned tool metadata) on hybrid /query requests.
+            '';
+          };
+
+          aiderToolingPlanEnabled = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = ''
+              Automatically inject workflow/tooling plans into aider-wrapper tasks
+              so agent execution follows the shared tool orchestration layer.
+            '';
+          };
+
           parityScorecard = lib.mkOption {
             type = lib.types.attrs;
             default = {
