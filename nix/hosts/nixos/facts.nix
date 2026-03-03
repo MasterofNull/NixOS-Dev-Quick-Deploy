@@ -60,10 +60,10 @@
         # Optimize batch processing for interactive use
         "--batch-size" "512"
         "--ubatch-size" "64"
-        # CPU threads: match physical cores (8) for best latency
+        # CPU threads: match physical cores for best latency
         "--threads" "8"
         "--threads-batch" "8"
-        # Flash attention for faster prompt processing (ROCm) - requires explicit on/off/auto
+        # Flash attention for faster prompt processing (ROCm)
         "--flash-attn" "on"
         # Memory mapping for faster model loading
         "--mlock"
