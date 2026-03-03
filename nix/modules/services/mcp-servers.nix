@@ -820,6 +820,7 @@ in
             "AI_HARNESS_EVAL_ENABLED=${if ai.aiHarness.eval.enable then "true" else "false"}"
             "AI_HARNESS_MIN_ACCEPTANCE_SCORE=${toString ai.aiHarness.eval.minAcceptanceScore}"
             "AI_HARNESS_MAX_LATENCY_MS=${toString ai.aiHarness.eval.maxLatencyMs}"
+            "AI_SEMANTIC_TOOLING_AUTORUN=${if ai.aiHarness.runtime.semanticToolingAutorun then "true" else "false"}"
             "AI_RUN_DEFAULT_SAFETY_MODE=${ai.aiHarness.runtime.defaultSafetyMode}"
             "AI_RUN_DEFAULT_TOKEN_LIMIT=${toString ai.aiHarness.runtime.defaultTokenLimit}"
             "AI_RUN_DEFAULT_TOOL_CALL_LIMIT=${toString ai.aiHarness.runtime.defaultToolCallLimit}"
@@ -920,7 +921,9 @@ in
             "AI_AIDER_SANDBOX_FALLBACK_UNSAFE=true"
             # Phase 19.3.3 — prepend top aq-hint to aider --message for steered task execution.
             "AI_HINTS_ENABLED=true"
+            "AI_TOOLING_PLAN_ENABLED=${if ai.aiHarness.runtime.aiderToolingPlanEnabled then "true" else "false"}"
             "HINTS_URL=http://127.0.0.1:${toString mcp.hybridPort}/hints"
+            "WORKFLOW_PLAN_URL=http://127.0.0.1:${toString mcp.hybridPort}/workflow/plan"
             "HINT_AUDIT_LOG_PATH=${mutableLogDir}/hint-audit.jsonl"
           ]
             ++ lib.optional sec.enable "AIDER_WRAPPER_API_KEY_FILE=${secretPath aiderWrapperApiKeySecret}"

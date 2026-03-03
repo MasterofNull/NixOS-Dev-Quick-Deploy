@@ -791,6 +791,65 @@ async def run_http_mode(port: int) -> None:
             query = data.get("prompt") or data.get("query") or ""
             if not query:
                 return web.json_response({"error": "query required"}, status=400)
+            semantic_tooling_autorun = os.getenv("AI_SEMANTIC_TOOLING_AUTORUN", "true").lower() == "true"
+            request_context = data.get("context")
+            if not isinstance(request_context, dict):
+                request_context = {}
+            tooling_layer = {
+                "enabled": semantic_tooling_autorun,
+                "planned_tools": [],
+                "executed": [],
+                "hints": [],
+            }
+            if semantic_tooling_autorun:
+                planned = _workflow_tool_catalog(query)
+                tooling_layer["planned_tools"] = [p.get("name", "") for p in planned]
+
+                # Auto-hints: pull top semantic hint and pass into route context.
+                if any(p.get("name") == "hints" for p in planned):
+                    try:
+                        import sys as _sys
+                        from pathlib import Path as _Path
+                        _hints_dir = _Path(__file__).parent
+                        if str(_hints_dir) not in _sys.path:
+                            _sys.path.insert(0, str(_hints_dir))
+                        from hints_engine import HintsEngine  # type: ignore[import]
+                        hint_data = HintsEngine().rank_as_dict(query, context="", max_hints=2)
+                        top_hints = hint_data.get("hints", []) if isinstance(hint_data, dict) else []
+                        hint_snippets = [
+                            str(h.get("snippet", "")).strip()
+                            for h in top_hints
+                            if isinstance(h, dict) and str(h.get("snippet", "")).strip()
+                        ]
+                        if hint_snippets:
+                            request_context["tool_hints"] = hint_snippets[:2]
+                            tooling_layer["hints"] = hint_snippets[:2]
+                            tooling_layer["executed"].append("hints")
+                    except Exception as exc:
+                        logger.debug("semantic_tooling_hints_skipped error=%s", exc)
+
+                # Auto-discovery summary: enrich context with capability overview.
+                if _progressive_disclosure and any(p.get("name") == "discovery" for p in planned):
+                    try:
+                        disc = await _progressive_disclosure.discover(
+                            level="overview",
+                            categories=None,
+                            token_budget=200,
+                        )
+                        if hasattr(disc, "model_dump"):
+                            disc_data = disc.model_dump()
+                        elif hasattr(disc, "dict"):
+                            disc_data = disc.dict()
+                        else:
+                            disc_data = {}
+                        request_context["tool_discovery"] = {
+                            "summary": str(disc_data.get("summary", ""))[:300],
+                            "capability_count": len(disc_data.get("capabilities", []) or []),
+                        }
+                        tooling_layer["executed"].append("discovery")
+                    except Exception as exc:
+                        logger.debug("semantic_tooling_discovery_skipped error=%s", exc)
+
             prefer_local = bool(data.get("prefer_local", True))
             if prefer_local and _local_llm_loading_ref():
                 ready = await _wait_for_model(timeout=30.0)
@@ -808,12 +867,14 @@ async def run_http_mode(port: int) -> None:
                 query=query,
                 mode=data.get("mode", "auto"),
                 prefer_local=prefer_local,
-                context=data.get("context"),
+                context=request_context,
                 limit=int(data.get("limit", 5)),
                 keyword_limit=int(data.get("keyword_limit", 5)),
                 score_threshold=float(data.get("score_threshold", 0.7)),
                 generate_response=bool(data.get("generate_response", False)),
             )
+            if semantic_tooling_autorun:
+                result["tooling_layer"] = tooling_layer
             iid = result.get("interaction_id", "")
             if iid:
                 try:
