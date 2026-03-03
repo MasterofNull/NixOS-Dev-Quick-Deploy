@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "default": {
+    "allow": true,
+    "max_external_calls": 2,
+    "max_retrieval_results": 8,
+    "reasoning_mode": "hybrid",
+    "notes": "Conservative defaults for unknown tasks."
+  },
+  "profiles": {
+    "continue-local": {
+      "allow_tools": ["hints", "query", "workflow", "review", "memory"],
+      "deny_tools": ["reload-model"],
+      "reasoning_mode": "hybrid",
+      "max_external_calls": 1
+    },
+    "embedded-assist": {
+      "allow_tools": ["hints", "memory", "query", "workflow"],
+      "deny_tools": ["reload-model", "proposals/apply"],
+      "reasoning_mode": "semantic-first",
+      "max_external_calls": 0
+    },
+    "remote-default": {
+      "allow_tools": ["hints", "query", "workflow", "review", "memory", "tree"],
+      "deny_tools": [],
+      "reasoning_mode": "tree-hybrid",
+      "max_external_calls": 4
+    }
+  },
+  "task_overrides": [
+    {
+      "contains": ["boot", "shutdown", "systemd"],
+      "reasoning_mode": "tree-hybrid",
+      "max_retrieval_results": 12,
+      "require_tools": ["hints", "tree"]
+    },
+    {
+      "contains": ["security", "secret", "token", "key"],
+      "reasoning_mode": "lexical-first",
+      "max_external_calls": 0,
+      "deny_tools": ["reload-model", "proposals/apply"]
+    }
+  ]
+}

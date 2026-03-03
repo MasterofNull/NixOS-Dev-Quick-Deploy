@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "headers-presence",
+      "query": "verify switchboard response headers for profile routing",
+      "expected_keywords": ["x-ai-profile", "x-ai-retrieval-confidence"],
+      "mode": "auto"
+    },
+    {
+      "id": "workflow-plan",
+      "query": "create a workflow plan for diagnosing continue chat hangs",
+      "expected_keywords": ["discover", "plan", "execute", "validate", "handoff"],
+      "mode": "auto"
+    }
+  ]
+}

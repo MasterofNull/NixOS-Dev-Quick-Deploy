@@ -22,6 +22,8 @@ Usage:
   aqd skill package <skill-path> [output-dir]
   aqd skill bundle-index [skills-dir] [bundles-dir] [index-json]
   aqd skill bundle-install <index-json> <skill-name> [target-dir] [--force]
+  aqd skill sign-index [index-json] [private-key] [sig-path]
+  aqd skill verify-index [index-json] [public-key] [sig-path]
 
   aqd mcp scaffold <name> [--type python|deno]
   aqd mcp validate <name>
@@ -31,6 +33,16 @@ Usage:
   aqd mcp deploy-aidb
 
   aqd workflows list
+  aqd policy evaluate --profile <name> --task <text> [--tool <name>]
+  aqd reasoning route --query <text>
+  aqd parity advanced-suite
+  aqd parity regression-gate [--offline|--online]
+  aqd parity generate-provenance [output-dir]
+  aqd parity check-auth
+  aqd parity check-slo
+  aqd parity check-boot-shutdown
+  aqd parity chaos-smoke
+  aqd parity cross-client-smoke
 
 Notes:
   - Run from repository root or ensure this script can resolve repo paths.
@@ -110,11 +122,23 @@ Priority workflow set (Phase 27.6):
 4. skill package
 5. skill bundle-index
 6. skill bundle-install
-7. mcp scaffold
-8. mcp validate
-9. mcp evaluate
-10. mcp logs
-11. mcp deploy-aidb
+7. skill sign-index
+8. skill verify-index
+9. policy evaluate
+10. reasoning route
+11. parity advanced-suite
+12. parity regression-gate
+13. parity generate-provenance
+14. parity check-auth
+15. parity check-slo
+16. parity check-boot-shutdown
+17. parity chaos-smoke
+18. parity cross-client-smoke
+19. mcp scaffold
+20. mcp validate
+21. mcp evaluate
+22. mcp logs
+23. mcp deploy-aidb
 EOF
 }
 
@@ -173,6 +197,66 @@ cmd_skill_bundle_install() {
     --skill-name "$skill_name" \
     --target-dir "$target_dir" \
     "$@"
+}
+
+cmd_skill_sign_index() {
+  local index_json="${1:-${REPO_ROOT}/dist/skills/index.json}"
+  local private_key="${2:-${REPO_ROOT}/config/keys/skill-registry-private.pem}"
+  local sig_path="${3:-${index_json}.sig}"
+  "${REPO_ROOT}/scripts/sign-skill-registry.sh" "$index_json" "$private_key" "$sig_path"
+}
+
+cmd_skill_verify_index() {
+  local index_json="${1:-${REPO_ROOT}/dist/skills/index.json}"
+  local public_key="${2:-${REPO_ROOT}/config/keys/skill-registry-public.pem}"
+  local sig_path="${3:-${index_json}.sig}"
+  "${REPO_ROOT}/scripts/verify-skill-registry.sh" "$index_json" "$public_key" "$sig_path"
+}
+
+cmd_policy_evaluate() {
+  run_python "${REPO_ROOT}/scripts/evaluate-agent-policy.py" "$@"
+}
+
+cmd_reasoning_route() {
+  run_python "${REPO_ROOT}/scripts/route-reasoning-mode.py" "$@"
+}
+
+cmd_parity_advanced_suite() {
+  "${REPO_ROOT}/scripts/run-advanced-parity-suite.sh"
+}
+
+cmd_parity_regression_gate() {
+  local mode="${1:---offline}"
+  "${REPO_ROOT}/scripts/run-harness-regression-gate.sh" "$mode"
+}
+
+cmd_parity_generate_provenance() {
+  local out_dir="${1:-}"
+  if [[ -n "$out_dir" ]]; then
+    "${REPO_ROOT}/scripts/generate-harness-sdk-provenance.sh" "$out_dir"
+  else
+    "${REPO_ROOT}/scripts/generate-harness-sdk-provenance.sh"
+  fi
+}
+
+cmd_parity_check_auth() {
+  "${REPO_ROOT}/scripts/check-api-auth-hardening.sh"
+}
+
+cmd_parity_check_slo() {
+  "${REPO_ROOT}/scripts/validate-ai-slo-runtime.sh"
+}
+
+cmd_parity_check_boot_shutdown() {
+  "${REPO_ROOT}/scripts/check-boot-shutdown-integration.sh"
+}
+
+cmd_parity_chaos_smoke() {
+  "${REPO_ROOT}/scripts/chaos-harness-smoke.sh"
+}
+
+cmd_parity_cross_client_smoke() {
+  "${REPO_ROOT}/scripts/smoke-cross-client-compat.sh"
 }
 
 cmd_mcp_scaffold() {
@@ -265,6 +349,18 @@ main() {
     skill:package) cmd_skill_package "$@" ;;
     skill:bundle-index) cmd_skill_bundle_index "$@" ;;
     skill:bundle-install) cmd_skill_bundle_install "$@" ;;
+    skill:sign-index) cmd_skill_sign_index "$@" ;;
+    skill:verify-index) cmd_skill_verify_index "$@" ;;
+    policy:evaluate) cmd_policy_evaluate "$@" ;;
+    reasoning:route) cmd_reasoning_route "$@" ;;
+    parity:advanced-suite) cmd_parity_advanced_suite "$@" ;;
+    parity:regression-gate) cmd_parity_regression_gate "$@" ;;
+    parity:generate-provenance) cmd_parity_generate_provenance "$@" ;;
+    parity:check-auth) cmd_parity_check_auth "$@" ;;
+    parity:check-slo) cmd_parity_check_slo "$@" ;;
+    parity:check-boot-shutdown) cmd_parity_check_boot_shutdown "$@" ;;
+    parity:chaos-smoke) cmd_parity_chaos_smoke "$@" ;;
+    parity:cross-client-smoke) cmd_parity_cross_client_smoke "$@" ;;
     mcp:scaffold) cmd_mcp_scaffold "$@" ;;
     mcp:validate) cmd_mcp_validate "$@" ;;
     mcp:test) cmd_mcp_test "$@" ;;
