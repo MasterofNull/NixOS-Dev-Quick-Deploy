@@ -20,7 +20,7 @@ git config core.hooksPath .githooks
 
 Validates shell scripts before committing:
 
-- ✅ Checks for `echo` commands with color codes missing `-e` flag
+- ✅ Checks color-variable `echo` commands missing `-e` flag (without false positives on normal `${VAR}` usage)
 - ✅ Prevents commits with formatting issues
 - ✅ Fast - only checks staged files
 
@@ -34,7 +34,7 @@ git commit --no-verify
 If the pre-commit hook finds issues, fix them automatically:
 
 ```bash
-./scripts/validate-echo-colors.sh --fix
+./scripts/lint-color-echo-usage.sh --staged
 ```
 
 Then stage the changes and commit again:
@@ -49,7 +49,7 @@ git commit
 Check all scripts without committing:
 
 ```bash
-./scripts/validate-echo-colors.sh
+./scripts/lint-color-echo-usage.sh
 ```
 
 ## Why These Checks?

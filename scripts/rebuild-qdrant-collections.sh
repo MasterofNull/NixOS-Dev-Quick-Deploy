@@ -60,7 +60,7 @@ _batch_ids=()
 
 process_batch() {
     local batch_json="$1"
-    local batch_ids="$2"
+    local batch_count="$2"
     
     _http_code="$(curl -s --max-time 300 \
         -o /tmp/_aidb_index_resp.json \
@@ -72,12 +72,12 @@ process_batch() {
         "${AIDB_URL}/vector/index")"
     
     if [[ "$_http_code" == "200" ]]; then
-        _embedded=$((_embedded + ${#batch_ids[@]}))
-        printf '  ✓ Batch of %d embedded OK\n' "${#batch_ids[@]}"
+        _embedded=$((_embedded + batch_count))
+        printf '  ✓ Batch of %d embedded OK\n' "$batch_count"
     else
         _body="$(cat /tmp/_aidb_index_resp.json 2>/dev/null || true)"
         printf '  ✗ Batch failed HTTP %s: %s\n' "$_http_code" "$_body" >&2
-        _failed=$((_failed + ${#batch_ids[@]}))
+        _failed=$((_failed + batch_count))
     fi
 }
 
@@ -110,7 +110,7 @@ while IFS=$'\t' read -r _doc_id _title; do
         
         # Process batch
         _batch_json="{\"items\":[$(IFS=; echo "${_batch[*]}")]}"
-        process_batch "$_batch_json" "$_batch_ids"
+        process_batch "$_batch_json" "${#_batch_ids[@]}"
         
         # Clear batch
         _batch=()

@@ -967,6 +967,44 @@ in {
           RandomizedDelaySec  = "15min";
         };
       };
+
+      systemd.services.ai-cache-prewarm = lib.mkIf ai.aiHarness.runtime.cachePrewarm.enable {
+        description = "AI stack semantic cache prewarm";
+        after = [ "network-online.target" "ai-hybrid-coordinator.service" ];
+        wants = [ "network-online.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.primaryUser;
+          WorkingDirectory = cfg.mcpServers.repoPath;
+          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/seed-routing-traffic.sh --count ${toString ai.aiHarness.runtime.cachePrewarm.queryCount}";
+          StandardOutput = "journal";
+          StandardError = "journal";
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          PrivateTmp = true;
+          PrivateNetwork = false;
+          MemoryMax = "192M";
+          ReadWritePaths = [
+            mutableLogDir
+          ];
+          Environment = [
+            "HYB_URL=http://127.0.0.1:${toString cfg.mcpServers.hybridPort}"
+            "AIDB_URL=http://127.0.0.1:${toString cfg.mcpServers.aidbPort}"
+          ] ++ lib.optional cfg.secrets.enable
+              "HYBRID_API_KEY_FILE=/run/secrets/${cfg.secrets.names.hybridApiKey}";
+        };
+      };
+
+      systemd.timers.ai-cache-prewarm = lib.mkIf ai.aiHarness.runtime.cachePrewarm.enable {
+        description = "Periodic AI stack cache prewarm timer";
+        wantedBy = ["timers.target"];
+        timerConfig = {
+          OnCalendar = "*-*-* *:0/${toString ai.aiHarness.runtime.cachePrewarm.intervalMinutes}:00";
+          Persistent = true;
+          RandomizedDelaySec = "5min";
+        };
+      };
     })
 
     (lib.mkIf (roleEnabled && ai.vectorDb.enable && hasQdrant) {

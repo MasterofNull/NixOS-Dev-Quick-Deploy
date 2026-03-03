@@ -29,6 +29,7 @@ Against this repository's current AI stack implementation.
 | Model/provider flexibility | OpenRouter-first | Broad provider model | Implemented | Switchboard + local/remote profiles + OpenAI-compatible surfaces. |
 | Agent package ecosystem | Agent Store | Packages/extensions | Implemented | Added skill bundle registry/index and install flow via AQD (`skill bundle-index`, `skill bundle-install`). |
 | Tool/routing policy engine | Rule controls | Rule controls | Implemented | Added profile/task/tool policy evaluator with declarative policy config (`config/agent-routing-policy.json`). |
+| Automatic semantic tool calling (agent task auto-orchestration) | Common in mature coding agents | Common via plugins/skills | Implemented | Hybrid `/query` auto-plans and executes hints/discovery; aider-wrapper auto-injects `/workflow/plan` + hints into task prompts by default. |
 | Regression quality gates | Yes | Yes | Implemented | Added golden eval gate script (`run-harness-regression-gate.sh`) with offline/online modes. |
 | Failure-injection smoke | Yes | Partial | Implemented | Added chaos smoke script for malformed input and invalid workflow transitions. |
 | Boot/shutdown integration checks | Yes | Partial | Implemented | Added boot/shutdown integration checker for systemd/journal regression patterns. |
@@ -114,6 +115,29 @@ Location:
 - `scripts/validate-ai-slo-runtime.sh`
 - `scripts/smoke-cross-client-compat.sh`
 - `.github/workflows/test.yml` (jobs: `advanced-parity-tooling`, `skill-bundle-parity`, `harness-sdk-parity`)
+
+### Semantic tool-calling autorun (cross-agent)
+
+Location:
+- `ai-stack/mcp-servers/hybrid-coordinator/http_server.py`
+- `ai-stack/mcp-servers/aider-wrapper/server.py`
+- `nix/modules/core/options.nix`
+- `nix/modules/services/mcp-servers.nix`
+
+Behavior:
+- Hybrid coordinator auto-runs semantic tooling on `/query` when enabled:
+  - Plans tools from workflow catalog
+  - Executes `hints` + `discovery` enrichment
+  - Returns `tooling_layer` metadata (`planned_tools`, `executed`, `hints`)
+- Aider-wrapper auto-injects:
+  - Top aq-hint context (`/hints`)
+  - Tooling plan phases (`/workflow/plan`)
+- Added parser compatibility for both workflow plan schemas:
+  - `phases` (current top-level)
+  - `plan.phases` (legacy fallback)
+- Task status now exposes tooling telemetry:
+  - `tooling.hint_injected`, `tooling.hint_id`
+  - `tooling.tooling_plan_injected`, `tooling.tooling_plan_phase_count`
 
 ### Signed skill registry + trust hooks
 

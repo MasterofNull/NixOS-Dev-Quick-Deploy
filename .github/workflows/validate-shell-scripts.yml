@@ -20,18 +20,23 @@ permissions:
   issues: write
 
 jobs:
-  validate-echo-colors:
-    name: Check echo -e usage
+  validate-shell-color-echo:
+    name: Check Color Echo Usage
     runs-on: ubuntu-latest
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
       
-      - name: Validate echo commands with colors
+      - name: Lint color echo usage
+        run: |
+          chmod +x scripts/lint-color-echo-usage.sh
+          ./scripts/lint-color-echo-usage.sh
+
+      - name: Validate ANSI output support
         run: |
           chmod +x scripts/validate-echo-colors.sh
-          ./scripts/validate-echo-colors.sh --ci
+          ./scripts/validate-echo-colors.sh
         
       - name: Comment on PR if issues found
         if: failure() && github.event_name == 'pull_request'
@@ -42,7 +47,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '⚠️ **Shell Script Validation Failed**\n\nSome `echo` commands with color codes are missing the `-e` flag.\n\n**To fix:**\n```bash\n./scripts/validate-echo-colors.sh --fix\n```\n\nOr manually add `-e` to echo commands that use color variables like `${GREEN}`, `${NC}`, etc.'
+              body: '⚠️ **Shell Script Validation Failed**\n\nColorized `echo` statements were found without `-e`.\n\n**To fix:**\n```bash\n./scripts/lint-color-echo-usage.sh\n```\n\nUse either `echo -e` for ANSI variables or `printf \"%b\\n\"`.'
             })
   
   shellcheck:
@@ -63,6 +68,7 @@ jobs:
             .git
         continue-on-error: true
 
+      - name: Validate script timeouts
         run: |
           chmod +x scripts/lint-timeouts.sh
           ./scripts/lint-timeouts.sh --ci
