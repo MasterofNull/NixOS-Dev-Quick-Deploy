@@ -221,14 +221,16 @@ class SearchRouter:
 
         for collection in collections:
             try:
-                points = await self._call_breaker_safe(
-                    "qdrant",
-                    lambda col=collection: self._qdrant.query_points(
+                async def _query_points(col: str = collection) -> Any:
+                    return self._qdrant.query_points(
                         collection_name=col,
                         query=query_embedding,
                         limit=limit,
                         score_threshold=score_threshold,
-                    ).points,
+                    ).points
+                points = await self._call_breaker_safe(
+                    "qdrant",
+                    _query_points,
                 )
                 for point in points:
                     semantic_results.append({
@@ -243,14 +245,16 @@ class SearchRouter:
 
             if tokens:
                 try:
-                    points, _ = await self._call_breaker_safe(
-                        "qdrant",
-                        lambda col=collection: self._qdrant.scroll(
+                    async def _scroll_points(col: str = collection) -> Any:
+                        return self._qdrant.scroll(
                             collection_name=col,
                             limit=keyword_pool,
                             with_payload=True,
                             with_vectors=False,
-                        ),
+                        )
+                    points, _ = await self._call_breaker_safe(
+                        "qdrant",
+                        _scroll_points,
                     )
                     for point in points:
                         matched, score = payload_matches_tokens(point.payload or {}, tokens)

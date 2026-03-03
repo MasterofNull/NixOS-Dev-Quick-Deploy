@@ -1,0 +1,1969 @@
+{
+  "generated_at": "2026-03-03T10:41:09.068964+00:00",
+  "method": "semantic-nearest-neighbor-from-corpus",
+  "embedding": "tfidf-bigram + truncated-svd (LSA)",
+  "rerank": "cosine + star-diversity",
+  "keywords": [
+    "ai harness",
+    "coding agent",
+    "coding harness",
+    "ai coding assistant",
+    "autonomous coding agent",
+    "llm coding agent",
+    "agentic coding",
+    "software engineering agent"
+  ],
+  "top_k_per_keyword": 15,
+  "source_corpus_file": "data/github-keyword-repos-2026-03-03.json",
+  "source_unique_repos": 80,
+  "per_keyword_top": {
+    "ai harness": [
+      {
+        "full_name": "neiii/bridle",
+        "html_url": "https://github.com/neiii/bridle",
+        "stargazers_count": 391,
+        "matched_keywords": [
+          "ai harness",
+          "coding harness"
+        ],
+        "semantic_score": 0.435421,
+        "diversified_score": 0.447878
+      },
+      {
+        "full_name": "truffle-ai/dexto",
+        "html_url": "https://github.com/truffle-ai/dexto",
+        "stargazers_count": 586,
+        "matched_keywords": [
+          "ai harness",
+          "coding harness"
+        ],
+        "semantic_score": 0.358675,
+        "diversified_score": 0.38046
+      },
+      {
+        "full_name": "paradigmxyz/evmbench",
+        "html_url": "https://github.com/paradigmxyz/evmbench",
+        "stargazers_count": 329,
+        "matched_keywords": [
+          "ai harness"
+        ],
+        "semantic_score": 0.31439,
+        "diversified_score": 0.356696
+      },
+      {
+        "full_name": "Chachamaru127/claude-code-harness",
+        "html_url": "https://github.com/Chachamaru127/claude-code-harness",
+        "stargazers_count": 219,
+        "matched_keywords": [
+          "coding harness"
+        ],
+        "semantic_score": 0.278065,
+        "diversified_score": 0.335951
+      },
+      {
+        "full_name": "bytedance/deer-flow",
+        "html_url": "https://github.com/bytedance/deer-flow",
+        "stargazers_count": 23742,
+        "matched_keywords": [
+          "ai harness",
+          "coding harness",
+          "llm coding agent"
+        ],
+        "semantic_score": 0.386294,
+        "diversified_score": 0.332758
+      },
+      {
+        "full_name": "langroid/langroid",
+        "html_url": "https://github.com/langroid/langroid",
+        "stargazers_count": 3920,
+        "matched_keywords": [
+          "ai harness"
+        ],
+        "semantic_score": 0.341662,
+        "diversified_score": 0.331649
+      },
+      {
+        "full_name": "GeoRetina/chat2geo",
+        "html_url": "https://github.com/GeoRetina/chat2geo",
+        "stargazers_count": 500,
+        "matched_keywords": [
+          "ai harness"
+        ],
+        "semantic_score": 0.236099,
+        "diversified_score": 0.287816
+      },
+      {
+        "full_name": "can1357/oh-my-pi",
+        "html_url": "https://github.com/can1357/oh-my-pi",
+        "stargazers_count": 1615,
+        "matched_keywords": [
+          "ai harness",
+          "coding harness"
+        ],
+        "semantic_score": 0.258923,
+        "diversified_score": 0.283701
+      },
+      {
+        "full_name": "The-Swarm-Corporation/AutoHedge",
+        "html_url": "https://github.com/The-Swarm-Corporation/AutoHedge",
+        "stargazers_count": 1087,
+        "matched_keywords": [
+          "ai harness"
+        ],
+        "semantic_score": 0.24686,
+        "diversified_score": 0.281696
+      },
+      {
+        "full_name": "bigcode-project/bigcode-evaluation-harness",
+        "html_url": "https://github.com/bigcode-project/bigcode-evaluation-harness",
+        "stargazers_count": 1019,
+        "matched_keywords": [
+          "coding harness"
+        ],
+        "semantic_score": 0.205418,
+        "diversified_score": 0.25058
+      },
+      {
+        "full_name": "code-yeongyu/oh-my-opencode",
+        "html_url": "https://github.com/code-yeongyu/oh-my-opencode",
+        "stargazers_count": 36438,
+        "matched_keywords": [
+          "ai harness"
+        ],
+        "semantic_score": 0.290686,
+        "diversified_score": 0.250168
+      },
+      {
+        "full_name": "peteromallet/desloppify",
+        "html_url": "https://github.com/peteromallet/desloppify",
+        "stargazers_count": 1172,
+        "matched_keywords": [
+          "coding harness"
+        ],
+        "semantic_score": 0.157075,
+        "diversified_score": 0.210256
+      },
+      {
+        "full_name": "shuyu-labs/WebCode",
+        "html_url": "https://github.com/shuyu-labs/WebCode",
+        "stargazers_count": 375,
+        "matched_keywords": [
+          "code assistant cli"
+        ],
+        "semantic_score": 0.113542,
+        "diversified_score": 0.197593
+      },
+      {
+        "full_name": "showlab/MakeAnything",
+        "html_url": "https://github.com/showlab/MakeAnything",
+        "stargazers_count": 204,
+        "matched_keywords": [
+          "coding harness"
+        ],
+        "semantic_score": 0.094808,
+        "diversified_score": 0.194332
+      },
+      {
+        "full_name": "avivl/claude-007-agents",
+        "html_url": "https://github.com/avivl/claude-007-agents",
+        "stargazers_count": 237,
+        "matched_keywords": [
+          "software engineering agent"
+        ],
+        "semantic_score": 0.070412,
+        "diversified_score": 0.172509
+      }
+    ],
+    "coding agent": [
+      {
+        "full_name": "badlogic/pi-mono",
+        "html_url": "https://github.com/badlogic/pi-mono",
+        "stargazers_count": 19222,
+        "matched_keywords": [
+          "llm coding agent"
+        ],
+        "semantic_score": 0.384926,
+        "diversified_score": 0.335644
+      },
+      {
+        "full_name": "sourcegraph/cody-public-snapshot",
+        "html_url": "https://github.com/sourcegraph/cody-public-snapshot",
+        "stargazers_count": 3791,
+        "matched_keywords": [
+          "ai coding assistant"
+        ],
+        "semantic_score": 0.307812,
+        "diversified_score": 0.305872
+      },
+      {
+        "full_name": "michaelshimeles/ralphy",
+        "html_url": "https://github.com/michaelshimeles/ralphy",
+        "stargazers_count": 2496,
+        "matched_keywords": [
+          "autonomous coding agent"
+        ],
+        "semantic_score": 0.294513,
+        "diversified_score": 0.303318
+      },
+      {
+        "full_name": "iannuttall/ralph",
+        "html_url": "https://github.com/iannuttall/ralph",
+        "stargazers_count": 794,
+        "matched_keywords": [
+          "autonomous coding agent"
+        ],
+        "semantic_score": 0.252116,
+        "diversified_score": 0.291668
+      },
+      {
+        "full_name": "affaan-m/everything-claude-code",
+        "html_url": "https://github.com/affaan-m/everything-claude-code",
+        "stargazers_count": 58112,
+        "matched_keywords": [
+          "agentic coding",
+          "coding agent",
+          "coding harness",
+          "llm coding agent"
+        ],
+        "semantic_score": 0.354855,
+        "diversified_score": 0.291484
+      },
+      {
+        "full_name": "can1357/oh-my-pi",
+        "html_url": "https://github.com/can1357/oh-my-pi",
+        "stargazers_count": 1615,
+        "matched_keywords": [
+          "ai harness",
+          "coding harness"
+        ],
+        "semantic_score": 0.266163,
+        "diversified_score": 0.289349
+      },
+      {
+        "full_name": "shyamsaktawat/OpenAlpha_Evolve",
+        "html_url": "https://github.com/shyamsaktawat/OpenAlpha_Evolve",
+        "stargazers_count": 974,
+        "matched_keywords": [
+          "autonomous coding agent"
+        ],
+        "semantic_score": 0.24294,
+        "diversified_score": 0.280691
+      },
+      {
+        "full_name": "galz10/pickle-rick-extension",
+        "html_url": "https://github.com/galz10/pickle-rick-extension",
+        "stargazers_count": 413,
+        "matched_keywords": [
+          "software engineering agent"
+        ],
+        "semantic_score": 0.196975,
+        "diversified_score": 0.260869
+      },
+      {
+        "full_name": "ComposioHQ/agent-orchestrator",
+        "html_url": "https://github.com/ComposioHQ/agent-orchestrator",
+        "stargazers_count": 2945,
+        "matched_keywords": [
+          "autonomous coding agent"
+        ],
+        "semantic_score": 0.238028,
+        "diversified_score": 0.256165
+      },
+      {
+        "full_name": "jeecgboot/JeecgBoot",
+        "html_url": "https://github.com/jeecgboot/JeecgBoot",
+        "stargazers_count": 45319,
+        "matched_keywords": [
+          "coding agent",
+          "llm coding agent"
+        ],
+        "semantic_score": 0.297082,
+        "diversified_score": 0.251075
+      },
+      {
+        "full_name": "Fosowl/agenticSeek",
+        "html_url": "https://github.com/Fosowl/agenticSeek",
+        "stargazers_count": 25394,
+        "matched_keywords": [
+          "autonomous coding agent",
+          "llm coding agent"
+        ],
+        "semantic_score": 0.275886,
+        "diversified_score": 0.245382
+      },
+      {
+        "full_name": "peteromallet/desloppify",
+        "html_url": "https://github.com/peteromallet/desloppify",
+        "stargazers_count": 1172,
+        "matched_keywords": [
+          "coding harness"
+        ],
+        "semantic_score": 0.191659,
+        "diversified_score": 0.237232
+      },
+      {
+        "full_name": "truffle-ai/dexto",
+        "html_url": "https://github.com/truffle-ai/dexto",
+        "stargazers_count": 586,
+        "matched_keywords": [
+          "ai harness",
+          "coding harness"
+        ],
+        "semantic_score": 0.169795,
+        "diversified_score": 0.233134
+      },
+      {
+        "full_name": "0xranx/OpenContext",
+        "html_url": "https://github.com/0xranx/OpenContext",
+        "stargazers_count": 409,
+        "matched_keywords": [
+          "code assistant cli"
+        ],
+        "semantic_score": 0.147205,
+        "diversified_score": 0.22223
+      },
+      {
+        "full_name": "Mintplex-Labs/anything-llm",
+        "html_url": "https://github.com/Mintplex-Labs/anything-llm",
+        "stargazers_count": 55311,
+        "matched_keywords": [
+          "agentic coding",
+          "coding agent",
+          "llm coding agent"
+        ],
+        "semantic_score": 0.263498,
+        "diversified_score": 0.221151
+      }
+    ],
+    "coding harness": [
+      {
+        "full_name": "Chachamaru127/claude-code-harness",
+        "html_url": "https://github.com/Chachamaru127/claude-code-harness",
+        "stargazers_count": 219,
+        "matched_keywords": [
+          "coding harness"
+        ],
+        "semantic_score": 0.412879,
+        "diversified_score": 0.441106
+      },
+      {
+        "full_name": "neiii/bridle",
+        "html_url": "https://github.com/neiii/bridle",
+        "stargazers_count": 391,
+        "matched_keywords": [
+          "ai harness",
+          "coding harness"
+        ],
+        "semantic_score": 0.420278,
+        "diversified_score": 0.436067
+      },
+      {
+        "full_name": "bigcode-project/bigcode-evaluation-harness",
+        "html_url": "https://github.com/bigcode-project/bigcode-evaluation-harness",
+        "stargazers_count": 1019,
+        "matched_keywords": [
+          "coding harness"
+        ],
+        "semantic_score": 0.349793,
+        "diversified_score": 0.363191
+      },
+      {
+        "full_name": "truffle-ai/dexto",
+        "html_url": "https://github.com/truffle-ai/dexto",
+        "stargazers_count": 586,
+        "matched_keywords": [
+          "ai harness",
+          "coding harness"
+        ],
+        "semantic_score": 0.308059,
+        "diversified_score": 0.34098
+      },
+      {
+        "full_name": "bytedance/deer-flow",
+        "html_url": "https://github.com/bytedance/deer-flow",
+        "stargazers_count": 23742,
+        "matched_keywords": [
+          "ai harness",
+          "coding harness",
+          "llm coding agent"
+        ],
+        "semantic_score": 0.389068,
+        "diversified_score": 0.334922
+      },
+      {
+        "full_name": "showlab/MakeAnything",
+        "html_url": "https://github.com/showlab/MakeAnything",
+        "stargazers_count": 204,
+        "matched_keywords": [
+          "coding harness"
+        ],
+        "semantic_score": 0.238754,
+        "diversified_score": 0.30661
+      },
+      {
+        "full_name": "peteromallet/desloppify",
+        "html_url": "https://github.com/peteromallet/desloppify",
+        "stargazers_count": 1172,
+        "matched_keywords": [
+          "coding harness"
+        ],
+        "semantic_score": 0.271709,
+        "diversified_score": 0.29967
+      },
+      {
+        "full_name": "can1357/oh-my-pi",
+        "html_url": "https://github.com/can1357/oh-my-pi",
+        "stargazers_count": 1615,
+        "matched_keywords": [
+          "ai harness",
+          "coding harness"
+        ],
+        "semantic_score": 0.266891,
+        "diversified_score": 0.289917
+      },
+      {
+        "full_name": "affaan-m/everything-claude-code",
+        "html_url": "https://github.com/affaan-m/everything-claude-code",
+        "stargazers_count": 58112,
+        "matched_keywords": [
+          "agentic coding",
+          "coding agent",
+          "coding harness",
+          "llm coding agent"
+        ],
+        "semantic_score": 0.345443,
+        "diversified_score": 0.284143
+      },
+      {
+        "full_name": "C4Labs/C4iOS",
+        "html_url": "https://github.com/C4Labs/C4iOS",
+        "stargazers_count": 980,
+        "matched_keywords": [
+          "coding harness"
+        ],
+        "semantic_score": 0.233723,
+        "diversified_score": 0.273387
+      },
+      {
+        "full_name": "paradigmxyz/evmbench",
+        "html_url": "https://github.com/paradigmxyz/evmbench",
+        "stargazers_count": 329,
+        "matched_keywords": [
+          "ai harness"
+        ],
+        "semantic_score": 0.152089,
+        "diversified_score": 0.230102
+      },
+      {
+        "full_name": "langroid/langroid",
+        "html_url": "https://github.com/langroid/langroid",
+        "stargazers_count": 3920,
+        "matched_keywords": [
+          "ai harness"
+        ],
+        "semantic_score": 0.163686,
+        "diversified_score": 0.192828
+      },
+      {
+        "full_name": "inmve/awesome-ai-coding-techniques",
+        "html_url": "https://github.com/inmve/awesome-ai-coding-techniques",
+        "stargazers_count": 318,
+        "matched_keywords": [
+          "code assistant cli"
+        ],
+        "semantic_score": 0.073979,
+        "diversified_score": 0.16981
+      },
+      {
+        "full_name": "GeoRetina/chat2geo",
+        "html_url": "https://github.com/GeoRetina/chat2geo",
+        "stargazers_count": 500,
+        "matched_keywords": [
+          "ai harness"
+        ],
+        "semantic_score": 0.076605,
+        "diversified_score": 0.16341
+      },
+      {
+        "full_name": "sweepai/sweep",
+        "html_url": "https://github.com/sweepai/sweep",
+        "stargazers_count": 7644,
+        "matched_keywords": [
+          "ai coding assistant"
+        ],
+        "semantic_score": 0.140795,
+        "diversified_score": 0.162477
+      }
+    ],
+    "ai coding assistant": [
+      {
+        "full_name": "sweepai/sweep",
+        "html_url": "https://github.com/sweepai/sweep",
+        "stargazers_count": 7644,
+        "matched_keywords": [
+          "ai coding assistant"
+        ],
+        "semantic_score": 0.798698,
+        "diversified_score": 0.675641
+      },
+      {
+        "full_name": "approximatelabs/sketch",
+        "html_url": "https://github.com/approximatelabs/sketch",
+        "stargazers_count": 2286,
+        "matched_keywords": [
+          "ai coding assistant"
+        ],
+        "semantic_score": 0.304751,
+        "diversified_score": 0.312948
+      },
+      {
+        "full_name": "sourcegraph/cody-public-snapshot",
+        "html_url": "https://github.com/sourcegraph/cody-public-snapshot",
+        "stargazers_count": 3791,
+        "matched_keywords": [
+          "ai coding assistant"
+        ],
+        "semantic_score": 0.267691,
+        "diversified_score": 0.274578
+      },
+      {
+        "full_name": "inmve/awesome-ai-coding-techniques",
+        "html_url": "https://github.com/inmve/awesome-ai-coding-techniques",
+        "stargazers_count": 318,
+        "matched_keywords": [
+          "code assistant cli"
+        ],
+        "semantic_score": 0.183563,
+        "diversified_score": 0.255285
+      },
+      {
+        "full_name": "chenhg5/cc-connect",
+        "html_url": "https://github.com/chenhg5/cc-connect",
+        "stargazers_count": 251,
+        "matched_keywords": [
+          "code assistant cli"
+        ],
+        "semantic_score": 0.175286,
+        "diversified_score": 0.253242
+      },
+      {
+        "full_name": "coleam00/Archon",
+        "html_url": "https://github.com/coleam00/Archon",
+        "stargazers_count": 13749,
+        "matched_keywords": [
+          "ai coding assistant"
+        ],
+        "semantic_score": 0.264503,
+        "diversified_score": 0.247984
+      },
+      {
+        "full_name": "coleam00/context-engineering-intro",
+        "html_url": "https://github.com/coleam00/context-engineering-intro",
+        "stargazers_count": 12663,
+        "matched_keywords": [
+          "ai coding assistant"
+        ],
+        "semantic_score": 0.258195,
+        "diversified_score": 0.244604
+      },
+      {
+        "full_name": "github/CopilotForXcode",
+        "html_url": "https://github.com/github/CopilotForXcode",
+        "stargazers_count": 5722,
+        "matched_keywords": [
+          "ai coding assistant"
+        ],
+        "semantic_score": 0.218155,
+        "diversified_score": 0.228237
+      },
+      {
+        "full_name": "TabbyML/tabby",
+        "html_url": "https://github.com/TabbyML/tabby",
+        "stargazers_count": 32975,
+        "matched_keywords": [
+          "ai coding assistant"
+        ],
+        "semantic_score": 0.253223,
+        "diversified_score": 0.222815
+      },
+      {
+        "full_name": "neiii/bridle",
+        "html_url": "https://github.com/neiii/bridle",
+        "stargazers_count": 391,
+        "matched_keywords": [
+          "ai harness",
+          "coding harness"
+        ],
+        "semantic_score": 0.107016,
+        "diversified_score": 0.191722
+      },
+      {
+        "full_name": "TommyLemon/APIAuto",
+        "html_url": "https://github.com/TommyLemon/APIAuto",
+        "stargazers_count": 2175,
+        "matched_keywords": [
+          "ai coding assistant"
+        ],
+        "semantic_score": 0.145976,
+        "diversified_score": 0.190034
+      },
+      {
+        "full_name": "shuyu-labs/WebCode",
+        "html_url": "https://github.com/shuyu-labs/WebCode",
+        "stargazers_count": 375,
+        "matched_keywords": [
+          "code assistant cli"
+        ],
+        "semantic_score": 0.094536,
+        "diversified_score": 0.182768
+      },
+      {
+        "full_name": "michaelshimeles/ralphy",
+        "html_url": "https://github.com/michaelshimeles/ralphy",
+        "stargazers_count": 2496,
+        "matched_keywords": [
+          "autonomous coding agent"
+        ],
+        "semantic_score": 0.138537,
+        "diversified_score": 0.181657
+      },
+      {
+        "full_name": "Fission-AI/OpenSpec",
+        "html_url": "https://github.com/Fission-AI/OpenSpec",
+        "stargazers_count": 27157,
+        "matched_keywords": [
+          "ai coding assistant"
+        ],
+        "semantic_score": 0.189886,
+        "diversified_score": 0.177045
+      },
+      {
+        "full_name": "probelabs/probe",
+        "html_url": "https://github.com/probelabs/probe",
+        "stargazers_count": 470,
+        "matched_keywords": [
+          "code assistant cli"
+        ],
+        "semantic_score": 0.08815,
+        "diversified_score": 0.173571
+      }
+    ],
+    "autonomous coding agent": [
+      {
+        "full_name": "iannuttall/ralph",
+        "html_url": "https://github.com/iannuttall/ralph",
+        "stargazers_count": 794,
+        "matched_keywords": [
+          "autonomous coding agent"
+        ],
+        "semantic_score": 0.444538,
+        "diversified_score": 0.441757
+      },
+      {
+        "full_name": "michaelshimeles/ralphy",
+        "html_url": "https://github.com/michaelshimeles/ralphy",
+        "stargazers_count": 2496,
+        "matched_keywords": [
+          "autonomous coding agent"
+        ],
+        "semantic_score": 0.467219,
+        "diversified_score": 0.438029
+      },
+      {
+        "full_name": "shyamsaktawat/OpenAlpha_Evolve",
+        "html_url": "https://github.com/shyamsaktawat/OpenAlpha_Evolve",
+        "stargazers_count": 974,
+        "matched_keywords": [
+          "autonomous coding agent"
+        ],
+        "semantic_score": 0.425774,
+        "diversified_score": 0.423301
+      },
+      {
+        "full_name": "Fosowl/agenticSeek",
+        "html_url": "https://github.com/Fosowl/agenticSeek",
+        "stargazers_count": 25394,
+        "matched_keywords": [
+          "autonomous coding agent",
+          "llm coding agent"
+        ],
+        "semantic_score": 0.381875,
+        "diversified_score": 0.328053
+      },
+      {
+        "full_name": "web-arena-x/webarena",
+        "html_url": "https://github.com/web-arena-x/webarena",
+        "stargazers_count": 1357,
+        "matched_keywords": [
+          "autonomous coding agent"
+        ],
+        "semantic_score": 0.252086,
+        "diversified_score": 0.281624
+      },
+      {
+        "full_name": "ruvnet/ruflo",
+        "html_url": "https://github.com/ruvnet/ruflo",
+        "stargazers_count": 18375,
+        "matched_keywords": [
+          "autonomous coding agent"
+        ],
+        "semantic_score": 0.306689,
+        "diversified_score": 0.275462
+      },
+      {
+        "full_name": "ComposioHQ/agent-orchestrator",
+        "html_url": "https://github.com/ComposioHQ/agent-orchestrator",
+        "stargazers_count": 2945,
+        "matched_keywords": [
+          "autonomous coding agent"
+        ],
+        "semantic_score": 0.243928,
+        "diversified_score": 0.260768
+      },
+      {
+        "full_name": "Agent-Field/SWE-AF",
+        "html_url": "https://github.com/Agent-Field/SWE-AF",
+        "stargazers_count": 272,
+        "matched_keywords": [
+          "software engineering agent"
+        ],
+        "semantic_score": 0.177654,
+        "diversified_score": 0.253591
+      },
+      {
+        "full_name": "galz10/pickle-rick-extension",
+        "html_url": "https://github.com/galz10/pickle-rick-extension",
+        "stargazers_count": 413,
+        "matched_keywords": [
+          "software engineering agent"
+        ],
+        "semantic_score": 0.14852,
+        "diversified_score": 0.223073
+      },
+      {
+        "full_name": "The-Swarm-Corporation/AutoHedge",
+        "html_url": "https://github.com/The-Swarm-Corporation/AutoHedge",
+        "stargazers_count": 1087,
+        "matched_keywords": [
+          "ai harness"
+        ],
+        "semantic_score": 0.171316,
+        "diversified_score": 0.222772
+      },
+      {
+        "full_name": "kodu-ai/claude-coder",
+        "html_url": "https://github.com/kodu-ai/claude-coder",
+        "stargazers_count": 5290,
+        "matched_keywords": [
+          "autonomous coding agent"
+        ],
+        "semantic_score": 0.207349,
+        "diversified_score": 0.221277
+      },
+      {
+        "full_name": "gptme/gptme",
+        "html_url": "https://github.com/gptme/gptme",
+        "stargazers_count": 4208,
+        "matched_keywords": [
+          "autonomous coding agent"
+        ],
+        "semantic_score": 0.178639,
+        "diversified_score": 0.203165
+      },
+      {
+        "full_name": "cline/cline",
+        "html_url": "https://github.com/cline/cline",
+        "stargazers_count": 58570,
+        "matched_keywords": [
+          "agentic coding",
+          "autonomous coding agent",
+          "coding agent"
+        ],
+        "semantic_score": 0.221191,
+        "diversified_score": 0.187079
+      },
+      {
+        "full_name": "can1357/oh-my-pi",
+        "html_url": "https://github.com/can1357/oh-my-pi",
+        "stargazers_count": 1615,
+        "matched_keywords": [
+          "ai harness",
+          "coding harness"
+        ],
+        "semantic_score": 0.125402,
+        "diversified_score": 0.179555
+      },
+      {
+        "full_name": "sourcegraph/cody-public-snapshot",
+        "html_url": "https://github.com/sourcegraph/cody-public-snapshot",
+        "stargazers_count": 3791,
+        "matched_keywords": [
+          "ai coding assistant"
+        ],
+        "semantic_score": 0.143916,
+        "diversified_score": 0.178033
+      }
+    ],
+    "llm coding agent": [
+      {
+        "full_name": "badlogic/pi-mono",
+        "html_url": "https://github.com/badlogic/pi-mono",
+        "stargazers_count": 19222,
+        "matched_keywords": [
+          "llm coding agent"
+        ],
+        "semantic_score": 0.430223,
+        "diversified_score": 0.370975
+      },
+      {
+        "full_name": "affaan-m/everything-claude-code",
+        "html_url": "https://github.com/affaan-m/everything-claude-code",
+        "stargazers_count": 58112,
+        "matched_keywords": [
+          "agentic coding",
+          "coding agent",
+          "coding harness",
+          "llm coding agent"
+        ],
+        "semantic_score": 0.411704,
+        "diversified_score": 0.335826
+      },
+      {
+        "full_name": "Mintplex-Labs/anything-llm",
+        "html_url": "https://github.com/Mintplex-Labs/anything-llm",
+        "stargazers_count": 55311,
+        "matched_keywords": [
+          "agentic coding",
+          "coding agent",
+          "llm coding agent"
+        ],
+        "semantic_score": 0.400468,
+        "diversified_score": 0.327987
+      },
+      {
+        "full_name": "jeecgboot/JeecgBoot",
+        "html_url": "https://github.com/jeecgboot/JeecgBoot",
+        "stargazers_count": 45319,
+        "matched_keywords": [
+          "coding agent",
+          "llm coding agent"
+        ],
+        "semantic_score": 0.37162,
+        "diversified_score": 0.309214
+      },
+      {
+        "full_name": "Fosowl/agenticSeek",
+        "html_url": "https://github.com/Fosowl/agenticSeek",
+        "stargazers_count": 25394,
+        "matched_keywords": [
+          "autonomous coding agent",
+          "llm coding agent"
+        ],
+        "semantic_score": 0.324606,
+        "diversified_score": 0.283383
+      },
+      {
+        "full_name": "bytedance/deer-flow",
+        "html_url": "https://github.com/bytedance/deer-flow",
+        "stargazers_count": 23742,
+        "matched_keywords": [
+          "ai harness",
+          "coding harness",
+          "llm coding agent"
+        ],
+        "semantic_score": 0.294366,
+        "diversified_score": 0.261055
+      },
+      {
+        "full_name": "shareAI-lab/learn-claude-code",
+        "html_url": "https://github.com/shareAI-lab/learn-claude-code",
+        "stargazers_count": 20664,
+        "matched_keywords": [
+          "llm coding agent"
+        ],
+        "semantic_score": 0.282931,
+        "diversified_score": 0.254733
+      },
+      {
+        "full_name": "block/goose",
+        "html_url": "https://github.com/block/goose",
+        "stargazers_count": 32225,
+        "matched_keywords": [
+          "llm coding agent"
+        ],
+        "semantic_score": 0.287197,
+        "diversified_score": 0.249746
+      },
+      {
+        "full_name": "FudanSELab/Agent4SE-Paper-List",
+        "html_url": "https://github.com/FudanSELab/Agent4SE-Paper-List",
+        "stargazers_count": 531,
+        "matched_keywords": [
+          "software engineering agent"
+        ],
+        "semantic_score": 0.168078,
+        "diversified_score": 0.233636
+      },
+      {
+        "full_name": "peteromallet/desloppify",
+        "html_url": "https://github.com/peteromallet/desloppify",
+        "stargazers_count": 1172,
+        "matched_keywords": [
+          "coding harness"
+        ],
+        "semantic_score": 0.163907,
+        "diversified_score": 0.215585
+      },
+      {
+        "full_name": "hesreallyhim/awesome-claude-code",
+        "html_url": "https://github.com/hesreallyhim/awesome-claude-code",
+        "stargazers_count": 25957,
+        "matched_keywords": [
+          "llm coding agent"
+        ],
+        "semantic_score": 0.236992,
+        "diversified_score": 0.214634
+      },
+      {
+        "full_name": "winfunc/opcode",
+        "html_url": "https://github.com/winfunc/opcode",
+        "stargazers_count": 20763,
+        "matched_keywords": [
+          "llm coding agent"
+        ],
+        "semantic_score": 0.229576,
+        "diversified_score": 0.213028
+      },
+      {
+        "full_name": "iannuttall/ralph",
+        "html_url": "https://github.com/iannuttall/ralph",
+        "stargazers_count": 794,
+        "matched_keywords": [
+          "autonomous coding agent"
+        ],
+        "semantic_score": 0.144838,
+        "diversified_score": 0.207991
+      },
+      {
+        "full_name": "can1357/oh-my-pi",
+        "html_url": "https://github.com/can1357/oh-my-pi",
+        "stargazers_count": 1615,
+        "matched_keywords": [
+          "ai harness",
+          "coding harness"
+        ],
+        "semantic_score": 0.159957,
+        "diversified_score": 0.206508
+      },
+      {
+        "full_name": "michaelshimeles/ralphy",
+        "html_url": "https://github.com/michaelshimeles/ralphy",
+        "stargazers_count": 2496,
+        "matched_keywords": [
+          "autonomous coding agent"
+        ],
+        "semantic_score": 0.167036,
+        "diversified_score": 0.203887
+      }
+    ],
+    "agentic coding": [
+      {
+        "full_name": "anthropics/claude-code",
+        "html_url": "https://github.com/anthropics/claude-code",
+        "stargazers_count": 73026,
+        "matched_keywords": [
+          "agentic coding",
+          "coding agent"
+        ],
+        "semantic_score": 0.582625,
+        "diversified_score": 0.46487
+      },
+      {
+        "full_name": "affaan-m/everything-claude-code",
+        "html_url": "https://github.com/affaan-m/everything-claude-code",
+        "stargazers_count": 58112,
+        "matched_keywords": [
+          "agentic coding",
+          "coding agent",
+          "coding harness",
+          "llm coding agent"
+        ],
+        "semantic_score": 0.40483,
+        "diversified_score": 0.330465
+      },
+      {
+        "full_name": "sdi2200262/agentic-project-management",
+        "html_url": "https://github.com/sdi2200262/agentic-project-management",
+        "stargazers_count": 2067,
+        "matched_keywords": [
+          "agent framework code"
+        ],
+        "semantic_score": 0.252506,
+        "diversified_score": 0.27408
+      },
+      {
+        "full_name": "Mintplex-Labs/anything-llm",
+        "html_url": "https://github.com/Mintplex-Labs/anything-llm",
+        "stargazers_count": 55311,
+        "matched_keywords": [
+          "agentic coding",
+          "coding agent",
+          "llm coding agent"
+        ],
+        "semantic_score": 0.316388,
+        "diversified_score": 0.262404
+      },
+      {
+        "full_name": "thedotmack/claude-mem",
+        "html_url": "https://github.com/thedotmack/claude-mem",
+        "stargazers_count": 32459,
+        "matched_keywords": [
+          "agentic coding"
+        ],
+        "semantic_score": 0.287743,
+        "diversified_score": 0.250036
+      },
+      {
+        "full_name": "ansible/ansible",
+        "html_url": "https://github.com/ansible/ansible",
+        "stargazers_count": 68144,
+        "matched_keywords": [
+          "agentic coding",
+          "coding agent"
+        ],
+        "semantic_score": 0.286707,
+        "diversified_score": 0.235349
+      },
+      {
+        "full_name": "openai/codex",
+        "html_url": "https://github.com/openai/codex",
+        "stargazers_count": 62798,
+        "matched_keywords": [
+          "agentic coding",
+          "coding agent"
+        ],
+        "semantic_score": 0.273179,
+        "diversified_score": 0.226326
+      },
+      {
+        "full_name": "cline/cline",
+        "html_url": "https://github.com/cline/cline",
+        "stargazers_count": 58570,
+        "matched_keywords": [
+          "agentic coding",
+          "autonomous coding agent",
+          "coding agent"
+        ],
+        "semantic_score": 0.26008,
+        "diversified_score": 0.217413
+      },
+      {
+        "full_name": "danny-avila/LibreChat",
+        "html_url": "https://github.com/danny-avila/LibreChat",
+        "stargazers_count": 34275,
+        "matched_keywords": [
+          "agentic coding",
+          "coding agent"
+        ],
+        "semantic_score": 0.242215,
+        "diversified_score": 0.213506
+      },
+      {
+        "full_name": "probelabs/probe",
+        "html_url": "https://github.com/probelabs/probe",
+        "stargazers_count": 470,
+        "matched_keywords": [
+          "code assistant cli"
+        ],
+        "semantic_score": 0.133534,
+        "diversified_score": 0.208971
+      },
+      {
+        "full_name": "anomalyco/opencode",
+        "html_url": "https://github.com/anomalyco/opencode",
+        "stargazers_count": 114758,
+        "matched_keywords": [
+          "agentic coding",
+          "coding agent"
+        ],
+        "semantic_score": 0.250059,
+        "diversified_score": 0.19701
+      },
+      {
+        "full_name": "x1xhlol/system-prompts-and-models-of-ai-tools",
+        "html_url": "https://github.com/x1xhlol/system-prompts-and-models-of-ai-tools",
+        "stargazers_count": 127451,
+        "matched_keywords": [
+          "agentic coding",
+          "coding agent"
+        ],
+        "semantic_score": 0.247818,
+        "diversified_score": 0.193298
+      },
+      {
+        "full_name": "inmve/awesome-ai-coding-techniques",
+        "html_url": "https://github.com/inmve/awesome-ai-coding-techniques",
+        "stargazers_count": 318,
+        "matched_keywords": [
+          "code assistant cli"
+        ],
+        "semantic_score": 0.084074,
+        "diversified_score": 0.177684
+      },
+      {
+        "full_name": "sweepai/sweep",
+        "html_url": "https://github.com/sweepai/sweep",
+        "stargazers_count": 7644,
+        "matched_keywords": [
+          "ai coding assistant"
+        ],
+        "semantic_score": 0.159853,
+        "diversified_score": 0.177343
+      },
+      {
+        "full_name": "hofstadter-io/hof",
+        "html_url": "https://github.com/hofstadter-io/hof",
+        "stargazers_count": 596,
+        "matched_keywords": [
+          "code assistant cli"
+        ],
+        "semantic_score": 0.095396,
+        "diversified_score": 0.174786
+      }
+    ],
+    "software engineering agent": [
+      {
+        "full_name": "Agent-Field/SWE-AF",
+        "html_url": "https://github.com/Agent-Field/SWE-AF",
+        "stargazers_count": 272,
+        "matched_keywords": [
+          "software engineering agent"
+        ],
+        "semantic_score": 0.424275,
+        "diversified_score": 0.445955
+      },
+      {
+        "full_name": "FSoft-AI4Code/HyperAgent",
+        "html_url": "https://github.com/FSoft-AI4Code/HyperAgent",
+        "stargazers_count": 235,
+        "matched_keywords": [
+          "software engineering agent"
+        ],
+        "semantic_score": 0.390947,
+        "diversified_score": 0.422685
+      },
+      {
+        "full_name": "FudanSELab/Agent4SE-Paper-List",
+        "html_url": "https://github.com/FudanSELab/Agent4SE-Paper-List",
+        "stargazers_count": 531,
+        "matched_keywords": [
+          "software engineering agent"
+        ],
+        "semantic_score": 0.405957,
+        "diversified_score": 0.419181
+      },
+      {
+        "full_name": "OpenAutoCoder/live-swe-agent",
+        "html_url": "https://github.com/OpenAutoCoder/live-swe-agent",
+        "stargazers_count": 271,
+        "matched_keywords": [
+          "software engineering agent"
+        ],
+        "semantic_score": 0.36328,
+        "diversified_score": 0.398448
+      },
+      {
+        "full_name": "langtalks/swe-agent",
+        "html_url": "https://github.com/langtalks/swe-agent",
+        "stargazers_count": 614,
+        "matched_keywords": [
+          "software engineering agent"
+        ],
+        "semantic_score": 0.369571,
+        "diversified_score": 0.388087
+      },
+      {
+        "full_name": "bytedance/trae-agent",
+        "html_url": "https://github.com/bytedance/trae-agent",
+        "stargazers_count": 10918,
+        "matched_keywords": [
+          "software engineering agent"
+        ],
+        "semantic_score": 0.431884,
+        "diversified_score": 0.382855
+      },
+      {
+        "full_name": "SWE-Gym/SWE-Gym",
+        "html_url": "https://github.com/SWE-Gym/SWE-Gym",
+        "stargazers_count": 645,
+        "matched_keywords": [
+          "software engineering agent"
+        ],
+        "semantic_score": 0.342155,
+        "diversified_score": 0.365782
+      },
+      {
+        "full_name": "scaleapi/SWE-bench_Pro-os",
+        "html_url": "https://github.com/scaleapi/SWE-bench_Pro-os",
+        "stargazers_count": 292,
+        "matched_keywords": [
+          "software engineering agent"
+        ],
+        "semantic_score": 0.317335,
+        "diversified_score": 0.361219
+      },
+      {
+        "full_name": "galz10/pickle-rick-extension",
+        "html_url": "https://github.com/galz10/pickle-rick-extension",
+        "stargazers_count": 413,
+        "matched_keywords": [
+          "software engineering agent"
+        ],
+        "semantic_score": 0.321126,
+        "diversified_score": 0.357706
+      },
+      {
+        "full_name": "avivl/claude-007-agents",
+        "html_url": "https://github.com/avivl/claude-007-agents",
+        "stargazers_count": 237,
+        "matched_keywords": [
+          "software engineering agent"
+        ],
+        "semantic_score": 0.292881,
+        "diversified_score": 0.346036
+      },
+      {
+        "full_name": "coleam00/context-engineering-intro",
+        "html_url": "https://github.com/coleam00/context-engineering-intro",
+        "stargazers_count": 12663,
+        "matched_keywords": [
+          "ai coding assistant"
+        ],
+        "semantic_score": 0.227633,
+        "diversified_score": 0.220765
+      },
+      {
+        "full_name": "SaladDay/cc-switch-cli",
+        "html_url": "https://github.com/SaladDay/cc-switch-cli",
+        "stargazers_count": 749,
+        "matched_keywords": [
+          "code assistant cli"
+        ],
+        "semantic_score": 0.04181,
+        "diversified_score": 0.128719
+      },
+      {
+        "full_name": "chenhg5/cc-connect",
+        "html_url": "https://github.com/chenhg5/cc-connect",
+        "stargazers_count": 251,
+        "matched_keywords": [
+          "code assistant cli"
+        ],
+        "semantic_score": 0.014021,
+        "diversified_score": 0.127455
+      },
+      {
+        "full_name": "paradigmxyz/evmbench",
+        "html_url": "https://github.com/paradigmxyz/evmbench",
+        "stargazers_count": 329,
+        "matched_keywords": [
+          "ai harness"
+        ],
+        "semantic_score": 0.019136,
+        "diversified_score": 0.126398
+      },
+      {
+        "full_name": "showlab/MakeAnything",
+        "html_url": "https://github.com/showlab/MakeAnything",
+        "stargazers_count": 204,
+        "matched_keywords": [
+          "coding harness"
+        ],
+        "semantic_score": 0.001231,
+        "diversified_score": 0.121342
+      }
+    ]
+  },
+  "union_top": [
+    {
+      "full_name": "anthropics/claude-code",
+      "html_url": "https://github.com/anthropics/claude-code",
+      "stargazers_count": 73026,
+      "matched_keywords": [
+        "agentic coding",
+        "coding agent"
+      ],
+      "semantic_score": 0.582625,
+      "diversified_score": 0.46487
+    },
+    {
+      "full_name": "Agent-Field/SWE-AF",
+      "html_url": "https://github.com/Agent-Field/SWE-AF",
+      "stargazers_count": 272,
+      "matched_keywords": [
+        "software engineering agent"
+      ],
+      "semantic_score": 0.424275,
+      "diversified_score": 0.445955
+    },
+    {
+      "full_name": "Chachamaru127/claude-code-harness",
+      "html_url": "https://github.com/Chachamaru127/claude-code-harness",
+      "stargazers_count": 219,
+      "matched_keywords": [
+        "coding harness"
+      ],
+      "semantic_score": 0.412879,
+      "diversified_score": 0.441106
+    },
+    {
+      "full_name": "shyamsaktawat/OpenAlpha_Evolve",
+      "html_url": "https://github.com/shyamsaktawat/OpenAlpha_Evolve",
+      "stargazers_count": 974,
+      "matched_keywords": [
+        "autonomous coding agent"
+      ],
+      "semantic_score": 0.425774,
+      "diversified_score": 0.423301
+    },
+    {
+      "full_name": "FSoft-AI4Code/HyperAgent",
+      "html_url": "https://github.com/FSoft-AI4Code/HyperAgent",
+      "stargazers_count": 235,
+      "matched_keywords": [
+        "software engineering agent"
+      ],
+      "semantic_score": 0.390947,
+      "diversified_score": 0.422685
+    },
+    {
+      "full_name": "FudanSELab/Agent4SE-Paper-List",
+      "html_url": "https://github.com/FudanSELab/Agent4SE-Paper-List",
+      "stargazers_count": 531,
+      "matched_keywords": [
+        "software engineering agent"
+      ],
+      "semantic_score": 0.405957,
+      "diversified_score": 0.419181
+    },
+    {
+      "full_name": "OpenAutoCoder/live-swe-agent",
+      "html_url": "https://github.com/OpenAutoCoder/live-swe-agent",
+      "stargazers_count": 271,
+      "matched_keywords": [
+        "software engineering agent"
+      ],
+      "semantic_score": 0.36328,
+      "diversified_score": 0.398448
+    },
+    {
+      "full_name": "langtalks/swe-agent",
+      "html_url": "https://github.com/langtalks/swe-agent",
+      "stargazers_count": 614,
+      "matched_keywords": [
+        "software engineering agent"
+      ],
+      "semantic_score": 0.369571,
+      "diversified_score": 0.388087
+    },
+    {
+      "full_name": "bytedance/trae-agent",
+      "html_url": "https://github.com/bytedance/trae-agent",
+      "stargazers_count": 10918,
+      "matched_keywords": [
+        "software engineering agent"
+      ],
+      "semantic_score": 0.431884,
+      "diversified_score": 0.382855
+    },
+    {
+      "full_name": "badlogic/pi-mono",
+      "html_url": "https://github.com/badlogic/pi-mono",
+      "stargazers_count": 19222,
+      "matched_keywords": [
+        "llm coding agent"
+      ],
+      "semantic_score": 0.430223,
+      "diversified_score": 0.370975
+    },
+    {
+      "full_name": "SWE-Gym/SWE-Gym",
+      "html_url": "https://github.com/SWE-Gym/SWE-Gym",
+      "stargazers_count": 645,
+      "matched_keywords": [
+        "software engineering agent"
+      ],
+      "semantic_score": 0.342155,
+      "diversified_score": 0.365782
+    },
+    {
+      "full_name": "bigcode-project/bigcode-evaluation-harness",
+      "html_url": "https://github.com/bigcode-project/bigcode-evaluation-harness",
+      "stargazers_count": 1019,
+      "matched_keywords": [
+        "coding harness"
+      ],
+      "semantic_score": 0.349793,
+      "diversified_score": 0.363191
+    },
+    {
+      "full_name": "scaleapi/SWE-bench_Pro-os",
+      "html_url": "https://github.com/scaleapi/SWE-bench_Pro-os",
+      "stargazers_count": 292,
+      "matched_keywords": [
+        "software engineering agent"
+      ],
+      "semantic_score": 0.317335,
+      "diversified_score": 0.361219
+    },
+    {
+      "full_name": "galz10/pickle-rick-extension",
+      "html_url": "https://github.com/galz10/pickle-rick-extension",
+      "stargazers_count": 413,
+      "matched_keywords": [
+        "software engineering agent"
+      ],
+      "semantic_score": 0.321126,
+      "diversified_score": 0.357706
+    },
+    {
+      "full_name": "avivl/claude-007-agents",
+      "html_url": "https://github.com/avivl/claude-007-agents",
+      "stargazers_count": 237,
+      "matched_keywords": [
+        "software engineering agent"
+      ],
+      "semantic_score": 0.292881,
+      "diversified_score": 0.346036
+    },
+    {
+      "full_name": "truffle-ai/dexto",
+      "html_url": "https://github.com/truffle-ai/dexto",
+      "stargazers_count": 586,
+      "matched_keywords": [
+        "ai harness",
+        "coding harness"
+      ],
+      "semantic_score": 0.308059,
+      "diversified_score": 0.34098
+    },
+    {
+      "full_name": "affaan-m/everything-claude-code",
+      "html_url": "https://github.com/affaan-m/everything-claude-code",
+      "stargazers_count": 58112,
+      "matched_keywords": [
+        "agentic coding",
+        "coding agent",
+        "coding harness",
+        "llm coding agent"
+      ],
+      "semantic_score": 0.40483,
+      "diversified_score": 0.330465
+    },
+    {
+      "full_name": "approximatelabs/sketch",
+      "html_url": "https://github.com/approximatelabs/sketch",
+      "stargazers_count": 2286,
+      "matched_keywords": [
+        "ai coding assistant"
+      ],
+      "semantic_score": 0.304751,
+      "diversified_score": 0.312948
+    },
+    {
+      "full_name": "jeecgboot/JeecgBoot",
+      "html_url": "https://github.com/jeecgboot/JeecgBoot",
+      "stargazers_count": 45319,
+      "matched_keywords": [
+        "coding agent",
+        "llm coding agent"
+      ],
+      "semantic_score": 0.37162,
+      "diversified_score": 0.309214
+    },
+    {
+      "full_name": "Fosowl/agenticSeek",
+      "html_url": "https://github.com/Fosowl/agenticSeek",
+      "stargazers_count": 25394,
+      "matched_keywords": [
+        "autonomous coding agent",
+        "llm coding agent"
+      ],
+      "semantic_score": 0.324606,
+      "diversified_score": 0.283383
+    },
+    {
+      "full_name": "web-arena-x/webarena",
+      "html_url": "https://github.com/web-arena-x/webarena",
+      "stargazers_count": 1357,
+      "matched_keywords": [
+        "autonomous coding agent"
+      ],
+      "semantic_score": 0.252086,
+      "diversified_score": 0.281624
+    },
+    {
+      "full_name": "ruvnet/ruflo",
+      "html_url": "https://github.com/ruvnet/ruflo",
+      "stargazers_count": 18375,
+      "matched_keywords": [
+        "autonomous coding agent"
+      ],
+      "semantic_score": 0.306689,
+      "diversified_score": 0.275462
+    },
+    {
+      "full_name": "sdi2200262/agentic-project-management",
+      "html_url": "https://github.com/sdi2200262/agentic-project-management",
+      "stargazers_count": 2067,
+      "matched_keywords": [
+        "agent framework code"
+      ],
+      "semantic_score": 0.252506,
+      "diversified_score": 0.27408
+    },
+    {
+      "full_name": "C4Labs/C4iOS",
+      "html_url": "https://github.com/C4Labs/C4iOS",
+      "stargazers_count": 980,
+      "matched_keywords": [
+        "coding harness"
+      ],
+      "semantic_score": 0.233723,
+      "diversified_score": 0.273387
+    },
+    {
+      "full_name": "Mintplex-Labs/anything-llm",
+      "html_url": "https://github.com/Mintplex-Labs/anything-llm",
+      "stargazers_count": 55311,
+      "matched_keywords": [
+        "agentic coding",
+        "coding agent",
+        "llm coding agent"
+      ],
+      "semantic_score": 0.316388,
+      "diversified_score": 0.262404
+    },
+    {
+      "full_name": "bytedance/deer-flow",
+      "html_url": "https://github.com/bytedance/deer-flow",
+      "stargazers_count": 23742,
+      "matched_keywords": [
+        "ai harness",
+        "coding harness",
+        "llm coding agent"
+      ],
+      "semantic_score": 0.294366,
+      "diversified_score": 0.261055
+    },
+    {
+      "full_name": "ComposioHQ/agent-orchestrator",
+      "html_url": "https://github.com/ComposioHQ/agent-orchestrator",
+      "stargazers_count": 2945,
+      "matched_keywords": [
+        "autonomous coding agent"
+      ],
+      "semantic_score": 0.243928,
+      "diversified_score": 0.260768
+    },
+    {
+      "full_name": "shareAI-lab/learn-claude-code",
+      "html_url": "https://github.com/shareAI-lab/learn-claude-code",
+      "stargazers_count": 20664,
+      "matched_keywords": [
+        "llm coding agent"
+      ],
+      "semantic_score": 0.282931,
+      "diversified_score": 0.254733
+    },
+    {
+      "full_name": "code-yeongyu/oh-my-opencode",
+      "html_url": "https://github.com/code-yeongyu/oh-my-opencode",
+      "stargazers_count": 36438,
+      "matched_keywords": [
+        "ai harness"
+      ],
+      "semantic_score": 0.290686,
+      "diversified_score": 0.250168
+    },
+    {
+      "full_name": "thedotmack/claude-mem",
+      "html_url": "https://github.com/thedotmack/claude-mem",
+      "stargazers_count": 32459,
+      "matched_keywords": [
+        "agentic coding"
+      ],
+      "semantic_score": 0.287743,
+      "diversified_score": 0.250036
+    },
+    {
+      "full_name": "block/goose",
+      "html_url": "https://github.com/block/goose",
+      "stargazers_count": 32225,
+      "matched_keywords": [
+        "llm coding agent"
+      ],
+      "semantic_score": 0.287197,
+      "diversified_score": 0.249746
+    },
+    {
+      "full_name": "coleam00/Archon",
+      "html_url": "https://github.com/coleam00/Archon",
+      "stargazers_count": 13749,
+      "matched_keywords": [
+        "ai coding assistant"
+      ],
+      "semantic_score": 0.264503,
+      "diversified_score": 0.247984
+    },
+    {
+      "full_name": "ansible/ansible",
+      "html_url": "https://github.com/ansible/ansible",
+      "stargazers_count": 68144,
+      "matched_keywords": [
+        "agentic coding",
+        "coding agent"
+      ],
+      "semantic_score": 0.286707,
+      "diversified_score": 0.235349
+    },
+    {
+      "full_name": "github/CopilotForXcode",
+      "html_url": "https://github.com/github/CopilotForXcode",
+      "stargazers_count": 5722,
+      "matched_keywords": [
+        "ai coding assistant"
+      ],
+      "semantic_score": 0.218155,
+      "diversified_score": 0.228237
+    },
+    {
+      "full_name": "openai/codex",
+      "html_url": "https://github.com/openai/codex",
+      "stargazers_count": 62798,
+      "matched_keywords": [
+        "agentic coding",
+        "coding agent"
+      ],
+      "semantic_score": 0.273179,
+      "diversified_score": 0.226326
+    },
+    {
+      "full_name": "TabbyML/tabby",
+      "html_url": "https://github.com/TabbyML/tabby",
+      "stargazers_count": 32975,
+      "matched_keywords": [
+        "ai coding assistant"
+      ],
+      "semantic_score": 0.253223,
+      "diversified_score": 0.222815
+    },
+    {
+      "full_name": "The-Swarm-Corporation/AutoHedge",
+      "html_url": "https://github.com/The-Swarm-Corporation/AutoHedge",
+      "stargazers_count": 1087,
+      "matched_keywords": [
+        "ai harness"
+      ],
+      "semantic_score": 0.171316,
+      "diversified_score": 0.222772
+    },
+    {
+      "full_name": "0xranx/OpenContext",
+      "html_url": "https://github.com/0xranx/OpenContext",
+      "stargazers_count": 409,
+      "matched_keywords": [
+        "code assistant cli"
+      ],
+      "semantic_score": 0.147205,
+      "diversified_score": 0.22223
+    },
+    {
+      "full_name": "kodu-ai/claude-coder",
+      "html_url": "https://github.com/kodu-ai/claude-coder",
+      "stargazers_count": 5290,
+      "matched_keywords": [
+        "autonomous coding agent"
+      ],
+      "semantic_score": 0.207349,
+      "diversified_score": 0.221277
+    },
+    {
+      "full_name": "coleam00/context-engineering-intro",
+      "html_url": "https://github.com/coleam00/context-engineering-intro",
+      "stargazers_count": 12663,
+      "matched_keywords": [
+        "ai coding assistant"
+      ],
+      "semantic_score": 0.227633,
+      "diversified_score": 0.220765
+    },
+    {
+      "full_name": "cline/cline",
+      "html_url": "https://github.com/cline/cline",
+      "stargazers_count": 58570,
+      "matched_keywords": [
+        "agentic coding",
+        "autonomous coding agent",
+        "coding agent"
+      ],
+      "semantic_score": 0.26008,
+      "diversified_score": 0.217413
+    },
+    {
+      "full_name": "peteromallet/desloppify",
+      "html_url": "https://github.com/peteromallet/desloppify",
+      "stargazers_count": 1172,
+      "matched_keywords": [
+        "coding harness"
+      ],
+      "semantic_score": 0.163907,
+      "diversified_score": 0.215585
+    },
+    {
+      "full_name": "hesreallyhim/awesome-claude-code",
+      "html_url": "https://github.com/hesreallyhim/awesome-claude-code",
+      "stargazers_count": 25957,
+      "matched_keywords": [
+        "llm coding agent"
+      ],
+      "semantic_score": 0.236992,
+      "diversified_score": 0.214634
+    },
+    {
+      "full_name": "danny-avila/LibreChat",
+      "html_url": "https://github.com/danny-avila/LibreChat",
+      "stargazers_count": 34275,
+      "matched_keywords": [
+        "agentic coding",
+        "coding agent"
+      ],
+      "semantic_score": 0.242215,
+      "diversified_score": 0.213506
+    },
+    {
+      "full_name": "winfunc/opcode",
+      "html_url": "https://github.com/winfunc/opcode",
+      "stargazers_count": 20763,
+      "matched_keywords": [
+        "llm coding agent"
+      ],
+      "semantic_score": 0.229576,
+      "diversified_score": 0.213028
+    },
+    {
+      "full_name": "probelabs/probe",
+      "html_url": "https://github.com/probelabs/probe",
+      "stargazers_count": 470,
+      "matched_keywords": [
+        "code assistant cli"
+      ],
+      "semantic_score": 0.133534,
+      "diversified_score": 0.208971
+    },
+    {
+      "full_name": "iannuttall/ralph",
+      "html_url": "https://github.com/iannuttall/ralph",
+      "stargazers_count": 794,
+      "matched_keywords": [
+        "autonomous coding agent"
+      ],
+      "semantic_score": 0.144838,
+      "diversified_score": 0.207991
+    },
+    {
+      "full_name": "can1357/oh-my-pi",
+      "html_url": "https://github.com/can1357/oh-my-pi",
+      "stargazers_count": 1615,
+      "matched_keywords": [
+        "ai harness",
+        "coding harness"
+      ],
+      "semantic_score": 0.159957,
+      "diversified_score": 0.206508
+    },
+    {
+      "full_name": "michaelshimeles/ralphy",
+      "html_url": "https://github.com/michaelshimeles/ralphy",
+      "stargazers_count": 2496,
+      "matched_keywords": [
+        "autonomous coding agent"
+      ],
+      "semantic_score": 0.167036,
+      "diversified_score": 0.203887
+    },
+    {
+      "full_name": "gptme/gptme",
+      "html_url": "https://github.com/gptme/gptme",
+      "stargazers_count": 4208,
+      "matched_keywords": [
+        "autonomous coding agent"
+      ],
+      "semantic_score": 0.178639,
+      "diversified_score": 0.203165
+    },
+    {
+      "full_name": "anomalyco/opencode",
+      "html_url": "https://github.com/anomalyco/opencode",
+      "stargazers_count": 114758,
+      "matched_keywords": [
+        "agentic coding",
+        "coding agent"
+      ],
+      "semantic_score": 0.250059,
+      "diversified_score": 0.19701
+    },
+    {
+      "full_name": "x1xhlol/system-prompts-and-models-of-ai-tools",
+      "html_url": "https://github.com/x1xhlol/system-prompts-and-models-of-ai-tools",
+      "stargazers_count": 127451,
+      "matched_keywords": [
+        "agentic coding",
+        "coding agent"
+      ],
+      "semantic_score": 0.247818,
+      "diversified_score": 0.193298
+    },
+    {
+      "full_name": "langroid/langroid",
+      "html_url": "https://github.com/langroid/langroid",
+      "stargazers_count": 3920,
+      "matched_keywords": [
+        "ai harness"
+      ],
+      "semantic_score": 0.163686,
+      "diversified_score": 0.192828
+    },
+    {
+      "full_name": "neiii/bridle",
+      "html_url": "https://github.com/neiii/bridle",
+      "stargazers_count": 391,
+      "matched_keywords": [
+        "ai harness",
+        "coding harness"
+      ],
+      "semantic_score": 0.107016,
+      "diversified_score": 0.191722
+    },
+    {
+      "full_name": "TommyLemon/APIAuto",
+      "html_url": "https://github.com/TommyLemon/APIAuto",
+      "stargazers_count": 2175,
+      "matched_keywords": [
+        "ai coding assistant"
+      ],
+      "semantic_score": 0.145976,
+      "diversified_score": 0.190034
+    },
+    {
+      "full_name": "shuyu-labs/WebCode",
+      "html_url": "https://github.com/shuyu-labs/WebCode",
+      "stargazers_count": 375,
+      "matched_keywords": [
+        "code assistant cli"
+      ],
+      "semantic_score": 0.094536,
+      "diversified_score": 0.182768
+    },
+    {
+      "full_name": "sourcegraph/cody-public-snapshot",
+      "html_url": "https://github.com/sourcegraph/cody-public-snapshot",
+      "stargazers_count": 3791,
+      "matched_keywords": [
+        "ai coding assistant"
+      ],
+      "semantic_score": 0.143916,
+      "diversified_score": 0.178033
+    },
+    {
+      "full_name": "inmve/awesome-ai-coding-techniques",
+      "html_url": "https://github.com/inmve/awesome-ai-coding-techniques",
+      "stargazers_count": 318,
+      "matched_keywords": [
+        "code assistant cli"
+      ],
+      "semantic_score": 0.084074,
+      "diversified_score": 0.177684
+    },
+    {
+      "full_name": "sweepai/sweep",
+      "html_url": "https://github.com/sweepai/sweep",
+      "stargazers_count": 7644,
+      "matched_keywords": [
+        "ai coding assistant"
+      ],
+      "semantic_score": 0.159853,
+      "diversified_score": 0.177343
+    },
+    {
+      "full_name": "Fission-AI/OpenSpec",
+      "html_url": "https://github.com/Fission-AI/OpenSpec",
+      "stargazers_count": 27157,
+      "matched_keywords": [
+        "ai coding assistant"
+      ],
+      "semantic_score": 0.189886,
+      "diversified_score": 0.177045
+    },
+    {
+      "full_name": "hofstadter-io/hof",
+      "html_url": "https://github.com/hofstadter-io/hof",
+      "stargazers_count": 596,
+      "matched_keywords": [
+        "code assistant cli"
+      ],
+      "semantic_score": 0.095396,
+      "diversified_score": 0.174786
+    },
+    {
+      "full_name": "GeoRetina/chat2geo",
+      "html_url": "https://github.com/GeoRetina/chat2geo",
+      "stargazers_count": 500,
+      "matched_keywords": [
+        "ai harness"
+      ],
+      "semantic_score": 0.076605,
+      "diversified_score": 0.16341
+    },
+    {
+      "full_name": "SaladDay/cc-switch-cli",
+      "html_url": "https://github.com/SaladDay/cc-switch-cli",
+      "stargazers_count": 749,
+      "matched_keywords": [
+        "code assistant cli"
+      ],
+      "semantic_score": 0.04181,
+      "diversified_score": 0.128719
+    },
+    {
+      "full_name": "chenhg5/cc-connect",
+      "html_url": "https://github.com/chenhg5/cc-connect",
+      "stargazers_count": 251,
+      "matched_keywords": [
+        "code assistant cli"
+      ],
+      "semantic_score": 0.014021,
+      "diversified_score": 0.127455
+    },
+    {
+      "full_name": "paradigmxyz/evmbench",
+      "html_url": "https://github.com/paradigmxyz/evmbench",
+      "stargazers_count": 329,
+      "matched_keywords": [
+        "ai harness"
+      ],
+      "semantic_score": 0.019136,
+      "diversified_score": 0.126398
+    },
+    {
+      "full_name": "showlab/MakeAnything",
+      "html_url": "https://github.com/showlab/MakeAnything",
+      "stargazers_count": 204,
+      "matched_keywords": [
+        "coding harness"
+      ],
+      "semantic_score": 0.001231,
+      "diversified_score": 0.121342
+    }
+  ]
+}

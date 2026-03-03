@@ -1,0 +1,27 @@
+{
+  "version": "1.0",
+  "modes": {
+    "plan-readonly": {
+      "allowed_risk_classes": [
+        "safe"
+      ],
+      "requires_approval": [
+        "review-required"
+      ],
+      "blocked": [
+        "blocked"
+      ]
+    },
+    "execute-mutating": {
+      "allowed_risk_classes": [
+        "safe"
+      ],
+      "requires_approval": [
+        "review-required"
+      ],
+      "blocked": [
+        "blocked"
+      ]
+    }
+  }
+}

@@ -1,0 +1,718 @@
+{
+  "generated_at": "2026-03-03T10:23:22Z",
+  "method": "github-search-html",
+  "queries": [
+    {
+      "keyword": "ai harness",
+      "url": "https://github.com/search?o=desc&q=ai+harness&s=stars&type=repositories",
+      "parsed_results": 10
+    },
+    {
+      "keyword": "coding agent",
+      "url": "https://github.com/search?o=desc&q=coding+agent&s=stars&type=repositories",
+      "parsed_results": 10
+    },
+    {
+      "keyword": "coding harness",
+      "url": "https://github.com/search?o=desc&q=coding+harness&s=stars&type=repositories",
+      "parsed_results": 10
+    },
+    {
+      "keyword": "ai coding assistant",
+      "url": "https://github.com/search?o=desc&q=ai+coding+assistant&s=stars&type=repositories",
+      "parsed_results": 10
+    },
+    {
+      "keyword": "autonomous coding agent",
+      "url": "https://github.com/search?o=desc&q=autonomous+coding+agent&s=stars&type=repositories",
+      "parsed_results": 10
+    },
+    {
+      "keyword": "llm coding agent",
+      "url": "https://github.com/search?o=desc&q=llm+coding+agent&s=stars&type=repositories",
+      "parsed_results": 10
+    },
+    {
+      "keyword": "agentic coding",
+      "url": "https://github.com/search?o=desc&q=agentic+coding&s=stars&type=repositories",
+      "parsed_results": 10
+    },
+    {
+      "keyword": "software engineering agent",
+      "url": "https://github.com/search?o=desc&q=software+engineering+agent&s=stars&type=repositories",
+      "parsed_results": 10
+    },
+    {
+      "keyword": "agent framework code",
+      "url": "https://github.com/search?o=desc&q=agent+framework+code&s=stars&type=repositories",
+      "parsed_results": 10
+    },
+    {
+      "keyword": "code assistant cli",
+      "url": "https://github.com/search?o=desc&q=code+assistant+cli&s=stars&type=repositories",
+      "parsed_results": 10
+    }
+  ],
+  "repos": [
+    {
+      "full_name": "x1xhlol/system-prompts-and-models-of-ai-tools",
+      "stargazers_count": 127451,
+      "html_url": "https://github.com/x1xhlol/system-prompts-and-models-of-ai-tools",
+      "matched_keywords": [
+        "agentic coding",
+        "coding agent"
+      ]
+    },
+    {
+      "full_name": "anomalyco/opencode",
+      "stargazers_count": 114758,
+      "html_url": "https://github.com/anomalyco/opencode",
+      "matched_keywords": [
+        "agentic coding",
+        "coding agent"
+      ]
+    },
+    {
+      "full_name": "anthropics/claude-code",
+      "stargazers_count": 73026,
+      "html_url": "https://github.com/anthropics/claude-code",
+      "matched_keywords": [
+        "agentic coding",
+        "coding agent"
+      ]
+    },
+    {
+      "full_name": "lobehub/lobehub",
+      "stargazers_count": 72945,
+      "html_url": "https://github.com/lobehub/lobehub",
+      "matched_keywords": [
+        "ai harness"
+      ]
+    },
+    {
+      "full_name": "ansible/ansible",
+      "stargazers_count": 68144,
+      "html_url": "https://github.com/ansible/ansible",
+      "matched_keywords": [
+        "agentic coding",
+        "coding agent"
+      ]
+    },
+    {
+      "full_name": "openai/codex",
+      "stargazers_count": 62798,
+      "html_url": "https://github.com/openai/codex",
+      "matched_keywords": [
+        "agentic coding",
+        "coding agent"
+      ]
+    },
+    {
+      "full_name": "cline/cline",
+      "stargazers_count": 58570,
+      "html_url": "https://github.com/cline/cline",
+      "matched_keywords": [
+        "agentic coding",
+        "autonomous coding agent",
+        "coding agent"
+      ]
+    },
+    {
+      "full_name": "affaan-m/everything-claude-code",
+      "stargazers_count": 58112,
+      "html_url": "https://github.com/affaan-m/everything-claude-code",
+      "matched_keywords": [
+        "agentic coding",
+        "coding agent",
+        "coding harness",
+        "llm coding agent"
+      ]
+    },
+    {
+      "full_name": "Mintplex-Labs/anything-llm",
+      "stargazers_count": 55311,
+      "html_url": "https://github.com/Mintplex-Labs/anything-llm",
+      "matched_keywords": [
+        "agentic coding",
+        "coding agent",
+        "llm coding agent"
+      ]
+    },
+    {
+      "full_name": "jeecgboot/JeecgBoot",
+      "stargazers_count": 45319,
+      "html_url": "https://github.com/jeecgboot/JeecgBoot",
+      "matched_keywords": [
+        "coding agent",
+        "llm coding agent"
+      ]
+    },
+    {
+      "full_name": "code-yeongyu/oh-my-opencode",
+      "stargazers_count": 36438,
+      "html_url": "https://github.com/code-yeongyu/oh-my-opencode",
+      "matched_keywords": [
+        "ai harness"
+      ]
+    },
+    {
+      "full_name": "danny-avila/LibreChat",
+      "stargazers_count": 34275,
+      "html_url": "https://github.com/danny-avila/LibreChat",
+      "matched_keywords": [
+        "agentic coding",
+        "coding agent"
+      ]
+    },
+    {
+      "full_name": "TabbyML/tabby",
+      "stargazers_count": 32975,
+      "html_url": "https://github.com/TabbyML/tabby",
+      "matched_keywords": [
+        "ai coding assistant"
+      ]
+    },
+    {
+      "full_name": "thedotmack/claude-mem",
+      "stargazers_count": 32459,
+      "html_url": "https://github.com/thedotmack/claude-mem",
+      "matched_keywords": [
+        "agentic coding"
+      ]
+    },
+    {
+      "full_name": "block/goose",
+      "stargazers_count": 32225,
+      "html_url": "https://github.com/block/goose",
+      "matched_keywords": [
+        "llm coding agent"
+      ]
+    },
+    {
+      "full_name": "PostHog/posthog",
+      "stargazers_count": 31855,
+      "html_url": "https://github.com/PostHog/posthog",
+      "matched_keywords": [
+        "ai coding assistant"
+      ]
+    },
+    {
+      "full_name": "Fission-AI/OpenSpec",
+      "stargazers_count": 27157,
+      "html_url": "https://github.com/Fission-AI/OpenSpec",
+      "matched_keywords": [
+        "ai coding assistant"
+      ]
+    },
+    {
+      "full_name": "hesreallyhim/awesome-claude-code",
+      "stargazers_count": 25957,
+      "html_url": "https://github.com/hesreallyhim/awesome-claude-code",
+      "matched_keywords": [
+        "llm coding agent"
+      ]
+    },
+    {
+      "full_name": "Fosowl/agenticSeek",
+      "stargazers_count": 25394,
+      "html_url": "https://github.com/Fosowl/agenticSeek",
+      "matched_keywords": [
+        "autonomous coding agent",
+        "llm coding agent"
+      ]
+    },
+    {
+      "full_name": "bytedance/deer-flow",
+      "stargazers_count": 23742,
+      "html_url": "https://github.com/bytedance/deer-flow",
+      "matched_keywords": [
+        "ai harness",
+        "coding harness",
+        "llm coding agent"
+      ]
+    },
+    {
+      "full_name": "farion1231/cc-switch",
+      "stargazers_count": 23020,
+      "html_url": "https://github.com/farion1231/cc-switch",
+      "matched_keywords": [
+        "code assistant cli"
+      ]
+    },
+    {
+      "full_name": "winfunc/opcode",
+      "stargazers_count": 20763,
+      "html_url": "https://github.com/winfunc/opcode",
+      "matched_keywords": [
+        "llm coding agent"
+      ]
+    },
+    {
+      "full_name": "shareAI-lab/learn-claude-code",
+      "stargazers_count": 20664,
+      "html_url": "https://github.com/shareAI-lab/learn-claude-code",
+      "matched_keywords": [
+        "llm coding agent"
+      ]
+    },
+    {
+      "full_name": "badlogic/pi-mono",
+      "stargazers_count": 19222,
+      "html_url": "https://github.com/badlogic/pi-mono",
+      "matched_keywords": [
+        "llm coding agent"
+      ]
+    },
+    {
+      "full_name": "ruvnet/ruflo",
+      "stargazers_count": 18375,
+      "html_url": "https://github.com/ruvnet/ruflo",
+      "matched_keywords": [
+        "autonomous coding agent"
+      ]
+    },
+    {
+      "full_name": "coleam00/Archon",
+      "stargazers_count": 13749,
+      "html_url": "https://github.com/coleam00/Archon",
+      "matched_keywords": [
+        "ai coding assistant"
+      ]
+    },
+    {
+      "full_name": "QwenLM/Qwen-Agent",
+      "stargazers_count": 13504,
+      "html_url": "https://github.com/QwenLM/Qwen-Agent",
+      "matched_keywords": [
+        "agent framework code"
+      ]
+    },
+    {
+      "full_name": "coleam00/context-engineering-intro",
+      "stargazers_count": 12663,
+      "html_url": "https://github.com/coleam00/context-engineering-intro",
+      "matched_keywords": [
+        "ai coding assistant"
+      ]
+    },
+    {
+      "full_name": "bytedance/trae-agent",
+      "stargazers_count": 10918,
+      "html_url": "https://github.com/bytedance/trae-agent",
+      "matched_keywords": [
+        "software engineering agent"
+      ]
+    },
+    {
+      "full_name": "HKUDS/AutoAgent",
+      "stargazers_count": 8624,
+      "html_url": "https://github.com/HKUDS/AutoAgent",
+      "matched_keywords": [
+        "agent framework code"
+      ]
+    },
+    {
+      "full_name": "sweepai/sweep",
+      "stargazers_count": 7644,
+      "html_url": "https://github.com/sweepai/sweep",
+      "matched_keywords": [
+        "ai coding assistant"
+      ]
+    },
+    {
+      "full_name": "microsoft/TaskWeaver",
+      "stargazers_count": 6121,
+      "html_url": "https://github.com/microsoft/TaskWeaver",
+      "matched_keywords": [
+        "agent framework code"
+      ]
+    },
+    {
+      "full_name": "github/CopilotForXcode",
+      "stargazers_count": 5722,
+      "html_url": "https://github.com/github/CopilotForXcode",
+      "matched_keywords": [
+        "ai coding assistant"
+      ]
+    },
+    {
+      "full_name": "MervinPraison/PraisonAI",
+      "stargazers_count": 5613,
+      "html_url": "https://github.com/MervinPraison/PraisonAI",
+      "matched_keywords": [
+        "agent framework code"
+      ]
+    },
+    {
+      "full_name": "kodu-ai/claude-coder",
+      "stargazers_count": 5290,
+      "html_url": "https://github.com/kodu-ai/claude-coder",
+      "matched_keywords": [
+        "autonomous coding agent"
+      ]
+    },
+    {
+      "full_name": "gptme/gptme",
+      "stargazers_count": 4208,
+      "html_url": "https://github.com/gptme/gptme",
+      "matched_keywords": [
+        "autonomous coding agent"
+      ]
+    },
+    {
+      "full_name": "langroid/langroid",
+      "stargazers_count": 3920,
+      "html_url": "https://github.com/langroid/langroid",
+      "matched_keywords": [
+        "ai harness"
+      ]
+    },
+    {
+      "full_name": "sourcegraph/cody-public-snapshot",
+      "stargazers_count": 3791,
+      "html_url": "https://github.com/sourcegraph/cody-public-snapshot",
+      "matched_keywords": [
+        "ai coding assistant"
+      ]
+    },
+    {
+      "full_name": "ComposioHQ/agent-orchestrator",
+      "stargazers_count": 2945,
+      "html_url": "https://github.com/ComposioHQ/agent-orchestrator",
+      "matched_keywords": [
+        "autonomous coding agent"
+      ]
+    },
+    {
+      "full_name": "cirosantilli/china-dictatorship",
+      "stargazers_count": 2869,
+      "html_url": "https://github.com/cirosantilli/china-dictatorship",
+      "matched_keywords": [
+        "agent framework code"
+      ]
+    },
+    {
+      "full_name": "michaelshimeles/ralphy",
+      "stargazers_count": 2496,
+      "html_url": "https://github.com/michaelshimeles/ralphy",
+      "matched_keywords": [
+        "autonomous coding agent"
+      ]
+    },
+    {
+      "full_name": "darrenhinde/OpenAgentsControl",
+      "stargazers_count": 2358,
+      "html_url": "https://github.com/darrenhinde/OpenAgentsControl",
+      "matched_keywords": [
+        "agent framework code"
+      ]
+    },
+    {
+      "full_name": "trypromptly/LLMStack",
+      "stargazers_count": 2289,
+      "html_url": "https://github.com/trypromptly/LLMStack",
+      "matched_keywords": [
+        "agent framework code"
+      ]
+    },
+    {
+      "full_name": "approximatelabs/sketch",
+      "stargazers_count": 2286,
+      "html_url": "https://github.com/approximatelabs/sketch",
+      "matched_keywords": [
+        "ai coding assistant"
+      ]
+    },
+    {
+      "full_name": "outflanknl/EvilClippy",
+      "stargazers_count": 2233,
+      "html_url": "https://github.com/outflanknl/EvilClippy",
+      "matched_keywords": [
+        "code assistant cli"
+      ]
+    },
+    {
+      "full_name": "TommyLemon/APIAuto",
+      "stargazers_count": 2175,
+      "html_url": "https://github.com/TommyLemon/APIAuto",
+      "matched_keywords": [
+        "ai coding assistant"
+      ]
+    },
+    {
+      "full_name": "sdi2200262/agentic-project-management",
+      "stargazers_count": 2067,
+      "html_url": "https://github.com/sdi2200262/agentic-project-management",
+      "matched_keywords": [
+        "agent framework code"
+      ]
+    },
+    {
+      "full_name": "gege-circle/.github",
+      "stargazers_count": 1787,
+      "html_url": "https://github.com/gege-circle/.github",
+      "matched_keywords": [
+        "agent framework code"
+      ]
+    },
+    {
+      "full_name": "can1357/oh-my-pi",
+      "stargazers_count": 1615,
+      "html_url": "https://github.com/can1357/oh-my-pi",
+      "matched_keywords": [
+        "ai harness",
+        "coding harness"
+      ]
+    },
+    {
+      "full_name": "AgentEra/Agently",
+      "stargazers_count": 1534,
+      "html_url": "https://github.com/AgentEra/Agently",
+      "matched_keywords": [
+        "agent framework code"
+      ]
+    },
+    {
+      "full_name": "web-arena-x/webarena",
+      "stargazers_count": 1357,
+      "html_url": "https://github.com/web-arena-x/webarena",
+      "matched_keywords": [
+        "autonomous coding agent"
+      ]
+    },
+    {
+      "full_name": "peteromallet/desloppify",
+      "stargazers_count": 1172,
+      "html_url": "https://github.com/peteromallet/desloppify",
+      "matched_keywords": [
+        "coding harness"
+      ]
+    },
+    {
+      "full_name": "The-Swarm-Corporation/AutoHedge",
+      "stargazers_count": 1087,
+      "html_url": "https://github.com/The-Swarm-Corporation/AutoHedge",
+      "matched_keywords": [
+        "ai harness"
+      ]
+    },
+    {
+      "full_name": "bigcode-project/bigcode-evaluation-harness",
+      "stargazers_count": 1019,
+      "html_url": "https://github.com/bigcode-project/bigcode-evaluation-harness",
+      "matched_keywords": [
+        "coding harness"
+      ]
+    },
+    {
+      "full_name": "C4Labs/C4iOS",
+      "stargazers_count": 980,
+      "html_url": "https://github.com/C4Labs/C4iOS",
+      "matched_keywords": [
+        "coding harness"
+      ]
+    },
+    {
+      "full_name": "shyamsaktawat/OpenAlpha_Evolve",
+      "stargazers_count": 974,
+      "html_url": "https://github.com/shyamsaktawat/OpenAlpha_Evolve",
+      "matched_keywords": [
+        "autonomous coding agent"
+      ]
+    },
+    {
+      "full_name": "CodeGraphContext/CodeGraphContext",
+      "stargazers_count": 951,
+      "html_url": "https://github.com/CodeGraphContext/CodeGraphContext",
+      "matched_keywords": [
+        "code assistant cli"
+      ]
+    },
+    {
+      "full_name": "iannuttall/ralph",
+      "stargazers_count": 794,
+      "html_url": "https://github.com/iannuttall/ralph",
+      "matched_keywords": [
+        "autonomous coding agent"
+      ]
+    },
+    {
+      "full_name": "SaladDay/cc-switch-cli",
+      "stargazers_count": 749,
+      "html_url": "https://github.com/SaladDay/cc-switch-cli",
+      "matched_keywords": [
+        "code assistant cli"
+      ]
+    },
+    {
+      "full_name": "SWE-Gym/SWE-Gym",
+      "stargazers_count": 645,
+      "html_url": "https://github.com/SWE-Gym/SWE-Gym",
+      "matched_keywords": [
+        "software engineering agent"
+      ]
+    },
+    {
+      "full_name": "langtalks/swe-agent",
+      "stargazers_count": 614,
+      "html_url": "https://github.com/langtalks/swe-agent",
+      "matched_keywords": [
+        "software engineering agent"
+      ]
+    },
+    {
+      "full_name": "hofstadter-io/hof",
+      "stargazers_count": 596,
+      "html_url": "https://github.com/hofstadter-io/hof",
+      "matched_keywords": [
+        "code assistant cli"
+      ]
+    },
+    {
+      "full_name": "truffle-ai/dexto",
+      "stargazers_count": 586,
+      "html_url": "https://github.com/truffle-ai/dexto",
+      "matched_keywords": [
+        "ai harness",
+        "coding harness"
+      ]
+    },
+    {
+      "full_name": "FudanSELab/Agent4SE-Paper-List",
+      "stargazers_count": 531,
+      "html_url": "https://github.com/FudanSELab/Agent4SE-Paper-List",
+      "matched_keywords": [
+        "software engineering agent"
+      ]
+    },
+    {
+      "full_name": "GeoRetina/chat2geo",
+      "stargazers_count": 500,
+      "html_url": "https://github.com/GeoRetina/chat2geo",
+      "matched_keywords": [
+        "ai harness"
+      ]
+    },
+    {
+      "full_name": "probelabs/probe",
+      "stargazers_count": 470,
+      "html_url": "https://github.com/probelabs/probe",
+      "matched_keywords": [
+        "code assistant cli"
+      ]
+    },
+    {
+      "full_name": "galz10/pickle-rick-extension",
+      "stargazers_count": 413,
+      "html_url": "https://github.com/galz10/pickle-rick-extension",
+      "matched_keywords": [
+        "software engineering agent"
+      ]
+    },
+    {
+      "full_name": "0xranx/OpenContext",
+      "stargazers_count": 409,
+      "html_url": "https://github.com/0xranx/OpenContext",
+      "matched_keywords": [
+        "code assistant cli"
+      ]
+    },
+    {
+      "full_name": "neiii/bridle",
+      "stargazers_count": 391,
+      "html_url": "https://github.com/neiii/bridle",
+      "matched_keywords": [
+        "ai harness",
+        "coding harness"
+      ]
+    },
+    {
+      "full_name": "shuyu-labs/WebCode",
+      "stargazers_count": 375,
+      "html_url": "https://github.com/shuyu-labs/WebCode",
+      "matched_keywords": [
+        "code assistant cli"
+      ]
+    },
+    {
+      "full_name": "paradigmxyz/evmbench",
+      "stargazers_count": 329,
+      "html_url": "https://github.com/paradigmxyz/evmbench",
+      "matched_keywords": [
+        "ai harness"
+      ]
+    },
+    {
+      "full_name": "inmve/awesome-ai-coding-techniques",
+      "stargazers_count": 318,
+      "html_url": "https://github.com/inmve/awesome-ai-coding-techniques",
+      "matched_keywords": [
+        "code assistant cli"
+      ]
+    },
+    {
+      "full_name": "scaleapi/SWE-bench_Pro-os",
+      "stargazers_count": 292,
+      "html_url": "https://github.com/scaleapi/SWE-bench_Pro-os",
+      "matched_keywords": [
+        "software engineering agent"
+      ]
+    },
+    {
+      "full_name": "Agent-Field/SWE-AF",
+      "stargazers_count": 272,
+      "html_url": "https://github.com/Agent-Field/SWE-AF",
+      "matched_keywords": [
+        "software engineering agent"
+      ]
+    },
+    {
+      "full_name": "OpenAutoCoder/live-swe-agent",
+      "stargazers_count": 271,
+      "html_url": "https://github.com/OpenAutoCoder/live-swe-agent",
+      "matched_keywords": [
+        "software engineering agent"
+      ]
+    },
+    {
+      "full_name": "chenhg5/cc-connect",
+      "stargazers_count": 251,
+      "html_url": "https://github.com/chenhg5/cc-connect",
+      "matched_keywords": [
+        "code assistant cli"
+      ]
+    },
+    {
+      "full_name": "avivl/claude-007-agents",
+      "stargazers_count": 237,
+      "html_url": "https://github.com/avivl/claude-007-agents",
+      "matched_keywords": [
+        "software engineering agent"
+      ]
+    },
+    {
+      "full_name": "FSoft-AI4Code/HyperAgent",
+      "stargazers_count": 235,
+      "html_url": "https://github.com/FSoft-AI4Code/HyperAgent",
+      "matched_keywords": [
+        "software engineering agent"
+      ]
+    },
+    {
+      "full_name": "Chachamaru127/claude-code-harness",
+      "stargazers_count": 219,
+      "html_url": "https://github.com/Chachamaru127/claude-code-harness",
+      "matched_keywords": [
+        "coding harness"
+      ]
+    },
+    {
+      "full_name": "showlab/MakeAnything",
+      "stargazers_count": 204,
+      "html_url": "https://github.com/showlab/MakeAnything",
+      "matched_keywords": [
+        "coding harness"
+      ]
+    }
+  ]
+}

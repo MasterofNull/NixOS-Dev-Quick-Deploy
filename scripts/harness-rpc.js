@@ -12,6 +12,9 @@
  *   harness-rpc.js session-advance --id <session_id> --action pass --note "discover complete"
  *   harness-rpc.js session-tree --include-completed true
  *   harness-rpc.js review --response "done" --criteria "headers,smoke"
+ *   harness-rpc.js run-start --query "implement parity features" --safety-mode execute-mutating
+ *   harness-rpc.js run-event --id <session_id> --event-type tool_call --risk-class review-required --approved true
+ *   harness-rpc.js run-replay --id <session_id>
  */
 
 const DEFAULT_BASE_URL = process.env.HYB_URL || "http://127.0.0.1:8003";
@@ -109,6 +112,90 @@ async function main() {
         query: args.query || "",
         mode: args.mode || "auto",
         expected_keywords: csv(args.keywords),
+      });
+    case "run-start":
+      return call("/workflow/run/start", "POST", {
+        query: args.query || args.q || "",
+        safety_mode: args["safety-mode"] || "plan-readonly",
+        token_limit: args["token-limit"] ? Number(args["token-limit"]) : 8000,
+        tool_call_limit: args["tool-call-limit"] ? Number(args["tool-call-limit"]) : 40,
+      });
+    case "run-get":
+      return call(`/workflow/run/${args.id}?replay=${args.replay ? "true" : "false"}`, "GET");
+    case "run-mode":
+      return call(`/workflow/run/${args.id}/mode`, "POST", {
+        safety_mode: args["safety-mode"] || "plan-readonly",
+        confirm: args.confirm === "true" || args.confirm === true,
+      });
+    case "run-isolation-get":
+      return call(`/workflow/run/${args.id}/isolation`, "GET");
+    case "run-isolation-set":
+      return call(`/workflow/run/${args.id}/isolation`, "POST", {
+        profile: args.profile || "",
+        workspace_root: args["workspace-root"] || "",
+        network_policy: args["network-policy"] || "",
+      });
+    case "run-event":
+      return call(`/workflow/run/${args.id}/event`, "POST", {
+        event_type: args["event-type"] || "event",
+        risk_class: args["risk-class"] || "safe",
+        approved: args.approved === "true" || args.approved === true,
+        token_delta: args["token-delta"] ? Number(args["token-delta"]) : 0,
+        tool_call_delta: args["tool-call-delta"] ? Number(args["tool-call-delta"]) : 0,
+        detail: args.detail || "",
+      });
+    case "run-replay":
+      return call(`/workflow/run/${args.id}/replay`, "GET");
+    case "blueprints":
+      return call("/workflow/blueprints", "GET");
+    case "parity-scorecard":
+      return call("/parity/scorecard", "GET");
+    case "runtime-register":
+      return call("/control/runtimes/register", "POST", {
+        runtime_id: args.id || "",
+        name: args.name || "",
+        profile: args.profile || "default",
+        status: args.status || "ready",
+        runtime_class: args["runtime-class"] || "generic",
+        transport: args.transport || "http",
+        endpoint_env_var: args["endpoint-env-var"] || "",
+        tags: csv(args.tags),
+      });
+    case "runtime-list":
+      return call("/control/runtimes", "GET");
+    case "runtime-get":
+      return call(`/control/runtimes/${args.id}`, "GET");
+    case "runtime-status":
+      return call(`/control/runtimes/${args.id}/status`, "POST", {
+        status: args.status || "ready",
+        note: args.note || "",
+      });
+    case "runtime-deploy":
+      return call(`/control/runtimes/${args.id}/deployments`, "POST", {
+        deployment_id: args["deployment-id"] || "",
+        version: args.version || "",
+        profile: args.profile || "default",
+        target: args.target || "local",
+        status: args.status || "deployed",
+        note: args.note || "",
+      });
+    case "runtime-rollback":
+      return call(`/control/runtimes/${args.id}/rollback`, "POST", {
+        to_deployment_id: args["to-deployment-id"] || "",
+        reason: args.reason || "",
+      });
+    case "runtime-schedule-policy":
+      return call("/control/runtimes/schedule/policy", "GET");
+    case "runtime-schedule":
+      return call("/control/runtimes/schedule/select", "POST", {
+        objective: args.objective || args.query || "",
+        strategy: args.strategy || "weighted",
+        include_degraded: args["include-degraded"] === "true" || args["include-degraded"] === true,
+        requirements: {
+          runtime_class: args["runtime-class"] || "",
+          transport: args.transport || "",
+          tags: csv(args.tags),
+        },
       });
     default:
       console.error(`Unknown command: ${cmd}`);

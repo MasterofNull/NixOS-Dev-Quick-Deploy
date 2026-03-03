@@ -1,0 +1,87 @@
+{
+  "version": "1.0",
+  "blueprints": [
+    {
+      "id": "coding-bugfix-safe",
+      "title": "Coding Bugfix (Safe First)",
+      "description": "Read-first plan, then guarded execution with explicit approval checkpoints.",
+      "default_safety_mode": "plan-readonly",
+      "phases": [
+        {
+          "id": "discover",
+          "tools": [
+            "hints",
+            "route_search",
+            "tree_search"
+          ],
+          "exit_criteria": "Root cause hypothesis with affected files."
+        },
+        {
+          "id": "plan",
+          "tools": [
+            "workflow_plan"
+          ],
+          "exit_criteria": "Patch plan and tests listed."
+        },
+        {
+          "id": "execute",
+          "tools": [
+            "route_search",
+            "memory_recall"
+          ],
+          "requires_approval": true,
+          "exit_criteria": "Patch applied in minimal steps."
+        },
+        {
+          "id": "validate",
+          "tools": [
+            "harness_eval",
+            "health"
+          ],
+          "exit_criteria": "Smoke checks pass."
+        }
+      ]
+    },
+    {
+      "id": "nixos-service-hardening",
+      "title": "NixOS Service Hardening",
+      "description": "Incremental hardening flow with rollback markers and runtime checks.",
+      "default_safety_mode": "execute-mutating",
+      "phases": [
+        {
+          "id": "discover",
+          "tools": [
+            "hints",
+            "route_search"
+          ],
+          "exit_criteria": "Current module and option owners identified."
+        },
+        {
+          "id": "plan",
+          "tools": [
+            "workflow_plan"
+          ],
+          "exit_criteria": "Changes and rollback command drafted."
+        },
+        {
+          "id": "execute",
+          "tools": [
+            "route_search",
+            "feedback"
+          ],
+          "requires_approval": true,
+          "exit_criteria": "Nix module changes applied."
+        },
+        {
+          "id": "validate",
+          "tools": [
+            "harness_eval",
+            "health",
+            "check_boot_shutdown_integration"
+          ],
+          "exit_criteria": "No boot/shutdown regression signals."
+        }
+      ]
+    }
+  ]
+}

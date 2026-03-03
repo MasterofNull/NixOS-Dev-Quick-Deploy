@@ -107,4 +107,130 @@ export class HarnessClient {
       }),
     });
   }
+
+  runStart(payload) {
+    return this.request("/workflow/run/start", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  runGet(sessionId, replay = false) {
+    return this.request(`/workflow/run/${sessionId}?replay=${replay ? "true" : "false"}`, { method: "GET" });
+  }
+
+  runSetMode(sessionId, safetyMode, confirm = false) {
+    return this.request(`/workflow/run/${sessionId}/mode`, {
+      method: "POST",
+      body: JSON.stringify({ safety_mode: safetyMode, confirm }),
+    });
+  }
+
+  runGetIsolation(sessionId) {
+    return this.request(`/workflow/run/${sessionId}/isolation`, { method: "GET" });
+  }
+
+  runSetIsolation(sessionId, profile = "", workspaceRoot = "", networkPolicy = "") {
+    return this.request(`/workflow/run/${sessionId}/isolation`, {
+      method: "POST",
+      body: JSON.stringify({
+        profile,
+        workspace_root: workspaceRoot,
+        network_policy: networkPolicy,
+      }),
+    });
+  }
+
+  runEvent(
+    sessionId,
+    eventType,
+    riskClass = "safe",
+    approved = false,
+    tokenDelta = 0,
+    toolCallDelta = 0,
+    detail = "",
+  ) {
+    return this.request(`/workflow/run/${sessionId}/event`, {
+      method: "POST",
+      body: JSON.stringify({
+        event_type: eventType,
+        risk_class: riskClass,
+        approved,
+        token_delta: tokenDelta,
+        tool_call_delta: toolCallDelta,
+        detail,
+      }),
+    });
+  }
+
+  runReplay(sessionId) {
+    return this.request(`/workflow/run/${sessionId}/replay`, { method: "GET" });
+  }
+
+  listBlueprints() {
+    return this.request("/workflow/blueprints", { method: "GET" });
+  }
+
+  parityScorecard() {
+    return this.request("/parity/scorecard", { method: "GET" });
+  }
+
+  registerRuntime(payload) {
+    return this.request("/control/runtimes/register", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  listRuntimes() {
+    return this.request("/control/runtimes", { method: "GET" });
+  }
+
+  getRuntime(runtimeId) {
+    return this.request(`/control/runtimes/${runtimeId}`, { method: "GET" });
+  }
+
+  updateRuntimeStatus(runtimeId, status, note = "") {
+    return this.request(`/control/runtimes/${runtimeId}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status, note }),
+    });
+  }
+
+  runtimeDeploy(runtimeId, payload) {
+    return this.request(`/control/runtimes/${runtimeId}/deployments`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  runtimeRollback(runtimeId, toDeploymentId, reason = "") {
+    return this.request(`/control/runtimes/${runtimeId}/rollback`, {
+      method: "POST",
+      body: JSON.stringify({
+        to_deployment_id: toDeploymentId,
+        reason,
+      }),
+    });
+  }
+
+  runtimeSchedulePolicy() {
+    return this.request("/control/runtimes/schedule/policy", { method: "GET" });
+  }
+
+  runtimeSchedule(payload) {
+    return this.request("/control/runtimes/schedule/select", {
+      method: "POST",
+      body: JSON.stringify({
+        objective: payload.objective,
+        strategy: payload.strategy ?? "weighted",
+        include_degraded: payload.includeDegraded ?? false,
+        requirements: {
+          runtime_class: payload.runtimeClass ?? "",
+          transport: payload.transport ?? "",
+          tags: payload.tags ?? [],
+        },
+      }),
+    });
+  }
 }

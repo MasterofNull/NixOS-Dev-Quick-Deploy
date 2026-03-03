@@ -15,6 +15,23 @@ Do not edit manually.
 - `fork_session(session_id, note='forked session')`
 - `review_acceptance(response, query='', criteria=None, expected_keywords=None, min_criteria_ratio=0.7, min_keyword_ratio=0.6, run_harness_eval=False)`
 - `harness_eval(query, expected_keywords=None, mode='auto', max_latency_ms=None)`
+- `run_start(query, safety_mode='plan-readonly', token_limit=8000, tool_call_limit=40)`
+- `run_get(session_id, replay=False)`
+- `run_set_mode(session_id, safety_mode, confirm=False)`
+- `run_get_isolation(session_id)`
+- `run_set_isolation(session_id, profile='', workspace_root='', network_policy='')`
+- `run_event(session_id, event_type, risk_class='safe', approved=False, token_delta=0, tool_call_delta=0, detail='')`
+- `run_replay(session_id)`
+- `list_blueprints()`
+- `parity_scorecard()`
+- `register_runtime(name, runtime_id='', profile='default', status='ready', runtime_class='generic', transport='http', endpoint_env_var='', tags=None)`
+- `list_runtimes()`
+- `get_runtime(runtime_id)`
+- `update_runtime_status(runtime_id, status, note='')`
+- `runtime_deploy(runtime_id, version, profile='default', target='local', status='deployed', note='', deployment_id='')`
+- `runtime_rollback(runtime_id, to_deployment_id, reason='')`
+- `runtime_schedule_policy()`
+- `runtime_schedule(objective, runtime_class='', transport='', tags=None, strategy='weighted', include_degraded=False)`
 
 ## TypeScript (`harness_sdk.ts`)
 
@@ -28,6 +45,23 @@ Do not edit manually.
 - `advanceSession(sessionId: string, action: "pass" | "fail" | "skip" | "note", note = "")`
 - `reviewAcceptance(payload: ReviewAcceptanceRequest)`
 - `harnessEval(query: string, expectedKeywords: string[] = [], mode = "auto")`
+- `runStart(payload: RunStartRequest)`
+- `runGet(sessionId: string, replay = false)`
+- `runSetMode(sessionId: string, safetyMode: "plan-readonly" | "execute-mutating", confirm = false)`
+- `runGetIsolation(sessionId: string)`
+- `runSetIsolation(sessionId: string, profile = "", workspaceRoot = "", networkPolicy = "")`
+- `runEvent(sessionId: string, eventType: string, riskClass: "safe" | "review-required" | "blocked" = "safe", approved = false, tokenDelta = 0, toolCallDelta = 0, detail = "")`
+- `runReplay(sessionId: string)`
+- `listBlueprints()`
+- `parityScorecard()`
+- `registerRuntime(payload: Json)`
+- `listRuntimes()`
+- `getRuntime(runtimeId: string)`
+- `updateRuntimeStatus(runtimeId: string, status: string, note = "")`
+- `runtimeDeploy(runtimeId: string, payload: Json)`
+- `runtimeRollback(runtimeId: string, toDeploymentId: string, reason = "")`
+- `runtimeSchedulePolicy()`
+- `runtimeSchedule(payload: RuntimeScheduleRequest)`
 
 ## Covered Endpoints
 

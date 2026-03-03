@@ -25,12 +25,20 @@ AIDB_API_KEY_FILE = os.getenv("AIDB_API_KEY_FILE", "")
 
 
 def _aidb_key() -> str:
-    if not AIDB_API_KEY_FILE:
-        return ""
-    try:
-        return Path(AIDB_API_KEY_FILE).read_text().strip()
-    except OSError:
-        return ""
+    candidates = []
+    if AIDB_API_KEY_FILE:
+        candidates.append(Path(AIDB_API_KEY_FILE))
+    candidates.extend([
+        Path("/run/secrets/aidb_api_key"),
+        Path("/run/secrets/aidb-mcp-api_key"),
+    ])
+    for candidate in candidates:
+        try:
+            if candidate.exists():
+                return candidate.read_text().strip()
+        except OSError:
+            continue
+    return ""
 
 
 def _log_action(record: dict) -> None:
@@ -132,6 +140,31 @@ def apply_knowledge(action: dict, dry_run: bool) -> dict:
     outcome = _import_knowledge(topic, dry_run)
     return {"topic": topic, "outcome": outcome}
 
+def apply_maintenance(action: dict, dry_run: bool) -> dict:
+    script_name = str(action.get("script", "")).strip()
+    args = action.get("script_args", [])
+    if not script_name:
+        return {"outcome": "skip:no_script"}
+    script_path = SCRIPT_DIR / script_name
+    if not script_path.exists():
+        return {"outcome": "skip:script_not_found", "script": script_name}
+    if dry_run:
+        return {"outcome": "dry_run", "script": script_name, "args": args}
+    try:
+        result = subprocess.run(
+            ["bash", str(script_path)] + [str(a) for a in args],
+            capture_output=True, text=True, timeout=300,
+        )
+        if result.returncode == 0:
+            return {"outcome": "ok", "script": script_name}
+        return {
+            "outcome": "failed",
+            "script": script_name,
+            "stderr": (result.stderr or "").strip()[:120],
+        }
+    except Exception as exc:
+        return {"outcome": "error", "script": script_name, "detail": str(exc)[:120]}
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="AI stack agentic optimizer")
@@ -180,6 +213,11 @@ def main() -> None:
             record = {"ts": ts, "type": atype, "action": aname, "reason": action.get("reason"),
                       "dry_run": dry_run, "result": result_info}
             print("INFO  knowledge:", aname, "topic:", action.get("topic", "")[:60], "| outcome:", result_info.get("outcome"))
+        elif atype == "maintenance" and aname == "prewarm_cache":
+            result_info = apply_maintenance(action, dry_run)
+            record = {"ts": ts, "type": atype, "action": aname, "reason": action.get("reason"),
+                      "dry_run": dry_run, "result": result_info}
+            print("INFO  maintenance:", aname, "| outcome:", result_info.get("outcome"))
         elif atype == "eval" and aname == "alert_human":
             record = {"ts": ts, "type": atype, "action": aname, "reason": action.get("reason"),
                       "dry_run": dry_run, "message": action.get("message")}

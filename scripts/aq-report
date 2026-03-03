@@ -112,6 +112,30 @@ def _tool_audit_path() -> Optional[Path]:
     return None
 
 
+def _hint_audit_path() -> Optional[Path]:
+    """Resolve hint-audit path with fallback to active tool-audit directory."""
+    env_hint = os.getenv("HINT_AUDIT_LOG_PATH")
+    if env_hint:
+        p = Path(env_hint)
+        try:
+            if p.exists():
+                return p
+        except PermissionError:
+            pass
+    candidates = [
+        HINT_AUDIT_PATH,
+        TOOL_AUDIT_PATH.parent / "hint-audit.jsonl",
+        AUDIT_FALLBACK_PATH.parent / "hint-audit.jsonl",
+    ]
+    for p in candidates:
+        try:
+            if p.exists():
+                return p
+        except PermissionError:
+            continue
+    return None
+
+
 def read_tool_audit(since: datetime) -> List[dict]:
     """Read tool_audit.jsonl entries newer than `since`."""
     path = _tool_audit_path()
@@ -342,14 +366,15 @@ def hint_adoption(since: datetime) -> Dict[str, Any]:
     'Adoption' = the aider task that received an injected hint completed
     successfully (returncode 0 + at least one file modified).
     """
-    if not HINT_AUDIT_PATH.exists():
+    hint_path = _hint_audit_path()
+    if not hint_path:
         # File not yet written — normal on a fresh deploy; treat as zero activity
         return {"available": True, "total": 0, "accepted": 0, "adoption_pct": None, "top_hints": []}
     total = 0
     accepted = 0
     top_hints: Dict[str, int] = {}
     try:
-        with HINT_AUDIT_PATH.open(encoding="utf-8", errors="replace") as fh:
+        with hint_path.open(encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 line = line.strip()
                 if not line:
@@ -434,10 +459,15 @@ def routing_split() -> Dict[str, Any]:
     local_n = local_val or 0.0
     remote_n = remote_val or 0.0
     total = local_n + remote_n
+    query_ok = prom_query('sum(hybrid_requests_total{endpoint="/query",status="200"}) or vector(0)')
+    if query_ok is None:
+        query_ok = prom_query('sum(hybrid_requests_total{endpoint="/query"}) or vector(0)')
     return {
         "local_n": int(local_n),
         "remote_n": int(remote_n),
         "local_pct": round(100 * local_n / total, 1) if total else None,
+        "query_ok_n": int(query_ok or 0.0),
+        "fallback_used": bool((query_ok or 0.0) > 0 and total == 0),
         "available": local_val is not None,  # None only on connection error
     }
 
@@ -597,6 +627,21 @@ def build_structured_actions(
         })
 
     if (route.get("available") and route.get("local_pct") is not None
+            and float(route["local_pct"]) < 30):
+        actions.append({
+            "type": "routing",
+            "action": "nudge_local_threshold_down",
+            "reason": "local_pct_low=" + str(route["local_pct"]),
+            "safe": True,
+            "confidence": 0.65,
+            "env_overrides": {
+                "DEFAULT_PROVIDER": "local",
+                "LOCAL_CONFIDENCE_THRESHOLD": "0.35",
+            },
+            "services": ["ai-hybrid-coordinator", "ai-switchboard"],
+        })
+
+    if (route.get("available") and route.get("local_pct") is not None
             and float(route["local_pct"]) > 70 and timeout_count == 0):
         actions.append({
             "type": "routing",
@@ -606,6 +651,17 @@ def build_structured_actions(
             "confidence": 0.75,
             "env_overrides": {"DEFAULT_PROVIDER": "local"},
             "services": ["ai-hybrid-coordinator", "ai-switchboard"],
+        })
+
+    if cache.get("available") and cache.get("hit_pct") is not None and float(cache["hit_pct"]) < 40:
+        actions.append({
+            "type": "maintenance",
+            "action": "prewarm_cache",
+            "reason": "cache_hit_pct_low=" + str(cache["hit_pct"]),
+            "safe": True,
+            "confidence": 0.7,
+            "script": "seed-routing-traffic.sh",
+            "script_args": ["--count", "8"],
         })
 
     knowledge_gaps = [
@@ -690,6 +746,10 @@ def format_md(
             f"- Local requests: **{route['local_n']}** ({_na(route['local_pct'], '.1f', '%')})",
             f"- Remote requests: **{route['remote_n']}** ({_na(100 - route['local_pct'] if route['local_pct'] is not None else None, '.1f', '%')})",
         ]
+        if route.get("fallback_used"):
+            lines.append(
+                f"- Backend split metric missing; observed **{route['query_ok_n']}** successful `/query` requests."
+            )
     else:
         lines.append("*Prometheus unreachable — routing metrics unavailable.*")
     lines.append("")
@@ -846,6 +906,10 @@ def format_text(
                 f"  Local:  {route['local_n']:6d}  (n/a — no routing events yet)",
                 f"  Remote: {route['remote_n']:6d}  (n/a — no routing events yet)",
             ]
+        if route.get("fallback_used"):
+            lines.append(
+                f"  Backend split metric missing; successful /query requests observed: {route['query_ok_n']}"
+            )
     else:
         lines.append("  Prometheus unreachable.")
     lines.append("")

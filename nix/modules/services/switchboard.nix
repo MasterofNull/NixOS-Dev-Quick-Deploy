@@ -25,6 +25,7 @@ let
   hybridKeyFile = if sec.enable
     then "/run/secrets/${sec.names.hybridApiKey}"
     else "";
+  mutableOptimizerDir = cfg.deployment.mutableSpaces.aiStackOptimizerDir;
   continueLocalCard = ''
     [profile-card:continue-local]
     Keep responses concise and execution-focused.
@@ -811,7 +812,7 @@ in
           "HYBRID_URL=${hybridUrl}"
           "HYBRID_API_KEY_FILE=${hybridKeyFile}"
         ];
-        EnvironmentFile = "-/var/lib/nixos-ai-stack/optimizer/overrides.env";
+        EnvironmentFile = "-${mutableOptimizerDir}/overrides.env";
         User                  = cfg.primaryUser;
         Restart               = "on-failure";
         RestartSec            = "5s";

@@ -35,7 +35,12 @@ from uuid import uuid4
 
 import capability_discovery
 from config import Config
-from metrics import ROUTE_DECISIONS, ROUTE_ERRORS
+from metrics import (
+    ROUTE_DECISIONS,
+    ROUTE_ERRORS,
+    LLM_BACKEND_SELECTIONS,
+    LLM_BACKEND_LATENCY,
+)
 from search_router import looks_like_sql as _looks_like_sql, normalize_tokens as _normalize_tokens
 from query_expansion import QueryExpander
 from prompt_injection import PromptInjectionScanner, sanitize_query
@@ -43,6 +48,13 @@ import task_classifier
 
 logger = logging.getLogger("hybrid-coordinator")
 _injection_scanner = PromptInjectionScanner()
+_LOW_SIGNAL_GAP_QUERIES = {
+    "nix",
+    "nixos",
+    "test",
+    "help",
+    "docs",
+}
 
 # ---------------------------------------------------------------------------
 # Injected dependencies
@@ -59,6 +71,21 @@ _switchboard_client_ref: Optional[Callable] = None
 _postgres_client_ref: Optional[Callable] = None
 _COLLECTIONS: Dict[str, Any] = {}
 _query_expander: Optional["QueryExpander"] = None
+
+
+def _should_track_query_gap(query: str, best_score: float, results_count: int, threshold: float) -> bool:
+    """Reduce false-positive gap rows for low-signal short queries."""
+    normalized = " ".join(_normalize_tokens(query))
+    if not normalized:
+        return False
+    tokens = normalized.split()
+    if normalized in _LOW_SIGNAL_GAP_QUERIES:
+        return False
+    # If retrieval returned anything for a tiny query, treat this as weak intent
+    # rather than a true knowledge gap.
+    if results_count > 0 and len(tokens) <= 2:
+        return False
+    return best_score < threshold
 
 
 def init(
@@ -147,6 +174,8 @@ async def route_search(
 
     results: Dict[str, Any] = {}
     response_text = ""
+    selected_backend = "none"
+    backend_reason_class = "not_used"
     _cap_disc: Dict[str, Any] = {
         "decision": "skipped", "reason": "not-evaluated", "cache_hit": False,
         "intent_tags": [], "tools": [], "skills": [], "servers": [], "datasets": [],
@@ -214,7 +243,10 @@ async def route_search(
             default=0.0,
         )
         postgres_client = _postgres_client_ref()
-        if _best_score < _GAP_THRESHOLD and postgres_client is not None:
+        skip_gap_tracking = bool((context or {}).get("skip_gap_tracking", False))
+        if (not skip_gap_tracking
+                and _should_track_query_gap(query, _best_score, len(_all_combined), _GAP_THRESHOLD)
+                and postgres_client is not None):
             _query_hash = hashlib.sha256(query.encode()).hexdigest()[:64]
             _collections_hit = ",".join(sorted(set(
                 r.get("collection", "") for r in _all_combined if isinstance(r, dict)
@@ -223,6 +255,20 @@ async def route_search(
                 query_hash=_query_hash, query_text=query[:500],
                 score=_best_score, collection=_collections_hit,
             ))
+
+        # Emit backend-selection decisions even when callers request retrieval-only
+        # mode (generate_response=false), so routing split telemetry stays useful.
+        if not generate_response and route != "sql" and _select_backend is not None:
+            try:
+                selected_backend = await _select_backend(
+                    query,
+                    _best_score,
+                    force_local=prefer_local,
+                    force_remote=False,
+                    requires_structured_output=False,
+                )
+            except Exception as exc:
+                logger.debug("backend_selection_inference_failed error=%s", exc)
 
         prompt_prefix = Config.AI_PROMPT_CACHE_STATIC_PREFIX if Config.AI_PROMPT_CACHE_POLICY_ENABLED else ""
         prompt_prefix_hash = hashlib.sha256(prompt_prefix.encode("utf-8")).hexdigest()[:16] if prompt_prefix else ""
@@ -302,7 +348,14 @@ async def route_search(
                 context_quality = max(
                     (r.get("score", 0.0) for r in _all_results if isinstance(r, dict)), default=0.5,
                 )
-                backend = "remote" if _inference_headers.get("x-ai-route") == "remote" else "local"
+                selected_backend = "remote" if _inference_headers.get("x-ai-route") == "remote" else "local"
+                if _complexity and _complexity.remote_required:
+                    backend_reason_class = "complexity_remote_required"
+                elif _complexity:
+                    backend_reason_class = "complexity_local_suitable"
+                else:
+                    backend_reason_class = "default_local"
+                _llm_start = time.perf_counter()
                 try:
                     llm_resp = await _inference_client.post(
                         _inference_path,
@@ -330,9 +383,23 @@ async def route_search(
                             "token_budget": Config.AI_CONTEXT_MAX_TOKENS,
                             "compressed_tokens": compressed_tokens,
                         }
+                    LLM_BACKEND_SELECTIONS.labels(
+                        backend=selected_backend,
+                        reason_class=backend_reason_class,
+                    ).inc()
+                    LLM_BACKEND_LATENCY.labels(backend=selected_backend).observe(
+                        max(0.0, time.perf_counter() - _llm_start)
+                    )
                 except Exception as exc:  # noqa: BLE001
                     _is_timeout = isinstance(exc, asyncio.TimeoutError) or "timeout" in type(exc).__name__.lower()
                     logger.warning("route_search_llm_failed error=%s timeout=%s", exc, _is_timeout)
+                    LLM_BACKEND_SELECTIONS.labels(
+                        backend=selected_backend,
+                        reason_class="error",
+                    ).inc()
+                    LLM_BACKEND_LATENCY.labels(backend=selected_backend).observe(
+                        max(0.0, time.perf_counter() - _llm_start)
+                    )
                     if _is_timeout and _record_query_gap is not None and postgres_client is not None:
                         _t_hash = hashlib.sha256(query.encode()).hexdigest()[:64]
                         asyncio.create_task(_record_query_gap(
@@ -374,7 +441,7 @@ async def route_search(
 
     latency_ms = int((time.time() - start) * 1000)
     return {
-        "route": route, "backend": route, "response": response_text,
+        "route": route, "backend": selected_backend, "response": response_text,
         "results": results, "latency_ms": latency_ms,
         "interaction_id": interaction_id,
         "capability_discovery": {
