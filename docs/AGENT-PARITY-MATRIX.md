@@ -168,6 +168,9 @@ Behavior:
   - Reduced/disabled repo map (`--map-tokens`)
   - `--no-git --no-gitignore` to avoid expensive full-repo scans
   - Shorter runtime ceiling for faster terminal outcomes.
+- Automatic file-scope inference:
+  - When `files[]` is empty, infer candidate file paths from prompt mentions
+  - Apply bounded file-count and default map-token budget to avoid whole-repo scans.
 - Task status telemetry now reports `analysis_only_profile` and effective timeout.
 
 ### Signed skill registry + trust hooks

@@ -1205,6 +1205,24 @@
             description = "Route analysis-only tasks through hybrid /query fast path before invoking aider.";
           };
 
+          aiderAutoFileScope = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Automatically infer likely file paths from task prompts when files[] is empty.";
+          };
+
+          aiderAutoFileScopeMax = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 6;
+            description = "Maximum inferred files for automatic aider file scope.";
+          };
+
+          aiderDefaultMapTokens = lib.mkOption {
+            type = lib.types.ints.nonnegative;
+            default = 512;
+            description = "Default repo-map token budget when no explicit files are scoped.";
+          };
+
           parityScorecard = lib.mkOption {
             type = lib.types.attrs;
             default = {
