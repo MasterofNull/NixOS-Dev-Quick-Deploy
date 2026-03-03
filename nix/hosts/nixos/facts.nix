@@ -38,7 +38,7 @@
     roles.aiStack.enable         = true;
     roles.server.enable          = false;
     roles.mobile.enable          = true;
-    roles.virtualization.enable  = true;  # Enable for Podman containers and MCP servers
+    roles.virtualization.enable  = true;
 
     # AI stack configuration — consumed by nix/modules/roles/ai-stack.nix.
     # Only meaningful when roles.aiStack.enable = true.
@@ -48,7 +48,7 @@
       llamaCpp.model                   = "/var/lib/llama-cpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
       llamaCpp.huggingFaceRepo         = "unsloth/Qwen3-4B-Instruct-2507-GGUF";
       llamaCpp.huggingFaceFile         = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
-      llamaCpp.sha256                  = null;
+      llamaCpp.sha256                  = "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597";
       # Cezanne APU (Ryzen 5000U) uses gfx90c, which maps to ROCm gfx version 9.0.0
       rocmGfxOverride                  = "9.0.0";
       # llama.cpp extra args for stability and performance on AMD APU
@@ -75,7 +75,7 @@
       embeddingServer.model            = "/var/lib/llama-cpp/models/Qwen3-Embedding-4B-q4_k_m.gguf";
       embeddingServer.huggingFaceRepo  = "Mungert/Qwen3-Embedding-4B-GGUF";
       embeddingServer.huggingFaceFile  = "Qwen3-Embedding-4B-q4_k_m.gguf";
-      embeddingServer.sha256           = null;
+      embeddingServer.sha256           = "2a91ec30c4c694af60cbedfc2f30d6aa5fd69a5286a8fb5544aa47868243054e";
       embeddingServer.pooling          = "last";
       embeddingServer.extraArgs        = [
         "--threads" "8"
