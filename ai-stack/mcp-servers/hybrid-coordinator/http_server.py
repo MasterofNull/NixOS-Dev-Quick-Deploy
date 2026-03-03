@@ -32,6 +32,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from config import Config, OptimizationProposal, apply_proposal, routing_config
 from metrics import PROCESS_MEMORY_BYTES, REQUEST_COUNT, REQUEST_ERRORS, REQUEST_LATENCY
+from shared.tool_security_auditor import ToolSecurityAuditor
 
 logger = logging.getLogger("hybrid-coordinator")
 
@@ -72,6 +73,7 @@ _queue_depth_ref: Optional[Callable] = None          # lambda: _model_loading_qu
 _queue_max_ref: Optional[Callable] = None            # lambda: _MODEL_QUEUE_MAX
 _workflow_sessions_lock = asyncio.Lock()
 _runtime_registry_lock = asyncio.Lock()
+_TOOL_SECURITY_AUDITOR: Optional[ToolSecurityAuditor] = None
 
 
 def _workflow_tool_catalog(query: str) -> List[Dict[str, str]]:
@@ -109,6 +111,54 @@ def _workflow_tool_catalog(query: str) -> List[Dict[str, str]]:
         add("route_search", "/query", "Default execution path for response generation with retrieval.")
 
     return tools
+
+
+def _audit_planned_tools(query: str, tools: List[Dict[str, str]]) -> tuple[List[Dict[str, str]], Dict[str, Any]]:
+    """Audit tools on first use and keep only approved/sanitized tool entries."""
+    if not _TOOL_SECURITY_AUDITOR:
+        return tools, {
+            "enabled": False,
+            "approved": [t.get("name", "") for t in tools],
+            "blocked": [],
+            "cache_hits": 0,
+            "first_seen": 0,
+        }
+
+    approved: List[Dict[str, str]] = []
+    blocked: List[str] = []
+    cache_hits = 0
+    first_seen = 0
+    for tool in tools:
+        tool_name = str(tool.get("name", "")).strip()
+        if not tool_name:
+            continue
+        try:
+            decision = _TOOL_SECURITY_AUDITOR.audit_tool(
+                tool_name,
+                {
+                    "query": query[:400],
+                    "endpoint": tool.get("endpoint"),
+                    "reason": tool.get("reason"),
+                    "manifest": {"name": tool_name, "endpoint": tool.get("endpoint")},
+                },
+            )
+            if decision.get("cached"):
+                cache_hits += 1
+            if decision.get("first_seen"):
+                first_seen += 1
+            if decision.get("approved", True):
+                approved.append(tool)
+            else:
+                blocked.append(tool_name)
+        except PermissionError:
+            blocked.append(tool_name)
+    return approved, {
+        "enabled": True,
+        "approved": [t.get("name", "") for t in approved],
+        "blocked": blocked,
+        "cache_hits": cache_hits,
+        "first_seen": first_seen,
+    }
 
 
 def _workflow_sessions_path() -> Path:
@@ -361,7 +411,7 @@ async def _save_runtime_registry(data: Dict[str, Any]) -> None:
 
 
 def _build_workflow_plan(query: str) -> Dict[str, Any]:
-    tools = _workflow_tool_catalog(query)
+    tools, tool_security = _audit_planned_tools(query, _workflow_tool_catalog(query))
     return {
         "objective": query,
         "workflow_version": "1.1",
@@ -409,6 +459,7 @@ def _build_workflow_plan(query: str) -> Dict[str, Any]:
             "query_length": len(query),
             "capability_discovery_enabled": Config.AI_CAPABILITY_DISCOVERY_ENABLED,
             "context_compression_enabled": Config.AI_CONTEXT_COMPRESSION_ENABLED,
+            "tool_security": tool_security,
             "created_epoch_s": int(time.time()),
         },
     }
@@ -594,6 +645,7 @@ def init(
     global _multi_turn_manager, _progressive_disclosure, _feedback_api, _learning_pipeline
     global _COLLECTIONS, _HYBRID_STATS, _HARNESS_STATS, _CIRCUIT_BREAKERS, _SERVICE_NAME
     global _local_llm_healthy_ref, _local_llm_loading_ref, _queue_depth_ref, _queue_max_ref
+    global _TOOL_SECURITY_AUDITOR
 
     _augment_query = augment_query_fn
     _route_search = route_search_fn
@@ -624,6 +676,31 @@ def init(
     _local_llm_loading_ref = local_llm_loading_ref
     _queue_depth_ref = queue_depth_ref
     _queue_max_ref = queue_max_ref
+    audit_enabled = os.getenv("AI_TOOL_SECURITY_AUDIT_ENABLED", "true").lower() == "true"
+    audit_enforce = os.getenv("AI_TOOL_SECURITY_AUDIT_ENFORCE", "true").lower() == "true"
+    audit_ttl_hours = int(os.getenv("AI_TOOL_SECURITY_CACHE_TTL_HOURS", "168"))
+    data_dir = Path(os.path.expanduser(os.getenv("DATA_DIR", "~/.local/share/nixos-ai-stack/hybrid")))
+    policy_path = Path(
+        os.path.expanduser(
+            os.getenv("RUNTIME_TOOL_SECURITY_POLICY_FILE", "config/runtime-tool-security-policy.json")
+        )
+    )
+    cache_path = Path(
+        os.path.expanduser(
+            os.getenv(
+                "TOOL_SECURITY_AUDIT_CACHE_FILE",
+                str(data_dir / "tool-security-audit-cache.json"),
+            )
+        )
+    )
+    _TOOL_SECURITY_AUDITOR = ToolSecurityAuditor(
+        service_name=_SERVICE_NAME,
+        policy_path=policy_path,
+        cache_path=cache_path,
+        enabled=audit_enabled,
+        enforce=audit_enforce,
+        cache_ttl_hours=audit_ttl_hours,
+    )
 
 
 async def run_http_mode(port: int) -> None:
@@ -802,8 +879,9 @@ async def run_http_mode(port: int) -> None:
                 "hints": [],
             }
             if semantic_tooling_autorun:
-                planned = _workflow_tool_catalog(query)
+                planned, tool_security = _audit_planned_tools(query, _workflow_tool_catalog(query))
                 tooling_layer["planned_tools"] = [p.get("name", "") for p in planned]
+                tooling_layer["tool_security"] = tool_security
 
                 # Auto-hints: pull top semantic hint and pass into route context.
                 if any(p.get("name") == "hints" for p in planned):

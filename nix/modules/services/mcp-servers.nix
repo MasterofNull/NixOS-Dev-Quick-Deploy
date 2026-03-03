@@ -102,6 +102,8 @@ let
     pkgs.writeText "runtime-scheduler-policy.json" (builtins.toJSON ai.aiHarness.runtime.schedulerPolicy);
   parityScorecardJson =
     pkgs.writeText "parity-scorecard.json" (builtins.toJSON ai.aiHarness.runtime.parityScorecard);
+  runtimeToolSecurityPolicyJson =
+    pkgs.writeText "runtime-tool-security-policy.json" (builtins.toJSON ai.aiHarness.runtime.toolSecurity.policy);
   auditSidecarScript =
     pkgs.writeText "audit_sidecar.py" (builtins.readFile ../../../ai-stack/mcp-servers/shared/audit_sidecar.py);
 
@@ -738,6 +740,10 @@ in
             "AIDB_URL=http://127.0.0.1:${toString mcp.aidbPort}"
             "HYBRID_COORDINATOR_URL=http://127.0.0.1:${toString mcp.hybridPort}"
             "RALPH_URL=http://127.0.0.1:${toString mcp.ralphPort}"
+            "AI_TOOL_SECURITY_AUDIT_ENABLED=${if ai.aiHarness.runtime.toolSecurity.enable then "true" else "false"}"
+            "AI_TOOL_SECURITY_AUDIT_ENFORCE=${if ai.aiHarness.runtime.toolSecurity.enforce then "true" else "false"}"
+            "AI_TOOL_SECURITY_CACHE_TTL_HOURS=${toString ai.aiHarness.runtime.toolSecurity.cacheTtlHours}"
+            "RUNTIME_TOOL_SECURITY_POLICY_FILE=${runtimeToolSecurityPolicyJson}"
             "PYTHONPATH=${repoMcp}:${repoMcp}/aidb"
           ] ++ lib.optional mcp.postgres.enable
             "DATABASE_URL=${pgUrl}"
@@ -829,6 +835,10 @@ in
             "WORKFLOW_BLUEPRINTS_FILE=${workflowBlueprintsJson}"
             "RUNTIME_SCHEDULER_POLICY_FILE=${runtimeSchedulerPolicyJson}"
             "PARITY_SCORECARD_FILE=${parityScorecardJson}"
+            "AI_TOOL_SECURITY_AUDIT_ENABLED=${if ai.aiHarness.runtime.toolSecurity.enable then "true" else "false"}"
+            "AI_TOOL_SECURITY_AUDIT_ENFORCE=${if ai.aiHarness.runtime.toolSecurity.enforce then "true" else "false"}"
+            "AI_TOOL_SECURITY_CACHE_TTL_HOURS=${toString ai.aiHarness.runtime.toolSecurity.cacheTtlHours}"
+            "RUNTIME_TOOL_SECURITY_POLICY_FILE=${runtimeToolSecurityPolicyJson}"
             "PYTHONPATH=${repoMcp}:${repoMcp}/hybrid-coordinator"
             # Phase 12.3.2 — audit sidecar socket path
             "AUDIT_SOCKET_PATH=/run/ai-audit-sidecar.sock"

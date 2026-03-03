@@ -1103,6 +1103,49 @@
             };
           };
 
+          toolSecurity = {
+            enable = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = "Enable first-use security auditing for tool metadata/parameters.";
+            };
+
+            enforce = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = "Block tool usage when the security auditor flags unsafe behavior.";
+            };
+
+            cacheTtlHours = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 168;
+              description = "TTL for cached safe tool audit decisions.";
+            };
+
+            policy = lib.mkOption {
+              type = lib.types.attrs;
+              default = {
+                version = "1.0";
+                blocked_tools = [ "shell_exec" "remote_ssh_exec" "raw_system_command" ];
+                blocked_endpoint_patterns = [ "/control/*" "*/reload-model" "*/session/*/mode" ];
+                blocked_reason_keywords = [
+                  "exec"
+                  "shell"
+                  "sudo"
+                  "delete"
+                  "truncate"
+                  "drop"
+                  "overwrite"
+                  "network egress"
+                ];
+                strip_manifest_keys = [ "exec" "command" "shell" "script" "sudo" "token" "api_key" ];
+                blocked_parameter_keys = [ "exec" "command" "shell" "script" "sudo" "api_key" "token" ];
+                max_parameter_string_length = 4096;
+              };
+              description = "Declarative first-use tool security auditor policy.";
+            };
+          };
+
           semanticToolingAutorun = lib.mkOption {
             type = lib.types.bool;
             default = true;

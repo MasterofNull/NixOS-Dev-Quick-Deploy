@@ -25,6 +25,7 @@ need_file "${ROOT}/config/runtime-isolation-profiles.json"
 need_file "${ROOT}/config/workflow-blueprints.json"
 need_file "${ROOT}/config/runtime-scheduler-policy.json"
 need_file "${ROOT}/config/parity-scorecard.json"
+need_file "${ROOT}/config/runtime-tool-security-policy.json"
 
 need_pattern "${ROOT}/nix/modules/core/options.nix" "aiHarness = {"
 need_pattern "${ROOT}/nix/modules/core/options.nix" "runtime = {"
@@ -35,6 +36,7 @@ need_pattern "${ROOT}/nix/modules/core/options.nix" "workflowBlueprints"
 need_pattern "${ROOT}/nix/modules/core/options.nix" "schedulerPolicy"
 need_pattern "${ROOT}/nix/modules/core/options.nix" "semanticToolingAutorun"
 need_pattern "${ROOT}/nix/modules/core/options.nix" "aiderToolingPlanEnabled"
+need_pattern "${ROOT}/nix/modules/core/options.nix" "toolSecurity = {"
 need_pattern "${ROOT}/nix/modules/core/options.nix" "parityScorecard"
 
 need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "AI_RUN_DEFAULT_SAFETY_MODE="
@@ -46,6 +48,10 @@ need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "WORKFLOW_BLUEPRINTS
 need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "RUNTIME_SCHEDULER_POLICY_FILE="
 need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "AI_SEMANTIC_TOOLING_AUTORUN="
 need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "AI_TOOLING_PLAN_ENABLED="
+need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "AI_TOOL_SECURITY_AUDIT_ENABLED="
+need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "AI_TOOL_SECURITY_AUDIT_ENFORCE="
+need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "AI_TOOL_SECURITY_CACHE_TTL_HOURS="
+need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "RUNTIME_TOOL_SECURITY_POLICY_FILE="
 need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "PARITY_SCORECARD_FILE="
 
 need_pattern "${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server.py" "AI_RUN_DEFAULT_SAFETY_MODE"
@@ -54,11 +60,13 @@ need_pattern "${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server.py" "R
 need_pattern "${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server.py" "WORKFLOW_BLUEPRINTS_FILE"
 need_pattern "${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server.py" "RUNTIME_SCHEDULER_POLICY_FILE"
 need_pattern "${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server.py" "PARITY_SCORECARD_FILE"
+need_pattern "${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server.py" "_audit_planned_tools"
 
 jq . "${ROOT}/config/runtime-safety-policy.json" >/dev/null
 jq . "${ROOT}/config/runtime-isolation-profiles.json" >/dev/null
 jq . "${ROOT}/config/workflow-blueprints.json" >/dev/null
 jq . "${ROOT}/config/runtime-scheduler-policy.json" >/dev/null
 jq . "${ROOT}/config/parity-scorecard.json" >/dev/null
+jq . "${ROOT}/config/runtime-tool-security-policy.json" >/dev/null
 
 pass "Declarative runtime wiring and fallback artifacts validated"
