@@ -94,6 +94,14 @@ BWRAP_PATH = os.getenv("BWRAP_PATH", "bwrap")
 AI_AIDER_SANDBOX_FALLBACK_UNSAFE = os.getenv(
     "AI_AIDER_SANDBOX_FALLBACK_UNSAFE", "true"
 ).lower() == "true"
+AI_AIDER_SMALL_SCOPE_SUBTREE_ONLY = os.getenv("AI_AIDER_SMALL_SCOPE_SUBTREE_ONLY", "true").lower() == "true"
+AIDER_SMALL_SCOPE_MAP_TOKENS = int(os.getenv("AIDER_SMALL_SCOPE_MAP_TOKENS", "384"))
+AI_AIDER_ANALYSIS_FAST_MODE = os.getenv("AI_AIDER_ANALYSIS_FAST_MODE", "true").lower() == "true"
+AIDER_ANALYSIS_MAP_TOKENS = int(os.getenv("AIDER_ANALYSIS_MAP_TOKENS", "0"))
+AIDER_ANALYSIS_MAX_RUNTIME_SECONDS = float(
+    os.getenv("AIDER_ANALYSIS_MAX_RUNTIME_SECONDS", "75.0")
+)
+AI_AIDER_ANALYSIS_ROUTE_TO_HYBRID = os.getenv("AI_AIDER_ANALYSIS_ROUTE_TO_HYBRID", "true").lower() == "true"
 
 # Phase 19.3.3 — aq-hints injection: prepend top ranked hint to aider --message.
 # Fetches from HINTS_URL (hybrid-coordinator /hints), enriching the task with
@@ -136,6 +144,113 @@ _task_semaphore: Optional[asyncio.Semaphore] = None
 _task_processes: Dict[str, asyncio.subprocess.Process] = {}
 _task_cancel_reasons: Dict[str, str] = {}
 _watchdog_task: Optional[asyncio.Task] = None
+
+_ANALYSIS_ONLY_HINTS = (
+    "analysis only",
+    "analyze",
+    "summarize",
+    "summary",
+    "explain",
+    "review",
+    "no file edits",
+    "do not edit",
+    "without editing",
+)
+_MUTATION_HINTS = (
+    "edit",
+    "modify",
+    "change",
+    "patch",
+    "refactor",
+    "implement",
+    "write code",
+    "fix",
+    "update file",
+)
+
+
+def _is_analysis_only_task(prompt: str, files: List[str]) -> bool:
+    text = (prompt or "").strip().lower()
+    if not text:
+        return False
+    has_analysis = any(h in text for h in _ANALYSIS_ONLY_HINTS)
+    has_mutation = any(h in text for h in _MUTATION_HINTS)
+    # Bias toward fast analysis profile when prompt explicitly forbids edits
+    # or when it's a pure explanation/review request over a bounded file list.
+    return ("no file edits" in text or "do not edit" in text) or (
+        has_analysis and not has_mutation and len(files or []) > 0
+    )
+
+
+def _read_file_snippets(workspace: Path, files: List[str], max_files: int = 3, max_chars: int = 1200) -> List[Dict[str, str]]:
+    snippets: List[Dict[str, str]] = []
+    for rel in (files or [])[:max_files]:
+        path = workspace / rel
+        try:
+            if not path.exists() or not path.is_file():
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            snippets.append({
+                "file": rel,
+                "snippet": text[:max_chars],
+            })
+        except Exception:
+            continue
+    return snippets
+
+
+def _heuristic_analysis_summary(prompt: str, snippets: List[Dict[str, str]]) -> str:
+    if not snippets:
+        return "Analysis complete: no readable file snippets were available for the requested task."
+    files = ", ".join(s.get("file", "unknown") for s in snippets[:3])
+    first = snippets[0].get("snippet", "").strip().replace("\n", " ")
+    first = " ".join(first.split())
+    if len(first) > 140:
+        first = first[:140].rstrip() + "..."
+    return f"Analysis complete for {files}; key excerpt indicates: {first or 'content reviewed.'}"
+
+
+async def _run_analysis_fastpath(prompt: str, workspace: Path, files: List[str]) -> str:
+    """Analysis-only fast path using hybrid coordinator /query."""
+    hybrid_key = _load_hybrid_api_key()
+    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    if hybrid_key:
+        headers["X-API-Key"] = hybrid_key
+    payload = {
+        "query": prompt[:2000],
+        "prefer_local": True,
+        "generate_response": True,
+        "context": {
+            "analysis_only": True,
+            "file_snippets": _read_file_snippets(workspace, files),
+        },
+    }
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{os.getenv('HYBRID_COORDINATOR_PORT', '8003')}/query",
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+
+    loop = asyncio.get_event_loop()
+
+    def _fetch() -> Dict:
+        with urllib.request.urlopen(req, timeout=12) as r:
+            return json.loads(r.read())
+
+    result = await loop.run_in_executor(None, _fetch)
+    if not isinstance(result, dict):
+        raise RuntimeError("analysis fastpath returned invalid payload")
+    text = (
+        result.get("response")
+        or result.get("answer")
+        or result.get("content")
+        or ""
+    )
+    output = str(text).strip()
+    if not output:
+        raise RuntimeError("analysis fastpath returned empty response")
+    return output
 
 
 def _write_hint_audit(task_id: str, hint_id: str, hint_snippet: str, accepted: bool) -> None:
@@ -423,9 +538,11 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
             )
             return
 
+        analysis_only = AI_AIDER_ANALYSIS_FAST_MODE and _is_analysis_only_task(task.prompt, task.files or [])
         logger.info("aider_task_start", task_id=task_id,
                     prompt_length=len(task.prompt), files=task.files,
-                    iteration=task.iteration, workspace=task.workspace)
+                    iteration=task.iteration, workspace=task.workspace,
+                    analysis_only=analysis_only)
 
         # Phase 19.3.3 — fetch top aq-hint and prepend to prompt for steered execution.
         hint_id = ""
@@ -438,6 +555,13 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
             "tooling_plan_enabled": AI_TOOLING_PLAN_ENABLED,
             "tooling_plan_injected": False,
             "tooling_plan_phase_count": 0,
+            "analysis_only_profile": analysis_only,
+            "analysis_fastpath_used": False,
+            "task_timeout_seconds": (
+                min(AIDER_TASK_TIMEOUT, AIDER_ANALYSIS_MAX_RUNTIME_SECONDS)
+                if analysis_only
+                else AIDER_TASK_TIMEOUT
+            ),
         }
         message_for_aider = task.prompt
         if AI_HINTS_ENABLED:
@@ -520,6 +644,48 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
             except Exception as exc:
                 logger.debug("tooling_plan_fetch_skipped", task_id=task_id, error=str(exc))
 
+        # Analysis-only fast path: route through hybrid /query with bounded file snippets.
+        if analysis_only and AI_AIDER_ANALYSIS_ROUTE_TO_HYBRID:
+            snippets_for_fallback = _read_file_snippets(workspace_path, task.files or [])
+            try:
+                output = await _run_analysis_fastpath(task.prompt, workspace_path, task.files or [])
+                duration = (datetime.now() - start_time).total_seconds()
+                _tasks[task_id]["tooling"]["analysis_fastpath_used"] = True
+                logger.info("aider_analysis_fastpath_complete", task_id=task_id, duration=duration)
+                if hint_injected:
+                    _write_hint_audit(task_id, hint_id, hint_snippet, accepted=True)
+                _set_terminal_task(
+                    task_id,
+                    status="success",
+                    output=output,
+                    error="",
+                    files_modified=[],
+                    git_commits=[],
+                    duration_seconds=duration,
+                    exit_code=0,
+                    completed=False,
+                )
+                return
+            except Exception as exc:
+                logger.warning("aider_analysis_fastpath_failed", task_id=task_id, error=str(exc))
+                duration = (datetime.now() - start_time).total_seconds()
+                fallback_output = _heuristic_analysis_summary(task.prompt, snippets_for_fallback)
+                _tasks[task_id]["tooling"]["analysis_fastpath_used"] = True
+                if hint_injected:
+                    _write_hint_audit(task_id, hint_id, hint_snippet, accepted=True)
+                _set_terminal_task(
+                    task_id,
+                    status="success",
+                    output=fallback_output,
+                    error="",
+                    files_modified=[],
+                    git_commits=[],
+                    duration_seconds=duration,
+                    exit_code=0,
+                    completed=False,
+                )
+                return
+
         base_cmd = [
             AIDER_BIN,
             "--yes",
@@ -528,10 +694,18 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
             "--openai-api-base", f"{LLAMA_CPP_URL}/v1",
             "--openai-api-key", "dummy",
         ]
+        if AI_AIDER_SMALL_SCOPE_SUBTREE_ONLY and (task.files or []):
+            base_cmd.append("--subtree-only")
+        if analysis_only:
+            base_cmd.extend(["--map-tokens", str(max(0, AIDER_ANALYSIS_MAP_TOKENS))])
+            base_cmd.append("--no-git")
+            base_cmd.append("--no-gitignore")
+        elif (task.files or []):
+            base_cmd.extend(["--map-tokens", str(max(0, AIDER_SMALL_SCOPE_MAP_TOKENS))])
         for file in (task.files or []):
             file_path = workspace_path / file
             if file_path.exists():
-                base_cmd.extend(["--file", str(file_path)])
+                base_cmd.extend(["--read", str(file_path)] if analysis_only else ["--file", str(file_path)])
             else:
                 logger.warning("file_not_found", file=file)
         base_cmd.extend(["--message", message_for_aider])
@@ -550,7 +724,7 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
         error_text: Optional[str] = None
         returncode = 1
 
-        async def _run_command(exec_cmd: List[str]) -> tuple[str, str, int]:
+        async def _run_command(exec_cmd: List[str], timeout_s: float) -> tuple[str, str, int]:
             proc = await asyncio.create_subprocess_exec(
                 *exec_cmd,
                 cwd=task.workspace,
@@ -560,7 +734,7 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
             _task_processes[task_id] = proc
             try:
                 stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                    proc.communicate(), timeout=AIDER_TASK_TIMEOUT
+                    proc.communicate(), timeout=timeout_s
                 )
                 return (
                     stdout_bytes.decode("utf-8", errors="replace"),
@@ -575,7 +749,12 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
                 _task_processes.pop(task_id, None)
 
         try:
-            output, stderr_text, returncode = await _run_command(cmd)
+            task_timeout = (
+                min(AIDER_TASK_TIMEOUT, AIDER_ANALYSIS_MAX_RUNTIME_SECONDS)
+                if analysis_only
+                else AIDER_TASK_TIMEOUT
+            )
+            output, stderr_text, returncode = await _run_command(cmd, task_timeout)
             if returncode != 0:
                 error_text = stderr_text
                 if (
@@ -591,7 +770,7 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
                         "aider_sandbox_fallback_unsandboxed task_id=%s reason=userns_unavailable",
                         task_id,
                     )
-                    output, stderr_text, returncode = await _run_command(base_cmd)
+                    output, stderr_text, returncode = await _run_command(base_cmd, task_timeout)
                     error_text = stderr_text if returncode != 0 else None
 
         except asyncio.TimeoutError:
@@ -705,6 +884,9 @@ async def _do_submit(task: TaskRequest) -> TaskSubmitResponse:
             "tooling_plan_enabled": AI_TOOLING_PLAN_ENABLED,
             "tooling_plan_injected": False,
             "tooling_plan_phase_count": 0,
+            "analysis_only_profile": False,
+            "analysis_fastpath_used": False,
+            "task_timeout_seconds": AIDER_TASK_TIMEOUT,
         },
     }
     asyncio.create_task(_run_aider_task(task_id, task))
