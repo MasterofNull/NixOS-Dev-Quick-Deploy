@@ -8,6 +8,7 @@ import asyncio
 import os
 import sys
 import json
+import re
 import socket
 import time
 import logging
@@ -102,6 +103,9 @@ AIDER_ANALYSIS_MAX_RUNTIME_SECONDS = float(
     os.getenv("AIDER_ANALYSIS_MAX_RUNTIME_SECONDS", "75.0")
 )
 AI_AIDER_ANALYSIS_ROUTE_TO_HYBRID = os.getenv("AI_AIDER_ANALYSIS_ROUTE_TO_HYBRID", "true").lower() == "true"
+AI_AIDER_AUTO_FILE_SCOPE = os.getenv("AI_AIDER_AUTO_FILE_SCOPE", "true").lower() == "true"
+AIDER_AUTO_FILE_SCOPE_MAX = int(os.getenv("AIDER_AUTO_FILE_SCOPE_MAX", "6"))
+AIDER_DEFAULT_MAP_TOKENS = int(os.getenv("AIDER_DEFAULT_MAP_TOKENS", "512"))
 
 # Phase 19.3.3 — aq-hints injection: prepend top ranked hint to aider --message.
 # Fetches from HINTS_URL (hybrid-coordinator /hints), enriching the task with
@@ -178,8 +182,42 @@ def _is_analysis_only_task(prompt: str, files: List[str]) -> bool:
     # Bias toward fast analysis profile when prompt explicitly forbids edits
     # or when it's a pure explanation/review request over a bounded file list.
     return ("no file edits" in text or "do not edit" in text) or (
-        has_analysis and not has_mutation and len(files or []) > 0
+        has_analysis and not has_mutation
     )
+
+
+def _derive_effective_files(workspace: Path, prompt: str, files: List[str], max_files: int) -> List[str]:
+    """Use declared files first, then infer file paths from prompt mentions."""
+    existing: List[str] = []
+    seen = set()
+    for rel in (files or []):
+        r = str(rel).strip()
+        if not r or r in seen:
+            continue
+        p = workspace / r
+        if p.exists() and p.is_file():
+            seen.add(r)
+            existing.append(r)
+    if existing or not AI_AIDER_AUTO_FILE_SCOPE:
+        return existing[:max_files]
+
+    text = prompt or ""
+    path_pattern = r"(?:`([^`]+)`|([A-Za-z0-9._/-]+\.[A-Za-z0-9_]+))"
+    matches = re.findall(path_pattern, text)
+    for m in matches:
+        raw = (m[0] or m[1] or "").strip()
+        if not raw:
+            continue
+        raw = raw.lstrip("./")
+        if raw in seen:
+            continue
+        p = workspace / raw
+        if p.exists() and p.is_file():
+            seen.add(raw)
+            existing.append(raw)
+        if len(existing) >= max_files:
+            break
+    return existing[:max_files]
 
 
 def _read_file_snippets(workspace: Path, files: List[str], max_files: int = 3, max_chars: int = 1200) -> List[Dict[str, str]]:
@@ -538,9 +576,30 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
             )
             return
 
-        analysis_only = AI_AIDER_ANALYSIS_FAST_MODE and _is_analysis_only_task(task.prompt, task.files or [])
+        try:
+            effective_files = _derive_effective_files(
+                workspace_path,
+                task.prompt,
+                task.files or [],
+                max_files=max(1, AIDER_AUTO_FILE_SCOPE_MAX),
+            )
+            analysis_only = AI_AIDER_ANALYSIS_FAST_MODE and _is_analysis_only_task(task.prompt, effective_files)
+        except Exception as exc:
+            _set_terminal_task(
+                task_id,
+                status="error",
+                output="",
+                error=f"Task preflight failed: {exc}",
+                files_modified=[],
+                git_commits=[],
+                duration_seconds=0.0,
+                exit_code=1,
+                completed=False,
+            )
+            return
         logger.info("aider_task_start", task_id=task_id,
                     prompt_length=len(task.prompt), files=task.files,
+                    effective_files=effective_files,
                     iteration=task.iteration, workspace=task.workspace,
                     analysis_only=analysis_only)
 
@@ -646,9 +705,9 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
 
         # Analysis-only fast path: route through hybrid /query with bounded file snippets.
         if analysis_only and AI_AIDER_ANALYSIS_ROUTE_TO_HYBRID:
-            snippets_for_fallback = _read_file_snippets(workspace_path, task.files or [])
+            snippets_for_fallback = _read_file_snippets(workspace_path, effective_files)
             try:
-                output = await _run_analysis_fastpath(task.prompt, workspace_path, task.files or [])
+                output = await _run_analysis_fastpath(task.prompt, workspace_path, effective_files)
                 duration = (datetime.now() - start_time).total_seconds()
                 _tasks[task_id]["tooling"]["analysis_fastpath_used"] = True
                 logger.info("aider_analysis_fastpath_complete", task_id=task_id, duration=duration)
@@ -694,15 +753,17 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
             "--openai-api-base", f"{LLAMA_CPP_URL}/v1",
             "--openai-api-key", "dummy",
         ]
-        if AI_AIDER_SMALL_SCOPE_SUBTREE_ONLY and (task.files or []):
+        if AI_AIDER_SMALL_SCOPE_SUBTREE_ONLY and effective_files:
             base_cmd.append("--subtree-only")
         if analysis_only:
             base_cmd.extend(["--map-tokens", str(max(0, AIDER_ANALYSIS_MAP_TOKENS))])
             base_cmd.append("--no-git")
             base_cmd.append("--no-gitignore")
-        elif (task.files or []):
+        elif effective_files:
             base_cmd.extend(["--map-tokens", str(max(0, AIDER_SMALL_SCOPE_MAP_TOKENS))])
-        for file in (task.files or []):
+        else:
+            base_cmd.extend(["--map-tokens", str(max(0, AIDER_DEFAULT_MAP_TOKENS))])
+        for file in effective_files:
             file_path = workspace_path / file
             if file_path.exists():
                 base_cmd.extend(["--read", str(file_path)] if analysis_only else ["--file", str(file_path)])
