@@ -27,7 +27,7 @@ Against this repository's current AI stack implementation.
 | Evaluation harness / scorecards | Yes | Not core | Implemented | `/harness/eval` and `/harness/scorecard` available. |
 | Feedback loop for quality improvement | Reviewer/iteration | Extension-driven | Implemented | Feedback endpoints and continuous learning pipeline exist. |
 | Model/provider flexibility | OpenRouter-first | Broad provider model | Implemented | Switchboard + local/remote profiles + OpenAI-compatible surfaces. |
-| Agent package ecosystem | Agent Store | Packages/extensions | Partial | Skills exist locally; no external package distribution workflow yet. |
+| Agent package ecosystem | Agent Store | Packages/extensions | Implemented | Added skill bundle registry/index and install flow via AQD (`skill bundle-index`, `skill bundle-install`). |
 
 ## Newly Added Parity Closure
 
@@ -96,11 +96,8 @@ Guards:
 
 ## Remaining High-Impact Gaps
 
-1. Add external package distribution for skills/workflows
-- Local skills are strong; publishing/install/version flow is still repo-local.
-
-2. Add external package distribution for skills/workflows
-- Local skills are strong; publishing/install/version flow is still repo-local.
+1. Add remote skill registry hosting + signatures
+- Bundle/index flow exists locally; signed remote distribution and trust policy are not yet wired.
 
 ### RPC CLI wrapper
 
