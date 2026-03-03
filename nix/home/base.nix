@@ -44,10 +44,9 @@ let
   aiAiderPort = lib.attrByPath [ "mySystem" "mcpServers" "aiderWrapperPort" ] (getRegistryPort "aiderWrapper") systemConfig;
   aiPostgresPort = lib.attrByPath [ "mySystem" "ports" "postgres" ] (getRegistryPort "postgres") systemConfig;
   aiOpenAIBaseUrl = "http://127.0.0.1:${toString aiSwitchboardPort}/v1";
-  continueApiBase =
-    if lib.attrByPath [ "mySystem" "aiStack" "switchboard" "enable" ] false systemConfig
-    then aiOpenAIBaseUrl
-    else "http://127.0.0.1:${toString aiLlamaPort}/v1";
+  # Continue is pinned to direct local llama.cpp for stability.
+  # Switchboard remains available for other clients via OPENAI_BASE_URL.
+  continueApiBase = "http://127.0.0.1:${toString aiLlamaPort}/v1";
   vscodiumPathValue = "${config.home.homeDirectory}/.local/bin:${config.home.homeDirectory}/.nix-profile/bin:/run/current-system/sw/bin:\${env:PATH}";
   vscodiumAiEnv = [
     { name = "PATH"; value = vscodiumPathValue; }
@@ -329,79 +328,11 @@ in
       text = cosmicThemeDarkPalette;
       force = true;
     };
+    # Keep COSMIC theme overrides minimal and version-stable.
+    # Newer COSMIC builds changed several per-key RON value types; forcing
+    # old `Some((...))` forms breaks theme loading at session startup.
     configFile."cosmic/com.system76.CosmicTheme.Dark/v1/name" = { text = ''"cosmic-dark"''; force = true; };
     configFile."cosmic/com.system76.CosmicTheme.Dark/v1/is_dark" = { text = "true"; force = true; };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/is_frosted" = { text = "false"; force = true; };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/is_high_contrast" = { text = "false"; force = true; };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/active_hint" = { text = "3"; force = true; };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/gaps" = { text = "(0, 3)"; force = true; };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/window_hint" = { text = "None"; force = true; };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/shade" = { text = "(\n    red: 0.0,\n    green: 0.0,\n    blue: 0.0,\n    alpha: 0.32,\n)"; force = true; };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/accent_text" = { text = "None"; force = true; };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/control_tint" = { text = "Some((\n    red: 0.3882353,\n    green: 0.3882353,\n    blue: 0.3882353,\n))"; force = true; };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/text_tint" = { text = "Some((\n    red: 0.89204127,\n    green: 0.8921179,\n    blue: 0.57129854,\n))"; force = true; };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/spacing" = {
-      text = ''
-        (
-            space_none: 0,
-            space_xxxs: 4,
-            space_xxs: 8,
-            space_xs: 12,
-            space_s: 16,
-            space_m: 24,
-            space_l: 32,
-            space_xl: 48,
-            space_xxl: 64,
-            space_xxxl: 128,
-        )
-      '';
-      force = true;
-    };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/corner_radii" = {
-      text = ''
-        (
-            radius_0: (0.0, 0.0, 0.0, 0.0),
-            radius_xs: (2.0, 2.0, 2.0, 2.0),
-            radius_s: (2.0, 2.0, 2.0, 2.0),
-            radius_m: (2.0, 2.0, 2.0, 2.0),
-            radius_l: (2.0, 2.0, 2.0, 2.0),
-            radius_xl: (2.0, 2.0, 2.0, 2.0),
-        )
-      '';
-      force = true;
-    };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/neutral_tint" = {
-      text = "Some((\n    red: 0.46666667,\n    green: 0.46666667,\n    blue: 0.46666667,\n))";
-      force = true;
-    };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/bg_color" = {
-      text = "Some((\n    red: 0.16875988,\n    green: 0.005038753,\n    blue: 0.056881033,\n    alpha: 1.0,\n))";
-      force = true;
-    };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/primary_container_bg" = {
-      text = "Some((\n    red: 0.06981802,\n    green: 0.0017108545,\n    blue: 0.014093963,\n    alpha: 1.0,\n))";
-      force = true;
-    };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/secondary_container_bg" = {
-      text = "None";
-      force = true;
-    };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/accent" = {
-      text = "Some((\n    red: 0.9607843,\n    green: 0.22745097,\n    blue: 0.36078417,\n))";
-      force = true;
-    };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/success" = {
-      text = "Some((\n    red: 0.57254905,\n    green: 0.8117647,\n    blue: 0.6117647,\n))";
-      force = true;
-    };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/warning" = {
-      text = "Some((\n    red: 0.96862745,\n    green: 0.8784314,\n    blue: 0.38431373,\n))";
-      force = true;
-    };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/destructive" = {
-      text = "Some((\n    red: 0.99215686,\n    green: 0.6313726,\n    blue: 0.627451,\n))";
-      force = true;
-    };
     configFile."cosmic/com.system76.CosmicTheme.Mode/v1/is_dark" = {
       text = "true";
       force = true;
@@ -433,6 +364,34 @@ in
       force = true;
     };
   };
+
+  # Remove legacy per-key COSMIC theme overrides written by older revisions.
+  # They can be type-incompatible with current COSMIC (causing theme parse errors).
+  home.activation.cleanupLegacyCosmicThemeOverrides = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    theme_dir="$HOME/.config/cosmic/com.system76.CosmicTheme.Dark/v1"
+    if [ -d "$theme_dir" ]; then
+      rm -f \
+        "$theme_dir"/active_hint \
+        "$theme_dir"/gaps \
+        "$theme_dir"/window_hint \
+        "$theme_dir"/shade \
+        "$theme_dir"/accent_text \
+        "$theme_dir"/control_tint \
+        "$theme_dir"/text_tint \
+        "$theme_dir"/spacing \
+        "$theme_dir"/corner_radii \
+        "$theme_dir"/neutral_tint \
+        "$theme_dir"/bg_color \
+        "$theme_dir"/primary_container_bg \
+        "$theme_dir"/secondary_container_bg \
+        "$theme_dir"/accent \
+        "$theme_dir"/success \
+        "$theme_dir"/warning \
+        "$theme_dir"/destructive
+      rm -f "$theme_dir"/*.backup-* 2>/dev/null || true
+    fi
+    unset theme_dir
+  '';
 
   # ---- Core user packages -------------------------------------------------
   home.packages = with pkgs; [

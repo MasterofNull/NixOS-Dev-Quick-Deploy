@@ -81,6 +81,8 @@ in
         SWITCHBOARD_PORT = toString cfg.aiStack.switchboard.port;
         EMBEDDING_DIMENSIONS = toString cfg.aiStack.embeddingDimensions;
         POSTGRES_PORT = toString ports.postgres;
+        AIDB_DB_USER = mcp.postgres.user;
+        AIDB_DB_NAME = mcp.postgres.database;
       } // lib.optionalAttrs sec.enable {
         HYBRID_API_KEY_FILE = secretPath hybridApiKeySecret;
         POSTGRES_PASSWORD_FILE = secretPath sec.names.postgresPassword;

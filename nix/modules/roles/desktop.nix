@@ -39,6 +39,12 @@ in
 {
   config = lib.mkIf desktopEnabled {
 
+    # Shorten user-session stop timeout so hung GUI app scopes (for example
+    # codium descendants) do not block shutdown for the default 90s.
+    systemd.user.extraConfig = lib.mkDefault ''
+      DefaultTimeoutStopSec=20s
+    '';
+
     # ---- Boot target -------------------------------------------------------
     systemd.defaultUnit = lib.mkDefault "graphical.target";
 
