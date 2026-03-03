@@ -241,7 +241,8 @@ in
       wantedBy = [ "timers.target" ];
       timerConfig = {
         OnBootSec = "30s";
-        OnUnitActiveSec = "15s";
+        OnUnitActiveSec = "${toString mon.amdgpuMetricsIntervalSeconds}s";
+        AccuracySec = "5s";
         Unit = "ai-amdgpu-metrics-exporter.service";
       };
     };

@@ -945,6 +945,15 @@
         description = "Grafana HTTP listen port.";
       };
 
+      amdgpuMetricsIntervalSeconds = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 60;
+        description = ''
+          Interval for ai-amdgpu-metrics-exporter timer runs.
+          Increased from sub-minute defaults to reduce audit/systemd churn.
+        '';
+      };
+
       commandCenter = {
         enable = lib.mkOption {
           type = lib.types.bool;
