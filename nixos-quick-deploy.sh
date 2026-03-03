@@ -414,6 +414,47 @@ run_readiness_analysis() {
   "${analyzer}" "${args[@]}"
 }
 
+# ---------------------------------------------------------------------------
+# Free blocked AI stack ports — prevents systemd service failures when
+# manual processes are left running from previous debugging/testing sessions.
+# ---------------------------------------------------------------------------
+free_blocked_ai_ports() {
+  local ports_to_check=(8080 8081 8085 8092 8002)
+  local port pid process_name
+
+  for port in "${ports_to_check[@]}"; do
+    if ss -tlnp 2>/dev/null | grep -q ":${port} "; then
+      # Get the PID and process name
+      local port_info
+      port_info="$(ss -tlnp 2>/dev/null | grep ":${port} " | head -1)"
+      pid="$(echo "$port_info" | grep -oP 'pid=\K[0-9]+' | head -1)"
+      process_name="$(echo "$port_info" | grep -oP '\("\K[^"]+' | head -1)"
+
+      if [[ -n "$pid" ]]; then
+        # Check if this is a systemd-managed service (skip those)
+        if systemctl list-units --all 2>/dev/null | grep -q "$pid"; then
+          continue
+        fi
+
+        # Check if it's a stray manual process (not systemd-managed)
+        if ps -p "$pid" -o comm= 2>/dev/null | grep -qE "python|node|java"; then
+          log "Port ${port} is blocked by manual process '${process_name}' (PID ${pid}) — killing..."
+          kill "$pid" 2>/dev/null || true
+          sleep 1
+          # Force kill if still running
+          if ps -p "$pid" >/dev/null 2>&1; then
+            log "Process ${pid} still running, sending SIGKILL..."
+            kill -9 "$pid" 2>/dev/null || true
+          fi
+        fi
+      fi
+    fi
+  done
+
+  # Give systemd a moment to reclaim ports
+  sleep 2
+}
+
 enable_flakes_runtime() {
   local feature_line="experimental-features = nix-command flakes"
   if [[ -n "${NIX_CONFIG:-}" ]]; then
@@ -1873,6 +1914,8 @@ fi
 
 if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
   log "Switching system configuration"
+  # Free any blocked AI stack ports before rebuild (prevents systemd service failures)
+  free_blocked_ai_ports
   run_privileged nixos-rebuild switch --flake "${FLAKE_REF}#${NIXOS_TARGET}"
 else
   log "Skipping system switch (--skip-system-switch)"
