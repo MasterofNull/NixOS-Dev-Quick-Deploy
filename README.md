@@ -434,7 +434,10 @@ source ~/.zshrc  # Or: exec zsh
 
 ### CPU/iGPU-first model defaults
 
-Quick Deploy defaults to CPU/iGPU-friendly models unless VRAM/RAM allow larger GGUFs. The CPU/iGPU baseline uses `qwen3-4b` for the coder model and `sentence-transformers/all-MiniLM-L6-v2` for embeddings.
+Quick Deploy defaults to CPU/iGPU-friendly models unless VRAM/RAM allow larger GGUFs.
+- Primary local model: `Qwen3-4B-Instruct-2507-Q4_K_M.gguf`
+- Single chat model for current validation: `Qwen3-4B-Instruct-2507-Q4_K_M.gguf`
+- Embeddings baseline: `sentence-transformers/all-MiniLM-L6-v2`
 
 Swap models at any time:
 

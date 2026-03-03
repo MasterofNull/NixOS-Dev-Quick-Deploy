@@ -2,6 +2,25 @@
   "version": 1,
   "models": [
     {
+      "id": "qwen3-4b-q4",
+      "name": "Qwen3-4B-Instruct Q4_K_M",
+      "family": "qwen3",
+      "parameters": "4B",
+      "quantization": {
+        "format": "gguf",
+        "bits": 4,
+        "method": "Q4_K_M"
+      },
+      "runtime": "openai_compatible",
+      "backend": "llama.cpp",
+      "tasks": ["chat", "code", "planning"],
+      "ai_profiles": ["cpu_slim", "cpu_full", "local_default"],
+      "storage_path": "/var/lib/llama-cpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+      "huggingface_repo": "unsloth/Qwen3-4B-Instruct-2507-GGUF",
+      "huggingface_file": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+      "endpoint_hint": "${LLAMA_URL}"
+    },
+    {
       "id": "edge-chat-3b-q4",
       "name": "EdgeChat-3B Q4",
       "family": "generic-chat-slm",
