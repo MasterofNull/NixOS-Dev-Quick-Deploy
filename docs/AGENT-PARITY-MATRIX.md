@@ -77,13 +77,30 @@ Output:
 - per-criterion and per-keyword hit breakdown
 - aggregate score and optional harness eval data
 
+### SDK release automation
+
+Location:
+- `.github/workflows/harness-sdk-release.yml`
+
+Purpose:
+- Move SDK packaging from manual-only to gated CI release automation.
+
+Behavior:
+- PR path: validate/build artifacts only (no publish).
+- Tag path (`harness-sdk-v*`): validate, then publish Python and npm packages.
+- Manual dispatch: optional publish run via workflow input.
+
+Guards:
+- `scripts/check-harness-sdk-version-parity.sh`
+- `scripts/smoke-harness-sdk-packaging.sh`
+
 ## Remaining High-Impact Gaps
 
 1. Add external package distribution for skills/workflows
 - Local skills are strong; publishing/install/version flow is still repo-local.
 
-2. Add release publishing automation (PyPI/npm)
-- SDK packaging is implemented and smoke-tested; automated publish/release pipelines are still not wired.
+2. Add external package distribution for skills/workflows
+- Local skills are strong; publishing/install/version flow is still repo-local.
 
 ### RPC CLI wrapper
 

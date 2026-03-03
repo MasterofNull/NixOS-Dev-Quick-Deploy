@@ -74,3 +74,17 @@ Both SDKs cover:
 Generated API reference:
 - `docs/generated/HARNESS-SDK-API.md`
 - refresh/check via `scripts/generate-harness-sdk-api-docs.sh --write|--check`
+
+## Release automation
+
+Workflow:
+- `.github/workflows/harness-sdk-release.yml`
+
+Behavior:
+- Pull requests touching SDK files run validation/build only (no publish).
+- Tags matching `harness-sdk-v*` run validation and publish jobs.
+- Manual dispatch supports optional publish via workflow input.
+
+Safety gates:
+- `scripts/check-harness-sdk-version-parity.sh` enforces Python/npm version lockstep.
+- `scripts/smoke-harness-sdk-packaging.sh` enforces docs + packaging parity.
