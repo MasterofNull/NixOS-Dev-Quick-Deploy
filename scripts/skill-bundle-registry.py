@@ -21,6 +21,8 @@ import time
 import zipfile
 from pathlib import Path
 from typing import Dict, List, Optional
+from urllib.parse import urljoin, urlparse
+from urllib.request import urlopen
 
 
 def _sha256(path: Path) -> str:
@@ -123,89 +125,118 @@ def _safe_extract(zip_path: Path, target_dir: Path) -> None:
         zf.extractall(target_dir)
 
 
+def _is_url(value: str) -> bool:
+    s = value.strip().lower()
+    return s.startswith("http://") or s.startswith("https://") or s.startswith("file://")
+
+
+def _download_to(tmp_dir: Path, source_url: str, filename_hint: str) -> Path:
+    out = tmp_dir / filename_hint
+    with urlopen(source_url) as resp, out.open("wb") as f:  # nosec B310 - controlled use for registry artifacts
+        shutil.copyfileobj(resp, f)
+    return out
+
+
 def cmd_install(args: argparse.Namespace) -> int:
-    index_path = Path(args.index).resolve()
+    index_ref = str(args.index)
+    index_is_url = _is_url(index_ref)
+    index_path: Optional[Path] = None
     target_dir = Path(args.target_dir).resolve()
     bundles_dir_override = Path(args.bundles_dir).resolve() if args.bundles_dir else None
     skill_name = args.skill_name
 
-    if not index_path.is_file():
-        print(f"ERROR: index not found: {index_path}")
-        return 1
-
-    if args.signature and args.public_key:
-        sig = Path(args.signature).resolve()
-        pub = Path(args.public_key).resolve()
-        if not sig.is_file():
-            print(f"ERROR: signature not found: {sig}")
-            return 1
-        if not pub.is_file():
-            print(f"ERROR: public key not found: {pub}")
-            return 1
-        try:
-            verify = subprocess.run(
-                ["openssl", "dgst", "-sha256", "-verify", str(pub), "-signature", str(sig), str(index_path)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-            )
-        except FileNotFoundError:
-            print("ERROR: openssl is required for signature verification but not found in PATH")
-            return 1
-        if verify.returncode != 0:
-            print("ERROR: index signature verification failed")
-            return 1
-        print(f"verified index signature: {sig}")
-    elif args.signature or args.public_key:
-        print("ERROR: --signature and --public-key must be provided together")
-        return 1
-
-    data = json.loads(index_path.read_text(encoding="utf-8"))
-    skills = data.get("skills", [])
-    if not isinstance(skills, list):
-        print("ERROR: malformed index, 'skills' must be a list")
-        return 1
-
-    selected: Optional[Dict[str, object]] = None
-    for s in skills:
-        if not isinstance(s, dict):
-            continue
-        if s.get("name") == skill_name or s.get("folder") == skill_name:
-            selected = s
-            break
-
-    if selected is None:
-        print(f"ERROR: skill not found in index: {skill_name}")
-        return 1
-
-    bundle_rel = str(selected.get("bundle", "")).strip()
-    if not bundle_rel:
-        print("ERROR: selected skill has no bundle path")
-        return 1
-
-    if bundles_dir_override is not None:
-        bundle_path = bundles_dir_override / Path(bundle_rel).name
-    else:
-        bundle_path = (index_path.parent / bundle_rel).resolve()
-    if not bundle_path.is_file():
-        print(f"ERROR: bundle not found: {bundle_path}")
-        return 1
-
-    expected_sha = str(selected.get("sha256", "")).strip().lower()
-    if expected_sha:
-        actual_sha = _sha256(bundle_path).lower()
-        if actual_sha != expected_sha:
-            print(f"ERROR: bundle sha256 mismatch for {bundle_path.name}")
-            print(f"  expected: {expected_sha}")
-            print(f"  actual:   {actual_sha}")
-            return 1
-
-    target_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="skill-install-") as td:
         tmp = Path(td)
-        _safe_extract(bundle_path, tmp)
+        if index_is_url:
+            index_path = _download_to(tmp, index_ref, "index.json")
+            index_base_url = index_ref.rsplit("/", 1)[0] + "/"
+        else:
+            index_path = Path(index_ref).resolve()
+            index_base_url = ""
 
-        roots = [p for p in tmp.iterdir() if p.is_dir()]
+        if not index_path.is_file():
+            print(f"ERROR: index not found: {index_path}")
+            return 1
+
+        if args.signature and args.public_key:
+            sig_ref = str(args.signature)
+            pub = Path(args.public_key).resolve()
+            if not pub.is_file():
+                print(f"ERROR: public key not found: {pub}")
+                return 1
+            if _is_url(sig_ref):
+                sig = _download_to(tmp, sig_ref, "index.json.sig")
+            else:
+                sig = Path(sig_ref).resolve()
+            if not sig.is_file():
+                print(f"ERROR: signature not found: {sig}")
+                return 1
+            try:
+                verify = subprocess.run(
+                    ["openssl", "dgst", "-sha256", "-verify", str(pub), "-signature", str(sig), str(index_path)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+            except FileNotFoundError:
+                print("ERROR: openssl is required for signature verification but not found in PATH")
+                return 1
+            if verify.returncode != 0:
+                print("ERROR: index signature verification failed")
+                return 1
+            print(f"verified index signature: {sig}")
+        elif args.signature or args.public_key:
+            print("ERROR: --signature and --public-key must be provided together")
+            return 1
+
+        data = json.loads(index_path.read_text(encoding="utf-8"))
+        skills = data.get("skills", [])
+        if not isinstance(skills, list):
+            print("ERROR: malformed index, 'skills' must be a list")
+            return 1
+
+        selected: Optional[Dict[str, object]] = None
+        for s in skills:
+            if not isinstance(s, dict):
+                continue
+            if s.get("name") == skill_name or s.get("folder") == skill_name:
+                selected = s
+                break
+
+        if selected is None:
+            print(f"ERROR: skill not found in index: {skill_name}")
+            return 1
+
+        bundle_rel = str(selected.get("bundle", "")).strip()
+        if not bundle_rel:
+            print("ERROR: selected skill has no bundle path")
+            return 1
+
+        bundle_path: Path
+        if bundles_dir_override is not None:
+            bundle_path = bundles_dir_override / Path(bundle_rel).name
+        elif index_is_url:
+            bundle_url = bundle_rel if _is_url(bundle_rel) else urljoin(index_base_url, bundle_rel)
+            bundle_path = _download_to(tmp, bundle_url, Path(urlparse(bundle_url).path).name or "bundle.skill")
+        else:
+            bundle_path = (index_path.parent / bundle_rel).resolve()
+        if not bundle_path.is_file():
+            print(f"ERROR: bundle not found: {bundle_path}")
+            return 1
+
+        expected_sha = str(selected.get("sha256", "")).strip().lower()
+        if expected_sha:
+            actual_sha = _sha256(bundle_path).lower()
+            if actual_sha != expected_sha:
+                print(f"ERROR: bundle sha256 mismatch for {bundle_path.name}")
+                print(f"  expected: {expected_sha}")
+                print(f"  actual:   {actual_sha}")
+                return 1
+
+        target_dir.mkdir(parents=True, exist_ok=True)
+        _safe_extract(bundle_path, tmp / "extract")
+
+        roots = [p for p in (tmp / "extract").iterdir() if p.is_dir()]
         if len(roots) != 1:
             print("ERROR: bundle must contain exactly one top-level skill directory")
             return 1
@@ -237,11 +268,11 @@ def main() -> int:
     p_build.set_defaults(func=cmd_build_index)
 
     p_install = sub.add_parser("install", help="Install one skill from an index JSON")
-    p_install.add_argument("--index", required=True, help="Path to index JSON")
+    p_install.add_argument("--index", required=True, help="Path or URL to index JSON")
     p_install.add_argument("--skill-name", required=True, help="Skill name or folder name in index")
     p_install.add_argument("--target-dir", required=True, help="Destination skill root directory")
     p_install.add_argument("--bundles-dir", default="", help="Optional override directory for bundle files")
-    p_install.add_argument("--signature", default="", help="Optional detached signature path for index.json")
+    p_install.add_argument("--signature", default="", help="Optional detached signature path or URL for index.json")
     p_install.add_argument("--public-key", default="", help="Optional public key for signature verification")
     p_install.add_argument("--force", action="store_true", help="Replace destination if skill already exists")
     p_install.set_defaults(func=cmd_install)

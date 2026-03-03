@@ -128,7 +128,7 @@ Purpose:
 ## Remaining High-Impact Gaps
 
 1. Add remote trust roots and key rotation policy for signed registries
-- Signature scripts are implemented; enterprise trust distribution/rotation workflow is not yet automated.
+- Remote index consumption and signature checks are implemented; enterprise trust distribution/rotation workflow is not yet automated.
 
 2. Add full orchestration graph executor for staged agent pipelines
 - Staged workflows exist with session/tree controls, but a single DAG executor with retries/backoff is not yet implemented.
