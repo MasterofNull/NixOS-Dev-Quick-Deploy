@@ -30,6 +30,7 @@ Against this repository's current AI stack implementation.
 | Agent package ecosystem | Agent Store | Packages/extensions | Implemented | Added skill bundle registry/index and install flow via AQD (`skill bundle-index`, `skill bundle-install`). |
 | Tool/routing policy engine | Rule controls | Rule controls | Implemented | Added profile/task/tool policy evaluator with declarative policy config (`config/agent-routing-policy.json`). |
 | Automatic semantic tool calling (agent task auto-orchestration) | Common in mature coding agents | Common via plugins/skills | Implemented | Hybrid `/query` auto-plans and executes hints/discovery; aider-wrapper auto-injects `/workflow/plan` + hints into task prompts by default. |
+| First-use tool security auditor + safe-cache metadata | Common in production orchestrators | Usually extension/policy driven | Implemented | Added first-use auditor with policy-based sanitization, local safe-cache fingerprints, and enforced blocking for unsafe tool metadata/parameters. |
 | Regression quality gates | Yes | Yes | Implemented | Added golden eval gate script (`run-harness-regression-gate.sh`) with offline/online modes. |
 | Failure-injection smoke | Yes | Partial | Implemented | Added chaos smoke script for malformed input and invalid workflow transitions. |
 | Boot/shutdown integration checks | Yes | Partial | Implemented | Added boot/shutdown integration checker for systemd/journal regression patterns. |
@@ -138,6 +139,20 @@ Behavior:
 - Task status now exposes tooling telemetry:
   - `tooling.hint_injected`, `tooling.hint_id`
   - `tooling.tooling_plan_injected`, `tooling.tooling_plan_phase_count`
+
+### Tool security auditor (first-use scan + safe metadata cache)
+
+Location:
+- `ai-stack/mcp-servers/shared/tool_security_auditor.py`
+- `ai-stack/mcp-servers/hybrid-coordinator/http_server.py`
+- `ai-stack/mcp-servers/aidb/server.py`
+- `config/runtime-tool-security-policy.json`
+
+Behavior:
+- Audits tools on first observed fingerprint (name + endpoint/manifest + policy hash).
+- Sanitizes unsafe fields (manifest keys, dangerous invocation parameters) before execution.
+- Persists local approval metadata so repeated uses skip full re-audit until cache TTL expires.
+- Enforces deny-by-policy on unsafe tools when `AI_TOOL_SECURITY_AUDIT_ENFORCE=true`.
 
 ### Signed skill registry + trust hooks
 
