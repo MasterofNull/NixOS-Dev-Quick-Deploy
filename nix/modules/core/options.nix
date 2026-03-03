@@ -1164,6 +1164,47 @@
             '';
           };
 
+          aiderSmallScopeSubtreeOnly = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = ''
+              Enable aider `--subtree-only` for file-scoped tasks to reduce full-repo scanning.
+            '';
+          };
+
+          aiderSmallScopeMapTokens = lib.mkOption {
+            type = lib.types.ints.nonnegative;
+            default = 384;
+            description = "Repo-map token budget for file-scoped aider tasks.";
+          };
+
+          aiderAnalysisFastMode = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = ''
+              Enable analysis-only aider profile (read-only files, reduced map tokens,
+              shorter timeout) for no-edit prompts.
+            '';
+          };
+
+          aiderAnalysisMapTokens = lib.mkOption {
+            type = lib.types.ints.nonnegative;
+            default = 0;
+            description = "Repo-map token budget for analysis-only aider tasks (0 disables repo map).";
+          };
+
+          aiderAnalysisMaxRuntimeSeconds = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 75;
+            description = "Maximum runtime for analysis-only aider tasks before timeout.";
+          };
+
+          aiderAnalysisRouteToHybrid = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Route analysis-only tasks through hybrid /query fast path before invoking aider.";
+          };
+
           parityScorecard = lib.mkOption {
             type = lib.types.attrs;
             default = {

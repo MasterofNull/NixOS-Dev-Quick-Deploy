@@ -932,6 +932,12 @@ in
             # Phase 19.3.3 — prepend top aq-hint to aider --message for steered task execution.
             "AI_HINTS_ENABLED=true"
             "AI_TOOLING_PLAN_ENABLED=${if ai.aiHarness.runtime.aiderToolingPlanEnabled then "true" else "false"}"
+            "AI_AIDER_SMALL_SCOPE_SUBTREE_ONLY=${if ai.aiHarness.runtime.aiderSmallScopeSubtreeOnly then "true" else "false"}"
+            "AIDER_SMALL_SCOPE_MAP_TOKENS=${toString ai.aiHarness.runtime.aiderSmallScopeMapTokens}"
+            "AI_AIDER_ANALYSIS_FAST_MODE=${if ai.aiHarness.runtime.aiderAnalysisFastMode then "true" else "false"}"
+            "AIDER_ANALYSIS_MAP_TOKENS=${toString ai.aiHarness.runtime.aiderAnalysisMapTokens}"
+            "AIDER_ANALYSIS_MAX_RUNTIME_SECONDS=${toString ai.aiHarness.runtime.aiderAnalysisMaxRuntimeSeconds}"
+            "AI_AIDER_ANALYSIS_ROUTE_TO_HYBRID=${if ai.aiHarness.runtime.aiderAnalysisRouteToHybrid then "true" else "false"}"
             "HINTS_URL=http://127.0.0.1:${toString mcp.hybridPort}/hints"
             "WORKFLOW_PLAN_URL=http://127.0.0.1:${toString mcp.hybridPort}/workflow/plan"
             "HINT_AUDIT_LOG_PATH=${mutableLogDir}/hint-audit.jsonl"

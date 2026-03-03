@@ -154,6 +154,22 @@ Behavior:
 - Persists local approval metadata so repeated uses skip full re-audit until cache TTL expires.
 - Enforces deny-by-policy on unsafe tools when `AI_TOOL_SECURITY_AUDIT_ENFORCE=true`.
 
+### Aider bounded execution profile (small-scope + analysis-only)
+
+Location:
+- `ai-stack/mcp-servers/aider-wrapper/server.py`
+- `nix/modules/core/options.nix`
+- `nix/modules/services/mcp-servers.nix`
+
+Behavior:
+- File-scoped tasks run with bounded repo-map settings and `--subtree-only`.
+- Analysis-only prompts use a fast profile:
+  - Read-only file attachments (`--read`)
+  - Reduced/disabled repo map (`--map-tokens`)
+  - `--no-git --no-gitignore` to avoid expensive full-repo scans
+  - Shorter runtime ceiling for faster terminal outcomes.
+- Task status telemetry now reports `analysis_only_profile` and effective timeout.
+
 ### Signed skill registry + trust hooks
 
 Location:
