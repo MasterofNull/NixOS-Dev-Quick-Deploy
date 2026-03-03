@@ -141,8 +141,8 @@ model_basename="$(basename "${MODEL_PATH}")"
 model_id="${model_basename%.gguf}"
 provenance_file="${PROVENANCE_DIR}/provenance.json"
 
-# Compute SHA256 of the model file
-model_sha256="$(sha256sum "${MODEL_PATH}" | awk '{print $1}')"
+# Compute SHA256 of the model file without awk dependency (unit PATH-safe).
+read -r model_sha256 _ < <(sha256sum "${MODEL_PATH}")
 
 # If HF_REPO and HF_COMMIT are provided, use them; otherwise try to fetch from HF API
 hf_commit_to_record="${HF_COMMIT}"
@@ -153,7 +153,12 @@ if [[ -n "${HF_REPO}" && -n "${HF_COMMIT}" ]]; then
 elif [[ -n "${HF_REPO}" ]]; then
   # Try to fetch latest commit from HF API
   echo -e "Fetching latest commit from HuggingFace API for ${HF_REPO}..."
-  hf_commit_to_record="$(curl -sf "${HF_API_BASE}/repos/${HF_REPO}/revision/main" 2>/dev/null | jq -r '.oid // empty' || echo "")"
+  hf_api_json="$(curl -sf "${HF_API_BASE}/repos/${HF_REPO}/revision/main" 2>/dev/null || echo "")"
+  hf_commit_to_record="$(
+    printf '%s' "${hf_api_json}" \
+      | sed -n 's/.*"oid"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+      | head -n 1
+  )"
   if [[ -z "${hf_commit_to_record}" ]]; then
     echo -e "Warning: Could not fetch commit hash from HuggingFace API for ${HF_REPO}" >&2
     hf_commit_to_record="unknown"
@@ -169,34 +174,40 @@ fi
 # Create or update provenance file
 timestamp="$(date -Iseconds)"
 
-# Use jq to safely construct JSON
-jq -n \
-  --arg model "${model_id}" \
-  --arg model_path "${MODEL_PATH}" \
-  --arg sha256 "${model_sha256}" \
-  --arg hf_repo "${hf_repo_to_record}" \
-  --arg hf_commit "${hf_commit_to_record}" \
-  --arg downloaded_at "${timestamp}" \
-  --arg safety_check "passed" \
-  '{
-    model: $model,
-    model_path: $model_path,
-    sha256: $sha256,
-    huggingface: {
-      repo: $hf_repo,
-      commit: $hf_commit
-    },
-    downloaded_at: $downloaded_at,
-    safety_check: {
-      status: $safety_check,
-      checked_at: $downloaded_at,
-      checks_performed: [
-        "gguf_magic_bytes",
-        "pickle_scan_first_4kb",
-        "file_size_minimum"
-      ]
-    }
-  }' > "${provenance_file}"
+# JSON escape helper (avoid jq/python dependency in unit runtime).
+json_escape() {
+  printf '%s' "$1" \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e ':a;N;$!ba;s/\n/\\n/g'
+}
+
+model_id_json="$(json_escape "${model_id}")"
+model_path_json="$(json_escape "${MODEL_PATH}")"
+model_sha256_json="$(json_escape "${model_sha256}")"
+hf_repo_json="$(json_escape "${hf_repo_to_record}")"
+hf_commit_json="$(json_escape "${hf_commit_to_record}")"
+timestamp_json="$(json_escape "${timestamp}")"
+
+cat > "${provenance_file}" <<EOF
+{
+  "model": "${model_id_json}",
+  "model_path": "${model_path_json}",
+  "sha256": "${model_sha256_json}",
+  "huggingface": {
+    "repo": "${hf_repo_json}",
+    "commit": "${hf_commit_json}"
+  },
+  "downloaded_at": "${timestamp_json}",
+  "safety_check": {
+    "status": "passed",
+    "checked_at": "${timestamp_json}",
+    "checks_performed": [
+      "gguf_magic_bytes",
+      "pickle_scan_first_4kb",
+      "file_size_minimum"
+    ]
+  }
+}
+EOF
 
 echo -e "✓ Provenance recorded: ${provenance_file}"
 echo ""
