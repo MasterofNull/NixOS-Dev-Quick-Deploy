@@ -1938,6 +1938,61 @@ if [[ -x "${REPO_ROOT}/scripts/compare-installed-vs-intended.sh" ]]; then
 fi
 
 # ---- AI MCP stack post-flight ------------------------------------------------
+# Wait for AI services to be fully ready before running health checks
+wait_for_ai_services() {
+  log "Waiting for AI services to be ready..."
+  local timeout=180
+  local interval=5
+  local elapsed=0
+  
+  # Wait for llama-cpp-embed (embedding server)
+  if systemctl is-enabled --quiet llama-cpp-embed.service 2>/dev/null; then
+    log "  Waiting for llama-cpp-embed.service..."
+    while ! curl -sf --connect-timeout 2 --max-time 5 "http://127.0.0.1:${EMBEDDINGS_PORT:-8081}/health" >/dev/null 2>&1; do
+      sleep "$interval"
+      elapsed=$((elapsed + interval))
+      if [ $elapsed -ge $timeout ]; then
+        log "  ⚠ WARNING: llama-cpp-embed.service not ready after ${timeout}s"
+        break
+      fi
+    done
+    [ $elapsed -lt $timeout ] && log "  ✓ llama-cpp-embed.service is ready"
+  fi
+  
+  # Wait for ai-aidb service
+  if systemctl is-enabled --quiet ai-aidb.service 2>/dev/null; then
+    log "  Waiting for ai-aidb.service..."
+    while ! curl -sf --connect-timeout 2 --max-time 5 "http://127.0.0.1:${AIDB_PORT:-8002}/health" >/dev/null 2>&1; do
+      sleep "$interval"
+      elapsed=$((elapsed + interval))
+      if [ $elapsed -ge $timeout ]; then
+        log "  ⚠ WARNING: ai-aidb.service not ready after ${timeout}s"
+        break
+      fi
+    done
+    [ $elapsed -lt $timeout ] && log "  ✓ ai-aidb.service is ready"
+  fi
+  
+  # Wait for llama-cpp service
+  if systemctl is-enabled --quiet llama-cpp.service 2>/dev/null; then
+    log "  Waiting for llama-cpp.service..."
+    while ! curl -sf --connect-timeout 2 --max-time 5 "http://127.0.0.1:${LLAMA_CPP_PORT:-8080}/health" >/dev/null 2>&1; do
+      sleep "$interval"
+      elapsed=$((elapsed + interval))
+      if [ $elapsed -ge $timeout ]; then
+        log "  ⚠ WARNING: llama-cpp.service not ready after ${timeout}s"
+        break
+      fi
+    done
+    [ $elapsed -lt $timeout ] && log "  ✓ llama-cpp.service is ready"
+  fi
+  
+  log "AI services ready check complete"
+}
+
+# Wait for services before health checks
+wait_for_ai_services
+
 # Verify TCP connectivity to Redis/Qdrant/Postgres and HTTP /health endpoints
 # for all MCP services. Runs --optional to also report aider-wrapper and
 # supplementary services. Non-blocking: issues are logged but do not abort.
