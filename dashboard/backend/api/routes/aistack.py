@@ -1811,23 +1811,26 @@ async def get_security_audit() -> Dict[str, Any]:
     npm_quarantine = npm_dir / "quarantine-state.json"
     npm_incidents = npm_dir / "incidents.jsonl"
 
+    report_data: Dict[str, Any] = {
+        "status": "no_report",
+        "generated_at": "unknown",
+        "summary": {},
+    }
+    message: Optional[str] = None
     if not latest_report.exists():
-        return {
-            "status": "no_report",
-            "message": "No security audit report found. Run manually or wait for weekly timer.",
-            "report_path": str(latest_report),
-        }
-
-    try:
-        with open(latest_report) as f:
-            report_data = json.load(f)
-    except (json.JSONDecodeError, IOError) as e:
-        logger.error(f"Failed to read security audit report: {e}")
-        return {
-            "status": "error",
-            "message": f"Failed to parse audit report: {str(e)}",
-            "report_path": str(latest_report),
-        }
+        message = "No security audit report found. Run manually or wait for weekly timer."
+    else:
+        try:
+            with open(latest_report) as f:
+                report_data = json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            logger.error(f"Failed to read security audit report: {e}")
+            report_data = {
+                "status": "error",
+                "generated_at": "unknown",
+                "summary": {},
+            }
+            message = f"Failed to parse audit report: {str(e)}"
 
     # Check for high severity alert
     high_severity_alert = None
@@ -1884,7 +1887,7 @@ async def get_security_audit() -> Dict[str, Any]:
         except OSError:
             pass
 
-    return {
+    payload = {
         "status": report_data.get("status", "unknown"),
         "generated_at": report_data.get("generated_at", "unknown"),
         "summary": report_data.get("summary", {}),
@@ -1893,3 +1896,6 @@ async def get_security_audit() -> Dict[str, Any]:
         "report_path": str(latest_report),
         "timestamp": datetime.utcnow().isoformat(),
     }
+    if message:
+        payload["message"] = message
+    return payload
