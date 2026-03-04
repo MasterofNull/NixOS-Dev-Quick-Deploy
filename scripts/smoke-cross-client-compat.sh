@@ -6,6 +6,8 @@ HYB_URL="${HYB_URL:-http://127.0.0.1:8003}"
 SWB_URL="${SWB_URL:-http://127.0.0.1:8085}"
 HYBRID_API_KEY_FILE="${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_api_key}"
 HYBRID_API_KEY="${HYBRID_API_KEY:-}"
+CURL_CONNECT_TIMEOUT="${CROSS_CLIENT_CURL_CONNECT_TIMEOUT:-5}"
+CURL_MAX_TIME="${CROSS_CLIENT_CURL_MAX_TIME:-30}"
 
 if [[ -z "$HYBRID_API_KEY" && -r "$HYBRID_API_KEY_FILE" ]]; then
   HYBRID_API_KEY="$(tr -d '[:space:]' < "$HYBRID_API_KEY_FILE")"
@@ -28,13 +30,21 @@ if [[ -n "$HYBRID_API_KEY" ]]; then
   curl_args+=(-H "X-API-Key: ${HYBRID_API_KEY}")
 fi
 
-if ! curl -fsS "${HYB_URL}/health" >/dev/null 2>&1; then
+if ! curl -fsS --connect-timeout "${CURL_CONNECT_TIMEOUT}" --max-time "${CURL_MAX_TIME}" "${HYB_URL}/health" >/dev/null 2>&1; then
   warn "hybrid coordinator unavailable; cross-client smoke skipped"
   exit 0
 fi
 
 # Client 1: raw HTTP
-http_code="$(curl -sS -o /tmp/cross-client-http.json -w "%{http_code}" "${curl_args[@]}" "${HYB_URL}/workflow/plan?q=cross-client-smoke" || true)"
+http_code="$(
+  curl -sS \
+    --connect-timeout "${CURL_CONNECT_TIMEOUT}" \
+    --max-time "${CURL_MAX_TIME}" \
+    -o /tmp/cross-client-http.json \
+    -w "%{http_code}" \
+    "${curl_args[@]}" \
+    "${HYB_URL}/workflow/plan?q=cross-client-smoke" || true
+)"
 if [[ "$http_code" == "401" && -z "$HYBRID_API_KEY" ]]; then
   warn "hybrid API key required but unavailable; cross-client smoke skipped"
   exit 0
@@ -77,7 +87,7 @@ print(json.dumps({"ok": True}))
 PY
 pass "Python SDK workflow plan"
 
-if curl -fsS "${SWB_URL}/v1/models" >/dev/null 2>&1; then
+if curl -fsS --connect-timeout "${CURL_CONNECT_TIMEOUT}" --max-time "${CURL_MAX_TIME}" "${SWB_URL}/v1/models" >/dev/null 2>&1; then
   pass "switchboard reachable for client matrix"
 else
   warn "switchboard unavailable; client matrix limited to hybrid APIs"
