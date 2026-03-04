@@ -50,10 +50,15 @@ AUDIT_FALLBACK_PATH = Path(
 HINT_AUDIT_PATH = Path(
     os.getenv("HINT_AUDIT_LOG_PATH", str(TOOL_AUDIT_PATH.parent / "hint-audit.jsonl"))
 )
-EVAL_SCORES_DB = Path(
-    os.getenv("EVAL_SCORES_DB",
-              str(Path(__file__).parent.parent / "ai-stack/eval/results/scores.sqlite"))
-)
+_default_eval_scores_db = Path(
+    os.getenv("EVAL_SCORES_DB", "~/.local/share/nixos-ai-stack/eval/results/scores.sqlite")
+).expanduser()
+if "EVAL_SCORES_DB" not in os.environ:
+    # Back-compat fallback for existing repo-local score DBs.
+    repo_scores_db = Path(__file__).parent.parent / "ai-stack/eval/results/scores.sqlite"
+    if not _default_eval_scores_db.exists() and repo_scores_db.exists():
+        _default_eval_scores_db = repo_scores_db
+EVAL_SCORES_DB = _default_eval_scores_db
 PROMETHEUS_URL = os.getenv(
     "PROMETHEUS_URL",
     f"http://{os.getenv('SERVICE_HOST', '127.0.0.1')}:{os.getenv('PROMETHEUS_PORT', '9090')}",
