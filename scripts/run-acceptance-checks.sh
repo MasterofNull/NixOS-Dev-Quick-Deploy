@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # shellcheck source=../config/service-endpoints.sh
 source "${SCRIPT_DIR}/../config/service-endpoints.sh"
 MCP_DB_VALIDATE_SCRIPT="${SCRIPT_DIR}/mcp-db-validate"
@@ -22,6 +23,18 @@ unit_declared() {
     || systemctl list-units --all --type=service --type=target 2>/dev/null | awk '{print $1}' | grep -qx "$unit"
 }
 
+assert_file_has_literal() {
+  local file="$1"
+  local needle="$2"
+  local label="$3"
+  if grep -Fq "$needle" "$file"; then
+    printf 'PASS: %s\n' "$label"
+  else
+    printf 'FAIL: %s (missing literal in %s)\n' "$label" "$file" >&2
+    exit 1
+  fi
+}
+
 assert_jq_expr() {
   local label="$1"
   local url="$2"
@@ -36,6 +49,16 @@ assert_jq_expr() {
     exit 1
   fi
 }
+
+assert_file_has_literal \
+  "${REPO_ROOT}/nix/modules/roles/ai-stack.nix" \
+  'ExecStart = "${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/prsi-orchestrator.py cycle --since=1d --execute-limit=5";' \
+  "Declarative PRSI unit uses explicit python3 ExecStart"
+
+assert_file_has_literal \
+  "${REPO_ROOT}/nix/modules/roles/ai-stack.nix" \
+  'ExecStart = "${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/aq-optimizer --since=1d";' \
+  "Declarative optimizer unit uses explicit python3 ExecStart"
 
 if command -v curl >/dev/null 2>&1; then
   if unit_declared "ai-aidb.service"; then
