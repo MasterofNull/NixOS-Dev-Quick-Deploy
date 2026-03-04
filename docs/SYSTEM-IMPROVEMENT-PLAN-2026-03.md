@@ -41,6 +41,10 @@ Primary tracking doc for multi-agent execution across Codex/Claude/Qwen/Continue
   - `/workflow/run/start` now requires valid `intent_contract` fields
   - `/workflow/blueprints` now returns validation status/errors for blueprint quality gates
   - Added declarative validation check for intent-contract fields in `config/workflow-blueprints.json`
+- Declarative post-deploy convergence:
+  - Added `ai-post-deploy-converge.service` (oneshot) and 6h timer
+  - Service runs routing-seed, npm monitor (report mode), and aq-report snapshot automatically
+  - Removes imperative/manual post-deploy step dependency from operator workflow
 
 ## Objective
 

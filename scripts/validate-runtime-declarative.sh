@@ -77,6 +77,10 @@ need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "PARITY_SCORECARD_FI
 need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "NPM_SECURITY_RESPONSE_MODE"
 need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "NPM_SECURITY_QUARANTINE_STATE_FILE"
 need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "NPM_SECURITY_INCIDENT_LOG_FILE"
+need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "systemd.services.ai-post-deploy-converge"
+need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "systemd.timers.ai-post-deploy-converge"
+need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "POST_DEPLOY_AQ_REPORT_OUT"
+need_file "${ROOT}/scripts/post-deploy-converge.sh"
 
 need_pattern "${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server.py" "AI_RUN_DEFAULT_SAFETY_MODE"
 need_pattern "${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server.py" "RUNTIME_SAFETY_POLICY_FILE"

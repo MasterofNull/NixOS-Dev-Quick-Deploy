@@ -1161,6 +1161,59 @@ in
         };
       };
 
+      systemd.services.ai-post-deploy-converge = {
+        description = "AI stack post-deploy declarative convergence";
+        wantedBy = [ "ai-stack.target" ];
+        partOf = [ "ai-stack.target" ];
+        after = [
+          "network-online.target"
+          "ai-aidb.service"
+          "ai-hybrid-coordinator.service"
+          "ai-aider-wrapper.service"
+        ];
+        wants = [ "network-online.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          User = svcUser;
+          Group = svcGroup;
+          WorkingDirectory = mcp.repoPath;
+          ExecStart = lib.escapeShellArgs [
+            "${pkgs.bash}/bin/bash"
+            "${mcp.repoPath}/scripts/post-deploy-converge.sh"
+          ];
+          ReadOnlyPaths = [ "/" ];
+          ReadWritePaths = [ "${dataDir}" ];
+          PrivateTmp = true;
+          ProtectHome = true;
+          ProtectSystem = "strict";
+          NoNewPrivileges = true;
+          PrivateNetwork = false;
+          SystemCallFilter = [ "@system-service" "~@privileged" ];
+          MemoryMax = "768M";
+          StandardOutput = "journal";
+          StandardError = "journal";
+        };
+        environment = {
+          POST_DEPLOY_REPO_ROOT = mcp.repoPath;
+          POST_DEPLOY_DATA_DIR = dataDir;
+          HYBRID_URL = "http://127.0.0.1:${toString mcp.hybridPort}";
+          POST_DEPLOY_NPM_OUT_DIR = "${dataDir}/security/npm";
+          POST_DEPLOY_AQ_REPORT_OUT = "${dataDir}/hybrid/telemetry/latest-aq-report.json";
+        };
+      };
+
+      systemd.timers.ai-post-deploy-converge = {
+        description = "Periodic AI stack post-deploy convergence timer";
+        wantedBy = [ "timers.target" ];
+        partOf = [ "ai-stack.target" ];
+        timerConfig = {
+          OnBootSec = "4min";
+          OnUnitActiveSec = "6h";
+          Persistent = true;
+          Unit = "ai-post-deploy-converge.service";
+        };
+      };
+
       # Phase 12.4.2 — Hourly MCP source file integrity check
       # ── Phase 12.3.2 — Tool audit log sidecar ────────────────────────────────
       # The socket is group-writable (svcGroup) so MCP services can send entries.
