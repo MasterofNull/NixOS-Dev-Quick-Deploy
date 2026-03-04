@@ -93,6 +93,10 @@ ai-stack/compose/secrets/*
 # Fallback reports directory (when database unavailable)
 .reports/
 
+# Eval runtime artifacts (generated; stored outside repo by default)
+ai-stack/eval/results/eval-*.json
+ai-stack/eval/results/eval-*-summary.txt
+
 # ==============================================================================
 # Federated Learning Data Policy
 # ==============================================================================
