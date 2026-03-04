@@ -109,10 +109,25 @@ export class HarnessClient {
   }
 
   runStart(payload) {
+    const body = {
+      ...payload,
+      intent_contract: payload.intent_contract || this.defaultIntentContract(payload.query),
+    };
     return this.request("/workflow/run/start", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
     });
+  }
+
+  defaultIntentContract(query) {
+    const normalized = String(query || "").trim() || "workflow run";
+    return {
+      user_intent: normalized,
+      definition_of_done: `Complete requested workflow task: ${normalized.slice(0, 120)}`,
+      depth_expectation: "minimum",
+      spirit_constraints: ["follow declarative-first policy", "capture validation evidence"],
+      no_early_exit_without: ["all requested checks complete"],
+    };
   }
 
   runGet(sessionId, replay = false) {

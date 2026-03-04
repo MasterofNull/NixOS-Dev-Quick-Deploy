@@ -1,0 +1,23 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-03-04",
+  "sla_hours": 24,
+  "states": [
+    "quarantined",
+    "triaged",
+    "remediation_planned",
+    "remediation_in_progress",
+    "remediation_validated",
+    "closed"
+  ],
+  "required_fields": [
+    "action_id",
+    "cycle_id",
+    "reason",
+    "owner",
+    "triage_due_at",
+    "rollback_command"
+  ],
+  "runbook": "docs/prsi/PRSI-QUARANTINE-RUNBOOK.md",
+  "template": "data/prsi-artifacts/quarantine-template.json"
+}

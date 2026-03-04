@@ -7,6 +7,11 @@ Pessimistic Recursive Self-Improvement (PRSI) control loop:
 2. Queue with risk/approval state
 3. Approve/reject actions
 4. Execute approved actions through aq-optimizer
+
+Budget-aware policy (v2):
+- token-cap gating (estimated remote token budget)
+- low-rate counterfactual sampling markers (no always-on dual execution)
+- escalation flags from report degradation signals
 """
 
 from __future__ import annotations
@@ -15,20 +20,62 @@ import argparse
 import hashlib
 import json
 import os
+import random
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 QUEUE_PATH = Path(os.getenv("PRSI_ACTION_QUEUE_PATH", "/var/lib/nixos-ai-stack/prsi/action-queue.json"))
 ACTIONS_LOG_PATH = Path(os.getenv("PRSI_ACTIONS_LOG_PATH", "/var/log/nixos-ai-stack/prsi-actions.jsonl"))
 AUTO_APPROVE_LOW_RISK = os.getenv("PRSI_AUTO_APPROVE_LOW_RISK", "true").lower() == "true"
+PRSI_POLICY_FILE = Path(os.getenv("PRSI_POLICY_FILE", "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/config/runtime-prsi-policy.json"))
+PRSI_STATE_PATH = Path(os.getenv("PRSI_STATE_PATH", "/var/lib/nixos-ai-stack/prsi/runtime-state.json"))
+
+
+DEFAULT_POLICY: Dict[str, Any] = {
+    "enabled": True,
+    "since": "1d",
+    "max_execute_per_cycle": 5,
+    "counterfactual": {
+        "sample_rate": 0.08,
+        "max_samples_per_day": 3,
+        "eligible_action_types": ["routing", "prompt", "workflow"],
+    },
+    "budget": {
+        "remote_token_cap_daily": 120000,
+        "default_action_token_cost": 1800,
+        "hard_stop_on_cap": True,
+        "estimated_cost_by_type": {
+            "knowledge": 400,
+            "maintenance": 900,
+            "routing": 1500,
+            "prompt": 2200,
+            "workflow": 2500,
+        },
+    },
+    "escalation": {
+        "enable_on_degrade": True,
+        "hint_adoption_below_pct": 65,
+        "eval_latest_below_pct": 60,
+        "cache_hit_below_pct": 50,
+        "intent_coverage_below_pct": 60,
+    },
+    "gates": {
+        "allow_action_types": ["knowledge", "maintenance", "routing", "prompt", "workflow"],
+        "block_high_risk_without_approval": True,
+    },
+}
 
 
 def _now() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
+
+
+def _today_utc() -> str:
+    return datetime.now(tz=timezone.utc).date().isoformat()
 
 
 def _read_json(path: Path, default: Any) -> Any:
@@ -54,6 +101,44 @@ def _log_event(event: Dict[str, Any]) -> None:
             fh.write(json.dumps(event, sort_keys=True) + "\n")
     except OSError:
         pass
+
+
+def _load_policy() -> Dict[str, Any]:
+    policy = dict(DEFAULT_POLICY)
+    loaded = _read_json(PRSI_POLICY_FILE, {})
+    if isinstance(loaded, dict):
+        for key, val in loaded.items():
+            if isinstance(policy.get(key), dict) and isinstance(val, dict):
+                merged = dict(policy[key])
+                merged.update(val)
+                policy[key] = merged
+            else:
+                policy[key] = val
+    return policy
+
+
+def _load_state() -> Dict[str, Any]:
+    state = _read_json(PRSI_STATE_PATH, {})
+    if not isinstance(state, dict):
+        state = {}
+    today = _today_utc()
+    if state.get("date") != today:
+        state = {
+            "date": today,
+            "remote_tokens_used": 0,
+            "counterfactual_samples": 0,
+            "last_updated": _now(),
+        }
+    state.setdefault("remote_tokens_used", 0)
+    state.setdefault("counterfactual_samples", 0)
+    state.setdefault("date", today)
+    state.setdefault("last_updated", _now())
+    return state
+
+
+def _save_state(state: Dict[str, Any]) -> None:
+    state["last_updated"] = _now()
+    _write_json(PRSI_STATE_PATH, state)
 
 
 def _action_fingerprint(action: Dict[str, Any]) -> str:
@@ -87,7 +172,11 @@ def _load_queue() -> Dict[str, Any]:
     actions = payload.get("actions", [])
     if not isinstance(actions, list):
         actions = []
-    return {"updated_at": payload.get("updated_at"), "actions": actions}
+    return {
+        "updated_at": payload.get("updated_at"),
+        "actions": actions,
+        "meta": payload.get("meta") if isinstance(payload.get("meta"), dict) else {},
+    }
 
 
 def _save_queue(queue: Dict[str, Any]) -> None:
@@ -95,7 +184,7 @@ def _save_queue(queue: Dict[str, Any]) -> None:
     _write_json(QUEUE_PATH, queue)
 
 
-def _fetch_structured_actions(since: str) -> List[Dict[str, Any]]:
+def _fetch_report(since: str) -> Dict[str, Any]:
     result = subprocess.run(
         [sys.executable, str(SCRIPT_DIR / "aq-report"), f"--since={since}", "--format=json"],
         capture_output=True,
@@ -105,15 +194,66 @@ def _fetch_structured_actions(since: str) -> List[Dict[str, Any]]:
     )
     if result.returncode != 0:
         raise RuntimeError(f"aq-report failed: {(result.stderr or '').strip()[:200]}")
-    report = json.loads(result.stdout or "{}")
+    payload = json.loads(result.stdout or "{}")
+    return payload if isinstance(payload, dict) else {}
+
+
+def _fetch_structured_actions(since: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    report = _fetch_report(since)
     actions = report.get("structured_actions", [])
-    return [a for a in actions if isinstance(a, dict)]
+    return [a for a in actions if isinstance(a, dict)], report
+
+
+def _compute_degradation_flags(report: Dict[str, Any], policy: Dict[str, Any]) -> Dict[str, Any]:
+    esc = policy.get("escalation", {}) if isinstance(policy.get("escalation"), dict) else {}
+    flags: Dict[str, Any] = {"degraded": False, "reasons": []}
+
+    def low(metric_name: str, value: Any, threshold_key: str) -> None:
+        try:
+            v = float(value)
+            t = float(esc.get(threshold_key, -1))
+        except (TypeError, ValueError):
+            return
+        if t >= 0 and v < t:
+            flags["degraded"] = True
+            flags["reasons"].append(f"{metric_name}_below_threshold:{v:.1f}<{t:.1f}")
+
+    hint = report.get("hint_adoption", {}) if isinstance(report.get("hint_adoption"), dict) else {}
+    eval_trend = report.get("eval_trend", {}) if isinstance(report.get("eval_trend"), dict) else {}
+    cache = report.get("cache", {}) if isinstance(report.get("cache"), dict) else {}
+    intent = report.get("intent_contract_compliance", {}) if isinstance(report.get("intent_contract_compliance"), dict) else {}
+
+    low("hint_adoption", hint.get("adoption_pct"), "hint_adoption_below_pct")
+    low("eval_latest", eval_trend.get("latest_pct"), "eval_latest_below_pct")
+    low("cache_hit", cache.get("hit_pct"), "cache_hit_below_pct")
+    low("intent_contract", intent.get("contract_coverage_pct"), "intent_coverage_below_pct")
+    return flags
+
+
+def _estimate_action_token_cost(action: Dict[str, Any], policy: Dict[str, Any]) -> int:
+    try:
+        explicit = int(action.get("cost_estimate_tokens", 0) or 0)
+    except (TypeError, ValueError):
+        explicit = 0
+    if explicit > 0:
+        return explicit
+    budget = policy.get("budget", {}) if isinstance(policy.get("budget"), dict) else {}
+    by_type = budget.get("estimated_cost_by_type", {}) if isinstance(budget.get("estimated_cost_by_type"), dict) else {}
+    action_type = str(action.get("type", "") or "").strip().lower()
+    try:
+        if action_type in by_type:
+            return max(1, int(by_type[action_type]))
+        return max(1, int(budget.get("default_action_token_cost", 1800)))
+    except (TypeError, ValueError):
+        return 1800
 
 
 def cmd_sync(args: argparse.Namespace) -> int:
+    policy = _load_policy()
     queue = _load_queue()
     existing = {a.get("id"): a for a in queue["actions"] if isinstance(a, dict)}
-    discovered = _fetch_structured_actions(args.since)
+    discovered, report = _fetch_structured_actions(args.since)
+    degradation = _compute_degradation_flags(report, policy)
     added = 0
     updated = 0
 
@@ -121,6 +261,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
         aid = _action_fingerprint(action)
         risk = _risk_tier(action)
         status = "approved" if (risk == "low" and AUTO_APPROVE_LOW_RISK) else "pending_approval"
+        est_cost = _estimate_action_token_cost(action, policy)
         if aid in existing:
             row = existing[aid]
             row["last_seen_at"] = _now()
@@ -128,6 +269,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
             row["confidence"] = action.get("confidence")
             row["reason"] = action.get("reason")
             row["raw_action"] = action
+            row["estimated_token_cost"] = est_cost
             updated += 1
         else:
             existing[aid] = {
@@ -139,6 +281,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
                 "safe": bool(action.get("safe", False)),
                 "status": status,
                 "confidence": action.get("confidence"),
+                "estimated_token_cost": est_cost,
                 "created_at": _now(),
                 "last_seen_at": _now(),
                 "seen_count": 1,
@@ -149,8 +292,22 @@ def cmd_sync(args: argparse.Namespace) -> int:
             added += 1
 
     queue["actions"] = sorted(existing.values(), key=lambda x: (x.get("status") != "pending_approval", x.get("created_at", "")))
+    queue["meta"] = {
+        "since": args.since,
+        "degradation": degradation,
+        "policy_file": str(PRSI_POLICY_FILE),
+    }
     _save_queue(queue)
-    event = {"ts": _now(), "event": "sync", "since": args.since, "added": added, "updated": updated, "total": len(queue["actions"])}
+    event = {
+        "ts": _now(),
+        "event": "sync",
+        "since": args.since,
+        "added": added,
+        "updated": updated,
+        "total": len(queue["actions"]),
+        "degraded": bool(degradation.get("degraded", False)),
+        "degradation_reasons": degradation.get("reasons", []),
+    }
     _log_event(event)
     print(json.dumps(event, sort_keys=True))
     return 0
@@ -169,6 +326,20 @@ def _set_approval(action_id: str, decision: str, by: str, note: str) -> Dict[str
     raise KeyError(action_id)
 
 
+def _set_verifier(action_id: str, by: str, note: str) -> Dict[str, Any]:
+    queue = _load_queue()
+    for row in queue["actions"]:
+        if row.get("id") == action_id:
+            approval = row.get("approval") if isinstance(row.get("approval"), dict) else {}
+            approval.update({"verifier_by": by or "unknown", "verifier_at": _now(), "verifier_note": note or None})
+            row["approval"] = approval
+            _save_queue(queue)
+            event = {"ts": _now(), "event": "verify", "id": action_id, "by": by, "note": note}
+            _log_event(event)
+            return row
+    raise KeyError(action_id)
+
+
 def cmd_approve(args: argparse.Namespace) -> int:
     row = _set_approval(args.id, "approve", args.by, args.note)
     print(json.dumps({"ok": True, "id": row.get("id"), "status": row.get("status")}, sort_keys=True))
@@ -178,6 +349,12 @@ def cmd_approve(args: argparse.Namespace) -> int:
 def cmd_reject(args: argparse.Namespace) -> int:
     row = _set_approval(args.id, "reject", args.by, args.note)
     print(json.dumps({"ok": True, "id": row.get("id"), "status": row.get("status")}, sort_keys=True))
+    return 0
+
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    row = _set_verifier(args.id, args.by, args.note)
+    print(json.dumps({"ok": True, "id": row.get("id"), "verifier_by": row.get("approval", {}).get("verifier_by")}, sort_keys=True))
     return 0
 
 
@@ -193,13 +370,16 @@ def _list_actions(status: str | None, risk: str | None) -> List[Dict[str, Any]]:
 
 def cmd_list(args: argparse.Namespace) -> int:
     rows = _list_actions(args.status, args.risk)
+    queue = _load_queue()
     payload = {
-        "updated_at": _load_queue().get("updated_at"),
+        "updated_at": queue.get("updated_at"),
+        "meta": queue.get("meta", {}),
         "count": len(rows),
         "counts": {
             "pending_approval": len([r for r in rows if r.get("status") == "pending_approval"]),
             "approved": len([r for r in rows if r.get("status") == "approved"]),
             "executed": len([r for r in rows if r.get("status") == "executed"]),
+            "counterfactual_queued": len([r for r in rows if r.get("status") == "counterfactual_queued"]),
             "rejected": len([r for r in rows if r.get("status") == "rejected"]),
         },
         "actions": rows,
@@ -208,19 +388,111 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _select_actions_for_execution(approved: List[Dict[str, Any]], policy: Dict[str, Any], state: Dict[str, Any], hard_limit: int) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int]:
+    budget = policy.get("budget", {}) if isinstance(policy.get("budget"), dict) else {}
+    gates = policy.get("gates", {}) if isinstance(policy.get("gates"), dict) else {}
+    cf = policy.get("counterfactual", {}) if isinstance(policy.get("counterfactual"), dict) else {}
+
+    cap = int(budget.get("remote_token_cap_daily", 120000) or 120000)
+    used = int(state.get("remote_tokens_used", 0) or 0)
+    remaining = max(0, cap - used)
+    hard_stop = bool(budget.get("hard_stop_on_cap", True))
+
+    allowed_types = {str(t).strip().lower() for t in gates.get("allow_action_types", [])} if isinstance(gates.get("allow_action_types"), list) else set()
+    block_high_risk = bool(gates.get("block_high_risk_without_approval", True))
+    require_independent_verifier = bool(gates.get("require_independent_verifier_for_high_risk", False))
+
+    sample_rate = float(cf.get("sample_rate", 0.0) or 0.0)
+    sample_rate = max(0.0, min(1.0, sample_rate))
+    max_samples = int(cf.get("max_samples_per_day", 0) or 0)
+    sample_used = int(state.get("counterfactual_samples", 0) or 0)
+    eligible_cf_types = {str(t).strip().lower() for t in cf.get("eligible_action_types", [])} if isinstance(cf.get("eligible_action_types"), list) else set()
+
+    selected: List[Dict[str, Any]] = []
+    sampled: List[Dict[str, Any]] = []
+
+    for row in approved:
+        if len(selected) >= hard_limit:
+            break
+        action = row.get("raw_action") if isinstance(row.get("raw_action"), dict) else {}
+        action_type = str(row.get("type", "") or action.get("type", "")).strip().lower()
+        risk = str(row.get("risk", "") or "")
+
+        if allowed_types and action_type not in allowed_types:
+            row.setdefault("execution", {})["result"] = "skipped_policy_disallow_type"
+            continue
+        if block_high_risk and risk == "high" and row.get("status") != "approved":
+            row.setdefault("execution", {})["result"] = "skipped_policy_high_risk"
+            continue
+        if require_independent_verifier and risk == "high":
+            approval = row.get("approval") if isinstance(row.get("approval"), dict) else {}
+            if not approval.get("verifier_by"):
+                row.setdefault("execution", {})["result"] = "skipped_missing_independent_verifier"
+                continue
+
+        est_cost = int(row.get("estimated_token_cost", _estimate_action_token_cost(action, policy)) or 0)
+
+        can_sample = (
+            sample_rate > 0
+            and sample_used < max_samples
+            and (not eligible_cf_types or action_type in eligible_cf_types)
+        )
+        if can_sample and random.random() < sample_rate:
+            sampled.append(row)
+            sample_used += 1
+            row["status"] = "counterfactual_queued"
+            row.setdefault("execution", {})["result"] = "queued_counterfactual"
+            continue
+
+        if est_cost > remaining:
+            row.setdefault("execution", {})["result"] = "skipped_budget_cap"
+            if hard_stop:
+                break
+            continue
+
+        selected.append(row)
+        remaining -= est_cost
+
+    state["counterfactual_samples"] = sample_used
+    consumed = max(0, (cap - used) - remaining)
+    return selected, sampled, consumed
+
+
 def cmd_execute(args: argparse.Namespace) -> int:
+    policy = _load_policy()
+    if not bool(policy.get("enabled", True)):
+        print(json.dumps({"ok": True, "executed": 0, "message": "policy disabled"}, sort_keys=True))
+        return 0
+
     queue = _load_queue()
     approved = [
         a for a in queue["actions"]
         if isinstance(a, dict) and a.get("status") == "approved" and isinstance(a.get("raw_action"), dict)
     ]
-    if args.limit:
-        approved = approved[: args.limit]
+    limit = int(args.limit or int(policy.get("max_execute_per_cycle", 5) or 5))
+    if limit > 0:
+        approved = approved[: limit]
     if not approved:
         print(json.dumps({"ok": True, "executed": 0, "message": "no approved actions"}, sort_keys=True))
         return 0
 
-    actions_payload = [a["raw_action"] for a in approved]
+    state = _load_state()
+    selected, sampled, est_consumed = _select_actions_for_execution(approved, policy, state, limit)
+    if not selected:
+        _save_queue(queue)
+        _save_state(state)
+        payload = {
+            "ok": True,
+            "selected": 0,
+            "sampled_counterfactual": len(sampled),
+            "estimated_tokens_consumed": 0,
+            "message": "no actions selected after policy gates",
+        }
+        _log_event({"ts": _now(), "event": "execute_skipped", **payload})
+        print(json.dumps(payload, sort_keys=True))
+        return 0
+
+    actions_payload = [a["raw_action"] for a in selected]
     tmp_actions = Path("/tmp/prsi-actions-exec.json")
     _write_json(tmp_actions, actions_payload)
 
@@ -240,23 +512,50 @@ def cmd_execute(args: argparse.Namespace) -> int:
     payload = json.loads(result.stdout or "{}")
 
     applied = payload.get("applied", [])
-    for row in approved:
+    for row in selected:
         row["execution"] = {"last_run_at": _now(), "result": "applied"}
         row["status"] = "executed" if not args.dry_run else "approved"
     _save_queue(queue)
 
-    event = {"ts": _now(), "event": "execute", "count": len(approved), "dry_run": args.dry_run, "applied_count": len(applied)}
+    if not args.dry_run:
+        state["remote_tokens_used"] = int(state.get("remote_tokens_used", 0) or 0) + int(est_consumed)
+    _save_state(state)
+
+    event = {
+        "ts": _now(),
+        "event": "execute",
+        "count": len(selected),
+        "sampled_counterfactual": len(sampled),
+        "dry_run": args.dry_run,
+        "applied_count": len(applied),
+        "estimated_tokens_consumed": est_consumed,
+        "remote_tokens_used_today": int(state.get("remote_tokens_used", 0) or 0),
+        "remote_token_cap_daily": int(policy.get("budget", {}).get("remote_token_cap_daily", 120000)),
+    }
     _log_event(event)
-    print(json.dumps({"ok": True, "selected": len(approved), "applied_count": len(applied), "dry_run": args.dry_run}, sort_keys=True))
+    print(json.dumps({"ok": True, **{k: v for k, v in event.items() if k != "ts"}}, sort_keys=True))
     return 0
 
 
 def cmd_cycle(args: argparse.Namespace) -> int:
-    sync_args = argparse.Namespace(since=args.since)
+    policy = _load_policy()
+    since = str(args.since or policy.get("since", "1d"))
+    sync_args = argparse.Namespace(since=since)
     cmd_sync(sync_args)
+
+    queue = _load_queue()
+    degradation = queue.get("meta", {}).get("degradation", {}) if isinstance(queue.get("meta", {}), dict) else {}
+    esc = policy.get("escalation", {}) if isinstance(policy.get("escalation"), dict) else {}
+    if bool(esc.get("enable_on_degrade", True)) and bool(degradation.get("degraded", False)):
+        _log_event({
+            "ts": _now(),
+            "event": "degradation_detected",
+            "reasons": degradation.get("reasons", []),
+            "note": "Escalation flagged; run deeper eval only on demand to preserve token budget.",
+        })
+
     # Auto-approve low-risk pending actions when configured.
     if AUTO_APPROVE_LOW_RISK:
-        queue = _load_queue()
         changed = 0
         for row in queue["actions"]:
             if row.get("status") == "pending_approval" and row.get("risk") == "low":
@@ -266,7 +565,9 @@ def cmd_cycle(args: argparse.Namespace) -> int:
         if changed:
             _save_queue(queue)
             _log_event({"ts": _now(), "event": "auto_approve", "count": changed})
-    exec_args = argparse.Namespace(limit=args.execute_limit, dry_run=args.dry_run)
+
+    limit = int(args.execute_limit or int(policy.get("max_execute_per_cycle", 5) or 5))
+    exec_args = argparse.Namespace(limit=limit, dry_run=args.dry_run)
     return cmd_execute(exec_args)
 
 
@@ -295,14 +596,20 @@ def build_parser() -> argparse.ArgumentParser:
     s_reject.add_argument("--note", default="")
     s_reject.set_defaults(func=cmd_reject)
 
+    s_verify = sub.add_parser("verify", help="Record independent verifier sign-off for high-risk action")
+    s_verify.add_argument("--id", required=True)
+    s_verify.add_argument("--by", required=True)
+    s_verify.add_argument("--note", default="")
+    s_verify.set_defaults(func=cmd_verify)
+
     s_exec = sub.add_parser("execute", help="Execute approved queued actions")
     s_exec.add_argument("--limit", type=int, default=5)
     s_exec.add_argument("--dry-run", action="store_true")
     s_exec.set_defaults(func=cmd_execute)
 
     s_cycle = sub.add_parser("cycle", help="sync + optional auto-approve + execute")
-    s_cycle.add_argument("--since", default="1d")
-    s_cycle.add_argument("--execute-limit", type=int, default=5)
+    s_cycle.add_argument("--since", default=None)
+    s_cycle.add_argument("--execute-limit", type=int, default=0)
     s_cycle.add_argument("--dry-run", action="store_true")
     s_cycle.set_defaults(func=cmd_cycle)
     return p

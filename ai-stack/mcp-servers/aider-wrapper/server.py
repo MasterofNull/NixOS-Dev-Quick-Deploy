@@ -15,7 +15,7 @@ import logging
 import urllib.request
 import urllib.parse
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 from datetime import datetime
 from uuid import uuid4
 
@@ -113,10 +113,17 @@ AIDER_DEFAULT_MAP_TOKENS = int(os.getenv("AIDER_DEFAULT_MAP_TOKENS", "512"))
 AI_HINTS_ENABLED = os.getenv("AI_HINTS_ENABLED", "false").lower() == "true"
 AI_HINTS_MIN_SCORE = float(os.getenv("AI_HINTS_MIN_SCORE", "0.45"))
 AI_HINTS_MIN_SNIPPET_CHARS = int(os.getenv("AI_HINTS_MIN_SNIPPET_CHARS", "24"))
+AI_HINTS_MIN_TOKEN_OVERLAP = int(os.getenv("AI_HINTS_MIN_TOKEN_OVERLAP", "1"))
+AI_HINTS_BYPASS_OVERLAP_SCORE = float(os.getenv("AI_HINTS_BYPASS_OVERLAP_SCORE", "0.72"))
 AI_TOOLING_PLAN_ENABLED = os.getenv("AI_TOOLING_PLAN_ENABLED", "true").lower() == "true"
 HINTS_URL = os.getenv(
     "HINTS_URL",
     f"http://127.0.0.1:{os.getenv('HYBRID_COORDINATOR_PORT', '8003')}/hints",
+)
+HINT_FEEDBACK_URL = os.getenv(
+    "HINT_FEEDBACK_URL",
+    (HINTS_URL.rstrip("/") + "/feedback") if HINTS_URL.rstrip("/").endswith("/hints")
+    else f"http://127.0.0.1:{os.getenv('HYBRID_COORDINATOR_PORT', '8003')}/hints/feedback",
 )
 WORKFLOW_PLAN_URL = os.getenv(
     "WORKFLOW_PLAN_URL",
@@ -140,6 +147,7 @@ _audit_dir = Path(os.getenv(
     "TOOL_AUDIT_LOG_PATH", "/var/log/nixos-ai-stack/tool-audit.jsonl"
 )).parent
 HINT_AUDIT_LOG_PATH = Path(os.getenv("HINT_AUDIT_LOG_PATH", str(_audit_dir / "hint-audit.jsonl")))
+TASK_AUDIT_LOG_PATH = Path(os.getenv("TASK_AUDIT_LOG_PATH", str(_audit_dir / "aider-task-audit.jsonl")))
 
 # ============================================================================
 # In-memory task store
@@ -298,6 +306,7 @@ async def _run_analysis_fastpath(prompt: str, workspace: Path, files: List[str])
 def _write_hint_audit(task_id: str, hint_id: str, hint_snippet: str, accepted: bool) -> None:
     """Phase 19.3.4 — append a hint adoption record to hint-audit.jsonl."""
     try:
+        task_tooling = _tasks.get(task_id, {}).get("tooling", {})
         entry = json.dumps({
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "service": "aider-wrapper",
@@ -305,12 +314,155 @@ def _write_hint_audit(task_id: str, hint_id: str, hint_snippet: str, accepted: b
             "hint_id": hint_id,
             "hint_snippet": hint_snippet[:80],
             "hint_accepted": accepted,
+            "tooling_plan_injected": bool(task_tooling.get("tooling_plan_injected", False)),
+            "analysis_only_profile": bool(task_tooling.get("analysis_only_profile", False)),
+            "analysis_fastpath_used": bool(task_tooling.get("analysis_fastpath_used", False)),
         })
         HINT_AUDIT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
         with HINT_AUDIT_LOG_PATH.open("a", encoding="utf-8") as f:
             f.write(entry + "\n")
     except Exception as exc:
         logger.debug("hint_audit_write_failed", error=str(exc))
+
+
+async def _submit_hint_feedback(
+    task_id: str,
+    hint_id: str,
+    helpful: bool,
+    score: float,
+    comment: str = "",
+    agent_preferences: Optional[Dict[str, List[str]]] = None,
+) -> None:
+    if not hint_id:
+        return
+    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    hybrid_key = _load_hybrid_api_key()
+    if hybrid_key:
+        headers["X-API-Key"] = hybrid_key
+    payload = {
+        "task_id": task_id,
+        "hint_id": hint_id,
+        "helpful": bool(helpful),
+        "score": max(-1.0, min(1.0, float(score))),
+        "comment": comment[:240],
+        "agent": "aider-wrapper",
+    }
+    if isinstance(agent_preferences, dict):
+        payload["agent_preferences"] = {
+            "preferred_tools": list(agent_preferences.get("preferred_tools", []))[:8],
+            "preferred_data_sources": list(agent_preferences.get("preferred_data_sources", []))[:8],
+            "preferred_hint_types": list(agent_preferences.get("preferred_hint_types", []))[:8],
+            "preferred_tags": list(agent_preferences.get("preferred_tags", []))[:8],
+        }
+    req = urllib.request.Request(
+        HINT_FEEDBACK_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    loop = asyncio.get_event_loop()
+
+    def _send() -> None:
+        with urllib.request.urlopen(req, timeout=2):
+            return None
+
+    try:
+        await loop.run_in_executor(None, _send)
+    except Exception as exc:
+        logger.debug("hint_feedback_submit_failed", task_id=task_id, hint_id=hint_id, error=str(exc))
+
+
+def _write_task_audit(task_id: str, status: str, completed: bool) -> None:
+    """Append aider task outcome + tooling metadata for report quality analysis."""
+    try:
+        entry = _tasks.get(task_id, {})
+        req = entry.get("request", {}) if isinstance(entry.get("request"), dict) else {}
+        tooling = entry.get("tooling", {}) if isinstance(entry.get("tooling"), dict) else {}
+        result = entry.get("result", {}) if isinstance(entry.get("result"), dict) else {}
+        prompt = str(req.get("prompt", "") or "")
+        payload = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "service": "aider-wrapper",
+            "task_id": task_id,
+            "status": status,
+            "completed": bool(completed),
+            "prompt_hash": hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:16] if prompt else "",
+            "tooling_plan_injected": bool(tooling.get("tooling_plan_injected", False)),
+            "hint_injected": bool(tooling.get("hint_injected", False)),
+            "analysis_only_profile": bool(tooling.get("analysis_only_profile", False)),
+            "analysis_fastpath_used": bool(tooling.get("analysis_fastpath_used", False)),
+            "duration_seconds": float(result.get("duration_seconds", 0.0) or 0.0),
+            "exit_code": int(result.get("exit_code", 0) or 0),
+            "files_modified_count": len(result.get("files_modified", []) or []),
+        }
+        TASK_AUDIT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with TASK_AUDIT_LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(payload) + "\n")
+    except Exception as exc:
+        logger.debug("task_audit_write_failed", error=str(exc))
+
+
+def _hint_token_overlap(prompt: str, top_hint: Dict[str, object]) -> int:
+    prompt_tokens = {
+        tok for tok in re.findall(r"[a-z0-9_]{4,}", (prompt or "").lower())
+        if tok not in {"with", "from", "that", "this", "into", "task", "prompt", "file", "code"}
+    }
+    if not prompt_tokens:
+        return 0
+    hint_parts: List[str] = []
+    for key in ("title", "snippet", "reason"):
+        val = top_hint.get(key)
+        if isinstance(val, str):
+            hint_parts.append(val.lower())
+    tags = top_hint.get("tags")
+    if isinstance(tags, list):
+        hint_parts.extend(str(t).lower() for t in tags if isinstance(t, str))
+    hint_tokens = set(re.findall(r"[a-z0-9_]{4,}", " ".join(hint_parts)))
+    return len(prompt_tokens.intersection(hint_tokens))
+
+
+def _select_hint_for_injection(prompt: str, hints: List[Dict[str, object]]) -> Tuple[Optional[Dict[str, object]], int]:
+    """
+    Choose an eligible hint from ranked candidates.
+    Prefers relevance (token overlap), then score, and rotates deterministically
+    across near-ties so one hint ID does not dominate every task.
+    """
+    eligible: List[Tuple[Dict[str, object], float, int, int]] = []
+    for hint in hints:
+        snippet = str(hint.get("snippet", "") or "").strip()
+        if not snippet or len(snippet) < AI_HINTS_MIN_SNIPPET_CHARS:
+            continue
+        try:
+            score = float(hint.get("score", 1.0))
+        except (TypeError, ValueError):
+            score = 1.0
+        overlap = _hint_token_overlap(prompt, hint)
+        overlap_ok = (
+            overlap >= AI_HINTS_MIN_TOKEN_OVERLAP
+            or score >= AI_HINTS_BYPASS_OVERLAP_SCORE
+        )
+        if score >= AI_HINTS_MIN_SCORE and overlap_ok:
+            eligible.append((hint, score, overlap, len(snippet)))
+
+    if not eligible:
+        return None, 0
+
+    # Primary objective: maximize relevance and success likelihood.
+    # Secondary objective: minimize injected-token footprint via shorter snippets.
+    eligible.sort(key=lambda item: (item[2], item[1], -item[3]), reverse=True)
+    best_overlap = eligible[0][2]
+    best_score = eligible[0][1]
+    tie_bucket = [
+        item for item in eligible
+        if item[2] >= best_overlap and item[1] >= (best_score - 0.03)
+    ]
+
+    if len(tie_bucket) == 1:
+        selected = tie_bucket[0]
+    else:
+        prompt_hash = int(hashlib.sha256((prompt or "").encode("utf-8")).hexdigest()[:8], 16)
+        selected = tie_bucket[prompt_hash % len(tie_bucket)]
+    return selected[0], selected[2]
 
 
 def _apply_bwrap(cmd: List[str], workspace: str) -> List[str]:
@@ -461,6 +613,7 @@ def _set_terminal_task(
             "completed": completed,
         },
     })
+    _write_task_audit(task_id, status, completed)
 
 
 async def _terminate_process(task_id: str, proc: asyncio.subprocess.Process, reason: str) -> None:
@@ -618,6 +771,8 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
             "tooling_plan_enabled": AI_TOOLING_PLAN_ENABLED,
             "tooling_plan_injected": False,
             "tooling_plan_phase_count": 0,
+            "hint_score": 0.0,
+            "hint_token_overlap": 0,
             "analysis_only_profile": analysis_only,
             "analysis_fastpath_used": False,
             "task_timeout_seconds": (
@@ -629,7 +784,7 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
         message_for_aider = task.prompt
         if AI_HINTS_ENABLED:
             try:
-                params = urllib.parse.urlencode({"q": task.prompt[:100], "max": "1"})
+                params = urllib.parse.urlencode({"q": task.prompt[:240], "max": "5"})
                 hints_headers = {"Accept": "application/json"}
                 hybrid_key = _load_hybrid_api_key()
                 if hybrid_key:
@@ -645,7 +800,10 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
                 hints_data = await loop.run_in_executor(None, _fetch_hint)
                 top_hints = hints_data.get("hints", [])
                 if top_hints:
-                    top = top_hints[0]
+                    top, token_overlap = _select_hint_for_injection(task.prompt, top_hints)
+                else:
+                    top, token_overlap = None, 0
+                if top:
                     hint_id = str(top.get("id", "")).strip()
                     hint_snippet = str(top.get("snippet", "")).strip()[:150]
                     raw_score = top.get("score", 1.0)
@@ -653,23 +811,16 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
                         hint_score = float(raw_score)
                     except (TypeError, ValueError):
                         hint_score = 1.0
-                    if (hint_snippet and len(hint_snippet) >= AI_HINTS_MIN_SNIPPET_CHARS
-                            and hint_score >= AI_HINTS_MIN_SCORE):
+                    if hint_snippet:
                         message_for_aider = f"CONTEXT (aq-hints): {hint_snippet}\n\n{task.prompt}"
                         hint_injected = True
                         _tasks[task_id]["tooling"]["hint_injected"] = True
                         _tasks[task_id]["tooling"]["hint_id"] = hint_id
+                        _tasks[task_id]["tooling"]["hint_score"] = hint_score
+                        _tasks[task_id]["tooling"]["hint_token_overlap"] = token_overlap
                         logger.info("hint_injected", task_id=task_id, hint_id=hint_id, hint_score=hint_score)
-                    else:
-                        logger.debug(
-                            "hint_injection_skipped",
-                            task_id=task_id,
-                            hint_id=hint_id,
-                            hint_score=hint_score,
-                            snippet_len=len(hint_snippet),
-                            min_score=AI_HINTS_MIN_SCORE,
-                            min_snippet_chars=AI_HINTS_MIN_SNIPPET_CHARS,
-                        )
+                else:
+                    logger.debug("hint_injection_skipped", task_id=task_id, reason="no eligible hint")
             except Exception as exc:
                 logger.debug("hint_fetch_skipped", task_id=task_id, error=str(exc))
 
@@ -935,6 +1086,23 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
         hint_accepted = final_status == "success"
         if hint_injected:
             _write_hint_audit(task_id, hint_id, hint_snippet, accepted=hint_accepted)
+            feedback_score = 1.0 if hint_accepted else -1.0
+            hint_type = "runtime_signal" if hint_id.startswith("runtime_") else (
+                "gap_topic" if hint_id.startswith("gap_") else "prompt_template"
+            )
+            await _submit_hint_feedback(
+                task_id=task_id,
+                hint_id=hint_id,
+                helpful=hint_accepted,
+                score=feedback_score,
+                comment=f"status={final_status}; exit_code={returncode}; files_modified={len(files_modified)}",
+                agent_preferences={
+                    "preferred_tools": ["hints", "workflow_plan", "route_search"],
+                    "preferred_data_sources": ["tool_audit", "aq_report", "query_gaps", "registry"],
+                    "preferred_hint_types": [hint_type],
+                    "preferred_tags": ["efficiency", "tooling", "runtime"],
+                },
+            )
 
         _set_terminal_task(
             task_id,
@@ -966,6 +1134,8 @@ async def _do_submit(task: TaskRequest) -> TaskSubmitResponse:
             "tooling_plan_enabled": AI_TOOLING_PLAN_ENABLED,
             "tooling_plan_injected": False,
             "tooling_plan_phase_count": 0,
+            "hint_score": 0.0,
+            "hint_token_overlap": 0,
             "analysis_only_profile": False,
             "analysis_fastpath_used": False,
             "task_timeout_seconds": AIDER_TASK_TIMEOUT,

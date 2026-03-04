@@ -37,6 +37,7 @@ def _write_audit(
     error_message: "str | None",
     latency_ms: float,
     parameters: Dict[str, Any],
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Delegate to shared audit module (Phase 12.3.2: writes via sidecar socket)."""
     _write_audit_entry(
@@ -48,6 +49,7 @@ def _write_audit(
         outcome=outcome,
         error_message=error_message,
         latency_ms=latency_ms,
+        metadata=metadata,
     )
 
 # ---------------------------------------------------------------------------
@@ -418,7 +420,17 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                 score_threshold=arguments.get("score_threshold", 0.7),
                 generate_response=arguments.get("generate_response", False),
             )
-            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            _write_audit(
+                name,
+                'success',
+                None,
+                (_time.time() - _start) * 1000,
+                arguments,
+                metadata={
+                    "strategy_tag": result.get("route", "unknown"),
+                    "backend": result.get("backend", "none"),
+                },
+            )
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "store_agent_memory":

@@ -33,7 +33,7 @@ jq -e '.count >= 1' "${tmp_dir}/blueprints.json" >/dev/null || fail "workflow/bl
 pass "workflow/blueprints"
 
 curl -fsS "${hdr[@]}" "${HYB_URL}/workflow/run/start" \
-  --data '{"query":"focused parity smoke","safety_mode":"plan-readonly","token_limit":64,"tool_call_limit":2}' \
+  --data '{"query":"focused parity smoke","safety_mode":"plan-readonly","token_limit":64,"tool_call_limit":2,"intent_contract":{"user_intent":"focused parity smoke","definition_of_done":"smoke workflow run starts and passes guard checks","depth_expectation":"minimum","spirit_constraints":["keep checks deterministic","avoid side effects"],"no_early_exit_without":["all smoke assertions pass"]}}' \
   >"${tmp_dir}/run-start.json"
 sid="$(jq -r '.session_id' "${tmp_dir}/run-start.json")"
 [[ -n "$sid" && "$sid" != "null" ]] || fail "workflow/run/start missing session_id"

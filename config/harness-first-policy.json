@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "runbook": "docs/harness-first/HARNESS-FIRST-RUNBOOK.md",
+  "evidence_template": "docs/harness-first/HARNESS-FIRST-EVIDENCE-TEMPLATE.md",
+  "required_sections": [
+    "## Objective",
+    "## Scope Lock",
+    "## Non-Negotiable Gates",
+    "## Delegation Policy (Subagents + Local Tooling)",
+    "## Standard Task Lifecycle",
+    "## Evidence Artifact Contract",
+    "## Rollback",
+    "## CI Enforcement",
+    "## Local Release Gate"
+  ],
+  "required_commands": [
+    "scripts/aq-hints",
+    "scripts/harness-rpc.js run-start",
+    "scripts/aq-qa 0 --json",
+    "scripts/aq-qa 1 --json",
+    "scripts/system-health-check.sh --detailed",
+    "scripts/run-advanced-parity-suite.sh"
+  ],
+  "required_evidence_sections": [
+    "## Objective",
+    "## Workflow/Session IDs",
+    "## Delegation Decision",
+    "## Commands Executed",
+    "## Validation Evidence",
+    "## Rollback Plan",
+    "## Residual Risk",
+    "## Hint Feedback"
+  ]
+}

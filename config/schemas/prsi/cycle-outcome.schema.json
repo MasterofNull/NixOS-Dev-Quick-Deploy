@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PRSI Cycle Outcome",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "cycle_id",
+    "finalized_at",
+    "decision",
+    "improvement_claimed",
+    "confidence_score",
+    "counterfactual_risk"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "cycle_id": { "type": "string", "minLength": 8 },
+    "finalized_at": { "type": "string", "minLength": 10 },
+    "decision": {
+      "type": "string",
+      "enum": ["proceed", "targeted_eval", "quarantine", "escalate"]
+    },
+    "improvement_claimed": { "type": "boolean" },
+    "confidence_score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "kpi_delta": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["metric", "baseline", "candidate", "delta"],
+        "properties": {
+          "metric": { "type": "string", "minLength": 3 },
+          "baseline": { "type": "number" },
+          "candidate": { "type": "number" },
+          "delta": { "type": "number" }
+        }
+      }
+    },
+    "failure_taxonomy": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 3 }
+    },
+    "counterfactual_risk": { "type": "string", "minLength": 10 },
+    "residual_risks": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 3 }
+    },
+    "next_actions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 3 }
+    }
+  }
+}

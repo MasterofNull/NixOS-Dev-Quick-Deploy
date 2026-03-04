@@ -503,6 +503,7 @@ in
         "d /var/log/ai-stack                      0750 ${svcUser} ${svcGroup} -"
         # Audit sidecar log dir — used when socket-activated sidecar writes JSONL.
         "d /var/log/ai-audit-sidecar              0750 ${svcUser} ${svcGroup} -"
+        "f /var/log/ai-audit-sidecar/tool-audit.jsonl 0640 ${svcUser} ${svcGroup} - -"
         "d ${dataDir}/aider-wrapper               0750 ${svcUser} ${svcGroup} -"
         "d ${dataDir}/aider-wrapper/workspace     0750 ${svcUser} ${svcGroup} -"
         "d ${dataDir}/nixos-docs           0750 ${svcUser} ${svcGroup} -"
@@ -838,6 +839,8 @@ in
             "OPTIMIZATION_PROPOSALS_PATH=${dataDir}/hybrid/telemetry/optimization_proposals.jsonl"
             "CONTINUOUS_LEARNING_CHECKPOINT_DIR=${dataDir}/hybrid/checkpoints"
             "FINETUNE_DATA_PATH=${dataDir}/hybrid/fine-tuning/dataset.jsonl"
+            "HINT_AUDIT_LOG_PATH=${mutableLogDir}/hint-audit.jsonl"
+            "HINT_FEEDBACK_LOG_PATH=${mutableLogDir}/hint-feedback.jsonl"
             "POSTGRES_HOST=127.0.0.1"
             "POSTGRES_PORT=${toString ports.postgres}"
             "POSTGRES_DB=${mcp.postgres.database}"
@@ -853,6 +856,20 @@ in
             "AI_HARNESS_MIN_ACCEPTANCE_SCORE=${toString ai.aiHarness.eval.minAcceptanceScore}"
             "AI_HARNESS_MAX_LATENCY_MS=${toString ai.aiHarness.eval.maxLatencyMs}"
             "AI_SEMANTIC_TOOLING_AUTORUN=${if ai.aiHarness.runtime.semanticToolingAutorun then "true" else "false"}"
+            "AI_HINT_FEEDBACK_DB_ENABLED=${if ai.aiHarness.runtime.hintFeedbackDbEnabled then "true" else "false"}"
+            "AI_HINT_FEEDBACK_DB_CACHE_TTL_SECONDS=${toString ai.aiHarness.runtime.hintFeedbackDbCacheTtlSeconds}"
+            "AI_HINT_DIVERSITY_REPEAT_WINDOW=${toString ai.aiHarness.runtime.hintDiversityRepeatWindow}"
+            "AI_HINT_DIVERSITY_REPEAT_CAP_PCT=${toString ai.aiHarness.runtime.hintDiversityRepeatCapPct}"
+            "AI_HINT_DIVERSITY_REPEAT_MIN_COUNT=${toString ai.aiHarness.runtime.hintDiversityRepeatMinCount}"
+            "AI_HINT_DIVERSITY_TYPE_MIN=${ai.aiHarness.runtime.hintDiversityTypeMin}"
+            "AI_HINT_DIVERSITY_TYPE_MAX=${ai.aiHarness.runtime.hintDiversityTypeMax}"
+            "AI_HINT_BANDIT_ENABLED=${if ai.aiHarness.runtime.hintBandit.enable then "true" else "false"}"
+            "AI_HINT_BANDIT_MIN_EVENTS=${toString ai.aiHarness.runtime.hintBandit.minEvents}"
+            "AI_HINT_BANDIT_PRIOR_ALPHA=${toString ai.aiHarness.runtime.hintBandit.priorAlpha}"
+            "AI_HINT_BANDIT_PRIOR_BETA=${toString ai.aiHarness.runtime.hintBandit.priorBeta}"
+            "AI_HINT_BANDIT_EXPLORATION_WEIGHT=${toString ai.aiHarness.runtime.hintBandit.explorationWeight}"
+            "AI_HINT_BANDIT_MAX_ADJUST=${toString ai.aiHarness.runtime.hintBandit.maxAdjust}"
+            "AI_HINT_BANDIT_CONFIDENCE_FLOOR=${toString ai.aiHarness.runtime.hintBandit.confidenceFloor}"
             "AI_RUN_DEFAULT_SAFETY_MODE=${ai.aiHarness.runtime.defaultSafetyMode}"
             "AI_RUN_DEFAULT_TOKEN_LIMIT=${toString ai.aiHarness.runtime.defaultTokenLimit}"
             "AI_RUN_DEFAULT_TOOL_CALL_LIMIT=${toString ai.aiHarness.runtime.defaultToolCallLimit}"
@@ -959,6 +976,8 @@ in
             "AI_HINTS_ENABLED=true"
             "AI_HINTS_MIN_SCORE=${toString ai.aiHarness.runtime.aiderHintsMinScore}"
             "AI_HINTS_MIN_SNIPPET_CHARS=${toString ai.aiHarness.runtime.aiderHintsMinSnippetChars}"
+            "AI_HINTS_MIN_TOKEN_OVERLAP=${toString ai.aiHarness.runtime.aiderHintsMinTokenOverlap}"
+            "AI_HINTS_BYPASS_OVERLAP_SCORE=${toString ai.aiHarness.runtime.aiderHintsBypassOverlapScore}"
             "AI_TOOLING_PLAN_ENABLED=${if ai.aiHarness.runtime.aiderToolingPlanEnabled then "true" else "false"}"
             "AI_AIDER_SMALL_SCOPE_SUBTREE_ONLY=${if ai.aiHarness.runtime.aiderSmallScopeSubtreeOnly then "true" else "false"}"
             "AIDER_SMALL_SCOPE_MAP_TOKENS=${toString ai.aiHarness.runtime.aiderSmallScopeMapTokens}"
@@ -970,8 +989,11 @@ in
             "AIDER_AUTO_FILE_SCOPE_MAX=${toString ai.aiHarness.runtime.aiderAutoFileScopeMax}"
             "AIDER_DEFAULT_MAP_TOKENS=${toString ai.aiHarness.runtime.aiderDefaultMapTokens}"
             "HINTS_URL=http://127.0.0.1:${toString mcp.hybridPort}/hints"
+            "HINT_FEEDBACK_URL=http://127.0.0.1:${toString mcp.hybridPort}/hints/feedback"
             "WORKFLOW_PLAN_URL=http://127.0.0.1:${toString mcp.hybridPort}/workflow/plan"
             "HINT_AUDIT_LOG_PATH=${mutableLogDir}/hint-audit.jsonl"
+            "HINT_FEEDBACK_LOG_PATH=${mutableLogDir}/hint-feedback.jsonl"
+            "TASK_AUDIT_LOG_PATH=${mutableLogDir}/aider-task-audit.jsonl"
           ]
             ++ lib.optional sec.enable "AIDER_WRAPPER_API_KEY_FILE=${secretPath aiderWrapperApiKeySecret}"
             ++ lib.optional sec.enable "HYBRID_API_KEY_FILE=${secretPath hybridApiKeySecret}";
@@ -1112,15 +1134,23 @@ in
 
       systemd.services.ai-npm-security-monitor = lib.mkIf cfg.deployment.npmSecurity.enable {
         description = "AI Stack npm supply-chain security monitor";
-        wantedBy = [ "ai-stack.target" ];
-        partOf = [ "ai-stack.target" ];
+        # Timer/manual-trigger driven; do not block ai-stack.target activation.
+        path = with pkgs; [
+          bash
+          coreutils
+          findutils
+          gnugrep
+          jq
+          nodejs
+          python3
+        ];
         after = [ "network-online.target" "systemd-tmpfiles-setup.service" ];
         wants = [ "network-online.target" "systemd-tmpfiles-setup.service" ];
         serviceConfig = {
           Type = "oneshot";
           User = svcUser;
           Group = svcGroup;
-          WorkingDirectory = mcp.repoPath;
+          WorkingDirectory = dataDir;
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
             "${mcp.repoPath}/scripts/npm-security-monitor.sh"
@@ -1132,7 +1162,8 @@ in
           # Per-path confinement is still preserved by service logic + assertions.
           ReadWritePaths = [ "${dataDir}" ];
           PrivateTmp = true;
-          ProtectHome = true;
+          # Repo lives under /home/<primaryUser>; allow read-only traversal.
+          ProtectHome = "read-only";
           ProtectSystem = "strict";
           NoNewPrivileges = true;
           PrivateNetwork = false;
@@ -1165,8 +1196,8 @@ in
 
       systemd.services.ai-post-deploy-converge = {
         description = "AI stack post-deploy declarative convergence";
-        wantedBy = [ "ai-stack.target" ];
-        partOf = [ "ai-stack.target" ];
+        # Timer/manual-trigger driven to avoid blocking ai-stack.target activation
+        # during nixos-rebuild switch.
         path = with pkgs; [
           bash
           coreutils
@@ -1215,10 +1246,38 @@ in
           HYBRID_URL = "http://127.0.0.1:${toString mcp.hybridPort}";
           POST_DEPLOY_NPM_OUT_DIR = "${dataDir}/security/npm";
           POST_DEPLOY_AQ_REPORT_OUT = "${dataDir}/hybrid/telemetry/latest-aq-report.json";
+          POST_DEPLOY_SUMMARY_OUT = "${dataDir}/hybrid/telemetry/post-deploy-converge-latest.json";
+          POST_DEPLOY_HINT_FEEDBACK_SYNC_OUT = "${dataDir}/hybrid/telemetry/hint-feedback-sync-latest.json";
+          POST_DEPLOY_AUTO_REMEDIATE_OUT = "${dataDir}/hybrid/telemetry/aq-auto-remediation-latest.json";
+          POST_DEPLOY_AUTO_REMEDIATE_ENABLE = lib.boolToString cfg.deployment.autoRemediation.enable;
+          POST_DEPLOY_AUTO_REMEDIATE_DRY_RUN = lib.boolToString cfg.deployment.autoRemediation.dryRun;
+          POST_DEPLOY_AUTO_REMEDIATE_REPORT_SINCE = cfg.deployment.autoRemediation.reportSince;
+          POST_DEPLOY_INTENT_REMEDIATE_ENABLE = lib.boolToString cfg.deployment.autoRemediation.enable;
+          POST_DEPLOY_INTENT_MIN_RUNS = toString cfg.deployment.autoRemediation.intentMinRuns;
+          POST_DEPLOY_INTENT_MIN_COVERAGE_PCT = toString cfg.deployment.autoRemediation.intentMinCoveragePct;
+          POST_DEPLOY_INTENT_TARGET_COVERAGE_PCT = toString cfg.deployment.autoRemediation.intentTargetCoveragePct;
+          POST_DEPLOY_INTENT_MAX_PROBE_RUNS = toString cfg.deployment.autoRemediation.intentMaxProbeRuns;
+          POST_DEPLOY_STALE_GAP_CURATION_ENABLE = lib.boolToString cfg.deployment.autoRemediation.staleGapCurationEnable;
+          POST_DEPLOY_STALE_GAP_MIN_TOKEN_LEN = toString cfg.deployment.autoRemediation.staleGapMinTokenLen;
+          POST_DEPLOY_STALE_GAP_MAX_ROWS_PER_TOKEN = toString cfg.deployment.autoRemediation.staleGapMaxRowsPerToken;
+          POST_DEPLOY_STALE_GAP_MAX_DELETE_TOTAL = toString cfg.deployment.autoRemediation.staleGapMaxDeleteTotal;
           POST_DEPLOY_BASH_BIN = "${pkgs.bash}/bin/bash";
-          POST_DEPLOY_PYTHON_BIN = "${pkgs.python3}/bin/python3";
+          POST_DEPLOY_PYTHON_BIN = "${hybridPython}/bin/python3";
+          POST_DEPLOY_TIMEOUT_BIN = "${pkgs.coreutils}/bin/timeout";
+          POST_DEPLOY_ROUTING_SEED_TIMEOUT_SECONDS = "120";
+          POST_DEPLOY_QDRANT_REBUILD_TIMEOUT_SECONDS = "900";
+          POST_DEPLOY_QDRANT_REBUILD_MODE = "auto";
+          POST_DEPLOY_AQ_REPORT_TIMEOUT_SECONDS = "120";
           POST_DEPLOY_HYBRID_HEALTH_RETRIES = "36";
           POST_DEPLOY_HYBRID_HEALTH_RETRY_SECONDS = "5";
+          HINT_FEEDBACK_LOG_PATH = "${mutableLogDir}/hint-feedback.jsonl";
+          POSTGRES_HOST = "127.0.0.1";
+          POSTGRES_PORT = toString ports.postgres;
+          POSTGRES_DB = mcp.postgres.database;
+          POSTGRES_USER = mcp.postgres.user;
+        } // lib.optionalAttrs sec.enable {
+          POSTGRES_PASSWORD_FILE = secretPath postgresPasswordSecret;
+          HYBRID_API_KEY_FILE = secretPath hybridApiKeySecret;
         };
       };
 
@@ -1272,6 +1331,7 @@ in
           SystemCallErrorNumber   = "EPERM";
           Environment = [
             "TOOL_AUDIT_LOG_PATH=/var/log/ai-audit-sidecar/tool-audit.jsonl"
+            "TOOL_AUDIT_FALLBACK_LOG_PATH=${mutableLogDir}/tool-audit.jsonl"
             "AUDIT_SOCKET_PATH=/run/ai-audit-sidecar.sock"
           ];
         };

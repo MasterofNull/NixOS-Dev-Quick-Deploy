@@ -1,0 +1,18 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-03-04",
+  "required_pins": [
+    "prompt_registry_sha256",
+    "runtime_prsi_policy_sha256",
+    "golden_eval_sha256",
+    "gap_eval_pack_sha256",
+    "holdout_eval_sha256"
+  ],
+  "required_files": [
+    "ai-stack/prompts/registry.yaml",
+    "config/runtime-prsi-policy.json",
+    "data/harness-golden-evals.json",
+    "data/harness-gap-eval-pack.json",
+    "data/harness-holdout-evals.json"
+  ]
+}

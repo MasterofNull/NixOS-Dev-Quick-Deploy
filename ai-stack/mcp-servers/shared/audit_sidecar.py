@@ -25,6 +25,9 @@ import socket
 from pathlib import Path
 
 LOG_PATH = Path(os.getenv("TOOL_AUDIT_LOG_PATH", "/var/log/ai-audit-sidecar/tool-audit.jsonl"))
+FALLBACK_LOG_PATH = Path(
+    os.getenv("TOOL_AUDIT_FALLBACK_LOG_PATH", "/var/log/nixos-ai-stack/tool-audit.jsonl")
+)
 SOCKET_PATH = os.getenv("AUDIT_SOCKET_PATH", "/run/ai-audit-sidecar.sock")
 
 logging.basicConfig(
@@ -59,8 +62,29 @@ async def _handle_client(reader: asyncio.StreamReader, _writer: asyncio.StreamWr
 
 def _append_line(line: str) -> None:
     """Synchronous append — called in a thread pool to avoid blocking the loop."""
-    with open(LOG_PATH, "a", encoding="utf-8") as fh:
-        fh.write(line + "\n")
+    target_paths = [LOG_PATH]
+    if FALLBACK_LOG_PATH not in target_paths:
+        target_paths.append(FALLBACK_LOG_PATH)
+
+    last_exc: Exception | None = None
+    for path in target_paths:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+            if path != LOG_PATH:
+                logger.warning(
+                    "audit_log_fallback_path_used primary=%s fallback=%s",
+                    str(LOG_PATH),
+                    str(path),
+                )
+            return
+        except OSError as exc:
+            last_exc = exc
+            continue
+
+    if last_exc is not None:
+        raise last_exc
 
 
 def _get_systemd_socket() -> "socket.socket | None":
@@ -83,6 +107,7 @@ async def _main() -> None:
     _write_lock = asyncio.Lock()
 
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    FALLBACK_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     sd_sock = _get_systemd_socket()
     if sd_sock is not None:

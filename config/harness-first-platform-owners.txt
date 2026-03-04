@@ -1,0 +1,4 @@
+# GitHub user handles (with or without @) allowed to approve changes to
+# config/harness-first-high-impact-paths.txt.
+
+@MasterofNull

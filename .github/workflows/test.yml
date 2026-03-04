@@ -7,6 +7,23 @@ on:
     branches: [ main ]
 
 jobs:
+  harness-first-owner-approval:
+    name: Harness-First Owner Approval
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Enforce platform-owner approval for harness-first path policy
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/check-harness-first-platform-owner-approval.py
+
   skill-governance-lint:
     name: Skill Governance Lint
     runs-on: ubuntu-latest
@@ -97,6 +114,11 @@ jobs:
         run: |
           chmod +x scripts/validate-tool-management-policy.sh
           ./scripts/validate-tool-management-policy.sh
+
+      - name: Validate declarative runtime wiring
+        run: |
+          chmod +x scripts/validate-runtime-declarative.sh
+          ./scripts/validate-runtime-declarative.sh
 
       - name: Upload flake validation report
         if: always()
@@ -248,6 +270,45 @@ jobs:
             exit 1
           fi
 
+      - name: Validate aq-report JSON contract
+        run: |
+          chmod +x scripts/check-aq-report-contract.sh
+          ./scripts/check-aq-report-contract.sh
+
+      - name: Metric smoke check for aq-report sections
+        run: |
+          chmod +x scripts/check-aq-report-metric-smoke.sh
+          ./scripts/check-aq-report-metric-smoke.sh
+
+      - name: Validate PRSI cycle artifact contract
+        run: |
+          chmod +x scripts/check-prsi-cycle-contract.sh
+          ./scripts/check-prsi-cycle-contract.sh
+
+      - name: Validate PRSI bootstrap integrity
+        run: |
+          chmod +x scripts/check-prsi-bootstrap-integrity.sh
+          ./scripts/check-prsi-bootstrap-integrity.sh
+
+      - name: Validate PRSI Phase 7 static gates
+        run: |
+          chmod +x scripts/check-prsi-phase7-static-gates.sh
+          ./scripts/check-prsi-phase7-static-gates.sh
+
+      - name: Validate Harness-First static gates
+        run: |
+          chmod +x scripts/check-harness-first-static-gates.sh
+          ./scripts/check-harness-first-static-gates.sh
+
+      - name: Run tool security auditor regression smoke
+        run: |
+          python3 scripts/test-tool-security-auditor.py
+
+      - name: Run cross-client compatibility smoke (best-effort in CI)
+        run: |
+          chmod +x scripts/smoke-cross-client-compat.sh
+          ./scripts/smoke-cross-client-compat.sh || true
+
   validate-structure:
     name: Validate Project Structure
     runs-on: ubuntu-latest
@@ -293,6 +354,16 @@ jobs:
             "docs/SKILLS-AND-MCP-INVENTORY.md"
             "docs/QUICK_START.md"
             "docs/TROUBLESHOOTING.md"
+            "docs/harness-first/HARNESS-FIRST-RUNBOOK.md"
+            "docs/harness-first/HARNESS-FIRST-EVIDENCE-TEMPLATE.md"
+            "config/harness-first-policy.json"
+            "config/harness-first-high-impact-paths.txt"
+            "config/harness-first-platform-owners.txt"
+            "scripts/check-harness-first-runbook.sh"
+            "scripts/check-harness-first-evidence-template.sh"
+            "scripts/check-harness-first-pr-evidence-gate.sh"
+            "scripts/check-harness-first-static-gates.sh"
+            "scripts/check-harness-first-platform-owner-approval.py"
           )
 
           missing=0

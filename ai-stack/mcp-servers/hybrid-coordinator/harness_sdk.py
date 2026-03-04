@@ -149,12 +149,27 @@ class HarnessClient:
         safety_mode: str = "plan-readonly",
         token_limit: int = 8000,
         tool_call_limit: int = 40,
+        intent_contract: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        contract = intent_contract or {
+            "user_intent": query,
+            "definition_of_done": "Workflow plan is created and execution can proceed safely.",
+            "depth_expectation": "standard",
+            "spirit_constraints": [
+                "Favor declarative changes over ad-hoc imperative mutations.",
+                "Preserve safety guardrails and explicit rollback paths.",
+            ],
+            "no_early_exit_without": [
+                "Validation evidence is captured.",
+                "Critical blockers are reported with next action.",
+            ],
+        }
         payload = {
             "query": query,
             "safety_mode": safety_mode,
             "token_limit": token_limit,
             "tool_call_limit": tool_call_limit,
+            "intent_contract": contract,
         }
         with httpx.Client(timeout=self.timeout_s) as client:
             r = client.post(self._url("/workflow/run/start"), headers=self._headers(), json=payload)

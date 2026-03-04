@@ -79,6 +79,43 @@ class ToolSecurityAuditor:
         self.cache_ttl_seconds = max(3600, int(cache_ttl_hours) * 3600)
         self._lock = threading.Lock()
 
+    def _emit_audit_decision(
+        self,
+        *,
+        tool_name: str,
+        safe: bool,
+        cached: bool,
+        first_seen: bool,
+        policy_hash: str,
+        policy_version: str,
+        reasons: List[str],
+        changes: List[str],
+        latency_ms: float,
+    ) -> None:
+        try:
+            write_audit_entry(
+                service=f"{self.service_name}-tool-security",
+                tool_name=tool_name,
+                caller_identity=self.service_name,
+                parameters={"reasons": reasons, "changes": changes, "enforce": self.enforce},
+                risk_tier="medium",
+                outcome="success" if safe else "error",
+                error_message=None if safe else "; ".join(reasons),
+                latency_ms=latency_ms,
+                metadata={
+                    "cached": bool(cached),
+                    "first_seen": bool(first_seen),
+                    "approved": bool(safe),
+                    "safe": bool(safe),
+                    "policy_hash": policy_hash,
+                    "policy_version": policy_version,
+                    "reason_count": len(reasons),
+                    "change_count": len(changes),
+                },
+            )
+        except Exception:
+            logger.debug("tool_security_audit_log_failed", tool_name=tool_name)
+
     def _load_policy(self) -> Dict[str, Any]:
         policy = _default_policy()
         if not self.policy_path.exists():
@@ -109,10 +146,14 @@ class ToolSecurityAuditor:
         tmp.replace(self.cache_path)
 
     def _fingerprint(self, tool_name: str, metadata: Dict[str, Any], policy_hash: str) -> str:
+        manifest = metadata.get("manifest", {}) if isinstance(metadata.get("manifest", {}), dict) else {}
         stable = {
             "tool_name": tool_name,
             "endpoint": metadata.get("endpoint"),
-            "manifest": metadata.get("manifest", {}),
+            "manifest": manifest,
+            "tool_version": manifest.get("version") or metadata.get("tool_version") or "",
+            "tool_digest": manifest.get("digest") or metadata.get("tool_digest") or "",
+            "policy_version": metadata.get("policy_version") or "",
             "reason": metadata.get("reason", ""),
             "policy_hash": policy_hash,
         }
@@ -178,8 +219,10 @@ class ToolSecurityAuditor:
         normalized_name = (tool_name or "").strip()
         if not normalized_name:
             raise ValueError("tool_name is required")
-        data = metadata if isinstance(metadata, dict) else {}
+        data = dict(metadata) if isinstance(metadata, dict) else {}
         policy = self._load_policy()
+        policy_version = str(policy.get("version", "") or "")
+        data["policy_version"] = policy_version
         policy_hash = hashlib.sha256(_safe_json(policy).encode("utf-8")).hexdigest()[:16]
 
         if not self.enabled:
@@ -206,6 +249,17 @@ class ToolSecurityAuditor:
                 age = now - int(record.get("updated_at_epoch", now))
                 if age <= self.cache_ttl_seconds:
                     cached_safe = bool(record.get("safe", False))
+                    self._emit_audit_decision(
+                        tool_name=normalized_name,
+                        safe=cached_safe,
+                        cached=True,
+                        first_seen=False,
+                        policy_hash=policy_hash,
+                        policy_version=policy_version,
+                        reasons=record.get("reasons", []),
+                        changes=record.get("changes", []),
+                        latency_ms=(time.time() - start) * 1000.0,
+                    )
                     return {
                         "tool_name": normalized_name,
                         "approved": cached_safe,
@@ -213,6 +267,7 @@ class ToolSecurityAuditor:
                         "cached": True,
                         "first_seen": False,
                         "policy_hash": policy_hash,
+                        "policy_version": policy_version,
                         "sanitized_metadata": record.get("sanitized_metadata", data),
                         "reasons": record.get("reasons", []),
                         "changes": record.get("changes", []),
@@ -228,6 +283,7 @@ class ToolSecurityAuditor:
                 "safe": safe,
                 "approved": approved,
                 "policy_hash": policy_hash,
+                "policy_version": policy_version,
                 "changes": changes,
                 "reasons": reasons,
                 "sanitized_metadata": sanitized,
@@ -235,20 +291,17 @@ class ToolSecurityAuditor:
             }
             self._save_cache(cache)
 
-        latency_ms = (time.time() - start) * 1000.0
-        try:
-            write_audit_entry(
-                service=f"{self.service_name}-tool-security",
-                tool_name=normalized_name,
-                caller_identity=self.service_name,
-                parameters={"reasons": reasons, "changes": changes, "enforce": self.enforce},
-                risk_tier="medium",
-                outcome="success" if safe else "error",
-                error_message=None if safe else "; ".join(reasons),
-                latency_ms=latency_ms,
-            )
-        except Exception:
-            logger.debug("tool_security_audit_log_failed", tool_name=normalized_name)
+        self._emit_audit_decision(
+            tool_name=normalized_name,
+            safe=safe,
+            cached=False,
+            first_seen=True,
+            policy_hash=policy_hash,
+            policy_version=policy_version,
+            reasons=reasons,
+            changes=changes,
+            latency_ms=(time.time() - start) * 1000.0,
+        )
 
         if not safe and self.enforce:
             raise PermissionError(
@@ -261,6 +314,7 @@ class ToolSecurityAuditor:
             "cached": False,
             "first_seen": True,
             "policy_hash": policy_hash,
+            "policy_version": policy_version,
             "sanitized_metadata": sanitized,
             "reasons": reasons,
             "changes": changes,
