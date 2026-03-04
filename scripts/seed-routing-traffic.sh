@@ -7,6 +7,7 @@
 #
 # Usage:
 #   scripts/seed-routing-traffic.sh [--count N]
+#   SEED_ROUTING_SKIP_GENERATION=true scripts/seed-routing-traffic.sh --count N
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -66,6 +67,11 @@ for i in "${!QUERIES[@]}"; do
 done
 
 printf 'seed-routing-traffic: %d OK, %d FAIL\n' "$PASS" "$FAIL"
+
+if [[ "${SEED_ROUTING_SKIP_GENERATION:-false}" == "true" ]]; then
+  printf 'seed-routing-traffic: generation seed skipped (SEED_ROUTING_SKIP_GENERATION=true)\n'
+  exit 0
+fi
 
 # Send one short generation query to seed the backend-selection metric (§2).
 # Uses generate_response=true so hybrid-coordinator calls the LLM and increments

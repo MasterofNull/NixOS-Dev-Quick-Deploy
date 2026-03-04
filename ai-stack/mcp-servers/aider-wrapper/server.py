@@ -111,6 +111,8 @@ AIDER_DEFAULT_MAP_TOKENS = int(os.getenv("AIDER_DEFAULT_MAP_TOKENS", "512"))
 # Fetches from HINTS_URL (hybrid-coordinator /hints), enriching the task with
 # context from registry.yaml, query gaps, and CLAUDE.md workflow rules.
 AI_HINTS_ENABLED = os.getenv("AI_HINTS_ENABLED", "false").lower() == "true"
+AI_HINTS_MIN_SCORE = float(os.getenv("AI_HINTS_MIN_SCORE", "0.45"))
+AI_HINTS_MIN_SNIPPET_CHARS = int(os.getenv("AI_HINTS_MIN_SNIPPET_CHARS", "24"))
 AI_TOOLING_PLAN_ENABLED = os.getenv("AI_TOOLING_PLAN_ENABLED", "true").lower() == "true"
 HINTS_URL = os.getenv(
     "HINTS_URL",
@@ -260,6 +262,8 @@ async def _run_analysis_fastpath(prompt: str, workspace: Path, files: List[str])
         "generate_response": True,
         "context": {
             "analysis_only": True,
+            "skip_gap_tracking": True,
+            "source": "aider-wrapper-analysis-fastpath",
             "file_snippets": _read_file_snippets(workspace, files),
         },
     }
@@ -642,13 +646,30 @@ async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
                 top_hints = hints_data.get("hints", [])
                 if top_hints:
                     top = top_hints[0]
-                    hint_id = top.get("id", "")
-                    hint_snippet = top.get("snippet", "")[:150]
-                    message_for_aider = f"CONTEXT (aq-hints): {hint_snippet}\n\n{task.prompt}"
-                    hint_injected = True
-                    _tasks[task_id]["tooling"]["hint_injected"] = True
-                    _tasks[task_id]["tooling"]["hint_id"] = hint_id
-                    logger.info("hint_injected", task_id=task_id, hint_id=hint_id)
+                    hint_id = str(top.get("id", "")).strip()
+                    hint_snippet = str(top.get("snippet", "")).strip()[:150]
+                    raw_score = top.get("score", 1.0)
+                    try:
+                        hint_score = float(raw_score)
+                    except (TypeError, ValueError):
+                        hint_score = 1.0
+                    if (hint_snippet and len(hint_snippet) >= AI_HINTS_MIN_SNIPPET_CHARS
+                            and hint_score >= AI_HINTS_MIN_SCORE):
+                        message_for_aider = f"CONTEXT (aq-hints): {hint_snippet}\n\n{task.prompt}"
+                        hint_injected = True
+                        _tasks[task_id]["tooling"]["hint_injected"] = True
+                        _tasks[task_id]["tooling"]["hint_id"] = hint_id
+                        logger.info("hint_injected", task_id=task_id, hint_id=hint_id, hint_score=hint_score)
+                    else:
+                        logger.debug(
+                            "hint_injection_skipped",
+                            task_id=task_id,
+                            hint_id=hint_id,
+                            hint_score=hint_score,
+                            snippet_len=len(hint_snippet),
+                            min_score=AI_HINTS_MIN_SCORE,
+                            min_snippet_chars=AI_HINTS_MIN_SNIPPET_CHARS,
+                        )
             except Exception as exc:
                 logger.debug("hint_fetch_skipped", task_id=task_id, error=str(exc))
 

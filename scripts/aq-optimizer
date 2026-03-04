@@ -6,7 +6,7 @@ Reads aq-report --format=json, parses structured_actions, applies safe
 changes: routing overrides, knowledge imports, alert logging.
 Records all actions to AIDB and optimizer-actions.jsonl.
 
-Usage: aq-optimizer [--dry-run] [--since=Nd]
+Usage: aq-optimizer [--dry-run] [--since=Nd] [--actions-json=path]
 """
 import argparse
 import json
@@ -148,7 +148,10 @@ def apply_routing(action: dict, dry_run: bool) -> list:
     for k, v in action.get("env_overrides", {}).items():
         overrides[k] = v
     if not dry_run:
-        _write_overrides(overrides)
+        try:
+            _write_overrides(overrides)
+        except Exception as exc:  # noqa: BLE001
+            return [{"service": "_overrides_file", "outcome": "failed:" + str(exc)[:160]}]
     for svc in action.get("services", []):
         outcome = _restart_service(svc, dry_run)
         results.append({"service": svc, "outcome": outcome})
@@ -173,9 +176,13 @@ def apply_maintenance(action: dict, dry_run: bool) -> dict:
     if dry_run:
         return {"outcome": "dry_run", "script": script_name, "args": args}
     try:
+        env = os.environ.copy()
+        if script_name == "seed-routing-traffic.sh":
+            # Keep maintenance runs bounded; routing counters are already tracked elsewhere.
+            env["SEED_ROUTING_SKIP_GENERATION"] = "true"
         result = subprocess.run(
             ["bash", str(script_path)] + [str(a) for a in args],
-            capture_output=True, text=True, timeout=300,
+            capture_output=True, text=True, timeout=300, env=env,
         )
         if result.returncode == 0:
             return {"outcome": "ok", "script": script_name}
@@ -192,29 +199,49 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="AI stack agentic optimizer")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--since", default="1d")
+    parser.add_argument("--actions-json", default="", help="Path to JSON file containing structured_actions[]")
+    parser.add_argument("--output-json", action="store_true", help="Print machine-readable result JSON")
     args = parser.parse_args()
 
     dry_run = args.dry_run
-    if dry_run:
+    if dry_run and not args.output_json:
         print("INFO  DRY-RUN mode — no changes will be applied")
 
-    # Run aq-report --format=json
-    try:
-        result = subprocess.run(
-            [sys.executable, str(SCRIPT_DIR / "aq-report"), "--since=" + args.since, "--format=json"],
-            capture_output=True, text=True, timeout=120,
-        )
-        if result.returncode != 0:
-            print("ERROR aq-report failed:", result.stderr[:200], file=sys.stderr)
+    structured_actions = []
+    report = {}
+    if args.actions_json:
+        try:
+            with open(args.actions_json, "r", encoding="utf-8") as fh:
+                payload = json.load(fh)
+            if isinstance(payload, dict):
+                structured_actions = payload.get("structured_actions", [])
+            elif isinstance(payload, list):
+                structured_actions = payload
+            else:
+                raise ValueError("actions-json payload must be list or dict")
+        except Exception as exc:
+            print("ERROR could not read --actions-json:", exc, file=sys.stderr)
             sys.exit(1)
-        report = json.loads(result.stdout)
-    except Exception as exc:
-        print("ERROR could not run aq-report:", exc, file=sys.stderr)
-        sys.exit(1)
-
-    structured_actions = report.get("structured_actions", [])
+    else:
+        # Run aq-report --format=json
+        try:
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT_DIR / "aq-report"), "--since=" + args.since, "--format=json"],
+                capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode != 0:
+                print("ERROR aq-report failed:", result.stderr[:200], file=sys.stderr)
+                sys.exit(1)
+            report = json.loads(result.stdout)
+            structured_actions = report.get("structured_actions", [])
+        except Exception as exc:
+            print("ERROR could not run aq-report:", exc, file=sys.stderr)
+            sys.exit(1)
     if not structured_actions:
-        print("INFO  No structured actions — system within normal parameters")
+        if args.output_json:
+            print(json.dumps({"ok": True, "applied": [], "count": 0}))
+        else:
+            print("INFO  No structured actions — system within normal parameters")
         return
 
     applied = []
@@ -229,21 +256,25 @@ def main() -> None:
             results = apply_routing(action, dry_run)
             record = {"ts": ts, "type": atype, "action": aname, "reason": action.get("reason"),
                       "dry_run": dry_run, "results": results}
-            print("INFO  routing:", aname, "—", action.get("reason"), "| results:", results)
+            if not args.output_json:
+                print("INFO  routing:", aname, "—", action.get("reason"), "| results:", results)
         elif atype == "knowledge" and aname == "import_gap":
             result_info = apply_knowledge(action, dry_run)
             record = {"ts": ts, "type": atype, "action": aname, "reason": action.get("reason"),
                       "dry_run": dry_run, "result": result_info}
-            print("INFO  knowledge:", aname, "topic:", action.get("topic", "")[:60], "| outcome:", result_info.get("outcome"))
+            if not args.output_json:
+                print("INFO  knowledge:", aname, "topic:", action.get("topic", "")[:60], "| outcome:", result_info.get("outcome"))
         elif atype == "maintenance" and aname == "prewarm_cache":
             result_info = apply_maintenance(action, dry_run)
             record = {"ts": ts, "type": atype, "action": aname, "reason": action.get("reason"),
                       "dry_run": dry_run, "result": result_info}
-            print("INFO  maintenance:", aname, "| outcome:", result_info.get("outcome"))
+            if not args.output_json:
+                print("INFO  maintenance:", aname, "| outcome:", result_info.get("outcome"))
         elif atype == "eval" and aname == "alert_human":
             record = {"ts": ts, "type": atype, "action": aname, "reason": action.get("reason"),
                       "dry_run": dry_run, "message": action.get("message")}
-            print("WARN  eval alert:", action.get("message"))
+            if not args.output_json:
+                print("WARN  eval alert:", action.get("message"))
         else:
             continue
 
@@ -251,7 +282,10 @@ def main() -> None:
         applied.append(record)
 
     if not applied:
-        print("INFO  No actions applied")
+        if args.output_json:
+            print(json.dumps({"ok": True, "applied": [], "count": 0}))
+        else:
+            print("INFO  No actions applied")
         return
 
     summary_lines = [
@@ -263,9 +297,12 @@ def main() -> None:
     for a in applied:
         summary_lines.append("- [" + a["type"] + "/" + a["action"] + "] " + (a.get("reason") or ""))
     summary = "\n".join(summary_lines)
-    print(summary)
+    if args.output_json:
+        print(json.dumps({"ok": True, "count": len(applied), "applied": applied}, ensure_ascii=True))
+    else:
+        print(summary)
 
-    if not dry_run:
+    if not dry_run and not args.output_json:
         ok = _record_to_aidb(summary)
         if ok:
             print("INFO  Summary recorded to AIDB")

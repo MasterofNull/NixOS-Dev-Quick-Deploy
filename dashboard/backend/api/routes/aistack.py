@@ -8,9 +8,11 @@ import aiohttp
 import json
 import os
 import subprocess
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote, urlsplit, urlunsplit
 from ..config import service_endpoints
 from ..services.systemd_units import get_ai_runtime_units
 
@@ -26,6 +28,7 @@ logger = logging.getLogger(__name__)
 # Prometheus-compatible in-memory gauges for dashboard infra probes.
 _REDIS_PING_OK_GAUGE: float = 0.0
 _POSTGRES_QUERY_OK_GAUGE: float = 0.0
+_AQ_REPORT_CACHE: Dict[str, Any] = {"ts": 0.0, "payload": {}}
 
 # Service endpoints (declarative + env-overridable)
 SERVICES = {
@@ -226,8 +229,21 @@ class HarnessEvalPayload(BaseModel):
 class HarnessMaintenancePayload(BaseModel):
     action: str = Field(
         ...,
-        pattern="^(phase_plan|research_sync|catalog_sync|acceptance_checks)$",
+        pattern="^(phase_plan|research_sync|catalog_sync|acceptance_checks|improvement_pass)$",
     )
+
+
+class PRSIApprovalPayload(BaseModel):
+    action_id: str = Field(..., min_length=4)
+    decision: str = Field(..., pattern="^(approve|reject)$")
+    by: str = Field(default="dashboard")
+    note: Optional[str] = None
+
+
+class PRSIExecutePayload(BaseModel):
+    limit: int = Field(default=5, ge=1, le=50)
+    dry_run: bool = False
+    auto_sync: bool = True
 
 
 def _repo_root() -> Path:
@@ -277,13 +293,18 @@ def _weekly_research_state() -> Dict[str, Any]:
         }
 
 
-async def _run_harness_script(script_name: str, args: Optional[List[str]] = None) -> Dict[str, Any]:
+async def _run_harness_script(
+    script_name: str,
+    args: Optional[List[str]] = None,
+    timeout_seconds: int = 180,
+) -> Dict[str, Any]:
     path = _script_path(script_name)
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Script not found: {path}")
     if not os.access(path, os.X_OK):
         raise HTTPException(status_code=400, detail=f"Script not executable: {path}")
     argv = [str(path)] + (args or [])
+    t0 = time.monotonic()
     try:
         result = await asyncio.to_thread(
             subprocess.run,
@@ -291,19 +312,241 @@ async def _run_harness_script(script_name: str, args: Optional[List[str]] = None
             capture_output=True,
             text=True,
             check=False,
-            timeout=180,
+            timeout=timeout_seconds,
             cwd=str(_repo_root()),
         )
     except subprocess.TimeoutExpired as exc:
         raise HTTPException(status_code=504, detail=f"Script timeout: {script_name}") from exc
+    duration_ms = int((time.monotonic() - t0) * 1000)
     return {
         "script": script_name,
         "args": args or [],
         "exit_code": result.returncode,
         "success": result.returncode == 0,
+        "duration_ms": duration_ms,
         "stdout": (result.stdout or "")[-2000:],
         "stderr": (result.stderr or "")[-2000:],
     }
+
+
+async def _run_prsi_orchestrator(args: List[str], timeout_seconds: int = 90) -> Dict[str, Any]:
+    path = _script_path("prsi-orchestrator.py")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"PRSI orchestrator script not found: {path}")
+    argv = [sys.executable, str(path)] + args
+    try:
+        result = await asyncio.to_thread(
+            subprocess.run,
+            argv,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_seconds,
+            cwd=str(_repo_root()),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=504, detail="PRSI orchestrator timeout") from exc
+
+    stdout = (result.stdout or "").strip()
+    stderr = (result.stderr or "").strip()
+    payload: Dict[str, Any] = {}
+    if stdout:
+        last_line = stdout.splitlines()[-1]
+        try:
+            parsed = json.loads(last_line)
+            if isinstance(parsed, dict):
+                payload = parsed
+        except json.JSONDecodeError:
+            payload = {"raw": last_line}
+    return {
+        "exit_code": result.returncode,
+        "stdout": stdout[-2000:],
+        "stderr": stderr[-2000:],
+        "payload": payload,
+        "ok": result.returncode == 0,
+    }
+
+
+def _extract_improvement_summary(stdout: str) -> Dict[str, Any]:
+    """Extract structured summary JSON from improvement-pass script stdout."""
+    marker = "IMPROVEMENT_SUMMARY_JSON="
+    for line in reversed((stdout or "").splitlines()):
+        if line.startswith(marker):
+            payload = line[len(marker):].strip()
+            try:
+                parsed = json.loads(payload)
+                if isinstance(parsed, dict):
+                    return parsed
+            except json.JSONDecodeError:
+                return {}
+    return {}
+
+
+def _build_aidb_dsn() -> str:
+    pg_user = os.getenv("AIDB_DB_USER", "aidb")
+    pg_name = os.getenv("AIDB_DB_NAME", "aidb")
+    dsn = os.getenv(
+        "AIDB_DB_URL",
+        f"postgresql://{pg_user}@{service_endpoints.SERVICE_HOST}:{service_endpoints.POSTGRES_PORT}/{pg_name}",
+    )
+    return _inject_password_into_dsn(dsn, pg_user)
+
+
+def _inject_password_into_dsn(dsn: str, pg_user: str) -> str:
+    """Add password from secret file if DSN user has no password."""
+    pg_pw_file = os.getenv("POSTGRES_PASSWORD_FILE")
+    if not pg_pw_file:
+        fallback_pw = Path("/run/secrets/postgres_password")
+        if fallback_pw.exists():
+            pg_pw_file = str(fallback_pw)
+    if not pg_pw_file:
+        return dsn
+    try:
+        parsed = urlsplit(dsn)
+    except ValueError:
+        return dsn
+    if not parsed.hostname or parsed.username is None or parsed.password is not None:
+        return dsn
+    if parsed.username != pg_user:
+        return dsn
+    try:
+        pw = Path(pg_pw_file).read_text(encoding="utf-8").strip()
+    except OSError:
+        return dsn
+    if not pw:
+        return dsn
+    netloc = f"{parsed.username}:{quote(pw, safe='')}@{parsed.hostname}"
+    if parsed.port is not None:
+        netloc = f"{netloc}:{parsed.port}"
+    return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
+
+
+async def _record_telemetry_event(
+    *,
+    event_type: str,
+    event_category: str,
+    severity: str,
+    source: str,
+    message: str,
+    metadata: Optional[Dict[str, Any]] = None,
+    duration_ms: Optional[int] = None,
+) -> None:
+    """Record an event in telemetry_events table (best-effort, non-fatal)."""
+    if not _ASYNCPG_AVAILABLE:
+        return
+    conn = None
+    try:
+        conn = await asyncpg.connect(_build_aidb_dsn(), timeout=5.0)
+        event_meta = dict(metadata or {})
+        event_meta.setdefault("event_category", event_category)
+        event_meta.setdefault("severity", severity)
+        event_meta.setdefault("message", message[:4000])
+        try:
+            await conn.execute(
+                """
+                INSERT INTO telemetry_events
+                (event_type, event_category, severity, source, message, metadata, duration_ms)
+                VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+                """,
+                event_type,
+                event_category,
+                severity,
+                source,
+                message[:4000],
+                json.dumps(event_meta, separators=(",", ":")),
+                duration_ms,
+            )
+        except Exception as schema_exc:  # noqa: BLE001
+            # Backward compatibility for legacy telemetry_events schema
+            # (source,event_type,metadata,latency_ms,created_at...).
+            await conn.execute(
+                """
+                INSERT INTO telemetry_events
+                (source, event_type, metadata, latency_ms)
+                VALUES ($1, $2, $3::json, $4)
+                """,
+                source,
+                event_type,
+                json.dumps(event_meta, separators=(",", ":")),
+                duration_ms,
+            )
+            logger.info(
+                "telemetry_event_insert_legacy_schema type=%s detail=%s",
+                event_type,
+                schema_exc,
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "telemetry_event_insert_failed type=%s err_type=%s error=%r",
+            event_type,
+            type(exc).__name__,
+            exc,
+        )
+    finally:
+        if conn is not None:
+            try:
+                await conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+async def _fetch_improvement_pass_stats(hours: int = 24) -> Dict[str, Any]:
+    """Return recent improvement-pass execution stats from telemetry_events."""
+    if not _ASYNCPG_AVAILABLE:
+        return {"available": False, "reason": "asyncpg_not_installed"}
+    conn = None
+    try:
+        conn = await asyncio.wait_for(asyncpg.connect(_build_aidb_dsn()), timeout=3.0)
+        row = await asyncio.wait_for(
+            conn.fetchrow(
+                """
+                SELECT
+                  COUNT(*)::int AS total_runs,
+                  COUNT(*) FILTER (
+                    WHERE COALESCE((metadata->>'success')::boolean, false)
+                  )::int AS successful_runs,
+                  MAX(created_at) AS last_run_at
+                FROM telemetry_events
+                WHERE event_type = 'harness_improvement_pass'
+                  AND created_at >= NOW() - ($1::text || ' hours')::interval
+                """,
+                str(hours),
+            ),
+            timeout=3.0,
+        )
+        latest = await asyncio.wait_for(
+            conn.fetchrow(
+                """
+                SELECT metadata, created_at
+                FROM telemetry_events
+                WHERE event_type = 'harness_improvement_pass'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            ),
+            timeout=3.0,
+        )
+        total = int(row["total_runs"] or 0)
+        successful = int(row["successful_runs"] or 0)
+        last_metadata = dict(latest["metadata"]) if latest and latest["metadata"] else {}
+        return {
+            "available": True,
+            "window_hours": hours,
+            "total_runs": total,
+            "successful_runs": successful,
+            "success_rate_pct": round((successful / total) * 100, 1) if total else None,
+            "last_run_at": row["last_run_at"].isoformat() if row and row["last_run_at"] else None,
+            "last_report": last_metadata.get("report", {}),
+            "last_probe_status": last_metadata.get("probes", {}),
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"available": False, "reason": str(exc)}
+    finally:
+        if conn is not None:
+            try:
+                await conn.close()
+            except Exception:  # noqa: BLE001
+                pass
 
 
 async def _http_health_probe(url: str) -> tuple[bool, Optional[str]]:
@@ -385,14 +628,7 @@ async def _postgres_select1_probe() -> Dict[str, Any]:
         "AIDB_DB_URL",
         f"postgresql://{pg_user}@{service_endpoints.SERVICE_HOST}:{service_endpoints.POSTGRES_PORT}/{pg_name}",
     )
-    # Augment DSN with password from file if available and DSN has no password.
-    pg_pw_file = os.getenv("POSTGRES_PASSWORD_FILE")
-    if pg_pw_file and "://" in dsn and "@" in dsn and ":" not in dsn.split("@")[0]:
-        try:
-            pw = open(pg_pw_file).read().strip()  # noqa: WPS515
-            dsn = dsn.replace(f"://{pg_user}@", f"://{pg_user}:{pw}@", 1)
-        except OSError:
-            pass
+    dsn = _inject_password_into_dsn(dsn, pg_user)
     t0 = time.monotonic()
     conn = None
     try:
@@ -796,15 +1032,18 @@ async def get_harness_overview() -> Dict[str, Any]:
     )
 
     scripts = [
+        "prsi-orchestrator.py",
         "run-ai-harness-phase-plan.sh",
         "run-acceptance-checks.sh",
         "sync-ai-research-knowledge.sh",
         "update-ai-research-now.sh",
         "install-ai-research-sync-timer.sh",
         "sync-aidb-library-catalog.sh",
+        "run-harness-improvement-pass.sh",
     ]
     script_status = [_safe_script_status(name) for name in scripts]
     operational_count = sum(1 for item in script_status if item["exists"] and item["executable"])
+    improvement = await _fetch_improvement_pass_stats(hours=24)
 
     return {
         "timestamp": datetime.utcnow().isoformat(),
@@ -828,6 +1067,7 @@ async def get_harness_overview() -> Dict[str, Any]:
             "operational_scripts": operational_count,
             "total_scripts": len(script_status),
             "weekly_research": _weekly_research_state(),
+            "improvement_pass": improvement,
         },
     }
 
@@ -835,17 +1075,122 @@ async def get_harness_overview() -> Dict[str, Any]:
 @router.post("/harness/maintenance/run")
 async def run_harness_maintenance(payload: HarnessMaintenancePayload) -> Dict[str, Any]:
     """Run allowlisted harness maintenance actions from dashboard."""
-    action_map: Dict[str, tuple[str, List[str]]] = {
-        "phase_plan": ("run-ai-harness-phase-plan.sh", []),
-        "research_sync": ("sync-ai-research-knowledge.sh", []),
-        "catalog_sync": ("sync-aidb-library-catalog.sh", []),
-        "acceptance_checks": ("run-acceptance-checks.sh", []),
+    action_map: Dict[str, tuple[str, List[str], int]] = {
+        "phase_plan": ("run-ai-harness-phase-plan.sh", [], 180),
+        "research_sync": ("sync-ai-research-knowledge.sh", [], 180),
+        "catalog_sync": ("sync-aidb-library-catalog.sh", [], 180),
+        "acceptance_checks": ("run-acceptance-checks.sh", [], 240),
+        "improvement_pass": ("run-harness-improvement-pass.sh", [], 420),
     }
-    script_name, args = action_map[payload.action]
-    result = await _run_harness_script(script_name, args=args)
+    script_name, args, timeout_seconds = action_map[payload.action]
+    result = await _run_harness_script(script_name, args=args, timeout_seconds=timeout_seconds)
+    improvement_summary = _extract_improvement_summary(result.get("stdout", ""))
+    metadata = {
+        "action": payload.action,
+        "script": script_name,
+        "success": bool(result.get("success", False)),
+        "exit_code": int(result.get("exit_code", -1)),
+        "duration_ms": int(result.get("duration_ms", 0) or 0),
+    }
+    if improvement_summary:
+        metadata.update(improvement_summary)
+    await _record_telemetry_event(
+        event_type="harness_improvement_pass" if payload.action == "improvement_pass" else "harness_maintenance_action",
+        event_category="usage",
+        severity="info" if result.get("success") else "warning",
+        source="command-center-dashboard",
+        message=f"Dashboard maintenance action {payload.action} completed (exit={result.get('exit_code')})",
+        metadata=metadata,
+        duration_ms=int(result.get("duration_ms", 0) or 0),
+    )
     return {
         "action": payload.action,
+        "improvement_summary": improvement_summary or None,
         **result,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+@router.get("/prsi/actions")
+async def get_prsi_actions(status: Optional[str] = None, risk: Optional[str] = None) -> Dict[str, Any]:
+    """List PRSI queued actions and counts."""
+    args = ["list"]
+    if status:
+        args.extend(["--status", status])
+    if risk:
+        args.extend(["--risk", risk])
+    result = await _run_prsi_orchestrator(args, timeout_seconds=45)
+    if not result["ok"]:
+        raise HTTPException(status_code=503, detail=result["stderr"] or "prsi_list_failed")
+    payload = result.get("payload", {})
+    if not isinstance(payload, dict):
+        payload = {}
+    return {
+        "status": "ok",
+        "prsi": payload,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+@router.post("/prsi/sync")
+async def sync_prsi_actions(since: str = "1d") -> Dict[str, Any]:
+    """Sync PRSI queue from aq-report structured actions."""
+    result = await _run_prsi_orchestrator(["sync", "--since", since], timeout_seconds=60)
+    if not result["ok"]:
+        raise HTTPException(status_code=503, detail=result["stderr"] or "prsi_sync_failed")
+    return {
+        "status": "ok",
+        "result": result.get("payload", {}),
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+@router.post("/prsi/approve")
+async def approve_prsi_action(payload: PRSIApprovalPayload) -> Dict[str, Any]:
+    """Approve or reject a PRSI queued action."""
+    args = [payload.decision, "--id", payload.action_id, "--by", payload.by]
+    if payload.note:
+        args.extend(["--note", payload.note])
+    result = await _run_prsi_orchestrator(args, timeout_seconds=30)
+    if not result["ok"]:
+        raise HTTPException(status_code=503, detail=result["stderr"] or "prsi_approval_failed")
+    return {
+        "status": "ok",
+        "result": result.get("payload", {}),
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+@router.post("/prsi/execute")
+async def execute_prsi_actions(payload: PRSIExecutePayload) -> Dict[str, Any]:
+    """Execute approved PRSI actions (optionally auto-sync first)."""
+    sync_result = None
+    if payload.auto_sync:
+        sync_result = await _run_prsi_orchestrator(["sync", "--since", "1d"], timeout_seconds=60)
+        if not sync_result["ok"]:
+            raise HTTPException(status_code=503, detail=sync_result["stderr"] or "prsi_sync_before_execute_failed")
+    args = ["execute", "--limit", str(payload.limit)]
+    if payload.dry_run:
+        args.append("--dry-run")
+    exec_result = await _run_prsi_orchestrator(args, timeout_seconds=240)
+    if not exec_result["ok"]:
+        raise HTTPException(status_code=503, detail=exec_result["stderr"] or "prsi_execute_failed")
+    await _record_telemetry_event(
+        event_type="prsi_execute",
+        event_category="usage",
+        severity="info",
+        source="command-center-dashboard",
+        message=f"PRSI execute invoked (limit={payload.limit}, dry_run={payload.dry_run})",
+        metadata={
+            "auto_sync": payload.auto_sync,
+            "sync_result": sync_result.get("payload", {}) if isinstance(sync_result, dict) else None,
+            "execute_result": exec_result.get("payload", {}),
+        },
+    )
+    return {
+        "status": "ok",
+        "sync_result": sync_result.get("payload", {}) if isinstance(sync_result, dict) else None,
+        "execute_result": exec_result.get("payload", {}),
         "timestamp": datetime.utcnow().isoformat(),
     }
 
@@ -1335,6 +1680,41 @@ async def _prom_scalar(query: str) -> Optional[float]:
     return None
 
 
+async def _aq_report_snapshot(ttl_seconds: int = 30) -> Dict[str, Any]:
+    """Return cached aq-report JSON snapshot for dashboard internals."""
+    now = time.time()
+    cached = _AQ_REPORT_CACHE.get("payload")
+    if cached and (now - float(_AQ_REPORT_CACHE.get("ts", 0.0))) < ttl_seconds:
+        return cached
+
+    report_script = _script_path("aq-report")
+    if not report_script.exists():
+        payload = {}
+    else:
+        try:
+            proc = await asyncio.to_thread(
+                subprocess.run,
+                [str(report_script), "--since=7d", "--format=json"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=12,
+                cwd=str(_repo_root()),
+            )
+            if proc.returncode == 0:
+                payload = json.loads(proc.stdout or "{}")
+                if not isinstance(payload, dict):
+                    payload = {}
+            else:
+                payload = {}
+        except Exception:  # noqa: BLE001
+            payload = {}
+
+    _AQ_REPORT_CACHE["ts"] = now
+    _AQ_REPORT_CACHE["payload"] = payload
+    return payload
+
+
 @router.get("/metrics")
 async def get_aistack_metrics() -> Dict[str, Any]:
     """AI internals metrics for the dashboard 'AI Internals' panel.
@@ -1351,13 +1731,14 @@ async def get_aistack_metrics() -> Dict[str, Any]:
     before_q = "increase(context_compression_tokens_before_sum[1h])"
     after_q = "increase(context_compression_tokens_after_sum[1h])"
 
-    hits, misses, local_sel, total_sel, before_sum, after_sum = await asyncio.gather(
+    hits, misses, local_sel, total_sel, before_sum, after_sum, report = await asyncio.gather(
         _prom_scalar(hits_q),
         _prom_scalar(misses_q),
         _prom_scalar(local_q),
         _prom_scalar(total_q),
         _prom_scalar(before_q),
         _prom_scalar(after_q),
+        _aq_report_snapshot(),
     )
 
     h = hits or 0.0
@@ -1372,10 +1753,33 @@ async def get_aistack_metrics() -> Dict[str, Any]:
     a = after_sum or 0.0
     tokens_compressed_last_hour = round(max(b - a, 0.0), 0)
 
+    hint_adoption_pct = (
+        float(report.get("hint_adoption", {}).get("adoption_pct", 0.0) or 0.0)
+        if isinstance(report, dict) else 0.0
+    )
+    eval_latest_pct = (
+        float(report.get("eval_trend", {}).get("latest_pct", 0.0) or 0.0)
+        if isinstance(report, dict) else 0.0
+    )
+    tool_rows = (
+        len(report.get("tool_performance", {}))
+        if isinstance(report, dict) and isinstance(report.get("tool_performance"), dict)
+        else 0
+    )
+    query_gap_count = (
+        len(report.get("query_gaps", []))
+        if isinstance(report, dict) and isinstance(report.get("query_gaps"), list)
+        else 0
+    )
+
     return {
         "embedding_cache_hit_rate_pct": embedding_cache_hit_rate_pct,
         "llm_routing_local_pct": llm_routing_local_pct,
         "tokens_compressed_last_hour": tokens_compressed_last_hour,
+        "hint_adoption_pct": round(hint_adoption_pct, 2),
+        "eval_latest_pct": round(eval_latest_pct, 2),
+        "tool_performance_rows": int(tool_rows),
+        "query_gap_count": int(query_gap_count),
         "timestamp": datetime.utcnow().isoformat(),
     }
 

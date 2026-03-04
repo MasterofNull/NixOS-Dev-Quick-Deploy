@@ -1457,6 +1457,22 @@
                                 <div class="metric-label">Local Routing Split</div>
                                 <div class="metric-value" id="aiInternalsLocalRouting">--</div>
                             </div>
+                            <div class="metric">
+                                <div class="metric-label">Hint Adoption</div>
+                                <div class="metric-value" id="aiInternalsHintAdoption">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Latest Eval Score</div>
+                                <div class="metric-value" id="aiInternalsEvalLatest">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Tool Rows (7d)</div>
+                                <div class="metric-value" id="aiInternalsToolRows">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Open Query Gaps</div>
+                                <div class="metric-value" id="aiInternalsGapCount">--</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1848,6 +1864,18 @@
                                 <div class="metric-label">Research Candidates</div>
                                 <div class="metric-value" id="harnessResearchCandidates">--</div>
                             </div>
+                            <div class="metric">
+                                <div class="metric-label">Improvement Runs (24h)</div>
+                                <div class="metric-value" id="harnessImprovementRuns">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Improvement Success</div>
+                                <div class="metric-value" id="harnessImprovementSuccess">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Last Improvement Run</div>
+                                <div class="metric-value" id="harnessImprovementLast" style="font-size: 0.85rem;">--</div>
+                            </div>
                         </div>
                         <div style="margin-top: 1rem;">
                             <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Harness Tooling</div>
@@ -1860,7 +1888,56 @@
                             <button onclick="runHarnessMaintenance('research_sync')" class="action-btn" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-primary); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">Run Research Sync</button>
                             <button onclick="runHarnessMaintenance('catalog_sync')" class="action-btn" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-primary); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">Sync Library Catalog</button>
                             <button onclick="runHarnessMaintenance('acceptance_checks')" class="action-btn" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-primary); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">Run Acceptance</button>
+                            <button onclick="runHarnessMaintenance('improvement_pass')" class="action-btn" style="background: var(--accent-magenta); color: var(--bg-primary); border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 600;">Run Improvement Pass</button>
                             <div id="harnessActionStatus" style="margin-left: auto; font-size: 0.8rem; color: var(--text-muted);"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PRSI Orchestrator -->
+            <div class="dashboard-section full-width">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">PRSI Orchestrator Queue</h2>
+                        </div>
+                        <span class="card-badge" id="prsiBadge">Initializing...</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="metrics-grid">
+                            <div class="metric">
+                                <div class="metric-label">Pending Approval</div>
+                                <div class="metric-value" id="prsiPendingCount">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Approved</div>
+                                <div class="metric-value" id="prsiApprovedCount">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Executed</div>
+                                <div class="metric-value" id="prsiExecutedCount">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Rejected</div>
+                                <div class="metric-value" id="prsiRejectedCount">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Queue Updated</div>
+                                <div class="metric-value" id="prsiUpdatedAt" style="font-size: 0.85rem;">--</div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Pending Actions (Top 5)</div>
+                            <div class="data-list" id="prsiActionList">
+                                <div class="loading"><div class="spinner"></div></div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            <button onclick="syncPrsiQueue()" class="action-btn" style="background: var(--accent-cyan); color: var(--bg-primary); border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 600;">Sync Queue</button>
+                            <button onclick="executePrsiQueue()" class="action-btn" style="background: var(--accent-magenta); color: var(--bg-primary); border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 600;">Execute Approved</button>
+                            <div id="prsiActionStatus" style="margin-left: auto; font-size: 0.8rem; color: var(--text-muted);"></div>
                         </div>
                     </div>
                 </div>
@@ -2392,6 +2469,7 @@
                     systemMetrics,
                     aiMetrics,
                     aiInternals,
+                    prsiActions,
                     services,
                     containers,
                     actions,
@@ -2404,6 +2482,7 @@
                     fetchSystemMetrics(),
                     fetchAIMetrics(),
                     fetchAIInternals(),
+                    fetchPRSIActions(),
                     fetchServices(),
                     fetchContainers(),
                     fetchActions(),
@@ -2484,6 +2563,7 @@
                 updateProofMetrics(proof);
                 updateHarnessOverview(dashboardData.aiMetrics);
                 updateAIInternals(aiInternals);
+                updatePRSIQueue(prsiActions);
                 updateHealthScore();
                 updateLastUpdate();
             } catch (error) {
@@ -2510,6 +2590,16 @@
         async function fetchAIInternals() {
             try {
                 const response = await fetch(`${FASTAPI_BASE}/api/metrics`, { cache: 'no-store' });
+                if (!response.ok) return {};
+                return await response.json();
+            } catch (_) {
+                return {};
+            }
+        }
+
+        async function fetchPRSIActions() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/prsi/actions`, { cache: 'no-store' });
                 if (!response.ok) return {};
                 return await response.json();
             } catch (_) {
@@ -3650,11 +3740,19 @@
             const cacheHit = Number(data?.embedding_cache_hit_rate_pct ?? 0);
             const localRouting = Number(data?.llm_routing_local_pct ?? 0);
             const tokensCompressed = Number(data?.tokens_compressed_last_hour ?? 0);
+            const hintAdoption = Number(data?.hint_adoption_pct ?? 0);
+            const evalLatest = Number(data?.eval_latest_pct ?? 0);
+            const toolRows = Number(data?.tool_performance_rows ?? 0);
+            const gapCount = Number(data?.query_gap_count ?? 0);
             document.getElementById('aiInternalsCacheHit').textContent = `${cacheHit.toFixed(1)}%`;
             document.getElementById('aiInternalsLocalRouting').textContent = `${localRouting.toFixed(1)}%`;
             document.getElementById('aiInternalsTokensCompressed').textContent = Number.isFinite(tokensCompressed)
                 ? `${Math.round(tokensCompressed)}`
                 : '0';
+            document.getElementById('aiInternalsHintAdoption').textContent = `${hintAdoption.toFixed(1)}%`;
+            document.getElementById('aiInternalsEvalLatest').textContent = `${evalLatest.toFixed(1)}%`;
+            document.getElementById('aiInternalsToolRows').textContent = Number.isFinite(toolRows) ? `${Math.round(toolRows)}` : '0';
+            document.getElementById('aiInternalsGapCount').textContent = Number.isFinite(gapCount) ? `${Math.round(gapCount)}` : '0';
         }
 
         function updateHarnessOverview(aiMetrics) {
@@ -3664,6 +3762,7 @@
             const stats = harness.stats || {};
             const acceptance = scorecard.acceptance || {};
             const maintenance = overview.maintenance || {};
+            const improvement = maintenance.improvement_pass || {};
             const policies = overview.policies || {};
             const discovery = scorecard.discovery || {};
             const scripts = Array.isArray(maintenance.scripts) ? maintenance.scripts : [];
@@ -3687,6 +3786,13 @@
             document.getElementById('harnessScriptsReady').textContent =
                 scriptsReady === null || scriptsTotal === null ? 'N/A' : `${scriptsReady}/${scriptsTotal}`;
             document.getElementById('harnessResearchCandidates').textContent = researchCandidates === null ? 'N/A' : `${researchCandidates}`;
+            const improvementRuns = Number.isFinite(Number(improvement.total_runs)) ? Number(improvement.total_runs) : null;
+            const improvementSuccess = Number.isFinite(Number(improvement.success_rate_pct)) ? Number(improvement.success_rate_pct) : null;
+            document.getElementById('harnessImprovementRuns').textContent = improvementRuns === null ? 'N/A' : `${improvementRuns}`;
+            document.getElementById('harnessImprovementSuccess').textContent =
+                improvementSuccess === null ? 'N/A' : `${improvementSuccess.toFixed(1)}%`;
+            document.getElementById('harnessImprovementLast').textContent =
+                formatTimestampWithStaleness(improvement.last_run_at, 120);
 
             const toolPolicyPresent = Object.keys(policies.tool_execution_policy || {}).length > 0;
             const outboundPolicyPresent = Object.keys(policies.outbound_http_policy || {}).length > 0;
@@ -3717,6 +3823,106 @@
                         `;
                     }).join('');
                 }
+            }
+        }
+
+        function updatePRSIQueue(data) {
+            const prsi = data?.prsi || {};
+            const counts = prsi.counts || {};
+            const actions = Array.isArray(prsi.actions) ? prsi.actions : [];
+            document.getElementById('prsiPendingCount').textContent = counts.pending_approval ?? 0;
+            document.getElementById('prsiApprovedCount').textContent = counts.approved ?? 0;
+            document.getElementById('prsiExecutedCount').textContent = counts.executed ?? 0;
+            document.getElementById('prsiRejectedCount').textContent = counts.rejected ?? 0;
+            document.getElementById('prsiUpdatedAt').textContent = formatTimestampWithStaleness(prsi.updated_at, 120);
+
+            const badge = document.getElementById('prsiBadge');
+            if (badge) {
+                const pending = Number(counts.pending_approval ?? 0);
+                const approved = Number(counts.approved ?? 0);
+                if (pending > 0) {
+                    badge.textContent = `${pending} Pending Approval`;
+                    badge.style.background = 'var(--status-warning)';
+                    badge.style.color = 'var(--bg-primary)';
+                } else if (approved > 0) {
+                    badge.textContent = `${approved} Ready`;
+                    badge.style.background = 'var(--accent-cyan)';
+                    badge.style.color = 'var(--bg-primary)';
+                } else {
+                    badge.textContent = 'In Sync';
+                    badge.style.background = 'var(--status-online)';
+                    badge.style.color = 'var(--bg-primary)';
+                }
+            }
+
+            const list = document.getElementById('prsiActionList');
+            if (!list) return;
+            if (!actions.length) {
+                list.innerHTML = `<div class="data-item"><span>No queued actions</span><span class="data-meta">clear</span></div>`;
+                return;
+            }
+            const top = actions
+                .filter((a) => (a.status || '') === 'pending_approval' || (a.status || '') === 'approved')
+                .slice(0, 5);
+            list.innerHTML = top.map((a) => `
+                <div class="data-item">
+                    <span>${(a.action || 'action')} · ${(a.type || 'type')}</span>
+                    <span class="data-meta">${(a.status || 'unknown')} · ${(a.risk || 'n/a')}</span>
+                </div>
+            `).join('');
+        }
+
+        async function syncPrsiQueue() {
+            const statusEl = document.getElementById('prsiActionStatus');
+            if (statusEl) {
+                statusEl.textContent = 'Syncing queue...';
+                statusEl.style.color = 'var(--status-warning)';
+            }
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/prsi/sync?since=1d`, { method: 'POST' });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                if (statusEl) {
+                    statusEl.textContent = 'Queue sync successful';
+                    statusEl.style.color = 'var(--status-online)';
+                }
+                await refreshDashboard();
+            } catch (error) {
+                if (statusEl) {
+                    statusEl.textContent = 'Queue sync failed';
+                    statusEl.style.color = 'var(--status-error)';
+                }
+                console.error('PRSI queue sync failed:', error);
+            }
+        }
+
+        async function executePrsiQueue() {
+            const statusEl = document.getElementById('prsiActionStatus');
+            if (statusEl) {
+                statusEl.textContent = 'Executing approved actions...';
+                statusEl.style.color = 'var(--status-warning)';
+            }
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/prsi/execute`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ limit: 5, dry_run: false, auto_sync: true })
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                if (statusEl) {
+                    statusEl.textContent = 'Approved actions executed';
+                    statusEl.style.color = 'var(--status-online)';
+                }
+                await refreshDashboard();
+            } catch (error) {
+                if (statusEl) {
+                    statusEl.textContent = 'Execution failed';
+                    statusEl.style.color = 'var(--status-error)';
+                }
+                console.error('PRSI execute failed:', error);
             }
         }
 
