@@ -1176,7 +1176,7 @@ in
           Type = "oneshot";
           User = svcUser;
           Group = svcGroup;
-          WorkingDirectory = mcp.repoPath;
+          WorkingDirectory = dataDir;
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
             "${mcp.repoPath}/scripts/post-deploy-converge.sh"
@@ -1184,7 +1184,8 @@ in
           ReadOnlyPaths = [ "/" ];
           ReadWritePaths = [ "${dataDir}" ];
           PrivateTmp = true;
-          ProtectHome = true;
+          # Repo lives under /home/<primaryUser>; allow read-only traversal.
+          ProtectHome = "read-only";
           ProtectSystem = "strict";
           NoNewPrivileges = true;
           PrivateNetwork = false;
