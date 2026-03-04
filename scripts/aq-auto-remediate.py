@@ -80,7 +80,7 @@ def _env_float(name: str, default: float) -> float:
 def _load_settings(args: argparse.Namespace) -> Settings:
     report_json = Path(args.report_json or os.getenv("POST_DEPLOY_AQ_REPORT_OUT", str(DEFAULT_REPORT_PATH)))
     summary_out = Path(args.summary_out or os.getenv("POST_DEPLOY_AUTO_REMEDIATE_OUT", str(DEFAULT_SUMMARY_PATH)))
-    api_key_file = os.getenv("HYBRID_API_KEY_FILE")
+    api_key_file = os.getenv("HYBRID_API_KEY_FILE", "/run/secrets/hybrid_coordinator_api_key")
     return Settings(
         enabled=_env_bool("POST_DEPLOY_AUTO_REMEDIATE_ENABLE", True),
         dry_run=bool(args.dry_run) or _env_bool("POST_DEPLOY_AUTO_REMEDIATE_DRY_RUN", False),
@@ -241,7 +241,11 @@ def remediate_intent_contract(settings: Settings, report: Dict[str, Any]) -> Dic
         }
         try:
             response = _hybrid_post(settings, "/workflow/run/start", payload)
-            if isinstance(response, dict) and response.get("ok"):
+            if isinstance(response, dict) and (
+                response.get("ok")
+                or response.get("session_id")
+                or response.get("run_id")
+            ):
                 result["runs_started"] = int(result.get("runs_started", 0)) + 1
             else:
                 result["errors"].append(f"unexpected_response:{str(response)[:120]}")

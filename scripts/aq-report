@@ -630,11 +630,33 @@ def hint_diversity(adoption: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def task_tooling_quality(since: datetime) -> Dict[str, Any]:
+def _task_tooling_from_hint_adoption(adoption: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not isinstance(adoption, dict):
+        return {"available": True, "total": 0}
+    plan_total = int(adoption.get("tooling_plan_total", 0) or 0)
+    plan_success = int(adoption.get("tooling_plan_success", 0) or 0)
+    if plan_total <= 0:
+        return {"available": True, "total": 0}
+    return {
+        "available": True,
+        "source": "hint_adoption_fallback",
+        "total": plan_total,
+        "success": plan_success,
+        "success_pct": round(100 * plan_success / plan_total, 1) if plan_total else None,
+        "plan_total": plan_total,
+        "plan_success": plan_success,
+        "plan_success_pct": round(100 * plan_success / plan_total, 1) if plan_total else None,
+        "baseline_total": 0,
+        "baseline_success": 0,
+        "baseline_success_pct": None,
+    }
+
+
+def task_tooling_quality(since: datetime, adoption: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Read aider task audit and compare injected-plan success vs baseline."""
     task_path = _task_audit_path()
     if not task_path:
-        return {"available": True, "total": 0}
+        return _task_tooling_from_hint_adoption(adoption)
 
     total = 0
     success = 0
@@ -672,7 +694,10 @@ def task_tooling_quality(since: datetime) -> Dict[str, Any]:
                     if ok:
                         baseline_success += 1
     except OSError:
-        return {"available": True, "total": 0}
+        return _task_tooling_from_hint_adoption(adoption)
+
+    if total == 0:
+        return _task_tooling_from_hint_adoption(adoption)
 
     return {
         "available": True,
@@ -1836,7 +1861,7 @@ def main() -> None:
     cache = cache_hit_rate()
     eval_trend = eval_score_trend(eval_rows)
     adoption = hint_adoption(since_dt)  # Phase 19.3.4
-    tooling_quality = task_tooling_quality(since_dt)
+    tooling_quality = task_tooling_quality(since_dt, adoption)
     intent_compliance = read_workflow_sessions(since_dt)
     security_auditor = security_auditor_health(audit_entries)
     semantic_autorun = semantic_autorun_health(audit_entries)
