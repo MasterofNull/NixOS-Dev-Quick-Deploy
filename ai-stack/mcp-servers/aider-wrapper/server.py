@@ -287,7 +287,7 @@ async def _run_analysis_fastpath(prompt: str, workspace: Path, files: List[str])
     loop = asyncio.get_event_loop()
 
     def _fetch() -> Dict:
-        with urllib.request.urlopen(req, timeout=12) as r:
+        with urllib.request.urlopen(req, timeout=6) as r:
             return json.loads(r.read())
 
     result = await loop.run_in_executor(None, _fetch)
@@ -383,7 +383,7 @@ def _write_task_audit(task_id: str, status: str, completed: bool) -> None:
         result = entry.get("result", {}) if isinstance(entry.get("result"), dict) else {}
         prompt = str(req.get("prompt", "") or "")
         payload = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "service": "aider-wrapper",
             "task_id": task_id,
             "status": status,
@@ -444,6 +444,9 @@ def _select_hint_for_injection(prompt: str, hints: List[Dict[str, object]]) -> T
             or score >= AI_HINTS_BYPASS_OVERLAP_SCORE
         )
         if score >= AI_HINTS_MIN_SCORE and overlap_ok:
+            hint_id = str(hint.get("id", "") or "")
+            if hint_id.startswith("runtime_tool_error_"):
+                score -= 0.18
             eligible.append((hint, score, overlap, len(snippet)))
 
     if not eligible:

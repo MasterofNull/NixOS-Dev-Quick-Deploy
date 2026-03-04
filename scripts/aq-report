@@ -613,7 +613,14 @@ def hint_diversity(adoption: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         status = "highly_concentrated"
     elif dominant_share_pct is not None and float(dominant_share_pct) >= 50:
         status = "concentrated"
-    elif normalized_entropy_pct is not None and float(normalized_entropy_pct) >= 70:
+    elif (
+        dominant_share_pct is not None
+        and normalized_entropy_pct is not None
+        and float(dominant_share_pct) < 50
+        and float(normalized_entropy_pct) >= 60
+    ):
+        status = "balanced"
+    elif normalized_entropy_pct is not None and float(normalized_entropy_pct) >= 75:
         status = "healthy"
     else:
         status = "mixed"

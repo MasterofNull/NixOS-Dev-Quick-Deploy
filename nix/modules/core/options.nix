@@ -472,6 +472,117 @@
           description = "Maximum synthetic workflow probe runs per convergence cycle.";
         };
 
+        intentBoundedEnable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = ''
+            Enable bounded iterative intent-contract remediation loop during
+            post-deploy convergence.
+          '';
+        };
+
+        intentBoundedTargetCoveragePct = lib.mkOption {
+          type = lib.types.addCheck lib.types.float (v: v >= 0.0 && v <= 100.0);
+          default = 65.0;
+          description = "Target intent-contract coverage for bounded remediation loop.";
+        };
+
+        intentBoundedRunsPerPass = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 8;
+          description = "Maximum remediation runs started per bounded intent pass.";
+        };
+
+        intentBoundedMaxTotalRuns = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 24;
+          description = "Total run budget for bounded intent remediation per convergence cycle.";
+        };
+
+        intentBoundedMaxPasses = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 4;
+          description = "Maximum bounded intent remediation passes per convergence cycle.";
+        };
+
+        intentBoundedSleepSeconds = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 2;
+          description = "Sleep delay between bounded intent remediation passes.";
+        };
+
+        intentBoundedTimeoutSeconds = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 180;
+          description = "Timeout budget for bounded intent remediation execution.";
+        };
+
+        hintBoundedEnable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = ''
+            Enable bounded hint-adoption remediation loop during post-deploy
+            convergence.
+          '';
+        };
+
+        hintBoundedTargetAdoptionPct = lib.mkOption {
+          type = lib.types.addCheck lib.types.float (v: v >= 0.0 && v <= 100.0);
+          default = 70.0;
+          description = "Target hint adoption success rate for bounded remediation loop.";
+        };
+
+        hintBoundedRunsPerPass = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 3;
+          description = "Maximum hinted tasks submitted per bounded hint remediation pass.";
+        };
+
+        hintBoundedMaxTotalRuns = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 9;
+          description = "Total hinted-task budget per bounded hint remediation cycle.";
+        };
+
+        hintBoundedMaxPasses = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 5;
+          description = "Maximum bounded hint remediation passes per convergence cycle.";
+        };
+
+        hintBoundedPollMaxSeconds = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 90;
+          description = "Maximum per-task status polling time for hint remediation runs.";
+        };
+
+        hintBoundedSleepSeconds = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 2;
+          description = "Sleep delay between bounded hint remediation passes.";
+        };
+
+        hintBoundedTimeoutSeconds = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 420;
+          description = "Timeout budget for bounded hint remediation execution.";
+        };
+
+        hintBoundedWorkspace = lib.mkOption {
+          type = lib.types.str;
+          default = "/var/lib/ai-stack/hybrid/remediation";
+          description = ''
+            Writable workspace used for bounded hint-remediation mutation probes.
+            Should remain under mutable AI stack data paths.
+          '';
+        };
+
+        hintBoundedFile = lib.mkOption {
+          type = lib.types.str;
+          default = "hint-remediation/notes.md";
+          description = "Relative file path used by bounded hint-remediation probes.";
+        };
+
         staleGapCurationEnable = lib.mkOption {
           type = lib.types.bool;
           default = true;
@@ -1345,25 +1456,25 @@
 
           hintDiversityRepeatCapPct = lib.mkOption {
             type = lib.types.addCheck lib.types.float (v: v >= 10.0 && v <= 100.0);
-            default = 70.0;
+            default = 60.0;
             description = "Repeat-share percentage cap before a hint ID is considered overused.";
           };
 
           hintDiversityRepeatMinCount = lib.mkOption {
             type = lib.types.ints.positive;
-            default = 8;
+            default = 6;
             description = "Minimum recent injection count before repeat-cap logic is applied.";
           };
 
           hintDiversityTypeMin = lib.mkOption {
             type = lib.types.str;
-            default = "runtime_signal:1";
+            default = "runtime_signal:1,gap_topic:1,workflow_rule:1";
             description = "Minimum per-type hint quotas (comma-separated type:n), e.g. runtime_signal:1,gap_topic:1.";
           };
 
           hintDiversityTypeMax = lib.mkOption {
             type = lib.types.str;
-            default = "runtime_signal:2,prompt_template:2,gap_topic:2,workflow_rule:1,tool_warning:1";
+            default = "runtime_signal:2,prompt_template:1,gap_topic:2,workflow_rule:1,tool_warning:1";
             description = "Maximum per-type hint quotas (comma-separated type:n) used during final hint selection.";
           };
 

@@ -1334,3 +1334,39 @@
 - `./scripts/analyze-clean-deploy-readiness.sh --host nixos --profile ai-dev --flake-ref path:$(pwd)` → FAIL (expected, account locked)
   - Summary: `8 pass, 5 warn, 1 fail`
 - `./scripts/deploy-clean.sh --host nixos --profile ai-dev --analyze-only --skip-discovery --skip-health-check --skip-flatpak-sync` → FAIL (expected, same locked-account gate)
+## Program Closure Update (2026-03-04)
+
+- System Upgrade Roadmap is now closed as a completed historical program.
+- Canonical active execution plans are:
+  - `docs/SYSTEM-IMPROVEMENT-PLAN-2026-03.md`
+  - `docs/AGENT-PARITY-MATRIX.md`
+- Closure verification evidence (latest pass):
+  - `scripts/check-mcp-health.sh` (13/13 required services passing)
+  - `scripts/quick-deploy-lint.sh --mode fast` (all checks passing)
+  - `scripts/validate-runtime-declarative.sh` (pass)
+  - `scripts/check-prsi-phase7-program.sh` (pass)
+  - `scripts/verify-flake-first-roadmap-completion.sh` (31 pass / 0 fail)
+- `scripts/run-harness-improvement-pass.sh` (success=true)
+
+## Post-Activation Validation Report (2026-03-04 13:12 UTC)
+
+### Scope
+- Validate `ai-npm-security-monitor.service` after activation.
+- Confirm systemd execution status, journal evidence, and report artifact output.
+
+### Results
+- `systemctl show ai-npm-security-monitor.service`:
+  - `Result=success`
+  - `ExecMainStatus=0`
+  - `ActiveState=inactive` / `SubState=dead` (expected for `Type=oneshot`)
+- Journal evidence:
+  - `Starting AI Stack npm supply-chain security monitor...`
+  - `npm security report written: /var/lib/ai-stack/security/npm/npm-security-20260304T131216Z.json`
+  - `Finished AI Stack npm supply-chain security monitor.`
+- Artifacts present:
+  - `/var/lib/ai-stack/security/npm/latest-npm-security.json`
+  - `/var/lib/ai-stack/security/npm/npm-security-20260304T131216Z.json`
+
+### Outcome
+- PASS: post-activation npm monitor execution is healthy on current generation.
+- Historical failures shown by `systemctl status` are prior invocations and do not represent the latest run state.

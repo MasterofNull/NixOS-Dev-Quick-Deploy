@@ -168,10 +168,10 @@ for package_file in "${package_files[@]}"; do
         prepare: (.prepare // "")
       }' "${package_file}" 2>/dev/null || echo '{}')"
 
-  suspicious_lifecycle_count="$(printf '%s\n' "${lifecycle_json}" | python3 - <<'PY'
+  suspicious_lifecycle_count="$(python3 - "${lifecycle_json}" <<'PY'
 import json, re, sys
 try:
-    scripts = json.load(sys.stdin)
+    scripts = json.loads(sys.argv[1])
 except Exception:
     print(0)
     raise SystemExit(0)

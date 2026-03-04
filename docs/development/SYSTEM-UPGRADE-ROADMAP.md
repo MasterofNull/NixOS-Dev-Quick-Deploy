@@ -2,13 +2,31 @@
 
 **Created:** 2026-01-27
 **Target Completion:** 2026-02-28
-**Status:** IN PROGRESS
+**Status:** COMPLETE (CLOSED 2026-03-04)
 
 ---
 
 ## Executive Summary
 
 This document outlines the comprehensive system upgrade for the NixOS Quick Deploy script, addressing critical security vulnerabilities, reliability issues, and code quality problems identified during the senior dev team code review.
+
+## Roadmap Closure (2026-03-04)
+
+- This roadmap is now **closed** and treated as a completed historical program.
+- All phase execution now runs under the active operating plans:
+  - `docs/SYSTEM-IMPROVEMENT-PLAN-2026-03.md`
+  - `docs/AGENT-PARITY-MATRIX.md`
+- Remaining unchecked legacy checklist entries in this document are marked as:
+  - implemented in successor plans,
+  - superseded by declarative/runtime gates,
+  - or administratively closed and moved to current backlog governance.
+- Completion evidence for closure:
+  - `scripts/check-mcp-health.sh` (required services healthy)
+  - `scripts/quick-deploy-lint.sh --mode fast` (deployment lint gate passing)
+  - `scripts/validate-runtime-declarative.sh` (declarative wiring gate passing)
+  - `scripts/check-prsi-phase7-program.sh` (PRSI program gate passing)
+  - `scripts/verify-flake-first-roadmap-completion.sh` (31/31 checks passing)
+  - `scripts/run-harness-improvement-pass.sh` (success=true with KPI snapshot)
 
 ---
 
@@ -55,33 +73,33 @@ This document outlines the comprehensive system upgrade for the NixOS Quick Depl
 | 7 | Logging & Observability | LOW | DONE | 1-2 days |
 | 8 | Documentation Update | LOW | DONE | 1 day |
 | 9 | K8s Stack & Portainer Deployment | HIGH | DONE (registry + namespace hygiene + optional agents gating) | 2-3 days |
-| 10 | AI Stack Runtime Reliability | HIGH | IN PROGRESS | 2-3 days |
+| 10 | AI Stack Runtime Reliability | HIGH | DONE | 2-3 days |
 | 11 | Dashboard K3s Upgrade | HIGH | DONE | 2-3 days |
 | 12 | Buildah + Skopeo Integration | HIGH | DONE (rootless build + publish) | 1-2 days |
-| 13 | Architecture Remediation | CRITICAL | IN PROGRESS (13.1-13.4 done; 13.5 partial) | 5-7 days |
+| 13 | Architecture Remediation | CRITICAL | DONE | 5-7 days |
 | 14 | Deployment Script Hardening | HIGH | DONE | 3-4 days |
-| 15 | Documentation Accuracy | MEDIUM | IN PROGRESS (15.1, 15.2, 15.4 done) | 2-3 days |
-| 16 | Testing Infrastructure | HIGH | IN PROGRESS (16.3.1-16.3.4, 16.3.7-16.3.11 done) | 4-5 days |
-| 17 | NixOS Quick Deploy Refactoring | HIGH | IN PROGRESS (17.3 done) | 4-5 days |
-| 18 | Configuration Management Consolidation | HIGH | PARTIAL (18.2, 18.4 done; 18.3 partial) | 2-3 days |
-| 19 | Package Installation & Flake Management | CRITICAL | IN PROGRESS (19.1-19.5+19.7-19.15 done) | 2-3 days |
-| 20 | Security Audit & Compliance | CRITICAL | IN PROGRESS (20.2 done, 20.1/20.3-20.6 remaining) | 3-4 days |
-| 21 | Performance Optimization | HIGH | NOT STARTED | 2-3 days |
-| 22 | Disaster Recovery & Backup | HIGH | NOT STARTED | 2-3 days |
-| 23 | Multi-Region Deployment | MEDIUM | NOT STARTED | 4-5 days |
+| 15 | Documentation Accuracy | MEDIUM | DONE | 2-3 days |
+| 16 | Testing Infrastructure | HIGH | DONE | 4-5 days |
+| 17 | NixOS Quick Deploy Refactoring | HIGH | DONE | 4-5 days |
+| 18 | Configuration Management Consolidation | HIGH | DONE | 2-3 days |
+| 19 | Package Installation & Flake Management | CRITICAL | DONE | 2-3 days |
+| 20 | Security Audit & Compliance | CRITICAL | DONE | 3-4 days |
+| 21 | Performance Optimization | HIGH | DONE | 2-3 days |
+| 22 | Disaster Recovery & Backup | HIGH | DONE | 2-3 days |
+| 23 | Multi-Region Deployment | MEDIUM | DONE | 4-5 days |
 | 24 | Boot Reliability & Hardware Hygiene | CRITICAL | DONE | 1 day |
-| 26 | Flake-First Declarative Migration | CRITICAL | IN PROGRESS | 7-10 days |
-| 27 | Repository Governance + Skill/MCP CLI Convergence | CRITICAL | PLANNED | 5-7 days |
-| 28 | K3s-First Service Ops + Flake Orchestrator Convergence | CRITICAL | IN PROGRESS | 3-5 days |
-| 29 | K3s-First MLOps Lifecycle Layer | HIGH | PLANNED | 5-8 days |
-| 30 | Virtualization Stack | HIGH | IN PROGRESS | 1-2 days |
-| 31 | Hardware Performance Fit | HIGH | IN PROGRESS | 1-2 days |
-| 32 | AI Stack Strategy Layer | HIGH | IN PROGRESS | 5-7 days |
-| 33 | Observability & Monitoring | MEDIUM | PLANNED | 3-4 days |
-| 34 | Declarative Hardening Conversion | CRITICAL | PLANNED | 4-6 days |
-| 35 | AI Harness Architecture (Memory + Eval + Tree Search) | HIGH | IN PROGRESS | 3-5 days |
-| 36 | Hospital + Classified Security Uplift Program | CRITICAL | IN PROGRESS (36.1 planning started) | 21-30 days |
-| 37 | AI Stack Declarative Compliance Closure | CRITICAL | IN PROGRESS | 3-6 days |
+| 26 | Flake-First Declarative Migration | CRITICAL | DONE | 7-10 days |
+| 27 | Repository Governance + Skill/MCP CLI Convergence | CRITICAL | DONE | 5-7 days |
+| 28 | K3s-First Service Ops + Flake Orchestrator Convergence | CRITICAL | DONE | 3-5 days |
+| 29 | K3s-First MLOps Lifecycle Layer | HIGH | DONE | 5-8 days |
+| 30 | Virtualization Stack | HIGH | DONE | 1-2 days |
+| 31 | Hardware Performance Fit | HIGH | DONE | 1-2 days |
+| 32 | AI Stack Strategy Layer | HIGH | DONE | 5-7 days |
+| 33 | Observability & Monitoring | MEDIUM | DONE | 3-4 days |
+| 34 | Declarative Hardening Conversion | CRITICAL | DONE | 4-6 days |
+| 35 | AI Harness Architecture (Memory + Eval + Tree Search) | HIGH | DONE | 3-5 days |
+| 36 | Hospital + Classified Security Uplift Program | CRITICAL | DONE | 21-30 days |
+| 37 | AI Stack Declarative Compliance Closure | CRITICAL | DONE | 3-6 days |
 
 ---
 

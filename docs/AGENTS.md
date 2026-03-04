@@ -13,6 +13,39 @@
 - `docs/agent-guides/01-QUICK-START.md` - Task-ready checklist
 - `ai-stack/agents/skills/AGENTS.md` - Skill usage and sync rules
 
+## Default Multi-Agent Workflow (Always Apply)
+
+1. Start with harness workflow endpoints for non-trivial tasks:
+   - `POST /workflow/plan`
+   - `POST /workflow/run/start` (must include `intent_contract`)
+   - `GET/POST /hints`
+2. Decompose into small task slices with explicit owner and reviewer gate.
+3. Enforce evidence contract per slice:
+   - files changed
+   - commands run
+   - tests run
+   - evidence output
+   - rollback note
+4. Reject slices that lack evidence or introduce regressions.
+5. Prefer declarative implementation through Nix options/modules before script/runtime fallback.
+6. Complete verification before handoff:
+   - `scripts/check-mcp-health.sh`
+   - `scripts/quick-deploy-lint.sh --mode fast`
+   - `scripts/validate-runtime-declarative.sh`
+   - `scripts/check-prsi-phase7-program.sh`
+   - `scripts/aq-report --since=7d --format=text`
+
+## Subagent Role Notes and Limitations
+
+- Role boundary (non-negotiable):
+  - When running as a sub-agent, do not act as coordinator/delegator/reviewer.
+  - Do not change global scope, assign other agents, or mark final acceptance.
+  - Complete only the assigned task slice and return validation evidence to the coordinator.
+- `gemini`: best for discovery/research synthesis and declarative option tuning proposals; reviewer must verify for completeness under quota/rate-limit behavior.
+- `qwen`: best for concrete patch suggestions and runtime logic refinements; reviewer must verify paths/tests are real and in-repo.
+- `claude` (when enabled): best for deeper architecture/risk synthesis; if paused, do not dispatch.
+- Orchestrator agent: final authority for acceptance/rejection, security gates, and regression prevention.
+
 ## Specialist Agent Profiles (Migrated from Legacy `.claude/agents`)
 
 These profiles are now part of the canonical onboarding docs and should be invoked by scope, not by legacy file location.

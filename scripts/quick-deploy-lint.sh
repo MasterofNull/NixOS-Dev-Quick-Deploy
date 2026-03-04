@@ -70,9 +70,9 @@ done
   exit 2
 }
 
-TOTAL=4
+TOTAL=5
 if [[ "${MODE}" == "full" ]]; then
-  TOTAL=6
+  TOTAL=7
 fi
 STEP=0
 
@@ -109,6 +109,9 @@ run_step "Declarative runtime wiring" \
 
 run_step "Known failure-mode checks" \
   bash scripts/check-dryrun-failure-modes.sh --flake-ref "${FLAKE_REF}" --nixos-target "${NIXOS_TARGET}"
+
+run_step "npm security monitor smoke" \
+  bash scripts/check-npm-security-monitor-smoke.sh
 
 if [[ "${MODE}" == "full" ]]; then
   run_step "NixOS dry build" \
