@@ -1175,7 +1175,7 @@
 
           aiderHintsMinScore = lib.mkOption {
             type = lib.types.addCheck lib.types.float (v: v >= 0.0 && v <= 1.0);
-            default = 0.45;
+            default = 0.55;
             description = "Minimum aq-hints score required before injection into aider task prompts.";
           };
 
