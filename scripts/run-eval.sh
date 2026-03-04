@@ -24,7 +24,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../config/service-endpoints.sh"
 
 EVAL_CONFIG="${EVAL_CONFIG:-ai-stack/eval/promptfoo-config.yaml}"
-OUTPUT_DIR="${OUTPUT_DIR:-ai-stack/eval/results}"
+OUTPUT_DIR="${OUTPUT_DIR:-${HOME}/.local/share/nixos-ai-stack/eval/results}"
 LLAMA_BASE_URL="${LLAMA_URL%/}"
 ACCEPTANCE_THRESHOLD="${ACCEPTANCE_THRESHOLD:-70}"   # percent
 CI_MODE="${CI_MODE:-0}"
@@ -52,7 +52,7 @@ Usage: scripts/run-eval.sh [OPTIONS]
 
 Options:
   --config FILE       Promptfoo config (default: ai-stack/eval/promptfoo-config.yaml)
-  --output DIR        Output directory for eval results (default: ai-stack/eval/results)
+  --output DIR        Output directory for eval results (default: ~/.local/share/nixos-ai-stack/eval/results)
   --threshold N       Minimum pass percentage (default: 70)
   --strategy LABEL    Strategy tag for leaderboard tracking (e.g. cross-encoder-v1)
   --ci                CI mode — strip color, exit non-zero on failure
