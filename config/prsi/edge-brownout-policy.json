@@ -1,0 +1,20 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-03-04",
+  "modes": ["normal", "brownout", "failsafe"],
+  "triggers": {
+    "high_error_rate_pct": 5.0,
+    "high_latency_ms": 8000,
+    "dependency_unhealthy": true
+  },
+  "brownout_actions": [
+    "disable_optional_remote_expansions",
+    "prefer_cached_route_hints",
+    "reduce_concurrency"
+  ],
+  "failsafe_actions": [
+    "force_safe_mode",
+    "block_high_risk_actions",
+    "require_manual_recovery_ack"
+  ]
+}

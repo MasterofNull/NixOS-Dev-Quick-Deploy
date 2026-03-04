@@ -7,6 +7,7 @@
 #
 # Usage:
 #   scripts/seed-routing-traffic.sh [--count N]
+#   scripts/seed-routing-traffic.sh --count 8 --replay 2 --include-gaps
 #   SEED_ROUTING_SKIP_GENERATION=true scripts/seed-routing-traffic.sh --count N
 set -euo pipefail
 
@@ -15,9 +16,14 @@ source "${SCRIPT_DIR}/../config/service-endpoints.sh"
 
 COUNT="${1:-}"
 QUERY_COUNT=6
+REPLAY_COUNT=1
+INCLUDE_GAPS="${SEED_ROUTING_INCLUDE_GAPS:-true}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --count) QUERY_COUNT="$2"; shift 2 ;;
+    --replay) REPLAY_COUNT="$2"; shift 2 ;;
+    --include-gaps) INCLUDE_GAPS=true; shift ;;
+    --no-gaps) INCLUDE_GAPS=false; shift ;;
     *) shift ;;
   esac
 done
@@ -33,7 +39,7 @@ if [[ -z "$HYBRID_KEY" ]]; then
   exit 0
 fi
 
-QUERIES=(
+BASE_QUERIES=(
   "what is lib.mkForce in NixOS"
   "NixOS flake configuration basics"
   "how to use lib.mkIf in NixOS modules"
@@ -44,26 +50,60 @@ QUERIES=(
   "how to write a NixOS home-manager module"
 )
 
-printf 'seed-routing-traffic: sending %d queries through hybrid-coordinator...\n' "$QUERY_COUNT"
-PASS=0; FAIL=0
-for i in "${!QUERIES[@]}"; do
-  [[ $i -ge $QUERY_COUNT ]] && break
-  Q="${QUERIES[$i]}"
-  HTTP_CODE="$(curl -s -o /dev/null -w "%{http_code}" \
-    --max-time 30 --connect-timeout 5 \
-    -X POST "${HYBRID_URL%/}/query" \
-    -H "Content-Type: application/json" \
-    -H "X-API-Key: ${HYBRID_KEY}" \
-    -d "{\"query\":$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$Q"),\"mode\":\"auto\",\"prefer_local\":true,\"limit\":3,\"context\":{\"skip_gap_tracking\":true,\"source\":\"seed-routing-traffic\"}}" \
-    2>/dev/null || true)"
-  [[ -n "$HTTP_CODE" ]] || HTTP_CODE="000"
-  if [[ "$HTTP_CODE" =~ ^2 ]]; then
-    printf '  OK  %s\n' "$Q"
-    (( PASS++ )) || true
-  else
-    printf '  FAIL HTTP %s: %s\n' "$HTTP_CODE" "$Q" >&2
-    (( FAIL++ )) || true
+declare -a DYNAMIC_GAP_QUERIES=()
+if [[ "${INCLUDE_GAPS}" == "true" ]] && command -v psql >/dev/null 2>&1; then
+  PG_PASS_FILE="${POSTGRES_PASSWORD_FILE:-/run/secrets/postgres_password}"
+  PG_HOST="${POSTGRES_HOST:-127.0.0.1}"
+  PG_PORT="${POSTGRES_PORT:-5432}"
+  PG_USER="${POSTGRES_USER:-aidb}"
+  PG_DB="${POSTGRES_DB:-aidb}"
+  if [[ -r "${PG_PASS_FILE}" ]]; then
+    export PGPASSWORD="$(tr -d '[:space:]' < "${PG_PASS_FILE}")"
   fi
+  GAP_ROWS="$(psql -h "${PG_HOST}" -p "${PG_PORT}" -U "${PG_USER}" -d "${PG_DB}" -t -A \
+    -c "SELECT query_text FROM query_gaps GROUP BY query_text ORDER BY COUNT(*) DESC LIMIT 6;" \
+    2>/dev/null || true)"
+  while IFS= read -r row; do
+    q="$(echo "${row}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    [[ -n "${q}" ]] || continue
+    DYNAMIC_GAP_QUERIES+=("${q}")
+  done <<< "${GAP_ROWS}"
+fi
+
+declare -a QUERIES=("${BASE_QUERIES[@]}")
+for q in "${DYNAMIC_GAP_QUERIES[@]}"; do
+  duplicate=false
+  for b in "${QUERIES[@]}"; do
+    if [[ "${b}" == "${q}" ]]; then
+      duplicate=true
+      break
+    fi
+  done
+  [[ "${duplicate}" == true ]] || QUERIES+=("${q}")
+done
+
+printf 'seed-routing-traffic: sending %d queries x %d replay through hybrid-coordinator...\n' "$QUERY_COUNT" "$REPLAY_COUNT"
+PASS=0; FAIL=0
+for ((r=1; r<=REPLAY_COUNT; r++)); do
+  for i in "${!QUERIES[@]}"; do
+    [[ $i -ge $QUERY_COUNT ]] && break
+    Q="${QUERIES[$i]}"
+    HTTP_CODE="$(curl -s -o /dev/null -w "%{http_code}" \
+      --max-time 30 --connect-timeout 5 \
+      -X POST "${HYBRID_URL%/}/query" \
+      -H "Content-Type: application/json" \
+      -H "X-API-Key: ${HYBRID_KEY}" \
+      -d "{\"query\":$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$Q"),\"mode\":\"auto\",\"prefer_local\":true,\"limit\":3,\"context\":{\"skip_gap_tracking\":true,\"source\":\"seed-routing-traffic\"}}" \
+      2>/dev/null || true)"
+    [[ -n "$HTTP_CODE" ]] || HTTP_CODE="000"
+    if [[ "$HTTP_CODE" =~ ^2 ]]; then
+      printf '  OK  [pass %d] %s\n' "$r" "$Q"
+      (( PASS++ )) || true
+    else
+      printf '  FAIL HTTP %s [pass %d]: %s\n' "$HTTP_CODE" "$r" "$Q" >&2
+      (( FAIL++ )) || true
+    fi
+  done
 done
 
 printf 'seed-routing-traffic: %d OK, %d FAIL\n' "$PASS" "$FAIL"

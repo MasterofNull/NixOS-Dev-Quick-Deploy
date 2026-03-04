@@ -64,6 +64,22 @@ function csv(value) {
     .filter(Boolean);
 }
 
+function defaultIntentContract(query) {
+  const normalized = String(query || "").trim() || "workflow run";
+  return {
+    user_intent: normalized,
+    definition_of_done: `Complete requested workflow task: ${normalized.slice(0, 120)}`,
+    depth_expectation: "minimum",
+    spirit_constraints: [
+      "follow declarative-first policy",
+      "capture validation evidence",
+    ],
+    no_early_exit_without: [
+      "all requested checks complete",
+    ],
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const cmd = args._[0];
@@ -114,12 +130,24 @@ async function main() {
         expected_keywords: csv(args.keywords),
       });
     case "run-start":
-      return call("/workflow/run/start", "POST", {
-        query: args.query || args.q || "",
-        safety_mode: args["safety-mode"] || "plan-readonly",
-        token_limit: args["token-limit"] ? Number(args["token-limit"]) : 8000,
-        tool_call_limit: args["tool-call-limit"] ? Number(args["tool-call-limit"]) : 40,
-      });
+      {
+        const query = args.query || args.q || "";
+        const intentContract = defaultIntentContract(query);
+        if (args["intent-user"]) intentContract.user_intent = String(args["intent-user"]);
+        if (args["intent-dod"]) intentContract.definition_of_done = String(args["intent-dod"]);
+        if (args["intent-depth"]) intentContract.depth_expectation = String(args["intent-depth"]);
+        const spirit = csv(args["intent-spirit"]);
+        if (spirit.length > 0) intentContract.spirit_constraints = spirit;
+        const noExit = csv(args["intent-no-exit"]);
+        if (noExit.length > 0) intentContract.no_early_exit_without = noExit;
+        return call("/workflow/run/start", "POST", {
+          query,
+          safety_mode: args["safety-mode"] || "plan-readonly",
+          token_limit: args["token-limit"] ? Number(args["token-limit"]) : 8000,
+          tool_call_limit: args["tool-call-limit"] ? Number(args["tool-call-limit"]) : 40,
+          intent_contract: intentContract,
+        });
+      }
     case "run-get":
       return call(`/workflow/run/${args.id}?replay=${args.replay ? "true" : "false"}`, "GET");
     case "run-mode":

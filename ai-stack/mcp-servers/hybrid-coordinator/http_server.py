@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
@@ -33,6 +34,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from config import Config, OptimizationProposal, apply_proposal, routing_config
 from metrics import PROCESS_MEMORY_BYTES, REQUEST_COUNT, REQUEST_ERRORS, REQUEST_LATENCY
 from shared.tool_security_auditor import ToolSecurityAuditor
+from shared.tool_audit import write_audit_entry as _write_audit_entry
 
 logger = logging.getLogger("hybrid-coordinator")
 
@@ -114,6 +116,67 @@ def _workflow_tool_catalog(query: str) -> List[Dict[str, str]]:
     return tools
 
 
+def _http_path_to_tool_name(path: str, method: str) -> Optional[str]:
+    """Map high-value HTTP endpoints to tool names for audit coverage."""
+    if path == "/query" and method == "POST":
+        return "route_search"
+    if path == "/augment_query" and method == "POST":
+        return "augment_query"
+    if path == "/search/tree" and method == "POST":
+        return "tree_search"
+    if path == "/memory/store" and method == "POST":
+        return "store_agent_memory"
+    if path == "/memory/recall" and method == "POST":
+        return "recall_agent_memory"
+    if path == "/harness/eval" and method == "POST":
+        return "run_harness_eval"
+    if path == "/hints" and method in ("GET", "POST"):
+        return "hints"
+    if path == "/hints/feedback" and method == "POST":
+        return "hints_feedback"
+    if path.startswith("/discovery/"):
+        return "discovery"
+    if path == "/workflow/plan":
+        return "workflow_plan"
+    if path == "/workflow/run/start" and method == "POST":
+        return "workflow_run_start"
+    return None
+
+
+def _audit_http_request(request: web.Request, status: int, latency_ms: float) -> None:
+    """Emit tool-audit rows for HTTP endpoint usage (non-MCP transport)."""
+    tool_name = _http_path_to_tool_name(request.path, request.method)
+    if not tool_name:
+        return
+    token = request.headers.get("X-API-Key") or request.headers.get("Authorization", "")
+    caller_identity = token if token else "anonymous"
+    query_pairs = list(request.rel_url.query.items())[:10]
+    metadata = {
+        "http_status": int(status),
+        "transport": "http",
+    }
+    extra = request.get("audit_metadata")
+    if isinstance(extra, dict):
+        for key, value in extra.items():
+            if isinstance(key, str):
+                metadata[key] = value
+    _write_audit_entry(
+        service="hybrid-coordinator-http",
+        tool_name=tool_name,
+        caller_identity=caller_identity,
+        parameters={
+            "method": request.method,
+            "path": request.path,
+            "query": query_pairs,
+        },
+        risk_tier="low",
+        outcome="success" if int(status) < 500 else "error",
+        error_message=None if int(status) < 500 else f"http_status_{status}",
+        latency_ms=latency_ms,
+        metadata=metadata,
+    )
+
+
 def _audit_planned_tools(query: str, tools: List[Dict[str, str]]) -> tuple[List[Dict[str, str]], Dict[str, Any]]:
     """Audit tools on first use and keep only approved/sanitized tool entries."""
     if not _TOOL_SECURITY_AUDITOR:
@@ -188,6 +251,14 @@ def _workflow_blueprints_path() -> Path:
     )
 
 
+def _hint_feedback_log_path() -> Path:
+    return Path(
+        os.path.expanduser(
+            os.getenv("HINT_FEEDBACK_LOG_PATH", "/var/log/nixos-ai-stack/hint-feedback.jsonl")
+        )
+    )
+
+
 def _normalize_string_list(value: Any) -> List[str]:
     if isinstance(value, list):
         out: List[str] = []
@@ -242,6 +313,55 @@ def _validate_intent_contract(contract: Any) -> Dict[str, Any]:
         "anti_goals": anti_goals,
     }
     return {"ok": len(errors) == 0, "errors": errors, "normalized": normalized}
+
+
+def _default_intent_contract(query: str) -> Dict[str, Any]:
+    objective = (query or "").strip()[:280] or "complete current workflow objective"
+    return {
+        "user_intent": objective,
+        "definition_of_done": "deliver validated results that satisfy the objective",
+        "depth_expectation": "minimum",
+        "spirit_constraints": [
+            "follow declarative-first policy",
+            "capture validation evidence for major actions",
+        ],
+        "no_early_exit_without": [
+            "all requested checks completed",
+            "known blockers documented with remediation",
+        ],
+        "anti_goals": [],
+    }
+
+
+def _coerce_intent_contract(query: str, incoming: Any) -> Dict[str, Any]:
+    """
+    Produce a valid intent contract even when callers omit/partially provide it.
+    This keeps workflow telemetry contract coverage high without weakening fields.
+    """
+    base = _default_intent_contract(query)
+    if not isinstance(incoming, dict):
+        return base
+
+    user_intent = str(incoming.get("user_intent", "") or "").strip()
+    definition = str(incoming.get("definition_of_done", "") or "").strip()
+    depth = str(incoming.get("depth_expectation", "") or "").strip().lower()
+    spirit = _normalize_string_list(incoming.get("spirit_constraints", []))
+    no_early = _normalize_string_list(incoming.get("no_early_exit_without", []))
+    anti_goals = _normalize_string_list(incoming.get("anti_goals", []))
+
+    if user_intent:
+        base["user_intent"] = user_intent
+    if definition:
+        base["definition_of_done"] = definition
+    if depth in _INTENT_DEPTH_EXPECTATIONS:
+        base["depth_expectation"] = depth
+    if spirit:
+        base["spirit_constraints"] = spirit
+    if no_early:
+        base["no_early_exit_without"] = no_early
+    if anti_goals:
+        base["anti_goals"] = anti_goals
+    return base
 
 
 def _load_and_validate_workflow_blueprints() -> Dict[str, Any]:
@@ -855,6 +975,7 @@ async def run_http_mode(port: int) -> None:
             status = str(response.status) if response else "500"
             REQUEST_LATENCY.labels(request.path, request.method).observe(duration)
             REQUEST_COUNT.labels(request.path, status).inc()
+            _audit_http_request(request, int(status), duration * 1000.0)
             if response:
                 response.headers["X-Request-ID"] = request_id
             clear_contextvars()
@@ -973,6 +1094,14 @@ async def run_http_mode(port: int) -> None:
             request_context = data.get("context")
             if not isinstance(request_context, dict):
                 request_context = {}
+            request["audit_metadata"] = {
+                "semantic_autorun_enabled": bool(semantic_tooling_autorun),
+                "semantic_autorun_planned": 0,
+                "semantic_autorun_executed": 0,
+                "tool_security_blocked": 0,
+                "tool_security_cache_hits": 0,
+                "tool_security_first_seen": 0,
+            }
             tooling_layer = {
                 "enabled": semantic_tooling_autorun,
                 "planned_tools": [],
@@ -983,6 +1112,9 @@ async def run_http_mode(port: int) -> None:
                 planned, tool_security = _audit_planned_tools(query, _workflow_tool_catalog(query))
                 tooling_layer["planned_tools"] = [p.get("name", "") for p in planned]
                 tooling_layer["tool_security"] = tool_security
+                request["audit_metadata"]["tool_security_blocked"] = len(tool_security.get("blocked", []))
+                request["audit_metadata"]["tool_security_cache_hits"] = int(tool_security.get("cache_hits", 0))
+                request["audit_metadata"]["tool_security_first_seen"] = int(tool_security.get("first_seen", 0))
 
                 # Auto-hints: pull top semantic hint and pass into route context.
                 if any(p.get("name") == "hints" for p in planned):
@@ -1054,6 +1186,10 @@ async def run_http_mode(port: int) -> None:
             )
             if semantic_tooling_autorun:
                 result["tooling_layer"] = tooling_layer
+            request["audit_metadata"]["semantic_autorun_planned"] = len(tooling_layer.get("planned_tools", []))
+            request["audit_metadata"]["semantic_autorun_executed"] = len(tooling_layer.get("executed", []))
+            request["audit_metadata"]["route_strategy"] = str(result.get("route", "unknown"))
+            request["audit_metadata"]["backend"] = str(result.get("backend", "unknown"))
             iid = result.get("interaction_id", "")
             if iid:
                 try:
@@ -1433,7 +1569,12 @@ async def run_http_mode(port: int) -> None:
                     _sys.path.insert(0, str(_hints_dir))
                 from hints_engine import HintsEngine  # type: ignore[import]
                 engine = HintsEngine()
-                result = engine.rank_as_dict(query, context=file_ext, max_hints=max_hints)
+                result = engine.rank_as_dict(
+                    query,
+                    context=file_ext,
+                    max_hints=max_hints,
+                    agent_type=agent_type,
+                )
             except Exception as exc:
                 logger.warning("hints_engine_unavailable error=%s", exc)
                 result = {
@@ -1464,11 +1605,96 @@ async def run_http_mode(port: int) -> None:
             if result.get("hints") and agent_type in ("claude", "codex", "qwen", "aider"):
                 top = result["hints"][0]
                 result["inject_prefix"] = top.get("snippet", "")[:150]
+            result["feedback_contract"] = {
+                "endpoint": "/hints/feedback",
+                "fields": {
+                    "hint_id": "string (required)",
+                    "helpful": "boolean (optional if score present)",
+                    "score": "number -1..1 (optional if helpful present)",
+                    "comment": "string optional",
+                    "task_id": "string optional",
+                    "agent": "string optional",
+                    "agent_preferences": {
+                        "preferred_tools": ["string"],
+                        "preferred_data_sources": ["string"],
+                        "preferred_hint_types": ["string"],
+                        "preferred_tags": ["string"],
+                    },
+                },
+            }
 
             return web.json_response(result)
         except Exception as exc:
             logger.error("handle_hints error=%s", exc)
             return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_hints_feedback(request: web.Request) -> web.Response:
+        """POST /hints/feedback — explicit agent feedback loop for hint quality."""
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+
+        hint_id = str(data.get("hint_id", "") or "").strip()
+        if not hint_id:
+            return web.json_response({"error": "hint_id required"}, status=400)
+
+        helpful_raw = data.get("helpful")
+        helpful = bool(helpful_raw) if isinstance(helpful_raw, bool) else None
+        score_raw = data.get("score")
+        score_val: Optional[float] = None
+        if score_raw is not None:
+            try:
+                score_val = float(score_raw)
+            except (TypeError, ValueError):
+                return web.json_response({"error": "score must be numeric"}, status=400)
+
+        if helpful is None and score_val is None:
+            return web.json_response({"error": "helpful or score required"}, status=400)
+
+        entry = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "hint_id": hint_id,
+            "helpful": helpful,
+            "score": score_val,
+            "comment": str(data.get("comment", "") or "").strip()[:240],
+            "agent": str(data.get("agent", "") or "").strip()[:48] or "unknown",
+            "task_id": str(data.get("task_id", "") or "").strip()[:80],
+            "source": "agent_feedback",
+        }
+        prefs = data.get("agent_preferences", {})
+        if isinstance(prefs, dict):
+            def _norm_list(value: object, limit: int = 8) -> List[str]:
+                if not isinstance(value, list):
+                    return []
+                out: List[str] = []
+                seen = set()
+                for item in value:
+                    text = str(item or "").strip().lower()
+                    if not text or text in seen:
+                        continue
+                    seen.add(text)
+                    out.append(text[:48])
+                    if len(out) >= limit:
+                        break
+                return out
+
+            entry["agent_preferences"] = {
+                "preferred_tools": _norm_list(prefs.get("preferred_tools")),
+                "preferred_data_sources": _norm_list(prefs.get("preferred_data_sources")),
+                "preferred_hint_types": _norm_list(prefs.get("preferred_hint_types")),
+                "preferred_tags": _norm_list(prefs.get("preferred_tags")),
+            }
+        try:
+            log_path = _hint_feedback_log_path()
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry) + "\n")
+        except Exception as exc:
+            logger.error("hint_feedback_write_failed error=%s", exc)
+            return web.json_response({"error": "feedback_write_failed"}, status=500)
+
+        return web.json_response({"status": "recorded", "hint_id": hint_id})
 
     async def handle_workflow_plan(request: web.Request) -> web.Response:
         """Build a structured phase plan with explicit tool assignments."""
@@ -1872,24 +2098,7 @@ async def run_http_mode(port: int) -> None:
             incoming_contract = data.get("intent_contract")
             if incoming_contract is None and selected_blueprint:
                 incoming_contract = selected_blueprint.get("intent_contract", {})
-            validation = _validate_intent_contract(incoming_contract)
-            if not validation["ok"]:
-                return web.json_response(
-                    {
-                        "error": "intent_contract_required",
-                        "detail": "workflow run start requires a valid intent contract",
-                        "required_fields": [
-                            "user_intent",
-                            "definition_of_done",
-                            "depth_expectation",
-                            "spirit_constraints",
-                            "no_early_exit_without",
-                        ],
-                        "validation_errors": validation["errors"],
-                        "blueprint_id": blueprint_id or None,
-                    },
-                    status=400,
-                )
+            validation = _validate_intent_contract(_coerce_intent_contract(query, incoming_contract))
             session_id = str(uuid4())
             plan = _build_workflow_plan(query)
             phases = []
@@ -2498,6 +2707,7 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/reload-model", handle_reload_model)
     http_app.router.add_post("/hints", handle_hints)           # Phase 19.2.1
     http_app.router.add_get("/hints", handle_hints)            # Phase 19.2.2
+    http_app.router.add_post("/hints/feedback", handle_hints_feedback)
     http_app.router.add_post("/workflow/plan", handle_workflow_plan)
     http_app.router.add_get("/workflow/plan", handle_workflow_plan)
     http_app.router.add_post("/workflow/session/start", handle_workflow_session_start)

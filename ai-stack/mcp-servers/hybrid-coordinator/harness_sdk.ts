@@ -28,6 +28,13 @@ export interface RunStartRequest {
   safety_mode?: "plan-readonly" | "execute-mutating";
   token_limit?: number;
   tool_call_limit?: number;
+  intent_contract?: {
+    user_intent: string;
+    definition_of_done: string;
+    depth_expectation: "minimum" | "standard" | "deep";
+    spirit_constraints: string[];
+    no_early_exit_without: string[];
+  };
 }
 
 export interface RuntimeScheduleRequest {
@@ -152,9 +159,13 @@ export class HarnessClient {
   }
 
   runStart(payload: RunStartRequest): Promise<Json> {
+    const body: RunStartRequest = {
+      ...payload,
+      intent_contract: payload.intent_contract ?? this.defaultIntentContract(payload.query),
+    };
     return this.request("/workflow/run/start", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
     });
   }
 
@@ -282,3 +293,13 @@ export class HarnessClient {
     });
   }
 }
+  private defaultIntentContract(query: string): NonNullable<RunStartRequest["intent_contract"]> {
+    const normalized = String(query || "").trim() || "workflow run";
+    return {
+      user_intent: normalized,
+      definition_of_done: `Complete requested workflow task: ${normalized.slice(0, 120)}`,
+      depth_expectation: "minimum",
+      spirit_constraints: ["follow declarative-first policy", "capture validation evidence"],
+      no_early_exit_without: ["all requested checks complete"],
+    };
+  }

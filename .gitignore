@@ -96,6 +96,10 @@ ai-stack/compose/secrets/*
 # Eval runtime artifacts (generated; stored outside repo by default)
 ai-stack/eval/results/eval-*.json
 ai-stack/eval/results/eval-*-summary.txt
+ai-stack/eval/results/scores.sqlite
+dist/harness-sdk-provenance/provenance.json
+data/prsi-artifacts/*-latest.json
+data/prsi-artifacts/runs/
 
 # ==============================================================================
 # Federated Learning Data Policy

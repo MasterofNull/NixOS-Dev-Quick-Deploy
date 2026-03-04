@@ -1,0 +1,14 @@
+# One git path prefix per line. If any changed file matches a prefix in a PR,
+# the Harness-First PR evidence gate requires a new evidence artifact.
+
+nix/modules/core/options.nix
+nix/modules/roles/ai-stack.nix
+nix/modules/services/
+ai-stack/mcp-servers/
+config/workflow-blueprints.json
+config/runtime-prsi-policy.json
+scripts/prsi-orchestrator.py
+scripts/aq-report
+scripts/harness-rpc.js
+scripts/post-deploy-converge.sh
+scripts/validate-runtime-declarative.sh

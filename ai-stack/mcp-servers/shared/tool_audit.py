@@ -49,6 +49,7 @@ def write_audit_entry(
     outcome: str,
     error_message: Optional[str],
     latency_ms: float,
+    metadata: Optional[Dict[str, object]] = None,
 ) -> None:
     """Write a structured audit log entry for a tool call.
 
@@ -79,6 +80,17 @@ def write_audit_entry(
             'error_message': error_message,
             'latency_ms': latency_ms,
         }
+        if metadata:
+            # Only persist JSON-serializable metadata fields.
+            safe_meta: Dict[str, object] = {}
+            for key, value in metadata.items():
+                try:
+                    json.dumps(value)
+                except Exception:
+                    continue
+                safe_meta[str(key)] = value
+            if safe_meta:
+                entry['metadata'] = safe_meta
 
         entry_json = json.dumps(entry)
 

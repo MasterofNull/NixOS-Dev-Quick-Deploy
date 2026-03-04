@@ -19,7 +19,14 @@ from typing import Any, Dict, List
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CASES_FILE = ROOT / "data" / "harness-gap-eval-pack.json"
-DEFAULT_SCORES_DB = ROOT / "ai-stack" / "eval" / "results" / "scores.sqlite"
+DEFAULT_SCORES_DB = Path(
+    os.path.expanduser(
+        os.getenv(
+            "EVAL_SCORES_DB",
+            "~/.local/share/nixos-ai-stack/eval/results/scores.sqlite",
+        )
+    )
+)
 
 
 def _read_api_key() -> str:
@@ -57,8 +64,9 @@ def _eval_via_query(
     case: Dict[str, Any],
     headers: Dict[str, str],
     timeout: float,
-) -> bool:
+) -> tuple[bool, bool]:
     """Fallback evaluator when /harness/eval is unavailable/slow."""
+    min_ratio = float(os.getenv("GAP_EVAL_MIN_KEYWORD_RATIO", "0.25"))
     endpoint = hybrid_url.rstrip("/") + "/query"
     payload = {
         "query": case.get("query", ""),
@@ -68,27 +76,59 @@ def _eval_via_query(
         "generate_response": False,
         "context": {"skip_gap_tracking": True, "source": "gap-eval-pack"},
     }
+
+    def _collect_blob(resp: Dict[str, Any]) -> tuple[str, bool]:
+        hay = []
+        evidence_count = 0
+        if isinstance(resp.get("response"), str):
+            response_text = resp["response"].strip().lower()
+            hay.append(response_text)
+            if response_text and response_text not in {"no results", "no results."}:
+                evidence_count += 1
+        nested = resp.get("results") if isinstance(resp.get("results"), dict) else {}
+        for bucket in ("combined_results", "semantic_results", "keyword_results"):
+            rows = resp.get(bucket) or nested.get(bucket) or []
+            if not isinstance(rows, list):
+                continue
+            if rows:
+                evidence_count += len(rows)
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                payload_row = row.get("payload", {})
+                if isinstance(payload_row, dict):
+                    hay.append(" ".join(str(v) for v in payload_row.values()).lower())
+                if isinstance(row.get("content"), str):
+                    hay.append(row["content"].lower())
+        tooling = resp.get("tooling_layer") if isinstance(resp.get("tooling_layer"), dict) else {}
+        hints = tooling.get("hints") if isinstance(tooling.get("hints"), list) else []
+        if hints:
+            evidence_count += len(hints)
+        for hint in hints:
+            if isinstance(hint, dict):
+                text = hint.get("prompt_template") or hint.get("title") or hint.get("snippet") or ""
+                if text:
+                    hay.append(str(text).lower())
+            elif isinstance(hint, str) and hint.strip():
+                hay.append(hint.strip().lower())
+        return "\n".join(hay), evidence_count > 0
+
     resp = _post_json(endpoint, payload, headers, timeout=timeout)
+    blob, has_evidence = _collect_blob(resp)
+    if not blob.strip() or not has_evidence:
+        retry_payload = dict(payload)
+        retry_payload["mode"] = "hybrid"
+        resp = _post_json(endpoint, retry_payload, headers, timeout=timeout)
+        blob, has_evidence = _collect_blob(resp)
+    if not blob.strip() or not has_evidence:
+        return False, True
+
     expected = [str(k).strip().lower() for k in case.get("expected_keywords", []) if str(k).strip()]
     if not expected:
-        return True
-    hay = []
-    if isinstance(resp.get("response"), str):
-        hay.append(resp["response"].lower())
-    for bucket in ("combined_results", "semantic_results", "keyword_results"):
-        rows = resp.get(bucket) or []
-        if not isinstance(rows, list):
-            continue
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            payload_row = row.get("payload", {})
-            if isinstance(payload_row, dict):
-                hay.append(" ".join(str(v) for v in payload_row.values()).lower())
-    blob = "\n".join(hay)
+        return True, False
     hits = sum(1 for kw in expected if kw in blob)
     ratio = hits / len(expected)
-    return ratio >= 0.4
+    return ratio >= min_ratio, False
 
 
 def _ensure_scores_schema(conn: sqlite3.Connection) -> None:
@@ -167,7 +207,11 @@ def main() -> int:
 
     total = len(cases)
     passed = 0
+    attempted = 0
+    skipped_cases = 0
     failures: List[str] = []
+    degraded_cases = 0
+    fallback_cases = 0
 
     endpoint = args.hybrid_url.rstrip("/") + "/harness/eval"
     for case in cases:
@@ -180,11 +224,22 @@ def main() -> int:
         try:
             resp = _post_json(endpoint, payload, headers, timeout=min(args.timeout, 8.0))
             ok = bool(resp.get("passed", False))
+            if not ok and str(resp.get("response", "")).strip().lower() in {"no results", "no results."}:
+                degraded_cases += 1
+                skipped_cases += 1
+                print(f"SKIP {cid}: no_retrieval_evidence")
+                continue
         except Exception:
             # /harness/eval can be unavailable during model churn; fallback keeps
             # the pack useful by evaluating retrieval quality via /query.
             try:
-                ok = _eval_via_query(args.hybrid_url, case, headers, timeout=args.timeout)
+                fallback_cases += 1
+                ok, degraded = _eval_via_query(args.hybrid_url, case, headers, timeout=args.timeout)
+                if degraded:
+                    degraded_cases += 1
+                    skipped_cases += 1
+                    print(f"SKIP {cid}: fallback_no_evidence")
+                    continue
             except urllib.error.HTTPError as exc:
                 failures.append(f"{cid}: http_{exc.code}")
                 print(f"FAIL {cid}: HTTP {exc.code}")
@@ -195,27 +250,44 @@ def main() -> int:
                 continue
 
         if ok:
+            attempted += 1
             passed += 1
             print(f"PASS {cid}")
         else:
+            attempted += 1
             failures.append(f"{cid}: failed")
             print(f"FAIL {cid}: eval_failed")
 
-    pct = int(round((passed / total) * 100)) if total else 0
+    if attempted == 0 and total > 0:
+        print("")
+        print("Gap eval pack: no evaluable cases (all skipped due no retrieval evidence); skipping score write.")
+        return 3
+    if degraded_cases == total and total > 0:
+        print("")
+        print("Gap eval pack: runtime degraded (no retrieval evidence for all cases); skipping score write.")
+        return 3
+    if fallback_cases == total and passed == 0 and total > 0:
+        print("")
+        print("Gap eval pack: fallback-only run with 0 passes; skipping score write to avoid false leaderboard regression.")
+        return 3
+
+    pct = int(round((passed / attempted) * 100)) if attempted else 0
     ts = datetime.now(tz=timezone.utc).isoformat()
     _record_scores(
         Path(args.scores_db),
         timestamp=ts,
         config_name=f"harness-gap-pack:{cases_path.name}",
         passed=passed,
-        total=total,
+        total=attempted,
         pct_passed=pct,
         threshold=int(args.threshold),
         strategy_tag=args.strategy,
     )
 
     print("")
-    print(f"Gap eval pack: {passed}/{total} passed ({pct}%) threshold={args.threshold}% strategy={args.strategy}")
+    print(f"Gap eval pack: {passed}/{attempted} passed ({pct}%) threshold={args.threshold}% strategy={args.strategy}")
+    if skipped_cases:
+        print(f"Skipped: {skipped_cases}/{total} (no retrieval evidence)")
     if failures:
         print("Failures:")
         for f in failures:

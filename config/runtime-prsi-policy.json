@@ -1,0 +1,90 @@
+{
+  "enabled": true,
+  "since": "1d",
+  "max_execute_per_cycle": 5,
+  "counterfactual": {
+    "sample_rate": 0.08,
+    "max_samples_per_day": 3,
+    "eligible_action_types": [
+      "routing",
+      "prompt",
+      "workflow"
+    ]
+  },
+  "budget": {
+    "remote_token_cap_daily": 120000,
+    "default_action_token_cost": 1800,
+    "hard_stop_on_cap": true,
+    "estimated_cost_by_type": {
+      "knowledge": 400,
+      "maintenance": 900,
+      "routing": 1500,
+      "prompt": 2200,
+      "workflow": 2500
+    }
+  },
+  "escalation": {
+    "enable_on_degrade": true,
+    "hint_adoption_below_pct": 65,
+    "eval_latest_below_pct": 60,
+    "cache_hit_below_pct": 50,
+    "intent_coverage_below_pct": 60
+  },
+  "gates": {
+    "allow_action_types": [
+      "knowledge",
+      "maintenance",
+      "routing",
+      "prompt",
+      "workflow"
+    ],
+    "block_high_risk_without_approval": true,
+    "required_verification": [
+      "syntax_or_lint",
+      "runtime_contract",
+      "report_schema",
+      "security_checks",
+      "focused_smoke_or_eval",
+      "critical_regression_scan"
+    ],
+    "auto_revert_on_required_gate_failure": true,
+    "require_independent_verifier_for_high_risk": true
+  },
+  "cycle": {
+    "max_mutating_actions": 1,
+    "required_artifacts": [
+      "cycle_plan.json",
+      "patch.diff",
+      "validation_report.json",
+      "cycle_outcome.json",
+      "rollback_notes.md"
+    ],
+    "scoring_weights": {
+      "reliability": 0.3,
+      "security": 0.2,
+      "eval_quality": 0.2,
+      "cost_efficiency": 0.15,
+      "latency": 0.15
+    },
+    "penalties": {
+      "benchmark_overfit_signal": 0.1,
+      "low_confidence": 0.15,
+      "missing_evidence": 0.2,
+      "repeat_failed_action": 0.1
+    }
+  },
+  "stop_conditions": {
+    "boot_shutdown_regression": "halt_and_escalate",
+    "repeated_unexplained_failures": "halt_and_escalate",
+    "safety_uncertainty": "halt_and_escalate",
+    "confidence_collapse": "halt_and_escalate"
+  },
+  "policy_refs": {
+    "validation_matrix_file": "config/prsi/validation-matrix.json",
+    "confidence_calibration_policy_file": "config/prsi/confidence-calibration-policy.json",
+    "eval_pinning_policy_file": "config/prsi/eval-pinning-policy.json",
+    "quarantine_workflow_file": "config/prsi/quarantine-workflow.json",
+    "high_risk_approval_rubric_file": "config/prsi/high-risk-approval-rubric.json",
+    "edge_brownout_policy_file": "config/prsi/edge-brownout-policy.json"
+  }
+}

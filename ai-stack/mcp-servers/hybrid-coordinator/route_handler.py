@@ -55,6 +55,24 @@ _LOW_SIGNAL_GAP_QUERIES = {
     "help",
     "docs",
 }
+_SYNTHETIC_GAP_PREFIXES = (
+    "analysis only task ",
+    "analysis only:",
+    "analyze docs/",
+    "summarize docs/",
+    "fetch http://127.0.0.1",
+    "fetch http://localhost",
+    "curl http://127.0.0.1",
+    "curl http://localhost",
+)
+_SYNTHETIC_GAP_SOURCE_MARKERS = {
+    "gap-eval-pack",
+    "manual_probe",
+    "aq-qa",
+    "smoke-focused-parity",
+    "parity-smoke",
+    "synthetic-test",
+}
 
 # ---------------------------------------------------------------------------
 # Injected dependencies
@@ -86,6 +104,32 @@ def _should_track_query_gap(query: str, best_score: float, results_count: int, t
     if results_count > 0 and len(tokens) <= 2:
         return False
     return best_score < threshold
+
+
+def _is_synthetic_gap_query(query: str) -> bool:
+    normalized = " ".join(_normalize_tokens(query)).strip().lower()
+    if not normalized:
+        return True
+    if normalized in _LOW_SIGNAL_GAP_QUERIES:
+        return True
+    if normalized.startswith(_SYNTHETIC_GAP_PREFIXES):
+        return True
+    if "127.0.0.1" in normalized or "localhost" in normalized:
+        return True
+    return False
+
+
+def _context_requests_gap_skip(context: Optional[Dict[str, Any]]) -> bool:
+    if not isinstance(context, dict):
+        return False
+    if bool(context.get("skip_gap_tracking", False)):
+        return True
+    marker_fields = ("source", "intent", "origin", "task_type")
+    for field in marker_fields:
+        value = str(context.get(field, "")).strip().lower()
+        if value in _SYNTHETIC_GAP_SOURCE_MARKERS:
+            return True
+    return False
 
 
 def init(
@@ -243,7 +287,7 @@ async def route_search(
             default=0.0,
         )
         postgres_client = _postgres_client_ref()
-        skip_gap_tracking = bool((context or {}).get("skip_gap_tracking", False))
+        skip_gap_tracking = _context_requests_gap_skip(context) or _is_synthetic_gap_query(query)
         if (not skip_gap_tracking
                 and _should_track_query_gap(query, _best_score, len(_all_combined), _GAP_THRESHOLD)
                 and postgres_client is not None):
@@ -400,7 +444,12 @@ async def route_search(
                     LLM_BACKEND_LATENCY.labels(backend=selected_backend).observe(
                         max(0.0, time.perf_counter() - _llm_start)
                     )
-                    if _is_timeout and _record_query_gap is not None and postgres_client is not None:
+                    if (
+                        _is_timeout
+                        and _record_query_gap is not None
+                        and postgres_client is not None
+                        and not (_context_requests_gap_skip(context) or _is_synthetic_gap_query(query))
+                    ):
                         _t_hash = hashlib.sha256(query.encode()).hexdigest()[:64]
                         asyncio.create_task(_record_query_gap(
                             query_hash=_t_hash, query_text=query[:500], score=-1.0,

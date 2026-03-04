@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "cycle_id": "prsi-2026-03-04-001",
+  "executed_at": "2026-03-04T12:20:00Z",
+  "required_checks": [
+    {
+      "id": "syntax_or_lint",
+      "status": "pass",
+      "evidence": ["bash -n passed", "python compile passed"]
+    },
+    {
+      "id": "runtime_contract",
+      "status": "pass",
+      "evidence": ["validate-runtime-declarative.sh: PASS"]
+    },
+    {
+      "id": "report_schema",
+      "status": "pass",
+      "evidence": ["check-aq-report-contract.sh: PASS"]
+    },
+    {
+      "id": "security_checks",
+      "status": "pass",
+      "evidence": ["check-api-auth-hardening.sh: PASS"]
+    },
+    {
+      "id": "focused_smoke_or_eval",
+      "status": "pass",
+      "evidence": ["smoke-focused-parity.sh: PASS"]
+    },
+    {
+      "id": "critical_regression_scan",
+      "status": "pass",
+      "evidence": ["smoke-agent-harness-parity.sh: PASS"]
+    }
+  ],
+  "summary": {
+    "pass_count": 6,
+    "fail_count": 0,
+    "skip_count": 0,
+    "required_gate_failures": []
+  },
+  "auto_revert_triggered": false,
+  "commands_run": [
+    "bash scripts/check-aq-report-contract.sh",
+    "bash scripts/validate-runtime-declarative.sh"
+  ]
+}
