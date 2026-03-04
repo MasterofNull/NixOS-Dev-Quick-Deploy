@@ -1200,6 +1200,10 @@ in
           HYBRID_URL = "http://127.0.0.1:${toString mcp.hybridPort}";
           POST_DEPLOY_NPM_OUT_DIR = "${dataDir}/security/npm";
           POST_DEPLOY_AQ_REPORT_OUT = "${dataDir}/hybrid/telemetry/latest-aq-report.json";
+          POST_DEPLOY_BASH_BIN = "${pkgs.bash}/bin/bash";
+          POST_DEPLOY_PYTHON_BIN = "${pkgs.python3}/bin/python3";
+          POST_DEPLOY_HYBRID_HEALTH_RETRIES = "12";
+          POST_DEPLOY_HYBRID_HEALTH_RETRY_SECONDS = "5";
         };
       };
 
