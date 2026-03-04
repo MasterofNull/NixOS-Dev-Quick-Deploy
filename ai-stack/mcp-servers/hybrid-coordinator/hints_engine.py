@@ -234,15 +234,15 @@ class HintsEngine:
             else Path("/var/log/nixos-ai-stack/hint-audit.jsonl")
         )
         self._div_repeat_window = self._parse_int_env("AI_HINT_DIVERSITY_REPEAT_WINDOW", 300, min_value=20)
-        self._div_repeat_cap_pct = self._parse_float_env("AI_HINT_DIVERSITY_REPEAT_CAP_PCT", 70.0, min_value=10.0, max_value=100.0)
-        self._div_repeat_min_count = self._parse_int_env("AI_HINT_DIVERSITY_REPEAT_MIN_COUNT", 8, min_value=1)
+        self._div_repeat_cap_pct = self._parse_float_env("AI_HINT_DIVERSITY_REPEAT_CAP_PCT", 60.0, min_value=10.0, max_value=100.0)
+        self._div_repeat_min_count = self._parse_int_env("AI_HINT_DIVERSITY_REPEAT_MIN_COUNT", 6, min_value=1)
         self._div_type_max = self._parse_type_quota_env(
             "AI_HINT_DIVERSITY_TYPE_MAX",
-            default="runtime_signal:2,prompt_template:2,gap_topic:2,workflow_rule:1,tool_warning:1",
+            default="runtime_signal:2,prompt_template:1,gap_topic:2,workflow_rule:1,tool_warning:1",
         )
         self._div_type_min = self._parse_type_quota_env(
             "AI_HINT_DIVERSITY_TYPE_MIN",
-            default="runtime_signal:1",
+            default="runtime_signal:1,gap_topic:1,workflow_rule:1",
         )
         self._feedback_db_enabled = (os.getenv("AI_HINT_FEEDBACK_DB_ENABLED", "true").strip().lower() != "false")
         self._feedback_db_ttl_seconds = self._parse_int_env("AI_HINT_FEEDBACK_DB_CACHE_TTL_SECONDS", 120, min_value=10)
@@ -463,8 +463,12 @@ class HintsEngine:
         if usage_total <= 0 or hint.id not in overused_ids:
             return hint
         share = usage_counts.get(hint.id, 0) / max(usage_total, 1)
-        # Penalty scales with over-concentration but is bounded to preserve relevance.
-        penalty = min(0.22, max(0.06, (share - (self._div_repeat_cap_pct / 100.0)) * 0.5))
+        # Penalty scales with over-concentration and increases more aggressively
+        # for severe dominance so repeated hints rotate out sooner.
+        over = max(0.0, share - (self._div_repeat_cap_pct / 100.0))
+        penalty = min(0.32, max(0.08, over * 0.85))
+        if share >= 0.75:
+            penalty = min(0.38, penalty + 0.06)
         adjusted = max(0.0, hint.score - penalty)
         reason = f"{hint.reason}; diversity_repeat_penalty=-{penalty:.2f}".strip("; ")
         return Hint(
@@ -544,6 +548,10 @@ class HintsEngine:
                 break
             if h.id in selected_ids or not can_take(h):
                 continue
+            # Prefer not to refill with overused hints when we already have a
+            # minimally diverse set.
+            if len(selected) >= max(1, min(max_hints, len(self._div_type_min))):
+                break
             take(h)
 
         return selected
