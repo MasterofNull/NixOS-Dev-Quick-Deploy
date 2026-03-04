@@ -937,7 +937,7 @@ in {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
-          ExecStart = "${cfg.mcpServers.repoPath}/scripts/aq-optimizer --since=1d";
+          ExecStart = "${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/aq-optimizer --since=1d";
           StandardOutput = "journal";
           StandardError  = "journal";
           NoNewPrivileges = true;
@@ -965,6 +965,44 @@ in {
           OnCalendar          = "daily";
           Persistent          = true;
           RandomizedDelaySec  = "15min";
+        };
+      };
+
+      systemd.services.ai-prsi-orchestrator = {
+        description = "PRSI orchestrator cycle (identify → approve-low-risk → execute)";
+        after = [ "network-online.target" "ai-aidb.service" "ai-hybrid-coordinator.service" ];
+        wants = [ "network-online.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.primaryUser;
+          WorkingDirectory = cfg.mcpServers.repoPath;
+          ExecStart = "${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/prsi-orchestrator.py cycle --since=1d --execute-limit=5";
+          StandardOutput = "journal";
+          StandardError = "journal";
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          PrivateTmp = true;
+          PrivateNetwork = false;
+          MemoryMax = "256M";
+          ReadWritePaths = [
+            mutableOptimizerDir
+            mutableLogDir
+          ];
+          Environment = [
+            "PRSI_ACTION_QUEUE_PATH=${mutableOptimizerDir}/prsi/action-queue.json"
+            "PRSI_ACTIONS_LOG_PATH=${mutableLogDir}/prsi-actions.jsonl"
+          ];
+        };
+      };
+
+      systemd.timers.ai-prsi-orchestrator = {
+        description = "Hourly PRSI orchestrator timer";
+        wantedBy = ["timers.target"];
+        timerConfig = {
+          OnCalendar = "hourly";
+          Persistent = true;
+          RandomizedDelaySec = "10min";
         };
       };
 

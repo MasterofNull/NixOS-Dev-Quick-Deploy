@@ -1103,6 +1103,15 @@
             };
           };
 
+          telemetryEnabled = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = ''
+              Enable AIDB telemetry event persistence (JSONL + PostgreSQL telemetry_events)
+              for runtime monitoring, dashboard analytics, and feedback-loop auditing.
+            '';
+          };
+
           toolSecurity = {
             enable = lib.mkOption {
               type = lib.types.bool;
@@ -1164,6 +1173,18 @@
             '';
           };
 
+          aiderHintsMinScore = lib.mkOption {
+            type = lib.types.addCheck lib.types.float (v: v >= 0.0 && v <= 1.0);
+            default = 0.45;
+            description = "Minimum aq-hints score required before injection into aider task prompts.";
+          };
+
+          aiderHintsMinSnippetChars = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 24;
+            description = "Minimum hint snippet length required before injection into aider task prompts.";
+          };
+
           aiderSmallScopeSubtreeOnly = lib.mkOption {
             type = lib.types.bool;
             default = true;
@@ -1173,7 +1194,7 @@
           };
 
           aiderSmallScopeMapTokens = lib.mkOption {
-            type = lib.types.ints.nonnegative;
+            type = lib.types.addCheck lib.types.int (v: v >= 0);
             default = 384;
             description = "Repo-map token budget for file-scoped aider tasks.";
           };
@@ -1188,7 +1209,7 @@
           };
 
           aiderAnalysisMapTokens = lib.mkOption {
-            type = lib.types.ints.nonnegative;
+            type = lib.types.addCheck lib.types.int (v: v >= 0);
             default = 0;
             description = "Repo-map token budget for analysis-only aider tasks (0 disables repo map).";
           };
@@ -1218,7 +1239,7 @@
           };
 
           aiderDefaultMapTokens = lib.mkOption {
-            type = lib.types.ints.nonnegative;
+            type = lib.types.addCheck lib.types.int (v: v >= 0);
             default = 512;
             description = "Default repo-map token budget when no explicit files are scoped.";
           };

@@ -83,6 +83,10 @@ in
         POSTGRES_PORT = toString ports.postgres;
         AIDB_DB_USER = mcp.postgres.user;
         AIDB_DB_NAME = mcp.postgres.database;
+        PRSI_ACTION_QUEUE_PATH = "${cc.dataDir}/telemetry/prsi-action-queue.json";
+        PRSI_ACTIONS_LOG_PATH = "${cc.dataDir}/telemetry/prsi-actions.jsonl";
+        OPTIMIZER_OVERRIDES_ENV = "${cc.dataDir}/telemetry/optimizer-overrides.env";
+        OPTIMIZER_ACTIONS_LOG = "${cc.dataDir}/telemetry/optimizer-actions.jsonl";
       } // lib.optionalAttrs sec.enable {
         HYBRID_API_KEY_FILE = secretPath hybridApiKeySecret;
         POSTGRES_PASSWORD_FILE = secretPath sec.names.postgresPassword;

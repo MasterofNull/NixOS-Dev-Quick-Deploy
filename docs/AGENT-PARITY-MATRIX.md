@@ -2,6 +2,9 @@
 
 Last updated: 2026-03-03
 
+Execution tracker:
+- [System Improvement Plan and Working Document (March 2026)](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/docs/SYSTEM-IMPROVEMENT-PLAN-2026-03.md)
+
 ## Scope
 
 This matrix compares feature structures from:
