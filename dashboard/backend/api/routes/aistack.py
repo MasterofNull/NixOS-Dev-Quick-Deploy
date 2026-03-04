@@ -1806,6 +1806,10 @@ async def get_security_audit() -> Dict[str, Any]:
 
     latest_report = audit_dir / "latest-security-audit.json"
     high_alert = audit_dir / "latest-high-cve-alert.json"
+    npm_dir = Path(os.getenv("AI_NPM_SECURITY_DIR", str(audit_dir / "npm")))
+    npm_latest_report = npm_dir / "latest-npm-security.json"
+    npm_quarantine = npm_dir / "quarantine-state.json"
+    npm_incidents = npm_dir / "incidents.jsonl"
 
     if not latest_report.exists():
         return {
@@ -1834,11 +1838,58 @@ async def get_security_audit() -> Dict[str, Any]:
         except (json.JSONDecodeError, IOError):
             pass
 
+    npm_monitor: Dict[str, Any] = {
+        "status": "no_report",
+        "report_path": str(npm_latest_report),
+        "quarantine_active": False,
+        "quarantine_state": None,
+        "recent_incidents": [],
+    }
+    if npm_latest_report.exists():
+        try:
+            with open(npm_latest_report) as f:
+                npm_report_data = json.load(f)
+            npm_monitor["status"] = str(npm_report_data.get("status", "unknown"))
+            npm_monitor["generated_at"] = npm_report_data.get("generated_at")
+            npm_monitor["severity_counts"] = npm_report_data.get("severity_counts", {})
+            npm_monitor["summary"] = npm_report_data.get("summary", {})
+        except (json.JSONDecodeError, IOError) as e:
+            npm_monitor["status"] = "error"
+            npm_monitor["message"] = f"Failed to parse npm monitor report: {str(e)}"
+
+    if npm_quarantine.exists():
+        try:
+            with open(npm_quarantine) as f:
+                quarantine_data = json.load(f)
+            npm_monitor["quarantine_state"] = quarantine_data
+            npm_monitor["quarantine_active"] = (
+                str(quarantine_data.get("status", "")).lower() == "active"
+            )
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    if npm_incidents.exists():
+        try:
+            # Keep payload small for dashboard polling cadence.
+            lines = npm_incidents.read_text().splitlines()[-20:]
+            parsed = []
+            for line in lines:
+                if not line.strip():
+                    continue
+                try:
+                    parsed.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+            npm_monitor["recent_incidents"] = parsed
+        except OSError:
+            pass
+
     return {
         "status": report_data.get("status", "unknown"),
         "generated_at": report_data.get("generated_at", "unknown"),
         "summary": report_data.get("summary", {}),
         "high_severity_alert": high_severity_alert,
+        "npm_monitor": npm_monitor,
         "report_path": str(latest_report),
         "timestamp": datetime.utcnow().isoformat(),
     }

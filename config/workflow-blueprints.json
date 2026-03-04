@@ -6,6 +6,24 @@
       "title": "Coding Bugfix (Safe First)",
       "description": "Read-first plan, then guarded execution with explicit approval checkpoints.",
       "default_safety_mode": "plan-readonly",
+      "intent_contract": {
+        "user_intent": "Fix the root issue with minimal risk and clear validation evidence.",
+        "definition_of_done": "Root cause fixed, acceptance checks passed, and rollback guidance documented.",
+        "depth_expectation": "standard",
+        "spirit_constraints": [
+          "Solve the actual problem, not only the nearest symptom.",
+          "Do not stop at metric pass if required verification evidence is missing."
+        ],
+        "no_early_exit_without": [
+          "verification evidence",
+          "residual risk note",
+          "rollback command"
+        ],
+        "anti_goals": [
+          "checkbox-only completion",
+          "unexplained skipped tests"
+        ]
+      },
       "phases": [
         {
           "id": "discover",
@@ -47,6 +65,24 @@
       "title": "NixOS Service Hardening",
       "description": "Incremental hardening flow with rollback markers and runtime checks.",
       "default_safety_mode": "execute-mutating",
+      "intent_contract": {
+        "user_intent": "Harden service configuration while preserving runtime stability and rollback safety.",
+        "definition_of_done": "Declarative hardening landed, services healthy, and rollback path verified.",
+        "depth_expectation": "deep",
+        "spirit_constraints": [
+          "Prefer declarative policy controls over ad-hoc runtime fixes.",
+          "Address root configuration ownership and dependency order, not just immediate restart failures."
+        ],
+        "no_early_exit_without": [
+          "service health verification",
+          "deployment/rollback commands",
+          "residual risk summary"
+        ],
+        "anti_goals": [
+          "imperative hotfix without declarative follow-through",
+          "marking complete before restart verification"
+        ]
+      },
       "phases": [
         {
           "id": "discover",

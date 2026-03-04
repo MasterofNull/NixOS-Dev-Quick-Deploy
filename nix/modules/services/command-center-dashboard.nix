@@ -87,6 +87,8 @@ in
         PRSI_ACTIONS_LOG_PATH = "${cc.dataDir}/telemetry/prsi-actions.jsonl";
         OPTIMIZER_OVERRIDES_ENV = "${cc.dataDir}/telemetry/optimizer-overrides.env";
         OPTIMIZER_ACTIONS_LOG = "${cc.dataDir}/telemetry/optimizer-actions.jsonl";
+        AI_SECURITY_AUDIT_DIR = "${mcp.dataDir}/security";
+        AI_NPM_SECURITY_DIR = "${mcp.dataDir}/security/npm";
       } // lib.optionalAttrs sec.enable {
         HYBRID_API_KEY_FILE = secretPath hybridApiKeySecret;
         POSTGRES_PASSWORD_FILE = secretPath sec.names.postgresPassword;

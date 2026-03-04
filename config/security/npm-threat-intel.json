@@ -1,0 +1,28 @@
+{
+  "version": "2026-03-04",
+  "description": "Local npm threat-intel seed for known campaign indicators and suspicious install behaviors.",
+  "blockedPackageNames": [
+    "crossenv",
+    "eslint-scope-3.7.2",
+    "event-stream",
+    "ua-parser-js-0.7.29",
+    "coa-2.0.3",
+    "rc-1.2.9"
+  ],
+  "suspiciousPackageNamePatterns": [
+    "^(react|vue|angular|lodash|chalk|axios|express|next|nuxt|svelte|typescript|eslint)[-_]?(pro|secure|plus|premium|official)$",
+    "^(node|npm|npx|pnpm|yarn)[-_]?(core|helper|tools|service)$",
+    "^(crypto|wallet|web3|solana|bitcoin|ethereum)[-_]?(update|patch|service|auth)$"
+  ],
+  "suspiciousScriptPatterns": [
+    "\\bcurl\\b.*\\|\\s*(bash|sh)\\b",
+    "\\bwget\\b.*\\|\\s*(bash|sh)\\b",
+    "\\bnode\\s+-e\\b.*https?://",
+    "\\bpython\\s+-c\\b.*https?://",
+    "\\beval\\s*\\(",
+    "\\bbase64\\s+-d\\b",
+    "/dev/tcp/",
+    "\\bnc\\s+-e\\b",
+    "\\bchmod\\s+\\+s\\b"
+  ]
+}
