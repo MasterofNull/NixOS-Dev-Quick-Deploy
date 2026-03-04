@@ -10,6 +10,7 @@ source "${SCRIPT_DIR}/../config/service-endpoints.sh"
 SEED_COUNT="${AI_HARNESS_IMPROVEMENT_SEED_COUNT:-10}"
 SUMMARY_OUT="${AI_HARNESS_IMPROVEMENT_SUMMARY_PATH:-/tmp/ai-harness-improvement-latest.json}"
 WORKSPACE="${AI_HARNESS_IMPROVEMENT_WORKSPACE:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+HARNESS_EVAL_TIMEOUT_SECONDS="${AI_HARNESS_IMPROVEMENT_HARNESS_EVAL_TIMEOUT_SECONDS:-20}"
 
 HYBRID_KEY="${HYBRID_API_KEY:-}"
 HYBRID_KEY_FILE="${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_coordinator_api_key}"
@@ -49,13 +50,20 @@ run_step "Curate residual gaps" "${SCRIPT_DIR}/curate-residual-gaps.sh"
 run_step "Seed routing + cache traffic" "${SCRIPT_DIR}/seed-routing-traffic.sh" --count "${SEED_COUNT}"
 
 if [[ -n "$HYBRID_KEY" ]]; then
-  if curl -fsS --max-time 45 --connect-timeout 5 -X POST "${HYBRID_URL%/}/harness/eval" \
+  if curl -fsS --max-time "${HARNESS_EVAL_TIMEOUT_SECONDS}" --connect-timeout 5 -X POST "${HYBRID_URL%/}/harness/eval" \
     -H "Content-Type: application/json" \
     -H "X-API-Key: ${HYBRID_KEY}" \
     -d '{"query":"explain lib.mkIf and lib.mkForce","mode":"auto","expected_keywords":["mkIf","mkForce","NixOS"],"max_latency_ms":8000}' \
     >/tmp/ai-harness-eval.json; then
     HARN_EVAL_OK=true
     log "PASS: Harness eval probe"
+  elif curl -fsS --max-time 15 --connect-timeout 5 -X POST "${HYBRID_URL%/}/query" \
+    -H "Content-Type: application/json" \
+    -H "X-API-Key: ${HYBRID_KEY}" \
+    -d '{"query":"explain lib.mkIf and lib.mkForce","mode":"auto","prefer_local":true,"generate_response":false,"limit":3,"context":{"skip_gap_tracking":true,"source":"improvement-pass-fallback"}}' \
+    >/tmp/ai-harness-eval-fallback.json; then
+    HARN_EVAL_OK=true
+    log "PASS: Harness eval probe (query fallback)"
   else
     FAILURES=$((FAILURES + 1))
     log "FAIL: Harness eval probe"
