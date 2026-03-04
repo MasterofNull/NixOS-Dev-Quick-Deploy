@@ -29,6 +29,18 @@ Primary tracking doc for multi-agent execution across Codex/Claude/Qwen/Continue
 - Runtime metric verification recovery:
   - Re-ran `ai-pgvector-bootstrap.service` to sync DB role password with secret
   - Re-seeded routing traffic so `hybrid_llm_backend_selections_total` emits samples
+- npm supply-chain hardening:
+  - Added `scripts/npm-security-monitor.sh` with IOC-aware threat-intel checks
+  - Added declarative `deployment.npmSecurity.*` options
+  - Added `ai-npm-security-monitor.service` + periodic timer wiring
+  - Added declarative npm threat response modes (`report|fail|quarantine`)
+  - Added quarantine state + incident ledger artifacts for downstream gating
+  - Exposed npm monitor/quarantine data in command-center `/api/security/audit`
+- Prompt intent/spirit contract enforcement:
+  - Added intent-contract schema validation in hybrid coordinator workflow runtime
+  - `/workflow/run/start` now requires valid `intent_contract` fields
+  - `/workflow/blueprints` now returns validation status/errors for blueprint quality gates
+  - Added declarative validation check for intent-contract fields in `config/workflow-blueprints.json`
 
 ## Objective
 

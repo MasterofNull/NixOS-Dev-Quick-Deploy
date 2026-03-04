@@ -22,6 +22,12 @@ RUN_FLATPAK_SYNC=true
 RUN_READINESS_ANALYSIS=true
 RUN_AI_SECRETS_BOOTSTRAP=true
 FORCE_AI_SECRETS_BOOTSTRAP=false
+ENFORCE_PRE_DEPLOY_DRY_RUN=true
+ENFORCE_PRE_DEPLOY_HOME_DRY_RUN=true
+PRE_DEPLOY_PREFLIGHT_ONLY=false
+PRE_DEPLOY_LOOP_MAX_PASSES="${PRE_DEPLOY_LOOP_MAX_PASSES:-3}"
+PRE_DEPLOY_LOOP_RETRY_SECONDS="${PRE_DEPLOY_LOOP_RETRY_SECONDS:-2}"
+ENABLE_PREFLIGHT_AUTO_REMEDIATION=false
 ANALYZE_ONLY=false
 SKIP_ROADMAP_VERIFICATION=false
 RECOVERY_MODE=false
@@ -93,6 +99,20 @@ Options:
   --force-ai-secrets-bootstrap
                           Force interactive AI stack secrets bootstrap prompt
   --analyze-only          Run readiness analysis and exit (no build/switch)
+  --skip-pre-deploy-dry-run
+                          Skip mandatory nixos/home dry-build preflight gate
+                          (emergency use only)
+  --skip-pre-deploy-home-dry-run
+                          Skip Home Manager dry-build during preflight gate
+  --preflight-only        Run mandatory pre-deploy validation loop and exit
+                          (no switch/boot/home activation)
+  --enable-preflight-auto-remediation
+                          Run scripts/preflight-auto-remediate.sh between
+                          failed preflight loop passes when available
+  --preflight-loop-max-passes N
+                          Maximum preflight loop passes (default: 3)
+  --preflight-loop-retry-seconds N
+                          Delay between failed preflight passes (default: 2)
   --skip-roadmap-verification
                           Skip flake-first roadmap completion verification preflight
   --restore-generated-files
@@ -105,6 +125,17 @@ Environment overrides:
   ALLOW_GUI_SWITCH=true     Allow live switch from graphical session (default)
   AUTO_GUI_SWITCH_FALLBACK=false
                             Keep switch mode in graphical sessions (default)
+  ENFORCE_PRE_DEPLOY_DRY_RUN=true
+                            Require nixos/home dry-build preflight before switch/boot
+                            (recommended default)
+  ENFORCE_PRE_DEPLOY_HOME_DRY_RUN=true
+                            Include Home Manager dry-build in preflight gate (default)
+  PRE_DEPLOY_LOOP_MAX_PASSES=3
+                            Number of dry-run/fix/retry passes before failing
+  PRE_DEPLOY_LOOP_RETRY_SECONDS=2
+                            Sleep seconds between failed preflight passes
+  ENABLE_PREFLIGHT_AUTO_REMEDIATION=false
+                            Run scripts/preflight-auto-remediate.sh between passes
   HOME_MANAGER_BACKUP_EXTENSION=backup-<timestamp>
                             Backup suffix used for Home Manager file collisions.
                             Default is timestamped per run to prevent clobbering
@@ -412,6 +443,70 @@ run_readiness_analysis() {
 
   log "Running readiness analysis preflight"
   "${analyzer}" "${args[@]}"
+}
+
+run_pre_deploy_validation_loop() {
+  [[ "${ENFORCE_PRE_DEPLOY_DRY_RUN}" == true ]] || {
+    log "Pre-deploy dry-run gate is disabled (ENFORCE_PRE_DEPLOY_DRY_RUN=false)."
+    return 0
+  }
+
+  [[ "${SKIP_SYSTEM_SWITCH}" == false ]] || {
+    log "Skipping pre-deploy dry-run gate (--skip-system-switch)."
+    return 0
+  }
+
+  [[ "${MODE}" != "build" ]] || return 0
+
+  [[ "${PRE_DEPLOY_LOOP_MAX_PASSES}" =~ ^[0-9]+$ ]] || die "PRE_DEPLOY_LOOP_MAX_PASSES must be an integer (got '${PRE_DEPLOY_LOOP_MAX_PASSES}')"
+  [[ "${PRE_DEPLOY_LOOP_RETRY_SECONDS}" =~ ^[0-9]+$ ]] || die "PRE_DEPLOY_LOOP_RETRY_SECONDS must be an integer (got '${PRE_DEPLOY_LOOP_RETRY_SECONDS}')"
+  (( PRE_DEPLOY_LOOP_MAX_PASSES >= 1 )) || die "PRE_DEPLOY_LOOP_MAX_PASSES must be >= 1"
+
+  local remediation_hook="${REPO_ROOT}/scripts/preflight-auto-remediate.sh"
+  local pass failed
+  for ((pass=1; pass<=PRE_DEPLOY_LOOP_MAX_PASSES; pass++)); do
+    failed=0
+    log "Pre-deploy validation loop pass ${pass}/${PRE_DEPLOY_LOOP_MAX_PASSES}: system dry-run"
+    if ! nix --extra-experimental-features 'nix-command flakes' build --no-link \
+      "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.system.build.toplevel"; then
+      failed=1
+    fi
+
+    if [[ ${failed} -eq 0 && "${SKIP_HOME_SWITCH}" == false && "${ENFORCE_PRE_DEPLOY_HOME_DRY_RUN}" == true ]]; then
+      log "Pre-deploy validation loop pass ${pass}/${PRE_DEPLOY_LOOP_MAX_PASSES}: Home Manager dry-build"
+      if ! home_build "${HM_TARGET}"; then
+        failed=1
+      fi
+    elif [[ ${failed} -eq 0 && "${SKIP_HOME_SWITCH}" == false ]]; then
+      log "Skipping Home Manager pre-deploy dry-run gate (ENFORCE_PRE_DEPLOY_HOME_DRY_RUN=false)."
+    fi
+
+    if [[ ${failed} -eq 0 ]]; then
+      log "Pre-deploy validation loop pass ${pass}/${PRE_DEPLOY_LOOP_MAX_PASSES}: declarative validation"
+      if ! bash "${REPO_ROOT}/scripts/validate-runtime-declarative.sh"; then
+        failed=1
+      fi
+    fi
+
+    if [[ ${failed} -eq 0 ]]; then
+      log "Pre-deploy validation loop passed on pass ${pass}/${PRE_DEPLOY_LOOP_MAX_PASSES}."
+      return 0
+    fi
+
+    if [[ "${ENABLE_PREFLIGHT_AUTO_REMEDIATION}" == "true" && -x "${remediation_hook}" ]]; then
+      log "Running preflight auto-remediation hook: ${remediation_hook}"
+      if ! "${remediation_hook}"; then
+        log "Preflight auto-remediation hook failed; continuing to next pass."
+      fi
+    fi
+
+    if (( pass < PRE_DEPLOY_LOOP_MAX_PASSES )); then
+      log "Pre-deploy validation loop failed on pass ${pass}; retrying in ${PRE_DEPLOY_LOOP_RETRY_SECONDS}s."
+      sleep "${PRE_DEPLOY_LOOP_RETRY_SECONDS}"
+    fi
+  done
+
+  die "Pre-deploy validation loop failed after ${PRE_DEPLOY_LOOP_MAX_PASSES} pass(es). Fix errors and rerun preflight before deploy."
 }
 
 # ---------------------------------------------------------------------------
@@ -1610,6 +1705,30 @@ while [[ $# -gt 0 ]]; do
       ANALYZE_ONLY=true
       shift
       ;;
+    --skip-pre-deploy-dry-run)
+      ENFORCE_PRE_DEPLOY_DRY_RUN=false
+      shift
+      ;;
+    --skip-pre-deploy-home-dry-run)
+      ENFORCE_PRE_DEPLOY_HOME_DRY_RUN=false
+      shift
+      ;;
+    --preflight-only)
+      PRE_DEPLOY_PREFLIGHT_ONLY=true
+      shift
+      ;;
+    --enable-preflight-auto-remediation)
+      ENABLE_PREFLIGHT_AUTO_REMEDIATION=true
+      shift
+      ;;
+    --preflight-loop-max-passes)
+      PRE_DEPLOY_LOOP_MAX_PASSES="${2:?missing value for --preflight-loop-max-passes}"
+      shift 2
+      ;;
+    --preflight-loop-retry-seconds)
+      PRE_DEPLOY_LOOP_RETRY_SECONDS="${2:?missing value for --preflight-loop-retry-seconds}"
+      shift 2
+      ;;
     --skip-roadmap-verification)
       SKIP_ROADMAP_VERIFICATION=true
       shift
@@ -1651,6 +1770,13 @@ case "${RESTORE_GENERATED_REPO_FILES}" in
     ;;
 esac
 
+if [[ "${PRE_DEPLOY_PREFLIGHT_ONLY}" == true ]]; then
+  RUN_DISCOVERY=false
+  RUN_HEALTH_CHECK=false
+  RUN_FLATPAK_SYNC=false
+  RUN_AI_SECRETS_BOOTSTRAP=false
+fi
+
 trap cleanup_on_exit EXIT
 trap 'on_unexpected_error "$?" "${LINENO}" "${BASH_COMMAND}"' ERR
 
@@ -1669,7 +1795,9 @@ enable_flakes_runtime
 ensure_flake_visible_to_nix "${FLAKE_REF}"
 resolve_host_from_flake_if_needed
 snapshot_generated_repo_files
-persist_home_git_credentials_declarative
+if [[ "${PRE_DEPLOY_PREFLIGHT_ONLY}" != true ]]; then
+  persist_home_git_credentials_declarative
+fi
 run_roadmap_completion_verification
 run_readiness_analysis
 
@@ -1740,6 +1868,12 @@ log "AI secrets bootstrap status: ${AI_SECRETS_BOOTSTRAP_STATUS}"
 
 log "NixOS target: ${NIXOS_TARGET}"
 log "Home target: ${HM_TARGET}"
+
+run_pre_deploy_validation_loop
+if [[ "${PRE_DEPLOY_PREFLIGHT_ONLY}" == true ]]; then
+  log "Preflight-only validation loop complete. No deploy actions were executed."
+  exit 0
+fi
 
 assert_target_account_guardrails
 assert_bootloader_preflight

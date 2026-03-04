@@ -121,6 +121,9 @@ let
     then ai.aiHarness.runtime.isolationProfiles.profiles
     else {};
 
+  pathWithinDataDir = path:
+    path == dataDir || lib.hasPrefix "${dataDir}/" path;
+
   runtimeWorkspaceRoots =
     let
       values = builtins.attrValues runtimeIsolationProfiles;
@@ -440,6 +443,22 @@ in
             mySystem.aiStack.aiHarness.runtime.parityScorecard must contain tracks.
           '';
         }
+        {
+          assertion = pathWithinDataDir cfg.deployment.npmSecurity.quarantineStateFile;
+          message = ''
+            mySystem.deployment.npmSecurity.quarantineStateFile must stay under
+            mySystem.mcpServers.dataDir (${dataDir}) so mount namespacing remains
+            declarative and robust.
+          '';
+        }
+        {
+          assertion = pathWithinDataDir cfg.deployment.npmSecurity.incidentLogFile;
+          message = ''
+            mySystem.deployment.npmSecurity.incidentLogFile must stay under
+            mySystem.mcpServers.dataDir (${dataDir}) so mount namespacing remains
+            declarative and robust.
+          '';
+        }
       ];
 
       systemd.services.ai-mutable-path-bootstrap = {
@@ -478,6 +497,8 @@ in
         "d ${dataDir}/ralph              0750 ${svcUser} ${svcGroup} -"
         "d ${dataDir}/ralph/state        0750 ${svcUser} ${svcGroup} -"
         "d ${dataDir}/ralph/telemetry    0750 ${svcUser} ${svcGroup} -"
+        "d ${dataDir}/security           0750 ${svcUser} ${svcGroup} -"
+        "d ${dataDir}/security/npm       0750 ${svcUser} ${svcGroup} -"
         "d ${dataDir}/qdrant-collections          0750 ${svcUser} ${svcGroup} -"
         "d /var/log/ai-stack                      0750 ${svcUser} ${svcGroup} -"
         # Audit sidecar log dir — used when socket-activated sidecar writes JSONL.
@@ -487,7 +508,12 @@ in
         "d ${dataDir}/nixos-docs           0750 ${svcUser} ${svcGroup} -"
         "d ${dataDir}/nixos-docs/cache     0750 ${svcUser} ${svcGroup} -"
         "d ${dataDir}/nixos-docs/repos     0750 ${svcUser} ${svcGroup} -"
-      ] ++ map (root: "d ${root} 0750 ${svcUser} ${svcGroup} -") runtimeWorkspaceRoots;
+      ]
+      ++ map (path: "d ${path} 0750 ${svcUser} ${svcGroup} -") (lib.unique [
+        (builtins.dirOf cfg.deployment.npmSecurity.quarantineStateFile)
+        (builtins.dirOf cfg.deployment.npmSecurity.incidentLogFile)
+      ])
+      ++ map (root: "d ${root} 0750 ${svcUser} ${svcGroup} -") runtimeWorkspaceRoots;
 
       # ── Firewall: expose MCP ports on LAN when requested ───────────────────
       # embeddingsPort (:8001) omitted — embeddings served by llama-cpp-embed.
@@ -1081,6 +1107,57 @@ in
           RandomizedDelaySec = "2h";
           Persistent = true;
           Unit = "ai-security-audit.service";
+        };
+      };
+
+      systemd.services.ai-npm-security-monitor = lib.mkIf cfg.deployment.npmSecurity.enable {
+        description = "AI Stack npm supply-chain security monitor";
+        after = [ "network-online.target" "systemd-tmpfiles-setup.service" ];
+        wants = [ "network-online.target" "systemd-tmpfiles-setup.service" ];
+        serviceConfig = {
+          Type = "oneshot";
+          User = svcUser;
+          Group = svcGroup;
+          WorkingDirectory = mcp.repoPath;
+          ExecStart = lib.escapeShellArgs [
+            "${pkgs.bash}/bin/bash"
+            "${mcp.repoPath}/scripts/npm-security-monitor.sh"
+            "--repo-root" mcp.repoPath
+            "--output-dir" "${dataDir}/security/npm"
+          ];
+          ReadOnlyPaths = [ "/" ];
+          # Keep namespace requirements stable by anchoring writes to dataDir.
+          # Per-path confinement is still preserved by service logic + assertions.
+          ReadWritePaths = [ "${dataDir}" ];
+          PrivateTmp = true;
+          ProtectHome = true;
+          ProtectSystem = "strict";
+          NoNewPrivileges = true;
+          PrivateNetwork = false;
+          SystemCallFilter = [ "@system-service" "~@privileged" ];
+          MemoryMax = "1G";
+          StandardOutput = "journal";
+          StandardError = "journal";
+        };
+        environment = {
+          NPM_SECURITY_LOG_LOOKBACK_HOURS = toString cfg.deployment.npmSecurity.suspiciousLogLookbackHours;
+          NPM_SECURITY_FAIL_ON_HIGH = lib.boolToString cfg.deployment.npmSecurity.failOnHigh;
+          NPM_SECURITY_RESPONSE_MODE = cfg.deployment.npmSecurity.responseMode;
+          NPM_SECURITY_THREAT_INTEL_FILE = cfg.deployment.npmSecurity.threatIntelFile;
+          NPM_SECURITY_QUARANTINE_STATE_FILE = cfg.deployment.npmSecurity.quarantineStateFile;
+          NPM_SECURITY_INCIDENT_LOG_FILE = cfg.deployment.npmSecurity.incidentLogFile;
+        };
+      };
+
+      systemd.timers.ai-npm-security-monitor = lib.mkIf cfg.deployment.npmSecurity.enable {
+        description = "Periodic npm supply-chain security monitor timer";
+        wantedBy = [ "timers.target" ];
+        partOf = [ "ai-stack.target" ];
+        timerConfig = {
+          OnBootSec = "15min";
+          OnUnitActiveSec = "${toString cfg.deployment.npmSecurity.intervalMinutes}min";
+          Persistent = true;
+          Unit = "ai-npm-security-monitor.service";
         };
       };
 

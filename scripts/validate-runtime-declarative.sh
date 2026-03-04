@@ -47,6 +47,9 @@ need_pattern "${ROOT}/nix/modules/core/options.nix" "aiderAutoFileScopeMax"
 need_pattern "${ROOT}/nix/modules/core/options.nix" "aiderDefaultMapTokens"
 need_pattern "${ROOT}/nix/modules/core/options.nix" "toolSecurity = {"
 need_pattern "${ROOT}/nix/modules/core/options.nix" "parityScorecard"
+need_pattern "${ROOT}/nix/modules/core/options.nix" "responseMode = lib.mkOption"
+need_pattern "${ROOT}/nix/modules/core/options.nix" "quarantineStateFile = lib.mkOption"
+need_pattern "${ROOT}/nix/modules/core/options.nix" "incidentLogFile = lib.mkOption"
 
 need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "AI_RUN_DEFAULT_SAFETY_MODE="
 need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "AI_RUN_DEFAULT_TOKEN_LIMIT="
@@ -71,6 +74,9 @@ need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "AI_TOOL_SECURITY_AU
 need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "AI_TOOL_SECURITY_CACHE_TTL_HOURS="
 need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "RUNTIME_TOOL_SECURITY_POLICY_FILE="
 need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "PARITY_SCORECARD_FILE="
+need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "NPM_SECURITY_RESPONSE_MODE"
+need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "NPM_SECURITY_QUARANTINE_STATE_FILE"
+need_pattern "${ROOT}/nix/modules/services/mcp-servers.nix" "NPM_SECURITY_INCIDENT_LOG_FILE"
 
 need_pattern "${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server.py" "AI_RUN_DEFAULT_SAFETY_MODE"
 need_pattern "${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server.py" "RUNTIME_SAFETY_POLICY_FILE"
@@ -90,5 +96,6 @@ jq . "${ROOT}/config/workflow-blueprints.json" >/dev/null
 jq . "${ROOT}/config/runtime-scheduler-policy.json" >/dev/null
 jq . "${ROOT}/config/parity-scorecard.json" >/dev/null
 jq . "${ROOT}/config/runtime-tool-security-policy.json" >/dev/null
+jq -e '.blueprints | type=="array" and (length >= 1) and (all(.[]; .intent_contract.user_intent and .intent_contract.definition_of_done and .intent_contract.depth_expectation and ((.intent_contract.spirit_constraints|length) > 0) and ((.intent_contract.no_early_exit_without|length) > 0)))' "${ROOT}/config/workflow-blueprints.json" >/dev/null
 
 pass "Declarative runtime wiring and fallback artifacts validated"

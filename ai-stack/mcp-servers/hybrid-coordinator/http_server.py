@@ -74,6 +74,7 @@ _queue_max_ref: Optional[Callable] = None            # lambda: _MODEL_QUEUE_MAX
 _workflow_sessions_lock = asyncio.Lock()
 _runtime_registry_lock = asyncio.Lock()
 _TOOL_SECURITY_AUDITOR: Optional[ToolSecurityAuditor] = None
+_INTENT_DEPTH_EXPECTATIONS = {"minimum", "standard", "deep"}
 
 
 def _workflow_tool_catalog(query: str) -> List[Dict[str, str]]:
@@ -185,6 +186,106 @@ def _workflow_blueprints_path() -> Path:
             os.getenv("WORKFLOW_BLUEPRINTS_FILE", "config/workflow-blueprints.json")
         )
     )
+
+
+def _normalize_string_list(value: Any) -> List[str]:
+    if isinstance(value, list):
+        out: List[str] = []
+        seen = set()
+        for item in value:
+            text = str(item or "").strip()
+            if text and text not in seen:
+                seen.add(text)
+                out.append(text)
+        return out
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
+
+
+def _validate_intent_contract(contract: Any) -> Dict[str, Any]:
+    """Validate required prompt-intent/spirit contract fields."""
+    errors: List[str] = []
+    if not isinstance(contract, dict):
+        return {
+            "ok": False,
+            "errors": ["intent_contract must be an object"],
+            "normalized": {},
+        }
+
+    user_intent = str(contract.get("user_intent", "") or "").strip()
+    definition_of_done = str(contract.get("definition_of_done", "") or "").strip()
+    depth_expectation = str(contract.get("depth_expectation", "") or "").strip().lower()
+    spirit_constraints = _normalize_string_list(contract.get("spirit_constraints", []))
+    no_early_exit_without = _normalize_string_list(contract.get("no_early_exit_without", []))
+    anti_goals = _normalize_string_list(contract.get("anti_goals", []))
+
+    if not user_intent:
+        errors.append("intent_contract.user_intent is required")
+    if not definition_of_done:
+        errors.append("intent_contract.definition_of_done is required")
+    if depth_expectation not in _INTENT_DEPTH_EXPECTATIONS:
+        errors.append(
+            "intent_contract.depth_expectation must be one of: minimum, standard, deep"
+        )
+    if not spirit_constraints:
+        errors.append("intent_contract.spirit_constraints must contain at least one item")
+    if not no_early_exit_without:
+        errors.append("intent_contract.no_early_exit_without must contain at least one item")
+
+    normalized = {
+        "user_intent": user_intent,
+        "definition_of_done": definition_of_done,
+        "depth_expectation": depth_expectation if depth_expectation in _INTENT_DEPTH_EXPECTATIONS else "standard",
+        "spirit_constraints": spirit_constraints,
+        "no_early_exit_without": no_early_exit_without,
+        "anti_goals": anti_goals,
+    }
+    return {"ok": len(errors) == 0, "errors": errors, "normalized": normalized}
+
+
+def _load_and_validate_workflow_blueprints() -> Dict[str, Any]:
+    """Load blueprint file and validate intent contract schema for each item."""
+    path = _workflow_blueprints_path()
+    base = {
+        "source": str(path),
+        "blueprints": [],
+        "blueprint_by_id": {},
+        "errors": [],
+    }
+    if not path.exists():
+        return base
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        base["errors"].append(f"failed to parse blueprints JSON: {exc}")
+        return base
+
+    items = raw.get("blueprints", []) if isinstance(raw, dict) else []
+    if not isinstance(items, list):
+        base["errors"].append("blueprints must be a list")
+        return base
+
+    for idx, item in enumerate(items):
+        if not isinstance(item, dict):
+            base["errors"].append(f"blueprints[{idx}] must be an object")
+            continue
+        blueprint_id = str(item.get("id", "") or "").strip()
+        if not blueprint_id:
+            base["errors"].append(f"blueprints[{idx}] missing id")
+            continue
+        intent_validation = _validate_intent_contract(item.get("intent_contract", {}))
+        if not intent_validation["ok"]:
+            joined = "; ".join(intent_validation["errors"])
+            base["errors"].append(f"blueprint '{blueprint_id}' invalid intent_contract: {joined}")
+
+        normalized = dict(item)
+        normalized["intent_contract"] = intent_validation["normalized"]
+        normalized["intent_contract_valid"] = bool(intent_validation["ok"])
+        normalized["intent_contract_errors"] = intent_validation["errors"]
+        base["blueprints"].append(normalized)
+        base["blueprint_by_id"][blueprint_id] = normalized
+    return base
 
 
 def _runtime_safety_policy_path() -> Path:
@@ -1761,6 +1862,34 @@ async def run_http_mode(port: int) -> None:
             query = (data.get("query") or data.get("prompt") or "").strip()
             if not query:
                 return web.json_response({"error": "query required"}, status=400)
+            blueprints_data = _load_and_validate_workflow_blueprints()
+            blueprint_id = str(data.get("blueprint_id", "") or "").strip()
+            selected_blueprint = (
+                blueprints_data.get("blueprint_by_id", {}).get(blueprint_id)
+                if blueprint_id
+                else None
+            )
+            incoming_contract = data.get("intent_contract")
+            if incoming_contract is None and selected_blueprint:
+                incoming_contract = selected_blueprint.get("intent_contract", {})
+            validation = _validate_intent_contract(incoming_contract)
+            if not validation["ok"]:
+                return web.json_response(
+                    {
+                        "error": "intent_contract_required",
+                        "detail": "workflow run start requires a valid intent contract",
+                        "required_fields": [
+                            "user_intent",
+                            "definition_of_done",
+                            "depth_expectation",
+                            "spirit_constraints",
+                            "no_early_exit_without",
+                        ],
+                        "validation_errors": validation["errors"],
+                        "blueprint_id": blueprint_id or None,
+                    },
+                    status=400,
+                )
             session_id = str(uuid4())
             plan = _build_workflow_plan(query)
             phases = []
@@ -1783,6 +1912,8 @@ async def run_http_mode(port: int) -> None:
                 "safety_mode": _normalize_safety_mode(str(data.get("safety_mode", "plan-readonly"))),
                 "budget": _default_budget(data),
                 "usage": _default_usage(),
+                "blueprint_id": blueprint_id or None,
+                "intent_contract": validation["normalized"],
                 "isolation": {
                     "profile": str(data.get("isolation_profile", "")).strip(),
                     "workspace_root": str(data.get("workspace_root", "")).strip(),
@@ -1796,6 +1927,7 @@ async def run_http_mode(port: int) -> None:
                         "event_type": "run_start",
                         "phase_id": "discover",
                         "detail": "workflow run started",
+                        "intent_contract_present": True,
                     }
                 ],
             }
@@ -2046,15 +2178,18 @@ async def run_http_mode(port: int) -> None:
     async def handle_workflow_blueprints(_request: web.Request) -> web.Response:
         """Return curated MCP workflow blueprints for common coding-agent tasks."""
         try:
-            path = _workflow_blueprints_path()
-            if not path.exists():
-                return web.json_response({"blueprints": [], "count": 0, "source": str(path)})
-            raw = path.read_text(encoding="utf-8")
-            data = json.loads(raw)
-            if isinstance(data, dict):
-                items = data.get("blueprints", [])
-                return web.json_response({"blueprints": items, "count": len(items), "source": str(path)})
-            return web.json_response({"blueprints": [], "count": 0, "source": str(path)})
+            parsed = _load_and_validate_workflow_blueprints()
+            items = parsed.get("blueprints", [])
+            errors = parsed.get("errors", [])
+            return web.json_response(
+                {
+                    "blueprints": items,
+                    "count": len(items),
+                    "source": parsed.get("source", ""),
+                    "valid": len(errors) == 0,
+                    "errors": errors,
+                }
+            )
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 

@@ -356,6 +356,75 @@
           Vulnerabilities with CVSS >= this value trigger desktop notifications.
         '';
       };
+
+      npmSecurity = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = ''
+            Enable periodic npm supply-chain monitoring (audit + lockfile hygiene
+            + lifecycle script risk checks + npm config posture).
+          '';
+        };
+
+        intervalMinutes = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 360;
+          description = "How often to run npm supply-chain monitoring.";
+        };
+
+        failOnHigh = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = ''
+            When true, npm monitor exits non-zero on high/critical findings so
+            systemd marks the run failed for stronger operator visibility.
+          '';
+        };
+
+        responseMode = lib.mkOption {
+          type = lib.types.enum [ "report" "fail" "quarantine" ];
+          default = "report";
+          description = ''
+            Threat response mode when npm high/critical findings are detected:
+            `report` writes findings only, `fail` marks service failed, and
+            `quarantine` writes an active quarantine state artifact and fails.
+            `failOnHigh` remains supported as a compatibility override.
+          '';
+        };
+
+        suspiciousLogLookbackHours = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 24;
+          description = "How far back npm log files are scanned for suspicious install patterns.";
+        };
+
+        threatIntelFile = lib.mkOption {
+          type = lib.types.str;
+          default = "config/security/npm-threat-intel.json";
+          description = ''
+            Path to npm threat-intel IOC file (known malicious package names,
+            typosquat regexes, suspicious lifecycle script signatures).
+          '';
+        };
+
+        quarantineStateFile = lib.mkOption {
+          type = lib.types.str;
+          default = "/var/lib/ai-stack/security/npm/quarantine-state.json";
+          description = ''
+            Path for current npm quarantine state. Used by agents/scripts to
+            gate operations when responseMode=`quarantine` is active.
+          '';
+        };
+
+        incidentLogFile = lib.mkOption {
+          type = lib.types.str;
+          default = "/var/lib/ai-stack/security/npm/incidents.jsonl";
+          description = ''
+            JSONL incident ledger for npm threat events and resolution records.
+          '';
+        };
+      };
     };
 
     logging = {
@@ -1044,6 +1113,24 @@
                   id = "coding-bugfix-safe";
                   title = "Coding Bugfix (Safe First)";
                   default_safety_mode = "plan-readonly";
+                  intent_contract = {
+                    user_intent = "Fix root cause safely with minimal blast radius.";
+                    definition_of_done = "Bug resolved, validation evidence captured, and rollback path documented.";
+                    depth_expectation = "standard";
+                    spirit_constraints = [
+                      "Prioritize root-cause correction over superficial symptom masking."
+                      "Do not exit after green checks if acceptance evidence is incomplete."
+                    ];
+                    no_early_exit_without = [
+                      "verification evidence"
+                      "risk summary"
+                      "rollback command"
+                    ];
+                    anti_goals = [
+                      "checkbox-only completion"
+                      "silent unresolved blocker"
+                    ];
+                  };
                   phases = [
                     { id = "discover"; tools = [ "hints" "route_search" "tree_search" ]; }
                     { id = "plan"; tools = [ "workflow_plan" ]; }
