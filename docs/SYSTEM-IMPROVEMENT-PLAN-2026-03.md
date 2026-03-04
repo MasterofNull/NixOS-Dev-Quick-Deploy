@@ -810,4 +810,4 @@ Use this block for each task execution:
 - Post-deploy verification update:
   - Strict Phase 7 program gate now passes in strict mode when switchboard is reachable.
   - `run-harness-improvement-pass.sh` now uses bounded harness-eval timeout with `/query` fallback to avoid long blocking failures.
-  - Remaining runtime blocker: native `TASK_AUDIT_LOG_PATH` output (`/var/log/nixos-ai-stack/aider-task-audit.jsonl`) is still not materializing on host; report falls back to hint-audit derived task-tooling metrics.
+  - Resolved runtime blocker: native `TASK_AUDIT_LOG_PATH` output now materializes at `/var/log/nixos-ai-stack/aider-task-audit.jsonl` after aider-wrapper audit-write fix + service restart.
