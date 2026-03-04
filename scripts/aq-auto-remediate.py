@@ -93,7 +93,7 @@ def _load_settings(args: argparse.Namespace) -> Settings:
         intent_min_runs=max(1, _env_int("POST_DEPLOY_INTENT_MIN_RUNS", 3)),
         intent_min_coverage_pct=max(0.0, min(100.0, _env_float("POST_DEPLOY_INTENT_MIN_COVERAGE_PCT", 90.0))),
         intent_target_coverage_pct=max(0.0, min(100.0, _env_float("POST_DEPLOY_INTENT_TARGET_COVERAGE_PCT", 95.0))),
-        intent_max_probe_runs=max(1, _env_int("POST_DEPLOY_INTENT_MAX_PROBE_RUNS", 3)),
+        intent_max_probe_runs=max(1, _env_int("POST_DEPLOY_INTENT_MAX_PROBE_RUNS", 8)),
         stale_enable=_env_bool("POST_DEPLOY_STALE_GAP_CURATION_ENABLE", True),
         stale_min_token_len=max(3, _env_int("POST_DEPLOY_STALE_GAP_MIN_TOKEN_LEN", 12)),
         stale_max_rows_per_token=max(1, _env_int("POST_DEPLOY_STALE_GAP_MAX_ROWS_PER_TOKEN", 250)),

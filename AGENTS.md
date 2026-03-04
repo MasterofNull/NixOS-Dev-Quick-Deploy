@@ -19,6 +19,41 @@ Canonical full policy: `docs/AGENTS.md`
 7. Handoff: changes made, evidence, residual risk, deploy/verify/rollback commands.
 8. Halt triggers: boot/shutdown regressions, repeated hangs, safety uncertainty.
 
+## Default Execution Behavior (All Prompts)
+- Always run as `delegator + reviewer`: split work into small tasks, assign owner, and review with evidence gate.
+- Use harness-first path for complex work:
+  1. `POST /workflow/plan`
+  2. `POST /workflow/run/start` with `intent_contract`
+  3. `GET/POST /hints`
+  4. Execute task slices
+  5. Reviewer gate (accept/reject) with explicit reasons
+- Required evidence per task:
+  - files changed
+  - commands run
+  - tests run
+  - evidence output
+  - rollback note
+- Reject any task without validation evidence, or that regresses routing/cache/security health.
+- Declarative-first rule: implement via Nix options/modules first; use scripts/runtime fallback only when declarative is not viable.
+- Never exit on planning alone when execution is feasible in the current session.
+
+## Subagent Roles and Limits
+- Role boundary (non-negotiable):
+  - If you are assigned as a sub-agent, do not assume coordinator/delegator/reviewer authority.
+  - Do not re-scope global objectives, re-route other agents, or finalize acceptance decisions.
+  - Execute only the assigned slice and return evidence + rollback notes to the coordinator.
+- `gemini`:
+  - Role: discovery, research synthesis, option/default tuning proposals, doc drafts.
+  - Limits: may return partial output/rate-limit under quota pressure; do not accept without reviewer evidence.
+- `qwen`:
+  - Role: concrete patch proposals, runtime/script logic refinements, test scaffolding suggestions.
+  - Limits: may reference non-existent paths/tests; reviewer must validate repo-grounded correctness.
+- `claude` (when enabled):
+  - Role: deep architecture reasoning, policy/risk analysis, long-form synthesis.
+  - Limits: if paused/unavailable, do not route tasks; reassign to active agents.
+- Primary orchestrator (`codex` or active controller):
+  - Owns final acceptance, safety gates, regression checks, and integration quality.
+
 ## Port and URL Policy (Non-Negotiable)
 Never hardcode ports or service URLs.
 - Nix options source of truth: `nix/modules/core/options.nix`

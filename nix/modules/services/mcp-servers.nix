@@ -1139,10 +1139,12 @@ in
           bash
           coreutils
           findutils
+          gawk
           gnugrep
           jq
           nodejs
           python3
+          ripgrep
         ];
         after = [ "network-online.target" "systemd-tmpfiles-setup.service" ];
         wants = [ "network-online.target" "systemd-tmpfiles-setup.service" ];
@@ -1257,6 +1259,23 @@ in
           POST_DEPLOY_INTENT_MIN_COVERAGE_PCT = toString cfg.deployment.autoRemediation.intentMinCoveragePct;
           POST_DEPLOY_INTENT_TARGET_COVERAGE_PCT = toString cfg.deployment.autoRemediation.intentTargetCoveragePct;
           POST_DEPLOY_INTENT_MAX_PROBE_RUNS = toString cfg.deployment.autoRemediation.intentMaxProbeRuns;
+          POST_DEPLOY_INTENT_BOUNDED_ENABLE = lib.boolToString cfg.deployment.autoRemediation.intentBoundedEnable;
+          POST_DEPLOY_INTENT_BOUNDED_TARGET_COVERAGE_PCT = toString cfg.deployment.autoRemediation.intentBoundedTargetCoveragePct;
+          POST_DEPLOY_INTENT_BOUNDED_RUNS_PER_PASS = toString cfg.deployment.autoRemediation.intentBoundedRunsPerPass;
+          POST_DEPLOY_INTENT_BOUNDED_MAX_TOTAL_RUNS = toString cfg.deployment.autoRemediation.intentBoundedMaxTotalRuns;
+          POST_DEPLOY_INTENT_BOUNDED_MAX_PASSES = toString cfg.deployment.autoRemediation.intentBoundedMaxPasses;
+          POST_DEPLOY_INTENT_BOUNDED_SLEEP_SECONDS = toString cfg.deployment.autoRemediation.intentBoundedSleepSeconds;
+          POST_DEPLOY_INTENT_BOUNDED_TIMEOUT_SECONDS = toString cfg.deployment.autoRemediation.intentBoundedTimeoutSeconds;
+          POST_DEPLOY_HINT_BOUNDED_ENABLE = lib.boolToString cfg.deployment.autoRemediation.hintBoundedEnable;
+          POST_DEPLOY_HINT_BOUNDED_TARGET_ADOPTION_PCT = toString cfg.deployment.autoRemediation.hintBoundedTargetAdoptionPct;
+          POST_DEPLOY_HINT_BOUNDED_RUNS_PER_PASS = toString cfg.deployment.autoRemediation.hintBoundedRunsPerPass;
+          POST_DEPLOY_HINT_BOUNDED_MAX_TOTAL_RUNS = toString cfg.deployment.autoRemediation.hintBoundedMaxTotalRuns;
+          POST_DEPLOY_HINT_BOUNDED_MAX_PASSES = toString cfg.deployment.autoRemediation.hintBoundedMaxPasses;
+          POST_DEPLOY_HINT_BOUNDED_POLL_MAX_SECONDS = toString cfg.deployment.autoRemediation.hintBoundedPollMaxSeconds;
+          POST_DEPLOY_HINT_BOUNDED_SLEEP_SECONDS = toString cfg.deployment.autoRemediation.hintBoundedSleepSeconds;
+          POST_DEPLOY_HINT_BOUNDED_TIMEOUT_SECONDS = toString cfg.deployment.autoRemediation.hintBoundedTimeoutSeconds;
+          POST_DEPLOY_HINT_BOUNDED_WORKSPACE = cfg.deployment.autoRemediation.hintBoundedWorkspace;
+          POST_DEPLOY_HINT_BOUNDED_FILE = cfg.deployment.autoRemediation.hintBoundedFile;
           POST_DEPLOY_STALE_GAP_CURATION_ENABLE = lib.boolToString cfg.deployment.autoRemediation.staleGapCurationEnable;
           POST_DEPLOY_STALE_GAP_MIN_TOKEN_LEN = toString cfg.deployment.autoRemediation.staleGapMinTokenLen;
           POST_DEPLOY_STALE_GAP_MAX_ROWS_PER_TOKEN = toString cfg.deployment.autoRemediation.staleGapMaxRowsPerToken;
