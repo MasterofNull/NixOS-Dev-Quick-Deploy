@@ -1,0 +1,30 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-03-04",
+  "minimum_samples": 20,
+  "max_expected_calibration_error": 0.15,
+  "bins": [
+    {
+      "min": 0.0,
+      "max": 0.2
+    },
+    {
+      "min": 0.2,
+      "max": 0.4
+    },
+    {
+      "min": 0.4,
+      "max": 0.6
+    },
+    {
+      "min": 0.6,
+      "max": 0.8
+    },
+    {
+      "min": 0.8,
+      "max": 1.0
+    }
+  ],
+  "insufficient_data_action": "fail",
+  "report_path": "data/prsi-artifacts/confidence-calibration-latest.json"
+}

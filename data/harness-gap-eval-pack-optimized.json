@@ -1,0 +1,25 @@
+{
+  "version": "1.0",
+  "name": "harness-gap-eval-pack-optimized",
+  "description": "Focused holdout-light pack targeting documented mkIf/mkForce remediation knowledge.",
+  "cases": [
+    {
+      "id": "mkif-mkforce-bullets",
+      "query": "Explain lib.mkIf and lib.mkForce in NixOS modules in 3 bullet points",
+      "expected_keywords": ["mkIf", "mkForce", "module"],
+      "mode": "auto"
+    },
+    {
+      "id": "mkforce-basics",
+      "query": "what is lib.mkForce in NixOS modules",
+      "expected_keywords": ["mkIf", "mkForce"],
+      "mode": "auto"
+    },
+    {
+      "id": "mkif-mkforce-compare",
+      "query": "what is lib.mkIf and lib.mkForce in NixOS modules",
+      "expected_keywords": ["mkIf", "mkForce"],
+      "mode": "auto"
+    }
+  ]
+}

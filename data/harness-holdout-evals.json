@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "name": "harness_holdout_v1",
+  "description": "Holdout eval set for contamination-resistant PRSI scoring. Must remain disjoint from optimization packs.",
+  "cases": [
+    {
+      "id": "holdout_001",
+      "query": "Explain how to add a typed Nix option and wire it into a service env var.",
+      "expected_keywords": ["mkOption", "types", "environment", "serviceConfig"],
+      "mode": "auto"
+    },
+    {
+      "id": "holdout_002",
+      "query": "Describe rollback-safe verification steps after changing hybrid coordinator runtime policy.",
+      "expected_keywords": ["rollback", "validation", "smoke", "policy"],
+      "mode": "auto"
+    },
+    {
+      "id": "holdout_003",
+      "query": "How should PRSI avoid benchmark contamination while still improving prompt quality?",
+      "expected_keywords": ["holdout", "contamination", "reproducibility", "counterfactual"],
+      "mode": "auto"
+    }
+  ]
+}

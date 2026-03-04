@@ -1,0 +1,14 @@
+{
+  "action_id": "<action-id>",
+  "approved_by": "<approver>",
+  "approved_at": "<iso8601>",
+  "checklist": {
+    "blast_radius_assessed": false,
+    "fallback_validated": false,
+    "recovery_path_verified": false,
+    "observability_ready": false,
+    "security_impact_reviewed": false,
+    "independent_verifier_signed": false
+  },
+  "evidence": []
+}

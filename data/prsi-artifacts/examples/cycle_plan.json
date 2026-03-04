@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "cycle_id": "prsi-2026-03-04-001",
+  "created_at": "2026-03-04T12:00:00Z",
+  "objective": "Improve hint adoption quality without increasing regression risk.",
+  "hypothesis": "Adding overlap-aware hint gating will improve adoption success and reduce irrelevant injections.",
+  "risk_class": "medium",
+  "bottleneck": {
+    "id": "hint-adoption-low",
+    "description": "Hint adoption success is below target in current 7d window.",
+    "impact_score": 0.82,
+    "confidence_score": 0.74,
+    "reversibility_score": 0.91
+  },
+  "constraints": [
+    "no hardcoded secrets/ports/urls",
+    "one logical mutating change",
+    "rollback must be documented"
+  ],
+  "out_of_scope": [
+    "multi-service architecture migration",
+    "non-declarative emergency hotfixes"
+  ],
+  "acceptance_checks": [
+    {
+      "id": "hint-adoption",
+      "description": "7d hint adoption should meet threshold",
+      "metric": "hint_adoption_pct",
+      "operator": ">=",
+      "target": 70
+    }
+  ],
+  "proposal": {
+    "summary": "Tune overlap threshold for hint injection to suppress noisy hints.",
+    "change_type": "workflow",
+    "files": [
+      "nix/modules/core/options.nix",
+      "ai-stack/mcp-servers/aider-wrapper/server.py"
+    ],
+    "expected_kpi_delta": [
+      {
+        "metric": "hint_adoption_pct",
+        "direction": "up",
+        "expected_delta": 3.5
+      }
+    ]
+  },
+  "rollback": {
+    "command": "sudo nixos-rebuild switch --rollback",
+    "notes": "Reverts runtime option/env changes if gate failures are detected."
+  }
+}

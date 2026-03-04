@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="${ROOT:-/home/hyperd/Documents/NixOS-Dev-Quick-Deploy}"
 SDK_DIR="${ROOT}/ai-stack/mcp-servers/hybrid-coordinator"
-OUT_DIR="${1:-${ROOT}/dist/harness-sdk-provenance}"
+OUT_DIR="${1:-${XDG_STATE_HOME:-$HOME/.local/state}/nixos-ai-stack/harness-sdk-provenance}"
 mkdir -p "$OUT_DIR"
 
 PKG_JSON="${SDK_DIR}/package.json"

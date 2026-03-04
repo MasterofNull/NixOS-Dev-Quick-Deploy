@@ -177,3 +177,186 @@ sources:
       - shadcn
     schedule: weekly
     enabled: true
+
+  # ---------------------------------------------------------------------------
+  # PRSI research corpus (agentic methods + evaluation reliability)
+  # Canonical index is stored in-repo for deterministic retrieval.
+  # ---------------------------------------------------------------------------
+  - id: prsi-research-index
+    type: local_dir
+    description: >
+      Curated PRSI research index and adoption constraints for this harness.
+      Includes agentic methods and contamination-aware evaluation guidance.
+    url: ai-knowledge-base/reference/prsi
+    fetch:
+      - glob:*.md
+    collection: prsi-research
+    tags:
+      - prsi
+      - recursive-improvement
+      - research
+      - evaluation
+      - reliability
+    schedule: weekly
+    enabled: true
+
+  - id: react-paper
+    type: url
+    description: ReAct paper abstract page for reasoning+acting agent design.
+    url: https://arxiv.org/abs/2210.03629
+    fetch:
+      - full
+    collection: prsi-research
+    tags:
+      - prsi
+      - react
+      - agents
+      - research
+    schedule: weekly
+    enabled: true
+
+  - id: toolformer-paper
+    type: url
+    description: Toolformer paper abstract page for model-driven tool-use decisions.
+    url: https://arxiv.org/abs/2302.04761
+    fetch:
+      - full
+    collection: prsi-research
+    tags:
+      - prsi
+      - tool-use
+      - research
+    schedule: weekly
+    enabled: true
+
+  - id: reflexion-paper
+    type: url
+    description: Reflexion paper abstract page for verbal reinforcement loops.
+    url: https://arxiv.org/abs/2303.11366
+    fetch:
+      - full
+    collection: prsi-research
+    tags:
+      - prsi
+      - reflexion
+      - research
+    schedule: weekly
+    enabled: true
+
+  - id: self-refine-paper
+    type: url
+    description: Self-Refine paper abstract page for iterative self-feedback.
+    url: https://arxiv.org/abs/2303.17651
+    fetch:
+      - full
+    collection: prsi-research
+    tags:
+      - prsi
+      - self-refine
+      - research
+    schedule: weekly
+    enabled: true
+
+  - id: voyager-paper
+    type: url
+    description: Voyager paper abstract page for lifelong skill accumulation.
+    url: https://arxiv.org/abs/2305.16291
+    fetch:
+      - full
+    collection: prsi-research
+    tags:
+      - prsi
+      - voyager
+      - research
+    schedule: weekly
+    enabled: true
+
+  - id: constitutional-ai-paper
+    type: url
+    description: Constitutional AI paper abstract page for policy-constrained behavior.
+    url: https://arxiv.org/abs/2212.08073
+    fetch:
+      - full
+    collection: prsi-research
+    tags:
+      - prsi
+      - safety
+      - constitutional-ai
+      - research
+    schedule: weekly
+    enabled: true
+
+  - id: openai-eval-best-practices
+    type: url
+    description: OpenAI evaluation best-practices guide for robust eval protocol design.
+    url: https://platform.openai.com/docs/guides/evaluation-best-practices
+    fetch:
+      - full
+    collection: prsi-research
+    tags:
+      - prsi
+      - eval
+      - reliability
+      - best-practices
+    schedule: weekly
+    enabled: true
+
+  - id: swe-agent-docs
+    type: url
+    description: SWE-agent docs for practical coding-agent workflow patterns.
+    url: https://swe-agent.com/0.7/
+    fetch:
+      - full
+    collection: prsi-research
+    tags:
+      - prsi
+      - swe-agent
+      - coding-agents
+      - workflows
+    schedule: weekly
+    enabled: true
+
+  - id: swebench-contamination-2506
+    type: url
+    description: SWE-bench contamination/evaluation risk study (2025-06).
+    url: https://arxiv.org/abs/2506.12286
+    fetch:
+      - full
+    collection: prsi-research
+    tags:
+      - prsi
+      - swe-bench
+      - contamination
+      - eval-risk
+    schedule: weekly
+    enabled: true
+
+  - id: swebench-contamination-2512
+    type: url
+    description: SWE-bench contamination/evaluation risk study (2025-12).
+    url: https://arxiv.org/abs/2512.10218
+    fetch:
+      - full
+    collection: prsi-research
+    tags:
+      - prsi
+      - swe-bench
+      - contamination
+      - eval-risk
+    schedule: weekly
+    enabled: true
+
+  - id: swebench-contamination-2510
+    type: url
+    description: SWE-bench contamination/evaluation risk study (2025-10).
+    url: https://arxiv.org/abs/2510.08996
+    fetch:
+      - full
+    collection: prsi-research
+    tags:
+      - prsi
+      - swe-bench
+      - contamination
+      - eval-risk
+    schedule: weekly
+    enabled: true

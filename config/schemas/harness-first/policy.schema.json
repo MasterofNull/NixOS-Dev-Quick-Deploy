@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/harness-first/policy.schema.json",
+  "title": "Harness-First Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "runbook",
+    "evidence_template",
+    "required_sections",
+    "required_commands",
+    "required_evidence_sections"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "runbook": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence_template": {
+      "type": "string",
+      "minLength": 1
+    },
+    "required_sections": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "required_commands": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "required_evidence_sections": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    }
+  }
+}

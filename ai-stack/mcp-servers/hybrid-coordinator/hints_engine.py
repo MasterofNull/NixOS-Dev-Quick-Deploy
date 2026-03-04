@@ -1,17 +1,23 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set, Tuple
 
 try:
     import yaml
 except ImportError:
     yaml = None  # type: ignore[assignment]
+try:
+    import psycopg  # type: ignore[import-untyped]
+except Exception:
+    psycopg = None  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------
@@ -23,7 +29,7 @@ class Hint:
     """A ranked, actionable workflow hint surfaced to any agent or human."""
 
     id: str
-    type: str  # "prompt_template" | "gap_topic" | "workflow_rule" | "tool_warning"
+    type: str  # "prompt_template" | "gap_topic" | "workflow_rule" | "tool_warning" | "runtime_signal"
     title: str
     score: float  # composite 0.0-1.0
     snippet: str  # actionable text: template excerpt, rule, etc.
@@ -127,6 +133,7 @@ _STATIC_RULES: List[dict] = [
 # ---------------------------------------------------------------------------
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
+_COMMAND_RE = re.compile(r"`[^`]+`|scripts/[a-zA-Z0-9._/-]+|/[a-zA-Z0-9._/-]+")
 
 
 def _tokenize(text: str) -> List[str]:
@@ -174,6 +181,8 @@ class HintsEngine:
         registry_path: Optional[Path] = None,
         gaps_jsonl_path: Optional[Path] = None,
         audit_log_path: Optional[Path] = None,
+        report_json_path: Optional[Path] = None,
+        hint_feedback_path: Optional[Path] = None,
     ) -> None:
         # Registry YAML: ai-stack/prompts/registry.yaml relative to this file's
         # parent.parent.parent (hybrid-coordinator -> mcp-servers -> ai-stack)
@@ -191,13 +200,102 @@ class HintsEngine:
 
         if audit_log_path is None:
             env_val = os.getenv("TOOL_AUDIT_LOG_PATH", "")
-            self._audit_log_path = (
-                Path(env_val)
-                if env_val
-                else Path("/var/log/nixos-ai-stack/tool-audit.jsonl")
-            )
+            candidate = Path(env_val) if env_val else Path("/var/log/nixos-ai-stack/tool-audit.jsonl")
+            if not candidate.exists() and Path("/var/log/ai-audit-sidecar/tool-audit.jsonl").exists():
+                candidate = Path("/var/log/ai-audit-sidecar/tool-audit.jsonl")
+            self._audit_log_path = candidate
         else:
             self._audit_log_path = audit_log_path
+
+        if report_json_path is None:
+            report_env = os.getenv("AQ_REPORT_LATEST_JSON", "")
+            self._report_json_path = (
+                Path(report_env)
+                if report_env
+                else Path("/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json")
+            )
+        else:
+            self._report_json_path = report_json_path
+
+        if hint_feedback_path is None:
+            fb_env = os.getenv("HINT_FEEDBACK_LOG_PATH", "")
+            self._hint_feedback_path = (
+                Path(fb_env)
+                if fb_env
+                else Path("/var/log/nixos-ai-stack/hint-feedback.jsonl")
+            )
+        else:
+            self._hint_feedback_path = hint_feedback_path
+
+        hint_audit_env = os.getenv("HINT_AUDIT_LOG_PATH", "")
+        self._hint_audit_path = (
+            Path(hint_audit_env)
+            if hint_audit_env
+            else Path("/var/log/nixos-ai-stack/hint-audit.jsonl")
+        )
+        self._div_repeat_window = self._parse_int_env("AI_HINT_DIVERSITY_REPEAT_WINDOW", 300, min_value=20)
+        self._div_repeat_cap_pct = self._parse_float_env("AI_HINT_DIVERSITY_REPEAT_CAP_PCT", 70.0, min_value=10.0, max_value=100.0)
+        self._div_repeat_min_count = self._parse_int_env("AI_HINT_DIVERSITY_REPEAT_MIN_COUNT", 8, min_value=1)
+        self._div_type_max = self._parse_type_quota_env(
+            "AI_HINT_DIVERSITY_TYPE_MAX",
+            default="runtime_signal:2,prompt_template:2,gap_topic:2,workflow_rule:1,tool_warning:1",
+        )
+        self._div_type_min = self._parse_type_quota_env(
+            "AI_HINT_DIVERSITY_TYPE_MIN",
+            default="runtime_signal:1",
+        )
+        self._feedback_db_enabled = (os.getenv("AI_HINT_FEEDBACK_DB_ENABLED", "true").strip().lower() != "false")
+        self._feedback_db_ttl_seconds = self._parse_int_env("AI_HINT_FEEDBACK_DB_CACHE_TTL_SECONDS", 120, min_value=10)
+        self._feedback_db_cache_loaded_at = 0.0
+        self._feedback_db_cache: Dict[str, Dict[str, object]] = {}
+        self._bandit_enabled = (os.getenv("AI_HINT_BANDIT_ENABLED", "true").strip().lower() != "false")
+        self._bandit_min_events = self._parse_int_env("AI_HINT_BANDIT_MIN_EVENTS", 3, min_value=1)
+        self._bandit_prior_alpha = self._parse_float_env("AI_HINT_BANDIT_PRIOR_ALPHA", 1.0, min_value=0.01, max_value=100.0)
+        self._bandit_prior_beta = self._parse_float_env("AI_HINT_BANDIT_PRIOR_BETA", 1.0, min_value=0.01, max_value=100.0)
+        self._bandit_exploration_weight = self._parse_float_env("AI_HINT_BANDIT_EXPLORATION_WEIGHT", 0.35, min_value=0.0, max_value=2.0)
+        self._bandit_max_adjust = self._parse_float_env("AI_HINT_BANDIT_MAX_ADJUST", 0.12, min_value=0.0, max_value=1.0)
+        self._bandit_confidence_floor = self._parse_float_env("AI_HINT_BANDIT_CONFIDENCE_FLOOR", 0.15, min_value=0.0, max_value=1.0)
+
+    @staticmethod
+    def _parse_int_env(name: str, default: int, min_value: int = 0) -> int:
+        raw = os.getenv(name, "").strip()
+        if not raw:
+            return default
+        try:
+            value = int(raw)
+            return max(min_value, value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _parse_float_env(name: str, default: float, min_value: float = 0.0, max_value: float = 100.0) -> float:
+        raw = os.getenv(name, "").strip()
+        if not raw:
+            return default
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            return default
+        return max(min_value, min(max_value, value))
+
+    @staticmethod
+    def _parse_type_quota_env(name: str, default: str) -> Dict[str, int]:
+        raw = os.getenv(name, "").strip() or default
+        out: Dict[str, int] = {}
+        for part in raw.split(","):
+            seg = part.strip()
+            if not seg or ":" not in seg:
+                continue
+            t, n = seg.split(":", 1)
+            hint_type = t.strip().lower()
+            try:
+                limit = int(n.strip())
+            except (TypeError, ValueError):
+                continue
+            if not hint_type or limit < 0:
+                continue
+            out[hint_type] = limit
+        return out
 
     # ------------------------------------------------------------------
     # Public API
@@ -208,14 +306,16 @@ class HintsEngine:
         query: str,
         context: str = "",
         max_hints: int = 5,
+        agent_type: str = "unknown",
     ) -> List[Hint]:
         """
         Return up to *max_hints* ranked Hint objects for the given *query*.
 
-        Three sources are combined:
+        Four sources are combined:
           A) Registry templates (weight 0.6)
           B) Query gaps from JSONL (weight 0.3)
           C) Static workflow rules from CLAUDE.md (weight 0.1)
+          D) Runtime diagnostics (tool errors + aq-report recommendations)
 
         Results are deduplicated by id (first occurrence wins) and sorted by
         score descending.
@@ -236,8 +336,18 @@ class HintsEngine:
         source_a = self._hints_from_registry(query_tokens, context_lower)
         source_b = self._hints_from_gaps(query, query_tokens)
         source_c = self._hints_from_static_rules(query_tokens)
+        source_d = self._hints_from_runtime_signals(query, query_tokens)
 
-        combined: List[Hint] = source_a + source_b + source_c
+        feedback = self._load_hint_feedback_scores()
+        db_feedback_profiles = self._load_db_feedback_profiles()
+        preference_profile = self._load_agent_preference_profile(agent_type)
+        combined: List[Hint] = source_d + source_a + source_b + source_c
+        combined = [self._apply_efficiency_adjustment(h) for h in combined]
+        combined = [self._apply_feedback_adjustment(h, feedback, db_feedback_profiles, query_tokens) for h in combined]
+        combined = [self._apply_agent_preference_adjustment(h, preference_profile) for h in combined]
+        usage_counts, usage_total = self._load_recent_hint_usage()
+        overused_ids = self._compute_overused_hint_ids(usage_counts, usage_total)
+        combined = [self._apply_repeat_penalty(h, usage_counts, usage_total, overused_ids) for h in combined]
         combined.sort(key=lambda h: h.score, reverse=True)
 
         seen: set = set()
@@ -246,10 +356,485 @@ class HintsEngine:
             if hint.id not in seen:
                 seen.add(hint.id)
                 deduped.append(hint)
-            if len(deduped) >= max_hints:
-                break
+        return self._select_with_diversity_policy(deduped, max_hints=max_hints, overused_ids=overused_ids)
 
-        return deduped
+    def _pg_dsn(self) -> str:
+        host = os.getenv("POSTGRES_HOST", "127.0.0.1")
+        port = os.getenv("POSTGRES_PORT", "5432")
+        db = os.getenv("POSTGRES_DB", "aidb")
+        user = os.getenv("POSTGRES_USER", "aidb")
+        password = os.getenv("POSTGRES_PASSWORD", "")
+        if not password:
+            pw_file = Path(os.getenv("POSTGRES_PASSWORD_FILE", "/run/secrets/postgres_password"))
+            try:
+                password = pw_file.read_text(encoding="utf-8").strip()
+            except Exception:
+                password = ""
+        return f"postgresql://{user}:{password}@{host}:{port}/{db}"
+
+    def _load_db_feedback_profiles(self) -> Dict[str, Dict[str, object]]:
+        if not self._feedback_db_enabled or psycopg is None:
+            return {}
+        now_ts = datetime.now(tz=timezone.utc).timestamp()
+        if (now_ts - self._feedback_db_cache_loaded_at) < self._feedback_db_ttl_seconds:
+            return self._feedback_db_cache
+        dsn = self._pg_dsn()
+        query = """
+        SELECT hint_id, event_count, helpful_count, unhelpful_count,
+               helpful_rate, mean_score, confidence, dominant_semantic_tags
+        FROM hint_feedback_profiles
+        WHERE event_count >= 2
+        """
+        out: Dict[str, Dict[str, object]] = {}
+        try:
+            conn = psycopg.connect(dsn, connect_timeout=2)
+            cur = conn.execute(query)
+            for row in cur.fetchall():
+                hint_id = str(row[0] or "").strip()
+                if not hint_id:
+                    continue
+                event_count = int(row[1] or 0)
+                helpful_count = int(row[2] or 0)
+                unhelpful_count = int(row[3] or 0)
+                helpful_rate = float(row[4]) if row[4] is not None else None
+                mean_score = float(row[5]) if row[5] is not None else None
+                confidence = float(row[6]) if row[6] is not None else 0.0
+                dominant_tags = row[7] if isinstance(row[7], list) else []
+                db_signal = 0.0
+                if helpful_rate is not None:
+                    db_signal += (helpful_rate * 2.0 - 1.0) * 0.7
+                if mean_score is not None:
+                    db_signal += mean_score * 0.3
+                db_signal *= max(0.0, min(1.0, confidence))
+                out[hint_id] = {
+                    "signal": max(-1.0, min(1.0, db_signal)),
+                    "event_count": event_count,
+                    "helpful_count": helpful_count,
+                    "unhelpful_count": unhelpful_count,
+                    "confidence": max(0.0, min(1.0, confidence)),
+                    "dominant_tags": [str(t).strip().lower() for t in dominant_tags if str(t).strip()],
+                }
+            conn.close()
+        except Exception:
+            out = {}
+        self._feedback_db_cache = out
+        self._feedback_db_cache_loaded_at = now_ts
+        return out
+
+    def _load_recent_hint_usage(self) -> Tuple[Counter, int]:
+        counts: Counter = Counter()
+        if not self._hint_audit_path.exists():
+            return counts, 0
+        try:
+            rows = self._hint_audit_path.read_text(encoding="utf-8").splitlines()[-self._div_repeat_window:]
+        except Exception:
+            return counts, 0
+        for raw in rows:
+            if not raw.strip():
+                continue
+            try:
+                obj = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            hid = str(obj.get("hint_id", "") or "").strip()
+            if hid:
+                counts[hid] += 1
+        return counts, int(sum(counts.values()))
+
+    def _compute_overused_hint_ids(self, usage_counts: Counter, usage_total: int) -> Set[str]:
+        overused: Set[str] = set()
+        if usage_total <= 0:
+            return overused
+        cap_ratio = self._div_repeat_cap_pct / 100.0
+        for hid, count in usage_counts.items():
+            if count < self._div_repeat_min_count:
+                continue
+            if (count / usage_total) >= cap_ratio:
+                overused.add(str(hid))
+        return overused
+
+    def _apply_repeat_penalty(
+        self,
+        hint: Hint,
+        usage_counts: Counter,
+        usage_total: int,
+        overused_ids: Set[str],
+    ) -> Hint:
+        if usage_total <= 0 or hint.id not in overused_ids:
+            return hint
+        share = usage_counts.get(hint.id, 0) / max(usage_total, 1)
+        # Penalty scales with over-concentration but is bounded to preserve relevance.
+        penalty = min(0.22, max(0.06, (share - (self._div_repeat_cap_pct / 100.0)) * 0.5))
+        adjusted = max(0.0, hint.score - penalty)
+        reason = f"{hint.reason}; diversity_repeat_penalty=-{penalty:.2f}".strip("; ")
+        return Hint(
+            id=hint.id,
+            type=hint.type,
+            title=hint.title,
+            score=adjusted,
+            snippet=hint.snippet,
+            reason=reason,
+            tags=hint.tags,
+            agent_hints=hint.agent_hints,
+        )
+
+    def _select_with_diversity_policy(
+        self,
+        deduped_hints: List[Hint],
+        max_hints: int,
+        overused_ids: Set[str],
+    ) -> List[Hint]:
+        if max_hints <= 0 or not deduped_hints:
+            return []
+
+        type_counts: Dict[str, int] = {}
+        selected: List[Hint] = []
+        selected_ids: Set[str] = set()
+        remaining = list(deduped_hints)
+
+        def hint_type(h: Hint) -> str:
+            return (h.type or "unknown").strip().lower() or "unknown"
+
+        def can_take(h: Hint) -> bool:
+            t = hint_type(h)
+            max_for_type = self._div_type_max.get(t)
+            if max_for_type is None:
+                return True
+            return type_counts.get(t, 0) < max_for_type
+
+        def take(h: Hint) -> None:
+            t = hint_type(h)
+            type_counts[t] = type_counts.get(t, 0) + 1
+            selected.append(h)
+            selected_ids.add(h.id)
+
+        # Pass 1: satisfy per-type minimum quotas where candidates exist.
+        for req_type, req_count in self._div_type_min.items():
+            if len(selected) >= max_hints:
+                break
+            if req_count <= 0:
+                continue
+            available = [h for h in remaining if hint_type(h) == req_type and can_take(h)]
+            if not available:
+                continue
+            target = min(req_count, len(available), max_hints - len(selected))
+            for h in available:
+                if target <= 0 or len(selected) >= max_hints:
+                    break
+                if h.id in selected_ids or not can_take(h):
+                    continue
+                take(h)
+                target -= 1
+
+        # Pass 2: fill remaining with non-overused first while honoring type max.
+        deferred_overused: List[Hint] = []
+        for h in remaining:
+            if len(selected) >= max_hints:
+                break
+            if h.id in selected_ids or not can_take(h):
+                continue
+            if h.id in overused_ids:
+                deferred_overused.append(h)
+                continue
+            take(h)
+
+        # Pass 3: if still not enough, allow overused hints as fallback.
+        for h in deferred_overused:
+            if len(selected) >= max_hints:
+                break
+            if h.id in selected_ids or not can_take(h):
+                continue
+            take(h)
+
+        return selected
+
+    def _apply_efficiency_adjustment(self, hint: Hint) -> Hint:
+        """
+        Bias toward hints that are concise, tool/action-oriented, and likely to
+        reduce downstream token usage through concrete execution steps.
+        """
+        snippet = (hint.snippet or "").strip()
+        title = (hint.title or "").strip()
+        reason = (hint.reason or "").strip()
+        text = " ".join([title, snippet, reason]).lower()
+
+        token_count = max(1, len(_tokenize(snippet)))
+        has_command = bool(_COMMAND_RE.search(snippet))
+        tool_words = any(k in text for k in (
+            "run ", "scripts/", "/hints", "/query", "systemctl", "nixos-rebuild",
+            "aq-report", "check-", "validate", "retry", "diagnose", "import",
+        ))
+        uncertainty_words = any(k in text for k in ("consider", "maybe", "could", "might"))
+
+        efficiency = 0.55
+        if has_command:
+            efficiency += 0.20
+        if tool_words:
+            efficiency += 0.18
+        if token_count <= 40:
+            efficiency += 0.10
+        elif token_count > 90:
+            efficiency -= 0.12
+        if uncertainty_words:
+            efficiency -= 0.06
+
+        efficiency = max(0.0, min(1.0, efficiency))
+        # Keep source relevance dominant, but reward low-token actionable hints.
+        adjusted_score = min(1.0, hint.score * 0.82 + efficiency * 0.18)
+        if adjusted_score > hint.score:
+            reason = f"{reason}; efficiency_bias=+{(adjusted_score - hint.score):.2f}".strip("; ")
+        return Hint(
+            id=hint.id,
+            type=hint.type,
+            title=hint.title,
+            score=adjusted_score,
+            snippet=hint.snippet,
+            reason=reason or hint.reason,
+            tags=hint.tags,
+            agent_hints=hint.agent_hints,
+        )
+
+    def _load_hint_feedback_scores(self) -> Dict[str, float]:
+        """
+        Build per-hint feedback signal in [-1.0, 1.0] from:
+        - hint-audit adoption outcomes (accepted true/false)
+        - explicit /hints/feedback records (helpful bool / score)
+        """
+        stats: Dict[str, Dict[str, int]] = {}
+
+        def add(hint_id: str, positive: int, negative: int) -> None:
+            if not hint_id:
+                return
+            row = stats.setdefault(hint_id, {"pos": 0, "neg": 0})
+            row["pos"] += max(0, int(positive))
+            row["neg"] += max(0, int(negative))
+
+        try:
+            hint_audit_path = Path("/var/log/nixos-ai-stack/hint-audit.jsonl")
+            if hint_audit_path.exists():
+                for raw in hint_audit_path.read_text(encoding="utf-8").splitlines()[-4000:]:
+                    if not raw.strip():
+                        continue
+                    try:
+                        obj = json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
+                    hid = str(obj.get("hint_id", "") or "").strip()
+                    accepted = bool(obj.get("hint_accepted", False))
+                    add(hid, 1 if accepted else 0, 0 if accepted else 1)
+        except Exception:
+            pass
+
+        try:
+            if self._hint_feedback_path.exists():
+                for raw in self._hint_feedback_path.read_text(encoding="utf-8").splitlines()[-4000:]:
+                    if not raw.strip():
+                        continue
+                    try:
+                        obj = json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
+                    hid = str(obj.get("hint_id", "") or "").strip()
+                    if "helpful" in obj:
+                        helpful = bool(obj.get("helpful"))
+                        add(hid, 1 if helpful else 0, 0 if helpful else 1)
+                        continue
+                    try:
+                        score = float(obj.get("score", 0.0))
+                    except (TypeError, ValueError):
+                        score = 0.0
+                    add(hid, 1 if score > 0 else 0, 1 if score < 0 else 0)
+        except Exception:
+            pass
+
+        out: Dict[str, float] = {}
+        for hid, row in stats.items():
+            pos = int(row.get("pos", 0))
+            neg = int(row.get("neg", 0))
+            total = pos + neg
+            if total <= 0:
+                continue
+            out[hid] = (pos - neg) / total
+        return out
+
+    def _apply_feedback_adjustment(
+        self,
+        hint: Hint,
+        feedback_scores: Dict[str, float],
+        db_feedback_profiles: Optional[Dict[str, Dict[str, object]]] = None,
+        query_tokens: Optional[List[str]] = None,
+    ) -> Hint:
+        signal = float(feedback_scores.get(hint.id, 0.0))
+        db_profile = (db_feedback_profiles or {}).get(hint.id, {})
+        db_signal_raw = db_profile.get("signal")
+        db_conf_raw = db_profile.get("confidence")
+        db_signal = float(db_signal_raw) if isinstance(db_signal_raw, (int, float)) else None
+        db_conf = float(db_conf_raw) if isinstance(db_conf_raw, (int, float)) else 0.0
+        if db_signal is not None:
+            signal = signal * 0.6 + db_signal * 0.4 if abs(signal) > 0.0 else db_signal * max(0.4, min(1.0, db_conf))
+            dominant_tags = db_profile.get("dominant_tags", [])
+            if isinstance(dominant_tags, list):
+                lowered = {str(t).strip().lower() for t in dominant_tags}
+                if "relevance_low" in lowered or "helpful_false" in lowered:
+                    signal -= 0.05
+                if "actionable" in lowered or "relevance_high" in lowered:
+                    signal += 0.04
+        bandit_adjust = 0.0
+        bandit_reason = ""
+        if self._bandit_enabled and db_profile:
+            bandit_adjust, bandit_reason = self._bandit_adjustment(db_profile, query_tokens or [], hint)
+            signal += bandit_adjust
+        signal = max(-1.0, min(1.0, signal))
+        if abs(signal) < 0.01:
+            return hint
+        adjusted_score = max(0.0, min(1.0, hint.score + signal * 0.15))
+        reason = hint.reason
+        if adjusted_score != hint.score:
+            reason = f"{reason}; feedback_signal={signal:+.2f}".strip("; ")
+        if db_signal is not None and adjusted_score != hint.score:
+            reason = f"{reason}; feedback_db_signal={db_signal:+.2f}; feedback_db_conf={db_conf:.2f}".strip("; ")
+        if bandit_reason and adjusted_score != hint.score:
+            reason = f"{reason}; {bandit_reason}".strip("; ")
+        return Hint(
+            id=hint.id,
+            type=hint.type,
+            title=hint.title,
+            score=adjusted_score,
+            snippet=hint.snippet,
+            reason=reason,
+            tags=hint.tags,
+            agent_hints=hint.agent_hints,
+        )
+
+    def _bandit_context_bonus(self, query_tokens: List[str], dominant_tags: Set[str], hint: Hint) -> float:
+        q = {t.strip().lower() for t in query_tokens if t and len(t) >= 3}
+        if not q:
+            return 0.0
+        bonus = 0.0
+        if q.intersection({"error", "failed", "timeout", "traceback", "fix"}) and "tool_error" in dominant_tags:
+            bonus += 0.12
+        if q.intersection({"service", "deploy", "nixos", "systemd"}) and "actionable" in dominant_tags:
+            bonus += 0.08
+        if q.intersection({"relevant", "quality", "hint", "improve"}) and "relevance_high" in dominant_tags:
+            bonus += 0.06
+        if "irrelevant" in q and "relevance_low" in dominant_tags:
+            bonus += 0.1
+        hint_tags = {str(t).strip().lower() for t in hint.tags if str(t).strip()}
+        if q.intersection(hint_tags):
+            bonus += 0.04
+        return max(-0.25, min(0.25, bonus))
+
+    def _bandit_adjustment(self, db_profile: Dict[str, object], query_tokens: List[str], hint: Hint) -> Tuple[float, str]:
+        event_count = int(db_profile.get("event_count", 0) or 0)
+        helpful_count = int(db_profile.get("helpful_count", 0) or 0)
+        unhelpful_count = int(db_profile.get("unhelpful_count", 0) or 0)
+        if event_count < self._bandit_min_events:
+            return 0.0, ""
+        alpha = self._bandit_prior_alpha + max(0, helpful_count)
+        beta = self._bandit_prior_beta + max(0, unhelpful_count)
+        posterior_mean = alpha / max(1e-9, alpha + beta)
+        total_trials = max(1, event_count)
+        exploration = math.sqrt((2.0 * math.log(total_trials + 2.0)) / (total_trials + 1.0))
+        dominant = db_profile.get("dominant_tags", [])
+        dominant_tags = {str(t).strip().lower() for t in dominant} if isinstance(dominant, list) else set()
+        context_bonus = self._bandit_context_bonus(query_tokens, dominant_tags, hint)
+        confidence_raw = db_profile.get("confidence")
+        confidence = float(confidence_raw) if isinstance(confidence_raw, (int, float)) else 0.0
+        confidence = max(self._bandit_confidence_floor, min(1.0, confidence))
+        arm_value = ((posterior_mean - 0.5) * 2.0) + (self._bandit_exploration_weight * exploration) + context_bonus
+        arm_value = max(-1.0, min(1.0, arm_value))
+        adjust = max(-self._bandit_max_adjust, min(self._bandit_max_adjust, arm_value * self._bandit_max_adjust * confidence))
+        if abs(adjust) < 0.005:
+            return 0.0, ""
+        return adjust / 0.15, (
+            f"bandit_adj={adjust:+.3f}; bandit_mean={posterior_mean:.3f}; "
+            f"bandit_explore={exploration:.3f}; bandit_ctx={context_bonus:+.3f}; bandit_conf={confidence:.2f}"
+        )
+
+    def _load_agent_preference_profile(self, agent_type: str) -> Dict[str, Set[str]]:
+        profile: Dict[str, Set[str]] = {
+            "preferred_tools": set(),
+            "preferred_data_sources": set(),
+            "preferred_hint_types": set(),
+            "preferred_tags": set(),
+        }
+        agent = (agent_type or "").strip().lower() or "unknown"
+        if not self._hint_feedback_path.exists():
+            return profile
+        try:
+            rows = self._hint_feedback_path.read_text(encoding="utf-8").splitlines()[-4000:]
+        except Exception:
+            return profile
+
+        counts: Dict[str, Dict[str, int]] = {
+            "preferred_tools": {},
+            "preferred_data_sources": {},
+            "preferred_hint_types": {},
+            "preferred_tags": {},
+        }
+
+        def add(kind: str, value: str) -> None:
+            text = (value or "").strip().lower()
+            if not text:
+                return
+            bucket = counts[kind]
+            bucket[text] = int(bucket.get(text, 0)) + 1
+
+        for raw in rows:
+            if not raw.strip():
+                continue
+            try:
+                obj = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            row_agent = str(obj.get("agent", "") or "").strip().lower() or "unknown"
+            if row_agent != agent:
+                continue
+            prefs = obj.get("agent_preferences", {})
+            if not isinstance(prefs, dict):
+                continue
+            for k in ("preferred_tools", "preferred_data_sources", "preferred_hint_types", "preferred_tags"):
+                items = prefs.get(k, [])
+                if isinstance(items, list):
+                    for item in items:
+                        add(k, str(item))
+
+        for kind, bucket in counts.items():
+            for key, n in bucket.items():
+                if n >= 2:
+                    profile[kind].add(key)
+        return profile
+
+    def _apply_agent_preference_adjustment(self, hint: Hint, profile: Dict[str, Set[str]]) -> Hint:
+        boost = 0.0
+        hint_type = (hint.type or "").strip().lower()
+        if hint_type and hint_type in profile.get("preferred_hint_types", set()):
+            boost += 0.08
+
+        tags = {str(t).strip().lower() for t in (hint.tags or []) if str(t).strip()}
+        if tags.intersection(profile.get("preferred_tags", set())):
+            boost += 0.06
+
+        text = f"{hint.title} {hint.snippet} {hint.reason}".lower()
+        if any(t in text for t in profile.get("preferred_tools", set())):
+            boost += 0.05
+        if any(s in text for s in profile.get("preferred_data_sources", set())):
+            boost += 0.04
+
+        if boost <= 0.0:
+            return hint
+        adjusted = min(1.0, hint.score + boost)
+        reason = f"{hint.reason}; agent_preference_boost=+{boost:.2f}".strip("; ")
+        return Hint(
+            id=hint.id,
+            type=hint.type,
+            title=hint.title,
+            score=adjusted,
+            snippet=hint.snippet,
+            reason=reason,
+            tags=hint.tags,
+            agent_hints=hint.agent_hints,
+        )
 
     def to_dict(self, hint: Hint) -> dict:
         """Return a JSON-serialisable dict for *hint*."""
@@ -271,13 +856,120 @@ class HintsEngine:
         query: str,
         context: str = "",
         max_hints: int = 5,
+        agent_type: str = "unknown",
     ) -> dict:
         """Return ranked hints as a JSON-serialisable dict."""
-        hints = self.rank(query, context=context, max_hints=max_hints)
+        hints = self.rank(query, context=context, max_hints=max_hints, agent_type=agent_type)
+        profile = self._load_agent_preference_profile(agent_type)
+        usage_counts, usage_total = self._load_recent_hint_usage()
+        overused_ids = sorted(self._compute_overused_hint_ids(usage_counts, usage_total))
+        db_profiles = self._load_db_feedback_profiles()
+        output_type_counts: Dict[str, int] = {}
+        for h in hints:
+            t = (h.type or "unknown").strip().lower() or "unknown"
+            output_type_counts[t] = output_type_counts.get(t, 0) + 1
         return {
             "hints": [self.to_dict(h) for h in hints],
             "generated_at": datetime.now(tz=timezone.utc).isoformat(),
             "query": query,
+            "agent_type": agent_type,
+            "diversity_policy": {
+                "repeat_window": self._div_repeat_window,
+                "repeat_cap_pct": self._div_repeat_cap_pct,
+                "repeat_min_count": self._div_repeat_min_count,
+                "type_min": self._div_type_min,
+                "type_max": self._div_type_max,
+            },
+            "diversity_runtime": {
+                "recent_injections": usage_total,
+                "overused_hint_ids": overused_ids,
+                "output_type_counts": output_type_counts,
+            },
+            "feedback_db": {
+                "enabled": self._feedback_db_enabled,
+                "available": bool(db_profiles),
+                "profile_count": len(db_profiles),
+                "cache_ttl_seconds": self._feedback_db_ttl_seconds,
+            },
+            "bandit_policy": {
+                "enabled": self._bandit_enabled,
+                "min_events": self._bandit_min_events,
+                "prior_alpha": self._bandit_prior_alpha,
+                "prior_beta": self._bandit_prior_beta,
+                "exploration_weight": self._bandit_exploration_weight,
+                "max_adjust": self._bandit_max_adjust,
+                "confidence_floor": self._bandit_confidence_floor,
+            },
+            "agent_preference_profile": {
+                "preferred_tools": sorted(profile.get("preferred_tools", set())),
+                "preferred_data_sources": sorted(profile.get("preferred_data_sources", set())),
+                "preferred_hint_types": sorted(profile.get("preferred_hint_types", set())),
+                "preferred_tags": sorted(profile.get("preferred_tags", set())),
+            },
+            "feedback_contract": {
+                "endpoint": "/hints/feedback",
+                "required_any_of": ["helpful", "score"],
+                "required": ["hint_id"],
+                "agent_preferences_fields": [
+                    "preferred_tools",
+                    "preferred_data_sources",
+                    "preferred_hint_types",
+                    "preferred_tags",
+                ],
+            },
+            "feedback_guide": {
+                "purpose": "Improve future hint ranking by reporting what helped or wasted effort.",
+                "when_to_send": [
+                    "after using an injected hint",
+                    "when a hint was irrelevant or low-value",
+                ],
+                "minimal_payload": {
+                    "hint_id": "<id>",
+                    "helpful": True,
+                    "agent": "<agent-name>",
+                },
+                "advocacy_payload": {
+                    "hint_id": "<id>",
+                    "score": 1.0,
+                    "agent_preferences": {
+                        "preferred_tools": ["route_search", "workflow_plan"],
+                        "preferred_data_sources": ["tool_audit", "aq_report"],
+                        "preferred_hint_types": ["runtime_signal"],
+                        "preferred_tags": ["efficiency", "diagnostics"],
+                    },
+                },
+            },
+            "advocacy_ranking": {
+                "signals_used": [
+                    "hint_adoption_outcomes",
+                    "explicit_helpful_or_score_feedback",
+                    "agent_preferences_profile",
+                    "efficiency_bias",
+                ],
+                "effect": "useful hints trend up, unhelpful hints trend down, agent-preferred hint styles are prioritized",
+            },
+            "prsi_contract": {
+                "purpose": "Budget-aware pessimistic recursive self-improvement without always-on dual prompt execution.",
+                "policy_file": os.getenv("PRSI_POLICY_FILE", "config/runtime-prsi-policy.json"),
+                "state_file": os.getenv("PRSI_STATE_PATH", "/var/lib/nixos-ai-stack/prsi/runtime-state.json"),
+                "loop": [
+                    "1) run normal single-path execution with hints",
+                    "2) send hint feedback + agent_preferences when useful/unhelpful",
+                    "3) run policy-gated PRSI cycle (sampled counterfactual only)",
+                    "4) apply low-risk actions under token cap; escalate only on degradation",
+                ],
+                "operator_commands": {
+                    "sync": "python scripts/prsi-orchestrator.py sync --since=1d",
+                    "list": "python scripts/prsi-orchestrator.py list",
+                    "cycle_dry_run": "python scripts/prsi-orchestrator.py cycle --dry-run",
+                },
+                "budget_controls": [
+                    "remote_token_cap_daily",
+                    "counterfactual.sample_rate",
+                    "counterfactual.max_samples_per_day",
+                    "max_execute_per_cycle",
+                ],
+            },
         }
 
     # ------------------------------------------------------------------
@@ -363,6 +1055,140 @@ class HintsEngine:
                 )
             )
 
+        return hints
+
+    # ------------------------------------------------------------------
+    # Source D -- runtime diagnostics (telemetry + errors)
+    # ------------------------------------------------------------------
+
+    def _hints_from_runtime_signals(self, query: str, query_tokens: List[str]) -> List[Hint]:
+        hints: List[Hint] = []
+        hints.extend(self._hints_from_latest_report(query, query_tokens))
+        hints.extend(self._hints_from_tool_audit_errors(query, query_tokens))
+        return hints
+
+    def _hints_from_latest_report(self, query: str, query_tokens: List[str]) -> List[Hint]:
+        try:
+            data = json.loads(self._report_json_path.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+        if not isinstance(data, dict):
+            return []
+
+        query_lower = (query or "").lower()
+        hints: List[Hint] = []
+
+        recommendations = data.get("recommendations", [])
+        if isinstance(recommendations, list):
+            for idx, rec in enumerate(recommendations[:3]):
+                text = str(rec or "").strip()
+                if not text:
+                    continue
+                rec_lower = text.lower()
+                token_match = any(tok in rec_lower for tok in query_tokens if len(tok) >= 4)
+                fuzzy = _longest_common_substring_len(query_lower, rec_lower) / max(len(query_lower), len(rec_lower), 1)
+                if token_match or fuzzy >= 0.18:
+                    hints.append(
+                        Hint(
+                            id=f"runtime_recommendation_{idx+1}",
+                            type="runtime_signal",
+                            title="Live report recommendation",
+                            score=min(0.95, 0.70 + fuzzy),
+                            snippet=text[:220],
+                            reason="Matched active aq-report recommendation for current query context",
+                            tags=["runtime", "recommendation", "report"],
+                            agent_hints={},
+                        )
+                    )
+
+        intent = data.get("intent_contract_compliance", {})
+        if isinstance(intent, dict):
+            cov = intent.get("contract_coverage_pct")
+            try:
+                cov_f = float(cov)
+            except (TypeError, ValueError):
+                cov_f = None
+            if cov_f is not None and cov_f < 80 and any(t in query_lower for t in ("workflow", "run", "plan", "agent")):
+                hints.append(
+                    Hint(
+                        id="runtime_intent_contract_coverage",
+                        type="runtime_signal",
+                        title="Intent-contract coverage is below target",
+                        score=0.82,
+                        snippet=(
+                            f"Current intent-contract coverage is {cov_f:.1f}%. "
+                            "Include intent_contract fields on workflow start "
+                            "(user_intent, definition_of_done, depth_expectation, spirit_constraints, no_early_exit_without)."
+                        ),
+                        reason="Low coverage in latest runtime telemetry",
+                        tags=["runtime", "workflow", "intent_contract"],
+                        agent_hints={},
+                    )
+                )
+        return hints
+
+    def _hints_from_tool_audit_errors(self, query: str, query_tokens: List[str]) -> List[Hint]:
+        try:
+            with open(self._audit_log_path, "r", encoding="utf-8") as fh:
+                lines = fh.readlines()
+        except Exception:
+            return []
+        if not lines:
+            return []
+
+        recent = lines[-300:]
+        grouped: Dict[str, Dict[str, object]] = {}
+        for line in recent:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if str(row.get("outcome", "")).lower() != "error":
+                continue
+            tool = str(row.get("tool_name", "") or "").strip()
+            if not tool:
+                continue
+            g = grouped.setdefault(tool, {"count": 0, "errors": {}})
+            g["count"] = int(g.get("count", 0)) + 1
+            em = str(row.get("error_message", "") or "").strip()
+            if em:
+                errs = g.setdefault("errors", {})
+                errs[em] = int(errs.get(em, 0)) + 1
+
+        query_lower = (query or "").lower()
+        hints: List[Hint] = []
+        for tool, stats in grouped.items():
+            count = int(stats.get("count", 0))
+            errors = stats.get("errors", {})
+            if not isinstance(errors, dict):
+                errors = {}
+            top_error = ""
+            top_count = 0
+            for msg, c in errors.items():
+                if int(c) > top_count:
+                    top_error, top_count = str(msg), int(c)
+
+            relevant = tool.lower() in query_lower or any(tok in top_error.lower() for tok in query_tokens if len(tok) >= 4)
+            if not relevant and count < 2:
+                continue
+            hints.append(
+                Hint(
+                    id=f"runtime_tool_error_{re.sub(r'[^a-z0-9]+', '_', tool.lower())}",
+                    type="runtime_signal",
+                    title=f"Recent tool errors detected: {tool}",
+                    score=min(0.92, 0.62 + min(count, 6) * 0.05),
+                    snippet=(
+                        f"{tool} failed {count} times recently."
+                        + (f" Top error: {top_error[:140]}" if top_error else "")
+                    ),
+                    reason="Derived from recent tool-audit error telemetry",
+                    tags=["runtime", "tooling", "errors", tool.lower()],
+                    agent_hints={},
+                )
+            )
         return hints
 
     # ------------------------------------------------------------------

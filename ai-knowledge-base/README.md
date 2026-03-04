@@ -24,6 +24,9 @@ ai-knowledge-base/
 │   ├── vm-provisioning.md             # VM provisioning workflows
 │   └── development-environment.md     # Development environment setup
 ├── reference/                          # Reference documentation
+│   ├── prsi/                           # PRSI research corpus (papers, eval guidance)
+│   │   ├── prsi-research-index-2026-03.md
+│   │   └── prsi-research-fallback-notes.md
 │   ├── llama-cpp-api.md                # llama.cpp API reference
 │   ├── nixpkgs-25.05-release-notes.md  # Nixpkgs 25.05 release notes
 │   ├── nixpkgs-25.11-release-notes.md  # Nixpkgs 25.11 release notes

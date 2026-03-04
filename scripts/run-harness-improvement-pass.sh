@@ -49,7 +49,7 @@ run_step "Curate residual gaps" "${SCRIPT_DIR}/curate-residual-gaps.sh"
 run_step "Seed routing + cache traffic" "${SCRIPT_DIR}/seed-routing-traffic.sh" --count "${SEED_COUNT}"
 
 if [[ -n "$HYBRID_KEY" ]]; then
-  if curl -fsS -X POST "${HYBRID_URL%/}/harness/eval" \
+  if curl -fsS --max-time 45 --connect-timeout 5 -X POST "${HYBRID_URL%/}/harness/eval" \
     -H "Content-Type: application/json" \
     -H "X-API-Key: ${HYBRID_KEY}" \
     -d '{"query":"explain lib.mkIf and lib.mkForce","mode":"auto","expected_keywords":["mkIf","mkForce","NixOS"],"max_latency_ms":8000}' \
@@ -64,7 +64,7 @@ else
   log "SKIP: Harness eval probe (HYBRID API key unavailable)"
 fi
 
-if curl -fsS -X POST "${AIDER_WRAPPER_URL%/}/tasks" \
+if curl -fsS --max-time 20 --connect-timeout 5 -X POST "${AIDER_WRAPPER_URL%/}/tasks" \
   -H "Content-Type: application/json" \
   ${AIDER_KEY:+-H "X-API-Key: ${AIDER_KEY}"} \
   -d "$(jq -cn --arg p 'analysis only: summarize docs/AGENT-PARITY-MATRIX.md in one sentence, no file edits' --arg f 'docs/AGENT-PARITY-MATRIX.md' --arg ws "${WORKSPACE}" '{prompt:$p,files:[$f],workspace:$ws}')" \
@@ -100,8 +100,8 @@ fi
 END_TS="$(date +%s)"
 DURATION_MS="$(( (END_TS - START_TS) * 1000 ))"
 
-ROUTING_LOCAL_PCT="$(jq -r '.routing_split.local_pct // 0' /tmp/ai-harness-aq-report.json 2>/dev/null || echo 0)"
-CACHE_HIT_PCT="$(jq -r '.semantic_cache.hit_pct // 0' /tmp/ai-harness-aq-report.json 2>/dev/null || echo 0)"
+ROUTING_LOCAL_PCT="$(jq -r '.routing.local_pct // 0' /tmp/ai-harness-aq-report.json 2>/dev/null || echo 0)"
+CACHE_HIT_PCT="$(jq -r '.cache.hit_pct // 0' /tmp/ai-harness-aq-report.json 2>/dev/null || echo 0)"
 HINT_ADOPTION_PCT="$(jq -r '.hint_adoption.adoption_pct // 0' /tmp/ai-harness-aq-report.json 2>/dev/null || echo 0)"
 EVAL_LATEST_PCT="$(jq -r '.eval_trend.latest_pct // 0' /tmp/ai-harness-aq-report.json 2>/dev/null || echo 0)"
 TOP_GAPS_COUNT="$(jq -r '(.query_gaps // []) | length' /tmp/ai-harness-aq-report.json 2>/dev/null || echo 0)"

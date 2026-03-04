@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "cycle_id": "prsi-2026-03-04-001",
+  "finalized_at": "2026-03-04T12:30:00Z",
+  "decision": "proceed",
+  "improvement_claimed": true,
+  "confidence_score": 0.78,
+  "kpi_delta": [
+    {
+      "metric": "hint_adoption_pct",
+      "baseline": 66.0,
+      "candidate": 70.1,
+      "delta": 4.1
+    }
+  ],
+  "failure_taxonomy": [],
+  "counterfactual_risk": "Observed gain may be partially traffic-window specific; monitor next 2 cycles for reproducibility.",
+  "residual_risks": [
+    "Potential overfit to current hint distribution"
+  ],
+  "next_actions": [
+    "Run reproducibility replay",
+    "Track confidence calibration"
+  ]
+}

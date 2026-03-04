@@ -787,3 +787,14 @@ Use this block for each task execution:
 2. Deploy-gated closeout: confirm active aider-wrapper generation writes `aider-task-audit.jsonl`, rerun `scripts/run-harness-improvement-pass.sh`, and verify `task_tooling_quality.total > 0`.
 3. Runtime closeout: stabilize switchboard `/v1/models` responsiveness so `scripts/validate-ai-slo-runtime.sh` is fully green without skip warnings.
 4. Phase status closeout: once (1)-(3) are green post-deploy, move Phase 1/2/3 to `completed`.
+
+## Latest Slice Update (2026-03-04)
+
+- Completed: stabilized routing fallback check to avoid false negatives by trying deterministic remote evidence paths before fail.
+  - Evidence: `scripts/check-routing-fallback.sh` now passes with healthy local-first runtime.
+- Completed: moved generated runtime artifacts out of repository defaults.
+  - `scripts/run-gap-eval-pack.py` now defaults `scores.sqlite` to `~/.local/share/nixos-ai-stack/eval/results/scores.sqlite`.
+  - `scripts/generate-harness-sdk-provenance.sh` now defaults output to `${XDG_STATE_HOME:-$HOME/.local/state}/nixos-ai-stack/harness-sdk-provenance`.
+- Completed: enforced repo hygiene for generated artifacts.
+  - Added ignore rules for `ai-stack/eval/results/scores.sqlite`, `dist/harness-sdk-provenance/provenance.json`, `data/prsi-artifacts/*-latest.json`, and `data/prsi-artifacts/runs/`.
+  - Removed tracked generated files from git history moving forward.

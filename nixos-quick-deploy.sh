@@ -25,6 +25,7 @@ FORCE_AI_SECRETS_BOOTSTRAP=false
 ENFORCE_PRE_DEPLOY_DRY_RUN=true
 ENFORCE_PRE_DEPLOY_HOME_DRY_RUN=true
 PRE_DEPLOY_PREFLIGHT_ONLY=false
+SELF_CHECK_ONLY=false
 PRE_DEPLOY_LOOP_MAX_PASSES="${PRE_DEPLOY_LOOP_MAX_PASSES:-3}"
 PRE_DEPLOY_LOOP_RETRY_SECONDS="${PRE_DEPLOY_LOOP_RETRY_SECONDS:-2}"
 ENABLE_PREFLIGHT_AUTO_REMEDIATION=false
@@ -32,6 +33,11 @@ ANALYZE_ONLY=false
 SKIP_ROADMAP_VERIFICATION=false
 RECOVERY_MODE=false
 ALLOW_PREVIOUS_BOOT_FSCK_FAILURE=false
+PRIME_SUDO_EARLY="${PRIME_SUDO_EARLY:-true}"
+KEEP_SUDO_ALIVE="${KEEP_SUDO_ALIVE:-true}"
+PRE_DEPLOY_PARALLEL_VALIDATION="${PRE_DEPLOY_PARALLEL_VALIDATION:-true}"
+DISCOVERY_CACHE_TTL_SECONDS="${DISCOVERY_CACHE_TTL_SECONDS:-1800}"
+PRECHECK_SHADOW_WITH_SUDO_PROMPT="${PRECHECK_SHADOW_WITH_SUDO_PROMPT:-false}"
 SKIP_SYSTEM_SWITCH=false
 SKIP_HOME_SWITCH=false
 NIXOS_TARGET_OVERRIDE=""
@@ -44,6 +50,25 @@ REQUIRE_HOME_MANAGER_CLI="${REQUIRE_HOME_MANAGER_CLI:-false}"
 PREFER_NIX_RUN_HOME_MANAGER="${PREFER_NIX_RUN_HOME_MANAGER:-true}"
 HOME_MANAGER_NIX_RUN_REF="${HOME_MANAGER_NIX_RUN_REF:-github:nix-community/home-manager/release-25.11#home-manager}"
 AI_SECRETS_BOOTSTRAP_STATUS="not-evaluated"
+SUDO_KEEPALIVE_PID=""
+AI_STACK_DATA_DIR="${AI_STACK_DATA_DIR:-/var/lib/ai-stack}"
+DEPLOY_START_EPOCH="$(date +%s)"
+declare -a PHASE_TIMINGS=()
+POST_FLIGHT_MODE="${POST_FLIGHT_MODE:-declarative}" # declarative|inline|both
+POST_FLIGHT_REBUILD_TIMEOUT_SECONDS="${POST_FLIGHT_REBUILD_TIMEOUT_SECONDS:-900}"
+POST_FLIGHT_REPORT_TIMEOUT_SECONDS="${POST_FLIGHT_REPORT_TIMEOUT_SECONDS:-60}"
+POST_FLIGHT_SEED_TIMEOUT_SECONDS="${POST_FLIGHT_SEED_TIMEOUT_SECONDS:-120}"
+POST_FLIGHT_CONVERGE_START_DELAY_SECONDS="${POST_FLIGHT_CONVERGE_START_DELAY_SECONDS:-2}"
+COMPLETION_PRINT_TEST_RESULTS="${COMPLETION_PRINT_TEST_RESULTS:-true}"
+COMPLETION_TEST_MODE="${COMPLETION_TEST_MODE:-summary}" # summary|full|off
+COMPLETION_TEST_HEALTH_TIMEOUT_SECONDS="${COMPLETION_TEST_HEALTH_TIMEOUT_SECONDS:-45}"
+COMPLETION_TEST_REPORT_TIMEOUT_SECONDS="${COMPLETION_TEST_REPORT_TIMEOUT_SECONDS:-45}"
+UI_COLOR_RESET=""
+UI_COLOR_INFO=""
+UI_COLOR_SECTION=""
+UI_COLOR_SUCCESS=""
+UI_COLOR_WARN=""
+UI_COLOR_ERROR=""
 
 AUTO_STAGED_FLAKE_PATH=""
 # Tracks untracked files we temporarily add so Nix can evaluate local git flakes.
@@ -106,6 +131,8 @@ Options:
                           Skip Home Manager dry-build during preflight gate
   --preflight-only        Run mandatory pre-deploy validation loop and exit
                           (no switch/boot/home activation)
+  --self-check            Validate script runtime contract (function wiring/order)
+                          and exit without sudo/build/switch
   --enable-preflight-auto-remediation
                           Run scripts/preflight-auto-remediate.sh between
                           failed preflight loop passes when available
@@ -119,6 +146,8 @@ Options:
                           Restore generated host files on exit (temporary run projection)
   --persist-generated-files
                           Persist generated host files after run (declarative update)
+  --post-flight-mode MODE
+                          Post-flight behavior: declarative | inline | both
   -h, --help              Show this help
 
 Environment overrides:
@@ -136,6 +165,15 @@ Environment overrides:
                             Sleep seconds between failed preflight passes
   ENABLE_PREFLIGHT_AUTO_REMEDIATION=false
                             Run scripts/preflight-auto-remediate.sh between passes
+  PRIME_SUDO_EARLY=true
+                            Prompt for sudo once early to avoid mid-run stalls
+  KEEP_SUDO_ALIVE=true      Keep sudo ticket alive during long preflight/build
+  PRE_DEPLOY_PARALLEL_VALIDATION=true
+                            Run system + Home Manager preflight builds in parallel
+  DISCOVERY_CACHE_TTL_SECONDS=1800
+                            Skip rediscovery when host/profile facts were refreshed recently
+  PRECHECK_SHADOW_WITH_SUDO_PROMPT=false
+                            Allow password prompt for /etc/shadow prechecks
   HOME_MANAGER_BACKUP_EXTENSION=backup-<timestamp>
                             Backup suffix used for Home Manager file collisions.
                             Default is timestamped per run to prevent clobbering
@@ -146,6 +184,25 @@ Environment overrides:
                             Try `nix run` home-manager before activation fallback when CLI missing
   HOME_MANAGER_NIX_RUN_REF=github:nix-community/home-manager/release-25.11#home-manager
                             Flake ref used for nix-run Home Manager fallback
+  POST_FLIGHT_MODE=declarative
+                            Post-flight behavior: declarative|inline|both
+                            declarative (default): trigger ai-post-deploy-converge service
+                            inline: run seed/reindex/report directly in this script
+                            both: trigger service and run inline fallbacks
+  POST_FLIGHT_SEED_TIMEOUT_SECONDS=120
+                            Timeout for inline routing seed task
+  POST_FLIGHT_REBUILD_TIMEOUT_SECONDS=900
+                            Timeout for inline Qdrant rebuild task
+  POST_FLIGHT_REPORT_TIMEOUT_SECONDS=60
+                            Timeout for inline aq-report generation
+  COMPLETION_PRINT_TEST_RESULTS=true
+                            Print completion test output before exit
+  COMPLETION_TEST_MODE=summary
+                            completion test output: summary|full|off
+  COMPLETION_TEST_HEALTH_TIMEOUT_SECONDS=45
+                            Timeout for completion MCP health check
+  COMPLETION_TEST_REPORT_TIMEOUT_SECONDS=45
+                            Timeout for completion ai report print
   ALLOW_ROOT_DEPLOY=true    Allow running this script as root (not recommended)
   BOOT_ESP_MIN_FREE_MB=128  Override minimum required free space on ESP
   RESTORE_GENERATED_REPO_FILES=auto
@@ -156,12 +213,317 @@ USAGE
 }
 
 log() {
-  printf '[clean-deploy] %s\n' "$*"
+  printf '[clean-deploy] %b%s%b\n' "${UI_COLOR_INFO}" "$*" "${UI_COLOR_RESET}"
 }
 
 die() {
-  printf '[clean-deploy] ERROR: %s\n' "$*" >&2
+  printf '[clean-deploy] %bERROR%b: %s\n' "${UI_COLOR_ERROR}" "${UI_COLOR_RESET}" "$*" >&2
   exit 1
+}
+
+section() {
+  printf '\n[clean-deploy] %b%s%b\n' "${UI_COLOR_SECTION}" "==== $* ====" "${UI_COLOR_RESET}"
+}
+
+log_success() {
+  printf '[clean-deploy] %bOK%b: %s\n' "${UI_COLOR_SUCCESS}" "${UI_COLOR_RESET}" "$*"
+}
+
+log_warn() {
+  printf '[clean-deploy] %bWARN%b: %s\n' "${UI_COLOR_WARN}" "${UI_COLOR_RESET}" "$*"
+}
+
+setup_ui() {
+  UI_COLOR_RESET=""
+  UI_COLOR_INFO=""
+  UI_COLOR_SECTION=""
+  UI_COLOR_SUCCESS=""
+  UI_COLOR_WARN=""
+  UI_COLOR_ERROR=""
+  if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+    UI_COLOR_RESET=$'\033[0m'
+    UI_COLOR_INFO=$'\033[1;37m'
+    UI_COLOR_SECTION=$'\033[1;36m'
+    UI_COLOR_SUCCESS=$'\033[1;32m'
+    UI_COLOR_WARN=$'\033[1;33m'
+    UI_COLOR_ERROR=$'\033[1;31m'
+  fi
+}
+
+has_timeout_cmd() {
+  command -v timeout >/dev/null 2>&1
+}
+
+run_with_timeout_if_available() {
+  local timeout_secs="$1"
+  shift
+  if has_timeout_cmd && [[ "${timeout_secs}" =~ ^[0-9]+$ ]] && (( timeout_secs > 0 )); then
+    timeout "${timeout_secs}" "$@"
+  else
+    "$@"
+  fi
+}
+
+run_timed_step() {
+  local label="$1"
+  shift
+  local start_epoch end_epoch rc duration
+  log ">> ${label} (start)"
+  start_epoch="$(date +%s)"
+  set +e
+  "$@"
+  rc=$?
+  set -e
+  end_epoch="$(date +%s)"
+  duration=$(( end_epoch - start_epoch ))
+  PHASE_TIMINGS+=("${label}:${duration}:${rc}")
+  if [[ "${rc}" -eq 0 ]]; then
+    log_success "${label} completed in ${duration}s"
+  else
+    log_warn "${label} failed in ${duration}s (rc=${rc})"
+  fi
+  return "${rc}"
+}
+
+discovery_cache_file() {
+  local cache_root host_s profile_s
+  cache_root="${XDG_CACHE_HOME:-${HOME}/.cache}/nixos-quick-deploy"
+  host_s="$(printf '%s' "${HOST_NAME}" | tr -c '[:alnum:]._-' '_')"
+  profile_s="$(printf '%s' "${PROFILE}" | tr -c '[:alnum:]._-' '_')"
+  printf '%s/discovery-%s-%s.stamp\n' "${cache_root}" "${host_s}" "${profile_s}"
+}
+
+should_skip_discovery_by_cache() {
+  [[ "${RUN_DISCOVERY}" == true ]] || return 1
+  [[ "${DISCOVERY_CACHE_TTL_SECONDS}" =~ ^[0-9]+$ ]] || return 1
+  (( DISCOVERY_CACHE_TTL_SECONDS > 0 )) || return 1
+
+  # Any explicit AI override means discovery should run and refresh facts.
+  if [[ -n "${AI_STACK_ENABLED_OVERRIDE:-}" || -n "${AI_BACKEND_OVERRIDE:-}" || -n "${AI_MODELS_OVERRIDE:-}" ||
+        -n "${AI_UI_ENABLED_OVERRIDE:-}" || -n "${AI_VECTOR_DB_ENABLED_OVERRIDE:-}" ]]; then
+    return 1
+  fi
+
+  local facts_file cache_file last_run now_epoch age
+  facts_file="${REPO_ROOT}/nix/hosts/${HOST_NAME}/facts.nix"
+  [[ -f "${facts_file}" ]] || return 1
+
+  cache_file="$(discovery_cache_file)"
+  [[ -f "${cache_file}" ]] || return 1
+  last_run="$(cat "${cache_file}" 2>/dev/null || true)"
+  [[ "${last_run}" =~ ^[0-9]+$ ]] || return 1
+
+  now_epoch="$(date +%s)"
+  age=$(( now_epoch - last_run ))
+  (( age < DISCOVERY_CACHE_TTL_SECONDS ))
+}
+
+mark_discovery_cache() {
+  local cache_file cache_root
+  cache_file="$(discovery_cache_file)"
+  cache_root="$(dirname "${cache_file}")"
+  mkdir -p "${cache_root}" 2>/dev/null || true
+  date +%s > "${cache_file}" 2>/dev/null || true
+}
+
+print_deploy_completion_summary() {
+  local end_epoch elapsed
+  end_epoch="$(date +%s)"
+  elapsed=$(( end_epoch - DEPLOY_START_EPOCH ))
+  log "Execution time: ${elapsed}s"
+
+  local telemetry_dir latest_report latest_converge
+  telemetry_dir="${AI_STACK_DATA_DIR}/hybrid/telemetry"
+  latest_report="${telemetry_dir}/latest-aq-report.json"
+  latest_converge="${telemetry_dir}/post-deploy-converge-latest.json"
+
+  if [[ -f "${latest_report}" ]]; then
+    log "Latest report snapshot: ${latest_report}"
+  fi
+  if [[ -f "${latest_converge}" ]]; then
+    log "Latest convergence summary: ${latest_converge}"
+  fi
+
+  if (( ${#PHASE_TIMINGS[@]} > 0 )); then
+    log "Phase timings:"
+    printf '[clean-deploy]   %-38s %-8s %-6s\n' "Step" "Duration" "RC"
+    printf '[clean-deploy]   %-38s %-8s %-6s\n' "--------------------------------------" "--------" "------"
+    local item label duration rc
+    for item in "${PHASE_TIMINGS[@]}"; do
+      label="${item%%:*}"
+      duration="$(printf '%s' "${item}" | cut -d: -f2)"
+      rc="$(printf '%s' "${item}" | cut -d: -f3)"
+      printf '[clean-deploy]   %-38s %-8s %-6s\n' "${label}" "${duration}s" "${rc}"
+    done
+  fi
+}
+
+print_completion_test_results() {
+  [[ "${RUN_HEALTH_CHECK}" == true ]] || return 0
+  [[ "${COMPLETION_PRINT_TEST_RESULTS}" == "true" ]] || return 0
+  [[ "${COMPLETION_TEST_MODE}" != "off" ]] || return 0
+
+  local health_script="${REPO_ROOT}/scripts/check-mcp-health.sh"
+  local report_script="${REPO_ROOT}/scripts/aq-report"
+  local output
+
+  _print_report_summary_from_json() {
+    local json="$1"
+    local routing_local routing_remote cache_hit hint_rate eval_latest eval_trend
+    local intent_cov security_cache recommendations top_hint top_hint_count
+    local semantic_route_calls hint_diversity_status hint_dominant_share hint_unique
+    local i=0
+
+    routing_local="$(printf '%s' "${json}" | jq -r '.routing.local_n // 0')"
+    routing_remote="$(printf '%s' "${json}" | jq -r '.routing.remote_n // 0')"
+    cache_hit="$(printf '%s' "${json}" | jq -r '.cache.hit_pct // 0')"
+    hint_rate="$(printf '%s' "${json}" | jq -r '.hint_adoption.adoption_pct // 0')"
+    eval_latest="$(printf '%s' "${json}" | jq -r '.eval_trend.latest_pct // "n/a"')"
+    eval_trend="$(printf '%s' "${json}" | jq -r '.eval_trend.trend // "unknown"')"
+    intent_cov="$(printf '%s' "${json}" | jq -r '.intent_contract_compliance.contract_coverage_pct // "n/a"')"
+    security_cache="$(printf '%s' "${json}" | jq -r '.tool_security_auditor.cache_hit_pct // "n/a"')"
+    semantic_route_calls="$(printf '%s' "${json}" | jq -r '.semantic_tooling_autorun.route_calls // 0')"
+    hint_unique="$(printf '%s' "${json}" | jq -r '.hint_diversity.unique_hints // 0')"
+    hint_dominant_share="$(printf '%s' "${json}" | jq -r '.hint_diversity.dominant_share_pct // "n/a"')"
+    hint_diversity_status="$(printf '%s' "${json}" | jq -r '.hint_diversity.status // "unknown"')"
+    top_hint="$(printf '%s' "${json}" | jq -r '.hint_adoption.top_hints[0][0] // "none"')"
+    top_hint_count="$(printf '%s' "${json}" | jq -r '.hint_adoption.top_hints[0][1] // 0')"
+    recommendations="$(printf '%s' "${json}" | jq -r '.recommendations[0:3][]?')"
+
+    log "AI stack report (summary):"
+    printf '  %-28s %s\n' "Routing" "local=${routing_local} remote=${routing_remote}"
+    printf '  %-28s %s%%\n' "Semantic cache hit rate" "${cache_hit}"
+    printf '  %-28s %s%%\n' "Hint adoption success" "${hint_rate}"
+    printf '  %-28s %s (unique=%s dominant=%s%%)\n' "Hint diversity" "${hint_diversity_status}" "${hint_unique}" "${hint_dominant_share}"
+    printf '  %-28s %s%% (%s)\n' "Eval latest" "${eval_latest}" "${eval_trend}"
+    printf '  %-28s %s%%\n' "Intent-contract coverage" "${intent_cov}"
+    printf '  %-28s %s%%\n' "Security-auditor cache hit" "${security_cache}"
+    printf '  %-28s %s\n' "Semantic autorun route calls" "${semantic_route_calls}"
+    printf '  %-28s %sx %s\n' "Top hint" "${top_hint_count}" "${top_hint}"
+
+    if [[ -n "${recommendations}" ]]; then
+      log "Top recommended next actions:"
+      while IFS= read -r rec; do
+        [[ -z "${rec}" ]] && continue
+        i=$((i + 1))
+        if (( ${#rec} > 180 )); then
+          rec="${rec:0:177}..."
+        fi
+        printf '  %d. %s\n' "${i}" "${rec}"
+      done <<< "${recommendations}"
+    fi
+  }
+
+  section "Completion Tests"
+
+  if [[ -x "${health_script}" ]]; then
+    if [[ "${COMPLETION_TEST_MODE}" == "full" ]]; then
+      log "MCP health (full):"
+      run_with_timeout_if_available "${COMPLETION_TEST_HEALTH_TIMEOUT_SECONDS}" \
+        "${health_script}" --optional || true
+    else
+      output="$(
+        run_with_timeout_if_available "${COMPLETION_TEST_HEALTH_TIMEOUT_SECONDS}" \
+          "${health_script}" --optional 2>&1 || true
+      )"
+      log "MCP health (summary):"
+      printf '%s\n' "${output}" | awk '/^Result:|^All required MCP services are healthy\.|^Optional:/{print}'
+    fi
+  fi
+
+  if [[ -x "${report_script}" ]]; then
+    if [[ "${COMPLETION_TEST_MODE}" == "full" ]]; then
+      log "AI stack report (full):"
+      run_with_timeout_if_available "${COMPLETION_TEST_REPORT_TIMEOUT_SECONDS}" \
+        "${report_script}" --since=7d --format=text 2>/dev/null || true
+    else
+      if command -v jq >/dev/null 2>&1; then
+        output="$(
+          run_with_timeout_if_available "${COMPLETION_TEST_REPORT_TIMEOUT_SECONDS}" \
+            "${report_script}" --since=7d --format=json 2>/dev/null || true
+        )"
+        if [[ -n "${output}" ]] && printf '%s' "${output}" | jq -e '.' >/dev/null 2>&1; then
+          _print_report_summary_from_json "${output}"
+        else
+          log_warn "AI report JSON summary unavailable; using text fallback."
+          output="$(
+            run_with_timeout_if_available "${COMPLETION_TEST_REPORT_TIMEOUT_SECONDS}" \
+              "${report_script}" --since=7d --format=text 2>/dev/null || true
+          )"
+          log "AI stack report (summary):"
+          printf '%s\n' "${output}" \
+            | awk '/^\[ 2\. Routing Split \]/, /^\[ 3\./ { if ($0 !~ /^\[ 3\./) print }'
+          printf '%s\n' "${output}" \
+            | awk '/^\[ 3\. Semantic Cache \]/, /^\[ 4\./ { if ($0 !~ /^\[ 4\./) print }'
+          printf '%s\n' "${output}" \
+            | awk '/^\[ 9\. Hint Adoption/, /^\[ 10\./ { if ($0 !~ /^\[ 10\./) print }'
+        fi
+      else
+        output="$(
+          run_with_timeout_if_available "${COMPLETION_TEST_REPORT_TIMEOUT_SECONDS}" \
+            "${report_script}" --since=7d --format=text 2>/dev/null || true
+        )"
+        log "AI stack report (summary):"
+        printf '%s\n' "${output}" \
+          | awk '/^\[ 2\. Routing Split \]/, /^\[ 3\./ { if ($0 !~ /^\[ 3\./) print }'
+        printf '%s\n' "${output}" \
+          | awk '/^\[ 3\. Semantic Cache \]/, /^\[ 4\./ { if ($0 !~ /^\[ 4\./) print }'
+        printf '%s\n' "${output}" \
+          | awk '/^\[ 9\. Hint Adoption/, /^\[ 10\./ { if ($0 !~ /^\[ 10\./) print }'
+      fi
+    fi
+  fi
+}
+
+run_script_runtime_contract_check() {
+  local required=(
+    run_timed_step
+    persist_home_git_credentials_declarative
+    run_discovery_step
+    run_pre_deploy_validation_loop
+    prime_sudo_session
+  )
+  local missing=()
+  local fn
+  for fn in "${required[@]}"; do
+    if ! declare -F "${fn}" >/dev/null 2>&1; then
+      missing+=("${fn}")
+    fi
+  done
+  if (( ${#missing[@]} > 0 )); then
+    die "Script runtime contract failed: missing functions: ${missing[*]}"
+  fi
+  log "Script runtime contract validated: ${#required[@]} required functions present"
+}
+
+load_service_endpoints() {
+  local endpoints_file="${REPO_ROOT}/config/service-endpoints.sh"
+  if [[ -f "${endpoints_file}" ]]; then
+    # shellcheck source=config/service-endpoints.sh
+    source "${endpoints_file}"
+  fi
+}
+
+run_declarative_postflight_converge() {
+  [[ "${MODE}" != "build" ]] || return 0
+  [[ "${RUN_HEALTH_CHECK}" == true ]] || return 0
+
+  if ! command -v systemctl >/dev/null 2>&1; then
+    return 1
+  fi
+  if ! systemctl list-unit-files ai-post-deploy-converge.service >/dev/null 2>&1; then
+    return 1
+  fi
+
+  log "Dispatching declarative post-flight convergence service"
+  if run_privileged systemctl start --no-block ai-post-deploy-converge.service; then
+    sleep "${POST_FLIGHT_CONVERGE_START_DELAY_SECONDS}"
+    log "Declarative convergence service triggered asynchronously"
+    return 0
+  fi
+
+  log "WARNING: Failed to trigger ai-post-deploy-converge.service; falling back to inline post-flight tasks."
+  return 1
 }
 
 current_system_generation() {
@@ -388,6 +750,9 @@ restore_generated_repo_files() {
 }
 
 cleanup_on_exit() {
+  if [[ -n "${SUDO_KEEPALIVE_PID}" ]] && kill -0 "${SUDO_KEEPALIVE_PID}" >/dev/null 2>&1; then
+    kill "${SUDO_KEEPALIVE_PID}" >/dev/null 2>&1 || true
+  fi
   cleanup_auto_staged_flake_files
   restore_generated_repo_files
 }
@@ -466,19 +831,39 @@ run_pre_deploy_validation_loop() {
   local pass failed
   for ((pass=1; pass<=PRE_DEPLOY_LOOP_MAX_PASSES; pass++)); do
     failed=0
-    log "Pre-deploy validation loop pass ${pass}/${PRE_DEPLOY_LOOP_MAX_PASSES}: system dry-run"
-    if ! nix --extra-experimental-features 'nix-command flakes' build --no-link \
-      "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.system.build.toplevel"; then
-      failed=1
-    fi
+    if [[ "${PRE_DEPLOY_PARALLEL_VALIDATION}" == "true" &&
+          "${SKIP_HOME_SWITCH}" == false &&
+          "${ENFORCE_PRE_DEPLOY_HOME_DRY_RUN}" == true ]]; then
+      log "Pre-deploy validation loop pass ${pass}/${PRE_DEPLOY_LOOP_MAX_PASSES}: parallel system + Home Manager dry-build"
+      local system_pid home_pid system_rc=0 home_rc=0
+      (
+        nix --extra-experimental-features 'nix-command flakes' build --no-link \
+          "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.system.build.toplevel"
+      ) &
+      system_pid=$!
+      ( home_build "${HM_TARGET}" ) &
+      home_pid=$!
 
-    if [[ ${failed} -eq 0 && "${SKIP_HOME_SWITCH}" == false && "${ENFORCE_PRE_DEPLOY_HOME_DRY_RUN}" == true ]]; then
-      log "Pre-deploy validation loop pass ${pass}/${PRE_DEPLOY_LOOP_MAX_PASSES}: Home Manager dry-build"
-      if ! home_build "${HM_TARGET}"; then
+      wait "${system_pid}" || system_rc=$?
+      wait "${home_pid}" || home_rc=$?
+      if [[ ${system_rc} -ne 0 || ${home_rc} -ne 0 ]]; then
         failed=1
       fi
-    elif [[ ${failed} -eq 0 && "${SKIP_HOME_SWITCH}" == false ]]; then
-      log "Skipping Home Manager pre-deploy dry-run gate (ENFORCE_PRE_DEPLOY_HOME_DRY_RUN=false)."
+    else
+      log "Pre-deploy validation loop pass ${pass}/${PRE_DEPLOY_LOOP_MAX_PASSES}: system dry-run"
+      if ! nix --extra-experimental-features 'nix-command flakes' build --no-link \
+        "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.system.build.toplevel"; then
+        failed=1
+      fi
+
+      if [[ ${failed} -eq 0 && "${SKIP_HOME_SWITCH}" == false && "${ENFORCE_PRE_DEPLOY_HOME_DRY_RUN}" == true ]]; then
+        log "Pre-deploy validation loop pass ${pass}/${PRE_DEPLOY_LOOP_MAX_PASSES}: Home Manager dry-build"
+        if ! home_build "${HM_TARGET}"; then
+          failed=1
+        fi
+      elif [[ ${failed} -eq 0 && "${SKIP_HOME_SWITCH}" == false ]]; then
+        log "Skipping Home Manager pre-deploy dry-run gate (ENFORCE_PRE_DEPLOY_HOME_DRY_RUN=false)."
+      fi
     fi
 
     if [[ ${failed} -eq 0 ]]; then
@@ -515,40 +900,40 @@ run_pre_deploy_validation_loop() {
 # ---------------------------------------------------------------------------
 free_blocked_ai_ports() {
   local ports_to_check=(8080 8081 8085 8092 8002)
-  local port pid process_name
+  local port pid process_name killed_any
+  killed_any=false
 
   for port in "${ports_to_check[@]}"; do
-    if ss -tlnp 2>/dev/null | grep -q ":${port} "; then
-      # Get the PID and process name
-      local port_info
-      port_info="$(ss -tlnp 2>/dev/null | grep ":${port} " | head -1)"
-      # Use portable sed instead of grep -oP (Perl regex)
-      pid="$(echo "$port_info" | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1)"
-      process_name="$(echo "$port_info" | sed -n 's/.*("\([^"]*\)".*/\1/p' | head -1)"
+    local port_info
+    port_info="$(ss -H -ltnp "sport = :${port}" 2>/dev/null | head -1 || true)"
+    [[ -n "${port_info}" ]] || continue
 
-      if [[ -n "$pid" ]]; then
-        # Check if this is a systemd-managed service (skip those)
-        if systemctl list-units --all 2>/dev/null | grep -q "$pid"; then
-          continue
-        fi
+    pid="$(printf '%s\n' "${port_info}" | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1)"
+    process_name="$(printf '%s\n' "${port_info}" | sed -n 's/.*("\([^"]*\)".*/\1/p' | head -1)"
+    [[ -n "${pid}" ]] || continue
 
-        # Check if it's a stray manual process (not systemd-managed)
-        if ps -p "$pid" -o comm= 2>/dev/null | grep -qE "python|node|java"; then
-          log "Port ${port} is blocked by manual process '${process_name}' (PID ${pid}) — killing..."
-          kill "$pid" 2>/dev/null || true
-          sleep 1
-          # Force kill if still running
-          if ps -p "$pid" >/dev/null 2>&1; then
-            log "Process ${pid} still running, sending SIGKILL..."
-            kill -9 "$pid" 2>/dev/null || true
-          fi
-        fi
+    # Skip systemd-managed service processes.
+    if [[ -r "/proc/${pid}/cgroup" ]] && grep -qE '\.service|\.slice' "/proc/${pid}/cgroup"; then
+      continue
+    fi
+
+    # Only kill known dev-runtime blockers (python/node/java) to avoid collateral damage.
+    if ps -p "${pid}" -o comm= 2>/dev/null | grep -Eq "python|node|java"; then
+      log "Port ${port} is blocked by manual process '${process_name}' (PID ${pid}) — killing..."
+      kill "${pid}" 2>/dev/null || true
+      sleep 1
+      if ps -p "${pid}" >/dev/null 2>&1; then
+        log "Process ${pid} still running, sending SIGKILL..."
+        kill -9 "${pid}" 2>/dev/null || true
       fi
+      killed_any=true
     fi
   done
 
-  # Give systemd a moment to reclaim ports
-  sleep 2
+  # Give systemd a moment to reclaim ports only when we actually killed blockers.
+  if [[ "${killed_any}" == true ]]; then
+    sleep 2
+  fi
 }
 
 enable_flakes_runtime() {
@@ -999,6 +1384,28 @@ run_privileged() {
   fi
 }
 
+prime_sudo_session() {
+  [[ "${EUID:-$(id -u)}" -eq 0 ]] && return 0
+  [[ "${PRIME_SUDO_EARLY}" == "true" ]] || return 0
+
+  require_command sudo
+  if ! sudo -n true >/dev/null 2>&1; then
+    section "Privilege Auth"
+    log "Requesting sudo authentication once upfront to avoid mid-run stalls..."
+    sudo -v
+  fi
+
+  if [[ "${KEEP_SUDO_ALIVE}" == "true" && -z "${SUDO_KEEPALIVE_PID}" ]]; then
+    (
+      while true; do
+        sleep 45
+        sudo -n true >/dev/null 2>&1 || exit 0
+      done
+    ) &
+    SUDO_KEEPALIVE_PID="$!"
+  fi
+}
+
 nix_escape_string() {
   local value="${1:-}"
   value="${value//\\/\\\\}"
@@ -1019,7 +1426,22 @@ is_locked_password_field() {
 read_shadow_hash() {
   local account="$1"
   # shellcheck disable=SC2016
-  run_privileged awk -F: -v user="$account" '$1 == user { print $2; found = 1; exit } END { if (!found) exit 1 }' /etc/shadow 2>/dev/null
+  local -a cmd=(awk -F: -v user="$account" '$1 == user { print $2; found = 1; exit } END { if (!found) exit 1 }' /etc/shadow)
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    "${cmd[@]}" 2>/dev/null
+    return $?
+  fi
+
+  if [[ "${PRECHECK_SHADOW_WITH_SUDO_PROMPT}" == "true" ]]; then
+    run_privileged "${cmd[@]}" 2>/dev/null
+    return $?
+  fi
+
+  if command -v sudo >/dev/null 2>&1; then
+    sudo -n "${cmd[@]}" 2>/dev/null
+    return $?
+  fi
+  return 1
 }
 
 assert_runtime_account_unlocked() {
@@ -1598,6 +2020,47 @@ EOF
   fi
 }
 
+run_discovery_step() {
+  if should_skip_discovery_by_cache; then
+    log "Skipping hardware discovery (cache hit, TTL ${DISCOVERY_CACHE_TTL_SECONDS}s)"
+    return 0
+  fi
+
+  log "Discovering hardware facts for host '${HOST_NAME}' profile '${PROFILE}'"
+
+  # AI stack discovery env — honour caller-supplied overrides or fall through
+  # to the defaults in discover-system-facts.sh (auto from profile + RAM).
+  local_ai_env=(
+    ${AI_STACK_ENABLED_OVERRIDE:+AI_STACK_ENABLED_OVERRIDE="${AI_STACK_ENABLED_OVERRIDE}"}
+    ${AI_BACKEND_OVERRIDE:+AI_BACKEND_OVERRIDE="${AI_BACKEND_OVERRIDE}"}
+    ${AI_MODELS_OVERRIDE:+AI_MODELS_OVERRIDE="${AI_MODELS_OVERRIDE}"}
+    ${AI_UI_ENABLED_OVERRIDE:+AI_UI_ENABLED_OVERRIDE="${AI_UI_ENABLED_OVERRIDE}"}
+    ${AI_VECTOR_DB_ENABLED_OVERRIDE:+AI_VECTOR_DB_ENABLED_OVERRIDE="${AI_VECTOR_DB_ENABLED_OVERRIDE}"}
+  )
+
+  if [[ "${RECOVERY_MODE}" == true ]]; then
+    log "Recovery mode enabled: forcing rootFsckMode=skip, initrdEmergencyAccess=true, earlyKmsPolicy=off"
+    HOSTNAME_OVERRIDE="${HOST_NAME}" \
+    PRIMARY_USER_OVERRIDE="${PRIMARY_USER}" \
+    PROFILE_OVERRIDE="${PROFILE}" \
+    ROOT_FSCK_MODE_OVERRIDE="skip" \
+    INITRD_EMERGENCY_ACCESS_OVERRIDE="true" \
+    EARLY_KMS_POLICY_OVERRIDE="off" \
+    "${local_ai_env[@]}" \
+    "${REPO_ROOT}/scripts/discover-system-facts.sh"
+  else
+    HOSTNAME_OVERRIDE="${HOST_NAME}" \
+    PRIMARY_USER_OVERRIDE="${PRIMARY_USER}" \
+    PROFILE_OVERRIDE="${PROFILE}" \
+    "${local_ai_env[@]}" \
+    "${REPO_ROOT}/scripts/discover-system-facts.sh"
+  fi
+
+  mark_discovery_cache
+}
+
+setup_ui
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --host)
@@ -1717,6 +2180,10 @@ while [[ $# -gt 0 ]]; do
       PRE_DEPLOY_PREFLIGHT_ONLY=true
       shift
       ;;
+    --self-check)
+      SELF_CHECK_ONLY=true
+      shift
+      ;;
     --enable-preflight-auto-remediation)
       ENABLE_PREFLIGHT_AUTO_REMEDIATION=true
       shift
@@ -1740,6 +2207,10 @@ while [[ $# -gt 0 ]]; do
     --persist-generated-files)
       RESTORE_GENERATED_REPO_FILES=false
       shift
+      ;;
+    --post-flight-mode)
+      POST_FLIGHT_MODE="${2:?missing value for --post-flight-mode}"
+      shift 2
       ;;
     -h|--help)
       usage
@@ -1770,6 +2241,17 @@ case "${RESTORE_GENERATED_REPO_FILES}" in
     ;;
 esac
 
+case "${POST_FLIGHT_MODE}" in
+  declarative|inline|both) ;;
+  *) die "Invalid POST_FLIGHT_MODE='${POST_FLIGHT_MODE}'. Expected: declarative|inline|both." ;;
+esac
+
+if [[ "${SELF_CHECK_ONLY}" == true ]]; then
+  run_script_runtime_contract_check
+  log "Self-check complete."
+  exit 0
+fi
+
 if [[ "${PRE_DEPLOY_PREFLIGHT_ONLY}" == true ]]; then
   RUN_DISCOVERY=false
   RUN_HEALTH_CHECK=false
@@ -1781,6 +2263,7 @@ trap cleanup_on_exit EXIT
 trap 'on_unexpected_error "$?" "${LINENO}" "${BASH_COMMAND}"' ERR
 
 assert_non_root_entrypoint
+prime_sudo_session
 
 if [[ "${RECOVERY_MODE}" == true ]]; then
   ALLOW_PREVIOUS_BOOT_FSCK_FAILURE=true
@@ -1792,14 +2275,15 @@ fi
 require_command nix
 require_command nixos-rebuild
 enable_flakes_runtime
+load_service_endpoints
 ensure_flake_visible_to_nix "${FLAKE_REF}"
 resolve_host_from_flake_if_needed
 snapshot_generated_repo_files
 if [[ "${PRE_DEPLOY_PREFLIGHT_ONLY}" != true ]]; then
   persist_home_git_credentials_declarative
 fi
-run_roadmap_completion_verification
-run_readiness_analysis
+run_timed_step "Roadmap Verification" run_roadmap_completion_verification
+run_timed_step "Readiness Analysis" run_readiness_analysis
 
 if [[ "${ANALYZE_ONLY}" == true ]]; then
   log "Readiness analysis complete (--analyze-only)."
@@ -1811,36 +2295,9 @@ if [[ "$UPDATE_FLAKE_LOCK" == true ]]; then
 fi
 
 ensure_host_facts_access
+section "Preflight Validation"
 if [[ "$RUN_DISCOVERY" == true ]]; then
-  log "Discovering hardware facts for host '${HOST_NAME}' profile '${PROFILE}'"
-
-  # AI stack discovery env — honour caller-supplied overrides or fall through
-  # to the defaults in discover-system-facts.sh (auto from profile + RAM).
-  local_ai_env=(
-    ${AI_STACK_ENABLED_OVERRIDE:+AI_STACK_ENABLED_OVERRIDE="${AI_STACK_ENABLED_OVERRIDE}"}
-    ${AI_BACKEND_OVERRIDE:+AI_BACKEND_OVERRIDE="${AI_BACKEND_OVERRIDE}"}
-    ${AI_MODELS_OVERRIDE:+AI_MODELS_OVERRIDE="${AI_MODELS_OVERRIDE}"}
-    ${AI_UI_ENABLED_OVERRIDE:+AI_UI_ENABLED_OVERRIDE="${AI_UI_ENABLED_OVERRIDE}"}
-    ${AI_VECTOR_DB_ENABLED_OVERRIDE:+AI_VECTOR_DB_ENABLED_OVERRIDE="${AI_VECTOR_DB_ENABLED_OVERRIDE}"}
-  )
-
-  if [[ "${RECOVERY_MODE}" == true ]]; then
-    log "Recovery mode enabled: forcing rootFsckMode=skip, initrdEmergencyAccess=true, earlyKmsPolicy=off"
-    HOSTNAME_OVERRIDE="${HOST_NAME}" \
-    PRIMARY_USER_OVERRIDE="${PRIMARY_USER}" \
-    PROFILE_OVERRIDE="${PROFILE}" \
-    ROOT_FSCK_MODE_OVERRIDE="skip" \
-    INITRD_EMERGENCY_ACCESS_OVERRIDE="true" \
-    EARLY_KMS_POLICY_OVERRIDE="off" \
-    "${local_ai_env[@]}" \
-    "${REPO_ROOT}/scripts/discover-system-facts.sh"
-  else
-    HOSTNAME_OVERRIDE="${HOST_NAME}" \
-    PRIMARY_USER_OVERRIDE="${PRIMARY_USER}" \
-    PROFILE_OVERRIDE="${PROFILE}" \
-    "${local_ai_env[@]}" \
-    "${REPO_ROOT}/scripts/discover-system-facts.sh"
-  fi
+  run_timed_step "Hardware Discovery" run_discovery_step
 fi
 
 ensure_host_facts_access
@@ -1869,7 +2326,7 @@ log "AI secrets bootstrap status: ${AI_SECRETS_BOOTSTRAP_STATUS}"
 log "NixOS target: ${NIXOS_TARGET}"
 log "Home target: ${HM_TARGET}"
 
-run_pre_deploy_validation_loop
+run_timed_step "Preflight Validation Loop" run_pre_deploy_validation_loop
 if [[ "${PRE_DEPLOY_PREFLIGHT_ONLY}" == true ]]; then
   log "Preflight-only validation loop complete. No deploy actions were executed."
   exit 0
@@ -1915,16 +2372,17 @@ SYSTEM_GENERATION_BEFORE="$(current_system_generation)"
 HOME_GENERATION_BEFORE="$(current_home_generation)"
 
 if [[ "$MODE" == "build" ]]; then
+  section "Build Mode"
   log "Running dry build"
   if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
     run_privileged nixos-rebuild dry-build --flake "${FLAKE_REF}#${NIXOS_TARGET}"
   else
-    log "Skipping system dry-build (--skip-system-switch)"
+    log "Skipping system dry-build"
   fi
   if [[ "${SKIP_HOME_SWITCH}" == false ]]; then
     home_build "${HM_TARGET}"
   else
-    log "Skipping Home Manager build (--skip-home-switch)"
+    log "Skipping Home Manager build"
   fi
   log "Dry build complete"
   exit 0
@@ -2058,6 +2516,7 @@ pre_rebuild_model_download() {
 pre_rebuild_model_download
 
 if [[ "$MODE" == "boot" ]]; then
+  section "Boot Staging"
   log "Staging next boot generation"
   if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
     run_privileged nixos-rebuild boot --flake "${FLAKE_REF}#${NIXOS_TARGET}"
@@ -2088,17 +2547,19 @@ if [[ "$MODE" == "boot" ]]; then
 fi
 
 if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
+  section "System Switch"
   log "Switching system configuration"
   # Free any blocked AI stack ports before rebuild (prevents systemd service failures)
   free_blocked_ai_ports
-  run_privileged nixos-rebuild switch --flake "${FLAKE_REF}#${NIXOS_TARGET}"
+  run_timed_step "System Switch" run_privileged nixos-rebuild switch --flake "${FLAKE_REF}#${NIXOS_TARGET}"
 else
   log "Skipping system switch (--skip-system-switch)"
 fi
 
 if [[ "${SKIP_HOME_SWITCH}" == false ]]; then
+  section "Home Switch"
   log "Switching Home Manager configuration"
-  home_switch "${HM_TARGET}"
+  run_timed_step "Home Switch" home_switch "${HM_TARGET}"
 else
   log "Skipping Home Manager switch (--skip-home-switch)"
 fi
@@ -2138,8 +2599,9 @@ if [[ "${MODE}" != "build" ]]; then
 fi
 
 if [[ "$RUN_HEALTH_CHECK" == true && -x "${REPO_ROOT}/scripts/system-health-check.sh" ]]; then
+  section "Post-flight Health"
   log "Running post-deploy health check"
-  if "${REPO_ROOT}/scripts/system-health-check.sh" --detailed; then
+  if run_timed_step "System Health Check" "${REPO_ROOT}/scripts/system-health-check.sh" --detailed; then
     log "Post-deploy health check passed"
   else
     log "Post-deploy health check reported issues (non-critical)"
@@ -2159,52 +2621,40 @@ fi
 # Wait for AI services to be fully ready before running health checks
 wait_for_ai_services() {
   log "Waiting for AI services to be ready..."
+  load_service_endpoints
   local timeout=180
   local interval=5
-  local elapsed=0
-  
-  # Wait for llama-cpp-embed (embedding server)
+
+  _wait_http_health() {
+    local service_name="$1"
+    local health_url="$2"
+    local elapsed=0
+
+    log "  Waiting for ${service_name}..."
+    while ! curl -sf --connect-timeout 2 --max-time 5 "${health_url}" >/dev/null 2>&1; do
+      sleep "${interval}"
+      elapsed=$((elapsed + interval))
+      if (( elapsed >= timeout )); then
+        log "  WARNING: ${service_name} not ready after ${timeout}s"
+        return 1
+      fi
+    done
+    log "  ${service_name} is ready"
+    return 0
+  }
+
   if systemctl is-enabled --quiet llama-cpp-embed.service 2>/dev/null; then
-    log "  Waiting for llama-cpp-embed.service..."
-    while ! curl -sf --connect-timeout 2 --max-time 5 "http://127.0.0.1:${EMBEDDINGS_PORT:-8081}/health" >/dev/null 2>&1; do
-      sleep "$interval"
-      elapsed=$((elapsed + interval))
-      if [ $elapsed -ge $timeout ]; then
-        log "  ⚠ WARNING: llama-cpp-embed.service not ready after ${timeout}s"
-        break
-      fi
-    done
-    [ $elapsed -lt $timeout ] && log "  ✓ llama-cpp-embed.service is ready"
+    _wait_http_health "llama-cpp-embed.service" "${EMBEDDINGS_URL%/}/health" || true
   fi
-  
-  # Wait for ai-aidb service
+
   if systemctl is-enabled --quiet ai-aidb.service 2>/dev/null; then
-    log "  Waiting for ai-aidb.service..."
-    while ! curl -sf --connect-timeout 2 --max-time 5 "http://127.0.0.1:${AIDB_PORT:-8002}/health" >/dev/null 2>&1; do
-      sleep "$interval"
-      elapsed=$((elapsed + interval))
-      if [ $elapsed -ge $timeout ]; then
-        log "  ⚠ WARNING: ai-aidb.service not ready after ${timeout}s"
-        break
-      fi
-    done
-    [ $elapsed -lt $timeout ] && log "  ✓ ai-aidb.service is ready"
+    _wait_http_health "ai-aidb.service" "${AIDB_URL%/}/health" || true
   fi
-  
-  # Wait for llama-cpp service
+
   if systemctl is-enabled --quiet llama-cpp.service 2>/dev/null; then
-    log "  Waiting for llama-cpp.service..."
-    while ! curl -sf --connect-timeout 2 --max-time 5 "http://127.0.0.1:${LLAMA_CPP_PORT:-8080}/health" >/dev/null 2>&1; do
-      sleep "$interval"
-      elapsed=$((elapsed + interval))
-      if [ $elapsed -ge $timeout ]; then
-        log "  ⚠ WARNING: llama-cpp.service not ready after ${timeout}s"
-        break
-      fi
-    done
-    [ $elapsed -lt $timeout ] && log "  ✓ llama-cpp.service is ready"
+    _wait_http_health "llama-cpp.service" "${LLAMA_URL%/}/health" || true
   fi
-  
+
   log "AI services ready check complete"
 }
 
@@ -2359,25 +2809,43 @@ if systemctl is-active prometheus.service &>/dev/null; then
   sudo systemctl restart prometheus.service 2>/dev/null || true
 fi
 
-# ---- Routing traffic seed (non-blocking) ------------------------------------
-# Sends a small batch of queries through hybrid-coordinator so that §2 routing
-# split and §3 semantic cache metrics are populated after every deploy.
-if [[ -x "${REPO_ROOT}/scripts/seed-routing-traffic.sh" ]]; then
-  log "Seeding routing traffic (bootstrap §2/§3 metrics)..."
-  "${REPO_ROOT}/scripts/seed-routing-traffic.sh" --count 4 2>/dev/null || true
+section "Post-flight Convergence"
+run_inline_postflight=true
+if [[ "${POST_FLIGHT_MODE}" == "declarative" || "${POST_FLIGHT_MODE}" == "both" ]]; then
+  if run_declarative_postflight_converge; then
+    if [[ "${POST_FLIGHT_MODE}" == "declarative" ]]; then
+      run_inline_postflight=false
+    fi
+  fi
 fi
 
-# ---- Rebuild Qdrant vector index (non-blocking) -----------------------------
-# Re-indexes any documents that were imported but not yet embedded.
-if [[ -x "${REPO_ROOT}/scripts/rebuild-qdrant-collections.sh" ]]; then
-  log "Rebuilding Qdrant vector index from AIDB documents..."
-  "${REPO_ROOT}/scripts/rebuild-qdrant-collections.sh" 2>/dev/null || true
+if [[ "${run_inline_postflight}" == true ]]; then
+  # ---- Routing traffic seed (non-blocking) ----------------------------------
+  # Sends a small batch of queries through hybrid-coordinator so that §2 routing
+  # split and §3 semantic cache metrics are populated after every deploy.
+  if [[ -x "${REPO_ROOT}/scripts/seed-routing-traffic.sh" ]]; then
+    log "Seeding routing traffic (bootstrap §2/§3 metrics)..."
+    run_with_timeout_if_available "${POST_FLIGHT_SEED_TIMEOUT_SECONDS}" \
+      "${REPO_ROOT}/scripts/seed-routing-traffic.sh" --count 4 2>/dev/null || true
+  fi
+
+  # ---- Rebuild Qdrant vector index (non-blocking) ---------------------------
+  # Re-indexes any documents that were imported but not yet embedded.
+  if [[ -x "${REPO_ROOT}/scripts/rebuild-qdrant-collections.sh" ]]; then
+    log "Rebuilding Qdrant vector index from AIDB documents..."
+    run_with_timeout_if_available "${POST_FLIGHT_REBUILD_TIMEOUT_SECONDS}" \
+      "${REPO_ROOT}/scripts/rebuild-qdrant-collections.sh" 2>/dev/null || true
+  fi
+
+  # ---- Phase 18.1.3: AI stack performance digest (non-blocking) -------------
+  if [[ -x "${REPO_ROOT}/scripts/aq-report" ]]; then
+    log "AI stack performance digest (last 7d):"
+    run_with_timeout_if_available "${POST_FLIGHT_REPORT_TIMEOUT_SECONDS}" \
+      "${REPO_ROOT}/scripts/aq-report" --since=7d --format=text 2>/dev/null || true
+  fi
 fi
 
-# ---- Phase 18.1.3: AI stack performance digest (non-blocking) ---------------
-if [[ -x "${REPO_ROOT}/scripts/aq-report" ]]; then
-  log "AI stack performance digest (last 7d):"
-  "${REPO_ROOT}/scripts/aq-report" --since=7d --format=text 2>/dev/null || true
-fi
-
+print_completion_test_results
+section "Completion Summary"
+print_deploy_completion_summary
 log "Clean deployment complete"

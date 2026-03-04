@@ -8,8 +8,10 @@ FAIL_ON_HIGH="${NPM_SECURITY_FAIL_ON_HIGH:-false}"
 RESPONSE_MODE="${NPM_SECURITY_RESPONSE_MODE:-report}"
 REGISTRY_ALLOWLIST="${NPM_SECURITY_REGISTRY_ALLOWLIST:-https://registry.npmjs.org/}"
 THREAT_INTEL_FILE="${NPM_SECURITY_THREAT_INTEL_FILE:-config/security/npm-threat-intel.json}"
-QUARANTINE_STATE_FILE="${NPM_SECURITY_QUARANTINE_STATE_FILE:-${OUTPUT_DIR}/quarantine-state.json}"
-INCIDENT_LOG_FILE="${NPM_SECURITY_INCIDENT_LOG_FILE:-${OUTPUT_DIR}/incidents.jsonl}"
+quarantine_state_env_set="${NPM_SECURITY_QUARANTINE_STATE_FILE+set}"
+incident_log_env_set="${NPM_SECURITY_INCIDENT_LOG_FILE+set}"
+QUARANTINE_STATE_FILE="${NPM_SECURITY_QUARANTINE_STATE_FILE:-}"
+INCIDENT_LOG_FILE="${NPM_SECURITY_INCIDENT_LOG_FILE:-}"
 
 usage() {
   cat <<'EOF'
@@ -51,6 +53,14 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Resolve dependent writable paths after repo/output overrides have been parsed.
+if [[ -z "${quarantine_state_env_set}" || -z "${QUARANTINE_STATE_FILE}" ]]; then
+  QUARANTINE_STATE_FILE="${OUTPUT_DIR}/quarantine-state.json"
+fi
+if [[ -z "${incident_log_env_set}" || -z "${INCIDENT_LOG_FILE}" ]]; then
+  INCIDENT_LOG_FILE="${OUTPUT_DIR}/incidents.jsonl"
+fi
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then

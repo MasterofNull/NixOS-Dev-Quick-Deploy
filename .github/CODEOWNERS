@@ -20,3 +20,6 @@
 /docs/REPOSITORY-SCOPE-CONTRACT.md @MasterofNull
 /docs/SKILL-BACKUP-POLICY.md @MasterofNull
 /docs/AQD-CLI-USAGE.md @MasterofNull
+
+# Harness-first policy controls
+/config/harness-first-high-impact-paths.txt @MasterofNull

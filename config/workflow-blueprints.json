@@ -118,6 +118,89 @@
           "exit_criteria": "No boot/shutdown regression signals."
         }
       ]
+    },
+    {
+      "id": "prsi-pessimistic-recursive-improvement",
+      "title": "PRSI Pessimistic Recursive Improvement",
+      "description": "One-change-per-cycle self-improvement loop with pessimistic validation, explicit rollback, and confidence-gated progression.",
+      "default_safety_mode": "execute-mutating",
+      "intent_contract": {
+        "user_intent": "Continuously improve reliability, security, eval quality, and efficiency under pessimistic assumptions with strict safety gates.",
+        "definition_of_done": "Exactly one reversible change is applied, required gates pass, and cycle artifacts capture outcomes and counterfactual risks.",
+        "depth_expectation": "deep",
+        "spirit_constraints": [
+          "Assume hidden regressions and benchmark contamination until disproven with evidence.",
+          "Reject gains that cannot survive counterfactual analysis or reproducibility checks.",
+          "Prefer declarative-first controls and explicit rollback paths."
+        ],
+        "no_early_exit_without": [
+          "cycle_plan.json",
+          "validation_report.json",
+          "cycle_outcome.json",
+          "rollback notes"
+        ],
+        "anti_goals": [
+          "multi-change bundled optimization",
+          "metric-only improvement claims without confidence and regression evidence"
+        ]
+      },
+      "phases": [
+        {
+          "id": "scope_lock",
+          "tools": [
+            "hints",
+            "workflow_plan"
+          ],
+          "exit_criteria": "Objective, hypothesis, acceptance checks, and blast radius are explicit."
+        },
+        {
+          "id": "discover",
+          "tools": [
+            "route_search",
+            "memory_recall"
+          ],
+          "exit_criteria": "Top bottleneck selected via impact x confidence x reversibility."
+        },
+        {
+          "id": "propose",
+          "tools": [
+            "workflow_plan"
+          ],
+          "exit_criteria": "Single change proposal includes files, KPI target, side effects, and rollback command."
+        },
+        {
+          "id": "execute",
+          "tools": [
+            "route_search",
+            "feedback"
+          ],
+          "requires_approval": true,
+          "exit_criteria": "Minimal patch applied and command evidence captured."
+        },
+        {
+          "id": "verify",
+          "tools": [
+            "harness_eval",
+            "health",
+            "check_boot_shutdown_integration"
+          ],
+          "exit_criteria": "Required pessimistic gates pass or change is auto-reverted."
+        },
+        {
+          "id": "learn",
+          "tools": [
+            "feedback"
+          ],
+          "exit_criteria": "Outcome artifacts include KPI delta, confidence, taxonomy, and counterfactual note."
+        },
+        {
+          "id": "decide",
+          "tools": [
+            "workflow_plan"
+          ],
+          "exit_criteria": "Next action queued as proceed, targeted-eval, or quarantine/escalate."
+        }
+      ]
     }
   ]
 }

@@ -992,6 +992,8 @@ in {
           Environment = [
             "PRSI_ACTION_QUEUE_PATH=${mutableOptimizerDir}/prsi/action-queue.json"
             "PRSI_ACTIONS_LOG_PATH=${mutableLogDir}/prsi-actions.jsonl"
+            "PRSI_POLICY_FILE=${cfg.mcpServers.repoPath}/config/runtime-prsi-policy.json"
+            "PRSI_STATE_PATH=${mutableOptimizerDir}/prsi/runtime-state.json"
           ];
         };
       };

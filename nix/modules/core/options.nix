@@ -425,6 +425,80 @@
           '';
         };
       };
+
+      autoRemediation = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = ''
+            Enable post-deploy aq-report driven auto-remediation for safe actions:
+            intent-contract coverage probes and stale query-gap curation.
+          '';
+        };
+
+        dryRun = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "When true, computes remediation actions without mutating workflow sessions or query_gaps.";
+        };
+
+        reportSince = lib.mkOption {
+          type = lib.types.str;
+          default = "7d";
+          description = "aq-report lookback window used when a cached report snapshot is unavailable.";
+        };
+
+        intentMinRuns = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 3;
+          description = "Minimum workflow run count before intent-contract auto-remediation is considered.";
+        };
+
+        intentMinCoveragePct = lib.mkOption {
+          type = lib.types.addCheck lib.types.float (v: v >= 0.0 && v <= 100.0);
+          default = 90.0;
+          description = "Trigger threshold for low intent-contract coverage.";
+        };
+
+        intentTargetCoveragePct = lib.mkOption {
+          type = lib.types.addCheck lib.types.float (v: v >= 0.0 && v <= 99.0);
+          default = 95.0;
+          description = "Target coverage used to size bounded synthetic remediation probes.";
+        };
+
+        intentMaxProbeRuns = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 3;
+          description = "Maximum synthetic workflow probe runs per convergence cycle.";
+        };
+
+        staleGapCurationEnable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = ''
+            Enable stale query gap curation by applying safe DELETE actions inferred
+            from aq-report recommendation strings that already include stale-gap SQL guidance.
+          '';
+        };
+
+        staleGapMinTokenLen = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 12;
+          description = "Minimum token length extracted from stale-gap recommendations before deletion is allowed.";
+        };
+
+        staleGapMaxRowsPerToken = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 250;
+          description = "Safety cap for rows deleted per stale-gap token in one cycle.";
+        };
+
+        staleGapMaxDeleteTotal = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 500;
+          description = "Safety cap for total stale-gap rows deleted per convergence cycle.";
+        };
+      };
     };
 
     logging = {
@@ -1251,6 +1325,92 @@
             '';
           };
 
+          hintFeedbackDbEnabled = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Enable Postgres-backed hint feedback profile loading in hints_engine.";
+          };
+
+          hintFeedbackDbCacheTtlSeconds = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 120;
+            description = "Cache TTL (seconds) for in-memory hint feedback profile snapshots.";
+          };
+
+          hintDiversityRepeatWindow = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 300;
+            description = "Number of recent hint-audit rows to inspect for repeated-hint concentration.";
+          };
+
+          hintDiversityRepeatCapPct = lib.mkOption {
+            type = lib.types.addCheck lib.types.float (v: v >= 10.0 && v <= 100.0);
+            default = 70.0;
+            description = "Repeat-share percentage cap before a hint ID is considered overused.";
+          };
+
+          hintDiversityRepeatMinCount = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 8;
+            description = "Minimum recent injection count before repeat-cap logic is applied.";
+          };
+
+          hintDiversityTypeMin = lib.mkOption {
+            type = lib.types.str;
+            default = "runtime_signal:1";
+            description = "Minimum per-type hint quotas (comma-separated type:n), e.g. runtime_signal:1,gap_topic:1.";
+          };
+
+          hintDiversityTypeMax = lib.mkOption {
+            type = lib.types.str;
+            default = "runtime_signal:2,prompt_template:2,gap_topic:2,workflow_rule:1,tool_warning:1";
+            description = "Maximum per-type hint quotas (comma-separated type:n) used during final hint selection.";
+          };
+
+          hintBandit = {
+            enable = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = "Enable contextual bandit scoring on top of hint_feedback_profiles.";
+            };
+
+            minEvents = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 3;
+              description = "Minimum feedback events required before bandit scoring applies to a hint arm.";
+            };
+
+            priorAlpha = lib.mkOption {
+              type = lib.types.addCheck lib.types.float (v: v > 0.0);
+              default = 1.0;
+              description = "Beta prior alpha for helpful/unhelpful posterior mean.";
+            };
+
+            priorBeta = lib.mkOption {
+              type = lib.types.addCheck lib.types.float (v: v > 0.0);
+              default = 1.0;
+              description = "Beta prior beta for helpful/unhelpful posterior mean.";
+            };
+
+            explorationWeight = lib.mkOption {
+              type = lib.types.addCheck lib.types.float (v: v >= 0.0 && v <= 2.0);
+              default = 0.35;
+              description = "Exploration coefficient applied to the UCB-style uncertainty term.";
+            };
+
+            maxAdjust = lib.mkOption {
+              type = lib.types.addCheck lib.types.float (v: v >= 0.0 && v <= 1.0);
+              default = 0.12;
+              description = "Maximum absolute score adjustment contributed by the contextual bandit policy.";
+            };
+
+            confidenceFloor = lib.mkOption {
+              type = lib.types.addCheck lib.types.float (v: v >= 0.0 && v <= 1.0);
+              default = 0.15;
+              description = "Minimum confidence multiplier for low-sample bandit arms.";
+            };
+          };
+
           aiderToolingPlanEnabled = lib.mkOption {
             type = lib.types.bool;
             default = true;
@@ -1270,6 +1430,23 @@
             type = lib.types.ints.positive;
             default = 24;
             description = "Minimum hint snippet length required before injection into aider task prompts.";
+          };
+
+          aiderHintsMinTokenOverlap = lib.mkOption {
+            type = lib.types.addCheck lib.types.int (v: v >= 0);
+            default = 1;
+            description = ''
+              Minimum lexical token overlap required between task prompt and
+              hint metadata/snippet before hint injection into aider tasks.
+            '';
+          };
+
+          aiderHintsBypassOverlapScore = lib.mkOption {
+            type = lib.types.addCheck lib.types.float (v: v >= 0.0 && v <= 1.0);
+            default = 0.72;
+            description = ''
+              Hint score threshold that bypasses token-overlap gating for high-confidence hints.
+            '';
           };
 
           aiderSmallScopeSubtreeOnly = lib.mkOption {
