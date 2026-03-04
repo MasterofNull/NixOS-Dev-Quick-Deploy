@@ -59,6 +59,9 @@ PROMETHEUS_URL = os.getenv(
     f"http://{os.getenv('SERVICE_HOST', '127.0.0.1')}:{os.getenv('PROMETHEUS_PORT', '9090')}",
 )
 AIDB_URL = os.getenv("AIDB_URL", f"http://{os.getenv('SERVICE_HOST', '127.0.0.1')}:{os.getenv('AIDB_PORT', '8002')}")
+WORKFLOW_SESSIONS_PATH = Path(
+    os.getenv("WORKFLOW_SESSIONS_PATH", "/var/lib/ai-stack/hybrid/workflow-sessions.json")
+)
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -328,6 +331,77 @@ def read_query_gaps(since: datetime, limit: int = 10) -> List[dict]:
         return []
 
 
+def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
+    """Summarise workflow run intent-contract compliance from persisted sessions."""
+    path = WORKFLOW_SESSIONS_PATH
+    if not path.exists():
+        return {"available": False, "source": str(path)}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"available": False, "source": str(path)}
+
+    if not isinstance(raw, dict):
+        return {"available": False, "source": str(path)}
+
+    since_ts = int(since.timestamp())
+    sessions = []
+    for _sid, sess in raw.items():
+        if not isinstance(sess, dict):
+            continue
+        created = int(sess.get("created_at", 0) or 0)
+        updated = int(sess.get("updated_at", 0) or 0)
+        if max(created, updated) < since_ts:
+            continue
+        sessions.append(sess)
+
+    total = len(sessions)
+    if total == 0:
+        return {
+            "available": True,
+            "source": str(path),
+            "total_runs": 0,
+            "with_contract": 0,
+            "missing_contract": 0,
+            "contract_coverage_pct": None,
+            "depth_distribution": {},
+            "top_blueprints": [],
+        }
+
+    with_contract = 0
+    missing_contract = 0
+    depth_counts: Dict[str, int] = {}
+    blueprint_counts: Dict[str, int] = {}
+    for sess in sessions:
+        contract = sess.get("intent_contract")
+        has_contract = (
+            isinstance(contract, dict)
+            and bool(str(contract.get("user_intent", "")).strip())
+            and bool(str(contract.get("definition_of_done", "")).strip())
+        )
+        if has_contract:
+            with_contract += 1
+            depth = str(contract.get("depth_expectation", "unknown")).strip().lower() or "unknown"
+            depth_counts[depth] = depth_counts.get(depth, 0) + 1
+        else:
+            missing_contract += 1
+        bp = str(sess.get("blueprint_id", "") or "").strip()
+        if bp:
+            blueprint_counts[bp] = blueprint_counts.get(bp, 0) + 1
+
+    top_blueprints = sorted(blueprint_counts.items(), key=lambda x: -x[1])[:5]
+    return {
+        "available": True,
+        "source": str(path),
+        "total_runs": total,
+        "with_contract": with_contract,
+        "missing_contract": missing_contract,
+        "contract_coverage_pct": round((with_contract / total) * 100.0, 1) if total else None,
+        "depth_distribution": depth_counts,
+        "top_blueprints": top_blueprints,
+    }
+
+
 def _is_synthetic_gap(query_text: str) -> bool:
     text = (query_text or "").strip().lower()
     if not text:
@@ -546,6 +620,7 @@ def build_recommendations(
     eval_trend: Dict[str, Any],
     gaps: List[dict],
     adoption: Optional[Dict[str, Any]] = None,
+    intent_compliance: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
     """Derive actionable workflow recommendations from measured data."""
     recs: List[str] = []
@@ -622,6 +697,17 @@ def build_recommendations(
             recs.append(
                 f"Hint adoption is low ({pct}% successful across {adoption['total']} injected tasks). "
                 "Review hint matching quality and validate aider-wrapper acceptance paths."
+            )
+
+    # Intent contract coverage
+    if intent_compliance and intent_compliance.get("available"):
+        total_runs = int(intent_compliance.get("total_runs", 0) or 0)
+        coverage = intent_compliance.get("contract_coverage_pct")
+        if total_runs >= 3 and coverage is not None and float(coverage) < 90:
+            recs.append(
+                f"Workflow intent-contract coverage is low ({coverage}% over {total_runs} runs). "
+                "Ensure /workflow/run/start always includes intent_contract fields "
+                "(user_intent, definition_of_done, depth_expectation, spirit_constraints)."
             )
 
     # Slow tools
@@ -781,6 +867,7 @@ def format_md(
     gaps: List[dict],
     recs: List[str],
     adoption: Optional[Dict[str, Any]] = None,
+    intent_compliance: Optional[Dict[str, Any]] = None,
 ) -> str:
     lines = [
         f"# AI Stack Performance Report — last {since_label}",
@@ -919,6 +1006,31 @@ def format_md(
         lines.append("*Hint audit unavailable — ensure AI_HINTS_ENABLED=true in aider-wrapper.*")
     lines.append("")
 
+    # 10. Intent-contract compliance
+    lines += ["## 10. Intent Contract Compliance", ""]
+    if intent_compliance and intent_compliance.get("available"):
+        total = int(intent_compliance.get("total_runs", 0) or 0)
+        if total == 0:
+            lines.append("*No workflow runs in this window.*")
+        else:
+            lines += [
+                f"- Workflow runs: **{total}**",
+                f"- With valid contract: **{intent_compliance.get('with_contract', 0)}**",
+                f"- Coverage: **{_na(intent_compliance.get('contract_coverage_pct'), '.1f', '%')}**",
+            ]
+            depth = intent_compliance.get("depth_distribution", {})
+            if isinstance(depth, dict) and depth:
+                items = ", ".join(f"{k}:{v}" for k, v in sorted(depth.items(), key=lambda x: (-x[1], x[0])))
+                lines.append(f"- Depth distribution: {items}")
+            top_bp = intent_compliance.get("top_blueprints", [])
+            if top_bp:
+                lines += ["", "Top blueprints by runs:"]
+                for bp, n in top_bp:
+                    lines.append(f"- `{bp}`: {n}")
+    else:
+        lines.append("*Workflow session store unavailable.*")
+    lines.append("")
+
     return "\n".join(lines)
 
 
@@ -933,6 +1045,7 @@ def format_text(
     gaps: List[dict],
     recs: List[str],
     adoption: Optional[Dict[str, Any]] = None,
+    intent_compliance: Optional[Dict[str, Any]] = None,
 ) -> str:
     sep = "─" * 60
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -1056,6 +1169,30 @@ def format_text(
                     lines.append(f"    {count:3d}x  {hid}")
     else:
         lines.append("  Hint audit unavailable (AI_HINTS_ENABLED=true required).")
+    lines.append("")
+
+    lines += ["[ 10. Intent Contract Compliance ]"]
+    if intent_compliance and intent_compliance.get("available"):
+        total = int(intent_compliance.get("total_runs", 0) or 0)
+        if total == 0:
+            lines.append("  No workflow runs in this window.")
+        else:
+            lines += [
+                f"  Runs: {total}",
+                f"  With contract: {intent_compliance.get('with_contract', 0)}",
+                f"  Coverage: {_na(intent_compliance.get('contract_coverage_pct'), '.1f', '%')}",
+            ]
+            depth = intent_compliance.get("depth_distribution", {})
+            if isinstance(depth, dict) and depth:
+                items = ", ".join(f"{k}:{v}" for k, v in sorted(depth.items(), key=lambda x: (-x[1], x[0])))
+                lines.append(f"  Depth mix: {items}")
+            top_bp = intent_compliance.get("top_blueprints", [])
+            if top_bp:
+                lines.append("  Top blueprints:")
+                for bp, n in top_bp:
+                    lines.append(f"    {n:3d}x  {bp}")
+    else:
+        lines.append("  Workflow session store unavailable.")
     lines += ["", sep]
     return "\n".join(lines)
 
@@ -1071,6 +1208,7 @@ def format_json(
     gaps: List[dict],
     recs: List[str],
     adoption: Optional[Dict[str, Any]] = None,
+    intent_compliance: Optional[Dict[str, Any]] = None,
     structured_actions: Optional[List[dict]] = None,
 ) -> str:
     doc = {
@@ -1088,6 +1226,7 @@ def format_json(
         "query_gaps": [g for g in gaps[:10] if not _is_synthetic_gap(str(g.get("query_text", "")))],
         "recommendations": recs,
         "hint_adoption": adoption or {"available": False},
+        "intent_contract_compliance": intent_compliance or {"available": False},
         "structured_actions": structured_actions or [],
     }
     return json.dumps(doc, indent=2, default=str)
@@ -1147,16 +1286,17 @@ def main() -> None:
     cache = cache_hit_rate()
     eval_trend = eval_score_trend(eval_rows)
     adoption = hint_adoption(since_dt)  # Phase 19.3.4
+    intent_compliance = read_workflow_sessions(since_dt)
     leaderboard = strategy_leaderboard(eval_rows)
     top_prompts = sorted(
         [p for p in prompts if isinstance(p.get("mean_score"), float) and p["mean_score"] > 0],
         key=lambda x: -x["mean_score"],
     )[:3]
-    recs = build_recommendations(tool_stats, route, cache, eval_trend, gaps, adoption)
+    recs = build_recommendations(tool_stats, route, cache, eval_trend, gaps, adoption, intent_compliance)
     structured_actions = build_structured_actions(tool_stats, route, cache, eval_trend, gaps)
 
     # Render
-    fmt_args = (since_label, tool_stats, route, cache, eval_trend, leaderboard, top_prompts, gaps, recs, adoption)
+    fmt_args = (since_label, tool_stats, route, cache, eval_trend, leaderboard, top_prompts, gaps, recs, adoption, intent_compliance)
     if args.fmt == "md":
         output = format_md(*fmt_args)
     elif args.fmt == "json":
