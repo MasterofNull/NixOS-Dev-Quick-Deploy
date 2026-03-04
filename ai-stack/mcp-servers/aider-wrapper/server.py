@@ -78,6 +78,7 @@ MODEL_NAME = os.getenv("LLAMA_CPP_MODEL", "qwen2.5-coder-7b-instruct-q4_k_m.gguf
 AIDER_BIN = os.getenv("AIDER_BIN", "aider")
 # Maximum concurrent Aider processes (memory-intensive; default 1)
 AIDER_MAX_CONCURRENCY = int(os.getenv("AIDER_MAX_CONCURRENCY", "1"))
+AIDER_MAX_CONCURRENCY = max(1, AIDER_MAX_CONCURRENCY)
 AIDER_TASK_TIMEOUT = float(os.getenv("AIDER_TASK_TIMEOUT_SECONDS", "600.0"))
 AIDER_TERMINATE_GRACE_SECONDS = float(os.getenv("AIDER_TERMINATE_GRACE_SECONDS", "5.0"))
 AIDER_WATCHDOG_INTERVAL_SECONDS = float(os.getenv("AIDER_WATCHDOG_INTERVAL_SECONDS", "10.0"))
@@ -699,6 +700,23 @@ async def health_check():
 
 async def _run_aider_task(task_id: str, task: TaskRequest) -> None:
     """Run one Aider task, respecting the concurrency semaphore. Updates _tasks in place."""
+    global _task_semaphore
+    if _task_semaphore is None:
+        # Defensive lazy init in case startup hook did not run.
+        _task_semaphore = asyncio.Semaphore(AIDER_MAX_CONCURRENCY)
+    elif _task_semaphore.locked():
+        # Self-heal leaked semaphore lock when no other non-terminal tasks exist.
+        other_active = any(
+            tid != task_id and str(entry.get("status", "")) in {"queued", "waiting", "running"}
+            for tid, entry in _tasks.items()
+        )
+        if not other_active:
+            logger.warning(
+                "aider_task_semaphore_reset",
+                reason="leaked_lock_without_active_tasks",
+                max_concurrency=AIDER_MAX_CONCURRENCY,
+            )
+            _task_semaphore = asyncio.Semaphore(AIDER_MAX_CONCURRENCY)
     _tasks[task_id]["status"] = "waiting"
     async with _task_semaphore:
         if task_id in _task_cancel_reasons:
