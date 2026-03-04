@@ -72,7 +72,7 @@ let
       backup_count: 5
 
     telemetry:
-      enabled: false
+      enabled: ${if ai.aiHarness.runtime.telemetryEnabled then "true" else "false"}
       path: ${dataDir}/aidb/telemetry/aidb-events.jsonl
 
     security:
@@ -931,6 +931,8 @@ in
             "AI_AIDER_SANDBOX_FALLBACK_UNSAFE=true"
             # Phase 19.3.3 — prepend top aq-hint to aider --message for steered task execution.
             "AI_HINTS_ENABLED=true"
+            "AI_HINTS_MIN_SCORE=${toString ai.aiHarness.runtime.aiderHintsMinScore}"
+            "AI_HINTS_MIN_SNIPPET_CHARS=${toString ai.aiHarness.runtime.aiderHintsMinSnippetChars}"
             "AI_TOOLING_PLAN_ENABLED=${if ai.aiHarness.runtime.aiderToolingPlanEnabled then "true" else "false"}"
             "AI_AIDER_SMALL_SCOPE_SUBTREE_ONLY=${if ai.aiHarness.runtime.aiderSmallScopeSubtreeOnly then "true" else "false"}"
             "AIDER_SMALL_SCOPE_MAP_TOKENS=${toString ai.aiHarness.runtime.aiderSmallScopeMapTokens}"
