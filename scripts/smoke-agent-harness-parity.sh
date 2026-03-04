@@ -7,13 +7,14 @@ HYBRID_API_KEY_FILE="${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_api_key}"
 HYBRID_API_KEY="${HYBRID_API_KEY:-}"
 TMP_DIR="$(mktemp -d /tmp/smoke-agent-harness-XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
-SMOKE_CURL_RETRIES="${SMOKE_CURL_RETRIES:-3}"
+SMOKE_CURL_RETRIES="${SMOKE_CURL_RETRIES:-2}"
 SMOKE_CURL_RETRY_DELAY="${SMOKE_CURL_RETRY_DELAY:-2}"
-CHAT_TIMEOUT_SECONDS="${CHAT_TIMEOUT_SECONDS:-90}"
+CHAT_TIMEOUT_SECONDS="${CHAT_TIMEOUT_SECONDS:-60}"
 EMBED_TIMEOUT_SECONDS="${EMBED_TIMEOUT_SECONDS:-30}"
 REMOTE_TIMEOUT_SECONDS="${REMOTE_TIMEOUT_SECONDS:-30}"
-MODELS_TIMEOUT_SECONDS="${MODELS_TIMEOUT_SECONDS:-30}"
+MODELS_TIMEOUT_SECONDS="${MODELS_TIMEOUT_SECONDS:-15}"
 WORKFLOW_TIMEOUT_SECONDS="${WORKFLOW_TIMEOUT_SECONDS:-45}"
+WARMUP_TIMEOUT_SECONDS="${WARMUP_TIMEOUT_SECONDS:-120}"
 
 pass() { printf '[PASS] %s\n' "$*"; }
 warn() { printf '[WARN] %s\n' "$*" >&2; }
@@ -62,6 +63,19 @@ fi
 model_id="$(curl_with_retry --max-time "${MODELS_TIMEOUT_SECONDS}" -fsS "${SWB_URL}/v1/models" | jq -r '.data[0].id // empty')"
 [[ -n "$model_id" ]] || fail "could not detect switchboard model id"
 pass "detected model: ${model_id}"
+
+# One-time warmup to absorb cold model load before strict parity chat checks.
+warmup_payload="${TMP_DIR}/req-warmup.json"
+cat >"$warmup_payload" <<EOF
+{"model":"${model_id}","messages":[{"role":"user","content":"warmup"}],"temperature":0,"max_tokens":4}
+EOF
+if ! curl --max-time "${WARMUP_TIMEOUT_SECONDS}" --connect-timeout 5 -sS -o "${TMP_DIR}/body-warmup.json" \
+  -H 'Content-Type: application/json' \
+  -H 'X-AI-Profile: continue-local' \
+  "${SWB_URL}/v1/chat/completions" \
+  --data @"$warmup_payload"; then
+  warn "warmup request failed; continuing with parity checks"
+fi
 
 chat_req() {
   local profile="$1"

@@ -807,3 +807,7 @@ Use this block for each task execution:
   - `scripts/check-prsi-confidence-calibration.sh` now passes with deterministic local bootstrap samples.
 - Completed_or_gated: Phase 7 program gate runtime hardening.
   - `scripts/check-prsi-phase7-program.sh` now gates `smoke-agent-harness-parity` on switchboard availability, with strict mode toggle.
+- Post-deploy verification update:
+  - Strict Phase 7 program gate now passes in strict mode when switchboard is reachable.
+  - `run-harness-improvement-pass.sh` now uses bounded harness-eval timeout with `/query` fallback to avoid long blocking failures.
+  - Remaining runtime blocker: native `TASK_AUDIT_LOG_PATH` output (`/var/log/nixos-ai-stack/aider-task-audit.jsonl`) is still not materializing on host; report falls back to hint-audit derived task-tooling metrics.
