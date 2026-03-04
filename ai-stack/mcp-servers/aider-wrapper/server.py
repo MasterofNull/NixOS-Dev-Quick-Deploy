@@ -5,6 +5,7 @@ Async Aider invocations with a semaphore-gated task queue and status polling.
 """
 
 import asyncio
+import hashlib
 import os
 import sys
 import json
@@ -16,7 +17,7 @@ import urllib.request
 import urllib.parse
 from pathlib import Path
 from typing import List, Optional, Dict, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Depends
@@ -309,7 +310,7 @@ def _write_hint_audit(task_id: str, hint_id: str, hint_snippet: str, accepted: b
     try:
         task_tooling = _tasks.get(task_id, {}).get("tooling", {})
         entry = json.dumps({
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "service": "aider-wrapper",
             "task_id": task_id,
             "hint_id": hint_id,
@@ -400,7 +401,7 @@ def _write_task_audit(task_id: str, status: str, completed: bool) -> None:
         with TASK_AUDIT_LOG_PATH.open("a", encoding="utf-8") as f:
             f.write(json.dumps(payload) + "\n")
     except Exception as exc:
-        logger.debug("task_audit_write_failed", error=str(exc))
+        logger.warning("task_audit_write_failed", path=str(TASK_AUDIT_LOG_PATH), error=str(exc))
 
 
 def _hint_token_overlap(prompt: str, top_hint: Dict[str, object]) -> int:
