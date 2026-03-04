@@ -31,6 +31,7 @@ CI_MODE="${CI_MODE:-0}"
 STRATEGY_TAG="${STRATEGY_TAG:-}"   # Phase 18.2.1 — optional strategy label for leaderboard tracking
 PROMPTFOO_VERSION="${PROMPTFOO_VERSION:-latest}"
 PROMPTFOO_MAX_CONCURRENCY="${PROMPTFOO_MAX_CONCURRENCY:-1}"
+PROMPTFOO_TIMEOUT_SECONDS="${PROMPTFOO_TIMEOUT_SECONDS:-900}"
 
 info()    { printf '\033[0;32m[run-eval] %s\033[0m\n' "$*"; }
 warn()    { printf '\033[0;33m[run-eval] WARN: %s\033[0m\n' "$*" >&2; }
@@ -93,7 +94,37 @@ if [[ "${CI_MODE}" == "1" ]]; then
   promptfoo_args+=(--no-table)
 fi
 
-npx "${promptfoo_args[@]}" || eval_exit=$?
+run_promptfoo() {
+  local log_file="$1"
+  if command -v timeout >/dev/null 2>&1; then
+    timeout --foreground "${PROMPTFOO_TIMEOUT_SECONDS}" \
+      npx "${promptfoo_args[@]}" 2>&1 | tee "${log_file}"
+  else
+    npx "${promptfoo_args[@]}" 2>&1 | tee "${log_file}"
+  fi
+  return "${PIPESTATUS[0]}"
+}
+
+tmp_log="$(mktemp -t run-eval-npx.XXXXXX.log)"
+if ! run_promptfoo "${tmp_log}"; then
+  eval_exit=$?
+  if [[ "${eval_exit}" -eq 124 ]]; then
+    warn "Promptfoo timed out after ${PROMPTFOO_TIMEOUT_SECONDS}s."
+  fi
+  if grep -Eq "ENOTEMPTY|syscall rename" "${tmp_log}"; then
+    warn "Detected transient npx cache rename failure; clearing ~/.npm/_npx and retrying once."
+    rm -rf "${HOME}/.npm/_npx"/* 2>/dev/null || true
+    if ! run_promptfoo "${tmp_log}"; then
+      eval_exit=$?
+      if [[ "${eval_exit}" -eq 124 ]]; then
+        warn "Promptfoo timed out after ${PROMPTFOO_TIMEOUT_SECONDS}s on retry."
+      fi
+    else
+      eval_exit=0
+    fi
+  fi
+fi
+rm -f "${tmp_log}" 2>/dev/null || true
 
 # ── Parse results ─────────────────────────────────────────────────────────────
 threshold_passed=0
@@ -155,11 +186,12 @@ CREATE TABLE IF NOT EXISTS eval_scores (
   threshold INTEGER NOT NULL,
   strategy_tag TEXT
 );
--- Phase 18.2.1: add strategy_tag column to existing DBs
-ALTER TABLE eval_scores ADD COLUMN strategy_tag TEXT;
-INSERT INTO eval_scores (timestamp, config, passed, total, pct_passed, threshold, strategy_tag)
-VALUES ('${timestamp}', '$(printf "%s" "${EVAL_CONFIG}" | sed "s/'/''/g")', ${passed}, ${total}, ${pct}, ${ACCEPTANCE_THRESHOLD}, '$(printf "%s" "${STRATEGY_TAG}" | sed "s/'/''/g")');
 SQL
+            if ! sqlite3 "${scores_db}" "PRAGMA table_info(eval_scores);" | awk -F'|' '$2 == "strategy_tag" { found=1 } END { exit(found ? 0 : 1) }'; then
+                sqlite3 "${scores_db}" "ALTER TABLE eval_scores ADD COLUMN strategy_tag TEXT;"
+            fi
+            sqlite3 "${scores_db}" \
+              "INSERT INTO eval_scores (timestamp, config, passed, total, pct_passed, threshold, strategy_tag) VALUES ('${timestamp}', '$(printf "%s" "${EVAL_CONFIG}" | sed "s/'/''/g")', ${passed}, ${total}, ${pct}, ${ACCEPTANCE_THRESHOLD}, '$(printf "%s" "${STRATEGY_TAG}" | sed "s/'/''/g")');"
             info "Score logged: ${scores_db}"
         else
             warn "sqlite3 not found; skipping SQLite score logging."
