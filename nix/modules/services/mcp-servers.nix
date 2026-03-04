@@ -1112,6 +1112,8 @@ in
 
       systemd.services.ai-npm-security-monitor = lib.mkIf cfg.deployment.npmSecurity.enable {
         description = "AI Stack npm supply-chain security monitor";
+        wantedBy = [ "ai-stack.target" ];
+        partOf = [ "ai-stack.target" ];
         after = [ "network-online.target" "systemd-tmpfiles-setup.service" ];
         wants = [ "network-online.target" "systemd-tmpfiles-setup.service" ];
         serviceConfig = {
@@ -1165,6 +1167,19 @@ in
         description = "AI stack post-deploy declarative convergence";
         wantedBy = [ "ai-stack.target" ];
         partOf = [ "ai-stack.target" ];
+        path = with pkgs; [
+          bash
+          coreutils
+          curl
+          findutils
+          gawk
+          gnugrep
+          jq
+          nodejs
+          python3
+          ripgrep
+          util-linux
+        ];
         after = [
           "network-online.target"
           "ai-aidb.service"
@@ -1202,7 +1217,7 @@ in
           POST_DEPLOY_AQ_REPORT_OUT = "${dataDir}/hybrid/telemetry/latest-aq-report.json";
           POST_DEPLOY_BASH_BIN = "${pkgs.bash}/bin/bash";
           POST_DEPLOY_PYTHON_BIN = "${pkgs.python3}/bin/python3";
-          POST_DEPLOY_HYBRID_HEALTH_RETRIES = "12";
+          POST_DEPLOY_HYBRID_HEALTH_RETRIES = "36";
           POST_DEPLOY_HYBRID_HEALTH_RETRY_SECONDS = "5";
         };
       };
