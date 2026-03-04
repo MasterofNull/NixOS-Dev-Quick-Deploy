@@ -7,6 +7,13 @@ HYBRID_API_KEY_FILE="${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_api_key}"
 HYBRID_API_KEY="${HYBRID_API_KEY:-}"
 TMP_DIR="$(mktemp -d /tmp/smoke-agent-harness-XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
+SMOKE_CURL_RETRIES="${SMOKE_CURL_RETRIES:-3}"
+SMOKE_CURL_RETRY_DELAY="${SMOKE_CURL_RETRY_DELAY:-2}"
+CHAT_TIMEOUT_SECONDS="${CHAT_TIMEOUT_SECONDS:-90}"
+EMBED_TIMEOUT_SECONDS="${EMBED_TIMEOUT_SECONDS:-30}"
+REMOTE_TIMEOUT_SECONDS="${REMOTE_TIMEOUT_SECONDS:-30}"
+MODELS_TIMEOUT_SECONDS="${MODELS_TIMEOUT_SECONDS:-30}"
+WORKFLOW_TIMEOUT_SECONDS="${WORKFLOW_TIMEOUT_SECONDS:-45}"
 
 pass() { printf '[PASS] %s\n' "$*"; }
 warn() { printf '[WARN] %s\n' "$*" >&2; }
@@ -18,6 +25,22 @@ need_cmd() {
 
 need_cmd curl
 need_cmd jq
+
+curl_with_retry() {
+  local attempts="${SMOKE_CURL_RETRIES}"
+  local delay="${SMOKE_CURL_RETRY_DELAY}"
+  local n=1
+  while true; do
+    if curl "$@"; then
+      return 0
+    fi
+    if (( n >= attempts )); then
+      return 1
+    fi
+    sleep "${delay}"
+    n=$((n + 1))
+  done
+}
 
 if [[ -z "$HYBRID_API_KEY" && -r "$HYBRID_API_KEY_FILE" ]]; then
   HYBRID_API_KEY="$(tr -d '[:space:]' < "$HYBRID_API_KEY_FILE")"
@@ -36,7 +59,7 @@ if [[ -n "$HYBRID_API_KEY" ]]; then
   hq+=(-H "X-API-Key: ${HYBRID_API_KEY}")
 fi
 
-model_id="$(curl -fsS "${SWB_URL}/v1/models" | jq -r '.data[0].id // empty')"
+model_id="$(curl_with_retry --max-time "${MODELS_TIMEOUT_SECONDS}" -fsS "${SWB_URL}/v1/models" | jq -r '.data[0].id // empty')"
 [[ -n "$model_id" ]] || fail "could not detect switchboard model id"
 pass "detected model: ${model_id}"
 
@@ -49,7 +72,7 @@ chat_req() {
   cat >"$payload" <<EOF
 {"model":"${model_id}","messages":[{"role":"user","content":"${prompt}"}],"temperature":0,"max_tokens":20}
 EOF
-  curl --max-time 90 -sS -D "$hdr" -o "$body" \
+  curl_with_retry --max-time "${CHAT_TIMEOUT_SECONDS}" -sS -D "$hdr" -o "$body" \
     -H 'Content-Type: application/json' \
     -H "X-AI-Profile: ${profile}" \
     "${SWB_URL}/v1/chat/completions" \
@@ -69,7 +92,7 @@ emb_payload="${TMP_DIR}/req-embedding.json"
 cat >"$emb_payload" <<EOF
 {"model":"${model_id}","input":["smoke embedding profile"]}
 EOF
-curl --max-time 30 -sS -D "${TMP_DIR}/hdr-embedding.txt" -o "${TMP_DIR}/body-embedding.json" \
+curl_with_retry --max-time "${EMBED_TIMEOUT_SECONDS}" -sS -D "${TMP_DIR}/hdr-embedding.txt" -o "${TMP_DIR}/body-embedding.json" \
   -H 'Content-Type: application/json' \
   -H 'X-AI-Profile: embedding-local' \
   "${SWB_URL}/v1/embeddings" \
@@ -82,7 +105,7 @@ remote_payload="${TMP_DIR}/req-remote.json"
 cat >"$remote_payload" <<EOF
 {"model":"${model_id}","messages":[{"role":"user","content":"smoke remote profile"}],"temperature":0,"max_tokens":10}
 EOF
-if curl --max-time 30 -sS -D "${TMP_DIR}/hdr-remote.txt" -o "${TMP_DIR}/body-remote.json" \
+if curl_with_retry --max-time "${REMOTE_TIMEOUT_SECONDS}" -sS -D "${TMP_DIR}/hdr-remote.txt" -o "${TMP_DIR}/body-remote.json" \
   -H 'Content-Type: application/json' \
   -H 'X-AI-Profile: remote-default' \
   "${SWB_URL}/v1/chat/completions" \
@@ -98,7 +121,7 @@ fi
 
 # Workflow plan/session endpoints
 plan_resp="${TMP_DIR}/workflow-plan.json"
-plan_code="$(curl -sS -o "$plan_resp" -w "%{http_code}" "${hq[@]}" "${HYB_URL}/workflow/plan?q=validate%20nixos%20deploy%20and%20continue%20chat" || true)"
+plan_code="$(curl_with_retry --max-time "${WORKFLOW_TIMEOUT_SECONDS}" -sS -o "$plan_resp" -w "%{http_code}" "${hq[@]}" "${HYB_URL}/workflow/plan?q=validate%20nixos%20deploy%20and%20continue%20chat" || true)"
 if [[ "$plan_code" == "401" && -z "$HYBRID_API_KEY" ]]; then
   warn "hybrid API key required but unavailable; hybrid workflow parity checks skipped"
   printf '\nAll parity smoke tests completed successfully (switchboard-only mode).\n'
@@ -109,37 +132,37 @@ jq -e '.phases | length >= 5' "$plan_resp" >/dev/null || fail "workflow/plan: ex
 pass "workflow/plan endpoint"
 
 start_resp="${TMP_DIR}/workflow-start.json"
-curl -fsS "${hq[@]}" -H 'Content-Type: application/json' \
+curl_with_retry --max-time "${WORKFLOW_TIMEOUT_SECONDS}" -fsS "${hq[@]}" -H 'Content-Type: application/json' \
   "${HYB_URL}/workflow/session/start" \
   --data '{"query":"diagnose local and remote profile smoke failures"}' >"$start_resp"
 session_id="$(jq -r '.session_id // empty' "$start_resp")"
 [[ -n "$session_id" ]] || fail "workflow/session/start: missing session_id"
 pass "workflow/session/start endpoint"
 
-curl -fsS "${hq[@]}" "${HYB_URL}/workflow/session/${session_id}" >"${TMP_DIR}/workflow-get.json"
+curl_with_retry --max-time "${WORKFLOW_TIMEOUT_SECONDS}" -fsS "${hq[@]}" "${HYB_URL}/workflow/session/${session_id}" >"${TMP_DIR}/workflow-get.json"
 jq -e '.status == "in_progress" or .status == "completed"' "${TMP_DIR}/workflow-get.json" >/dev/null || fail "workflow/session/get: invalid status"
 pass "workflow/session/get endpoint"
 
-curl -fsS "${hq[@]}" "${HYB_URL}/workflow/session/${session_id}?lineage=true" >"${TMP_DIR}/workflow-lineage.json"
+curl_with_retry --max-time "${WORKFLOW_TIMEOUT_SECONDS}" -fsS "${hq[@]}" "${HYB_URL}/workflow/session/${session_id}?lineage=true" >"${TMP_DIR}/workflow-lineage.json"
 jq -e '.lineage | length >= 1' "${TMP_DIR}/workflow-lineage.json" >/dev/null || fail "workflow/session/get?lineage=true: missing lineage"
 pass "workflow/session/get lineage endpoint"
 
-curl -fsS "${hq[@]}" "${HYB_URL}/workflow/sessions" >"${TMP_DIR}/workflow-list.json"
+curl_with_retry --max-time "${WORKFLOW_TIMEOUT_SECONDS}" -fsS "${hq[@]}" "${HYB_URL}/workflow/sessions" >"${TMP_DIR}/workflow-list.json"
 jq -e '.count >= 1' "${TMP_DIR}/workflow-list.json" >/dev/null || fail "workflow/sessions: expected at least one session"
 pass "workflow/sessions endpoint"
 
-curl -fsS "${hq[@]}" -H 'Content-Type: application/json' \
+curl_with_retry --max-time "${WORKFLOW_TIMEOUT_SECONDS}" -fsS "${hq[@]}" -H 'Content-Type: application/json' \
   "${HYB_URL}/workflow/session/${session_id}/fork" \
   --data '{"note":"smoke branch test"}' >"${TMP_DIR}/workflow-fork.json"
 forked_session_id="$(jq -r '.session_id // empty' "${TMP_DIR}/workflow-fork.json")"
 [[ -n "${forked_session_id}" ]] || fail "workflow/session/fork: missing forked session id"
 pass "workflow/session/fork endpoint"
 
-curl -fsS "${hq[@]}" "${HYB_URL}/workflow/tree" >"${TMP_DIR}/workflow-tree.json"
+curl_with_retry --max-time "${WORKFLOW_TIMEOUT_SECONDS}" -fsS "${hq[@]}" "${HYB_URL}/workflow/tree" >"${TMP_DIR}/workflow-tree.json"
 jq -e '.count >= 2 and (.edges | length >= 1)' "${TMP_DIR}/workflow-tree.json" >/dev/null || fail "workflow/tree expected at least one fork edge"
 pass "workflow/tree endpoint"
 
-curl -fsS "${hq[@]}" -H 'Content-Type: application/json' \
+curl_with_retry --max-time "${WORKFLOW_TIMEOUT_SECONDS}" -fsS "${hq[@]}" -H 'Content-Type: application/json' \
   "${HYB_URL}/workflow/session/${session_id}/advance" \
   --data '{"action":"pass","note":"discover phase complete"}' >"${TMP_DIR}/workflow-advance.json"
 jq -e '.current_phase_index >= 1 or .status == "completed"' "${TMP_DIR}/workflow-advance.json" >/dev/null || fail "workflow/session/advance did not progress"
@@ -164,7 +187,7 @@ cat >"$review_payload" <<'EOF'
   "run_harness_eval": false
 }
 EOF
-curl -fsS "${hq[@]}" -H 'Content-Type: application/json' \
+curl_with_retry --max-time "${WORKFLOW_TIMEOUT_SECONDS}" -fsS "${hq[@]}" -H 'Content-Type: application/json' \
   "${HYB_URL}/review/acceptance" \
   --data @"$review_payload" >"${TMP_DIR}/review-resp.json"
 jq -e '.passed == true' "${TMP_DIR}/review-resp.json" >/dev/null || fail "review/acceptance expected pass=true"
