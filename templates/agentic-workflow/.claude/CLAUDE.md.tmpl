@@ -23,15 +23,30 @@ Stack: @STACK@
 ## Project Structure
 
 ```text
-.agent/
-.claude/
-.agents/plans/
+repo/
+├── .agent/
+│   ├── PROJECT-PRD.md
+│   ├── GLOBAL-RULES.md
+│   └── workflows/
+├── .claude/
+│   └── commands/
+└── .agents/
+    └── plans/
 ```
+
+## File Placement Contract
+
+1. PRD/rules/workflow evidence belong in `.agent/`.
+2. Slash-command behavior files belong in `.claude/commands/`.
+3. Phase/slice plans belong in `.agents/plans/`.
+4. Do not create workflow artifacts in repo root.
+5. Validate with `repo-structure-lint` before commit.
 
 ## Validation
 
 ```bash
 git status --short
+scripts/governance/repo-structure-lint.sh --staged
 ```
 
 ## On-Demand Context

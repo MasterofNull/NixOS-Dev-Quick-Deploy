@@ -41,10 +41,24 @@ repo/
 ├── CLAUDE.md                 # always-read core card (this file)
 ├── docs/AGENTS.md            # canonical full policy
 ├── docs/agent-guides/        # progressive disclosure guides
+├── .agent/                   # workflow state, PRD, and guardrails
+├── .claude/commands/         # slash-command behavior contracts
+├── .agents/plans/            # phased implementation plans
 ├── scripts/ai/aqd            # guided workflow + agent tooling CLI
 ├── scripts/ai/mcp-bridge-hybrid.py  # MCP stdio bridge + tool registry
 └── nix/modules/              # declarative NixOS system/service modules
 ```
+
+## File Placement Contract
+
+1. Do not create new files in repo root unless explicitly required.
+2. Write docs under subject folders in `docs/`, not directly in `docs/`.
+3. Write scripts under subject folders in `scripts/`, not directly in `scripts/`.
+4. AI workflow artifacts must live in:
+   - `.agent/` for PRD, rules, workflow evidence
+   - `.claude/commands/` for command contracts
+   - `.agents/plans/` for phase/slice plans
+5. Run `scripts/governance/repo-structure-lint.sh --staged` before commit.
 
 ## Core Rules
 
