@@ -1224,6 +1224,15 @@
             default = 3000;
             description = "Default latency SLO target (ms) for harness evaluations.";
           };
+
+          timeoutSeconds = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 90;
+            description = ''
+              Hard timeout (seconds) for harness evaluation calls. This bounds
+              long-running eval requests independently from the latency SLO score.
+            '';
+          };
         };
 
         runtime = {
@@ -1407,7 +1416,8 @@
               type = lib.types.attrs;
               default = {
                 version = "1.0";
-                blocked_tools = [ "shell_exec" "remote_ssh_exec" "raw_system_command" ];
+                blocked_tools = [ "shell_exec" "shell_execute" "remote_ssh_exec" "raw_system_command" "danger_tool" ];
+                keyword_exempt_tools = [ "route_search" ];
                 blocked_endpoint_patterns = [ "/control/*" "*/reload-model" "*/session/*/mode" ];
                 blocked_reason_keywords = [
                   "exec"

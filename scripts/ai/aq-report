@@ -950,9 +950,11 @@ def cache_hit_rate() -> Dict[str, Any]:
 def eval_score_trend(rows: List[dict], entries: Optional[List[dict]] = None) -> Dict[str, Any]:
     """Compute eval score statistics over the window."""
     pcts: List[float] = []
+    source = "scores_db"
     if rows:
         pcts = [float(r["pct_passed"]) for r in rows]
     elif entries:
+        source = "tool_audit"
         for e in entries:
             if str(e.get("tool_name", "")).strip().lower() != "run_harness_eval":
                 continue
@@ -964,13 +966,14 @@ def eval_score_trend(rows: List[dict], entries: Optional[List[dict]] = None) -> 
         return {"available": False}
     return {
         "available": True,
+        "source": source,
         "latest_pct": pcts[-1],
         "mean_pct": round(statistics.mean(pcts), 1),
         "min_pct": min(pcts),
         "max_pct": max(pcts),
         "trend": "rising" if len(pcts) >= 2 and pcts[-1] > pcts[0] else
                  "falling" if len(pcts) >= 2 and pcts[-1] < pcts[0] else "stable",
-        "n_runs": len(rows),
+        "n_runs": len(pcts),
     }
 
 

@@ -121,7 +121,9 @@ async def run_harness_evaluation(
             limit=5,
             keyword_limit=5,
             score_threshold=0.7,
-            generate_response=True,
+            # Keep harness eval deterministic and fast: evaluate retrieval quality
+            # without triggering full LLM synthesis on every eval call.
+            generate_response=False,
         )
     )
     try:
