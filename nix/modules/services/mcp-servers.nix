@@ -856,6 +856,7 @@ in
             "AI_HARNESS_MIN_ACCEPTANCE_SCORE=${toString ai.aiHarness.eval.minAcceptanceScore}"
             "AI_HARNESS_MAX_LATENCY_MS=${toString ai.aiHarness.eval.maxLatencyMs}"
             "AI_HARNESS_EVAL_TIMEOUT_S=${toString ai.aiHarness.eval.timeoutSeconds}"
+            "AI_HARNESS_EVAL_TIMEOUT_HARD_CAP_S=${toString ai.aiHarness.eval.timeoutHardCapSeconds}"
             "AI_SEMANTIC_TOOLING_AUTORUN=${if ai.aiHarness.runtime.semanticToolingAutorun then "true" else "false"}"
             "AI_HINT_FEEDBACK_DB_ENABLED=${if ai.aiHarness.runtime.hintFeedbackDbEnabled then "true" else "false"}"
             "AI_HINT_FEEDBACK_DB_CACHE_TTL_SECONDS=${toString ai.aiHarness.runtime.hintFeedbackDbCacheTtlSeconds}"

@@ -1156,6 +1156,12 @@ class HintsEngine:
                 continue
             if str(row.get("outcome", "")).lower() != "error":
                 continue
+            service_name = str(row.get("service", "") or "").strip().lower()
+            # Ignore internal first-use security-auditor denials here. They are
+            # tracked separately in aq-report and otherwise dominate runtime
+            # hint IDs with low-actionability repeats.
+            if service_name.endswith("-tool-security"):
+                continue
             tool = str(row.get("tool_name", "") or "").strip()
             if not tool:
                 continue
