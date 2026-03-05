@@ -1959,6 +1959,28 @@ persist_home_git_credentials_declarative() {
     fi
   fi
 
+  # Guard against projecting unavailable credential helpers (for example
+  # manager-core on Linux without Git Credential Manager installed).
+  if [[ -n "$git_helper" ]]; then
+    local helper_cmd helper_name helper_is_available=1
+    helper_cmd="${git_helper%% *}"
+    helper_name="${helper_cmd#git-credential-}"
+    if [[ "$helper_cmd" == "manager-core" || "$helper_cmd" == "manager" ]]; then
+      if ! command -v "git-credential-${helper_cmd}" >/dev/null 2>&1; then
+        helper_is_available=0
+      fi
+    elif [[ "$helper_cmd" != "!"* && "$helper_cmd" != /* ]]; then
+      if ! git "credential-${helper_name}" -h >/dev/null 2>&1; then
+        helper_is_available=0
+      fi
+    fi
+
+    if [[ "$helper_is_available" -ne 1 ]]; then
+      git_helper="cache --timeout=28800"
+      log "Git credential helper unavailable; using declarative fallback: ${git_helper}"
+    fi
+  fi
+
   if [[ -z "$git_name" || -z "$git_email" ]]; then
     # Non-critical: git identity is optional for the deploy to succeed.
     # Only surface the hint in verbose mode to avoid noisy output.

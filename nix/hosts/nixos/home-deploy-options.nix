@@ -6,7 +6,7 @@
   programs.git = {
     enable = lib.mkDefault true;
     settings = {
-      credential.helper = lib.mkDefault "manager-core";
+      credential.helper = lib.mkDefault "cache --timeout=28800";
     };
   };
 }
