@@ -26,7 +26,7 @@ curl -sS -H "X-API-Key: $(tr -d '[:space:]' </run/secrets/hybrid_coordinator_api
 
 ```bash
 scripts/testing/check-mcp-health.sh
-scripts/quick-deploy-lint.sh --mode fast
+scripts/governance/quick-deploy-lint.sh --mode fast
 scripts/testing/validate-runtime-declarative.sh
 scripts/testing/check-prsi-phase7-program.sh
 scripts/ai/aq-report --since=7d --format=text

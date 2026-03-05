@@ -165,7 +165,7 @@ echo '{"type":"remote_api_usage","timestamp":"..."}' >> remote-usage.jsonl
 
 ### Solution A: Demonstration Script
 
-**File**: `scripts/demo-local-ai-usage.py`
+**File**: `scripts/testing/demo-local-ai-usage.py`
 
 **What it does**:
 - Shows correct usage pattern
@@ -176,7 +176,7 @@ echo '{"type":"remote_api_usage","timestamp":"..."}' >> remote-usage.jsonl
 
 **Run it**:
 ```bash
-python3 scripts/demo-local-ai-usage.py
+python3 scripts/testing/demo-local-ai-usage.py
 ```
 
 ---
@@ -245,7 +245,7 @@ export CLAUDE_CODE_USE_LOCAL="1"
 
 ### Test 1: Verify Wrapper Works
 ```bash
-python3 scripts/demo-local-ai-usage.py
+python3 scripts/testing/demo-local-ai-usage.py
 # Should see telemetry events generated
 tail -5 ~/.local/share/nixos-ai-stack/telemetry/hybrid-events.jsonl
 ```
@@ -268,7 +268,7 @@ cat ~/.local/share/nixos-system-dashboard/token-savings.json | jq .
 ## Recommendation for Your Setup
 
 **Immediate (Today)**:
-1. ✅ Run `scripts/demo-local-ai-usage.py` to generate sample telemetry
+1. ✅ Run `scripts/testing/demo-local-ai-usage.py` to generate sample telemetry
 2. ✅ Use `scripts/ai/claude-local-wrapper.py` for manual queries
 3. ✅ Add git pre-commit hook to remind about local usage
 
@@ -311,7 +311,7 @@ cat ~/.local/share/nixos-system-dashboard/token-savings.json | jq .
 
 1. Run the demonstration:
 ```bash
-python3 scripts/demo-local-ai-usage.py
+python3 scripts/testing/demo-local-ai-usage.py
 ```
 
 2. Check telemetry generated:

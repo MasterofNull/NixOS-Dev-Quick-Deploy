@@ -10,7 +10,7 @@ This document lists the additional parity tooling for policy, regression gates, 
 
 ## Components
 
-- `scripts/evaluate-agent-policy.py`  
+- `scripts/governance/evaluate-agent-policy.py`  
   Evaluate profile/task/tool decisions from `config/agent-routing-policy.json`.
 
 - `scripts/ai/route-reasoning-mode.py`  
@@ -36,7 +36,7 @@ This document lists the additional parity tooling for policy, regression gates, 
 
 ## Signed skill registry
 
-- `scripts/sign-skill-registry.sh`
+- `scripts/security/sign-skill-registry.sh`
 - `scripts/testing/verify-skill-registry.sh`
 
 Use with:

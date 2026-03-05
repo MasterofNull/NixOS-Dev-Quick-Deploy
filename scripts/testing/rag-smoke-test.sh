@@ -2,8 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../config/service-endpoints.sh
-source "${SCRIPT_DIR}/../config/service-endpoints.sh"
+# shellcheck source=../../config/service-endpoints.sh
+source "${SCRIPT_DIR}/../../config/service-endpoints.sh"
 
 COLLECTION="${RAG_SMOKE_COLLECTION:-ops-rag-smoke}"
 INPUT_TEXT="${RAG_SMOKE_INPUT:-rag smoke test}"

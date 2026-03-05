@@ -52,7 +52,7 @@ Primary tracking doc for multi-agent execution across Codex/Claude/Qwen/Continue
   - Re-ran `ai-pgvector-bootstrap.service` to sync DB role password with secret
   - Re-seeded routing traffic so `hybrid_llm_backend_selections_total` emits samples
 - npm supply-chain hardening:
-  - Added `scripts/npm-security-monitor.sh` with IOC-aware threat-intel checks
+  - Added `scripts/security/npm-security-monitor.sh` with IOC-aware threat-intel checks
   - Added declarative `deployment.npmSecurity.*` options
   - Added `ai-npm-security-monitor.service` + periodic timer wiring
   - Added declarative npm threat response modes (`report|fail|quarantine`)
@@ -110,7 +110,7 @@ Primary tracking doc for multi-agent execution across Codex/Claude/Qwen/Continue
   - Added regression smoke script: `scripts/testing/test-tool-security-auditor.py`
 - Runtime report section smoke gate (Phase 1.3 / Phase 6):
   - Added `scripts/testing/check-aq-report-runtime-sections.sh` to validate populated runtime report sections post-seed
-  - Integrated into `scripts/post-deploy-converge.sh` and `scripts/automation/run-advanced-parity-suite.sh`
+  - Integrated into `scripts/automation/post-deploy-converge.sh` and `scripts/automation/run-advanced-parity-suite.sh`
 - CI/release discipline reinforcement (Phase 6):
   - Added declarative runtime wiring validation to CI (`scripts/testing/validate-runtime-declarative.sh`)
   - Extended advanced parity suite with aq-report contract/runtime checks and security-auditor regression smoke
@@ -124,7 +124,7 @@ Primary tracking doc for multi-agent execution across Codex/Claude/Qwen/Continue
 - Runtime validation coverage extension (Phase 6.2):
   - `validate-runtime-declarative.sh` now validates new hint precision and task audit env wiring
 - Quick deploy preflight/lint decoupling + UX restoration (Phase 6 support):
-  - Added dedicated agent CLI: `scripts/quick-deploy-lint.sh` (`--mode fast|full`) for dry-run/failure-mode checks
+  - Added dedicated agent CLI: `scripts/governance/quick-deploy-lint.sh` (`--mode fast|full`) for dry-run/failure-mode checks
   - Removed extra failure-mode/runtime-contract gating from deploy execution path to keep runtime lean
   - Improved `nixos-quick-deploy.sh` operator UX with TTY-aware colorized status, explicit timed step start/finish lines, and aligned completion timing table
 - Intent-contract coverage hardening at workflow ingress (Phase 2/4 support):
@@ -209,7 +209,7 @@ Primary tracking doc for multi-agent execution across Codex/Claude/Qwen/Continue
   - New Postgres tables:
     - `hint_feedback_events` (durable event log with `agent_preferences` + semantic tags)
     - `hint_feedback_profiles` (per-hint aggregate profile: helpful rate, mean score, confidence, dominant tags, preferred types/tools)
-  - Wired `scripts/post-deploy-converge.sh` to run feedback sync and emit telemetry snapshot:
+  - Wired `scripts/automation/post-deploy-converge.sh` to run feedback sync and emit telemetry snapshot:
     - `${DATA_DIR}/hybrid/telemetry/hint-feedback-sync-latest.json`
   - Declarative service env wiring in `nix/modules/services/mcp-servers.nix`:
     - `POSTGRES_*`, `POSTGRES_PASSWORD_FILE`, `HINT_FEEDBACK_LOG_PATH`, `POST_DEPLOY_HINT_FEEDBACK_SYNC_OUT`
@@ -228,14 +228,14 @@ Primary tracking doc for multi-agent execution across Codex/Claude/Qwen/Continue
     - confidence-gated bounded score adjustments with declarative thresholds
   - Extended declarative wiring validator (`scripts/testing/validate-runtime-declarative.sh`) to enforce new options/env keys
 - Post-deploy regression guard for hint-feedback endpoint (Phase 6 quality gate):
-  - Added `hints_feedback_endpoint_probe` step to `scripts/post-deploy-converge.sh`
+  - Added `hints_feedback_endpoint_probe` step to `scripts/automation/post-deploy-converge.sh`
   - Probe posts a lightweight `/hints/feedback` record and fails step if API path regresses
   - Added declarative secret env wiring (`HYBRID_API_KEY_FILE`) for post-deploy convergence service
   - Catches runtime issues like handler import/name errors before they silently degrade feedback loops
 - Runtime stabilization fixes after deploy validation (Phase 2/6 hardening):
   - Fixed `/hints/feedback` runtime handler crash (`NameError: datetime not defined`) in `hybrid-coordinator/http_server.py`
   - Validated endpoint with authenticated probe; `hints_feedback_endpoint_probe` now returns `ok` in live post-deploy convergence runs
-  - Fixed npm monitor path-resolution bug in `scripts/npm-security-monitor.sh`:
+  - Fixed npm monitor path-resolution bug in `scripts/security/npm-security-monitor.sh`:
     - `INCIDENT_LOG_FILE` and `QUARANTINE_STATE_FILE` now resolve after CLI `--output-dir` parsing
     - eliminated post-deploy `Read-only file system` warnings from home-directory fallback paths
   - Confirmed latest convergence summary now reports:
@@ -246,7 +246,7 @@ Primary tracking doc for multi-agent execution across Codex/Claude/Qwen/Continue
   - Added `scripts/ai/aq-auto-remediate.py` to consume `aq-report` JSON and run safe remediation actions:
     - low intent-contract coverage: bounded synthetic `/workflow/run/start` probes with valid `intent_contract`
     - stale gap curation: parse `aq-report` stale-gap SQL recommendations and apply capped `query_gaps` cleanup
-  - Wired into `scripts/post-deploy-converge.sh` as step `aq_auto_remediation` with telemetry output:
+  - Wired into `scripts/automation/post-deploy-converge.sh` as step `aq_auto_remediation` with telemetry output:
     - `${DATA_DIR}/hybrid/telemetry/aq-auto-remediation-latest.json`
   - Added declarative controls under `mySystem.deployment.autoRemediation.*`:
     - enable/dry-run/report window
@@ -273,7 +273,7 @@ Primary tracking doc for multi-agent execution across Codex/Claude/Qwen/Continue
     - `scripts/testing/check-routing-fallback.sh` PASS
     - `scripts/testing/check-aq-report-contract.sh` PASS
     - `scripts/testing/check-aq-report-runtime-sections.sh` PASS
-    - `scripts/quick-deploy-lint.sh --mode fast` PASS
+    - `scripts/governance/quick-deploy-lint.sh --mode fast` PASS
   - `scripts/ai/aq-auto-remediate.py --dry-run` confirms intent-contract remediation trigger remains active (`coverage=45.7%`, planned probes=3).
   - Remaining runtime blockers (still not fully closed):
     - Tool-audit breadth remains `3` because historical `/var/log/ai-audit-sidecar/tool-audit.jsonl` ownership (`nobody:nogroup`) still prevents new writes in current generation.
@@ -389,7 +389,7 @@ Tasks:
 - Success criteria: health check passes; report captured in logs/artifacts.
 
 2. Enforce synthetic-gap filtering
-- Tools: `scripts/ai/aq-report`, `scripts/curate-residual-gaps.sh`
+- Tools: `scripts/ai/aq-report`, `scripts/data/curate-residual-gaps.sh`
 - Success criteria: no `analysis only task`, `fetch/curl localhost`, or `test` rows in Top Query Gaps.
 
 3. Post-deploy smoke standardization
@@ -566,7 +566,7 @@ Tasks:
 Closure evidence (2026-03-04):
 - CI includes declarative wiring + aq-report contract + PRSI contract/integrity checks
 - `scripts/testing/smoke-cross-client-compat.sh` → PASS (HTTP + RPC + Python SDK)
-- `scripts/quick-deploy-lint.sh --mode fast` and `scripts/testing/validate-runtime-declarative.sh` passing
+- `scripts/governance/quick-deploy-lint.sh --mode fast` and `scripts/testing/validate-runtime-declarative.sh` passing
 
 ## PRSI Master Prompt Integration (2026-03-04)
 
@@ -793,16 +793,16 @@ Use this block for each task execution:
 ## Latest Slice Update (2026-03-04)
 
 - Completed: npm security monitor runtime regression fix + lint gate.
-  - Fixed broken-pipe failure path in `scripts/npm-security-monitor.sh` lifecycle scan (`pipefail` + heredoc stdin collision).
+  - Fixed broken-pipe failure path in `scripts/security/npm-security-monitor.sh` lifecycle scan (`pipefail` + heredoc stdin collision).
   - Added guard script `scripts/testing/check-npm-security-monitor-smoke.sh`.
-  - Wired smoke step into `scripts/quick-deploy-lint.sh` so monitor/report regressions fail fast before deploy.
+  - Wired smoke step into `scripts/governance/quick-deploy-lint.sh` so monitor/report regressions fail fast before deploy.
 - Completed: declarative post-deploy KPI maintenance wiring for bounded remediation loops.
   - Added Nix options under `mySystem.deployment.autoRemediation.*` for:
     - bounded intent remediation controls
     - bounded hint-adoption remediation controls
     - dedicated timeout budgets/workspace controls
   - Wired all new controls declaratively into `ai-post-deploy-converge.service` environment.
-  - `scripts/post-deploy-converge.sh` now runs:
+  - `scripts/automation/post-deploy-converge.sh` now runs:
     - `intent_remediation_bounded`
     - `hint_adoption_remediation_bounded`
     - final `aq_report_refresh_post_bounded`

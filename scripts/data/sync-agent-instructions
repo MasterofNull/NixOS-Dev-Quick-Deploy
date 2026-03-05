@@ -40,7 +40,7 @@ GENERATED_END    = "<!-- sync-agent-instructions: end -->"
 
 
 def _print_aidb_hint() -> None:
-    print("  → run 'bash scripts/data/import-agent-instructions.sh' to push to AIDB (requires AIDB bugs fixed first — see Phase 11 in AI-STACK-QA-PLAN.md)")
+    print("  → run 'bash scripts/data/import-agent-instructions.sh' to push to AIDB (requires AIDB bugs fixed first — see Phase 11 in docs/archive/root-docs/AI-STACK-QA-PLAN.md)")
 
 
 def _parse_args() -> argparse.Namespace:

@@ -384,7 +384,7 @@ After implementing fixes, track:
 
 - **Error Logs**: VSCode Extension Console (2026-01-08 22:28:10-40)
 - **Issue Tracker**: [./scripts/governance/record-claude-code-errors.sh](../scripts/governance/record-claude-code-errors.sh)
-- **Issue Tracking Guide**: [ISSUE-TRACKING-GUIDE.md](ISSUE-TRACKING-GUIDE.md)
+- **Issue Tracking Guide**: [ISSUE-TRACKING-GUIDE.md]/docs/archive/stubs/ISSUE-TRACKING-GUIDE.md
 
 ---
 

@@ -1,4 +1,8 @@
 # Production Hardening Status - January 9, 2026
+Status: Active
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 
 ## Executive Summary
 
@@ -218,7 +222,7 @@ Backpressure Monitoring:    5/5 ✅
 
 ## Control Center Dashboard
 
-**URL**: http://localhost:8888/control-center.html
+**URL**: http://localhost:8888/dashboard/control-center.html
 
 Features:
 - ✅ System overview with orchestrator status
@@ -296,7 +300,7 @@ Features:
 ### System Documentation
 
 - [dashboard.html](dashboard.html) - System monitoring dashboard
-- [control-center.html](control-center.html) - Unified control center
+- [control-center.html](../../dashboard/control-center.html) - Unified control center
 - [ORCHESTRATION-VISUAL-SUMMARY.md](ORCHESTRATION-VISUAL-SUMMARY.md) - Architecture overview
 
 ## Next Steps

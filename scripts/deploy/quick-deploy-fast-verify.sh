@@ -9,10 +9,10 @@ log() {
 }
 
 log "Shell syntax checks"
-bash -n nixos-quick-deploy.sh scripts/post-deploy-converge.sh scripts/npm-security-monitor.sh
+bash -n nixos-quick-deploy.sh scripts/automation/post-deploy-converge.sh scripts/security/npm-security-monitor.sh
 
 log "Quick deploy lint (fast)"
-bash scripts/quick-deploy-lint.sh --mode fast --flake-ref . --nixos-target nixos-ai-dev
+bash scripts/governance/quick-deploy-lint.sh --mode fast --flake-ref . --nixos-target nixos-ai-dev
 
 log "NixOS flake dry build"
 nix --extra-experimental-features 'nix-command flakes' build --no-link \

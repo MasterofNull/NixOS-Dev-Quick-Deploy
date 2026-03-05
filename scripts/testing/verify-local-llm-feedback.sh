@@ -4,7 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-# shellcheck source=../config/service-endpoints.sh
+# shellcheck source=../../config/service-endpoints.sh
 source "$SCRIPT_DIR/config/service-endpoints.sh"
 AIDB_URL="${AIDB_URL}"
 LLAMA_CPP_URL="${LLAMA_CPP_BASE_URL:-${LLAMA_URL}}"

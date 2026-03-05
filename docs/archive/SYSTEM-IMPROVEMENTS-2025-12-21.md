@@ -412,7 +412,7 @@ dataset = await hybrid_coordinator.generate_training_data()
 
 1. **System Architecture**: `COMPREHENSIVE-SYSTEM-ANALYSIS.md`
 2. **RAG Implementation**: `ai-stack/mcp-servers/hybrid-coordinator/README.md`
-3. **Data Structures**: `scripts/rag_system_complete.py`
+3. **Data Structures**: `scripts/data/rag-system-complete.py`
 4. **Dashboard**: `DASHBOARD-QUICKSTART.md`, `SYSTEM-DASHBOARD-GUIDE.md`
 5. **Deployment**: `README.md`, `docs/AI-STACK-FULL-INTEGRATION.md`
 

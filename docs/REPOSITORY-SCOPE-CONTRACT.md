@@ -28,7 +28,7 @@ Out of scope:
 
 ## Architecture Map (Lightweight)
 
-- Deploy layer: `scripts/deploy-clean.sh` + `flake.nix` + `nix/`
+- Deploy layer: `scripts/deploy/deploy-clean.sh.` + `flake.nix` + `nix/`
 - Runtime layer: `ai-stack/`
 - Agent tooling layer: `.agent/skills/` + `scripts/ai/aqd`
 - Governance layer: lint/test scripts in `scripts/`, CI in `.github/workflows/test.yml`

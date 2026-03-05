@@ -1,6 +1,3 @@
 #!/usr/bin/env bash
-set -euo pipefail
-
-echo "scripts/publish-local-registry.sh is deprecated." >&2
-echo "Imperative container/Kubernetes runtime operations are removed from declarative mode." >&2
-exit 2
+# Compatibility shim: use scripts/deploy/publish-local-registry.sh.
+exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/deploy/publish-local-registry.sh" "$@"

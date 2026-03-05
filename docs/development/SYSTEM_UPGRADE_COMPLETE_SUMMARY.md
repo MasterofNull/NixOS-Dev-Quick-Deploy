@@ -1,4 +1,8 @@
 # NixOS AI Stack - System Upgrade Complete
+Status: Active
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 
 ## Executive Summary
 
@@ -15,16 +19,16 @@ All tasks outlined in the COMPLETION-ROADMAP.md have been successfully completed
 The following comprehensive documentation has been created to support the upgraded system:
 
 ### Core System Documentation
-- `REMOTE-AGENT-SETUP.md` - Complete guide for remote agent connectivity
-- `AGENT_BOOTSTRAP_COMMAND.md` - Quick start bootstrap for agents
-- `MCP_SERVICE_CONTRACTS.md` - Standardized MCP service contracts
-- `AIDB_SCHEMA_GUARANTEES.md` - Schema guarantees for agent integration
+- `docs/archive/root-docs/REMOTE-AGENT-SETUP.md` - Complete guide for remote agent connectivity
+- `docs/archive/root-docs/AGENT_BOOTSTRAP_COMMAND.md` - Quick start bootstrap for agents
+- `docs/archive/root-docs/MCP_SERVICE_CONTRACTS.md` - Standardized MCP service contracts
+- `docs/archive/root-docs/AIDB_SCHEMA_GUARANTEES.md` - Schema guarantees for agent integration
 - `AGENT_AUTH_SECRETS_ROTATION.md` - Authentication and secrets management
 
 ### Monitoring & Operations
 - `MONITORING-DASHBOARD-GUIDANCE.md` - Prometheus/Grafana/Portainer guidance
 - `DASHBOARD_HEALTH_MONITORING.md` - Dashboard health and stale data detection
-- `PROMETHEUS_SLO_RULES.md` - SLO monitoring rules
+- `docs/archive/root-docs/PROMETHEUS_SLO_RULES.md` - SLO monitoring rules
 - `TELEMETRY_FLOW_VERIFICATION.md` - End-to-end telemetry flow validation
 
 ### Deployment & Infrastructure
@@ -32,7 +36,7 @@ The following comprehensive documentation has been created to support the upgrad
 - `PORTAINER_SETUP_VALIDATION.md` - Portainer setup and validation
 - `ARCHITECTURE_DIAGRAMS.md` - System architecture diagrams
 - `CI_CD_INTEGRATION_PLAN.md` - CI/CD pipeline integration
-- `KNOWN_ISSUES_TROUBLESHOOTING.md` - Known issues and troubleshooting
+- `docs/archive/root-docs/KNOWN_ISSUES_TROUBLESHOOTING.md` - Known issues and troubleshooting
 
 ## Key Improvements
 

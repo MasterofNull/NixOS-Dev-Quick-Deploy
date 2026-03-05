@@ -1,4 +1,7 @@
 # Hospital AI Stack Deployment Status
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 
 **Date:** January 26, 2026
 **Environment:** K3s Kubernetes (v1.34.2+k3s1)

@@ -1,0 +1,3 @@
+# Root scripts intentionally exempt from shim-only policy.
+# One path per line, repository-relative (for example: scripts/example.sh)
+# Keep this list minimal.

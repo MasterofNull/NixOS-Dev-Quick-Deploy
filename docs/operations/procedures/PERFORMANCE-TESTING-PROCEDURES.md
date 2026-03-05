@@ -1,4 +1,8 @@
 # Performance Testing Procedures
+Status: Active
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 
 ## Benchmark Suite
 

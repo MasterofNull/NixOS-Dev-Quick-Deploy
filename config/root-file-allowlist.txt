@@ -1,0 +1,21 @@
+# Allowed tracked files at repository root.
+# This is an explicit root hygiene guardrail for migration stability.
+
+.aider.md
+.claude.md
+.env.example
+.gitignore
+.gitleaks.toml
+.pre-commit-config.yaml
+.sops.yaml
+.vscode.configs.import.cspell.config.json
+AGENTS.md
+CLAUDE.md
+LICENSE
+Makefile
+README.md
+dashboard.html
+flake.lock
+flake.nix
+nixos-quick-deploy.sh
+pytest.ini

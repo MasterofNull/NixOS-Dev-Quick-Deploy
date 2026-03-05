@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUT_DIR="$(mktemp -d /tmp/npm-security-smoke-XXXXXX)"
 trap 'rm -rf "${OUT_DIR}"' EXIT
 
-"${ROOT_DIR}/scripts/npm-security-monitor.sh" \
+"${ROOT_DIR}/scripts/security/npm-security-monitor.sh" \
   --repo-root "${ROOT_DIR}" \
   --output-dir "${OUT_DIR}" >/dev/null
 

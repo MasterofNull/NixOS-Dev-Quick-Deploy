@@ -52,17 +52,18 @@ EOF
 }
 
 run_shell_validation() {
-  if [[ ! -f "scripts/lint-color-echo-usage.sh" ]]; then
+  local lint_script="scripts/governance/lint-color-echo-usage.sh"
+  if [[ ! -f "${lint_script}" ]]; then
     echo "⚠ Warning: lint-color-echo-usage.sh not found, skipping shell echo validation"
     return 0
   fi
 
-  chmod +x scripts/lint-color-echo-usage.sh
-  if ! ./scripts/lint-color-echo-usage.sh --staged; then
+  chmod +x "${lint_script}"
+  if ! "${lint_script}" --staged; then
     cat >&2 <<'EOF'
 Commit blocked: shell script validation failed.
 Some echo commands with color codes are missing -e.
-Run: ./scripts/lint-color-echo-usage.sh --staged
+Run: ./scripts/governance/lint-color-echo-usage.sh --staged
 EOF
     return 1
   fi
@@ -129,9 +130,35 @@ EOF
   return 0
 }
 
+run_migration_governance_checks() {
+  local checks=(
+    "scripts/governance/check-repo-allowlist-integrity.sh"
+    "scripts/governance/check-root-file-hygiene.sh"
+    "scripts/governance/check-generated-artifact-hygiene.sh"
+    "scripts/governance/check-doc-links.sh --active"
+    "scripts/governance/check-doc-metadata-standards.sh"
+    "scripts/governance/check-doc-script-path-migration.sh"
+    "scripts/governance/check-script-shim-consistency.sh"
+    "scripts/governance/check-archive-path-consistency.sh"
+    "scripts/governance/check-legacy-deprecated-root.sh"
+  )
+
+  local check_cmd
+  for check_cmd in "${checks[@]}"; do
+    if ! bash -lc "$check_cmd" >/dev/null 2>&1; then
+      echo "pre-commit: governance gate failed: ${check_cmd}" >&2
+      echo "Run manually to inspect: ${check_cmd}" >&2
+      return 1
+    fi
+  done
+
+  return 0
+}
+
 run_secret_scan
 run_shell_validation
 run_syntax_check
 run_repo_structure_validation
+run_migration_governance_checks
 
 exit 0

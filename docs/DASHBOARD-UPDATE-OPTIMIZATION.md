@@ -175,9 +175,9 @@ User Request: "Update graphs every 0.5s like GNOME Resources"
 
 ## Related Documentation
 
-- [SYSTEM-DASHBOARD-GUIDE.md](SYSTEM-DASHBOARD-GUIDE.md) - Complete dashboard guide
+- [SYSTEM-DASHBOARD-GUIDE.md]/docs/archive/stubs/SYSTEM-DASHBOARD-GUIDE.md - Complete dashboard guide
 - [DASHBOARD-COLLECTORS-GUIDE.md](DASHBOARD-COLLECTORS-GUIDE.md) - Collector architecture
-- [SYSTEM-DASHBOARD-README.md](SYSTEM-DASHBOARD-README.md) - Dashboard overview
+- [SYSTEM-DASHBOARD-README.md]/docs/archive/stubs/SYSTEM-DASHBOARD-README.md - Dashboard overview
 - [dashboard.html](dashboard.html) - Main dashboard UI
 
 ## Testing Checklist

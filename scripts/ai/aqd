@@ -1315,7 +1315,7 @@ cmd_skill_bundle_index() {
   local skills_dir="${1:-${REPO_ROOT}/.agent/skills}"
   local bundles_dir="${2:-${REPO_ROOT}/dist/skills/bundles}"
   local index_json="${3:-${REPO_ROOT}/dist/skills/index.json}"
-  run_python "${REPO_ROOT}/scripts/skill-bundle-registry.py" \
+  run_python "${REPO_ROOT}/scripts/governance/skill-bundle-registry.py" \
     build-index \
     --skills-dir "$skills_dir" \
     --bundles-dir "$bundles_dir" \
@@ -1329,7 +1329,7 @@ cmd_skill_bundle_install() {
   shift 3 || true
   [[ -n "$index_json" ]] || die "Usage: aqd skill bundle-install <index-json> <skill-name> [target-dir] [--force]"
   [[ -n "$skill_name" ]] || die "Usage: aqd skill bundle-install <index-json> <skill-name> [target-dir] [--force]"
-  run_python "${REPO_ROOT}/scripts/skill-bundle-registry.py" \
+  run_python "${REPO_ROOT}/scripts/governance/skill-bundle-registry.py" \
     install \
     --index "$index_json" \
     --skill-name "$skill_name" \
@@ -1341,7 +1341,7 @@ cmd_skill_sign_index() {
   local index_json="${1:-${REPO_ROOT}/dist/skills/index.json}"
   local private_key="${2:-${REPO_ROOT}/config/keys/skill-registry-private.pem}"
   local sig_path="${3:-${index_json}.sig}"
-  "${REPO_ROOT}/scripts/sign-skill-registry.sh" "$index_json" "$private_key" "$sig_path"
+  "${REPO_ROOT}/scripts/security/sign-skill-registry.sh" "$index_json" "$private_key" "$sig_path"
 }
 
 cmd_skill_verify_index() {
@@ -1352,7 +1352,7 @@ cmd_skill_verify_index() {
 }
 
 cmd_policy_evaluate() {
-  run_python "${REPO_ROOT}/scripts/evaluate-agent-policy.py" "$@"
+  run_python "${REPO_ROOT}/scripts/governance/evaluate-agent-policy.py" "$@"
 }
 
 cmd_reasoning_route() {

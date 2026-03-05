@@ -49,7 +49,7 @@ install_dashboard_to_deployment
 - [scripts/deploy/setup-dashboard.sh](/scripts/deploy/setup-dashboard.sh) - Installation automation
 - [scripts/data/generate-dashboard-data.sh](/scripts/data/generate-dashboard-data.sh) - Data collection
 - [scripts/deploy/serve-dashboard.sh](/scripts/deploy/serve-dashboard.sh) - HTTP server
-- [launch-dashboard.sh](launch-dashboard.sh) - Quick launcher
+- [scripts/deploy/launch-dashboard.sh](/scripts/deploy/launch-dashboard.sh) - Quick launcher
 
 **Dashboard UI**:
 - [dashboard.html](dashboard.html) - Main dashboard interface
@@ -70,7 +70,7 @@ Quick Start Options:
 
 1. One-Command Launch (recommended for first use):
    cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
-   ./launch-dashboard.sh
+   ./scripts/deploy/launch-dashboard.sh
 
 2. As Systemd Service (runs in background):
    systemctl --user start dashboard-server
@@ -102,7 +102,7 @@ Quick Start Options:
 
 **Shell Aliases** (added to `~/.zshrc`):
 ```bash
-alias dashboard='cd /path/to/deploy && ./launch-dashboard.sh'
+alias dashboard='cd /path/to/deploy && ./scripts/deploy/launch-dashboard.sh'
 alias dashboard-start='systemctl --user start dashboard-collector.timer dashboard-server.service'
 alias dashboard-stop='systemctl --user stop dashboard-collector.timer dashboard-server.service'
 alias dashboard-status='systemctl --user status dashboard-collector.timer dashboard-server.service'
@@ -119,7 +119,7 @@ The dashboard is installed and configured automatically. Users can:
 **Option 1: Start Immediately**
 ```bash
 dashboard  # If shell reloaded, or:
-./launch-dashboard.sh
+./scripts/deploy/launch-dashboard.sh
 ```
 
 **Option 2: Start as Service**
@@ -321,8 +321,8 @@ systemctl --user daemon-reload
 
 ### For Users
 
-- **Quick Start**: [DASHBOARD-QUICKSTART.md](DASHBOARD-QUICKSTART.md)
-- **Complete Guide**: [SYSTEM-DASHBOARD-GUIDE.md](SYSTEM-DASHBOARD-GUIDE.md)
+- **Quick Start**: [DASHBOARD-QUICKSTART.md]/docs/archive/stubs/DASHBOARD-QUICKSTART.md
+- **Complete Guide**: [SYSTEM-DASHBOARD-GUIDE.md]/docs/archive/stubs/SYSTEM-DASHBOARD-GUIDE.md
 
 ### For Developers
 

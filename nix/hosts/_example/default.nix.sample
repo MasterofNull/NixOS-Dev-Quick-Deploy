@@ -8,7 +8,7 @@
 #   ./scripts/governance/discover-system-facts.sh   # generates facts.nix
 #   sudo nixos-generate-config \
 #     --dir nix/hosts/<your-hostname>    # generates hardware-configuration.nix
-#   ./scripts/deploy-clean.sh --host <your-hostname> --profile ai-dev
+#   ./scripts/deploy/deploy-clean.sh --host <your-hostname> --profile ai-dev
 #
 # IMPORTANT: facts.nix and hardware-configuration.nix are auto-generated.
 # Do not edit them by hand — re-run discover-system-facts.sh to update.

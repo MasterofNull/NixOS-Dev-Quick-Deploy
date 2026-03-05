@@ -79,7 +79,7 @@ _post "ai-stack/prompts/registry.yaml" "Prompt Registry"                    "${R
 _post "ai-stack/agent-memory/MEMORY.md" "Agent Memory (MEMORY.md)"          "${REPO_ROOT}/ai-stack/agent-memory/MEMORY.md"
 
 # --- QA plan (tracks all phases, tasks, and success criteria) ---
-_post "AI-STACK-QA-PLAN.md"            "QA Plan (AI-STACK-QA-PLAN.md)"      "${REPO_ROOT}/AI-STACK-QA-PLAN.md"
+_post "docs/archive/root-docs/AI-STACK-QA-PLAN.md"            "QA Plan (docs/archive/root-docs/AI-STACK-QA-PLAN.md)"      "${REPO_ROOT}/docs/archive/root-docs/AI-STACK-QA-PLAN.md"
 
 # --- Custom tooling scripts (indexed for RAG retrieval during QA/dev sessions) ---
 PROJECT="dev-tools"

@@ -1,14 +1,14 @@
 path,type,scope,reference_count,suggested_target,notes
-docs/AGENT-AGNOSTIC-TOOLING-PLAN.md,doc,legacy-doc-root,7,docs/archive/legacy-docs/AGENT-AGNOSTIC-TOOLING-PLAN.md,move after link/callsite audit
+docs/AGENT-AGNOSTIC-TOOLING-PLAN.md,doc,legacy-doc-root,6,docs/archive/legacy-docs/AGENT-AGNOSTIC-TOOLING-PLAN.md,move after link/callsite audit
 docs/AGENT-INTEGRATION-WORKFLOW.md,doc,legacy-doc-root,5,docs/archive/legacy-docs/AGENT-INTEGRATION-WORKFLOW.md,move after link/callsite audit
 docs/AGENT-ONBOARDING-README.md,doc,legacy-doc-root,4,docs/archive/legacy-docs/AGENT-ONBOARDING-README.md,move after link/callsite audit
 docs/AGENT-PARITY-MATRIX.md,doc,legacy-doc-root,5,docs/archive/legacy-docs/AGENT-PARITY-MATRIX.md,move after link/callsite audit
-docs/AGENTS.md,doc,legacy-doc-root,13,docs/archive/legacy-docs/AGENTS.md,move after link/callsite audit
+docs/AGENTS.md,doc,legacy-doc-root,15,docs/archive/legacy-docs/AGENTS.md,move after link/callsite audit
 docs/AI-AGENT-PROGRESSIVE-DISCLOSURE-README.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/AI-AGENT-PROGRESSIVE-DISCLOSURE-README.md,move after link/callsite audit
 docs/AI-STACK-FULL-INTEGRATION.md,doc,legacy-doc-root,9,docs/archive/legacy-docs/AI-STACK-FULL-INTEGRATION.md,move after link/callsite audit
 docs/AI-STACK-RAG-IMPLEMENTATION.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/AI-STACK-RAG-IMPLEMENTATION.md,move after link/callsite audit
 docs/AI-STACK-V3-AGENTIC-ERA-GUIDE.md,doc,legacy-doc-root,3,docs/archive/legacy-docs/AI-STACK-V3-AGENTIC-ERA-GUIDE.md,move after link/callsite audit
-docs/AQD-CLI-USAGE.md,doc,legacy-doc-root,9,docs/archive/legacy-docs/AQD-CLI-USAGE.md,move after link/callsite audit
+docs/AQD-CLI-USAGE.md,doc,legacy-doc-root,8,docs/archive/legacy-docs/AQD-CLI-USAGE.md,move after link/callsite audit
 docs/AUTO-START-IMPLEMENTATION.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/AUTO-START-IMPLEMENTATION.md,move after link/callsite audit
 docs/BOOT-FS-RESILIENCE-GUARDRAILS.md,doc,legacy-doc-root,3,docs/archive/legacy-docs/BOOT-FS-RESILIENCE-GUARDRAILS.md,move after link/callsite audit
 docs/BUILD_OPTIMIZATION.md,doc,legacy-doc-root,3,docs/archive/legacy-docs/BUILD_OPTIMIZATION.md,move after link/callsite audit
@@ -36,7 +36,7 @@ docs/ENGINEERING-ENVIRONMENT.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/E
 docs/ERROR_HANDLING_PATTERNS.md,doc,legacy-doc-root,3,docs/archive/legacy-docs/ERROR_HANDLING_PATTERNS.md,move after link/callsite audit
 docs/FEDERATED-DATA-STRATEGY.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/FEDERATED-DATA-STRATEGY.md,move after link/callsite audit
 docs/FEDERATED-DEPLOYMENT-GUIDE.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/FEDERATED-DEPLOYMENT-GUIDE.md,move after link/callsite audit
-docs/FINETUNING.md,doc,legacy-doc-root,5,docs/archive/legacy-docs/FINETUNING.md,move after link/callsite audit
+docs/FINETUNING.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/FINETUNING.md,move after link/callsite audit
 docs/FLAKE-MANAGEMENT.md,doc,legacy-doc-root,4,docs/archive/legacy-docs/FLAKE-MANAGEMENT.md,move after link/callsite audit
 docs/GITHUB-TOKEN-SETUP.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/GITHUB-TOKEN-SETUP.md,move after link/callsite audit
 docs/GLF_OS_REFERENCE.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/GLF_OS_REFERENCE.md,move after link/callsite audit
@@ -46,8 +46,8 @@ docs/HYBRID-AI-SYSTEM-GUIDE.md,doc,legacy-doc-root,4,docs/archive/legacy-docs/HY
 docs/IMPLEMENTATION-CHECKLIST.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/IMPLEMENTATION-CHECKLIST.md,move after link/callsite audit
 docs/IMPROVEMENTS_IMPLEMENTED.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/IMPROVEMENTS_IMPLEMENTED.md,move after link/callsite audit
 docs/LOCAL-AI-STARTER.md,doc,legacy-doc-root,3,docs/archive/legacy-docs/LOCAL-AI-STARTER.md,move after link/callsite audit
-docs/MCP_SERVERS.md,doc,legacy-doc-root,8,docs/archive/legacy-docs/MCP_SERVERS.md,move after link/callsite audit
-docs/MCP_SETUP.md,doc,legacy-doc-root,5,docs/archive/legacy-docs/MCP_SETUP.md,move after link/callsite audit
+docs/MCP_SERVERS.md,doc,legacy-doc-root,7,docs/archive/legacy-docs/MCP_SERVERS.md,move after link/callsite audit
+docs/MCP_SETUP.md,doc,legacy-doc-root,4,docs/archive/legacy-docs/MCP_SETUP.md,move after link/callsite audit
 docs/NIXOS-25.11-RELEASE-RESEARCH.md,doc,legacy-doc-root,3,docs/archive/legacy-docs/NIXOS-25.11-RELEASE-RESEARCH.md,move after link/callsite audit
 docs/NIXOS-DEPLOY-SCRIPT-UPDATES.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/NIXOS-DEPLOY-SCRIPT-UPDATES.md,move after link/callsite audit
 docs/OPENSKILLS-INTEGRATION-PLAN.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/OPENSKILLS-INTEGRATION-PLAN.md,move after link/callsite audit
@@ -69,9 +69,9 @@ docs/SECURITY-AUDIT-DEC-2025.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/S
 docs/SECURITY-EXCEPTIONS.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/SECURITY-EXCEPTIONS.md,move after link/callsite audit
 docs/SESSION-CONTINUATION-DEC-4-2025.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/SESSION-CONTINUATION-DEC-4-2025.md,move after link/callsite audit
 docs/SILENT-FAILURES-ANALYSIS.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/SILENT-FAILURES-ANALYSIS.md,move after link/callsite audit
-docs/SKILL-BACKUP-POLICY.md,doc,legacy-doc-root,8,docs/archive/legacy-docs/SKILL-BACKUP-POLICY.md,move after link/callsite audit
-docs/SKILL-MINIMUM-STANDARD.md,doc,legacy-doc-root,6,docs/archive/legacy-docs/SKILL-MINIMUM-STANDARD.md,move after link/callsite audit
-docs/SKILLS-AND-MCP-INVENTORY.md,doc,legacy-doc-root,10,docs/archive/legacy-docs/SKILLS-AND-MCP-INVENTORY.md,move after link/callsite audit
+docs/SKILL-BACKUP-POLICY.md,doc,legacy-doc-root,7,docs/archive/legacy-docs/SKILL-BACKUP-POLICY.md,move after link/callsite audit
+docs/SKILL-MINIMUM-STANDARD.md,doc,legacy-doc-root,5,docs/archive/legacy-docs/SKILL-MINIMUM-STANDARD.md,move after link/callsite audit
+docs/SKILLS-AND-MCP-INVENTORY.md,doc,legacy-doc-root,9,docs/archive/legacy-docs/SKILLS-AND-MCP-INVENTORY.md,move after link/callsite audit
 docs/SOPS-NIX-INTEGRATION.md,doc,legacy-doc-root,5,docs/archive/legacy-docs/SOPS-NIX-INTEGRATION.md,move after link/callsite audit
 docs/STRUCTURAL_ISSUES_AND_IMPROVEMENTS.md,doc,legacy-doc-root,3,docs/archive/legacy-docs/STRUCTURAL_ISSUES_AND_IMPROVEMENTS.md,move after link/callsite audit
 docs/SYNTAX_REFERENCE.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/SYNTAX_REFERENCE.md,move after link/callsite audit
@@ -86,121 +86,36 @@ docs/VLLM-MIGRATION.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/VLLM-MIGRA
 docs/VLLM-MODEL-SELECTION.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/VLLM-MODEL-SELECTION.md,move after link/callsite audit
 docs/initial-passwords.md,doc,legacy-doc-root,2,docs/archive/legacy-docs/initial-passwords.md,move after link/callsite audit
 docs/skill-dependency-lock.md,doc,legacy-doc-root,15,docs/archive/legacy-docs/skill-dependency-lock.md,move after link/callsite audit
-scripts/ai/ai-env-summary.sh,script,legacy-script-root,4,scripts/deprecated/ai-env-summary.sh,move with path rewrite + runtime validation
-scripts/ai/ai-metrics-auto-updater.sh,script,legacy-script-root,4,scripts/deprecated/ai-metrics-auto-updater.sh,move with path rewrite + runtime validation
-scripts/ai/ai-model-manager.sh,script,legacy-script-root,2,scripts/deprecated/ai-model-manager.sh,move with path rewrite + runtime validation
-scripts/ai/ai-model-setup.sh,script,legacy-script-root,4,scripts/deprecated/ai-model-setup.sh,move with path rewrite + runtime validation
-scripts/ai/ai-stack-e2e-test.sh,script,legacy-script-root,6,scripts/deprecated/ai-stack-e2e-test.sh,move with path rewrite + runtime validation
-scripts/ai/ai-stack-feature-scenario.sh,script,legacy-script-root,4,scripts/deprecated/ai-stack-feature-scenario.sh,move with path rewrite + runtime validation
-scripts/ai/ai-stack-health.sh,script,legacy-script-root,15,scripts/deprecated/ai-stack-health.sh,move with path rewrite + runtime validation
-scripts/ai/ai-stack-resume-recovery.sh,script,legacy-script-root,2,scripts/deprecated/ai-stack-resume-recovery.sh,move with path rewrite + runtime validation
-scripts/ai/ai-stack-troubleshoot.sh,script,legacy-script-root,5,scripts/deprecated/ai-stack-troubleshoot.sh,move with path rewrite + runtime validation
-scripts/governance/apply-project-root.sh,script,legacy-script-root,6,scripts/deprecated/apply-project-root.sh,move with path rewrite + runtime validation
-scripts/governance/apply-readme-ai-stack-updates.py,script,legacy-script-root,2,scripts/deprecated/apply-readme-ai-stack-updates.py,move with path rewrite + runtime validation
-scripts/apply-tls-certificates.sh,script,legacy-script-root,2,scripts/deprecated/apply-tls-certificates.sh,move with path rewrite + runtime validation
-scripts/archive-project-knowledge.sh,script,legacy-script-root,3,scripts/deprecated/archive-project-knowledge.sh,move with path rewrite + runtime validation
-scripts/data/bootstrap-prsi-confidence-samples.sh,script,legacy-script-root,3,scripts/deprecated/bootstrap-prsi-confidence-samples.sh,move with path rewrite + runtime validation
-scripts/data/bootstrap_aidb_data.sh,script,legacy-script-root,2,scripts/deprecated/bootstrap_aidb_data.sh,move with path rewrite + runtime validation
-scripts/testing/chaos-harness-smoke.sh,script,legacy-script-root,16,scripts/deprecated/chaos-harness-smoke.sh,move with path rewrite + runtime validation
-scripts/ai/claude-api-proxy.py,script,legacy-script-root,8,scripts/deprecated/claude-api-proxy.py,move with path rewrite + runtime validation
-scripts/ai/claude-local-wrapper.py,script,legacy-script-root,7,scripts/deprecated/claude-local-wrapper.py,move with path rewrite + runtime validation
-scripts/cleanup-migrated-reports.sh,script,legacy-script-root,3,scripts/deprecated/cleanup-migrated-reports.sh,move with path rewrite + runtime validation
-scripts/collect-ai-metrics.sh,script,legacy-script-root,12,scripts/deprecated/collect-ai-metrics.sh,move with path rewrite + runtime validation
-scripts/compare-installed-vs-intended.sh,script,legacy-script-root,7,scripts/deprecated/compare-installed-vs-intended.sh,move with path rewrite + runtime validation
-scripts/ai/complete-via-ralph.sh,script,legacy-script-root,2,scripts/deprecated/complete-via-ralph.sh,move with path rewrite + runtime validation
-scripts/governance/comprehensive-mcp-search.py,script,legacy-script-root,4,scripts/deprecated/comprehensive-mcp-search.py,move with path rewrite + runtime validation
-scripts/configure-podman-tcp.sh,script,legacy-script-root,8,scripts/deprecated/configure-podman-tcp.sh,move with path rewrite + runtime validation
-scripts/count-packages-accurately.sh,script,legacy-script-root,4,scripts/deprecated/count-packages-accurately.sh,move with path rewrite + runtime validation
-scripts/count-packages-simple.sh,script,legacy-script-root,4,scripts/deprecated/count-packages-simple.sh,move with path rewrite + runtime validation
-scripts/cron-templates.sh,script,legacy-script-root,8,scripts/deprecated/cron-templates.sh,move with path rewrite + runtime validation
-scripts/curate-residual-gaps.sh,script,legacy-script-root,3,scripts/deprecated/curate-residual-gaps.sh,move with path rewrite + runtime validation
-scripts/demo-local-ai-usage.py,script,legacy-script-root,7,scripts/deprecated/demo-local-ai-usage.py,move with path rewrite + runtime validation
-scripts/deploy/deploy-aidb-mcp-server.sh,script,legacy-script-root,7,scripts/deprecated/deploy-aidb-mcp-server.sh,move with path rewrite + runtime validation
-scripts/deploy-clean.sh,script,legacy-script-root,84,scripts/deprecated/deploy-clean.sh,move with path rewrite + runtime validation
-scripts/governance/discover-focused-agent-repos.py,script,legacy-script-root,4,scripts/deprecated/discover-focused-agent-repos.py,move with path rewrite + runtime validation
-scripts/governance/discover-improvements.py,script,legacy-script-root,2,scripts/deprecated/discover-improvements.py,move with path rewrite + runtime validation
-scripts/governance/discover-improvements.sh,script,legacy-script-root,7,scripts/deprecated/discover-improvements.sh,move with path rewrite + runtime validation
-scripts/governance/discover-semantic-github-repos.py,script,legacy-script-root,2,scripts/deprecated/discover-semantic-github-repos.py,move with path rewrite + runtime validation
-scripts/governance/discover-system-facts.sh,script,legacy-script-root,34,scripts/deprecated/discover-system-facts.sh,move with path rewrite + runtime validation
-scripts/edge-model-registry-validate.sh,script,legacy-script-root,2,scripts/deprecated/edge-model-registry-validate.sh,move with path rewrite + runtime validation
-scripts/enable-cosmic-power-profiles.sh,script,legacy-script-root,2,scripts/deprecated/enable-cosmic-power-profiles.sh,move with path rewrite + runtime validation
-scripts/enable-progressive-disclosure.sh,script,legacy-script-root,7,scripts/deprecated/enable-progressive-disclosure.sh,move with path rewrite + runtime validation
-scripts/enhance-dashboard-with-controls.sh,script,legacy-script-root,2,scripts/deprecated/enhance-dashboard-with-controls.sh,move with path rewrite + runtime validation
-scripts/evaluate-agent-policy.py,script,legacy-script-root,8,scripts/deprecated/evaluate-agent-policy.py,move with path rewrite + runtime validation
-scripts/deploy/fast-rebuild.sh,script,legacy-script-root,2,scripts/deprecated/fast-rebuild.sh,move with path rewrite + runtime validation
-scripts/firewall-audit.sh,script,legacy-script-root,2,scripts/deprecated/firewall-audit.sh,move with path rewrite + runtime validation
-scripts/fix-mangohud-config.sh,script,legacy-script-root,3,scripts/deprecated/fix-mangohud-config.sh,move with path rewrite + runtime validation
-scripts/fix-secrets-encryption.sh,script,legacy-script-root,2,scripts/deprecated/fix-secrets-encryption.sh,move with path rewrite + runtime validation
-scripts/fs-integrity-check.sh,script,legacy-script-root,8,scripts/deprecated/fs-integrity-check.sh,move with path rewrite + runtime validation
-scripts/data/generate-api-key.sh,script,legacy-script-root,5,scripts/deprecated/generate-api-key.sh,move with path rewrite + runtime validation
-scripts/data/generate-api-secrets.sh,script,legacy-script-root,2,scripts/deprecated/generate-api-secrets.sh,move with path rewrite + runtime validation
-scripts/data/generate-dashboard-data-lite.sh,script,legacy-script-root,7,scripts/deprecated/generate-dashboard-data-lite.sh,move with path rewrite + runtime validation
-scripts/data/generate-dashboard-data.sh,script,legacy-script-root,26,scripts/deprecated/generate-dashboard-data.sh,move with path rewrite + runtime validation
-scripts/data/generate-harness-sdk-api-docs.sh,script,legacy-script-root,8,scripts/deprecated/generate-harness-sdk-api-docs.sh,move with path rewrite + runtime validation
-scripts/data/generate-harness-sdk-provenance.sh,script,legacy-script-root,10,scripts/deprecated/generate-harness-sdk-provenance.sh,move with path rewrite + runtime validation
-scripts/data/generate-nginx-certs.sh,script,legacy-script-root,3,scripts/deprecated/generate-nginx-certs.sh,move with path rewrite + runtime validation
-scripts/data/generate-package-counts.sh,script,legacy-script-root,5,scripts/deprecated/generate-package-counts.sh,move with path rewrite + runtime validation
-scripts/data/generate-passwords.sh,script,legacy-script-root,2,scripts/deprecated/generate-passwords.sh,move with path rewrite + runtime validation
-scripts/data/generate-test-telemetry.sh,script,legacy-script-root,2,scripts/deprecated/generate-test-telemetry.sh,move with path rewrite + runtime validation
-scripts/governance/git-safe.sh,script,legacy-script-root,5,scripts/deprecated/git-safe.sh,move with path rewrite + runtime validation
-scripts/ai/harness-rpc.js,script,legacy-script-root,12,scripts/deprecated/harness-rpc.js,move with path rewrite + runtime validation
-scripts/data/init-package-database.sh,script,legacy-script-root,2,scripts/deprecated/init-package-database.sh,move with path rewrite + runtime validation
-scripts/data/initialize-qdrant-collections.sh,script,legacy-script-root,3,scripts/deprecated/initialize-qdrant-collections.sh,move with path rewrite + runtime validation
-scripts/governance/list-issues.py,script,legacy-script-root,5,scripts/deprecated/list-issues.py,move with path rewrite + runtime validation
-scripts/ai/llama-model-cli.sh,script,legacy-script-root,2,scripts/deprecated/llama-model-cli.sh,move with path rewrite + runtime validation
-scripts/deploy/local-registry.sh,script,legacy-script-root,3,scripts/deprecated/local-registry.sh,move with path rewrite + runtime validation
-scripts/governance/manage-cache.sh,script,legacy-script-root,2,scripts/deprecated/manage-cache.sh,move with path rewrite + runtime validation
-scripts/governance/manage-dashboard-collectors.sh,script,legacy-script-root,25,scripts/deprecated/manage-dashboard-collectors.sh,move with path rewrite + runtime validation
-scripts/governance/manage-secrets.py,script,legacy-script-root,7,scripts/deprecated/manage-secrets.py,move with path rewrite + runtime validation
-scripts/governance/manage-secrets.sh,script,legacy-script-root,42,scripts/deprecated/manage-secrets.sh,move with path rewrite + runtime validation
-scripts/mangohud-profile.sh,script,legacy-script-root,3,scripts/deprecated/mangohud-profile.sh,move with path rewrite + runtime validation
-scripts/ai/mcp-bridge-hybrid.py,script,legacy-script-root,3,scripts/deprecated/mcp-bridge-hybrid.py,move with path rewrite + runtime validation
-scripts/ai/mcp-db-setup,script,legacy-script-root,2,scripts/deprecated/mcp-db-setup,move with path rewrite + runtime validation
-scripts/ai/mcp-db-validate,script,legacy-script-root,14,scripts/deprecated/mcp-db-validate,move with path rewrite + runtime validation
-scripts/ai/mcp-server,script,legacy-script-root,22,scripts/deprecated/mcp-server,move with path rewrite + runtime validation
-scripts/data/migrate-reports-to-database.sh,script,legacy-script-root,2,scripts/deprecated/migrate-reports-to-database.sh,move with path rewrite + runtime validation
-scripts/governance/new-improvement-proposal.sh,script,legacy-script-root,2,scripts/deprecated/new-improvement-proposal.sh,move with path rewrite + runtime validation
-scripts/nix-static-analysis.sh,script,legacy-script-root,8,scripts/deprecated/nix-static-analysis.sh,move with path rewrite + runtime validation
-scripts/npm-security-monitor.sh,script,legacy-script-root,12,scripts/deprecated/npm-security-monitor.sh,move with path rewrite + runtime validation
-scripts/p10k-setup-wizard.sh,script,legacy-script-root,9,scripts/deprecated/p10k-setup-wizard.sh,move with path rewrite + runtime validation
-scripts/post-deploy-converge.sh,script,legacy-script-root,17,scripts/deprecated/post-deploy-converge.sh,move with path rewrite + runtime validation
-scripts/governance/preflight-auto-remediate.sh,script,legacy-script-root,5,scripts/deprecated/preflight-auto-remediate.sh,move with path rewrite + runtime validation
-scripts/automation/prsi-orchestrator.py,script,legacy-script-root,25,scripts/deprecated/prsi-orchestrator.py,move with path rewrite + runtime validation
-scripts/publish-local-registry.sh,script,legacy-script-root,8,scripts/deprecated/publish-local-registry.sh,move with path rewrite + runtime validation
-scripts/deploy/quick-deploy-fast-verify.sh,script,legacy-script-root,2,scripts/deprecated/quick-deploy-fast-verify.sh,move with path rewrite + runtime validation
-scripts/quick-deploy-lint.sh,script,legacy-script-root,18,scripts/deprecated/quick-deploy-lint.sh,move with path rewrite + runtime validation
-scripts/testing/rag-smoke-test.sh,script,legacy-script-root,2,scripts/deprecated/rag-smoke-test.sh,move with path rewrite + runtime validation
-scripts/rag_system_complete.py,script,legacy-script-root,4,scripts/deprecated/rag_system_complete.py,move with path rewrite + runtime validation
-scripts/ai/ralph-orchestrator.sh,script,legacy-script-root,3,scripts/deprecated/ralph-orchestrator.sh,move with path rewrite + runtime validation
-scripts/data/rebuild-qdrant-collections.sh,script,legacy-script-root,10,scripts/deprecated/rebuild-qdrant-collections.sh,move with path rewrite + runtime validation
-scripts/governance/record-claude-code-errors.sh,script,legacy-script-root,3,scripts/deprecated/record-claude-code-errors.sh,move with path rewrite + runtime validation
-scripts/governance/record-issue.py,script,legacy-script-root,3,scripts/deprecated/record-issue.py,move with path rewrite + runtime validation
-scripts/deploy/recovery-iso-disk-fix.sh,script,legacy-script-root,2,scripts/deprecated/recovery-iso-disk-fix.sh,move with path rewrite + runtime validation
-scripts/deploy/recovery-iso-unlock-user.sh,script,legacy-script-root,2,scripts/deprecated/recovery-iso-unlock-user.sh,move with path rewrite + runtime validation
-scripts/deploy/recovery-offline-fsck-guide.sh,script,legacy-script-root,9,scripts/deprecated/recovery-offline-fsck-guide.sh,move with path rewrite + runtime validation
-scripts/security/renew-tls-certificate.sh,script,legacy-script-root,9,scripts/deprecated/renew-tls-certificate.sh,move with path rewrite + runtime validation
-scripts/deploy/restore-drill.sh,script,legacy-script-root,2,scripts/deprecated/restore-drill.sh,move with path rewrite + runtime validation
-scripts/security/rotate-api-key.sh,script,legacy-script-root,7,scripts/deprecated/rotate-api-key.sh,move with path rewrite + runtime validation
-scripts/data/rotate-telemetry.sh,script,legacy-script-root,10,scripts/deprecated/rotate-telemetry.sh,move with path rewrite + runtime validation
-scripts/ai/route-reasoning-mode.py,script,legacy-script-root,6,scripts/deprecated/route-reasoning-mode.py,move with path rewrite + runtime validation
-scripts/security/security-audit.sh,script,legacy-script-root,11,scripts/deprecated/security-audit.sh,move with path rewrite + runtime validation
-scripts/security/security-manager.sh,script,legacy-script-root,3,scripts/deprecated/security-manager.sh,move with path rewrite + runtime validation
-scripts/security/security-scan.sh,script,legacy-script-root,6,scripts/deprecated/security-scan.sh,move with path rewrite + runtime validation
-scripts/semantic-rank-repo-corpus.py,script,legacy-script-root,3,scripts/deprecated/semantic-rank-repo-corpus.py,move with path rewrite + runtime validation
-scripts/sign-skill-registry.sh,script,legacy-script-root,8,scripts/deprecated/sign-skill-registry.sh,move with path rewrite + runtime validation
-scripts/skill-bundle-registry.py,script,legacy-script-root,12,scripts/deprecated/skill-bundle-registry.py,move with path rewrite + runtime validation
-scripts/governance/smart_config_gen.sh,script,legacy-script-root,2,scripts/deprecated/smart_config_gen.sh,move with path rewrite + runtime validation
-scripts/testing/smoke-agent-harness-parity.sh,script,legacy-script-root,10,scripts/deprecated/smoke-agent-harness-parity.sh,move with path rewrite + runtime validation
-scripts/testing/smoke-cross-client-compat.sh,script,legacy-script-root,14,scripts/deprecated/smoke-cross-client-compat.sh,move with path rewrite + runtime validation
-scripts/testing/smoke-focused-parity.sh,script,legacy-script-root,12,scripts/deprecated/smoke-focused-parity.sh,move with path rewrite + runtime validation
-scripts/testing/smoke-harness-sdk-packaging.sh,script,legacy-script-root,9,scripts/deprecated/smoke-harness-sdk-packaging.sh,move with path rewrite + runtime validation
-scripts/testing/smoke-skill-bundle-distribution.sh,script,legacy-script-root,6,scripts/deprecated/smoke-skill-bundle-distribution.sh,move with path rewrite + runtime validation
-scripts/sync_docs_to_ai.sh,script,legacy-script-root,3,scripts/deprecated/sync_docs_to_ai.sh,move with path rewrite + runtime validation
-scripts/health/system-health-check.sh,script,legacy-script-root,70,scripts/deprecated/system-health-check.sh,move with path rewrite + runtime validation
-scripts/testing/telemetry-smoke-test.sh,script,legacy-script-root,2,scripts/deprecated/telemetry-smoke-test.sh,move with path rewrite + runtime validation
-scripts/testing/test_real_world_workflows.sh,script,legacy-script-root,4,scripts/deprecated/test_real_world_workflows.sh,move with path rewrite + runtime validation
-scripts/testing/test_services.sh,script,legacy-script-root,4,scripts/deprecated/test_services.sh,move with path rewrite + runtime validation
-scripts/data/update-ai-research-now.sh,script,legacy-script-root,2,scripts/deprecated/update-ai-research-now.sh,move with path rewrite + runtime validation
-scripts/data/update-aidb-library-catalog-now.sh,script,legacy-script-root,2,scripts/deprecated/update-aidb-library-catalog-now.sh,move with path rewrite + runtime validation
-scripts/security/update-mcp-integrity-baseline.sh,script,legacy-script-root,11,scripts/deprecated/update-mcp-integrity-baseline.sh,move with path rewrite + runtime validation
-scripts/governance/update-readme-ai-stack.py,script,legacy-script-root,2,scripts/deprecated/update-readme-ai-stack.py,move with path rewrite + runtime validation
+scripts/apply-tls-certificates.sh,script,legacy-script-root,2,scripts/security/apply-tls-certificates.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/archive-project-knowledge.sh,script,legacy-script-root,3,scripts/data/archive-project-knowledge.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/cleanup-migrated-reports.sh,script,legacy-script-root,3,scripts/data/cleanup-migrated-reports.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/collect-ai-metrics.sh,script,legacy-script-root,12,scripts/observability/collect-ai-metrics.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/compare-installed-vs-intended.sh,script,legacy-script-root,7,scripts/testing/compare-installed-vs-intended.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/configure-podman-tcp.sh,script,legacy-script-root,8,scripts/deploy/configure-podman-tcp.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/count-packages-accurately.sh,script,legacy-script-root,4,scripts/governance/count-packages-accurately.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/count-packages-simple.sh,script,legacy-script-root,4,scripts/governance/count-packages-simple.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/cron-templates.sh,script,legacy-script-root,8,scripts/automation/cron-templates.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/curate-residual-gaps.sh,script,legacy-script-root,3,scripts/data/curate-residual-gaps.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/demo-local-ai-usage.py,script,legacy-script-root,7,scripts/testing/demo-local-ai-usage.py,migrated to canonical path; keep root shim until final root cleanup
+scripts/deploy-clean.sh,script,legacy-script-root,84,scripts/deploy/deploy-clean.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/edge-model-registry-validate.sh,script,legacy-script-root,2,scripts/governance/edge-model-registry-validate.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/enable-cosmic-power-profiles.sh,script,legacy-script-root,2,scripts/deploy/enable-cosmic-power-profiles.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/enable-progressive-disclosure.sh,script,legacy-script-root,7,scripts/deploy/enable-progressive-disclosure.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/enhance-dashboard-with-controls.sh,script,legacy-script-root,2,scripts/deploy/enhance-dashboard-with-controls.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/evaluate-agent-policy.py,script,legacy-script-root,8,scripts/governance/evaluate-agent-policy.py,migrated to canonical path; keep root shim until final root cleanup
+scripts/firewall-audit.sh,script,legacy-script-root,2,scripts/security/firewall-audit.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/fix-mangohud-config.sh,script,legacy-script-root,3,scripts/deploy/fix-mangohud-config.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/fix-secrets-encryption.sh,script,legacy-script-root,2,scripts/security/fix-secrets-encryption.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/fs-integrity-check.sh,script,legacy-script-root,8,scripts/health/fs-integrity-check.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/mangohud-profile.sh,script,legacy-script-root,3,scripts/deploy/mangohud-profile.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/nix-static-analysis.sh,script,legacy-script-root,8,scripts/governance/nix-static-analysis.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/npm-security-monitor.sh,script,legacy-script-root,12,scripts/security/npm-security-monitor.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/p10k-setup-wizard.sh,script,legacy-script-root,9,scripts/deploy/p10k-setup-wizard.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/post-deploy-converge.sh,script,legacy-script-root,17,scripts/automation/post-deploy-converge.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/publish-local-registry.sh,script,legacy-script-root,8,scripts/deploy/publish-local-registry.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/quick-deploy-lint.sh,script,legacy-script-root,18,scripts/governance/quick-deploy-lint.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/rag_system_complete.py,script,legacy-script-root,4,scripts/data/rag-system-complete.py,migrated to canonical path; keep root shim until final root cleanup
+scripts/semantic-rank-repo-corpus.py,script,legacy-script-root,3,scripts/data/semantic-rank-repo-corpus.py,migrated to canonical path; keep root shim until final root cleanup
+scripts/sign-skill-registry.sh,script,legacy-script-root,8,scripts/security/sign-skill-registry.sh,migrated to canonical path; keep root shim until final root cleanup
+scripts/skill-bundle-registry.py,script,legacy-script-root,12,scripts/governance/skill-bundle-registry.py,migrated to canonical path; keep root shim until final root cleanup
+scripts/sync_docs_to_ai.sh,script,legacy-script-root,3,scripts/data/sync-docs-to-ai.sh,migrated to canonical path; keep root shim until final root cleanup

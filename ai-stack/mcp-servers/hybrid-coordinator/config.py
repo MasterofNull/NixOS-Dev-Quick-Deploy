@@ -296,8 +296,8 @@ async def apply_proposal(proposal: OptimizationProposal) -> dict:
 
 
 async def _append_code_change_issue(proposal: OptimizationProposal) -> dict:
-    """Append a structured issue entry to AI-STACK-IMPROVEMENT-PLAN.md."""
-    plan_path = Path(__file__).parents[3] / "AI-STACK-IMPROVEMENT-PLAN.md"
+    """Append a structured issue entry to docs/archive/root-docs/AI-STACK-IMPROVEMENT-PLAN.md."""
+    plan_path = Path(__file__).parents[3] / "docs/archive/root-docs/AI-STACK-IMPROVEMENT-PLAN.md"
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     entry = (
         f"\n\n### AUTO-GENERATED PROPOSAL — {now}\n\n"

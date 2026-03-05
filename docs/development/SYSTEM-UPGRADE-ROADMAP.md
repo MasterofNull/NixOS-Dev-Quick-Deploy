@@ -1,4 +1,7 @@
 # NixOS Quick Deploy - System Upgrade Roadmap v1.0
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 
 **Created:** 2026-01-27
 **Target Completion:** 2026-02-28
@@ -22,7 +25,7 @@ This document outlines the comprehensive system upgrade for the NixOS Quick Depl
   - or administratively closed and moved to current backlog governance.
 - Completion evidence for closure:
   - `scripts/testing/check-mcp-health.sh` (required services healthy)
-  - `scripts/quick-deploy-lint.sh --mode fast` (deployment lint gate passing)
+  - `scripts/governance/quick-deploy-lint.sh --mode fast` (deployment lint gate passing)
   - `scripts/testing/validate-runtime-declarative.sh` (declarative wiring gate passing)
   - `scripts/testing/check-prsi-phase7-program.sh` (PRSI program gate passing)
   - `scripts/testing/verify-flake-first-roadmap-completion.sh` (31/31 checks passing)
@@ -121,7 +124,7 @@ This document outlines the comprehensive system upgrade for the NixOS Quick Depl
 - [x] **AI-ISSUE-002** `ai-stack/mcp-servers/hybrid-coordinator/remote_llm_feedback.py` had TODO to store interactions in Qdrant. Implemented feedback storage in `interaction-history`. (Maps to Phase 13.8)
 - [x] **AI-ISSUE-003** `ai-stack/mcp-servers/hybrid-coordinator/continuous_learning_daemon.py` had TODO for Postgres metrics storage. Implemented optional Postgres client wiring for metrics persistence. (Maps to Phase 13.7)
 - [x] **AI-ISSUE-004** `ai-stack/mcp-servers/ralph-wiggum/hooks.py` had TODO for CPU monitoring. Added CPU load checks and enforced resource limit hook per iteration. (Maps to Phase 10.39/10.40)
-- [x] **AI-ISSUE-005** `scripts/rag_system_complete.py` had TODO for semantic similarity search using embeddings. Implemented cosine similarity cache hit logic. (Maps to Phase 13.6)
+- [x] **AI-ISSUE-005** `scripts/data/rag-system-complete.py` had TODO for semantic similarity search using embeddings. Implemented cosine similarity cache hit logic. (Maps to Phase 13.6)
 - [x] **AI-ISSUE-006** `ai-stack/mcp-servers/aidb/tool_discovery_daemon.py` now initializes optional Postgres and persists discovery run metrics + latest discovered tool catalog into `aidb_tool_discovery_runs`/`aidb_discovered_tools` tables. (Maps to Phase 10.39)
 - [x] **AI-ISSUE-007** Gemini CLI installs can fail when the bundled ripgrep download fails on some platforms; added installer fallback guidance in tooling output + health check. (Maps to Phase 19.17)
 - [x] **AI-ISSUE-008** AI userland tools (gpt4all, aider, llama.cpp CLI) are Home Manager-scoped; when HM is not applied they appear missing. Added post-deploy validation warning + HM switch command in Phase 7 to surface missing tools. (Maps to Phase 16 + Phase 14)
@@ -175,7 +178,7 @@ These are the next actions agreed by the specialty agents, ordered by risk and i
    - Make K3s the canonical AI service control path in skills/workflows
    - Keep `switch` as default flake deployment mode (no reboot requirement)
    - Add explicit deploy mode selection (`switch|boot|build`) in quick-deploy
-   - Route flake-first quick-deploy path through `scripts/deploy-clean.sh`
+   - Route flake-first quick-deploy path through `scripts/deploy/deploy-clean.sh.`
 
 1. **Phase 29 (K3s-First MLOps Lifecycle Layer)** — HIGH: add artifact/version/eval capabilities without leaving Kubernetes-native operations.
    - Artifact persistence/versioning via DVC + S3-compatible backend in K3s
@@ -264,7 +267,7 @@ These are the next actions agreed by the specialty agents, ordered by risk and i
 
   - Keep activation logic in declarative modules / activation scripts only.
   - Validation:
-    - `bash -n scripts/deploy-clean.sh`
+    - `bash -n scripts/deploy/deploy-clean.sh.`
 
 - [x] **34.5 Model supply-chain hardening (hash pinning)**
   - Add a pinned hash manifest for GGUF model artifacts.
@@ -292,7 +295,7 @@ These are the next actions agreed by the specialty agents, ordered by risk and i
 ### Phase 34 Test Gate (must pass before marking DONE)
 
 - [x] `nix flake check` (validated with `nix flake check --no-build path:/home/hyperd/Documents/NixOS-Dev-Quick-Deploy`)
-- [x] `bash -n nixos-quick-deploy.sh scripts/deploy-clean.sh scripts/data/download-llama-cpp-models.sh`
+- [x] `bash -n nixos-quick-deploy.sh scripts/deploy/deploy-clean.sh. scripts/data/download-llama-cpp-models.sh`
 - [ ] `tests/run-unit-tests.sh`
 - [ ] `tests/run-integration-tests.sh` (with applicable flags)
 - [ ] Manual security checks for:
@@ -308,7 +311,7 @@ These are the next actions agreed by the specialty agents, ordered by risk and i
   - Declarative Redis option set + service wiring in MCP stack (`mySystem.mcpServers.redis.*` + `services.redis.servers.mcp`).
   - `scripts/deploy/setup-mcp-databases.sh` converted to declarative deprecation wrapper.
   - Removed sudo keepalive loop and related cleanup logic from `nixos-quick-deploy.sh`.
-  - Removed imperative K3s backend orchestration branch from `scripts/deploy-clean.sh`.
+  - Removed imperative K3s backend orchestration branch from `scripts/deploy/deploy-clean.sh.`.
   - Added pinned GGUF SHA256 manifest (`config/llama-cpp-models.sha256`) and downloader verification (fail-closed).
   - Added telemetry opt-in defaults + redaction hashing for runtime writers (Hybrid, Ralph, VSCode telemetry endpoint).
   - Updated dashboard collector CPU/disk collection to avoid `top`/`df -h` parsing (`/proc/stat`, `df -B1`).
@@ -1395,7 +1398,7 @@ These items surfaced during the senior dev review but fall outside the original 
 - [x] **10.8** Add firewall/ingress exposure audit (verify only required ports open; document `nftables`/`firewalld` rules).
 - [x] **10.9** Add acceptance-criteria test runner that bundles health, TLS log scan, netpol, registry, and dashboard checks.
 - [x] **10.10** Restrict dashboard HTTP/API bind to localhost by default (env-overridable) and bind K3s port-forward to 127.0.0.1.
-- [x] **10.11** Lock down Podman TCP API (2375): bind to localhost via `scripts/configure-podman-tcp.sh`, update container-engine to `hostNetwork: true` + `PODMAN_API_URL=http://127.0.0.1:2375`, and align env-configmap defaults.
+- [x] **10.11** Lock down Podman TCP API (2375): bind to localhost via `scripts/deploy/configure-podman-tcp.sh`, update container-engine to `hostNetwork: true` + `PODMAN_API_URL=http://127.0.0.1:2375`, and align env-configmap defaults.
 - [x] **10.13** Fix channel update failure when `max-jobs=0` (set `nix.settings.max-jobs = "auto"` in generated configs + optimizations template).
   - **Complete:** `lib/nixos.sh` now forces `nix-channel --update --option max-jobs 1` when effective max-jobs is 0.
   - **Complete:** `lib/nixos.sh` now uses `NIX_CONFIG="max-jobs = 1"` for nix-channel updates when max-jobs=0 (covers nix-env path).
@@ -1588,14 +1591,14 @@ AI_STACK_DEV_MODE=true ./nixos-quick-deploy.sh --restart-phase 9 --test-phase 9
 
 **Problem:** `podman-tcp.service` fails to restart after `nixos-rebuild switch` (user unit restart failure).
 
-**Root Cause:** `scripts/configure-podman-tcp.sh` writes an ExecStart path using the current `podman` store path. After a rebuild, that store path can be GC’ed, leaving the unit pointing to a dead binary.
+**Root Cause:** `scripts/deploy/configure-podman-tcp.sh` writes an ExecStart path using the current `podman` store path. After a rebuild, that store path can be GC’ed, leaving the unit pointing to a dead binary.
 
 **Fix Solution:**
 - Use a stable ExecStart path (`/run/current-system/sw/bin/podman`) when available.
 - Fallback to `command -v podman` only if the stable path is missing.
 
 **Steps Taken (2026-02-04):**
-- Updated `scripts/configure-podman-tcp.sh` to prefer `/run/current-system/sw/bin/podman`.
+- Updated `scripts/deploy/configure-podman-tcp.sh` to prefer `/run/current-system/sw/bin/podman`.
 - Kept the PATH-based fallback for non-standard setups.
 
 **Acceptance Criteria:**
@@ -1758,12 +1761,12 @@ AI_STACK_DEV_MODE=true ./nixos-quick-deploy.sh --restart-phase 9 --test-phase 9
 ### 11.8 Fix Launch & Setup Scripts
 
 **Tasks:**
-- [x] **11.8.1** Update `launch-dashboard.sh` — remove `podman` hard dependency, add K3s-first logic
+- [x] **11.8.1** Update `scripts/deploy/launch-dashboard.sh` — remove `podman` hard dependency, add K3s-first logic
 - [x] **11.8.2** Update `scripts/deploy/setup-dashboard.sh` — add K3s deployment path
 - [x] **11.8.3** Update `scripts/governance/manage-dashboard-collectors.sh` — add K3s pod-based management
 
 **Acceptance Criteria:**
-- [ ] `launch-dashboard.sh` works on K3s-only systems (no podman required)
+- [ ] `scripts/deploy/launch-dashboard.sh` works on K3s-only systems (no podman required)
 - [ ] Setup script can deploy dashboard via K3s
 
 ---
@@ -1788,7 +1791,7 @@ AI_STACK_DEV_MODE=true ./nixos-quick-deploy.sh --restart-phase 9 --test-phase 9
 **Goal:** Support Buildah for image builds and Skopeo for registry publishing, with clear acceptance criteria and fallback behavior.
 
 **Tasks:**
-- [x] **12.2** Add Skopeo support to `scripts/publish-local-registry.sh` (copy from `containers-storage` to registry).
+- [x] **12.2** Add Skopeo support to `scripts/deploy/publish-local-registry.sh` (copy from `containers-storage` to registry).
 - [x] **12.3** Document Buildah/Skopeo workflow (env overrides + examples).
 - [x] **12.4** Fix Buildah build context + add `ONLY_IMAGES` filters for incremental runs.
 - [x] **12.5** Complete acceptance test steps for Buildah/Skopeo flows (run all images end-to-end).
@@ -1809,13 +1812,13 @@ AI_STACK_DEV_MODE=true ./nixos-quick-deploy.sh --restart-phase 9 --test-phase 9
 
 
 # Incremental (single image) build/publish
-ONLY_IMAGES=ai-stack-nixos-docs CONTAINER_CLI=skopeo ./scripts/publish-local-registry.sh
+ONLY_IMAGES=ai-stack-nixos-docs CONTAINER_CLI=skopeo ./scripts/deploy/publish-local-registry.sh
 
 # Skopeo publish (expects buildah/podman images in containers-storage)
-CONTAINER_CLI=skopeo ./scripts/publish-local-registry.sh
+CONTAINER_CLI=skopeo ./scripts/deploy/publish-local-registry.sh
 
 # Rootless publish (user containers-storage)
-CONTAINER_CLI=skopeo ONLY_IMAGES=ai-stack-aidb TAG=dev ./scripts/publish-local-registry.sh
+CONTAINER_CLI=skopeo ONLY_IMAGES=ai-stack-aidb TAG=dev ./scripts/deploy/publish-local-registry.sh
 ```
 
 **Progress Note (2026-02-04):** Rootless Buildah + Skopeo verified end-to-end for `ai-stack-aidb`, `ai-stack-embeddings`, `ai-stack-hybrid-coordinator`, `ai-stack-ralph-wiggum`, `ai-stack-container-engine`, `ai-stack-aider-wrapper`, `ai-stack-nixos-docs`, and `ai-stack-dashboard-api` (dashboard backend Dockerfile now in build pipeline). Local registry publish completed, and K3s pods restarted to pull fresh `:dev` images.
@@ -1843,7 +1846,7 @@ CONTAINER_CLI=skopeo ONLY_IMAGES=ai-stack-aidb TAG=dev ./scripts/publish-local-r
 
 ### 13.1 Integrate RAG Pipeline into AIDB
 
-**Problem:** `scripts/rag_system_complete.py` is a standalone script with its own Qdrant connection. AIDB's MCP server has RAG-related tools but they don't use the same pipeline.
+**Problem:** `scripts/data/rag-system-complete.py` is a standalone script with its own Qdrant connection. AIDB's MCP server has RAG-related tools but they don't use the same pipeline.
 
 **Tasks:**
 - [x] **13.1.1** Audit `rag_system_complete.py` for core functions (embed, retrieve, chunk)
@@ -2233,10 +2236,10 @@ CONTAINER_CLI=skopeo ONLY_IMAGES=ai-stack-aidb TAG=dev ./scripts/publish-local-r
 
 **Issue:** `podman-tcp.service` failed to restart after system switch (exit 203/EXEC).
 - **Root Cause:** The unit ExecStart pointed at `~/.nix-profile/bin/podman`, which disappeared after nix-env packages were removed.
-- **Fix:** Prefer stable NixOS paths for podman in `scripts/configure-podman-tcp.sh` (`/run/current-system/sw/bin` or `/etc/profiles/per-user/$USER/bin`), then regenerate the unit.
+- **Fix:** Prefer stable NixOS paths for podman in `scripts/deploy/configure-podman-tcp.sh` (`/run/current-system/sw/bin` or `/etc/profiles/per-user/$USER/bin`), then regenerate the unit.
 - **Steps Taken:**
-  - Updated `scripts/configure-podman-tcp.sh` to avoid stale profile paths.
-  - Re-ran `scripts/configure-podman-tcp.sh --bind 127.0.0.1` to regenerate the unit and reload user systemd.
+  - Updated `scripts/deploy/configure-podman-tcp.sh` to avoid stale profile paths.
+  - Re-ran `scripts/deploy/configure-podman-tcp.sh --bind 127.0.0.1` to regenerate the unit and reload user systemd.
 - **Acceptance Criteria:**
   - [x] `systemctl --user status podman-tcp.service` shows `active (running)` with ExecStart pointing to `/run/current-system/sw/bin/podman` or `/etc/profiles/per-user/$USER/bin/podman`.
 
@@ -2749,7 +2752,7 @@ Feature audit results:
 - verify-nixos-docs.sh, verify-upgrades.sh, reset-ai-volumes.sh
 
 **Tasks:**
-- [x] **17.4.1** Move all 21 deprecated stubs to `scripts/archive/deprecated/`
+- [x] **17.4.1** Move all 21 deprecated stubs to `archive/deprecated/scripts/`
 - [x] **17.4.2** Update any references to deprecated scripts (grep codebase)
 - [x] **17.4.3** Add README in archive explaining deprecation
 - [ ] **17.4.4** Consolidate overlapping secret scripts (generate-passwords, generate-api-secrets, generate-api-key, rotate-api-key)
@@ -4665,7 +4668,7 @@ xdg.portal.extraPortals =
 - [x] **25.9.2** Add recovery module `nix/modules/hardware/recovery.nix`:
   - maps `initrdEmergencyAccess` to `boot.initrd.systemd.emergencyAccess`
   - maps `rootFsckMode=skip` to `fileSystems."/".noCheck = true` and `fsck.mode=skip` kernel policy (temporary recovery only)
-- [x] **25.9.3** Harden `scripts/deploy-clean.sh` preflight:
+- [x] **25.9.3** Harden `scripts/deploy/deploy-clean.sh.` preflight:
   - verify host root device from `hardware-configuration.nix` exists
   - verify host root device/fsType matches running `/`
   - detect previous-boot `systemd-fsck-root` failure and stop deploy by default
@@ -4675,7 +4678,7 @@ xdg.portal.extraPortals =
 - [x] **25.9.5** Improve GPU discovery fallback when `lspci` is unavailable:
   - use `/sys/class/drm/card*/device/vendor` for primary/iGPU detection
 - [ ] **25.9.6** Validate recovery boot on target host:
-  - `./scripts/deploy-clean.sh --host nixos --profile ai-dev --recovery-mode --boot`
+  - `./scripts/deploy/deploy-clean.sh. --host nixos --profile ai-dev --recovery-mode --boot`
   - reboot and confirm system reaches userspace without initrd emergency loop
 - [ ] **25.9.7** Run offline ext4 repair and remove temporary fsck skip:
   - boot live media / maintenance environment
@@ -4824,7 +4827,7 @@ xdg.portal.extraPortals =
 - [x] **26.P2** Hardware facts discovery script committed.
 - [x] **26.P3** First profile (`minimal`) migrated off bash-owned lists.
 - [x] **26.P4** Flake-first deployment path available behind explicit flag.
-- [x] **26.P5** Minimal clean deployment entrypoint added (`scripts/deploy-clean.sh` + `docs/CLEAN-SETUP.md`).
+- [x] **26.P5** Minimal clean deployment entrypoint added (`scripts/deploy/deploy-clean.sh.` + `docs/CLEAN-SETUP.md`).
 - [x] **26.P6** Flake-first path promoted to default; legacy 9-phase pipeline moved to `--legacy-phases`.
 - [x] **26.P7** Legacy deprecation lifecycle documented (fallback/rollback + removal date).
 
@@ -4872,7 +4875,7 @@ xdg.portal.extraPortals =
 - `scripts/governance/discover-system-facts.sh` now emits expanded hardware/deployment schema (`igpuVendor`, `storageType`, `systemRamGb`, `isMobile`, `earlyKmsPolicy`, `nixosHardwareModule`, hibernation fields).
 
 **Progress Note (2026-02-16, clean-cut deployment path):**
-- Added `scripts/deploy-clean.sh` as a minimal flake-first entrypoint:
+- Added `scripts/deploy/deploy-clean.sh.` as a minimal flake-first entrypoint:
   - no template rendering
   - no legacy phase orchestration
   - deterministic host/profile targets
@@ -5273,12 +5276,12 @@ Added `igpuVendor` option to `options.nix`. Added `_detect_igpu_vendor()` to `ha
 
 **Tasks:**
 - [x] **28.2.1** Add `--flake-first-deploy-mode switch|boot|build` to `nixos-quick-deploy.sh`.
-- [x] **28.2.2** Route `run_flake_first_deployment()` through `scripts/deploy-clean.sh`.
+- [x] **28.2.2** Route `run_flake_first_deployment()` through `scripts/deploy/deploy-clean.sh.`.
 - [x] **28.2.3** Preserve prompt-driven user choices for system/home apply in flake-first path.
 - [x] **28.2.4** Preserve existing preflight + health/check behavior while using declarative profile targets.
 
 **Success Criteria:**
-- [ ] `nixos-quick-deploy.sh --flake-first` uses `scripts/deploy-clean.sh` as the execution engine.
+- [ ] `nixos-quick-deploy.sh --flake-first` uses `scripts/deploy/deploy-clean.sh.` as the execution engine.
 - [ ] Profile selection (`ai-dev|gaming|minimal`) stays declarative and host-scoped.
 - [ ] Operators can choose `switch|boot|build` without editing scripts.
 
@@ -5320,7 +5323,7 @@ Added `igpuVendor` option to `options.nix`. Added `_detect_igpu_vendor()` to `ha
 
 **Tasks:**
 - [ ] **29.3.1** Define `global_wisdom` collection schema and metadata contract.
-- [ ] **29.3.2** Build ingestion script (`scripts/archive-project-knowledge.sh`) for curated project outcomes.
+- [x] **29.3.2** Build ingestion script (`scripts/data/archive-project-knowledge.sh`) for curated project outcomes.
 - [ ] **29.3.3** Add safeguards to exclude secrets/sensitive data from ingestion.
 - [ ] **29.3.4** Add scheduled and manual ingestion modes with idempotency checks.
 - [ ] **29.3.5** Add retrieval quality checks against known benchmark prompts.
@@ -5363,7 +5366,7 @@ Added `igpuVendor` option to `options.nix`. Added `_detect_igpu_vendor()` to `ha
 ### 30.2 Deploy-Time Guardrails (Hard Gates + Fallbacks)
 
 **Tasks:**
-- [x] **30.2.1** Expand previous-boot fsck gate signatures in `scripts/deploy-clean.sh`.
+- [x] **30.2.1** Expand previous-boot fsck gate signatures in `scripts/deploy/deploy-clean.sh.`.
 - [x] **30.2.2** Add timeout-protected flake eval helper (`nix_eval_raw_safe`) to prevent indefinite preflight hangs.
 - [x] **30.2.3** Add target-mode guard: block graphical hosts from deploying headless (`multi-user.target`) targets.
 - [x] **30.2.4** Add safe-switch handling:
@@ -5437,7 +5440,7 @@ Added `igpuVendor` option to `options.nix`. Added `_detect_igpu_vendor()` to `ha
   - `scripts/governance/analyze-clean-deploy-readiness.sh`
   - host/profile/flake-aware checks with pass/warn/fail summary.
 - [x] **31.2.2** Add deploy integration:
-  - `scripts/deploy-clean.sh --analyze-only`
+  - `scripts/deploy/deploy-clean.sh. --analyze-only`
   - readiness preflight runs before build/switch unless explicitly skipped.
 - [x] **31.2.3** Add timeout-safe flake-eval probing inside readiness checks to avoid hangs on restricted hosts.
 
@@ -5619,7 +5622,7 @@ curl http://localhost:19999/api/v1/info  # Netdata running
 
 **Tasks:**
 - [x] **34.1** Deprecate legacy telemetry scripts:
-  - `scripts/collect-ai-metrics.sh`
+  - `scripts/observability/collect-ai-metrics.sh`
   - `scripts/data/rotate-telemetry.sh`
   - `scripts/ai/ai-metrics-auto-updater.sh`
 - [x] **34.2** Move telemetry rotation unit templates out of active path:
@@ -5628,16 +5631,16 @@ curl http://localhost:19999/api/v1/info  # Netdata running
 - [x] **34.3** Deprecate imperative model bootstrap script:
   - `scripts/ai/ai-model-setup.sh`
 - [x] **34.4** Deprecate duplicate package counting scripts:
-  - `scripts/count-packages-accurately.sh`
-  - `scripts/count-packages-simple.sh`
+  - `scripts/governance/count-packages-accurately.sh`
+  - `scripts/governance/count-packages-simple.sh`
 - [x] **34.5** Remove cron-based dashboard collector generation path:
-  - `scripts/cron-templates.sh`
+  - `scripts/automation/cron-templates.sh`
 - [x] **34.6** Replace `Makefile` Kubernetes operations with systemd-native operations (`ai-stack.target`, dashboard units, journald logs).
 
 **Verification:**
 ```bash
-bash -n scripts/collect-ai-metrics.sh scripts/data/rotate-telemetry.sh scripts/ai/ai-metrics-auto-updater.sh scripts/ai/ai-model-setup.sh scripts/count-packages-accurately.sh scripts/count-packages-simple.sh scripts/cron-templates.sh
-rg -n "collect-ai-metrics\.sh|rotate-telemetry\.sh|generate-dashboard-data\.sh" scripts lib phases Makefile nixos-quick-deploy.sh --glob '!deprecated/**'
+bash -n scripts/observability/collect-ai-metrics.sh scripts/data/rotate-telemetry.sh scripts/ai/ai-metrics-auto-updater.sh scripts/ai/ai-model-setup.sh scripts/governance/count-packages-accurately.sh scripts/governance/count-packages-simple.sh scripts/automation/cron-templates.sh
+rg -n "collect-ai-metrics\.sh|rotate-telemetry\.sh|generate-dashboard-data\.sh" scripts lib phases Makefile nixos-quick-deploy.sh --glob '!archive/deprecated/**'
 ```
 
 ---
@@ -5722,7 +5725,7 @@ rg -n "collect-ai-metrics\.sh|rotate-telemetry\.sh|generate-dashboard-data\.sh" 
 - Baseline gate result:
   - Initial run failed with 3 findings (rolling tags + host networking exposure + audit failure).
   - Temporary host-network exception retired in Phase 37 cleanup:
-    - legacy `container-engine` manifest moved to `deprecated/`,
+    - legacy `container-engine` manifest moved to `archive/deprecated/`,
     - active gate now passes with zero host-network exceptions.
 
 ---

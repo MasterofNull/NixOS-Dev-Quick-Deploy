@@ -1,6 +1,3 @@
 #!/usr/bin/env bash
-set -euo pipefail
-
-echo "This legacy component is deprecated." >&2
-echo "Imperative runtime path removed from active deployment flow." >&2
-exit 2
+# Compatibility shim: use scripts/deploy/configure-podman-tcp.sh.
+exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/deploy/configure-podman-tcp.sh" "$@"

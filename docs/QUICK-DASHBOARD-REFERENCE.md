@@ -71,7 +71,7 @@ bash scripts/governance/manage-dashboard-collectors.sh restart
 
 - [DASHBOARD-COLLECTORS-GUIDE.md](DASHBOARD-COLLECTORS-GUIDE.md) - Architecture and details
 - [DASHBOARD-UPDATE-OPTIMIZATION.md](DASHBOARD-UPDATE-OPTIMIZATION.md) - What changed
-- [SYSTEM-DASHBOARD-GUIDE.md](SYSTEM-DASHBOARD-GUIDE.md) - Complete guide
+- [SYSTEM-DASHBOARD-GUIDE.md]/docs/archive/stubs/SYSTEM-DASHBOARD-GUIDE.md - Complete guide
 
 ---
 

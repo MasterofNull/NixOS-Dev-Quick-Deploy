@@ -19,7 +19,7 @@ Action:
 Black screen/blinking cursor during live `nixos-rebuild switch` from desktop session.
 Action:
 - Run deploy from TTY (`Ctrl+Alt+F3`) or use boot staging mode.
-- Use `scripts/deploy-clean.sh` default safeguards (GUI sessions auto-fallback to `boot` mode).
+- Use `scripts/deploy/deploy-clean.sh.` default safeguards (GUI sessions auto-fallback to `boot` mode).
 
 3. Signature:
 Target evaluates to `multi-user.target` on desktop host.
@@ -31,7 +31,7 @@ Action:
 
 1. Immediate integrity scan (current + previous boot):
 ```bash
-./scripts/fs-integrity-check.sh
+./scripts/health/fs-integrity-check.sh
 ```
 
 2. Show rescue flow with host-specific UUID:
@@ -41,7 +41,7 @@ Action:
 
 3. Declarative deploy path:
 ```bash
-./scripts/deploy-clean.sh --host <host> --profile <ai-dev|gaming|minimal>
+./scripts/deploy/deploy-clean.sh. --host <host> --profile <ai-dev|gaming|minimal>
 ```
 
 ## Declarative Guardrails Implemented
@@ -52,7 +52,7 @@ Action:
 2. `disk-health-monitor.service` + `.timer`
 - SMART/NVMe health scan on root disk.
 
-3. Deploy preflight gates in `scripts/deploy-clean.sh`
+3. Deploy preflight gates in `scripts/deploy/deploy-clean.sh.`
 - Previous-boot fs integrity signatures block live switch by default.
 - Graphical host cannot deploy headless targets unintentionally.
 - GUI live-switch auto-fallbacks to `boot` mode unless explicitly overridden.

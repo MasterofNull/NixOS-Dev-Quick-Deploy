@@ -1,4 +1,9 @@
 # Session Completion Roadmap
+
+Status: Active
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 **Goal**: Complete all recommended next actions and ensure changes propagate to future deployments
 
 ---
@@ -118,7 +123,7 @@
   - Set default values
 - [x] scripts/deploy/local-registry.sh
   - Local registry start/stop/status
-- [x] scripts/publish-local-registry.sh
+- [x] scripts/deploy/publish-local-registry.sh
   - Tag + push immutable images to localhost:5000
 
 ### 6.3 Documentation updates
@@ -162,9 +167,9 @@
 - ✅ AIDB: tool discovery timezone fix applied and image rebuilt
 
 ### 7.2 Documentation verification
-- [x] All commands tested and working - See KNOWN_ISSUES_TROUBLESHOOTING.md
+- [x] All commands tested and working - See docs/archive/root-docs/KNOWN_ISSUES_TROUBLESHOOTING.md
 - [x] Screenshots updated
-- [x] Known issues documented - See KNOWN_ISSUES_TROUBLESHOOTING.md
+- [x] Known issues documented - See docs/archive/root-docs/KNOWN_ISSUES_TROUBLESHOOTING.md
 
 **Expected Outcome**: Complete system verified working
 
@@ -205,13 +210,13 @@
 - [x] Ensure local/remote registry parity for all environments
 
 ### 9.2 Agent integration readiness
-- [x] Define MCP service contracts + health endpoints for all agents - See MCP_SERVICE_CONTRACTS.md
-- [x] Provide AIDB indexing + telemetry schema guarantees - See AIDB_SCHEMA_GUARANTEES.md
+- [x] Define MCP service contracts + health endpoints for all agents - See docs/archive/root-docs/MCP_SERVICE_CONTRACTS.md
+- [x] Provide AIDB indexing + telemetry schema guarantees - See docs/archive/root-docs/AIDB_SCHEMA_GUARANTEES.md
 - [x] Verify agent auth secrets rotation per deployment - See AGENT_AUTH_SECRETS_ROTATION.md
 
 ### 9.3 Monitoring + reliability
 - [x] Dashboard health: stale data detection + alerting - See DASHBOARD_HEALTH_MONITORING.md
-- [x] Prometheus rules for AI stack SLOs - See PROMETHEUS_SLO_RULES.md
+- [x] Prometheus rules for AI stack SLOs - See docs/archive/root-docs/PROMETHEUS_SLO_RULES.md
 - [x] End-to-end telemetry flow verification (Ralph → Hybrid → AIDB) - See TELEMETRY_FLOW_VERIFICATION.md
 
 **Expected Outcome**: Single-path, agent-agnostic K3s deployment with complete monitoring and reliable integration.
@@ -237,8 +242,8 @@
 ### 9.3 Agent access + tooling
 - [x] Validate AIDB query endpoint for remote agents (`/documents?search=...`) - Completed previously
 - [x] Confirm MCP server discovery works with K8s deployments - Completed previously
-- [x] Document required env vars + ports for remote agents - See REMOTE-AGENT-SETUP.md
-- [x] Add a single "agent bootstrap" command block in docs - See AGENT_BOOTSTRAP_COMMAND.md
+- [x] Document required env vars + ports for remote agents - See docs/archive/root-docs/REMOTE-AGENT-SETUP.md
+- [x] Add a single "agent bootstrap" command block in docs - See docs/archive/root-docs/AGENT_BOOTSTRAP_COMMAND.md
 
 **Expected Outcome**: Any local/remote agent can use the stack end-to-end with observability + data access.
 

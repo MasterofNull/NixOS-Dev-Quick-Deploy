@@ -1,9 +1,9 @@
 # Project Memory — NixOS-Dev-Quick-Deploy
 
 ## Key Documents
-- `AI-STACK-IMPROVEMENT-PLAN.md` — primary cross-session task tracker (15+1 phases, 60+ tasks)
+- `docs/archive/root-docs/AI-STACK-IMPROVEMENT-PLAN.md` — primary cross-session task tracker (15+1 phases, 60+ tasks)
 - `SYSTEM-UPGRADE-ROADMAP.md` — NixOS-level issue tracker (NIX-ISSUE-NNN format)
-- `KNOWN_ISSUES_TROUBLESHOOTING.md` — resolved issues with recovery steps
+- `docs/archive/root-docs/KNOWN_ISSUES_TROUBLESHOOTING.md` — resolved issues with recovery steps
 
 ## Agent Coordination Model — DEFAULT (hardcoded in CLAUDE.md §8)
 - **Claude = Planner / Coordinator / Delegator / Auditor** — NOT bulk coder
@@ -171,4 +171,4 @@ AIDB vector search endpoint: POST /vector/search (not /search).
 - Phase 18.2.3: strategy_tag in tool_audit.jsonl from route_handler.py
 - Phase 19.4.5: AIDB import of CLAUDE.md + MEMORY.md for local LLM RAG (blocked on restart + 11.2)
 - Phase 19.4.6: local LLM system prompt with top-3 CLAUDE.md rules (AI_LOCAL_SYSTEM_PROMPT=true)
-- **Phase 20**: Full QA plan tracked in `AI-STACK-QA-PLAN.md` — 10 phases, ~65 discrete tests
+- **Phase 20**: Full QA plan tracked in `docs/archive/root-docs/AI-STACK-QA-PLAN.md` — 10 phases, ~65 discrete tests

@@ -56,7 +56,7 @@ templates/
     networking.nix          Network stack hardening
     security.nix            Kernel hardening / audit
 SYSTEM-UPGRADE-ROADMAP.md  Primary issue tracker (NIX-ISSUE-NNN)
-KNOWN_ISSUES_TROUBLESHOOTING.md  Resolved issues with recovery steps
+docs/archive/root-docs/KNOWN_ISSUES_TROUBLESHOOTING.md  Resolved issues with recovery steps
 ```
 
 ---
@@ -144,7 +144,7 @@ infinite recursion.
 1. Add `NIX-ISSUE-NNN` entry in the **Agent Review Findings** section of
    `SYSTEM-UPGRADE-ROADMAP.md` (one line, marked `- [x]` if resolved).
 2. Add a subsection to the relevant Phase at the bottom of the roadmap.
-3. Add a numbered entry to `KNOWN_ISSUES_TROUBLESHOOTING.md` with status,
+3. Add a numbered entry to `docs/archive/root-docs/KNOWN_ISSUES_TROUBLESHOOTING.md` with status,
    symptom, root cause, fix, and tracking reference.
 4. Do **not** rewrite the surrounding roadmap prose.
 

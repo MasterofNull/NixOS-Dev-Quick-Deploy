@@ -27,7 +27,7 @@ gather_targets() {
   if [[ "$USE_STAGED" -eq 1 ]]; then
     git diff --cached --name-only --diff-filter=ACM | rg -N '\.(sh|bash)$' || true
   else
-    git ls-files '*.sh' '*.bash' ':!:deprecated/**' || true
+    git ls-files '*.sh' '*.bash' ':!:archive/deprecated/**' || true
   fi
 }
 

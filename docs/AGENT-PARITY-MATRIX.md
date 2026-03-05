@@ -3,7 +3,7 @@
 Last updated: 2026-03-03
 
 Execution tracker:
-- [System Improvement Plan and Working Document (March 2026)](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/docs/SYSTEM-IMPROVEMENT-PLAN-2026-03.md)
+- [System Improvement Plan and Working Document (March 2026)](SYSTEM-IMPROVEMENT-PLAN-2026-03.md)
 
 ## Scope
 
@@ -110,7 +110,7 @@ Guards:
 
 Location:
 - `scripts/automation/run-advanced-parity-suite.sh`
-- `scripts/evaluate-agent-policy.py`
+- `scripts/governance/evaluate-agent-policy.py`
 - `scripts/ai/route-reasoning-mode.py`
 - `scripts/automation/run-harness-regression-gate.sh`
 - `scripts/testing/chaos-harness-smoke.sh`
@@ -179,9 +179,9 @@ Behavior:
 ### Signed skill registry + trust hooks
 
 Location:
-- `scripts/sign-skill-registry.sh`
+- `scripts/security/sign-skill-registry.sh`
 - `scripts/testing/verify-skill-registry.sh`
-- `scripts/skill-bundle-registry.py` (`install --signature --public-key`)
+- `scripts/governance/skill-bundle-registry.py` (`install --signature --public-key`)
 
 Purpose:
 - Enforce signed distribution flow for skill registry indexes before bundle install.
@@ -285,8 +285,8 @@ Acceptance checks:
 |---|---|---|---|---|
 | Phase 0: Baseline and controls (1 week) | Lock benchmark and measurement baseline | 1) Freeze curated cohort + capability rubric. 2) Add parity scorecard JSON (`config/parity-scorecard.json`). 3) Add CI job to fail on score regression. | `data/github-keyword-repos-2026-03-03.*`, `scripts/automation/run-advanced-parity-suite.sh`, `.github/workflows/test.yml` | Baseline scorecard committed; CI reports current parity score; no false pass when score drops. |
 | Phase 1: Orchestration executor (2 weeks) | Deliver explicit graph executor with retries | 1) Implement workflow DAG executor module with retry/backoff/checkpoint resume. 2) Add endpoint(s) for run start/status/cancel. 3) Add chaos tests for retry + recovery. | `ai-stack/mcp-servers/hybrid-coordinator/http_server.py`, new executor module, `scripts/testing/chaos-harness-smoke.sh` | End-to-end run can resume from checkpoint; retry policy verified in CI; failure paths deterministic. |
-| Phase 2: Runtime safety gates (1-2 weeks) | Enforce policy at execution time | 1) Add runtime tool-call allow/deny middleware tied to routing policy. 2) Add mandatory approval mode for destructive/high-risk operations. 3) Extend auth-hardening checks to gated actions. | `config/agent-routing-policy.json`, `scripts/evaluate-agent-policy.py`, `scripts/testing/check-api-auth-hardening.sh` | High-risk actions blocked or require explicit approval; policy bypass tests fail reliably. |
-| Phase 3: Trust root lifecycle (1 week) | Close signed-registry trust gap | 1) Add remote trust-root distribution format. 2) Add key rotation + revocation workflow script. 3) Add validation to skill install path for active trust set. | `scripts/sign-skill-registry.sh`, `scripts/testing/verify-skill-registry.sh`, `scripts/skill-bundle-registry.py` | Rotated key works without downtime; revoked key fails verification; procedure documented with rollback. |
+| Phase 2: Runtime safety gates (1-2 weeks) | Enforce policy at execution time | 1) Add runtime tool-call allow/deny middleware tied to routing policy. 2) Add mandatory approval mode for destructive/high-risk operations. 3) Extend auth-hardening checks to gated actions. | `config/agent-routing-policy.json`, `scripts/governance/evaluate-agent-policy.py`, `scripts/testing/check-api-auth-hardening.sh` | High-risk actions blocked or require explicit approval; policy bypass tests fail reliably. |
+| Phase 3: Trust root lifecycle (1 week) | Close signed-registry trust gap | 1) Add remote trust-root distribution format. 2) Add key rotation + revocation workflow script. 3) Add validation to skill install path for active trust set. | `scripts/security/sign-skill-registry.sh`, `scripts/testing/verify-skill-registry.sh`, `scripts/governance/skill-bundle-registry.py` | Rotated key works without downtime; revoked key fails verification; procedure documented with rollback. |
 | Phase 4: External benchmark harness (1 week) | Measure quality against external tasks | 1) Add optional SWE-agent/SWE-bench style task pack ingestion. 2) Map harness scorecard to benchmark cohorts. 3) Track trend line in CI artifact output. | `scripts/automation/run-harness-regression-gate.sh`, `scripts/testing/smoke-cross-client-compat.sh`, `/harness/scorecard` | Benchmark job runs in CI/manual mode; score trend published; regression threshold enforced. |
 | Phase 5: Adoption and hardening (ongoing) | Move to operational default | 1) Enable new executor and safety gates behind staged flags. 2) Publish runbooks (deploy/verify/rollback). 3) Run two release cycles with no Sev-1 regressions. | `nix/modules/roles/ai-stack.nix`, docs + runbooks, existing health/smoke scripts | Flags promoted to default after stable cycles; rollback tested; operator checklist complete. |
 
@@ -299,10 +299,10 @@ Acceptance checks:
 | PAR-003 | 1 | Implement DAG executor core | Runtime | PAR-001 | executor module + unit tests | `pytest -q tests` |
 | PAR-004 | 1 | Expose run lifecycle endpoints | Runtime | PAR-003 | `/workflow/run/*` APIs | `./scripts/testing/smoke-agent-harness-parity.sh` |
 | PAR-005 | 1 | Retry/recovery chaos tests | QA | PAR-004 | expanded chaos script | `./scripts/testing/chaos-harness-smoke.sh` |
-| PAR-006 | 2 | Runtime tool-policy enforcement | Security/Runtime | PAR-004 | policy middleware | `python3 scripts/evaluate-agent-policy.py --help` |
+| PAR-006 | 2 | Runtime tool-policy enforcement | Security/Runtime | PAR-004 | policy middleware | `python3 scripts/governance/evaluate-agent-policy.py --help` |
 | PAR-007 | 2 | High-risk approval gate | Security | PAR-006 | approval mode + tests | `./scripts/testing/check-api-auth-hardening.sh` |
 | PAR-008 | 3 | Trust-root distribution + rotation | Security/Platform | PAR-006 | rotation/revocation scripts | `./scripts/testing/verify-skill-registry.sh --help` |
-| PAR-009 | 3 | Enforce trust-set validation in install path | Security | PAR-008 | registry install validation | `python3 scripts/skill-bundle-registry.py install --help` |
+| PAR-009 | 3 | Enforce trust-set validation in install path | Security | PAR-008 | registry install validation | `python3 scripts/governance/skill-bundle-registry.py install --help` |
 | PAR-010 | 4 | External benchmark pack integration | QA/ML | PAR-004 | benchmark adapter + docs | `./scripts/automation/run-harness-regression-gate.sh` |
 | PAR-011 | 4 | Score trend publication | QA | PAR-010 | CI artifact/report | CI artifact inspection |
 | PAR-012 | 5 | Staged rollout and rollback drill | Platform/Ops | PAR-004, PAR-007, PAR-009 | runbook + release evidence | `./scripts/testing/check-boot-shutdown-integration.sh` |
@@ -322,7 +322,7 @@ Purpose:
 Artifacts:
 - `data/github-semantic-keyword-repos-2026-03-03.json`
 - `data/github-semantic-keyword-repos-2026-03-03.md`
-- `scripts/semantic-rank-repo-corpus.py`
+- `scripts/data/semantic-rank-repo-corpus.py` (root shim retained at `scripts/semantic-rank-repo-corpus.py`)
 
 Method:
 - Source corpus: `data/github-keyword-repos-2026-03-03.json` (broad keyword crawl).
