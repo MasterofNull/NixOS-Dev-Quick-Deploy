@@ -15,6 +15,10 @@ jobs:
         run: |
           chmod +x scripts/governance/repo-structure-lint.sh
           ./scripts/governance/repo-structure-lint.sh --all
+      - name: Enforce root script shim-only policy
+        run: |
+          chmod +x scripts/governance/check-root-script-shim-only.sh
+          ./scripts/governance/check-root-script-shim-only.sh
 
   flake-first-roadmap-verifier:
     runs-on: ubuntu-latest
@@ -23,7 +27,7 @@ jobs:
 
       - name: Syntax checks for deploy entrypoints and verifier
         run: |
-          bash -n nixos-quick-deploy.sh scripts/deploy-clean.sh scripts/governance/analyze-clean-deploy-readiness.sh scripts/testing/verify-flake-first-roadmap-completion.sh
+          bash -n nixos-quick-deploy.sh scripts/deploy/deploy-clean.sh scripts/governance/analyze-clean-deploy-readiness.sh scripts/testing/verify-flake-first-roadmap-completion.sh
 
       - name: Verify flake-first roadmap completion markers
         run: ./scripts/testing/verify-flake-first-roadmap-completion.sh

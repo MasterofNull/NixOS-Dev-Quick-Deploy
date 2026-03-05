@@ -301,7 +301,7 @@ if (( FAIL_COUNT > 0 )); then
   2) If facts file is unreadable:
      sudo chown "$USER:$(id -gn)" nix/hosts/<host>/facts.nix && sudo chmod 0644 nix/hosts/<host>/facts.nix
   3) Re-run analysis:
-     ./scripts/deploy-clean.sh --host <host> --profile <profile> --analyze-only
+     ./scripts/deploy/deploy-clean.sh --host <host> --profile <profile> --analyze-only
 REMEDIATION
   exit 1
 fi

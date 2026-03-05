@@ -30,7 +30,7 @@
 5. Prefer declarative implementation through Nix options/modules before script/runtime fallback.
 6. Complete verification before handoff:
    - `scripts/testing/check-mcp-health.sh`
-   - `scripts/quick-deploy-lint.sh --mode fast`
+   - `scripts/governance/quick-deploy-lint.sh --mode fast`
    - `scripts/testing/validate-runtime-declarative.sh`
    - `scripts/testing/check-prsi-phase7-program.sh`
    - `scripts/ai/aq-report --since=7d --format=text`
@@ -616,7 +616,7 @@ pytest tests/ || npm test || ./scripts/test.sh
 
 ## 8. Available Tools & Resources
 
-> **Note:** This section should be customized per project. See [AVAILABLE_TOOLS.md](docs/AVAILABLE_TOOLS.md) for the current project's tool inventory.
+> **Note:** This section should be customized per project. See [SKILLS-AND-MCP-INVENTORY.md](SKILLS-AND-MCP-INVENTORY.md) for the current project's tool inventory.
 
 ### Standard CLI Tools
 
@@ -664,7 +664,7 @@ Look for:
    - [ ] Review: Database schema (if applicable)
 
 3. **Set Up Your Environment (15 minutes)**
-   - [ ] Check available tools: [AVAILABLE_TOOLS.md](docs/AVAILABLE_TOOLS.md)
+   - [ ] Check available tools: [SKILLS-AND-MCP-INVENTORY.md](SKILLS-AND-MCP-INVENTORY.md)
    - [ ] Review MCP servers (if any): `.mcp/` directory
    - [ ] Test basic commands: `make help` or `npm run`
 
@@ -726,10 +726,10 @@ your-project/
 
 ### Included in This Package:
 
-- [AVAILABLE_TOOLS.md](docs/AVAILABLE_TOOLS.md) - Complete tool inventory
-- [MCP_SERVERS.md](docs/MCP_SERVERS.md) - MCP server documentation
-- [CODE_EXAMPLES.md](examples/CODE_EXAMPLES.md) - Common patterns
-- [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Common issues
+- [SKILLS-AND-MCP-INVENTORY.md](SKILLS-AND-MCP-INVENTORY.md) - Complete tool inventory
+- [MCP_SETUP.md](MCP_SETUP.md) - MCP setup documentation
+- [CODE_EXAMPLES.md](CODE_EXAMPLES.md) - Common patterns
+- [agent-guides/12-DEBUGGING.md](agent-guides/12-DEBUGGING.md) - Common issues
 
 ### External Resources:
 

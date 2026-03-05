@@ -18,15 +18,29 @@ git config core.hooksPath .githooks
 
 ### pre-commit
 
-Validates shell scripts before committing:
+Runs fast commit-time governance and safety checks:
 
-- ✅ Checks color-variable `echo` commands missing `-e` flag (without false positives on normal `${VAR}` usage)
-- ✅ Prevents commits with formatting issues
-- ✅ Fast - only checks staged files
+- ✅ Secret pattern scan on staged content
+- ✅ Bash/Python/Nix syntax checks on staged files
+- ✅ Repository structure policy (`--staged`)
+- ✅ Shell color-echo lint on staged files
+- ✅ Migration governance checks (allowlist/root/artifact hygiene, doc links/metadata/path migration, shim consistency, archive/deprecated guards)
 
 **Skip if needed** (not recommended):
 ```bash
 git commit --no-verify
+```
+
+### pre-push
+
+Runs repository quick lint before push:
+
+- ✅ Executes `./scripts/governance/quick-deploy-lint.sh --mode fast`
+- ✅ Blocks push on governance/runtime lint regressions
+
+Emergency bypass (not recommended):
+```bash
+SKIP_PRE_PUSH_LINT=true git push
 ```
 
 ## Automatic Fixes
@@ -34,7 +48,7 @@ git commit --no-verify
 If the pre-commit hook finds issues, fix them automatically:
 
 ```bash
-./scripts/lint-color-echo-usage.sh --staged
+./scripts/governance/lint-color-echo-usage.sh --staged
 ```
 
 Then stage the changes and commit again:
@@ -49,7 +63,8 @@ git commit
 Check all scripts without committing:
 
 ```bash
-./scripts/lint-color-echo-usage.sh
+./scripts/governance/lint-color-echo-usage.sh
+./scripts/governance/quick-deploy-lint.sh --mode fast
 ```
 
 ## Why These Checks?

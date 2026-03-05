@@ -1,0 +1,25 @@
+# Paths that should never be auto-archived by trim-stale-assets.sh.
+# Use exact file paths or directory prefixes ending in "/".
+
+# Core orchestrators and policy docs.
+AGENTS.md
+CLAUDE.md
+README.md
+flake.nix
+flake.lock
+nixos-quick-deploy.sh
+
+# Governance and validation policy surface.
+config/repo-structure-allowlist.txt
+docs/operations/REPO-STRUCTURE-POLICY.md
+docs/operations/QUICK-DEPLOY-REFERENCE-TREE.md
+docs/operations/STALE-ASSET-TRIM-REPORT.md
+docs/development/SYSTEM-UPGRADE-ROADMAP.md
+docs/development/SYSTEM-UPGRADE-ROADMAP-UPDATES.md
+docs/SYSTEM-IMPROVEMENT-PLAN-2026-03.md
+
+# Keep governance tools that maintain cleanup behavior.
+scripts/governance/build-quick-deploy-reference-tree.sh
+scripts/governance/trim-stale-assets.sh
+scripts/governance/repo-structure-lint.sh
+scripts/quick-deploy-lint.sh

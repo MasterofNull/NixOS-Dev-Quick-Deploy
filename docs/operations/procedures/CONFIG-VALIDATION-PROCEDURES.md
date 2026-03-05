@@ -1,4 +1,8 @@
 # Configuration Validation Procedures
+Status: Active
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 
 ## Primary Validators
 
@@ -12,7 +16,7 @@ scripts/testing/validate-config-settings.sh
 ```
 - Quick deploy lint bundle:
 ```bash
-scripts/quick-deploy-lint.sh --mode fast
+scripts/governance/quick-deploy-lint.sh --mode fast
 ```
 
 ## Validation During Deployment

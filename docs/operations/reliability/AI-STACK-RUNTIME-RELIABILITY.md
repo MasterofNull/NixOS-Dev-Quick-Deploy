@@ -1,4 +1,8 @@
 # AI Stack Runtime Reliability
+Status: Active
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 
 ## Scope
 
@@ -83,7 +87,7 @@ scripts/testing/check-mcp-health.sh
 
 ### Recommended post-deploy verification
 ```bash
-scripts/quick-deploy-lint.sh --mode fast
+scripts/governance/quick-deploy-lint.sh --mode fast
 scripts/testing/validate-runtime-declarative.sh
 scripts/testing/check-prsi-phase7-program.sh
 ```

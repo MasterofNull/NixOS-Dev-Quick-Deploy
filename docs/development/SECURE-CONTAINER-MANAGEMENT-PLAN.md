@@ -1,4 +1,8 @@
 # Secure Container Management Architecture
+
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 ## Fixing P0 Security Issues While Keeping Functionality
 
 **Date:** January 23, 2026

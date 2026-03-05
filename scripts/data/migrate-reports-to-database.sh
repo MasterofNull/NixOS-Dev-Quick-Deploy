@@ -118,7 +118,7 @@ if [ $migrated_count -gt 0 ]; then
     echo "  psql -h localhost -U mcp -d mcp -c \"SELECT id, title, report_type, created_at FROM deployment_reports ORDER BY created_at DESC LIMIT 10;\""
     echo ""
     echo "To delete migrated files (AFTER verifying database):"
-    echo "  Run: ./scripts/cleanup-migrated-reports.sh"
+    echo "  Run: ./scripts/data/cleanup-migrated-reports.sh"
     echo ""
 fi
 

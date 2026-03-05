@@ -236,7 +236,7 @@ run_phase_1() {
 # ---------------------------------------------------------------------------
 run_phase_stub() {
   local phase="$1"
-  _skip "P${phase}" "Phase ${phase} automated runner" "see AI-STACK-QA-PLAN.md §Phase ${phase} — run manually"
+  _skip "P${phase}" "Phase ${phase} automated runner" "see docs/archive/root-docs/AI-STACK-QA-PLAN.md §Phase ${phase} — run manually"
 }
 
 # ---------------------------------------------------------------------------

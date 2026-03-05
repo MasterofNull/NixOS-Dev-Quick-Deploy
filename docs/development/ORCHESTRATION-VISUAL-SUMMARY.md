@@ -1,4 +1,9 @@
 # AI Stack Orchestration - Visual Summary
+
+Status: Active
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 **Quick Reference Guide**
 
 ---

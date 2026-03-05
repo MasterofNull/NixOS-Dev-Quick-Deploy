@@ -342,7 +342,7 @@ Step 10: Importing federated learning data
 
 ### Cron Jobs (Recommended)
 
-Use templates from [scripts/cron-templates.sh](../../scripts/cron-templates.sh):
+Use templates from [scripts/automation/cron-templates.sh](../../scripts/automation/cron-templates.sh):
 
 ```bash
 crontab -e
@@ -377,7 +377,7 @@ crontab -e
 
 ### Systemd Timers (Advanced)
 
-See [scripts/cron-templates.sh](../../scripts/cron-templates.sh) for systemd unit file examples.
+See [scripts/automation/cron-templates.sh](../../scripts/automation/cron-templates.sh) for systemd unit file examples.
 
 ---
 
@@ -793,12 +793,12 @@ git remote -v
 
 ## Related Documentation
 
-- [FEDERATED-DATA-STRATEGY.md](../../FEDERATED-DATA-STRATEGY.md) - Architecture decisions
+- [FEDERATED-DATA-STRATEGY.md](../FEDERATED-DATA-STRATEGY.md) - Architecture decisions
 - [22-CONTINUOUS-LEARNING.md](22-CONTINUOUS-LEARNING.md) - Value scoring algorithm
 - [40-HYBRID-WORKFLOW.md](40-HYBRID-WORKFLOW.md) - Pattern extraction workflow
 - [41-VALUE-SCORING.md](41-VALUE-SCORING.md) - How patterns are valued
 - [42-PATTERN-EXTRACTION.md](42-PATTERN-EXTRACTION.md) - Pattern extraction details
-- [scripts/cron-templates.sh](../../scripts/cron-templates.sh) - Automation examples
+- [scripts/automation/cron-templates.sh](../../scripts/automation/cron-templates.sh) - Automation examples
 
 ---
 

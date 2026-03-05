@@ -1,3 +1,603 @@
+# System Upgrade Roadmap Updates
+
+Status: Active
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
+## Repo Hygiene Pass (2026-03-05): Root Crash Artifact Elimination
+
+### RH.H1 Remove tracked root crash dumps and prevent reintroduction
+
+**Changes Applied:**
+- [x] Removed tracked root core dump artifact (`core`) from repository history-in-flight.
+- [x] Added ignore guardrails for crash dump artifacts in `.gitignore`:
+  - `core`
+  - `core.*`
+- [x] Updated repository structure policy to explicitly disallow runtime crash artifacts at repo root.
+
+**Validation:**
+- `git ls-files | rg '^core$'` → PASS (no tracked root `core` file)
+- `scripts/governance/repo-structure-lint.sh --all` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Generated Report Artifact Hygiene
+
+### RH.H2 Remove tracked generated report/temp artifacts from repository root paths
+
+**Changes Applied:**
+- [x] Removed tracked generated files from active repo state:
+  - `output.txt`
+  - `reports/flake-validation-report.json`
+  - `reports/flake-validation-report.md`
+- [x] Updated `.gitignore` to ignore root `reports/` output directory (`/reports/`) alongside `.reports/`.
+- [x] Aligned CI flake-validation output/upload paths to `.reports/` in `.github/workflows/test.yml`.
+- [x] Aligned flake management docs to `.reports/` artifact paths.
+
+**Validation:**
+- `git ls-files reports output.txt` → PASS (no tracked generated report/temp artifacts)
+- `scripts/governance/repo-structure-lint.sh --all` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Allowlist Integrity Normalization
+
+### RH.H3 Normalize repo-structure allowlist to active paths only
+
+**Changes Applied:**
+- [x] Added `scripts/governance/normalize-repo-allowlist.sh` to normalize `config/repo-structure-allowlist.txt`.
+- [x] Normalizer behavior:
+  - removes missing/stale entries,
+  - removes duplicate entries while preserving first-seen order,
+  - preserves comments/section headers.
+- [x] Applied normalization to `config/repo-structure-allowlist.txt`:
+  - removed stale legacy entries and malformed path residue,
+  - removed duplicate `.claude.md` entry.
+
+**Validation:**
+- `bash -n scripts/governance/normalize-repo-allowlist.sh` → PASS
+- normalizer execution: `kept=376 dropped_missing=45 dropped_duplicate=1`
+- allowlist integrity check (`missing=0`, `dups=0`) → PASS
+- `scripts/governance/repo-structure-lint.sh --all` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Allowlist Drift Gate Enforcement
+
+### RH.H4 Add non-mutating allowlist integrity gate to lint + CI
+
+**Changes Applied:**
+- [x] Added non-mutating checker:
+  - `scripts/governance/check-repo-allowlist-integrity.sh`
+  - fails on duplicate entries or entries pointing to missing paths.
+- [x] Wired checker into local deploy lint flow:
+  - `scripts/governance/quick-deploy-lint.sh --mode fast|full` now includes `Repo allowlist integrity`.
+  - updated step totals accordingly.
+- [x] Wired checker into CI:
+  - `.github/workflows/test.yml` `repo-structure-lint` job now runs allowlist integrity gate after structure policy lint.
+
+**Validation:**
+- `bash -n scripts/governance/check-repo-allowlist-integrity.sh scripts/governance/quick-deploy-lint.sh` → PASS
+- `scripts/governance/check-repo-allowlist-integrity.sh` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Root Transient Dotfile Cleanup
+
+### RH.H5 Remove tracked editor/runtime dotfile artifacts from root
+
+**Changes Applied:**
+- [x] Removed tracked transient root artifact:
+  - `.nvimlog`
+- [x] Added gitignore guardrail to prevent reintroduction:
+  - `.nvimlog`
+
+**Validation:**
+- `git ls-files | rg '^\\.nvimlog$'` → PASS (no tracked `.nvimlog`)
+- `scripts/governance/repo-structure-lint.sh --all` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Transient Dotfile Lint Enforcement
+
+### RH.H6 Block transient dotfiles in repo-structure policy gate
+
+**Changes Applied:**
+- [x] Extended `scripts/governance/repo-structure-lint.sh` with explicit rule for transient dotfiles:
+  - `.nvimlog`
+  - `.python_history`
+- [x] Updated `docs/operations/REPO-STRUCTURE-POLICY.md` root policy section to document this block.
+
+**Validation:**
+- `bash -n scripts/governance/repo-structure-lint.sh` → PASS
+- `scripts/governance/repo-structure-lint.sh --all` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Roadmap Update Doc Label Consistency
+
+### RH.H7 Add canonical H1 title to roadmap update ledger
+
+**Changes Applied:**
+- [x] Added missing document H1 heading to this file:
+  - `# System Upgrade Roadmap Updates`
+- [x] Preserved existing metadata block (`Status/Owner/Last Updated`) immediately below H1.
+
+**Validation:**
+- `scripts/governance/check-doc-links.sh --active` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Legacy Root Script Reference Rewrites
+
+### RH.H8 Rewrite active docs to structured script paths
+
+**Changes Applied:**
+- [x] Updated active dashboard docs away from legacy root launcher references:
+  - `docs/DASHBOARD-DEPLOYMENT-INTEGRATION.md` now links to `/scripts/deploy/launch-dashboard.sh`.
+  - `docs/DASHBOARD-V2-UPGRADE.md` rollback note now references `scripts/deploy/launch-dashboard.sh`.
+
+**Validation:**
+- `scripts/governance/check-doc-links.sh --active` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Roadmap Script Path Normalization
+
+### RH.H9 Rewrite remaining roadmap script references to structured path
+
+**Changes Applied:**
+- [x] Updated `docs/development/SYSTEM-UPGRADE-ROADMAP.md` section 11.8 references:
+  - `launch-dashboard.sh` → `scripts/deploy/launch-dashboard.sh` (task + acceptance criteria text)
+
+**Validation:**
+- `scripts/governance/check-doc-links.sh --active` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Script Shim Consistency Enforcement
+
+### RH.H10 Enforce underscore->kebab shim forwarding contracts
+
+**Changes Applied:**
+- [x] Added governance checker:
+  - `scripts/governance/check-script-shim-consistency.sh`
+  - validates that underscore-named scripts have a kebab-case peer target and forward correctly.
+- [x] Wired checker into local fast/full lint:
+  - `scripts/governance/quick-deploy-lint.sh` step: `Script shim consistency`.
+- [x] Wired checker into CI:
+  - `.github/workflows/test.yml` (`repo-structure-lint` job) now runs script-shim consistency gate.
+
+**Validation:**
+- `bash -n scripts/governance/check-script-shim-consistency.sh scripts/governance/quick-deploy-lint.sh` → PASS
+- `scripts/governance/check-script-shim-consistency.sh` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Active Doc Link Gate Enforcement
+
+### RH.H11 Add documentation link integrity to migration lint/CI contract
+
+**Changes Applied:**
+- [x] Added `Active doc link integrity` step to `scripts/governance/quick-deploy-lint.sh`:
+  - runs `scripts/governance/check-doc-links.sh --active`.
+- [x] Added CI governance step in `.github/workflows/test.yml`:
+  - `Enforce active documentation link integrity`.
+
+**Validation:**
+- `scripts/governance/check-doc-links.sh --active` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Root File Hygiene Gate
+
+### RH.H12 Enforce explicit tracked root file allowlist
+
+**Changes Applied:**
+- [x] Added explicit root-file allowlist:
+  - `config/root-file-allowlist.txt`
+- [x] Added checker:
+  - `scripts/governance/check-root-file-hygiene.sh`
+  - validates tracked existing root files exactly match allowlist.
+- [x] Wired checker into local lint:
+  - `scripts/governance/quick-deploy-lint.sh` step `Root file hygiene`.
+- [x] Wired checker into CI repo governance job:
+  - `.github/workflows/test.yml` step `Enforce root file hygiene`.
+- [x] Updated repo structure policy enforcement section to include root-file hygiene gate.
+
+**Validation:**
+- `scripts/governance/check-root-file-hygiene.sh` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Doc Script-Path Migration Gate
+
+### RH.H13 Enforce migrated script path usage in active docs
+
+**Changes Applied:**
+- [x] Added migration policy source:
+  - `config/legacy-root-script-aliases.txt`
+- [x] Added checker:
+  - `scripts/governance/check-doc-script-path-migration.sh`
+  - fails if active docs reference retired root script names.
+  - fails if active docs link to underscore script paths when kebab canonical exists.
+- [x] Wired checker into local lint and CI:
+  - `scripts/governance/quick-deploy-lint.sh` step `Doc script-path migration`
+  - `.github/workflows/test.yml` step `Enforce doc script-path migration policy`
+- [x] Updated repo structure policy enforcement notes to include this gate.
+
+**Validation:**
+- `scripts/governance/check-doc-script-path-migration.sh` → PASS
+- `scripts/governance/check-doc-links.sh --active` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Doc Metadata Standards Gate
+
+### RH.H14 Enforce required metadata in active operations/development docs
+
+**Changes Applied:**
+- [x] Added checker:
+  - `scripts/governance/check-doc-metadata-standards.sh`
+  - enforces `Status`, `Owner`, and `Last Updated/Updated` within top section of active docs:
+    - `docs/operations/**`
+    - `docs/development/**`
+- [x] Wired checker into local lint:
+  - `scripts/governance/quick-deploy-lint.sh` step `Doc metadata standards`.
+- [x] Wired checker into CI governance job:
+  - `.github/workflows/test.yml` step `Enforce documentation metadata standards`.
+- [x] Updated repo structure policy enforcement section to include metadata standards gate.
+
+**Validation:**
+- `scripts/governance/check-doc-metadata-standards.sh` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Governance Report Churn Reduction
+
+### RH.H15 Make naming/label audit non-mutating by default
+
+**Changes Applied:**
+- [x] Refactored `scripts/governance/check-naming-label-consistency.sh`:
+  - default output now writes to `.reports/naming-label-consistency-report.md` (non-tracked runtime artifact).
+  - added `--publish-doc` mode for intentional updates to:
+    - `docs/operations/NAMING-LABEL-CONSISTENCY-REPORT-2026-03-05.md`
+  - added `--out-file` override and `--help`.
+- [x] Updated `docs/operations/NAMING-LABEL-CONVENTIONS.md` to document default non-mutating report behavior.
+
+**Validation:**
+- `scripts/governance/check-naming-label-consistency.sh` → PASS (writes `.reports/...`)
+- `scripts/governance/check-naming-label-consistency.sh --publish-doc` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Script Header Standards Local Gate
+
+### RH.H16 Enforce script header standards during local migration lint
+
+**Changes Applied:**
+- [x] Added `Script header standards` step to `scripts/governance/quick-deploy-lint.sh`:
+  - runs `scripts/governance/check-script-header-standards.sh --all`
+- [x] Updated `docs/operations/REPO-STRUCTURE-POLICY.md` enforcement section:
+  - CI note: changed-script header gate
+  - local lint note: full `--all` header standards check
+
+**Validation:**
+- `scripts/governance/check-script-header-standards.sh --all` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Naming/Label Audit Gate Integration
+
+### RH.H17 Enforce naming/label consistency audit in local lint + CI
+
+**Changes Applied:**
+- [x] Added `Naming/label consistency audit` step to `scripts/governance/quick-deploy-lint.sh`:
+  - runs `scripts/governance/check-naming-label-consistency.sh` (non-mutating default output to `.reports/`).
+- [x] Added CI governance step in `.github/workflows/test.yml`:
+  - `Run naming/label consistency audit`.
+- [x] Updated `docs/operations/REPO-STRUCTURE-POLICY.md` enforcement list to include this gate.
+
+**Validation:**
+- `scripts/governance/check-naming-label-consistency.sh` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Archive Path Consistency Gate
+
+### RH.H18 Enforce canonical deprecated archive path tokens
+
+**Changes Applied:**
+- [x] Corrected stale path tokens to canonical archive path:
+  - `scripts/governance/generate-repo-cleanup-inventory.sh`: suggested script target now `archive/deprecated/scripts/<name>`.
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv` and `PASS2.csv`: `scripts/archive/deprecated/...` → `archive/deprecated/scripts/...`.
+  - `docs/development/SYSTEM-UPGRADE-ROADMAP.md`: fixed `archive/archive/deprecated` typo.
+- [x] Added checker:
+  - `scripts/governance/check-archive-path-consistency.sh`
+  - fails if stale tokens `scripts/archive/deprecated` or `archive/archive/deprecated` appear in active docs/scripts/config/CI.
+- [x] Wired checker into local lint and CI:
+  - `scripts/governance/quick-deploy-lint.sh` step `Archive path consistency`
+  - `.github/workflows/test.yml` step `Enforce archive path consistency`
+- [x] Updated `docs/operations/REPO-STRUCTURE-POLICY.md` enforcement list to include this gate.
+
+**Validation:**
+- `scripts/governance/check-archive-path-consistency.sh` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Legacy Deprecated-Root Guard
+
+### RH.H19 Block live files under legacy `deprecated/` root path
+
+**Changes Applied:**
+- [x] Added checker:
+  - `scripts/governance/check-legacy-deprecated-root.sh`
+  - fails if any live file exists under `deprecated/`.
+- [x] Wired checker into local lint and CI:
+  - `scripts/governance/quick-deploy-lint.sh` step `Legacy deprecated-root guard`
+  - `.github/workflows/test.yml` step `Enforce legacy deprecated-root guard`
+- [x] Updated repo structure policy enforcement list to include this gate.
+
+**Validation:**
+- `scripts/governance/check-legacy-deprecated-root.sh` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Pre-Commit Governance Parity
+
+### RH.H20 Align pre-commit checks with migration governance gates
+
+**Changes Applied:**
+- [x] Updated `.githooks/pre-commit`:
+  - fixed shell color lint script path to `scripts/governance/lint-color-echo-usage.sh`.
+  - added `run_migration_governance_checks()` covering:
+    - `check-root-file-hygiene.sh`
+    - `check-doc-links.sh --active`
+    - `check-doc-metadata-standards.sh`
+    - `check-doc-script-path-migration.sh`
+    - `check-script-shim-consistency.sh`
+    - `check-archive-path-consistency.sh`
+    - `check-legacy-deprecated-root.sh`
+- [x] Updated `.githooks/README.md` to reflect current pre-commit behavior and corrected lint script paths.
+
+**Validation:**
+- `.githooks/pre-commit` execution (no staged changes) → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Generated Artifact Hygiene Gate
+
+### RH.H21 Block tracked runtime report/temp artifacts
+
+**Changes Applied:**
+- [x] Added checker:
+  - `scripts/governance/check-generated-artifact-hygiene.sh`
+  - fails on tracked generated/temp artifact paths:
+    - `.reports/**`
+    - `reports/**`
+    - `output.txt`
+    - `file.tmp`
+    - `*.tmp` (outside `docs/archive/**`)
+- [x] Wired checker into local lint and CI:
+  - `scripts/governance/quick-deploy-lint.sh` step `Generated artifact hygiene`
+  - `.github/workflows/test.yml` step `Enforce generated artifact hygiene`
+- [x] Updated repo structure policy enforcement list to include generated artifact hygiene gate.
+
+**Validation:**
+- `scripts/governance/check-generated-artifact-hygiene.sh` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Pre-Commit Governance Completion
+
+### RH.H22 Include allowlist + artifact hygiene gates in pre-commit migration checks
+
+**Changes Applied:**
+- [x] Updated `.githooks/pre-commit` `run_migration_governance_checks()` list to include:
+  - `scripts/governance/check-repo-allowlist-integrity.sh`
+  - `scripts/governance/check-generated-artifact-hygiene.sh`
+- [x] Updated `.githooks/README.md` pre-commit summary to reflect allowlist/artifact hygiene coverage.
+
+**Validation:**
+- `.githooks/pre-commit` execution (no staged changes) → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Pre-Push Quick Lint Gate
+
+### RH.H23 Add repository-managed pre-push gate for fast lint verification
+
+**Changes Applied:**
+- [x] Added `.githooks/pre-push`:
+  - runs `./scripts/governance/quick-deploy-lint.sh --mode fast` before push.
+  - supports emergency escape hatch: `SKIP_PRE_PUSH_LINT=true`.
+- [x] Updated `.githooks/README.md` with:
+  - pre-push behavior
+  - bypass guidance
+  - manual validation command including quick lint.
+
+**Validation:**
+- `bash -n .githooks/pre-push` → PASS
+- `.githooks/pre-push` execution → PASS
+
+## Repo Hygiene Pass (2026-03-05): Deprecated Docs Canonical Location
+
+### RH.H24 Enforce single canonical location for deprecated markdown docs
+
+**Changes Applied:**
+- [x] Removed duplicate deprecated markdown copies from:
+  - `archive/deprecated/docs/*`
+- [x] Kept canonical deprecated docs under:
+  - `docs/archive/deprecated/*`
+- [x] Added checker:
+  - `scripts/governance/check-deprecated-docs-location.sh`
+  - fails if markdown docs appear under `archive/deprecated/docs/`.
+- [x] Wired checker into local lint + CI + policy docs:
+  - `scripts/governance/quick-deploy-lint.sh` step `Deprecated docs location`
+  - `.github/workflows/test.yml` step `Enforce deprecated docs canonical location`
+  - `docs/operations/REPO-STRUCTURE-POLICY.md` enforcement list
+
+**Validation:**
+- `scripts/governance/check-deprecated-docs-location.sh` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Root AI/Data Script Canonicalization
+
+### RH.H25 Migrate remaining root AI/data utilities to `scripts/data/*` canonicals with shims
+
+**Changes Applied:**
+- [x] Moved ingestion implementation to canonical subject path:
+  - `scripts/archive-project-knowledge.sh` → `scripts/data/archive-project-knowledge.sh`
+- [x] Added root compatibility shim:
+  - `scripts/archive-project-knowledge.sh` now forwards to `scripts/data/archive-project-knowledge.sh`
+- [x] Fixed post-move runtime regression in ingestion script:
+  - corrected `SCRIPT_DIR` to repository root from nested `scripts/data/`.
+- [x] Updated canonical usage references:
+  - `scripts/data/archive-project-knowledge.sh` usage/help text now points to canonical path.
+  - `scripts/data/sync-docs-to-ai.sh` usage text now points to canonical path.
+- [x] Updated roadmap/inventory docs to canonical script targets:
+  - `SYSTEM-UPGRADE-ROADMAP.md` (`29.3.2`, `AI-ISSUE-005`, `13.1` context) now references canonical data paths.
+  - `REPO-CLEANUP-INVENTORY-PASS1.csv` and `PASS2.csv` rows for archive/rag/sync scripts now target canonical `scripts/data/*` paths.
+- [x] Fixed cleanup-inventory generator root cause:
+  - `scripts/governance/generate-repo-cleanup-inventory.sh` now auto-detects canonical `scripts/<domain>/...` peers before falling back to archive targets.
+
+**Validation:**
+- `bash -n scripts/archive-project-knowledge.sh scripts/data/archive-project-knowledge.sh scripts/data/sync-docs-to-ai.sh scripts/governance/generate-repo-cleanup-inventory.sh` → PASS
+- `scripts/governance/check-doc-links.sh --active` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Semantic Ranking Utility Migration
+
+### RH.H26 Canonicalize semantic-ranking utility under `scripts/data/` with root shim compatibility
+
+**Changes Applied:**
+- [x] Moved utility implementation:
+  - `scripts/semantic-rank-repo-corpus.py` → `scripts/data/semantic-rank-repo-corpus.py`
+- [x] Added compatibility shim at original root-script path:
+  - `scripts/semantic-rank-repo-corpus.py` now forwards to `scripts/data/semantic-rank-repo-corpus.py`
+- [x] Updated active references/inventory tracking:
+  - `docs/AGENT-PARITY-MATRIX.md`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `python3 -m py_compile scripts/semantic-rank-repo-corpus.py scripts/data/semantic-rank-repo-corpus.py` → PASS
+- `scripts/governance/check-doc-links.sh --active` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Observability Collector Canonicalization
+
+### RH.H27 Move deprecated AI metrics collector to `scripts/observability/` and preserve compatibility shim
+
+**Changes Applied:**
+- [x] Moved deprecated metrics collector implementation:
+  - `scripts/collect-ai-metrics.sh` → `scripts/observability/collect-ai-metrics.sh`
+- [x] Added root compatibility shim:
+  - `scripts/collect-ai-metrics.sh` now forwards to `scripts/observability/collect-ai-metrics.sh`
+- [x] Rewrote active-doc command references to canonical path in:
+  - `docs/PROGRESSIVE-DISCLOSURE-GUIDE.md`
+  - `docs/AI-AGENT-PROGRESSIVE-DISCLOSURE-README.md`
+  - `docs/operations/reference/DASHBOARD-READY.md`
+  - `docs/development/SYSTEM-UPGRADE-ROADMAP.md`
+- [x] Updated cleanup inventory target rows to canonical path in:
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `bash -n scripts/collect-ai-metrics.sh scripts/observability/collect-ai-metrics.sh` → PASS
+- `scripts/governance/check-doc-links.sh --active` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Automation Template Script Canonicalization
+
+### RH.H28 Move deprecated cron-template helper to `scripts/automation/` and preserve compatibility shim
+
+**Changes Applied:**
+- [x] Moved deprecated template helper implementation:
+  - `scripts/cron-templates.sh` → `scripts/automation/cron-templates.sh`
+- [x] Added root compatibility shim:
+  - `scripts/cron-templates.sh` now forwards to `scripts/automation/cron-templates.sh`
+- [x] Rewrote active-doc links/commands to canonical path in:
+  - `docs/FEDERATED-DEPLOYMENT-GUIDE.md`
+  - `docs/agent-guides/43-FEDERATED-DEPLOYMENT.md`
+  - `docs/development/SYSTEM-UPGRADE-ROADMAP.md`
+- [x] Updated cleanup inventory target rows to canonical path in:
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `bash -n scripts/cron-templates.sh scripts/automation/cron-templates.sh` → PASS
+- `scripts/governance/check-doc-links.sh --active` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Installed-vs-Intended Checker Canonicalization
+
+### RH.H29 Move package-state comparison checker to `scripts/testing/` and preserve compatibility shim
+
+**Changes Applied:**
+- [x] Moved operational checker implementation:
+  - `scripts/compare-installed-vs-intended.sh` → `scripts/testing/compare-installed-vs-intended.sh`
+- [x] Added root compatibility shim:
+  - `scripts/compare-installed-vs-intended.sh` now forwards to `scripts/testing/compare-installed-vs-intended.sh`
+- [x] Fixed post-move path resolution:
+  - adjusted `REPO_ROOT` derivation for nested `scripts/testing/` location.
+- [x] Updated active references to canonical path in:
+  - `docs/operations/QUICK-DEPLOY-REFERENCE-TREE.md`
+  - `docs/development/FLAKE-FIRST-DECLARATIVE-MIGRATION-CHECKLIST-2026-02-24.md`
+  - `docs/development/SYSTEM-UPGRADE-ROADMAP-UPDATES.md`
+  - `scripts/governance/trim-stale-assets.sh`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `bash -n scripts/compare-installed-vs-intended.sh scripts/testing/compare-installed-vs-intended.sh` → PASS
+- `scripts/governance/check-doc-links.sh --active` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Secrets Repair Utility Canonicalization
+
+### RH.H30 Move secrets-encryption repair utility to `scripts/security/` and preserve compatibility shim
+
+**Changes Applied:**
+- [x] Moved secrets repair utility implementation:
+  - `scripts/fix-secrets-encryption.sh` → `scripts/security/fix-secrets-encryption.sh`
+- [x] Added root compatibility shim:
+  - `scripts/fix-secrets-encryption.sh` now forwards to `scripts/security/fix-secrets-encryption.sh`
+- [x] Fixed post-move path resolution:
+  - adjusted `SCRIPT_DIR` derivation for nested `scripts/security/` location.
+- [x] Updated usage text in canonical script to new path.
+- [x] Updated cleanup inventory target rows to canonical path in:
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `bash -n scripts/fix-secrets-encryption.sh scripts/security/fix-secrets-encryption.sh` → PASS
+- `scripts/governance/check-doc-links.sh --active` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Deprecated Podman/Package Utility Canonicalization
+
+### RH.H31 Move deprecated root podman/package scripts to domain folders and preserve compatibility shims
+
+**Changes Applied:**
+- [x] Moved deprecated podman helper:
+  - `scripts/configure-podman-tcp.sh` → `scripts/deploy/configure-podman-tcp.sh`
+- [x] Moved deprecated package inventory helpers:
+  - `scripts/count-packages-accurately.sh` → `scripts/governance/count-packages-accurately.sh`
+  - `scripts/count-packages-simple.sh` → `scripts/governance/count-packages-simple.sh`
+- [x] Added root compatibility shims for all three original root paths.
+- [x] Updated active roadmap references to canonical script paths in:
+  - `docs/development/SYSTEM-UPGRADE-ROADMAP.md`
+- [x] Updated cleanup inventory target rows to canonical script paths in:
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `bash -n scripts/configure-podman-tcp.sh scripts/deploy/configure-podman-tcp.sh scripts/count-packages-accurately.sh scripts/governance/count-packages-accurately.sh scripts/count-packages-simple.sh scripts/governance/count-packages-simple.sh` → PASS
+- `scripts/governance/check-doc-links.sh --active` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Security/Health Script Canonicalization
+
+### RH.H32 Move firewall and fs-integrity scripts to domain folders and preserve compatibility shims
+
+**Changes Applied:**
+- [x] Moved security audit helper:
+  - `scripts/firewall-audit.sh` → `scripts/security/firewall-audit.sh`
+- [x] Moved filesystem integrity checker:
+  - `scripts/fs-integrity-check.sh` → `scripts/health/fs-integrity-check.sh`
+- [x] Added root compatibility shims for both original root paths.
+- [x] Added purpose header comment in canonical `scripts/health/fs-integrity-check.sh` for lint standards.
+- [x] Updated active references to canonical fs-integrity path in:
+  - `docs/BOOT-FS-RESILIENCE-GUARDRAILS.md`
+  - `docs/development/SYSTEM-UPGRADE-ROADMAP-UPDATES.md`
+- [x] Updated cleanup inventory target rows to canonical script paths in:
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `bash -n scripts/firewall-audit.sh scripts/security/firewall-audit.sh scripts/fs-integrity-check.sh scripts/health/fs-integrity-check.sh` → PASS
+- `scripts/governance/check-doc-links.sh --active` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
 ## Phase 37 Update (2026-02-24): Declarative AI Stack Compliance Gates + Execution Start
 
 ### 37.H1 Add strict verifier guardrails for centralized ports and OTEL noise regressions
@@ -355,17 +955,17 @@
 - [x] Added static-analysis toolchain to template flake dev shell:
   - `templates/flake.nix` now includes `devShells.${system}.default` with `statix`, `deadnix`, `alejandra`.
 - [x] Added reusable lint runner:
-  - `scripts/nix-static-analysis.sh` (strict and `--non-blocking` modes).
+  - `scripts/governance/nix-static-analysis.sh` (strict and `--non-blocking` modes).
 - [x] Added CI job:
-  - `.github/workflows/test.yml` now runs `scripts/nix-static-analysis.sh` via `nix shell nixpkgs#statix nixpkgs#deadnix nixpkgs#alejandra`.
+  - `.github/workflows/test.yml` now runs `scripts/governance/nix-static-analysis.sh` via `nix shell nixpkgs#statix nixpkgs#deadnix nixpkgs#alejandra`.
   - current mode is non-blocking baseline (`--non-blocking`) while legacy lint debt is normalized.
 - [x] Added build-only flake-check guard in flake-first deploy path:
   - `nixos-quick-deploy.sh --build-only` executes declarative evaluation/build without applying a live switch.
 - [x] Added non-blocking static analysis in Phase 3:
-  - `phases/phase-03-configuration-generation.sh` now calls `scripts/nix-static-analysis.sh --non-blocking`.
+  - `phases/phase-03-configuration-generation.sh` now calls `scripts/governance/nix-static-analysis.sh --non-blocking`.
 
 **Validation:**
-- `bash -n scripts/nix-static-analysis.sh` → PASS
+- `bash -n scripts/governance/nix-static-analysis.sh` → PASS
 - `bash -n phases/phase-03-configuration-generation.sh` → PASS
 - `bash -n nixos-quick-deploy.sh` → PASS
 - `nix-instantiate --parse flake.nix` → PASS
@@ -1073,12 +1673,12 @@
   - `nix/modules/profiles/gaming.nix`
   - `nix/modules/profiles/minimal.nix`
 - [x] Updated package comparison to include Goose where intended:
-  - `scripts/compare-installed-vs-intended.sh`
+  - `scripts/testing/compare-installed-vs-intended.sh`
 
 **Validation:**
 - `nix-instantiate --parse` for updated Nix modules/data files → PASS
 - `rg -n "environment\\.systemPackages" nix/modules` now resolves to a single source (`core/base.nix`) → PASS
-- `./scripts/compare-installed-vs-intended.sh --host nixos --profile ai-dev --flake-ref path:.` → PASS
+- `./scripts/testing/compare-installed-vs-intended.sh --host nixos --profile ai-dev --flake-ref path:.` → PASS
 
 ## Phase 26 Update (2026-02-16): Placeholder Template Prune Audit (26.6.2)
 
@@ -1215,13 +1815,13 @@
   - `fs-integrity-check`
   - Scans current + previous boot logs for fsck/ext4 failure signatures and emits offline repair guidance.
 - [x] Added immediate repo-local manual checker (usable before rebuild):
-  - `scripts/fs-integrity-check.sh`
+  - `scripts/health/fs-integrity-check.sh`
 
 **Validation:**
 - `nix-instantiate --parse nix/modules/core/fs-integrity-monitor.nix` → PASS
 - `nix-instantiate --parse nix/modules/core/options.nix` → PASS
 - `nix-instantiate --parse flake.nix` → PASS
-- `bash -n scripts/fs-integrity-check.sh` → PASS
+- `bash -n scripts/health/fs-integrity-check.sh` → PASS
 
 ## Phase 30 Update (2026-02-16): Boot + Filesystem Resilience Guardrails
 
@@ -1283,14 +1883,14 @@
 - [x] Added deterministic tests for helper scripts:
   - `tests/unit/fs-integrity-helpers.bats`
   - added test overrides in:
-    - `scripts/fs-integrity-check.sh`
+    - `scripts/health/fs-integrity-check.sh`
     - `scripts/deploy/recovery-offline-fsck-guide.sh`
 - [x] Added immediate git operability fallback for unstable hosts:
   - `scripts/governance/git-safe.sh` (uses system `git` when present, otherwise ephemeral `nixpkgs#git`)
   - `scripts/health/system-health-check.sh` remediation output now references the fallback when `git` is missing.
 
 **Validation:**
-- `bash -n scripts/deploy-clean.sh scripts/health/system-health-check.sh scripts/fs-integrity-check.sh scripts/deploy/recovery-offline-fsck-guide.sh` → PASS
+- `bash -n scripts/deploy-clean.sh scripts/health/system-health-check.sh scripts/health/fs-integrity-check.sh scripts/deploy/recovery-offline-fsck-guide.sh` → PASS
 - `nix-instantiate --parse nix/modules/core/guardrail-alerts.nix` → PASS
 - `nix-instantiate --parse nix/modules/core/fs-integrity-monitor.nix` → PASS
 - `nix-instantiate --parse nix/modules/core/disk-health-monitor.nix` → PASS
@@ -1382,7 +1982,7 @@
   - `docs/AGENT-PARITY-MATRIX.md`
 - Closure verification evidence (latest pass):
   - `scripts/testing/check-mcp-health.sh` (13/13 required services passing)
-  - `scripts/quick-deploy-lint.sh --mode fast` (all checks passing)
+  - `scripts/governance/quick-deploy-lint.sh --mode fast` (all checks passing)
   - `scripts/testing/validate-runtime-declarative.sh` (pass)
   - `scripts/testing/check-prsi-phase7-program.sh` (pass)
   - `scripts/testing/verify-flake-first-roadmap-completion.sh` (31 pass / 0 fail)
@@ -1435,7 +2035,7 @@
 
 **Validation:**
 - `scripts/governance/repo-structure-lint.sh --all` → PASS
-- `scripts/quick-deploy-lint.sh --mode fast` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
 - `bash -n scripts/governance/repo-structure-lint.sh scripts/reliability/check-runtime-reliability.sh scripts/performance/run-performance-benchmark-suite.sh scripts/security/run-security-penetration-suite.sh` → PASS
 - `python3 -m py_compile scripts/observability/parse-structured-logs.py` → PASS
 
@@ -1497,4 +2097,504 @@
 - `python3 -m py_compile scripts/governance/discover-focused-agent-repos.py scripts/governance/discover-improvements.py scripts/governance/discover-semantic-github-repos.py scripts/governance/manage-secrets.py scripts/governance/record-issue.py` → PASS
 - `python3 -m py_compile scripts/governance/{apply-readme-ai-stack-updates.py,update-readme-ai-stack.py,list-issues.py,comprehensive-mcp-search.py} scripts/ai/{mcp-bridge-hybrid.py,route-reasoning-mode.py} scripts/automation/prsi-orchestrator.py` → PASS
 - `python3 -m py_compile scripts/ai/claude-api-proxy.py scripts/ai/claude-local-wrapper.py` → PASS
-- `scripts/quick-deploy-lint.sh --mode fast` → PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
+
+## Repo Hygiene Pass (2026-03-05): Report Cleanup Utility Canonicalization
+
+### RH.H33 Move report-cleanup utility to `scripts/data/` and preserve compatibility shim
+
+**Changes Applied:**
+- [x] Moved report cleanup utility implementation:
+  - `scripts/cleanup-migrated-reports.sh` -> `scripts/data/cleanup-migrated-reports.sh`
+- [x] Added root compatibility shim:
+  - `scripts/cleanup-migrated-reports.sh` now forwards to `scripts/data/cleanup-migrated-reports.sh`
+- [x] Fixed post-move path resolution:
+  - adjusted `PROJECT_ROOT` and sourced helper path to work from nested `scripts/data/`.
+- [x] Updated canonical command hint in:
+  - `scripts/data/migrate-reports-to-database.sh`
+- [x] Updated cleanup inventory target rows to canonical path in:
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `bash -n scripts/cleanup-migrated-reports.sh scripts/data/cleanup-migrated-reports.sh scripts/data/migrate-reports-to-database.sh` -> PASS
+- `scripts/governance/check-doc-links.sh --active` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): TLS Apply Utility Canonicalization
+
+### RH.H34 Move deprecated TLS apply helper to `scripts/security/` and preserve compatibility shim
+
+**Changes Applied:**
+- [x] Moved deprecated TLS apply helper implementation:
+  - `scripts/apply-tls-certificates.sh` -> `scripts/security/apply-tls-certificates.sh`
+- [x] Added root compatibility shim:
+  - `scripts/apply-tls-certificates.sh` now forwards to `scripts/security/apply-tls-certificates.sh`
+- [x] Added purpose header comment in canonical script for lint compliance.
+- [x] Updated cleanup inventory target rows to canonical path in:
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `bash -n scripts/apply-tls-certificates.sh scripts/security/apply-tls-certificates.sh` -> PASS
+- `scripts/governance/check-doc-links.sh --active` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): Local AI Demo Utility Canonicalization
+
+### RH.H35 Move local-AI usage demo utility to `scripts/testing/` and preserve compatibility shim
+
+**Changes Applied:**
+- [x] Moved demo utility implementation:
+  - `scripts/demo-local-ai-usage.py` -> `scripts/testing/demo-local-ai-usage.py`
+- [x] Added root compatibility shim:
+  - `scripts/demo-local-ai-usage.py` now forwards to `scripts/testing/demo-local-ai-usage.py`
+- [x] Updated active doc references to canonical path in:
+  - `docs/ENFORCE-LOCAL-AI-USAGE.md`
+- [x] Updated cleanup inventory target rows to canonical path in:
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `python3 -m py_compile scripts/demo-local-ai-usage.py scripts/testing/demo-local-ai-usage.py` -> PASS
+- `scripts/governance/check-doc-links.sh --active` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): Agent Policy Evaluator Canonicalization
+
+### RH.H36 Move agent policy evaluator to `scripts/governance/` and preserve compatibility shim
+
+**Changes Applied:**
+- [x] Moved policy evaluator implementation:
+  - `scripts/evaluate-agent-policy.py` -> `scripts/governance/evaluate-agent-policy.py`
+- [x] Added root compatibility shim:
+  - `scripts/evaluate-agent-policy.py` now forwards to `scripts/governance/evaluate-agent-policy.py`
+- [x] Updated active script/doc references to canonical path in:
+  - `scripts/automation/run-advanced-parity-suite.sh`
+  - `scripts/ai/aqd`
+  - `docs/AGENT-PARITY-MATRIX.md`
+  - `docs/PARITY-ADVANCED-TOOLING.md`
+- [x] Updated cleanup inventory target rows to canonical path in:
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `python3 -m py_compile scripts/evaluate-agent-policy.py scripts/governance/evaluate-agent-policy.py` -> PASS
+- `scripts/governance/check-doc-links.sh --active` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): Nix/Discovery/Registry Script Canonicalization
+
+### RH.H37 Move static-analysis and deprecated discovery/registry helpers to domain folders with compatibility shims
+
+**Changes Applied:**
+- [x] Moved active Nix static analysis utility:
+  - `scripts/nix-static-analysis.sh` -> `scripts/governance/nix-static-analysis.sh`
+- [x] Moved deprecated discovery helper:
+  - `scripts/enable-progressive-disclosure.sh` -> `scripts/deploy/enable-progressive-disclosure.sh`
+- [x] Moved deprecated local registry helper:
+  - `scripts/publish-local-registry.sh` -> `scripts/deploy/publish-local-registry.sh`
+- [x] Added root compatibility shims for all three original root paths.
+- [x] Updated active script/doc/CI references to canonical paths in:
+  - `.github/workflows/test.yml`
+  - `docs/operations/reference/QUICK-REFERENCE.md`
+  - `docs/AI-AGENT-PROGRESSIVE-DISCLOSURE-README.md`
+  - `docs/development/COMPLETION-ROADMAP.md`
+  - `docs/development/SYSTEM-UPGRADE-ROADMAP.md`
+  - `docs/development/SYSTEM-UPGRADE-ROADMAP-UPDATES.md`
+- [x] Updated cleanup inventory target rows to canonical paths in:
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `bash -n scripts/nix-static-analysis.sh scripts/governance/nix-static-analysis.sh scripts/enable-progressive-disclosure.sh scripts/deploy/enable-progressive-disclosure.sh scripts/publish-local-registry.sh scripts/deploy/publish-local-registry.sh` -> PASS
+- `scripts/governance/check-doc-links.sh --active` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): Registry/Gap Curation Utility Canonicalization
+
+### RH.H38 Move registry validation and residual-gap curation utilities to domain folders with compatibility shims
+
+**Changes Applied:**
+- [x] Moved edge-model registry validator:
+  - `scripts/edge-model-registry-validate.sh` -> `scripts/governance/edge-model-registry-validate.sh`
+- [x] Moved residual-gap curation utility:
+  - `scripts/curate-residual-gaps.sh` -> `scripts/data/curate-residual-gaps.sh`
+- [x] Added root compatibility shims for both original root paths.
+- [x] Fixed post-move repo-root/service-endpoints path resolution for both canonical scripts.
+- [x] Updated active tool reference in:
+  - `docs/SYSTEM-IMPROVEMENT-PLAN-2026-03.md`
+- [x] Updated cleanup inventory target rows to canonical paths in:
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `bash -n scripts/edge-model-registry-validate.sh scripts/governance/edge-model-registry-validate.sh scripts/curate-residual-gaps.sh scripts/data/curate-residual-gaps.sh` -> PASS
+- `scripts/governance/check-doc-links.sh --active` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): MangoHud Utility Canonicalization
+
+### RH.H39 Move MangoHud profile/fix utilities to `scripts/deploy/` with compatibility shims
+
+**Changes Applied:**
+- [x] Moved MangoHud config-fix utility:
+  - `scripts/fix-mangohud-config.sh` -> `scripts/deploy/fix-mangohud-config.sh`
+- [x] Moved MangoHud profile selector utility:
+  - `scripts/mangohud-profile.sh` -> `scripts/deploy/mangohud-profile.sh`
+- [x] Added root compatibility shims for both original root paths.
+- [x] Fixed post-move repo-root resolution in both canonical scripts.
+- [x] Updated usage line in canonical `fix-mangohud-config.sh` to new path.
+- [x] Updated cleanup inventory target rows to canonical paths in:
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `bash -n scripts/fix-mangohud-config.sh scripts/deploy/fix-mangohud-config.sh scripts/mangohud-profile.sh scripts/deploy/mangohud-profile.sh` -> PASS
+- `scripts/governance/check-doc-links.sh --active` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): Dashboard/COSMIC Helper Canonicalization
+
+### RH.H40 Move dashboard enhancement and COSMIC power-profile helpers to `scripts/deploy/` with compatibility shims
+
+**Changes Applied:**
+- [x] Moved dashboard enhancement helper:
+  - `scripts/enhance-dashboard-with-controls.sh` -> `scripts/deploy/enhance-dashboard-with-controls.sh`
+- [x] Moved COSMIC power-profile helper:
+  - `scripts/enable-cosmic-power-profiles.sh` -> `scripts/deploy/enable-cosmic-power-profiles.sh`
+- [x] Added root compatibility shims for both original root paths.
+- [x] Fixed post-move repo-root resolution for dashboard enhancement helper.
+- [x] Updated cleanup inventory target rows to canonical paths in:
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `bash -n scripts/enhance-dashboard-with-controls.sh scripts/deploy/enhance-dashboard-with-controls.sh scripts/enable-cosmic-power-profiles.sh scripts/deploy/enable-cosmic-power-profiles.sh` -> PASS
+- `scripts/governance/check-doc-links.sh --active` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): p10k Wizard Canonicalization
+
+### RH.H41 Move p10k setup wizard to `scripts/deploy/` and keep Home Manager wiring declarative
+
+**Changes Applied:**
+- [x] Moved p10k setup wizard:
+  - `scripts/p10k-setup-wizard.sh` -> `scripts/deploy/p10k-setup-wizard.sh`
+- [x] Added root compatibility shim:
+  - `scripts/p10k-setup-wizard.sh` now forwards to `scripts/deploy/p10k-setup-wizard.sh`
+- [x] Updated declarative Home Manager source wiring to canonical path in:
+  - `nix/home/base.nix`
+- [x] Updated cleanup inventory target rows to canonical path in:
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `bash -n scripts/p10k-setup-wizard.sh scripts/deploy/p10k-setup-wizard.sh` -> PASS
+- `nix-instantiate --parse nix/home/base.nix` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): Skill Registry Tooling Canonicalization
+
+### RH.H42 Move skill registry signer/installer tooling to domain folders with compatibility shims
+
+**Changes Applied:**
+- [x] Moved skill registry signer script:
+  - `scripts/sign-skill-registry.sh` -> `scripts/security/sign-skill-registry.sh`
+- [x] Moved skill bundle registry CLI:
+  - `scripts/skill-bundle-registry.py` -> `scripts/governance/skill-bundle-registry.py`
+- [x] Added root compatibility shims for both original root paths.
+- [x] Removed hardcoded repo-root default in signer script and switched to script-relative repo-root derivation.
+- [x] Updated active script/doc/CI references to canonical paths in:
+  - `.github/workflows/test.yml`
+  - `docs/AGENT-PARITY-MATRIX.md`
+  - `docs/PARITY-ADVANCED-TOOLING.md`
+  - `scripts/automation/run-advanced-parity-suite.sh`
+  - `scripts/testing/smoke-skill-bundle-distribution.sh`
+  - `scripts/ai/aqd`
+- [x] Updated cleanup inventory target rows to canonical paths in:
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `python3 -m py_compile scripts/skill-bundle-registry.py scripts/governance/skill-bundle-registry.py` -> PASS
+- `bash -n scripts/sign-skill-registry.sh scripts/security/sign-skill-registry.sh` -> PASS
+- `scripts/governance/check-doc-links.sh --active` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): Allowlist Re-Normalization After Migration Batches
+
+### RH.H43 Re-normalize repo-structure allowlist to current canonical paths after multi-slice script/doc moves
+
+**Changes Applied:**
+- [x] Re-ran allowlist normalizer:
+  - `scripts/governance/normalize-repo-allowlist.sh`
+- [x] Refreshed `config/repo-structure-allowlist.txt` to remove legacy-path drift and align with current canonical moved paths.
+- [x] Re-validated allowlist integrity after normalization.
+
+**Validation:**
+- `scripts/governance/normalize-repo-allowlist.sh` -> PASS
+- `scripts/governance/check-repo-allowlist-integrity.sh` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): Convergence + npm Monitor Canonicalization
+
+### RH.H44 Move post-deploy converge and npm security monitor to canonical folders with compatibility shims
+
+**Changes Applied:**
+- [x] Moved npm security monitor:
+  - `scripts/npm-security-monitor.sh` -> `scripts/security/npm-security-monitor.sh`
+- [x] Moved post-deploy converge runner:
+  - `scripts/post-deploy-converge.sh` -> `scripts/automation/post-deploy-converge.sh`
+- [x] Added root compatibility shims for both original root paths.
+- [x] Fixed post-move repo-root resolution in both canonical scripts.
+- [x] Updated canonical internal call in converge runner:
+  - now calls `scripts/security/npm-security-monitor.sh` directly.
+- [x] Updated active runtime/test references to canonical paths in:
+  - `nix/modules/services/mcp-servers.nix`
+  - `scripts/deploy/quick-deploy-fast-verify.sh`
+  - `scripts/governance/preflight-auto-remediate.sh`
+  - `scripts/testing/validate-runtime-declarative.sh`
+  - `scripts/testing/check-dryrun-failure-modes.sh`
+  - `scripts/testing/check-npm-security-monitor-smoke.sh`
+  - `docs/SYSTEM-IMPROVEMENT-PLAN-2026-03.md`
+- [x] Updated cleanup inventory target rows to canonical paths in:
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+- [x] Updated npm monitor usage text to canonical path.
+
+**Validation:**
+- `bash -n scripts/npm-security-monitor.sh scripts/security/npm-security-monitor.sh scripts/post-deploy-converge.sh scripts/automation/post-deploy-converge.sh` -> PASS
+- `scripts/governance/check-doc-links.sh --active` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): Quick Deploy Lint Canonicalization
+
+### RH.H45 Move quick-deploy lint runner to `scripts/governance/` with compatibility shim
+
+**Changes Applied:**
+- [x] Moved lint runner implementation:
+  - `scripts/quick-deploy-lint.sh` -> `scripts/governance/quick-deploy-lint.sh`
+- [x] Added root compatibility shim:
+  - `scripts/quick-deploy-lint.sh` now forwards to `scripts/governance/quick-deploy-lint.sh`
+- [x] Fixed post-move repo-root resolution and usage text in canonical script.
+- [x] Updated active references to canonical path in:
+  - `.githooks/pre-push`
+  - `.githooks/README.md`
+  - `docs/AGENTS.md`
+  - `scripts/deploy/quick-deploy-fast-verify.sh`
+  - `docs/operations/REPO-STRUCTURE-POLICY.md`
+  - `docs/operations/procedures/CONFIG-VALIDATION-PROCEDURES.md`
+  - `docs/operations/NAMING-LABEL-CONVENTIONS.md`
+  - `docs/operations/REPO-CLEANUP-PASS1-PLAN.md`
+  - `docs/operations/reliability/AI-STACK-RUNTIME-RELIABILITY.md`
+  - `docs/agent-guides/01-QUICK-START.md`
+  - `docs/development/SYSTEM-UPGRADE-ROADMAP.md`
+  - `docs/development/SYSTEM-UPGRADE-ROADMAP-UPDATES.md`
+  - `docs/SYSTEM-IMPROVEMENT-PLAN-2026-03.md`
+- [x] Corrected inventory row to preserve legacy key + canonical target in:
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `bash -n scripts/quick-deploy-lint.sh scripts/governance/quick-deploy-lint.sh` -> PASS
+- `scripts/governance/check-doc-links.sh --active` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): Deploy-Clean Wrapper Canonicalization
+
+### RH.H46 Move deprecated deploy-clean wrapper to `scripts/deploy/` with compatibility shim
+
+**Changes Applied:**
+- [x] Moved deploy-clean wrapper:
+  - `scripts/deploy-clean.sh` -> `scripts/deploy/deploy-clean.sh`
+- [x] Added root compatibility shim:
+  - `scripts/deploy-clean.sh` now forwards to `scripts/deploy/deploy-clean.sh`
+- [x] Fixed post-move repo-root resolution in canonical wrapper.
+- [x] Preserved deprecated message text to avoid breaking existing verification expectations.
+- [x] Updated cleanup inventory target rows to canonical path in:
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS1.csv`
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `bash -n scripts/deploy-clean.sh scripts/deploy/deploy-clean.sh` -> PASS
+- `scripts/governance/check-doc-links.sh --active` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): Active Doc Canonical Script Path Sweep
+
+### RH.H47 Rewrite active docs from root-shim script paths to canonical script locations
+
+**Changes Applied:**
+- [x] Ran canonical-path rewrite sweep for active docs (excluding archive + inventory ledgers + roadmap update ledger) using root-shim metadata.
+- [x] Rewrote remaining active-doc references from root shim paths to canonical targets across operations/development/system docs.
+- [x] Reduced active-doc root-shim references to intentional mention-only cases.
+
+**Validation:**
+- `scripts/governance/check-doc-links.sh --active` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): Script Header Waiver Path Sanitation
+
+### RH.H48 Fix invalid waiver path tokens in `config/script-header-waivers.txt`
+
+**Changes Applied:**
+- [x] Identified malformed waiver entries ending with trailing `.` (for example `scripts/governance/nix-static-analysis.sh.`).
+- [x] Normalized waiver paths by stripping trailing punctuation from script path lines.
+- [x] Preserved waiver comments and ordering semantics.
+
+**Validation:**
+- `scripts/governance/check-script-header-standards.sh --all` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): Root Shim Policy CI Enforcement + Canonical Test Names
+
+### RH.H49 Wire root script shim-only policy into CI and normalize automation references
+
+**Changes Applied:**
+- [x] Added CI enforcement step in `.github/workflows/test.yml` (`repo-structure-lint` job):
+  - runs `scripts/governance/check-root-script-shim-only.sh`
+- [x] Updated `docs/operations/REPO-STRUCTURE-POLICY.md` enforcement section to include:
+  - CI gate: `check-root-script-shim-only.sh`
+  - quick-lint included gate reference
+- [x] Normalized high-traffic automation references to canonical kebab-case test scripts in:
+  - `scripts/automation/run-all-checks.sh`
+  - `test-services.sh` and `test-real-world-workflows.sh` now used directly (underscore shims remain for compatibility).
+
+**Validation:**
+- `bash -n scripts/automation/run-all-checks.sh` -> PASS
+- `rg -n "Enforce root script shim-only policy" .github/workflows/test.yml` -> PASS
+- `scripts/governance/check-doc-links.sh --active` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): Secondary CI Workflow and Ownership Canonicalization
+
+### RH.H50 Align legacy CI workflow and CODEOWNERS with canonical deploy path
+
+**Changes Applied:**
+- [x] Updated `.github/workflows/tests.yml`:
+  - added `check-root-script-shim-only.sh` in `repo-structure-lint`
+  - switched syntax gate to canonical `scripts/deploy/deploy-clean.sh`
+- [x] Updated `.github/CODEOWNERS` to explicitly own canonical deploy path:
+  - added `/scripts/deploy/deploy-clean.sh`
+  - retained `/scripts/deploy-clean.sh` coverage for compatibility shim
+
+**Validation:**
+- `rg -n "Enforce root script shim-only policy|scripts/deploy/deploy-clean.sh" .github/workflows/tests.yml` -> PASS
+- `rg -n "/scripts/deploy/deploy-clean.sh|/scripts/deploy-clean.sh" .github/CODEOWNERS` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): Canonical Deploy-Path Reference Sweep (Active Runtime Assets)
+
+### RH.H51 Rewrite active runtime/example references from deploy-clean shim path to canonical deploy path
+
+**Changes Applied:**
+- [x] Rewrote active references from `scripts/deploy-clean.sh` to `scripts/deploy/deploy-clean.sh` in:
+  - `scripts/governance/analyze-clean-deploy-readiness.sh`
+  - `nix/hosts/_example/default.nix.sample`
+  - `scripts/deploy/recovery-iso-disk-fix.sh`
+  - `scripts/deploy/recovery-offline-fsck-guide.sh`
+- [x] Left intentional shim verification paths unchanged (for compatibility/deprecation assertions).
+
+**Validation:**
+- `bash -n scripts/governance/analyze-clean-deploy-readiness.sh scripts/deploy/recovery-iso-disk-fix.sh scripts/deploy/recovery-offline-fsck-guide.sh` -> PASS
+- `scripts/governance/check-doc-links.sh --active` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): Naming Audit Signal Quality (Shim-Aware)
+
+### RH.H52 Make naming consistency audit shim-aware to reduce false-positive noise
+
+**Changes Applied:**
+- [x] Updated `scripts/governance/check-naming-label-consistency.sh` to classify underscore files as:
+  - non-shim underscore scripts (actionable)
+  - underscore compatibility shims (informational)
+- [x] Report metrics now expose both counts separately.
+- [x] Added a dedicated informational section for underscore shim paths so migration progress remains visible without inflating actionable findings.
+
+**Validation:**
+- `bash -n scripts/governance/check-naming-label-consistency.sh` -> PASS
+- `scripts/governance/check-naming-label-consistency.sh` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): Alias Registry Hardening + Active Doc Drift Fixes
+
+### RH.H53 Expand legacy alias registry from actual root shims and remediate drift
+
+**Changes Applied:**
+- [x] Expanded `config/legacy-root-script-aliases.txt` to include all migrated root shim names discovered under `scripts/`.
+- [x] Preserved historical non-root legacy names for backward lint coverage.
+- [x] Ran migration lint and fixed newly surfaced active-doc drift:
+  - `README.md` script tree now references canonical paths:
+    - `scripts/health/system-health-check.sh`
+    - `scripts/deploy/p10k-setup-wizard.sh`
+  - `docs/SECURITY-AUDIT-DEC-2025.md` now references:
+    - `scripts/security/fix-secrets-encryption.sh`
+
+**Validation:**
+- `scripts/governance/check-doc-script-path-migration.sh` -> PASS
+- `scripts/governance/check-doc-links.sh --active` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): README Canonical Script Path Sweep
+
+### RH.H54 Rewrite README runtime commands from root shims to canonical script paths
+
+**Changes Applied:**
+- [x] Updated README canonical deployment commands:
+  - `./scripts/deploy-clean.sh` -> `./scripts/deploy/deploy-clean.sh`
+- [x] Updated README operational command examples:
+  - `./scripts/publish-local-registry.sh` -> `./scripts/deploy/publish-local-registry.sh`
+  - `./scripts/fix-mangohud-config.sh` -> `./scripts/deploy/fix-mangohud-config.sh`
+  - `./scripts/mangohud-profile.sh` -> `./scripts/deploy/mangohud-profile.sh`
+
+**Validation:**
+- `scripts/governance/check-doc-script-path-migration.sh` -> PASS
+- `scripts/governance/check-doc-links.sh --active` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): Canonical Deprecation Guidance Messages
+
+### RH.H55 Remove legacy root-path wording from canonical deprecated scripts
+
+**Changes Applied:**
+- [x] Updated deprecated guidance messages to canonical paths in:
+  - `scripts/automation/cron-templates.sh`
+  - `scripts/security/apply-tls-certificates.sh`
+  - `scripts/observability/collect-ai-metrics.sh`
+  - `scripts/deploy/enable-progressive-disclosure.sh`
+  - `scripts/deploy/publish-local-registry.sh`
+- [x] Preserved behavior (`exit 2`) and compatibility intent.
+
+**Validation:**
+- `bash -n scripts/automation/cron-templates.sh scripts/security/apply-tls-certificates.sh scripts/observability/collect-ai-metrics.sh scripts/deploy/enable-progressive-disclosure.sh scripts/deploy/publish-local-registry.sh` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode fast` -> PASS
+
+## Repo Hygiene Pass (2026-03-05): Final Closeout Validation + Readiness Checklist
+
+### RH.H56 Run full closeout battery and publish strict ready/not-ready decision doc
+
+**Changes Applied:**
+- [x] Executed full validation battery across structure/docs/deploy/runtime gates.
+- [x] Published strict evidence-based readiness checklist:
+  - `docs/operations/CLOSEOUT-READINESS-CHECKLIST-2026-03-05.md`
+- [x] Marked closeout decision as **READY** for commit/push with shim-retirement debt explicitly noted.
+
+**Validation (evidence):**
+- `scripts/governance/repo-structure-lint.sh --all` -> PASS
+- `scripts/governance/check-repo-allowlist-integrity.sh` -> PASS
+- `scripts/governance/check-root-file-hygiene.sh` -> PASS
+- `scripts/governance/check-root-script-shim-only.sh` -> PASS
+- `scripts/governance/check-script-shim-consistency.sh` -> PASS
+- `scripts/governance/check-doc-links.sh --active` -> PASS
+- `scripts/governance/check-doc-metadata-standards.sh` -> PASS
+- `scripts/governance/check-doc-script-path-migration.sh` -> PASS
+- `scripts/governance/check-script-header-standards.sh --all` -> PASS
+- `scripts/governance/check-naming-label-consistency.sh --publish-doc` -> PASS
+- `scripts/governance/check-archive-path-consistency.sh` -> PASS
+- `scripts/governance/check-legacy-deprecated-root.sh` -> PASS
+- `scripts/governance/check-generated-artifact-hygiene.sh` -> PASS
+- `scripts/governance/check-deprecated-docs-location.sh` -> PASS
+- `scripts/governance/quick-deploy-lint.sh --mode full` -> PASS (21/21)
+- `scripts/testing/check-mcp-health.sh` -> PASS (13 passed, 0 failed)
+- `scripts/testing/check-npm-security-monitor-smoke.sh` -> PASS

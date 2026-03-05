@@ -122,7 +122,7 @@ OLLAMA_HOST = "127.0.0.1";  # Ollama
 **Recommendation:**
 ```bash
 # Implement SOPS (Secrets OPerationS) for NixOS
-# Already has fix-secrets-encryption.sh - extend it
+# Already has scripts/security/fix-secrets-encryption.sh - extend it
 
 # 1. Store secrets in encrypted files
 echo "mcp_postgres_password: $(openssl rand -base64 32)" > secrets/mcp.yaml

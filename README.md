@@ -9,13 +9,13 @@
 Use the clean flake-first entrypoint:
 
 ```bash
-./scripts/deploy-clean.sh
+./scripts/deploy/deploy-clean.sh
 ```
 
 For update/upgrade runs:
 
 ```bash
-./scripts/deploy-clean.sh --update-lock
+./scripts/deploy/deploy-clean.sh --update-lock
 ```
 
 This path is the canonical workflow. Legacy phase/template flow remains migration debt.
@@ -107,7 +107,7 @@ Optional controls:
 ./nixos-quick-deploy.sh --legacy-phases
 ```
 
-Current state: use `scripts/deploy-clean.sh` for standard operations.
+Current state: use `scripts/deploy/deploy-clean.sh` for standard operations.
 Legacy phase/template mode is deprecated with planned removal on **July 1, 2026**.
 
 ## ✨ NEW in v6.0.0: Fully Integrated AI Stack
@@ -131,7 +131,7 @@ This single command gives you:
 - ✅ **Nginx TLS Gateway** - HTTPS termination on `https://localhost:8443`
 - ✅ **Shared Data** - Persistent data that survives reinstalls (`~/.local/share/nixos-ai-stack`)
 
-See [`ai-stack/README.md`](ai-stack/README.md) and [`/docs/AI-STACK-FULL-INTEGRATION.md`](/docs/AI-STACK-FULL-INTEGRATION.md) for complete documentation.
+See [`docs/AI-STACK-FULL-INTEGRATION.md`](docs/AI-STACK-FULL-INTEGRATION.md) for complete documentation.
 
 ---
 
@@ -606,8 +606,8 @@ Overrides:
 NixOS-Dev-Quick-Deploy/
 ├── nixos-quick-deploy.sh          # Main deployment script (run this)
 ├── scripts/
-│   ├── system-health-check.sh     # System health verification and repair tool
-│   └── p10k-setup-wizard.sh       # Powerlevel10k configuration wizard
+│   ├── health/system-health-check.sh  # System health verification and repair tool
+│   └── deploy/p10k-setup-wizard.sh    # Powerlevel10k configuration wizard
 ├── templates/
 │   ├── configuration.nix          # NixOS system config template
 │   ├── home.nix                   # Home-manager config template
@@ -809,7 +809,7 @@ Next steps:
 
 **Fix:**
 ```bash
-ONLY_IMAGES=ai-stack-aidb CONTAINER_CLI=skopeo ./scripts/publish-local-registry.sh
+ONLY_IMAGES=ai-stack-aidb CONTAINER_CLI=skopeo ./scripts/deploy/publish-local-registry.sh
 ```
 
 ### K3s API not reachable from pods (connection refused)
@@ -1183,7 +1183,7 @@ exec zsh
 **For existing systems with the overlay bug:** Run the fix script to update your MangoHud configuration:
 
 ```bash
-./scripts/fix-mangohud-config.sh
+./scripts/deploy/fix-mangohud-config.sh
 # Then re-run the deployment to regenerate your configs with the corrected settings
 ./nixos-quick-deploy.sh
 ```
@@ -1192,7 +1192,7 @@ If you want to change the MangoHud profile:
 
 ```bash
 # Run the interactive selector and pick the overlay mode you prefer
-./scripts/mangohud-profile.sh
+./scripts/deploy/mangohud-profile.sh
 
 # Re-apply your Home Manager config so the new preference is enforced
 cd ~/.dotfiles/home-manager
@@ -1553,21 +1553,21 @@ Already installed but worth highlighting:
 ### AI Stack Documentation (NEW in v6.0.0)
 
 - [AI Stack Integration Guide](docs/AI-STACK-FULL-INTEGRATION.md) - Complete architecture and migration
-- [AI Stack README](ai-stack/README.md) - AI stack overview and quick start
+- [AI Stack Overview](docs/AI-STACK-FULL-INTEGRATION.md) - AI stack overview and quick start
 - [AIDB MCP Server](ai-stack/mcp-servers/aidb/README.md) - AIDB server documentation
 - [Agent Skills](ai-stack/agents/README.md) - 29 specialized AI agent skills
-- [AI Stack Architecture](ai-stack/docs/ARCHITECTURE.md) - Technical architecture details
+- [AI Stack Architecture](docs/AI-STACK-RAG-IMPLEMENTATION.md) - Technical architecture details
 - [Agent Workflows](AGENTS.md) - Canonical AI agent onboarding and standards
-- [MCP Servers Guide](docs/MCP_SERVERS.md) - Model Context Protocol server docs
+- [MCP Servers Guide](docs/SKILLS-AND-MCP-INVENTORY.md) - Model Context Protocol server docs
 
 - [Build Optimization Guide](docs/BUILD_OPTIMIZATION.md) - Choose between binary caches (20-40 min) or source builds (60-120 min)
-- [AIDB Setup Guide](docs/AIDB_SETUP.md) - Complete AIDB configuration walkthrough
-- [AI Integration Guide](docs/AI_INTEGRATION.md) - Sync docs and leverage AI-Optimizer tooling
+- [AIDB Setup Guide](docs/SYSTEM-READY-FOR-AIDB.md) - Complete AIDB configuration walkthrough
+- [AI Integration Guide](docs/HAND-IN-GLOVE-INTEGRATION.md) - Sync docs and leverage AI tooling
 - [Local AI Starter Toolkit](docs/LOCAL-AI-STARTER.md) - Scaffold local agents/OpenSkills/MCP servers without private repos
 - [Agent Workflows](AGENTS.md) - AI agent integration documentation
-- [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and solutions
-- [Code Review Guide](docs/CODE_REVIEW.md) - Code quality and review process
-- [Safe Improvements](docs/SAFE_IMPROVEMENTS.md) - Guidelines for safe changes
+- [Troubleshooting Guide](docs/agent-guides/12-DEBUGGING.md) - Common issues and solutions
+- [Code Review Guide](docs/archive/deprecated/CODE_REVIEW.md) - Code quality and review process
+- [Safe Improvements](docs/archive/deprecated/SAFE_IMPROVEMENTS.md) - Guidelines for safe changes
 - [System Health Check](scripts/health/system-health-check.sh) - Verify and fix installation
 
 ### Official Docs

@@ -13,7 +13,7 @@ No template rendering. No legacy 9-phase orchestration.
 ## 2. Single Command
 
 ```bash
-./scripts/deploy-clean.sh
+./scripts/deploy/deploy-clean.sh.
 ```
 
 What it does:
@@ -29,41 +29,41 @@ What it does:
 
 ```bash
 # Build only (no switch)
-./scripts/deploy-clean.sh --build-only
+./scripts/deploy/deploy-clean.sh. --build-only
 
 # Stage next generation for reboot (no live switch)
-./scripts/deploy-clean.sh --boot
+./scripts/deploy/deploy-clean.sh. --boot
 
 # Update flake.lock + apply updates
-./scripts/deploy-clean.sh --update-lock
+./scripts/deploy/deploy-clean.sh. --update-lock
 
 # Validate flake lock compatibility/security and generate report
 ./scripts/testing/validate-flake-inputs.sh --flake-ref path:.
 
 # Explicit host/profile
-./scripts/deploy-clean.sh --host nixos --profile ai-dev
+./scripts/deploy/deploy-clean.sh. --host nixos --profile ai-dev
 
 # Skip health check
-./scripts/deploy-clean.sh --skip-health-check
+./scripts/deploy/deploy-clean.sh. --skip-health-check
 
 # Skip Flatpak profile sync
-./scripts/deploy-clean.sh --skip-flatpak-sync
+./scripts/deploy/deploy-clean.sh. --skip-flatpak-sync
 
 # Optional destructive pre-install disk layout apply (Disko)
-DISKO_CONFIRM=YES ./scripts/deploy-clean.sh --host nixos --profile ai-dev --phase0-disko
+DISKO_CONFIRM=YES ./scripts/deploy/deploy-clean.sh. --host nixos --profile ai-dev --phase0-disko
 
 # Optional secure-boot key enrollment (sbctl)
-SECUREBOOT_ENROLL_CONFIRM=YES ./scripts/deploy-clean.sh --host nixos --profile ai-dev --enroll-secureboot-keys
+SECUREBOOT_ENROLL_CONFIRM=YES ./scripts/deploy/deploy-clean.sh. --host nixos --profile ai-dev --enroll-secureboot-keys
 
 # Recovery-mode deploy for fsck/emergency-loop incidents
-./scripts/deploy-clean.sh --host nixos --profile ai-dev --recovery-mode
+./scripts/deploy/deploy-clean.sh. --host nixos --profile ai-dev --recovery-mode
 
 # If you specifically want "stage then reboot" behavior, combine with --boot
-./scripts/deploy-clean.sh --host nixos --profile ai-dev --recovery-mode --boot
+./scripts/deploy/deploy-clean.sh. --host nixos --profile ai-dev --recovery-mode --boot
 
 # If previous boot had root-fs fsck failure signatures, switch-mode is blocked.
 # Use recovery boot mode first:
-./scripts/deploy-clean.sh --host nixos --profile ai-dev --recovery-mode --boot
+./scripts/deploy/deploy-clean.sh. --host nixos --profile ai-dev --recovery-mode --boot
 ```
 
 ## 4. Profile Values
@@ -79,8 +79,8 @@ Legacy/template paths should be treated as migration debt and removed.
 
 ## 6. Lifecycle
 
-- Fresh install bootstrap: run `./scripts/deploy-clean.sh`
-- Existing system update/upgrade/change: run `./scripts/deploy-clean.sh --update-lock`
+- Fresh install bootstrap: run `./scripts/deploy/deploy-clean.sh.`
+- Existing system update/upgrade/change: run `./scripts/deploy/deploy-clean.sh. --update-lock`
 - Optional validation gate before switching: run `./scripts/testing/validate-flake-inputs.sh --flake-ref path:.`
 
 ## 7. Legacy Fallback and Rollback

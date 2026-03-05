@@ -121,7 +121,7 @@ cd dashboard
 
 # Start v1
 cd ..
-./launch-dashboard.sh
+./scripts/deploy/launch-dashboard.sh
 ```
 
 Both dashboards can coexist:

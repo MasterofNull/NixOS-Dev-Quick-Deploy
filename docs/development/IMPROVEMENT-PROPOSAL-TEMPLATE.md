@@ -1,44 +1,10 @@
-# Improvement Proposal Template
-**Created:** YYYY-MM-DD
-**Status:** Draft | Proposed | Approved | Rejected | Implemented
-**Owner:** NAME
+# Archived Document Stub
+Status: Active
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
 
----
 
-## Summary
-Short description of the improvement and why it matters.
+This document was archived during repository cleanup.
 
-## Evidence
-- Telemetry snapshot: `PATH/telemetry.json`
-- Health check output: `PATH/health.log`
-- Repro steps: concise list
-
-## Proposed Change
-Describe the change in plain language. Include scope boundaries.
-
-## Impact
-- Performance:
-- Reliability:
-- Maintenance:
-- Security:
-
-## Risks & Mitigations
-- Risk:
-- Mitigation:
-
-## Rollback Plan
-Describe the rollback steps and how to verify rollback success.
-
-## Approval Required
-State exactly what user approval is needed before implementation.
-
-## Sources & References
-- Source URL:
-- Notes:
-
----
-
-## Decision
-**Approved by:** NAME  
-**Date:** YYYY-MM-DD  
-**Notes:**  
+- Current location: [`/docs/archive/stale/2026-03/development/IMPROVEMENT-PROPOSAL-TEMPLATE.md`](/docs/archive/stale/2026-03/development/IMPROVEMENT-PROPOSAL-TEMPLATE.md)
+- Archive reason: stale content over 45 days old and outside active runtime/documentation scope.

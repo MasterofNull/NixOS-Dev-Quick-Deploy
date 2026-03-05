@@ -1,6 +1,3 @@
 #!/usr/bin/env bash
-set -euo pipefail
-
-echo "scripts/governance/smart_config_gen.sh is deprecated." >&2
-echo "Imperative AI optimizer config generation has been removed from declarative mode." >&2
-exit 2
+# Compatibility shim: use kebab-case script path.
+exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/smart-config-gen.sh" "$@"

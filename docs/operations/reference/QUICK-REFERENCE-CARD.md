@@ -1,4 +1,9 @@
 # AI Agent Quick Reference Card
+
+Status: Active
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 **Version:** 2.0.0
 **Date:** December 4, 2025
 **Purpose:** Instant access to all tools and resources

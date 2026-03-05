@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+AI_SCRIPT_DIR = SCRIPT_DIR.parent / "ai"
 QUEUE_PATH = Path(os.getenv("PRSI_ACTION_QUEUE_PATH", "/var/lib/nixos-ai-stack/prsi/action-queue.json"))
 ACTIONS_LOG_PATH = Path(os.getenv("PRSI_ACTIONS_LOG_PATH", "/var/log/nixos-ai-stack/prsi-actions.jsonl"))
 AUTO_APPROVE_LOW_RISK = os.getenv("PRSI_AUTO_APPROVE_LOW_RISK", "true").lower() == "true"
@@ -186,7 +187,7 @@ def _save_queue(queue: Dict[str, Any]) -> None:
 
 def _fetch_report(since: str) -> Dict[str, Any]:
     result = subprocess.run(
-        [sys.executable, str(SCRIPT_DIR / "aq-report"), f"--since={since}", "--format=json"],
+        [sys.executable, str(AI_SCRIPT_DIR / "aq-report"), f"--since={since}", "--format=json"],
         capture_output=True,
         text=True,
         timeout=120,

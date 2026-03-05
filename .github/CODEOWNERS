@@ -4,6 +4,7 @@
 # Declarative system/deploy surfaces
 /flake.nix @MasterofNull
 /nix/ @MasterofNull
+/scripts/deploy/deploy-clean.sh @MasterofNull
 /scripts/deploy-clean.sh @MasterofNull
 /scripts/governance/discover-system-facts.sh @MasterofNull
 

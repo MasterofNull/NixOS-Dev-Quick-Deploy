@@ -1,4 +1,7 @@
 # Next Steps & Recommendations - January 25, 2026
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 
 **Status:** ✅ K3s + Portainer migration complete (core services running)
 **Current State:** Core services healthy; optional UI services degraded (Open WebUI)

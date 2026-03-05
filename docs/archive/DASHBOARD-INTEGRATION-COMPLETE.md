@@ -90,7 +90,7 @@ dashboard-server.service    - HTTP server (port 8888)
 
 **Auto-Added to ~/.zshrc**:
 ```bash
-alias dashboard='cd /path/to/deploy && ./launch-dashboard.sh'
+alias dashboard='cd /path/to/deploy && ./scripts/deploy/launch-dashboard.sh'
 alias dashboard-start='systemctl --user start dashboard-collector.timer dashboard-server.service'
 alias dashboard-stop='systemctl --user stop dashboard-collector.timer dashboard-server.service'
 alias dashboard-status='systemctl --user status dashboard-collector.timer dashboard-server.service'
@@ -122,7 +122,7 @@ Step 8.5: System Monitoring Dashboard
 📊 System Dashboard Installed!
 
 Quick Start Options:
-1. One-Command Launch: ./launch-dashboard.sh
+1. One-Command Launch: ./scripts/deploy/launch-dashboard.sh
 2. As Systemd Service: systemctl --user start dashboard-server
 3. Shell Alias: dashboard
 
@@ -312,7 +312,7 @@ After deployment completes:
 1. **Launch Dashboard**:
    ```bash
    dashboard
-   # Or: ./launch-dashboard.sh
+   # Or: ./scripts/deploy/launch-dashboard.sh
    ```
 
 2. **Enable Auto-Start** (optional):

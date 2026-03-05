@@ -1,4 +1,8 @@
 # Dashboard Health and Stale Data Detection
+Status: Active
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 
 ## Dashboard Health Monitoring and Reliability
 

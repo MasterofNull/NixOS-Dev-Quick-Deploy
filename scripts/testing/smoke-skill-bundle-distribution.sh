@@ -19,7 +19,7 @@ INDEX="${TMP_DIR}/index.json"
 BUNDLES="${TMP_DIR}/bundles"
 INSTALL_ROOT="${TMP_DIR}/installed-skills"
 
-python "${ROOT}/scripts/skill-bundle-registry.py" build-index \
+python "${ROOT}/scripts/governance/skill-bundle-registry.py" build-index \
   --skills-dir "${ROOT}/.agent/skills" \
   --bundles-dir "${BUNDLES}" \
   --index "${INDEX}" >/dev/null
@@ -31,7 +31,7 @@ pass "bundle index generation"
 SKILL_NAME="$(jq -r '.skills[0].name // empty' "${INDEX}")"
 [[ -n "${SKILL_NAME}" ]] || fail "failed to select skill from generated index"
 
-python "${ROOT}/scripts/skill-bundle-registry.py" install \
+python "${ROOT}/scripts/governance/skill-bundle-registry.py" install \
   --index "${INDEX}" \
   --skill-name "${SKILL_NAME}" \
   --target-dir "${INSTALL_ROOT}" >/dev/null
@@ -42,7 +42,7 @@ INSTALLED_DIR="$(find "${INSTALL_ROOT}" -mindepth 1 -maxdepth 1 -type d | head -
 pass "bundle install from index"
 
 # file:// URL install path (external-style index consumption)
-python "${ROOT}/scripts/skill-bundle-registry.py" install \
+python "${ROOT}/scripts/governance/skill-bundle-registry.py" install \
   --index "file://${INDEX}" \
   --skill-name "${SKILL_NAME}" \
   --target-dir "${TMP_DIR}/url-installed" >/dev/null
@@ -52,8 +52,8 @@ pass "bundle install via file URL index"
 if command -v openssl >/dev/null 2>&1; then
   openssl genrsa -out "${TMP_DIR}/private.pem" 2048 >/dev/null 2>&1
   openssl rsa -in "${TMP_DIR}/private.pem" -pubout -out "${TMP_DIR}/public.pem" >/dev/null 2>&1
-  "${ROOT}/scripts/sign-skill-registry.sh" "${INDEX}" "${TMP_DIR}/private.pem" "${INDEX}.sig" >/dev/null
-  python "${ROOT}/scripts/skill-bundle-registry.py" install \
+  "${ROOT}/scripts/security/sign-skill-registry.sh" "${INDEX}" "${TMP_DIR}/private.pem" "${INDEX}.sig" >/dev/null
+  python "${ROOT}/scripts/governance/skill-bundle-registry.py" install \
     --index "${INDEX}" \
     --skill-name "${SKILL_NAME}" \
     --target-dir "${TMP_DIR}/signed-install" \

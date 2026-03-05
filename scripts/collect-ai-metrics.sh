@@ -1,7 +1,3 @@
 #!/usr/bin/env bash
-set -euo pipefail
-
-echo "scripts/collect-ai-metrics.sh is deprecated." >&2
-echo "Metrics are collected declaratively via services.prometheus + services.prometheus.exporters.node." >&2
-echo "Use: systemctl status prometheus.service prometheus-node-exporter.service" >&2
-exit 2
+# Compatibility shim: use scripts/observability/collect-ai-metrics.sh.
+exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/observability/collect-ai-metrics.sh" "$@"

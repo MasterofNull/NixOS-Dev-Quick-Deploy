@@ -1,4 +1,8 @@
 # Agentic Workflow Bootstrap + Guided Modes (2026-03-05)
+Status: Active
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 
 ## Source Inputs
 - Video analyzed: `https://youtu.be/goOZSXmrYQ4` (auto-captions extracted locally via `yt-dlp`)

@@ -19,6 +19,66 @@ jobs:
           chmod +x scripts/governance/repo-structure-lint.sh
           ./scripts/governance/repo-structure-lint.sh --all
 
+      - name: Enforce repository allowlist integrity
+        run: |
+          chmod +x scripts/governance/check-repo-allowlist-integrity.sh
+          ./scripts/governance/check-repo-allowlist-integrity.sh
+
+      - name: Enforce root file hygiene
+        run: |
+          chmod +x scripts/governance/check-root-file-hygiene.sh
+          ./scripts/governance/check-root-file-hygiene.sh
+
+      - name: Enforce script shim consistency
+        run: |
+          chmod +x scripts/governance/check-script-shim-consistency.sh
+          ./scripts/governance/check-script-shim-consistency.sh
+
+      - name: Enforce root script shim-only policy
+        run: |
+          chmod +x scripts/governance/check-root-script-shim-only.sh
+          ./scripts/governance/check-root-script-shim-only.sh
+
+      - name: Enforce active documentation link integrity
+        run: |
+          chmod +x scripts/governance/check-doc-links.sh
+          ./scripts/governance/check-doc-links.sh --active
+
+      - name: Enforce documentation metadata standards
+        run: |
+          chmod +x scripts/governance/check-doc-metadata-standards.sh
+          ./scripts/governance/check-doc-metadata-standards.sh
+
+      - name: Enforce doc script-path migration policy
+        run: |
+          chmod +x scripts/governance/check-doc-script-path-migration.sh
+          ./scripts/governance/check-doc-script-path-migration.sh
+
+      - name: Run naming/label consistency audit
+        run: |
+          chmod +x scripts/governance/check-naming-label-consistency.sh
+          ./scripts/governance/check-naming-label-consistency.sh
+
+      - name: Enforce archive path consistency
+        run: |
+          chmod +x scripts/governance/check-archive-path-consistency.sh
+          ./scripts/governance/check-archive-path-consistency.sh
+
+      - name: Enforce legacy deprecated-root guard
+        run: |
+          chmod +x scripts/governance/check-legacy-deprecated-root.sh
+          ./scripts/governance/check-legacy-deprecated-root.sh
+
+      - name: Enforce generated artifact hygiene
+        run: |
+          chmod +x scripts/governance/check-generated-artifact-hygiene.sh
+          ./scripts/governance/check-generated-artifact-hygiene.sh
+
+      - name: Enforce deprecated docs canonical location
+        run: |
+          chmod +x scripts/governance/check-deprecated-docs-location.sh
+          ./scripts/governance/check-deprecated-docs-location.sh
+
   harness-first-owner-approval:
     name: Harness-First Owner Approval
     if: github.event_name == 'pull_request'
@@ -119,8 +179,8 @@ jobs:
           chmod +x scripts/testing/validate-flake-inputs.sh
           ./scripts/testing/validate-flake-inputs.sh \
             --flake-ref path:. \
-            --report-json reports/flake-validation-report.json \
-            --report-md reports/flake-validation-report.md
+            --report-json .reports/flake-validation-report.json \
+            --report-md .reports/flake-validation-report.md
 
       - name: Validate non-Nix tool management policy
         run: |
@@ -137,7 +197,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: flake-validation-report
-          path: reports/flake-validation-report.*
+          path: .reports/flake-validation-report.*
 
   nix-static-analysis:
     name: Nix Static Analysis
@@ -153,9 +213,9 @@ jobs:
 
       - name: Run statix/deadnix/alejandra
         run: |
-          chmod +x scripts/nix-static-analysis.sh
+          chmod +x scripts/governance/nix-static-analysis.sh
           nix shell nixpkgs#statix nixpkgs#deadnix nixpkgs#alejandra --command \
-            ./scripts/nix-static-analysis.sh --non-blocking
+            ./scripts/governance/nix-static-analysis.sh --non-blocking
 
   shellcheck:
     name: Shellcheck & Linting
@@ -171,7 +231,7 @@ jobs:
 
       - name: Collect shell scripts
         run: |
-          mapfile -t shell_files < <(git ls-files '*.sh' ':!:deprecated/**')
+          mapfile -t shell_files < <(git ls-files '*.sh' ':!:archive/deprecated/**')
           extras=(scripts/ai/mcp-db-validate scripts/ai/mcp-server)
 
           for extra in "${extras[@]}"; do
@@ -221,6 +281,23 @@ jobs:
           name: shellcheck-results
           path: shellcheck.log
 
+  script-header-standards:
+    name: Script Header Standards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Enforce header standards on changed scripts
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_REF: ${{ github.sha }}
+        run: |
+          chmod +x scripts/governance/check-script-header-standards.sh
+          ./scripts/governance/check-script-header-standards.sh --base "${BASE_REF}" --head "${HEAD_REF}"
+
   syntax:
     name: Syntax Validation
     runs-on: ubuntu-latest
@@ -231,7 +308,7 @@ jobs:
       - name: Check bash syntax
         run: |
           echo "Validating bash syntax..."
-          mapfile -t shell_files < <(git ls-files '*.sh' ':!:deprecated/**')
+          mapfile -t shell_files < <(git ls-files '*.sh' ':!:archive/deprecated/**')
           extras=(scripts/ai/mcp-db-validate scripts/ai/mcp-server)
 
           for extra in "${extras[@]}"; do
@@ -337,8 +414,8 @@ jobs:
             "LICENSE"
             "AGENTS.md"
             "CLAUDE.md"
-            "SKILLS.md"
-            "MCP.md"
+            "docs/archive/root-docs/SKILLS.md"
+            "docs/archive/root-docs/MCP.md"
             "nixos-quick-deploy.sh"
             "config/defaults.sh"
             "config/variables.sh"
@@ -425,7 +502,7 @@ jobs:
 
       - name: Ensure scripts are executable
         run: |
-          git ls-files '*.sh' ':!:deprecated/**' | xargs -r chmod +x
+          git ls-files '*.sh' ':!:archive/deprecated/**' | xargs -r chmod +x
           for extra in scripts/ai/mcp-db-validate scripts/ai/mcp-server; do
             if [ -f "$extra" ]; then
               chmod +x "$extra"
@@ -583,7 +660,7 @@ jobs:
           chmod +x scripts/testing/check-api-auth-hardening.sh
           chmod +x scripts/testing/validate-ai-slo-runtime.sh
           chmod +x scripts/testing/smoke-cross-client-compat.sh
-          chmod +x scripts/sign-skill-registry.sh
+          chmod +x scripts/security/sign-skill-registry.sh
           chmod +x scripts/testing/verify-skill-registry.sh
           chmod +x scripts/data/generate-harness-sdk-provenance.sh
           ./scripts/automation/run-advanced-parity-suite.sh
@@ -603,7 +680,7 @@ jobs:
           set +H
           pattern="(password|passwd|secret|api[_-]?key|token)\\s*=\\s*['\"'][a-zA-Z0-9!@#\\$%^&*]{10,}['\"']"
 
-          if git grep -nE "$pattern" -- '*.sh' '*.nix' '*.py' ':!deprecated/**'; then
+          if git grep -nE "$pattern" -- '*.sh' '*.nix' '*.py' ':!archive/deprecated/**'; then
 
             echo "⚠ Potential secrets found above - please review"
             echo ""

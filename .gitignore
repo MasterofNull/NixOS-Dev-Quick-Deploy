@@ -21,6 +21,9 @@ result-*
 *.tmp
 *.swp
 *~
+.nvimlog
+core
+core.*
 
 # Version tracking
 .nixos-quick-deploy-version
@@ -92,6 +95,7 @@ ai-stack/compose/secrets/*
 
 # Fallback reports directory (when database unavailable)
 .reports/
+/reports/
 
 # Eval runtime artifacts (generated; stored outside repo by default)
 ai-stack/eval/results/eval-*.json

@@ -1,4 +1,7 @@
 # Hospital + Classified Security Baseline
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 
 **Created:** 2026-02-24  
 **Status:** ACTIVE BASELINE (Phase 36)

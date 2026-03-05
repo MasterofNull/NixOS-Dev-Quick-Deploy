@@ -11,7 +11,7 @@
 For detailed deployment instructions, see the complete guide at:
 - **Agent Guide**: [docs/agent-guides/43-FEDERATED-DEPLOYMENT.md](/docs/agent-guides/43-FEDERATED-DEPLOYMENT.md)
 - **Federation Strategy**: [FEDERATED-DATA-STRATEGY.md](FEDERATED-DATA-STRATEGY.md)
-- **Automation Templates**: [scripts/cron-templates.sh](/scripts/cron-templates.sh)
+- **Automation Templates**: [scripts/automation/cron-templates.sh](/scripts/automation/cron-templates.sh)
 
 ## Essential Commands
 

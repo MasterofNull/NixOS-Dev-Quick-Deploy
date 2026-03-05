@@ -1,0 +1,47 @@
+# Legacy root script names that were migrated into structured script paths.
+# Active docs should not reference these root names directly.
+
+apply-tls-certificates.sh
+archive-project-knowledge.sh
+cleanup-migrated-reports.sh
+collect-ai-metrics.sh
+compare-installed-vs-intended.sh
+configure-podman-tcp.sh
+count-packages-accurately.sh
+count-packages-simple.sh
+cron-templates.sh
+curate-residual-gaps.sh
+demo-local-ai-usage.py
+deploy-clean.sh
+edge-model-registry-validate.sh
+enable-cosmic-power-profiles.sh
+enable-progressive-disclosure.sh
+enhance-dashboard-with-controls.sh
+evaluate-agent-policy.py
+firewall-audit.sh
+fix-mangohud-config.sh
+fix-secrets-encryption.sh
+fs-integrity-check.sh
+mangohud-profile.sh
+nix-static-analysis.sh
+npm-security-monitor.sh
+p10k-setup-wizard.sh
+post-deploy-converge.sh
+publish-local-registry.sh
+quick-deploy-lint.sh
+rag_system_complete.py
+semantic-rank-repo-corpus.py
+sign-skill-registry.sh
+skill-bundle-registry.py
+sync_docs_to_ai.sh
+
+# Legacy names now migrated to non-root paths (keep for backward reference lint).
+ai_stack_manager.py
+fix-llama-hang.sh
+generated_code.py
+launch-dashboard.sh
+test-continuous-learning-demo.py
+test-learning-simple.sh
+test_vim_yank.py
+verify-profile-cleanup.sh
+vim_yank_implementation.py

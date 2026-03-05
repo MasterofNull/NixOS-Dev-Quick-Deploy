@@ -1,4 +1,8 @@
 # Dashboard is Ready! 🎉
+Status: Active
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 
 **Date**: 2025-12-22  
 **Status**: ✅ FULLY OPERATIONAL
@@ -83,7 +87,7 @@ The dashboard shows real-time:
 curl http://localhost:8000/data/system.json | jq .
 
 # AI effectiveness
-bash scripts/collect-ai-metrics.sh
+bash scripts/observability/collect-ai-metrics.sh
 cat ~/.local/share/nixos-system-dashboard/ai_metrics.json | jq .effectiveness
 ```
 

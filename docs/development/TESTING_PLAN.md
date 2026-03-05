@@ -1,4 +1,7 @@
 # AI Stack End-to-End Testing Plan
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 
 **Version:** 1.0.0
 **Status:** Active
