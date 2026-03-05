@@ -14,8 +14,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../config/service-endpoints.sh
-source "${SCRIPT_DIR}/../config/service-endpoints.sh"
+# shellcheck source=../../config/service-endpoints.sh
+source "${SCRIPT_DIR}/../../config/service-endpoints.sh"
 
 TIMEOUT=10
 CHECK_OPTIONAL=false

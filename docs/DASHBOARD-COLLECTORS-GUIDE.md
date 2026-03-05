@@ -232,8 +232,8 @@ bash scripts/deploy/serve-dashboard.sh
 
 ## Related Documentation
 
-- [SYSTEM-DASHBOARD-GUIDE.md](SYSTEM-DASHBOARD-GUIDE.md) - Complete dashboard guide
-- [SYSTEM-DASHBOARD-README.md](SYSTEM-DASHBOARD-README.md) - Dashboard overview
+- [SYSTEM-DASHBOARD-GUIDE.md]/docs/archive/stubs/SYSTEM-DASHBOARD-GUIDE.md - Complete dashboard guide
+- [SYSTEM-DASHBOARD-README.md]/docs/archive/stubs/SYSTEM-DASHBOARD-README.md - Dashboard overview
 - [scripts/data/generate-dashboard-data.sh](/scripts/data/generate-dashboard-data.sh) - Main collection script
 
 ## Change Log

@@ -1,4 +1,8 @@
 # Vim Editor Agent Yank Functionality
+Status: Active
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 
 This implementation provides yank (copy) functionality for a Vim editor agent, inspired by the conversation history about implementing yank mode in a Vim editor.
 

@@ -1,7 +1,3 @@
 #!/usr/bin/env bash
-set -euo pipefail
-
-echo "scripts/count-packages-accurately.sh is deprecated." >&2
-echo "Use declarative inventory from flake outputs and Nix evaluations." >&2
-echo "Example: nix flake show" >&2
-exit 2
+# Compatibility shim: use scripts/governance/count-packages-accurately.sh.
+exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/governance/count-packages-accurately.sh" "$@"

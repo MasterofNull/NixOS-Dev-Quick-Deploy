@@ -1,10 +1,6 @@
-# AI Agent Onboarding (Pointer)
+# Archived Document Stub
 
-**Canonical source:** `AGENTS.md` (root). Update that file only.
+This document was archived during repository cleanup.
 
-Use these quick links to avoid duplicate documentation:
-
-- `AGENTS.md` - Canonical onboarding and rules
-- `docs/agent-guides/00-SYSTEM-OVERVIEW.md` - System map
-- `docs/agent-guides/01-QUICK-START.md` - Task-ready checklist
-- `ai-stack/agents/skills/AGENTS.md` - Skill usage and sync rules
+- Current location: [`/docs/archive/stale/2026-03/AGENT-ONBOARDING-README.md`](/docs/archive/stale/2026-03/AGENT-ONBOARDING-README.md)
+- Archive reason: stale content over 45 days old and outside active runtime/documentation scope.

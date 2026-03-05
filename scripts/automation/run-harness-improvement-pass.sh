@@ -100,7 +100,7 @@ else
   log "FAIL: Aider-wrapper analysis fastpath probe"
 fi
 
-if ! "${SCRIPT_DIR}/aq-report" --since=7d --format=json >/tmp/ai-harness-aq-report.json; then
+if ! "${ROOT_DIR}/scripts/ai/aq-report" --since=7d --format=json >/tmp/ai-harness-aq-report.json; then
   FAILURES=$((FAILURES + 1))
   log "FAIL: aq-report JSON generation"
 fi

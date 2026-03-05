@@ -4,7 +4,7 @@
 # that breaks on any directory restructure and is not wired to the running service.
 # All routing and coordination logic lives in server.py.
 # Retained for reference only. Will be deleted in a future cleanup pass.
-# See: AI-STACK-IMPROVEMENT-PLAN.md Phase 1.1
+# See: docs/archive/root-docs/AI-STACK-IMPROVEMENT-PLAN.md Phase 1.1
 #!/usr/bin/env python3
 """
 Hybrid Coordinator MCP Server

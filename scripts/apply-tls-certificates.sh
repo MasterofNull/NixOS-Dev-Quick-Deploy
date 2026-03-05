@@ -1,6 +1,3 @@
 #!/usr/bin/env bash
-set -euo pipefail
-
-echo "scripts/apply-tls-certificates.sh is deprecated." >&2
-echo "Imperative/legacy operational script removed from declarative runtime path." >&2
-exit 2
+# Compatibility shim: use scripts/security/apply-tls-certificates.sh.
+exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/security/apply-tls-certificates.sh" "$@"

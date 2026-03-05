@@ -70,7 +70,7 @@ nix-instantiate --parse <file.nix>
 ```
 
 ## QA Plan Reference
-Full plan: `AI-STACK-QA-PLAN.md`
+Full plan: `docs/archive/root-docs/AI-STACK-QA-PLAN.md`
 - Phase 21 (tooling) → do first
 - Phase 0 (smoke) → `aq-qa 0`
 - Phase 1 (infra) → `aq-qa 1`

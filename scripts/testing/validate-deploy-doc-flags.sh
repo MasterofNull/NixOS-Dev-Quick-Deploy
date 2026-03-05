@@ -16,7 +16,7 @@ DOC_FILES=(
   "${REPO_ROOT}/docs/agent-guides/10-NIXOS-CONFIG.md"
   "${REPO_ROOT}/docs/agent-guides/12-DEBUGGING.md"
   "${REPO_ROOT}/docs/development/DEPLOYMENT.md"
-  "${REPO_ROOT}/docs/development/KNOWN_ISSUES_TROUBLESHOOTING.md"
+  "${REPO_ROOT}/docs/development/docs/archive/root-docs/KNOWN_ISSUES_TROUBLESHOOTING.md"
   "${REPO_ROOT}/docs/development/SECURITY-SETUP.md"
 )
 

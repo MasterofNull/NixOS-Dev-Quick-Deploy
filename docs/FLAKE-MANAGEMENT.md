@@ -26,7 +26,7 @@ nix flake update --flake .
 4. Run deploy flow (optional):
 
 ```bash
-./scripts/deploy-clean.sh --update-lock
+./scripts/deploy/deploy-clean.sh. --update-lock
 ```
 
 ## What Is Validated
@@ -51,8 +51,8 @@ Note: Nix uses hash-based content integrity (`narHash`) for locked inputs. This 
 ## CI Integration
 
 `.github/workflows/test.yml` runs flake validation in the `flake-validation` job and uploads report artifacts:
-- `reports/flake-validation-report.json`
-- `reports/flake-validation-report.md`
+- `.reports/flake-validation-report.json`
+- `.reports/flake-validation-report.md`
 - `scripts/testing/validate-tool-management-policy.sh` to enforce non-Nix tool policy for Claude/Goose.
 
 ## Non-Nix Tool Management Policy (Phase 19.6)

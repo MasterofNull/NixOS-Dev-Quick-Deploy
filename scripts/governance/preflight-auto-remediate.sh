@@ -17,7 +17,7 @@ fi
 # Guard script syntax for known deploy-critical shell scripts.
 for script in \
   "${ROOT_DIR}/nixos-quick-deploy.sh" \
-  "${ROOT_DIR}/scripts/npm-security-monitor.sh" \
+  "${ROOT_DIR}/scripts/security/npm-security-monitor.sh" \
   "${ROOT_DIR}/scripts/testing/validate-runtime-declarative.sh"
 do
   if [[ -f "${script}" ]]; then

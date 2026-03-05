@@ -1,4 +1,8 @@
 # Quick Reference Card
+Status: Active
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 
 **System**: NixOS Hybrid AI Learning Stack v2.1.0  
 **Status**: ✅ PRODUCTION READY
@@ -80,7 +84,7 @@ ps aux | grep -E "http.server|ai-metrics|dashboard" | grep -v grep
 ## 📈 Next Actions
 
 **Optional (when ready)**:
-1. `bash scripts/enable-progressive-disclosure.sh` - Integrate discovery API
+1. `bash scripts/deploy/enable-progressive-disclosure.sh` - Integrate discovery API
 2. Import codebase to knowledge base
 3. Use for real development questions
 

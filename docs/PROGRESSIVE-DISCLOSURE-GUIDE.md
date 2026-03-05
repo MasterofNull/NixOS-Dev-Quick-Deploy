@@ -426,7 +426,7 @@ curl http://localhost:8091/health
 
 # AI metrics
 curl http://localhost:8091/metrics
-# or run: bash scripts/collect-ai-metrics.sh
+# or run: bash scripts/observability/collect-ai-metrics.sh
 ```
 
 ---
@@ -621,7 +621,7 @@ Where:
 
 ```bash
 # Check current effectiveness
-bash scripts/collect-ai-metrics.sh
+bash scripts/observability/collect-ai-metrics.sh
 cat ~/.local/share/nixos-system-dashboard/ai_metrics.json | jq .effectiveness
 
 # Example output:
@@ -726,6 +726,6 @@ The progressive disclosure system provides:
 **Document Version**: 1.0.0
 **Last Updated**: 2025-12-22
 **Related Docs**:
-- [AI System Usage Guide](../AI-SYSTEM-USAGE-GUIDE.md)
+- [AI System Usage Guide]/docs/archive/stubs/AI-SYSTEM-USAGE-GUIDE.md
 - [Agent Guides](agent-guides/)
 - [Agent Onboarding Package](../agent-onboarding-package-v2.0.0/)

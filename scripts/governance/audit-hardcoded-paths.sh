@@ -17,12 +17,12 @@ exclude_globs=(
   "--glob" "!.git/*"
   "--glob" "!archive/**"
   "--glob" "!docs/archive/**"
-  "--glob" "!deprecated/**"
+  "--glob" "!archive/deprecated/**"
   "--glob" "!result/**"
   "--glob" "!venv/**"
   "--glob" "!**/*.log"
   "--glob" "!**/*.lock"
-  "--glob" "!dashboard.html.backup-*"
+  "--glob" "!archive/backups/**"
   "--glob" "!scripts/governance/audit-hardcoded-paths.sh"
 )
 

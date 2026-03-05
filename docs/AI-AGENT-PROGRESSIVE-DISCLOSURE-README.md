@@ -302,7 +302,7 @@ Store outcome for learning
 |------|---------|------|
 | [ai-stack/mcp-servers/aidb/discovery_api.py](/ai-stack/mcp-servers/aidb/discovery_api.py) | Discovery API core logic | 500 lines |
 | [ai-stack/mcp-servers/aidb/discovery_endpoints.py](/ai-stack/mcp-servers/aidb/discovery_endpoints.py) | FastAPI route integration | 400 lines |
-| [scripts/enable-progressive-disclosure.sh](/scripts/enable-progressive-disclosure.sh) | Integration automation script | 100 lines |
+| [scripts/deploy/enable-progressive-disclosure.sh](/scripts/deploy/enable-progressive-disclosure.sh) | Integration automation script | 100 lines |
 
 ### Documentation
 
@@ -311,7 +311,7 @@ Store outcome for learning
 | [PROGRESSIVE-DISCLOSURE-IMPLEMENTATION.md](/docs/archive/PROGRESSIVE-DISCLOSURE-IMPLEMENTATION.md) | Implementation summary | Developers |
 | [docs/PROGRESSIVE-DISCLOSURE-GUIDE.md](/docs/PROGRESSIVE-DISCLOSURE-GUIDE.md) | Complete usage guide | AI Agents |
 | [docs/AGENT-INTEGRATION-WORKFLOW.md](/docs/AGENT-INTEGRATION-WORKFLOW.md) | Integration patterns | Developers |
-| [AI-SYSTEM-USAGE-GUIDE.md](AI-SYSTEM-USAGE-GUIDE.md) | System usage reference | All users |
+| [AI-SYSTEM-USAGE-GUIDE.md]/docs/archive/stubs/AI-SYSTEM-USAGE-GUIDE.md | System usage reference | All users |
 | [AI-AGENT-PROGRESSIVE-DISCLOSURE-README.md](AI-AGENT-PROGRESSIVE-DISCLOSURE-README.md) | This file | Quick start |
 
 ---
@@ -320,14 +320,14 @@ Store outcome for learning
 
 ### Prerequisites
 
-- AI stack running ([see AI-SYSTEM-USAGE-GUIDE.md](AI-SYSTEM-USAGE-GUIDE.md))
+- AI stack running ([see AI-SYSTEM-USAGE-GUIDE.md]/docs/archive/stubs/AI-SYSTEM-USAGE-GUIDE.md)
 - Services healthy: Qdrant, PostgreSQL, Redis, llama.cpp, AIDB, Hybrid Coordinator
 
 ### Option 1: Automated Integration (Recommended)
 
 ```bash
 # Run integration script
-bash scripts/enable-progressive-disclosure.sh
+bash scripts/deploy/enable-progressive-disclosure.sh
 
 # Rebuild AIDB container
 cd ai-stack/compose
@@ -343,7 +343,7 @@ curl --cacert ai-stack/compose/nginx/certs/localhost.crt https://localhost:8443/
 
 ### Option 2: Manual Integration
 
-See [PROGRESSIVE-DISCLOSURE-IMPLEMENTATION.md](PROGRESSIVE-DISCLOSURE-IMPLEMENTATION.md#integration-steps) for detailed manual steps.
+See [PROGRESSIVE-DISCLOSURE-IMPLEMENTATION.md](/docs/archive/stubs/PROGRESSIVE-DISCLOSURE-IMPLEMENTATION.md) for detailed manual steps.
 
 ---
 
@@ -532,7 +532,7 @@ print(response["message"]["content"])
 
 ```bash
 # Run metrics collector
-bash scripts/collect-ai-metrics.sh
+bash scripts/observability/collect-ai-metrics.sh
 
 # View effectiveness score
 cat ~/.local/share/nixos-system-dashboard/ai_metrics.json | jq .effectiveness
@@ -564,7 +564,7 @@ Where:
 
 ```bash
 # Monitor in real-time (updates every 60s)
-watch -n 60 'bash scripts/collect-ai-metrics.sh && \
+watch -n 60 'bash scripts/observability/collect-ai-metrics.sh && \
   cat ~/.local/share/nixos-system-dashboard/ai_metrics.json | \
   jq .effectiveness'
 ```
@@ -605,7 +605,7 @@ watch -n 60 'bash scripts/collect-ai-metrics.sh && \
 **Fix**:
 ```bash
 # Re-run integration
-bash scripts/enable-progressive-disclosure.sh
+bash scripts/deploy/enable-progressive-disclosure.sh
 
 # Rebuild and restart
 cd ai-stack/compose
@@ -661,7 +661,7 @@ curl --cacert ai-stack/compose/nginx/certs/localhost.crt \
 
 ```bash
 # Install and test
-bash scripts/enable-progressive-disclosure.sh
+bash scripts/deploy/enable-progressive-disclosure.sh
 curl --cacert ai-stack/compose/nginx/certs/localhost.crt https://localhost:8443/aidb/discovery/info \
   -H "X-API-Key: $(cat ai-stack/compose/secrets/stack_api_key)"
 ```
@@ -677,7 +677,7 @@ Choose integration pattern:
 
 ```bash
 # Weekly review
-bash scripts/collect-ai-metrics.sh
+bash scripts/observability/collect-ai-metrics.sh
 cat ~/.local/share/nixos-system-dashboard/ai_metrics.json | jq .effectiveness
 ```
 
@@ -698,7 +698,7 @@ cat ~/.local/share/nixos-system-dashboard/ai_metrics.json | jq .effectiveness
 - **Complete Guide**: [docs/PROGRESSIVE-DISCLOSURE-GUIDE.md](/docs/PROGRESSIVE-DISCLOSURE-GUIDE.md)
 - **Integration Patterns**: [docs/AGENT-INTEGRATION-WORKFLOW.md](/docs/AGENT-INTEGRATION-WORKFLOW.md)
 - **Implementation Details**: [PROGRESSIVE-DISCLOSURE-IMPLEMENTATION.md](/docs/archive/PROGRESSIVE-DISCLOSURE-IMPLEMENTATION.md)
-- **System Usage**: [AI-SYSTEM-USAGE-GUIDE.md](AI-SYSTEM-USAGE-GUIDE.md)
+- **System Usage**: [AI-SYSTEM-USAGE-GUIDE.md]/docs/archive/stubs/AI-SYSTEM-USAGE-GUIDE.md
 
 ### Agent Guides
 
@@ -709,7 +709,7 @@ See [docs/agent-guides/](/docs/agent-guides/) for numbered guides:
 
 ### Getting Help
 
-1. Check [AI-SYSTEM-USAGE-GUIDE.md](AI-SYSTEM-USAGE-GUIDE.md) troubleshooting section
+1. Check [AI-SYSTEM-USAGE-GUIDE.md]/docs/archive/stubs/AI-SYSTEM-USAGE-GUIDE.md troubleshooting section
 2. Review [AI-SYSTEM-TEST-REPORT-2025-12-22.md](/docs/archive/AI-SYSTEM-TEST-REPORT-2025-12-22.md) for known issues
 3. Check service health: `curl --cacert ai-stack/compose/nginx/certs/localhost.crt https://localhost:8443/aidb/health`
 4. View logs: `podman logs local-ai-aidb`

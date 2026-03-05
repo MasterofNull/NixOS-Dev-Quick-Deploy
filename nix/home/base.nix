@@ -1005,8 +1005,8 @@ PYEOF
 
   # Ship the first-run prompt wizard from the repository into ~/.local/bin.
   home.file.".local/bin/p10k-setup-wizard.sh" =
-    lib.mkIf (builtins.pathExists ../../scripts/p10k-setup-wizard.sh) {
-      source = ../../scripts/p10k-setup-wizard.sh;
+    lib.mkIf (builtins.pathExists ../../scripts/deploy/p10k-setup-wizard.sh) {
+      source = ../../scripts/deploy/p10k-setup-wizard.sh;
       executable = true;
     };
 

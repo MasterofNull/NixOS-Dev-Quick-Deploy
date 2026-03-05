@@ -119,7 +119,7 @@ Total: 5 | OK: 4 | Warnings: 1 | Errors: 0
 
 ### 4. RAG System Functionality ⚠️
 
-**Command**: `python3 scripts/rag_system_complete.py`
+**Command**: `python3 scripts/data/rag-system-complete.py`
 
 **Results**:
 ```
@@ -347,7 +347,7 @@ None
    - **Issue**: `datetime.utcnow()` deprecated in Python 3.12+
    - **Impact**: None (warnings only)
    - **Fix**: Update to `datetime.now(datetime.UTC)` in future
-   - **Files**: scripts/rag_system_complete.py (multiple locations)
+   - **Files**: scripts/data/rag-system-complete.py (multiple locations)
 
 4. **File Naming Inconsistency** ✅ FIXED
    - **Issue**: Python can't import modules with dashes in filename

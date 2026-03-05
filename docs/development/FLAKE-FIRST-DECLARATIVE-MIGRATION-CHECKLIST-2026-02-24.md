@@ -1,4 +1,6 @@
 # Flake-First Declarative Migration Checklist (1:1 Script Function Mapping)
+Last Updated: 2026-03-05
+
 
 Date: 2026-02-24
 Owner: deploy-core
@@ -130,13 +132,13 @@ Status model: `done` | `in-progress` | `planned` | `keep-script`
   Status: `planned`
 - [ ] `scripts/health/system-health-check.sh` -> service-level `systemd` dependency + `assertions`
   Status: `planned`
-- [ ] `scripts/compare-installed-vs-intended.sh` -> CI check only
+- [ ] `scripts/testing/compare-installed-vs-intended.sh` -> CI check only
   Status: `planned`
 - [ ] `scripts/data/sync-flatpak-profile.sh` -> declarative Flatpak module strategy (or keep as explicit exception)
   Status: `planned`
 
 ## Superseded Scripts Move Policy
-- [x] Move deprecated stubs from `scripts/` to `deprecated/scripts/runtime-superseded/`
+- [x] Move deprecated stubs from `scripts/` to `archive/deprecated/scripts/runtime-superseded/`
   Status: `done`
   Files moved:
   - `setup-ai-stack-secrets.sh`

@@ -1,4 +1,6 @@
 # AI Stack Secrets Management Guide
+Owner: AI Stack Maintainers
+
 
 **Last Updated:** February 2, 2026
 **Tool Version:** 1.0.0

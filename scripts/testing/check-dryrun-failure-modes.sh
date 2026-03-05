@@ -88,8 +88,8 @@ assert_prefix "${post_wd}" "/var/lib/" "ai-post-deploy-converge WorkingDirectory
 log "Checking service executable wiring"
 npm_exec="$(nix_raw 'systemd.services.ai-npm-security-monitor.serviceConfig.ExecStart')"
 post_exec="$(nix_raw 'systemd.services.ai-post-deploy-converge.serviceConfig.ExecStart')"
-assert_file_in_execstart "${npm_exec}" "${ROOT_DIR}/scripts/npm-security-monitor.sh"
-assert_file_in_execstart "${post_exec}" "${ROOT_DIR}/scripts/post-deploy-converge.sh"
+assert_file_in_execstart "${npm_exec}" "${ROOT_DIR}/scripts/security/npm-security-monitor.sh"
+assert_file_in_execstart "${post_exec}" "${ROOT_DIR}/scripts/automation/post-deploy-converge.sh"
 
 log "Checking package dependencies for monitored services"
 npm_path_json="$(nix_json 'systemd.services.ai-npm-security-monitor.path')"

@@ -291,7 +291,7 @@ The dashboard successfully achieves:
 Old dashboard (v1) → New dashboard (v2):
 - **Coexistence**: Both can run simultaneously (different ports)
 - **Data**: v2 doesn't use v1's JSON files
-- **Rollback**: Keep `dashboard.html` and `launch-dashboard.sh` for safety
+- **Rollback**: Keep `dashboard.html` and `scripts/deploy/launch-dashboard.sh` for safety
 - **Full docs**: See `dashboard/MIGRATION.md`
 
 ---

@@ -1,4 +1,8 @@
 # Repo Cleanup Pass 1 Plan
+Status: Active
+Owner: AI Stack Maintainers
+Last Updated: 2026-03-05
+
 
 ## Objective
 
@@ -18,7 +22,7 @@ Hard-stop future disorganization and establish an enforceable structure baseline
   - `.github/workflows/test.yml`
   - `.github/workflows/tests.yml`
 - Wired quick deploy lint enforcement:
-  - `scripts/quick-deploy-lint.sh`
+  - `scripts/governance/quick-deploy-lint.sh`
 - Published policy:
   - `docs/operations/REPO-STRUCTURE-POLICY.md`
 - Published initial inventory:
@@ -57,6 +61,6 @@ Hard-stop future disorganization and establish an enforceable structure baseline
 ## Safety Gates (every pass)
 
 - `scripts/governance/repo-structure-lint.sh --all`
-- `scripts/quick-deploy-lint.sh --mode fast`
+- `scripts/governance/quick-deploy-lint.sh --mode fast`
 - `scripts/testing/validate-runtime-declarative.sh`
 - `scripts/testing/check-mcp-health.sh`

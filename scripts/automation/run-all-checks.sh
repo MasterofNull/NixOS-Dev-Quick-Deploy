@@ -4,8 +4,8 @@
 # Aggregate runner for core validation scripts:
 #   - scripts/ai/ai-stack-health.sh
 #   - scripts/health/system-health-check.sh
-#   - scripts/testing/test_services.sh
-#   - scripts/testing/test_real_world_workflows.sh
+#   - scripts/testing/test-services.sh
+#   - scripts/testing/test-real-world-workflows.sh
 #
 
 set -Eeuo pipefail
@@ -14,8 +14,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 STACK_HEALTH_SCRIPT="$SCRIPT_DIR/scripts/ai/ai-stack-health.sh"
 HEALTH_SCRIPT="$SCRIPT_DIR/scripts/health/system-health-check.sh"
-SERVICES_SCRIPT="$SCRIPT_DIR/scripts/testing/test_services.sh"
-WORKFLOWS_SCRIPT="$SCRIPT_DIR/scripts/testing/test_real_world_workflows.sh"
+SERVICES_SCRIPT="$SCRIPT_DIR/scripts/testing/test-services.sh"
+WORKFLOWS_SCRIPT="$SCRIPT_DIR/scripts/testing/test-real-world-workflows.sh"
 DOC_FLAGS_SCRIPT="$SCRIPT_DIR/scripts/testing/validate-deploy-doc-flags.sh"
 PHASE_PLAN_SCRIPT="$SCRIPT_DIR/scripts/automation/run-ai-harness-phase-plan.sh"
 
@@ -27,8 +27,8 @@ Runs the main validation scripts in sequence:
   1) validate-deploy-doc-flags.sh
   2) ai-stack-health.sh
   3) system-health-check.sh
-  4) test_services.sh
-  5) test_real_world_workflows.sh
+  4) test-services.sh
+  5) test-real-world-workflows.sh
   6) run-ai-harness-phase-plan.sh
 
 Options:
@@ -117,31 +117,31 @@ main() {
 
     # 4) Service tests
     if [[ -x "$SERVICES_SCRIPT" ]]; then
-        echo "=== Running test_services.sh ==="
+        echo "=== Running test-services.sh ==="
         if "$SERVICES_SCRIPT"; then
-            echo ">>> test_services.sh: OK"
+            echo ">>> test-services.sh: OK"
         else
-            echo ">>> test_services.sh: FAILED"
+            echo ">>> test-services.sh: FAILED"
             overall_exit=1
         fi
         echo
     else
-        echo ">>> Skipping test_services.sh (not found or not executable at $SERVICES_SCRIPT)"
+        echo ">>> Skipping test-services.sh (not found or not executable at $SERVICES_SCRIPT)"
         overall_exit=1
     fi
 
     # 5) Workflow tests
     if [[ -x "$WORKFLOWS_SCRIPT" ]]; then
-        echo "=== Running test_real_world_workflows.sh ==="
+        echo "=== Running test-real-world-workflows.sh ==="
         if "$WORKFLOWS_SCRIPT"; then
-            echo ">>> test_real_world_workflows.sh: OK"
+            echo ">>> test-real-world-workflows.sh: OK"
         else
-            echo ">>> test_real_world_workflows.sh: FAILED"
+            echo ">>> test-real-world-workflows.sh: FAILED"
             overall_exit=1
         fi
         echo
     else
-        echo ">>> Skipping test_real_world_workflows.sh (not found or not executable at $WORKFLOWS_SCRIPT)"
+        echo ">>> Skipping test-real-world-workflows.sh (not found or not executable at $WORKFLOWS_SCRIPT)"
         overall_exit=1
     fi
 

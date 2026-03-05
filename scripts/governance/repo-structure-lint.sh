@@ -71,6 +71,25 @@ collect_paths() {
 violations=0
 while IFS= read -r path; do
   [[ -z "$path" ]] && continue
+  base="${path##*/}"
+
+  # Rule 0: crash-dump artifacts are never allowed in-repo.
+  if [[ "$base" == "core" || "$base" =~ ^core\.[0-9]+$ ]]; then
+    if ! is_allowlisted "$path"; then
+      echo "[repo-structure] FAIL crash artifact disallowed: $path"
+      ((violations+=1))
+    fi
+    continue
+  fi
+
+  # Rule 0b: transient runtime/editor dotfiles are never allowed in-repo.
+  if [[ "$base" == ".nvimlog" || "$base" == ".python_history" ]]; then
+    if ! is_allowlisted "$path"; then
+      echo "[repo-structure] FAIL transient dotfile disallowed: $path"
+      ((violations+=1))
+    fi
+    continue
+  fi
 
   # Rule 1: root-level markdown is disallowed unless grandfathered.
   if [[ "$path" != */* && "$path" == *.md ]]; then

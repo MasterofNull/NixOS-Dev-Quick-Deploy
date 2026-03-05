@@ -33,8 +33,8 @@ run "${ROOT}/nixos-quick-deploy.sh" --self-check
 run "${ROOT}/scripts/testing/check-dryrun-failure-modes.sh" --flake-ref . --nixos-target nixos-ai-dev
 
 run python -m py_compile \
-  "${ROOT}/scripts/skill-bundle-registry.py" \
-  "${ROOT}/scripts/evaluate-agent-policy.py" \
+  "${ROOT}/scripts/governance/skill-bundle-registry.py" \
+  "${ROOT}/scripts/governance/evaluate-agent-policy.py" \
   "${ROOT}/scripts/ai/route-reasoning-mode.py" \
   "${ROOT}/scripts/testing/test-tool-security-auditor.py"
 

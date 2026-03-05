@@ -1,6 +1,6 @@
 #!/run/current-system/sw/bin/bash
 # Declarative dashboard shim.
-# Legacy imperative dashboard setup has been moved to deprecated/lib/dashboard.sh.
+# Legacy imperative dashboard setup has been moved to archive/deprecated/lib/dashboard.sh.
 
 setup_system_dashboard() {
     print_info "Dashboard is declaratively managed by NixOS modules (no imperative setup)."
