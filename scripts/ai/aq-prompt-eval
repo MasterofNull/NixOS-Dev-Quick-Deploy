@@ -49,7 +49,7 @@ LLAMA_URL = os.getenv(
 REGISTRY_PATH = Path(
     os.getenv(
         "REGISTRY_PATH",
-        str(Path(__file__).parent.parent / "ai-stack/prompts/registry.yaml"),
+        str(Path(__file__).parent.parent.parent / "ai-stack/prompts/registry.yaml"),
     )
 )
 
