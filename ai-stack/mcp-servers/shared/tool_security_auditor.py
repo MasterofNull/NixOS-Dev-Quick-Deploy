@@ -43,6 +43,7 @@ def _default_policy() -> Dict[str, Any]:
     return {
         "version": "1.0",
         "blocked_tools": ["shell_exec", "remote_ssh_exec", "raw_system_command"],
+        "keyword_exempt_tools": [],
         "blocked_endpoint_patterns": ["/control/*", "*/reload-model", "*/session/*/mode"],
         "blocked_reason_keywords": [
             "exec",
@@ -111,6 +112,9 @@ class ToolSecurityAuditor:
                     "policy_version": policy_version,
                     "reason_count": len(reasons),
                     "change_count": len(changes),
+                    "primary_reason": str(reasons[0]) if reasons else "",
+                    "block_reasons": [str(r) for r in reasons[:8]],
+                    "sanitization_changes": [str(c) for c in changes[:8]],
                 },
             )
         except Exception:
@@ -204,13 +208,19 @@ class ToolSecurityAuditor:
                 reasons.append(f"blocked_endpoint_pattern:{p}")
                 break
 
-        for kw in policy.get("blocked_reason_keywords", []):
-            keyword = str(kw).strip().lower()
-            if not keyword:
-                continue
-            if keyword in reason_text or keyword in blob:
-                reasons.append(f"blocked_keyword:{keyword}")
-                break
+        keyword_exempt_tools = {
+            str(t).strip().lower()
+            for t in policy.get("keyword_exempt_tools", [])
+            if str(t).strip()
+        }
+        if name not in keyword_exempt_tools:
+            for kw in policy.get("blocked_reason_keywords", []):
+                keyword = str(kw).strip().lower()
+                if not keyword:
+                    continue
+                if keyword in reason_text or keyword in blob:
+                    reasons.append(f"blocked_keyword:{keyword}")
+                    break
 
         return (len(reasons) == 0), reasons
 

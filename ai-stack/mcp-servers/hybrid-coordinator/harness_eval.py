@@ -18,6 +18,7 @@ Usage in server.py:
 """
 
 import logging
+import asyncio
 import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
@@ -105,17 +106,75 @@ async def run_harness_evaluation(
     if not Config.AI_HARNESS_EVAL_ENABLED:
         return {"status": "disabled"}
 
-    start = time.time()
-    result = await _route_search(
-        query=query,
-        mode=mode,
-        prefer_local=True,
-        limit=5,
-        keyword_limit=5,
-        score_threshold=0.7,
-        generate_response=True,
+    start = time.perf_counter()
+    timeout_s = (
+        max(float(max_latency_ms) / 1000.0, 0.1)
+        if isinstance(max_latency_ms, (int, float)) and float(max_latency_ms) > 0
+        else max(float(Config.AI_HARNESS_EVAL_TIMEOUT_S), 0.1)
     )
-    latency_ms = int((time.time() - start) * 1000)
+
+    route_task = asyncio.create_task(
+        _route_search(
+            query=query,
+            mode=mode,
+            prefer_local=True,
+            limit=5,
+            keyword_limit=5,
+            score_threshold=0.7,
+            generate_response=True,
+        )
+    )
+    try:
+        result = await asyncio.wait_for(route_task, timeout=timeout_s)
+    except asyncio.TimeoutError:
+        route_task.cancel()
+        try:
+            await route_task
+        except asyncio.CancelledError:
+            pass
+
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        metrics = {
+            "relevance_score": 0.0,
+            "latency_ms": latency_ms,
+            "latency_target_ms": int(max_latency_ms or Config.AI_HARNESS_MAX_LATENCY_MS),
+            "latency_ok": False,
+            "response_non_empty": False,
+            "overall_score": 0.0,
+            "timeout_s": round(timeout_s, 3),
+            "timeout_triggered": True,
+        }
+        failure_category = "evaluation_timeout"
+        _HARNESS_STATS["failure_taxonomy"][failure_category] = (
+            _HARNESS_STATS["failure_taxonomy"].get(failure_category, 0) + 1
+        )
+        _HARNESS_STATS["total_runs"] += 1
+        _HARNESS_STATS["failed"] += 1
+        _HARNESS_STATS["last_run_at"] = datetime.now(timezone.utc).isoformat()
+        _record_telemetry(
+            "harness_eval",
+            {
+                "query": query[:200],
+                "mode": mode,
+                "score": 0.0,
+                "passed": False,
+                "failure_category": failure_category,
+                "latency_ms": latency_ms,
+                "timeout_s": timeout_s,
+            },
+        )
+        return {
+            "status": "timeout",
+            "query": query,
+            "mode": mode,
+            "passed": False,
+            "min_acceptance_score": Config.AI_HARNESS_MIN_ACCEPTANCE_SCORE,
+            "metrics": metrics,
+            "failure_category": failure_category,
+            "route_result": {},
+        }
+
+    latency_ms = int((time.perf_counter() - start) * 1000)
     response_text = (result.get("response") or "").strip()
     keywords = [kw for kw in (expected_keywords or []) if isinstance(kw, str)]
     relevance_score = _keyword_relevance(response_text, keywords)
