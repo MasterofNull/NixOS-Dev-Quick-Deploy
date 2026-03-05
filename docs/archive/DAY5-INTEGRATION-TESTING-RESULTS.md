@@ -435,7 +435,7 @@ local-ai-hybrid-coordinator  Up 1 second (starting)
 When deploying this password migration to a fresh production environment:
 
 ### Pre-Deployment
-- [ ] Generate fresh passwords using `scripts/generate-passwords.sh`
+- [ ] Generate fresh passwords using `scripts/data/generate-passwords.sh`
 - [ ] Verify password files have 644 permissions
 - [ ] Backup existing .env file
 - [ ] Backup existing database volumes
@@ -495,7 +495,7 @@ curl -s -u "admin:$GRAFANA_PASS" http://localhost:3002/api/org
 - [TESTING-READINESS-STATUS.md](TESTING-READINESS-STATUS.md) - Pre-test preparation
 - [SESSION-CONTINUATION-JAN24.md](SESSION-CONTINUATION-JAN24.md) - Session summary
 - [90-DAY-REMEDIATION-PLAN.md](90-DAY-REMEDIATION-PLAN.md) - Overall security roadmap
-- [scripts/generate-passwords.sh](scripts/generate-passwords.sh) - Password generation
+- [scripts/data/generate-passwords.sh](scripts/data/generate-passwords.sh) - Password generation
 - [ai-stack/mcp-servers/shared/secrets_loader.py](ai-stack/mcp-servers/shared/secrets_loader.py) - Helper library
 
 ---

@@ -145,7 +145,7 @@ Created comprehensive guides:
 
 **Option 1: Unified Startup** (Easiest)
 ```bash
-./scripts/start-unified-dashboard.sh
+./scripts/deploy/start-unified-dashboard.sh
 ```
 
 **Option 2: Manual Start**
@@ -159,7 +159,7 @@ uvicorn api.main:app --port 8889
 
 Terminal 2 - Frontend:
 ```bash
-./scripts/serve-dashboard.sh
+./scripts/deploy/serve-dashboard.sh
 ```
 
 ### Using Service Controls
@@ -204,7 +204,7 @@ Terminal 2 - Frontend:
 |------|-------|---------|
 | `dashboard/backend/api/routes/actions.py` | 150 | Action execution API |
 | `scripts/enhance-dashboard-with-controls.sh` | 100 | Enhancement automation |
-| `scripts/start-unified-dashboard.sh` | 150 | Unified startup script |
+| `scripts/deploy/start-unified-dashboard.sh` | 150 | Unified startup script |
 | `DASHBOARD-CONSOLIDATION-2026-01-02.md` | 800 | Complete documentation |
 | `DASHBOARD-CONSOLIDATION-SUMMARY-2026-01-02.md` | 400 | Quick reference |
 
@@ -341,7 +341,7 @@ curl http://localhost:8889/api/health
 
 **Restart if needed**:
 ```bash
-./scripts/start-unified-dashboard.sh
+./scripts/deploy/start-unified-dashboard.sh
 ```
 
 ### Services Not Showing
@@ -383,7 +383,7 @@ podman ps  # Should work without sudo
 
 **Start Everything**:
 ```bash
-./scripts/start-unified-dashboard.sh
+./scripts/deploy/start-unified-dashboard.sh
 ```
 
 **Stop Everything**:

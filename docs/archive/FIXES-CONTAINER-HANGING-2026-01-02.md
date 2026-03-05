@@ -76,7 +76,7 @@ Created two functions:
   - ✅ Added: Helpful note about 2-3 minute startup time
 
 ### 4. **Updated Stack Startup Script** ✅
-**File**: [scripts/start-ai-stack-and-dashboard.sh](/scripts/start-ai-stack-and-dashboard.sh)
+**File**: [scripts/deploy/start-ai-stack-and-dashboard.sh](/scripts/deploy/start-ai-stack-and-dashboard.sh)
 
 Changes:
 - Pre-cleanup: Runs `cleanup-hanging-compose.sh` before startup
@@ -128,7 +128,7 @@ podman start local-ai-qdrant
    - `cmd_up()`: Added cleanup + timeout
    - `cmd_status()`: Removed non-existent services
    - `cmd_status_quick()`: New fast status check
-3. **UPDATED**: `scripts/start-ai-stack-and-dashboard.sh`
+3. **UPDATED**: `scripts/deploy/start-ai-stack-and-dashboard.sh`
    - Added pre-cleanup call
    - Added 10-minute timeout wrapper
    - Better error handling
@@ -173,7 +173,7 @@ local-ai-hybrid-coordinator  Intermittent (known issue) ⚠️
 ### Start AI Stack (with fixes)
 ```bash
 # Automatic cleanup + timeout
-./scripts/start-ai-stack-and-dashboard.sh
+./scripts/deploy/start-ai-stack-and-dashboard.sh
 
 # Or directly
 ./scripts/hybrid-ai-stack.sh up

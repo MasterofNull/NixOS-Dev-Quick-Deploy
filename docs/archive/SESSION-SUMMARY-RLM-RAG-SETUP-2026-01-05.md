@@ -91,7 +91,7 @@ Remote LLM (Claude/GPT-4) ←→ Local AI Stack (Memory & Context)
 - LLM prompt engineering techniques
 - Vector database optimization
 
-**Created and Ran:** [scripts/populate-knowledge-from-web.py](/scripts/populate-knowledge-from-web.py)
+**Created and Ran:** [scripts/data/populate-knowledge-from-web.py](/scripts/data/populate-knowledge-from-web.py)
 
 **Added 24 New Entries:**
 - **10 Error Solutions** (Podman: 5, NixOS: 5)
@@ -250,7 +250,7 @@ record_interaction(session_id, outcome="success", user_feedback=1)
 
 2. **Re-run Population Script**
    ```bash
-   python3 scripts/populate-knowledge-from-web.py
+   python3 scripts/data/populate-knowledge-from-web.py
    ```
 
    **Expected Result:** 39 entries now searchable by semantic similarity
@@ -354,7 +354,7 @@ Once fully implemented, the system should achieve:
 
 1. `RLM-RAG-SELF-HEALING-IMPLEMENTATION-PLAN.md` - Complete implementation guide
 2. `KNOWLEDGE-BASE-POPULATED-2026-01-05.md` - Knowledge base documentation
-3. `scripts/populate-knowledge-from-web.py` - Knowledge population script
+3. `scripts/data/populate-knowledge-from-web.py` - Knowledge population script
 4. `SESSION-SUMMARY-RLM-RAG-SETUP-2026-01-05.md` - This document
 
 ---

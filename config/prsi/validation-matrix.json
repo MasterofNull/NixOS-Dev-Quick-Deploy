@@ -4,38 +4,38 @@
   "required_verification": [
     {
       "id": "syntax_or_lint",
-      "owner": "scripts/run-advanced-parity-suite.sh",
+      "owner": "scripts/automation/run-advanced-parity-suite.sh",
       "command": "bash -n scripts/*.sh"
     },
     {
       "id": "runtime_contract",
-      "owner": "scripts/validate-runtime-declarative.sh",
-      "command": "bash scripts/validate-runtime-declarative.sh"
+      "owner": "scripts/testing/validate-runtime-declarative.sh",
+      "command": "bash scripts/testing/validate-runtime-declarative.sh"
     },
     {
       "id": "report_schema",
-      "owner": "scripts/check-aq-report-contract.sh",
-      "command": "bash scripts/check-aq-report-contract.sh"
+      "owner": "scripts/testing/check-aq-report-contract.sh",
+      "command": "bash scripts/testing/check-aq-report-contract.sh"
     },
     {
       "id": "security_checks",
-      "owner": "scripts/check-api-auth-hardening.sh",
-      "command": "bash scripts/check-api-auth-hardening.sh"
+      "owner": "scripts/testing/check-api-auth-hardening.sh",
+      "command": "bash scripts/testing/check-api-auth-hardening.sh"
     },
     {
       "id": "focused_smoke_or_eval",
-      "owner": "scripts/smoke-focused-parity.sh",
-      "command": "bash scripts/smoke-focused-parity.sh"
+      "owner": "scripts/testing/smoke-focused-parity.sh",
+      "command": "bash scripts/testing/smoke-focused-parity.sh"
     },
     {
       "id": "critical_regression_scan",
-      "owner": "scripts/smoke-agent-harness-parity.sh",
-      "command": "bash scripts/smoke-agent-harness-parity.sh"
+      "owner": "scripts/testing/smoke-agent-harness-parity.sh",
+      "command": "bash scripts/testing/smoke-agent-harness-parity.sh"
     },
     {
       "id": "chaos_fallback",
-      "owner": "scripts/chaos-harness-smoke.sh",
-      "command": "bash scripts/chaos-harness-smoke.sh"
+      "owner": "scripts/testing/chaos-harness-smoke.sh",
+      "command": "bash scripts/testing/chaos-harness-smoke.sh"
     }
   ]
 }

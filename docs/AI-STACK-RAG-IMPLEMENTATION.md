@@ -149,7 +149,7 @@ Once models are downloaded:
 
 ```bash
 # Check all services
-python3 scripts/check-ai-stack-health-v2.py -v
+python3 scripts/testing/check-ai-stack-health-v2.py -v
 
 # Test RAG system
 python3 scripts/rag-system-complete.py
@@ -197,7 +197,7 @@ python3 scripts/rag-system-complete.py
 
 ### Phase 1: Service Health (Automated)
 ```bash
-python3 scripts/check-ai-stack-health-v2.py -v
+python3 scripts/testing/check-ai-stack-health-v2.py -v
 ```
 
 **Expected Results**:

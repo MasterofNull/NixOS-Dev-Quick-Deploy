@@ -76,7 +76,7 @@ Your AI stack agentic workflow is now **fully operational**. All critical compon
 **Files Created:**
 - [ai-stack/mcp-servers/qdrant-populator/Dockerfile](file:///home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/ai-stack/mcp-servers/qdrant-populator/Dockerfile)
 - [ai-stack/mcp-servers/qdrant-populator/populate.py](file:///home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/ai-stack/mcp-servers/qdrant-populator/populate.py)
-- [scripts/populate-qdrant-collections.sh](file:///home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/populate-qdrant-collections.sh)
+- [scripts/data/populate-qdrant-collections.sh](file:///home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/data/populate-qdrant-collections.sh)
 
 **Test Results:**
 ```
@@ -138,7 +138,7 @@ $ curl http://localhost:8098/health
 - Learning pipeline had no data to process
 
 **Fixes Applied:**
-- Created [scripts/generate-test-telemetry.sh](file:///home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/generate-test-telemetry.sh)
+- Created [scripts/data/generate-test-telemetry.sh](file:///home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/data/generate-test-telemetry.sh)
 - Generated 33 test events (AIDB: 8, Hybrid: 15, Ralph: 10)
 - Worked around container UID permissions with test directory
 
@@ -244,17 +244,17 @@ coordinator  3  python3 -u /app/continuous_learning_daemon.py  ← Running
 
 ### Operational Scripts
 
-1. **[scripts/populate-qdrant-collections.sh](file:///home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/populate-qdrant-collections.sh)**
+1. **[scripts/data/populate-qdrant-collections.sh](file:///home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/data/populate-qdrant-collections.sh)**
    - Indexes codebase files to AIDB
    - Imports skills from ~/.agent/skills/
    - Seeds best practices and documentation
 
-2. **[scripts/generate-test-telemetry.sh](file:///home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/generate-test-telemetry.sh)**
+2. **[scripts/data/generate-test-telemetry.sh](file:///home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/data/generate-test-telemetry.sh)**
    - Generates realistic telemetry events
    - Creates AIDB, Hybrid, and Ralph event streams
    - Validates learning pipeline data flow
 
-3. **[scripts/populate-qdrant-directly.py](file:///home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/populate-qdrant-directly.py)**
+3. **[scripts/data/populate-qdrant-directly.py](file:///home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/data/populate-qdrant-directly.py)**
    - Direct Qdrant population with hash-based embeddings
    - Fallback when sentence-transformers unavailable
 
@@ -350,7 +350,7 @@ coordinator  3  python3 -u /app/continuous_learning_daemon.py  ← Running
 
 ```bash
 # Overall health
-~/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai-stack-health.sh
+~/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai/ai-stack-health.sh
 
 # Expected output: 10/10 services passing
 ```

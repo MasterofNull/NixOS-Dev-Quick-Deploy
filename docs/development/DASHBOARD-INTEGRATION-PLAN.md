@@ -117,7 +117,7 @@ def get_circuit_breakers():
 ```
 
 ### Files to Modify
-- `scripts/serve-dashboard.sh` - Add API endpoints
+- `scripts/deploy/serve-dashboard.sh` - Add API endpoints
 - `dashboard.html` - Update JavaScript to use API (lines 3728-3733)
 - `ai-stack/mcp-servers/config/config.yaml` - Ensure all values are parameterized
 
@@ -330,8 +330,8 @@ Need to ensure these fixes persist in deployment templates.
 - Falls back to localStorage if API unavailable
 
 **Files Modified**:
-- [serve-dashboard.sh](scripts/serve-dashboard.sh:137-229) - Added 4 API endpoints
-- [serve-dashboard.sh](scripts/serve-dashboard.sh:352-434) - Added POST config handler
+- [serve-dashboard.sh](scripts/deploy/serve-dashboard.sh:137-229) - Added 4 API endpoints
+- [serve-dashboard.sh](scripts/deploy/serve-dashboard.sh:352-434) - Added POST config handler
 - [dashboard.html](dashboard.html:3684-3770) - Updated JavaScript functions
 
 ### Next: Phase 3 - Add Real-Time Monitoring Displays
@@ -399,7 +399,7 @@ Need to ensure these fixes persist in deployment templates.
 - [Ralph Wiggum Server](ai-stack/mcp-servers/ralph-wiggum/server.py)
 - [Dashboard HTML](dashboard.html) - Lines 1531-1599 (Configuration section)
 - [Dashboard JavaScript](dashboard.html) - Lines 3671-3768 (Config functions)
-- [Serve Dashboard Script](scripts/serve-dashboard.sh)
+- [Serve Dashboard Script](scripts/deploy/serve-dashboard.sh)
 - [Config YAML](ai-stack/mcp-servers/config/config.yaml)
 
 ---

@@ -126,7 +126,7 @@ This system is built on the following beliefs:
 - `pg_stat_statements` - Performance monitoring
 - `pg_trgm` - Fuzzy text search
 
-> Bootstrap these tables locally with `./scripts/bootstrap_aidb_data.sh` (see
+> Bootstrap these tables locally with `./scripts/data/bootstrap_aidb_data.sh` (see
 > `docs/sql/aidb-timeseries-schema.sql`).
 
 **When to Use:**
@@ -260,10 +260,10 @@ Use the trimmed stack for lightweight testing; reserve the private stack for wor
 | Script (NixOS-Dev repo)                                                | Purpose                                                                               |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | `scripts/local-ai-starter.sh`                                          | Creates directories, checks ports, bootstraps trimmed stack or AI-Optimizer hand-off. |
-| `scripts/ai-model-manager.sh` (`amm`)                                  | Maintains local model profiles under `~/.config/ai-models/` (use Lemonade endpoints). |
-| `scripts/smart_config_gen.sh`                                          | Calls Lemonade `/chat/completions` via AIDB for config generation/review.             |
+| `scripts/ai/ai-model-manager.sh` (`amm`)                                  | Maintains local model profiles under `~/.config/ai-models/` (use Lemonade endpoints). |
+| `scripts/governance/smart_config_gen.sh`                                          | Calls Lemonade `/chat/completions` via AIDB for config generation/review.             |
 | `scripts/sync_docs_to_ai.sh`                                           | Pushes NixOS-Dev documentation into the AI-Optimizer document registry.               |
-| `scripts/deploy-aidb-mcp-server.sh` + `scripts/setup-mcp-databases.sh` | One-command bootstrap for Postgres/Redis + MCP units on NixOS.                        |
+| `scripts/deploy/deploy-aidb-mcp-server.sh` + `scripts/deploy/setup-mcp-databases.sh` | One-command bootstrap for Postgres/Redis + MCP units on NixOS.                        |
 
 ### Knowledge & Data Paths
 
@@ -533,8 +533,8 @@ Tests for agents are written using the `unittest` framework. A `TestAgents` clas
 5. **Run tests:**
 
    ```bash
-   ./scripts/test_services.sh
-   ./scripts/test_real_world_workflows.sh
+   ./scripts/testing/test_services.sh
+   ./scripts/testing/test_real_world_workflows.sh
    ```
 
 6. **Review recent progress:**

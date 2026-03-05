@@ -70,9 +70,9 @@ done
   exit 2
 }
 
-TOTAL=5
+TOTAL=6
 if [[ "${MODE}" == "full" ]]; then
-  TOTAL=7
+  TOTAL=8
 fi
 STEP=0
 
@@ -99,19 +99,22 @@ printf '%sMode:%s %s\n' "${C_DIM}" "${C_RESET}" "${MODE}"
 printf '%sFlake:%s %s  %sTarget:%s %s\n' "${C_DIM}" "${C_RESET}" "${FLAKE_REF}" "${C_DIM}" "${C_RESET}" "${NIXOS_TARGET}"
 
 run_step "Shell syntax" \
-  bash -n nixos-quick-deploy.sh scripts/check-dryrun-failure-modes.sh scripts/validate-runtime-declarative.sh
+  bash -n nixos-quick-deploy.sh scripts/testing/check-dryrun-failure-modes.sh scripts/testing/validate-runtime-declarative.sh
 
 run_step "Quick deploy runtime contract" \
   ./nixos-quick-deploy.sh --self-check
 
 run_step "Declarative runtime wiring" \
-  bash scripts/validate-runtime-declarative.sh
+  bash scripts/testing/validate-runtime-declarative.sh
 
 run_step "Known failure-mode checks" \
-  bash scripts/check-dryrun-failure-modes.sh --flake-ref "${FLAKE_REF}" --nixos-target "${NIXOS_TARGET}"
+  bash scripts/testing/check-dryrun-failure-modes.sh --flake-ref "${FLAKE_REF}" --nixos-target "${NIXOS_TARGET}"
+
+run_step "Repo structure policy" \
+  bash scripts/governance/repo-structure-lint.sh --all
 
 run_step "npm security monitor smoke" \
-  bash scripts/check-npm-security-monitor-smoke.sh
+  bash scripts/testing/check-npm-security-monitor-smoke.sh
 
 if [[ "${MODE}" == "full" ]]; then
   run_step "NixOS dry build" \

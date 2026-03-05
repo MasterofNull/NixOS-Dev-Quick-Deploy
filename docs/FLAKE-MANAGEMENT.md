@@ -16,7 +16,7 @@ nix flake update --flake .
 2. Run local validation:
 
 ```bash
-./scripts/validate-flake-inputs.sh --flake-ref path:.
+./scripts/testing/validate-flake-inputs.sh --flake-ref path:.
 ```
 
 3. Review generated reports:
@@ -31,7 +31,7 @@ nix flake update --flake .
 
 ## What Is Validated
 
-`scripts/validate-flake-inputs.sh` performs:
+`scripts/testing/validate-flake-inputs.sh` performs:
 - Compatibility checks:
   - declared `nixpkgs`/`home-manager` refs match lock refs
   - `home-manager.inputs.nixpkgs.follows` points to `nixpkgs`
@@ -53,7 +53,7 @@ Note: Nix uses hash-based content integrity (`narHash`) for locked inputs. This 
 `.github/workflows/test.yml` runs flake validation in the `flake-validation` job and uploads report artifacts:
 - `reports/flake-validation-report.json`
 - `reports/flake-validation-report.md`
-- `scripts/validate-tool-management-policy.sh` to enforce non-Nix tool policy for Claude/Goose.
+- `scripts/testing/validate-tool-management-policy.sh` to enforce non-Nix tool policy for Claude/Goose.
 
 ## Non-Nix Tool Management Policy (Phase 19.6)
 
@@ -76,7 +76,7 @@ Trade-off summary:
   - Cons: depends on nixpkgs package availability and update cadence
 
 Enforced checks:
-- `scripts/validate-tool-management-policy.sh` verifies:
+- `scripts/testing/validate-tool-management-policy.sh` verifies:
   - Claude/Goose are absent from npm manifest
   - Goose is declared in profile package data
   - Claude native installer and Goose nixpkgs-first logic are still present

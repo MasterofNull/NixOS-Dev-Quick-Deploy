@@ -49,7 +49,7 @@ Validated Phase 2 changes (network isolation + TLS) and resolved runtime gaps: f
 2. `ai-stack/mcp-servers/config/config.yaml`
 3. `ai-stack/compose/nginx/nginx.conf`
 4. `ai-stack/compose/nginx/certs/.gitkeep`
-5. `scripts/generate-nginx-certs.sh`
+5. `scripts/data/generate-nginx-certs.sh`
 6. `PRODUCTION-HARDENING-ROADMAP.md`
 
 ---
@@ -91,7 +91,7 @@ Validated Phase 2 changes (network isolation + TLS) and resolved runtime gaps: f
 4. **Hybrid coordinator unable to read API key secret**  
    - **Symptom:** `PermissionError: [Errno 13]` on `/run/secrets/stack_api_key`.  
    - **Root cause:** API key file created with `0600` permissions; hybrid runs as a non-root user.  
-   - **Fix:** Set secret to `0644` and updated `scripts/generate-api-key.sh` to apply readable permissions.
+   - **Fix:** Set secret to `0644` and updated `scripts/data/generate-api-key.sh` to apply readable permissions.
 
 5. **Nginx upstream 502 after hybrid restart**  
    - **Symptom:** `/hybrid/health` returned 502 after container IP changes.  
@@ -107,7 +107,7 @@ Validated Phase 2 changes (network isolation + TLS) and resolved runtime gaps: f
 
 - Added nginx reverse proxy service in compose.
 - Added `ai-stack/compose/nginx/nginx.conf` with HTTPS redirect and proxy routes.
-- Added `scripts/generate-nginx-certs.sh` for self-signed cert generation.
+- Added `scripts/data/generate-nginx-certs.sh` for self-signed cert generation.
 - Generated local dev certificates and verified HTTPS endpoints.
 - Adjusted nginx host ports to `8088/8443` due to rootless Podman constraints.
 - Updated top-level docs to reference HTTPS endpoints via nginx.
@@ -120,7 +120,7 @@ Validated Phase 2 changes (network isolation + TLS) and resolved runtime gaps: f
 ## Phase 2.3 Kickoff (API Authentication)
 
 - Identified existing AIDB support for `api_key` and `api_key_file` in settings loader.
-- Added `scripts/generate-api-key.sh` and secret storage under `ai-stack/compose/secrets/`.
+- Added `scripts/data/generate-api-key.sh` and secret storage under `ai-stack/compose/secrets/`.
 - Wired secrets into compose for AIDB, embeddings, hybrid-coordinator, and nixos-docs.
 - Added API key middleware to embeddings (Flask), hybrid-coordinator (aiohttp), and nixos-docs (FastAPI).
 - Added config hook for AIDB to read `/run/secrets/stack_api_key`.

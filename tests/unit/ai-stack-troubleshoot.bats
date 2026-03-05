@@ -1,11 +1,11 @@
 #!/usr/bin/env bats
 #
-# Unit tests for scripts/ai-stack-troubleshoot.sh
+# Unit tests for scripts/ai/ai-stack-troubleshoot.sh
 #
 
 load test_helper
 
-SCRIPT_UNDER_TEST="$PROJECT_ROOT/scripts/ai-stack-troubleshoot.sh"
+SCRIPT_UNDER_TEST="$PROJECT_ROOT/scripts/ai/ai-stack-troubleshoot.sh"
 
 @test "ai-stack-troubleshoot: generates diagnostics report" {
   run "$SCRIPT_UNDER_TEST"

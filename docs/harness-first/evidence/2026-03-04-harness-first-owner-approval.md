@@ -16,22 +16,22 @@ Task ID: HF-20260304-002
 
 ## Commands Executed
 ```bash
-scripts/aq-hints "add CODEOWNERS/reviewer enforcement for harness-first high-impact policy file" --format=json --agent=codex
-python3 -m py_compile scripts/check-harness-first-platform-owner-approval.py
-scripts/check-harness-first-pr-evidence-gate.sh
-scripts/check-harness-first-static-gates.sh
-FORCE_HARNESS_FIRST_EVIDENCE_GATE=true BASE_REF=main scripts/check-harness-first-pr-evidence-gate.sh
+scripts/ai/aq-hints "add CODEOWNERS/reviewer enforcement for harness-first high-impact policy file" --format=json --agent=codex
+python3 -m py_compile scripts/testing/check-harness-first-platform-owner-approval.py
+scripts/testing/check-harness-first-pr-evidence-gate.sh
+scripts/testing/check-harness-first-static-gates.sh
+FORCE_HARNESS_FIRST_EVIDENCE_GATE=true BASE_REF=main scripts/testing/check-harness-first-pr-evidence-gate.sh
 ```
 
 ## Validation Evidence
 - Added CODEOWNERS entry for `config/harness-first-high-impact-paths.txt`.
 - Added PR CI job `Harness-First Owner Approval` in `.github/workflows/test.yml`.
-- `python3 -m py_compile scripts/check-harness-first-platform-owner-approval.py` passed.
+- `python3 -m py_compile scripts/testing/check-harness-first-platform-owner-approval.py` passed.
 - Local non-PR gate run passed/skipped as designed.
 
 ## Rollback Plan
 - Revert touched files for this task with a single commit revert.
-- Re-run `scripts/check-harness-first-static-gates.sh` after rollback to verify baseline.
+- Re-run `scripts/testing/check-harness-first-static-gates.sh` after rollback to verify baseline.
 
 ## Residual Risk
 - Owner-approval gate depends on GitHub review API visibility and configured owners list correctness.

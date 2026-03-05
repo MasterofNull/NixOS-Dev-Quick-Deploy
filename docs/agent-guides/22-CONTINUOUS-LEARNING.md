@@ -460,7 +460,7 @@ python3 scripts/review-high-value-interactions.py
 python3 scripts/extract-patterns.py
 
 # Quarterly: Generate fine-tuning dataset
-python3 scripts/generate-fine-tuning-data.py
+python3 scripts/data/generate-fine-tuning-data.py
 ```
 
 ### 4. Monitor Quality

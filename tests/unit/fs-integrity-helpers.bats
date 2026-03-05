@@ -6,7 +6,7 @@
 load test_helper
 
 FS_CHECK_SCRIPT="$PROJECT_ROOT/scripts/fs-integrity-check.sh"
-RECOVERY_GUIDE_SCRIPT="$PROJECT_ROOT/scripts/recovery-offline-fsck-guide.sh"
+RECOVERY_GUIDE_SCRIPT="$PROJECT_ROOT/scripts/deploy/recovery-offline-fsck-guide.sh"
 
 @test "fs-integrity-check exits non-zero when failure signatures are present" {
   run env \

@@ -891,7 +891,7 @@ for phase in phases/*.sh; do
 done
 
 # Dependency check
-./scripts/validate-dependencies.sh
+./scripts/testing/validate-dependencies.sh
 ```
 
 ---

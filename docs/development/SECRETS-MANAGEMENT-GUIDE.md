@@ -12,10 +12,10 @@
 
 ```bash
 # Interactive TUI mode (recommended)
-./scripts/manage-secrets.sh
+./scripts/governance/manage-secrets.sh
 
 # Or command-line mode
-./scripts/manage-secrets.sh init
+./scripts/governance/manage-secrets.sh init
 ```
 
 This will generate:
@@ -64,7 +64,7 @@ This is a destructive operation and should be done only after coordination.
 
 ```bash
 # 0) Ensure cluster is healthy before rotation
-./scripts/ai-stack-health.sh
+./scripts/ai/ai-stack-health.sh
 
 # 1) Rotate secrets (bundle update)
 ./scripts/rotate-secrets.sh all
@@ -77,7 +77,7 @@ This is a destructive operation and should be done only after coordination.
 # 4) Wait for rollouts to complete
 
 # 5) Verify stack health
-./scripts/ai-stack-health.sh
+./scripts/ai/ai-stack-health.sh
 ```
 
 Notes:
@@ -87,7 +87,7 @@ Notes:
 ### Check Secret Status
 
 ```bash
-./scripts/manage-secrets.sh status
+./scripts/governance/manage-secrets.sh status
 ```
 
 Output shows all secrets with:
@@ -150,8 +150,8 @@ nix-shell -p python3Packages.rich
 ### Make Scripts Executable
 
 ```bash
-chmod +x scripts/manage-secrets.sh
-chmod +x scripts/manage-secrets.py
+chmod +x scripts/governance/manage-secrets.sh
+chmod +x scripts/governance/manage-secrets.py
 ```
 
 ---
@@ -161,7 +161,7 @@ chmod +x scripts/manage-secrets.py
 ### Interactive Mode (Recommended)
 
 ```bash
-./scripts/manage-secrets.sh
+./scripts/governance/manage-secrets.sh
 ```
 
 **Menu Options:**
@@ -178,31 +178,31 @@ chmod +x scripts/manage-secrets.py
 
 ```bash
 # Initialize all secrets
-./scripts/manage-secrets.sh init
+./scripts/governance/manage-secrets.sh init
 
 # Force re-initialize (overwrites existing)
-./scripts/manage-secrets.sh init --force
+./scripts/governance/manage-secrets.sh init --force
 
 # Rotate a specific secret
-./scripts/manage-secrets.sh rotate postgres_password
+./scripts/governance/manage-secrets.sh rotate postgres_password
 
 # Rotate all secrets
-./scripts/manage-secrets.sh rotate all
+./scripts/governance/manage-secrets.sh rotate all
 
 # Create backup
-./scripts/manage-secrets.sh backup
+./scripts/governance/manage-secrets.sh backup
 
 # Restore from backup
-./scripts/manage-secrets.sh restore backups/secrets/secrets_20260124_120000
+./scripts/governance/manage-secrets.sh restore backups/secrets/secrets_20260124_120000
 
 # Show status
-./scripts/manage-secrets.sh status
+./scripts/governance/manage-secrets.sh status
 
 # Validate secrets
-./scripts/manage-secrets.sh validate
+./scripts/governance/manage-secrets.sh validate
 
 # List available backups
-./scripts/manage-secrets.sh list-backups
+./scripts/governance/manage-secrets.sh list-backups
 ```
 
 ---
@@ -239,10 +239,10 @@ chmod +x scripts/manage-secrets.py
 
 ```bash
 # 1. Initialize secrets
-./scripts/manage-secrets.sh init
+./scripts/governance/manage-secrets.sh init
 
 # 2. Verify all secrets created
-./scripts/manage-secrets.sh status
+./scripts/governance/manage-secrets.sh status
 
 # 3. Start the stack
 export AI_STACK_ENV_FILE=/path/to/.env
@@ -252,7 +252,7 @@ export AI_STACK_ENV_FILE=/path/to/.env
 
 ```bash
 # 1. Rotate the password
-./scripts/manage-secrets.sh rotate postgres_password
+./scripts/governance/manage-secrets.sh rotate postgres_password
 
 # 2. Update PostgreSQL user password (for existing databases)
   -c "ALTER USER mcp WITH PASSWORD '$NEW_PASS';"
@@ -264,10 +264,10 @@ export AI_STACK_ENV_FILE=/path/to/.env
 
 ```bash
 # 1. Create backup first
-./scripts/manage-secrets.sh backup
+./scripts/governance/manage-secrets.sh backup
 
 # 2. Rotate all secrets
-./scripts/manage-secrets.sh rotate all
+./scripts/governance/manage-secrets.sh rotate all
 
 # 3. Restart all services
 ```
@@ -276,7 +276,7 @@ export AI_STACK_ENV_FILE=/path/to/.env
 
 ```bash
 # Create backup
-./scripts/manage-secrets.sh backup
+./scripts/governance/manage-secrets.sh backup
 
 # Output shows backup path:
 # ✅ Backed up 12 secrets to:
@@ -287,10 +287,10 @@ export AI_STACK_ENV_FILE=/path/to/.env
 
 ```bash
 # List available backups
-./scripts/manage-secrets.sh list-backups
+./scripts/governance/manage-secrets.sh list-backups
 
 # Restore specific backup
-./scripts/manage-secrets.sh restore backups/secrets/secrets_20260124_153045
+./scripts/governance/manage-secrets.sh restore backups/secrets/secrets_20260124_153045
 
 # Restart services
 ```
@@ -321,10 +321,10 @@ Permission denied reading /run/secrets/postgres_password
 **Fix:**
 ```bash
 # Initialize missing secrets
-./scripts/manage-secrets.sh init
+./scripts/governance/manage-secrets.sh init
 
 # Or force reinitialize all
-./scripts/manage-secrets.sh init --force
+./scripts/governance/manage-secrets.sh init --force
 ```
 
 ### Issue: Validation Fails
@@ -337,7 +337,7 @@ Permission denied reading /run/secrets/postgres_password
 **Fix:**
 ```bash
 # Regenerate the corrupted secret
-./scripts/manage-secrets.sh rotate postgres_password
+./scripts/governance/manage-secrets.sh rotate postgres_password
 ```
 
 ### Issue: Service Can't Connect After Rotation
@@ -470,10 +470,10 @@ Create a cron job or systemd timer:
 cd /path/to/NixOS-Dev-Quick-Deploy
 
 # Backup first
-./scripts/manage-secrets.sh backup
+./scripts/governance/manage-secrets.sh backup
 
 # Rotate all secrets
-./scripts/manage-secrets.sh rotate all
+./scripts/governance/manage-secrets.sh rotate all
 
 # Restart stack
 
@@ -507,8 +507,8 @@ jobs:
 
       - name: Rotate secrets
         run: |
-          ./scripts/manage-secrets.sh backup
-          ./scripts/manage-secrets.sh rotate all
+          ./scripts/governance/manage-secrets.sh backup
+          ./scripts/governance/manage-secrets.sh rotate all
 
       - name: Commit changes
         run: |
@@ -533,7 +533,7 @@ A: Quarterly rotation is recommended. Rotate immediately after:
 - Compliance requirement
 
 **Q: What if I rotate a password and services break?**
-A: Restore from backup: `./scripts/manage-secrets.sh restore <backup_path>`
+A: Restore from backup: `./scripts/governance/manage-secrets.sh restore <backup_path>`
 
 **Q: Can I use this in production?**
 A: Yes! The tool is production-ready. Just ensure:
@@ -558,7 +558,7 @@ A: Encrypt and apply the sops file:
 
 ---
 
-**Tool Location:** `scripts/manage-secrets.py` and `scripts/manage-secrets.sh`
+**Tool Location:** `scripts/governance/manage-secrets.py` and `scripts/governance/manage-secrets.sh`
 **Maintainer:** AI Stack Team
 **License:** Same as project
 **Version:** 1.0.0

@@ -76,7 +76,7 @@ Completed Phase 3 observability work: structured logging now includes request ID
 `/home/hyperd/.cache/nixos-quick-deploy/logs/ai-stack-startup-20260107_084949.log`
 
 ### Phase 1 - Critical Stability
-- ✅ Services start reliably: `./scripts/ai-stack-startup.sh` completed successfully with all health checks passing.
+- ✅ Services start reliably: `./scripts/ai/ai-stack-startup.sh` completed successfully with all health checks passing.
 - ✅ Startup time < 2 minutes: **Met** (7s) after switching startup to reuse existing containers.
 - ✅ Zero startup race conditions: **Met** (no dependency/name conflicts after startup logic change).
 - ✅ Transient failures auto-recover: **Met** (embeddings stopped with SIGKILL, restarted, `/health` returned 503 then 200 within 10s).

@@ -134,7 +134,7 @@ Options:
   --self-check            Validate script runtime contract (function wiring/order)
                           and exit without sudo/build/switch
   --enable-preflight-auto-remediation
-                          Run scripts/preflight-auto-remediate.sh between
+                          Run scripts/governance/preflight-auto-remediate.sh between
                           failed preflight loop passes when available
   --preflight-loop-max-passes N
                           Maximum preflight loop passes (default: 3)
@@ -164,7 +164,7 @@ Environment overrides:
   PRE_DEPLOY_LOOP_RETRY_SECONDS=2
                             Sleep seconds between failed preflight passes
   ENABLE_PREFLIGHT_AUTO_REMEDIATION=false
-                            Run scripts/preflight-auto-remediate.sh between passes
+                            Run scripts/governance/preflight-auto-remediate.sh between passes
   PRIME_SUDO_EARLY=true
                             Prompt for sudo once early to avoid mid-run stalls
   KEEP_SUDO_ALIVE=true      Keep sudo ticket alive during long preflight/build
@@ -363,8 +363,8 @@ print_completion_test_results() {
   [[ "${COMPLETION_PRINT_TEST_RESULTS}" == "true" ]] || return 0
   [[ "${COMPLETION_TEST_MODE}" != "off" ]] || return 0
 
-  local health_script="${REPO_ROOT}/scripts/check-mcp-health.sh"
-  local report_script="${REPO_ROOT}/scripts/aq-report"
+  local health_script="${REPO_ROOT}/scripts/testing/check-mcp-health.sh"
+  local report_script="${REPO_ROOT}/scripts/ai/aq-report"
   local output
 
   _print_report_summary_from_json() {
@@ -574,8 +574,8 @@ run_git_safe() {
     return
   fi
 
-  if [[ -x "${REPO_ROOT}/scripts/git-safe.sh" ]]; then
-    "${REPO_ROOT}/scripts/git-safe.sh" "$@"
+  if [[ -x "${REPO_ROOT}/scripts/governance/git-safe.sh" ]]; then
+    "${REPO_ROOT}/scripts/governance/git-safe.sh" "$@"
     return
   fi
 
@@ -777,7 +777,7 @@ on_unexpected_error() {
 run_roadmap_completion_verification() {
   [[ "${SKIP_ROADMAP_VERIFICATION}" == true ]] && return 0
 
-  local verifier="${REPO_ROOT}/scripts/verify-flake-first-roadmap-completion.sh"
+  local verifier="${REPO_ROOT}/scripts/testing/verify-flake-first-roadmap-completion.sh"
   if [[ ! -x "$verifier" ]]; then
     log "Roadmap-completion verifier missing/not executable (${verifier}); skipping verification."
     return 0
@@ -788,7 +788,7 @@ run_roadmap_completion_verification() {
 }
 
 run_readiness_analysis() {
-  local analyzer="${REPO_ROOT}/scripts/analyze-clean-deploy-readiness.sh"
+  local analyzer="${REPO_ROOT}/scripts/governance/analyze-clean-deploy-readiness.sh"
   [[ "${RUN_READINESS_ANALYSIS}" == true ]] || return 0
 
   if [[ ! -x "$analyzer" ]]; then
@@ -827,7 +827,7 @@ run_pre_deploy_validation_loop() {
   [[ "${PRE_DEPLOY_LOOP_RETRY_SECONDS}" =~ ^[0-9]+$ ]] || die "PRE_DEPLOY_LOOP_RETRY_SECONDS must be an integer (got '${PRE_DEPLOY_LOOP_RETRY_SECONDS}')"
   (( PRE_DEPLOY_LOOP_MAX_PASSES >= 1 )) || die "PRE_DEPLOY_LOOP_MAX_PASSES must be >= 1"
 
-  local remediation_hook="${REPO_ROOT}/scripts/preflight-auto-remediate.sh"
+  local remediation_hook="${REPO_ROOT}/scripts/governance/preflight-auto-remediate.sh"
   local pass failed
   for ((pass=1; pass<=PRE_DEPLOY_LOOP_MAX_PASSES; pass++)); do
     failed=0
@@ -868,7 +868,7 @@ run_pre_deploy_validation_loop() {
 
     if [[ ${failed} -eq 0 ]]; then
       log "Pre-deploy validation loop pass ${pass}/${PRE_DEPLOY_LOOP_MAX_PASSES}: declarative validation"
-      if ! bash "${REPO_ROOT}/scripts/validate-runtime-declarative.sh"; then
+      if ! bash "${REPO_ROOT}/scripts/testing/validate-runtime-declarative.sh"; then
         failed=1
       fi
     fi
@@ -2047,13 +2047,13 @@ run_discovery_step() {
     INITRD_EMERGENCY_ACCESS_OVERRIDE="true" \
     EARLY_KMS_POLICY_OVERRIDE="off" \
     "${local_ai_env[@]}" \
-    "${REPO_ROOT}/scripts/discover-system-facts.sh"
+    "${REPO_ROOT}/scripts/governance/discover-system-facts.sh"
   else
     HOSTNAME_OVERRIDE="${HOST_NAME}" \
     PRIMARY_USER_OVERRIDE="${PRIMARY_USER}" \
     PROFILE_OVERRIDE="${PROFILE}" \
     "${local_ai_env[@]}" \
-    "${REPO_ROOT}/scripts/discover-system-facts.sh"
+    "${REPO_ROOT}/scripts/governance/discover-system-facts.sh"
   fi
 
   mark_discovery_cache
@@ -2531,9 +2531,9 @@ if [[ "$MODE" == "boot" ]]; then
     log "Skipping Home Manager switch (--skip-home-switch)"
   fi
 
-  if [[ "$RUN_FLATPAK_SYNC" == true && -x "${REPO_ROOT}/scripts/sync-flatpak-profile.sh" ]]; then
+  if [[ "$RUN_FLATPAK_SYNC" == true && -x "${REPO_ROOT}/scripts/data/sync-flatpak-profile.sh" ]]; then
     log "Syncing Flatpak apps for profile '${PROFILE}' (boot mode, system scope)"
-    if "${REPO_ROOT}/scripts/sync-flatpak-profile.sh" --flake-ref "${FLAKE_REF}" --target "${NIXOS_TARGET}" --scope system; then
+    if "${REPO_ROOT}/scripts/data/sync-flatpak-profile.sh" --flake-ref "${FLAKE_REF}" --target "${NIXOS_TARGET}" --scope system; then
       log "Flatpak profile sync complete"
     else
       die "Flatpak profile sync failed in boot mode; declarative app state is not converged."
@@ -2580,9 +2580,9 @@ if [[ "${SKIP_HOME_SWITCH}" == false && -n "${HOME_GENERATION_BEFORE}" && -n "${
   log "Home Manager generation link unchanged after switch (${HOME_GENERATION_AFTER}); this is expected when there are no Home Manager config changes."
 fi
 
-if [[ "$RUN_FLATPAK_SYNC" == true && -x "${REPO_ROOT}/scripts/sync-flatpak-profile.sh" ]]; then
+if [[ "$RUN_FLATPAK_SYNC" == true && -x "${REPO_ROOT}/scripts/data/sync-flatpak-profile.sh" ]]; then
   log "Syncing Flatpak apps for profile '${PROFILE}' (system scope)"
-  if "${REPO_ROOT}/scripts/sync-flatpak-profile.sh" --flake-ref "${FLAKE_REF}" --target "${NIXOS_TARGET}" --scope system; then
+  if "${REPO_ROOT}/scripts/data/sync-flatpak-profile.sh" --flake-ref "${FLAKE_REF}" --target "${NIXOS_TARGET}" --scope system; then
     log "Flatpak profile sync complete"
   else
     die "Flatpak profile sync failed; declarative app state is not converged."
@@ -2598,10 +2598,10 @@ if [[ "${MODE}" != "build" ]]; then
   log "Skipping imperative runtime orchestration in deploy-clean (declarative ownership enabled)."
 fi
 
-if [[ "$RUN_HEALTH_CHECK" == true && -x "${REPO_ROOT}/scripts/system-health-check.sh" ]]; then
+if [[ "$RUN_HEALTH_CHECK" == true && -x "${REPO_ROOT}/scripts/health/system-health-check.sh" ]]; then
   section "Post-flight Health"
   log "Running post-deploy health check"
-  if run_timed_step "System Health Check" "${REPO_ROOT}/scripts/system-health-check.sh" --detailed; then
+  if run_timed_step "System Health Check" "${REPO_ROOT}/scripts/health/system-health-check.sh" --detailed; then
     log "Post-deploy health check passed"
   else
     log "Post-deploy health check reported issues (non-critical)"
@@ -2664,12 +2664,12 @@ wait_for_ai_services
 # Verify TCP connectivity to Redis/Qdrant/Postgres and HTTP /health endpoints
 # for all MCP services. Runs --optional to also report aider-wrapper and
 # supplementary services. Non-blocking: issues are logged but do not abort.
-if [[ "$RUN_HEALTH_CHECK" == true && -x "${REPO_ROOT}/scripts/check-mcp-health.sh" ]]; then
+if [[ "$RUN_HEALTH_CHECK" == true && -x "${REPO_ROOT}/scripts/testing/check-mcp-health.sh" ]]; then
   log "Running AI stack MCP health check"
-  if "${REPO_ROOT}/scripts/check-mcp-health.sh" --optional; then
+  if "${REPO_ROOT}/scripts/testing/check-mcp-health.sh" --optional; then
     log "AI MCP health check passed"
   else
-    log "AI MCP health check reported issues — check 'scripts/check-mcp-health.sh --optional' for details (non-critical)"
+    log "AI MCP health check reported issues — check 'scripts/testing/check-mcp-health.sh --optional' for details (non-critical)"
   fi
 fi
 
@@ -2750,12 +2750,12 @@ run_embedding_migration_if_needed() {
   fi
 
   # Re-index agent instructions into the new embedding space
-  if [[ -x "${REPO_ROOT}/scripts/import-agent-instructions.sh" ]]; then
+  if [[ -x "${REPO_ROOT}/scripts/data/import-agent-instructions.sh" ]]; then
     log "  Re-indexing agent instructions (new ${target_dim}-dim embedding space)..."
-    if "${REPO_ROOT}/scripts/import-agent-instructions.sh" 2>/dev/null; then
+    if "${REPO_ROOT}/scripts/data/import-agent-instructions.sh" 2>/dev/null; then
       log "  Re-indexing complete"
     else
-      log "  WARNING: Re-indexing failed — run manually: bash scripts/import-agent-instructions.sh"
+      log "  WARNING: Re-indexing failed — run manually: bash scripts/data/import-agent-instructions.sh"
     fi
   fi
 }
@@ -2795,7 +2795,7 @@ check_dashboard_postflight() {
   else
     log "WARNING: Dashboard did not respond at ${probe_url}"
     log "  Check: journalctl -u command-center-dashboard-api.service -n 20 --no-pager"
-    log "  Rerun: scripts/check-mcp-health.sh --optional"
+    log "  Rerun: scripts/testing/check-mcp-health.sh --optional"
   fi
 }
 check_dashboard_postflight
@@ -2823,25 +2823,25 @@ if [[ "${run_inline_postflight}" == true ]]; then
   # ---- Routing traffic seed (non-blocking) ----------------------------------
   # Sends a small batch of queries through hybrid-coordinator so that §2 routing
   # split and §3 semantic cache metrics are populated after every deploy.
-  if [[ -x "${REPO_ROOT}/scripts/seed-routing-traffic.sh" ]]; then
+  if [[ -x "${REPO_ROOT}/scripts/data/seed-routing-traffic.sh" ]]; then
     log "Seeding routing traffic (bootstrap §2/§3 metrics)..."
     run_with_timeout_if_available "${POST_FLIGHT_SEED_TIMEOUT_SECONDS}" \
-      "${REPO_ROOT}/scripts/seed-routing-traffic.sh" --count 4 2>/dev/null || true
+      "${REPO_ROOT}/scripts/data/seed-routing-traffic.sh" --count 4 2>/dev/null || true
   fi
 
   # ---- Rebuild Qdrant vector index (non-blocking) ---------------------------
   # Re-indexes any documents that were imported but not yet embedded.
-  if [[ -x "${REPO_ROOT}/scripts/rebuild-qdrant-collections.sh" ]]; then
+  if [[ -x "${REPO_ROOT}/scripts/data/rebuild-qdrant-collections.sh" ]]; then
     log "Rebuilding Qdrant vector index from AIDB documents..."
     run_with_timeout_if_available "${POST_FLIGHT_REBUILD_TIMEOUT_SECONDS}" \
-      "${REPO_ROOT}/scripts/rebuild-qdrant-collections.sh" 2>/dev/null || true
+      "${REPO_ROOT}/scripts/data/rebuild-qdrant-collections.sh" 2>/dev/null || true
   fi
 
   # ---- Phase 18.1.3: AI stack performance digest (non-blocking) -------------
-  if [[ -x "${REPO_ROOT}/scripts/aq-report" ]]; then
+  if [[ -x "${REPO_ROOT}/scripts/ai/aq-report" ]]; then
     log "AI stack performance digest (last 7d):"
     run_with_timeout_if_available "${POST_FLIGHT_REPORT_TIMEOUT_SECONDS}" \
-      "${REPO_ROOT}/scripts/aq-report" --since=7d --format=text 2>/dev/null || true
+      "${REPO_ROOT}/scripts/ai/aq-report" --since=7d --format=text 2>/dev/null || true
   fi
 fi
 

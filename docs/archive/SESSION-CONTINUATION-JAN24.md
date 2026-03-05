@@ -21,7 +21,7 @@ This session continued from a previous conversation that ran out of context. The
 - ✅ Identified next logical step: Integration testing
 
 ### 2. Integration Test Script Creation
-- ✅ Created comprehensive test script: [test-password-migration.sh](scripts/test-password-migration.sh)
+- ✅ Created comprehensive test script: [test-password-migration.sh](scripts/testing/test-password-migration.sh)
 - ✅ Script validates password file security (permissions, sizes, existence)
 - ✅ Script tests PostgreSQL connections with new passwords
 - ✅ Script tests Redis connections with new passwords
@@ -97,7 +97,7 @@ This session continued from a previous conversation that ran out of context. The
 
 ## 📁 Files Created This Session
 
-1. **[scripts/test-password-migration.sh](scripts/test-password-migration.sh)** (403 lines)
+1. **[scripts/testing/test-password-migration.sh](scripts/testing/test-password-migration.sh)** (403 lines)
    - Comprehensive integration test suite
    - Validates password security and functionality
    - Tests all 3 services (PostgreSQL, Redis, Grafana)
@@ -169,7 +169,7 @@ $ grep -c "secrets:" ai-stack/compose/docker-compose.yml
 
 3. Run integration tests:
    ```bash
-   ./scripts/test-password-migration.sh
+   ./scripts/testing/test-password-migration.sh
    ```
 
 **Option 2: Continue with Week 2 Tasks**
@@ -307,13 +307,13 @@ Move to Week 2 P1 items:
 
 ### Testing Documentation
 - [TESTING-READINESS-STATUS.md](TESTING-READINESS-STATUS.md) - This session's testing doc
-- [scripts/test-password-migration.sh](scripts/test-password-migration.sh) - Test script
+- [scripts/testing/test-password-migration.sh](scripts/testing/test-password-migration.sh) - Test script
 - Testing checklist (30+ items in TESTING-READINESS-STATUS.md)
 
 ### Helper Code
 - [ai-stack/mcp-servers/shared/secrets_loader.py](ai-stack/mcp-servers/shared/secrets_loader.py) - Password loading
 - [ai-stack/mcp-servers/shared/auth_http_client.py](ai-stack/mcp-servers/shared/auth_http_client.py) - Authenticated HTTP
-- [scripts/generate-passwords.sh](scripts/generate-passwords.sh) - Password generation
+- [scripts/data/generate-passwords.sh](scripts/data/generate-passwords.sh) - Password generation
 
 ---
 
@@ -351,7 +351,7 @@ git add ai-stack/compose/docker-compose.yml
 git add ai-stack/compose/.env
 git add ai-stack/compose/secrets/
 git add ai-stack/mcp-servers/shared/secrets_loader.py
-git add scripts/test-password-migration.sh
+git add scripts/testing/test-password-migration.sh
 git add TESTING-READINESS-STATUS.md
 git add SESSION-CONTINUATION-JAN24.md
 

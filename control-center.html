@@ -1014,7 +1014,7 @@
 
             const actions = {
                 'run-tests': 'cd ai-stack/tests && pytest -v',
-                'backup': './scripts/manage-secrets.sh backup',
+                'backup': './scripts/governance/manage-secrets.sh backup',
             };
 
             const command = actions[action] || 'echo "Unknown action"';

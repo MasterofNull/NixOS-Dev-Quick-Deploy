@@ -32,7 +32,7 @@ curl http://localhost:8091/health  # AIDB (might 404, that's ok)
 
 If these fail, start your AI stack first:
 ```bash
-bash scripts/start-ai-stack-and-dashboard.sh
+bash scripts/deploy/start-ai-stack-and-dashboard.sh
 ```
 
 ---
@@ -44,7 +44,7 @@ bash scripts/start-ai-stack-and-dashboard.sh
 cd ~/Documents/try/NixOS-Dev-Quick-Deploy
 
 # 2. Run setup script
-bash scripts/setup-claude-proxy.sh
+bash scripts/deploy/setup-claude-proxy.sh
 
 # 3. Restart VSCode/VSCodium
 # (Close all windows and relaunch)
@@ -84,7 +84,7 @@ tail -5 ~/.local/share/nixos-ai-stack/telemetry/events-$(date +%Y-%m-%d).jsonl
 ### Step 3: Check dashboard
 ```bash
 # Regenerate dashboard data
-bash scripts/generate-dashboard-data.sh --lite-mode
+bash scripts/data/generate-dashboard-data.sh --lite-mode
 
 # Open dashboard
 xdg-open http://localhost:8888/dashboard.html
@@ -204,7 +204,7 @@ ps aux | grep claude-wrapper
 curl http://localhost:8092/health
 
 # If fails, restart AI stack
-bash scripts/start-ai-stack-and-dashboard.sh
+bash scripts/deploy/start-ai-stack-and-dashboard.sh
 ```
 
 ---
@@ -237,7 +237,7 @@ journalctl --user -u claude-api-proxy --no-pager
 
 ### Change routing thresholds
 
-Edit: `scripts/claude-api-proxy.py`
+Edit: `scripts/ai/claude-api-proxy.py`
 
 ```python
 # Line 27-28
@@ -252,7 +252,7 @@ systemctl --user restart claude-api-proxy
 
 ### Change proxy port
 
-Edit: `scripts/claude-api-proxy.py`
+Edit: `scripts/ai/claude-api-proxy.py`
 
 ```python
 # Line 400 (bottom of file)
@@ -353,7 +353,7 @@ cat ~/.local/share/nixos-ai-stack/telemetry/events-$(date +%Y-%m-%d).jsonl
 **Documentation**:
 - Full details: [CLAUDE-LOCAL-ENFORCEMENT-COMPLETE.md](/docs/archive/CLAUDE-LOCAL-ENFORCEMENT-COMPLETE.md)
 - Enforcement strategies: [docs/ENFORCE-LOCAL-AI-USAGE.md](/docs/ENFORCE-LOCAL-AI-USAGE.md)
-- API proxy code: [scripts/claude-api-proxy.py](/scripts/claude-api-proxy.py)
+- API proxy code: [scripts/ai/claude-api-proxy.py](/scripts/ai/claude-api-proxy.py)
 
 ---
 

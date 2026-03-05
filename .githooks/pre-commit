@@ -112,8 +112,26 @@ run_syntax_check() {
   return 0
 }
 
+run_repo_structure_validation() {
+  if [[ ! -x "scripts/governance/repo-structure-lint.sh" ]]; then
+    echo "⚠ Warning: repo-structure-lint not found, skipping structure validation"
+    return 0
+  fi
+
+  if ! ./scripts/governance/repo-structure-lint.sh --staged; then
+    cat >&2 <<'EOF'
+Commit blocked: repository structure policy violation.
+New files must follow repo structure policy and avoid root/docs-root/scripts-root sprawl.
+Run: ./scripts/governance/repo-structure-lint.sh --staged
+EOF
+    return 1
+  fi
+  return 0
+}
+
 run_secret_scan
 run_shell_validation
 run_syntax_check
+run_repo_structure_validation
 
 exit 0

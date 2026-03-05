@@ -125,7 +125,7 @@ This script:
 To ensure the backend starts automatically, use the unified startup script:
 
 ```bash
-./scripts/start-unified-dashboard.sh
+./scripts/deploy/start-unified-dashboard.sh
 ```
 
 This starts both:
@@ -175,7 +175,7 @@ To avoid this issue in the future:
 
 ### Always Use the Startup Script
 ```bash
-./scripts/start-unified-dashboard.sh
+./scripts/deploy/start-unified-dashboard.sh
 ```
 
 ### Don't Mix Old and New Sessions

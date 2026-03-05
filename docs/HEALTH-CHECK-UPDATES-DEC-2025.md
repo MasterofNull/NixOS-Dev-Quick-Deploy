@@ -11,7 +11,7 @@ Updated the system health check script to validate all NixOS 25.11 improvements 
 
 ### What Changed
 
-The `scripts/system-health-check.sh` has been enhanced with **3 new major sections** and **25+ new checks** to validate the recently implemented NixOS 25.11 improvements.
+The `scripts/health/system-health-check.sh` has been enhanced with **3 new major sections** and **25+ new checks** to validate the recently implemented NixOS 25.11 improvements.
 
 ---
 
@@ -151,7 +151,7 @@ Maps governors to use cases:
 ### Called From
 - `phases/phase-08-finalization-and-report.sh` (Line 97)
 - Post-deployment validation
-- Can be run standalone: `./scripts/system-health-check.sh [--detailed] [--fix]`
+- Can be run standalone: `./scripts/health/system-health-check.sh [--detailed] [--fix]`
 
 ### Dependencies
 - All new checks use existing helper functions:
@@ -163,7 +163,7 @@ Maps governors to use cases:
 ### Detailed Mode
 All new checks support `--detailed` flag for verbose output:
 ```bash
-./scripts/system-health-check.sh --detailed
+./scripts/health/system-health-check.sh --detailed
 ```
 
 Shows additional information like:
@@ -179,17 +179,17 @@ Shows additional information like:
 ### Basic Health Check
 ```bash
 cd ~/Documents/NixOS-Dev-Quick-Deploy
-./scripts/system-health-check.sh
+./scripts/health/system-health-check.sh
 ```
 
 ### Detailed Output
 ```bash
-./scripts/system-health-check.sh --detailed
+./scripts/health/system-health-check.sh --detailed
 ```
 
 ### Auto-Fix Mode
 ```bash
-./scripts/system-health-check.sh --fix
+./scripts/health/system-health-check.sh --fix
 ```
 
 ### After Deployment
@@ -296,7 +296,7 @@ sudo usermod -aG libvirtd $USER
 - `templates/nixos-improvements/README.md` - Module usage guide
 
 ### Scripts
-- `scripts/system-health-check.sh` - This health check script
+- `scripts/health/system-health-check.sh` - This health check script
 - `phases/phase-08-finalization-and-report.sh` - Calls health check
 
 ---
@@ -332,13 +332,13 @@ To add additional checks in the future:
 
 ```bash
 # Test without fixes
-./scripts/system-health-check.sh
+./scripts/health/system-health-check.sh
 
 # Test with detailed output
-./scripts/system-health-check.sh --detailed
+./scripts/health/system-health-check.sh --detailed
 
 # Test in clean environment
-nix-shell -p bash --run "./scripts/system-health-check.sh"
+nix-shell -p bash --run "./scripts/health/system-health-check.sh"
 ```
 
 ---

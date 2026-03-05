@@ -37,7 +37,7 @@ Successfully completed all Phase 1 (P1) critical security tasks from the Product
 ```
 
 **Files Modified**:
-- scripts/serve-dashboard.sh (replaced subprocess with urllib)
+- scripts/deploy/serve-dashboard.sh (replaced subprocess with urllib)
 - ai-stack/tests/test_dashboard_security.py (new test suite)
 
 ---
@@ -65,7 +65,7 @@ Successfully completed all Phase 1 (P1) critical security tasks from the Product
 ```
 
 **Files Modified**:
-- scripts/serve-dashboard.sh (added RateLimiter class)
+- scripts/deploy/serve-dashboard.sh (added RateLimiter class)
 - ai-stack/mcp-servers/config/config.yaml (enabled rate limiting)
 - ai-stack/tests/test_rate_limiting.py (new test suite)
 
@@ -146,7 +146,7 @@ All critical security features now have automated tests:
 
 ## Configuration Changes
 
-### Dashboard (scripts/serve-dashboard.sh)
+### Dashboard (scripts/deploy/serve-dashboard.sh)
 ```python
 # Added RateLimiter class
 rate_limiter = RateLimiter(max_requests=60, window_seconds=60)

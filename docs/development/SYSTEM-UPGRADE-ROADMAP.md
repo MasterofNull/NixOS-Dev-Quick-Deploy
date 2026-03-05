@@ -21,12 +21,12 @@ This document outlines the comprehensive system upgrade for the NixOS Quick Depl
   - superseded by declarative/runtime gates,
   - or administratively closed and moved to current backlog governance.
 - Completion evidence for closure:
-  - `scripts/check-mcp-health.sh` (required services healthy)
+  - `scripts/testing/check-mcp-health.sh` (required services healthy)
   - `scripts/quick-deploy-lint.sh --mode fast` (deployment lint gate passing)
-  - `scripts/validate-runtime-declarative.sh` (declarative wiring gate passing)
-  - `scripts/check-prsi-phase7-program.sh` (PRSI program gate passing)
-  - `scripts/verify-flake-first-roadmap-completion.sh` (31/31 checks passing)
-  - `scripts/run-harness-improvement-pass.sh` (success=true with KPI snapshot)
+  - `scripts/testing/validate-runtime-declarative.sh` (declarative wiring gate passing)
+  - `scripts/testing/check-prsi-phase7-program.sh` (PRSI program gate passing)
+  - `scripts/testing/verify-flake-first-roadmap-completion.sh` (31/31 checks passing)
+  - `scripts/automation/run-harness-improvement-pass.sh` (success=true with KPI snapshot)
 
 ---
 
@@ -233,7 +233,7 @@ These are the next actions agreed by the specialty agents, ordered by risk and i
 ### Scope
 
 - [ ] **34.1 Monitoring migration (remove human-output parsing)**
-  - Replace dashboard collector dependencies on `scripts/generate-dashboard-data.sh` with Prometheus + Node Exporter metrics.
+  - Replace dashboard collector dependencies on `scripts/data/generate-dashboard-data.sh` with Prometheus + Node Exporter metrics.
   - Remove any remaining `top`/`df -h` parsing paths from production monitoring.
   - Delivery target:
     - `nix/modules/services/monitoring.nix` (new)
@@ -246,13 +246,13 @@ These are the next actions agreed by the specialty agents, ordered by risk and i
     - `curl -sf 'http://127.0.0.1:9090/api/v1/query?query=node_filesystem_size_bytes'`
 
 - [x] **34.2 Nixify MCP databases (remove imperative DB setup script)**
-  - Decommission `scripts/setup-mcp-databases.sh` as an active deployment path.
+  - Decommission `scripts/deploy/setup-mcp-databases.sh` as an active deployment path.
   - Standardize on declarative `services.postgresql` and `services.redis` with systemd dependency ordering.
   - Ensure deployment docs and health checks reference declarative services only.
   - Validation:
     - `nix flake check`
     - `systemctl status postgresql redis-mcp`
-    - `scripts/mcp-db-validate`
+    - `scripts/ai/mcp-db-validate`
 
 - [x] **34.3 Remove sudo keepalive background loop**
   - Remove `start_sudo_keepalive` and related lifecycle hooks from `nixos-quick-deploy.sh`.
@@ -268,7 +268,7 @@ These are the next actions agreed by the specialty agents, ordered by risk and i
 
 - [x] **34.5 Model supply-chain hardening (hash pinning)**
   - Add a pinned hash manifest for GGUF model artifacts.
-  - Update `scripts/download-llama-cpp-models.sh` to verify SHA256 for every downloaded artifact before acceptance.
+  - Update `scripts/data/download-llama-cpp-models.sh` to verify SHA256 for every downloaded artifact before acceptance.
   - Fail closed when hash entry is missing or mismatched.
   - Validation:
     - Positive: valid hash downloads successfully.
@@ -292,7 +292,7 @@ These are the next actions agreed by the specialty agents, ordered by risk and i
 ### Phase 34 Test Gate (must pass before marking DONE)
 
 - [x] `nix flake check` (validated with `nix flake check --no-build path:/home/hyperd/Documents/NixOS-Dev-Quick-Deploy`)
-- [x] `bash -n nixos-quick-deploy.sh scripts/deploy-clean.sh scripts/download-llama-cpp-models.sh`
+- [x] `bash -n nixos-quick-deploy.sh scripts/deploy-clean.sh scripts/data/download-llama-cpp-models.sh`
 - [ ] `tests/run-unit-tests.sh`
 - [ ] `tests/run-integration-tests.sh` (with applicable flags)
 - [ ] Manual security checks for:
@@ -306,7 +306,7 @@ These are the next actions agreed by the specialty agents, ordered by risk and i
 - Implemented:
   - Declarative monitoring module added (`nix/modules/services/monitoring.nix`) and imported via services default.
   - Declarative Redis option set + service wiring in MCP stack (`mySystem.mcpServers.redis.*` + `services.redis.servers.mcp`).
-  - `scripts/setup-mcp-databases.sh` converted to declarative deprecation wrapper.
+  - `scripts/deploy/setup-mcp-databases.sh` converted to declarative deprecation wrapper.
   - Removed sudo keepalive loop and related cleanup logic from `nixos-quick-deploy.sh`.
   - Removed imperative K3s backend orchestration branch from `scripts/deploy-clean.sh`.
   - Added pinned GGUF SHA256 manifest (`config/llama-cpp-models.sha256`) and downloader verification (fail-closed).
@@ -459,7 +459,7 @@ done
 # rm -f /tmp/ai-stack-ca.crt
 
 # Test 1.2.4: Scan logs for TLS/certificate warnings
-# ./scripts/check-tls-log-warnings.sh
+# ./scripts/testing/check-tls-log-warnings.sh
 ```
 
 **Acceptance Criteria (status 2026-02-03):**
@@ -1248,14 +1248,14 @@ echo "$output" | jq -e '.correlation_id' &>/dev/null && echo "PASS" || echo "FAI
 
 **Problem:** Health check tooling still assumed Podman, reporting false negatives on K3s.
 
-**Goal:** Ensure `scripts/ai-stack-health.sh` correctly detects K3s and validates core services.
+**Goal:** Ensure `scripts/ai/ai-stack-health.sh` correctly detects K3s and validates core services.
 
 **Tasks:**
 - [x] **7.2.2** Update test checklist to include health checks + optional netpol/gate tests
 
 **Verification Tests:**
 ```bash
-./scripts/ai-stack-health.sh
+./scripts/ai/ai-stack-health.sh
 ```
 
 ---
@@ -1284,7 +1284,7 @@ echo "$output" | jq -e '.correlation_id' &>/dev/null && echo "PASS" || echo "FAI
 # Test: Security docs exist
 [ -f SECRETS-MANAGEMENT-GUIDE.md ] && echo "PASS" || echo "FAIL"
 [ -f SECURITY-SETUP.md ] && echo "PASS" || echo "FAIL"
-[ -f docs/08-SECURITY.md ] && echo "PASS" || echo "FAIL"
+[ -f docs/archive/legacy-sequence/08-SECURITY.md ] && echo "PASS" || echo "FAIL"
 ```
 
 ---
@@ -1352,7 +1352,7 @@ curl -s http://localhost:5000/v2/ai-stack-aidb/tags/list | jq .
 **Tasks:**
 - [x] **9.3.1** Audit liveness/readiness probes across AI stack deployments
 - [x] **9.3.2** Fix MindsDB liveness probe to use `tcpSocket` (avoid 404 on `/`)
-- [x] **9.3.3** Add CrashLoopBackOff detection to `scripts/system-health-check.sh`
+- [x] **9.3.3** Add CrashLoopBackOff detection to `scripts/health/system-health-check.sh`
 - [x] **9.3.4** Add readiness probes for critical services (aidb, postgres, redis, qdrant, nginx)
 
 **Note:** MindsDB liveness now checks TCP port 47334 to prevent CrashLoopBackOff from 404 responses.
@@ -1389,7 +1389,7 @@ curl -s http://localhost:5000/v2/ai-stack-aidb/tags/list | jq .
 These items surfaced during the senior dev review but fall outside the original phases. Track separately and prioritize as needed.
 
 - [x] **10.1** Migrate `ai-stack/AUTO-START-GUIDE.md` from Podman to K3s — full rewrite to v2.0.0 (K3s).
-- [x] **10.2** Update `scripts/ai-stack-feature-scenario.sh` to support K3s — already K3s-compatible (uses HTTP endpoints), added K3s comment.
+- [x] **10.2** Update `scripts/ai/ai-stack-feature-scenario.sh` to support K3s — already K3s-compatible (uses HTTP endpoints), added K3s comment.
 - [x] **10.6** Harden dashboard services with systemd sandboxing (NoNewPrivileges, ProtectSystem, PrivateTmp, RestrictAddressFamilies).
 - [x] **10.7** Add backup restore drill (Postgres + Qdrant) with a verification script and document expected recovery time.
 - [x] **10.8** Add firewall/ingress exposure audit (verify only required ports open; document `nftables`/`firewalld` rules).
@@ -1467,9 +1467,9 @@ AI_STACK_DEV_MODE=true ./nixos-quick-deploy.sh --restart-phase 9 --test-phase 9
 # Test 10.34: Rollout verification
 ```
 
-**Status Note (2026-02-09):** `./scripts/system-health-check.sh` passed (93/0/34). AI stack pods all Running; prior ImagePullBackOff resolved. Warnings remain for optional components (e.g., LlamaIndex/ChromaDB/Gradio, NPM config, pod restart history).
+**Status Note (2026-02-09):** `./scripts/health/system-health-check.sh` passed (93/0/34). AI stack pods all Running; prior ImagePullBackOff resolved. Warnings remain for optional components (e.g., LlamaIndex/ChromaDB/Gradio, NPM config, pod restart history).
 **Status Note (2026-02-09):** Acceptance runner executed with `RUN_NETPOL_TEST=true RUN_REGISTRY_TEST=true RUN_DASHBOARD_TEST=true RUN_RESTART_BUDGET_TEST=true RUN_FEEDBACK_TEST=true RUN_VECTOR_DIM_TEST=true` — all checks passed. Timeout lint now clean.
-**Status Note (2026-02-09):** Fixed `dashboard-server.service` exit 127 (PATH missing home-manager profile). Updated `scripts/serve-dashboard.sh`, `scripts/serve-dashboard-api.sh`, and `scripts/setup-dashboard.sh`; reran setup and restarted service.
+**Status Note (2026-02-09):** Fixed `dashboard-server.service` exit 127 (PATH missing home-manager profile). Updated `scripts/deploy/serve-dashboard.sh`, `scripts/deploy/serve-dashboard-api.sh`, and `scripts/deploy/setup-dashboard.sh`; reran setup and restarted service.
 
 ## Senior Team Review Addendum (2026-02-09)
 
@@ -1517,12 +1517,12 @@ AI_STACK_DEV_MODE=true ./nixos-quick-deploy.sh --restart-phase 9 --test-phase 9
 - Backfill `AI_STACK_DATA` when reusing an existing `.env` that lacks the key.
 
 **Steps Taken (2026-02-04):**
-- Traced the failure to `scripts/validate-ai-stack-env-drift.sh` requiring `AI_STACK_DATA`.
+- Traced the failure to `scripts/testing/validate-ai-stack-env-drift.sh` requiring `AI_STACK_DATA`.
 - Inspected `ensure_ai_stack_env()` in `nixos-quick-deploy.sh` and confirmed the key was not persisted.
 - Updated `ensure_ai_stack_env()` to set `AI_STACK_DATA` on both new writes and reuse-path backfills.
 
 **Acceptance Criteria:**
-- [x] `scripts/validate-ai-stack-env-drift.sh` passes with `ENFORCE_ENV_DRIFT_CHECK=true`.
+- [x] `scripts/testing/validate-ai-stack-env-drift.sh` passes with `ENFORCE_ENV_DRIFT_CHECK=true`.
 - [x] `~/.config/nixos-ai-stack/.env` contains `AI_STACK_DATA=/home/$USER/.local/share/nixos-ai-stack` (or explicit override).
 - [ ] Phase 8 completes without env drift failures after re-running `nixos-quick-deploy.sh`.
 
@@ -1670,18 +1670,18 @@ AI_STACK_DEV_MODE=true ./nixos-quick-deploy.sh --restart-phase 9 --test-phase 9
 **Tasks:**
 - [x] **11.2.1** Create `config/service-endpoints.sh` — single source of truth for all service URLs (env-overridable)
 - [x] **11.2.2** Create `dashboard/backend/api/config/service_endpoints.py` — Python equivalent for FastAPI
-- [x] **11.2.3** Add endpoint audit script to enumerate remaining hardcoded URLs (`scripts/audit-service-endpoints.sh`).
+- [x] **11.2.3** Add endpoint audit script to enumerate remaining hardcoded URLs (`scripts/governance/audit-service-endpoints.sh`).
 - [x] **11.2.4** Replace remaining hardcoded localhost URLs in scripts/backend with endpoint config variables.
 
 **Acceptance Criteria (status 2026-02-03):**
 - [x] Scripts avoid hardcoded localhost URLs (use `SERVICE_HOST`/endpoint vars)
 - [x] Python backend imports from `service_endpoints.py`
-- [x] `./scripts/audit-service-endpoints.sh` reports zero findings in scripts/backend
+- [x] `./scripts/governance/audit-service-endpoints.sh` reports zero findings in scripts/backend
 
 **Audit Note (2026-02-03):** Hardcoded localhost URLs removed from scripts/backend; audit now passes with zero findings.
 ---
 
-### 11.3 Fix `scripts/generate-dashboard-data.sh`
+### 11.3 Fix `scripts/data/generate-dashboard-data.sh`
 
 **Tasks:**
 - [x] **11.3.3** Source `config/service-endpoints.sh` for all service URLs
@@ -1706,7 +1706,7 @@ AI_STACK_DEV_MODE=true ./nixos-quick-deploy.sh --restart-phase 9 --test-phase 9
 
 ---
 
-### 11.5 Fix `scripts/serve-dashboard.sh`
+### 11.5 Fix `scripts/deploy/serve-dashboard.sh`
 
 **Tasks:**
 - [x] **11.5.1** Replace `podman restart` commands with K3s-first logic
@@ -1759,8 +1759,8 @@ AI_STACK_DEV_MODE=true ./nixos-quick-deploy.sh --restart-phase 9 --test-phase 9
 
 **Tasks:**
 - [x] **11.8.1** Update `launch-dashboard.sh` — remove `podman` hard dependency, add K3s-first logic
-- [x] **11.8.2** Update `scripts/setup-dashboard.sh` — add K3s deployment path
-- [x] **11.8.3** Update `scripts/manage-dashboard-collectors.sh` — add K3s pod-based management
+- [x] **11.8.2** Update `scripts/deploy/setup-dashboard.sh` — add K3s deployment path
+- [x] **11.8.3** Update `scripts/governance/manage-dashboard-collectors.sh` — add K3s pod-based management
 
 **Acceptance Criteria:**
 - [ ] `launch-dashboard.sh` works on K3s-only systems (no podman required)
@@ -2112,8 +2112,8 @@ CONTAINER_CLI=skopeo ONLY_IMAGES=ai-stack-aidb TAG=dev ./scripts/publish-local-r
   - `ai-stack/mcp-servers/aidb/mindsdb_client.py` (2 bare except → specific types + logging)
   - `ai-stack/mcp-servers/hybrid-coordinator/server.py` (2 fixes: ImportError/AttributeError + OSError/ValueError/IndexError)
   - `ai-stack/mcp-servers/nixos-docs/server.py` (3 fixes: Redis stats, cache clear, memory read)
-  - `scripts/manage-secrets.py` (json.JSONDecodeError/OSError + added logger)
-  - `scripts/claude-api-proxy.py` (urllib.error.URLError/OSError)
+  - `scripts/governance/manage-secrets.py` (json.JSONDecodeError/OSError + added logger)
+  - `scripts/ai/claude-api-proxy.py` (urllib.error.URLError/OSError)
 - Fixed 3 bash scripts with incomplete set options: `run-acceptance-checks.sh`, `record-claude-code-errors.sh`, `init-package-database.sh`
 - Added design-intent comments to `system-health-check.sh` and `generate-dashboard-data.sh` explaining intentional `-e` omission
 - Replaced `|| true` with `if ! cmd; then log_warning ...` in `phase-05` (sanitize_generated_configs, chown/chmod backup artifacts) and `phase-09` (sed model preferences)
@@ -2143,22 +2143,22 @@ CONTAINER_CLI=skopeo ONLY_IMAGES=ai-stack-aidb TAG=dev ./scripts/publish-local-r
 - [ ] Custom prefix installation works
 
 **Progress Note (2026-02-04):**
-- Added `scripts/audit-hardcoded-paths.sh` to report `/home` and `/tmp` literals outside archive/deprecated paths.
+- Added `scripts/governance/audit-hardcoded-paths.sh` to report `/home` and `/tmp` literals outside archive/deprecated paths.
 - Audit findings (triage needed):
   - Repo‑absolute paths in `templates/systemd/*.service` and `systemd/telemetry-rotation.*` reference `/home/hyperd/Documents/...` (should use `$PROJECT_ROOT`/templated path).
   - Dashboard launcher scripts write PID/log files to `/tmp` (should use `$TMPDIR` + `mktemp` or a dedicated state dir).
   - Docs still reference `/home/hyperd/...` in multiple guides (replace with `$HOME` or `PROJECT_ROOT` examples).
-  - Runtime `/tmp` usage appears in `dashboard/start-dashboard.sh` + `scripts/start-unified-dashboard.sh` (PID/log files) and deployment logs (`lib/nixos.sh`, `phases/phase-09-ai-stack-deployment.sh`).
+  - Runtime `/tmp` usage appears in `dashboard/start-dashboard.sh` + `scripts/deploy/start-unified-dashboard.sh` (PID/log files) and deployment logs (`lib/nixos.sh`, `phases/phase-09-ai-stack-deployment.sh`).
 - Partial fix applied: dashboard launcher scripts now use `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}` for PID/log files.
 - Partial fix applied: systemd templates and telemetry units now use `@PROJECT_ROOT@` placeholders (replace before installing).
 - Cron templates now use `$HOME/...` instead of `/home/$USER/...` to avoid hardcoded paths.
-- Suggestion: add a small helper script (e.g., `scripts/apply-project-root.sh`) to replace `@PROJECT_ROOT@`/`@AI_STACK_USER@` placeholders when installing systemd templates.
-- Added `scripts/apply-project-root.sh` to replace `@PROJECT_ROOT@`, `@AI_STACK_USER@`, and `@AI_STACK_UID@` in templates before installing systemd units.
+- Suggestion: add a small helper script (e.g., `scripts/governance/apply-project-root.sh`) to replace `@PROJECT_ROOT@`/`@AI_STACK_USER@` placeholders when installing systemd templates.
+- Added `scripts/governance/apply-project-root.sh` to replace `@PROJECT_ROOT@`, `@AI_STACK_USER@`, and `@AI_STACK_UID@` in templates before installing systemd units.
 - Partial fix applied: `/tmp` log outputs in `lib/nixos.sh` and `phases/phase-09-ai-stack-deployment.sh` now respect `${TMP_DIR:-/tmp}`.
 - Partial fix applied: dashboard collector scripts now use `$PROJECT_ROOT` and `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}` for log output.
 - Partial fix applied: secret generation scripts now derive paths from `$PROJECT_ROOT`; resume recovery script now auto-resolves project root and user/uid.
 - Partial fix applied: replaced `/home` references in dashboard HTML mock data, integration docs, validation checklist, and quick-start docs; updated `config/variables.sh` + `lib/config.sh` to use `HOME_ROOT_DIR` fallback instead of hardcoded `/home`.
-- Partial fix applied: added `@AI_STACK_DATA@` placeholder for embeddings cache hostPath and extended `scripts/apply-project-root.sh` to substitute it; `ai-stack/cron/tls-cert-monitoring` and `ai-stack/systemd/letsencrypt-renewal.service` now use `@PROJECT_ROOT@`.
+- Partial fix applied: added `@AI_STACK_DATA@` placeholder for embeddings cache hostPath and extended `scripts/governance/apply-project-root.sh` to substitute it; `ai-stack/cron/tls-cert-monitoring` and `ai-stack/systemd/letsencrypt-renewal.service` now use `@PROJECT_ROOT@`.
 - Partial fix applied: tests now resolve repo paths via `Path(__file__)` (no hardcoded home); `templates/configuration.nix` now uses `config.users.users.@USER@.home` for sops key path.
 - Partial fix applied: reduced `/tmp` usage in runtime scripts/libs (ai-optimizer deploy logs, timeout stderr capture, npm install logs, conflict report, finalization cleanup, local-registry PID, ai-metrics updater, ralph task temp IDs, qdrant snapshot temp files, hybrid learning apply log, workflow temp config).
 - Audit helper updated to exclude `docs/archive/**` and `dashboard.html.backup-*` so results focus on active code/docs.
@@ -2228,7 +2228,7 @@ CONTAINER_CLI=skopeo ONLY_IMAGES=ai-stack-aidb TAG=dev ./scripts/publish-local-r
   - Added `AI_STACK_DATA` backfill using `${AI_STACK_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/nixos-ai-stack}` in `phase-08-finalization-and-report.sh`.
   - Updated the current env file to include `AI_STACK_DATA`.
 - **Acceptance Criteria:**
-  - [x] `scripts/validate-ai-stack-env-drift.sh` passes with ENFORCE_ENV_DRIFT_CHECK=true.
+  - [x] `scripts/testing/validate-ai-stack-env-drift.sh` passes with ENFORCE_ENV_DRIFT_CHECK=true.
   - [x] `~/.config/nixos-ai-stack/.env` contains `AI_STACK_DATA=...`.
 
 **Issue:** `podman-tcp.service` failed to restart after system switch (exit 203/EXEC).
@@ -2254,7 +2254,7 @@ CONTAINER_CLI=skopeo ONLY_IMAGES=ai-stack-aidb TAG=dev ./scripts/publish-local-r
 - **Root Cause:** Health checks relied on PATH that excludes Home Manager profile in non-interactive shells; Nix store checks could invoke sudo in a non-tty context.
 - **Fix:** Health check now prepends the Home Manager profile bin to PATH and skips Nix store/profile checks when non-interactive.
 - **Steps Taken:**
-  - Added Home Manager profile PATH injection and non-interactive detection in `scripts/system-health-check.sh`.
+  - Added Home Manager profile PATH injection and non-interactive detection in `scripts/health/system-health-check.sh`.
   - Skipped Nix store/profile checks when `NONINTERACTIVE=true` to avoid sudo prompts.
 - **Acceptance Criteria:**
   - [x] Phase 8 system health check passes in non-interactive runs without sudo prompts.
@@ -2284,9 +2284,9 @@ CONTAINER_CLI=skopeo ONLY_IMAGES=ai-stack-aidb TAG=dev ./scripts/publish-local-r
 - **Root Cause:** `podman_socket` and color variables were undefined under `set -u`, and `start-ai-stack-and-dashboard.sh` exited with deprecation error.
 - **Fix:** Added defaults for dashboard vars and updated the startup script to support K3s by starting dashboard services only.
 - **Steps Taken:**
-  - Added `podman_socket` default in `scripts/generate-dashboard-data.sh`.
+  - Added `podman_socket` default in `scripts/data/generate-dashboard-data.sh`.
   - Added color fallbacks in `lib/dashboard.sh`.
-  - Updated `scripts/start-ai-stack-and-dashboard.sh` to detect K3s and start dashboard services (exit 0).
+  - Updated `scripts/deploy/start-ai-stack-and-dashboard.sh` to detect K3s and start dashboard services (exit 0).
 - **Acceptance Criteria:**
   - [x] Dashboard data generation runs without unbound variable errors.
   - [x] Post-deploy startup script exits cleanly on K3s installs.
@@ -2445,8 +2445,8 @@ CONTAINER_CLI=skopeo ONLY_IMAGES=ai-stack-aidb TAG=dev ./scripts/publish-local-r
 - [x] CI fails if counts drift significantly
 
 **Progress Note (2026-02-16):**
-- Added flake-evaluated package inventory generator: `scripts/generate-package-counts.sh`.
-- Added deterministic drift gate: `scripts/check-package-count-drift.sh` + baseline `config/package-count-baseline.json`.
+- Added flake-evaluated package inventory generator: `scripts/data/generate-package-counts.sh`.
+- Added deterministic drift gate: `scripts/testing/check-package-count-drift.sh` + baseline `config/package-count-baseline.json`.
 - Wired package-count drift check into CI: `.github/workflows/test.yml`.
 
 ---
@@ -2580,10 +2580,10 @@ Feature audit results:
 **Tasks:**
 - [x] **16.3.1** Test AIDB → Qdrant integration
 - [x] **16.3.2** Test Hybrid → AIDB → Qdrant chain
-- [x] **16.3.3** Test Ralph → Hybrid → AIDB chain (added to `scripts/ai-stack-e2e-test.sh`)
+- [x] **16.3.3** Test Ralph → Hybrid → AIDB chain (added to `scripts/ai/ai-stack-e2e-test.sh`)
 - [x] **16.3.4** Test dashboard → all services
-- [x] **16.3.5** Add end-to-end RAG query test (added to `scripts/ai-stack-e2e-test.sh`)
-- [x] **16.3.6** Add end-to-end task execution test (added to `scripts/ai-stack-e2e-test.sh`)
+- [x] **16.3.5** Add end-to-end RAG query test (added to `scripts/ai/ai-stack-e2e-test.sh`)
+- [x] **16.3.6** Add end-to-end task execution test (added to `scripts/ai/ai-stack-e2e-test.sh`)
 - [x] **16.3.7** Add dashboard feedback endpoint test (Hybrid + Qdrant + Postgres write)
 - [x] **16.3.8** Validate Qdrant collection vector size matches `EMBEDDING_DIMENSIONS`
 - [x] **16.3.9** Add restart-budget check (fail if any core pod exceeds threshold without explanation)
@@ -2595,8 +2595,8 @@ Feature audit results:
 - [ ] Data flows through all services correctly
 - [ ] Failures in one service are handled by callers
 
-**Progress Note (2026-02-09):** Added optional acceptance-runner checks for feedback endpoint, Qdrant vector size, and restart-budget thresholds (`scripts/run-acceptance-checks.sh` flags: `RUN_FEEDBACK_TEST`, `RUN_VECTOR_DIM_TEST`, `RUN_RESTART_BUDGET_TEST`).
-**Progress Note (2026-02-10):** Ran `scripts/ai-stack-e2e-test.sh` via K8s port-forwards. Core services passed; failures traced to AIDB embedding download (no HuggingFace egress) and missing telemetry schema columns. Fixes tracked as AI-ISSUE-009/010.
+**Progress Note (2026-02-09):** Added optional acceptance-runner checks for feedback endpoint, Qdrant vector size, and restart-budget thresholds (`scripts/automation/run-acceptance-checks.sh` flags: `RUN_FEEDBACK_TEST`, `RUN_VECTOR_DIM_TEST`, `RUN_RESTART_BUDGET_TEST`).
+**Progress Note (2026-02-10):** Ran `scripts/ai/ai-stack-e2e-test.sh` via K8s port-forwards. Core services passed; failures traced to AIDB embedding download (no HuggingFace egress) and missing telemetry schema columns. Fixes tracked as AI-ISSUE-009/010.
 
 ---
 
@@ -2699,7 +2699,7 @@ Feature audit results:
 - 17.2.1-17.2.4: Removed all 4 duplicate function definitions. Canonical versions retained in common.sh, validation-input.sh, and retry-backoff.sh. All files verified with `bash -n`.
 - 17.2.5: Removed `check_docker_podman_ready()` and `ensure_docker_network_ready()` aliases from ai-optimizer-hooks.sh. Updated callers in phase-09-ai-optimizer-prep.sh to use `check_container_runtime_ready()` and `ensure_container_network_ready()`.
 - 17.2.6: DEFERRED — Moving 1077 lines of flatpak code from tools.sh to flatpak.sh is purely organizational. Both files are already sourced via load_libraries(). High risk of breakage for zero functional gain.
-- 17.2.7: DEFERRED — ai-stack-containers.sh (96 lines) is a clean, single-purpose container registry. Merging it into ai-optimizer.sh (766 lines of model management) would reduce modularity. Only sourced by scripts/stop-ai-stack.sh.
+- 17.2.7: DEFERRED — ai-stack-containers.sh (96 lines) is a clean, single-purpose container registry. Merging it into ai-optimizer.sh (766 lines of model management) would reduce modularity. Only sourced by scripts/deploy/stop-ai-stack.sh.
 - 17.2.8: SKIPPED — `sanitize_string()` has unit tests in tests/unit/validation-input.bats. Not dead code.
 
 **Acceptance Criteria:**
@@ -2783,8 +2783,8 @@ Feature audit results:
 **Progress Note (2026-02-05):**
 - 17.5.1: Audit found 13 files with mktemp usage lacking trap handlers across scripts/, phases/, and lib/. 6 were standalone scripts, 2 were phases, 5 were library functions.
 - 17.5.2: Fixed the highest-impact cases:
-  - `scripts/generate-nginx-certs.sh`: Added `trap 'rm -f "$CATFILE"' EXIT` after mktemp
-  - `scripts/ai-stack-feature-scenario.sh`: Added `trap 'rm -f "$RESULTS_JSONL"' EXIT` after mktemp
+  - `scripts/data/generate-nginx-certs.sh`: Added `trap 'rm -f "$CATFILE"' EXIT` after mktemp
+  - `scripts/ai/ai-stack-feature-scenario.sh`: Added `trap 'rm -f "$RESULTS_JSONL"' EXIT` after mktemp
   - `scripts/lib/download-cache.sh`: Added `rm -f "$temp_file"` to error path that was leaking
   - Library functions (common.sh, config.sh, tools.sh, timeout.sh, secrets-sops.sh): Cannot add process-level traps inside library functions as they would override the caller's existing trap. These use manual cleanup patterns which is the correct approach for shared library code.
   - Function-scoped temp files (fix-mangohud-config.sh, mangohud-profile.sh, phase-05-declarative-deployment.sh): Use mktemp → mv pattern with very short-lived temp files. Risk is minimal.
@@ -2850,7 +2850,7 @@ Feature audit results:
 
 **Progress Note (2026-02-05):**
 - 18.2.1: Changed GITEA_PORT from 3000 to 3003 in settings.sh. Updated fallback in service-endpoints.sh.
-- 18.2.3: Updated hardcoded Gitea port references in templates/home.nix and scripts/security-manager.sh to use variable with 3003 default.
+- 18.2.3: Updated hardcoded Gitea port references in templates/home.nix and scripts/security/security-manager.sh to use variable with 3003 default.
 
 **Acceptance Criteria:**
 - [x] No duplicate port assignments in default config
@@ -2927,7 +2927,7 @@ postgresql://mcp:change_me_in_production@localhost:5432/mcp
 **Progress Note (2026-02-16):**
 - Added `validate_config()` wrapper in `lib/validation-input.sh` and startup call in `nixos-quick-deploy.sh`.
 - Extended validation for required variables plus path writability checks in `lib/validation-input.sh`.
-- Added dedicated validator CLI `scripts/validate-config-settings.sh` and CI execution in `.github/workflows/test.yml`.
+- Added dedicated validator CLI `scripts/testing/validate-config-settings.sh` and CI execution in `.github/workflows/test.yml`.
 
 ---
 
@@ -2999,7 +2999,7 @@ claude --version && echo "PASS" || echo "FAIL"
 
 ### 19.2 Update Health Checks for Native Claude Code Binary
 
-**Problem:** `scripts/system-health-check.sh` only validates `~/.npm-global/bin/claude-wrapper` and npm package directory.
+**Problem:** `scripts/health/system-health-check.sh` only validates `~/.npm-global/bin/claude-wrapper` and npm package directory.
 
 **Tasks:**
 - [x] **19.2.1** Add native binary check (`~/.local/bin/claude`) to AI Development Tools section
@@ -3011,7 +3011,7 @@ claude --version && echo "PASS" || echo "FAIL"
 **Verification Tests:**
 ```bash
 # Test 19.2.1: Health check detects native binary
-./scripts/system-health-check.sh --detailed 2>&1 | grep -q "Claude Code native binary" && echo "PASS" || echo "FAIL"
+./scripts/health/system-health-check.sh --detailed 2>&1 | grep -q "Claude Code native binary" && echo "PASS" || echo "FAIL"
 
 # Test 19.2.3: Fix mode installs Claude Code
 # (only test if Claude is not already installed)
@@ -3105,7 +3105,7 @@ claude --version && echo "PASS" || echo "FAIL"
 - [x] Gemini CLI install failure path documented or automatically retried.
 - [x] **19.4.3** Add flake lock completeness validation (`validate_flake_lock_inputs()` in `lib/config.sh`)
 - [x] **19.4.4** Auto-run `nix flake lock` when inputs missing from lock (hooks in Phase 3, Phase 5, Phase 6)
-- [x] **19.4.5** Add flake lock completeness check to system health check (`scripts/system-health-check.sh`)
+- [x] **19.4.5** Add flake lock completeness check to system health check (`scripts/health/system-health-check.sh`)
 - [x] **19.4.6** Add flake lock repair to health check `--fix` mode
 - [x] **19.4.7** Document flake input update procedure
 
@@ -3224,11 +3224,11 @@ claude --version && echo "PASS" || echo "FAIL"
 
 **Severity:** MEDIUM (Flake Review Issue 8) — upgraded to HIGH since the broken parser also prevented runtime auto-repair of missing flake.lock inputs.
 
-**Status:** DONE (2026-02-09). Replaced sed|grep pipeline with awk brace-depth parser in both `lib/config.sh` and `scripts/system-health-check.sh`. Parser correctly returns all 6 inputs.
+**Status:** DONE (2026-02-09). Replaced sed|grep pipeline with awk brace-depth parser in both `lib/config.sh` and `scripts/health/system-health-check.sh`. Parser correctly returns all 6 inputs.
 
 **Tasks:**
 - [x] **19.12.1** Replace broken sed|grep parser in `lib/config.sh:1421-1426` with awk brace-depth parser
-- [x] **19.12.2** Replace broken sed|grep parser in `scripts/system-health-check.sh:2325-2327` (--fix mode)
+- [x] **19.12.2** Replace broken sed|grep parser in `scripts/health/system-health-check.sh:2325-2327` (--fix mode)
 - [x] **19.12.3** Verified: awk parser returns exactly 6 inputs from templates/flake.nix (no false positives)
 
 ---
@@ -3607,8 +3607,8 @@ When handing off to another agent/session, include:
 - **Issues Resolved:** Flake lock validation no longer mis-parses `url` as an input name; lock check now only tracks top-level inputs.
 - **Issues Resolved:** Node.js/VSCodium path missing fixed by adding home-manager profile bin to PATH; VSCodium app entries now explicitly linked into `~/.local/share/applications`.
 - **Issues Resolved:** Guarded error handler against stray separator commands causing false fatal exits after successful deploy runs.
-- **Dry Run Findings:** Health check fails due to missing Gemini CLI wrapper/package and missing Qwen wrapper (package present). Optional Python packages (LlamaIndex/ChromaDB/Gradio) still missing. Run `./scripts/system-health-check.sh --fix` to resolve before a production run.
-- **Tests Run:** `bash -n nixos-quick-deploy.sh` (PASS); `bash -n phases/*.sh lib/*.sh scripts/system-health-check.sh` (PASS); `./nixos-quick-deploy.sh --build-only` (FAIL due to missing Gemini/Qwen CLI; see findings).
+- **Dry Run Findings:** Health check fails due to missing Gemini CLI wrapper/package and missing Qwen wrapper (package present). Optional Python packages (LlamaIndex/ChromaDB/Gradio) still missing. Run `./scripts/health/system-health-check.sh --fix` to resolve before a production run.
+- **Tests Run:** `bash -n nixos-quick-deploy.sh` (PASS); `bash -n phases/*.sh lib/*.sh scripts/health/system-health-check.sh` (PASS); `./nixos-quick-deploy.sh --build-only` (FAIL due to missing Gemini/Qwen CLI; see findings).
 
 ### Previous Update (2026-02-09)
 
@@ -3738,7 +3738,7 @@ The roadmap has been enhanced with comprehensive updates from all three domain e
 
 ### 20.1 Harden Curl-Pipe-to-Bash (Claude Code Installer)
 
-**Problem:** `lib/tools.sh:2176,2179` and `scripts/system-health-check.sh:462` execute `curl -fsSL https://claude.ai/install.sh | bash` with no integrity verification. MITM, DNS hijack, or CDN compromise would allow arbitrary code execution.
+**Problem:** `lib/tools.sh:2176,2179` and `scripts/health/system-health-check.sh:462` execute `curl -fsSL https://claude.ai/install.sh | bash` with no integrity verification. MITM, DNS hijack, or CDN compromise would allow arbitrary code execution.
 
 **Severity:** CRITICAL (Security Review SEC-01)
 
@@ -3774,7 +3774,7 @@ The roadmap has been enhanced with comprehensive updates from all three domain e
 
 ### 20.3 Pin npm Package Versions (Supply Chain)
 
-**Problem:** `lib/tools.sh:2044` and `scripts/system-health-check.sh:421` run `npm install -g "$package"` without version pinning. Every install fetches latest, which could include compromised releases.
+**Problem:** `lib/tools.sh:2044` and `scripts/health/system-health-check.sh:421` run `npm install -g "$package"` without version pinning. Every install fetches latest, which could include compromised releases.
 
 **Severity:** MEDIUM (Security Review SEC-07)
 
@@ -3789,7 +3789,7 @@ The roadmap has been enhanced with comprehensive updates from all three domain e
 ### 20.4 Fix Trap Quoting and Source Validation
 
 **Problem:** Multiple lower-severity security issues:
-2. `scripts/system-health-check.sh:267` — `source "$NPM_MANIFEST_FILE"` executes arbitrary code from config file
+2. `scripts/health/system-health-check.sh:267` — `source "$NPM_MANIFEST_FILE"` executes arbitrary code from config file
 
 **Severity:** MEDIUM (Security Review SEC-05, SEC-06)
 
@@ -3818,7 +3818,7 @@ The roadmap has been enhanced with comprehensive updates from all three domain e
 
 ### 20.5 Harden Health Check --fix Mode Error Handling
 
-**Problem:** `scripts/system-health-check.sh:19` uses `set -uo pipefail` without `-e` (intentionally, to report all failures). But `--fix` operations that modify the system (npm install, curl|bash, home-manager switch) fail silently without accumulating error state.
+**Problem:** `scripts/health/system-health-check.sh:19` uses `set -uo pipefail` without `-e` (intentionally, to report all failures). But `--fix` operations that modify the system (npm install, curl|bash, home-manager switch) fail silently without accumulating error state.
 
 **Severity:** MEDIUM (Error Handling Review ERR-01)
 
@@ -3972,13 +3972,13 @@ done
 
 ```bash
 # Run all verification tests
-./scripts/run-verification-tests.sh
+./scripts/automation/run-verification-tests.sh
 
 # Check current progress
 grep -E "^\[x\]" SYSTEM-UPGRADE-ROADMAP.md | wc -l
 
 # Validate secrets are encrypted
-./scripts/verify-secrets-encrypted.sh
+./scripts/testing/verify-secrets-encrypted.sh
 
 # Run shellcheck on all scripts
 shellcheck -S warning lib/*.sh phases/*.sh
@@ -4730,7 +4730,7 @@ xdg.portal.extraPortals =
 ### 26.2 Hardware Facts Discovery (Declarative Input)
 
 **Tasks:**
-- [x] **26.2.1** Create `scripts/discover-system-facts.sh` that writes deterministic facts (`facts.nix` or JSON).
+- [x] **26.2.1** Create `scripts/governance/discover-system-facts.sh` that writes deterministic facts (`facts.nix` or JSON).
 - [x] **26.2.2** Record CPU vendor, GPU vendor, hostname, architecture, and optional device flags.
 - [x] **26.2.3** Ensure facts generation is idempotent and safe in non-interactive runs.
 - [x] **26.2.4** Add validation to reject malformed facts.
@@ -4830,22 +4830,22 @@ xdg.portal.extraPortals =
 
 **Progress Note (2026-02-16):**
 - Added root declarative scaffold: `flake.nix`, `nix/modules/core/options.nix`, `nix/modules/core/base.nix`, `nix/modules/profiles/{minimal,ai-dev,gaming}.nix`, `nix/modules/hardware/{amd,intel,nvidia}.nix`, `nix/hosts/hyperd/{default.nix,facts.nix}`, `nix/home/base.nix`, `nix/hosts/hyperd/home.nix`.
-- Added deterministic discovery script: `scripts/discover-system-facts.sh` (CPU/GPU/hostname/arch/profile capture, idempotent writes, auto host stub creation).
+- Added deterministic discovery script: `scripts/governance/discover-system-facts.sh` (CPU/GPU/hostname/arch/profile capture, idempotent writes, auto host stub creation).
 - Validation completed:
-  - `bash -n scripts/discover-system-facts.sh`
+  - `bash -n scripts/governance/discover-system-facts.sh`
   - `nix-instantiate --parse flake.nix`
   - `nix-instantiate --parse` for all new `nix/` modules.
 
 **Progress Note (2026-02-16, continued):**
-- Completed 26.2.4 by adding strict schema validation + Nix parse validation in `scripts/discover-system-facts.sh` (hostname/user/system/profile/cpu/gpu checks).
+- Completed 26.2.4 by adding strict schema validation + Nix parse validation in `scripts/governance/discover-system-facts.sh` (hostname/user/system/profile/cpu/gpu checks).
 - Seeded 26.3 migration by moving `minimal` Flatpak profile source into `nix/data/flatpak-profiles.nix`; `config/variables.sh` now imports that declarative data (with fallback).
 - Completed 26.4.1 with a flake-first path in `nixos-quick-deploy.sh` (now default, with `--legacy-phases` fallback), including:
   - `--flake-first`, `--flake-first-profile`, `--flake-first-target`
-  - discovery execution (`scripts/discover-system-facts.sh`)
+  - discovery execution (`scripts/governance/discover-system-facts.sh`)
   - direct `nixos-rebuild switch --flake`
   - direct `home-manager switch --flake`
 - Added rollback guidance in flake-first mode (system rollback command + captured Home Manager generation hint).
-- Added compatibility hooks in flake-first mode: state marker (`flake-first-switch`) and optional post-switch health check (`scripts/system-health-check.sh --detailed`).
+- Added compatibility hooks in flake-first mode: state marker (`flake-first-switch`) and optional post-switch health check (`scripts/health/system-health-check.sh --detailed`).
 - Expanded root flake host coverage: `flake.nix` now auto-discovers host directories under `nix/hosts/` and emits per-profile outputs for each host.
 - Added unit coverage for discovery/profile glue: `tests/unit/discover-system-facts.bats` (idempotence + schema rejection cases).
 
@@ -4857,7 +4857,7 @@ xdg.portal.extraPortals =
   - `nix flake check --no-build path:.`
   - per-host/per-profile `nix eval` profile assertions
 - Added placeholder-proliferation lint:
-  - `scripts/lint-template-placeholders.sh`
+  - `scripts/governance/lint-template-placeholders.sh`
   - baseline file `config/template-placeholder-baseline.tsv`
   - workflow gate in `.github/workflows/test.yml`
 - Updated migration-facing docs:
@@ -4869,7 +4869,7 @@ xdg.portal.extraPortals =
 - Root `flake.nix` now imports `nix/modules/hardware/default.nix` as the single hardware entry point (eliminates legacy flat hardware module drift).
 - Root `flake.nix` now derives host Home Manager outputs per discovered host/user and keeps user-level aliases for compatibility.
 - Flake-first deploy path (`nixos-quick-deploy.sh`) now prefers host-scoped HM target `${user}-${host}` when available, with fallback to `${user}`.
-- `scripts/discover-system-facts.sh` now emits expanded hardware/deployment schema (`igpuVendor`, `storageType`, `systemRamGb`, `isMobile`, `earlyKmsPolicy`, `nixosHardwareModule`, hibernation fields).
+- `scripts/governance/discover-system-facts.sh` now emits expanded hardware/deployment schema (`igpuVendor`, `storageType`, `systemRamGb`, `isMobile`, `earlyKmsPolicy`, `nixosHardwareModule`, hibernation fields).
 
 **Progress Note (2026-02-16, clean-cut deployment path):**
 - Added `scripts/deploy-clean.sh` as a minimal flake-first entrypoint:
@@ -4932,7 +4932,7 @@ xdg.portal.extraPortals =
 ### 27.4 Skill Reference Integrity and Graceful Degradation
 
 **Tasks:**
-- [x] **27.4.1** Add `scripts/validate-skill-references.sh` to verify all relative links in `SKILL.md` exist.
+- [x] **27.4.1** Add `scripts/testing/validate-skill-references.sh` to verify all relative links in `SKILL.md` exist.
 - [x] **27.4.2** Add CI job for skill integrity (references/scripts/assets path checks).
 - [x] **27.4.3** Update `mcp-builder` and `skill-creator` with fallback behavior when optional references are missing.
 - [x] **27.4.4** Add test fixtures that intentionally break links to verify lint failure messaging.
@@ -4966,7 +4966,7 @@ xdg.portal.extraPortals =
   - MCP server validation/evaluation
 - [x] **27.6.5** Add parity tests: CLI command output/behavior must match underlying MCP/skill workflow.
 - [x] **27.6.6** Add docs for direct CLI usage and migration off manual MCP/skill-only flows.
-- [x] **27.6.7** Add initial CLI wrapper script `scripts/aqd` for skill/mcp workflow execution.
+- [x] **27.6.7** Add initial CLI wrapper script `scripts/ai/aqd` for skill/mcp workflow execution.
 
 **Success Criteria:**
 - [x] Agents and humans can run priority workflows via CLI without opening skill internals.
@@ -5005,9 +5005,9 @@ xdg.portal.extraPortals =
 **Progress Note (2026-02-16, governance/lint rollout):**
 - Removed legacy `.claude` skill backup tree from active workspace usage.
 - Added skill governance scripts:
-  - `scripts/check-skill-source-of-truth.sh`
-  - `scripts/lint-skill-external-deps.sh`
-  - `scripts/validate-skill-references.sh`
+  - `scripts/testing/check-skill-source-of-truth.sh`
+  - `scripts/governance/lint-skill-external-deps.sh`
+  - `scripts/testing/validate-skill-references.sh`
 - Wired governance checks into CI (`.github/workflows/test.yml`, job: `skill-governance-lint`).
 - Updated `mcp-builder` skill docs (canonical + mirror) to consume pinned SDK URLs via `docs/skill-dependency-lock.md` instead of floating `main` links.
 
@@ -5020,7 +5020,7 @@ xdg.portal.extraPortals =
   - `docs/SKILL-MINIMUM-STANDARD.md`
   - updated `skill-creator` guidance to treat progressive disclosure as optional
   - one-hop reference depth enforced in template lint
-- Expanded `scripts/aqd` wrapper coverage:
+- Expanded `scripts/ai/aqd` wrapper coverage:
   - `aqd skill quick-validate`
   - `aqd mcp validate`
   - `aqd mcp evaluate`
@@ -5030,7 +5030,7 @@ xdg.portal.extraPortals =
 - Added lint/parity tests:
   - `tests/unit/validate-skill-references.bats` + fixtures under `archive/test-fixtures/skill-reference-lint/`
   - `tests/unit/aqd-parity.bats`
-  - `scripts/lint-skill-template.sh` wired into CI governance lint
+  - `scripts/governance/lint-skill-template.sh` wired into CI governance lint
 
 ---
 
@@ -5381,13 +5381,13 @@ Added `igpuVendor` option to `options.nix`. Added `_detect_igpu_vendor()` to `ha
   - SMART/NVMe checks (`disk-health-monitor.service` + `.timer`)
   - `disk-health-check` command in system profile
 - [x] **30.3.3** Add `OnFailure=` notification hook (journal summary + operator-facing alert path).
-- [x] **30.3.4** Integrate monitor results into `scripts/system-health-check.sh` summary output.
+- [x] **30.3.4** Integrate monitor results into `scripts/health/system-health-check.sh` summary output.
 
 ### 30.4 Recovery Workflow Standardization
 
 **Tasks:**
 - [x] **30.4.1** Add immediate offline-repair helper:
-  - `scripts/recovery-offline-fsck-guide.sh`
+  - `scripts/deploy/recovery-offline-fsck-guide.sh`
 - [x] **30.4.2** Add persistent doc under `docs/` for rescue ISO flow, including NVMe SMART interpretation.
 - [x] **30.4.3** Add BATS tests for integrity helper scripts (signature detection + UUID resolution paths).
 
@@ -5434,7 +5434,7 @@ Added `igpuVendor` option to `options.nix`. Added `_detect_igpu_vendor()` to `ha
 
 **Tasks:**
 - [x] **31.2.1** Add standalone readiness analyzer script:
-  - `scripts/analyze-clean-deploy-readiness.sh`
+  - `scripts/governance/analyze-clean-deploy-readiness.sh`
   - host/profile/flake-aware checks with pass/warn/fail summary.
 - [x] **31.2.2** Add deploy integration:
   - `scripts/deploy-clean.sh --analyze-only`
@@ -5620,13 +5620,13 @@ curl http://localhost:19999/api/v1/info  # Netdata running
 **Tasks:**
 - [x] **34.1** Deprecate legacy telemetry scripts:
   - `scripts/collect-ai-metrics.sh`
-  - `scripts/rotate-telemetry.sh`
-  - `scripts/ai-metrics-auto-updater.sh`
+  - `scripts/data/rotate-telemetry.sh`
+  - `scripts/ai/ai-metrics-auto-updater.sh`
 - [x] **34.2** Move telemetry rotation unit templates out of active path:
   - `systemd/telemetry-rotation.service`
   - `systemd/telemetry-rotation.timer`
 - [x] **34.3** Deprecate imperative model bootstrap script:
-  - `scripts/ai-model-setup.sh`
+  - `scripts/ai/ai-model-setup.sh`
 - [x] **34.4** Deprecate duplicate package counting scripts:
   - `scripts/count-packages-accurately.sh`
   - `scripts/count-packages-simple.sh`
@@ -5636,7 +5636,7 @@ curl http://localhost:19999/api/v1/info  # Netdata running
 
 **Verification:**
 ```bash
-bash -n scripts/collect-ai-metrics.sh scripts/rotate-telemetry.sh scripts/ai-metrics-auto-updater.sh scripts/ai-model-setup.sh scripts/count-packages-accurately.sh scripts/count-packages-simple.sh scripts/cron-templates.sh
+bash -n scripts/collect-ai-metrics.sh scripts/data/rotate-telemetry.sh scripts/ai/ai-metrics-auto-updater.sh scripts/ai/ai-model-setup.sh scripts/count-packages-accurately.sh scripts/count-packages-simple.sh scripts/cron-templates.sh
 rg -n "collect-ai-metrics\.sh|rotate-telemetry\.sh|generate-dashboard-data\.sh" scripts lib phases Makefile nixos-quick-deploy.sh --glob '!deprecated/**'
 ```
 
@@ -5763,7 +5763,7 @@ rg -n "collect-ai-metrics\.sh|rotate-telemetry\.sh|generate-dashboard-data\.sh" 
 
 ### 37.5 Success Criteria
 
-- [x] `./scripts/verify-flake-first-roadmap-completion.sh` passes with new Phase 37 checks.
+- [x] `./scripts/testing/verify-flake-first-roadmap-completion.sh` passes with new Phase 37 checks.
 - [x] No declarative MCP OTEL endpoint references `jaeger:4317`.
 - [x] No declarative MCP OTEL `debug` exporter configuration remains.
 - [x] Qdrant and OTLP endpoints in declarative services resolve from `mySystem.ports.*`.
@@ -5811,9 +5811,9 @@ rg -n "collect-ai-metrics\.sh|rotate-telemetry\.sh|generate-dashboard-data\.sh" 
     - removed host-network allowlist exceptions in facts and gate config,
     - updated security/gate scripts to exclude deprecated manifests deterministically.
   - Verified post-cleanup gates:
-    - `bash scripts/security-audit.sh` passes,
+    - `bash scripts/security/security-audit.sh` passes,
     - `./scripts/hospital-classified-gate.sh` passes,
-    - `./scripts/verify-flake-first-roadmap-completion.sh` passes.
+    - `./scripts/testing/verify-flake-first-roadmap-completion.sh` passes.
 - Next:
   - Continue fallback-removal pass for non-core MCP endpoints.
   - Implement 37.6 release-blocker controls (exception expiry enforcement + signed evidence bundles).

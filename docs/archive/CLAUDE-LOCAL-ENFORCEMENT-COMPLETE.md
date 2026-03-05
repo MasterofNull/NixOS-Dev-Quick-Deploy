@@ -59,7 +59,7 @@ This implementation ensures Claude Code (and any AI agent using the Anthropic AP
 ## Components Created
 
 ### 1. **claude-api-proxy.py** (300 lines)
-**Location**: `scripts/claude-api-proxy.py`
+**Location**: `scripts/ai/claude-api-proxy.py`
 
 **What It Does**:
 - Mimics Anthropic API on localhost:8094
@@ -109,7 +109,7 @@ def _log_telemetry(request, response, used_local, tokens):
 ---
 
 ### 2. **setup-claude-proxy.sh** (150 lines)
-**Location**: `scripts/setup-claude-proxy.sh`
+**Location**: `scripts/deploy/setup-claude-proxy.sh`
 
 **What It Does**:
 1. Creates systemd user service for proxy
@@ -121,7 +121,7 @@ def _log_telemetry(request, response, used_local, tokens):
 **Usage**:
 ```bash
 cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
-bash scripts/setup-claude-proxy.sh
+bash scripts/deploy/setup-claude-proxy.sh
 ```
 
 **What Gets Modified**:
@@ -165,7 +165,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/env python3 .../scripts/claude-api-proxy.py
+ExecStart=/usr/bin/env python3 .../scripts/ai/claude-api-proxy.py
 Restart=on-failure
 Environment="HYBRID_COORDINATOR_URL=http://localhost:8092"
 Environment="AIDB_MCP_URL=http://localhost:8091"
@@ -197,7 +197,7 @@ journalctl --user -u claude-api-proxy -f
 cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
 
 # 1. Run setup script
-bash scripts/setup-claude-proxy.sh
+bash scripts/deploy/setup-claude-proxy.sh
 
 # 2. Verify proxy is running
 systemctl --user status claude-api-proxy
@@ -242,7 +242,7 @@ tail -5 ~/.local/share/nixos-ai-stack/telemetry/events-$(date +%Y-%m-%d).jsonl
 ### 4. Check Token Savings on Dashboard
 ```bash
 # Regenerate dashboard data
-bash scripts/generate-dashboard-data.sh --lite-mode
+bash scripts/data/generate-dashboard-data.sh --lite-mode
 
 # Open dashboard
 xdg-open http://localhost:8888/dashboard.html
@@ -321,7 +321,7 @@ export ANTHROPIC_BASE_URL="http://localhost:8094"
 
 ### Tuning Routing Thresholds
 
-Edit `scripts/claude-api-proxy.py`:
+Edit `scripts/ai/claude-api-proxy.py`:
 
 ```python
 # Line 27-28: Adjust these values
@@ -368,7 +368,7 @@ The existing dashboard already has collectors for telemetry. After proxy generat
 
 ```bash
 # Regenerate dashboard data
-bash scripts/generate-dashboard-data.sh --lite-mode
+bash scripts/data/generate-dashboard-data.sh --lite-mode
 
 # Dashboard will show:
 # - Total token savings
@@ -499,7 +499,7 @@ Based on typical usage patterns:
 
 ### Custom Routing Rules
 
-Edit `scripts/claude-api-proxy.py` → `_should_use_local()`:
+Edit `scripts/ai/claude-api-proxy.py` → `_should_use_local()`:
 
 ```python
 def _should_use_local(self, estimated_tokens, max_tokens, request):
@@ -530,7 +530,7 @@ For high load, run multiple proxies:
 systemctl --user start claude-api-proxy
 
 # Proxy 2 on 8095
-PROXY_PORT=8095 python3 scripts/claude-api-proxy.py &
+PROXY_PORT=8095 python3 scripts/ai/claude-api-proxy.py &
 
 # Load balance in wrapper
 export ANTHROPIC_BASE_URL="http://localhost:809$((RANDOM % 2 + 4))"
@@ -592,12 +592,12 @@ cp "${LATEST_BACKUP}" ~/.npm-global/bin/claude-wrapper
 - Enhanced claude-wrapper for seamless integration
 
 **Key Files**:
-- `scripts/claude-api-proxy.py` - Core proxy server
-- `scripts/setup-claude-proxy.sh` - Installation automation
+- `scripts/ai/claude-api-proxy.py` - Core proxy server
+- `scripts/deploy/setup-claude-proxy.sh` - Installation automation
 - `~/.config/systemd/user/claude-api-proxy.service` - Service definition
 - `~/.npm-global/bin/claude-wrapper` - Enhanced wrapper
 
-**Installation**: One command (`bash scripts/setup-claude-proxy.sh`)
+**Installation**: One command (`bash scripts/deploy/setup-claude-proxy.sh`)
 
 **User Experience**: Zero changes required - Claude Code just works, now powered by local AI
 

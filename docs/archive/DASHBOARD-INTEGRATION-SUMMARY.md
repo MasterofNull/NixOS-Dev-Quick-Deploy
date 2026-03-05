@@ -84,7 +84,7 @@ New method: `async def get_container_stats()`
 
 ### 2. ✅ Updated CLI Monitor
 
-#### AI Stack Monitor ([scripts/ai-stack-monitor.sh](/scripts/ai-stack-monitor.sh:39-40))
+#### AI Stack Monitor ([scripts/ai/ai-stack-monitor.sh](/scripts/ai/ai-stack-monitor.sh:39-40))
 
 **Added monitoring for:**
 - ✅ `local-ai-nixos-docs` - Under "MCP Servers" section
@@ -164,8 +164,8 @@ New method: `async def get_container_stats()`
 2. AI stack starts automatically
 3. User sees notification:
    ```
-   ℹ AI Stack Monitor Dashboard available at: ./scripts/ai-stack-monitor.sh
-   ℹ To view live monitoring, run: ./scripts/ai-stack-monitor.sh
+   ℹ AI Stack Monitor Dashboard available at: ./scripts/ai/ai-stack-monitor.sh
+   ℹ To view live monitoring, run: ./scripts/ai/ai-stack-monitor.sh
    ```
 
 **To start web dashboard:**
@@ -222,7 +222,7 @@ Add to `~/.bashrc`:
 if command -v tmux &>/dev/null && [[ -z "$TMUX" ]]; then
   if ! tmux has-session -t ai-monitor 2>/dev/null; then
     tmux new-session -d -s ai-monitor \
-      '/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai-stack-monitor.sh'
+      '/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai/ai-stack-monitor.sh'
   fi
 fi
 ```
@@ -295,7 +295,7 @@ fi
    - Added `get_container_stats()` method
    - Integrated container stats into metrics
 
-3. [scripts/ai-stack-monitor.sh](/scripts/ai-stack-monitor.sh:39-40)
+3. [scripts/ai/ai-stack-monitor.sh](/scripts/ai/ai-stack-monitor.sh:39-40)
    - Added nixos-docs monitoring
    - Added ralph-wiggum monitoring
 
@@ -332,7 +332,7 @@ cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/dashboard
 ### 2. Start CLI Monitor
 ```bash
 cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
-./scripts/ai-stack-monitor.sh
+./scripts/ai/ai-stack-monitor.sh
 
 # Press Ctrl+C to exit
 ```
@@ -376,7 +376,7 @@ ws.onmessage = e => console.log(JSON.parse(e.data).containers);
 
 ```bash
 # Run monitor
-./scripts/ai-stack-monitor.sh
+./scripts/ai/ai-stack-monitor.sh
 
 # Should see:
 # - Core Services section (4 services)
@@ -391,7 +391,7 @@ ws.onmessage = e => console.log(JSON.parse(e.data).containers);
 curl http://localhost:8889/api/services | jq '.[] | select(.id=="nixos-docs")'
 
 # Check nixos-docs in CLI monitor
-./scripts/ai-stack-monitor.sh | grep nixos-docs
+./scripts/ai/ai-stack-monitor.sh | grep nixos-docs
 
 # Check container stats
 curl http://localhost:8889/api/metrics/system | jq '.containers.stats["local-ai-nixos-docs"]'
@@ -512,4 +512,4 @@ GET  /api/containers/:id/logs      # Get logs (tail 100)
 - [Web Dashboard README](dashboard/README.md)
 - [Integration Guide](dashboard/INTEGRATION-WITH-AI-STACK.md)
 - [Auto-Start Guide](/ai-stack/AUTO-START-GUIDE.md)
-- [CLI Monitor](/scripts/ai-stack-monitor.sh)
+- [CLI Monitor](/scripts/ai/ai-stack-monitor.sh)

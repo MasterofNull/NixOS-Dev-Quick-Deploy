@@ -8,4 +8,4 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Call main script in lite mode
-exec bash "${PROJECT_ROOT}/scripts/generate-dashboard-data.sh" --lite-mode
+exec bash "${PROJECT_ROOT}/scripts/data/generate-dashboard-data.sh" --lite-mode

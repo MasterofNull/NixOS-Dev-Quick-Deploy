@@ -1,11 +1,11 @@
 [Unit]
 Description=Telemetry Log Rotation
-Documentation=file://@PROJECT_ROOT@/scripts/rotate-telemetry.sh
+Documentation=file://@PROJECT_ROOT@/scripts/data/rotate-telemetry.sh
 After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=@PROJECT_ROOT@/scripts/rotate-telemetry.sh
+ExecStart=@PROJECT_ROOT@/scripts/data/rotate-telemetry.sh
 User=%u
 StandardOutput=journal
 StandardError=journal

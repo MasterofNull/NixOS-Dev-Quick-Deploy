@@ -340,7 +340,7 @@ final_confidence = 0.94  # Improved!
 2. **Partial Knowledge Base**
    - Imported: 132/~300 files (~40%)
    - Remaining: Python scripts, Shell scripts, Nix configs
-   - **Action:** Run `scripts/import-project-knowledge.sh`
+   - **Action:** Run `scripts/data/import-project-knowledge.sh`
 
 3. **No Self-Healing Yet**
    - Planned for Week 2

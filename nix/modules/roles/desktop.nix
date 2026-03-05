@@ -142,7 +142,7 @@ in
     # Only the system Flatpak daemon is enabled here (required for portal
     # infrastructure and xdg-desktop-portal integration).  All app installs
     # are done at user-scope via home.activation.addFlathubUserRemote in
-    # nix/home/base.nix and scripts/sync-flatpak-profile.sh --scope user.
+    # nix/home/base.nix and scripts/data/sync-flatpak-profile.sh --scope user.
     # This prevents every app from appearing twice in the COSMIC launcher:
     # the launcher scans both system and user export paths, so installing the
     # same app at both levels creates duplicates.

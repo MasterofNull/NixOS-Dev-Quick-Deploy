@@ -18,8 +18,8 @@
 Created a complete end-to-end testing system that validates every component of the AI stack:
 
 **Files Created:**
-- [scripts/ai-stack-e2e-test.sh](/scripts/ai-stack-e2e-test.sh) - Main test runner (19 tests across 5 phases)
-- [scripts/analyze-test-results.sh](/scripts/analyze-test-results.sh) - Results analyzer and diagnostics
+- [scripts/ai/ai-stack-e2e-test.sh](/scripts/ai/ai-stack-e2e-test.sh) - Main test runner (19 tests across 5 phases)
+- [scripts/governance/analyze-test-results.sh](/scripts/governance/analyze-test-results.sh) - Results analyzer and diagnostics
 - [AI-STACK-E2E-TESTING-GUIDE.md](AI-STACK-E2E-TESTING-GUIDE.md) - Complete documentation
 
 **Test Coverage:**

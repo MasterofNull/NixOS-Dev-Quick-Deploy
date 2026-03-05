@@ -25,7 +25,7 @@ Successfully optimized the NixOS System Dashboard to provide GNOME Resources-qua
 
 ### 2. Enhanced System Metrics
 
-Added GNOME Resources-quality metrics to [scripts/generate-dashboard-data.sh](/scripts/generate-dashboard-data.sh):
+Added GNOME Resources-quality metrics to [scripts/data/generate-dashboard-data.sh](/scripts/data/generate-dashboard-data.sh):
 
 - ✅ Per-core CPU usage (up to 16 cores)
 - ✅ CPU frequency (current/min/max)
@@ -52,8 +52,8 @@ setInterval(loadData, 60000);               // 60s - matches full collector
 
 Created new management infrastructure:
 
-- [scripts/generate-dashboard-data-lite.sh](/scripts/generate-dashboard-data-lite.sh) - Lightweight collector
-- [scripts/manage-dashboard-collectors.sh](/scripts/manage-dashboard-collectors.sh) - Unified manager
+- [scripts/data/generate-dashboard-data-lite.sh](/scripts/data/generate-dashboard-data-lite.sh) - Lightweight collector
+- [scripts/governance/manage-dashboard-collectors.sh](/scripts/governance/manage-dashboard-collectors.sh) - Unified manager
 - [DASHBOARD-COLLECTORS-GUIDE.md](DASHBOARD-COLLECTORS-GUIDE.md) - Complete documentation
 
 ## Performance Results
@@ -82,15 +82,15 @@ Created new management infrastructure:
 
 ## Files Modified
 
-1. [scripts/generate-dashboard-data.sh](/scripts/generate-dashboard-data.sh) - Added `--lite-mode` flag
+1. [scripts/data/generate-dashboard-data.sh](/scripts/data/generate-dashboard-data.sh) - Added `--lite-mode` flag
 2. [dashboard.html](dashboard.html) - Updated refresh intervals
 3. `${TMPDIR:-/tmp}/run-dashboard-collector-lite.sh` - Lite collector loop (new)
 4. `${TMPDIR:-/tmp}/run-dashboard-collector-full.sh` - Full collector loop (new)
 
 ## Files Created
 
-1. [scripts/generate-dashboard-data-lite.sh](/scripts/generate-dashboard-data-lite.sh)
-2. [scripts/manage-dashboard-collectors.sh](/scripts/manage-dashboard-collectors.sh)
+1. [scripts/data/generate-dashboard-data-lite.sh](/scripts/data/generate-dashboard-data-lite.sh)
+2. [scripts/governance/manage-dashboard-collectors.sh](/scripts/governance/manage-dashboard-collectors.sh)
 3. [DASHBOARD-COLLECTORS-GUIDE.md](DASHBOARD-COLLECTORS-GUIDE.md)
 4. [DASHBOARD-UPDATE-OPTIMIZATION.md](DASHBOARD-UPDATE-OPTIMIZATION.md) (this file)
 
@@ -99,7 +99,7 @@ Created new management infrastructure:
 ### Check Collector Status
 
 ```bash
-$ bash scripts/manage-dashboard-collectors.sh status
+$ bash scripts/governance/manage-dashboard-collectors.sh status
 ℹ Dashboard Collectors Status:
 
 ✓ Lite collector (system+network) running - PID 161811
@@ -120,7 +120,7 @@ $ watch -n 1 'stat -c "%y" ~/.local/share/nixos-system-dashboard/system.json'
 ### View Graphs
 
 ```bash
-$ bash scripts/serve-dashboard.sh
+$ bash scripts/deploy/serve-dashboard.sh
 # Open http://localhost:8888/dashboard.html
 # Observe smooth graph updates every 2 seconds
 ```

@@ -287,7 +287,7 @@ bash ~/.local/share/nixos-ai-stack/backups/jan2026-20260110-231733/rollback.sh
 - `ai-stack/mcp-servers/aider-wrapper/requirements.txt` - aider-chat==0.86.1
 - `ai-stack/mcp-servers/aider-wrapper/Dockerfile` - Added git, setuptools
 - `ai-stack/mcp-servers/aider-wrapper/server.py` - Real Aider integration
-- `scripts/init-package-database.sh` - Fixed database name (mcp)
+- `scripts/data/init-package-database.sh` - Fixed database name (mcp)
 
 ---
 

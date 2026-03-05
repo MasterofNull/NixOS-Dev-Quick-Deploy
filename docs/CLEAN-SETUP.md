@@ -17,12 +17,12 @@ No template rendering. No legacy 9-phase orchestration.
 ```
 
 What it does:
-- runs hardware discovery (`scripts/discover-system-facts.sh`)
+- runs hardware discovery (`scripts/governance/discover-system-facts.sh`)
 - builds/switches `nixosConfigurations.<host>-<profile>`
 - builds/switches `homeConfigurations.<user>-<host>` (fallback: `<user>`)
 - syncs declarative Flatpak profile apps (`mySystem.profileData.flatpakApps`) when `flatpak` is available
 - works even when `home-manager` CLI is not installed
-- runs health check (if `scripts/system-health-check.sh` exists)
+- runs health check (if `scripts/health/system-health-check.sh` exists)
 - runs installed-vs-intended package comparison
 
 ## 3. Common Options
@@ -38,7 +38,7 @@ What it does:
 ./scripts/deploy-clean.sh --update-lock
 
 # Validate flake lock compatibility/security and generate report
-./scripts/validate-flake-inputs.sh --flake-ref path:.
+./scripts/testing/validate-flake-inputs.sh --flake-ref path:.
 
 # Explicit host/profile
 ./scripts/deploy-clean.sh --host nixos --profile ai-dev
@@ -81,7 +81,7 @@ Legacy/template paths should be treated as migration debt and removed.
 
 - Fresh install bootstrap: run `./scripts/deploy-clean.sh`
 - Existing system update/upgrade/change: run `./scripts/deploy-clean.sh --update-lock`
-- Optional validation gate before switching: run `./scripts/validate-flake-inputs.sh --flake-ref path:.`
+- Optional validation gate before switching: run `./scripts/testing/validate-flake-inputs.sh --flake-ref path:.`
 
 ## 7. Legacy Fallback and Rollback
 

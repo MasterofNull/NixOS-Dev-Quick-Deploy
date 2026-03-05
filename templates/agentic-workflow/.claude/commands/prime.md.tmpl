@@ -1,0 +1,14 @@
+---
+description: Prime agent with project context using progressive disclosure
+---
+
+# Prime: Load Project Context
+
+1. Inspect structure (`git ls-files`, top-level dirs).
+2. Read only core artifacts:
+   - `.agent/PROJECT-PRD.md`
+   - `.agent/GLOBAL-RULES.md`
+   - latest `.agent/workflows/*`
+   - latest `.agents/plans/*`
+3. Check `git status` and recent commits.
+4. Summarize current state and next suggested slice.

@@ -49,8 +49,8 @@
 - `nix/modules/services/mcp-servers.nix` — MCP server systemd units + timers
 - `nix/modules/core/options.nix` — all port options (single source of truth)
 - `nix/modules/core/network.nix` — DNS, resolved, NM, captive portal detection (Phase WiFi fix)
-- `scripts/check-mcp-integrity.sh` — hourly source file integrity check
-- `scripts/update-mcp-integrity-baseline.sh` — run after each deploy to refresh baseline
+- `scripts/testing/check-mcp-integrity.sh` — hourly source file integrity check
+- `scripts/security/update-mcp-integrity-baseline.sh` — run after each deploy to refresh baseline
 
 ## API Corrections (verified against live codebase)
 - AIDB ingest: `POST /documents` — fields: content, project, relative_path, title
@@ -71,14 +71,14 @@
 
 ## Deploy Status (2026-02-27)
 All accumulated changes deployed successfully. System is healthy (12/12 MCP services pass health check).
-Run `scripts/update-mcp-integrity-baseline.sh` to seed integrity baseline after first clean deploy.
+Run `scripts/security/update-mcp-integrity-baseline.sh` to seed integrity baseline after first clean deploy.
 
 ## Phase 18 — COMPLETE (2026-02-27, commits f92ad3e + bfcb549)
 All 18.1–18.5 tasks done except 18.2.3 (strategy_tag in tool_audit.jsonl, open).
 
 ## Key Phase 18 Files
-- `scripts/aq-report` — 8-section digest: tool perf, routing, cache, eval trend, strategy leaderboard, recommended prompts, gaps, recommendations
-- `scripts/aq-prompt-eval` — evaluates registry prompts vs canonical tests, updates mean_score
+- `scripts/ai/aq-report` — 8-section digest: tool perf, routing, cache, eval trend, strategy leaderboard, recommended prompts, gaps, recommendations
+- `scripts/ai/aq-prompt-eval` — evaluates registry prompts vs canonical tests, updates mean_score
 - `ai-stack/prompts/registry.yaml` — 6 vetted prompt templates (route_search_synthesis, gap_detection_score, memory_recall_contextualise, aider_task_systems_code, eval_scorecard_analysis, query_expansion_nixos)
 - `run-eval.sh --strategy LABEL` — tags eval runs for leaderboard tracking
 - MOTD: mySystem.aiStack.motdReport = true → /etc/profile.d/ai-report-motd.sh
@@ -90,8 +90,8 @@ All 18.1–18.5 tasks done except 18.2.3 (strategy_tag in tool_audit.jsonl, open
 
 ## Key Phase 19 Files
 - `ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py` — HintsEngine: 3 sources
-- `scripts/aq-hints` — CLI: --format=json|text|shell-complete, --agent=TYPE
-- `scripts/aq-completions.sh` — bash/zsh tab-complete; NixOS: mySystem.aiStack.shellCompletions
+- `scripts/ai/aq-hints` — CLI: --format=json|text|shell-complete, --agent=TYPE
+- `scripts/ai/aq-completions.sh` — bash/zsh tab-complete; NixOS: mySystem.aiStack.shellCompletions
 - `ai-stack/continue/config.json` — Continue.dev: aq-hints + llama.cpp + Ollama + Gemini + Claude
 - `POST /hints` + `GET /hints?q=` — hybrid-coordinator; Continue.dev detects fullInput body
 - `AI_HINTS_ENABLED=true` in aider-wrapper — prepends top hint to --message; hint-audit.jsonl tracking
@@ -99,7 +99,7 @@ All 18.1–18.5 tasks done except 18.2.3 (strategy_tag in tool_audit.jsonl, open
 - `AGENTS.md` — project rules injected for Codex/Qwen/OpenAI CLIs (sync-agent-instructions)
 - `.aider.md` — aider-specific conventions (auto-loaded by aider CLI)
 - `.gemini/context.md` — Gemini CLI project context (auto-loaded)
-- `scripts/sync-agent-instructions` — regenerates agent files from CLAUDE.md
+- `scripts/data/sync-agent-instructions` — regenerates agent files from CLAUDE.md
 
 ## NixOS Error Patterns — New (2026-02-27, commit 15d3db5)
 | Error | Root Cause | Fix |
@@ -115,8 +115,8 @@ All 18.1–18.5 tasks done except 18.2.3 (strategy_tag in tool_audit.jsonl, open
 ## Phase 11 — Agent Knowledge Portability (2026-02-27, commit 64cc7b5)
 - 11.0.1 DONE: `_ensure_imported_documents_schema()` added to MCPServer — ALTER TABLE migrates source_trust_level + source_url on startup
 - 11.0.2 DONE: MonitoringServer line 1607 fixed — `self._tiered_rate_limiter` → `self.mcp_server._tiered_rate_limiter`
-- 11.1 DONE: `ai-stack/agent-memory/MEMORY.md` git-tracked; `scripts/import-agent-instructions.sh` created
-- 11.0.3 + 11.2 PENDING: Requires `sudo systemctl restart ai-aidb.service` then `bash scripts/import-agent-instructions.sh`
+- 11.1 DONE: `ai-stack/agent-memory/MEMORY.md` git-tracked; `scripts/data/import-agent-instructions.sh` created
+- 11.0.3 + 11.2 PENDING: Requires `sudo systemctl restart ai-aidb.service` then `bash scripts/data/import-agent-instructions.sh`
 
 ## AIDB git hooks pre-commit rule (important)
 `.githooks/pre-commit` blocks shell scripts (`.sh`) that use `echo "...${UPPERCASE_VAR}..."` without `-e` flag.
@@ -124,7 +124,7 @@ Use `printf 'msg %s\n' "${VAR}"` in all new shell scripts to avoid false positiv
 Custom hooks path: `git config core.hookspath=.githooks`
 
 ## Phase 21 — Dev Tooling (DONE, commit a1d6256 + 7994d74)
-- `scripts/aq-qa`: phase runner — `aq-qa 0` → 26 pass / 0 fail / 2 skip (AppArmor needs --sudo)
+- `scripts/ai/aq-qa`: phase runner — `aq-qa 0` → 26 pass / 0 fail / 2 skip (AppArmor needs --sudo)
   - Phase 0: all service/port/inference checks in one call
   - Phase 1: redis/postgres/qdrant/aidb/hybrid in one call
   - Unit name: llama-cpp-embed.service (not ai-embeddings.service)

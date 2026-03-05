@@ -5,15 +5,15 @@
 /flake.nix @MasterofNull
 /nix/ @MasterofNull
 /scripts/deploy-clean.sh @MasterofNull
-/scripts/discover-system-facts.sh @MasterofNull
+/scripts/governance/discover-system-facts.sh @MasterofNull
 
 # Skill and governance surfaces
 /.agent/skills/ @MasterofNull
 /ai-stack/agents/skills/ @MasterofNull
-/scripts/aqd @MasterofNull
-/scripts/check-skill-source-of-truth.sh @MasterofNull
-/scripts/lint-skill-external-deps.sh @MasterofNull
-/scripts/validate-skill-references.sh @MasterofNull
+/scripts/ai/aqd @MasterofNull
+/scripts/testing/check-skill-source-of-truth.sh @MasterofNull
+/scripts/governance/lint-skill-external-deps.sh @MasterofNull
+/scripts/testing/validate-skill-references.sh @MasterofNull
 
 # CI / policy
 /.github/workflows/ @MasterofNull

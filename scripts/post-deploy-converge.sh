@@ -68,7 +68,7 @@ run_with_timeout() {
 
 refresh_aq_report_snapshot() {
   run_with_timeout "${AQ_REPORT_TIMEOUT_SECONDS}" \
-    "${PYTHON_BIN}" "${REPO_ROOT}/scripts/aq-report" --since=7d --format=json > "${AQ_REPORT_OUT}"
+    "${PYTHON_BIN}" "${REPO_ROOT}/scripts/ai/aq-report" --since=7d --format=json > "${AQ_REPORT_OUT}"
 }
 
 probe_hints_feedback_endpoint() {
@@ -95,7 +95,7 @@ mkdir -p "$(dirname "${CONVERGE_SUMMARY_OUT}")"
 mkdir -p "$(dirname "${HINT_FEEDBACK_SYNC_OUT}")"
 mkdir -p "$(dirname "${AUTO_REMEDIATE_SUMMARY_OUT}")"
 
-if [[ -x "${REPO_ROOT}/scripts/seed-routing-traffic.sh" ]]; then
+if [[ -x "${REPO_ROOT}/scripts/data/seed-routing-traffic.sh" ]]; then
   ready=false
   for ((i=1; i<=HYBRID_HEALTH_RETRIES; i++)); do
     if curl -fsS --max-time 5 --connect-timeout 3 "${HYBRID_URL%/}/health" >/dev/null 2>&1; then
@@ -106,16 +106,16 @@ if [[ -x "${REPO_ROOT}/scripts/seed-routing-traffic.sh" ]]; then
   done
   if [[ "${ready}" == true ]]; then
     run_step "routing_seed" run_with_timeout "${ROUTING_SEED_TIMEOUT_SECONDS}" \
-      "${BASH_BIN}" "${REPO_ROOT}/scripts/seed-routing-traffic.sh" || true
+      "${BASH_BIN}" "${REPO_ROOT}/scripts/data/seed-routing-traffic.sh" || true
   else
     log "Hybrid health unavailable after retries; skipping routing seed."
     STEP_RESULTS+=("routing_seed:skip")
   fi
 fi
 
-if [[ -x "${REPO_ROOT}/scripts/seed-tool-audit-traffic.sh" ]]; then
+if [[ -x "${REPO_ROOT}/scripts/data/seed-tool-audit-traffic.sh" ]]; then
   run_step "tool_audit_seed" run_with_timeout "${ROUTING_SEED_TIMEOUT_SECONDS}" \
-    "${BASH_BIN}" "${REPO_ROOT}/scripts/seed-tool-audit-traffic.sh" || true
+    "${BASH_BIN}" "${REPO_ROOT}/scripts/data/seed-tool-audit-traffic.sh" || true
 fi
 
 if [[ -x "${REPO_ROOT}/scripts/npm-security-monitor.sh" ]]; then
@@ -125,7 +125,7 @@ if [[ -x "${REPO_ROOT}/scripts/npm-security-monitor.sh" ]]; then
       --output-dir "${NPM_OUT_DIR}" || true
 fi
 
-if [[ -x "${REPO_ROOT}/scripts/rebuild-qdrant-collections.sh" ]]; then
+if [[ -x "${REPO_ROOT}/scripts/data/rebuild-qdrant-collections.sh" ]]; then
   case "${QDRANT_REBUILD_MODE}" in
     never)
       log "Skipping full Qdrant rebuild (POST_DEPLOY_QDRANT_REBUILD_MODE=never)"
@@ -133,7 +133,7 @@ if [[ -x "${REPO_ROOT}/scripts/rebuild-qdrant-collections.sh" ]]; then
       ;;
     always)
       run_step "qdrant_rebuild" run_with_timeout "${QDRANT_REBUILD_TIMEOUT_SECONDS}" \
-        "${BASH_BIN}" "${REPO_ROOT}/scripts/rebuild-qdrant-collections.sh" || true
+        "${BASH_BIN}" "${REPO_ROOT}/scripts/data/rebuild-qdrant-collections.sh" || true
       ;;
     auto|*)
       # Auto mode: keep deploy-convergence fast by default.
@@ -144,21 +144,21 @@ if [[ -x "${REPO_ROOT}/scripts/rebuild-qdrant-collections.sh" ]]; then
   esac
 fi
 
-if [[ -x "${REPO_ROOT}/scripts/sync-hint-feedback-db.py" ]]; then
+if [[ -x "${REPO_ROOT}/scripts/data/sync-hint-feedback-db.py" ]]; then
   run_step "hint_feedback_sync" run_with_timeout "${AQ_REPORT_TIMEOUT_SECONDS}" \
-    "${PYTHON_BIN}" "${REPO_ROOT}/scripts/sync-hint-feedback-db.py" \
+    "${PYTHON_BIN}" "${REPO_ROOT}/scripts/data/sync-hint-feedback-db.py" \
       --feedback-log "${HINT_FEEDBACK_LOG_PATH}" \
       --summary-out "${HINT_FEEDBACK_SYNC_OUT}" || true
 fi
 
-if [[ -x "${REPO_ROOT}/scripts/aq-report" ]]; then
+if [[ -x "${REPO_ROOT}/scripts/ai/aq-report" ]]; then
   run_step "aq_report_refresh" refresh_aq_report_snapshot || true
 fi
 
-if [[ -x "${REPO_ROOT}/scripts/aq-auto-remediate.py" ]]; then
+if [[ -x "${REPO_ROOT}/scripts/ai/aq-auto-remediate.py" ]]; then
   if [[ "${AUTO_REMEDIATE_ENABLE,,}" == "true" || "${AUTO_REMEDIATE_ENABLE}" == "1" ]]; then
     run_step "aq_auto_remediation" run_with_timeout "${AQ_REPORT_TIMEOUT_SECONDS}" \
-      "${PYTHON_BIN}" "${REPO_ROOT}/scripts/aq-auto-remediate.py" \
+      "${PYTHON_BIN}" "${REPO_ROOT}/scripts/ai/aq-auto-remediate.py" \
         --report-json "${AQ_REPORT_OUT}" \
         --summary-out "${AUTO_REMEDIATE_SUMMARY_OUT}" || true
   else
@@ -167,7 +167,7 @@ if [[ -x "${REPO_ROOT}/scripts/aq-auto-remediate.py" ]]; then
   fi
 fi
 
-if [[ -x "${REPO_ROOT}/scripts/run-intent-remediation-bounded.sh" ]]; then
+if [[ -x "${REPO_ROOT}/scripts/automation/run-intent-remediation-bounded.sh" ]]; then
   if [[ "${INTENT_BOUNDED_ENABLE,,}" == "true" || "${INTENT_BOUNDED_ENABLE}" == "1" ]]; then
     run_step "intent_remediation_bounded" run_with_timeout "${INTENT_BOUNDED_TIMEOUT_SECONDS}" \
       env \
@@ -176,14 +176,14 @@ if [[ -x "${REPO_ROOT}/scripts/run-intent-remediation-bounded.sh" ]]; then
         INTENT_REMEDIATION_MAX_TOTAL_RUNS="${INTENT_BOUNDED_MAX_TOTAL_RUNS}" \
         INTENT_REMEDIATION_MAX_PASSES="${INTENT_BOUNDED_MAX_PASSES}" \
         INTENT_REMEDIATION_SLEEP_SECONDS="${INTENT_BOUNDED_SLEEP_SECONDS}" \
-        "${BASH_BIN}" "${REPO_ROOT}/scripts/run-intent-remediation-bounded.sh" || true
+        "${BASH_BIN}" "${REPO_ROOT}/scripts/automation/run-intent-remediation-bounded.sh" || true
   else
     log "Skipping bounded intent remediation (POST_DEPLOY_INTENT_BOUNDED_ENABLE=${INTENT_BOUNDED_ENABLE})"
     STEP_RESULTS+=("intent_remediation_bounded:skip")
   fi
 fi
 
-if [[ -x "${REPO_ROOT}/scripts/run-hint-adoption-remediation-bounded.sh" ]]; then
+if [[ -x "${REPO_ROOT}/scripts/automation/run-hint-adoption-remediation-bounded.sh" ]]; then
   if [[ "${HINT_BOUNDED_ENABLE,,}" == "true" || "${HINT_BOUNDED_ENABLE}" == "1" ]]; then
     run_step "hint_adoption_remediation_bounded" run_with_timeout "${HINT_BOUNDED_TIMEOUT_SECONDS}" \
       env \
@@ -195,20 +195,20 @@ if [[ -x "${REPO_ROOT}/scripts/run-hint-adoption-remediation-bounded.sh" ]]; the
         HINT_REMEDIATION_SLEEP_SECONDS="${HINT_BOUNDED_SLEEP_SECONDS}" \
         HINT_REMEDIATION_WORKSPACE="${HINT_BOUNDED_WORKSPACE}" \
         HINT_REMEDIATION_FILE="${HINT_BOUNDED_FILE}" \
-        "${BASH_BIN}" "${REPO_ROOT}/scripts/run-hint-adoption-remediation-bounded.sh" || true
+        "${BASH_BIN}" "${REPO_ROOT}/scripts/automation/run-hint-adoption-remediation-bounded.sh" || true
   else
     log "Skipping bounded hint remediation (POST_DEPLOY_HINT_BOUNDED_ENABLE=${HINT_BOUNDED_ENABLE})"
     STEP_RESULTS+=("hint_adoption_remediation_bounded:skip")
   fi
 fi
 
-if [[ -x "${REPO_ROOT}/scripts/aq-report" ]]; then
+if [[ -x "${REPO_ROOT}/scripts/ai/aq-report" ]]; then
   run_step "aq_report_refresh_post_bounded" refresh_aq_report_snapshot || true
 fi
 
-if [[ -x "${REPO_ROOT}/scripts/check-aq-report-runtime-sections.sh" ]]; then
+if [[ -x "${REPO_ROOT}/scripts/testing/check-aq-report-runtime-sections.sh" ]]; then
   run_step "aq_report_runtime_sections" \
-    "${BASH_BIN}" "${REPO_ROOT}/scripts/check-aq-report-runtime-sections.sh" || true
+    "${BASH_BIN}" "${REPO_ROOT}/scripts/testing/check-aq-report-runtime-sections.sh" || true
 fi
 
 run_step "hints_feedback_endpoint_probe" probe_hints_feedback_endpoint || true

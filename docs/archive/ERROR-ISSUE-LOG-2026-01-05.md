@@ -385,7 +385,7 @@ System started with only 9 documents in knowledge base (5 in codebase-context, 4
 
 4. **Development Tooling**
    - Create `scripts/dev-rebuild.sh` for common rebuild workflow
-   - Add `scripts/verify-build.sh` to check container contents
+   - Add `scripts/testing/verify-build.sh` to check container contents
    - Implement pre-commit hooks for common mistakes
 
 5. **Documentation**

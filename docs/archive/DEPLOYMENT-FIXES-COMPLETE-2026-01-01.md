@@ -16,11 +16,11 @@ This document summarizes ALL fixes applied to resolve deployment hanging and cra
 
 **Files Fixed:**
 - [ai-stack/mcp-servers/aidb/requirements.txt](/ai-stack/mcp-servers/aidb/requirements.txt:44) - Downgraded to `torch==2.5.1+cpu`
-- [scripts/deploy-aidb-mcp-server.sh](/scripts/deploy-aidb-mcp-server.sh:419) - Added `PIP_DEFAULT_TIMEOUT=300` and retry flags
-- [scripts/setup-hybrid-learning-auto.sh](/scripts/setup-hybrid-learning-auto.sh:32) - Added pip timeout
-- [scripts/setup-hybrid-learning.sh](/scripts/setup-hybrid-learning.sh:94) - Added pip timeout
+- [scripts/deploy/deploy-aidb-mcp-server.sh](/scripts/deploy/deploy-aidb-mcp-server.sh:419) - Added `PIP_DEFAULT_TIMEOUT=300` and retry flags
+- [scripts/deploy/setup-hybrid-learning-auto.sh](/scripts/deploy/setup-hybrid-learning-auto.sh:32) - Added pip timeout
+- [scripts/deploy/setup-hybrid-learning.sh](/scripts/deploy/setup-hybrid-learning.sh:94) - Added pip timeout
 - [dashboard/start-dashboard.sh](dashboard/start-dashboard.sh:35) - Added pip timeout
-- [scripts/download-llama-cpp-models.sh](/scripts/download-llama-cpp-models.sh:217) - Added 30min timeout for models
+- [scripts/data/download-llama-cpp-models.sh](/scripts/data/download-llama-cpp-models.sh:217) - Added 30min timeout for models
 
 **Documentation:** [PYTORCH-DOWNLOAD-FIX-2025-12-31.md](/docs/archive/PYTORCH-DOWNLOAD-FIX-2025-12-31.md)
 
@@ -41,12 +41,12 @@ local-ai-hybrid-coordinator: Created - waiting for dependencies
 ```
 
 **Files Created:**
-- [scripts/stop-ai-stack.sh](/scripts/stop-ai-stack.sh) - NEW - Stops all AI services and cleans ports
+- [scripts/deploy/stop-ai-stack.sh](/scripts/deploy/stop-ai-stack.sh) - NEW - Stops all AI services and cleans ports
 - [scripts/reset-ai-volumes.sh](/scripts/reset-ai-volumes.sh) - NEW - Resets volume permissions
 
 **Files Modified:**
 - [ai-stack/compose/docker-compose.yml](/ai-stack/compose/docker-compose.yml:79) - Fixed Qdrant healthcheck
-- [scripts/start-ai-stack-and-dashboard.sh](/scripts/start-ai-stack-and-dashboard.sh:14-33) - Added pre-flight checks
+- [scripts/deploy/start-ai-stack-and-dashboard.sh](/scripts/deploy/start-ai-stack-and-dashboard.sh:14-33) - Added pre-flight checks
 
 **Documentation:** [CONTAINER-DEPLOYMENT-FIX-2025-12-31.md](/docs/archive/CONTAINER-DEPLOYMENT-FIX-2025-12-31.md)
 
@@ -91,7 +91,7 @@ Added `"Kombai.kombai|Kombai"` to extensions list in [lib/tools.sh](lib/tools.sh
 ### Quick Start (Recommended)
 ```bash
 # 1. Stop everything and reset
-./scripts/stop-ai-stack.sh
+./scripts/deploy/stop-ai-stack.sh
 ./scripts/reset-ai-volumes.sh
 
 # 2. Run deployment (will now complete successfully)
@@ -105,7 +105,7 @@ cd ai-stack/compose
 podman-compose down
 
 # Kill processes on conflicting ports
-./scripts/stop-ai-stack.sh
+./scripts/deploy/stop-ai-stack.sh
 
 # Check ports are free
 for port in 8091 8092 8094 3001 6333 8080; do
@@ -140,9 +140,9 @@ codium --list-extensions | grep -i kombai
 
 | File | Purpose |
 |------|---------|
-| [scripts/stop-ai-stack.sh](/scripts/stop-ai-stack.sh) | Stop all AI services and clean ports |
+| [scripts/deploy/stop-ai-stack.sh](/scripts/deploy/stop-ai-stack.sh) | Stop all AI services and clean ports |
 | [scripts/reset-ai-volumes.sh](/scripts/reset-ai-volumes.sh) | Reset volume permissions and clear state |
-| [scripts/verify-pytorch-fix.sh](/scripts/verify-pytorch-fix.sh) | Verify PyTorch fixes applied |
+| [scripts/testing/verify-pytorch-fix.sh](/scripts/testing/verify-pytorch-fix.sh) | Verify PyTorch fixes applied |
 | [PYTORCH-DOWNLOAD-FIX-2025-12-31.md](/docs/archive/PYTORCH-DOWNLOAD-FIX-2025-12-31.md) | PyTorch fix documentation |
 | [CONTAINER-DEPLOYMENT-FIX-2025-12-31.md](/docs/archive/CONTAINER-DEPLOYMENT-FIX-2025-12-31.md) | Container fix documentation |
 | [DEPLOYMENT-FIXES-COMPLETE-2026-01-01.md](/docs/archive/DEPLOYMENT-FIXES-COMPLETE-2026-01-01.md) | This summary |
@@ -155,12 +155,12 @@ codium --list-extensions | grep -i kombai
 |------|--------|
 | [ai-stack/mcp-servers/aidb/requirements.txt](/ai-stack/mcp-servers/aidb/requirements.txt) | PyTorch 2.9.1 → 2.5.1+cpu |
 | [ai-stack/compose/docker-compose.yml](/ai-stack/compose/docker-compose.yml) | Fixed Qdrant healthcheck |
-| [scripts/deploy-aidb-mcp-server.sh](/scripts/deploy-aidb-mcp-server.sh) | Added pip timeout config |
-| [scripts/setup-hybrid-learning-auto.sh](/scripts/setup-hybrid-learning-auto.sh) | Added pip timeout config |
-| [scripts/setup-hybrid-learning.sh](/scripts/setup-hybrid-learning.sh) | Added pip timeout config |
+| [scripts/deploy/deploy-aidb-mcp-server.sh](/scripts/deploy/deploy-aidb-mcp-server.sh) | Added pip timeout config |
+| [scripts/deploy/setup-hybrid-learning-auto.sh](/scripts/deploy/setup-hybrid-learning-auto.sh) | Added pip timeout config |
+| [scripts/deploy/setup-hybrid-learning.sh](/scripts/deploy/setup-hybrid-learning.sh) | Added pip timeout config |
 | [dashboard/start-dashboard.sh](dashboard/start-dashboard.sh) | Added pip timeout config |
-| [scripts/download-llama-cpp-models.sh](/scripts/download-llama-cpp-models.sh) | Added model download timeout |
-| [scripts/start-ai-stack-and-dashboard.sh](/scripts/start-ai-stack-and-dashboard.sh) | Added pre-flight cleanup |
+| [scripts/data/download-llama-cpp-models.sh](/scripts/data/download-llama-cpp-models.sh) | Added model download timeout |
+| [scripts/deploy/start-ai-stack-and-dashboard.sh](/scripts/deploy/start-ai-stack-and-dashboard.sh) | Added pre-flight cleanup |
 | [lib/tools.sh](lib/tools.sh) | Added Kombai extension |
 
 ---
@@ -225,7 +225,7 @@ lsof -i:8091
 kill -9 <PID>
 
 # Or use the cleanup script
-./scripts/stop-ai-stack.sh
+./scripts/deploy/stop-ai-stack.sh
 ```
 
 ### "Qdrant exits with code 101"

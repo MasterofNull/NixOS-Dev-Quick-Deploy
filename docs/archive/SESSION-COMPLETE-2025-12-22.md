@@ -44,13 +44,13 @@
 | `DISCOVERY-QUICK-FIX.md` | 3 KB | 5-minute quick reference guide |
 | `GITHUB-TOKEN-SETUP.md` | 7 KB | Step-by-step GitHub token configuration |
 | `FIXES-APPLIED-SUMMARY.md` | 8 KB | What was fixed and verification steps |
-| `scripts/test-discovery-system.py` | 300 lines | Automated test suite (all passing) |
+| `scripts/testing/test-discovery-system.py` | 300 lines | Automated test suite (all passing) |
 
 ### Local AI Enforcement (Phase 2)
 | File | Size | Purpose |
 |------|------|---------|
-| `scripts/claude-api-proxy.py` | 300 lines | Core API proxy server with intelligent routing |
-| `scripts/setup-claude-proxy.sh` | 150 lines | One-command installation automation |
+| `scripts/ai/claude-api-proxy.py` | 300 lines | Core API proxy server with intelligent routing |
+| `scripts/deploy/setup-claude-proxy.sh` | 150 lines | One-command installation automation |
 | `scripts/demo-local-ai-usage.py` | 150 lines | Demonstration of proper local stack usage |
 | `docs/ENFORCE-LOCAL-AI-USAGE.md` | 300 lines | 5 enforcement strategies documented |
 | `CLAUDE-LOCAL-ENFORCEMENT-COMPLETE.md` | 600 lines | Complete implementation guide |
@@ -84,8 +84,8 @@
 **Result**: Parser now handles format variations
 
 **Locations Fixed**:
-- `scripts/test-discovery-system.py` (during test development)
-- `scripts/generate-dashboard-data.sh` lines 1326-1329
+- `scripts/testing/test-discovery-system.py` (during test development)
+- `scripts/data/generate-dashboard-data.sh` lines 1326-1329
 
 ### 5. Misleading Dashboard Badge ✅
 **Problem**: Showed "0 High-Value" even when 11 signals existed
@@ -108,14 +108,14 @@
 ```
 config/improvement-sources.json (23 sources)
          ↓
-scripts/discover-improvements.sh
+scripts/governance/discover-improvements.sh
   ├─ Checks cadence (skip if not due)
   ├─ Fetches GitHub releases (7 sources)
   ├─ Fetches social signals (16 sources)
   ├─ Scores candidates (weighted)
   └─ Writes: docs/development/IMPROVEMENT-DISCOVERY-REPORT-*.md
          ↓
-scripts/generate-dashboard-data.sh (collect_keyword_signals)
+scripts/data/generate-dashboard-data.sh (collect_keyword_signals)
   ├─ Parses Markdown report
   └─ Writes: ~/.local/share/nixos-system-dashboard/keyword-signals.json
          ↓
@@ -130,7 +130,7 @@ Claude Code (VSCodium)
 ~/.npm-global/bin/claude-wrapper (modified)
   Sets: ANTHROPIC_BASE_URL=http://localhost:8094
          ↓
-scripts/claude-api-proxy.py (port 8094)
+scripts/ai/claude-api-proxy.py (port 8094)
   Analyzes query complexity
          ↓
     ┌────┴────────┐
@@ -158,7 +158,7 @@ All queries → Telemetry logged
 
 ### Discovery Pipeline Tests ✅
 ```bash
-python3 scripts/test-discovery-system.py
+python3 scripts/testing/test-discovery-system.py
 ```
 
 **Results**: ✅ 4/4 test suites passed (18 subtests)
@@ -186,7 +186,7 @@ python3 scripts/test-discovery-system.py
 ### Discovery Pipeline Verification ✅
 ```bash
 # After GitHub token set
-python3 scripts/discover-improvements.sh
+python3 scripts/governance/discover-improvements.sh
 ```
 
 **Results**: 7 candidates discovered
@@ -208,10 +208,10 @@ export GITHUB_TOKEN=ghp_your_token_here
 echo 'export GITHUB_TOKEN=ghp_your_token_here' >> ~/.bashrc
 
 # 2. Run discovery
-python3 scripts/discover-improvements.sh
+python3 scripts/governance/discover-improvements.sh
 
 # 3. Update dashboard
-bash scripts/generate-dashboard-data.sh --lite-mode
+bash scripts/data/generate-dashboard-data.sh --lite-mode
 
 # 4. View results
 xdg-open http://localhost:8888/dashboard.html
@@ -223,7 +223,7 @@ xdg-open http://localhost:8888/dashboard.html
 cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
 
 # 2. Run setup script (creates service, modifies wrapper)
-bash scripts/setup-claude-proxy.sh
+bash scripts/deploy/setup-claude-proxy.sh
 
 # 3. Restart VSCode/VSCodium
 # File → Exit, then relaunch
@@ -249,7 +249,7 @@ cat config/improvement-sources.json | jq '[.[] | select(.type == "forum")] | len
 # Expected: 0
 
 # 3. Run tests
-python3 scripts/test-discovery-system.py
+python3 scripts/testing/test-discovery-system.py
 # Expected: ✅ 4/4 tests passed
 
 # 4. Check latest discovery report
@@ -280,7 +280,7 @@ journalctl --user -u claude-api-proxy -n 20
 # Expected: "[INFO] 📍 Routing to LOCAL" messages
 
 # 5. Check dashboard metrics
-bash scripts/generate-dashboard-data.sh --lite-mode
+bash scripts/data/generate-dashboard-data.sh --lite-mode
 xdg-open http://localhost:8888/dashboard.html
 # Expected: Token Savings card shows data
 ```
@@ -388,7 +388,7 @@ xdg-open http://localhost:8888/dashboard.html
 1. ✅ Discovery pipeline already working (token set, candidates found)
 2. 🔜 Install local AI enforcement:
    ```bash
-   bash scripts/setup-claude-proxy.sh
+   bash scripts/deploy/setup-claude-proxy.sh
    ```
 3. 🔜 Restart VSCode
 4. 🔜 Use Claude Code and verify telemetry appears
@@ -415,7 +415,7 @@ xdg-open http://localhost:8888/dashboard.html
    - Removed 6 Discord sources
    - 30 sources → 23 sources
 
-2. `scripts/generate-dashboard-data.sh`
+2. `scripts/data/generate-dashboard-data.sh`
    - Lines 1309-1316: Flexible section matching
    - Lines 1326-1329: Fixed split logic for parsing
 
@@ -457,12 +457,12 @@ xdg-open http://localhost:8888/dashboard.html
 → Fix: export GITHUB_TOKEN=ghp_...
 
 # Parsing errors
-→ Check: python3 scripts/test-discovery-system.py
+→ Check: python3 scripts/testing/test-discovery-system.py
 → Fix: Ensure latest code (split fix applied)
 
 # Dashboard shows empty
 → Check: ls ~/.local/share/nixos-system-dashboard/keyword-signals.json
-→ Fix: bash scripts/generate-dashboard-data.sh --lite-mode
+→ Fix: bash scripts/data/generate-dashboard-data.sh --lite-mode
 ```
 
 ### Local AI Enforcement Issues

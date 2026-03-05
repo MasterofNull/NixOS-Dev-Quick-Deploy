@@ -142,7 +142,7 @@ test_key_rotation() {
     log "\n=== Test 4: Key Rotation Capability ==="
 
     # Check if there's a key rotation script
-    local rotation_script="${PROJECT_ROOT}/scripts/rotate-api-key.sh"
+    local rotation_script="${PROJECT_ROOT}/scripts/security/rotate-api-key.sh"
 
     if [ ! -f "$rotation_script" ]; then
         error "No API key rotation script found"

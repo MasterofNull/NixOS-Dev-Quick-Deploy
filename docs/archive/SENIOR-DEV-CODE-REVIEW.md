@@ -17,7 +17,7 @@ This implementation shows ambition but **completely ignores production realities
 
 ### 1. Dashboard Proxy Uses `subprocess` - Are You Serious?
 
-**File:** `scripts/serve-dashboard.sh` (lines 76-111)
+**File:** `scripts/deploy/serve-dashboard.sh` (lines 76-111)
 
 ```python
 # Execute podman exec to curl inside container network

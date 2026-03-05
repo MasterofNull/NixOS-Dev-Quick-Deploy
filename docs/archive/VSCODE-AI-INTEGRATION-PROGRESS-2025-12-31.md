@@ -289,7 +289,7 @@ home-manager switch
 
 ## 📋 Pending Tasks
 
-### 8. Auto-Sync Script (`/scripts/sync-configs-to-templates.sh`)
+### 8. Auto-Sync Script (`/scripts/data/sync-configs-to-templates.sh`)
 
 **Purpose**: Automatically sync validated user configs → templates after deployment
 
@@ -317,7 +317,7 @@ home-manager switch
 
 ### 10. VSCode Extension Health Checks
 
-**File**: `/scripts/ai-stack-health.sh`
+**File**: `/scripts/ai/ai-stack-health.sh`
 
 **Features to Add:**
 - Check config files exist (settings.json, continue/config.json, mcp_servers.json)
@@ -328,7 +328,7 @@ home-manager switch
 
 ### 11. Dashboard Data Collection
 
-**File**: `/scripts/generate-dashboard-data.sh`
+**File**: `/scripts/data/generate-dashboard-data.sh`
 
 **Features to Add:**
 - Collect VSCode metrics from AIDB telemetry endpoint

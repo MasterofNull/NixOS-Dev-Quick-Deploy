@@ -126,13 +126,13 @@ Status model: `done` | `in-progress` | `planned` | `keep-script`
   Status: `keep-script`
 
 ## Script-to-Declarative Feature Migrations
-- [ ] `scripts/discover-system-facts.sh` -> host facts become explicit declarations per host under [`nix/hosts`](../../nix/hosts)
+- [ ] `scripts/governance/discover-system-facts.sh` -> host facts become explicit declarations per host under [`nix/hosts`](../../nix/hosts)
   Status: `planned`
-- [ ] `scripts/system-health-check.sh` -> service-level `systemd` dependency + `assertions`
+- [ ] `scripts/health/system-health-check.sh` -> service-level `systemd` dependency + `assertions`
   Status: `planned`
 - [ ] `scripts/compare-installed-vs-intended.sh` -> CI check only
   Status: `planned`
-- [ ] `scripts/sync-flatpak-profile.sh` -> declarative Flatpak module strategy (or keep as explicit exception)
+- [ ] `scripts/data/sync-flatpak-profile.sh` -> declarative Flatpak module strategy (or keep as explicit exception)
   Status: `planned`
 
 ## Superseded Scripts Move Policy

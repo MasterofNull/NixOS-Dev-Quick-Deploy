@@ -156,7 +156,7 @@ Added port 8888 to allowed origins for cross-origin requests
 
 1. **Start the HTML Dashboard** (Port 8888):
 ```bash
-./scripts/serve-dashboard.sh
+./scripts/deploy/serve-dashboard.sh
 ```
 
 2. **Start the FastAPI Backend** (Port 8889):
@@ -173,10 +173,10 @@ http://localhost:8888/dashboard.html
 
 ### All-in-One Startup Script
 
-Created: [scripts/start-unified-dashboard.sh](/scripts/start-unified-dashboard.sh)
+Created: [scripts/deploy/start-unified-dashboard.sh](/scripts/deploy/start-unified-dashboard.sh)
 
 ```bash
-./scripts/start-unified-dashboard.sh
+./scripts/deploy/start-unified-dashboard.sh
 ```
 
 This script:
@@ -197,7 +197,7 @@ uvicorn api.main:app --host 0.0.0.0 --port 8889
 **Terminal 2 - Frontend**:
 ```bash
 cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
-./scripts/serve-dashboard.sh
+./scripts/deploy/serve-dashboard.sh
 ```
 
 ## Features Comparison
@@ -380,7 +380,7 @@ systemctl --user status  # Should work
 
 **Solution**: Start the dashboard server:
 ```bash
-./scripts/serve-dashboard.sh
+./scripts/deploy/serve-dashboard.sh
 ```
 
 ## Future Enhancements

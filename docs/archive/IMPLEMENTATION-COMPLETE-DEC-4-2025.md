@@ -59,7 +59,7 @@ Location: /home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agent/skills/
 **Objective:** Search GitHub comprehensively and populate database
 
 **Actions:**
-- Created `scripts/comprehensive-mcp-search.py`
+- Created `scripts/governance/comprehensive-mcp-search.py`
 - Searched 30 query categories
 - Processed 891 GitHub repositories
 - Found **706 MCP servers**
@@ -366,7 +366,7 @@ if rate_limit_remaining == 0:
 ## 📁 Files Created/Modified
 
 ### Created
-1. `scripts/comprehensive-mcp-search.py` (400+ lines, discovery engine)
+1. `scripts/governance/comprehensive-mcp-search.py` (400+ lines, discovery engine)
 2. `docs/AGENT-ONBOARDING-README.md` (onboarding guide)
 3. `docs/AGENT-AGNOSTIC-TOOLING-PLAN.md` (architecture doc)
 4. `docs/RED-TEAM-MCP-SERVERS.md` (security tools)

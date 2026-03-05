@@ -117,7 +117,7 @@
         default = "unknown";
         description = ''
           Detected CPU / SoC vendor.
-          Set automatically by scripts/discover-system-facts.sh.
+          Set automatically by scripts/governance/discover-system-facts.sh.
           Override in nix/hosts/<host>/facts.nix if auto-detection is wrong.
         '';
       };

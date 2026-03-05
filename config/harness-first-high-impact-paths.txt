@@ -7,8 +7,8 @@ nix/modules/services/
 ai-stack/mcp-servers/
 config/workflow-blueprints.json
 config/runtime-prsi-policy.json
-scripts/prsi-orchestrator.py
-scripts/aq-report
-scripts/harness-rpc.js
+scripts/automation/prsi-orchestrator.py
+scripts/ai/aq-report
+scripts/ai/harness-rpc.js
 scripts/post-deploy-converge.sh
-scripts/validate-runtime-declarative.sh
+scripts/testing/validate-runtime-declarative.sh

@@ -542,7 +542,7 @@ If you encounter issues:
 
 1. **Run system health check:**
    ```bash
-   ~/NixOS-Dev-Quick-Deploy/scripts/system-health-check.sh
+   ~/NixOS-Dev-Quick-Deploy/scripts/health/system-health-check.sh
    ```
 
 2. **Check logs:**

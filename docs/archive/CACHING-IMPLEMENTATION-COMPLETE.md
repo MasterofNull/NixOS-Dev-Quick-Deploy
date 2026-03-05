@@ -53,21 +53,21 @@ cached_download \
 
 ### 3. Cache Management Tool (Phase 4) ✅
 
-**Created**: [scripts/manage-cache.sh](/scripts/manage-cache.sh)
+**Created**: [scripts/governance/manage-cache.sh](/scripts/governance/manage-cache.sh)
 
 **Commands**:
 ```bash
 # Show all cache statistics
-./scripts/manage-cache.sh stats
+./scripts/governance/manage-cache.sh stats
 
 # Clear all caches (with confirmation)
-./scripts/manage-cache.sh clear
+./scripts/governance/manage-cache.sh clear
 
 # Clear only download cache
-./scripts/manage-cache.sh clear-downloads
+./scripts/governance/manage-cache.sh clear-downloads
 
 # Remove entries older than 60 days
-./scripts/manage-cache.sh clean 60
+./scripts/governance/manage-cache.sh clean 60
 ```
 
 **Output example**:
@@ -234,7 +234,7 @@ bash /tmp/test-cache.sh
 ### Check Cache Stats
 
 ```bash
-./scripts/manage-cache.sh stats
+./scripts/governance/manage-cache.sh stats
 
 # Should show:
 # - Pip cache size
@@ -248,7 +248,7 @@ bash /tmp/test-cache.sh
 ### Viewing Cache Statistics
 
 ```bash
-./scripts/manage-cache.sh stats
+./scripts/governance/manage-cache.sh stats
 ```
 
 ### Using Download Cache in Scripts
@@ -274,20 +274,20 @@ cached_download_extract \
 
 ```bash
 # Remove entries older than 30 days (default)
-./scripts/manage-cache.sh clean
+./scripts/governance/manage-cache.sh clean
 
 # Remove entries older than 60 days
-./scripts/manage-cache.sh clean 60
+./scripts/governance/manage-cache.sh clean 60
 ```
 
 ### Clearing All Caches
 
 ```bash
 # Interactive confirmation
-./scripts/manage-cache.sh clear
+./scripts/governance/manage-cache.sh clear
 
 # Clear only download cache
-./scripts/manage-cache.sh clear-downloads
+./scripts/governance/manage-cache.sh clear-downloads
 ```
 
 ## Files Modified/Created
@@ -297,7 +297,7 @@ cached_download_extract \
 
 **Created**:
 1. [scripts/lib/download-cache.sh](/scripts/lib/download-cache.sh) - Download cache library
-2. [scripts/manage-cache.sh](/scripts/manage-cache.sh) - Cache management tool
+2. [scripts/governance/manage-cache.sh](/scripts/governance/manage-cache.sh) - Cache management tool
 3. [CACHING-STRATEGY-2026-01-01.md](/docs/archive/CACHING-STRATEGY-2026-01-01.md) - Full caching strategy documentation
 
 ## Next Steps
@@ -320,7 +320,7 @@ cached_download_extract \
 
 4. **Monitor cache growth** weekly:
    ```bash
-   ./scripts/manage-cache.sh stats
+   ./scripts/governance/manage-cache.sh stats
    ```
 
 ### Optional Enhancements
@@ -333,17 +333,17 @@ cached_download_extract \
 
 **Weekly**:
 ```bash
-./scripts/manage-cache.sh stats
+./scripts/governance/manage-cache.sh stats
 ```
 
 **Monthly**:
 ```bash
-./scripts/manage-cache.sh clean 30
+./scripts/governance/manage-cache.sh clean 30
 ```
 
 **On disk space issues**:
 ```bash
-./scripts/manage-cache.sh clear
+./scripts/governance/manage-cache.sh clear
 ```
 
 ## Summary

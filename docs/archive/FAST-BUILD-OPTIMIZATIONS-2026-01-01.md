@@ -84,7 +84,7 @@ RUN pip install --no-cache-dir \
 
 ### 5. BuildKit and Parallel Builds
 
-Created [scripts/fast-rebuild.sh](/scripts/fast-rebuild.sh):
+Created [scripts/deploy/fast-rebuild.sh](/scripts/deploy/fast-rebuild.sh):
 ```bash
 export BUILDKIT_PROGRESS=plain
 export DOCKER_BUILDKIT=1
@@ -131,7 +131,7 @@ podman-compose build --parallel --pull-always
 
 ### New Scripts
 
-**[scripts/fast-rebuild.sh](/scripts/fast-rebuild.sh)**
+**[scripts/deploy/fast-rebuild.sh](/scripts/deploy/fast-rebuild.sh)**
 - Enables BuildKit
 - Sets parallel build jobs to 4
 - Uses podman-compose build --parallel
@@ -200,7 +200,7 @@ Your observed speeds (323 KB/s, 860 KB/s) are likely due to:
 Ctrl+C
 
 # Run fast rebuild
-./scripts/fast-rebuild.sh
+./scripts/deploy/fast-rebuild.sh
 
 # Start services
 cd ai-stack/compose
@@ -241,7 +241,7 @@ After rebuild, verify faster builds:
 
 ```bash
 # Check build time (should be ~10-16 minutes total)
-time ./scripts/fast-rebuild.sh
+time ./scripts/deploy/fast-rebuild.sh
 
 # Verify no CUDA packages in AIDB
 podman exec -it local-ai-aidb pip list | grep nvidia
@@ -304,7 +304,7 @@ aria2c -x 16 -s 16 https://download.pytorch.org/whl/...
 Check build times:
 ```bash
 # Time a full rebuild
-time ./scripts/fast-rebuild.sh
+time ./scripts/deploy/fast-rebuild.sh
 
 # Check individual container build times
 podman-compose build --parallel 2>&1 | grep -E "Building|Successfully"
@@ -378,4 +378,4 @@ You now have:
 **Expected download size**: 700 MB (was 4.0 GB)
 **Expected failure rate**: < 5% (was 30-40%)
 
-Run `./scripts/fast-rebuild.sh` to rebuild with all optimizations enabled.
+Run `./scripts/deploy/fast-rebuild.sh` to rebuild with all optimizations enabled.

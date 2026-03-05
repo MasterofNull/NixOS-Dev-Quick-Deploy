@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HYBRID_URL="${HYBRID_URL:-}"
+API_KEY="${HYBRID_API_KEY:-}"
+QUERY="${1:-initialize project workflow and begin phase 01}"
+CONTRACT_PATH="${2:-.agent/workflows/intent-contract.json}"
+
+[[ -f "$CONTRACT_PATH" ]] || {
+  echo "missing intent contract: $CONTRACT_PATH" >&2
+  exit 1
+}
+[[ -n "${HYBRID_URL:-}" ]] || {
+  echo "set HYBRID_URL before running" >&2
+  exit 1
+}
+
+auth_header=()
+if [[ -n "$API_KEY" ]]; then
+  auth_header=(-H "X-API-Key: ${API_KEY}")
+fi
+
+echo "== workflow plan =="
+curl -sS "${auth_header[@]}" \
+  -H "Content-Type: application/json" \
+  -X POST "${HYBRID_URL}/workflow/plan" \
+  --data "{\"query\":\"${QUERY}\"}"
+echo
+
+if command -v jq >/dev/null 2>&1; then
+  payload="$(jq -c --arg query "$QUERY" '{query:$query,safety_mode:"plan-readonly",token_limit:8000,tool_call_limit:40,intent_contract:.}' "$CONTRACT_PATH")"
+else
+  payload="$(python3 - "$QUERY" "$CONTRACT_PATH" <<'PY'
+import json
+import sys
+query = sys.argv[1]
+contract_path = sys.argv[2]
+with open(contract_path, "r", encoding="utf-8") as fh:
+    contract = json.load(fh)
+print(json.dumps({
+  "query": query,
+  "safety_mode": "plan-readonly",
+  "token_limit": 8000,
+  "tool_call_limit": 40,
+  "intent_contract": contract
+}, separators=(",", ":")))
+PY
+)"
+fi
+
+echo "== workflow run start =="
+curl -sS "${auth_header[@]}" \
+  -H "Content-Type: application/json" \
+  -X POST "${HYBRID_URL}/workflow/run/start" \
+  --data "$payload"
+echo
+
+echo "== hints =="
+enc="$(python3 - "$QUERY" <<'PY'
+import sys, urllib.parse
+print(urllib.parse.quote(sys.argv[1], safe=""))
+PY
+)"
+curl -sS "${auth_header[@]}" "${HYBRID_URL}/hints?q=${enc}"
+echo

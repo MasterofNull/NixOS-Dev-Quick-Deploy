@@ -156,10 +156,10 @@ sudo nixos-rebuild build
 Some scripts may still reference the old services but are not critical to system deployment:
 
 ### Non-Critical Scripts (Optional Cleanup):
-- `scripts/ai-model-manager.sh` - Model management (can be updated later)
-- `scripts/system-health-check.sh` - Health monitoring (can be updated later)
-- `scripts/setup-mcp-databases.sh` - MCP setup (still functional)
-- `scripts/deploy-aidb-mcp-server.sh` - AIDB deployment (still functional)
+- `scripts/ai/ai-model-manager.sh` - Model management (can be updated later)
+- `scripts/health/system-health-check.sh` - Health monitoring (can be updated later)
+- `scripts/deploy/setup-mcp-databases.sh` - MCP setup (still functional)
+- `scripts/deploy/deploy-aidb-mcp-server.sh` - AIDB deployment (still functional)
 
 ### Archive Scripts (No Action Needed):
 - `archive/temp-docs-*/` - Old documentation and tests

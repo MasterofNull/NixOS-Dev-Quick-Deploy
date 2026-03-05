@@ -56,7 +56,7 @@ This session successfully implemented a comprehensive dashboard metrics system, 
 
 #### Enhanced Scripts
 
-**[generate-dashboard-data.sh](/scripts/generate-dashboard-data.sh)** (+340 lines)
+**[generate-dashboard-data.sh](/scripts/data/generate-dashboard-data.sh)** (+340 lines)
 - 4 new collection functions
 - Hybrid coordinator metrics
 - RAG collections monitoring
@@ -72,7 +72,7 @@ This session successfully implemented a comprehensive dashboard metrics system, 
 
 #### Collection Initialization
 
-**[initialize-qdrant-collections.sh](/scripts/initialize-qdrant-collections.sh)** (237 lines)
+**[initialize-qdrant-collections.sh](/scripts/data/initialize-qdrant-collections.sh)** (237 lines)
 - Creates 5 RAG collections with proper schemas
 - Configures payload indexes for efficient filtering
 - Color-coded status output
@@ -287,13 +287,13 @@ health_score = (online_count / total_services) * 100
 
 1. **Dashboard Data Generation**
    ```bash
-   bash scripts/generate-dashboard-data.sh
+   bash scripts/data/generate-dashboard-data.sh
    # Result: 15 JSON files created successfully
    ```
 
 2. **Qdrant Collections Initialization**
    ```bash
-   bash scripts/initialize-qdrant-collections.sh
+   bash scripts/data/initialize-qdrant-collections.sh
    # Result: 5 collections created with indexes
    ```
 

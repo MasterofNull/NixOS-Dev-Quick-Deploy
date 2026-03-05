@@ -16,7 +16,7 @@ A complete, production-ready modular AI model system that makes experimenting wi
 
 ### 1. AI Model Manager CLI Tool
 
-**Location**: `scripts/ai-model-manager.sh`
+**Location**: `scripts/ai/ai-model-manager.sh`
 **Alias**: `amm` (via `~/.local/bin/amm`)
 
 **Features**:

@@ -125,7 +125,7 @@ Container → HTTP API → Host Podman API (localhost:2375) → Limited Operatio
 #### Phase 1: Infrastructure (COMPLETE) ✅
 
 **1. Setup Script Created** ✅
-- **File:** `scripts/setup-podman-api.sh` (410 lines)
+- **File:** `scripts/deploy/setup-podman-api.sh` (410 lines)
 - **Status:** Executed successfully
 - **Result:** Podman API socket enabled
 - **Output:** "Podman API setup complete!"
@@ -175,7 +175,7 @@ CONTAINER_ENGINE_ALLOWED_OPS=list,inspect,logs
 - **Status:** Created, waiting for execution
 
 **Validation Steps:**
-1. ✅ Run `./scripts/setup-podman-api.sh` - COMPLETE
+1. ✅ Run `./scripts/deploy/setup-podman-api.sh` - COMPLETE
 2. ⏳ Run `./scripts/enable-podman-tcp.sh` - PENDING (next step)
 3. ⏳ Test API: `curl http://localhost:2375/v4.0.0/libpod/info`
 4. ⏳ Verify containers can reach API
@@ -298,8 +298,8 @@ extra_hosts:
 7. `PROJECT-STATUS-JAN23-2026.md` - **THIS FILE** - Comprehensive project tracking
 
 #### Scripts
-8. `scripts/setup-podman-api.sh` - Enables Podman API socket
-9. `scripts/test-podman-api.sh` - Validation test suite (has bugs, replaced with manual tests)
+8. `scripts/deploy/setup-podman-api.sh` - Enables Podman API socket
+9. `scripts/testing/test-podman-api.sh` - Validation test suite (has bugs, replaced with manual tests)
 10. `scripts/enable-podman-tcp.sh` - Enables TCP listening on port 2375
 
 #### Code
@@ -450,7 +450,7 @@ systemctl --user disable podman-tcp.service
 ## 🐛 KNOWN ISSUES
 
 ### 1. Test Script Fails Silently
-**File:** `scripts/test-podman-api.sh`
+**File:** `scripts/testing/test-podman-api.sh`
 **Issue:** Script prints header then exits with no output
 **Impact:** Low (manual validation works)
 **Workaround:** Use manual `curl` commands instead

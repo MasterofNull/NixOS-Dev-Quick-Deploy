@@ -39,4 +39,4 @@ remediation plan.
 ## Notes
 
 - Core services must reach **CRITICAL = 0** before production.
-- Re-run `scripts/security-scan.sh` after upgrades and refresh this file.
+- Re-run `scripts/security/security-scan.sh` after upgrades and refresh this file.

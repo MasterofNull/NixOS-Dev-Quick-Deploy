@@ -40,7 +40,7 @@ The NixOS quick deploy script was hanging during the AI stack deployment phase d
 
 ### 2. Added Timeout Configuration to All pip Install Commands
 
-#### File: `scripts/deploy-aidb-mcp-server.sh`
+#### File: `scripts/deploy/deploy-aidb-mcp-server.sh`
 **Changes:**
 - Added `export PIP_DEFAULT_TIMEOUT=300` (5 minutes per download)
 - Added `export PIP_RETRIES=3` for automatic retry on failures
@@ -62,7 +62,7 @@ log_info "Installing dependencies (this may take several minutes for large packa
 "${MCP_SERVER_DIR}/.venv/bin/pip" install --timeout 300 --retries 3 --progress-bar on -r "${MCP_SERVER_DIR}/requirements.txt"
 ```
 
-#### File: `scripts/setup-hybrid-learning-auto.sh`
+#### File: `scripts/deploy/setup-hybrid-learning-auto.sh`
 **Changes:**
 - Added `export PIP_DEFAULT_TIMEOUT=300`
 - Added timeout and retry flags: `--timeout 300 --retries 3`
@@ -78,7 +78,7 @@ export PIP_DEFAULT_TIMEOUT=300
 pip install --timeout 300 --retries 3 -q -r requirements.txt
 ```
 
-#### File: `scripts/setup-hybrid-learning.sh`
+#### File: `scripts/deploy/setup-hybrid-learning.sh`
 **Changes:** Same as above
 
 #### File: `dashboard/start-dashboard.sh`
@@ -86,7 +86,7 @@ pip install --timeout 300 --retries 3 -q -r requirements.txt
 
 ### 3. Enhanced Model Download Script with Timeouts
 
-#### File: `scripts/download-llama-cpp-models.sh`
+#### File: `scripts/data/download-llama-cpp-models.sh`
 **Changes:**
 - Added 30-minute timeout for model downloads: `timeout 1800`
 - Added HuggingFace Hub timeout environment variable
@@ -114,11 +114,11 @@ EOF
 ## Files Modified
 
 1. ✅ `ai-stack/mcp-servers/aidb/requirements.txt` - PyTorch version downgraded to 2.5.1+cpu
-2. ✅ `scripts/deploy-aidb-mcp-server.sh` - Added comprehensive timeout and retry configuration
-3. ✅ `scripts/setup-hybrid-learning-auto.sh` - Added pip timeout configuration
-4. ✅ `scripts/setup-hybrid-learning.sh` - Added pip timeout configuration
+2. ✅ `scripts/deploy/deploy-aidb-mcp-server.sh` - Added comprehensive timeout and retry configuration
+3. ✅ `scripts/deploy/setup-hybrid-learning-auto.sh` - Added pip timeout configuration
+4. ✅ `scripts/deploy/setup-hybrid-learning.sh` - Added pip timeout configuration
 5. ✅ `dashboard/start-dashboard.sh` - Added pip timeout configuration
-6. ✅ `scripts/download-llama-cpp-models.sh` - Added model download timeout
+6. ✅ `scripts/data/download-llama-cpp-models.sh` - Added model download timeout
 
 ## Testing Recommendations
 

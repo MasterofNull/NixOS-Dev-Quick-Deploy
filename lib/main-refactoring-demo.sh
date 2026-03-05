@@ -169,9 +169,9 @@ handle_preflight_checks() {
             stack_conflict=true
         fi
         if [[ "$stack_conflict" == "true" ]]; then
-            if [[ "$auto_stop_stack" == "true" && -x "${SCRIPT_DIR}/scripts/stop-ai-stack.sh" ]]; then
+            if [[ "$auto_stop_stack" == "true" && -x "${SCRIPT_DIR}/scripts/deploy/stop-ai-stack.sh" ]]; then
                 print_warning "AUTO_STOP_STACK_ON_CONFLICT=true; stopping AI stack to continue."
-                "${SCRIPT_DIR}/scripts/stop-ai-stack.sh" || print_warning "AI stack stop reported issues."
+                "${SCRIPT_DIR}/scripts/deploy/stop-ai-stack.sh" || print_warning "AI stack stop reported issues."
             else
                 print_error "AI stack setup is already running. Aborting to avoid conflicts."
                 print_info "Wait for it to finish or re-run with ALLOW_RUNNING_STACK_SETUP=true"

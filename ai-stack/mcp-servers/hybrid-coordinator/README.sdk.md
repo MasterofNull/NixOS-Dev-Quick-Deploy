@@ -90,7 +90,7 @@ Both SDKs cover:
 
 Generated API reference:
 - `docs/generated/HARNESS-SDK-API.md`
-- refresh/check via `scripts/generate-harness-sdk-api-docs.sh --write|--check`
+- refresh/check via `scripts/data/generate-harness-sdk-api-docs.sh --write|--check`
 
 ## Release automation
 
@@ -103,5 +103,5 @@ Behavior:
 - Manual dispatch supports optional publish via workflow input.
 
 Safety gates:
-- `scripts/check-harness-sdk-version-parity.sh` enforces Python/npm version lockstep.
-- `scripts/smoke-harness-sdk-packaging.sh` enforces docs + packaging parity.
+- `scripts/testing/check-harness-sdk-version-parity.sh` enforces Python/npm version lockstep.
+- `scripts/testing/smoke-harness-sdk-packaging.sh` enforces docs + packaging parity.

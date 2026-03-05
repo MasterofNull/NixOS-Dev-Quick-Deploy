@@ -73,6 +73,6 @@ journalctl -u ai-aidb.service -u ai-hybrid-coordinator.service -u ai-ralph-wiggu
 ## Validation
 
 ```bash
-./scripts/system-health-check.sh --detailed
-./scripts/run-all-checks.sh
+./scripts/health/system-health-check.sh --detailed
+./scripts/automation/run-all-checks.sh
 ```

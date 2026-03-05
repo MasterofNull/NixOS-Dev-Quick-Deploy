@@ -189,7 +189,7 @@ import { Progress } from "@/components/ui/progress"
 ## 📊 Integration Status
 
 ### With AI Stack Monitor
-- ✅ CLI monitor ([scripts/ai-stack-monitor.sh](../scripts/ai-stack-monitor.sh)) includes nixos-docs and ralph-wiggum
+- ✅ CLI monitor ([scripts/ai/ai-stack-monitor.sh](../scripts/ai/ai-stack-monitor.sh)) includes nixos-docs and ralph-wiggum
 - ✅ Web dashboard backend monitors same services
 - ✅ Both tools provide complementary monitoring
 

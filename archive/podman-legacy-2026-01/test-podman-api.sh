@@ -3,7 +3,7 @@
 # Test Podman API Infrastructure
 # Validates that Podman API is working before updating services
 #
-# Usage: ./scripts/test-podman-api.sh
+# Usage: ./scripts/testing/test-podman-api.sh
 #
 set -euo pipefail
 
@@ -75,7 +75,7 @@ test_podman_api_enabled() {
         return 0
     else
         log_fail "Podman API socket is not active"
-        echo "  Run: ./scripts/setup-podman-api.sh"
+        echo "  Run: ./scripts/deploy/setup-podman-api.sh"
         return 1
     fi
 }
@@ -103,7 +103,7 @@ test_api_http_connectivity() {
     else
         log_fail "Cannot reach Podman API on http://localhost:2375"
         echo "  The API may be on a Unix socket instead of HTTP"
-        echo "  Run: ./scripts/setup-podman-api.sh"
+        echo "  Run: ./scripts/deploy/setup-podman-api.sh"
         return 1
     fi
 }
@@ -287,7 +287,7 @@ test_env_configuration() {
         log_success ".env file has PODMAN_API_URL: $PODMAN_API_URL"
     else
         log_fail ".env file missing PODMAN_API_URL"
-        echo "  Run: ./scripts/setup-podman-api.sh"
+        echo "  Run: ./scripts/deploy/setup-podman-api.sh"
         return 1
     fi
 
@@ -296,7 +296,7 @@ test_env_configuration() {
         log_success ".env file has audit logging configured"
     else
         log_warn ".env file missing audit logging configuration"
-        echo "  Run: ./scripts/setup-podman-api.sh"
+        echo "  Run: ./scripts/deploy/setup-podman-api.sh"
     fi
 
     # Check for operation allowlists
@@ -304,7 +304,7 @@ test_env_configuration() {
         log_success ".env file has operation allowlists configured"
     else
         log_warn ".env file missing operation allowlists"
-        echo "  Run: ./scripts/setup-podman-api.sh"
+        echo "  Run: ./scripts/deploy/setup-podman-api.sh"
     fi
 
     return 0
@@ -342,7 +342,7 @@ show_summary() {
         echo "Fix the failed tests before proceeding:"
         echo
         if [ $TESTS_FAILED -le 2 ]; then
-            echo "Most likely fix: Run ./scripts/setup-podman-api.sh"
+            echo "Most likely fix: Run ./scripts/deploy/setup-podman-api.sh"
         else
             echo "Review the test output above for specific issues"
         fi

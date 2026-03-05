@@ -18,22 +18,22 @@ Make the AI stack harness the default execution path for all agent work so plann
 ## Non-Negotiable Gates
 1. Pre-task context:
 ```bash
-scripts/aq-hints "<task summary>" --format=json --agent=codex
+scripts/ai/aq-hints "<task summary>" --format=json --agent=codex
 ```
 2. Run/session ingress (contracted):
 ```bash
-node scripts/harness-rpc.js run-start \
+node scripts/ai/harness-rpc.js run-start \
   --workflow-id "<workflow_id>" \
   --query "<task summary>"
 ```
 3. Close-task health evidence:
 ```bash
-scripts/aq-qa 0 --json
-scripts/aq-qa 1 --json
+scripts/ai/aq-qa 0 --json
+scripts/ai/aq-qa 1 --json
 ```
 4. Deep baseline check before deploy/release gates:
 ```bash
-scripts/system-health-check.sh --detailed
+scripts/health/system-health-check.sh --detailed
 ```
 
 ## Delegation Policy (Subagents + Local Tooling)
@@ -71,16 +71,16 @@ Use template:
 If any mandatory gate fails:
 1. Stop rollout and mark task `gated`.
 2. Revert to last known-good deployment generation.
-3. Re-run `scripts/aq-qa 0 --json` and `scripts/aq-qa 1 --json`.
+3. Re-run `scripts/ai/aq-qa 0 --json` and `scripts/ai/aq-qa 1 --json`.
 4. Document failure and remediation in evidence artifact.
 
 ## CI Enforcement
 Static CI gates must pass:
-- `scripts/check-harness-first-runbook.sh`
-- `scripts/check-harness-first-evidence-template.sh`
-- `scripts/check-harness-first-pr-evidence-gate.sh` (PR-only)
-- `scripts/check-harness-first-static-gates.sh`
-- `scripts/check-harness-first-platform-owner-approval.py` (PR-only for policy-file edits)
+- `scripts/testing/check-harness-first-runbook.sh`
+- `scripts/testing/check-harness-first-evidence-template.sh`
+- `scripts/testing/check-harness-first-pr-evidence-gate.sh` (PR-only)
+- `scripts/testing/check-harness-first-static-gates.sh`
+- `scripts/testing/check-harness-first-platform-owner-approval.py` (PR-only for policy-file edits)
 
 PR policy for high-impact changes:
 - Path policy file: `config/harness-first-high-impact-paths.txt`
@@ -92,5 +92,5 @@ PR policy for high-impact changes:
 ## Local Release Gate
 Include harness-first gate in:
 ```bash
-scripts/run-advanced-parity-suite.sh
+scripts/automation/run-advanced-parity-suite.sh
 ```

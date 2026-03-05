@@ -28,7 +28,7 @@ Comprehensive security audit of NixOS-Dev-Quick-Deploy system conducted on Decem
 
 ### 1. Hardcoded Database Credentials
 
-**File:** `scripts/setup-mcp-databases.sh:27`
+**File:** `scripts/deploy/setup-mcp-databases.sh:27`
 **Issue:** Default PostgreSQL password hardcoded in script
 
 ```bash
@@ -258,7 +258,7 @@ nix-shell -p vulnix --run "vulnix -S"
 find . -name "*.py" -type f ! -path "*/bin/*" -exec chmod 644 {} \;
 
 # Only CLIs should be executable
-chmod +x scripts/system-health-check.sh
+chmod +x scripts/health/system-health-check.sh
 chmod +x nixos-quick-deploy.sh
 # etc.
 ```
@@ -571,7 +571,7 @@ POSTGRES_PASSWORD="$(cat /run/secrets-for-users/@USER@/mcp_postgres_password)"
 **Implement Continuous Security Monitoring:**
 ```bash
 # Create security scan script
-cat > scripts/security-scan.sh <<'EOF'
+cat > scripts/security/security-scan.sh <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -627,7 +627,7 @@ EOT
 cat ${TMPDIR:-/tmp}/security-report.md
 EOF
 
-chmod +x scripts/security-scan.sh
+chmod +x scripts/security/security-scan.sh
 ```
 
 ---
@@ -637,11 +637,11 @@ chmod +x scripts/security-scan.sh
 ### Fix 1: Secure Database Password
 
 ```bash
-# Update scripts/setup-mcp-databases.sh
-sed -i 's/readonly POSTGRES_PASSWORD="mcp_dev_password_change_me"/readonly POSTGRES_PASSWORD="${MCP_POSTGRES_PASSWORD:-$(openssl rand -base64 32)}"/' scripts/setup-mcp-databases.sh
+# Update scripts/deploy/setup-mcp-databases.sh
+sed -i 's/readonly POSTGRES_PASSWORD="mcp_dev_password_change_me"/readonly POSTGRES_PASSWORD="${MCP_POSTGRES_PASSWORD:-$(openssl rand -base64 32)}"/' scripts/deploy/setup-mcp-databases.sh
 
 # Add warning
-cat >> scripts/setup-mcp-databases.sh <<'EOF'
+cat >> scripts/deploy/setup-mcp-databases.sh <<'EOF'
 # Warn if password not set
 if [[ ! -v MCP_POSTGRES_PASSWORD ]]; then
     log_warning "MCP_POSTGRES_PASSWORD not set - generating random password"

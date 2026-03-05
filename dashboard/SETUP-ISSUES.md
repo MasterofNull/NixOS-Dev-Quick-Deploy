@@ -190,11 +190,11 @@ Manually create the missing components in `src/components/ui/`:
 
 ## Alternative: Use CLI Monitor Instead
 
-Since the **CLI monitor ([scripts/ai-stack-monitor.sh](../scripts/ai-stack-monitor.sh)) is fully working**, you can use that for monitoring:
+Since the **CLI monitor ([scripts/ai/ai-stack-monitor.sh](../scripts/ai/ai-stack-monitor.sh)) is fully working**, you can use that for monitoring:
 
 ```bash
 # Start CLI monitor (works immediately)
-./scripts/ai-stack-monitor.sh
+./scripts/ai/ai-stack-monitor.sh
 ```
 
 **CLI Monitor Features:**
@@ -266,7 +266,7 @@ curl http://localhost:8889/api/metrics/system | jq '.containers'
 ## Next Steps
 
 **For Users:**
-1. Use CLI monitor ([scripts/ai-stack-monitor.sh](../scripts/ai-stack-monitor.sh)) for immediate monitoring
+1. Use CLI monitor ([scripts/ai/ai-stack-monitor.sh](../scripts/ai/ai-stack-monitor.sh)) for immediate monitoring
 2. Backend API is available at http://localhost:8889/docs for API exploration
 3. Frontend requires component installation to work
 

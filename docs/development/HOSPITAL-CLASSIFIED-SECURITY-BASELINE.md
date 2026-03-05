@@ -49,7 +49,7 @@
 A release candidate is blocked if any item below fails:
 - Threat model is not updated for architecture/config changes
 - Control matrix has any CRITICAL control with `Missing` status and no approved exception
-- Security audit fails (`scripts/security-audit.sh`)
+- Security audit fails (`scripts/security/security-audit.sh`)
 - Host networking or hostPort exposure exists without explicit approved exception
 - Rolling image tags (`latest`/`main`/untagged) exist in active manifests
 - NetworkPolicy default-deny baseline is absent

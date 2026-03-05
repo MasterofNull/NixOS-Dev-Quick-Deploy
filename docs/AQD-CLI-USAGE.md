@@ -3,7 +3,7 @@
 Last Updated: 2026-02-16
 Owner: Phase 27 CLI conversion track
 
-`scripts/aqd` is the CLI-first interface for priority skill/MCP workflows.
+`scripts/ai/aqd` is the CLI-first interface for priority skill/MCP workflows.
 
 ## Why
 
@@ -16,40 +16,40 @@ Owner: Phase 27 CLI conversion track
 ### Skill workflows
 
 ```bash
-./scripts/aqd skill validate
-./scripts/aqd skill quick-validate .agent/skills/skill-creator
-./scripts/aqd skill init my-new-skill --path .agent/skills
-./scripts/aqd skill package .agent/skills/skill-creator dist
-./scripts/aqd skill bundle-index .agent/skills dist/skills/bundles dist/skills/index.json
-./scripts/aqd skill bundle-install dist/skills/index.json skill-creator /tmp/skills-install --force
-./scripts/aqd skill bundle-install dist/skills/index.json skill-creator /tmp/skills-install --signature dist/skills/index.json.sig --public-key config/keys/skill-registry-public.pem
-./scripts/aqd skill sign-index dist/skills/index.json config/keys/skill-registry-private.pem
-./scripts/aqd skill verify-index dist/skills/index.json config/keys/skill-registry-public.pem
+./scripts/ai/aqd skill validate
+./scripts/ai/aqd skill quick-validate .agent/skills/skill-creator
+./scripts/ai/aqd skill init my-new-skill --path .agent/skills
+./scripts/ai/aqd skill package .agent/skills/skill-creator dist
+./scripts/ai/aqd skill bundle-index .agent/skills dist/skills/bundles dist/skills/index.json
+./scripts/ai/aqd skill bundle-install dist/skills/index.json skill-creator /tmp/skills-install --force
+./scripts/ai/aqd skill bundle-install dist/skills/index.json skill-creator /tmp/skills-install --signature dist/skills/index.json.sig --public-key config/keys/skill-registry-public.pem
+./scripts/ai/aqd skill sign-index dist/skills/index.json config/keys/skill-registry-private.pem
+./scripts/ai/aqd skill verify-index dist/skills/index.json config/keys/skill-registry-public.pem
 ```
 
 ### MCP workflows
 
 ```bash
-./scripts/aqd mcp scaffold my-server --type python
-./scripts/aqd mcp validate my-server
-./scripts/aqd mcp test my-server
-./scripts/aqd mcp evaluate .agent/skills/mcp-builder/scripts/example_evaluation.xml -t stdio -c python -a mcp-servers/my-server/server.py
-./scripts/aqd mcp logs my-server -f
-./scripts/aqd mcp deploy-aidb
+./scripts/ai/aqd mcp scaffold my-server --type python
+./scripts/ai/aqd mcp validate my-server
+./scripts/ai/aqd mcp test my-server
+./scripts/ai/aqd mcp evaluate .agent/skills/mcp-builder/scripts/example_evaluation.xml -t stdio -c python -a mcp-servers/my-server/server.py
+./scripts/ai/aqd mcp logs my-server -f
+./scripts/ai/aqd mcp deploy-aidb
 ```
 
 ### Discovery / metadata
 
 ```bash
-./scripts/aqd workflows list
-./scripts/aqd --version
-./scripts/aqd policy evaluate --profile continue-local --task "debug boot hang" --tool tree
-./scripts/aqd reasoning route --query "find exact nix option for switchboard port"
-./scripts/aqd parity advanced-suite
-./scripts/aqd parity regression-gate --offline
-./scripts/aqd parity generate-provenance
-./scripts/aqd parity check-auth
-./scripts/aqd parity check-slo
+./scripts/ai/aqd workflows list
+./scripts/ai/aqd --version
+./scripts/ai/aqd policy evaluate --profile continue-local --task "debug boot hang" --tool tree
+./scripts/ai/aqd reasoning route --query "find exact nix option for switchboard port"
+./scripts/ai/aqd parity advanced-suite
+./scripts/ai/aqd parity regression-gate --offline
+./scripts/ai/aqd parity generate-provenance
+./scripts/ai/aqd parity check-auth
+./scripts/ai/aqd parity check-slo
 ```
 
 ## Migration Mapping

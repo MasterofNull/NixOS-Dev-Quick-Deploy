@@ -34,7 +34,7 @@
       "name": "Fix Dashboard Rate Limiting Issues",
       "description": "The dashboard is being rate-limited (429 errors) when loading multiple JSON files. Adjust rate limiter to allow higher burst for dashboard initial load while maintaining security.",
       "files_to_modify": [
-        "scripts/serve-dashboard.sh"
+        "scripts/deploy/serve-dashboard.sh"
       ],
       "changes_needed": [
         "Increase rate limit from 60 to 120 requests per minute per IP",
@@ -54,7 +54,7 @@
       "files_to_modify": [
         "ai-stack/mcp-servers/ralph-wiggum/server.py",
         "ai-stack/mcp-servers/hybrid-coordinator/server.py",
-        "scripts/serve-dashboard.sh",
+        "scripts/deploy/serve-dashboard.sh",
         "dashboard.html"
       ],
       "changes_needed": [
@@ -76,7 +76,7 @@
       "name": "Implement P5-MON-001: Metrics Aggregation",
       "description": "Create unified metrics aggregation endpoint that collects stats from Prometheus, learning system, and agents.",
       "files_to_modify": [
-        "scripts/serve-dashboard.sh",
+        "scripts/deploy/serve-dashboard.sh",
         "dashboard.html"
       ],
       "changes_needed": [
@@ -145,7 +145,7 @@
         "ai-stack/compose/docker-compose.yml",
         "ai-stack/mcp-servers/aidb/server.py",
         "ai-stack/mcp-servers/hybrid-coordinator/server.py",
-        "scripts/serve-dashboard.sh"
+        "scripts/deploy/serve-dashboard.sh"
       ],
       "changes_needed": [
         "Add memory limits to docker-compose.yml: aidb=2GB, hybrid=1GB, ralph=512MB",

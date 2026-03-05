@@ -17,13 +17,13 @@ For detailed deployment instructions, see the complete guide at:
 
 ```bash
 # Sync learning data (runtime → git repo)
-bash scripts/sync-learning-data.sh
+bash scripts/data/sync-learning-data.sh
 
 # Export Qdrant collections (Qdrant → git repo)
-bash scripts/export-collections.sh
+bash scripts/data/export-collections.sh
 
 # Import collections on new system (git repo → Qdrant)
-bash scripts/import-collections.sh
+bash scripts/data/import-collections.sh
 ```
 
 ## Quick Start Paths
@@ -32,7 +32,7 @@ bash scripts/import-collections.sh
 1. `sudo bash nixos-quick-deploy.sh`
 2. `bash scripts/initialize-ai-stack.sh`
 3. Use the system to generate patterns
-4. `bash scripts/sync-learning-data.sh`
+4. `bash scripts/data/sync-learning-data.sh`
 5. `git commit && git push`
 
 ### Subsequent Deployment (With Federated Data)

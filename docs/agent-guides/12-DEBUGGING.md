@@ -59,7 +59,7 @@ curl http://localhost:6333/collections/error-solutions | jq
 curl http://localhost:6333/collections/error-solutions | jq '.result.points_count'
 
 # Re-initialize if empty
-./scripts/setup-hybrid-learning-auto.sh
+./scripts/deploy/setup-hybrid-learning-auto.sh
 ```
 
 ### 3. llama.cpp Model Not Loading
@@ -214,7 +214,7 @@ kill -9 PID
 
 **Fix**: Re-run initialization
 ```bash
-./scripts/setup-hybrid-learning-auto.sh
+./scripts/deploy/setup-hybrid-learning-auto.sh
 ```
 
 ### NVIDIA Driver Issues

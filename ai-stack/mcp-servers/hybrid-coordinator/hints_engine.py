@@ -110,7 +110,7 @@ _STATIC_RULES: List[dict] = [
         "title": "Tag eval runs with strategy names",
         "keywords": ["eval", "score", "test", "benchmark", "compare", "strategy"],
         "snippet": (
-            "Use `scripts/run-eval.sh --strategy my-variant` to tag results for "
+            "Use `scripts/automation/run-eval.sh --strategy my-variant` to tag results for "
             "aq-report leaderboard comparison."
         ),
         "tags": ["eval", "strategy", "measurement"],
@@ -121,7 +121,7 @@ _STATIC_RULES: List[dict] = [
         "keywords": ["prompt", "template", "registry", "mean_score", "optimize"],
         "snippet": (
             "After editing a prompt template in registry.yaml, run "
-            "`scripts/aq-prompt-eval --id <id>` to update mean_score before deploying."
+            "`scripts/ai/aq-prompt-eval --id <id>` to update mean_score before deploying."
         ),
         "tags": ["prompt", "registry", "eval", "measurement"],
     },
@@ -967,9 +967,9 @@ class HintsEngine:
                     "4) apply low-risk actions under token cap; escalate only on degradation",
                 ],
                 "operator_commands": {
-                    "sync": "python scripts/prsi-orchestrator.py sync --since=1d",
-                    "list": "python scripts/prsi-orchestrator.py list",
-                    "cycle_dry_run": "python scripts/prsi-orchestrator.py cycle --dry-run",
+                    "sync": "python scripts/automation/prsi-orchestrator.py sync --since=1d",
+                    "list": "python scripts/automation/prsi-orchestrator.py list",
+                    "cycle_dry_run": "python scripts/automation/prsi-orchestrator.py cycle --dry-run",
                 },
                 "budget_controls": [
                     "remote_token_cap_daily",

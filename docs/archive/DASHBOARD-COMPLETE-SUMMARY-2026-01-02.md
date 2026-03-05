@@ -132,7 +132,7 @@ Successfully consolidated **all features** from port 8890 (React dashboard) into
 ### Start Everything
 
 ```bash
-./scripts/start-unified-dashboard.sh
+./scripts/deploy/start-unified-dashboard.sh
 ```
 
 This starts:
@@ -188,7 +188,7 @@ http://localhost:8888/dashboard.html
 | File | Purpose |
 |------|---------|
 | `dashboard/backend/api/routes/actions.py` | Action execution API |
-| `scripts/start-unified-dashboard.sh` | Unified startup script |
+| `scripts/deploy/start-unified-dashboard.sh` | Unified startup script |
 | Multiple documentation files | Complete guides |
 
 ### API Endpoints

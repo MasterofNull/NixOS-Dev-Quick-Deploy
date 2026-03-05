@@ -9,7 +9,7 @@
 ## ✅ COMPLETED TASKS
 
 ### 1. Podman API Setup Script ✅
-**File:** `scripts/setup-podman-api.sh`
+**File:** `scripts/deploy/setup-podman-api.sh`
 
 **Features:**
 - Detects user mode vs system mode
@@ -21,7 +21,7 @@
 **Usage:**
 ```bash
 cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
-./scripts/setup-podman-api.sh
+./scripts/deploy/setup-podman-api.sh
 ```
 
 **What it does:**
@@ -231,7 +231,7 @@ container-engine:
 **Step 1: Run Setup Script (5 minutes)**
 ```bash
 cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
-./scripts/setup-podman-api.sh
+./scripts/deploy/setup-podman-api.sh
 ```
 
 This will:
@@ -371,7 +371,7 @@ systemctl --user stop podman.socket
 ## FILES CREATED/MODIFIED
 
 ### New Files Created:
-- ✅ `scripts/setup-podman-api.sh` (410 lines)
+- ✅ `scripts/deploy/setup-podman-api.sh` (410 lines)
 - ✅ `ai-stack/mcp-servers/shared/podman_api_client.py` (625 lines)
 - ✅ `SECURE-CONTAINER-MANAGEMENT-PLAN.md` (design doc)
 - ✅ `DAY2-PROGRESS-SUMMARY.md` (this file)

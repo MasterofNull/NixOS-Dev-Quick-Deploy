@@ -1055,7 +1055,7 @@ in
           Type = "oneshot";
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
-            "${mcp.repoPath}/scripts/sync-knowledge-sources"
+            "${mcp.repoPath}/scripts/data/sync-knowledge-sources"
           ];
           Environment = [
             "AIDB_URL=http://127.0.0.1:${toString mcp.aidbPort}"
@@ -1092,7 +1092,7 @@ in
           WorkingDirectory = mcp.repoPath;
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
-            "${mcp.repoPath}/scripts/security-audit.sh"
+            "${mcp.repoPath}/scripts/security/security-audit.sh"
             "--repo-root" mcp.repoPath
             "--output-dir" "${dataDir}/security"
           ];
@@ -1374,7 +1374,7 @@ in
           RestrictAddressFamilies = [ "AF_UNIX" ];
           SystemCallFilter        = [ "@system-service" ];
           SystemCallErrorNumber   = "EPERM";
-          ExecStart               = "${pkgs.bash}/bin/bash ${mcp.repoPath}/scripts/check-mcp-integrity.sh";
+          ExecStart               = "${pkgs.bash}/bin/bash ${mcp.repoPath}/scripts/testing/check-mcp-integrity.sh";
           SuccessExitStatus       = [ 0 ];
           Environment             = [
             "MCP_SERVER_DIR=${mcp.repoPath}/ai-stack/mcp-servers"
@@ -1414,7 +1414,7 @@ in
           # Needs to read /proc and /sys/fs/cgroup; cannot use ProtectSystem=strict with these.
           ProtectSystem           = "full";
           ReadOnlyPaths           = [ "/proc" "/sys/fs/cgroup" ];
-          ExecStart               = "${pkgs.bash}/bin/bash ${mcp.repoPath}/scripts/check-mcp-processes.sh";
+          ExecStart               = "${pkgs.bash}/bin/bash ${mcp.repoPath}/scripts/testing/check-mcp-processes.sh";
           SuccessExitStatus       = [ 0 ];
           Environment             = [
             "MCP_SERVICES=\"ai-aidb.service ai-hybrid-coordinator.service ai-ralph-wiggum.service ai-embeddings.service ai-audit-sidecar.service\""

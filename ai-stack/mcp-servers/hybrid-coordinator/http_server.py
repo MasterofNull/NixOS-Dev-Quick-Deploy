@@ -20,6 +20,7 @@ import asyncio
 import json
 import logging
 import os
+import socket
 import time
 from datetime import datetime
 from pathlib import Path
@@ -1063,6 +1064,85 @@ async def run_http_mode(port: int) -> None:
             "capability_discovery": _HYBRID_STATS.get("capability_discovery", {}),
             "circuit_breakers": breakers or (_CIRCUIT_BREAKERS.get_all_stats() if _CIRCUIT_BREAKERS else {}),
         })
+
+    async def handle_health_detailed(request):
+        """Detailed health endpoint with dependency probes and performance indicators."""
+        deps: Dict[str, Any] = {}
+
+        qdrant_url = os.getenv("QDRANT_URL", "http://127.0.0.1:6333").strip()
+        aidb_url = os.getenv("AIDB_URL", "http://127.0.0.1:8002").strip()
+        llama_url = os.getenv("LLAMA_CPP_URL", "http://127.0.0.1:8080").strip()
+        redis_url = os.getenv("REDIS_URL", "redis://127.0.0.1:6379").strip()
+        postgres_host = os.getenv("POSTGRES_HOST", "127.0.0.1").strip()
+        postgres_port = int(os.getenv("POSTGRES_PORT", "5432") or 5432)
+
+        async with httpx.AsyncClient(timeout=2.5) as hc:
+            try:
+                r = await hc.get(f"{qdrant_url.rstrip('/')}/collections")
+                deps["qdrant"] = {"status": "ok" if r.status_code < 500 else "error", "http_status": r.status_code}
+            except Exception as exc:  # noqa: BLE001
+                deps["qdrant"] = {"status": "unavailable", "error": str(exc)[:180]}
+
+            try:
+                r = await hc.get(f"{aidb_url.rstrip('/')}/health/fast")
+                body = r.json() if "application/json" in r.headers.get("content-type", "") else {}
+                deps["aidb"] = {
+                    "status": "ok" if r.status_code < 500 else "error",
+                    "http_status": r.status_code,
+                    "reported_status": body.get("status"),
+                }
+            except Exception as exc:  # noqa: BLE001
+                deps["aidb"] = {"status": "unavailable", "error": str(exc)[:180]}
+
+            try:
+                r = await hc.get(f"{llama_url.rstrip('/')}/health")
+                body = r.json() if "application/json" in r.headers.get("content-type", "") else {}
+                deps["llama_cpp"] = {
+                    "status": "ok" if r.status_code < 500 else "error",
+                    "http_status": r.status_code,
+                    "reported_status": body.get("status"),
+                }
+            except Exception as exc:  # noqa: BLE001
+                deps["llama_cpp"] = {"status": "unavailable", "error": str(exc)[:180]}
+
+        redis_host_port = redis_url.split("://", 1)[-1].split("/", 1)[0]
+        redis_host, redis_port = (redis_host_port.split(":", 1) + ["6379"])[:2]
+        try:
+            with socket.create_connection((redis_host, int(redis_port)), timeout=2.0):
+                deps["redis"] = {"status": "ok", "host": redis_host, "port": int(redis_port)}
+        except Exception as exc:  # noqa: BLE001
+            deps["redis"] = {"status": "unavailable", "error": str(exc)[:180]}
+
+        try:
+            with socket.create_connection((postgres_host, postgres_port), timeout=2.0):
+                deps["postgres"] = {"status": "ok", "host": postgres_host, "port": postgres_port}
+        except Exception as exc:  # noqa: BLE001
+            deps["postgres"] = {"status": "unavailable", "error": str(exc)[:180]}
+
+        stats = _snapshot_stats() if _snapshot_stats else {}
+        total_queries = int(stats.get("total_queries", 0) or 0)
+        context_hits = int(stats.get("context_hits", 0) or 0)
+        context_hit_rate = round((100.0 * context_hits / total_queries), 1) if total_queries > 0 else None
+        perf = {
+            "total_queries": total_queries,
+            "context_hits": context_hits,
+            "context_hit_rate_pct": context_hit_rate,
+            "model_loading_queue_depth": _queue_depth_ref() if _queue_depth_ref else None,
+            "model_loading_queue_max": _queue_max_ref() if _queue_max_ref else None,
+        }
+        dependency_unhealthy = any(d.get("status") != "ok" for d in deps.values())
+        service_status = "degraded" if dependency_unhealthy else "healthy"
+        return web.json_response(
+            {
+                "status": service_status,
+                "service": "hybrid-coordinator",
+                "dependencies": deps,
+                "performance": perf,
+                "circuit_breakers": _CIRCUIT_BREAKERS.get_all_stats() if _CIRCUIT_BREAKERS else {},
+                "capability_discovery": _HYBRID_STATS.get("capability_discovery", {}),
+            },
+            status=200 if service_status in ("healthy", "degraded") else 503,
+        )
 
     async def handle_stats(request):
         return web.json_response({
@@ -2679,6 +2759,7 @@ async def run_http_mode(port: int) -> None:
         middlewares=[tracing_middleware, request_id_middleware, api_key_middleware]
     )
     http_app.router.add_get("/health", handle_health)
+    http_app.router.add_get("/health/detailed", handle_health_detailed)
     http_app.router.add_get("/status", handle_status)
     http_app.router.add_get("/stats", handle_stats)
     http_app.router.add_post("/augment_query", handle_augment_query)

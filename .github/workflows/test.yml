@@ -7,6 +7,18 @@ on:
     branches: [ main ]
 
 jobs:
+  repo-structure-lint:
+    name: Repo Structure Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Enforce repository structure policy
+        run: |
+          chmod +x scripts/governance/repo-structure-lint.sh
+          ./scripts/governance/repo-structure-lint.sh --all
+
   harness-first-owner-approval:
     name: Harness-First Owner Approval
     if: github.event_name == 'pull_request'
@@ -22,7 +34,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python3 scripts/check-harness-first-platform-owner-approval.py
+          python3 scripts/testing/check-harness-first-platform-owner-approval.py
 
   skill-governance-lint:
     name: Skill Governance Lint
@@ -33,23 +45,23 @@ jobs:
 
       - name: Run skill source-of-truth lint
         run: |
-          chmod +x scripts/check-skill-source-of-truth.sh
-          ./scripts/check-skill-source-of-truth.sh
+          chmod +x scripts/testing/check-skill-source-of-truth.sh
+          ./scripts/testing/check-skill-source-of-truth.sh
 
       - name: Run skill external dependency lint
         run: |
-          chmod +x scripts/lint-skill-external-deps.sh
-          ./scripts/lint-skill-external-deps.sh
+          chmod +x scripts/governance/lint-skill-external-deps.sh
+          ./scripts/governance/lint-skill-external-deps.sh
 
       - name: Run skill reference integrity lint
         run: |
-          chmod +x scripts/validate-skill-references.sh
-          ./scripts/validate-skill-references.sh
+          chmod +x scripts/testing/validate-skill-references.sh
+          ./scripts/testing/validate-skill-references.sh
 
       - name: Run skill template lint
         run: |
-          chmod +x scripts/lint-skill-template.sh
-          ./scripts/lint-skill-template.sh
+          chmod +x scripts/governance/lint-skill-template.sh
+          ./scripts/governance/lint-skill-template.sh
 
   template-placeholder-lint:
     name: Template Placeholder Lint
@@ -60,8 +72,8 @@ jobs:
 
       - name: Lint placeholder proliferation
         run: |
-          chmod +x scripts/lint-template-placeholders.sh
-          ./scripts/lint-template-placeholders.sh
+          chmod +x scripts/governance/lint-template-placeholders.sh
+          ./scripts/governance/lint-template-placeholders.sh
 
   flake-validation:
     name: Flake Validation
@@ -99,26 +111,26 @@ jobs:
 
       - name: Package count drift check
         run: |
-          chmod +x scripts/generate-package-counts.sh scripts/check-package-count-drift.sh
-          ./scripts/check-package-count-drift.sh --flake-ref path:.
+          chmod +x scripts/data/generate-package-counts.sh scripts/testing/check-package-count-drift.sh
+          ./scripts/testing/check-package-count-drift.sh --flake-ref path:.
 
       - name: Flake input validation and reporting
         run: |
-          chmod +x scripts/validate-flake-inputs.sh
-          ./scripts/validate-flake-inputs.sh \
+          chmod +x scripts/testing/validate-flake-inputs.sh
+          ./scripts/testing/validate-flake-inputs.sh \
             --flake-ref path:. \
             --report-json reports/flake-validation-report.json \
             --report-md reports/flake-validation-report.md
 
       - name: Validate non-Nix tool management policy
         run: |
-          chmod +x scripts/validate-tool-management-policy.sh
-          ./scripts/validate-tool-management-policy.sh
+          chmod +x scripts/testing/validate-tool-management-policy.sh
+          ./scripts/testing/validate-tool-management-policy.sh
 
       - name: Validate declarative runtime wiring
         run: |
-          chmod +x scripts/validate-runtime-declarative.sh
-          ./scripts/validate-runtime-declarative.sh
+          chmod +x scripts/testing/validate-runtime-declarative.sh
+          ./scripts/testing/validate-runtime-declarative.sh
 
       - name: Upload flake validation report
         if: always()
@@ -160,7 +172,7 @@ jobs:
       - name: Collect shell scripts
         run: |
           mapfile -t shell_files < <(git ls-files '*.sh' ':!:deprecated/**')
-          extras=(scripts/mcp-db-validate scripts/mcp-server)
+          extras=(scripts/ai/mcp-db-validate scripts/ai/mcp-server)
 
           for extra in "${extras[@]}"; do
             if [ -f "$extra" ]; then
@@ -220,7 +232,7 @@ jobs:
         run: |
           echo "Validating bash syntax..."
           mapfile -t shell_files < <(git ls-files '*.sh' ':!:deprecated/**')
-          extras=(scripts/mcp-db-validate scripts/mcp-server)
+          extras=(scripts/ai/mcp-db-validate scripts/ai/mcp-server)
 
           for extra in "${extras[@]}"; do
             if [ -f "$extra" ]; then
@@ -272,42 +284,42 @@ jobs:
 
       - name: Validate aq-report JSON contract
         run: |
-          chmod +x scripts/check-aq-report-contract.sh
-          ./scripts/check-aq-report-contract.sh
+          chmod +x scripts/testing/check-aq-report-contract.sh
+          ./scripts/testing/check-aq-report-contract.sh
 
       - name: Metric smoke check for aq-report sections
         run: |
-          chmod +x scripts/check-aq-report-metric-smoke.sh
-          ./scripts/check-aq-report-metric-smoke.sh
+          chmod +x scripts/testing/check-aq-report-metric-smoke.sh
+          ./scripts/testing/check-aq-report-metric-smoke.sh
 
       - name: Validate PRSI cycle artifact contract
         run: |
-          chmod +x scripts/check-prsi-cycle-contract.sh
-          ./scripts/check-prsi-cycle-contract.sh
+          chmod +x scripts/testing/check-prsi-cycle-contract.sh
+          ./scripts/testing/check-prsi-cycle-contract.sh
 
       - name: Validate PRSI bootstrap integrity
         run: |
-          chmod +x scripts/check-prsi-bootstrap-integrity.sh
-          ./scripts/check-prsi-bootstrap-integrity.sh
+          chmod +x scripts/testing/check-prsi-bootstrap-integrity.sh
+          ./scripts/testing/check-prsi-bootstrap-integrity.sh
 
       - name: Validate PRSI Phase 7 static gates
         run: |
-          chmod +x scripts/check-prsi-phase7-static-gates.sh
-          ./scripts/check-prsi-phase7-static-gates.sh
+          chmod +x scripts/testing/check-prsi-phase7-static-gates.sh
+          ./scripts/testing/check-prsi-phase7-static-gates.sh
 
       - name: Validate Harness-First static gates
         run: |
-          chmod +x scripts/check-harness-first-static-gates.sh
-          ./scripts/check-harness-first-static-gates.sh
+          chmod +x scripts/testing/check-harness-first-static-gates.sh
+          ./scripts/testing/check-harness-first-static-gates.sh
 
       - name: Run tool security auditor regression smoke
         run: |
-          python3 scripts/test-tool-security-auditor.py
+          python3 scripts/testing/test-tool-security-auditor.py
 
       - name: Run cross-client compatibility smoke (best-effort in CI)
         run: |
-          chmod +x scripts/smoke-cross-client-compat.sh
-          ./scripts/smoke-cross-client-compat.sh || true
+          chmod +x scripts/testing/smoke-cross-client-compat.sh
+          ./scripts/testing/smoke-cross-client-compat.sh || true
 
   validate-structure:
     name: Validate Project Structure
@@ -341,9 +353,9 @@ jobs:
             "phases/phase-06-additional-tooling.sh"
             "phases/phase-07-post-deployment-validation.sh"
             "phases/phase-08-finalization-and-report.sh"
-            "scripts/system-health-check.sh"
-            "scripts/mcp-db-validate"
-            "scripts/mcp-server"
+            "scripts/health/system-health-check.sh"
+            "scripts/ai/mcp-db-validate"
+            "scripts/ai/mcp-server"
             "templates/configuration.nix"
             "templates/flake.nix"
             "docs/AGENTS.md"
@@ -359,11 +371,11 @@ jobs:
             "config/harness-first-policy.json"
             "config/harness-first-high-impact-paths.txt"
             "config/harness-first-platform-owners.txt"
-            "scripts/check-harness-first-runbook.sh"
-            "scripts/check-harness-first-evidence-template.sh"
-            "scripts/check-harness-first-pr-evidence-gate.sh"
-            "scripts/check-harness-first-static-gates.sh"
-            "scripts/check-harness-first-platform-owner-approval.py"
+            "scripts/testing/check-harness-first-runbook.sh"
+            "scripts/testing/check-harness-first-evidence-template.sh"
+            "scripts/testing/check-harness-first-pr-evidence-gate.sh"
+            "scripts/testing/check-harness-first-static-gates.sh"
+            "scripts/testing/check-harness-first-platform-owner-approval.py"
           )
 
           missing=0
@@ -414,7 +426,7 @@ jobs:
       - name: Ensure scripts are executable
         run: |
           git ls-files '*.sh' ':!:deprecated/**' | xargs -r chmod +x
-          for extra in scripts/mcp-db-validate scripts/mcp-server; do
+          for extra in scripts/ai/mcp-db-validate scripts/ai/mcp-server; do
             if [ -f "$extra" ]; then
               chmod +x "$extra"
             fi
@@ -465,8 +477,8 @@ jobs:
 
       - name: Validate centralized config settings
         run: |
-          chmod +x scripts/validate-config-settings.sh
-          ./scripts/validate-config-settings.sh
+          chmod +x scripts/testing/validate-config-settings.sh
+          ./scripts/testing/validate-config-settings.sh
 
       - name: Run command smoke tests
         run: |
@@ -486,9 +498,9 @@ jobs:
 
           echo ""
           echo "Running AQD CLI smoke checks"
-          ./scripts/aqd --version > /tmp/ci-aqd-version.txt
-          ./scripts/aqd workflows list > /tmp/ci-aqd-workflows.txt
-          ./scripts/aqd skill validate > /tmp/ci-aqd-skill-validate.txt
+          ./scripts/ai/aqd --version > /tmp/ci-aqd-version.txt
+          ./scripts/ai/aqd workflows list > /tmp/ci-aqd-workflows.txt
+          ./scripts/ai/aqd skill validate > /tmp/ci-aqd-skill-validate.txt
 
           echo "--- AQD Version ---"
           cat /tmp/ci-aqd-version.txt
@@ -516,9 +528,9 @@ jobs:
 
       - name: Run SDK parity smoke checks
         run: |
-          chmod +x scripts/generate-harness-sdk-api-docs.sh
-          chmod +x scripts/smoke-harness-sdk-packaging.sh
-          ./scripts/smoke-harness-sdk-packaging.sh
+          chmod +x scripts/data/generate-harness-sdk-api-docs.sh
+          chmod +x scripts/testing/smoke-harness-sdk-packaging.sh
+          ./scripts/testing/smoke-harness-sdk-packaging.sh
 
   skill-bundle-parity:
     name: Skill Bundle Distribution Smoke
@@ -540,8 +552,8 @@ jobs:
 
       - name: Run skill bundle smoke checks
         run: |
-          chmod +x scripts/smoke-skill-bundle-distribution.sh
-          ./scripts/smoke-skill-bundle-distribution.sh
+          chmod +x scripts/testing/smoke-skill-bundle-distribution.sh
+          ./scripts/testing/smoke-skill-bundle-distribution.sh
 
   advanced-parity-tooling:
     name: Advanced Parity Tooling
@@ -563,18 +575,18 @@ jobs:
 
       - name: Run advanced parity suite
         run: |
-          chmod +x scripts/run-advanced-parity-suite.sh
-          chmod +x scripts/smoke-skill-bundle-distribution.sh
-          chmod +x scripts/run-harness-regression-gate.sh
-          chmod +x scripts/chaos-harness-smoke.sh
-          chmod +x scripts/check-boot-shutdown-integration.sh
-          chmod +x scripts/check-api-auth-hardening.sh
-          chmod +x scripts/validate-ai-slo-runtime.sh
-          chmod +x scripts/smoke-cross-client-compat.sh
+          chmod +x scripts/automation/run-advanced-parity-suite.sh
+          chmod +x scripts/testing/smoke-skill-bundle-distribution.sh
+          chmod +x scripts/automation/run-harness-regression-gate.sh
+          chmod +x scripts/testing/chaos-harness-smoke.sh
+          chmod +x scripts/testing/check-boot-shutdown-integration.sh
+          chmod +x scripts/testing/check-api-auth-hardening.sh
+          chmod +x scripts/testing/validate-ai-slo-runtime.sh
+          chmod +x scripts/testing/smoke-cross-client-compat.sh
           chmod +x scripts/sign-skill-registry.sh
-          chmod +x scripts/verify-skill-registry.sh
-          chmod +x scripts/generate-harness-sdk-provenance.sh
-          ./scripts/run-advanced-parity-suite.sh
+          chmod +x scripts/testing/verify-skill-registry.sh
+          chmod +x scripts/data/generate-harness-sdk-provenance.sh
+          ./scripts/automation/run-advanced-parity-suite.sh
 
   security:
     name: Security Scanning

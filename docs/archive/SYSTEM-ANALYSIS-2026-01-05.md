@@ -363,7 +363,7 @@ async def search_with_cache(query, collections):
 
 **Action:**
 ```bash
-./scripts/import-project-knowledge.sh
+./scripts/data/import-project-knowledge.sh
 ```
 
 **Expected Result:** 300+ new chunks, 1,000+ total documents

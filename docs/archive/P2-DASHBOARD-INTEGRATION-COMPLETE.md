@@ -79,7 +79,7 @@ Successfully integrated P1/P2 health monitoring dashboards into the system monit
 
 ### 3. Dashboard Server Proxy ✅
 
-**File:** `scripts/serve-dashboard.sh` (Line 76-111)
+**File:** `scripts/deploy/serve-dashboard.sh` (Line 76-111)
 
 **Problem Solved:**
 - AIDB port 8091 not exposed to host (only within container network)
@@ -219,7 +219,7 @@ Browser displays status
    - Added JavaScript functions (line 3491-3621)
    - ~135 lines added
 
-2. **`scripts/serve-dashboard.sh`**
+2. **`scripts/deploy/serve-dashboard.sh`**
    - Added `/aidb/*` proxy endpoint (line 76-111)
    - ~36 lines added
 
@@ -346,7 +346,7 @@ tail -f /tmp/dashboard.log
 ```bash
 # Restart dashboard server
 pkill -f serve-dashboard.sh
-./scripts/serve-dashboard.sh > /tmp/dashboard.log 2>&1 &
+./scripts/deploy/serve-dashboard.sh > /tmp/dashboard.log 2>&1 &
 
 # Test proxy
 curl http://localhost:8888/aidb/health/live

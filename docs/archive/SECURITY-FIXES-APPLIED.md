@@ -16,7 +16,7 @@ Implemented high-priority security fixes based on comprehensive security audit. 
 
 ### Fix 1: Hardcoded Database Password Eliminated ✅
 
-**Issue:** Hardcoded PostgreSQL password in `scripts/setup-mcp-databases.sh`
+**Issue:** Hardcoded PostgreSQL password in `scripts/deploy/setup-mcp-databases.sh`
 
 **Previous Code:**
 ```bash
@@ -47,11 +47,11 @@ fi
 **Testing:**
 ```bash
 # Test auto-generation
-./scripts/setup-mcp-databases.sh
+./scripts/deploy/setup-mcp-databases.sh
 
 # Test environment variable
 export MCP_POSTGRES_PASSWORD="my_secure_password_$(openssl rand -base64 24)"
-./scripts/setup-mcp-databases.sh
+./scripts/deploy/setup-mcp-databases.sh
 ```
 
 ---
@@ -76,7 +76,7 @@ HTTP_ADDR = "127.0.0.1";  # Security: Bind to localhost only, use reverse proxy 
 
 #### Fix 2b: Redis Binding
 
-**File:** `scripts/setup-mcp-databases.sh:127`
+**File:** `scripts/deploy/setup-mcp-databases.sh:127`
 
 **Previous Code:**
 ```
@@ -159,13 +159,13 @@ journalctl -k -f | grep refused
 ### Test 1: Password Generation
 ```bash
 # Test auto-generation works
-./scripts/setup-mcp-databases.sh
+./scripts/deploy/setup-mcp-databases.sh
 # ✅ Generated 32-byte base64 password
 # ✅ Warning displayed to save password
 
 # Test environment variable works
 export MCP_POSTGRES_PASSWORD="test_password_123"
-./scripts/setup-mcp-databases.sh
+./scripts/deploy/setup-mcp-databases.sh
 # ✅ Used provided password
 # ✅ Success message displayed
 ```

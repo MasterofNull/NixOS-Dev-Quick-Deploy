@@ -97,7 +97,7 @@ Updates: Every 5 seconds
 ## Files Created This Session
 
 ### Implementation
-1. `scripts/ai-metrics-auto-updater.sh` - Real-time metrics collector
+1. `scripts/ai/ai-metrics-auto-updater.sh` - Real-time metrics collector
 2. `test-continuous-learning-demo.py` - Learning system demo
 3. `test-learning-simple.sh` - Simple telemetry test
 

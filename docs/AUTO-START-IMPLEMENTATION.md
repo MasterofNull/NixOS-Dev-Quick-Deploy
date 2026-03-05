@@ -9,7 +9,7 @@ This document summarizes all changes made to ensure the AI Stack Monitor Dashboa
 
 ## 1. System Dashboard Enhancements
 
-### Updated: [scripts/ai-stack-monitor.sh](/scripts/ai-stack-monitor.sh)
+### Updated: [scripts/ai/ai-stack-monitor.sh](/scripts/ai/ai-stack-monitor.sh)
 
 **Changes:**
 - Added monitoring for `local-ai-nixos-docs` container
@@ -55,7 +55,7 @@ if [[ $final_exit -eq 0 ]]; then
     print_success "Deployment completed successfully!"
 
     # Show AI Stack Monitor Dashboard info (if available)
-    local monitor_script="$SCRIPT_DIR/scripts/ai-stack-monitor.sh"
+    local monitor_script="$SCRIPT_DIR/scripts/ai/ai-stack-monitor.sh"
     if [[ -x "$monitor_script" && "$SKIP_AI_MODEL" != true ]]; then
         echo ""
         print_info "AI Stack Monitor Dashboard available at: $monitor_script"
@@ -69,8 +69,8 @@ fi
 ```
 ✓ Deployment completed successfully!
 
-ℹ AI Stack Monitor Dashboard available at: ./scripts/ai-stack-monitor.sh
-ℹ To view live monitoring, run: ./scripts/ai-stack-monitor.sh
+ℹ AI Stack Monitor Dashboard available at: ./scripts/ai/ai-stack-monitor.sh
+ℹ To view live monitoring, run: ./scripts/ai/ai-stack-monitor.sh
 ```
 
 ---
@@ -147,7 +147,7 @@ systemctl status ai-stack.service
 
 ## 5. Verification Script Updates
 
-### Updated: [scripts/verify-upgrades.sh](/scripts/verify-upgrades.sh)
+### Updated: [scripts/testing/verify-upgrades.sh](/scripts/testing/verify-upgrades.sh)
 
 **Changes:**
 - Added auto-start guide documentation check
@@ -161,7 +161,7 @@ systemctl status ai-stack.service
 check "Auto-start guide created" "[ -f ai-stack/AUTO-START-GUIDE.md ]"
 check "NixOS module exists" "[ -f templates/nixos-improvements/ai-stack-autostart.nix ]"
 check "Restart policies configured" "grep -q 'restart: unless-stopped' ai-stack/compose/docker-compose.yml"
-check "Monitor updated for nixos-docs" "grep -q 'local-ai-nixos-docs' scripts/ai-stack-monitor.sh"
+check "Monitor updated for nixos-docs" "grep -q 'local-ai-nixos-docs' scripts/ai/ai-stack-monitor.sh"
 ```
 
 ---
@@ -201,7 +201,7 @@ restart: unless-stopped
 ### ✅ After NixOS Quick Deploy Completes
 
 **How it works:**
-1. Phase 8 runs [start-ai-stack-and-dashboard.sh](/scripts/start-ai-stack-and-dashboard.sh)
+1. Phase 8 runs [start-ai-stack-and-dashboard.sh](/scripts/deploy/start-ai-stack-and-dashboard.sh)
 2. Executes `podman-compose up -d`
 3. All containers start with `restart: unless-stopped`
 4. Health checks verify services
@@ -306,9 +306,9 @@ podman-compose up -d
 ## File Changes Summary
 
 ### Files Modified
-1. [scripts/ai-stack-monitor.sh](/scripts/ai-stack-monitor.sh:39-40) - Added nixos-docs and ralph-wiggum monitoring
+1. [scripts/ai/ai-stack-monitor.sh](/scripts/ai/ai-stack-monitor.sh:39-40) - Added nixos-docs and ralph-wiggum monitoring
 2. [nixos-quick-deploy.sh](/nixos-quick-deploy.sh:1360-1367) - Added monitor notification on deployment completion
-3. [scripts/verify-upgrades.sh](/scripts/verify-upgrades.sh:51-59) - Added auto-start verification checks
+3. [scripts/testing/verify-upgrades.sh](/scripts/testing/verify-upgrades.sh:51-59) - Added auto-start verification checks
 
 ### Files Created
 1. [templates/nixos-improvements/ai-stack-autostart.nix](templates/nixos-improvements/ai-stack-autostart.nix) - NixOS systemd integration (114 lines)
@@ -317,7 +317,7 @@ podman-compose up -d
 
 ### Files Already Configured
 1. [ai-stack/compose/docker-compose.yml](/ai-stack/compose/docker-compose.yml) - All services have `restart: unless-stopped`
-2. [scripts/start-ai-stack-and-dashboard.sh](/scripts/start-ai-stack-and-dashboard.sh) - Handles startup on deploy
+2. [scripts/deploy/start-ai-stack-and-dashboard.sh](/scripts/deploy/start-ai-stack-and-dashboard.sh) - Handles startup on deploy
 
 ---
 
@@ -333,13 +333,13 @@ podman ps
 podman inspect local-ai-llama-cpp | grep -A2 RestartPolicy
 
 # View monitor dashboard
-./scripts/ai-stack-monitor.sh
+./scripts/ai/ai-stack-monitor.sh
 ```
 
 ### 2. Run Verification Script
 
 ```bash
-./scripts/verify-upgrades.sh
+./scripts/testing/verify-upgrades.sh
 ```
 
 **Expected output:**
@@ -377,7 +377,7 @@ podman-compose down
 podman-compose up -d
 
 # Verify
-./scripts/ai-stack-monitor.sh
+./scripts/ai/ai-stack-monitor.sh
 ```
 
 ---
@@ -466,10 +466,10 @@ ai-start
 | Issue | Solution |
 |-------|----------|
 | Containers not running after reboot | Enable systemd service OR run `podman-compose up -d` manually |
-| Monitor shows old data | Restart: `pkill -f ai-stack-monitor.sh && ./scripts/ai-stack-monitor.sh` |
+| Monitor shows old data | Restart: `pkill -f ai-stack-monitor.sh && ./scripts/ai/ai-stack-monitor.sh` |
 | Service fails on boot | Check logs: `journalctl -u ai-stack.service -b` |
 | Containers crash repeatedly | View container logs: `podman logs local-ai-<name>` |
-| Health checks failing | Run: `./scripts/ai-stack-health.sh` |
+| Health checks failing | Run: `./scripts/ai/ai-stack-health.sh` |
 
 ---
 
@@ -486,7 +486,7 @@ ai-start
 ### 📋 User Action Required (Optional)
 
 1. **For auto-start on reboot:** Enable NixOS systemd module
-2. **For monitoring:** Run `./scripts/ai-stack-monitor.sh`
+2. **For monitoring:** Run `./scripts/ai/ai-stack-monitor.sh`
 
 ### 📚 Documentation Created
 

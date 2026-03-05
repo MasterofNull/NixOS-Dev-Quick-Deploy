@@ -7,6 +7,6 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 while true; do
-    bash scripts/generate-dashboard-data-lite.sh >/dev/null 2>&1
+    bash scripts/data/generate-dashboard-data-lite.sh >/dev/null 2>&1
     sleep 2
 done

@@ -28,6 +28,6 @@ Do not create filesystem backup trees such as:
 
 ## CI Enforcement
 
-- `scripts/check-skill-source-of-truth.sh`
-- `scripts/validate-skill-references.sh`
-- `scripts/lint-skill-external-deps.sh`
+- `scripts/testing/check-skill-source-of-truth.sh`
+- `scripts/testing/validate-skill-references.sh`
+- `scripts/governance/lint-skill-external-deps.sh`

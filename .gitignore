@@ -7,7 +7,7 @@
 # User-specific files
 .vscode/
 .idea/
-.claude/
+.claude/settings.local.json
 
 # Nix build artifacts
 result

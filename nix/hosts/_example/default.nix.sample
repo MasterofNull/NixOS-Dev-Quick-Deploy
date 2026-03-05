@@ -5,7 +5,7 @@
 # Copy this directory to nix/hosts/<your-hostname>/ and rename the files
 # (remove the ".sample" suffix).  Then run:
 #
-#   ./scripts/discover-system-facts.sh   # generates facts.nix
+#   ./scripts/governance/discover-system-facts.sh   # generates facts.nix
 #   sudo nixos-generate-config \
 #     --dir nix/hosts/<your-hostname>    # generates hardware-configuration.nix
 #   ./scripts/deploy-clean.sh --host <your-hostname> --profile ai-dev

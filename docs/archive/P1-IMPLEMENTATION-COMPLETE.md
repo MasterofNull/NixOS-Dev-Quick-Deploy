@@ -223,7 +223,7 @@ Fully automated TLS certificate renewal with Let's Encrypt.
 
 ### Components Implemented
 
-#### File: `scripts/renew-tls-certificate.sh`
+#### File: `scripts/security/renew-tls-certificate.sh`
 
 **Features:**
 - **Automatic Renewal:** certbot integration
@@ -236,24 +236,24 @@ Fully automated TLS certificate renewal with Let's Encrypt.
 **Usage:**
 ```bash
 # Production renewal
-./scripts/renew-tls-certificate.sh \
+./scripts/security/renew-tls-certificate.sh \
   --domain ai-stack.example.com \
   --email admin@example.com
 
 # Test with staging
-./scripts/renew-tls-certificate.sh \
+./scripts/security/renew-tls-certificate.sh \
   --domain ai-stack.example.com \
   --email admin@example.com \
   --staging
 
 # Dry run
-./scripts/renew-tls-certificate.sh \
+./scripts/security/renew-tls-certificate.sh \
   --domain ai-stack.example.com \
   --email admin@example.com \
   --dry-run
 
 # Force renewal
-./scripts/renew-tls-certificate.sh \
+./scripts/security/renew-tls-certificate.sh \
   --domain ai-stack.example.com \
   --email admin@example.com \
   --force
@@ -485,7 +485,7 @@ results = await gc.run_full_gc()
 ### Let's Encrypt Tests
 ```bash
 # Dry run
-./scripts/renew-tls-certificate.sh \
+./scripts/security/renew-tls-certificate.sh \
   --domain test.example.com \
   --email test@example.com \
   --dry-run
@@ -532,7 +532,7 @@ sudo systemctl start letsencrypt-renewal.timer
 podman-compose restart nginx
 
 # Test renewal
-./scripts/renew-tls-certificate.sh \
+./scripts/security/renew-tls-certificate.sh \
   --domain your-domain.com \
   --email your-email@example.com \
   --dry-run
@@ -574,7 +574,7 @@ podman-compose restart nginx
 **Files Created:**
 1. `ai-stack/mcp-servers/aidb/query_validator.py`
 2. `ai-stack/mcp-servers/hybrid-coordinator/garbage_collector.py`
-3. `scripts/renew-tls-certificate.sh`
+3. `scripts/security/renew-tls-certificate.sh`
 4. `ai-stack/systemd/letsencrypt-renewal.service`
 5. `ai-stack/systemd/letsencrypt-renewal.timer`
 6. `P1-IMPLEMENTATION-COMPLETE.md` (this file)
