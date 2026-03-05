@@ -1233,6 +1233,16 @@
               long-running eval requests independently from the latency SLO score.
             '';
           };
+
+          timeoutHardCapSeconds = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 45;
+            description = ''
+              Absolute upper bound (seconds) for harness evaluation calls after
+              timeout normalization. Prevents accidental multi-hour waits if
+              runtime timeout values are misconfigured.
+            '';
+          };
         };
 
         runtime = {

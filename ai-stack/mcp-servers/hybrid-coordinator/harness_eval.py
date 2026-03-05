@@ -112,6 +112,13 @@ async def run_harness_evaluation(
         if isinstance(max_latency_ms, (int, float)) and float(max_latency_ms) > 0
         else max(float(Config.AI_HARNESS_EVAL_TIMEOUT_S), 0.1)
     )
+    # Enforce a hard upper bound so misconfigured runtime env cannot produce
+    # multi-hour eval waits.
+    timeout_hard_cap_s = max(
+        1.0,
+        float(getattr(Config, "AI_HARNESS_EVAL_TIMEOUT_HARD_CAP_S", 45.0)),
+    )
+    timeout_s = min(timeout_s, timeout_hard_cap_s)
 
     route_task = asyncio.create_task(
         _route_search(
@@ -131,9 +138,13 @@ async def run_harness_evaluation(
     except asyncio.TimeoutError:
         route_task.cancel()
         try:
-            await route_task
+            # Cancellation cleanup is bounded so timeout handling itself cannot
+            # block indefinitely if inner tasks ignore cancellation.
+            await asyncio.wait_for(route_task, timeout=2.0)
         except asyncio.CancelledError:
             pass
+        except asyncio.TimeoutError:
+            logger.warning("harness_eval_cancel_timeout")
 
         latency_ms = int((time.perf_counter() - start) * 1000)
         metrics = {
