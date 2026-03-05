@@ -69,7 +69,7 @@ check_pattern "nixos-quick-deploy.sh" 'MODE="switch"' 'Flake-first deploy defaul
 check_pattern "nixos-quick-deploy.sh" 'run_roadmap_completion_verification\(\)' 'Roadmap verification hook exists'
 check_pattern "nixos-quick-deploy.sh" 'run_readiness_analysis\(\)' 'Readiness analyzer hook exists'
 check_pattern "nixos-quick-deploy.sh" 'Skipping imperative runtime orchestration in deploy-clean' 'Imperative runtime orchestration is explicitly skipped'
-check_pattern "scripts/deploy-clean.sh" 'is deprecated; use ./nixos-quick-deploy.sh' 'deploy-clean shim is deprecated and forwards to nixos-quick-deploy'
+check_pattern "scripts/deploy/deploy-clean.sh" 'is deprecated; use ./nixos-quick-deploy.sh' 'deploy-clean shim is deprecated and forwards to nixos-quick-deploy'
 
 # Host resolution and readiness checks
 check_pattern "nixos-quick-deploy.sh" 'resolve_host_from_flake_if_needed\(\)' 'Deploy entrypoint has host auto-resolution helper'
