@@ -14,6 +14,7 @@ Tools exposed:
   - project_init_workflow: run guided /project-init workflow
   - primer_workflow: run read-only /primer workflow
   - brownfield_workflow: run guided /brownfield workflow
+  - retrofit_workflow: seed/refresh AI layer in an existing repo
   - bootstrap_agent_project: generate starter AI layer in a target repo
   - store_memory: store agent memory
   - recall_memory: retrieve agent memory
@@ -261,6 +262,25 @@ TOOLS = [
         },
     },
     {
+        "name": "retrofit_workflow",
+        "description": (
+            "Run AQD /retrofit workflow to seed or refresh AI-layer artifacts "
+            "in an existing repository."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target_dir": {"type": "string", "default": "."},
+                "project_name": {"type": "string"},
+                "goal": {"type": "string"},
+                "stack": {"type": "string"},
+                "owner": {"type": "string"},
+                "force": {"type": "boolean", "default": False},
+            },
+            "required": [],
+        },
+    },
+    {
         "name": "store_memory",
         "description": "Store a key fact or decision in agent memory for later recall.",
         "inputSchema": {
@@ -423,6 +443,27 @@ def _call_tool(name: str, args: dict) -> str:
             argv.extend(["--out-of-scope", str(args.get("out_of_scope"))])
         if args.get("acceptance"):
             argv.extend(["--acceptance", str(args.get("acceptance"))])
+        if bool(args.get("force", False)):
+            argv.append("--force")
+        r = _run_local(argv)
+        return json.dumps(r, indent=2)
+
+    if name == "retrofit_workflow":
+        argv = [
+            AQD_BIN,
+            "workflows",
+            "retrofit",
+            "--target",
+            str(args.get("target_dir", ".")),
+        ]
+        if args.get("project_name"):
+            argv.extend(["--name", str(args.get("project_name"))])
+        if args.get("goal"):
+            argv.extend(["--goal", str(args.get("goal"))])
+        if args.get("stack"):
+            argv.extend(["--stack", str(args.get("stack"))])
+        if args.get("owner"):
+            argv.extend(["--owner", str(args.get("owner"))])
         if bool(args.get("force", False)):
             argv.append("--force")
         r = _run_local(argv)
