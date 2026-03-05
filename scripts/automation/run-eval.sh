@@ -20,8 +20,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../config/service-endpoints.sh
-source "${SCRIPT_DIR}/../config/service-endpoints.sh"
+# shellcheck source=../../config/service-endpoints.sh
+source "${SCRIPT_DIR}/../../config/service-endpoints.sh"
 
 EVAL_CONFIG="${EVAL_CONFIG:-ai-stack/eval/promptfoo-config.yaml}"
 OUTPUT_DIR="${OUTPUT_DIR:-${HOME}/.local/share/nixos-ai-stack/eval/results}"

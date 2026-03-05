@@ -248,7 +248,7 @@ def read_prompt_registry() -> List[dict]:
     """Load ai-stack/prompts/registry.yaml; return list of prompt entries."""
     registry_path = Path(
         os.getenv("REGISTRY_PATH",
-                  str(Path(__file__).parent.parent / "ai-stack/prompts/registry.yaml"))
+                  str(Path(__file__).parent.parent.parent / "ai-stack/prompts/registry.yaml"))
     )
     if not registry_path.exists():
         return []
@@ -1719,7 +1719,7 @@ def format_text(
 
     lines += ["[ 5. Strategy Leaderboard ]"]
     visible = [r for r in leaderboard if r["tag"] != "untagged"]
-    if len(visible) >= 2:
+    if len(visible) >= 1:
         for i, r in enumerate(visible[:5], 1):
             lines.append(f"  {i}. {r['tag']:<40} {r['mean_pct']:>5.1f}%  ({r['runs']} runs)")
     else:

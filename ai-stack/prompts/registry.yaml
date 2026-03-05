@@ -31,8 +31,8 @@ prompts:
 
       Provide a concise response using the context.
     tags: [rag, synthesis, route_search, systems]
-    mean_score: 0.333
-    last_evaluated: 2026-02-27
+    mean_score: 0.667
+    last_evaluated: 2026-03-05
 
   - id: gap_detection_score
     name: Query Gap Detection
@@ -49,7 +49,7 @@ prompts:
       current knowledge base? Reply YES or NO followed by a one-line reason.
     tags: [gap_detection, retrieval, monitoring]
     mean_score: 0.333
-    last_evaluated: 2026-02-27
+    last_evaluated: 2026-03-05
 
   - id: memory_recall_contextualise
     name: Agent Memory Recall Contextualisation
@@ -66,8 +66,8 @@ prompts:
       Summarise the memory in one sentence and explain how it relates to
       the current query.  If not relevant, say "Not relevant."
     tags: [memory, recall, context, agent]
-    mean_score: 0.333
-    last_evaluated: 2026-02-27
+    mean_score: 0.667
+    last_evaluated: 2026-03-05
 
   - id: aider_task_systems_code
     name: Aider Systems Code Generation Task
@@ -97,7 +97,7 @@ prompts:
       OUTPUT: confirm each change with a diff-style summary line
     tags: [code_generation, aider, systems, nixos, python, measurement_target]
     mean_score: 0.000
-    last_evaluated: 2026-02-27
+    last_evaluated: 2026-03-05
 
   - id: eval_scorecard_analysis
     name: Eval Scorecard Failure Analysis
@@ -121,7 +121,7 @@ prompts:
       Output as a numbered list matching the failed cases.
     tags: [eval, debugging, prompt_refinement, analysis]
     mean_score: 0.000
-    last_evaluated: 2026-02-27
+    last_evaluated: 2026-03-05
 
   - id: query_expansion_nixos
     name: NixOS Domain Query Expansion
@@ -138,8 +138,8 @@ prompts:
       Return ONLY the expanded queries, one per line, no explanations.
       If no useful expansions exist, return the original query unchanged.
     tags: [query_expansion, retrieval, nixos, domain]
-    mean_score: 0.667
-    last_evaluated: 2026-02-27
+    mean_score: 0.333
+    last_evaluated: 2026-03-05
 
   - id: prsi_pessimistic_cycle_orchestrator
     name: PRSI Pessimistic Cycle Orchestrator

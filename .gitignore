@@ -22,8 +22,8 @@ result-*
 *.swp
 *~
 .nvimlog
-core
-core.*
+/core
+/core.*
 
 # Version tracking
 .nixos-quick-deploy-version

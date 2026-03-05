@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/../../../../config/service-endpoints.sh"
+source "${SCRIPT_DIR}/../../config/service-endpoints.sh"
 
 HYBRID_KEY="${HYBRID_API_KEY:-}"
 HYBRID_KEY_FILE="${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_coordinator_api_key}"
