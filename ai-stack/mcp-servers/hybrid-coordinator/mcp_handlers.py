@@ -347,13 +347,13 @@ TOOL_DEFINITIONS: List[Tool] = [
 
 async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
     """Dispatch an MCP tool call by name."""
-    _start = _time.time()
+    _start = _time.perf_counter()
     try:
         if name == "augment_query":
             query = arguments.get("query", "")
             agent_type = arguments.get("agent_type", "remote")
             result = await _augment_query(query, agent_type)
-            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "track_interaction":
@@ -366,7 +366,7 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                 tokens_used=arguments.get("tokens_used", 0),
                 latency_ms=arguments.get("latency_ms", 0),
             )
-            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps({"interaction_id": interaction_id}))]
 
         elif name == "update_outcome":
@@ -375,12 +375,12 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                 outcome=arguments.get("outcome", "unknown"),
                 user_feedback=arguments.get("user_feedback", 0),
             )
-            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps({"status": "updated"}))]
 
         elif name == "generate_training_data":
             dataset_path = await _generate_dataset()
-            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps({"dataset_path": dataset_path}))]
 
         elif name == "search_context":
@@ -395,7 +395,7 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                 score_threshold=0.7,
             ).points
             formatted = [{"id": str(r.id), "score": r.score, "payload": r.payload} for r in results]
-            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps(formatted, indent=2))]
 
         elif name == "hybrid_search":
@@ -406,7 +406,7 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                 keyword_limit=arguments.get("keyword_limit", 5),
                 score_threshold=arguments.get("score_threshold", 0.7),
             )
-            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "route_search":
@@ -424,7 +424,7 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                 name,
                 'success',
                 None,
-                (_time.time() - _start) * 1000,
+                (_time.perf_counter() - _start) * 1000,
                 arguments,
                 metadata={
                     "strategy_tag": result.get("route", "unknown"),
@@ -440,7 +440,7 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                 content=arguments.get("content"),
                 metadata=arguments.get("metadata"),
             )
-            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "recall_agent_memory":
@@ -450,7 +450,7 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                 limit=arguments.get("limit"),
                 retrieval_mode=arguments.get("retrieval_mode", "hybrid"),
             )
-            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "run_harness_eval":
@@ -460,11 +460,24 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                 mode=arguments.get("mode", "auto"),
                 max_latency_ms=arguments.get("max_latency_ms"),
             )
-            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            metrics = result.get("metrics") if isinstance(result, dict) else {}
+            _write_audit(
+                name,
+                'success',
+                None,
+                (_time.perf_counter() - _start) * 1000,
+                arguments,
+                metadata={
+                    "harness_status": result.get("status") if isinstance(result, dict) else "",
+                    "harness_passed": bool(result.get("passed")) if isinstance(result, dict) else False,
+                    "harness_overall_score": metrics.get("overall_score") if isinstance(metrics, dict) else None,
+                    "harness_failure_category": result.get("failure_category") if isinstance(result, dict) else None,
+                },
+            )
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "harness_stats":
-            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps(_HARNESS_STATS, indent=2))]
 
         elif name == "learning_feedback":
@@ -478,7 +491,7 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                 model=arguments.get("model"),
                 variant=arguments.get("variant"),
             )
-            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps({"feedback_id": feedback_id}))]
 
         # Phase 19.3.1 — get_workflow_hints
@@ -502,11 +515,11 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                     "query": arguments.get("query", ""),
                     "error": "hints_engine not available — run `scripts/ai/aq-hints` from CLI instead",
                 }
-            _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         else:
             raise ValueError(f"Unknown tool: {name}")
     except Exception as exc:
-        _write_audit(name, 'error', str(exc), (_time.time() - _start) * 1000, arguments)
+        _write_audit(name, 'error', str(exc), (_time.perf_counter() - _start) * 1000, arguments)
         raise

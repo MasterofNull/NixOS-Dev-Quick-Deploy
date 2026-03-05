@@ -2,8 +2,13 @@
   "version": "1.0",
   "blocked_tools": [
     "shell_exec",
+    "shell_execute",
     "remote_ssh_exec",
-    "raw_system_command"
+    "raw_system_command",
+    "danger_tool"
+  ],
+  "keyword_exempt_tools": [
+    "route_search"
   ],
   "blocked_endpoint_patterns": [
     "/control/*",
