@@ -1227,7 +1227,7 @@
 
           timeoutSeconds = lib.mkOption {
             type = lib.types.ints.positive;
-            default = 90;
+            default = 30;
             description = ''
               Hard timeout (seconds) for harness evaluation calls. This bounds
               long-running eval requests independently from the latency SLO score.
@@ -1236,7 +1236,7 @@
 
           timeoutHardCapSeconds = lib.mkOption {
             type = lib.types.ints.positive;
-            default = 45;
+            default = 20;
             description = ''
               Absolute upper bound (seconds) for harness evaluation calls after
               timeout normalization. Prevents accidental multi-hour waits if
