@@ -963,7 +963,7 @@ async def run_http_mode(port: int) -> None:
         request_id = request.headers.get("X-Request-ID") or uuid4().hex
         request["request_id"] = request_id
         bind_contextvars(request_id=request_id)
-        start = time.time()
+        start = time.perf_counter()
         response = None
         try:
             response = await handler(request)
@@ -972,7 +972,7 @@ async def run_http_mode(port: int) -> None:
             REQUEST_ERRORS.labels(request.path, request.method).inc()
             raise
         finally:
-            duration = time.time() - start
+            duration = time.perf_counter() - start
             status = str(response.status) if response else "500"
             REQUEST_LATENCY.labels(request.path, request.method).observe(duration)
             REQUEST_COUNT.labels(request.path, status).inc()
@@ -1341,6 +1341,13 @@ async def run_http_mode(port: int) -> None:
                 mode=data.get("mode", "auto"),
                 max_latency_ms=data.get("max_latency_ms"),
             )
+            metrics = result.get("metrics") if isinstance(result, dict) else {}
+            request["audit_metadata"] = {
+                "harness_status": result.get("status") if isinstance(result, dict) else "",
+                "harness_passed": bool(result.get("passed")) if isinstance(result, dict) else False,
+                "harness_overall_score": metrics.get("overall_score") if isinstance(metrics, dict) else None,
+                "harness_failure_category": result.get("failure_category") if isinstance(result, dict) else None,
+            }
             return web.json_response(result)
         except Exception as exc:
             return web.json_response({"error": "harness_eval_failed", "detail": str(exc)}, status=500)

@@ -402,6 +402,7 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
 
     with_contract = 0
     missing_contract = 0
+    missing_contract_obj = 0
     depth_counts: Dict[str, int] = {}
     blueprint_counts: Dict[str, int] = {}
     for sess in sessions:
@@ -410,6 +411,11 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
             isinstance(contract, dict)
             and bool(str(contract.get("user_intent", "")).strip())
             and bool(str(contract.get("definition_of_done", "")).strip())
+            and str(contract.get("depth_expectation", "")).strip().lower() in {"minimum", "standard", "deep"}
+            and isinstance(contract.get("spirit_constraints"), list)
+            and len([x for x in contract.get("spirit_constraints", []) if str(x).strip()]) > 0
+            and isinstance(contract.get("no_early_exit_without"), list)
+            and len([x for x in contract.get("no_early_exit_without", []) if str(x).strip()]) > 0
         )
         if has_contract:
             with_contract += 1
@@ -417,6 +423,8 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
             depth_counts[depth] = depth_counts.get(depth, 0) + 1
         else:
             missing_contract += 1
+            if not isinstance(contract, dict):
+                missing_contract_obj += 1
         bp = str(sess.get("blueprint_id", "") or "").strip()
         if bp:
             blueprint_counts[bp] = blueprint_counts.get(bp, 0) + 1
@@ -428,6 +436,7 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
         "total_runs": total,
         "with_contract": with_contract,
         "missing_contract": missing_contract,
+        "missing_contract_obj": missing_contract_obj,
         "contract_coverage_pct": round((with_contract / total) * 100.0, 1) if total else None,
         "depth_distribution": depth_counts,
         "top_blueprints": top_blueprints,
@@ -781,6 +790,7 @@ def security_auditor_health(entries: List[dict]) -> Dict[str, Any]:
     cached = 0
     first_seen = 0
     by_tool: Dict[str, Dict[str, int]] = {}
+    by_reason: Dict[str, int] = {}
     for e in events:
         tool = str(e.get("tool_name", "unknown")).strip() or "unknown"
         metadata = e.get("metadata") if isinstance(e.get("metadata"), dict) else {}
@@ -789,6 +799,16 @@ def security_auditor_health(entries: List[dict]) -> Dict[str, Any]:
             approved += 1
         else:
             blocked += 1
+            block_reasons = metadata.get("block_reasons")
+            if isinstance(block_reasons, list) and block_reasons:
+                for reason in block_reasons:
+                    text = str(reason).strip()
+                    if text:
+                        by_reason[text] = by_reason.get(text, 0) + 1
+            else:
+                primary = str(metadata.get("primary_reason", "") or "").strip()
+                if primary:
+                    by_reason[primary] = by_reason.get(primary, 0) + 1
         if bool(metadata.get("cached")):
             cached += 1
         if bool(metadata.get("first_seen")):
@@ -802,6 +822,7 @@ def security_auditor_health(entries: List[dict]) -> Dict[str, Any]:
         [(name, stats["blocked"]) for name, stats in by_tool.items() if stats["blocked"] > 0],
         key=lambda x: -x[1],
     )[:5]
+    top_reasons = sorted(by_reason.items(), key=lambda x: -x[1])[:5]
     return {
         "available": True,
         "events": len(events),
@@ -811,6 +832,7 @@ def security_auditor_health(entries: List[dict]) -> Dict[str, Any]:
         "first_seen": first_seen,
         "cache_hit_pct": round(100 * cached / len(events), 1) if events else None,
         "top_blocked_tools": top_blocked,
+        "top_block_reasons": top_reasons,
     }
 
 
@@ -865,7 +887,7 @@ def semantic_autorun_health(entries: List[dict]) -> Dict[str, Any]:
     }
 
 
-def routing_split() -> Dict[str, Any]:
+def routing_split(entries: Optional[List[dict]] = None) -> Dict[str, Any]:
     """Fetch local vs remote routing split from Prometheus."""
     local_val = prom_query('sum(hybrid_llm_backend_selections_total{backend="local"}) or vector(0)')
     remote_val = prom_query('sum(hybrid_llm_backend_selections_total{backend="remote"}) or vector(0)')
@@ -875,14 +897,35 @@ def routing_split() -> Dict[str, Any]:
     query_ok = prom_query('sum(hybrid_requests_total{endpoint="/query",status="200"}) or vector(0)')
     if query_ok is None:
         query_ok = prom_query('sum(hybrid_requests_total{endpoint="/query"}) or vector(0)')
-    return {
+    data = {
         "local_n": int(local_n),
         "remote_n": int(remote_n),
         "local_pct": round(100 * local_n / total, 1) if total else None,
         "query_ok_n": int(query_ok or 0.0),
         "fallback_used": bool((query_ok or 0.0) > 0 and total == 0),
         "available": local_val is not None,  # None only on connection error
+        "source": "prometheus",
     }
+    if total == 0 and entries:
+        backend_counts = {"local": 0, "remote": 0}
+        for e in entries:
+            if str(e.get("tool_name", "")).strip().lower() != "route_search":
+                continue
+            md = e.get("metadata") if isinstance(e.get("metadata"), dict) else {}
+            backend = str(md.get("backend", "") or "").strip().lower()
+            if backend in backend_counts:
+                backend_counts[backend] += 1
+        b_total = backend_counts["local"] + backend_counts["remote"]
+        if b_total > 0:
+            data.update({
+                "local_n": int(backend_counts["local"]),
+                "remote_n": int(backend_counts["remote"]),
+                "local_pct": round(100 * backend_counts["local"] / b_total, 1),
+                "fallback_used": True,
+                "available": True,
+                "source": "tool_audit",
+            })
+    return data
 
 
 def cache_hit_rate() -> Dict[str, Any]:
@@ -904,11 +947,21 @@ def cache_hit_rate() -> Dict[str, Any]:
     }
 
 
-def eval_score_trend(rows: List[dict]) -> Dict[str, Any]:
+def eval_score_trend(rows: List[dict], entries: Optional[List[dict]] = None) -> Dict[str, Any]:
     """Compute eval score statistics over the window."""
-    if not rows:
+    pcts: List[float] = []
+    if rows:
+        pcts = [float(r["pct_passed"]) for r in rows]
+    elif entries:
+        for e in entries:
+            if str(e.get("tool_name", "")).strip().lower() != "run_harness_eval":
+                continue
+            md = e.get("metadata") if isinstance(e.get("metadata"), dict) else {}
+            score = md.get("harness_overall_score")
+            if isinstance(score, (int, float)):
+                pcts.append(round(float(score) * 100.0, 2))
+    if not pcts:
         return {"available": False}
-    pcts = [r["pct_passed"] for r in rows]
     return {
         "available": True,
         "latest_pct": pcts[-1],
@@ -1023,11 +1076,21 @@ def build_recommendations(
         total_runs = int(intent_compliance.get("total_runs", 0) or 0)
         coverage = intent_compliance.get("contract_coverage_pct")
         if total_runs >= 3 and coverage is not None and float(coverage) < 90:
-            recs.append(
-                f"Workflow intent-contract coverage is low ({coverage}% over {total_runs} runs). "
-                "Ensure /workflow/run/start always includes intent_contract fields "
-                "(user_intent, definition_of_done, depth_expectation, spirit_constraints)."
-            )
+            missing_obj = int(intent_compliance.get("missing_contract_obj", 0) or 0)
+            if missing_obj > 0:
+                recs.append(
+                    f"Workflow intent-contract coverage is low ({coverage}% over {total_runs} runs), "
+                    f"including {missing_obj} run record(s) with no intent_contract object. "
+                    "Backfill legacy workflow-sessions records and ensure /workflow/run/start always sends "
+                    "intent_contract fields (user_intent, definition_of_done, depth_expectation, "
+                    "spirit_constraints, no_early_exit_without)."
+                )
+            else:
+                recs.append(
+                    f"Workflow intent-contract coverage is low ({coverage}% over {total_runs} runs). "
+                    "Ensure /workflow/run/start always includes intent_contract fields "
+                    "(user_intent, definition_of_done, depth_expectation, spirit_constraints, no_early_exit_without)."
+                )
 
     # Semantic tooling autorun quality
     if semantic_autorun and semantic_autorun.get("available"):
@@ -1040,9 +1103,24 @@ def build_recommendations(
                     "Verify `AI_SEMANTIC_TOOLING_AUTORUN=true` in hybrid-coordinator runtime env."
                 )
             if int(semantic_autorun.get("tool_security_blocked_total", 0) or 0) > 0:
+                blocked_tools = []
+                blocked_reasons = []
+                if security_auditor and security_auditor.get("available"):
+                    blocked_tools = [
+                        name for name, _count in (security_auditor.get("top_blocked_tools") or [])[:3]
+                        if str(name).strip()
+                    ]
+                    blocked_reasons = [
+                        name for name, _count in (security_auditor.get("top_block_reasons") or [])[:2]
+                        if str(name).strip()
+                    ]
+                blocked_suffix = f" Top blocked tools: {', '.join(blocked_tools)}." if blocked_tools else ""
+                reason_suffix = f" Top reasons: {', '.join(blocked_reasons)}." if blocked_reasons else ""
                 recs.append(
                     "Tool security auditor blocked one or more planned tools during autorun. "
-                    "Review `tool-security-policy.json` and blocked tool metadata in tool-audit logs."
+                    "Review `runtime-tool-security-policy.json` and blocked tool metadata in tool-audit logs."
+                    + blocked_suffix
+                    + reason_suffix
                 )
 
     # Security auditor cache behavior
@@ -1088,10 +1166,17 @@ def build_recommendations(
         if s["p95_ms"] > 5000 and s["calls"] >= 5
     ]
     for tool, stats in sorted(slow_tools, key=lambda x: -x[1]["p95_ms"])[:2]:
-        recs.append(
-            f"Tool `{tool}` P95 latency is {stats['p95_ms']:.0f}ms — "
-            "consider caching, connection pooling, or model size reduction."
-        )
+        if stats["p95_ms"] >= 300000:
+            recs.append(
+                f"Tool `{tool}` P95 latency is {stats['p95_ms']:.0f}ms — "
+                "this looks like timeout/outlier behavior. Inspect raw tool-audit latency entries "
+                "and timeout settings before tuning caching/model size."
+            )
+        else:
+            recs.append(
+                f"Tool `{tool}` P95 latency is {stats['p95_ms']:.0f}ms — "
+                "consider caching, connection pooling, or model size reduction."
+            )
 
     # Tool reliability
     flaky_tools = [
@@ -1864,9 +1949,9 @@ def main() -> None:
 
     # Analyse
     tool_stats = aggregate_tool_audit(audit_entries)
-    route = routing_split()
+    route = routing_split(audit_entries)
     cache = cache_hit_rate()
-    eval_trend = eval_score_trend(eval_rows)
+    eval_trend = eval_score_trend(eval_rows, audit_entries)
     adoption = hint_adoption(since_dt)  # Phase 19.3.4
     tooling_quality = task_tooling_quality(since_dt, adoption)
     intent_compliance = read_workflow_sessions(since_dt)
